@@ -1,0 +1,28 @@
+(kicad_pcb
+  (version 20241229)
+  (net 0 "")
+  (net 1 "VCC")
+  (generator "typecad")
+  (generator_version "0.1.0")
+  (general
+    (thickness 1.6)
+    (legacy_teardrops no)
+  )
+  (paper "A4")
+  (segment
+    (start 10 10)
+    (end 30 30)
+    (width 0.2)
+    (locked no)
+    (layer "F.Cu")
+    (uuid "12d6f5ed-5bcf-43cf-a50c-48e139d7066f")
+  )
+  (segment
+    (start 30 30)
+    (end 50 50)
+    (width 0.2)
+    (locked no)
+    (layer "F.Cu")
+    (uuid "b036526a-478c-48d8-8a6a-c7c900ec5df6")
+  )
+)

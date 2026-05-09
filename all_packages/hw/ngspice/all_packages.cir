@@ -1,0 +1,12 @@
+* Ngspice Netlist for all_packages
+
+.control
+op
+set wr_vecnames
+set filetype=ascii
+set keep#branch = 0
+
+
+write all_packages.out all
+.endc
+.end

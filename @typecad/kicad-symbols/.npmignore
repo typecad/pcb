@@ -1,0 +1,10 @@
+debug_test.js
+kicad.ts
+test-cache.json
+test-cache-symbol.json
+.kiro/
+node_modules/
+src/__tests__/
+src/**/__tests__/
+**/*.test.ts
+**/*.test.js

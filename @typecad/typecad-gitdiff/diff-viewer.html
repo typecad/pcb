@@ -1,0 +1,1802 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PCB Layer Diff Viewer</title>
+    <link rel="icon" type="image/x-icon" href="https://typecad.net/favicon.ico" />
+    <link
+      href="https://cdn.jsdelivr.net/npm/basecoat-css@0.2.8/dist/basecoat.cdn.min.css"
+      rel="stylesheet"
+    />
+    <script
+      src="https://cdn.jsdelivr.net/npm/basecoat-css@0.2.8/dist/js/all.min.js"
+      defer
+    ></script>
+    <style>
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          "Helvetica Neue", Arial, sans-serif;
+        margin: 0;
+        padding: 0;
+        background-color: var(--background);
+        color: var(--foreground);
+      }
+
+      /* Make all links underlined with higher specificity */
+      a {
+        text-decoration: underline !important;
+      }
+
+      /* Ensure links in titles and headers are also underlined */
+      .title a,
+      h1 a,
+      h2 a,
+      h3 a,
+      h4 a,
+      h5 a,
+      h6 a {
+        text-decoration: underline !important;
+      }
+
+      /* Specific styling for the title link to ensure it's visible and underlined */
+      .title a {
+        text-decoration: underline !important;
+        -webkit-text-fill-color: var(--primary) !important;
+        color: var(--primary) !important;
+        background: none !important;
+        -webkit-background-clip: unset !important;
+        background-clip: unset !important;
+      }
+
+      .container {
+        margin: 0;
+        padding: 1rem;
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+      }
+
+      .header {
+        text-align: center;
+        margin-bottom: 1rem;
+        flex-shrink: 0;
+      }
+
+      .title {
+        font-size: 2.5rem;
+        font-weight: 700;
+        margin-bottom: 0.5rem;
+        background: linear-gradient(
+          135deg,
+          var(--primary),
+          var(--primary-600, var(--primary))
+        );
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+      }
+
+      .subtitle {
+        color: var(--muted-foreground);
+        font-size: 1.125rem;
+      }
+
+      .main-card {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        padding: 0;
+        gap: 0;
+        min-height: 0;
+        border-radius: 0;
+      }
+
+      .layer-controls {
+        display: flex;
+        align-items: center;
+        gap: 2rem;
+        margin: 1rem 1rem 0 1rem;
+        padding-bottom: 1rem;
+        flex-shrink: 0;
+      }
+
+      .layer-badges-container {
+        flex: 1;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        align-items: center;
+      }
+
+      .layer-badge {
+        cursor: pointer;
+        transition: all 0.2s ease;
+        user-select: none;
+      }
+
+      .layer-badge:hover {
+        transform: scale(1.05);
+      }
+
+      .layer-badge.inactive {
+        opacity: 0.6;
+      }
+
+      /* Ensure outline badges remain visible */
+      .layer-badge.badge--outline {
+        opacity: 0.8 !important;
+        border: 1px solid var(--border);
+        background-color: transparent;
+        color: var(--foreground);
+      }
+
+      .layer-badge.badge--outline.inactive {
+        opacity: 0.4 !important;
+      }
+
+      .view-mode-controls {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        min-width: 200px;
+      }
+
+      .view-mode-controls label {
+        font-size: 0.875rem;
+        font-weight: 500;
+        color: var(--foreground);
+      }
+
+      .view-mode-controls select {
+        flex: 1;
+        padding: 0.5rem;
+        border-radius: var(--radius);
+        border: 1px solid var(--border);
+        background: var(--background);
+        color: var(--foreground);
+      }
+
+      .layer-opacity {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        min-width: 200px;
+      }
+
+      .layer-opacity label {
+        font-size: 0.875rem;
+        font-weight: 500;
+        color: var(--foreground);
+      }
+
+      .layer-opacity input[type="range"] {
+        flex: 1;
+        height: 0.5rem;
+        background: var(--secondary);
+        border-radius: var(--radius);
+        outline: none;
+        -webkit-appearance: none;
+        appearance: none;
+      }
+
+      .layer-opacity input[type="range"]::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        appearance: none;
+        width: 1rem;
+        height: 1rem;
+        background: var(--primary);
+        border-radius: 50%;
+        cursor: pointer;
+      }
+
+      .layer-opacity input[type="range"]::-moz-range-thumb {
+        width: 1rem;
+        height: 1rem;
+        background: var(--primary);
+        border-radius: 50%;
+        cursor: pointer;
+        border: none;
+      }
+
+      #opacityValue {
+        font-size: 0.875rem;
+        font-weight: 500;
+        color: var(--muted-foreground);
+        min-width: 3rem;
+      }
+
+
+
+      .image-viewer {
+        position: relative;
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+      }
+
+      .image-stack {
+        position: relative;
+        border-radius: 0;
+        overflow: hidden;
+        background-color: var(--muted);
+        flex: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 300px;
+      }
+
+      .image-layer {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        transition: opacity 0.3s ease;
+        mix-blend-mode: normal;
+        /* Default opacity will be set by JavaScript */
+      }
+
+      .image-layer img {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+        display: block;
+        cursor: grab;
+        transition: transform 0.1s ease-out;
+      }
+
+      .image-layer img:active {
+        cursor: grabbing;
+      }
+
+      .image-layer.zoomed img {
+        cursor: grab;
+      }
+
+      .image-layer.zoomed img:active {
+        cursor: grabbing;
+      }
+
+      /* Zoom controls */
+      .zoom-controls {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        display: flex;
+        gap: 5px;
+        z-index: 20;
+        background: rgba(0, 0, 0, 0.8);
+        border-radius: var(--radius);
+        padding: 5px;
+      }
+
+      .zoom-btn {
+        width: 32px;
+        height: 32px;
+        border: none;
+        background: rgba(255, 255, 255, 0.2);
+        color: white;
+        border-radius: var(--radius);
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 18px;
+        font-weight: bold;
+        transition: background 0.2s ease;
+      }
+
+      .zoom-btn:hover {
+        background: rgba(255, 255, 255, 0.3);
+      }
+
+      .zoom-btn:active {
+        background: rgba(255, 255, 255, 0.4);
+      }
+
+      .zoom-info {
+        position: absolute;
+        bottom: 10px;
+        right: 10px;
+        background: rgba(0, 0, 0, 0.8);
+        color: white;
+        padding: 5px 10px;
+        border-radius: var(--radius);
+        font-size: 12px;
+        z-index: 20;
+        pointer-events: none;
+      }
+
+      /* Side by side view */
+      .image-stack.side-by-side {
+        display: grid;
+        grid-template-columns: 1fr 1fr 1fr;
+        gap: 1rem;
+        padding: 0;
+      }
+
+      .image-stack.side-by-side .image-layer {
+        position: relative;
+        border-radius: 0;
+        overflow: hidden;
+        background: var(--background);
+        border: 1px solid var(--border);
+      }
+
+      .image-stack.side-by-side .image-caption {
+        display: none; /* Hide captions in side-by-side view */
+      }
+
+      /* Overlay view */
+      .image-stack.overlay .image-layer:not(.original-layer) {
+        mix-blend-mode: difference;
+      }
+
+      /* Onion skin view */
+      .image-stack.onion-skin .modified-layer {
+        opacity: 0.5;
+      }
+
+      /* Swipe view */
+      .image-stack.swipe {
+        position: relative;
+        overflow: hidden;
+      }
+
+      .image-stack.swipe .swipe-container {
+        position: relative;
+        width: 100%;
+        height: 100%;
+      }
+
+      .image-stack.swipe .swipe-divider {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        width: 2px;
+        background: var(--primary);
+        cursor: ew-resize;
+        z-index: 10;
+        left: 50%;
+        transform: translateX(-50%);
+      }
+
+      .image-stack.swipe .swipe-divider::before {
+        content: "⟷";
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        width: 30px;
+        height: 30px;
+        background: var(--primary);
+        border-radius: 50%;
+        border: 2px solid var(--background);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--primary-foreground);
+        font-size: 16px;
+        font-weight: bold;
+        line-height: 1;
+      }
+
+      .image-stack.swipe .original-layer {
+        clip-path: inset(0 50% 0 0);
+      }
+
+      .image-stack.swipe .modified-layer {
+        clip-path: inset(0 0 0 50%);
+      }
+
+      .image-stack.swipe .original-layer::before {
+        content: "ORIGINAL";
+        position: absolute;
+        top: 10px;
+        left: 10px;
+        background: rgba(239, 68, 68, 0.8);
+        color: white;
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 12px;
+        font-weight: bold;
+        z-index: 5;
+      }
+
+      .image-stack.swipe .modified-layer::before {
+        content: "MODIFIED";
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        background: rgba(34, 197, 94, 0.8);
+        color: white;
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 12px;
+        font-weight: bold;
+        z-index: 5;
+      }
+
+      /* Adjust zoom controls position in swipe mode to avoid overlap with labels */
+      .image-stack.swipe .zoom-controls {
+        top: 50px;
+      }
+
+      /* Layer-specific blend modes for better visualization */
+      .image-layer[data-layer*="Cu"] {
+        mix-blend-mode: normal;
+      }
+
+      .image-layer[data-layer*="Mask"] {
+        mix-blend-mode: normal;
+      }
+
+      .image-layer[data-layer*="Paste"] {
+        mix-blend-mode: normal;
+      }
+
+      /* Diff-only view mode - make all layers partially transparent */
+      .image-stack.diff-only .image-layer {
+        opacity: 0.6;
+      }
+
+      /* Ensure diff layers are more visible in diff-only mode */
+      .image-stack.diff-only .diff-layer {
+        opacity: 0.8;
+      }
+
+      /* Make images within layers also transparent for better layering effect */
+      .image-stack.diff-only .image-layer img {
+        opacity: 0.8;
+      }
+
+      .image-stack.diff-only .diff-layer img {
+        opacity: 1;
+      }
+
+      .empty-viewer {
+        text-align: center;
+        padding: 3rem;
+        color: var(--muted-foreground);
+      }
+
+      .empty-viewer-icon {
+        font-size: 3rem;
+        margin-bottom: 1rem;
+        opacity: 0.5;
+      }
+
+      .empty-viewer h3 {
+        margin-bottom: 0.5rem;
+        color: var(--foreground);
+      }
+
+      .card-footer {
+        margin-top: 0;
+        padding-top: 1rem;
+        border-top: 1px solid var(--border);
+        flex-shrink: 0;
+      }
+
+      .diff-legend {
+        display: flex;
+        justify-content: center;
+        gap: 2rem;
+        align-items: center;
+        margin-bottom: 1rem;
+      }
+
+      .legend-item {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+      }
+
+      .legend-swatch {
+        width: 1.5rem;
+        height: 1.5rem;
+        border-radius: var(--radius);
+        border: 1px solid var(--border);
+      }
+
+      .legend-removed {
+        background-color: #f97316; /* Orange for removed features */
+      }
+
+      .legend-added {
+        background-color: #22c55e; /* Green for added features */
+      }
+
+      .legend-label {
+        font-size: 0.875rem;
+        font-weight: 500;
+        color: var(--foreground);
+      }
+
+      .side-by-side-labels {
+        display: flex;
+        justify-content: space-between;
+        gap: 2rem;
+        align-items: center;
+        margin-top: 1rem;
+        padding-top: 1rem;
+        border-top: 1px solid var(--border);
+      }
+
+      .label-item {
+        flex: 1;
+        text-align: center;
+      }
+
+      .label-text {
+        font-size: 0.875rem;
+        font-weight: 500;
+        color: var(--foreground);
+        padding: 0.5rem;
+        background: var(--secondary);
+        border-radius: var(--radius);
+        display: inline-block;
+      }
+
+      .theme-switcher {
+        position: fixed;
+        top: 1rem;
+        right: 1rem;
+        z-index: 50;
+      }
+
+      @media (max-width: 768px) {
+        .container {
+          padding: 0.5rem;
+        }
+
+        .title {
+          font-size: 2rem;
+        }
+
+        .header {
+          margin-bottom: 0.5rem;
+        }
+
+        .main-card {
+          padding: 0;
+        }
+
+        .layer-controls {
+          flex-direction: column;
+          align-items: stretch;
+          gap: 1rem;
+          margin-bottom: 0;
+          padding-bottom: 0.5rem;
+        }
+
+        .image-stack.side-by-side {
+          grid-template-columns: 1fr;
+          gap: 0.5rem;
+        }
+
+        .zoom-controls {
+          top: 5px;
+          right: 5px;
+          padding: 3px;
+        }
+
+        .zoom-btn {
+          width: 28px;
+          height: 28px;
+          font-size: 16px;
+        }
+
+        .zoom-info {
+          bottom: 5px;
+          right: 5px;
+          padding: 3px 6px;
+          font-size: 11px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Theme Switcher -->
+    <div class="theme-switcher">
+      <button
+        type="button"
+        id="themeToggle"
+        aria-label="Toggle theme"
+        onclick="toggleTheme()"
+        class="btn-icon-outline size-8"
+      >
+        <span id="sunIcon">
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <circle cx="12" cy="12" r="4" />
+            <path d="M12 2v2" />
+            <path d="M12 20v2" />
+            <path d="m4.93 4.93 1.41 1.41" />
+            <path d="m17.66 17.66 1.41 1.41" />
+            <path d="M2 12h2" />
+            <path d="M20 12h2" />
+            <path d="m6.34 17.66-1.41 1.41" />
+            <path d="m19.07 4.93-1.41 1.41" />
+          </svg>
+        </span>
+        <span id="moonIcon" style="display: none">
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" />
+          </svg>
+        </span>
+      </button>
+    </div>
+
+    <div class="container">
+      <div class="header">
+        <h1 class="title"><a href="https://typecad.net">typeCAD</a> git-diff</h1>
+      </div>
+
+      <div class="main-card card">
+        <div class="layer-controls">
+          <div class="layer-badges-container" id="layerBadgesContainer">
+            <!-- Layer badges will be populated dynamically -->
+          </div>
+
+          <div class="layer-opacity" id="globalOpacityControls" style="display: flex;">
+            <label for="globalOpacitySlider">Layer Transparency</label>
+            <input
+              type="range"
+              id="globalOpacitySlider"
+              min="20"
+              max="100"
+              value="70"
+              oninput="updateGlobalOpacity(this.value)"
+            />
+            <span id="globalOpacityValue">70%</span>
+          </div>
+
+          <div class="layer-opacity" id="opacityControls" style="display: none">
+            <label for="opacitySlider">Overlay Opacity</label>
+            <input
+              type="range"
+              id="opacitySlider"
+              min="0"
+              max="100"
+              value="50"
+              oninput="updateOpacity(this.value)"
+            />
+            <span id="opacityValue">50%</span>
+          </div>
+
+          <div class="view-mode-controls">
+            <label for="viewModeSelect">View Mode</label>
+            <select
+              id="viewModeSelect"
+              class="button button--outline"
+              onchange="changeViewMode(this.value)"
+            >
+              <option value="diff-only">Diff Only</option>
+              <option value="side-by-side">Side by Side</option>
+              <option value="overlay">Overlay</option>
+              <option value="onion-skin">Onion Skin</option>
+              <option value="swipe">Swipe Compare</option>
+            </select>
+          </div>
+
+
+        </div>
+
+        <div class="image-viewer">
+          <div class="image-stack" id="imageStack">
+            <!-- Image layers will be populated dynamically -->
+
+            <!-- Zoom Controls -->
+            <div class="zoom-controls" id="zoomControls" style="display: none;">
+              <button class="zoom-btn" id="zoomInBtn" title="Zoom In">+</button>
+              <button class="zoom-btn" id="zoomOutBtn" title="Zoom Out">−</button>
+              <button class="zoom-btn" id="zoomResetBtn" title="Reset Zoom">⌂</button>
+            </div>
+
+            <!-- Zoom Info -->
+            <div class="zoom-info" id="zoomInfo" style="display: none;">
+              Zoom: <span id="zoomLevel">100%</span>
+            </div>
+
+            <div class="empty-viewer" id="emptyViewer">
+              <div class="empty-viewer-icon">🔧</div>
+              <h3>No PCB layers selected</h3>
+              <p>
+                Choose PCB layers from the dropdown above to view differences
+              </p>
+            </div>
+
+            <div
+              class="empty-viewer"
+              id="noDifferencesViewer"
+              style="display: none"
+            >
+              <div class="empty-viewer-icon">✅</div>
+              <h3>No differences found</h3>
+              <p>All PCB layers are identical between the compared files</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="card-footer" id="cardFooter" style="display: none">
+          <div class="diff-legend">
+            <div class="legend-item">
+              <div class="legend-swatch legend-removed"></div>
+              <span class="legend-label">Removed Feature</span>
+            </div>
+            <div class="legend-item">
+              <div class="legend-swatch legend-added"></div>
+              <span class="legend-label">Added Feature</span>
+            </div>
+          </div>
+          <div class="side-by-side-labels" id="sideBySideLabels" style="display: none !important;">
+            <div class="label-item">
+              <span class="label-text">Original</span>
+            </div>
+            <div class="label-item">
+              <span class="label-text">Differences</span>
+            </div>
+            <div class="label-item">
+              <span class="label-text">Modified</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      // Layer data structure - this will be populated with actual diff data
+      let layerDiffData = {}; // Stores image sources for each layer
+      let availableLayers = []; // Array of layers that have differences
+
+      // Theme toggle functionality
+      function toggleTheme() {
+        const html = document.documentElement;
+        const isDark = html.classList.contains("dark");
+
+        if (isDark) {
+          html.classList.remove("dark");
+          html.classList.add("light");
+          updateThemeIcon("light");
+          localStorage.setItem("theme", "light");
+        } else {
+          html.classList.remove("light");
+          html.classList.add("dark");
+          updateThemeIcon("dark");
+          localStorage.setItem("theme", "dark");
+        }
+      }
+
+      function updateThemeIcon(theme) {
+        const sunIcon = document.getElementById("sunIcon");
+        const moonIcon = document.getElementById("moonIcon");
+
+        if (theme === "dark") {
+          sunIcon.style.display = "block";
+          moonIcon.style.display = "none";
+        } else {
+          sunIcon.style.display = "none";
+          moonIcon.style.display = "block";
+        }
+      }
+
+      // Initialize theme on page load
+      function initializeTheme() {
+        const savedTheme = localStorage.getItem("theme") || "light";
+        const html = document.documentElement;
+
+        // Remove any existing theme classes
+        html.classList.remove("light", "dark");
+
+        // Add the saved theme class
+        html.classList.add(savedTheme);
+
+        updateThemeIcon(savedTheme);
+      }
+
+      // Determine layer type based on layer name
+      function getLayerType(layerName) {
+        if (layerName.includes(".Cu")) return "COPPER";
+        if (layerName.includes(".Paste")) return "PASTE";
+        if (layerName.includes(".Mask")) return "MASK";
+        if (layerName.includes(".Silkscreen")) return "SILK";
+        if (layerName.includes("Edge.Cuts")) return "EDGE";
+        if (layerName.includes("Render")) return "RENDER";
+        if (layerName.includes(".Fab")) return "FAB";
+        if (layerName.includes(".Courtyard")) return "COURTYARD";
+        if (layerName.includes(".Adhesive")) return "ADHESIVE";
+        if (layerName.includes("User.")) return "USER";
+        if (layerName.includes("Margin")) return "MARGIN";
+        return "OTHER";
+      }
+
+      // Load layer data from external source (this would be populated by the diff generator)
+      function loadLayerData() {
+        // This function will be called to load actual diff data
+        // For now, we'll simulate with the existing static data
+        const allPossibleLayers = [
+          { name: "F.Cu", hasDiff: true },
+          { name: "B.Cu", hasDiff: false },
+          { name: "F.Paste", hasDiff: true },
+          { name: "B.Paste", hasDiff: false },
+          { name: "F.Mask", hasDiff: true },
+          { name: "B.Mask", hasDiff: false },
+          { name: "F.Silkscreen", hasDiff: false },
+          { name: "B.Silkscreen", hasDiff: false },
+          { name: "Edge.Cuts", hasDiff: true },
+        ];
+
+        // Filter to only layers with differences and exclude render layers
+        availableLayers = allPossibleLayers
+          .filter((layer) => layer.hasDiff && !layer.name.includes("Render"))
+          .map((layer) => ({
+            name: layer.name,
+            type: getLayerType(layer.name),
+          }));
+
+        // Store layer data for image sources
+        availableLayers.forEach((layer) => {
+          // Create proper SVG content with layer name - make them visually different
+          const originalSvg = `<svg width="800" height="600" xmlns="http://www.w3.org/2000/svg">
+            <rect width="100%" height="100%" fill="#1f2937"/>
+            <rect x="100" y="100" width="200" height="100" fill="#ef4444" stroke="#ffffff" stroke-width="2"/>
+            <text x="50%" y="50%" font-family="Arial, sans-serif" font-size="24" fill="#ffffff" text-anchor="middle" dy=".3em">${layer.name} ORIGINAL</text>
+          </svg>`;
+
+          const diffSvg = `<svg width="800" height="600" xmlns="http://www.w3.org/2000/svg">
+            <rect width="100%" height="100%" fill="#000000"/>
+            <rect x="100" y="100" width="200" height="100" fill="#ef4444"/>
+            <rect x="350" y="150" width="150" height="80" fill="#22c55e"/>
+            <text x="50%" y="50%" font-family="Arial, sans-serif" font-size="24" fill="#ffffff" text-anchor="middle" dy=".3em">${layer.name} DIFFERENCES</text>
+          </svg>`;
+
+          const modifiedSvg = `<svg width="800" height="600" xmlns="http://www.w3.org/2000/svg">
+            <rect width="100%" height="100%" fill="#1f2937"/>
+            <rect x="100" y="100" width="200" height="100" fill="#ef4444" stroke="#ffffff" stroke-width="2"/>
+            <rect x="350" y="150" width="150" height="80" fill="#22c55e" stroke="#ffffff" stroke-width="2"/>
+            <text x="50%" y="50%" font-family="Arial, sans-serif" font-size="24" fill="#ffffff" text-anchor="middle" dy=".3em">${layer.name} MODIFIED</text>
+          </svg>`;
+
+          layerDiffData[layer.name] = {
+            originalImage: `data:image/svg+xml;base64,${btoa(originalSvg)}`,
+            diffImage: `data:image/svg+xml;base64,${btoa(diffSvg)}`,
+            modifiedImage: `data:image/svg+xml;base64,${btoa(modifiedSvg)}`,
+          };
+        });
+      }
+
+      // Populate layer badges
+      function populateLayerBadges() {
+        const layerBadgesContainer = document.getElementById("layerBadgesContainer");
+        layerBadgesContainer.innerHTML = "";
+
+        // Add layer badges for layers with differences only
+        availableLayers.forEach((layer) => {
+          const badgeClass = getBadgeClass(layer.type);
+          
+          const badge = document.createElement("span");
+          badge.className = `badge ${badgeClass} layer-badge main-control-badge`;
+          badge.setAttribute("data-layer", layer.name);
+          badge.textContent = layer.name;
+          badge.title = `Click to toggle ${layer.name} layer`;
+          
+          badge.addEventListener("click", () => {
+            toggleLayer(layer.name);
+          });
+
+          layerBadgesContainer.appendChild(badge);
+        });
+      }
+
+      // Get appropriate badge class based on layer type
+      function getBadgeClass(layerType) {
+        switch (layerType) {
+          case "COPPER":
+            return "badge--destructive";
+          case "PASTE":
+            return "badge--success";
+          case "MASK":
+            return "badge--warning";
+          case "SILK":
+            return "badge--secondary";
+          case "EDGE":
+            return "badge--outline";
+          default:
+            return "badge";
+        }
+      }
+
+      // Create image layers dynamically
+      function createImageLayers() {
+        const imageStack = document.getElementById("imageStack");
+        const emptyViewer = imageStack.querySelector(".empty-viewer");
+
+        // Clear existing layers but keep empty viewer
+        const existingLayers = imageStack.querySelectorAll(".image-layer");
+        existingLayers.forEach((layer) => layer.remove());
+
+        // Create layers for each available layer
+        availableLayers.forEach((layer) => {
+          // Original layer
+          const originalDiv = document.createElement("div");
+          originalDiv.className = "image-layer original-layer";
+          originalDiv.setAttribute("data-layer", layer.name);
+          originalDiv.setAttribute("data-type", "original");
+          originalDiv.style.display = "none";
+
+          const originalImg = document.createElement("img");
+          originalImg.src = layerDiffData[layer.name].originalImage;
+          originalImg.alt = `${layer.name} Original`;
+
+          const originalCaption = document.createElement("div");
+          originalCaption.className = "image-caption";
+          originalCaption.textContent = "Original";
+
+          originalDiv.appendChild(originalImg);
+          originalDiv.appendChild(originalCaption);
+
+          // Diff layer
+          const diffDiv = document.createElement("div");
+          diffDiv.className = "image-layer diff-layer";
+          diffDiv.setAttribute("data-layer", layer.name);
+          diffDiv.setAttribute("data-type", "diff");
+          diffDiv.style.display = "none";
+
+          const diffImg = document.createElement("img");
+          diffImg.src = layerDiffData[layer.name].diffImage;
+          diffImg.alt = `${layer.name} Diff`;
+
+          const diffCaption = document.createElement("div");
+          diffCaption.className = "image-caption";
+          diffCaption.textContent = "Differences";
+
+          diffDiv.appendChild(diffImg);
+          diffDiv.appendChild(diffCaption);
+
+          // Modified layer
+          const modifiedDiv = document.createElement("div");
+          modifiedDiv.className = "image-layer modified-layer";
+          modifiedDiv.setAttribute("data-layer", layer.name);
+          modifiedDiv.setAttribute("data-type", "modified");
+          modifiedDiv.style.display = "none";
+
+          const modifiedImg = document.createElement("img");
+          modifiedImg.src = layerDiffData[layer.name].modifiedImage;
+          modifiedImg.alt = `${layer.name} Modified`;
+
+          const modifiedCaption = document.createElement("div");
+          modifiedCaption.className = "image-caption";
+          modifiedCaption.textContent = "Modified";
+
+          modifiedDiv.appendChild(modifiedImg);
+          modifiedDiv.appendChild(modifiedCaption);
+
+          imageStack.insertBefore(originalDiv, emptyViewer);
+          imageStack.insertBefore(diffDiv, emptyViewer);
+          imageStack.insertBefore(modifiedDiv, emptyViewer);
+        });
+      }
+
+      // Initialize on page load
+      document.addEventListener("DOMContentLoaded", function () {
+        initializeTheme();
+        loadLayerData();
+        populateLayerBadges();
+        createImageLayers();
+        updateSelectedCount();
+        updateEmptyState();
+        updateNoDifferencesState();
+
+        // Initialize global opacity control
+        updateGlobalOpacity(70); // Set initial value to 70%
+
+        // Show footer legend for diff-only mode on initial load
+        const cardFooter = document.getElementById("cardFooter");
+        const sideBySideLabels = document.getElementById("sideBySideLabels");
+        cardFooter.style.display = "block";
+        sideBySideLabels.style.setProperty("display", "none", "important");
+
+        // Select all layers by default after a short delay to ensure everything is ready
+        setTimeout(() => {
+          selectAllLayers();
+          updateBadgeStates();
+          initializeZoomPan();
+        }, 100);
+
+
+
+      });
+
+      // Layer management
+      let activeLayers = new Set();
+      let currentOpacity = 50;
+      let currentViewMode = "diff-only";
+
+
+
+      // Removed toggleCombobox function - no longer needed with badges
+
+      function toggleLayer(layerName) {
+        // Only toggle layers that actually exist in availableLayers
+        const layerExists = availableLayers.some(
+          (layer) => layer.name === layerName
+        );
+        if (!layerExists) {
+          console.warn(`Layer ${layerName} not found in available layers`);
+          return;
+        }
+
+        if (activeLayers.has(layerName)) {
+          activeLayers.delete(layerName);
+        } else {
+          activeLayers.add(layerName);
+        }
+
+        updateLayerVisibility();
+        updateSelectedCount();
+        updateEmptyState();
+        updateBadgeStates();
+        
+        // Debug: Check if badge still exists after update
+        const badge = document.querySelector(`.main-control-badge[data-layer="${layerName}"]`);
+      }
+
+      function updateSelectedCount() {
+        // This function is no longer needed since we're using badges
+        // But keeping it for potential future use
+        const count = activeLayers.size;
+      }
+
+      function changeViewMode(mode) {
+        currentViewMode = mode;
+        const imageStack = document.getElementById("imageStack");
+        const opacityControls = document.getElementById("opacityControls");
+        const cardFooter = document.getElementById("cardFooter");
+
+        // Remove all view mode classes
+        imageStack.classList.remove(
+          "side-by-side",
+          "overlay",
+          "onion-skin",
+          "swipe",
+          "diff-only"
+        );
+
+        // Show/hide opacity controls based on mode
+        if (mode === "overlay" || mode === "onion-skin") {
+          opacityControls.style.display = "flex";
+        } else {
+          opacityControls.style.display = "none";
+        }
+
+        // Show/hide global opacity controls based on mode
+        const globalOpacityControls = document.getElementById("globalOpacityControls");
+        if (mode === "side-by-side" || mode === "overlay" || mode === "onion-skin") {
+          globalOpacityControls.style.display = "none";
+        } else {
+          globalOpacityControls.style.display = "flex";
+        }
+
+        // Show/hide footer legend based on mode
+        const sideBySideLabels = document.getElementById("sideBySideLabels");
+        if (mode === "diff-only") {
+          cardFooter.style.display = "block";
+          sideBySideLabels.style.display = "none";
+          sideBySideLabels.style.setProperty("display", "none", "important");
+        } else if (mode === "side-by-side") {
+          cardFooter.style.display = "block";
+          sideBySideLabels.style.setProperty("display", "flex", "important");
+        } else {
+          cardFooter.style.display = "none";
+          sideBySideLabels.style.setProperty("display", "none", "important");
+        }
+
+        // Apply new view mode
+        if (mode === "diff-only") {
+          imageStack.classList.add("diff-only");
+        } else {
+          imageStack.classList.add(mode);
+        }
+
+        // Reset clip-path styles when switching away from swipe mode
+        if (mode !== "swipe") {
+          resetClipPaths();
+        }
+
+        // Update layer visibility based on mode
+        updateLayerVisibility();
+
+        // Initialize swipe functionality if needed
+        if (mode === "swipe") {
+          initializeSwipeView();
+        }
+
+        // Reset zoom/pan when changing view modes to avoid conflicts
+        if (typeof initializeZoomPan !== 'undefined' && zoomPanInitialized) {
+          zoomLevel = 1;
+          translateX = 0;
+          translateY = 0;
+          const zoomLevelSpan = document.getElementById('zoomLevel');
+          if (zoomLevelSpan) {
+            zoomLevelSpan.textContent = '100%';
+          }
+          // Apply reset transform to all image layers
+          const allLayers = imageStack.querySelectorAll('.image-layer img');
+          allLayers.forEach(img => {
+            img.style.transform = 'scale(1) translate(0px, 0px)';
+            img.style.transformOrigin = 'center center';
+          });
+        }
+
+
+      }
+
+      function updateLayerVisibility() {
+        // Clean up activeLayers to only include layers that actually exist
+        const validLayerNames = new Set(availableLayers.map((l) => l.name));
+        const invalidLayers = Array.from(activeLayers).filter(
+          (name) => !validLayerNames.has(name)
+        );
+
+        if (invalidLayers.length > 0) {
+          console.warn(
+            "Removing invalid layers from activeLayers:",
+            invalidLayers
+          );
+          invalidLayers.forEach((name) => activeLayers.delete(name));
+        }
+
+        // First, hide ALL layers
+        availableLayers.forEach((layer) => {
+          const originalLayer = document.querySelector(
+            `.image-layer[data-layer="${layer.name}"][data-type="original"]`
+          );
+          const diffLayer = document.querySelector(
+            `.image-layer[data-layer="${layer.name}"][data-type="diff"]`
+          );
+          const modifiedLayer = document.querySelector(
+            `.image-layer[data-layer="${layer.name}"][data-type="modified"]`
+          );
+
+          [originalLayer, diffLayer, modifiedLayer].forEach((layerElement) => {
+            if (layerElement) layerElement.style.display = "none";
+          });
+        });
+
+        // Then show only the active layers
+        activeLayers.forEach((layerName) => {
+          const originalLayer = document.querySelector(
+            `.image-layer[data-layer="${layerName}"][data-type="original"]`
+          );
+          const diffLayer = document.querySelector(
+            `.image-layer[data-layer="${layerName}"][data-type="diff"]`
+          );
+          const modifiedLayer = document.querySelector(
+            `.image-layer[data-layer="${layerName}"][data-type="modified"]`
+          );
+
+          // Show layers based on view mode
+          switch (currentViewMode) {
+            case "diff-only":
+              // Show all three layers with transparency in diff-only mode
+              [originalLayer, diffLayer, modifiedLayer].forEach((layer) => {
+                if (layer) {
+                  layer.style.display = "block";
+                  // Remove inline opacity to let CSS handle it for diff-only mode
+                  layer.style.removeProperty("opacity");
+                }
+              });
+              break;
+
+            case "side-by-side":
+              [originalLayer, diffLayer, modifiedLayer].forEach((layer) => {
+                if (layer) {
+                  layer.style.display = "block";
+                  // Side-by-side view should always be fully opaque since layers don't overlap
+                  layer.style.opacity = 1;
+                }
+              });
+              break;
+
+            case "overlay":
+              if (originalLayer && modifiedLayer) {
+                originalLayer.style.display = "block";
+                originalLayer.style.opacity = 1 - (currentOpacity / 100);
+                modifiedLayer.style.display = "block";
+                modifiedLayer.style.opacity = currentOpacity / 100;
+              }
+              break;
+
+            case "onion-skin":
+              if (originalLayer && modifiedLayer) {
+                originalLayer.style.display = "block";
+                // Remove inline opacity to use CSS default transparency
+                originalLayer.style.removeProperty("opacity");
+                modifiedLayer.style.display = "block";
+                modifiedLayer.style.opacity = currentOpacity / 100;
+              }
+              break;
+
+            case "swipe":
+              if (originalLayer && modifiedLayer) {
+                originalLayer.style.display = "block";
+                // Remove inline opacity to use CSS default transparency
+                originalLayer.style.removeProperty("opacity");
+                modifiedLayer.style.display = "block";
+                // Remove inline opacity to use CSS default transparency
+                modifiedLayer.style.removeProperty("opacity");
+
+                // Debug: Log the image sources to verify they're different
+                const originalImg = originalLayer.querySelector("img");
+                const modifiedImg = modifiedLayer.querySelector("img");
+              }
+              break;
+          }
+        });
+        
+        // Apply global opacity after all layers are updated
+        const globalOpacitySlider = document.getElementById("globalOpacitySlider");
+        if (globalOpacitySlider && currentViewMode !== "overlay" && currentViewMode !== "onion-skin" && currentViewMode !== "side-by-side") {
+          updateGlobalOpacity(globalOpacitySlider.value);
+        }
+      }
+
+      function updateOpacity(value) {
+        currentOpacity = value;
+        document.getElementById("opacityValue").textContent = `${value}%`;
+
+        // Apply opacity based on current view mode
+        if (currentViewMode === "overlay") {
+          activeLayers.forEach((layerName) => {
+            const originalLayer = document.querySelector(
+              `.image-layer[data-layer="${layerName}"][data-type="original"]`
+            );
+            const modifiedLayer = document.querySelector(
+              `.image-layer[data-layer="${layerName}"][data-type="modified"]`
+            );
+            if (originalLayer) {
+              originalLayer.style.opacity = 1 - (value / 100);
+            }
+            if (modifiedLayer) {
+              modifiedLayer.style.opacity = value / 100;
+            }
+          });
+        } else if (currentViewMode === "onion-skin") {
+          activeLayers.forEach((layerName) => {
+            const modifiedLayer = document.querySelector(
+              `.image-layer[data-layer="${layerName}"][data-type="modified"]`
+            );
+            if (modifiedLayer) {
+              modifiedLayer.style.opacity = value / 100;
+            }
+          });
+        } else {
+          // Clear inline opacity styles for other view modes
+          clearAllInlineOpacityStyles();
+        }
+      }
+
+      function updateGlobalOpacity(value) {
+        // Convert percentage to decimal (e.g., 70% -> 0.7)
+        const opacityDecimal = value / 100;
+        
+        // Update the display value
+        document.getElementById("globalOpacityValue").textContent = `${value}%`;
+        
+        // Apply global opacity to all visible layers, but respect view mode specific opacity
+        activeLayers.forEach((layerName) => {
+          const originalLayer = document.querySelector(
+            `.image-layer[data-layer="${layerName}"][data-type="original"]`
+          );
+          const diffLayer = document.querySelector(
+            `.image-layer[data-layer="${layerName}"][data-type="diff"]`
+          );
+          const modifiedLayer = document.querySelector(
+            `.image-layer[data-layer="${layerName}"][data-type="modified"]`
+          );
+
+          // Apply global opacity only if not in overlay, onion-skin, or side-by-side modes
+          if (currentViewMode !== "overlay" && currentViewMode !== "onion-skin" && currentViewMode !== "side-by-side") {
+            [originalLayer, diffLayer, modifiedLayer].forEach((layer) => {
+              if (layer && layer.style.display !== "none") {
+                // For diff-only mode, apply different opacity to diff layer
+                if (currentViewMode === "diff-only" && layer.classList.contains("diff-layer")) {
+                  layer.style.opacity = Math.min(opacityDecimal * 1.2, 1); // Slightly more opaque for diff layer
+                } else {
+                  layer.style.opacity = opacityDecimal;
+                }
+              }
+            });
+          }
+        });
+      }
+
+      function clearAllInlineOpacityStyles() {
+        // Clear all inline opacity styles from all image layers
+        const allImageLayers = document.querySelectorAll(".image-layer");
+        allImageLayers.forEach((layer) => {
+          layer.style.removeProperty("opacity");
+        });
+      }
+
+      function initializeSwipeView() {
+        const imageStack = document.getElementById("imageStack");
+
+        // Remove existing swipe container if any
+        const existingContainer = imageStack.querySelector(".swipe-container");
+        if (existingContainer) {
+          existingContainer.remove();
+        }
+
+        // Create swipe container
+        const swipeContainer = document.createElement("div");
+        swipeContainer.className = "swipe-container";
+
+        // Create divider
+        const divider = document.createElement("div");
+        divider.className = "swipe-divider";
+
+        swipeContainer.appendChild(divider);
+        imageStack.appendChild(swipeContainer);
+
+        // Add drag functionality
+        let isDragging = false;
+
+        divider.addEventListener("mousedown", (e) => {
+          isDragging = true;
+          e.preventDefault();
+        });
+
+        document.addEventListener("mousemove", (e) => {
+          if (!isDragging) return;
+
+          const rect = imageStack.getBoundingClientRect();
+          const x = e.clientX - rect.left;
+          const percentage = (x / rect.width) * 100;
+          const clampedPercentage = Math.max(0, Math.min(100, percentage));
+
+          divider.style.left = `${clampedPercentage}%`;
+
+          // Update clip paths
+          activeLayers.forEach((layerName) => {
+            const originalLayer = document.querySelector(
+              `.image-layer[data-layer="${layerName}"][data-type="original"]`
+            );
+            const modifiedLayer = document.querySelector(
+              `.image-layer[data-layer="${layerName}"][data-type="modified"]`
+            );
+
+            if (originalLayer) {
+              originalLayer.style.clipPath = `inset(0 ${
+                100 - clampedPercentage
+              }% 0 0)`;
+            }
+            if (modifiedLayer) {
+              modifiedLayer.style.clipPath = `inset(0 0 0 ${clampedPercentage}%)`;
+            }
+          });
+        });
+
+        document.addEventListener("mouseup", () => {
+          isDragging = false;
+        });
+      }
+
+      function resetClipPaths() {
+        // Reset clip-path styles for all image layers
+        const allImageLayers = document.querySelectorAll(".image-layer");
+        allImageLayers.forEach((layer) => {
+          layer.style.clipPath = "";
+        });
+      }
+
+
+
+      function updateEmptyState() {
+        const emptyViewer = document.getElementById("emptyViewer");
+        const noDifferencesViewer = document.getElementById(
+          "noDifferencesViewer"
+        );
+
+        if (availableLayers.length === 0) {
+          emptyViewer.style.display = "none";
+          noDifferencesViewer.style.display = "block";
+        } else if (activeLayers.size === 0) {
+          emptyViewer.style.display = "block";
+          noDifferencesViewer.style.display = "none";
+        } else {
+          emptyViewer.style.display = "none";
+          noDifferencesViewer.style.display = "none";
+        }
+      }
+
+      function updateNoDifferencesState() {
+        // This function is no longer needed since we're using badges
+        // But keeping it for potential future use
+      }
+
+      function updateBadgeStates() {
+        // Update the visual state of layer badges in the main controls area only
+        availableLayers.forEach((layer) => {
+          const badge = document.querySelector(`.main-control-badge[data-layer="${layer.name}"]`);
+          if (badge) {
+            if (activeLayers.has(layer.name)) {
+              // Layer is active - show filled badge
+              badge.classList.remove("badge--outline", "inactive");
+              // Ensure the original color class is present
+              const baseBadgeClass = getBadgeClass(layer.type);
+              badge.classList.add(baseBadgeClass);
+            } else {
+              // Layer is inactive - show outline badge
+              badge.classList.add("badge--outline", "inactive");
+              // Remove color classes to avoid conflicts with outline
+              badge.classList.remove("badge--destructive", "badge--success", "badge--warning", "badge--secondary");
+            }
+          }
+        });
+      }
+
+      function selectAllLayers() {
+        availableLayers.forEach((layer) => {
+          if (!activeLayers.has(layer.name)) {
+            activeLayers.add(layer.name);
+          }
+        });
+        updateLayerVisibility();
+        updateSelectedCount();
+        updateEmptyState();
+        updateBadgeStates();
+      }
+
+      function clearAllLayers() {
+        activeLayers.clear();
+        updateLayerVisibility();
+        updateSelectedCount();
+        updateEmptyState();
+        updateBadgeStates();
+      }
+
+
+
+      // Remove old combobox event listeners - no longer needed
+
+      // Function to load actual layer data from diff generator (to be called externally)
+      // This should be called by the diff generator with LayerInfo[] data
+      // Example usage: setLayerData([{name: "F.Cu", originalImage: "...", diffImage: "...", modifiedImage: "..."}])
+      function setLayerData(layerData) {
+        // layerData should be an array of LayerInfo objects with diffImage !== null
+        // Exclude render layers as they are special case layers
+        availableLayers = layerData
+          .filter(
+            (layer) =>
+              layer.diffImage !== null && !layer.name.includes("Render")
+          )
+          .map((layer) => ({
+            name: layer.name,
+            type: getLayerType(layer.name),
+          }));
+
+        // Clear activeLayers to prevent stale layer names
+        activeLayers.clear();
+
+        layerDiffData = {};
+        layerData.forEach((layer) => {
+          if (layer.diffImage !== null && !layer.name.includes("Render")) {
+            layerDiffData[layer.name] = {
+              originalImage: layer.originalImage,
+              diffImage: layer.diffImage,
+              modifiedImage: layer.modifiedImage,
+            };
+          }
+        });
+
+        populateLayerBadges();
+        createImageLayers();
+        updateSelectedCount();
+        updateEmptyState();
+        updateNoDifferencesState();
+
+        // Select all layers by default after a short delay to ensure everything is ready
+        setTimeout(() => {
+          selectAllLayers();
+          updateBadgeStates();
+          initializeZoomPan();
+        }, 100);
+      }
+
+      // Zoom and Pan functionality
+      let zoomLevel = 1;
+      let isDragging = false;
+      let dragStartX = 0;
+      let dragStartY = 0;
+      let dragStartTranslateX = 0;
+      let dragStartTranslateY = 0;
+      let translateX = 0;
+      let translateY = 0;
+      let zoomPanInitialized = false;
+
+      function initializeZoomPan() {
+        if (zoomPanInitialized) return;
+        zoomPanInitialized = true;
+
+        const imageStack = document.getElementById('imageStack');
+        const zoomControls = document.getElementById('zoomControls');
+        const zoomInfo = document.getElementById('zoomInfo');
+        const zoomInBtn = document.getElementById('zoomInBtn');
+        const zoomOutBtn = document.getElementById('zoomOutBtn');
+        const zoomResetBtn = document.getElementById('zoomResetBtn');
+        const zoomLevelSpan = document.getElementById('zoomLevel');
+
+        // Show zoom controls and info
+        function showZoomControls() {
+          if (activeLayers.size > 0) {
+            zoomControls.style.display = 'flex';
+            zoomInfo.style.display = 'block';
+          } else {
+            zoomControls.style.display = 'none';
+            zoomInfo.style.display = 'none';
+          }
+        }
+
+        // Update zoom level display
+        function updateZoomLevel() {
+          zoomLevelSpan.textContent = Math.round(zoomLevel * 100) + '%';
+        }
+
+        // Apply transform to all visible image layers
+        function applyTransform() {
+          const visibleLayers = imageStack.querySelectorAll('.image-layer[style*="display: block"]');
+          visibleLayers.forEach(layer => {
+            const img = layer.querySelector('img');
+            if (img) {
+              // Use matrix transform for precise control
+              const transform = `matrix(${zoomLevel}, 0, 0, ${zoomLevel}, ${translateX}, ${translateY})`;
+              img.style.transform = transform;
+              img.style.transformOrigin = 'center center';
+            }
+          });
+        }
+
+        // Reset zoom and pan
+        function resetZoomPan() {
+          zoomLevel = 1;
+          translateX = 0;
+          translateY = 0;
+          updateZoomLevel();
+          applyTransform();
+        }
+
+        // Zoom in
+        function zoomIn() {
+          if (zoomLevel < 10) {
+            zoomLevel *= 1.2;
+            updateZoomLevel();
+            applyTransform();
+          }
+        }
+
+        // Zoom out
+        function zoomOut() {
+          if (zoomLevel > 0.2) {
+            zoomLevel /= 1.2;
+            updateZoomLevel();
+            applyTransform();
+          }
+        }
+
+        // Mouse wheel zoom
+        function handleWheel(e) {
+          if (activeLayers.size === 0) return;
+          
+          e.preventDefault();
+          const delta = e.deltaY > 0 ? 0.9 : 1.1;
+          const newZoomLevel = zoomLevel * delta;
+          
+          if (newZoomLevel >= 0.2 && newZoomLevel <= 10) {
+            const rect = imageStack.getBoundingClientRect();
+            
+            // Get mouse position relative to the container
+            const mouseX = e.clientX - rect.left;
+            const mouseY = e.clientY - rect.top;
+            
+            // Convert to center-based coordinates
+            const centerX = rect.width / 2;
+            const centerY = rect.height / 2;
+            
+            // Mouse position relative to center
+            const relativeX = mouseX - centerX;
+            const relativeY = mouseY - centerY;
+            
+            // Calculate new translation to keep the point under the mouse
+            const scaleFactor = newZoomLevel / zoomLevel;
+            
+            translateX = relativeX - scaleFactor * (relativeX - translateX);
+            translateY = relativeY - scaleFactor * (relativeY - translateY);
+            
+            zoomLevel = newZoomLevel;
+            
+            updateZoomLevel();
+            applyTransform();
+          }
+        }
+
+        // Mouse drag pan
+        function handleMouseDown(e) {
+          if (activeLayers.size === 0 || zoomLevel <= 1) return;
+          
+          // Don't interfere with swipe divider in swipe mode
+          if (currentViewMode === 'swipe' && e.target.classList.contains('swipe-divider')) {
+            return;
+          }
+          
+          isDragging = true;
+          // Store the starting mouse position and current translation
+          dragStartX = e.clientX;
+          dragStartY = e.clientY;
+          dragStartTranslateX = translateX;
+          dragStartTranslateY = translateY;
+          
+          // Change cursor for all visible images
+          const visibleLayers = imageStack.querySelectorAll('.image-layer[style*="display: block"]');
+          visibleLayers.forEach(layer => {
+            layer.classList.add('zoomed');
+          });
+          
+          e.preventDefault();
+        }
+
+        function handleMouseMove(e) {
+          if (!isDragging || activeLayers.size === 0) return;
+          
+          // Calculate the mouse movement delta
+          const deltaX = e.clientX - dragStartX;
+          const deltaY = e.clientY - dragStartY;
+          
+          // Update translation based on mouse movement
+          translateX = dragStartTranslateX + deltaX;
+          translateY = dragStartTranslateY + deltaY;
+          
+          applyTransform();
+        }
+
+        function handleMouseUp() {
+          if (isDragging) {
+            isDragging = false;
+            
+            // Reset cursor for all images
+            const allLayers = imageStack.querySelectorAll('.image-layer');
+            allLayers.forEach(layer => {
+              layer.classList.remove('zoomed');
+            });
+          }
+        }
+
+        // Touch support for mobile
+        let touchStartX = 0;
+        let touchStartY = 0;
+        let touchStartDistance = 0;
+        let initialZoom = 1;
+        let initialTranslateX = 0;
+        let initialTranslateY = 0;
+
+        function getTouchDistance(touches) {
+          const dx = touches[0].clientX - touches[1].clientX;
+          const dy = touches[0].clientY - touches[1].clientY;
+          return Math.sqrt(dx * dx + dy * dy);
+        }
+
+        function handleTouchStart(e) {
+          if (activeLayers.size === 0) return;
+          
+          if (e.touches.length === 1) {
+            // Single touch - pan with damping factor
+            const dampingFactor = 0.5;
+            touchStartX = e.touches[0].clientX - (translateX / dampingFactor);
+            touchStartY = e.touches[0].clientY - (translateY / dampingFactor);
+          } else if (e.touches.length === 2) {
+            // Two touches - zoom
+            touchStartDistance = getTouchDistance(e.touches);
+            initialZoom = zoomLevel;
+            initialTranslateX = translateX;
+            initialTranslateY = translateY;
+          }
+          e.preventDefault();
+        }
+
+        function handleTouchMove(e) {
+          if (activeLayers.size === 0) return;
+          
+          if (e.touches.length === 1 && zoomLevel > 1) {
+            // Single touch - pan with damping factor
+            const dampingFactor = 0.5;
+            translateX = (e.touches[0].clientX - touchStartX) * dampingFactor;
+            translateY = (e.touches[0].clientY - touchStartY) * dampingFactor;
+            applyTransform();
+          } else if (e.touches.length === 2) {
+            // Two touches - zoom
+            const currentDistance = getTouchDistance(e.touches);
+            const scale = currentDistance / touchStartDistance;
+            const newZoomLevel = initialZoom * scale;
+            
+            if (newZoomLevel >= 0.2 && newZoomLevel <= 10) {
+              zoomLevel = newZoomLevel;
+              updateZoomLevel();
+              applyTransform();
+            }
+          }
+          e.preventDefault();
+        }
+
+        // Event listeners
+        zoomInBtn.addEventListener('click', zoomIn);
+        zoomOutBtn.addEventListener('click', zoomOut);
+        zoomResetBtn.addEventListener('click', resetZoomPan);
+
+        imageStack.addEventListener('wheel', handleWheel, { passive: false });
+        imageStack.addEventListener('mousedown', handleMouseDown);
+        document.addEventListener('mousemove', handleMouseMove);
+        document.addEventListener('mouseup', handleMouseUp);
+
+        // Touch events
+        imageStack.addEventListener('touchstart', handleTouchStart, { passive: false });
+        imageStack.addEventListener('touchmove', handleTouchMove, { passive: false });
+
+        // Keyboard shortcuts
+        document.addEventListener('keydown', (e) => {
+          if (activeLayers.size === 0) return;
+          
+          switch(e.key) {
+            case '+':
+            case '=':
+              zoomIn();
+              break;
+            case '-':
+              zoomOut();
+              break;
+            case '0':
+            case 'Home':
+              resetZoomPan();
+              break;
+          }
+        });
+
+        // Update zoom controls visibility when layers change
+        const originalUpdateLayerVisibility = updateLayerVisibility;
+        updateLayerVisibility = function() {
+          originalUpdateLayerVisibility();
+          showZoomControls();
+          resetZoomPan();
+        };
+
+        // Initialize
+        updateZoomLevel();
+        showZoomControls();
+      }
+
+
+    </script>
+  </body>
+</html>

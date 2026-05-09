@@ -1,0 +1,43 @@
+{
+  "name": "@typecad/typecad-prompt",
+  "version": "0.2.1",
+  "description": "Generate prompts to use typeCAD with AI coding models",
+  "keywords": [
+    "typecad",
+    "ai",
+    "prompt",
+    "schematic-as-code",
+    "kicad"
+  ],
+  "author": "typeCAD",
+  "license": "EULA",
+  "homepage": "https://typecad.net",
+  "funding": "https://www.buymeacoffee.com/typecad",
+  "main": "index.ts",
+  "type": "module",
+  "publishConfig": {
+    "access": "public"
+  },
+  "bin": {
+    "typecad-prompt": "index.ts"
+  },
+  "files": [
+    "index.ts",
+    "prompt.txt"
+  ],
+  "devDependencies": {
+    "@types/node": "^22.13.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3"
+  },
+  "dependencies": {
+    "@inquirer/prompts": "^7.3.2",
+    "inquirer-file-selector": "0.4.0",
+    "pdfjs-dist": "^5.7.284",
+    "yocto-spinner": "^0.2.0"
+  },
+  "scripts": {
+    "package_publish": "npm publish --access public",
+    "publish:private": "npm publish --tag private --registry http://192.168.2.207:4873/"
+  }
+}

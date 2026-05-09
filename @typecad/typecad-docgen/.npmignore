@@ -1,0 +1,25 @@
+# Source files (will be compiled)
+src/
+
+# Development files
+.git/
+.github/
+.vscode/
+*.log
+*.test.ts
+*.spec.ts
+tsconfig.json
+.eslintrc
+.prettierrc
+
+# Documentation
+docs/
+examples/
+
+# Temporary files
+tmp/
+temp/
+
+# Keep these files
+!README.md
+!LICENSE 

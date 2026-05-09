@@ -1,0 +1,32 @@
+<svg data-svg-type="footprint" width="39.6" height="24.6" xmlns="http://www.w3.org/2000/svg">
+<defs>
+<style><![CDATA[
+g[data-component][data-rotated-180] .pin-name-text,
+g[data-component][data-rotated-180] .pin-number-text,
+g[data-component][data-rotated-180] .pin-name-overline {
+    transform: scale(-1, -1);
+    transform-origin: center;
+    transform-box: fill-box;
+}
+/* Keep overline above text when flipped */
+g[data-component][data-rotated-180] .pin-name-overline { display: none; }
+g[data-component][data-rotated-180] .pin-name-text--overline { text-decoration: overline; }
+]]></style>
+</defs>
+<rect width="39.6" height="24.6" fill="#2e3440"/>
+<g transform="translate(19.8, 12.3)">
+<polyline points="-2.37,-5.22 2.37,-5.22" fill="none" stroke="#c47b99" stroke-width="1" stroke-linejoin="round" stroke-linecap="round"/>
+<polyline points="-2.37,5.23 2.37,5.23" fill="none" stroke="#c47b99" stroke-width="1" stroke-linejoin="round" stroke-linecap="round"/>
+<polyline points="-14.8,-7.3 14.8,-7.3" fill="none" stroke="#c2c2c2" stroke-width="1" stroke-linejoin="round" stroke-linecap="round"/>
+<polyline points="-14.8,7.3 -14.8,-7.3" fill="none" stroke="#c2c2c2" stroke-width="1" stroke-linejoin="round" stroke-linecap="round"/>
+<polyline points="14.8,-7.3 14.8,7.3" fill="none" stroke="#c2c2c2" stroke-width="1" stroke-linejoin="round" stroke-linecap="round"/>
+<polyline points="14.8,7.3 -14.8,7.3" fill="none" stroke="#c2c2c2" stroke-width="1" stroke-linejoin="round" stroke-linecap="round"/>
+<polyline points="-8,-4.12 8,-4.12" fill="none" stroke="#798596" stroke-width="1" stroke-linejoin="round" stroke-linecap="round"/>
+<polyline points="-8,4.13 -8,-4.12" fill="none" stroke="#798596" stroke-width="1" stroke-linejoin="round" stroke-linecap="round"/>
+<polyline points="8,-4.12 8,4.13" fill="none" stroke="#798596" stroke-width="1" stroke-linejoin="round" stroke-linecap="round"/>
+<polyline points="8,4.13 -8,4.13" fill="none" stroke="#798596" stroke-width="1" stroke-linejoin="round" stroke-linecap="round"/>
+<text x="0" y="0" font-family="Consolas, Monaco, Courier New, monospace" font-size="12" fill="#c47b99" text-anchor="middle" dominant-baseline="central">${REFERENCE}</text>
+<rect x="-11.65" y="-4.15" width="6.800000000000001" height="8.3" rx="1.2" ry="1.2" fill="#b3474d" stroke="none" stroke-width="2"/>
+<rect x="4.85" y="-4.15" width="6.800000000000001" height="8.3" rx="1.2" ry="1.2" fill="#b3474d" stroke="none" stroke-width="2"/>
+</g>
+</svg>

@@ -1,0 +1,154 @@
+# END-USER LICENSE AGREEMENT (EULA)
+
+**Last Updated: [Insert Date]**
+
+This End-User License Agreement ("Agreement") is a legal contract between you ("Licensee") and the typeCAD Creators ("Licensor") governing the use of the Licensor's Software Development Kit ("SDK"). By installing, accessing, or using the SDK, Licensee agrees to be bound by the terms of this Agreement.
+
+---
+
+## 1. DEFINITIONS
+
+**1.1 "SDK"** means the source code, tools, libraries, documentation, and related materials provided by Licensor, including any updates or modifications provided by the Licensor.
+
+**1.2 "Output"** means all files, designs, KiCad schematics, PCB layouts, hardware descriptions, or other artifacts generated through use of the SDK, as well as any hardware manufactured from such Output.
+
+**1.3 "Licensee Product"** means any software, hardware, design, or commercial product created by the Licensee using the Output generated from the SDK.
+
+---
+
+## 2. LICENSE GRANT
+
+Subject to compliance with this Agreement, Licensor grants Licensee a **non-exclusive, transferable, sublicensable, revocable license** to use the SDK solely for the purpose of generating Output and creating Licensee Products.
+
+---
+
+## 3. RESTRICTIONS
+
+Licensee shall **not**:
+
+**3.1 Modify the SDK** or create derivative works of the SDK.
+
+**3.2 Reverse engineer, decompile, or disassemble the SDK, except where explicitly permitted by law.
+
+**3.3 Redistribute, publish, sublicense, sell, rent, or commercially exploit the SDK **except** when the SDK is included **solely as a non-primary component** of a larger project created by Licensee ("Bundled Distribution"). In Bundled Distribution, the SDK must remain unmodified, retain all copyright notices, and be accompanied by this Agreement.
+
+**3.4 Licensee shall not use the SDK source code to develop competing hardware design generation tools.
+
+**3.5 Use the SDK in violation of any applicable laws or regulations.
+
+**3.6 Licensee may license Output and Licensee Products under any terms Licensee chooses, including proprietary, open-source, or any other licensing model, without obligation to Licensor.
+
+---
+
+## 4. OWNERSHIP OF OUTPUT AND LICENSEE PRODUCTS
+
+**4.1 Licensee Ownership.** Licensee retains all rights, title, and interest in and to the Output and any Licensee Products created using the SDK.
+
+**4.2 No Claim by Licensor.** Licensor makes **no claim of ownership** over the Output or any Licensee Products.
+
+**4.3 Independence.** Output and Licensee Products are not considered derivative works of the SDK, except to the extent they contain literal portions of the SDK’s copyrightable material.
+
+---
+
+## 5. REDISTRIBUTION OF OUTPUT AND BUNDLED DISTRIBUTION
+
+Licensee may freely use, modify, reproduce, distribute, and commercialize Output and Licensee Products without obligation to Licensor.
+
+**5.1 Bundled Distribution of SDK.** Licensee is permitted to redistribute the SDK **only** when it is bundled as an incidental, subordinate part of a larger project created by Licensee. Bundled Distribution must meet all of the following conditions:
+
+* The SDK is **not** the primary value of the distributed project.
+* The SDK remains **unmodified**.
+* This Agreement is included and applies fully to all downstream recipients.
+* Licensee does not charge specifically for access to the SDK.
+* The SDK is not advertised, promoted, or presented as a standalone product.
+
+Any redistribution not meeting these criteria is prohibited.
+Licensee may freely use, modify, reproduce, distribute, and commercialize Output and Licensee Products **without obligation** to Licensor, subject to Section 7 (Prohibited Uses).
+
+---
+
+## 6. PROHIBITED OUTPUT USES
+
+Licensee may not:
+
+* Represent Output or Licensee Products as being produced, endorsed, or certified by Licensor.
+* Misuse Licensor trademarks, branding, or intellectual property.
+* Licensee shall not represent the SDK or Output as meeting any safety, compliance, or industry standards without independent verification.
+
+There are **no additional restrictions** on monetization, distribution, or commercialization of Output or Licensee Products beyond those stated above.
+
+---
+
+## 7. NO WARRANTY
+
+THE SDK IS PROVIDED **“AS IS” AND “AS AVAILABLE,”** WITHOUT WARRANTIES OF ANY KIND, WHETHER EXPRESS, IMPLIED, OR STATUTORY.
+
+LICENSOR SPECIFICALLY DISCLAIMS ALL WARRANTIES, INCLUDING BUT NOT LIMITED TO:
+
+* MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE,
+* NON-INFRINGEMENT,
+* RELIABILITY OR ACCURACY OF GENERATED OUTPUT,
+* SUITABILITY FOR HARDWARE MANUFACTURING,
+* COMPLIANCE WITH ELECTRICAL, SAFETY, OR INDUSTRY STANDARDS.
+
+---
+
+## 8. LIMITATION OF LIABILITY
+
+TO THE MAXIMUM EXTENT PERMITTED BY LAW, LICENSOR SHALL NOT BE LIABLE FOR ANY DAMAGES, INCLUDING BUT NOT LIMITED TO:
+
+* LOST PROFITS,
+* HARDWARE FAILURE OR DAMAGE,
+* PERSONAL INJURY,
+* PROPERTY DAMAGE,
+* DATA LOSS,
+* PRODUCTION ERRORS OR DEFECTS,
+* COSTS OF REWORK, REPLACEMENT, OR REPAIR,
+* ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, OR PUNITIVE DAMAGES.
+
+IN NO EVENT SHALL LICENSOR’S TOTAL LIABILITY EXCEED THE AMOUNT PAID BY LICENSEE FOR THE SDK, IF ANY.
+
+LICENSEE ASSUMES FULL RESPONSIBILITY FOR THE SAFETY, COMPLIANCE, VALIDATION, AND TESTING OF ALL OUTPUT AND ANY MANUFACTURED HARDWARE BASED ON SUCH OUTPUT.
+
+---
+
+## 9. UPDATES AND CHANGES
+
+Licensor may provide updates or modifications to the SDK at its discretion. Use of updated SDK versions is subject to this Agreement.
+
+Licensor is under no obligation to provide maintenance, support, or updates.
+
+---
+
+## 10. TERMINATION
+
+This Agreement terminates automatically if Licensee:
+
+* Breaches any provision of this Agreement,
+* Attempts to circumvent restrictions,
+* Uses the SDK for prohibited purposes.
+
+Upon termination, Licensee must cease all use of the SDK. **Output and Licensee Products are not affected by termination** and remain the property of Licensee.
+
+---
+
+## 11. GOVERNING LAW
+
+This Agreement is governed by the laws of California, without regard to conflict-of-laws principles.
+
+---
+
+## 12. SEVERABILITY
+
+If any provision is deemed unenforceable, the remaining provisions remain in full force and effect.
+
+---
+
+## 13. ENTIRE AGREEMENT
+
+This Agreement constitutes the entire agreement between the parties regarding the SDK and supersedes all prior agreements.
+
+---
+
+**BY INSTALLING OR USING THE SDK, LICENSEE ACKNOWLEDGES THAT THEY HAVE READ, UNDERSTOOD, AND AGREED TO BE BOUND BY THIS AGREEMENT.**

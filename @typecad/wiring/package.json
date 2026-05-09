@@ -1,0 +1,35 @@
+{
+  "name": "@typecad/wiring",
+  "version": "0.1.1",
+  "description": "🤖 Programmatically 💥 Create 🪢 Wiring Diagrams",
+  "keywords": [
+    "typecad",
+    "wiring",
+    "wiring diagram",
+    "wiring harness",
+    "harness"
+  ],
+  "author": "typeCAD",
+  "license": "CC BY-NC-ND",
+  "homepage": "https://typecad.net",
+  "funding": "https://www.buymeacoffee.com/typecad",
+  "main": "index.ts",
+  "types": "index.d.ts",
+  "type": "module",
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "package_publish": "npm publish --access public",
+    "publish:private": "npm publish --tag private --registry http://192.168.2.207:4873/"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.0",
+    "tsx": "^4.19.2",
+    "typedoc": "^0.28.7",
+    "typescript": "^5.7.3"
+  },
+  "dependencies": {
+    "chalk": "^5.4.1"
+  }
+}

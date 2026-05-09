@@ -1,0 +1,17 @@
+0000000000000000000000000000000000000000 b82a6f43bd162772aa2e69f3e23c7b45738d10e8 typecad0 <justind000@gmail.com> 1740532629 -0800	commit (initial): intial
+b82a6f43bd162772aa2e69f3e23c7b45738d10e8 e9eb4f4329b2f8a0b5f6a14f175809ffeee8604e typecad0 <justind000@gmail.com> 1740575905 -0800	commit: shield working
+e9eb4f4329b2f8a0b5f6a14f175809ffeee8604e 6493811da7959e3a77cadc6b7fbbdf11831a2e34 typecad0 <justind000@gmail.com> 1740578215 -0800	commit: basic bom working
+6493811da7959e3a77cadc6b7fbbdf11831a2e34 4cd296d72b7277120c9b3a1ac22a1a2f106e03d7 typecad0 <justind000@gmail.com> 1740611757 -0800	commit: bundles
+4cd296d72b7277120c9b3a1ac22a1a2f106e03d7 7207373970667c2dbb98934b120078d70004d24e typecad0 <justind000@gmail.com> 1740613634 -0800	commit: Cable center alignment
+7207373970667c2dbb98934b120078d70004d24e 4db1c05c8dfb0ca88fee200a9da64e4317c0aec0 typecad0 <justind000@gmail.com> 1740614750 -0800	commit: note
+4db1c05c8dfb0ca88fee200a9da64e4317c0aec0 43ecd5b18a14d75421a04ea3e6e8130787fa3e69 typecad0 <justind000@gmail.com> 1740615162 -0800	commit: note/mpn format
+43ecd5b18a14d75421a04ea3e6e8130787fa3e69 f7b98af053c0e68b9a933265a123c35e247b3d69 typecad0 <justind000@gmail.com> 1740672938 -0800	commit: images
+f7b98af053c0e68b9a933265a123c35e247b3d69 c9c777756eff8b28c3c60e2c3534660104f7b100 typecad0 <justind000@gmail.com> 1740690256 -0800	commit: cleanup
+c9c777756eff8b28c3c60e2c3534660104f7b100 58a2efd28a9572ccaa0ba01f9b5bc304490821fe typecad0 <justind000@gmail.com> 1740691147 -0800	commit: error checking
+58a2efd28a9572ccaa0ba01f9b5bc304490821fe ae8428f3d42af59e2e7e773103971acba2f6a3bc typecad0 <justind000@gmail.com> 1740698835 -0800	commit: cable/connector name validation
+ae8428f3d42af59e2e7e773103971acba2f6a3bc 34e4dc8eed0571e0878c6553103e40dd43ab6c45 typecad0 <justind000@gmail.com> 1740699916 -0800	commit: readded Cable::mpn
+34e4dc8eed0571e0878c6553103e40dd43ab6c45 0502fd01255817388becadd0188f41b9b07372fe typecad0 <justind000@gmail.com> 1740747351 -0800	commit: connector cell name/number fix
+0502fd01255817388becadd0188f41b9b07372fe 4b8bfc692ebaf2e73f3f975e23592226b5f92f39 typecad0 <justind000@gmail.com> 1740750386 -0800	commit: another connector number/name fix
+4b8bfc692ebaf2e73f3f975e23592226b5f92f39 cbd746a9f8946983df4bd293a83479e9bac96b3e typecad0 <justind000@gmail.com> 1740776183 -0800	commit: Cable formatting
+cbd746a9f8946983df4bd293a83479e9bac96b3e e97e1dd9b1db83bbecccaa6f0a579c6b8f64f405 typecad0 <justind000@gmail.com> 1740806285 -0800	commit: space in name check
+e97e1dd9b1db83bbecccaa6f0a579c6b8f64f405 f16242cfd3e0e773f58292f2e2fdbf8d74dc4781 typecad0 <justind000@gmail.com> 1755010105 -0700	commit: package.json change

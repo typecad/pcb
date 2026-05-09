@@ -1,0 +1,59 @@
+[**@typecad/typecad**](README.md)
+
+***
+
+[@typecad/typecad](globals.md) / Power
+
+# Class: Power
+
+Defined in: [buses.ts:68](https://github.com/typecad/typecad/blob/6bbcc8ae1b7d95ad4656019e0545a2a6bf8c25eb/buses.ts#L68)
+
+## Constructors
+
+### Constructor
+
+> **new Power**(`__namedParameters`): `Power`
+
+Defined in: [buses.ts:73](https://github.com/typecad/typecad/blob/6bbcc8ae1b7d95ad4656019e0545a2a6bf8c25eb/buses.ts#L73)
+
+#### Parameters
+
+##### \_\_namedParameters
+
+`IPower` = `{}`
+
+#### Returns
+
+`Power`
+
+## Properties
+
+### current?
+
+> `optional` **current**: `number`
+
+Defined in: [buses.ts:72](https://github.com/typecad/typecad/blob/6bbcc8ae1b7d95ad4656019e0545a2a6bf8c25eb/buses.ts#L72)
+
+***
+
+### gnd
+
+> **gnd**: [`Pin`](Class.Pin.md)
+
+Defined in: [buses.ts:70](https://github.com/typecad/typecad/blob/6bbcc8ae1b7d95ad4656019e0545a2a6bf8c25eb/buses.ts#L70)
+
+***
+
+### power
+
+> **power**: [`Pin`](Class.Pin.md)
+
+Defined in: [buses.ts:69](https://github.com/typecad/typecad/blob/6bbcc8ae1b7d95ad4656019e0545a2a6bf8c25eb/buses.ts#L69)
+
+***
+
+### voltage?
+
+> `optional` **voltage**: `number`
+
+Defined in: [buses.ts:71](https://github.com/typecad/typecad/blob/6bbcc8ae1b7d95ad4656019e0545a2a6bf8c25eb/buses.ts#L71)

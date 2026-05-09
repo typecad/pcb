@@ -1,0 +1,35 @@
+# Source files
+*.ts
+!*.d.ts
+
+# Development files
+.git/
+.github/
+.vscode/
+node_modules/
+dist-obfuscated/
+docs/
+tests/
+*.test.ts
+*.spec.ts
+website_md/
+
+# Configuration files
+tsconfig.json
+obfuscator.config.json
+.eslintrc*
+.prettierrc*
+.editorconfig
+.gitignore
+
+# Build artifacts
+*.log
+*.map
+coverage/
+.nyc_output/
+
+# IDE files
+.idea/
+*.swp
+*.swo
+.DS_Store 

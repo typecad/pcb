@@ -1,0 +1,17 @@
+0000000000000000000000000000000000000000 23222eb4d92613aa1c17db371a83244e6269d481 typecad0 <justind000@gmail.com> 1714916796 -0700	clone: from https://github.com/typecad/passives.git
+23222eb4d92613aa1c17db371a83244e6269d481 a387201744aae85b87c909861accee95a025e854 typecad0 <typecad@microfire.co> 1714917458 -0700	commit: installable package reorganization, added Power class, merged with PWR_Flag
+a387201744aae85b87c909861accee95a025e854 c2e9bc1d8fdef6b9806586eb792603efc4633835 typecad0 <typecad@microfire.co> 1714919864 -0700	commit: added pin access for Power
+c2e9bc1d8fdef6b9806586eb792603efc4633835 3e0f5b9e55be100feca7ac5b5e3d22956f8064e5 typecad0 <typecad@microfire.co> 1715605157 -0700	commit: power changes
+3e0f5b9e55be100feca7ac5b5e3d22956f8064e5 314d3e699ca1dbbe260aab2517ce48ccc873fa6e typecad0 <typecad@microfire.co> 1735913188 -0800	commit: fixed inductor prefix, updated tie to newer component syntax
+314d3e699ca1dbbe260aab2517ce48ccc873fa6e 7c2218b3f7bfa4a3109886e614b3d043b6d8e8e3 typecad0 <typecad@microfire.co> 1736304986 -0800	commit: updated to typecad new ::net interface
+7c2218b3f7bfa4a3109886e614b3d043b6d8e8e3 7b43c4777766f8c6dbcda354aaa1a3ece1ade264 typecad0 <typecad@microfire.co> 1737481646 -0800	commit: netlist format changes
+7b43c4777766f8c6dbcda354aaa1a3ece1ade264 b0347bf7ebe317e48b83fcc3ca2a3638b119269b typecad0 <typecad@microfire.co> 1737484217 -0800	commit: typecad2 -> typecad
+b0347bf7ebe317e48b83fcc3ca2a3638b119269b b1eb4ec669571c1814bf253602d04904dd7e965f typecad0 <typecad@microfire.co> 1737903394 -0800	commit: added mpn
+b1eb4ec669571c1814bf253602d04904dd7e965f 97253741542e78dada52d9d41866347d0b88ab28 typecad0 <typecad@microfire.co> 1739489195 -0800	commit: add simulation
+97253741542e78dada52d9d41866347d0b88ab28 2f7c5e2254a8245445cf933ced4b8d5e2ee442d4 typecad0 <typecad@microfire.co> 1744645309 -0700	commit: added testpoints
+2f7c5e2254a8245445cf933ced4b8d5e2ee442d4 c5225c27004fb1ef378320deb8929faf4f67cd80 typecad0 <typecad@microfire.co> 1746462117 -0700	commit: schematic symbol addition
+c5225c27004fb1ef378320deb8929faf4f67cd80 7f5945f5d4b05ce5e2ccf01241908b0074ab2fe9 typecad0 <typecad@microfire.co> 1747459163 -0700	commit: added pcb
+7f5945f5d4b05ce5e2ccf01241908b0074ab2fe9 e9010158565100dc70c10191fa086332a94d8a96 typecad0 <typecad@microfire.co> 1752296432 -0700	commit: added sch
+e9010158565100dc70c10191fa086332a94d8a96 2171e8cd805ac1692754144a88cceeb4b0421655 typecad0 <typecad@microfire.co> 1752297846 -0700	commit: sch to testpoint and connector
+2171e8cd805ac1692754144a88cceeb4b0421655 145bcf4557a2de63f8688edc60e27bcbe9fcd8dc typecad0 <typecad@microfire.co> 1754846724 -0700	commit: added type:module
+145bcf4557a2de63f8688edc60e27bcbe9fcd8dc 06932d8417019852051d1fca1f7b238a9309cb35 typecad0 <typecad@microfire.co> 1778208209 -0700	commit: version bump

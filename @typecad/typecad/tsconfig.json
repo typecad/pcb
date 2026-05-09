@@ -1,0 +1,28 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "target": "ES2021",
+    "lib": ["ES2021"],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "experimentalDecorators": true,
+    "sourceMap": true,
+    "declaration": true,
+    "declarationMap": true,
+    "removeComments": true,
+    "skipLibCheck": true,
+    "baseUrl": ".",
+    "rootDir": "./src",
+    "outDir": "./dist",
+    "paths": {
+      "fast-sexpr": ["./src/types/fast-sexpr.d.ts"],
+      "s-expression.js": ["./src/types/s-expression.js.d.ts"],
+      "@typecad/typecad-astar": ["./src/types/typecad-astar.d.ts"]
+    },
+    "typeRoots": ["./src/types/", "./node_modules/@types"]
+  },
+  "include": [
+    "src/**/*.ts"
+  ],
+  "exclude": ["node_modules", "dist", "dist-obfuscated"]
+}

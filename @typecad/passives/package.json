@@ -1,0 +1,32 @@
+{
+  "name": "@typecad/passives",
+  "version": "0.1.44",
+  "description": "typeCAD package that includes simple access to common components",
+  "keywords": [
+    "typecad",
+    "passives",
+    "resistor",
+    "capacitor",
+    "diode",
+    "led",
+    "inductor",
+    "connector"
+  ],
+  "author": "typeCAD",
+  "license": "ISC",
+  "homepage": "https://typecad.net",
+  "funding": "https://www.buymeacoffee.com/typecad",
+  "type": "module",
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsc",
+    "prepublishOnly": "npm run build",
+    "package_publish": "npm publish --access public",
+    "publish:private": "npm publish --tag private --registry http://192.168.2.207:4873/"
+  },
+  "peerDependencies": {
+    "@typecad/typecad": "^0.2.19"
+  }
+}

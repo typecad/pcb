@@ -1,0 +1,33 @@
+{
+  "name": "hw",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "build": "npx tsx ./src/one_hz",
+    "add_component": "npx --package=@typecad/typecad add-component ./src",
+    "add_package": "npx --package=@typecad/typecad add-package ./src",
+    "open_board": "npx open-cli ./build/one_hz.kicad_pcb",
+    "docs": "typecad-docgen ./docs/dev.md ./build/one_hz.kicad_pcb",
+    "kicad_symbols": "kicad-symbols",
+    "git_diff": "git difftool -y --extcmd \"typecad-gitdiff\" ./build/one_hz.kicad_pcb",
+    "build:plugin": "cd typescript-plugin && npm install && npm run build && npm link && cd .. && npm link typecad-language-plugin",
+    "watch:plugin": "cd typescript-plugin && npm run watch"
+  },
+  "keywords": [],
+  "type": "commonjs",
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@typecad/mast": "*",
+    "@typecad/passives": "*",
+    "@typecad/typecad": "*",
+    "@typecad/typecad-docgen": "*",
+    "express": "^5.1.0",
+    "tsx": "^4.20.3"
+  },
+  "devDependencies": {
+    "@types/node": "^24.5.2",
+    "typescript": "^5.4.2"
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "typecad-mcp": {
+      "command": "node",
+      "args": ["dist/web-server.js"],
+      "env": {},
+      "disabled": false,
+      "autoApprove": []
+    }
+  }
+}

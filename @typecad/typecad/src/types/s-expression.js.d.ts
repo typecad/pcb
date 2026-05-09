@@ -1,0 +1,52 @@
+export default SExpr;
+
+declare class SExpr {
+    constructor(options?: Record<string, unknown>);
+    logVerbose: boolean;
+    logTrace: boolean;
+    Type: {
+        Atom: string;
+    };
+    truthy: string[];
+    falsy: string[];
+    nully: string[];
+    ATOM: string;
+    BOOLEAN: string;
+    NUMBER: string;
+    STRING: string;
+    EMPTY: string;
+    FUNCTION: string;
+    NULL: string;
+    ROOT: string;
+    parse(str: string, opts?: { includedRootParentheses?: boolean }): any;
+    serialize(ast: any, opts?: { includingRootParentheses?: boolean }, level?: number): string;
+    stripComments(str: string): string;
+    identifier(id: string): string;
+    isAtom(e: any, id?: string): boolean;
+    isEqual(a: any, b: any): boolean;
+    expression(...exps: any[]): any;
+    isExpression(e: any, s?: any): boolean;
+    boolean(v: boolean): string;
+    isBoolean(e: any, b?: boolean): boolean;
+    isTruthy(e: any): boolean;
+    isMissing(e: any): boolean;
+    null(): string;
+    isNull(e: any): boolean;
+    number(n: number): number;
+    isNumber(e: any, n?: number): boolean;
+    string(str: string): string;
+    isString(e: any, s?: string): boolean;
+    valueOf(e: any): string | number | boolean | null;
+    first(e: any): any;
+    second(e: any): any;
+    third(e: any): any;
+    fourth(e: any): any;
+    fifth(e: any): any;
+    sixth(e: any): any;
+    seventh(e: any): any;
+    eighth(e: any): any;
+    ninth(e: any): any;
+    tenth(e: any): any;
+    nth(e: any, n: number): any;
+    rest(e: any): any[];
+}

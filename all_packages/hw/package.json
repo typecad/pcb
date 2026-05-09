@@ -1,0 +1,36 @@
+{
+  "name": "all-packages-hw",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "build": "npx tsx ./src/all_packages",
+    "add_component": "npx @typecad/add-component",
+    "open_board": "npx open-cli ./build/all_packages.kicad_pcb",
+    "docs": "npx typecad-docgen docs/all_packages.md build/all_packages.kicad_pcb",
+    "kicad_symbols": "npx kicad-symbols",
+    "jlcpcb_parts": "npx jlcpcb-search",
+    "kicad-typecad": "npx kicad2typecad build\\all_packages.kicad_pcb src\\all_packages.ts",
+    "git_diff": "git difftool build\\all_packages.kicad_pcb --extcmd 'npx typecad-gitdiff' -y"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@typecad/graphviz": "^1.0.2",
+    "@typecad/jlcpcb-export": "^1.0.3",
+    "@typecad/jlcpcb-parts": "^1.0.2",
+    "@typecad/kicad-symbols": "^1.0.5",
+    "@typecad/kicad2typecad": "^1.1.1",
+    "@typecad/ngspice": "^0.1.3",
+    "@typecad/passives": "^0.1.11",
+    "@typecad/typecad": "^0.2.19",
+    "@typecad/typecad-docgen": "^1.0.2",
+    "@typecad/typecad-gitdiff": "^1.1.0",
+    "@typecad/typecad-mcp": "^0.2.3",
+    "@typecad/typecad-prompt": "^0.2.0",
+    "@typecad/wiring": "^0.1.0",
+    "tsx": "^4.21.0"
+  }
+}

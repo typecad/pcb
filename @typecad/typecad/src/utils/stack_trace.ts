@@ -1,0 +1,51 @@
+/**
+ * Helper function to get call site information for error reporting.
+ * Skips internal library files to find the user's code location.
+ * 
+ * @param skipFiles - Additional file names or paths to skip
+ * @returns Call site information or undefined if not available
+ */
+export function getCallSite(skipFiles: string[] = []): { file: string; line: number; column: number; function?: string } | undefined {
+    const stack = new Error().stack;
+    if (!stack) return undefined;
+
+    const lines = stack.split('\n');
+
+    const defaultSkips = [
+        'node_modules',
+        '\\dist\\',
+        '/dist/',
+        'component.ts',
+        'component.js',
+        'pcb.ts',
+        'pcb.js',
+        'pcb_track_builder.ts',
+        'pcb_routing_core.ts',
+        'pcb_routing_helpers.ts',
+        'stack_trace.ts' // Skip this file too
+    ];
+
+    const allSkips = [...defaultSkips, ...skipFiles];
+
+    for (let i = 2; i < lines.length; i++) {
+        const line = lines[i];
+        if (line) {
+            const match = line.match(/at\s+(?:(.+?)\s+\()?(.+):(\d+):(\d+)\)?/);
+            if (match) {
+                const filePath = match[2];
+                
+                const shouldSkip = allSkips.some(skip => filePath.includes(skip));
+                
+                if (!shouldSkip) {
+                    return {
+                        function: match[1]?.trim(),
+                        file: filePath,
+                        line: parseInt(match[3], 10),
+                        column: parseInt(match[4], 10)
+                    };
+                }
+            }
+        }
+    }
+    return undefined;
+}

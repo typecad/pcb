@@ -1,0 +1,1277 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>typeCAD 1Hz - typeCAD Documentation Generator</title>
+    <!-- Add Google Fonts -->
+    <link rel="icon" href="https://typecad.net/favicon.ico">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <style>
+/* CSS Variables */
+:root {
+  /* Base colors */
+  --color-text: #1a1a1a;
+  --color-background: #ffffff;
+  --color-border: #e0e0e0;
+  --color-accent: #0366d6;
+  --color-image-background: #ffffff;
+  --title-block-text: #1a1a1a;
+  --title-block-background: #ffffff;
+
+  /* Alert colors */
+  --color-note: #0969da;
+  --color-tip: #1a7f37;
+  --color-warning: #9a6700;
+  --color-severe: #bc4c00;
+  --color-caution: #d1242f;
+  --color-important: #8250df;
+
+  /* Typography */
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+    Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas,
+    Liberation Mono, monospace;
+  --line-height-base: 1.5;
+  --line-height-heading: 1.2;
+  --font-size-base: 16px;
+  --font-size-sm: 0.875rem;
+  --font-size-lg: 1.125rem;
+  --font-size-xl: 1.25rem;
+  --font-size-2xl: 1.5rem;
+  --font-size-3xl: 1.875rem;
+  --font-size-4xl: 2.25rem;
+}
+
+/* Dark mode color scheme */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-text: #ffffff;
+    --color-background: #121212;
+    --color-border: #333333;
+    --color-accent: #58a6ff;
+    --color-image-background: #121212;
+    --title-block-text: #ffffff;
+    --title-block-background: #1a1a1a;
+    
+    --color-note: #2f81f7;
+    --color-tip: #3fb950;
+    --color-warning: #d29922;
+    --color-severe: #db6d28;
+    --color-caution: #f85149;
+    --color-important: #a371f7;
+  }
+}
+
+/* Reset and Base Styles */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: var(--font-sans);
+  font-size: var(--font-size-base);
+  line-height: var(--line-height-base);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  color: var(--color-text);
+  background-color: var(--color-background);
+}
+
+/* Light mode styles - explicitly define light mode */
+body.light-mode {
+  --color-text: #1a1a1a;
+  --color-background: #ffffff;
+  --color-border: #e0e0e0;
+  --color-accent: #0366d6;
+  --color-image-background: #ffffff;
+  --title-block-text: #1a1a1a;
+  --title-block-background: #ffffff;
+  
+  --color-note: #0969da;
+  --color-tip: #1a7f37;
+  --color-warning: #9a6700;
+  --color-severe: #bc4c00;
+  --color-caution: #d1242f;
+  --color-important: #8250df;
+  
+  background-color: var(--color-background);
+  color: var(--color-text);
+}
+
+/* Typography */
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: var(--font-sans);
+  line-height: var(--line-height-heading);
+  font-weight: 600;
+  margin-top: 1.5em;
+  margin-bottom: 0.5em;
+}
+
+h1 {
+  font-size: var(--font-size-4xl);
+}
+h2 {
+  font-size: var(--font-size-3xl);
+}
+h3 {
+  font-size: var(--font-size-2xl);
+}
+h4 {
+  font-size: var(--font-size-xl);
+}
+h5 {
+  font-size: var(--font-size-lg);
+}
+h6 {
+  font-size: var(--font-size-base);
+}
+
+code,
+pre {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+}
+
+/* Lists */
+ul,
+ol {
+  margin-bottom: 1.5em;
+  padding-left: 1.5em;
+  max-width: 70ch;
+}
+
+ul {
+  list-style-type: disc;
+}
+
+ol {
+  list-style-type: decimal;
+}
+
+li {
+  margin-bottom: 0.5em;
+}
+
+/* Layout */
+.container {
+  overflow-y: auto;
+  scroll-snap-type: y mandatory;
+  height: 100vh;
+  padding: 20px;
+}
+
+section {
+  scroll-snap-align: start;
+  height: calc(100vh - 60px); /* Subtract floating box height */
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+}
+
+/* Table layout */
+table {
+  table-layout: fixed;
+  width: 100%;
+  border-collapse: collapse;
+}
+
+/* Ensure table cells do not overflow */
+th,
+td {
+  word-wrap: break-word;
+  padding: 10px;
+  vertical-align: middle;
+  width: 33.33%; /* Equal width for all columns */
+}
+
+/* Ensure images inside tables scale properly */
+td > div {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+td img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  margin: 0;
+}
+
+/* Images */
+img {
+  cursor: pointer;
+}
+
+.svg-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background-color: var(--color-image-background);
+  padding: 0;
+  border-radius: 4px;
+  line-height: 0;
+}
+
+/* Title Block */
+.title-block {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background-color: var(--title-block-background);
+  color: var(--title-block-text);
+  padding: 8px 20px;
+  box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.1);
+  font-size: var(--font-size-sm);
+  line-height: var(--line-height-base);
+  z-index: 1000;
+  opacity: 1;
+  transition: opacity 0.5s ease-in-out;
+  border-top: 1px solid var(--color-border);
+  will-change: opacity;
+}
+
+.title-block:hover {
+  opacity: 0;
+}
+
+/* When hidden, disable pointer events */
+.title-block[style*='opacity: 0'] {
+  pointer-events: none;
+}
+
+.title-block table {
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+  border-collapse: collapse;
+  table-layout: auto;
+}
+
+.title-block td {
+  padding: 4px 8px;
+  white-space: nowrap;
+  text-align: left;
+  min-width: 100px;
+}
+
+.title-block td.label {
+  border-left: 1px solid var(--color-text);
+  border-top: 1px solid var(--color-text);
+  border-bottom: 1px solid var(--color-text);
+  padding-right: 4px;
+  font-weight: bold;
+}
+
+.title-block td.value {
+  border-right: 1px solid var(--color-text);
+  border-top: 1px solid var(--color-text);
+  border-bottom: 1px solid var(--color-text);
+  padding-left: 4px;
+}
+
+.title-block td.value:last-child {
+  border-right: 1px solid var(--color-text);
+}
+
+.title-block br {
+  display: none;
+}
+
+/* Modal styling */
+.modal {
+  display: none;
+  position: fixed;
+  z-index: 9999;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: white;
+  padding: 0;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.modal[style*="display: block"] {
+  display: flex !important;
+  justify-content: center;
+  align-items: center;
+}
+
+.modal-content-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background-color: white;
+  overflow: hidden;
+}
+
+.modal-content {
+  position: relative;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  margin: auto;
+}
+
+/* Ensure modal is above all other content */
+body.modal-open {
+  overflow: hidden;
+}
+
+/* Dark mode modal styling */
+.dark-mode .modal,
+.dark-mode .modal-content-container {
+  background-color: var(--color-background);
+}
+
+/* Drill layer styling - only invert in dark mode */
+.drill-layer {
+  /* No filter in light mode */
+}
+
+/* Dark mode specific styling */
+.dark-mode .drill-layer {
+  filter: invert(1) brightness(1.5);
+}
+
+/* Print styles */
+@media print {
+  /* Force light mode for printing */
+  body {
+    margin: 0;
+    padding: 0;
+    min-height: 100vh;
+    background: var(--color-background) !important;
+    color: var(--color-text) !important;
+  }
+
+  body * {
+    color: var(--color-text) !important;
+  }
+
+  body.dark-mode {
+    background-color: var(--color-background) !important;
+    color: var(--color-text) !important;
+  }
+
+  /* Hide non-essential elements */
+  #dark-mode-toggle,
+  .modal,
+  .sun-moon {
+    display: none !important;
+  }
+
+  /* Layout */
+  .container {
+    width: 100%;
+    max-width: 100%;
+    margin: 0 auto;
+    padding: 0;
+    overflow: visible;
+    height: auto;
+    padding-bottom: 60px;
+  }
+
+  /* Section styling */
+  section {
+    width: 100%;
+    max-width: 100%;
+    margin: 0 auto;
+    page-break-before: always;
+    page-break-after: always;
+    page-break-inside: avoid;
+    min-height: auto;
+    height: auto;
+    padding: 20px 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+  }
+
+  section:first-of-type {
+    page-break-before: avoid;
+  }
+
+  section:last-of-type {
+    page-break-after: avoid;
+  }
+
+  /* Content elements */
+  .svg-container {
+    width: 100%;
+    max-width: 100%;
+    margin: 0 auto;
+    page-break-inside: avoid;
+  }
+
+  img {
+    max-width: 100%;
+    width: auto;
+    height: auto;
+    display: block;
+    margin: 0 auto;
+    page-break-inside: avoid;
+    max-height: 90vh;
+  }
+
+  td img {
+    max-width: 100%;
+    width: auto;
+    height: auto;
+    max-height: 90vh;
+  }
+
+  table {
+    margin-left: auto;
+    margin-right: auto;
+    page-break-inside: avoid;
+    width: 100%;
+    max-width: 100%;
+  }
+
+  ul, ol {
+    margin-left: auto;
+    margin-right: auto;
+    page-break-inside: avoid;
+  }
+
+  p {
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  pre, code {
+    background-color: #f6f8fa !important;
+    color: #1a1a1a !important;
+    page-break-inside: avoid;
+  }
+
+  a {
+    color: #0366d6 !important;
+  }
+
+  /* Title block */
+  .title-block {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    opacity: 1;
+    box-shadow: none;
+    background-color: var(--title-block-background) !important;
+    color: var(--title-block-text) !important;
+    border-color: var(--color-border) !important;
+    z-index: 1000;
+  }
+}
+
+/* Dark mode styles */
+body.dark-mode {
+  --color-text: #ffffff;
+  --color-background: #121212;
+  --color-border: #333333;
+  --color-accent: #58a6ff;
+  --color-image-background: #121212;
+  --title-block-text: #ffffff;
+  --title-block-background: #1a1a1a;
+  
+  --color-note: #2f81f7;
+  --color-tip: #3fb950;
+  --color-warning: #d29922;
+  --color-severe: #db6d28;
+  --color-caution: #f85149;
+  --color-important: #a371f7;
+  
+  background-color: var(--color-background);
+  color: var(--color-text);
+}
+
+body.dark-mode .title-block {
+  background-color: var(--title-block-background);
+  border-color: var(--color-border);
+}
+
+body.dark-mode .title-block,
+body.dark-mode .title-block table,
+body.dark-mode .title-block td,
+body.dark-mode .title-block .label,
+body.dark-mode .title-block .value {
+  color: var(--title-block-text, #ffffff);
+}
+
+body.dark-mode a {
+  color: var(--color-accent, #58a6ff);
+}
+
+body.dark-mode a:hover {
+  color: var(--color-accent, #58a6ff);
+}
+
+/* Dark mode toggle button styles */
+#dark-mode-toggle {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 1000;
+  width: 40px;
+  height: 40px;
+  border: none;
+  border-radius: 50%;
+  background-color: transparent;
+  color: var(--color-text);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  transition: all 0.3s ease;
+  padding: 0;
+}
+
+#dark-mode-toggle:hover {
+  background-color: rgba(0, 0, 0, 0.05);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+  transform: scale(1.05);
+}
+
+/* Light mode toggle button styles */
+body.light-mode #dark-mode-toggle {
+  background-color: transparent;
+  color: var(--color-text);
+}
+
+body.light-mode #dark-mode-toggle:hover {
+  background-color: rgba(0, 0, 0, 0.05);
+}
+
+/* Dark mode toggle button styles */
+body.dark-mode #dark-mode-toggle {
+  background-color: transparent;
+  color: var(--color-text);
+}
+
+body.dark-mode #dark-mode-toggle:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+body.dark-mode #dark-mode-toggle svg {
+  transform: rotate(40deg);
+}
+
+.sun-moon {
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
+}
+
+/* Link styles */
+a {
+  color: var(--color-accent, #0366d6);
+  text-decoration: none;
+  transition: color 0.2s ease;
+}
+
+a:hover {
+  color: var(--color-accent, #0366d6);
+  text-decoration: underline;
+}
+
+body.dark-mode a {
+  color: var(--color-accent, #58a6ff);
+}
+
+body.dark-mode a:hover {
+  color: var(--color-accent, #58a6ff);
+}
+
+/* Paragraph spacing */
+p {
+  margin-bottom: 1.5em;
+  line-height: 1.6;
+}
+
+/* Code block spacing */
+pre {
+  margin-top: 1.5em;
+  margin-bottom: 1.5em;
+  padding: 1em;
+  border-radius: 4px;
+  overflow-x: auto;
+}
+
+.markdown-alert {
+  padding: 0.5rem 1rem;
+  margin-bottom: 16px;
+  color: inherit;
+  border-left: .25em solid #888;
+}
+
+.markdown-alert>:first-child {
+  margin-top: 0
+}
+
+.markdown-alert>:last-child {
+  margin-bottom: 0
+}
+
+.markdown-alert .markdown-alert-title {
+  display: flex;
+  font-weight: 500;
+  align-items: center;
+  line-height: 1
+}
+
+.markdown-alert .markdown-alert-title .octicon {
+  margin-right: 0.5rem;
+  display: inline-block;
+  overflow: visible !important;
+  vertical-align: text-bottom;
+  fill: currentColor;
+}
+
+.markdown-alert.markdown-alert-note {
+  border-left-color: var(--color-note);
+}
+
+.markdown-alert.markdown-alert-note .markdown-alert-title {
+  color: var(--color-note);
+}
+
+.markdown-alert.markdown-alert-important {
+  border-left-color: var(--color-important);
+}
+
+.markdown-alert.markdown-alert-important .markdown-alert-title {
+  color: var(--color-important);
+}
+
+.markdown-alert.markdown-alert-warning {
+  border-left-color: var(--color-warning);
+}
+
+.markdown-alert.markdown-alert-warning .markdown-alert-title {
+  color: var(--color-warning);
+}
+
+.markdown-alert.markdown-alert-tip {
+  border-left-color: var(--color-tip);
+}
+
+.markdown-alert.markdown-alert-tip .markdown-alert-title {
+  color: var(--color-tip);
+}
+
+.markdown-alert.markdown-alert-caution {
+  border-left-color: var(--color-caution);
+}
+
+.markdown-alert.markdown-alert-caution .markdown-alert-title {
+  color: var(--color-caution);
+}
+
+.named-fence-block {
+  position: relative;
+  padding-top: 2em;
+}
+
+.named-fence-filename {
+  position: absolute;
+  top: 0;
+  left: 0;
+  padding: 0 4px;
+  font-weight: bold;
+  color: #000000;
+  background: #c0c0c0;
+  opacity: 0.6;
+}
+
+/* MathML text spacing */
+mtext {
+  margin-left: 1ch;
+  margin-right: 1ch;
+  display: inline;
+}
+
+/* Mobile warning message */
+.mobile-warning {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  background-color: #f8d7da;
+  color: #721c24;
+  padding: 10px;
+  text-align: center;
+  z-index: 2000;
+  font-weight: 500;
+}
+
+@media (max-width: 768px) {
+  .mobile-warning {
+    display: block;
+  }
+  
+  /* Adjust container padding to account for warning message */
+  .container {
+    padding-top: 40px;
+  }
+}
+    </style>
+    <link rel="stylesheet" href="">
+</head>
+<body class="dark-mode">
+    <!-- Mobile warning message -->
+    <div class="mobile-warning">
+        This documentation is optimized for desktop viewing. Some features may not work correctly on mobile devices.
+    </div>
+    
+    <!-- Dark mode toggle button with icon -->
+    <button id="dark-mode-toggle" aria-label="Toggle dark mode">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" class="sun-moon">
+            <circle cx="12" cy="12" r="5"/>
+            <line x1="12" y1="1" x2="12" y2="3"/>
+            <line x1="12" y1="21" x2="12" y2="23"/>
+            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
+            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+            <line x1="1" y1="12" x2="3" y2="12"/>
+            <line x1="21" y1="12" x2="23" y2="12"/>
+            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
+            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+        </svg>
+    </button>
+
+    <!-- Title block -->
+    <div id="title-block" class="title-block">
+        <table>
+            <tbody>
+                <tr>
+                    <td class="label">Company</td>
+                    <td class="value">typeCAD</td>
+                    <td class="label">Board Name</td>
+                    <td class="value">typeCAD 1Hz</td>
+                    <td class="label">Variant</td>
+                    <td class="value"></td>
+                    <td class="label">Sheet</td>
+                    <td class="value" id="page-count">1 of 1</td>
+                </tr>
+                <tr>
+                    <td class="label">Filename</td>
+                    <td class="value">./build/one_hz.kicad_pcb</td>
+                    <td class="label">Revision</td>
+                    <td class="value"></td>
+                    <td class="label">Date</td>
+                    <td class="value">2025-07-20</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Scrollable content -->
+    <div class="container">
+        <section><h1>1Hz</h1>
+<table>
+<thead>
+<tr>
+<th style="text-align:center">Stackup</th>
+<th style="text-align:center">Dimensions</th>
+<th style="text-align:center">Drills</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:center"><div style="height: auto; display: flex; justify-content: center; align-items: center;"><img src="./images/stackup.png" alt="{Stackup}" width="550"  style="width: 550px; height: auto;background-color: var(--color-image-background);" data-light-src="./images/stackup_light.png" data-dark-src="./images/stackup_dark.png" class=" stackup-container"></div></td>
+<td style="text-align:center"><div style="height: auto; display: flex; justify-content: center; align-items: center;"><img src="./images/dimensions.png" alt="{Edge.Cuts,User.1,F.Fab}" width="350"  style="width: 350px; height: auto;background-color: var(--color-image-background);" class=""></div></td>
+<td style="text-align:center"><div style="height: auto; display: flex; justify-content: center; align-items: center;"><img src="./images/drills.png" alt="{Drill}" width="350"  style="width: 350px; height: auto;" class="drill-layer"></div></td>
+</tr>
+</tbody>
+</table>
+</section><section><h1>Top</h1>
+<p><div style="height: auto; display: flex; justify-content: center; align-items: center;"><img src="./images/fcu.png" alt="{F.Cu}" width="550"  style="width: 550px; height: auto;background-color: var(--color-image-background);" class=""></div></p>
+</section><section><h1>Bottom</h1>
+<p><div style="height: auto; display: flex; justify-content: center; align-items: center;"><img src="./images/bcu.png" alt="{B.Cu}" width="550"  style="width: 550px; height: auto;background-color: var(--color-image-background);" class=""></div>
+<em>flipped</em></p>
+</section><section><h1>Renders</h1>
+<table>
+<thead>
+<tr>
+<th style="text-align:center">Top View</th>
+<th style="text-align:center">Bottom View</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:center"><div style="height: auto; display: flex; justify-content: center; align-items: center;"><img src="./images/render-display.png" alt="{Render/front/90/0/0}" width="550"  style="width: 550px; height: auto;" class=""></div></td>
+<td style="text-align:center"><div style="height: auto; display: flex; justify-content: center; align-items: center;"><img src="./images/back-render.png" alt="{Render/bottom/0/0/360}" width="550"  style="width: 550px; height: auto;" class=""></div></td>
+</tr>
+</tbody>
+</table>
+</section><section><h1>Top Assembly</h1>
+<table>
+<thead>
+<tr>
+<th style="text-align:center">Top View</th>
+<th style="text-align:center">Render</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:center"><div style="height: auto; display: flex; justify-content: center; align-items: center;"><img src="./images/front-assembly.png" alt="{Edge.Cuts,F.Cu,F.Mask,F.Fab}" width="550"  style="width: 550px; height: auto;background-color: var(--color-image-background);" class=""></div></td>
+<td style="text-align:center"><div style="height: auto; display: flex; justify-content: center; align-items: center;"><img src="./images/render-display.png" alt="Front render" width="550"  style="width: 550px; height: auto;" class=""></div></td>
+</tr>
+</tbody>
+</table>
+</section><section><h1>Bottom Assembly</h1>
+<table>
+<thead>
+<tr>
+<th style="text-align:center">Bottom View</th>
+<th style="text-align:center">Render</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:center"><div style="height: auto; display: flex; justify-content: center; align-items: center;"><img src="./images/bottom-assembly.png" alt="{B.Cu,B.Mask,B.Fab}" width="550"  style="width: 550px; height: auto;background-color: var(--color-image-background);" class=""></div></td>
+<td style="text-align:center"><div style="height: auto; display: flex; justify-content: center; align-items: center;"><img src="./images/back-render.png" alt="Bottom render" width="550"  style="width: 550px; height: auto;" class=""></div></td>
+</tr>
+</tbody>
+</table>
+</section><section><h1>Test Points</h1>
+<p>The circuit includes four test points for verification and debugging:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:center">Test Point</th>
+<th style="text-align:center">Signal</th>
+<th style="text-align:center">Frequency</th>
+<th style="text-align:center">Purpose</th>
+<th style="text-align:center">Location</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:center"><strong>TP1</strong></td>
+<td style="text-align:center">TCXO Output</td>
+<td style="text-align:center">4.194304 MHz</td>
+<td style="text-align:center">Verify oscillator operation</td>
+<td style="text-align:center">U1 Pin 3</td>
+</tr>
+<tr>
+<td style="text-align:center"><strong>TP2</strong></td>
+<td style="text-align:center">First Division</td>
+<td style="text-align:center">256 Hz</td>
+<td style="text-align:center">Verify 74HC4060 operation</td>
+<td style="text-align:center">U2 Pin 3 (Q14)</td>
+</tr>
+<tr>
+<td style="text-align:center"><strong>TP3</strong></td>
+<td style="text-align:center">Final Division</td>
+<td style="text-align:center">1 Hz (unbuffered)</td>
+<td style="text-align:center">Verify 74HC4040 operation</td>
+<td style="text-align:center">U3 Pin 1 (Q8)</td>
+</tr>
+<tr>
+<td style="text-align:center"><strong>TP4</strong></td>
+<td style="text-align:center">Buffered Output</td>
+<td style="text-align:center">1 Hz (buffered)</td>
+<td style="text-align:center">Verify 74HC244 operation</td>
+<td style="text-align:center">U4 Pin 8</td>
+</tr>
+</tbody>
+</table>
+</section><section><h1>Bill of Materials</h1>
+<table>
+<thead>
+<tr>
+<th style="text-align:center">Reference</th>
+<th style="text-align:center">Component</th>
+<th style="text-align:center">Value/Part Number</th>
+<th style="text-align:center">Package</th>
+<th style="text-align:center">Description</th>
+<th style="text-align:center">Estimated Cost</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:center"><strong>U1</strong></td>
+<td style="text-align:center">TCXO</td>
+<td style="text-align:center">SIT8008BI-82-30E-4.194304</td>
+<td style="text-align:center">SMD 5.0x3.2mm</td>
+<td style="text-align:center">4.194304 MHz TCXO, ±25ppm, 3V</td>
+<td style="text-align:center">$15.00</td>
+</tr>
+<tr>
+<td style="text-align:center"><strong>U2</strong></td>
+<td style="text-align:center">Binary Counter</td>
+<td style="text-align:center">74HC4060N</td>
+<td style="text-align:center">DIP-16</td>
+<td style="text-align:center">14-stage binary counter with oscillator</td>
+<td style="text-align:center">$1.50</td>
+</tr>
+<tr>
+<td style="text-align:center"><strong>U3</strong></td>
+<td style="text-align:center">Binary Counter</td>
+<td style="text-align:center">74HC4040N</td>
+<td style="text-align:center">DIP-16</td>
+<td style="text-align:center">12-stage binary counter</td>
+<td style="text-align:center">$1.25</td>
+</tr>
+<tr>
+<td style="text-align:center"><strong>U4</strong></td>
+<td style="text-align:center">Buffer/Driver</td>
+<td style="text-align:center">74HC244N</td>
+<td style="text-align:center">DIP-20</td>
+<td style="text-align:center">Octal buffer/line driver</td>
+<td style="text-align:center">$1.75</td>
+</tr>
+<tr>
+<td style="text-align:center"><strong>C1</strong></td>
+<td style="text-align:center">Capacitor</td>
+<td style="text-align:center">100nF</td>
+<td style="text-align:center">0603</td>
+<td style="text-align:center">TCXO decoupling capacitor</td>
+<td style="text-align:center">$0.05</td>
+</tr>
+<tr>
+<td style="text-align:center"><strong>C2</strong></td>
+<td style="text-align:center">Capacitor</td>
+<td style="text-align:center">100nF</td>
+<td style="text-align:center">0603</td>
+<td style="text-align:center">74HC4060 decoupling capacitor</td>
+<td style="text-align:center">$0.05</td>
+</tr>
+<tr>
+<td style="text-align:center"><strong>C3</strong></td>
+<td style="text-align:center">Capacitor</td>
+<td style="text-align:center">100nF</td>
+<td style="text-align:center">0603</td>
+<td style="text-align:center">74HC4040 decoupling capacitor</td>
+<td style="text-align:center">$0.05</td>
+</tr>
+<tr>
+<td style="text-align:center"><strong>C4</strong></td>
+<td style="text-align:center">Capacitor</td>
+<td style="text-align:center">100nF</td>
+<td style="text-align:center">0603</td>
+<td style="text-align:center">74HC244 decoupling capacitor</td>
+<td style="text-align:center">$0.05</td>
+</tr>
+<tr>
+<td style="text-align:center"><strong>C5</strong></td>
+<td style="text-align:center">Capacitor</td>
+<td style="text-align:center">10µF</td>
+<td style="text-align:center">0603</td>
+<td style="text-align:center">3V rail bulk filtering</td>
+<td style="text-align:center">$0.15</td>
+</tr>
+<tr>
+<td style="text-align:center"><strong>C6</strong></td>
+<td style="text-align:center">Capacitor</td>
+<td style="text-align:center">10µF</td>
+<td style="text-align:center">0603</td>
+<td style="text-align:center">5V rail bulk filtering</td>
+<td style="text-align:center">$0.15</td>
+</tr>
+<tr>
+<td style="text-align:center"><strong>R1</strong></td>
+<td style="text-align:center">Resistor</td>
+<td style="text-align:center">10kΩ</td>
+<td style="text-align:center">0603</td>
+<td style="text-align:center">74HC4060 reset pull-down</td>
+<td style="text-align:center">$0.02</td>
+</tr>
+</tbody>
+</table>
+</section><section><h1>Mathematical Calculations</h1>
+<h3>TCXO → 74HC4060</h3>
+<math display="block"><mfrac><mrow><mn>4</mn><mo>,</mo><mn>194</mn><mo>,</mo><mn>304</mn><mtext>Hz</mtext></mrow><mrow><mn>16</mn><mo>,</mo><mn>384</mn></mrow></mfrac><mo>=</mo><mn>256</mn><mtext>Hz</mtext></math>
+<h3>74HC4060 → 74HC4040</h3>
+<math display="block"><mfrac><mrow><mn>256</mn><mtext>Hz</mtext></mrow><mn>256</mn></mfrac><mo>=</mo><mn>1</mn><mtext>Hz</mtext></math>
+<h3>Output Accuracy</h3>
+<ul>
+<li>TCXO ±25ppm</li>
+</ul>
+<math display="block"><mrow><mo>±</mo><mn>25</mn><mtext>ppm</mtext></mrow><mo>×</mo><mrow><mn>86</mn><mo>,</mo><mn>400</mn></mrow><mtext>seconds/day</mtext><mo>=</mo><mrow><mo>±</mo><mn>2.16</mn></mrow><mtext>seconds per day</mtext></math>
+</section><section><h1>Signal Path</h1>
+<img src="https://www.plantuml.com/plantuml/svg/VTFHRjCm50RWUp_5OLUfH21st98XTUhQiQr8g4Lj9IuY93VrMela97ATJTq3x05u4wwuXpVXIJXEe6krmLKisUUppt-KmTOfw-eYPuFzweNRw493bIk3Z3dZSWty-XwcLcTcQqg4AutQAbTQ265crgXoc2gtWSkyl6Ei8iTafbBeu6G--ZI1OC4xASx6yoIAak4uJ4GOH-zIbA_ugOmZ2H-8__5DTAkgE06r1LzrxBoHroCPzIAo15bSXZEdrXg61fNTmQYiqMcRui_llFSoJcJ3BCHpYFH8x17nJqHqUwqG0pmrX9H4I28ccQFcX_NDZRQlBwovrRQjayTLazfLjQCR47NcWmlUDsrGt-rMKpLPpAUBEMFzFeLj2l-cmtZxVSQQFCCpQWtUmc5-34kdmPhrnj7Er234yElXQxFYKOgZlCo-m1ZfhXJ_P0tLtv4oyhmQKotr3izxmKSkEqVgXRarAmtB7RInfnY8ptI8aUGzIRMSD0XgN3OfwLNdASs9JXxb-12cvpHgGgZqQ9lI7luFc-n5uGFG2c7bPmIPgjJIvCRjKkn6nJcKxNoosbgDZh61nbNpLxJVtm00" alt="uml diagram">
+</section>
+    </div>
+
+    <!-- Modal for image zoom -->
+    <div class="modal">
+        <div class="modal-content-container">
+            <img class="modal-content">
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener("DOMContentLoaded", () => {
+            // Initialize dark mode based on default setting
+            const darkModeDefault = true;
+            if (darkModeDefault) {
+                document.body.classList.add('dark-mode');
+            } else {
+                document.body.classList.add('light-mode');
+            }
+
+            // Get all sections and update total pages
+            const sections = document.querySelectorAll('section');
+            const totalPages = sections.length;
+
+            // Function to get URL parameters
+            function getUrlParameter(name) {
+                const urlParams = new URLSearchParams(window.location.search);
+                return urlParams.get(name) || '';
+            }
+
+            // Function to scroll to a specific section
+            function scrollToSection(sectionIndex) {
+                const sections = document.querySelectorAll('section');
+                if (sectionIndex >= 0 && sectionIndex < sections.length) {
+                    const section = sections[sectionIndex];
+                    section.scrollIntoView({ behavior: 'smooth' });
+                    updatePageCount();
+                }
+            }
+
+            // Function to update page count based on scroll position
+            function updatePageCount() {
+                const container = document.querySelector('.container');
+                const containerRect = container.getBoundingClientRect();
+                const sections = document.querySelectorAll('section');
+                
+                // Find the section that's most visible in the viewport
+                let currentSection = 1;
+                let maxVisibleHeight = 0;
+                
+                sections.forEach((section, index) => {
+                    const sectionRect = section.getBoundingClientRect();
+                    const visibleHeight = Math.min(sectionRect.bottom, containerRect.bottom) - 
+                                        Math.max(sectionRect.top, containerRect.top);
+                    
+                    if (visibleHeight > maxVisibleHeight) {
+                        maxVisibleHeight = visibleHeight;
+                        currentSection = index + 1;
+                    }
+                });
+                
+                document.getElementById('page-count').textContent = currentSection + ' of ' + totalPages;
+                
+                // Update URL without triggering page reload
+                const newUrl = new URL(window.location.href);
+                newUrl.searchParams.set('page', currentSection);
+                window.history.replaceState({}, '', newUrl);
+            }
+
+            // Check for page parameter in URL on load
+            const pageParam = getUrlParameter('page');
+            if (pageParam) {
+                const pageNum = parseInt(pageParam, 10);
+                if (!isNaN(pageNum) && pageNum > 0) {
+                    // Subtract 1 because section indices are 0-based
+                    scrollToSection(pageNum - 1);
+                }
+            }
+
+            // Update page count on scroll
+            const container = document.querySelector('.container');
+            container.addEventListener('scroll', updatePageCount);
+            
+            // Initial update
+            updatePageCount();
+
+            // Modal functionality
+            const modal = document.querySelector('.modal');
+            const modalImg = document.querySelector('.modal-content');
+
+            // Function to open the modal with scaled image
+            function openModal(imageSrc, width, height, isLayerBasedImage, isDrillLayer) {
+                modal.style.display = 'block';
+                document.body.classList.add('modal-open');
+                modalImg.src = imageSrc;
+                
+                // Reset any previous styles
+                modalImg.style.width = '';
+                modalImg.style.height = '';
+                modalImg.style.maxWidth = '';
+                modalImg.style.maxHeight = '';
+                modalImg.style.margin = '';
+                modalImg.style.padding = '';
+                modalImg.style.backgroundColor = '';
+                
+                // Set dimensions to fill available space
+                modalImg.style.maxWidth = '100%';
+                modalImg.style.maxHeight = '100%';
+                modalImg.style.width = 'auto';
+                modalImg.style.height = 'auto';
+                modalImg.style.objectFit = 'contain';
+
+                // Add drill-layer class if it's a drill image
+                modalImg.classList.toggle('drill-layer', isDrillLayer);
+            }
+
+            // Function to close the modal
+            function closeModal() {
+                modal.style.display = 'none';
+                document.body.classList.remove('modal-open');
+                // Remove drill-layer class when closing
+                modalImg.classList.remove('drill-layer');
+            }
+
+            // Add click event listeners to all images
+            document.querySelectorAll('img').forEach(img => {
+                img.addEventListener('click', () => {
+                    const widthAttr = img.getAttribute('width');
+                    const heightAttr = img.getAttribute('height');
+                    const isLayerBasedImage = img.alt.startsWith('{') && !img.alt.includes('Render');
+                    const isDrillLayer = img.alt === '{Drill}';
+                    const width = widthAttr ? parseInt(widthAttr, 10) : null;
+                    const height = heightAttr ? parseInt(heightAttr, 10) : null;
+                    openModal(img.src, width, height, isLayerBasedImage, isDrillLayer);
+                });
+            });
+
+            // Close the modal when clicking outside the image or on the image itself
+            modal.addEventListener('click', (event) => {
+                if (event.target === modal || event.target === modalImg) {
+                    closeModal();
+                }
+            });
+
+            // Close the modal when pressing the Escape key
+            document.addEventListener('keydown', (event) => {
+                if (event.key === 'Escape') {
+                    closeModal();
+                }
+            });
+
+            // Dark mode toggle functionality
+            const toggleButton = document.getElementById('dark-mode-toggle');
+            const isDarkMode = true;
+            
+            
+            // Set initial state
+            if (isDarkMode) {
+                document.body.classList.add('dark-mode');
+            } else {
+                document.body.classList.add('light-mode');
+            }
+            
+            // Debug: Check for stackup images on page load
+            const initialStackupImages = document.querySelectorAll('img[alt="{Stackup}"]');
+            initialStackupImages.forEach((img, i) => {
+                
+                // Directly set the data attributes if they're missing
+                if (img.getAttribute('alt') === '{Stackup}' && !img.getAttribute('data-light-src')) {
+                    const src = img.getAttribute('src');
+                    if (src) {
+                        // Check if the src already has _light or _dark suffix
+                        if (src.includes('_light.png')) {
+                            const darkSrc = src.replace('_light.png', '_dark.png');
+                            img.setAttribute('data-light-src', src);
+                            img.setAttribute('data-dark-src', darkSrc);
+                        } else if (src.includes('_dark.png')) {
+                            const lightSrc = src.replace('_dark.png', '_light.png');
+                            img.setAttribute('data-light-src', lightSrc);
+                            img.setAttribute('data-dark-src', src);
+                        } else {
+                            // If no suffix, add both
+                            const lightSrc = src.replace(/.png$/, '_light.png');
+                            const darkSrc = src.replace(/.png$/, '_dark.png');
+                            img.setAttribute('data-light-src', lightSrc);
+                            img.setAttribute('data-dark-src', darkSrc);
+                        }
+                    }
+                }
+                
+                // Set the correct image source based on initial dark mode state
+                const lightSrc = img.getAttribute('data-light-src');
+                const darkSrc = img.getAttribute('data-dark-src');
+                
+                if (lightSrc && darkSrc) {
+                    if (isDarkMode) {
+                        // Set to dark mode image
+                        img.setAttribute('src', darkSrc);
+                    } else {
+                        // Set to light mode image
+                        img.setAttribute('src', lightSrc);
+                    }
+                }
+            });
+            
+            toggleButton.addEventListener('click', () => {
+                // Check if dark mode is currently active
+                const isDarkMode = document.body.classList.contains('dark-mode');
+                
+                // Remove both classes first to ensure clean state
+                document.body.classList.remove('dark-mode', 'light-mode');
+                
+                // Add the appropriate class based on current state
+                if (isDarkMode) {
+                    document.body.classList.add('light-mode');
+                } else {
+                    document.body.classList.add('dark-mode');
+                }
+                
+                // Switch stackup images based on theme
+                const stackupImages = document.querySelectorAll('img[alt="{Stackup}"]');
+                
+                stackupImages.forEach((img, i) => {
+                    const lightSrc = img.getAttribute('data-light-src');
+                    const darkSrc = img.getAttribute('data-dark-src');
+                    const currentSrc = img.getAttribute('src');
+
+                    // If data attributes are available, use them
+                    if (lightSrc && darkSrc) {
+                        if (isDarkMode) {
+                            // Switching to light mode
+                            img.setAttribute('src', lightSrc);
+                        } else {
+                            // Switching to dark mode
+                            img.setAttribute('src', darkSrc);
+                        }
+                    } 
+                    // Fallback: If data attributes are not available, try to derive them from the src
+                    else if (currentSrc) {
+                        if (currentSrc.includes('_light.png')) {
+                            const darkSrc = currentSrc.replace('_light.png', '_dark.png');
+                            if (isDarkMode) {
+                                img.setAttribute('src', darkSrc);
+                            }
+                        } else if (currentSrc.includes('_dark.png')) {
+                            const lightSrc = currentSrc.replace('_dark.png', '_light.png');
+                            if (!isDarkMode) {
+                                img.setAttribute('src', lightSrc);
+                            }
+                        }
+                    }
+                });
+            });
+        });
+    </script>
+</body>
+</html>
+    

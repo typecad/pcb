@@ -1,0 +1,175 @@
+0000000000000000000000000000000000000000 9c59b9de39c1eafe175c30ea19bbee7b9187fc2e typecad0 <typecad@microfire.co> 1713532299 -0700	commit (initial): initial commit
+9c59b9de39c1eafe175c30ea19bbee7b9187fc2e 7b8d1e54a680b421e50935815e90ee91775bfe2e typecad0 <typecad@microfire.co> 1713532359 -0700	pull origin master: Fast-forward
+7b8d1e54a680b421e50935815e90ee91775bfe2e 69c8f6073589fab9cac674241e05a34b7072af43 typecad0 <typecad@microfire.co> 1713532717 -0700	pull origin master: Fast-forward
+69c8f6073589fab9cac674241e05a34b7072af43 7bcfa08fb869da3a32642e06aae25eb665c03479 typecad0 <typecad@microfire.co> 1713591244 -0700	commit: bus/net changes, added license
+7bcfa08fb869da3a32642e06aae25eb665c03479 fb9a137359719ebba21a55eb6bd17f7f56a9781a typecad0 <typecad@microfire.co> 1713596348 -0700	commit: added no-connection flag for pins
+fb9a137359719ebba21a55eb6bd17f7f56a9781a c4286bd82d29c4673d3c62c18d3fd599eb17fee4 typecad0 <typecad@microfire.co> 1713632988 -0700	commit: adds Schematic::erc() to run KiCAD's ERC
+c4286bd82d29c4673d3c62c18d3fd599eb17fee4 85d4ada6deae1a4aeaff803e297c802900f29391 typecad0 <typecad@microfire.co> 1713790482 -0700	commit: added some unit tests
+85d4ada6deae1a4aeaff803e297c802900f29391 f141dc512a4633229d169273686190a03c3a9cdf typecad0 <typecad@microfire.co> 1713801163 -0700	commit: added `in` checking for ::Pin
+f141dc512a4633229d169273686190a03c3a9cdf fb5ff15547c9c7ceee8dce7ac2f751e74b6a3262 typecad0 <typecad@microfire.co> 1713877772 -0700	commit: added `kicad_path` and `kicad_cli` to typecad.json configuration file
+fb5ff15547c9c7ceee8dce7ac2f751e74b6a3262 2362175713cffe18fea7dac28b8931fb8b5a3735 typecad0 <typecad@microfire.co> 1713886458 -0700	commit: package version bump, added `typecad.json` link when path isn't found
+2362175713cffe18fea7dac28b8931fb8b5a3735 f0209f6ee274894a7e41f9f645cf62255374f892 typecad0 <typecad@microfire.co> 1713886695 -0700	commit: doc update
+f0209f6ee274894a7e41f9f645cf62255374f892 080b4948d1c4db4318fd4e173d8075bd92c48107 typecad0 <typecad@microfire.co> 1714064632 -0700	commit: minor changes
+080b4948d1c4db4318fd4e173d8075bd92c48107 55dc116eff8ade6930b103e0067f2235b6992bce typecad0 <typecad@microfire.co> 1714064712 -0700	commit: version bump
+55dc116eff8ade6930b103e0067f2235b6992bce 812061d6a9937597cdb7015404dabdff02bc7605 typecad0 <typecad@microfire.co> 1714155274 -0700	commit: added ::pinout()
+812061d6a9937597cdb7015404dabdff02bc7605 319da593831fd0c5c6f52a5da63d4274556fe5ae typecad0 <typecad@microfire.co> 1714155295 -0700	commit: version bump
+319da593831fd0c5c6f52a5da63d4274556fe5ae 5d1f83a9834eb68a3fa5fd3bc058ac432e6b423b typecad0 <typecad@microfire.co> 1714155802 -0700	commit: doc update for pinout()
+5d1f83a9834eb68a3fa5fd3bc058ac432e6b423b 4f5ba2cb67472515ed44d08b36c222e9d54193a7 typecad0 <typecad@microfire.co> 1714394250 -0700	commit: changed cli output
+4f5ba2cb67472515ed44d08b36c222e9d54193a7 3ec3ef7958ab20ae9e952233f65af8af3da5a81b typecad0 <typecad@microfire.co> 1714866455 -0700	commit: added ::bom and ::tie, new status scroll, and additional error catching
+3ec3ef7958ab20ae9e952233f65af8af3da5a81b e350b176e253cde0c227ff4bdc4cad2120c7d16d typecad0 <typecad@microfire.co> 1714917784 -0700	commit: remove power.ts (merged into @typecad/passives), updated docs
+e350b176e253cde0c227ff4bdc4cad2120c7d16d 6827bac43faa0c7daa6389b0b65795e911cee6c7 typecad0 <typecad@microfire.co> 1715605114 -0700	commit: bus changes, minor fixes
+6827bac43faa0c7daa6389b0b65795e911cee6c7 f6bd2cdda0a4d26a1204680fdef9e8fcdd20036e typecad0 <typecad@microfire.co> 1726232367 -0700	commit: major ::net() changes, minor ease-of-use changes
+f6bd2cdda0a4d26a1204680fdef9e8fcdd20036e 999c8dab13932f8b056cff4eab711485377462e0 typecad0 <typecad@microfire.co> 1726233830 -0700	commit: updated docs and fixed all tests
+999c8dab13932f8b056cff4eab711485377462e0 67b09a1416f4f93f064185ca701656d54e19b157 typecad0 <typecad@microfire.co> 1726331589 -0700	commit: docs and code cleanup
+67b09a1416f4f93f064185ca701656d54e19b157 30eb41fb94496d9e9cd0f2e97828b9f0eb099746 typecad0 <typecad@microfire.co> 1728149998 -0700	commit: KiCAD 0.8.5 fix
+30eb41fb94496d9e9cd0f2e97828b9f0eb099746 b7267008dd2192ebb71cf00aa31338b89a3a47e4 typecad0 <typecad@microfire.co> 1728306363 -0700	commit: net rename for more readable PCB layout
+b7267008dd2192ebb71cf00aa31338b89a3a47e4 746dc0b46025801793255b7c6ed8e332f8935f4e typecad0 <typecad@microfire.co> 1728316003 -0700	commit: net name ::log()
+746dc0b46025801793255b7c6ed8e332f8935f4e 8e73e6f93de49ef233a28b9f0d27119f8fc1b0bb typecad0 <typecad@microfire.co> 1728696946 -0700	commit: added board creation
+8e73e6f93de49ef233a28b9f0d27119f8fc1b0bb 14dee914c1247dbc2c4361bf24587d02307ca383 typecad0 <typecad@microfire.co> 1728837263 -0700	commit: grouping
+14dee914c1247dbc2c4361bf24587d02307ca383 2f19445cda40e7de51c2bed6bb87812a41b4de09 typecad0 <typecad@microfire.co> 1730393722 -0700	commit: added placement
+2f19445cda40e7de51c2bed6bb87812a41b4de09 83265372d123efd6d9f6eecdcd4996cae6036e26 typecad0 <typecad@microfire.co> 1730919271 -0800	commit: added Component::dnp to allow for Do Not Place
+83265372d123efd6d9f6eecdcd4996cae6036e26 2cf722d7686270cde54366afb58943fa6f2f65fc typecad0 <typecad@microfire.co> 1735573516 -0800	commit: removed Component::pinout()
+2cf722d7686270cde54366afb58943fa6f2f65fc 32409ad3bed43d87373d5806db2790d51b3d260d typecad0 <typecad@microfire.co> 1735919000 -0800	commit: added auto-assigned component references
+32409ad3bed43d87373d5806db2790d51b3d260d 887896109456fdfc6717dc400325f081b3da5b14 typecad0 <typecad@microfire.co> 1735919046 -0800	commit: version bump
+887896109456fdfc6717dc400325f081b3da5b14 d37d78af8b5365e8448fefad3aba6754be89a7b1 typecad0 <typecad@microfire.co> 1736304918 -0800	commit: removed {} net interface, removed sheet.in/out, added sheet.ext
+d37d78af8b5365e8448fefad3aba6754be89a7b1 5d9b1aae8d1e040774218526679e226575baa30e typecad0 <typecad@microfire.co> 1737480541 -0800	commit: re-write to netlist based
+5d9b1aae8d1e040774218526679e226575baa30e f677845e39ee5ba1f2675b4acf798d469a580288 typecad0 <typecad@microfire.co> 1737825741 -0800	commit: bus changes
+f677845e39ee5ba1f2675b4acf798d469a580288 755805a15c9e324f9bf70759e20af1a702ab2d90 typecad0 <typecad@microfire.co> 1737899942 -0800	commit: removed optional Power parameters
+755805a15c9e324f9bf70759e20af1a702ab2d90 1da140372016f8194249a896064b28743be76bcb typecad0 <typecad@microfire.co> 1737903597 -0800	commit: update package version
+1da140372016f8194249a896064b28743be76bcb 33f891ac96278d29963716f02592dd05ed8457a9 typecad0 <typecad@microfire.co> 1737985642 -0800	commit: more useful net merge
+33f891ac96278d29963716f02592dd05ed8457a9 631d073008cdb5b4c1ea11006bfdf2984c51d096 typecad0 <typecad@microfire.co> 1737999275 -0800	commit: added error and warn
+631d073008cdb5b4c1ea11006bfdf2984c51d096 78fa15b4879e87abd02d0be8956ad32cf849b702 typecad0 <typecad@microfire.co> 1738070794 -0800	commit: erc reporting
+78fa15b4879e87abd02d0be8956ad32cf849b702 78a0d1fa35b3f77eedd25a6b3007b4b45e255187 typecad0 <typecad@microfire.co> 1738329415 -0800	commit: pcb, via additions
+78a0d1fa35b3f77eedd25a6b3007b4b45e255187 2b5c6cfbaae19d0a5c4dbb3c244d98541945a0bb typecad0 <typecad@microfire.co> 1738610544 -0800	commit: bom parameter changes, pcb.Boardname public and cli path public
+2b5c6cfbaae19d0a5c4dbb3c244d98541945a0bb cec7f67e9b74c3c1e99cc19b4150a80adb1400e2 typecad0 <typecad@microfire.co> 1738610598 -0800	commit: version bump
+cec7f67e9b74c3c1e99cc19b4150a80adb1400e2 9c51c31bfd2c0613ecc6e95f356a51f357a086d1 typecad0 <typecad@microfire.co> 1739488511 -0800	commit: simulation additions
+9c51c31bfd2c0613ecc6e95f356a51f357a086d1 1a63964eece0fc98053e426192e770c35577a14d typecad0 <typecad@microfire.co> 1740200048 -0800	commit: v9
+1a63964eece0fc98053e426192e770c35577a14d e6886d9dcde1fac720af9a185c1a9371b42eec7b typecad0 <typecad@microfire.co> 1744385586 -0700	commit: more descriptive error messages
+e6886d9dcde1fac720af9a185c1a9371b42eec7b 5bf9a47b3501a55e34f44398a7c39c7b6c73abe5 typecad0 <typecad@microfire.co> 1744385632 -0700	commit: version bump
+5bf9a47b3501a55e34f44398a7c39c7b6c73abe5 060339d415694b45abedb3647cf30ec8712f5217 typecad0 <typecad@microfire.co> 1745043348 -0700	commit: major pcb improvements
+060339d415694b45abedb3647cf30ec8712f5217 5ec7150d17976d24157ddd01d354be4dc54d5b66 typecad0 <typecad@microfire.co> 1745043373 -0700	commit: pcb improvement
+5ec7150d17976d24157ddd01d354be4dc54d5b66 0e41eceac19a46643c9bb083ae4fbee1a0ed0698 typecad0 <typecad@microfire.co> 1745081889 -0700	commit: pcb layout improvements
+0e41eceac19a46643c9bb083ae4fbee1a0ed0698 fd960761d5f19c7e71ec68d559f43a7e0ff54f18 typecad0 <typecad@microfire.co> 1745082315 -0700	commit: pcb option added
+fd960761d5f19c7e71ec68d559f43a7e0ff54f18 7821af2f93c46695602583a863a8bc85254cc168 typecad0 <typecad@microfire.co> 1745124682 -0700	commit: bom improvements
+7821af2f93c46695602583a863a8bc85254cc168 6840d003f3ea392456265c3c7d890c5382e3a1f3 typecad0 <typecad@microfire.co> 1745126817 -0700	commit: version bump
+6840d003f3ea392456265c3c7d890c5382e3a1f3 34ac19850a20175578b5eeca63a03758d1613680 typecad0 <typecad@microfire.co> 1745126866 -0700	commit: cleanup
+34ac19850a20175578b5eeca63a03758d1613680 5e59a1d87670a05b29025961c879fa055c0c6b40 typecad0 <typecad@microfire.co> 1745159189 -0700	commit: preserve components
+5e59a1d87670a05b29025961c879fa055c0c6b40 d90d261b2f79202992258a53c81a1cfcbd13a125 typecad0 <typecad@microfire.co> 1746187662 -0700	commit: layout tweaks
+d90d261b2f79202992258a53c81a1cfcbd13a125 03f0817b0d922f4ac428dfd9677ac3cda45cbb71 typecad0 <typecad@microfire.co> 1746451193 -0700	commit: schematic changes
+03f0817b0d922f4ac428dfd9677ac3cda45cbb71 2582f914d201ec5c6ca1013aa4ddc254e6c02a6b typecad0 <typecad@microfire.co> 1747140002 -0700	commit: more schematic changes
+2582f914d201ec5c6ca1013aa4ddc254e6c02a6b 434ae0efbc2c56597ee5912e6b9001be25c8c1d2 typecad0 <typecad@microfire.co> 1747242594 -0700	commit: fixed pcb
+434ae0efbc2c56597ee5912e6b9001be25c8c1d2 d8ad028682e7791c89184e72584865eb95af5737 typecad0 <typecad@microfire.co> 1747313022 -0700	commit: uuid optional
+d8ad028682e7791c89184e72584865eb95af5737 d46f2321c19923959c2c78abdf574422eea6c7ad typecad0 <typecad@microfire.co> 1747396892 -0700	commit: layout fixes
+d46f2321c19923959c2c78abdf574422eea6c7ad 67253a4467feba83c927b15034d2377834bb171e typecad0 <typecad@microfire.co> 1747412776 -0700	commit: fixed layout rotation issue
+67253a4467feba83c927b15034d2377834bb171e 7f31eede50739d0e27a30a7678f242d9037d3c34 typecad0 <typecad@microfire.co> 1747490033 -0700	commit: obfuscation
+7f31eede50739d0e27a30a7678f242d9037d3c34 45c2b95e77e7218ce3e39b7675f2cf5d5b140783 typecad0 <typecad@microfire.co> 1747744947 -0700	commit: added Power direction
+45c2b95e77e7218ce3e39b7675f2cf5d5b140783 e6ceac4695f2fec3db8e2f6860bcff1d7b713de6 typecad0 <typecad@microfire.co> 1747792278 -0700	commit: vias
+e6ceac4695f2fec3db8e2f6860bcff1d7b713de6 a18798879e8668173025f3521eac89e38425c635 typecad0 <typecad@microfire.co> 1747833166 -0700	commit: added outline with fillet
+a18798879e8668173025f3521eac89e38425c635 7f48422dd39aa503c6f8f36df0b8c43bf6123c3e typecad0 <typecad@microfire.co> 1747833179 -0700	commit: added outline with filet
+7f48422dd39aa503c6f8f36df0b8c43bf6123c3e 509cc42714239d37b0eccff887cf6d03328ce536 typecad0 <typecad@microfire.co> 1747931581 -0700	commit: tracks
+509cc42714239d37b0eccff887cf6d03328ce536 87cca5c2bac37de9f17b4ab78c5035dd05c75874 typecad0 <typecad@microfire.co> 1748003211 -0700	commit: vias
+87cca5c2bac37de9f17b4ab78c5035dd05c75874 aef83f5d457c5bc70f16f88c07f3d2ee477532e0 typecad0 <typecad@microfire.co> 1748004075 -0700	commit: pcb/comonent reorganized
+aef83f5d457c5bc70f16f88c07f3d2ee477532e0 28ff288ed7b2d91b38af8824f1f0eff97420af32 typecad0 <typecad@microfire.co> 1748005736 -0700	commit: trackbuilder and grouping
+28ff288ed7b2d91b38af8824f1f0eff97420af32 1ffd71e88728b944f7d46b77451d3f9b27eab385 typecad0 <typecad@microfire.co> 1748014538 -0700	commit: via refinement and track persist issues
+1ffd71e88728b944f7d46b77451d3f9b27eab385 17a5147f82365117b08ae407a7913b2417361d69 typecad0 <typecad@microfire.co> 1748149300 -0700	commit: trackbuilder
+17a5147f82365117b08ae407a7913b2417361d69 e4e77f6a51903fae3e47c44f738bd01519db22af typecad0 <typecad@microfire.co> 1748375631 -0700	commit: pcb file version issue
+e4e77f6a51903fae3e47c44f738bd01519db22af 7778d493ac2b080f8e18bb32824bb62f9f680770 typecad0 <typecad@microfire.co> 1748483901 -0700	commit: 1 stage pcb reorganization
+7778d493ac2b080f8e18bb32824bb62f9f680770 1f8f96f829db21ae574a2b24e9bdae681be6977f typecad0 <typecad@microfire.co> 1748558448 -0700	commit: Schematic functions stubbed from PCB
+1f8f96f829db21ae574a2b24e9bdae681be6977f b32d321650b3e2a441eaa694434e8d96e565418e typecad0 <typecad@microfire.co> 1748564352 -0700	commit: uuid cleanup/pcb orphan delete with option
+b32d321650b3e2a441eaa694434e8d96e565418e 7c69c8df109bbec4ac60dfb0fa48913a52884c09 typecad0 <typecad@microfire.co> 1748668094 -0700	commit: 0.2.0
+7c69c8df109bbec4ac60dfb0fa48913a52884c09 2488614e086ba21131a088f064d389da0037607d typecad0 <typecad@microfire.co> 1748700209 -0700	commit: net syncing between kicad
+2488614e086ba21131a088f064d389da0037607d b74f987e398c0cd1e6fba712d336251c4e3f20ec typecad0 <typecad@microfire.co> 1748887522 -0700	commit: refactored pcb.ts and updated deps
+b74f987e398c0cd1e6fba712d336251c4e3f20ec 48ea240e320b4c00dc72db69252f20e8d601c823 typecad0 <typecad@microfire.co> 1748894598 -0700	commit: improved kicad save interaction
+48ea240e320b4c00dc72db69252f20e8d601c823 d682a23873ac60cecad8689c36eaf288e0235287 typecad0 <typecad@microfire.co> 1748954671 -0700	commit: front/back side component / net sync fixes
+d682a23873ac60cecad8689c36eaf288e0235287 6de7c947d81e643ef4630a89145089dd8875e6fb typecad0 <typecad@microfire.co> 1749142389 -0700	commit: editing/sync issues resolved
+6de7c947d81e643ef4630a89145089dd8875e6fb 7e5c2e26cdbdb14eef2ff76df2abfc90671f7bc6 typecad0 <typecad@microfire.co> 1749475372 -0700	commit: fixed outline and kicad detection / added tests
+7e5c2e26cdbdb14eef2ff76df2abfc90671f7bc6 9ada68bc310b0c5ff9c7f450c8f45f7ec6b230b7 typecad0 <typecad@microfire.co> 1749557974 -0700	commit: log improvements
+9ada68bc310b0c5ff9c7f450c8f45f7ec6b230b7 fa5b903859a697211801a9670d4a2397cdf02623 typecad0 <typecad@microfire.co> 1749560454 -0700	commit: log display
+fa5b903859a697211801a9670d4a2397cdf02623 a89f1b3164e111c10fda843eb8b1d6e680a05378 typecad0 <typecad@microfire.co> 1749652457 -0700	commit: output messaging improvements / power and current interfaces added
+a89f1b3164e111c10fda843eb8b1d6e680a05378 30ea3d8a76849174ce7833e6558ea62b890f2cd6 typecad0 <typecad@microfire.co> 1749732950 -0700	commit: power aware features
+30ea3d8a76849174ce7833e6558ea62b890f2cd6 f99cb921389dcdaa8b056e8efa3aeb333b88bb35 typecad0 <typecad@microfire.co> 1749761134 -0700	commit: more powerInfo improvements
+f99cb921389dcdaa8b056e8efa3aeb333b88bb35 3bf15dac32259a19074799c5bd4a38eaae88c561 typecad0 <typecad@microfire.co> 1749820666 -0700	commit: power aware now uses Power object
+3bf15dac32259a19074799c5bd4a38eaae88c561 1cc6b22dbd0361f12767bd5b33367d9ef04cbbfe typecad0 <typecad@microfire.co> 1751550087 -0700	commit: removed problematic strings for parsing
+1cc6b22dbd0361f12767bd5b33367d9ef04cbbfe 0110dbd84c3002afd5aac0c2b80f345d7b579343 typecad0 <typecad@microfire.co> 1752151209 -0700	commit: cleaner logging and footprint string validation
+0110dbd84c3002afd5aac0c2b80f345d7b579343 8fc0e39c58a61167345065fdbae08378fa4baa10 typecad0 <typecad@microfire.co> 1752381287 -0700	commit: minor output info changes
+8fc0e39c58a61167345065fdbae08378fa4baa10 dc4562fb5c433cfd68b77027c0b80d2797888a98 typecad0 <typecad@microfire.co> 1754061321 -0700	commit: pcb back rotation
+dc4562fb5c433cfd68b77027c0b80d2797888a98 4624b21a7562a9519f2dd76a98ea0778a58cbd04 typecad0 <typecad@microfire.co> 1754202950 -0700	commit: chamfered back pads
+4624b21a7562a9519f2dd76a98ea0778a58cbd04 f93d615aca4a8e7ce70cbdc25784ddf0334eb52f typecad0 <typecad@microfire.co> 1757508358 -0700	commit: kicad path tweaks, error message improvement
+f93d615aca4a8e7ce70cbdc25784ddf0334eb52f 3b5ac816f6cc986310efa2828d27e53be33a739a typecad0 <typecad@microfire.co> 1758027191 -0700	commit: kicad_path order
+3b5ac816f6cc986310efa2828d27e53be33a739a 1836df2a77a2d2fcd8f66eaffd74cc63713b75ad typecad0 <typecad@microfire.co> 1759842378 -0700	commit: outline fix/added sourceinfo
+1836df2a77a2d2fcd8f66eaffd74cc63713b75ad 13029ec76378105836213546d936389e1d0c3375 typecad0 <typecad@microfire.co> 1760539095 -0700	commit: added code sourceinfo
+13029ec76378105836213546d936389e1d0c3375 1b6a7ec994ff529ba97c458f5d8d8af0cd48408b typecad0 <typecad@microfire.co> 1760617586 -0700	commit: sourceInfo fixes
+1b6a7ec994ff529ba97c458f5d8d8af0cd48408b 643c9ca068ac42a172b1c1280f1c06a2769f9eb4 typecad0 <typecad@microfire.co> 1760763119 -0700	commit: more sourceinfo
+643c9ca068ac42a172b1c1280f1c06a2769f9eb4 f599adf8843347e9b6331911aa329918b137d118 typecad0 <typecad@microfire.co> 1760806491 -0700	commit: track duplicate issues
+f599adf8843347e9b6331911aa329918b137d118 f599adf8843347e9b6331911aa329918b137d118 typecad0 <typecad@microfire.co> 1760971850 -0700	checkout: moving from master to no-cache
+f599adf8843347e9b6331911aa329918b137d118 6f3ba64cb971416a9d39c7effc2f67a53912362e typecad0 <typecad@microfire.co> 1761057374 -0700	commit: removed more code
+6f3ba64cb971416a9d39c7effc2f67a53912362e df9902e525d4689df0ff8e6a3209e9459528c206 typecad0 <typecad@microfire.co> 1761100575 -0700	commit: pretty print
+df9902e525d4689df0ff8e6a3209e9459528c206 781e5c27147bbcb0ed15f8e4473184a17871c0af typecad0 <typecad@microfire.co> 1761140021 -0700	commit: component text
+781e5c27147bbcb0ed15f8e4473184a17871c0af 63ee3a16f9fdc758a64c6294abc5fcad6efc3a7b typecad0 <typecad@microfire.co> 1761311029 -0700	commit: reference, fab, value text format options
+63ee3a16f9fdc758a64c6294abc5fcad6efc3a7b 0c7630ad8326d432fae7160fb5a10a4676373a15 typecad0 <typecad@microfire.co> 1761375464 -0700	commit: shape primitives
+0c7630ad8326d432fae7160fb5a10a4676373a15 5c359a44a03a88e80a36e22220b0abc8d640ed88 typecad0 <typecad@microfire.co> 1761831569 -0700	commit: a* routing
+5c359a44a03a88e80a36e22220b0abc8d640ed88 438070b84f925e76676d574cb882fadb7fe462f5 typecad0 <typecad@microfire.co> 1761833367 -0700	commit: reorganization of router
+438070b84f925e76676d574cb882fadb7fe462f5 3d310da1dcba5431dc4b78039c68d97e699444f4 typecad0 <typecad@microfire.co> 1761920428 -0700	commit: manualRoutes
+3d310da1dcba5431dc4b78039c68d97e699444f4 5519325067fcde4e69141e0a79548c17b3aed419 typecad0 <typecad@microfire.co> 1761936677 -0700	commit: shape-routing
+5519325067fcde4e69141e0a79548c17b3aed419 9f01d09ad81f2f86fb376d61e69d7442e0db810a typecad0 <typecad@microfire.co> 1762056688 -0700	commit: route defaults
+9f01d09ad81f2f86fb376d61e69d7442e0db810a d95c6b61ffbae2790695c2152efd722bf5ad1da7 typecad0 <typecad@microfire.co> 1762057244 -0700	commit: routing renamed
+d95c6b61ffbae2790695c2152efd722bf5ad1da7 425e723814b6128bf61e18d81349ed6daefc3333 typecad0 <typecad@microfire.co> 1762101271 -0800	commit: trunk routing
+425e723814b6128bf61e18d81349ed6daefc3333 9d091d15496d925a3c2741520a62f0b30ceb332e typecad0 <typecad@microfire.co> 1762103939 -0800	commit: route api change
+9d091d15496d925a3c2741520a62f0b30ceb332e 56ac6a5311b0ab1f0c5c27d83923b5b68f7dd241 typecad0 <typecad@microfire.co> 1762103944 -0800	commit: routing
+56ac6a5311b0ab1f0c5c27d83923b5b68f7dd241 26443e3c688aa4310e5117c6ce6a3ea0e3318bcc typecad0 <typecad@microfire.co> 1762108795 -0800	commit: better via use
+26443e3c688aa4310e5117c6ce6a3ea0e3318bcc 853a2b40fc17fc819efeddfb554e833c3e870365 typecad0 <typecad@microfire.co> 1762125189 -0800	commit: empty net pads
+853a2b40fc17fc819efeddfb554e833c3e870365 1f9dd2c00b5998414eefa28a306a09342e9ff1ab typecad0 <typecad@microfire.co> 1762440140 -0800	commit: length matching
+1f9dd2c00b5998414eefa28a306a09342e9ff1ab 035fc9bed31cff031bd81c80de778309b1dbde57 typecad0 <typecad@microfire.co> 1762524123 -0800	commit: bottom clearance
+035fc9bed31cff031bd81c80de778309b1dbde57 0bc41430c95b28de77e613bb571a3ae7fcbac9e1 typecad0 <typecad@microfire.co> 1762525554 -0800	commit: polygon aware routing
+0bc41430c95b28de77e613bb571a3ae7fcbac9e1 89a66389e7d4570c37b328d55ecedc2b34d022dd typecad0 <typecad@microfire.co> 1762551086 -0800	commit: speed increase
+89a66389e7d4570c37b328d55ecedc2b34d022dd 9072dc97d64a86f7833d775662702db62eb41d02 typecad0 <typecad@microfire.co> 1762585403 -0800	commit: via clearance
+9072dc97d64a86f7833d775662702db62eb41d02 f9cce2c0642230f47f2491331e73235b7349e546 typecad0 <typecad@microfire.co> 1762586017 -0800	commit: 0.3 grid resolution fix
+f9cce2c0642230f47f2491331e73235b7349e546 d3568f61cce46186968360443cbb3d58e7ea3177 typecad0 <typecad@microfire.co> 1762623653 -0800	commit: qfn clearance
+d3568f61cce46186968360443cbb3d58e7ea3177 6e9bc726e0e30d034b2a3f2833a560fd6db6d042 typecad0 <typecad@microfire.co> 1762641267 -0800	commit: inc improvments
+6e9bc726e0e30d034b2a3f2833a560fd6db6d042 09390395a7b03bc780fb9884f426afd88affe079 typecad0 <typecad@microfire.co> 1762711135 -0800	commit: keepout zone fix
+09390395a7b03bc780fb9884f426afd88affe079 d209e400a2e45dc7b025764f5b4df8c282869ef6 typecad0 <typecad@microfire.co> 1762713950 -0800	commit: cleanup
+d209e400a2e45dc7b025764f5b4df8c282869ef6 28eb69e2f4495bb1a753a6a9dbddcd1669e2e591 typecad0 <typecad@microfire.co> 1762789805 -0800	commit: major pcb.ts reduction
+28eb69e2f4495bb1a753a6a9dbddcd1669e2e591 b459f6382ac93708e5d8ff02430293e34602952e typecad0 <typecad@microfire.co> 1762792548 -0800	commit: refactor fix
+b459f6382ac93708e5d8ff02430293e34602952e 4e826d1a49ee29f3fcacb700d4d5c167f9f7fe9a typecad0 <typecad@microfire.co> 1762796598 -0800	commit: pcb reorganization
+4e826d1a49ee29f3fcacb700d4d5c167f9f7fe9a ddc49c314c0c29f3558726722ded1887d9093748 typecad0 <typecad@microfire.co> 1762826320 -0800	commit: astar via fix
+ddc49c314c0c29f3558726722ded1887d9093748 55fc19297ea20a0042b0d4ba38286a27f33e9631 typecad0 <typecad@microfire.co> 1762894958 -0800	commit: via drc fix
+55fc19297ea20a0042b0d4ba38286a27f33e9631 197d693337b1c2a434f4c030565c02357d8cd7e0 typecad0 <typecad@microfire.co> 1762969848 -0800	commit: routing fixes
+197d693337b1c2a434f4c030565c02357d8cd7e0 a91439d7417cf4db24da2a6188553bb9371b27b4 typecad0 <typecad@microfire.co> 1763051781 -0800	commit: routing reorg
+a91439d7417cf4db24da2a6188553bb9371b27b4 8963bca02ba7b2a4e3a12527cf162a885adf2d6e typecad0 <typecad@microfire.co> 1763128076 -0800	commit: more via fixes
+8963bca02ba7b2a4e3a12527cf162a885adf2d6e e653bdd692ec88149f7028979ebd0900cf0a51c0 typecad0 <typecad@microfire.co> 1763319085 -0800	commit: router extracted to plugin mvp
+e653bdd692ec88149f7028979ebd0900cf0a51c0 06967490466d1ffb7bf8f3b03ac13244c0267a00 typecad0 <typecad@microfire.co> 1763391185 -0800	commit: further extraction
+06967490466d1ffb7bf8f3b03ac13244c0267a00 f5f292b782bbeef730edcd60fe8e53d524c86476 typecad0 <typecad@microfire.co> 1763561958 -0800	commit: vias as waypoints
+f5f292b782bbeef730edcd60fe8e53d524c86476 399eceeb366706e49181c6e1ef2647bef6164597 typecad0 <typecad@microfire.co> 1763563781 -0800	commit: net objects for routing
+399eceeb366706e49181c6e1ef2647bef6164597 76cfffea73c95ca4ffd07b08273de57d43e67a72 typecad0 <typecad@microfire.co> 1763667709 -0800	commit: before length match extraction
+76cfffea73c95ca4ffd07b08273de57d43e67a72 98343f08e5c47131b593590e6066ea5861255883 typecad0 <typecad@microfire.co> 1763684283 -0800	commit: length matching merge
+98343f08e5c47131b593590e6066ea5861255883 98343f08e5c47131b593590e6066ea5861255883 typecad0 <typecad@microfire.co> 1764257450 -0800	reset: moving to HEAD
+98343f08e5c47131b593590e6066ea5861255883 70d1c2d237334bd6f3a10a26e61e930fed5b51cd typecad0 <typecad@microfire.co> 1764259654 -0800	commit: all length matching removed
+70d1c2d237334bd6f3a10a26e61e930fed5b51cd b9e05c5a8420d40870cacaabed5bc2aef965071c typecad0 <typecad@microfire.co> 1764262725 -0800	commit: debug flag added for routing output
+b9e05c5a8420d40870cacaabed5bc2aef965071c 9a56b586d3534b653b75d29225356e34fd0818df typecad0 <typecad@microfire.co> 1764264748 -0800	commit: debug ppm debug flag
+9a56b586d3534b653b75d29225356e34fd0818df da4f51c13850e4b1da48fa6d24245b0c851d1607 typecad0 <typecad@microfire.co> 1764265641 -0800	commit: new license
+da4f51c13850e4b1da48fa6d24245b0c851d1607 75de777c14536f0c648966fd6ac44c4dd16afd14 typecad0 <typecad@microfire.co> 1764369990 -0800	commit: multi resolution
+75de777c14536f0c648966fd6ac44c4dd16afd14 d5692211a6ba407bdd2e9582a0cd834216e03276 typecad0 <typecad@microfire.co> 1764395163 -0800	commit: routing improvements
+d5692211a6ba407bdd2e9582a0cd834216e03276 4efdab39b6eae8f17ad6dd8b734aa674b7e8b2cc typecad0 <typecad@microfire.co> 1764396773 -0800	commit: plugin extraction
+4efdab39b6eae8f17ad6dd8b734aa674b7e8b2cc 6553228c0e8eecf0adf3e85130a6782aaca52b0a typecad0 <typecad@microfire.co> 1764478723 -0800	commit: added license
+6553228c0e8eecf0adf3e85130a6782aaca52b0a e4ccb61c77db4fd083a1bc9b8d6e11d3ae084018 typecad0 <typecad@microfire.co> 1764516023 -0800	commit: powerInfo routing
+e4ccb61c77db4fd083a1bc9b8d6e11d3ae084018 13561672479db9556575399122b1cb1cb45ccfa0 typecad0 <typecad@microfire.co> 1764533120 -0800	commit: router powerInfo vias
+13561672479db9556575399122b1cb1cb45ccfa0 e4ccb61c77db4fd083a1bc9b8d6e11d3ae084018 typecad0 <typecad@microfire.co> 1764537138 -0800	reset: moving to e4ccb61
+e4ccb61c77db4fd083a1bc9b8d6e11d3ae084018 3b6cfbd51e3b1e5b9ea907ea724ac6a66f6b0601 typecad0 <typecad@microfire.co> 1764598967 -0800	commit: via current matching
+3b6cfbd51e3b1e5b9ea907ea724ac6a66f6b0601 c262424fd0279e1adcb2312fa9d73d8fc06a692c typecad0 <typecad@microfire.co> 1765006823 -0800	commit: simplified router api
+c262424fd0279e1adcb2312fa9d73d8fc06a692c 12170548e5363507c3d00d32a968fb436dd4a1c9 typecad0 <typecad@microfire.co> 1765011586 -0800	commit: simplified route api
+12170548e5363507c3d00d32a968fb436dd4a1c9 aee2526b431244d92aa3e321a73b68771f760048 typecad0 <typecad@microfire.co> 1765134547 -0800	commit: router/package updates
+aee2526b431244d92aa3e321a73b68771f760048 1440b67861d3e233751b005b1ea8e2e0718c5d79 typecad0 <typecad@microfire.co> 1765177718 -0800	commit: router release
+1440b67861d3e233751b005b1ea8e2e0718c5d79 6bbcc8ae1b7d95ad4656019e0545a2a6bf8c25eb typecad0 <typecad@microfire.co> 1765288152 -0800	commit: flatpak support and router speed
+6bbcc8ae1b7d95ad4656019e0545a2a6bf8c25eb e6fe20ab9dd3e8e8cff4eaa15489790c661d82cc typecad0 <typecad@microfire.co> 1765460513 -0800	commit: speed increases and doc updates
+e6fe20ab9dd3e8e8cff4eaa15489790c661d82cc 046f8089a70d2ea6e0bdb05957a816c82a3871cc typecad0 <typecad@microfire.co> 1765550282 -0800	commit: net routing fix
+046f8089a70d2ea6e0bdb05957a816c82a3871cc dea627fa24ffea4d7ca95cad0a98895c004c7044 typecad0 <typecad@microfire.co> 1765553198 -0800	commit: concurrent routing fixes
+dea627fa24ffea4d7ca95cad0a98895c004c7044 3d1cf038e3ae6220015f1e8eda090cac0c359f22 typecad0 <typecad@microfire.co> 1765558162 -0800	commit: package bump
+3d1cf038e3ae6220015f1e8eda090cac0c359f22 12a6d1639e8fbe269a2e7ccf4d2a507400fe5211 typecad0 <typecad@microfire.co> 1765736916 -0800	commit: flatpak
+12a6d1639e8fbe269a2e7ccf4d2a507400fe5211 257f1552b199c4b26aa83810f5425d51a498a35c typecad0 <typecad@microfire.co> 1775740775 -0700	commit: kicad 10
+257f1552b199c4b26aa83810f5425d51a498a35c 3a39029e203a73e933a788c650830a91e94678f0 typecad0 <typecad@microfire.co> 1778129009 -0700	commit: maintenance
+3a39029e203a73e933a788c650830a91e94678f0 6cf82633015d29632e0e3e530cf4c2e80db6483d typecad0 <typecad@microfire.co> 1778208212 -0700	commit: version bump
+6cf82633015d29632e0e3e530cf4c2e80db6483d c79eca90fb0e26ed4ae0d07fff9b51a084156968 typecad0 <typecad@microfire.co> 1778218974 -0700	commit: refactor phase 1
+c79eca90fb0e26ed4ae0d07fff9b51a084156968 c79eca90fb0e26ed4ae0d07fff9b51a084156968 typecad0 <typecad@microfire.co> 1778247202 -0700	reset: moving to HEAD
+c79eca90fb0e26ed4ae0d07fff9b51a084156968 e0c7cbfb2357a89951845eb0aec5cf1946b111ad typecad0 <typecad@microfire.co> 1778255335 -0700	commit: refactor pcb.ts destructured
+e0c7cbfb2357a89951845eb0aec5cf1946b111ad 714aa839526e24077f7ac644437182acb7ebe2c4 typecad0 <typecad@microfire.co> 1778286323 -0700	commit: refactor ongoing
+714aa839526e24077f7ac644437182acb7ebe2c4 4ace062c8db038fb7e22f6a76cb637823358c6d5 typecad0 <typecad@microfire.co> 1778308610 -0700	commit: large file destructuring

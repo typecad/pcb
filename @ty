@@ -1,0 +1,288 @@
+import { Component } from "../component.js";
+import type {
+    IPcbOptions,
+    IOutline,
+    IGrLine,
+    IGrCircle,
+    IGrRect,
+    IGrPoly,
+    IGrTextOptions,
+    IFilledZone,
+    IKeepoutZone
+} from './pcb_interfaces.js';
+
+/**
+ * Interface for PCB state, used by extracted modules to type the pcb parameter.
+ * Replaces the `any` type used throughout the codebase for state access.
+ */
+export interface IPcbState {
+    readonly pcb: string;
+    readonly components: Component[];
+    readonly stagedComponents: Component[];
+    readonly groups: string[];
+    readonly groupsAsMap: Map<string, any>;
+    readonly outlines_public: IOutline[];
+    readonly stagedOutlines: IOutline[];
+    readonly existingBoardElements: any[];
+    readonly grTexts: IGrTextOptions[];
+    readonly zones: IFilledZone[];
+    readonly keepoutZones: IKeepoutZone[];
+    readonly grLines: IGrLine[];
+    readonly grCircles: IGrCircle[];
+    readonly grRects: IGrRect[];
+    readonly grPolys: IGrPoly[];
+    readonly options: IPcbOptions;
+
+    setPcb(content: string): void;
+    addComponent(component: Component): void;
+    clearComponents(): void;
+    clearOutlines(): void;
+    clearGroups(): void;
+    pushStagedOutline(outline: IOutline): void;
+    removeStagedOutlinesByUuid(uuids: string[]): void;
+    stageComponent(component: Component): void;
+    unstageComponent(component: Component): void;
+    setGroup(groupString: string, index: number): void;
+    pushGroup(groupString: string): void;
+    findGroupIndex(predicate: (group: string) => boolean): number;
+    pushGrText(text: IGrTextOptions): void;
+    pushZone(zone: IFilledZone): void;
+    pushKeepoutZone(zone: IKeepoutZone): void;
+    pushGrLine(line: IGrLine): void;
+    pushGrCircle(circle: IGrCircle): void;
+    pushGrRect(rect: IGrRect): void;
+    pushGrPoly(poly: IGrPoly): void;
+    setExistingBoardElements(elements: any[]): void;
+}
+
+/**
+ * Encapsulates all mutable state for a PCB design.
+ * Extracted from the PCB class to reduce file size and improve separation of concerns.
+ * 
+ * State categories:
+ * - Serialized output: pcb string
+ * - Component tracking: components, stagedComponents
+ * - Group tracking: groups
+ * - Outline/track geometry: outlines_public, stagedOutlines
+ * - Graphics: grLines, grCircles, grRects, grPolys, grTexts
+ * - Zones: zones, keepoutZones
+ * - Board import: existingBoardElements
+ * - Configuration: options
+ */
+export class PcbState implements IPcbState {
+    #_pcb: string = '';
+    #_components: Component[] = [];
+    #_stagedComponents: Component[] = [];
+    #_groups: string[] = [];
+    #_outlines: IOutline[] = [];
+    #_stagedOutlines: IOutline[] = [];
+    #_existingBoardElements: any[] = [];
+    #_grTexts: IGrTextOptions[] = [];
+    #_zones: IFilledZone[] = [];
+    #_keepoutZones: IKeepoutZone[] = [];
+    #_grLines: IGrLine[] = [];
+    #_grCircles: IGrCircle[] = [];
+    #_grRects: IGrRect[] = [];
+    #_grPolys: IGrPoly[] = [];
+    #_options: IPcbOptions;
+
+    constructor(options: IPcbOptions) {
+        this.#_options = options;
+    }
+
+    // ─── Getters ───────────────────────────────────────────────────────────
+
+    /** The serialized board S-expression string. */
+    get pcb(): string {
+        return this.#_pcb;
+    }
+
+    /** Components that have been placed on the board. */
+    get components(): Component[] {
+        return this.#_components;
+    }
+
+    /** Components staged for later creation (not yet placed). */
+    get stagedComponents(): Component[] {
+        return this.#_stagedComponents;
+    }
+
+    /** Group strings in KiCad S-expression format. */
+    get groups(): string[] {
+        return this.#_groups;
+    }
+
+    /** Groups parsed as a Map from group name to group string. */
+    get groupsAsMap(): Map<string, any> {
+        const groupsMap = new Map<string, any>();
+        this.#_groups.forEach(groupString => {
+            const match = groupString.match(/^\(group\s+"([^"]+)"/);
+            if (match) {
+                groupsMap.set(match[1], groupString);
+            }
+        });
+        return groupsMap;
+    }
+
+    /** Public outlines (non-staged). */
+    get outlines_public(): IOutline[] {
+        return this.#_outlines;
+    }
+
+    /** Staged outlines/tracks awaiting board creation. */
+    get stagedOutlines(): IOutline[] {
+        return this.#_stagedOutlines;
+    }
+
+    /** Elements loaded from an existing kicad_pcb file. */
+    get existingBoardElements(): any[] {
+        return this.#_existingBoardElements;
+    }
+
+    /** Board-level text elements (gr_text). */
+    get grTexts(): IGrTextOptions[] {
+        return this.#_grTexts;
+    }
+
+    /** Filled zones. */
+    get zones(): IFilledZone[] {
+        return this.#_zones;
+    }
+
+    /** Keepout zones. */
+    get keepoutZones(): IKeepoutZone[] {
+        return this.#_keepoutZones;
+    }
+
+    /** Graphical lines. */
+    get grLines(): IGrLine[] {
+        return this.#_grLines;
+    }
+
+    /** Graphical circles. */
+    get grCircles(): IGrCircle[] {
+        return this.#_grCircles;
+    }
+
+    /** Graphical rectangles. */
+    get grRects(): IGrRect[] {
+        return this.#_grRects;
+    }
+
+    /** Graphical polygons. */
+    get grPolys(): IGrPoly[] {
+        return this.#_grPolys;
+    }
+
+    /** PCB options with defaults applied. */
+    get options(): IPcbOptions {
+        return {
+            ...this.#_options,
+            remove_orphans: this.#_options.remove_orphans ?? true
+        };
+    }
+
+    /** Raw options without spreading (used in constructor path). */
+    get option(): IPcbOptions {
+        return this.#_options;
+    }
+
+    // ─── Mutators ──────────────────────────────────────────────────────────
+
+    setPcb(content: string): void {
+        this.#_pcb = content;
+    }
+
+    addComponent(component: Component): void {
+        this.#_components.push(component);
+    }
+
+    clearComponents(): void {
+        this.#_components = [];
+    }
+
+    clearOutlines(): void {
+        this.#_outlines = [];
+    }
+
+    clearGroups(): void {
+        this.#_groups = [];
+    }
+
+    pushStagedOutline(outline: IOutline): void {
+        this.#_stagedOutlines.push(outline);
+    }
+
+    removeStagedOutlinesByUuid(uuids: string[]): void {
+        const uuidSet = new Set(uuids);
+        this.#_stagedOutlines = this.#_stagedOutlines.filter(
+            (outline: IOutline) => !outline.uuid || !uuidSet.has(outline.uuid)
+        );
+    }
+
+    stageComponent(component: Component): void {
+        if (!component || component.dnp === true) {
+            return;
+        }
+        const uuid = component.uuid;
+        if (this.#_stagedComponents.some(existing => existing.uuid === uuid)) {
+            return;
+        }
+        this.#_stagedComponents.push(component);
+    }
+
+    unstageComponent(component: Component): void {
+        if (!component) {
+            return;
+        }
+        const uuid = component.uuid;
+        const index = this.#_stagedComponents.findIndex(existing => existing.uuid === uuid);
+        if (index !== -1) {
+            this.#_stagedComponents.splice(index, 1);
+        }
+    }
+
+    setGroup(groupString: string, index: number): void {
+        this.#_groups[index] = groupString;
+    }
+
+    pushGroup(groupString: string): void {
+        this.#_groups.push(groupString);
+    }
+
+    findGroupIndex(predicate: (group: string) => boolean): number {
+        return this.#_groups.findIndex(predicate);
+    }
+
+    pushGrText(text: IGrTextOptions): void {
+        this.#_grTexts.push(text);
+    }
+
+    pushZone(zone: IFilledZone): void {
+        this.#_zones.push(zone);
+    }
+
+    pushKeepoutZone(zone: IKeepoutZone): void {
+        this.#_keepoutZones.push(zone);
+    }
+
+    pushGrLine(line: IGrLine): void {
+        this.#_grLines.push(line);
+    }
+
+    pushGrCircle(circle: IGrCircle): void {
+        this.#_grCircles.push(circle);
+    }
+
+    pushGrRect(rect: IGrRect): void {
+        this.#_grRects.push(rect);
+    }
+
+    pushGrPoly(poly: IGrPoly): void {
+        this.#_grPolys.push(poly);
+    }
+
+    setExistingBoardElements(elements: any[]): void {
+        this.#_existingBoardElements = elements;
+    }
+}

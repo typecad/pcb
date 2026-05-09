@@ -1,0 +1,91 @@
+/* TypeCAD Documentation Generator CSS Variables
+ * 
+ * This file serves as documentation for all available CSS variables.
+ * Copy this file and modify the values to customize the appearance.
+ * All variables are used in main.css and affect the document's appearance.
+ */
+
+:root {
+  /* Base Colors
+   * These colors define the fundamental appearance of the document
+   */
+  --color-text: #1a1a1a;          /* Main text color */
+  --color-background: #ffffff;     /* Document background color */
+  --color-border: #e0e0e0;         /* Border color for elements */
+  --color-accent: #0366d6;         /* Accent color for links and highlights */
+  --color-image-background: #ffffff; /* Background color for images */
+  --title-block-text: #1a1a1a;     /* Text color in the title block */
+
+  /* Alert Colors
+   * These colors are used for different types of alerts and notes
+   */
+  --color-note: #0969da;           /* Color for note alerts */
+  --color-tip: #1a7f37;            /* Color for tip alerts */
+  --color-warning: #9a6700;         /* Color for warning alerts */
+  --color-severe: #bc4c00;          /* Color for severe alerts */
+  --color-caution: #d1242f;         /* Color for caution alerts */
+  --color-important: #8250df;       /* Color for important alerts */
+
+  /* Typography
+   * Font families and sizes for different text elements
+   */
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+    Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas,
+    Liberation Mono, monospace;
+  --line-height-base: 1.5;         /* Base line height for text */
+  --line-height-heading: 1.2;      /* Line height for headings */
+  --font-size-base: 16px;          /* Base font size */
+  --font-size-sm: 0.875rem;        /* Small font size */
+  --font-size-lg: 1.125rem;        /* Large font size */
+  --font-size-xl: 1.25rem;         /* Extra large font size */
+  --font-size-2xl: 1.5rem;         /* 2X large font size */
+  --font-size-3xl: 1.875rem;       /* 3X large font size */
+  --font-size-4xl: 2.25rem;        /* 4X large font size */
+}
+
+/* Dark Mode Colors
+ * These colors are used when dark mode is enabled
+ */
+body.dark-mode {
+  --color-text: #ffffff;           /* Dark mode text color */
+  --color-background: #121212;     /* Dark mode background color */
+  --color-border: #333333;         /* Dark mode border color */
+  --color-accent: #58a6ff;         /* Dark mode accent color */
+  --color-image-background: #121212; /* Dark mode image background */
+  --title-block-text: #ffffff;     /* Dark mode title block text */
+}
+
+/* Print Mode Colors
+ * These colors are used when printing the document
+ */
+@media print {
+  :root {
+    --color-text: #1a1a1a !important;      /* Print text color */
+    --color-background: #ffffff !important; /* Print background color */
+    --color-border: #e0e0e0 !important;    /* Print border color */
+    --color-accent: #0366d6 !important;    /* Print accent color */
+    --title-block-text: #1a1a1a !important; /* Print title block text */
+  }
+}
+
+/* Usage Examples:
+ * 
+ * 1. To change the main text color:
+ *    --color-text: #333333;
+ * 
+ * 2. To change the background color:
+ *    --color-background: #f5f5f5;
+ * 
+ * 3. To change the accent color (links):
+ *    --color-accent: #ff0000;
+ * 
+ * 4. To change alert colors:
+ *    --color-note: #0000ff;
+ *    --color-tip: #00ff00;
+ * 
+ * 5. To change font sizes:
+ *    --font-size-base: 18px;
+ *    --font-size-4xl: 3rem;
+ * 
+ */

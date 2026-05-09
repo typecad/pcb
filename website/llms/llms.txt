@@ -1,0 +1,51 @@
+# typeCAD
+
+> Project description goes here
+
+## Documentation
+
+- [Automate](automate.md): Automate Your Hardware Design
+- [Code](code.md): Code as Schematic
+- [Docs](docs.md): 📗 **type**CAD Documentation
+- [Ai](docs/ai.md): AI Notes
+- [Board Layout](docs/board_layout.md): Board Layout
+- [Classes](docs/classes.md): Classes
+- [Components](docs/components.md): Components
+- [Concepts](docs/concepts.md): Concepts
+- [Connections](docs/connections.md): Connections
+- [Package Code](docs/package.md): Code
+- [Passives](docs/passives.md): Passives
+- [Pins](docs/pins.md): Pins
+- [Power](docs/power.md): Power
+- [Project Structure](docs/project-structure.md): Project Structure
+- [Requirements](docs/requirements.md): Requirements
+- [Tooling](docs/tooling.md): Tooling
+- [Troubleshooting](docs/troubleshooting.md): Troubleshooting
+- [What Is Typecad](docs/what-is-typecad.md): What is typeCAD
+- [Examples](examples.md): Examples
+- [Attiny85](examples/attiny85.md): Adding KiCAD Library Components
+- [Bom](examples/bom.md): BOM
+- [Erc](examples/erc.md): ERC
+- [Jig](examples/jig.md): Test jig/multi-board creation
+- [Jlcpcb Export](examples/jlcpcb-export.md): JLCPCB-Export
+- [Ngspice](examples/ngspice.md): ngspice
+- [Packages](examples/packages.md): Adding typeCAD Packages
+- [Voltage Divider](examples/voltage-divider.md): Make a Voltage Divider in **type**CAD
+- [Getting Started](getting-started.md): Getting Started with typeCAD
+- [Git](git.md): Git for Hardware Design
+- [Ai](news/ai.md): Hardware Design with AI
+- [Command Line Suite](news/command-line-suite.md): A suite of command-line tools
+- [Jlcpcb Parts](news/jlcpcb-parts.md): JLCPCB Parts
+- [Kicad Symbols](news/kicad-symbols.md): Search for operational amplifier symbols
+- [Kicad Typecad Sync](news/kicad-typecad-sync.md): Code and KiCAD
+- [Layout Improvements](news/layout-improvements.md): Major improvements in typeCAD PCB layout
+- [Llms Txt](news/llms-txt.md): The llms.txt standard
+- [Mcp](news/mcp.md): typeCAD MCP Server
+- [New Site](news/new-site.md): cover: https://unsplash.com/photos/b0p818k8Ok8/download?ixid=M3wxMjA3fDB8MXxjb2xsZWN0aW9ufDh8MjU1MTgzMXx8fHx8Mnx8MTcyNTU0MDM2N3w&force=true&w=640
+- [Power Aware](news/power-aware.md): Building power aware circuits with typeCAD
+- [Private Npm Packages](news/private-npm-packages.md): Keeping your work private
+- [Schematics](news/schematics.md): Make a schematic file in typeCAD
+- [Simplification](news/simplification.md): Simplification
+- [Tracks](news/tracks.md): Create tracks with typeCAD
+- [Package](package.md): npm Packages for Hardware
+- [Packages](packages.md): Packages

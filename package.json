@@ -1,0 +1,38 @@
+{
+  "name": "typecad-workspace",
+  "private": true,
+  "scripts": {
+    "build": "npm run build -ws --if-present",
+    "test": "npm run test -ws --if-present",
+    "format": "prettier --write \"**/*/src/**/*.ts\"",
+    "format:check": "prettier --check \"**/*/src/**/*.ts\"",
+    "lint": "eslint \"**/*/src/**/*.ts\" \"**/*/*.ts\" --ignore-pattern \"**/*/node_modules/**\" --ignore-pattern \"**/*/dist/**\" --ignore-pattern \"**/*/examples/**\"",
+    "changeset": "changeset",
+    "version": "changeset version",
+    "publish": "changeset publish",
+    "publish:private": "npm publish -ws --tag private --registry http://192.168.2.207:4873/"
+  },
+  "workspaces": [
+    "@typecad/*",
+    "!@typecad/mast",
+    "all_packages/hw",
+    "demo/hw",
+    "website"
+  ],
+  "devDependencies": {
+    "@changesets/changelog-github": "^0.5.1",
+    "@changesets/cli": "^2.29.4",
+    "@eslint/js": "^9.25.0",
+    "@typescript-eslint/eslint-plugin": "^8.31.0",
+    "@typescript-eslint/parser": "^8.31.0",
+    "eslint": "^9.25.0",
+    "prettier": "^3.4.2",
+    "typescript": "^5.7.3",
+    "typescript-eslint": "^8.31.0",
+    "vitest": "^3.2.1"
+  },
+  "overrides": {
+    "cookie": "^1.0.0",
+    "pdf2json": "^4.0.3"
+  }
+}

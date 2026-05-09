@@ -1,0 +1,9 @@
+// install the Graphviz Interactive Preview to view this graph
+digraph NetConnectivity {
+    graph [rankdir=LR];
+    node [shape=box, style="filled", fontname="Arial", fontcolor="#ECEFF4"];
+    edge [fontname="Arial", fontcolor="#ECEFF4"];
+    bgcolor="transparent";
+
+
+}

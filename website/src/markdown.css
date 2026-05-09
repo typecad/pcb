@@ -1,0 +1,397 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+	/* CSS custom properties for configurable scroll behavior */
+	--code-block-max-height: 24rem;
+	--code-block-max-height-mobile: 16rem;
+	--code-block-max-height-small: 12rem;
+	--code-block-max-height-desktop: 32rem;
+	--code-block-scrollbar-width: 8px;
+	--code-block-scrollbar-color: rgba(156, 163, 175, 0.5);
+	--code-block-scrollbar-hover-color: rgba(156, 163, 175, 0.7);
+	--code-block-scrollbar-color-dark: rgba(75, 85, 99, 0.6);
+	--code-block-scrollbar-hover-color-dark: rgba(75, 85, 99, 0.8);
+	--code-block-border-radius: 0.375rem;
+	--code-block-font-size-mobile: 0.875rem;
+	--code-block-font-size-small: 0.8125rem;
+	--code-block-background-dark: #18181b;
+
+	h1 {
+		@apply scroll-m-20 text-4xl font-extrabold tracking-tight lg:text-5xl mt-9
+	}
+	
+	h2 {
+		@apply scroll-m-20 text-3xl font-semibold tracking-tight transition-colors mt-9
+	}
+	
+	h3 {
+		@apply scroll-m-20 text-2xl font-semibold tracking-tight mt-9
+	}
+	
+	h4 {
+		@apply scroll-m-20 text-xl font-semibold tracking-tight mt-9
+	}
+	
+	p {
+		@apply leading-7 mt-3
+	}
+	
+	blockquote {
+		@apply mt-6 border-l-2 pl-6 italic
+	}
+
+	ul li {
+		@apply ml-6 list-none; /* Remove default bullets */
+	  }
+	  
+	  /* Add custom em dash */
+	  ul li:not(.toc)::before {
+		content: '—';
+		@apply mr-2 text-neutral-600; /* Adjust spacing and color */
+	  }
+
+	ol li {
+		@apply ml-6 list-decimal 
+	}
+	
+	.markdown a {
+		@apply no-underline text-[#4d9375] font-bold
+	}
+
+	table {
+		@apply w-full table-auto
+	}
+
+	tr {
+		@apply even:bg-muted m-0 p-0 table-row
+	}
+
+	th {
+		@apply px-4 py-2 text-left font-bold [&[align=center]]:text-center [&[align=right]]:text-right table-cell break-words
+	}
+
+	td {
+		@apply px-4 py-2 text-left [&[align=center]]:text-center [&[align=right]]:text-right table-cell break-words
+	}
+
+	/* Remove text-nowrap from first column to allow wrapping */
+	td:first-child {
+		@apply break-words
+	}
+
+	/* Make tables more responsive within ScrollArea */
+	.scroll-area table {
+		@apply min-w-max
+	}
+
+	code {
+		@apply font-bold
+	}
+
+	/* Enhanced auto-scroll styles for code blocks using custom properties */
+	pre {
+		@apply overflow-auto max-w-full;
+		max-height: var(--code-block-max-height);
+		border-radius: var(--code-block-border-radius);
+		position: relative;
+		
+		/* Smooth scrolling behavior */
+		scroll-behavior: smooth;
+		
+		/* Custom scrollbar styling for better UX */
+		scrollbar-width: thin;
+		scrollbar-color: var(--code-block-scrollbar-color) transparent;
+	}
+
+	/* Webkit scrollbar styling for Chromium browsers */
+	pre::-webkit-scrollbar {
+		width: var(--code-block-scrollbar-width);
+		height: var(--code-block-scrollbar-width);
+	}
+
+	pre::-webkit-scrollbar-track {
+		background: transparent;
+		border-radius: calc(var(--code-block-scrollbar-width) / 2);
+	}
+
+	pre::-webkit-scrollbar-thumb {
+		background: var(--code-block-scrollbar-color);
+		border-radius: calc(var(--code-block-scrollbar-width) / 2);
+		transition: background-color 0.2s ease;
+	}
+
+	pre::-webkit-scrollbar-thumb:hover {
+		background: var(--code-block-scrollbar-hover-color);
+	}
+
+	/* 
+	 * CSS Class System for Code Block Differentiation
+	 * Higher specificity rules to handle style conflicts
+	 */
+
+	/* Auto-scroll class for enhanced code blocks - specificity: 0,0,1,1 */
+	pre.auto-scroll-code {
+		@apply overflow-auto;
+		max-height: var(--code-block-max-height);
+		max-width: 100%;
+	}
+
+	/* Horizontal scroll only - specificity: 0,0,1,1 */
+	pre.scroll-horizontal {
+		@apply overflow-x-auto overflow-y-hidden;
+		max-height: none;
+		max-width: 100%;
+	}
+
+	/* Vertical scroll only - specificity: 0,0,1,1 */
+	pre.scroll-vertical {
+		@apply overflow-y-auto overflow-x-hidden;
+		max-width: none;
+		white-space: pre-wrap;
+		word-break: break-word;
+		max-height: var(--code-block-max-height);
+	}
+
+	/* Both horizontal and vertical scroll - specificity: 0,0,1,1 */
+	pre.scroll-both {
+		@apply overflow-auto;
+		max-height: var(--code-block-max-height);
+		max-width: 100%;
+	}
+
+	/* ScrollArea-wrapped code blocks - higher specificity: 0,0,1,1 */
+	.scroll-area-wrapped pre {
+		@apply overflow-visible;
+		max-height: none !important;
+		max-width: none !important;
+		scrollbar-width: auto;
+	}
+
+	/* Legacy ScrollArea support - specificity: 0,0,1,1 */
+	.scroll-area pre {
+		@apply overflow-visible;
+		max-height: none !important;
+		max-width: none !important;
+		scrollbar-width: auto;
+	}
+
+	/* Ensure ScrollArea takes precedence over auto-scroll - specificity: 0,0,2,1 */
+	.scroll-area pre.auto-scroll-code,
+	.scroll-area-wrapped pre.auto-scroll-code,
+	.scroll-area pre.scroll-horizontal,
+	.scroll-area-wrapped pre.scroll-horizontal,
+	.scroll-area pre.scroll-vertical,
+	.scroll-area-wrapped pre.scroll-vertical,
+	.scroll-area pre.scroll-both,
+	.scroll-area-wrapped pre.scroll-both {
+		@apply overflow-visible !important;
+		max-height: none !important;
+		max-width: none !important;
+		scrollbar-width: auto !important;
+	}
+
+	/* Fallback styles for browser compatibility */
+	
+	/* Fallback for browsers that don't support CSS custom properties */
+	@supports not (max-height: var(--code-block-max-height)) {
+		pre {
+			max-height: 24rem;
+		}
+		
+		pre.auto-scroll-code,
+		pre.scroll-both,
+		pre.scroll-vertical {
+			max-height: 24rem;
+		}
+		
+		pre::-webkit-scrollbar {
+			width: 8px;
+			height: 8px;
+		}
+		
+		pre::-webkit-scrollbar-thumb {
+			background: rgba(156, 163, 175, 0.5);
+		}
+		
+		pre::-webkit-scrollbar-thumb:hover {
+			background: rgba(156, 163, 175, 0.7);
+		}
+		
+		pre {
+			scrollbar-color: rgba(156, 163, 175, 0.5) transparent;
+		}
+	}
+
+	/* Fallback for browsers that don't support overflow: auto */
+	@supports not (overflow: auto) {
+		pre {
+			overflow: scroll;
+		}
+		
+		pre.auto-scroll-code,
+		pre.scroll-both {
+			overflow: scroll;
+		}
+		
+		pre.scroll-horizontal {
+			overflow-x: scroll;
+			overflow-y: hidden;
+		}
+		
+		pre.scroll-vertical {
+			overflow-y: scroll;
+			overflow-x: hidden;
+		}
+	}
+
+	/* Fallback for browsers that don't support scrollbar-width */
+	@supports not (scrollbar-width: thin) {
+		pre::-webkit-scrollbar {
+			width: 12px;
+			height: 12px;
+		}
+	}
+
+	/* Responsive design considerations using custom properties */
+	@media (max-width: 640px) {
+		:root {
+			--code-block-max-height: var(--code-block-max-height-mobile);
+		}
+		
+		pre {
+			max-height: var(--code-block-max-height-mobile);
+			font-size: var(--code-block-font-size-mobile);
+		}
+		
+		pre.auto-scroll-code,
+		pre.scroll-both,
+		pre.scroll-vertical {
+			max-height: var(--code-block-max-height-mobile);
+		}
+	}
+
+	@media (max-width: 480px) {
+		:root {
+			--code-block-max-height: var(--code-block-max-height-small);
+		}
+		
+		pre {
+			max-height: var(--code-block-max-height-small);
+			font-size: var(--code-block-font-size-small);
+		}
+		
+		pre.auto-scroll-code,
+		pre.scroll-both,
+		pre.scroll-vertical {
+			max-height: var(--code-block-max-height-small);
+		}
+	}
+
+	/* Large screen optimizations */
+	@media (min-width: 1024px) {
+		:root {
+			--code-block-max-height: var(--code-block-max-height-desktop);
+		}
+		
+		pre {
+			max-height: var(--code-block-max-height-desktop);
+		}
+		
+		pre.auto-scroll-code,
+		pre.scroll-both,
+		pre.scroll-vertical {
+			max-height: var(--code-block-max-height-desktop);
+		}
+	}
+
+	/* High contrast mode support */
+	@media (prefers-contrast: high) {
+		pre::-webkit-scrollbar-thumb {
+			background: rgba(0, 0, 0, 0.8);
+		}
+		
+		pre {
+			scrollbar-color: rgba(0, 0, 0, 0.8) transparent;
+		}
+	}
+
+	/* Reduced motion support */
+	@media (prefers-reduced-motion: reduce) {
+		pre {
+			scroll-behavior: auto;
+		}
+	}
+	hr {
+		@apply my-6 border-t-2 border-gray-500}
+  }
+
+  .dark {
+	pre {
+		background: var(--code-block-background-dark);
+		
+		/* Dark mode scrollbar styling using custom properties */
+		scrollbar-color: var(--code-block-scrollbar-color-dark) transparent;
+	}
+	
+	/* Dark mode webkit scrollbar styling */
+	pre::-webkit-scrollbar-thumb {
+		background: var(--code-block-scrollbar-color-dark);
+	}
+	
+	pre::-webkit-scrollbar-thumb:hover {
+		background: var(--code-block-scrollbar-hover-color-dark);
+	}
+	
+	/* High contrast mode in dark theme */
+	@media (prefers-contrast: high) {
+		:root {
+			--code-block-scrollbar-color-dark: rgba(255, 255, 255, 0.8);
+			--code-block-scrollbar-hover-color-dark: rgba(255, 255, 255, 0.9);
+		}
+		
+		pre::-webkit-scrollbar-thumb {
+			background: rgba(255, 255, 255, 0.8);
+		}
+		
+		pre {
+			scrollbar-color: rgba(255, 255, 255, 0.8) transparent;
+		}
+	}
+	
+	/* Fallback for dark mode when custom properties aren't supported */
+	@supports not (background: var(--code-block-background-dark)) {
+		pre {
+			background: #18181b;
+			scrollbar-color: rgba(75, 85, 99, 0.6) transparent;
+		}
+		
+		pre::-webkit-scrollbar-thumb {
+			background: rgba(75, 85, 99, 0.6);
+		}
+		
+		pre::-webkit-scrollbar-thumb:hover {
+			background: rgba(75, 85, 99, 0.8);
+		}
+	}
+  }
+
+  code[data-line-numbers] > span[data-line-number]::before {
+	/* Insert the line number data attribute before the line */
+	content: attr(data-line-number);
+  
+	/* Other styling */
+	display: inline-block;
+	width: 1rem;
+	margin-right: 1rem;
+	margin-left: 1rem;
+	text-align: right;
+	color: gray;
+  }
+
+  code > span[data-highlighted] {
+	background: #83605b42;
+	width: 100%;
+  }
+  

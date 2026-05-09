@@ -1,0 +1,28 @@
+{
+  "name": "@typecad/create-typecad",
+  "version": "0.2.10",
+  "description": "Create a new typeCAD project",
+  "author": "typeCAD",
+  "license": "ISC",
+  "homepage": "https://typecad.net",
+  "funding": "https://www.buymeacoffee.com/typecad",
+  "main": "index.js",
+  "bin": "index.js",
+  "type": "module",
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@inquirer/prompts": "^7.3.2",
+    "chalk": "4.1.2",
+    "inquirer": "^8.0.0",
+    "inquirer-select-pro": "^1.0.0-alpha.9"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.3"
+  },
+  "scripts": {
+    "package_publish": "npm publish --access public",
+    "publish:private": "npm publish --tag private --registry http://192.168.2.207:4873/"
+  }
+}

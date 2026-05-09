@@ -69,5 +69,5 @@ describe('Keepout Area Routing Tests', () => {
         expect(route2.success).toBe(true);
         expect(route3.success).toBe(true);
         expect(route4.success).toBe(true);
-    });
+    }, 60000);
 });

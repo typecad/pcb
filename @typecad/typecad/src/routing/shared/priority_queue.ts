@@ -10,6 +10,10 @@ export class PriorityQueue<T> {
     return this.heap.length;
   }
 
+  clear(): void {
+    this.heap.length = 0;
+  }
+
   peek(): T | undefined {
     return this.heap[0];
   }
@@ -71,4 +75,3 @@ export class PriorityQueue<T> {
     this.heap[idx] = item;
   }
 }
-

@@ -158,19 +158,19 @@ const net_gnd = typecad.named('GND').net(
 
 // TCXO connections
 typecad.net(U1.pin(1), U1.pin(4)); // Pin 1 (OE) to +3V for continuous operation
-typecad.net(U1.pin(3), U2.pin(10), TP1.pin(1)); // Pin 3 (OUT) to 74HC4060 clock input and testpoint
+// typecad.net(U1.pin(3), U2.pin(10), TP1.pin(1)); // Pin 3 (OUT) to 74HC4060 clock input and testpoint
 
 // 74HC4060 connections (14-stage binary counter)
 // Clock input from TCXO
-const net_osc_out = typecad.named('OSC_OUT').net(U2.pin(10), U1.pin(3)); // OSC IN from TCXO
+const net_osc_out = typecad.named('OSC_OUT').net(U2.pin(10), U1.pin(3), TP1.pin(1)); // OSC IN from TCXO
 
 // Reset pins tied together through 10kΩ resistor to GND
 const net_reset = typecad.named('RESET').net(U2.pin(11), U2.pin(12), R1.pin(1)); // RESET pins tied together
 typecad.net(R1.pin(2), U2.pin(8));   // Resistor to ground
 
 // Output connections - only Q14 (Pin 3) is used
-typecad.net(U2.pin(3), U3.pin(10)); // Q14 to 74HC4040 clock input
-const net_256 = typecad.named('256HZ').net(U2.pin(3), TP2.pin(1)); // Q14 to testpoint
+// typecad.net(U2.pin(3), U3.pin(10)); // Q14 to 74HC4040 clock input
+const net_256 = typecad.named('256HZ').net(U2.pin(3), TP2.pin(1), U3.pin(10)); // Q14 to testpoint
 
 // Unused outputs tied to ground to prevent floating
 typecad.net(U2.pin(1), U2.pin(8));  // Q12 to GND
@@ -186,13 +186,13 @@ typecad.net(U2.pin(15), U2.pin(8)); // Q3 to GND
 
 // 74HC4040 connections (12-stage binary counter)
 // Clock input from 74HC4060 Q14
-typecad.net(U3.pin(10), U2.pin(3)); // CLK from 74HC4060 Q14
+// typecad.net(U3.pin(10), U2.pin(3)); // CLK from 74HC4060 Q14
 
 // Clear pin to ground (active low, so tied to GND for normal operation)
 typecad.net(U3.pin(11), U3.pin(8)); // CLR to GND
 
 // Output connections - Pin 13 (QH) provides 1 Hz output (256 Hz ÷ 256)
-const net_1hz_unbuffered = typecad.named('1HZ_UNBUFFERED').net(U3.pin(13), TP3.pin(1)); // QH to testpoint
+const net_1hz_unbuffered = typecad.named('1HZ_UNBUFFERED').net(U3.pin(13), TP3.pin(1), U4.pin(4)); // QH to testpoint
 
 // Unused outputs tied to ground to prevent floating
 typecad.net(U3.pin(1), U3.pin(8));  // Q1 to GND
@@ -213,7 +213,7 @@ typecad.net(U4.pin(1), U4.pin(10)); // 1OE to GND (enabled)
 typecad.net(U4.pin(19), U4.pin(10)); // 2OE to GND (enabled)
 
 // Input connections - only 1A2 (Pin 4) is used
-typecad.net(U4.pin(4), U3.pin(13));  // 1A2 from 74HC4040 QH (1 Hz signal)
+// typecad.net(U4.pin(4), U3.pin(13));  // 1A2 from 74HC4040 QH (1 Hz signal)
 
 // Unused inputs tied to ground to prevent floating
 typecad.net(U4.pin(2), U4.pin(10)); // 1A1 to GND
@@ -234,8 +234,8 @@ typecad.Schematic.dnc(U4.pin(13));
 typecad.Schematic.dnc(U4.pin(14));
 
 // Output connections - only 1Y2 (Pin 16) is used
-typecad.net(U4.pin(16), J2.pin(2));  // 1Y2 to 1Hz output
-const net_1hz_buffered = typecad.named('1HZ_BUFFERED').net(U4.pin(16), TP4.pin(1)); // 1Y2 to testpoint
+// typecad.net(U4.pin(16), J2.pin(2));  // 1Y2 to 1Hz output
+const net_1hz_buffered = typecad.named('1HZ_BUFFERED').net(U4.pin(16), TP4.pin(1), J2.pin(2)); // 1Y2 to testpoint
 
 // Decoupling capacitors - placed near each IC's VDD pin
 typecad.net(C1.pin(1), U1.pin(4)); typecad.net(C1.pin(2), U1.pin(2)); // TCXO
@@ -256,10 +256,15 @@ typecad.line({ start: { x: 10, y: 10 }, end: { x: 20, y: 20 } });
 //outline
 typecad.outline(135.255, 77.47, 46.355, 32.385);
 
-typecad.route(net_3v);
-typecad.route(net_5v);
+typecad.route(net_3v, { debug: false });
+typecad.route(net_5v, { debug: false });
+// typecad.route(net_gnd, { debug: true });
+typecad.route(net_1hz_buffered, { debug: false });
+typecad.route(net_1hz_unbuffered, { debug: false });
+typecad.route(net_osc_out, { debug: false });
+typecad.route(net_reset, { debug: false });
+typecad.route(net_256, { debug: false });
 // typecad.route(net_gnd);
-typecad.route(net_1hz_buffered);
 
 typecad.create(
   U1, U2, U3, U4,           // ICs

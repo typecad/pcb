@@ -106,6 +106,12 @@ export class GridSearch {
   private globalOccupancyCache: Map<number, GlobalOccupancyEntry> = new Map();
   private layerCodeMap: Map<string, number> = new Map();
   private nextLayerCode: number = 1;
+  private openMapArr: (IRouteNode | undefined)[] = [];
+  private closedSet: Uint32Array = new Uint32Array(0);
+  private localOccupancyCache: Int32Array = new Int32Array(0);
+  private searchGeneration: number = 0;
+  private openMapTouchedIndices: number[] = [];
+  private openPQ = new PriorityQueue<IRouteNode>((a, b) => a.fCost - b.fCost);
   private static readonly MAX_PATH_CACHE_ENTRIES = 64;
   private static readonly MAX_GLOBAL_OCCUPANCY_CACHE_ENTRIES = 400000;
   private static readonly ANGLE_TOLERANCE = 1e-6;
@@ -442,6 +448,21 @@ export class GridSearch {
     const totalCoordSlots = windowData.totalCoordSlots;
     const boundaryTracker = { touched: false };
 
+    this.searchGeneration++;
+    if (this.openMapArr.length < totalCoordSlots) {
+      this.openMapArr = new Array(totalCoordSlots).fill(undefined);
+    }
+    if (this.closedSet.length < totalCoordSlots) {
+      const newClosedSet = new Uint32Array(totalCoordSlots);
+      newClosedSet.set(this.closedSet);
+      this.closedSet = newClosedSet;
+    }
+    if (this.localOccupancyCache.length < totalCoordSlots) {
+      const newLocalOccupancyCache = new Int32Array(totalCoordSlots);
+      newLocalOccupancyCache.set(this.localOccupancyCache);
+      this.localOccupancyCache = newLocalOccupancyCache;
+    }
+
     const encodeKey = (layer: string, gridX: number, gridY: number): number => {
       const layerIndex = layerIdMap.get(layer);
       if (layerIndex === undefined) {
@@ -471,8 +492,7 @@ export class GridSearch {
 
     // Hot-path local occupancy cache.
     // Values: -1 = unknown, 0 = free, 1 = blocked.
-    const localOccupancyCache = new Int8Array(totalCoordSlots);
-    localOccupancyCache.fill(-1);
+    // We use this.localOccupancyCache instead of a local allocation.
 
     const lookupOccupancy: OccupancyLookup = (
       layer: string,
@@ -500,10 +520,9 @@ export class GridSearch {
           return true;
         }
 
-        const localCached = localOccupancyCache[cellIndex];
-        if (localCached !== -1) {
-          return localCached === 1;
-        }
+        const localCached = this.localOccupancyCache[cellIndex];
+        if (localCached === this.searchGeneration) return true;
+        if (localCached === -this.searchGeneration) return false;
 
         const globalKey = this.buildGlobalOccupancyKey(
           layer,
@@ -523,7 +542,7 @@ export class GridSearch {
             cached.clearanceBucket === globalKey.clearanceBucket &&
             cached.variant === globalKey.variant
           ) {
-            localOccupancyCache[cellIndex] = cached.blocked ? 1 : 0;
+            this.localOccupancyCache[cellIndex] = cached.blocked ? this.searchGeneration : -this.searchGeneration;
             return cached.blocked;
           }
         }
@@ -538,7 +557,7 @@ export class GridSearch {
           true
         );
 
-        localOccupancyCache[cellIndex] = blocked ? 1 : 0;
+        this.localOccupancyCache[cellIndex] = blocked ? this.searchGeneration : -this.searchGeneration;
         if (globalKey) {
           this.storeGlobalOccupancyValue({
             key: globalKey.key,
@@ -597,12 +616,11 @@ export class GridSearch {
       return blocked;
     };
 
-    // Use a preallocated array for openSet entries (fast indexed access)
-    const openMapArr: (IRouteNode | undefined)[] = new Array(totalCoordSlots);
-    const openPQ = new PriorityQueue<IRouteNode>(
-      (a, b) => a.fCost - b.fCost
-    );
-    const closedSet = new Uint8Array(totalCoordSlots);
+    // Use preallocated arrays from class instance
+    const openMapArr = this.openMapArr;
+    const closedSet = this.closedSet;
+    const openPQ = this.openPQ;
+    openPQ.clear();
 
     const viaPenalty = this.options.allowVias ? this.options.viaCost ?? 0 : 0;
 
@@ -668,6 +686,7 @@ export class GridSearch {
       }
       const existing = openMapArr[key];
       if (!existing || sNode.fCost < existing.fCost) {
+        if (!existing) this.openMapTouchedIndices.push(key);
         openMapArr[key] = sNode;
         openPQ.push(sNode);
       }
@@ -721,7 +740,7 @@ export class GridSearch {
           continue;
         }
         const mapped = openMapArr[currentKey];
-        if (!mapped || mapped !== current || closedSet[currentKey]) {
+        if (!mapped || mapped !== current || closedSet[currentKey] === this.searchGeneration) {
           continue;
         }
 
@@ -739,7 +758,7 @@ export class GridSearch {
         }
 
         openMapArr[currentKey] = undefined;
-        closedSet[currentKey] = 1;
+        closedSet[currentKey] = this.searchGeneration;
 
         let neighbors = this.getNeighbors(current, neighborContext);
 
@@ -754,7 +773,7 @@ export class GridSearch {
             neighbor.gridY
           );
 
-          if (neighborKey === -1 || closedSet[neighborKey]) {
+          if (neighborKey === -1 || closedSet[neighborKey] === this.searchGeneration) {
             continue;
           }
 
@@ -790,11 +809,10 @@ export class GridSearch {
           // Only add to queue if this is a better path
           // This prevents duplicate nodes accumulating in the priority queue
           if (!existingNeighbor) {
+            this.openMapTouchedIndices.push(neighborKey);
             openMapArr[neighborKey] = neighbor;
             openPQ.push(neighbor);
           } else if (neighbor.gCost < existingNeighbor.gCost) {
-            // Update the existing node's cost without adding a duplicate
-            // The old node will be ignored when popped (due to mapped check)
             openMapArr[neighborKey] = neighbor;
             openPQ.push(neighbor);
           }
@@ -811,6 +829,10 @@ export class GridSearch {
         error: `No path found after ${iterations} iterations`,
       };
     } finally {
+      for (const idx of this.openMapTouchedIndices) {
+        this.openMapArr[idx] = undefined;
+      }
+      this.openMapTouchedIndices.length = 0;
       profiler.end('GridSearch.runSearchWithWindow');
     }
   }

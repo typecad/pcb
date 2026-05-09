@@ -416,7 +416,8 @@ export function autoroute(pcb: any, options: IAutorouteOptions): IAutorouteResul
         coarseGridFactory: buildCoarseGrid,
         parallelMSTWorkers: options.parallelMSTWorkers ?? defaultParallelWorkers,
         gridObstacles: allObstacles,
-        gridBounds: bounds
+        gridBounds: bounds,
+        debug: options.debug
     } as const;
 
     // ── 15. Build shared context ─────────────────────────────────────────

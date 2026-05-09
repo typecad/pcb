@@ -463,7 +463,6 @@ heuristicWeight: options.heuristicWeight ?? 2.0,
             let totalVias = 0;
             let successCount = 0;
 
-            // Route segments sequentially on the main thread
             let segmentResults: IRoutePath[] = [];
             for (let i = 0; i < mstEdges.length; i++) {
                 const edge = mstEdges[i];
@@ -1062,7 +1061,11 @@ heuristicWeight: options.heuristicWeight ?? 2.0,
             }
 
             output += ' ' + chalk.magenta(timeString);
-            logger.debug(output);
+            if (this.options.debug) {
+                process.stdout.write(output + '\n');
+            } else {
+                logger.debug(output);
+            }
         } else {
             const output =
                 chalk.red('[failed]') + ' ' +
@@ -1071,7 +1074,11 @@ heuristicWeight: options.heuristicWeight ?? 2.0,
                 chalk.red(result.error || 'Routing failed') + ' ' +
                 chalk.magenta(timeString);
 
-            logger.debug(output);
+            if (this.options.debug) {
+                process.stdout.write(output + '\n');
+            } else {
+                logger.debug(output);
+            }
         }
     }
 
@@ -1111,13 +1118,16 @@ heuristicWeight: options.heuristicWeight ?? 2.0,
                 chalk.magenta(timeString);
 
             // Always show routing results, not just in debug mode
-            logger.debug(output);
+            if (this.options.debug) {
+                process.stdout.write(output + '\n');
+            } else {
+                logger.debug(output);
+            }
             process.stdout.write('');
         }
     }
 
   /**
-   * Clears cached routing data. Should be called when the underlying board
    * geometry changes outside of this router (e.g., manual edits).
    */
   public invalidateCaches(scope: { windows?: boolean; paths?: boolean; occupancy?: boolean } = {}): void {

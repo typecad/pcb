@@ -493,7 +493,10 @@ export class Schematic {
             );
         });
 
+        this.Nodes = Object.values(nodeMap);
+
         const definition = this._buildNetDefinition(node_name, pins);
+        this._chained_name = '';
         return definition;
     }
 

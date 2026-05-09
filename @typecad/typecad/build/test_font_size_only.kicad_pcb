@@ -9,7 +9,7 @@
   )
   (paper "A4")
   (footprint "Package_SO:SOIC-8_3.9x4.9mm_P1.27mm"
-    (uuid "0302fbe6-cd6d-421e-aec2-a387a3f6a476")
+    (uuid "a3b45753-93dd-4e2e-a180-1d53f2a98675")
     (at 100 100 0)
     (version 20260206)
     (generator "kicad-footprint-generator")
@@ -48,11 +48,11 @@
         )
       )
     )
-    (property "Code" "{'file':'c:\\typecad\\typeCAD\\@typecad\\typecad\\tests\\reference_width_height_output.test.ts','line':30,'variable':'component','params':{'reference':['U3',{'x':0,'y':0,'fontSize':2}],'value':'TestValue','footprint':'Package_SO:SOIC-8_3.9x4.9mm_P1.27mm','pcb':{'x':100,'y':100,'rotation':0}}}"
+    (property "Code" "{'file':'C:\\typecad\\typeCAD\\@typecad\\typecad\\tests\\reference_width_height_output.test.ts','line':30,'variable':'component','params':{'reference':['U3',{'x':0,'y':0,'fontSize':2}],'value':'TestValue','footprint':'Package_SO:SOIC-8_3.9x4.9mm_P1.27mm','pcb':{'x':100,'y':100,'rotation':0}}}"
       (at 0 0 0)
       (layer "F.Fab")
       (hide yes)
-      (uuid "6638f12a-42b8-4fbd-841d-fe8f7ddbd033")
+      (uuid "64973890-43d8-40ca-b206-7f6ab4e44135")
       (effects
         (font
           (size 1 1)

@@ -5,7 +5,7 @@
     "module": "ES2022",
     "moduleResolution": "bundler",
     "esModuleInterop": true,
-    "downlevelIteration": true,
+
     "skipLibCheck": true,
     "strict": false,
     "declaration": true,

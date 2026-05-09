@@ -107,7 +107,7 @@ function showHelp() {
     "  @typecad/typecad-docgen, @typecad/wiring, @typecad/typecad-gitdiff,"
   );
   console.log(
-    "  @typecad/kicad2typecad, @typecad/jlcpcb-parts, @typecad/typecad-mcp, @typecad/kicad-symbols\n"
+    "  @typecad/jlcpcb-parts, @typecad/typecad-mcp, @typecad/kicad-symbols\n"
   );
   console.log("Examples:");
   console.log(
@@ -251,7 +251,7 @@ async function main() {
             value: "gitdiff",
           },
           {
-            name: "@typecad/kicad2typecad - Parse KiCad PCB board files and generate typeCAD code",
+            name: "kicad2typecad - Parse KiCad PCB board files and generate typeCAD code (bundled with @typecad/typecad)",
             value: "kicad2typecad",
           },
           {

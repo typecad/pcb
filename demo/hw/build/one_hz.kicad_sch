@@ -4,7 +4,7 @@
 	(generator "typecad")
 	(generator_version "0.1.0")
 	(paper "A4")
-    (uuid "e4ae705b-b623-4936-ae52-371528f6557e")
+    (uuid "a988e5c1-4987-47f3-aee9-0c8a32632646")
 
     (lib_symbols
     (symbol "SiT8008BI-82-30E-4_194304:SiT8008BI-82-30E-4.194304" (in_bom yes) (on_board yes) (property "Reference" "Y" (at 29.21 7.62 0) (effects (font (size 1.27 1.27)) (justify left top))) (property "Value" "SiT8008BI-82-30E-4.194304" (at 29.21 5.08 0) (effects (font (size 1.27 1.27)) (justify left top))) (property "Footprint" "QFN_7050_4pins" (at 29.21 -94.92 0) (effects (font (size 1.27 1.27)) (justify left top) hide)) (property "Datasheet" "https://www.sitime.com/support/resource-library/datasheets/sit5008-datasheet" (at 29.21 -194.92 0) (effects (font (size 1.27 1.27)) (justify left top) hide)) (property "ki_description" "Low Power TCXO , 7 x 5mm Package" (at 29.21 -294.92 0) (effects (font (size 1.27 1.27)) (justify left top) hide)) (property "Height" "1" (at 29.21 -394.92 0) (effects (font (size 1.27 1.27)) (justify left top) hide)) (property "Manufacturer_Name" "SiTime" (at 29.21 -494.92 0) (effects (font (size 1.27 1.27)) (justify left top) hide)) (property "Manufacturer_Part_Number" "SiT8008BI-82-30E-4.194304" (at 29.21 -594.92 0) (effects (font (size 1.27 1.27)) (justify left top) hide)) (property "Mouser Part Number" "" (at 29.21 -694.92 0) (effects (font (size 1.27 1.27)) (justify left top) hide)) (property "Mouser Price/Stock" "" (at 29.21 -794.92 0) (effects (font (size 1.27 1.27)) (justify left top) hide)) (property "Arrow Part Number" "" (at 29.21 -894.92 0) (effects (font (size 1.27 1.27)) (justify left top) hide)) (property "Arrow Price/Stock" "" (at 29.21 -994.92 0) (effects (font (size 1.27 1.27)) (justify left top) hide)) (rectangle (start 5.08 2.54) (end 27.94 -5.08) (stroke (width 0.254) (type default)) (fill (type background))) (pin passive line (at 0 -2.54 0) (length 5.08) (name "OE/~{ST}/NC" (effects (font (size 1.27 1.27)))) (number "1" (effects (font (size 1.27 1.27))))) (pin passive line (at 33.02 -2.54 180) (length 5.08) (name "GND" (effects (font (size 1.27 1.27)))) (number "2" (effects (font (size 1.27 1.27))))) (pin passive line (at 33.02 0 180) (length 5.08) (name "OUT" (effects (font (size 1.27 1.27)))) (number "3" (effects (font (size 1.27 1.27))))) (pin passive line (at 0 0 0) (length 5.08) (name "VDD" (effects (font (size 1.27 1.27)))) (number "4" (effects (font (size 1.27 1.27))))))
@@ -28,7 +28,7 @@
 				)
 				(justify right bottom)
 			)
-			(uuid "8b21476e-8aed-4cae-afcf-003c9e00e079")
+			(uuid "a140cb0a-3faf-4a28-95c4-615ea364e295")
 		)
 
 	
@@ -40,7 +40,7 @@
 				)
 				(justify right bottom)
 			)
-			(uuid "7080f26a-86d5-4f69-abc9-2ebe9e7a08b3")
+			(uuid "df85f893-31e1-420f-acd8-73169e4a1e2c")
 		)
 
 	
@@ -52,7 +52,7 @@
 				)
 				(justify left bottom)
 			)
-			(uuid "05298dd2-5539-4749-bdf3-96352d8b3ac6")
+			(uuid "ff2285f1-7484-4e43-bf5e-8e319496d8fb")
 		)
 
 	
@@ -64,7 +64,7 @@
 				)
 				(justify left bottom)
 			)
-			(uuid "c0108f1a-d919-40a3-b54d-4ecd1560ae69")
+			(uuid "229efe76-a943-4b5d-a9d8-9021b51398fe")
 		)
 
 	
@@ -76,7 +76,7 @@
 				)
 				(justify right bottom)
 			)
-			(uuid "1a9c55e8-ea05-41ae-9a58-2e4f74cc403d")
+			(uuid "317879bb-fccc-4508-8bc5-c806744eaf40")
 		)
 
 	
@@ -88,7 +88,7 @@
 				)
 				(justify left bottom)
 			)
-			(uuid "2949ddfa-d9e0-462d-95f5-3b981b65eb11")
+			(uuid "5c8a3107-d29d-49d4-8340-c4f9167d1748")
 		)
 
 	
@@ -100,7 +100,7 @@
 				)
 				(justify left bottom)
 			)
-			(uuid "2cfc7eaa-4c24-43de-a8fe-ce824d928157")
+			(uuid "00b6e4fe-272c-424b-9d8b-4ca3cb2a5e0d")
 		)
 
 	
@@ -112,7 +112,7 @@
 				)
 				(justify left bottom)
 			)
-			(uuid "00029003-a2a3-435f-9009-4aab5f9ca01c")
+			(uuid "a7c6355d-c3db-4f0a-ac19-80105c53e8f4")
 		)
 
 	
@@ -124,7 +124,7 @@
 				)
 				(justify right bottom)
 			)
-			(uuid "8cd9e94f-dc73-4a4d-a6dd-4f0b3e0921cc")
+			(uuid "3206431f-04d6-41d7-bbb0-06456970aece")
 		)
 
 	
@@ -136,7 +136,7 @@
 				)
 				(justify right bottom)
 			)
-			(uuid "30820e29-dd89-41a5-adfb-bf29a9d32529")
+			(uuid "eae80d03-b4a6-45a2-96dc-a961e47c134d")
 		)
 
 	
@@ -148,7 +148,7 @@
 				)
 				(justify right bottom)
 			)
-			(uuid "6855e334-a1c9-42e4-9bc2-a6fd9577e433")
+			(uuid "cc2dd088-d8c9-4446-ad75-9f33aed32262")
 		)
 
 	
@@ -160,7 +160,7 @@
 				)
 				(justify left bottom)
 			)
-			(uuid "7ea7850c-f00a-4608-9f1a-351592ff268d")
+			(uuid "b8fdf5e3-9b6f-40dc-b8d4-d91149a1cd5d")
 		)
 
 	
@@ -172,7 +172,7 @@
 				)
 				(justify left bottom)
 			)
-			(uuid "51322edc-016c-4b57-8fb6-4b255a245a9e")
+			(uuid "a36758ad-ba4b-4132-af7b-50d97744ea98")
 		)
 
 	
@@ -184,7 +184,7 @@
 				)
 				(justify left bottom)
 			)
-			(uuid "65da1a49-4671-4e09-ae37-386bb2026879")
+			(uuid "2916d48c-7d24-412a-a721-e5eeafd66ba8")
 		)
 
 	
@@ -196,7 +196,7 @@
 				)
 				(justify right bottom)
 			)
-			(uuid "c1c80681-f794-4575-9c18-a1fac88fbdca")
+			(uuid "6ba81fed-cf62-45e4-9c96-3813f0f951f9")
 		)
 
 	
@@ -208,7 +208,7 @@
 				)
 				(justify right bottom)
 			)
-			(uuid "afa3a30f-873c-4aea-bcf1-13f80d76d161")
+			(uuid "16b0a973-238b-4eef-9dcf-f70a2d34b122")
 		)
 
 	
@@ -220,7 +220,7 @@
 				)
 				(justify right bottom)
 			)
-			(uuid "3737fecc-4a3d-43c9-b9e9-09cfd0d83a2c")
+			(uuid "50328d82-4ba4-4675-8513-16fa96df3086")
 		)
 
 	
@@ -232,7 +232,7 @@
 				)
 				(justify left bottom)
 			)
-			(uuid "8e01e285-a142-40db-a367-63c2d5d5e65d")
+			(uuid "6c2341ae-08d7-411e-beab-b6e4ec691ee7")
 		)
 
 	
@@ -244,7 +244,7 @@
 				)
 				(justify right bottom)
 			)
-			(uuid "a0cfb7eb-2aaa-4f32-9956-aa3b9f2011b9")
+			(uuid "53eacd3b-b547-4ca2-b387-9011cb78d710")
 		)
 
 	
@@ -256,7 +256,7 @@
 				)
 				(justify right bottom)
 			)
-			(uuid "e51626e4-a623-403c-9b90-807aeb8b0a54")
+			(uuid "e9df3fc9-4bdd-4109-924b-7ef227375c40")
 		)
 
 	
@@ -268,7 +268,7 @@
 				)
 				(justify right bottom)
 			)
-			(uuid "fb994001-329f-4745-bbd5-7f75252a48d3")
+			(uuid "3a16d589-e5a8-40fe-814e-f461559ed4c5")
 		)
 
 	
@@ -280,7 +280,7 @@
 				)
 				(justify left bottom)
 			)
-			(uuid "a9f9a9a3-0b24-4370-9d6b-2783559df2aa")
+			(uuid "ccafa9fc-a922-4dd3-8d15-4a0fdec8a8df")
 		)
 
 	
@@ -292,7 +292,7 @@
 				)
 				(justify right bottom)
 			)
-			(uuid "c7059c96-843a-4e9f-97fb-18f9c26abc01")
+			(uuid "650e2291-f950-450d-b975-ffdf2948d07c")
 		)
 
 	
@@ -304,7 +304,7 @@
 				)
 				(justify right bottom)
 			)
-			(uuid "ea26cda3-ca48-4278-8814-534a6f61883e")
+			(uuid "2125e81f-1798-4a77-b201-3336a17911ed")
 		)
 
 	
@@ -316,7 +316,7 @@
 				)
 				(justify left bottom)
 			)
-			(uuid "30ea3008-6a3d-4bdf-9eef-78ea8dd36e07")
+			(uuid "5b938033-98ec-4f51-8677-f9c5f55490e6")
 		)
 
 	
@@ -328,7 +328,7 @@
 				)
 				(justify right bottom)
 			)
-			(uuid "e7fb4c91-e8fc-4637-9b63-bfd45f09de22")
+			(uuid "734f2645-8b01-4884-be5e-f559022cc43c")
 		)
 
 	
@@ -340,7 +340,7 @@
 				)
 				(justify right bottom)
 			)
-			(uuid "87151716-419d-4d60-b4dc-c32a31370597")
+			(uuid "01b83a4a-c2c8-46e8-aa36-ec26b832eefa")
 		)
 
 	
@@ -352,7 +352,7 @@
 				)
 				(justify left bottom)
 			)
-			(uuid "792cb28e-a917-4a0a-b85b-b0ea93124142")
+			(uuid "62e2cf6a-c288-4a9a-b8a8-2bb68c80b865")
 		)
 
 	
@@ -364,7 +364,7 @@
 				)
 				(justify right bottom)
 			)
-			(uuid "b1a9d821-2302-45b0-9e96-2c4ebb679a56")
+			(uuid "41c2418d-d468-4008-ba50-345d1dbd11dd")
 		)
 
 	
@@ -376,7 +376,7 @@
 				)
 				(justify left bottom)
 			)
-			(uuid "40f4ce0e-7ef5-4271-a0b4-51f1644bc85d")
+			(uuid "57331b10-d8ea-4c91-a927-6de5634985b4")
 		)
 
 	
@@ -388,7 +388,7 @@
 				)
 				(justify right bottom)
 			)
-			(uuid "05d264b9-4f14-4771-8cef-ac21af1e6577")
+			(uuid "ba2d1124-45c1-49b3-9dcb-cc1b7ecf3381")
 		)
 
 	
@@ -400,7 +400,7 @@
 				)
 				(justify left bottom)
 			)
-			(uuid "80c2d5d8-97e8-4851-9229-b660abd4cad2")
+			(uuid "5dcf2714-375a-485c-9f1d-82127bcf3bf5")
 		)
 
 	
@@ -412,7 +412,7 @@
 				)
 				(justify right bottom)
 			)
-			(uuid "186b9e73-4e8a-4520-ab68-82c6f47d3b37")
+			(uuid "a2782ec7-2c6e-4552-b3fa-8609ef5675db")
 		)
 
 	
@@ -424,7 +424,7 @@
 				)
 				(justify left bottom)
 			)
-			(uuid "6fb262b0-bdeb-400e-9009-ed34e16aa333")
+			(uuid "53a79329-7abd-4851-aa6b-1eb197325e75")
 		)
 
 	
@@ -436,7 +436,7 @@
 				)
 				(justify right bottom)
 			)
-			(uuid "26e68419-ee20-4cb1-9988-74e43af6b0e9")
+			(uuid "146d581b-fc7b-4163-816b-16fa67bdb468")
 		)
 
 	
@@ -448,7 +448,7 @@
 				)
 				(justify left bottom)
 			)
-			(uuid "14d57f64-3da7-436b-9a50-7361d78fcb67")
+			(uuid "b32cf45b-a97d-4b40-82c5-e9fe3ec79743")
 		)
 
 	
@@ -460,7 +460,7 @@
 				)
 				(justify right bottom)
 			)
-			(uuid "7c7b5f85-b427-49d3-8501-29fbe5b9ebcc")
+			(uuid "98444f10-8c3e-446d-9acf-ca567e144aa1")
 		)
 
 	
@@ -472,7 +472,7 @@
 				)
 				(justify left bottom)
 			)
-			(uuid "293d2d16-4bbc-4640-b0b7-13b16106fcdc")
+			(uuid "ab6938de-898f-4a22-8c29-638373205f34")
 		)
 
 	
@@ -484,7 +484,7 @@
 				)
 				(justify right bottom)
 			)
-			(uuid "5ca9a8ca-0437-43ff-9efa-d0d415bc092c")
+			(uuid "cd127ef9-68d5-4e1c-980b-57e9657e5acf")
 		)
 
 	
@@ -496,7 +496,7 @@
 				)
 				(justify left bottom)
 			)
-			(uuid "f519614c-bedc-454b-bd39-1badea56c065")
+			(uuid "ea6686e4-0310-4e5b-8cb8-20148756ee60")
 		)
 
 	
@@ -508,7 +508,7 @@
 				)
 				(justify right bottom)
 			)
-			(uuid "13f9fdfb-e0cc-4ac3-ae8d-1d3197f9a81a")
+			(uuid "41b3e77a-53f2-4d70-a6cc-da488a22aff6")
 		)
 
 	
@@ -520,7 +520,7 @@
 				)
 				(justify left bottom)
 			)
-			(uuid "5d3971f1-39f4-47ad-9206-411b9d284efe")
+			(uuid "d872c6ea-f6c9-4568-9792-f838ed23c67e")
 		)
 
 	
@@ -532,7 +532,7 @@
 				)
 				(justify right bottom)
 			)
-			(uuid "b7af6ef4-b3b3-410c-b5de-c9383dfa30d5")
+			(uuid "03a01c4c-adf4-4afe-8dda-54a9e02c1447")
 		)
 
 	
@@ -544,7 +544,7 @@
 				)
 				(justify right bottom)
 			)
-			(uuid "c92c6421-5892-45b2-8398-600f00535050")
+			(uuid "1dd726d7-6d37-4ec5-a36e-d4b67d007983")
 		)
 
 	
@@ -556,7 +556,7 @@
 				)
 				(justify left bottom)
 			)
-			(uuid "2fbad0e9-ec80-46ca-a29e-137daf9fd909")
+			(uuid "4c15c6ad-7fb8-4c88-b8d6-85952a1a98a2")
 		)
 
 	
@@ -568,7 +568,7 @@
 				)
 				(justify right bottom)
 			)
-			(uuid "e53b1bf3-5457-4db6-8ace-8d9e5fc9bcd3")
+			(uuid "dd7e8995-dfc5-4ce6-b423-b5ee25871cfb")
 		)
 
 	
@@ -580,7 +580,7 @@
 				)
 				(justify left bottom)
 			)
-			(uuid "7862c80f-1f5b-40b2-a9fc-e6323b1a705f")
+			(uuid "567244ee-06a0-4b02-bf17-8f8a9cc8a0c5")
 		)
 
 	
@@ -592,7 +592,7 @@
 				)
 				(justify right bottom)
 			)
-			(uuid "6dc9bdd1-5b98-4018-9f4d-6a113174bd3f")
+			(uuid "fd2ab982-f94e-4be5-844d-268cbea72143")
 		)
 
 	
@@ -604,7 +604,7 @@
 				)
 				(justify left bottom)
 			)
-			(uuid "98ecb96e-f1e0-4e90-8e48-5159470f02a6")
+			(uuid "abf55f9a-018c-4a7e-a772-7ed7d25afe5a")
 		)
 
 	
@@ -616,7 +616,7 @@
 				)
 				(justify right bottom)
 			)
-			(uuid "708f16d1-437d-4c14-9041-49298238b2e5")
+			(uuid "edcc7a26-e59e-4d09-a76d-619a9705b83a")
 		)
 
 	
@@ -628,7 +628,7 @@
 				)
 				(justify right bottom)
 			)
-			(uuid "ce298fcc-6ed9-4253-a31c-f16c953081a7")
+			(uuid "6f5df7a0-cf4a-4ade-9222-ac276da77ea8")
 		)
 
 	
@@ -640,7 +640,7 @@
 				)
 				(justify left bottom)
 			)
-			(uuid "5a9ab1b7-b063-42f9-a182-3538514966b0")
+			(uuid "4bdf34a4-7062-4098-a50f-a6d3ef233e95")
 		)
 
 	
@@ -652,7 +652,7 @@
 				)
 				(justify right bottom)
 			)
-			(uuid "97d84bb6-dae3-426b-b0d9-2b20f460352e")
+			(uuid "4b28c2d0-7f19-4526-8304-d9a0dcae267e")
 		)
 
 	
@@ -664,7 +664,7 @@
 				)
 				(justify right bottom)
 			)
-			(uuid "e924f726-50d7-4d0a-a8c0-dffaf454a927")
+			(uuid "d9432ca7-3579-4a30-9cba-b43b33391325")
 		)
 
 	
@@ -676,7 +676,7 @@
 				)
 				(justify left bottom)
 			)
-			(uuid "40733dd1-8076-46c5-971f-60f35e4aeca8")
+			(uuid "7daae622-edb5-454e-8607-c50447fcf3cd")
 		)
 
 	
@@ -688,7 +688,7 @@
 				)
 				(justify right bottom)
 			)
-			(uuid "c73067d5-b55e-4b6c-b1a5-7fb6391a58e8")
+			(uuid "6de02351-d2bb-4766-9f5f-c6b3be0e5062")
 		)
 
 	
@@ -700,7 +700,7 @@
 				)
 				(justify left bottom)
 			)
-			(uuid "748693bd-cbb7-43a1-9942-fbefb4a7a6a3")
+			(uuid "3a511cb6-a604-4032-8bd5-f1c649215ff8")
 		)
 
 	
@@ -712,7 +712,7 @@
 				)
 				(justify right bottom)
 			)
-			(uuid "0476cd9f-7b43-429e-8d28-78fc6b41d4d7")
+			(uuid "8007d836-b397-47e6-b8b5-120cf81ff1a3")
 		)
 
 	
@@ -724,7 +724,7 @@
 				)
 				(justify left bottom)
 			)
-			(uuid "f4dbdc0e-6db6-47b1-aaec-20595982baa5")
+			(uuid "00d4a6bb-3fa1-45d7-8e2e-0e9375bca108")
 		)
 
 	
@@ -736,7 +736,7 @@
 				)
 				(justify right bottom)
 			)
-			(uuid "16cf7ae0-f759-4f0e-b3c6-c79017980acb")
+			(uuid "a232b1cd-b7fe-4c8d-97af-36838b866baf")
 		)
 
 	
@@ -748,7 +748,7 @@
 				)
 				(justify left bottom)
 			)
-			(uuid "14d75a39-d68b-435a-a8ab-95c4ca532a69")
+			(uuid "4f4dc69a-4f95-4d18-89be-675fa9934426")
 		)
 
 	
@@ -760,7 +760,7 @@
 				)
 				(justify right bottom)
 			)
-			(uuid "d3a98ee5-4ffe-4f46-9694-1ce3a3816927")
+			(uuid "79423c24-d418-432a-a397-a2feecc14968")
 		)
 
 	
@@ -772,7 +772,7 @@
 				)
 				(justify left bottom)
 			)
-			(uuid "094a7e18-319d-4baa-8337-a573e617f1af")
+			(uuid "3fab6513-a1c0-45fc-bced-2e4e56602804")
 		)
 
 	
@@ -784,7 +784,7 @@
 				)
 				(justify right bottom)
 			)
-			(uuid "f9cb0034-a47a-479b-9515-991c8e0c6267")
+			(uuid "9910da48-ca10-402e-b3bc-f07eaebb35e5")
 		)
 
 	
@@ -796,7 +796,7 @@
 				)
 				(justify left bottom)
 			)
-			(uuid "a5f22b31-bfcd-4c50-81e7-1fb7d36f9899")
+			(uuid "ea8bb6d4-ad76-4c6e-bd69-ce954a4311be")
 		)
 
 	
@@ -808,7 +808,7 @@
 				)
 				(justify right bottom)
 			)
-			(uuid "e25ac241-a3bb-46a4-8dd7-4b88ac0eb67d")
+			(uuid "68534d9f-bc5b-4887-b82a-09e1e9460afd")
 		)
 
 	
@@ -820,7 +820,7 @@
 				)
 				(justify left bottom)
 			)
-			(uuid "20faf933-d4b2-4a69-b3f3-d88b053aa606")
+			(uuid "4ab5c085-a614-4c2e-a99f-f46d6970e7af")
 		)
 
 	
@@ -832,7 +832,7 @@
 				)
 				(justify right bottom)
 			)
-			(uuid "e981adfc-8e1d-444a-befb-e73742c53fbd")
+			(uuid "9a642086-c325-4f2a-a606-9b0dd5be0fc3")
 		)
 
 	
@@ -844,7 +844,7 @@
 				)
 				(justify left bottom)
 			)
-			(uuid "d6dadf75-ceae-45d5-ad01-969fb2eb919c")
+			(uuid "f0febf9d-bfd8-44bd-b612-79ba8b9635ed")
 		)
 
 	
@@ -856,7 +856,7 @@
 				)
 				(justify right bottom)
 			)
-			(uuid "d68dc334-f6d5-46c6-aff7-12579979062f")
+			(uuid "27c78b58-1e56-4069-895f-190539e2ca07")
 		)
 
 	
@@ -868,7 +868,7 @@
 				)
 				(justify left bottom)
 			)
-			(uuid "b4882a4c-7e70-4781-9a2f-1856774ce4e9")
+			(uuid "d2468c8c-590a-4de8-a554-a06dd31c7c5d")
 		)
 
 	
@@ -880,7 +880,7 @@
 				)
 				(justify right bottom)
 			)
-			(uuid "76bb8dfd-c9ae-49d7-a242-8fb75a4fb021")
+			(uuid "ea76bc3e-807e-4329-a01c-30a93e5f2a8e")
 		)
 
 	
@@ -892,7 +892,7 @@
 				)
 				(justify left bottom)
 			)
-			(uuid "53c74892-ba9a-4bb2-a4a1-39dcd0b41752")
+			(uuid "99d28812-6e0a-487e-a751-f6c3938a112c")
 		)
 
 	
@@ -904,7 +904,7 @@
 				)
 				(justify right bottom)
 			)
-			(uuid "e9143b74-98e7-44d3-8de3-8c9bbcd31b19")
+			(uuid "bf122068-e958-4969-8b86-371a8ecb50f2")
 		)
 
 	
@@ -916,7 +916,7 @@
 				)
 				(justify left bottom)
 			)
-			(uuid "a98f8f9d-fb4d-40e0-b7f0-f09021602ff8")
+			(uuid "6acbc417-cf55-41c6-ace0-7905b9c5389d")
 		)
 
 	
@@ -928,7 +928,7 @@
 				)
 				(justify right bottom)
 			)
-			(uuid "d0856cb6-a64c-44c9-a1b3-f57034308adf")
+			(uuid "098a9475-9c84-40a1-9c79-0ef3c2ca6e5c")
 		)
 
 	
@@ -940,7 +940,7 @@
 				)
 				(justify left bottom)
 			)
-			(uuid "419b3b0b-ae28-486c-b176-727cfd1f3d48")
+			(uuid "bfaa0ec3-52e6-4ee0-b776-9977fda0ff88")
 		)
 
 	
@@ -952,7 +952,7 @@
 				)
 				(justify right bottom)
 			)
-			(uuid "f8d3b490-4f63-4502-976e-52d195d125d9")
+			(uuid "0ee98592-46d3-423c-8a09-8426537225a9")
 		)
 
 	
@@ -964,7 +964,7 @@
 				)
 				(justify right bottom)
 			)
-			(uuid "918691ea-ec1f-4c09-b409-2c8bff91b86e")
+			(uuid "02cfd500-f1cc-4ecf-ba3a-24e2c6e7a0ca")
 		)
 
 	
@@ -976,7 +976,7 @@
 				)
 				(justify right bottom)
 			)
-			(uuid "d2520005-911b-4ad1-8ee5-20e06439b570")
+			(uuid "78241c5e-e266-4b97-be47-ada8823f7134")
 		)
 
 	
@@ -988,7 +988,7 @@
 				)
 				(justify right bottom)
 			)
-			(uuid "8797bd63-fb1f-4c5a-9629-b5aad908549f")
+			(uuid "9a3d47c0-a8e1-4808-9732-45f26045c612")
 		)
 
 	
@@ -1000,7 +1000,7 @@
 				)
 				(justify right bottom)
 			)
-			(uuid "bec069c7-1b9b-44cd-bca5-5d6b297a7fe7")
+			(uuid "2a87ebdd-1f2b-4da4-8ea8-7112f6710bd7")
 		)
 
 	
@@ -1012,7 +1012,7 @@
 				)
 				(justify right bottom)
 			)
-			(uuid "ac9bff84-079b-42b6-ab65-61930bb22eea")
+			(uuid "4a98c6e8-00ae-491b-89e2-84e3291327ef")
 		)
 
 	
@@ -1024,7 +1024,7 @@
 				)
 				(justify left bottom)
 			)
-			(uuid "8709c03f-3204-478d-a003-fef9f9ecbf2d")
+			(uuid "25924649-84b6-4195-a296-3821020b41ec")
 		)
 
 	
@@ -1036,7 +1036,7 @@
 				)
 				(justify right bottom)
 			)
-			(uuid "a87631e4-1d1f-443f-aad5-eeb044ce7b6d")
+			(uuid "aca65bcf-0ec3-4a6f-8e08-86b078fafe8a")
 		)
 
 	
@@ -1048,7 +1048,7 @@
 				)
 				(justify right bottom)
 			)
-			(uuid "72223eca-800a-4e96-ab7e-343ebff1fa0c")
+			(uuid "1148a45d-ffec-4201-bb09-ae1e2bb308fb")
 		)
 
 	
@@ -1060,7 +1060,7 @@
 				)
 				(justify left bottom)
 			)
-			(uuid "6d1dde0b-f8bb-4945-9dcc-6719fea69cbd")
+			(uuid "fc5e8f78-1b0d-4bd4-9b5f-454087c635a2")
 		)
 
 	
@@ -1072,7 +1072,7 @@
 				)
 				(justify right bottom)
 			)
-			(uuid "d88ae7b2-ef62-4754-a262-50ce8ff8f438")
+			(uuid "277b2a15-f91f-4c18-a1f4-0547d8e39280")
 		)
 
 	
@@ -1084,7 +1084,7 @@
 				)
 				(justify right bottom)
 			)
-			(uuid "b5eed0de-c997-4ba7-84c4-f6b9f49733d8")
+			(uuid "7600cfc0-7b77-4ca7-9622-a91b2230abf2")
 		)
 
 	
@@ -1096,7 +1096,7 @@
 				)
 				(justify right bottom)
 			)
-			(uuid "2b5e7644-86ea-4c37-9750-6e05722141f9")
+			(uuid "46952347-b4ed-4506-994c-c8d32383afa0")
 		)
 
 	
@@ -1108,7 +1108,7 @@
 				)
 				(justify right bottom)
 			)
-			(uuid "38ac9014-8816-4c00-aa00-80a0bc65a51c")
+			(uuid "b4409da3-23e7-446f-b679-075cd1f6df78")
 		)
 
 	
@@ -1120,7 +1120,7 @@
 				)
 				(justify right bottom)
 			)
-			(uuid "49f32704-46e9-4294-97ac-1c23bc323605")
+			(uuid "b224e792-5ad7-4d70-9285-4483e5a6155c")
 		)
 
 	
@@ -1132,7 +1132,7 @@
 				)
 				(justify left bottom)
 			)
-			(uuid "295e7f4d-7287-45dd-82c5-a3372e8f525a")
+			(uuid "8b011d35-a85a-4de3-b4fc-2cbe20fbc921")
 		)
 
 	
@@ -1144,7 +1144,7 @@
 				)
 				(justify right bottom)
 			)
-			(uuid "40e3e1db-04c9-4c4e-ae4f-b7c776b8c263")
+			(uuid "3684c4e8-9288-4ee1-b4a9-ed278e0254e6")
 		)
 
 	
@@ -1156,7 +1156,7 @@
 				)
 				(justify left bottom)
 			)
-			(uuid "22d9a7aa-23d1-4a99-805a-4deff8894701")
+			(uuid "2b311f78-e3c7-40a8-9b07-c158baf18235")
 		)
 
 	
@@ -1168,7 +1168,7 @@
 				)
 				(justify right bottom)
 			)
-			(uuid "7af87b2f-9592-4541-817d-3b7962c692c8")
+			(uuid "ca30fb45-1410-4858-8bf3-68ed53330151")
 		)
 
 	
@@ -1180,7 +1180,7 @@
 				)
 				(justify left bottom)
 			)
-			(uuid "543ab2b4-01ff-459d-a391-54d84ba83017")
+			(uuid "943e7baf-b0e9-4b83-9f23-7b125393adf8")
 		)
 
 	
@@ -1192,7 +1192,7 @@
 				)
 				(justify right bottom)
 			)
-			(uuid "820a3aab-fd1f-4f3a-b6e2-d5373a6aa65d")
+			(uuid "2640cc6f-e5c9-4a94-8cc8-98c232207cfe")
 		)
 
 	
@@ -1204,7 +1204,7 @@
 				)
 				(justify left bottom)
 			)
-			(uuid "6191fe4c-01f2-415b-9958-44e49bb86688")
+			(uuid "0e80bff2-c823-4e1e-9b9c-c938d7c9fd67")
 		)
 
 	
@@ -1216,7 +1216,7 @@
 				)
 				(justify right bottom)
 			)
-			(uuid "6b410746-a6b3-4be6-a27a-524b23b5b5ba")
+			(uuid "43bc6c5e-c850-4e3a-b544-b4ff563b62bc")
 		)
 
 	
@@ -1228,7 +1228,7 @@
 				)
 				(justify left bottom)
 			)
-			(uuid "f03d9dce-10c1-45f7-bac6-cc2f16470d0e")
+			(uuid "1ebc022a-07fe-4165-be70-7e8b23d0c8d5")
 		)
 
 	
@@ -1240,7 +1240,7 @@
 				)
 				(justify right bottom)
 			)
-			(uuid "d913519a-2046-49af-9e6c-c114cc7323ef")
+			(uuid "8bb1c856-e665-46f1-bc9c-45445f7ebdf7")
 		)
 
 	
@@ -1252,7 +1252,7 @@
 				)
 				(justify left bottom)
 			)
-			(uuid "9859eacc-a2e9-46ae-996f-93f620993dbe")
+			(uuid "74ba0961-3582-4f85-b2da-18a0f558a5a9")
 		)
 
 	
@@ -1264,7 +1264,7 @@
 				)
 				(justify left bottom)
 			)
-			(uuid "fe963286-f43d-4237-ab54-32975329e7b6")
+			(uuid "56fe0660-9c44-477c-9e6f-663eb1cebb4c")
 		)
 
 	
@@ -1276,7 +1276,7 @@
 				)
 				(justify left bottom)
 			)
-			(uuid "f0c5f4df-ce58-44d4-baf1-30826b9c8420")
+			(uuid "b2c16fd1-3875-46a5-a568-3108a047127e")
 		)
 
 	
@@ -1288,7 +1288,7 @@
 				)
 				(justify left bottom)
 			)
-			(uuid "dc9c74d8-943c-4166-80eb-7c8aef3bbdd7")
+			(uuid "b9c62bcb-8ed2-4290-bbcf-b9135dd6230e")
 		)
 
 	
@@ -1300,7 +1300,7 @@
 				)
 				(justify right bottom)
 			)
-			(uuid "31eb298a-2670-4ccd-8534-02fd43976798")
+			(uuid "f0c752bb-551e-4634-96a9-939f3723b142")
 		)
 
 	
@@ -1312,7 +1312,7 @@
 				)
 				(justify left bottom)
 			)
-			(uuid "ee98172d-b998-45a5-8e4e-b47e5b42f344")
+			(uuid "cddb4e7a-b2a3-42f9-aab9-1a59e9d5526a")
 		)
 
 	
@@ -1324,7 +1324,7 @@
 				)
 				(justify right bottom)
 			)
-			(uuid "71e6c275-2f5f-49c1-8730-26d6b47a4244")
+			(uuid "19e86c24-3f65-4eb2-9967-f1db8d546115")
 		)
 
 	
@@ -1336,7 +1336,7 @@
 				)
 				(justify right bottom)
 			)
-			(uuid "664b5088-6a23-40e3-ae48-c3fc8ea97c46")
+			(uuid "64330564-1d8d-4bba-bd2a-caecaafc3539")
 		)
 
 	
@@ -1348,7 +1348,7 @@
 				)
 				(justify left bottom)
 			)
-			(uuid "576d1e6b-81ba-4793-a30c-79bb510332b8")
+			(uuid "61ed434c-0157-4f5e-9d12-2c449b5bb932")
 		)
 
 	
@@ -1360,7 +1360,7 @@
 				)
 				(justify left bottom)
 			)
-			(uuid "8e6fea02-8da4-41b0-a466-4d85d39d46bf")
+			(uuid "fb59d611-62f9-4dee-a5b4-1c65b11d5ac7")
 		)
 
 	
@@ -1372,7 +1372,7 @@
 				)
 				(justify left bottom)
 			)
-			(uuid "07e0824e-a9b4-491e-99b4-107bd598530e")
+			(uuid "8154f29e-1a26-4f2f-bcd4-53035473d314")
 		)
 
 	
@@ -1384,7 +1384,7 @@
 				)
 				(justify right bottom)
 			)
-			(uuid "ef24b9e4-603e-4eff-ab8f-83da7677363b")
+			(uuid "d20a1b9d-64af-4e88-9f7c-fce887b69e4c")
 		)
 
 	
@@ -1396,7 +1396,7 @@
 				)
 				(justify right bottom)
 			)
-			(uuid "896d632c-5578-4100-aa8c-82b567e0b5b8")
+			(uuid "8374ae4f-b7f6-419b-a295-b0705b0ec0d7")
 		)
 
 	
@@ -1408,7 +1408,7 @@
 				)
 				(justify left bottom)
 			)
-			(uuid "c8b3dfc5-0afb-4ceb-a987-70876698d506")
+			(uuid "6df58bd2-134a-44ad-9dfa-a78de7b01a20")
 		)
 
 	
@@ -1420,7 +1420,7 @@
 				)
 				(justify right bottom)
 			)
-			(uuid "9c1285a0-fa63-4be4-9bbf-328d6f697f67")
+			(uuid "24f31aaf-f713-4178-95c6-7a0f3878def3")
 		)
 
 	
@@ -1432,7 +1432,7 @@
 				)
 				(justify right bottom)
 			)
-			(uuid "beb5963f-f8cd-41fe-b9f4-02d7513bdbc8")
+			(uuid "76c34299-6ee5-45bd-9431-e91fbfa6d8c1")
 		)
 
 	
@@ -1444,7 +1444,7 @@
 				)
 				(justify right bottom)
 			)
-			(uuid "69bea382-b583-4acf-8ac4-8f229271e2ba")
+			(uuid "f5faa32a-d320-4979-9f8b-abbd097c77bd")
 		)
 
 	
@@ -1456,7 +1456,7 @@
 				)
 				(justify left bottom)
 			)
-			(uuid "f0c25c0f-7c5a-4a4f-8a8f-cd7514253a44")
+			(uuid "77066897-70f0-43db-a701-ab5c007d1366")
 		)
 
 	
@@ -1468,7 +1468,7 @@
 				)
 				(justify left bottom)
 			)
-			(uuid "17bdd956-7e88-4011-939c-a2503ce09a7b")
+			(uuid "73a50f22-6488-4c88-bbd0-3fef780993eb")
 		)
 
 	
@@ -1480,7 +1480,7 @@
 				)
 				(justify right bottom)
 			)
-			(uuid "9bd7bcf3-edcc-4ecf-be13-149aac1486bc")
+			(uuid "f80d77c9-ee46-47ae-b149-61c3472e62aa")
 		)
 
 	
@@ -1492,7 +1492,7 @@
 				)
 				(justify right bottom)
 			)
-			(uuid "c0d1b0a8-1b9a-45cc-9eab-08bdf039a337")
+			(uuid "e7ae1b35-0d7d-4b9e-9c5f-ba6e479b6a0c")
 		)
 
 	
@@ -1504,7 +1504,7 @@
 				)
 				(justify left bottom)
 			)
-			(uuid "bda353b6-e640-43f0-b740-d08237879558")
+			(uuid "1a1c513a-0aa9-4cfa-b2b7-525bbed2aa29")
 		)
 
 	
@@ -1516,7 +1516,7 @@
 				)
 				(justify right bottom)
 			)
-			(uuid "53546db2-394e-42e7-a03d-0bdb6fba5eb9")
+			(uuid "7bd8d777-56e6-4bc0-946f-efa61e41992a")
 		)
 
 	
@@ -1528,7 +1528,7 @@
 				)
 				(justify right bottom)
 			)
-			(uuid "349effd7-3186-4e74-bdbb-ca2d191e1465")
+			(uuid "e777c9d5-4e4c-4b97-ac3a-299b10389a5f")
 		)
 
 	
@@ -1540,7 +1540,7 @@
 				)
 				(justify left bottom)
 			)
-			(uuid "b94c27c1-f7c9-42e6-99ba-dc168726447a")
+			(uuid "34930459-5cf5-4e98-9bf9-a4348b8e2eba")
 		)
 
 	
@@ -1552,7 +1552,7 @@
 				)
 				(justify left bottom)
 			)
-			(uuid "43846937-bcf1-476e-bab9-483c7a60bf1f")
+			(uuid "810fe2d9-6f8c-4cd4-8ecc-04f17a21e29b")
 		)
 
 	
@@ -1564,7 +1564,7 @@
 				)
 				(justify left bottom)
 			)
-			(uuid "5bb86a7f-9097-4a8d-a126-cbe6e0dda04f")
+			(uuid "c3ac3be2-8261-4eaa-96d0-b8bfe7bdc437")
 		)
 
 	
@@ -1576,7 +1576,7 @@
 				)
 				(justify right bottom)
 			)
-			(uuid "0a73c4a6-f048-4615-9959-7055e2ad4ba9")
+			(uuid "8e077ddf-c43c-42c1-95c8-551e944815aa")
 		)
 
 	
@@ -1588,27 +1588,27 @@
 				)
 				(justify right bottom)
 			)
-			(uuid "e2ea77e2-30a7-445a-bf75-fcb6b69f5b07")
+			(uuid "0784d3cd-117c-42f5-9aca-1d4395fc6333")
 		)
 
 
-    (symbol (lib_id "SiT8008BI-82-30E-4_194304:SiT8008BI-82-30E-4.194304") (at 35.56 78.74 0) (property "Reference" "U1" (at 35.56 83.82 0) (effects (font (size 1.27 1.27)) (hide no))) (property "Value" "SIT8008BI-82-30E-4.194304" (at 35.56 83.82 0) (effects (font (size 1.27 1.27)) (hide yes))) (property "Footprint" "lib:QFN_7050_4pins" (at 35.56 83.82 0) (effects (font (size 1.27 1.27)) (hide yes))) (instances (project "one_hz" (path "/e4ae705b-b623-4936-ae52-371528f6557e" (reference "U1") (unit 1)))))
-    (symbol (lib_id "74xx:74HC4060") (at 93.98 78.74 0) (property "Reference" "U2" (at 93.98 83.82 0) (effects (font (size 1.27 1.27)) (hide no))) (property "Value" "74HC4060N" (at 93.98 83.82 0) (effects (font (size 1.27 1.27)) (hide yes))) (property "Footprint" "Package_DIP:DIP-16_W7.62mm" (at 93.98 83.82 0) (effects (font (size 1.27 1.27)) (hide yes))) (instances (project "one_hz" (path "/e4ae705b-b623-4936-ae52-371528f6557e" (reference "U2") (unit 1)))))
-    (symbol (lib_id "74HC4040N_652:74HC4040N_652") (at 139.7 78.74 0) (property "Reference" "U3" (at 139.7 83.82 0) (effects (font (size 1.27 1.27)) (hide no))) (property "Value" "74HC4040N" (at 139.7 83.82 0) (effects (font (size 1.27 1.27)) (hide yes))) (property "Footprint" "Package_DIP:DIP-16_W7.62mm" (at 139.7 83.82 0) (effects (font (size 1.27 1.27)) (hide yes))) (instances (project "one_hz" (path "/e4ae705b-b623-4936-ae52-371528f6557e" (reference "U3") (unit 1)))))
-    (symbol (lib_id "74xx:74HC244") (at 200.66 78.74 0) (property "Reference" "U4" (at 200.66 83.82 0) (effects (font (size 1.27 1.27)) (hide no))) (property "Value" "74HC244N" (at 200.66 83.82 0) (effects (font (size 1.27 1.27)) (hide yes))) (property "Footprint" "Package_DIP:DIP-20_W7.62mm" (at 200.66 83.82 0) (effects (font (size 1.27 1.27)) (hide yes))) (instances (project "one_hz" (path "/e4ae705b-b623-4936-ae52-371528f6557e" (reference "U4") (unit 1)))))
-    (symbol (lib_id "Device:C_Small") (at 45.72 45.72 0) (property "Reference" "C1" (at 45.72 50.8 0) (effects (font (size 1.27 1.27)) (hide no))) (property "Value" "100nF" (at 45.72 50.8 0) (effects (font (size 1.27 1.27)) (hide yes))) (property "Footprint" "Capacitor_SMD:C_0603_1608Metric" (at 45.72 50.8 0) (effects (font (size 1.27 1.27)) (hide yes))) (instances (project "one_hz" (path "/e4ae705b-b623-4936-ae52-371528f6557e" (reference "C1") (unit 1)))))
-    (symbol (lib_id "Device:C_Small") (at 50.8 45.72 0) (property "Reference" "C2" (at 50.8 50.8 0) (effects (font (size 1.27 1.27)) (hide no))) (property "Value" "100nF" (at 50.8 50.8 0) (effects (font (size 1.27 1.27)) (hide yes))) (property "Footprint" "Capacitor_SMD:C_0603_1608Metric" (at 50.8 50.8 0) (effects (font (size 1.27 1.27)) (hide yes))) (instances (project "one_hz" (path "/e4ae705b-b623-4936-ae52-371528f6557e" (reference "C2") (unit 1)))))
-    (symbol (lib_id "Device:C_Small") (at 55.88 45.72 0) (property "Reference" "C3" (at 55.88 50.8 0) (effects (font (size 1.27 1.27)) (hide no))) (property "Value" "100nF" (at 55.88 50.8 0) (effects (font (size 1.27 1.27)) (hide yes))) (property "Footprint" "Capacitor_SMD:C_0603_1608Metric" (at 55.88 50.8 0) (effects (font (size 1.27 1.27)) (hide yes))) (instances (project "one_hz" (path "/e4ae705b-b623-4936-ae52-371528f6557e" (reference "C3") (unit 1)))))
-    (symbol (lib_id "Device:C_Small") (at 60.96 45.72 0) (property "Reference" "C4" (at 60.96 50.8 0) (effects (font (size 1.27 1.27)) (hide no))) (property "Value" "100nF" (at 60.96 50.8 0) (effects (font (size 1.27 1.27)) (hide yes))) (property "Footprint" "Capacitor_SMD:C_0603_1608Metric" (at 60.96 50.8 0) (effects (font (size 1.27 1.27)) (hide yes))) (instances (project "one_hz" (path "/e4ae705b-b623-4936-ae52-371528f6557e" (reference "C4") (unit 1)))))
-    (symbol (lib_id "Device:C_Small") (at 66.04 45.72 0) (property "Reference" "C5" (at 66.04 50.8 0) (effects (font (size 1.27 1.27)) (hide no))) (property "Value" "10µF" (at 66.04 50.8 0) (effects (font (size 1.27 1.27)) (hide yes))) (property "Footprint" "Capacitor_SMD:C_0603_1608Metric" (at 66.04 50.8 0) (effects (font (size 1.27 1.27)) (hide yes))) (instances (project "one_hz" (path "/e4ae705b-b623-4936-ae52-371528f6557e" (reference "C5") (unit 1)))))
-    (symbol (lib_id "Device:C_Small") (at 71.12 45.72 0) (property "Reference" "C6" (at 71.12 50.8 0) (effects (font (size 1.27 1.27)) (hide no))) (property "Value" "10µF" (at 71.12 50.8 0) (effects (font (size 1.27 1.27)) (hide yes))) (property "Footprint" "Capacitor_SMD:C_0603_1608Metric" (at 71.12 50.8 0) (effects (font (size 1.27 1.27)) (hide yes))) (instances (project "one_hz" (path "/e4ae705b-b623-4936-ae52-371528f6557e" (reference "C6") (unit 1)))))
-    (symbol (lib_id "Device:R_Small") (at 76.2 45.72 0) (property "Reference" "R1" (at 76.2 50.8 0) (effects (font (size 1.27 1.27)) (hide no))) (property "Value" "10kΩ" (at 76.2 50.8 0) (effects (font (size 1.27 1.27)) (hide yes))) (property "Footprint" "Resistor_SMD:R_0603_1608Metric" (at 76.2 50.8 0) (effects (font (size 1.27 1.27)) (hide yes))) (instances (project "one_hz" (path "/e4ae705b-b623-4936-ae52-371528f6557e" (reference "R1") (unit 1)))))
-    (symbol (lib_id "Connector:Conn_01x04_Pin") (at 15.24 78.74 0) (property "Reference" "J1" (at 15.24 83.82 0) (effects (font (size 1.27 1.27)) (hide no))) (property "Value" "" (at 15.24 83.82 0) (effects (font (size 1.27 1.27)) (hide yes))) (property "Footprint" "Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Vertical" (at 15.24 83.82 0) (effects (font (size 1.27 1.27)) (hide yes))) (instances (project "one_hz" (path "/e4ae705b-b623-4936-ae52-371528f6557e" (reference "J1") (unit 1)))))
-    (symbol (lib_id "Connector:Conn_01x02_Pin") (at 243.84 88.9 0) (property "Reference" "J2" (at 243.84 93.98 0) (effects (font (size 1.27 1.27)) (hide no))) (property "Value" "" (at 243.84 93.98 0) (effects (font (size 1.27 1.27)) (hide yes))) (property "Footprint" "Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical" (at 243.84 93.98 0) (effects (font (size 1.27 1.27)) (hide yes))) (instances (project "one_hz" (path "/e4ae705b-b623-4936-ae52-371528f6557e" (reference "J2") (unit 1)))))
-    (symbol (lib_id "Connector:TestPoint") (at 71.12 114.3 0) (property "Reference" "TP1" (at 71.12 119.38 0) (effects (font (size 1.27 1.27)) (hide no))) (property "Value" "" (at 71.12 119.38 0) (effects (font (size 1.27 1.27)) (hide yes))) (property "Footprint" "TestPoint:TestPoint_Pad_D1.0mm" (at 71.12 119.38 0) (effects (font (size 1.27 1.27)) (hide yes))) (instances (project "one_hz" (path "/e4ae705b-b623-4936-ae52-371528f6557e" (reference "TP1") (unit 1)))))
-    (symbol (lib_id "Connector:TestPoint") (at 114.3 114.3 0) (property "Reference" "TP2" (at 114.3 119.38 0) (effects (font (size 1.27 1.27)) (hide no))) (property "Value" "" (at 114.3 119.38 0) (effects (font (size 1.27 1.27)) (hide yes))) (property "Footprint" "TestPoint:TestPoint_Pad_D1.0mm" (at 114.3 119.38 0) (effects (font (size 1.27 1.27)) (hide yes))) (instances (project "one_hz" (path "/e4ae705b-b623-4936-ae52-371528f6557e" (reference "TP2") (unit 1)))))
-    (symbol (lib_id "Connector:TestPoint") (at 177.8 114.3 0) (property "Reference" "TP3" (at 177.8 119.38 0) (effects (font (size 1.27 1.27)) (hide no))) (property "Value" "" (at 177.8 119.38 0) (effects (font (size 1.27 1.27)) (hide yes))) (property "Footprint" "TestPoint:TestPoint_Pad_D1.0mm" (at 177.8 119.38 0) (effects (font (size 1.27 1.27)) (hide yes))) (instances (project "one_hz" (path "/e4ae705b-b623-4936-ae52-371528f6557e" (reference "TP3") (unit 1)))))
-    (symbol (lib_id "Connector:TestPoint") (at 236.22 114.3 0) (property "Reference" "TP4" (at 236.22 119.38 0) (effects (font (size 1.27 1.27)) (hide no))) (property "Value" "" (at 236.22 119.38 0) (effects (font (size 1.27 1.27)) (hide yes))) (property "Footprint" "TestPoint:TestPoint_Pad_D1.0mm" (at 236.22 119.38 0) (effects (font (size 1.27 1.27)) (hide yes))) (instances (project "one_hz" (path "/e4ae705b-b623-4936-ae52-371528f6557e" (reference "TP4") (unit 1)))))
+    (symbol (lib_id "SiT8008BI-82-30E-4_194304:SiT8008BI-82-30E-4.194304") (at 35.56 78.74 0) (property "Reference" "U1" (at 35.56 83.82 0) (effects (font (size 1.27 1.27)) (hide no))) (property "Value" "SIT8008BI-82-30E-4.194304" (at 35.56 83.82 0) (effects (font (size 1.27 1.27)) (hide yes))) (property "Footprint" "lib:QFN_7050_4pins" (at 35.56 83.82 0) (effects (font (size 1.27 1.27)) (hide yes))) (instances (project "one_hz" (path "/a988e5c1-4987-47f3-aee9-0c8a32632646" (reference "U1") (unit 1)))))
+    (symbol (lib_id "74xx:74HC4060") (at 93.98 78.74 0) (property "Reference" "U2" (at 93.98 83.82 0) (effects (font (size 1.27 1.27)) (hide no))) (property "Value" "74HC4060N" (at 93.98 83.82 0) (effects (font (size 1.27 1.27)) (hide yes))) (property "Footprint" "Package_DIP:DIP-16_W7.62mm" (at 93.98 83.82 0) (effects (font (size 1.27 1.27)) (hide yes))) (instances (project "one_hz" (path "/a988e5c1-4987-47f3-aee9-0c8a32632646" (reference "U2") (unit 1)))))
+    (symbol (lib_id "74HC4040N_652:74HC4040N_652") (at 139.7 78.74 0) (property "Reference" "U3" (at 139.7 83.82 0) (effects (font (size 1.27 1.27)) (hide no))) (property "Value" "74HC4040N" (at 139.7 83.82 0) (effects (font (size 1.27 1.27)) (hide yes))) (property "Footprint" "Package_DIP:DIP-16_W7.62mm" (at 139.7 83.82 0) (effects (font (size 1.27 1.27)) (hide yes))) (instances (project "one_hz" (path "/a988e5c1-4987-47f3-aee9-0c8a32632646" (reference "U3") (unit 1)))))
+    (symbol (lib_id "74xx:74HC244") (at 200.66 78.74 0) (property "Reference" "U4" (at 200.66 83.82 0) (effects (font (size 1.27 1.27)) (hide no))) (property "Value" "74HC244N" (at 200.66 83.82 0) (effects (font (size 1.27 1.27)) (hide yes))) (property "Footprint" "Package_DIP:DIP-20_W7.62mm" (at 200.66 83.82 0) (effects (font (size 1.27 1.27)) (hide yes))) (instances (project "one_hz" (path "/a988e5c1-4987-47f3-aee9-0c8a32632646" (reference "U4") (unit 1)))))
+    (symbol (lib_id "Device:C_Small") (at 45.72 45.72 0) (property "Reference" "C1" (at 45.72 50.8 0) (effects (font (size 1.27 1.27)) (hide no))) (property "Value" "100nF" (at 45.72 50.8 0) (effects (font (size 1.27 1.27)) (hide yes))) (property "Footprint" "Capacitor_SMD:C_0603_1608Metric" (at 45.72 50.8 0) (effects (font (size 1.27 1.27)) (hide yes))) (instances (project "one_hz" (path "/a988e5c1-4987-47f3-aee9-0c8a32632646" (reference "C1") (unit 1)))))
+    (symbol (lib_id "Device:C_Small") (at 50.8 45.72 0) (property "Reference" "C2" (at 50.8 50.8 0) (effects (font (size 1.27 1.27)) (hide no))) (property "Value" "100nF" (at 50.8 50.8 0) (effects (font (size 1.27 1.27)) (hide yes))) (property "Footprint" "Capacitor_SMD:C_0603_1608Metric" (at 50.8 50.8 0) (effects (font (size 1.27 1.27)) (hide yes))) (instances (project "one_hz" (path "/a988e5c1-4987-47f3-aee9-0c8a32632646" (reference "C2") (unit 1)))))
+    (symbol (lib_id "Device:C_Small") (at 55.88 45.72 0) (property "Reference" "C3" (at 55.88 50.8 0) (effects (font (size 1.27 1.27)) (hide no))) (property "Value" "100nF" (at 55.88 50.8 0) (effects (font (size 1.27 1.27)) (hide yes))) (property "Footprint" "Capacitor_SMD:C_0603_1608Metric" (at 55.88 50.8 0) (effects (font (size 1.27 1.27)) (hide yes))) (instances (project "one_hz" (path "/a988e5c1-4987-47f3-aee9-0c8a32632646" (reference "C3") (unit 1)))))
+    (symbol (lib_id "Device:C_Small") (at 60.96 45.72 0) (property "Reference" "C4" (at 60.96 50.8 0) (effects (font (size 1.27 1.27)) (hide no))) (property "Value" "100nF" (at 60.96 50.8 0) (effects (font (size 1.27 1.27)) (hide yes))) (property "Footprint" "Capacitor_SMD:C_0603_1608Metric" (at 60.96 50.8 0) (effects (font (size 1.27 1.27)) (hide yes))) (instances (project "one_hz" (path "/a988e5c1-4987-47f3-aee9-0c8a32632646" (reference "C4") (unit 1)))))
+    (symbol (lib_id "Device:C_Small") (at 66.04 45.72 0) (property "Reference" "C5" (at 66.04 50.8 0) (effects (font (size 1.27 1.27)) (hide no))) (property "Value" "10µF" (at 66.04 50.8 0) (effects (font (size 1.27 1.27)) (hide yes))) (property "Footprint" "Capacitor_SMD:C_0603_1608Metric" (at 66.04 50.8 0) (effects (font (size 1.27 1.27)) (hide yes))) (instances (project "one_hz" (path "/a988e5c1-4987-47f3-aee9-0c8a32632646" (reference "C5") (unit 1)))))
+    (symbol (lib_id "Device:C_Small") (at 71.12 45.72 0) (property "Reference" "C6" (at 71.12 50.8 0) (effects (font (size 1.27 1.27)) (hide no))) (property "Value" "10µF" (at 71.12 50.8 0) (effects (font (size 1.27 1.27)) (hide yes))) (property "Footprint" "Capacitor_SMD:C_0603_1608Metric" (at 71.12 50.8 0) (effects (font (size 1.27 1.27)) (hide yes))) (instances (project "one_hz" (path "/a988e5c1-4987-47f3-aee9-0c8a32632646" (reference "C6") (unit 1)))))
+    (symbol (lib_id "Device:R_Small") (at 76.2 45.72 0) (property "Reference" "R1" (at 76.2 50.8 0) (effects (font (size 1.27 1.27)) (hide no))) (property "Value" "10kΩ" (at 76.2 50.8 0) (effects (font (size 1.27 1.27)) (hide yes))) (property "Footprint" "Resistor_SMD:R_0603_1608Metric" (at 76.2 50.8 0) (effects (font (size 1.27 1.27)) (hide yes))) (instances (project "one_hz" (path "/a988e5c1-4987-47f3-aee9-0c8a32632646" (reference "R1") (unit 1)))))
+    (symbol (lib_id "Connector:Conn_01x04_Pin") (at 15.24 78.74 0) (property "Reference" "J1" (at 15.24 83.82 0) (effects (font (size 1.27 1.27)) (hide no))) (property "Value" "" (at 15.24 83.82 0) (effects (font (size 1.27 1.27)) (hide yes))) (property "Footprint" "Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Vertical" (at 15.24 83.82 0) (effects (font (size 1.27 1.27)) (hide yes))) (instances (project "one_hz" (path "/a988e5c1-4987-47f3-aee9-0c8a32632646" (reference "J1") (unit 1)))))
+    (symbol (lib_id "Connector:Conn_01x02_Pin") (at 243.84 88.9 0) (property "Reference" "J2" (at 243.84 93.98 0) (effects (font (size 1.27 1.27)) (hide no))) (property "Value" "" (at 243.84 93.98 0) (effects (font (size 1.27 1.27)) (hide yes))) (property "Footprint" "Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical" (at 243.84 93.98 0) (effects (font (size 1.27 1.27)) (hide yes))) (instances (project "one_hz" (path "/a988e5c1-4987-47f3-aee9-0c8a32632646" (reference "J2") (unit 1)))))
+    (symbol (lib_id "Connector:TestPoint") (at 71.12 114.3 0) (property "Reference" "TP1" (at 71.12 119.38 0) (effects (font (size 1.27 1.27)) (hide no))) (property "Value" "" (at 71.12 119.38 0) (effects (font (size 1.27 1.27)) (hide yes))) (property "Footprint" "TestPoint:TestPoint_Pad_D1.0mm" (at 71.12 119.38 0) (effects (font (size 1.27 1.27)) (hide yes))) (instances (project "one_hz" (path "/a988e5c1-4987-47f3-aee9-0c8a32632646" (reference "TP1") (unit 1)))))
+    (symbol (lib_id "Connector:TestPoint") (at 114.3 114.3 0) (property "Reference" "TP2" (at 114.3 119.38 0) (effects (font (size 1.27 1.27)) (hide no))) (property "Value" "" (at 114.3 119.38 0) (effects (font (size 1.27 1.27)) (hide yes))) (property "Footprint" "TestPoint:TestPoint_Pad_D1.0mm" (at 114.3 119.38 0) (effects (font (size 1.27 1.27)) (hide yes))) (instances (project "one_hz" (path "/a988e5c1-4987-47f3-aee9-0c8a32632646" (reference "TP2") (unit 1)))))
+    (symbol (lib_id "Connector:TestPoint") (at 177.8 114.3 0) (property "Reference" "TP3" (at 177.8 119.38 0) (effects (font (size 1.27 1.27)) (hide no))) (property "Value" "" (at 177.8 119.38 0) (effects (font (size 1.27 1.27)) (hide yes))) (property "Footprint" "TestPoint:TestPoint_Pad_D1.0mm" (at 177.8 119.38 0) (effects (font (size 1.27 1.27)) (hide yes))) (instances (project "one_hz" (path "/a988e5c1-4987-47f3-aee9-0c8a32632646" (reference "TP3") (unit 1)))))
+    (symbol (lib_id "Connector:TestPoint") (at 236.22 114.3 0) (property "Reference" "TP4" (at 236.22 119.38 0) (effects (font (size 1.27 1.27)) (hide no))) (property "Value" "" (at 236.22 119.38 0) (effects (font (size 1.27 1.27)) (hide yes))) (property "Footprint" "TestPoint:TestPoint_Pad_D1.0mm" (at 236.22 119.38 0) (effects (font (size 1.27 1.27)) (hide yes))) (instances (project "one_hz" (path "/a988e5c1-4987-47f3-aee9-0c8a32632646" (reference "TP4") (unit 1)))))
 
 	(sheet_instances
 		(path "/"

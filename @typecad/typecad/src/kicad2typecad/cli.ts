@@ -1,11 +1,9 @@
-#!/usr/bin/env tsx
-
-/// <reference path="./fast-sexpr.d.ts" />
-
-import { PCB } from '@typecad/typecad';
-import { TrackBuilder } from '@typecad/typecad';
-import fsexp from 'fast-sexpr';
-import * as fs from 'node:fs';
+import { PCB } from '../pcb/pcb.js';
+import { TrackBuilder } from '../pcb/pcb_track_builder.js';
+import { parseSExpr } from '../utils/sexpr_parse.js';
+import { findNodes } from '../utils/sexpr_walk.js';
+import logger from '../../logging.js';
+import fs from 'node:fs';
 import chalk from 'chalk';
 
 interface KicadSegment {
@@ -14,7 +12,6 @@ interface KicadSegment {
     width: number;
     layer: string;
     net?: number;
-    uuid?: string;
 }
 
 interface KicadNet {
@@ -22,7 +19,7 @@ interface KicadNet {
     name: string;
 }
 
-function parseSexprItem(item: any[]): KicadSegment | null {
+function parseSexprItem(item: unknown[]): KicadSegment | null {
     if (!Array.isArray(item) || item[0] !== 'segment') {
         return null;
     }
@@ -31,7 +28,6 @@ function parseSexprItem(item: any[]): KicadSegment | null {
     let width: number = 0.2;
     let layer: string = "F.Cu";
     let net: number | undefined;
-    let uuid: string | undefined;
     for (let i = 1; i < item.length; i++) {
         const element = item[i];
         if (Array.isArray(element) && element.length > 0) {
@@ -40,8 +36,8 @@ function parseSexprItem(item: any[]): KicadSegment | null {
             switch (key) {
                 case 'start':
                     if (value.length === 2) {
-                        const x = parseFloat(value[0]);
-                        const y = parseFloat(value[1]);
+                        const x = parseFloat(value[0] as string);
+                        const y = parseFloat(value[1] as string);
                         if (!isNaN(x) && !isNaN(y)) {
                             start = { x, y };
                         }
@@ -49,8 +45,8 @@ function parseSexprItem(item: any[]): KicadSegment | null {
                     break;
                 case 'end':
                     if (value.length === 2) {
-                        const x = parseFloat(value[0]);
-                        const y = parseFloat(value[1]);
+                        const x = parseFloat(value[0] as string);
+                        const y = parseFloat(value[1] as string);
                         if (!isNaN(x) && !isNaN(y)) {
                             end = { x, y };
                         }
@@ -58,7 +54,7 @@ function parseSexprItem(item: any[]): KicadSegment | null {
                     break;
                 case 'width':
                     if (value.length === 1) {
-                        const w = parseFloat(value[0]);
+                        const w = parseFloat(value[0] as string);
                         if (!isNaN(w)) {
                             width = w;
                         }
@@ -71,51 +67,27 @@ function parseSexprItem(item: any[]): KicadSegment | null {
                     break;
                 case 'net':
                     if (value.length === 1) {
-                        const n = parseInt(value[0], 10);
+                        const n = parseInt(value[0] as string, 10);
                         if (!isNaN(n)) {
                             net = n;
                         }
-                    }
-                    break;
-                case 'uuid':
-                    if (value.length === 1 && typeof value[0] === 'string') {
-                        uuid = value[0].replace(/"/g, '');
                     }
                     break;
             }
         }
     }
     if (start && end) {
-        const result: KicadSegment = { start, end, width, layer, net, uuid };
-        return result;
+        return { start, end, width, layer, net };
     }
     return null;
 }
 
-function findSegments(parsedData: any, depth = 0): KicadSegment[] {
-    const segments: KicadSegment[] = [];
-    if (Array.isArray(parsedData)) {
-        for (let i = 0; i < parsedData.length; i++) {
-            const item = parsedData[i];
-            if (Array.isArray(item) && item.length > 0 && item[0] === 'segment') {
-                const segment = parseSexprItem(item);
-                if (segment) {
-                    segments.push(segment);
-                }
-            } else if (Array.isArray(item)) {
-                segments.push(...findSegments(item, depth + 1));
-            }
-        }
-    }
-    return segments;
-}
-
-function parseNetItem(item: any[]): KicadNet | null {
+function parseNetItem(item: unknown[]): KicadNet | null {
     if (!Array.isArray(item) || item[0] !== 'net') {
         return null;
     }
     if (item.length >= 3) {
-        const number = parseInt(item[1], 10);
+        const number = parseInt(item[1] as string, 10);
         const name = typeof item[2] === 'string' ? item[2].replace(/"/g, '') : '';
         if (!isNaN(number)) {
             return { number, name };
@@ -124,31 +96,9 @@ function parseNetItem(item: any[]): KicadNet | null {
     return null;
 }
 
-function findNets(parsedData: any, depth = 0): KicadNet[] {
-    const nets: KicadNet[] = [];
-    if (Array.isArray(parsedData)) {
-        for (let i = 0; i < parsedData.length; i++) {
-            const item = parsedData[i];
-            if (Array.isArray(item) && item.length > 0 && item[0] === 'net') {
-                const net = parseNetItem(item);
-                if (net) {
-                    nets.push(net);
-                }
-            } else if (Array.isArray(item)) {
-                nets.push(...findNets(item, depth + 1));
-            }
-        }
-    }
-    return nets;
-}
-
 function sanitizeNetNameForVariable(netName: string): string {
-    // Convert net name to valid TypeScript variable name
-    // Replace non-alphanumeric characters with underscores
     let sanitized = netName.replace(/[^a-zA-Z0-9_]/g, '_');
-    // Remove leading/trailing underscores
     sanitized = sanitized.replace(/^_+|_+$/g, '');
-    // If starts with number, prefix with underscore
     if (/^[0-9]/.test(sanitized)) {
         sanitized = '_' + sanitized;
     }
@@ -160,11 +110,10 @@ interface KicadComponentPlacement {
     x: number;
     y: number;
     rotation: number;
-    layer: string;
     variableName?: string;
 }
 
-function parseFootprintItem(item: any[]): KicadComponentPlacement | null {
+function parseFootprintItem(item: unknown[]): KicadComponentPlacement | null {
     if (!Array.isArray(item) || item[0] !== 'footprint') {
         return null;
     }
@@ -173,8 +122,6 @@ function parseFootprintItem(item: any[]): KicadComponentPlacement | null {
     let x: number | undefined;
     let y: number | undefined;
     let rotation: number = 0;
-    let layer: string | undefined;
-    let variableName: string | undefined;
 
     for (let i = 1; i < item.length; i++) {
         const element = item[i];
@@ -183,17 +130,12 @@ function parseFootprintItem(item: any[]): KicadComponentPlacement | null {
             const values = element.slice(1);
 
             switch (key) {
-                case 'layer':
-                    if (typeof values[0] === 'string') {
-                        layer = values[0].replace(/"/g, '');
-                    }
-                    break;
                 case 'at':
                     if (values.length >= 2) {
-                        x = parseFloat(values[0]);
-                        y = parseFloat(values[1]);
+                        x = parseFloat(values[0] as string);
+                        y = parseFloat(values[1] as string);
                         if (values.length > 2) {
-                            rotation = parseFloat(values[2]);
+                            rotation = parseFloat(values[2] as string);
                         }
                         if (isNaN(x) || isNaN(y) || isNaN(rotation)) {
                             x = undefined; y = undefined; rotation = 0;
@@ -212,7 +154,7 @@ function parseFootprintItem(item: any[]): KicadComponentPlacement | null {
                                 const codeStr = values[1];
                                 const match = codeStr.match(/'variable':'([^']+)'/);
                                 if (match && match[1]) {
-                                    variableName = match[1];
+                                    return null; // variableName handled below
                                 }
                             }
                         }
@@ -222,37 +164,78 @@ function parseFootprintItem(item: any[]): KicadComponentPlacement | null {
         }
     }
 
-    if (reference && x !== undefined && y !== undefined && layer) {
-        return { reference, x, y, rotation, layer, variableName };
-    }
-    return null;
-}
-
-function findFootprints(parsedData: any, depth = 0): KicadComponentPlacement[] {
-    const placements: KicadComponentPlacement[] = [];
-    if (Array.isArray(parsedData)) {
-        for (let i = 0; i < parsedData.length; i++) {
-            const item = parsedData[i];
-            if (Array.isArray(item) && item.length > 0 && item[0] === 'footprint') {
-                const placement = parseFootprintItem(item);
-                if (placement) {
-                    placements.push(placement);
+    // Second pass to get variableName
+    let variableName: string | undefined;
+    for (let i = 1; i < item.length; i++) {
+        const element = item[i];
+        if (Array.isArray(element) && element.length > 0) {
+            const key = element[0].toString().replace(/"/g, '');
+            const values = element.slice(1);
+            if (key === 'property' && values.length > 1 && typeof values[0] === 'string') {
+                const propName = values[0].replace(/"/g, '');
+                if (propName === 'Code' && typeof values[1] === 'string') {
+                    const match = (values[1] as string).match(/'variable':'([^']+)'/);
+                    if (match && match[1]) {
+                        variableName = match[1];
+                    }
                 }
-            } else if (Array.isArray(item)) {
-                placements.push(...findFootprints(item, depth + 1));
             }
         }
     }
-    return placements;
+
+    if (reference && x !== undefined && y !== undefined) {
+        return { reference, x, y, rotation, variableName };
+    }
+    return null;
 }
 
 interface KicadVia {
     at: { x: number; y: number };
     size: number;
     drill: number;
-    layers?: string[];
-    net?: number;
-    uuid?: string;
+}
+
+function parseViaItem(item: unknown[]): KicadVia | null {
+    if (!Array.isArray(item) || item[0] !== 'via') {
+        return null;
+    }
+    let at: { x: number; y: number } | undefined;
+    let size: number | undefined;
+    let drill: number | undefined;
+
+    for (let i = 1; i < item.length; i++) {
+        const element = item[i];
+        if (Array.isArray(element) && element.length > 0) {
+            const key = element[0].toString().replace(/"/g, '');
+            const values = element.slice(1);
+            switch (key) {
+                case 'at':
+                    if (values.length === 2) {
+                        const x = parseFloat(values[0] as string);
+                        const y = parseFloat(values[1] as string);
+                        if (!isNaN(x) && !isNaN(y)) at = { x, y };
+                    }
+                    break;
+                case 'size':
+                    if (values.length === 1) {
+                        const s = parseFloat(values[0] as string);
+                        if (!isNaN(s)) size = s;
+                    }
+                    break;
+                case 'drill':
+                    if (values.length === 1) {
+                        const d = parseFloat(values[0] as string);
+                        if (!isNaN(d)) drill = d;
+                    }
+                    break;
+            }
+        }
+    }
+
+    if (at && size !== undefined && drill !== undefined) {
+        return { at, size, drill };
+    }
+    return null;
 }
 
 interface KicadBoardOutline {
@@ -263,91 +246,9 @@ interface KicadBoardOutline {
     mid?: { x: number; y: number };
     width?: number;
     height?: number;
-    layer: string;
-    uuid?: string;
 }
 
-function parseViaItem(item: any[]): KicadVia | null {
-    if (!Array.isArray(item) || item[0] !== 'via') {
-        return null;
-    }
-    let at: { x: number; y: number } | undefined;
-    let size: number | undefined;
-    let drill: number | undefined;
-    let layers: string[] | undefined;
-    let net: number | undefined;
-    let uuid: string | undefined;
-
-    for (let i = 1; i < item.length; i++) {
-        const element = item[i];
-        if (Array.isArray(element) && element.length > 0) {
-            const key = element[0].toString().replace(/"/g, '');
-            const values = element.slice(1);
-            switch (key) {
-                case 'at':
-                    if (values.length === 2) {
-                        const x = parseFloat(values[0]);
-                        const y = parseFloat(values[1]);
-                        if (!isNaN(x) && !isNaN(y)) at = { x, y };
-                    }
-                    break;
-                case 'size':
-                    if (values.length === 1) {
-                        const s = parseFloat(values[0]);
-                        if (!isNaN(s)) size = s;
-                    }
-                    break;
-                case 'drill':
-                    if (values.length === 1) {
-                        const d = parseFloat(values[0]);
-                        if (!isNaN(d)) drill = d;
-                    }
-                    break;
-                case 'layers':
-                    if (Array.isArray(values) && values.every(v => typeof v === 'string')) {
-                        layers = values.map(v => v.replace(/"/g, ''));
-                    }
-                    break;
-                case 'net':
-                    if (values.length === 1) {
-                        const n = parseInt(values[0], 10);
-                        if (!isNaN(n)) net = n;
-                    }
-                    break;
-                case 'uuid':
-                    if (values.length === 1 && typeof values[0] === 'string') {
-                        uuid = values[0].replace(/"/g, '');
-                    }
-                    break;
-            }
-        }
-    }
-
-    if (at && size !== undefined && drill !== undefined) {
-        return { at, size, drill, layers, net, uuid };
-    }
-    return null;
-}
-
-function findVias(parsedData: any, depth = 0): KicadVia[] {
-    const vias: KicadVia[] = [];
-    if (Array.isArray(parsedData)) {
-        for (let i = 0; i < parsedData.length; i++) {
-            const item = parsedData[i];
-            if (Array.isArray(item) && item.length > 0 && item[0] === 'via') {
-                const via = parseViaItem(item);
-                if (via) {
-                    vias.push(via);
-                }
-            } else if (Array.isArray(item)) {
-                vias.push(...findVias(item, depth + 1));
-            }
-        }
-    }
-    return vias;
-}
-
-function parseOutlineItem(item: any[]): KicadBoardOutline | null {
+function parseOutlineItem(item: unknown[]): KicadBoardOutline | null {
     if (!Array.isArray(item) || item.length === 0) {
         return null;
     }
@@ -362,7 +263,6 @@ function parseOutlineItem(item: any[]): KicadBoardOutline | null {
     let center: { x: number; y: number } | undefined;
     let mid: { x: number; y: number } | undefined;
     let layer: string | undefined;
-    let uuid: string | undefined;
 
     for (let i = 1; i < item.length; i++) {
         const element = item[i];
@@ -373,29 +273,29 @@ function parseOutlineItem(item: any[]): KicadBoardOutline | null {
             switch (key) {
                 case 'start':
                     if (values.length === 2) {
-                        const x = parseFloat(values[0]);
-                        const y = parseFloat(values[1]);
+                        const x = parseFloat(values[0] as string);
+                        const y = parseFloat(values[1] as string);
                         if (!isNaN(x) && !isNaN(y)) start = { x, y };
                     }
                     break;
                 case 'end':
                     if (values.length === 2) {
-                        const x = parseFloat(values[0]);
-                        const y = parseFloat(values[1]);
+                        const x = parseFloat(values[0] as string);
+                        const y = parseFloat(values[1] as string);
                         if (!isNaN(x) && !isNaN(y)) end = { x, y };
                     }
                     break;
                 case 'center':
                     if (values.length === 2) {
-                        const x = parseFloat(values[0]);
-                        const y = parseFloat(values[1]);
+                        const x = parseFloat(values[0] as string);
+                        const y = parseFloat(values[1] as string);
                         if (!isNaN(x) && !isNaN(y)) center = { x, y };
                     }
                     break;
                 case 'mid':
                     if (values.length === 2) {
-                        const x = parseFloat(values[0]);
-                        const y = parseFloat(values[1]);
+                        const x = parseFloat(values[0] as string);
+                        const y = parseFloat(values[1] as string);
                         if (!isNaN(x) && !isNaN(y)) mid = { x, y };
                     }
                     break;
@@ -404,16 +304,10 @@ function parseOutlineItem(item: any[]): KicadBoardOutline | null {
                         layer = values[0].replace(/"/g, '');
                     }
                     break;
-                case 'uuid':
-                    if (values.length === 1 && typeof values[0] === 'string') {
-                        uuid = values[0].replace(/"/g, '');
-                    }
-                    break;
             }
         }
     }
 
-    // Only process items on Edge.Cuts layer
     if (layer !== 'Edge.Cuts') {
         return null;
     }
@@ -425,25 +319,25 @@ function parseOutlineItem(item: any[]): KicadBoardOutline | null {
             if (start && end) {
                 const width = Math.abs(end.x - start.x);
                 const height = Math.abs(end.y - start.y);
-                return { type, start, end, width, height, layer, uuid };
+                return { type, start, end, width, height };
             }
             break;
         case 'gr_line':
             type = 'line';
             if (start && end) {
-                return { type, start, end, layer, uuid };
+                return { type, start, end };
             }
             break;
         case 'gr_arc':
             type = 'arc';
             if (start && end) {
-                return { type, start, end, center, mid, layer, uuid };
+                return { type, start, end, center, mid };
             }
             break;
         case 'gr_circle':
             type = 'circle';
             if (center && end) {
-                return { type, center, end, layer, uuid };
+                return { type, center, end };
             }
             break;
     }
@@ -451,64 +345,33 @@ function parseOutlineItem(item: any[]): KicadBoardOutline | null {
     return null;
 }
 
-function findBoardOutlines(parsedData: any, depth = 0): KicadBoardOutline[] {
-    const outlines: KicadBoardOutline[] = [];
-    if (Array.isArray(parsedData)) {
-        for (let i = 0; i < parsedData.length; i++) {
-            const item = parsedData[i];
-            if (Array.isArray(item) && item.length > 0) {
-                const elementType = item[0].toString().replace(/"/g, '');
-                if (['gr_rect', 'gr_line', 'gr_arc', 'gr_circle'].includes(elementType)) {
-                    const outline = parseOutlineItem(item);
-                    if (outline) {
-                        outlines.push(outline);
-                    }
-                } else {
-                    outlines.push(...findBoardOutlines(item, depth + 1));
-                }
-            }
-        }
-    }
-    return outlines;
-}
-
-// Legacy TypeScript-based name extraction removed.
-
-// Legacy heuristic reference mapping removed.
-
-async function kicadDataToTypeCAD(filePath: string) {
+export async function kicadDataToTypeCAD(filePath: string) {
     let sExpressionText: string;
     const sourceDescription: string = `File: ${filePath}`;
 
     try {
-        console.log(`Reading from ${sourceDescription}`);
+        logger.info(`Reading from ${sourceDescription}`);
         if (!fs.existsSync(filePath)) {
-            console.error(`Error: File not found at ${filePath}`);
+            logger.error(`Error: File not found at ${filePath}`);
             return;
         }
         sExpressionText = fs.readFileSync(filePath, 'utf-8');
 
         if (!sExpressionText.trim()) {
-            console.log(`${sourceDescription} is empty.`);
+            logger.info(`${sourceDescription} is empty.`);
             return;
         }
 
-        let rootElement;
+        let rootElement: unknown;
         try {
-            const wrappedText = `(${sExpressionText})`;
-            const parsedArray = fsexp(wrappedText);
-            if (Array.isArray(parsedArray) && parsedArray.length > 0) {
-                rootElement = parsedArray.pop();
-            } else {
-                throw new Error("Parser did not return a valid array structure.");
-            }
-        } catch (error: any) {
-            console.error(`Failed to parse S-expression from ${sourceDescription}: ${error.message}`);
+            rootElement = parseSExpr(sExpressionText);
+        } catch (error: unknown) {
+            logger.error(`Failed to parse S-expression from ${sourceDescription}: ${(error as Error).message}`);
             return;
         }
 
         if (!rootElement) {
-            console.error(`Parsed data from ${sourceDescription} is empty or invalid (rootElement is null/undefined).`);
+            logger.error(`Parsed data from ${sourceDescription} is empty or invalid.`);
             return;
         }
 
@@ -521,22 +384,24 @@ async function kicadDataToTypeCAD(filePath: string) {
         const chPunc = chalk.gray;
         const chVar = chalk.blueBright;
 
-        const nets = findNets(rootElement);
-        const segments = findSegments(rootElement);
+        const nets = findNodes(rootElement, 'net')
+            .map(item => parseNetItem(item as unknown[]))
+            .filter((n): n is KicadNet => n !== null);
 
-        // Track which net variable names we created
+        const segments = findNodes(rootElement, 'segment')
+            .map(item => parseSexprItem(item as unknown[]))
+            .filter((s): s is KicadSegment => s !== null);
+
         const trackVariableNames: string[] = [];
 
         if (segments.length > 0) {
             console.log(`Found ${segments.length} segments. Generating TrackBuilder chains organized by nets from ${sourceDescription}.`);
 
-            // Create a map of net number to net name
             const netMap = new Map<number, string>();
             nets.forEach(net => {
                 netMap.set(net.number, net.name);
             });
 
-            // Group segments by net
             const segmentsByNet = new Map<number, KicadSegment[]>();
             segments.forEach(segment => {
                 const netNum = segment.net ?? 0;
@@ -546,13 +411,11 @@ async function kicadDataToTypeCAD(filePath: string) {
                 segmentsByNet.get(netNum)!.push(segment);
             });
 
-            // Generate code organized by nets
             const allNetTrackLogs: string[] = [];
 
             segmentsByNet.forEach((netSegments, netNum) => {
                 const netName = netMap.get(netNum) || '';
 
-                // Determine if this is a named net or unnamed
                 const isUnnamedNet = !netName || netName.startsWith('net') || netName === '';
 
                 let variableName: string;
@@ -562,12 +425,10 @@ async function kicadDataToTypeCAD(filePath: string) {
                     variableName = `track_${sanitizeNetNameForVariable(netName)}`;
                 }
 
-                // Track variable name for later use in typecad.create()
                 if (!trackVariableNames.includes(variableName)) {
                     trackVariableNames.push(variableName);
                 }
 
-                // Add declaration comment
                 if (isUnnamedNet) {
                     allNetTrackLogs.push(chalk.gray(`// Unnamed nets (net${netNum})`));
                 } else {
@@ -575,14 +436,12 @@ async function kicadDataToTypeCAD(filePath: string) {
                 }
                 allNetTrackLogs.push(`${chVar('let ' + variableName)}${chPunc(':')} ${chKey('TrackBuilder')}${chPunc('[]')} ${chPunc('=')} ${chPunc('[')}${chPunc(']')}${chPunc(';')}`);
 
-                // Process segments for this net
                 let currentTrackBuilder: TrackBuilder | null = null;
                 let lastEndPoint: { x: number; y: number } | null = null;
                 let currentChainLog: string = "";
 
                 netSegments.forEach((segment) => {
                     if (!currentTrackBuilder || !lastEndPoint || lastEndPoint.x !== segment.start.x || lastEndPoint.y !== segment.start.y) {
-                        // Start a new track chain
                         if (currentTrackBuilder && currentChainLog) {
                             allNetTrackLogs.push(currentChainLog + chPunc(')') + chPunc(';'));
                         }
@@ -591,19 +450,17 @@ async function kicadDataToTypeCAD(filePath: string) {
                         currentTrackBuilder.to({ x: segment.end.x, y: segment.end.y, layer: segment.layer, width: segment.width });
                         currentChainLog += `${chKey('.to')}${chPunc('(')}{ ${chProp('x')}${chPunc(':')} ${chNum(segment.end.x)}${chPunc(',')} ${chProp('y')}${chPunc(':')} ${chNum(segment.end.y)}${chPunc(',')} ${chProp('layer')}${chPunc(':')} ${chStr('"' + segment.layer + '"')}${chPunc(',')} ${chProp('width')}${chPunc(':')} ${chNum(segment.width)} }${chPunc(')')}`;
                     } else {
-                        // Continue existing track chain
                         currentTrackBuilder!.to({ x: segment.end.x, y: segment.end.y, layer: segment.layer, width: segment.width });
                         currentChainLog += `${chKey('.to')}${chPunc('(')}{ ${chProp('x')}${chPunc(':')} ${chNum(segment.end.x)}${chPunc(',')} ${chProp('y')}${chPunc(':')} ${chNum(segment.end.y)}${chPunc(',')} ${chProp('layer')}${chPunc(':')} ${chStr('"' + segment.layer + '"')}${chPunc(',')} ${chProp('width')}${chPunc(':')} ${chNum(segment.width)} }${chPunc(')')}`;
                     }
                     lastEndPoint = segment.end;
                 });
 
-                // Finish the last chain for this net
                 if (currentChainLog) {
                     allNetTrackLogs.push(currentChainLog + chPunc(')') + chPunc(';'));
                 }
 
-                allNetTrackLogs.push(''); // Empty line between nets
+                allNetTrackLogs.push('');
             });
 
             if (allNetTrackLogs.length > 0) {
@@ -615,13 +472,15 @@ async function kicadDataToTypeCAD(filePath: string) {
             console.log(`No segments found in ${sourceDescription} content.`);
         }
 
-        const footprints = findFootprints(rootElement);
+        const footprints = findNodes(rootElement, 'footprint')
+            .map(item => parseFootprintItem(item as unknown[]))
+            .filter((fp): fp is KicadComponentPlacement => fp !== null);
+
         if (footprints.length > 0) {
             console.log(`Found ${footprints.length} footprints. Generating placement code from ${sourceDescription}.`);
-            
+
             const allPlacementLogs: string[] = [];
             footprints.forEach(fp => {
-                // Prefer embedded variable name from footprint 'Code' property; fallback to KiCad reference
                 const variableName = fp.variableName || fp.reference;
                 let placementLog = `${chVar('this.' + variableName)}${chPunc('.')}${chProp('pcb')} ${chPunc('=')} ${chPunc('{')}`;
                 placementLog += ` ${chProp('x')}${chPunc(':')} ${chNum(fp.x)}${chPunc(',')}`;
@@ -640,7 +499,10 @@ async function kicadDataToTypeCAD(filePath: string) {
             console.log(`No footprints found in ${sourceDescription} content.`);
         }
 
-        const vias = findVias(rootElement);
+        const vias = findNodes(rootElement, 'via')
+            .map(item => parseViaItem(item as unknown[]))
+            .filter((v): v is KicadVia => v !== null);
+
         if (vias.length > 0) {
             console.log(`Found ${vias.length} vias. Generating typeCAD code from ${sourceDescription}.`);
             const allViaLogs: string[] = [];
@@ -662,20 +524,20 @@ async function kicadDataToTypeCAD(filePath: string) {
             console.log(`No vias found in ${sourceDescription} content.`);
         }
 
-        const outlines = findBoardOutlines(rootElement);
+        const outlines = findNodes(rootElement, ['gr_rect', 'gr_line', 'gr_arc', 'gr_circle'])
+            .map(item => parseOutlineItem(item as unknown[]))
+            .filter((o): o is KicadBoardOutline => o !== null);
+
         if (outlines.length > 0) {
             console.log(`Found ${outlines.length} board outline element(s) on Edge.Cuts layer. Generating typeCAD code from ${sourceDescription}.`);
             const allOutlineLogs: string[] = [];
 
-            // Try to detect if we have a simple rectangular board
             const rectOutlines = outlines.filter(o => o.type === 'rect');
             const lineOutlines = outlines.filter(o => o.type === 'line');
 
             if (rectOutlines.length === 1) {
-                // Single rectangle - generate simple outline call
                 const rect = rectOutlines[0];
                 if (rect.start && rect.end && rect.width && rect.height) {
-                    // Calculate position and dimensions
                     const x = Math.min(rect.start.x, rect.end.x);
                     const y = Math.min(rect.start.y, rect.end.y);
                     const width = rect.width;
@@ -690,12 +552,10 @@ async function kicadDataToTypeCAD(filePath: string) {
                     allOutlineLogs.push(outlineLog);
                 }
             } else if (lineOutlines.length === 4 || (lineOutlines.length + outlines.filter(o => o.type === 'arc').length >= 4)) {
-                // Four lines forming a rectangle (or lines + arcs for rounded corners)
                 const arcOutlines = outlines.filter(o => o.type === 'arc');
 
                 let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
 
-                // Calculate bounds from lines
                 lineOutlines.forEach(line => {
                     if (line.start && line.end) {
                         minX = Math.min(minX, line.start.x, line.end.x);
@@ -705,7 +565,6 @@ async function kicadDataToTypeCAD(filePath: string) {
                     }
                 });
 
-                // Include arc bounds
                 arcOutlines.forEach(arc => {
                     if (arc.start && arc.end) {
                         minX = Math.min(minX, arc.start.x, arc.end.x);
@@ -722,17 +581,13 @@ async function kicadDataToTypeCAD(filePath: string) {
                 });
 
                 if (isFinite(minX) && isFinite(minY) && isFinite(maxX) && isFinite(maxY)) {
-                    // Round to avoid floating point precision issues
                     const width = Math.round((maxX - minX) * 1000) / 1000;
                     const height = Math.round((maxY - minY) * 1000) / 1000;
 
-                    // Detect corner fillet radius if arcs are present
                     let filletRadius: number | null = null;
                     if (arcOutlines.length === 4) {
-                        // Calculate fillet radius from corner arcs using the proper formula
                         const radii = arcOutlines.map(arc => {
                             if (arc.start && arc.end && arc.mid) {
-                                // Calculate radius from three points on the arc using the circumradius formula
                                 const ax = arc.start.x;
                                 const ay = arc.start.y;
                                 const bx = arc.mid.x;
@@ -740,15 +595,12 @@ async function kicadDataToTypeCAD(filePath: string) {
                                 const cx = arc.end.x;
                                 const cy = arc.end.y;
 
-                                // Calculate side lengths
                                 const a = Math.sqrt((bx - cx) * (bx - cx) + (by - cy) * (by - cy));
                                 const b = Math.sqrt((ax - cx) * (ax - cx) + (ay - cy) * (ay - cy));
                                 const c = Math.sqrt((ax - bx) * (ax - bx) + (ay - by) * (ay - by));
 
-                                // Calculate area using cross product
                                 const area = Math.abs((bx - ax) * (cy - ay) - (cx - ax) * (by - ay)) / 2;
 
-                                // Radius = (a * b * c) / (4 * area)
                                 if (area > 0) {
                                     const radius = (a * b * c) / (4 * area);
                                     return radius;
@@ -758,7 +610,6 @@ async function kicadDataToTypeCAD(filePath: string) {
                         }).filter(r => r > 0);
 
                         if (radii.length > 0) {
-                            // Average the radii and round
                             const avgRadius = radii.reduce((a, b) => a + b, 0) / radii.length;
                             filletRadius = Math.round(avgRadius * 1000) / 1000;
                         }
@@ -778,7 +629,6 @@ async function kicadDataToTypeCAD(filePath: string) {
                     allOutlineLogs.push(outlineLog);
                 }
             } else {
-                // Complex outline or multiple elements - document what was found
                 outlines.forEach((outline, index) => {
                     let comment = `${chalk.gray('// Board outline element ' + (index + 1) + ': ')}`;
                     switch (outline.type) {
@@ -821,7 +671,6 @@ async function kicadDataToTypeCAD(filePath: string) {
             console.log(`No board outline found in ${sourceDescription} content (looking for Edge.Cuts layer).`);
         }
 
-        // Generate typecad.create() statement
         const componentReferences: string[] = [];
         footprints.forEach(fp => {
             const variableName = fp.variableName || fp.reference;
@@ -835,17 +684,14 @@ async function kicadDataToTypeCAD(filePath: string) {
 
             const allItems: string[] = [];
 
-            // Add components
             componentReferences.forEach(ref => {
                 allItems.push(`${chVar(ref)}`);
             });
 
-            // Add track arrays with spread operator
             trackVariableNames.forEach(trackVar => {
                 allItems.push(`${chPunc('...')}${chVar(trackVar)}`);
             });
 
-            // Format the items with proper indentation
             if (allItems.length > 0) {
                 createStatement += '\n';
                 allItems.forEach((item, index) => {
@@ -864,24 +710,7 @@ async function kicadDataToTypeCAD(filePath: string) {
             console.log(chalk.bold("--------------------------------------------------------------"));
         }
 
-    } catch (error: any) {
-        console.error(`Error processing data from ${sourceDescription}: ${error.message}`);
+    } catch (error: unknown) {
+        logger.error(`Error processing data from ${sourceDescription}: ${(error as Error).message}`);
     }
 }
-
-const args = process.argv.slice(2);
-const filePathArg = args[0];
-// No optional TypeScript file arg needed anymore
-
-if (filePathArg && filePathArg.trim() !== "") {
-    kicadDataToTypeCAD(filePathArg);
-} else {
-    console.log("No KiCad file path provided. Please provide a file path as a command line argument.");
-    console.log("Usage: npx tsx ./index.ts <path_to_kicad_pcb_file>");
-    console.log("");
-    console.log("Notes:");
-    console.log("- Variable names are sourced from each footprint's 'Code' property.");
-    console.log("- If missing, the KiCad reference is used (e.g., U1, R3).");
-}
-
-

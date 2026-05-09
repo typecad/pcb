@@ -10,6 +10,7 @@
     "open_board": "npx open-cli ./build/one_hz.kicad_pcb",
     "docs": "typecad-docgen ./docs/dev.md ./build/one_hz.kicad_pcb",
     "kicad_symbols": "kicad-symbols",
+    "kicad2typecad": "npx --package=@typecad/typecad kicad2typecad ./build/one_hz.kicad_pcb",
     "git_diff": "git difftool -y --extcmd \"typecad-gitdiff\" ./build/one_hz.kicad_pcb",
     "build:plugin": "cd typescript-plugin && npm install && npm run build && npm link && cd .. && npm link typecad-language-plugin",
     "watch:plugin": "cd typescript-plugin && npm run watch"

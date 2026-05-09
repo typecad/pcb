@@ -1,5 +1,6 @@
 import { ComponentRecord, ComponentScore, MatchDetail, ParsedParameters } from '../types/index.js';
 import { FuzzyScorer } from '../interfaces/FuzzyScorer.js';
+import { isFuzzyMatch, MANUFACTURER_VARIATIONS } from './scoring_utils.js';
 
 /**
  * Enhanced scoring system with advanced matching capabilities
@@ -237,7 +238,7 @@ export class EnhancedScoringSystem implements FuzzyScorer {
       // Check for fuzzy matches in searchTerms
       else if (searchTerms.length > 0) {
         for (const searchTerm of searchTerms) {
-          if (this.isFuzzyMatch(lowerKeyword, searchTerm)) {
+          if (isFuzzyMatch(lowerKeyword, searchTerm)) {
             matchedKeywords.push(keyword);
             break; // Only count the first fuzzy match
           }
@@ -526,21 +527,9 @@ export class EnhancedScoringSystem implements FuzzyScorer {
     const mfr = component.mfr.toLowerCase();
     const manufacturer = component.manufacturer.toLowerCase();
     
-    // Common manufacturer variations
-    const manufacturerVariations: Record<string, string[]> = {
-      'sensirion': ['sensiron', 'sensirion'],
-      'stmicro': ['st', 'stmicroelectronics'],
-      'ti': ['texas instruments', 'texas'],
-      'analog devices': ['adi', 'analog'],
-      'maxim': ['maxim integrated'],
-      'microchip': ['microchip technology'],
-      'nxp': ['nxp semiconductors'],
-      'infineon': ['infineon technologies']
-    };
-    
     for (const keyword of parameters.keywords) {
       const lowerKeyword = keyword.toLowerCase();
-      
+
       // Check for exact manufacturer name matches (not part number)
       if (manufacturer.includes(lowerKeyword)) {
         return {
@@ -550,9 +539,9 @@ export class EnhancedScoringSystem implements FuzzyScorer {
           reason: `Manufacturer match: ${keyword}`
         };
       }
-      
+
       // Check for manufacturer variations
-      for (const [manufacturerName, variations] of Object.entries(manufacturerVariations)) {
+      for (const [manufacturerName, variations] of Object.entries(MANUFACTURER_VARIATIONS)) {
         if (variations.includes(lowerKeyword) || lowerKeyword.includes(manufacturerName)) {
           return {
             parameter: 'manufacturer_variation',
@@ -832,38 +821,4 @@ export class EnhancedScoringSystem implements FuzzyScorer {
     
     return deviceLibraryBonus;
   }
-
-  /**
-   * Fuzzy matching using Levenshtein distance
-   */
-  private isFuzzyMatch(query: string, target: string): boolean {
-    const distance = this.levenshteinDistance(query, target);
-    const maxLength = Math.max(query.length, target.length);
-    const similarity = 1 - (distance / maxLength);
-    
-    return similarity >= 0.8; // 80% similarity threshold
-  }
-
-  /**
-   * Calculate Levenshtein distance between two strings
-   */
-  private levenshteinDistance(str1: string, str2: string): number {
-    const matrix = Array(str2.length + 1).fill(null).map(() => Array(str1.length + 1).fill(null));
-    
-    for (let i = 0; i <= str1.length; i++) matrix[0][i] = i;
-    for (let j = 0; j <= str2.length; j++) matrix[j][0] = j;
-    
-    for (let j = 1; j <= str2.length; j++) {
-      for (let i = 1; i <= str1.length; i++) {
-        const indicator = str1[i - 1] === str2[j - 1] ? 0 : 1;
-        matrix[j][i] = Math.min(
-          matrix[j][i - 1] + 1, // deletion
-          matrix[j - 1][i] + 1, // insertion
-          matrix[j - 1][i - 1] + indicator // substitution
-        );
-      }
-    }
-    
-    return matrix[str2.length][str1.length];
-  }
-} 
+}

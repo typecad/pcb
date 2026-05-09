@@ -1,7 +1,7 @@
 {
   "outlines": [
     {
-      "uuid": "a0b90f52-ecb3-43c2-9229-9fc8b71ac547",
+      "uuid": "0ca57c9b-1b1d-4c72-9c99-f94a20f2a94c",
       "x": 135.255,
       "y": 77.47,
       "width": 46.355,
@@ -10,7 +10,7 @@
       "elements": [
         {
           "type": "line",
-          "uuid": "5193bf5b-c8f7-45c7-85c5-2213ca339bd2",
+          "uuid": "cf8a59d3-db5f-4d23-a002-edfc538807f4",
           "layer": "Edge.Cuts",
           "strokeWidth": 0.05,
           "start": {
@@ -25,7 +25,7 @@
         },
         {
           "type": "line",
-          "uuid": "fad7d680-55b0-4c8f-8a73-9934db5b5887",
+          "uuid": "ebd46114-8648-4ee4-a0aa-1bbd044cbfa1",
           "layer": "Edge.Cuts",
           "strokeWidth": 0.05,
           "start": {
@@ -40,7 +40,7 @@
         },
         {
           "type": "line",
-          "uuid": "b42897a6-9b6e-4425-b167-9e9c8d5350fb",
+          "uuid": "ab236e40-19db-43ae-b517-a1a19960c033",
           "layer": "Edge.Cuts",
           "strokeWidth": 0.05,
           "start": {
@@ -55,7 +55,7 @@
         },
         {
           "type": "line",
-          "uuid": "6d4d0924-dcec-40b4-9088-7aefcd4ae0e3",
+          "uuid": "e40551c5-e7e6-4ffc-818b-3782836f8343",
           "layer": "Edge.Cuts",
           "strokeWidth": 0.05,
           "start": {
@@ -85,7 +85,7 @@
   ],
   "tracks": [
     {
-      "uuid": "58ce5fae-6ea7-49e9-92ec-c527fc4e6578",
+      "uuid": "46094fc5-ed0c-4161-85b5-7175d119be8e",
       "x": 137.892,
       "y": 104.81,
       "width": 0.05449999999999022,
@@ -94,7 +94,7 @@
       "elements": [
         {
           "type": "line",
-          "uuid": "58ce5fae-6ea7-49e9-92ec-c527fc4e6578",
+          "uuid": "46094fc5-ed0c-4161-85b5-7175d119be8e",
           "layer": "F.Cu",
           "strokeWidth": 0.2,
           "start": {
@@ -111,7 +111,7 @@
       ]
     },
     {
-      "uuid": "4482c087-9eb6-4dba-ae27-4c7ff7d8d888",
+      "uuid": "9c27ca19-6541-434e-b696-ff9d3614c3ee",
       "x": 137.8375,
       "y": 104.53750000000001,
       "width": 0,
@@ -120,7 +120,7 @@
       "elements": [
         {
           "type": "line",
-          "uuid": "4482c087-9eb6-4dba-ae27-4c7ff7d8d888",
+          "uuid": "9c27ca19-6541-434e-b696-ff9d3614c3ee",
           "layer": "F.Cu",
           "strokeWidth": 0.2,
           "start": {
@@ -137,7 +137,7 @@
       ]
     },
     {
-      "uuid": "28d2abe5-771c-4dcf-8d90-4aeb4c0bde73",
+      "uuid": "749fcb93-4b8e-49b2-9b93-a0b15940aa94",
       "x": 137.8375,
       "y": 101.3375,
       "width": 0.05449999999999022,
@@ -146,7 +146,7 @@
       "elements": [
         {
           "type": "line",
-          "uuid": "28d2abe5-771c-4dcf-8d90-4aeb4c0bde73",
+          "uuid": "749fcb93-4b8e-49b2-9b93-a0b15940aa94",
           "layer": "F.Cu",
           "strokeWidth": 0.2,
           "start": {
@@ -163,7 +163,7 @@
       ]
     },
     {
-      "uuid": "e88a6b10-73d1-4df3-98e8-00d85c3d493a",
+      "uuid": "6b31f066-2463-4d51-adcc-ac4b9c75c9a8",
       "x": 137.892,
       "y": 101,
       "width": 0.05449999999999022,
@@ -172,7 +172,7 @@
       "elements": [
         {
           "type": "line",
-          "uuid": "e88a6b10-73d1-4df3-98e8-00d85c3d493a",
+          "uuid": "6b31f066-2463-4d51-adcc-ac4b9c75c9a8",
           "layer": "F.Cu",
           "strokeWidth": 0.2,
           "start": {
@@ -189,7 +189,7 @@
       ]
     },
     {
-      "uuid": "ac75e0c4-1afc-49a3-be72-73c32b6b38c1",
+      "uuid": "bd0ff60d-f7ab-4901-a4b9-589098496c86",
       "x": 137.8375,
       "y": 100.7375,
       "width": 0,
@@ -198,7 +198,7 @@
       "elements": [
         {
           "type": "line",
-          "uuid": "ac75e0c4-1afc-49a3-be72-73c32b6b38c1",
+          "uuid": "bd0ff60d-f7ab-4901-a4b9-589098496c86",
           "layer": "F.Cu",
           "strokeWidth": 0.2,
           "start": {
@@ -215,7 +215,7 @@
       ]
     },
     {
-      "uuid": "5f602e61-fff4-4572-8ce1-06e2c9f1e82f",
+      "uuid": "fb3dbabb-537d-411f-bcf0-a0e9f24dfba1",
       "x": 137.8375,
       "y": 98.2375,
       "width": 0.29999999999998295,
@@ -224,7 +224,7 @@
       "elements": [
         {
           "type": "line",
-          "uuid": "5f602e61-fff4-4572-8ce1-06e2c9f1e82f",
+          "uuid": "fb3dbabb-537d-411f-bcf0-a0e9f24dfba1",
           "layer": "F.Cu",
           "strokeWidth": 0.2,
           "start": {
@@ -241,7 +241,7 @@
       ]
     },
     {
-      "uuid": "8692d783-5484-43a9-86b3-150899df5a72",
+      "uuid": "e9200835-30cb-45b4-be7a-f269d0732444",
       "x": 137.53750000000002,
       "y": 97.9375,
       "width": 0,
@@ -250,7 +250,7 @@
       "elements": [
         {
           "type": "line",
-          "uuid": "8692d783-5484-43a9-86b3-150899df5a72",
+          "uuid": "e9200835-30cb-45b4-be7a-f269d0732444",
           "layer": "F.Cu",
           "strokeWidth": 0.2,
           "start": {
@@ -267,7 +267,7 @@
       ]
     },
     {
-      "uuid": "803308ed-9c8e-4afa-a634-5cf8e090c6fd",
+      "uuid": "976d94a6-2abf-45ab-b7f1-ed5f957c3d30",
       "x": 137.53750000000002,
       "y": 86.03750000000001,
       "width": 1.5999999999999943,
@@ -276,7 +276,7 @@
       "elements": [
         {
           "type": "line",
-          "uuid": "803308ed-9c8e-4afa-a634-5cf8e090c6fd",
+          "uuid": "976d94a6-2abf-45ab-b7f1-ed5f957c3d30",
           "layer": "F.Cu",
           "strokeWidth": 0.2,
           "start": {
@@ -293,7 +293,7 @@
       ]
     },
     {
-      "uuid": "bbf98665-6074-4918-bb5d-da74f8de37f7",
+      "uuid": "eb122064-097c-4c5b-919c-e3280f62b0f8",
       "x": 139.13750000000002,
       "y": 84.4375,
       "width": 0,
@@ -302,7 +302,7 @@
       "elements": [
         {
           "type": "line",
-          "uuid": "bbf98665-6074-4918-bb5d-da74f8de37f7",
+          "uuid": "eb122064-097c-4c5b-919c-e3280f62b0f8",
           "layer": "F.Cu",
           "strokeWidth": 0.2,
           "start": {
@@ -319,7 +319,7 @@
       ]
     },
     {
-      "uuid": "688921ba-fe2f-4fde-bdb6-4a356784d7e0",
+      "uuid": "c4607cbe-2217-4744-af90-b9ae1d9bf573",
       "x": 139.13750000000002,
       "y": 84.2375,
       "width": 0.06249999999997158,
@@ -328,7 +328,7 @@
       "elements": [
         {
           "type": "line",
-          "uuid": "688921ba-fe2f-4fde-bdb6-4a356784d7e0",
+          "uuid": "c4607cbe-2217-4744-af90-b9ae1d9bf573",
           "layer": "F.Cu",
           "strokeWidth": 0.2,
           "start": {
@@ -345,7 +345,7 @@
       ]
     },
     {
-      "uuid": "9b20483a-ac1f-4bfa-aacd-1784cfc1bc9c",
+      "uuid": "f507dfed-ed50-4892-9fc1-9ff3bd9c9b20",
       "x": 154.31,
       "y": 84.455,
       "width": 1.2275000000000205,
@@ -354,7 +354,7 @@
       "elements": [
         {
           "type": "line",
-          "uuid": "9b20483a-ac1f-4bfa-aacd-1784cfc1bc9c",
+          "uuid": "f507dfed-ed50-4892-9fc1-9ff3bd9c9b20",
           "layer": "F.Cu",
           "strokeWidth": 0.2,
           "start": {
@@ -371,7 +371,7 @@
       ]
     },
     {
-      "uuid": "90e62527-e89c-431b-a703-1d9db7dab0c8",
+      "uuid": "6f4a911e-06a7-42fc-b1ae-04c20208f63a",
       "x": 155.53750000000002,
       "y": 85.6375,
       "width": 4.800000000000011,
@@ -380,7 +380,7 @@
       "elements": [
         {
           "type": "line",
-          "uuid": "90e62527-e89c-431b-a703-1d9db7dab0c8",
+          "uuid": "6f4a911e-06a7-42fc-b1ae-04c20208f63a",
           "layer": "F.Cu",
           "strokeWidth": 0.2,
           "start": {
@@ -397,7 +397,7 @@
       ]
     },
     {
-      "uuid": "d85025f2-206d-42d3-abb3-0a54d0810b57",
+      "uuid": "cdd6f537-5cb0-4036-8ca6-7a99228e85b5",
       "x": 160.33750000000003,
       "y": 85.6375,
       "width": 1.1999999999999886,
@@ -406,7 +406,7 @@
       "elements": [
         {
           "type": "line",
-          "uuid": "d85025f2-206d-42d3-abb3-0a54d0810b57",
+          "uuid": "cdd6f537-5cb0-4036-8ca6-7a99228e85b5",
           "layer": "F.Cu",
           "strokeWidth": 0.2,
           "start": {
@@ -423,7 +423,7 @@
       ]
     },
     {
-      "uuid": "7564caae-795f-4267-9284-94eb9944319b",
+      "uuid": "334b3e79-da72-4db9-bc0d-7d3b617ffcf6",
       "x": 161.53750000000002,
       "y": 84.4375,
       "width": 2.5999999999999943,
@@ -432,7 +432,7 @@
       "elements": [
         {
           "type": "line",
-          "uuid": "7564caae-795f-4267-9284-94eb9944319b",
+          "uuid": "334b3e79-da72-4db9-bc0d-7d3b617ffcf6",
           "layer": "F.Cu",
           "strokeWidth": 0.2,
           "start": {
@@ -449,7 +449,7 @@
       ]
     },
     {
-      "uuid": "062503d0-310f-43d3-b5fd-6bdb31d1c395",
+      "uuid": "cdd29d1d-49b7-43a1-b6b6-3afb8c2bab72",
       "x": 164.13750000000002,
       "y": 84.4375,
       "width": 0.32749999999998636,
@@ -458,7 +458,7 @@
       "elements": [
         {
           "type": "line",
-          "uuid": "062503d0-310f-43d3-b5fd-6bdb31d1c395",
+          "uuid": "cdd29d1d-49b7-43a1-b6b6-3afb8c2bab72",
           "layer": "F.Cu",
           "strokeWidth": 0.2,
           "start": {
@@ -475,7 +475,7 @@
       ]
     },
     {
-      "uuid": "0421751a-91d2-4cb7-81ad-1b770ea1051a",
+      "uuid": "6a71db73-0540-4123-90fe-0970d59fb65e",
       "x": 164.465,
       "y": 84.455,
       "width": 1.1725000000000136,
@@ -484,7 +484,7 @@
       "elements": [
         {
           "type": "line",
-          "uuid": "0421751a-91d2-4cb7-81ad-1b770ea1051a",
+          "uuid": "6a71db73-0540-4123-90fe-0970d59fb65e",
           "layer": "F.Cu",
           "strokeWidth": 0.2,
           "start": {
@@ -501,7 +501,7 @@
       ]
     },
     {
-      "uuid": "d7ba1a06-7f1f-4777-8771-b91cbdaca54e",
+      "uuid": "717ddb8a-cf99-4916-a80d-6bd86d6fb038",
       "x": 165.63750000000002,
       "y": 85.6375,
       "width": 4.900000000000006,
@@ -510,7 +510,7 @@
       "elements": [
         {
           "type": "line",
-          "uuid": "d7ba1a06-7f1f-4777-8771-b91cbdaca54e",
+          "uuid": "717ddb8a-cf99-4916-a80d-6bd86d6fb038",
           "layer": "F.Cu",
           "strokeWidth": 0.2,
           "start": {
@@ -527,7 +527,7 @@
       ]
     },
     {
-      "uuid": "811665f3-0b84-4ab6-ba6b-d051fdb7a00a",
+      "uuid": "40b64eaf-7e96-4d6f-8e76-c582d54e6d3f",
       "x": 170.53750000000002,
       "y": 85.6375,
       "width": 1.1999999999999886,
@@ -536,7 +536,7 @@
       "elements": [
         {
           "type": "line",
-          "uuid": "811665f3-0b84-4ab6-ba6b-d051fdb7a00a",
+          "uuid": "40b64eaf-7e96-4d6f-8e76-c582d54e6d3f",
           "layer": "F.Cu",
           "strokeWidth": 0.2,
           "start": {
@@ -553,7 +553,7 @@
       ]
     },
     {
-      "uuid": "bd03abc2-b60c-4297-8609-992a3a229c80",
+      "uuid": "125cc309-b986-4278-93df-166c9cdc57c1",
       "x": 171.7375,
       "y": 84.4375,
       "width": 2.6000000000000227,
@@ -562,7 +562,7 @@
       "elements": [
         {
           "type": "line",
-          "uuid": "bd03abc2-b60c-4297-8609-992a3a229c80",
+          "uuid": "125cc309-b986-4278-93df-166c9cdc57c1",
           "layer": "F.Cu",
           "strokeWidth": 0.2,
           "start": {
@@ -579,7 +579,7 @@
       ]
     },
     {
-      "uuid": "241dc8ae-e656-4c85-9d0f-955a04e9c695",
+      "uuid": "d301a665-1b34-4bef-8dd2-238a0dca88fd",
       "x": 174.33750000000003,
       "y": 84.4375,
       "width": 0.29249999999996135,
@@ -588,7 +588,7 @@
       "elements": [
         {
           "type": "line",
-          "uuid": "241dc8ae-e656-4c85-9d0f-955a04e9c695",
+          "uuid": "d301a665-1b34-4bef-8dd2-238a0dca88fd",
           "layer": "F.Cu",
           "strokeWidth": 0.2,
           "start": {
@@ -605,7 +605,7 @@
       ]
     },
     {
-      "uuid": "0653e43b-97ce-4323-977f-2bc03dee895c",
+      "uuid": "c95b00cb-887e-4923-9a9e-e15b39ac9430",
       "x": 154.31,
       "y": 84.455,
       "width": 1.2724999999999795,
@@ -614,7 +614,7 @@
       "elements": [
         {
           "type": "line",
-          "uuid": "0653e43b-97ce-4323-977f-2bc03dee895c",
+          "uuid": "c95b00cb-887e-4923-9a9e-e15b39ac9430",
           "layer": "F.Cu",
           "strokeWidth": 0.2,
           "start": {
@@ -631,7 +631,7 @@
       ]
     },
     {
-      "uuid": "f0d24f46-f04a-4ffe-8810-ba3c65cb14a2",
+      "uuid": "043604b8-b257-43bf-8329-0dccb8643537",
       "x": 153.03750000000002,
       "y": 85.7375,
       "width": 9.5,
@@ -640,7 +640,7 @@
       "elements": [
         {
           "type": "line",
-          "uuid": "f0d24f46-f04a-4ffe-8810-ba3c65cb14a2",
+          "uuid": "043604b8-b257-43bf-8329-0dccb8643537",
           "layer": "F.Cu",
           "strokeWidth": 0.2,
           "start": {
@@ -657,7 +657,7 @@
       ]
     },
     {
-      "uuid": "cd149429-617f-4119-99ff-0f050b5de97a",
+      "uuid": "852f5092-0b00-4639-ab18-e083cdd5f0b2",
       "x": 143.53750000000002,
       "y": 85.7375,
       "width": 0.700000000000017,
@@ -666,7 +666,7 @@
       "elements": [
         {
           "type": "line",
-          "uuid": "cd149429-617f-4119-99ff-0f050b5de97a",
+          "uuid": "852f5092-0b00-4639-ab18-e083cdd5f0b2",
           "layer": "F.Cu",
           "strokeWidth": 0.2,
           "start": {
@@ -683,7 +683,7 @@
       ]
     },
     {
-      "uuid": "34cdebed-87cd-4c67-bb30-8367ddf46e1c",
+      "uuid": "6396f157-f5d1-4ac1-877c-cb2a89602ccb",
       "x": 142.8375,
       "y": 86.4375,
       "width": 3.3999999999999773,
@@ -692,7 +692,7 @@
       "elements": [
         {
           "type": "line",
-          "uuid": "34cdebed-87cd-4c67-bb30-8367ddf46e1c",
+          "uuid": "6396f157-f5d1-4ac1-877c-cb2a89602ccb",
           "layer": "F.Cu",
           "strokeWidth": 0.2,
           "start": {
@@ -709,7 +709,7 @@
       ]
     },
     {
-      "uuid": "10919863-4a1e-4b51-b5e6-3fc3c4c34401",
+      "uuid": "360311d0-36cf-48b8-bcf3-8d0bd51d0241",
       "x": 139.43750000000003,
       "y": 86.4375,
       "width": 0.2375000000000398,
@@ -718,7 +718,7 @@
       "elements": [
         {
           "type": "line",
-          "uuid": "10919863-4a1e-4b51-b5e6-3fc3c4c34401",
+          "uuid": "360311d0-36cf-48b8-bcf3-8d0bd51d0241",
           "layer": "F.Cu",
           "strokeWidth": 0.2,
           "start": {
@@ -735,7 +735,7 @@
       ]
     },
     {
-      "uuid": "eb85c76c-2014-4b0b-9e1f-887f3ab16401",
+      "uuid": "81e7051b-742e-402f-be35-15c26ed7f7fc",
       "x": 164.465,
       "y": 92.075,
       "width": 6.427499999999981,
@@ -744,7 +744,7 @@
       "elements": [
         {
           "type": "line",
-          "uuid": "eb85c76c-2014-4b0b-9e1f-887f3ab16401",
+          "uuid": "81e7051b-742e-402f-be35-15c26ed7f7fc",
           "layer": "B.Cu",
           "strokeWidth": 0.2,
           "start": {
@@ -761,7 +761,7 @@
       ]
     },
     {
-      "uuid": "4e0088a9-0c14-409e-bcfa-ff8a0183e96f",
+      "uuid": "044c7d8a-32a1-4f36-8533-4809f152e054",
       "x": 158.03750000000002,
       "y": 85.6375,
       "width": 0,
@@ -770,7 +770,7 @@
       "elements": [
         {
           "type": "line",
-          "uuid": "4e0088a9-0c14-409e-bcfa-ff8a0183e96f",
+          "uuid": "044c7d8a-32a1-4f36-8533-4809f152e054",
           "layer": "B.Cu",
           "strokeWidth": 0.2,
           "start": {
@@ -787,7 +787,7 @@
       ]
     },
     {
-      "uuid": "0fa59898-136c-417a-bf63-3e6c83b79739",
+      "uuid": "86feb9ee-8b4a-4fd7-aff7-1f4fa9cd1cde",
       "x": 158.03750000000002,
       "y": 83.3375,
       "width": 0.09999999999999432,
@@ -796,7 +796,7 @@
       "elements": [
         {
           "type": "line",
-          "uuid": "0fa59898-136c-417a-bf63-3e6c83b79739",
+          "uuid": "86feb9ee-8b4a-4fd7-aff7-1f4fa9cd1cde",
           "layer": "B.Cu",
           "strokeWidth": 0.2,
           "start": {
@@ -813,7 +813,7 @@
       ]
     },
     {
-      "uuid": "09c53ef5-2d6b-42b1-8910-de5307833892",
+      "uuid": "65cf613b-e833-4d34-80df-48092021c0fc",
       "x": 157.93750000000003,
       "y": 83.2375,
       "width": 0,
@@ -822,7 +822,7 @@
       "elements": [
         {
           "type": "line",
-          "uuid": "09c53ef5-2d6b-42b1-8910-de5307833892",
+          "uuid": "65cf613b-e833-4d34-80df-48092021c0fc",
           "layer": "B.Cu",
           "strokeWidth": 0.2,
           "start": {
@@ -839,7 +839,7 @@
       ]
     },
     {
-      "uuid": "dddbe621-2e62-4afe-bdae-586f1698bd1f",
+      "uuid": "47138fe7-2c29-42f4-bfd9-502f88ff4e1e",
       "x": 157.93750000000003,
       "y": 81.03750000000001,
       "width": 1.0925000000000296,
@@ -848,7 +848,7 @@
       "elements": [
         {
           "type": "line",
-          "uuid": "dddbe621-2e62-4afe-bdae-586f1698bd1f",
+          "uuid": "47138fe7-2c29-42f4-bfd9-502f88ff4e1e",
           "layer": "F.Cu",
           "strokeWidth": 0.2,
           "start": {
@@ -891,25 +891,25 @@
             "number": "1",
             "reference": "U1",
             "type": "passive",
-            "uuid": "cf389ad4-cea5-4477-917a-a019f1432827"
+            "uuid": "76d9549a-fec7-4343-903d-d8ab063f8b6d"
           },
           {
             "number": "4",
             "reference": "U1",
             "type": "passive",
-            "uuid": "cf389ad4-cea5-4477-917a-a019f1432827"
+            "uuid": "76d9549a-fec7-4343-903d-d8ab063f8b6d"
           },
           {
             "number": "2",
             "reference": "U1",
             "type": "passive",
-            "uuid": "cf389ad4-cea5-4477-917a-a019f1432827"
+            "uuid": "76d9549a-fec7-4343-903d-d8ab063f8b6d"
           },
           {
             "number": "3",
             "reference": "U1",
             "type": "passive",
-            "uuid": "cf389ad4-cea5-4477-917a-a019f1432827"
+            "uuid": "76d9549a-fec7-4343-903d-d8ab063f8b6d"
           }
         ],
         "via": false,
@@ -925,30 +925,21 @@
         },
         "groups": [],
         "text": [],
-        "_uuid": "cf389ad4-cea5-4477-917a-a019f1432827",
-        "_gettingUuid": false,
         "sourceInfo": {
           "file": "C:\\typecad\\typeCAD\\demo\\hw\\src\\one_hz.ts",
           "line": 58,
-          "variable": "U1",
+          "variable": "J2",
           "params": {
-            "reference": "U1",
-            "value": "SIT8008BI-82-30E-4.194304",
-            "footprint": "lib:QFN_7050_4pins",
-            "description": "4.194304 MHz TCXO, ±25ppm, 3V supply, 7.0x5.0mm QFN-4 package",
-            "datasheet": "https://www.sitime.com/products/oscillators/tcxo/sit8008bi",
-            "mpn": "SIT8008BI-82-30E-4.194304",
-            "symbol": "SiT8008BI-82-30E-4_194304:SiT8008BI-82-30E-4.194304",
+            "number": 2,
             "sch": {
-              "x": 35,
-              "y": 80,
+              "x": 245,
+              "y": 90,
               "rotation": 0
             },
             "pcb": {
-              "x": 140.432,
-              "y": 102.905,
-              "rotation": 0,
-              "side": "front"
+              "x": 177.8,
+              "y": 99.66,
+              "rotation": 0
             }
           }
         }
@@ -973,97 +964,97 @@
             "number": "16",
             "reference": "U2",
             "type": "passive",
-            "uuid": "e26ec1c7-1aff-4d65-821c-92d9d74662f0"
+            "uuid": "c6b42f97-191c-4203-9d0d-aa430b88b1fe"
           },
           {
             "number": "8",
             "reference": "U2",
             "type": "passive",
-            "uuid": "e26ec1c7-1aff-4d65-821c-92d9d74662f0"
+            "uuid": "c6b42f97-191c-4203-9d0d-aa430b88b1fe"
           },
           {
             "number": "10",
             "reference": "U2",
             "type": "passive",
-            "uuid": "e26ec1c7-1aff-4d65-821c-92d9d74662f0"
+            "uuid": "c6b42f97-191c-4203-9d0d-aa430b88b1fe"
           },
           {
             "number": "11",
             "reference": "U2",
             "type": "passive",
-            "uuid": "e26ec1c7-1aff-4d65-821c-92d9d74662f0"
+            "uuid": "c6b42f97-191c-4203-9d0d-aa430b88b1fe"
           },
           {
             "number": "12",
             "reference": "U2",
             "type": "passive",
-            "uuid": "e26ec1c7-1aff-4d65-821c-92d9d74662f0"
+            "uuid": "c6b42f97-191c-4203-9d0d-aa430b88b1fe"
           },
           {
             "number": "3",
             "reference": "U2",
             "type": "passive",
-            "uuid": "e26ec1c7-1aff-4d65-821c-92d9d74662f0"
+            "uuid": "c6b42f97-191c-4203-9d0d-aa430b88b1fe"
           },
           {
             "number": "1",
             "reference": "U2",
             "type": "passive",
-            "uuid": "e26ec1c7-1aff-4d65-821c-92d9d74662f0"
+            "uuid": "c6b42f97-191c-4203-9d0d-aa430b88b1fe"
           },
           {
             "number": "2",
             "reference": "U2",
             "type": "passive",
-            "uuid": "e26ec1c7-1aff-4d65-821c-92d9d74662f0"
+            "uuid": "c6b42f97-191c-4203-9d0d-aa430b88b1fe"
           },
           {
             "number": "4",
             "reference": "U2",
             "type": "passive",
-            "uuid": "e26ec1c7-1aff-4d65-821c-92d9d74662f0"
+            "uuid": "c6b42f97-191c-4203-9d0d-aa430b88b1fe"
           },
           {
             "number": "5",
             "reference": "U2",
             "type": "passive",
-            "uuid": "e26ec1c7-1aff-4d65-821c-92d9d74662f0"
+            "uuid": "c6b42f97-191c-4203-9d0d-aa430b88b1fe"
           },
           {
             "number": "6",
             "reference": "U2",
             "type": "passive",
-            "uuid": "e26ec1c7-1aff-4d65-821c-92d9d74662f0"
+            "uuid": "c6b42f97-191c-4203-9d0d-aa430b88b1fe"
           },
           {
             "number": "7",
             "reference": "U2",
             "type": "passive",
-            "uuid": "e26ec1c7-1aff-4d65-821c-92d9d74662f0"
+            "uuid": "c6b42f97-191c-4203-9d0d-aa430b88b1fe"
           },
           {
             "number": "9",
             "reference": "U2",
             "type": "no_connect",
-            "uuid": "e26ec1c7-1aff-4d65-821c-92d9d74662f0"
+            "uuid": "c6b42f97-191c-4203-9d0d-aa430b88b1fe"
           },
           {
             "number": "13",
             "reference": "U2",
             "type": "passive",
-            "uuid": "e26ec1c7-1aff-4d65-821c-92d9d74662f0"
+            "uuid": "c6b42f97-191c-4203-9d0d-aa430b88b1fe"
           },
           {
             "number": "14",
             "reference": "U2",
             "type": "passive",
-            "uuid": "e26ec1c7-1aff-4d65-821c-92d9d74662f0"
+            "uuid": "c6b42f97-191c-4203-9d0d-aa430b88b1fe"
           },
           {
             "number": "15",
             "reference": "U2",
             "type": "passive",
-            "uuid": "e26ec1c7-1aff-4d65-821c-92d9d74662f0"
+            "uuid": "c6b42f97-191c-4203-9d0d-aa430b88b1fe"
           }
         ],
         "via": false,
@@ -1100,58 +1091,10 @@
             "thickness": 0.15
           }
         ],
-        "_uuid": "e26ec1c7-1aff-4d65-821c-92d9d74662f0",
-        "_gettingUuid": false,
         "sourceInfo": {
           "file": "C:\\typecad\\typeCAD\\demo\\hw\\src\\one_hz.ts",
           "line": 73,
-          "variable": "U2",
-          "params": {
-            "reference": [
-              "U2",
-              {
-                "x": 3.805,
-                "y": 1.545,
-                "rotation": 180,
-                "thickness": 0.15,
-                "width": 1,
-                "height": 1
-              }
-            ],
-            "fab": {
-              "x": 3.805,
-              "y": 1.545,
-              "rotation": 180,
-              "thickness": 0.15,
-              "width": 1,
-              "height": 1
-            },
-            "value": [
-              "74HC4060N",
-              {
-                "x": 3.805,
-                "y": 8.89,
-                "rotation": 90,
-                "thickness": 0.15,
-                "width": 1,
-                "height": 1
-              }
-            ],
-            "footprint": "Package_DIP:DIP-16_W7.62mm",
-            "description": "14-stage binary counter with oscillator, divides by 16,384, 2-6V operation",
-            "datasheet": "https://www.ti.com/lit/ds/symlink/sn74hc4060.pdf",
-            "symbol": "74xx:74HC4060",
-            "sch": {
-              "x": 93,
-              "y": 80,
-              "rotation": 0
-            },
-            "pcb": {
-              "x": 146.69,
-              "y": 84.455,
-              "rotation": 0
-            }
-          }
+          "variable": "U2"
         },
         "valueFootprint": {
           "x": 3.805,
@@ -1191,97 +1134,97 @@
             "number": "16",
             "reference": "U3",
             "type": "passive",
-            "uuid": "e8a9b54f-b634-4975-a042-74dbdd98b45f"
+            "uuid": "d2f8ff37-73bd-423c-be07-c8248a9e4120"
           },
           {
             "number": "8",
             "reference": "U3",
             "type": "passive",
-            "uuid": "e8a9b54f-b634-4975-a042-74dbdd98b45f"
+            "uuid": "d2f8ff37-73bd-423c-be07-c8248a9e4120"
           },
           {
             "number": "10",
             "reference": "U3",
             "type": "passive",
-            "uuid": "e8a9b54f-b634-4975-a042-74dbdd98b45f"
+            "uuid": "d2f8ff37-73bd-423c-be07-c8248a9e4120"
           },
           {
             "number": "11",
             "reference": "U3",
             "type": "passive",
-            "uuid": "e8a9b54f-b634-4975-a042-74dbdd98b45f"
+            "uuid": "d2f8ff37-73bd-423c-be07-c8248a9e4120"
           },
           {
             "number": "13",
             "reference": "U3",
             "type": "passive",
-            "uuid": "e8a9b54f-b634-4975-a042-74dbdd98b45f"
+            "uuid": "d2f8ff37-73bd-423c-be07-c8248a9e4120"
           },
           {
             "number": "1",
             "reference": "U3",
             "type": "passive",
-            "uuid": "e8a9b54f-b634-4975-a042-74dbdd98b45f"
+            "uuid": "d2f8ff37-73bd-423c-be07-c8248a9e4120"
           },
           {
             "number": "2",
             "reference": "U3",
             "type": "passive",
-            "uuid": "e8a9b54f-b634-4975-a042-74dbdd98b45f"
+            "uuid": "d2f8ff37-73bd-423c-be07-c8248a9e4120"
           },
           {
             "number": "3",
             "reference": "U3",
             "type": "passive",
-            "uuid": "e8a9b54f-b634-4975-a042-74dbdd98b45f"
+            "uuid": "d2f8ff37-73bd-423c-be07-c8248a9e4120"
           },
           {
             "number": "4",
             "reference": "U3",
             "type": "passive",
-            "uuid": "e8a9b54f-b634-4975-a042-74dbdd98b45f"
+            "uuid": "d2f8ff37-73bd-423c-be07-c8248a9e4120"
           },
           {
             "number": "5",
             "reference": "U3",
             "type": "passive",
-            "uuid": "e8a9b54f-b634-4975-a042-74dbdd98b45f"
+            "uuid": "d2f8ff37-73bd-423c-be07-c8248a9e4120"
           },
           {
             "number": "6",
             "reference": "U3",
             "type": "passive",
-            "uuid": "e8a9b54f-b634-4975-a042-74dbdd98b45f"
+            "uuid": "d2f8ff37-73bd-423c-be07-c8248a9e4120"
           },
           {
             "number": "7",
             "reference": "U3",
             "type": "passive",
-            "uuid": "e8a9b54f-b634-4975-a042-74dbdd98b45f"
+            "uuid": "d2f8ff37-73bd-423c-be07-c8248a9e4120"
           },
           {
             "number": "9",
             "reference": "U3",
             "type": "passive",
-            "uuid": "e8a9b54f-b634-4975-a042-74dbdd98b45f"
+            "uuid": "d2f8ff37-73bd-423c-be07-c8248a9e4120"
           },
           {
             "number": "12",
             "reference": "U3",
             "type": "passive",
-            "uuid": "e8a9b54f-b634-4975-a042-74dbdd98b45f"
+            "uuid": "d2f8ff37-73bd-423c-be07-c8248a9e4120"
           },
           {
             "number": "14",
             "reference": "U3",
             "type": "passive",
-            "uuid": "e8a9b54f-b634-4975-a042-74dbdd98b45f"
+            "uuid": "d2f8ff37-73bd-423c-be07-c8248a9e4120"
           },
           {
             "number": "15",
             "reference": "U3",
             "type": "passive",
-            "uuid": "e8a9b54f-b634-4975-a042-74dbdd98b45f"
+            "uuid": "d2f8ff37-73bd-423c-be07-c8248a9e4120"
           }
         ],
         "via": false,
@@ -1297,8 +1240,6 @@
         },
         "groups": [],
         "text": [],
-        "_uuid": "e8a9b54f-b634-4975-a042-74dbdd98b45f",
-        "_gettingUuid": false,
         "sourceInfo": {
           "file": "C:\\typecad\\typeCAD\\demo\\hw\\src\\one_hz.ts",
           "line": 89,
@@ -1307,7 +1248,7 @@
             "reference": "U3",
             "value": "74HC4040N",
             "footprint": "Package_DIP:DIP-16_W7.62mm",
-            "description": "12-stage asynchronous binary counter, divides by 256, 2-6V operation",
+            "description": "'12-stage asynchronous binary counter",
             "datasheet": "https://www.ti.com/lit/ds/symlink/sn74hc4040.pdf",
             "symbol": "74HC4040N_652:74HC4040N_652",
             "sch": {
@@ -1343,121 +1284,121 @@
             "number": "20",
             "reference": "U4",
             "type": "passive",
-            "uuid": "844c332e-f3d1-40fb-9e8d-5aacd341e327"
+            "uuid": "d479616e-5a07-462f-9293-54f66cc49519"
           },
           {
             "number": "10",
             "reference": "U4",
             "type": "passive",
-            "uuid": "844c332e-f3d1-40fb-9e8d-5aacd341e327"
+            "uuid": "d479616e-5a07-462f-9293-54f66cc49519"
           },
           {
             "number": "1",
             "reference": "U4",
             "type": "passive",
-            "uuid": "844c332e-f3d1-40fb-9e8d-5aacd341e327"
+            "uuid": "d479616e-5a07-462f-9293-54f66cc49519"
           },
           {
             "number": "19",
             "reference": "U4",
             "type": "passive",
-            "uuid": "844c332e-f3d1-40fb-9e8d-5aacd341e327"
+            "uuid": "d479616e-5a07-462f-9293-54f66cc49519"
           },
           {
             "number": "4",
             "reference": "U4",
             "type": "passive",
-            "uuid": "844c332e-f3d1-40fb-9e8d-5aacd341e327"
+            "uuid": "d479616e-5a07-462f-9293-54f66cc49519"
           },
           {
             "number": "2",
             "reference": "U4",
             "type": "passive",
-            "uuid": "844c332e-f3d1-40fb-9e8d-5aacd341e327"
+            "uuid": "d479616e-5a07-462f-9293-54f66cc49519"
           },
           {
             "number": "5",
             "reference": "U4",
             "type": "passive",
-            "uuid": "844c332e-f3d1-40fb-9e8d-5aacd341e327"
+            "uuid": "d479616e-5a07-462f-9293-54f66cc49519"
           },
           {
             "number": "15",
             "reference": "U4",
             "type": "passive",
-            "uuid": "844c332e-f3d1-40fb-9e8d-5aacd341e327"
+            "uuid": "d479616e-5a07-462f-9293-54f66cc49519"
           },
           {
             "number": "17",
             "reference": "U4",
             "type": "passive",
-            "uuid": "844c332e-f3d1-40fb-9e8d-5aacd341e327"
+            "uuid": "d479616e-5a07-462f-9293-54f66cc49519"
           },
           {
             "number": "18",
             "reference": "U4",
             "type": "passive",
-            "uuid": "844c332e-f3d1-40fb-9e8d-5aacd341e327"
+            "uuid": "d479616e-5a07-462f-9293-54f66cc49519"
           },
           {
             "number": "3",
             "reference": "U4",
             "type": "no_connect",
-            "uuid": "844c332e-f3d1-40fb-9e8d-5aacd341e327"
+            "uuid": "d479616e-5a07-462f-9293-54f66cc49519"
           },
           {
             "number": "6",
             "reference": "U4",
             "type": "no_connect",
-            "uuid": "844c332e-f3d1-40fb-9e8d-5aacd341e327"
+            "uuid": "d479616e-5a07-462f-9293-54f66cc49519"
           },
           {
             "number": "7",
             "reference": "U4",
             "type": "no_connect",
-            "uuid": "844c332e-f3d1-40fb-9e8d-5aacd341e327"
+            "uuid": "d479616e-5a07-462f-9293-54f66cc49519"
           },
           {
             "number": "8",
             "reference": "U4",
             "type": "no_connect",
-            "uuid": "844c332e-f3d1-40fb-9e8d-5aacd341e327"
+            "uuid": "d479616e-5a07-462f-9293-54f66cc49519"
           },
           {
             "number": "9",
             "reference": "U4",
             "type": "no_connect",
-            "uuid": "844c332e-f3d1-40fb-9e8d-5aacd341e327"
+            "uuid": "d479616e-5a07-462f-9293-54f66cc49519"
           },
           {
             "number": "11",
             "reference": "U4",
             "type": "no_connect",
-            "uuid": "844c332e-f3d1-40fb-9e8d-5aacd341e327"
+            "uuid": "d479616e-5a07-462f-9293-54f66cc49519"
           },
           {
             "number": "12",
             "reference": "U4",
             "type": "no_connect",
-            "uuid": "844c332e-f3d1-40fb-9e8d-5aacd341e327"
+            "uuid": "d479616e-5a07-462f-9293-54f66cc49519"
           },
           {
             "number": "13",
             "reference": "U4",
             "type": "no_connect",
-            "uuid": "844c332e-f3d1-40fb-9e8d-5aacd341e327"
+            "uuid": "d479616e-5a07-462f-9293-54f66cc49519"
           },
           {
             "number": "14",
             "reference": "U4",
             "type": "no_connect",
-            "uuid": "844c332e-f3d1-40fb-9e8d-5aacd341e327"
+            "uuid": "d479616e-5a07-462f-9293-54f66cc49519"
           },
           {
             "number": "16",
             "reference": "U4",
             "type": "passive",
-            "uuid": "844c332e-f3d1-40fb-9e8d-5aacd341e327"
+            "uuid": "d479616e-5a07-462f-9293-54f66cc49519"
           }
         ],
         "via": false,
@@ -1473,8 +1414,6 @@
         },
         "groups": [],
         "text": [],
-        "_uuid": "844c332e-f3d1-40fb-9e8d-5aacd341e327",
-        "_gettingUuid": false,
         "sourceInfo": {
           "file": "C:\\typecad\\typeCAD\\demo\\hw\\src\\one_hz.ts",
           "line": 101,
@@ -1519,13 +1458,13 @@
             "number": "1",
             "reference": "C1",
             "type": "passive",
-            "uuid": "7da2d24c-af36-43f6-b106-5c564dfe3253"
+            "uuid": "ad2b3d9d-5265-4144-9bf0-7d542a2ddf81"
           },
           {
             "number": "2",
             "reference": "C1",
             "type": "passive",
-            "uuid": "7da2d24c-af36-43f6-b106-5c564dfe3253"
+            "uuid": "ad2b3d9d-5265-4144-9bf0-7d542a2ddf81"
           }
         ],
         "via": false,
@@ -1541,8 +1480,6 @@
         },
         "groups": [],
         "text": [],
-        "_uuid": "7da2d24c-af36-43f6-b106-5c564dfe3253",
-        "_gettingUuid": false,
         "sourceInfo": {
           "file": "C:\\typecad\\typeCAD\\@typecad\\passives\\0603\\index.js",
           "line": 30
@@ -1568,13 +1505,13 @@
             "number": "1",
             "reference": "C2",
             "type": "passive",
-            "uuid": "38419474-8be4-4834-b5d5-8e9cddb968e6"
+            "uuid": "b332b4ee-5616-4542-99bb-89e948125d8c"
           },
           {
             "number": "2",
             "reference": "C2",
             "type": "passive",
-            "uuid": "38419474-8be4-4834-b5d5-8e9cddb968e6"
+            "uuid": "b332b4ee-5616-4542-99bb-89e948125d8c"
           }
         ],
         "via": false,
@@ -1590,8 +1527,6 @@
         },
         "groups": [],
         "text": [],
-        "_uuid": "38419474-8be4-4834-b5d5-8e9cddb968e6",
-        "_gettingUuid": false,
         "sourceInfo": {
           "file": "C:\\typecad\\typeCAD\\@typecad\\passives\\0603\\index.js",
           "line": 30
@@ -1617,13 +1552,13 @@
             "number": "1",
             "reference": "C3",
             "type": "passive",
-            "uuid": "383f0156-deb2-407b-ac50-673babe7f563"
+            "uuid": "714b466e-c7b5-42cc-8e7c-f1b8780166b7"
           },
           {
             "number": "2",
             "reference": "C3",
             "type": "passive",
-            "uuid": "383f0156-deb2-407b-ac50-673babe7f563"
+            "uuid": "714b466e-c7b5-42cc-8e7c-f1b8780166b7"
           }
         ],
         "via": false,
@@ -1639,8 +1574,6 @@
         },
         "groups": [],
         "text": [],
-        "_uuid": "383f0156-deb2-407b-ac50-673babe7f563",
-        "_gettingUuid": false,
         "sourceInfo": {
           "file": "C:\\typecad\\typeCAD\\@typecad\\passives\\0603\\index.js",
           "line": 30
@@ -1666,13 +1599,13 @@
             "number": "1",
             "reference": "C4",
             "type": "passive",
-            "uuid": "e10df91f-435f-4971-9ee0-fb007d70c0db"
+            "uuid": "9bd0cafa-6b83-4d56-852c-f3ae9b399f14"
           },
           {
             "number": "2",
             "reference": "C4",
             "type": "passive",
-            "uuid": "e10df91f-435f-4971-9ee0-fb007d70c0db"
+            "uuid": "9bd0cafa-6b83-4d56-852c-f3ae9b399f14"
           }
         ],
         "via": false,
@@ -1688,8 +1621,6 @@
         },
         "groups": [],
         "text": [],
-        "_uuid": "e10df91f-435f-4971-9ee0-fb007d70c0db",
-        "_gettingUuid": false,
         "sourceInfo": {
           "file": "C:\\typecad\\typeCAD\\@typecad\\passives\\0603\\index.js",
           "line": 30
@@ -1715,13 +1646,13 @@
             "number": "1",
             "reference": "C5",
             "type": "passive",
-            "uuid": "b1779c63-e325-4c1b-af1c-58c95991efff"
+            "uuid": "3a6c9ebe-1780-4b1d-8a8a-e03cdaef9668"
           },
           {
             "number": "2",
             "reference": "C5",
             "type": "passive",
-            "uuid": "b1779c63-e325-4c1b-af1c-58c95991efff"
+            "uuid": "3a6c9ebe-1780-4b1d-8a8a-e03cdaef9668"
           }
         ],
         "via": false,
@@ -1737,8 +1668,6 @@
         },
         "groups": [],
         "text": [],
-        "_uuid": "b1779c63-e325-4c1b-af1c-58c95991efff",
-        "_gettingUuid": false,
         "sourceInfo": {
           "file": "C:\\typecad\\typeCAD\\@typecad\\passives\\0603\\index.js",
           "line": 30
@@ -1764,13 +1693,13 @@
             "number": "1",
             "reference": "C6",
             "type": "passive",
-            "uuid": "360f5044-ec80-43ac-9879-4ac1aee1528a"
+            "uuid": "919b04f3-3a1c-448d-95cf-101a97d70d9b"
           },
           {
             "number": "2",
             "reference": "C6",
             "type": "passive",
-            "uuid": "360f5044-ec80-43ac-9879-4ac1aee1528a"
+            "uuid": "919b04f3-3a1c-448d-95cf-101a97d70d9b"
           }
         ],
         "via": false,
@@ -1786,8 +1715,6 @@
         },
         "groups": [],
         "text": [],
-        "_uuid": "360f5044-ec80-43ac-9879-4ac1aee1528a",
-        "_gettingUuid": false,
         "sourceInfo": {
           "file": "C:\\typecad\\typeCAD\\@typecad\\passives\\0603\\index.js",
           "line": 30
@@ -1813,13 +1740,13 @@
             "number": "2",
             "reference": "R1",
             "type": "passive",
-            "uuid": "11470384-1a6d-4cad-866e-40f064165447"
+            "uuid": "e8083105-f424-4cf8-a6fc-66b051eb41a9"
           },
           {
             "number": "1",
             "reference": "R1",
             "type": "passive",
-            "uuid": "11470384-1a6d-4cad-866e-40f064165447"
+            "uuid": "e8083105-f424-4cf8-a6fc-66b051eb41a9"
           }
         ],
         "via": false,
@@ -1835,8 +1762,6 @@
         },
         "groups": [],
         "text": [],
-        "_uuid": "11470384-1a6d-4cad-866e-40f064165447",
-        "_gettingUuid": false,
         "sourceInfo": {
           "file": "C:\\typecad\\typeCAD\\@typecad\\passives\\0603\\index.js",
           "line": 24
@@ -1862,25 +1787,25 @@
             "number": "1",
             "reference": "J1",
             "type": "passive",
-            "uuid": "d7bdf597-272f-4cb3-b388-006dcebed42a"
+            "uuid": "ef7de7a8-95a0-42c1-8507-0026fd19f625"
           },
           {
             "number": "2",
             "reference": "J1",
             "type": "passive",
-            "uuid": "d7bdf597-272f-4cb3-b388-006dcebed42a"
+            "uuid": "ef7de7a8-95a0-42c1-8507-0026fd19f625"
           },
           {
             "number": "3",
             "reference": "J1",
             "type": "passive",
-            "uuid": "d7bdf597-272f-4cb3-b388-006dcebed42a"
+            "uuid": "ef7de7a8-95a0-42c1-8507-0026fd19f625"
           },
           {
             "number": "4",
             "reference": "J1",
             "type": "passive",
-            "uuid": "d7bdf597-272f-4cb3-b388-006dcebed42a"
+            "uuid": "ef7de7a8-95a0-42c1-8507-0026fd19f625"
           }
         ],
         "via": false,
@@ -1896,8 +1821,6 @@
         },
         "groups": [],
         "text": [],
-        "_uuid": "d7bdf597-272f-4cb3-b388-006dcebed42a",
-        "_gettingUuid": false,
         "sourceInfo": {
           "file": "C:\\typecad\\typeCAD\\@typecad\\passives\\connector\\index.js",
           "line": 12
@@ -1923,13 +1846,13 @@
             "number": "1",
             "reference": "J2",
             "type": "passive",
-            "uuid": "faf99174-dde3-484e-8c69-204a8560c835"
+            "uuid": "851b4104-d6dd-4222-9409-2315ab567fd7"
           },
           {
             "number": "2",
             "reference": "J2",
             "type": "passive",
-            "uuid": "faf99174-dde3-484e-8c69-204a8560c835"
+            "uuid": "851b4104-d6dd-4222-9409-2315ab567fd7"
           }
         ],
         "via": false,
@@ -1945,8 +1868,6 @@
         },
         "groups": [],
         "text": [],
-        "_uuid": "faf99174-dde3-484e-8c69-204a8560c835",
-        "_gettingUuid": false,
         "sourceInfo": {
           "file": "C:\\typecad\\typeCAD\\@typecad\\passives\\connector\\index.js",
           "line": 12
@@ -1972,7 +1893,7 @@
             "number": "1",
             "reference": "TP1",
             "type": "passive",
-            "uuid": "299b8844-d348-4326-846d-c5d76353a761"
+            "uuid": "834e2cbd-32a6-471c-a159-889641e2f409"
           }
         ],
         "via": false,
@@ -1988,8 +1909,6 @@
         },
         "groups": [],
         "text": [],
-        "_uuid": "299b8844-d348-4326-846d-c5d76353a761",
-        "_gettingUuid": false,
         "sourceInfo": {
           "file": "C:\\typecad\\typeCAD\\@typecad\\passives\\testpoint\\index.js",
           "line": 4
@@ -2015,7 +1934,7 @@
             "number": "1",
             "reference": "TP2",
             "type": "passive",
-            "uuid": "f459b8f9-744c-4be1-9617-926eaf615557"
+            "uuid": "fae90be8-92fb-470d-b3d4-9289d1cb9907"
           }
         ],
         "via": false,
@@ -2031,8 +1950,6 @@
         },
         "groups": [],
         "text": [],
-        "_uuid": "f459b8f9-744c-4be1-9617-926eaf615557",
-        "_gettingUuid": false,
         "sourceInfo": {
           "file": "C:\\typecad\\typeCAD\\@typecad\\passives\\testpoint\\index.js",
           "line": 4
@@ -2058,7 +1975,7 @@
             "number": "1",
             "reference": "TP3",
             "type": "passive",
-            "uuid": "afe6dbe2-01e3-41e3-a1f4-ada68508485f"
+            "uuid": "348b389e-d1bb-40db-b270-1ffc3d8a7af4"
           }
         ],
         "via": false,
@@ -2074,8 +1991,6 @@
         },
         "groups": [],
         "text": [],
-        "_uuid": "afe6dbe2-01e3-41e3-a1f4-ada68508485f",
-        "_gettingUuid": false,
         "sourceInfo": {
           "file": "C:\\typecad\\typeCAD\\@typecad\\passives\\testpoint\\index.js",
           "line": 4
@@ -2101,7 +2016,7 @@
             "number": "1",
             "reference": "TP4",
             "type": "passive",
-            "uuid": "8ace05c2-a8bc-44ed-a4e7-6b8e3518a512"
+            "uuid": "4a8e1665-b925-45ce-92a0-bad468e9e9d8"
           }
         ],
         "via": false,
@@ -2117,8 +2032,6 @@
         },
         "groups": [],
         "text": [],
-        "_uuid": "8ace05c2-a8bc-44ed-a4e7-6b8e3518a512",
-        "_gettingUuid": false,
         "sourceInfo": {
           "file": "C:\\typecad\\typeCAD\\@typecad\\passives\\testpoint\\index.js",
           "line": 4
@@ -2126,7 +2039,7 @@
       }
     ],
     "Sheetname": "one_hz",
-    "uuid": "29b8fa65-bb35-427d-a0ca-de3a1503538a",
+    "uuid": "209b152e-f5ef-45c3-8ed7-71504c398e8c",
     "sxexp_components": [
       "(comp\n      (ref \"U1\")\n        (value \"SIT8008BI-82-30E-4.194304\")\n        (footprint \"lib:QFN_7050_4pins\")\n        (fields\n          (field (name \"Footprint\") \"lib:QFN_7050_4pins\")\n          (field (name \"Datasheet\") \"https://www.sitime.com/products/oscillators/tcxo/sit8008bi\")\n          (field (name \"Description\") \"4.194304 MHz TCXO, ±25ppm, 3V supply, 7.0x5.0mm QFN-4 package\")\n          (field (name \"MPN\") \"SIT8008BI-82-30E-4.194304\")\n        )\n    )",
       "(comp\n      (ref \"U2\")\n        (value \"74HC4060N\")\n        (footprint \"Package_DIP:DIP-16_W7.62mm\")\n        (fields\n          (field (name \"Footprint\") \"Package_DIP:DIP-16_W7.62mm\")\n          (field (name \"Datasheet\") \"https://www.ti.com/lit/ds/symlink/sn74hc4060.pdf\")\n          (field (name \"Description\") \"14-stage binary counter with oscillator, divides by 16,384, 2-6V operation\")\n        )\n    )",

@@ -1,6 +1,12 @@
 import chalk from 'chalk';
 import { FileSystemError, NetworkError, ParsingError } from '../types/index.js';
 
+interface NodeSystemError extends Error {
+  code?: string;
+  statusCode?: number;
+  path?: string;
+}
+
 /**
  * Class for handling errors and providing user-friendly messages
  */
@@ -38,11 +44,12 @@ export class ErrorHandler {
    */
   private static isNetworkError(error: Error): error is NetworkError {
     if (error instanceof NetworkError) return true;
+    const nodeErr = error as NodeSystemError;
     return 'code' in error && (
-      (error as any).code === 'ENOTFOUND' ||
-      (error as any).code === 'ETIMEDOUT' ||
-      (error as any).code === 'ECONNREFUSED' ||
-      (error as any).statusCode !== undefined
+      nodeErr.code === 'ENOTFOUND' ||
+      nodeErr.code === 'ETIMEDOUT' ||
+      nodeErr.code === 'ECONNREFUSED' ||
+      nodeErr.statusCode !== undefined
     );
   }
 
@@ -53,11 +60,12 @@ export class ErrorHandler {
    */
   private static isFileSystemError(error: Error): error is FileSystemError {
     if (error instanceof FileSystemError) return true;
+    const nodeErr = error as NodeSystemError;
     return 'code' in error && (
-      (error as any).code === 'ENOENT' ||
-      (error as any).code === 'EACCES' ||
-      (error as any).code === 'EISDIR' ||
-      (error as any).path !== undefined
+      nodeErr.code === 'ENOENT' ||
+      nodeErr.code === 'EACCES' ||
+      nodeErr.code === 'EISDIR' ||
+      nodeErr.path !== undefined
     );
   }
 

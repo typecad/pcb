@@ -2,7 +2,7 @@ import { promises as fs } from 'node:fs';
 import logger from '../../logging.js';
 import { ComponentRecord } from '../types/index.js';
 import { DateBasedCacheManager } from './DateBasedCacheManager.js';
-import { KiCadLocalDataProcessor, ProcessingProgress } from './KiCadLocalDataProcessor.js';
+import { KiCadLocalDataProcessor, ProcessingProgress, ProcessingStatistics } from './KiCadLocalDataProcessor.js';
 import { KiCadSymbolConverter } from './KiCadSymbolConverter.js';
 import { CacheUtils } from '../utils/CacheUtils.js';
 
@@ -240,7 +240,7 @@ export class DataManager {
   /**
    * Gets processing statistics from the local processor
    */
-  getProcessingStatistics(): any {
+  getProcessingStatistics(): ProcessingStatistics {
     return this.localProcessor.getStatistics();
   }
 

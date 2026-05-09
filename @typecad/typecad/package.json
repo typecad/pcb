@@ -20,7 +20,8 @@
     "create-typecad": "./cli/create-typecad/index.js",
     "add-component": "./cli/add-component/index.js",
     "add-package": "./cli/add-package/index.js",
-    "kicad-symbols": "./dist/kicad-symbols/cli/bin.js"
+    "kicad-symbols": "./dist/kicad-symbols/cli/bin.js",
+    "kicad2typecad": "./dist/kicad2typecad/bin.js"
   },
   "publishConfig": {
     "access": "public"
@@ -34,6 +35,7 @@
     "prepublishOnly": "npm run typecheck && npm test && npm run build && npm run obfuscate && npm run copy-files",
     "prepack": "npm run typecheck && npm test",
     "kicad-symbols": "node dist/kicad-symbols/cli/bin.js",
+    "kicad2typecad": "node dist/kicad2typecad/bin.js",
     "make": "npx tsx --",
     "package_publish": "npm run prepublishOnly && npm publish --access public",
     "publish:private": "npm publish --tag private --registry http://192.168.2.207:4873/",

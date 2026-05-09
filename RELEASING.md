@@ -77,7 +77,7 @@ npm run changeset
 # Message: "Fixed pin numbering for reversed connectors"
 ```
 
-Running `npm run version` will also bump `@typecad/typecad` in the `dependencies` of packages that depend on it (docgen, gitdiff, kicad-symbols, kicad2typecad, schematic), because `updateInternalDependencies` is set to `"patch"` in `.changeset/config.json`.
+Running `npm run version` will also bump `@typecad/typecad` in the `dependencies` of packages that depend on it (docgen, gitdiff, schematic), because `updateInternalDependencies` is set to `"patch"` in `.changeset/config.json`.
 
 ### Multiple packages changed
 

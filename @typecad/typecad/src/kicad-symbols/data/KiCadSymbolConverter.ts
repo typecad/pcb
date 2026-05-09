@@ -5,6 +5,7 @@
 
 import { ComponentRecord } from '../types/index.js';
 import { ExtractedSymbol } from './KiCadSymbolExtractor.js';
+import logger from '../../logging.js';
 
 /**
  * Options for controlling symbol conversion
@@ -103,7 +104,7 @@ export class KiCadSymbolConverter {
         libraryCount[symbol.library] = (libraryCount[symbol.library] || 0) + 1;
         
       } catch (error) {
-        console.warn(`Failed to convert symbol ${symbol.name} from ${symbol.library}: ${error instanceof Error ? error.message : String(error)}`);
+        logger.warn(`Failed to convert symbol ${symbol.name} from ${symbol.library}: ${error instanceof Error ? error.message : String(error)}`);
         continue;
       }
     }

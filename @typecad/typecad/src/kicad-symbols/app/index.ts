@@ -1,5 +1,4 @@
 import { DataManager, DataSourceMode } from '../data/DataManager.js';
-import { ComponentFuzzyScorer } from '../scoring/FuzzyScorer.js';
 import { EnhancedScoringSystem } from '../scoring/EnhancedScoringSystem.js';
 import { ComponentSearchEngine } from '../scoring/SearchEngine.js';
 import { ElectricalParameterParser, DataSourceType } from '../parsers/ParameterParser.js';

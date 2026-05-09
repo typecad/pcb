@@ -141,7 +141,7 @@ After the components are created, make all the connections. Access the pcb using
 
 Use the `TrackBuilder` object to create tracks to connect the components in the PCB. Then add them to `this.components`. 
 
-There is a CLI tool to make this step easier. [@typecad/kicad2typecad](https://www.npmjs.com/package/@typecad/kicad2typecad) will read a .kicad_pcb file and convert component locations and tracks to typeCAD code. 
+There is a CLI tool to make this step easier. `kicad2typecad` (bundled with [@typecad/typecad](https://www.npmjs.com/package/@typecad/typecad)) will read a .kicad_pcb file and convert component locations and tracks to typeCAD code.
 
 ## Add and group
 <ScrollArea orientation="both">

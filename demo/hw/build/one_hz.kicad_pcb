@@ -108,7 +108,7 @@
   (net 52 "1HZ_BUFFERED")
   (embedded_fonts no)
   (footprint "lib:QFN_7050_4pins"
-    (uuid "cf389ad4-cea5-4477-917a-a019f1432827")
+    (uuid "76d9549a-fec7-4343-903d-d8ab063f8b6d")
     (at 140.432 102.905 0)
     (version 20260206)
     (generator "pcbnew")
@@ -163,11 +163,11 @@
         )
       )
     )
-    (property "Code" "{'file':'C:\\typecad\\typeCAD\\demo\\hw\\src\\one_hz.ts','line':58,'variable':'U1','params':{'reference':'U1','value':'SIT8008BI-82-30E-4.194304','footprint':'lib:QFN_7050_4pins','description':'4.194304 MHz TCXO, ±25ppm, 3V supply, 7.0x5.0mm QFN-4 package','datasheet':'https://www.sitime.com/products/oscillators/tcxo/sit8008bi','mpn':'SIT8008BI-82-30E-4.194304','symbol':'SiT8008BI-82-30E-4_194304:SiT8008BI-82-30E-4.194304','sch':{'x':35,'y':80,'rotation':0},'pcb':{'x':140.432,'y':102.905,'rotation':0,'side':'front'}}}"
+    (property "Code" "{'file':'C:\\typecad\\typeCAD\\demo\\hw\\src\\one_hz.ts','line':58,'variable':'J2','params':{'number':2,'sch':{'x':245,'y':90,'rotation':0},'pcb':{'x':177.8,'y':99.66,'rotation':0}}}"
       (at 0 0 0)
       (layer "F.Fab")
       (hide yes)
-      (uuid "c90772ec-a78c-4a4d-b509-c5ee830a9a05")
+      (uuid "f4b527e8-f44a-4620-b1e8-d7320b793719")
       (effects
         (font
           (size 1 1)
@@ -376,7 +376,7 @@
     )
   )
   (footprint "Package_DIP:DIP-16_W7.62mm"
-    (uuid "e26ec1c7-1aff-4d65-821c-92d9d74662f0")
+    (uuid "c6b42f97-191c-4203-9d0d-aa430b88b1fe")
     (at 146.69 84.455 0)
     (version 20260206)
     (generator "kicad-footprint-generator")
@@ -416,11 +416,11 @@
         )
       )
     )
-    (property "Code" "{'file':'C:\\typecad\\typeCAD\\demo\\hw\\src\\one_hz.ts','line':73,'variable':'U2','params':{'reference':['U2',{'x':3.805,'y':1.545,'rotation':180,'thickness':0.15,'width':1,'height':1}],'fab':{'x':3.805,'y':1.545,'rotation':180,'thickness':0.15,'width':1,'height':1},'value':['74HC4060N',{'x':3.805,'y':8.89,'rotation':90,'thickness':0.15,'width':1,'height':1}],'footprint':'Package_DIP:DIP-16_W7.62mm','description':'14-stage binary counter with oscillator, divides by 16,384, 2-6V operation','datasheet':'https://www.ti.com/lit/ds/symlink/sn74hc4060.pdf','symbol':'74xx:74HC4060','sch':{'x':93,'y':80,'rotation':0},'pcb':{'x':146.69,'y':84.455,'rotation':0}}}"
+    (property "Code" "{'file':'C:\\typecad\\typeCAD\\demo\\hw\\src\\one_hz.ts','line':73,'variable':'U2'}"
       (at 0 0 0)
       (layer "F.Fab")
       (hide yes)
-      (uuid "e5935599-3345-4680-8e3d-6d89a6ffe307")
+      (uuid "6d8d22b1-2624-44eb-8e77-e29673da585d")
       (effects
         (font
           (size 1 1)
@@ -714,7 +714,7 @@
     )
   )
   (footprint "Package_DIP:DIP-16_W7.62mm"
-    (uuid "e8a9b54f-b634-4975-a042-74dbdd98b45f")
+    (uuid "d2f8ff37-73bd-423c-be07-c8248a9e4120")
     (at 156.845 84.455 0)
     (version 20260206)
     (generator "kicad-footprint-generator")
@@ -752,11 +752,11 @@
         )
       )
     )
-    (property "Code" "{'file':'C:\\typecad\\typeCAD\\demo\\hw\\src\\one_hz.ts','line':89,'variable':'U3','params':{'reference':'U3','value':'74HC4040N','footprint':'Package_DIP:DIP-16_W7.62mm','description':'12-stage asynchronous binary counter, divides by 256, 2-6V operation','datasheet':'https://www.ti.com/lit/ds/symlink/sn74hc4040.pdf','symbol':'74HC4040N_652:74HC4040N_652','sch':{'x':140,'y':80,'rotation':0},'pcb':{'x':156.845,'y':84.455,'rotation':0}}}"
+    (property "Code" "{'file':'C:\\typecad\\typeCAD\\demo\\hw\\src\\one_hz.ts','line':89,'variable':'U3','params':{'reference':'U3','value':'74HC4040N','footprint':'Package_DIP:DIP-16_W7.62mm','description':''12-stage asynchronous binary counter','datasheet':'https://www.ti.com/lit/ds/symlink/sn74hc4040.pdf','symbol':'74HC4040N_652:74HC4040N_652','sch':{'x':140,'y':80,'rotation':0},'pcb':{'x':156.845,'y':84.455,'rotation':0}}}"
       (at 0 0 0)
       (layer "F.Fab")
       (hide yes)
-      (uuid "8e34ace3-bba7-4b40-b0d2-1a8c8efe8ed8")
+      (uuid "89074327-93e2-4133-8679-2b6a7e9145a6")
       (effects
         (font
           (size 1 1)
@@ -1050,7 +1050,7 @@
     )
   )
   (footprint "Package_DIP:DIP-20_W7.62mm"
-    (uuid "844c332e-f3d1-40fb-9e8d-5aacd341e327")
+    (uuid "d479616e-5a07-462f-9293-54f66cc49519")
     (at 167.01 84.455 0)
     (version 20260206)
     (generator "kicad-footprint-generator")
@@ -1092,7 +1092,7 @@
       (at 0 0 0)
       (layer "F.Fab")
       (hide yes)
-      (uuid "5770329a-0d14-4243-8f6c-a74299fa0739")
+      (uuid "e6bed479-167c-4157-a390-50f59551f2cd")
       (effects
         (font
           (size 1 1)
@@ -1422,7 +1422,7 @@
     )
   )
   (footprint "Capacitor_SMD:C_0603_1608Metric"
-    (uuid "7da2d24c-af36-43f6-b106-5c564dfe3253")
+    (uuid "ad2b3d9d-5265-4144-9bf0-7d542a2ddf81")
     (at 137.655 97.155 0)
     (version 20260206)
     (generator "kicad-footprint-generator")
@@ -1464,7 +1464,7 @@
       (at 0 0 0)
       (layer "F.Fab")
       (hide yes)
-      (uuid "032a1265-8691-4851-a6b6-87fa4da173bb")
+      (uuid "a05774a6-2b07-440f-947d-d19c7d52973d")
       (effects
         (font
           (size 1 1)
@@ -1552,7 +1552,7 @@
     )
   )
   (footprint "Capacitor_SMD:C_0603_1608Metric"
-    (uuid "38419474-8be4-4834-b5d5-8e9cddb968e6")
+    (uuid "b332b4ee-5616-4542-99bb-89e948125d8c")
     (at 153.67 81.915 180)
     (version 20260206)
     (generator "kicad-footprint-generator")
@@ -1594,7 +1594,7 @@
       (at 0 0 0)
       (layer "F.Fab")
       (hide yes)
-      (uuid "adbe9ea6-c3fc-4e79-b14b-c376084b4003")
+      (uuid "3172a158-3cb3-4dc5-b054-b164b809a985")
       (effects
         (font
           (size 1 1)
@@ -1682,7 +1682,7 @@
     )
   )
   (footprint "Capacitor_SMD:C_0603_1608Metric"
-    (uuid "383f0156-deb2-407b-ac50-673babe7f563")
+    (uuid "714b466e-c7b5-42cc-8e7c-f1b8780166b7")
     (at 163.83 81.915 180)
     (version 20260206)
     (generator "kicad-footprint-generator")
@@ -1724,7 +1724,7 @@
       (at 0 0 0)
       (layer "F.Fab")
       (hide yes)
-      (uuid "4d00d983-46d4-424f-986b-3132cd8d031d")
+      (uuid "ab2ef4e3-9484-4dfc-9d5c-af9e343925cf")
       (effects
         (font
           (size 1 1)
@@ -1812,7 +1812,7 @@
     )
   )
   (footprint "Capacitor_SMD:C_0603_1608Metric"
-    (uuid "e10df91f-435f-4971-9ee0-fb007d70c0db")
+    (uuid "9bd0cafa-6b83-4d56-852c-f3ae9b399f14")
     (at 173.85 81.915 180)
     (version 20260206)
     (generator "kicad-footprint-generator")
@@ -1854,7 +1854,7 @@
       (at 0 0 0)
       (layer "F.Fab")
       (hide yes)
-      (uuid "26224dce-a9ab-4e8f-88db-2dd43d3413cc")
+      (uuid "e647ce8e-0140-4692-802b-d3c1d7394fff")
       (effects
         (font
           (size 1 1)
@@ -1942,7 +1942,7 @@
     )
   )
   (footprint "Capacitor_SMD:C_0603_1608Metric"
-    (uuid "b1779c63-e325-4c1b-af1c-58c95991efff")
+    (uuid "3a6c9ebe-1780-4b1d-8a8a-e03cdaef9668")
     (at 142.24 84.595 90)
     (version 20260206)
     (generator "kicad-footprint-generator")
@@ -1984,7 +1984,7 @@
       (at 0 0 0)
       (layer "F.Fab")
       (hide yes)
-      (uuid "dd13dc66-2973-422f-807a-35377e52e24c")
+      (uuid "d0cd424e-e990-474e-814a-6dcb71ffcddd")
       (effects
         (font
           (size 1 1)
@@ -2072,7 +2072,7 @@
     )
   )
   (footprint "Capacitor_SMD:C_0603_1608Metric"
-    (uuid "360f5044-ec80-43ac-9879-4ac1aee1528a")
+    (uuid "919b04f3-3a1c-448d-95cf-101a97d70d9b")
     (at 142.24 87.77 -90)
     (version 20260206)
     (generator "kicad-footprint-generator")
@@ -2114,7 +2114,7 @@
       (at 0 0 0)
       (layer "F.Fab")
       (hide yes)
-      (uuid "ad61f891-712f-4319-9698-b1747c4a135f")
+      (uuid "13908de8-335e-48fb-9bf8-26fd7e94b04b")
       (effects
         (font
           (size 1 1)
@@ -2202,7 +2202,7 @@
     )
   )
   (footprint "Resistor_SMD:R_0603_1608Metric"
-    (uuid "11470384-1a6d-4cad-866e-40f064165447")
+    (uuid "e8083105-f424-4cf8-a6fc-66b051eb41a9")
     (at 150.495 81.915 0)
     (version 20260206)
     (generator "kicad-footprint-generator")
@@ -2244,7 +2244,7 @@
       (at 0 0 0)
       (layer "F.Fab")
       (hide yes)
-      (uuid "b415f29a-8e20-4a93-a644-2a048af4ce64")
+      (uuid "120401d3-338c-4728-9b6a-6a5813d11583")
       (effects
         (font
           (size 1 1)
@@ -2332,7 +2332,7 @@
     )
   )
   (footprint "Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Vertical"
-    (uuid "d7bdf597-272f-4cb3-b388-006dcebed42a")
+    (uuid "ef7de7a8-95a0-42c1-8507-0026fd19f625")
     (at 139.2 83.92 0)
     (version 20260206)
     (generator "kicad-footprint-generator")
@@ -2374,7 +2374,7 @@
       (at 0 0 0)
       (layer "F.Fab")
       (hide yes)
-      (uuid "c4652d45-dc1a-4d0e-94e4-119ba5cc34e8")
+      (uuid "f66e96d0-815c-4f9b-9c87-6367ec585257")
       (effects
         (font
           (size 1 1)
@@ -2553,7 +2553,7 @@
     )
   )
   (footprint "Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical"
-    (uuid "faf99174-dde3-484e-8c69-204a8560c835")
+    (uuid "851b4104-d6dd-4222-9409-2315ab567fd7")
     (at 177.8 99.66 0)
     (version 20260206)
     (generator "kicad-footprint-generator")
@@ -2595,7 +2595,7 @@
       (at 0 0 0)
       (layer "F.Fab")
       (hide yes)
-      (uuid "4e9bc80a-c0b6-42b2-8ea2-c1b964c813f3")
+      (uuid "a466b072-8e4f-474d-b378-b6c240d06c3c")
       (effects
         (font
           (size 1 1)
@@ -2756,7 +2756,7 @@
     )
   )
   (footprint "TestPoint:TestPoint_Pad_D1.0mm"
-    (uuid "299b8844-d348-4326-846d-c5d76353a761")
+    (uuid "834e2cbd-32a6-471c-a159-889641e2f409")
     (at 142.945 97.296 0)
     (version 20260206)
     (generator "pcbnew")
@@ -2816,7 +2816,7 @@
       (at 0 0 0)
       (layer "F.Fab")
       (hide yes)
-      (uuid "5e5f3587-3010-48f2-9283-aaccd2462c07")
+      (uuid "ca802582-6aa6-4086-8cce-e075ff261c75")
       (effects
         (font
           (size 1 1)
@@ -2870,7 +2870,7 @@
     (embedded_fonts no)
   )
   (footprint "TestPoint:TestPoint_Pad_D1.0mm"
-    (uuid "f459b8f9-744c-4be1-9617-926eaf615557")
+    (uuid "fae90be8-92fb-470d-b3d4-9289d1cb9907")
     (at 146.05 80.01 0)
     (version 20260206)
     (generator "pcbnew")
@@ -2930,7 +2930,7 @@
       (at 0 0 0)
       (layer "F.Fab")
       (hide yes)
-      (uuid "a7b5cb3c-f214-48b0-98a5-926e26250199")
+      (uuid "0ed23b82-5a28-4c4b-9027-0da0f95f084f")
       (effects
         (font
           (size 1 1)
@@ -2984,7 +2984,7 @@
     (embedded_fonts no)
   )
   (footprint "TestPoint:TestPoint_Pad_D1.0mm"
-    (uuid "afe6dbe2-01e3-41e3-a1f4-ada68508485f")
+    (uuid "348b389e-d1bb-40db-b270-1ffc3d8a7af4")
     (at 156.845 80.01 0)
     (version 20260206)
     (generator "pcbnew")
@@ -3044,7 +3044,7 @@
       (at 0 0 0)
       (layer "F.Fab")
       (hide yes)
-      (uuid "78eb5f06-c7ab-4ed8-991f-755d4d1f61ff")
+      (uuid "919631c2-81cb-43a3-92b5-6a2e03908322")
       (effects
         (font
           (size 1 1)
@@ -3098,7 +3098,7 @@
     (embedded_fonts no)
   )
   (footprint "TestPoint:TestPoint_Pad_D1.0mm"
-    (uuid "8ace05c2-a8bc-44ed-a4e7-6b8e3518a512")
+    (uuid "4a8e1665-b925-45ce-92a0-bad468e9e9d8")
     (at 164.465 106.045 0)
     (version 20260206)
     (generator "pcbnew")
@@ -3158,7 +3158,7 @@
       (at 0 0 0)
       (layer "F.Fab")
       (hide yes)
-      (uuid "4cdbe05c-aedd-40bf-ab9f-c2e626434d97")
+      (uuid "2b61ca06-f736-45a9-abb3-51ae4f1c181b")
       (effects
         (font
           (size 1 1)
@@ -3218,7 +3218,7 @@
     (layers "B.Cu" "F.Cu")
     (free yes)
     (net 23)
-    (uuid "ce923e49-d6fb-45b4-a979-c0c956c3af80")
+    (uuid "48e07d7f-26a4-4180-abcd-6d7c3e1f877b")
   )
   (gr_line
     (start 135.255 77.47)
@@ -3228,7 +3228,7 @@
       (type default)
     )
     (layer "Edge.Cuts")
-    (uuid "5193bf5b-c8f7-45c7-85c5-2213ca339bd2")
+    (uuid "cf8a59d3-db5f-4d23-a002-edfc538807f4")
   )
   (gr_line
     (start 181.60999999999999 77.47)
@@ -3238,7 +3238,7 @@
       (type default)
     )
     (layer "Edge.Cuts")
-    (uuid "fad7d680-55b0-4c8f-8a73-9934db5b5887")
+    (uuid "ebd46114-8648-4ee4-a0aa-1bbd044cbfa1")
   )
   (gr_line
     (start 181.60999999999999 109.85499999999999)
@@ -3248,7 +3248,7 @@
       (type default)
     )
     (layer "Edge.Cuts")
-    (uuid "b42897a6-9b6e-4425-b167-9e9c8d5350fb")
+    (uuid "ab236e40-19db-43ae-b517-a1a19960c033")
   )
   (gr_line
     (start 135.255 109.85499999999999)
@@ -3258,7 +3258,7 @@
       (type default)
     )
     (layer "Edge.Cuts")
-    (uuid "6d4d0924-dcec-40b4-9088-7aefcd4ae0e3")
+    (uuid "e40551c5-e7e6-4ffc-818b-3782836f8343")
   )
   (segment
     (start 137.892 104.81)
@@ -3266,7 +3266,7 @@
     (width 0.2)
     (locked no)
     (layer "F.Cu")
-    (uuid "58ce5fae-6ea7-49e9-92ec-c527fc4e6578")
+    (uuid "46094fc5-ed0c-4161-85b5-7175d119be8e")
   )
   (segment
     (start 137.8375 104.53750000000001)
@@ -3274,7 +3274,7 @@
     (width 0.2)
     (locked no)
     (layer "F.Cu")
-    (uuid "4482c087-9eb6-4dba-ae27-4c7ff7d8d888")
+    (uuid "9c27ca19-6541-434e-b696-ff9d3614c3ee")
   )
   (segment
     (start 137.8375 101.3375)
@@ -3282,7 +3282,7 @@
     (width 0.2)
     (locked no)
     (layer "F.Cu")
-    (uuid "28d2abe5-771c-4dcf-8d90-4aeb4c0bde73")
+    (uuid "749fcb93-4b8e-49b2-9b93-a0b15940aa94")
   )
   (segment
     (start 137.892 101)
@@ -3290,7 +3290,7 @@
     (width 0.2)
     (locked no)
     (layer "F.Cu")
-    (uuid "e88a6b10-73d1-4df3-98e8-00d85c3d493a")
+    (uuid "6b31f066-2463-4d51-adcc-ac4b9c75c9a8")
   )
   (segment
     (start 137.8375 100.7375)
@@ -3298,7 +3298,7 @@
     (width 0.2)
     (locked no)
     (layer "F.Cu")
-    (uuid "ac75e0c4-1afc-49a3-be72-73c32b6b38c1")
+    (uuid "bd0ff60d-f7ab-4901-a4b9-589098496c86")
   )
   (segment
     (start 137.8375 98.2375)
@@ -3306,7 +3306,7 @@
     (width 0.2)
     (locked no)
     (layer "F.Cu")
-    (uuid "5f602e61-fff4-4572-8ce1-06e2c9f1e82f")
+    (uuid "fb3dbabb-537d-411f-bcf0-a0e9f24dfba1")
   )
   (segment
     (start 137.53750000000002 97.9375)
@@ -3314,7 +3314,7 @@
     (width 0.2)
     (locked no)
     (layer "F.Cu")
-    (uuid "8692d783-5484-43a9-86b3-150899df5a72")
+    (uuid "e9200835-30cb-45b4-be7a-f269d0732444")
   )
   (segment
     (start 137.53750000000002 86.03750000000001)
@@ -3322,7 +3322,7 @@
     (width 0.2)
     (locked no)
     (layer "F.Cu")
-    (uuid "803308ed-9c8e-4afa-a634-5cf8e090c6fd")
+    (uuid "976d94a6-2abf-45ab-b7f1-ed5f957c3d30")
   )
   (segment
     (start 139.13750000000002 84.4375)
@@ -3330,7 +3330,7 @@
     (width 0.2)
     (locked no)
     (layer "F.Cu")
-    (uuid "bbf98665-6074-4918-bb5d-da74f8de37f7")
+    (uuid "eb122064-097c-4c5b-919c-e3280f62b0f8")
   )
   (segment
     (start 139.13750000000002 84.2375)
@@ -3338,7 +3338,7 @@
     (width 0.2)
     (locked no)
     (layer "F.Cu")
-    (uuid "688921ba-fe2f-4fde-bdb6-4a356784d7e0")
+    (uuid "c4607cbe-2217-4744-af90-b9ae1d9bf573")
   )
   (segment
     (start 154.31 84.455)
@@ -3346,7 +3346,7 @@
     (width 0.2)
     (locked no)
     (layer "F.Cu")
-    (uuid "9b20483a-ac1f-4bfa-aacd-1784cfc1bc9c")
+    (uuid "f507dfed-ed50-4892-9fc1-9ff3bd9c9b20")
   )
   (segment
     (start 155.53750000000002 85.6375)
@@ -3354,7 +3354,7 @@
     (width 0.2)
     (locked no)
     (layer "F.Cu")
-    (uuid "90e62527-e89c-431b-a703-1d9db7dab0c8")
+    (uuid "6f4a911e-06a7-42fc-b1ae-04c20208f63a")
   )
   (segment
     (start 160.33750000000003 85.6375)
@@ -3362,7 +3362,7 @@
     (width 0.2)
     (locked no)
     (layer "F.Cu")
-    (uuid "d85025f2-206d-42d3-abb3-0a54d0810b57")
+    (uuid "cdd6f537-5cb0-4036-8ca6-7a99228e85b5")
   )
   (segment
     (start 161.53750000000002 84.4375)
@@ -3370,7 +3370,7 @@
     (width 0.2)
     (locked no)
     (layer "F.Cu")
-    (uuid "7564caae-795f-4267-9284-94eb9944319b")
+    (uuid "334b3e79-da72-4db9-bc0d-7d3b617ffcf6")
   )
   (segment
     (start 164.13750000000002 84.4375)
@@ -3378,7 +3378,7 @@
     (width 0.2)
     (locked no)
     (layer "F.Cu")
-    (uuid "062503d0-310f-43d3-b5fd-6bdb31d1c395")
+    (uuid "cdd29d1d-49b7-43a1-b6b6-3afb8c2bab72")
   )
   (segment
     (start 164.465 84.455)
@@ -3386,7 +3386,7 @@
     (width 0.2)
     (locked no)
     (layer "F.Cu")
-    (uuid "0421751a-91d2-4cb7-81ad-1b770ea1051a")
+    (uuid "6a71db73-0540-4123-90fe-0970d59fb65e")
   )
   (segment
     (start 165.63750000000002 85.6375)
@@ -3394,7 +3394,7 @@
     (width 0.2)
     (locked no)
     (layer "F.Cu")
-    (uuid "d7ba1a06-7f1f-4777-8771-b91cbdaca54e")
+    (uuid "717ddb8a-cf99-4916-a80d-6bd86d6fb038")
   )
   (segment
     (start 170.53750000000002 85.6375)
@@ -3402,7 +3402,7 @@
     (width 0.2)
     (locked no)
     (layer "F.Cu")
-    (uuid "811665f3-0b84-4ab6-ba6b-d051fdb7a00a")
+    (uuid "40b64eaf-7e96-4d6f-8e76-c582d54e6d3f")
   )
   (segment
     (start 171.7375 84.4375)
@@ -3410,7 +3410,7 @@
     (width 0.2)
     (locked no)
     (layer "F.Cu")
-    (uuid "bd03abc2-b60c-4297-8609-992a3a229c80")
+    (uuid "125cc309-b986-4278-93df-166c9cdc57c1")
   )
   (segment
     (start 174.33750000000003 84.4375)
@@ -3418,7 +3418,7 @@
     (width 0.2)
     (locked no)
     (layer "F.Cu")
-    (uuid "241dc8ae-e656-4c85-9d0f-955a04e9c695")
+    (uuid "d301a665-1b34-4bef-8dd2-238a0dca88fd")
   )
   (segment
     (start 154.31 84.455)
@@ -3426,7 +3426,7 @@
     (width 0.2)
     (locked no)
     (layer "F.Cu")
-    (uuid "0653e43b-97ce-4323-977f-2bc03dee895c")
+    (uuid "c95b00cb-887e-4923-9a9e-e15b39ac9430")
   )
   (segment
     (start 153.03750000000002 85.7375)
@@ -3434,7 +3434,7 @@
     (width 0.2)
     (locked no)
     (layer "F.Cu")
-    (uuid "f0d24f46-f04a-4ffe-8810-ba3c65cb14a2")
+    (uuid "043604b8-b257-43bf-8329-0dccb8643537")
   )
   (segment
     (start 143.53750000000002 85.7375)
@@ -3442,7 +3442,7 @@
     (width 0.2)
     (locked no)
     (layer "F.Cu")
-    (uuid "cd149429-617f-4119-99ff-0f050b5de97a")
+    (uuid "852f5092-0b00-4639-ab18-e083cdd5f0b2")
   )
   (segment
     (start 142.8375 86.4375)
@@ -3450,7 +3450,7 @@
     (width 0.2)
     (locked no)
     (layer "F.Cu")
-    (uuid "34cdebed-87cd-4c67-bb30-8367ddf46e1c")
+    (uuid "6396f157-f5d1-4ac1-877c-cb2a89602ccb")
   )
   (segment
     (start 139.43750000000003 86.4375)
@@ -3458,7 +3458,7 @@
     (width 0.2)
     (locked no)
     (layer "F.Cu")
-    (uuid "10919863-4a1e-4b51-b5e6-3fc3c4c34401")
+    (uuid "360311d0-36cf-48b8-bcf3-8d0bd51d0241")
   )
   (segment
     (start 164.465 92.075)
@@ -3466,7 +3466,7 @@
     (width 0.2)
     (locked no)
     (layer "B.Cu")
-    (uuid "eb85c76c-2014-4b0b-9e1f-887f3ab16401")
+    (uuid "81e7051b-742e-402f-be35-15c26ed7f7fc")
   )
   (segment
     (start 158.03750000000002 85.6375)
@@ -3474,7 +3474,7 @@
     (width 0.2)
     (locked no)
     (layer "B.Cu")
-    (uuid "4e0088a9-0c14-409e-bcfa-ff8a0183e96f")
+    (uuid "044c7d8a-32a1-4f36-8533-4809f152e054")
   )
   (segment
     (start 158.03750000000002 83.3375)
@@ -3482,7 +3482,7 @@
     (width 0.2)
     (locked no)
     (layer "B.Cu")
-    (uuid "0fa59898-136c-417a-bf63-3e6c83b79739")
+    (uuid "86feb9ee-8b4a-4fd7-aff7-1f4fa9cd1cde")
   )
   (segment
     (start 157.93750000000003 83.2375)
@@ -3490,7 +3490,7 @@
     (width 0.2)
     (locked no)
     (layer "B.Cu")
-    (uuid "09c53ef5-2d6b-42b1-8910-de5307833892")
+    (uuid "65cf613b-e833-4d34-80df-48092021c0fc")
   )
   (segment
     (start 157.93750000000003 81.03750000000001)
@@ -3498,12 +3498,12 @@
     (width 0.2)
     (locked no)
     (layer "F.Cu")
-    (uuid "dddbe621-2e62-4afe-bdae-586f1698bd1f")
+    (uuid "47138fe7-2c29-42f4-bfd9-502f88ff4e1e")
   )
   (gr_text "typecad 1hz"
     (at 145.415 108.585 0)
     (layer "F.SilkS")
-    (uuid "9cb1e069-efb8-4ba3-8cc3-81be091e263a")
+    (uuid "aecfd2e9-e6dc-423b-937b-47acdad9bc10")
     (effects
       (font
         (face "Super Skinny Pixel Bricks")
@@ -3515,7 +3515,7 @@
   (gr_text "⎍⎍⎍⎍⎍⎍⎍⎍⎍⎍⎍⎍⎍⎍⎍⎍⎍"
     (at 180.975 109.855 90)
     (layer "F.Cu")
-    (uuid "00670041-1668-4a62-820d-5bd48a0ece1b")
+    (uuid "a21a7d0f-346e-447e-8f54-3ce4acdee83d")
     (effects
       (font
         (size 1.5 1.5)
@@ -3532,13 +3532,13 @@
       (type default)
     )
     (layer "F.SilkS")
-    (uuid "229d01d6-081d-424d-8701-44a7f96e02c8")
+    (uuid "d2225cd4-cf20-411d-bcb2-a31b36f3a4a4")
   )
   (zone
     (net 3)
     (net_name "GND")
     (layers "F.Cu" "B.Cu")
-    (uuid "d338aa75-e8cc-4b91-a48f-2c2932f8de87")
+    (uuid "2919ea3c-19b2-48d0-a076-0831bf001cd8")
     (hatch edge 0.508)
     (connect_pads
       (clearance 0.2)
@@ -3562,7 +3562,7 @@
     (net 0)
     (net_name "")
     (layers "F.Cu" "B.Cu")
-    (uuid "4815a406-53f8-434c-9391-ca2368c3ebd8")
+    (uuid "52d036f6-31cf-4d8e-a185-9bada4ea9362")
     (hatch edge 0.508)
     (keepout
       (tracks not_allowed)

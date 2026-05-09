@@ -2,6 +2,7 @@ import { ParameterParser } from '../interfaces/ParameterParser.js';
 import { ElectricalValue, ParsedParameters } from '../types/index.js';
 import { PackageRecognizer } from './PackageRecognizer.js';
 import { ComponentTypeRecognizer } from './ComponentTypeRecognizer.js';
+import { UnitConverter } from './UnitConverter.js';
 
 /**
  * Data source types that affect parameter parsing behavior
@@ -245,89 +246,33 @@ export class ElectricalParameterParser implements ParameterParser {
    * @returns Normalized voltage value
    */
   private normalizeVoltage(value: ElectricalValue): ElectricalValue {
-    // Voltage is already in V, no conversion needed
     return {
-      value: value.value,
+      value: UnitConverter.normalizeVoltage(value.value, value.unit),
       unit: 'V',
       originalText: value.originalText
     };
   }
 
-  /**
-   * Normalizes capacitance values to a standard unit (F)
-   * @param value - The extracted capacitance value
-   * @returns Normalized capacitance value
-   */
   private normalizeCapacitance(value: ElectricalValue): ElectricalValue {
-    let normalizedValue = value.value;
-    let normalizedUnit = 'F';
-
-    // Convert to base unit (F)
-    if (value.unit.includes('p')) {
-      normalizedValue *= 1e-12;
-    } else if (value.unit.includes('n')) {
-      normalizedValue *= 1e-9;
-    } else if (value.unit.includes('µ') || value.unit.includes('u')) {
-      normalizedValue *= 1e-6;
-    } else if (value.unit.includes('m')) {
-      normalizedValue *= 1e-3;
-    }
-
     return {
-      value: normalizedValue,
-      unit: normalizedUnit,
+      value: UnitConverter.normalizeCapacitance(value.value, value.unit),
+      unit: 'F',
       originalText: value.originalText
     };
   }
 
-  /**
-   * Normalizes resistance values to a standard unit (Ω)
-   * @param value - The extracted resistance value
-   * @returns Normalized resistance value
-   */
   private normalizeResistance(value: ElectricalValue): ElectricalValue {
-    let normalizedValue = value.value;
-    let normalizedUnit = 'Ω';
-
-    // Convert to base unit (Ω)
-    if (value.unit.includes('m')) {
-      normalizedValue *= 1e-3;
-    } else if (value.unit.includes('k')) {
-      normalizedValue *= 1e3;
-    } else if (value.unit.includes('M')) {
-      normalizedValue *= 1e6;
-    } else if (value.unit.includes('G')) {
-      normalizedValue *= 1e9;
-    }
-
     return {
-      value: normalizedValue,
-      unit: normalizedUnit,
+      value: UnitConverter.normalizeResistance(value.value, value.unit),
+      unit: 'Ω',
       originalText: value.originalText
     };
   }
 
-  /**
-   * Normalizes inductance values to a standard unit (H)
-   * @param value - The extracted inductance value
-   * @returns Normalized inductance value
-   */
   private normalizeInductance(value: ElectricalValue): ElectricalValue {
-    let normalizedValue = value.value;
-    let normalizedUnit = 'H';
-
-    // Convert to base unit (H)
-    if (value.unit.includes('n')) {
-      normalizedValue *= 1e-9;
-    } else if (value.unit.includes('µ') || value.unit.includes('u')) {
-      normalizedValue *= 1e-6;
-    } else if (value.unit.includes('m')) {
-      normalizedValue *= 1e-3;
-    }
-
     return {
-      value: normalizedValue,
-      unit: normalizedUnit,
+      value: UnitConverter.normalizeInductance(value.value, value.unit),
+      unit: 'H',
       originalText: value.originalText
     };
   }

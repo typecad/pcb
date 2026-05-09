@@ -162,8 +162,6 @@ ${[
   } ${answers.packages.includes("wiring") ? `@typecad/wiring` : ""} ${
     answers.packages.includes("gitdiff") ? `@typecad/typecad-gitdiff` : ""
   } ${
-    answers.packages.includes("kicad2typecad") ? `@typecad/kicad2typecad` : ""
-  } ${
     answers.packages.includes("jlcpcb-parts") ? `@typecad/jlcpcb-parts` : ""
   } ${answers.packages.includes("typecad-mcp") ? `@typecad/typecad-mcp` : ""
   }`;

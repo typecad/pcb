@@ -190,5 +190,5 @@ Using the above method, tracks can be created by going from point to point, usin
 <br />
 
 > [!note] There is an easier way
-> [@typecad/kicad2typecad](https://www.npmjs.com/package/@typecad/kicad2typecad) is a command-line tool that can be used to convert a KiCAD board file into **type**CAD code snippets. It will give component locations, TrackBuilder objects and vias.<br>
+> `kicad2typecad` (bundled with [@typecad/typecad](https://www.npmjs.com/package/@typecad/typecad)) is a command-line tool that can be used to convert a KiCAD board file into **type**CAD code snippets. It will give component locations, TrackBuilder objects and vias.<br>
 > This is particularly useful for [package](/docs/package/overview) creation. You can lay out the entire package in KiCAD; components placed, tracks drawn, and vias added. Then use `kicad2typecad` to generate the code snippets to create them programmatically in the package.

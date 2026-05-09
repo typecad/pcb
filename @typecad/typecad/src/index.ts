@@ -37,3 +37,20 @@ export type {
 } from './routing/index.js'
 
 // Note: This is a library module. KiCAD detection happens when KiCAD class is instantiated.
+
+// KiCad symbol search engine
+export { Application, runApplication, ComponentSearchEngine, NetworkError, FileSystemError, ParsingError } from './kicad-symbols/index.js';
+export type {
+  ComponentRecord,
+  SearchResult,
+  ParsedParameters,
+  ElectricalValue,
+  MatchDetail,
+  ComponentScore,
+  CacheMetadata,
+  JsonSearchResult,
+  JsonErrorResponse,
+  LibraryInfo,
+  SymbolInfo,
+  KiCadCacheMetadata,
+} from './kicad-symbols/index.js';

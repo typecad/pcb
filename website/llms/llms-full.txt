@@ -2426,13 +2426,13 @@ Intelligent fuzzy search for KiCad schematic symbols with CLI interface. This Ty
 
 ## Installation
 
-### Global Installation (Recommended)
+> **Note:** kicad-symbols is now bundled with `@typecad/typecad`. Install typecad to get the `kicad-symbols` CLI.
 
 ```bash
-npm install -g @typecad/kicad-symbols
+npm install @typecad/typecad
 ```
 
-After global installation, you can use the `kicad-symbols` command from anywhere:
+After installation, you can use the `kicad-symbols` command via npx:
 
 ```bash
 kicad-symbols "op amp"
@@ -3172,7 +3172,7 @@ Ready to tap into the world's largest package ecosystem for your hardware design
 |   [kicad2typecad](https://www.npmjs.com/package/@typecad/kicad2typecad)   | Parse KiCad PCB board files and generate typeCAD code                                               |
 |    [jlcpcb-parts](https://www.npmjs.com/package/@typecad/jlcpcb-parts)    | Fuzzy search for JLCPCB basic and preferred electrical components                                   |
 |    [typecad-mcp](https://www.npmjs.com/package/@typecad/typecad-mcp)    |  Provides AI assistants with direct access to typeCAD tools and workflows                                   |
-|    [kicad-symbols](https://www.npmjs.com/package/@typecad/kicad-symbols)    | Fuzzy search for KiCad schematic symbols                                 |
+|    [kicad-symbols](https://www.npmjs.com/package/@typecad/typecad)    | Fuzzy search for KiCad schematic symbols (bundled with @typecad/typecad)                                 |
 
 ---
 

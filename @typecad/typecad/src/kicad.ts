@@ -1,6 +1,8 @@
-import fs from 'node:fs';
+import fs, { existsSync, statSync, readdirSync } from 'node:fs';
+import { readdir } from 'node:fs/promises';
 import process from 'node:process';
 import { platform } from 'node:os';
+import { join } from 'node:path';
 import { lookpathSync } from 'find-bin';
 import chalk from 'chalk';
 import { Config } from './config.js'
@@ -188,6 +190,38 @@ export class KiCAD {
                     footprints: kicad_path ? kicad_path + 'footprints' : ''
                 };
             }
+        }
+    }
+
+    private findSymbolsDirectory(): string | undefined {
+        const subpaths = ['share/kicad/symbols', 'symbols', 'share/symbols'];
+        for (const subpath of subpaths) {
+            const symbolsPath = join(kicad_path ?? '', subpath);
+            try {
+                if (existsSync(symbolsPath) && statSync(symbolsPath).isDirectory()) {
+                    return symbolsPath;
+                }
+            } catch { }
+        }
+        return undefined;
+    }
+
+    getSymbolsPath(): string | undefined {
+        const libraryPaths = this.getLibraryPaths();
+        if (libraryPaths.symbols && existsSync(libraryPaths.symbols)) {
+            return libraryPaths.symbols;
+        }
+        return this.findSymbolsDirectory();
+    }
+
+    async hasLocalSymbols(): Promise<boolean> {
+        const symbolsPath = this.getSymbolsPath();
+        if (!symbolsPath) return false;
+        try {
+            const files = await readdir(symbolsPath);
+            return files.some(file => file.endsWith('.kicad_sym'));
+        } catch {
+            return false;
         }
     }
 }

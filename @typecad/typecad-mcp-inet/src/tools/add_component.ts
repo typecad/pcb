@@ -151,7 +151,7 @@ function validateComponentNumber(componentNumber: string): { valid: boolean; err
 export async function searchKiCadSymbols(query: string, maxResults: number = 5): Promise<KiCadSymbolResult[]> {
   try {
 
-    const { stdout, stderr } = await execAsync(`npx @typecad/kicad-symbols "${query}" --format json --limit ${maxResults}`);
+    const { stdout, stderr } = await execAsync(`npx --package=@typecad/typecad kicad-symbols "${query}" --format json --limit ${maxResults}`);
     
     // Extract JSON from output (may have extra text before/after)
     let jsonString = stdout.trim();
@@ -195,7 +195,7 @@ export async function searchKiCadSymbols(query: string, maxResults: number = 5):
     
     // Check if the package is not installed
     if (error.message.includes('not found') || error.message.includes('ENOENT')) {
-      throw new Error('The @typecad/kicad-symbols package is not installed. Install it with: npm install -g @typecad/kicad-symbols');
+      throw new Error('The @typecad/typecad package is not installed. Install it with: npm install @typecad/typecad');
     }
     
     return [];
@@ -205,9 +205,9 @@ export async function searchKiCadSymbols(query: string, maxResults: number = 5):
 async function searchKiCadFootprints(query: string, maxResults: number = 5): Promise<string[]> {
   try {
 
-    // Note: @typecad/kicad-symbols primarily focuses on symbols, but we can try to extract footprint suggestions
+    // Note: kicad-symbols (now part of @typecad/typecad) primarily focuses on symbols, but we can try to extract footprint suggestions
     // from symbol descriptions or use a pattern-based approach
-    const { stdout } = await execAsync(`npx @typecad/kicad-symbols "${query}" --format json --limit ${maxResults}`);
+    const { stdout } = await execAsync(`npx --package=@typecad/typecad kicad-symbols "${query}" --format json --limit ${maxResults}`);
     
     // Extract JSON from output (may have extra text before/after)
     let jsonString = stdout.trim();
@@ -622,7 +622,7 @@ export function registerAddComponentTool(server: MCPServer) {
               error_code: "KICAD_SEARCH_FAILED",
               message: `Failed to search KiCAD components: ${searchError.message}`,
               suggestions: [
-                "Ensure @typecad/kicad-symbols is installed: npm install -g @typecad/kicad-symbols",
+                "Ensure @typecad/typecad is installed: npm install @typecad/typecad",
                 "Try a different search query",
                 "Check that KiCAD is installed and configured"
               ]

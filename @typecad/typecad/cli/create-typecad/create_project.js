@@ -165,8 +165,7 @@ ${[
     answers.packages.includes("kicad2typecad") ? `@typecad/kicad2typecad` : ""
   } ${
     answers.packages.includes("jlcpcb-parts") ? `@typecad/jlcpcb-parts` : ""
-  } ${answers.packages.includes("typecad-mcp") ? `@typecad/typecad-mcp` : ""} ${
-    answers.packages.includes("kicad-symbols") ? `@typecad/kicad-symbols` : ""
+  } ${answers.packages.includes("typecad-mcp") ? `@typecad/typecad-mcp` : ""
   }`;
   console.log(chalk.green("+"), "Installing dependencies");
   const installedDeps = runCommandQuiet(installDepsCommand);

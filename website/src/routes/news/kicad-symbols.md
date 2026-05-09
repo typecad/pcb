@@ -28,13 +28,13 @@ Intelligent fuzzy search for KiCad schematic symbols with CLI interface. This Ty
 
 ## Installation
 
-### Global Installation (Recommended)
+> **Note:** kicad-symbols is now bundled with `@typecad/typecad`. Install typecad to get the `kicad-symbols` CLI.
 
 ```bash
-npm install -g @typecad/kicad-symbols
+npm install @typecad/typecad
 ```
 
-After global installation, you can use the `kicad-symbols` command from anywhere:
+After installation, you can use the `kicad-symbols` command via npx:
 
 ```bash
 kicad-symbols "op amp"

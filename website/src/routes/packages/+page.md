@@ -35,7 +35,7 @@
 |   [kicad2typecad](https://www.npmjs.com/package/@typecad/kicad2typecad)   | Parse KiCad PCB board files and generate typeCAD code                                               |
 |    [jlcpcb-parts](https://www.npmjs.com/package/@typecad/jlcpcb-parts)    | Fuzzy search for JLCPCB basic and preferred electrical components                                   |
 |    [typecad-mcp](https://www.npmjs.com/package/@typecad/typecad-mcp)    |  Provides AI assistants with direct access to typeCAD tools and workflows                                   |
-|    [kicad-symbols](https://www.npmjs.com/package/@typecad/kicad-symbols)    | Fuzzy search for KiCad schematic symbols                                 |
+|    [kicad-symbols](https://www.npmjs.com/package/@typecad/typecad)    | Fuzzy search for KiCad schematic symbols (bundled with @typecad/typecad)                                 |
 
 <SvelteSeo
 {title}

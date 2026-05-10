@@ -1,5 +1,3 @@
-import fetch from 'node-fetch';
-
 interface MCPRequest {
   jsonrpc: string;
   id: string | number;

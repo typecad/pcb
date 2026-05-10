@@ -13,7 +13,7 @@ import { create_component } from "./typecad.js";
 import { basename } from "node:path";
 import fileSelector from "inquirer-file-selector";
 import chalk from "chalk";
-import { convertEasyedaToKicad } from "kipm/easyeda2kicadCore.js";
+import { convertEasyedaToKicad } from "../../kipm/easyeda2kicadCore.js";
 import fs from "node:fs";
 import { execSync } from "node:child_process";
 import path from "node:path";

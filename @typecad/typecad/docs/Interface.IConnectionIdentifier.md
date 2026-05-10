@@ -6,7 +6,7 @@
 
 # Interface: IConnectionIdentifier
 
-Defined in: [pcb/pcb\_interfaces.ts:315](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/pcb/pcb_interfaces.ts#L315)
+Defined in: @typecad/typecad/src/pcb/pcb\_interfaces.ts:412
 
 Identifier for a specific connection between two pins.
 Used to exclude connections from autorouting or to specify manual routes.
@@ -17,7 +17,7 @@ Used to exclude connections from autorouting or to specify manual routes.
 
 > **from**: [`Pin`](Class.Pin.md)
 
-Defined in: [pcb/pcb\_interfaces.ts:317](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/pcb/pcb_interfaces.ts#L317)
+Defined in: @typecad/typecad/src/pcb/pcb\_interfaces.ts:414
 
 Source pin
 
@@ -27,6 +27,6 @@ Source pin
 
 > **to**: [`Pin`](Class.Pin.md)
 
-Defined in: [pcb/pcb\_interfaces.ts:319](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/pcb/pcb_interfaces.ts#L319)
+Defined in: @typecad/typecad/src/pcb/pcb\_interfaces.ts:416
 
 Destination pin

@@ -6,7 +6,7 @@
 
 # Class: ObstacleBuilder
 
-Defined in: [routing/shared/obstacle\_builder.ts:17](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/routing/shared/obstacle_builder.ts#L17)
+Defined in: @typecad/typecad/src/routing/shared/obstacle\_builder.ts:28
 
 Builds routing obstacles from PCB elements.
 Converts components, pads, zones, and other PCB features into obstacle representations
@@ -26,9 +26,9 @@ for the routing grid.
 
 ### buildFromComponent()
 
-> `static` **buildFromComponent**(`component`, `clearance`): `null` \| [`IRoutingObstacle`](Interface.IRoutingObstacle.md)
+> `static` **buildFromComponent**(`component`, `clearance`): [`IRoutingObstacle`](Interface.IRoutingObstacle.md)
 
-Defined in: [routing/shared/obstacle\_builder.ts:204](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/routing/shared/obstacle_builder.ts#L204)
+Defined in: @typecad/typecad/src/routing/shared/obstacle\_builder.ts:220
 
 Build an obstacle from a component's body (courtyard).
 
@@ -48,7 +48,7 @@ Clearance around component in mm
 
 #### Returns
 
-`null` \| [`IRoutingObstacle`](Interface.IRoutingObstacle.md)
+[`IRoutingObstacle`](Interface.IRoutingObstacle.md)
 
 Component body obstacle, or null if unable to determine bounds
 
@@ -56,9 +56,9 @@ Component body obstacle, or null if unable to determine bounds
 
 ### buildFromComponentPads()
 
-> `static` **buildFromComponentPads**(`component`, `clearance`, `pcb`, `debug`): [`IRoutingObstacle`](Interface.IRoutingObstacle.md)[]
+> `static` **buildFromComponentPads**(`component`, `clearance`, `pcb`, `debug?`): [`IRoutingObstacle`](Interface.IRoutingObstacle.md)[]
 
-Defined in: [routing/shared/obstacle\_builder.ts:243](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/routing/shared/obstacle_builder.ts#L243)
+Defined in: @typecad/typecad/src/routing/shared/obstacle\_builder.ts:259
 
 Build obstacles from a component's pads.
 
@@ -82,7 +82,7 @@ Clearance around pads in mm
 
 PCB instance to resolve nets
 
-##### debug
+##### debug?
 
 `boolean` = `false`
 
@@ -96,9 +96,9 @@ Array of pad obstacles
 
 ### buildFromKeepoutZone()
 
-> `static` **buildFromKeepoutZone**(`zone`): `null` \| [`IRoutingObstacle`](Interface.IRoutingObstacle.md)
+> `static` **buildFromKeepoutZone**(`zone`): [`IRoutingObstacle`](Interface.IRoutingObstacle.md)
 
-Defined in: [routing/shared/obstacle\_builder.ts:392](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/routing/shared/obstacle_builder.ts#L392)
+Defined in: @typecad/typecad/src/routing/shared/obstacle\_builder.ts:408
 
 Build an obstacle from a keepout zone.
 
@@ -112,7 +112,7 @@ The keepout zone
 
 #### Returns
 
-`null` \| [`IRoutingObstacle`](Interface.IRoutingObstacle.md)
+[`IRoutingObstacle`](Interface.IRoutingObstacle.md)
 
 Keepout obstacle, or null if tracks are allowed
 
@@ -120,9 +120,9 @@ Keepout obstacle, or null if tracks are allowed
 
 ### buildFromOutline()
 
-> `static` **buildFromOutline**(`outline`, `clearance`): `null` \| [`IRoutingObstacle`](Interface.IRoutingObstacle.md)
+> `static` **buildFromOutline**(`outline`, `clearance`): [`IRoutingObstacle`](Interface.IRoutingObstacle.md)
 
-Defined in: [routing/shared/obstacle\_builder.ts:501](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/routing/shared/obstacle_builder.ts#L501)
+Defined in: @typecad/typecad/src/routing/shared/obstacle\_builder.ts:517
 
 Build an obstacle from a board outline.
 
@@ -142,7 +142,7 @@ Clearance from outline in mm
 
 #### Returns
 
-`null` \| [`IRoutingObstacle`](Interface.IRoutingObstacle.md)
+[`IRoutingObstacle`](Interface.IRoutingObstacle.md)
 
 Outline obstacle (everything outside the outline is blocked)
 
@@ -150,9 +150,9 @@ Outline obstacle (everything outside the outline is blocked)
 
 ### buildFromPCB()
 
-> `static` **buildFromPCB**(`pcb`, `defaultClearance`, `additionalComponents?`, `debug?`): [`IRoutingObstacle`](Interface.IRoutingObstacle.md)[]
+> `static` **buildFromPCB**(`pcb`, `defaultClearance?`, `additionalComponents?`, `debug?`): [`IRoutingObstacle`](Interface.IRoutingObstacle.md)[]
 
-Defined in: [routing/shared/obstacle\_builder.ts:32](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/routing/shared/obstacle_builder.ts#L32)
+Defined in: @typecad/typecad/src/routing/shared/obstacle\_builder.ts:43
 
 Build all obstacles from a PCB instance.
 
@@ -164,7 +164,7 @@ Build all obstacles from a PCB instance.
 
 The PCB to extract obstacles from
 
-##### defaultClearance
+##### defaultClearance?
 
 `number` = `0.2`
 
@@ -199,7 +199,7 @@ obstacles.forEach(obs => grid.addObstacle(obs));
 
 > `static` **buildFromTrack**(`track`, `width`, `clearance`, `net?`, `isManualRoute?`): [`IRoutingObstacle`](Interface.IRoutingObstacle.md)
 
-Defined in: [routing/shared/obstacle\_builder.ts:423](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/routing/shared/obstacle_builder.ts#L423)
+Defined in: @typecad/typecad/src/routing/shared/obstacle\_builder.ts:439
 
 Build an obstacle from a track.
 
@@ -243,9 +243,9 @@ Track obstacle
 
 ### buildFromZone()
 
-> `static` **buildFromZone**(`zone`): `null` \| [`IRoutingObstacle`](Interface.IRoutingObstacle.md)
+> `static` **buildFromZone**(`zone`): [`IRoutingObstacle`](Interface.IRoutingObstacle.md)
 
-Defined in: [routing/shared/obstacle\_builder.ts:367](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/routing/shared/obstacle_builder.ts#L367)
+Defined in: @typecad/typecad/src/routing/shared/obstacle\_builder.ts:383
 
 Build an obstacle from a filled zone.
 
@@ -259,6 +259,6 @@ The filled zone
 
 #### Returns
 
-`null` \| [`IRoutingObstacle`](Interface.IRoutingObstacle.md)
+[`IRoutingObstacle`](Interface.IRoutingObstacle.md)
 
 Zone obstacle, or null if invalid

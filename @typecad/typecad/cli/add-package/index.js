@@ -11,7 +11,7 @@ import {
   kicad_cli,
 } from './component/kicad.js';
 import fileSelector from 'inquirer-file-selector';
-import { convertEasyedaToKicad } from 'kipm/easyeda2kicadCore.js';
+import { convertEasyedaToKicad } from '../../kipm/easyeda2kicadCore.js';
 import chalk from 'chalk';
 import { basename } from 'node:path';
 import fs from 'node:fs';

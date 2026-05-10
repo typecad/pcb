@@ -154,7 +154,7 @@ export class PCB {
     /**
      * Initializes a new PCB.
      * @param Boardname - Name and filename of generated files.
-     * @param schematic - Optional schematic associated with the PCB.
+     * @param options - Optional PCB configuration options.
      */
     constructor(Boardname: string, options?: IPcbOptions) {
         this.Boardname = Boardname;

@@ -6,9 +6,9 @@
 
 # Function: executeKiCADCommandSync()
 
-> **executeKiCADCommandSync**(`command`, `args`, `options`): `string`
+> **executeKiCADCommandSync**(`command`, `args?`, `options?`): `string`
 
-Defined in: [kicad\_commands.ts:47](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/kicad_commands.ts#L47)
+Defined in: @typecad/typecad/src/kicad\_commands.ts:47
 
 Execute a KiCAD command synchronously
 
@@ -18,11 +18,11 @@ Execute a KiCAD command synchronously
 
 `string`
 
-### args
+### args?
 
 `string`[] = `[]`
 
-### options
+### options?
 
 [`KiCADCommandOptions`](Interface.KiCADCommandOptions.md) = `{}`
 

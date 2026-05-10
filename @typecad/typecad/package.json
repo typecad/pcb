@@ -1,6 +1,6 @@
 {
   "name": "@typecad/typecad",
-  "version": "0.2.25",
+  "version": "0.2.29",
   "description": "🤖programmatically 💥create 🛰️hardware",
   "keywords": [
     "kicad",
@@ -27,6 +27,7 @@
     "access": "public"
   },
   "scripts": {
+    "create-typecad": "node ./cli/create-typecad/index.js",
     "build": "tsc",
     "typecheck": "tsc --noEmit",
     "obfuscate": "javascript-obfuscator dist --output dist-obfuscated --config obfuscator.config.json",
@@ -59,11 +60,21 @@
     "vitest": "^3.2.1"
   },
   "dependencies": {
+    "@inquirer/prompts": "^7.3.2",
+    "acorn": "^8.16.0",
+    "acorn-walk": "^8.3.5",
     "chalk": "^5.4.1",
+    "commander": "^11.0.0",
+    "decimal.js": "^10.5.0",
+    "dedent": "^0.7.0",
     "fast-sexpr": "^1.0.0",
     "find-bin": "^1.1.0",
+    "gl-matrix": "^3.4.3",
     "handlebars": "^4.7.8",
-    "s-expression.js": "^0.6.4",
-    "kipm": "^0.1.0"
+    "inquirer-file-selector": "0.4.0",
+    "inquirer-select-pro": "1.0.0-alpha.9",
+    "obj-file-parser": "^0.6.2",
+    "ora": "^7.0.1",
+    "s-expression.js": "^0.6.4"
   }
 }

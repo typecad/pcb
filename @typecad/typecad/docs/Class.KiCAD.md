@@ -6,7 +6,7 @@
 
 # Class: KiCAD
 
-Defined in: [kicad.ts:12](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/kicad.ts#L12)
+Defined in: @typecad/typecad/src/kicad.ts:142
 
 ## Constructors
 
@@ -14,35 +14,67 @@ Defined in: [kicad.ts:12](https://github.com/typecad/typecad/blob/12a6d1639e8fbe
 
 > **new KiCAD**(): `KiCAD`
 
-Defined in: [kicad.ts:31](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/kicad.ts#L31)
+Defined in: @typecad/typecad/src/kicad.ts:143
 
 #### Returns
 
 `KiCAD`
 
-## Methods
+## Accessors
 
-### detectFlatpakInstallation()
+### cliPath
 
-> **detectFlatpakInstallation**(): `boolean`
+#### Get Signature
 
-Defined in: [kicad.ts:93](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/kicad.ts#L93)
+> **get** `static` **cliPath**(): `string`
 
-Detect if KiCAD is installed via flatpak
+Defined in: @typecad/typecad/src/kicad.ts:159
 
-#### Returns
+Detected kicad-cli executable path.
+
+##### Returns
+
+`string`
+
+***
+
+### isFlatpak
+
+#### Get Signature
+
+> **get** `static` **isFlatpak**(): `boolean`
+
+Defined in: @typecad/typecad/src/kicad.ts:165
+
+Whether the detected installation is a Flatpak.
+
+##### Returns
 
 `boolean`
 
 ***
 
+### path
+
+#### Get Signature
+
+> **get** `static` **path**(): `string`
+
+Defined in: @typecad/typecad/src/kicad.ts:153
+
+Detected KiCAD installation path.
+
+##### Returns
+
+`string`
+
+## Methods
+
 ### getLibraryPaths()
 
 > **getLibraryPaths**(): `object`
 
-Defined in: [kicad.ts:144](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/kicad.ts#L144)
-
-Get library paths based on installation type
+Defined in: @typecad/typecad/src/kicad.ts:174
 
 #### Returns
 
@@ -58,13 +90,35 @@ Get library paths based on installation type
 
 ***
 
+### getSymbolsPath()
+
+> **getSymbolsPath**(): `string`
+
+Defined in: @typecad/typecad/src/kicad.ts:209
+
+#### Returns
+
+`string`
+
+***
+
+### hasLocalSymbols()
+
+> **hasLocalSymbols**(): `Promise`\<`boolean`\>
+
+Defined in: @typecad/typecad/src/kicad.ts:217
+
+#### Returns
+
+`Promise`\<`boolean`\>
+
+***
+
 ### isFlatpakInstallation()
 
 > **isFlatpakInstallation**(): `boolean`
 
-Defined in: [kicad.ts:137](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/kicad.ts#L137)
-
-Check if current installation is flatpak
+Defined in: @typecad/typecad/src/kicad.ts:170
 
 #### Returns
 

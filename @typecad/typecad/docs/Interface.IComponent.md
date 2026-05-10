@@ -6,71 +6,71 @@
 
 # Interface: IComponent
 
-Defined in: [component.ts:21](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/component.ts#L21)
+Defined in: @typecad/typecad/src/component.ts:32
 
 ## Properties
 
 ### datasheet?
 
-> `optional` **datasheet**: `string`
+> `optional` **datasheet?**: `string`
 
-Defined in: [component.ts:27](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/component.ts#L27)
+Defined in: @typecad/typecad/src/component.ts:38
 
 ***
 
 ### description?
 
-> `optional` **description**: `string`
+> `optional` **description?**: `string`
 
-Defined in: [component.ts:27](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/component.ts#L27)
+Defined in: @typecad/typecad/src/component.ts:38
 
 ***
 
 ### dnp?
 
-> `optional` **dnp**: `boolean`
+> `optional` **dnp?**: `boolean`
 
-Defined in: [component.ts:28](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/component.ts#L28)
+Defined in: @typecad/typecad/src/component.ts:39
 
 ***
 
 ### fab?
 
-> `optional` **fab**: `ITextPositioning` \| \[`undefined` \| `null` \| `string`, `ITextPositioning`\]
+> `optional` **fab?**: `ITextPositioning` \| \[`string`, `ITextPositioning`\]
 
-Defined in: [component.ts:25](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/component.ts#L25)
+Defined in: @typecad/typecad/src/component.ts:36
 
 ***
 
 ### footprint?
 
-> `optional` **footprint**: `string`
+> `optional` **footprint?**: `string`
 
-Defined in: [component.ts:26](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/component.ts#L26)
+Defined in: @typecad/typecad/src/component.ts:37
 
 ***
 
 ### mpn?
 
-> `optional` **mpn**: `string`
+> `optional` **mpn?**: `string`
 
-Defined in: [component.ts:28](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/component.ts#L28)
+Defined in: @typecad/typecad/src/component.ts:39
 
 ***
 
 ### pcb?
 
-> `optional` **pcb**: `object`
+> `optional` **pcb?**: `object`
 
-Defined in: [component.ts:29](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/component.ts#L29)
+Defined in: @typecad/typecad/src/component.ts:40
 
 #### rotation?
 
-> `optional` **rotation**: `number`
+> `optional` **rotation?**: `number`
 
 #### side?
 
-> `optional` **side**: `"front"` \| `"back"`
+> `optional` **side?**: `"front"` \| `"back"`
 
 #### x
 
@@ -84,33 +84,33 @@ Defined in: [component.ts:29](https://github.com/typecad/typecad/blob/12a6d1639e
 
 ### pins?
 
-> `optional` **pins**: [`Pin`](Class.Pin.md)[]
+> `optional` **pins?**: [`Pin`](Class.Pin.md)[]
 
-Defined in: [component.ts:29](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/component.ts#L29)
+Defined in: @typecad/typecad/src/component.ts:40
 
 ***
 
 ### prefix?
 
-> `optional` **prefix**: `string`
+> `optional` **prefix?**: `string`
 
-Defined in: [component.ts:27](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/component.ts#L27)
+Defined in: @typecad/typecad/src/component.ts:38
 
 ***
 
 ### reference?
 
-> `optional` **reference**: `string` \| `ITextPositioning` \| \[`undefined` \| `null` \| `string`, `ITextPositioning`\]
+> `optional` **reference?**: `string` \| `ITextPositioning` \| \[`string`, `ITextPositioning`\]
 
-Defined in: [component.ts:23](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/component.ts#L23)
+Defined in: @typecad/typecad/src/component.ts:34
 
 ***
 
 ### sch?
 
-> `optional` **sch**: `object`
+> `optional` **sch?**: `object`
 
-Defined in: [component.ts:30](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/component.ts#L30)
+Defined in: @typecad/typecad/src/component.ts:41
 
 #### rotation
 
@@ -128,9 +128,9 @@ Defined in: [component.ts:30](https://github.com/typecad/typecad/blob/12a6d1639e
 
 ### simulation?
 
-> `optional` **simulation**: `object`
+> `optional` **simulation?**: `object`
 
-Defined in: [component.ts:30](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/component.ts#L30)
+Defined in: @typecad/typecad/src/component.ts:41
 
 #### include
 
@@ -138,67 +138,67 @@ Defined in: [component.ts:30](https://github.com/typecad/typecad/blob/12a6d1639e
 
 #### model?
 
-> `optional` **model**: `string`
+> `optional` **model?**: `string`
 
 ***
 
 ### sourceInfo?
 
-> `optional` **sourceInfo**: `SourceInfo`
+> `optional` **sourceInfo?**: `SourceInfo`
 
-Defined in: [component.ts:32](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/component.ts#L32)
+Defined in: @typecad/typecad/src/component.ts:43
 
 ***
 
 ### symbol?
 
-> `optional` **symbol**: `string`
+> `optional` **symbol?**: `string`
 
-Defined in: [component.ts:22](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/component.ts#L22)
+Defined in: @typecad/typecad/src/component.ts:33
 
 ***
 
 ### text?
 
-> `optional` **text**: `object`[]
+> `optional` **text?**: `object`[]
 
-Defined in: [component.ts:33](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/component.ts#L33)
+Defined in: @typecad/typecad/src/component.ts:44
 
 #### bold?
 
-> `optional` **bold**: `boolean`
+> `optional` **bold?**: `boolean`
 
 #### fontSize?
 
-> `optional` **fontSize**: `number`
+> `optional` **fontSize?**: `number`
 
 #### height?
 
-> `optional` **height**: `number`
+> `optional` **height?**: `number`
 
 #### italic?
 
-> `optional` **italic**: `boolean`
+> `optional` **italic?**: `boolean`
 
 #### justify?
 
-> `optional` **justify**: `object`
+> `optional` **justify?**: `object`
 
 ##### justify.horizontal?
 
-> `optional` **horizontal**: `"center"` \| `"left"` \| `"right"`
+> `optional` **horizontal?**: `"center"` \| `"left"` \| `"right"`
 
 ##### justify.mirror?
 
-> `optional` **mirror**: `boolean`
+> `optional` **mirror?**: `boolean`
 
 ##### justify.vertical?
 
-> `optional` **vertical**: `"top"` \| `"bottom"` \| `"middle"`
+> `optional` **vertical?**: `"top"` \| `"bottom"` \| `"middle"`
 
 #### layer?
 
-> `optional` **layer**: `string`
+> `optional` **layer?**: `string`
 
 #### property
 
@@ -206,11 +206,11 @@ Defined in: [component.ts:33](https://github.com/typecad/typecad/blob/12a6d1639e
 
 #### rotation?
 
-> `optional` **rotation**: `number`
+> `optional` **rotation?**: `number`
 
 #### show?
 
-> `optional` **show**: `boolean`
+> `optional` **show?**: `boolean`
 
 #### text
 
@@ -218,11 +218,11 @@ Defined in: [component.ts:33](https://github.com/typecad/typecad/blob/12a6d1639e
 
 #### thickness?
 
-> `optional` **thickness**: `number`
+> `optional` **thickness?**: `number`
 
 #### width?
 
-> `optional` **width**: `number`
+> `optional` **width?**: `number`
 
 #### x
 
@@ -236,46 +236,46 @@ Defined in: [component.ts:33](https://github.com/typecad/typecad/blob/12a6d1639e
 
 ### uuid?
 
-> `optional` **uuid**: `string`
+> `optional` **uuid?**: `string`
 
-Defined in: [component.ts:28](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/component.ts#L28)
+Defined in: @typecad/typecad/src/component.ts:39
 
 ***
 
 ### value?
 
-> `optional` **value**: `string` \| `ITextPositioning` \| \[`string`, `ITextPositioning`\]
+> `optional` **value?**: `string` \| `ITextPositioning` \| \[`string`, `ITextPositioning`\]
 
-Defined in: [component.ts:24](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/component.ts#L24)
+Defined in: @typecad/typecad/src/component.ts:35
 
 ***
 
 ### via?
 
-> `optional` **via**: `boolean`
+> `optional` **via?**: `boolean`
 
-Defined in: [component.ts:29](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/component.ts#L29)
+Defined in: @typecad/typecad/src/component.ts:40
 
 ***
 
 ### viaData?
 
-> `optional` **viaData**: `IVia`
+> `optional` **viaData?**: `IVia`
 
-Defined in: [component.ts:31](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/component.ts#L31)
+Defined in: @typecad/typecad/src/component.ts:42
 
 ***
 
 ### voltage?
 
-> `optional` **voltage**: `string`
+> `optional` **voltage?**: `string`
 
-Defined in: [component.ts:27](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/component.ts#L27)
+Defined in: @typecad/typecad/src/component.ts:38
 
 ***
 
 ### wattage?
 
-> `optional` **wattage**: `string`
+> `optional` **wattage?**: `string`
 
-Defined in: [component.ts:28](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/component.ts#L28)
+Defined in: @typecad/typecad/src/component.ts:39

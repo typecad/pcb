@@ -6,7 +6,7 @@
 
 # Interface: IPadGeometry
 
-Defined in: [routing/shared/pad\_resolver.ts:11](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/routing/shared/pad_resolver.ts#L11)
+Defined in: @typecad/typecad/src/routing/shared/pad\_resolver.ts:12
 
 Geometry information for a component pad on the PCB.
 
@@ -16,7 +16,7 @@ Geometry information for a component pad on the PCB.
 
 > **center**: `object`
 
-Defined in: [routing/shared/pad\_resolver.ts:13](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/routing/shared/pad_resolver.ts#L13)
+Defined in: @typecad/typecad/src/routing/shared/pad\_resolver.ts:14
 
 Absolute center position on the PCB in mm
 
@@ -32,9 +32,9 @@ Absolute center position on the PCB in mm
 
 ### componentRef?
 
-> `optional` **componentRef**: `string`
+> `optional` **componentRef?**: `string`
 
-Defined in: [routing/shared/pad\_resolver.ts:40](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/routing/shared/pad_resolver.ts#L40)
+Defined in: @typecad/typecad/src/routing/shared/pad\_resolver.ts:41
 
 Component reference (for debugging)
 
@@ -44,7 +44,7 @@ Component reference (for debugging)
 
 > **layer**: `string`
 
-Defined in: [routing/shared/pad\_resolver.ts:28](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/routing/shared/pad_resolver.ts#L28)
+Defined in: @typecad/typecad/src/routing/shared/pad\_resolver.ts:29
 
 Layer the pad is on (e.g., 'F.Cu', 'B.Cu'). For through-hole pads, this is the primary layer but the pad exists on all layers
 
@@ -54,7 +54,7 @@ Layer the pad is on (e.g., 'F.Cu', 'B.Cu'). For through-hole pads, this is the p
 
 > **layers**: `string`[]
 
-Defined in: [routing/shared/pad\_resolver.ts:31](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/routing/shared/pad_resolver.ts#L31)
+Defined in: @typecad/typecad/src/routing/shared/pad\_resolver.ts:32
 
 All layers this pad exists on (for through-hole pads, includes all copper layers)
 
@@ -62,9 +62,9 @@ All layers this pad exists on (for through-hole pads, includes all copper layers
 
 ### net?
 
-> `optional` **net**: `string`
+> `optional` **net?**: `string`
 
-Defined in: [routing/shared/pad\_resolver.ts:37](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/routing/shared/pad_resolver.ts#L37)
+Defined in: @typecad/typecad/src/routing/shared/pad\_resolver.ts:38
 
 Net name this pad belongs to (for net-aware routing)
 
@@ -74,7 +74,7 @@ Net name this pad belongs to (for net-aware routing)
 
 > **number**: `string` \| `number`
 
-Defined in: [routing/shared/pad\_resolver.ts:34](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/routing/shared/pad_resolver.ts#L34)
+Defined in: @typecad/typecad/src/routing/shared/pad\_resolver.ts:35
 
 Pad number/name
 
@@ -84,7 +84,7 @@ Pad number/name
 
 > **rotation**: `number`
 
-Defined in: [routing/shared/pad\_resolver.ts:25](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/routing/shared/pad_resolver.ts#L25)
+Defined in: @typecad/typecad/src/routing/shared/pad\_resolver.ts:26
 
 Absolute rotation in degrees
 
@@ -94,7 +94,7 @@ Absolute rotation in degrees
 
 > **shape**: `"circle"` \| `"rect"` \| `"oval"` \| `"roundrect"` \| `"custom"`
 
-Defined in: [routing/shared/pad\_resolver.ts:16](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/routing/shared/pad_resolver.ts#L16)
+Defined in: @typecad/typecad/src/routing/shared/pad\_resolver.ts:17
 
 Pad shape type
 
@@ -104,7 +104,7 @@ Pad shape type
 
 > **size**: `object`
 
-Defined in: [routing/shared/pad\_resolver.ts:22](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/routing/shared/pad_resolver.ts#L22)
+Defined in: @typecad/typecad/src/routing/shared/pad\_resolver.ts:23
 
 Pad size in mm
 
@@ -122,6 +122,6 @@ Pad size in mm
 
 > **type**: `"smd"` \| `"thru_hole"` \| `"np_thru_hole"` \| `"connect"`
 
-Defined in: [routing/shared/pad\_resolver.ts:19](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/routing/shared/pad_resolver.ts#L19)
+Defined in: @typecad/typecad/src/routing/shared/pad\_resolver.ts:20
 
 Pad type (SMD or through-hole)

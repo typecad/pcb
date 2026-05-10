@@ -24,8 +24,7 @@
     "publish:private": "npm publish --tag private --registry http://192.168.2.207:4873/"
   },
   "dependencies": {
-    "pdfreader": "^3.0.7",
-    "node-fetch": "^3.3.2"
+    "pdfreader": "^3.0.7"
   },
   "devDependencies": {
     "@types/node": "^22.13.0",

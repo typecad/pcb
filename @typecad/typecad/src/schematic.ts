@@ -185,7 +185,6 @@ export interface ISchematicNetDefinition {
 /**
  * The main class for typeCAD. Holds all {@link Component} classes, creates work files, and creates nets.
  *
- * @export
  * @class Schematic
  * @typedef {Schematic}
  */
@@ -386,7 +385,7 @@ export class Schematic {
     /**
      * Sets a name for a net.
      *
-     * @param {{pins: Pin[]}} pins: Pin[]}
+     * @param {string} name - The name of the net.
      * @example
      * ```ts
      * let typecad = new Schematic('sheetname');
@@ -515,7 +514,7 @@ export class Schematic {
     /**
      * Creates schematic files.
      *
-     * @param {...Component[]} components - All the components to be included in the schematic.
+     * @param {...Component[]} component - All the components to be included in the schematic.
      * @example
      * ```ts
      * let typecad = new Schematic('sheetname');

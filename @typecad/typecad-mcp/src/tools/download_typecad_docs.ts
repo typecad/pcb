@@ -1,5 +1,4 @@
 import { MCPServer } from '../server';
-import fetch from 'node-fetch';
 import * as path from 'path';
 import fs from 'node:fs';
 

@@ -56,7 +56,6 @@ interface SearchPerformanceMetrics {
  * - Search timeout protection
  * 
  * @class ComponentSearchEngine
- * @implements {SearchEngine}
  * @example
  * ```typescript
  * // Create search engine with dependencies

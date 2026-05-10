@@ -6,7 +6,7 @@
 
 # Class: DebugVisualizer
 
-Defined in: [routing/utils/debug\_visualizer.ts:26](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/routing/utils/debug_visualizer.ts#L26)
+Defined in: @typecad/typecad/src/routing/utils/debug\_visualizer.ts:21
 
 Generates debug visualizations of routing grids and paths.
 Creates simple PPM (Portable PixMap) images that can be viewed with most image viewers.
@@ -25,9 +25,9 @@ Creates simple PPM (Portable PixMap) images that can be viewed with most image v
 
 ### visualizeAllLayers()
 
-> `static` **visualizeAllLayers**(`grid`, `obstacles`, `paths`, `filename`, `cellSize`, `steinerPoints?`, `debug?`): `void`
+> `static` **visualizeAllLayers**(`grid`, `obstacles`, `paths`, `filename?`, `cellSize?`, `steinerPoints?`, `debug?`): `void`
 
-Defined in: [routing/utils/debug\_visualizer.ts:483](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/routing/utils/debug_visualizer.ts#L483)
+Defined in: @typecad/typecad/src/routing/utils/debug\_visualizer.ts:469
 
 Visualize multiple layers side by side.
 
@@ -51,13 +51,13 @@ Array of obstacles
 
 Array of routed paths
 
-##### filename
+##### filename?
 
 `string` = `'routing_debug_all_layers'`
 
 Output filename (without extension)
 
-##### cellSize
+##### cellSize?
 
 `number` = `2`
 
@@ -79,9 +79,9 @@ Pixels per grid cell (default: 2)
 
 ### visualizeRouting()
 
-> `static` **visualizeRouting**(`grid`, `obstacles`, `paths`, `filename`, `layer?`, `cellSize?`, `steinerPoints?`, `debug?`): `void`
+> `static` **visualizeRouting**(`grid`, `obstacles`, `paths`, `filename?`, `layer?`, `cellSize?`, `steinerPoints?`, `debug?`): `void`
 
-Defined in: [routing/utils/debug\_visualizer.ts:43](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/routing/utils/debug_visualizer.ts#L43)
+Defined in: @typecad/typecad/src/routing/utils/debug\_visualizer.ts:38
 
 Generate a debug visualization of the routing grid with obstacles and paths.
 
@@ -105,7 +105,7 @@ Array of obstacles
 
 Array of routed paths
 
-##### filename
+##### filename?
 
 `string` = `'routing_debug'`
 

@@ -6,7 +6,7 @@
 
 # Interface: IRoutingObstacle
 
-Defined in: [routing/shared/routing\_grid.ts:87](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/routing/shared/routing_grid.ts#L87)
+Defined in: @typecad/typecad/src/routing/shared/routing\_grid.ts:87
 
 Represents an obstacle in the routing space.
 
@@ -16,7 +16,7 @@ Represents an obstacle in the routing space.
 
 > **bounds**: `object`
 
-Defined in: [routing/shared/routing\_grid.ts:92](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/routing/shared/routing_grid.ts#L92)
+Defined in: @typecad/typecad/src/routing/shared/routing\_grid.ts:92
 
 Bounding box in world coordinates (mm)
 
@@ -42,7 +42,7 @@ Bounding box in world coordinates (mm)
 
 > **clearance**: `number`
 
-Defined in: [routing/shared/routing\_grid.ts:106](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/routing/shared/routing_grid.ts#L106)
+Defined in: @typecad/typecad/src/routing/shared/routing\_grid.ts:106
 
 Required clearance around this obstacle in mm
 
@@ -50,9 +50,9 @@ Required clearance around this obstacle in mm
 
 ### isManualRoute?
 
-> `optional` **isManualRoute**: `boolean`
+> `optional` **isManualRoute?**: `boolean`
 
-Defined in: [routing/shared/routing\_grid.ts:112](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/routing/shared/routing_grid.ts#L112)
+Defined in: @typecad/typecad/src/routing/shared/routing\_grid.ts:112
 
 If true, this obstacle blocks routing even on the same net (for manual routes)
 
@@ -62,7 +62,7 @@ If true, this obstacle blocks routing even on the same net (for manual routes)
 
 > **layers**: `string`[]
 
-Defined in: [routing/shared/routing\_grid.ts:100](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/routing/shared/routing_grid.ts#L100)
+Defined in: @typecad/typecad/src/routing/shared/routing\_grid.ts:100
 
 Layers this obstacle exists on
 
@@ -70,9 +70,9 @@ Layers this obstacle exists on
 
 ### net?
 
-> `optional` **net**: `string`
+> `optional` **net?**: `string`
 
-Defined in: [routing/shared/routing\_grid.ts:103](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/routing/shared/routing_grid.ts#L103)
+Defined in: @typecad/typecad/src/routing/shared/routing\_grid.ts:103
 
 Net assignment - obstacles on same net don't block each other
 
@@ -80,9 +80,9 @@ Net assignment - obstacles on same net don't block each other
 
 ### padShape?
 
-> `optional` **padShape**: `object`
+> `optional` **padShape?**: `object`
 
-Defined in: [routing/shared/routing\_grid.ts:118](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/routing/shared/routing_grid.ts#L118)
+Defined in: @typecad/typecad/src/routing/shared/routing\_grid.ts:118
 
 Optional pad geometry for precise rasterization
 
@@ -118,9 +118,9 @@ Optional pad geometry for precise rasterization
 
 ### polygon?
 
-> `optional` **polygon**: `object`
+> `optional` **polygon?**: `object`
 
-Defined in: [routing/shared/routing\_grid.ts:127](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/routing/shared/routing_grid.ts#L127)
+Defined in: @typecad/typecad/src/routing/shared/routing\_grid.ts:127
 
 Optional polygon geometry (zones, keepouts) for precise rasterization
 
@@ -132,9 +132,9 @@ Optional polygon geometry (zones, keepouts) for precise rasterization
 
 ### priority?
 
-> `optional` **priority**: `number`
+> `optional` **priority?**: `number`
 
-Defined in: [routing/shared/routing\_grid.ts:109](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/routing/shared/routing_grid.ts#L109)
+Defined in: @typecad/typecad/src/routing/shared/routing\_grid.ts:109
 
 Priority - higher priority obstacles block lower priority ones
 
@@ -142,9 +142,9 @@ Priority - higher priority obstacles block lower priority ones
 
 ### segment?
 
-> `optional` **segment**: `object`
+> `optional` **segment?**: `object`
 
-Defined in: [routing/shared/routing\_grid.ts:115](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/routing/shared/routing_grid.ts#L115)
+Defined in: @typecad/typecad/src/routing/shared/routing\_grid.ts:115
 
 Optional geometric description for precise rasterization (used for tracks)
 
@@ -172,8 +172,8 @@ Optional geometric description for precise rasterization (used for tracks)
 
 ### type
 
-> **type**: `"component"` \| `"pad"` \| `"track"` \| `"zone"` \| `"keepout"` \| `"outline"`
+> **type**: `"pad"` \| `"component"` \| `"track"` \| `"zone"` \| `"keepout"` \| `"outline"`
 
-Defined in: [routing/shared/routing\_grid.ts:89](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/routing/shared/routing_grid.ts#L89)
+Defined in: @typecad/typecad/src/routing/shared/routing\_grid.ts:89
 
 Type of obstacle for debugging/visualization

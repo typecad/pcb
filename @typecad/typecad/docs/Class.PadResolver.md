@@ -6,7 +6,7 @@
 
 # Class: PadResolver
 
-Defined in: [routing/shared/pad\_resolver.ts:47](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/routing/shared/pad_resolver.ts#L47)
+Defined in: @typecad/typecad/src/routing/shared/pad\_resolver.ts:48
 
 Resolves pin objects to their physical pad positions on the PCB.
 Handles coordinate transformation from footprint-relative to board-absolute coordinates.
@@ -27,7 +27,7 @@ Handles coordinate transformation from footprint-relative to board-absolute coor
 
 > `static` **getAllPadGeometries**(`component`): [`IPadGeometry`](Interface.IPadGeometry.md)[]
 
-Defined in: [routing/shared/pad\_resolver.ts:339](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/routing/shared/pad_resolver.ts#L339)
+Defined in: @typecad/typecad/src/routing/shared/pad\_resolver.ts:340
 
 Get all pad geometries for a component.
 Useful for obstacle detection and collision checking.
@@ -50,9 +50,9 @@ Array of pad geometries
 
 ### getPadCenter()
 
-> `static` **getPadCenter**(`pin`): `null` \| \{ `layer`: `string`; `x`: `number`; `y`: `number`; \}
+> `static` **getPadCenter**(`pin`): `object`
 
-Defined in: [routing/shared/pad\_resolver.ts:62](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/routing/shared/pad_resolver.ts#L62)
+Defined in: @typecad/typecad/src/routing/shared/pad\_resolver.ts:63
 
 Get the absolute center position of a pin's pad on the PCB.
 
@@ -66,9 +66,21 @@ The pin to resolve
 
 #### Returns
 
-`null` \| \{ `layer`: `string`; `x`: `number`; `y`: `number`; \}
+`object`
 
 The absolute X,Y coordinates in mm, or null if unable to resolve
+
+##### layer
+
+> **layer**: `string`
+
+##### x
+
+> **x**: `number`
+
+##### y
+
+> **y**: `number`
 
 #### Example
 
@@ -83,9 +95,9 @@ if (center) {
 
 ### getPadGeometry()
 
-> `static` **getPadGeometry**(`component`, `pinNumber`): `null` \| [`IPadGeometry`](Interface.IPadGeometry.md)
+> `static` **getPadGeometry**(`component`, `pinNumber`): [`IPadGeometry`](Interface.IPadGeometry.md)
 
-Defined in: [routing/shared/pad\_resolver.ts:95](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/routing/shared/pad_resolver.ts#L95)
+Defined in: @typecad/typecad/src/routing/shared/pad\_resolver.ts:96
 
 Get complete geometry information for a specific pad.
 
@@ -99,13 +111,13 @@ The component containing the pad
 
 ##### pinNumber
 
-The pin/pad number to look up
+`string` \| `number`
 
-`string` | `number`
+The pin/pad number to look up
 
 #### Returns
 
-`null` \| [`IPadGeometry`](Interface.IPadGeometry.md)
+[`IPadGeometry`](Interface.IPadGeometry.md)
 
 Complete pad geometry, or null if not found
 

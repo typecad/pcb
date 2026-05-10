@@ -1,0 +1,6 @@
+{
+  "name": "kipm-internal",
+  "version": "0.1.0",
+  "type": "commonjs",
+  "main": "easyeda2kicadCore.js"
+}

@@ -6,9 +6,9 @@
 
 # Function: exportSchematic()
 
-> **exportSchematic**(`schPath`, `outputPath`, `format`, `options`): `Promise`\<`string`\>
+> **exportSchematic**(`schPath`, `outputPath`, `format`, `options?`): `Promise`\<`string`\>
 
-Defined in: [kicad\_commands.ts:122](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/kicad_commands.ts#L122)
+Defined in: @typecad/typecad/src/kicad\_commands.ts:122
 
 Export schematic to various formats
 
@@ -24,9 +24,9 @@ Export schematic to various formats
 
 ### format
 
-`"svg"` | `"pdf"` | `"netlist"`
+`"svg"` \| `"pdf"` \| `"netlist"`
 
-### options
+### options?
 
 [`KiCADCommandOptions`](Interface.KiCADCommandOptions.md) = `{}`
 

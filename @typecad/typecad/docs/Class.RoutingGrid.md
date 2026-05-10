@@ -6,7 +6,7 @@
 
 # Class: RoutingGrid
 
-Defined in: [routing/shared/routing\_grid.ts:134](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/routing/shared/routing_grid.ts#L134)
+Defined in: @typecad/typecad/src/routing/shared/routing\_grid.ts:134
 
 Grid-based spatial representation for PCB routing.
 Discretizes continuous PCB space into a uniform grid for pathfinding algorithms.
@@ -15,9 +15,9 @@ Discretizes continuous PCB space into a uniform grid for pathfinding algorithms.
 
 ### Constructor
 
-> **new RoutingGrid**(`bounds`, `gridResolution`, `layers`, `debug`): `RoutingGrid`
+> **new RoutingGrid**(`bounds`, `gridResolution`, `layers`, `debug?`): `RoutingGrid`
 
-Defined in: [routing/shared/routing\_grid.ts:161](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/routing/shared/routing_grid.ts#L161)
+Defined in: @typecad/typecad/src/routing/shared/routing\_grid.ts:161
 
 Creates a new routing grid.
 
@@ -55,7 +55,7 @@ Size of each grid cell in mm (e.g., 0.1 = 10 cells per mm)
 
 List of copper layers to route on (e.g., ['F.Cu', 'B.Cu'])
 
-##### debug
+##### debug?
 
 `boolean` = `false`
 
@@ -79,7 +79,7 @@ const grid = new RoutingGrid(
 
 > **addObstacle**(`obstacle`): `void`
 
-Defined in: [routing/shared/routing\_grid.ts:192](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/routing/shared/routing_grid.ts#L192)
+Defined in: @typecad/typecad/src/routing/shared/routing\_grid.ts:192
 
 Add an obstacle to the grid.
 Marks all cells within the obstacle bounds as occupied.
@@ -103,7 +103,7 @@ The obstacle to add
 
 > **checkTrackObstaclePrecise**(`worldX`, `worldY`, `layer`, `clearance`, `net?`): `boolean`
 
-Defined in: [routing/shared/routing\_grid.ts:790](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/routing/shared/routing_grid.ts#L790)
+Defined in: @typecad/typecad/src/routing/shared/routing\_grid.ts:790
 
 Check if a position conflicts with track obstacles using precise point-to-segment distance.
 This method provides more accurate clearance checking for angled tracks.
@@ -152,7 +152,7 @@ True if position conflicts with track obstacles
 
 > **clear**(): `void`
 
-Defined in: [routing/shared/routing\_grid.ts:1072](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/routing/shared/routing_grid.ts#L1072)
+Defined in: @typecad/typecad/src/routing/shared/routing\_grid.ts:1072
 
 Clear all obstacles from the grid.
 Useful for rebuilding the grid with different obstacles.
@@ -167,7 +167,7 @@ Useful for rebuilding the grid with different obstacles.
 
 > **getBounds**(): `object`
 
-Defined in: [routing/shared/routing\_grid.ts:1064](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/routing/shared/routing_grid.ts#L1064)
+Defined in: @typecad/typecad/src/routing/shared/routing\_grid.ts:1064
 
 Get grid bounds in world coordinates.
 
@@ -195,9 +195,9 @@ Get grid bounds in world coordinates.
 
 ### getCell()
 
-> **getCell**(`x`, `y`, `layer`): `undefined` \| [`IGridCell`](Interface.IGridCell.md)
+> **getCell**(`x`, `y`, `layer`): [`IGridCell`](Interface.IGridCell.md)
 
-Defined in: [routing/shared/routing\_grid.ts:1010](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/routing/shared/routing_grid.ts#L1010)
+Defined in: @typecad/typecad/src/routing/shared/routing\_grid.ts:1010
 
 Get a cell by coordinates, if present.
 
@@ -217,7 +217,7 @@ Get a cell by coordinates, if present.
 
 #### Returns
 
-`undefined` \| [`IGridCell`](Interface.IGridCell.md)
+[`IGridCell`](Interface.IGridCell.md)
 
 ***
 
@@ -225,7 +225,7 @@ Get a cell by coordinates, if present.
 
 > **getCellCost**(`x`, `y`, `layer`): `number`
 
-Defined in: [routing/shared/routing\_grid.ts:926](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/routing/shared/routing_grid.ts#L926)
+Defined in: @typecad/typecad/src/routing/shared/routing\_grid.ts:926
 
 Get the routing cost for a grid cell.
 
@@ -261,7 +261,7 @@ Cost multiplier (1.0 = normal, higher = more expensive)
 
 > **getDimensions**(): `object`
 
-Defined in: [routing/shared/routing\_grid.ts:1039](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/routing/shared/routing_grid.ts#L1039)
+Defined in: @typecad/typecad/src/routing/shared/routing\_grid.ts:1039
 
 Get grid dimensions.
 
@@ -287,7 +287,7 @@ Get grid dimensions.
 
 > **getLayers**(): `string`[]
 
-Defined in: [routing/shared/routing\_grid.ts:1057](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/routing/shared/routing_grid.ts#L1057)
+Defined in: @typecad/typecad/src/routing/shared/routing\_grid.ts:1057
 
 Get the list of layers in the grid.
 
@@ -301,7 +301,7 @@ Get the list of layers in the grid.
 
 > **getResolution**(): `number`
 
-Defined in: [routing/shared/routing\_grid.ts:1050](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/routing/shared/routing_grid.ts#L1050)
+Defined in: @typecad/typecad/src/routing/shared/routing\_grid.ts:1050
 
 Get grid resolution in mm.
 
@@ -315,7 +315,7 @@ Get grid resolution in mm.
 
 > **getStats**(): `object`
 
-Defined in: [routing/shared/routing\_grid.ts:1084](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/routing/shared/routing_grid.ts#L1084)
+Defined in: @typecad/typecad/src/routing/shared/routing\_grid.ts:1084
 
 Get statistics about the grid.
 
@@ -345,7 +345,7 @@ Get statistics about the grid.
 
 > **getWorldXFromGrid**(`gridX`): `number`
 
-Defined in: [routing/shared/routing\_grid.ts:865](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/routing/shared/routing_grid.ts#L865)
+Defined in: @typecad/typecad/src/routing/shared/routing\_grid.ts:865
 
 Convert grid X coordinate to world X coordinate using cell boundary (no center offset).
 This provides more accurate positioning for track creation.
@@ -370,7 +370,7 @@ World X coordinate in mm
 
 > **getWorldYFromGrid**(`gridY`): `number`
 
-Defined in: [routing/shared/routing\_grid.ts:875](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/routing/shared/routing_grid.ts#L875)
+Defined in: @typecad/typecad/src/routing/shared/routing\_grid.ts:875
 
 Convert grid Y coordinate to world Y coordinate using cell boundary (no center offset).
 This provides more accurate positioning for track creation.
@@ -395,7 +395,7 @@ World Y coordinate in mm
 
 > **gridToWorld**(`gridX`, `gridY`): `object`
 
-Defined in: [routing/shared/routing\_grid.ts:981](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/routing/shared/routing_grid.ts#L981)
+Defined in: @typecad/typecad/src/routing/shared/routing\_grid.ts:981
 
 Convert grid coordinates to world coordinates (mm).
 Returns the center of the grid cell.
@@ -434,7 +434,7 @@ World coordinates in mm
 
 > **gridToWorldX**(`gridX`): `number`
 
-Defined in: [routing/shared/routing\_grid.ts:846](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/routing/shared/routing_grid.ts#L846)
+Defined in: @typecad/typecad/src/routing/shared/routing\_grid.ts:846
 
 Convert grid X coordinate to world X coordinate in mm.
 
@@ -458,7 +458,7 @@ World X coordinate in mm
 
 > **gridToWorldY**(`gridY`): `number`
 
-Defined in: [routing/shared/routing\_grid.ts:855](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/routing/shared/routing_grid.ts#L855)
+Defined in: @typecad/typecad/src/routing/shared/routing\_grid.ts:855
 
 Convert grid Y coordinate to world Y coordinate in mm.
 
@@ -482,7 +482,7 @@ World Y coordinate in mm
 
 > **hasPadWithinClearance**(`x`, `y`, `layer`, `clearanceMm`): `boolean`
 
-Defined in: [routing/shared/routing\_grid.ts:665](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/routing/shared/routing_grid.ts#L665)
+Defined in: @typecad/typecad/src/routing/shared/routing\_grid.ts:665
 
 Check if any pad lies within the specified clearance of a grid coordinate.
 Ignores net assignments so that callers can enforce absolute pad spacing.
@@ -515,7 +515,7 @@ Ignores net assignments so that callers can enforce absolute pad spacing.
 
 > **isInBounds**(`x`, `y`): `boolean`
 
-Defined in: [routing/shared/routing\_grid.ts:995](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/routing/shared/routing_grid.ts#L995)
+Defined in: @typecad/typecad/src/routing/shared/routing\_grid.ts:995
 
 Check if grid coordinates are within bounds.
 
@@ -543,9 +543,9 @@ True if in bounds
 
 ### isOccupied()
 
-> **isOccupied**(`x`, `y`, `layer`, `clearance`, `net?`, `considerObstacleClearance?`, `sumObstacleClearance?`): `boolean`
+> **isOccupied**(`x`, `y`, `layer`, `clearance?`, `net?`, `considerObstacleClearance?`, `sumObstacleClearance?`): `boolean`
 
-Defined in: [routing/shared/routing\_grid.ts:705](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/routing/shared/routing_grid.ts#L705)
+Defined in: @typecad/typecad/src/routing/shared/routing\_grid.ts:705
 
 Check if a grid cell is occupied.
 
@@ -569,7 +569,7 @@ Grid Y coordinate
 
 Layer to check
 
-##### clearance
+##### clearance?
 
 `number` = `0`
 
@@ -601,7 +601,7 @@ True if occupied, false if available for routing
 
 > **isPadCell**(`x`, `y`, `layer`): `boolean`
 
-Defined in: [routing/shared/routing\_grid.ts:655](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/routing/shared/routing_grid.ts#L655)
+Defined in: @typecad/typecad/src/routing/shared/routing\_grid.ts:655
 
 Check if a specific grid cell belongs to a pad area on a given layer.
 
@@ -629,7 +629,7 @@ Check if a specific grid cell belongs to a pad area on a given layer.
 
 > **setCellCost**(`x`, `y`, `layer`, `cost`): `void`
 
-Defined in: [routing/shared/routing\_grid.ts:941](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/routing/shared/routing_grid.ts#L941)
+Defined in: @typecad/typecad/src/routing/shared/routing\_grid.ts:941
 
 Set the routing cost for a grid cell.
 Useful for biasing routes toward or away from certain areas.
@@ -670,7 +670,7 @@ Cost multiplier
 
 > **worldToGrid**(`worldX`, `worldY`): `object`
 
-Defined in: [routing/shared/routing\_grid.ts:966](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/routing/shared/routing_grid.ts#L966)
+Defined in: @typecad/typecad/src/routing/shared/routing\_grid.ts:966
 
 Convert world coordinates (mm) to grid coordinates.
 

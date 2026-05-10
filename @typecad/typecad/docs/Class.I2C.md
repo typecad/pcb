@@ -6,7 +6,7 @@
 
 # Class: I2C
 
-Defined in: [buses.ts:4](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/buses.ts#L4)
+Defined in: @typecad/typecad/src/buses.ts:4
 
 ## Constructors
 
@@ -14,7 +14,7 @@ Defined in: [buses.ts:4](https://github.com/typecad/typecad/blob/12a6d1639e8fbe2
 
 > **new I2C**(`sda`, `scl`): `I2C`
 
-Defined in: [buses.ts:7](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/buses.ts#L7)
+Defined in: @typecad/typecad/src/buses.ts:7
 
 #### Parameters
 
@@ -36,7 +36,7 @@ Defined in: [buses.ts:7](https://github.com/typecad/typecad/blob/12a6d1639e8fbe2
 
 > **scl**: [`Pin`](Class.Pin.md)
 
-Defined in: [buses.ts:6](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/buses.ts#L6)
+Defined in: @typecad/typecad/src/buses.ts:6
 
 ***
 
@@ -44,4 +44,4 @@ Defined in: [buses.ts:6](https://github.com/typecad/typecad/blob/12a6d1639e8fbe2
 
 > **sda**: [`Pin`](Class.Pin.md)
 
-Defined in: [buses.ts:5](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/buses.ts#L5)
+Defined in: @typecad/typecad/src/buses.ts:5

@@ -9,6 +9,9 @@ export { PCB, TrackBuilder } from './pcb/pcb.js'
 export type { IConnectionIdentifier, IManualRoute } from './pcb/pcb.js'
 export type { IPinPowerInfo } from './pcb/pcb_interfaces.js'
 export { KiCAD } from './kicad.js'
+// Note: kicad_cli_path must be exported as it is required by external packages (e.g. @typecad/typecad-docgen).
+// It was removed during a code review in error.
+export { kicad_cli_path } from './kicad.js'
 
 // KiCAD command execution exports
 export {

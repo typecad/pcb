@@ -6,9 +6,9 @@
 
 # Function: upgradeFootprint()
 
-> **upgradeFootprint**(`footprintPath`, `options`): `Promise`\<`string`\>
+> **upgradeFootprint**(`footprintPath`, `options?`): `Promise`\<`string`\>
 
-Defined in: [kicad\_commands.ts:102](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/kicad_commands.ts#L102)
+Defined in: @typecad/typecad/src/kicad\_commands.ts:102
 
 Upgrade a footprint file to the latest format
 
@@ -18,7 +18,7 @@ Upgrade a footprint file to the latest format
 
 `string`
 
-### options
+### options?
 
 [`KiCADCommandOptions`](Interface.KiCADCommandOptions.md) = `{}`
 

@@ -6,7 +6,7 @@
 
 # Class: TrackBuilder
 
-Defined in: [pcb/pcb\_track\_builder.ts:6](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/pcb/pcb_track_builder.ts#L6)
+Defined in: @typecad/typecad/src/pcb/pcb\_track\_builder.ts:9
 
 ## Constructors
 
@@ -14,7 +14,7 @@ Defined in: [pcb/pcb\_track\_builder.ts:6](https://github.com/typecad/typecad/bl
 
 > **new TrackBuilder**(`pcb`, `options?`): `TrackBuilder`
 
-Defined in: [pcb/pcb\_track\_builder.ts:19](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/pcb/pcb_track_builder.ts#L19)
+Defined in: @typecad/typecad/src/pcb/pcb\_track\_builder.ts:22
 
 #### Parameters
 
@@ -50,7 +50,7 @@ Defined in: [pcb/pcb\_track\_builder.ts:19](https://github.com/typecad/typecad/b
 
 > **from**(`startPos`, `layer?`, `width?`): `this`
 
-Defined in: [pcb/pcb\_track\_builder.ts:27](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/pcb/pcb_track_builder.ts#L27)
+Defined in: @typecad/typecad/src/pcb/pcb\_track\_builder.ts:30
 
 #### Parameters
 
@@ -82,7 +82,7 @@ Defined in: [pcb/pcb\_track\_builder.ts:27](https://github.com/typecad/typecad/b
 
 > **getElements**(): `IGeneratedElement`[]
 
-Defined in: [pcb/pcb\_track\_builder.ts:378](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/pcb/pcb_track_builder.ts#L378)
+Defined in: @typecad/typecad/src/pcb/pcb\_track\_builder.ts:261
 
 #### Returns
 
@@ -94,7 +94,7 @@ Defined in: [pcb/pcb\_track\_builder.ts:378](https://github.com/typecad/typecad/
 
 > **powerInfo**(`info`): `this`
 
-Defined in: [pcb/pcb\_track\_builder.ts:37](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/pcb/pcb_track_builder.ts#L37)
+Defined in: @typecad/typecad/src/pcb/pcb\_track\_builder.ts:40
 
 #### Parameters
 
@@ -112,7 +112,7 @@ Defined in: [pcb/pcb\_track\_builder.ts:37](https://github.com/typecad/typecad/b
 
 > **to**(`endPos`): `this`
 
-Defined in: [pcb/pcb\_track\_builder.ts:84](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/pcb/pcb_track_builder.ts#L84)
+Defined in: @typecad/typecad/src/pcb/pcb\_track\_builder.ts:53
 
 #### Parameters
 
@@ -142,13 +142,13 @@ Defined in: [pcb/pcb\_track\_builder.ts:84](https://github.com/typecad/typecad/b
 
 ### via()
 
-> **via**(`params`): `this`
+> **via**(`params?`): `this`
 
-Defined in: [pcb/pcb\_track\_builder.ts:280](https://github.com/typecad/typecad/blob/12a6d1639e8fbe269a2e7ccf4d2a507400fe5211/pcb/pcb_track_builder.ts#L280)
+Defined in: @typecad/typecad/src/pcb/pcb\_track\_builder.ts:170
 
 #### Parameters
 
-##### params
+##### params?
 
 ###### drill?
 

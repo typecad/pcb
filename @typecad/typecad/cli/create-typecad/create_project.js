@@ -201,8 +201,8 @@ ${[
   }
 
   package_json.scripts["build"] = `npx tsx ./src/${answers.name}`;
-  package_json.scripts["add_component"] = `npx add-component`;
-  package_json.scripts["add_package"] = `npx add-package`;
+  package_json.scripts["add_component"] = `npx --package=@typecad/typecad add-component ./`;
+  package_json.scripts["add_package"] = `npx --package=@typecad/typecad add-package ./`;
   package_json.scripts[
     "open_board"
   ] = `npx open-cli ./build/${answers.name}.kicad_pcb`;

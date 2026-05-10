@@ -1,0 +1,107 @@
+0000000000000000000000000000000000000000 678c793544ab79c84f21ab6791d5b5bdfe720d2c Justin Decker <justin@ufire.co> 1712986759 -0700	commit (initial): initial
+678c793544ab79c84f21ab6791d5b5bdfe720d2c 3a289bd6aa7b11d81c2d4b22c26e8debf7e3e373 Justin Decker <justin@ufire.co> 1712987758 -0700	commit: updated npm packages
+3a289bd6aa7b11d81c2d4b22c26e8debf7e3e373 9cab18bd0cfd1a8165b03bcb52eb076758e7b998 Justin Decker <justin@ufire.co> 1712988037 -0700	commit: trigger
+9cab18bd0cfd1a8165b03bcb52eb076758e7b998 b22f0ddeab1185fe73c225c2fe481b15b090e8b6 Justin Decker <justin@ufire.co> 1712995960 -0700	commit: icon fixes, content modifications
+b22f0ddeab1185fe73c225c2fe481b15b090e8b6 18a12c21f9e43d8123e1637a810001ba9996db08 Justin Decker <justin@ufire.co> 1712996312 -0700	commit: add svg to static folder
+18a12c21f9e43d8123e1637a810001ba9996db08 7010fd98ccec46d1d9c0a7e17333cb844fe44fb4 Justin Decker <justin@ufire.co> 1712996443 -0700	commit: add build
+7010fd98ccec46d1d9c0a7e17333cb844fe44fb4 af977f3f03a2bcab6a818315155b57703699bfcb Justin Decker <justin@ufire.co> 1713199609 -0700	commit: added content
+af977f3f03a2bcab6a818315155b57703699bfcb 53f8ec28ae69fe3dfd92512901904e4833ba9573 Justin Decker <justin@ufire.co> 1713271455 -0700	commit: new build
+53f8ec28ae69fe3dfd92512901904e4833ba9573 7cf62cab6a617064376db1f5d2d6c2d84041ff8c Justin Decker <justin@ufire.co> 1713444080 -0700	commit: added ref
+7cf62cab6a617064376db1f5d2d6c2d84041ff8c 8b9af363cc88450cb477a0f2004de49e22daa7a9 Justin Decker <justin@ufire.co> 1713444993 -0700	commit: change ref
+8b9af363cc88450cb477a0f2004de49e22daa7a9 52ee01eaff9b042a86dc797251761d67ae472fe4 Justin Decker <justin@ufire.co> 1713445836 -0700	commit: new build
+52ee01eaff9b042a86dc797251761d67ae472fe4 6591596aab3ab44742b8a7b65689e192f7ac80c4 Justin Decker <justin@ufire.co> 1713446446 -0700	commit: new build
+6591596aab3ab44742b8a7b65689e192f7ac80c4 736c7dcf25f4683c5764ba11cfabe4839e4a58d7 Justin Decker <justin@ufire.co> 1713453084 -0700	commit: build
+736c7dcf25f4683c5764ba11cfabe4839e4a58d7 0327f83eb235acad094800aa34f0b4af75fad42c Justin Decker <justin@ufire.co> 1713454810 -0700	commit: build
+0327f83eb235acad094800aa34f0b4af75fad42c de352121682b72e00c3214b3ccdd685b3cf80c79 Justin Decker <justin@ufire.co> 1713455018 -0700	commit: changed packages
+de352121682b72e00c3214b3ccdd685b3cf80c79 90c2fca779c6fdc524e4380779a845209a818846 typecad0 <justind000@gmail.com> 1713556982 -0700	commit: added links
+90c2fca779c6fdc524e4380779a845209a818846 ef9e3e6c8f003aec25703bec3d61d2d103c2a6ee typecad0 <justind000@gmail.com> 1714064867 -0700	commit: new front page
+ef9e3e6c8f003aec25703bec3d61d2d103c2a6ee a3f931c81c6c97a50fbfb8b5ede7fd0f12ca17ff typecad0 <justind000@gmail.com> 1714409295 -0700	commit: project structure changes
+a3f931c81c6c97a50fbfb8b5ede7fd0f12ca17ff 992d0c5842a4ac243922f3b936c45d5ccc715738 typecad0 <justind000@gmail.com> 1714410992 -0700	commit: project structure
+992d0c5842a4ac243922f3b936c45d5ccc715738 67bf3422114d1c60b8f090a955f085d30a6e26d1 typecad0 <justind000@gmail.com> 1714918220 -0700	commit: updated docs
+67bf3422114d1c60b8f090a955f085d30a6e26d1 0497a6b2c4066c8f35923154513fe3e223caa1a4 typecad0 <justind000@gmail.com> 1726331002 -0700	commit: major rewrite for new ::net parameters
+0497a6b2c4066c8f35923154513fe3e223caa1a4 626180a99d52a3e8eff6cc8fa7d9eceedf27c2d6 typecad0 <justind000@gmail.com> 1726331305 -0700	commit: build for previous commit
+626180a99d52a3e8eff6cc8fa7d9eceedf27c2d6 a97347fe2523c00d1193a1145f6bf18d160fdb76 typecad0 <justind000@gmail.com> 1728324305 -0700	commit: example fix
+a97347fe2523c00d1193a1145f6bf18d160fdb76 f9d50790a24cb0290458aaad12dc196dde1092aa typecad0 <justind000@gmail.com> 1728333308 -0700	commit: new build
+f9d50790a24cb0290458aaad12dc196dde1092aa 83ab50eddc671add58b2747e4ba930440daff8ad typecad0 <justind000@gmail.com> 1728478795 -0700	commit: refactor package
+83ab50eddc671add58b2747e4ba930440daff8ad e8ce689d119ce070a92edad963ade43632a3173b typecad0 <justind000@gmail.com> 1730393648 -0700	commit: rewrote walkthrough and packages
+e8ce689d119ce070a92edad963ade43632a3173b 874ad17d2b8095356c0e532c3b73257199b5a857 typecad0 <justind000@gmail.com> 1730465757 -0700	commit: walkthrough/package minor edits
+874ad17d2b8095356c0e532c3b73257199b5a857 48ba4eef0159eee7f113b7ac016d8facd96d9508 typecad0 <justind000@gmail.com> 1730919744 -0800	commit: dnp added
+48ba4eef0159eee7f113b7ac016d8facd96d9508 8f88f57d7d272a75ba0ec85dc342b37fee7662d3 typecad0 <justind000@gmail.com> 1730986961 -0800	commit: EN pin fix
+8f88f57d7d272a75ba0ec85dc342b37fee7662d3 d6e3c150c0d304d4fc6e102d0c90a3672b35f40a typecad0 <justind000@gmail.com> 1735499715 -0800	commit: rephrasing
+d6e3c150c0d304d4fc6e102d0c90a3672b35f40a ab696aa5f512b6f77b5df871516cb07abf8a02e3 typecad0 <justind000@gmail.com> 1735500021 -0800	commit: added vercel stats
+ab696aa5f512b6f77b5df871516cb07abf8a02e3 8582894efcd9e8f3034ea478f351d5c2c922098c typecad0 <justind000@gmail.com> 1735575038 -0800	commit: added copy buttons
+8582894efcd9e8f3034ea478f351d5c2c922098c b12a6c287733227b57508d8b4cdbb0face8df374 typecad0 <justind000@gmail.com> 1735862122 -0800	commit: typos and package list link
+b12a6c287733227b57508d8b4cdbb0face8df374 a1cf456c87dbd6a79952604a0773a4c605b2386d typecad0 <justind000@gmail.com> 1735913253 -0800	commit: placement fix
+a1cf456c87dbd6a79952604a0773a4c605b2386d b5f9bf8861dfdf9ef9457918d5fcc91d9e42dd7e typecad0 <justind000@gmail.com> 1736305036 -0800	commit: update for new ::net interface
+b5f9bf8861dfdf9ef9457918d5fcc91d9e42dd7e f9b4dd6eb6d2a1bc119867154db46dc911a6e7f5 typecad0 <justind000@gmail.com> 1737480457 -0800	commit: new netlist based changes
+f9b4dd6eb6d2a1bc119867154db46dc911a6e7f5 6f9cc38e936130fe59330e011e27b277b0fbb72b typecad0 <justind000@gmail.com> 1740850514 -0800	commit: extras
+6f9cc38e936130fe59330e011e27b277b0fbb72b 04b4755b131cf81c7d89a2414ea0f0dc24d93aac typecad0 <justind000@gmail.com> 1741626530 -0700	commit: complete rewrite
+04b4755b131cf81c7d89a2414ea0f0dc24d93aac c571997f13226b1c09b1b4a8c02a3dbdcfdfe5b3 typecad0 <justind000@gmail.com> 1741631393 -0700	commit: vercel analytics
+c571997f13226b1c09b1b4a8c02a3dbdcfdfe5b3 88884048f2fd3e63e14ed7a9690a0b6d5fff181b typecad0 <justind000@gmail.com> 1741718085 -0700	commit: front page and voltage divider
+88884048f2fd3e63e14ed7a9690a0b6d5fff181b 3d5943baa8a36f6091c8c3c760213d4de0f031ee typecad0 <justind000@gmail.com> 1741718872 -0700	commit: added packages
+3d5943baa8a36f6091c8c3c760213d4de0f031ee 893aca15fe2d7c5bd92f99300ea67e20543dd60c typecad0 <justind000@gmail.com> 1741879608 -0700	commit: add-component updates
+893aca15fe2d7c5bd92f99300ea67e20543dd60c 7ffaecce70b38f8d8ce04f108309581ccae5381c typecad0 <justind000@gmail.com> 1742134991 -0700	commit: typos
+7ffaecce70b38f8d8ce04f108309581ccae5381c cccbf5cd665ce6776ce32b3b16ca7ca6f54ffd6a typecad0 <justind000@gmail.com> 1742253841 -0700	commit: verdaccio news article
+cccbf5cd665ce6776ce32b3b16ca7ca6f54ffd6a a892abfd9f4bd25da0307f3d86e23271fd552143 typecad0 <justind000@gmail.com> 1742254344 -0700	commit: fixed sitemap
+a892abfd9f4bd25da0307f3d86e23271fd552143 242eb7cf8b2361a3efd8659058314e1b4d4ebab0 typecad0 <justind000@gmail.com> 1742328090 -0700	commit: ngspice and typos
+242eb7cf8b2361a3efd8659058314e1b4d4ebab0 3af84d661bde0d48914a2e6f8ef7aeb1c2a7d66f typecad0 <justind000@gmail.com> 1742387668 -0700	commit: 404
+3af84d661bde0d48914a2e6f8ef7aeb1c2a7d66f f5dbd11948cd2d0aead75f5d7e58b7c52dd03316 typecad0 <justind000@gmail.com> 1742390313 -0700	commit: jlcpcb-export
+f5dbd11948cd2d0aead75f5d7e58b7c52dd03316 34f94476e7938999670d77ae29eb4044fcf6a165 typecad0 <justind000@gmail.com> 1742397417 -0700	commit: jlcpcb export update
+34f94476e7938999670d77ae29eb4044fcf6a165 e0f0eb1b7a4c6c15ea778c05a07f095c03924dfb typecad0 <justind000@gmail.com> 1742577729 -0700	commit: gitdiff add
+e0f0eb1b7a4c6c15ea778c05a07f095c03924dfb 0561f4f59b7058a657179846f40bdd21981b2a1a typecad0 <justind000@gmail.com> 1744126822 -0700	commit: add doc-gen usage and example
+0561f4f59b7058a657179846f40bdd21981b2a1a 82254a6e2f7446c0fa5206b6561b5afd236656f2 typecad0 <justind000@gmail.com> 1744161502 -0700	commit: removed nav buttons
+82254a6e2f7446c0fa5206b6561b5afd236656f2 77b36e31431d4728f0d15694f87e7bb5d4b5a51e typecad0 <justind000@gmail.com> 1744565753 -0700	commit: ai article
+77b36e31431d4728f0d15694f87e7bb5d4b5a51e 868b5d85d65980a1abd340d94ecf05cf6b69602d typecad0 <justind000@gmail.com> 1744727462 -0700	commit: mobile nav fix
+868b5d85d65980a1abd340d94ecf05cf6b69602d 7c07871857dce094c8561836786f45de34161358 typecad0 <justind000@gmail.com> 1745126764 -0700	commit: pcb improvements
+7c07871857dce094c8561836786f45de34161358 d2af7caa9ebe2cf5f3016b8c8603e750aa1c41aa typecad0 <justind000@gmail.com> 1745424510 -0700	commit: mobile nav links
+d2af7caa9ebe2cf5f3016b8c8603e750aa1c41aa 73eaaf5a92fbc80068570e440279274ab520da21 typecad0 <justind000@gmail.com> 1747148840 -0700	commit: added schematic post
+73eaaf5a92fbc80068570e440279274ab520da21 43fc2cc939fc47b84c3e21688091136f26dc1d67 typecad0 <justind000@gmail.com> 1747228176 -0700	commit: rewording and added schematic to package
+43fc2cc939fc47b84c3e21688091136f26dc1d67 c34ee20876da3defb1684ea4ed9daf1931f68647 typecad0 <justind000@gmail.com> 1747458131 -0700	commit: jig addition
+c34ee20876da3defb1684ea4ed9daf1931f68647 4330debc2cb4e75cbde7bfa73ff2f6fe0534ab92 typecad0 <justind000@gmail.com> 1747499754 -0700	commit: header reddit
+4330debc2cb4e75cbde7bfa73ff2f6fe0534ab92 e43f78670b64e6ddd8c8bb36ea5977d1c1424f91 typecad0 <justind000@gmail.com> 1747506315 -0700	commit: added sponsor
+e43f78670b64e6ddd8c8bb36ea5977d1c1424f91 e9fe064d2897dd3fcc2b144b0a16196a120b6303 typecad0 <justind000@gmail.com> 1747538760 -0700	commit: replaced microfire
+e9fe064d2897dd3fcc2b144b0a16196a120b6303 b2482d105513183bf8cc29ef1238c502d596a016 typecad0 <justind000@gmail.com> 1747657623 -0700	commit: added getting started
+b2482d105513183bf8cc29ef1238c502d596a016 5cab7cf46f1983504c7d955cdbb5391ff673b13c typecad0 <justind000@gmail.com> 1747744266 -0700	commit: getting started
+5cab7cf46f1983504c7d955cdbb5391ff673b13c 4c5d32419e40dde891fa32feb49b105690d06036 typecad0 <justind000@gmail.com> 1747848560 -0700	commit: via and outline docs
+4c5d32419e40dde891fa32feb49b105690d06036 32f1fb6a269ca06886d67e2e233319fa08fe77ae typecad0 <justind000@gmail.com> 1748191676 -0700	commit: trackbuilder
+32f1fb6a269ca06886d67e2e233319fa08fe77ae 211de81738ab1d5fe6f800f701fb1a40ed3d30f0 typecad0 <justind000@gmail.com> 1748192369 -0700	commit: rewording
+211de81738ab1d5fe6f800f701fb1a40ed3d30f0 b72ad5fccf61f924815ee081032b31830317a229 typecad0 <justind000@gmail.com> 1748668026 -0700	commit: 0.2.0 release
+b72ad5fccf61f924815ee081032b31830317a229 4aed6c5d46b0bd979544bdb5ff480dd684baabc2 typecad0 <justind000@gmail.com> 1748670699 -0700	commit: simplification news added
+4aed6c5d46b0bd979544bdb5ff480dd684baabc2 c29e180a8f27adbf053ead9097295fd9ac9f2a5c typecad0 <justind000@gmail.com> 1748670825 -0700	commit: news cover changes
+c29e180a8f27adbf053ead9097295fd9ac9f2a5c 3c21e7c830d497fbbbb2bd9a055907218701c39b typecad0 <justind000@gmail.com> 1748694718 -0700	commit: updated jig example
+3c21e7c830d497fbbbb2bd9a055907218701c39b 9a9ed96e21dd8466f61f355b629a5cf8c62b9d5f typecad0 <justind000@gmail.com> 1749178227 -0700	commit: kicad sync
+9a9ed96e21dd8466f61f355b629a5cf8c62b9d5f c602e8d112dc76b0e27499b611302e7e13b22540 typecad0 <justind000@gmail.com> 1749761313 -0700	commit: powerInfo changes
+c602e8d112dc76b0e27499b611302e7e13b22540 3e16c2aa547197b0f7b2cff6fd7cf89d08e15ffd typecad0 <justind000@gmail.com> 1751825503 -0700	commit: added llm stuff
+3e16c2aa547197b0f7b2cff6fd7cf89d08e15ffd 1819cfd969b9683bc23727e5a4945407865bb235 typecad0 <justind000@gmail.com> 1751827131 -0700	commit: .md doesn't seem to work with static
+1819cfd969b9683bc23727e5a4945407865bb235 3d6e413a6efa11cbdd35790b31f0d189a6433a74 typecad0 <justind000@gmail.com> 1752154282 -0700	commit: additions to docs
+3d6e413a6efa11cbdd35790b31f0d189a6433a74 3ea4a333971b4505dceecb00bf9dce6e355ced03 typecad0 <justind000@gmail.com> 1752164485 -0700	commit: search
+3ea4a333971b4505dceecb00bf9dce6e355ced03 d1d48e0450d5df463178e716c54b5599db90a43d typecad0 <justind000@gmail.com> 1752167354 -0700	commit: updated search and llm
+d1d48e0450d5df463178e716c54b5599db90a43d ba5143af0854bf5e702bbc61d714c0fe6b97544e typecad0 <justind000@gmail.com> 1752184150 -0700	commit: kicad2typecad
+ba5143af0854bf5e702bbc61d714c0fe6b97544e cea834b16f72a758cef924390fa1a5d3e143bafc typecad0 <justind000@gmail.com> 1752389246 -0700	commit: cli tooling parameters
+cea834b16f72a758cef924390fa1a5d3e143bafc 4f324920939f0deabc34a08cf8acb7d749b0c068 typecad0 <justind000@gmail.com> 1752711670 -0700	commit: --folder cli fix
+4f324920939f0deabc34a08cf8acb7d749b0c068 30214b8f69c0496f7159e1745e2f364322262570 typecad0 <justind000@gmail.com> 1752714574 -0700	commit: fixed code fences
+30214b8f69c0496f7159e1745e2f364322262570 49bfdfd411021fe9766caf9800d0a86832ebf3d0 typecad0 <justind000@gmail.com> 1752761555 -0700	commit: mcp server
+49bfdfd411021fe9766caf9800d0a86832ebf3d0 412cc9fc433b5057d1e0a621441d119a3dbd94a4 typecad0 <justind000@gmail.com> 1753196541 -0700	commit: jlc parts and mcp pdf link
+412cc9fc433b5057d1e0a621441d119a3dbd94a4 f0d4dfc3325fe7a79f6db3b6e65e8f416cd7bcfe typecad0 <justind000@gmail.com> 1753622175 -0700	commit: added gitdiff html file
+f0d4dfc3325fe7a79f6db3b6e65e8f416cd7bcfe ea1eb131e8d41752c4de7279c98c55ac66c2e434 typecad0 <justind000@gmail.com> 1753624445 -0700	commit: new gitdiff
+ea1eb131e8d41752c4de7279c98c55ac66c2e434 6e86a2732fd61387beb2b2f9fd45baea0ee0bf46 typecad0 <justind000@gmail.com> 1753716997 -0700	commit: Schematic - PCB and other updates
+6e86a2732fd61387beb2b2f9fd45baea0ee0bf46 c5e31d4316e05c8059fbca4f44679a61b8e9fd6d typecad0 <justind000@gmail.com> 1753748304 -0700	commit: typos and md changes
+c5e31d4316e05c8059fbca4f44679a61b8e9fd6d 77dcbb1b512abaa9ccc1ce37ef0462b797701923 typecad0 <justind000@gmail.com> 1753882234 -0700	commit: youtube links
+77dcbb1b512abaa9ccc1ce37ef0462b797701923 1fde146db57b6659a6b56363ded80acf1f72b39f typecad0 <justind000@gmail.com> 1753898763 -0700	commit: kicad component tutorial and associated changes
+1fde146db57b6659a6b56363ded80acf1f72b39f b943ce887fd0ee40be972879c9ae0bac417e83bf typecad0 <justind000@gmail.com> 1753901035 -0700	commit: kicad youtube link
+b943ce887fd0ee40be972879c9ae0bac417e83bf 34c71c186b166ef4b701ec6e0e69b3bb17e611f8 typecad0 <justind000@gmail.com> 1753915336 -0700	commit: table for mobile
+34c71c186b166ef4b701ec6e0e69b3bb17e611f8 6adfbd7f343f9fe09dd2726c542c9a11a653ac91 typecad0 <justind000@gmail.com> 1754019589 -0700	commit: jlc parts
+6adfbd7f343f9fe09dd2726c542c9a11a653ac91 e327f2e064339b0d12d7a5292373cf79592a8a94 typecad0 <justind000@gmail.com> 1754163001 -0700	commit: mcp
+e327f2e064339b0d12d7a5292373cf79592a8a94 db8e2885a13251857b6f91c5e2362dbf72cf9e51 typecad0 <justind000@gmail.com> 1754200581 -0700	commit: youtube relink
+db8e2885a13251857b6f91c5e2362dbf72cf9e51 1ee4e80220a44e49b5a1e0fc8eded20ee045ea89 typecad0 <justind000@gmail.com> 1754201125 -0700	commit: new add-component
+1ee4e80220a44e49b5a1e0fc8eded20ee045ea89 dfab1d92cef92e1d9e07b033b833f631d1d6315d typecad0 <justind000@gmail.com> 1754235558 -0700	commit: packages
+dfab1d92cef92e1d9e07b033b833f631d1d6315d d46192f500b9554a937745910ad4fcfb75b6ecbe typecad0 <justind000@gmail.com> 1754490215 -0700	commit: kicad-search
+d46192f500b9554a937745910ad4fcfb75b6ecbe f12bce387e3871f414ec1d57281574ce9f220e02 typecad0 <justind000@gmail.com> 1755269198 -0700	commit: front page landing pages
+f12bce387e3871f414ec1d57281574ce9f220e02 0575af54f55ff0b7500849c81f4d82aa3752b04c typecad0 <justind000@gmail.com> 1755300429 -0700	commit: landing page style tweaks
+0575af54f55ff0b7500849c81f4d82aa3752b04c 710e45a9c255814763cf06c0c5b93218ace394bb typecad0 <justind000@gmail.com> 1755301392 -0700	commit: vercel build error
+710e45a9c255814763cf06c0c5b93218ace394bb 88bcb365dea21de22301d05e3d2612df952ed1c8 typecad0 <justind000@gmail.com> 1765201697 -0800	commit: add led image
+88bcb365dea21de22301d05e3d2612df952ed1c8 72865e83f7be59b367a510319fab38d0a8005129 typecad0 <justind000@gmail.com> 1771342624 -0800	commit: kicad 10
+72865e83f7be59b367a510319fab38d0a8005129 ffd05b36babbe78f499007bff55be0de97b30146 typecad0 <justind000@gmail.com> 1771345612 -0800	commit: kicad10 fix
+ffd05b36babbe78f499007bff55be0de97b30146 368fdadd30824016fb83b54f5ec41842b4cfbb2c typecad0 <justind000@gmail.com> 1775747283 -0700	commit: kicad 10 article
+368fdadd30824016fb83b54f5ec41842b4cfbb2c a44444648768b4311bebccb52443d427f1a691cf typecad0 <justind000@gmail.com> 1778307357 -0700	commit: package changes
+a44444648768b4311bebccb52443d427f1a691cf 1d9adce748273d9ca93affd8a9596fec5584796e typecad0 <justind000@gmail.com> 1778372937 -0700	commit: autorouter

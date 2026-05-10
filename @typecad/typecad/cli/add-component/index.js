@@ -629,7 +629,7 @@ async function handleEasyedaSymbol(cmdArgs, isNonInteractive) {
       kicadVersion: "v6_99",
     });
   } catch (error) {
-    console.log("Error converting EasyEDA component to KiCAD:");
+    console.log("Error converting EasyEDA component to KiCAD:", error);
     return null;
   }
 
@@ -673,6 +673,7 @@ async function handleEasyedaSymbol(cmdArgs, isNonInteractive) {
     pins,
     symbol_path: symbolFilePath,
     convertedComponent,
+    c_component,
     prettyFolder,
     cleanup: () => {
       try {
@@ -875,7 +876,7 @@ async function handleEasyedaFootprint(cmdArgs, isNonInteractive, symbolData) {
   } else {
     c_component = await input({
       message: "Component # for footprint?",
-      default: cmdArgs.c || "C3217148",
+      default: symbolData.c_component || cmdArgs.c || "C3217148",
       validate: (c_component) => {
         if (!pattern.test(c_component)) {
           return `Not a valid component number: must start with 'C'`;
@@ -892,7 +893,7 @@ async function handleEasyedaFootprint(cmdArgs, isNonInteractive, symbolData) {
       kicadVersion: "v6_99",
     });
   } catch (error) {
-    console.log("Error converting EasyEDA component to KiCAD:");
+    console.error("Error converting EasyEDA component to KiCAD:", error);
     return null;
   }
 

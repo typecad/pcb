@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "build": "npx tsx ./src/one_hz",
-    "add_component": "npx --package=@typecad/typecad add-component ./src",
+    "add_component": "npx --package=@typecad/typecad add-component ./",
     "add_package": "npx --package=@typecad/typecad add-package ./src",
     "open_board": "npx open-cli ./build/one_hz.kicad_pcb",
     "docs": "typecad-docgen ./docs/dev.md ./build/one_hz.kicad_pcb",

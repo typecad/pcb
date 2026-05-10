@@ -102,8 +102,17 @@ export async function create_package(data) {
     fs.writeFileSync(`${data.folder}/${data.package_name}/postinstall.js`, postinstall);
     fs.writeFileSync(`${data.folder}/${data.package_name}/build/lib/README`, 'Files placed in this folder will be copied to the typeCAD project folder structure on npm install.');
 
-    console.log(`Finished package creation, import it with:`)
-    console.log(chalk.whiteBright.bold(` import { ${data.package_name} } from "./${data.package_name}";`))
+    console.log(`Finished package creation! You can use it like this:`);
+    console.log(chalk.whiteBright.bold(`
+import { PCB } from '@typecad/typecad'
+import { ${data.package_name} } from "./${data.package_name}";
+
+let typecad = new PCB('board_name');
+
+let u1 = new ${data.package_name}({ pcb: typecad });
+
+typecad.create(...u1.components);
+`));
     console.log();
     console.log("Report any creation issues: https://www.reddit.com/r/typecad/");
     console.log();

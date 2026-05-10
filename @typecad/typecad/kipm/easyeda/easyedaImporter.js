@@ -281,137 +281,101 @@ class Easyeda3dModelImporter {
         if (model_3d_info) {
             const model_3d = this.parse_3d_model_info(model_3d_info);
             if (this.downloadRaw3dModel) {
-                model_3d.raw_obj = this.lcscComponent.get3dRawObj();
+                const rawObj = this.lcscComponent.get3dRawObj();
+                model_3d.raw_obj = rawObj;
                 model_3d.step = this.lcscComponent.get3dStep();
-                let transformMatrix = mat4.create(); // Identity matrix
+                
+                if (rawObj) {
+                    let transformMatrix = mat4.create(); // Identity matrix
 
-                const o = {
-                    "id": "d7bbe008f7644750b0331176fa9be5bf",
-                    "originX": 4196,
-                    "originY": -3147.5,
-                    "originRotation": 0,
-                    "x": -4.527699999999641,
-                    "y": 0,
-                    "z": 0,
-                    "rx": 0,
-                    "ry": 0,
-                    "rz": 90,
-                    "width": 40.1574,
-                    "height": 56.017797413,
-                    "isTop": true
-                };
-                const options = {
-                    "id": model_3d_info.uuid,
-                    //"originX": 4108.5,    # 3D model location on easyeda PCB - ignore
-                    //"originY": -3087.5,   # 3D model location on easyeda PCB - ignore
-                    //"originRotation": 0,  # 3D model location on easyeda PCB - ignore
-                    //"x": 0,
-                    //"y": 0,
-                    "z": model_3d_info.z,
-                    "rx": model_3d_info.c_rotation.split(',')[0],
-                    "ry": model_3d_info.c_rotation.split(',')[1],
-                    "rz": model_3d_info.c_rotation.split(',')[2],
-                    "width": model_3d_info.c_width,
-                    "height": model_3d_info.c_height,
-                    //"isTop": true         # 3D model location on easyeda PCB - ignore
+                    const options = {
+                        "id": model_3d_info.uuid,
+                        "z": model_3d_info.z,
+                        "rx": model_3d_info.c_rotation.split(',')[0],
+                        "ry": model_3d_info.c_rotation.split(',')[1],
+                        "rz": model_3d_info.c_rotation.split(',')[2],
+                        "width": model_3d_info.c_width,
+                        "height": model_3d_info.c_height,
+                    }
+                    const objFile = new OBJFile(rawObj);
+                    const output = objFile.parse();
+
+                    // Calculate bbox from parsed vertices
+                    const vertices = output.models[0].vertices;
+                    const boundingBox = vertices.reduce((acc, vertex) => ({
+                        maxX: Math.max(acc.maxX, vertex.x),
+                        maxY: Math.max(acc.maxY, vertex.y),
+                        maxZ: Math.max(acc.maxZ, vertex.z),
+                        minX: Math.min(acc.minX, vertex.x),
+                        minY: Math.min(acc.minY, vertex.y),
+                        minZ: Math.min(acc.minZ, vertex.z)
+                    }), {
+                        maxX: -Infinity,
+                        maxY: -Infinity,
+                        maxZ: -Infinity,
+                        minX: Infinity,
+                        minY: Infinity,
+                        minZ: Infinity
+                    });
+
+                    model_3d.boundingBox = boundingBox;
+
+                    const centerX = (boundingBox.maxX + boundingBox.minX) / 2
+                      , centerY = (boundingBox.maxY + boundingBox.minY) / 2
+                      , bottomZ = boundingBox.minZ;
+
+                    const translationMatrix = mat4.create();
+                    mat4.translate(translationMatrix, translationMatrix,
+                      vec3.fromValues(-centerX, -centerY, -bottomZ));
+
+                    const rotationZ = glMatrix.toRadian(options.rz);
+                    const rotationX = glMatrix.toRadian(options.rx);
+                    const rotationY = glMatrix.toRadian(options.ry);
+
+                    const rotationMatrix = mat4.create();
+                    mat4.rotateZ(rotationMatrix, rotationMatrix, rotationZ);
+                    mat4.rotateX(rotationMatrix, rotationMatrix, rotationX);
+                    mat4.rotateY(rotationMatrix, rotationMatrix, rotationY);
+                    mat4.multiply(transformMatrix, rotationMatrix, translationMatrix);
+
+                    const scaleX = options.width / (boundingBox.maxX - boundingBox.minX);
+                    const scaleY = options.height / (boundingBox.maxY - boundingBox.minY);
+                    const uniformScale = Math.min(scaleX, scaleY);
+
+                    mat4.scale(transformMatrix, transformMatrix, vec3.fromValues(uniformScale, uniformScale, uniformScale));
+
+                    const translation = vec3.create();
+                    const rotation = quat.create();
+                    const scale = vec3.create();
+
+                    mat4.getTranslation(translation, transformMatrix);
+                    mat4.getRotation(rotation, transformMatrix);
+                    mat4.getScaling(scale, transformMatrix);
+
+                    function quatToEuler(q) {
+                        const x = q[0], y = q[1], z = q[2], w = q[3];
+                        const rotX = Math.atan2(2 * (w * x + y * z), 1 - 2 * (x * x + y * y)) * 180 / Math.PI;
+                        const rotY = Math.asin(Math.max(-1, Math.min(1, 2 * (w * y - z * x)))) * 180 / Math.PI;
+                        const rotZ = Math.atan2(2 * (w * z + x * y), 1 - 2 * (y * y + z * z)) * 180 / Math.PI;
+                        return {
+                            x: ((rotX % 360) + 360) % 360,
+                            y: ((rotY % 360) + 360) % 360,
+                            z: ((rotZ % 360) + 360) % 360
+                        };
+                    }
+
+                    const rotationDegrees = quatToEuler(rotation);
+
+                    rotationDegrees.x = ((rotationDegrees.x % 360) + 360) % 360;
+                    rotationDegrees.y = ((rotationDegrees.y % 360) + 360) % 360;
+                    rotationDegrees.z = ((rotationDegrees.z % 360) + 360) % 360;
+
+                    this.lcscComponent.translation.x += +translation[0].toFixed(2);
+                    this.lcscComponent.translation.y += +translation[1].toFixed(2);
+                    this.lcscComponent.translation.z += +translation[2].toFixed(2);
+                } else {
+                    console.warn(`Skipping 3D model parsing for uuid:${model_3d_info.uuid} because data is missing.`);
                 }
-                const objFile = new OBJFile(model_3d.raw_obj);
-                const output = objFile.parse();
-
-                // Calculate bbox from parsed vertices
-                const vertices = output.models[0].vertices;
-                const boundingBox = vertices.reduce((acc, vertex) => ({
-                    maxX: Math.max(acc.maxX, vertex.x),
-                    maxY: Math.max(acc.maxY, vertex.y),
-                    maxZ: Math.max(acc.maxZ, vertex.z),
-                    minX: Math.min(acc.minX, vertex.x),
-                    minY: Math.min(acc.minY, vertex.y),
-                    minZ: Math.min(acc.minZ, vertex.z)
-                }), {
-                    maxX: -Infinity,
-                    maxY: -Infinity,
-                    maxZ: -Infinity,
-                    minX: Infinity,
-                    minY: Infinity,
-                    minZ: Infinity
-                });
-
-                model_3d.boundingBox = boundingBox;
-
-                const centerX = (boundingBox.maxX + boundingBox.minX) / 2
-                  , centerY = (boundingBox.maxY + boundingBox.minY) / 2
-                  , bottomZ = boundingBox.minZ;
-
-                const translationMatrix = mat4.create();
-                mat4.translate(translationMatrix, translationMatrix,
-                  vec3.fromValues(-centerX, -centerY, -bottomZ));
-                // easyeda: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, -7.1030225, 0.014705, 1]
-                // kipm:     1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, -7.1030225, 0.014705, 1
-
-                const rotationZ = glMatrix.toRadian(options.rz);
-                const rotationX = glMatrix.toRadian(options.rx);
-                const rotationY = glMatrix.toRadian(options.ry);
-
-                const rotationMatrix = mat4.create();
-                mat4.rotateZ(rotationMatrix, rotationMatrix, rotationZ);
-                mat4.rotateX(rotationMatrix, rotationMatrix, rotationX);
-                mat4.rotateY(rotationMatrix, rotationMatrix, rotationY);
-                mat4.multiply(transformMatrix, rotationMatrix, translationMatrix);
-
-                // easyeda:  [6.1e-17, 1, 0, 0, -1, 6.1e-17, 0, 0, 0, 0, 1, 0, 7.1030225, -4.3493e-16, 0.014705, 1]
-                // kipm:      6.1e-17, 1, 0, 0, -1, 6.1e-17, 0, 0, 0, 0, 1, 0, 7.1030225, -4.3493e-16, 0.014705, 1
-
-
-                const scaleX = options.width / (boundingBox.maxX - boundingBox.minX);
-                const scaleY = options.height / (boundingBox.maxY - boundingBox.minY);
-                const uniformScale = Math.min(scaleX, scaleY);
-
-                mat4.scale(transformMatrix, transformMatrix, vec3.fromValues(uniformScale, uniformScale, uniformScale));
-                //mat4.translate(transformMatrix, transformMatrix, vec3.fromValues(options.x, options.y, options.z));
-
-
-                const translation = vec3.create();
-                const rotation = quat.create();
-                const scale = vec3.create();
-
-                mat4.getTranslation(translation, transformMatrix);
-                mat4.getRotation(rotation, transformMatrix);
-                mat4.getScaling(scale, transformMatrix);
-
-                function quatToEuler(q) {
-                    // Assuming ZXY rotation order based on your original code
-                    // q = [x, y, z, w]
-
-                    const x = q[0], y = q[1], z = q[2], w = q[3];
-
-                    // ZXY rotation order
-                    const rotX = Math.atan2(2 * (w * x + y * z), 1 - 2 * (x * x + y * y)) * 180 / Math.PI;
-                    const rotY = Math.asin(Math.max(-1, Math.min(1, 2 * (w * y - z * x)))) * 180 / Math.PI;
-                    const rotZ = Math.atan2(2 * (w * z + x * y), 1 - 2 * (y * y + z * z)) * 180 / Math.PI;
-
-                    // Normalize to 0-360
-                    return {
-                        x: ((rotX % 360) + 360) % 360,
-                        y: ((rotY % 360) + 360) % 360,
-                        z: ((rotZ % 360) + 360) % 360
-                    };
-                }
-
-                const rotationDegrees = quatToEuler(rotation);
-
-                rotationDegrees.x = ((rotationDegrees.x % 360) + 360) % 360;
-                rotationDegrees.y = ((rotationDegrees.y % 360) + 360) % 360;
-                rotationDegrees.z = ((rotationDegrees.z % 360) + 360) % 360;
-
-                // console.log("Translation (x, y, z):");
-                // console.log(`x: ${translation[0].toFixed(2)}, y: ${translation[1].toFixed(2)}, z: ${translation[2].toFixed(2)}`);
-
-                // console.log("Rotation (degrees, x, y, z):");
-                // console.log(`x: ${rotationDegrees.x.toFixed(2)}, y: ${rotationDegrees.y.toFixed(2)}, z: ${rotationDegrees.z.toFixed(2)}`);
-
-                this.lcscComponent.translation.x += +translation[0].toFixed(2);
-                this.lcscComponent.translation.y += +translation[1].toFixed(2);
-                this.lcscComponent.translation.z += +translation[2].toFixed(2);
             }
 
             return model_3d;

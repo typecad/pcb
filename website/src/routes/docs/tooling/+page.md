@@ -76,7 +76,7 @@ To add a component to the project:
 <ScrollArea orientation="both">
 
 ```bash
-npx --package=@typecad/typecad add-component --folder=./src
+npx --package=@typecad/typecad add-component
 ```
 </ScrollArea>
 
@@ -115,7 +115,7 @@ Execute the following command in `./hw` of an already existing **type**CAD proje
 <ScrollArea orientation="both">
 
 ```bash
-npx --package=@typecad/typecad add-package --folder=./src
+npx --package=@typecad/typecad add-package
 ```
 </ScrollArea>
 

@@ -44,12 +44,7 @@ export async function create_component(data) {
   try {
     fs.writeFileSync(`${data.folder}/${data.package_name}/${data.component_name}.ts`, result);
 
-    console.log(`Finished component creation, use it with:`)
-    console.log(chalk.whiteBright.bold(` import { ${data.component_name} } from './${data.component_name}';`))
-    console.log(chalk.whiteBright.bold(` let u1 = new ${data.component_name}();`))
-    console.log();
-    console.log("Report any component creation issues: https://www.reddit.com/r/typecad/");
-    console.log();
+
 
   } catch (error) {
     console.log(

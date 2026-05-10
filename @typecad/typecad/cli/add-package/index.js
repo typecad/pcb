@@ -459,7 +459,7 @@ async function main() {
           kicadVersion: 'v6_99', // We always use v6 format in this context
         });
       } catch (error) {
-        console.log('Error converting EasyEDA component to KiCAD:');
+        console.error('Error converting EasyEDA component to KiCAD:', error);
         return;
       }
 

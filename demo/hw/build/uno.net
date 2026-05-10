@@ -1,0 +1,16 @@
+(export (version "E")
+  (design
+    (tool "typeCAD 0.2.29"))
+  (components
+    (comp
+      (ref "U1")
+        (value "")
+        (footprint "lib:VQFN-32_L5.0-W5.0-P0.50-TL-EP3.1")
+        (fields
+          (field (name "Footprint") "lib:VQFN-32_L5.0-W5.0-P0.50-TL-EP3.1")
+        )
+    )
+    )
+  (nets
+    
+))

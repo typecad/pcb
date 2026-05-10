@@ -1,8 +1,0 @@
-(export (version "E")
-  (design
-    (tool "typeCAD 0.2.25"))
-  (components
-)
-  (nets
-    
-))

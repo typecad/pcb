@@ -6,54 +6,21 @@ import os from 'node:os';
 
 let symbol_file_contents = '';
 const S = new SExpr();
-let kicad_path;
-let kicad_cli_path;
-let possible_paths = [
-  'C:/Program Files/KiCad/9.0/',
-  'C:/Program Files/KiCad/7.0/',                                  // windows
-  'C:/Program Files/KiCad/8.0/',
-  '/usr/share/kicad/',                                            // linux
-  '/Applications/KiCAD/KiCad.app/Contents/ShareSupport/'          // mac?
-]
+import { KiCAD } from "../../../dist/kicad.js";
+
 let _pins = [];
 let symbol_lib = '';
 
 export function kicad_cli() {
-  for (const path of possible_paths) {
-    if (fs.existsSync(path)) {
-      kicad_path = path; // share/kicad/symbols
-      break;
-    }
-  }
-
-  // if it found a path, figure out where 'kicad-cli' is
-  if (kicad_path) {
-    if (os.platform() === 'win32') {
-      kicad_cli_path = kicad_path + 'bin/kicad-cli.exe';
-    } else {
-      // whereis
-      kicad_cli_path = lookpathSync('kicad-cli');
-    }
-  }
-
-  return kicad_cli_path;
+  return KiCAD.cliPath;
 }
+
 export function kicad_symbol(symbol) {
   let symbol_file_name = symbol.split(':');
-  let _kicad_symbol = '';
+  
+  const kicad = new KiCAD();
+  const _kicad_symbol = kicad.getSymbolsPath();
 
-  for (const path of possible_paths) {
-    if (fs.existsSync(path)) {
-    kicad_path = path; // share/kicad/symbols
-    break;
-    }
-}
-
-  if (platform() == 'win32') {
-    _kicad_symbol = kicad_path + 'share/kicad/symbols';
-  } else {
-    _kicad_symbol = kicad_path + 'symbols';
-  }
   try {
     if (fs.existsSync(`${_kicad_symbol}/${symbol_file_name[0]}.kicad_sym`)) {
       symbol_file_contents = fs.readFileSync(

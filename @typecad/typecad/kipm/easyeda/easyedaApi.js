@@ -13,25 +13,37 @@ const ENDPOINT_3D_MODEL_STEP = "https://modules.easyeda.com/qAxj6KHrDKw4blvCG8QJ
 class EasyedaApi {
     constructor() {
         this.headers = {
-            "Accept-Encoding": "gzip, deflate",
             "Accept": "application/json, text/javascript, */*; q=0.01",
-            "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-            "User-Agent": `easyeda2kicad v${__version__}`,
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         };
     }
 
     async getInfoFromEasyedaApi(lcsc_id) {
         const url = API_ENDPOINT.replace("{lcsc_id}", lcsc_id);
-        const response = await fetch(url, { headers: this.headers });
-        const apiResponse = await response.json();
-        if (
-            !apiResponse ||
-            (("code" in apiResponse) && apiResponse.success === false)
-        ) {
-            console.debug(apiResponse);
-            return {};
+        try {
+            const response = await fetch(url, { headers: this.headers });
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            const text = await response.text();
+            let apiResponse;
+            try {
+                apiResponse = JSON.parse(text);
+            } catch (e) {
+                throw new Error(`Failed to parse JSON response from EasyEDA. The response might be an HTML error page or Cloudflare challenge.`);
+            }
+            if (
+                !apiResponse ||
+                (("code" in apiResponse) && apiResponse.success === false)
+            ) {
+                console.debug(apiResponse);
+                return {};
+            }
+            return apiResponse;
+        } catch (error) {
+            console.error(`Failed to fetch info from EasyEDA API for ${lcsc_id}:`, error.message);
+            throw error;
         }
-        return apiResponse;
     }
 
     async getCadDataOfComponent(lcsc_id) {
@@ -49,27 +61,36 @@ class EasyedaApi {
 
     async getRaw3dModelObj(uuid) {
         const url = ENDPOINT_3D_MODEL.replace("{uuid}", uuid);
-        const response = await fetch(url, {
-            headers: { "User-Agent": this.headers["User-Agent"] },
-        });
-        if (!response.ok) {
-            console.error(`No raw 3D model data found for uuid:${uuid} on easyeda`);
+        try {
+            const response = await fetch(url, {
+                headers: { "User-Agent": this.headers["User-Agent"] },
+            });
+            if (!response.ok) {
+                console.error(`No raw 3D model data found for uuid:${uuid} on easyeda`);
+                return null;
+            }
+            return await response.text();
+        } catch (error) {
+            console.error(`Failed to fetch raw 3D model for uuid:${uuid}:`, error.message);
             return null;
         }
-        return await response.text();
     }
 
     async getStep3dModel(uuid) {
         const url = ENDPOINT_3D_MODEL_STEP.replace("{uuid}", uuid);
-        const response = await fetch(url, {
-            headers: { "User-Agent": this.headers["User-Agent"] },
-        });
-        if (!response.ok) {
-            console.error(`No step 3D model data found for uuid:${uuid} on easyeda`);
+        try {
+            const response = await fetch(url, {
+                headers: { "User-Agent": this.headers["User-Agent"] },
+            });
+            if (!response.ok) {
+                console.error(`No step 3D model data found for uuid:${uuid} on easyeda`);
+                return null;
+            }
+            return await response.arrayBuffer();
+        } catch (error) {
+            console.error(`Failed to fetch step 3D model for uuid:${uuid}:`, error.message);
             return null;
         }
-        // Return as an ArrayBuffer; you can convert it to a Buffer if needed.
-        return await response.arrayBuffer();
     }
 }
 

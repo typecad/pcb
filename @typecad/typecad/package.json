@@ -28,6 +28,8 @@
   },
   "scripts": {
     "create-typecad": "node ./cli/create-typecad/index.js",
+    "add-component": "node ./cli/add-component/index.js",
+    "add-package": "node ./cli/add-package/index.js",
     "build": "tsc",
     "typecheck": "tsc --noEmit",
     "obfuscate": "javascript-obfuscator dist --output dist-obfuscated --config obfuscator.config.json",

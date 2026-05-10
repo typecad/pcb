@@ -62,7 +62,7 @@
     "vitest": "^3.2.1"
   },
   "dependencies": {
-    "@inquirer/prompts": "^7.3.2",
+    "@inquirer/prompts": "^8.4.2",
     "acorn": "^8.16.0",
     "acorn-walk": "^8.3.5",
     "chalk": "^5.4.1",

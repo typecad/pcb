@@ -19,7 +19,7 @@ The tooling gave us the `import` statement for the package.
 <ScrollArea orientation="both">
 
 ```ts
-import { typecad_package } from "./typecad_package";
+import { TypecadPackage } from "./typecad_package";
 ```
 </ScrollArea>
 
@@ -30,13 +30,13 @@ Now create a new instance of the package.
 
 ```ts
 import { PCB } from '@typecad/typecad';
-import { typecad_package } from "./typecad_package";
+import { TypecadPackage } from "./typecad_package";
 import * as _0805 from '@typecad/passives/0805'
 
 let typecad = new PCB('typecad_docs');
-let u1 = new typecad_package({ pcb: typecad });                           // pcb is required
-let u1 = new typecad_package({ pcb: typecad, reference: 'U1' });          // specify the reference designator
-let u1 = new typecad_package({ pcb: typecad, passives: _0805 });          // change passives to 0805
+let u1 = new TypecadPackage({ pcb: typecad });                           // pcb is required
+let u1 = new TypecadPackage({ pcb: typecad, reference: 'U1' });          // specify the reference designator
+let u1 = new TypecadPackage({ pcb: typecad, passives: _0805 });          // change passives to 0805
 ```
 </ScrollArea>
 
@@ -58,10 +58,10 @@ After the package has been pulled in with an `import` and a `new` instance creat
 
 ```ts
 import { PCB } from '@typecad/typecad';
-import { typecad_package } from "./typecad_package";
+import { TypecadPackage } from "./typecad_package";
 let typecad = new PCB('typecad_docs');
 
-let u1 = new typecad_package({ pcb: typecad });
+let u1 = new TypecadPackage({ pcb: typecad });
 
 typecad.create(...u1.components);
 ```
@@ -76,7 +76,7 @@ If a package includes a component you don't want included in the netlist or layo
 <ScrollArea orientation="both">
 
 ```ts
-let u1 = new typecad_package({ schematic: typecad });
+let u1 = new TypecadPackage({ pcb: typecad });
 u1.U1.dnp = true;
 ```
 </ScrollArea>

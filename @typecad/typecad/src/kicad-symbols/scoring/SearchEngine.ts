@@ -164,9 +164,6 @@ export class ComponentSearchEngine implements SearchEngine {
     this.cacheMisses++;
     
     try {
-      // Ensure data is available
-      await this.dataManager.ensureDataAvailable();
-      
       // Get component data
       const components = await this.dataManager.getCsvData();
       metrics.componentCount = components.length;
@@ -416,6 +413,26 @@ export class ComponentSearchEngine implements SearchEngine {
       // Generate a detailed match summary
       const matchSummary = this.fuzzyScorer.generateMatchSummary(componentScore);
       
+      let extraData: any = {};
+      try {
+        extraData = JSON.parse(component.extra);
+      } catch (e) {
+        // ignore
+      }
+
+      let footprint = '';
+      let fpFilters: string[] = [];
+
+      if (extraData.properties) {
+        const fpProp = extraData.properties.find((p: any) => p.name === 'Footprint');
+        if (fpProp) footprint = fpProp.value;
+
+        const filterProp = extraData.properties.find((p: any) => p.name === 'ki_fp_filters');
+        if (filterProp) {
+          fpFilters = filterProp.value.split(/\s+/).filter((v: string) => v.length > 0);
+        }
+      }
+
       return {
         lcsc: component.lcsc,
         manufacturer: component.manufacturer,
@@ -423,7 +440,9 @@ export class ComponentSearchEngine implements SearchEngine {
         description: component.description,
         package: component.package,
         score,
-        matchSummary
+        matchSummary,
+        footprint,
+        fpFilters
       };
     });
   }

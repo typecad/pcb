@@ -6,27 +6,27 @@ const component_template = `import * as _0603 from '@typecad/passives/0603';
 import { PCB, TrackBuilder, Component } from '@typecad/typecad';
 {{#if component_name}}import { {{{component_name}}} } from './{{{component_name}}}';{{/if}}
 
-interface I{{{package_name}}} {
-    reference?: string,
-    passives?: typeof _0603
+export interface {{{package_name_pascal}}}Options {
+    reference?: string;
+    passives?: typeof _0603;
     pcb: PCB;
-};
+}
 
 /**
- * ### {{{package_name}}} - Description
+ * ### {{{package_name_pascal}}} - Description
  * 
  * #### Input Connections
  * 
  * #### Output Connections
  * 
  */
-export class {{{package_name}}} {
+export class {{{package_name_pascal}}} {
     #passives: typeof _0603;
-    pcb: PCB;
-    components: (Component | TrackBuilder)[] = [];
-    {{#if component_name}}U1: {{{component_name}}};{{/if}}
+    readonly pcb: PCB;
+    readonly components: (Component | TrackBuilder)[] = [];
+    {{#if component_name}}readonly U1: {{{component_name}}};{{/if}}
 
-    constructor({ reference, passives, pcb }: I{{{package_name}}}) {
+    constructor({ reference, passives, pcb }: {{{package_name_pascal}}}Options) {
         this.#passives = passives || _0603;
         this.pcb = pcb;
 
@@ -86,7 +86,10 @@ export async function create_package(data) {
   const package_json_template = Handlebars.compile(package_template);
   const _postinstall_template = Handlebars.compile(postinstall_template);
 
-  const result = template(data);
+  const pascal_package_name = data.package_name.charAt(0).toUpperCase() + data.package_name.slice(1);
+  const enriched_data = { ...data, package_name_pascal: pascal_package_name };
+
+  const result = template(enriched_data);
   const package_json = package_json_template(data);
   const postinstall = _postinstall_template(data);
 
@@ -105,11 +108,11 @@ export async function create_package(data) {
     console.log(`Finished package creation! You can use it like this:`);
     console.log(chalk.whiteBright.bold(`
 import { PCB } from '@typecad/typecad'
-import { ${data.package_name} } from "./${data.package_name}";
+import { ${pascal_package_name} } from "./${data.package_name}";
 
 let typecad = new PCB('board_name');
 
-let u1 = new ${data.package_name}({ pcb: typecad });
+let u1 = new ${pascal_package_name}({ pcb: typecad });
 
 typecad.create(...u1.components);
 `));

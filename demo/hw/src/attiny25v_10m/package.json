@@ -1,0 +1,20 @@
+{
+  "name": "attiny25v_10m",
+  "version": "1.0.0",
+  "description": "attiny25v_10m typeCAD package",
+  "main": "index.ts",
+  "type": "module",
+  "author": "",
+  "license": "ISC",
+  "keywords": ["typeCAD", "package"],
+  "devDependencies": {
+    "tsx": "^4.19.1"
+  },
+  "peerDependencies": {
+    "@typecad/passives": "~0.1.0",
+    "@typecad/typecad": "~0.1.0"
+  },
+  "scripts": {
+    "postinstall": "node postinstall.js"
+  }
+}

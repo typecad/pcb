@@ -257,6 +257,12 @@ export interface SearchResult {
   
   /** Human-readable summary of why this component matched */
   matchSummary: string;
+  
+  /** Default footprint if available */
+  footprint?: string;
+  
+  /** Footprint filters if available */
+  fpFilters?: string[];
 }
 
 /**

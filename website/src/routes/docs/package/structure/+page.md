@@ -12,14 +12,17 @@ Let's create a component package around the ATtiny3227 as an example. That is th
 <ScrollArea orientation="both">
 
 ```bash
-Finished component creation, use it with:
- import { ATtiny3227_M } from './ATtiny3227_M';
- let u1 = new ATtiny3227_M();
+Finished package creation! You can use it like this:
 
-Report any component creation issues: https://github.com/typecad/typecad/issues
+import { PCB } from '@typecad/typecad'
+import { TypecadPackage } from "./typecad_package";
 
-Finished package creation, import it with:
- import { typecad_package } from "./typecad_package";
+let typecad = new PCB('board_name');
+
+let u1 = new TypecadPackage({ pcb: typecad });
+
+typecad.create(...u1.components);
+
 
 Report any creation issues: https://github.com/typecad/typecad/issues
 ```

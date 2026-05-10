@@ -1,6 +1,9 @@
 # kipm
 
-kipm is a command-line tool that helps you install and manage KiCad component libraries by automatically fetching symbols, footprints, and 3D models from LCSC/EasyEDA and converting them to KiCad format.
+> [!NOTE]
+> This is a copied and slightly modified/updated version of the original `kipm` tool, integrated directly into **type**CAD.
+
+kipm is a tool that helps you install and manage KiCad component libraries by automatically fetching symbols, footprints, and 3D models from LCSC/EasyEDA and converting them to KiCad format.
 
 ⚠️ **WARNING**: This tool is currently in early development. Please backup your project files before use.
 

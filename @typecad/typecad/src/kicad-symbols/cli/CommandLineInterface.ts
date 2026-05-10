@@ -5,6 +5,11 @@ import chalk from 'chalk';
 import { ProgressIndicator } from './ProgressIndicator.js';
 import { ErrorHandler } from './ErrorHandler.js';
 import * as readline from 'readline';
+import { input, confirm } from '@inquirer/prompts';
+import { execSync } from 'child_process';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import fs from 'node:fs';
 
 /**
  * Command-line interface implementation for the KiCad symbols search tool
@@ -35,9 +40,6 @@ export class CommandLineInterface implements CLI {
 
     return new Promise((resolve) => {
       console.log(chalk.blue(`\n${this.programName} - KiCad Symbols Search Tool`));
-      console.log(chalk.yellow('No search query provided. Please enter a search term:'));
-      console.log(chalk.gray('Examples: "capacitor", "LM358", "4xxx:14528", "op amp"'));
-      console.log(chalk.gray('Press Ctrl+C to exit\n'));
       
       rl.question(chalk.cyan('Search query: '), (answer) => {
         rl.close();
@@ -168,7 +170,61 @@ public async run(args: string[]): Promise<void> {
       // Display top match summary at the end (only if not in JSON mode)
       if (results.length > 0 && parsedArgs.format !== 'json') {
         const topMatch = results[0];
-        console.log(chalk.bold.blue(`Top match: ${chalk.italic(topMatch.lcsc)} - ${topMatch.description} (Score: ${topMatch.score})`));
+        console.log(chalk.bold.blue(`Top match: ${chalk.italic(topMatch.lcsc)} - ${topMatch.description}`));
+      }
+      
+      // Check if any results have both symbol and footprint
+      const actionableResults = limitedResults.filter(r => r.footprint && r.footprint.length > 0);
+      
+      if (actionableResults.length > 0 && parsedArgs.format !== 'json') {
+        console.log(); // Empty line
+        const wantToAdd = await confirm({
+          message: 'Do you want to create a component package from one of these results?',
+          default: false
+        });
+        
+        if (wantToAdd) {
+          const indexStr = await input({
+            message: `Enter the number of the result (1-${limitedResults.length}):`,
+            validate: (val) => {
+              const idx = parseInt(val, 10);
+              return (!isNaN(idx) && idx >= 1 && idx <= limitedResults.length) || `Please enter a number between 1 and ${limitedResults.length}`;
+            }
+          });
+          
+          const selectedIdx = parseInt(indexStr, 10) - 1;
+          const selectedResult = limitedResults[selectedIdx];
+          
+          if (!selectedResult.footprint) {
+            console.log(chalk.yellow('This result does not have a specific footprint defined. Cannot create package.'));
+          } else {
+            const packageName = await input({
+              message: 'Package name?',
+              default: selectedResult.partNumber.toLowerCase().replace(/[^a-z0-9_]/g, '_')
+            });
+            
+            console.log(chalk.blue(`Running add-package for ${selectedResult.lcsc}...`));
+            
+            try {
+              const __filename = fileURLToPath(import.meta.url);
+              const __dirname = path.dirname(__filename);
+              const addPackagePath = path.resolve(__dirname, '../../../cli/add-package/index.js');
+              
+              let folder = './';
+              if (fs.existsSync('./src')) {
+                folder = './src';
+              }
+              
+              const cmd = `node "${addPackagePath}" --component=true --name="${packageName}" --kicad=true --symbol="${selectedResult.lcsc}" --footprint="${selectedResult.footprint}" --folder="${folder}"`;
+              
+              console.log(chalk.gray(`> ${cmd}`));
+              execSync(cmd, { stdio: 'inherit' });
+              console.log(chalk.green('Component package created successfully!'));
+            } catch (error) {
+              console.error(chalk.red('Failed to create component package:'), error);
+            }
+          }
+        }
       }
     } catch (searchError) {
       // Restore console.log if it was suppressed
@@ -419,8 +475,12 @@ private displayDetailedResults(results: SearchResult[]): void {
     
     console.log(chalk.bold(`${index + 1}. ${result.lcsc} - ${result.description}`));
     console.log(`   ${chalk.cyan('Part Number:')} ${result.partNumber}`);
-    console.log(`   ${chalk.cyan('Match Score:')} ${scoreColor(result.score.toFixed(1))}`);
-    console.log(`   ${chalk.cyan('Match Details:')} ${result.matchSummary}`);
+    if (result.footprint) {
+      console.log(`   ${chalk.cyan('Footprint:')} ${result.footprint}`);
+    }
+    if (result.fpFilters && result.fpFilters.length > 0) {
+      console.log(`   ${chalk.cyan('Footprint Filters:')} ${result.fpFilters.join(', ')}`);
+    }
     console.log(); // Empty line between results
   });
 }

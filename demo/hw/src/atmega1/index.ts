@@ -2,27 +2,27 @@ import * as _0603 from '@typecad/passives/0603';
 import { PCB, TrackBuilder, Component } from '@typecad/typecad';
 import { ATMEGA328_MU } from './ATMEGA328_MU';
 
-interface Iatmega1 {
-    reference?: string,
-    passives?: typeof _0603
+export interface Atmega1Options {
+    reference?: string;
+    passives?: typeof _0603;
     pcb: PCB;
-};
+}
 
 /**
- * ### atmega1 - Description
+ * ### Atmega1 - Description
  * 
  * #### Input Connections
  * 
  * #### Output Connections
  * 
  */
-export class atmega1 {
+export class Atmega1 {
     #passives: typeof _0603;
-    pcb: PCB;
-    components: (Component | TrackBuilder)[] = [];
-    U1: ATMEGA328_MU;
+    readonly pcb: PCB;
+    readonly components: (Component | TrackBuilder)[] = [];
+    readonly U1: ATMEGA328_MU;
 
-    constructor({ reference, passives, pcb }: Iatmega1) {
+    constructor({ reference, passives, pcb }: Atmega1Options) {
         this.#passives = passives || _0603;
         this.pcb = pcb;
 
@@ -37,6 +37,5 @@ export class atmega1 {
         // add the components to the pcb and group them
         this.components.push(this.U1);
         this.pcb.group('ATMEGA328_MU', this.U1);
-
     }
 }

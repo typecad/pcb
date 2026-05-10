@@ -19,20 +19,20 @@ import { PCB, Component, TrackBuilder } from '@typecad/typecad';
 import { ATtiny3227_M } from './ATtiny3227_M';
 import { Resistor } from '@typecad/passives/0603';
 
-interface Itypecad_package {
-    reference?: string,
-    passives?: typeof _0603
+export interface TypecadPackageOptions {
+    reference?: string;
+    passives?: typeof _0603;
     pcb: PCB;
-};
+}
 
-export class typecad_package {
+export class TypecadPackage {
     #passives: typeof _0603;
-    pcb: PCB;
-    U1: ATtiny3227_M;
-    R1: Resistor;
-    components: (Component | TrackBuilder)[] = [];
+    readonly pcb: PCB;
+    readonly U1: ATtiny3227_M;
+    readonly R1: Resistor;
+    readonly components: (Component | TrackBuilder)[] = [];
 
-    constructor({ reference, passives, pcb }: Itypecad_package) {
+    constructor({ reference, passives, pcb }: TypecadPackageOptions) {
         this.#passives = passives || _0603;
         this.pcb = pcb;
 
@@ -76,13 +76,13 @@ This is importing the PCB class from the `@typecad/typecad` package, and the ATt
 
 ```ts
 ...
-interface Itypecad_package {
-    reference?: string,
-    passives?: typeof _0603
+export interface TypecadPackageOptions {
+    reference?: string;
+    passives?: typeof _0603;
     pcb: PCB;
-};
+}
 ...
-    constructor({ reference, passives, pcb }: Itypecad_package)
+    constructor({ reference, passives, pcb }: TypecadPackageOptions)
 ...
 ```
 </ScrollArea>
@@ -95,14 +95,14 @@ In this example, when a `new` typecad_package is created and the `constructor` i
 <ScrollArea orientation="both">
 
 ```ts
-export class typecad_package {
+export class TypecadPackage {
     #passives: typeof _0603;
-    pcb: PCB;
-    U1: ATtiny3227_M;
-    R1: Resistor;
-    components: (Component | TrackBuilder)[] = [];
+    readonly pcb: PCB;
+    readonly U1: ATtiny3227_M;
+    readonly R1: Resistor;
+    readonly components: (Component | TrackBuilder)[] = [];
 
-    constructor({ reference, passives, pcb }: Itypecad_package = {}) {
+    constructor({ reference, passives, pcb }: TypecadPackageOptions = {}) {
         ...
     }
 ...
@@ -163,10 +163,10 @@ The use of this package is similar to an individual component.
 
 ```ts
     import { PCB } from "@typecad/typecad"
-    import { typecad_package } from "./typecad_package";
+    import { TypecadPackage } from "./typecad_package";
 
     let typecad = new PCB('new');
-    let tiny = new typecad_package({ pcb: typecad });
+    let tiny = new TypecadPackage({ pcb: typecad });
     typecad.create(...tiny.components);
 ```
 </ScrollArea>

@@ -23,6 +23,8 @@ export interface TypecadPackageOptions {
     reference?: string;
     passives?: typeof _0603;
     pcb: PCB;
+    x: number;
+    y: number;
 }
 
 export class TypecadPackage {
@@ -32,25 +34,31 @@ export class TypecadPackage {
     readonly R1: Resistor;
     readonly components: (Component | TrackBuilder)[] = [];
 
-    constructor({ reference, passives, pcb }: TypecadPackageOptions) {
+    constructor({ reference, passives, pcb, x, y }: TypecadPackageOptions) {
         this.#passives = passives || _0603;
         this.pcb = pcb;
 
+        // Push offset to PCB for tracks and vias
+        this.pcb.pushOffset(x, y);
+
         // create the components
         this.U1 = new ATtiny3227_M(reference);
-        this.U1.pcb = { x: 172.72, y: 99.06, rotation: 0 };
-        this.R1 = new this.#passives.Resistor({ value: '470ohm', pcb: { x: 169.355, y: 93.98, rotation: 180 } });
+        this.U1.pcb = { x: 0, y: 0, rotation: 0 }; // Relative to offset!
+        this.R1 = new this.#passives.Resistor({ value: '470ohm', pcb: { x: -3.365, y: -5.08, rotation: 180 } }); // Relative to offset!
         
         // connect the components
         this.pcb.net(this.U1.PA1, this.R1.pin(1));
 
-        // create the tracks
-        this.components.push(this.pcb.track().from({ x: 170.18, y: 95.8325 }).to({ x: 171.47, y: 97.1225 }));
-        this.components.push(this.pcb.track().from({ x: 170.18, y: 93.98 }).to({ x: 170.18, y: 95.8325 }));
+        // create the tracks (Framework applies offset!)
+        this.components.push(this.pcb.track().from({ x: -2.54, y: -3.2275 }).to({ x: -1.25, y: -1.9375 }));
+        this.components.push(this.pcb.track().from({ x: -2.54, y: -5.08 }).to({ x: -2.54, y: -3.2275 }));
 
         // add the components to the pcb and group them
         this.components.push(this.U1, this.R1);
         this.pcb.group('ATtiny3227_M', this.U1, this.R1);
+
+        // Restore the previous origin
+        this.pcb.popOffset();
     }
 }
 ```
@@ -116,6 +124,21 @@ You'll see that the `U1` component is declared as a class property. This is impo
 
 If there were additional passives needed, pullup/pulldown resistors, capacitors, etc., they would be added here. 
 
+
+## Managing Offsets
+<ScrollArea orientation="both">
+
+```ts
+        // Push offset to PCB for tracks and vias
+        this.pcb.pushOffset(x, y);
+        ...
+        // Restore the previous origin
+        this.pcb.popOffset();
+```
+</ScrollArea>
+
+To avoid manually calculating coordinates for every track and via when placing a package at a specific location, TypeCAD provides an offset context. By calling `this.pcb.pushOffset(x, y)`, all subsequent calls to drawing methods like `pcb.track()`, `pcb.via()`, etc., will automatically be shifted by that offset. This allows you to design your package layout relative to `(0, 0)` and place it anywhere on the board! Remember to call `this.pcb.popOffset()` at the end to restore the original origin.
+
 ## Connect the components
 <ScrollArea orientation="both">
 
@@ -166,7 +189,7 @@ The use of this package is similar to an individual component.
     import { TypecadPackage } from "./typecad_package";
 
     let typecad = new PCB('new');
-    let tiny = new TypecadPackage({ pcb: typecad });
+    let tiny = new TypecadPackage({ pcb: typecad, x: 10, y: 10 });
     typecad.create(...tiny.components);
 ```
 </ScrollArea>

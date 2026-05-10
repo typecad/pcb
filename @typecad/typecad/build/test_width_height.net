@@ -1,0 +1,16 @@
+(export (version "E")
+  (design
+    (tool "typeCAD 0.2.29"))
+  (components
+    (comp
+      (ref "U2")
+        (value "TestValue")
+        (footprint "Package_SO:SOIC-8_3.9x4.9mm_P1.27mm")
+        (fields
+          (field (name "Footprint") "Package_SO:SOIC-8_3.9x4.9mm_P1.27mm")
+        )
+    )
+    )
+  (nets
+    
+))

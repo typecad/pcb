@@ -1,8 +1,9 @@
 import { PCB } from '@typecad/typecad'
-import { Atmega1 } from "./atmega1";
+import { rd_isl9120ir } from "./rd_ISL9120IR";
 
-let typecad = new PCB('uno');
+const typecad = new PCB('uno');
 
-let u1 = new Atmega1({ pcb: typecad });
+const isl9120 = new rd_isl9120ir({ pcb: typecad, x: 10, y: 10 });
 
-typecad.create(...u1.components);
+
+typecad.create(...isl9120.components);

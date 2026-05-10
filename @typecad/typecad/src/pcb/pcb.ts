@@ -129,6 +129,8 @@ export class PCB {
     copper_thickness: number;
     outlines: IOutline[] = [];
     tracks: IOutline[] = [];
+    #offsetStack: { x: number, y: number }[] = [];
+    #currentOffset: { x: number, y: number } = { x: 0, y: 0 };
     #pcb: string = '';
     #components: Component[] = [];
     #stagedComponents: Component[] = []; // Components placed/grouped but not yet created
@@ -154,7 +156,7 @@ export class PCB {
     /**
      * Initializes a new PCB.
      * @param Boardname - Name and filename of generated files.
-     * @param options - Optional PCB configuration options.
+     * @param schematic - Optional schematic associated with the PCB.
      */
     constructor(Boardname: string, options?: IPcbOptions) {
         this.Boardname = Boardname;
@@ -169,6 +171,34 @@ export class PCB {
 
     public prettyPrintSExpr(sexpr: string): string {
         return prettyPrintSExpr(sexpr);
+    }
+
+    /**
+     * Pushes a new offset to the stack. All subsequent coordinates will be relative to this offset.
+     */
+    pushOffset(x: number, y: number): void {
+        this.#offsetStack.push({ ...this.#currentOffset });
+        this.#currentOffset.x += x;
+        this.#currentOffset.y += y;
+    }
+
+    /**
+     * Pops the last offset from the stack.
+     */
+    popOffset(): void {
+        const prev = this.#offsetStack.pop();
+        if (prev) {
+            this.#currentOffset = prev;
+        } else {
+            this.#currentOffset = { x: 0, y: 0 };
+        }
+    }
+
+    /**
+     * Gets the current active offset.
+     */
+    get currentOffset(): { x: number, y: number } {
+        return { ...this.#currentOffset };
     }
 
     /**
@@ -672,8 +702,8 @@ export class PCB {
     text(options: IGrTextOptions): void {
         const textElement: IGrTextOptions = {
             text: options.text,
-            x: options.x,
-            y: options.y,
+            x: options.x + this.#currentOffset.x,
+            y: options.y + this.#currentOffset.y,
             layer: options.layer || 'F.SilkS',
             width: options.width || 1.27,
             height: options.height || 1.27,
@@ -746,7 +776,10 @@ export class PCB {
      * @returns The component representing the via.
      */
     via({ at, size, drill, net, powerInfo }: Omit<IVia, 'uuid' | 'netCode' | 'layers'> = {}): Component {
-        const viaPosition = at || { x: 0, y: 0 };
+        const viaPosition = { 
+            x: (at?.x ?? 0) + this.#currentOffset.x, 
+            y: (at?.y ?? 0) + this.#currentOffset.y 
+        };
 
         const viaComponent = new Component({
             via: true,
@@ -825,7 +858,12 @@ export class PCB {
         fillArcSegments?: number;
         filledAreasThickness?: boolean;
     }): void {
-        zone(this, options);
+        const modifiedOptions = { 
+            ...options,
+            x: options.x + this.#currentOffset.x,
+            y: options.y + this.#currentOffset.y
+        };
+        zone(this, modifiedOptions);
     }
 
     /**
@@ -862,7 +900,12 @@ export class PCB {
         smoothing?: 'chamfer' | 'fillet' | 'none';
         smoothingRadius?: number;
     }): void {
-        keepout(this, options);
+        const modifiedOptions = { 
+            ...options,
+            x: options.x + this.#currentOffset.x,
+            y: options.y + this.#currentOffset.y
+        };
+        keepout(this, modifiedOptions);
     }
 
     /**
@@ -876,7 +919,12 @@ export class PCB {
         width?: number;
         locked?: boolean;
     }): void {
-        pcbLine(this, options);
+        const modifiedOptions = { 
+            ...options,
+            start: { x: options.start.x + this.#currentOffset.x, y: options.start.y + this.#currentOffset.y },
+            end: { x: options.end.x + this.#currentOffset.x, y: options.end.y + this.#currentOffset.y }
+        };
+        pcbLine(this, modifiedOptions);
     }
 
     /**
@@ -892,7 +940,14 @@ export class PCB {
         fill?: boolean;
         locked?: boolean;
     }): void {
-        pcbCircle(this, options);
+        const modifiedOptions = { 
+            ...options,
+            center: { x: options.center.x + this.#currentOffset.x, y: options.center.y + this.#currentOffset.y }
+        };
+        if (options.end) {
+            modifiedOptions.end = { x: options.end.x + this.#currentOffset.x, y: options.end.y + this.#currentOffset.y };
+        }
+        pcbCircle(this, modifiedOptions);
     }
 
     /**
@@ -911,7 +966,16 @@ export class PCB {
         fill?: boolean;
         locked?: boolean;
     }): void {
-        pcbRect(this, options);
+        const modifiedOptions = { ...options };
+        if (modifiedOptions.x !== undefined) modifiedOptions.x += this.#currentOffset.x;
+        if (modifiedOptions.y !== undefined) modifiedOptions.y += this.#currentOffset.y;
+        if (modifiedOptions.start) {
+            modifiedOptions.start = { x: modifiedOptions.start.x + this.#currentOffset.x, y: modifiedOptions.start.y + this.#currentOffset.y };
+        }
+        if (modifiedOptions.end) {
+            modifiedOptions.end = { x: modifiedOptions.end.x + this.#currentOffset.x, y: modifiedOptions.end.y + this.#currentOffset.y };
+        }
+        pcbRect(this, modifiedOptions);
     }
 
     /**
@@ -925,7 +989,11 @@ export class PCB {
         fill?: boolean;
         locked?: boolean;
     }): void {
-        pcbPoly(this, options);
+        const modifiedOptions = { 
+            ...options,
+            points: options.points.map(p => ({ x: p.x + this.#currentOffset.x, y: p.y + this.#currentOffset.y }))
+        };
+        pcbPoly(this, modifiedOptions);
     }
 
     /**
@@ -938,7 +1006,7 @@ export class PCB {
      * @param conceptualUuidFromUser - Optional UUID for the conceptual outline.
      */
     outline(x: number, y: number, width: number, height: number, filletRadius: number = 0, conceptualUuidFromUser?: string): void {
-        pcbOutline(this, x, y, width, height, filletRadius, conceptualUuidFromUser);
+        pcbOutline(this, x + this.#currentOffset.x, y + this.#currentOffset.y, width, height, filletRadius, conceptualUuidFromUser);
     }
 
     // ─── Routing Internals ───────────────────────────────────────────────
@@ -990,6 +1058,8 @@ export class PCB {
      */
     _track(start: { x: number, y: number }, end: { x: number, y: number }, width: number = 0.05, layer: string = "F.Cu", locked: boolean = false, uuid?: string, net?: string): string {
         const trackUuid = uuid || generateUuid();
+        const offsetStart = { x: start.x + this.#currentOffset.x, y: start.y + this.#currentOffset.y };
+        const offsetEnd = { x: end.x + this.#currentOffset.x, y: end.y + this.#currentOffset.y };
 
         // Create the line data structure
         const lineData: IGrLine = {
@@ -997,8 +1067,8 @@ export class PCB {
             uuid: trackUuid,
             layer: layer,
             strokeWidth: width,
-            start,
-            end,
+            start: offsetStart,
+            end: offsetEnd,
             locked: locked,
             net: net  // Store net for obstacle detection
         };

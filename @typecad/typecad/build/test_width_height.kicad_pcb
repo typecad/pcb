@@ -1,0 +1,342 @@
+(kicad_pcb
+  (version 20241229)
+  (net 0 "")
+  (generator "typecad")
+  (generator_version "0.1.0")
+  (general
+    (thickness 1.6)
+    (legacy_teardrops no)
+  )
+  (paper "A4")
+  (footprint "Package_SO:SOIC-8_3.9x4.9mm_P1.27mm"
+    (uuid "d5fb13f8-7b6d-49fe-bf11-4cf25852abc1")
+    (at 100 100 0)
+    (version 20260206)
+    (generator "kicad-footprint-generator")
+    (layer F.Cu)
+    (descr "SOIC, 8 Pin (JEDEC MS-012AA, https://www.analog.com/media/en/package-pcb-resources/package/pkg_pdf/soic_narrow-r/r_8.pdf) ")
+    (tags "SOIC SO")
+    (property "Reference" "U2"
+      (at 3.805 1.545 90)
+      (layer "F.Fab")
+      (effects
+        (font
+          (size 1 1)
+          (thickness 0.15)
+        )
+      )
+      (hide no)
+    )
+    (property "Value" "TestValue"
+      (at 0 3.4 0)
+      (layer F.Fab)
+      (effects
+        (font
+          (size 1 1)
+          (thickness 0.15)
+        )
+      )
+    )
+    (property "KiLib_Generator" package/gullwing
+      (at 0 0 0)
+      (layer F.SilkS)
+      (hide yes)
+      (effects
+        (font
+          (size 1 1)
+          (thickness 0.15)
+        )
+      )
+    )
+    (property "Code" "{'file':'C:\\typecad\\typeCAD\\@typecad\\typecad\\tests\\reference_width_height_output.test.ts','line':7,'variable':'component','params':{'reference':['U2',{'x':3.805,'y':1.545,'rotation':90,'thickness':0.15,'width':1,'height':1}],'value':'TestValue','footprint':'Package_SO:SOIC-8_3.9x4.9mm_P1.27mm','pcb':{'x':100,'y':100,'rotation':0}}}"
+      (at 0 0 0)
+      (layer "F.Fab")
+      (hide yes)
+      (uuid "1ff7e555-0806-40d6-a233-d52f2c16218f")
+      (effects
+        (font
+          (size 1 1)
+          (thickness 0.15)
+        )
+      )
+    )
+    (attr smd)
+    (duplicate_pad_numbers_are_jumpers no)
+    (fp_line
+      (start -2.06 -2.56)
+      (end 2.06 -2.56)
+      (stroke
+        (width 0.12)
+        (type solid)
+      )
+      (layer F.SilkS)
+    )
+    (fp_line
+      (start -2.06 -2.465)
+      (end -2.06 -2.56)
+      (stroke
+        (width 0.12)
+        (type solid)
+      )
+      (layer F.SilkS)
+    )
+    (fp_line
+      (start -2.06 2.56)
+      (end -2.06 2.465)
+      (stroke
+        (width 0.12)
+        (type solid)
+      )
+      (layer F.SilkS)
+    )
+    (fp_line
+      (start 2.06 -2.56)
+      (end 2.06 -2.465)
+      (stroke
+        (width 0.12)
+        (type solid)
+      )
+      (layer F.SilkS)
+    )
+    (fp_line
+      (start 2.06 2.465)
+      (end 2.06 2.56)
+      (stroke
+        (width 0.12)
+        (type solid)
+      )
+      (layer F.SilkS)
+    )
+    (fp_line
+      (start 2.06 2.56)
+      (end -2.06 2.56)
+      (stroke
+        (width 0.12)
+        (type solid)
+      )
+      (layer F.SilkS)
+    )
+    (fp_poly
+      (pts
+        (xy -2.6 -2.47)
+        (xy -2.84 -2.8)
+        (xy -2.36 -2.8)
+      )
+      (stroke
+        (width 0.12)
+        (type solid)
+      )
+      (fill yes)
+      (layer F.SilkS)
+    )
+    (fp_line
+      (start -3.7 -2.46)
+      (end -2.2 -2.46)
+      (stroke
+        (width 0.05)
+        (type solid)
+      )
+      (layer F.CrtYd)
+    )
+    (fp_line
+      (start -3.7 2.46)
+      (end -3.7 -2.46)
+      (stroke
+        (width 0.05)
+        (type solid)
+      )
+      (layer F.CrtYd)
+    )
+    (fp_line
+      (start -2.2 -2.7)
+      (end 2.2 -2.7)
+      (stroke
+        (width 0.05)
+        (type solid)
+      )
+      (layer F.CrtYd)
+    )
+    (fp_line
+      (start -2.2 -2.46)
+      (end -2.2 -2.7)
+      (stroke
+        (width 0.05)
+        (type solid)
+      )
+      (layer F.CrtYd)
+    )
+    (fp_line
+      (start -2.2 2.46)
+      (end -3.7 2.46)
+      (stroke
+        (width 0.05)
+        (type solid)
+      )
+      (layer F.CrtYd)
+    )
+    (fp_line
+      (start -2.2 2.7)
+      (end -2.2 2.46)
+      (stroke
+        (width 0.05)
+        (type solid)
+      )
+      (layer F.CrtYd)
+    )
+    (fp_line
+      (start 2.2 -2.7)
+      (end 2.2 -2.46)
+      (stroke
+        (width 0.05)
+        (type solid)
+      )
+      (layer F.CrtYd)
+    )
+    (fp_line
+      (start 2.2 -2.46)
+      (end 3.7 -2.46)
+      (stroke
+        (width 0.05)
+        (type solid)
+      )
+      (layer F.CrtYd)
+    )
+    (fp_line
+      (start 2.2 2.46)
+      (end 2.2 2.7)
+      (stroke
+        (width 0.05)
+        (type solid)
+      )
+      (layer F.CrtYd)
+    )
+    (fp_line
+      (start 2.2 2.7)
+      (end -2.2 2.7)
+      (stroke
+        (width 0.05)
+        (type solid)
+      )
+      (layer F.CrtYd)
+    )
+    (fp_line
+      (start 3.7 -2.46)
+      (end 3.7 2.46)
+      (stroke
+        (width 0.05)
+        (type solid)
+      )
+      (layer F.CrtYd)
+    )
+    (fp_line
+      (start 3.7 2.46)
+      (end 2.2 2.46)
+      (stroke
+        (width 0.05)
+        (type solid)
+      )
+      (layer F.CrtYd)
+    )
+    (fp_poly
+      (pts
+        (xy -0.975 -2.45)
+        (xy 1.95 -2.45)
+        (xy 1.95 2.45)
+        (xy -1.95 2.45)
+        (xy -1.95 -1.475)
+      )
+      (stroke
+        (width 0.1)
+        (type solid)
+      )
+      (fill no)
+      (layer F.Fab)
+    )
+    (fp_text user "${REFERENCE}"
+      (at 0 0 90)
+      (layer F.Fab)
+      (effects
+        (font
+          (size 1 1)
+          (thickness 0.15)
+        )
+      )
+    )
+    (pad "1" smd roundrect
+      (at -2.475 -1.905 0)
+      (size 1.95 0.6)
+      (layers F.Cu "F.Mask" "F.Paste")
+      (roundrect_rratio 0.25)
+      (net 0 "")
+      (pintype "passive")
+    )
+    (pad "2" smd roundrect
+      (at -2.475 -0.635 0)
+      (size 1.95 0.6)
+      (layers F.Cu "F.Mask" "F.Paste")
+      (roundrect_rratio 0.25)
+      (net 0 "")
+      (pintype "passive")
+    )
+    (pad "3" smd roundrect
+      (at -2.475 0.635 0)
+      (size 1.95 0.6)
+      (layers F.Cu "F.Mask" "F.Paste")
+      (roundrect_rratio 0.25)
+      (net 0 "")
+      (pintype "passive")
+    )
+    (pad "4" smd roundrect
+      (at -2.475 1.905 0)
+      (size 1.95 0.6)
+      (layers F.Cu "F.Mask" "F.Paste")
+      (roundrect_rratio 0.25)
+      (net 0 "")
+      (pintype "passive")
+    )
+    (pad "5" smd roundrect
+      (at 2.475 1.905 0)
+      (size 1.95 0.6)
+      (layers F.Cu "F.Mask" "F.Paste")
+      (roundrect_rratio 0.25)
+      (net 0 "")
+      (pintype "passive")
+    )
+    (pad "6" smd roundrect
+      (at 2.475 0.635 0)
+      (size 1.95 0.6)
+      (layers F.Cu "F.Mask" "F.Paste")
+      (roundrect_rratio 0.25)
+      (net 0 "")
+      (pintype "passive")
+    )
+    (pad "7" smd roundrect
+      (at 2.475 -0.635 0)
+      (size 1.95 0.6)
+      (layers F.Cu "F.Mask" "F.Paste")
+      (roundrect_rratio 0.25)
+      (net 0 "")
+      (pintype "passive")
+    )
+    (pad "8" smd roundrect
+      (at 2.475 -1.905 0)
+      (size 1.95 0.6)
+      (layers F.Cu "F.Mask" "F.Paste")
+      (roundrect_rratio 0.25)
+      (net 0 "")
+      (pintype "passive")
+    )
+    (embedded_fonts no)
+    (model "${KICAD10_3DMODEL_DIR}/Package_SO.3dshapes/SOIC-8_3.9x4.9mm_P1.27mm.step"
+      (offset
+        (xyz 0 0 0)
+      )
+      (scale
+        (xyz 1 1 1)
+      )
+      (rotate
+        (xyz 0 0 0)
+      )
+    )
+  )
+)

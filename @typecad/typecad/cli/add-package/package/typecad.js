@@ -10,6 +10,8 @@ export interface {{{package_name_pascal}}}Options {
     reference?: string;
     passives?: typeof _0603;
     pcb: PCB;
+    x: number;
+    y: number;
 }
 
 /**
@@ -26,9 +28,12 @@ export class {{{package_name_pascal}}} {
     readonly components: (Component | TrackBuilder)[] = [];
     {{#if component_name}}readonly U1: {{{component_name}}};{{/if}}
 
-    constructor({ reference, passives, pcb }: {{{package_name_pascal}}}Options) {
+    constructor({ reference, passives, pcb, x, y }: {{{package_name_pascal}}}Options) {
         this.#passives = passives || _0603;
         this.pcb = pcb;
+
+        // Push offset to PCB for tracks and vias
+        this.pcb.pushOffset(x, y);
 
         // create the components
         {{#if component_name}}this.U1 = new {{{component_name}}}(reference);{{/if}}
@@ -42,6 +47,8 @@ export class {{{package_name_pascal}}} {
         {{#if component_name}}this.components.push(this.U1);
         this.pcb.group('{{{component_name}}}', this.U1);{{/if}}
 
+        // Restore the previous origin
+        this.pcb.popOffset();
     }
 }`;
 
@@ -112,7 +119,7 @@ import { ${pascal_package_name} } from "./${data.package_name}";
 
 let typecad = new PCB('board_name');
 
-let u1 = new ${pascal_package_name}({ pcb: typecad });
+let u1 = new ${pascal_package_name}({ pcb: typecad, x: 0, y: 0 });
 
 typecad.create(...u1.components);
 `));

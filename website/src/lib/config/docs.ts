@@ -89,6 +89,11 @@ export const docsConfig: DocsConfig = {
 					href: "/docs/board_layout",
 					items: [],
 				},
+				{
+					title: "Auto Router",
+					href: "/docs/autorouter",
+					items: [],
+				},
 			]
 		},
 		{
@@ -300,6 +305,11 @@ export const docsConfig: DocsConfig = {
 				{
 					title: "Board Layout",
 					href: "/docs/board_layout",
+					items: [],
+				},
+				{
+					title: "Auto Router",
+					href: "/docs/autorouter",
 					items: [],
 				},
 				// {

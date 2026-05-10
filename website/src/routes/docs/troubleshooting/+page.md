@@ -69,7 +69,7 @@ esp32.VDD         // or esp32.pin(8) if VDD is pin 8
 **Cause**: Component file not imported or created in wrong location.
 
 **Solution**:
-1. Ensure component was created with `@typecad/add-component`
+1. Ensure component was created with `npx --package=@typecad/typecad add-component`
 2. Check the import statement matches the generated file
 3. Verify component file is in `hw/src/` directory
 

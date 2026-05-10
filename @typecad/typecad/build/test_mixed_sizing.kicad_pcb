@@ -9,7 +9,7 @@
   )
   (paper "A4")
   (footprint "Package_SO:SOIC-8_3.9x4.9mm_P1.27mm"
-    (uuid "f0c0065d-dd89-482b-a75c-becb34bc4505")
+    (uuid "a86f1ac3-e28a-47db-8a3d-1ace3b695c14")
     (at 100 100 0)
     (version 20260206)
     (generator "kicad-footprint-generator")
@@ -52,7 +52,7 @@
       (at 0 0 0)
       (layer "F.Fab")
       (hide yes)
-      (uuid "16f8fb44-c0d3-416e-a814-13f39f4f3572")
+      (uuid "a2583f4f-7c12-4203-8ac6-007df7d451b8")
       (effects
         (font
           (size 1 1)

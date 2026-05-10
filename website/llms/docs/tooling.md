@@ -6,7 +6,7 @@
 To create a new project enter the following command in your terminal:
 
 ```bash
-npx @typecad/create-typecad
+npx --package=@typecad/typecad create-typecad
 ```
 
 The first time, `npx` will ask you to download the script so it can run it. 
@@ -23,7 +23,7 @@ A project will be created in the current directory. Inside the project directory
 All the information can be passed by command-line arguments and the script will automatically create a project. `--help` will show all the parameters.
 
 ```bash
-npx @typecad/create-typecad --name=typecad_project --git=false --pio=false
+npx --package=@typecad/typecad create-typecad --name=typecad_project --git=false --pio=false
 ```
 
 The above is the minimum to run automatically. 
@@ -56,7 +56,7 @@ Components are discussed in the [Components](/docs/components) page. But for now
 To add a component to the project:
 
 ```bash
-npx @typecad/add-component --folder=./src
+npx --package=@typecad/typecad add-component --folder=./src
 ```
 
 When the script runs, you'll be asked the source for the symbol and footprint files. You can mix any of the sources ie. a KiCAD symbol, but a local file. 
@@ -70,9 +70,9 @@ A `[component].ts` file will be generated along with instructions on how to use 
 All the information can be passed by command-line arguments and the script will automatically create a component. `--help` will show all the parameters.
 
 ```bash
-  npx @typecad/add-component --symbol_source=kicad --footprint_source=local --symbol=MCU_Microchip_ATtiny:ATtiny3227-M --footprint=MyLib:MyFootprint
+  npx --package=@typecad/typecad add-component --symbol_source=kicad --footprint_source=local --symbol=MCU_Microchip_ATtiny:ATtiny3227-M --footprint=MyLib:MyFootprint
   
-  npx @typecad/add-component --symbol_source=jlcpcb --footprint_source=kicad --c=C3217148 --footprint=Package_QFN:QFN-32-1EP_5x5mm_P0.5mm_EP3.45x3.45mm
+  npx --package=@typecad/typecad add-component --symbol_source=jlcpcb --footprint_source=kicad --c=C3217148 --footprint=Package_QFN:QFN-32-1EP_5x5mm_P0.5mm_EP3.45x3.45mm
 ```
 
 The above is the minimum to run automatically.
@@ -86,7 +86,7 @@ typeCAD has a command-line tool to generate all the boilerplate code for a packa
 Execute the following command in `./hw` of an already existing **type**CAD project.
 
 ```bash
-npx @typecad/add-package --folder=./src
+npx --package=@typecad/typecad add-package --folder=./src
 ```
 
        Project Structure

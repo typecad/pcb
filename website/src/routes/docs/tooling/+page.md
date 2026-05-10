@@ -51,8 +51,8 @@ A **type**CAD project is just an npm package. All the normal npm-based tools are
 
 <br>
 
-> [!tip]
-> In VSCode, there's a sidebar that allows you to just click the various scripts to run them
+> [!NOTE] 
+> All of these commands are bundled into the npm package and can be easily run with simple clicks using VSCode. They are documented here for completeness.
 
 ### Project Building
 Click the `Build` script in VSCode's `NPM Scripts` sidebar. 
@@ -76,7 +76,7 @@ To add a component to the project:
 <ScrollArea orientation="both">
 
 ```bash
-npx add-component --folder=./src
+npx --package=@typecad/typecad add-component --folder=./src
 ```
 </ScrollArea>
 
@@ -94,9 +94,9 @@ All the information can be passed by command-line arguments and the script will 
 <ScrollArea orientation="horizontal">
 
 ```bash
-  npx add-component --symbol_source=kicad --footprint_source=local --symbol=MCU_Microchip_ATtiny:ATtiny3227-M --footprint=MyLib:MyFootprint
+  npx --package=@typecad/typecad add-component --symbol_source=kicad --footprint_source=local --symbol=MCU_Microchip_ATtiny:ATtiny3227-M --footprint=MyLib:MyFootprint
   
-  npx add-component --symbol_source=jlcpcb --footprint_source=kicad --c=C3217148 --footprint=Package_QFN:QFN-32-1EP_5x5mm_P0.5mm_EP3.45x3.45mm
+  npx --package=@typecad/typecad add-component --symbol_source=jlcpcb --footprint_source=kicad --c=C3217148 --footprint=Package_QFN:QFN-32-1EP_5x5mm_P0.5mm_EP3.45x3.45mm
 ```
 </ScrollArea>
 
@@ -115,7 +115,7 @@ Execute the following command in `./hw` of an already existing **type**CAD proje
 <ScrollArea orientation="both">
 
 ```bash
-npx add-package --folder=./src
+npx --package=@typecad/typecad add-package --folder=./src
 ```
 </ScrollArea>
 

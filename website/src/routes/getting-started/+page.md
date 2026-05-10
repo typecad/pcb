@@ -49,5 +49,5 @@ typeCAD is a modern hardware design platform that brings the power of TypeScript
 
 ## Quick Reference
 **Connecting components**: Use `typecad.net(pin1, pin2)` - pins do NOT have a `.connect()` method  
-**Adding components**: Always run `npx add-component` from the `hw/` directory  
+**Adding components**: Always run `npx --package=@typecad/typecad add-component` from the `hw/` directory  
 **Pin access**: Use `component.pin(1)` for passives, `component.VCC` for ICs

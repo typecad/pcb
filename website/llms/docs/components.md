@@ -21,9 +21,9 @@ The above creates a SOIC-8 component. `footprint` is the KiCAD footprint path an
 
 That method works well for simple components, but there is a better way using the `add-component` tool.
 
-## `npx @typecad/add-component`
+## npx --package=@typecad/typecad add-component
 
-**type**CAD has a command line tool that can be used to create a component. It is in your project's `package.json` file, you can simply click the `Add Component` button in the VSCode GUI under `NPM Scripts`. If you're not using VSCode, you can run `npx @typecad/add-component --folder=./src` from the `./hw` directory of your project.
+**type**CAD has a command line tool that can be used to create a component. It is in your project's `package.json` file, you can simply click the `Add Component` button in the VSCode GUI under `NPM Scripts`. If you're not using VSCode, you can run `npx --package=@typecad/typecad add-component --folder=./src` from the `./hw` directory of your project.
 
 The script will ask where the component is coming from, either the KiCAD library, a local file, or an EasyEDA/JLCPCB component.
 

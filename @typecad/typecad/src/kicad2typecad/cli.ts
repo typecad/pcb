@@ -114,6 +114,7 @@ interface ReferencePropertyInfo {
     width: number;
     height: number;
     thickness: number;
+    text?: string;
 }
 
 interface KicadComponentPlacement {
@@ -242,7 +243,19 @@ function parseFootprintItem(item: unknown[]): KicadComponentPlacement | null {
                 case 'fp_text':
                     if (values.length > 1 && typeof values[0] === 'string' && values[0] === 'user') {
                         const textContent = typeof values[1] === 'string' ? values[1].replace(/["`]/g, '') : '';
-                        if (textContent === '${REFERENCE}') {
+                        // Check if this is on F.Fab layer (fab text)
+                        let isFabLayer = false;
+                        for (let vi = 2; vi < values.length; vi++) {
+                            const sub = values[vi];
+                            if (Array.isArray(sub) && sub.length > 0) {
+                                const subKey = typeof sub[0] === 'string' ? sub[0].replace(/["`]/g, '') : '';
+                                if (subKey === 'layer') {
+                                    const layerVal = sub.length >= 2 ? String(sub[1]).replace(/["`]/g, '') : '';
+                                    if (layerVal === 'F.Fab') isFabLayer = true;
+                                }
+                            }
+                        }
+                        if (isFabLayer) {
                             let fabX: number | undefined;
                             let fabY: number | undefined;
                             let fabRotation: number = 0;
@@ -281,7 +294,7 @@ function parseFootprintItem(item: unknown[]): KicadComponentPlacement | null {
                             }
 
                             if (fabX !== undefined && fabY !== undefined) {
-                                fabTextProperty = { x: fabX, y: fabY, rotation: fabRotation, layer: 'F.Fab', width: fabWidth, height: fabHeight, thickness: fabThickness };
+                                fabTextProperty = { x: fabX, y: fabY, rotation: fabRotation, layer: 'F.Fab', width: fabWidth, height: fabHeight, thickness: fabThickness, text: textContent };
                             }
                         }
                     }
@@ -773,8 +786,12 @@ async function applyChangesToSource(footprints: KicadComponentPlacement[]): Prom
             if (fp.fabTextProperty) {
                 const fabPcb = fp.fabTextProperty;
                 for (let i = creationIdx; i <= statementEndIdx; i++) {
-                    if (lines[i]?.match(/\bfab:\s*\{/)) {
-                        const inner = lines[i].match(/\{\s*x:\s*(-?[\d.]+)\s*,\s*y:\s*(-?[\d.]+)(?:\s*,\s*rotation:\s*(-?[\d.]+))?/);
+                    // Match both fab: { x: ... } and fab: ['text', { x: ... }]
+                    const fabMatch = lines[i]?.match(/\bfab:\s*(?:\[.*?,\s*)?\{/);
+                    if (fabMatch) {
+                        // Find the last { x: ... } in the line (handles tuple format)
+                        const innerMatches = [...lines[i].matchAll(/\{\s*x:\s*(-?[\d.]+)\s*,\s*y:\s*(-?[\d.]+)(?:\s*,\s*rotation:\s*(-?[\d.]+))?/g)];
+                        const inner = innerMatches[innerMatches.length - 1]; // use last match for tuple format
                         if (inner) {
                             const oldFabX = parseFloat(inner[1]);
                             const oldFabY = parseFloat(inner[2]);
@@ -937,10 +954,31 @@ async function applyChangesToSource(footprints: KicadComponentPlacement[]): Prom
                 if (change.fabPositionChange) {
                     const fc = change.fabPositionChange;
                     for (let i = 0; i < lines.length; i++) {
-                        if (lines[i].match(/\bfab:\s*\{/)) {
-                            lines[i] = lines[i]
-                                .replace(/(fab:\s*\{[^}]*?)x:\s*-?[\d.]+/, `$1x: ${fc.newX}`)
-                                .replace(/(fab:\s*\{[^}]*?)y:\s*-?[\d.]+/, `$1y: ${fc.newY}`);
+                        // Match both fab: { x: ... } and fab: ['text', { x: ... }]
+                        if (lines[i].match(/\bfab:\s*(?:\[.*?,\s*)?\{/)) {
+                            // For tuple format, replace the last { ... } occurrence
+                            const tupleMatch = lines[i].match(/\bfab:\s*\[/);
+                            if (tupleMatch) {
+                                // fab: ['text', { x: ..., y: ..., rotation: ... }]
+                                // Replace the last { x:, y:, rotation: } block
+                                lines[i] = lines[i]
+                                    .replace(/(,\s*\{\s*x:\s*)(-?[\d.]+)/, `$1${fc.newX}`)
+                                    .replace(/(,\s*\{[^}]*?y:\s*)(-?[\d.]+)/, `$1${fc.newY}`);
+                                if (fc.newRotation !== 0) {
+                                    if (lines[i].match(/(,\s*\{[^}]*?)rotation:\s*-?[\d.]+/)) {
+                                        lines[i] = lines[i].replace(/(,\s*\{[^}]*?)rotation:\s*-?[\d.]+/, `$1rotation: ${fc.newRotation}`);
+                                    }
+                                }
+                            } else {
+                                lines[i] = lines[i]
+                                    .replace(/(fab:\s*\{[^}]*?)x:\s*-?[\d.]+/, `$1x: ${fc.newX}`)
+                                    .replace(/(fab:\s*\{[^}]*?)y:\s*-?[\d.]+/, `$1y: ${fc.newY}`);
+                                if (fc.newRotation !== 0) {
+                                    if (lines[i].match(/(fab:\s*\{[^}]*?)rotation:\s*-?[\d.]+/)) {
+                                        lines[i] = lines[i].replace(/(fab:\s*\{[^}]*?)rotation:\s*-?[\d.]+/, `$1rotation: ${fc.newRotation}`);
+                                    }
+                                }
+                            }
                             if (fc.newRotation !== 0) {
                                 if (lines[i].match(/(fab:\s*\{[^}]*?)rotation:\s*-?[\d.]+/)) {
                                     lines[i] = lines[i].replace(/(fab:\s*\{[^}]*?)rotation:\s*-?[\d.]+/, `$1rotation: ${fc.newRotation}`);
@@ -1599,13 +1637,17 @@ export async function kicadDataToTypeCAD(filePath: string, options?: { apply?: b
                 const fabPosObj = fab
                     ? `{ ${chProp('x')}${chPunc(':')} ${chNum(fab.x)}${chPunc(',')} ${chProp('y')}${chPunc(':')} ${chNum(fab.y)}${chPunc(',')} ${chProp('rotation')}${chPunc(':')} ${chNum(fab.rotation)}${chPunc(',')} ${chProp('thickness')}${chPunc(':')} ${chNum(fab.thickness)}${chPunc(',')} ${chProp('width')}${chPunc(':')} ${chNum(fab.width)}${chPunc(',')} ${chProp('height')}${chPunc(':')} ${chNum(fab.height)} }`
                     : refPosObj;
+                const fabText = fab?.text && fab.text !== '${REFERENCE}' ? fab.text : undefined;
+                const fabArg = fabText
+                    ? `[${chStr("'" + fabText + "'")}, ${fabPosObj}]`
+                    : fabPosObj;
 
                 console.log(`${chVar(prefix + variableName)} ${chPunc('=')} ${chKey('new')} ${chKey('Component')}({`);
                 if (fp.footprintName) {
                     console.log(`    ${chProp('footprint')}${chPunc(':')} ${chStr("'" + fp.footprintName + "'")}${chPunc(',')}`);
                 }
                 console.log(`    ${chProp('reference')}${chPunc(':')} [${chStr("'" + fp.reference + "'")}, ${refPosObj}]${chPunc(',')}`);
-                console.log(`    ${chProp('fab')}${chPunc(':')} ${fabPosObj},`);
+                console.log(`    ${chProp('fab')}${chPunc(':')} ${fabArg},`);
                 console.log(`${chPunc(')};')}`);
             });
             console.log(chalk.bold("\n-------------------------------------------------------------"));

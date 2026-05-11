@@ -44,7 +44,7 @@ export class Atmega328_mm {
 
         // create the components
         this.U1 = new ATmega328_MM(reference);
-        this.U1.pcb = { x: 140, y: 106, rotation: 0 };
+        this.U1.pcb = { x: 118.9, y: 94.6, rotation: 0 };
         this.R_pullup = new this.#passives.Resistor({ value: '10k' });
         this.R_pullup.pcb = { x: 127.825, y: 101, rotation: 0 };
         this.C_reset = new this.#passives.Capacitor({ value: '100nF' });
@@ -52,9 +52,12 @@ export class Atmega328_mm {
         this.Crystal = new Component({
             symbol: 'Device:Crystal',
             footprint: 'Crystal:Crystal_SMD_5032-2Pin_5.0x3.2mm',
-            reference: 'Y1'
+            reference: ['Y11', { x: -5.15, y: 0, rotation: 180, thickness: 0.15, width: 1, height: 1 }],
+            fab: { x: -0.15, y: 3, rotation: 180, thickness: 0.15, width: 1, height: 1 },
+
+
         });
-        this.Crystal.pcb = { x: 129.35, y: 95, rotation: 0 };
+        this.Crystal.pcb = { x: 143.15, y: 112, rotation: 0 };
         this.C_load1 = new this.#passives.Capacitor({ value: '22pF' });
         this.C_load1.pcb = { x: 135.775, y: 94, rotation: 0 };
         this.C_load2 = new this.#passives.Capacitor({ value: '22pF' });

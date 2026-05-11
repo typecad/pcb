@@ -165,6 +165,46 @@ export function processFootprintItem(subItem: any[], component: Component, resol
                     subItem[2] = `\`${component.reference}\``;
                 } else if (textType === 'value' && component.value !== undefined) {
                     subItem[2] = `\`${component.value}\``;
+                } else if (textType === 'user' && component.fab) {
+                    const textContent = subItem.length > 2 ? String(subItem[2]).replace(/["`]/g, '') : '';
+                    if (textContent === '${REFERENCE}') {
+                        const fab = component.fab;
+                        if (fab.text) subItem[2] = `\`${fab.text}\``;
+                        for (let k = 2; k < subItem.length; k++) {
+                            if (Array.isArray(subItem[k]) && subItem[k][0] === 'at') {
+                                subItem[k][1] = fab.x;
+                                subItem[k][2] = fab.y;
+                                if (fab.rotation !== undefined) {
+                                    if (subItem[k].length > 3) {
+                                        subItem[k][3] = fab.rotation;
+                                    } else {
+                                        subItem[k].push(fab.rotation);
+                                    }
+                                }
+                                break;
+                            }
+                        }
+                        // Update effects (font size, thickness)
+                        if (fab.width !== undefined || fab.height !== undefined || fab.thickness !== undefined) {
+                            for (let k = 2; k < subItem.length; k++) {
+                                if (Array.isArray(subItem[k]) && subItem[k][0] === 'effects') {
+                                    for (const eff of subItem[k].slice(1)) {
+                                        if (Array.isArray(eff) && eff[0] === 'font') {
+                                            for (let f = 1; f < eff.length; f++) {
+                                                if (Array.isArray(eff[f]) && eff[f][0] === 'size') {
+                                                    if (fab.height !== undefined) eff[f][1] = fab.height;
+                                                    if (fab.width !== undefined) eff[f][2] = fab.width;
+                                                } else if (Array.isArray(eff[f]) && eff[f][0] === 'thickness') {
+                                                    if (fab.thickness !== undefined) eff[f][1] = fab.thickness;
+                                                }
+                                            }
+                                        }
+                                    }
+                                    break;
+                                }
+                            }
+                        }
+                    }
                 }
 
                 // Apply back-side transformations for text elements
@@ -613,7 +653,13 @@ export function createFootprintNode(component: Component, resolveNet: (ref: stri
                 variable: component.sourceInfo.variable,
                 isThis: component.sourceInfo.isThis
             };
-            l.splice(2, 0, ['property', '`Code`', `\`${JSON.stringify(codeData).replaceAll('"', "'")}\``]);
+            l.splice(2, 0, ['property', '`Code`', `\`${JSON.stringify(codeData).replaceAll('"', "'")}\``,
+                ['at', 0, 0, 0],
+                ['layer', '"F.Fab"'],
+                ['hide', 'yes'],
+                ['uuid', `\`${generateUuid()}\``],
+                ['effects', ['font', ['size', 1, 1], ['thickness', 0.15]]]
+            ]);
         }
 
         // Set the main layer of the footprint
@@ -711,7 +757,7 @@ export function createFootprintNode(component: Component, resolveNet: (ref: stri
                 const fontHeight = textItem.height ?? fontSize;
                 const thickness = textItem.thickness ?? 0.15;
                 const rotation = textItem.rotation ?? 0;
-                const layer = textItem.layer ?? 'F.Fab';
+                const layer = textItem.layer ?? (textItem.property === 'Reference' ? 'F.SilkS' : 'F.Fab');
                 // If show is true, hide is "no"; if show is false or undefined, hide is "no" (default visible)
                 const hideValue = textItem.show === false ? 'yes' : 'no';
 

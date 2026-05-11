@@ -14,4 +14,12 @@ const power = {
 
 const u1 = new Atmega328_mm({ pcb: typecad, x: 0, y: 0, power: power });
 
+typecad.text({
+  text: 'adfsasfadsf',
+  x: 121.5, y: 86, rotation: 0,
+  layer: 'F.SilkS',
+  font: 'Super Skinny Pixel Bricks', width: 4, height: 4,
+  justify: { horizontal: 'left', vertical: 'top' },
+});
+
 typecad.create(pwr_conn, ...u1.components);

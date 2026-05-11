@@ -3,6 +3,18 @@ import { TrackBuilder } from './pcb_track_builder.js';
 import { Schematic, setPendingBoardFilePath } from "../schematic.js";
 import fs from "node:fs";
 import fsexp from "fast-sexpr";
+
+// The fsexp parser splits backtick-quoted strings at spaces.
+// This recursively restores \x00 placeholders back to spaces in all string nodes.
+function restoreSpacesInNodes(node: unknown[]): void {
+    for (let i = 0; i < node.length; i++) {
+        if (typeof node[i] === 'string') {
+            node[i] = (node[i] as string).replace(/\x00/g, ' ');
+        } else if (Array.isArray(node[i])) {
+            restoreSpacesInNodes(node[i] as unknown[]);
+        }
+    }
+}
 import S from "../utils/sexpr_instance.js";
 import logger from '../logging.js';
 import { BoardCreationError } from '../errors.js';
@@ -708,14 +720,14 @@ export function createBoard(
 
         effectsContent += `(font ${fontContent.trim()})`;
 
-        // Justify section - default to "left bottom"
+        // Justify section - only include explicitly specified values
         let justifyContent = '';
-        const horizontal = textElement.justify?.horizontal ?? 'left';
-        const vertical = textElement.justify?.vertical ?? 'bottom';
+        const horizontal = textElement.justify?.horizontal;
+        const vertical = textElement.justify?.vertical;
         const mirror = textElement.justify?.mirror ?? false;
 
-        justifyContent += horizontal + ' ';
-        justifyContent += vertical + ' ';
+        if (horizontal) justifyContent += horizontal + ' ';
+        if (vertical) justifyContent += vertical + ' ';
         if (mirror) {
             justifyContent += 'mirror ';
         }
@@ -731,7 +743,15 @@ export function createBoard(
         const grTextSexpr = `(gr_text "${textElement.text}" (at ${textElement.x} ${textElement.y} ${textElement.rotation}) (layer "${textElement.layer}") (uuid "${textElement.uuid}") (effects ${effectsContent}))`;
 
         try {
-            const grTextNode = fsexp(grTextSexpr.replaceAll('"', '`')).pop();
+            // The fsexp parser splits backtick-quoted strings at spaces.
+            // Protect multi-word strings by replacing spaces inside quotes with a placeholder.
+            const protectedSexpr = grTextSexpr.replaceAll('"', '`').replace(/`([^`]+)`/g, (match: string) => match.replace(/ /g, '\x00'));
+            let grTextNode = fsexp(protectedSexpr).pop();
+
+            // Restore spaces in string nodes
+            if (grTextNode) {
+                restoreSpacesInNodes(grTextNode as unknown[]);
+            }
             if (grTextNode) {
                 final_board_contents.push(grTextNode);
             } else {

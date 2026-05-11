@@ -52,9 +52,12 @@ export class Atmega328_mm {
         this.Crystal = new Component({
             symbol: 'Device:Crystal',
             footprint: 'Crystal:Crystal_SMD_5032-2Pin_5.0x3.2mm',
-            reference: 'Y1'
+            reference: ['Y11', { x: -5.15, y: 0, rotation: 180, thickness: 0.15, width: 1, height: 1 }],
+            fab: ['bye :(', { x: -0.15, y: 3, rotation: 180, thickness: 0.15, width: 1, height: 1 }],
+
+
         });
-        this.Crystal.pcb = { x: 129.35, y: 95, rotation: 0 };
+        this.Crystal.pcb = { x: 131, y: 111, rotation: 0 };
         this.C_load1 = new this.#passives.Capacitor({ value: '22pF' });
         this.C_load1.pcb = { x: 135.775, y: 94, rotation: 0 };
         this.C_load2 = new this.#passives.Capacitor({ value: '22pF' });

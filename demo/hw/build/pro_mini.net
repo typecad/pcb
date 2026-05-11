@@ -35,7 +35,7 @@
         )
     )
         (comp
-      (ref "Y1")
+      (ref "Y11")
         (value "")
         (footprint "Crystal:Crystal_SMD_5032-2Pin_5.0x3.2mm")
         (fields
@@ -82,12 +82,12 @@
 )
 (net (code "6") (name "net6")
         (node (ref "U1") (pin "5") (pintype "bidirectional"))
-        (node (ref "Y1") (pin "1") (pintype "passive"))
+        (node (ref "Y11") (pin "1") (pintype "passive"))
         (node (ref "C2") (pin "1") (pintype "passive"))
 )
 (net (code "7") (name "net7")
         (node (ref "U1") (pin "6") (pintype "bidirectional"))
-        (node (ref "Y1") (pin "2") (pintype "passive"))
+        (node (ref "Y11") (pin "2") (pintype "passive"))
         (node (ref "C3") (pin "1") (pintype "passive"))
 )
 

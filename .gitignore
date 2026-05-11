@@ -1,12 +1,12 @@
 # Dependencies
-node_modules/
-**/node_modules/
+*/node_modules/
+git_disabled/
 
-# OS files
-.DS_Store
-Thumbs.db
+# Build output directories
+*/dist/
+*/dist-obfuscated/
+/.claude/
 
-# Environment variables
-.env
-.env.*
-!.env.example
+# Notes
+NOTES
+node_modules

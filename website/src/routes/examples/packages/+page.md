@@ -51,11 +51,11 @@ According to the package documentation, there are a couple things that can be co
 Charging current is determined by a simple formula that results in a resistor value connected to the IC, the package does the calculations and returns a resistor value to provide the specified current. 
 
 ### `create`
-The package has a property, `::components` which includes all `create`-able elements. This can be passed to your `PCB::create()` method using the [spread](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/Spread_syntax) operator.
+The package has a property, `::components` which includes all `create`-able elements. This can be passed directly to your `PCB::create()` method.
 
 ```ts
 ...
-typecad.create(...charger.components);
+typecad.create(charger.components);
 ...
 ```
 

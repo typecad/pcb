@@ -1,0 +1,94 @@
+(export (version "E")
+  (design
+    (tool "typeCAD 0.2.30"))
+  (components
+    (comp
+      (ref "J1")
+        (value "")
+        (footprint "Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical")
+        (fields
+          (field (name "Footprint") "Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical")
+        )
+    )
+        (comp
+      (ref "U1")
+        (value "")
+        (footprint "Package_DFN_QFN:QFN-28-1EP_4x4mm_P0.45mm_EP2.4x2.4mm")
+        (fields
+          (field (name "Footprint") "Package_DFN_QFN:QFN-28-1EP_4x4mm_P0.45mm_EP2.4x2.4mm")
+        )
+    )
+        (comp
+      (ref "R1")
+        (value "10k")
+        (footprint "Resistor_SMD:R_0603_1608Metric")
+        (fields
+          (field (name "Footprint") "Resistor_SMD:R_0603_1608Metric")
+        )
+    )
+        (comp
+      (ref "C1")
+        (value "100nF")
+        (footprint "Capacitor_SMD:C_0603_1608Metric")
+        (fields
+          (field (name "Footprint") "Capacitor_SMD:C_0603_1608Metric")
+        )
+    )
+        (comp
+      (ref "Y1")
+        (value "")
+        (footprint "Crystal:Crystal_SMD_5032-2Pin_5.0x3.2mm")
+        (fields
+          (field (name "Footprint") "Crystal:Crystal_SMD_5032-2Pin_5.0x3.2mm")
+        )
+    )
+        (comp
+      (ref "C2")
+        (value "22pF")
+        (footprint "Capacitor_SMD:C_0603_1608Metric")
+        (fields
+          (field (name "Footprint") "Capacitor_SMD:C_0603_1608Metric")
+        )
+    )
+        (comp
+      (ref "C3")
+        (value "22pF")
+        (footprint "Capacitor_SMD:C_0603_1608Metric")
+        (fields
+          (field (name "Footprint") "Capacitor_SMD:C_0603_1608Metric")
+        )
+    )
+    )
+  (nets
+    (net (code "1") (name "net1")
+        (node (ref "U1") (pin "3") (pintype "power_in"))
+        (node (ref "U1") (pin "16") (pintype "power_in"))
+        (node (ref "J1") (pin "1") (pintype "passive"))
+        (node (ref "R1") (pin "2") (pintype "passive"))
+)
+(net (code "2") (name "net2")
+        (node (ref "U1") (pin "4") (pintype "power_in"))
+        (node (ref "U1") (pin "18") (pintype "passive"))
+        (node (ref "U1") (pin "29") (pintype "passive"))
+        (node (ref "J1") (pin "2") (pintype "passive"))
+        (node (ref "C1") (pin "2") (pintype "passive"))
+        (node (ref "C2") (pin "2") (pintype "passive"))
+        (node (ref "C3") (pin "2") (pintype "passive"))
+)
+(net (code "3") (name "net3")
+        (node (ref "U1") (pin "25") (pintype "bidirectional"))
+        (node (ref "R1") (pin "1") (pintype "passive"))
+        (node (ref "C1") (pin "1") (pintype "passive"))
+)
+(net (code "6") (name "net6")
+        (node (ref "U1") (pin "5") (pintype "bidirectional"))
+        (node (ref "Y1") (pin "1") (pintype "passive"))
+        (node (ref "C2") (pin "1") (pintype "passive"))
+)
+(net (code "7") (name "net7")
+        (node (ref "U1") (pin "6") (pintype "bidirectional"))
+        (node (ref "Y1") (pin "2") (pintype "passive"))
+        (node (ref "C3") (pin "1") (pintype "passive"))
+)
+
+))

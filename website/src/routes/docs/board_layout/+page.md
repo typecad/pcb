@@ -12,7 +12,7 @@
 
 1. If you're using a **type**CAD package that includes a board layout
 2. `import` and configure as usual
-3. At the end of the main file, include the package's components in `PCB::create(...package.components)`.
+3. At the end of the main file, include the package's components in `PCB::create(package.components)`.
 4. Call `PCB::create();` to generate the KiCAD board file.
 
 <br />

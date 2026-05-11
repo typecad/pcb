@@ -642,7 +642,7 @@ export class PCB {
         const componentsToPlaceAndProcess: Component[] = [];
 
         items.forEach(item => {
-            if (item instanceof Component) {
+            if (item && typeof item === 'object' && 'reference' in item) {
                 componentsToPlaceAndProcess.push(item);
             } else if (item instanceof TrackBuilder) {
                 const builderElements = item.getElements();
@@ -745,8 +745,9 @@ export class PCB {
         return createFootprintNode(component, this.#resolveNet.bind(this), boardNetNameToCodeMap);
     }
 
-    async create(...items: Array<Component | TrackBuilder>) {
-        return createBoard(this, ...items);
+    async create(...items: Array<Component | TrackBuilder | Array<Component | TrackBuilder>>) {
+        const finalItems = (items.length === 1 && Array.isArray(items[0])) ? items[0] : items;
+        return createBoard(this, ...finalItems as Array<Component | TrackBuilder>);
     }
 
     getCallSite(): { file: string; line: number; column: number } | undefined {

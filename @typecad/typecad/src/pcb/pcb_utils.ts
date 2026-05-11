@@ -18,6 +18,7 @@ export function formatSourceInfoForProperty(info?: ISourceInfo): string | undefi
     };
     if (info.column !== undefined) payload.column = info.column;
     if (info.variable !== undefined) payload.variable = info.variable;
+    if (info.isThis !== undefined) payload.isThis = info.isThis;
     if (info.params !== undefined) payload.params = info.params;
     try {
         let json = JSON.stringify(payload);

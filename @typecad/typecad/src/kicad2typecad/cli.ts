@@ -5,6 +5,7 @@ import { findNodes } from '../utils/sexpr_walk.js';
 import logger from '../../logging.js';
 import fs from 'node:fs';
 import chalk from 'chalk';
+import { checkbox } from '@inquirer/prompts';
 
 interface KicadSegment {
     start: { x: number; y: number };
@@ -62,7 +63,7 @@ function parseSexprItem(item: unknown[]): KicadSegment | null {
                     break;
                 case 'layer':
                     if (value.length === 1 && typeof value[0] === 'string') {
-                        layer = value[0].replace(/"/g, '');
+                        layer = value[0].replace(/["`]/g, '');
                     }
                     break;
                 case 'net':
@@ -88,7 +89,7 @@ function parseNetItem(item: unknown[]): KicadNet | null {
     }
     if (item.length >= 3) {
         const number = parseInt(item[1] as string, 10);
-        const name = typeof item[2] === 'string' ? item[2].replace(/"/g, '') : '';
+        const name = typeof item[2] === 'string' ? item[2].replace(/["`]/g, '') : '';
         if (!isNaN(number)) {
             return { number, name };
         }
@@ -111,6 +112,9 @@ interface KicadComponentPlacement {
     y: number;
     rotation: number;
     variableName?: string;
+    filePath?: string;
+    isThis?: boolean;
+    sourceLine?: number;
 }
 
 function parseFootprintItem(item: unknown[]): KicadComponentPlacement | null {
@@ -126,7 +130,7 @@ function parseFootprintItem(item: unknown[]): KicadComponentPlacement | null {
     for (let i = 1; i < item.length; i++) {
         const element = item[i];
         if (Array.isArray(element) && element.length > 0) {
-            const key = element[0].toString().replace(/"/g, '');
+            const key = element[0].toString().replace(/["`]/g, '');
             const values = element.slice(1);
 
             switch (key) {
@@ -144,17 +148,18 @@ function parseFootprintItem(item: unknown[]): KicadComponentPlacement | null {
                     break;
                 case 'property':
                     if (values.length > 1 && typeof values[0] === 'string') {
-                        const propName = values[0].replace(/"/g, '');
+                        const propName = values[0].replace(/["`]/g, '');
                         if (propName === 'Reference') {
                             if (typeof values[1] === 'string') {
-                                reference = values[1].replace(/"/g, '');
+                                reference = values[1].replace(/["`]/g, '');
                             }
                         } else if (propName === 'Code') {
                             if (typeof values[1] === 'string') {
                                 const codeStr = values[1];
                                 const match = codeStr.match(/'variable':'([^']+)'/);
                                 if (match && match[1]) {
-                                    return null; // variableName handled below
+                                    // variableName handled below in second pass
+                                    break;
                                 }
                             }
                         }
@@ -164,19 +169,36 @@ function parseFootprintItem(item: unknown[]): KicadComponentPlacement | null {
         }
     }
 
-    // Second pass to get variableName
+    // Second pass to get variableName and other source info
     let variableName: string | undefined;
+    let filePath: string | undefined;
+    let isThis: boolean | undefined;
+    let sourceLine: number | undefined;
     for (let i = 1; i < item.length; i++) {
         const element = item[i];
         if (Array.isArray(element) && element.length > 0) {
             const key = element[0].toString().replace(/"/g, '');
             const values = element.slice(1);
             if (key === 'property' && values.length > 1 && typeof values[0] === 'string') {
-                const propName = values[0].replace(/"/g, '');
+                const propName = values[0].replace(/["`]/g, '');
                 if (propName === 'Code' && typeof values[1] === 'string') {
-                    const match = (values[1] as string).match(/'variable':'([^']+)'/);
-                    if (match && match[1]) {
-                        variableName = match[1];
+                    const codeStr = values[1] as string;
+                    const varMatch = codeStr.match(/'variable':'([^']+)'/);
+                    const fileMatch = codeStr.match(/'file':'([^']+)'/);
+                    const isThisMatch = codeStr.match(/'isThis':(true|false)/);
+                    const lineMatch = codeStr.match(/'line':(\d+)/);
+
+                    if (varMatch && varMatch[1]) {
+                        variableName = varMatch[1];
+                    }
+                    if (fileMatch && fileMatch[1]) {
+                        filePath = fileMatch[1];
+                    }
+                    if (isThisMatch && isThisMatch[1]) {
+                        isThis = isThisMatch[1] === 'true';
+                    }
+                    if (lineMatch && lineMatch[1]) {
+                        sourceLine = parseInt(lineMatch[1], 10);
                     }
                 }
             }
@@ -184,7 +206,7 @@ function parseFootprintItem(item: unknown[]): KicadComponentPlacement | null {
     }
 
     if (reference && x !== undefined && y !== undefined) {
-        return { reference, x, y, rotation, variableName };
+        return { reference, x, y, rotation, variableName, filePath, isThis, sourceLine };
     }
     return null;
 }
@@ -206,7 +228,7 @@ function parseViaItem(item: unknown[]): KicadVia | null {
     for (let i = 1; i < item.length; i++) {
         const element = item[i];
         if (Array.isArray(element) && element.length > 0) {
-            const key = element[0].toString().replace(/"/g, '');
+            const key = element[0].toString().replace(/["`]/g, '');
             const values = element.slice(1);
             switch (key) {
                 case 'at':
@@ -253,7 +275,7 @@ function parseOutlineItem(item: unknown[]): KicadBoardOutline | null {
         return null;
     }
 
-    const elementType = item[0].toString().replace(/"/g, '');
+    const elementType = item[0].toString().replace(/["`]/g, '');
     if (!['gr_rect', 'gr_line', 'gr_arc', 'gr_circle'].includes(elementType)) {
         return null;
     }
@@ -267,7 +289,7 @@ function parseOutlineItem(item: unknown[]): KicadBoardOutline | null {
     for (let i = 1; i < item.length; i++) {
         const element = item[i];
         if (Array.isArray(element) && element.length > 0) {
-            const key = element[0].toString().replace(/"/g, '');
+            const key = element[0].toString().replace(/["`]/g, '');
             const values = element.slice(1);
 
             switch (key) {
@@ -301,7 +323,7 @@ function parseOutlineItem(item: unknown[]): KicadBoardOutline | null {
                     break;
                 case 'layer':
                     if (values.length === 1 && typeof values[0] === 'string') {
-                        layer = values[0].replace(/"/g, '');
+                        layer = values[0].replace(/["`]/g, '');
                     }
                     break;
             }
@@ -345,7 +367,238 @@ function parseOutlineItem(item: unknown[]): KicadBoardOutline | null {
     return null;
 }
 
-export async function kicadDataToTypeCAD(filePath: string) {
+interface PendingChange {
+    filePath: string;
+    variableName: string;
+    prefix: string;
+    sourceLine: number;
+    oldX: number | null;
+    oldY: number | null;
+    oldRotation: number | null;
+    newX: number;
+    newY: number;
+    newRotation: number;
+    existingPcbLine: number | null; // 1-indexed line of existing .pcb assignment, or null
+    label: string;
+}
+
+async function applyChangesToSource(footprints: KicadComponentPlacement[]): Promise<void> {
+    // Only consider footprints that have source metadata
+    const sourced = footprints.filter(fp => fp.filePath && fp.sourceLine && fp.variableName);
+    if (sourced.length === 0) {
+        console.log(chalk.yellow('No footprints with source metadata found. Cannot apply changes.'));
+        return;
+    }
+
+    // Group by source file to batch reads
+    const byFile: Record<string, KicadComponentPlacement[]> = {};
+    for (const fp of sourced) {
+        const f = fp.filePath!;
+        if (!byFile[f]) byFile[f] = [];
+        byFile[f].push(fp);
+    }
+
+    const changes: PendingChange[] = [];
+
+    for (const [filePath, fps] of Object.entries(byFile)) {
+        let content: string;
+        try {
+            content = fs.readFileSync(filePath, 'utf-8');
+        } catch {
+            console.log(chalk.yellow(`  Skipping ${filePath} (file not found)`));
+            continue;
+        }
+        const lines = content.split('\n');
+
+        for (const fp of fps) {
+            const variable = fp.variableName!;
+
+            // Find the creation line by searching for the variable assignment pattern.
+            // This is robust to line number shifts from prior edits.
+            // Matches: this.X = new ... or X = new ...
+            const creationRegex = new RegExp(`^\\s*(let|const|var|)\\s*(this\\.)?\\s*${variable}\\s*=\\s*new\\s+`);
+            let creationIdx = -1; // 0-indexed
+            let prefix = fp.isThis ? 'this.' : '';
+
+            for (let i = 0; i < lines.length; i++) {
+                const m = lines[i].match(creationRegex);
+                if (m) {
+                    creationIdx = i;
+                    prefix = m[2] ? 'this.' : '';
+                    break;
+                }
+            }
+            if (creationIdx === -1) continue; // variable not found in file
+
+            // Find the end of the creation statement (line ending with ;)
+            let statementEndIdx = creationIdx;
+            for (let i = creationIdx; i < Math.min(lines.length, creationIdx + 20); i++) {
+                if (lines[i].match(/;\s*$/)) {
+                    statementEndIdx = i;
+                    break;
+                }
+            }
+
+            // Search for existing .pcb = { ... } assignment after the statement end
+            let existingPcbLine: number | null = null;
+            let oldX: number | null = null;
+            let oldY: number | null = null;
+            let oldRotation: number | null = null;
+
+            const escapedPrefix = prefix.replace('.', '\\.');
+            const pcbRegex = new RegExp(
+                `^\\s*${escapedPrefix}\\s*${variable}\\.pcb\\s*=\\s*\\{([^}]+)\\}`
+            );
+
+            for (let i = statementEndIdx + 1; i < Math.min(lines.length, statementEndIdx + 5); i++) {
+                const pcbMatch = lines[i]?.match(pcbRegex);
+                if (pcbMatch) {
+                    existingPcbLine = i + 1; // 1-indexed
+                    const inner = pcbMatch[1];
+                    const xm = inner.match(/x:\s*(-?[\d.]+)/);
+                    const ym = inner.match(/y:\s*(-?[\d.]+)/);
+                    const rm = inner.match(/rotation:\s*(-?[\d.]+)/);
+                    oldX = xm ? parseFloat(xm[1]) : null;
+                    oldY = ym ? parseFloat(ym[1]) : null;
+                    oldRotation = rm ? parseFloat(rm[1]) : null;
+                    break;
+                }
+            }
+
+            // Check if coordinates actually changed
+            // Skip if source has no .pcb and KiCad coords are default (0, 0, 0)
+            const isDefaultPosition = fp.x === 0 && fp.y === 0 && fp.rotation === 0;
+            const coordsChanged = existingPcbLine !== null
+                ? (oldX !== fp.x || oldY !== fp.y || oldRotation !== fp.rotation)
+                : !isDefaultPosition;
+
+            if (!coordsChanged) continue;
+
+            const shortFile = filePath.replace(/\\/g, '/').split('/').slice(-2).join('/');
+            const oldStr = existingPcbLine !== null
+                ? `(${oldX}, ${oldY})`
+                : '(not set)';
+            changes.push({
+                filePath,
+                variableName: variable,
+                prefix,
+                sourceLine: statementEndIdx + 1, // 1-indexed, points to statement end
+                oldX, oldY, oldRotation,
+                newX: fp.x,
+                newY: fp.y,
+                newRotation: fp.rotation,
+                existingPcbLine,
+                label: `${prefix}${variable}  ${shortFile}:${creationIdx + 1}  ${oldStr} → (${fp.x}, ${fp.y})`
+            });
+        }
+    }
+
+    if (changes.length === 0) {
+        console.log(chalk.green('\nAll component positions are up to date. No changes needed.'));
+        return;
+    }
+
+    // Show summary
+    console.log(chalk.bold(`\n${changes.length} component(s) have new positions:\n`));
+    const byFileChange: Record<string, PendingChange[]> = {};
+    for (const c of changes) {
+        if (!byFileChange[c.filePath]) byFileChange[c.filePath] = [];
+        byFileChange[c.filePath].push(c);
+    }
+    for (const [file, fileChanges] of Object.entries(byFileChange)) {
+        const shortFile = file.replace(/\\/g, '/').split('/').slice(-2).join('/');
+        console.log(chalk.yellow(`  ${shortFile}:`));
+        for (const c of fileChanges) {
+            const oldStr = c.existingPcbLine !== null ? `(${c.oldX}, ${c.oldY})` : '(not set)';
+            console.log(`    ${chalk.blueBright(c.prefix + c.variableName.padEnd(14))} ${oldStr} → (${c.newX}, ${c.newY})`);
+        }
+    }
+
+    // Interactive selection
+    const selected = await checkbox({
+        message: 'Select changes to apply:',
+        choices: changes.map(c => ({
+            name: c.label,
+            value: c
+        })),
+    });
+
+    if (selected.length === 0) {
+        console.log(chalk.gray('\nNo changes selected.'));
+        return;
+    }
+
+    // Apply selected changes, grouped by file.
+    // Use string-based replacement to avoid line-shift issues from splice.
+    const selectedByFile: Record<string, PendingChange[]> = {};
+    for (const c of selected) {
+        if (!selectedByFile[c.filePath]) selectedByFile[c.filePath] = [];
+        selectedByFile[c.filePath].push(c);
+    }
+
+    let filesModified = 0;
+    for (const [filePath, fileChanges] of Object.entries(selectedByFile)) {
+        let content = fs.readFileSync(filePath, 'utf-8');
+
+        // Sort by sourceLine descending so later changes are applied first.
+        fileChanges.sort((a, b) => b.sourceLine - a.sourceLine);
+
+        for (const change of fileChanges) {
+            const lines = content.split('\n');
+            const escapedPrefix = change.prefix.replace('.', '\\.');
+            const varName = change.variableName;
+
+            if (change.existingPcbLine !== null) {
+                // Re-find the .pcb line by regex (robust to line shifts)
+                const pcbRegex = new RegExp(
+                    `^\\s*${escapedPrefix}\\s*${varName}\\.pcb\\s*=\\s*\\{([^}]+)\\}`
+                );
+                for (let i = 0; i < lines.length; i++) {
+                    if (lines[i].match(pcbRegex)) {
+                        lines[i] = lines[i]
+                            .replace(/x:\s*-?[\d.]+/, `x: ${change.newX}`)
+                            .replace(/y:\s*-?[\d.]+/, `y: ${change.newY}`)
+                            .replace(/rotation:\s*-?[\d.]+/, `rotation: ${change.newRotation}`);
+                        break;
+                    }
+                }
+                content = lines.join('\n');
+            } else {
+                // Find the creation line and statement end by searching the file
+                const creationRegex = new RegExp(`^\\s*(let|const|var|)\\s*${escapedPrefix}\\s*${varName}\\s*=\\s*new\\s+`);
+                let insertIdx = -1;
+                let indent = '';
+                for (let i = 0; i < lines.length; i++) {
+                    if (lines[i].match(creationRegex)) {
+                        indent = lines[i].match(/^(\s*)/)?.[1] || '';
+                        // Find end of this statement
+                        for (let j = i; j < Math.min(lines.length, i + 20); j++) {
+                            if (lines[j].match(/;\s*$/)) {
+                                insertIdx = j;
+                                break;
+                            }
+                        }
+                        break;
+                    }
+                }
+                if (insertIdx === -1) continue;
+
+                const newLine = `${indent}${change.prefix}${varName}.pcb = { x: ${change.newX}, y: ${change.newY}, rotation: ${change.newRotation} };`;
+                lines.splice(insertIdx + 1, 0, newLine);
+                content = lines.join('\n');
+            }
+        }
+
+        const original = fs.readFileSync(filePath, 'utf-8');
+        fs.writeFileSync(filePath + '.backup', original, 'utf-8');
+        fs.writeFileSync(filePath, content, 'utf-8');
+        filesModified++;
+    }
+
+    console.log(chalk.green(`\n✓ Applied ${selected.length} change(s) to ${filesModified} file(s). Rebuild with: npm run build`));
+}
+
+export async function kicadDataToTypeCAD(filePath: string, options?: { apply?: boolean }) {
     let sExpressionText: string;
     const sourceDescription: string = `File: ${filePath}`;
 
@@ -374,6 +627,8 @@ export async function kicadDataToTypeCAD(filePath: string) {
             logger.error(`Parsed data from ${sourceDescription} is empty or invalid.`);
             return;
         }
+
+
 
         const pcb = new PCB("KicadImportFromFile");
 
@@ -472,29 +727,49 @@ export async function kicadDataToTypeCAD(filePath: string) {
             console.log(`No segments found in ${sourceDescription} content.`);
         }
 
-        const footprints = findNodes(rootElement, 'footprint')
-            .map(item => parseFootprintItem(item as unknown[]))
-            .filter((fp): fp is KicadComponentPlacement => fp !== null);
+        const rawFootprints = findNodes(rootElement, 'footprint');
+        console.log(`[kicad2typecad] findNodes returned ${rawFootprints.length} footprints`);
+        
+        const parsedFootprints = rawFootprints.map(item => {
+            const parsed = parseFootprintItem(item as unknown[]);
+            return parsed;
+        });
+        
+        const footprints = parsedFootprints.filter((fp): fp is KicadComponentPlacement => fp !== null);
+
+        // --apply mode: interactively inject coordinate changes into source files
+        if (options?.apply) {
+            await applyChangesToSource(footprints);
+            return;
+        }
 
         if (footprints.length > 0) {
             console.log(`Found ${footprints.length} footprints. Generating placement code from ${sourceDescription}.`);
 
-            const allPlacementLogs: string[] = [];
+            // Group by file
+            const groups: Record<string, KicadComponentPlacement[]> = {};
             footprints.forEach(fp => {
-                const variableName = fp.variableName || fp.reference;
-                let placementLog = `${chVar('this.' + variableName)}${chPunc('.')}${chProp('pcb')} ${chPunc('=')} ${chPunc('{')}`;
-                placementLog += ` ${chProp('x')}${chPunc(':')} ${chNum(fp.x)}${chPunc(',')}`;
-                placementLog += ` ${chProp('y')}${chPunc(':')} ${chNum(fp.y)}${chPunc(',')}`;
-                placementLog += ` ${chProp('rotation')}${chPunc(':')} ${chNum(fp.rotation)}`;
-                placementLog += ` ${chPunc('}')}${chPunc(';')}`;
-                allPlacementLogs.push(placementLog);
+                const file = fp.filePath || 'Unknown File';
+                if (!groups[file]) groups[file] = [];
+                groups[file].push(fp);
             });
 
-            if (allPlacementLogs.length > 0) {
-                console.log(chalk.bold(`\n--- Generated Component Placement Code from ${sourceDescription} ---`));
-                allPlacementLogs.forEach(log => console.log(log));
-                console.log(chalk.bold("-------------------------------------------------------------"));
+            console.log(chalk.bold(`\n--- Generated Component Placement Code from ${sourceDescription} ---`));
+
+            for (const [file, fps] of Object.entries(groups)) {
+                console.log(chalk.yellow(`\n// File: ${file}`));
+                fps.forEach(fp => {
+                    const variableName = fp.variableName || fp.reference;
+                    const prefix = fp.isThis ? 'this.' : '';
+                    let placementLog = `${chVar(prefix + variableName)}${chPunc('.')}${chProp('pcb')} ${chPunc('=')} ${chPunc('{')}`;
+                    placementLog += ` ${chProp('x')}${chPunc(':')} ${chNum(fp.x)}${chPunc(',')}`;
+                    placementLog += ` ${chProp('y')}${chPunc(':')} ${chNum(fp.y)}${chPunc(',')}`;
+                    placementLog += ` ${chProp('rotation')}${chPunc(':')} ${chNum(fp.rotation)}`;
+                    placementLog += ` ${chPunc('}')}${chPunc(';')}`;
+                    console.log(placementLog);
+                });
             }
+            console.log(chalk.bold("\n-------------------------------------------------------------"));
         } else {
             console.log(`No footprints found in ${sourceDescription} content.`);
         }

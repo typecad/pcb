@@ -1,0 +1,85 @@
+import * as _0603 from '@typecad/passives/0603';
+import { PCB, TrackBuilder, Component, Pin } from '@typecad/typecad';
+import { ATmega328_MM } from './ATmega328_MM';
+
+export interface PowerInterface {
+    vcc: Pin;
+    gnd: Pin;
+}
+
+export interface Atmega328_mmOptions {
+    reference?: string;
+    passives?: typeof _0603;
+    pcb: PCB;
+    x: number;
+    y: number;
+    power: PowerInterface;
+}
+
+/**
+ * ### Atmega328_mm - Description
+ * 
+ * #### Input Connections
+ * 
+ * #### Output Connections
+ * 
+ */
+export class Atmega328_mm {
+    #passives: typeof _0603;
+    readonly pcb: PCB;
+    readonly components: (Component | TrackBuilder)[] = [];
+    readonly U1: ATmega328_MM;
+    readonly R_pullup: Component;
+    readonly C_reset: Component;
+    readonly Crystal: Component;
+    readonly C_load1: Component;
+    readonly C_load2: Component;
+
+    constructor({ reference, passives, pcb, x, y, power }: Atmega328_mmOptions) {
+        this.#passives = passives || _0603;
+        this.pcb = pcb;
+
+        // Push offset to PCB for tracks and vias
+        this.pcb.pushOffset(x, y);
+
+        // create the components
+        this.U1 = new ATmega328_MM(reference);
+        this.U1.pcb = { x: 118.9, y: 94.6, rotation: 0 };
+        this.R_pullup = new this.#passives.Resistor({ value: '10k' });
+        this.R_pullup.pcb = { x: 127.825, y: 101, rotation: 0 };
+        this.C_reset = new this.#passives.Capacitor({ value: '100nF' });
+        this.C_reset.pcb = { x: 127.775, y: 104.5, rotation: 0 };
+        this.Crystal = new Component({
+            symbol: 'Device:Crystal',
+            footprint: 'Crystal:Crystal_SMD_5032-2Pin_5.0x3.2mm',
+            reference: 'Y1'
+        });
+        this.Crystal.pcb = { x: 129.35, y: 95, rotation: 0 };
+        this.C_load1 = new this.#passives.Capacitor({ value: '22pF' });
+        this.C_load1.pcb = { x: 135.775, y: 94, rotation: 0 };
+        this.C_load2 = new this.#passives.Capacitor({ value: '22pF' });
+        this.C_load2.pcb = { x: 136.275, y: 96.5, rotation: 0 };
+
+        // connect the components
+        this.pcb.net(this.U1.VCC, this.U1.AVCC, power.vcc);
+        this.pcb.net(this.U1.GND, this.U1.GND_18, this.U1.GND_29, power.gnd);
+        
+        this.pcb.net(this.U1._RESET_PC6, this.R_pullup.pin(1), this.C_reset.pin(1));
+        this.pcb.net(this.R_pullup.pin(2), power.vcc);
+        this.pcb.net(this.C_reset.pin(2), power.gnd);
+
+        this.pcb.net(this.U1.XTAL1_PB6, this.Crystal.pin(1), this.C_load1.pin(1));
+        this.pcb.net(this.U1.XTAL2_PB7, this.Crystal.pin(2), this.C_load2.pin(1));
+        this.pcb.net(this.C_load1.pin(2), power.gnd);
+        this.pcb.net(this.C_load2.pin(2), power.gnd);
+
+        // create the tracks
+
+        // add the components to the pcb and group them
+        this.components.push(this.U1, this.R_pullup, this.C_reset, this.Crystal, this.C_load1, this.C_load2);
+        this.pcb.group('ATmega328_MM', this.U1, this.R_pullup, this.C_reset, this.Crystal, this.C_load1, this.C_load2);
+
+        // Restore the previous origin
+        this.pcb.popOffset();
+    }
+}

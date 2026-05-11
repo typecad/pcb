@@ -22,13 +22,14 @@ function getTsPluginModule(): object | null | undefined {
 /**
  * Inspects source code to find variable name and params for a instantiation.
  */
-export function inspectSource(filePath: string, line: number): { variable?: string, params?: Record<string, unknown> } {
+export function inspectSource(filePath: string, line: number): { variable?: string, params?: Record<string, unknown>, isThis?: boolean } {
     let sourceContent = '';
     try {
         sourceContent = fs.readFileSync(filePath, 'utf8');
 
         // 1. Try AST Parsing
         try {
+            throw new Error('Fallback to regex for better "this." detection');
             const tsPlugin = getTsPluginModule();
             let ast;
             if (tsPlugin) {
@@ -47,6 +48,7 @@ export function inspectSource(filePath: string, line: number): { variable?: stri
 
             let targetVariable: string | undefined;
             let targetParams: Record<string, unknown> | undefined;
+            let targetIsThis = false;
             let foundVariable = false;
 
             // @ts-ignore - acorn-walk typing issues
@@ -76,11 +78,24 @@ export function inspectSource(filePath: string, line: number): { variable?: stri
                 AssignmentExpression(node: Node) {
                     if (node.loc && node.loc.start.line >= line - 5 && node.loc.end.line >= line &&
                         (node as any).right.type === 'NewExpression' &&
-                        (node as any).left.type === 'Identifier') {
+                        ((node as any).left.type === 'Identifier' || (node as any).left.type === 'MemberExpression')) {
                         if ((node as any).right.loc &&
                             (node as any).right.loc.start.line <= line &&
                             (node as any).right.loc.end.line >= line) {
-                            targetVariable = (node as any).left.name;
+                            
+                            if ((node as any).left.type === 'Identifier') {
+                                targetVariable = (node as any).left.name;
+                            } else if ((node as any).left.type === 'MemberExpression') {
+                                const property = (node as any).left.property;
+                                if (property && property.type === 'Identifier') {
+                                    targetVariable = property.name;
+                                    const object = (node as any).left.object;
+                                    if (object && (object.type === 'ThisExpression' || (object.type === 'Identifier' && object.name === 'this'))) {
+                                        targetIsThis = true;
+                                    }
+                                }
+                            }
+                            
                             foundVariable = true;
 
                             const arg = (node as any).right.arguments[0];
@@ -93,7 +108,7 @@ export function inspectSource(filePath: string, line: number): { variable?: stri
             });
 
             if (foundVariable) {
-                return { variable: targetVariable, params: targetParams };
+                return { variable: targetVariable, params: targetParams, isThis: targetIsThis };
             }
         } catch (tsError) {
             // AST failed, fall through to fallback
@@ -105,33 +120,44 @@ export function inspectSource(filePath: string, line: number): { variable?: stri
         const endLine = Math.min(lines.length, line + 10);
         const multiLineCode = lines.slice(startLine, endLine).join('\n');
         
+        // Single-line fallback (prioritize target line)
+        const targetLine = lines[line - 1];
+
+        // Guard: if the target line contains super(), this is a subclass
+        // constructor frame, not the user's instantiation site. Return empty
+        // to avoid picking up a bogus variable from a nearby Pin initializer.
+        if (targetLine && targetLine.includes('super(')) {
+            return {};
+        }
+
+        if (targetLine) {
+            const varMatch = targetLine.match(/^\s*(let|const|var|)\s*(this\.)?(\w+)\s*=\s*new\s+[\w.#]+\s*\(/);
+            if (varMatch) {
+                const variable = varMatch[3];
+                const isThis = !!varMatch[2];
+                return { variable, isThis };
+            }
+
+            // Simpler fallback for 'this.X = new Y(' patterns when the
+            // primary regex fails on transformed/cached source files.
+            const thisAssignMatch = targetLine.match(/^\s*this\.(\w+)\s*=\s*new\s+[\w.#]+/);
+            if (thisAssignMatch) {
+                return { variable: thisAssignMatch[1], isThis: true };
+            }
+        }
+
         // Enhanced regex to capture multi-line object literals properly
-        const multiVarMatch = multiLineCode.match(/^\s*(let|const|var)\s+(\w+)\s*=\s*new\s+\w+\s*\(\s*\{[\s\S]*?\}\s*\)\s*;?\s*$/m);
+        const multiVarMatch = multiLineCode.match(/^\s*(let|const|var|)\s*(?:this\.)?(\w+)\s*=\s*new\s+[\w.#]+\s*\(\s*\{[\s\S]*?\}\s*\)\s*;?\s*$/m);
         if (multiVarMatch && multiVarMatch.length > 2) {
             const variable = multiVarMatch[2];
             let params: Record<string, unknown> | undefined;
 
-            const paramsMatch = multiLineCode.match(/new\s+\w+\s*\(\s*(\{[\s\S]*?\})\s*\)\s*;?\s*$/m);
+            const paramsMatch = multiLineCode.match(/new\s+[\w.#]+\s*\(\s*(\{[\s\S]*?\})\s*\)\s*;?\s*$/m);
             if (paramsMatch && paramsMatch[1]) {
                 const paramsStr = paramsMatch[1].trim();
                 params = parseObjectLiteral(paramsStr);
             }
             return { variable, params };
-        } else {
-            // Single-line fallback
-            const targetLine = lines[line - 1];
-            if (targetLine) {
-                const varMatch = targetLine.match(/^\s*(let|const|var)\s+(\w+)\s*=\s*new\s+\w+\s*\((.*)\)\s*;?\s*$/);
-                if (varMatch && varMatch.length > 3) {
-                    const variable = varMatch[2];
-                    let params: Record<string, unknown> | undefined;
-                    const paramsStr = varMatch[3].trim();
-                    if (paramsStr && paramsStr.startsWith('{') && paramsStr.endsWith('}')) {
-                        params = parseObjectLiteral(paramsStr);
-                    }
-                    return { variable, params };
-                }
-            }
         }
 
         // 3. Search backwards as last resort
@@ -140,9 +166,11 @@ export function inspectSource(filePath: string, line: number): { variable?: stri
             while (searchLine >= Math.max(0, line - 20)) {
                 const lineText = lines[searchLine];
                 if (lineText) {
-                    const varMatch = lineText.match(/^\s*(let|const|var)\s+(\w+)\s*=\s*new\s+\w+\s*\(/);
+                    // Skip Pin initializers - they're not Component instantiations
+                    if (lineText.includes('new Pin(')) continue;
+                    const varMatch = lineText.match(/^\s*(let|const|var|)\s*(this\.)?(\w+)\s*=\s*new\s+[\w.#]+\s*\(/);
                     if (varMatch) {
-                        return { variable: varMatch[2] };
+                        return { variable: varMatch[3], isThis: !!varMatch[2] };
                     }
                 }
                 searchLine--;

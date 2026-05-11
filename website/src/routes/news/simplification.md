@@ -48,7 +48,7 @@ Any changes made to the board will be reflected in their entirety when you run `
 Soon, we'll be releasing a new version that will check for a dirty .kicad_pcb file and prompt you to revert before running `PCB::create()`. This will prevent any changes you've made in KiCAD from being lost. It will be more robust and useful that the current method which just checks for the existence of a lock file. 
 
 ## Package improvement
-We've tweaked things to make packages easier to create and use. They are now created similarly to other components, and also used the same as well. Before, our example packages had `add` and `place` methods. Now, they have a property that holds everything in a `components` array. That array is passed to `PCB::create()` as a spread operator. The result is a much simpler and more intuitive package creation and use. 
+We've tweaked things to make packages easier to create and use. They are now created similarly to other components, and also used the same as well. Before, our example packages had `add` and `place` methods. Now, they have a property that holds everything in a `components` array. The result is a much simpler and more intuitive package creation and use. 
 
 
 ## `npm update` 

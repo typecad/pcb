@@ -1,0 +1,17 @@
+import { PCB } from '@typecad/typecad'
+import { Atmega328_mm } from "./atmega328_mm";
+import { Connector } from '@typecad/passives/connector';
+
+const typecad = new PCB('pro_mini');
+
+const pwr_conn = new Connector({ number: 2, reference: 'J1' });
+pwr_conn.pcb = { x: 118.5, y: 102.46, rotation: 0 };
+
+const power = {
+    vcc: pwr_conn.pin(1),
+    gnd: pwr_conn.pin(2)
+};
+
+const u1 = new Atmega328_mm({ pcb: typecad, x: 0, y: 0, power: power });
+
+typecad.create(pwr_conn, ...u1.components);

@@ -5,6 +5,8 @@
  * @param skipFiles - Additional file names or paths to skip
  * @returns Call site information or undefined if not available
  */
+import * as fs from 'fs';
+
 export function getCallSite(skipFiles: string[] = []): { file: string; line: number; column: number; function?: string } | undefined {
     const stack = new Error().stack;
     if (!stack) return undefined;
@@ -15,6 +17,7 @@ export function getCallSite(skipFiles: string[] = []): { file: string; line: num
         'node_modules',
         '\\dist\\',
         '/dist/',
+        '@typecad/passives',
         'component.ts',
         'component.js',
         'pcb.ts',
@@ -33,14 +36,39 @@ export function getCallSite(skipFiles: string[] = []): { file: string; line: num
             const match = line.match(/at\s+(?:(.+?)\s+\()?(.+):(\d+):(\d+)\)?/);
             if (match) {
                 const filePath = match[2];
-                
-                const shouldSkip = allSkips.some(skip => filePath.includes(skip));
-                
+
+                const normalizedPath = filePath.replace(/\\/g, '/');
+                const shouldSkip = allSkips.some(skip => normalizedPath.includes(skip.replace(/\\/g, '/')));
+
                 if (!shouldSkip) {
+                    const lineNum = parseInt(match[3], 10);
+                    const funcName = match[1]?.trim();
+                    let isSuperCall = false;
+
+                    try {
+                        const fileContent = fs.readFileSync(filePath, 'utf8');
+                        const fileLines = fileContent.split('\n');
+                        const lineText = fileLines[lineNum - 1];
+                        if (lineText && lineText.includes('super(')) {
+                            isSuperCall = true;
+                        }
+                    } catch (err) {
+                        // File read failed (tsx transformed path, etc).
+                        // Heuristic: constructor frames (function name starts
+                        // with "new ") are subclass super() calls into Component.
+                        if (funcName && funcName.startsWith('new ')) {
+                            isSuperCall = true;
+                        }
+                    }
+
+                    if (isSuperCall) {
+                        continue;
+                    }
+
                     return {
-                        function: match[1]?.trim(),
+                        function: funcName,
                         file: filePath,
-                        line: parseInt(match[3], 10),
+                        line: lineNum,
                         column: parseInt(match[4], 10)
                     };
                 }

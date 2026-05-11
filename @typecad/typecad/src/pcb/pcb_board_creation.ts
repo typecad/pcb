@@ -6,6 +6,7 @@ import fsexp from "fast-sexpr";
 import S from "../utils/sexpr_instance.js";
 import logger from '../logging.js';
 import { BoardCreationError } from '../errors.js';
+import { reportError } from '../utils/error_reporter.js';
 import {
     IVia,
     IGrLine,
@@ -40,7 +41,7 @@ export function createBoard(
     const trackBuilders: TrackBuilder[] = [];
 
     items.forEach(item => {
-        if (item instanceof Component) {
+        if (item && typeof item === 'object' && 'reference' in item) {
             components.push(item);
         } else if (item instanceof TrackBuilder) {
             trackBuilders.push(item);
@@ -459,8 +460,10 @@ export function createBoard(
             }
         } catch (e: any) {
             const callSite = pcb.getCallSite();
-            const callSiteInfo = callSite ? ` (called from ${callSite.file}:${callSite.line})` : '';
-            logger.error(`👺 Error: Failed to parse group string: ${groupString} - ${e.message}${callSiteInfo}`);
+            reportError(`Failed to parse group string: ${e.message}`, {
+                reference: 'Group',
+                sourceInfo: callSite ? { file: callSite.file, line: callSite.line } : undefined
+            });
         }
     });
 
@@ -536,9 +539,7 @@ export function createBoard(
                         final_board_contents.push(updatedNode);
                         componentMap.delete(uuid);
                     } catch (e: any) {
-                        const callSite = pcb.getCallSite();
-                        const callSiteInfo = callSite ? ` (called from ${callSite.file}:${callSite.line})` : '';
-                        logger.error(`👺 Error: Failed to update footprint node for ${component.reference || uuid}: ${e.message}${callSiteInfo}`);
+                        reportError(`Failed to update footprint node for ${component.reference || uuid}: ${e.message}`, component);
                     }
                 } else {
                     // Component exists in board file but not in current component list

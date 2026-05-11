@@ -43,13 +43,13 @@ export class TypecadPackage {
 
         // create the components
         this.U1 = new ATtiny3227_M(reference);
-        this.U1.pcb = { x: 0, y: 0, rotation: 0 }; // Relative to offset!
+        this.U1.pcb = { x: 0, y: 0, rotation: 0 }; // Relative to offset
         this.R1 = new this.#passives.Resistor({ value: '470ohm', pcb: { x: -3.365, y: -5.08, rotation: 180 } }); // Relative to offset!
         
         // connect the components
         this.pcb.net(this.U1.PA1, this.R1.pin(1));
 
-        // create the tracks (Framework applies offset!)
+        // create the tracks (Framework applies offset)
         this.components.push(this.pcb.track().from({ x: -2.54, y: -3.2275 }).to({ x: -1.25, y: -1.9375 }));
         this.components.push(this.pcb.track().from({ x: -2.54, y: -5.08 }).to({ x: -2.54, y: -3.2275 }));
 
@@ -137,7 +137,7 @@ If there were additional passives needed, pullup/pulldown resistors, capacitors,
 ```
 </ScrollArea>
 
-To avoid manually calculating coordinates for every track and via when placing a package at a specific location, TypeCAD provides an offset context. By calling `this.pcb.pushOffset(x, y)`, all subsequent calls to drawing methods like `pcb.track()`, `pcb.via()`, etc., will automatically be shifted by that offset. This allows you to design your package layout relative to `(0, 0)` and place it anywhere on the board! Remember to call `this.pcb.popOffset()` at the end to restore the original origin.
+To avoid manually calculating coordinates for every track and via when placing a package at a specific location, TypeCAD provides an offset context. By calling `this.pcb.pushOffset(x, y)`, all subsequent calls to drawing methods like `pcb.track()`, `pcb.via()`, etc., will automatically be shifted by that offset. This allows you to design your package layout relative to `(0, 0)` and place it anywhere on the board. Remember to call `this.pcb.popOffset()` at the end to restore the original origin.
 
 ## Connect the components
 <ScrollArea orientation="both">
@@ -190,11 +190,11 @@ The use of this package is similar to an individual component.
 
     let typecad = new PCB('new');
     let tiny = new TypecadPackage({ pcb: typecad, x: 10, y: 10 });
-    typecad.create(...tiny.components);
+    typecad.create(tiny.components);
 ```
 </ScrollArea>
 
-You'll remember that all the components and tracks were added to the `components` array. Using the spread operator (`...`), we can pass them all to `::create()` in one line. 
+You'll remember that all the components and tracks were added to the `components` array. We can pass the array directly to `::create()` in one line. 
 
 ## Variations
 There are many ways to create packages. This is just one example. 

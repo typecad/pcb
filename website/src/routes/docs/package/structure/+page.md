@@ -21,7 +21,7 @@ let typecad = new PCB('board_name');
 
 let u1 = new TypecadPackage({ pcb: typecad });
 
-typecad.create(...u1.components);
+typecad.create(u1.components);
 
 
 Report any creation issues: https://github.com/typecad/typecad/issues

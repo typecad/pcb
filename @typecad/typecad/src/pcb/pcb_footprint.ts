@@ -77,6 +77,8 @@ export function processFootprintItem(subItem: any[], component: Component, resol
                     // Sanitize for S-expression: remove problematic chars and normalize spaces
                     const sanitized = component.datasheet.replace(/[()"`±]/g, '').replace(/\s+/g, ' ').trim();
                     newValue = `\`${sanitized}\``;
+                } else if (propName === '`Code`') {
+                    newValue = subItem[2];
                 } else if (propName === '`Description`' && component.description !== undefined) {
                     // Sanitize for S-expression: remove problematic chars and normalize spaces
                     // Remove entire parenthetical expressions and problematic characters
@@ -602,6 +604,17 @@ export function createFootprintNode(component: Component, resolveNet: (ref: stri
 
         // Add uuid field to each component
         l.splice(2, 0, [`uuid \`${component.uuid}\``]); // Use backticks for SExpr parser
+
+        // Add Code property for variable name mapping
+        if (component.sourceInfo && component.sourceInfo.variable) {
+            const codeData = {
+                file: component.sourceInfo.file,
+                line: component.sourceInfo.line,
+                variable: component.sourceInfo.variable,
+                isThis: component.sourceInfo.isThis
+            };
+            l.splice(2, 0, ['property', '`Code`', `\`${JSON.stringify(codeData).replaceAll('"', "'")}\``]);
+        }
 
         // Set the main layer of the footprint
         const mainFootprintLayer = component.pcb?.side === 'back' ? '"B.Cu"' : '"F.Cu"';

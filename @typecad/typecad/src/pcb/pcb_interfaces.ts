@@ -188,6 +188,8 @@ export interface ISourceInfo {
     column?: number;
     /** Variable name associated with the source. */
     variable?: string;
+    /** Whether the variable is assigned to this.X (class member). */
+    isThis?: boolean;
     /** Additional parameters from the call site. */
     params?: Record<string, unknown>;
 }

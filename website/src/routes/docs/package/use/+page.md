@@ -63,7 +63,7 @@ let typecad = new PCB('typecad_docs');
 
 let u1 = new TypecadPackage({ pcb: typecad });
 
-typecad.create(...u1.components);
+typecad.create(u1.components);
 ```
 </ScrollArea>
 The package's components will be added to the PCB. 

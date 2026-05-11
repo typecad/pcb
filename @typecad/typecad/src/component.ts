@@ -49,6 +49,7 @@ export interface SourceInfo {
     line: number;
     variable?: string;
     params?: Record<string, unknown>; // Allows nested objects/arrays from AST
+    isThis?: boolean;
 }
 
 /**
@@ -132,12 +133,14 @@ export class Component {
                 file: callSite.file,
                 line: callSite.line,
                 variable: undefined,
-                params: undefined
+                params: undefined,
+                isThis: undefined
             };
             const inspection = inspectSource(callSite.file, callSite.line);
             if (inspection.variable) {
                 this.sourceInfo!.variable = inspection.variable;
                 this.sourceInfo!.params = inspection.params;
+                this.sourceInfo!.isThis = inspection.isThis;
             }
         }
     }

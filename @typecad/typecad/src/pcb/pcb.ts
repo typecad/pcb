@@ -746,8 +746,16 @@ export class PCB {
     }
 
     async create(...items: Array<Component | TrackBuilder | Array<Component | TrackBuilder>>) {
-        const finalItems = (items.length === 1 && Array.isArray(items[0])) ? items[0] : items;
-        return createBoard(this, ...finalItems as Array<Component | TrackBuilder>);
+        // Flatten any arrays passed as arguments
+        const flattened: Array<Component | TrackBuilder> = [];
+        for (const item of items) {
+            if (Array.isArray(item)) {
+                flattened.push(...item);
+            } else {
+                flattened.push(item);
+            }
+        }
+        return createBoard(this, ...flattened);
     }
 
     getCallSite(): { file: string; line: number; column: number } | undefined {
@@ -782,11 +790,14 @@ export class PCB {
             y: (at?.y ?? 0) + this.#currentOffset.y 
         };
 
+        const viaUuid = generateUuid();
         const viaComponent = new Component({
             via: true,
+            prefix: 'V',
+            uuid: viaUuid,
             pcb: { x: viaPosition.x, y: viaPosition.y, rotation: 0, side: 'front' },
             viaData: {
-                uuid: generateUuid(),
+                uuid: viaUuid,
                 at: viaPosition,
                 size: size || 0.8,
                 drill: drill || 0.4,

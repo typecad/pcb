@@ -29,9 +29,8 @@ export function inspectSource(filePath: string, line: number): { variable?: stri
 
         // 1. Try AST Parsing
         try {
-            throw new Error('Fallback to regex for better "this." detection');
             const tsPlugin = getTsPluginModule();
-            let ast;
+            let ast: acorn.Node;
             if (tsPlugin) {
                 // @ts-ignore - acorn-typescript loaded lazily
                 const Parser = acorn.Parser.extend(tsPlugin.default ? tsPlugin.default() : tsPlugin());
@@ -43,60 +42,92 @@ export function inspectSource(filePath: string, line: number): { variable?: stri
                     allowImportExportEverywhere: true
                 });
             } else {
-                throw new TypeCadError('acorn-typescript not available');
+                // Fall back to plain acorn (no TypeScript-specific syntax support,
+                // but handles the common `new` patterns we care about)
+                ast = acorn.parse(sourceContent, {
+                    ecmaVersion: 2022,
+                    sourceType: 'module',
+                    locations: true,
+                    allowReturnOutsideFunction: true,
+                    allowImportExportEverywhere: true
+                });
             }
 
             let targetVariable: string | undefined;
             let targetParams: Record<string, unknown> | undefined;
             let targetIsThis = false;
             let foundVariable = false;
+            let targetStartLine = -1; // track the best match proximity
 
             // @ts-ignore - acorn-walk typing issues
             walk(ast, {
                 VariableDeclaration(node: Node) {
-                    if (node.loc && node.loc.start.line >= line - 5 && node.loc.end.line >= line) {
+                    if (!node.loc) return;
+                    const declStart = node.loc.start.line;
+                    const declEnd = node.loc.end.line;
+                    // Check if the variable declaration spans or is near the target line
+                    if (declStart <= line && declEnd >= line) {
                         (node as any).declarations.forEach((decl: any) => {
                             if (decl.init && decl.init.type === 'NewExpression' &&
                                 decl.init.callee.type === 'Identifier') {
-                                if (decl.init.loc &&
-                                    decl.init.loc.start.line <= line &&
-                                    decl.init.loc.end.line >= line) {
-                                    if (decl.id && decl.id.type === 'Identifier') {
+                                if (decl.id && decl.id.type === 'Identifier') {
+                                    const dist = Math.abs(declStart - line);
+                                    // Take the closest match when multiple exist
+                                    if (!foundVariable || dist < Math.abs(targetStartLine - line)) {
                                         targetVariable = decl.id.name;
+                                        targetIsThis = false;
                                         foundVariable = true;
+                                        targetStartLine = declStart;
                                     }
+                                }
 
-                                    const arg = decl.init.arguments[0];
-                                    if (arg && arg.type === 'ObjectExpression') {
-                                        targetParams = extractAstObject(arg as ObjectExpression);
-                                    }
+                                const arg = decl.init.arguments[0];
+                                if (arg && arg.type === 'ObjectExpression') {
+                                    targetParams = extractAstObject(arg as ObjectExpression);
                                 }
                             }
                         });
                     }
                 },
                 AssignmentExpression(node: Node) {
-                    if (node.loc && node.loc.start.line >= line - 5 && node.loc.end.line >= line &&
+                    if (!node.loc) return;
+                    const exprStart = node.loc.start.line;
+                    const exprEnd = node.loc.end.line;
+                    // Check if the assignment spans or is near the target line
+                    if (exprStart <= line && exprEnd >= line &&
                         (node as any).right.type === 'NewExpression' &&
                         ((node as any).left.type === 'Identifier' || (node as any).left.type === 'MemberExpression')) {
-                        if ((node as any).right.loc &&
-                            (node as any).right.loc.start.line <= line &&
-                            (node as any).right.loc.end.line >= line) {
-                            
-                            if ((node as any).left.type === 'Identifier') {
-                                targetVariable = (node as any).left.name;
-                            } else if ((node as any).left.type === 'MemberExpression') {
-                                const property = (node as any).left.property;
-                                if (property && property.type === 'Identifier') {
-                                    targetVariable = property.name;
-                                    const object = (node as any).left.object;
-                                    if (object && (object.type === 'ThisExpression' || (object.type === 'Identifier' && object.name === 'this'))) {
-                                        targetIsThis = true;
-                                    }
+                        
+                        const left = (node as any).left;
+                        let isThisAssign = false;
+                        let varName: string | undefined;
+
+                        if (left.type === 'Identifier') {
+                            varName = left.name;
+                        } else if (left.type === 'MemberExpression') {
+                            const property = left.property;
+                            if (property && property.type === 'Identifier') {
+                                varName = property.name;
+                                const object = left.object;
+                                if (object && (object.type === 'ThisExpression' || (object.type === 'Identifier' && object.name === 'this'))) {
+                                    isThisAssign = true;
                                 }
                             }
-                            
-                            foundVariable = true;
+                        }
+
+                        if (varName) {
+                            const dist = Math.abs(exprStart - line);
+                            // Prefer `this.X` assignments over non-this for the same line proximity
+                            const isBetter = !foundVariable
+                                || dist < Math.abs(targetStartLine - line)
+                                || (dist === Math.abs(targetStartLine - line) && isThisAssign && !targetIsThis);
+
+                            if (isBetter) {
+                                targetVariable = varName;
+                                targetIsThis = isThisAssign;
+                                foundVariable = true;
+                                targetStartLine = exprStart;
+                            }
 
                             const arg = (node as any).right.arguments[0];
                             if (arg && arg.type === 'ObjectExpression') {
@@ -110,8 +141,9 @@ export function inspectSource(filePath: string, line: number): { variable?: stri
             if (foundVariable) {
                 return { variable: targetVariable, params: targetParams, isThis: targetIsThis };
             }
-        } catch (tsError) {
-            // AST failed, fall through to fallback
+        } catch (_tsError) {
+            // AST parsing failed (e.g., TypeScript syntax not understood by plain acorn).
+            // Fall through to regex-based fallback below.
         }
 
         // 2. Fallback to Regex and Text Parsing

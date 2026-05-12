@@ -1,36 +1,64 @@
 import { randomUUID } from "node:crypto";
 import { ISourceInfo } from './pcb_interfaces.js';
+import { encodeCodeMetadata, decodeCodeMetadata } from '../kicad2typecad/codec.js';
+import type { CodeMetadata, LegacyCodeMetadata } from '../kicad2typecad/types.js';
 
 /**
  * Utility functions for PCB operations
  */
 
 /**
- * Formats source information for property inclusion in KiCad files
+ * Formats source information for property inclusion in KiCad files.
+ * Uses the new stable base64url-encoded format (typecad:v1:...).
+ *
  * @param info - Source information object
- * @returns Formatted string safe for KiCad files
+ * @param uuid - Component UUID (primary identity for round-trip matching)
+ * @param footprintHash - Footprint identity hash (fallback for anonymous components)
+ * @returns Encoded string safe for KiCad property values
  */
-export function formatSourceInfoForProperty(info?: ISourceInfo): string | undefined {
+export function formatSourceInfoForProperty(
+    info?: ISourceInfo,
+    uuid?: string,
+    footprintHash?: string
+): string | undefined {
     if (!info) return undefined;
-    const payload: Record<string, unknown> = {
-        file: info.file,
-        line: info.line
+
+    const metadata: CodeMetadata = {
+        v: 1,
+        u: uuid || '',
+        n: info.variable || undefined,
+        t: info.isThis || undefined,
+        h: footprintHash || undefined,
     };
-    if (info.column !== undefined) payload.column = info.column;
-    if (info.variable !== undefined) payload.variable = info.variable;
-    if (info.isThis !== undefined) payload.isThis = info.isThis;
-    if (info.params !== undefined) payload.params = info.params;
-    try {
-        let json = JSON.stringify(payload);
-        // Make it safe for KiCad string: avoid double quotes/backticks
-        json = json.replace(/`/g, '');
-        json = json.replace(/\"/g, "'");
-        return json;
-    } catch (e) {
-        // Fallback minimal string
-        const safeFile = String(info.file || '').replace(/[`\"\\]/g, '');
-        return `{file:'${safeFile}',line:${info.line}}`;
+
+    // Include file/line only as fallback (when no variable name — anonymous components)
+    if (!info.variable) {
+        metadata.f = info.file;
+        metadata.l = info.line;
     }
+
+    try {
+        return encodeCodeMetadata(metadata);
+    } catch {
+        // Fallback: encode just the essential info
+        const minimal: CodeMetadata = {
+            v: 1,
+            u: uuid || '',
+            f: String(info.file || '').replace(/[`\"\\]/g, ''),
+            l: info.line,
+        };
+        return encodeCodeMetadata(minimal);
+    }
+}
+
+/**
+ * Decodes a Code property value back into structured metadata.
+ * Tries new format first, falls back to legacy format.
+ * @param rawValue - Raw Code property string from a KiCad file
+ * @returns Decoded metadata or null
+ */
+export function parseSourceInfoFromProperty(rawValue: string | null | undefined): CodeMetadata | LegacyCodeMetadata | null {
+    return decodeCodeMetadata(rawValue);
 }
 
 /**

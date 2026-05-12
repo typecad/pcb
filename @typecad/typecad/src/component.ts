@@ -346,6 +346,23 @@ export class Component {
     }
 
     /**
+     * Returns a stable hash of the footprint identity for round-trip matching.
+     * Based on the footprint name and reference designator prefix.
+     * Used as a fallback identity when a component has no variable name
+     * (e.g., components created in loops or helper functions).
+     */
+    get footprintHash(): string {
+        const str = `${this.footprint || ''}:${this.reference || ''}`;
+        // DJB2 hash algorithm — simple, fast, zero-dependency
+        let hash = 5381;
+        for (let i = 0; i < str.length; i++) {
+            hash = ((hash << 5) + hash) + str.charCodeAt(i);
+            hash = hash & hash; // Convert to 32-bit integer
+        }
+        return Math.abs(hash).toString(36);
+    }
+
+    /**
      * Returns a {@link Pin} object from the component.
      * @param number - The pin number or identifier.
      * @returns The pin object.

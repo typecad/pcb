@@ -52,8 +52,8 @@ export class Atmega328_mm {
         this.Crystal = new Component({
             symbol: 'Device:Crystal',
             footprint: 'Crystal:Crystal_SMD_5032-2Pin_5.0x3.2mm',
-            reference: ['Y11', { x: 5, y: 0, rotation: 180, thickness: 0.15, width: 1, height: 1 }],
-            fab: ['bbbb', { x: -0.15, y: 3, rotation: 180, thickness: 0.15, width: 1, height: 1 }],
+            reference: ['Y11', { x: 4.5, y: 0, rotation: 180, thickness: 0.15, width: 1, height: 1 }],
+            fab: ['bbbb', { x: -5.5, y: 0, rotation: 180, thickness: 0.15, width: 1, height: 1 }],
 
 
         });

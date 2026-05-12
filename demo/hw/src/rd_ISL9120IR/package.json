@@ -1,0 +1,18 @@
+{
+  "name": "@typecad/rd_isl9120ir",
+  "version": "1.0.4",
+  "description": "rd_ISL9120IR typeCAD package",
+  "main": "index.ts",
+  "author": "",
+  "license": "ISC",
+  "keywords": ["typeCAD", "package", "layout"],
+  "devDependencies": {
+    "@typecad/passives": "~0.0.15",
+    "@typecad/typecad": "~0.0.18",
+    "tsx": "^4.19.1"
+  },
+  "scripts": {
+    "postinstall": "node postinstall.js",
+    "package_publish": "npm publish --access public"
+  }
+}

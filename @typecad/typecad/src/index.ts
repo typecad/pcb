@@ -7,6 +7,8 @@ export { I2C, UART, USB, Power } from './buses.js'
 export type { IPower } from './buses.js'
 export { PCB, TrackBuilder } from './pcb/pcb.js'
 export type { IConnectionIdentifier, IManualRoute } from './pcb/pcb.js'
+export { Package } from './package.js'
+export type { PackageOptions, PassiveFactory } from './package.js'
 export type { IPinPowerInfo } from './pcb/pcb_interfaces.js'
 export { KiCAD } from './kicad.js'
 // Note: kicad_cli_path must be exported as it is required by external packages (e.g. @typecad/typecad-docgen).

@@ -646,14 +646,15 @@ export function createFootprintNode(component: Component, resolveNet: (ref: stri
         l.splice(2, 0, [`uuid \`${component.uuid}\``]); // Use backticks for SExpr parser
 
         // Add Code property for variable name mapping
-        if (component.sourceInfo && component.sourceInfo.variable) {
-            const codeData = {
-                file: component.sourceInfo.file,
-                line: component.sourceInfo.line,
-                variable: component.sourceInfo.variable,
-                isThis: component.sourceInfo.isThis
-            };
-            l.splice(2, 0, ['property', '`Code`', `\`${JSON.stringify(codeData).replaceAll('"', "'")}\``,
+        // Always include a Code property — even for anonymous components — so the
+        // UUID and footprint hash are available for round-trip matching.
+        const codeValue = formatSourceInfoForProperty(
+            component.sourceInfo,
+            component.uuid,
+            component.footprintHash
+        );
+        if (codeValue) {
+            l.splice(2, 0, ['property', '`Code`', `\`${codeValue}\``,
                 ['at', 0, 0, 0],
                 ['layer', '"F.Fab"'],
                 ['hide', 'yes'],

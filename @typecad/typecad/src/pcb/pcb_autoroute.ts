@@ -38,6 +38,7 @@ import {
     pathToTrackBuilder,
 } from './pcb_routing_core.js';
 import { collectManualViaFreeLocations } from './manual_via_helpers.js';
+import { formatCallSite, getErrorMessage } from './pcb_utils.js';
 import os from 'os';
 
 // Extracted sub-modules
@@ -65,9 +66,7 @@ export { enqueueAutoroute } from './pcb_autoroute_helpers.js';
 export function autoroute(pcb: any, options: IAutorouteOptions): IAutorouteResult {
     // ── 1. Validate required parameters ──────────────────────────────────
     if (!options.from || !options.to) {
-        const callSite = pcb.getCallSite();
-        const callSiteInfo = callSite ? ` (called from ${callSite.file}:${callSite.line})` : '';
-        throw new RoutingError(`autoroute() requires both 'from' and 'to' parameters${callSiteInfo}`);
+        throw new RoutingError(`autoroute() requires both 'from' and 'to' parameters${formatCallSite(pcb.getCallSite())}`);
     }
 
     debugLog(options.debug, chalk.blue(`[PCB] Starting autoroute operation`));
@@ -88,18 +87,14 @@ export function autoroute(pcb: any, options: IAutorouteOptions): IAutorouteResul
             if (isAutorouteResultRouteItem(routeItem)) {
                 const rd = routeItem.routeDetails;
                 if (rd.length === 0 || !rd[0].path) {
-                    const callSite = pcb.getCallSite();
-                    const callSiteInfo = callSite ? ` (called from ${callSite.file}:${callSite.line})` : '';
-                    throw new RoutingError(`${context}: IAutorouteResult has no path data${callSiteInfo}`);
+                    throw new RoutingError(`${context}: IAutorouteResult has no path data${formatCallSite(pcb.getCallSite())}`);
                 }
                 path = rd[0].path;
             } else {
                 path = routeItem;
             }
             if (!path || !path.nodes || path.nodes.length < 2) {
-                const callSite = pcb.getCallSite();
-                const callSiteInfo = callSite ? ` (called from ${callSite.file}:${callSite.line})` : '';
-                throw new RoutingError(`${context}: Path must have at least 2 nodes${callSiteInfo}`);
+                throw new RoutingError(`${context}: Path must have at least 2 nodes${formatCallSite(pcb.getCallSite())}`);
             }
         }
     }
@@ -111,9 +106,7 @@ export function autoroute(pcb: any, options: IAutorouteOptions): IAutorouteResul
             validatePin(exclude.from, `${context} 'from' pin`);
             validatePin(exclude.to, `${context} 'to' pin`);
             if (pinsMatch(exclude.from, exclude.to)) {
-                const callSite = pcb.getCallSite();
-                const callSiteInfo = callSite ? ` (called from ${callSite.file}:${callSite.line})` : '';
-                throw new RoutingError(`${context}: 'from' and 'to' pins are the same (${pinToIdentifier(exclude.from)})${callSiteInfo}`);
+                throw new RoutingError(`${context}: 'from' and 'to' pins are the same (${pinToIdentifier(exclude.from)})${formatCallSite(pcb.getCallSite())}`);
             }
         }
     }
@@ -151,9 +144,7 @@ export function autoroute(pcb: any, options: IAutorouteOptions): IAutorouteResul
     const invalidEnds = endPositions.filter(p => p === null).length;
 
     if (invalidStarts > 0 || invalidEnds > 0) {
-        const callSite = pcb.getCallSite();
-        const callSiteInfo = callSite ? ` (called from ${callSite.file}:${callSite.line})` : '';
-        throw new RoutingError(`Unable to resolve pin positions: ${invalidStarts} invalid start pins, ${invalidEnds} invalid end pins${callSiteInfo}`);
+        throw new RoutingError(`Unable to resolve pin positions: ${invalidStarts} invalid start pins, ${invalidEnds} invalid end pins${formatCallSite(pcb.getCallSite())}`);
     }
 
     const validStartPositions = startPositions.filter((p): p is { x: number; y: number; layer: string } => p !== null);
@@ -324,8 +315,8 @@ export function autoroute(pcb: any, options: IAutorouteOptions): IAutorouteResul
             debugLog(options.debug, chalk.yellow(`[PCB] Router selected grid resolution ${gridConfig.gridResolution}mm${reasonText}`));
             gridResolution = gridConfig.gridResolution;
         }
-    } catch (error: any) {
-        debugLog(options.debug, chalk.yellow(`[PCB] Grid configurator threw: ${error?.message ?? error}`));
+    } catch (error: unknown) {
+        debugLog(options.debug, chalk.yellow(`[PCB] Grid configurator threw: ${getErrorMessage(error)}`));
     }
 
     const grid = new RoutingGrid(bounds, gridResolution, routingLayers, options.debug);
@@ -517,9 +508,6 @@ export function autoroute(pcb: any, options: IAutorouteOptions): IAutorouteResul
     ));
 
     if (failureCount > 0) {
-        const callSite = pcb.getCallSite();
-        const callSiteInfo = callSite ? ` (called from ${callSite.file}:${callSite.line})` : '';
-
         debugLog(options.debug, chalk.red(`[PCB] Failed routes:`));
         routeDetails.forEach((detail, idx) => {
             if (!detail.success) {
@@ -528,7 +516,7 @@ export function autoroute(pcb: any, options: IAutorouteOptions): IAutorouteResul
             }
         });
 
-        logger.warn(`[PCB] WARNING: Some routes failed. Check routing constraints and available space${callSiteInfo}`);
+        logger.warn(`[PCB] WARNING: Some routes failed. Check routing constraints and available space${formatCallSite(pcb.getCallSite())}`);
     }
 
     // ── 21. Debug visualization ──────────────────────────────────────────
@@ -544,8 +532,8 @@ export function autoroute(pcb: any, options: IAutorouteOptions): IAutorouteResul
                 undefined,
                 options.debug
             );
-        } catch (error: any) {
-            logger.warn(`[PCB] Failed to generate debug visualization: ${error.message}`);
+        } catch (error: unknown) {
+            logger.warn(`[PCB] Failed to generate debug visualization: ${getErrorMessage(error)}`);
         }
     }
 
@@ -653,9 +641,10 @@ export function autoroute(pcb: any, options: IAutorouteOptions): IAutorouteResul
 
             debugLog(options.debug, chalk.green(`[PCB] Length matching applied: ${lengthMatchResult.updates.length} routes updated, ${lengthMatchResult.builders.length} new tracks added`));
 
-        } catch (error: any) {
-            debugLog(options.debug, chalk.yellow(`[PCB] Length matching failed: ${error.message}`));
-            logger.warn(`[PCB] WARNING: Length matching failed, continuing without it: ${error.message}`);
+        } catch (error: unknown) {
+            const msg = getErrorMessage(error);
+            debugLog(options.debug, chalk.yellow(`[PCB] Length matching failed: ${msg}`));
+            logger.warn(`[PCB] WARNING: Length matching failed, continuing without it: ${msg}`);
         }
     }
 

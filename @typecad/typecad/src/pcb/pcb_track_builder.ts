@@ -1,5 +1,5 @@
 import { PCB } from './pcb.js';
-import { generateUuid } from './pcb_utils.js';
+import { generateUuid, formatCallSite } from './pcb_utils.js';
 import { IVia, IGeneratedElement, IPowerInfo, ITrackDetails, IViaPowerInfo } from './pcb_interfaces.js';
 import logger from '../logging.js';
 import { RoutingError } from '../errors.js';
@@ -52,14 +52,10 @@ export class TrackBuilder {
 
     to(endPos: { x: number, y: number, layer?: string, width?: number }): this {
         if (!this.lastOperationSuccessful) {
-            const callSite = this.getCallSite();
-            const callSiteInfo = callSite ? ` (called from ${callSite.file}:${callSite.line})` : '';
-            throw new RoutingError(`Previous track operation failed${callSiteInfo}`);
+            throw new RoutingError(`Previous track operation failed${formatCallSite(this.getCallSite())}`);
         }
         if (!this.currentPosition) {
-            const callSite = this.getCallSite();
-            const callSiteInfo = callSite ? ` (called from ${callSite.file}:${callSite.line})` : '';
-            throw new RoutingError(`'from()' must be called before 'to()'${callSiteInfo}`);
+            throw new RoutingError(`'from()' must be called before 'to()'${formatCallSite(this.getCallSite())}`);
         }
 
         const targetLayer = endPos.layer ?? this.currentLayer;
@@ -83,9 +79,7 @@ export class TrackBuilder {
             const roundedMinWidth = Math.round(minWidth * 1000) / 1000;
             const roundedTargetWidth = Math.round(targetWidth * 1000) / 1000;
             if (roundedTargetWidth < roundedMinWidth) {
-                const callSite = this.getCallSite();
-                const callSiteInfo = callSite ? ` (called from ${callSite.file}:${callSite.line})` : '';
-                const error = `Track width ${roundedTargetWidth}mm is too narrow for ${this._powerInfo.current}A current on ${targetLayer}. Minimum width should be ${roundedMinWidth.toFixed(3)}mm.${callSiteInfo}`;
+                const error = `Track width ${roundedTargetWidth}mm is too narrow for ${this._powerInfo.current}A current on ${targetLayer}. Minimum width should be ${roundedMinWidth.toFixed(3)}mm.${formatCallSite(this.getCallSite())}`;
                 logger.error(`[TrackBuilder] ERROR: ${error}`);
                 // throw new Error(error);
             }
@@ -169,14 +163,10 @@ export class TrackBuilder {
 
     via(params: { size?: number, drill?: number, layers?: string[], net?: string, powerInfo?: IViaPowerInfo } = {}): this {
         if (!this.lastOperationSuccessful) {
-            const callSite = this.getCallSite();
-            const callSiteInfo = callSite ? ` (called from ${callSite.file}:${callSite.line})` : '';
-            throw new RoutingError(`Previous track operation failed${callSiteInfo}`);
+            throw new RoutingError(`Previous track operation failed${formatCallSite(this.getCallSite())}`);
         }
         if (!this.currentPosition) {
-            const callSite = this.getCallSite();
-            const callSiteInfo = callSite ? ` (called from ${callSite.file}:${callSite.line})` : '';
-            throw new RoutingError(`'from()' must be called before 'via()'${callSiteInfo}`);
+            throw new RoutingError(`'from()' must be called before 'via()'${formatCallSite(this.getCallSite())}`);
         }
 
         // If power info exists, calculate minimum via size
@@ -250,9 +240,7 @@ export class TrackBuilder {
                 }
             }
         } else {
-            const callSite = this.getCallSite();
-            const callSiteInfo = callSite ? ` (called from ${callSite.file}:${callSite.line})` : '';
-            logger.warn(`[TrackBuilder] WARN: 'via()' creation on PCB failed or returned unexpected structure. Via not added to track elements.${callSiteInfo}`);
+            logger.warn(`[TrackBuilder] WARN: 'via()' creation on PCB failed or returned unexpected structure. Via not added to track elements.${formatCallSite(this.getCallSite())}`);
             this.lastOperationSuccessful = false;
         }
         return this;
@@ -260,9 +248,7 @@ export class TrackBuilder {
 
     getElements(): IGeneratedElement[] {
         if (!this.lastOperationSuccessful) {
-            const callSite = this.getCallSite();
-            const callSiteInfo = callSite ? ` (called from ${callSite.file}:${callSite.line})` : '';
-            logger.warn(`[TrackBuilder] WARN: getElements() called on a builder chain that had a failing operation. Results might be incomplete.${callSiteInfo}`);
+            logger.warn(`[TrackBuilder] WARN: getElements() called on a builder chain that had a failing operation. Results might be incomplete.${formatCallSite(this.getCallSite())}`);
         }
         return this.elements;
     }

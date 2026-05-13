@@ -2,17 +2,21 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { Pin } from '../src/pin.js'
 import { Component } from '../src/component.js'
 import { Schematic } from '../src/schematic.js'
+import { erc } from '../src/erc.js'
 
-// Mock console outputs for testing
-const mockStdoutWrite = vi.fn()
-const mockProcessExit = vi.fn()
+// Mock console outputs for testing (logger uses console.error/warn/info)
+const mockConsoleError = vi.fn()
+const mockConsoleWarn = vi.fn()
+const mockConsoleInfo = vi.fn()
 
 beforeEach(() => {
-  mockStdoutWrite.mockClear()
-  mockProcessExit.mockClear()
+  mockConsoleError.mockClear()
+  mockConsoleWarn.mockClear()
+  mockConsoleInfo.mockClear()
   
-  vi.spyOn(process.stdout, 'write').mockImplementation(mockStdoutWrite)
-  vi.spyOn(process, 'exit').mockImplementation(mockProcessExit as any)
+  vi.spyOn(console, 'error').mockImplementation(mockConsoleError)
+  vi.spyOn(console, 'warn').mockImplementation(mockConsoleWarn)
+  vi.spyOn(console, 'info').mockImplementation(mockConsoleInfo)
 })
 
 describe('Power-Aware ERC Integration', () => {
@@ -87,12 +91,14 @@ describe('Power-Aware ERC Integration', () => {
     // Add components
     schematic.add(powerSupply, mcu, sensor, inputComponent, legacyComponent)
     
-    // Run integrated ERC
-    schematic.erc()  // This should catch both power AND logic issues
+    // Run integrated ERC (use erc directly with exit_on_error=false to avoid throwing)
+    erc(schematic, false)
     
-    const allMessages = mockStdoutWrite.mock.calls
-      .map(call => call[0])
-      .join('')
+    const allMessages = [
+      ...mockConsoleError.mock.calls.map(call => call.join(' ')),
+      ...mockConsoleWarn.mock.calls.map(call => call.join(' ')),
+      ...mockConsoleInfo.mock.calls.map(call => call.join(' '))
+    ].join('')
     
     // Should detect power issues
     expect(allMessages).toContain('Voltage incompatibility')  // 5V sensor on 3.3V rail
@@ -151,12 +157,14 @@ describe('Power-Aware ERC Integration', () => {
     schematic.named('5V').net(voutPin, motorPin)
     schematic.add(regulator, motor)
     
-    // Run ERC
-    schematic.erc()
+    // Run ERC (use erc directly with exit_on_error=false to avoid throwing)
+    erc(schematic, false)
     
-    const messages = mockStdoutWrite.mock.calls
-      .map(call => call[0])
-      .join('')
+    const messages = [
+      ...mockConsoleError.mock.calls.map(call => call.join(' ')),
+      ...mockConsoleWarn.mock.calls.map(call => call.join(' ')),
+      ...mockConsoleInfo.mock.calls.map(call => call.join(' '))
+    ].join('')
     
     // Should detect current overload
     expect(messages).toContain('Current capacity exceeded')
@@ -244,12 +252,14 @@ describe('Power-Aware ERC Integration', () => {
     
     schematic.add(powerManager, mcu, sensor, display, motorDriver)
     
-    // Run ERC
-    schematic.erc()
+    // Run ERC (use erc directly with exit_on_error=false to avoid throwing)
+    erc(schematic, false)
     
-    const messages = mockStdoutWrite.mock.calls
-      .map(call => call[0])
-      .join('')
+    const messages = [
+      ...mockConsoleError.mock.calls.map(call => call.join(' ')),
+      ...mockConsoleWarn.mock.calls.map(call => call.join(' ')),
+      ...mockConsoleInfo.mock.calls.map(call => call.join(' '))
+    ].join('')
     
     // Should detect 5V rail overload but 3.3V should be OK
     expect(messages).toContain('Current capacity exceeded on net "5V"')
@@ -303,12 +313,14 @@ describe('Power-Aware ERC Integration', () => {
     schematic.named('VBAT').net(chargerOut, mcuVcc, radioVcc)
     schematic.add(batteryCharger, microcontroller, highPowerRadio)
     
-    // Run ERC
-    schematic.erc()
+    // Run ERC (use erc directly with exit_on_error=false to avoid throwing)
+    erc(schematic, false)
     
-    const messages = mockStdoutWrite.mock.calls
-      .map(call => call[0])
-      .join('')
+    const messages = [
+      ...mockConsoleError.mock.calls.map(call => call.join(' ')),
+      ...mockConsoleWarn.mock.calls.map(call => call.join(' ')),
+      ...mockConsoleInfo.mock.calls.map(call => call.join(' '))
+    ].join('')
     
     // Check that error messages include component references and values
     expect(messages).toContain('Current capacity exceeded on net "VBAT"')

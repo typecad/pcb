@@ -1,5 +1,6 @@
 import { Pin } from "../pin.js";
 import { getCallSite } from '../utils/stack_trace.js';
+import { formatCallSite } from './pcb_utils.js';
 import { RoutingError } from '../errors.js';
 
 /**
@@ -51,8 +52,7 @@ export function connectionMatches(
  * @throws Error if pin is invalid
  */
 export function validatePin(pin: any, context: string): boolean {
-    const callSite = getCallSite();
-    const callSiteInfo = callSite ? ` (called from ${callSite.file}:${callSite.line})` : '';
+    const callSiteInfo = formatCallSite(getCallSite());
 
     if (!pin) {
         throw new RoutingError(`${context}: Pin is null or undefined${callSiteInfo}`);

@@ -82,7 +82,7 @@ export function printTypecadOutputSummary(boardFilePath?: string): boolean {
     return true;
 }
 
-// Version reads dynamically from package.json via createRequire (was hardcoded "0.0.30").
+// Version reads dynamically from package.json via createRequire.
 let schematic_template = `(export (version "E")
   (design
     (tool "typeCAD ${pkg.version}"))

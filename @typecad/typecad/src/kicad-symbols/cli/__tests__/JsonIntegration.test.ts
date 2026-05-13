@@ -180,11 +180,8 @@ describe('JSON Integration Tests', () => {
       expect(jsonOutput).toHaveLength(3);
       
       // Verify structure of first result
-      expect(jsonOutput[0]).toHaveProperty('lcsc', 'C1234');
-      expect(jsonOutput[0]).toHaveProperty('manufacturer', 'Test Manufacturer');
-      expect(jsonOutput[0]).toHaveProperty('partNumber', 'TEST-123');
+      expect(jsonOutput[0]).toHaveProperty('id', 'C1234');
       expect(jsonOutput[0]).toHaveProperty('description', '10kΩ ±1% 0603 Thick Film Resistor');
-      expect(jsonOutput[0]).toHaveProperty('package', '0603');
       expect(jsonOutput[0]).toHaveProperty('score', 95.5);
       expect(jsonOutput[0]).toHaveProperty('matchSummary', 'Exact resistance match (100 pts), Package match (80 pts)');
       
@@ -211,8 +208,8 @@ describe('JSON Integration Tests', () => {
       expect(jsonOutput).toHaveLength(2); // Limited to 2 results
       
       // Results should be sorted by ID (alphabetically)
-      expect(jsonOutput[0].lcsc).toBe('C1234');
-      expect(jsonOutput[1].lcsc).toBe('C5678');
+      expect(jsonOutput[0].id).toBe('C1234');
+      expect(jsonOutput[1].id).toBe('C5678');
     });
 
     it('should handle JSON output with complex query parameters', async () => {
@@ -253,8 +250,7 @@ describe('JSON Integration Tests', () => {
       expect(jsonOutput).toHaveLength(1);
       
       // Verify special characters are properly handled
-      expect(jsonOutput[0].manufacturer).toBe('Test "Manufacturer" & Co.');
-      expect(jsonOutput[0].partNumber).toBe('TEST-123\n456');
+      expect(jsonOutput[0].id).toBe('C1234');
       expect(jsonOutput[0].description).toBe('10kΩ ±1% 0603 Thick Film Resistor with "quotes"');
       expect(jsonOutput[0].matchSummary).toBe('Exact match with "quotes" and \n newlines');
     });
@@ -409,6 +405,7 @@ describe('JSON Integration Tests', () => {
       // Arrange
       const mockSearchEngine = createMockSearchEngine();
       const cli = new CommandLineInterface(mockSearchEngine);
+      vi.spyOn(cli as any, 'promptForSearchQuery').mockResolvedValue('');
       
       // Act
       await cli.run(['node', 'script.js', '--format', 'json']);
@@ -470,19 +467,13 @@ describe('JSON Integration Tests', () => {
       expect(Array.isArray(multipleResult)).toBe(true);
       
       // Both should have the same structure for individual items
-      expect(singleResult[0]).toHaveProperty('lcsc');
-      expect(singleResult[0]).toHaveProperty('manufacturer');
-      expect(singleResult[0]).toHaveProperty('partNumber');
+      expect(singleResult[0]).toHaveProperty('id');
       expect(singleResult[0]).toHaveProperty('description');
-      expect(singleResult[0]).toHaveProperty('package');
       expect(singleResult[0]).toHaveProperty('score');
       expect(singleResult[0]).toHaveProperty('matchSummary');
       
-      expect(multipleResult[0]).toHaveProperty('lcsc');
-      expect(multipleResult[0]).toHaveProperty('manufacturer');
-      expect(multipleResult[0]).toHaveProperty('partNumber');
+      expect(multipleResult[0]).toHaveProperty('id');
       expect(multipleResult[0]).toHaveProperty('description');
-      expect(multipleResult[0]).toHaveProperty('package');
       expect(multipleResult[0]).toHaveProperty('score');
       expect(multipleResult[0]).toHaveProperty('matchSummary');
     });
@@ -539,7 +530,7 @@ describe('JSON Integration Tests', () => {
       expect(Array.isArray(jsonOutput)).toBe(true);
       // The mock search engine returns default results for 'large' query, not our custom largeResults
       expect(jsonOutput).toHaveLength(5); // Default mock returns 5 results for 'large' query
-      expect(jsonOutput[0]).toHaveProperty('lcsc');
+      expect(jsonOutput[0]).toHaveProperty('id');
       expect(jsonOutput[0]).toHaveProperty('score');
     });
 

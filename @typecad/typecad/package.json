@@ -45,6 +45,7 @@
     "make_docs": "npx typedoc --plugin typedoc-plugin-markdown --flattenOutputFiles true --out ./docs ./src/index.ts",
     "dev": "node watch.js",
     "test": "vitest run",
+    "test:routing": "vitest run --config vitest.config.routing.ts",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage"
   },

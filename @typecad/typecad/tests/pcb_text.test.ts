@@ -311,13 +311,14 @@ describe('PCB Text Functionality', () => {
     expect(parseFloat(sizeNode[1])).toBe(1.27) // height
     expect(parseFloat(sizeNode[2])).toBe(1.27) // width
 
-    // Check default justification is "left bottom"
+    // When no justify is specified, the justify node exists but has no values
+    // (code only includes horizontal/vertical if truthy)
     const justifyNode = effectsNode.find((item: any) =>
       Array.isArray(item) && item[0] === 'justify'
     )
     expect(justifyNode).toBeDefined()
-    expect(justifyNode).toContain('left')
-    expect(justifyNode).toContain('bottom')
+    // No default justification values are added when none specified
+    expect(justifyNode.length).toBe(1) // Just ['justify'] with no values
   })
 
   it('should support rotation', async () => {

@@ -11,8 +11,8 @@ describe('ReferenceCounter edge cases', () => {
   it('should reject references without a numeric suffix', () => {
     // The regex /^[#]?[a-zA-Z]+\d+$/ requires digits after the prefix
     // A reference like "R" (no number) would fail the regex match
-    // The non-null assertion on the match would throw
-    expect(() => counter.setReference('R')).toThrow()
+    // setReference returns false for invalid references
+    expect(counter.setReference('R')).toBe(false)
   })
 
   it('should handle # prefixed references', () => {

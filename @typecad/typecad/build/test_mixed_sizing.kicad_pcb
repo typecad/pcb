@@ -1,15 +1,27 @@
 (kicad_pcb
   (version 20241229)
-  (net 0 "")
-  (generator "typecad")
   (generator_version "0.1.0")
+  (generator "typecad")
+  (net 0 "")
   (general
     (thickness 1.6)
     (legacy_teardrops no)
   )
   (paper "A4")
   (footprint "Package_SO:SOIC-8_3.9x4.9mm_P1.27mm"
-    (uuid "604b183c-03c7-4a45-acc5-cd31fb00ffcc")
+    (property "Code" "typecad:v1:eyJ2IjoxLCJ1IjoiIiwibiI6ImNvbXBvbmVudCJ9"
+      (at 0 0 0)
+      (layer F.Fab)
+      (hide yes)
+      (uuid "a7e486c1-75eb-4c8f-873d-f84e63177d70")
+      (effects
+        (font
+          (size 1 1)
+          (thickness 0.15)
+        )
+      )
+    )
+    (uuid "43aaa527-278f-42ec-aeeb-507d277c917b")
     (at 100 100 0)
     (version 20260206)
     (generator "kicad-footprint-generator")
@@ -18,7 +30,7 @@
     (tags "SOIC SO")
     (property "Reference" "U4"
       (at 0 0 0)
-      (layer "F.Fab")
+      (layer "F.SilkS")
       (effects
         (font
           (size 2.5 1.5)
@@ -41,18 +53,6 @@
       (at 0 0 0)
       (layer F.SilkS)
       (hide yes)
-      (effects
-        (font
-          (size 1 1)
-          (thickness 0.15)
-        )
-      )
-    )
-    (property "Code" "{'file':'C:\\typecad\\typeCAD\\@typecad\\typecad\\tests\\reference_width_height_output.test.ts','line':48,'variable':'component','params':{'reference':['U4',{'x':0,'y':0,'fontSize':1.5,'width':2.5}],'value':'TestValue','footprint':'Package_SO:SOIC-8_3.9x4.9mm_P1.27mm','pcb':{'x':100,'y':100,'rotation':0}}}"
-      (at 0 0 0)
-      (layer "F.Fab")
-      (hide yes)
-      (uuid "5992d6be-68b1-4d82-8c7a-bd454938da49")
       (effects
         (font
           (size 1 1)

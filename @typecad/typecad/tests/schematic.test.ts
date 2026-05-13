@@ -10,9 +10,10 @@ vi.mock('fs', () => ({
   existsSync: vi.fn()
 }));
 
-// Mock execSync
+// Mock execSync and exec
 vi.mock('node:child_process', () => ({
-  execSync: vi.fn()
+  execSync: vi.fn(),
+  exec: vi.fn()
 }));
 
 describe('Schematic', () => {

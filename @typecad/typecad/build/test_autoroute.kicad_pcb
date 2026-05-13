@@ -15,7 +15,7 @@
     (width 0.2)
     (locked no)
     (layer "F.Cu")
-    (uuid "e34d3734-6482-4ab6-a87f-fc6e8d3db284")
+    (uuid "9b5e0649-7658-477a-b048-d35b98291a91")
   )
   (segment
     (start 30 30)
@@ -23,6 +23,6 @@
     (width 0.2)
     (locked no)
     (layer "F.Cu")
-    (uuid "d9edc565-83a3-493d-b880-5e7d8f9999b3")
+    (uuid "f76ec4d3-0baf-48ad-995c-fd16e8594234")
   )
 )

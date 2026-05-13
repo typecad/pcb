@@ -30,8 +30,8 @@ export interface TypecadPackageOptions {
 export class TypecadPackage {
     #passives: typeof _0603;
     readonly pcb: PCB;
-    readonly U1: ATtiny3227_M;
-    readonly R1: Resistor;
+    declare U1: ATtiny3227_M;
+    declare R1: Resistor;
     readonly components: (Component | TrackBuilder)[] = [];
 
     constructor({ reference, passives, pcb, x, y }: TypecadPackageOptions) {
@@ -106,8 +106,8 @@ In this example, when a `new` typecad_package is created and the `constructor` i
 export class TypecadPackage {
     #passives: typeof _0603;
     readonly pcb: PCB;
-    readonly U1: ATtiny3227_M;
-    readonly R1: Resistor;
+    declare U1: ATtiny3227_M;
+    declare R1: Resistor;
     readonly components: (Component | TrackBuilder)[] = [];
 
     constructor({ reference, passives, pcb }: TypecadPackageOptions = {}) {

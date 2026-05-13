@@ -99,9 +99,6 @@ export class Component {
     #isInitialized: boolean = false;
     // Private backing field for uuid
     #uuid: string = '';
-    // Private flag to prevent recursion
-    #gettingUuid: boolean = false;
-
     /**
      * Creates an instance of Component.
      * @param {IComponent} [options={}] - The component options.
@@ -320,20 +317,9 @@ export class Component {
      */
     get uuid(): string {
         // If uuid is not set yet and the component is fully initialized,
-        // get it from the registry
+        // generate one
         if (this.#uuid === '' && this.#isInitialized) {
-            // Prevent circular dependency by checking if we're already in the process of getting a UUID
-            if (this.#gettingUuid) {
-                return randomUUID(); // Fallback to random UUID to break recursion
-            }
-            
-            try {
-                this.#gettingUuid = true;
-                // Fallback to a random UUID if component registry is not available
-                this.#uuid = randomUUID();
-            } finally {
-                this.#gettingUuid = false;
-            }
+            this.#uuid = randomUUID();
         }
         return this.#uuid;
     }
@@ -469,10 +455,10 @@ export class Component {
             const serialized = S.serialize(l).replaceAll("`", '"');
             this.#footprint_file = prettyPrintSExpr(serialized);
 
-        } catch (err: any) {
+        } catch (err: unknown) {
             // Instead of just logging the error, throw it so it can be properly handled
             // by the calling context (e.g., pcb.create)
-            const errorMessage = err.message || 'Unknown error occurred while loading footprint';
+            const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred while loading footprint';
             throw new ComponentError(`[${this.reference || 'Unknown'}, ${this.value || 'Unknown'}, ${footprint}] ${errorMessage}`);
         }
 
@@ -534,8 +520,8 @@ export class Component {
                 this.#symbol_file = symbol_file_contents;
             }
 
-        } catch (err: any) {
-            logger.warn(`Failed to load symbol ${symbol}: ${err.message}`);
+        } catch (err: unknown) {
+            logger.warn(`Failed to load symbol ${symbol}: ${err instanceof Error ? err.message : String(err)}`);
         }
 
         return this.#symbol_file || '';

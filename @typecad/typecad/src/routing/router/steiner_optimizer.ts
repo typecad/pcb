@@ -550,10 +550,10 @@ export class SteinerOptimizer {
                         logger.debug(chalk.red(`[SteinerOptimizer]    xx Failed: ${segment.error}`));
                     }
                 }
-            } catch (error: any) {
+            } catch (error: unknown) {
                 failedRoutes++;
                 if (debug) {
-                        logger.debug(chalk.red(`[SteinerOptimizer]    xx Exception: ${error.message}`));
+                        logger.debug(chalk.red(`[SteinerOptimizer]    xx Exception: ${error instanceof Error ? error.message : String(error)}`));
                 }
             }
         }

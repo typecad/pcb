@@ -33,7 +33,7 @@ import {
 } from './pcb_interfaces.js';
 import { IPcbBoardContext } from './pcb_board_context.js';
 import { prettyPrintSExpr } from '../utils/sexpr_formatter.js';
-import { normalizeNetName } from './pcb_utils.js';
+import { normalizeNetName, formatCallSite, getErrorMessage } from './pcb_utils.js';
 
 
 
@@ -470,9 +470,9 @@ export function createBoard(
             if (groupNode) {
                 final_board_contents.push(groupNode);
             }
-        } catch (e: any) {
+        } catch (e: unknown) {
             const callSite = pcb.getCallSite();
-            reportError(`Failed to parse group string: ${e.message}`, {
+            reportError(`Failed to parse group string: ${getErrorMessage(e)}`, {
                 reference: 'Group',
                 sourceInfo: callSite ? { file: callSite.file, line: callSite.line } : undefined
             });
@@ -550,8 +550,8 @@ export function createBoard(
                         const updatedNode = pcb._updateFootprintNodePublic(item, component, boardNetNameToCodeMap);
                         final_board_contents.push(updatedNode);
                         componentMap.delete(uuid);
-                    } catch (e: any) {
-                        reportError(`Failed to update footprint node for ${component.reference || uuid}: ${e.message}`, component);
+                    } catch (e: unknown) {
+                        reportError(`Failed to update footprint node for ${component.reference || uuid}: ${getErrorMessage(e)}`, component);
                     }
                 } else {
                     // Component exists in board file but not in current component list
@@ -579,7 +579,7 @@ export function createBoard(
         try {
             const newNode = pcb._createFootprintNodePublic(component, boardNetNameToCodeMap);
             final_board_contents.push(newNode);
-        } catch (e: any) {
+        } catch (e: unknown) {
             throw new BoardCreationError(`[${component.footprint} ${component.reference} ${component.description}] Failed to create footprint node. Is the .kicad_mod missing or empty in build/footprints/? Footprint must be in format "library:footprint" (e.g., "Resistor_SMD:R_0603_1608Metric" or "lib:Local_Footprint"`);
         }
     });
@@ -631,14 +631,10 @@ export function createBoard(
             if (viaNode) {
                 final_board_contents.push(viaNode);
             } else {
-                const callSite = pcb.getCallSite();
-                const callSiteInfo = callSite ? ` (called from ${callSite.file}:${callSite.line})` : '';
-                logger.error(`👺 Error: Failed to parse via S-expression (fsexp returned undefined/empty): ${viaSexprString}${callSiteInfo}`);
+                logger.error(`👺 Error: Failed to parse via S-expression (fsexp returned undefined/empty): ${viaSexprString}${formatCallSite(pcb.getCallSite())}`);
             }
-        } catch (e: any) {
-            const callSite = pcb.getCallSite();
-            const callSiteInfo = callSite ? ` (called from ${callSite.file}:${callSite.line})` : '';
-            logger.error(`👺 Error: Failed to parse via S-expression for UUID ${viaData.uuid}: ${viaSexprString} - ${e.message}${callSiteInfo}`);
+        } catch (e: unknown) {
+            logger.error(`👺 Error: Failed to parse via S-expression for UUID ${viaData.uuid}: ${viaSexprString} - ${getErrorMessage(e)}${formatCallSite(pcb.getCallSite())}`);
         }
     });
 
@@ -669,14 +665,10 @@ export function createBoard(
                     if (elementNode) {
                         final_board_contents.push(elementNode);
                     } else {
-                        const callSite = pcb.getCallSite();
-                        const callSiteInfo = callSite ? ` (called from ${callSite.file}:${callSite.line})` : '';
-                        logger.error(`👺 Error: Failed to parse outline element S-expression (fsexp returned undefined/empty) for UUID ${element.uuid}: ${elementSexprString}${callSiteInfo}`);
+                        logger.error(`👺 Error: Failed to parse outline element S-expression (fsexp returned undefined/empty) for UUID ${element.uuid}: ${elementSexprString}${formatCallSite(pcb.getCallSite())}`);
                     }
-                } catch (e: any) {
-                    const callSite = pcb.getCallSite();
-                    const callSiteInfo = callSite ? ` (called from ${callSite.file}:${callSite.line})` : '';
-                    logger.error(`👺 Error: Failed to parse outline element S-expression for UUID ${element.uuid}: ${elementSexprString} - ${e.message}${callSiteInfo}`);
+                } catch (e: unknown) {
+                    logger.error(`👺 Error: Failed to parse outline element S-expression for UUID ${element.uuid}: ${elementSexprString} - ${getErrorMessage(e)}${formatCallSite(pcb.getCallSite())}`);
                 }
             }
         });
@@ -755,14 +747,10 @@ export function createBoard(
             if (grTextNode) {
                 final_board_contents.push(grTextNode);
             } else {
-                const callSite = pcb.getCallSite();
-                const callSiteInfo = callSite ? ` (called from ${callSite.file}:${callSite.line})` : '';
-                logger.error(`👺 Error: Failed to parse gr_text S-expression (fsexp returned undefined/empty) for UUID ${textElement.uuid}: ${grTextSexpr}${callSiteInfo}`);
+                logger.error(`👺 Error: Failed to parse gr_text S-expression (fsexp returned undefined/empty) for UUID ${textElement.uuid}: ${grTextSexpr}${formatCallSite(pcb.getCallSite())}`);
             }
-        } catch (e: any) {
-            const callSite = pcb.getCallSite();
-            const callSiteInfo = callSite ? ` (called from ${callSite.file}:${callSite.line})` : '';
-            logger.error(`👺 Error: Failed to parse gr_text S-expression for UUID ${textElement.uuid}: ${grTextSexpr} - ${e.message}${callSiteInfo}`);
+        } catch (e: unknown) {
+            logger.error(`👺 Error: Failed to parse gr_text S-expression for UUID ${textElement.uuid}: ${grTextSexpr} - ${getErrorMessage(e)}${formatCallSite(pcb.getCallSite())}`);
         }
     });
 
@@ -776,14 +764,10 @@ export function createBoard(
             if (lineNode) {
                 final_board_contents.push(lineNode);
             } else {
-                const callSite = pcb.getCallSite();
-                const callSiteInfo = callSite ? ` (called from ${callSite.file}:${callSite.line})` : '';
-                logger.error(`👺 Error: Failed to parse gr_line S-expression (fsexp returned undefined/empty) for UUID ${line.uuid}: ${lineSexpr}${callSiteInfo}`);
+                logger.error(`👺 Error: Failed to parse gr_line S-expression (fsexp returned undefined/empty) for UUID ${line.uuid}: ${lineSexpr}${formatCallSite(pcb.getCallSite())}`);
             }
-        } catch (e: any) {
-            const callSite = pcb.getCallSite();
-            const callSiteInfo = callSite ? ` (called from ${callSite.file}:${callSite.line})` : '';
-            logger.error(`👺 Error: Failed to parse gr_line S-expression for UUID ${line.uuid}: ${lineSexpr} - ${e.message}${callSiteInfo}`);
+        } catch (e: unknown) {
+            logger.error(`👺 Error: Failed to parse gr_line S-expression for UUID ${line.uuid}: ${lineSexpr} - ${getErrorMessage(e)}${formatCallSite(pcb.getCallSite())}`);
         }
     });
 
@@ -798,14 +782,10 @@ export function createBoard(
             if (circleNode) {
                 final_board_contents.push(circleNode);
             } else {
-                const callSite = pcb.getCallSite();
-                const callSiteInfo = callSite ? ` (called from ${callSite.file}:${callSite.line})` : '';
-                logger.error(`👺 Error: Failed to parse gr_circle S-expression (fsexp returned undefined/empty) for UUID ${circle.uuid}: ${circleSexpr}${callSiteInfo}`);
+                logger.error(`👺 Error: Failed to parse gr_circle S-expression (fsexp returned undefined/empty) for UUID ${circle.uuid}: ${circleSexpr}${formatCallSite(pcb.getCallSite())}`);
             }
-        } catch (e: any) {
-            const callSite = pcb.getCallSite();
-            const callSiteInfo = callSite ? ` (called from ${callSite.file}:${callSite.line})` : '';
-            logger.error(`👺 Error: Failed to parse gr_circle S-expression for UUID ${circle.uuid}: ${circleSexpr} - ${e.message}${callSiteInfo}`);
+        } catch (e: unknown) {
+            logger.error(`👺 Error: Failed to parse gr_circle S-expression for UUID ${circle.uuid}: ${circleSexpr} - ${getErrorMessage(e)}${formatCallSite(pcb.getCallSite())}`);
         }
     });
 
@@ -820,14 +800,10 @@ export function createBoard(
             if (rectNode) {
                 final_board_contents.push(rectNode);
             } else {
-                const callSite = pcb.getCallSite();
-                const callSiteInfo = callSite ? ` (called from ${callSite.file}:${callSite.line})` : '';
-                logger.error(`👺 Error: Failed to parse gr_rect S-expression (fsexp returned undefined/empty) for UUID ${rect.uuid}: ${rectSexpr}${callSiteInfo}`);
+                logger.error(`👺 Error: Failed to parse gr_rect S-expression (fsexp returned undefined/empty) for UUID ${rect.uuid}: ${rectSexpr}${formatCallSite(pcb.getCallSite())}`);
             }
-        } catch (e: any) {
-            const callSite = pcb.getCallSite();
-            const callSiteInfo = callSite ? ` (called from ${callSite.file}:${callSite.line})` : '';
-            logger.error(`👺 Error: Failed to parse gr_rect S-expression for UUID ${rect.uuid}: ${rectSexpr} - ${e.message}${callSiteInfo}`);
+        } catch (e: unknown) {
+            logger.error(`👺 Error: Failed to parse gr_rect S-expression for UUID ${rect.uuid}: ${rectSexpr} - ${getErrorMessage(e)}${formatCallSite(pcb.getCallSite())}`);
         }
     });
 
@@ -843,14 +819,10 @@ export function createBoard(
             if (polyNode) {
                 final_board_contents.push(polyNode);
             } else {
-                const callSite = pcb.getCallSite();
-                const callSiteInfo = callSite ? ` (called from ${callSite.file}:${callSite.line})` : '';
-                logger.error(`👺 Error: Failed to parse gr_poly S-expression (fsexp returned undefined/empty) for UUID ${poly.uuid}: ${polySexpr}${callSiteInfo}`);
+                logger.error(`👺 Error: Failed to parse gr_poly S-expression (fsexp returned undefined/empty) for UUID ${poly.uuid}: ${polySexpr}${formatCallSite(pcb.getCallSite())}`);
             }
-        } catch (e: any) {
-            const callSite = pcb.getCallSite();
-            const callSiteInfo = callSite ? ` (called from ${callSite.file}:${callSite.line})` : '';
-            logger.error(`👺 Error: Failed to parse gr_poly S-expression for UUID ${poly.uuid}: ${polySexpr} - ${e.message}${callSiteInfo}`);
+        } catch (e: unknown) {
+            logger.error(`👺 Error: Failed to parse gr_poly S-expression for UUID ${poly.uuid}: ${polySexpr} - ${getErrorMessage(e)}${formatCallSite(pcb.getCallSite())}`);
         }
     });
 
@@ -900,9 +872,7 @@ export function createBoard(
                             netCode = boardNetNameToCodeMap.get(lookupKey)!;
                             netName = searchNetName;
                         } else {
-                            const callSite = pcb.getCallSite();
-                            const callSiteInfo = callSite ? ` (called from ${callSite.file}:${callSite.line})` : '';
-                            logger.error(`[PCB ZONE] ERROR: Net "${searchNetName}" not found in schematic or board${callSiteInfo}`);
+                            logger.error(`[PCB ZONE] ERROR: Net "${searchNetName}" not found in schematic or board${formatCallSite(pcb.getCallSite())}`);
                         }
                     }
                 }
@@ -991,14 +961,10 @@ export function createBoard(
             if (zoneNode) {
                 final_board_contents.push(zoneNode);
             } else {
-                const callSite = pcb.getCallSite();
-                const callSiteInfo = callSite ? ` (called from ${callSite.file}:${callSite.line})` : '';
-                logger.error(`👺 Error: Failed to parse zone S-expression (fsexp returned undefined/empty) for UUID ${zone.uuid}: ${zoneSexpr}${callSiteInfo}`);
+                logger.error(`👺 Error: Failed to parse zone S-expression (fsexp returned undefined/empty) for UUID ${zone.uuid}: ${zoneSexpr}${formatCallSite(pcb.getCallSite())}`);
             }
-        } catch (e: any) {
-            const callSite = pcb.getCallSite();
-            const callSiteInfo = callSite ? ` (called from ${callSite.file}:${callSite.line})` : '';
-            logger.error(`👺 Error: Failed to parse zone S-expression for UUID ${zone.uuid}: ${zoneSexpr} - ${e.message}${callSiteInfo}`);
+        } catch (e: unknown) {
+            logger.error(`👺 Error: Failed to parse zone S-expression for UUID ${zone.uuid}: ${zoneSexpr} - ${getErrorMessage(e)}${formatCallSite(pcb.getCallSite())}`);
         }
     });
 
@@ -1045,14 +1011,10 @@ export function createBoard(
             if (zoneNode) {
                 final_board_contents.push(zoneNode);
             } else {
-                const callSite = pcb.getCallSite();
-                const callSiteInfo = callSite ? ` (called from ${callSite.file}:${callSite.line})` : '';
-                logger.error(`👺 Error: Failed to parse keepout zone S-expression (fsexp returned undefined/empty) for UUID ${zone.uuid}: ${zoneSexpr}${callSiteInfo}`);
+                logger.error(`👺 Error: Failed to parse keepout zone S-expression (fsexp returned undefined/empty) for UUID ${zone.uuid}: ${zoneSexpr}${formatCallSite(pcb.getCallSite())}`);
             }
-        } catch (e: any) {
-            const callSite = pcb.getCallSite();
-            const callSiteInfo = callSite ? ` (called from ${callSite.file}:${callSite.line})` : '';
-            logger.error(`👺 Error: Failed to parse keepout zone S-expression for UUID ${zone.uuid}: ${zoneSexpr} - ${e.message}${callSiteInfo}`);
+        } catch (e: unknown) {
+            logger.error(`👺 Error: Failed to parse keepout zone S-expression for UUID ${zone.uuid}: ${zoneSexpr} - ${getErrorMessage(e)}${formatCallSite(pcb.getCallSite())}`);
         }
     });
 
@@ -1200,10 +1162,8 @@ export function createBoard(
         } catch (e) {
             logger.error(`[BoardCreation][DIAG] Could not write/read debug PCB file: ${String(e)}`);
         }
-    } catch (e: any) {
-        const callSite = pcb.getCallSite();
-        const callSiteInfo = callSite ? ` (called from ${callSite.file}:${callSite.line})` : '';
-        logger.error(` 👺 Error: Failed to serialize final board structure: ${e.message}${callSiteInfo}`);
+    } catch (e: unknown) {
+        logger.error(` 👺 Error: Failed to serialize final board structure: ${getErrorMessage(e)}${formatCallSite(pcb.getCallSite())}`);
         pcb._setPcb("");
         return;
     }
@@ -1229,16 +1189,14 @@ export function createBoard(
             if (foundElementUuids.length < stagedElementUuids.length) {
                 logger.warn('[BoardCreation][VERIFY] Some staged ELEMENT UUIDs were not found in written board file.');
             }
-        } catch (e: any) {
-            logger.error(`[BoardCreation][VERIFY] Error while verifying written board file: ${e?.message || e}`);
+        } catch (e: unknown) {
+            logger.error(`[BoardCreation][VERIFY] Error while verifying written board file: ${getErrorMessage(e)}`);
         }
 
         // Show final output summary (deferred until the end so routing logs
         // can appear first and the summary can include both net + board paths).
         setPendingBoardFilePath(boardFilePath);
-    } catch (err) {
-        const callSite = pcb.getCallSite();
-        const callSiteInfo = callSite ? ` (called from ${callSite.file}:${callSite.line})` : '';
-        logger.error(`👺 Error: Could not write board file ${boardFilePath}: ${err}${callSiteInfo}`);
+    } catch (err: unknown) {
+        logger.error(`👺 Error: Could not write board file ${boardFilePath}: ${getErrorMessage(err)}${formatCallSite(pcb.getCallSite())}`);
     }
 }

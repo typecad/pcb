@@ -132,7 +132,9 @@ describe('ComponentSearchEngine', () => {
     description: '100nF 50V X7R 0603 Ceramic Capacitor',
     package: '0603',
     score: 200,
-    matchSummary: 'Exact matches: value, package'
+    matchSummary: 'Exact matches: value, package',
+    footprint: '',
+    fpFilters: []
   };
   
   // Create search engine instance
@@ -180,7 +182,6 @@ describe('ComponentSearchEngine', () => {
       const results = await searchEngine.search(query);
       
       // Should call dependencies in correct order
-      expect(mockDataManager.ensureDataAvailable).toHaveBeenCalled();
       expect(mockDataManager.getCsvData).toHaveBeenCalled();
       expect(mockParameterParser.parseQuery).toHaveBeenCalledWith(query);
       expect(mockFuzzyScorer.filterTopResults).toHaveBeenCalledWith(testComponentScores, 5);
@@ -224,7 +225,7 @@ describe('ComponentSearchEngine', () => {
     
     it('should handle data manager errors', async () => {
       // Mock data manager error
-      mockDataManager.ensureDataAvailable.mockRejectedValue(new Error('Network error'));
+      mockDataManager.getCsvData.mockRejectedValue(new Error('Network error'));
       
       // Should throw error
       await expect(searchEngine.search('100nF capacitor')).rejects.toThrow('Network error');
@@ -323,7 +324,6 @@ describe('ComponentSearchEngine', () => {
       await searchEngine.search(query);
       
       // Should call dependencies again
-      expect(mockDataManager.ensureDataAvailable).toHaveBeenCalled();
       expect(mockDataManager.getCsvData).toHaveBeenCalled();
       expect(mockParameterParser.parseQuery).toHaveBeenCalled();
       expect(mockFuzzyScorer.rankComponents).toHaveBeenCalled();
@@ -412,7 +412,7 @@ describe('ComponentSearchEngine', () => {
       await searchEngine.search('query1');
       
       // Should call dependencies again
-      expect(mockDataManager.ensureDataAvailable).toHaveBeenCalled();
+      expect(mockDataManager.getCsvData).toHaveBeenCalled();
       expect(mockFuzzyScorer.rankComponents).toHaveBeenCalled();
     });
     

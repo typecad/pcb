@@ -26,7 +26,7 @@ export class {{{package_name_pascal}}} {
     #passives: typeof _0603;
     readonly pcb: PCB;
     readonly components: (Component | TrackBuilder)[] = [];
-    {{#if component_name}}readonly U1: {{{component_name}}};{{/if}}
+    {{#if component_name}}declare U1: {{{component_name}}};{{/if}}
 
     constructor({ reference, passives, pcb, x, y }: {{{package_name_pascal}}}Options) {
         this.#passives = passives || _0603;

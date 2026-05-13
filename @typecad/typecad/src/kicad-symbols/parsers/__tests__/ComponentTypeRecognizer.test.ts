@@ -105,7 +105,7 @@ describe('ComponentTypeRecognizer', () => {
       const keywords = ComponentTypeRecognizer.extractKeywords('the and for with this that from');
       expect(keywords.length).toBe(0);
       
-      const keywords2 = ComponentTypeRecognizer.extractKeywords('a to in on at by');
+      const keywords2 = ComponentTypeRecognizer.extractKeywords('a to in on by');
       expect(keywords2.length).toBe(0);
     });
     

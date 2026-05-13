@@ -73,7 +73,7 @@ function erc_node_pin(nodes: Pin[], context: ErcContext) {
         }
     });
 
-    // input pin not driven to any output pin
+    // power_in pin not driven by any power_out pin
     nodes.forEach(pin => {
         if (pin.type === 'power_in') {
             const hasInput = nodes.some(pin2 => pin2.type === 'power_out');

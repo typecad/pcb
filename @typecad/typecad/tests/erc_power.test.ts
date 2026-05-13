@@ -4,17 +4,19 @@ import { Component } from '../src/component.js'
 import { Schematic } from '../src/schematic.js'
 import { erc } from '../src/erc.js'
 
-// Mock console.log and process.stdout.write to capture ERC output
-const mockStdoutWrite = vi.fn()
-const mockProcessExit = vi.fn()
+// Mock console outputs to capture ERC output (logger uses console.error/warn/info)
+const mockConsoleError = vi.fn()
+const mockConsoleWarn = vi.fn()
+const mockConsoleInfo = vi.fn()
 
 beforeEach(() => {
-  mockStdoutWrite.mockClear()
-  mockProcessExit.mockClear()
+  mockConsoleError.mockClear()
+  mockConsoleWarn.mockClear()
+  mockConsoleInfo.mockClear()
   
-  // Mock process.stdout.write and process.exit
-  vi.spyOn(process.stdout, 'write').mockImplementation(mockStdoutWrite)
-  vi.spyOn(process, 'exit').mockImplementation(mockProcessExit as any)
+  vi.spyOn(console, 'error').mockImplementation(mockConsoleError)
+  vi.spyOn(console, 'warn').mockImplementation(mockConsoleWarn)
+  vi.spyOn(console, 'info').mockImplementation(mockConsoleInfo)
 })
 
 describe('Power-Aware ERC', () => {
@@ -46,9 +48,11 @@ describe('Power-Aware ERC', () => {
       erc(schematic, false) // Don't exit on error for testing
       
       // Check that voltage incompatibility error was reported
-      const errorMessages = mockStdoutWrite.mock.calls
-        .map(call => call[0])
-        .join('')
+      const errorMessages = [
+        ...mockConsoleError.mock.calls.map(call => call.join(' ')),
+        ...mockConsoleWarn.mock.calls.map(call => call.join(' ')),
+        ...mockConsoleInfo.mock.calls.map(call => call.join(' '))
+      ].join('')
       
       expect(errorMessages).toContain('Voltage incompatibility')
       expect(errorMessages).toContain('U1:1')
@@ -82,9 +86,11 @@ describe('Power-Aware ERC', () => {
       erc(schematic, false)
       
       // Should not have voltage incompatibility errors
-      const errorMessages = mockStdoutWrite.mock.calls
-        .map(call => call[0])
-        .join('')
+      const errorMessages = [
+        ...mockConsoleError.mock.calls.map(call => call.join(' ')),
+        ...mockConsoleWarn.mock.calls.map(call => call.join(' ')),
+        ...mockConsoleInfo.mock.calls.map(call => call.join(' '))
+      ].join('')
       
       expect(errorMessages).not.toContain('Voltage incompatibility')
     })
@@ -118,9 +124,11 @@ describe('Power-Aware ERC', () => {
       erc(schematic, false)
       
       // Check that current capacity error was reported
-      const errorMessages = mockStdoutWrite.mock.calls
-        .map(call => call[0])
-        .join('')
+      const errorMessages = [
+        ...mockConsoleError.mock.calls.map(call => call.join(' ')),
+        ...mockConsoleWarn.mock.calls.map(call => call.join(' ')),
+        ...mockConsoleInfo.mock.calls.map(call => call.join(' '))
+      ].join('')
       
       expect(errorMessages).toContain('Current capacity exceeded')
       expect(errorMessages).toContain('2A demanded')
@@ -154,9 +162,11 @@ describe('Power-Aware ERC', () => {
       erc(schematic, false)
       
       // Check that high utilization warning was reported
-      const warningMessages = mockStdoutWrite.mock.calls
-        .map(call => call[0])
-        .join('')
+      const warningMessages = [
+        ...mockConsoleError.mock.calls.map(call => call.join(' ')),
+        ...mockConsoleWarn.mock.calls.map(call => call.join(' ')),
+        ...mockConsoleInfo.mock.calls.map(call => call.join(' '))
+      ].join('')
       
       expect(warningMessages).toContain('High current utilization')
       expect(warningMessages).toContain('90.0% utilization')

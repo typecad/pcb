@@ -85,3 +85,21 @@ export function normalizeNetName(name?: string): string | undefined {
 
     return normalized;
 }
+
+/**
+ * Formats call site information into a human-readable string for error messages.
+ * @param callSite - Call site info from getCallSite(), or undefined
+ * @returns Formatted string like " (called from file.ts:42)" or empty string
+ */
+export function formatCallSite(callSite: { file: string; line: number; column: number } | undefined): string {
+    return callSite ? ` (called from ${callSite.file}:${callSite.line})` : '';
+}
+
+/**
+ * Safely extracts an error message from an unknown caught value.
+ * @param error - The caught value
+ * @returns Error message string
+ */
+export function getErrorMessage(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
+}

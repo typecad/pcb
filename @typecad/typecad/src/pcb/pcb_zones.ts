@@ -6,7 +6,7 @@ import {
     OutlineElement
 } from './pcb_interfaces.js';
 import { IPcbBoardContext } from './pcb_board_context.js';
-import { generateUuid } from './pcb_utils.js';
+import { generateUuid, formatCallSite } from './pcb_utils.js';
 
 /**
  * PCB Zone Management Module
@@ -175,15 +175,11 @@ export function zone(pcb: IPcbBoardContext, options: {
 
     // Validate that exactly one of pin or net is provided
     if (!pin && !net) {
-        const callSite = pcb.getCallSite();
-        const callSiteInfo = callSite ? ` (called from ${callSite.file}:${callSite.line})` : '';
-        logger.error(`[PCB ZONE] ERROR: Must provide either 'pin' or 'net' parameter${callSiteInfo}`);
+        logger.error(`[PCB ZONE] ERROR: Must provide either 'pin' or 'net' parameter${formatCallSite(pcb.getCallSite())}`);
         return;
     }
     if (pin && net) {
-        const callSite = pcb.getCallSite();
-        const callSiteInfo = callSite ? ` (called from ${callSite.file}:${callSite.line})` : '';
-        logger.error(`[PCB ZONE] ERROR: Cannot provide both 'pin' and 'net' parameters. Use one or the other${callSiteInfo}`);
+        logger.error(`[PCB ZONE] ERROR: Cannot provide both 'pin' and 'net' parameters. Use one or the other${formatCallSite(pcb.getCallSite())}`);
         return;
     }
 

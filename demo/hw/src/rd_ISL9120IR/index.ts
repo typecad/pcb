@@ -18,18 +18,14 @@ interface PowerRegulatorOptions {
  * 
  */
 export class rd_isl9120ir extends Package<PowerRegulatorOptions> {
-
-    // Main components — auto-collected after build()
-    regulator: ISL9120IRTNZ;
-    inputCap: _0603.Capacitor;
-    outputCap: _0603.Capacitor;
-    inductor: _0603.Inductor;
-    via1: Component;
-    via2: Component;
-
-    // Power connections — not Components, not auto-collected
-    vin: Power;
-    vout: Power;
+    declare regulator: ISL9120IRTNZ;
+    declare inputCap: _0603.Capacitor;
+    declare outputCap: _0603.Capacitor;
+    declare inductor: _0603.Inductor;
+    declare via1: Component;
+    declare via2: Component;
+    declare vin: Power;
+    declare vout: Power;
 
     build(options: PackageOptions & PowerRegulatorOptions) {
         // Main IC
@@ -65,7 +61,6 @@ export class rd_isl9120ir extends Package<PowerRegulatorOptions> {
             pcb: { x: 146.5, y: 97.8, rotation: 90 }
         });
 
-        // Vias — auto-registered by this.via()
         this.via1 = this.via({ x: 151.765, y: 100.33 });
         this.via2 = this.via({ x: 152.4, y: 96.52 });
 

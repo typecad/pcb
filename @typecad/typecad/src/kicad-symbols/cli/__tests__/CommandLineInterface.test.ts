@@ -139,7 +139,7 @@ describe('CommandLineInterface', () => {
       await cli.run(['node', 'script.js', '--version']);
       
       // Assert
-      expect(mockConsoleLog).toHaveBeenCalledWith('kicad-symbols-search version 1.0.0');
+      expect(mockConsoleLog).toHaveBeenCalledWith('kicad-symbols version 1.0.0');
       expect(mockSearchEngine.search).not.toHaveBeenCalled();
     });
     
@@ -152,7 +152,7 @@ describe('CommandLineInterface', () => {
       await cli.run(['node', 'script.js', '-v']);
       
       // Assert
-      expect(mockConsoleLog).toHaveBeenCalledWith('kicad-symbols-search version 1.0.0');
+      expect(mockConsoleLog).toHaveBeenCalledWith('kicad-symbols version 1.0.0');
       expect(mockSearchEngine.search).not.toHaveBeenCalled();
     });
     
@@ -160,15 +160,16 @@ describe('CommandLineInterface', () => {
       // Arrange
       const mockSearchEngine = createMockSearchEngine();
       const cli = new CommandLineInterface(mockSearchEngine);
-      const displayHelpSpy = vi.spyOn(cli, 'displayHelp');
+      
+      // Mock promptForSearchQuery to return empty string (simulating user pressing enter)
+      vi.spyOn(cli as any, 'promptForSearchQuery').mockResolvedValue('');
       
       // Act
       await cli.run(['node', 'script.js']);
       
       // Assert
-      expect(mockConsoleError).toHaveBeenCalledWith('Error: No search query provided');
-      expect(displayHelpSpy).toHaveBeenCalled();
-      expect(mockProcessExit).toHaveBeenCalledWith(1);
+      expect(mockConsoleLog).toHaveBeenCalledWith(expect.stringContaining('No search query provided'));
+      expect(mockProcessExit).toHaveBeenCalledWith(0);
     });
     
     it('should validate the search query', async () => {
@@ -547,6 +548,9 @@ describe('CommandLineInterface', () => {
       const mockSearchEngine = createMockSearchEngine();
       const cli = new CommandLineInterface(mockSearchEngine);
       
+      // Mock promptForSearchQuery to return empty string
+      vi.spyOn(cli as any, 'promptForSearchQuery').mockResolvedValue('');
+      
       // Act
       await cli.run(['node', 'script.js', '--format', 'json']);
       
@@ -558,7 +562,7 @@ describe('CommandLineInterface', () => {
           code: 'MISSING_QUERY'
         })
       );
-      expect(mockProcessExit).toHaveBeenCalledWith(1);
+      expect(mockProcessExit).toHaveBeenCalledWith(0);
     });
 
     it('should output JSON error when query validation fails in JSON format', async () => {
@@ -809,6 +813,9 @@ describe('CommandLineInterface', () => {
       const cli = new CommandLineInterface(mockSearchEngine);
       const displayHelpSpy = vi.spyOn(cli, 'displayHelp');
       
+      // Mock promptForSearchQuery to return empty string
+      vi.spyOn(cli as any, 'promptForSearchQuery').mockResolvedValue('');
+      
       // Act
       await cli.run(['node', 'script.js', '--format', 'json']);
       
@@ -909,11 +916,8 @@ describe('CommandLineInterface', () => {
       const jsonOutput = JSON.parse(mockConsoleLog.mock.calls[0][0]);
       expect(Array.isArray(jsonOutput)).toBe(true);
       expect(jsonOutput).toHaveLength(1);
-      expect(jsonOutput[0]).toHaveProperty('lcsc', 'C1234');
-      expect(jsonOutput[0]).toHaveProperty('manufacturer', 'Test Manufacturer');
-      expect(jsonOutput[0]).toHaveProperty('partNumber', 'TEST-123');
+      expect(jsonOutput[0]).toHaveProperty('id', 'C1234');
       expect(jsonOutput[0]).toHaveProperty('description', '10kΩ ±1% 0603 Thick Film Resistor');
-      expect(jsonOutput[0]).toHaveProperty('package', '0603');
       expect(jsonOutput[0]).toHaveProperty('score', 95.5);
       expect(jsonOutput[0]).toHaveProperty('matchSummary', 'Exact resistance match (100 pts), Package match (80 pts)');
     });
@@ -963,8 +967,8 @@ describe('CommandLineInterface', () => {
       const jsonOutput = JSON.parse(mockConsoleLog.mock.calls[0][0]);
       expect(Array.isArray(jsonOutput)).toBe(true);
       expect(jsonOutput).toHaveLength(2);
-      expect(jsonOutput[0].lcsc).toBe('C1234');
-      expect(jsonOutput[1].lcsc).toBe('C5678');
+      expect(jsonOutput[0].id).toBe('C1234');
+      expect(jsonOutput[1].id).toBe('C5678');
     });
 
     it('should maintain data types in JSON output', () => {
@@ -990,8 +994,8 @@ describe('CommandLineInterface', () => {
       const jsonOutput = JSON.parse(mockConsoleLog.mock.calls[0][0]);
       expect(typeof jsonOutput[0].score).toBe('number');
       expect(jsonOutput[0].score).toBe(95.5);
-      expect(typeof jsonOutput[0].lcsc).toBe('string');
-      expect(typeof jsonOutput[0].manufacturer).toBe('string');
+      expect(typeof jsonOutput[0].id).toBe('string');
+      expect(typeof jsonOutput[0].description).toBe('string');
     });
 
     it('should output compact JSON without pretty printing', () => {
@@ -1247,6 +1251,9 @@ describe('CommandLineInterface', () => {
       const mockSearchEngine = createMockSearchEngine();
       const cli = new CommandLineInterface(mockSearchEngine);
       
+      // Mock promptForSearchQuery to return empty string
+      vi.spyOn(cli as any, 'promptForSearchQuery').mockResolvedValue('');
+      
       // Act
       await cli.run(['node', 'script.js', '--format', 'json']);
       
@@ -1258,7 +1265,7 @@ describe('CommandLineInterface', () => {
           code: 'MISSING_QUERY'
         })
       );
-      expect(mockProcessExit).toHaveBeenCalledWith(1);
+      expect(mockProcessExit).toHaveBeenCalledWith(0);
       // Ensure no help text or other output was displayed
       expect(mockConsoleError).not.toHaveBeenCalled();
     });
@@ -1327,7 +1334,7 @@ describe('CommandLineInterface', () => {
       const jsonOutput = JSON.parse(mockConsoleLog.mock.calls[0][0]);
       expect(Array.isArray(jsonOutput)).toBe(true);
       expect(jsonOutput).toHaveLength(2);
-      expect(jsonOutput[0]).toHaveProperty('lcsc');
+      expect(jsonOutput[0]).toHaveProperty('id');
       expect(jsonOutput[0]).toHaveProperty('score');
       expect(jsonOutput[0]).toHaveProperty('description');
     });
@@ -1371,9 +1378,9 @@ describe('CommandLineInterface', () => {
       // Assert
       const jsonOutput = JSON.parse(mockConsoleLog.mock.calls[0][0]);
       expect(jsonOutput).toHaveLength(2);
-      // Results should be sorted by manufacturer
-      expect(jsonOutput[0].manufacturer).toBe('Another Manufacturer');
-      expect(jsonOutput[1].manufacturer).toBe('Test Manufacturer');
+      // Results should be sorted by manufacturer (Another < Test)
+      expect(jsonOutput[0].id).toBe('C5678');
+      expect(jsonOutput[1].id).toBe('C1234');
     });
 
     it('should suppress all non-JSON output in JSON mode', async () => {
@@ -1472,9 +1479,9 @@ describe('CommandLineInterface', () => {
       
       // Assert
       const jsonOutput = JSON.parse(mockConsoleLog.mock.calls[0][0]);
-      expect(jsonOutput[0].manufacturer).toBe('Test "Manufacturer" & Co.');
-      expect(jsonOutput[0].partNumber).toBe('TEST-123\n456');
+      expect(jsonOutput[0].id).toBe('C1234');
       expect(jsonOutput[0].description).toBe('10kΩ ±1% 0603 Thick Film Resistor with "quotes"');
+      expect(jsonOutput[0].score).toBe(95.5);
       expect(jsonOutput[0].matchSummary).toBe('Exact match with "quotes" and \n newlines');
     });
 
@@ -1498,8 +1505,8 @@ describe('CommandLineInterface', () => {
       // Assert
       const jsonOutput = JSON.parse(mockConsoleLog.mock.calls[0][0]);
       expect(jsonOutput).toHaveLength(1000);
-      expect(jsonOutput[0].lcsc).toBe('C0000');
-      expect(jsonOutput[999].lcsc).toBe('C0999');
+      expect(jsonOutput[0].id).toBe('C0000');
+      expect(jsonOutput[999].id).toBe('C0999');
     });
 
     it('should handle zero score results', () => {

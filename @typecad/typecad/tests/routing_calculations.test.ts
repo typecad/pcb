@@ -88,16 +88,18 @@ describe('calculateMinTraceWidth', () => {
 });
 
 describe('calculateBoardBounds', () => {
-    it('should return infinity bounds for empty components', () => {
+    it('should return fallback bounds for empty components', () => {
         const bounds = calculateBoardBounds([], []);
-        expect(bounds.minX).toBe(Infinity);
-        expect(bounds.maxX).toBe(-Infinity);
+        expect(bounds.minX).toBe(-50);
+        expect(bounds.maxX).toBe(50);
+        expect(bounds.minY).toBe(-50);
+        expect(bounds.maxY).toBe(50);
     });
 
     it('should compute bounds from components', () => {
         const components = [
-            { x: 10, y: 20, footprint_bounds: { minX: 9, maxX: 11, minY: 19, maxY: 21 } },
-            { x: 50, y: 60, footprint_bounds: { minX: 49, maxX: 51, minY: 59, maxY: 61 } },
+            { pcb: { x: 10, y: 20 }, footprint_bounds: { minX: 9, maxX: 11, minY: 19, maxY: 21 } },
+            { pcb: { x: 50, y: 60 }, footprint_bounds: { minX: 49, maxX: 51, minY: 59, maxY: 61 } },
         ] as any[];
         const bounds = calculateBoardBounds(components, []);
         expect(bounds.minX).toBeLessThan(10);

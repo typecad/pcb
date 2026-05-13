@@ -7,7 +7,7 @@ import {
     IOutline,
     ISourceInfo
 } from './pcb_interfaces.js';
-import { generateUuid } from './pcb_utils.js';
+import { generateUuid, formatCallSite } from './pcb_utils.js';
 import fs from "node:fs";
 import logger from '../logging.js';
 
@@ -148,9 +148,7 @@ export function pcbCircle(pcb: PcbGraphicsInstance, options: {
     } else if (end !== undefined) {
         endPoint = end;
     } else {
-        const callSite = pcb.getCallSite();
-        const callSiteInfo = callSite ? ` (called from ${callSite.file}:${callSite.line})` : '';
-        logger.error(`[PCB CIRCLE] ERROR: Must provide either 'radius' or 'end' parameter${callSiteInfo}`);
+        logger.error(`[PCB CIRCLE] ERROR: Must provide either 'radius' or 'end' parameter${formatCallSite(pcb.getCallSite())}`);
         return;
     }
 
@@ -248,9 +246,7 @@ export function pcbRect(pcb: PcbGraphicsInstance, options: {
         startPoint = { x, y };
         endPoint = { x: x + width, y: y + height };
     } else {
-        const callSite = pcb.getCallSite();
-        const callSiteInfo = callSite ? ` (called from ${callSite.file}:${callSite.line})` : '';
-        logger.error(`[PCB RECT] ERROR: Must provide either (x, y, width, height) or (start, end) parameters${callSiteInfo}`);
+        logger.error(`[PCB RECT] ERROR: Must provide either (x, y, width, height) or (start, end) parameters${formatCallSite(pcb.getCallSite())}`);
         return;
     }
 
@@ -334,9 +330,7 @@ export function pcbPoly(pcb: PcbGraphicsInstance, options: {
     } = options;
 
     if (!points || points.length < 3) {
-        const callSite = pcb.getCallSite();
-        const callSiteInfo = callSite ? ` (called from ${callSite.file}:${callSite.line})` : '';
-        logger.error(`[PCB POLY] ERROR: Polygon must have at least 3 points${callSiteInfo}`);
+        logger.error(`[PCB POLY] ERROR: Polygon must have at least 3 points${formatCallSite(pcb.getCallSite())}`);
         return;
     }
 

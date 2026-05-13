@@ -11,7 +11,7 @@ describe('DateBasedCacheManager', () => {
   beforeEach(async () => {
     // Create a temporary directory for each test
     tempDir = await fs.mkdtemp(join(tmpdir(), 'cache-test-'));
-    cacheManager = new DateBasedCacheManager(tempDir, 24);
+    cacheManager = new DateBasedCacheManager(tempDir, 24, false);
   });
 
   afterEach(async () => {

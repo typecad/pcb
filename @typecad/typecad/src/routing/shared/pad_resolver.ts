@@ -125,8 +125,8 @@ export class PadResolver {
 
             return absoluteGeometry;
 
-        } catch (error: any) {
-            logger.warn(`[PadResolver] Error resolving pad geometry for ${component.reference} pin ${pinNumber}: ${error.message}`);
+        } catch (error: unknown) {
+            logger.warn(`[PadResolver] Error resolving pad geometry for ${component.reference} pin ${pinNumber}: ${error instanceof Error ? error.message : String(error)}`);
             return null;
         }
     }

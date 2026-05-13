@@ -1,6 +1,6 @@
 import { Component } from "../component.js";
 import fsexp from "fast-sexpr";
-import { generateUuid, formatSourceInfoForProperty } from "./pcb_utils.js";
+import { generateUuid, formatSourceInfoForProperty, getErrorMessage } from "./pcb_utils.js";
 import { mapLayerToSide, transformSexprLayers, mirrorChamferDirection } from "./pcb_layer_utils.js";
 import { BoardCreationError } from '../errors.js';
 
@@ -619,10 +619,10 @@ export function createFootprintNode(component: Component, resolveNet: (ref: stri
         let footprint_contents: string;
         try {
             footprint_contents = component.footprint_lib(component.footprint!).replaceAll('"', "`");
-        } catch (e: any) {
+        } catch (e: unknown) {
             // The footprint_lib method now throws proper errors, so we can catch and re-throw them
             // with additional context about the component
-            throw new BoardCreationError(`[${component.reference || 'Unknown'}, ${component.value || 'Unknown'}, ${component.footprint}] Failed to create footprint node. ${e.message}`);
+            throw new BoardCreationError(`[${component.reference || 'Unknown'}, ${component.value || 'Unknown'}, ${component.footprint}] Failed to create footprint node. ${getErrorMessage(e)}`);
         }
 
         let l: any[];
@@ -631,8 +631,8 @@ export function createFootprintNode(component: Component, resolveNet: (ref: stri
             if (l === undefined || !Array.isArray(l)) {
                 throw new BoardCreationError("Parsed footprint is undefined or not an array");
             }
-        } catch (e: any) {
-            throw new BoardCreationError(`[${component.reference || 'Unknown'}, ${component.value || 'Unknown'}, ${component.footprint}] Failed to parse footprint: ${e.message}`);
+        } catch (e: unknown) {
+            throw new BoardCreationError(`[${component.reference || 'Unknown'}, ${component.value || 'Unknown'}, ${component.footprint}] Failed to parse footprint: ${getErrorMessage(e)}`);
         }
 
 

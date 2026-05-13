@@ -13,7 +13,6 @@ docs/
 tests/
 *.test.ts
 *.spec.ts
-.claude/
 git_disabled/
 
 # Configuration files

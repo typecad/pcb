@@ -20,6 +20,7 @@ import logger from '../logging.js';
 import { ISchematicNetDefinition } from '../schematic.js';
 import { prettyPrintSExpr } from '../utils/sexpr_formatter.js';
 import { getCallSite } from '../utils/stack_trace.js';
+import { formatCallSite } from './pcb_utils.js';
 import { RoutingError } from '../errors.js';
 import { calculateMinViaSize as calculateMinimumViaSize } from './pcb_routing_calculations.js';
 import { debugLog } from './pcb_autoroute_helpers.js';
@@ -535,9 +536,7 @@ export function routeNet(
     debugLog(options?.debug, chalk.blue(`[PCB] route() called for net: ${netName}`));
 
     if (!pcb.Schematic || !pcb.Schematic.Nodes) {
-        const callSite = getCallSite();
-        const callSiteInfo = callSite ? ` (called from ${callSite.file}:${callSite.line})` : '';
-        throw new RoutingError(`route() requires a schematic with defined nets${callSiteInfo}`);
+        throw new RoutingError(`route() requires a schematic with defined nets${formatCallSite(getCallSite())}`);
     }
 
     const providedPins: Pin[] = typeof netRef === 'string'
@@ -548,10 +547,8 @@ export function routeNet(
 
     if (!schematicNode) {
         if (typeof netRef === 'string') {
-            const callSite = getCallSite();
-            const callSiteInfo = callSite ? ` (called from ${callSite.file}:${callSite.line})` : '';
             const availableNets = (pcb.Schematic.Nodes as SchematicRuntimeNode[]).map((n) => n.name).join(', ');
-            throw new RoutingError(`Net '${netName}' not found in schematic. Available nets: ${availableNets}${callSiteInfo}`);
+            throw new RoutingError(`Net '${netName}' not found in schematic. Available nets: ${availableNets}${formatCallSite(getCallSite())}`);
         }
 
         schematicNode = {
@@ -568,15 +565,11 @@ export function routeNet(
     }
 
     if (!schematicNode.nodes || schematicNode.nodes.length === 0) {
-        const callSite = getCallSite();
-        const callSiteInfo = callSite ? ` (called from ${callSite.file}:${callSite.line})` : '';
-        throw new RoutingError(`Net '${netName}' has no pins connected${callSiteInfo}`);
+        throw new RoutingError(`Net '${netName}' has no pins connected${formatCallSite(getCallSite())}`);
     }
 
     if (schematicNode.nodes.length < 2) {
-        const callSite = getCallSite();
-        const callSiteInfo = callSite ? ` (called from ${callSite.file}:${callSite.line})` : '';
-        logger.warn(`[PCB] WARN: Net '${netName}' has only ${schematicNode.nodes.length} pin(s). At least 2 pins are needed for routing.${callSiteInfo}`);
+        logger.warn(`[PCB] WARN: Net '${netName}' has only ${schematicNode.nodes.length} pin(s). At least 2 pins are needed for routing.${formatCallSite(getCallSite())}`);
         const emptyResult = Object.assign([], {
             success: false,
             routeCount: 0,
@@ -614,15 +607,11 @@ export function routeNet(
     }
 
     if (unresolvedPins.length > 0) {
-        const callSite = getCallSite();
-        const callSiteInfo = callSite ? ` (called from ${callSite.file}:${callSite.line})` : '';
-        logger.warn(`[PCB] WARNING: Could not resolve ${unresolvedPins.length}/${schematicNode.nodes.length} pin(s) for net '${netName}'${callSiteInfo}`);
+        logger.warn(`[PCB] WARNING: Could not resolve ${unresolvedPins.length}/${schematicNode.nodes.length} pin(s) for net '${netName}'${formatCallSite(getCallSite())}`);
     }
 
     if (pinsToRoute.length < 2) {
-        const callSite = getCallSite();
-        const callSiteInfo = callSite ? ` (called from ${callSite.file}:${callSite.line})` : '';
-        throw new RoutingError(`Could not resolve enough pins for net '${netName}'. Found ${pinsToRoute.length}, need at least 2. Check component placements and pin definitions${callSiteInfo}`);
+        throw new RoutingError(`Could not resolve enough pins for net '${netName}'. Found ${pinsToRoute.length}, need at least 2. Check component placements and pin definitions${formatCallSite(getCallSite())}`);
     }
 
     const fromPins = [pinsToRoute[0]];

@@ -20,6 +20,8 @@ import logger from '../logging.js';
 import type { BoardBounds } from './pcb_routing_calculations.js';
 import { TrackBuilder } from './pcb_track_builder.js';
 import { RoutingGrid } from '../routing/shared/routing_grid.js';
+import type { IPcbBoardContext } from './pcb_board_context.js';
+import type { IRoutingOptions } from '../routing/router/types.js';
 
 // ── Types ────────────────────────────────────────────────────────────────
 
@@ -32,7 +34,7 @@ export type PcbComponentAccess = {
 
 /** Shared context for routing sub-modules. */
 export interface AutorouteContext {
-    pcb: any;
+    pcb: IPcbBoardContext;
     options: IAutorouteOptions;
     fromPins: Pin[];
     toPins: Pin[];
@@ -45,10 +47,10 @@ export interface AutorouteContext {
     bounds: BoardBounds;
     grid: RoutingGrid;
     routingLayers: string[];
-    allObstacles: any[];
-    addObstacleToState: (obs: any) => void;
+    allObstacles: import('../routing/shared/routing_grid.js').IRoutingObstacle[];
+    addObstacleToState: (obs: import('../routing/shared/routing_grid.js').IRoutingObstacle) => void;
     freeViaLocations: { x: number; y: number }[];
-    baseRouterOptions: any;
+    baseRouterOptions: IRoutingOptions;
 }
 
 /** Mutable output buckets shared across routing phases. */

@@ -16,7 +16,23 @@ import { getCallSite } from "./utils/stack_trace.js";
 
 
 
-export const referenceCounter = new ReferenceCounter();
+/** Default counter for standalone component creation (not scoped to a Schematic). */
+const defaultReferenceCounter = new ReferenceCounter();
+
+/**
+ * Returns the active reference counter. When running inside a Schematic/PCB
+ * context, the schematic-scoped counter is used. Otherwise falls back to the
+ * module-level default.
+ */
+let _activeCounter: ReferenceCounter | null = null;
+
+export function getActiveCounter(): ReferenceCounter {
+    return _activeCounter ?? defaultReferenceCounter;
+}
+
+export function setActiveCounter(counter: ReferenceCounter | null): void {
+    _activeCounter = counter;
+}
 
 /** Lazy singleton KiCAD instance to avoid re-creating on every footprint/symbol lookup. */
 let _cachedKiCAD: KiCAD | null = null;
@@ -29,11 +45,41 @@ function getKiCADInstance(): KiCAD {
 
 
 
+export interface ITypeHalInfo {
+    /** TypeHAL board package name (e.g. '@typehal/board-arduino-uno'). Set on MCUs. */
+    boardPackage?: string;
+    /** Driver identifier for TypeHAL (e.g. 'bme280', 'ssd1306'). Set on peripherals. */
+    driver?: string;
+    /** Role of this component (e.g. 'mcu', 'sensor', 'display', 'storage'). */
+    role?: string;
+    /** Driver-specific configuration (e.g. I2C address). */
+    config?: Record<string, unknown>;
+    /**
+     * Pin name → board name lookup table.
+     * Maps KiCAD symbol pin names to the board package's pin names.
+     * e.g. { "PB5": "D13", "PC4": "A4" }
+     * When provided, the contract includes `boardName` alongside `pinName`.
+     */
+    pinLookup?: Record<string, string>;
+}
+
+/** A reference or value that is just a bare string (e.g. "R1", "10k"). */
+type TextString = string;
+
+/** A reference or value that carries positioning info without text (auto-generated text). */
+type TextPositioning = ITextPositioning;
+
+/** A reference or value that is a [text, positioning] tuple. */
+type TextWithPositioning = [string | undefined | null, ITextPositioning];
+
+/** The allowed shapes for a reference or value option. */
+type TextOrPositioning = TextString | TextPositioning | TextWithPositioning;
+
 export interface IComponent {
     symbol?: string,
-    reference?: string | ITextPositioning | [string | undefined | null, ITextPositioning] | undefined,
-    value?: string | ITextPositioning | [string, ITextPositioning] | undefined,
-    fab?: ITextPositioning | [string | undefined | null, ITextPositioning] | undefined,
+    reference?: TextOrPositioning,
+    value?: TextOrPositioning,
+    fab?: TextPositioning | TextWithPositioning,
     footprint?: string,
     prefix?: string, datasheet?: string, description?: string, voltage?: string,
     wattage?: string, uuid?: string, mpn?: string, dnp?: boolean,
@@ -41,6 +87,7 @@ export interface IComponent {
     simulation?: { include: boolean, model?: string }, sch?: { x: number, y: number, rotation: number },
     viaData?: IVia; // Added for components that are vias
     sourceInfo?: SourceInfo;
+    typehal?: ITypeHalInfo;
     text?: Array<{ property: string, text: string, x: number, y: number, rotation?: number, layer?: string, width?: number, height?: number, fontSize?: number, thickness?: number, bold?: boolean, italic?: boolean, justify?: { horizontal?: 'left' | 'right' | 'center'; vertical?: 'top' | 'bottom' | 'middle'; mirror?: boolean; }, show?: boolean }>;
 }
 
@@ -93,6 +140,7 @@ export class Component {
     sch: { x: number, y: number, rotation?: number } = { x: 0, y: 0, rotation: 0 };
     groups: string[] = []; // Track which groups this component belongs to
     sourceInfo?: SourceInfo;
+    typehal?: ITypeHalInfo;
     text: Array<{ property: string, text: string, x: number, y: number, rotation?: number, layer?: string, width?: number, height?: number, fontSize?: number, thickness?: number, bold?: boolean, italic?: boolean, justify?: { horizontal?: 'left' | 'right' | 'center'; vertical?: 'top' | 'bottom' | 'middle'; mirror?: boolean; }, show?: boolean }> = [];
     fab?: { text: string, x: number, y: number, rotation?: number, layer?: string, width?: number, height?: number, fontSize?: number, thickness?: number, bold?: boolean, italic?: boolean, justify?: { horizontal?: 'left' | 'right' | 'center'; vertical?: 'top' | 'bottom' | 'middle'; mirror?: boolean; }, show?: boolean };
     valueFootprint?: { x: number, y: number, rotation?: number, layer?: string, width?: number, height?: number, fontSize?: number, thickness?: number, bold?: boolean, italic?: boolean, justify?: { horizontal?: 'left' | 'right' | 'center'; vertical?: 'top' | 'bottom' | 'middle'; mirror?: boolean; }, show?: boolean };
@@ -103,9 +151,10 @@ export class Component {
      * Creates an instance of Component.
      * @param {IComponent} [options={}] - The component options.
      */
-    constructor({ reference, value, footprint, prefix, datasheet, description, voltage, wattage, mpn, via, uuid, simulation, symbol, sch, pcb, viaData, text, fab, dnp }: IComponent = {}) {
+    constructor({ reference, value, footprint, prefix, datasheet, description, voltage, wattage, mpn, via, uuid, simulation, symbol, sch, pcb, viaData, text, fab, dnp, typehal }: IComponent = {}) {
         this.captureSourceInfo();
-        const { referenceStr, referencePositioning } = this.parseReference(reference, prefix);
+        const counter = getActiveCounter();
+        const { referenceStr, referencePositioning } = this.parseReference(reference, prefix, counter);
         const { valueStr, valuePositioning } = this.parseValue(value);
         this.assignProperties({ footprint, datasheet, description, voltage, wattage, mpn, simulation, symbol, sch, pcb, via, viaData, text, reference, value });
         this.applyTextPositioning('Reference', referenceStr ?? this.reference, referencePositioning);
@@ -114,11 +163,14 @@ export class Component {
             this.valueFootprint = valuePositioning;
         }
         this.parseFab(fab);
-        if (dnp != undefined) {
+        if (dnp !== undefined) {
             this.dnp = dnp;
         }
-        if (uuid != undefined) {
+        if (uuid !== undefined) {
             this.#uuid = uuid;
+        }
+        if (typehal !== undefined) {
+            this.typehal = typehal;
         }
         this.#isInitialized = true;
     }
@@ -144,12 +196,13 @@ export class Component {
 
     private parseReference(
         reference: IComponent['reference'],
-        prefix: string | undefined
+        prefix: string | undefined,
+        counter: ReferenceCounter
     ): { referenceStr: string | undefined; referencePositioning: ITextPositioning | undefined } {
         let referenceStr: string | undefined;
         let referencePositioning: ITextPositioning | undefined;
 
-        if (reference != undefined) {
+        if (reference !== undefined) {
             if (Array.isArray(reference)) {
                 const refString = reference[0];
                 referencePositioning = reference[1];
@@ -160,21 +213,21 @@ export class Component {
                 referenceStr = reference;
             }
 
-            if (referenceStr != undefined && referenceStr !== '') {
+            if (referenceStr !== undefined && referenceStr !== '') {
                 this.reference = referenceStr;
                 const referencePattern = /^[A-Za-z]+\d+$/;
                 if (!referencePattern.test(referenceStr)) {
                     throw new ComponentError(`[${referenceStr}, undefined, undefined] Reference designator must match the format {prefix}{number} (e.g. R1, U3)`);
                 }
-                if (!referenceCounter.setReference(referenceStr)) {
-                    this.reference = referenceCounter.getNextReference(prefix || 'U');
+                if (!counter.setReference(referenceStr)) {
+                    this.reference = counter.getNextReference(prefix || 'U');
                     logger.warn(chalk.whiteBright.bgYellow(`🚩  renaming ${referenceStr} to ${this.reference}`));
                 }
             } else {
-                this.reference = referenceCounter.getNextReference(prefix || 'U');
+                this.reference = counter.getNextReference(prefix || 'U');
             }
         } else {
-            this.reference = referenceCounter.getNextReference(prefix || 'U');
+            this.reference = counter.getNextReference(prefix || 'U');
         }
 
         return { referenceStr, referencePositioning };
@@ -184,9 +237,9 @@ export class Component {
         let valueStr: string | undefined;
         let valuePositioning: ITextPositioning | undefined;
 
-        if (value != undefined) {
+        if (value !== undefined) {
             if (Array.isArray(value)) {
-                valueStr = value[0];
+                valueStr = value[0] ?? undefined;
                 valuePositioning = value[1];
             } else if (typeof value === 'object') {
                 valuePositioning = value;
@@ -212,24 +265,24 @@ export class Component {
         reference?: IComponent['reference'];
         value?: IComponent['value'];
     }): void {
-        if (props.footprint != undefined) {
+        if (props.footprint !== undefined) {
             if (props.footprint && !props.footprint.includes(':')) {
                 throw new ComponentError(`[${props.reference || 'Unknown'}, ${props.value || 'Unknown'}, ${props.footprint}] Footprint must be in format "library:footprint" (e.g., "Resistor_SMD:R_0603_1608Metric" or "lib:Local_Footprint"))`);
             }
             this.footprint = props.footprint;
         }
-        if (props.datasheet != undefined) this.datasheet = props.datasheet;
-        if (props.description != undefined) this.description = props.description;
-        if (props.voltage != undefined) this.voltage = props.voltage;
-        if (props.wattage != undefined) this.wattage = props.wattage;
-        if (props.symbol != undefined) this.symbol = props.symbol;
-        if (props.sch != undefined) this.sch = props.sch;
-        if (props.pcb != undefined) this.pcb = props.pcb;
-        if (props.mpn != undefined) this.mpn = props.mpn;
-        if (props.simulation != undefined) this.simulation = { include: props.simulation.include, model: props.simulation.model || '' };
+        if (props.datasheet !== undefined) this.datasheet = props.datasheet;
+        if (props.description !== undefined) this.description = props.description;
+        if (props.voltage !== undefined) this.voltage = props.voltage;
+        if (props.wattage !== undefined) this.wattage = props.wattage;
+        if (props.symbol !== undefined) this.symbol = props.symbol;
+        if (props.sch !== undefined) this.sch = props.sch;
+        if (props.pcb !== undefined) this.pcb = props.pcb;
+        if (props.mpn !== undefined) this.mpn = props.mpn;
+        if (props.simulation !== undefined) this.simulation = { include: props.simulation.include ?? false, model: props.simulation.model || '' };
         this.via = props.via || false;
         if (props.viaData) this.viaData = props.viaData;
-        if (props.text != undefined) this.text = props.text;
+        if (props.text !== undefined) this.text = props.text;
     }
 
     private applyTextPositioning(property: 'Reference' | 'Value', text: string, positioning: ITextPositioning | undefined): void {
@@ -404,7 +457,7 @@ export class Component {
      */
     footprint_lib(footprint: string): string {
         // if we already found this footprint, return it before doing anything
-        if (this.#footprint_file != '') return this.#footprint_file!;
+        if (this.#footprint_file !== '') return this.#footprint_file!;
 
         let footprint_file_contents = "";
         const footprint_file_name = footprint.split(":");
@@ -462,7 +515,7 @@ export class Component {
             throw new ComponentError(`[${this.reference || 'Unknown'}, ${this.value || 'Unknown'}, ${footprint}] ${errorMessage}`);
         }
 
-        if (this.#footprint_file == '') {
+        if (this.#footprint_file === '') {
             throw new ComponentError(`[${this.reference || 'Unknown'}, ${this.value || 'Unknown'}, ${footprint}] Failed to load footprint. Footprint file is empty or invalid.`);
         }
 
@@ -477,7 +530,7 @@ export class Component {
      */
     symbol_lib(symbol: string): string {
         // if we already found this symbol, return it before doing anything
-        if (this.#symbol_file != '') return this.#symbol_file!;
+        if (this.#symbol_file !== '') return this.#symbol_file!;
 
         const symbol_parts = symbol.split(":");
         if (symbol_parts.length !== 2) {

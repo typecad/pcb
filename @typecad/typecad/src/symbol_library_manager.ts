@@ -8,6 +8,7 @@ import {
     type SymbolDefinition,
     type PinLocation,
     type BoundingBox,
+    type PinInfo,
     logError,
     logWarning,
 } from './schematic_visualizer_types.js';
@@ -16,6 +17,7 @@ export class SymbolLibraryManager {
     private libraryCache: Map<string, SExprNode> = new Map();
     private symbolCache: Map<string, SymbolDefinition> = new Map();
     private pinLocationCache: Map<string, PinLocation> = new Map();
+    private pinInfoCache: Map<string, Map<string, PinInfo>> = new Map();
     private boundingBoxCache: Map<string, BoundingBox | null> = new Map();
     private kicadSymbolPath: string;
 
@@ -239,6 +241,67 @@ export class SymbolLibraryManager {
 
         for (let i = 1; i < element.length; i++) {
             this.calculateSymbolBoundingBoxRecursive(element[i], currentBox);
+        }
+    }
+
+    /**
+     * Get a map of pin number → { name, type } for all pins in a symbol.
+     * Extracts pin name and electrical type from KiCAD symbol s-expressions:
+     *   (pin <electrical_type> <graphical_style> ... (name "...") (number "..."))
+     */
+    public getPinInfoMap(symbolFqn: string): Map<string, PinInfo> | null {
+        if (this.pinInfoCache.has(symbolFqn)) {
+            return this.pinInfoCache.get(symbolFqn)!;
+        }
+
+        const symbolDef = this.getSymbolDefinition(symbolFqn);
+        if (!symbolDef) {
+            return null;
+        }
+
+        const pinMap = new Map<string, PinInfo>();
+        this.extractPinInfo(symbolDef.rawSexpr, pinMap);
+
+        if (pinMap.size === 0) {
+            logError(`No pins found in symbol ${symbolFqn}`);
+            return null;
+        }
+
+        this.pinInfoCache.set(symbolFqn, pinMap);
+        return pinMap;
+    }
+
+    /**
+     * Recursively walk a symbol definition extracting (pin ...) nodes.
+     * Handles both top-level pins and pins nested inside (symbol NAME_1_1 ...) units.
+     */
+    private extractPinInfo(element: SExprNode, pinMap: Map<string, PinInfo>): void {
+        for (const item of element) {
+            if (!Array.isArray(item)) continue;
+
+            if (item[0] === 'pin') {
+                // item[1] is the electrical type: "bidirectional", "power_in", etc.
+                const pinType = typeof item[1] === 'string' ? item[1] : '';
+                let pinName = '';
+                let pinNumber = '';
+
+                for (const child of item) {
+                    if (!Array.isArray(child)) continue;
+                    if (child[0] === 'name' && typeof child[1] === 'string') {
+                        pinName = child[1].replaceAll('`', '');
+                    }
+                    if (child[0] === 'number' && typeof child[1] === 'string') {
+                        pinNumber = child[1].replaceAll('`', '');
+                    }
+                }
+
+                if (pinNumber && pinName) {
+                    pinMap.set(pinNumber, { name: pinName, type: pinType });
+                }
+            } else if (Array.isArray(item)) {
+                // Recurse into nested lists (e.g. (symbol NAME_1_1 (pin ...)))
+                this.extractPinInfo(item, pinMap);
+            }
         }
     }
 

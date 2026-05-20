@@ -56,7 +56,7 @@ export class LengthMatcher {
       // eslint-disable-next-line no-undef
       const envDbg = typeof process !== 'undefined' && process?.env && (process.env.TYPECAD_LM_DEBUG === '1' || process.env.TYPECAD_LM_DEBUG === 'true');
       if (envDbg) {
-        (config as any).debug = true;
+        config.debug = true;
       }
     } catch {}
 
@@ -113,14 +113,14 @@ export class LengthMatcher {
 
       let remaining = deltaNeeded;
       const attemptedThisRound = new Set<string>();
-      const pattern = config.pattern || { type: 'sawtooth' };
+      const pattern = config.pattern || { type: 'sawtooth' as const };
       if (pattern.type !== 'sawtooth') {
-        throw new RoutingError(`[LengthMatch] Unsupported pattern type: ${(pattern as any).type}`);
+        throw new RoutingError(`[LengthMatch] Unsupported pattern type: ${pattern.type}`);
       }
       // Validate fixed sawtooth parameters early: pitch must be >= 2*amplitude
-      if (typeof (pattern as any).pitch === 'number' && typeof (pattern as any).amplitude === 'number') {
-        const p = (pattern as any).pitch as number;
-        const a = (pattern as any).amplitude as number;
+      if (typeof pattern.pitch === 'number' && typeof pattern.amplitude === 'number') {
+        const p = pattern.pitch;
+        const a = pattern.amplitude;
         if (p < 2 * a - 1e-9) {
           throw new RoutingError(
             `[LengthMatch] Invalid sawtooth parameters: pitch=${p}mm < 2*amplitude=${(2 * a).toFixed(3)}mm. Increase pitch or reduce amplitude, or omit one to allow auto-adjust.`,

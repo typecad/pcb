@@ -7,6 +7,7 @@ import {
 } from './pcb_interfaces.js';
 import { IPcbBoardContext } from './pcb_board_context.js';
 import { generateUuid, formatCallSite } from './pcb_utils.js';
+import { Pin } from '../pin.js';
 
 /**
  * PCB Zone Management Module
@@ -87,7 +88,7 @@ import { generateUuid, formatCallSite } from './pcb_utils.js';
  */
 export function zone(pcb: IPcbBoardContext, options: {
     // Net specification (required - one of these)
-    pin?: any;
+    pin?: Pin;
     net?: string;
 
     // Position and size (required)

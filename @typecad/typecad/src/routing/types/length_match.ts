@@ -1,5 +1,6 @@
 import type { RoutingGrid } from '../contracts/routing_grid.js';
-import type { IRoutePath as FullRoutePath } from '../../pcb/pcb_interfaces.js';
+import type { IRoutePath as FullRoutePath, IGeneratedElement } from '../../pcb/pcb_interfaces.js';
+import type { IPcbBoardContext } from '../../pcb/pcb_board_context.js';
 
 export interface ILengthMatchPatternConfig {
   type: 'sawtooth';
@@ -18,7 +19,7 @@ export interface ILengthMatchConfig {
 export type IRoutePath = Pick<FullRoutePath, 'nodes' | 'length'>;
 
 export interface ILengthMatchContext {
-  pcb: any; // PCB instance - using any to avoid circular dependency
+  pcb: IPcbBoardContext;
   grid: RoutingGrid;
   traceWidth: number;
   clearance: number;
@@ -30,9 +31,7 @@ export interface ILengthMatchContext {
 export type ITrackBuilder = {
   from(point: { x: number; y: number }, layer?: string, width?: number): ITrackBuilder;
   to(point: { x: number; y: number; layer?: string; width?: number }): ITrackBuilder;
-  getElements(): any[];
-  // Additional properties that may exist on the actual TrackBuilder
-  [key: string]: any;
+  getElements(): IGeneratedElement[];
 };
 
 export interface IStraightSegment {

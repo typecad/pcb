@@ -60,6 +60,10 @@ export class AStarRouter {
     private resumeGridResolution?: number;
     private rawOptions: IRoutingOptions;
 
+    get routingOptions(): NormalizedRoutingOptions {
+        return this.options;
+    }
+
     /**
      * Create a new A* router.
      *
@@ -181,7 +185,7 @@ heuristicWeight: options.heuristicWeight ?? 2.0,
         });
         
         // Configure profiler debug mode based on router options
-        profiler.setDebug(this.options.debug);
+        profiler.setDebug(!!this.options.debug);
         profiler.setEnabled(!!this.options.debug);
     }
 

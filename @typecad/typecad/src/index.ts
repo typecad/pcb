@@ -1,5 +1,5 @@
 #!/usr/bin/env tsx
-export { Component, IComponent } from './component.js'
+export { Component, IComponent, ITypeHalInfo } from './component.js'
 export { Schematic } from './schematic.js'
 export { schematic } from './schematic_visualizer.js'
 export { Pin } from './pin.js'
@@ -42,6 +42,10 @@ export type {
 } from './routing/index.js'
 
 // Note: This is a library module. KiCAD detection happens when KiCAD class is instantiated.
+
+// HW Contract — types + export helper
+export { exportContract } from './contract.js';
+export type { McuPinMapping, HwContract, ContractPin, ContractComponent, ContractOptions } from './contract.js';
 
 // KiCad symbol search engine
 export { Application, runApplication, ComponentSearchEngine, NetworkError, FileSystemError, ParsingError } from './kicad-symbols/index.js';

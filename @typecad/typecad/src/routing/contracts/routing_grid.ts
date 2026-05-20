@@ -29,6 +29,12 @@ export interface IRoutingGrid {
   getResolution(): number;
   getCellCost(x: number, y: number, layer: string): number;
   isPadCell(x: number, y: number, layer: string): boolean;
+  isOccupiedById(
+    x: number,
+    y: number,
+    layer: string,
+    obstacleIds: Set<string> | string[]
+  ): boolean;
 }
 
 export type RoutingGrid = IRoutingGrid;

@@ -1,4 +1,4 @@
-import { Component, IComponent } from "./component.js";
+import { Component, IComponent, setActiveCounter } from "./component.js";
 import { Pin } from "./pin.js";
 import fs from "node:fs";
 import Handlebars from "handlebars";
@@ -8,6 +8,8 @@ import { erc } from "./erc.js";
 import { randomUUID, UUID } from "node:crypto";
 import { createRequire } from "node:module";
 import { TypeCadError } from "./errors.js";
+import { ReferenceCounter } from "./reference_counter.js";
+import type { ISchematicNode } from "./types/schematic_types.js";
 const require = createRequire(import.meta.url);
 const pkg = require("../package.json");
 
@@ -83,7 +85,7 @@ export function printTypecadOutputSummary(boardFilePath?: string): boolean {
 }
 
 // Version reads dynamically from package.json via createRequire.
-let schematic_template = `(export (version "E")
+const schematic_template = `(export (version "E")
   (design
     (tool "typeCAD ${pkg.version}"))
   (components
@@ -100,7 +102,7 @@ let schematic_template = `(export (version "E")
 // Field templates: added missing space between ) and value quote — was producing
 // (field (name "Datasheet")"value") instead of (field (name "Datasheet") "value").
 // Also normalized Voltage/Wattage/MPN from unescaped " to escaped \" for consistency.
-let comp_template = `(comp
+const comp_template = `(comp
       (ref \"{{reference}}\")
         (value \"{{value}}\")
         (footprint \"{{footprint}}\")
@@ -124,9 +126,9 @@ let comp_template = `(comp
           (field (name \"MPN\") \"{{mpn}}\")
         {{/if}}
         )
-    )`;
+     )`;
 
-let nets_template = `{{#each nets}}
+const nets_template = `{{#each nets}}
 (net (code "{{code}}") (name "{{name}}")
 {{#each nodes}}
         (node (ref "{{this.reference}}") (pin "{{this.number}}") (pintype "{{this.type}}"))
@@ -199,7 +201,9 @@ export class Schematic {
     private sxexp_components: string[] = [];
     private sxexp_nets: string[] = [];
     private code_counter = 0;
-    Nodes: { name: string, code: number, nodes: Pin[], owner: Component | null }[] = [];
+    /** Per-schematic reference counter — isolated from other Schematic instances. */
+    readonly referenceCounter = new ReferenceCounter();
+    Nodes: ISchematicNode[] = [];
     merged_nets: { old_name: string, merged_to_number: number}[] = [];
     private _chained_name: string = '';
     #options: ISchematicOptions = {
@@ -253,7 +257,7 @@ export class Schematic {
 
     bom(output_folder?: string): boolean {
         let bom: string = '';
-        let _output_folder = output_folder || './build';
+        const _output_folder = output_folder || './build';
 
         // Create header from configured fields
         bom += this.#options.bom_fields.join(this.#options.bom_separator) + '\n';
@@ -319,13 +323,20 @@ export class Schematic {
      * ```
      */
     add(...components: Component[]) {
+        // Activate this schematic's counter so any components created
+        // downstream (e.g. via Package) are scoped to this schematic.
+        setActiveCounter(this.referenceCounter);
+        try {
         components.forEach(component => {
             if (component.dnp === true) {
                 return;
             }
+            // Register the reference in this schematic's counter (handles
+            // components created before add() was called).
+            this.referenceCounter.setReference(component.reference);
             this.components.push(component);
-            let template = Handlebars.compile(comp_template);
-            let comp_data: IComponent = { reference: component.reference, value: component.value, footprint: component.footprint };
+            const template = Handlebars.compile(comp_template);
+            const comp_data: IComponent = { reference: component.reference, value: component.value, footprint: component.footprint };
             if (component.wattage) {
                 comp_data.wattage = component.wattage;
             }
@@ -341,7 +352,7 @@ export class Schematic {
             if (component.mpn) {
                 comp_data.mpn = component.mpn;
             }
-            let _comp = template(comp_data);
+            const _comp = template(comp_data);
             this.sxexp_components.push(_comp);
 
             // Track components by group
@@ -362,6 +373,9 @@ export class Schematic {
             }
 
         });
+        } finally {
+            setActiveCounter(null);
+        }
     }
 
     /**
@@ -474,7 +488,7 @@ export class Schematic {
         this._storeNetParams(node_name, this.code_counter, ...pins);
 
         // Check for duplicate node names and merge them
-        let nodeMap: { [key: string]: { name: string, code: number, nodes: Pin[], owner: Component | null } } = {};
+        const nodeMap: { [key: string]: { name: string, code: number, nodes: Pin[], owner: Component | null } } = {};
         this.Nodes.forEach((node) => {
             if (nodeMap[node.name]) {
                 nodeMap[node.name].nodes.push(...node.nodes);
@@ -505,8 +519,8 @@ export class Schematic {
     */
     private make_sexp_net() {
         // create the entire net list sexp from the netNodes array
-        let template = Handlebars.compile(nets_template);
-        let _nets = template({ nets: this.Nodes });
+        const template = Handlebars.compile(nets_template);
+        const _nets = template({ nets: this.Nodes });
 
         this.sxexp_nets.push(_nets);
     }
@@ -531,9 +545,9 @@ export class Schematic {
         const projectTree = this.buildProjectTree();
 
         this.make_sexp_net();
-        let template = Handlebars.compile(schematic_template, { noEscape: true });
-        let schematic_data = { components: this.sxexp_components, nets: this.sxexp_nets };
-        let _schematic = template(schematic_data);
+        const template = Handlebars.compile(schematic_template, { noEscape: true });
+        const schematic_data = { components: this.sxexp_components, nets: this.sxexp_nets };
+        const _schematic = template(schematic_data);
 
         try {
             const netPath = `./build/${this.Sheetname}.net`;

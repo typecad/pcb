@@ -413,9 +413,15 @@ export class ComponentSearchEngine implements SearchEngine {
       // Generate a detailed match summary
       const matchSummary = this.fuzzyScorer.generateMatchSummary(componentScore);
       
-      let extraData: any = {};
+      interface IExtraData {
+        properties?: Array<{
+          name: string;
+          value: string;
+        }>;
+      }
+      let extraData: IExtraData = {};
       try {
-        extraData = JSON.parse(component.extra);
+        extraData = JSON.parse(component.extra) as IExtraData;
       } catch (e) {
         // ignore
       }
@@ -424,10 +430,10 @@ export class ComponentSearchEngine implements SearchEngine {
       let fpFilters: string[] = [];
 
       if (extraData.properties) {
-        const fpProp = extraData.properties.find((p: any) => p.name === 'Footprint');
+        const fpProp = extraData.properties.find((p) => p.name === 'Footprint');
         if (fpProp) footprint = fpProp.value;
 
-        const filterProp = extraData.properties.find((p: any) => p.name === 'ki_fp_filters');
+        const filterProp = extraData.properties.find((p) => p.name === 'ki_fp_filters');
         if (filterProp) {
           fpFilters = filterProp.value.split(/\s+/).filter((v: string) => v.length > 0);
         }

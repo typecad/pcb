@@ -40,15 +40,15 @@ export class KiCADSchematic {
             component.sch = { x: 0, y: 0, rotation: 0 };
             logWarning(`Component ${component.reference || component.symbol} missing schematic placement data (sch). Initializing to x=0, y=0 for potential random placement.`);
         } else {
-            if (component.sch.x == null) {
+            if (component.sch.x === null || component.sch.x === undefined) {
                 logWarning(`Component ${component.reference || component.symbol} missing sch.x. Initializing to 0 for potential random placement.`);
                 component.sch.x = 0;
             }
-            if (component.sch.y == null) {
+            if (component.sch.y === null || component.sch.y === undefined) {
                 logWarning(`Component ${component.reference || component.symbol} missing sch.y. Initializing to 0 for potential random placement.`);
                 component.sch.y = 0;
             }
-            if (component.sch.rotation == null) {
+            if (component.sch.rotation === null || component.sch.rotation === undefined) {
                 logWarning(`Component ${component.reference || component.symbol} missing sch.rotation. Defaulting to 0.`);
                 component.sch.rotation = 0;
             }

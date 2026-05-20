@@ -9,7 +9,7 @@
         (fields
           (field (name "Footprint") "Package_SO:SOIC-8_3.9x4.9mm_P1.27mm")
         )
-    )
+     )
     )
   (nets
     

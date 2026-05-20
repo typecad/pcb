@@ -3,6 +3,8 @@ import fsexp from "fast-sexpr";
 import { generateUuid, formatSourceInfoForProperty, getErrorMessage } from "./pcb_utils.js";
 import { mapLayerToSide, transformSexprLayers, mirrorChamferDirection } from "./pcb_layer_utils.js";
 import { BoardCreationError } from '../errors.js';
+import type { SexprNode } from '../types/sexpr_types.js';
+import type { INetResolution } from './pcb_interfaces.js';
 
 /**
  * Apply back-side (bottom layer) transformations to an S-expression sub-item:
@@ -10,7 +12,7 @@ import { BoardCreationError } from '../errors.js';
  * - Add 180° rotation
  * - Add `mirror` to the `justify` node inside `effects`
  */
-function applyBackSideTransform(subItem: any[]): void {
+function applyBackSideTransform(subItem: SexprNode): void {
     // Find and transform the 'at' node
     for (let k = 0; k < subItem.length; k++) {
         if (Array.isArray(subItem[k]) && subItem[k][0] === 'at') {
@@ -54,7 +56,7 @@ function applyBackSideTransform(subItem: any[]): void {
     }
 }
 
-export function processFootprintItem(subItem: any[], component: Component, resolveNet: any, boardNetNameToCodeMap?: Map<string, number>) {
+export function processFootprintItem(subItem: SexprNode, component: Component, resolveNet: (ref: string, pin: string, uuid?: string, map?: Map<string, number>) => INetResolution, boardNetNameToCodeMap?: Map<string, number>) {
 
             
             
@@ -417,7 +419,7 @@ export function processFootprintItem(subItem: any[], component: Component, resol
         
 }
 
-export function updateFootprintNode(node: any[], component: Component, resolveNet: (ref: string, pin: string, uuid?: string, map?: Map<string, number>) => import("./pcb_interfaces.js").INetResolution, boardNetNameToCodeMap?: Map<string, number>): any[] {
+export function updateFootprintNode(node: SexprNode, component: Component, resolveNet: (ref: string, pin: string, uuid?: string, map?: Map<string, number>) => import("./pcb_interfaces.js").INetResolution, boardNetNameToCodeMap?: Map<string, number>): SexprNode {
         // Ensure component rotation is defined (default to 0)
         component.pcb.rotation = component.pcb.rotation ?? 0;
 
@@ -615,7 +617,7 @@ export function updateFootprintNode(node: any[], component: Component, resolveNe
      * @throws Error if the .kicad_mod file is missing, empty, or parsing fails.
      * @private
      */
-export function createFootprintNode(component: Component, resolveNet: (ref: string, pin: string, uuid?: string, map?: Map<string, number>) => import("./pcb_interfaces.js").INetResolution, boardNetNameToCodeMap?: Map<string, number>): any[] {
+export function createFootprintNode(component: Component, resolveNet: (ref: string, pin: string, uuid?: string, map?: Map<string, number>) => import("./pcb_interfaces.js").INetResolution, boardNetNameToCodeMap?: Map<string, number>): SexprNode {
         let footprint_contents: string;
         try {
             footprint_contents = component.footprint_lib(component.footprint!).replaceAll('"', "`");
@@ -625,7 +627,7 @@ export function createFootprintNode(component: Component, resolveNet: (ref: stri
             throw new BoardCreationError(`[${component.reference || 'Unknown'}, ${component.value || 'Unknown'}, ${component.footprint}] Failed to create footprint node. ${getErrorMessage(e)}`);
         }
 
-        let l: any[];
+        let l: SexprNode;
         try {
             l = fsexp(footprint_contents).pop();
             if (l === undefined || !Array.isArray(l)) {
@@ -816,7 +818,7 @@ export function createFootprintNode(component: Component, resolveNet: (ref: stri
                         existingProp[layerNodeIndex] = ['layer', `"${layer}"`];
                     } else {
                         // Insert layer after 'at' if it exists, otherwise after value
-                        const insertAfterAt = existingProp.findIndex((item: any, idx: number) => idx > 2 && Array.isArray(item) && item[0] === 'at');
+                        const insertAfterAt = existingProp.findIndex((item: SexprNode[number], idx: number) => idx > 2 && Array.isArray(item) && item[0] === 'at');
                         existingProp.splice(insertAfterAt >= 0 ? insertAfterAt + 1 : 3, 0, ['layer', `"${layer}"`]);
                     }
 

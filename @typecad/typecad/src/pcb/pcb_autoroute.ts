@@ -12,11 +12,21 @@ import chalk from 'chalk';
 import { Component } from '../component.js';
 import { Pin } from '../pin.js';
 import { RoutingError } from '../errors.js';
+import { PCB } from './pcb.js';
 import {
     IAutorouteOptions,
     IAutorouteResult,
     IGrLine,
+    IRoutePath,
+    IOutline,
+    ITrackDetails,
+    OutlineElement
 } from './pcb_interfaces.js';
+import type { ITrackBuilder } from '../routing/types/length_match.js';
+import { TrackBuilder } from './pcb_track_builder.js';
+import { IPcbBoardContext } from './pcb_board_context.js';
+import { ISchematicNode } from '../types/schematic_types.js';
+import { IRoutingObstacle } from '../routing/shared/routing_grid.js';
 import { PadResolver } from '../routing/shared/pad_resolver.js';
 import { RoutingGrid } from '../routing/shared/routing_grid.js';
 import { ObstacleBuilder } from '../routing/shared/obstacle_builder.js';
@@ -59,11 +69,8 @@ import { routePairwise } from './pcb_autoroute_pairwise.js';
 // Re-export enqueueAutoroute for pcb_routing_core.ts (which imports it)
 export { enqueueAutoroute } from './pcb_autoroute_helpers.js';
 
-// pcb parameter is intentionally `any` — this function accesses private PCB fields via
-// (pcb as any) for component collection, grid configuration, and obstacle building.
-// Typing it as IPcbBoardContext broke routing because the interface getters returned
-// empty arrays during the routing phase while the private #fields were populated.
-export function autoroute(pcb: any, options: IAutorouteOptions): IAutorouteResult {
+// pcb parameter is typed as IPcbBoardContext.
+export function autoroute(pcb: IPcbBoardContext, options: IAutorouteOptions): IAutorouteResult {
     // ── 1. Validate required parameters ──────────────────────────────────
     if (!options.from || !options.to) {
         throw new RoutingError(`autoroute() requires both 'from' and 'to' parameters${formatCallSite(pcb.getCallSite())}`);
@@ -83,7 +90,7 @@ export function autoroute(pcb: any, options: IAutorouteOptions): IAutorouteResul
         for (let i = 0; i < providedRoutes.length; i++) {
             const routeItem = providedRoutes[i];
             const context = `Route ${i + 1}`;
-            let path: any;
+            let path: IRoutePath;
             if (isAutorouteResultRouteItem(routeItem)) {
                 const rd = routeItem.routeDetails;
                 if (rd.length === 0 || !rd[0].path) {
@@ -210,7 +217,7 @@ export function autoroute(pcb: any, options: IAutorouteOptions): IAutorouteResul
             debugLog(options.debug, chalk.blue(`[PCB] Pin owner: ${firstPin.owner.reference}, searching ${pcb.Schematic.Nodes.length} schematic nodes`));
             for (const schematicNode of pcb.Schematic.Nodes) {
                 if (schematicNode.nodes) {
-                    const pinInSchematic = schematicNode.nodes.find((p: any) =>
+                    const pinInSchematic = schematicNode.nodes.find((p: Pin) =>
                         p.reference === firstPin.owner!.reference &&
                         String(p.number) === String(firstPin.number)
                     );
@@ -237,8 +244,8 @@ export function autoroute(pcb: any, options: IAutorouteOptions): IAutorouteResul
     if (!traceWidth && !powerInfo) {
         const allPinsForPower = [...fromPins, ...toPins];
         for (const pin of allPinsForPower) {
-            if (pin && (pin as any).powerInfo) {
-                powerInfo = (pin as any).powerInfo;
+            if (pin && pin.powerInfo && pin.powerInfo.current !== undefined) {
+                powerInfo = { current: pin.powerInfo.current };
                 powerInfoSource = 'pin';
                 debugLog(options.debug, chalk.blue(`[PCB] Found power info on pin ${pin.owner?.reference || 'unknown'}.${pin.number}: ${powerInfo?.current}A`));
                 break;
@@ -288,6 +295,14 @@ export function autoroute(pcb: any, options: IAutorouteOptions): IAutorouteResul
         stagedOutlines,
         boundsExpansionMargin
     );
+
+    const pinExpansionMargin = requestedGridResolution * 2;
+    for (const pos of [...validStartPositions, ...validEndPositions]) {
+        if (pos.x - pinExpansionMargin < expandedBounds.minX) expandedBounds.minX = pos.x - pinExpansionMargin;
+        if (pos.x + pinExpansionMargin > expandedBounds.maxX) expandedBounds.maxX = pos.x + pinExpansionMargin;
+        if (pos.y - pinExpansionMargin < expandedBounds.minY) expandedBounds.minY = pos.y - pinExpansionMargin;
+        if (pos.y + pinExpansionMargin > expandedBounds.maxY) expandedBounds.maxY = pos.y + pinExpansionMargin;
+    }
     const boundsChanged = expandedBounds.minX !== bounds.minX ||
         expandedBounds.maxX !== bounds.maxX ||
         expandedBounds.minY !== bounds.minY ||
@@ -322,9 +337,9 @@ export function autoroute(pcb: any, options: IAutorouteOptions): IAutorouteResul
     const grid = new RoutingGrid(bounds, gridResolution, routingLayers, options.debug);
 
     // ── 12. Add obstacles ────────────────────────────────────────────────
-    const obstacles = ObstacleBuilder.buildFromPCB(pcb, clearance, componentsFromPins, options.debug);
-    const allObstacles: any[] = [];
-    const addObstacleToState = (obs: any) => {
+    const obstacles = ObstacleBuilder.buildFromPCB(pcb as unknown as PCB, clearance, componentsFromPins, options.debug);
+    const allObstacles: IRoutingObstacle[] = [];
+    const addObstacleToState = (obs: IRoutingObstacle) => {
         allObstacles.push(obs);
         grid.addObstacle(obs);
     };
@@ -337,7 +352,7 @@ export function autoroute(pcb: any, options: IAutorouteOptions): IAutorouteResul
     const freeViaLocations: { x: number; y: number }[] = [];
 
     if (netName && pcb.Schematic && pcb.Schematic.Nodes) {
-        const schematicNode = pcb.Schematic.Nodes.find((node: any) => node.name === netName);
+        const schematicNode = pcb.Schematic.Nodes.find((node: ISchematicNode) => node.name === netName);
         if (schematicNode && schematicNode.nodes) {
             for (const schematicPin of schematicNode.nodes) {
                 if (schematicPin.owner) {
@@ -466,11 +481,11 @@ export function autoroute(pcb: any, options: IAutorouteOptions): IAutorouteResul
     for (let i = 0; i < result.length; i++) {
         const builder = result[i];
         const elements = builder.getElements();
-        if ((builder as any)._deferStaging && elements.length > 0) {
+        if (builder.deferStaging && elements.length > 0) {
             debugLog(options.debug, chalk.gray(`[PCB] Staging builder ${i} with ${elements.length} elements (deferStaging=true)`));
             for (const el of elements) {
                 if (el.type === 'track' && el.details) {
-                    const trackDetails = el.details as any;
+                    const trackDetails = el.details as ITrackDetails;
                     debugLog(options.debug, chalk.gray(`[PCB] Staging track: (${trackDetails.start.x.toFixed(3)}, ${trackDetails.start.y.toFixed(3)}) -> (${trackDetails.end.x.toFixed(3)}, ${trackDetails.end.y.toFixed(3)})`));
                     pcb._track(
                         trackDetails.start,
@@ -479,11 +494,11 @@ export function autoroute(pcb: any, options: IAutorouteOptions): IAutorouteResul
                         trackDetails.layer,
                         trackDetails.locked || false,
                         el.uuid,
-                        (builder as any)._net
+                        builder.net
                     );
                 }
             }
-        } else if ((builder as any)._deferStaging) {
+        } else if (builder.deferStaging) {
             debugLog(options.debug, chalk.gray(`[PCB] Skipping builder ${i} (deferStaging=true but no elements)`));
         } else {
             debugLog(options.debug, chalk.gray(`[PCB] Skipping builder ${i} (deferStaging=false)`));
@@ -494,7 +509,18 @@ export function autoroute(pcb: any, options: IAutorouteOptions): IAutorouteResul
     debugLog(options.debug, chalk.gray(`[PCB][DEBUG] After processing track builders: stagedOutlines=${pcb.stagedOutlines.length}, tracks=${pcb.tracks.length}, outlines_public=${pcb.outlines_public.length}`));
     if (options.debug && pcb.stagedOutlines.length > 0) {
         try {
-            const sample = pcb.stagedOutlines.slice(0, 5).map((o: any) => ({ uuid: o.uuid, elements: o.elements.map((el: any) => ({ type: el.type, layer: el.layer ?? el.details?.layer, start: el.details?.start, end: el.details?.end })) }));
+            const sample = pcb.stagedOutlines.slice(0, 5).map((o: IOutline) => ({
+                uuid: o.uuid,
+                elements: o.elements.map((el) => {
+                    const typedEl = el as unknown as (OutlineElement & { details?: { layer?: string; start?: { x: number; y: number }; end?: { x: number; y: number } } });
+                    return {
+                        type: typedEl.type,
+                        layer: typedEl.layer ?? typedEl.details?.layer,
+                        start: typedEl.details?.start,
+                        end: typedEl.details?.end
+                    };
+                })
+            }));
             logger.debug('[PCB][DEBUG] stagedOutlines sample:', JSON.stringify(sample, null, 2));
         } catch (e) { /* ignore */ }
     }
@@ -541,7 +567,7 @@ export function autoroute(pcb: any, options: IAutorouteOptions): IAutorouteResul
     if (providedRoutes.length > 0) {
         debugLog(options.debug, chalk.blue(`[PCB] Checking ${providedRoutes.length} provided route(s)...`));
         for (const routeItem of providedRoutes) {
-            let path: any;
+            let path: IRoutePath;
             if (isAutorouteResultRouteItem(routeItem)) {
                 path = routeItem.routeDetails[0].path!;
             } else {
@@ -574,7 +600,7 @@ export function autoroute(pcb: any, options: IAutorouteOptions): IAutorouteResul
                             }
                         }
                     }
-                    debugLog(options.debug, chalk.blue(`[PCB] Reused ${(routeItem as any).length} existing TrackBuilder(s) from provided route`));
+                    debugLog(options.debug, chalk.blue(`[PCB] Reused ${routeItem.length} existing TrackBuilder(s) from provided route`));
                 } else {
                     const track = pathToTrackBuilder(pcb, path, traceWidth, options, netName, freeViaLocations);
                     if (track) {
@@ -585,7 +611,7 @@ export function autoroute(pcb: any, options: IAutorouteOptions): IAutorouteResul
                 const metadata: import('./pcb_interfaces.js').IRouteMetadata = {
                     length: path.length,
                     viaCount: path.viaCount,
-                    layers: [...new Set<string>(path.nodes.map((n: any) => n.layer))],
+                    layers: [...new Set<string>(path.nodes.map(n => n.layer))],
                     success: path.success,
                     error: path.error,
                     path: path
@@ -624,7 +650,7 @@ export function autoroute(pcb: any, options: IAutorouteOptions): IAutorouteResul
             const lengthMatchResult = LengthMatcher.apply(
                 lengthMatchContext,
                 routeDetails.map(rd => ({ path: rd.path!, success: rd.success })),
-                routeTrackBuilders as any,
+                routeTrackBuilders as (ITrackBuilder[] | undefined)[],
                 options.lengthMatch
             );
 
@@ -637,7 +663,7 @@ export function autoroute(pcb: any, options: IAutorouteOptions): IAutorouteResul
                 }
             }
 
-            result.push(...(lengthMatchResult.builders as any));
+            result.push(...(lengthMatchResult.builders as TrackBuilder[]));
 
             debugLog(options.debug, chalk.green(`[PCB] Length matching applied: ${lengthMatchResult.updates.length} routes updated, ${lengthMatchResult.builders.length} new tracks added`));
 

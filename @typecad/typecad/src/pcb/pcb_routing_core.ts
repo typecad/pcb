@@ -24,11 +24,10 @@ import { formatCallSite } from './pcb_utils.js';
 import { RoutingError } from '../errors.js';
 import { calculateMinViaSize as calculateMinimumViaSize } from './pcb_routing_calculations.js';
 import { debugLog } from './pcb_autoroute_helpers.js';
+import type { IPcbBoardContext } from './pcb_board_context.js';
+import type { ISchematicNode } from '../types/schematic_types.js';
 
-type SchematicRuntimeNode = {
-    name: string;
-    code: number;
-    nodes: Pin[];
+type SchematicRuntimeNode = ISchematicNode & {
     owner: { reference?: string; pins: Pin[] } | null;
 };
 
@@ -264,7 +263,7 @@ function calculateMinViaSize(current: number, thickness?: number): { size: numbe
  * @returns TrackBuilder instance or null if path is too short
  */
 export function pathToTrackBuilder(
-    pcb: any,
+    pcb: IPcbBoardContext,
     path: IRoutePath,
     width: number,
     options: IAutorouteOptions,
@@ -331,7 +330,7 @@ export function pathToTrackBuilder(
             if (Math.abs(prevNode.x - segmentStart.x) > eps || Math.abs(prevNode.y - segmentStart.y) > eps) {
                 // When manual routes are present, trim away any portions of this segment
                 // that overlap existing same-net copper, and only emit the non-overlapping parts.
-                if ((options as any).routes && (options as any).routes.length > 0) {
+                if (options.routes && options.routes.length > 0) {
                     const existingLines = getExistingLines(pcb.grLines, pcb._getStagedOutlines());
                     const subSegments = subtractOverlapsFromSegment(
                         { x: segmentStart.x, y: segmentStart.y },
@@ -452,7 +451,7 @@ export function pathToTrackBuilder(
         // If direction changes, commit a single segment to prevNode and start a new merged segment
         if (dir.dx !== lastDir.dx || dir.dy !== lastDir.dy) {
             // Commit merged segment up to prevNode (trim partial overlaps when manual routes exist)
-            if ((options as any).routes && (options as any).routes.length > 0) {
+            if (options.routes && options.routes.length > 0) {
                 const existingLines = getExistingLines(pcb.grLines, pcb._getStagedOutlines());
                 const subSegments = subtractOverlapsFromSegment(
                     { x: segmentStart.x, y: segmentStart.y },
@@ -490,7 +489,7 @@ export function pathToTrackBuilder(
     // Commit the final segment to the last node
     const lastNode = path.nodes[path.nodes.length - 1];
     if (Math.abs(lastNode.x - segmentStart.x) > eps || Math.abs(lastNode.y - segmentStart.y) > eps) {
-        if ((options as any).routes && (options as any).routes.length > 0) {
+        if (options.routes && options.routes.length > 0) {
             const existingLines = getExistingLines(pcb.grLines, pcb._getStagedOutlines());
             const subSegments = subtractOverlapsFromSegment(
                 { x: segmentStart.x, y: segmentStart.y },
@@ -528,11 +527,12 @@ export function pathToTrackBuilder(
  * Routes a named net by resolving its pins and delegating to autoroute().
  */
 export function routeNet(
-    pcb: any,
+    pcb: IPcbBoardContext,
     netRef: string | ISchematicNetDefinition,
     options?: IAutorouteRouteOptions
 ): IAutorouteResult {
     const netName = typeof netRef === 'string' ? netRef : netRef.name;
+    logger.info(`⏳ Routing net '${netName}'...`);
     debugLog(options?.debug, chalk.blue(`[PCB] route() called for net: ${netName}`));
 
     if (!pcb.Schematic || !pcb.Schematic.Nodes) {
@@ -556,6 +556,14 @@ export function routeNet(
             nodes: providedPins,
             code: netRef.code,
             owner: null
+        };
+    } else if (providedPins.length >= 2) {
+        // The caller explicitly provided pins (from pcb.net() return value).
+        // The schematic node may have accumulated extra pins through net merging,
+        // so use the provided pin list to route only the intended connections.
+        schematicNode = {
+            ...schematicNode,
+            nodes: providedPins
         };
     } else if ((!schematicNode.nodes || schematicNode.nodes.length === 0) && providedPins.length > 0) {
         schematicNode = {
@@ -607,7 +615,7 @@ export function routeNet(
     }
 
     if (unresolvedPins.length > 0) {
-        logger.warn(`[PCB] WARNING: Could not resolve ${unresolvedPins.length}/${schematicNode.nodes.length} pin(s) for net '${netName}'${formatCallSite(getCallSite())}`);
+        logger.warn(`[PCB] WARNING: Could not resolve ${unresolvedPins.length}/${schematicNode.nodes.length} pin(s) for net '${netName}': ${unresolvedPins.join(', ')}${formatCallSite(getCallSite())}`);
     }
 
     if (pinsToRoute.length < 2) {
@@ -617,12 +625,20 @@ export function routeNet(
     const fromPins = [pinsToRoute[0]];
     const toPins = pinsToRoute.slice(1);
 
-    return autoroute(pcb, {
+    const result = autoroute(pcb, {
         from: fromPins,
         to: toPins,
         net: netName,
         ...options
     });
+
+    if (result.success) {
+        logger.info(`✔ Routing net '${netName}' complete (${result.completedCount}/${result.routeCount} routes)`);
+    } else {
+        logger.warn(`⚠ Routing net '${netName}' incomplete (${result.completedCount}/${result.routeCount} routes)`);
+    }
+
+    return result;
 }
 
 

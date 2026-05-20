@@ -17,6 +17,7 @@ import {
     IKeepoutZone
 } from "./pcb_interfaces.js";
 import { TrackBuilder } from "./pcb_track_builder.js";
+import type { SexprNode } from "../types/sexpr_types.js";
 
 /**
  * Typed interface for the PCB board context used by extracted board creation,
@@ -114,7 +115,7 @@ export interface IPcbBoardContext {
      * @param boardNetNameToCodeMap - Optional map of board net names to net codes
      * @returns The s-expression node array for the footprint
      */
-    _createFootprintNodePublic(component: Component, boardNetNameToCodeMap?: Map<string, number>): any[];
+    _createFootprintNodePublic(component: Component, boardNetNameToCodeMap?: Map<string, number>): SexprNode;
 
     /**
      * Update an existing KiCad footprint s-expression node with current component data.
@@ -123,7 +124,7 @@ export interface IPcbBoardContext {
      * @param boardNetNameToCodeMap - Optional map of board net names to net codes
      * @returns The updated s-expression node array
      */
-    _updateFootprintNodePublic(node: any[], component: Component, boardNetNameToCodeMap?: Map<string, number>): any[];
+    _updateFootprintNodePublic(node: SexprNode, component: Component, boardNetNameToCodeMap?: Map<string, number>): SexprNode;
 
     // ==================== Net Resolution ====================
     /**

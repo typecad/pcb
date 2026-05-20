@@ -263,7 +263,7 @@ export class ObstacleBuilder {
 
         // Precompute (reference:pin) -> net map once per component to avoid repeated scans
         let pinNetMap: Map<string, string> | null = null;
-        const schematic = pcb.Schematic as any;
+        const schematic = pcb.Schematic;
         if (schematic && Array.isArray(schematic.Nodes)) {
             pinNetMap = new Map<string, string>();
             for (const schematicNode of schematic.Nodes) {
@@ -537,7 +537,7 @@ export class ObstacleBuilder {
      * Represent as a circular pad on all copper layers to enforce
      * trace-to-via clearances during routing.
      */
-    private static buildFromVia(component: any, clearance: number): IRoutingObstacle | null {
+    private static buildFromVia(component: Component, clearance: number): IRoutingObstacle | null {
         const vd = component?.viaData;
         if (!vd || typeof vd.at?.x !== 'number' || typeof vd.at?.y !== 'number') {
             return null;
@@ -578,7 +578,7 @@ export class ObstacleBuilder {
      * @private
      */
     private static extractComponentBounds(
-        footprintSExpr: any,
+        footprintSExpr: unknown,
         component: Component
     ): { minX: number; maxX: number; minY: number; maxY: number } | null {
         // This is a simplified version - real implementation would parse

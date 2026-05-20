@@ -13,6 +13,7 @@ import type {
 
 import { chalk, isEnvDebug } from './length_matcher_helpers.js';
 import logger from '../../logging.js';
+import type { ITrackDetails } from '../../pcb/pcb_interfaces.js';
 
 /**
  * Result of removing/trimming overlapping straight tracks.
@@ -51,7 +52,7 @@ export function removeOrTrimOverlappingStraight(
     for (const el of tb.getElements()) {
       if (el.type !== 'track') continue;
       totalTracks++;
-      const details: any = el.details;
+      const details = el.details as ITrackDetails;
       const layer: string = details.layer;
       if (layer !== seg.start.layer) continue;
       const s = details.start as { x: number; y: number };
@@ -101,7 +102,7 @@ export function removeOrTrimOverlappingStraight(
   }
 
   // Debug output
-  const isDebug = (ctx.pcb as any)._debug || false;
+  const isDebug = isEnvDebug();
   const forceDebug = false;
   if (isDebug || forceDebug) {
     try {
@@ -117,7 +118,7 @@ export function removeOrTrimOverlappingStraight(
             if (el.uuid && toRemove.includes(el.uuid)) {
               logger.debug(
                 chalk.gray(
-                  `[LengthMatch] Removing track from (${(el.details as any).start.x.toFixed(3)}, ${(el.details as any).start.y.toFixed(3)}) to (${(el.details as any).end.x.toFixed(3)}, ${(el.details as any).end.y.toFixed(3)})`,
+                  `[LengthMatch] Removing track from (${(el.details as ITrackDetails).start.x.toFixed(3)}, ${(el.details as ITrackDetails).start.y.toFixed(3)}) to (${(el.details as ITrackDetails).end.x.toFixed(3)}, ${(el.details as ITrackDetails).end.y.toFixed(3)})`,
                 ),
               );
             }
@@ -136,7 +137,7 @@ export function removeOrTrimOverlappingStraight(
         logger.debug(chalk.gray(`[LengthMatch] Builder ${bi}: ${elements.length} elements`));
         for (const el of elements) {
           if (el.type === 'track' && el.details) {
-            const details = el.details as any;
+            const details = el.details as ITrackDetails;
             logger.debug(
               chalk.gray(
                 `[LengthMatch]   Track ${el.uuid}: (${details.start.x.toFixed(3)}, ${details.start.y.toFixed(3)}) -> (${details.end.x.toFixed(3)}, ${details.end.y.toFixed(3)})`,
@@ -162,7 +163,7 @@ export function removeElementsFromBuilders(
   const uuidSet = new Set(uuids);
   for (const builder of builders) {
     const elements = builder.getElements();
-    (builder as any).elements = elements.filter((el: any) => !(el.uuid && uuidSet.has(el.uuid)));
+    (builder as unknown as { elements: typeof elements }).elements = elements.filter((el) => !(el.uuid && uuidSet.has(el.uuid)));
   }
 }
 
@@ -214,7 +215,7 @@ export function createBuilderFromFittedPattern(
   } catch (err) {
     if (isEnvDebug()) {
       try {
-        logger.debug(chalk.gray(`[LengthMatch] createBuilderFromFittedPattern threw: ${(err as any)?.message || err}`));
+        logger.debug(chalk.gray(`[LengthMatch] createBuilderFromFittedPattern threw: ${err instanceof Error ? err.message : String(err)}`));
       } catch {}
     }
     return null;

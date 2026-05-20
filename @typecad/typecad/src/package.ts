@@ -1,6 +1,9 @@
-import { Component } from './component.js';
+import { Component, setActiveCounter } from './component.js';
 import { TrackBuilder, PCB } from './pcb/pcb.js';
 import { Pin } from './pin.js';
+import { createRequire } from 'node:module';
+
+const _require = createRequire(import.meta.url);
 
 // The standard passive component factory shape (matches @typecad/passives/0603 and other sizes)
 export type PassiveFactory = {
@@ -79,7 +82,13 @@ export abstract class Package<TOptions extends object = {}> {
         this.reference = options.reference;
 
         this.pcb.pushOffset(options.x, options.y);
-        this.build(options);
+        // Scope component references to this PCB's schematic during build().
+        setActiveCounter(this.pcb.Schematic.referenceCounter);
+        try {
+            this.build(options);
+        } finally {
+            setActiveCounter(null);
+        }
         this._autoCollect();
         this.pcb.group(options.name, ...this.components);
         this.pcb.popOffset();
@@ -135,9 +144,7 @@ export abstract class Package<TOptions extends object = {}> {
      */
     private _defaultPassives(): PassiveFactory {
         try {
-            // Dynamic require — works in Node ESM with this interop pattern
-            // eslint-disable-next-line @typescript-eslint/no-require-imports
-            return require('@typecad/passives/0603') as PassiveFactory;
+            return _require('@typecad/passives/0603') as PassiveFactory;
         } catch {
             throw new Error(
                 'Package: no passives factory provided and @typecad/passives is not installed. ' +
@@ -152,18 +159,20 @@ export abstract class Package<TOptions extends object = {}> {
      * already been manually pushed to `this.components` is collected automatically.
      */
     private _autoCollect(): void {
-        const alreadyRegistered = new Set(this.components);
+        const alreadyRegistered = new Set<Component | TrackBuilder>(this.components);
         const skip = new Set(['pcb', 'components', 'passives', 'reference']);
 
         for (const key of Object.keys(this)) {
             if (skip.has(key)) continue;
             const value = (this as Record<string, unknown>)[key];
-            const isComponent = value && typeof value === 'object' && ('pins' in value || 'footprint' in value || 'symbol' in value);
-            const isTrackBuilder = value && typeof value === 'object' && ('from' in value && 'to' in value);
-            
-            if ((isComponent || isTrackBuilder) && !alreadyRegistered.has(value as any)) {
-                this.components.push(value as any);
-                alreadyRegistered.add(value as any);
+            if (!value || typeof value !== 'object') continue;
+
+            const isComponentOrTrackBuilder = (v: object): v is Component | TrackBuilder =>
+                ('pins' in v || 'footprint' in v || 'symbol' in v) || ('from' in v && 'to' in v);
+
+            if (isComponentOrTrackBuilder(value) && !alreadyRegistered.has(value)) {
+                this.components.push(value);
+                alreadyRegistered.add(value);
             }
         }
     }

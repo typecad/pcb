@@ -29,8 +29,8 @@ export class Config {
     get(key: string): string {
         this.#open();
 
-        if (key in this.#contents) {
-            return this.#contents[key];
+        if (key in this.#contents!) {
+            return this.#contents![key];
         } else {
             return '';
         }
@@ -41,7 +41,7 @@ export class Config {
 
         const configPath = path.join(process.cwd(), 'typecad.json');
 
-        this.#contents[key] = value;
+        this.#contents![key] = value;
 
         try {
             fs.writeFileSync(configPath, JSON.stringify(this.#contents, null, 2));

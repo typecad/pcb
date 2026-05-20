@@ -74,6 +74,7 @@ interface NeighborContext {
   heuristicWeight: number;
   allowDiagonalRuns: boolean;
   preferredLayerIndexMap?: Map<string, number>;
+  goalCosts?: Float32Array;
 }
 
 interface ISearchRunResult {
@@ -378,22 +379,25 @@ export class GridSearch {
     layer: string,
     gridX: number,
     gridY: number,
-    windowData: CachedWindow
+    windowData: CachedWindow,
+    layerIndex?: number
   ): number {
-    if (!this.isWithinWindow(gridX, gridY, windowData.window)) {
+    const win = windowData.window;
+    const localX = gridX - win.minX;
+    const localY = gridY - win.minY;
+    if (localX < 0 || localY < 0 || localX >= win.width || localY >= win.height) {
       return this.grid.getCellCost(gridX, gridY, layer);
     }
-    const layerIndex = windowData.layerIdMap.get(layer);
+    
+    if (layerIndex === undefined) {
+      layerIndex = windowData.layerIdMap.get(layer);
+    }
     const tile = layerIndex !== undefined ? windowData.costTiles[layerIndex] : undefined;
     if (!tile) {
       return this.grid.getCellCost(gridX, gridY, layer);
     }
-    const win = windowData.window;
-    const idx = (gridY - win.minY) * win.width + (gridX - win.minX);
-    if (idx < 0 || idx >= tile.length) {
-      return this.grid.getCellCost(gridX, gridY, layer);
-    }
-
+    
+    const idx = localY * win.width + localX;
     let cost = tile[idx];
     if (Number.isNaN(cost)) {
       cost = this.grid.getCellCost(gridX, gridY, layer);
@@ -402,22 +406,7 @@ export class GridSearch {
     return cost;
   }
 
-  private estimateCongestionPenalty(
-    layer: string,
-    from: { gridX: number; gridY: number },
-    to: { gridX: number; gridY: number },
-    windowData: CachedWindow
-  ): number {
-    const startCost = this.sampleCellCost(layer, from.gridX, from.gridY, windowData);
-    const goalCost = this.sampleCellCost(layer, to.gridX, to.gridY, windowData);
-    const avgCost =
-      startCost > 0 && goalCost > 0
-        ? (startCost + goalCost) * 0.5
-        : windowData.averageCost;
-    const manhattan =
-      Math.abs(from.gridX - to.gridX) + Math.abs(from.gridY - to.gridY);
-    return avgCost * Math.max(1, manhattan) * 0.01;
-  }
+
 
   private runSearchWithWindow(config: {
     adjustedStart: RouteEndpoint;
@@ -463,13 +452,11 @@ export class GridSearch {
       this.localOccupancyCache = newLocalOccupancyCache;
     }
 
-    const encodeKey = (layer: string, gridX: number, gridY: number): number => {
-      const layerIndex = layerIdMap.get(layer);
+    const encodeKey = (layer: string, gridX: number, gridY: number, layerIndex?: number): number => {
       if (layerIndex === undefined) {
-        return -1;
+        layerIndex = layerIdMap.get(layer);
       }
-      if (!this.isWithinWindow(gridX, gridY, searchWindow)) {
-        boundaryTracker.touched = true;
+      if (layerIndex === undefined) {
         return -1;
       }
       const localX = gridX - searchWindow.minX;
@@ -624,12 +611,23 @@ export class GridSearch {
 
     const viaPenalty = this.options.allowVias ? this.options.viaCost ?? 0 : 0;
 
-    const startLayers: string[] =
-      !forceSingleLayer && startIsFreeVia
-        ? (this.options.allowedLayers && this.options.allowedLayers.length > 0
-            ? this.options.allowedLayers
-            : [adjustedStart.layer])
-        : [adjustedStart.layer];
+    const mmPerCell = this.grid.getResolution();
+    const strideDisableRadius = Math.max(
+      1,
+      Math.ceil(
+        (this.options.strideNearPadDisableRadiusMm ?? 3.0) / mmPerCell
+      )
+    );
+
+    const preferredLayerIndexMap = new Map<string, number>();
+    if (this.options.preferredLayers) {
+      this.options.preferredLayers.forEach((l, idx) => preferredLayerIndexMap.set(l, idx));
+    }
+
+    const goalCosts = new Float32Array(layerIdMap.size);
+    for (const [layer, idx] of layerIdMap.entries()) {
+      goalCosts[idx] = this.sampleCellCost(layer, endGrid.gridX, endGrid.gridY, windowData, idx);
+    }
 
     // Weighted A*: for longer routes, bias harder toward the goal to reduce
     // exploration. This trades some optimality for a large speed win.
@@ -644,65 +642,6 @@ export class GridSearch {
       heuristicWeight = Math.max(heuristicWeight, 3.5);
     } else if (manhattanToGoal > 250) {
       heuristicWeight = Math.max(heuristicWeight, 2.75);
-    }
-
-    for (const sl of startLayers) {
-      if (!layerIdMap.has(sl)) {
-        continue;
-      }
-      const congestionPenalty = this.estimateCongestionPenalty(
-        sl,
-        startGrid,
-        endGrid,
-        windowData
-      );
-      const sNode: IRouteNode = {
-        gridX: startGrid.gridX,
-        gridY: startGrid.gridY,
-        worldX: adjustedStart.x,
-        worldY: adjustedStart.y,
-        layer: sl,
-        gCost: 0,
-        hCost:
-        heuristicDistance(
-          startGrid.gridX,
-          startGrid.gridY,
-          sl,
-          endGrid.gridX,
-          endGrid.gridY,
-          adjustedEnd.layer,
-          viaPenalty,
-          congestionPenalty,
-          this.options.allow45DegreeRuns
-        ) * heuristicWeight,
-        fCost: 0,
-        parent: null,
-        viaUsed: false,
-      };
-      sNode.fCost = sNode.gCost + sNode.hCost;
-      const key = encodeKey(sNode.layer, sNode.gridX, sNode.gridY);
-      if (key === -1) {
-        continue;
-      }
-      const existing = openMapArr[key];
-      if (!existing || sNode.fCost < existing.fCost) {
-        if (!existing) this.openMapTouchedIndices.push(key);
-        openMapArr[key] = sNode;
-        openPQ.push(sNode);
-      }
-    }
-
-    const mmPerCell = this.grid.getResolution();
-    const strideDisableRadius = Math.max(
-      1,
-      Math.ceil(
-        (this.options.strideNearPadDisableRadiusMm ?? 3.0) / mmPerCell
-      )
-    );
-
-    const preferredLayerIndexMap = new Map<string, number>();
-    if (this.options.preferredLayers) {
-      this.options.preferredLayers.forEach((l, idx) => preferredLayerIndexMap.set(l, idx));
     }
 
     const neighborContext: NeighborContext = {
@@ -726,7 +665,73 @@ export class GridSearch {
       heuristicWeight,
       allowDiagonalRuns: this.options.allow45DegreeRuns ?? true,
       preferredLayerIndexMap,
+      goalCosts,
     };
+
+    const startLayers: string[] =
+      !forceSingleLayer && startIsFreeVia
+        ? (this.options.allowedLayers && this.options.allowedLayers.length > 0
+            ? this.options.allowedLayers
+            : [adjustedStart.layer])
+        : [adjustedStart.layer];
+
+    for (const sl of startLayers) {
+      const slIndex = layerIdMap.get(sl);
+      if (slIndex === undefined) {
+        continue;
+      }
+      const dx = Math.abs(endGrid.gridX - startGrid.gridX);
+      const dy = Math.abs(endGrid.gridY - startGrid.gridY);
+      const manhattan = dx + dy;
+
+      const startCost = this.sampleCellCost(sl, startGrid.gridX, startGrid.gridY, windowData, slIndex);
+      const goalCost = goalCosts[slIndex];
+      const avgCost =
+        startCost > 0 && goalCost > 0
+          ? (startCost + goalCost) * 0.5
+          : windowData.averageCost;
+      const congestionPenalty = avgCost * (manhattan > 1 ? manhattan : 1) * 0.01;
+
+      let planar: number;
+      if (this.options.allow45DegreeRuns ?? true) {
+        const maxComponent = Math.max(dx, dy);
+        const minComponent = Math.min(dx, dy);
+        planar = minComponent * Math.SQRT2 + (maxComponent - minComponent);
+      } else {
+        planar = manhattan;
+      }
+      let hCost = planar;
+      if (sl !== adjustedEnd.layer && viaPenalty > 0) {
+        hCost += viaPenalty;
+      }
+      if (congestionPenalty > 0) {
+        hCost += congestionPenalty;
+      }
+      hCost *= heuristicWeight;
+      const sNode: IRouteNode = {
+        gridX: startGrid.gridX,
+        gridY: startGrid.gridY,
+        worldX: adjustedStart.x,
+        worldY: adjustedStart.y,
+        layer: sl,
+        layerIndex: slIndex,
+        gCost: 0,
+        hCost,
+        fCost: hCost,
+        parent: null,
+        viaUsed: false,
+      };
+      const key = encodeKey(sNode.layer, sNode.gridX, sNode.gridY, slIndex);
+      if (key === -1) {
+        continue;
+      }
+      const existing = openMapArr[key];
+      if (!existing || sNode.fCost < existing.fCost) {
+        if (!existing) this.openMapTouchedIndices.push(key);
+        openMapArr[key] = sNode;
+        openPQ.push(sNode);
+      }
+    }
 
     let iterations = 0;
     const maxIterations = this.options.maxIterations ?? 500000;
@@ -735,7 +740,7 @@ export class GridSearch {
         iterations++;
 
         const current = openPQ.pop()!;
-        const currentKey = encodeKey(current.layer, current.gridX, current.gridY);
+        const currentKey = encodeKey(current.layer, current.gridX, current.gridY, current.layerIndex);
         if (currentKey === -1) {
           continue;
         }
@@ -770,7 +775,8 @@ export class GridSearch {
           const neighborKey = encodeKey(
             neighbor.layer,
             neighbor.gridX,
-            neighbor.gridY
+            neighbor.gridY,
+            neighbor.layerIndex
           );
 
           if (neighborKey === -1 || closedSet[neighborKey] === this.searchGeneration) {
@@ -981,7 +987,19 @@ export class GridSearch {
     disableStride: boolean = false
   ): IRouteNode[] {
     const neighbors: IRouteNode[] = [];
-    const windowData = context.windowData;
+    const {
+      goalX,
+      goalY,
+      goalLayer,
+      viaPenalty,
+      allowDiagonalRuns,
+      heuristicWeight,
+      windowData,
+      goalCosts
+    } = context;
+    const averageCost = windowData.averageCost;
+    const nodeLayerIndex = windowData.layerIdMap.get(node.layer);
+    const nodeGoalCost = nodeLayerIndex !== undefined && goalCosts ? goalCosts[nodeLayerIndex] : undefined;
     const directions = this.options.allow45DegreeRuns 
       ? GridSearch.DIRECTIONS_8WAY 
       : GridSearch.DIRECTIONS_4WAY;
@@ -1002,12 +1020,6 @@ export class GridSearch {
         const single = this.makeSingleStepNeighbor(
           node,
           dir,
-          context.goalX,
-          context.goalY,
-          context.goalLayer,
-          context.endLayerAgnostic,
-          context.viaPenalty,
-          context.windowData,
           context
         );
         if (single) neighbors.push(single);
@@ -1051,31 +1063,41 @@ export class GridSearch {
         dir.cost +
         bendPenalty +
         layerPenalty +
-        this.sampleCellCost(node.layer, nx, ny, windowData);
+        this.sampleCellCost(node.layer, nx, ny, windowData, nodeLayerIndex);
 
-      const congestionPenalty = this.estimateCongestionPenalty(
-        node.layer,
-        { gridX: nx, gridY: ny },
-        context.endGrid,
-        windowData
-      );
-      const hCost =
-        heuristicDistance(
-          nx,
-          ny,
-          node.layer,
-          context.goalX,
-          context.goalY,
-          context.goalLayer,
-          context.viaPenalty,
-          congestionPenalty,
-          context.allowDiagonalRuns
-        ) * context.heuristicWeight;
+      const dx = Math.abs(goalX - nx);
+      const dy = Math.abs(goalY - ny);
+      const manhattan = dx + dy;
+
+      const startCost = this.sampleCellCost(node.layer, nx, ny, windowData, nodeLayerIndex);
+      const avgCost =
+        startCost > 0 && nodeGoalCost !== undefined && nodeGoalCost > 0
+          ? (startCost + nodeGoalCost) * 0.5
+          : averageCost;
+      const congestionPenalty = avgCost * (manhattan > 1 ? manhattan : 1) * 0.01;
+
+      let planar: number;
+      if (allowDiagonalRuns) {
+        const maxComponent = Math.max(dx, dy);
+        const minComponent = Math.min(dx, dy);
+        planar = minComponent * Math.SQRT2 + (maxComponent - minComponent);
+      } else {
+        planar = manhattan;
+      }
+      let hCost = planar;
+      if (node.layer !== goalLayer && viaPenalty > 0) {
+        hCost += viaPenalty;
+      }
+      if (congestionPenalty > 0) {
+        hCost += congestionPenalty;
+      }
+      hCost *= heuristicWeight;
 
       neighbors.push({
         gridX: nx,
         gridY: ny,
         layer: node.layer,
+        layerIndex: nodeLayerIndex,
         gCost: node.gCost + moveCost,
         hCost,
         fCost: node.gCost + moveCost + hCost,
@@ -1205,33 +1227,46 @@ export class GridSearch {
           }
         }
 
+        const targetLayerIndex = windowData.layerIdMap.get(targetLayer);
+        const targetGoalCost = targetLayerIndex !== undefined && goalCosts ? goalCosts[targetLayerIndex] : undefined;
         const viaMoveCost =
           viaCostAtLocation +
           targetLayerPenalty +
-          this.sampleCellCost(targetLayer, nx, ny, windowData);
-        const congestionPenalty = this.estimateCongestionPenalty(
-          targetLayer,
-          { gridX: nx, gridY: ny },
-          context.endGrid,
-          windowData
-        );
-        const hCost =
-          heuristicDistance(
-            nx,
-            ny,
-            targetLayer,
-            context.goalX,
-            context.goalY,
-            context.goalLayer,
-            context.viaPenalty,
-            congestionPenalty,
-            context.allowDiagonalRuns
-          ) * context.heuristicWeight;
+          this.sampleCellCost(targetLayer, nx, ny, windowData, targetLayerIndex);
+
+        const dx = Math.abs(goalX - nx);
+        const dy = Math.abs(goalY - ny);
+        const manhattan = dx + dy;
+
+        const startCost = this.sampleCellCost(targetLayer, nx, ny, windowData, targetLayerIndex);
+        const avgCost =
+          startCost > 0 && targetGoalCost !== undefined && targetGoalCost > 0
+            ? (startCost + targetGoalCost) * 0.5
+            : averageCost;
+        const congestionPenalty = avgCost * (manhattan > 1 ? manhattan : 1) * 0.01;
+
+        let planar: number;
+        if (allowDiagonalRuns) {
+          const maxComponent = Math.max(dx, dy);
+          const minComponent = Math.min(dx, dy);
+          planar = minComponent * Math.SQRT2 + (maxComponent - minComponent);
+        } else {
+          planar = manhattan;
+        }
+        let hCost = planar;
+        if (targetLayer !== goalLayer && viaPenalty > 0) {
+          hCost += viaPenalty;
+        }
+        if (congestionPenalty > 0) {
+          hCost += congestionPenalty;
+        }
+        hCost *= heuristicWeight;
 
         neighbors.push({
           gridX: nx,
           gridY: ny,
           layer: targetLayer,
+          layerIndex: targetLayerIndex,
           gCost: node.gCost + viaMoveCost,
           hCost,
           fCost: node.gCost + viaMoveCost + hCost,
@@ -1251,7 +1286,20 @@ export class GridSearch {
     clearance: number,
     context: NeighborContext
   ): IRouteNode | null {
+    const {
+      goalX,
+      goalY,
+      goalLayer,
+      viaPenalty,
+      allowDiagonalRuns,
+      heuristicWeight,
+      windowData,
+      goalCosts
+    } = context;
+    const averageCost = windowData.averageCost;
     const maxStride = Math.max(1, this.options.maxStrideCells ?? 16);
+    const nodeLayerIndex = windowData.layerIdMap.get(node.layer);
+    const nodeGoalCost = nodeLayerIndex !== undefined && goalCosts ? goalCosts[nodeLayerIndex] : undefined;
     // Use squared distance to avoid expensive Math.hypot calls
     const startDx = node.gridX - context.startGrid.gridX;
     const startDy = node.gridY - context.startGrid.gridY;
@@ -1312,7 +1360,7 @@ export class GridSearch {
       currentY = ny;
       accMoveCost +=
         dir.cost +
-        this.sampleCellCost(node.layer, currentX, currentY, context.windowData);
+        this.sampleCellCost(node.layer, currentX, currentY, windowData, nodeLayerIndex);
       if (!penaltyApplied) {
         accMoveCost += this.getDirectionalPenalty(
           node,
@@ -1324,9 +1372,9 @@ export class GridSearch {
       }
 
       const reachedGoal =
-        currentX === context.goalX &&
-        currentY === context.goalY &&
-        (node.layer === context.goalLayer || context.endLayerAgnostic);
+        currentX === goalX &&
+        currentY === goalY &&
+        (node.layer === goalLayer || context.endLayerAgnostic);
 
       const forced = this.hasForcedNeighbor(
         currentX,
@@ -1350,28 +1398,38 @@ export class GridSearch {
       })();
 
       if (reachedGoal || forced || nearStart || nearGoal) {
-        const congestionPenalty = this.estimateCongestionPenalty(
-          node.layer,
-          { gridX: currentX, gridY: currentY },
-          context.endGrid,
-          context.windowData
-        );
-        const hCost =
-          heuristicDistance(
-            currentX,
-            currentY,
-            node.layer,
-            context.goalX,
-            context.goalY,
-            context.goalLayer,
-            context.viaPenalty,
-            congestionPenalty,
-            context.allowDiagonalRuns
-          ) * context.heuristicWeight;
+        const dx = Math.abs(goalX - currentX);
+        const dy = Math.abs(goalY - currentY);
+        const manhattan = dx + dy;
+
+        const startCost = this.sampleCellCost(node.layer, currentX, currentY, windowData, nodeLayerIndex);
+        const avgCost =
+          startCost > 0 && nodeGoalCost !== undefined && nodeGoalCost > 0
+            ? (startCost + nodeGoalCost) * 0.5
+            : averageCost;
+        const congestionPenalty = avgCost * (manhattan > 1 ? manhattan : 1) * 0.01;
+
+        let planar: number;
+        if (allowDiagonalRuns) {
+          const maxComponent = Math.max(dx, dy);
+          const minComponent = Math.min(dx, dy);
+          planar = minComponent * Math.SQRT2 + (maxComponent - minComponent);
+        } else {
+          planar = manhattan;
+        }
+        let hCost = planar;
+        if (node.layer !== goalLayer && viaPenalty > 0) {
+          hCost += viaPenalty;
+        }
+        if (congestionPenalty > 0) {
+          hCost += congestionPenalty;
+        }
+        hCost *= heuristicWeight;
         return {
           gridX: currentX,
           gridY: currentY,
           layer: node.layer,
+          layerIndex: nodeLayerIndex,
           gCost: node.gCost + accMoveCost,
           hCost,
           fCost: node.gCost + accMoveCost + hCost,
@@ -1388,14 +1446,20 @@ export class GridSearch {
   private makeSingleStepNeighbor(
     node: IRouteNode,
     dir: { dx: number; dy: number; cost: number },
-    goalX: number,
-    goalY: number,
-    goalLayer: string,
-    endLayerAgnostic: boolean,
-    viaPenalty: number,
-    windowData: CachedWindow,
     context: NeighborContext
   ): IRouteNode | null {
+    const {
+      goalX,
+      goalY,
+      goalLayer,
+      endLayerAgnostic,
+      viaPenalty,
+      windowData,
+      goalCosts,
+      allowDiagonalRuns,
+      heuristicWeight
+    } = context;
+    const averageCost = windowData.averageCost;
     const nx = node.gridX + dir.dx;
     const ny = node.gridY + dir.dy;
     if (!this.grid.isInBounds(nx, ny)) return null;
@@ -1422,34 +1486,48 @@ export class GridSearch {
       }
     }
 
+    const nodeLayerIndex = windowData.layerIdMap.get(node.layer);
+    const nodeGoalCost = nodeLayerIndex !== undefined && goalCosts ? goalCosts[nodeLayerIndex] : undefined;
+
     const moveCost =
       dir.cost +
       bendPenalty +
       layerPenalty +
-      this.sampleCellCost(node.layer, nx, ny, windowData);
-    const congestionPenalty = this.estimateCongestionPenalty(
-      node.layer,
-      { gridX: nx, gridY: ny },
-      { gridX: goalX, gridY: goalY },
-      windowData
-    );
-    const hCost =
-      heuristicDistance(
-        nx,
-        ny,
-        node.layer,
-        goalX,
-        goalY,
-        goalLayer,
-        viaPenalty,
-        congestionPenalty,
-        context.allowDiagonalRuns
-      ) * context.heuristicWeight;
+      this.sampleCellCost(node.layer, nx, ny, windowData, nodeLayerIndex);
+
+    const dx = Math.abs(goalX - nx);
+    const dy = Math.abs(goalY - ny);
+    const manhattan = dx + dy;
+
+    const startCost = this.sampleCellCost(node.layer, nx, ny, windowData, nodeLayerIndex);
+    const avgCost =
+      startCost > 0 && nodeGoalCost !== undefined && nodeGoalCost > 0
+        ? (startCost + nodeGoalCost) * 0.5
+        : averageCost;
+    const congestionPenalty = avgCost * (manhattan > 1 ? manhattan : 1) * 0.01;
+
+    let planar: number;
+    if (allowDiagonalRuns) {
+      const maxComponent = Math.max(dx, dy);
+      const minComponent = Math.min(dx, dy);
+      planar = minComponent * Math.SQRT2 + (maxComponent - minComponent);
+    } else {
+      planar = manhattan;
+    }
+    let hCost = planar;
+    if (node.layer !== goalLayer && viaPenalty > 0) {
+      hCost += viaPenalty;
+    }
+    if (congestionPenalty > 0) {
+      hCost += congestionPenalty;
+    }
+    hCost *= heuristicWeight;
 
     return {
       gridX: nx,
       gridY: ny,
       layer: node.layer,
+      layerIndex: nodeLayerIndex,
       gCost: node.gCost + moveCost,
       hCost,
       fCost: node.gCost + moveCost + hCost,

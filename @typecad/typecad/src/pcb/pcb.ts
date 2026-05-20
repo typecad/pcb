@@ -39,6 +39,7 @@ import { resolveNet as resolveNetStandalone } from './pcb_net_resolver.js';
 import { mapLayerToSide, transformSexprLayers, mirrorChamferDirection } from './pcb_layer_utils.js';
 import { pcbLine, pcbCircle, pcbRect, pcbPoly, pcbOutline } from './pcb_graphics.js';
 import { zone, keepout, _getStagedOutlines, _removeStagedOutlinesByUuid } from './pcb_zones.js';
+import { IPcbBoardContext } from './pcb_board_context.js';
 import {
     calculateViaCurrentCapacity,
     calculateMinTraceWidth,
@@ -54,11 +55,15 @@ import {
     routeNet as extractRouteNet
 } from './pcb_routing_core.js';
 import { prettyPrintSExpr } from '../utils/sexpr_formatter.js';
+import { exportContract } from '../contract.js';
+import type { ContractOptions } from '../contract.js';
 import { createBoard } from './pcb_board_creation.js';
 import { createFootprintNode, updateFootprintNode } from './pcb_footprint.js';
 import { RoutingError } from '../errors.js';
 import { autoroute } from './pcb_autoroute.js';
+import logger from '../logging.js';
 import { autorouteBatch } from './pcb_autoroute_batch.js';
+import type { SexprNode } from '../types/sexpr_types.js';
 
 // Re-export types and classes that other modules expect to import from './pcb'
 export { TrackBuilder } from './pcb_track_builder.js';
@@ -122,7 +127,7 @@ function isSchematicNetDefinition(value: unknown): value is ISchematicNetDefinit
 /**
  * Represents a printed circuit board (PCB).
  */
-export class PCB {
+export class PCB implements IPcbBoardContext {
     Boardname: string;
     Schematic: Schematic;
     thickness: number;
@@ -346,6 +351,10 @@ export class PCB {
         return this.#stagedOutlines;
     }
 
+    set stagedOutlines(val: IOutline[]) {
+        this.#stagedOutlines = val;
+    }
+
     /**
      * Getter for filled zones.
      */
@@ -384,9 +393,9 @@ export class PCB {
     /**
      * Getter for groups as Map (for footprint functions that expect Map).
      */
-    get groupsAsMap(): Map<string, any> {
+    get groupsAsMap(): Map<string, string> {
         // Convert string array to Map to match the interface expected by footprint functions
-        const groupsMap = new Map<string, any>();
+        const groupsMap = new Map<string, string>();
         this.#groups.forEach(groupString => {
             // Extract group name from string like '(group "groupName" (members ...))'
             const match = groupString.match(/^\(group\s+"([^"]+)"/);
@@ -529,7 +538,7 @@ export class PCB {
      * Used by extracted modules to create footprint nodes.
      * @internal
      */
-    _createFootprintNodePublic(component: Component, boardNetNameToCodeMap?: Map<string, number>): any[] {
+    _createFootprintNodePublic(component: Component, boardNetNameToCodeMap?: Map<string, number>): SexprNode {
         return this.#_create_footprint_node(component, boardNetNameToCodeMap);
     }
 
@@ -538,7 +547,7 @@ export class PCB {
      * Used by extracted modules to update footprint nodes.
      * @internal
      */
-    _updateFootprintNodePublic(node: any[], component: Component, boardNetNameToCodeMap?: Map<string, number>): any[] {
+    _updateFootprintNodePublic(node: SexprNode, component: Component, boardNetNameToCodeMap?: Map<string, number>): SexprNode {
         return this.#_update_footprint_node(node, component, boardNetNameToCodeMap);
     }
 
@@ -728,7 +737,7 @@ export class PCB {
      * @returns The updated S-expression node array.
      * @private
      */
-    #_update_footprint_node(node: any[], component: Component, boardNetNameToCodeMap?: Map<string, number>): any[] {
+    #_update_footprint_node(node: SexprNode, component: Component, boardNetNameToCodeMap?: Map<string, number>): SexprNode {
         return updateFootprintNode(node, component, this.#resolveNet.bind(this), boardNetNameToCodeMap);
     }
 
@@ -741,7 +750,7 @@ export class PCB {
      * @throws Error if the .kicad_mod file is missing, empty, or parsing fails.
      * @private
      */
-    #_create_footprint_node(component: Component, boardNetNameToCodeMap?: Map<string, number>): any[] {
+    #_create_footprint_node(component: Component, boardNetNameToCodeMap?: Map<string, number>): SexprNode {
         return createFootprintNode(component, this.#resolveNet.bind(this), boardNetNameToCodeMap);
     }
 
@@ -819,10 +828,8 @@ export class PCB {
      */
     zone(options: {
         // Net specification (required - one of these)
-        pin?: any;
+        pin?: Pin;
         net?: string;
-
-        // Position and size (required)
         layers: string[];
         x: number;
         y: number;
@@ -1231,7 +1238,16 @@ export class PCB {
         if (isSchematicNetDefinition(arg1)) {
             return extractRouteNet(this, arg1, options);
         }
-        return await this.#autoroute(arg1 as IAutorouteOptions);
+        const opts = arg1 as IAutorouteOptions;
+        const netLabel = opts.net || `${pinToIdentifier(Array.isArray(opts.from) ? opts.from[0] : opts.from)} → ${pinToIdentifier(Array.isArray(opts.to) ? opts.to[0] : opts.to)}`;
+        logger.info(`⏳ Routing '${netLabel}'...`);
+        const result = await this.#autoroute(opts);
+        if (result.success) {
+            logger.info(`✔ Routing '${netLabel}' complete (${result.completedCount}/${result.routeCount} routes)`);
+        } else {
+            logger.warn(`⚠ Routing '${netLabel}' incomplete (${result.completedCount}/${result.routeCount} routes)`);
+        }
+        return result;
     }
 
     async #autoroute(options: IAutorouteOptions): Promise<IAutorouteResult> {
@@ -1368,6 +1384,42 @@ export class PCB {
         if (this.Schematic) {
             this.Schematic.erc();
         }
+    }
+
+    /**
+     * Exports a hardware contract JSON file describing which MCU pins are wired
+     * in the circuit. The firmware toolchain (TypeHAL) consumes this contract to
+     * generate a board wrapper that only exposes connected pins and peripherals.
+     *
+     * When a component has a `typehal.boardPackage` property, the MCU is auto-detected
+     * and pin names are read from the KiCAD symbol file. No options are needed.
+     *
+     * @param options - Contract generation options (all optional when typehal is set on the MCU).
+     * @param options.mcuSymbolPattern - Substring to match against Component.symbol to find the MCU (fallback).
+     * @param options.mcuReference - Exact reference designator (e.g. 'U1'). Takes priority over mcuSymbolPattern.
+     * @param options.pinMapping - Pin mapping table for the MCU (legacy — only needed without typehal).
+     * @param options.peripheralPins - Peripheral pin requirements (board pin names).
+     * @param options.boardPackage - Board package name for the consumer (default: from typehal.boardPackage).
+     * @param options.outputPath - Output file path (default: "./build/<boardname>.contract.json").
+     *
+     * @example
+     * ```ts
+     * // Auto-detect MCU from typehal.boardPackage property on the component:
+     * pcb.contract();
+     *
+     * // With custom output path:
+     * pcb.contract({ outputPath: '../fw/contract.json' });
+     *
+     * // Legacy — manual MCU identification:
+     * pcb.contract({
+     *   mcuSymbolPattern: 'ATmega328',
+     *   pinMapping: atmega328,
+     * });
+     * ```
+     */
+    contract(options: ContractOptions = {}): void {
+        const outputPath = options.outputPath ?? `./build/${this.Boardname}.contract.json`;
+        exportContract(this, { ...options, outputPath });
     }
 
     /**

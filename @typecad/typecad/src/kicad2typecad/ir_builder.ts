@@ -50,7 +50,7 @@ export class KicadIRBuilder {
         const atNode = node.child('at');
         const x = atNode?.getNumber(1) ?? 0;
         const y = atNode?.getNumber(2) ?? 0;
-        const rotation = atNode?.getNumber(3, 0);
+        const rotation = atNode?.getNumber(3, 0) ?? 0;
 
         // Side
         const layerNode = node.child('layer');

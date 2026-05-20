@@ -1,7 +1,7 @@
 (kicad_pcb
   (version 20241229)
   (net 0 "")
-  (net 1 "VCC")
+  (net 1 "net1")
   (generator "typecad")
   (generator_version "0.1.0")
   (general
@@ -9,13 +9,65 @@
     (legacy_teardrops no)
   )
   (paper "A4")
+  (footprint "test:pad"
+    (layer "F.Cu")
+    (property "Code" "typecad:v1:eyJ2IjoxLCJ1IjoiIiwibiI6ImMxIn0"
+      (at 0 0 0)
+      (layer F.Fab)
+      (hide yes)
+      (uuid "6f6edb37-ac62-4760-a4a9-034898d01d3f")
+      (effects
+        (font
+          (size 1 1)
+          (thickness 0.15)
+        )
+      )
+    )
+    (uuid "909ebd73-5f66-4bc7-9661-e35d6679009e")
+    (at 10 10 0)
+  )
+  (footprint "test:pad"
+    (layer "F.Cu")
+    (property "Code" "typecad:v1:eyJ2IjoxLCJ1IjoiIiwibiI6ImMyIn0"
+      (at 0 0 0)
+      (layer F.Fab)
+      (hide yes)
+      (uuid "199049b7-784c-4a1f-a12f-d715cee42624")
+      (effects
+        (font
+          (size 1 1)
+          (thickness 0.15)
+        )
+      )
+    )
+    (uuid "052b549d-3ab4-4ce2-b93c-73ccef706ade")
+    (at 30 30 0)
+  )
+  (footprint "test:pad"
+    (layer "F.Cu")
+    (property "Code" "typecad:v1:eyJ2IjoxLCJ1IjoiIiwibiI6ImMzIn0"
+      (at 0 0 0)
+      (layer F.Fab)
+      (hide yes)
+      (uuid "5cda2c0b-dcc9-4d59-b5e3-b5a00f0c3bc7")
+      (effects
+        (font
+          (size 1 1)
+          (thickness 0.15)
+        )
+      )
+    )
+    (uuid "55510626-b27c-415a-ad10-57cd4bad0d5b")
+    (at 50 50 0)
+  )
   (segment
     (start 10 10)
     (end 30 30)
     (width 0.2)
     (locked no)
     (layer "F.Cu")
-    (uuid "9b5e0649-7658-477a-b048-d35b98291a91")
+    (net 1)
+    (uuid "0fc336dd-18ed-451e-97b8-bc404db3b0fc")
   )
   (segment
     (start 30 30)
@@ -23,6 +75,7 @@
     (width 0.2)
     (locked no)
     (layer "F.Cu")
-    (uuid "f76ec4d3-0baf-48ad-995c-fd16e8594234")
+    (net 1)
+    (uuid "f5c98793-37e7-487c-8baa-49e7b37a0276")
   )
 )

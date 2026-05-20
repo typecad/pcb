@@ -34,6 +34,11 @@ export interface BoundingBox {
     maxY: number;
 }
 
+export interface PinInfo {
+    name: string;
+    type: string;
+}
+
 export type SchematicNode = { name: string; code: number; nodes: Pin[]; owner: Component | null };
 
 // ── Shared constants ─────────────────────────────────────────────────────────

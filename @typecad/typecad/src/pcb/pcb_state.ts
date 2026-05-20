@@ -33,7 +33,7 @@ export interface IPcbState {
     options: IPcbOptions;
     pcb: string;
     existingBoardElements: unknown[];
-    groupsAsMap: Map<string, any>;
+    groupsAsMap: Map<string, boolean>;
     setExistingBoardElements(elements: unknown[]): void;
 }
 
@@ -69,8 +69,8 @@ export class PcbState implements IPcbState {
         return this.option;
     }
 
-    get groupsAsMap(): Map<string, any> {
-        const map = new Map<string, any>();
+    get groupsAsMap(): Map<string, boolean> {
+        const map = new Map<string, boolean>();
         for (const group of this.groups) {
             map.set(group, true);
         }

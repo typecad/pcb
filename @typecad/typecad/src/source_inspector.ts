@@ -1,9 +1,8 @@
 import fs from 'node:fs';
 import * as acorn from 'acorn';
 import { simple as walk } from 'acorn-walk';
-import type { Node, ObjectExpression } from 'acorn';
+import type { Node, ObjectExpression, VariableDeclaration, AssignmentExpression, NewExpression } from 'acorn';
 import { createRequire } from 'node:module';
-import { TypeCadError } from './errors.js';
 
 const _require = createRequire(import.meta.url);
 
@@ -32,7 +31,7 @@ export function inspectSource(filePath: string, line: number): { variable?: stri
             const tsPlugin = getTsPluginModule();
             let ast: acorn.Node;
             if (tsPlugin) {
-                // @ts-ignore - acorn-typescript loaded lazily
+                // @ts-expect-error - acorn-typescript loaded lazily
                 const Parser = acorn.Parser.extend(tsPlugin.default ? tsPlugin.default() : tsPlugin());
                 ast = Parser.parse(sourceContent, {
                     ecmaVersion: 2022,
@@ -59,7 +58,6 @@ export function inspectSource(filePath: string, line: number): { variable?: stri
             let foundVariable = false;
             let targetStartLine = -1; // track the best match proximity
 
-            // @ts-ignore - acorn-walk typing issues
             walk(ast, {
                 VariableDeclaration(node: Node) {
                     if (!node.loc) return;
@@ -67,7 +65,7 @@ export function inspectSource(filePath: string, line: number): { variable?: stri
                     const declEnd = node.loc.end.line;
                     // Check if the variable declaration spans or is near the target line
                     if (declStart <= line && declEnd >= line) {
-                        (node as any).declarations.forEach((decl: any) => {
+                        (node as VariableDeclaration).declarations.forEach((decl) => {
                             if (decl.init && decl.init.type === 'NewExpression' &&
                                 decl.init.callee.type === 'Identifier') {
                                 if (decl.id && decl.id.type === 'Identifier') {
@@ -95,10 +93,10 @@ export function inspectSource(filePath: string, line: number): { variable?: stri
                     const exprEnd = node.loc.end.line;
                     // Check if the assignment spans or is near the target line
                     if (exprStart <= line && exprEnd >= line &&
-                        (node as any).right.type === 'NewExpression' &&
-                        ((node as any).left.type === 'Identifier' || (node as any).left.type === 'MemberExpression')) {
-                        
-                        const left = (node as any).left;
+                        (node as AssignmentExpression).right.type === 'NewExpression' &&
+                        ((node as AssignmentExpression).left.type === 'Identifier' || (node as AssignmentExpression).left.type === 'MemberExpression')) {
+
+                        const left = (node as AssignmentExpression).left as import('acorn').Identifier | import('acorn').MemberExpression;
                         let isThisAssign = false;
                         let varName: string | undefined;
 
@@ -129,7 +127,7 @@ export function inspectSource(filePath: string, line: number): { variable?: stri
                                 targetStartLine = exprStart;
                             }
 
-                            const arg = (node as any).right.arguments[0];
+                            const arg = ((node as AssignmentExpression).right as NewExpression).arguments[0];
                             if (arg && arg.type === 'ObjectExpression') {
                                 targetParams = extractAstObject(arg as ObjectExpression);
                             }
@@ -141,7 +139,7 @@ export function inspectSource(filePath: string, line: number): { variable?: stri
             if (foundVariable) {
                 return { variable: targetVariable, params: targetParams, isThis: targetIsThis };
             }
-        } catch (_tsError) {
+        } catch {
             // AST parsing failed (e.g., TypeScript syntax not understood by plain acorn).
             // Fall through to regex-based fallback below.
         }
@@ -210,7 +208,7 @@ export function inspectSource(filePath: string, line: number): { variable?: stri
         }
 
         return {};
-    } catch (err) {
+    } catch {
         return {};
     }
 }
@@ -218,7 +216,8 @@ export function inspectSource(filePath: string, line: number): { variable?: stri
 // Helper function to extract object from AST node
 function extractAstObject(node: ObjectExpression): Record<string, unknown> {
     const obj: Record<string, unknown> = {};
-    (node as any).properties.forEach((prop: any) => {
+    node.properties.forEach((prop) => {
+        if (prop.type !== 'Property') return;
         if (prop.key && prop.key.type === 'Identifier' && prop.value) {
             const key = prop.key.name;
             obj[key] = extractAstValue(prop.value);
@@ -227,19 +226,27 @@ function extractAstObject(node: ObjectExpression): Record<string, unknown> {
     return obj;
 }
 
+type AcornNode = acorn.Node & {
+    value?: unknown;
+    name?: string;
+    quasis?: { value: { raw: string } }[];
+    elements?: acorn.Node[];
+};
+
 // Recursive helper to extract values from AST nodes
-function extractAstValue(node: any): any {
-    switch (node.type) {
-        case 'Literal': return node.value;
-        case 'StringLiteral': return node.value;
-        case 'NumericLiteral': return node.value;
-        case 'BooleanLiteral': return node.value;
-        case 'ObjectExpression': return extractAstObject(node);
-        case 'ArrayExpression': return node.elements.map(extractAstValue);
-        case 'Identifier': return node.name;
+function extractAstValue(node: acorn.Node): unknown {
+    const n = node as AcornNode;
+    switch (n.type) {
+        case 'Literal': return n.value;
+        case 'StringLiteral': return n.value;
+        case 'NumericLiteral': return n.value;
+        case 'BooleanLiteral': return n.value;
+        case 'ObjectExpression': return extractAstObject(node as ObjectExpression);
+        case 'ArrayExpression': return n.elements ? n.elements.map(extractAstValue) : [];
+        case 'Identifier': return n.name;
         case 'TemplateLiteral':
-            if (node.quasis && node.quasis.length > 0) {
-                return node.quasis[0].value.raw;
+            if (n.quasis && n.quasis.length > 0) {
+                return n.quasis[0].value.raw;
             }
             return undefined;
         default: return undefined;
@@ -296,7 +303,7 @@ function splitObjectPairs(str: string): string[] {
 }
 
 // Helper to parse individual values
-function parseValue(val: string): any {
+function parseValue(val: string): unknown {
     val = val.trim();
     
     if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {

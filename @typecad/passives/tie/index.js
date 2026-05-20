@@ -1,6 +1,6 @@
 import { Component } from '@typecad/typecad';
 export class Tie extends Component {
-    constructor({ reference, xy, schematic, net1, net2, net3, net4, footprint, uuid }) {
+    constructor({ reference, xy, schematic, net1, net2, net3, net4, footprint, uuid } = {}) {
         if (!schematic)
             return;
         if (!net1)

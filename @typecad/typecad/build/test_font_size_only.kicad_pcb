@@ -13,7 +13,7 @@
       (at 0 0 0)
       (layer F.Fab)
       (hide yes)
-      (uuid "1b3e9bf4-eb00-4f8c-bab7-ce4a8f8b3d3a")
+      (uuid "6409c28c-92a9-4f40-aabf-1c010a971bf5")
       (effects
         (font
           (size 1 1)
@@ -21,7 +21,7 @@
         )
       )
     )
-    (uuid "ef71e6fb-d741-428f-9e1c-4cf2e23d7802")
+    (uuid "2218a9ae-bd39-4471-8f1d-e16b159fc843")
     (at 100 100 0)
     (version 20260206)
     (generator "kicad-footprint-generator")

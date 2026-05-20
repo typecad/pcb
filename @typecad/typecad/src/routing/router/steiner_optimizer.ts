@@ -1,5 +1,5 @@
 import { RoutingGrid } from '../contracts/routing_grid.js';
-import type { IRoutePath } from './astar_router.js';
+import type { AStarRouter, IRoutePath } from './astar_router.js';
 import { mergeSegments } from './path_assembler.js';
 import chalk from 'chalk';
 import logger from '../../logging.js';
@@ -76,7 +76,7 @@ export class SteinerOptimizer {
     private clearance: number;
     private traceWidth: number;
     private net?: string;
-    private router?: any; // A* router instance for re-routing through Steiner points
+    private router?: AStarRouter; // A* router instance for re-routing through Steiner points
 
     /**
      * Create a new Steiner optimizer
@@ -86,7 +86,7 @@ export class SteinerOptimizer {
      * @param net - Net name for obstacle checking
      * @param router - Optional router instance for re-routing segments
      */
-    constructor(grid: RoutingGrid, clearance: number, traceWidth: number, net?: string, router?: any) {
+    constructor(grid: RoutingGrid, clearance: number, traceWidth: number, net?: string, router?: AStarRouter) {
         this.grid = grid;
         this.clearance = clearance;
         this.traceWidth = traceWidth;
@@ -95,7 +95,7 @@ export class SteinerOptimizer {
     }
 
     private debugEnabled(): boolean {
-        try { return !!this.router?.options?.debug; } catch { return false; }
+        try { return !!this.router?.routingOptions?.debug; } catch { return false; }
     }
 
     /**
@@ -218,8 +218,8 @@ export class SteinerOptimizer {
                     let steinerLayer: string;
 
                     // Prefer the user's specified layer if available
-                    if (this.router?.options?.preferredLayers && this.router.options.preferredLayers.length > 0) {
-                        steinerLayer = this.router.options.preferredLayers[0];
+                    if (this.router?.routingOptions?.preferredLayers && this.router.routingOptions.preferredLayers.length > 0) {
+                        steinerLayer = this.router.routingOptions.preferredLayers[0];
                     } else {
                         // Fallback: use the dominant layer (most common among the three terminals)
                         const layers = [t1.layer, t2.layer, t3.layer];
@@ -336,7 +336,7 @@ export class SteinerOptimizer {
         seg2: IRoutePath
     ): { p1: { x: number; y: number; layer: string }; p2: { x: number; y: number; layer: string }; distance: number } | null {
         let minDistance = Infinity;
-        let closestPair: any = null;
+        let closestPair: { p1: { x: number; y: number; layer: string }; p2: { x: number; y: number; layer: string }; distance: number } | null = null;
 
         for (const n1 of seg1.nodes) {
             for (const n2 of seg2.nodes) {

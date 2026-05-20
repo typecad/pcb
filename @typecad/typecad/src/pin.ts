@@ -13,7 +13,7 @@ type TPinType = "passive" | "input" | "output" | "bidirectional" | "tri_state" |
  * @class Pin
  */
 export class Pin {
-    number: number | string = '';
+    number: string = '';
     reference: string = '';
     type: TPinType;
     owner: Component | null;
@@ -24,7 +24,7 @@ export class Pin {
      * Initializes a new pin with a given reference, number, and optional type.
      *
      * @param {string} reference - The reference identifier for the pin.
-     * @param {number|string} number - The pin number or identifier.
+     * @param {number|string} number - The pin number or identifier. Stored as string internally.
      * @param {TPinType} [type] - The type of the pin. Defaults to 'passive'.
      * @param {Component} [owner] - The owner component of this pin.
      * @param {IPinPowerInfo} [powerInfo] - Power characteristics of the pin.
@@ -36,9 +36,16 @@ export class Pin {
      */
     constructor(reference: string, number: number | string, type?: TPinType, owner?: Component, powerInfo?: IPinPowerInfo) {
         this.reference = reference;
-        this.number = number;
+        this.number = String(number);
         this.type = type || 'passive';
         this.owner = owner || null;
         this.powerInfo = powerInfo;
+
+        if (this.owner) {
+            const existingPin = this.owner.pins.find(p => p.number === this.number);
+            if (!existingPin) {
+                this.owner.pins.push(this);
+            }
+        }
     }
 }

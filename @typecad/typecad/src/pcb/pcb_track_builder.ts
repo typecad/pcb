@@ -1,6 +1,6 @@
 import { PCB } from './pcb.js';
 import { generateUuid, formatCallSite } from './pcb_utils.js';
-import { IVia, IGeneratedElement, IPowerInfo, ITrackDetails, IViaPowerInfo } from './pcb_interfaces.js';
+import { IVia, IGeneratedElement, IPowerInfo, ITrackDetails, IViaPowerInfo, IGrLine } from './pcb_interfaces.js';
 import logger from '../logging.js';
 import { RoutingError } from '../errors.js';
 import { calculateMinTraceWidth, calculateMinViaSize as calculateMinimumViaSize } from './pcb_routing_calculations.js';
@@ -86,7 +86,7 @@ export class TrackBuilder {
         }
 
         let persistentTrackUuid: string;
-        let actualTrackData: any = null;
+        let actualTrackData: IGrLine | null = null;
 
         if (!this._deferStaging) {
             // Normal behavior: stage the track immediately
@@ -252,4 +252,7 @@ export class TrackBuilder {
         }
         return this.elements;
     }
+
+    get deferStaging(): boolean { return this._deferStaging; }
+    get net(): string | undefined { return this._net; }
 }

@@ -51,7 +51,7 @@ export function connectionMatches(
  * @returns True if valid
  * @throws Error if pin is invalid
  */
-export function validatePin(pin: any, context: string): boolean {
+export function validatePin(pin: Pin, context: string): boolean {
     const callSiteInfo = formatCallSite(getCallSite());
 
     if (!pin) {

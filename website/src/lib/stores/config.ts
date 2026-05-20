@@ -10,4 +10,4 @@ export const config = persisted<Config>("config", {
 	radius: 0.5,
 });
 
-export let cart_open = writable(false);
+export const cart_open = writable(false);

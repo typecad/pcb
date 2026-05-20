@@ -73,6 +73,16 @@ interface ProfilerConfig {
     baselineFile?: string; // Path to baseline data file
 }
 
+interface ProfileHierarchyNode {
+    name: string;
+    callCount: number;
+    totalDuration: number;
+    averageDuration: number;
+    children: Record<string, ProfileHierarchyNode | null>;
+    circular?: boolean;
+    truncated?: boolean;
+}
+
 /**
  * Advanced performance profiler for timing function execution
  * Tracks call counts, total time, memory usage, hierarchical relationships, and performance metrics
@@ -253,29 +263,30 @@ export class Profiler {
      * @param fn - Function to profile
      * @returns Wrapped function that will be profiled
      */
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     public profile<T extends (...args: any[]) => any>(name: string, fn: T): T {
-        const self = this;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         return ((...args: any[]) => {
-            self.start(name);
+            this.start(name);
             try {
                 const result = fn(...args);
                 // Handle async functions
                 if (result && typeof result.then === 'function') {
                     return result
-                        .then((value: any) => {
-                            self.end(name);
+                        .then((value: unknown) => {
+                            this.end(name);
                             return value;
                         })
-                        .catch((error: any) => {
-                            self.end(name);
+                        .catch((error: unknown) => {
+                            this.end(name);
                             throw error;
                         });
                 }
                 // For synchronous functions, end timing here
-                self.end(name);
+                this.end(name);
                 return result;
             } catch (error) {
-                self.end(name);
+                this.end(name);
                 throw error;
             }
         }) as T;
@@ -648,8 +659,8 @@ export class Profiler {
     /**
      * Get hierarchical view of function calls
      */
-    public getHierarchicalView(): any {
-        const hierarchy: any = {};
+    public getHierarchicalView(): Record<string, ProfileHierarchyNode | null> {
+        const hierarchy: Record<string, ProfileHierarchyNode | null> = {};
         
         this.entries.forEach((entry, name) => {
             if (!entry.parent) {
@@ -663,11 +674,11 @@ export class Profiler {
     /**
      * Build subtree for hierarchical view
      */
-    private buildsubtree(name: string, visited: Set<string> = new Set(), depth: number = 0): any {
+    private buildsubtree(name: string, visited: Set<string> = new Set(), depth: number = 0): ProfileHierarchyNode | null {
         const entry = this.entries.get(name);
         if (!entry) return null;
 
-        const node: any = {
+        const node: ProfileHierarchyNode = {
             name,
             callCount: entry.callCount,
             totalDuration: entry.totalDuration,

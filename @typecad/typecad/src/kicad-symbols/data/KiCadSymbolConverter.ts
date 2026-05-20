@@ -202,8 +202,8 @@ export class KiCadSymbolConverter {
    * @returns Extra data object
    * @private
    */
-  private buildExtraData(symbol: ExtractedSymbol): Record<string, any> {
-    const extraData: Record<string, any> = {
+  private buildExtraData(symbol: ExtractedSymbol): Record<string, unknown> {
+    const extraData: Record<string, unknown> = {
       symbolType: 'schematic',
       library: symbol.library,
       source: 'local_files'

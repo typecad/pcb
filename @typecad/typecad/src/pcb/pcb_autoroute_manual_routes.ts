@@ -22,6 +22,7 @@ import {
     debugLog,
     isAutorouteResultRouteItem,
 } from './pcb_autoroute_helpers.js';
+import type { IPcbBoardContext } from './pcb_board_context.js';
 
 /** Data tracked for each manually-routed pin pair. */
 export interface ManualRouteData {
@@ -44,13 +45,13 @@ export interface ManualRouteProcessingResult {
  *  - Add manual route segments as obstacles to the grid
  */
 export function processManualRoutes(
-    pcb: any,
+    pcb: IPcbBoardContext,
     options: IAutorouteOptions,
     allPins: Pin[],
     traceWidth: number,
     clearance: number,
     netName: string | undefined,
-    addObstacleToState: (obs: any) => void,
+    addObstacleToState: (obs: import('../routing/shared/routing_grid.js').IRoutingObstacle) => void,
 ): ManualRouteProcessingResult {
     const providedRoutes = options.routes ?? [];
     const manuallyRoutedPinPairs = new Set<string>();
@@ -142,12 +143,12 @@ export function processManualRoutes(
         manuallyRoutedPinPairs.add(pairKey2);
         manualRouteDataMap.set(pairKey1, {
             path,
-            manual: { from: fromPin, to: toPin, route: routeItem as any },
+            manual: { from: fromPin, to: toPin, route: routeItem },
             trackBuilders
         });
         manualRouteDataMap.set(pairKey2, {
             path,
-            manual: { from: fromPin, to: toPin, route: routeItem as any },
+            manual: { from: fromPin, to: toPin, route: routeItem },
             trackBuilders
         });
 

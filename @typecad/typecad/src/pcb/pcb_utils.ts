@@ -91,7 +91,7 @@ export function normalizeNetName(name?: string): string | undefined {
  * @param callSite - Call site info from getCallSite(), or undefined
  * @returns Formatted string like " (called from file.ts:42)" or empty string
  */
-export function formatCallSite(callSite: { file: string; line: number; column: number } | undefined): string {
+export function formatCallSite(callSite: { file: string; line: number; column: number; function?: string } | undefined | null): string {
     return callSite ? ` (called from ${callSite.file}:${callSite.line})` : '';
 }
 

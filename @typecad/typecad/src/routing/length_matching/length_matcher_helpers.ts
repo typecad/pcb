@@ -83,10 +83,21 @@ export function logZeroClearanceSample(
 
   try {
     const g = ctx.grid.worldToGrid(worldX, worldY);
-    const cell = typeof ctx.grid.getCell === 'function' ? ctx.grid.getCell(g.x, g.y, layer) : undefined;
+    interface ICellInfo {
+      occupied?: boolean;
+      net?: string;
+      isManualRoute?: boolean;
+      absoluteBlock?: boolean;
+      clearance?: number;
+      obstacleHalfWidthMm?: number;
+    }
+    const cell = typeof ctx.grid.getCell === 'function' ? ctx.grid.getCell(g.x, g.y, layer) as ICellInfo | undefined : undefined;
+    const gridEx = ctx.grid as unknown as {
+      checkTrackObstaclePrecise?: (x: number, y: number, layer: string, clearance: number, net: string) => boolean;
+    };
     const precise =
-      typeof (ctx.grid as any).checkTrackObstaclePrecise === 'function'
-        ? (ctx.grid as any).checkTrackObstaclePrecise(worldX, worldY, layer, ctx.clearance, ctx.net)
+      typeof gridEx.checkTrackObstaclePrecise === 'function'
+        ? gridEx.checkTrackObstaclePrecise(worldX, worldY, layer, ctx.clearance, ctx.net ?? '')
         : undefined;
     try {
       logger.debug(chalk.yellow(`[LengthMatch] ZERO-CLEAR sample at (${worldX.toFixed(3)},${worldY.toFixed(3)}) grid=(${g.x},${g.y}) layer=${layer} note=${note || ''}`));
@@ -94,7 +105,7 @@ export function logZeroClearanceSample(
     try {
       logger.debug(
         chalk.yellow(
-          `[LengthMatch]   cell: ${cell ? JSON.stringify({ occupied: (cell as any).occupied, net: (cell as any).net, isManualRoute: (cell as any).isManualRoute, absoluteBlock: (cell as any).absoluteBlock, clearance: (cell as any).clearance, obstacleHalfWidthMm: (cell as any).obstacleHalfWidthMm }) : 'null'}`,
+          `[LengthMatch]   cell: ${cell ? JSON.stringify({ occupied: cell.occupied, net: cell.net, isManualRoute: cell.isManualRoute, absoluteBlock: cell.absoluteBlock, clearance: cell.clearance, obstacleHalfWidthMm: cell.obstacleHalfWidthMm }) : 'null'}`,
         ),
       );
     } catch {}
@@ -103,7 +114,7 @@ export function logZeroClearanceSample(
     } catch {}
   } catch (err) {
     try {
-      logger.debug(chalk.gray(`[LengthMatch] logZeroClearanceSample threw: ${(err as any)?.message || err}`));
+      logger.debug(chalk.gray(`[LengthMatch] logZeroClearanceSample threw: ${err instanceof Error ? err.message : String(err)}`));
     } catch {}
   }
 }

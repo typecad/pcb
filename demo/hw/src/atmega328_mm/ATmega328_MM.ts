@@ -62,8 +62,23 @@ export class ATmega328_MM extends Component {
     PD1 = new Pin(this.reference, 27, 'bidirectional', this);
     PD2 = new Pin(this.reference, 28, 'bidirectional', this);
     GND_29 = new Pin(this.reference, 29, 'passive', this);
-    
+
     constructor(reference?: string | undefined) {
-        super({ reference, footprint: "Package_DFN_QFN:QFN-28-1EP_4x4mm_P0.45mm_EP2.4x2.4mm", symbol: "MCU_Microchip_ATmega:ATmega328-MM" });
+        super({
+            reference,
+            footprint: "Package_DFN_QFN:QFN-28-1EP_4x4mm_P0.45mm_EP2.4x2.4mm",
+            symbol: "MCU_Microchip_ATmega:ATmega328-MM",
+            typehal: {
+                role: 'mcu',
+                pinLookup: {
+                    'PD0': 'D0', 'PD1': 'D1', 'PD2': 'D2', 'PD3': 'D3',
+                    'PD4': 'D4', 'PD5': 'D5', 'PD6': 'D6', 'PD7': 'D7',
+                    'PB0': 'D8', 'PB1': 'D9', 'PB2': 'D10', 'PB3': 'D11',
+                    'PB4': 'D12', 'PB5': 'D13',
+                    'PC0': 'A0', 'PC1': 'A1', 'PC2': 'A2', 'PC3': 'A3',
+                    'PC4': 'A4', 'PC5': 'A5',
+                },
+            }
+        });
     }
 }

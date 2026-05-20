@@ -3,6 +3,7 @@ import { IImpedanceConstraint, IAutorouteVia, IAutorouteWaypoint } from "../type
 import type { ILengthMatchConfig } from "../types/length_match.js";
 import type { IPowerInfo } from '../../pcb/pcb_interfaces.js';
 import type { IRoutePath as PcbRoutePath } from '../../pcb/pcb_interfaces.js';
+import type { IRoutingObstacle } from '../shared/routing_grid.js';
 
 export type { IPowerInfo } from '../../pcb/pcb_interfaces.js';
 export type IRoutePath = PcbRoutePath;
@@ -22,6 +23,7 @@ export interface IRouteNode {
   parent: IRouteNode | null;
   directionFrom?: { dx: number; dy: number };
   viaUsed: boolean;
+  layerIndex?: number;
 }
 
 /**
@@ -87,7 +89,7 @@ export interface IRoutingOptions {
    */
   coarseGridFactory?: (gridResolution: number) => RoutingGrid;
   /** Obstacles (serialized) used to reconstruct grids in workers */
-  gridObstacles?: any[];
+  gridObstacles?: IRoutingObstacle[];
   /** Grid bounds used to reconstruct a RoutingGrid instance in a worker */
   gridBounds?: { minX: number; maxX: number; minY: number; maxY: number };
   /** Allow routing of multiple MST edges in parallel (worker count; 1 = disabled) */

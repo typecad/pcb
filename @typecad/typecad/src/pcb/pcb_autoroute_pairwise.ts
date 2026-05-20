@@ -16,13 +16,16 @@ import { pathToTrackBuilder } from './pcb_routing_core.js';
 import {
     IAutorouteOptions,
     IRoutePath,
+    IAutorouteWaypoint
 } from './pcb_interfaces.js';
+import { IRouteDirectives } from '../routing/router/types.js';
 import {
     debugLog,
     AutorouteContext,
     RoutingOutput,
 } from './pcb_autoroute_helpers.js';
 import { ManualRouteData } from './pcb_autoroute_manual_routes.js';
+import type { ISchematicNode } from '../types/schematic_types.js';
 
 /**
  * Route connections pairwise (from[i] → to[i]).
@@ -101,7 +104,7 @@ export function routePairwise(
         if (pcb.Schematic && pcb.Schematic.Nodes && fromPin?.owner) {
             for (const schematicNode of pcb.Schematic.Nodes) {
                 if (schematicNode.nodes) {
-                    const pinInSchematic = schematicNode.nodes.find((p: any) =>
+                    const pinInSchematic = schematicNode.nodes.find((p: Pin) =>
                         p.reference === fromPin.owner!.reference &&
                         String(p.number) === String(fromPin.number)
                     );
@@ -112,13 +115,13 @@ export function routePairwise(
 
         // If no manual route, use autorouter
         if (!path) {
-            const directives =
+            const directives: IAutorouteWaypoint[] | IRouteDirectives | undefined =
                 options.vias && options.vias.length > 0
                     ? { waypoints: options.waypoints, vias: options.vias }
                     : options.waypoints;
 
             // Create a fast-try router with more aggressive heuristic and lower iterations
-            const tryFastFirst = (options as any).fastFallback === true || process.env.MAST_FAST === '1';
+            const tryFastFirst = (options as IAutorouteOptions & { fastFallback?: boolean }).fastFallback === true || process.env.MAST_FAST === '1';
             if (tryFastFirst && !directives) {
                 try {
                     const fastRouter = new AStarRouter(grid, {
@@ -127,11 +130,11 @@ export function routePairwise(
                         heuristicWeight: 8,
                         maxIterations: 20000,
                         useAdaptiveStride: true,
-                        maxStrideCells: Math.max(32, (baseRouterOptions as any).maxStrideCells ?? 32)
+                        maxStrideCells: Math.max(32, baseRouterOptions.maxStrideCells ?? 32)
                     });
 
                     if (fastRouter) {
-                        const fastPath = (fastRouter as any).route(startPos, endPos) as IRoutePath;
+                        const fastPath = fastRouter.route(startPos, endPos);
                         if (fastPath && fastPath.success) {
                             path = fastPath;
                             debugLog(options.debug, chalk.green(`[PCB] fastFallback succeeded for ${fromId} <-> ${toId}`));
@@ -149,7 +152,7 @@ export function routePairwise(
                     net: pairNetName ?? netName
                 });
 
-                path = (routerForPair as any).route(startPos, endPos, directives) as IRoutePath;
+                path = routerForPair.route(startPos, endPos, directives);
             }
         }
 

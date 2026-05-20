@@ -9,7 +9,7 @@ export default tseslint.config(
       },
     },
     rules: {
-      "@typescript-eslint/no-explicit-any": "warn",
+      "@typescript-eslint/no-explicit-any": "error",
       "@typescript-eslint/no-unused-vars": ["warn", { argsIgnorePattern: "^_" }],
       "@typescript-eslint/no-require-imports": "error",
       "no-console": ["warn", { allow: ["warn", "error"] }],
@@ -24,6 +24,10 @@ export default tseslint.config(
       "**/*.test.ts",
       "**/__tests__/**",
       "**/*.js",
+      "**/.svelte-kit/**",
+      "**/tailwind.config.ts",
+      "**/vite.config.ts",
+      "**/svelte.config.js",
     ],
   }
 );

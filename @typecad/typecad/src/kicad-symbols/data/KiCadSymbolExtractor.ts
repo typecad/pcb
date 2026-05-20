@@ -262,7 +262,7 @@ export class KiCadSymbolExtractor {
    * @returns Parsed symbol definition or null
    * @private
    */
-  private parseSymbolDefinition(symbolNode: any[]): KiCadParsedSymbol | null {
+  private parseSymbolDefinition(symbolNode: unknown[]): KiCadParsedSymbol | null {
     if (symbolNode.length < 2) return null;
 
     const symbolName = String(symbolNode[1]).replaceAll('`', '');

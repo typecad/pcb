@@ -1,15 +1,27 @@
-import { Component, Pin } from '@typecad/typecad'
+import { Component, Pin, Schematic } from '@typecad/typecad'
 
-export class Tie extends Component{
-    power: string;
-    ground: string;
-    maximum: number;
-    minimum: number;
-    power_pin: Pin;
-    ground_pin: Pin;
-    name: string;
+interface TieOptions {
+    reference?: string;
+    xy?: { x: number; y: number };
+    schematic?: Schematic;
+    net1?: Pin;
+    net2?: Pin;
+    net3?: Pin;
+    net4?: Pin;
+    footprint?: string;
+    uuid?: string;
+}
 
-    constructor({ reference, xy, schematic, net1, net2, net3, net4, footprint, uuid }) {
+export class Tie extends Component {
+    power!: string;
+    ground!: string;
+    maximum!: number;
+    minimum!: number;
+    power_pin!: Pin;
+    ground_pin!: Pin;
+    name!: string;
+
+    constructor({ reference, xy, schematic, net1, net2, net3, net4, footprint, uuid }: TieOptions = {}) {
         if (!schematic) return;
         if (!net1) return;
         if (!net2) return;

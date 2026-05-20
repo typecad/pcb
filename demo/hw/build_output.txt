@@ -1,0 +1,68 @@
+﻿
+> hw@1.0.0 build
+> npx tsx ./src/pro_mini
+
+ΓÅ│ Routing net 'test8_17'...
+[failed] [test8_17] (130.00,75.40)F.Cu -> (150.00,24.60)F.Cu Start position (130, 75.4) is out of grid bounds 0.74ms
+node.exe : [PCB] WARNING: Some routes failed. Check routing constraints and available space (called from 
+C:\typecad\typeCAD\demo\hw\src\tests\test8_multilayer_connector_maze.ts:71)
+At C:\Program Files\nodejs\npm.ps1:29 char:3
++   & $NODE_EXE $NPM_CLI_JS $args
++   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ([PCB] WARNING: ...tor_maze.ts:71):String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+ΓÜá Routing net 'test8_17' incomplete (0/1 routes)
+ΓÅ│ Routing net 'test8_18'...
+[failed] [test8_18] (130.00,77.94)F.Cu -> (150.00,22.06)F.Cu Start position (130, 77.94) is out of grid bounds 0.08ms
+[PCB] WARNING: Some routes failed. Check routing constraints and available space (called from 
+C:\typecad\typeCAD\demo\hw\src\tests\test8_multilayer_connector_maze.ts:72)
+ΓÜá Routing net 'test8_18' incomplete (0/1 routes)
+ΓÅ│ Routing net 'test8_1'...
+Γ£ö Routing net 'test8_1' complete (1/1 routes)
+ΓÅ│ Routing net 'test8_2'...
+Γ£ö Routing net 'test8_2' complete (1/1 routes)
+ΓÅ│ Routing net 'test8_3'...
+Γ£ö Routing net 'test8_3' complete (1/1 routes)
+ΓÅ│ Routing net 'test8_4'...
+Γ£ö Routing net 'test8_4' complete (1/1 routes)
+ΓÅ│ Routing net 'test8_5'...
+Γ£ö Routing net 'test8_5' complete (1/1 routes)
+ΓÅ│ Routing net 'test8_6'...
+Γ£ö Routing net 'test8_6' complete (1/1 routes)
+ΓÅ│ Routing net 'test8_7'...
+Γ£ö Routing net 'test8_7' complete (1/1 routes)
+ΓÅ│ Routing net 'test8_8'...
+Γ£ö Routing net 'test8_8' complete (1/1 routes)
+ΓÅ│ Routing net 'test8_9'...
+Γ£ö Routing net 'test8_9' complete (1/1 routes)
+ΓÅ│ Routing net 'test8_10'...
+Γ£ö Routing net 'test8_10' complete (1/1 routes)
+ΓÅ│ Routing net 'test8_11'...
+Γ£ö Routing net 'test8_11' complete (1/1 routes)
+ΓÅ│ Routing net 'test8_12'...
+Γ£ö Routing net 'test8_12' complete (1/1 routes)
+ΓÅ│ Routing net 'test8_13'...
+Γ£ö Routing net 'test8_13' complete (1/1 routes)
+ΓÅ│ Routing net 'test8_14'...
+Γ£ö Routing net 'test8_14' complete (1/1 routes)
+ΓÅ│ Routing net 'test8_15'...
+Γ£ö Routing net 'test8_15' complete (1/1 routes)
+ΓÅ│ Routing net 'test8_16'...
+Γ£ö Routing net 'test8_16' complete (1/1 routes)
+ Γòª typeCAD Project: autoroute_test
+ΓööΓöÇΓöÇ ≡ƒôé Groups
+    ΓööΓöÇΓöÇ ≡ƒôª Project
+        Γö£ΓöÇΓöÇ ≡ƒöî  J1
+        Γö£ΓöÇΓöÇ ≡ƒöî  J2
+        Γö£ΓöÇΓöÇ ≡ƒÆê R1
+        Γö£ΓöÇΓöÇ ≡ƒÆê R2
+        Γö£ΓöÇΓöÇ ≡ƒÆê R3
+        Γö£ΓöÇΓöÇ ≡ƒÆê R4
+        Γö£ΓöÇΓöÇ ≡ƒÆê R5
+        ΓööΓöÇΓöÇ ≡ƒÆê R6
+
+≡ƒÅü typeCAD finished
+ΓööΓöÇΓöÇ ≡ƒô¥ Output
+    ΓööΓöÇΓöÇ ./build/autoroute_test.net
+    ΓööΓöÇΓöÇ ./build/autoroute_test.kicad_pcb

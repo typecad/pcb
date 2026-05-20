@@ -9,36 +9,36 @@ import chalk from 'chalk';
  *   TYPECAD_SILENT=1 - Suppresses all output (warn/error still shown unless set)
  */
 
-const DEBUG_ENABLED = Boolean(process.env.TYPECAD_DEBUG && process.env.TYPECAD_DEBUG === '1');
-const QUIET_ENABLED = Boolean(process.env.TYPECAD_QUIET && process.env.TYPECAD_QUIET === '1');
-const SILENT_ENABLED = Boolean(process.env.TYPECAD_SILENT && process.env.TYPECAD_SILENT === '1');
+const DEBUG_ENABLED = process.env.TYPECAD_DEBUG === '1';
+const QUIET_ENABLED = process.env.TYPECAD_QUIET === '1';
+const SILENT_ENABLED = process.env.TYPECAD_SILENT === '1';
 
-export function debug(...args: any[]) {
+export function debug(...args: unknown[]) {
   if (!SILENT_ENABLED && DEBUG_ENABLED && !QUIET_ENABLED) {
-    console.log(chalk.gray(...args));
+    console.log(chalk.gray(...args.map(String)));
   }
 }
 
-export function info(...args: any[]) {
+export function info(...args: unknown[]) {
   if (!SILENT_ENABLED && !QUIET_ENABLED) {
-    console.info(chalk.blue(...args));
+    console.info(chalk.blue(...args.map(String)));
   }
 }
 
-export function warn(...args: any[]) {
+export function warn(...args: unknown[]) {
   if (!SILENT_ENABLED) {
-    console.warn(chalk.yellow(...args));
+    console.warn(chalk.yellow(...args.map(String)));
   }
 }
 
-export function error(...args: any[]) {
+export function error(...args: unknown[]) {
   if (!SILENT_ENABLED) {
-    console.error(chalk.red(...args));
+    console.error(chalk.red(...args.map(String)));
   }
 }
 
 /** Log without additional chalk styling, respecting QUIET/SILENT flags. */
-export function log(...args: any[]) {
+export function log(...args: unknown[]) {
   if (!SILENT_ENABLED && !QUIET_ENABLED) {
     console.log(...args);
   }

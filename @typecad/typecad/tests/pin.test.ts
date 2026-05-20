@@ -5,7 +5,7 @@ import { Component } from '../src/component.js'
 describe('Pin', () => {
   it('should create a basic pin with default values', () => {
     const pin = new Pin('R1', 1)
-    expect(pin.number).toBe(1)
+    expect(pin.number).toBe('1')
     expect(pin.reference).toBe('R1')
     expect(pin.type).toBe('passive')
     expect(pin.owner).toBeNull()
@@ -32,7 +32,7 @@ describe('Pin', () => {
       maximum_voltage: 6.5, 
       current: 2 
     })
-    expect(pin.number).toBe(5)
+    expect(pin.number).toBe('5')
     expect(pin.reference).toBe('U1')
     expect(pin.type).toBe('power_in')
     expect(pin.owner).toBe(component)

@@ -29,8 +29,12 @@ import {
     IGrTextOptions,
     IFilledZone,
     IKeepoutZone,
-    IPcbOptions
+    IPcbOptions,
+    IOutline,
+    OutlineElement
 } from './pcb_interfaces.js';
+import type { SexprNode } from '../types/sexpr_types.js';
+import type { ISchematicNode } from '../types/schematic_types.js';
 import { IPcbBoardContext } from './pcb_board_context.js';
 import { prettyPrintSExpr } from '../utils/sexpr_formatter.js';
 import { normalizeNetName, formatCallSite, getErrorMessage } from './pcb_utils.js';
@@ -106,8 +110,8 @@ export function createBoard(
     // Update public properties - separate outlines from tracks based on layer
     // Outlines: lines/arcs on non-copper layers (Edge.Cuts, silkscreen, etc.)
     // Tracks: lines on copper layers (F.Cu, B.Cu, In1.Cu, etc.)
-    pcb.outlines = pcb.outlines_public.filter((outline: any) => {
-        return outline.elements.some((element: any) => {
+    pcb.outlines = pcb.outlines_public.filter((outline: IOutline) => {
+        return outline.elements.some((element: OutlineElement) => {
             if (element.type === 'arc') return true; // Arcs are typically for board outlines
             if (element.type === 'line') {
                 const line = element as IGrLine;
@@ -118,8 +122,8 @@ export function createBoard(
         });
     });
 
-    pcb.tracks = pcb.outlines_public.filter((outline: any) => {
-        return outline.elements.some((element: any) => {
+    pcb.tracks = pcb.outlines_public.filter((outline: IOutline) => {
+        return outline.elements.some((element: OutlineElement) => {
             if (element.type === 'line') {
                 const line = element as IGrLine;
                 const isCopperLayer = /\.Cu$/.test(line.layer);
@@ -158,17 +162,17 @@ export function createBoard(
         }
     });
 
-    let existing_board_contents: any[] = [];
+    let existing_board_contents: SexprNode = [];
     const boardFilePath = `./build/${pcb.Boardname}.kicad_pcb`;
     const boardNetNameToCodeMap = new Map<string, number>();
 
     // Use already-loaded existing board elements from constructor
     if (pcb.existingBoardElements.length > 0) {
         // Reconstruct existing_board_contents from existingBoardElements
-        existing_board_contents = ['kicad_pcb', ...pcb.existingBoardElements];
+        existing_board_contents = ['kicad_pcb', ...pcb.existingBoardElements] as SexprNode;
     }
 
-    let final_board_contents: any[] = [];
+    let final_board_contents: SexprNode = [];
     let headerItems = [version, generator, generator_version, general, paper];
 
     if (existing_board_contents.length > 1) {
@@ -224,11 +228,11 @@ export function createBoard(
         final_board_contents = [...headerItems];
     }
 
-    const schematicNetDefinitions: any[] = [];
+    const schematicNetDefinitions: SexprNode = [];
     if (!pcb.Schematic) {
         logger.warn(`[PCB CREATE] Warning: No schematic provided. Net information will be limited to existing board nets.`);
     } else if (pcb.Schematic.Nodes) {
-        pcb.Schematic.Nodes.forEach((schematicNet: any) => {
+        pcb.Schematic.Nodes.forEach((schematicNet: ISchematicNode) => {
             schematicNetDefinitions.push(['net', schematicNet.code, `\`${schematicNet.name}\``]);
         });
     }
@@ -248,7 +252,7 @@ export function createBoard(
     });
 
     // Collect existing nets from the board file to preserve them
-    const existingNets = new Map<string, any[]>(); // net name -> net definition
+    const existingNets = new Map<string, SexprNode>(); // net name -> net definition
     const existingNetCodes = new Set<number>();
 
     final_board_contents.forEach(item => {
@@ -279,9 +283,9 @@ export function createBoard(
     });
 
     // Merge schematic nets with existing nets, ensuring unique net names and codes.
-    const allNets: any[] = [];
+    const allNets: SexprNode = [];
     const mergedNetCodes = new Set<number>(); // Tracks codes used in the final 'allNets' list.
-    const finalNetDefinitionsByName = new Map<string, any[]>(); // Key: normalized net name, Value: final net S-expression array
+    const finalNetDefinitionsByName = new Map<string, SexprNode>(); // Key: normalized net name, Value: final net S-expression array
 
     const formatNetNameForSExpr = (name: string): string => {
         const safeName = String(name ?? '').replace(/[`"]/g, '');
@@ -293,7 +297,7 @@ export function createBoard(
     // `boardNetNameToCodeMap` (normalizedName -> code) is also from the board file.
 
     // Create a temporary map of board nets by normalized name for easier lookup and ensuring unique names from board.
-    const boardNetsProcessedByName = new Map<string, any[]>(); // normalizedName -> chosen board netDef
+    const boardNetsProcessedByName = new Map<string, SexprNode>(); // normalizedName -> chosen board netDef
     if (existingNets && existingNets.size > 0) {
         const sortedExistingNetDefs = Array.from(existingNets.values()).sort((a,b) => parseInt(String(a[1])) - parseInt(String(b[1])));
         for (const netDef of sortedExistingNetDefs) {
@@ -317,7 +321,7 @@ export function createBoard(
     // Determine max code for potential renumbering new schematic nets
     let maxCodeInUse = 0;
     mergedNetCodes.forEach(c => maxCodeInUse = Math.max(maxCodeInUse, c));
-    schematicNetDefinitions.forEach(schNet => maxCodeInUse = Math.max(maxCodeInUse, parseInt(String(schNet[1]))));
+    schematicNetDefinitions.forEach(schNet => maxCodeInUse = Math.max(maxCodeInUse, parseInt(String((schNet as SexprNode)[1]))));
 
     const getNextAvailableNetIdHelper = (currentMax: number, usedSet: Set<number>): number => {
         let id = currentMax + 1;
@@ -328,11 +332,13 @@ export function createBoard(
     };
 
     // Pass 2: Integrate schematic nets.
-    schematicNetDefinitions.forEach((schematicNetDef: any[]) => {
-        const originalSchCode = parseInt(String(schematicNetDef[1]));
-        const schNameSExpr = schematicNetDef[2] as string;
+    schematicNetDefinitions.forEach((schematicNetDef: SexprNode[number]) => {
+        const netDefArray = schematicNetDef as SexprNode;
+        const originalSchCode = parseInt(String(netDefArray[1]));
+        const schNameSExpr = netDefArray[2] as string;
         const schName = String(schNameSExpr).replace(/[`"]/g, '');
             let normalizedSchName = normalizeNetName(schName);
+        if (!normalizedSchName) return;
 
         if (finalNetDefinitionsByName.has(normalizedSchName)) {
             // Net name already exists (came from board). Board's definition is authoritative.
@@ -359,7 +365,7 @@ export function createBoard(
     viaMap.forEach((viaData) => {
         if (viaData.net && typeof viaData.net === 'string' && viaData.net.trim().length > 0) {
             const normalized = normalizeNetName(viaData.net);
-            if (!viaNetNames.has(normalized)) {
+            if (normalized && !viaNetNames.has(normalized)) {
                 viaNetNames.set(normalized, viaData.net);
             }
         }
@@ -485,7 +491,7 @@ export function createBoard(
         existing_board_contents.slice(1).forEach(item => {
             if (Array.isArray(item) && item[0] === 'footprint') {
                 let uuid: string | null = null;
-                let existingAtNode: any[] | null = null;
+                let existingAtNode: SexprNode | null = null;
 
                 for (const subItem of item) {
                     if (Array.isArray(subItem)) {
@@ -638,8 +644,8 @@ export function createBoard(
         }
     });
 
-    pcb.outlines_public.forEach((conceptualOutline: any) => {
-        conceptualOutline.elements.forEach((element: any) => {
+    pcb.outlines_public.forEach((conceptualOutline: IOutline) => {
+        conceptualOutline.elements.forEach((element: OutlineElement) => {
             let elementSexprString = '';
             if (element.type === 'line') {
                 const line = element as IGrLine;
@@ -648,8 +654,16 @@ export function createBoard(
                 const isCopperLayer = line.layer.includes('.Cu') && !line.layer.includes('Edge.Cuts');
 
                 if (isCopperLayer) {
+                    // Resolve net code for the segment so KiCad can electrically connect it.
+                    // Without a (net N) field KiCad silently drops or ignores the segment.
+                    let segNetCode = 0;
+                    if (line.net) {
+                        let lookupKey = line.net.toLowerCase();
+                        if (lookupKey.startsWith('/')) lookupKey = lookupKey.substring(1);
+                        segNetCode = boardNetNameToCodeMap.get(lookupKey) ?? 0;
+                    }
                     // Use segment for electrical traces on copper layers
-                    elementSexprString = `(segment (start ${line.start.x} ${line.start.y}) (end ${line.end.x} ${line.end.y}) (width ${line.strokeWidth}) (locked ${line.locked ? 'yes' : 'no'}) (layer "${line.layer}") (uuid "${line.uuid}"))`;
+                    elementSexprString = `(segment (start ${line.start.x} ${line.start.y}) (end ${line.end.x} ${line.end.y}) (width ${line.strokeWidth}) (locked ${line.locked ? 'yes' : 'no'}) (layer "${line.layer}") (net ${segNetCode}) (uuid "${line.uuid}"))`;
                 } else {
                     // Use gr_line for graphical elements on non-copper layers (Edge.Cuts, SilkS, etc.)
                     elementSexprString = `(gr_line (start ${line.start.x} ${line.start.y}) (end ${line.end.x} ${line.end.y}) (stroke (width ${line.strokeWidth}) (type default)) (layer "${line.layer}") (uuid "${line.uuid}"))`;
@@ -676,8 +690,9 @@ export function createBoard(
 
 
     // Log diagnostic counters for outlines -> node conversion
-    if ((pcb as any).___diagCounters) {
-        logger.debug(`[BoardCreation][DIAG] segmentsAdded=${(pcb as any).___diagCounters.segmentsAdded}, grLinesAdded=${(pcb as any).___diagCounters.grLinesAdded}, parseFailures=${(pcb as any).___diagCounters.parseFailures}`);
+    const diagCounters = (pcb as unknown as Record<string, Record<string, number>>).___diagCounters;
+    if (diagCounters) {
+        logger.debug(`[BoardCreation][DIAG] segmentsAdded=${diagCounters.segmentsAdded}, grLinesAdded=${diagCounters.grLinesAdded}, parseFailures=${diagCounters.parseFailures}`);
     }
     // Generate gr_text elements for board-level text
     pcb.grTexts.forEach((textElement: IGrTextOptions) => {
@@ -755,7 +770,7 @@ export function createBoard(
     });
 
     // Generate graphical lines
-    pcb.grLines.forEach((line: any) => {
+    pcb.grLines.forEach((line: IGrLine) => {
         const lockedSection = line.locked ? ' (locked yes)' : '';
         const lineSexpr = `(gr_line (start ${line.start.x} ${line.start.y}) (end ${line.end.x} ${line.end.y}) (stroke (width ${line.strokeWidth}) (type default)) (layer "${line.layer}") (uuid "${line.uuid}")${lockedSection})`;
 
@@ -772,7 +787,7 @@ export function createBoard(
     });
 
     // Generate graphical circles
-    pcb.grCircles.forEach((circle: any) => {
+    pcb.grCircles.forEach((circle: IGrCircle) => {
         const fillSection = circle.fill ? ' (fill solid)' : '';
         const lockedSection = circle.locked ? ' (locked yes)' : '';
         const circleSexpr = `(gr_circle (center ${circle.center.x} ${circle.center.y}) (end ${circle.end.x} ${circle.end.y}) (stroke (width ${circle.strokeWidth}) (type default)) (layer "${circle.layer}")${fillSection} (uuid "${circle.uuid}")${lockedSection})`;
@@ -790,7 +805,7 @@ export function createBoard(
     });
 
     // Generate graphical rectangles
-    pcb.grRects.forEach((rect: any) => {
+    pcb.grRects.forEach((rect: IGrRect) => {
         const fillSection = rect.fill ? ' (fill solid)' : '';
         const lockedSection = rect.locked ? ' (locked yes)' : '';
         const rectSexpr = `(gr_rect (start ${rect.start.x} ${rect.start.y}) (end ${rect.end.x} ${rect.end.y}) (stroke (width ${rect.strokeWidth}) (type default)) (layer "${rect.layer}")${fillSection} (uuid "${rect.uuid}")${lockedSection})`;
@@ -808,8 +823,8 @@ export function createBoard(
     });
 
     // Generate graphical polygons
-    pcb.grPolys.forEach((poly: any) => {
-        const ptsArray = poly.points.map((pt: any) => `(xy ${pt.x} ${pt.y})`).join(' ');
+    pcb.grPolys.forEach((poly: IGrPoly) => {
+        const ptsArray = poly.points.map((pt: { x: number; y: number }) => `(xy ${pt.x} ${pt.y})`).join(' ');
         const fillSection = poly.fill ? ' (fill solid)' : '';
         const lockedSection = poly.locked ? ' (locked yes)' : '';
         const polySexpr = `(gr_poly (pts ${ptsArray}) (stroke (width ${poly.strokeWidth}) (type default)) (layer "${poly.layer}")${fillSection} (uuid "${poly.uuid}")${lockedSection})`;
@@ -853,7 +868,7 @@ export function createBoard(
 
                 // Look up the net in the schematic by name
                 if (pcb.Schematic && pcb.Schematic.Nodes) {
-                    const foundNet = pcb.Schematic.Nodes.find((node: any) => {
+                    const foundNet = pcb.Schematic.Nodes.find((node: ISchematicNode) => {
                         // Case-insensitive comparison, strip leading slashes
                         let nodeName = node.name.toLowerCase();
                         let searchName = searchNetName.toLowerCase();
@@ -1019,7 +1034,7 @@ export function createBoard(
     });
 
     // Determine the definitive version node
-    let definitiveVersionNode: any = null;
+    let definitiveVersionNode: SexprNode | string | null = null;
 
     // Check if a version node (array form, typically from parsed existing file) exists
     const existingVersionArrayNode = final_board_contents.find(item => Array.isArray(item) && item[0] === 'version');
@@ -1029,10 +1044,10 @@ export function createBoard(
 
     if (existingVersionArrayNode) {
         // Prefer the parsed array form if it exists (likely from the original file)
-        definitiveVersionNode = existingVersionArrayNode;
+        definitiveVersionNode = existingVersionArrayNode as SexprNode;
     } else if (existingVersionStringNode) {
         // Otherwise, use the string form if it exists
-        definitiveVersionNode = existingVersionStringNode;
+        definitiveVersionNode = existingVersionStringNode as string;
     } else {
         // If no version node exists at all, use the default 'version' string constant
         // This 'version' constant is defined at the top of the create method: const version = '(version 20241229)';
@@ -1047,7 +1062,7 @@ export function createBoard(
     });
 
     // Prepend the single, definitive version node to the beginning
-    final_board_contents.unshift(definitiveVersionNode);
+    final_board_contents.unshift(definitiveVersionNode!);
 
     // Clean up orphaned nets - collect all net codes that are actually used
     const usedNetCodes = new Set<number>();
@@ -1107,9 +1122,9 @@ export function createBoard(
             const segNodes = final_board_contents.filter(it => Array.isArray(it) && it[0] === 'segment');
             const grLineNodes = final_board_contents.filter(it => Array.isArray(it) && it[0] === 'gr_line');
             const segUuids: string[] = [];
-            segNodes.forEach((node: any) => {
+            (segNodes as SexprNode[]).forEach((node: SexprNode) => {
                 try {
-                    const uuidPair = node.find((n: any) => Array.isArray(n) && n[0] === 'uuid');
+                    const uuidPair = node.find((n) => Array.isArray(n) && n[0] === 'uuid') as SexprNode | undefined;
                     if (uuidPair && uuidPair[1]) segUuids.push(String(uuidPair[1]));
                 } catch (e) { /* ignore */ }
             });
@@ -1117,13 +1132,13 @@ export function createBoard(
 
                 // DIAGNOSTIC: check staged outlines are present in final_board_contents
                 try {
-                    const stagedUuids = pcb.stagedOutlines.map((o: any) => o.uuid).filter(Boolean);
+                    const stagedUuids = pcb.stagedOutlines.map((o: IOutline) => o.uuid).filter(Boolean);
                     const missingInFinal = stagedUuids.filter((u: string) => !JSON.stringify(final_board_contents).includes(u));
                     if (missingInFinal.length > 0) {
                             // logger.warn(`[BoardCreation][DIAG] staged outlines missing from final_board_contents: ${JSON.stringify(missingInFinal)}`);
                             // Print details about missing staged outlines for debugging
                             for (const miss of missingInFinal) {
-                                const so = pcb.stagedOutlines.find((o: any) => o.uuid === miss);
+                                const so = pcb.stagedOutlines.find((o: IOutline) => o.uuid === miss);
                                 logger.debug(`[BoardCreation][DIAG] missing outline ${miss}: fullOutline=${JSON.stringify(so)}`);
                             }
                     } else {
@@ -1181,7 +1196,7 @@ export function createBoard(
             logger.debug(`[BoardCreation][VERIFY] file contains segments=${hasSegments}, gr_lines=${hasGrLines}`);
 
             // Search for a few staged *element* UUIDs (tracks/lines/arcs) to ensure they were serialized
-            const stagedElementUuids = pcb.stagedOutlines.slice(0, 10).flatMap((o: any) => (o.elements ?? []).map((el: any) => el.uuid)).filter(Boolean);
+            const stagedElementUuids = pcb.stagedOutlines.slice(0, 10).flatMap((o: IOutline) => (o.elements ?? []).map((el: OutlineElement) => el.uuid)).filter(Boolean);
             const foundElementUuids = stagedElementUuids.filter((u: string) => fileContents.includes(u));
             const missingElementUuids = stagedElementUuids.filter((u: string) => !fileContents.includes(u));
             logger.debug(`[BoardCreation][VERIFY] staged ELEMENT UUIDs present in file: ${foundElementUuids.length}/${stagedElementUuids.length}`);

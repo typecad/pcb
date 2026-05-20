@@ -208,7 +208,7 @@ export function fitSawtooth(
     try {
       logger.debug(
         chalk.gray(
-          `[LengthMatch] fit init: ampMax=${ampMax.toFixed(3)} requestedAmp=${(pattern as any).amplitude ?? 'auto'} usingAmp=${amplitude.toFixed(3)}`,
+          `[LengthMatch] fit init: ampMax=${ampMax.toFixed(3)} requestedAmp=${pattern.amplitude ?? 'auto'} usingAmp=${amplitude.toFixed(3)}`,
         ),
       );
     } catch {}
@@ -345,7 +345,7 @@ export function fitSawtoothWithSide(
     try {
       logger.debug(
         chalk.gray(
-          `[LengthMatch] fit init (side=${side}): ampMax=${ampMax.toFixed(3)} requestedAmp=${(pattern as any).amplitude ?? 'auto'} usingAmp=${amplitude.toFixed(3)}`,
+          `[LengthMatch] fit init (side=${side}): ampMax=${ampMax.toFixed(3)} requestedAmp=${pattern.amplitude ?? 'auto'} usingAmp=${amplitude.toFixed(3)}`,
         ),
       );
     } catch {}
@@ -486,7 +486,7 @@ export function fitSawtoothBidirectional(
   } catch (err) {
     if (debug)
       try {
-        logger.debug(chalk.gray(`[LengthMatch] sub-span attempt threw: ${(err as any)?.message || err}`));
+        logger.debug(chalk.gray(`[LengthMatch] sub-span attempt threw: ${err instanceof Error ? err.message : String(err)}`));
       } catch {}
   }
   return null;

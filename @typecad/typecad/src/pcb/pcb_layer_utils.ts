@@ -1,4 +1,5 @@
 import chalk from 'chalk';
+import type { SexprNode } from '../types/sexpr_types.js';
 
 /**
  * Layer utility functions for PCB operations
@@ -72,7 +73,7 @@ export function mapLayerToSide(layerName: string, targetSide: 'front' | 'back' |
  * @param targetSide - Target side: 'front', 'back', or undefined (defaults to front)
  * @returns Transformed S-expression
  */
-export function transformSexprLayers(sexpr: any, targetSide: 'front' | 'back' | undefined): any {
+export function transformSexprLayers(sexpr: SexprNode, targetSide: 'front' | 'back' | undefined): SexprNode {
     if (!Array.isArray(sexpr)) {
         return sexpr;
     }

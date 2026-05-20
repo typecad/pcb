@@ -142,6 +142,9 @@ export class RoutingGrid {
     private maxObstacleHalfWidthMm: number; // mm
     private obstacles: Map<string, IRoutingObstacle>; // Key: unique obstacle ID
 
+    /** Layer name → integer index for fast lookups */
+    private layerIndex: Map<string, number>;
+
     /**
      * Creates a new routing grid.
      *
@@ -176,9 +179,16 @@ export class RoutingGrid {
         this.gridHeight = Math.ceil((bounds.maxY - bounds.minY) / gridResolution);
 
         this.maxObstacleHalfWidthMm = 0;
+
+        // Build layer → index map for fast lookups
+        this.layerIndex = new Map<string, number>();
+        for (let i = 0; i < layers.length; i++) {
+            this.layerIndex.set(layers[i], i);
+        }
+
         if (this.debug) {
-            loggerDebug && loggerDebug(chalk.blue(`[RoutingGrid] Created grid: ${this.gridWidth}x${this.gridHeight} cells (${this.gridWidth * this.gridHeight * layers.length} total across ${layers.length} layers)`));
-            loggerDebug && loggerDebug(chalk.blue(`[RoutingGrid] Resolution: ${gridResolution}mm, Bounds: ${bounds.minX},${bounds.minY} to ${bounds.maxX},${bounds.maxY}`));
+            if (loggerDebug) loggerDebug(chalk.blue(`[RoutingGrid] Created grid: ${this.gridWidth}x${this.gridHeight} cells (${this.gridWidth * this.gridHeight * layers.length} total across ${layers.length} layers)`));
+            if (loggerDebug) loggerDebug(chalk.blue(`[RoutingGrid] Resolution: ${gridResolution}mm, Bounds: ${bounds.minX},${bounds.minY} to ${bounds.maxX},${bounds.maxY}`));
         }
     }
 
@@ -777,6 +787,45 @@ export class RoutingGrid {
     }
 
     /**
+     * Fast-path occupancy check for via placement: returns true only if the cell
+     * at (x, y, layer) is occupied by an obstacle whose ID is in `obstacleIds`.
+     * Avoids the expensive clearance-radius scan of isOccupied().
+     *
+     * @param x       Grid X coordinate
+     * @param y       Grid Y coordinate
+     * @param layer   Layer name
+     * @param obstacleIds  Set (or array) of obstacle IDs already belonging to the
+     *                     current net — these are ignored so the via can share pads.
+     */
+    isOccupiedById(
+        x: number,
+        y: number,
+        layer: string,
+        obstacleIds: Set<string> | string[]
+    ): boolean {
+        if (!this.isInBounds(x, y)) return true;
+
+        const cell = this.cells.get(this.getCellKey(layer, x, y));
+        if (!cell || !cell.occupied) return false;
+
+        // Absolute blocks always block
+        if (cell.absoluteBlock) return true;
+
+        // If the cell has no obstacle IDs it blocks unconditionally
+        if (!cell.obstacleIds || cell.obstacleIds.length === 0) return true;
+
+        // Check whether ALL occupying obstacles are in the exempt set
+        const ids = cell.obstacleIds;
+        for (let i = 0; i < ids.length; i++) {
+            const exempt = obstacleIds instanceof Set
+                ? obstacleIds.has(ids[i])
+                : (obstacleIds as string[]).includes(ids[i]);
+            if (!exempt) return true; // blocked by a non-exempt obstacle
+        }
+        return false; // every obstacle is exempt
+    }
+
+    /**
      * Check if a position conflicts with track obstacles using precise point-to-segment distance.
      * This method provides more accurate clearance checking for angled tracks.
      *
@@ -1074,7 +1123,7 @@ export class RoutingGrid {
         this.maxObstacleClearance = 0;
         this.maxObstacleHalfWidthMm = 0;
         if (this.debug) {
-            loggerDebug && loggerDebug(chalk.blue(`[RoutingGrid] Cleared all cells`));
+            if (loggerDebug) loggerDebug(chalk.blue(`[RoutingGrid] Cleared all cells`));
         }
     }
 

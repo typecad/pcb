@@ -3,6 +3,7 @@ import { Pin } from "../../pin.js";
 import S from "../../utils/sexpr_instance.js";
 import { TypeCadError } from '../../errors.js';
 import logger from '../../logging.js';
+import type { SexprNode } from '../../types/sexpr_types.js';
 
 
 
@@ -107,7 +108,7 @@ export class PadResolver {
             }
 
             // Find the pad matching the pin number
-            const padNode = this.findPadNode(parsed, pinNumber);
+            const padNode = this.findPadNode(parsed as SexprNode, pinNumber);
             if (!padNode) {
                 logger.warn(`[PadResolver] Pad ${pinNumber} not found in footprint ${component.footprint} for ${component.reference}`);
                 return null;
@@ -135,12 +136,12 @@ export class PadResolver {
      * Find a pad node in the footprint S-expression tree.
      * @private
      */
-    private static findPadNode(sexpr: any, pinNumber: string | number): any[] | null {
+    private static findPadNode(sexpr: SexprNode, pinNumber: string | number): SexprNode | null {
         // Normalize pin number to string for comparison
         const targetNumber = String(pinNumber);
 
         // Recursively search for pad nodes
-        const search = (node: any): any[] | null => {
+        const search = (node: SexprNode): SexprNode | null => {
             if (!Array.isArray(node)) return null;
 
             // Check if this is a pad node: (pad "number" ...)
@@ -154,7 +155,7 @@ export class PadResolver {
             // Search children
             for (const child of node) {
                 if (Array.isArray(child)) {
-                    const result = search(child);
+                    const result = search(child as SexprNode);
                     if (result) return result;
                 }
             }
@@ -169,7 +170,7 @@ export class PadResolver {
      * Extract pad data from a pad S-expression node.
      * @private
      */
-    private static extractPadData(padNode: any[]): {
+    private static extractPadData(padNode: SexprNode): {
         number: string | number;
         type: string;
         at: { x: number; y: number; rotation: number };
@@ -177,8 +178,8 @@ export class PadResolver {
         shape: string;
         layers: string[];
     } | null {
-        let at = { x: 0, y: 0, rotation: 0 };
-        let size = { width: 1.0, height: 1.0 };
+        const at = { x: 0, y: 0, rotation: 0 };
+        const size = { width: 1.0, height: 1.0 };
         let shape = 'rect';
         let type = 'smd';
         let layers: string[] = ['F.Cu'];
@@ -201,7 +202,7 @@ export class PadResolver {
                 size.height = parseFloat(String(element[2])) || 1.0;
             } else if (elementType === 'layers') {
                 // (layers "F.Cu" "F.Paste" "F.Mask")
-                layers = element.slice(1).map((l: any) => String(l).replace(/[`"]/g, ''));
+                layers = element.slice(1).map((l: SexprNode[number]) => String(l).replace(/[`"]/g, ''));
             }
         }
 
@@ -243,7 +244,7 @@ export class PadResolver {
 
         // Apply rotation transformation to pad position
         let padX = relativeData.at.x;
-        let padY = relativeData.at.y;
+        const padY = relativeData.at.y;
 
         // For back side, flip X coordinate (KiCad convention)
         if (componentSide === 'back') {
@@ -352,18 +353,20 @@ export class PadResolver {
             }
 
             // Recursively collect all pad nodes
-            const padNodes: any[] = [];
-            const collectPads = (node: any) => {
+            const padNodes: SexprNode[] = [];
+            const collectPads = (node: SexprNode) => {
                 if (Array.isArray(node)) {
                     if (node.length > 0 && String(node[0]) === 'pad') {
                         padNodes.push(node);
                     }
                     for (const child of node) {
-                        collectPads(child);
+                        if (Array.isArray(child)) {
+                            collectPads(child as SexprNode);
+                        }
                     }
                 }
             };
-            collectPads(parsed);
+            collectPads(parsed as SexprNode);
 
             for (const padNode of padNodes) {
                 const rel = this.extractPadData(padNode);

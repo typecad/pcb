@@ -24,6 +24,7 @@ import {
     RoutingOutput,
 } from './pcb_autoroute_helpers.js';
 import { ManualRouteData } from './pcb_autoroute_manual_routes.js';
+import type { ISchematicNode } from '../types/schematic_types.js';
 
 /**
  * Attempt MST-based single-net routing.
@@ -47,7 +48,7 @@ export function routeMstNet(
             if (pin.owner) {
                 for (const schematicNode of pcb.Schematic.Nodes) {
                     if (schematicNode.nodes) {
-                        const pinInSchematic = schematicNode.nodes.find((p: any) =>
+                        const pinInSchematic = schematicNode.nodes.find((p: Pin) =>
                             p.reference === pin.owner!.reference &&
                             String(p.number) === String(pin.number)
                         );
@@ -74,11 +75,11 @@ export function routeMstNet(
         net: netName
     });
 
-    if (!('routeNet' in (routerForNet as any))) {
+    if (typeof routerForNet.routeNet !== 'function') {
         return false;
     }
 
-    const mstRouter = routerForNet as any;
+    const mstRouter = routerForNet;
 
     // Use MST-based net routing for optimal connection order
     debugLog(options.debug, chalk.blue(`[PCB] Detected single-net routing with ${allConnectionPoints.length} pins - using MST algorithm`));
@@ -138,7 +139,7 @@ export function routeMstNet(
     debugLog(options.debug, chalk.gray(`[PCB][DEBUG] MST path result: success=${path.success}, length=${path.length}, nodes=${path.nodes?.length ?? 0}, segments=${path.segments?.length ?? 0}, viaCount=${path.viaCount}`));
     if (options.debug) {
         try {
-            const dbg = { success: path.success, length: path.length, viaCount: path.viaCount, segments: path.segments?.map((s: any) => ({ nodes: s.nodes.length, viaCount: s.viaCount })) };
+            const dbg = { success: path.success, length: path.length, viaCount: path.viaCount, segments: path.segments?.map((s: IRoutePath) => ({ nodes: s.nodes.length, viaCount: s.viaCount })) };
             logger.debug('[PCB][DEBUG] MST path full summary:', JSON.stringify(dbg, null, 2));
         } catch (e) { /* ignore */ }
     }
@@ -157,8 +158,8 @@ export function routeMstNet(
                 let segEnd = candidateSegment.nodes[candidateSegment.nodes.length - 1];
                 // Try to map segment endpoints to pins to detect manual reuse
                 const tol = 0.01;
-                let sPin: any | undefined;
-                let ePin: any | undefined;
+                let sPin: Pin | undefined;
+                let ePin: Pin | undefined;
                 for (const pin of allPins) {
                     const pc = PadResolver.getPadCenter(pin);
                     if (!pc) continue;

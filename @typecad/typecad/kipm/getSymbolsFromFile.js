@@ -1,4 +1,4 @@
-const fs = require('fs');
+import fs from 'fs';
 
 function getSymbolsFromFile(filePath) {
   if (!fs.existsSync(filePath)) return [];
@@ -8,4 +8,4 @@ function getSymbolsFromFile(filePath) {
   return symbolMatches.map(match => match.match(/\(symbol\s+"([^"]+)"/)[1]);
 }
 
-module.exports = getSymbolsFromFile;
+export default getSymbolsFromFile;

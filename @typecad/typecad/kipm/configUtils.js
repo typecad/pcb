@@ -1,6 +1,6 @@
-const os = require('os');
-const path = require('path');
-const { exec } = require('child_process');
+import os from 'os';
+import path from 'path';
+import { exec } from 'child_process';
 
 function getLocalConfig() {
   return new Promise((resolve, reject) => {
@@ -25,4 +25,4 @@ function getLocalConfig() {
   });
 }
 
-module.exports = { getLocalConfig };
+export { getLocalConfig };

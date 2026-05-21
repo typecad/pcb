@@ -1,11 +1,11 @@
-const {EeSymbol, EeSymbolBbox} = require("./easyeda/parametersEasyeda");
+import { EeSymbol, EeSymbolBbox } from './easyeda/parametersEasyeda.js';
 
-const easyeda_handlers = require("./helpers/easyeda_handlers")
-const {ExporterSymbolKicad} = require("./kicad/exportKicadSymbol");
-const {EasyedaFootprintImporter, Easyeda3dModelImporter} = require("./easyeda/easyedaImporter");
-const {ExporterFootprintKicad} = require("./kicad/exportKicadFootprint");
-const {Exporter3dModelKicad} = require("./kicad/exportKicad3dmodel");
-const { Ki3dModelBase } = require("./kicad/parametersKicadFootprint");
+import easyeda_handlers from './helpers/easyeda_handlers.js';
+import { ExporterSymbolKicad } from './kicad/exportKicadSymbol.js';
+import { EasyedaFootprintImporter, Easyeda3dModelImporter } from './easyeda/easyedaImporter.js';
+import { ExporterFootprintKicad } from './kicad/exportKicadFootprint.js';
+import { Exporter3dModelKicad } from './kicad/exportKicad3dmodel.js';
+import { Ki3dModelBase } from './kicad/parametersKicadFootprint.js';
 
 class LcscComponent {
     constructor(lcscId, kicadVersion, footprintLibName) {
@@ -171,4 +171,4 @@ class LcscComponent {
     }
 }
 
-module.exports = LcscComponent;
+export default LcscComponent;

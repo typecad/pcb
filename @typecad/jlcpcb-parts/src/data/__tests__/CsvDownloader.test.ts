@@ -117,7 +117,7 @@ describe('CsvDownloader', () => {
         text: async () => mockCsvContent
       });
 
-      await expect(csvDownloader.downloadCsv('https://example.com/test.csv', testOutputPath))
+      await expect(csvDownloader.downloadCsv('https://example.com/test.csv', testOutputFileName))
         .resolves.not.toThrow();
 
       // Verify fetch was called three times
@@ -134,7 +134,7 @@ describe('CsvDownloader', () => {
       mockFetch.mockRejectedValueOnce(new Error('Network error 2'));
       mockFetch.mockRejectedValueOnce(new Error('Network error 3'));
 
-      await expect(csvDownloader.downloadCsv('https://example.com/test.csv', testOutputPath))
+      await expect(csvDownloader.downloadCsv('https://example.com/test.csv', testOutputFileName))
         .rejects.toThrow(/Failed to download CSV after 3 attempts/);
 
       // Verify fetch was called three times
@@ -155,7 +155,7 @@ describe('CsvDownloader', () => {
         text: async () => invalidContent
       });
 
-      await expect(csvDownloader.downloadCsv('https://example.com/test.csv', testOutputPath))
+      await expect(csvDownloader.downloadCsv('https://example.com/test.csv', testOutputFileName))
         .rejects.toThrow(/CSV validation failed/);
 
       // Verify fetch was called once
@@ -174,7 +174,7 @@ describe('CsvDownloader', () => {
         text: async () => ''
       });
 
-      await expect(csvDownloader.downloadCsv('https://example.com/test.csv', testOutputPath))
+      await expect(csvDownloader.downloadCsv('https://example.com/test.csv', testOutputFileName))
         .rejects.toThrow(/CSV validation failed/);
 
       // Verify fetch was called once
@@ -191,7 +191,7 @@ describe('CsvDownloader', () => {
 
       const startTime = Date.now();
       
-      await expect(customDownloader.downloadCsv('https://example.com/test.csv', testOutputPath))
+      await expect(customDownloader.downloadCsv('https://example.com/test.csv', testOutputFileName))
         .rejects.toThrow(/Failed to download CSV after 2 attempts/);
 
       const duration = Date.now() - startTime;

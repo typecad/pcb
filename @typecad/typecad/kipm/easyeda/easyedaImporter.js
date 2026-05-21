@@ -1,40 +1,7 @@
 // easyeda_importer.js
-const { EasyedaApi } = require("./easyedaApi");
-const { mat4, vec3, glMatrix, quat } = require("gl-matrix");
-const {
-    EeSymbol,
-    EeSymbolInfo,
-    EeSymbolBbox,
-    EeSymbolPinSettings,
-    EeSymbolPinDot,
-    EeSymbolPinPath,
-    EeSymbolPinName,
-    EeSymbolPinDotBis,
-    EeSymbolPinClock,
-    EeSymbolPin,
-    EeSymbolRectangle,
-    EeSymbolPolyline,
-    EeSymbolPolygon,
-    EeSymbolPath,
-    EeSymbolCircle,
-    EeSymbolEllipse,
-    EeSymbolArc,
-    // Footprint models:
-    EeFootprintInfo,
-    EeFootprintBbox,
-    EeFootprintPad,
-    EeFootprintTrack,
-    EeFootprintHole,
-    EeFootprintVia,
-    EeFootprintCircle,
-    EeFootprintRectangle,
-    EeFootprintArc,
-    EeFootprintText,
-    // 3D model classes:
-    Ee3dModel,
-    Ee3dModelBase,
-    ee_footprint,
-} = require("./parametersEasyeda");
+import { EasyedaApi } from './easyedaApi.js';
+import { mat4, vec3, glMatrix, quat } from 'gl-matrix';
+import { EeSymbol, EeSymbolInfo, EeSymbolBbox, EeSymbolPinSettings, EeSymbolPinDot, EeSymbolPinPath, EeSymbolPinName, EeSymbolPinDotBis, EeSymbolPinClock, EeSymbolPin, EeSymbolRectangle, EeSymbolPolyline, EeSymbolPolygon, EeSymbolPath, EeSymbolCircle, EeSymbolEllipse, EeSymbolArc, EeFootprintInfo, EeFootprintBbox, EeFootprintPad, EeFootprintTrack, EeFootprintHole, EeFootprintVia, EeFootprintCircle, EeFootprintRectangle, EeFootprintArc, EeFootprintText, Ee3dModel, Ee3dModelBase, ee_footprint } from './parametersEasyeda.js';
 
 // --- Helper: zip two arrays into an object ---
 function zip(arr, values) {
@@ -415,16 +382,4 @@ class Easyeda3dModelImporter {
     }
 }
 
-module.exports = {
-    EasyedaSymbolImporter,
-    EasyedaFootprintImporter,
-    Easyeda3dModelImporter,
-    add_easyeda_pin,
-    add_easyeda_rectangle,
-    add_easyeda_polyline,
-    add_easyeda_polygon,
-    add_easyeda_path,
-    add_easyeda_circle,
-    add_easyeda_ellipse,
-    add_easyeda_arc,
-};
+export { EasyedaSymbolImporter, EasyedaFootprintImporter, Easyeda3dModelImporter, add_easyeda_pin, add_easyeda_rectangle, add_easyeda_polyline, add_easyeda_polygon, add_easyeda_path, add_easyeda_circle, add_easyeda_ellipse, add_easyeda_arc };

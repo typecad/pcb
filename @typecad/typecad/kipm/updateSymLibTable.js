@@ -1,7 +1,7 @@
-const fs = require('fs');
-const path = require('path');
-const deserializeLisp = require('./deserializeLisp');
-const serializeLisp = require('./serializeLisp');
+import fs from 'fs';
+import path from 'path';
+import deserializeLisp from './deserializeLisp.js';
+import serializeLisp from './serializeLisp.js';
 
 function updateSymLibTable(projectPath, projectName) {
   const symLibTablePath = path.join(projectPath, 'sym-lib-table');
@@ -103,4 +103,4 @@ function updateSymLibTable(projectPath, projectName) {
   }
 }
 
-module.exports = updateSymLibTable;
+export default updateSymLibTable;

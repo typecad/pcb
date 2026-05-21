@@ -1,6 +1,5 @@
 // easyeda_api.js
 
-const fetch = global.fetch;
 
 // Import version from your package or module (adjust the path as needed)
 const __version__ = '1.0.0';
@@ -94,4 +93,4 @@ class EasyedaApi {
     }
 }
 
-module.exports = { EasyedaApi };
+export { EasyedaApi };

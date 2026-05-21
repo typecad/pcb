@@ -19,7 +19,7 @@ describe('ProgressIndicator', () => {
   beforeEach(() => {
     // Setup mocks before each test
     process.stdout.write = mockStdoutWrite;
-    global.setInterval = mockSetInterval as any;
+    global.setInterval = mockSetInterval as unknown as typeof global.setInterval;
     global.clearInterval = mockClearInterval;
     Date.now = mockDateNow;
     

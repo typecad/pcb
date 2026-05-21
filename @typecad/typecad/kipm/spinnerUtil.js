@@ -53,4 +53,4 @@ function createSpinner(message) {
     };
 }
 
-module.exports = { createSpinner };
+export { createSpinner };

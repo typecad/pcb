@@ -704,27 +704,4 @@ ENDDEF
 
 // -------------------- EXPORTS --------------------
 
-module.exports = {
-    dedent,
-    KicadVersion,
-    KiPinType,
-    KiPinStyle,
-    KiBoxFill,
-    KiExportConfigV5,
-    ki_pin_type_v5_format,
-    ki_pin_style_v5_format,
-    ki_pin_orientation_v5_format,
-    ki_box_fill_v5_format,
-    KiExportConfigV6,
-    sanitize_fields,
-    apply_text_style,
-    apply_pin_name_style,
-    KiSymbolInfo,
-    KiSymbolPin,
-    KiSymbolRectangle,
-    KiSymbolPolygon,
-    KiSymbolCircle,
-    KiSymbolArc,
-    KiSymbolBezier,
-    KiSymbol,
-};
+export { dedent, KicadVersion, KiPinType, KiPinStyle, KiBoxFill, KiExportConfigV5, ki_pin_type_v5_format, ki_pin_style_v5_format, ki_pin_orientation_v5_format, ki_box_fill_v5_format, KiExportConfigV6, sanitize_fields, apply_text_style, apply_pin_name_style, KiSymbolInfo, KiSymbolPin, KiSymbolRectangle, KiSymbolPolygon, KiSymbolCircle, KiSymbolArc, KiSymbolBezier, KiSymbol };

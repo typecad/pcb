@@ -1,6 +1,6 @@
-const fs = require('fs');
-const path = require('path');
-const getSymbolsFromFile = require('./getSymbolsFromFile');
+import fs from 'fs';
+import path from 'path';
+import getSymbolsFromFile from './getSymbolsFromFile.js';
 
 async function getImportedFiles(importTmpPath, projectPath, projectDirectory, existingSymbols) {
   const result = {
@@ -37,4 +37,4 @@ async function getImportedFiles(importTmpPath, projectPath, projectDirectory, ex
   return result;
 }
 
-module.exports = getImportedFiles;
+export default getImportedFiles;

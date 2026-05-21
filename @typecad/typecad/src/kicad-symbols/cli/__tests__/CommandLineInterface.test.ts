@@ -5,6 +5,25 @@ import { SearchResult } from '../../types/index.js';
 import { ProgressIndicator } from '../ProgressIndicator.js';
 import { ErrorHandler } from '../ErrorHandler.js';
 
+type CLIPrivateMethods = {
+  promptForSearchQuery: () => Promise<string>;
+  sortResults: (results: SearchResult[], sortBy: 'score' | 'id' | 'manufacturer' | 'package') => void;
+  displayDetailedResults: (results: SearchResult[]) => void;
+  displayCompactResults: (results: SearchResult[]) => void;
+  displayTableResults: (results: SearchResult[]) => void;
+  parseArguments: (args: string[]) => {
+    query: string;
+    help: boolean;
+    version: boolean;
+    format: 'detailed' | 'compact' | 'table' | 'json';
+    sortBy: 'score' | 'id' | 'manufacturer' | 'package';
+    limit: number;
+  };
+  displayJsonResults: (results: SearchResult[]) => void;
+  displayJsonError: (error: unknown, code?: string) => void;
+  getScoreColor: (score: number) => (text: string) => string;
+};
+
 // Mock the chalk library to avoid color codes in test output
 vi.mock('chalk', () => ({
   default: {
@@ -162,7 +181,7 @@ describe('CommandLineInterface', () => {
       const cli = new CommandLineInterface(mockSearchEngine);
       
       // Mock promptForSearchQuery to return empty string (simulating user pressing enter)
-      vi.spyOn(cli as any, 'promptForSearchQuery').mockResolvedValue('');
+      vi.spyOn(cli as unknown as CLIPrivateMethods, 'promptForSearchQuery').mockResolvedValue('');
       
       // Act
       await cli.run(['node', 'script.js']);
@@ -231,7 +250,7 @@ describe('CommandLineInterface', () => {
       
       // Assert
       expect(ProgressIndicator).toHaveBeenCalled();
-      const progressInstance = (ProgressIndicator as any).mock.results[0].value;
+      const progressInstance = (ProgressIndicator as unknown as import('vitest').Mock).mock.results[0].value;
       expect(progressInstance.start).toHaveBeenCalled();
       expect(progressInstance.stop).toHaveBeenCalled();
     });
@@ -246,7 +265,7 @@ describe('CommandLineInterface', () => {
       await cli.run(['node', 'script.js', 'test']).catch(() => {});
       
       // Assert
-      const progressInstance = (ProgressIndicator as any).mock.results[0].value;
+      const progressInstance = (ProgressIndicator as unknown as import('vitest').Mock).mock.results[0].value;
       expect(progressInstance.start).toHaveBeenCalled();
       expect(progressInstance.stop).toHaveBeenCalled();
     });
@@ -288,7 +307,7 @@ describe('CommandLineInterface', () => {
       // Arrange
       const mockSearchEngine = createMockSearchEngine();
       const cli = new CommandLineInterface(mockSearchEngine);
-      const sortResultsSpy = vi.spyOn(cli as any, 'sortResults');
+      const sortResultsSpy = vi.spyOn(cli as unknown as CLIPrivateMethods, 'sortResults');
       
       // Act
       await cli.run(['node', 'script.js', '--sort', 'manufacturer', 'resistor']);
@@ -346,7 +365,7 @@ describe('CommandLineInterface', () => {
       // Arrange
       const mockSearchEngine = createMockSearchEngine();
       const cli = new CommandLineInterface(mockSearchEngine);
-      const displayDetailedResultsSpy = vi.spyOn(cli as any, 'displayDetailedResults');
+      const displayDetailedResultsSpy = vi.spyOn(cli as unknown as CLIPrivateMethods, 'displayDetailedResults');
       const results: SearchResult[] = [
         {
           lcsc: 'C1234',
@@ -370,7 +389,7 @@ describe('CommandLineInterface', () => {
       // Arrange
       const mockSearchEngine = createMockSearchEngine();
       const cli = new CommandLineInterface(mockSearchEngine);
-      const displayCompactResultsSpy = vi.spyOn(cli as any, 'displayCompactResults');
+      const displayCompactResultsSpy = vi.spyOn(cli as unknown as CLIPrivateMethods, 'displayCompactResults');
       const results: SearchResult[] = [
         {
           lcsc: 'C1234',
@@ -394,7 +413,7 @@ describe('CommandLineInterface', () => {
       // Arrange
       const mockSearchEngine = createMockSearchEngine();
       const cli = new CommandLineInterface(mockSearchEngine);
-      const displayTableResultsSpy = vi.spyOn(cli as any, 'displayTableResults');
+      const displayTableResultsSpy = vi.spyOn(cli as unknown as CLIPrivateMethods, 'displayTableResults');
       const results: SearchResult[] = [
         {
           lcsc: 'C1234',
@@ -485,7 +504,7 @@ describe('CommandLineInterface', () => {
       ];
       
       // Act
-      (cli as any).sortResults(results, 'id');
+      (cli as unknown as CLIPrivateMethods).sortResults(results, 'id');
       
       // Assert
       expect(results[0].lcsc).toBe('C1234');
@@ -518,7 +537,7 @@ describe('CommandLineInterface', () => {
       ];
       
       // Act
-      (cli as any).sortResults(results, 'manufacturer');
+      (cli as unknown as CLIPrivateMethods).sortResults(results, 'manufacturer');
       
       // Assert
       expect(results[0].manufacturer).toBe('Another Manufacturer');
@@ -533,7 +552,7 @@ describe('CommandLineInterface', () => {
       const cli = new CommandLineInterface(mockSearchEngine);
       
       // Act
-      const colorFn = (cli as any).getScoreColor(95);
+      const colorFn = (cli as unknown as CLIPrivateMethods).getScoreColor(95);
       
       // Assert
       // Since we mocked chalk, we can't test the actual color
@@ -549,7 +568,7 @@ describe('CommandLineInterface', () => {
       const cli = new CommandLineInterface(mockSearchEngine);
       
       // Mock promptForSearchQuery to return empty string
-      vi.spyOn(cli as any, 'promptForSearchQuery').mockResolvedValue('');
+      vi.spyOn(cli as unknown as CLIPrivateMethods, 'promptForSearchQuery').mockResolvedValue('');
       
       // Act
       await cli.run(['node', 'script.js', '--format', 'json']);
@@ -814,7 +833,7 @@ describe('CommandLineInterface', () => {
       const displayHelpSpy = vi.spyOn(cli, 'displayHelp');
       
       // Mock promptForSearchQuery to return empty string
-      vi.spyOn(cli as any, 'promptForSearchQuery').mockResolvedValue('');
+      vi.spyOn(cli as unknown as CLIPrivateMethods, 'promptForSearchQuery').mockResolvedValue('');
       
       // Act
       await cli.run(['node', 'script.js', '--format', 'json']);
@@ -838,7 +857,7 @@ describe('CommandLineInterface', () => {
       const cli = new CommandLineInterface(mockSearchEngine);
       
       // Act
-      const result = (cli as any).parseArguments(['--format', 'json', 'resistor']);
+      const result = (cli as unknown as CLIPrivateMethods).parseArguments(['--format', 'json', 'resistor']);
       
       // Assert
       expect(result.format).toBe('json');
@@ -851,7 +870,7 @@ describe('CommandLineInterface', () => {
       const cli = new CommandLineInterface(mockSearchEngine);
       
       // Act
-      const result = (cli as any).parseArguments(['-f', 'json', 'resistor']);
+      const result = (cli as unknown as CLIPrivateMethods).parseArguments(['-f', 'json', 'resistor']);
       
       // Assert
       expect(result.format).toBe('json');
@@ -864,7 +883,7 @@ describe('CommandLineInterface', () => {
       const cli = new CommandLineInterface(mockSearchEngine);
       
       // Act
-      const result = (cli as any).parseArguments([
+      const result = (cli as unknown as CLIPrivateMethods).parseArguments([
         '--format', 'json',
         '--sort', 'manufacturer',
         '--limit', '5',
@@ -884,10 +903,10 @@ describe('CommandLineInterface', () => {
       const cli = new CommandLineInterface(mockSearchEngine);
       
       // Act & Assert
-      expect((cli as any).parseArguments(['--format', 'detailed', 'resistor']).format).toBe('detailed');
-      expect((cli as any).parseArguments(['--format', 'compact', 'resistor']).format).toBe('compact');
-      expect((cli as any).parseArguments(['--format', 'table', 'resistor']).format).toBe('table');
-      expect((cli as any).parseArguments(['--format', 'json', 'resistor']).format).toBe('json');
+      expect((cli as unknown as CLIPrivateMethods).parseArguments(['--format', 'detailed', 'resistor']).format).toBe('detailed');
+      expect((cli as unknown as CLIPrivateMethods).parseArguments(['--format', 'compact', 'resistor']).format).toBe('compact');
+      expect((cli as unknown as CLIPrivateMethods).parseArguments(['--format', 'table', 'resistor']).format).toBe('table');
+      expect((cli as unknown as CLIPrivateMethods).parseArguments(['--format', 'json', 'resistor']).format).toBe('json');
     });
   });
 
@@ -909,7 +928,7 @@ describe('CommandLineInterface', () => {
       ];
       
       // Act
-      (cli as any).displayJsonResults(results);
+      (cli as unknown as CLIPrivateMethods).displayJsonResults(results);
       
       // Assert
       expect(mockConsoleLog).toHaveBeenCalledWith(expect.any(String));
@@ -929,7 +948,7 @@ describe('CommandLineInterface', () => {
       const results: SearchResult[] = [];
       
       // Act
-      (cli as any).displayJsonResults(results);
+      (cli as unknown as CLIPrivateMethods).displayJsonResults(results);
       
       // Assert
       expect(mockConsoleLog).toHaveBeenCalledWith('[]');
@@ -961,7 +980,7 @@ describe('CommandLineInterface', () => {
       ];
       
       // Act
-      (cli as any).displayJsonResults(results);
+      (cli as unknown as CLIPrivateMethods).displayJsonResults(results);
       
       // Assert
       const jsonOutput = JSON.parse(mockConsoleLog.mock.calls[0][0]);
@@ -988,7 +1007,7 @@ describe('CommandLineInterface', () => {
       ];
       
       // Act
-      (cli as any).displayJsonResults(results);
+      (cli as unknown as CLIPrivateMethods).displayJsonResults(results);
       
       // Assert
       const jsonOutput = JSON.parse(mockConsoleLog.mock.calls[0][0]);
@@ -1015,7 +1034,7 @@ describe('CommandLineInterface', () => {
       ];
       
       // Act
-      (cli as any).displayJsonResults(results);
+      (cli as unknown as CLIPrivateMethods).displayJsonResults(results);
       
       // Assert
       const jsonString = mockConsoleLog.mock.calls[0][0];
@@ -1034,7 +1053,7 @@ describe('CommandLineInterface', () => {
       const cli = new CommandLineInterface(mockSearchEngine);
       
       // Act
-      (cli as any).displayJsonError(new Error('No search query provided'));
+      (cli as unknown as CLIPrivateMethods).displayJsonError(new Error('No search query provided'));
       
       // Assert
       expect(mockConsoleLog).toHaveBeenCalledWith(
@@ -1052,7 +1071,7 @@ describe('CommandLineInterface', () => {
       const cli = new CommandLineInterface(mockSearchEngine);
       
       // Act
-      (cli as any).displayJsonError(new Error('Invalid search query: "test"'));
+      (cli as unknown as CLIPrivateMethods).displayJsonError(new Error('Invalid search query: "test"'));
       
       // Assert
       expect(mockConsoleLog).toHaveBeenCalledWith(
@@ -1070,7 +1089,7 @@ describe('CommandLineInterface', () => {
       const cli = new CommandLineInterface(mockSearchEngine);
       
       // Act
-      (cli as any).displayJsonError(new Error('Operation timed out after 10000ms'));
+      (cli as unknown as CLIPrivateMethods).displayJsonError(new Error('Operation timed out after 10000ms'));
       
       // Assert
       expect(mockConsoleLog).toHaveBeenCalledWith(
@@ -1088,7 +1107,7 @@ describe('CommandLineInterface', () => {
       const cli = new CommandLineInterface(mockSearchEngine);
       
       // Act
-      (cli as any).displayJsonError(new Error('ENOTFOUND: getaddrinfo ENOTFOUND'));
+      (cli as unknown as CLIPrivateMethods).displayJsonError(new Error('ENOTFOUND: getaddrinfo ENOTFOUND'));
       
       // Assert
       expect(mockConsoleLog).toHaveBeenCalledWith(
@@ -1106,7 +1125,7 @@ describe('CommandLineInterface', () => {
       const cli = new CommandLineInterface(mockSearchEngine);
       
       // Act
-      (cli as any).displayJsonError(new Error('ENOENT: no such file or directory'));
+      (cli as unknown as CLIPrivateMethods).displayJsonError(new Error('ENOENT: no such file or directory'));
       
       // Assert
       expect(mockConsoleLog).toHaveBeenCalledWith(
@@ -1124,7 +1143,7 @@ describe('CommandLineInterface', () => {
       const cli = new CommandLineInterface(mockSearchEngine);
       
       // Act
-      (cli as any).displayJsonError(new Error('Unexpected token in JSON at position 10'));
+      (cli as unknown as CLIPrivateMethods).displayJsonError(new Error('Unexpected token in JSON at position 10'));
       
       // Assert
       expect(mockConsoleLog).toHaveBeenCalledWith(
@@ -1142,7 +1161,7 @@ describe('CommandLineInterface', () => {
       const cli = new CommandLineInterface(mockSearchEngine);
       
       // Act
-      (cli as any).displayJsonError(new Error('Some error'), 'CUSTOM_ERROR');
+      (cli as unknown as CLIPrivateMethods).displayJsonError(new Error('Some error'), 'CUSTOM_ERROR');
       
       // Assert
       expect(mockConsoleLog).toHaveBeenCalledWith(
@@ -1160,7 +1179,7 @@ describe('CommandLineInterface', () => {
       const cli = new CommandLineInterface(mockSearchEngine);
       
       // Act
-      (cli as any).displayJsonError(new Error('ENOTFOUND: getaddrinfo ENOTFOUND'), 'SEARCH_ERROR');
+      (cli as unknown as CLIPrivateMethods).displayJsonError(new Error('ENOTFOUND: getaddrinfo ENOTFOUND'), 'SEARCH_ERROR');
       
       // Assert
       expect(mockConsoleLog).toHaveBeenCalledWith(
@@ -1178,7 +1197,7 @@ describe('CommandLineInterface', () => {
       const cli = new CommandLineInterface(mockSearchEngine);
       
       // Act
-      (cli as any).displayJsonError(new Error('ENOENT: no such file or directory'), 'SYSTEM_ERROR');
+      (cli as unknown as CLIPrivateMethods).displayJsonError(new Error('ENOENT: no such file or directory'), 'SYSTEM_ERROR');
       
       // Assert
       expect(mockConsoleLog).toHaveBeenCalledWith(
@@ -1196,7 +1215,7 @@ describe('CommandLineInterface', () => {
       const cli = new CommandLineInterface(mockSearchEngine);
       
       // Act
-      (cli as any).displayJsonError('String error', 'SEARCH_ERROR');
+      (cli as unknown as CLIPrivateMethods).displayJsonError('String error', 'SEARCH_ERROR');
       
       // Assert
       expect(mockConsoleLog).toHaveBeenCalledWith(
@@ -1214,7 +1233,7 @@ describe('CommandLineInterface', () => {
       const cli = new CommandLineInterface(mockSearchEngine);
       
       // Act
-      (cli as any).displayJsonError(new Error('Some generic error'));
+      (cli as unknown as CLIPrivateMethods).displayJsonError(new Error('Some generic error'));
       
       // Assert
       expect(mockConsoleLog).toHaveBeenCalledWith(
@@ -1232,7 +1251,7 @@ describe('CommandLineInterface', () => {
       const cli = new CommandLineInterface(mockSearchEngine);
       
       // Act
-      (cli as any).displayJsonError('Some string error');
+      (cli as unknown as CLIPrivateMethods).displayJsonError('Some string error');
       
       // Assert
       expect(mockConsoleLog).toHaveBeenCalledWith(
@@ -1252,7 +1271,7 @@ describe('CommandLineInterface', () => {
       const cli = new CommandLineInterface(mockSearchEngine);
       
       // Mock promptForSearchQuery to return empty string
-      vi.spyOn(cli as any, 'promptForSearchQuery').mockResolvedValue('');
+      vi.spyOn(cli as unknown as CLIPrivateMethods, 'promptForSearchQuery').mockResolvedValue('');
       
       // Act
       await cli.run(['node', 'script.js', '--format', 'json']);
@@ -1475,7 +1494,7 @@ describe('CommandLineInterface', () => {
       ];
       
       // Act
-      (cli as any).displayJsonResults(results);
+      (cli as unknown as CLIPrivateMethods).displayJsonResults(results);
       
       // Assert
       const jsonOutput = JSON.parse(mockConsoleLog.mock.calls[0][0]);
@@ -1500,7 +1519,7 @@ describe('CommandLineInterface', () => {
       }));
       
       // Act
-      (cli as any).displayJsonResults(results);
+      (cli as unknown as CLIPrivateMethods).displayJsonResults(results);
       
       // Assert
       const jsonOutput = JSON.parse(mockConsoleLog.mock.calls[0][0]);
@@ -1526,7 +1545,7 @@ describe('CommandLineInterface', () => {
       ];
       
       // Act
-      (cli as any).displayJsonResults(results);
+      (cli as unknown as CLIPrivateMethods).displayJsonResults(results);
       
       // Assert
       const jsonOutput = JSON.parse(mockConsoleLog.mock.calls[0][0]);
@@ -1550,7 +1569,7 @@ describe('CommandLineInterface', () => {
       ];
       
       // Act
-      (cli as any).displayJsonResults(results);
+      (cli as unknown as CLIPrivateMethods).displayJsonResults(results);
       
       // Assert
       const jsonOutput = JSON.parse(mockConsoleLog.mock.calls[0][0]);

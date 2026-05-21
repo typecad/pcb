@@ -23,4 +23,4 @@ function serializeLisp(node) {
     }
 }
 
-module.exports = serializeLisp;
+export default serializeLisp;

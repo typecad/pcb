@@ -218,8 +218,8 @@ describe('CacheUtils', () => {
     });
 
     it('should return false for unwritable directory', async () => {
-      // Use a path that should not be writable (on most systems)
-      const unwritableDir = join(sep, 'root', 'unwritable-test-dir');
+      // Use a path with an embedded null byte which fails on all platforms
+      const unwritableDir = join(tmpdir(), 'unwritable\0test-dir');
       
       const isValid = await CacheUtils.validateCacheDirectory(unwritableDir);
       

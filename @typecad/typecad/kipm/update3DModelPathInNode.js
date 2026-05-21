@@ -1,4 +1,4 @@
-const path = require('path');
+import path from 'path';
 
 function update3DModelPathInNode(node, projectName) {
   if (node.type === 'list') {
@@ -20,4 +20,4 @@ function update3DModelPathInNode(node, projectName) {
   return node;
 }
 
-module.exports = update3DModelPathInNode;
+export default update3DModelPathInNode;

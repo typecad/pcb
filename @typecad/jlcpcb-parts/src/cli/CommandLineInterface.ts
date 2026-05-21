@@ -62,6 +62,7 @@ export class CommandLineInterface implements CLI {
         if (parsedArgs.format === 'json') {
           this.displayJsonError(new Error('No search query provided'), 'MISSING_QUERY');
           process.exit(1);
+          return;
         }
         
         // Prompt for user input if no query provided (non-JSON mode only)
@@ -70,6 +71,7 @@ export class CommandLineInterface implements CLI {
         if (!parsedArgs.query || parsedArgs.query.trim().length === 0) {
           console.log(chalk.yellow('No search query provided. Exiting.'));
           process.exit(0);
+          return;
         }
       }
       
@@ -83,6 +85,7 @@ export class CommandLineInterface implements CLI {
           console.error(chalk.yellow('Try using alphanumeric characters, spaces, and common symbols.'));
         }
         process.exit(1);
+        return;
       }
       
       // Create progress indicator only if not in JSON mode
@@ -163,6 +166,7 @@ export class CommandLineInterface implements CLI {
         if (parsedArgs.format === 'json') {
           this.displayJsonError(searchError, 'SEARCH_ERROR');
           process.exit(1);
+          return;
         }
         
         throw searchError;
@@ -191,6 +195,7 @@ export class CommandLineInterface implements CLI {
       
       // Exit with error code
       process.exit(1);
+      return;
     }
   }
 

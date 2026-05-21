@@ -4,7 +4,7 @@ import { CsvParser } from '../CsvParser.js';
 import { ComponentRecord } from '../../types/index.js';
 
 describe('CsvParser', () => {
-  const testCsvPath = './test-components.csv';
+  const testCsvPath = './test-csvparser-components.csv';
   let csvParser: CsvParser;
 
   beforeEach(() => {

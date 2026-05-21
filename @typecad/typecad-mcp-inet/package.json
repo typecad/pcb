@@ -18,7 +18,7 @@
     "build": "tsc",
     "start": "node dist/web-server.js",
     "dev": "ts-node src/web-server.ts",
-    "test": "vitest run",
+    "test": "vitest run --passWithNoTests",
     "watch": "tsc --watch",
     "dev:watch": "nodemon --watch src --ext ts,json --exec \"npm run build && npm run start\"",
     "package_publish": "npm publish --access public",

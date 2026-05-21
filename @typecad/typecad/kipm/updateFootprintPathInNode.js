@@ -25,4 +25,4 @@ function updateFootprintPathInNode(node, projectName) {
   return node;
 }
 
-module.exports = updateFootprintPathInNode;
+export default updateFootprintPathInNode;

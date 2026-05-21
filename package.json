@@ -14,7 +14,7 @@
   },
   "workspaces": [
     "@typecad/*",
-    "!@typecad/mast",
+
     "all_packages/hw",
     "demo/hw",
     "website"

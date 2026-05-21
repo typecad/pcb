@@ -1,10 +1,10 @@
 // export_kicad_3dmodel.js
 
-const fs = require("fs");
+import fs from 'fs';
 
 // Import the EasyEDA and KiCad 3D model classes
-const { Ee3dModel } = require("../easyeda/parametersEasyeda");
-const { Ki3dModel } = require("./parametersKicadFootprint");
+import { Ee3dModel } from '../easyeda/parametersEasyeda.js';
+import { Ki3dModel } from './parametersKicadFootprint.js';
 
 
 // --- Constants ---
@@ -275,8 +275,4 @@ class Exporter3dModelKicad {
     }
 }
 
-module.exports = {
-    generateWrlModel,
-    Exporter3dModelKicad,
-    getVertices,
-};
+export { generateWrlModel, Exporter3dModelKicad, getVertices };

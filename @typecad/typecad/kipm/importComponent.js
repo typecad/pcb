@@ -1,16 +1,16 @@
-const fs = require('fs');
-const path = require('path');
-const { dedent, KicadVersion } = require('./kicad/parametersKicadSymbol');
-const updateFpLibTable = require('./updateFpLibTable');
-const updateSymLibTable = require('./updateSymLibTable');
-const updateProjectLibraries = require('./updateProjectLibraries');
-const updateFootprintPath = require('./updateFootprintPath');
-const copyWrlFiles = require('./copyWrlFiles');
-const copyAndUpdateFootprintFiles = require('./copyAndUpdateFootprintFiles');
-const getSymbolsFromFile = require('./getSymbolsFromFile');
-const { isComponentAlreadyImported, updateComponentsJson } = require('./componentsJson');
-const getImportedFiles = require('./getImportedFiles');
-const { convertEasyedaToKicad } = require('./easyeda2kicadCore');
+import fs from 'fs';
+import path from 'path';
+import { dedent, KicadVersion } from './kicad/parametersKicadSymbol.js';
+import updateFpLibTable from './updateFpLibTable.js';
+import updateSymLibTable from './updateSymLibTable.js';
+import updateProjectLibraries from './updateProjectLibraries.js';
+import updateFootprintPath from './updateFootprintPath.js';
+import copyWrlFiles from './copyWrlFiles.js';
+import copyAndUpdateFootprintFiles from './copyAndUpdateFootprintFiles.js';
+import getSymbolsFromFile from './getSymbolsFromFile.js';
+import { isComponentAlreadyImported, updateComponentsJson } from './componentsJson.js';
+import getImportedFiles from './getImportedFiles.js';
+import { convertEasyedaToKicad } from './easyeda2kicadCore.js';
 
 async function importComponent(projectName, projectDir, lcscId, baseDir, dryRun = false) {
   const projectPath = path.join(baseDir, projectDir);
@@ -184,4 +184,4 @@ async function importComponent(projectName, projectDir, lcscId, baseDir, dryRun 
   }
 }
 
-module.exports = importComponent;
+export default importComponent;

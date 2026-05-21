@@ -1,21 +1,6 @@
-const zip = require("./zip")
+import zip from './zip.js';
 
-const {
-    EeSymbolPinSettings,
-    EeSymbolPinDot,
-    EeSymbolPinPath,
-    EeSymbolPinName,
-    EeSymbolPinDotBis,
-    EeSymbolPinClock,
-    EeSymbolPin,
-    EeSymbolRectangle,
-    EeSymbolPolyline,
-    EeSymbolPolygon,
-    EeSymbolPath,
-    EeSymbolCircle,
-    EeSymbolEllipse,
-    EeSymbolArc
-} = require("../easyeda/parametersEasyeda");
+import { EeSymbolPinSettings, EeSymbolPinDot, EeSymbolPinPath, EeSymbolPinName, EeSymbolPinDotBis, EeSymbolPinClock, EeSymbolPin, EeSymbolRectangle, EeSymbolPolyline, EeSymbolPolygon, EeSymbolPath, EeSymbolCircle, EeSymbolEllipse, EeSymbolArc } from '../easyeda/parametersEasyeda.js';
 
 function add_easyeda_pin(pin_data, ee_symbol) {
     const segments = pin_data.split("^^");
@@ -108,4 +93,4 @@ const easyeda_handlers = {
     // "PI": ... (not supported)
 };
 
-module.exports = easyeda_handlers;
+export default easyeda_handlers;

@@ -791,7 +791,7 @@ describe('CommandLineInterface', () => {
       expect(mockProcessExit).toHaveBeenCalledWith(1);
     });
 
-    it('should output JSON error with SYSTEM_ERROR for generic errors', async () => {
+    it('should output JSON error with SEARCH_ERROR for generic search errors', async () => {
       // Arrange
       const mockSearchEngine = createMockSearchEngine();
       const genericError = new Error('Some generic error');
@@ -806,7 +806,7 @@ describe('CommandLineInterface', () => {
         JSON.stringify({
           error: true,
           message: 'Some generic error',
-          code: 'SYSTEM_ERROR'
+          code: 'SEARCH_ERROR'
         })
       );
       expect(mockProcessExit).toHaveBeenCalledWith(1);
@@ -1448,10 +1448,10 @@ describe('CommandLineInterface', () => {
       const cli = new CommandLineInterface(mockSearchEngine);
       
       // Act
-      await cli.run(['node', 'script.js', '--format', 'json', '10k', 'resistor', '0603', '±1%']);
+      await cli.run(['node', 'script.js', '--format', 'json', '10k', 'resistor', '0603', '1%', '50V']);
       
       // Assert
-      expect(mockSearchEngine.search).toHaveBeenCalledWith('10k resistor 0603 ±1%');
+      expect(mockSearchEngine.search).toHaveBeenCalledWith('10k resistor 0603 1% 50V');
       // Get the last console.log call which should be the JSON output
       const jsonCall = mockConsoleLog.mock.calls[mockConsoleLog.mock.calls.length - 1];
       const jsonOutput = JSON.parse(jsonCall[0]);

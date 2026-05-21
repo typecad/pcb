@@ -1,5 +1,5 @@
-const fs = require('fs');
-const path = require('path');
+import fs from 'fs';
+import path from 'path';
 
 function copyWrlFiles(importTmpPath, projectPath, projectName) {
   const sourceDir = path.join(importTmpPath, '.3dshapes');
@@ -23,4 +23,4 @@ function copyWrlFiles(importTmpPath, projectPath, projectName) {
   }
 }
 
-module.exports = copyWrlFiles;
+export default copyWrlFiles;

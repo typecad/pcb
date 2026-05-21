@@ -124,4 +124,4 @@ function deserializeLisp(input) {
     return result;
 }
 
-module.exports = deserializeLisp;
+export default deserializeLisp;

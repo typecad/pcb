@@ -405,7 +405,7 @@ describe('JSON Integration Tests', () => {
       // Arrange
       const mockSearchEngine = createMockSearchEngine();
       const cli = new CommandLineInterface(mockSearchEngine);
-      vi.spyOn(cli as any, 'promptForSearchQuery').mockResolvedValue('');
+      vi.spyOn(cli as unknown as { promptForSearchQuery: () => Promise<string> }, 'promptForSearchQuery').mockResolvedValue('');
       
       // Act
       await cli.run(['node', 'script.js', '--format', 'json']);

@@ -1,6 +1,6 @@
-const updateFootprintPathInNode = require('./updateFootprintPathInNode');
-const deserializeLisp = require('./deserializeLisp');
-const serializeLisp = require('./serializeLisp');
+import updateFootprintPathInNode from './updateFootprintPathInNode.js';
+import deserializeLisp from './deserializeLisp.js';
+import serializeLisp from './serializeLisp.js';
 
 function updateFootprintPath(content, projectName) {
   // Parse the content into a structured format
@@ -13,4 +13,4 @@ function updateFootprintPath(content, projectName) {
   return serializeLisp(updated);
 }
 
-module.exports = updateFootprintPath;
+export default updateFootprintPath;

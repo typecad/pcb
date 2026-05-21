@@ -152,9 +152,11 @@ describe('ComponentSearchEngine', () => {
     mockFuzzyScorer.generateMatchSummary.mockReturnValue('Exact matches: value, package');
     
     // Mock performance.now
-    global.performance = {
-      now: vi.fn().mockReturnValueOnce(0).mockReturnValueOnce(100)
-    } as any;
+    Object.defineProperty(globalThis, 'performance', {
+      value: { now: vi.fn().mockReturnValueOnce(0).mockReturnValueOnce(100) },
+      writable: true,
+      configurable: true
+    });
     
     // Create search engine instance with small cache expiration for testing
     searchEngine = new ComponentSearchEngine(
@@ -316,9 +318,11 @@ describe('ComponentSearchEngine', () => {
       mockFuzzyScorer.generateMatchSummary.mockReturnValue('Exact matches: value, package');
       
       // Mock performance.now again
-      global.performance = {
-        now: vi.fn().mockReturnValueOnce(0).mockReturnValueOnce(100)
-      } as any;
+      Object.defineProperty(global, 'performance', {
+        value: { now: vi.fn().mockReturnValueOnce(0).mockReturnValueOnce(100) },
+        writable: true,
+        configurable: true
+      });
       
       // Second search should not use expired cache
       await searchEngine.search(query);
@@ -404,9 +408,11 @@ describe('ComponentSearchEngine', () => {
       mockFuzzyScorer.generateMatchSummary.mockReturnValue('Exact matches: value, package');
       
       // Mock performance.now again
-      global.performance = {
-        now: vi.fn().mockReturnValueOnce(0).mockReturnValueOnce(100)
-      } as any;
+      Object.defineProperty(global, 'performance', {
+        value: { now: vi.fn().mockReturnValueOnce(0).mockReturnValueOnce(100) },
+        writable: true,
+        configurable: true
+      });
       
       // Search again
       await searchEngine.search('query1');
@@ -473,9 +479,11 @@ describe('ComponentSearchEngine', () => {
         .mockReturnValueOnce(0)    // Start time
         .mockReturnValueOnce(100); // End time
       
-      global.performance = {
-        now: performanceNowMock
-      } as any;
+      Object.defineProperty(global, 'performance', {
+        value: { now: performanceNowMock },
+        writable: true,
+        configurable: true
+      });
       
       // Mock rankComponents to track batch processing
       mockFuzzyScorer.rankComponents.mockImplementation((components) => {
@@ -531,9 +539,11 @@ describe('ComponentSearchEngine', () => {
         .mockReturnValueOnce(90)    // formatting end
         .mockReturnValueOnce(100);  // search end
       
-      global.performance = {
-        now: performanceNowMock
-      } as any;
+      Object.defineProperty(global, 'performance', {
+        value: { now: performanceNowMock },
+        writable: true,
+        configurable: true
+      });
       
       // Execute search
       await searchEngine.search('performance test');
@@ -635,13 +645,15 @@ describe('ComponentSearchEngine', () => {
       );
       
       // Set max metrics history size
-      (metricsTestEngine as any)['maxMetricsHistory'] = 3;
+      (metricsTestEngine as unknown as { maxMetricsHistory: number })['maxMetricsHistory'] = 3;
       
       // Mock performance.now
       let mockTime = 0;
-      global.performance = {
-        now: vi.fn(() => mockTime += 10)
-      } as any;
+      Object.defineProperty(global, 'performance', {
+        value: { now: vi.fn(() => { mockTime += 10; return mockTime; }) },
+        writable: true,
+        configurable: true
+      });
       
       // Perform multiple searches
       await metricsTestEngine.search('test1');
@@ -703,12 +715,11 @@ describe('ComponentSearchEngine', () => {
       
       // Set up performance.now to return increasing values
       let timeCounter = 0;
-      global.performance = {
-        now: vi.fn(() => {
-          timeCounter += 10;
-          return timeCounter;
-        })
-      } as any;
+      Object.defineProperty(global, 'performance', {
+        value: { now: vi.fn(() => { timeCounter += 10; return timeCounter; }) },
+        writable: true,
+        configurable: true
+      });
       
       // Test with small dataset
       mockDataManager.getCsvData.mockResolvedValue(smallDataset);

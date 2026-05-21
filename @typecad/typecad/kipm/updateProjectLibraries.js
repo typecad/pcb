@@ -1,5 +1,5 @@
-const fs = require('fs');
-const path = require('path');
+import fs from 'fs';
+import path from 'path';
 
 function updateProjectLibraries(projectPath, projectName) {
   const projectFile = path.join(projectPath, `${projectName}.kicad_pro`);
@@ -44,4 +44,4 @@ function updateProjectLibraries(projectPath, projectName) {
   }
 }
 
-module.exports = updateProjectLibraries;
+export default updateProjectLibraries;

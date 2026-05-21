@@ -1,5 +1,5 @@
-const fs = require('fs');
-const { KicadVersion } = require('./kicad/parametersKicadSymbol');
+import fs from 'fs';
+import { KicadVersion } from './kicad/parametersKicadSymbol.js';
 
 function idAlreadyInSymbolLib(libPath, componentName, kicadVersion) {
   if (!fs.existsSync(libPath)) {
@@ -36,8 +36,4 @@ function addComponentInSymbolLibFile(libPath, componentContent, kicadVersion) {
   fs.writeFileSync(libPath, newContent);
 }
 
-module.exports = {
-  idAlreadyInSymbolLib,
-  updateComponentInSymbolLibFile,
-  addComponentInSymbolLibFile
-};
+export { idAlreadyInSymbolLib, updateComponentInSymbolLibFile, addComponentInSymbolLibFile };

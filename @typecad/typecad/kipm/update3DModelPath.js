@@ -1,6 +1,6 @@
-const deserializeLisp = require('./deserializeLisp');
-const serializeLisp = require('./serializeLisp');
-const update3DModelPathInNode = require('./update3DModelPathInNode');
+import deserializeLisp from './deserializeLisp.js';
+import serializeLisp from './serializeLisp.js';
+import update3DModelPathInNode from './update3DModelPathInNode.js';
 
 function update3DModelPath(content, projectName) {
   // Parse the content into a structured format
@@ -13,4 +13,4 @@ function update3DModelPath(content, projectName) {
   return serializeLisp(updated);
 }
 
-module.exports = update3DModelPath;
+export default update3DModelPath;

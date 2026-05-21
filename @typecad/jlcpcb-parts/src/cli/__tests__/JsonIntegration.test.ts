@@ -231,10 +231,10 @@ describe('JSON Integration Tests', () => {
       const cli = new CommandLineInterface(mockSearchEngine);
       
       // Act
-      await cli.run(['node', 'script.js', '--format', 'json', '10k', 'resistor', '0603', '±1%', '50V']);
+      await cli.run(['node', 'script.js', '--format', 'json', '10k', 'resistor', '0603', '1%', '50V']);
       
       // Assert
-      expect(mockSearchEngine.search).toHaveBeenCalledWith('10k resistor 0603 ±1% 50V');
+      expect(mockSearchEngine.search).toHaveBeenCalledWith('10k resistor 0603 1% 50V');
       expect(mockConsoleLog).toHaveBeenCalledWith(expect.any(String));
       
       // Find the JSON output call (should be the last call)

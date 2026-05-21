@@ -1,7 +1,7 @@
-const fs = require('fs');
-const path = require('path');
-const serializeLisp = require('./serializeLisp');
-const deserializeLisp = require('./deserializeLisp');
+import fs from 'fs';
+import path from 'path';
+import serializeLisp from './serializeLisp.js';
+import deserializeLisp from './deserializeLisp.js';
 
 // Spinner frames for loading animation
 const spinnerFrames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
@@ -146,4 +146,4 @@ async function cleanupComponents(projectName, projectDir, baseDir) {
     fs.writeFileSync(componentsJsonPath, JSON.stringify(componentsJson, null, 2));
 }
 
-module.exports = cleanupComponents;
+export default cleanupComponents;

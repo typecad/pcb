@@ -1,8 +1,8 @@
-const fs = require('fs');
-const path = require('path');
-const importComponent = require('./importComponent');
-const cleanupComponents = require('./cleanupComponents');
-const { createSpinner } = require('./spinnerUtil');
+import fs from 'fs';
+import path from 'path';
+import importComponent from './importComponent.js';
+import cleanupComponents from './cleanupComponents.js';
+import { createSpinner } from './spinnerUtil.js';
 
 async function installFromComponentsFile(projectName, projectDir, baseDir, dryRun = false) {
   // First, clean up any components that are no longer needed
@@ -42,4 +42,4 @@ async function installFromComponentsFile(projectName, projectDir, baseDir, dryRu
   }
 }
 
-module.exports = installFromComponentsFile;
+export default installFromComponentsFile;

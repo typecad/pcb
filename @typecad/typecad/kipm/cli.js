@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 
-const { program } = require('commander');
-const fs = require('fs');
-const path = require('path');
-const importComponent = require('./importComponent.js');
-const installFromComponentsFile = require('./installComponents.js');
+import { program } from 'commander';
+import fs from 'fs';
+import path from 'path';
+import importComponent from './importComponent.js';
+import installFromComponentsFile from './installComponents.js';
 
 function cleanupTempDir() {
   const baseDir = process.cwd();

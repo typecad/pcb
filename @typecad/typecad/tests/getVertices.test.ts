@@ -1,7 +1,7 @@
 import { describe, test, expect } from 'vitest';
+import { getVertices } from '../kipm/kicad/exportKicad3dmodel.js';
 
 function callGetVertices(objData: string) {
-  const { getVertices } = require('../kipm/kicad/exportKicad3dmodel');
   return getVertices(objData);
 }
 

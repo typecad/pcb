@@ -127,8 +127,20 @@ describe('DataManager', () => {
     } catch (error) {
       // File might not exist
     }
+
+    // Clean up resolved cache files
+    const resolvedCsvPath = join(testCacheDir, basename(testCsvPath));
+    try {
+      await fs.unlink(resolvedCsvPath);
+    } catch (error) {
+      // File might not exist
+    }
     
     try {
+      const files = await fs.readdir(testCacheDir);
+      for (const file of files) {
+        await fs.unlink(join(testCacheDir, file));
+      }
       await fs.rmdir(testCacheDir);
     } catch (error) {
       // Directory might not be empty or not exist
@@ -169,8 +181,10 @@ describe('DataManager', () => {
       mockTimestampManager.isCacheStale.mockResolvedValue(true);
       mockCsvDownloader.downloadCsv.mockRejectedValue(new Error('Download failed'));
       
-      // Create a dummy local file
-      await fs.writeFile(testCsvPath, 'dummy content', 'utf-8');
+      // Create a dummy local file at the resolved cache path
+      const resolvedCsvPath = join(testCacheDir, basename(testCsvPath));
+      await fs.mkdir(testCacheDir, { recursive: true });
+      await fs.writeFile(resolvedCsvPath, 'dummy content', 'utf-8');
       
       await dataManager.ensureDataAvailable();
       
@@ -205,8 +219,8 @@ describe('DataManager', () => {
       
       const components = await dataManager.getCsvData();
       
-      // Verify parser was called
-      expect(mockCsvParser.parseFile).toHaveBeenCalledWith(testCsvPath);
+      // Verify parser was called with resolved cache path
+      expect(mockCsvParser.parseFile).toHaveBeenCalledWith(join(testCacheDir, basename(testCsvPath)));
       expect(components).toEqual(sampleComponents);
       expect(components).toHaveLength(2);
     });

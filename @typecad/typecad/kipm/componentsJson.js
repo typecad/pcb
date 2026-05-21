@@ -1,5 +1,5 @@
-const fs = require('fs');
-const path = require('path');
+import fs from 'fs';
+import path from 'path';
 
 function isComponentAlreadyImported(projectPath, lcscId) {
   const componentsJsonPath = path.join(projectPath, 'components.json');
@@ -59,7 +59,4 @@ async function updateComponentsJson(projectPath, lcscId, importedFiles) {
   }
 }
 
-module.exports = {
-  isComponentAlreadyImported,
-  updateComponentsJson
-};
+export { isComponentAlreadyImported, updateComponentsJson };

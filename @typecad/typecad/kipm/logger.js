@@ -1,4 +1,4 @@
-const fs = require('fs');
+import fs from 'fs';
 
 function setLogger(logFile, logLevel) {
   const log = (...args) => {
@@ -16,4 +16,4 @@ function setLogger(logFile, logLevel) {
   };
 }
 
-module.exports = { setLogger };
+export { setLogger };

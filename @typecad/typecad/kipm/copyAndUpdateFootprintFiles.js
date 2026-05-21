@@ -1,6 +1,6 @@
-const fs = require('fs');
-const path = require('path');
-const update3DModelPath = require('./update3DModelPath');
+import fs from 'fs';
+import path from 'path';
+import update3DModelPath from './update3DModelPath.js';
 
 function copyAndUpdateFootprintFiles(importTmpPath, projectPath, projectName) {
   const sourceDir = path.join(importTmpPath, '.pretty');
@@ -33,4 +33,4 @@ function copyAndUpdateFootprintFiles(importTmpPath, projectPath, projectName) {
   }
 }
 
-module.exports = copyAndUpdateFootprintFiles;
+export default copyAndUpdateFootprintFiles;

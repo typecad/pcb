@@ -1,6 +1,4 @@
 // easyeda_importer.js
-const OBJFile = require('obj-file-parser');
-
 const { EasyedaApi } = require("./easyedaApi");
 const { mat4, vec3, glMatrix, quat } = require("gl-matrix");
 const {
@@ -286,7 +284,7 @@ class Easyeda3dModelImporter {
                 model_3d.step = this.lcscComponent.get3dStep();
                 
                 if (rawObj) {
-                    let transformMatrix = mat4.create(); // Identity matrix
+                    let transformMatrix = mat4.create();
 
                     const options = {
                         "id": model_3d_info.uuid,
@@ -297,11 +295,15 @@ class Easyeda3dModelImporter {
                         "width": model_3d_info.c_width,
                         "height": model_3d_info.c_height,
                     }
-                    const objFile = new OBJFile(rawObj);
-                    const output = objFile.parse();
 
-                    // Calculate bbox from parsed vertices
-                    const vertices = output.models[0].vertices;
+                    const vertices = [];
+                    for (const line of rawObj.split('\n')) {
+                        const parts = line.trim().split(/\s+/);
+                        if (parts[0] === 'v' && parts.length >= 4) {
+                            vertices.push({ x: parseFloat(parts[1]), y: parseFloat(parts[2]), z: parseFloat(parts[3]) });
+                        }
+                    }
+
                     const boundingBox = vertices.reduce((acc, vertex) => ({
                         maxX: Math.max(acc.maxX, vertex.x),
                         maxY: Math.max(acc.maxY, vertex.y),

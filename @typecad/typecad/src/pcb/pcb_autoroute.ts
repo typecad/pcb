@@ -343,6 +343,7 @@ export function autoroute(pcb: IPcbBoardContext, options: IAutorouteOptions): IA
         allObstacles.push(obs);
         grid.addObstacle(obs);
     };
+
     obstacles.forEach(addObstacleToState);
 
     const stats = grid.getStats();
@@ -397,9 +398,13 @@ export function autoroute(pcb: IPcbBoardContext, options: IAutorouteOptions): IA
     }
 
     // ── 14. Build coarse grid factory and base router options ────────────
+    const coarseGridCache = new Map<number, RoutingGrid>();
     const buildCoarseGrid = (resolution: number) => {
+        const cached = coarseGridCache.get(resolution);
+        if (cached) return cached;
         const coarseGrid = new RoutingGrid(bounds, resolution, routingLayers, options.debug);
         allObstacles.forEach(obs => coarseGrid.addObstacle(obs));
+        coarseGridCache.set(resolution, coarseGrid);
         return coarseGrid;
     };
 
@@ -455,6 +460,7 @@ export function autoroute(pcb: IPcbBoardContext, options: IAutorouteOptions): IA
     const { manuallyRoutedPinPairs, manualRouteDataMap } = processManualRoutes(
         pcb, options, allPins, traceWidth, clearance, netName, addObstacleToState
     );
+    coarseGridCache.clear();
 
     // ── 17. Route: MST or pairwise ───────────────────────────────────────
     const handledSingleNet = routeMstNet(ctx, out, manuallyRoutedPinPairs, manualRouteDataMap);
@@ -680,5 +686,6 @@ export function autoroute(pcb: IPcbBoardContext, options: IAutorouteOptions): IA
     autorouteResult.routeCount = routeDetails.length;
     autorouteResult.completedCount = successCount;
     autorouteResult.routeDetails = routeDetails;
+    PadResolver.clearParseCache();
     return autorouteResult;
 }

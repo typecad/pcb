@@ -6,8 +6,6 @@ const fs = require("fs");
 const { Ee3dModel } = require("../easyeda/parametersEasyeda");
 const { Ki3dModel } = require("./parametersKicadFootprint");
 
-const djs = require('decimal.js');
-const Decimal = djs.set({ precision: 8, rounding: djs.ROUND_HALF_EVEN });
 
 // --- Constants ---
 const VRML_HEADER = `#VRML V2.0 utf8
@@ -90,38 +88,31 @@ function getVertices(objData) {
         const coords = match[1].split(/\s+/);
         const rounded = coords
           .map((coord) => {
-              const intPartIsEven = new Decimal(coord / 2.54).truncated().mod(2).eq(0);
+              const val = +coord / 2.54;
+              const intPartIsEven = Math.trunc(val) % 2 === 0;
 
               if (!intPartIsEven) {
-                  const numDec = new Decimal(coord / 2.54);
-                  const num = numDec.toFixed(4, Decimal.ROUND_HALF_EVEN);
-                  const roundedNum = +num;
-                  // Check for negative zero first.
-                  if (numDec.isNeg() && +numDec.abs() === 0) {
+                  const num = pythonRound(val, 4);
+                  if (Object.is(val, -0)) {
                       return "-0.0";
                   }
-                  // If integer, force one decimal place.
-                  if (Number.isInteger(roundedNum)) {
-                      return ((+num).toFixed(1));
+                  if (Number.isInteger(num)) {
+                      return num.toFixed(1);
                   }
 
-                  return pythonRound(coord / 2.54, 4);
+                  return num;
               }
-              const numDec = new Decimal(coord / 2.54);
-              const num = numDec.toFixed(4, Decimal.ROUND_HALF_EVEN);
-              const roundedNum = +num;
-              // Check for negative zero first.
-              if (numDec.isNeg() && +numDec.abs() === 0) {
+              const num = pythonRound(val, 4);
+              if (Object.is(val, -0)) {
                   return "-0.0";
               }
-              const res = (coord / 2.54).toFixed(4).replace(/\.?0+$/, '');
+              const res = val.toFixed(4).replace(/\.?0+$/, '');
 
-              // If integer, force one decimal place.
               if (Number.isInteger(+res)) {
                   return ((+res).toFixed(1));
               }
 
-              if (+coord < 0 && +res === 0) {
+              if (val < 0 && +res === 0) {
                   return '-0.0';
               }
 
@@ -287,4 +278,5 @@ class Exporter3dModelKicad {
 module.exports = {
     generateWrlModel,
     Exporter3dModelKicad,
+    getVertices,
 };

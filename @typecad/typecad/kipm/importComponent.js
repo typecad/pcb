@@ -1,6 +1,6 @@
 const fs = require('fs');
 const path = require('path');
-const dedent = require('dedent');
+const { dedent, KicadVersion } = require('./kicad/parametersKicadSymbol');
 const updateFpLibTable = require('./updateFpLibTable');
 const updateSymLibTable = require('./updateSymLibTable');
 const updateProjectLibraries = require('./updateProjectLibraries');
@@ -11,7 +11,6 @@ const getSymbolsFromFile = require('./getSymbolsFromFile');
 const { isComponentAlreadyImported, updateComponentsJson } = require('./componentsJson');
 const getImportedFiles = require('./getImportedFiles');
 const { convertEasyedaToKicad } = require('./easyeda2kicadCore');
-const { KicadVersion } = require('./kicad/parametersKicadSymbol');
 
 async function importComponent(projectName, projectDir, lcscId, baseDir, dryRun = false) {
   const projectPath = path.join(baseDir, projectDir);

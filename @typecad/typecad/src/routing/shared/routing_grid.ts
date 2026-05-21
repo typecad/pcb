@@ -132,17 +132,55 @@ export interface IRoutingObstacle {
  * Discretizes continuous PCB space into a uniform grid for pathfinding algorithms.
  */
 export class RoutingGrid {
+    private static orientation(ax: number, ay: number, bx: number, by: number, cx: number, cy: number): number {
+        const val = (by - ay) * (cx - bx) - (bx - ax) * (cy - by);
+        if (Math.abs(val) < 1e-12) return 0;
+        return (val > 0) ? 1 : 2;
+    }
+
+    private static onSegment(ax: number, ay: number, bx: number, by: number, px: number, py: number): boolean {
+        return px <= Math.max(ax, bx) + 1e-12 && px + 1e-12 >= Math.min(ax, bx) &&
+               py <= Math.max(ay, by) + 1e-12 && py + 1e-12 >= Math.min(ay, by);
+    }
+
+    private static segmentsIntersect(a1x: number, a1y: number, a2x: number, a2y: number,
+                                     b1x: number, b1y: number, b2x: number, b2y: number): boolean {
+        const o1 = RoutingGrid.orientation(a1x, a1y, a2x, a2y, b1x, b1y);
+        const o2 = RoutingGrid.orientation(a1x, a1y, a2x, a2y, b2x, b2y);
+        const o3 = RoutingGrid.orientation(b1x, b1y, b2x, b2y, a1x, a1y);
+        const o4 = RoutingGrid.orientation(b1x, b1y, b2x, b2y, a2x, a2y);
+        if (o1 !== o2 && o3 !== o4) return true;
+        if (o1 === 0 && RoutingGrid.onSegment(a1x, a1y, a2x, a2y, b1x, b1y)) return true;
+        if (o2 === 0 && RoutingGrid.onSegment(a1x, a1y, a2x, a2y, b2x, b2y)) return true;
+        if (o3 === 0 && RoutingGrid.onSegment(b1x, b1y, b2x, b2y, a1x, a1y)) return true;
+        if (o4 === 0 && RoutingGrid.onSegment(b1x, b1y, b2x, b2y, a2x, a2y)) return true;
+        return false;
+    }
+
+    private static pointInPolygon(x: number, y: number, poly: { x: number; y: number }[]): boolean {
+        let inside = false;
+        for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+            const xi = poly[i].x, yi = poly[i].y;
+            const xj = poly[j].x, yj = poly[j].y;
+            const intersect = ((yi > y) !== (yj > y)) &&
+                (x < (xj - xi) * (y - yi) / ((yj - yi) || 1e-12) + xi);
+            if (intersect) inside = !inside;
+        }
+        return inside;
+    }
+
     private bounds: { minX: number; maxX: number; minY: number; maxY: number };
-    private gridResolution: number; // mm per grid cell
+    private gridResolution: number;
     private layers: string[];
-    private cells: Map<string, IGridCell>; // Key: "layer:x:y"
+    private cells: (IGridCell | undefined)[];
     private gridWidth: number;
     private gridHeight: number;
-    private maxObstacleClearance: number; // mm
-    private maxObstacleHalfWidthMm: number; // mm
-    private obstacles: Map<string, IRoutingObstacle>; // Key: unique obstacle ID
+    private cellsTotalSize: number;
+    private maxObstacleClearance: number;
+    private maxObstacleHalfWidthMm: number;
+    private obstacles: Map<string, IRoutingObstacle>;
+    private _version: number = 0;
 
-    /** Layer name → integer index for fast lookups */
     private layerIndex: Map<string, number>;
 
     /**
@@ -170,21 +208,24 @@ export class RoutingGrid {
         this.bounds = bounds;
         this.gridResolution = gridResolution;
         this.layers = layers;
-        this.cells = new Map();
         this.obstacles = new Map();
         this.maxObstacleClearance = 0;
 
-        // Calculate grid dimensions
         this.gridWidth = Math.ceil((bounds.maxX - bounds.minX) / gridResolution);
         this.gridHeight = Math.ceil((bounds.maxY - bounds.minY) / gridResolution);
 
         this.maxObstacleHalfWidthMm = 0;
 
-        // Build layer → index map for fast lookups
         this.layerIndex = new Map<string, number>();
         for (let i = 0; i < layers.length; i++) {
             this.layerIndex.set(layers[i], i);
         }
+
+        this.cellsTotalSize = layers.length * this.gridWidth * this.gridHeight;
+        if (this.cellsTotalSize > 500_000_000) {
+            throw new Error(`RoutingGrid too large: ${this.gridWidth}x${this.gridHeight}x${layers.length} = ${this.cellsTotalSize} cells. Reduce board size or increase grid resolution.`);
+        }
+        this.cells = new Array(this.cellsTotalSize);
 
         if (this.debug) {
             if (loggerDebug) loggerDebug(chalk.blue(`[RoutingGrid] Created grid: ${this.gridWidth}x${this.gridHeight} cells (${this.gridWidth * this.gridHeight * layers.length} total across ${layers.length} layers)`));
@@ -199,9 +240,10 @@ export class RoutingGrid {
      *
      * @param obstacle - The obstacle to add
      */
+    private static _obstacleIdCounter = 0;
+
     addObstacle(obstacle: IRoutingObstacle): void {
-        // Generate unique obstacle ID and store reference
-        const obstacleId = `${obstacle.type}_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
+        const obstacleId = `${obstacle.type}_${++RoutingGrid._obstacleIdCounter}`;
         this.obstacles.set(obstacleId, { ...obstacle });
 
         // Expand wildcard layer specifications (e.g., '*.Cu') to actual grid layers
@@ -232,8 +274,9 @@ export class RoutingGrid {
 
             // Helper to mark a single cell as occupied
             const occupyCell = (gx: number, gy: number, obstacleHalfWidthMm?: number) => {
-                const key = this.getCellKey(layer, gx, gy);
-                const existingCell = this.cells.get(key);
+                const idx = this.getCellIndex(layer, gx, gy);
+                if (idx < 0) return;
+                const existingCell = this.cells[idx];
 
                 if (existingCell) {
                     existingCell.occupied = true;
@@ -274,7 +317,7 @@ export class RoutingGrid {
                     }
                 } else {
                     const obsClr = obstacle.clearance ?? 0;
-                    this.cells.set(key, {
+                    this.cells[idx] = {
                         x: gx,
                         y: gy,
                         layer,
@@ -287,7 +330,7 @@ export class RoutingGrid {
                         clearance: obsClr > 0 ? obsClr : undefined,
                         obstacleHalfWidthMm: typeof obstacleHalfWidthMm === 'number' ? obstacleHalfWidthMm : undefined,
                         obstacleIds: [obstacleId]
-                    });
+                    };
                 }
             };
 
@@ -298,59 +341,26 @@ export class RoutingGrid {
             if (obstacle.type === 'track' && seg) {
                 const halfWidth = seg.width / 2;
 
-                // Helpers for geometry
-                const pointInRect = (x: number, y: number, minX: number, minY: number, maxX: number, maxY: number) =>
-                    x >= minX && x <= maxX && y >= minY && y <= maxY;
-
-                const orientation = (ax: number, ay: number, bx: number, by: number, cx: number, cy: number): number => {
-                    const val = (by - ay) * (cx - bx) - (bx - ax) * (cy - by);
-                    if (Math.abs(val) < 1e-12) return 0;
-                    return (val > 0) ? 1 : 2; // 1: cw, 2: ccw
-                };
-                const onSegment = (ax: number, ay: number, bx: number, by: number, px: number, py: number): boolean =>
-                    px <= Math.max(ax, bx) + 1e-12 && px + 1e-12 >= Math.min(ax, bx) &&
-                    py <= Math.max(ay, by) + 1e-12 && py + 1e-12 >= Math.min(ay, by);
-                const segmentsIntersect = (a1x: number, a1y: number, a2x: number, a2y: number,
-                                           b1x: number, b1y: number, b2x: number, b2y: number): boolean => {
-                    const o1 = orientation(a1x, a1y, a2x, a2y, b1x, b1y);
-                    const o2 = orientation(a1x, a1y, a2x, a2y, b2x, b2y);
-                    const o3 = orientation(b1x, b1y, b2x, b2y, a1x, a1y);
-                    const o4 = orientation(b1x, b1y, b2x, b2y, a2x, a2y);
-                    if (o1 !== o2 && o3 !== o4) return true;
-                    if (o1 === 0 && onSegment(a1x, a1y, a2x, a2y, b1x, b1y)) return true;
-                    if (o2 === 0 && onSegment(a1x, a1y, a2x, a2y, b2x, b2y)) return true;
-                    if (o3 === 0 && onSegment(b1x, b1y, b2x, b2y, a1x, a1y)) return true;
-                    if (o4 === 0 && onSegment(b1x, b1y, b2x, b2y, a2x, a2y)) return true;
-                    return false;
-                };
-
                 const x1 = seg.x1, y1 = seg.y1, x2 = seg.x2, y2 = seg.y2;
 
                 // Iterate grid cells in the bounding box
                 for (let gx = gridBounds.minX; gx <= gridBounds.maxX; gx++) {
                     for (let gy = gridBounds.minY; gy <= gridBounds.maxY; gy++) {
-                        // Cell rectangle (world)
-                        const center = this.gridToWorld(gx, gy);
+                        const cx = this.gridToWorldX(gx);
+                        const cy = this.gridToWorldY(gy);
                         const halfCell = this.gridResolution / 2;
-                        // Expand rectangle by track half-width to model thick segment footprint
-                        const minX = center.x - halfCell - halfWidth;
-                        const maxX = center.x + halfCell + halfWidth;
-                        const minY = center.y - halfCell - halfWidth;
-                        const maxY = center.y + halfCell + halfWidth;
+                        const minX = cx - halfCell - halfWidth;
+                        const maxX = cx + halfCell + halfWidth;
+                        const minY = cy - halfCell - halfWidth;
+                        const maxY = cy + halfCell + halfWidth;
 
                         // Quick accept: either endpoint inside expanded rect
-                        let hit = pointInRect(x1, y1, minX, minY, maxX, maxY) || pointInRect(x2, y2, minX, minY, maxX, maxY);
+                        let hit = (x1 >= minX && x1 <= maxX && y1 >= minY && y1 <= maxY) || (x2 >= minX && x2 <= maxX && y2 >= minY && y2 <= maxY);
                         if (!hit) {
-                            // Check intersection with expanded rectangle edges
-                            const edges = [
-                                [minX, minY, maxX, minY],
-                                [maxX, minY, maxX, maxY],
-                                [maxX, maxY, minX, maxY],
-                                [minX, maxY, minX, minY]
-                            ] as const;
-                            for (const e of edges) {
-                                if (segmentsIntersect(x1, y1, x2, y2, e[0], e[1], e[2], e[3])) { hit = true; break; }
-                            }
+                            if (RoutingGrid.segmentsIntersect(x1,y1,x2,y2, minX,minY,maxX,minY) ||
+                                RoutingGrid.segmentsIntersect(x1,y1,x2,y2, maxX,minY,maxX,maxY) ||
+                                RoutingGrid.segmentsIntersect(x1,y1,x2,y2, maxX,maxY,minX,maxY) ||
+                                RoutingGrid.segmentsIntersect(x1,y1,x2,y2, minX,maxY,minX,minY)) { hit = true; }
                         }
 
                         if (hit) {
@@ -456,83 +466,33 @@ export class RoutingGrid {
                 }
 
                 if (poly.length > 0) {
-                    const pointInPolygon = (x: number, y: number): boolean => {
-                        let inside = false;
-                        for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
-                            const xi = poly[i].x, yi = poly[i].y;
-                            const xj = poly[j].x, yj = poly[j].y;
-                            const intersect = ((yi > y) !== (yj > y)) &&
-                                (x < (xj - xi) * (y - yi) / ((yj - yi) || 1e-12) + xi);
-                            if (intersect) inside = !inside;
-                        }
-                        return inside;
-                    };
-
-                    const onSegment = (ax: number, ay: number, bx: number, by: number, px: number, py: number): boolean => (
-                        px <= Math.max(ax, bx) + 1e-12 && px + 1e-12 >= Math.min(ax, bx) &&
-                        py <= Math.max(ay, by) + 1e-12 && py + 1e-12 >= Math.min(ay, by)
-                    );
-                    const orientation = (ax: number, ay: number, bx: number, by: number, cx: number, cy: number): number => {
-                        const val = (by - ay) * (cx - bx) - (bx - ax) * (cy - by);
-                        if (Math.abs(val) < 1e-12) return 0;
-                        return (val > 0) ? 1 : 2;
-                    };
-                    const segmentsIntersect = (a1x: number, a1y: number, a2x: number, a2y: number,
-                                               b1x: number, b1y: number, b2x: number, b2y: number): boolean => {
-                        const o1 = orientation(a1x, a1y, a2x, a2y, b1x, b1y);
-                        const o2 = orientation(a1x, a1y, a2x, a2y, b2x, b2y);
-                        const o3 = orientation(b1x, b1y, b2x, b2y, a1x, a1y);
-                        const o4 = orientation(b1x, b1y, b2x, b2y, a2x, a2y);
-                        if (o1 !== o2 && o3 !== o4) return true;
-                        if (o1 === 0 && onSegment(a1x, a1y, a2x, a2y, b1x, b1y)) return true;
-                        if (o2 === 0 && onSegment(a1x, a1y, a2x, a2y, b2x, b2y)) return true;
-                        if (o3 === 0 && onSegment(b1x, b1y, b2x, b2y, a1x, a1y)) return true;
-                        if (o4 === 0 && onSegment(b1x, b1y, b2x, b2y, a2x, a2y)) return true;
-                        return false;
-                    };
-
                     const halfCell = this.gridResolution / 2;
                     for (let gx = gridBounds.minX; gx <= gridBounds.maxX; gx++) {
                         for (let gy = gridBounds.minY; gy <= gridBounds.maxY; gy++) {
-                            const centerCell = this.gridToWorld(gx, gy);
-                            const minX = centerCell.x - halfCell;
-                            const maxX = centerCell.x + halfCell;
-                            const minY = centerCell.y - halfCell;
-                            const maxY = centerCell.y + halfCell;
+                            const cx = this.gridToWorldX(gx);
+                            const cy = this.gridToWorldY(gy);
+                            const minX = cx - halfCell;
+                            const maxX = cx + halfCell;
+                            const minY = cy - halfCell;
+                            const maxY = cy + halfCell;
 
                             let hit = false;
-                            // 1) Rect corner inside polygon
+                            if (RoutingGrid.pointInPolygon(minX, minY, poly) || RoutingGrid.pointInPolygon(maxX, minY, poly) ||
+                                RoutingGrid.pointInPolygon(maxX, maxY, poly) || RoutingGrid.pointInPolygon(minX, maxY, poly)) { hit = true; }
                             if (!hit) {
-                                const rectCorners = [
-                                    { x: minX, y: minY },
-                                    { x: maxX, y: minY },
-                                    { x: maxX, y: maxY },
-                                    { x: minX, y: maxY }
-                                ];
-                                for (const p of rectCorners) { if (pointInPolygon(p.x, p.y)) { hit = true; break; } }
+                                for (let i = 0; i < poly.length; i++) {
+                                    const px = poly[i].x, py = poly[i].y;
+                                    if (px >= minX - 1e-12 && px <= maxX + 1e-12 && py >= minY - 1e-12 && py <= maxY + 1e-12) { hit = true; break; }
+                                }
                             }
-                            // 2) Polygon vertex inside rect
                             if (!hit) {
-                                const pointInRect = (x: number, y: number) => (
-                                    x >= minX - 1e-12 && x <= maxX + 1e-12 && y >= minY - 1e-12 && y <= maxY + 1e-12
-                                );
-                                for (let i = 0; i < poly.length; i++) { if (pointInRect(poly[i].x, poly[i].y)) { hit = true; break; } }
-                            }
-                            // 3) Edge intersections
-                            if (!hit) {
-                                const rectEdges = [
-                                    [minX, minY, maxX, minY],
-                                    [maxX, minY, maxX, maxY],
-                                    [maxX, maxY, minX, maxY],
-                                    [minX, maxY, minX, minY]
-                                ] as const;
                                 for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
-                                    const x1 = poly[j].x, y1 = poly[j].y;
-                                    const x2 = poly[i].x, y2 = poly[i].y;
-                                    for (const e of rectEdges) {
-                                        if (segmentsIntersect(x1, y1, x2, y2, e[0], e[1], e[2], e[3])) { hit = true; break; }
-                                    }
-                                    if (hit) break;
+                                    const px1 = poly[j].x, py1 = poly[j].y;
+                                    const px2 = poly[i].x, py2 = poly[i].y;
+                                    if (RoutingGrid.segmentsIntersect(px1,py1,px2,py2, minX,minY,maxX,minY) ||
+                                        RoutingGrid.segmentsIntersect(px1,py1,px2,py2, maxX,minY,maxX,maxY) ||
+                                        RoutingGrid.segmentsIntersect(px1,py1,px2,py2, maxX,maxY,minX,maxY) ||
+                                        RoutingGrid.segmentsIntersect(px1,py1,px2,py2, minX,maxY,minX,minY)) { hit = true; break; }
                                 }
                             }
 
@@ -548,97 +508,36 @@ export class RoutingGrid {
                 // mark a grid cell occupied if the polygon and the cell rectangle intersect in any way.
                 const pts = obstacle.polygon.points;
 
-                // Point in polygon (ray casting)
-                const pointInPolygon = (x: number, y: number): boolean => {
-                    let inside = false;
-                    for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
-                        const xi = pts[i].x, yi = pts[i].y;
-                        const xj = pts[j].x, yj = pts[j].y;
-                        // Check if edge crosses the horizontal ray at y and to the right of x
-                        const intersect = ((yi > y) !== (yj > y)) &&
-                            (x < (xj - xi) * (y - yi) / ((yj - yi) || 1e-12) + xi);
-                        if (intersect) inside = !inside;
-                    }
-                    return inside;
-                };
-
-                // Segment intersection helpers
-                const onSegment = (ax: number, ay: number, bx: number, by: number, px: number, py: number): boolean => {
-                    return px <= Math.max(ax, bx) + 1e-12 && px + 1e-12 >= Math.min(ax, bx) &&
-                           py <= Math.max(ay, by) + 1e-12 && py + 1e-12 >= Math.min(ay, by);
-                };
-                const orientation = (ax: number, ay: number, bx: number, by: number, cx: number, cy: number): number => {
-                    const val = (by - ay) * (cx - bx) - (bx - ax) * (cy - by);
-                    if (Math.abs(val) < 1e-12) return 0;
-                    return (val > 0) ? 1 : 2; // 1: clockwise, 2: counterclockwise
-                };
-                const segmentsIntersect = (a1x: number, a1y: number, a2x: number, a2y: number,
-                                           b1x: number, b1y: number, b2x: number, b2y: number): boolean => {
-                    const o1 = orientation(a1x, a1y, a2x, a2y, b1x, b1y);
-                    const o2 = orientation(a1x, a1y, a2x, a2y, b2x, b2y);
-                    const o3 = orientation(b1x, b1y, b2x, b2y, a1x, a1y);
-                    const o4 = orientation(b1x, b1y, b2x, b2y, a2x, a2y);
-
-                    if (o1 !== o2 && o3 !== o4) return true;
-
-                    // Colinear special cases
-                    if (o1 === 0 && onSegment(a1x, a1y, a2x, a2y, b1x, b1y)) return true;
-                    if (o2 === 0 && onSegment(a1x, a1y, a2x, a2y, b2x, b2y)) return true;
-                    if (o3 === 0 && onSegment(b1x, b1y, b2x, b2y, a1x, a1y)) return true;
-                    if (o4 === 0 && onSegment(b1x, b1y, b2x, b2y, a2x, a2y)) return true;
-                    return false;
-                };
-
                 const halfCell = this.gridResolution / 2;
 
                 for (let gx = gridBounds.minX; gx <= gridBounds.maxX; gx++) {
                     for (let gy = gridBounds.minY; gy <= gridBounds.maxY; gy++) {
-                        const center = this.gridToWorld(gx, gy);
-                        const minX = center.x - halfCell;
-                        const maxX = center.x + halfCell;
-                        const minY = center.y - halfCell;
-                        const maxY = center.y + halfCell;
+                        const cx = this.gridToWorldX(gx);
+                        const cy = this.gridToWorldY(gy);
+                        const minX = cx - halfCell;
+                        const maxX = cx + halfCell;
+                        const minY = cy - halfCell;
+                        const maxY = cy + halfCell;
 
-                        // Quick reject with AABB overlap against polygon's bounding box
-                        // Compute polygon bounds lazily per cell might be expensive; rely on gridBounds coarse filter instead
-
-                        // 1) Any rect corner inside polygon?
-                        const rectCorners = [
-                            { x: minX, y: minY },
-                            { x: maxX, y: minY },
-                            { x: maxX, y: maxY },
-                            { x: minX, y: maxY }
-                        ];
                         let hit = false;
-                        for (const p of rectCorners) {
-                            if (pointInPolygon(p.x, p.y)) { hit = true; break; }
-                        }
+                        if (RoutingGrid.pointInPolygon(minX, minY, pts) || RoutingGrid.pointInPolygon(maxX, minY, pts) ||
+                            RoutingGrid.pointInPolygon(maxX, maxY, pts) || RoutingGrid.pointInPolygon(minX, maxY, pts)) { hit = true; }
 
-                        // 2) Any polygon vertex inside the rect?
-                        const pointInRect = (x: number, y: number): boolean => (
-                            x >= minX - 1e-12 && x <= maxX + 1e-12 && y >= minY - 1e-12 && y <= maxY + 1e-12
-                        );
                         if (!hit) {
                             for (let i = 0; i < pts.length; i++) {
-                                if (pointInRect(pts[i].x, pts[i].y)) { hit = true; break; }
+                                const px = pts[i].x, py = pts[i].y;
+                                if (px >= minX - 1e-12 && px <= maxX + 1e-12 && py >= minY - 1e-12 && py <= maxY + 1e-12) { hit = true; break; }
                             }
                         }
 
-                        // 3) Any polygon edge intersect any rect edge?
                         if (!hit) {
-                            const rectEdges = [
-                                [minX, minY, maxX, minY],
-                                [maxX, minY, maxX, maxY],
-                                [maxX, maxY, minX, maxY],
-                                [minX, maxY, minX, minY]
-                            ] as const;
                             for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
-                                const x1 = pts[j].x, y1 = pts[j].y;
-                                const x2 = pts[i].x, y2 = pts[i].y;
-                                for (const e of rectEdges) {
-                                    if (segmentsIntersect(x1, y1, x2, y2, e[0], e[1], e[2], e[3])) { hit = true; break; }
-                                }
-                                if (hit) break;
+                                const px1 = pts[j].x, py1 = pts[j].y;
+                                const px2 = pts[i].x, py2 = pts[i].y;
+                                if (RoutingGrid.segmentsIntersect(px1,py1,px2,py2, minX,minY,maxX,minY) ||
+                                    RoutingGrid.segmentsIntersect(px1,py1,px2,py2, maxX,minY,maxX,maxY) ||
+                                    RoutingGrid.segmentsIntersect(px1,py1,px2,py2, maxX,maxY,minX,maxY) ||
+                                    RoutingGrid.segmentsIntersect(px1,py1,px2,py2, minX,maxY,minX,minY)) { hit = true; break; }
                             }
                         }
 
@@ -663,8 +562,9 @@ export class RoutingGrid {
      * Check if a specific grid cell belongs to a pad area on a given layer.
      */
     isPadCell(x: number, y: number, layer: string): boolean {
-        const key = this.getCellKey(layer, x, y);
-        const cell = this.cells.get(key);
+        const idx = this.getCellIndex(layer, x, y);
+        if (idx < 0) return false;
+        const cell = this.cells[idx];
         return !!cell?.pad;
     }
 
@@ -684,7 +584,7 @@ export class RoutingGrid {
                 const ny = y + dy;
                 if (!this.isInBounds(nx, ny)) continue;
 
-                const cell = this.cells.get(this.getCellKey(layer, nx, ny));
+                const cell = this.cells[this.getCellIndex(layer, nx, ny)];
                 if (!cell?.pad) continue;
 
                 const padHalfWidth = cell.obstacleHalfWidthMm ?? 0;
@@ -731,6 +631,7 @@ export class RoutingGrid {
                 : Math.max(clearance, this.maxObstacleClearance))
             : clearance);
         const searchRadiusCells = Math.ceil(searchClearanceMm / this.gridResolution);
+        const gridResSq = this.gridResolution * this.gridResolution;
 
         for (let dx = -searchRadiusCells; dx <= searchRadiusCells; dx++) {
             for (let dy = -searchRadiusCells; dy <= searchRadiusCells; dy++) {
@@ -738,8 +639,9 @@ export class RoutingGrid {
                 const ny = y + dy;
                 if (!this.isInBounds(nx, ny)) continue;
 
-                const key = this.getCellKey(layer, nx, ny);
-                const cell = this.cells.get(key);
+                const idx = this.getCellIndex(layer, nx, ny);
+                if (idx < 0) continue;
+                const cell = this.cells[idx];
                 if (!cell || !cell.occupied) continue;
 
                 // Same-net exemption (except for absolute blocks and manual-route handling below)
@@ -755,29 +657,31 @@ export class RoutingGrid {
                 // This is the correct PCB clearance calculation.
                 const obstacleHalfWidthMm = cell.obstacleHalfWidthMm ?? 0;
                 const baseClearance = sumObstacleClearance ? (clearance + obstacleClr) : Math.max(clearance, obstacleClr);
-                const requiredClearanceMm = baseClearance + obstacleHalfWidthMm;
 
-                // Convert grid cell distance to actual mm distance between cell centers
-                const distanceMm = Math.sqrt(dx * dx + dy * dy) * this.gridResolution;
-
-                // Edge-to-edge clearance: distance between centerlines minus obstacle half width
-                const edgeToEdgeDistance = Math.max(0, distanceMm - obstacleHalfWidthMm);
+                // Use squared distance to avoid Math.sqrt:
+                // We want: edgeToEdgeDistance < baseClearance
+                //   edgeToEdgeDistance = max(0, distanceMm - obstacleHalfWidthMm)
+                //   <=> distanceMm < baseClearance + obstacleHalfWidthMm
+                //   <=> distSqGrid * gridResSq < (baseClearance + obstacleHalfWidthMm)^2
+                const distSqGrid = dx * dx + dy * dy;
+                const thresholdMm = baseClearance + obstacleHalfWidthMm;
+                const withinThreshold = distSqGrid * gridResSq <= thresholdMm * thresholdMm;
 
                 // Absolute blocks always block within required clearance
-                if (cell.absoluteBlock && edgeToEdgeDistance <= requiredClearanceMm) {
+                if (cell.absoluteBlock && withinThreshold) {
                     return true;
                 }
 
                 // Manual routes: block different nets; allow same net
                 if (cell.isManualRoute) {
                     if (!(net && cell.net && cell.net === net)) {
-                        if (edgeToEdgeDistance <= requiredClearanceMm) return true;
+                        if (withinThreshold) return true;
                     }
                     continue;
                 }
 
                 // General occupied cell: blocks different nets within required clearance
-                if (edgeToEdgeDistance <= requiredClearanceMm) {
+                if (withinThreshold) {
                     return true;
                 }
             }
@@ -805,7 +709,9 @@ export class RoutingGrid {
     ): boolean {
         if (!this.isInBounds(x, y)) return true;
 
-        const cell = this.cells.get(this.getCellKey(layer, x, y));
+        const idx = this.getCellIndex(layer, x, y);
+        if (idx < 0) return true;
+        const cell = this.cells[idx];
         if (!cell || !cell.occupied) return false;
 
         // Absolute blocks always block
@@ -837,46 +743,30 @@ export class RoutingGrid {
      * @returns True if position conflicts with track obstacles
      */
     public checkTrackObstaclePrecise(worldX: number, worldY: number, layer: string, clearance: number, net?: string): boolean {
-        // Find all track obstacles on this layer
-        for (const [key, cell] of this.cells) {
-            if (!cell.occupied || !key.startsWith(`${layer}:`)) {
-                continue;
-            }
+        for (const [obstacleId, obstacle] of this.obstacles) {
+            if (!obstacle.segment) continue;
+            if (!obstacle.layers.includes(layer)) continue;
 
-            // Skip same-net tracks (unless manual route)
-            if (net && cell.net && cell.net === net && !cell.isManualRoute && !cell.absoluteBlock) {
-                continue;
-            }
+            if (net && obstacle.net && obstacle.net === net && !obstacle.isManualRoute) continue;
 
-            // Check if this cell represents a track obstacle with segment data
-            if (cell.obstacleHalfWidthMm !== undefined && cell.obstacleIds) {
-                // Check all obstacles occupying this cell
-                for (const obstacleId of cell.obstacleIds) {
-                    const obstacle = this.getCellObstacle(obstacleId);
-                    if (obstacle?.segment) {
-                        const segment = obstacle.segment;
-                        const trackHalfWidth = segment.width / 2;
+            const segment = obstacle.segment;
+            const trackHalfWidth = segment.width / 2;
 
-                        // Calculate precise point-to-segment distance
-                        const distanceToTrackCenterline = pointToSegmentDistance(
-                            worldX, worldY,
-                            segment.x1, segment.y1,
-                            segment.x2, segment.y2
-                        );
+            const distanceToTrackCenterline = pointToSegmentDistance(
+                worldX, worldY,
+                segment.x1, segment.y1,
+                segment.x2, segment.y2
+            );
 
-                        // Calculate required clearance: track half-width + obstacle clearance + requested clearance
-                        const obstacleClearance = obstacle.clearance || 0;
-                        const requiredClearance = trackHalfWidth + obstacleClearance + clearance;
+            const obstacleClearance = obstacle.clearance || 0;
+            const requiredClearance = trackHalfWidth + obstacleClearance + clearance;
 
-                        if (distanceToTrackCenterline <= requiredClearance) {
-                            return true; // Conflict detected
-                        }
-                    }
-                }
+            if (distanceToTrackCenterline <= requiredClearance) {
+                return true;
             }
         }
 
-        return false; // No conflicts
+        return false;
     }
 
     /**
@@ -930,8 +820,9 @@ export class RoutingGrid {
      * @private
      */
     private isCellOccupied(x: number, y: number, layer: string, net?: string): boolean {
-        const key = this.getCellKey(layer, x, y);
-        const cell = this.cells.get(key);
+        const idx = this.getCellIndex(layer, x, y);
+        if (idx < 0) return false;
+        const cell = this.cells[idx];
 
         if (!cell) {
             return false; // No cell = not occupied
@@ -973,8 +864,9 @@ export class RoutingGrid {
      * @returns Cost multiplier (1.0 = normal, higher = more expensive)
      */
     getCellCost(x: number, y: number, layer: string): number {
-        const key = this.getCellKey(layer, x, y);
-        const cell = this.cells.get(key);
+        const idx = this.getCellIndex(layer, x, y);
+        if (idx < 0) return 1.0;
+        const cell = this.cells[idx];
         return cell?.cost || 1.0;
     }
 
@@ -988,8 +880,9 @@ export class RoutingGrid {
      * @param cost - Cost multiplier
      */
     setCellCost(x: number, y: number, layer: string, cost: number): void {
-        const key = this.getCellKey(layer, x, y);
-        let cell = this.cells.get(key);
+        const idx = this.getCellIndex(layer, x, y);
+        if (idx < 0) return;
+        let cell = this.cells[idx];
 
         if (!cell) {
             cell = {
@@ -999,7 +892,7 @@ export class RoutingGrid {
                 occupied: false,
                 cost
             };
-            this.cells.set(key, cell);
+            this.cells[idx] = cell;
         } else {
             cell.cost = cost;
         }
@@ -1049,16 +942,19 @@ export class RoutingGrid {
      * Get the cell key for the internal map.
      * @private
      */
-    private getCellKey(layer: string, x: number, y: number): string {
-        return `${layer}:${x}:${y}`;
+    private getCellIndex(layer: string, x: number, y: number): number {
+        const li = this.layerIndex.get(layer);
+        if (li === undefined) return -1;
+        return li * this.gridWidth * this.gridHeight + y * this.gridWidth + x;
     }
 
     /**
      * Get a cell by coordinates, if present.
      */
     getCell(x: number, y: number, layer: string): IGridCell | undefined {
-        const key = this.getCellKey(layer, x, y);
-        return this.cells.get(key);
+        const idx = this.getCellIndex(layer, x, y);
+        if (idx < 0) return undefined;
+        return this.cells[idx];
     }
 
     /**
@@ -1114,14 +1010,24 @@ export class RoutingGrid {
         return { ...this.bounds };
     }
 
+    getCellsArray(): readonly (IGridCell | undefined)[] {
+        return this.cells;
+    }
+
+    getVersion(): number {
+        return this._version;
+    }
+
     /**
      * Clear all obstacles from the grid.
      * Useful for rebuilding the grid with different obstacles.
      */
     clear(): void {
-        this.cells.clear();
+        this.cells = new Array(this.cellsTotalSize);
+        this.obstacles.clear();
         this.maxObstacleClearance = 0;
         this.maxObstacleHalfWidthMm = 0;
+        this._version++;
         if (this.debug) {
             if (loggerDebug) loggerDebug(chalk.blue(`[RoutingGrid] Cleared all cells`));
         }
@@ -1137,7 +1043,11 @@ export class RoutingGrid {
         occupancyPercent: number;
     } {
         const totalCells = this.gridWidth * this.gridHeight * this.layers.length;
-        const occupiedCells = Array.from(this.cells.values()).filter(c => c.occupied).length;
+        let occupiedCells = 0;
+        for (let i = 0; i < this.cells.length; i++) {
+            const c = this.cells[i];
+            if (c && c.occupied) occupiedCells++;
+        }
         const freeCells = totalCells - occupiedCells;
 
         return {

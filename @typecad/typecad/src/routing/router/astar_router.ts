@@ -59,6 +59,14 @@ export class AStarRouter {
     private requestedGridResolution?: number;
     private resumeGridResolution?: number;
     private rawOptions: IRoutingOptions;
+    private _mstWorker: AStarRouter | null = null;
+
+    private getMstWorker(): AStarRouter {
+        if (!this._mstWorker) {
+            this._mstWorker = new AStarRouter(this.grid, { ...this.rawOptions, disableResumeGrid: true, coarseGridFactory: undefined });
+        }
+        return this._mstWorker;
+    }
 
     get routingOptions(): NormalizedRoutingOptions {
         return this.options;
@@ -133,7 +141,7 @@ constructor(grid: RoutingGrid, options: IRoutingOptions) {
             maxStrideCells: options.maxStrideCells ?? defaultStrideCells,
             // Allow stride moves to start sooner by shrinking the near-pad disable radius.
             strideNearPadDisableRadiusMm: options.strideNearPadDisableRadiusMm ?? Math.max(1.5, resumeGridResolution * 1.5),
-heuristicWeight: options.heuristicWeight ?? 2.0,
+            heuristicWeight: options.heuristicWeight ?? 2.0,
             requestedGridResolution,
             resumeGridResolution,
             parallelMSTWorkers: options.parallelMSTWorkers ?? DEFAULT_PARALLEL_WORKERS,
@@ -468,9 +476,9 @@ heuristicWeight: options.heuristicWeight ?? 2.0,
             let successCount = 0;
 
             let segmentResults: IRoutePath[] = [];
+            const worker = this.getMstWorker();
             for (let i = 0; i < mstEdges.length; i++) {
                 const edge = mstEdges[i];
-                const worker = new AStarRouter(this.grid, { ...this.rawOptions, disableResumeGrid: true, coarseGridFactory: undefined });
                 const res = worker.routeMSTEdge(points[edge.from], points[edge.to], points, routedPoints, allNodes);
                 segmentResults.push(res);
             }
@@ -1112,7 +1120,6 @@ heuristicWeight: options.heuristicWeight ?? 2.0,
             output += ' ' + chalk.magenta(timeString);
             // Always show routing results, not just in debug mode
             process.stdout.write(output + '\n');
-            process.stdout.write('');
         } else {
             const output =
                 chalk.red('[net failed]') + ' ' +
@@ -1127,7 +1134,6 @@ heuristicWeight: options.heuristicWeight ?? 2.0,
             } else {
                 logger.debug(output);
             }
-            process.stdout.write('');
         }
     }
 

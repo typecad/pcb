@@ -705,6 +705,7 @@ ENDDEF
 // -------------------- EXPORTS --------------------
 
 module.exports = {
+    dedent,
     KicadVersion,
     KiPinType,
     KiPinStyle,

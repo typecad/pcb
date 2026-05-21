@@ -9,7 +9,7 @@
         (fields
           (field (name "Footprint") "Resistor_SMD:R_0603_1608Metric")
         )
-    )
+     )
         (comp
       (ref "R2")
         (value "")
@@ -17,7 +17,7 @@
         (fields
           (field (name "Footprint") "Resistor_SMD:R_0603_1608Metric")
         )
-    )
+     )
         (comp
       (ref "R3")
         (value "")
@@ -25,7 +25,7 @@
         (fields
           (field (name "Footprint") "Resistor_SMD:R_0603_1608Metric")
         )
-    )
+     )
         (comp
       (ref "R4")
         (value "")
@@ -33,7 +33,7 @@
         (fields
           (field (name "Footprint") "Resistor_SMD:R_0603_1608Metric")
         )
-    )
+     )
         (comp
       (ref "R5")
         (value "")
@@ -41,7 +41,7 @@
         (fields
           (field (name "Footprint") "Resistor_SMD:R_0603_1608Metric")
         )
-    )
+     )
         (comp
       (ref "R6")
         (value "")
@@ -49,7 +49,7 @@
         (fields
           (field (name "Footprint") "Resistor_SMD:R_0603_1608Metric")
         )
-    )
+     )
         (comp
       (ref "R7")
         (value "")
@@ -57,7 +57,7 @@
         (fields
           (field (name "Footprint") "Resistor_SMD:R_0603_1608Metric")
         )
-    )
+     )
         (comp
       (ref "R8")
         (value "")
@@ -65,7 +65,7 @@
         (fields
           (field (name "Footprint") "Resistor_SMD:R_0603_1608Metric")
         )
-    )
+     )
         (comp
       (ref "U1")
         (value "")
@@ -73,7 +73,7 @@
         (fields
           (field (name "Footprint") "Package_DFN_QFN:QFN-12-1EP_3x3mm_P0.5mm_EP1.45x1.45mm")
         )
-    )
+     )
         (comp
       (ref "R9")
         (value "")
@@ -81,7 +81,7 @@
         (fields
           (field (name "Footprint") "Resistor_SMD:R_0603_1608Metric")
         )
-    )
+     )
         (comp
       (ref "R10")
         (value "")
@@ -89,7 +89,7 @@
         (fields
           (field (name "Footprint") "Resistor_SMD:R_0603_1608Metric")
         )
-    )
+     )
         (comp
       (ref "R11")
         (value "")
@@ -97,7 +97,7 @@
         (fields
           (field (name "Footprint") "Resistor_SMD:R_0603_1608Metric")
         )
-    )
+     )
         (comp
       (ref "R12")
         (value "")
@@ -105,7 +105,7 @@
         (fields
           (field (name "Footprint") "Resistor_SMD:R_0603_1608Metric")
         )
-    )
+     )
         (comp
       (ref "R13")
         (value "")
@@ -113,7 +113,7 @@
         (fields
           (field (name "Footprint") "Resistor_SMD:R_0603_1608Metric")
         )
-    )
+     )
         (comp
       (ref "R14")
         (value "")
@@ -121,7 +121,7 @@
         (fields
           (field (name "Footprint") "Resistor_SMD:R_0603_1608Metric")
         )
-    )
+     )
         (comp
       (ref "J1")
         (value "")
@@ -129,7 +129,7 @@
         (fields
           (field (name "Footprint") "Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Vertical")
         )
-    )
+     )
         (comp
       (ref "J2")
         (value "")
@@ -137,7 +137,7 @@
         (fields
           (field (name "Footprint") "Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Vertical")
         )
-    )
+     )
         (comp
       (ref "R15")
         (value "")
@@ -145,7 +145,7 @@
         (fields
           (field (name "Footprint") "Resistor_SMD:R_0603_1608Metric")
         )
-    )
+     )
         (comp
       (ref "R16")
         (value "")
@@ -153,7 +153,7 @@
         (fields
           (field (name "Footprint") "Resistor_SMD:R_0603_1608Metric")
         )
-    )
+     )
         (comp
       (ref "J3")
         (value "")
@@ -161,7 +161,7 @@
         (fields
           (field (name "Footprint") "Connector_PinHeader_2.54mm:PinHeader_1x06_P2.54mm_Vertical")
         )
-    )
+     )
         (comp
       (ref "J4")
         (value "")
@@ -169,7 +169,7 @@
         (fields
           (field (name "Footprint") "Connector_PinHeader_2.54mm:PinHeader_1x06_P2.54mm_Vertical")
         )
-    )
+     )
         (comp
       (ref "R17")
         (value "")
@@ -177,7 +177,7 @@
         (fields
           (field (name "Footprint") "Resistor_SMD:R_0603_1608Metric")
         )
-    )
+     )
         (comp
       (ref "R18")
         (value "")
@@ -185,7 +185,7 @@
         (fields
           (field (name "Footprint") "Resistor_SMD:R_0603_1608Metric")
         )
-    )
+     )
         (comp
       (ref "R19")
         (value "")
@@ -193,7 +193,7 @@
         (fields
           (field (name "Footprint") "Resistor_SMD:R_0603_1608Metric")
         )
-    )
+     )
         (comp
       (ref "J5")
         (value "")
@@ -201,7 +201,7 @@
         (fields
           (field (name "Footprint") "Connector_PinHeader_2.54mm:PinHeader_1x08_P2.54mm_Vertical")
         )
-    )
+     )
         (comp
       (ref "J6")
         (value "")
@@ -209,7 +209,7 @@
         (fields
           (field (name "Footprint") "Connector_PinHeader_2.54mm:PinHeader_1x08_P2.54mm_Vertical")
         )
-    )
+     )
         (comp
       (ref "R20")
         (value "")
@@ -217,7 +217,7 @@
         (fields
           (field (name "Footprint") "Resistor_SMD:R_0603_1608Metric")
         )
-    )
+     )
         (comp
       (ref "R21")
         (value "")
@@ -225,7 +225,7 @@
         (fields
           (field (name "Footprint") "Resistor_SMD:R_0603_1608Metric")
         )
-    )
+     )
         (comp
       (ref "R22")
         (value "")
@@ -233,7 +233,7 @@
         (fields
           (field (name "Footprint") "Resistor_SMD:R_0603_1608Metric")
         )
-    )
+     )
         (comp
       (ref "R23")
         (value "")
@@ -241,7 +241,7 @@
         (fields
           (field (name "Footprint") "Resistor_SMD:R_0603_1608Metric")
         )
-    )
+     )
         (comp
       (ref "J7")
         (value "")
@@ -249,7 +249,7 @@
         (fields
           (field (name "Footprint") "Connector_PinHeader_2.54mm:PinHeader_1x12_P2.54mm_Vertical")
         )
-    )
+     )
         (comp
       (ref "J8")
         (value "")
@@ -257,7 +257,7 @@
         (fields
           (field (name "Footprint") "Connector_PinHeader_2.54mm:PinHeader_1x12_P2.54mm_Vertical")
         )
-    )
+     )
         (comp
       (ref "R24")
         (value "")
@@ -265,7 +265,7 @@
         (fields
           (field (name "Footprint") "Resistor_SMD:R_0603_1608Metric")
         )
-    )
+     )
         (comp
       (ref "R25")
         (value "")
@@ -273,7 +273,7 @@
         (fields
           (field (name "Footprint") "Resistor_SMD:R_0603_1608Metric")
         )
-    )
+     )
         (comp
       (ref "R26")
         (value "")
@@ -281,7 +281,7 @@
         (fields
           (field (name "Footprint") "Resistor_SMD:R_0603_1608Metric")
         )
-    )
+     )
         (comp
       (ref "R27")
         (value "")
@@ -289,7 +289,7 @@
         (fields
           (field (name "Footprint") "Resistor_SMD:R_0603_1608Metric")
         )
-    )
+     )
         (comp
       (ref "R28")
         (value "")
@@ -297,7 +297,7 @@
         (fields
           (field (name "Footprint") "Resistor_SMD:R_0603_1608Metric")
         )
-    )
+     )
         (comp
       (ref "R29")
         (value "")
@@ -305,7 +305,7 @@
         (fields
           (field (name "Footprint") "Resistor_SMD:R_0603_1608Metric")
         )
-    )
+     )
         (comp
       (ref "U2")
         (value "")
@@ -313,7 +313,7 @@
         (fields
           (field (name "Footprint") "Package_BGA:Texas_DSBGA-12_1.36x1.86mm_Layout3x4_P0.5mm")
         )
-    )
+     )
         (comp
       (ref "R30")
         (value "")
@@ -321,7 +321,7 @@
         (fields
           (field (name "Footprint") "Resistor_SMD:R_0603_1608Metric")
         )
-    )
+     )
         (comp
       (ref "R31")
         (value "")
@@ -329,7 +329,7 @@
         (fields
           (field (name "Footprint") "Resistor_SMD:R_0603_1608Metric")
         )
-    )
+     )
         (comp
       (ref "R32")
         (value "")
@@ -337,7 +337,7 @@
         (fields
           (field (name "Footprint") "Resistor_SMD:R_0603_1608Metric")
         )
-    )
+     )
         (comp
       (ref "R33")
         (value "")
@@ -345,7 +345,7 @@
         (fields
           (field (name "Footprint") "Resistor_SMD:R_0603_1608Metric")
         )
-    )
+     )
         (comp
       (ref "R34")
         (value "")
@@ -353,7 +353,7 @@
         (fields
           (field (name "Footprint") "Resistor_SMD:R_0603_1608Metric")
         )
-    )
+     )
         (comp
       (ref "R35")
         (value "")
@@ -361,7 +361,7 @@
         (fields
           (field (name "Footprint") "Resistor_SMD:R_0603_1608Metric")
         )
-    )
+     )
         (comp
       (ref "R36")
         (value "")
@@ -369,7 +369,7 @@
         (fields
           (field (name "Footprint") "Resistor_SMD:R_0603_1608Metric")
         )
-    )
+     )
         (comp
       (ref "R37")
         (value "")
@@ -377,7 +377,7 @@
         (fields
           (field (name "Footprint") "Resistor_SMD:R_0603_1608Metric")
         )
-    )
+     )
         (comp
       (ref "R38")
         (value "")
@@ -385,7 +385,7 @@
         (fields
           (field (name "Footprint") "Resistor_SMD:R_0603_1608Metric")
         )
-    )
+     )
         (comp
       (ref "R39")
         (value "")
@@ -393,7 +393,7 @@
         (fields
           (field (name "Footprint") "Resistor_SMD:R_0603_1608Metric")
         )
-    )
+     )
     )
   (nets
     (net (code "1") (name "test1_1")

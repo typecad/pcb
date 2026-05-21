@@ -8,6 +8,19 @@ export interface IRoutingCell {
   net?: string;
 }
 
+export interface IRoutingCellFull extends IRoutingCell {
+  x: number;
+  y: number;
+  layer: string;
+  isManualRoute?: boolean;
+  absoluteBlock?: boolean;
+  pad?: boolean;
+  cost: number;
+  clearance?: number;
+  obstacleHalfWidthMm?: number;
+  obstacleIds?: string[];
+}
+
 /**
   * Minimal routing grid contract shared between host and plugins.
   * Concrete grid implementations should satisfy this interface.
@@ -35,6 +48,12 @@ export interface IRoutingGrid {
     layer: string,
     obstacleIds: Set<string> | string[]
   ): boolean;
+  addObstacle(obstacle: import("../shared/routing_grid.js").IRoutingObstacle): void;
+  getCellsArray(): readonly (IRoutingCellFull | undefined)[];
+  getDimensions(): { width: number; height: number; layers: number };
+  getBounds(): { minX: number; maxX: number; minY: number; maxY: number };
+  getLayers(): string[];
+  getVersion(): number;
 }
 
 export type RoutingGrid = IRoutingGrid;

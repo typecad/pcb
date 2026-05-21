@@ -47,6 +47,24 @@ export interface IPadGeometry {
  * Handles coordinate transformation from footprint-relative to board-absolute coordinates.
  */
 export class PadResolver {
+    private static _parseCache: Map<string, SexprNode | null> = new Map();
+
+    private static getCachedParse(footprintName: string, footprintSExpr: string): SexprNode | null {
+        let cached = this._parseCache.get(footprintName);
+        if (cached !== undefined) return cached;
+        try {
+            const parsed = S.parse(footprintSExpr);
+            cached = (Array.isArray(parsed) && parsed.length > 0) ? (parsed as SexprNode) : null;
+        } catch {
+            cached = null;
+        }
+        this._parseCache.set(footprintName, cached);
+        return cached;
+    }
+
+    static clearParseCache(): void {
+        this._parseCache.clear();
+    }
     /**
      * Get the absolute center position of a pin's pad on the PCB.
      *
@@ -96,19 +114,15 @@ export class PadResolver {
      */
     static getPadGeometry(component: Component, pinNumber: string | number): IPadGeometry | null {
         try {
-            // Get the footprint S-expression
             const footprintSExpr = component.footprint_lib(component.footprint);
-
-            // Parse the S-expression
-            const parsed = S.parse(footprintSExpr);
-
-            if (!Array.isArray(parsed) || parsed.length === 0) {
+            const parsed = this.getCachedParse(component.footprint, footprintSExpr);
+            if (!parsed) {
                 logger.warn(`[PadResolver] Unable to parse footprint for ${component.reference}`);
                 return null;
             }
 
             // Find the pad matching the pin number
-            const padNode = this.findPadNode(parsed as SexprNode, pinNumber);
+            const padNode = this.findPadNode(parsed, pinNumber);
             if (!padNode) {
                 logger.warn(`[PadResolver] Pad ${pinNumber} not found in footprint ${component.footprint} for ${component.reference}`);
                 return null;
@@ -341,16 +355,10 @@ export class PadResolver {
     static getAllPadGeometries(component: Component): IPadGeometry[] {
         const geometries: IPadGeometry[] = [];
 
-        // Always parse the footprint and enumerate all pads to ensure
-        // netless/mechanical pads are included as obstacles. This avoids
-        // missing NC pads on footprints that also define electrical pins.
         try {
             const footprintSExpr = component.footprint_lib(component.footprint);
-            const parsed = S.parse(footprintSExpr);
-
-            if (!Array.isArray(parsed) || parsed.length === 0) {
-                return geometries;
-            }
+            const parsed = this.getCachedParse(component.footprint, footprintSExpr);
+            if (!parsed) return geometries;
 
             // Recursively collect all pad nodes
             const padNodes: SexprNode[] = [];
@@ -366,7 +374,7 @@ export class PadResolver {
                     }
                 }
             };
-            collectPads(parsed as SexprNode);
+            collectPads(parsed);
 
             for (const padNode of padNodes) {
                 const rel = this.extractPadData(padNode);

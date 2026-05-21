@@ -68,16 +68,12 @@
     "acorn-walk": "^8.3.5",
     "chalk": "^5.4.1",
     "commander": "^11.0.0",
-    "decimal.js": "^10.5.0",
-    "dedent": "^0.7.0",
     "fast-sexpr": "^1.0.0",
     "find-bin": "^1.1.0",
     "gl-matrix": "^3.4.3",
     "handlebars": "^4.7.8",
     "inquirer-file-selector": "0.4.0",
     "inquirer-select-pro": "1.0.0-alpha.9",
-    "obj-file-parser": "^0.6.2",
-    "ora": "^7.0.1",
     "s-expression.js": "^0.6.4"
   }
 }

@@ -1,16 +1,15 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { PCB, Schematic } from '../src/index.js'
 import fs from 'node:fs'
-import fsexp from 'fast-sexpr'
+import { parse, Sym, nameOf } from '../src/sexpr/index.js'
 
-// Helper to extract full text from gr_text element (handles spaces in text)
 function getTextContent(grTextElement: any[]): string {
   const textTokens = []
   for (let i = 1; i < grTextElement.length; i++) {
     if (Array.isArray(grTextElement[i])) break
-    textTokens.push(grTextElement[i])
+    textTokens.push(String(grTextElement[i]))
   }
-  return textTokens.join(' ').replace(/`/g, '')
+  return textTokens.join(' ')
 }
 
 describe('PCB Text Functionality', () => {
@@ -46,12 +45,11 @@ describe('PCB Text Functionality', () => {
 
     // Read the generated PCB file
     const pcbFile = fs.readFileSync(`./build/${testBoardName}.kicad_pcb`, 'utf8')
-    const parsed = fsexp(pcbFile.replaceAll('"', '`'))
-    const boardContents = parsed[0]
+    const boardContents = parse(pcbFile)
 
     // Find gr_text elements
     const grTextElements = boardContents.filter((item: any) =>
-      Array.isArray(item) && item[0] === 'gr_text'
+      Array.isArray(item) && nameOf(item[0]) === 'gr_text'
     )
 
     expect(grTextElements.length).toBeGreaterThan(0)
@@ -78,12 +76,11 @@ describe('PCB Text Functionality', () => {
 
     // Read and parse the generated PCB file
     const pcbFile = fs.readFileSync(`./build/${testBoardName}.kicad_pcb`, 'utf8')
-    const parsed = fsexp(pcbFile.replaceAll('"', '`'))
-    const boardContents = parsed[0]
+    const boardContents = parse(pcbFile)
 
     // Find the text element
     const grTextElements = boardContents.filter((item: any) =>
-      Array.isArray(item) && item[0] === 'gr_text'
+      Array.isArray(item) && nameOf(item[0]) === 'gr_text'
     )
 
     const textElement = grTextElements.find((item: any) => getTextContent(item) === 'TYPECAD 1HZ')
@@ -92,46 +89,45 @@ describe('PCB Text Functionality', () => {
 
     // Check position
     const atNode = textElement.find((item: any) =>
-      Array.isArray(item) && item[0] === 'at'
+      Array.isArray(item) && nameOf(item[0]) === 'at'
     )
     expect(parseFloat(atNode[1])).toBe(145.415)
     expect(parseFloat(atNode[2])).toBe(108.585)
 
     // Check layer
     const layerNode = textElement.find((item: any) =>
-      Array.isArray(item) && item[0] === 'layer'
+      Array.isArray(item) && nameOf(item[0]) === 'layer'
     )
-    expect(layerNode[1]).toBe('`F.SilkS`')
+    expect(layerNode[1]).toBe('F.SilkS')
 
     // Check effects (font)
     const effectsNode = textElement.find((item: any) =>
-      Array.isArray(item) && item[0] === 'effects'
+      Array.isArray(item) && nameOf(item[0]) === 'effects'
     )
     expect(effectsNode).toBeDefined()
 
     const fontNode = effectsNode.find((item: any) =>
-      Array.isArray(item) && item[0] === 'font'
+      Array.isArray(item) && nameOf(item[0]) === 'font'
     )
     expect(fontNode).toBeDefined()
 
     // Check for font face
     const faceNode = fontNode.find((item: any) =>
-      Array.isArray(item) && item[0] === 'face'
+      Array.isArray(item) && nameOf(item[0]) === 'face'
     )
     expect(faceNode).toBeDefined()
-    // Face value might also be split due to spaces
     const faceTokens = []
     for (let i = 1; i < faceNode.length; i++) {
       if (!Array.isArray(faceNode[i])) {
-        faceTokens.push(faceNode[i])
+        faceTokens.push(String(faceNode[i]))
       }
     }
-    const faceName = faceTokens.join(' ').replace(/`/g, '')
+    const faceName = faceTokens.join(' ')
     expect(faceName).toBe('Super Skinny Pixel Bricks')
 
     // Check for size
     const sizeNode = fontNode.find((item: any) =>
-      Array.isArray(item) && item[0] === 'size'
+      Array.isArray(item) && nameOf(item[0]) === 'size'
     )
     expect(sizeNode).toBeDefined()
     expect(parseFloat(sizeNode[1])).toBe(5) // height
@@ -165,11 +161,10 @@ describe('PCB Text Functionality', () => {
     await pcb.create()
 
     const pcbFile = fs.readFileSync(`./build/${testBoardName}.kicad_pcb`, 'utf8')
-    const parsed = fsexp(pcbFile.replaceAll('"', '`'))
-    const boardContents = parsed[0]
+    const boardContents = parse(pcbFile)
 
     const grTextElements = boardContents.filter((item: any) =>
-      Array.isArray(item) && item[0] === 'gr_text'
+      Array.isArray(item) && nameOf(item[0]) === 'gr_text'
     )
 
     expect(grTextElements.length).toBeGreaterThanOrEqual(3)
@@ -190,11 +185,10 @@ describe('PCB Text Functionality', () => {
     await pcb.create()
 
     const pcbFile = fs.readFileSync(`./build/${testBoardName}.kicad_pcb`, 'utf8')
-    const parsed = fsexp(pcbFile.replaceAll('"', '`'))
-    const boardContents = parsed[0]
+    const boardContents = parse(pcbFile)
 
     const grTextElements = boardContents.filter((item: any) =>
-      Array.isArray(item) && item[0] === 'gr_text'
+      Array.isArray(item) && nameOf(item[0]) === 'gr_text'
     )
 
     const textElement = grTextElements.find((item: any) => getTextContent(item) === 'Bold Italic')
@@ -202,22 +196,22 @@ describe('PCB Text Functionality', () => {
     expect(textElement).toBeDefined()
 
     const effectsNode = textElement.find((item: any) =>
-      Array.isArray(item) && item[0] === 'effects'
+      Array.isArray(item) && nameOf(item[0]) === 'effects'
     )
     const fontNode = effectsNode.find((item: any) =>
-      Array.isArray(item) && item[0] === 'font'
+      Array.isArray(item) && nameOf(item[0]) === 'font'
     )
 
     // Check for bold and italic flags
-    const hasBold = fontNode.some((item: any) => item === 'bold')
-    const hasItalic = fontNode.some((item: any) => item === 'italic')
+    const hasBold = fontNode.some((item: any) => Sym.isSym(item) && item.name === 'bold')
+    const hasItalic = fontNode.some((item: any) => Sym.isSym(item) && item.name === 'italic')
 
     expect(hasBold).toBe(true)
     expect(hasItalic).toBe(true)
 
     // Check thickness
     const thicknessNode = fontNode.find((item: any) =>
-      Array.isArray(item) && item[0] === 'thickness'
+      Array.isArray(item) && nameOf(item[0]) === 'thickness'
     )
     expect(thicknessNode).toBeDefined()
     expect(parseFloat(thicknessNode[1])).toBe(0.5)
@@ -239,11 +233,10 @@ describe('PCB Text Functionality', () => {
     await pcb.create()
 
     const pcbFile = fs.readFileSync(`./build/${testBoardName}.kicad_pcb`, 'utf8')
-    const parsed = fsexp(pcbFile.replaceAll('"', '`'))
-    const boardContents = parsed[0]
+    const boardContents = parse(pcbFile)
 
     const grTextElements = boardContents.filter((item: any) =>
-      Array.isArray(item) && item[0] === 'gr_text'
+      Array.isArray(item) && nameOf(item[0]) === 'gr_text'
     )
 
     const textElement = grTextElements.find((item: any) => getTextContent(item) === 'Centered')
@@ -251,16 +244,16 @@ describe('PCB Text Functionality', () => {
     expect(textElement).toBeDefined()
 
     const effectsNode = textElement.find((item: any) =>
-      Array.isArray(item) && item[0] === 'effects'
+      Array.isArray(item) && nameOf(item[0]) === 'effects'
     )
 
     const justifyNode = effectsNode.find((item: any) =>
-      Array.isArray(item) && item[0] === 'justify'
+      Array.isArray(item) && nameOf(item[0]) === 'justify'
     )
 
     expect(justifyNode).toBeDefined()
-    expect(justifyNode).toContain('center')
-    expect(justifyNode).toContain('middle')
+    expect(justifyNode.some((item: any) => String(item) === 'center')).toBe(true)
+    expect(justifyNode.some((item: any) => String(item) === 'middle')).toBe(true)
   })
 
   it('should apply default values', async () => {
@@ -275,11 +268,10 @@ describe('PCB Text Functionality', () => {
     await pcb.create()
 
     const pcbFile = fs.readFileSync(`./build/${testBoardName}.kicad_pcb`, 'utf8')
-    const parsed = fsexp(pcbFile.replaceAll('"', '`'))
-    const boardContents = parsed[0]
+    const boardContents = parse(pcbFile)
 
     const grTextElements = boardContents.filter((item: any) =>
-      Array.isArray(item) && item[0] === 'gr_text'
+      Array.isArray(item) && nameOf(item[0]) === 'gr_text'
     )
 
     const textElement = grTextElements.find((item: any) => getTextContent(item) === 'Default Text')
@@ -288,37 +280,35 @@ describe('PCB Text Functionality', () => {
 
     // Check default layer is F.SilkS
     const layerNode = textElement.find((item: any) =>
-      Array.isArray(item) && item[0] === 'layer'
+      Array.isArray(item) && nameOf(item[0]) === 'layer'
     )
-    expect(layerNode[1]).toBe('`F.SilkS`')
+    expect(layerNode[1]).toBe('F.SilkS')
 
     // Check default rotation is 0
     const atNode = textElement.find((item: any) =>
-      Array.isArray(item) && item[0] === 'at'
+      Array.isArray(item) && nameOf(item[0]) === 'at'
     )
     expect(parseFloat(atNode[3])).toBe(0)
 
     // Check default size is 1.27
     const effectsNode = textElement.find((item: any) =>
-      Array.isArray(item) && item[0] === 'effects'
+      Array.isArray(item) && nameOf(item[0]) === 'effects'
     )
     const fontNode = effectsNode.find((item: any) =>
-      Array.isArray(item) && item[0] === 'font'
+      Array.isArray(item) && nameOf(item[0]) === 'font'
     )
     const sizeNode = fontNode.find((item: any) =>
-      Array.isArray(item) && item[0] === 'size'
+      Array.isArray(item) && nameOf(item[0]) === 'size'
     )
     expect(parseFloat(sizeNode[1])).toBe(1.27) // height
     expect(parseFloat(sizeNode[2])).toBe(1.27) // width
 
     // When no justify is specified, the justify node exists but has no values
-    // (code only includes horizontal/vertical if truthy)
     const justifyNode = effectsNode.find((item: any) =>
-      Array.isArray(item) && item[0] === 'justify'
+      Array.isArray(item) && nameOf(item[0]) === 'justify'
     )
     expect(justifyNode).toBeDefined()
-    // No default justification values are added when none specified
-    expect(justifyNode.length).toBe(1) // Just ['justify'] with no values
+    expect(justifyNode.length).toBe(1) // Just [Sym('justify')] with no values
   })
 
   it('should support rotation', async () => {
@@ -334,17 +324,16 @@ describe('PCB Text Functionality', () => {
     await pcb.create()
 
     const pcbFile = fs.readFileSync(`./build/${testBoardName}.kicad_pcb`, 'utf8')
-    const parsed = fsexp(pcbFile.replaceAll('"', '`'))
-    const boardContents = parsed[0]
+    const boardContents = parse(pcbFile)
 
     const grTextElements = boardContents.filter((item: any) =>
-      Array.isArray(item) && item[0] === 'gr_text'
+      Array.isArray(item) && nameOf(item[0]) === 'gr_text'
     )
 
     const textElement = grTextElements.find((item: any) => getTextContent(item) === 'Rotated')
 
     const atNode = textElement.find((item: any) =>
-      Array.isArray(item) && item[0] === 'at'
+      Array.isArray(item) && nameOf(item[0]) === 'at'
     )
     expect(parseFloat(atNode[3])).toBe(90)
   })
@@ -362,21 +351,20 @@ describe('PCB Text Functionality', () => {
     await pcb.create()
 
     const pcbFile = fs.readFileSync(`./build/${testBoardName}.kicad_pcb`, 'utf8')
-    const parsed = fsexp(pcbFile.replaceAll('"', '`'))
-    const boardContents = parsed[0]
+    const boardContents = parse(pcbFile)
 
     const grTextElements = boardContents.filter((item: any) =>
-      Array.isArray(item) && item[0] === 'gr_text'
+      Array.isArray(item) && nameOf(item[0]) === 'gr_text'
     )
 
     const textElement = grTextElements.find((item: any) => getTextContent(item) === 'Hidden')
 
     const effectsNode = textElement.find((item: any) =>
-      Array.isArray(item) && item[0] === 'effects'
+      Array.isArray(item) && nameOf(item[0]) === 'effects'
     )
 
     // Check for hide flag
-    const hasHide = effectsNode.some((item: any) => item === 'hide')
+    const hasHide = effectsNode.some((item: any) => Sym.isSym(item) && item.name === 'hide')
     expect(hasHide).toBe(true)
   })
 })

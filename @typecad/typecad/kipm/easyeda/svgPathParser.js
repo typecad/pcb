@@ -123,4 +123,10 @@ function parseSvgPath(svgPath) {
     return parsedPath;
 }
 
-export { parseSvgPath, SvgPathMoveTo, SvgPathLineTo, SvgPathEllipticalArc, SvgPathClosePath };
+module.exports = {
+    parseSvgPath,
+    SvgPathMoveTo,
+    SvgPathLineTo,
+    SvgPathEllipticalArc,
+    SvgPathClosePath,
+};

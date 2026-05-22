@@ -265,8 +265,7 @@ export class Profiler {
      */
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     public profile<T extends (...args: any[]) => any>(name: string, fn: T): T {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        return ((...args: any[]) => {
+        return ((...args: Parameters<T>) => {
             this.start(name);
             try {
                 const result = fn(...args);

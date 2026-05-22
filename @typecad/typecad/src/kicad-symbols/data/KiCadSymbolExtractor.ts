@@ -5,7 +5,8 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import fsexp from 'fast-sexpr';
+import { parse, Sym } from '../../sexpr/index.js';
+import type { SExpr } from '../../sexpr/types.js';
 import { SymbolFileInfo } from './KiCadSymbolFileScanner.js';
 
 /**
@@ -239,14 +240,14 @@ export class KiCadSymbolExtractor {
    * @private
    */
   private parseSymbols(content: string): KiCadParsedSymbol[] {
-    const parsed = fsexp(content.replaceAll('"', '`')).pop();
+    const parsed = parse(content);
     if (!Array.isArray(parsed)) {
       throw new Error('Invalid KiCad symbol file: Root element must be a list');
     }
 
     const symbols: KiCadParsedSymbol[] = [];
     for (const item of parsed) {
-      if (Array.isArray(item) && item.length > 1 && item[0] === 'symbol') {
+      if (Array.isArray(item) && item.length > 1 && Sym.isSym(item[0]) && item[0].name === 'symbol') {
         const symbolDef = this.parseSymbolDefinition(item);
         if (symbolDef) {
           symbols.push(symbolDef);
@@ -262,20 +263,20 @@ export class KiCadSymbolExtractor {
    * @returns Parsed symbol definition or null
    * @private
    */
-  private parseSymbolDefinition(symbolNode: unknown[]): KiCadParsedSymbol | null {
+  private parseSymbolDefinition(symbolNode: SExpr[]): KiCadParsedSymbol | null {
     if (symbolNode.length < 2) return null;
 
-    const symbolName = String(symbolNode[1]).replaceAll('`', '');
+    const symbolName = String(symbolNode[1]);
     const properties: SymbolProperty[] = [];
     let description: string | undefined;
     let keywords: string | undefined;
 
     for (let i = 2; i < symbolNode.length; i++) {
       const child = symbolNode[i];
-      if (Array.isArray(child) && child.length > 0 && child[0] === 'property') {
+      if (Array.isArray(child) && child.length > 0 && Sym.isSym(child[0]) && child[0].name === 'property') {
         if (child.length >= 3) {
-          const propName = String(child[1]).replaceAll('`', '');
-          const propValue = String(child[2]).replaceAll('`', '');
+          const propName = String(child[1]);
+          const propValue = String(child[2]);
           properties.push({ name: propName, value: propValue });
 
           if (propName === 'Description') {

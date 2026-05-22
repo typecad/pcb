@@ -1,5 +1,5 @@
-import chalk from 'chalk';
-import type { SexprNode } from '../types/sexpr_types.js';
+import type { SExpr } from '../sexpr/types.js';
+import { Sym } from '../sexpr/index.js';
 
 /**
  * Layer utility functions for PCB operations
@@ -15,8 +15,7 @@ export function mapLayerToSide(layerName: string, targetSide: 'front' | 'back' |
     if (!targetSide) {
         targetSide = 'front'; // Default to front if side is undefined
     }
-    // Ensure layerName is a string and cleanup backticks/quotes for processing
-    let cleanLayerName = String(layerName).replace(/[`\"]/g, '');
+    let cleanLayerName = String(layerName);
 
     const parts = cleanLayerName.split('.');
     if (parts.length !== 2) {
@@ -73,7 +72,7 @@ export function mapLayerToSide(layerName: string, targetSide: 'front' | 'back' |
  * @param targetSide - Target side: 'front', 'back', or undefined (defaults to front)
  * @returns Transformed S-expression
  */
-export function transformSexprLayers(sexpr: SexprNode, targetSide: 'front' | 'back' | undefined): SexprNode {
+export function transformSexprLayers(sexpr: SExpr, targetSide: 'front' | 'back' | undefined): SExpr {
     if (!Array.isArray(sexpr)) {
         return sexpr;
     }
@@ -81,12 +80,12 @@ export function transformSexprLayers(sexpr: SexprNode, targetSide: 'front' | 'ba
     const nodeType = sexpr[0];
 
     // Handle (layer "LAYER_NAME")
-    if (nodeType === 'layer' && sexpr.length > 1 && typeof sexpr[1] === 'string') {
+    if (Sym.isSym(nodeType) && nodeType.name === 'layer' && sexpr.length > 1 && typeof sexpr[1] === 'string') {
         sexpr[1] = mapLayerToSide(sexpr[1], targetSide);
     }
     // Handle (layers "L1 L2 L3")
-    else if (nodeType === 'layers' && sexpr.length > 1 && typeof sexpr[1] === 'string') {
-        const layersString = String(sexpr[1]).replace(/[`\"]/g, ''); // Clean quotes for processing
+    else if (Sym.isSym(nodeType) && nodeType.name === 'layers' && sexpr.length > 1 && typeof sexpr[1] === 'string') {
+        const layersString = String(sexpr[1]);
 
         const individualLayers = layersString.split(/\s+/).filter(layer => layer.length > 0);
 
@@ -111,7 +110,7 @@ export function transformSexprLayers(sexpr: SexprNode, targetSide: 'front' | 'ba
  * @returns Mirrored chamfer direction
  */
 export function mirrorChamferDirection(chamferDirection: string): string {
-    const cleanDirection = String(chamferDirection).replace(/[`"]/g, '');
+    const cleanDirection = String(chamferDirection);
     const directionMap: { [key: string]: string } = {
         'top_left': 'bottom_left',
         'top_right': 'bottom_right',

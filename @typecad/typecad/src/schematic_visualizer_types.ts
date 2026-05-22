@@ -1,8 +1,7 @@
 import { Component } from "./component.js";
 import { Pin } from "./pin.js";
 import logger from './logging.js';
-
-// ── Logging helpers ──────────────────────────────────────────────────────────
+import type { SExpr } from './sexpr/types.js';
 
 export function logError(message: string, ...args: unknown[]): void {
     logger.error(`[Schematic] ERROR: ${message}`, ...args);
@@ -12,9 +11,7 @@ export function logWarning(message: string, ...args: unknown[]): void {
     logger.warn(`[Schematic] Warning: ${message}`, ...args);
 }
 
-// ── Shared types ─────────────────────────────────────────────────────────────
-
-export type SExprNode = (string | SExprNode)[];
+export type SExprNode = SExpr[];
 
 export interface SymbolDefinition {
     rawSexpr: SExprNode;

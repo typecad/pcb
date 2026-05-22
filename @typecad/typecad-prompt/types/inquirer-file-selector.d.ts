@@ -1,9 +1,15 @@
 declare module 'inquirer-file-selector' {
-  interface FileSelectorOptions {
-    message: string;
-    filter?: (file: { name: string; path: string }) => boolean;
+  interface Item {
+    path: string;
+    name: string;
+    isDirectory: boolean;
   }
 
-  function fileSelector(options: FileSelectorOptions): Promise<string>;
-  export default fileSelector;
+  interface FileSelectorOptions {
+    message: string;
+    filter?: (file: { isDirectory: boolean; name: string; path: string }) => boolean;
+    showExcluded?: boolean;
+  }
+
+  export function fileSelector(options: FileSelectorOptions): Promise<Item>;
 } 

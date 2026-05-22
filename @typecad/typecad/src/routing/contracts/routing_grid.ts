@@ -40,6 +40,9 @@ export interface IRoutingGrid {
     sumObstacleClearance?: boolean
   ): boolean;
   getResolution(): number;
+  readonly gridResolution: number;
+  readonly maxObstacleHalfWidthMm: number;
+  markTerminal(gx: number, gy: number, layer: string, radiusCells: number, net?: string): void;
   getCellCost(x: number, y: number, layer: string): number;
   isPadCell(x: number, y: number, layer: string): boolean;
   isOccupiedById(

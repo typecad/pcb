@@ -12,7 +12,6 @@ import chalk from 'chalk';
 import { Component } from '../component.js';
 import { Pin } from '../pin.js';
 import { RoutingError } from '../errors.js';
-import { PCB } from './pcb.js';
 import {
     IAutorouteOptions,
     IAutorouteResult,
@@ -280,7 +279,7 @@ export function autoroute(pcb: IPcbBoardContext, options: IAutorouteOptions): IA
         collectComponentsForBounds(pcb, componentsFromPins);
     let bounds = calculateBoardBounds(componentsForBounds, pcb.outlines, stagedComponentsForBounds);
 
-    const stagedOutlines = typeof pcb._getStagedOutlines === 'function' ? pcb._getStagedOutlines() : [];
+    const stagedOutlines = pcb.state.stagedOutlines;
     const requestedGridResolution = options.gridResolution ?? 0.1;
     const boundsExpansionMargin = Math.max(
         5,
@@ -337,7 +336,7 @@ export function autoroute(pcb: IPcbBoardContext, options: IAutorouteOptions): IA
     const grid = new RoutingGrid(bounds, gridResolution, routingLayers, options.debug);
 
     // ── 12. Add obstacles ────────────────────────────────────────────────
-    const obstacles = ObstacleBuilder.buildFromPCB(pcb as unknown as PCB, clearance, componentsFromPins, options.debug);
+    const obstacles = ObstacleBuilder.buildFromPCB(pcb, clearance, componentsFromPins, options.debug);
     const allObstacles: IRoutingObstacle[] = [];
     const addObstacleToState = (obs: IRoutingObstacle) => {
         allObstacles.push(obs);

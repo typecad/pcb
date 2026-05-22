@@ -1,7 +1,6 @@
 import { Component } from "./component.js";
 import { Pin } from "./pin.js";
-import S from "./utils/sexpr_instance.js";
-import Handlebars from "handlebars";
+import { serialize, s, sym, yes, no } from "./sexpr/index.js";
 import { randomUUID, UUID } from "node:crypto";
 import { SymbolLibraryManager } from './symbol_library_manager.js';
 import {
@@ -13,7 +12,7 @@ import {
     PAGE_WIDTH_MM,
     PAGE_HEIGHT_MM,
 } from './schematic_visualizer_types.js';
-import { label_template } from './schematic_templates.js';
+import { renderLabel } from './schematic_templates.js';
 
 export class KiCADSchematic {
     lib_symbols: string[] = [];
@@ -29,8 +28,6 @@ export class KiCADSchematic {
     }
 
     update(component: Component): string | null {
-        const component_props: SExprNode = [];
-
         if (!component.symbol) {
             logError(`Component ${component.reference || 'undefined'} has no symbol defined.`);
             return null;
@@ -73,13 +70,14 @@ export class KiCADSchematic {
             this.lib_symbols.push(symbolDef.serializedLibEntry);
         }
 
-        component_props.push([`lib_id "${component.symbol}"`]);
-
         const x = GRID_UNIT_MM * Math.round(component.sch.x / GRID_UNIT_MM);
         const y = GRID_UNIT_MM * Math.round(component.sch.y / GRID_UNIT_MM);
         component.sch.x = x;
         component.sch.y = y;
-        component_props.push([`at ${x} ${y} ${component.sch.rotation}`]);
+
+        const parts: unknown[] = [];
+        parts.push(s('lib_id', component.symbol));
+        parts.push(s('at', x, y, component.sch.rotation ?? 0));
 
         const propertiesToAdd = ['Reference', 'Value', 'Footprint'];
         const textOffsetY = 5.08;
@@ -89,27 +87,24 @@ export class KiCADSchematic {
             if (propVal !== undefined && (typeof propVal === "string" || typeof propVal === "number")) {
                 const propX = x;
                 const propY = y + textOffsetY;
-                component_props.push([
-                    `property "${propName}" "${propVal}"`,
-                    [`at ${propX} ${propY} ${component.sch?.rotation ?? 0}`],
-                    [`effects`, [`font`, [`size 1.27 1.27`]], propName === 'Reference' ? [`hide no`] : [`hide yes`]],
-                ]);
+                parts.push(s('property', propName, String(propVal),
+                    s('at', propX, propY, component.sch?.rotation ?? 0),
+                    s('effects', s('font', s('size', 1.27, 1.27)), s('hide', propName === 'Reference' ? no() : yes())),
+                ));
             }
         });
 
         if (component.reference) {
-            component_props.push([
-                `instances`,
-                [`project "${this.sheetname}"`, [
-                    `path "/${this.uuid}" (reference "${component.reference}") (unit 1)`
-                ]],
-            ]);
+            parts.push(s('instances',
+                s('project', this.sheetname,
+                    s('path', `/${this.uuid}`,
+                        s('reference', component.reference),
+                        s('unit', 1)))));
         } else {
             logWarning(`Component with symbol ${component.symbol} is missing a reference designator. Skipping instances entry.`);
         }
 
-        const s = S.serialize(component_props, { includingRootParentheses: false });
-        return `(symbol ${s})`;
+        return `(symbol ${parts.map(p => serialize(p as Parameters<typeof serialize>[0])).join(' ')})`;
     }
 
     getAbsolutePinCoordinates(component: Component, pin: Pin): [number, number] | null {
@@ -158,7 +153,6 @@ export class KiCADSchematic {
             return;
         }
 
-        const label_compiler = Handlebars.compile(label_template, { noEscape: true });
         const netName = node.name.replaceAll(' ', '_');
 
         for (const pinDef of node.nodes) {
@@ -232,7 +226,7 @@ export class KiCADSchematic {
                 logWarning(`Net "${netName}", pin ${pinDef.owner?.reference}:${pinDef.number}: Could not get pin location details. Using default label placement.`);
             }
 
-            this.labels.push(label_compiler({
+            this.labels.push(renderLabel({
                 net_name: netName,
                 x: labelX,
                 y: labelY,

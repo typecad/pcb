@@ -449,32 +449,3 @@ export function keepout(pcb: IPcbBoardContext, options: {
 
     pcb.keepoutZones.push(keepoutZone);
 }
-
-/**
- * Get staged outlines for obstacle detection during autorouting.
- * @param pcb - The PCB instance to get staged outlines from
- * @returns Array of staged outlines
- * @internal Used by ObstacleBuilder to detect tracks from previous autoroute calls.
- */
-export function _getStagedOutlines(pcb: IPcbBoardContext): IOutline[] {
-    return pcb.stagedOutlines;
-}
-
-/**
- * Remove staged outlines with specific UUIDs.
- * @param pcb - The PCB instance to remove staged outlines from
- * @param uuids - Array of UUIDs to remove
- * @internal Used when reusing autoroute results in manual routes
- */
-export function _removeStagedOutlinesByUuid(pcb: IPcbBoardContext, uuids: string[]): void {
-    const uuidSet = new Set(uuids);
-    const initialCount = pcb.stagedOutlines.length;
-    pcb.stagedOutlines = pcb.stagedOutlines.filter((outline: IOutline) => {
-        // Check if any element in this outline has a UUID we want to remove
-        const hasMatchingUuid = outline.elements.some((el: OutlineElement) =>
-            'uuid' in el && uuidSet.has(el.uuid)
-        );
-        return !hasMatchingUuid;
-    });
-    logger.debug(`[PCB] Removed ${initialCount - pcb.stagedOutlines.length} staged outline(s) with ${uuids.length} UUID(s)`);
-}

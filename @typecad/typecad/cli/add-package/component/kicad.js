@@ -1,11 +1,10 @@
 import fs from 'node:fs';
 import { platform } from 'node:os';
-import fsexp from 'fast-sexpr';
-import SExpr from 's-expression.js';
+import { parse, serialize, Sym, nameOf } from '../../../dist/sexpr/index.js';
 import os from 'node:os';
 
 let symbol_file_contents = '';
-const S = new SExpr();
+let _parsed = null;
 import { KiCAD } from "../../../dist/kicad.js";
 
 let _pins = [];
@@ -17,7 +16,7 @@ export function kicad_cli() {
 
 export function kicad_symbol(symbol) {
   let symbol_file_name = symbol.split(':');
-  
+
   const kicad = new KiCAD();
   const _kicad_symbol = kicad.getSymbolsPath();
 
@@ -34,32 +33,32 @@ export function kicad_symbol(symbol) {
       );
     }
 
-    symbol_file_contents = symbol_file_contents.replaceAll('"', '`');
-
-    const l = fsexp(symbol_file_contents).pop();
+    const l = parse(symbol_file_contents);
 
     // search through sym file for the symbol
     for (const i in l) {
-      if (l[i][1] == `\`${symbol_file_name[1]}\``) {
-        // replace the name with the fqn
-        l[i][1] = `"${symbol_file_name[0]}:${symbol_file_name[1]}"`;
+      if (!Array.isArray(l[i])) continue;
+      if (l[i][1] === symbol_file_name[1]) {
         for (const ii in l[i]) {
-          if (l[i][2][0] == 'extends') {
-            // remove `
-            const extends_name = l[i][2][1].replaceAll(`\``, '');
+          if (!Array.isArray(l[i][ii])) continue;
 
-            // replace the name with the fqn
-            l[i][2][1] = `"${symbol_file_name[0]}:${extends_name}"`;
+          if (nameOf(l[i][ii][0]) === 'extends') {
+            const extends_name = String(l[i][ii][1]);
+
+            l[i][ii][1] = `${symbol_file_name[0]}:${extends_name}`;
             symbol_lib = `${symbol_file_name[0]}:${extends_name}`;
             return kicad_symbol(`${symbol_file_name[0]}:${extends_name}`);
           }
 
-          symbol_file_contents = S.serialize(l[i]).replaceAll('`', '"');
-          if (l[i][ii][1] == '`Footprint`') {
-            if (l[i][ii][2].replaceAll(`\``, '') == '') {
-              return undefined; // it exists but is blank
+          symbol_file_contents = serialize(l[i]);
+          _parsed = l[i];
+
+          if (l[i][ii][1] === 'Footprint') {
+            const fp = String(l[i][ii][2] || '');
+            if (fp === '') {
+              return undefined;
             } else {
-              return l[i][ii][2].replaceAll(`\``, '');
+              return fp;
             }
           }
         }
@@ -75,17 +74,20 @@ export function kicad_pins() {
   let _name = '';
   let _number = -1;
 
-  const l = fsexp(symbol_file_contents).pop();
+  const l = _parsed || parse(symbol_file_contents);
   for (const i in l) {
+    if (!Array.isArray(l[i])) continue;
     for (const ii in l[i]) {
-      if (l[i][ii][0] == 'pin') {
-        _type = l[i][ii][1];
+      if (!Array.isArray(l[i][ii])) continue;
+      if (nameOf(l[i][ii][0]) === 'pin') {
+        _type = String(l[i][ii][1]);
         for (const iii in l[i][ii]) {
-          if (l[i][ii][iii][0] == 'name') {
-            _name = l[i][ii][iii][1];
+          if (!Array.isArray(l[i][ii][iii])) continue;
+          if (nameOf(l[i][ii][iii][0]) === 'name') {
+            _name = String(l[i][ii][iii][1]);
           }
-          if (l[i][ii][iii][0] == 'number') {
-            _number = l[i][ii][iii][1];
+          if (nameOf(l[i][ii][iii][0]) === 'number') {
+            _number = String(l[i][ii][iii][1]);
           }
         }
         _pins.push({
@@ -100,17 +102,21 @@ export function kicad_pins() {
   // if pins is empty, try checking a different format
   if (_pins.length == 0) {
     for (const i in l) {
+      if (!Array.isArray(l[i])) continue;
       for (const ii in l[i]) {
-        if (l[i][ii][0] == 'symbol') {
+        if (!Array.isArray(l[i][ii])) continue;
+        if (nameOf(l[i][ii][0]) === 'symbol') {
           for (const iii in l[i][ii]) {
-            if (l[i][ii][iii][0] == 'pin') {
+            if (!Array.isArray(l[i][ii][iii])) continue;
+            if (nameOf(l[i][ii][iii][0]) === 'pin') {
               for (const iiii in l[i][ii][iii]) {
-                _type = l[i][ii][iii][1];
-                if (l[i][ii][iii][iiii][0] == 'name') {
-                  _name = l[i][ii][iii][iiii][1];
+                if (!Array.isArray(l[i][ii][iii][iiii])) continue;
+                _type = String(l[i][ii][iii][1]);
+                if (nameOf(l[i][ii][iii][iiii][0]) === 'name') {
+                  _name = String(l[i][ii][iii][iiii][1]);
                 }
-                if (l[i][ii][iii][iiii][0] == 'number') {
-                  _number = l[i][ii][iii][iiii][1];
+                if (nameOf(l[i][ii][iii][iiii][0]) === 'number') {
+                  _number = String(l[i][ii][iii][iiii][1]);
                 }
               }
               _pins.push({
@@ -146,13 +152,13 @@ export function return_list_of_symbols(symbol_path) {
   try {
     symbol_file_contents = fs.readFileSync(symbol_path, 'utf8');
 
-    const l = fsexp(symbol_file_contents).pop();
+    const l = parse(symbol_file_contents);
 
     // search through sym file for the symbol
     for (const i in l) {
-      if (l[i][0] == 'symbol') {
-        // console.log(l[i][1].replaceAll(`\``, ''));
-        found_symbols.push({ value: l[i][1].replaceAll(`\``, '') });
+      if (!Array.isArray(l[i])) continue;
+      if (nameOf(l[i][0]) === 'symbol') {
+        found_symbols.push({ value: String(l[i][1]) });
       }
     }
   } catch (err) {
@@ -166,19 +172,22 @@ export function local_symbol_to_footprint(symbol_path) {
   try {
     symbol_file_contents = fs.readFileSync(symbol_path, 'utf8');
 
-    const l = fsexp(symbol_file_contents).pop();
+    const l = parse(symbol_file_contents);
 
     for (const i in l) {
+      if (!Array.isArray(l[i])) continue;
       for (const ii in l[i]) {
-        if (l[i][ii][1] == 'Footprint') {
+        if (!Array.isArray(l[i][ii])) continue;
+        if (l[i][ii][1] === 'Footprint') {
+          const fp = String(l[i][ii][2] || '');
           // some footprints come with the form xx:xx
-          if (l[i][ii][2].split(':')[1]){
-            return 'lib:'+l[i][ii][2].split(':')[1];
+          if (fp.split(':')[1]){
+            return 'lib:'+fp.split(':')[1];
           } else {
             // some don't
-            return 'lib:'+l[i][ii][2]
+            return 'lib:'+fp;
           }
-          
+
         }
       }
     }

@@ -22,8 +22,8 @@ export function collectManualViaFreeLocations(pcb: IPcbBoardContext, netName?: s
     }
 
     const viaComponents: ViaComponentLike[] = [];
-    pushComponents(pcb._getComponents(), viaComponents);
-    pushComponents(pcb._getStagedComponents(), viaComponents);
+    pushComponents(pcb.state.components, viaComponents);
+    pushComponents(pcb.state.stagedComponents, viaComponents);
 
     if (viaComponents.length === 0) {
         return [];

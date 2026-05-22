@@ -24,13 +24,10 @@ describe('ReferenceCounter edge cases', () => {
         expect(counter.setReference('R1')).toBe(false)
     })
 
-    it('should auto-increment past manually set references with matching case', () => {
-        // setReference lowercases prefix ('R50' -> key 'r'), getNextReference('R') uses key 'R'
-        // These are separate counters, so setReference('R50') does NOT affect getNextReference('R')
+    it('should auto-increment past manually set references', () => {
         counter.setReference('R50')
-        expect(counter.getNextReference('R')).toBe('R1')
-        // But using lowercase 'r' matches the setReference key
-        expect(counter.getNextReference('r')).toBe('r51')
+        expect(counter.getNextReference('R')).toBe('R51')
+        expect(counter.getNextReference('r')).toBe('r52')
     })
 
     it('should track multiple prefixes independently', () => {
@@ -42,13 +39,11 @@ describe('ReferenceCounter edge cases', () => {
         expect(counter.getNextReference('U')).toBe('U2')
     })
 
-    it('should handle case-insensitive prefix matching in setReference', () => {
-        // setReference('R5') stores under lowercase key 'r', not 'R'
+    it('should handle case-insensitive prefix matching across setReference and getNextReference', () => {
         counter.setReference('R5')
-        // getNextReference('R') uses key 'R' — different counter, unaffected
-        expect(counter.getNextReference('R')).toBe('R1')
-        // getNextReference('r') uses key 'r' — matches setReference's key
-        expect(counter.getNextReference('r')).toBe('r6')
+        // Case-insensitive: 'R' and 'r' share the same counter
+        expect(counter.getNextReference('R')).toBe('R6')
+        expect(counter.getNextReference('r')).toBe('r7')
     })
 
     it('should handle reset correctly', () => {

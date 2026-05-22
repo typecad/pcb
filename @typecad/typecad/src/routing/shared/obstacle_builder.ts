@@ -1,22 +1,10 @@
 import { Component } from "../../component.js";
-import { PCB } from "../../pcb/pcb.js";
+import { IPcbBoardContext } from "../../pcb/pcb_board_context.js";
 import { IFilledZone, IKeepoutZone, IGrLine, IOutline } from "../../pcb/pcb_interfaces.js";
 import { IRoutingObstacle } from "./routing_grid.js";
 import { PadResolver, IPadGeometry } from "./pad_resolver.js";
 import chalk from 'chalk';
 import logger from '../../logging.js';
-import S from "../../utils/sexpr_instance.js";
-
-type PcbInternalObstacleAccess = PCB & {
-    _getComponents?: () => Component[];
-    _getStagedComponents?: () => Component[];
-    _getKeepoutZones?: () => IKeepoutZone[];
-    ['#components']?: Component[];
-    ['#stagedComponents']?: Component[];
-    ['#zones']?: IFilledZone[];
-    ['#keepoutZones']?: IKeepoutZone[];
-    ['#grLines']?: IGrLine[];
-};
 
 
 
@@ -40,25 +28,16 @@ export class ObstacleBuilder {
      * obstacles.forEach(obs => grid.addObstacle(obs));
      * ```
      */
-    static buildFromPCB(pcb: PCB, defaultClearance: number = 0.2, additionalComponents?: Component[], debug: boolean = false): IRoutingObstacle[] {
+    static buildFromPCB(pcb: IPcbBoardContext, defaultClearance: number = 0.2, additionalComponents?: Component[], debug: boolean = false): IRoutingObstacle[] {
         const obstacles: IRoutingObstacle[] = [];
-        const internalPcb = pcb as PcbInternalObstacleAccess;
 
         if (debug) {
             logger.debug(chalk.blue(`[ObstacleBuilder] Building obstacles from PCB`));
         }
 
-        // Get components from PCB (access private fields through any for MVP)
-        // Collect from both #components and #stagedComponents
-        // NOTE: These must use (pcb as any) access, not IPcbBoardContext interface properties.
-        // Switching to pcb.zones / pcb.grLines / pcb._getComponents() broke routing because
-        // the IPcbBoardContext getters return empty arrays during the routing phase — the
-        // private #fields are populated but the interface-level accessors don't see them yet.
         const allComponents: Component[] = [];
-
-        // Prefer internal getters to avoid JS private field access issues
-        const components = internalPcb._getComponents?.() || internalPcb['#components'];
-        const stagedComponents = internalPcb._getStagedComponents?.() || internalPcb['#stagedComponents'];
+        const components = pcb.state.components;
+        const stagedComponents = pcb.state.stagedComponents;
 
         if (components) {
             allComponents.push(...components);
@@ -68,7 +47,6 @@ export class ObstacleBuilder {
             allComponents.push(...stagedComponents);
         }
 
-        // Add any additional components (e.g., from pins being routed)
         if (additionalComponents) {
             allComponents.push(...additionalComponents);
         }
@@ -122,8 +100,8 @@ export class ObstacleBuilder {
             }
         }
 
-        // Add zones — must use private field access (see NOTE above)
-        const zones = internalPcb['#zones'];
+        // Add zones
+        const zones = pcb.state.zones;
         if (zones) {
             if (debug) {
                 logger.debug(chalk.blue(`[ObstacleBuilder] Processing ${zones.length} filled zones`));
@@ -136,8 +114,8 @@ export class ObstacleBuilder {
             }
         }
 
-        // Add keepout zones — must use private field access (see NOTE above)
-        const keepoutZones = internalPcb._getKeepoutZones?.() || internalPcb['#keepoutZones'];
+        // Add keepout zones
+        const keepoutZones = pcb.state.keepoutZones;
         if (keepoutZones) {
             if (debug) {
                 logger.debug(chalk.blue(`[ObstacleBuilder] Processing ${keepoutZones.length} keepout zones`));
@@ -164,8 +142,8 @@ export class ObstacleBuilder {
             }
         }
 
-        // Add existing tracks as obstacles (from committed tracks) — must use private field access
-        const grLines = internalPcb['#grLines'];
+        // Add existing tracks as obstacles (from committed tracks)
+        const grLines = pcb.state.grLines;
             if (grLines && grLines.length > 0) {
             if (debug) {
                 logger.debug(chalk.blue(`[ObstacleBuilder] Processing ${grLines.length} committed tracks`));
@@ -181,7 +159,7 @@ export class ObstacleBuilder {
         }
 
         // Add staged tracks as obstacles (tracks created but not yet committed via create())
-        const stagedOutlines = pcb._getStagedOutlines();
+        const stagedOutlines = pcb.state.stagedOutlines;
         if (stagedOutlines && stagedOutlines.length > 0) {
             let stagedTrackCount = 0;
             for (const outline of stagedOutlines) {
@@ -221,10 +199,9 @@ export class ObstacleBuilder {
         try {
             // Parse footprint to get courtyard bounds
             const footprintSExpr = component.footprint_lib(component.footprint);
-            const parsed = S.parse(footprintSExpr);
+            PadResolver.getAllPadGeometries(component);
 
-            // Extract courtyard or fabrication bounds
-            const bounds = this.extractComponentBounds(parsed, component);
+            const bounds = this.extractComponentBounds(null, component);
 
             if (!bounds) {
                 // Fallback: use simple bounding box estimate
@@ -256,7 +233,7 @@ export class ObstacleBuilder {
      * @param pcb - PCB instance to resolve nets
      * @returns Array of pad obstacles
      */
-    static buildFromComponentPads(component: Component, clearance: number, pcb: PCB, debug: boolean = false): IRoutingObstacle[] {
+    static buildFromComponentPads(component: Component, clearance: number, pcb: IPcbBoardContext, debug: boolean = false): IRoutingObstacle[] {
         const obstacles: IRoutingObstacle[] = [];
 
         const pads = PadResolver.getAllPadGeometries(component);

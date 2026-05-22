@@ -8,76 +8,31 @@ import type {
     IOutline,
     IGrTextOptions,
     IFilledZone,
-    IKeepoutZone
+    IKeepoutZone,
+    IAutorouteResult
 } from './pcb_interfaces.js';
 
-/**
- * Interface exposing the public read/write API of PcbState.
- * Used by extracted modules (pcb_board_creation, pcb_zones, pcb_autoroute, pcb_routing_core)
- * so they don't depend on the full PCB class.
- */
-export interface IPcbState {
-    components: Component[];
-    stagedComponents: Component[];
-    groups: string[];
-    grTexts: IGrTextOptions[];
-    outlines_public: IOutline[];
-    stagedOutlines: IOutline[];
-    zones: IFilledZone[];
-    keepoutZones: IKeepoutZone[];
-    grLines: IGrLine[];
-    grCircles: IGrCircle[];
-    grRects: IGrRect[];
-    grPolys: IGrPoly[];
-    option: IPcbOptions;
-    options: IPcbOptions;
-    pcb: string;
-    existingBoardElements: unknown[];
-    groupsAsMap: Map<string, boolean>;
-    setExistingBoardElements(elements: unknown[]): void;
-}
-
-/**
- * Holds all mutable state for a PCB, extracted from the monolithic PCB class
- * so that extracted modules can operate on the same state without depending on
- * the full PCB class.
- */
-export class PcbState implements IPcbState {
+export class PcbInternalState {
+    offsetStack: { x: number; y: number }[] = [];
+    currentOffset: { x: number; y: number } = { x: 0, y: 0 };
+    pcb: string = '';
     components: Component[] = [];
     stagedComponents: Component[] = [];
     groups: string[] = [];
-    grTexts: IGrTextOptions[] = [];
-    outlines_public: IOutline[] = [];
+    outlines: IOutline[] = [];
     stagedOutlines: IOutline[] = [];
+    readonly options: IPcbOptions;
+    existingBoardElements: unknown[] = [];
+    grTexts: IGrTextOptions[] = [];
     zones: IFilledZone[] = [];
     keepoutZones: IKeepoutZone[] = [];
     grLines: IGrLine[] = [];
     grCircles: IGrCircle[] = [];
     grRects: IGrRect[] = [];
     grPolys: IGrPoly[] = [];
-    pcb: string = "";
-
-    readonly option: IPcbOptions;
-
-    existingBoardElements: unknown[] = [];
+    pendingAutoroutes: Set<Promise<IAutorouteResult>> = new Set();
 
     constructor(options: IPcbOptions) {
-        this.option = options;
-    }
-
-    get options(): IPcbOptions {
-        return this.option;
-    }
-
-    get groupsAsMap(): Map<string, boolean> {
-        const map = new Map<string, boolean>();
-        for (const group of this.groups) {
-            map.set(group, true);
-        }
-        return map;
-    }
-
-    setExistingBoardElements(elements: unknown[]): void {
-        this.existingBoardElements = elements;
+        this.options = options;
     }
 }

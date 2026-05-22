@@ -26,6 +26,7 @@ export interface PcbGraphicsInstance {
     get grCircles(): IGrCircle[];
     get grRects(): IGrRect[];
     get grPolys(): IGrPoly[];
+    get grTexts(): import('./pcb_interfaces.js').IGrTextOptions[];
     get stagedOutlines(): IOutline[];
 }
 
@@ -508,4 +509,25 @@ export function pcbOutline(pcb: PcbGraphicsInstance, x: number, y: number, width
         sourceInfo
     };
     pcb.stagedOutlines.push(outlineData);
+}
+
+export function pcbText(pcb: PcbGraphicsInstance, options: import('./pcb_interfaces.js').IGrTextOptions): void {
+    const textElement: import('./pcb_interfaces.js').IGrTextOptions = {
+        text: options.text,
+        x: options.x,
+        y: options.y,
+        layer: options.layer || 'F.SilkS',
+        width: options.width || 1.27,
+        height: options.height || 1.27,
+        thickness: options.thickness,
+        rotation: options.rotation || 0,
+        font: options.font,
+        bold: options.bold,
+        italic: options.italic,
+        justify: options.justify,
+        hide: options.hide,
+        uuid: options.uuid || generateUuid()
+    };
+
+    pcb.grTexts.push(textElement);
 }

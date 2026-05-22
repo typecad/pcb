@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { LIBRARY_SEPARATOR } from '../constants.js';
 import type {
     KicadFootprintIR,
     SourceLocation,
@@ -159,7 +160,7 @@ export class SourceMatcher {
         const tsFiles = this.collectTypeScriptFiles(this.sourceRoot);
 
         // Extract the library name from the footprint (e.g., "lib:QFN50P..." → "lib")
-        const libPart = footprintName.split(':')[0] || '';
+        const libPart = footprintName.split(LIBRARY_SEPARATOR)[0] || '';
 
         for (const filePath of tsFiles) {
             let content: string;

@@ -1,11 +1,10 @@
 import { Schematic, setPendingSchematicPath } from "./schematic.js";
 import { KiCAD } from "./kicad.js";
 import fs from "node:fs";
-import Handlebars from "handlebars";
 import { SymbolLibraryManager } from './symbol_library_manager.js';
 import { KiCADSchematic } from './kicad_schematic_renderer.js';
 import { logWarning, logError } from './schematic_visualizer_types.js';
-import { schematic_template } from './schematic_templates.js';
+import { renderSchematic } from './schematic_templates.js';
 
 export function schematic(schematicData: Schematic): boolean {
     new KiCAD();
@@ -36,15 +35,13 @@ export function schematic(schematicData: Schematic): boolean {
         kicad.net(node);
     }
 
-    const template = Handlebars.compile(schematic_template, { noEscape: true });
-    const output_schematic_data = {
+    const _schematic = renderSchematic({
         lib_symbols: kicad.lib_symbols,
         symbols: kicad.symbols,
         wires: kicad.wires,
         labels: kicad.labels,
         uuid: kicad.uuid
-    };
-    const _schematic = template(output_schematic_data);
+    });
 
     try {
         fs.writeFileSync(`./build/${schematicData.Sheetname}.kicad_sch`, _schematic);

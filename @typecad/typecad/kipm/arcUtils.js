@@ -5,4 +5,4 @@ function getMiddleArcPos(center_x, center_y, radius, angle_start, angle_end) {
   return { middle_x, middle_y };
 }
 
-export { getMiddleArcPos };
+module.exports = { getMiddleArcPos };

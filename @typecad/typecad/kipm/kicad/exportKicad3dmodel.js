@@ -1,11 +1,10 @@
 // export_kicad_3dmodel.js
 
-import fs from 'fs';
+const fs = require("fs");
 
 // Import the EasyEDA and KiCad 3D model classes
-import { Ee3dModel } from '../easyeda/parametersEasyeda.js';
-import { Ki3dModel } from './parametersKicadFootprint.js';
-
+const { Ee3dModel } = require("../easyeda/parametersEasyeda");
+const { Ki3dModel } = require("./parametersKicadFootprint");
 
 // --- Constants ---
 const VRML_HEADER = `#VRML V2.0 utf8
@@ -89,34 +88,32 @@ function getVertices(objData) {
         const rounded = coords
           .map((coord) => {
               const val = +coord / 2.54;
-              const intPartIsEven = Math.trunc(val) % 2 === 0;
+              const isNegZero = Object.is(val, -0);
+              const isNeg = isNegZero || val < 0;
+              const intPart = Math.trunc(val);
+              const intPartIsEven = intPart % 2 === 0;
+              const roundedNum = pythonRound(val, 4);
 
-              if (!intPartIsEven) {
-                  const num = pythonRound(val, 4);
-                  if (Object.is(val, -0)) {
-                      return "-0.0";
+              if (isNeg && roundedNum === 0) {
+                  if (isNegZero) return "-0.0";
+                  return "0.0";
+              }
+
+              if (intPartIsEven) {
+                  const res = val.toFixed(4).replace(/\.?0+$/, '');
+                  if (+res === 0) {
+                      return isNegZero ? "-0.0" : "0.0";
                   }
-                  if (Number.isInteger(num)) {
-                      return num.toFixed(1);
+                  if (Number.isInteger(+res)) {
+                      return (+res).toFixed(1);
                   }
-
-                  return num;
+                  return res;
+              } else {
+                  if (Number.isInteger(roundedNum)) {
+                      return roundedNum.toFixed(1);
+                  }
+                  return roundedNum.toString();
               }
-              const num = pythonRound(val, 4);
-              if (Object.is(val, -0)) {
-                  return "-0.0";
-              }
-              const res = val.toFixed(4).replace(/\.?0+$/, '');
-
-              if (Number.isInteger(+res)) {
-                  return ((+res).toFixed(1));
-              }
-
-              if (val < 0 && +res === 0) {
-                  return '-0.0';
-              }
-
-              return res;
           })
           .join(" ");
         vertices.push(rounded);
@@ -275,4 +272,8 @@ class Exporter3dModelKicad {
     }
 }
 
-export { generateWrlModel, Exporter3dModelKicad, getVertices };
+module.exports = {
+    getVertices,
+    generateWrlModel,
+    Exporter3dModelKicad,
+};

@@ -6,17 +6,19 @@ import { createRequire } from 'node:module';
 
 const _require = createRequire(import.meta.url);
 
-let _tsPluginModule: object | null | undefined = undefined;
-function getTsPluginModule(): object | null | undefined {
-    if (_tsPluginModule === undefined) {
-        try {
-            _tsPluginModule = _require('acorn-typescript') || null;
-        } catch {
-            _tsPluginModule = null;
+const getTsPluginModule = (() => {
+    let cached: object | null | undefined = undefined;
+    return (): object | null | undefined => {
+        if (cached === undefined) {
+            try {
+                cached = _require('acorn-typescript') || null;
+            } catch {
+                cached = null;
+            }
         }
-    }
-    return _tsPluginModule;
-}
+        return cached;
+    };
+})();
 
 /**
  * Inspects source code to find variable name and params for a instantiation.

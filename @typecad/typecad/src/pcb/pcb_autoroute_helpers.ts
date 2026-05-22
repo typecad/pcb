@@ -22,15 +22,9 @@ import { TrackBuilder } from './pcb_track_builder.js';
 import { RoutingGrid } from '../routing/shared/routing_grid.js';
 import type { IPcbBoardContext } from './pcb_board_context.js';
 import type { IRoutingOptions } from '../routing/router/types.js';
+import type { PcbInternalState } from './pcb_state.js';
 
 // ── Types ────────────────────────────────────────────────────────────────
-
-export type PcbComponentAccess = {
-    _getComponents?: () => Component[];
-    _getStagedComponents?: () => Component[];
-    ['#components']?: Component[];
-    ['#stagedComponents']?: Component[];
-};
 
 /** Shared context for routing sub-modules. */
 export interface AutorouteContext {
@@ -85,26 +79,16 @@ export function isAutorouteResultRouteItem(routeItem: IRoutePath | IAutorouteRes
     return Array.isArray(routeItem) && 'routeDetails' in routeItem && Array.isArray(routeItem.routeDetails);
 }
 
-/** Merge active + staged components for bounds calculation. */
-export function collectComponentsForBounds(pcb: PcbComponentAccess, netComponents: Component[]): {
+export function collectComponentsForBounds(pcb: { state: PcbInternalState }, netComponents: Component[]): {
     components: Component[];
     stagedComponents: Component[];
 } {
     const componentSet = new Set<Component>(netComponents);
-    const activeComponents =
-        pcb._getComponents?.() ||
-        pcb['#components'] ||
-        [];
-    activeComponents.forEach(comp => componentSet.add(comp));
-
-    const stagedComponents =
-        pcb._getStagedComponents?.() ||
-        pcb['#stagedComponents'] ||
-        [];
+    pcb.state.components.forEach(comp => componentSet.add(comp));
 
     return {
         components: Array.from(componentSet),
-        stagedComponents
+        stagedComponents: [...pcb.state.stagedComponents]
     };
 }
 
@@ -202,12 +186,11 @@ export function collectPadSummariesForRouting(components: Component[]): {
 
 // ── Autoroute serialization lock ─────────────────────────────────────────
 
-let _autorouteLock: Promise<void> = Promise.resolve();
-
-/** Serialize async autoroute calls so each sees obstacles from prior calls. */
-export async function enqueueAutoroute<T>(work: () => Promise<T>): Promise<T> {
-    const next = _autorouteLock.then(() => work(), () => work());
-    // Ensure the lock waits for the work to settle (resolve or reject)
-    _autorouteLock = next.then(() => undefined, () => undefined);
-    return next;
-}
+export const enqueueAutoroute: <T>(work: () => Promise<T>) => Promise<T> = (() => {
+    let lock: Promise<void> = Promise.resolve();
+    return <T>(work: () => Promise<T>): Promise<T> => {
+        const next = lock.then(() => work(), () => work());
+        lock = next.then(() => undefined, () => undefined);
+        return next;
+    };
+})();

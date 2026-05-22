@@ -1,4 +1,4 @@
-import { PCB } from './pcb.js';
+import { IPcbBoardContext } from './pcb_board_context.js';
 import { generateUuid, formatCallSite } from './pcb_utils.js';
 import { IVia, IGeneratedElement, IPowerInfo, ITrackDetails, IViaPowerInfo, IGrLine } from './pcb_interfaces.js';
 import logger from '../logging.js';
@@ -7,7 +7,7 @@ import { calculateMinTraceWidth, calculateMinViaSize as calculateMinimumViaSize 
 import { getCallSite } from '../utils/stack_trace.js';
 
 export class TrackBuilder {
-    private pcb: PCB;
+    private pcb: IPcbBoardContext;
     private currentPosition!: { x: number, y: number }; // Initialized by from()
     private currentLayer: string = "F.Cu"; // Default layer
     private currentWidth: number = 0.2; // Default track width
@@ -19,7 +19,7 @@ export class TrackBuilder {
     private _deferStaging: boolean = false; // If true, don't stage tracks immediately
     private _debug: boolean = false; // Debug flag for console logging
 
-    constructor(pcb: PCB, options?: { locked?: boolean, net?: string, deferStaging?: boolean, debug?: boolean }) {
+    constructor(pcb: IPcbBoardContext, options?: { locked?: boolean, net?: string, deferStaging?: boolean, debug?: boolean }) {
         this.pcb = pcb;
         this._locked = options?.locked ?? false;
         this._debug = options?.debug ?? false;

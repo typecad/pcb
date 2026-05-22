@@ -1,7 +1,55 @@
 // easyeda_importer.js
-import { EasyedaApi } from './easyedaApi.js';
-import { mat4, vec3, glMatrix, quat } from 'gl-matrix';
-import { EeSymbol, EeSymbolInfo, EeSymbolBbox, EeSymbolPinSettings, EeSymbolPinDot, EeSymbolPinPath, EeSymbolPinName, EeSymbolPinDotBis, EeSymbolPinClock, EeSymbolPin, EeSymbolRectangle, EeSymbolPolyline, EeSymbolPolygon, EeSymbolPath, EeSymbolCircle, EeSymbolEllipse, EeSymbolArc, EeFootprintInfo, EeFootprintBbox, EeFootprintPad, EeFootprintTrack, EeFootprintHole, EeFootprintVia, EeFootprintCircle, EeFootprintRectangle, EeFootprintArc, EeFootprintText, Ee3dModel, Ee3dModelBase, ee_footprint } from './parametersEasyeda.js';
+
+function parseObjVertices(objText) {
+    const vertices = [];
+    for (const line of objText.split('\n')) {
+        const trimmed = line.trim();
+        if (trimmed.startsWith('v ')) {
+            const parts = trimmed.split(/\s+/);
+            if (parts.length >= 4) {
+                vertices.push({ x: parseFloat(parts[1]), y: parseFloat(parts[2]), z: parseFloat(parts[3]) });
+            }
+        }
+    }
+    return vertices;
+}
+
+const { EasyedaApi } = require("./easyedaApi");
+const { mat4, vec3, quat, toRadian } = require("./transform");
+const {
+    EeSymbol,
+    EeSymbolInfo,
+    EeSymbolBbox,
+    EeSymbolPinSettings,
+    EeSymbolPinDot,
+    EeSymbolPinPath,
+    EeSymbolPinName,
+    EeSymbolPinDotBis,
+    EeSymbolPinClock,
+    EeSymbolPin,
+    EeSymbolRectangle,
+    EeSymbolPolyline,
+    EeSymbolPolygon,
+    EeSymbolPath,
+    EeSymbolCircle,
+    EeSymbolEllipse,
+    EeSymbolArc,
+    // Footprint models:
+    EeFootprintInfo,
+    EeFootprintBbox,
+    EeFootprintPad,
+    EeFootprintTrack,
+    EeFootprintHole,
+    EeFootprintVia,
+    EeFootprintCircle,
+    EeFootprintRectangle,
+    EeFootprintArc,
+    EeFootprintText,
+    // 3D model classes:
+    Ee3dModel,
+    Ee3dModelBase,
+    ee_footprint,
+} = require("./parametersEasyeda");
 
 // --- Helper: zip two arrays into an object ---
 function zip(arr, values) {
@@ -251,7 +299,7 @@ class Easyeda3dModelImporter {
                 model_3d.step = this.lcscComponent.get3dStep();
                 
                 if (rawObj) {
-                    let transformMatrix = mat4.create();
+                    let transformMatrix = mat4.create(); // Identity matrix
 
                     const options = {
                         "id": model_3d_info.uuid,
@@ -262,15 +310,7 @@ class Easyeda3dModelImporter {
                         "width": model_3d_info.c_width,
                         "height": model_3d_info.c_height,
                     }
-
-                    const vertices = [];
-                    for (const line of rawObj.split('\n')) {
-                        const parts = line.trim().split(/\s+/);
-                        if (parts[0] === 'v' && parts.length >= 4) {
-                            vertices.push({ x: parseFloat(parts[1]), y: parseFloat(parts[2]), z: parseFloat(parts[3]) });
-                        }
-                    }
-
+                    const vertices = parseObjVertices(rawObj);
                     const boundingBox = vertices.reduce((acc, vertex) => ({
                         maxX: Math.max(acc.maxX, vertex.x),
                         maxY: Math.max(acc.maxY, vertex.y),
@@ -297,9 +337,9 @@ class Easyeda3dModelImporter {
                     mat4.translate(translationMatrix, translationMatrix,
                       vec3.fromValues(-centerX, -centerY, -bottomZ));
 
-                    const rotationZ = glMatrix.toRadian(options.rz);
-                    const rotationX = glMatrix.toRadian(options.rx);
-                    const rotationY = glMatrix.toRadian(options.ry);
+                    const rotationZ = toRadian(options.rz);
+                    const rotationX = toRadian(options.rx);
+                    const rotationY = toRadian(options.ry);
 
                     const rotationMatrix = mat4.create();
                     mat4.rotateZ(rotationMatrix, rotationMatrix, rotationZ);
@@ -382,4 +422,16 @@ class Easyeda3dModelImporter {
     }
 }
 
-export { EasyedaSymbolImporter, EasyedaFootprintImporter, Easyeda3dModelImporter, add_easyeda_pin, add_easyeda_rectangle, add_easyeda_polyline, add_easyeda_polygon, add_easyeda_path, add_easyeda_circle, add_easyeda_ellipse, add_easyeda_arc };
+module.exports = {
+    EasyedaSymbolImporter,
+    EasyedaFootprintImporter,
+    Easyeda3dModelImporter,
+    add_easyeda_pin,
+    add_easyeda_rectangle,
+    add_easyeda_polyline,
+    add_easyeda_polygon,
+    add_easyeda_path,
+    add_easyeda_circle,
+    add_easyeda_ellipse,
+    add_easyeda_arc,
+};

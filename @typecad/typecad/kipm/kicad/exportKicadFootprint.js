@@ -1,11 +1,41 @@
 // export_kicad_footprint.js
 
 // Global imports
-import { acos, cos, sin, sqrt, PI } = Math;, const { ee_footprint, convertToMm } from '../easyeda/parametersEasyeda.js';
+const { acos, cos, sin, sqrt, PI } = Math;
 
-import { KiFootprintInfo, Ki3dModel, Ki3dModelBase, KiFootprint, KiFootprintPad, KiFootprintTrack, KiFootprintHole, KiFootprintVia, KiFootprintCircle, KiFootprintRectangle, KiFootprintArc, KiFootprintText, KI_MODULE_INFO, KI_FP_TYPE, KI_REFERENCE, KI_PACKAGE_VALUE, KI_FAB_REF, KI_LINE, KI_PAD, KI_HOLE, KI_VIA, KI_CIRCLE, KI_ARC, KI_TEXT, KI_MODEL_3D, KI_END_FILE, KI_RECT } from './parametersKicadFootprint.js';
+// Import required EasyEDA and KiCad models and constants
+const { ee_footprint, convertToMm } = require("../easyeda/parametersEasyeda");
 
-import { KI_PAD_SHAPE, KI_PAD_LAYER, KI_PAD_LAYER_THT, KI_LAYERS } from './parametersKicadFootprint.js';
+const {
+    KiFootprintInfo,
+    Ki3dModel,
+    Ki3dModelBase,
+    KiFootprint,
+    KiFootprintPad,
+    KiFootprintTrack,
+    KiFootprintHole,
+    KiFootprintVia,
+    KiFootprintCircle,
+    KiFootprintRectangle,
+    KiFootprintArc,
+    KiFootprintText,
+    KI_MODULE_INFO,
+    KI_FP_TYPE,
+    KI_REFERENCE,
+    KI_PACKAGE_VALUE,
+    KI_FAB_REF,
+    KI_LINE,
+    KI_PAD,
+    KI_HOLE,
+    KI_VIA,
+    KI_CIRCLE,
+    KI_ARC,
+    KI_TEXT,
+    KI_MODEL_3D,
+    KI_END_FILE, KI_RECT,
+} = require("./parametersKicadFootprint");
+
+const { KI_PAD_SHAPE, KI_PAD_LAYER, KI_PAD_LAYER_THT, KI_LAYERS } = require("./parametersKicadFootprint");
 
 function pyStr(num) {
     let s = num.toString();
@@ -692,4 +722,6 @@ class ExporterFootprintKicad {
     }
 }
 
-export { ExporterFootprintKicad };
+module.exports = {
+    ExporterFootprintKicad,
+};

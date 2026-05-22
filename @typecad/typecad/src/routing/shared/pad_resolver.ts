@@ -1,9 +1,9 @@
 import { Component } from "../../component.js";
 import { Pin } from "../../pin.js";
-import S from "../../utils/sexpr_instance.js";
+import { parse, Sym } from '../../sexpr/index.js';
+import type { SExpr } from '../../sexpr/types.js';
 import { TypeCadError } from '../../errors.js';
 import logger from '../../logging.js';
-import type { SexprNode } from '../../types/sexpr_types.js';
 
 
 
@@ -47,14 +47,14 @@ export interface IPadGeometry {
  * Handles coordinate transformation from footprint-relative to board-absolute coordinates.
  */
 export class PadResolver {
-    private static _parseCache: Map<string, SexprNode | null> = new Map();
+    private static _parseCache: Map<string, SExpr[] | null> = new Map();
 
-    private static getCachedParse(footprintName: string, footprintSExpr: string): SexprNode | null {
+    private static getCachedParse(footprintName: string, footprintSExpr: string): SExpr[] | null {
         let cached = this._parseCache.get(footprintName);
         if (cached !== undefined) return cached;
         try {
-            const parsed = S.parse(footprintSExpr);
-            cached = (Array.isArray(parsed) && parsed.length > 0) ? (parsed as SexprNode) : null;
+            const parsed = parse(footprintSExpr);
+            cached = (Array.isArray(parsed) && parsed.length > 0) ? (parsed as SExpr[]) : null;
         } catch {
             cached = null;
         }
@@ -150,26 +150,22 @@ export class PadResolver {
      * Find a pad node in the footprint S-expression tree.
      * @private
      */
-    private static findPadNode(sexpr: SexprNode, pinNumber: string | number): SexprNode | null {
-        // Normalize pin number to string for comparison
+    private static findPadNode(sexpr: SExpr[], pinNumber: string | number): SExpr[] | null {
         const targetNumber = String(pinNumber);
 
-        // Recursively search for pad nodes
-        const search = (node: SexprNode): SexprNode | null => {
+        const search = (node: SExpr[]): SExpr[] | null => {
             if (!Array.isArray(node)) return null;
 
-            // Check if this is a pad node: (pad "number" ...)
-            if (node[0] === 'pad' && node.length > 1) {
-                const padNumber = String(node[1]).replace(/[`"]/g, '');
+            if (Sym.isSym(node[0]) && node[0].name === 'pad' && node.length > 1) {
+                const padNumber = String(node[1]);
                 if (padNumber === targetNumber) {
                     return node;
                 }
             }
 
-            // Search children
             for (const child of node) {
                 if (Array.isArray(child)) {
-                    const result = search(child as SexprNode);
+                    const result = search(child);
                     if (result) return result;
                 }
             }
@@ -184,7 +180,7 @@ export class PadResolver {
      * Extract pad data from a pad S-expression node.
      * @private
      */
-    private static extractPadData(padNode: SexprNode): {
+    private static extractPadData(padNode: SExpr[]): {
         number: string | number;
         type: string;
         at: { x: number; y: number; rotation: number };
@@ -197,37 +193,31 @@ export class PadResolver {
         let shape = 'rect';
         let type = 'smd';
         let layers: string[] = ['F.Cu'];
-        const number = String(padNode[1]).replace(/[`"]/g, '');
+        const number = String(padNode[1]);
 
-        // Parse the pad node elements
         for (const element of padNode) {
             if (!Array.isArray(element)) continue;
 
-            const elementType = element[0];
+            const tag = Sym.isSym(element[0]) ? element[0].name : '';
 
-            if (elementType === 'at') {
-                // (at x y [rotation])
+            if (tag === 'at') {
                 at.x = parseFloat(String(element[1])) || 0;
                 at.y = parseFloat(String(element[2])) || 0;
                 at.rotation = element.length > 3 ? parseFloat(String(element[3])) || 0 : 0;
-            } else if (elementType === 'size') {
-                // (size width height)
+            } else if (tag === 'size') {
                 size.width = parseFloat(String(element[1])) || 1.0;
                 size.height = parseFloat(String(element[2])) || 1.0;
-            } else if (elementType === 'layers') {
-                // (layers "F.Cu" "F.Paste" "F.Mask")
-                layers = element.slice(1).map((l: SexprNode[number]) => String(l).replace(/[`"]/g, ''));
+            } else if (tag === 'layers') {
+                layers = element.slice(1).map((l: SExpr) => String(l));
             }
         }
 
-        // Type is the 2nd element: (pad "1" thru_hole circle ...)
         if (padNode.length > 2) {
-            type = String(padNode[2]).replace(/[`"]/g, '');
+            type = String(padNode[2]);
         }
 
-        // Shape is the 3rd element: (pad "1" type shape ...)
         if (padNode.length > 3) {
-            shape = String(padNode[3]).replace(/[`"]/g, '');
+            shape = String(padNode[3]);
         }
 
         return { number, type, at, size, shape, layers };
@@ -361,15 +351,15 @@ export class PadResolver {
             if (!parsed) return geometries;
 
             // Recursively collect all pad nodes
-            const padNodes: SexprNode[] = [];
-            const collectPads = (node: SexprNode) => {
+            const padNodes: SExpr[][] = [];
+            const collectPads = (node: SExpr | SExpr[]) => {
                 if (Array.isArray(node)) {
-                    if (node.length > 0 && String(node[0]) === 'pad') {
+                    if (node.length > 0 && Sym.isSym(node[0]) && node[0].name === 'pad') {
                         padNodes.push(node);
                     }
                     for (const child of node) {
                         if (Array.isArray(child)) {
-                            collectPads(child as SexprNode);
+                            collectPads(child);
                         }
                     }
                 }

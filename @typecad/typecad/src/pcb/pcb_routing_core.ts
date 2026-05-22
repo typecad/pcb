@@ -18,7 +18,6 @@ import { Pin } from '../pin.js';
 import chalk from 'chalk';
 import logger from '../logging.js';
 import { ISchematicNetDefinition } from '../schematic.js';
-import { prettyPrintSExpr } from '../utils/sexpr_formatter.js';
 import { getCallSite } from '../utils/stack_trace.js';
 import { formatCallSite } from './pcb_utils.js';
 import { RoutingError } from '../errors.js';
@@ -331,7 +330,7 @@ export function pathToTrackBuilder(
                 // When manual routes are present, trim away any portions of this segment
                 // that overlap existing same-net copper, and only emit the non-overlapping parts.
                 if (options.routes && options.routes.length > 0) {
-                    const existingLines = getExistingLines(pcb.grLines, pcb._getStagedOutlines());
+                    const existingLines = getExistingLines(pcb.grLines, pcb.state.stagedOutlines);
                     const subSegments = subtractOverlapsFromSegment(
                         { x: segmentStart.x, y: segmentStart.y },
                         { x: prevNode.x, y: prevNode.y },
@@ -355,7 +354,7 @@ export function pathToTrackBuilder(
                         net,
                         width,
                         pcb.grLines,
-                        pcb._getStagedOutlines()
+                        pcb.state.stagedOutlines
                     );
                     if (!onExisting) {
                         track.to({ x: prevNode.x, y: prevNode.y, layer: prevNode.layer, width });
@@ -452,7 +451,7 @@ export function pathToTrackBuilder(
         if (dir.dx !== lastDir.dx || dir.dy !== lastDir.dy) {
             // Commit merged segment up to prevNode (trim partial overlaps when manual routes exist)
             if (options.routes && options.routes.length > 0) {
-                const existingLines = getExistingLines(pcb.grLines, pcb._getStagedOutlines());
+                const existingLines = getExistingLines(pcb.grLines, pcb.state.stagedOutlines);
                 const subSegments = subtractOverlapsFromSegment(
                     { x: segmentStart.x, y: segmentStart.y },
                     { x: prevNode.x, y: prevNode.y },
@@ -474,7 +473,7 @@ export function pathToTrackBuilder(
                     net,
                     width,
                     pcb.grLines,
-                    pcb._getStagedOutlines()
+                    pcb.state.stagedOutlines
                 );
                 if (!onExisting) {
                     track.to({ x: prevNode.x, y: prevNode.y, layer: prevNode.layer, width });
@@ -490,7 +489,7 @@ export function pathToTrackBuilder(
     const lastNode = path.nodes[path.nodes.length - 1];
     if (Math.abs(lastNode.x - segmentStart.x) > eps || Math.abs(lastNode.y - segmentStart.y) > eps) {
         if (options.routes && options.routes.length > 0) {
-            const existingLines = getExistingLines(pcb.grLines, pcb._getStagedOutlines());
+            const existingLines = getExistingLines(pcb.grLines, pcb.state.stagedOutlines);
             const subSegments = subtractOverlapsFromSegment(
                 { x: segmentStart.x, y: segmentStart.y },
                 { x: lastNode.x, y: lastNode.y },
@@ -512,7 +511,7 @@ export function pathToTrackBuilder(
                 net,
                 width,
                 pcb.grLines,
-                pcb._getStagedOutlines()
+                pcb.state.stagedOutlines
             );
             if (!onExisting) {
                 track.to({ x: lastNode.x, y: lastNode.y, layer: lastNode.layer, width });
@@ -556,14 +555,6 @@ export function routeNet(
             nodes: providedPins,
             code: netRef.code,
             owner: null
-        };
-    } else if (providedPins.length >= 2) {
-        // The caller explicitly provided pins (from pcb.net() return value).
-        // The schematic node may have accumulated extra pins through net merging,
-        // so use the provided pin list to route only the intended connections.
-        schematicNode = {
-            ...schematicNode,
-            nodes: providedPins
         };
     } else if ((!schematicNode.nodes || schematicNode.nodes.length === 0) && providedPins.length > 0) {
         schematicNode = {

@@ -714,4 +714,39 @@ class ee_footprint {
 
 // ------------------------- EXPORTS -------------------------
 
-export { EasyedaPinType, EeSymbolBbox, EeSymbolPinSettings, EeSymbolPinDot, EeSymbolPinPath, EeSymbolPinName, EeSymbolPinDotBis, EeSymbolPinClock, EeSymbolPin, EeSymbolRectangle, EeSymbolCircle, EeSymbolArc, EeSymbolEllipse, EeSymbolPolyline, EeSymbolPolygon, EeSymbolPath, EeSymbolInfo, EeSymbol, convertToMm, EeFootprintBbox, EeFootprintPad, EeFootprintTrack, EeFootprintHole, EeFootprintVia, EeFootprintCircle, EeFootprintRectangle, EeFootprintArc, EeFootprintText, EeFootprintInfo, Ee3dModelBase, Ee3dModel, ee_footprint };
+module.exports = {
+    // Easyeda Models
+    EasyedaPinType,
+    EeSymbolBbox,
+    EeSymbolPinSettings,
+    EeSymbolPinDot,
+    EeSymbolPinPath,
+    EeSymbolPinName,
+    EeSymbolPinDotBis,
+    EeSymbolPinClock,
+    EeSymbolPin,
+    EeSymbolRectangle,
+    EeSymbolCircle,
+    EeSymbolArc,
+    EeSymbolEllipse,
+    EeSymbolPolyline,
+    EeSymbolPolygon,
+    EeSymbolPath,
+    EeSymbolInfo,
+    EeSymbol,
+    // Footprint Models
+    convertToMm,
+    EeFootprintBbox,
+    EeFootprintPad,
+    EeFootprintTrack,
+    EeFootprintHole,
+    EeFootprintVia,
+    EeFootprintCircle,
+    EeFootprintRectangle,
+    EeFootprintArc,
+    EeFootprintText,
+    EeFootprintInfo,
+    Ee3dModelBase,
+    Ee3dModel,
+    ee_footprint,
+};

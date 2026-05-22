@@ -170,14 +170,14 @@ export class RoutingGrid {
     }
 
     private bounds: { minX: number; maxX: number; minY: number; maxY: number };
-    private gridResolution: number;
+    public gridResolution: number;
     private layers: string[];
     private cells: (IGridCell | undefined)[];
     private gridWidth: number;
     private gridHeight: number;
     private cellsTotalSize: number;
     private maxObstacleClearance: number;
-    private maxObstacleHalfWidthMm: number;
+    maxObstacleHalfWidthMm: number;
     private obstacles: Map<string, IRoutingObstacle>;
     private _version: number = 0;
 
@@ -243,6 +243,11 @@ export class RoutingGrid {
     private static _obstacleIdCounter = 0;
 
     addObstacle(obstacle: IRoutingObstacle): void {
+        // Zone obstacles represent copper fills that can be routed through —
+        // the EDA tool creates clearance when the zone is poured.  Adding them
+        // as occupied cells would block all routing on dense boards.
+        if (obstacle.type === 'zone') return;
+
         const obstacleId = `${obstacle.type}_${++RoutingGrid._obstacleIdCounter}`;
         this.obstacles.set(obstacleId, { ...obstacle });
 
@@ -380,18 +385,23 @@ export class RoutingGrid {
                 const halfW = w / 2;
                 const halfH = h / 2;
 
-                // Calculate effective radius for clearance calculations
-                // For rectangular pads: use half of the diagonal for conservative clearance
-                // For circular pads: use the actual radius
-                // For oval pads: use the larger of half-width or half-height
-                let padEffectiveRadius: number;
+                // Pads are rasterized into grid cells, but the physical pad boundary can
+                // extend up to one full grid-cell beyond the outermost occupied cell center
+                // (due to circle/rect rasterization and rotation).  Using padEffectiveRadius
+                // per cell is too aggressive (blocks routing lanes), but gridRes/2 is too
+                // small and causes clearance violations.  gridResolution provides a safe
+                // margin that covers the worst-case gap between rasterized cells and the
+                // true pad edge while keeping routing lanes open.
+                const padCellHalfWidth = this.gridResolution * 1.5;
+
+                // Still track the max physical pad radius for search window sizing
+                let padPhysicalRadius: number;
                 if (shape === 'circle') {
-                    padEffectiveRadius = Math.min(halfW, halfH);
+                    padPhysicalRadius = Math.min(halfW, halfH);
                 } else if (shape === 'oval') {
-                    padEffectiveRadius = Math.max(halfW, halfH);
+                    padPhysicalRadius = Math.max(halfW, halfH);
                 } else {
-                    // For rectangular and roundrect pads, use conservative half-diagonal
-                    padEffectiveRadius = Math.sqrt(halfW * halfW + halfH * halfH);
+                    padPhysicalRadius = Math.sqrt(halfW * halfW + halfH * halfH);
                 }
 
                 const rotRad = (rotation * Math.PI) / 180; // forward rotation to world
@@ -460,9 +470,10 @@ export class RoutingGrid {
                     // Fallback: occupy full bounding box
                     for (let gx = gridBounds.minX; gx <= gridBounds.maxX; gx++) {
                         for (let gy = gridBounds.minY; gy <= gridBounds.maxY; gy++) {
-                            occupyCell(gx, gy);
+                            occupyCell(gx, gy, padCellHalfWidth);
                         }
                     }
+                    this.maxObstacleHalfWidthMm = Math.max(this.maxObstacleHalfWidthMm, padPhysicalRadius);
                 }
 
                 if (poly.length > 0) {
@@ -496,12 +507,11 @@ export class RoutingGrid {
                                 }
                             }
 
-                            if (hit) occupyCell(gx, gy, padEffectiveRadius);
+                            if (hit) occupyCell(gx, gy, padCellHalfWidth);
                         }
                     }
 
-                    // Update max obstacle tracking for pad clearance calculations
-                    this.maxObstacleHalfWidthMm = Math.max(this.maxObstacleHalfWidthMm, padEffectiveRadius);
+                    this.maxObstacleHalfWidthMm = Math.max(this.maxObstacleHalfWidthMm, padPhysicalRadius);
                 }
             } else if (obstacle.polygon && obstacle.polygon.points && obstacle.polygon.points.length >= 3) {
                 // Precise rasterization for polygon obstacles (zones, keepouts):
@@ -895,6 +905,27 @@ export class RoutingGrid {
             this.cells[idx] = cell;
         } else {
             cell.cost = cost;
+        }
+    }
+
+    markTerminal(gx: number, gy: number, layer: string, radiusCells: number, net?: string): void {
+        for (let dx = -radiusCells; dx <= radiusCells; dx++) {
+            for (let dy = -radiusCells; dy <= radiusCells; dy++) {
+                const nx = gx + dx;
+                const ny = gy + dy;
+                if (!this.isInBounds(nx, ny)) continue;
+                const idx = this.getCellIndex(layer, nx, ny);
+                if (idx < 0) continue;
+                const cell = this.cells[idx];
+                if (!cell || !cell.occupied) continue;
+                if (cell.absoluteBlock) continue;
+                if (net && cell.net && cell.net === net) {
+                    cell.occupied = false;
+                } else if (cell.pad && !cell.net && net) {
+                    cell.net = net;
+                    cell.occupied = false;
+                }
+            }
         }
     }
 

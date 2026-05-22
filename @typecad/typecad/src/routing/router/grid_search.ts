@@ -796,7 +796,6 @@ export class GridSearch {
               current.layer === adjustedStart.layer;
 
             if (!isStartNeighbor) {
-              // Only check occupancy for non-special cells
               const effectiveClearance = fastTraceClearance;
               if (lookupOccupancy(
                 neighbor.layer,

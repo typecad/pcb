@@ -1,9 +1,7 @@
 import { Component } from "../component.js";
 import { Schematic, ISchematicNetDefinition } from "../schematic.js";
 import { Pin } from "../pin.js";
-import fs from "node:fs";
-import fsexp from "fast-sexpr";
-import SExpr from "s-expression.js";
+import type { SExpr } from '../sexpr/types.js';
 import { TrackBuilder } from './pcb_track_builder.js';
 import type {
     IPcbOptions,
@@ -37,33 +35,33 @@ import type {
 import { formatSourceInfoForProperty, generateUuid } from './pcb_utils.js';
 import { resolveNet as resolveNetStandalone } from './pcb_net_resolver.js';
 import { mapLayerToSide, transformSexprLayers, mirrorChamferDirection } from './pcb_layer_utils.js';
-import { pcbLine, pcbCircle, pcbRect, pcbPoly, pcbOutline } from './pcb_graphics.js';
-import { zone, keepout, _getStagedOutlines, _removeStagedOutlinesByUuid } from './pcb_zones.js';
+import { pcbLine, pcbCircle, pcbRect, pcbPoly, pcbOutline, pcbText } from './pcb_graphics.js';
+import { zone, keepout } from './pcb_zones.js';
+import { createVia } from './pcb_via.js';
+import { loadExistingBoardElements } from './pcb_board_loader.js';
 import { IPcbBoardContext } from './pcb_board_context.js';
+import { PcbInternalState } from './pcb_state.js';
 import {
     calculateViaCurrentCapacity,
     calculateMinTraceWidth,
     calculateBoardBounds
 } from './pcb_routing_calculations.js';
+import { pinToIdentifier } from './pcb_routing_helpers.js';
 import {
-    pinToIdentifier,
-    pinsMatch,
-    connectionMatches
-} from './pcb_routing_helpers.js';
-import {
-    pointOnLineSegment,
     routeNet as extractRouteNet
 } from './pcb_routing_core.js';
-import { prettyPrintSExpr } from '../utils/sexpr_formatter.js';
+
 import { exportContract } from '../contract.js';
 import type { ContractOptions } from '../contract.js';
 import { createBoard } from './pcb_board_creation.js';
 import { createFootprintNode, updateFootprintNode } from './pcb_footprint.js';
-import { RoutingError } from '../errors.js';
 import { autoroute } from './pcb_autoroute.js';
 import logger from '../logging.js';
+import { placeComponent, stageComponent, unstageComponent, groupComponents } from './pcb_component_lifecycle.js';
+import { registerRouter, createRouter, getRouterGridConfigurator, getRegisteredRouters } from './pcb_router_registry.js';
+import type { RouterFactory, RouterGridConfigurator, IRouterContext } from './pcb_router_registry.js';
 import { autorouteBatch } from './pcb_autoroute_batch.js';
-import type { SexprNode } from '../types/sexpr_types.js';
+
 
 // Re-export types and classes that other modules expect to import from './pcb'
 export { TrackBuilder } from './pcb_track_builder.js';
@@ -95,19 +93,10 @@ export type {
     IAutorouteRouteOptions
 } from './pcb_interfaces.js';
 
-const S = new SExpr();
-
 interface IRouterGridConfig {
     gridResolution?: number;
     reason?: string;
 }
-
-interface IRouterContext {
-    [key: string]: unknown;
-}
-
-type RouterFactory = (grid: RoutingGrid, options: unknown) => IRouterContext;
-type RouterGridConfigurator = (context: IRouterContext) => IRouterGridConfig | void;
 
 // Type guard using `'in'` operator instead of `(value as any).name` to narrow unknown
 // without bypassing the type system. The `(value as { name: unknown })` cast is safe
@@ -134,29 +123,9 @@ export class PCB implements IPcbBoardContext {
     copper_thickness: number;
     outlines: IOutline[] = [];
     tracks: IOutline[] = [];
-    #offsetStack: { x: number, y: number }[] = [];
-    #currentOffset: { x: number, y: number } = { x: 0, y: 0 };
-    #pcb: string = '';
-    #components: Component[] = [];
-    #stagedComponents: Component[] = []; // Components placed/grouped but not yet created
-    #groups: string[] = [];
-    #outlines: IOutline[] = [];
-    #stagedOutlines: IOutline[] = []; // Outlines/tracks created but not yet included in create
-    #options: IPcbOptions;
-    #existingBoardElements: unknown[] = [];
-    #grTexts: IGrTextOptions[] = []; // Board-level text elements
-    #zones: IFilledZone[] = []; // Filled zones
-    #keepoutZones: IKeepoutZone[] = []; // Keepout zones
-    #grLines: IGrLine[] = []; // Graphical lines
-    #grCircles: IGrCircle[] = []; // Graphical circles
-    #grRects: IGrRect[] = []; // Graphical rectangles
-    #grPolys: IGrPoly[] = []; // Graphical polygons
-    // Static router registry shared across all PCB instances.
-    // Register a routing algorithm once and all PCB instances can use it.
-    static #routerRegistry: Map<string, { factory: RouterFactory; configureGrid?: RouterGridConfigurator }> = new Map();
-    // Previously attached dynamically via (this as any)._pendingAutoroutes. Promoted to a
-    // proper private field so callers like waitForPendingAutoroutes() don't need `as any` casts.
-    #pendingAutoroutes: Set<Promise<IAutorouteResult>> = new Set();
+
+    /** @internal Mutable state capsule shared with extracted sub-modules. */
+    readonly state: PcbInternalState;
 
     /**
      * Initializes a new PCB.
@@ -165,45 +134,35 @@ export class PCB implements IPcbBoardContext {
      */
     constructor(Boardname: string, options?: IPcbOptions) {
         this.Boardname = Boardname;
-        this.#options = options || { remove_orphans: true, thickness: 1.6, copper_thickness: 35, Schematic: new Schematic(Boardname) };
-        this.thickness = this.#options.thickness || 1.6;
-        this.copper_thickness = this.#options.copper_thickness || 35;
-        this.Schematic = this.#options.Schematic || new Schematic(Boardname);
+        const resolvedOptions = options || { remove_orphans: true, thickness: 1.6, copper_thickness: 35, Schematic: new Schematic(Boardname) };
+        this.state = new PcbInternalState(resolvedOptions);
+        this.thickness = resolvedOptions.thickness || 1.6;
+        this.copper_thickness = resolvedOptions.copper_thickness || 35;
+        this.Schematic = resolvedOptions.Schematic || new Schematic(Boardname);
 
-        // Load existing board elements early so they're available for track preservation
-        this.#loadExistingBoardElements();
-    }
-
-    public prettyPrintSExpr(sexpr: string): string {
-        return prettyPrintSExpr(sexpr);
+        this.state.existingBoardElements = loadExistingBoardElements(Boardname);
     }
 
     /**
      * Pushes a new offset to the stack. All subsequent coordinates will be relative to this offset.
      */
     pushOffset(x: number, y: number): void {
-        this.#offsetStack.push({ ...this.#currentOffset });
-        this.#currentOffset.x += x;
-        this.#currentOffset.y += y;
+        this.state.offsetStack.push({ ...this.state.currentOffset });
+        this.state.currentOffset.x += x;
+        this.state.currentOffset.y += y;
     }
 
-    /**
-     * Pops the last offset from the stack.
-     */
     popOffset(): void {
-        const prev = this.#offsetStack.pop();
+        const prev = this.state.offsetStack.pop();
         if (prev) {
-            this.#currentOffset = prev;
+            this.state.currentOffset = prev;
         } else {
-            this.#currentOffset = { x: 0, y: 0 };
+            this.state.currentOffset = { x: 0, y: 0 };
         }
     }
 
-    /**
-     * Gets the current active offset.
-     */
     get currentOffset(): { x: number, y: number } {
-        return { ...this.#currentOffset };
+        return { ...this.state.currentOffset };
     }
 
     /**
@@ -213,191 +172,86 @@ export class PCB implements IPcbBoardContext {
      * @param algorithm - Optional algorithm name (defaults to 'astar')
      */
     registerRouter(
-        registerFn: {
-            (
-                registry: {
-                    register(
-                        name: string,
-                        factory: RouterFactory,
-                        options?: { configureGrid?: RouterGridConfigurator }
-                    ): void;
-                },
-                algorithm?: string
-            ): void;
-        }
+        registerFn: (
+            registry: {
+                register(
+                    name: string,
+                    factory: RouterFactory,
+                    options?: { configureGrid?: RouterGridConfigurator }
+                ): void;
+            },
+            algorithm?: string
+        ) => void
     ): void {
-        const instanceRegistry = {
-            register: (
-                name: string,
-                factory: RouterFactory,
-                options?: { configureGrid?: RouterGridConfigurator }
-            ) => {
-                PCB.#routerRegistry.set(name, {
-                    factory,
-                    configureGrid: options?.configureGrid
-                });
-            }
-        };
-
-        // Call the external registerRouter function with our instance registry
-        // The external function will call instanceRegistry.register to store the factory
-        registerFn(instanceRegistry);
+        registerRouter(registerFn);
     }
 
-    /**
-     * Create a routing engine by name from this PCB instance's registry.
-     * @internal
-     */
     createRouter(name: string, grid: RoutingGrid, options: unknown): IRouterContext {
-        const registration = PCB.#routerRegistry.get(name);
-        if (!registration) {
-            throw new RoutingError(`Routing algorithm '${name}' is not registered with this PCB instance. Use typecad.registerRouter() first.`);
-        }
-        return registration.factory(grid, options);
+        return createRouter(name, grid, options);
     }
 
-    /**
-     * Get the grid configuration hook for an algorithm from this PCB instance's registry.
-     * @internal
-     */
     getRouterGridConfigurator(name: string): RouterGridConfigurator | undefined {
-        return PCB.#routerRegistry.get(name)?.configureGrid;
+        return getRouterGridConfigurator(name);
     }
 
-    /**
-     * Get the list of registered router names from this PCB instance's registry.
-     * @internal
-     */
     getRegisteredRouters(): string[] {
-        return Array.from(PCB.#routerRegistry.keys());
-    }
-
-    /**
-     * Loads existing board elements for track and component preservation.
-     * @private
-     */
-    #loadExistingBoardElements(): void {
-        const boardFilePath = `./build/${this.Boardname}.kicad_pcb`;
-
-        if (fs.existsSync(boardFilePath)) {
-            try {
-                let board_contents_str = fs.readFileSync(boardFilePath, "utf8");
-                
-                // Sanitize problematic characters BEFORE S-expression parsing
-                // This prevents fsexp from fragmenting strings with special characters.
-                // Only replace double quotes inside S-expression string tokens (between parentheses),
-                // not all quotes globally, to avoid corrupting legitimate strings.
-                board_contents_str = board_contents_str.replace(/[±]/g, ''); // Remove plus-minus and other problematic Unicode
-                // Replace double quotes with backticks only within S-expression string tokens
-                // e.g., (net 1 "GND") -> (net 1 `GND`) — this is needed for fsexp compatibility
-                // but we must NOT replace quotes in already-valid strings.
-                board_contents_str = board_contents_str.replace(/"([^"]*)"/g, '`$1`');
-                
-                const parsed = fsexp(board_contents_str);
-                if (Array.isArray(parsed) && parsed.length > 0 && Array.isArray(parsed[0]) && parsed[0][0] === 'kicad_pcb') {
-                    const existing_board_contents = parsed[0];
-                    // Populate #existingBoardElements for track preservation logic
-                    this.#existingBoardElements = existing_board_contents.slice(1); // Skip the 'kicad_pcb' header
-                } else {
-                    this.#existingBoardElements = [];
-                }
-            } catch {
-                this.#existingBoardElements = [];
-            }
-        } else {
-            this.#existingBoardElements = [];
-        }
+        return getRegisteredRouters();
     }
 
     /**
      * Getter for PCB options.
      */
     get option(): IPcbOptions {
-        return this.#options;
+        return this.state.options;
     }
 
-    /**
-     * Getter for graphics lines (required by PcbGraphicsInstance interface).
-     */
     get grLines(): IGrLine[] {
-        return this.#grLines;
+        return this.state.grLines;
     }
 
-    /**
-     * Getter for graphics circles (required by PcbGraphicsInstance interface).
-     */
     get grCircles(): IGrCircle[] {
-        return this.#grCircles;
+        return this.state.grCircles;
     }
 
-    /**
-     * Getter for graphics rectangles (required by PcbGraphicsInstance interface).
-     */
     get grRects(): IGrRect[] {
-        return this.#grRects;
+        return this.state.grRects;
     }
 
-    /**
-     * Getter for graphics polygons (required by PcbGraphicsInstance interface).
-     */
     get grPolys(): IGrPoly[] {
-        return this.#grPolys;
+        return this.state.grPolys;
     }
 
-    /**
-     * Getter for staged outlines (required by PcbGraphicsInstance interface).
-     */
     get stagedOutlines(): IOutline[] {
-        return this.#stagedOutlines;
+        return this.state.stagedOutlines;
     }
 
     set stagedOutlines(val: IOutline[]) {
-        this.#stagedOutlines = val;
+        this.state.stagedOutlines = val;
     }
 
-    /**
-     * Getter for filled zones.
-     */
     get zones(): IFilledZone[] {
-        return this.#zones;
+        return this.state.zones;
     }
 
-    /**
-     * Getter for keepout zones.
-     */
     get keepoutZones(): IKeepoutZone[] {
-        return this.#keepoutZones;
+        return this.state.keepoutZones;
     }
 
-    /**
-     * Getter for components.
-     */
     get components(): Component[] {
-        return this.#components;
+        return this.state.components;
     }
 
-    /**
-     * Getter for staged components.
-     */
     get stagedComponents(): Component[] {
-        return this.#stagedComponents;
+        return this.state.stagedComponents;
     }
 
-    /**
-     * Getter for groups.
-     */
     get groups(): string[] {
-        return this.#groups;
+        return this.state.groups;
     }
 
-    /**
-     * Getter for groups as Map (for footprint functions that expect Map).
-     */
     get groupsAsMap(): Map<string, string> {
-        // Convert string array to Map to match the interface expected by footprint functions
         const groupsMap = new Map<string, string>();
-        this.#groups.forEach(groupString => {
-            // Extract group name from string like '(group "groupName" (members ...))'
+        this.state.groups.forEach(groupString => {
             const match = groupString.match(/^\(group\s+"([^"]+)"/);
             if (match) {
                 groupsMap.set(match[1], groupString);
@@ -406,74 +260,33 @@ export class PCB implements IPcbBoardContext {
         return groupsMap;
     }
 
-    /**
-     * Getter for existing board elements.
-     */
     get existingBoardElements(): unknown[] {
-        return this.#existingBoardElements;
+        return this.state.existingBoardElements;
     }
 
-    /**
-     * Getter for grTexts.
-     */
     get grTexts(): IGrTextOptions[] {
-        return this.#grTexts;
+        return this.state.grTexts;
     }
 
-    
-    /**
-     * Getter for pcb string.
-     */
     get pcb(): string {
-        return this.#pcb;
+        return this.state.pcb;
     }
 
-    /**
-     * Getter for outlines_public.
-     */
     get outlines_public(): IOutline[] {
-        return this.#outlines;
+        return this.state.outlines;
     }
 
-    /**
-     * Getter for options.
-     */
     get options(): IPcbOptions {
         return {
-            ...this.#options,
-            remove_orphans: this.#options.remove_orphans ?? true
+            ...this.state.options,
+            remove_orphans: this.state.options.remove_orphans ?? true
         };
     }
 
     
-    /**
-     * Public resolveNet method that delegates to the private implementation.
-     * This is needed for the extracted functions that expect a public resolveNet method.
-     */
     resolveNet(
         componentReference: string,
         pinNumber: string,
-        componentUuid?: string,
-        boardNetNameToCodeMap?: Map<string, number>,
-        fallbackNetName?: string
-    ): INetResolution {
-        return this.#resolveNet(componentReference, pinNumber, componentUuid, boardNetNameToCodeMap, fallbackNetName);
-    }
-
-    /**
-     * Resolves the net assignment for a component pin or via.
-     * Delegates to the standalone resolveNet function from pcb_net_resolver.ts.
-     * @param componentReference - The reference designator of the component (e.g., "R1", "U1")
-     * @param pinNumber - The pin number or name (e.g., "1", "2", "VCC")
-     * @param componentUuid - Optional UUID for via lookup (used when componentReference represents a via)
-     * @param boardNetNameToCodeMap - Map of existing board net names to their codes
-     * @param fallbackNetName - Optional fallback net name if not found in schematic
-     * @returns Net resolution result containing net code, name, and status
-     * @private
-     */
-    #resolveNet(
-        componentReference: string, 
-        pinNumber: string, 
         componentUuid?: string,
         boardNetNameToCodeMap?: Map<string, number>,
         fallbackNetName?: string
@@ -488,157 +301,20 @@ export class PCB implements IPcbBoardContext {
         );
     }
 
-    // ─── Internal Methods ────────────────────────────────────────────────
-    // These methods are used by extracted modules (board creation, routing,
-    // obstacle detection) and are NOT part of the public API. Do not call
-    // these from consumer code — they may change without notice.
-    // ─────────────────────────────────────────────────────────────────────
-
-    /**
-     * Actually adds a component to the board (internal use only).
-     * @param component - Component to add to the board.
-     * @private
-     */
-    #addComponentToBoard(component: Component) {
-        if (component.dnp === true) {
-            return;
-        }
-
-        // Simply add the component - no duplicate checking
-        this.#components.push(component);
-    }
-
-    /**
-     * Public accessor for addComponentToBoard functionality.
-     * Used by extracted modules to add components to the board.
-     * @param component - Component to add to the board.
-     * @internal
-     */
-    _addComponentToBoardPublic(component: Component) {
-        this.#addComponentToBoard(component);
-    }
-
-    /**
-     * Public accessor for resolveNet functionality.
-     * Used by extracted modules to resolve net assignments.
-     * @internal
-     */
-    _resolveNetPublic(
-        componentReference: string,
-        pinNumber: string,
-        componentUuid?: string,
-        boardNetNameToCodeMap?: Map<string, number>,
-        fallbackNetName?: string
-    ): INetResolution {
-        return this.#resolveNet(componentReference, pinNumber, componentUuid, boardNetNameToCodeMap, fallbackNetName);
-    }
-
-    /**
-     * Public accessor for createFootprintNode functionality.
-     * Used by extracted modules to create footprint nodes.
-     * @internal
-     */
-    _createFootprintNodePublic(component: Component, boardNetNameToCodeMap?: Map<string, number>): SexprNode {
-        return this.#_create_footprint_node(component, boardNetNameToCodeMap);
-    }
-
-    /**
-     * Public accessor for updateFootprintNode functionality.
-     * Used by extracted modules to update footprint nodes.
-     * @internal
-     */
-    _updateFootprintNodePublic(node: SexprNode, component: Component, boardNetNameToCodeMap?: Map<string, number>): SexprNode {
-        return this.#_update_footprint_node(node, component, boardNetNameToCodeMap);
-    }
-
-    /**
-     * Public method to clear components.
-     * Used by extracted modules to reset components during board creation.
-     * @internal
-     */
-    _clearComponents() {
-        this.#components = [];
-    }
-
-    /**
-     * Public method to clear outlines.
-     * Used by extracted modules to reset outlines during board creation.
-     * @internal
-     */
-    _clearOutlines() {
-        this.#outlines = [];
-    }
-
-    /**
-     * Public method to clear groups.
-     * Used by extracted modules to reset groups during board creation.
-     * @internal
-     */
-    _clearGroups() {
-        this.#groups = [];
-    }
-
-    /**
-     * Public method to set PCB content.
-     * Used by extracted modules to set the PCB content.
-     * @internal
-     */
-    _setPcb(content: string) {
-        this.#pcb = content;
-    }
-
     /**
      * Places components on the board.
      * @param components - List of components to place.
      */
     place(...components: Component[]) {
         components.forEach(component => {
-            this.#unstageComponent(component);
-            this.#addComponentToBoard(component);
+            placeComponent(this.state, component);
         });
     }
 
-    /**
-     * Stage components so they're considered for routing/debug before full board creation.
-     * @param components - Components to stage
-     */
     stage(...components: Component[]) {
         components.forEach(component => {
-            this.#stageComponent(component);
+            stageComponent(this.state, component);
         });
-    }
-
-    /**
-     * Internal helper to add component to staged list if not already present.
-     * @private
-     */
-    #stageComponent(component?: Component) {
-        if (!component || component.dnp === true) {
-            return;
-        }
-
-        const uuid = component.uuid;
-        if (this.#stagedComponents.some(existing => existing.uuid === uuid)) {
-            return;
-        }
-
-        this.#stagedComponents.push(component);
-    }
-
-    /**
-     * Internal helper to remove component from staged list once placed.
-     * @private
-     */
-    #unstageComponent(component?: Component) {
-        if (!component) {
-            return;
-        }
-
-        const uuid = component.uuid;
-        const index = this.#stagedComponents.findIndex(existing => existing.uuid === uuid);
-        if (index !== -1) {
-            this.#stagedComponents.splice(index, 1);
-        }
     }
 
     /**
@@ -647,50 +323,7 @@ export class PCB implements IPcbBoardContext {
      * @param items - A list of Component instances or TrackBuilder instances.
      */
     group(group_name: string, ...items: Array<Component | TrackBuilder>) {
-        let uuid_list = '';
-        const componentsToPlaceAndProcess: Component[] = [];
-
-        items.forEach(item => {
-            if (item && typeof item === 'object' && 'reference' in item) {
-                componentsToPlaceAndProcess.push(item);
-            } else if (item instanceof TrackBuilder) {
-                const builderElements = item.getElements();
-                builderElements.forEach(element => {
-                    // UUIDs from TrackBuilder elements (tracks and vias) are added directly.
-                    // Vias are already 'placed' by the builder. Tracks aren't 'placed' components.
-                    uuid_list += `"${element.uuid}" `;
-                });
-            }
-        });
-
-        // Place all explicit components and process them
-        if (componentsToPlaceAndProcess.length > 0) {
-            this.place(...componentsToPlaceAndProcess); // Ensure components are registered, DNP handled etc.
-
-            componentsToPlaceAndProcess.forEach((_component) => {
-                if (_component.dnp === true) {
-                    return;
-                }
-                uuid_list += `"${_component.uuid}" `;
-                
-                // Track group membership in the component
-                if (!_component.groups.includes(group_name)) {
-                    _component.groups.push(group_name);
-                }
-            });
-        }
-
-        const existingGroupIndex = this.#groups.findIndex(group =>
-            group.startsWith(`(group "${group_name}"`)
-        );
-
-        const newGroupString = `(group "${group_name}" (members ${uuid_list}))`;
-
-        if (existingGroupIndex !== -1) {
-            this.#groups[existingGroupIndex] = newGroupString;
-        } else {
-            this.#groups.push(newGroupString);
-        }
+        groupComponents(this.state, (...comps) => this.place(...comps), group_name, ...items);
     }
 
     /**
@@ -709,49 +342,20 @@ export class PCB implements IPcbBoardContext {
      * });
      */
     text(options: IGrTextOptions): void {
-        const textElement: IGrTextOptions = {
-            text: options.text,
-            x: options.x + this.#currentOffset.x,
-            y: options.y + this.#currentOffset.y,
-            layer: options.layer || 'F.SilkS',
-            width: options.width || 1.27,
-            height: options.height || 1.27,
-            thickness: options.thickness,
-            rotation: options.rotation || 0,
-            font: options.font,
-            bold: options.bold,
-            italic: options.italic,
-            justify: options.justify,
-            hide: options.hide,
-            uuid: options.uuid || generateUuid()
+        const modifiedOptions: IGrTextOptions = {
+            ...options,
+            x: options.x + this.state.currentOffset.x,
+            y: options.y + this.state.currentOffset.y,
         };
-
-        this.#grTexts.push(textElement);
+        pcbText(this, modifiedOptions);
     }
 
-    /**
-     * Updates an existing footprint S-expression node with data from a component.
-     * @param node The existing footprint S-expression node array.
-     * @param component The component data to update with.
-     * @param boardNetNameToCodeMap Map of existing board net names to their codes.
-     * @returns The updated S-expression node array.
-     * @private
-     */
-    #_update_footprint_node(node: SexprNode, component: Component, boardNetNameToCodeMap?: Map<string, number>): SexprNode {
-        return updateFootprintNode(node, component, this.#resolveNet.bind(this), boardNetNameToCodeMap);
+    #_update_footprint_node(node: SExpr[], component: Component, boardNetNameToCodeMap?: Map<string, number>): SExpr[] {
+        return updateFootprintNode(node, component, this.resolveNet.bind(this), boardNetNameToCodeMap);
     }
 
-    /**
-     * Creates a new footprint S-expression node from a component.
-     * Reads the .kicad_mod file, parses it, and inserts component data.
-     * @param component The component to create the node for.
-     * @param boardNetNameToCodeMap Map of existing board net names to their codes.
-     * @returns The new S-expression node array.
-     * @throws Error if the .kicad_mod file is missing, empty, or parsing fails.
-     * @private
-     */
-    #_create_footprint_node(component: Component, boardNetNameToCodeMap?: Map<string, number>): SexprNode {
-        return createFootprintNode(component, this.#resolveNet.bind(this), boardNetNameToCodeMap);
+    #_create_footprint_node(component: Component, boardNetNameToCodeMap?: Map<string, number>): SExpr[] {
+        return createFootprintNode(component, this.resolveNet.bind(this), boardNetNameToCodeMap);
     }
 
     async create(...items: Array<Component | TrackBuilder | Array<Component | TrackBuilder>>) {
@@ -794,32 +398,11 @@ export class PCB implements IPcbBoardContext {
      * @returns The component representing the via.
      */
     via({ at, size, drill, net, powerInfo }: Omit<IVia, 'uuid' | 'netCode' | 'layers'> = {}): Component {
-        const viaPosition = { 
-            x: (at?.x ?? 0) + this.#currentOffset.x, 
-            y: (at?.y ?? 0) + this.#currentOffset.y 
-        };
-
-        const viaUuid = generateUuid();
-        const viaComponent = new Component({
-            via: true,
-            prefix: 'V',
-            uuid: viaUuid,
-            pcb: { x: viaPosition.x, y: viaPosition.y, rotation: 0, side: 'front' },
-            viaData: {
-                uuid: viaUuid,
-                at: viaPosition,
-                size: size || 0.8,
-                drill: drill || 0.4,
-                layers: ["F.Cu", "B.Cu"], // Default layers
-                net,
-                powerInfo: powerInfo
-            }
-        });
-
-        // Stage via components immediately so they're available for routing/visualization without create()
-        this.stage(viaComponent);
-
-        return viaComponent;
+        return createVia(
+            this.state.currentOffset,
+            (c) => this.stage(c),
+            { at, size, drill, net, powerInfo }
+        );
     }
 
     /**
@@ -879,8 +462,8 @@ export class PCB implements IPcbBoardContext {
     }): void {
         const modifiedOptions = { 
             ...options,
-            x: options.x + this.#currentOffset.x,
-            y: options.y + this.#currentOffset.y
+            x: options.x + this.state.currentOffset.x,
+            y: options.y + this.state.currentOffset.y
         };
         zone(this, modifiedOptions);
     }
@@ -921,8 +504,8 @@ export class PCB implements IPcbBoardContext {
     }): void {
         const modifiedOptions = { 
             ...options,
-            x: options.x + this.#currentOffset.x,
-            y: options.y + this.#currentOffset.y
+            x: options.x + this.state.currentOffset.x,
+            y: options.y + this.state.currentOffset.y
         };
         keepout(this, modifiedOptions);
     }
@@ -940,8 +523,8 @@ export class PCB implements IPcbBoardContext {
     }): void {
         const modifiedOptions = { 
             ...options,
-            start: { x: options.start.x + this.#currentOffset.x, y: options.start.y + this.#currentOffset.y },
-            end: { x: options.end.x + this.#currentOffset.x, y: options.end.y + this.#currentOffset.y }
+            start: { x: options.start.x + this.state.currentOffset.x, y: options.start.y + this.state.currentOffset.y },
+            end: { x: options.end.x + this.state.currentOffset.x, y: options.end.y + this.state.currentOffset.y }
         };
         pcbLine(this, modifiedOptions);
     }
@@ -961,10 +544,10 @@ export class PCB implements IPcbBoardContext {
     }): void {
         const modifiedOptions = { 
             ...options,
-            center: { x: options.center.x + this.#currentOffset.x, y: options.center.y + this.#currentOffset.y }
+            center: { x: options.center.x + this.state.currentOffset.x, y: options.center.y + this.state.currentOffset.y }
         };
         if (options.end) {
-            modifiedOptions.end = { x: options.end.x + this.#currentOffset.x, y: options.end.y + this.#currentOffset.y };
+            modifiedOptions.end = { x: options.end.x + this.state.currentOffset.x, y: options.end.y + this.state.currentOffset.y };
         }
         pcbCircle(this, modifiedOptions);
     }
@@ -986,13 +569,13 @@ export class PCB implements IPcbBoardContext {
         locked?: boolean;
     }): void {
         const modifiedOptions = { ...options };
-        if (modifiedOptions.x !== undefined) modifiedOptions.x += this.#currentOffset.x;
-        if (modifiedOptions.y !== undefined) modifiedOptions.y += this.#currentOffset.y;
+        if (modifiedOptions.x !== undefined) modifiedOptions.x += this.state.currentOffset.x;
+        if (modifiedOptions.y !== undefined) modifiedOptions.y += this.state.currentOffset.y;
         if (modifiedOptions.start) {
-            modifiedOptions.start = { x: modifiedOptions.start.x + this.#currentOffset.x, y: modifiedOptions.start.y + this.#currentOffset.y };
+            modifiedOptions.start = { x: modifiedOptions.start.x + this.state.currentOffset.x, y: modifiedOptions.start.y + this.state.currentOffset.y };
         }
         if (modifiedOptions.end) {
-            modifiedOptions.end = { x: modifiedOptions.end.x + this.#currentOffset.x, y: modifiedOptions.end.y + this.#currentOffset.y };
+            modifiedOptions.end = { x: modifiedOptions.end.x + this.state.currentOffset.x, y: modifiedOptions.end.y + this.state.currentOffset.y };
         }
         pcbRect(this, modifiedOptions);
     }
@@ -1010,7 +593,7 @@ export class PCB implements IPcbBoardContext {
     }): void {
         const modifiedOptions = { 
             ...options,
-            points: options.points.map(p => ({ x: p.x + this.#currentOffset.x, y: p.y + this.#currentOffset.y }))
+            points: options.points.map(p => ({ x: p.x + this.state.currentOffset.x, y: p.y + this.state.currentOffset.y }))
         };
         pcbPoly(this, modifiedOptions);
     }
@@ -1025,62 +608,14 @@ export class PCB implements IPcbBoardContext {
      * @param conceptualUuidFromUser - Optional UUID for the conceptual outline.
      */
     outline(x: number, y: number, width: number, height: number, filletRadius: number = 0, conceptualUuidFromUser?: string): void {
-        pcbOutline(this, x + this.#currentOffset.x, y + this.#currentOffset.y, width, height, filletRadius, conceptualUuidFromUser);
+        pcbOutline(this, x + this.state.currentOffset.x, y + this.state.currentOffset.y, width, height, filletRadius, conceptualUuidFromUser);
     }
 
-    // ─── Routing Internals ───────────────────────────────────────────────
-    // Accessors used by routing/obstacle modules. NOT part of the public API.
-    // ─────────────────────────────────────────────────────────────────────
-
-    /**
-     * Get staged outlines for obstacle detection during autorouting.
-     * @internal Used by ObstacleBuilder to detect tracks from previous autoroute calls.
-     */
-    _getStagedOutlines(): IOutline[] {
-        return _getStagedOutlines(this);
-    }
-
-    /**
-     * Get keepout zones for obstacle detection during autorouting.
-     * @internal Used by ObstacleBuilder to include keepout areas in the routing grid.
-     */
-    _getKeepoutZones(): IKeepoutZone[] {
-        return this.#keepoutZones;
-    }
-
-    /**
-     * Get active components on the PCB.
-     * @internal Used by ObstacleBuilder to include components as obstacles.
-     */
-    _getComponents(): Component[] {
-        return this.#components;
-    }
-
-    /**
-     * Get staged components (placed but not yet created).
-     * @internal Used by ObstacleBuilder to include staged components as obstacles.
-     */
-    _getStagedComponents(): Component[] {
-        return this.#stagedComponents;
-    }
-
-    /**
-     * @internal Remove staged outlines with specific UUIDs (used when reusing autoroute results in manual routes)
-     */
-    _removeStagedOutlinesByUuid(uuids: string[]): void {
-        _removeStagedOutlinesByUuid(this, uuids);
-    }
-
-    /**
-     * Create a low-level track segment. Used internally by TrackBuilder.
-     * @internal
-     */
     _track(start: { x: number, y: number }, end: { x: number, y: number }, width: number = 0.05, layer: string = "F.Cu", locked: boolean = false, uuid?: string, net?: string): string {
         const trackUuid = uuid || generateUuid();
-        const offsetStart = { x: start.x + this.#currentOffset.x, y: start.y + this.#currentOffset.y };
-        const offsetEnd = { x: end.x + this.#currentOffset.x, y: end.y + this.#currentOffset.y };
+        const offsetStart = { x: start.x + this.state.currentOffset.x, y: start.y + this.state.currentOffset.y };
+        const offsetEnd = { x: end.x + this.state.currentOffset.x, y: end.y + this.state.currentOffset.y };
 
-        // Create the line data structure
         const lineData: IGrLine = {
             type: 'line',
             uuid: trackUuid,
@@ -1089,11 +624,10 @@ export class PCB implements IPcbBoardContext {
             start: offsetStart,
             end: offsetEnd,
             locked: locked,
-            net: net  // Store net for obstacle detection
+            net: net
         };
 
-        // Always add new track to staged outlines
-        this.#stagedOutlines.push({
+        this.state.stagedOutlines.push({
             uuid: trackUuid,
             x: lineData.start.x,
             y: lineData.start.y,
@@ -1102,7 +636,6 @@ export class PCB implements IPcbBoardContext {
             filletRadius: 0,
             elements: [lineData]
         });
-
 
         return trackUuid;
     }
@@ -1185,45 +718,6 @@ export class PCB implements IPcbBoardContext {
      * @throws {Error} If pins are invalid or routing constraints cannot be satisfied
      */
 
-    /**
-     * Convert a Pin object to a string identifier in "component.pin" format.
-     * @param pin - The Pin object to convert
-     * @returns String identifier (e.g., "U1.5" or "R1.pad1")
-     * @private
-     */
-    #_pinToIdentifier(pin: Pin): string {
-        return pinToIdentifier(pin);
-    }
-
-    /**
-     * Check if two pins represent the same pin (same component and pin number).
-     * @param pin1 - First pin
-     * @param pin2 - Second pin
-     * @returns True if the pins match
-     * @private
-     */
-    #_pinsMatch(pin1: Pin, pin2: Pin): boolean {
-        return pinsMatch(pin1, pin2);
-    }
-
-    /**
-     * Check if two connections match (order-independent).
-     * @param conn1From - First connection from pin
-     * @param conn1To - First connection to pin
-     * @param conn2From - Second connection from pin
-     * @param conn2To - Second connection to pin
-     * @returns True if the connections represent the same connection
-     * @private
-     */
-    #_connectionMatches(
-        conn1From: Pin,
-        conn1To: Pin,
-        conn2From: Pin,
-        conn2To: Pin
-    ): boolean {
-        return connectionMatches(conn1From, conn1To, conn2From, conn2To);
-    }
-
     
     /**
      * Unified routing API.
@@ -1251,42 +745,22 @@ export class PCB implements IPcbBoardContext {
     }
 
     async #autoroute(options: IAutorouteOptions): Promise<IAutorouteResult> {
-        // Track pending autoroutes so callers that write the board can wait for
-        // any in-progress routing to complete (prevents writing the board
-        // before async routing finishes).
         const task = Promise.resolve(autoroute(this, options));
-        this.#pendingAutoroutes.add(task);
+        this.state.pendingAutoroutes.add(task);
         try {
             return await task;
         } finally {
-            this.#pendingAutoroutes.delete(task);
+            this.state.pendingAutoroutes.delete(task);
         }
     }
 
-    /**
-     * Wait for any pending autoroute operations initiated on this PCB instance.
-     * This is useful to ensure the board file is written after routing completes.
-     */
     async waitForPendingAutoroutes(): Promise<void> {
-        if (this.#pendingAutoroutes.size === 0) return;
-        await Promise.all(Array.from(this.#pendingAutoroutes));
+        if (this.state.pendingAutoroutes.size === 0) return;
+        await Promise.all(Array.from(this.state.pendingAutoroutes));
     }
 
 
   
-    /**
-     * Check if a point lies on (or very near) a line segment, within a tolerance
-     * derived from the segment width.
-     * @private
-     */
-    #_pointOnLineSegment(
-        p: { x: number; y: number },
-        line: IGrLine,
-        widthTol: number
-    ): boolean {
-        return pointOnLineSegment(p, line, widthTol);
-    }
-
     /**
      * Batch autorouter orchestrator with simple rip-up-and-retry.
      * Routes multiple connections together, retrying with different ordering
@@ -1311,18 +785,16 @@ export class PCB implements IPcbBoardContext {
      * @private
      */
     #calculateBoardBounds(additionalComponents?: Component[]): { minX: number; maxX: number; minY: number; maxY: number } {
-        // Collect all components from both staged and active lists
         const allComponents: Component[] = [];
 
-        if (this.#components) {
-            allComponents.push(...this.#components);
+        if (this.state.components) {
+            allComponents.push(...this.state.components);
         }
 
-        if (this.#stagedComponents) {
-            allComponents.push(...this.#stagedComponents);
+        if (this.state.stagedComponents) {
+            allComponents.push(...this.state.stagedComponents);
         }
 
-        // Add any additional components (e.g., from pins being routed)
         if (additionalComponents) {
             allComponents.push(...additionalComponents);
         }
@@ -1433,15 +905,8 @@ export class PCB implements IPcbBoardContext {
         }
     }
 
-    /**
-     * Gets the actual track data for a given UUID, including any preserved manual edits.
-     * @param uuid - The UUID of the track to retrieve
-     * @returns The track data if found, null otherwise
-     * @internal Used by TrackBuilder to retrieve deferred track data.
-     */
     _getTrackData(uuid: string): IGrLine | null {
-        // Look for the track in staged outlines
-        for (const outline of this.#stagedOutlines) {
+        for (const outline of this.state.stagedOutlines) {
             if (outline.uuid === uuid && outline.elements.length === 1 && outline.elements[0].type === 'line') {
                 return outline.elements[0] as IGrLine;
             }

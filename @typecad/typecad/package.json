@@ -17,9 +17,9 @@
   "types": "dist/index.d.ts",
   "type": "module",
   "bin": {
-    "create-typecad": "./cli/create-typecad/index.js",
-    "add-component": "./cli/add-component/index.js",
-    "add-package": "./cli/add-package/index.js",
+    "create-typecad": "./dist/cli/create-typecad/index.js",
+    "add-component": "./dist/cli/add-component/index.js",
+    "add-package": "./dist/cli/add-package/index.js",
     "kicad-symbols": "./dist/kicad-symbols/cli/bin.js",
     "kicad2typecad": "./dist/kicad2typecad/bin.js"
   },
@@ -27,10 +27,10 @@
     "access": "public"
   },
   "scripts": {
-    "create-typecad": "node ./cli/create-typecad/index.js",
-    "add-component": "node ./cli/add-component/index.js",
-    "add-package": "node ./cli/add-package/index.js",
-    "build": "tsc",
+    "create-typecad": "node ./dist/cli/create-typecad/index.js",
+    "add-component": "node ./dist/cli/add-component/index.js",
+    "add-package": "node ./dist/cli/add-package/index.js",
+    "build": "tsc && tsc -p tsconfig.cli.json",
     "typecheck": "tsc --noEmit",
     "obfuscate": "javascript-obfuscator dist --output dist-obfuscated --config obfuscator.config.json",
     "obfuscate:strong": "javascript-obfuscator dist --output dist-obfuscated --config obfuscator.strong.config.json",
@@ -67,13 +67,8 @@
     "acorn": "^8.16.0",
     "acorn-walk": "^8.3.5",
     "chalk": "^5.4.1",
-    "commander": "^11.0.0",
-    "fast-sexpr": "^1.0.0",
-    "find-bin": "^1.1.0",
-    "gl-matrix": "^3.4.3",
-    "handlebars": "^4.7.8",
-    "inquirer-file-selector": "0.4.0",
-    "inquirer-select-pro": "1.0.0-alpha.9",
-    "s-expression.js": "^0.6.4"
+    "commander": "^14.0.3",
+    "inquirer-file-selector": "^1.0.1",
+    "inquirer-select-pro": "1.0.0-alpha.9"
   }
 }

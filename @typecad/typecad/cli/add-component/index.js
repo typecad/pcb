@@ -9,25 +9,15 @@ import {
   sanitize_name,
   kicad_cli,
 } from "./kicad.js";
+import { findExecutable } from "../../dist/kicad.js";
 import { create_component } from "./typecad.js";
 import { basename } from "node:path";
-import fileSelector from "inquirer-file-selector";
+import { fileSelector } from "inquirer-file-selector";
 import chalk from "chalk";
 import { convertEasyedaToKicad } from "../../kipm/easyeda2kicadCore.js";
 import fs from "node:fs";
 import { execSync } from "node:child_process";
 import path from "node:path";
-
-// Helper function for path lookup (simplified version)
-function lookpathSync(command) {
-  try {
-    return execSync(`where ${command}`, { encoding: "utf8" })
-      .trim()
-      .split("\n")[0];
-  } catch {
-    return command; // fallback to command name
-  }
-}
 
 /**
  * Parse command line arguments
@@ -565,11 +555,11 @@ async function handleLocalSymbol(cmdArgs, isNonInteractive) {
       };
     }
   } else {
-    symbolPath = await fileSelector({
+    symbolPath = (await fileSelector({
       message: "Select a KiCAD Symbol file (kicad_sym):",
-      match: (filename) => filename.path.includes(".kicad_sym"),
-      hideNonMatch: true,
-    });
+      filter: (file) => file.isDirectory || file.path.includes(".kicad_sym"),
+      showExcluded: false,
+    })).path;
 
     let _found_symbols = return_list_of_symbols(symbolPath);
     if (_found_symbols.length > 1) {
@@ -845,11 +835,11 @@ async function handleLocalFootprint(cmdArgs, isNonInteractive, symbolData) {
   } else {
     const defaultFootprint =
       symbolData.footprint_recommendation || "lib:footprint";
-    footprintPath = await fileSelector({
+    footprintPath = (await fileSelector({
       message: `Select footprint file (.kicad_mod) for ${defaultFootprint}:`,
-      match: (filename) => filename.path.includes(".kicad_mod"),
-      hideNonMatch: true,
-    });
+      filter: (file) => file.isDirectory || file.path.includes(".kicad_mod"),
+      showExcluded: false,
+    })).path;
 
     return {
       footprint: defaultFootprint,

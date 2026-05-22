@@ -2,7 +2,7 @@
 import { getDocument } from 'pdfjs-dist';
 import fs from 'fs';
 import yoctoSpinner from 'yocto-spinner';
-import fileSelector from 'inquirer-file-selector';
+import { fileSelector } from 'inquirer-file-selector';
 import path from 'path';
 import { select } from '@inquirer/prompts';
 import { fileURLToPath } from 'url';
@@ -169,10 +169,10 @@ async function handleReferenceDesign(): Promise<void> {
 
         // Select schematic image
         console.log('Please select the schematic image:');
-        const schematicPath = await fileSelector({
+        const schematicPath = (await fileSelector({
             message: 'Schematic image?',
-            filter: (file: { name: string }) => file.name.endsWith('.png') || file.name.endsWith('.jpg') || file.name.endsWith('.jpeg')
-        });
+            filter: (file: { isDirectory: boolean; name: string }) => file.isDirectory || file.name.endsWith('.png') || file.name.endsWith('.jpg') || file.name.endsWith('.jpeg')
+        })).path;
 
         // Update prompt template and get the temporary file path
         const tempPromptPath = await updatePromptTemplate(datasheetPath, schematicPath);
@@ -196,10 +196,10 @@ async function handleComponent(): Promise<void> {
     try {
         // Select datasheet file
         console.log('Please select the datasheet file:');
-        const datasheetPath = await fileSelector({
+        const datasheetPath = (await fileSelector({
             message: 'Datasheet?',
-            filter: (file: { name: string }) => file.name.endsWith('.pdf') || file.name.endsWith('.txt')
-        });
+            filter: (file: { isDirectory: boolean; name: string }) => file.isDirectory || file.name.endsWith('.pdf') || file.name.endsWith('.txt')
+        })).path;
 
         // Process datasheet if it's a PDF
         let datasheetText = '';
@@ -251,10 +251,10 @@ async function handleDatasheet(): Promise<void> {
     try {
         // Select datasheet file
         console.log('Please select the datasheet file:');
-        const datasheetPath = await fileSelector({
+        const datasheetPath = (await fileSelector({
             message: 'Datasheet?',
-            filter: (file: { name: string }) => file.name.endsWith('.pdf')
-        });
+            filter: (file: { isDirectory: boolean; name: string }) => file.isDirectory || file.name.endsWith('.pdf')
+        })).path;
 
         // Process datasheet into text
         const datasheetText = await processPdf(datasheetPath);

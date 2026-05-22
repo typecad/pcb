@@ -2,20 +2,9 @@ import { Component } from "../component.js";
 import { TrackBuilder } from './pcb_track_builder.js';
 import { Schematic, setPendingBoardFilePath } from "../schematic.js";
 import fs from "node:fs";
-import fsexp from "fast-sexpr";
-
-// The fsexp parser splits backtick-quoted strings at spaces.
-// This recursively restores \x00 placeholders back to spaces in all string nodes.
-function restoreSpacesInNodes(node: unknown[]): void {
-    for (let i = 0; i < node.length; i++) {
-        if (typeof node[i] === 'string') {
-            node[i] = (node[i] as string).replace(/\x00/g, ' ');
-        } else if (Array.isArray(node[i])) {
-            restoreSpacesInNodes(node[i] as unknown[]);
-        }
-    }
-}
-import S from "../utils/sexpr_instance.js";
+import { parse, serialize, s, sym, yes, no, Sym, nameOf } from '../sexpr/index.js';
+import type { SExpr } from '../sexpr/types.js';
+import type { SexprNode } from '../types/sexpr_types.js';
 import logger from '../logging.js';
 import { BoardCreationError } from '../errors.js';
 import { reportError } from '../utils/error_reporter.js';
@@ -33,11 +22,10 @@ import {
     IOutline,
     OutlineElement
 } from './pcb_interfaces.js';
-import type { SexprNode } from '../types/sexpr_types.js';
 import type { ISchematicNode } from '../types/schematic_types.js';
 import { IPcbBoardContext } from './pcb_board_context.js';
-import { prettyPrintSExpr } from '../utils/sexpr_formatter.js';
 import { normalizeNetName, formatCallSite, getErrorMessage } from './pcb_utils.js';
+import { createFootprintNode, updateFootprintNode } from './pcb_footprint.js';
 
 
 
@@ -75,15 +63,13 @@ export function createBoard(
             viaComponents.push(comp);
         }
     });
-    pcb._clearComponents();
+    pcb.state.components = [];
 
-    // Since we're regenerating everything from scratch, just clear outlines
-    // All tracks/outlines defined in code are already in #stagedOutlines from _track() and outline() calls
-    pcb._clearOutlines();
+    pcb.state.outlines = [];
 
     // Add all explicitly passed components to the board
     components.forEach((component) => {
-        pcb._addComponentToBoardPublic(component);
+        if (component.dnp !== true) pcb.state.components.push(component);
     });
 
     // TrackBuilder instances: tracks are already in stagedOutlines from _track() calls,
@@ -91,12 +77,11 @@ export function createBoard(
 
     // Add all staged components to the board
     pcb.stagedComponents.forEach((stagedComponent: Component) => {
-        pcb._addComponentToBoardPublic(stagedComponent);
+        if (stagedComponent.dnp !== true) pcb.state.components.push(stagedComponent);
     });
 
-    // Restore via components that were preserved during routing
     viaComponents.forEach((viaComponent: Component) => {
-        pcb._addComponentToBoardPublic(viaComponent);
+        if (viaComponent.dnp !== true) pcb.state.components.push(viaComponent);
     });
 
     // Include any outlines/tracks that were created during this create() session
@@ -133,11 +118,11 @@ export function createBoard(
         });
     });
 
-    const version = '(version 20241229)';
-    const generator = '(generator "typecad")';
-    const generator_version = '(generator_version "0.1.0")';
-    const general = '(general (thickness 1.6) (legacy_teardrops no))';
-    const paper = '(paper "A4")';
+    const version = parse('(version 20241229)');
+    const generator = parse('(generator "typecad")');
+    const generator_version = parse('(generator_version "0.1.0")');
+    const general = parse('(general (thickness 1.6) (legacy_teardrops no))');
+    const paper = parse('(paper "A4")');
 
     const componentMap = new Map<string, Component>();
     pcb.components.forEach((comp: Component) => {
@@ -166,10 +151,8 @@ export function createBoard(
     const boardFilePath = `./build/${pcb.Boardname}.kicad_pcb`;
     const boardNetNameToCodeMap = new Map<string, number>();
 
-    // Use already-loaded existing board elements from constructor
     if (pcb.existingBoardElements.length > 0) {
-        // Reconstruct existing_board_contents from existingBoardElements
-        existing_board_contents = ['kicad_pcb', ...pcb.existingBoardElements] as SexprNode;
+        existing_board_contents = [sym('kicad_pcb'), ...(pcb.existingBoardElements as SexprNode)];
     }
 
     let final_board_contents: SexprNode = [];
@@ -178,11 +161,15 @@ export function createBoard(
     if (existing_board_contents.length > 1) {
         existing_board_contents.slice(1).forEach(item => {
             if (typeof item === 'string' && item.startsWith('(')) {
-                final_board_contents.push(item);
+                try {
+                    final_board_contents.push(parse(item) as SexprNode);
+                } catch {
+                    final_board_contents.push(item);
+                }
             } else if (Array.isArray(item) && item.length > 0) {
-                const nodeType = item[0];
+                const nodeType = nameOf(item[0]);
 
-                if (nodeType === 'net' && item.length >= 3 && !isNaN(Number(item[1])) && (typeof item[2] === 'string' || typeof item[2] === 'symbol')) {
+                if (nodeType === 'net' && item.length >= 3 && !isNaN(Number(item[1]))) {
                     const netCode = Number(item[1]);
                     let originalNetNameFromFile = String(item[2]);
                     let netNameForMapKey = originalNetNameFromFile;
@@ -219,8 +206,8 @@ export function createBoard(
             }
         });
         headerItems.forEach(header => {
-            const headerSymbol = header.substring(1, header.indexOf(" "));
-            if (!final_board_contents.some(item => (typeof item === 'string' && item.includes(`(${headerSymbol}`)) || (Array.isArray(item) && item[0] === headerSymbol))) {
+            const headerSymbol = Array.isArray(header) ? nameOf(header[0]) : '';
+            if (!final_board_contents.some(item => (typeof item === 'string' && item.includes(`(${headerSymbol}`)) || (Array.isArray(item) && nameOf(item[0]) === headerSymbol))) {
                 final_board_contents.unshift(header);
             }
         });
@@ -233,46 +220,44 @@ export function createBoard(
         logger.warn(`[PCB CREATE] Warning: No schematic provided. Net information will be limited to existing board nets.`);
     } else if (pcb.Schematic.Nodes) {
         pcb.Schematic.Nodes.forEach((schematicNet: ISchematicNode) => {
-            schematicNetDefinitions.push(['net', schematicNet.code, `\`${schematicNet.name}\``]);
+            schematicNetDefinitions.push(s('net', schematicNet.code, schematicNet.name));
         });
     }
 
     let boardContentsWithoutNets = final_board_contents.filter(item => {
         // Keep everything except net definitions - we'll handle nets separately
-        if (Array.isArray(item) && item[0] === 'net') {
+        if (Array.isArray(item) && nameOf(item[0]) === 'net') {
             return false;
         }
         if (typeof item === 'string' && item.trim().startsWith('(net ')) {
             try {
-                const parsedItem = fsexp(item).pop();
-                if (Array.isArray(parsedItem) && parsedItem[0] === 'net') return false;
+                const parsedItem = parse(item) as SexprNode;
+                if (Array.isArray(parsedItem) && nameOf(parsedItem[0]) === 'net') return false;
             } catch (e) { /* ignore */ }
         }
         return true;
     });
 
     // Collect existing nets from the board file to preserve them
-    const existingNets = new Map<string, SexprNode>(); // net name -> net definition
+    const existingNets = new Map<string, SexprNode>();
     const existingNetCodes = new Set<number>();
 
     final_board_contents.forEach(item => {
-        if (Array.isArray(item) && item[0] === 'net') {
+        if (Array.isArray(item) && nameOf(item[0]) === 'net') {
             const netCode = parseInt(String(item[1]));
             const netName = String(item[2] || '').replace(/["`]/g, '');
             if (!isNaN(netCode)) {
-                // Use netCode as the primary key to prevent duplicate net codes
                 const netKey = `${netCode}:${netName}`;
-                existingNets.set(netKey, item);
+                existingNets.set(netKey, item as SexprNode);
                 existingNetCodes.add(netCode);
             }
         } else if (typeof item === 'string' && item.trim().startsWith('(net ')) {
             try {
-                const parsedItem = fsexp(item).pop();
-                if (Array.isArray(parsedItem) && parsedItem[0] === 'net') {
+                const parsedItem = parse(item) as SexprNode;
+                if (Array.isArray(parsedItem) && nameOf(parsedItem[0]) === 'net') {
                     const netCode = parseInt(String(parsedItem[1]));
                     const netName = String(parsedItem[2] || '').replace(/["`]/g, '');
                     if (!isNaN(netCode)) {
-                        // Use netCode as the primary key to prevent duplicate net codes
                         const netKey = `${netCode}:${netName}`;
                         existingNets.set(netKey, parsedItem);
                         existingNetCodes.add(netCode);
@@ -284,12 +269,11 @@ export function createBoard(
 
     // Merge schematic nets with existing nets, ensuring unique net names and codes.
     const allNets: SexprNode = [];
-    const mergedNetCodes = new Set<number>(); // Tracks codes used in the final 'allNets' list.
-    const finalNetDefinitionsByName = new Map<string, SexprNode>(); // Key: normalized net name, Value: final net S-expression array
+    const mergedNetCodes = new Set<number>();
+    const finalNetDefinitionsByName = new Map<string, SexprNode>();
 
     const formatNetNameForSExpr = (name: string): string => {
-        const safeName = String(name ?? '').replace(/[`"]/g, '');
-        return `\`${safeName}\``;
+        return String(name ?? '').replace(/[`"]/g, '');
     };
 
     // Pass 1: Add existing board nets. Prioritize these definitions.
@@ -297,7 +281,7 @@ export function createBoard(
     // `boardNetNameToCodeMap` (normalizedName -> code) is also from the board file.
 
     // Create a temporary map of board nets by normalized name for easier lookup and ensuring unique names from board.
-    const boardNetsProcessedByName = new Map<string, SexprNode>(); // normalizedName -> chosen board netDef
+    const boardNetsProcessedByName = new Map<string, SexprNode>();
     if (existingNets && existingNets.size > 0) {
         const sortedExistingNetDefs = Array.from(existingNets.values()).sort((a,b) => parseInt(String(a[1])) - parseInt(String(b[1])));
         for (const netDef of sortedExistingNetDefs) {
@@ -332,7 +316,7 @@ export function createBoard(
     };
 
     // Pass 2: Integrate schematic nets.
-    schematicNetDefinitions.forEach((schematicNetDef: SexprNode[number]) => {
+    schematicNetDefinitions.forEach((schematicNetDef: SExpr) => {
         const netDefArray = schematicNetDef as SexprNode;
         const originalSchCode = parseInt(String(netDefArray[1]));
         const schNameSExpr = netDefArray[2] as string;
@@ -353,7 +337,7 @@ export function createBoard(
                 finalCode = getNextAvailableNetIdHelper(maxCodeInUse, mergedNetCodes);
                 maxCodeInUse = finalCode; // Update max for next potential renumbering
             }
-            const newNetDefArray = ['net', finalCode, schNameSExpr];
+            const newNetDefArray = s('net', finalCode, schNameSExpr);
             finalNetDefinitionsByName.set(normalizedSchName, newNetDefArray);
             mergedNetCodes.add(finalCode);
             boardNetNameToCodeMap.set(normalizedSchName, finalCode); // Update map for #resolveNet with the final code
@@ -378,7 +362,7 @@ export function createBoard(
 
         const newCode = getNextAvailableNetIdHelper(maxCodeInUse, mergedNetCodes);
         maxCodeInUse = newCode;
-        const newNetDefArray = ['net', newCode, formatNetNameForSExpr(originalName)];
+        const newNetDefArray = s('net', newCode, formatNetNameForSExpr(originalName));
         finalNetDefinitionsByName.set(normalizedName, newNetDefArray);
         mergedNetCodes.add(newCode);
         boardNetNameToCodeMap.set(normalizedName, newCode);
@@ -388,7 +372,7 @@ export function createBoard(
     const emptyNetNormalizedKey = ""; // Normalized key for the unnamed net
     if (!finalNetDefinitionsByName.has(emptyNetNormalizedKey)) {
         if (!mergedNetCodes.has(0)) {
-            finalNetDefinitionsByName.set(emptyNetNormalizedKey, ['net', 0, '``']);
+            finalNetDefinitionsByName.set(emptyNetNormalizedKey, s('net', 0, ''));
             mergedNetCodes.add(0); // Ensure 0 is marked as used
             boardNetNameToCodeMap.set(emptyNetNormalizedKey, 0);
         } else {
@@ -425,13 +409,13 @@ export function createBoard(
         for (let i = 0; i < boardContentsWithoutNets.length; i++) {
             const currentItem = boardContentsWithoutNets[i];
             let itemType = '';
-            if (Array.isArray(currentItem) && typeof currentItem[0] === 'string') {
-                itemType = currentItem[0];
+            if (Array.isArray(currentItem) && currentItem.length > 0) {
+                itemType = nameOf(currentItem[0]);
             } else if (typeof currentItem === 'string' && currentItem.startsWith('(')) {
                 try {
-                    const parsed = fsexp(currentItem).pop();
-                    if (Array.isArray(parsed) && typeof parsed[0] === 'string') {
-                        itemType = parsed[0];
+                    const parsed = parse(currentItem) as SexprNode;
+                    if (Array.isArray(parsed) && parsed.length > 0) {
+                        itemType = nameOf(parsed[0]);
                     }
                 } catch (e) { /* ignore */ }
             }
@@ -448,13 +432,13 @@ export function createBoard(
         for (let i = 0; i < boardContentsWithoutNets.length; ++i) {
             const currentItem = boardContentsWithoutNets[i];
             let itemType = '';
-            if (Array.isArray(currentItem) && typeof currentItem[0] === 'string') {
-                itemType = currentItem[0];
+            if (Array.isArray(currentItem) && currentItem.length > 0) {
+                itemType = nameOf(currentItem[0]);
             } else if (typeof currentItem === 'string' && currentItem.startsWith('(')) {
                 try {
-                    const parsed = fsexp(currentItem).pop();
-                    if (Array.isArray(parsed) && typeof parsed[0] === 'string') {
-                        itemType = parsed[0];
+                    const parsed = parse(currentItem) as SexprNode;
+                    if (Array.isArray(parsed) && parsed.length > 0) {
+                        itemType = nameOf(parsed[0]);
                     }
                 } catch (e) { /* ignore */ }
             }
@@ -472,7 +456,7 @@ export function createBoard(
 
     pcb.groups.forEach((groupString: string) => {
         try {
-            const groupNode = fsexp(groupString.replaceAll('"', "`")).pop();
+            const groupNode = parse(groupString) as SexprNode;
             if (groupNode) {
                 final_board_contents.push(groupNode);
             }
@@ -485,28 +469,28 @@ export function createBoard(
         }
     });
 
-    pcb._clearGroups();
+    pcb.state.groups = [];
 
     if (existing_board_contents.length > 1) {
         existing_board_contents.slice(1).forEach(item => {
-            if (Array.isArray(item) && item[0] === 'footprint') {
+            if (Array.isArray(item) && nameOf(item[0]) === 'footprint') {
                 let uuid: string | null = null;
                 let existingAtNode: SexprNode | null = null;
 
                 for (const subItem of item) {
                     if (Array.isArray(subItem)) {
-                        if (subItem[0] === 'uuid' && typeof subItem[1] === 'string') {
-                            uuid = subItem[1].replaceAll('`', '');
-                        } else if (subItem[0] === 'at' && subItem.length >= 3) {
-                            existingAtNode = subItem;
+                        if (nameOf(subItem[0]) === 'uuid' && typeof subItem[1] === 'string') {
+                            uuid = subItem[1].replace(/[`"]/g, '');
+                        } else if (nameOf(subItem[0]) === 'at' && subItem.length >= 3) {
+                            existingAtNode = subItem as SexprNode;
                         }
                     }
                     if (uuid && existingAtNode) break;
                 }
                 if (uuid && !existingAtNode) {
                     for (const subItem of item) {
-                        if (Array.isArray(subItem) && subItem[0] === 'at' && subItem.length >= 3) {
-                            existingAtNode = subItem;
+                        if (Array.isArray(subItem) && nameOf(subItem[0]) === 'at' && subItem.length >= 3) {
+                            existingAtNode = subItem as SexprNode;
                             break;
                         }
                     }
@@ -540,9 +524,9 @@ export function createBoard(
 
                     try {
                         for (const subItem of item) {
-                            if (Array.isArray(subItem) && subItem[0] === 'pad') {
+                            if (Array.isArray(subItem) && nameOf(subItem[0]) === 'pad') {
                                 for (const padSubItem of subItem) {
-                                    if (Array.isArray(padSubItem) && padSubItem[0] === 'at') {
+                                    if (Array.isArray(padSubItem) && nameOf(padSubItem[0]) === 'at') {
                                         if (padSubItem.length === 3) {
                                             padSubItem.push(component.pcb.rotation);
                                         } else if (padSubItem.length === 4) {
@@ -553,7 +537,7 @@ export function createBoard(
                             }
                         }
 
-                        const updatedNode = pcb._updateFootprintNodePublic(item, component, boardNetNameToCodeMap);
+                        const updatedNode = updateFootprintNode(item, component, (ref, pin, uuid, map) => pcb.resolveNet(ref, pin, uuid, map), boardNetNameToCodeMap);
                         final_board_contents.push(updatedNode);
                         componentMap.delete(uuid);
                     } catch (e: unknown) {
@@ -569,11 +553,11 @@ export function createBoard(
                     }
                 }
             }
-            else if (Array.isArray(item) && item[0] === 'via') {
+            else if (Array.isArray(item) && nameOf(item[0]) === 'via') {
                 // Skip all vias from old board - they will be regenerated from code
                 // No need to preserve or check anything
             }
-            else if (Array.isArray(item) && (item[0] === 'gr_line' || item[0] === 'segment' || item[0] === 'gr_arc' || item[0] === 'gr_rect')) {
+            else if (Array.isArray(item) && (nameOf(item[0]) === 'gr_line' || nameOf(item[0]) === 'segment' || nameOf(item[0]) === 'gr_arc' || nameOf(item[0]) === 'gr_rect')) {
                 // Skip all tracks and graphical elements from old board - they will be regenerated from code
                 // Segments are copper tracks, gr_* are graphical elements
             }
@@ -583,7 +567,7 @@ export function createBoard(
 
     componentMap.forEach(component => {
         try {
-            const newNode = pcb._createFootprintNodePublic(component, boardNetNameToCodeMap);
+            const newNode = createFootprintNode(component, (ref, pin, uuid, map) => pcb.resolveNet(ref, pin, uuid, map), boardNetNameToCodeMap);
             final_board_contents.push(newNode);
         } catch (e: unknown) {
             throw new BoardCreationError(`[${component.footprint} ${component.reference} ${component.description}] Failed to create footprint node. Is the .kicad_mod missing or empty in build/footprints/? Footprint must be in format "library:footprint" (e.g., "Resistor_SMD:R_0603_1608Metric" or "lib:Local_Footprint"`);
@@ -610,7 +594,7 @@ export function createBoard(
             }
         } else if (viaData.uuid) {
             // Fallback to generalized net resolution function (for compatibility)
-            const netResolution = pcb._resolveNetPublic(
+            const netResolution = pcb.resolveNet(
                 '', // Empty reference since this is a via
                 "1", // Vias always use pin number "1"
                 viaData.uuid, // UUID for via lookup
@@ -630,215 +614,160 @@ export function createBoard(
             finalViaNetCode = 0;
         }
 
-        const layersString = viaData.layers ? viaData.layers.map(l => `\"${l}\"`).join(" ") : '\"F.Cu\" \"B.Cu\"';
-        const viaSexprString = `(via (at ${viaData.at?.x || 0} ${viaData.at?.y || 0}) (size ${viaData.size || 0.6}) (drill ${viaData.drill || 0.3}) (layers ${layersString}) (free yes) (net ${finalViaNetCode}) (uuid \"${viaData.uuid}\"))`;
+        const viaLayers = viaData.layers || ['F.Cu', 'B.Cu'];
         try {
-            const viaNode = fsexp(viaSexprString.replaceAll('\"', '`')).pop();
-            if (viaNode) {
-                final_board_contents.push(viaNode);
-            } else {
-                logger.error(`👺 Error: Failed to parse via S-expression (fsexp returned undefined/empty): ${viaSexprString}${formatCallSite(pcb.getCallSite())}`);
-            }
+            const viaNode = s('via',
+                s('at', viaData.at?.x || 0, viaData.at?.y || 0),
+                s('size', viaData.size || 0.6),
+                s('drill', viaData.drill || 0.3),
+                s('layers', ...viaLayers),
+                s('free', yes()),
+                s('net', finalViaNetCode),
+                s('uuid', uuid)
+            );
+            final_board_contents.push(viaNode);
         } catch (e: unknown) {
-            logger.error(`👺 Error: Failed to parse via S-expression for UUID ${viaData.uuid}: ${viaSexprString} - ${getErrorMessage(e)}${formatCallSite(pcb.getCallSite())}`);
+            logger.error(`👺 Error: Failed to build via node for UUID ${uuid}: ${getErrorMessage(e)}${formatCallSite(pcb.getCallSite())}`);
         }
     });
 
     pcb.outlines_public.forEach((conceptualOutline: IOutline) => {
         conceptualOutline.elements.forEach((element: OutlineElement) => {
-            let elementSexprString = '';
-            if (element.type === 'line') {
-                const line = element as IGrLine;
-                // Check if this is a copper layer (should use segment) or graphical layer (should use gr_line)
-                // Copper layers are: F.Cu, B.Cu, In1.Cu, In2.Cu, etc. But NOT Edge.Cuts
-                const isCopperLayer = line.layer.includes('.Cu') && !line.layer.includes('Edge.Cuts');
+            try {
+                if (element.type === 'line') {
+                    const line = element as IGrLine;
+                    const isCopperLayer = line.layer.includes('.Cu') && !line.layer.includes('Edge.Cuts');
 
-                if (isCopperLayer) {
-                    // Resolve net code for the segment so KiCad can electrically connect it.
-                    // Without a (net N) field KiCad silently drops or ignores the segment.
-                    let segNetCode = 0;
-                    if (line.net) {
-                        let lookupKey = line.net.toLowerCase();
-                        if (lookupKey.startsWith('/')) lookupKey = lookupKey.substring(1);
-                        segNetCode = boardNetNameToCodeMap.get(lookupKey) ?? 0;
-                    }
-                    // Use segment for electrical traces on copper layers
-                    elementSexprString = `(segment (start ${line.start.x} ${line.start.y}) (end ${line.end.x} ${line.end.y}) (width ${line.strokeWidth}) (locked ${line.locked ? 'yes' : 'no'}) (layer "${line.layer}") (net ${segNetCode}) (uuid "${line.uuid}"))`;
-                } else {
-                    // Use gr_line for graphical elements on non-copper layers (Edge.Cuts, SilkS, etc.)
-                    elementSexprString = `(gr_line (start ${line.start.x} ${line.start.y}) (end ${line.end.x} ${line.end.y}) (stroke (width ${line.strokeWidth}) (type default)) (layer "${line.layer}") (uuid "${line.uuid}"))`;
-                }
-            } else if (element.type === 'arc') {
-                const arc = element as IGrArc;
-                elementSexprString = `(gr_arc (start ${arc.start.x} ${arc.start.y}) (mid ${arc.mid.x} ${arc.mid.y}) (end ${arc.end.x} ${arc.end.y}) (stroke (width ${arc.strokeWidth}) (type default)) (layer "${arc.layer}") (uuid "${arc.uuid}"))`;
-            }
-
-            if (elementSexprString) {
-                try {
-                    const elementNode = fsexp(elementSexprString.replaceAll('"', '`')).pop();
-                    if (elementNode) {
-                        final_board_contents.push(elementNode);
+                    if (isCopperLayer) {
+                        let segNetCode = 0;
+                        if (line.net) {
+                            let lookupKey = line.net.toLowerCase();
+                            if (lookupKey.startsWith('/')) lookupKey = lookupKey.substring(1);
+                            segNetCode = boardNetNameToCodeMap.get(lookupKey) ?? 0;
+                        }
+                        const segNode = s('segment',
+                            s('start', line.start.x, line.start.y),
+                            s('end', line.end.x, line.end.y),
+                            s('width', line.strokeWidth),
+                            s('locked', line.locked ? yes() : no()),
+                            s('layer', line.layer),
+                            s('net', segNetCode),
+                            s('uuid', line.uuid)
+                        );
+                        final_board_contents.push(segNode);
                     } else {
-                        logger.error(`👺 Error: Failed to parse outline element S-expression (fsexp returned undefined/empty) for UUID ${element.uuid}: ${elementSexprString}${formatCallSite(pcb.getCallSite())}`);
+                        const grLineNode = s('gr_line',
+                            s('start', line.start.x, line.start.y),
+                            s('end', line.end.x, line.end.y),
+                            s('stroke', s('width', line.strokeWidth), s('type', sym('default'))),
+                            s('layer', line.layer),
+                            s('uuid', line.uuid)
+                        );
+                        final_board_contents.push(grLineNode);
                     }
-                } catch (e: unknown) {
-                    logger.error(`👺 Error: Failed to parse outline element S-expression for UUID ${element.uuid}: ${elementSexprString} - ${getErrorMessage(e)}${formatCallSite(pcb.getCallSite())}`);
+                } else if (element.type === 'arc') {
+                    const arc = element as IGrArc;
+                    const grArcNode = s('gr_arc',
+                        s('start', arc.start.x, arc.start.y),
+                        s('mid', arc.mid.x, arc.mid.y),
+                        s('end', arc.end.x, arc.end.y),
+                        s('stroke', s('width', arc.strokeWidth), s('type', sym('default'))),
+                        s('layer', arc.layer),
+                        s('uuid', arc.uuid)
+                    );
+                    final_board_contents.push(grArcNode);
                 }
+            } catch (e: unknown) {
+                logger.error(`👺 Error: Failed to build outline element for UUID ${element.uuid}: ${getErrorMessage(e)}${formatCallSite(pcb.getCallSite())}`);
             }
         });
     });
 
 
-    // Log diagnostic counters for outlines -> node conversion
-    const diagCounters = (pcb as unknown as Record<string, Record<string, number>>).___diagCounters;
-    if (diagCounters) {
-        logger.debug(`[BoardCreation][DIAG] segmentsAdded=${diagCounters.segmentsAdded}, grLinesAdded=${diagCounters.grLinesAdded}, parseFailures=${diagCounters.parseFailures}`);
-    }
-    // Generate gr_text elements for board-level text
     pcb.grTexts.forEach((textElement: IGrTextOptions) => {
-        // Build the effects section
-        let effectsContent = '';
-
-        // Font section
-        let fontContent = '';
-
-        // Font face (optional)
-        if (textElement.font) {
-            fontContent += `(face "${textElement.font}") `;
-        }
-
-        // Font size - can be a number or {width, height}
+        const fontChildren: SexprNode = [];
+        if (textElement.font) fontChildren.push(s('face', textElement.font));
         const width = textElement.width ?? 1.27;
         const height = textElement.height ?? 1.27;
-        fontContent += `(size ${height} ${width}) `;
+        fontChildren.push(s('size', height, width));
+        if (textElement.thickness !== undefined) fontChildren.push(s('thickness', textElement.thickness));
+        if (textElement.bold) fontChildren.push(sym('bold'));
+        if (textElement.italic) fontChildren.push(sym('italic'));
 
-        // Font thickness
-        if (textElement.thickness !== undefined) {
-            fontContent += `(thickness ${textElement.thickness}) `;
-        }
-
-        // Bold and italic
-        if (textElement.bold) {
-            fontContent += 'bold ';
-        }
-        if (textElement.italic) {
-            fontContent += 'italic ';
-        }
-
-        effectsContent += `(font ${fontContent.trim()})`;
-
-        // Justify section - only include explicitly specified values
-        let justifyContent = '';
+        const effectsChildren: SexprNode = [s('font', ...fontChildren)];
+        const justifyChildren: SexprNode = [];
         const horizontal = textElement.justify?.horizontal;
         const vertical = textElement.justify?.vertical;
         const mirror = textElement.justify?.mirror ?? false;
-
-        if (horizontal) justifyContent += horizontal + ' ';
-        if (vertical) justifyContent += vertical + ' ';
-        if (mirror) {
-            justifyContent += 'mirror ';
-        }
-
-        effectsContent += ` (justify ${justifyContent.trim()})`;
-
-        // Hide flag (outside effects but inside effects for KiCad 7+)
-        if (textElement.hide) {
-            effectsContent += ' hide';
-        }
-
-        // Build the complete gr_text s-expression
-        const grTextSexpr = `(gr_text "${textElement.text}" (at ${textElement.x} ${textElement.y} ${textElement.rotation}) (layer "${textElement.layer}") (uuid "${textElement.uuid}") (effects ${effectsContent}))`;
+        if (horizontal) justifyChildren.push(sym(horizontal));
+        if (vertical) justifyChildren.push(sym(vertical));
+        if (mirror) justifyChildren.push(sym('mirror'));
+        effectsChildren.push(s('justify', ...justifyChildren));
+        if (textElement.hide) effectsChildren.push(sym('hide'));
 
         try {
-            // The fsexp parser splits backtick-quoted strings at spaces.
-            // Protect multi-word strings by replacing spaces inside quotes with a placeholder.
-            const protectedSexpr = grTextSexpr.replaceAll('"', '`').replace(/`([^`]+)`/g, (match: string) => match.replace(/ /g, '\x00'));
-            let grTextNode = fsexp(protectedSexpr).pop();
-
-            // Restore spaces in string nodes
-            if (grTextNode) {
-                restoreSpacesInNodes(grTextNode as unknown[]);
-            }
-            if (grTextNode) {
-                final_board_contents.push(grTextNode);
-            } else {
-                logger.error(`👺 Error: Failed to parse gr_text S-expression (fsexp returned undefined/empty) for UUID ${textElement.uuid}: ${grTextSexpr}${formatCallSite(pcb.getCallSite())}`);
-            }
+            const textNode = s('gr_text',
+                textElement.text,
+                s('at', textElement.x ?? 0, textElement.y ?? 0, textElement.rotation ?? 0),
+                s('layer', textElement.layer ?? 'F.SilkS'),
+                s('uuid', textElement.uuid ?? ''),
+                s('effects', ...effectsChildren)
+            );
+            final_board_contents.push(textNode);
         } catch (e: unknown) {
-            logger.error(`👺 Error: Failed to parse gr_text S-expression for UUID ${textElement.uuid}: ${grTextSexpr} - ${getErrorMessage(e)}${formatCallSite(pcb.getCallSite())}`);
+            logger.error(`👺 Error: Failed to build gr_text node for UUID ${textElement.uuid}: ${getErrorMessage(e)}${formatCallSite(pcb.getCallSite())}`);
         }
     });
 
-    // Generate graphical lines
     pcb.grLines.forEach((line: IGrLine) => {
-        const lockedSection = line.locked ? ' (locked yes)' : '';
-        const lineSexpr = `(gr_line (start ${line.start.x} ${line.start.y}) (end ${line.end.x} ${line.end.y}) (stroke (width ${line.strokeWidth}) (type default)) (layer "${line.layer}") (uuid "${line.uuid}")${lockedSection})`;
-
-        try {
-            const lineNode = fsexp(lineSexpr.replaceAll('"', '`')).pop();
-            if (lineNode) {
-                final_board_contents.push(lineNode);
-            } else {
-                logger.error(`👺 Error: Failed to parse gr_line S-expression (fsexp returned undefined/empty) for UUID ${line.uuid}: ${lineSexpr}${formatCallSite(pcb.getCallSite())}`);
-            }
-        } catch (e: unknown) {
-            logger.error(`👺 Error: Failed to parse gr_line S-expression for UUID ${line.uuid}: ${lineSexpr} - ${getErrorMessage(e)}${formatCallSite(pcb.getCallSite())}`);
-        }
+        const children: SexprNode = [
+            s('start', line.start.x, line.start.y),
+            s('end', line.end.x, line.end.y),
+            s('stroke', s('width', line.strokeWidth), s('type', sym('default'))),
+            s('layer', line.layer),
+            s('uuid', line.uuid)
+        ];
+        if (line.locked) children.push(s('locked', yes()));
+        final_board_contents.push(s('gr_line', ...children));
     });
 
-    // Generate graphical circles
     pcb.grCircles.forEach((circle: IGrCircle) => {
-        const fillSection = circle.fill ? ' (fill solid)' : '';
-        const lockedSection = circle.locked ? ' (locked yes)' : '';
-        const circleSexpr = `(gr_circle (center ${circle.center.x} ${circle.center.y}) (end ${circle.end.x} ${circle.end.y}) (stroke (width ${circle.strokeWidth}) (type default)) (layer "${circle.layer}")${fillSection} (uuid "${circle.uuid}")${lockedSection})`;
-
-        try {
-            const circleNode = fsexp(circleSexpr.replaceAll('"', '`')).pop();
-            if (circleNode) {
-                final_board_contents.push(circleNode);
-            } else {
-                logger.error(`👺 Error: Failed to parse gr_circle S-expression (fsexp returned undefined/empty) for UUID ${circle.uuid}: ${circleSexpr}${formatCallSite(pcb.getCallSite())}`);
-            }
-        } catch (e: unknown) {
-            logger.error(`👺 Error: Failed to parse gr_circle S-expression for UUID ${circle.uuid}: ${circleSexpr} - ${getErrorMessage(e)}${formatCallSite(pcb.getCallSite())}`);
-        }
+        const children: SexprNode = [
+            s('center', circle.center.x, circle.center.y),
+            s('end', circle.end.x, circle.end.y),
+            s('stroke', s('width', circle.strokeWidth), s('type', sym('default'))),
+            s('layer', circle.layer)
+        ];
+        if (circle.fill) children.push(s('fill', sym('solid')));
+        children.push(s('uuid', circle.uuid));
+        if (circle.locked) children.push(s('locked', yes()));
+        final_board_contents.push(s('gr_circle', ...children));
     });
 
-    // Generate graphical rectangles
     pcb.grRects.forEach((rect: IGrRect) => {
-        const fillSection = rect.fill ? ' (fill solid)' : '';
-        const lockedSection = rect.locked ? ' (locked yes)' : '';
-        const rectSexpr = `(gr_rect (start ${rect.start.x} ${rect.start.y}) (end ${rect.end.x} ${rect.end.y}) (stroke (width ${rect.strokeWidth}) (type default)) (layer "${rect.layer}")${fillSection} (uuid "${rect.uuid}")${lockedSection})`;
-
-        try {
-            const rectNode = fsexp(rectSexpr.replaceAll('"', '`')).pop();
-            if (rectNode) {
-                final_board_contents.push(rectNode);
-            } else {
-                logger.error(`👺 Error: Failed to parse gr_rect S-expression (fsexp returned undefined/empty) for UUID ${rect.uuid}: ${rectSexpr}${formatCallSite(pcb.getCallSite())}`);
-            }
-        } catch (e: unknown) {
-            logger.error(`👺 Error: Failed to parse gr_rect S-expression for UUID ${rect.uuid}: ${rectSexpr} - ${getErrorMessage(e)}${formatCallSite(pcb.getCallSite())}`);
-        }
+        const children: SexprNode = [
+            s('start', rect.start.x, rect.start.y),
+            s('end', rect.end.x, rect.end.y),
+            s('stroke', s('width', rect.strokeWidth), s('type', sym('default'))),
+            s('layer', rect.layer)
+        ];
+        if (rect.fill) children.push(s('fill', sym('solid')));
+        children.push(s('uuid', rect.uuid));
+        if (rect.locked) children.push(s('locked', yes()));
+        final_board_contents.push(s('gr_rect', ...children));
     });
 
-    // Generate graphical polygons
     pcb.grPolys.forEach((poly: IGrPoly) => {
-        const ptsArray = poly.points.map((pt: { x: number; y: number }) => `(xy ${pt.x} ${pt.y})`).join(' ');
-        const fillSection = poly.fill ? ' (fill solid)' : '';
-        const lockedSection = poly.locked ? ' (locked yes)' : '';
-        const polySexpr = `(gr_poly (pts ${ptsArray}) (stroke (width ${poly.strokeWidth}) (type default)) (layer "${poly.layer}")${fillSection} (uuid "${poly.uuid}")${lockedSection})`;
-
-        try {
-            const polyNode = fsexp(polySexpr.replaceAll('"', '`')).pop();
-            if (polyNode) {
-                final_board_contents.push(polyNode);
-            } else {
-                logger.error(`👺 Error: Failed to parse gr_poly S-expression (fsexp returned undefined/empty) for UUID ${poly.uuid}: ${polySexpr}${formatCallSite(pcb.getCallSite())}`);
-            }
-        } catch (e: unknown) {
-            logger.error(`👺 Error: Failed to parse gr_poly S-expression for UUID ${poly.uuid}: ${polySexpr} - ${getErrorMessage(e)}${formatCallSite(pcb.getCallSite())}`);
-        }
+        const ptsChildren = poly.points.map((pt: { x: number; y: number }) => s('xy', pt.x, pt.y));
+        const children: SexprNode = [
+            s('pts', ...ptsChildren),
+            s('stroke', s('width', poly.strokeWidth), s('type', sym('default'))),
+            s('layer', poly.layer)
+        ];
+        if (poly.fill) children.push(s('fill', sym('solid')));
+        children.push(s('uuid', poly.uuid));
+        if (poly.locked) children.push(s('locked', yes()));
+        final_board_contents.push(s('gr_poly', ...children));
     });
 
     // Generate filled zones
@@ -855,7 +784,7 @@ export function createBoard(
                 // Format: "pin:reference:pinNumber"
                 const reference = parts[1];
                 const pinNumber = parts[2];
-                const netResolution = pcb._resolveNetPublic(
+                const netResolution = pcb.resolveNet(
                     reference,
                     pinNumber,
                     undefined,
@@ -894,110 +823,64 @@ export function createBoard(
             }
         }
 
-        // Build polygon pts array
-        const ptsArray = zone.polygon.map(pt => `(xy ${pt.x} ${pt.y})`).join(' ');
+        const zoneChildren: SexprNode = [
+            s('net', netCode),
+            s('net_name', netName),
+            s('layers', ...zone.layers),
+        ];
+        if (zone.name) zoneChildren.push(s('name', zone.name));
+        zoneChildren.push(s('uuid', zone.uuid));
+        if (zone.locked) zoneChildren.push(sym('locked'));
+        if (zone.priority !== undefined && zone.priority !== 0) zoneChildren.push(s('priority', zone.priority));
+        zoneChildren.push(s('hatch', sym(zone.hatchStyle ?? 'none'), zone.hatchPitch ?? 0));
 
-        // Build optional name section
-        const nameSection = zone.name ? `(name "${zone.name}") ` : '';
+        if (zone.connectPads === 'thru_hole_only') {
+            zoneChildren.push(s('connect_pads', sym('thru_hole_only'), s('clearance', zone.clearance ?? 0)));
+        } else if (zone.connectPads === 'full') {
+            zoneChildren.push(s('connect_pads', yes(), s('clearance', zone.clearance ?? 0)));
+        } else if (zone.connectPads === 'no') {
+            zoneChildren.push(s('connect_pads', sym('no'), s('clearance', zone.clearance ?? 0)));
+        } else {
+            zoneChildren.push(s('connect_pads', s('clearance', zone.clearance ?? 0)));
+        }
 
-        // Build locked section
-        const lockedSection = zone.locked ? '(locked) ' : '';
+        zoneChildren.push(s('min_thickness', zone.minThickness ?? 0));
 
-        // Build priority section
-        const prioritySection = zone.priority !== undefined && zone.priority !== 0 ? `(priority ${zone.priority}) ` : '';
-
-        // Build fill section
-        let fillParts: string[] = [];
         if (zone.filled !== false) {
-            fillParts.push('yes');
-
-            // Fill mode
-            if (zone.fillMode === 'hatched') {
-                fillParts.push('(mode hatched)');
-            }
-
-            // Arc segments
-            if (zone.fillArcSegments !== undefined) {
-                fillParts.push(`(arc_segments ${zone.fillArcSegments})`);
-            }
-
-            // Thermal relief
-            fillParts.push(`(thermal_gap ${zone.thermalGap})`);
-            fillParts.push(`(thermal_bridge_width ${zone.thermalBridgeWidth})`);
-
-            // Smoothing
+            const fillChildren: SexprNode = [yes()];
+            if (zone.fillMode === 'hatched') fillChildren.push(s('mode', sym('hatched')));
+            if (zone.fillArcSegments !== undefined) fillChildren.push(s('arc_segments', zone.fillArcSegments));
+            fillChildren.push(s('thermal_gap', zone.thermalGap ?? 0));
+            fillChildren.push(s('thermal_bridge_width', zone.thermalBridgeWidth ?? 0));
             if (zone.smoothing && zone.smoothing !== 'none' && zone.smoothingRadius !== undefined) {
-                fillParts.push(`(smoothing ${zone.smoothing})`);
-                fillParts.push(`(radius ${zone.smoothingRadius})`);
+                fillChildren.push(s('smoothing', sym(zone.smoothing)));
+                fillChildren.push(s('radius', zone.smoothingRadius));
             }
-
-            // Island removal
             if (zone.islandRemovalMode !== undefined) {
-                fillParts.push(`(island_removal_mode ${zone.islandRemovalMode})`);
+                fillChildren.push(s('island_removal_mode', zone.islandRemovalMode));
                 if (zone.islandRemovalMode === 2 && zone.islandAreaMin !== undefined) {
-                    fillParts.push(`(island_area_min ${zone.islandAreaMin})`);
+                    fillChildren.push(s('island_area_min', zone.islandAreaMin));
                 }
             }
-
-            // Hatched fill options
             if (zone.fillMode === 'hatched') {
-                if (zone.hatchThickness !== undefined) fillParts.push(`(hatch_thickness ${zone.hatchThickness})`);
-                if (zone.hatchGap !== undefined) fillParts.push(`(hatch_gap ${zone.hatchGap})`);
-                if (zone.hatchOrientation !== undefined) fillParts.push(`(hatch_orientation ${zone.hatchOrientation})`);
-                if (zone.hatchSmoothingLevel !== undefined) fillParts.push(`(hatch_smoothing_level ${zone.hatchSmoothingLevel})`);
-                if (zone.hatchSmoothingValue !== undefined) fillParts.push(`(hatch_smoothing_value ${zone.hatchSmoothingValue})`);
-                if (zone.hatchBorderAlgorithm) fillParts.push(`(hatch_border_algorithm ${zone.hatchBorderAlgorithm})`);
-                if (zone.hatchMinHoleArea !== undefined) fillParts.push(`(hatch_min_hole_area ${zone.hatchMinHoleArea})`);
+                if (zone.hatchThickness !== undefined) fillChildren.push(s('hatch_thickness', zone.hatchThickness));
+                if (zone.hatchGap !== undefined) fillChildren.push(s('hatch_gap', zone.hatchGap));
+                if (zone.hatchOrientation !== undefined) fillChildren.push(s('hatch_orientation', zone.hatchOrientation));
+                if (zone.hatchSmoothingLevel !== undefined) fillChildren.push(s('hatch_smoothing_level', zone.hatchSmoothingLevel));
+                if (zone.hatchSmoothingValue !== undefined) fillChildren.push(s('hatch_smoothing_value', zone.hatchSmoothingValue));
+                if (zone.hatchBorderAlgorithm) fillChildren.push(s('hatch_border_algorithm', zone.hatchBorderAlgorithm));
+                if (zone.hatchMinHoleArea !== undefined) fillChildren.push(s('hatch_min_hole_area', zone.hatchMinHoleArea));
             }
-        }
-        const fillSection = fillParts.length > 0 ? `(fill ${fillParts.join(' ')}) ` : '';
-
-        // Build connect_pads section
-        let connectPadsSection = '';
-        if (zone.connectPads === 'thru_hole_only') {
-            connectPadsSection = `(connect_pads thru_hole_only (clearance ${zone.clearance})) `;
-        } else if (zone.connectPads === 'full') {
-            connectPadsSection = `(connect_pads yes (clearance ${zone.clearance})) `;
-        } else if (zone.connectPads === 'no') {
-            connectPadsSection = `(connect_pads no (clearance ${zone.clearance})) `;
-        } else {
-            // Default to thermal relief
-            connectPadsSection = `(connect_pads (clearance ${zone.clearance})) `;
+            zoneChildren.push(s('fill', ...fillChildren));
         }
 
-        // Build layers section - KiCad supports multiple layers in a single zone
-        const layersSection = zone.layers.map(layer => `"${layer}"`).join(' ');
+        const ptsChildren = zone.polygon.map(pt => s('xy', pt.x, pt.y));
+        zoneChildren.push(s('polygon', s('pts', ...ptsChildren)));
 
-        // Generate single zone s-expression with all layers
-        const zoneSexpr = `(zone (net ${netCode}) (net_name "${netName}") (layers ${layersSection}) ${nameSection}(uuid "${zone.uuid}") ${lockedSection}${prioritySection}(hatch ${zone.hatchStyle} ${zone.hatchPitch}) ${connectPadsSection}(min_thickness ${zone.minThickness}) ${fillSection}(polygon (pts ${ptsArray})))`;
-
-        try {
-            const zoneNode = fsexp(zoneSexpr.replaceAll('"', '`')).pop();
-            if (zoneNode) {
-                final_board_contents.push(zoneNode);
-            } else {
-                logger.error(`👺 Error: Failed to parse zone S-expression (fsexp returned undefined/empty) for UUID ${zone.uuid}: ${zoneSexpr}${formatCallSite(pcb.getCallSite())}`);
-            }
-        } catch (e: unknown) {
-            logger.error(`👺 Error: Failed to parse zone S-expression for UUID ${zone.uuid}: ${zoneSexpr} - ${getErrorMessage(e)}${formatCallSite(pcb.getCallSite())}`);
-        }
+        final_board_contents.push(s('zone', ...zoneChildren));
     });
 
-    // Generate keepout zones
     pcb.keepoutZones.forEach((zone: IKeepoutZone) => {
-        // Build polygon pts array
-        const ptsArray = zone.polygon.map(pt => `(xy ${pt.x} ${pt.y})`).join(' ');
-
-        // Build optional name section
-        const nameSection = zone.name ? `(name "${zone.name}") ` : '';
-
-        // Build locked section
-        const lockedSection = zone.locked ? '(locked) ' : '';
-
-        // Build priority section
-        const prioritySection = zone.priority !== undefined && zone.priority !== 0 ? `(priority ${zone.priority}) ` : '';
-
-        // Build keepout restrictions
         const restrictions = zone.restrictions || {};
         const tracksAllowed = restrictions.tracks ? 'not_allowed' : 'allowed';
         const viasAllowed = restrictions.vias ? 'not_allowed' : 'allowed';
@@ -1005,60 +888,56 @@ export function createBoard(
         const copperpourAllowed = restrictions.copperpour ? 'not_allowed' : 'allowed';
         const footprintsAllowed = restrictions.footprints ? 'not_allowed' : 'allowed';
 
-        const keepoutSection = `(keepout (tracks ${tracksAllowed}) (vias ${viasAllowed}) (pads ${padsAllowed}) (copperpour ${copperpourAllowed}) (footprints ${footprintsAllowed})) `;
-
-        // Build smoothing section (for keepout polygon smoothing)
-        let smoothingSection = '';
-        if (zone.smoothing && zone.smoothing !== 'none' && zone.smoothingRadius !== undefined) {
-            smoothingSection = `(smoothing ${zone.smoothing}) (radius ${zone.smoothingRadius}) `;
-        }
-
-        // Build layers section - KiCad supports multiple layers in a single zone
-        const layersSection = zone.layers.map(layer => `"${layer}"`).join(' ');
-
-        // Generate single keepout zone s-expression with all layers
         const hatchStyle = zone.hatchStyle || 'edge';
         const hatchPitch = zone.hatchPitch || 0.508;
-        const zoneSexpr = `(zone (net 0) (net_name "") (layers ${layersSection}) ${nameSection}(uuid "${zone.uuid}") ${lockedSection}${prioritySection}(hatch ${hatchStyle} ${hatchPitch}) ${keepoutSection}${smoothingSection}(polygon (pts ${ptsArray})))`;
 
-        try {
-            const zoneNode = fsexp(zoneSexpr.replaceAll('"', '`')).pop();
-            if (zoneNode) {
-                final_board_contents.push(zoneNode);
-            } else {
-                logger.error(`👺 Error: Failed to parse keepout zone S-expression (fsexp returned undefined/empty) for UUID ${zone.uuid}: ${zoneSexpr}${formatCallSite(pcb.getCallSite())}`);
-            }
-        } catch (e: unknown) {
-            logger.error(`👺 Error: Failed to parse keepout zone S-expression for UUID ${zone.uuid}: ${zoneSexpr} - ${getErrorMessage(e)}${formatCallSite(pcb.getCallSite())}`);
+        const zoneChildren: SexprNode = [
+            s('net', 0),
+            s('net_name', ''),
+            s('layers', ...zone.layers),
+        ];
+        if (zone.name) zoneChildren.push(s('name', zone.name));
+        zoneChildren.push(s('uuid', zone.uuid));
+        if (zone.locked) zoneChildren.push(sym('locked'));
+        if (zone.priority !== undefined && zone.priority !== 0) zoneChildren.push(s('priority', zone.priority));
+        zoneChildren.push(s('hatch', sym(hatchStyle), hatchPitch));
+        zoneChildren.push(s('keepout',
+            s('tracks', sym(tracksAllowed)),
+            s('vias', sym(viasAllowed)),
+            s('pads', sym(padsAllowed)),
+            s('copperpour', sym(copperpourAllowed)),
+            s('footprints', sym(footprintsAllowed))
+        ));
+
+        if (zone.smoothing && zone.smoothing !== 'none' && zone.smoothingRadius !== undefined) {
+            zoneChildren.push(s('smoothing', sym(zone.smoothing)));
+            zoneChildren.push(s('radius', zone.smoothingRadius));
         }
+
+        const ptsChildren = zone.polygon.map(pt => s('xy', pt.x, pt.y));
+        zoneChildren.push(s('polygon', s('pts', ...ptsChildren)));
+
+        final_board_contents.push(s('zone', ...zoneChildren));
     });
 
-    // Determine the definitive version node
     let definitiveVersionNode: SexprNode | string | null = null;
 
-    // Check if a version node (array form, typically from parsed existing file) exists
-    const existingVersionArrayNode = final_board_contents.find(item => Array.isArray(item) && item[0] === 'version');
+    const existingVersionArrayNode = final_board_contents.find(item => Array.isArray(item) && nameOf(item[0]) === 'version') as SexprNode | undefined;
 
-    // Check if a version node (string form, typically from default headers or if file had it as string) exists
-    const existingVersionStringNode = final_board_contents.find(item => typeof item === 'string' && item.startsWith('(version '));
+    const existingVersionStringNode = final_board_contents.find(item => typeof item === 'string' && item.startsWith('(version ')) as string | undefined;
 
     if (existingVersionArrayNode) {
-        // Prefer the parsed array form if it exists (likely from the original file)
-        definitiveVersionNode = existingVersionArrayNode as SexprNode;
+        definitiveVersionNode = existingVersionArrayNode;
     } else if (existingVersionStringNode) {
-        // Otherwise, use the string form if it exists
-        definitiveVersionNode = existingVersionStringNode as string;
+        definitiveVersionNode = existingVersionStringNode;
     } else {
-        // If no version node exists at all, use the default 'version' string constant
-        // This 'version' constant is defined at the top of the create method: const version = '(version 20241229)';
-        definitiveVersionNode = version;
+        definitiveVersionNode = version as SexprNode;
     }
 
-    // Remove all types of version nodes from final_board_contents to prevent duplicates
     final_board_contents = final_board_contents.filter(item => {
-        if (Array.isArray(item) && item[0] === 'version') return false; // Remove array form
-        if (typeof item === 'string' && item.startsWith('(version ')) return false; // Remove string form
-        return true; // Keep other items
+        if (Array.isArray(item) && nameOf(item[0]) === 'version') return false;
+        if (typeof item === 'string' && item.startsWith('(version ')) return false;
+        return true;
     });
 
     // Prepend the single, definitive version node to the beginning
@@ -1068,14 +947,13 @@ export function createBoard(
     const usedNetCodes = new Set<number>();
     usedNetCodes.add(0); // Always include net 0 (unconnected)
 
-    // Collect net codes from component pads in final board contents
     final_board_contents.forEach(item => {
-        if (Array.isArray(item) && item[0] === 'footprint') {
-            item.forEach(subItem => {
-                if (Array.isArray(subItem) && subItem[0] === 'pad') {
-                    subItem.forEach(padElement => {
-                        if (Array.isArray(padElement) && padElement[0] === 'net') {
-                            const netCode = parseInt(String(padElement[1]));
+        if (Array.isArray(item) && nameOf(item[0]) === 'footprint') {
+            (item as SexprNode).forEach(subItem => {
+                if (Array.isArray(subItem) && nameOf(subItem[0]) === 'pad') {
+                    (subItem as SexprNode).forEach(padElement => {
+                        if (Array.isArray(padElement) && nameOf(padElement[0]) === 'net') {
+                            const netCode = parseInt(String((padElement as SexprNode)[1]));
                             if (!isNaN(netCode)) {
                                 usedNetCodes.add(netCode);
                             }
@@ -1086,12 +964,11 @@ export function createBoard(
         }
     });
 
-    // Collect net codes from vias
     final_board_contents.forEach(item => {
-        if (Array.isArray(item) && item[0] === 'via') {
-            item.forEach(viaElement => {
-                if (Array.isArray(viaElement) && viaElement[0] === 'net') {
-                    const netCode = parseInt(String(viaElement[1]));
+        if (Array.isArray(item) && nameOf(item[0]) === 'via') {
+            (item as SexprNode).forEach(viaElement => {
+                if (Array.isArray(viaElement) && nameOf(viaElement[0]) === 'net') {
+                    const netCode = parseInt(String((viaElement as SexprNode)[1]));
                     if (!isNaN(netCode)) {
                         usedNetCodes.add(netCode);
                     }
@@ -1100,12 +977,11 @@ export function createBoard(
         }
     });
 
-    // Collect net codes from zones
     final_board_contents.forEach(item => {
-        if (Array.isArray(item) && item[0] === 'zone') {
-            item.forEach(zoneElement => {
-                if (Array.isArray(zoneElement) && zoneElement[0] === 'net') {
-                    const netCode = parseInt(String(zoneElement[1]));
+        if (Array.isArray(item) && nameOf(item[0]) === 'zone') {
+            (item as SexprNode).forEach(zoneElement => {
+                if (Array.isArray(zoneElement) && nameOf(zoneElement[0]) === 'net') {
+                    const netCode = parseInt(String((zoneElement as SexprNode)[1]));
                     if (!isNaN(netCode)) {
                         usedNetCodes.add(netCode);
                     }
@@ -1114,17 +990,17 @@ export function createBoard(
         }
     });
 
-    const finalStructure = ['kicad_pcb', ...final_board_contents];
+    const finalStructure: SExpr = [sym('kicad_pcb'), ...final_board_contents];
     try {
         // Serialize the structure with pretty printing
         // DIAGNOSTIC: count final_board_contents node types and collect UUIDs
         try {
-            const segNodes = final_board_contents.filter(it => Array.isArray(it) && it[0] === 'segment');
-            const grLineNodes = final_board_contents.filter(it => Array.isArray(it) && it[0] === 'gr_line');
+            const segNodes = final_board_contents.filter(it => Array.isArray(it) && nameOf(it[0]) === 'segment');
+            const grLineNodes = final_board_contents.filter(it => Array.isArray(it) && nameOf(it[0]) === 'gr_line');
             const segUuids: string[] = [];
             (segNodes as SexprNode[]).forEach((node: SexprNode) => {
                 try {
-                    const uuidPair = node.find((n) => Array.isArray(n) && n[0] === 'uuid') as SexprNode | undefined;
+                    const uuidPair = node.find((n) => Array.isArray(n) && nameOf((n as SexprNode)[0]) === 'uuid') as SexprNode | undefined;
                     if (uuidPair && uuidPair[1]) segUuids.push(String(uuidPair[1]));
                 } catch (e) { /* ignore */ }
             });
@@ -1147,7 +1023,7 @@ export function createBoard(
                 } catch (e) { /* ignore */ }
         } catch (e) { /* ignore diagnostics */ }
 
-        const serialized = S.serialize(finalStructure).replaceAll("`", '"');
+        const serialized = serialize(finalStructure, { pretty: true });
         // DIAGNOSTIC: show short prefix of serialized content and check for segment/gr_line tokens
         try {
             const prefix = serialized.substring(0, 1200);
@@ -1156,7 +1032,7 @@ export function createBoard(
             const hasGrLineToken = serialized.includes('(gr_line');
             logger.debug('[BoardCreation][DIAG] serialized contains (segment=' + hasSegmentToken + ', gr_line=' + hasGrLineToken + ')');
         } catch (e) { /* ignore */ }
-        pcb._setPcb(pcb.prettyPrintSExpr(serialized));
+        pcb.state.pcb = serialized;
         // DIAGNOSTIC: inspect pcb.pcb (the final pretty printed string) before writing
         try {
             const pcbString = pcb.pcb ?? '';
@@ -1179,7 +1055,7 @@ export function createBoard(
         }
     } catch (e: unknown) {
         logger.error(` 👺 Error: Failed to serialize final board structure: ${getErrorMessage(e)}${formatCallSite(pcb.getCallSite())}`);
-        pcb._setPcb("");
+        pcb.state.pcb = "";
         return;
     }
 

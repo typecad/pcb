@@ -1,6 +1,7 @@
 import chalk from 'chalk';
 import type { PCB } from '../pcb/pcb.js';
 import type { TrackBuilder } from '../pcb/pcb_track_builder.js';
+import { DEFAULT_NET_PREFIX } from '../constants.js';
 import type {
     KicadIR,
     KicadFootprintIR,
@@ -63,7 +64,7 @@ export function generateTrackCode(
 
         segmentsByNet.forEach((netSegments, netNum) => {
             const netName = netMap.get(netNum) || '';
-            const isUnnamedNet = !netName || netName.startsWith('net') || netName === '';
+            const isUnnamedNet = !netName || netName.startsWith(DEFAULT_NET_PREFIX) || netName === '';
 
             let variableName: string;
             if (isUnnamedNet) {

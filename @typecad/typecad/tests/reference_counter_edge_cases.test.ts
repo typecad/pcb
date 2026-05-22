@@ -38,11 +38,8 @@ describe('ReferenceCounter edge cases', () => {
     counter.setReference('R5')
     counter.setReference('R6')
     counter.setReference('R7')
-    // With matching case, getNextReference('R') should get R1 since
-    // setReference stores under lowercase 'r' key
-    expect(counter.getNextReference('R')).toBe('R1')
-    // But using lowercase matches the setReference key
-    expect(counter.getNextReference('r')).toBe('r8')
+    expect(counter.getNextReference('R')).toBe('R8')
+    expect(counter.getNextReference('r')).toBe('r9')
   })
 
   it('should handle reset clearing all state', () => {
@@ -67,6 +64,7 @@ describe('ReferenceCounter edge cases', () => {
   it('should handle long numeric suffixes', () => {
     expect(counter.setReference('R999')).toBe(true)
     expect(counter.getNextReference('r')).toBe('r1000')
+    expect(counter.getNextReference('R')).toBe('R1001')
   })
 
   it('should handle three-character prefixes', () => {
@@ -75,11 +73,11 @@ describe('ReferenceCounter edge cases', () => {
     expect(counter.getNextReference('Q')).toBe('Q1')
   })
 
-  it('should handle mixed case getNextReference calls independently', () => {
-    // 'R' and 'r' are different keys for getNextReference
+  it('should handle mixed case getNextReference calls with shared counter', () => {
+    // Case-insensitive: 'R' and 'r' share the same counter
     expect(counter.getNextReference('R')).toBe('R1')
-    expect(counter.getNextReference('r')).toBe('r1')
-    expect(counter.getNextReference('R')).toBe('R2')
     expect(counter.getNextReference('r')).toBe('r2')
+    expect(counter.getNextReference('R')).toBe('R3')
+    expect(counter.getNextReference('r')).toBe('r4')
   })
 })

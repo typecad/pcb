@@ -505,16 +505,16 @@ describe('Component Reference and Value Positioning', () => {
     // Fab positioning tests
     it('should accept fab positioning tuple', () => {
         const component = new Component({
-            reference: 'U12',
+            reference: 'U15',
             value: 'TestIC',
             footprint: 'Package_SO:SOIC-8_3.9x4.9mm_P1.27mm',
-            fab: ['U12', { x: 3.81, y: 8.89, rotation: 180 }]
+            fab: ['U15', { x: 3.81, y: 8.89, rotation: 180 }]
         });
 
-        expect(component.reference).toBe('U12');
+        expect(component.reference).toBe('U15');
         expect(component.fab).toBeDefined();
         expect(component.fab).toMatchObject({
-            text: 'U12',
+            text: 'U15',
             x: 3.81,
             y: 8.89,
             rotation: 180
@@ -567,13 +567,13 @@ describe('Component Reference and Value Positioning', () => {
 
     it('should accept reference, value, and fab positioning together', () => {
         const component = new Component({
-            reference: ['U14', { x: 0, y: -5, rotation: 0 }],
+            reference: ['U17', { x: 0, y: -5, rotation: 0 }],
             value: ['MCU', { x: 0, y: 5, rotation: 0 }],
-            fab: ['U14', { x: 3.81, y: 8.89, rotation: 180, width: 1, height: 1 }],
+            fab: ['U17', { x: 3.81, y: 8.89, rotation: 180, width: 1, height: 1 }],
             footprint: 'Package_QFP:TQFP-32_7x7mm_P0.8mm'
         });
 
-        expect(component.reference).toBe('U14');
+        expect(component.reference).toBe('U17');
         expect(component.value).toBe('MCU');
         expect(component.text).toHaveLength(2);
 
@@ -582,20 +582,22 @@ describe('Component Reference and Value Positioning', () => {
 
         expect(refText).toMatchObject({
             property: 'Reference',
-            text: 'U14',
+            text: 'U17',
             x: 0,
-            y: -5
+            y: -5,
+            rotation: 0
         });
 
         expect(valText).toMatchObject({
             property: 'Value',
             text: 'MCU',
             x: 0,
-            y: 5
+            y: 5,
+            rotation: 0
         });
 
         expect(component.fab).toMatchObject({
-            text: 'U14',
+            text: 'U17',
             x: 3.81,
             y: 8.89,
             rotation: 180,

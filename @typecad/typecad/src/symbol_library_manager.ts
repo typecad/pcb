@@ -1,8 +1,9 @@
 import { platform } from "node:os";
 import fs from "node:fs";
-import fsexp from "fast-sexpr";
-import S from "./utils/sexpr_instance.js";
+import { parse, serialize, Sym } from "./sexpr/index.js";
+import type { SExpr } from './sexpr/types.js';
 import { KiCAD } from "./kicad.js";
+import { LIBRARY_SEPARATOR } from './constants.js';
 import {
     type SExprNode,
     type SymbolDefinition,
@@ -49,7 +50,7 @@ export class SymbolLibraryManager {
                 }
             }
 
-            const parsedLibrary = fsexp(symbolFileContents.replaceAll('"', "`")).pop();
+            const parsedLibrary = parse(symbolFileContents) as SExpr[];
             this.libraryCache.set(libraryName, parsedLibrary);
             return parsedLibrary;
 
@@ -66,18 +67,18 @@ export class SymbolLibraryManager {
         }
 
         for (const item of libraryContent) {
-            if (Array.isArray(item) && item.length > 1 && item[0] === 'symbol') {
-                const currentSymbolName = String(item[1]).replaceAll('`', '');
+            if (Array.isArray(item) && item.length > 1 && Sym.isSym(item[0]) && item[0].name === 'symbol') {
+                const currentSymbolName = String(item[1]);
 
                 if (currentSymbolName === symbolName) {
                     const rawSexpr = [...item];
 
-                    rawSexpr[1] = `"${symbolFqn}"`;
+                    rawSexpr[1] = symbolFqn;
 
-                    const extendsIndex = rawSexpr.findIndex(el => Array.isArray(el) && el[0] === 'extends');
+                    const extendsIndex = rawSexpr.findIndex(el => Array.isArray(el) && el.length > 0 && Sym.isSym(el[0]) && el[0].name === 'extends');
                     if (extendsIndex !== -1 && Array.isArray(rawSexpr[extendsIndex]) && rawSexpr[extendsIndex].length > 1) {
-                        const baseSymbolName = String(rawSexpr[extendsIndex][1]).replaceAll('`', '');
-                        rawSexpr[extendsIndex][1] = `"${libraryName}:${baseSymbolName}"`;
+                        const baseSymbolName = String(rawSexpr[extendsIndex][1]);
+                        rawSexpr[extendsIndex][1] = `${libraryName}:${baseSymbolName}`;
                         const baseSymbolDef = this.getSymbolDefinition(`${libraryName}:${baseSymbolName}`);
                         if (baseSymbolDef) {
                             this.symbolCache.set(symbolFqn, baseSymbolDef);
@@ -88,7 +89,7 @@ export class SymbolLibraryManager {
                         }
                     }
 
-                    const serializedLibEntry = S.serialize(rawSexpr).replaceAll("`", '"');
+                    const serializedLibEntry = serialize(rawSexpr);
 
                     const definition: SymbolDefinition = {
                         rawSexpr: rawSexpr,
@@ -107,7 +108,7 @@ export class SymbolLibraryManager {
             return this.symbolCache.get(symbolFqn)!;
         }
 
-        const parts = symbolFqn.split(':');
+        const parts = symbolFqn.split(LIBRARY_SEPARATOR);
         if (parts.length !== 2) {
             logError(`Invalid fully qualified symbol name: ${symbolFqn}`);
             return null;
@@ -148,7 +149,7 @@ export class SymbolLibraryManager {
                     for (const prop of element) {
                         if (!Array.isArray(prop)) continue;
                         if (prop[0] === 'number' && prop.length > 1) {
-                            currentPinNumber = String(prop[1]).replaceAll('`', '');
+                            currentPinNumber = String(prop[1]);
                         } else if (prop[0] === 'at' && prop.length > 3) {
                             atData = [parseFloat(String(prop[1])), parseFloat(String(prop[2])), parseFloat(String(prop[3]))];
                         }
@@ -160,8 +161,7 @@ export class SymbolLibraryManager {
                         return location;
                     }
                 }
-                // Nested symbol units: (symbol NAME_1_1 (pin ...) (pin ...))
-                else if (Array.isArray(element) && element.length > 1 && element[0] === 'symbol' && typeof element[1] === 'string') {
+                else if (Array.isArray(element) && element.length > 1 && Sym.isSym(element[0]) && element[0].name === 'symbol' && typeof element[1] === 'string') {
                     for (const subElement of element.slice(2)) {
                         if (!Array.isArray(subElement) || subElement.length === 0 || subElement[0] !== 'pin') continue;
 
@@ -171,7 +171,7 @@ export class SymbolLibraryManager {
                         for (const prop of subElement) {
                             if (!Array.isArray(prop)) continue;
                             if (prop[0] === 'number' && prop.length > 1) {
-                                currentPinNumber = String(prop[1]).replaceAll('`', '');
+                                currentPinNumber = String(prop[1]);
                             } else if (prop[0] === 'at' && prop.length > 3) {
                                 atData = [parseFloat(String(prop[1])), parseFloat(String(prop[2])), parseFloat(String(prop[3]))];
                             }
@@ -195,16 +195,16 @@ export class SymbolLibraryManager {
         return null;
     }
 
-    private calculateSymbolBoundingBoxRecursive(element: string | SExprNode, currentBox: BoundingBox): void {
+    private calculateSymbolBoundingBoxRecursive(element: SExpr, currentBox: BoundingBox): void {
         if (!Array.isArray(element)) {
             return;
         }
 
-        const elementType = element[0];
+        const tag = Sym.isSym(element[0]) ? element[0].name : String(element[0]);
 
-        if (elementType === 'rectangle' && element.length >= 3) {
-            const start = element.find((el): el is SExprNode => Array.isArray(el) && el[0] === 'start');
-            const end = element.find((el): el is SExprNode => Array.isArray(el) && el[0] === 'end');
+        if (tag === 'rectangle' && element.length >= 3) {
+            const start = element.find((el): el is SExpr[] => Array.isArray(el) && Sym.isSym(el[0]) && el[0].name === 'start');
+            const end = element.find((el): el is SExpr[] => Array.isArray(el) && Sym.isSym(el[0]) && el[0].name === 'end');
             if (start && end && start.length >= 3 && end.length >= 3) {
                 const x1 = parseFloat(String(start[1]));
                 const y1 = parseFloat(String(start[2]));
@@ -215,8 +215,8 @@ export class SymbolLibraryManager {
                 currentBox.maxX = Math.max(currentBox.maxX, x1, x2);
                 currentBox.maxY = Math.max(currentBox.maxY, y1, y2);
             }
-        } else if (elementType === 'pin') {
-            const at = element.find((el): el is SExprNode => Array.isArray(el) && el[0] === 'at');
+        } else if (tag === 'pin') {
+            const at = element.find((el): el is SExpr[] => Array.isArray(el) && Sym.isSym(el[0]) && el[0].name === 'at');
             if (at && at.length >= 3) {
                 const x = parseFloat(String(at[1]));
                 const y = parseFloat(String(at[2]));
@@ -225,9 +225,9 @@ export class SymbolLibraryManager {
                 currentBox.maxX = Math.max(currentBox.maxX, x);
                 currentBox.maxY = Math.max(currentBox.maxY, y);
             }
-        } else if (elementType === 'circle' && element.length >= 3) {
-            const center = element.find((el): el is SExprNode => Array.isArray(el) && el[0] === 'center');
-            const radiusEl = element.find((el): el is SExprNode => Array.isArray(el) && el[0] === 'radius');
+        } else if (tag === 'circle' && element.length >= 3) {
+            const center = element.find((el): el is SExpr[] => Array.isArray(el) && Sym.isSym(el[0]) && el[0].name === 'center');
+            const radiusEl = element.find((el): el is SExpr[] => Array.isArray(el) && Sym.isSym(el[0]) && el[0].name === 'radius');
             if (center && radiusEl && center.length >= 3 && radiusEl.length >= 2) {
                 const cx = parseFloat(String(center[1]));
                 const cy = parseFloat(String(center[2]));
@@ -275,23 +275,24 @@ export class SymbolLibraryManager {
      * Recursively walk a symbol definition extracting (pin ...) nodes.
      * Handles both top-level pins and pins nested inside (symbol NAME_1_1 ...) units.
      */
-    private extractPinInfo(element: SExprNode, pinMap: Map<string, PinInfo>): void {
+    private extractPinInfo(element: SExpr[], pinMap: Map<string, PinInfo>): void {
         for (const item of element) {
             if (!Array.isArray(item)) continue;
 
-            if (item[0] === 'pin') {
-                // item[1] is the electrical type: "bidirectional", "power_in", etc.
-                const pinType = typeof item[1] === 'string' ? item[1] : '';
+            const itemTag = Sym.isSym(item[0]) ? item[0].name : '';
+            if (itemTag === 'pin') {
+                const pinType = (Sym.isSym(item[1]) ? item[1].name : (typeof item[1] === 'string' ? item[1] : ''));
                 let pinName = '';
                 let pinNumber = '';
 
                 for (const child of item) {
                     if (!Array.isArray(child)) continue;
-                    if (child[0] === 'name' && typeof child[1] === 'string') {
-                        pinName = child[1].replaceAll('`', '');
+                    const childTag = Sym.isSym(child[0]) ? child[0].name : '';
+                    if (childTag === 'name' && typeof child[1] === 'string') {
+                        pinName = child[1];
                     }
-                    if (child[0] === 'number' && typeof child[1] === 'string') {
-                        pinNumber = child[1].replaceAll('`', '');
+                    if (childTag === 'number' && typeof child[1] === 'string') {
+                        pinNumber = child[1];
                     }
                 }
 

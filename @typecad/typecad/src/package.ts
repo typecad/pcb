@@ -1,4 +1,4 @@
-import { Component, setActiveCounter } from './component.js';
+import { Component } from './component.js';
 import { TrackBuilder, PCB } from './pcb/pcb.js';
 import { Pin } from './pin.js';
 import { createRequire } from 'node:module';
@@ -83,11 +83,11 @@ export abstract class Package<TOptions extends object = {}> {
 
         this.pcb.pushOffset(options.x, options.y);
         // Scope component references to this PCB's schematic during build().
-        setActiveCounter(this.pcb.Schematic.referenceCounter);
+        Component.setActiveCounter(this.pcb.Schematic.referenceCounter);
         try {
             this.build(options);
         } finally {
-            setActiveCounter(null);
+            Component.setActiveCounter(null);
         }
         this._autoCollect();
         this.pcb.group(options.name, ...this.components);
@@ -167,10 +167,7 @@ export abstract class Package<TOptions extends object = {}> {
             const value = (this as Record<string, unknown>)[key];
             if (!value || typeof value !== 'object') continue;
 
-            const isComponentOrTrackBuilder = (v: object): v is Component | TrackBuilder =>
-                ('pins' in v || 'footprint' in v || 'symbol' in v) || ('from' in v && 'to' in v);
-
-            if (isComponentOrTrackBuilder(value) && !alreadyRegistered.has(value)) {
+            if ((value instanceof Component || value instanceof TrackBuilder) && !alreadyRegistered.has(value)) {
                 this.components.push(value);
                 alreadyRegistered.add(value);
             }

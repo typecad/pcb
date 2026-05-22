@@ -1,28 +1,26 @@
-export const schematic_template = `
-(kicad_sch
+export function renderSchematic(data: {
+    uuid: string;
+    lib_symbols: string[];
+    wires: string[];
+    labels: string[];
+    symbols: string[];
+}): string {
+    return `(kicad_sch
 	(version 20250114)
 	(generator "typecad")
 	(generator_version "0.1.0")
 	(paper "A4")
-    (uuid "{{{uuid}}}")
+    (uuid "${data.uuid}")
 
     (lib_symbols
-	{{#each lib_symbols}}
-    {{this}}
-    {{/each}}
+${data.lib_symbols.map(s => `    ${s}`).join('\n')}
     )
 
-	{{#each wires}}
-	{{this}}
-	{{/each}}
+${data.wires.map(s => `\t${s}`).join('\n')}
 
-	{{#each labels}}
-	{{this}}
-	{{/each}}
+${data.labels.map(s => `\t${s}`).join('\n')}
 
-	{{#each symbols}}
-    {{this}}
-    {{/each}}
+${data.symbols.map(s => `    ${s}`).join('\n')}
 
 	(sheet_instances
 		(path "/"
@@ -31,16 +29,27 @@ export const schematic_template = `
 	)
 	(embedded_fonts no)
 )`;
+}
 
-export const label_template = `
-		(label "{{{net_name}}}"
-			(at {{{x}}} {{{y}}} {{{label_rotation}}})
+export function renderLabel(data: {
+    net_name: string;
+    x: number;
+    y: number;
+    label_rotation: number;
+    justify_horizontal: string;
+    justify_vertical: string;
+    uuid: string;
+}): string {
+    return `
+		(label "${data.net_name}"
+			(at ${data.x} ${data.y} ${data.label_rotation})
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
-				(justify {{{justify_horizontal}}} {{{justify_vertical}}})
+				(justify ${data.justify_horizontal} ${data.justify_vertical})
 			)
-			(uuid "{{{uuid}}}")
+			(uuid "${data.uuid}")
 		)
 `;
+}

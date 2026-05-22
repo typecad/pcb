@@ -1,12 +1,15 @@
 import fs from 'node:fs';
 import chalk from 'chalk';
-import Handlebars from 'handlebars';
 
-const component_template = `import * as _0603 from '@typecad/passives/0603';
-import { PCB, TrackBuilder, Component } from '@typecad/typecad';
-{{#if component_name}}import { {{{component_name}}} } from './{{{component_name}}}';{{/if}}
+function renderComponent(data) {
+    const componentImport = data.component_name ? `\nimport { ${data.component_name} } from './${data.component_name}';` : '';
+    const declareU1 = data.component_name ? `\n    declare U1: ${data.component_name};` : '';
+    const initU1 = data.component_name ? `\n        this.U1 = new ${data.component_name}(reference);` : '';
+    const pushU1 = data.component_name ? `\n        this.components.push(this.U1);\n        this.pcb.group('${data.component_name}', this.U1);` : '';
+    return `import * as _0603 from '@typecad/passives/0603';
+import { PCB, TrackBuilder, Component } from '@typecad/typecad';${componentImport}
 
-export interface {{{package_name_pascal}}}Options {
+export interface ${data.package_name_pascal}Options {
     reference?: string;
     passives?: typeof _0603;
     pcb: PCB;
@@ -15,47 +18,45 @@ export interface {{{package_name_pascal}}}Options {
 }
 
 /**
- * ### {{{package_name_pascal}}} - Description
+ * ### ${data.package_name_pascal} - Description
  * 
  * #### Input Connections
  * 
  * #### Output Connections
  * 
  */
-export class {{{package_name_pascal}}} {
+export class ${data.package_name_pascal} {
     #passives: typeof _0603;
     readonly pcb: PCB;
-    readonly components: (Component | TrackBuilder)[] = [];
-    {{#if component_name}}declare U1: {{{component_name}}};{{/if}}
+    readonly components: (Component | TrackBuilder)[] = [];${declareU1}
 
-    constructor({ reference, passives, pcb, x, y }: {{{package_name_pascal}}}Options) {
+    constructor({ reference, passives, pcb, x, y }: ${data.package_name_pascal}Options) {
         this.#passives = passives || _0603;
         this.pcb = pcb;
 
         // Push offset to PCB for tracks and vias
         this.pcb.pushOffset(x, y);
 
-        // create the components
-        {{#if component_name}}this.U1 = new {{{component_name}}}(reference);{{/if}}
+        // create the components${initU1}
 
         // connect the components
         // this.pcb.net(this.U1.pin(1), this.U2.pin(2));
 
         // create the tracks
 
-        // add the components to the pcb and group them
-        {{#if component_name}}this.components.push(this.U1);
-        this.pcb.group('{{{component_name}}}', this.U1);{{/if}}
+        // add the components to the pcb and group them${pushU1}
 
         // Restore the previous origin
         this.pcb.popOffset();
     }
 }`;
+}
 
-const package_template = `{
-  "name": "{{{package_name}}}",
+function renderPackageJson(data) {
+    return `{
+  "name": "${data.package_name}",
   "version": "1.0.0",
-  "description": "{{{package_name}}} typeCAD package",
+  "description": "${data.package_name} typeCAD package",
   "main": "index.ts",
   "type": "module",
   "author": "",
@@ -72,14 +73,15 @@ const package_template = `{
     "postinstall": "node postinstall.js"
   }
 }`;
+}
 
 const postinstall_template = `import fs from 'node:fs';
 
 const package_json = JSON.parse(fs.readFileSync(new URL('./package.json', import.meta.url), 'utf8'));
 
 fs.cp(
-  process.env.INIT_CWD + \`/node_modules/\${package_json.name}/build\`,      // copy footprint and symbol from the install node_module location
-  process.env.INIT_CWD + '/build',                                  // to the typeCAD project folder structure
+  process.env.INIT_CWD + \`/node_modules/\${package_json.name}/build\`,
+  process.env.INIT_CWD + '/build',
   { recursive: true },
   (err) => {
     if (err) {
@@ -89,16 +91,12 @@ fs.cp(
 );`
 
 export async function create_package(data) {
-  const template = Handlebars.compile(component_template);
-  const package_json_template = Handlebars.compile(package_template);
-  const _postinstall_template = Handlebars.compile(postinstall_template);
-
   const pascal_package_name = data.package_name.charAt(0).toUpperCase() + data.package_name.slice(1);
   const enriched_data = { ...data, package_name_pascal: pascal_package_name };
 
-  const result = template(enriched_data);
-  const package_json = package_json_template(data);
-  const postinstall = _postinstall_template(data);
+  const result = renderComponent(enriched_data);
+  const package_json = renderPackageJson(data);
+  const postinstall = postinstall_template;
 
   // make folder structure
   const dir = data.package_name;

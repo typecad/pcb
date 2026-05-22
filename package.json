@@ -2,7 +2,7 @@
   "name": "typecad-workspace",
   "private": true,
   "scripts": {
-    "build": "npm run build -ws --if-present",
+    "build": "npm run build --ws --if-present",
     "test": "npm run test -ws --if-present",
     "format": "prettier --write \"**/*/src/**/*.ts\"",
     "format:check": "prettier --check \"**/*/src/**/*.ts\"",
@@ -16,8 +16,7 @@
     "@typecad/*",
 
     "all_packages/hw",
-    "demo/hw",
-    "website"
+    "demo/hw"
   ],
   "devDependencies": {
     "@changesets/changelog-github": "^0.5.1",

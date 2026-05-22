@@ -5,12 +5,12 @@ import { Component } from '../src/component.js'
 // Mock KiCAD detection and fs to avoid requiring KiCAD installation
 vi.mock('../src/kicad.js', () => ({
   KiCAD: class {
-    kicad_cli_path = ''
-    kicad_path = ''
+    static path = ''
+    static cliPath = ''
+    static isFlatpak = false
   },
-  kicad_path: '',
   kicad_cli_path: '',
-  is_flatpak: false,
+  getKicadCliPath: () => '',
 }))
 
 vi.mock('node:fs', () => ({

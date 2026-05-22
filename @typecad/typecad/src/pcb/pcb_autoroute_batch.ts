@@ -24,7 +24,7 @@ export async function autorouteBatch(
     const increaseIterationsPerRound = batchOptions?.increaseIterationsPerRound ?? 25000;
 
     // Use accessor for staged outlines and track preserved segments across rounds
-    const stagedRef = pcb._getStagedOutlines();
+    const stagedRef = pcb.state.stagedOutlines;
     const batchBaseline = stagedRef ? stagedRef.length : 0;
     let preservedEnd = batchBaseline; // index up to which tracks are preserved
     const doneSet = new Set<number>(); // indices of items already successfully routed

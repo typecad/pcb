@@ -8,4 +8,4 @@ function zip(arr, values) {
     return result;
 }
 
-export default zip;
+module.exports = zip;

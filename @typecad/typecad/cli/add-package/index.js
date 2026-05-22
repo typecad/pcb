@@ -10,7 +10,7 @@ import {
   local_symbol_to_footprint,
   kicad_cli,
 } from './component/kicad.js';
-import fileSelector from 'inquirer-file-selector';
+import { fileSelector } from 'inquirer-file-selector';
 import { convertEasyedaToKicad } from '../../kipm/easyeda2kicadCore.js';
 import chalk from 'chalk';
 import { basename } from 'node:path';
@@ -386,11 +386,11 @@ async function main() {
         return;
       }
       
-      const symbolPath = await fileSelector({
+      const symbolPath = (await fileSelector({
         message: 'Select a KiCAD Symbol file (kicad_sym):',
-        match: (filename) => filename.path.includes('.kicad_sym'),
-        hideNonMatch: true,
-      });
+        filter: (file) => file.isDirectory || file.path.includes('.kicad_sym'),
+        showExcluded: false,
+      })).path;
 
       // if there are more than one symbols, pick, else, select the one available
       let _found_symbols = return_list_of_symbols(symbolPath);
@@ -404,11 +404,11 @@ async function main() {
       }
 
       let _footprint = local_symbol_to_footprint(symbolPath);
-      const footprintPath = await fileSelector({
+      const footprintPath = (await fileSelector({
         message: `The symbol file says the footprint should be ${_footprint}. What .kicad_mod is it located in?:`,
-        match: (filename) => filename.path.includes('.kicad_mod'),
-        hideNonMatch: true,
-      });
+        filter: (file) => file.isDirectory || file.path.includes('.kicad_mod'),
+        showExcluded: false,
+      })).path;
 
       pins = kicad_pins(entered_symbol);
 

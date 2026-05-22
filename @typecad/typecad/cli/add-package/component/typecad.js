@@ -1,29 +1,27 @@
 import fs from 'node:fs';
 import chalk from 'chalk';
-import Handlebars from 'handlebars';
 import { basename } from 'node:path';
 
-const component_template = `import { Component, Pin } from "@typecad/typecad";
+function renderComponent(data) {
+    const pinsTableRows = data.pins.map(p => ` | ${p.number}     | ${p.name}  | ${p.type}      |`).join('\n');
+    const pinProperties = data.pins.map(p => `    ${p.name} = new Pin(this.reference, ${p.number}, '${p.type}', this);`).join('\n');
+    return `import { Component, Pin } from "@typecad/typecad";
 /**
  | Pin # | Name | Type          |
  | --:   | :--  | :--           |
- {{#each pins}}
- | {{{number}}}     | {{{name}}}  | {{{type}}}      |
- {{/each}}
+${pinsTableRows}
  */
-export class {{{component_name}}} extends Component {
-	{{#each pins}}
-    {{{name}}} = new Pin(this.reference, {{{number}}}, '{{{type}}}', this);
-    {{/each}}
+export class ${data.component_name} extends Component {
+${pinProperties}
     
     constructor(reference?: string | undefined) {
-        super({ reference, footprint: "{{{footprint}}}", symbol: "{{{symbol}}}" });
+        super({ reference, footprint: "${data.footprint}", symbol: "${data.symbol}" });
     }
 }`;
+}
 
 export async function create_component(data) {
-  const template = Handlebars.compile(component_template);
-  const result = template(data);
+  const result = renderComponent(data);
 
   // make folder structure
     const dir = data.package_name;

@@ -186,16 +186,16 @@ describe('PCB', () => {
     });
 
     it('should stage vias automatically and remove them from staging when placed', () => {
-      const stagedBefore = pcb._getStagedComponents().length;
+      const stagedBefore = pcb.stagedComponents.length;
       const via = pcb.via({ at: { x: 5, y: 5 }, net: 'AUTO' });
 
-      const stagedAfterCreate = pcb._getStagedComponents().some(component => component.uuid === via.uuid);
+      const stagedAfterCreate = pcb.stagedComponents.some(component => component.uuid === via.uuid);
       expect(stagedAfterCreate).toBe(true);
-      expect(pcb._getStagedComponents().length).toBe(stagedBefore + 1);
+      expect(pcb.stagedComponents.length).toBe(stagedBefore + 1);
 
       pcb.place(via);
 
-      const stillStaged = pcb._getStagedComponents().some(component => component.uuid === via.uuid);
+      const stillStaged = pcb.stagedComponents.some(component => component.uuid === via.uuid);
       expect(stillStaged).toBe(false);
       expect(pcb.components.some(component => component.uuid === via.uuid)).toBe(true);
     });

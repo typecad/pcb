@@ -1,4 +1,5 @@
 import { SExprNode } from './sexpr_tree.js';
+import { Sym } from '../sexpr/index.js';
 import { decodeCodeMetadata } from './codec.js';
 import type {
     KicadIR,
@@ -396,11 +397,9 @@ export class KicadIRBuilder {
                 // Bold/italic are direct string children of 'font'
                 for (let i = 1; i < fontNode.toArray().length; i++) {
                     const item = fontNode.toArray()[i];
-                    if (typeof item === 'string') {
-                        const cleaned = item.replace(/[`"]/g, '');
-                        if (cleaned === 'bold') bold = true;
-                        if (cleaned === 'italic') italic = true;
-                    }
+                    const name = Sym.isSym(item) ? item.name : (typeof item === 'string' ? item.replace(/[`"]/g, '') : '');
+                    if (name === 'bold') bold = true;
+                    if (name === 'italic') italic = true;
                 }
                 const thickNode = fontNode.child('thickness');
                 if (thickNode) {
@@ -415,15 +414,13 @@ export class KicadIRBuilder {
                 justify = {};
                 for (let i = 1; i < justifyNode.toArray().length; i++) {
                     const item = justifyNode.toArray()[i];
-                    if (typeof item === 'string') {
-                        const cleaned = item.replace(/[`"]/g, '');
-                        if (cleaned === 'left' || cleaned === 'right' || cleaned === 'center') {
-                            justify.horizontal = cleaned;
-                        } else if (cleaned === 'top' || cleaned === 'bottom' || cleaned === 'middle') {
-                            justify.vertical = cleaned;
-                        } else if (cleaned === 'mirror') {
-                            justify.mirror = true;
-                        }
+                    const name = Sym.isSym(item) ? item.name : (typeof item === 'string' ? item.replace(/[`"]/g, '') : '');
+                    if (name === 'left' || name === 'right' || name === 'center') {
+                        justify.horizontal = name;
+                    } else if (name === 'top' || name === 'bottom' || name === 'middle') {
+                        justify.vertical = name;
+                    } else if (name === 'mirror') {
+                        justify.mirror = true;
                     }
                 }
             }
@@ -431,18 +428,16 @@ export class KicadIRBuilder {
             // Check for hide - as a string child of effects
             for (let i = 1; i < effectsNode.toArray().length; i++) {
                 const item = effectsNode.toArray()[i];
-                if (typeof item === 'string' && item.replace(/[`"]/g, '') === 'hide') {
-                    hide = true;
-                }
+                const name = Sym.isSym(item) ? item.name : (typeof item === 'string' ? item.replace(/[`"]/g, '') : '');
+                if (name === 'hide') hide = true;
             }
         }
 
         // Also check for hide at the top level of the node (outside effects)
         for (let i = 1; i < node.toArray().length; i++) {
             const item = node.toArray()[i];
-            if (typeof item === 'string' && item.replace(/[`"]/g, '') === 'hide') {
-                hide = true;
-            }
+            const name = Sym.isSym(item) ? item.name : (typeof item === 'string' ? item.replace(/[`"]/g, '') : '');
+            if (name === 'hide') hide = true;
         }
 
         return {

@@ -86,7 +86,13 @@ export function processManualRoutes(
             }
             if (uuidsToRemove.length > 0) {
                 debugLog(options.debug, chalk.blue(`[PCB] Removing ${uuidsToRemove.length} staged tracks from manual route to prevent duplicates`));
-                pcb._removeStagedOutlinesByUuid(uuidsToRemove);
+                const uuidSet = new Set(uuidsToRemove);
+                pcb.state.stagedOutlines = pcb.state.stagedOutlines.filter((outline) => {
+                    const hasMatchingUuid = outline.elements.some((el) =>
+                        'uuid' in el && uuidSet.has(el.uuid)
+                    );
+                    return !hasMatchingUuid;
+                });
             }
         } else {
             path = routeItem;

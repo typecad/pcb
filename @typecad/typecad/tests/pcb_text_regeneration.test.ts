@@ -1,16 +1,15 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { PCB, Schematic } from '../src/index.js'
 import fs from 'node:fs'
-import fsexp from 'fast-sexpr'
+import { parse, nameOf } from '../src/sexpr/index.js'
 
-// Helper to extract full text from gr_text element (handles spaces in text)
 function getTextContent(grTextElement: any[]): string {
   const textTokens = []
   for (let i = 1; i < grTextElement.length; i++) {
     if (Array.isArray(grTextElement[i])) break
-    textTokens.push(grTextElement[i])
+    textTokens.push(String(grTextElement[i]))
   }
-  return textTokens.join(' ').replace(/`/g, '')
+  return textTokens.join(' ')
 }
 
 describe('PCB Text Regeneration (Remove Old gr_text)', () => {
@@ -54,10 +53,9 @@ describe('PCB Text Regeneration (Remove Old gr_text)', () => {
 
     // Verify first generation has 2 text elements
     let pcbFile = fs.readFileSync(`./build/${testBoardName}.kicad_pcb`, 'utf8')
-    let parsed = fsexp(pcbFile.replaceAll('"', '`'))
-    let boardContents = parsed[0]
+    let boardContents = parse(pcbFile)
     let grTextElements = boardContents.filter((item: any) =>
-      Array.isArray(item) && item[0] === 'gr_text'
+      Array.isArray(item) && nameOf(item[0]) === 'gr_text'
     )
 
     expect(grTextElements.length).toBe(2)
@@ -86,10 +84,9 @@ describe('PCB Text Regeneration (Remove Old gr_text)', () => {
 
     // Verify second generation ONLY has the new text elements
     pcbFile = fs.readFileSync(`./build/${testBoardName}.kicad_pcb`, 'utf8')
-    parsed = fsexp(pcbFile.replaceAll('"', '`'))
-    boardContents = parsed[0]
+    boardContents = parse(pcbFile)
     grTextElements = boardContents.filter((item: any) =>
-      Array.isArray(item) && item[0] === 'gr_text'
+      Array.isArray(item) && nameOf(item[0]) === 'gr_text'
     )
 
     // Should have exactly 2 text elements (the new ones)
@@ -118,10 +115,9 @@ describe('PCB Text Regeneration (Remove Old gr_text)', () => {
 
     // Verify first generation has text
     let pcbFile = fs.readFileSync(`./build/${testBoardName}.kicad_pcb`, 'utf8')
-    let parsed = fsexp(pcbFile.replaceAll('"', '`'))
-    let boardContents = parsed[0]
+    let boardContents = parse(pcbFile)
     let grTextElements = boardContents.filter((item: any) =>
-      Array.isArray(item) && item[0] === 'gr_text'
+      Array.isArray(item) && nameOf(item[0]) === 'gr_text'
     )
 
     expect(grTextElements.length).toBe(1)
@@ -133,10 +129,9 @@ describe('PCB Text Regeneration (Remove Old gr_text)', () => {
 
     // Verify second generation has NO text elements
     pcbFile = fs.readFileSync(`./build/${testBoardName}.kicad_pcb`, 'utf8')
-    parsed = fsexp(pcbFile.replaceAll('"', '`'))
-    boardContents = parsed[0]
+    boardContents = parse(pcbFile)
     grTextElements = boardContents.filter((item: any) =>
-      Array.isArray(item) && item[0] === 'gr_text'
+      Array.isArray(item) && nameOf(item[0]) === 'gr_text'
     )
 
     expect(grTextElements.length).toBe(0)
@@ -165,10 +160,9 @@ describe('PCB Text Regeneration (Remove Old gr_text)', () => {
 
       // Verify only current version's text exists
       const pcbFile = fs.readFileSync(`./build/${testBoardName}.kicad_pcb`, 'utf8')
-      const parsed = fsexp(pcbFile.replaceAll('"', '`'))
-      const boardContents = parsed[0]
+      const boardContents = parse(pcbFile)
       const grTextElements = boardContents.filter((item: any) =>
-        Array.isArray(item) && item[0] === 'gr_text'
+        Array.isArray(item) && nameOf(item[0]) === 'gr_text'
       )
 
       expect(grTextElements.length).toBe(textVersions[i].length)

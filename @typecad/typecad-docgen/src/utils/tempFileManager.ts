@@ -10,9 +10,17 @@ const rmdirAsync = promisify(fs.rmdir);
 const mkdirAsync = promisify(fs.mkdir);
 const writeFileAsync = promisify(fs.writeFile);
 const copyFileAsync = promisify(fs.copyFile);
-const existsAsync = promisify(fs.exists);
 const statAsync = promisify(fs.stat);
 const readdirAsync = promisify(fs.readdir);
+
+async function pathExists(filePath: string): Promise<boolean> {
+    try {
+        await fs.promises.stat(filePath);
+        return true;
+    } catch {
+        return false;
+    }
+}
 
 /**
  * Manages temporary files and directories
@@ -40,12 +48,11 @@ export class TempFileManager {
     
     // Set up cleanup on process exit
     process.on('exit', () => {
-      // Need to use synchronous operations for process.exit
       this.cleanupAllSync();
     });
     
-    process.on('SIGINT', async () => {
-      await this.cleanupAll();
+    process.on('SIGINT', () => {
+      this.cleanupAllSync();
       process.exit(0);
     });
   }
@@ -93,7 +100,7 @@ export class TempFileManager {
     const dirName = name || `${this.prefix}dir-${uuidv4().slice(0, 8)}`;
     const dirPath = path.join(this.baseDir, dirName);
     
-    const exists = await existsAsync(dirPath);
+    const exists = await pathExists(dirPath);
     if (!exists) {
       await mkdirAsync(dirPath, { recursive: true });
     }
@@ -188,7 +195,7 @@ export class TempFileManager {
     
     // Create directory if needed
     if (createDir) {
-      const exists = await existsAsync(outputDir);
+      const exists = await pathExists(outputDir);
       if (!exists) {
         await mkdirAsync(outputDir, { recursive: true });
       }
@@ -244,7 +251,7 @@ export class TempFileManager {
    */
   async cleanupFileAsync(filepath: string): Promise<void> {
     try {
-      const exists = await existsAsync(filepath);
+      const exists = await pathExists(filepath);
       if (exists) {
         await unlinkAsync(filepath);
       }
@@ -289,7 +296,7 @@ export class TempFileManager {
    */
   async cleanupDirectoryAsync(dirpath: string): Promise<void> {
     try {
-      const exists = await existsAsync(dirpath);
+      const exists = await pathExists(dirpath);
       if (exists) {
         // First clean up files in the directory
         const files = await readdirAsync(dirpath);
@@ -339,7 +346,7 @@ export class TempFileManager {
    */
   private async cleanupPath(path: string): Promise<void> {
     try {
-        const exists = await existsAsync(path);
+        const exists = await pathExists(path);
         if (!exists) return;
 
         const stats = await statAsync(path);
@@ -358,8 +365,13 @@ export class TempFileManager {
    * @returns Promise that resolves when all cleanup is complete
    */
   async cleanupAll(): Promise<void> {
-    const allPaths = [...this.tempFiles, ...this.tempDirs];
-    await Promise.all(allPaths.map(path => this.cleanupPath(path)));
+    const sortedDirs = Array.from(this.tempDirs).sort((a, b) => b.length - a.length);
+    for (const file of this.tempFiles) {
+      await this.cleanupPath(file);
+    }
+    for (const dir of sortedDirs) {
+      await this.cleanupPath(dir);
+    }
     this.tempFiles.clear();
     this.tempDirs.clear();
   }

@@ -10,7 +10,15 @@ import { PCBConfig, SVGConfig, CacheConfig } from './config.js';
 
 // Convert callback-based fs functions to promise-based
 const readFileAsync = promisify(fs.readFile);
-const existsAsync = promisify(fs.exists);
+
+async function pathExists(filePath: string): Promise<boolean> {
+    try {
+        await fs.promises.stat(filePath);
+        return true;
+    } catch {
+        return false;
+    }
+}
 
 // Define interfaces for stackup data
 interface Layer {
@@ -46,7 +54,6 @@ type SExpr = string | SExpr[];
  * Basic S-expression parser
  */
 function parseSExpression(expr: string): SExpr {
-    // First, handle quoted strings by replacing them with a placeholder
     const quotedStrings: string[] = [];
     const exprWithPlaceholders = expr.replace(/"([^"]*)"/g, (match, content) => {
         quotedStrings.push(content);
@@ -55,11 +62,17 @@ function parseSExpression(expr: string): SExpr {
 
     const tokens = exprWithPlaceholders.match(/\(|\)|[^()\s]+/g) || [];
     const stack: any[] = [];
-    
+    let depth = 0;
+
     for (const token of tokens) {
         if (token === '(') {
             stack.push([]);
+            depth++;
         } else if (token === ')') {
+            depth--;
+            if (depth < 0) {
+                throw new Error('Unexpected closing parenthesis in S-expression');
+            }
             const top = stack.pop();
             if (stack.length > 0) {
                 stack[stack.length - 1].push(top);
@@ -67,10 +80,12 @@ function parseSExpression(expr: string): SExpr {
                 return top;
             }
         } else {
-            // If it's a placeholder, replace it with the actual string
             const match = token.match(/^"(\d+)"$/);
             if (match) {
                 const index = parseInt(match[1]);
+                if (index >= quotedStrings.length) {
+                    throw new Error(`Invalid string placeholder index ${index} in S-expression`);
+                }
                 if (stack.length > 0) {
                     stack[stack.length - 1].push(quotedStrings[index]);
                 }
@@ -81,6 +96,11 @@ function parseSExpression(expr: string): SExpr {
             }
         }
     }
+
+    if (depth > 0) {
+        throw new Error(`Unterminated parenthesis in S-expression (${depth} unclosed)`);
+    }
+
     return stack[0];
 }
 
@@ -121,14 +141,6 @@ async function getPCBContent(pcbFilePath: string): Promise<string> {
 }
 
 // Add proper error types
-class PCBParseError extends Error {
-    constructor(message: string) {
-        super(message);
-        this.name = 'PCBParseError';
-    }
-}
-
-// Add result type for better error handling
 interface Result<T, E = Error> {
     success: boolean;
     data?: T;
@@ -277,6 +289,15 @@ export async function extractStackup(pcbFilePath: string, forceReparse: boolean 
  * @param darkMode Whether to use dark mode colors
  * @returns SVG string
  */
+function escapeXml(str: string): string {
+    return str
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&apos;');
+}
+
 function generateStackupSVG(stackup: Stackup, darkMode: boolean = false): string {
     
     // Helper function to get layer color based on type and material
@@ -317,19 +338,19 @@ function generateStackupSVG(stackup: Stackup, darkMode: boolean = false): string
     function getLayerHeight(layer: Layer): number {
         const type = layer.type.toLowerCase();
         if (type.includes('silk s')) {
-            return 3; // Extremely thin for silkscreen
+            return PCBConfig.layerHeights.silkscreen;
         } else if (type.includes('paste')) {
-            return 3; // Very thin for paste
+            return PCBConfig.layerHeights.paste;
         } else if (type.includes('mask')) {
-            return 3; // Thin for mask
+            return PCBConfig.layerHeights.mask;
         } else if (type.includes('copper')) {
-            return 5; // Thicker for copper
+            return PCBConfig.layerHeights.copper;
         } else if (type.includes('core')) {
-            return 25; // Thickest for core
+            return PCBConfig.layerHeights.core;
         } else if (type.includes('prepreg')) {
-            return 20; // Thick for prepreg
+            return PCBConfig.layerHeights.prepreg;
         }
-        return 10; // Default height
+        return PCBConfig.layerHeights.default;
     }
 
     // Constants for layout
@@ -392,7 +413,7 @@ function generateStackupSVG(stackup: Stackup, darkMode: boolean = false): string
         // Layer type on the left with connector line
         svg += `
         <text x="${labelOffset}" y="${centerY + 5}" class="layer-text" text-anchor="end">
-            ${layer.type}
+            ${escapeXml(layer.type)}
         </text>
         <line 
             x1="${labelOffset + 5}" 
@@ -437,7 +458,7 @@ function generateStackupSVG(stackup: Stackup, darkMode: boolean = false): string
         if (properties.length > 0) {
             svg += `
             <text x="${xOffset + layerWidth + rightTextOffset}" y="${centerY + 5}" class="layer-text">
-                ${properties.join(' - ')}
+                ${escapeXml(properties.join(' - '))}
             </text>
             <line 
                 x1="${xOffset + layerWidth + 5}"
@@ -462,7 +483,7 @@ function generateStackupSVG(stackup: Stackup, darkMode: boolean = false): string
             Finished PCB thickness: ${totalThickness.toFixed(2)}mm ±10%
         </text>
         <text x="${totalWidth/2}" y="${currentY + 25}" class="layer-text" text-anchor="middle">
-            Copper finish: ${stackup.copperFinish || 'Copper finish unspecified'}
+            Copper finish: ${escapeXml(stackup.copperFinish || 'Copper finish unspecified')}
         </text>
         <text x="${totalWidth/2}" y="${currentY + 45}" class="layer-text" text-anchor="middle">
             Impedance Controlled: ${stackup.dielectricConstraints === true ? 'yes' : stackup.dielectricConstraints === false ? 'no' : '-'}

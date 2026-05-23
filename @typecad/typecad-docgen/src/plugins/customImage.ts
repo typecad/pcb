@@ -1,32 +1,10 @@
 import MarkdownIt from 'markdown-it';
 
-// Extract image attributes parsing
-interface ImageAttributes {
-    alt: string;
-    src: string;
-    width?: number;
-    height?: number;
-}
-
-function parseImageAttributes(match: RegExpExecArray): ImageAttributes {
-    const [, alt, src, width, height] = match;
-    return {
-        alt,
-        src,
-        width: width ? parseInt(width, 10) : undefined,
-        height: height ? parseInt(height, 10) : undefined
-    };
-}
-
 export const customImagePlugin = (md: MarkdownIt, processAltText: (layers: string[], src: string, width?: number) => Promise<void> | void) => {
-    // Track all image processing tasks to avoid duplicate processing
-    const processedImages = new Map<string, Promise<void>>();
-
     md.inline.ruler.before('image', 'custom_image', (state, silent) => {
         const pos = state.pos;
         if (state.src[pos] !== '!') return false;
 
-        // Improved regex to capture optional widthxheight or just width
         const match = /^!\[([^\]]*?)\]\(([^)]+?)(?:\s+=(\d+(?:\.\d+)?)(?:x(\d+(?:\.\d+)?))?)?\)/.exec(
             state.src.slice(pos)
         );
@@ -34,21 +12,11 @@ export const customImagePlugin = (md: MarkdownIt, processAltText: (layers: strin
 
         const [fullMatch, altContent, src, width, height] = match;
         
-        // Process image only if it's a custom format
         if (altContent.startsWith('{') && altContent.endsWith('}')) {
             const layers = altContent.slice(1, -1).split(/\s*,\s*/);
             const widthNum = width ? parseInt(width, 10) : undefined;
             
-            // Create a unique key for this image processing request
-            const imageKey = `${layers.join(',')}-${src}-${width || 'default'}`;
-            
-            // Only process if we haven't already started processing this exact combination
-            if (!processedImages.has(imageKey)) {
-                const result = processAltText(layers, src, widthNum);
-                if (result instanceof Promise) {
-                    processedImages.set(imageKey, result);
-                }
-            }
+            processAltText(layers, src, widthNum);
         }
 
         // Create token for HTML output

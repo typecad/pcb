@@ -1,18 +1,27 @@
 import { DOMParser, XMLSerializer } from '@xmldom/xmldom';
 import sharp from 'sharp';
-import { exec } from 'node:child_process';
+import { execFile } from 'node:child_process';
 import { Buffer } from 'node:buffer';
 import { promisify } from 'node:util';
 import * as fs from 'fs';
 import * as path from 'path';
 import { tempManager } from './tempFileManager.js';
 
-// Convert Node.js callback-based APIs to Promise-based
-const execAsync = promisify(exec);
+import { PCBConfig } from './config.js';
+
+const execFileAsync = promisify(execFile);
 const readFileAsync = promisify(fs.readFile);
 const writeFileAsync = promisify(fs.writeFile);
 const mkdirAsync = promisify(fs.mkdir);
-const existsAsync = promisify(fs.exists);
+
+async function pathExists(filePath: string): Promise<boolean> {
+    try {
+        await fs.promises.stat(filePath);
+        return true;
+    } catch {
+        return false;
+    }
+}
 
 /**
  * SVG manipulation and conversion utilities
@@ -33,7 +42,7 @@ function calculateNewDimensions(viewBox: string, targetWidth: number) {
     };
 }
 
-export function resizeSvg(svgContent: string, width: number = 5000): string {
+export function resizeSvg(svgContent: string, width: number = PCBConfig.dimensions.defaultWidth): string {
     const svgDoc = new DOMParser().parseFromString(svgContent, 'image/svg+xml');
     if (!svgDoc.documentElement) return svgContent;
 
@@ -72,13 +81,12 @@ export function combineSvgLayers(svgContents: string[]): string {
             const firstSvg = svgDocs[0].documentElement;
             if (firstSvg) {
                 // Set viewBox and dimensions in one operation
-                const viewBox = firstSvg.getAttribute('viewBox') || '0 0 5000 5000';
+                const viewBox = firstSvg.getAttribute('viewBox') || `0 0 ${PCBConfig.dimensions.defaultWidth} ${PCBConfig.dimensions.defaultWidth}`;
                 rootSvg.setAttribute('viewBox', viewBox);
-                rootSvg.setAttribute('width', '5000');
+                rootSvg.setAttribute('width', PCBConfig.dimensions.defaultWidth.toString());
 
-                // Calculate height based on viewBox aspect ratio
                 const [, , vbWidth, vbHeight] = viewBox.split(' ').map(parseFloat);
-                rootSvg.setAttribute('height', Math.round(5000 * (vbHeight / vbWidth)).toString());
+                rootSvg.setAttribute('height', Math.round(PCBConfig.dimensions.defaultWidth * (vbHeight / vbWidth)).toString());
             }
         }
 
@@ -126,7 +134,7 @@ export async function svgToPngBuffer(svgContent: string, options: {width?: numbe
 
     const [minX, minY, vbWidth, vbHeight] = currentViewBox.split(' ').map(parseFloat);
     const aspectRatio = vbHeight / vbWidth;
-    const targetWidth = options.width || 5000;
+    const targetWidth = options.width || PCBConfig.dimensions.defaultWidth;
     const targetHeight = Math.round(targetWidth * aspectRatio);
 
     let sharpInstance = sharp(Buffer.from(svgContent)).resize({
@@ -160,7 +168,7 @@ export async function writeBufferToFile(buffer: Buffer, outputPath: string): Pro
     const outputDir = path.dirname(outputPath);
 
     // Check if directory exists - use async exists
-    const dirExists = await existsAsync(outputDir);
+    const dirExists = await pathExists(outputDir);
     if (!dirExists) {
         await mkdirAsync(outputDir, { recursive: true });
     }
@@ -190,9 +198,18 @@ export async function executeKicadSvgExport(
         if (layer.includes('B.')) {
             bMirror = true;
         }
-        await execAsync(
-            `"${kicadCliPath}" pcb export svg --theme "${theme}" ${bMirror ? '--mirror' : ''} --drill-shape-opt 0 --cdnp --exclude-drawing-sheet --page-size-mode 2 --layers "${layer}" --output "${tempSvgPath}" ${pcbFilePath}`
-        );
+        await execFileAsync(kicadCliPath, [
+            'pcb', 'export', 'svg',
+            '--theme', theme,
+            ...(bMirror ? ['--mirror'] : []),
+            '--drill-shape-opt', '0',
+            '--cdnp',
+            '--exclude-drawing-sheet',
+            '--page-size-mode', '2',
+            '--layers', layer,
+            '--output', tempSvgPath,
+            pcbFilePath
+        ]);
 
         // Read the content immediately and delete the temp file
         const svgContent = await readFileAsync(tempSvgPath, 'utf-8');
@@ -227,11 +244,16 @@ export async function executeKicadDrillExport(
         
         // Determine output directory based on whether the output path contains a directory
         const outputDir = path.dirname(pcbFilePath);
-        const outputArg = outputDir === '.' ? '' : `--output "${outputDir}/"`;
-        
-        await execAsync(
-            `"${kicadCliPath}" pcb export drill --generate-map --map-format svg ${outputArg} ${pcbFilePath}`
-        );
+        const args: string[] = [
+            'pcb', 'export', 'drill',
+            '--generate-map',
+            '--map-format', 'svg',
+        ];
+        if (outputDir !== '.') {
+            args.push('--output', path.join(outputDir, '/'));
+        }
+        args.push(pcbFilePath);
+        await execFileAsync(kicadCliPath, args);
 
         // The SVG file will be named <pcbFileName>-drl_map.svg
         const svgPath = path.join(outputDir, `${pcbFileName}-drl_map.svg`);
@@ -289,7 +311,7 @@ export async function processKicadSvgLayers(
 
         // Convert directly to PNG buffer
         const pngBuffer = await svgToPngBuffer(combinedSvg, {
-            width: 5000,
+            width: PCBConfig.dimensions.defaultWidth,
             trim: true
         });
 
@@ -320,9 +342,16 @@ export async function renderKicad3DView(
         // rendered images directly to stdout. We'll minimize the lifetime of the temp file.
         const tempRenderPath = tempManager.createTempFilePath('.png');
 
-        await execAsync(
-            `"${kicadCliPath}" pcb render --preset follow_pcb_editor --perspective --quality high --side ${renderSpec.side} --rotate "${renderSpec.x},${renderSpec.y},${renderSpec.z}" --output "${tempRenderPath}" ${pcbFilePath}`
-        );
+        await execFileAsync(kicadCliPath, [
+            'pcb', 'render',
+            '--preset', 'follow_pcb_editor',
+            '--perspective',
+            '--quality', 'high',
+            '--side', renderSpec.side,
+            '--rotate', `${renderSpec.x},${renderSpec.y},${renderSpec.z}`,
+            '--output', tempRenderPath,
+            pcbFilePath
+        ]);
 
         // Process the render with sharp to trim it, keeping it in memory
         const inputBuffer = await readFileAsync(tempRenderPath);

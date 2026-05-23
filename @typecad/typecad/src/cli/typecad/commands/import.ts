@@ -1,0 +1,17 @@
+import { kicadDataToTypeCAD } from '../../../kicad2typecad/cli.js';
+import type { ParsedArgs } from '../parser.js';
+
+export async function run(parsed: ParsedArgs): Promise<void> {
+  const filePath = parsed.positional[0];
+
+  if (!filePath) {
+    throw new Error(
+      'No KiCad file path provided.\n' +
+      'Usage: typecad import <path_to_kicad_pcb_file> [--apply]'
+    );
+  }
+
+  const apply = parsed.args['apply'] === true;
+
+  await kicadDataToTypeCAD(filePath, { apply });
+}

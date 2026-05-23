@@ -21,7 +21,6 @@ import path from 'node:path';
 process.on('uncaughtException', (error) => {
   if (error instanceof Error && error.name === 'ExitPromptError') {
   } else {
-    // Rethrow unknown errors
     throw error;
   }
 });
@@ -142,9 +141,7 @@ function showHelp() {
   console.log('  node @typecad/add-package --component=true --name=custom_package --local=true --symbol=MyLib:MySymbol --footprint=MyLib:MyFootprint');
 }
 
-main();
-
-async function main() {
+async function main(preparsedArgs?: Record<string, any>) {
   let entered_package_name = '';
   let footprint_recommendation = '';
   let entered_footprint = '';
@@ -152,9 +149,8 @@ async function main() {
   let pins = [];
   let _chosen_symbol;
 
-  const cmdArgs = parseArguments();
+  const cmdArgs = preparsedArgs || parseArguments();
   
-  // Early exit for help
   if (cmdArgs.help) {
     showHelp();
     return;
@@ -164,7 +160,7 @@ async function main() {
   const isNonInteractive = hasAllRequiredArgs(cmdArgs);
   
   // Determine folder - if we have command line args, don't use process.argv[2] as folder
-  const folderPath = cmdArgs.folder || (isNonInteractive ? './' : process.argv[2] || './');
+  const folderPath = cmdArgs.folder || (preparsedArgs ? './src' : (isNonInteractive ? './src' : process.argv[2] || './src'));
   
   console.log('📦 ' + chalk.whiteBright.bold('type') + 'CAD Create Package');
 
@@ -300,9 +296,8 @@ async function main() {
           return;
         }
         
-        // Validate KiCAD symbol exists
         footprint_recommendation = kicad_symbol(entered_symbol, '');
-        if (footprint_recommendation == false) {
+        if (!footprint_recommendation) {
           console.error(chalk.red(`Error: Invalid KiCAD library symbol '${entered_symbol}'`));
           return;
         }
@@ -316,7 +311,7 @@ async function main() {
               return `Not a valid symbol. It needs to be in this format 'symbol_library:symbol_name'`;
             }
             footprint_recommendation = kicad_symbol(entered_symbol, '');
-            if (footprint_recommendation == false) {
+            if (!footprint_recommendation) {
               return `Provide a valid KiCAD library symbol ('symbol_library:symbol_name')`;
             }
             return true;
@@ -576,4 +571,13 @@ async function main() {
       }
     }
   }
+}
+
+export { main, showHelp };
+
+if (
+  process.argv[1]?.endsWith('add-package/index.js') ||
+  process.argv[1]?.endsWith('add-package\\index.js')
+) {
+  main();
 }

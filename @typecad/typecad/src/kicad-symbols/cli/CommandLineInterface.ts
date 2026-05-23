@@ -173,13 +173,12 @@ public async run(args: string[]): Promise<void> {
         console.log(chalk.bold.blue(`Top match: ${chalk.italic(topMatch.lcsc)} - ${topMatch.description}`));
       }
       
-      // Check if any results have both symbol and footprint
       const actionableResults = limitedResults.filter(r => r.footprint && r.footprint.length > 0);
-      
+
       if (actionableResults.length > 0 && parsedArgs.format !== 'json') {
-        console.log(); // Empty line
+        console.log();
         const wantToAdd = await confirm({
-          message: 'Do you want to create a component package from one of these results?',
+          message: 'Do you want to add a component from these results?',
           default: false
         });
         
@@ -195,33 +194,32 @@ public async run(args: string[]): Promise<void> {
           const selectedIdx = parseInt(indexStr, 10) - 1;
           const selectedResult = limitedResults[selectedIdx];
           
-          if (!selectedResult.footprint) {
-            console.log(chalk.yellow('This result does not have a specific footprint defined. Cannot create package.'));
+          if (!selectedResult.footprint || selectedResult.footprint.length === 0) {
+            console.log(chalk.yellow('This result does not have a specific footprint. Cannot create component.'));
           } else {
-            const packageName = await input({
-              message: 'Package name?',
+            const componentName = await input({
+              message: 'Component name?',
               default: selectedResult.partNumber.toLowerCase().replace(/[^a-z0-9_]/g, '_')
             });
             
-            console.log(chalk.blue(`Running add-package for ${selectedResult.lcsc}...`));
+            console.log(chalk.blue(`Running add-component for ${selectedResult.lcsc}...`));
             
             try {
               const __filename = fileURLToPath(import.meta.url);
               const __dirname = path.dirname(__filename);
-              const addPackagePath = path.resolve(__dirname, '../../../cli/add-package/index.js');
+              const addComponentPath = path.resolve(__dirname, '../../cli/add-component/index.js');
               
               let folder = './';
               if (fs.existsSync('./src')) {
-                folder = './src';
+                folder = '.';
               }
               
-              const cmd = `node "${addPackagePath}" --component=true --name="${packageName}" --kicad=true --symbol="${selectedResult.lcsc}" --footprint="${selectedResult.footprint}" --folder="${folder}"`;
+              const cmd = `node "${addComponentPath}" --kicad=true --symbol="${selectedResult.lcsc}" --folder="${folder}" --footprint="${selectedResult.footprint}"`;
               
-              console.log(chalk.gray(`> ${cmd}`));
               execSync(cmd, { stdio: 'inherit' });
-              console.log(chalk.green('Component package created successfully!'));
+              console.log(chalk.green('Component created successfully!'));
             } catch (error) {
-              console.error(chalk.red('Failed to create component package:'), error);
+              console.error(chalk.red('Failed to create component.'));
             }
           }
         }

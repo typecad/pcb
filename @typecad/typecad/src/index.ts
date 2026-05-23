@@ -1,4 +1,5 @@
 #!/usr/bin/env tsx
+export { defineConfig, type TypeCADConfig } from './config.js'
 export { Component, IComponent, ITypeHalInfo } from './component.js'
 export { Schematic } from './schematic.js'
 export { schematic } from './schematic_visualizer.js'

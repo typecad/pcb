@@ -2,67 +2,137 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
-import { Config } from '../src/config.js'
+import { Config, loadConfig, clearConfigCache, defineConfig } from '../src/config.js'
 
-describe('Config', () => {
-    const tmpDir = path.join(os.tmpdir(), `typecad-config-test-${Date.now()}`)
-    const configPath = path.join(tmpDir, 'typecad.json')
-    let originalCwd: string
+describe('defineConfig', () => {
+  it('should return the config object as-is', () => {
+    const config = defineConfig({ entry: './src/main.ts', verbose: true })
+    expect(config.entry).toBe('./src/main.ts')
+    expect(config.verbose).toBe(true)
+  })
 
-    beforeEach(() => {
-        fs.mkdirSync(tmpDir, { recursive: true })
-        originalCwd = process.cwd()
-        process.chdir(tmpDir)
-    })
+  it('should allow arbitrary keys', () => {
+    const config = defineConfig({ custom: 'value' })
+    expect((config as any).custom).toBe('value')
+  })
+})
 
-    afterEach(() => {
-        process.chdir(originalCwd)
-        fs.rmSync(tmpDir, { recursive: true, force: true })
-    })
+describe('loadConfig', () => {
+  const tmpDir = path.join(os.tmpdir(), `typecad-conf-test-${Date.now()}`)
+  let originalCwd: string
 
-    it('should return empty string for missing key when no config file exists', () => {
-        const config = new Config()
-        expect(config.get('nonexistent')).toBe('')
-    })
+  beforeEach(() => {
+    fs.mkdirSync(tmpDir, { recursive: true })
+    originalCwd = process.cwd()
+    process.chdir(tmpDir)
+    clearConfigCache()
+  })
 
-    it('should read a value from an existing config file', () => {
-        fs.writeFileSync(configPath, JSON.stringify({ kicad_cli: '/usr/bin/kicad-cli' }))
-        const config = new Config()
-        expect(config.get('kicad_cli')).toBe('/usr/bin/kicad-cli')
-    })
+  afterEach(() => {
+    process.chdir(originalCwd)
+    fs.rmSync(tmpDir, { recursive: true, force: true })
+  })
 
-    it('should return empty string for a key not in the config file', () => {
-        fs.writeFileSync(configPath, JSON.stringify({ kicad_cli: '/usr/bin/kicad-cli' }))
-        const config = new Config()
-        expect(config.get('other_key')).toBe('')
-    })
+  it('should return empty config when no config file exists', () => {
+    const config = loadConfig()
+    expect(config.entry).toBeUndefined()
+  })
 
-    it('should write a value and read it back', () => {
-        const config = new Config()
-        expect(config.set('test_key', 'test_value')).toBe(true)
+  it('should load a typecad.conf.ts file', () => {
+    fs.writeFileSync(
+      path.join(tmpDir, 'typecad.conf.ts'),
+      `export default { entry: './src/app.ts' };\n`
+    )
+    const config = loadConfig()
+    expect(config.entry).toBe('./src/app.ts')
+  })
 
-        const config2 = new Config()
-        expect(config2.get('test_key')).toBe('test_value')
-    })
+  it('should fall back to typecad.json when no conf file exists', () => {
+    fs.writeFileSync(
+      path.join(tmpDir, 'typecad.json'),
+      JSON.stringify({ entry: './src/fallback.ts' })
+    )
+    const config = loadConfig()
+    expect(config.entry).toBe('./src/fallback.ts')
+  })
 
-    it('should overwrite an existing value', () => {
-        fs.writeFileSync(configPath, JSON.stringify({ key: 'old' }))
-        const config = new Config()
-        config.set('key', 'new')
+  it('should prefer typecad.conf.ts over typecad.json', () => {
+    fs.writeFileSync(
+      path.join(tmpDir, 'typecad.conf.ts'),
+      `export default { entry: './src/from-conf.ts' };\n`
+    )
+    fs.writeFileSync(
+      path.join(tmpDir, 'typecad.json'),
+      JSON.stringify({ entry: './src/from-json.ts' })
+    )
+    const config = loadConfig()
+    expect(config.entry).toBe('./src/from-conf.ts')
+  })
 
-        const config2 = new Config()
-        expect(config2.get('key')).toBe('new')
-    })
+  it('should cache the config result', () => {
+    const c1 = loadConfig()
+    const c2 = loadConfig()
+    expect(c1).toBe(c2)
+  })
 
-    it('should handle malformed JSON gracefully', () => {
-        fs.writeFileSync(configPath, '{ invalid json')
-        const config = new Config()
-        expect(config.get('any_key')).toBe('')
-    })
+  it('clearConfigCache should force reload', () => {
+    loadConfig()
+    clearConfigCache()
+    const c = loadConfig()
+    expect(c).toBeDefined()
+  })
+})
 
-    it('should handle empty config file', () => {
-        fs.writeFileSync(configPath, '')
-        const config = new Config()
-        expect(config.get('any_key')).toBe('')
-    })
+describe('Config (legacy)', () => {
+  const tmpDir = path.join(os.tmpdir(), `typecad-config-legacy-${Date.now()}`)
+  let originalCwd: string
+
+  beforeEach(() => {
+    fs.mkdirSync(tmpDir, { recursive: true })
+    originalCwd = process.cwd()
+    process.chdir(tmpDir)
+    clearConfigCache()
+  })
+
+  afterEach(() => {
+    process.chdir(originalCwd)
+    fs.rmSync(tmpDir, { recursive: true, force: true })
+  })
+
+  it('should return empty string for missing key when no config file exists', () => {
+    const config = new Config()
+    expect(config.get('nonexistent')).toBe('')
+  })
+
+  it('should read a value from typecad.json fallback', () => {
+    fs.writeFileSync(
+      path.join(tmpDir, 'typecad.json'),
+      JSON.stringify({ kicad_cli: '/usr/bin/kicad-cli' })
+    )
+    const config = new Config()
+    expect(config.get('kicad_cli')).toBe('/usr/bin/kicad-cli')
+  })
+
+  it('should return empty string for a key not in the config', () => {
+    fs.writeFileSync(
+      path.join(tmpDir, 'typecad.json'),
+      JSON.stringify({ kicad_cli: '/usr/bin/kicad-cli' })
+    )
+    const config = new Config()
+    expect(config.get('other_key')).toBe('')
+  })
+
+  it('should write a value and read it back via typecad.json', () => {
+    const config = new Config()
+    expect(config.set('test_key', 'test_value')).toBe(true)
+    clearConfigCache()
+    const config2 = new Config()
+    expect(config2.get('test_key')).toBe('test_value')
+  })
+
+  it('should handle malformed JSON gracefully', () => {
+    fs.writeFileSync(path.join(tmpDir, 'typecad.json'), '{ invalid json')
+    const config = new Config()
+    expect(config.get('any_key')).toBe('')
+  })
 })

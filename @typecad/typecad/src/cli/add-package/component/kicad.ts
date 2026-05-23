@@ -13,7 +13,7 @@ export function kicad_cli() {
   return KiCAD.cliPath;
 }
 
-export function kicad_symbol(symbol) {
+export function kicad_symbol(symbol: string, _folder?: string) {
   let symbol_file_name = symbol.split(':');
 
   const kicad = new KiCAD();
@@ -32,9 +32,8 @@ export function kicad_symbol(symbol) {
       );
     }
 
-    const l = parse(symbol_file_contents);
+    const l: any = parse(symbol_file_contents);
 
-    // search through sym file for the symbol
     for (const i in l) {
       if (!Array.isArray(l[i])) continue;
       if (l[i][1] === symbol_file_name[1]) {
@@ -68,10 +67,10 @@ export function kicad_symbol(symbol) {
   }
 }
 
-export function kicad_pins() {
-  let _type = '';
-  let _name = '';
-  let _number = -1;
+export function kicad_pins(_symbol?: string): any[] {
+let _type = '';
+let _name = '';
+let _number: string | number = -1;
 
   const l = _parsed || parse(symbol_file_contents);
   for (const i in l) {
@@ -145,15 +144,14 @@ export function kicad_pins() {
   return _pins;
 }
 
-export function return_list_of_symbols(symbol_path) {
-  let found_symbols = [];
+export function return_list_of_symbols(symbol_path: string) {
+  let found_symbols: { value: string }[] = [];
 
   try {
     symbol_file_contents = fs.readFileSync(symbol_path, 'utf8');
 
-    const l = parse(symbol_file_contents);
+    const l: any = parse(symbol_file_contents);
 
-    // search through sym file for the symbol
     for (const i in l) {
       if (!Array.isArray(l[i])) continue;
       if (nameOf(l[i][0]) === 'symbol') {
@@ -167,11 +165,11 @@ export function return_list_of_symbols(symbol_path) {
   return found_symbols;
 }
 
-export function local_symbol_to_footprint(symbol_path) {
+export function local_symbol_to_footprint(symbol_path: string) {
   try {
     symbol_file_contents = fs.readFileSync(symbol_path, 'utf8');
 
-    const l = parse(symbol_file_contents);
+    const l: any = parse(symbol_file_contents);
 
     for (const i in l) {
       if (!Array.isArray(l[i])) continue;

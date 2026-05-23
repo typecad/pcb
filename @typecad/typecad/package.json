@@ -12,24 +12,22 @@
     "typecad"
   ],
   "homepage": "https://typecad.net",
-  "funding": "https://www.buymeacoffee.com/typecad",
+  "funding": {
+    "url": "https://www.buymeacoffee.com/typecad"
+  },
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "type": "module",
   "bin": {
-    "create-typecad": "./dist/cli/create-typecad/index.js",
-    "add-component": "./dist/cli/add-component/index.js",
-    "add-package": "./dist/cli/add-package/index.js",
-    "kicad-symbols": "./dist/kicad-symbols/cli/bin.js",
-    "kicad2typecad": "./dist/kicad2typecad/bin.js"
+    "typecad": "dist/cli/typecad/index.js",
+    "kicad-symbols": "dist/kicad-symbols/cli/bin.js",
+    "kicad2typecad": "dist/kicad2typecad/bin.js"
   },
   "publishConfig": {
     "access": "public"
   },
   "scripts": {
-    "create-typecad": "node ./dist/cli/create-typecad/index.js",
-    "add-component": "node ./dist/cli/add-component/index.js",
-    "add-package": "node ./dist/cli/add-package/index.js",
+    "typecad": "node ./dist/cli/typecad/index.js",
     "build": "tsc && tsc -p tsconfig.cli.json",
     "typecheck": "tsc --noEmit",
     "obfuscate": "javascript-obfuscator dist --output dist-obfuscated --config obfuscator.config.json",
@@ -56,7 +54,7 @@
     "cpy-cli": "^6.0.0",
     "javascript-obfuscator": "^4.1.0",
     "nodemon": "^3.1.0",
-    "tsx": "^4.19.2",
+    "tsx": "^4.22.3",
     "typedoc": "^0.28.7",
     "typedoc-plugin-markdown": "^4.7.0",
     "typescript": "^5.7.3",
@@ -64,11 +62,26 @@
   },
   "dependencies": {
     "@inquirer/prompts": "^8.4.2",
+    "@typecad/passives": "^0.1.44",
+    "@typecad/typecad": "^0.2.30",
+    "@typecad/typecad-docgen": "^1.0.3",
+    "@typecad/typecad-gitdiff": "^1.1.1",
     "acorn": "^8.16.0",
     "acorn-walk": "^8.3.5",
     "chalk": "^5.4.1",
-    "commander": "^14.0.3",
     "inquirer-file-selector": "^1.0.1",
     "inquirer-select-pro": "1.0.0-alpha.9"
+  },
+  "directories": {
+    "doc": "docs",
+    "example": "examples",
+    "test": "tests"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/typecad/typecad.git"
+  },
+  "bugs": {
+    "url": "https://github.com/typecad/typecad/issues"
   }
 }

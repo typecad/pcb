@@ -1,0 +1,20 @@
+{
+  "name": "typecad_package",
+  "version": "1.0.0",
+  "description": "typecad_package typeCAD package",
+  "main": "index.ts",
+  "type": "module",
+  "author": "",
+  "license": "ISC",
+  "keywords": ["typeCAD", "package"],
+  "devDependencies": {
+    "tsx": "^4.19.1"
+  },
+  "peerDependencies": {
+    "@typecad/passives": "~0.1.0",
+    "@typecad/typecad": "~0.1.0"
+  },
+  "scripts": {
+    "postinstall": "node postinstall.js"
+  }
+}

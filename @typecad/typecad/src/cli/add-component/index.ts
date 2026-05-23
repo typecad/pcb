@@ -184,20 +184,9 @@ function showHelp() {
   console.log("  npx @typecad/add-component # starts interactive mode");
 }
 
-main();
+async function main(preparsedArgs?: Record<string, any>) {
+  const cmdArgs = preparsedArgs || parseArguments();
 
-process.on("uncaughtException", (error) => {
-  if (error instanceof Error && error.name === "ExitPromptError") {
-  } else {
-    // Rethrow unknown errors
-    throw error;
-  }
-});
-
-async function main() {
-  const cmdArgs = parseArguments();
-
-  // Early exit for help
   if (cmdArgs.help) {
     showHelp();
     return;
@@ -300,29 +289,26 @@ async function handleMixedSources(
   cmdArgs,
   isNonInteractive
 ) {
-  let symbolData: Record<string, unknown> = {};
-  let footprintData: Record<string, unknown> = {};
-  let pins = [];
-  let componentName = "";
+  let symbolData: any = {};
+  let footprintData: any = {};
+  let pins: any[] = [];
+  let componentName: string = "";
 
-  // Handle symbol source
   symbolData = await handleSymbolSource(
     symbolSource,
     cmdArgs,
     isNonInteractive
   );
-  if (!symbolData) return;
+  if (!symbolData) process.exit(1);
 
-  // Handle footprint source
   footprintData = await handleFootprintSource(
     footprintSource,
     cmdArgs,
     isNonInteractive,
     symbolData
   );
-  if (!footprintData) return;
+  if (!footprintData) process.exit(1);
 
-  // Get pins from symbol data
   pins = symbolData.pins || [];
   componentName = symbolData.name || "Component";
 
@@ -334,7 +320,7 @@ async function handleMixedSources(
     pins,
     symbol_path: symbolData.symbol_path,
     footprint_path: footprintData.footprint_path,
-    folder: cmdArgs.folder || "./",
+    folder: cmdArgs.folder || ".",
   };
 
   create_component(data);
@@ -446,11 +432,11 @@ async function handleKicadSymbol(cmdArgs, isNonInteractive) {
         if (!entered_symbol.includes(":")) {
           return `Not a valid symbol. It needs to be in this format 'symbol_library:symbol_name'`;
         }
-        const footprint_recommendation = kicad_symbol(
+        const footprint_recommendation: any = kicad_symbol(
           entered_symbol,
-          cmdArgs.folder || "./"
+          cmdArgs.folder || "."
         );
-        if (footprint_recommendation === false) {
+        if (footprint_recommendation === undefined) {
           return `Provide a valid KiCAD library symbol ('symbol_library:symbol_name')`;
         }
         return true;
@@ -458,11 +444,11 @@ async function handleKicadSymbol(cmdArgs, isNonInteractive) {
     });
   }
 
-  const footprint_recommendation = kicad_symbol(
+  const footprint_recommendation: any = kicad_symbol(
     entered_symbol,
-    cmdArgs.folder || "./"
+    cmdArgs.folder || "."
   );
-  if (footprint_recommendation === false) {
+  if (footprint_recommendation === undefined) {
     console.log(
       chalk.red(`Error: Invalid KiCAD library symbol '${entered_symbol}'`)
     );
@@ -545,7 +531,7 @@ async function handleLocalSymbol(cmdArgs, isNonInteractive) {
       }
 
       _chosen_symbol = entered_symbol.split(":")[1];
-      kicad_symbol(entered_symbol, cmdArgs.folder || "./");
+      kicad_symbol(entered_symbol, cmdArgs.folder || "./src");
       const pins = kicad_pins();
 
       return {
@@ -555,11 +541,16 @@ async function handleLocalSymbol(cmdArgs, isNonInteractive) {
       };
     }
   } else {
-    symbolPath = (await fileSelector({
-      message: "Select a KiCAD Symbol file (kicad_sym):",
-      filter: (file) => file.isDirectory || file.path.includes(".kicad_sym"),
-      showExcluded: false,
-    })).path;
+    do {
+      symbolPath = (await fileSelector({
+        message: "Select a KiCAD Symbol file (kicad_sym):",
+        filter: (file) => file.isDirectory || file.path.includes(".kicad_sym"),
+        showExcluded: false,
+      })).path;
+      if (fs.statSync(symbolPath).isDirectory()) {
+        console.log(chalk.yellow("Please select a file, not a directory."));
+      }
+    } while (fs.statSync(symbolPath).isDirectory());
 
     let _found_symbols = return_list_of_symbols(symbolPath);
     if (_found_symbols.length > 1) {
@@ -623,7 +614,7 @@ async function handleEasyedaSymbol(cmdArgs, isNonInteractive) {
     return null;
   }
 
-  const baseFolder = cmdArgs.folder || "./";
+  const baseFolder = cmdArgs.folder || ".";
   const prettyFolder = path.join(
     baseFolder,
     `${convertedComponent.symbol.name}.pretty`
@@ -835,11 +826,16 @@ async function handleLocalFootprint(cmdArgs, isNonInteractive, symbolData) {
   } else {
     const defaultFootprint =
       symbolData.footprint_recommendation || "lib:footprint";
-    footprintPath = (await fileSelector({
-      message: `Select footprint file (.kicad_mod) for ${defaultFootprint}:`,
-      filter: (file) => file.isDirectory || file.path.includes(".kicad_mod"),
-      showExcluded: false,
-    })).path;
+    do {
+      footprintPath = (await fileSelector({
+        message: `Select footprint file (.kicad_mod) for ${defaultFootprint}:`,
+        filter: (file) => file.isDirectory || file.path.includes(".kicad_mod"),
+        showExcluded: false,
+      })).path;
+      if (fs.statSync(footprintPath).isDirectory()) {
+        console.log(chalk.yellow("Please select a file, not a directory."));
+      }
+    } while (fs.statSync(footprintPath).isDirectory());
 
     return {
       footprint: defaultFootprint,
@@ -887,7 +883,7 @@ async function handleEasyedaFootprint(cmdArgs, isNonInteractive, symbolData) {
     return null;
   }
 
-  const baseFolder = cmdArgs.folder || "./";
+  const baseFolder = cmdArgs.folder || ".";
   const prettyFolder = path.join(
     baseFolder,
     `${convertedComponent.footprint.name}.pretty`
@@ -945,4 +941,20 @@ async function handleEasyedaFootprint(cmdArgs, isNonInteractive, symbolData) {
       }
     },
   };
+}
+
+process.on("uncaughtException", (error) => {
+  if (error instanceof Error && error.name === "ExitPromptError") {
+  } else {
+    throw error;
+  }
+});
+
+export { main, showHelp };
+
+if (
+  process.argv[1]?.endsWith('add-component/index.js') ||
+  process.argv[1]?.endsWith('add-component\\index.js')
+) {
+  main();
 }

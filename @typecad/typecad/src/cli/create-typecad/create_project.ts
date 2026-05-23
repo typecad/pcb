@@ -143,6 +143,24 @@ ${[
   }
   console.log(chalk.green("+"), "KiCAD project created");
 
+  try {
+    fs.writeFileSync(
+      `./${answers.name}/hw/typecad.conf.ts`,
+      `import { defineConfig } from '@typecad/typecad';
+
+export default defineConfig({
+  entry: './src/${answers.name}.ts',
+});
+`
+    );
+  } catch (error) {
+    console.log(
+      chalk.red(`- ERROR creating ./${answers.name}/hw/typecad.conf.ts. ${error}`)
+    );
+    return;
+  }
+  console.log(chalk.green("+"), "typecad.conf.ts created");
+
   // install npm deps
   const npmInitCommand = `cd ${answers.name}/hw && npm init -y`;
   console.log(chalk.green("+"), "Creating npm package");
@@ -160,8 +178,6 @@ ${[
   } ${answers.packages.includes("prompt") ? `@typecad/typecad-prompt` : ""} ${
     answers.packages.includes("docgen") ? `@typecad/typecad-docgen` : ""
   } ${answers.packages.includes("wiring") ? `@typecad/wiring` : ""} ${
-    answers.packages.includes("gitdiff") ? `@typecad/typecad-gitdiff` : ""
-  } ${
     answers.packages.includes("jlcpcb-parts") ? `@typecad/jlcpcb-parts` : ""
   } ${answers.packages.includes("typecad-mcp") ? `@typecad/typecad-mcp` : ""
   }`;
@@ -200,14 +216,15 @@ ${[
     return;
   }
 
-  package_json.scripts["build"] = `npx tsx ./src/${answers.name}`;
-  package_json.scripts["add_component"] = `npx --package=@typecad/typecad add-component ./`;
-  package_json.scripts["add_package"] = `npx --package=@typecad/typecad add-package ./`;
+  package_json.scripts["build"] = `typecad build`;
+  package_json.scripts["add_component"] = `typecad add component`;
+  package_json.scripts["add_package"] = `typecad add package`;
+  package_json.scripts["kicad-search"] = `typecad search`;
+  package_json.scripts["import"] = `typecad import ${path.join(".", "build", `${answers.name}.kicad_pcb`)}`;
   package_json.scripts[
     "open_board"
   ] = `npx open-cli ./build/${answers.name}.kicad_pcb`;
 
-  // Add docs script if typecad-docgen is selected
   if (answers.packages.includes("docgen")) {
     package_json.scripts["docs"] = `${path.join(
       ".",
@@ -221,17 +238,6 @@ ${[
     )}`;
   }
 
-  // Add KiCAD symbols script if kicad-symbols is selected
-  if (answers.packages.includes("kicad-symbols")) {
-    package_json.scripts["kicad_symbols"] = `${path.join(
-      ".",
-      "node_modules",
-      ".bin",
-      "kicad-symbols"
-    )}`;
-  }
-
-  // Add JLCPCB parts script if jlcpcb-parts is selected
   if (answers.packages.includes("jlcpcb-parts")) {
     package_json.scripts["jlcpcb_parts"] = `${path.join(
       ".",
@@ -239,32 +245,6 @@ ${[
       ".bin",
       "jlcpcb-search"
     )}`;
-  }
-
-  // Add KiCAD to typeCAD script if kicad2typecad is selected
-  if (answers.packages.includes("kicad2typecad")) {
-    package_json.scripts["kicad-typecad"] = `${path.join(
-      ".",
-      "node_modules",
-      ".bin",
-      "kicad2typecad"
-    )} ${path.join(".", "build", `${answers.name}.kicad_pcb`)} ${path.join(".", "src", `${answers.name}.ts`)}`;
-  }
-
-  // Add git diff script if typecad-gitdiff is selected
-  if (answers.packages.includes("gitdiff")) {
-    package_json.scripts["git_diff"] = `git difftool ${path.join(
-      ".",
-      "build",
-      `${answers.name}.kicad_pcb`
-    )} --extcmd '${path.join(
-      process.cwd(),
-      answers.name,
-      "hw",
-      "node_modules",
-      ".bin",
-      "typecad-gitdiff"
-    )}' -y`;
   }
 
   delete package_json.scripts.test;
@@ -344,14 +324,13 @@ ${[
     }
   }
 
-  // Create docs folder and markdown file if typecad-docgen is selected
   if (answers.packages.includes("docgen")) {
     const docsDir = `./${answers.name}/hw/docs`;
-    if (!fs.existsSync(docsDir)) {
-      fs.mkdirSync(docsDir, { recursive: true });
-    }
+  if (!fs.existsSync(docsDir)) {
+    fs.mkdirSync(docsDir, { recursive: true });
+  }
 
-    const docContent = `# Fabrication Notes
+  const docContent = `# Fabrication Notes
 
 |                 Stackup                 |                        Dimensions                         |                Drills                |
 | :-------------------------------------: | :-------------------------------------------------------: | :----------------------------------: |
@@ -393,24 +372,23 @@ _flipped_
 | ![{B.Cu,B.Mask,B.Fab}](./images/bottom-assembly.png =550) | ![Bottom render](./images/back-render.png =550) |
 `;
 
-    try {
-      fs.writeFileSync(
-        `${process.cwd()}/${answers.name}/hw/docs/${answers.name}.md`,
-        docContent
-      );
-      console.log(chalk.green("+"), "Documentation template created");
-    } catch (error) {
-      console.log(
-        chalk.red(
-          `- ERROR writing ./${answers.name}/hw/docs/${answers.name}.md ${error}`
-        )
-      );
-      return;
-    }
+  try {
+    fs.writeFileSync(
+      `${process.cwd()}/${answers.name}/hw/docs/${answers.name}.md`,
+      docContent
+    );
+    console.log(chalk.green("+"), "Documentation template created");
+  } catch (error) {
+    console.log(
+      chalk.red(
+        `- ERROR writing ./${answers.name}/hw/docs/${answers.name}.md ${error}`
+      )
+    );
+    return;
+  }
   }
 
-  // make workspace file
-  let code_workspace = {};
+  let code_workspace: Record<string, any> = {};
 
   if (answers.pio) {
     code_workspace.folders = [{ path: "hw" }, { path: "fw" }];

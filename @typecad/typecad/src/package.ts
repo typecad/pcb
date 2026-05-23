@@ -21,8 +21,8 @@ export interface PackageOptions {
     x: number;
     y: number;
     reference?: string;
-    /** Name used for the PCB group. Use pcb.place() if you do not want grouping. */
-    name: string;
+    /** Name used for the PCB group. Defaults to the class name. */
+    name?: string;
     passives?: PassiveFactory;
 }
 
@@ -90,7 +90,8 @@ export abstract class Package<TOptions extends object = {}> {
             Component.setActiveCounter(null);
         }
         this._autoCollect();
-        this.pcb.group(options.name, ...this.components);
+        this._applyOffset();
+        this.pcb.group(options.name ?? this.constructor.name, ...this.components);
         this.pcb.popOffset();
     }
 
@@ -170,6 +171,23 @@ export abstract class Package<TOptions extends object = {}> {
             if ((value instanceof Component || value instanceof TrackBuilder) && !alreadyRegistered.has(value)) {
                 this.components.push(value);
                 alreadyRegistered.add(value);
+            }
+        }
+    }
+
+    /**
+     * Apply the current PCB offset to all collected components' `.pcb` positions.
+     * Tracks and vias already had offsets applied at creation time via PCB methods,
+     * so only regular Components need adjustment.
+     */
+    private _applyOffset(): void {
+        const offset = this.pcb.currentOffset;
+        if (offset.x === 0 && offset.y === 0) return;
+
+        for (const item of this.components) {
+            if (item instanceof Component && !item.via) {
+                item.pcb.x += offset.x;
+                item.pcb.y += offset.y;
             }
         }
     }

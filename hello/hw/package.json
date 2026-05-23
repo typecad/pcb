@@ -1,0 +1,27 @@
+{
+  "name": "hw",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "build": "npx tsx ./src/hello",
+    "add_component": "npx --package=@typecad/typecad add-component ./",
+    "add_package": "npx --package=@typecad/typecad add-package ./",
+    "open_board": "npx open-cli ./build/hello.kicad_pcb",
+    "docs": "node_modules\\.bin\\typecad-docgen docs\\hello.md build\\hello.kicad_pcb",
+    "kicad_symbols": "node_modules\\.bin\\kicad-symbols",
+    "kicad-typecad": "node_modules\\.bin\\kicad2typecad build\\hello.kicad_pcb src\\hello.ts",
+    "git_diff": "git difftool build\\hello.kicad_pcb --extcmd 'C:\\typecad\\typeCAD\\hello\\hw\\node_modules\\.bin\\typecad-gitdiff' -y"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@typecad/passives": "^0.1.44",
+    "@typecad/typecad": "^0.2.30",
+    "@typecad/typecad-docgen": "^1.0.3",
+    "@typecad/typecad-gitdiff": "^1.1.1",
+    "tsx": "^4.22.3"
+  }
+}

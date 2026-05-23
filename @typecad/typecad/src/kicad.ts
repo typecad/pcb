@@ -117,7 +117,7 @@ export class KiCAD {
         }
 
         if (!KiCAD._cliPath) {
-            throw new KiCadNotFoundError('KiCad CLI not found. Install KiCad or set kicad_cli in typecad.json.');
+            throw new KiCadNotFoundError('KiCad CLI not found. Install KiCad or set kicad_cli in typecad.conf.ts.');
         }
 
         KiCAD._isFlatpak = localIsFlatpak;

@@ -27,11 +27,8 @@ function parseArguments() {
     "@typecad/typecad-prompt": "prompt",
     "@typecad/typecad-docgen": "docgen",
     "@typecad/wiring": "wiring",
-    "@typecad/typecad-gitdiff": "gitdiff",
-    "@typecad/kicad2typecad": "kicad2typecad",
     "@typecad/jlcpcb-parts": "jlcpcb-parts",
     "@typecad/typecad-mcp": "typecad-mcp",
-    "@typecad/kicad-symbols": "kicad-symbols",
   };
 
   for (const arg of args) {
@@ -104,10 +101,7 @@ function showHelp() {
     "  @typecad/ngspice, @typecad/graphviz, @typecad/jlcpcb-export, @typecad/typecad-prompt,"
   );
   console.log(
-    "  @typecad/typecad-docgen, @typecad/wiring, @typecad/typecad-gitdiff,"
-  );
-  console.log(
-    "  @typecad/jlcpcb-parts, @typecad/typecad-mcp, @typecad/kicad-symbols\n"
+    "  @typecad/typecad-docgen, @typecad/wiring, @typecad/jlcpcb-parts, @typecad/typecad-mcp\n"
   );
   console.log("Examples:");
   console.log(
@@ -121,12 +115,9 @@ function showHelp() {
   );
 }
 
-main();
+async function main(preparsedArgs?: Record<string, any>) {
+  const cmdArgs = preparsedArgs || parseArguments();
 
-async function main() {
-  const cmdArgs = parseArguments();
-
-  // Show help if requested
   if (cmdArgs.help) {
     showHelp();
     return;
@@ -163,12 +154,7 @@ async function main() {
     answers.pio = cmdArgs.pio;
     answers.git = cmdArgs.git;
     answers.board = cmdArgs.board || "esp32dev";
-    answers.packages = cmdArgs.packages || [
-      "docgen",
-      "gitdiff",
-      "kicad2typecad",
-      "kicad-symbols",
-    ];
+    answers.packages = cmdArgs.packages || [];
 
     console.log(chalk.green("Creating project with the following settings:"));
     console.log(`  Name: ${answers.name}`);
@@ -215,12 +201,7 @@ async function main() {
       (await multi_select.select({
         message: "Optional packages",
         multiple: true,
-        defaultValue: [
-          "docgen",
-          "gitdiff",
-          "kicad2typecad",
-          "kicad-symbols",
-        ],
+        defaultValue: [],
         options: [
           {
             name: "@typecad/ngspice - use typeCAD to design your hardware and run simulations with ngspice with the same codebase",
@@ -247,14 +228,6 @@ async function main() {
             value: "wiring",
           },
           {
-            name: "@typecad/typecad-gitdiff - renders a KiCAD PCB git diff visually",
-            value: "gitdiff",
-          },
-          {
-            name: "kicad2typecad - Parse KiCad PCB board files and generate typeCAD code (bundled with @typecad/typecad)",
-            value: "kicad2typecad",
-          },
-          {
             name: "@typecad/jlcpcb-parts - Fuzzy search for JLCPCB basic and preferred electrical components",
             value: "jlcpcb-parts",
           },
@@ -262,13 +235,18 @@ async function main() {
             name: "@typecad/typecad-mcp - Provides AI assistants with direct access to typeCAD tools and workflows",
             value: "typecad-mcp",
           },
-          {
-            name: "@typecad/kicad-symbols - Fuzzy search for KiCad schematic symbols",
-            value: "kicad-symbols",
-          },
         ],
       }));
   }
 
   await create_project(answers);
+}
+
+export { main };
+
+if (
+  process.argv[1]?.endsWith('create-typecad/index.js') ||
+  process.argv[1]?.endsWith('create-typecad\\index.js')
+) {
+  main();
 }

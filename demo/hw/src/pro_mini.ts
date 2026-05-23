@@ -2,6 +2,7 @@ import { PCB, Component } from '@typecad/typecad'
 import { Resistor, Capacitor } from '@typecad/passives/0603';
 import { Connector } from '@typecad/passives/connector'
 import { Testpoint } from '@typecad/passives/testpoint'
+import { Typecad_package } from "./typecad_package";
 
 // 1Hz Pulse Generator - Complete Wiring Diagram
 // 4.194304 MHz→÷16,384→256 Hz→÷256→1 Hz
@@ -14,6 +15,8 @@ import { Testpoint } from '@typecad/passives/testpoint'
 // 5. Dual power supply: 3V for TCXO, 5V for logic ICs
 
 const typecad = new PCB('one_hz');
+
+const u1 = new Typecad_package({ pcb: typecad, x: 100, y: 0 });
 
 typecad.text({
   text: 'typecad 1hz',
@@ -270,6 +273,7 @@ typecad.create(
   R1,                       // Resistors
   J1, J2,                   // Connectors
   TP1, TP2, TP3, TP4,        // Testpoints
+  u1.components
   // ...route5
   // ...batch.results.flat()
 );

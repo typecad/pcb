@@ -1,55 +1,120 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
+import { execSync } from 'node:child_process';
 import chalk from 'chalk';
 import logger from './logging.js';
 
+export interface TypeCADConfig {
+  entry?: string;
+  kicad_cli?: string;
+  kicad_path?: string;
+  use_flatpak?: boolean;
+  verbose?: boolean;
+  [key: string]: unknown;
+}
+
+export function defineConfig(config: TypeCADConfig): TypeCADConfig {
+  return config;
+}
+
+let _cachedConfig: TypeCADConfig | null = null;
+
+function findConfigPath(): string | null {
+  const cwd = process.cwd();
+  const candidates = [
+    path.join(cwd, 'typecad.conf.ts'),
+    path.join(cwd, 'typecad.conf.js'),
+  ];
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  return null;
+}
+
+function loadTsConfig(configPath: string): TypeCADConfig {
+  const fileUrl = 'file:///' + configPath.replace(/\\/g, '/');
+  try {
+    const result = execSync(
+      `npx tsx -e "import('${fileUrl}').then(m=>process.stdout.write(JSON.stringify(m.default??m)))"`,
+      { stdio: ['pipe', 'pipe', 'pipe'], timeout: 15000 }
+    );
+    const parsed = JSON.parse(result.toString());
+    if (parsed && typeof parsed === 'object' && 'default' in parsed) {
+      return parsed.default;
+    }
+    return parsed;
+  } catch (error) {
+    logger.error(
+      chalk.red.bold(
+        `ERROR: cannot load ${path.basename(configPath)}. Check for syntax errors.`
+      )
+    );
+    return {};
+  }
+}
+
+export function loadConfig(): TypeCADConfig {
+  if (_cachedConfig) return _cachedConfig;
+
+  const confPath = findConfigPath();
+  if (confPath) {
+    _cachedConfig = loadTsConfig(confPath);
+    return _cachedConfig!;
+  }
+
+  const jsonPath = path.join(process.cwd(), 'typecad.json');
+  if (fs.existsSync(jsonPath)) {
+    try {
+      _cachedConfig = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
+      return _cachedConfig!;
+    } catch {
+      logger.error(
+        chalk.red.bold(
+          'ERROR: cannot read/process typecad.json. Try editing or deleting the file.'
+        )
+      );
+    }
+  }
+
+  _cachedConfig = {};
+  return _cachedConfig!;
+}
+
+export function clearConfigCache(): void {
+  _cachedConfig = null;
+}
+
 export class Config {
-    #contents: Record<string, string> | null = null;
+  get(key: string): string {
+    const config = loadConfig();
+    const value = (config as Record<string, unknown>)[key];
+    if (value === undefined || value === null) return '';
+    return String(value);
+  }
 
-    #open() {
-        if (this.#contents !== null) return;
+  set(key: string, value: string): boolean {
+    const jsonPath = path.join(process.cwd(), 'typecad.json');
 
-        const configPath = path.join(process.cwd(), 'typecad.json');
-        
-        try {
-            if (!fs.existsSync(configPath)) {
-                this.#contents = {};
-                return;
-            }
-    
-            let config_text = fs.readFileSync(configPath, "utf8");
-            this.#contents = JSON.parse(config_text);
-        } catch (error) {
-            logger.error('- ', chalk.red.bold('ERROR: cannot read/process typecad.json. Try editing or deleting the file.'));
-            this.#contents = {};
-        }
+    let contents: Record<string, string> = {};
+    if (fs.existsSync(jsonPath)) {
+      try {
+        contents = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
+      } catch {
+        contents = {};
+      }
     }
 
-    get(key: string): string {
-        this.#open();
+    contents[key] = value;
 
-        if (key in this.#contents!) {
-            return this.#contents![key];
-        } else {
-            return '';
-        }
+    try {
+      fs.writeFileSync(jsonPath, JSON.stringify(contents, null, 2));
+    } catch (err) {
+      logger.error(err);
+      return false;
     }
 
-    set(key: string, value: string): boolean {
-        this.#open();
-
-        const configPath = path.join(process.cwd(), 'typecad.json');
-
-        this.#contents![key] = value;
-
-        try {
-            fs.writeFileSync(configPath, JSON.stringify(this.#contents, null, 2));
-        } catch (err) {
-            logger.error(err);
-            return false;
-        }
-
-        return true;
-    }
+    clearConfigCache();
+    return true;
+  }
 }

@@ -12,7 +12,7 @@ const getTsPluginModule = (() => {
         if (cached === undefined) {
             try {
                 cached = _require('acorn-typescript') || null;
-            } catch {
+            } catch { /* acorn-typescript not installed */
                 cached = null;
             }
         }
@@ -141,10 +141,7 @@ export function inspectSource(filePath: string, line: number): { variable?: stri
             if (foundVariable) {
                 return { variable: targetVariable, params: targetParams, isThis: targetIsThis };
             }
-        } catch {
-            // AST parsing failed (e.g., TypeScript syntax not understood by plain acorn).
-            // Fall through to regex-based fallback below.
-        }
+        } catch { /* AST parsing failed, fall through to regex fallback */ }
 
         // 2. Fallback to Regex and Text Parsing
         const lines = sourceContent.split('\n');
@@ -210,12 +207,11 @@ export function inspectSource(filePath: string, line: number): { variable?: stri
         }
 
         return {};
-    } catch {
-        return {};
+    } catch { /* source inspection failed entirely */
     }
+    return {};
 }
 
-// Helper function to extract object from AST node
 function extractAstObject(node: ObjectExpression): Record<string, unknown> {
     const obj: Record<string, unknown> = {};
     node.properties.forEach((prop) => {

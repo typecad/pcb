@@ -1,5 +1,3 @@
-const cache = new Map<string, Sym>();
-
 const PRE_INTERN = [
     'kicad_pcb', 'version', 'generator', 'general', 'thickness',
     'setup', 'pad_to_mask_clearance', 'solder_mask_min_width',
@@ -76,6 +74,7 @@ const PRE_INTERN = [
 ];
 
 export class Sym {
+    private static _cache = new Map<string, Sym>();
     private static _initialized = false;
     public readonly name: string;
 
@@ -88,13 +87,13 @@ export class Sym {
             Sym._initialized = true;
             for (const n of PRE_INTERN) {
                 const s = new Sym(n);
-                cache.set(n, s);
+                Sym._cache.set(n, s);
             }
         }
-        let s = cache.get(name);
+        let s = Sym._cache.get(name);
         if (s === undefined) {
             s = new Sym(name);
-            cache.set(name, s);
+            Sym._cache.set(name, s);
         }
         return s;
     }
@@ -112,7 +111,7 @@ export class Sym {
     }
 
     static clearInternCache(): void {
-        cache.clear();
+        Sym._cache.clear();
         Sym._initialized = false;
     }
 }

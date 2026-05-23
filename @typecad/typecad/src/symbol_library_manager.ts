@@ -4,8 +4,8 @@ import { parse, serialize, Sym } from "./sexpr/index.js";
 import type { SExpr } from './sexpr/types.js';
 import { KiCAD } from "./kicad.js";
 import { LIBRARY_SEPARATOR } from './constants.js';
+import type { SExprNode } from './types/sexpr_types.js';
 import {
-    type SExprNode,
     type SymbolDefinition,
     type PinLocation,
     type BoundingBox,

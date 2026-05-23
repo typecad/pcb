@@ -9,7 +9,11 @@ import { Config } from './config.js'
 import { execSync } from 'node:child_process';
 import { KiCadNotFoundError } from './errors.js';
 
-let conf = new Config();
+let _conf: Config | null = null;
+function getConfig(): Config {
+    if (!_conf) _conf = new Config();
+    return _conf;
+}
 
 export function findExecutable(name: string): string | undefined {
     const pathEnv = process.env.PATH?.split(platform() === 'win32' ? ';' : ':') ?? [];
@@ -44,8 +48,8 @@ export class KiCAD {
     private static initialize(): void {
         if (KiCAD._initialized) return;
 
-        const configCli = conf.get("kicad_cli");
-        const configPath = conf.get("kicad_path");
+        const configCli = getConfig().get("kicad_cli");
+        const configPath = getConfig().get("kicad_path");
         if (configCli) {
             KiCAD._cliPath = configCli;
         }
@@ -58,7 +62,7 @@ export class KiCAD {
             return;
         }
 
-        const useFlatpakConfig = conf.get("use_flatpak");
+        const useFlatpakConfig = getConfig().get("use_flatpak");
         let localIsFlatpak = false;
         if (useFlatpakConfig === "true" || useFlatpakConfig === "1") {
             localIsFlatpak = true;
@@ -206,7 +210,7 @@ export class KiCAD {
                 if (existsSync(symbolsPath) && statSync(symbolsPath).isDirectory()) {
                     return symbolsPath;
                 }
-            } catch { }
+            } catch { /* path stat failed, try next */ }
         }
         return undefined;
     }

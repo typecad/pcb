@@ -20,7 +20,7 @@ import {
     setPendingBoardFilePath as _setPendingBoardFilePath,
     printTypecadOutputSummary as _printTypecadOutputSummary,
 } from "./pending_summary.js";
-import type { IPendingSummaryHost } from "./pending_summary.js";
+import type { IPendingSummaryHost, PendingTypecadSummary } from "./pending_summary.js";
 
 export { _setPendingSchematicPath as setPendingSchematicPath };
 export { _setPendingBoardFilePath as setPendingBoardFilePath };
@@ -53,16 +53,6 @@ export type { INetConnectionInfo } from './net_manager.js';
  * @class Schematic
  * @typedef {Schematic}
  */
-type PendingTypecadSummary = {
-    sheetName: string;
-    netPath: string;
-    projectTree?: string;
-    schPath?: string;
-    boardFilePath?: string;
-    printed: boolean;
-    hookInstalled: boolean;
-};
-
 export class Schematic implements IPendingSummaryHost {
     components: Component[] = [];
     /** @deprecated Use `components` instead. Kept for backward compatibility. */

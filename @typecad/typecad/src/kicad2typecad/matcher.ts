@@ -93,7 +93,7 @@ export class SourceMatcher {
         let content: string;
         try {
             content = fs.readFileSync(resolvedPath, 'utf-8');
-        } catch {
+        } catch { /* file not readable */
             return null;
         }
 
@@ -166,7 +166,7 @@ export class SourceMatcher {
             let content: string;
             try {
                 content = fs.readFileSync(filePath, 'utf-8');
-            } catch {
+            } catch { /* file not readable, skip */
                 continue;
             }
 
@@ -218,9 +218,7 @@ export class SourceMatcher {
                     results.push(fullPath);
                 }
             }
-        } catch {
-            // Directory not readable, skip
-        }
+        } catch { /* directory not readable, skip */ }
         return results;
     }
 }

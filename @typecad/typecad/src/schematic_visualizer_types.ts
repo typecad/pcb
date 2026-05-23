@@ -1,7 +1,7 @@
 import { Component } from "./component.js";
 import { Pin } from "./pin.js";
 import logger from './logging.js';
-import type { SExpr } from './sexpr/types.js';
+import type { SExprNode } from './types/sexpr_types.js';
 
 export function logError(message: string, ...args: unknown[]): void {
     logger.error(`[Schematic] ERROR: ${message}`, ...args);
@@ -11,7 +11,7 @@ export function logWarning(message: string, ...args: unknown[]): void {
     logger.warn(`[Schematic] Warning: ${message}`, ...args);
 }
 
-export type SExprNode = SExpr[];
+export type { SExprNode };
 
 export interface SymbolDefinition {
     rawSexpr: SExprNode;
@@ -35,10 +35,6 @@ export interface PinInfo {
     name: string;
     type: string;
 }
-
-export type SchematicNode = { name: string; code: number; nodes: Pin[]; owner: Component | null };
-
-// ── Shared constants ─────────────────────────────────────────────────────────
 
 export const GRID_UNIT_MM = 2.54;
 export const PAGE_WIDTH_MM = 284.73;

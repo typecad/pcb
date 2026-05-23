@@ -260,7 +260,7 @@ export class PCB implements IPcbBoardContext {
         return groupsMap;
     }
 
-    get existingBoardElements(): unknown[] {
+    get existingBoardElements(): SExpr[] {
         return this.state.existingBoardElements;
     }
 

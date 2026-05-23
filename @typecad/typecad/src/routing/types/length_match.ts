@@ -1,20 +1,8 @@
 import type { RoutingGrid } from '../contracts/routing_grid.js';
-import type { IRoutePath as FullRoutePath, IGeneratedElement } from '../../pcb/pcb_interfaces.js';
+import type { IRoutePath as FullRoutePath, IGeneratedElement, ILengthMatchPatternConfig, ILengthMatchConfig } from '../../pcb/pcb_interfaces.js';
 import type { IPcbBoardContext } from '../../pcb/pcb_board_context.js';
 
-export interface ILengthMatchPatternConfig {
-  type: 'sawtooth';
-  amplitude?: number; // optional amplitude in mm
-  pitch?: number; // optional pitch in mm
-}
-
-export interface ILengthMatchConfig {
-  tolerance: number; // maximum length difference in mm
-  pattern?: ILengthMatchPatternConfig;
-  minStraightSegment?: number; // minimum straight segment length for pattern placement
-  maxIterations?: number; // maximum iterations for pattern fitting
-  debug?: boolean; // enable debug logging
-}
+export type { ILengthMatchPatternConfig, ILengthMatchConfig };
 
 export type IRoutePath = Pick<FullRoutePath, 'nodes' | 'length'>;
 

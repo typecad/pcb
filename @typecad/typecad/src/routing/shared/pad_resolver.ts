@@ -373,7 +373,7 @@ export class PadResolver {
                 if (abs) geometries.push(abs);
             }
         } catch {
-            // Silently ignore if footprint cannot be parsed; no pads resolved
+            logger.debug(`[PadResolver] Footprint cannot be parsed, no pads resolved for ${component.reference || 'unknown'}`);
         }
 
         return geometries;

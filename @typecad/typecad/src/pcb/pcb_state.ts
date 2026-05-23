@@ -1,4 +1,5 @@
 import { type Component } from "../component.js";
+import type { SExpr } from '../sexpr/types.js';
 import type {
     IPcbOptions,
     IGrLine,
@@ -22,7 +23,7 @@ export class PcbInternalState {
     outlines: IOutline[] = [];
     stagedOutlines: IOutline[] = [];
     readonly options: IPcbOptions;
-    existingBoardElements: unknown[] = [];
+    existingBoardElements: SExpr[] = [];
     grTexts: IGrTextOptions[] = [];
     zones: IFilledZone[] = [];
     keepoutZones: IKeepoutZone[] = [];

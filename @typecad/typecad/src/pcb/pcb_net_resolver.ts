@@ -6,15 +6,10 @@
  * looking up schematic nets and mapping them to board net codes.
  */
 import type { INetResolution } from './pcb_interfaces.js';
+import type { ISchematicNode } from '../types/schematic_types.js';
 import type { Schematic } from '../schematic.js';
 import type { Pin } from '../pin.js';
 import { normalizeNetName } from './pcb_utils.js';
-
-type SchematicNetNode = {
-    name: string;
-    code: number;
-    nodes: Pin[];
-};
 
 /**
  * Resolves the net assignment for a component pin or via.
@@ -41,7 +36,7 @@ export function resolveNet(
 
     // Try to find the pin in the schematic nets
     if (schematic && schematic.Nodes) {
-        for (const schematicNode of schematic.Nodes as SchematicNetNode[]) {
+        for (const schematicNode of schematic.Nodes as ISchematicNode[]) {
             if (schematicNode.nodes) {
                 // For vias, look for UUID match with pin number "1"
                 // For regular components, look for reference + pin number match

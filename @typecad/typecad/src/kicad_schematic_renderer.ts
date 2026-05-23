@@ -4,14 +4,13 @@ import { serialize, s, sym, yes, no } from "./sexpr/index.js";
 import { randomUUID, UUID } from "node:crypto";
 import { SymbolLibraryManager } from './symbol_library_manager.js';
 import {
-    type SExprNode,
-    type SchematicNode,
     logError,
     logWarning,
     GRID_UNIT_MM,
     PAGE_WIDTH_MM,
     PAGE_HEIGHT_MM,
 } from './schematic_visualizer_types.js';
+import type { ISchematicNode } from './types/schematic_types.js';
 import { renderLabel } from './schematic_templates.js';
 
 export class KiCADSchematic {
@@ -147,7 +146,7 @@ export class KiCADSchematic {
         return [snappedX, snappedY];
     }
 
-    net(node: SchematicNode): void {
+    net(node: ISchematicNode): void {
         if (node.nodes.length === 0) {
             logWarning(`Net "${node.name}" has no pins. Skipping.`);
             return;

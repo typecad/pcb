@@ -25,8 +25,6 @@ import type {
 import { loadFootprintLib } from './component_footprint_loader.js';
 import { loadSymbolLib } from './component_symbol_loader.js';
 
-const defaultReferenceCounter = new ReferenceCounter();
-
 export type { TextOrPositioning, TextPositioning, TextWithPositioning, TextEntry, FabEntry };
 export { parseTextOrPositioning };
 
@@ -64,13 +62,18 @@ export interface SourceInfo {
 
 export class Component {
     private static _activeCounter: ReferenceCounter | null = null;
+    private static _defaultCounter: ReferenceCounter | null = null;
 
     static setActiveCounter(counter: ReferenceCounter | null): void {
         Component._activeCounter = counter;
     }
 
     static getActiveCounter(): ReferenceCounter {
-        return Component._activeCounter ?? defaultReferenceCounter;
+        if (Component._activeCounter) return Component._activeCounter;
+        if (!Component._defaultCounter) {
+            Component._defaultCounter = new ReferenceCounter();
+        }
+        return Component._defaultCounter;
     }
 
     reference: string = '';

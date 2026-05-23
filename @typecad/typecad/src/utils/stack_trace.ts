@@ -52,10 +52,7 @@ export function getCallSite(skipFiles: string[] = []): { file: string; line: num
                         if (lineText && lineText.includes('super(')) {
                             isSuperCall = true;
                         }
-                    } catch {
-                        // File read failed (tsx transformed path, etc).
-                        // Heuristic: constructor frames (function name starts
-                        // with "new ") are subclass super() calls into Component.
+                    } catch { /* file read failed, use heuristic */
                         if (funcName && funcName.startsWith('new ')) {
                             isSuperCall = true;
                         }

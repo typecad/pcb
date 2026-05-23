@@ -1,6 +1,7 @@
 import { Component } from "../component.js";
 import { Schematic } from "../schematic.js";
 import logger from "../logging.js";
+import type { SExpr } from '../sexpr/types.js';
 import {
     IPcbOptions,
     INetResolution,
@@ -22,7 +23,7 @@ export interface IPcbBoardContext {
     /** @internal Direct access to mutable internal state for extracted modules. */
     readonly state: PcbInternalState;
 
-    readonly existingBoardElements: unknown[];
+    readonly existingBoardElements: SExpr[];
     readonly components: Component[];
     readonly stagedComponents: Component[];
     stagedOutlines: IOutline[];

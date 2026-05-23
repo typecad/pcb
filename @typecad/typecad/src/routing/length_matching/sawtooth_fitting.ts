@@ -194,7 +194,7 @@ export function fitSawtooth(
     if (debug) {
       try {
         logger.debug(chalk.gray(`[LengthMatch] fit aborted: ampMax=0 for segment length=${seg.length.toFixed(3)}`));
-      } catch {}
+      } catch { /* logger failure */ }
     }
     return null;
   }
@@ -211,7 +211,7 @@ export function fitSawtooth(
           `[LengthMatch] fit init: ampMax=${ampMax.toFixed(3)} requestedAmp=${pattern.amplitude ?? 'auto'} usingAmp=${amplitude.toFixed(3)}`,
         ),
       );
-    } catch {}
+    } catch { /* logger failure */ }
   }
 
   let nNeeded = 1;
@@ -226,7 +226,7 @@ export function fitSawtooth(
         if (debug) {
           try {
             logger.debug(chalk.gray(`[LengthMatch] fit fail: fixed pitch ${pitch.toFixed(3)} < 2*amp ${(2 * amplitude).toFixed(3)}`));
-          } catch {}
+          } catch { /* logger failure */ }
         }
         return null;
       }
@@ -241,7 +241,7 @@ export function fitSawtooth(
       if (debug) {
         try {
           logger.debug(chalk.gray(`[LengthMatch] fit fail: forwardAvail<=0 (segLen=${seg.length.toFixed(3)} margin=${margin.toFixed(3)})`));
-        } catch {}
+        } catch { /* logger failure */ }
       }
       return null;
     }
@@ -257,7 +257,7 @@ export function fitSawtooth(
                 `[LengthMatch] fit fail: fixed amp ${amplitude.toFixed(3)} too large for forwardAvail=${forwardAvail.toFixed(3)} (maxPitchToFit=${maxPitchToFit.toFixed(3)})`,
               ),
             );
-          } catch {}
+          } catch { /* logger failure */ }
         }
         return null;
       }
@@ -282,7 +282,7 @@ export function fitSawtooth(
     if (debug) {
       try {
         logger.debug(chalk.gray(`[LengthMatch] fit try: amp=${amplitude.toFixed(3)} pitch=${pitch.toFixed(3)} n=${nPlace} achieved=${achieved.toFixed(3)} err=${err.toFixed(3)}`));
-      } catch {}
+      } catch { /* logger failure */ }
     }
 
     // Fine tune amplitude if both params are algorithmic and we need better precision
@@ -331,7 +331,7 @@ export function fitSawtoothWithSide(
     if (debug) {
       try {
         logger.debug(chalk.gray(`[LengthMatch] fit aborted (side=${side}): ampMax=0 for segment length=${seg.length.toFixed(3)}`));
-      } catch {}
+      } catch { /* logger failure */ }
     }
     return null;
   }
@@ -348,7 +348,7 @@ export function fitSawtoothWithSide(
           `[LengthMatch] fit init (side=${side}): ampMax=${ampMax.toFixed(3)} requestedAmp=${pattern.amplitude ?? 'auto'} usingAmp=${amplitude.toFixed(3)}`,
         ),
       );
-    } catch {}
+    } catch { /* logger failure */ }
   }
 
   let nNeeded = 1;
@@ -363,7 +363,7 @@ export function fitSawtoothWithSide(
         if (debug) {
           try {
             logger.debug(chalk.gray(`[LengthMatch] fit fail (side=${side}): fixed pitch ${pitch.toFixed(3)} < 2*amp ${(2 * amplitude).toFixed(3)}`));
-          } catch {}
+          } catch { /* logger failure */ }
         }
         return null;
       }
@@ -378,7 +378,7 @@ export function fitSawtoothWithSide(
       if (debug) {
         try {
           logger.debug(chalk.gray(`[LengthMatch] fit fail (side=${side}): forwardAvail<=0 (segLen=${seg.length.toFixed(3)} margin=${margin.toFixed(3)})`));
-        } catch {}
+        } catch { /* logger failure */ }
       }
       return null;
     }
@@ -394,7 +394,7 @@ export function fitSawtoothWithSide(
                 `[LengthMatch] fit fail (side=${side}): fixed amp ${amplitude.toFixed(3)} too large for forwardAvail=${forwardAvail.toFixed(3)} (maxPitchToFit=${maxPitchToFit.toFixed(3)})`,
               ),
             );
-          } catch {}
+          } catch { /* logger failure */ }
         }
         return null;
       }
@@ -419,7 +419,7 @@ export function fitSawtoothWithSide(
     if (debug) {
       try {
         logger.debug(chalk.gray(`[LengthMatch] fit try (side=${side}): amp=${amplitude.toFixed(3)} pitch=${pitch.toFixed(3)} n=${nPlace} achieved=${achieved.toFixed(3)} err=${err.toFixed(3)}`));
-      } catch {}
+      } catch { /* logger failure */ }
     }
 
     if (!fixedAmp && err > tolerance && achieved !== 0) {
@@ -431,7 +431,7 @@ export function fitSawtoothWithSide(
         if (debug)
           try {
             logger.debug(chalk.cyan(`[LengthMatch] fit best (side=${side}) achieved=${achieved.toFixed(3)} err=${err.toFixed(3)}`));
-          } catch {}
+          } catch { /* logger failure */ }
         break;
       }
       amplitude = newAmp;
@@ -442,7 +442,7 @@ export function fitSawtoothWithSide(
     if (debug)
       try {
         logger.debug(chalk.cyan(`[LengthMatch] fit success (side=${side}) amp=${amplitude.toFixed(3)} pitch=${pitch.toFixed(3)} n=${nPlace} achieved=${achieved.toFixed(3)} err=${err.toFixed(3)}`));
-      } catch {}
+      } catch { /* logger failure */ }
     if (err <= tolerance) break;
 
     if (!fixedAmp) {
@@ -487,7 +487,7 @@ export function fitSawtoothBidirectional(
     if (debug)
       try {
         logger.debug(chalk.gray(`[LengthMatch] sub-span attempt threw: ${err instanceof Error ? err.message : String(err)}`));
-      } catch {}
+      } catch { /* logger failure */ }
   }
   return null;
 }
@@ -545,7 +545,7 @@ export function attemptSubSpanFit(
               `[LengthMatch] subspan sample ${i + 1}/${samples} at (${(seg.start.x + ux * (margin + i * step)).toFixed(3)},${(seg.start.y + uy * (margin + i * step)).toFixed(3)}) side=${side} -> maxFree=${low.toFixed(3)}`,
             ),
           );
-        } catch {}
+        } catch { /* logger failure */ }
       }
     }
 
@@ -590,7 +590,7 @@ export function attemptSubSpanFit(
     if (debug) {
       try {
         logger.debug(chalk.cyan(`[LengthMatch] Found free sub-span side=${side} samples=${bestStart}-${bestEnd} length=${subSeg.length.toFixed(3)}mm, attempting fit`));
-      } catch {}
+      } catch { /* logger failure */ }
     }
 
     // First try multi-subspan stitching
@@ -672,7 +672,7 @@ export function attemptMultiFitOnSubSeg(
     if (debug)
       try {
         logger.debug(chalk.cyan(`[LengthMatch] multi-subspan fit succeeded parts=${parts} achieved=${achievedSum.toFixed(3)}mm`));
-      } catch {}
+      } catch { /* logger failure */ }
     return { points: combined, achievedDelta: achievedSum };
   }
   return null;

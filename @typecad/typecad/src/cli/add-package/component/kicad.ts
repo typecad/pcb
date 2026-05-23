@@ -1,7 +1,4 @@
-// @ts-nocheck
-// TODO: Add proper SExpr types to remove ts-nocheck
 import fs from 'node:fs';
-import { platform } from 'node:os';
 import { parse, serialize, Sym, nameOf } from '../../../sexpr/index.js';
 import os from 'node:os';
 

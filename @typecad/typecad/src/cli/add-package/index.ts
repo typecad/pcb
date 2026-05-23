@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-// @ts-nocheck - TODO: Add proper types incrementally
 import { select, input } from '@inquirer/prompts';
 import { sanitize_name } from './package/kicad.js';
 import { create_package } from './package/typecad.js';

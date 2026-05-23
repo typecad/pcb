@@ -1,5 +1,5 @@
 import type { RoutingGrid } from "../contracts/routing_grid.js";
-import { IImpedanceConstraint, IAutorouteVia, IAutorouteWaypoint } from "../types/pcb.js";
+import { IImpedanceConstraint } from "../types/pcb.js";
 import type { ILengthMatchConfig } from "../types/length_match.js";
 import type { IPowerInfo } from '../../pcb/pcb_interfaces.js';
 import type { IRoutePath as PcbRoutePath } from '../../pcb/pcb_interfaces.js';
@@ -175,9 +175,5 @@ export interface IWaypointPlanner {
   ): IWaypointPlan;
 }
 
-export interface IRouteDirectives {
-  /** Optional waypoints to force intermediate stops. Example: [{ x: 10, y: 5, layer: 'F.Cu' }] */
-  waypoints?: IAutorouteWaypoint[];
-  /** Fixed via locations the router must use. Example: [{ x: 12, y: 8, layer: 'B.Cu' }] */
-  vias?: IAutorouteVia[];
-}
+export type { IRouteDirectives } from '../../pcb/pcb_interfaces.js';
+

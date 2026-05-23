@@ -1,7 +1,7 @@
 import chalk from 'chalk';
 import logger from './logging.js';
 
-type PendingTypecadSummary = {
+export type PendingTypecadSummary = {
     sheetName: string;
     netPath: string;
     projectTree?: string;
@@ -92,10 +92,14 @@ class PendingSummaryManager {
     }
 }
 
-const manager = new PendingSummaryManager();
+let _manager: PendingSummaryManager | null = null;
+function getManager(): PendingSummaryManager {
+    if (!_manager) _manager = new PendingSummaryManager();
+    return _manager;
+}
 
 export function setActiveSummaryHost(host: IPendingSummaryHost | null): void {
-    manager.setActive(host);
+    getManager().setActive(host);
 }
 
 export function setupPendingSummary(
@@ -104,17 +108,17 @@ export function setupPendingSummary(
     netPath: string,
     projectTree?: string
 ): void {
-    manager.setupPendingSummary(host, sheetName, netPath, projectTree);
+    getManager().setupPendingSummary(host, sheetName, netPath, projectTree);
 }
 
 export function setPendingSchematicPath(schPath: string): void {
-    manager.setPendingSchematicPath(schPath);
+    getManager().setPendingSchematicPath(schPath);
 }
 
 export function setPendingBoardFilePath(boardFilePath: string): void {
-    manager.setPendingBoardFilePath(boardFilePath);
+    getManager().setPendingBoardFilePath(boardFilePath);
 }
 
 export function printTypecadOutputSummary(boardFilePath?: string): boolean {
-    return manager.printSummary(boardFilePath);
+    return getManager().printSummary(boardFilePath);
 }

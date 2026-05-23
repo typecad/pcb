@@ -146,7 +146,7 @@ export function removeOrTrimOverlappingStraight(
           }
         }
       }
-    } catch {}
+    } catch { logger.debug('[LengthMatch] Debug logging failed in findOverlapping'); }
   }
 
   return { toRemove, residuals };
@@ -209,14 +209,14 @@ export function createBuilderFromFittedPattern(
             `[LengthMatch] createBuilderFromFittedPattern: created builder for segment length=${segment.length.toFixed(3)} achieved=${fitted.achievedDelta.toFixed(3)}`,
           ),
         );
-      } catch {}
+      } catch { logger.debug('[LengthMatch] Debug logging failed'); }
     }
     return nb;
   } catch (err) {
     if (isEnvDebug()) {
       try {
         logger.debug(chalk.gray(`[LengthMatch] createBuilderFromFittedPattern threw: ${err instanceof Error ? err.message : String(err)}`));
-      } catch {}
+      } catch { logger.debug('[LengthMatch] Debug logging failed in error handler'); }
     }
     return null;
   }

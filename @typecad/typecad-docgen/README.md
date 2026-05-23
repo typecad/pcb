@@ -12,7 +12,7 @@ You can also read the [usage](https://typecad.net/packages/typecad-docgen/usage/
 npm install -g @typecad/typecad-docgen
 ```
 
-- [KiCAD](https://www.kicad.org/download/) v8 or v9 is also required.
+- [KiCAD](https://www.kicad.org/download/) 7.0+ is also required.
 - [node/npm.js](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm)
 
 # Basic Usage

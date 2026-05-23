@@ -1,8 +1,7 @@
-#!/usr/bin/env tsx
+#!/usr/bin/env node
 
-import * as fs from 'fs';
+import * as fs from 'fs/promises';
 import * as path from 'path';
-import { promisify } from 'util';
 import { Command } from 'commander';
 import { KiCAD, kicad_cli_path } from '@typecad/typecad';
 import MarkdownIt from 'markdown-it';
@@ -26,7 +25,7 @@ import { renderPCBLayers } from './utils/pcbLayerRenderer.js';
 import { tempManager } from './utils/tempFileManager.js';
 import { PCBConfig } from './utils/config.js';
 import { generateHtmlDocument } from './utils/template.js';
-import * as url from 'url';
+import { pathExists, ensureDir } from './utils/fs.js';
 import markdownItMath from "markdown-it-math";
 import mathup from "mathup";
 import temml from "temml";
@@ -36,19 +35,7 @@ import chalk from 'chalk';
 import open from 'open';
 import MarkdownItGitHubAlerts from 'markdown-it-github-alerts';
 import namedCodeBlocks from 'markdown-it-named-code-blocks';
-
-const readFileAsync = promisify(fs.readFile);
-const writeFileAsync = promisify(fs.writeFile);
-const mkdirAsync = promisify(fs.mkdir);
-
-async function pathExists(filePath: string): Promise<boolean> {
-    try {
-        await fs.promises.stat(filePath);
-        return true;
-    } catch {
-        return false;
-    }
-}
+import * as url from 'url';
 
 const logger = {
     info: (message: string) => console.log(chalk.blue('ℹ'), message),
@@ -76,12 +63,12 @@ async function validateInputFile(filePath: string): Promise<void> {
     if (!await pathExists(filePath)) {
         throw new Error(`Input markdown file does not exist: ${chalk.cyan(filePath)}`);
     }
-    const stats = await fs.promises.stat(filePath);
+    const stats = await fs.stat(filePath);
     if (!stats.isFile()) {
         throw new Error(`Input path is not a file: ${chalk.cyan(filePath)}`);
     }
     try {
-        await fs.promises.access(filePath, fs.constants.R_OK);
+        await fs.access(filePath, fs.constants.R_OK);
     } catch {
         throw new Error(`Input file is not readable: ${chalk.cyan(filePath)}`);
     }
@@ -97,12 +84,12 @@ async function validatePcbFile(filePath: string): Promise<void> {
     if (!await pathExists(filePath)) {
         throw new Error(`PCB file does not exist: ${chalk.cyan(filePath)}`);
     }
-    const stats = await fs.promises.stat(filePath);
+    const stats = await fs.stat(filePath);
     if (!stats.isFile()) {
         throw new Error(`PCB path is not a file: ${chalk.cyan(filePath)}`);
     }
     try {
-        await fs.promises.access(filePath, fs.constants.R_OK);
+        await fs.access(filePath, fs.constants.R_OK);
     } catch {
         throw new Error(`PCB file is not readable: ${chalk.cyan(filePath)}`);
     }
@@ -111,38 +98,50 @@ async function validatePcbFile(filePath: string): Promise<void> {
 async function validateOutputDir(outputPath: string): Promise<void> {
     const outputDir = path.dirname(outputPath);
     try {
-        await fs.promises.access(outputDir, fs.constants.W_OK);
+        await fs.access(outputDir, fs.constants.W_OK);
     } catch {
         try {
-            await mkdirAsync(outputDir, { recursive: true });
+            await ensureDir(outputDir);
         } catch (createError) {
             throw new Error(`Cannot create output directory: ${chalk.cyan(outputDir)}. ${createError}`);
         }
     }
 }
 
-async function generateDocumentation(
-    inputFile: string, 
-    pcbFilePath: string, 
-    outputFile: string, 
+async function getVersion(): Promise<string> {
+    try {
+        const currentFilePath = url.fileURLToPath(import.meta.url);
+        const currentDir = path.dirname(currentFilePath);
+        const pkgPath = path.resolve(currentDir, '..', 'package.json');
+        const pkg = JSON.parse(await fs.readFile(pkgPath, 'utf-8'));
+        return pkg.version || '0.0.0';
+    } catch {
+        return '0.0.0';
+    }
+}
+
+export async function generateDocumentation(
+    inputFile: string,
+    pcbFilePath: string,
+    outputFile: string,
     options: { verbose?: boolean; quiet?: boolean; openFile?: boolean }
 ): Promise<void> {
     const verbose = options.verbose || false;
     const quiet = options.quiet || false;
     const shouldOpenFile = options.openFile !== false;
-    
+
     if (!quiet) {
         logger.info(`Processing: ${chalk.cyan(path.basename(inputFile))}`);
         logger.debug(`Input file: ${inputFile}`, verbose);
         logger.debug(`PCB file: ${pcbFilePath}`, verbose);
         logger.debug(`Output file: ${outputFile}`, verbose);
     }
-    
+
     if (!quiet) logger.info('Validating input files...');
     await validateInputFile(inputFile);
     await validatePcbFile(pcbFilePath);
     await validateOutputDir(outputFile);
-    
+
     if (!quiet) logger.info('Initializing KiCad environment...');
     try {
         new KiCAD();
@@ -150,14 +149,19 @@ async function generateDocumentation(
     } catch (error) {
         throw new Error(`Failed to initialize KiCad: ${error}`);
     }
-    
+
+    const cliPath = kicad_cli_path;
+    if (!cliPath) {
+        throw new Error('KiCad CLI path could not be resolved. Please ensure KiCad is installed.');
+    }
+
     const inputDir = path.dirname(inputFile);
     const metadata: IMetadata = { ...defaultMetadata };
     const processedImages = new Map<string, Promise<void>>();
     const stackupReplacements: Map<string, string> = new Map();
 
     if (!quiet) logger.info('Reading markdown content...');
-    const markdownContent = await readFileAsync(inputFile, 'utf-8');
+    const markdownContent = await fs.readFile(inputFile, 'utf-8');
     logger.debug(`Read ${markdownContent.length} characters from input file`, verbose);
 
     if (!quiet) logger.info('Parsing document metadata...');
@@ -192,24 +196,24 @@ async function generateDocumentation(
         const imageProcessingPromise = (async () => {
             const imageDir = path.dirname(absoluteImagePath);
             if (!await pathExists(imageDir)) {
-                await mkdirAsync(imageDir, { recursive: true });
+                await ensureDir(imageDir);
             }
 
             if (layers.length === 1 && layers[0] === 'Stackup') {
                 logger.debug('Processing stackup layer...', verbose);
                 const lightModePath = absoluteImagePath.replace(/\.(png)$/i, '_light.png');
                 const darkModePath = absoluteImagePath.replace(/\.(png)$/i, '_dark.png');
-                
+
                 await Promise.all([
                     renderPCBLayers(pcbFilePath, lightModePath, false),
                     renderPCBLayers(pcbFilePath, darkModePath, true)
                 ]);
-                
+
                 const finalImagePath = metadata.dark_mode ? darkModePath : lightModePath;
                 const finalImagePathRelative = path.relative(inputDir, finalImagePath);
                 const lightImagePathRelative = path.relative(inputDir, lightModePath);
                 const darkImagePathRelative = path.relative(inputDir, darkModePath);
-                
+
                 const widthStr = width ? ` =${width}` : '';
                 const replacement = `![{Stackup}](${finalImagePathRelative}${widthStr} data-light-src="${lightImagePathRelative}" data-dark-src="${darkImagePathRelative}")`;
                 stackupReplacements.set(imagePath, replacement);
@@ -219,7 +223,7 @@ async function generateDocumentation(
             if (layers.length === 1 && layers[0] === 'Drill') {
                 logger.debug('Processing drill layer...', verbose);
                 const svgContent = await executeKicadDrillExport(
-                    kicad_cli_path as string, pcbFilePath, metadata.kicad_theme
+                    cliPath, pcbFilePath, metadata.kicad_theme
                 );
                 const processedSvg = combineSvgLayers([svgContent]);
                 const pngBuffer = await svgToPngBuffer(processedSvg, {
@@ -241,7 +245,7 @@ async function generateDocumentation(
                     logger.debug(`Processing PCB layers: [${uniqueLayers.join(', ')}]`, verbose);
                     await processKicadSvgLayers(
                         uniqueLayers, pcbFilePath, absoluteImagePath,
-                        kicad_cli_path as string, metadata.kicad_theme
+                        cliPath, metadata.kicad_theme
                     );
                 }
             }
@@ -250,7 +254,7 @@ async function generateDocumentation(
                 logger.debug(`Processing 3D render layers: [${renderLayers.join(', ')}]`, verbose);
                 const renderPromises = renderLayers.map(layer => {
                     const [, side, x, y, z] = layer.split('/');
-                    return renderKicad3DView({ side, x, y, z }, pcbFilePath, absoluteImagePath, kicad_cli_path as string);
+                    return renderKicad3DView({ side, x, y, z }, pcbFilePath, absoluteImagePath, cliPath);
                 });
                 await Promise.all(renderPromises);
             }
@@ -284,25 +288,6 @@ async function generateDocumentation(
     const wrappedHtmlContent = wrapSectionsInHtml(rawHtmlContent);
     logger.debug(`Generated ${wrappedHtmlContent.length} characters of HTML`, verbose);
 
-    if (!quiet) logger.info('Loading CSS styles...');
-    let mainCssContent = '';
-    try {
-        const currentFilePath = url.fileURLToPath(import.meta.url);
-        const currentDir = path.dirname(currentFilePath);
-        const mainCssPath = path.resolve(currentDir, 'styles', 'main.css');
-        mainCssContent = await readFileAsync(mainCssPath, 'utf-8');
-        logger.debug(`Loaded ${mainCssContent.length} characters of CSS`, verbose);
-    } catch (error) {
-        logger.warning(`Could not load custom styles: ${error}`);
-    }
-
-    if (!quiet) logger.info('Generating final HTML document...');
-    const finalHtml = generateHtmlDocument(metadata, path.basename(pcbFilePath), wrappedHtmlContent, mainCssContent);
-    
-    if (!quiet) logger.info(`Writing output file: ${chalk.cyan(path.basename(outputFile))}`);
-    await writeFileAsync(outputFile, finalHtml);
-    logger.debug(`Wrote ${finalHtml.length} characters to output file`, verbose);
-
     if (!quiet && imageProcessingPromises.length > 0) {
         const spinner = yoctoSpinner({text: ' Processing images, please wait...'}).start();
         await Promise.all(imageProcessingPromises);
@@ -311,17 +296,35 @@ async function generateDocumentation(
         await Promise.all(imageProcessingPromises);
     }
 
+    let finalHtmlContent = wrappedHtmlContent;
     if (stackupReplacements.size > 0) {
-        let updatedHtml = await readFileAsync(outputFile, 'utf-8');
         for (const [original, replacement] of stackupReplacements) {
             const escaped = original.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-            updatedHtml = updatedHtml.replace(
+            finalHtmlContent = finalHtmlContent.replace(
                 new RegExp(`!\\[\\{Stackup\\}\\]\\(${escaped}(?:\\s*=\\s*\\d+)?\\)`, 'g'),
                 replacement
             );
         }
-        await writeFileAsync(outputFile, updatedHtml);
     }
+
+    if (!quiet) logger.info('Loading CSS styles...');
+    let mainCssContent = '';
+    try {
+        const currentFilePath = url.fileURLToPath(import.meta.url);
+        const currentDir = path.dirname(currentFilePath);
+        const mainCssPath = path.resolve(currentDir, 'styles', 'main.css');
+        mainCssContent = await fs.readFile(mainCssPath, 'utf-8');
+        logger.debug(`Loaded ${mainCssContent.length} characters of CSS`, verbose);
+    } catch (error) {
+        logger.warning(`Could not load custom styles: ${error}`);
+    }
+
+    if (!quiet) logger.info('Generating final HTML document...');
+    const finalHtml = generateHtmlDocument(metadata, path.basename(pcbFilePath), finalHtmlContent, mainCssContent);
+
+    if (!quiet) logger.info(`Writing output file: ${chalk.cyan(path.basename(outputFile))}`);
+    await fs.writeFile(outputFile, finalHtml);
+    logger.debug(`Wrote ${finalHtml.length} characters to output file`, verbose);
 
     logger.debug('Cleaning up temporary files...', verbose);
     await tempManager.cleanupAll();
@@ -350,7 +353,7 @@ const program = new Command();
 program
     .name('typecad-docgen')
     .description('Generate beautiful PCB documentation from Markdown and KiCad files')
-    .version('1.0.3')
+    .version(await getVersion())
     .configureHelp({ helpWidth: 100, sortSubcommands: true });
 
 program
@@ -362,9 +365,9 @@ program
     .description('Generate beautiful PCB documentation\n\nArguments:\n  markdown_file  Input Markdown file (.md)\n  pcb_file       KiCad PCB file (.kicad_pcb)')
     .action(async (markdownFile: string, pcbFile: string, options: { output?: string; verbose?: boolean; quiet?: boolean; open?: boolean }) => {
         const { output, verbose, quiet, open: openFile } = options;
-        
+
         if (!quiet) logger.banner();
-        
+
         try {
             const inputFile = path.resolve(markdownFile);
             const outputFile = output ? path.resolve(output) : inputFile.replace(/\.md$/, '.html');

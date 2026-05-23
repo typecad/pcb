@@ -11,7 +11,7 @@ export const PCBConfig = {
         default: '#808080'
     },
     dimensions: {
-        defaultWidth: 5000,
+        defaultWidth: 2000,
         padding: 20,
         layerWidth: 200,
         labelOffset: 140
@@ -28,7 +28,7 @@ export const PCBConfig = {
 };
 
 export const SVGConfig = {
-    defaultWidth: 5000,
+    defaultWidth: 2000,
     defaultBackground: { r: 255, g: 255, b: 255, alpha: 1 },
     styles: {
         layerText: 'font-family: Arial; font-size: 14px;',
@@ -38,6 +38,6 @@ export const SVGConfig = {
 };
 
 export const CacheConfig = {
-    maxSize: 100, // Maximum number of entries in cache
-    ttl: 1800000 // Time to live in milliseconds (30 minutes)
-}; 
+    maxSize: 100,
+    ttl: 1800000
+};

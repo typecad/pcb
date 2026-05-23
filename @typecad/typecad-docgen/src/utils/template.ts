@@ -23,14 +23,10 @@ export function generateHtmlDocument(
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>${escapeHtml(metadata.title)} - typeCAD Documentation Generator</title>
-    <link rel="icon" href="https://typecad.net/favicon.ico">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
 ${mainCssContent}
     </style>
-    <link rel="stylesheet" href="${escapeHtml(metadata.stylesheet)}">
+    ${metadata.stylesheet ? `<link rel="stylesheet" href="${escapeHtml(metadata.stylesheet)}">` : ''}
 </head>
 <body ${metadata.dark_mode ? 'class="dark-mode"' : 'class="light-mode"'}>
     <div class="mobile-warning">
@@ -115,7 +111,7 @@ ${mainCssContent}
                 let maxVisibleHeight = 0;
                 sections.forEach((section, index) => {
                     const sectionRect = section.getBoundingClientRect();
-                    const visibleHeight = Math.min(sectionRect.bottom, containerRect.bottom) - 
+                    const visibleHeight = Math.min(sectionRect.bottom, containerRect.bottom) -
                                         Math.max(sectionRect.top, containerRect.top);
                     if (visibleHeight > maxVisibleHeight) {
                         maxVisibleHeight = visibleHeight;
@@ -194,13 +190,13 @@ ${mainCssContent}
 
             const toggleButton = document.getElementById('dark-mode-toggle');
             const isDarkMode = ${isDarkMode};
-            
+
             if (isDarkMode) {
                 document.body.classList.add('dark-mode');
             } else {
                 document.body.classList.add('light-mode');
             }
-            
+
             const initialStackupImages = document.querySelectorAll('img[alt="{Stackup}"]');
             initialStackupImages.forEach((img, i) => {
                 if (img.getAttribute('alt') === '{Stackup}' && !img.getAttribute('data-light-src')) {
@@ -222,10 +218,10 @@ ${mainCssContent}
                         }
                     }
                 }
-                
+
                 const lightSrc = img.getAttribute('data-light-src');
                 const darkSrc = img.getAttribute('data-dark-src');
-                
+
                 if (lightSrc && darkSrc) {
                     if (isDarkMode) {
                         img.setAttribute('src', darkSrc);
@@ -234,7 +230,7 @@ ${mainCssContent}
                     }
                 }
             });
-            
+
             toggleButton.addEventListener('click', () => {
                 const isDarkMode = document.body.classList.contains('dark-mode');
                 document.body.classList.remove('dark-mode', 'light-mode');
@@ -243,7 +239,7 @@ ${mainCssContent}
                 } else {
                     document.body.classList.add('dark-mode');
                 }
-                
+
                 const stackupImages = document.querySelectorAll('img[alt="{Stackup}"]');
                 stackupImages.forEach((img, i) => {
                     const lightSrc = img.getAttribute('data-light-src');

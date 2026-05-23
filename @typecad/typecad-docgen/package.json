@@ -10,11 +10,21 @@
     "kicad"
   ],
   "author": "typeCAD",
-  "license": "EULA",
+  "license": "MIT",
   "homepage": "https://typecad.net",
   "funding": "https://www.buymeacoffee.com/typecad",
-  "main": "dist/index.js",
+  "main": "dist/core.js",
   "type": "module",
+  "exports": {
+    ".": {
+      "import": "./dist/core.js"
+    }
+  },
+  "files": [
+    "dist/",
+    "README.md",
+    "LICENSE"
+  ],
   "publishConfig": {
     "access": "public"
   },
@@ -25,7 +35,8 @@
     "@types/markdown-it": "^14.1.2",
     "@types/node": "^22.13.0",
     "tsx": "^4.22.3",
-    "typescript": "^5.7.3"
+    "typescript": "^5.7.3",
+    "vitest": "^3.2.1"
   },
   "dependencies": {
     "@hackmd/markdown-it-task-lists": "^2.1.4",
@@ -45,14 +56,13 @@
     "open": "^11.0.0",
     "sharp": "^0.34.5",
     "temml": "^0.11.11",
-    "uuid": "^14.0.0",
     "yocto-spinner": "^1.2.0"
   },
   "scripts": {
     "build": "tsc && node scripts/copy-assets.js",
     "typecheck": "tsc --noEmit",
-    "test": "npm run build && node dist/index.js test/fixtures/one_hz.md test/fixtures/one_hz.kicad_pcb --no-open",
-    "package_publish": "npm publish --access public",
-    "publish:private": "npm publish --tag private --registry http://192.168.2.207:4873/"
+    "test": "vitest run",
+    "test:doc": "node dist/index.js test/fixtures/one_hz.md test/fixtures/one_hz.kicad_pcb -o test/fixtures/one_hz_output.html --no-open",
+    "package_publish": "npm publish --access public"
   }
 }

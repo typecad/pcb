@@ -11,39 +11,39 @@
   "license": "EULA",
   "homepage": "https://typecad.net",
   "funding": "https://www.buymeacoffee.com/typecad",
-  "main": "index.ts",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
   "type": "module",
+  "bin": {
+    "typecad-gitdiff": "dist/cli/index.js"
+  },
+  "files": [
+    "dist/**/*",
+    "diff-viewer.html"
+  ],
   "publishConfig": {
     "access": "public"
   },
-  "bin": {
-    "typecad-gitdiff": "index.ts"
+  "scripts": {
+    "build": "tsc && tsc -p tsconfig.cli.json",
+    "typecheck": "tsc --noEmit",
+    "prepack": "npm run typecheck",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:diff": "npm run build && node scripts/test-diff.mjs",
+    "package_publish": "npm run build && npm publish --access public",
+    "publish:private": "npm publish --tag private --registry http://192.168.2.207:4873/"
   },
-  "files": [
-    "index.ts",
-    "src/**/*.ts",
-    "diff-viewer.html"
-  ],
   "devDependencies": {
     "@types/node": "^22.13.0",
-    "@types/pngjs": "^6.0.5",
-    "@types/svg-parser": "^2.0.6",
     "tsx": "^4.19.2",
-    "typescript": "^5.7.3"
+    "typescript": "^5.7.3",
+    "vitest": "^3.2.1"
   },
   "dependencies": {
-    "@xmldom/xmldom": "^0.9.8",
-    "basecoat-css": "^0.2.8",
     "@typecad/typecad": "^0.2.19",
     "open": "^10.1.0",
-    "pngjs": "^7.0.0",
-    "sharp": "^0.33.5",
-    "svg-parser": "^2.0.4",
     "temp-dir": "^3.0.0",
     "yocto-spinner": "^0.2.0"
-  },
-  "scripts": {
-    "package_publish": "npm publish --access public",
-    "publish:private": "npm publish --tag private --registry http://192.168.2.207:4873/"
   }
 }

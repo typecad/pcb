@@ -2,16 +2,18 @@
   "extends": "../tsconfig.base.json",
   "compilerOptions": {
     "types": ["node"],
-    "rootDir": "./"
+    "rootDir": "./src",
+    "outDir": "./dist",
+    "removeComments": true
   },
   "include": [
-    "src/**/*",
-    "index.ts"
+    "src/**/*.ts"
   ],
   "exclude": [
     "node_modules",
     "dist",
+    "src/cli/**",
     "**/*.test.ts",
-    "**/__tests__/**"
+    "tests/**"
   ]
 }

@@ -33,7 +33,7 @@ describe('Integration: full document generation with KiCad', () => {
         expect(html).toContain('</html>');
     });
 
-    it('contains frontmatter metadata in the title block', async () => {
+    it('contains frontmatter metadata in the navbar', async () => {
         const html = await fs.readFile(htmlPath, 'utf-8');
         expect(html).toContain('typeCAD 1Hz');
         expect(html).toContain('typeCAD');
@@ -50,19 +50,24 @@ describe('Integration: full document generation with KiCad', () => {
         expect(html).toContain('</section>');
     });
 
-    it('creates the F.Cu layer image', async () => {
-        const stat = await fs.stat(path.join(imagesDir, 'fcu.png'));
-        expect(stat.size).toBeGreaterThan(0);
+    it('inlines SVG layer images as inline SVG elements', async () => {
+        const html = await fs.readFile(htmlPath, 'utf-8');
+        expect(html).toContain('class="svg-inline"');
     });
 
-    it('creates the B.Cu layer image', async () => {
-        const stat = await fs.stat(path.join(imagesDir, 'bcu.png'));
-        expect(stat.size).toBeGreaterThan(0);
+    it('inlines PNG render images as data URIs', async () => {
+        const html = await fs.readFile(htmlPath, 'utf-8');
+        expect(html).toContain('data:image/png;base64,');
+    });
+
+    it('does not write images to disk', async () => {
+        const exists = await fs.stat(imagesDir).then(() => true).catch(() => false);
+        expect(exists).toBe(false);
     });
 
     it('creates the stackup light image if PCB has stackup data', async () => {
         try {
-            const stat = await fs.stat(path.join(imagesDir, 'stackup_light.png'));
+            const stat = await fs.stat(path.join(imagesDir, 'stackup_light.svg'));
             expect(stat.size).toBeGreaterThan(0);
         } catch {
             console.log('      Stackup data not present in PCB, image skipped (expected)');
@@ -71,7 +76,7 @@ describe('Integration: full document generation with KiCad', () => {
 
     it('creates the stackup dark image if PCB has stackup data', async () => {
         try {
-            const stat = await fs.stat(path.join(imagesDir, 'stackup_dark.png'));
+            const stat = await fs.stat(path.join(imagesDir, 'stackup_dark.svg'));
             expect(stat.size).toBeGreaterThan(0);
         } catch {
             console.log('      Stackup data not present in PCB, image skipped (expected)');
@@ -79,40 +84,39 @@ describe('Integration: full document generation with KiCad', () => {
     });
 
     it('creates the dimensions image', async () => {
-        const stat = await fs.stat(path.join(imagesDir, 'dimensions.png'));
-        expect(stat.size).toBeGreaterThan(0);
+        const html = await fs.readFile(htmlPath, 'utf-8');
+        expect(html).toContain('class="svg-inline"');
     });
 
     it('creates the drills image', async () => {
-        const stat = await fs.stat(path.join(imagesDir, 'drills.png'));
-        expect(stat.size).toBeGreaterThan(0);
+        const html = await fs.readFile(htmlPath, 'utf-8');
+        expect(html).toContain('drill-layer');
     });
 
     it('creates the front render image', async () => {
-        const stat = await fs.stat(path.join(imagesDir, 'render-display.png'));
-        expect(stat.size).toBeGreaterThan(0);
+        const html = await fs.readFile(htmlPath, 'utf-8');
+        expect(html).toContain('data:image/png;base64,');
     });
 
     it('creates the back render image', async () => {
-        const stat = await fs.stat(path.join(imagesDir, 'back-render.png'));
-        expect(stat.size).toBeGreaterThan(0);
+        const html = await fs.readFile(htmlPath, 'utf-8');
+        expect(html).toContain('data:image/png;base64,');
     });
 
     it('creates the front assembly image', async () => {
-        const stat = await fs.stat(path.join(imagesDir, 'front-assembly.png'));
-        expect(stat.size).toBeGreaterThan(0);
+        const html = await fs.readFile(htmlPath, 'utf-8');
+        expect(html).toContain('class="svg-inline"');
     });
 
     it('creates the bottom assembly image', async () => {
-        const stat = await fs.stat(path.join(imagesDir, 'bottom-assembly.png'));
-        expect(stat.size).toBeGreaterThan(0);
+        const html = await fs.readFile(htmlPath, 'utf-8');
+        expect(html).toContain('class="svg-inline"');
     });
 
-    it('HTML references the generated stackup images with data attributes', async () => {
+    it('HTML contains inline stackup SVG', async () => {
         const html = await fs.readFile(htmlPath, 'utf-8');
-        expect(html).toContain('stackup-container');
-        expect(html).toContain('data-light-src');
-        expect(html).toContain('data-dark-src');
+        expect(html).toContain('stackup-inline');
+        expect(html).toContain('var(--stackup-bg)');
     });
 
     it('HTML contains drill layer class', async () => {
@@ -142,11 +146,41 @@ describe('Integration: full document generation with KiCad', () => {
         expect(html).not.toContain('typecad.net/favicon.ico');
     });
 
-    it('includes CSS, modal, toggle, and title block', async () => {
+    it('has no local file references in img tags', async () => {
+        const html = await fs.readFile(htmlPath, 'utf-8');
+        const localImgSrcs = [...html.matchAll(/<img[^>]+src="([^"]+)"/g)]
+            .map(m => m[1])
+            .filter(src => !src.startsWith('http') && !src.startsWith('data:'));
+        expect(localImgSrcs).toEqual([]);
+    });
+
+    it('includes navbar, TOC, modal, theme toggle, and accessibility features', async () => {
         const html = await fs.readFile(htmlPath, 'utf-8');
         expect(html).toContain('--color-text');
         expect(html).toContain('class="modal"');
-        expect(html).toContain('dark-mode-toggle');
-        expect(html).toContain('class="title-block"');
+        expect(html).toContain('class="navbar"');
+        expect(html).toContain('id="toc-toggle"');
+        expect(html).toContain('id="theme-toggle"');
+        expect(html).toContain('class="toc"');
+        expect(html).toContain('toc-backdrop');
+        expect(html).toContain('skip-link');
+        expect(html).toContain('aria-live');
+        expect(html).toContain('IntersectionObserver');
+    });
+
+    it('uses scroll snapping for sections', async () => {
+        const html = await fs.readFile(htmlPath, 'utf-8');
+        expect(html).toContain('scroll-snap-type');
+        expect(html).toContain('scroll-snap-align');
+    });
+
+    it('does not contain the old mobile warning banner', async () => {
+        const html = await fs.readFile(htmlPath, 'utf-8');
+        expect(html).not.toContain('mobile-warning');
+    });
+
+    it('does not contain the old fixed bottom title block', async () => {
+        const html = await fs.readFile(htmlPath, 'utf-8');
+        expect(html).not.toContain('class="title-block"');
     });
 });

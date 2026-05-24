@@ -10,15 +10,15 @@ dark_mode: true
 
 |                 Stackup                 |                        Dimensions                         |                Drills                |
 | :-------------------------------------: | :-------------------------------------------------------: | :----------------------------------: |
-| ![{Stackup}](./images/stackup.png =550) | ![{Edge.Cuts,User.1,F.Fab}](./images/dimensions.png =350) | ![{Drill}](./images/drills.png =350) |
+| ![{Stackup}](./images/stackup.svg) | ![{Edge.Cuts,User.1,F.Fab}](./images/dimensions.svg) | ![{Drill}](./images/drills.svg) |
 
 # Top
 
-![{F.Cu}](./images/fcu.png =550)
+![{F.Cu}](./images/fcu.svg =550)
 
 # Bottom
 
-![{B.Cu}](./images/bcu.png =550)
+![{B.Cu}](./images/bcu.svg =550)
 _flipped_
 
 # Renders
@@ -31,13 +31,13 @@ _flipped_
 
 |                              Top View                              |                      Render                       |
 | :----------------------------------------------------------------: | :-----------------------------------------------: |
-| ![{Edge.Cuts,F.Cu,F.Mask,F.Fab}](./images/front-assembly.png =550) | ![Front render](./images/render-display.png =550) |
+| ![{Edge.Cuts,F.Cu,F.Mask,F.Fab}](./images/front-assembly.svg =550) | ![Front render](./images/render-display.png =550) |
 
 # Bottom Assembly
 
 |                        Bottom View                        |                     Render                      |
 | :-------------------------------------------------------: | :---------------------------------------------: |
-| ![{B.Cu,B.Mask,B.Fab}](./images/bottom-assembly.png =550) | ![Bottom render](./images/back-render.png =550) |
+| ![{B.Cu,B.Mask,B.Fab}](./images/bottom-assembly.svg =550) | ![Bottom render](./images/back-render.png =550) |
 
 # Test Points
 

@@ -41,6 +41,12 @@ export class TempFileManager {
     return filepath;
   }
 
+  createTempDirPath(): string {
+    const dirPath = path.join(this.baseDir, `${this.prefix}dir-${randomUUID().slice(0, 8)}`);
+    this.tempDirs.add(dirPath);
+    return dirPath;
+  }
+
   createTempDir(name?: string): string {
     const dirName = name || `${this.prefix}dir-${randomUUID().slice(0, 8)}`;
     const dirPath = path.join(this.baseDir, dirName);

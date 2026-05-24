@@ -15,27 +15,140 @@ import { wrapSectionsInHtml } from './utils/html.js';
 import {
     processKicadSvgLayers,
     renderKicad3DView,
-    executeKicadDrillExport,
-    svgToPngBuffer,
-    writeBufferToFile,
-    combineSvgLayers
+    executeKicadDrillExport
 } from './utils/svg.js';
 import { customImagePlugin } from './plugins/customImage.js';
-import { renderPCBLayers } from './utils/pcbLayerRenderer.js';
+import { generateStackupSvgString } from './utils/pcbLayerRenderer.js';
+import { extractComponents } from './utils/pcbParser.js';
 import { tempManager } from './utils/tempFileManager.js';
-import { PCBConfig } from './utils/config.js';
 import { generateHtmlDocument } from './utils/template.js';
 import { pathExists, ensureDir } from './utils/fs.js';
 import markdownItMath from "markdown-it-math";
 import mathup from "mathup";
 import temml from "temml";
 import taskList from "@hackmd/markdown-it-task-lists";
-import yoctoSpinner from 'yocto-spinner';
 import chalk from 'chalk';
-import open from 'open';
-import MarkdownItGitHubAlerts from 'markdown-it-github-alerts';
-import namedCodeBlocks from 'markdown-it-named-code-blocks';
+import yoctoSpinner from './utils/spinner.js';
+import open from './utils/openFile.js';
+import githubAlertsPlugin from './plugins/githubAlerts.js';
+import namedCodeBlocks from './plugins/namedCodeBlocks.js';
 import * as url from 'url';
+
+const DESIGNATOR_RE = /^[A-Z]+\d+$/i;
+
+function cleanSvgForInlining(svgContent: string): string {
+    let svg = svgContent.replace(/<\?xml[^?]*\?>\s*/g, '');
+    svg = svg.replace(/<!DOCTYPE[^>]*>\s*/g, '');
+    return svg.trim();
+}
+
+function addComponentTooltips(svgContent: string, components: Map<string, { designator: string; value: string; footprint: string }>): string {
+    if (components.size === 0) return svgContent;
+    let result = svgContent;
+    for (const [designator, info] of components) {
+        const escaped = designator.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const textRegex = new RegExp(`(<text\\b[^>]*>)(\\s*${escaped}\\s*)(</text>)`, 'gi');
+        result = result.replace(textRegex, `$1$2<title>${designator}: ${info.value} (${info.footprint})</title>$3`);
+    }
+    return result;
+}
+
+function inlineLocalImages(
+    html: string,
+    svgContentMap: Map<string, string>,
+    pngBufferMap: Map<string, Buffer>,
+    components: Map<string, { designator: string; value: string; footprint: string }>
+): string {
+    const imgTagRegex = /<div[^>]*class="[^"]*image-wrapper[^"]*"[^>]*>\s*<img[^>]+>\s*<\/div>/g;
+    const replacements: Array<{ original: string; replacement: string }> = [];
+
+    for (const match of [...html.matchAll(imgTagRegex)]) {
+        const fullTag = match[0];
+        const imgMatch = fullTag.match(/<img([^>]+)>/);
+        if (!imgMatch) continue;
+
+        const imgAttrs = imgMatch[1];
+        const srcMatch = imgAttrs.match(/src="([^"]+)"/);
+        if (!srcMatch) continue;
+
+        const src = srcMatch[1];
+        if (src.startsWith('http://') || src.startsWith('https://') || src.startsWith('data:')) continue;
+
+        const widthMatch = imgAttrs.match(/data-width="([^"]*)"/);
+        const dataWidth = widthMatch ? widthMatch[1] : '';
+        const heightMatch = imgAttrs.match(/data-height="([^"]*)"/);
+        const dataHeight = heightMatch ? heightMatch[1] : '';
+        const isLayerMatch = imgAttrs.match(/data-is-layer="([^"]*)"/);
+        const isLayer = isLayerMatch ? isLayerMatch[1] === 'true' : false;
+
+        const classMatch = imgAttrs.match(/class="([^"]*)"/);
+        const imgClasses = classMatch ? classMatch[1].trim() : '';
+        const extraClass = imgClasses ? ' ' + imgClasses : '';
+        const isDrill = imgClasses.includes('drill-layer');
+
+        if (svgContentMap.has(src)) {
+            let svgContent = cleanSvgForInlining(svgContentMap.get(src)!);
+            svgContent = addComponentTooltips(svgContent, components);
+
+            const isPercent = dataWidth.endsWith('%');
+            const pctNum = isPercent ? parseFloat(dataWidth) : 0;
+
+            let wrapperStyle = `display: flex; justify-content: center; align-items: center; margin: 0 auto;`;
+            let svgStyle = '';
+
+            if (isLayer && !isDrill) {
+                wrapperStyle += ` background-color: var(--color-image-background);`;
+            }
+
+            if (dataWidth) {
+                if (isPercent) {
+                    if (pctNum > 100) {
+                        wrapperStyle = `width: 100%; overflow-x: auto; display: block;`;
+                        svgStyle = `width: ${dataWidth}; max-width: none; height: auto; display: block;`;
+                    } else {
+                        wrapperStyle += ` width: ${dataWidth}; max-width: 100%;`;
+                        svgStyle = `width: 100%; height: auto;`;
+                    }
+                } else {
+                    wrapperStyle += ` width: 100%; max-width: ${dataWidth}px;`;
+                    svgStyle = `width: 100%; height: auto;`;
+                }
+            } else {
+                wrapperStyle += ` width: 100%; max-width: 100%;`;
+                svgStyle = `max-width: 100%; height: auto;`;
+            }
+
+            if (dataHeight) {
+                wrapperStyle += ` height: ${dataHeight}px;`;
+                svgStyle += ` height: 100%; object-fit: contain;`;
+            } else {
+                wrapperStyle += ` height: auto;`;
+            }
+
+            if (svgStyle) {
+                svgContent = svgContent.replace(
+                    /^<svg\b/,
+                    `<svg style="${svgStyle}"`
+                );
+            }
+
+            const wrapper = `<div class="svg-inline${extraClass}" style="${wrapperStyle}">${svgContent}</div>`;
+            replacements.push({ original: fullTag, replacement: wrapper });
+        } else if (pngBufferMap.has(src)) {
+            const buffer = pngBufferMap.get(src)!;
+            const dataUri = `data:image/png;base64,${buffer.toString('base64')}`;
+            const newTag = fullTag.replace(`src="${src}"`, `src="${dataUri}"`);
+            replacements.push({ original: fullTag, replacement: newTag });
+        }
+    }
+
+    let result = html;
+    for (const { original, replacement } of replacements) {
+        result = result.replace(original, replacement);
+    }
+
+    return result;
+}
 
 const logger = {
     info: (message: string) => console.log(chalk.blue('ℹ'), message),
@@ -158,7 +271,9 @@ export async function generateDocumentation(
     const inputDir = path.dirname(inputFile);
     const metadata: IMetadata = { ...defaultMetadata };
     const processedImages = new Map<string, Promise<void>>();
-    const stackupReplacements: Map<string, string> = new Map();
+    const stackupSvgMap: Map<string, string> = new Map();
+    const svgContentMap: Map<string, string> = new Map();
+    const pngBufferMap: Map<string, Buffer> = new Map();
 
     if (!quiet) logger.info('Reading markdown content...');
     const markdownContent = await fs.readFile(inputFile, 'utf-8');
@@ -180,58 +295,34 @@ export async function generateDocumentation(
     const md = new MarkdownIt({ html: true, linkify: true, typographer: true });
 
     logger.debug(`Using syntax highlighting theme: ${metadata.highlight}`, verbose);
-    md.use(await Shiki({ themes: { light: metadata.highlight, dark: metadata.highlight } }));
+    const shikiPromise = Shiki({ themes: { light: metadata.highlight, dark: metadata.highlight } });
 
     const imageProcessingPromises: Promise<void>[] = [];
 
     if (!quiet) logger.info('Configuring image processing...');
     md.use(customImagePlugin, (layers: string[], imagePath: string, width?: number) => {
-        const absoluteImagePath = path.resolve(inputDir, imagePath);
-        const imageKey = `${layers.join(',')}-${absoluteImagePath}-${width || 'default'}`;
+        const imageKey = `${layers.join(',')}-${imagePath}-${width || 'default'}`;
 
         if (processedImages.has(imageKey)) {
             return processedImages.get(imageKey);
         }
 
         const imageProcessingPromise = (async () => {
-            const imageDir = path.dirname(absoluteImagePath);
-            if (!await pathExists(imageDir)) {
-                await ensureDir(imageDir);
-            }
-
             if (layers.length === 1 && layers[0] === 'Stackup') {
                 logger.debug('Processing stackup layer...', verbose);
-                const lightModePath = absoluteImagePath.replace(/\.(png)$/i, '_light.png');
-                const darkModePath = absoluteImagePath.replace(/\.(png)$/i, '_dark.png');
-
-                await Promise.all([
-                    renderPCBLayers(pcbFilePath, lightModePath, false),
-                    renderPCBLayers(pcbFilePath, darkModePath, true)
-                ]);
-
-                const finalImagePath = metadata.dark_mode ? darkModePath : lightModePath;
-                const finalImagePathRelative = path.relative(inputDir, finalImagePath);
-                const lightImagePathRelative = path.relative(inputDir, lightModePath);
-                const darkImagePathRelative = path.relative(inputDir, darkModePath);
-
-                const widthStr = width ? ` =${width}` : '';
-                const replacement = `![{Stackup}](${finalImagePathRelative}${widthStr} data-light-src="${lightImagePathRelative}" data-dark-src="${darkImagePathRelative}")`;
-                stackupReplacements.set(imagePath, replacement);
+                const svgContent = await generateStackupSvgString(pcbFilePath);
+                if (svgContent) {
+                    stackupSvgMap.set(imagePath, svgContent);
+                } else {
+                    console.error('⚠️ No stackup information found in PCB file, skipping stackup image');
+                }
                 return;
             }
 
             if (layers.length === 1 && layers[0] === 'Drill') {
                 logger.debug('Processing drill layer...', verbose);
-                const svgContent = await executeKicadDrillExport(
-                    cliPath, pcbFilePath, metadata.kicad_theme
-                );
-                const processedSvg = combineSvgLayers([svgContent]);
-                const pngBuffer = await svgToPngBuffer(processedSvg, {
-                    width: PCBConfig.dimensions.defaultWidth,
-                    trim: true,
-                    background: { r: 255, g: 255, b: 255, alpha: 1 }
-                });
-                await writeBufferToFile(pngBuffer, absoluteImagePath);
+                const svgContent = await executeKicadDrillExport(cliPath, pcbFilePath);
+                svgContentMap.set(imagePath, svgContent);
                 return;
             }
 
@@ -243,20 +334,26 @@ export async function generateDocumentation(
                     .filter(layer => layer !== 'Render' && layer !== 'Stackup' && layer !== 'Drill');
                 if (uniqueLayers.length > 0) {
                     logger.debug(`Processing PCB layers: [${uniqueLayers.join(', ')}]`, verbose);
-                    await processKicadSvgLayers(
-                        uniqueLayers, pcbFilePath, absoluteImagePath,
+                    const svgContent = await processKicadSvgLayers(
+                        uniqueLayers, pcbFilePath,
                         cliPath, metadata.kicad_theme
                     );
+                    svgContentMap.set(imagePath, svgContent);
                 }
             }
 
             if (renderLayers.length > 0) {
                 logger.debug(`Processing 3D render layers: [${renderLayers.join(', ')}]`, verbose);
-                const renderPromises = renderLayers.map(layer => {
-                    const [, side, x, y, z] = layer.split('/');
-                    return renderKicad3DView({ side, x, y, z }, pcbFilePath, absoluteImagePath, cliPath);
-                });
-                await Promise.all(renderPromises);
+                const renderResults = await Promise.all(
+                    renderLayers.map(layer => {
+                        const [, side, x, y, z] = layer.split('/');
+                        return renderKicad3DView({ side, x, y, z }, pcbFilePath, cliPath);
+                    })
+                );
+                const combinedBuffer = renderResults[renderResults.length - 1];
+                if (combinedBuffer) {
+                    pngBufferMap.set(imagePath, combinedBuffer);
+                }
             }
         })();
 
@@ -280,30 +377,53 @@ export async function generateDocumentation(
         },
     });
     md.use(taskList);
-    md.use(MarkdownItGitHubAlerts);
+    md.use(githubAlertsPlugin);
     md.use(namedCodeBlocks);
 
     if (!quiet) logger.info('Rendering markdown to HTML...');
+    md.use(await shikiPromise);
     const rawHtmlContent = md.render(contentToRender);
     const wrappedHtmlContent = wrapSectionsInHtml(rawHtmlContent);
     logger.debug(`Generated ${wrappedHtmlContent.length} characters of HTML`, verbose);
 
     if (!quiet && imageProcessingPromises.length > 0) {
         const spinner = yoctoSpinner({text: ' Processing images, please wait...'}).start();
-        await Promise.all(imageProcessingPromises);
+        const componentPromise = extractComponents(pcbFilePath).catch(() => new Map());
+        await Promise.all([Promise.all(imageProcessingPromises), componentPromise]);
+        var components = await componentPromise;
         spinner.success(`All ${imageProcessingPromises.length} images processed successfully`);
     } else if (imageProcessingPromises.length > 0) {
-        await Promise.all(imageProcessingPromises);
+        const componentPromise = extractComponents(pcbFilePath).catch(() => new Map());
+        await Promise.all([Promise.all(imageProcessingPromises), componentPromise]);
+        var components = await componentPromise;
+    } else {
+        var components = await extractComponents(pcbFilePath).catch(() => new Map());
     }
+    logger.debug(`Found ${components.size} components`, verbose);
 
     let finalHtmlContent = wrappedHtmlContent;
-    if (stackupReplacements.size > 0) {
-        for (const [original, replacement] of stackupReplacements) {
-            const escaped = original.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-            finalHtmlContent = finalHtmlContent.replace(
-                new RegExp(`!\\[\\{Stackup\\}\\]\\(${escaped}(?:\\s*=\\s*\\d+)?\\)`, 'g'),
-                replacement
+    if (stackupSvgMap.size > 0) {
+        for (const [imagePath, svgContent] of stackupSvgMap) {
+            const escaped = imagePath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const imgPattern = new RegExp(
+                `<div[^>]*class="[^"]*image-wrapper[^"]*"[^>]*>\\s*<img[^>]*src="${escaped.replace(/\//g, '\\/')}"[^>]*class="[^"]*stackup-container[^"]*"[^>]*>\\s*<\\/div>`,
+                'g'
             );
+            finalHtmlContent = finalHtmlContent.replace(imgPattern, (match) => {
+                const widthMatch = match.match(/data-width="([^"]*)"/);
+                let style = 'margin: 0 auto; cursor: pointer;';
+                if (widthMatch) {
+                    const w = widthMatch[1];
+                    if (w.endsWith('%')) {
+                        style += ` max-width: ${w}; width: ${w};`;
+                    } else {
+                        style += ` max-width: ${w}px; width: 100%;`;
+                    }
+                } else {
+                    style += ` max-width: 100%; width: 100%;`;
+                }
+                return `<div class="stackup-inline" style="${style}">${svgContent}</div>`;
+            });
         }
     }
 
@@ -320,7 +440,10 @@ export async function generateDocumentation(
     }
 
     if (!quiet) logger.info('Generating final HTML document...');
-    const finalHtml = generateHtmlDocument(metadata, path.basename(pcbFilePath), finalHtmlContent, mainCssContent);
+    let finalHtml = generateHtmlDocument(metadata, path.basename(pcbFilePath), finalHtmlContent, mainCssContent);
+
+    if (!quiet) logger.info('Inlining images...');
+    finalHtml = inlineLocalImages(finalHtml, svgContentMap, pngBufferMap, components);
 
     if (!quiet) logger.info(`Writing output file: ${chalk.cyan(path.basename(outputFile))}`);
     await fs.writeFile(outputFile, finalHtml);
@@ -400,10 +523,10 @@ ${chalk.bold('Examples:')}
   ${chalk.cyan('typecad-docgen')} docs.md board.kicad_pcb ${chalk.yellow('--no-open')}
 
 ${chalk.bold('Supported Markdown Features:')}
-  • Custom PCB layer images: ${chalk.yellow('![{F.Cu,F.Mask}](output.png)')}
+  • Custom PCB layer images: ${chalk.yellow('![{F.Cu,F.Mask}](output.svg)')}
   • 3D renders: ${chalk.yellow('![{Render/top/0/0/0}](render.png)')}
-  • Drill files: ${chalk.yellow('![{Drill}](drill.png)')}
-  • PCB stackups: ${chalk.yellow('![{Stackup}](stackup.png)')}
+  • Drill files: ${chalk.yellow('![{Drill}](drill.svg)')}
+  • PCB stackups: ${chalk.yellow('![{Stackup}](stackup.svg)')}
   • GitHub-style alerts, task lists, and math equations
 
 ${chalk.bold('Requirements:')}

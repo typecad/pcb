@@ -13,7 +13,7 @@ export const customImagePlugin = (md: MarkdownIt, processAltText: (layers: strin
         const pos = state.pos;
         if (state.src[pos] !== '!') return false;
 
-        const match = /^!\[([^\]]*?)\]\(([^)]+?)(?:\s+=(\d+(?:\.\d+)?)(?:x(\d+(?:\.\d+)?))?)?\)/.exec(
+        const match = /^!\[([^\]]*?)\]\(([^)]+?)(?:\s*=(\d+(?:\.\d+)?%?)(?:x(\d+(?:\.\d+)?))?)?\)/.exec(
             state.src.slice(pos)
         );
         if (!match) return false;
@@ -22,7 +22,7 @@ export const customImagePlugin = (md: MarkdownIt, processAltText: (layers: strin
 
         if (altContent.startsWith('{') && altContent.endsWith('}')) {
             const layers = altContent.slice(1, -1).split(/\s*,\s*/);
-            const widthNum = width ? parseInt(width, 10) : undefined;
+            const widthNum = width && !width.endsWith('%') ? parseFloat(width) : undefined;
 
             processAltText(layers, src, widthNum);
         }
@@ -33,34 +33,56 @@ export const customImagePlugin = (md: MarkdownIt, processAltText: (layers: strin
         const isDrillLayer = altContent === '{Drill}';
         const isStackupLayer = altContent === '{Stackup}';
 
-        const dataLightSrcMatch = src.match(/data-light-src="([^"]+)"/);
-        const dataDarkSrcMatch = src.match(/data-dark-src="([^"]+)"/);
-
-        const cleanSrc = src.replace(/\s+data-light-src="[^"]+"\s+data-dark-src="[^"]+"/, '');
-
-        let dataAttributes = '';
-        if (isStackupLayer) {
-            if (dataLightSrcMatch && dataDarkSrcMatch) {
-                dataAttributes = ` data-light-src="${escapeAttr(dataLightSrcMatch[1])}" data-dark-src="${escapeAttr(dataDarkSrcMatch[1])}"`;
-            }
-            else {
-                if (cleanSrc.includes('_light.png')) {
-                    const darkSrc = cleanSrc.replace('_light.png', '_dark.png');
-                    dataAttributes = ` data-light-src="${escapeAttr(cleanSrc)}" data-dark-src="${escapeAttr(darkSrc)}"`;
-                } else if (cleanSrc.includes('_dark.png')) {
-                    const lightSrc = cleanSrc.replace('_dark.png', '_light.png');
-                    dataAttributes = ` data-light-src="${escapeAttr(lightSrc)}" data-dark-src="${escapeAttr(cleanSrc)}"`;
-                } else {
-                    const lightSrc = cleanSrc.replace(/\.png$/, '_light.png');
-                    const darkSrc = cleanSrc.replace(/\.png$/, '_dark.png');
-                    dataAttributes = ` data-light-src="${escapeAttr(lightSrc)}" data-dark-src="${escapeAttr(darkSrc)}"`;
-                }
+        let displayAlt = altContent;
+        if (altContent.startsWith('{') && altContent.endsWith('}')) {
+            const inner = altContent.slice(1, -1);
+            if (inner === 'Drill') {
+                displayAlt = 'Drill Map';
+            } else if (inner === 'Stackup') {
+                displayAlt = 'PCB Layer Stackup';
+            } else if (inner.includes('Render')) {
+                const parts = inner.split('/');
+                const side = parts[1] || '';
+                displayAlt = '3D Render - ' + side.charAt(0).toUpperCase() + side.slice(1);
+            } else {
+                displayAlt = inner.split(',').join(', ') + ' Layer';
             }
         }
 
-        const styleAttr = `style="${width ? `width: ${width}px; height: ${height ? height + 'px' : 'auto'};` : ''}${isLayerBasedImage && !isDrillLayer ? 'background-color: var(--color-image-background);' : ''}"`;
+        const isPercentWidth = width ? width.endsWith('%') : false;
+        const widthCss = width ? (isPercentWidth ? width : width + 'px') : '';
 
-        token.content = `<div style="height: ${height ? height + 'px' : 'auto'}; display: flex; justify-content: center; align-items: center;"><img src="${escapeAttr(cleanSrc)}" alt="${escapeAttr(altContent)}" ${width ? `width="${width}"` : ''} ${height ? `height="${height}"` : ''} ${styleAttr}${dataAttributes} class="${isDrillLayer ? 'drill-layer' : ''}${isStackupLayer ? ' stackup-container' : ''}"></div>`;
+        // Sizing for wrapper
+        let wrapperStyle = `display: flex; justify-content: center; align-items: center; margin: 0 auto;`;
+        if (widthCss) {
+            if (isPercentWidth) {
+                wrapperStyle += ` width: ${widthCss}; max-width: 100%;`;
+            } else {
+                wrapperStyle += ` width: 100%; max-width: ${widthCss};`;
+            }
+        } else {
+            wrapperStyle += ` width: 100%; max-width: 100%;`;
+        }
+        if (height) {
+            wrapperStyle += ` height: ${height}px;`;
+        } else {
+            wrapperStyle += ` height: auto;`;
+        }
+
+        // Sizing for image
+        let imgStyle = '';
+        if (isLayerBasedImage && !isDrillLayer) {
+            imgStyle += 'background-color: var(--color-image-background); ';
+        }
+        if (height) {
+            imgStyle += 'height: 100%; width: auto; object-fit: contain;';
+        } else if (widthCss) {
+            imgStyle += 'width: 100%; height: auto;';
+        } else {
+            imgStyle += 'max-width: 100%; height: auto;';
+        }
+
+        token.content = `<div class="image-wrapper" style="${wrapperStyle}"><img src="${escapeAttr(src)}" alt="${escapeAttr(displayAlt)}" ${width ? `width="${width}"` : ''} ${height ? `height="${height}"` : ''} data-width="${width || ''}" data-height="${height || ''}" data-is-layer="${isLayerBasedImage}" style="${imgStyle}" class="${isDrillLayer ? 'drill-layer' : ''}${isStackupLayer ? ' stackup-container' : ''}"></div>`;
 
         state.pos += fullMatch.length;
         return true;

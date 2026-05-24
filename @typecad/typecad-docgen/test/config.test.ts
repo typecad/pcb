@@ -28,15 +28,17 @@ describe('PCBConfig', () => {
 });
 
 describe('SVGConfig', () => {
-    it('has default width matching PCBConfig', () => {
-        expect(SVGConfig.defaultWidth).toBe(PCBConfig.dimensions.defaultWidth);
+    it('has style definitions', () => {
+        expect(SVGConfig.styles).toHaveProperty('layerText');
+        expect(SVGConfig.styles).toHaveProperty('title');
+        expect(SVGConfig.styles).toHaveProperty('connectorLine');
     });
 
-    it('has default background with alpha', () => {
-        expect(SVGConfig.defaultBackground).toHaveProperty('r');
-        expect(SVGConfig.defaultBackground).toHaveProperty('g');
-        expect(SVGConfig.defaultBackground).toHaveProperty('b');
-        expect(SVGConfig.defaultBackground).toHaveProperty('alpha');
+    it('styles are non-empty strings', () => {
+        for (const [, value] of Object.entries(SVGConfig.styles)) {
+            expect(typeof value).toBe('string');
+            expect(value.length).toBeGreaterThan(0);
+        }
     });
 });
 

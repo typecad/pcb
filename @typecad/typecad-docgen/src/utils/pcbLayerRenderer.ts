@@ -1,11 +1,7 @@
 import * as fs from 'fs/promises';
 import { pathExists } from './fs.js';
-import {
-    svgToPng,
-    svgToPngBuffer,
-    writeBufferToFile
-} from './svg.js';
-import { PCBConfig, SVGConfig, CacheConfig } from './config.js';
+import { writeStringToFile } from './svg.js';
+import { PCBConfig, CacheConfig } from './config.js';
 
 interface Layer {
     name: string;
@@ -260,7 +256,7 @@ function escapeXml(str: string): string {
         .replace(/'/g, '&apos;');
 }
 
-function generateStackupSVG(stackup: Stackup, darkMode: boolean = false): string {
+function generateStackupSVG(stackup: Stackup): string {
 
     function getLayerColor(layer: Layer): string {
         const type = layer.type.toLowerCase();
@@ -273,25 +269,25 @@ function generateStackupSVG(stackup: Stackup, darkMode: boolean = false): string
         }
 
         if (type.includes('silk s')) {
-            return darkMode ? '#333333' : PCBConfig.colors.silkscreen;
+            return 'var(--stackup-silkscreen)';
         } else if (type.includes('paste')) {
-            return darkMode ? '#444444' : '#f0f0f0';
+            return 'var(--stackup-paste)';
         } else if (type.includes('mask')) {
-            return darkMode ? '#005533' : PCBConfig.colors.solderMask;
+            return 'var(--stackup-solder-mask)';
         } else if (type.includes('copper')) {
-            return darkMode ? '#cc6600' : PCBConfig.colors.copper;
+            return 'var(--stackup-copper)';
         } else if (material.includes('fr4')) {
-            return darkMode ? '#4a4a3a' : PCBConfig.colors.fr4;
+            return 'var(--stackup-fr4)';
         } else if (material.includes('ptfe')) {
-            return darkMode ? '#a0a0a0' : PCBConfig.colors.ptfe;
+            return 'var(--stackup-ptfe)';
         } else if (material.includes('polyimide')) {
-            return darkMode ? '#8b5a00' : PCBConfig.colors.polyimide;
+            return 'var(--stackup-polyimide)';
         } else if (material.includes('phenolic')) {
-            return darkMode ? '#3a0a04' : PCBConfig.colors.phenolic;
+            return 'var(--stackup-phenolic)';
         } else if (material.includes('aluminum')) {
-            return darkMode ? '#a0a0a0' : PCBConfig.colors.aluminum;
+            return 'var(--stackup-aluminum)';
         }
-        return darkMode ? '#505050' : PCBConfig.colors.default;
+        return 'var(--stackup-default)';
     }
 
     function getLayerHeight(layer: Layer): number {
@@ -334,22 +330,18 @@ function generateStackupSVG(stackup: Stackup, darkMode: boolean = false): string
 
     const totalHeight = currentY + padding + 45;
 
-    const bgColor = darkMode ? '#121212' : 'white';
-    const textColor = darkMode ? '#e0e0e0' : '#000000';
-    const connectorColor = darkMode ? '#888888' : '#666666';
-    const dotColor = darkMode ? '#888888' : '#666666';
-    const borderColor = darkMode ? '#444444' : 'black';
-
     let svg = `
-    <svg width="${totalWidth}" height="${totalHeight}"
+    <svg width="100%" height="100%"
          viewBox="0 0 ${totalWidth} ${totalHeight}"
          preserveAspectRatio="xMidYMid meet"
          xmlns="http://www.w3.org/2000/svg">
         <style>
-            .layer-text { font-family: Arial; font-size: 14px; fill: ${textColor}; }
-            .title { font-family: Arial; font-size: 18px; font-weight: bold; fill: ${textColor}; }
-            .connector-line { stroke: ${connectorColor}; stroke-width: 1; }
+            .layer-text { font-family: Arial; font-size: 14px; fill: var(--stackup-text); }
+            .title { font-family: Arial; font-size: 18px; font-weight: bold; fill: var(--stackup-text); }
+            .connector-line { stroke: var(--stackup-connector); stroke-width: 1; }
+            .stackup-bg { fill: var(--stackup-bg); }
         </style>
+        <rect width="100%" height="100%" class="stackup-bg"/>
         <text x="${totalWidth/2}" y="${padding + 10}" class="title" text-anchor="middle">PCB Layer Stackup</text>`;
 
     currentY = yOffset;
@@ -370,12 +362,12 @@ function generateStackupSVG(stackup: Stackup, darkMode: boolean = false): string
             y2="${centerY}"
             class="connector-line"
         />
-        <circle cx="${labelOffset + 5}" cy="${centerY}" r="1.5" fill="${dotColor}"/>
-        <circle cx="${xOffset - 5}" cy="${centerY}" r="1.5" fill="${dotColor}"/>`;
+        <circle cx="${labelOffset + 5}" cy="${centerY}" r="1.5" fill="var(--stackup-connector)"/>
+        <circle cx="${xOffset - 5}" cy="${centerY}" r="1.5" fill="var(--stackup-connector)"/>`;
 
         svg += `
         <rect x="${xOffset}" y="${currentY}" width="${layerWidth}" height="${layerHeight}"
-              fill="${color}" stroke="${borderColor}" stroke-width="0.5"/>`;
+              fill="${color}" stroke="var(--stackup-border)" stroke-width="0.5"/>`;
 
         const properties: string[] = [];
         if (layer.material) properties.push(layer.material);
@@ -406,8 +398,8 @@ function generateStackupSVG(stackup: Stackup, darkMode: boolean = false): string
                 y2="${centerY}"
                 class="connector-line"
             />
-            <circle cx="${xOffset + layerWidth + 5}" cy="${centerY}" r="1.5" fill="${dotColor}"/>
-            <circle cx="${xOffset + layerWidth + rightTextOffset - 5}" cy="${centerY}" r="1.5" fill="${dotColor}"/>`;
+            <circle cx="${xOffset + layerWidth + 5}" cy="${centerY}" r="1.5" fill="var(--stackup-connector)"/>
+            <circle cx="${xOffset + layerWidth + rightTextOffset - 5}" cy="${centerY}" r="1.5" fill="var(--stackup-connector)"/>`;
         }
 
         currentY += layerHeight + layerSpacing;
@@ -431,56 +423,33 @@ function generateStackupSVG(stackup: Stackup, darkMode: boolean = false): string
     return svg;
 }
 
-export async function renderPCBLayers(pcbFilePath: string, outputPath: string, darkMode: boolean = false): Promise<string> {
+export async function generateStackupSvgString(pcbFilePath: string): Promise<string | null> {
     const stackup = await extractStackup(pcbFilePath);
     if (!stackup.success || !stackup.data) {
-        console.error('⚠️ No stackup information found in PCB file, skipping stackup image');
-        return outputPath;
+        return null;
     }
-    const svgContent = generateStackupSVG(stackup.data, darkMode);
-
-    return await svgToPng(svgContent, outputPath, {
-        width: SVGConfig.defaultWidth,
-        background: { r: 0, g: 0, b: 0, alpha: 0 }
-    });
+    return generateStackupSVG(stackup.data);
 }
 
-export async function generateStackupSvgFromFile(pcbFilePath: string, darkMode: boolean = false): Promise<string> {
+export async function generateStackupSvgFromFile(pcbFilePath: string): Promise<string> {
     const stackup = await extractStackup(pcbFilePath);
     if (!stackup.success || !stackup.data) {
         throw stackup.error || new Error('No stackup data found in PCB file');
     }
 
-    return generateStackupSVG(stackup.data, darkMode);
+    return generateStackupSVG(stackup.data);
 }
 
 export async function generateStackupFiles(
     pcbFilePath: string,
-    svgOutputPath?: string,
-    pngOutputPath?: string
-): Promise<{svgPath?: string, pngPath?: string}> {
+    svgOutputPath?: string
+): Promise<{svgPath?: string}> {
     const svgContent = await generateStackupSvgFromFile(pcbFilePath);
-    const result: {svgPath?: string, pngPath?: string} = {};
-
-    const tasks: Promise<void>[] = [];
+    const result: {svgPath?: string} = {};
 
     if (svgOutputPath) {
-        tasks.push(
-            writeBufferToFile(Buffer.from(svgContent), svgOutputPath)
-                .then(path => { result.svgPath = path; })
-        );
+        result.svgPath = await writeStringToFile(svgContent, svgOutputPath);
     }
-
-    if (pngOutputPath) {
-        tasks.push(
-            svgToPng(svgContent, pngOutputPath, {
-                width: 3000,
-                background: { r: 0, g: 0, b: 0, alpha: 0 }
-            }).then(path => { result.pngPath = path; })
-        );
-    }
-
-    await Promise.all(tasks);
 
     return result;
 }

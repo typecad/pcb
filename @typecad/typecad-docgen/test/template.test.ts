@@ -49,11 +49,11 @@ describe('generateHtmlDocument', () => {
         expect(result).toContain('</html>');
     });
 
-    it('includes metadata in title block', () => {
+    it('includes metadata in navbar', () => {
         const result = generateHtmlDocument(metadata, 'test.kicad_pcb', '<p>Test</p>', '');
         expect(result).toContain('TestCo');
         expect(result).toContain('Board1');
-        expect(result).toContain('revA');
+        expect(result).toContain('1.0');
         expect(result).toContain('2024-01-01');
     });
 

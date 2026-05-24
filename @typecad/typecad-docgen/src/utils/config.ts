@@ -28,8 +28,6 @@ export const PCBConfig = {
 };
 
 export const SVGConfig = {
-    defaultWidth: 2000,
-    defaultBackground: { r: 255, g: 255, b: 255, alpha: 1 },
     styles: {
         layerText: 'font-family: Arial; font-size: 14px;',
         title: 'font-family: Arial; font-size: 18px; font-weight: bold;',

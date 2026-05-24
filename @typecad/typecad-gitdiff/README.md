@@ -39,6 +39,15 @@ npm i -g @typecad/typecad-gitdiff
 typecad-gitdiff <original.kicad_pcb> <modified.kicad_pcb>
 ```
 
+### Git Revision Comparison
+
+Compare different revisions of a PCB file from git history:
+
+```bash
+typecad-gitdiff HEAD~1 HEAD -- board.kicad_pcb
+typecad-gitdiff main feature-branch -- board.kicad_pcb
+```
+
 ### Command Line Options
 
 | Option | Description | Example |
@@ -47,6 +56,7 @@ typecad-gitdiff <original.kicad_pcb> <modified.kicad_pcb>
 | `--theme <name>` | Specify KiCAD theme for SVG export | `--theme "Monokai"` |
 | `--color-modified <hex>` | Color for modified features | `--color-modified "#ff6600"` |
 | `--color-new <hex>` | Color for new features | `--color-new "#4caf50"` |
+| `--output <path>` | Output HTML report path | `--output report.html` |
 | `--help, -h` | Show help information | `--help` |
 | `--version, -v` | Show version information | `--version` |
 
@@ -59,12 +69,26 @@ typecad-gitdiff board_v1.kicad_pcb board_v2.kicad_pcb
 # Full comparison including all User layers
 typecad-gitdiff --full board_v1.kicad_pcb board_v2.kicad_pcb
 
+# Custom output path
+typecad-gitdiff --output ./report.html board_v1.kicad_pcb board_v2.kicad_pcb
+
 # Custom theme and colors
 typecad-gitdiff --theme "typeCAD-light" \
                 --color-modified "#ff0000" \
                 --color-new "#00ff00" \
                 board_v1.kicad_pcb board_v2.kicad_pcb
+
+# Git revision comparison
+typecad-gitdiff HEAD~1 HEAD -- board.kicad_pcb
+typecad-gitdiff --full main feature-branch -- board.kicad_pcb
 ```
+
+### Key Improvements
+
+- **Inner Copper Layer Detection** — Automatically detects and compares inner copper layers (In1.Cu, In2.Cu, etc.) by parsing the PCB file's `(layers ...)` section. No configuration needed.
+- **SVG Caching** — Caches exported SVGs by file content hash, so re-running on the same files is instant. Cache is cleared when file content changes.
+- **Per-Layer Error Recovery** — If a single layer fails to export, the tool continues processing remaining layers and reports the error.
+- **Hash-Based Comparison** — Uses SHA256 hashing for robust SVG comparison, avoiding false positives from whitespace or metadata differences.
 
 ## 🔗 Git Integration
 
@@ -79,7 +103,57 @@ git difftool <file.kicad_pcb> --extcmd 'typecad-gitdiff --full'
 
 # With custom colors in git
 git difftool <file.kicad_pcb> --extcmd 'typecad-gitdiff --color-modified "#ff6600"'
+
+# With custom output path
+git difftool <file.kicad_pcb> --extcmd 'typecad-gitdiff --output ./diff.html'
 ```
+
+### Command-line Git Revision Comparison
+
+Compare arbitrary git revisions without git-difftool:
+
+```bash
+# Compare HEAD~1 vs HEAD for a PCB file
+typecad-gitdiff HEAD~1 HEAD -- board.kicad_pcb
+
+# Compare two branches
+typecad-gitdiff main feature-branch -- board.kicad_pcb
+
+# Full mode with git revisions
+typecad-gitdiff --full HEAD~3 HEAD -- board.kicad_pcb
+```
+
+## 📦 Programmatic API
+
+Use the tool programmatically in your Node.js projects:
+
+```typescript
+import { generateDiffs } from '@typecad/typecad-gitdiff';
+
+const reportPath = await generateDiffs({
+    originalFile: 'board_v1.kicad_pcb',
+    modifiedFile: 'board_v2.kicad_pcb',
+    fullMode: false,
+    theme: 'typeCAD-light',
+    colorModified: '#ff6600',
+    colorNew: '#4caf50',
+    outputHtmlPath: './report.html',
+});
+```
+
+### API Exports
+
+| Export | Description |
+|--------|-------------|
+| `generateDiffs()` | Main function to generate diff HTML report |
+| `computeTextualDiff()` | Parse and compare two PCB file contents |
+| `annotateLayerSvgs()` | Annotate SVG differences between two layers |
+| `cropSvg()` | Crop SVG to content bounding box |
+| `sanitizeSvg()` | Strip script/event handlers from SVG |
+| `getFileHash()` | Get SHA256 hash of a file |
+| `clearCache()` | Clear in-memory SVG and file hash caches |
+| `detectInnerCopperLayers()` | Parse PCB file to detect inner copper layers |
+| `allLayers` / `standardLayers` | Layer constant arrays |
 
 ## 🎨 Interactive Viewer Features
 

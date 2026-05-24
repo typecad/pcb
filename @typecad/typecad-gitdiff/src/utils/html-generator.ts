@@ -2,16 +2,20 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
 import type { TextualDiff } from '../core/pcb-textual-diff.js';
+import { sanitizeSvg } from './file-utils.js';
 
 export interface LayerInfo {
     name: string;
     originalSvg: string | null;
     modifiedSvg: string | null;
+    annotatedOriginalSvg: string | null;
+    annotatedModifiedSvg: string | null;
     hasDifferences: boolean;
 }
 
 function cleanSvgForInlining(svgContent: string): string {
-    let svg = svgContent.replace(/<\?xml[^?]*\?>\s*/g, '');
+    let svg = sanitizeSvg(svgContent);
+    svg = svg.replace(/<\?xml[^?]*\?>\s*/g, '');
     svg = svg.replace(/<!DOCTYPE[^>]*>\s*/g, '');
     svg = svg.replace(/(<svg\b[^>]*?)\bwidth="[^"]*"/, '$1width="100%"');
     svg = svg.replace(/(<svg\b[^>]*?)\bheight="[^"]*"/, '$1height="100%"');
@@ -20,7 +24,7 @@ function cleanSvgForInlining(svgContent: string): string {
 
 export async function generateHtmlReport(htmlLayers: LayerInfo[], textualDiff?: TextualDiff): Promise<string> {
     const currentDir = path.dirname(fileURLToPath(import.meta.url));
-    const projectRoot = path.resolve(currentDir, '..', '..');
+    const projectRoot = path.resolve(currentDir, '..');
     const templatePath = path.join(projectRoot, 'diff-viewer.html');
 
     if (!fs.existsSync(templatePath)) {
@@ -33,6 +37,8 @@ export async function generateHtmlReport(htmlLayers: LayerInfo[], textualDiff?: 
         name: layer.name,
         originalSvg: layer.originalSvg ? cleanSvgForInlining(layer.originalSvg) : null,
         modifiedSvg: layer.modifiedSvg ? cleanSvgForInlining(layer.modifiedSvg) : null,
+        annotatedOriginalSvg: layer.annotatedOriginalSvg ? cleanSvgForInlining(layer.annotatedOriginalSvg) : null,
+        annotatedModifiedSvg: layer.annotatedModifiedSvg ? cleanSvgForInlining(layer.annotatedModifiedSvg) : null,
         hasDifferences: layer.hasDifferences
     }));
 

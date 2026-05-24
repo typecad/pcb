@@ -1,10 +1,12 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import * as crypto from 'node:crypto';
 import { kicad_cli_path } from '@typecad/typecad';
 import { allLayers, standardLayers } from '../constants.js';
-import { executeKicadSvgExport, computeSvgBBox, cropSvgToBBox, type BBox } from '../utils/file-utils.js';
+import { executeKicadSvgExportCached, computeSvgBBox, cropSvgToBBox, detectInnerCopperLayers, type BBox } from '../utils/file-utils.js';
 import { LayerInfo, generateHtmlReport } from '../utils/html-generator.js';
 import { computeTextualDiff, type TextualDiff } from './pcb-textual-diff.js';
+import { annotateLayerSvgs } from './svg-diff-annotator.js';
 
 export interface DiffOptions {
     originalFile: string;
@@ -17,7 +19,8 @@ export interface DiffOptions {
 }
 
 function normalizeSvg(svg: string): string {
-    return svg.replace(/<title>[\s\S]*?<\/title>/g, '').replace(/\s+/g, ' ').trim();
+    const normalized = svg.replace(/<title>[\s\S]*?<\/title>/g, '').replace(/\s+/g, ' ').trim();
+    return crypto.createHash('sha256').update(normalized, 'utf8').digest('hex');
 }
 
 function unionBBoxes(a: BBox | null, b: BBox | null): BBox | null {
@@ -36,28 +39,57 @@ export async function generateDiffs(options: DiffOptions): Promise<string> {
     const htmlLayers: LayerInfo[] = [];
 
     try {
-        const layers = fullMode ? allLayers : standardLayers;
+        const baseLayers = fullMode ? allLayers : standardLayers;
 
-        const exportPromises = layers.flatMap(layer => [
-            executeKicadSvgExport(kicad_cli_path!, layer, originalFile, theme),
-            executeKicadSvgExport(kicad_cli_path!, layer, modifiedFile, theme)
-        ]);
-        const results = await Promise.all(exportPromises);
+        // Detect inner copper layers from both files (union of layers)
+        const copperLayers = [
+            ...detectInnerCopperLayers(originalFile),
+            ...detectInnerCopperLayers(modifiedFile),
+        ];
+        const uniqueCopperLayers = [...new Set(copperLayers)];
 
+        const layers = [...baseLayers];
+        for (const cl of uniqueCopperLayers) {
+            if (!layers.includes(cl)) {
+                layers.push(cl);
+            }
+        }
+
+        // Per-layer export with error recovery
+        const allSvgResults: Array<{ originalSvg: string; modifiedSvg: string } | null> = [];
+
+        const kicadCli = kicad_cli_path!;
+        for (const layer of layers) {
+            let orig = '';
+            let mod = '';
+            try {
+                orig = await executeKicadSvgExportCached(kicadCli, layer, originalFile, theme);
+            } catch (e) {
+                console.warn(`Warning: failed to export layer "${layer}" from original file:`, e);
+            }
+            try {
+                mod = await executeKicadSvgExportCached(kicadCli, layer, modifiedFile, theme);
+            } catch (e) {
+                console.warn(`Warning: failed to export layer "${layer}" from modified file:`, e);
+            }
+            allSvgResults.push(orig || mod ? { originalSvg: orig, modifiedSvg: mod } : null);
+        }
+
+        // Compute shared BBox from all SVGs
         let sharedBBox: BBox | null = null;
-        for (const svg of results) {
-            if (svg) {
-                sharedBBox = unionBBoxes(sharedBBox, computeSvgBBox(svg));
+        for (const result of allSvgResults) {
+            if (result) {
+                if (result.originalSvg) sharedBBox = unionBBoxes(sharedBBox, computeSvgBBox(result.originalSvg));
+                if (result.modifiedSvg) sharedBBox = unionBBoxes(sharedBBox, computeSvgBBox(result.modifiedSvg));
             }
         }
 
         for (let i = 0; i < layers.length; i++) {
-            const originalSvg = results[i * 2];
-            const modifiedSvg = results[i * 2 + 1];
+            const result = allSvgResults[i];
+            if (!result) continue;
 
-            if (!originalSvg && !modifiedSvg) {
-                continue;
-            }
+            const { originalSvg, modifiedSvg } = result;
+            if (!originalSvg && !modifiedSvg) continue;
 
             const hasDifferences = originalSvg !== modifiedSvg
                 && normalizeSvg(originalSvg || '') !== normalizeSvg(modifiedSvg || '');
@@ -65,10 +97,27 @@ export async function generateDiffs(options: DiffOptions): Promise<string> {
             const croppedOriginal = originalSvg && sharedBBox ? cropSvgToBBox(originalSvg, sharedBBox) : originalSvg;
             const croppedModified = modifiedSvg && sharedBBox ? cropSvgToBBox(modifiedSvg, sharedBBox) : modifiedSvg;
 
+            let annotatedOriginalSvg: string | null = null;
+            let annotatedModifiedSvg: string | null = null;
+
+            if (hasDifferences && croppedOriginal && croppedModified) {
+                try {
+                    const annotation = annotateLayerSvgs(croppedOriginal, croppedModified);
+                    if (annotation) {
+                        annotatedOriginalSvg = annotation.annotatedOriginal;
+                        annotatedModifiedSvg = annotation.annotatedModified;
+                    }
+                } catch (e) {
+                    console.warn(`Warning: annotation failed for layer "${layers[i]}":`, e);
+                }
+            }
+
             htmlLayers.push({
                 name: layers[i],
                 originalSvg: croppedOriginal,
                 modifiedSvg: croppedModified,
+                annotatedOriginalSvg,
+                annotatedModifiedSvg,
                 hasDifferences
             });
 

@@ -1,4 +1,4 @@
-import { parse, SNode, isList } from '@typecad/typecad/dist/sexpr/index.js';
+import { parse, SNode, isList, type SExpr } from '@typecad/typecad/dist/sexpr/index.js';
 
 export interface ChangeDescription {
     type: 'added' | 'removed' | 'modified';
@@ -293,8 +293,14 @@ function compareVias(
 }
 
 export function computeTextualDiff(originalContent: string, modifiedContent: string): TextualDiff {
-    const origParsed = parse(originalContent);
-    const modParsed = parse(modifiedContent);
+    let origParsed: SExpr;
+    let modParsed: SExpr;
+    try {
+        origParsed = parse(originalContent);
+        modParsed = parse(modifiedContent);
+    } catch {
+        return { changes: [], summary: 'Unable to parse PCB files' };
+    }
 
     if (!isList(origParsed) || !isList(modParsed)) {
         return { changes: [], summary: 'Unable to parse PCB files' };

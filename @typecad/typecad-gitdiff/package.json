@@ -8,7 +8,7 @@
     "diff"
   ],
   "author": "typeCAD",
-  "license": "EULA",
+  "license": "MIT",
   "homepage": "https://typecad.net",
   "funding": "https://www.buymeacoffee.com/typecad",
   "main": "dist/index.js",
@@ -19,19 +19,19 @@
   },
   "files": [
     "dist/**/*",
-    "diff-viewer.html"
+    "dist/diff-viewer.html"
   ],
   "publishConfig": {
     "access": "public"
   },
   "scripts": {
-    "build": "tsc && tsc -p tsconfig.cli.json",
+    "build": "tsc && tsc -p tsconfig.viewer.json && node scripts/assemble-viewer.mjs",
     "typecheck": "tsc --noEmit",
     "prepack": "npm run typecheck",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:diff": "npm run build && node scripts/test-diff.mjs",
-    "package_publish": "npm run build && npm publish --access public",
+    "package:publish": "npm run build && npm publish --access public",
     "publish:private": "npm publish --tag private --registry http://192.168.2.207:4873/"
   },
   "devDependencies": {

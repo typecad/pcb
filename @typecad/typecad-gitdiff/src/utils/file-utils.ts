@@ -1,10 +1,70 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import * as crypto from 'node:crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import tempDir from 'temp-dir';
+import { parse, SNode, isList } from '@typecad/typecad/dist/sexpr/index.js';
 
 const execFileAsync = promisify(execFile);
+
+// In-memory SVG cache keyed by `fileHash:layer:theme`
+const svgCache = new Map<string, string>();
+
+// File content hash cache (filePath -> sha256)
+const fileHashCache = new Map<string, string>();
+
+export function getFileHash(filePath: string): string {
+    if (!fileHashCache.has(filePath)) {
+        const content = fs.readFileSync(filePath);
+        fileHashCache.set(filePath, crypto.createHash('sha256').update(content).digest('hex'));
+    }
+    return fileHashCache.get(filePath)!;
+}
+
+function getCacheKey(pcbFile: string, layer: string, theme?: string): string {
+    return `${getFileHash(pcbFile)}:${layer}:${theme || ''}`;
+}
+
+export function clearCache(): void {
+    svgCache.clear();
+    for (const key of fileHashCache.keys()) {
+        if (!key.startsWith('__')) {
+            fileHashCache.delete(key);
+        }
+    }
+}
+
+/**
+ * Detect inner copper layers from a KiCAD PCB sexpr file.
+ * Parses the (layers ...) section and returns all layers that match In*.Cu.
+ */
+export function detectInnerCopperLayers(pcbFile: string): string[] {
+    const content = fs.readFileSync(pcbFile, 'utf8');
+    try {
+        const parsed = parse(content);
+        if (!isList(parsed)) return [];
+        const tree = SNode.from(parsed);
+        const layersNode = tree.child('layers');
+        if (!layersNode) return [];
+        const inner: string[] = [];
+        for (const child of layersNode.children()) {
+            const name = child.getString(1);
+            if (name && /^In\d+\.Cu$/.test(name)) {
+                inner.push(name);
+            }
+        }
+        return inner.sort((a, b) => {
+            const na = parseInt(a.match(/\d+/)?.[0] || '0', 10);
+            const nb = parseInt(b.match(/\d+/)?.[0] || '0', 10);
+            return na - nb;
+        });
+    } catch {
+        return [];
+    }
+}
+
+
 
 function extractPathCoords(d: string): { x: number; y: number }[] {
     const coords: { x: number; y: number }[] = [];
@@ -176,7 +236,7 @@ export async function executeKicadSvgExport(
         return '';
     }
 
-    const svgContent = fs.readFileSync(tempSvgPath, 'utf-8');
+    const svgContent = sanitizeSvg(fs.readFileSync(tempSvgPath, 'utf-8'));
 
     const debugDir = path.join(path.dirname(pcbFile), '_debug_svgs');
     if (!fs.existsSync(debugDir)) {
@@ -191,7 +251,8 @@ export async function executeKicadSvgExport(
 }
 
 export function createTempFilePath(prefix: string, suffix: string): string {
-    return path.join(tempDir, `${prefix}${suffix}`);
+    const uniqueId = crypto.randomUUID();
+    return path.join(tempDir, `${prefix}${uniqueId}_${suffix}`);
 }
 
 export function parseHexColor(hexColor: string): { r: number; g: number; b: number } {
@@ -200,6 +261,30 @@ export function parseHexColor(hexColor: string): { r: number; g: number; b: numb
     const g = parseInt(hex.substring(2, 4), 16);
     const b = parseInt(hex.substring(4, 6), 16);
     return { r, g, b };
+}
+
+export function sanitizeSvg(svgContent: string): string {
+    let result = svgContent;
+    result = result.replace(/<script[\s\S]*?<\/script>/gi, '');
+    result = result.replace(/<foreignObject[\s\S]*?<\/foreignObject>/gi, '');
+    result = result.replace(/\bon\w+\s*=\s*["'][^"']*["']/gi, '');
+    result = result.replace(/\bhref\s*=\s*["']\s*javascript\s*:/gi, "href=''");
+    result = result.replace(/\bxlink:href\s*=\s*["']\s*javascript\s*:/gi, "xlink:href=''");
+    return result;
+}
+
+export async function executeKicadSvgExportCached(
+    kicadCliPath: string,
+    layer: string,
+    pcbFile: string,
+    theme?: string
+): Promise<string> {
+    const key = getCacheKey(pcbFile, layer, theme);
+    const cached = svgCache.get(key);
+    if (cached !== undefined) return cached;
+    const svg = await executeKicadSvgExport(kicadCliPath, layer, pcbFile, theme);
+    svgCache.set(key, svg);
+    return svg;
 }
 
 export function cleanupTempFiles(filePaths: string[]): number {

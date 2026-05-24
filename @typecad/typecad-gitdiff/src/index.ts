@@ -1,5 +1,5 @@
 export { generateDiffs, type DiffOptions } from './core/diff-generator.js';
-export { computeTextualDiff, type TextualDiff, type ChangeDescription } from './core/pcb-textual-diff.js';
+export { computeTextualDiff, computeNetlistDiff, computeBomDiff, type TextualDiff, type ChangeDescription, type NetlistDiff, type NetDiffEntry, type BomDiff, type BomDiffEntry, type BomEntry } from './core/pcb-textual-diff.js';
 export { annotateLayerSvgs, type SVGAnnotation } from './core/svg-diff-annotator.js';
 export { type LayerInfo } from './utils/html-generator.js';
 export { allLayers, standardLayers } from './constants.js';

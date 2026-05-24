@@ -7,6 +7,12 @@ let currentViewMode = 'diff-only';
 let textualDiffData: TextualDiff | null = null;
 let sidebarOpen = false;
 
+// Nets / BOM diff data + filter state
+let netsDiffData: NetlistDiff | null = null;
+let bomDiffData: BomDiff | null = null;
+let netsActiveFilters: Set<string> | null = null;
+let bomActiveFilters: Set<string> | null = null;
+
 // Zoom/pan state
 let zoomLevel = 1;
 let panTranslateX = 0;
@@ -91,6 +97,27 @@ function populateLayerBadges(): void {
     if (!container) return;
     container.innerHTML = '';
 
+    if (availableLayers.length > 0) {
+        const toggleBtn = document.createElement('button');
+        toggleBtn.type = 'button';
+        toggleBtn.className = 'filter-toggle-all';
+        toggleBtn.id = 'visualToggleAll';
+        toggleBtn.textContent = 'Select All';
+        toggleBtn.style.marginRight = '0.5rem';
+        toggleBtn.addEventListener('click', () => {
+            const allSelected = availableLayers.every((layer) => activeLayers.has(layer.name));
+            if (allSelected) {
+                activeLayers.clear();
+            } else {
+                availableLayers.forEach((layer) => activeLayers.add(layer.name));
+            }
+            updateLayerVisibility();
+            updateEmptyState();
+            updateBadgeStates();
+        });
+        container.appendChild(toggleBtn);
+    }
+
     availableLayers.forEach((layer) => {
         const badge = document.createElement('span');
         badge.className = `badge ${getBadgeClass(layer.type)} layer-badge main-control-badge`;
@@ -153,75 +180,8 @@ function createImageLayers(): void {
     });
 }
 
-function toggleLayer(layerName: string): void {
-    const layerExists = availableLayers.some((layer) => layer.name === layerName);
-    if (!layerExists) return;
-
-    if (activeLayers.has(layerName)) {
-        activeLayers.delete(layerName);
-    } else {
-        activeLayers.add(layerName);
-    }
-
-    updateLayerVisibility();
-    updateEmptyState();
-    updateBadgeStates();
-}
-
-function changeViewMode(mode: string): void {
-    const oldMode = currentViewMode;
-    currentViewMode = mode;
-
-    const imageStack = document.getElementById('imageStack');
-    if (!imageStack) return;
-
-    const opacityControls = document.getElementById('opacityControls');
-    const globalOpacityControls = document.getElementById('globalOpacityControls');
-    const cardFooter = document.getElementById('cardFooter');
-    const sideBySideLabels = document.getElementById('sideBySideLabels');
-
-    imageStack.classList.remove('side-by-side', 'overlay', 'onion-skin', 'swipe', 'diff-only');
-
-    if (opacityControls) {
-        opacityControls.style.display = (mode === 'overlay' || mode === 'onion-skin') ? 'flex' : 'none';
-    }
-    if (globalOpacityControls) {
-        globalOpacityControls.style.display = (mode === 'side-by-side' || mode === 'overlay' || mode === 'onion-skin') ? 'none' : 'flex';
-    }
-
-    if (cardFooter) {
-        if (mode === 'diff-only' || mode === 'side-by-side') {
-            cardFooter.style.display = 'block';
-        } else {
-            cardFooter.style.display = 'none';
-        }
-    }
-    if (sideBySideLabels) {
-        if (mode === 'side-by-side') {
-            sideBySideLabels.style.setProperty('display', 'flex', 'important');
-        } else {
-            sideBySideLabels.style.setProperty('display', 'none', 'important');
-        }
-    }
-
-    imageStack.classList.add(mode === 'diff-only' ? 'diff-only' : mode);
-
-    if (mode !== 'swipe') {
-        resetClipPaths();
-    }
-
-    updateLayerVisibility();
-
-    if (mode === 'swipe') {
-        initializeSwipeView();
-    }
-
-    if (zoomPanInitialized && oldMode !== mode) {
-        resetZoomPanInternal();
-    }
-}
-
-let updateLayerVisibility: () => void = function (): void {
+// updateLayerVisibility must be a var (hoisted) so toggleLayer can reference it before declaration
+var updateLayerVisibility: () => void = function (): void {
     const validLayerNames = new Set(availableLayers.map((l) => l.name));
     const invalidLayers = Array.from(activeLayers).filter((name) => !validLayerNames.has(name));
     invalidLayers.forEach((name) => activeLayers.delete(name));
@@ -292,6 +252,75 @@ let updateLayerVisibility: () => void = function (): void {
         updateGlobalOpacity(globalOpacitySlider.value);
     }
 };
+
+function toggleLayer(layerName: string): void {
+    const layerExists = availableLayers.some((layer) => layer.name === layerName);
+    if (!layerExists) return;
+
+    if (activeLayers.has(layerName)) {
+        activeLayers.delete(layerName);
+    } else {
+        activeLayers.add(layerName);
+    }
+
+    updateLayerVisibility();
+    updateEmptyState();
+    updateBadgeStates();
+    updateToggleAllButton();
+}
+
+function changeViewMode(mode: string): void {
+    const oldMode = currentViewMode;
+    currentViewMode = mode;
+
+    const imageStack = document.getElementById('imageStack');
+    if (!imageStack) return;
+
+    const opacityControls = document.getElementById('opacityControls');
+    const globalOpacityControls = document.getElementById('globalOpacityControls');
+    const cardFooter = document.getElementById('cardFooter');
+    const sideBySideLabels = document.getElementById('sideBySideLabels');
+
+    imageStack.classList.remove('side-by-side', 'overlay', 'onion-skin', 'swipe', 'diff-only');
+
+    if (opacityControls) {
+        opacityControls.style.display = (mode === 'overlay' || mode === 'onion-skin') ? 'flex' : 'none';
+    }
+    if (globalOpacityControls) {
+        globalOpacityControls.style.display = (mode === 'side-by-side' || mode === 'overlay' || mode === 'onion-skin') ? 'none' : 'flex';
+    }
+
+    if (cardFooter) {
+        if (mode === 'diff-only' || mode === 'side-by-side') {
+            cardFooter.style.display = 'block';
+        } else {
+            cardFooter.style.display = 'none';
+        }
+    }
+    if (sideBySideLabels) {
+        if (mode === 'side-by-side') {
+            sideBySideLabels.style.setProperty('display', 'flex', 'important');
+        } else {
+            sideBySideLabels.style.setProperty('display', 'none', 'important');
+        }
+    }
+
+    imageStack.classList.add(mode === 'diff-only' ? 'diff-only' : mode);
+
+    if (mode !== 'swipe') {
+        resetClipPaths();
+    }
+
+    updateLayerVisibility();
+
+    if (mode === 'swipe') {
+        initializeSwipeView();
+    }
+
+    if (zoomPanInitialized && oldMode !== mode) {
+        resetZoomPanInternal();
+    }
+}
 
 function updateOpacity(value: number): void {
     currentOpacity = value;
@@ -424,6 +453,12 @@ function updateBadgeStates(): void {
             badge.classList.remove('badge--destructive', 'badge--success', 'badge--warning', 'badge--secondary');
         }
     });
+
+    const toggleBtn = document.getElementById('visualToggleAll');
+    if (toggleBtn) {
+        const allSelected = availableLayers.length > 0 && availableLayers.every((layer) => activeLayers.has(layer.name));
+        toggleBtn.textContent = allSelected ? 'Deselect All' : 'Select All';
+    }
 }
 
 function selectDiffLayers(): void {
@@ -438,6 +473,29 @@ function selectDiffLayers(): void {
     updateLayerVisibility();
     updateEmptyState();
     updateBadgeStates();
+    updateToggleAllButton();
+}
+
+function toggleAllLayers(): void {
+    if (availableLayers.length === 0) return;
+    const allActive = availableLayers.every(l => activeLayers.has(l.name));
+    if (allActive) {
+        activeLayers.clear();
+    } else {
+        availableLayers.forEach(l => activeLayers.add(l.name));
+    }
+    updateLayerVisibility();
+    updateEmptyState();
+    updateBadgeStates();
+    updateToggleAllButton();
+}
+
+function updateToggleAllButton(): void {
+    const btn = document.getElementById('toggleAllLayers');
+    if (!btn) return;
+    const allActive = availableLayers.length > 0 && availableLayers.every(l => activeLayers.has(l.name));
+    btn.textContent = allActive ? 'Deselect All' : 'Select All';
+    btn.title = allActive ? 'Deselect all layers' : 'Select all layers';
 }
 
 function initializeZoomPan(): void {
@@ -668,6 +726,7 @@ function setLayerData(layerData: any[]): void {
     setTimeout(() => {
         selectDiffLayers();
         updateBadgeStates();
+        updateToggleAllButton();
         initializeZoomPan();
         changeViewMode('diff-only');
     }, 100);
@@ -853,9 +912,413 @@ function initializeTheme(): void {
     updateThemeIcon(savedTheme);
 }
 
+// Nets diff
+
+interface NetDiffEntry {
+    name: string;
+    type: 'added' | 'removed' | 'modified';
+    origSegments: number;
+    modSegments: number;
+    origVias: number;
+    modVias: number;
+    origRefs: string[];
+    modRefs: string[];
+    details: string[];
+}
+
+interface NetlistDiff {
+    nets: NetDiffEntry[];
+    summary: string;
+}
+
+function toggleNetsFilter(status: string): void {
+    if (!netsActiveFilters) return;
+    if (netsActiveFilters.has(status)) {
+        netsActiveFilters.delete(status);
+    } else {
+        netsActiveFilters.add(status);
+    }
+    applyNetsFilters();
+    renderNetsFilterBadges();
+}
+
+function applyNetsFilters(): void {
+    if (!netsDiffData) return;
+    const rows = document.querySelectorAll('#netsTableContainer tbody tr');
+    rows.forEach(row => {
+        const el = row as HTMLElement;
+        const s = el.getAttribute('data-status') || '';
+        el.style.display = netsActiveFilters && netsActiveFilters.has(s) ? '' : 'none';
+    });
+}
+
+function renderNetsFilterBadges(): void {
+    const summaryEl = document.getElementById('netsSummary');
+    if (!summaryEl || !netsDiffData) return;
+
+    const added = netsDiffData.nets.filter(n => n.type === 'added').length;
+    const removed = netsDiffData.nets.filter(n => n.type === 'removed').length;
+    const modified = netsDiffData.nets.filter(n => n.type === 'modified').length;
+
+    const allActive = netsActiveFilters && netsActiveFilters.size === 3;
+    const toggleLabel = allActive ? 'Deselect All' : 'Select All';
+
+    let html = `<button type="button" class="filter-toggle-all" id="netsToggleAll">${toggleLabel}</button>`;
+
+    const statuses: { key: string; label: string; count: number }[] = [
+        { key: 'added', label: 'Added', count: added },
+        { key: 'removed', label: 'Removed', count: removed },
+        { key: 'modified', label: 'Modified', count: modified },
+    ];
+
+    for (const s of statuses) {
+        if (s.count === 0) continue;
+        const active = netsActiveFilters ? netsActiveFilters.has(s.key) : false;
+        let badgeClass = '';
+        if (active) {
+            if (s.key === 'added') badgeClass = 'badge--success';
+            else if (s.key === 'removed') badgeClass = 'badge--destructive';
+            else badgeClass = 'badge--secondary';
+        } else {
+            badgeClass = 'badge--outline inactive';
+        }
+        html += `<span class="badge ${badgeClass} filter-badge" data-filter="${s.key}">${s.count} ${s.label}</span>`;
+    }
+
+    summaryEl.innerHTML = html;
+
+    summaryEl.querySelectorAll('.filter-badge').forEach(badge => {
+        badge.addEventListener('click', () => {
+            toggleNetsFilter(badge.getAttribute('data-filter') || '');
+        });
+    });
+
+    const toggleBtn = document.getElementById('netsToggleAll');
+    if (toggleBtn) {
+        toggleBtn.addEventListener('click', () => {
+            if (netsActiveFilters && netsActiveFilters.size === 3) {
+                netsActiveFilters.clear();
+            } else {
+                netsActiveFilters = new Set(['added', 'removed', 'modified']);
+            }
+            applyNetsFilters();
+            renderNetsFilterBadges();
+        });
+    }
+}
+
+function setNetlistDiff(data: NetlistDiff): void {
+    const summaryEl = document.getElementById('netsSummary');
+    const container = document.getElementById('netsTableContainer');
+    const emptyEl = document.getElementById('netsEmpty');
+    if (!summaryEl || !container || !emptyEl) return;
+
+    if (!data || !data.nets || data.nets.length === 0) {
+        emptyEl.style.display = 'block';
+        return;
+    }
+    emptyEl.style.display = 'none';
+
+    netsDiffData = data;
+    if (!netsActiveFilters) {
+        netsActiveFilters = new Set(['added', 'removed', 'modified']);
+    }
+
+    renderNetsFilterBadges();
+
+    const sorter = (a: NetDiffEntry, b: NetDiffEntry): number => {
+        const order = { added: 0, removed: 1, modified: 2 };
+        return (order[a.type] - order[b.type]) || a.name.localeCompare(b.name);
+    };
+
+    const sorted = [...data.nets].sort(sorter);
+    const tbodyRows = sorted.map(n => {
+        const badge = `<span class="diff-badge ${n.type}">${n.type}</span>`;
+        const tracks = n.origSegments > 0 || n.modSegments > 0
+            ? `<span>${n.origSegments}</span><span class="arrow">→</span><span>${n.modSegments}</span>`
+            : '<span>—</span>';
+        const vias = n.origVias > 0 || n.modVias > 0
+            ? `<span>${n.origVias}</span><span class="arrow">→</span><span>${n.modVias}</span>`
+            : '<span>—</span>';
+        const hasRefs = n.origRefs.length > 0 || n.modRefs.length > 0;
+        const refsHtml = hasRefs
+            ? `<span>${n.origRefs.length}</span><span class="arrow">→</span><span>${n.modRefs.length}</span>`
+            : '<span>—</span>';
+        const details = n.details.length > 0
+            ? `<ul class="detail-list">${n.details.map(d => `<li>${escapeHtml(d)}</li>`).join('')}</ul>`
+            : '';
+        return `<tr class="row-${n.type}" data-status="${n.type}">
+            <td><strong>${escapeHtml(n.name)}</strong></td>
+            <td>${badge}</td>
+            <td class="cell-number">${tracks}</td>
+            <td class="cell-number">${vias}</td>
+            <td class="cell-number">${refsHtml}</td>
+            <td>${details}</td>
+        </tr>`;
+    }).join('');
+
+    container.innerHTML = `
+        <div class="diff-table-container">
+            <table class="diff-table">
+                <thead>
+                    <tr>
+                        <th>Net</th>
+                        <th>Status</th>
+                        <th class="cell-number">Tracks</th>
+                        <th class="cell-number">Vias</th>
+                        <th class="cell-number">Pads</th>
+                        <th>Details</th>
+                    </tr>
+                </thead>
+                <tbody>${tbodyRows}</tbody>
+            </table>
+        </div>
+    `;
+
+    applyNetsFilters();
+}
+
+// BOM diff
+
+interface BomEntry {
+    ref: string;
+    value: string;
+    footprint: string;
+    layer: string;
+    x: number;
+    y: number;
+    rotation: number;
+}
+
+interface BomDiffEntry {
+    ref: string;
+    value: string;
+    footprint: string;
+    layer: string;
+    type: 'added' | 'removed' | 'modified' | 'unchanged';
+    changes: string[];
+    orig?: BomEntry;
+    mod?: BomEntry;
+}
+
+interface BomDiff {
+    components: BomDiffEntry[];
+    added: BomDiffEntry[];
+    removed: BomDiffEntry[];
+    modified: BomDiffEntry[];
+    unchanged: BomDiffEntry[];
+    summary: string;
+}
+
+function toggleBomFilter(status: string): void {
+    if (!bomActiveFilters) return;
+    if (bomActiveFilters.has(status)) {
+        bomActiveFilters.delete(status);
+    } else {
+        bomActiveFilters.add(status);
+    }
+    applyBomFilters();
+    renderBomFilterBadges();
+}
+
+function applyBomFilters(): void {
+    if (!bomDiffData) return;
+    const rows = document.querySelectorAll('#bomTableContainer tbody tr');
+    rows.forEach(row => {
+        const el = row as HTMLElement;
+        const s = el.getAttribute('data-status') || '';
+        el.style.display = bomActiveFilters && bomActiveFilters.has(s) ? '' : 'none';
+    });
+}
+
+function renderBomFilterBadges(): void {
+    const summaryEl = document.getElementById('bomSummary');
+    if (!summaryEl || !bomDiffData) return;
+
+    const added = bomDiffData.added.length;
+    const removed = bomDiffData.removed.length;
+    const modified = bomDiffData.modified.length;
+    const unchanged = bomDiffData.unchanged.length;
+
+    const totalStatuses = [added > 0, removed > 0, modified > 0, unchanged > 0].filter(Boolean).length;
+    const allActive = bomActiveFilters && bomActiveFilters.size === totalStatuses;
+    const toggleLabel = allActive ? 'Deselect All' : 'Select All';
+
+    let html = `<button type="button" class="filter-toggle-all" id="bomToggleAll">${toggleLabel}</button>`;
+
+    const statuses: { key: string; label: string; count: number }[] = [
+        { key: 'added', label: 'Added', count: added },
+        { key: 'removed', label: 'Removed', count: removed },
+        { key: 'modified', label: 'Modified', count: modified },
+        { key: 'unchanged', label: 'Unchanged', count: unchanged },
+    ];
+
+    for (const s of statuses) {
+        if (s.count === 0) continue;
+        const active = bomActiveFilters ? bomActiveFilters.has(s.key) : false;
+        let badgeClass = '';
+        if (active) {
+            if (s.key === 'added') badgeClass = 'badge--success';
+            else if (s.key === 'removed') badgeClass = 'badge--destructive';
+            else if (s.key === 'modified') badgeClass = 'badge--secondary';
+            else badgeClass = 'badge--outline';
+        } else {
+            badgeClass = 'badge--outline inactive';
+        }
+        html += `<span class="badge ${badgeClass} filter-badge" data-filter="${s.key}">${s.count} ${s.label}</span>`;
+    }
+
+    summaryEl.innerHTML = html;
+
+    summaryEl.querySelectorAll('.filter-badge').forEach(badge => {
+        badge.addEventListener('click', () => {
+            toggleBomFilter(badge.getAttribute('data-filter') || '');
+        });
+    });
+
+    const toggleBtn = document.getElementById('bomToggleAll');
+    if (toggleBtn) {
+        toggleBtn.addEventListener('click', () => {
+            const totalStatuses2 = [bomDiffData!.added.length > 0, bomDiffData!.removed.length > 0, bomDiffData!.modified.length > 0, bomDiffData!.unchanged.length > 0].filter(Boolean).length;
+            if (bomActiveFilters && bomActiveFilters.size === totalStatuses2) {
+                bomActiveFilters.clear();
+            } else {
+                bomActiveFilters = new Set(['added', 'removed', 'modified', 'unchanged'].filter(k => {
+                    const d = bomDiffData!;
+                    if (k === 'added') return d.added.length > 0;
+                    if (k === 'removed') return d.removed.length > 0;
+                    if (k === 'modified') return d.modified.length > 0;
+                    if (k === 'unchanged') return d.unchanged.length > 0;
+                    return false;
+                }));
+            }
+            applyBomFilters();
+            renderBomFilterBadges();
+        });
+    }
+}
+
+function setBomDiff(data: BomDiff): void {
+    const summaryEl = document.getElementById('bomSummary');
+    const container = document.getElementById('bomTableContainer');
+    const emptyEl = document.getElementById('bomEmpty');
+    if (!summaryEl || !container || !emptyEl) return;
+
+    if (!data || !data.components || data.components.length === 0) {
+        emptyEl.style.display = 'block';
+        return;
+    }
+    emptyEl.style.display = 'none';
+
+    bomDiffData = data;
+    if (!bomActiveFilters) {
+        bomActiveFilters = new Set(['added', 'removed', 'modified', 'unchanged'].filter(k => {
+            if (k === 'added') return data.added.length > 0;
+            if (k === 'removed') return data.removed.length > 0;
+            if (k === 'modified') return data.modified.length > 0;
+            if (k === 'unchanged') return data.unchanged.length > 0;
+            return false;
+        }));
+    }
+
+    renderBomFilterBadges();
+
+    const order = { added: 0, removed: 1, modified: 2, unchanged: 3 };
+    const sorted = [...data.components].sort((a, b) => (order[a.type] - order[b.type]) || a.ref.localeCompare(b.ref));
+
+    const tbodyRows = sorted.map(c => {
+        const badge = c.type === 'unchanged'
+            ? `<span class="diff-badge unchanged">ok</span>`
+            : `<span class="diff-badge ${c.type}">${c.type}</span>`;
+        const changes = c.type !== 'unchanged' && c.changes.length > 0
+            ? `<ul class="detail-list">${c.changes.map(d => `<li>${escapeHtml(d)}</li>`).join('')}</ul>`
+            : c.type === 'unchanged' ? '<span style="color: var(--muted-foreground); font-size: 0.75rem;">no changes</span>' : '';
+        return `<tr class="row-${c.type}" data-status="${c.type}">
+            <td><span class="bom-ref">${escapeHtml(c.ref)}</span></td>
+            <td><span class="bom-value">${escapeHtml(c.value || '—')}</span></td>
+            <td><span class="bom-footprint">${escapeHtml(c.footprint || '—')}</span></td>
+            <td>${escapeHtml(c.layer || '—')}</td>
+            <td>${badge}</td>
+            <td>${changes}</td>
+        </tr>`;
+    }).join('');
+
+    container.innerHTML = `
+        <div class="diff-table-container">
+            <table class="diff-table">
+                <thead>
+                    <tr>
+                        <th>Ref</th>
+                        <th>Value</th>
+                        <th>Footprint</th>
+                        <th>Layer</th>
+                        <th>Status</th>
+                        <th>Changes</th>
+                    </tr>
+                </thead>
+                <tbody>${tbodyRows}</tbody>
+            </table>
+        </div>
+    `;
+
+    applyBomFilters();
+}
+
+function initializeTabs(): void {
+    const tabsContainer = document.querySelector('.tabs');
+    if (!tabsContainer) return;
+
+    const tablist = tabsContainer.querySelector('[role="tablist"]');
+    if (!tablist) return;
+
+    const tabs = Array.from(tablist.querySelectorAll('[role="tab"]')) as HTMLButtonElement[];
+    const panels = tabs.map(tab => document.getElementById(tab.getAttribute('aria-controls') || '')).filter(Boolean) as HTMLElement[];
+
+    tabs.forEach((tab) => {
+        tab.addEventListener('click', () => {
+            tabs.forEach((t, idx) => {
+                const isSelected = t === tab;
+                t.setAttribute('aria-selected', String(isSelected));
+                t.setAttribute('tabindex', isSelected ? '0' : '-1');
+                
+                const panel = panels[idx];
+                if (panel) {
+                    if (isSelected) {
+                        panel.removeAttribute('hidden');
+                        panel.setAttribute('aria-selected', 'true');
+                    } else {
+                        panel.setAttribute('hidden', '');
+                        panel.setAttribute('aria-selected', 'false');
+                    }
+                }
+            });
+        });
+    });
+
+    // Keyboard navigation (Left / Right Arrow)
+    tablist.addEventListener('keydown', (e: Event) => {
+        const keyboardEvent = e as KeyboardEvent;
+        let index = tabs.indexOf(document.activeElement as HTMLButtonElement);
+        if (index === -1) return;
+
+        if (keyboardEvent.key === 'ArrowRight') {
+            index = (index + 1) % tabs.length;
+            tabs[index].focus();
+            tabs[index].click();
+            keyboardEvent.preventDefault();
+        } else if (keyboardEvent.key === 'ArrowLeft') {
+            index = (index - 1 + tabs.length) % tabs.length;
+            tabs[index].focus();
+            tabs[index].click();
+            keyboardEvent.preventDefault();
+        }
+    });
+}
+
 // Init
 document.addEventListener('DOMContentLoaded', () => {
     initializeTheme();
+    initializeTabs();
 
     // Bind handlers
     document.getElementById('themeToggle')?.addEventListener('click', toggleTheme);
@@ -870,6 +1333,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     document.getElementById('diffSidebarToggle')?.addEventListener('click', toggleSidebar);
     document.getElementById('diffSidebarClose')?.addEventListener('click', toggleSidebar);
+    document.getElementById('toggleAllLayers')?.addEventListener('click', toggleAllLayers);
 
     updateGlobalOpacity('70');
 
@@ -879,6 +1343,7 @@ document.addEventListener('DOMContentLoaded', () => {
     setTimeout(() => {
         selectDiffLayers();
         updateBadgeStates();
+        updateToggleAllButton();
         initializeZoomPan();
         changeViewMode('diff-only');
     }, 100);

@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
-import type { TextualDiff } from '../core/pcb-textual-diff.js';
+import type { TextualDiff, NetlistDiff, BomDiff } from '../core/pcb-textual-diff.js';
 import { sanitizeSvg } from './file-utils.js';
 
 export interface LayerInfo {
@@ -22,7 +22,7 @@ function cleanSvgForInlining(svgContent: string): string {
     return svg.trim();
 }
 
-export async function generateHtmlReport(htmlLayers: LayerInfo[], textualDiff?: TextualDiff): Promise<string> {
+export async function generateHtmlReport(htmlLayers: LayerInfo[], textualDiff?: TextualDiff, netlistDiff?: NetlistDiff, bomDiff?: BomDiff): Promise<string> {
     const currentDir = path.dirname(fileURLToPath(import.meta.url));
     const projectRoot = path.resolve(currentDir, '..');
     const templatePath = path.join(projectRoot, 'diff-viewer.html');
@@ -47,6 +47,8 @@ export async function generateHtmlReport(htmlLayers: LayerInfo[], textualDiff?: 
       document.addEventListener("DOMContentLoaded", function () {
         setLayerData(${JSON.stringify(layerData)});
         ${textualDiff ? `setTextualDiff(${JSON.stringify(textualDiff)});` : ''}
+        ${netlistDiff ? `setNetlistDiff(${JSON.stringify(netlistDiff)});` : ''}
+        ${bomDiff ? `setBomDiff(${JSON.stringify(bomDiff)});` : ''}
       });
     </script>
     `;

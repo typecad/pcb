@@ -722,3 +722,309 @@ h6 a {
   animation: highlight-pulse 1.2s ease-in-out infinite;
   pointer-events: none;
 }
+
+/* Tabs */
+.tabs {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.tabs-header {
+  margin: 1rem 1rem 0 1rem;
+  flex-shrink: 0;
+}
+
+/* Tab panels: flex when visible, hidden via attribute */
+[role="tabpanel"] {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+[role="tabpanel"][hidden] {
+  display: none !important;
+}
+
+#panel-visual {
+  overflow: hidden;
+}
+
+#panel-nets, #panel-bom {
+  padding: 1rem;
+  overflow-y: auto;
+}
+
+/* Summary bar */
+.diff-summary-bar {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+}
+
+/* Custom Badge colors mapping to BEM double hyphen variants */
+.badge--success {
+  background-color: #22c55e !important;
+  color: #ffffff !important;
+  border-color: transparent !important;
+}
+.dark .badge--success {
+  background-color: color-mix(in oklab, #22c55e 60%, transparent) !important;
+  color: #ffffff !important;
+}
+
+.badge--destructive {
+  background-color: var(--color-destructive, #ef4444) !important;
+  color: var(--color-white, #ffffff) !important;
+  border-color: transparent !important;
+}
+.dark .badge--destructive {
+  background-color: color-mix(in oklab, var(--color-destructive, #ef4444) 60%, transparent) !important;
+  color: var(--color-white, #ffffff) !important;
+}
+
+.badge--warning {
+  background-color: #f59e0b !important;
+  color: #ffffff !important;
+  border-color: transparent !important;
+}
+.dark .badge--warning {
+  background-color: color-mix(in oklab, #f59e0b 60%, transparent) !important;
+  color: #ffffff !important;
+}
+
+.badge--secondary {
+  background-color: var(--color-secondary, #64748b) !important;
+  color: var(--color-secondary-foreground, #ffffff) !important;
+  border-color: transparent !important;
+}
+.dark .badge--secondary {
+  background-color: color-mix(in oklab, var(--color-secondary, #64748b) 60%, transparent) !important;
+  color: var(--color-secondary-foreground, #ffffff) !important;
+}
+
+.badge--outline {
+  background-color: transparent !important;
+  color: var(--foreground) !important;
+  border: 1px solid var(--border) !important;
+}
+
+.diff-badge {
+  display: inline-block;
+  font-size: 0.65rem;
+  font-weight: 600;
+  padding: 0.15rem 0.4rem;
+  border-radius: 3px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.diff-badge.added {
+  background: rgba(34, 197, 94, 0.15);
+  color: #22c55e;
+}
+.diff-badge.removed {
+  background: rgba(249, 115, 22, 0.15);
+  color: #f97316;
+}
+.diff-badge.modified {
+  background: rgba(59, 130, 246, 0.15);
+  color: #3b82f6;
+}
+.diff-badge.unchanged {
+  background: rgba(100, 116, 139, 0.15);
+  color: #64748b;
+}
+
+/* Diff tables */
+.diff-table-container {
+  overflow-x: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+.diff-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8125rem;
+}
+
+.diff-table thead th {
+  position: sticky;
+  top: 0;
+  background: var(--card);
+  padding: 0.6rem 0.75rem;
+  text-align: left;
+  font-weight: 600;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted-foreground);
+  border-bottom: 2px solid var(--border);
+  white-space: nowrap;
+  z-index: 1;
+}
+
+.diff-table tbody tr {
+  border-bottom: 1px solid var(--border);
+  transition: background 0.15s ease;
+}
+
+.diff-table tbody tr:hover {
+  background: var(--secondary);
+}
+
+.diff-table tbody td {
+  padding: 0.5rem 0.75rem;
+  vertical-align: middle;
+  color: var(--foreground);
+}
+
+.diff-table tbody tr.row-added {
+  border-left: 3px solid #22c55e;
+  background: rgba(34, 197, 94, 0.03);
+}
+
+.diff-table tbody tr.row-removed {
+  border-left: 3px solid #f97316;
+  background: rgba(249, 115, 22, 0.03);
+}
+
+.diff-table tbody tr.row-modified {
+  border-left: 3px solid #3b82f6;
+  background: rgba(59, 130, 246, 0.03);
+}
+
+.diff-table tbody tr.row-unchanged {
+  border-left: 3px solid transparent;
+}
+
+.badge-success {
+  background-color: #22c55e;
+  color: #ffffff;
+  border-color: transparent;
+}
+.dark .badge-success {
+  background-color: color-mix(in oklab, #22c55e 60%, transparent);
+  color: #ffffff;
+}
+
+.badge-warning {
+  background-color: #f59e0b;
+  color: #ffffff;
+  border-color: transparent;
+}
+.dark .badge-warning {
+  background-color: color-mix(in oklab, #f59e0b 60%, transparent);
+  color: #ffffff;
+}
+
+.diff-table .cell-number {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.diff-table .cell-number span {
+  display: inline-block;
+  min-width: 1.5rem;
+}
+
+.diff-table .arrow {
+  color: var(--muted-foreground);
+  margin: 0 0.25rem;
+}
+
+.diff-table .detail-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+}
+
+.diff-table .detail-list li::before {
+  content: "·";
+  margin-right: 0.35rem;
+  color: var(--border);
+}
+
+.diff-table tbody td .bom-ref {
+  font-weight: 600;
+  color: var(--foreground);
+}
+
+.diff-table tbody td .bom-value {
+  color: var(--muted-foreground);
+}
+
+.diff-table tbody td .bom-footprint {
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+}
+
+/* Nets / BOM panel responsive */
+@media (max-width: 768px) {
+  .diff-table thead th,
+  .diff-table tbody td {
+    padding: 0.4rem 0.5rem;
+    font-size: 0.75rem;
+  }
+  .diff-summary-stat {
+    padding: 0.4rem 0.75rem;
+    font-size: 0.8rem;
+  }
+  .diff-summary-stat .stat-value {
+    font-size: 1rem;
+  }
+}
+
+/* Filter badges styled exactly like Visual tab layer badges */
+.filter-badge {
+  cursor: pointer;
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+.filter-badge:hover {
+  transform: scale(1.05);
+}
+
+.filter-badge.badge--outline {
+  opacity: 0.8 !important;
+}
+
+.filter-badge.badge--outline.inactive {
+  opacity: 0.4 !important;
+}
+
+.filter-badge.inactive {
+  opacity: 0.45 !important;
+}
+
+.filter-toggle-all {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.35rem 0.65rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--muted-foreground);
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+  line-height: 1;
+}
+
+.filter-toggle-all:hover {
+  background: var(--secondary);
+  color: var(--foreground);
+}

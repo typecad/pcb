@@ -292,6 +292,395 @@ function compareVias(
     }
 }
 
+// -- Netlist diff --
+
+export interface NetInfo {
+    name: string;
+    segments: SegmentData[];
+    vias: ViaData[];
+    refs: string[];
+}
+
+export interface NetDiffEntry {
+    name: string;
+    type: 'added' | 'removed' | 'modified';
+    origSegments: number;
+    modSegments: number;
+    origVias: number;
+    modVias: number;
+    origRefs: string[];
+    modRefs: string[];
+    details: string[];
+}
+
+export interface NetlistDiff {
+    nets: NetDiffEntry[];
+    summary: string;
+}
+
+/** Build net number → net name map from top-level (net <num> "<name>") declarations. */
+function buildNetNameMap(tree: SNode): Map<number, string> {
+    const map = new Map<number, string>();
+    for (const netNode of tree.findAll('net')) {
+        const num = netNode.getNumber(1);
+        const name = netNode.getString(2);
+        if (num >= 0 && name) map.set(num, name);
+    }
+    return map;
+}
+
+/**
+ * Resolve a net name from a (net ...) child node.
+ * Pads store (net <num> "<name>") — returns the quoted name.
+ * Segments/vias store (net <num>) — resolves via the name map.
+ */
+function resolveNetName(netChild: SNode | null, nameMap: Map<number, string>): string {
+    if (!netChild) return 'unassigned';
+    const sv = netChild.stringValue;
+    if (sv !== null) return sv;
+    const num = netChild.getNumber(1);
+    if (num !== 0) {
+        const name = nameMap.get(num);
+        if (name) return name;
+        return String(num);
+    }
+    return 'unassigned';
+}
+
+function extractNets(tree: SNode, nameMap: Map<number, string>): Map<string, NetInfo> {
+    const nets = new Map<string, NetInfo>();
+
+    function ensureNet(name: string): NetInfo {
+        if (!nets.has(name)) nets.set(name, { name, segments: [], vias: [], refs: [] });
+        return nets.get(name)!;
+    }
+
+    for (const seg of tree.findAll('segment')) {
+        const net = resolveNetName(seg.child('net'), nameMap);
+        const n = ensureNet(net);
+        const uuid = seg.child('uuid')?.stringValue || '';
+        const start = seg.child('start');
+        const end = seg.child('end');
+        n.segments.push({
+            uuid,
+            startX: start?.getNumber(1) || 0,
+            startY: start?.getNumber(2) || 0,
+            endX: end?.getNumber(1) || 0,
+            endY: end?.getNumber(2) || 0,
+            width: seg.child('width')?.getNumber(1) || 0,
+            layer: seg.child('layer')?.stringValue || '',
+            net,
+        });
+    }
+
+    for (const via of tree.findAll('via')) {
+        const net = resolveNetName(via.child('net'), nameMap);
+        const n = ensureNet(net);
+        const atNode = via.child('at');
+        const layersStr = via.child('layers')?.joinedStringValue || '';
+        n.vias.push({
+            uuid: via.child('uuid')?.stringValue || '',
+            x: atNode?.getNumber(1) || 0,
+            y: atNode?.getNumber(2) || 0,
+            size: via.child('size')?.getNumber(1) || 0,
+            drill: via.child('drill')?.getNumber(1) || 0,
+            layers: layersStr,
+            net,
+        });
+    }
+
+    for (const fp of tree.findAll('footprint')) {
+        for (const pad of fp.children('pad')) {
+            const net = resolveNetName(pad.child('net'), nameMap);
+            if (net === 'unassigned') continue;
+            const n = ensureNet(net);
+            let ref = '';
+            for (const prop of fp.children('property')) {
+                if (prop.getString(1) === 'Reference') { ref = prop.getString(2) || ''; break; }
+            }
+            const padNum = pad.getString(1) || '';
+            n.refs.push(`${ref}-${padNum}`);
+        }
+    }
+
+    // Also include nets declared at top level that have no routing or pads yet
+    for (const [num, name] of nameMap) {
+        ensureNet(name);
+    }
+
+    return nets;
+}
+
+export function computeNetlistDiff(originalContent: string, modifiedContent: string): NetlistDiff {
+    let origParsed: SExpr, modParsed: SExpr;
+    try {
+        origParsed = parse(originalContent);
+        modParsed = parse(modifiedContent);
+    } catch {
+        return { nets: [], summary: 'Unable to parse PCB files' };
+    }
+    if (!isList(origParsed) || !isList(modParsed)) {
+        return { nets: [], summary: 'Unable to parse PCB files' };
+    }
+
+    const origTree = SNode.from(origParsed);
+    const modTree = SNode.from(modParsed);
+
+    const origNameMap = buildNetNameMap(origTree);
+    const modNameMap = buildNetNameMap(modTree);
+
+    const origNets = extractNets(origTree, origNameMap);
+    const modNets = extractNets(modTree, modNameMap);
+
+    const allNetNames = new Set([...origNets.keys(), ...modNets.keys()]);
+    const entries: NetDiffEntry[] = [];
+
+    // -- Detect net renames (same net number, different name in declarations) --
+    const renames = new Map<string, string>(); // origName → modName
+    for (const [num, origName] of origNameMap) {
+        const modName = modNameMap.get(num);
+        if (modName && modName !== origName) {
+            renames.set(origName, modName);
+        }
+    }
+
+    // -- Mark net numbers that were renamed so we skip their individual entries --
+    const renamedOrigNames = new Set(renames.keys());
+    const renamedModNames = new Set(renames.values());
+
+    for (const name of allNetNames) {
+        // Skip if this net name is the old or new side of a rename (handled separately)
+        if (renamedOrigNames.has(name) || renamedModNames.has(name)) continue;
+
+        const orig = origNets.get(name);
+        const mod = modNets.get(name);
+
+        if (!orig) {
+            const m = mod!;
+            entries.push({
+                name,
+                type: 'added',
+                origSegments: 0,
+                modSegments: m.segments.length,
+                origVias: 0,
+                modVias: m.vias.length,
+                origRefs: [],
+                modRefs: m.refs,
+                details: [`Added net with ${m.segments.length} track(s), ${m.vias.length} via(s)`],
+            });
+        } else if (!mod) {
+            entries.push({
+                name,
+                type: 'removed',
+                origSegments: orig.segments.length,
+                modSegments: 0,
+                origVias: orig.vias.length,
+                modVias: 0,
+                origRefs: orig.refs,
+                modRefs: [],
+                details: [`Removed net (had ${orig.segments.length} track(s), ${orig.vias.length} via(s))`],
+            });
+        } else {
+            const details: string[] = [];
+            if (orig.segments.length !== mod.segments.length) {
+                details.push(`Tracks: ${orig.segments.length} → ${mod.segments.length}`);
+            }
+            if (orig.vias.length !== mod.vias.length) {
+                details.push(`Vias: ${orig.vias.length} → ${mod.vias.length}`);
+            }
+            const origLayers = new Set(orig.segments.map(s => s.layer));
+            const modLayers = new Set(mod.segments.map(s => s.layer));
+            const addedLayers = [...modLayers].filter(l => !origLayers.has(l));
+            const removedLayers = [...origLayers].filter(l => !modLayers.has(l));
+            if (addedLayers.length > 0) details.push(`Layers added: ${addedLayers.join(', ')}`);
+            if (removedLayers.length > 0) details.push(`Layers removed: ${removedLayers.join(', ')}`);
+
+            const addedRefs = mod.refs.filter(r => !orig.refs.includes(r));
+            const removedRefs = orig.refs.filter(r => !mod.refs.includes(r));
+            if (removedRefs.length > 0) details.push(`Pads removed: ${removedRefs.join(', ')}`);
+            if (addedRefs.length > 0) details.push(`Pads added: ${addedRefs.join(', ')}`);
+
+            if (details.length === 0) continue;
+
+            entries.push({
+                name,
+                type: 'modified',
+                origSegments: orig.segments.length,
+                modSegments: mod.segments.length,
+                origVias: orig.vias.length,
+                modVias: mod.vias.length,
+                origRefs: orig.refs,
+                modRefs: mod.refs,
+                details,
+            });
+        }
+    }
+
+    // -- Add rename entries --
+    for (const [origName, modName] of renames) {
+        const orig = origNets.get(origName);
+        const mod = modNets.get(modName);
+        if (!orig && !mod) continue;
+        const details: string[] = [`Renamed from "${origName}" to "${modName}"`];
+        const oSeg = orig?.segments.length || 0;
+        const mSeg = mod?.segments.length || 0;
+        const oVia = orig?.vias.length || 0;
+        const mVia = mod?.vias.length || 0;
+        if (oSeg !== mSeg) details.push(`Tracks: ${oSeg} → ${mSeg}`);
+        if (oVia !== mVia) details.push(`Vias: ${oVia} → ${mVia}`);
+        const addedRefs = (mod?.refs || []).filter(r => !(orig?.refs || []).includes(r));
+        const removedRefs = (orig?.refs || []).filter(r => !(mod?.refs || []).includes(r));
+        if (removedRefs.length > 0) details.push(`Pads removed: ${removedRefs.join(', ')}`);
+        if (addedRefs.length > 0) details.push(`Pads added: ${addedRefs.join(', ')}`);
+        entries.push({
+            name: `${origName} → ${modName}`,
+            type: 'modified',
+            origSegments: oSeg,
+            modSegments: mSeg,
+            origVias: oVia,
+            modVias: mVia,
+            origRefs: orig?.refs || [],
+            modRefs: mod?.refs || [],
+            details,
+        });
+    }
+
+    const added = entries.filter(e => e.type === 'added').length;
+    const removed = entries.filter(e => e.type === 'removed').length;
+    const modified = entries.filter(e => e.type === 'modified').length;
+    const parts: string[] = [];
+    if (added) parts.push(`${added} added`);
+    if (removed) parts.push(`${removed} removed`);
+    if (modified) parts.push(`${modified} modified`);
+    const summary = entries.length === 0 ? 'No netlist differences' : `${entries.length} net change${entries.length !== 1 ? 's' : ''}: ${parts.join(', ')}`;
+
+    return { nets: entries, summary };
+}
+
+// -- BOM diff --
+
+export interface BomEntry {
+    ref: string;
+    value: string;
+    footprint: string;
+    layer: string;
+    x: number;
+    y: number;
+    rotation: number;
+}
+
+export interface BomDiffEntry {
+    ref: string;
+    value: string;
+    footprint: string;
+    layer: string;
+    type: 'added' | 'removed' | 'modified' | 'unchanged';
+    changes: string[];
+    orig?: BomEntry;
+    mod?: BomEntry;
+}
+
+export interface BomDiff {
+    components: BomDiffEntry[];
+    added: BomDiffEntry[];
+    removed: BomDiffEntry[];
+    modified: BomDiffEntry[];
+    unchanged: BomDiffEntry[];
+    summary: string;
+}
+
+function extractAllFootprints(tree: SNode): Map<string, BomEntry> {
+    const map = new Map<string, BomEntry>();
+    for (const fp of tree.findAll('footprint')) {
+        const uuid = fp.child('uuid')?.stringValue || '';
+        if (!uuid) continue;
+        let ref = '', value = '';
+        for (const prop of fp.children('property')) {
+            const propName = prop.getString(1);
+            if (propName === 'Reference') ref = prop.getString(2) || '';
+            if (propName === 'Value') value = prop.getString(2) || '';
+        }
+        const atNode = fp.child('at');
+        map.set(uuid, {
+            ref,
+            value,
+            footprint: fp.getString(1) || '',
+            layer: fp.child('layer')?.stringValue || '',
+            x: atNode?.getNumber(1) || 0,
+            y: atNode?.getNumber(2) || 0,
+            rotation: atNode?.getNumber(3, 0) || 0,
+        });
+    }
+    return map;
+}
+
+export function computeBomDiff(originalContent: string, modifiedContent: string): BomDiff {
+    let origParsed: SExpr, modParsed: SExpr;
+    try {
+        origParsed = parse(originalContent);
+        modParsed = parse(modifiedContent);
+    } catch {
+        return { components: [], added: [], removed: [], modified: [], unchanged: [], summary: 'Unable to parse PCB files' };
+    }
+    if (!isList(origParsed) || !isList(modParsed)) {
+        return { components: [], added: [], removed: [], modified: [], unchanged: [], summary: 'Unable to parse PCB files' };
+    }
+
+    const orig = extractAllFootprints(SNode.from(origParsed));
+    const mod = extractAllFootprints(SNode.from(modParsed));
+    const allUuids = new Set([...orig.keys(), ...mod.keys()]);
+
+    const entries: BomDiffEntry[] = [];
+    const added: BomDiffEntry[] = [];
+    const removed: BomDiffEntry[] = [];
+    const modified: BomDiffEntry[] = [];
+    const unchanged: BomDiffEntry[] = [];
+
+    for (const uuid of allUuids) {
+        const o = orig.get(uuid);
+        const m = mod.get(uuid);
+
+        if (!o) {
+            const e: BomDiffEntry = { ref: m!.ref, value: m!.value, footprint: m!.footprint, layer: m!.layer, type: 'added', changes: ['Component added'], mod: m };
+            entries.push(e);
+            added.push(e);
+        } else if (!m) {
+            const e: BomDiffEntry = { ref: o.ref, value: o.value, footprint: o.footprint, layer: o.layer, type: 'removed', changes: ['Component removed'], orig: o };
+            entries.push(e);
+            removed.push(e);
+        } else {
+            const changes: string[] = [];
+            if (o.ref !== m.ref) changes.push(`Ref: ${o.ref} → ${m.ref}`);
+            if (o.value !== m.value) changes.push(`Value: "${o.value}" → "${m.value}"`);
+            if (o.footprint !== m.footprint) changes.push(`Footprint: ${o.footprint} → ${m.footprint}`);
+            if (o.layer !== m.layer) changes.push(`Layer: ${o.layer} → ${m.layer}`);
+            if (o.x !== m.x || o.y !== m.y || o.rotation !== m.rotation) {
+                const posChanges: string[] = [];
+                if (o.x !== m.x || o.y !== m.y) posChanges.push(`(${o.x.toFixed(2)}, ${o.y.toFixed(2)}) → (${m.x.toFixed(2)}, ${m.y.toFixed(2)})`);
+                if (o.rotation !== m.rotation) posChanges.push(`rot ${o.rotation}° → ${m.rotation}°`);
+                changes.push(`Position: ${posChanges.join(', ')}`);
+            }
+
+            const type = changes.length > 0 ? 'modified' as const : 'unchanged' as const;
+            const e: BomDiffEntry = { ref: m.ref, value: m.value, footprint: m.footprint, layer: m.layer, type, changes, orig: o, mod: m };
+            entries.push(e);
+            if (type === 'modified') modified.push(e);
+            else unchanged.push(e);
+        }
+    }
+
+    const total = entries.length;
+    const a = added.length, r = removed.length, modCount = modified.length, unmod = unchanged.length;
+    const parts: string[] = [];
+    if (a) parts.push(`${a} added`);
+    if (r) parts.push(`${r} removed`);
+    if (modCount) parts.push(`${modCount} modified`);
+    if (unmod) parts.push(`${unmod} unchanged`);
+    const summary = `${total} component${total !== 1 ? 's' : ''}: ${parts.join(', ')}`;
+
+    return { components: entries, added, removed, modified, unchanged, summary };
+}
+
 export function computeTextualDiff(originalContent: string, modifiedContent: string): TextualDiff {
     let origParsed: SExpr;
     let modParsed: SExpr;

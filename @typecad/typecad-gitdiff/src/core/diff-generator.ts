@@ -5,7 +5,7 @@ import { kicad_cli_path } from '@typecad/typecad';
 import { allLayers, standardLayers } from '../constants.js';
 import { executeKicadSvgExportCached, computeSvgBBox, cropSvgToBBox, detectInnerCopperLayers, type BBox } from '../utils/file-utils.js';
 import { LayerInfo, generateHtmlReport } from '../utils/html-generator.js';
-import { computeTextualDiff, type TextualDiff } from './pcb-textual-diff.js';
+import { computeTextualDiff, computeNetlistDiff, computeBomDiff, type TextualDiff, type NetlistDiff, type BomDiff } from './pcb-textual-diff.js';
 import { annotateLayerSvgs } from './svg-diff-annotator.js';
 
 export interface DiffOptions {
@@ -136,15 +136,19 @@ export async function generateDiffs(options: DiffOptions): Promise<string> {
         const htmlFilePath = outputHtmlPath || path.join(path.dirname(modifiedFile), 'gitdiff-results.html');
 
         let textualDiff: TextualDiff | undefined;
+        let netlistDiff: NetlistDiff | undefined;
+        let bomDiff: BomDiff | undefined;
         try {
             const origContent = fs.readFileSync(originalFile, 'utf8');
             const modContent = fs.readFileSync(modifiedFile, 'utf8');
             textualDiff = computeTextualDiff(origContent, modContent);
+            netlistDiff = computeNetlistDiff(origContent, modContent);
+            bomDiff = computeBomDiff(origContent, modContent);
         } catch {
-            // Textual diff is optional — don't block the main flow
+            // Textual/netlist/BOM diffs are optional — don't block the main flow
         }
 
-        const htmlContent = await generateHtmlReport(htmlLayers, textualDiff);
+        const htmlContent = await generateHtmlReport(htmlLayers, textualDiff, netlistDiff, bomDiff);
         fs.writeFileSync(htmlFilePath, htmlContent);
 
         console.log(`HTML report generated at: ${htmlFilePath}`);

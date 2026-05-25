@@ -13,8 +13,6 @@ export interface DiffOptions {
     modifiedFile: string;
     fullMode: boolean;
     theme?: string;
-    colorModified?: string;
-    colorNew?: string;
     outputHtmlPath?: string;
 }
 
@@ -58,7 +56,10 @@ export async function generateDiffs(options: DiffOptions): Promise<string> {
         // Per-layer export with error recovery
         const allSvgResults: Array<{ originalSvg: string; modifiedSvg: string } | null> = [];
 
-        const kicadCli = kicad_cli_path!;
+        const kicadCli = kicad_cli_path;
+        if (!kicadCli) {
+            throw new Error('KiCAD CLI not found. Ensure KiCAD is installed and accessible. You may need to run `new KiCAD()` before calling generateDiffs().');
+        }
         for (const layer of layers) {
             let orig = '';
             let mod = '';
@@ -121,16 +122,17 @@ export async function generateDiffs(options: DiffOptions): Promise<string> {
                 hasDifferences
             });
 
-            if (hasDifferences && croppedOriginal && croppedModified) {
-                const debugDir = path.join(path.dirname(modifiedFile), '_debug_svgs');
-                if (!fs.existsSync(debugDir)) {
-                    fs.mkdirSync(debugDir, { recursive: true });
-                }
-                const safeName = layers[i].replace(/\./g, '_');
-                const baseName = path.basename(modifiedFile, '.kicad_pcb');
-                fs.writeFileSync(path.join(debugDir, `${baseName}_${safeName}_original.svg`), croppedOriginal);
-                fs.writeFileSync(path.join(debugDir, `${baseName}_${safeName}_modified.svg`), croppedModified);
-            }
+            // Debug SVG creation removed per requirements
+            // if (hasDifferences && croppedOriginal && croppedModified) {
+            //     const debugDir = path.join(path.dirname(modifiedFile), '_debug_svgs');
+            //     if (!fs.existsSync(debugDir)) {
+            //         fs.mkdirSync(debugDir, { recursive: true });
+            //     }
+            //     const safeName = layers[i].replace(/\./g, '_');
+            //     const baseName = path.basename(modifiedFile, '.kicad_pcb');
+            //     fs.writeFileSync(path.join(debugDir, `${baseName}_${safeName}_original.svg`), croppedOriginal);
+            //     fs.writeFileSync(path.join(debugDir, `${baseName}_${safeName}_modified.svg`), croppedModified);
+            // }
         }
 
         const htmlFilePath = outputHtmlPath || path.join(path.dirname(modifiedFile), 'gitdiff-results.html');
@@ -148,8 +150,18 @@ export async function generateDiffs(options: DiffOptions): Promise<string> {
             // Textual/netlist/BOM diffs are optional — don't block the main flow
         }
 
-        const htmlContent = await generateHtmlReport(htmlLayers, textualDiff, netlistDiff, bomDiff);
+        const htmlContent = await generateHtmlReport(htmlLayers, textualDiff, netlistDiff, bomDiff, { original: originalFile, modified: modifiedFile });
         fs.writeFileSync(htmlFilePath, htmlContent);
+
+        // Clean up temporary _diff_svgs directory
+        const diffSvgDir = path.join(path.dirname(modifiedFile), '_diff_svgs');
+        if (fs.existsSync(diffSvgDir)) {
+            try {
+                fs.rmSync(diffSvgDir, { recursive: true, force: true });
+            } catch (cleanupError) {
+                console.warn(`Warning: Failed to clean up _diff_svgs directory:`, cleanupError);
+            }
+        }
 
         console.log(`HTML report generated at: ${htmlFilePath}`);
         return htmlFilePath;

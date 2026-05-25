@@ -1,5 +1,3 @@
-const LEAF_TAGS = ['path', 'circle', 'rect', 'line', 'ellipse', 'polygon', 'polyline', 'text'];
-
 interface LeafElement {
     tag: string;
     attributes: string;

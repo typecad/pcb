@@ -3,7 +3,7 @@ import { promisify } from 'node:util';
 import * as crypto from 'node:crypto';
 import * as fs from 'fs';
 import * as path from 'path';
-import tempDir from 'temp-dir';
+import { tmpdir } from 'node:os';
 import { parse, SNode, isList } from '@typecad/typecad/dist/sexpr/index.js';
 
 const execFileAsync = promisify(execFile);
@@ -219,44 +219,40 @@ export async function executeKicadSvgExport(
     const pcbBasename = path.basename(pcbFile, '.kicad_pcb');
     const tempSvgPath = createTempFilePath(`gitdiff_${pcbBasename}_`, `${layer}.svg`);
 
-    await execFileAsync(kicadCliPath, [
-        'pcb', 'export', 'svg',
-        ...(theme ? ['--theme', theme] : []),
-        '--drill-shape-opt', '0',
-        '--cdnp',
-        '--exclude-drawing-sheet',
-        '--page-size-mode', '2',
-        '--layers', layer,
-        '--mode-single',
-        '--output', tempSvgPath,
-        pcbFile
-    ]);
+    try {
+        await execFileAsync(kicadCliPath, [
+            'pcb', 'export', 'svg',
+            ...(theme ? ['--theme', theme] : []),
+            '--drill-shape-opt', '0',
+            '--cdnp',
+            '--exclude-drawing-sheet',
+            '--page-size-mode', '2',
+            '--layers', layer,
+            '--mode-single',
+            '--output', tempSvgPath,
+            pcbFile
+        ]);
 
-    if (!fs.existsSync(tempSvgPath)) {
-        return '';
+        if (!fs.existsSync(tempSvgPath)) {
+            return '';
+        }
+
+        return sanitizeSvg(fs.readFileSync(tempSvgPath, 'utf-8'));
+    } finally {
+        cleanupTempFiles([tempSvgPath]);
     }
-
-    const svgContent = sanitizeSvg(fs.readFileSync(tempSvgPath, 'utf-8'));
-
-    const debugDir = path.join(path.dirname(pcbFile), '_debug_svgs');
-    if (!fs.existsSync(debugDir)) {
-        fs.mkdirSync(debugDir, { recursive: true });
-    }
-    const debugPath = path.join(debugDir, `${pcbBasename}_${layer}.svg`);
-    fs.copyFileSync(tempSvgPath, debugPath);
-
-    cleanupTempFiles([tempSvgPath]);
-
-    return svgContent;
 }
 
 export function createTempFilePath(prefix: string, suffix: string): string {
     const uniqueId = crypto.randomUUID();
-    return path.join(tempDir, `${prefix}${uniqueId}_${suffix}`);
+    return path.join(tmpdir(), `${prefix}${uniqueId}_${suffix}`);
 }
 
 export function parseHexColor(hexColor: string): { r: number; g: number; b: number } {
     const hex = hexColor.replace('#', '');
+    if (!/^[0-9a-fA-F]{6}$/.test(hex)) {
+        throw new Error(`Invalid hex color "${hexColor}". Expected format: #RRGGBB (e.g., #ff6600)`);
+    }
     const r = parseInt(hex.substring(0, 2), 16);
     const g = parseInt(hex.substring(2, 4), 16);
     const b = parseInt(hex.substring(4, 6), 16);
@@ -291,7 +287,7 @@ export function cleanupTempFiles(filePaths: string[]): number {
     let cleanedCount = 0;
     for (const filePath of filePaths) {
         try {
-            if (filePath.startsWith(tempDir) && fs.existsSync(filePath)) {
+            if (filePath.startsWith(tmpdir()) && fs.existsSync(filePath)) {
                 fs.unlinkSync(filePath);
                 cleanedCount++;
             }

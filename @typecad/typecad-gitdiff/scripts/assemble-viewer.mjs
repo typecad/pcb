@@ -7,6 +7,8 @@ const projectRoot = path.resolve(__dirname, '..');
 
 const htmlPath = path.join(projectRoot, 'src', 'viewer', 'diff-viewer.html');
 const cssPath = path.join(projectRoot, 'src', 'viewer', 'diff-viewer.css');
+const basecoatPath = path.join(projectRoot, 'basecoat.cdn.min.css');
+const faviconPath = path.join(projectRoot, 'favicon.ico');
 const jsPath = path.join(projectRoot, 'dist', 'viewer', 'diff-viewer.js');
 const outputPath = path.join(projectRoot, 'dist', 'diff-viewer.html');
 
@@ -27,7 +29,18 @@ let html = fs.readFileSync(htmlPath, 'utf8');
 const css = fs.readFileSync(cssPath, 'utf8');
 const js = fs.readFileSync(jsPath, 'utf8');
 
-html = html.replace('<!-- INLINE_CSS -->', `<style>\n${css}\n</style>`);
+let combinedCss = css;
+if (fs.existsSync(basecoatPath)) {
+    combinedCss = fs.readFileSync(basecoatPath, 'utf8') + '\n' + css;
+}
+
+html = html.replace('<!-- INLINE_CSS -->', `<style>\n${combinedCss}\n</style>`);
+
+if (fs.existsSync(faviconPath)) {
+    const faviconB64 = fs.readFileSync(faviconPath).toString('base64');
+    html = html.replace('</title>', `</title>\n    <link rel="icon" type="image/x-icon" href="data:image/x-icon;base64,${faviconB64}" />`);
+}
+
 html = html.replace('<!-- INLINE_JS -->', `<script>\n${js}\n</script>`);
 
 fs.mkdirSync(path.dirname(outputPath), { recursive: true });

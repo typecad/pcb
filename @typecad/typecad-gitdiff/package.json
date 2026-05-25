@@ -18,11 +18,13 @@
     "typecad-gitdiff": "dist/cli/index.js"
   },
   "files": [
-    "dist/**/*",
-    "dist/diff-viewer.html"
+    "dist/**/*"
   ],
   "publishConfig": {
     "access": "public"
+  },
+  "engines": {
+    "node": ">=16.7.0"
   },
   "scripts": {
     "build": "tsc && tsc -p tsconfig.viewer.json && node scripts/assemble-viewer.mjs",
@@ -41,9 +43,6 @@
     "vitest": "^3.2.1"
   },
   "dependencies": {
-    "@typecad/typecad": "^0.2.19",
-    "open": "^10.1.0",
-    "temp-dir": "^3.0.0",
-    "yocto-spinner": "^0.2.0"
+    "@typecad/typecad": "^0.2.19"
   }
 }

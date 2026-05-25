@@ -22,7 +22,7 @@ function cleanSvgForInlining(svgContent: string): string {
     return svg.trim();
 }
 
-export async function generateHtmlReport(htmlLayers: LayerInfo[], textualDiff?: TextualDiff, netlistDiff?: NetlistDiff, bomDiff?: BomDiff): Promise<string> {
+export async function generateHtmlReport(htmlLayers: LayerInfo[], textualDiff?: TextualDiff, netlistDiff?: NetlistDiff, bomDiff?: BomDiff, fileNames?: { original: string; modified: string }): Promise<string> {
     const currentDir = path.dirname(fileURLToPath(import.meta.url));
     const projectRoot = path.resolve(currentDir, '..');
     const templatePath = path.join(projectRoot, 'diff-viewer.html');
@@ -57,11 +57,15 @@ export async function generateHtmlReport(htmlLayers: LayerInfo[], textualDiff?: 
 
     const timestamp = new Date().toISOString();
     const cacheId = Date.now();
+    const titleBase = fileNames
+        ? `${path.basename(fileNames.original)} vs ${path.basename(fileNames.modified)}`
+        : 'PCB Layer Diff Viewer';
     htmlContent = htmlContent.replace('<title>PCB Layer Diff Viewer</title>',
-        `<title>PCB Layer Diff Viewer - ${timestamp}</title>`);
+        `<title>${titleBase} - ${timestamp}</title>`);
 
     htmlContent = htmlContent.replace('<meta name="viewport"',
-        `<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+        `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data:;" />
+        <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
         <meta http-equiv="Pragma" content="no-cache" />
         <meta http-equiv="Expires" content="0" />
         <meta name="cache-id" content="${cacheId}" />

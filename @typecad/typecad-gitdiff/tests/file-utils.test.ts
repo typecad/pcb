@@ -169,4 +169,10 @@ describe('parseHexColor', () => {
         expect(g).toBe(255);
         expect(b).toBe(255);
     });
+
+    it('throws on invalid hex color', () => {
+        expect(() => parseHexColor('red')).toThrow('Invalid hex color');
+        expect(() => parseHexColor('#12345')).toThrow('Invalid hex color');
+        expect(() => parseHexColor('#gggggg')).toThrow('Invalid hex color');
+    });
 });

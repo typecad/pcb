@@ -176,8 +176,7 @@ export default defineConfig({
   } ${answers.packages.includes("graphviz") ? `@typecad/graphviz` : ""} ${
     answers.packages.includes("jlcpcb") ? `@typecad/jlcpcb-export` : ""
   } ${answers.packages.includes("prompt") ? `@typecad/typecad-prompt` : ""} ${
-    answers.packages.includes("docgen") ? `@typecad/typecad-docgen` : ""
-  } ${answers.packages.includes("wiring") ? `@typecad/wiring` : ""} ${
+    answers.packages.includes("wiring") ? `@typecad/wiring` : ""} ${
     answers.packages.includes("jlcpcb-parts") ? `@typecad/jlcpcb-parts` : ""
   } ${answers.packages.includes("typecad-mcp") ? `@typecad/typecad-mcp` : ""
   }`;
@@ -216,6 +215,8 @@ export default defineConfig({
     return;
   }
 
+  package_json.type = "module";
+
   package_json.scripts["build"] = `typecad build`;
   package_json.scripts["add_component"] = `typecad add component`;
   package_json.scripts["add_package"] = `typecad add package`;
@@ -226,18 +227,11 @@ export default defineConfig({
   ] = `npx open-cli ./build/${answers.name}.kicad_pcb`;
   package_json.scripts["diff"] = `typecad diff HEAD ./build/${answers.name}.kicad_pcb`;
 
-  if (answers.packages.includes("docgen")) {
-    package_json.scripts["docs"] = `${path.join(
-      ".",
-      "node_modules",
-      ".bin",
-      "typecad-docgen"
-    )} ${path.join(".", "docs", `${answers.name}.md`)} ${path.join(
-      ".",
-      "build",
-      `${answers.name}.kicad_pcb`
-    )}`;
-  }
+  package_json.scripts["docs"] = `typecad doc ${path.join(".", "docs", `${answers.name}.md`)} ${path.join(
+    ".",
+    "build",
+    `${answers.name}.kicad_pcb`
+  )}`;
 
   if (answers.packages.includes("jlcpcb-parts")) {
     package_json.scripts["jlcpcb_parts"] = `${path.join(
@@ -325,8 +319,7 @@ export default defineConfig({
     }
   }
 
-  if (answers.packages.includes("docgen")) {
-    const docsDir = `./${answers.name}/hw/docs`;
+  const docsDir = `./${answers.name}/hw/docs`;
   if (!fs.existsSync(docsDir)) {
     fs.mkdirSync(docsDir, { recursive: true });
   }
@@ -386,7 +379,6 @@ _flipped_
       )
     );
     return;
-  }
   }
 
   let code_workspace: Record<string, any> = {};

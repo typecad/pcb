@@ -28,7 +28,7 @@
   },
   "scripts": {
     "typecad": "node ./dist/cli/typecad/index.js",
-    "build": "tsc && tsc -p tsconfig.cli.json && tsc -p tsconfig.gitdiff-viewer.json && node scripts/assemble-gitdiff-viewer.mjs",
+    "build": "tsc && tsc -p tsconfig.cli.json && tsc -p tsconfig.gitdiff-viewer.json && node scripts/assemble-gitdiff-viewer.mjs && node scripts/copy-docgen-assets.mjs",
     "typecheck": "tsc --noEmit",
     "obfuscate": "javascript-obfuscator dist --output dist-obfuscated --config obfuscator.config.json",
     "obfuscate:strong": "javascript-obfuscator dist --output dist-obfuscated --config obfuscator.strong.config.json",
@@ -50,6 +50,7 @@
   "author": "typeCAD",
   "license": "EULA",
   "devDependencies": {
+    "@types/markdown-it": "^14.1.2",
     "@types/node": "^22.13.0",
     "cpy-cli": "^6.0.0",
     "javascript-obfuscator": "^4.1.0",
@@ -61,15 +62,23 @@
     "vitest": "^3.2.1"
   },
   "dependencies": {
+    "@hackmd/markdown-it-task-lists": "^2.1.4",
     "@inquirer/prompts": "^8.4.2",
+    "@shikijs/markdown-it": "^4.1.0",
     "@typecad/passives": "^0.1.44",
     "@typecad/typecad": "^0.2.30",
-    "@typecad/typecad-docgen": "^1.0.3",
     "acorn": "^8.16.0",
     "acorn-walk": "^8.3.5",
     "chalk": "^5.6.2",
     "inquirer-file-selector": "^1.0.1",
-    "inquirer-select-pro": "1.0.0-alpha.9"
+    "inquirer-select-pro": "1.0.0-alpha.9",
+    "markdown-it": "^14.1.1",
+    "markdown-it-attrs": "^4.5.0",
+    "markdown-it-math": "^5.2.1",
+    "markdown-it-multimd-table-ext": "^4.2.35",
+    "markdown-it-textual-uml": "^0.17.1",
+    "mathup": "^1.0.0",
+    "temml": "^0.11.11"
   },
   "directories": {
     "doc": "docs",

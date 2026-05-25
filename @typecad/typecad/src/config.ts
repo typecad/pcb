@@ -34,10 +34,17 @@ function findConfigPath(): string | null {
 
 function loadTsConfig(configPath: string): TypeCADConfig {
   const fileUrl = 'file:///' + configPath.replace(/\\/g, '/');
+  const configDir = path.dirname(configPath);
+  const loadCode = [
+    `import('file://${configPath.replace(/\\/g, '/')}')`,
+    `.then(m=>process.stdout.write(JSON.stringify(m.default??m)))`,
+    `.catch(e=>{process.stderr.write(e.message||String(e));process.exit(1)})`,
+  ].join('');
+
   try {
     const result = execSync(
-      `npx tsx -e "import('${fileUrl}').then(m=>process.stdout.write(JSON.stringify(m.default??m)))"`,
-      { stdio: ['pipe', 'pipe', 'pipe'], timeout: 15000 }
+      `npx tsx --conditions=import -e "${loadCode}"`,
+      { stdio: ['pipe', 'pipe', 'pipe'], timeout: 15000, cwd: configDir }
     );
     const parsed = JSON.parse(result.toString());
     if (parsed && typeof parsed === 'object' && 'default' in parsed) {
@@ -45,9 +52,12 @@ function loadTsConfig(configPath: string): TypeCADConfig {
     }
     return parsed;
   } catch (error) {
+    const stderr = error instanceof Error && 'stderr' in error
+      ? (error as { stderr: Buffer }).stderr?.toString().trim()
+      : '';
     logger.error(
       chalk.red.bold(
-        `ERROR: cannot load ${path.basename(configPath)}. Check for syntax errors.`
+        `ERROR: cannot load ${path.basename(configPath)}. ${stderr || 'Check for syntax errors.'}`
       )
     );
     return {};

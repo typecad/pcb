@@ -13,6 +13,7 @@ import {
   showSearchHelp,
   showImportHelp,
   showDiffHelp,
+  showDocHelp,
 } from './help.js';
 import { run as runCreate } from './commands/create.js';
 import { run as runAddComponent } from './commands/add-component.js';
@@ -21,6 +22,7 @@ import { run as runBuild } from './commands/build.js';
 import { run as runSearch } from './commands/search.js';
 import { run as runImport } from './commands/import.js';
 import { run as runDiff } from './commands/diff.js';
+import { run as runDoc } from './commands/doc.js';
 
 function outputJson(data: unknown): void {
   console.log(JSON.stringify(data));
@@ -65,6 +67,10 @@ function showCommandHelp(command: string, subcommand: string): boolean {
   }
   if (command === 'diff') {
     showDiffHelp();
+    return true;
+  }
+  if (command === 'doc') {
+    showDocHelp();
     return true;
   }
   if (command === 'add') {
@@ -144,6 +150,10 @@ async function main(): Promise<void> {
 
       case 'diff':
         await runDiff(parsed);
+        break;
+
+      case 'doc':
+        await runDoc(parsed);
         break;
 
       default:

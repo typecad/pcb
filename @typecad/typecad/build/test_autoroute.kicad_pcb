@@ -11,26 +11,26 @@
     footprint
     "test:pad"
     (layer "F.Cu")
-    (property "Code" "typecad:v1:eyJ2IjoxLCJ1IjoiIiwibiI6ImMxIn0" (at 0 0 0) (layer "F.Fab") (hide yes) (uuid "bc4996e6-bd69-4732-8616-10211f4c1b80") (effects (font (size 1 1) (thickness 0.15))))
-    (uuid "386b86f0-7430-476e-8c56-83ec345abdb5")
+    (property "Code" "typecad:v1:eyJ2IjoxLCJ1IjoiIiwibiI6ImMxIn0" (at 0 0 0) (layer "F.Fab") (hide yes) (uuid "f41587d8-0b6d-4b39-a9b9-3ac437ad172e") (effects (font (size 1 1) (thickness 0.15))))
+    (uuid "18746a7d-2069-4b0b-ae8c-24d2fd2eaaf8")
     (at 10 10 0)
   )
   (
     footprint
     "test:pad"
     (layer "F.Cu")
-    (property "Code" "typecad:v1:eyJ2IjoxLCJ1IjoiIiwibiI6ImMyIn0" (at 0 0 0) (layer "F.Fab") (hide yes) (uuid "2248760f-10e2-46d5-bcea-468def90b3b1") (effects (font (size 1 1) (thickness 0.15))))
-    (uuid "4f72e4da-d062-460e-959f-48110b54ba63")
+    (property "Code" "typecad:v1:eyJ2IjoxLCJ1IjoiIiwibiI6ImMyIn0" (at 0 0 0) (layer "F.Fab") (hide yes) (uuid "637a8995-432b-49aa-b7a9-d2371a1db7ae") (effects (font (size 1 1) (thickness 0.15))))
+    (uuid "511ee835-0b6a-42ae-9f27-c119c3154bfb")
     (at 30 30 0)
   )
   (
     footprint
     "test:pad"
     (layer "F.Cu")
-    (property "Code" "typecad:v1:eyJ2IjoxLCJ1IjoiIiwibiI6ImMzIn0" (at 0 0 0) (layer "F.Fab") (hide yes) (uuid "fe54724b-7efd-4e46-ba2d-65ebd6976e49") (effects (font (size 1 1) (thickness 0.15))))
-    (uuid "94928d8b-ccda-4e3c-b567-c907fa1b6d17")
+    (property "Code" "typecad:v1:eyJ2IjoxLCJ1IjoiIiwibiI6ImMzIn0" (at 0 0 0) (layer "F.Fab") (hide yes) (uuid "53d1a5a5-5b18-488c-9e3a-a205d4ba57da") (effects (font (size 1 1) (thickness 0.15))))
+    (uuid "f1c7e047-de0e-427d-815e-28324b38966a")
     (at 50 50 0)
   )
-  (segment (start 10 10) (end 30 30) (width 0.2) (locked no) (layer "F.Cu") (net 1) (uuid "0aaad447-95a2-464c-b8f5-2faac395349b"))
-  (segment (start 30 30) (end 50 50) (width 0.2) (locked no) (layer "F.Cu") (net 1) (uuid "9425ff0f-e5e1-4aff-a714-ce8a67690b72"))
+  (segment (start 10 10) (end 30 30) (width 0.2) (locked no) (layer "F.Cu") (net 1) (uuid "863688b5-276d-416e-96b1-20f424bf0e98"))
+  (segment (start 30 30) (end 50 50) (width 0.2) (locked no) (layer "F.Cu") (net 1) (uuid "c7c9c2a6-6aea-482e-840f-7b1a1e811940"))
 )

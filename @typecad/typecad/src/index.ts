@@ -12,7 +12,7 @@ export { Package } from './package.js'
 export type { PackageOptions, PassiveFactory } from './package.js'
 export type { IPinPowerInfo } from './pcb/pcb_interfaces.js'
 export { KiCAD } from './kicad.js'
-// Note: kicad_cli_path must be exported as it is required by external packages (e.g. @typecad/typecad-docgen).
+// Note: kicad_cli_path must be exported as it is used internally by the docgen pipeline.
 // It was removed during a code review in error.
 export { kicad_cli_path } from './kicad.js'
 
@@ -72,3 +72,23 @@ export { annotateLayerSvgs, type SVGAnnotation } from './gitdiff/core/svg-diff-a
 export { type LayerInfo } from './gitdiff/utils/html-generator.js';
 export { allLayers, standardLayers } from './gitdiff/constants.js';
 export { cropSvg, sanitizeSvg, getFileHash, clearCache, detectInnerCopperLayers } from './gitdiff/utils/file-utils.js';
+
+// Docgen — PCB documentation generator
+export { generateDocumentation } from './cli/docgen/index.js';
+export { extractStackup, generateStackupSvgString, generateStackupSvgFromFile, generateStackupFiles } from './cli/docgen/utils/pcbLayerRenderer.js';
+export { parseMetadata } from './cli/docgen/utils/metadata.js';
+export { wrapSectionsInHtml } from './cli/docgen/utils/html.js';
+export { generateHtmlDocument, escapeHtml } from './cli/docgen/utils/template.js';
+export { pathExists, ensureDir } from './cli/docgen/utils/fs.js';
+export {
+    writeStringToFile,
+    writeBufferToFile,
+    cropSvg as cropSvgDocgen,
+    executeKicadSvgExport,
+    executeKicadDrillExport,
+    processKicadSvgLayers,
+    renderKicad3DView
+} from './cli/docgen/utils/svg.js';
+export { PCBConfig, SVGConfig, CacheConfig } from './cli/docgen/utils/config.js';
+export { TempFileManager, tempManager } from './cli/docgen/utils/tempFileManager.js';
+export { IMetadata, defaultMetadata, getDefaultMetadata } from './cli/docgen/types/metadata.js';

@@ -13,7 +13,8 @@ export function showTopLevelHelp(): void {
   console.log('  build               Build KiCAD output from typeCAD source');
   console.log('  search              Search KiCad schematic symbols');
   console.log('  import              Convert a KiCad PCB file to typeCAD code');
-  console.log('  diff                Compare two KiCad PCB files visually\n');
+  console.log('  diff                Compare two KiCad PCB files visually');
+  console.log('  doc                 Generate PCB documentation from Markdown\n');
   console.log('Global Options:');
   console.log('  --json              Output in machine-readable JSON');
   console.log('  --help              Show help for a command');
@@ -52,10 +53,10 @@ export function showCreateHelp(): void {
     '                        @typecad/jlcpcb-export, @typecad/typecad-prompt,'
   );
   console.log(
-    '                        @typecad/typecad-docgen, @typecad/wiring,'
+    '                        @typecad/wiring, @typecad/jlcpcb-parts,'
   );
   console.log(
-    '                        @typecad/jlcpcb-parts, @typecad/typecad-mcp\n'
+    '                        @typecad/typecad-mcp\n'
   );
   console.log('Without options, runs interactively with prompts.');
 }
@@ -213,4 +214,29 @@ export function showDiffHelp(): void {
   console.log('  typecad diff board_v1.kicad_pcb board_v2.kicad_pcb');
   console.log('  typecad diff HEAD~1 ./build/board.kicad_pcb');
   console.log('  typecad diff HEAD~1 HEAD -- board.kicad_pcb');
+}
+
+export function showDocHelp(): void {
+  console.log(
+    chalk.white.bold('typecad doc') +
+      ' - Generate PCB documentation from Markdown\n'
+  );
+  console.log(
+    'Generate a self-contained HTML document from a Markdown file and KiCad PCB file.'
+  );
+  console.log('\nUsage: typecad doc <markdown_file> <pcb_file> [options]\n');
+  console.log('Arguments:');
+  console.log('  <markdown_file>       Input Markdown file (.md)');
+  console.log('  <pcb_file>            KiCad PCB file (.kicad_pcb)\n');
+  console.log('Options:');
+  console.log('  -o, --output <file>   Output HTML file (default: input file with .html extension)');
+  console.log('  -v, --verbose         Enable verbose logging');
+  console.log('  -q, --quiet           Suppress non-error output');
+  console.log('      --no-open         Do not automatically open the generated HTML file\n');
+  console.log('Examples:');
+  console.log('  typecad doc docs/board.md build/board.kicad_pcb');
+  console.log('  typecad doc docs/board.md build/board.kicad_pcb -o output.html');
+  console.log('  typecad doc docs/board.md build/board.kicad_pcb --verbose');
+  console.log('  typecad doc docs/board.md build/board.kicad_pcb --quiet');
+  console.log('  typecad doc docs/board.md build/board.kicad_pcb --no-open');
 }

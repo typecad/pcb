@@ -25,7 +25,6 @@ function parseArguments() {
     "@typecad/graphviz": "graphviz",
     "@typecad/jlcpcb-export": "jlcpcb",
     "@typecad/typecad-prompt": "prompt",
-    "@typecad/typecad-docgen": "docgen",
     "@typecad/wiring": "wiring",
     "@typecad/jlcpcb-parts": "jlcpcb-parts",
     "@typecad/typecad-mcp": "typecad-mcp",
@@ -101,7 +100,7 @@ function showHelp() {
     "  @typecad/ngspice, @typecad/graphviz, @typecad/jlcpcb-export, @typecad/typecad-prompt,"
   );
   console.log(
-    "  @typecad/typecad-docgen, @typecad/wiring, @typecad/jlcpcb-parts, @typecad/typecad-mcp\n"
+    "  @typecad/wiring, @typecad/jlcpcb-parts, @typecad/typecad-mcp\n"
   );
   console.log("Examples:");
   console.log(
@@ -218,10 +217,6 @@ async function main(preparsedArgs?: Record<string, any>) {
           {
             name: "@typecad/typecad-prompt - generate prompts to use typeCAD with AI coding models",
             value: "prompt",
-          },
-          {
-            name: "@typecad/typecad-docgen - documentation generator for typeCAD PCB designs",
-            value: "docgen",
           },
           {
             name: "@typecad/wiring - programmatically create wiring diagrams",

@@ -224,6 +224,7 @@ export default defineConfig({
   package_json.scripts[
     "open_board"
   ] = `npx open-cli ./build/${answers.name}.kicad_pcb`;
+  package_json.scripts["diff"] = `typecad diff HEAD ./build/${answers.name}.kicad_pcb`;
 
   if (answers.packages.includes("docgen")) {
     package_json.scripts["docs"] = `${path.join(

@@ -9,14 +9,27 @@ import { parse, SNode, isList } from '@typecad/typecad/dist/sexpr/index.js';
 const execFileAsync = promisify(execFile);
 
 // In-memory SVG cache keyed by `fileHash:layer:theme`
-const svgCache = new Map<string, string>();
+const MAX_CACHE_SIZE = 256;
 
-// File content hash cache (filePath -> sha256)
+const svgCache = new Map<string, string>();
 const fileHashCache = new Map<string, string>();
+
+function evictIfNeeded(cache: Map<string, unknown>): void {
+    if (cache.size >= MAX_CACHE_SIZE) {
+        const keysIter = cache.keys();
+        const toDelete = Math.floor(MAX_CACHE_SIZE / 4);
+        for (let i = 0; i < toDelete; i++) {
+            const { value } = keysIter.next();
+            if (value === undefined) break;
+            cache.delete(value);
+        }
+    }
+}
 
 export function getFileHash(filePath: string): string {
     if (!fileHashCache.has(filePath)) {
         const content = fs.readFileSync(filePath);
+        evictIfNeeded(fileHashCache);
         fileHashCache.set(filePath, crypto.createHash('sha256').update(content).digest('hex'));
     }
     return fileHashCache.get(filePath)!;
@@ -279,6 +292,7 @@ export async function executeKicadSvgExportCached(
     const cached = svgCache.get(key);
     if (cached !== undefined) return cached;
     const svg = await executeKicadSvgExport(kicadCliPath, layer, pcbFile, theme);
+    evictIfNeeded(svgCache);
     svgCache.set(key, svg);
     return svg;
 }

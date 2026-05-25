@@ -14,6 +14,7 @@ export interface DiffOptions {
     fullMode: boolean;
     theme?: string;
     outputHtmlPath?: string;
+    kicadCliPath?: string;
 }
 
 function normalizeSvg(svg: string): string {
@@ -56,7 +57,7 @@ export async function generateDiffs(options: DiffOptions): Promise<string> {
         // Per-layer export with error recovery
         const allSvgResults: Array<{ originalSvg: string; modifiedSvg: string } | null> = [];
 
-        const kicadCli = kicad_cli_path;
+        const kicadCli = options.kicadCliPath || kicad_cli_path;
         if (!kicadCli) {
             throw new Error('KiCAD CLI not found. Ensure KiCAD is installed and accessible. You may need to run `new KiCAD()` before calling generateDiffs().');
         }

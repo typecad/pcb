@@ -12,7 +12,8 @@ export function showTopLevelHelp(): void {
   console.log('  add package         Create a reusable component package');
   console.log('  build               Build KiCAD output from typeCAD source');
   console.log('  search              Search KiCad schematic symbols');
-  console.log('  import              Convert a KiCad PCB file to typeCAD code\n');
+  console.log('  import              Convert a KiCad PCB file to typeCAD code');
+  console.log('  diff                Compare two KiCad PCB files visually\n');
   console.log('Global Options:');
   console.log('  --json              Output in machine-readable JSON');
   console.log('  --help              Show help for a command');
@@ -186,4 +187,30 @@ export function showImportHelp(): void {
     "Variable names are sourced from each footprint's 'Code' property."
   );
   console.log('If missing, the KiCad reference is used (e.g., U1, R3).');
+}
+
+export function showDiffHelp(): void {
+  console.log(
+    chalk.white.bold('typecad diff') +
+      ' - Visual PCB Comparison Tool\n'
+  );
+  console.log('Compare two KiCad PCB files and generate a visual diff report.\n');
+  console.log('Usage:');
+  console.log('  typecad diff [options] <original.kicad_pcb> <modified.kicad_pcb>');
+  console.log('  typecad diff [options] <rev> <file.kicad_pcb>');
+  console.log('  typecad diff [options] <rev1> <rev2> [--] <file.kicad_pcb>\n');
+  console.log('Options:');
+  console.log('  --full              Process all layers including User layers');
+  console.log('  --theme=<name>      Theme for SVG export (e.g. "Monokai")');
+  console.log('  --output=<path>     Output HTML file path\n');
+  console.log('Git vs Working Tree:');
+  console.log('  typecad diff HEAD~1 ./build/board.kicad_pcb');
+  console.log('  typecad diff main ./build/board.kicad_pcb\n');
+  console.log('Git Revision Comparison:');
+  console.log('  typecad diff HEAD~1 HEAD -- board.kicad_pcb');
+  console.log('  typecad diff main feature-branch -- board.kicad_pcb\n');
+  console.log('Examples:');
+  console.log('  typecad diff board_v1.kicad_pcb board_v2.kicad_pcb');
+  console.log('  typecad diff HEAD~1 ./build/board.kicad_pcb');
+  console.log('  typecad diff HEAD~1 HEAD -- board.kicad_pcb');
 }

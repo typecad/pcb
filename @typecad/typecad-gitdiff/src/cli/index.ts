@@ -8,7 +8,7 @@ import * as crypto from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { createRequire } from 'module';
 import { generateDiffs } from '../core/diff-generator.js';
-import { KiCAD } from '@typecad/typecad';
+import { KiCAD, kicad_cli_path } from '@typecad/typecad';
 import { openInBrowser } from '../utils/open.js';
 import createSpinner from '../utils/spinner.js';
 
@@ -20,16 +20,26 @@ function isGitRef(arg: string): boolean {
     return !arg.endsWith('.kicad_pcb') && !arg.startsWith('-') && !arg.includes('\\') && !arg.includes('/');
 }
 
+let gitTempFiles: string[] = [];
+
 async function resolveGitFile(rev: string, filePath: string): Promise<string> {
     const outPath = path.join(tmpdir(), `typecad-gitdiff-${crypto.randomUUID()}-${path.basename(filePath)}`);
     try {
         const result = await execFileAsync('git', ['show', `${rev}:${filePath}`], { maxBuffer: 50 * 1024 * 1024 });
         fs.writeFileSync(outPath, result.stdout);
+        gitTempFiles.push(outPath);
         return outPath;
     } catch {
         console.error(`Error: unable to resolve git revision "${rev}" for file "${filePath}"`);
         process.exit(1);
     }
+}
+
+function cleanupGitTempFiles(): void {
+    for (const f of gitTempFiles) {
+        try { fs.unlinkSync(f); } catch {}
+    }
+    gitTempFiles = [];
 }
 
 const args = process.argv.slice(2);
@@ -145,7 +155,8 @@ if (!originalFile.endsWith('.kicad_pcb') && !modifiedFile.endsWith('.kicad_pcb')
 
     const spinner = createSpinner({ text: 'processing files...' }).start();
     try {
-        new KiCAD();
+        const kicad = new KiCAD();
+        const resolvedCliPath = kicad_cli_path;
 
         const htmlFilePath = await generateDiffs({
             originalFile,
@@ -153,6 +164,7 @@ if (!originalFile.endsWith('.kicad_pcb') && !modifiedFile.endsWith('.kicad_pcb')
             fullMode,
             theme,
             outputHtmlPath,
+            kicadCliPath: resolvedCliPath,
         });
 
         await openInBrowser(htmlFilePath);
@@ -171,6 +183,8 @@ if (!originalFile.endsWith('.kicad_pcb') && !modifiedFile.endsWith('.kicad_pcb')
         console.log("   - Ensure both PCB files exist and are valid KiCAD files");
         console.log("   - Check that KiCAD CLI is properly installed");
         console.log("   - For git revisions, ensure you're inside a git repository");
+        cleanupGitTempFiles();
         process.exit(1);
     }
+    cleanupGitTempFiles();
 })();

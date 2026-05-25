@@ -64,3 +64,11 @@ export type {
   SymbolInfo,
   KiCadCacheMetadata,
 } from './kicad-symbols/index.js';
+
+// GitDiff — PCB visual comparison
+export { generateDiffs, type DiffOptions } from './gitdiff/core/diff-generator.js';
+export { computeTextualDiff, computeNetlistDiff, computeBomDiff, type TextualDiff, type ChangeDescription, type NetlistDiff, type NetDiffEntry, type BomDiff, type BomDiffEntry, type BomEntry } from './gitdiff/core/pcb-textual-diff.js';
+export { annotateLayerSvgs, type SVGAnnotation } from './gitdiff/core/svg-diff-annotator.js';
+export { type LayerInfo } from './gitdiff/utils/html-generator.js';
+export { allLayers, standardLayers } from './gitdiff/constants.js';
+export { cropSvg, sanitizeSvg, getFileHash, clearCache, detectInnerCopperLayers } from './gitdiff/utils/file-utils.js';

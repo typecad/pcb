@@ -42,13 +42,17 @@ export async function generateHtmlReport(htmlLayers: LayerInfo[], textualDiff?: 
         hasDifferences: layer.hasDifferences
     }));
 
+    function safeJson(value: unknown): string {
+        return JSON.stringify(value).replace(/<\/script>/gi, '<\\/script>');
+    }
+
     const layerDataScript = `
     <script>
       document.addEventListener("DOMContentLoaded", function () {
-        setLayerData(${JSON.stringify(layerData)});
-        ${textualDiff ? `setTextualDiff(${JSON.stringify(textualDiff)});` : ''}
-        ${netlistDiff ? `setNetlistDiff(${JSON.stringify(netlistDiff)});` : ''}
-        ${bomDiff ? `setBomDiff(${JSON.stringify(bomDiff)});` : ''}
+        setLayerData(${safeJson(layerData)});
+        ${textualDiff ? `setTextualDiff(${safeJson(textualDiff)});` : ''}
+        ${netlistDiff ? `setNetlistDiff(${safeJson(netlistDiff)});` : ''}
+        ${bomDiff ? `setBomDiff(${safeJson(bomDiff)});` : ''}
       });
     </script>
     `;

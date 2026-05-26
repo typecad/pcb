@@ -128,11 +128,6 @@ function extractFootprints(tree: SNode): Map<string, FootprintData> {
         const atNode = fp.child('at');
         const bbox = collectFootprintLocalBBox(fp);
         const fpRef = ref || '(no ref)';
-        if (bbox.minX !== 0 || bbox.minY !== 0 || bbox.maxX !== 0 || bbox.maxY !== 0) {
-            console.log(`[BBOX DEBUG] ${fpRef}: local bbox=(${bbox.minX.toFixed(2)}, ${bbox.minY.toFixed(2)}) to (${bbox.maxX.toFixed(2)}, ${bbox.maxY.toFixed(2)}), at=(${(atNode?.getNumber(1) || 0).toFixed(2)}, ${(atNode?.getNumber(2) || 0).toFixed(2)})`);
-        } else {
-            console.log(`[BBOX DEBUG] ${fpRef}: local bbox is EMPTY (0,0,0,0), fp has ${fp.findAll('fp_line').length} fp_line, ${fp.findAll('fp_rect').length} fp_rect, ${fp.findAll('pad').length} pad, ${fp.findAll('fp_text').length} fp_text`);
-        }
         map.set(uuid, {
             uuid,
             ref,
@@ -210,7 +205,6 @@ function footprintCenterAndRadius(fp: FootprintData): { cx: number; cy: number; 
     const radius = Math.max(Math.sqrt(dx * dx + dy * dy), 1);
     const w = fp.localMaxX - fp.localMinX;
     const h = fp.localMaxY - fp.localMinY;
-    console.log(`[BBOX DEBUG] footprintCenterAndRadius ${fp.ref}: at=(${fp.x.toFixed(2)},${fp.y.toFixed(2)}) localBBox=(${fp.localMinX.toFixed(2)},${fp.localMinY.toFixed(2)})-(${fp.localMaxX.toFixed(2)},${fp.localMaxY.toFixed(2)}) -> center=(${cx.toFixed(2)},${cy.toFixed(2)}) radius=${radius.toFixed(2)} w=${w.toFixed(2)} h=${h.toFixed(2)}`);
     return { cx, cy, radius, w, h };
 }
 

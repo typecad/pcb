@@ -24,7 +24,7 @@ import {
 import type { ITrackBuilder } from '../routing/types/length_match.js';
 import { TrackBuilder } from './pcb_track_builder.js';
 import { IPcbBoardContext } from './pcb_board_context.js';
-import { ISchematicNode } from '../types/schematic_types.js';
+import type { ISchematicNode } from '../types/schematic_types.js';
 import { IRoutingObstacle } from '../routing/shared/routing_grid.js';
 import { PadResolver } from '../routing/shared/pad_resolver.js';
 import { RoutingGrid } from '../routing/shared/routing_grid.js';

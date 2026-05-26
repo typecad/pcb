@@ -2,6 +2,8 @@ import * as fs from 'fs/promises';
 import { pathExists } from './fs.js';
 import { writeStringToFile } from './svg.js';
 import { PCBConfig, CacheConfig } from './config.js';
+import { parse, isList } from '../../../sexpr/index.js';
+import type { SExpr } from '../../../sexpr/index.js';
 
 interface Layer {
     name: string;
@@ -22,75 +24,29 @@ interface Stackup {
 interface CacheEntry {
     content?: string;
     stackup?: Stackup;
-    parsedExpr?: SExpr[];
     timestamp: number;
 }
 
 const pcbCache = new Map<string, CacheEntry>();
 
-type SExpr = string | SExpr[];
-
-function isStringSExpr(expr: SExpr): expr is string {
-    return typeof expr === 'string';
+function getString(expr: SExpr): string {
+    if (typeof expr === 'string') return expr;
+    return '';
 }
 
-function isArraySExpr(expr: SExpr): expr is SExpr[] {
-    return Array.isArray(expr);
-}
-
-function getSExprString(expr: SExpr): string {
-    return isStringSExpr(expr) ? expr : '';
-}
-
-function parseSExpression(expr: string): SExpr {
-    const quotedStrings: string[] = [];
-    const exprWithPlaceholders = expr.replace(/"([^"]*)"/g, (match, content) => {
-        quotedStrings.push(content);
-        return `"${quotedStrings.length - 1}"`;
-    });
-
-    const tokens = exprWithPlaceholders.match(/\(|\)|[^()\s]+/g) || [];
-    const stack: SExpr[][] = [];
-    let depth = 0;
-
-    for (const token of tokens) {
-        if (token === '(') {
-            stack.push([]);
-            depth++;
-        } else if (token === ')') {
-            depth--;
-            if (depth < 0) {
-                throw new Error('Unexpected closing parenthesis in S-expression');
-            }
-            const top = stack.pop();
-            if (stack.length > 0) {
-                stack[stack.length - 1].push(top!);
-            } else {
-                return top!;
-            }
-        } else {
-            const match = token.match(/^"(\d+)"$/);
-            if (match) {
-                const index = parseInt(match[1]);
-                if (index >= quotedStrings.length) {
-                    throw new Error(`Invalid string placeholder index ${index} in S-expression`);
-                }
-                if (stack.length > 0) {
-                    stack[stack.length - 1].push(quotedStrings[index]);
-                }
-            } else {
-                if (stack.length > 0) {
-                    stack[stack.length - 1].push(token);
-                }
-            }
+function getChild(node: SExpr, name: string): SExpr | null {
+    if (!isList(node)) return null;
+    for (const child of node) {
+        if (isList(child) && child.length > 0 && getString(child[0]) === name) {
+            return child;
         }
     }
+    return null;
+}
 
-    if (depth > 0) {
-        throw new Error(`Unterminated parenthesis in S-expression (${depth} unclosed)`);
-    }
-
-    return stack[0];
+function getStringAt(node: SExpr, index: number): string {
+    if (!isList(node) || index >= node.length) return '';
+    return getString(node[index]);
 }
 
 function cleanupCache() {
@@ -144,32 +100,21 @@ export async function extractStackup(pcbFilePath: string, forceReparse: boolean 
         }
 
         const pcbContent = await getPCBContent(pcbFilePath);
-        const parsed = parseSExpression(pcbContent);
+        const parsed = parse(pcbContent);
 
-        let stackupNode: SExpr[] | undefined;
-
-        function findStackup(node: SExpr): SExpr[] | undefined {
-            if (isArraySExpr(node) && node[0] === 'stackup') {
-                return node;
-            }
-            if (isArraySExpr(node)) {
-                for (const child of node) {
-                    const found = findStackup(child);
-                    if (found) return found;
-                }
-            }
-            return undefined;
+        if (!isList(parsed)) {
+            throw new Error('Failed to parse PCB file');
         }
 
-        stackupNode = isArraySExpr(parsed) ? parsed.find((node): node is SExpr[] =>
-            isArraySExpr(node) && node[0] === 'stackup'
-        ) : undefined;
-
+        let stackupNode: SExpr | null = getChild(parsed, 'setup');
+        if (stackupNode) {
+            stackupNode = getChild(stackupNode, 'stackup');
+        }
         if (!stackupNode) {
-            stackupNode = findStackup(parsed);
+            stackupNode = getChild(parsed, 'stackup');
         }
 
-        if (!stackupNode) {
+        if (!stackupNode || !isList(stackupNode)) {
             throw new Error('No stackup information found in PCB file');
         }
 
@@ -178,13 +123,12 @@ export async function extractStackup(pcbFilePath: string, forceReparse: boolean 
         let dielectricConstraints = false;
 
         for (const node of stackupNode.slice(1)) {
-            if (node[0] === 'layer') {
-                const layerName = isStringSExpr(node[1]) ? node[1].replace(/"/g, '') : '';
-                let layerType: string;
+            if (!isList(node)) continue;
+            const nodeKey = getStringAt(node, 0);
 
-                layerType = isArraySExpr(node[2]) ?
-                    node[2].slice(1).map(getSExprString).join(' ').replace(/"/g, '') :
-                    getSExprString(node[2]).replace(/"/g, '');
+            if (nodeKey === 'layer') {
+                const layerName = getStringAt(node, 1);
+                let layerType = getStringAt(node, 2);
 
                 if (layerName.startsWith('dielectric')) {
                     layerType = 'dielectric';
@@ -197,9 +141,9 @@ export async function extractStackup(pcbFilePath: string, forceReparse: boolean 
 
                 for (let i = 3; i < node.length; i++) {
                     const property = node[i];
-                    if (Array.isArray(property)) {
-                        const key = getSExprString(property[0]).toLowerCase();
-                        const value = property.slice(1).map(getSExprString).join(' ').replace(/"/g, '');
+                    if (isList(property)) {
+                        const key = getStringAt(property, 0).toLowerCase();
+                        const value = property.slice(1).map(p => getString(p)).join(' ').replace(/"/g, '');
 
                         switch (key) {
                             case 'color':
@@ -222,10 +166,10 @@ export async function extractStackup(pcbFilePath: string, forceReparse: boolean 
                 }
 
                 layers.push(layer);
-            } else if (node[0] === 'copper_finish') {
-                copperFinish = isStringSExpr(node[1]) ? node[1].replace(/"/g, '') : '';
-            } else if (node[0] === 'dielectric_constraints') {
-                dielectricConstraints = node[1] === 'yes';
+            } else if (nodeKey === 'copper_finish') {
+                copperFinish = getStringAt(node, 1);
+            } else if (nodeKey === 'dielectric_constraints') {
+                dielectricConstraints = getStringAt(node, 1) === 'yes';
             }
         }
 
@@ -438,18 +382,4 @@ export async function generateStackupSvgFromFile(pcbFilePath: string): Promise<s
     }
 
     return generateStackupSVG(stackup.data);
-}
-
-export async function generateStackupFiles(
-    pcbFilePath: string,
-    svgOutputPath?: string
-): Promise<{svgPath?: string}> {
-    const svgContent = await generateStackupSvgFromFile(pcbFilePath);
-    const result: {svgPath?: string} = {};
-
-    if (svgOutputPath) {
-        result.svgPath = await writeStringToFile(svgContent, svgOutputPath);
-    }
-
-    return result;
 }

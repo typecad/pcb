@@ -1,58 +1,5 @@
-type SExpr = string | SExpr[];
-
-function parseSExpression(expr: string): SExpr {
-    const quotedStrings: string[] = [];
-    const exprWithPlaceholders = expr.replace(/"([^"]*)"/g, (match, content) => {
-        quotedStrings.push(content);
-        return `"${quotedStrings.length - 1}"`;
-    });
-
-    const tokens = exprWithPlaceholders.match(/\(|\)|[^()\s]+/g) || [];
-    const stack: SExpr[][] = [];
-    let depth = 0;
-
-    for (const token of tokens) {
-        if (token === '(') {
-            stack.push([]);
-            depth++;
-        } else if (token === ')') {
-            depth--;
-            if (depth < 0) throw new Error('Unexpected closing parenthesis');
-            const top = stack.pop();
-            if (stack.length > 0) {
-                stack[stack.length - 1].push(top!);
-            } else {
-                return top!;
-            }
-        } else {
-            const match = token.match(/^"(\d+)"$/);
-            if (match) {
-                const index = parseInt(match[1]);
-                if (stack.length > 0) {
-                    stack[stack.length - 1].push(quotedStrings[index]);
-                }
-            } else {
-                if (stack.length > 0) {
-                    stack[stack.length - 1].push(token);
-                }
-            }
-        }
-    }
-
-    return stack[0];
-}
-
-function isString(expr: SExpr): expr is string {
-    return typeof expr === 'string';
-}
-
-function isArray(expr: SExpr): expr is SExpr[] {
-    return Array.isArray(expr);
-}
-
-function getString(expr: SExpr): string {
-    return isString(expr) ? expr : '';
-}
+import { parse, isList } from '../../../sexpr/index.js';
+import type { SExpr } from '../../../sexpr/index.js';
 
 interface ComponentInfo {
     designator: string;
@@ -60,53 +7,69 @@ interface ComponentInfo {
     footprint: string;
 }
 
-function findNodes(node: SExpr, name: string): SExpr[][] {
-    const results: SExpr[][] = [];
-    if (isArray(node)) {
-        if (node[0] === name) {
-            results.push(node);
-        }
-        for (const child of node) {
-            if (isArray(child)) {
-                results.push(...findNodes(child, name));
-            }
+function extractStringValue(expr: SExpr): string {
+    if (typeof expr === 'string') return expr;
+    if (Array.isArray(expr) && expr.length > 0) return extractStringValue(expr[0]);
+    return '';
+}
+
+function findChildren(node: SExpr, name: string): SExpr[] {
+    if (!isList(node)) return [];
+    const results: SExpr[] = [];
+    for (const child of node) {
+        if (isList(child) && child.length > 0 && extractStringValue(child[0]) === name) {
+            results.push(child);
         }
     }
     return results;
 }
 
+function getChild(node: SExpr, name: string): SExpr | null {
+    if (!isList(node)) return null;
+    for (const child of node) {
+        if (isList(child) && child.length > 0 && extractStringValue(child[0]) === name) {
+            return child;
+        }
+    }
+    return null;
+}
+
+function getStringAt(node: SExpr, index: number): string {
+    if (!isList(node) || index >= node.length) return '';
+    return extractStringValue(node[index]);
+}
+
 export async function extractComponents(pcbFilePath: string): Promise<Map<string, ComponentInfo>> {
     const fs = await import('fs/promises');
     const content = await fs.readFile(pcbFilePath, 'utf-8');
-    const parsed = parseSExpression(content);
+    const parsed = parse(content);
     const components = new Map<string, ComponentInfo>();
 
-    const footprints = findNodes(parsed, 'footprint');
+    if (!isList(parsed)) return components;
+
+    const footprints = findChildren(parsed, 'footprint');
     for (const fp of footprints) {
         let designator = '';
         let value = '';
-        const footprint = getString(fp[1]);
+        const footprint = getStringAt(fp, 1);
 
-        for (const prop of fp.slice(1)) {
-            if (!isArray(prop)) continue;
-            const key = getString(prop[0]);
+        for (const prop of findChildren(fp, 'property')) {
+            const propName = getStringAt(prop, 1);
+            const propValue = getStringAt(prop, 2);
+            if (propName === 'Reference') {
+                designator = propValue;
+            } else if (propName === 'Value') {
+                value = propValue;
+            }
+        }
 
-            if (key === 'property') {
-                const propName = getString(prop[1]);
-                const propValue = getString(prop[2]);
-                if (propName === 'Reference') {
-                    designator = propValue;
-                } else if (propName === 'Value') {
-                    value = propValue;
-                }
-            } else if (key === 'fp_text') {
-                const textType = getString(prop[1]);
-                const textValue = getString(prop[2]);
-                if (textType === 'reference') {
-                    designator = textValue;
-                } else if (textType === 'value') {
-                    value = textValue;
-                }
+        for (const txt of findChildren(fp, 'fp_text')) {
+            const textType = getStringAt(txt, 1);
+            const textValue = getStringAt(txt, 2);
+            if (textType === 'reference') {
+                designator = textValue;
+            } else if (textType === 'value') {
+                value = textValue;
             }
         }
 

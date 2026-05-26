@@ -18,6 +18,9 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "type": "module",
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "bin": {
     "typecad": "dist/cli/typecad/index.js",
     "kicad-symbols": "dist/kicad-symbols/cli/bin.js",
@@ -28,7 +31,7 @@
   },
   "scripts": {
     "typecad": "node ./dist/cli/typecad/index.js",
-    "build": "tsc && tsc -p tsconfig.cli.json && tsc -p tsconfig.gitdiff-viewer.json && node scripts/assemble-gitdiff-viewer.mjs && node scripts/copy-docgen-assets.mjs",
+    "build": "tsc && tsc -p tsconfig.gitdiff-viewer.json && node scripts/assemble-gitdiff-viewer.mjs && node scripts/copy-docgen-assets.mjs",
     "typecheck": "tsc --noEmit",
     "obfuscate": "javascript-obfuscator dist --output dist-obfuscated --config obfuscator.config.json",
     "obfuscate:strong": "javascript-obfuscator dist --output dist-obfuscated --config obfuscator.strong.config.json",
@@ -66,7 +69,6 @@
     "@inquirer/prompts": "^8.4.2",
     "@shikijs/markdown-it": "^4.1.0",
     "@typecad/passives": "^0.1.44",
-    "@typecad/typecad": "^0.2.30",
     "acorn": "^8.16.0",
     "acorn-walk": "^8.3.5",
     "chalk": "^5.6.2",

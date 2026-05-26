@@ -3,7 +3,7 @@ import path from "node:path";
 import chalk from "chalk";
 import { execSync } from "node:child_process";
 
-const runCommandQuiet = (command) => {
+const runCommandQuiet = (command: string) => {
   try {
     execSync(`${command}`);
   } catch (e) {
@@ -13,7 +13,7 @@ const runCommandQuiet = (command) => {
   return true;
 };
 
-export function create_project(answers) {
+export function create_project(answers: any) {
   let dir = `./${answers.name}/hw/build/lib/footprints`;
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });

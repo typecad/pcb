@@ -37,3 +37,16 @@ coverage/
 
 bundleDocs.js
 watch.js
+logging.js
+basecoat.cdn.min.css
+favicon.ico
+examples/
+true
+scripts/
+package-lock.json
+tsconfig.cli.json
+tsconfig.gitdiff-viewer.json
+tsconfig.base.json
+obfuscator.strong.config.json
+vitest.config.ts
+vitest.config.routing.ts

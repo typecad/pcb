@@ -2,9 +2,9 @@ import fs from 'node:fs';
 import chalk from 'chalk';
 import { basename, join as pathJoin } from 'node:path';
 
-function renderComponent(data) {
-    const pinsTableRows = data.pins.map(p => ` | ${p.number}     | ${p.name}  | ${p.type}      |`).join('\n');
-    const pinProperties = data.pins.map(p => `    ${p.name} = new Pin(this.reference, ${p.number}, '${p.type}', this);`).join('\n');
+function renderComponent(data: any) {
+    const pinsTableRows = data.pins.map((p: any) => ` | ${p.number}     | ${p.name}  | ${p.type}      |`).join('\n');
+    const pinProperties = data.pins.map((p: any) => `    ${p.name} = new Pin(this.reference, ${p.number}, '${p.type}', this);`).join('\n');
     return `import { Component, Pin } from "@typecad/typecad";
 /**
  | Pin # | Name | Type          |
@@ -20,7 +20,7 @@ ${pinProperties}
 }`;
 }
 
-export async function create_component(data) {
+export async function create_component(data: any) {
   const result = renderComponent(data);
 
   // make folder structure

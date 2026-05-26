@@ -20,7 +20,7 @@ function parseArguments() {
   const parsedArgs: Record<string, string | boolean | string[] | undefined> = {};
 
   // Mapping from npm package names to internal short names
-  const packageNameMap = {
+  const packageNameMap: Record<string, string> = {
     "@typecad/ngspice": "ngspice",
     "@typecad/graphviz": "graphviz",
     "@typecad/jlcpcb-export": "jlcpcb",
@@ -58,7 +58,7 @@ function parseArguments() {
 }
 
 // Check if all required arguments are provided for non-interactive mode
-function hasAllRequiredArgs(args) {
+function hasAllRequiredArgs(args: Record<string, string | boolean | string[] | undefined>) {
   const hasBasicArgs =
     args.hasOwnProperty("name") &&
     args.hasOwnProperty("pio") &&
@@ -123,7 +123,7 @@ async function main(preparsedArgs?: Record<string, any>) {
   }
 
   // Validate project name if provided
-  function validateProjectName(name) {
+  function validateProjectName(name: string) {
     if (name.includes("-") || name.includes(" ") || name.match(/^\d/)) {
       return `That's not a valid function name in TypeScript`;
     }

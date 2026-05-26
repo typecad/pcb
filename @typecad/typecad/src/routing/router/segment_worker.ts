@@ -72,10 +72,10 @@ parentPort?.on('message', async (payload: SegmentWorkerPayload) => {
     // executing top-level side-effects in the package entrypoint).
     let hostModule: RoutingGridModuleLike | undefined;
       try {
-        const routingGridSpec = '@typecad/typecad/dist/routing/shared/routing_grid.js';
+        const routingGridSpec = '../../routing/shared/routing_grid.js';
         hostModule = await import(routingGridSpec) as RoutingGridModuleLike;
       } catch (err: unknown) {
-        if (DEBUG_ENABLED) logger.debug(`[segment_worker] primary import ${'@typecad/typecad/dist/routing/shared/routing_grid.js'} failed: ${err instanceof Error ? err.stack || err.message : String(err)}`);
+        if (DEBUG_ENABLED) logger.debug(`[segment_worker] primary import of routing_grid failed: ${err instanceof Error ? err.stack || err.message : String(err)}`);
       // Fallback: first try sibling workspace package, then fall back to the
       // internal SimpleRoutingGrid implementation shipped with this plugin.
         try {

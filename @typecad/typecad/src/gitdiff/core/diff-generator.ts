@@ -7,6 +7,7 @@ import { executeKicadSvgExportCached, computeSvgBBox, cropSvgToBBox, detectInner
 import { LayerInfo, generateHtmlReport } from '../utils/html-generator.js';
 import { computeTextualDiff, computeNetlistDiff, computeBomDiff, computePcbBBox, type TextualDiff, type NetlistDiff, type BomDiff } from './pcb-textual-diff.js';
 import { annotateLayerSvgs } from './svg-diff-annotator.js';
+import logger from '../../logging.js';
 
 export interface DiffOptions {
     originalFile: string;
@@ -65,12 +66,12 @@ export async function generateDiffs(options: DiffOptions): Promise<string> {
             try {
                 orig = await executeKicadSvgExportCached(kicadCli, layer, originalFile, theme);
             } catch (e) {
-                console.warn(`Warning: failed to export layer "${layer}" from original file:`, e);
+                logger.warn(`Warning: failed to export layer "${layer}" from original file:`, e);
             }
             try {
                 mod = await executeKicadSvgExportCached(kicadCli, layer, modifiedFile, theme);
             } catch (e) {
-                console.warn(`Warning: failed to export layer "${layer}" from modified file:`, e);
+                logger.warn(`Warning: failed to export layer "${layer}" from modified file:`, e);
             }
             allSvgResults.push(orig || mod ? { originalSvg: orig, modifiedSvg: mod } : null);
         }
@@ -109,7 +110,7 @@ export async function generateDiffs(options: DiffOptions): Promise<string> {
                         hasDifferences = false;
                     }
                 } catch (e) {
-                    console.warn(`Warning: annotation failed for layer "${layers[i]}":`, e);
+                    logger.warn(`Warning: annotation failed for layer "${layers[i]}":`, e);
                 }
             }
 
@@ -148,10 +149,7 @@ export async function generateDiffs(options: DiffOptions): Promise<string> {
                 } else {
                     pcbBBox = origBBox || modBBox;
                 }
-                console.log('[ZOOM DEBUG] sharedBBox:', JSON.stringify(sharedBBox));
-                console.log('[ZOOM DEBUG] origBBox:', JSON.stringify(origBBox));
-                console.log('[ZOOM DEBUG] modBBox:', JSON.stringify(modBBox));
-                console.log('[ZOOM DEBUG] pcbBBox:', JSON.stringify(pcbBBox));
+
                 if (pcbBBox) {
                     // computeSvgBBox adds 2mm padding; undo it for the coordinate offset
                     const SVG_BBOX_PADDING = 2;
@@ -159,19 +157,16 @@ export async function generateDiffs(options: DiffOptions): Promise<string> {
                         x: sharedBBox.minX - pcbBBox.minX + SVG_BBOX_PADDING,
                         y: sharedBBox.minY - pcbBBox.minY + SVG_BBOX_PADDING,
                     };
-                    console.log('[ZOOM DEBUG] svgOffset:', JSON.stringify(svgOffset));
+
                 } else {
-                    console.log('[ZOOM DEBUG] pcbBBox is null — both files had no parseable coordinates');
+
                 }
             } else {
-                console.log('[ZOOM DEBUG] sharedBBox is null');
+
             }
-            if (textualDiff && textualDiff.changes.length > 0) {
-                const firstChange = textualDiff.changes[0];
-                console.log('[ZOOM DEBUG] first textual change:', JSON.stringify(firstChange));
-            }
+
         } catch (e) {
-            console.error('[ZOOM DEBUG] error computing offset:', e);
+    
         }
 
         const htmlContent = await generateHtmlReport(htmlLayers, textualDiff, netlistDiff, bomDiff, { original: originalFile, modified: modifiedFile }, svgOffset);
@@ -182,14 +177,14 @@ export async function generateDiffs(options: DiffOptions): Promise<string> {
             try {
                 fs.rmSync(diffSvgDir, { recursive: true, force: true });
             } catch (cleanupError) {
-                console.warn(`Warning: Failed to clean up _diff_svgs directory:`, cleanupError);
+                logger.warn(`Warning: Failed to clean up _diff_svgs directory:`, cleanupError);
             }
         }
 
-        console.log(`HTML report generated at: ${htmlFilePath}`);
+        logger.info(`HTML report generated at: ${htmlFilePath}`);
         return htmlFilePath;
     } catch (error) {
-        console.error('Error:', error);
+        logger.error('Error:', error);
         throw error;
     }
 }

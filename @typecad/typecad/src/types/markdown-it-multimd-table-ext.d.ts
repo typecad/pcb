@@ -7,6 +7,8 @@ declare module 'markdown-it-multimd-table-ext' {
         multibody: boolean;
         autolabel: boolean;
     }
-    const multimd_table_plugin: MarkdownIt.PluginWithOptions<Options>;
+    const multimd_table_plugin: {
+        (md: MarkdownIt, options?: Options): void;
+    };
     export default multimd_table_plugin;
-} 
+}

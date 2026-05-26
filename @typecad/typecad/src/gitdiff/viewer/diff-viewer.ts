@@ -699,7 +699,7 @@ function resetZoomPanInternal(): void {
 function setSvgOffset(dx: number, dy: number): void {
     SVG_OFFSET_X = dx;
     SVG_OFFSET_Y = dy;
-    console.log('[ZOOM DEBUG] setSvgOffset called: dx=' + dx + ', dy=' + dy);
+
 }
 
 function setLayerData(layerData: any[]): void {
@@ -723,8 +723,7 @@ function setLayerData(layerData: any[]): void {
         }
     });
 
-    console.log('[ZOOM DEBUG] setLayerData called. SVG_OFFSET_X=' + SVG_OFFSET_X + ', SVG_OFFSET_Y=' + SVG_OFFSET_Y);
-    console.log('[ZOOM DEBUG] availableLayers:', availableLayers.map(l => l.name).join(', '));
+
 
     populateLayerBadges();
     createImageLayers();
@@ -743,7 +742,7 @@ function setLayerData(layerData: any[]): void {
 
 function computeClientSideOffset(): void {
     if (SVG_OFFSET_X !== 0 || SVG_OFFSET_Y !== 0) {
-        console.log('[ZOOM DEBUG] offset already set by server: (' + SVG_OFFSET_X + ', ' + SVG_OFFSET_Y + ')');
+
         return;
     }
 
@@ -778,7 +777,7 @@ function computeClientSideOffset(): void {
     }
 
     if (!textualDiffData || !textualDiffData.changes) {
-        console.log('[ZOOM DEBUG] client fallback: no textual diff data');
+
         return;
     }
 
@@ -790,12 +789,12 @@ function computeClientSideOffset(): void {
     }
 
     if (pcbCoords.length === 0) {
-        console.log('[ZOOM DEBUG] client fallback: no PCB coordinates in diff');
+
         return;
     }
 
     if (svgViewBoxMinX == null) {
-        console.log('[ZOOM DEBUG] client fallback: no viewBox found');
+
         return;
     }
 
@@ -809,23 +808,19 @@ function computeClientSideOffset(): void {
     const offsetY = svgMinY - pcbMinY;
 
     if (Math.abs(offsetX) < 0.01 && Math.abs(offsetY) < 0.01) {
-        console.log('[ZOOM DEBUG] client fallback: offset is ~0, no correction needed');
+
         return;
     }
 
     SVG_OFFSET_X = offsetX;
     SVG_OFFSET_Y = offsetY;
 
-    console.log('[ZOOM DEBUG] CLIENT-SIDE offset computed: (' + SVG_OFFSET_X.toFixed(4) + ', ' + SVG_OFFSET_Y.toFixed(4) + ')');
-    console.log('[ZOOM DEBUG]   svgViewBox min: (' + svgViewBoxMinX + ', ' + svgViewBoxMinY + ')');
-    console.log('[ZOOM DEBUG]   svgContent min (Edge.Cuts): (' + svgContentMinX + ', ' + svgContentMinY + ')');
-    console.log('[ZOOM DEBUG]   pcbMin from diff: (' + pcbMinX.toFixed(4) + ', ' + pcbMinY.toFixed(4) + ')');
-    console.log('[ZOOM DEBUG]   WARNING: client-side offset uses min PCB coord from diff, which may not be the true board origin. Zoom may be slightly off.');
+
 }
 
 function dumpSvgDebugInfo(): void {
     const allSvgs = document.querySelectorAll('.image-layer svg') as NodeListOf<SVGSVGElement>;
-    console.log('[ZOOM DEBUG] Total SVG elements found: ' + allSvgs.length);
+
 
     allSvgs.forEach((svg, idx) => {
         const parentLayer = svg.closest('.image-layer') as HTMLElement | null;
@@ -833,30 +828,27 @@ function dumpSvgDebugInfo(): void {
         const layerType = parentLayer?.getAttribute('data-type') || 'unknown';
         const vb = svg.viewBox.baseVal;
         const bbox = svg.getBBox();
-        console.log('[ZOOM DEBUG] SVG[' + idx + '] layer=' + layerName + ' type=' + layerType +
-            ' viewBox={' + vb.x.toFixed(4) + ', ' + vb.y.toFixed(4) + ', ' + vb.width.toFixed(4) + ', ' + vb.height.toFixed(4) + '}' +
-            ' getBBox={' + bbox.x.toFixed(4) + ', ' + bbox.y.toFixed(4) + ', ' + bbox.width.toFixed(4) + ', ' + bbox.height.toFixed(4) + '}' +
-            ' display=' + (parentLayer?.style.display || 'not set'));
+
 
         const firstPath = svg.querySelector('path');
         if (firstPath) {
             const d = firstPath.getAttribute('d') || '';
             const firstCoordMatch = d.match(/M\s*(-?\d+\.?\d*)\s+(-?\d+\.?\d*)/);
             if (firstCoordMatch) {
-                console.log('[ZOOM DEBUG] SVG[' + idx + '] first path M coord: (' + firstCoordMatch[1] + ', ' + firstCoordMatch[2] + ')');
+
             }
         }
 
         const firstCircle = svg.querySelector('circle');
         if (firstCircle) {
-            console.log('[ZOOM DEBUG] SVG[' + idx + '] first circle: cx=' + firstCircle.getAttribute('cx') + ' cy=' + firstCircle.getAttribute('cy') + ' r=' + firstCircle.getAttribute('r'));
+
         }
     });
 
     const container = document.getElementById('imageStack');
     if (container) {
         const cRect = container.getBoundingClientRect();
-        console.log('[ZOOM DEBUG] imageStack container: ' + cRect.width.toFixed(1) + 'x' + cRect.height.toFixed(1) + ' at (' + cRect.left.toFixed(1) + ', ' + cRect.top.toFixed(1) + ')');
+
     }
 }
 
@@ -877,7 +869,7 @@ function setTextualDiff(data: TextualDiff): void {
     textualDiffData = data;
     if (data && data.changes && data.changes.length > 0) {
         const first = data.changes[0];
-        console.log('[ZOOM DEBUG] setTextualDiff first change: x=' + first.x + ', y=' + first.y + ', highlightRadius=' + first.highlightRadius);
+
     }
     renderSidebar();
     const toggleBtn = document.getElementById('diffSidebarToggle');
@@ -959,7 +951,7 @@ function zoomToChange(pcbX: number, pcbY: number, highlightRadius?: number, high
 
     const svg = document.querySelector('.image-layer[style*="display: block"] svg') as SVGSVGElement | null;
     if (!svg) {
-        console.log('[ZOOM DEBUG] zoomToChange: NO visible SVG found');
+
         return;
     }
 
@@ -979,21 +971,11 @@ function zoomToChange(pcbX: number, pcbY: number, highlightRadius?: number, high
     const px = (sx - vb.x) * scale + ox;
     const py = (sy - vb.y) * scale + oy;
 
-    console.log('========== ZOOM DEBUG zoomToChange ==========');
-    console.log('[ZOOM DEBUG] INPUT pcbX=' + pcbX + ', pcbY=' + pcbY);
-    console.log('[ZOOM DEBUG] SVG_OFFSET_X=' + SVG_OFFSET_X + ', SVG_OFFSET_Y=' + SVG_OFFSET_Y);
-    console.log('[ZOOM DEBUG] COMPUTED sx (svg coord x)=' + sx + ', sy (svg coord y)=' + sy);
-    console.log('[ZOOM DEBUG] viewBox: x=' + vb.x.toFixed(4) + ', y=' + vb.y.toFixed(4) + ', w=' + vb.width.toFixed(4) + ', h=' + vb.height.toFixed(4));
-    console.log('[ZOOM DEBUG] container: ' + cRect.width.toFixed(1) + 'x' + cRect.height.toFixed(1));
-    console.log('[ZOOM DEBUG] scaleX=' + scaleX.toFixed(4) + ', scaleY=' + scaleY.toFixed(4) + ', scale=' + scale.toFixed(4));
-    console.log('[ZOOM DEBUG] letterbox ox=' + ox.toFixed(4) + ', oy=' + oy.toFixed(4));
-    console.log('[ZOOM DEBUG] screen px=' + px.toFixed(4) + ', py=' + py.toFixed(4));
-    console.log('[ZOOM DEBUG] is sx inside viewBox x? ' + (sx >= vb.x && sx <= vb.x + vb.width));
-    console.log('[ZOOM DEBUG] is sy inside viewBox y? ' + (sy >= vb.y && sy <= vb.y + vb.height));
+
 
     const rw = highlightW || (highlightRadius || 1) * 2;
     const rh = highlightH || (highlightRadius || 1) * 2;
-    console.log('[ZOOM DEBUG] zoomToChange highlightW=' + highlightW + ', highlightH=' + highlightH + ', rw=' + rw + ', rh=' + rh);
+
     const rx = sx - rw / 2;
     const ry = sy - rh / 2;
     allSvgs.forEach((s) => {
@@ -1029,8 +1011,7 @@ function zoomToChange(pcbX: number, pcbY: number, highlightRadius?: number, high
     panTranslateX = cRect.width / 2 - px * targetZoom;
     panTranslateY = cRect.height / 2 - py * targetZoom;
 
-    console.log('[ZOOM DEBUG] targetZoom=' + targetZoom + ', panX=' + panTranslateX.toFixed(4) + ', panY=' + panTranslateY.toFixed(4));
-    console.log('========== END ZOOM DEBUG ==========');
+
 
     applyTransformAll();
 
@@ -1485,66 +1466,7 @@ function initializeTabs(): void {
     });
 }
 
-(window as any).debugZoom = function(pcbX: number, pcbY: number): void {
-    console.log('[ZOOM DEBUG] debugZoom(' + pcbX + ', ' + pcbY + ')');
-    console.log('[ZOOM DEBUG] Current SVG_OFFSET_X=' + SVG_OFFSET_X + ', SVG_OFFSET_Y=' + SVG_OFFSET_Y);
-    zoomToChange(pcbX, pcbY);
-};
 
-(window as any).debugDumpSvgCoords = function(): void {
-    const allSvgs = document.querySelectorAll('.image-layer svg') as NodeListOf<SVGSVGElement>;
-    console.log('[ZOOM DEBUG] === SVG Coordinate Dump ===');
-    console.log('[ZOOM DEBUG] SVG_OFFSET_X=' + SVG_OFFSET_X + ', SVG_OFFSET_Y=' + SVG_OFFSET_Y);
-
-    let changeIdx = 0;
-    if (textualDiffData && textualDiffData.changes) {
-        for (const change of textualDiffData.changes) {
-            if (change.x != null && change.y != null) {
-                console.log('[ZOOM DEBUG] Change[' + changeIdx + ']: category=' + change.category +
-                    ' desc="' + change.description.substring(0, 60) + '"' +
-                    ' PCB=(' + change.x + ', ' + change.y + ')' +
-                    ' SVG=(' + (change.x + SVG_OFFSET_X) + ', ' + (change.y + SVG_OFFSET_Y) + ')');
-                if (changeIdx >= 5) {
-                    console.log('[ZOOM DEBUG] ... and ' + (textualDiffData.changes.length - 6) + ' more changes');
-                    break;
-                }
-                changeIdx++;
-            }
-        }
-    }
-
-    allSvgs.forEach((svg, idx) => {
-        const parentLayer = svg.closest('.image-layer') as HTMLElement | null;
-        const layerName = parentLayer?.getAttribute('data-layer') || 'unknown';
-        const vb = svg.viewBox.baseVal;
-        const svgBBox = svg.getBBox();
-
-        const allPaths = svg.querySelectorAll('path');
-        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-        allPaths.forEach((p) => {
-            const d = p.getAttribute('d') || '';
-            const coordRegex = /(-?\d+\.?\d*)\s+(-?\d+\.?\d*)/g;
-            let m;
-            while ((m = coordRegex.exec(d)) !== null) {
-                const cx = parseFloat(m[1]);
-                const cy = parseFloat(m[2]);
-                if (cx < minX) minX = cx;
-                if (cy < minY) minY = cy;
-                if (cx > maxX) maxX = cx;
-                if (cy > maxY) maxY = cy;
-            }
-        });
-
-        console.log('[ZOOM DEBUG] SVG[' + idx + '] ' + layerName +
-            ' viewBox={' + vb.x.toFixed(2) + ',' + vb.y.toFixed(2) + ' ' + vb.width.toFixed(2) + 'x' + vb.height.toFixed(2) + '}' +
-            ' getBBox={' + svgBBox.x.toFixed(2) + ',' + svgBBox.y.toFixed(2) + ' ' + svgBBox.width.toFixed(2) + 'x' + svgBBox.height.toFixed(2) + '}' +
-            ' pathCoords range x=[' + minX.toFixed(2) + ',' + maxX.toFixed(2) + '] y=[' + minY.toFixed(2) + ',' + maxY.toFixed(2) + ']');
-    });
-
-    console.log('[ZOOM DEBUG] TIP: Use debugZoom(pcbX, pcbY) to test zoom to a specific PCB coordinate');
-    console.log('[ZOOM DEBUG] TIP: The RED crosshair shows where the zoom is targeting');
-    console.log('[ZOOM DEBUG] TIP: The GREEN dot shows the viewBox origin');
-};
 
 // Init
 document.addEventListener('DOMContentLoaded', () => {

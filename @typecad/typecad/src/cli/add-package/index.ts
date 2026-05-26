@@ -11,7 +11,7 @@ import {
   kicad_cli,
 } from './component/kicad.js';
 import { fileSelector } from 'inquirer-file-selector';
-import { convertEasyedaToKicad } from '../../../kipm/easyeda2kicadCore.js';
+import { convertEasyedaToKicad } from '../../kipm/easyeda2kicadCore.js';
 import chalk from 'chalk';
 import { basename } from 'node:path';
 import fs from 'node:fs';
@@ -68,7 +68,7 @@ function parseArguments() {
 /**
  * Check if all required arguments are provided for non-interactive mode
  */
-function hasAllRequiredArgs(args) {
+function hasAllRequiredArgs(args: Record<string, string | boolean | undefined>) {
   // Must have exactly one of empty or component
   const hasExactlyOneMode = (args.empty === true && args.component !== true) || 
                            (args.component === true && args.empty !== true);
@@ -296,7 +296,7 @@ async function main(preparsedArgs?: Record<string, any>) {
           return;
         }
         
-        footprint_recommendation = kicad_symbol(entered_symbol, '');
+        footprint_recommendation = kicad_symbol(entered_symbol, '')!;
         if (!footprint_recommendation) {
           console.error(chalk.red(`Error: Invalid KiCAD library symbol '${entered_symbol}'`));
           return;
@@ -310,7 +310,7 @@ async function main(preparsedArgs?: Record<string, any>) {
             if (!entered_symbol.includes(':')) {
               return `Not a valid symbol. It needs to be in this format 'symbol_library:symbol_name'`;
             }
-            footprint_recommendation = kicad_symbol(entered_symbol, '');
+            footprint_recommendation = kicad_symbol(entered_symbol, '')!;
             if (!footprint_recommendation) {
               return `Provide a valid KiCAD library symbol ('symbol_library:symbol_name')`;
             }
@@ -567,7 +567,7 @@ async function main(preparsedArgs?: Record<string, any>) {
           force: true,
         });
       } catch (error) {
-        console.error(`Error cleaning up temporary folder: ${error.message}`);
+        console.error(`Error cleaning up temporary folder: ${(error as Error).message}`);
       }
     }
   }

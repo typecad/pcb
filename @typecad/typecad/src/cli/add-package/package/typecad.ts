@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import chalk from 'chalk';
 
-function renderComponent(data) {
+function renderComponent(data: any) {
   const componentImport = data.component_name
     ? `\nimport { ${data.component_name} } from './${data.component_name}';`
     : '';
@@ -42,7 +42,7 @@ ${initU1}        // Passives
 `;
 }
 
-function renderPackageJson(data) {
+function renderPackageJson(data: any) {
   return `{
   "name": "${data.package_name}",
   "version": "1.0.0",
@@ -80,7 +80,7 @@ fs.cp(
   }
 );`
 
-export async function create_package(data) {
+export async function create_package(data: any) {
   const pascal_package_name = data.package_name.charAt(0).toUpperCase() + data.package_name.slice(1);
   const enriched_data = { ...data, package_name_pascal: pascal_package_name };
 

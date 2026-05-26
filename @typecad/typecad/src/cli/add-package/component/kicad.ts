@@ -3,10 +3,10 @@ import { parse, serialize, Sym, nameOf } from '../../../sexpr/index.js';
 import os from 'node:os';
 
 let symbol_file_contents = '';
-let _parsed = null;
+let _parsed: any = null;
 import { KiCAD } from "../../../kicad.js";
 
-let _pins = [];
+let _pins: any[] = [];
 let symbol_lib = '';
 
 export function kicad_cli() {
@@ -195,23 +195,22 @@ export function local_symbol_to_footprint(symbol_path: string) {
   return '';
 }
 
-export function sanitize_name(string) {
+export function sanitize_name(string: string) {
   let _string = string;
-  // catch invalid symbols and replace with _
   _string = _string.replace(/[\|~{}//&;\$%@"*=<>\(\)\+,-]/g, '_');
   _string = _string.replaceAll('__', '_');
   // catch if starts with a number
-  if (!isNaN(_string.charAt(0))) {
+  if (!isNaN(Number(_string.charAt(0)))) {
     //If is a number
     _string = '_' + _string;
   }
   return _string;
 }
 
-export function sanitize_number(number) {
+export function sanitize_number(number: string | number) {
   let _number = number;
 
-  if (isNaN(_number)) {
+  if (isNaN(Number(_number))) {
     _number = "'" + _number + "'";
   }
   return _number;

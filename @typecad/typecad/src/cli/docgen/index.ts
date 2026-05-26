@@ -345,7 +345,7 @@ export async function generateDocumentation(
     });
 
     logger.debug('Configuring markdown plugins...', verbose);
-    md.use(multimd_table_plugin, { multiline: true, rowspan: true, headerless: true, multibody: true, autolabel: true });
+    md.use(multimd_table_plugin as any, { multiline: true, rowspan: true, headerless: true, multibody: true, autolabel: true });
     md.use(markdownItAttrs, { leftDelimiter: '{', rightDelimiter: '}', allowedAttributes: [] });
     md.use(markdownItTextualUml);
     md.use(markdownItMath, {

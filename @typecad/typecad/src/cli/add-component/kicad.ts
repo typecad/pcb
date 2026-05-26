@@ -6,15 +6,15 @@ import { join } from "node:path";
 import { KiCAD } from "../../kicad.js";
 
 let symbol_file_contents = "";
-let _parsed = null;
-let _pins = [];
+let _parsed: any = null;
+let _pins: any[] = [];
 let symbol_lib = "";
 
 export function kicad_cli() {
   return KiCAD.cliPath;
 }
 
-export function kicad_symbol(symbol, folder = "./") {
+export function kicad_symbol(symbol: string, folder = "./") {
   let symbol_file_name = symbol.split(":");
 
   const kicad = new KiCAD();
@@ -198,7 +198,7 @@ export function local_symbol_to_footprint(symbol_path: string) {
   return "";
 }
 
-export function sanitize_name(string) {
+export function sanitize_name(string: string) {
   let _string = string;
   // catch invalid symbols and replace with _
   _string = _string.replace(/[\|~{}//&;\$%@"*=<>#\(\)\+,-]/g, "_");
@@ -210,14 +210,14 @@ export function sanitize_name(string) {
     _string = _string.substring(0, _string.length - 1);
   }
   // catch if starts with a number
-  if (!isNaN(_string.charAt(0))) {
+  if (!isNaN(Number(_string.charAt(0)))) {
     //If is a number
     _string = "_" + _string;
   }
   return _string;
 }
 
-export function return_list_of_footprints(footprint_path) {
+export function return_list_of_footprints(footprint_path: string) {
   let found_footprints = [];
 
   try {
@@ -238,10 +238,10 @@ export function return_list_of_footprints(footprint_path) {
   return found_footprints;
 }
 
-export function sanitize_number(number) {
+export function sanitize_number(number: string | number) {
   let _number = number;
 
-  if (isNaN(_number)) {
+  if (isNaN(Number(_number))) {
     _number = "'" + _number + "'";
   }
   return _number;

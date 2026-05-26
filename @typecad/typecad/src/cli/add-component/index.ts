@@ -14,7 +14,7 @@ import { create_component } from "./typecad.js";
 import { basename } from "node:path";
 import { fileSelector } from "inquirer-file-selector";
 import chalk from "chalk";
-import { convertEasyedaToKicad } from "../../../kipm/easyeda2kicadCore.js";
+import { convertEasyedaToKicad } from "../../kipm/easyeda2kicadCore.js";
 import fs from "node:fs";
 import { execSync } from "node:child_process";
 import path from "node:path";
@@ -58,7 +58,7 @@ function parseArguments() {
  * @param {Object} args - Parsed arguments
  * @returns {boolean} True if all required args are present
  */
-function hasAllRequiredArgs(args) {
+function hasAllRequiredArgs(args: Record<string, any>) {
   // Check if we have symbol and footprint source specifications
   const hasSymbolSource = args.hasOwnProperty("symbol_source");
   const hasFootprintSource = args.hasOwnProperty("footprint_source");
@@ -284,10 +284,10 @@ async function main(preparsedArgs?: Record<string, any>) {
 }
 
 async function handleMixedSources(
-  symbolSource,
-  footprintSource,
-  cmdArgs,
-  isNonInteractive
+  symbolSource: string,
+  footprintSource: string,
+  cmdArgs: Record<string, any>,
+  isNonInteractive: boolean
 ) {
   let symbolData: any = {};
   let footprintData: any = {};
@@ -334,7 +334,7 @@ async function handleMixedSources(
   }
 }
 
-async function handleSymbolSource(source, cmdArgs, isNonInteractive) {
+async function handleSymbolSource(source: string, cmdArgs: Record<string, any>, isNonInteractive: boolean) {
   if (source === "kicad") {
     return await handleKicadSymbol(cmdArgs, isNonInteractive);
   } else if (source === "local") {
@@ -346,10 +346,10 @@ async function handleSymbolSource(source, cmdArgs, isNonInteractive) {
 }
 
 async function handleFootprintSource(
-  source,
-  cmdArgs,
-  isNonInteractive,
-  symbolData
+  source: string,
+  cmdArgs: Record<string, any>,
+  isNonInteractive: boolean,
+  symbolData: any
 ) {
   if (source === "kicad") {
     return await handleKicadFootprint(cmdArgs, isNonInteractive, symbolData);
@@ -361,7 +361,7 @@ async function handleFootprintSource(
   return null;
 }
 
-async function handleKicadSymbol(cmdArgs, isNonInteractive) {
+async function handleKicadSymbol(cmdArgs: Record<string, any>, isNonInteractive: boolean) {
   let entered_symbol;
 
   if (isNonInteractive) {
@@ -465,7 +465,7 @@ async function handleKicadSymbol(cmdArgs, isNonInteractive) {
   };
 }
 
-async function handleLocalSymbol(cmdArgs, isNonInteractive) {
+async function handleLocalSymbol(cmdArgs: Record<string, any>, isNonInteractive: boolean) {
   let entered_symbol, symbolPath, _chosen_symbol;
 
   if (isNonInteractive) {
@@ -576,7 +576,7 @@ async function handleLocalSymbol(cmdArgs, isNonInteractive) {
   }
 }
 
-async function handleEasyedaSymbol(cmdArgs, isNonInteractive) {
+async function handleEasyedaSymbol(cmdArgs: Record<string, any>, isNonInteractive: boolean) {
   const pattern = /^C\d+$/;
   let c_component;
 
@@ -666,7 +666,7 @@ async function handleEasyedaSymbol(cmdArgs, isNonInteractive) {
   };
 }
 
-async function handleKicadFootprint(cmdArgs, isNonInteractive, symbolData) {
+async function handleKicadFootprint(cmdArgs: Record<string, any>, isNonInteractive: boolean, symbolData: any) {
   let entered_footprint;
 
   if (isNonInteractive) {
@@ -760,7 +760,7 @@ async function handleKicadFootprint(cmdArgs, isNonInteractive, symbolData) {
   };
 }
 
-async function handleLocalFootprint(cmdArgs, isNonInteractive, symbolData) {
+async function handleLocalFootprint(cmdArgs: Record<string, any>, isNonInteractive: boolean, symbolData: any) {
   let entered_footprint, footprintPath;
 
   if (isNonInteractive) {
@@ -844,7 +844,7 @@ async function handleLocalFootprint(cmdArgs, isNonInteractive, symbolData) {
   }
 }
 
-async function handleEasyedaFootprint(cmdArgs, isNonInteractive, symbolData) {
+async function handleEasyedaFootprint(cmdArgs: Record<string, any>, isNonInteractive: boolean, symbolData: any) {
   // For EasyEDA footprints, we need to get the component and process it
   const pattern = /^C\d+$/;
   let c_component;

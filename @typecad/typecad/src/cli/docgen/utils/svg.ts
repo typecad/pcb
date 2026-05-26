@@ -4,132 +4,11 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import { pathExists, ensureDir } from './fs.js';
 import { tempManager } from './tempFileManager.js';
+import { cropSvg } from '../../../gitdiff/utils/file-utils.js';
 
 const execFileAsync = promisify(execFile);
 
-function extractPathCoords(d: string): { x: number; y: number }[] {
-    const coords: { x: number; y: number }[] = [];
-    const cleaned = d.replace(/[Zz]/g, ' ');
-    const parts = cleaned.split(/[MLHVCSQTAmlhvcsqta]/);
-    const cmds = cleaned.match(/[MLHVCSQTAmlhvcsqta]/g) || [];
-
-    for (let i = 0; i < cmds.length; i++) {
-        const cmd = cmds[i].toUpperCase();
-        const nums = (parts[i + 1] || '').match(/-?\d+\.?\d*/g);
-        if (!nums) continue;
-
-        if (cmd === 'M' || cmd === 'L' || cmd === 'T') {
-            for (let j = 0; j + 1 < nums.length; j += 2) {
-                coords.push({ x: parseFloat(nums[j]), y: parseFloat(nums[j + 1]) });
-            }
-        } else if (cmd === 'H') {
-            for (const n of nums) coords.push({ x: parseFloat(n), y: 0 });
-        } else if (cmd === 'V') {
-            for (const n of nums) coords.push({ x: 0, y: parseFloat(n) });
-        } else if (cmd === 'C' || cmd === 'S' || cmd === 'Q') {
-            for (let j = 0; j + 1 < nums.length; j += 2) {
-                coords.push({ x: parseFloat(nums[j]), y: parseFloat(nums[j + 1]) });
-            }
-        } else if (cmd === 'A') {
-            for (let j = 5; j + 1 < nums.length; j += 7) {
-                coords.push({ x: parseFloat(nums[j]), y: parseFloat(nums[j + 1]) });
-            }
-        }
-    }
-    return coords;
-}
-
-export function cropSvg(svgContent: string, padding: number = 2): string {
-    const allCoords: { x: number; y: number }[] = [];
-
-    const pathRegex = /d="([\s\S]*?)"/g;
-    let match;
-    while ((match = pathRegex.exec(svgContent)) !== null) {
-        allCoords.push(...extractPathCoords(match[1]));
-    }
-
-    const circleRegex = /<circle\b[^>]*>/gi;
-    while ((match = circleRegex.exec(svgContent)) !== null) {
-        const el = match[0];
-        const cx = el.match(/\bcx="(-?\d+\.?\d*)"/);
-        const cy = el.match(/\bcy="(-?\d+\.?\d*)"/);
-        const r = el.match(/\br="(-?\d+\.?\d*)"/);
-        if (cx && cy) {
-            const x = parseFloat(cx[1]);
-            const y = parseFloat(cy[1]);
-            const radius = r ? parseFloat(r[1]) : 0;
-            allCoords.push({ x: x - radius, y: y - radius }, { x: x + radius, y: y + radius });
-        }
-    }
-
-    const rectRegex = /<rect\b[^>]*>/gi;
-    while ((match = rectRegex.exec(svgContent)) !== null) {
-        const el = match[0];
-        const xM = el.match(/\bx="(-?\d+\.?\d*)"/);
-        const yM = el.match(/\by="(-?\d+\.?\d*)"/);
-        const wM = el.match(/\bwidth="(-?\d+\.?\d*)"/);
-        const hM = el.match(/\bheight="(-?\d+\.?\d*)"/);
-        const x = xM ? parseFloat(xM[1]) : 0;
-        const y = yM ? parseFloat(yM[1]) : 0;
-        const w = wM ? parseFloat(wM[1]) : 0;
-        const h = hM ? parseFloat(hM[1]) : 0;
-        allCoords.push({ x, y }, { x: x + w, y: y + h });
-    }
-
-    const lineRegex = /<line\b[^>]*>/gi;
-    while ((match = lineRegex.exec(svgContent)) !== null) {
-        const el = match[0];
-        const x1 = el.match(/\bx1="(-?\d+\.?\d*)"/);
-        const y1 = el.match(/\by1="(-?\d+\.?\d*)"/);
-        const x2 = el.match(/\bx2="(-?\d+\.?\d*)"/);
-        const y2 = el.match(/\by2="(-?\d+\.?\d*)"/);
-        if (x1 && y1) allCoords.push({ x: parseFloat(x1[1]), y: parseFloat(y1[1]) });
-        if (x2 && y2) allCoords.push({ x: parseFloat(x2[1]), y: parseFloat(y2[1]) });
-    }
-
-    const textRegex = /<text\b[^>]*>/gi;
-    while ((match = textRegex.exec(svgContent)) !== null) {
-        const el = match[0];
-        const xM = el.match(/\bx="(-?\d+\.?\d*)"/);
-        const yM = el.match(/\by="(-?\d+\.?\d*)"/);
-        if (xM && yM) allCoords.push({ x: parseFloat(xM[1]), y: parseFloat(yM[1]) });
-    }
-
-    if (allCoords.length === 0) return svgContent;
-
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    for (const c of allCoords) {
-        minX = Math.min(minX, c.x);
-        minY = Math.min(minY, c.y);
-        maxX = Math.max(maxX, c.x);
-        maxY = Math.max(maxY, c.y);
-    }
-
-    minX -= padding;
-    minY -= padding;
-    maxX += padding;
-    maxY += padding;
-
-    const w = maxX - minX;
-    const h = maxY - minY;
-    const newViewBox = `${minX.toFixed(4)} ${minY.toFixed(4)} ${w.toFixed(4)} ${h.toFixed(4)}`;
-
-    let result = svgContent;
-    result = result.replace(
-        /(<svg\b[^>]*?)\bviewBox="[^"]*"/,
-        `$1viewBox="${newViewBox}"`
-    );
-    result = result.replace(
-        /(<svg\b[^>]*?)\bwidth="[^"]*"/,
-        `$1width="100%"`
-    );
-    result = result.replace(
-        /(<svg\b[^>]*?)\bheight="[^"]*"/,
-        `$1height="100%"`
-    );
-
-    return result;
-}
+export { cropSvg };
 
 export async function writeStringToFile(content: string, outputPath: string): Promise<string> {
     const outputDir = path.dirname(outputPath);
@@ -138,16 +17,6 @@ export async function writeStringToFile(content: string, outputPath: string): Pr
         await ensureDir(outputDir);
     }
     await fs.writeFile(outputPath, content, 'utf-8');
-    return outputPath;
-}
-
-export async function writeBufferToFile(buffer: Buffer, outputPath: string): Promise<string> {
-    const outputDir = path.dirname(outputPath);
-    const dirExists = await pathExists(outputDir);
-    if (!dirExists) {
-        await ensureDir(outputDir);
-    }
-    await fs.writeFile(outputPath, buffer);
     return outputPath;
 }
 

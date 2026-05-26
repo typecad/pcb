@@ -6,7 +6,7 @@
 
 # Interface: IPower
 
-Defined in: @typecad/typecad/src/buses.ts:35
+Defined in: [@typecad/typecad/src/buses.ts:35](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/buses.ts#L35)
 
 ## Properties
 
@@ -14,7 +14,7 @@ Defined in: @typecad/typecad/src/buses.ts:35
 
 > `optional` **current?**: `number`
 
-Defined in: @typecad/typecad/src/buses.ts:39
+Defined in: [@typecad/typecad/src/buses.ts:39](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/buses.ts#L39)
 
 ***
 
@@ -22,7 +22,7 @@ Defined in: @typecad/typecad/src/buses.ts:39
 
 > `optional` **direction?**: `"input"` \| `"output"`
 
-Defined in: @typecad/typecad/src/buses.ts:40
+Defined in: [@typecad/typecad/src/buses.ts:40](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/buses.ts#L40)
 
 ***
 
@@ -30,7 +30,7 @@ Defined in: @typecad/typecad/src/buses.ts:40
 
 > `optional` **gnd?**: [`Pin`](Class.Pin.md)
 
-Defined in: @typecad/typecad/src/buses.ts:37
+Defined in: [@typecad/typecad/src/buses.ts:37](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/buses.ts#L37)
 
 ***
 
@@ -38,7 +38,7 @@ Defined in: @typecad/typecad/src/buses.ts:37
 
 > `optional` **power?**: [`Pin`](Class.Pin.md)
 
-Defined in: @typecad/typecad/src/buses.ts:36
+Defined in: [@typecad/typecad/src/buses.ts:36](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/buses.ts#L36)
 
 ***
 
@@ -46,4 +46,4 @@ Defined in: @typecad/typecad/src/buses.ts:36
 
 > `optional` **voltage?**: `number`
 
-Defined in: @typecad/typecad/src/buses.ts:38
+Defined in: [@typecad/typecad/src/buses.ts:38](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/buses.ts#L38)

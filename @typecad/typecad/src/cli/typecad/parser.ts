@@ -48,16 +48,17 @@ export function parseArgv(argv: string[]): ParsedArgs {
         const key = body.slice(0, eqIdx);
         const value = body.slice(eqIdx + 1);
         result.args[key] = value;
+      } else if (body.startsWith('no-')) {
+        const key = body.slice(3);
+        result.args[key] = false;
+      } else if (body === 'json') {
+        result.json = true;
+      } else if (body === 'help') {
+        result.help = true;
+      } else if (body === 'version') {
+        result.version = true;
       } else {
-        if (body === 'json') {
-          result.json = true;
-        } else if (body === 'help') {
-          result.help = true;
-        } else if (body === 'version') {
-          result.version = true;
-        } else {
-          result.args[body] = true;
-        }
+        result.args[body] = true;
       }
     } else if (token.startsWith('-') && token.length === 2) {
       const flag = token.slice(1);
@@ -66,7 +67,13 @@ export function parseArgv(argv: string[]): ParsedArgs {
       } else if (flag === 'v') {
         result.version = true;
       } else {
-        result.args[flag] = true;
+        const next = tokens[i];
+        if (next && !next.startsWith('-')) {
+          result.args[flag] = next;
+          i++;
+        } else {
+          result.args[flag] = true;
+        }
       }
     } else {
       result.positional.push(token);

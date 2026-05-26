@@ -6,7 +6,7 @@
 
 # Class: UART
 
-Defined in: @typecad/typecad/src/buses.ts:13
+Defined in: [@typecad/typecad/src/buses.ts:13](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/buses.ts#L13)
 
 ## Constructors
 
@@ -14,7 +14,7 @@ Defined in: @typecad/typecad/src/buses.ts:13
 
 > **new UART**(`rx`, `tx`, `rts?`, `cts?`): `UART`
 
-Defined in: @typecad/typecad/src/buses.ts:18
+Defined in: [@typecad/typecad/src/buses.ts:18](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/buses.ts#L18)
 
 #### Parameters
 
@@ -44,7 +44,7 @@ Defined in: @typecad/typecad/src/buses.ts:18
 
 > `optional` **cts?**: [`Pin`](Class.Pin.md)
 
-Defined in: @typecad/typecad/src/buses.ts:17
+Defined in: [@typecad/typecad/src/buses.ts:17](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/buses.ts#L17)
 
 ***
 
@@ -52,7 +52,7 @@ Defined in: @typecad/typecad/src/buses.ts:17
 
 > `optional` **rts?**: [`Pin`](Class.Pin.md)
 
-Defined in: @typecad/typecad/src/buses.ts:16
+Defined in: [@typecad/typecad/src/buses.ts:16](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/buses.ts#L16)
 
 ***
 
@@ -60,7 +60,7 @@ Defined in: @typecad/typecad/src/buses.ts:16
 
 > **rx**: [`Pin`](Class.Pin.md)
 
-Defined in: @typecad/typecad/src/buses.ts:15
+Defined in: [@typecad/typecad/src/buses.ts:15](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/buses.ts#L15)
 
 ***
 
@@ -68,4 +68,4 @@ Defined in: @typecad/typecad/src/buses.ts:15
 
 > **tx**: [`Pin`](Class.Pin.md)
 
-Defined in: @typecad/typecad/src/buses.ts:14
+Defined in: [@typecad/typecad/src/buses.ts:14](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/buses.ts#L14)

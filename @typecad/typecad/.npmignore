@@ -26,6 +26,7 @@ obfuscator.config.json
 # Build artifacts
 *.log
 *.map
+build/
 coverage/
 .nyc_output/
 
@@ -38,8 +39,7 @@ coverage/
 bundleDocs.js
 watch.js
 logging.js
-basecoat.cdn.min.css
-favicon.ico
+src/
 examples/
 true
 scripts/

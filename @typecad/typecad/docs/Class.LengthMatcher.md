@@ -6,7 +6,7 @@
 
 # Class: LengthMatcher
 
-Defined in: @typecad/typecad/src/routing/length\_matching/length\_matcher.ts:39
+Defined in: [@typecad/typecad/src/routing/length\_matching/length\_matcher.ts:39](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/routing/length_matching/length_matcher.ts#L39)
 
 ## Constructors
 
@@ -24,7 +24,7 @@ Defined in: @typecad/typecad/src/routing/length\_matching/length\_matcher.ts:39
 
 > `static` **apply**(`ctx`, `routeDetails`, `routeTrackBuilders`, `rawConfig`): `object`
 
-Defined in: @typecad/typecad/src/routing/length\_matching/length\_matcher.ts:46
+Defined in: [@typecad/typecad/src/routing/length\_matching/length\_matcher.ts:46](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/routing/length_matching/length_matcher.ts#L46)
 
 Apply length matching to a set of routed paths.
 
@@ -43,7 +43,7 @@ within `tolerance` of the longest route.
 
 ##### routeTrackBuilders
 
-`ITrackBuilder`[][]
+(`ITrackBuilder`[] \| `undefined`)[]
 
 ##### rawConfig
 

@@ -6,7 +6,7 @@
 
 # Interface: JsonErrorResponse
 
-Defined in: @typecad/typecad/src/kicad-symbols/types/index.ts:388
+Defined in: [@typecad/typecad/src/kicad-symbols/types/index.ts:394](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad-symbols/types/index.ts#L394)
 
 Structured error response for JSON output mode.
 Provides consistent error formatting when JSON format is selected.
@@ -29,7 +29,7 @@ const errorResponse: JsonErrorResponse = {
 
 > `optional` **code?**: `string`
 
-Defined in: @typecad/typecad/src/kicad-symbols/types/index.ts:396
+Defined in: [@typecad/typecad/src/kicad-symbols/types/index.ts:402](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad-symbols/types/index.ts#L402)
 
 Optional error code for programmatic handling
 
@@ -39,7 +39,7 @@ Optional error code for programmatic handling
 
 > **error**: `true`
 
-Defined in: @typecad/typecad/src/kicad-symbols/types/index.ts:390
+Defined in: [@typecad/typecad/src/kicad-symbols/types/index.ts:396](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad-symbols/types/index.ts#L396)
 
 Always true to indicate this is an error response
 
@@ -49,6 +49,6 @@ Always true to indicate this is an error response
 
 > **message**: `string`
 
-Defined in: @typecad/typecad/src/kicad-symbols/types/index.ts:393
+Defined in: [@typecad/typecad/src/kicad-symbols/types/index.ts:399](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad-symbols/types/index.ts#L399)
 
 Human-readable error message

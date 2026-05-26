@@ -6,7 +6,7 @@
 
 # Interface: KiCadCacheMetadata
 
-Defined in: @typecad/typecad/src/kicad-symbols/types/kicad.ts:80
+Defined in: [@typecad/typecad/src/kicad-symbols/types/kicad.ts:80](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad-symbols/types/kicad.ts#L80)
 
 Extended cache metadata specifically for KiCad symbol data.
 Includes KiCad-specific information like the "Last updated" date from the website.
@@ -36,7 +36,7 @@ const metadata: KiCadCacheMetadata = {
 
 > `optional` **checksum?**: `string`
 
-Defined in: @typecad/typecad/src/kicad-symbols/types/index.ts:288
+Defined in: [@typecad/typecad/src/kicad-symbols/types/index.ts:294](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad-symbols/types/index.ts#L294)
 
 Optional checksum for cache integrity verification
 
@@ -50,7 +50,7 @@ Optional checksum for cache integrity verification
 
 > **fileSize**: `number`
 
-Defined in: @typecad/typecad/src/kicad-symbols/types/index.ts:282
+Defined in: [@typecad/typecad/src/kicad-symbols/types/index.ts:288](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad-symbols/types/index.ts#L288)
 
 Size of the cached file in bytes
 
@@ -64,7 +64,7 @@ Size of the cached file in bytes
 
 > **lastDownload**: `Date`
 
-Defined in: @typecad/typecad/src/kicad-symbols/types/index.ts:279
+Defined in: [@typecad/typecad/src/kicad-symbols/types/index.ts:285](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad-symbols/types/index.ts#L285)
 
 Timestamp when the cache was last updated
 
@@ -78,7 +78,7 @@ Timestamp when the cache was last updated
 
 > **lastUpdatedDate**: `Date`
 
-Defined in: @typecad/typecad/src/kicad-symbols/types/kicad.ts:82
+Defined in: [@typecad/typecad/src/kicad-symbols/types/kicad.ts:82](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad-symbols/types/kicad.ts#L82)
 
 Date extracted from "Last updated on [date]" text on the KiCad website
 
@@ -88,7 +88,7 @@ Date extracted from "Last updated on [date]" text on the KiCad website
 
 > **libraryCount**: `number`
 
-Defined in: @typecad/typecad/src/kicad-symbols/types/kicad.ts:85
+Defined in: [@typecad/typecad/src/kicad-symbols/types/kicad.ts:85](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad-symbols/types/kicad.ts#L85)
 
 Number of symbol libraries processed
 
@@ -98,7 +98,7 @@ Number of symbol libraries processed
 
 > **recordCount**: `number`
 
-Defined in: @typecad/typecad/src/kicad-symbols/types/index.ts:285
+Defined in: [@typecad/typecad/src/kicad-symbols/types/index.ts:291](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad-symbols/types/index.ts#L291)
 
 Number of component records in the cache
 
@@ -112,6 +112,6 @@ Number of component records in the cache
 
 > **symbolCount**: `number`
 
-Defined in: @typecad/typecad/src/kicad-symbols/types/kicad.ts:88
+Defined in: [@typecad/typecad/src/kicad-symbols/types/kicad.ts:88](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad-symbols/types/kicad.ts#L88)
 
 Total number of symbols across all libraries

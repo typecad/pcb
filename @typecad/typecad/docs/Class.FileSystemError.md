@@ -6,7 +6,7 @@
 
 # Class: FileSystemError
 
-Defined in: @typecad/typecad/src/kicad-symbols/types/index.ts:309
+Defined in: [@typecad/typecad/src/kicad-symbols/types/index.ts:315](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad-symbols/types/index.ts#L315)
 
 File system operation error with path context.
 
@@ -20,7 +20,7 @@ File system operation error with path context.
 
 > **new FileSystemError**(`message`, `code?`, `errorPath?`): `FileSystemError`
 
-Defined in: @typecad/typecad/src/kicad-symbols/types/index.ts:313
+Defined in: [@typecad/typecad/src/kicad-symbols/types/index.ts:319](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad-symbols/types/index.ts#L319)
 
 #### Parameters
 
@@ -50,7 +50,7 @@ Defined in: @typecad/typecad/src/kicad-symbols/types/index.ts:313
 
 > `optional` **code?**: `string`
 
-Defined in: @typecad/typecad/src/kicad-symbols/types/index.ts:310
+Defined in: [@typecad/typecad/src/kicad-symbols/types/index.ts:316](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad-symbols/types/index.ts#L316)
 
 ***
 
@@ -82,7 +82,7 @@ Defined in: node\_modules/typescript/lib/lib.es5.d.ts:1076
 
 > `optional` **path?**: `string`
 
-Defined in: @typecad/typecad/src/kicad-symbols/types/index.ts:311
+Defined in: [@typecad/typecad/src/kicad-symbols/types/index.ts:317](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad-symbols/types/index.ts#L317)
 
 ***
 

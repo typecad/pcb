@@ -6,27 +6,21 @@
 
 # Class: Component
 
-Defined in: @typecad/typecad/src/component.ts:74
-
-Represents a component in an electronic circuit.
+Defined in: [@typecad/typecad/src/component.ts:63](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/component.ts#L63)
 
 ## Constructors
 
 ### Constructor
 
-> **new Component**(`options?`): `Component`
+> **new Component**(`__namedParameters?`): `Component`
 
-Defined in: @typecad/typecad/src/component.ts:108
-
-Creates an instance of Component.
+Defined in: [@typecad/typecad/src/component.ts:106](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/component.ts#L106)
 
 #### Parameters
 
-##### options?
+##### \_\_namedParameters?
 
 [`IComponent`](Interface.IComponent.md) = `{}`
-
-The component options.
 
 #### Returns
 
@@ -38,9 +32,7 @@ The component options.
 
 > **datasheet**: `string` = `''`
 
-Defined in: @typecad/typecad/src/component.ts:78
-
-Link to component datasheet.
+Defined in: [@typecad/typecad/src/component.ts:82](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/component.ts#L82)
 
 ***
 
@@ -48,9 +40,7 @@ Link to component datasheet.
 
 > **description**: `string` = `''`
 
-Defined in: @typecad/typecad/src/component.ts:79
-
-Description of the component.
+Defined in: [@typecad/typecad/src/component.ts:83](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/component.ts#L83)
 
 ***
 
@@ -58,81 +48,15 @@ Description of the component.
 
 > **dnp**: `boolean` = `false`
 
-Defined in: @typecad/typecad/src/component.ts:84
-
-True if Do Not Place.
+Defined in: [@typecad/typecad/src/component.ts:88](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/component.ts#L88)
 
 ***
 
 ### fab?
 
-> `optional` **fab?**: `object`
+> `optional` **fab?**: `FabEntry`
 
-Defined in: @typecad/typecad/src/component.ts:96
-
-#### bold?
-
-> `optional` **bold?**: `boolean`
-
-#### fontSize?
-
-> `optional` **fontSize?**: `number`
-
-#### height?
-
-> `optional` **height?**: `number`
-
-#### italic?
-
-> `optional` **italic?**: `boolean`
-
-#### justify?
-
-> `optional` **justify?**: `object`
-
-##### justify.horizontal?
-
-> `optional` **horizontal?**: `"center"` \| `"left"` \| `"right"`
-
-##### justify.mirror?
-
-> `optional` **mirror?**: `boolean`
-
-##### justify.vertical?
-
-> `optional` **vertical?**: `"top"` \| `"bottom"` \| `"middle"`
-
-#### layer?
-
-> `optional` **layer?**: `string`
-
-#### rotation?
-
-> `optional` **rotation?**: `number`
-
-#### show?
-
-> `optional` **show?**: `boolean`
-
-#### text
-
-> **text**: `string`
-
-#### thickness?
-
-> `optional` **thickness?**: `number`
-
-#### width?
-
-> `optional` **width?**: `number`
-
-#### x
-
-> **x**: `number`
-
-#### y
-
-> **y**: `number`
+Defined in: [@typecad/typecad/src/component.ts:101](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/component.ts#L101)
 
 ***
 
@@ -140,9 +64,7 @@ Defined in: @typecad/typecad/src/component.ts:96
 
 > **footprint**: `string` = `''`
 
-Defined in: @typecad/typecad/src/component.ts:77
-
-Component footprint (e.g., Resistor_SMD:R_0603_1608Metric).
+Defined in: [@typecad/typecad/src/component.ts:81](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/component.ts#L81)
 
 ***
 
@@ -150,7 +72,7 @@ Component footprint (e.g., Resistor_SMD:R_0603_1608Metric).
 
 > **groups**: `string`[] = `[]`
 
-Defined in: @typecad/typecad/src/component.ts:93
+Defined in: [@typecad/typecad/src/component.ts:97](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/component.ts#L97)
 
 ***
 
@@ -158,9 +80,7 @@ Defined in: @typecad/typecad/src/component.ts:93
 
 > **mpn**: `string` = `''`
 
-Defined in: @typecad/typecad/src/component.ts:82
-
-Manufacturer Part Number.
+Defined in: [@typecad/typecad/src/component.ts:86](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/component.ts#L86)
 
 ***
 
@@ -168,9 +88,7 @@ Manufacturer Part Number.
 
 > **pcb**: `object`
 
-Defined in: @typecad/typecad/src/component.ts:83
-
-PCB placement details (x, y, rotation).
+Defined in: [@typecad/typecad/src/component.ts:87](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/component.ts#L87)
 
 #### rotation?
 
@@ -194,9 +112,7 @@ PCB placement details (x, y, rotation).
 
 > **pins**: [`Pin`](Class.Pin.md)[] = `[]`
 
-Defined in: @typecad/typecad/src/component.ts:87
-
-Array of component pins.
+Defined in: [@typecad/typecad/src/component.ts:91](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/component.ts#L91)
 
 ***
 
@@ -204,10 +120,7 @@ Array of component pins.
 
 > **reference**: `string` = `''`
 
-Defined in: @typecad/typecad/src/component.ts:75
-
-Reference designator (e.g., R1) or a tuple with positioning info (e.g., ['U2', {x: 1, y: 1, rotation: 0}]).
-                      When provided as a tuple, the positioning controls where the reference text appears in KiCad.
+Defined in: [@typecad/typecad/src/component.ts:79](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/component.ts#L79)
 
 ***
 
@@ -215,7 +128,7 @@ Reference designator (e.g., R1) or a tuple with positioning info (e.g., ['U2', {
 
 > **sch**: `object`
 
-Defined in: @typecad/typecad/src/component.ts:92
+Defined in: [@typecad/typecad/src/component.ts:96](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/component.ts#L96)
 
 #### rotation?
 
@@ -235,9 +148,7 @@ Defined in: @typecad/typecad/src/component.ts:92
 
 > **simulation**: `object`
 
-Defined in: @typecad/typecad/src/component.ts:90
-
-Simulation details.
+Defined in: [@typecad/typecad/src/component.ts:94](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/component.ts#L94)
 
 #### include
 
@@ -253,11 +164,7 @@ Simulation details.
 
 > `optional` **sourceInfo?**: `SourceInfo`
 
-Defined in: @typecad/typecad/src/component.ts:94
-
-Source code location and instantiation details where the component was created, parsed via AST.
-                         Includes file path, line number, variable name (if in declaration like `let r1 = new Component()`),
-                         and fully structured parameters (supports nested objects/arrays from `{value: '10k', sim: {include: true}}`).
+Defined in: [@typecad/typecad/src/component.ts:98](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/component.ts#L98)
 
 ***
 
@@ -265,83 +172,23 @@ Source code location and instantiation details where the component was created, 
 
 > `optional` **symbol?**: `string` = `''`
 
-Defined in: @typecad/typecad/src/component.ts:91
+Defined in: [@typecad/typecad/src/component.ts:95](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/component.ts#L95)
 
 ***
 
 ### text
 
-> **text**: `object`[] = `[]`
+> **text**: `TextEntry`[] = `[]`
 
-Defined in: @typecad/typecad/src/component.ts:95
+Defined in: [@typecad/typecad/src/component.ts:100](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/component.ts#L100)
 
-#### bold?
+***
 
-> `optional` **bold?**: `boolean`
+### typehal?
 
-#### fontSize?
+> `optional` **typehal?**: [`ITypeHalInfo`](Interface.ITypeHalInfo.md)
 
-> `optional` **fontSize?**: `number`
-
-#### height?
-
-> `optional` **height?**: `number`
-
-#### italic?
-
-> `optional` **italic?**: `boolean`
-
-#### justify?
-
-> `optional` **justify?**: `object`
-
-##### justify.horizontal?
-
-> `optional` **horizontal?**: `"center"` \| `"left"` \| `"right"`
-
-##### justify.mirror?
-
-> `optional` **mirror?**: `boolean`
-
-##### justify.vertical?
-
-> `optional` **vertical?**: `"top"` \| `"bottom"` \| `"middle"`
-
-#### layer?
-
-> `optional` **layer?**: `string`
-
-#### property
-
-> **property**: `string`
-
-#### rotation?
-
-> `optional` **rotation?**: `number`
-
-#### show?
-
-> `optional` **show?**: `boolean`
-
-#### text
-
-> **text**: `string`
-
-#### thickness?
-
-> `optional` **thickness?**: `number`
-
-#### width?
-
-> `optional` **width?**: `number`
-
-#### x
-
-> **x**: `number`
-
-#### y
-
-> **y**: `number`
+Defined in: [@typecad/typecad/src/component.ts:99](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/component.ts#L99)
 
 ***
 
@@ -349,78 +196,15 @@ Defined in: @typecad/typecad/src/component.ts:95
 
 > **value**: `string` = `''`
 
-Defined in: @typecad/typecad/src/component.ts:76
-
-Component value (e.g., 1 kOhm) or a tuple with positioning info (e.g., ['10k', {x: 0, y: 5, rotation: 0}]).
-                  When provided as a tuple, the positioning controls where the value text appears in KiCad.
+Defined in: [@typecad/typecad/src/component.ts:80](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/component.ts#L80)
 
 ***
 
 ### valueFootprint?
 
-> `optional` **valueFootprint?**: `object`
+> `optional` **valueFootprint?**: `ITextPositioning`
 
-Defined in: @typecad/typecad/src/component.ts:97
-
-#### bold?
-
-> `optional` **bold?**: `boolean`
-
-#### fontSize?
-
-> `optional` **fontSize?**: `number`
-
-#### height?
-
-> `optional` **height?**: `number`
-
-#### italic?
-
-> `optional` **italic?**: `boolean`
-
-#### justify?
-
-> `optional` **justify?**: `object`
-
-##### justify.horizontal?
-
-> `optional` **horizontal?**: `"center"` \| `"left"` \| `"right"`
-
-##### justify.mirror?
-
-> `optional` **mirror?**: `boolean`
-
-##### justify.vertical?
-
-> `optional` **vertical?**: `"top"` \| `"bottom"` \| `"middle"`
-
-#### layer?
-
-> `optional` **layer?**: `string`
-
-#### rotation?
-
-> `optional` **rotation?**: `number`
-
-#### show?
-
-> `optional` **show?**: `boolean`
-
-#### thickness?
-
-> `optional` **thickness?**: `number`
-
-#### width?
-
-> `optional` **width?**: `number`
-
-#### x
-
-> **x**: `number`
-
-#### y
-
-> **y**: `number`
+Defined in: [@typecad/typecad/src/component.ts:102](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/component.ts#L102)
 
 ***
 
@@ -428,9 +212,7 @@ Defined in: @typecad/typecad/src/component.ts:97
 
 > **via**: `boolean` = `false`
 
-Defined in: @typecad/typecad/src/component.ts:88
-
-True if the component is a via.
+Defined in: [@typecad/typecad/src/component.ts:92](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/component.ts#L92)
 
 ***
 
@@ -438,7 +220,7 @@ True if the component is a via.
 
 > `optional` **viaData?**: `IVia`
 
-Defined in: @typecad/typecad/src/component.ts:89
+Defined in: [@typecad/typecad/src/component.ts:93](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/component.ts#L93)
 
 ***
 
@@ -446,7 +228,7 @@ Defined in: @typecad/typecad/src/component.ts:89
 
 > **voltage**: `string` = `''`
 
-Defined in: @typecad/typecad/src/component.ts:80
+Defined in: [@typecad/typecad/src/component.ts:84](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/component.ts#L84)
 
 ***
 
@@ -454,9 +236,23 @@ Defined in: @typecad/typecad/src/component.ts:80
 
 > **wattage**: `string` = `''`
 
-Defined in: @typecad/typecad/src/component.ts:81
+Defined in: [@typecad/typecad/src/component.ts:85](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/component.ts#L85)
 
 ## Accessors
+
+### footprintHash
+
+#### Get Signature
+
+> **get** **footprintHash**(): `string`
+
+Defined in: [@typecad/typecad/src/component.ts:238](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/component.ts#L238)
+
+##### Returns
+
+`string`
+
+***
 
 ### uuid
 
@@ -464,10 +260,7 @@ Defined in: @typecad/typecad/src/component.ts:81
 
 > **get** **uuid**(): `string`
 
-Defined in: @typecad/typecad/src/component.ts:318
-
-Get the UUID for this component. If not explicitly set, it will be generated
-consistently based on component properties.
+Defined in: [@typecad/typecad/src/component.ts:227](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/component.ts#L227)
 
 ##### Returns
 
@@ -477,9 +270,7 @@ consistently based on component properties.
 
 > **set** **uuid**(`value`): `void`
 
-Defined in: @typecad/typecad/src/component.ts:341
-
-Set the UUID for this component
+Defined in: [@typecad/typecad/src/component.ts:234](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/component.ts#L234)
 
 ##### Parameters
 
@@ -491,23 +282,35 @@ Set the UUID for this component
 
 `void`
 
-Unique identifier.
-
 ## Methods
+
+### footprint\_lib()
+
+> **footprint\_lib**(`footprint`): `string`
+
+Defined in: [@typecad/typecad/src/component.ts:276](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/component.ts#L276)
+
+#### Parameters
+
+##### footprint
+
+`string`
+
+#### Returns
+
+`string`
+
+***
 
 ### getGroups()
 
 > **getGroups**(): `string`[]
 
-Defined in: @typecad/typecad/src/component.ts:387
-
-Get all groups this component belongs to.
+Defined in: [@typecad/typecad/src/component.ts:272](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/component.ts#L272)
 
 #### Returns
 
 `string`[]
-
-Array of group names this component is a member of.
 
 ***
 
@@ -515,9 +318,7 @@ Array of group names this component is a member of.
 
 > **isInGroup**(`groupName`): `boolean`
 
-Defined in: @typecad/typecad/src/component.ts:379
-
-Check if this component belongs to a specific group.
+Defined in: [@typecad/typecad/src/component.ts:268](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/component.ts#L268)
 
 #### Parameters
 
@@ -525,13 +326,9 @@ Check if this component belongs to a specific group.
 
 `string`
 
-The name of the group to check.
-
 #### Returns
 
 `boolean`
-
-True if the component is in the specified group.
 
 ***
 
@@ -539,9 +336,7 @@ True if the component is in the specified group.
 
 > **pin**(`number`): [`Pin`](Class.Pin.md)
 
-Defined in: @typecad/typecad/src/component.ts:350
-
-Returns a [Pin](Class.Pin.md) object from the component.
+Defined in: [@typecad/typecad/src/component.ts:248](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/component.ts#L248)
 
 #### Parameters
 
@@ -549,10 +344,54 @@ Returns a [Pin](Class.Pin.md) object from the component.
 
 `string` \| `number`
 
-The pin number or identifier.
-
 #### Returns
 
 [`Pin`](Class.Pin.md)
 
-The pin object.
+***
+
+### symbol\_lib()
+
+> **symbol\_lib**(`symbol`): `string`
+
+Defined in: [@typecad/typecad/src/component.ts:282](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/component.ts#L282)
+
+#### Parameters
+
+##### symbol
+
+`string`
+
+#### Returns
+
+`string`
+
+***
+
+### getActiveCounter()
+
+> `static` **getActiveCounter**(): `ReferenceCounter`
+
+Defined in: [@typecad/typecad/src/component.ts:71](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/component.ts#L71)
+
+#### Returns
+
+`ReferenceCounter`
+
+***
+
+### setActiveCounter()
+
+> `static` **setActiveCounter**(`counter`): `void`
+
+Defined in: [@typecad/typecad/src/component.ts:67](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/component.ts#L67)
+
+#### Parameters
+
+##### counter
+
+`ReferenceCounter` \| `null`
+
+#### Returns
+
+`void`

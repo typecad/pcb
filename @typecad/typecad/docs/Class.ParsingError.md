@@ -6,7 +6,7 @@
 
 # Class: ParsingError
 
-Defined in: @typecad/typecad/src/kicad-symbols/types/index.ts:324
+Defined in: [@typecad/typecad/src/kicad-symbols/types/index.ts:330](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad-symbols/types/index.ts#L330)
 
 Data parsing error with location context.
 
@@ -20,7 +20,7 @@ Data parsing error with location context.
 
 > **new ParsingError**(`message`, `line?`, `column?`): `ParsingError`
 
-Defined in: @typecad/typecad/src/kicad-symbols/types/index.ts:328
+Defined in: [@typecad/typecad/src/kicad-symbols/types/index.ts:334](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad-symbols/types/index.ts#L334)
 
 #### Parameters
 
@@ -50,7 +50,7 @@ Defined in: @typecad/typecad/src/kicad-symbols/types/index.ts:328
 
 > `optional` **column?**: `number`
 
-Defined in: @typecad/typecad/src/kicad-symbols/types/index.ts:326
+Defined in: [@typecad/typecad/src/kicad-symbols/types/index.ts:332](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad-symbols/types/index.ts#L332)
 
 ***
 
@@ -58,7 +58,7 @@ Defined in: @typecad/typecad/src/kicad-symbols/types/index.ts:326
 
 > `optional` **line?**: `number`
 
-Defined in: @typecad/typecad/src/kicad-symbols/types/index.ts:325
+Defined in: [@typecad/typecad/src/kicad-symbols/types/index.ts:331](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad-symbols/types/index.ts#L331)
 
 ***
 

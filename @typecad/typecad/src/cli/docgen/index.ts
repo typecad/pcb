@@ -134,6 +134,8 @@ function inlineLocalImages(
             const dataUri = `data:image/png;base64,${buffer.toString('base64')}`;
             const newTag = fullTag.replace(`src="${src}"`, `src="${dataUri}"`);
             replacements.push({ original: fullTag, replacement: newTag });
+        } else {
+            replacements.push({ original: fullTag, replacement: '' });
         }
     }
 

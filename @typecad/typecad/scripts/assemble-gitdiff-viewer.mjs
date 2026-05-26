@@ -5,10 +5,11 @@ import { fileURLToPath } from 'url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, '..');
 
-const htmlPath = path.join(projectRoot, 'src', 'gitdiff', 'viewer', 'diff-viewer.html');
-const cssPath = path.join(projectRoot, 'src', 'gitdiff', 'viewer', 'diff-viewer.css');
-const basecoatPath = path.join(projectRoot, 'basecoat.cdn.min.css');
-const faviconPath = path.join(projectRoot, 'favicon.ico');
+const viewerDir = path.join(projectRoot, 'src', 'gitdiff', 'viewer');
+const htmlPath = path.join(viewerDir, 'diff-viewer.html');
+const cssPath = path.join(viewerDir, 'diff-viewer.css');
+const basecoatPath = path.join(viewerDir, 'basecoat.cdn.min.css');
+const faviconPath = path.join(viewerDir, 'favicon.ico');
 const jsPath = path.join(projectRoot, 'dist', 'gitdiff', 'viewer', 'diff-viewer.js');
 const outputPath = path.join(projectRoot, 'dist', 'gitdiff', 'diff-viewer.html');
 

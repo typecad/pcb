@@ -8,8 +8,8 @@
 
 > **kicad\_cli\_path**: `string` \| `undefined`
 
-Defined in: @typecad/typecad/src/kicad.ts:17
+Defined in: [@typecad/typecad/src/kicad.ts:239](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad.ts#L239)
 
 ## Deprecated
 
-Use KiCAD.cliPath instead
+Use `KiCAD.cliPath` instead. Kept for backward compatibility with external packages.

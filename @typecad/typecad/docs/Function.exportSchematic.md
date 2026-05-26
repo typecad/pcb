@@ -8,7 +8,7 @@
 
 > **exportSchematic**(`schPath`, `outputPath`, `format`, `options?`): `Promise`\<`string`\>
 
-Defined in: @typecad/typecad/src/kicad\_commands.ts:122
+Defined in: [@typecad/typecad/src/kicad\_commands.ts:122](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad_commands.ts#L122)
 
 Export schematic to various formats
 

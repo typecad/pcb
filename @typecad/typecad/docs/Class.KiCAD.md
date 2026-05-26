@@ -6,7 +6,7 @@
 
 # Class: KiCAD
 
-Defined in: @typecad/typecad/src/kicad.ts:142
+Defined in: [@typecad/typecad/src/kicad.ts:30](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad.ts#L30)
 
 ## Constructors
 
@@ -14,7 +14,7 @@ Defined in: @typecad/typecad/src/kicad.ts:142
 
 > **new KiCAD**(): `KiCAD`
 
-Defined in: @typecad/typecad/src/kicad.ts:143
+Defined in: [@typecad/typecad/src/kicad.ts:44](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad.ts#L44)
 
 #### Returns
 
@@ -26,15 +26,29 @@ Defined in: @typecad/typecad/src/kicad.ts:143
 
 #### Get Signature
 
-> **get** `static` **cliPath**(): `string`
+> **get** `static` **cliPath**(): `string` \| `undefined`
 
-Defined in: @typecad/typecad/src/kicad.ts:159
+Defined in: [@typecad/typecad/src/kicad.ts:169](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad.ts#L169)
 
 Detected kicad-cli executable path.
 
 ##### Returns
 
-`string`
+`string` \| `undefined`
+
+***
+
+### instance
+
+#### Get Signature
+
+> **get** `static` **instance**(): `KiCAD`
+
+Defined in: [@typecad/typecad/src/kicad.ts:37](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad.ts#L37)
+
+##### Returns
+
+`KiCAD`
 
 ***
 
@@ -44,7 +58,7 @@ Detected kicad-cli executable path.
 
 > **get** `static` **isFlatpak**(): `boolean`
 
-Defined in: @typecad/typecad/src/kicad.ts:165
+Defined in: [@typecad/typecad/src/kicad.ts:175](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad.ts#L175)
 
 Whether the detected installation is a Flatpak.
 
@@ -58,15 +72,15 @@ Whether the detected installation is a Flatpak.
 
 #### Get Signature
 
-> **get** `static` **path**(): `string`
+> **get** `static` **path**(): `string` \| `undefined`
 
-Defined in: @typecad/typecad/src/kicad.ts:153
+Defined in: [@typecad/typecad/src/kicad.ts:163](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad.ts#L163)
 
 Detected KiCAD installation path.
 
 ##### Returns
 
-`string`
+`string` \| `undefined`
 
 ## Methods
 
@@ -74,7 +88,7 @@ Detected KiCAD installation path.
 
 > **getLibraryPaths**(): `object`
 
-Defined in: @typecad/typecad/src/kicad.ts:174
+Defined in: [@typecad/typecad/src/kicad.ts:184](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad.ts#L184)
 
 #### Returns
 
@@ -92,13 +106,13 @@ Defined in: @typecad/typecad/src/kicad.ts:174
 
 ### getSymbolsPath()
 
-> **getSymbolsPath**(): `string`
+> **getSymbolsPath**(): `string` \| `undefined`
 
-Defined in: @typecad/typecad/src/kicad.ts:209
+Defined in: [@typecad/typecad/src/kicad.ts:218](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad.ts#L218)
 
 #### Returns
 
-`string`
+`string` \| `undefined`
 
 ***
 
@@ -106,7 +120,7 @@ Defined in: @typecad/typecad/src/kicad.ts:209
 
 > **hasLocalSymbols**(): `Promise`\<`boolean`\>
 
-Defined in: @typecad/typecad/src/kicad.ts:217
+Defined in: [@typecad/typecad/src/kicad.ts:226](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad.ts#L226)
 
 #### Returns
 
@@ -118,7 +132,7 @@ Defined in: @typecad/typecad/src/kicad.ts:217
 
 > **isFlatpakInstallation**(): `boolean`
 
-Defined in: @typecad/typecad/src/kicad.ts:170
+Defined in: [@typecad/typecad/src/kicad.ts:180](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad.ts#L180)
 
 #### Returns
 

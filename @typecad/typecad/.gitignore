@@ -5,6 +5,7 @@ git_disabled/
 # Build output directories
 /dist/
 /dist-obfuscated/
+/build/
 /.claude/
 
 # Notes

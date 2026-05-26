@@ -14,7 +14,10 @@ export function showTopLevelHelp(): void {
   console.log('  search              Search KiCad schematic symbols');
   console.log('  import              Convert a KiCad PCB file to typeCAD code');
   console.log('  diff                Compare two KiCad PCB files visually');
-  console.log('  doc                 Generate PCB documentation from Markdown\n');
+  console.log('  doc                 Generate PCB documentation from Markdown');
+  console.log('  doctor              Check your environment for common issues');
+  console.log('  validate            Validate project source without full build');
+  console.log('  drc                 Run Design Rule Check on a KiCad PCB file\n');
   console.log('Global Options:');
   console.log('  --json              Output in machine-readable JSON');
   console.log('  --help              Show help for a command');
@@ -239,4 +242,70 @@ export function showDocHelp(): void {
   console.log('  typecad doc docs/board.md build/board.kicad_pcb --verbose');
   console.log('  typecad doc docs/board.md build/board.kicad_pcb --quiet');
   console.log('  typecad doc docs/board.md build/board.kicad_pcb --no-open');
+}
+
+export function showDrcHelp(): void {
+  console.log(
+    chalk.white.bold('typecad drc') +
+      ' - Run Design Rule Check on a KiCad PCB file\n'
+  );
+  console.log(
+    'Run kicad-cli drc on a .kicad_pcb file to check for design rule\n' +
+    'violations.\n'
+  );
+  console.log('Usage: typecad drc [path] [options]\n');
+  console.log('Arguments:');
+  console.log(
+    '  <path>             Path to .kicad_pcb file (default: auto-detected from ./build/)\n'
+  );
+  console.log('Options:');
+  console.log('  --json             Output results as JSON\n');
+  console.log('Examples:');
+  console.log('  typecad drc');
+  console.log('  typecad drc ./build/my-board.kicad_pcb');
+  console.log('  typecad drc --json');
+}
+
+export function showValidateHelp(): void {
+  console.log(
+    chalk.white.bold('typecad validate') +
+      ' - Validate project source without full build\n'
+  );
+  console.log(
+    'Type-check and run your typeCAD entry file, reporting errors without\n' +
+    'producing verbose build output.\n'
+  );
+  console.log('Usage: typecad validate [entry] [options]\n');
+  console.log('Arguments:');
+  console.log(
+    '  <entry>                   Path to .ts entry file (default: auto-detected)\n'
+  );
+  console.log('Options:');
+  console.log('  --verbose                 Show full build output');
+  console.log('  --json                    Output results as JSON\n');
+  console.log('Checks performed:');
+  console.log('  1. TypeScript type checking (if tsconfig.json exists)');
+  console.log('  2. Runtime execution of the entry file');
+}
+
+export function showDoctorHelp(): void {
+  console.log(
+    chalk.white.bold('typecad doctor') +
+      ' - Check your environment for common issues\n'
+  );
+  console.log(
+    'Diagnose your typeCAD environment by checking for required tools,\n' +
+    'dependencies, and configuration.\n'
+  );
+  console.log('Usage: typecad doctor [options]\n');
+  console.log('Options:');
+  console.log('  --fix               Attempt to automatically fix detected problems');
+  console.log('  --json              Output results in JSON format\n');
+  console.log('Checks performed:');
+  console.log('  Node.js >= 18       npm & core dependencies');
+  console.log('  package.json        node_modules integrity');
+  console.log('  typecad config      entry file');
+  console.log('  kicad-cli / PATH    KiCad symbol libraries');
+  console.log('  arduino-cli         Git');
+  console.log('  build/ directory');
 }

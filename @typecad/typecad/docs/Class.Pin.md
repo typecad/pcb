@@ -6,7 +6,7 @@
 
 # Class: Pin
 
-Defined in: @typecad/typecad/src/pin.ts:15
+Defined in: [@typecad/typecad/src/pin.ts:15](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/pin.ts#L15)
 
 Class representing a pin in a schematic.
 
@@ -18,7 +18,7 @@ Class representing a pin in a schematic.
 
 > **new Pin**(`reference`, `number`, `type?`, `owner?`, `powerInfo?`): `Pin`
 
-Defined in: @typecad/typecad/src/pin.ts:37
+Defined in: [@typecad/typecad/src/pin.ts:37](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/pin.ts#L37)
 
 Initializes a new pin with a given reference, number, and optional type.
 
@@ -34,7 +34,7 @@ The reference identifier for the pin.
 
 `string` \| `number`
 
-The pin number or identifier.
+The pin number or identifier. Stored as string internally.
 
 ##### type?
 
@@ -69,17 +69,17 @@ let powerPin = new Pin('U1', 5, 'power_in', this, { minimum_voltage: -0.3, maxim
 
 ### number
 
-> **number**: `string` \| `number` = `''`
+> **number**: `string` = `''`
 
-Defined in: @typecad/typecad/src/pin.ts:16
+Defined in: [@typecad/typecad/src/pin.ts:16](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/pin.ts#L16)
 
 ***
 
 ### owner
 
-> **owner**: [`Component`](Class.Component.md)
+> **owner**: [`Component`](Class.Component.md) \| `null`
 
-Defined in: @typecad/typecad/src/pin.ts:19
+Defined in: [@typecad/typecad/src/pin.ts:19](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/pin.ts#L19)
 
 ***
 
@@ -87,7 +87,7 @@ Defined in: @typecad/typecad/src/pin.ts:19
 
 > `optional` **powerInfo?**: [`IPinPowerInfo`](Interface.IPinPowerInfo.md)
 
-Defined in: @typecad/typecad/src/pin.ts:20
+Defined in: [@typecad/typecad/src/pin.ts:20](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/pin.ts#L20)
 
 ***
 
@@ -95,7 +95,7 @@ Defined in: @typecad/typecad/src/pin.ts:20
 
 > **reference**: `string` = `''`
 
-Defined in: @typecad/typecad/src/pin.ts:17
+Defined in: [@typecad/typecad/src/pin.ts:17](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/pin.ts#L17)
 
 ***
 
@@ -103,7 +103,7 @@ Defined in: @typecad/typecad/src/pin.ts:17
 
 > **type**: `TPinType`
 
-Defined in: @typecad/typecad/src/pin.ts:18
+Defined in: [@typecad/typecad/src/pin.ts:18](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/pin.ts#L18)
 
 ***
 
@@ -111,4 +111,4 @@ Defined in: @typecad/typecad/src/pin.ts:18
 
 > `optional` **uuid?**: `string`
 
-Defined in: @typecad/typecad/src/pin.ts:21
+Defined in: [@typecad/typecad/src/pin.ts:21](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/pin.ts#L21)

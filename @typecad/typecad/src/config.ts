@@ -19,6 +19,16 @@ export function defineConfig(config: TypeCADConfig): TypeCADConfig {
 }
 
 let _cachedConfig: TypeCADConfig | null = null;
+let _cachedConfigPath: string | null = null;
+let _cachedMtimeMs: number | undefined;
+
+function getMtimeMs(filePath: string): number | undefined {
+  try {
+    return fs.statSync(filePath).mtimeMs;
+  } catch {
+    return undefined;
+  }
+}
 
 function findConfigPath(): string | null {
   const cwd = process.cwd();
@@ -33,7 +43,6 @@ function findConfigPath(): string | null {
 }
 
 function loadTsConfig(configPath: string): TypeCADConfig {
-  const fileUrl = 'file:///' + configPath.replace(/\\/g, '/');
   const configDir = path.dirname(configPath);
   const loadCode = [
     `import('file://${configPath.replace(/\\/g, '/')}')`,
@@ -64,17 +73,42 @@ function loadTsConfig(configPath: string): TypeCADConfig {
   }
 }
 
+function invalidateIfStale(): void {
+  if (!_cachedConfig || !_cachedConfigPath) {
+    return;
+  }
+
+  if (!fs.existsSync(_cachedConfigPath)) {
+    _cachedConfig = null;
+    _cachedConfigPath = null;
+    _cachedMtimeMs = undefined;
+    return;
+  }
+
+  const currentMtime = getMtimeMs(_cachedConfigPath);
+  if (currentMtime !== _cachedMtimeMs) {
+    _cachedConfig = null;
+    _cachedConfigPath = null;
+    _cachedMtimeMs = undefined;
+  }
+}
+
 export function loadConfig(): TypeCADConfig {
+  invalidateIfStale();
   if (_cachedConfig) return _cachedConfig;
 
   const confPath = findConfigPath();
   if (confPath) {
+    _cachedConfigPath = confPath;
+    _cachedMtimeMs = getMtimeMs(confPath);
     _cachedConfig = loadTsConfig(confPath);
     return _cachedConfig!;
   }
 
   const jsonPath = path.join(process.cwd(), 'typecad.json');
   if (fs.existsSync(jsonPath)) {
+    _cachedConfigPath = jsonPath;
+    _cachedMtimeMs = getMtimeMs(jsonPath);
     try {
       _cachedConfig = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
       return _cachedConfig!;
@@ -93,6 +127,8 @@ export function loadConfig(): TypeCADConfig {
 
 export function clearConfigCache(): void {
   _cachedConfig = null;
+  _cachedConfigPath = null;
+  _cachedMtimeMs = undefined;
 }
 
 export class Config {

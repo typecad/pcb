@@ -6,9 +6,13 @@
 
 # Class: PCB
 
-Defined in: @typecad/typecad/src/pcb/pcb.ts:125
+Defined in: [@typecad/typecad/src/pcb/pcb.ts:119](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/pcb/pcb.ts#L119)
 
 Represents a printed circuit board (PCB).
+
+## Implements
+
+- `IPcbBoardContext`
 
 ## Constructors
 
@@ -16,7 +20,7 @@ Represents a printed circuit board (PCB).
 
 > **new PCB**(`Boardname`, `options?`): `PCB`
 
-Defined in: @typecad/typecad/src/pcb/pcb.ts:159
+Defined in: [@typecad/typecad/src/pcb/pcb.ts:135](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/pcb/pcb.ts#L135)
 
 Initializes a new PCB.
 
@@ -42,7 +46,11 @@ Name and filename of generated files.
 
 > **Boardname**: `string`
 
-Defined in: @typecad/typecad/src/pcb/pcb.ts:126
+Defined in: [@typecad/typecad/src/pcb/pcb.ts:120](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/pcb/pcb.ts#L120)
+
+#### Implementation of
+
+`IPcbBoardContext.Boardname`
 
 ***
 
@@ -50,7 +58,11 @@ Defined in: @typecad/typecad/src/pcb/pcb.ts:126
 
 > **copper\_thickness**: `number`
 
-Defined in: @typecad/typecad/src/pcb/pcb.ts:129
+Defined in: [@typecad/typecad/src/pcb/pcb.ts:123](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/pcb/pcb.ts#L123)
+
+#### Implementation of
+
+`IPcbBoardContext.copper_thickness`
 
 ***
 
@@ -58,7 +70,11 @@ Defined in: @typecad/typecad/src/pcb/pcb.ts:129
 
 > **outlines**: `IOutline`[] = `[]`
 
-Defined in: @typecad/typecad/src/pcb/pcb.ts:130
+Defined in: [@typecad/typecad/src/pcb/pcb.ts:124](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/pcb/pcb.ts#L124)
+
+#### Implementation of
+
+`IPcbBoardContext.outlines`
 
 ***
 
@@ -66,7 +82,27 @@ Defined in: @typecad/typecad/src/pcb/pcb.ts:130
 
 > **Schematic**: [`Schematic`](Class.Schematic.md)
 
-Defined in: @typecad/typecad/src/pcb/pcb.ts:127
+Defined in: [@typecad/typecad/src/pcb/pcb.ts:121](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/pcb/pcb.ts#L121)
+
+#### Implementation of
+
+`IPcbBoardContext.Schematic`
+
+***
+
+### state
+
+> `readonly` **state**: `PcbInternalState`
+
+Defined in: [@typecad/typecad/src/pcb/pcb.ts:128](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/pcb/pcb.ts#L128)
+
+**`Internal`**
+
+Mutable state capsule shared with extracted sub-modules.
+
+#### Implementation of
+
+`IPcbBoardContext.state`
 
 ***
 
@@ -74,7 +110,7 @@ Defined in: @typecad/typecad/src/pcb/pcb.ts:127
 
 > **thickness**: `number`
 
-Defined in: @typecad/typecad/src/pcb/pcb.ts:128
+Defined in: [@typecad/typecad/src/pcb/pcb.ts:122](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/pcb/pcb.ts#L122)
 
 ***
 
@@ -82,7 +118,11 @@ Defined in: @typecad/typecad/src/pcb/pcb.ts:128
 
 > **tracks**: `IOutline`[] = `[]`
 
-Defined in: @typecad/typecad/src/pcb/pcb.ts:131
+Defined in: [@typecad/typecad/src/pcb/pcb.ts:125](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/pcb/pcb.ts#L125)
+
+#### Implementation of
+
+`IPcbBoardContext.tracks`
 
 ## Accessors
 
@@ -92,13 +132,37 @@ Defined in: @typecad/typecad/src/pcb/pcb.ts:131
 
 > **get** **components**(): [`Component`](Class.Component.md)[]
 
-Defined in: @typecad/typecad/src/pcb/pcb.ts:336
-
-Getter for components.
+Defined in: [@typecad/typecad/src/pcb/pcb.ts:240](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/pcb/pcb.ts#L240)
 
 ##### Returns
 
 [`Component`](Class.Component.md)[]
+
+#### Implementation of
+
+`IPcbBoardContext.components`
+
+***
+
+### currentOffset
+
+#### Get Signature
+
+> **get** **currentOffset**(): `object`
+
+Defined in: [@typecad/typecad/src/pcb/pcb.ts:164](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/pcb/pcb.ts#L164)
+
+##### Returns
+
+`object`
+
+###### x
+
+> **x**: `number`
+
+###### y
+
+> **y**: `number`
 
 ***
 
@@ -106,15 +170,17 @@ Getter for components.
 
 #### Get Signature
 
-> **get** **existingBoardElements**(): `unknown`[]
+> **get** **existingBoardElements**(): `SExpr`[]
 
-Defined in: @typecad/typecad/src/pcb/pcb.ts:373
-
-Getter for existing board elements.
+Defined in: [@typecad/typecad/src/pcb/pcb.ts:263](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/pcb/pcb.ts#L263)
 
 ##### Returns
 
-`unknown`[]
+`SExpr`[]
+
+#### Implementation of
+
+`IPcbBoardContext.existingBoardElements`
 
 ***
 
@@ -124,13 +190,15 @@ Getter for existing board elements.
 
 > **get** **grCircles**(): `IGrCircle`[]
 
-Defined in: @typecad/typecad/src/pcb/pcb.ts:294
-
-Getter for graphics circles (required by PcbGraphicsInstance interface).
+Defined in: [@typecad/typecad/src/pcb/pcb.ts:212](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/pcb/pcb.ts#L212)
 
 ##### Returns
 
 `IGrCircle`[]
+
+#### Implementation of
+
+`IPcbBoardContext.grCircles`
 
 ***
 
@@ -140,13 +208,15 @@ Getter for graphics circles (required by PcbGraphicsInstance interface).
 
 > **get** **grLines**(): `IGrLine`[]
 
-Defined in: @typecad/typecad/src/pcb/pcb.ts:287
-
-Getter for graphics lines (required by PcbGraphicsInstance interface).
+Defined in: [@typecad/typecad/src/pcb/pcb.ts:208](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/pcb/pcb.ts#L208)
 
 ##### Returns
 
 `IGrLine`[]
+
+#### Implementation of
+
+`IPcbBoardContext.grLines`
 
 ***
 
@@ -156,13 +226,15 @@ Getter for graphics lines (required by PcbGraphicsInstance interface).
 
 > **get** **groups**(): `string`[]
 
-Defined in: @typecad/typecad/src/pcb/pcb.ts:350
-
-Getter for groups.
+Defined in: [@typecad/typecad/src/pcb/pcb.ts:248](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/pcb/pcb.ts#L248)
 
 ##### Returns
 
 `string`[]
+
+#### Implementation of
+
+`IPcbBoardContext.groups`
 
 ***
 
@@ -170,15 +242,13 @@ Getter for groups.
 
 #### Get Signature
 
-> **get** **groupsAsMap**(): `Map`\<`string`, `any`\>
+> **get** **groupsAsMap**(): `Map`\<`string`, `string`\>
 
-Defined in: @typecad/typecad/src/pcb/pcb.ts:357
-
-Getter for groups as Map (for footprint functions that expect Map).
+Defined in: [@typecad/typecad/src/pcb/pcb.ts:252](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/pcb/pcb.ts#L252)
 
 ##### Returns
 
-`Map`\<`string`, `any`\>
+`Map`\<`string`, `string`\>
 
 ***
 
@@ -188,13 +258,15 @@ Getter for groups as Map (for footprint functions that expect Map).
 
 > **get** **grPolys**(): `IGrPoly`[]
 
-Defined in: @typecad/typecad/src/pcb/pcb.ts:308
-
-Getter for graphics polygons (required by PcbGraphicsInstance interface).
+Defined in: [@typecad/typecad/src/pcb/pcb.ts:220](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/pcb/pcb.ts#L220)
 
 ##### Returns
 
 `IGrPoly`[]
+
+#### Implementation of
+
+`IPcbBoardContext.grPolys`
 
 ***
 
@@ -204,13 +276,15 @@ Getter for graphics polygons (required by PcbGraphicsInstance interface).
 
 > **get** **grRects**(): `IGrRect`[]
 
-Defined in: @typecad/typecad/src/pcb/pcb.ts:301
-
-Getter for graphics rectangles (required by PcbGraphicsInstance interface).
+Defined in: [@typecad/typecad/src/pcb/pcb.ts:216](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/pcb/pcb.ts#L216)
 
 ##### Returns
 
 `IGrRect`[]
+
+#### Implementation of
+
+`IPcbBoardContext.grRects`
 
 ***
 
@@ -220,13 +294,15 @@ Getter for graphics rectangles (required by PcbGraphicsInstance interface).
 
 > **get** **grTexts**(): `IGrTextOptions`[]
 
-Defined in: @typecad/typecad/src/pcb/pcb.ts:380
-
-Getter for grTexts.
+Defined in: [@typecad/typecad/src/pcb/pcb.ts:267](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/pcb/pcb.ts#L267)
 
 ##### Returns
 
 `IGrTextOptions`[]
+
+#### Implementation of
+
+`IPcbBoardContext.grTexts`
 
 ***
 
@@ -236,13 +312,15 @@ Getter for grTexts.
 
 > **get** **keepoutZones**(): `IKeepoutZone`[]
 
-Defined in: @typecad/typecad/src/pcb/pcb.ts:329
-
-Getter for keepout zones.
+Defined in: [@typecad/typecad/src/pcb/pcb.ts:236](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/pcb/pcb.ts#L236)
 
 ##### Returns
 
 `IKeepoutZone`[]
+
+#### Implementation of
+
+`IPcbBoardContext.keepoutZones`
 
 ***
 
@@ -252,7 +330,7 @@ Getter for keepout zones.
 
 > **get** **option**(): `IPcbOptions`
 
-Defined in: @typecad/typecad/src/pcb/pcb.ts:280
+Defined in: [@typecad/typecad/src/pcb/pcb.ts:204](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/pcb/pcb.ts#L204)
 
 Getter for PCB options.
 
@@ -268,13 +346,15 @@ Getter for PCB options.
 
 > **get** **options**(): `IPcbOptions`
 
-Defined in: @typecad/typecad/src/pcb/pcb.ts:402
-
-Getter for options.
+Defined in: [@typecad/typecad/src/pcb/pcb.ts:279](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/pcb/pcb.ts#L279)
 
 ##### Returns
 
 `IPcbOptions`
+
+#### Implementation of
+
+`IPcbBoardContext.options`
 
 ***
 
@@ -284,13 +364,15 @@ Getter for options.
 
 > **get** **outlines\_public**(): `IOutline`[]
 
-Defined in: @typecad/typecad/src/pcb/pcb.ts:395
-
-Getter for outlines_public.
+Defined in: [@typecad/typecad/src/pcb/pcb.ts:275](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/pcb/pcb.ts#L275)
 
 ##### Returns
 
 `IOutline`[]
+
+#### Implementation of
+
+`IPcbBoardContext.outlines_public`
 
 ***
 
@@ -300,13 +382,15 @@ Getter for outlines_public.
 
 > **get** **pcb**(): `string`
 
-Defined in: @typecad/typecad/src/pcb/pcb.ts:388
-
-Getter for pcb string.
+Defined in: [@typecad/typecad/src/pcb/pcb.ts:271](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/pcb/pcb.ts#L271)
 
 ##### Returns
 
 `string`
+
+#### Implementation of
+
+`IPcbBoardContext.pcb`
 
 ***
 
@@ -316,13 +400,15 @@ Getter for pcb string.
 
 > **get** **stagedComponents**(): [`Component`](Class.Component.md)[]
 
-Defined in: @typecad/typecad/src/pcb/pcb.ts:343
-
-Getter for staged components.
+Defined in: [@typecad/typecad/src/pcb/pcb.ts:244](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/pcb/pcb.ts#L244)
 
 ##### Returns
 
 [`Component`](Class.Component.md)[]
+
+#### Implementation of
+
+`IPcbBoardContext.stagedComponents`
 
 ***
 
@@ -332,13 +418,31 @@ Getter for staged components.
 
 > **get** **stagedOutlines**(): `IOutline`[]
 
-Defined in: @typecad/typecad/src/pcb/pcb.ts:315
-
-Getter for staged outlines (required by PcbGraphicsInstance interface).
+Defined in: [@typecad/typecad/src/pcb/pcb.ts:224](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/pcb/pcb.ts#L224)
 
 ##### Returns
 
 `IOutline`[]
+
+#### Set Signature
+
+> **set** **stagedOutlines**(`val`): `void`
+
+Defined in: [@typecad/typecad/src/pcb/pcb.ts:228](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/pcb/pcb.ts#L228)
+
+##### Parameters
+
+###### val
+
+`IOutline`[]
+
+##### Returns
+
+`void`
+
+#### Implementation of
+
+`IPcbBoardContext.stagedOutlines`
 
 ***
 
@@ -348,196 +452,23 @@ Getter for staged outlines (required by PcbGraphicsInstance interface).
 
 > **get** **zones**(): `IFilledZone`[]
 
-Defined in: @typecad/typecad/src/pcb/pcb.ts:322
-
-Getter for filled zones.
+Defined in: [@typecad/typecad/src/pcb/pcb.ts:232](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/pcb/pcb.ts#L232)
 
 ##### Returns
 
 `IFilledZone`[]
 
+#### Implementation of
+
+`IPcbBoardContext.zones`
+
 ## Methods
-
-### \_addComponentToBoardPublic()
-
-> **\_addComponentToBoardPublic**(`component`): `void`
-
-Defined in: @typecad/typecad/src/pcb/pcb.ts:478
-
-**`Internal`**
-
-Public accessor for addComponentToBoard functionality.
-Used by extracted modules to add components to the board.
-
-#### Parameters
-
-##### component
-
-[`Component`](Class.Component.md)
-
-Component to add to the board.
-
-#### Returns
-
-`void`
-
-***
-
-### \_clearComponents()
-
-> **\_clearComponents**(): `void`
-
-Defined in: @typecad/typecad/src/pcb/pcb.ts:520
-
-**`Internal`**
-
-Public method to clear components.
-Used by extracted modules to reset components during board creation.
-
-#### Returns
-
-`void`
-
-***
-
-### \_clearGroups()
-
-> **\_clearGroups**(): `void`
-
-Defined in: @typecad/typecad/src/pcb/pcb.ts:538
-
-**`Internal`**
-
-Public method to clear groups.
-Used by extracted modules to reset groups during board creation.
-
-#### Returns
-
-`void`
-
-***
-
-### \_clearOutlines()
-
-> **\_clearOutlines**(): `void`
-
-Defined in: @typecad/typecad/src/pcb/pcb.ts:529
-
-**`Internal`**
-
-Public method to clear outlines.
-Used by extracted modules to reset outlines during board creation.
-
-#### Returns
-
-`void`
-
-***
-
-### \_createFootprintNodePublic()
-
-> **\_createFootprintNodePublic**(`component`, `boardNetNameToCodeMap?`): `any`[]
-
-Defined in: @typecad/typecad/src/pcb/pcb.ts:502
-
-**`Internal`**
-
-Public accessor for createFootprintNode functionality.
-Used by extracted modules to create footprint nodes.
-
-#### Parameters
-
-##### component
-
-[`Component`](Class.Component.md)
-
-##### boardNetNameToCodeMap?
-
-`Map`\<`string`, `number`\>
-
-#### Returns
-
-`any`[]
-
-***
-
-### \_getComponents()
-
-> **\_getComponents**(): [`Component`](Class.Component.md)[]
-
-Defined in: @typecad/typecad/src/pcb/pcb.ts:968
-
-**`Internal`**
-
-Get active components on the PCB.
- Used by ObstacleBuilder to include components as obstacles.
-
-#### Returns
-
-[`Component`](Class.Component.md)[]
-
-***
-
-### \_getKeepoutZones()
-
-> **\_getKeepoutZones**(): `IKeepoutZone`[]
-
-Defined in: @typecad/typecad/src/pcb/pcb.ts:960
-
-**`Internal`**
-
-Get keepout zones for obstacle detection during autorouting.
- Used by ObstacleBuilder to include keepout areas in the routing grid.
-
-#### Returns
-
-`IKeepoutZone`[]
-
-***
-
-### \_getStagedComponents()
-
-> **\_getStagedComponents**(): [`Component`](Class.Component.md)[]
-
-Defined in: @typecad/typecad/src/pcb/pcb.ts:976
-
-**`Internal`**
-
-Get staged components (placed but not yet created).
- Used by ObstacleBuilder to include staged components as obstacles.
-
-#### Returns
-
-[`Component`](Class.Component.md)[]
-
-***
-
-### \_getStagedOutlines()
-
-> **\_getStagedOutlines**(): `IOutline`[]
-
-Defined in: @typecad/typecad/src/pcb/pcb.ts:952
-
-**`Internal`**
-
-Get staged outlines for obstacle detection during autorouting.
- Used by ObstacleBuilder to detect tracks from previous autoroute calls.
-
-#### Returns
-
-`IOutline`[]
-
-***
 
 ### \_getTrackData()
 
-> **\_getTrackData**(`uuid`): `IGrLine`
+> **\_getTrackData**(`uuid`): `IGrLine` \| `null`
 
-Defined in: @typecad/typecad/src/pcb/pcb.ts:1308
-
-**`Internal`**
-
-Gets the actual track data for a given UUID, including any preserved manual edits.
+Defined in: [@typecad/typecad/src/pcb/pcb.ts:908](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/pcb/pcb.ts#L908)
 
 #### Parameters
 
@@ -545,98 +476,13 @@ Gets the actual track data for a given UUID, including any preserved manual edit
 
 `string`
 
-The UUID of the track to retrieve
-
 #### Returns
 
-`IGrLine`
+`IGrLine` \| `null`
 
-The track data if found, null otherwise
- Used by TrackBuilder to retrieve deferred track data.
+#### Implementation of
 
-***
-
-### \_removeStagedOutlinesByUuid()
-
-> **\_removeStagedOutlinesByUuid**(`uuids`): `void`
-
-Defined in: @typecad/typecad/src/pcb/pcb.ts:983
-
-**`Internal`**
-
-Remove staged outlines with specific UUIDs (used when reusing autoroute results in manual routes)
-
-#### Parameters
-
-##### uuids
-
-`string`[]
-
-#### Returns
-
-`void`
-
-***
-
-### \_resolveNetPublic()
-
-> **\_resolveNetPublic**(`componentReference`, `pinNumber`, `componentUuid?`, `boardNetNameToCodeMap?`, `fallbackNetName?`): `INetResolution`
-
-Defined in: @typecad/typecad/src/pcb/pcb.ts:487
-
-**`Internal`**
-
-Public accessor for resolveNet functionality.
-Used by extracted modules to resolve net assignments.
-
-#### Parameters
-
-##### componentReference
-
-`string`
-
-##### pinNumber
-
-`string`
-
-##### componentUuid?
-
-`string`
-
-##### boardNetNameToCodeMap?
-
-`Map`\<`string`, `number`\>
-
-##### fallbackNetName?
-
-`string`
-
-#### Returns
-
-`INetResolution`
-
-***
-
-### \_setPcb()
-
-> **\_setPcb**(`content`): `void`
-
-Defined in: @typecad/typecad/src/pcb/pcb.ts:547
-
-**`Internal`**
-
-Public method to set PCB content.
-Used by extracted modules to set the PCB content.
-
-#### Parameters
-
-##### content
-
-`string`
-
-#### Returns
-
-`void`
+`IPcbBoardContext._getTrackData`
 
 ***
 
@@ -644,11 +490,7 @@ Used by extracted modules to set the PCB content.
 
 > **\_track**(`start`, `end`, `width?`, `layer?`, `locked?`, `uuid?`, `net?`): `string`
 
-Defined in: @typecad/typecad/src/pcb/pcb.ts:991
-
-**`Internal`**
-
-Create a low-level track segment. Used internally by TrackBuilder.
+Defined in: [@typecad/typecad/src/pcb/pcb.ts:614](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/pcb/pcb.ts#L614)
 
 #### Parameters
 
@@ -696,36 +538,9 @@ Create a low-level track segment. Used internally by TrackBuilder.
 
 `string`
 
-***
+#### Implementation of
 
-### \_updateFootprintNodePublic()
-
-> **\_updateFootprintNodePublic**(`node`, `component`, `boardNetNameToCodeMap?`): `any`[]
-
-Defined in: @typecad/typecad/src/pcb/pcb.ts:511
-
-**`Internal`**
-
-Public accessor for updateFootprintNode functionality.
-Used by extracted modules to update footprint nodes.
-
-#### Parameters
-
-##### node
-
-`any`[]
-
-##### component
-
-[`Component`](Class.Component.md)
-
-##### boardNetNameToCodeMap?
-
-`Map`\<`string`, `number`\>
-
-#### Returns
-
-`any`[]
+`IPcbBoardContext._track`
 
 ***
 
@@ -733,7 +548,7 @@ Used by extracted modules to update footprint nodes.
 
 > **add**(...`components`): `void`
 
-Defined in: @typecad/typecad/src/pcb/pcb.ts:1296
+Defined in: [@typecad/typecad/src/pcb/pcb.ts:902](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/pcb/pcb.ts#L902)
 
 Adds components to the associated schematic.
 This is a pass-through to the Schematic.add() method.
@@ -756,7 +571,7 @@ Components to add to the schematic.
 
 > **autorouteBatch**(`items`, `batchOptions?`): `Promise`\<\{ `results`: `IAutorouteResult`[]; `rounds`: `number`; `success`: `boolean`; \}\>
 
-Defined in: @typecad/typecad/src/pcb/pcb.ts:1197
+Defined in: [@typecad/typecad/src/pcb/pcb.ts:769](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/pcb/pcb.ts#L769)
 
 Batch autorouter orchestrator with simple rip-up-and-retry.
 Routes multiple connections together, retrying with different ordering
@@ -796,7 +611,7 @@ and relaxed parameters across rounds to negotiate congestion.
 
 > **bom**(`output_folder?`): `void`
 
-Defined in: @typecad/typecad/src/pcb/pcb.ts:1275
+Defined in: [@typecad/typecad/src/pcb/pcb.ts:845](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/pcb/pcb.ts#L845)
 
 Generates a Bill of Materials (BOM) for the associated schematic.
 This is a pass-through to the Schematic.bom() method.
@@ -819,7 +634,7 @@ The folder to output the BOM to.
 
 > **circle**(`options`): `void`
 
-Defined in: @typecad/typecad/src/pcb/pcb.ts:886
+Defined in: [@typecad/typecad/src/pcb/pcb.ts:536](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/pcb/pcb.ts#L536)
 
 Creates a graphical circle on the board.
 For full documentation and examples, see pcbCircle in `pcb_graphics.ts`.
@@ -878,17 +693,60 @@ For full documentation and examples, see pcbCircle in `pcb_graphics.ts`.
 
 ***
 
+### contract()
+
+> **contract**(`options?`): `void`
+
+Defined in: [@typecad/typecad/src/pcb/pcb.ts:892](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/pcb/pcb.ts#L892)
+
+Exports a hardware contract JSON file describing which MCU pins are wired
+in the circuit. The firmware toolchain (TypeHAL) consumes this contract to
+generate a board wrapper that only exposes connected pins and peripherals.
+
+When a component has a `typehal.boardPackage` property, the MCU is auto-detected
+and pin names are read from the KiCAD symbol file. No options are needed.
+
+#### Parameters
+
+##### options?
+
+[`ContractOptions`](Interface.ContractOptions.md) = `{}`
+
+Contract generation options (all optional when typehal is set on the MCU).
+
+#### Returns
+
+`void`
+
+#### Example
+
+```ts
+// Auto-detect MCU from typehal.boardPackage property on the component:
+pcb.contract();
+
+// With custom output path:
+pcb.contract({ outputPath: '../fw/contract.json' });
+
+// Legacy — manual MCU identification:
+pcb.contract({
+  mcuSymbolPattern: 'ATmega328',
+  pinMapping: atmega328,
+});
+```
+
+***
+
 ### create()
 
 > **create**(...`items`): `Promise`\<`void`\>
 
-Defined in: @typecad/typecad/src/pcb/pcb.ts:718
+Defined in: [@typecad/typecad/src/pcb/pcb.ts:361](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/pcb/pcb.ts#L361)
 
 #### Parameters
 
 ##### items
 
-...([`Component`](Class.Component.md) \| [`TrackBuilder`](Class.TrackBuilder.md))[]
+...([`Component`](Class.Component.md) \| [`TrackBuilder`](Class.TrackBuilder.md) \| ([`Component`](Class.Component.md) \| [`TrackBuilder`](Class.TrackBuilder.md))[])[]
 
 #### Returns
 
@@ -900,11 +758,7 @@ Defined in: @typecad/typecad/src/pcb/pcb.ts:718
 
 > **createRouter**(`name`, `grid`, `options`): `IRouterContext`
 
-Defined in: @typecad/typecad/src/pcb/pcb.ts:216
-
-**`Internal`**
-
-Create a routing engine by name from this PCB instance's registry.
+Defined in: [@typecad/typecad/src/pcb/pcb.ts:189](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/pcb/pcb.ts#L189)
 
 #### Parameters
 
@@ -930,7 +784,7 @@ Create a routing engine by name from this PCB instance's registry.
 
 > **erc**(): `void`
 
-Defined in: @typecad/typecad/src/pcb/pcb.ts:1285
+Defined in: [@typecad/typecad/src/pcb/pcb.ts:855](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/pcb/pcb.ts#L855)
 
 Performs electrical rule checks on the associated schematic.
 This is a pass-through to the Schematic.erc() method.
@@ -943,25 +797,17 @@ This is a pass-through to the Schematic.erc() method.
 
 ### getCallSite()
 
-> **getCallSite**(): `object`
+> **getCallSite**(): \{ `column`: `number`; `file`: `string`; `line`: `number`; \} \| `undefined`
 
-Defined in: @typecad/typecad/src/pcb/pcb.ts:722
+Defined in: [@typecad/typecad/src/pcb/pcb.ts:374](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/pcb/pcb.ts#L374)
 
 #### Returns
 
-`object`
+\{ `column`: `number`; `file`: `string`; `line`: `number`; \} \| `undefined`
 
-##### column
+#### Implementation of
 
-> **column**: `number`
-
-##### file
-
-> **file**: `string`
-
-##### line
-
-> **line**: `number`
+`IPcbBoardContext.getCallSite`
 
 ***
 
@@ -969,11 +815,7 @@ Defined in: @typecad/typecad/src/pcb/pcb.ts:722
 
 > **getRegisteredRouters**(): `string`[]
 
-Defined in: @typecad/typecad/src/pcb/pcb.ts:236
-
-**`Internal`**
-
-Get the list of registered router names from this PCB instance's registry.
+Defined in: [@typecad/typecad/src/pcb/pcb.ts:197](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/pcb/pcb.ts#L197)
 
 #### Returns
 
@@ -983,13 +825,9 @@ Get the list of registered router names from this PCB instance's registry.
 
 ### getRouterGridConfigurator()
 
-> **getRouterGridConfigurator**(`name`): `RouterGridConfigurator`
+> **getRouterGridConfigurator**(`name`): `RouterGridConfigurator` \| `undefined`
 
-Defined in: @typecad/typecad/src/pcb/pcb.ts:228
-
-**`Internal`**
-
-Get the grid configuration hook for an algorithm from this PCB instance's registry.
+Defined in: [@typecad/typecad/src/pcb/pcb.ts:193](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/pcb/pcb.ts#L193)
 
 #### Parameters
 
@@ -999,7 +837,7 @@ Get the grid configuration hook for an algorithm from this PCB instance's regist
 
 #### Returns
 
-`RouterGridConfigurator`
+`RouterGridConfigurator` \| `undefined`
 
 ***
 
@@ -1007,7 +845,7 @@ Get the grid configuration hook for an algorithm from this PCB instance's regist
 
 > **group**(`group_name`, ...`items`): `void`
 
-Defined in: @typecad/typecad/src/pcb/pcb.ts:610
+Defined in: [@typecad/typecad/src/pcb/pcb.ts:325](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/pcb/pcb.ts#L325)
 
 Groups components and/or elements from a TrackBuilder together on the board.
 
@@ -1035,7 +873,7 @@ A list of Component instances or TrackBuilder instances.
 
 > **keepout**(`options`): `void`
 
-Defined in: @typecad/typecad/src/pcb/pcb.ts:835
+Defined in: [@typecad/typecad/src/pcb/pcb.ts:475](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/pcb/pcb.ts#L475)
 
 Creates a keepout zone that restricts routing and placement.
 For full documentation and examples, see [keepout](#keepout) in `pcb_zones.ts`.
@@ -1050,7 +888,7 @@ For full documentation and examples, see [keepout](#keepout) in `pcb_zones.ts`.
 
 ###### hatchStyle?
 
-`"none"` \| `"edge"` \| `"full"`
+`"edge"` \| `"none"` \| `"full"`
 
 ###### height
 
@@ -1126,7 +964,7 @@ For full documentation and examples, see [keepout](#keepout) in `pcb_zones.ts`.
 
 > **line**(`options`): `void`
 
-Defined in: @typecad/typecad/src/pcb/pcb.ts:872
+Defined in: [@typecad/typecad/src/pcb/pcb.ts:517](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/pcb/pcb.ts#L517)
 
 Creates a graphical line on the board.
 For full documentation and examples, see pcbLine in `pcb_graphics.ts`.
@@ -1181,7 +1019,7 @@ For full documentation and examples, see pcbLine in `pcb_graphics.ts`.
 
 > **named**(`name`): `this`
 
-Defined in: @typecad/typecad/src/pcb/pcb.ts:1264
+Defined in: [@typecad/typecad/src/pcb/pcb.ts:834](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/pcb/pcb.ts#L834)
 
 Sets a name for a net in the associated schematic.
 This is a pass-through to the Schematic.named() method.
@@ -1206,7 +1044,7 @@ The PCB instance for chaining.
 
 > **net**(...`pins`): `ISchematicNetDefinition`
 
-Defined in: @typecad/typecad/src/pcb/pcb.ts:1254
+Defined in: [@typecad/typecad/src/pcb/pcb.ts:824](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/pcb/pcb.ts#L824)
 
 Connects a group of pins together in the associated schematic.
 Returns a description of the resulting net so it can be reused later.
@@ -1229,7 +1067,7 @@ Pins to connect in the net.
 
 > **outline**(`x`, `y`, `width`, `height`, `filletRadius?`, `conceptualUuidFromUser?`): `void`
 
-Defined in: @typecad/typecad/src/pcb/pcb.ts:940
+Defined in: [@typecad/typecad/src/pcb/pcb.ts:610](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/pcb/pcb.ts#L610)
 
 Creates a rectangular outline on the Edge.Cuts layer.
 
@@ -1281,7 +1119,7 @@ Optional UUID for the conceptual outline.
 
 > **place**(...`components`): `void`
 
-Defined in: @typecad/typecad/src/pcb/pcb.ts:555
+Defined in: [@typecad/typecad/src/pcb/pcb.ts:308](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/pcb/pcb.ts#L308)
 
 Places components on the board.
 
@@ -1297,13 +1135,17 @@ List of components to place.
 
 `void`
 
+#### Implementation of
+
+`IPcbBoardContext.place`
+
 ***
 
 ### poly()
 
 > **poly**(`options`): `void`
 
-Defined in: @typecad/typecad/src/pcb/pcb.ts:921
+Defined in: [@typecad/typecad/src/pcb/pcb.ts:587](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/pcb/pcb.ts#L587)
 
 Creates a graphical polygon on the board.
 For full documentation and examples, see pcbPoly in `pcb_graphics.ts`.
@@ -1338,21 +1180,39 @@ For full documentation and examples, see pcbPoly in `pcb_graphics.ts`.
 
 ***
 
-### prettyPrintSExpr()
+### popOffset()
 
-> **prettyPrintSExpr**(`sexpr`): `string`
+> **popOffset**(): `void`
 
-Defined in: @typecad/typecad/src/pcb/pcb.ts:170
-
-#### Parameters
-
-##### sexpr
-
-`string`
+Defined in: [@typecad/typecad/src/pcb/pcb.ts:155](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/pcb/pcb.ts#L155)
 
 #### Returns
 
-`string`
+`void`
+
+***
+
+### pushOffset()
+
+> **pushOffset**(`x`, `y`): `void`
+
+Defined in: [@typecad/typecad/src/pcb/pcb.ts:149](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/pcb/pcb.ts#L149)
+
+Pushes a new offset to the stack. All subsequent coordinates will be relative to this offset.
+
+#### Parameters
+
+##### x
+
+`number`
+
+##### y
+
+`number`
+
+#### Returns
+
+`void`
 
 ***
 
@@ -1360,7 +1220,7 @@ Defined in: @typecad/typecad/src/pcb/pcb.ts:170
 
 > **rect**(`options`): `void`
 
-Defined in: @typecad/typecad/src/pcb/pcb.ts:902
+Defined in: [@typecad/typecad/src/pcb/pcb.ts:559](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/pcb/pcb.ts#L559)
 
 Creates a graphical rectangle on the board.
 For full documentation and examples, see pcbRect in `pcb_graphics.ts`.
@@ -1435,7 +1295,7 @@ For full documentation and examples, see pcbRect in `pcb_graphics.ts`.
 
 > **registerRouter**(`registerFn`): `void`
 
-Defined in: @typecad/typecad/src/pcb/pcb.ts:180
+Defined in: [@typecad/typecad/src/pcb/pcb.ts:174](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/pcb/pcb.ts#L174)
 
 Register a routing algorithm with this PCB instance.
 
@@ -1457,10 +1317,7 @@ A registerRouter function (e.g., from @typecad-astar)
 
 > **resolveNet**(`componentReference`, `pinNumber`, `componentUuid?`, `boardNetNameToCodeMap?`, `fallbackNetName?`): `INetResolution`
 
-Defined in: @typecad/typecad/src/pcb/pcb.ts:414
-
-Public resolveNet method that delegates to the private implementation.
-This is needed for the extracted functions that expect a public resolveNet method.
+Defined in: [@typecad/typecad/src/pcb/pcb.ts:287](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/pcb/pcb.ts#L287)
 
 #### Parameters
 
@@ -1488,6 +1345,10 @@ This is needed for the extracted functions that expect a public resolveNet metho
 
 `INetResolution`
 
+#### Implementation of
+
+`IPcbBoardContext.resolveNet`
+
 ***
 
 ### route()
@@ -1496,7 +1357,7 @@ This is needed for the extracted functions that expect a public resolveNet metho
 
 > **route**(`options`): `Promise`\<`IAutorouteResult`\>
 
-Defined in: @typecad/typecad/src/pcb/pcb.ts:1146
+Defined in: [@typecad/typecad/src/pcb/pcb.ts:729](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/pcb/pcb.ts#L729)
 
 Unified routing API.
 
@@ -1514,11 +1375,15 @@ Overloads:
 
 `Promise`\<`IAutorouteResult`\>
 
+##### Implementation of
+
+`IPcbBoardContext.route`
+
 #### Call Signature
 
 > **route**(`netDefinition`, `options?`): `Promise`\<`IAutorouteResult`\>
 
-Defined in: @typecad/typecad/src/pcb/pcb.ts:1147
+Defined in: [@typecad/typecad/src/pcb/pcb.ts:730](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/pcb/pcb.ts#L730)
 
 Unified routing API.
 
@@ -1540,23 +1405,23 @@ Overloads:
 
 `Promise`\<`IAutorouteResult`\>
 
+##### Implementation of
+
+`IPcbBoardContext.route`
+
 ***
 
 ### stage()
 
 > **stage**(...`components`): `void`
 
-Defined in: @typecad/typecad/src/pcb/pcb.ts:566
-
-Stage components so they're considered for routing/debug before full board creation.
+Defined in: [@typecad/typecad/src/pcb/pcb.ts:314](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/pcb/pcb.ts#L314)
 
 #### Parameters
 
 ##### components
 
 ...[`Component`](Class.Component.md)[]
-
-Components to stage
 
 #### Returns
 
@@ -1568,7 +1433,7 @@ Components to stage
 
 > **text**(`options`): `void`
 
-Defined in: @typecad/typecad/src/pcb/pcb.ts:672
+Defined in: [@typecad/typecad/src/pcb/pcb.ts:344](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/pcb/pcb.ts#L344)
 
 Adds board-level text (gr_text) to the PCB.
 
@@ -1605,7 +1470,7 @@ pcb.text({
 
 > **track**(`options?`): [`TrackBuilder`](Class.TrackBuilder.md)
 
-Defined in: @typecad/typecad/src/pcb/pcb.ts:1034
+Defined in: [@typecad/typecad/src/pcb/pcb.ts:656](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/pcb/pcb.ts#L656)
 
 Begins a fluent interface for creating connected tracks and vias.
 
@@ -1640,13 +1505,17 @@ let power_track_elements = pcb.connect()
  .to({x: 110, y: 120, layer: "B.Cu"}) // Continues on B.Cu
 ```
 
+#### Implementation of
+
+`IPcbBoardContext.track`
+
 ***
 
 ### via()
 
 > **via**(`via?`): [`Component`](Class.Component.md)
 
-Defined in: @typecad/typecad/src/pcb/pcb.ts:748
+Defined in: [@typecad/typecad/src/pcb/pcb.ts:400](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/pcb/pcb.ts#L400)
 
 Handles via-related operations.
 
@@ -1664,16 +1533,17 @@ The via details.
 
 The component representing the via.
 
+#### Implementation of
+
+`IPcbBoardContext.via`
+
 ***
 
 ### waitForPendingAutoroutes()
 
 > **waitForPendingAutoroutes**(): `Promise`\<`void`\>
 
-Defined in: @typecad/typecad/src/pcb/pcb.ts:1172
-
-Wait for any pending autoroute operations initiated on this PCB instance.
-This is useful to ensure the board file is written after routing completes.
+Defined in: [@typecad/typecad/src/pcb/pcb.ts:757](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/pcb/pcb.ts#L757)
 
 #### Returns
 
@@ -1685,7 +1555,7 @@ This is useful to ensure the board file is written after routing completes.
 
 > **zone**(`options`): `void`
 
-Defined in: @typecad/typecad/src/pcb/pcb.ts:775
+Defined in: [@typecad/typecad/src/pcb/pcb.ts:412](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/pcb/pcb.ts#L412)
 
 Creates a filled zone on copper layers connected to a specific net.
 For full documentation and examples, see [zone](#zone) in `pcb_zones.ts`.
@@ -1700,7 +1570,7 @@ For full documentation and examples, see [zone](#zone) in `pcb_zones.ts`.
 
 ###### connectPads?
 
-`"full"` \| `"thru_hole_only"` \| `"no"`
+`"no"` \| `"full"` \| `"thru_hole_only"`
 
 ###### fillArcSegments?
 
@@ -1748,7 +1618,7 @@ For full documentation and examples, see [zone](#zone) in `pcb_zones.ts`.
 
 ###### hatchStyle?
 
-`"none"` \| `"edge"` \| `"full"`
+`"edge"` \| `"none"` \| `"full"`
 
 ###### hatchThickness?
 
@@ -1788,7 +1658,7 @@ For full documentation and examples, see [zone](#zone) in `pcb_zones.ts`.
 
 ###### pin?
 
-`any`
+[`Pin`](Class.Pin.md)
 
 ###### priority?
 

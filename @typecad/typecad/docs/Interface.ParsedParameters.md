@@ -6,7 +6,7 @@
 
 # Interface: ParsedParameters
 
-Defined in: @typecad/typecad/src/kicad-symbols/types/index.ts:132
+Defined in: [@typecad/typecad/src/kicad-symbols/types/index.ts:132](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad-symbols/types/index.ts#L132)
 
 Contains all parameters extracted from a search query.
 Used by the fuzzy scoring algorithm to match against component specifications.
@@ -33,7 +33,7 @@ const params: ParsedParameters = {
 
 > `optional` **componentType?**: `string`
 
-Defined in: @typecad/typecad/src/kicad-symbols/types/index.ts:146
+Defined in: [@typecad/typecad/src/kicad-symbols/types/index.ts:146](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad-symbols/types/index.ts#L146)
 
 Component type identifier (e.g., "resistor", "capacitor")
 
@@ -43,7 +43,7 @@ Component type identifier (e.g., "resistor", "capacitor")
 
 > `optional` **keywords?**: `string`[]
 
-Defined in: @typecad/typecad/src/kicad-symbols/types/index.ts:149
+Defined in: [@typecad/typecad/src/kicad-symbols/types/index.ts:149](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad-symbols/types/index.ts#L149)
 
 Additional keywords from the search query
 
@@ -53,7 +53,7 @@ Additional keywords from the search query
 
 > `optional` **package?**: `string`
 
-Defined in: @typecad/typecad/src/kicad-symbols/types/index.ts:143
+Defined in: [@typecad/typecad/src/kicad-symbols/types/index.ts:143](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad-symbols/types/index.ts#L143)
 
 Component package type (e.g., "0603", "SOT-23")
 
@@ -63,7 +63,7 @@ Component package type (e.g., "0603", "SOT-23")
 
 > `optional` **tolerance?**: `string`
 
-Defined in: @typecad/typecad/src/kicad-symbols/types/index.ts:140
+Defined in: [@typecad/typecad/src/kicad-symbols/types/index.ts:140](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad-symbols/types/index.ts#L140)
 
 Tolerance specification (e.g., "±1%", "±5%")
 
@@ -73,7 +73,7 @@ Tolerance specification (e.g., "±1%", "±5%")
 
 > `optional` **value?**: [`ElectricalValue`](Interface.ElectricalValue.md)
 
-Defined in: @typecad/typecad/src/kicad-symbols/types/index.ts:137
+Defined in: [@typecad/typecad/src/kicad-symbols/types/index.ts:137](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad-symbols/types/index.ts#L137)
 
 Primary electrical value (resistance, capacitance, inductance)
 
@@ -83,6 +83,6 @@ Primary electrical value (resistance, capacitance, inductance)
 
 > `optional` **voltage?**: [`ElectricalValue`](Interface.ElectricalValue.md)
 
-Defined in: @typecad/typecad/src/kicad-symbols/types/index.ts:134
+Defined in: [@typecad/typecad/src/kicad-symbols/types/index.ts:134](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad-symbols/types/index.ts#L134)
 
 Voltage rating parameter (e.g., 50V, 3.3V)

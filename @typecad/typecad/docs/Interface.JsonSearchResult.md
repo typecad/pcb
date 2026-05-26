@@ -6,7 +6,7 @@
 
 # Interface: JsonSearchResult
 
-Defined in: @typecad/typecad/src/kicad-symbols/types/index.ts:360
+Defined in: [@typecad/typecad/src/kicad-symbols/types/index.ts:366](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad-symbols/types/index.ts#L366)
 
 Clean interface for JSON output that ensures consistent serialization.
 Contains the same essential information as SearchResult but optimized for JSON format.
@@ -39,7 +39,7 @@ const kicadJsonResult: JsonSearchResult = {
 
 > **description**: `string`
 
-Defined in: @typecad/typecad/src/kicad-symbols/types/index.ts:365
+Defined in: [@typecad/typecad/src/kicad-symbols/types/index.ts:371](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad-symbols/types/index.ts#L371)
 
 Full component description
 
@@ -49,7 +49,7 @@ Full component description
 
 > **id**: `string`
 
-Defined in: @typecad/typecad/src/kicad-symbols/types/index.ts:362
+Defined in: [@typecad/typecad/src/kicad-symbols/types/index.ts:368](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad-symbols/types/index.ts#L368)
 
 Component identifier (KiCad: "library:symbol")
 
@@ -59,7 +59,7 @@ Component identifier (KiCad: "library:symbol")
 
 > **matchSummary**: `string`
 
-Defined in: @typecad/typecad/src/kicad-symbols/types/index.ts:371
+Defined in: [@typecad/typecad/src/kicad-symbols/types/index.ts:377](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad-symbols/types/index.ts#L377)
 
 Human-readable summary of why this component matched
 
@@ -69,6 +69,6 @@ Human-readable summary of why this component matched
 
 > **score**: `number`
 
-Defined in: @typecad/typecad/src/kicad-symbols/types/index.ts:368
+Defined in: [@typecad/typecad/src/kicad-symbols/types/index.ts:374](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad-symbols/types/index.ts#L374)
 
 Total match score as number

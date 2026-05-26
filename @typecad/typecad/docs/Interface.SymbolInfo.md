@@ -6,7 +6,7 @@
 
 # Interface: SymbolInfo
 
-Defined in: @typecad/typecad/src/kicad-symbols/types/kicad.ts:48
+Defined in: [@typecad/typecad/src/kicad-symbols/types/kicad.ts:48](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad-symbols/types/kicad.ts#L48)
 
 Represents an individual KiCad symbol with its metadata.
 Contains information extracted from library symbol tables.
@@ -30,7 +30,7 @@ const symbol: SymbolInfo = {
 
 > **description**: `string`
 
-Defined in: @typecad/typecad/src/kicad-symbols/types/kicad.ts:56
+Defined in: [@typecad/typecad/src/kicad-symbols/types/kicad.ts:56](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad-symbols/types/kicad.ts#L56)
 
 Description of the symbol's function or purpose
 
@@ -40,7 +40,7 @@ Description of the symbol's function or purpose
 
 > **formattedName**: `string`
 
-Defined in: @typecad/typecad/src/kicad-symbols/types/kicad.ts:59
+Defined in: [@typecad/typecad/src/kicad-symbols/types/kicad.ts:59](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad-symbols/types/kicad.ts#L59)
 
 Formatted name in "library:symbol" format for display and search
 
@@ -50,7 +50,7 @@ Formatted name in "library:symbol" format for display and search
 
 > **library**: `string`
 
-Defined in: @typecad/typecad/src/kicad-symbols/types/kicad.ts:50
+Defined in: [@typecad/typecad/src/kicad-symbols/types/kicad.ts:50](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad-symbols/types/kicad.ts#L50)
 
 Name of the library containing this symbol
 
@@ -60,6 +60,6 @@ Name of the library containing this symbol
 
 > **symbol**: `string`
 
-Defined in: @typecad/typecad/src/kicad-symbols/types/kicad.ts:53
+Defined in: [@typecad/typecad/src/kicad-symbols/types/kicad.ts:53](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad-symbols/types/kicad.ts#L53)
 
 Symbol name within the library

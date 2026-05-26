@@ -6,13 +6,15 @@
 
 # Class: Schematic
 
-Defined in: @typecad/typecad/src/schematic.ts:192
+Defined in: [@typecad/typecad/src/schematic.ts:56](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/schematic.ts#L56)
 
 The main class for typeCAD. Holds all [Component](Class.Component.md) classes, creates work files, and creates nets.
 
-## Export
+ Schematic
 
-Schematic
+## Implements
+
+- `IPendingSummaryHost`
 
 ## Constructors
 
@@ -20,7 +22,7 @@ Schematic
 
 > **new Schematic**(`Sheetname`): `Schematic`
 
-Defined in: @typecad/typecad/src/schematic.ts:306
+Defined in: [@typecad/typecad/src/schematic.ts:100](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/schematic.ts#L100)
 
 Initializes a new schematic with a given sheet name.
 
@@ -48,47 +50,15 @@ let typecad = new Schematic('sheetname');
 
 > **components**: [`Component`](Class.Component.md)[] = `[]`
 
-Defined in: @typecad/typecad/src/schematic.ts:193
+Defined in: [@typecad/typecad/src/schematic.ts:57](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/schematic.ts#L57)
 
 ***
 
-### merged\_nets
+### referenceCounter
 
-> **merged\_nets**: `object`[] = `[]`
+> `readonly` **referenceCounter**: `ReferenceCounter`
 
-Defined in: @typecad/typecad/src/schematic.ts:204
-
-#### merged\_to\_number
-
-> **merged\_to\_number**: `number`
-
-#### old\_name
-
-> **old\_name**: `string`
-
-***
-
-### Nodes
-
-> **Nodes**: `object`[] = `[]`
-
-Defined in: @typecad/typecad/src/schematic.ts:203
-
-#### code
-
-> **code**: `number`
-
-#### name
-
-> **name**: `string`
-
-#### nodes
-
-> **nodes**: [`Pin`](Class.Pin.md)[]
-
-#### owner
-
-> **owner**: [`Component`](Class.Component.md)
+Defined in: [@typecad/typecad/src/schematic.ts:65](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/schematic.ts#L65)
 
 ***
 
@@ -96,7 +66,7 @@ Defined in: @typecad/typecad/src/schematic.ts:203
 
 > **Sheetname**: `string` = `''`
 
-Defined in: @typecad/typecad/src/schematic.ts:198
+Defined in: [@typecad/typecad/src/schematic.ts:62](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/schematic.ts#L62)
 
 ***
 
@@ -104,7 +74,7 @@ Defined in: @typecad/typecad/src/schematic.ts:198
 
 > **uuid**: `` `${string}-${string}-${string}-${string}-${string}` ``
 
-Defined in: @typecad/typecad/src/schematic.ts:199
+Defined in: [@typecad/typecad/src/schematic.ts:63](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/schematic.ts#L63)
 
 ## Accessors
 
@@ -114,7 +84,7 @@ Defined in: @typecad/typecad/src/schematic.ts:199
 
 > **get** **Components**(): [`Component`](Class.Component.md)[]
 
-Defined in: @typecad/typecad/src/schematic.ts:195
+Defined in: [@typecad/typecad/src/schematic.ts:59](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/schematic.ts#L59)
 
 ##### Deprecated
 
@@ -128,7 +98,7 @@ Use `components` instead. Kept for backward compatibility.
 
 > **set** **Components**(`value`): `void`
 
-Defined in: @typecad/typecad/src/schematic.ts:197
+Defined in: [@typecad/typecad/src/schematic.ts:61](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/schematic.ts#L61)
 
 ##### Deprecated
 
@@ -146,23 +116,57 @@ Use `components` instead. Kept for backward compatibility.
 
 ***
 
+### merged\_nets
+
+#### Get Signature
+
+> **get** **merged\_nets**(): `object`[]
+
+Defined in: [@typecad/typecad/src/schematic.ts:81](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/schematic.ts#L81)
+
+##### Returns
+
+`object`[]
+
+***
+
+### Nodes
+
+#### Get Signature
+
+> **get** **Nodes**(): `ISchematicNode`[]
+
+Defined in: [@typecad/typecad/src/schematic.ts:78](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/schematic.ts#L78)
+
+##### Returns
+
+`ISchematicNode`[]
+
+#### Set Signature
+
+> **set** **Nodes**(`val`): `void`
+
+Defined in: [@typecad/typecad/src/schematic.ts:79](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/schematic.ts#L79)
+
+##### Parameters
+
+###### val
+
+`ISchematicNode`[]
+
+##### Returns
+
+`void`
+
+***
+
 ### option
 
 #### Get Signature
 
 > **get** **option**(): `ISchematicOptions`
 
-Defined in: @typecad/typecad/src/schematic.ts:223
-
-Getter for Schematic options.
-
-##### Example
-
-```ts
-let schematic = new Schematic('sheetname');
-schematic.option.safe_write = false;
-schematic.option.build_dir = './custom_build/';
-```
+Defined in: [@typecad/typecad/src/schematic.ts:83](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/schematic.ts#L83)
 
 ##### Returns
 
@@ -174,7 +178,7 @@ schematic.option.build_dir = './custom_build/';
 
 > **add**(...`components`): `void`
 
-Defined in: @typecad/typecad/src/schematic.ts:322
+Defined in: [@typecad/typecad/src/schematic.ts:117](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/schematic.ts#L117)
 
 Adds components to the schematic.
 
@@ -205,7 +209,7 @@ typecad.add(r1, r2);
 
 > **bom**(`output_folder?`): `boolean`
 
-Defined in: @typecad/typecad/src/schematic.ts:255
+Defined in: [@typecad/typecad/src/schematic.ts:87](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/schematic.ts#L87)
 
 #### Parameters
 
@@ -223,7 +227,7 @@ Defined in: @typecad/typecad/src/schematic.ts:255
 
 > **create**(...`component`): `void`
 
-Defined in: @typecad/typecad/src/schematic.ts:527
+Defined in: [@typecad/typecad/src/schematic.ts:228](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/schematic.ts#L228)
 
 Creates schematic files.
 
@@ -232,6 +236,8 @@ Creates schematic files.
 ##### component
 
 ...[`Component`](Class.Component.md)[]
+
+All the components to be included in the schematic.
 
 #### Returns
 
@@ -252,7 +258,7 @@ typecad.create(r1, r2);
 
 > **dnc**(...`pins`): `void`
 
-Defined in: @typecad/typecad/src/schematic.ts:379
+Defined in: [@typecad/typecad/src/schematic.ts:183](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/schematic.ts#L183)
 
 Adds a no-connection flag to a pin.
 
@@ -282,7 +288,7 @@ typecad.dnc(r1.pin(1));
 
 > **erc**(): `void`
 
-Defined in: @typecad/typecad/src/schematic.ts:552
+Defined in: [@typecad/typecad/src/schematic.ts:252](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/schematic.ts#L252)
 
 Performs electrical rule checks.
 
@@ -296,7 +302,7 @@ Performs electrical rule checks.
 
 > **error**(`error`): `void`
 
-Defined in: @typecad/typecad/src/schematic.ts:561
+Defined in: [@typecad/typecad/src/schematic.ts:261](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/schematic.ts#L261)
 
 Logs an error message and exits.
 
@@ -318,7 +324,7 @@ The error message to log.
 
 > **named**(`name`): `Schematic`
 
-Defined in: @typecad/typecad/src/schematic.ts:403
+Defined in: [@typecad/typecad/src/schematic.ts:207](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/schematic.ts#L207)
 
 Sets a name for a net.
 
@@ -327,6 +333,8 @@ Sets a name for a net.
 ##### name
 
 `string`
+
+The name of the net.
 
 #### Returns
 
@@ -352,9 +360,7 @@ typecad.net(r1.pin(1), r2.pin(1));
 
 > **net**(...`pins`): `ISchematicNetDefinition`
 
-Defined in: @typecad/typecad/src/schematic.ts:425
-
-Connects a group of pins together.
+Defined in: [@typecad/typecad/src/schematic.ts:212](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/schematic.ts#L212)
 
 #### Parameters
 
@@ -362,25 +368,47 @@ Connects a group of pins together.
 
 ...[`Pin`](Class.Pin.md)[]
 
-Pins to connect.
-
 #### Returns
 
 `ISchematicNetDefinition`
 
-#### Example
+***
 
-```ts
-let typecad = new Schematic('sheetname');
-let r1 = new Component({});
-let r2 = new Component({});
+### pendingSummaryData()
 
-// named net
-typecad.named('vin').net(r1.pin(1), r2.pin(1));
+> **pendingSummaryData**(): `PendingTypecadSummary` \| `undefined`
 
-// unnamed net
-typecad.net(r1.pin(1), r2.pin(1));
-```
+Defined in: [@typecad/typecad/src/schematic.ts:75](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/schematic.ts#L75)
+
+#### Returns
+
+`PendingTypecadSummary` \| `undefined`
+
+#### Implementation of
+
+`IPendingSummaryHost.pendingSummaryData`
+
+***
+
+### setPendingSummaryData()
+
+> **setPendingSummaryData**(`data`): `void`
+
+Defined in: [@typecad/typecad/src/schematic.ts:76](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/schematic.ts#L76)
+
+#### Parameters
+
+##### data
+
+`PendingTypecadSummary` \| `undefined`
+
+#### Returns
+
+`void`
+
+#### Implementation of
+
+`IPendingSummaryHost.setPendingSummaryData`
 
 ***
 
@@ -388,7 +416,7 @@ typecad.net(r1.pin(1), r2.pin(1));
 
 > **warn**(`warning`): `void`
 
-Defined in: @typecad/typecad/src/schematic.ts:570
+Defined in: [@typecad/typecad/src/schematic.ts:270](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/schematic.ts#L270)
 
 Logs a warning message.
 

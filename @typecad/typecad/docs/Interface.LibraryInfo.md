@@ -6,7 +6,7 @@
 
 # Interface: LibraryInfo
 
-Defined in: @typecad/typecad/src/kicad-symbols/types/kicad.ts:22
+Defined in: [@typecad/typecad/src/kicad-symbols/types/kicad.ts:22](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad-symbols/types/kicad.ts#L22)
 
 Represents metadata about a KiCad symbol library.
 Contains information extracted from the main symbols page.
@@ -29,7 +29,7 @@ const library: LibraryInfo = {
 
 > `optional` **description?**: `string`
 
-Defined in: @typecad/typecad/src/kicad-symbols/types/kicad.ts:30
+Defined in: [@typecad/typecad/src/kicad-symbols/types/kicad.ts:30](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad-symbols/types/kicad.ts#L30)
 
 Optional description of the library contents
 
@@ -39,7 +39,7 @@ Optional description of the library contents
 
 > **name**: `string`
 
-Defined in: @typecad/typecad/src/kicad-symbols/types/kicad.ts:24
+Defined in: [@typecad/typecad/src/kicad-symbols/types/kicad.ts:24](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad-symbols/types/kicad.ts#L24)
 
 Library name (e.g., "4xxx", "Analog", "MCU_Microchip_ATtiny")
 
@@ -49,6 +49,6 @@ Library name (e.g., "4xxx", "Analog", "MCU_Microchip_ATtiny")
 
 > **url**: `string`
 
-Defined in: @typecad/typecad/src/kicad-symbols/types/kicad.ts:27
+Defined in: [@typecad/typecad/src/kicad-symbols/types/kicad.ts:27](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad-symbols/types/kicad.ts#L27)
 
 Full URL to the library's symbol page

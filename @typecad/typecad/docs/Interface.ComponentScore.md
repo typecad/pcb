@@ -6,7 +6,7 @@
 
 # Interface: ComponentScore
 
-Defined in: @typecad/typecad/src/kicad-symbols/types/index.ts:198
+Defined in: [@typecad/typecad/src/kicad-symbols/types/index.ts:198](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad-symbols/types/index.ts#L198)
 
 A component record paired with its calculated match score and detailed explanations.
 Used internally by the scoring system before converting to SearchResult.
@@ -32,7 +32,7 @@ const scoredComponent: ComponentScore = {
 
 > **component**: [`ComponentRecord`](Interface.ComponentRecord.md)
 
-Defined in: @typecad/typecad/src/kicad-symbols/types/index.ts:200
+Defined in: [@typecad/typecad/src/kicad-symbols/types/index.ts:200](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad-symbols/types/index.ts#L200)
 
 The component record being scored
 
@@ -42,7 +42,7 @@ The component record being scored
 
 > **matchDetails**: [`MatchDetail`](Interface.MatchDetail.md)[]
 
-Defined in: @typecad/typecad/src/kicad-symbols/types/index.ts:206
+Defined in: [@typecad/typecad/src/kicad-symbols/types/index.ts:206](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad-symbols/types/index.ts#L206)
 
 Detailed breakdown of how the score was calculated
 
@@ -52,6 +52,6 @@ Detailed breakdown of how the score was calculated
 
 > **score**: `number`
 
-Defined in: @typecad/typecad/src/kicad-symbols/types/index.ts:203
+Defined in: [@typecad/typecad/src/kicad-symbols/types/index.ts:203](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad-symbols/types/index.ts#L203)
 
 Total calculated score for this component

@@ -6,7 +6,7 @@
 
 # Class: Power
 
-Defined in: @typecad/typecad/src/buses.ts:42
+Defined in: [@typecad/typecad/src/buses.ts:42](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/buses.ts#L42)
 
 ## Constructors
 
@@ -14,7 +14,7 @@ Defined in: @typecad/typecad/src/buses.ts:42
 
 > **new Power**(`__namedParameters?`): `Power`
 
-Defined in: @typecad/typecad/src/buses.ts:47
+Defined in: [@typecad/typecad/src/buses.ts:47](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/buses.ts#L47)
 
 #### Parameters
 
@@ -32,7 +32,7 @@ Defined in: @typecad/typecad/src/buses.ts:47
 
 > `optional` **current?**: `number`
 
-Defined in: @typecad/typecad/src/buses.ts:46
+Defined in: [@typecad/typecad/src/buses.ts:46](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/buses.ts#L46)
 
 ***
 
@@ -40,7 +40,7 @@ Defined in: @typecad/typecad/src/buses.ts:46
 
 > **gnd**: [`Pin`](Class.Pin.md)
 
-Defined in: @typecad/typecad/src/buses.ts:44
+Defined in: [@typecad/typecad/src/buses.ts:44](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/buses.ts#L44)
 
 ***
 
@@ -48,7 +48,7 @@ Defined in: @typecad/typecad/src/buses.ts:44
 
 > **power**: [`Pin`](Class.Pin.md)
 
-Defined in: @typecad/typecad/src/buses.ts:43
+Defined in: [@typecad/typecad/src/buses.ts:43](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/buses.ts#L43)
 
 ***
 
@@ -56,4 +56,4 @@ Defined in: @typecad/typecad/src/buses.ts:43
 
 > `optional` **voltage?**: `number`
 
-Defined in: @typecad/typecad/src/buses.ts:45
+Defined in: [@typecad/typecad/src/buses.ts:45](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/buses.ts#L45)

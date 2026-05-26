@@ -6,7 +6,7 @@
 
 # Interface: MatchDetail
 
-Defined in: @typecad/typecad/src/kicad-symbols/types/index.ts:167
+Defined in: [@typecad/typecad/src/kicad-symbols/types/index.ts:167](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad-symbols/types/index.ts#L167)
 
 Detailed information about how a specific parameter matched during scoring.
 Used to explain why a component received a particular score.
@@ -30,7 +30,7 @@ const matchDetail: MatchDetail = {
 
 > **exact**: `boolean`
 
-Defined in: @typecad/typecad/src/kicad-symbols/types/index.ts:175
+Defined in: [@typecad/typecad/src/kicad-symbols/types/index.ts:175](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad-symbols/types/index.ts#L175)
 
 Whether this was an exact match or approximate
 
@@ -40,7 +40,7 @@ Whether this was an exact match or approximate
 
 > **parameter**: `string`
 
-Defined in: @typecad/typecad/src/kicad-symbols/types/index.ts:169
+Defined in: [@typecad/typecad/src/kicad-symbols/types/index.ts:169](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad-symbols/types/index.ts#L169)
 
 Name of the parameter that was matched (e.g., "resistance", "package")
 
@@ -50,7 +50,7 @@ Name of the parameter that was matched (e.g., "resistance", "package")
 
 > **reason**: `string`
 
-Defined in: @typecad/typecad/src/kicad-symbols/types/index.ts:178
+Defined in: [@typecad/typecad/src/kicad-symbols/types/index.ts:178](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad-symbols/types/index.ts#L178)
 
 Human-readable explanation of the match
 
@@ -60,6 +60,6 @@ Human-readable explanation of the match
 
 > **score**: `number`
 
-Defined in: @typecad/typecad/src/kicad-symbols/types/index.ts:172
+Defined in: [@typecad/typecad/src/kicad-symbols/types/index.ts:172](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad-symbols/types/index.ts#L172)
 
 Score awarded for this parameter match (0-100+)

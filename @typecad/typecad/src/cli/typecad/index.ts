@@ -14,15 +14,10 @@ import {
   showImportHelp,
   showDiffHelp,
   showDocHelp,
+  showDoctorHelp,
+  showValidateHelp,
+  showDrcHelp,
 } from './help.js';
-import { run as runCreate } from './commands/create.js';
-import { run as runAddComponent } from './commands/add-component.js';
-import { run as runAddPackage } from './commands/add-package.js';
-import { run as runBuild } from './commands/build.js';
-import { run as runSearch } from './commands/search.js';
-import { run as runImport } from './commands/import.js';
-import { run as runDiff } from './commands/diff.js';
-import { run as runDoc } from './commands/doc.js';
 
 function outputJson(data: unknown): void {
   console.log(JSON.stringify(data));
@@ -73,6 +68,18 @@ function showCommandHelp(command: string, subcommand: string): boolean {
     showDocHelp();
     return true;
   }
+  if (command === 'doctor') {
+    showDoctorHelp();
+    return true;
+  }
+  if (command === 'validate') {
+    showValidateHelp();
+    return true;
+  }
+  if (command === 'drc') {
+    showDrcHelp();
+    return true;
+  }
   if (command === 'add') {
     console.log(
       chalk.white.bold('typecad add') + ' - Available subcommands:\n'
@@ -108,14 +115,14 @@ async function main(): Promise<void> {
   try {
     switch (parsed.command) {
       case 'create':
-        await runCreate(parsed);
+        await (await import('./commands/create.js')).run(parsed);
         break;
 
       case 'add':
         if (parsed.subcommand === 'component') {
-          await runAddComponent(parsed);
+          await (await import('./commands/add-component.js')).run(parsed);
         } else if (parsed.subcommand === 'package') {
-          await runAddPackage(parsed);
+          await (await import('./commands/add-package.js')).run(parsed);
         } else if (!parsed.subcommand) {
           showCommandHelp('add', '');
         } else {
@@ -137,23 +144,35 @@ async function main(): Promise<void> {
         break;
 
       case 'build':
-        await runBuild(parsed);
+        await (await import('./commands/build.js')).run(parsed);
         break;
 
       case 'search':
-        await runSearch(parsed);
+        await (await import('./commands/search.js')).run(parsed);
         break;
 
       case 'import':
-        await runImport(parsed);
+        await (await import('./commands/import.js')).run(parsed);
         break;
 
       case 'diff':
-        await runDiff(parsed);
+        await (await import('./commands/diff.js')).run(parsed);
         break;
 
       case 'doc':
-        await runDoc(parsed);
+        await (await import('./commands/doc.js')).run(parsed);
+        break;
+
+      case 'doctor':
+        await (await import('./commands/doctor.js')).run(parsed);
+        break;
+
+      case 'validate':
+        await (await import('./commands/validate.js')).run(parsed);
+        break;
+
+      case 'drc':
+        await (await import('./commands/drc.js')).run(parsed);
         break;
 
       default:

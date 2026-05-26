@@ -6,7 +6,7 @@
 
 # Class: DebugVisualizer
 
-Defined in: @typecad/typecad/src/routing/utils/debug\_visualizer.ts:21
+Defined in: [@typecad/typecad/src/routing/utils/debug\_visualizer.ts:21](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/routing/utils/debug_visualizer.ts#L21)
 
 Generates debug visualizations of routing grids and paths.
 Creates simple PPM (Portable PixMap) images that can be viewed with most image viewers.
@@ -27,7 +27,7 @@ Creates simple PPM (Portable PixMap) images that can be viewed with most image v
 
 > `static` **visualizeAllLayers**(`grid`, `obstacles`, `paths`, `filename?`, `cellSize?`, `steinerPoints?`, `debug?`): `void`
 
-Defined in: @typecad/typecad/src/routing/utils/debug\_visualizer.ts:469
+Defined in: [@typecad/typecad/src/routing/utils/debug\_visualizer.ts:469](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/routing/utils/debug_visualizer.ts#L469)
 
 Visualize multiple layers side by side.
 
@@ -81,7 +81,7 @@ Pixels per grid cell (default: 2)
 
 > `static` **visualizeRouting**(`grid`, `obstacles`, `paths`, `filename?`, `layer?`, `cellSize?`, `steinerPoints?`, `debug?`): `void`
 
-Defined in: @typecad/typecad/src/routing/utils/debug\_visualizer.ts:38
+Defined in: [@typecad/typecad/src/routing/utils/debug\_visualizer.ts:38](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/routing/utils/debug_visualizer.ts#L38)
 
 Generate a debug visualization of the routing grid with obstacles and paths.
 

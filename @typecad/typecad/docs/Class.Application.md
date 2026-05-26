@@ -6,7 +6,7 @@
 
 # Class: Application
 
-Defined in: @typecad/typecad/src/kicad-symbols/app/index.ts:37
+Defined in: [@typecad/typecad/src/kicad-symbols/app/index.ts:37](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad-symbols/app/index.ts#L37)
 
 Main application class that orchestrates all components
 
@@ -43,7 +43,7 @@ await runApplication(process.argv, {
 
 > **new Application**(`localCachePath?`, `cacheDir?`, `cacheExpirationHours?`, `programName?`, `useSharedCache?`): `Application`
 
-Defined in: @typecad/typecad/src/kicad-symbols/app/index.ts:52
+Defined in: [@typecad/typecad/src/kicad-symbols/app/index.ts:52](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad-symbols/app/index.ts#L52)
 
 Creates a new Application instance
 
@@ -89,7 +89,7 @@ Whether to use shared temp directory for cache files (default: true)
 
 > **getDataManager**(): `DataManager`
 
-Defined in: @typecad/typecad/src/kicad-symbols/app/index.ts:149
+Defined in: [@typecad/typecad/src/kicad-symbols/app/index.ts:149](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad-symbols/app/index.ts#L149)
 
 #### Returns
 
@@ -101,7 +101,7 @@ Defined in: @typecad/typecad/src/kicad-symbols/app/index.ts:149
 
 > **getSearchEngine**(): [`ComponentSearchEngine`](Class.ComponentSearchEngine.md)
 
-Defined in: @typecad/typecad/src/kicad-symbols/app/index.ts:130
+Defined in: [@typecad/typecad/src/kicad-symbols/app/index.ts:130](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad-symbols/app/index.ts#L130)
 
 Gets the search engine instance
 
@@ -117,7 +117,7 @@ The search engine instance
 
 > **run**(`args`): `Promise`\<`void`\>
 
-Defined in: @typecad/typecad/src/kicad-symbols/app/index.ts:95
+Defined in: [@typecad/typecad/src/kicad-symbols/app/index.ts:95](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad-symbols/app/index.ts#L95)
 
 Runs the application with the provided command-line arguments
 
@@ -141,7 +141,7 @@ Promise that resolves when the application completes
 
 > **shutdown**(): `Promise`\<`void`\>
 
-Defined in: @typecad/typecad/src/kicad-symbols/app/index.ts:112
+Defined in: [@typecad/typecad/src/kicad-symbols/app/index.ts:112](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad-symbols/app/index.ts#L112)
 
 Performs cleanup operations before shutdown
 

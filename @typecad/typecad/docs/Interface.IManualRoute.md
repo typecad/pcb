@@ -6,7 +6,7 @@
 
 # Interface: IManualRoute
 
-Defined in: @typecad/typecad/src/pcb/pcb\_interfaces.ts:423
+Defined in: [@typecad/typecad/src/pcb/pcb\_interfaces.ts:425](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/pcb/pcb_interfaces.ts#L425)
 
 Pre-specified manual route for a specific connection.
 When provided, the autorouter will use this exact path instead of calculating one.
@@ -17,7 +17,7 @@ When provided, the autorouter will use this exact path instead of calculating on
 
 > `optional` **from?**: [`Pin`](Class.Pin.md)
 
-Defined in: @typecad/typecad/src/pcb/pcb\_interfaces.ts:428
+Defined in: [@typecad/typecad/src/pcb/pcb\_interfaces.ts:430](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/pcb/pcb_interfaces.ts#L430)
 
 Source pin (optional if can be inferred from route endpoints and net pins)
 If not provided, will attempt to match route start position to a pin in the net
@@ -26,9 +26,9 @@ If not provided, will attempt to match route start position to a pin in the net
 
 ### route
 
-> **route**: `IRoutePath` \| `IAutorouteResult`
+> **route**: `IAutorouteResult` \| `IRoutePath`
 
-Defined in: @typecad/typecad/src/pcb/pcb\_interfaces.ts:443
+Defined in: [@typecad/typecad/src/pcb/pcb\_interfaces.ts:445](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/pcb/pcb_interfaces.ts#L445)
 
 The pre-defined route to use for this connection.
 Can be:
@@ -42,7 +42,7 @@ Can be:
 
 > `optional` **to?**: [`Pin`](Class.Pin.md)
 
-Defined in: @typecad/typecad/src/pcb/pcb\_interfaces.ts:434
+Defined in: [@typecad/typecad/src/pcb/pcb\_interfaces.ts:436](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/pcb/pcb_interfaces.ts#L436)
 
 Destination pin (optional if can be inferred from route endpoints and net pins)
 If not provided, will attempt to match route end position to a pin in the net

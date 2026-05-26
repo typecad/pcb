@@ -6,7 +6,7 @@
 
 # Class: ComponentSearchEngine
 
-Defined in: @typecad/typecad/src/kicad-symbols/scoring/SearchEngine.ts:82
+Defined in: [@typecad/typecad/src/kicad-symbols/scoring/SearchEngine.ts:81](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad-symbols/scoring/SearchEngine.ts#L81)
 
 Main implementation of the SearchEngine interface that orchestrates the complete search workflow.
 
@@ -22,8 +22,6 @@ Key features:
 - Search timeout protection
 
  ComponentSearchEngine
-
-## Implements
 
 ## Example
 
@@ -58,7 +56,7 @@ logger.debug(`Average search time: ${metrics.averageSearchTime}ms`);
 
 > **new ComponentSearchEngine**(`dataManager`, `parameterParser`, `fuzzyScorer`, `resultLimit?`, `searchTimeout?`, `cacheExpirationMs?`, `maxCacheSize?`): `ComponentSearchEngine`
 
-Defined in: @typecad/typecad/src/kicad-symbols/scoring/SearchEngine.ts:108
+Defined in: [@typecad/typecad/src/kicad-symbols/scoring/SearchEngine.ts:107](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad-symbols/scoring/SearchEngine.ts#L107)
 
 Creates a new ComponentSearchEngine
 
@@ -116,7 +114,7 @@ Maximum number of queries to cache (default: 100)
 
 > **clearCache**(): `void`
 
-Defined in: @typecad/typecad/src/kicad-symbols/scoring/SearchEngine.ts:435
+Defined in: [@typecad/typecad/src/kicad-symbols/scoring/SearchEngine.ts:459](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad-symbols/scoring/SearchEngine.ts#L459)
 
 Clears the search cache
 
@@ -130,7 +128,7 @@ Clears the search cache
 
 > **getAveragePerformanceMetrics**(): `object`
 
-Defined in: @typecad/typecad/src/kicad-symbols/scoring/SearchEngine.ts:465
+Defined in: [@typecad/typecad/src/kicad-symbols/scoring/SearchEngine.ts:489](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad-symbols/scoring/SearchEngine.ts#L489)
 
 Gets average performance metrics across all recorded searches
 
@@ -174,7 +172,7 @@ Object with average metrics
 
 > **getCacheStats**(): `object`
 
-Defined in: @typecad/typecad/src/kicad-symbols/scoring/SearchEngine.ts:526
+Defined in: [@typecad/typecad/src/kicad-symbols/scoring/SearchEngine.ts:550](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad-symbols/scoring/SearchEngine.ts#L550)
 
 Gets statistics about the search cache
 
@@ -210,7 +208,7 @@ Object with cache statistics
 
 > **getPerformanceMetrics**(): `SearchPerformanceMetrics`[]
 
-Defined in: @typecad/typecad/src/kicad-symbols/scoring/SearchEngine.ts:457
+Defined in: [@typecad/typecad/src/kicad-symbols/scoring/SearchEngine.ts:481](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad-symbols/scoring/SearchEngine.ts#L481)
 
 Gets performance metrics for recent searches
 
@@ -226,7 +224,7 @@ Array of performance metrics
 
 > **search**(`query`): `Promise`\<[`SearchResult`](Interface.SearchResult.md)[]\>
 
-Defined in: @typecad/typecad/src/kicad-symbols/scoring/SearchEngine.ts:132
+Defined in: [@typecad/typecad/src/kicad-symbols/scoring/SearchEngine.ts:131](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad-symbols/scoring/SearchEngine.ts#L131)
 
 Performs a complete search operation from query to ranked results
 

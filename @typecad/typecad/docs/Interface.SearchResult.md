@@ -6,7 +6,7 @@
 
 # Interface: SearchResult
 
-Defined in: @typecad/typecad/src/kicad-symbols/types/index.ts:239
+Defined in: [@typecad/typecad/src/kicad-symbols/types/index.ts:239](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad-symbols/types/index.ts#L239)
 
 Final search result formatted for display to the user.
 Contains essential component information and match summary.
@@ -45,9 +45,29 @@ const kicadResult: SearchResult = {
 
 > **description**: `string`
 
-Defined in: @typecad/typecad/src/kicad-symbols/types/index.ts:250
+Defined in: [@typecad/typecad/src/kicad-symbols/types/index.ts:250](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad-symbols/types/index.ts#L250)
 
 Full component description
+
+***
+
+### footprint?
+
+> `optional` **footprint?**: `string`
+
+Defined in: [@typecad/typecad/src/kicad-symbols/types/index.ts:262](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad-symbols/types/index.ts#L262)
+
+Default footprint if available
+
+***
+
+### fpFilters?
+
+> `optional` **fpFilters?**: `string`[]
+
+Defined in: [@typecad/typecad/src/kicad-symbols/types/index.ts:265](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad-symbols/types/index.ts#L265)
+
+Footprint filters if available
 
 ***
 
@@ -55,7 +75,7 @@ Full component description
 
 > **lcsc**: `string`
 
-Defined in: @typecad/typecad/src/kicad-symbols/types/index.ts:241
+Defined in: [@typecad/typecad/src/kicad-symbols/types/index.ts:241](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad-symbols/types/index.ts#L241)
 
 Component identifier (KiCad: "library:symbol")
 
@@ -65,7 +85,7 @@ Component identifier (KiCad: "library:symbol")
 
 > **manufacturer**: `string`
 
-Defined in: @typecad/typecad/src/kicad-symbols/types/index.ts:244
+Defined in: [@typecad/typecad/src/kicad-symbols/types/index.ts:244](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad-symbols/types/index.ts#L244)
 
 Component manufacturer name
 
@@ -75,7 +95,7 @@ Component manufacturer name
 
 > **matchSummary**: `string`
 
-Defined in: @typecad/typecad/src/kicad-symbols/types/index.ts:259
+Defined in: [@typecad/typecad/src/kicad-symbols/types/index.ts:259](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad-symbols/types/index.ts#L259)
 
 Human-readable summary of why this component matched
 
@@ -85,7 +105,7 @@ Human-readable summary of why this component matched
 
 > **package**: `string`
 
-Defined in: @typecad/typecad/src/kicad-symbols/types/index.ts:253
+Defined in: [@typecad/typecad/src/kicad-symbols/types/index.ts:253](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad-symbols/types/index.ts#L253)
 
 Component package type (KiCad: "Symbol")
 
@@ -95,7 +115,7 @@ Component package type (KiCad: "Symbol")
 
 > **partNumber**: `string`
 
-Defined in: @typecad/typecad/src/kicad-symbols/types/index.ts:247
+Defined in: [@typecad/typecad/src/kicad-symbols/types/index.ts:247](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad-symbols/types/index.ts#L247)
 
 Manufacturer's part number (KiCad: symbol name)
 
@@ -105,6 +125,6 @@ Manufacturer's part number (KiCad: symbol name)
 
 > **score**: `number`
 
-Defined in: @typecad/typecad/src/kicad-symbols/types/index.ts:256
+Defined in: [@typecad/typecad/src/kicad-symbols/types/index.ts:256](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad-symbols/types/index.ts#L256)
 
 Total match score

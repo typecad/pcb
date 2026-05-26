@@ -6,7 +6,7 @@
 
 # Class: NetworkError
 
-Defined in: @typecad/typecad/src/kicad-symbols/types/index.ts:294
+Defined in: [@typecad/typecad/src/kicad-symbols/types/index.ts:300](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad-symbols/types/index.ts#L300)
 
 Network-related error with additional context.
 
@@ -20,7 +20,7 @@ Network-related error with additional context.
 
 > **new NetworkError**(`message`, `code?`, `statusCode?`): `NetworkError`
 
-Defined in: @typecad/typecad/src/kicad-symbols/types/index.ts:298
+Defined in: [@typecad/typecad/src/kicad-symbols/types/index.ts:304](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad-symbols/types/index.ts#L304)
 
 #### Parameters
 
@@ -50,7 +50,7 @@ Defined in: @typecad/typecad/src/kicad-symbols/types/index.ts:298
 
 > `optional` **code?**: `string`
 
-Defined in: @typecad/typecad/src/kicad-symbols/types/index.ts:295
+Defined in: [@typecad/typecad/src/kicad-symbols/types/index.ts:301](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad-symbols/types/index.ts#L301)
 
 ***
 
@@ -94,7 +94,7 @@ Defined in: node\_modules/typescript/lib/lib.es5.d.ts:1078
 
 > `optional` **statusCode?**: `number`
 
-Defined in: @typecad/typecad/src/kicad-symbols/types/index.ts:296
+Defined in: [@typecad/typecad/src/kicad-symbols/types/index.ts:302](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad-symbols/types/index.ts#L302)
 
 ***
 

@@ -6,7 +6,7 @@
 
 # Interface: IPinPowerInfo
 
-Defined in: @typecad/typecad/src/pcb/pcb\_interfaces.ts:231
+Defined in: [@typecad/typecad/src/pcb/pcb\_interfaces.ts:233](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/pcb/pcb_interfaces.ts#L233)
 
 ## Properties
 
@@ -14,7 +14,7 @@ Defined in: @typecad/typecad/src/pcb/pcb\_interfaces.ts:231
 
 > `optional` **current?**: `number`
 
-Defined in: @typecad/typecad/src/pcb/pcb\_interfaces.ts:234
+Defined in: [@typecad/typecad/src/pcb/pcb\_interfaces.ts:236](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/pcb/pcb_interfaces.ts#L236)
 
 ***
 
@@ -22,7 +22,7 @@ Defined in: @typecad/typecad/src/pcb/pcb\_interfaces.ts:234
 
 > `optional` **maximum\_voltage?**: `number`
 
-Defined in: @typecad/typecad/src/pcb/pcb\_interfaces.ts:233
+Defined in: [@typecad/typecad/src/pcb/pcb\_interfaces.ts:235](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/pcb/pcb_interfaces.ts#L235)
 
 ***
 
@@ -30,4 +30,4 @@ Defined in: @typecad/typecad/src/pcb/pcb\_interfaces.ts:233
 
 > `optional` **minimum\_voltage?**: `number`
 
-Defined in: @typecad/typecad/src/pcb/pcb\_interfaces.ts:232
+Defined in: [@typecad/typecad/src/pcb/pcb\_interfaces.ts:234](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/pcb/pcb_interfaces.ts#L234)

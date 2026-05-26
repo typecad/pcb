@@ -6,7 +6,7 @@
 
 # Interface: CacheMetadata
 
-Defined in: @typecad/typecad/src/kicad-symbols/types/index.ts:277
+Defined in: [@typecad/typecad/src/kicad-symbols/types/index.ts:283](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad-symbols/types/index.ts#L283)
 
 Metadata about cached component database files.
 Used for cache validation and management.
@@ -34,7 +34,7 @@ const metadata: CacheMetadata = {
 
 > `optional` **checksum?**: `string`
 
-Defined in: @typecad/typecad/src/kicad-symbols/types/index.ts:288
+Defined in: [@typecad/typecad/src/kicad-symbols/types/index.ts:294](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad-symbols/types/index.ts#L294)
 
 Optional checksum for cache integrity verification
 
@@ -44,7 +44,7 @@ Optional checksum for cache integrity verification
 
 > **fileSize**: `number`
 
-Defined in: @typecad/typecad/src/kicad-symbols/types/index.ts:282
+Defined in: [@typecad/typecad/src/kicad-symbols/types/index.ts:288](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad-symbols/types/index.ts#L288)
 
 Size of the cached file in bytes
 
@@ -54,7 +54,7 @@ Size of the cached file in bytes
 
 > **lastDownload**: `Date`
 
-Defined in: @typecad/typecad/src/kicad-symbols/types/index.ts:279
+Defined in: [@typecad/typecad/src/kicad-symbols/types/index.ts:285](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad-symbols/types/index.ts#L285)
 
 Timestamp when the cache was last updated
 
@@ -64,6 +64,6 @@ Timestamp when the cache was last updated
 
 > **recordCount**: `number`
 
-Defined in: @typecad/typecad/src/kicad-symbols/types/index.ts:285
+Defined in: [@typecad/typecad/src/kicad-symbols/types/index.ts:291](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad-symbols/types/index.ts#L291)
 
 Number of component records in the cache

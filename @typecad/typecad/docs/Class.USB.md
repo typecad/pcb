@@ -6,7 +6,7 @@
 
 # Class: USB
 
-Defined in: @typecad/typecad/src/buses.ts:26
+Defined in: [@typecad/typecad/src/buses.ts:26](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/buses.ts#L26)
 
 ## Constructors
 
@@ -14,7 +14,7 @@ Defined in: @typecad/typecad/src/buses.ts:26
 
 > **new USB**(`DP`, `DN`): `USB`
 
-Defined in: @typecad/typecad/src/buses.ts:29
+Defined in: [@typecad/typecad/src/buses.ts:29](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/buses.ts#L29)
 
 #### Parameters
 
@@ -36,7 +36,7 @@ Defined in: @typecad/typecad/src/buses.ts:29
 
 > **dn**: [`Pin`](Class.Pin.md)
 
-Defined in: @typecad/typecad/src/buses.ts:28
+Defined in: [@typecad/typecad/src/buses.ts:28](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/buses.ts#L28)
 
 ***
 
@@ -44,4 +44,4 @@ Defined in: @typecad/typecad/src/buses.ts:28
 
 > **dp**: [`Pin`](Class.Pin.md)
 
-Defined in: @typecad/typecad/src/buses.ts:27
+Defined in: [@typecad/typecad/src/buses.ts:27](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/buses.ts#L27)

@@ -93,7 +93,7 @@ function buildKiCADCommand(command: string, args: string[]): string {
  * Run Design Rule Check on a PCB file
  */
 export async function runDRC(pcbPath: string, options: KiCADCommandOptions = {}): Promise<string> {
-    return executeKiCADCommand('drc', [pcbPath], options);
+    return executeKiCADCommand('pcb', ['drc', pcbPath], options);
 }
 
 /**

@@ -6,7 +6,7 @@
 
 # Interface: ComponentRecord
 
-Defined in: @typecad/typecad/src/kicad-symbols/types/index.ts:24
+Defined in: [@typecad/typecad/src/kicad-symbols/types/index.ts:24](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad-symbols/types/index.ts#L24)
 
 Represents a complete component record from the database.
 Contains all available information about an electronic component including
@@ -36,7 +36,7 @@ const kicadSymbol: ComponentRecord = {
 
 > **assembly\_process**: `string`
 
-Defined in: @typecad/typecad/src/kicad-symbols/types/index.ts:74
+Defined in: [@typecad/typecad/src/kicad-symbols/types/index.ts:74](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad-symbols/types/index.ts#L74)
 
 Assembly process type (e.g., "SMT", "THT")
 
@@ -46,7 +46,7 @@ Assembly process type (e.g., "SMT", "THT")
 
 > **attrition\_qty**: `string`
 
-Defined in: @typecad/typecad/src/kicad-symbols/types/index.ts:80
+Defined in: [@typecad/typecad/src/kicad-symbols/types/index.ts:80](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad-symbols/types/index.ts#L80)
 
 Attrition quantity for assembly as string
 
@@ -56,7 +56,7 @@ Attrition quantity for assembly as string
 
 > **basic**: `string`
 
-Defined in: @typecad/typecad/src/kicad-symbols/types/index.ts:50
+Defined in: [@typecad/typecad/src/kicad-symbols/types/index.ts:50](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad-symbols/types/index.ts#L50)
 
 Basic part flag ("0" or "1") - indicates if part is in basic library
 
@@ -66,7 +66,7 @@ Basic part flag ("0" or "1") - indicates if part is in basic library
 
 > **category**: `string`
 
-Defined in: @typecad/typecad/src/kicad-symbols/types/index.ts:32
+Defined in: [@typecad/typecad/src/kicad-symbols/types/index.ts:32](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad-symbols/types/index.ts#L32)
 
 Main component category (e.g., "Resistors", "Capacitors")
 
@@ -76,7 +76,7 @@ Main component category (e.g., "Resistors", "Capacitors")
 
 > **category\_id**: `string`
 
-Defined in: @typecad/typecad/src/kicad-symbols/types/index.ts:29
+Defined in: [@typecad/typecad/src/kicad-symbols/types/index.ts:29](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad-symbols/types/index.ts#L29)
 
 Internal category ID for component classification
 
@@ -86,7 +86,7 @@ Internal category ID for component classification
 
 > **datasheet**: `string`
 
-Defined in: @typecad/typecad/src/kicad-symbols/types/index.ts:59
+Defined in: [@typecad/typecad/src/kicad-symbols/types/index.ts:59](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad-symbols/types/index.ts#L59)
 
 URL to component datasheet
 
@@ -96,7 +96,7 @@ URL to component datasheet
 
 > **description**: `string`
 
-Defined in: @typecad/typecad/src/kicad-symbols/types/index.ts:56
+Defined in: [@typecad/typecad/src/kicad-symbols/types/index.ts:56](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad-symbols/types/index.ts#L56)
 
 Full component description with specifications
 
@@ -106,7 +106,7 @@ Full component description with specifications
 
 > **extra**: `string`
 
-Defined in: @typecad/typecad/src/kicad-symbols/types/index.ts:71
+Defined in: [@typecad/typecad/src/kicad-symbols/types/index.ts:71](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad-symbols/types/index.ts#L71)
 
 Additional component data as JSON string
 
@@ -116,7 +116,7 @@ Additional component data as JSON string
 
 > **joints**: `string`
 
-Defined in: @typecad/typecad/src/kicad-symbols/types/index.ts:44
+Defined in: [@typecad/typecad/src/kicad-symbols/types/index.ts:44](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad-symbols/types/index.ts#L44)
 
 Number of pins/joints as string
 
@@ -126,7 +126,7 @@ Number of pins/joints as string
 
 > **last\_on\_stock**: `string`
 
-Defined in: @typecad/typecad/src/kicad-symbols/types/index.ts:65
+Defined in: [@typecad/typecad/src/kicad-symbols/types/index.ts:65](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad-symbols/types/index.ts#L65)
 
 Timestamp of last stock update
 
@@ -136,7 +136,7 @@ Timestamp of last stock update
 
 > **lcsc**: `string`
 
-Defined in: @typecad/typecad/src/kicad-symbols/types/index.ts:26
+Defined in: [@typecad/typecad/src/kicad-symbols/types/index.ts:26](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad-symbols/types/index.ts#L26)
 
 Component identifier (KiCad: "library:symbol")
 
@@ -146,7 +146,7 @@ Component identifier (KiCad: "library:symbol")
 
 > **manufacturer**: `string`
 
-Defined in: @typecad/typecad/src/kicad-symbols/types/index.ts:47
+Defined in: [@typecad/typecad/src/kicad-symbols/types/index.ts:47](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad-symbols/types/index.ts#L47)
 
 Manufacturer company name
 
@@ -156,7 +156,7 @@ Manufacturer company name
 
 > **mfr**: `string`
 
-Defined in: @typecad/typecad/src/kicad-symbols/types/index.ts:38
+Defined in: [@typecad/typecad/src/kicad-symbols/types/index.ts:38](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad-symbols/types/index.ts#L38)
 
 Manufacturer part number
 
@@ -166,7 +166,7 @@ Manufacturer part number
 
 > **min\_order\_qty**: `string`
 
-Defined in: @typecad/typecad/src/kicad-symbols/types/index.ts:77
+Defined in: [@typecad/typecad/src/kicad-symbols/types/index.ts:77](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad-symbols/types/index.ts#L77)
 
 Minimum order quantity as string
 
@@ -176,7 +176,7 @@ Minimum order quantity as string
 
 > **package**: `string`
 
-Defined in: @typecad/typecad/src/kicad-symbols/types/index.ts:41
+Defined in: [@typecad/typecad/src/kicad-symbols/types/index.ts:41](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad-symbols/types/index.ts#L41)
 
 Component package type (e.g., "0603", "SOT-23")
 
@@ -186,7 +186,7 @@ Component package type (e.g., "0603", "SOT-23")
 
 > **preferred**: `string`
 
-Defined in: @typecad/typecad/src/kicad-symbols/types/index.ts:53
+Defined in: [@typecad/typecad/src/kicad-symbols/types/index.ts:53](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad-symbols/types/index.ts#L53)
 
 Preferred part flag ("0" or "1") - indicates if part is preferred for assembly
 
@@ -196,7 +196,7 @@ Preferred part flag ("0" or "1") - indicates if part is preferred for assembly
 
 > **price**: `string`
 
-Defined in: @typecad/typecad/src/kicad-symbols/types/index.ts:68
+Defined in: [@typecad/typecad/src/kicad-symbols/types/index.ts:68](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad-symbols/types/index.ts#L68)
 
 Pricing information as JSON string
 
@@ -206,7 +206,7 @@ Pricing information as JSON string
 
 > **stock**: `string`
 
-Defined in: @typecad/typecad/src/kicad-symbols/types/index.ts:62
+Defined in: [@typecad/typecad/src/kicad-symbols/types/index.ts:62](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad-symbols/types/index.ts#L62)
 
 Current stock quantity as string
 
@@ -216,6 +216,6 @@ Current stock quantity as string
 
 > **subcategory**: `string`
 
-Defined in: @typecad/typecad/src/kicad-symbols/types/index.ts:35
+Defined in: [@typecad/typecad/src/kicad-symbols/types/index.ts:35](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/kicad-symbols/types/index.ts#L35)
 
 Detailed subcategory (e.g., "Chip Resistor - Surface Mount")

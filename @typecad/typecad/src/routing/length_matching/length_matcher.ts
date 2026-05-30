@@ -58,7 +58,7 @@ export class LengthMatcher {
       if (envDbg) {
         config.debug = true;
       }
-    } catch {}
+    } catch { logger.debug('[LengthMatch] env debug check failed'); }
 
     // Collect only successful routes with their indices
     const items: { index: number; length: number; path: IRoutePath }[] = [];
@@ -72,7 +72,7 @@ export class LengthMatcher {
       try {
         const lengths = items.map(it => it.length.toFixed(3)).join(', ');
         logger.debug(chalk.cyan(`[LengthMatch] Candidates: ${items.length} successful route(s). Lengths = [${lengths}]`));
-      } catch {}
+      } catch { logger.debug('[LengthMatch] failed to log candidate debug info'); }
     }
     if (items.length < 2) {
       if (config.debug)
@@ -141,7 +141,7 @@ export class LengthMatcher {
           try {
             logger.debug(chalk.cyan(`[LengthMatch] Segments: [${allLens}]`));
             logger.debug(chalk.cyan(`[LengthMatch] Eligible (>=${minLen}): [${eligLens}]`));
-          } catch {}
+          } catch { logger.debug('[LengthMatch] failed to log segment debug info'); }
         }
 
         const segment = pickCandidateSegment(ctx, item.path, minLen, attemptedThisRound);
@@ -243,7 +243,7 @@ export class LengthMatcher {
                 `[LengthMatch] About to remove overlapping tracks for segment length=${segment.length.toFixed(3)}, builders count=${builders.length}`,
               ),
             );
-          } catch {}
+          } catch { logger.debug('[LengthMatch] failed to log removal debug info'); }
         }
         const removalAndResiduals = removeOrTrimOverlappingStraight(ctx, segment, builders);
         if (config.debug) {
@@ -253,7 +253,7 @@ export class LengthMatcher {
                 `[LengthMatch] Removal result: toRemove=${removalAndResiduals.toRemove.length}, residuals=${removalAndResiduals.residuals.length}`,
               ),
             );
-          } catch {}
+          } catch { logger.debug('[LengthMatch] failed to log removal result debug info'); }
         }
         if (removalAndResiduals.toRemove.length > 0) {
           removeElementsFromBuilders(removalAndResiduals.toRemove, builders);

@@ -13,10 +13,11 @@ export function createVia(
     };
 
     const viaUuid = generateUuid();
-    const viaComponent = new Component({
+    const viaComponent = Component._create({
         via: true,
         prefix: 'V',
         uuid: viaUuid,
+        footprint: '',
         pcb: { x: viaPosition.x, y: viaPosition.y, rotation: 0, side: 'front' },
         viaData: {
             uuid: viaUuid,

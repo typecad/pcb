@@ -24,7 +24,7 @@ From a terminal, run:
 <ScrollArea orientation="both">
 
 ```bash
-npx --package=@typecad/typecad create-typecad
+typecad create
 ```
 </ScrollArea>
 

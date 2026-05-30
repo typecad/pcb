@@ -90,61 +90,39 @@ describe('Power-Aware Track and Via Calculations', () => {
         consoleSpy.mockRestore();
       });
 
-      it('should log error for track width too narrow for current', () => {
-        // Mock console.error to capture error messages
-        const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-        
-        const track = pcb.track()
-          .from({ x: 0, y: 0 })
-          .powerInfo({ current: 3.0, maxTempRise: 10 }) // High current
-          .to({ x: 10, y: 0, width: 0.1 }); // Very narrow track
-
-        const elements = track.getElements();
-        expect(consoleSpy).toHaveBeenCalledWith(
-          expect.stringContaining('[TrackBuilder] ERROR: Track width 0.1mm is too narrow for 3A current')
-        );
-        
-        consoleSpy.mockRestore();
+      it('should throw error for track width too narrow for current', () => {
+        expect(() => {
+          pcb.track()
+            .from({ x: 0, y: 0 })
+            .powerInfo({ current: 3.0, maxTempRise: 10 })
+            .to({ x: 10, y: 0, width: 0.1 });
+        }).toThrow(/Track width 0.1mm is too narrow for 3A current/);
       });
 
       it('should handle external vs internal layer differences', () => {
-        const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-        
-        // Same current on external layer (should pass with narrower track)
         const externalTrack = pcb.track()
           .from({ x: 0, y: 0 })
           .powerInfo({ current: 1.0, maxTempRise: 10 })
           .to({ x: 10, y: 0, layer: "F.Cu", width: 0.3 });
 
-        // Same current on internal layer (should require wider track)
-        const internalTrack = pcb.track()
-          .from({ x: 0, y: 10 })
-          .powerInfo({ current: 1.0, maxTempRise: 10 })
-          .to({ x: 10, y: 10, layer: "In1.Cu", width: 0.3 });
-
         const externalElements = externalTrack.getElements();
-        const internalElements = internalTrack.getElements();
-        
-        // Internal layer should be more likely to trigger an error
         expect(externalElements).toHaveLength(1);
-        expect(internalElements).toHaveLength(1);
-        
-        consoleSpy.mockRestore();
+
+        expect(() => {
+          pcb.track()
+            .from({ x: 0, y: 10 })
+            .powerInfo({ current: 1.0, maxTempRise: 10 })
+            .to({ x: 10, y: 10, layer: "In1.Cu", width: 0.3 });
+        }).toThrow(/too narrow/);
       });
 
       it('should include call site information in error messages', () => {
-        const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-        
-        const track = pcb.track()
-          .from({ x: 0, y: 0 })
-          .powerInfo({ current: 5.0, maxTempRise: 10 })
-          .to({ x: 10, y: 0, width: 0.1 });
-
-        expect(consoleSpy).toHaveBeenCalledWith(
-          expect.stringContaining('(called from')
-        );
-        
-        consoleSpy.mockRestore();
+        expect(() => {
+          pcb.track()
+            .from({ x: 0, y: 0 })
+            .powerInfo({ current: 5.0, maxTempRise: 10 })
+            .to({ x: 10, y: 0, width: 0.1 });
+        }).toThrow(/\(called from/);
       });
     });
 
@@ -319,14 +297,12 @@ describe('Power-Aware Track and Via Calculations', () => {
 
     describe('Integration Tests', () => {
       it('should handle complete track with power requirements', () => {
-        const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-        
         const track = pcb.track()
           .from({ x: 0, y: 0 })
           .powerInfo({ current: 2.0, maxTempRise: 10, thickness: 35 })
-          .to({ x: 10, y: 0, width: 0.6, layer: "F.Cu" })
+          .to({ x: 10, y: 0, width: 1.0, layer: "F.Cu" })
           .via({ powerInfo: { current: 2.0, maxTempRise: 10, thickness: 35 } })
-          .to({ x: 10, y: 10, width: 0.6, layer: "B.Cu" });
+          .to({ x: 10, y: 10, width: 1.0, layer: "B.Cu" });
 
         const elements = track.getElements();
         expect(elements.length).toBeGreaterThan(0);
@@ -337,30 +313,24 @@ describe('Power-Aware Track and Via Calculations', () => {
         
         expect(trackSegments.length).toBeGreaterThanOrEqual(1);
         expect(vias).toHaveLength(1);
-        
-        consoleSpy.mockRestore();
       });
 
       it('should work with components that have high current pins', () => {
-        const powerComponent = new Component({
-          reference: 'U1',
-          value: 'PowerIC',
-          footprint: 'Package_TO_SOT_SMD:TO-263-3_TabPin2'
-        });
+        const powerComponent = new Component('Package_TO_SOT_SMD:TO-263-3_TabPin2');
+        powerComponent.reference = 'U1';
+        powerComponent.value = 'PowerIC';
 
         powerComponent.pcb = { x: 50, y: 50, rotation: 0 };
-        
-        // Add high-current pins
+
         const powerPin = powerComponent.pin(1);
         const gndPin = powerComponent.pin(2);
-        
+
         pcb.place(powerComponent);
-        
-        // Create high-current track from power pin
+
         const track = pcb.track()
-          .from({ x: 52, y: 50 }) // Near power pin
-          .powerInfo({ current: 10.0, maxTempRise: 10 })
-          .to({ x: 70, y: 50, width: 2.0, layer: "F.Cu" }); // Wide power track
+          .from({ x: 52, y: 50 })
+          .powerInfo({ current: 1.0, maxTempRise: 10 })
+          .to({ x: 70, y: 50, width: 0.5, layer: "F.Cu" });
 
         const elements = track.getElements();
         expect(elements).toHaveLength(1);
@@ -401,13 +371,12 @@ describe('Power-Aware Track and Via Calculations', () => {
       });
 
       it('should handle very high currents', () => {
-        const track = pcb.track()
-          .from({ x: 0, y: 0 })
-          .powerInfo({ current: 100.0, maxTempRise: 10 })
-          .to({ x: 10, y: 0, width: 10.0 }); // Very wide track
-
-        const elements = track.getElements();
-        expect(elements).toHaveLength(1);
+        expect(() => {
+          pcb.track()
+            .from({ x: 0, y: 0 })
+            .powerInfo({ current: 100.0, maxTempRise: 10 })
+            .to({ x: 10, y: 0, width: 10.0 });
+        }).toThrow(/too narrow/);
       });
 
       it('should handle missing power info gracefully', () => {
@@ -512,10 +481,10 @@ describe('Power-Aware Track and Via Calculations', () => {
       it('should work with complete track with power requirements', () => {
         const track = pcb.track()
           .from({ x: 0, y: 0 })
-          .powerInfo({ current: 2.0, maxTempRise: 10 }) // Uses PCB defaults
-          .to({ x: 10, y: 0, width: 0.6 })
+          .powerInfo({ current: 2.0, maxTempRise: 10 })
+          .to({ x: 10, y: 0, width: 1.0 })
           .via({ powerInfo: { current: 2.0, maxTempRise: 10 } })
-          .to({ x: 10, y: 10, width: 0.6 });
+          .to({ x: 10, y: 10, width: 1.0 });
 
         const elements = track.getElements();
         expect(elements.length).toBeGreaterThan(0);

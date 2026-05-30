@@ -1,11 +1,13 @@
 import fs from 'node:fs';
 import chalk from 'chalk';
 import { basename, join as pathJoin } from 'node:path';
+import type { ComponentRenderData, CliPinInfo } from '../types.js';
+import logger from '../../logging.js';
 
-function renderComponent(data: any) {
-    const pinsTableRows = data.pins.map((p: any) => ` | ${p.number}     | ${p.name}  | ${p.type}      |`).join('\n');
-    const pinProperties = data.pins.map((p: any) => `    ${p.name} = new Pin(this.reference, ${p.number}, '${p.type}', this);`).join('\n');
-    return `import { Component, Pin } from "@typecad/typecad";
+function renderComponent(data: ComponentRenderData) {
+    const pinsTableRows = data.pins.map((p: CliPinInfo) => ` | ${p.number}     | ${p.name}  | ${p.type}      |`).join('\n');
+    const pinProperties = data.pins.map((p: CliPinInfo) => `    ${p.name} = this.pin(${p.number}, { type: '${p.type}' });`).join('\n');
+    return `import { Component } from "@typecad/typecad";
 /**
  | Pin # | Name | Type          |
  | --:   | :--  | :--           |
@@ -15,12 +17,14 @@ export class ${data.name} extends Component {
 ${pinProperties}
     
     constructor(reference?: string | undefined) {
-        super({ reference, footprint: "${data.footprint}", symbol: "${data.symbol}" });
+        super("${data.footprint}");
+        this.symbol = "${data.symbol}";
+        if (reference) this.reference = reference;
     }
 }`;
 }
 
-export async function create_component(data: any) {
+export async function create_component(data: ComponentRenderData) {
   const result = renderComponent(data);
 
   // make folder structure
@@ -31,7 +35,7 @@ export async function create_component(data: any) {
 
   // if a symbol file was passed, copy into ./build/lib/
   if (data.symbol_path) {
-    const buildLibPath = pathJoin(data.folder, 'build', 'lib');
+    const buildLibPath = pathJoin(data.folder ?? '.', 'build', 'lib');
     if (!fs.existsSync(buildLibPath)) {
       fs.mkdirSync(buildLibPath, { recursive: true });
     }
@@ -41,7 +45,7 @@ export async function create_component(data: any) {
 
   // if a footprint file was passed, copy into ./build/lib/footprints/
   if (data.footprint_path) {
-    const buildFootprintsPath = pathJoin(data.folder, 'build', 'lib', 'footprints');
+    const buildFootprintsPath = pathJoin(data.folder ?? '.', 'build', 'lib', 'footprints');
     if (!fs.existsSync(buildFootprintsPath)) {
       fs.mkdirSync(buildFootprintsPath, { recursive: true });
     }
@@ -51,22 +55,22 @@ export async function create_component(data: any) {
 
   try {
     // Create src directory if it doesn't exist
-    const srcPath = pathJoin(data.folder, 'src');
+    const srcPath = pathJoin(data.folder ?? '.', 'src');
     if (!fs.existsSync(srcPath)) {
       fs.mkdirSync(srcPath, { recursive: true });
     }
 
     fs.writeFileSync(pathJoin(srcPath, `${data.name}.ts`), result);
 
-    console.log(`Finished component creation, use it with:`)
-    console.log(chalk.whiteBright.bold(` import { ${data.name} } from './${data.name}';`))
-    console.log(chalk.whiteBright.bold(` let u1 = new ${data.name}();`))
-    console.log();
-    console.log("Report any component creation issues: https://www.reddit.com/r/typecad/");
-    console.log();
+    logger.log(`Finished component creation, use it with:`)
+    logger.log(chalk.whiteBright.bold(` import { ${data.name} } from './${data.name}';`))
+    logger.log(chalk.whiteBright.bold(` let u1 = new ${data.name}();`))
+    logger.log();
+    logger.log("Report any component creation issues: https://www.reddit.com/r/typecad/");
+    logger.log();
 
   } catch (error) {
-    console.log(
+    logger.log(
       chalk.red(`ERROR - ${error}`)
     );
     return;

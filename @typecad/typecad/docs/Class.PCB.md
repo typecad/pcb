@@ -780,21 +780,6 @@ Defined in: [@typecad/typecad/src/pcb/pcb.ts:189](https://github.com/typecad/typ
 
 ***
 
-### erc()
-
-> **erc**(): `void`
-
-Defined in: [@typecad/typecad/src/pcb/pcb.ts:855](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/pcb/pcb.ts#L855)
-
-Performs electrical rule checks on the associated schematic.
-This is a pass-through to the Schematic.erc() method.
-
-#### Returns
-
-`void`
-
-***
-
 ### getCallSite()
 
 > **getCallSite**(): \{ `column`: `number`; `file`: `string`; `line`: `number`; \} \| `undefined`

@@ -1,7 +1,9 @@
 import fs from 'node:fs';
-import { execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import { loadConfig } from '../../../config.js';
 import type { ParsedArgs } from '../parser.js';
+import logger from '../../../logging.js';
+import chalk from 'chalk';
 
 function detectEntryFile(): string | null {
   const config = loadConfig();
@@ -12,14 +14,14 @@ function detectEntryFile(): string | null {
     const buildScript = pkg.scripts?.build || '';
     const match = buildScript.match(/tsx\s+(.+)$/);
     if (match) return match[1];
-  } catch {}
+  } catch { logger.debug('Failed to read or parse package.json'); }
 
   try {
     const srcFiles = fs
       .readdirSync('./src')
       .filter((f) => f.endsWith('.ts') && !f.endsWith('.d.ts'));
     if (srcFiles.length === 1) return `./src/${srcFiles[0]}`;
-  } catch {}
+  } catch { logger.debug('Failed to read src directory'); }
 
   return null;
 }
@@ -48,15 +50,15 @@ export async function run(parsed: ParsedArgs): Promise<void> {
 
   if (fs.existsSync('tsconfig.json')) {
     try {
-      execSync('npx tsc --noEmit', {
+      execFileSync('npx', ['tsc', '--noEmit'], {
         stdio: verbose ? 'inherit' : 'pipe',
         timeout: 30000,
       });
       results.push({ step: 'TypeScript', passed: true, message: 'no type errors' });
-    } catch (error: any) {
+    } catch (error: unknown) {
       hasErrors = true;
-      const stderr = error.stderr?.toString().trim() || '';
-      results.push({ step: 'TypeScript', passed: false, message: stderr || 'type errors found' });
+      const message = error instanceof Error ? error.message : String(error);
+      results.push({ step: 'TypeScript', passed: false, message: message || 'type errors found' });
     }
   } else {
     results.push({ step: 'TypeScript', passed: true, message: 'skipped (no tsconfig.json)' });
@@ -70,42 +72,41 @@ export async function run(parsed: ParsedArgs): Promise<void> {
       env.TYPECAD_DEBUG = '1';
     }
 
-    execSync(`npx tsx "${entry}"`, {
+    execFileSync('npx', ['tsx', entry], {
       stdio: verbose ? 'inherit' : 'pipe',
       env,
       timeout: 60000,
     });
     results.push({ step: 'Runtime', passed: true, message: 'entry file executed successfully' });
-  } catch (error: any) {
+  } catch (error: unknown) {
     hasErrors = true;
-    const stderr = error.stderr?.toString().trim() || error.message || 'runtime error';
+    const err = error as { stderr?: { toString(): string }; message?: string };
+    const stderr = err.stderr?.toString().trim() || err.message || 'runtime error';
     results.push({ step: 'Runtime', passed: false, message: stderr });
   }
 
   if (json) {
-    console.log(JSON.stringify({ valid: !hasErrors, results }, null, 2));
+    logger.log(JSON.stringify({ valid: !hasErrors, results }, null, 2));
   } else {
     for (const r of results) {
-      const icon = r.passed ? '  \u2714' : '  \u2716';
-      const color = r.passed ? '\x1b[32m' : '\x1b[31m';
-      const reset = '\x1b[0m';
-      console.log(`${color}${icon}${reset} ${r.step}: ${r.passed ? r.message : ''}`);
+      const icon = r.passed ? chalk.green('  \u2714') : chalk.red('  \u2716');
+      logger.log(`${icon} ${r.step}: ${r.passed ? r.message : ''}`);
       if (!r.passed && r.message) {
         for (const line of r.message.split('\n').slice(0, 10)) {
-          console.log(`    ${line}`);
+          logger.log(`    ${line}`);
         }
       }
     }
 
-    console.log('');
+    logger.log('');
     if (hasErrors) {
-      console.log('\x1b[31mValidation failed.\x1b[0m');
+      logger.log(chalk.red('Validation failed.'));
     } else {
-      console.log('\x1b[32mValidation passed.\x1b[0m');
+      logger.log(chalk.green('Validation passed.'));
     }
   }
 
   if (hasErrors) {
-    process.exit(1);
+    throw new Error('Validation failed. See above for details.');
   }
 }

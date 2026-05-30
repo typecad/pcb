@@ -4,23 +4,10 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import chalk from 'chalk';
 import { parseArgv } from './parser.js';
-import {
-  showTopLevelHelp,
-  showCreateHelp,
-  showAddComponentHelp,
-  showAddPackageHelp,
-  showBuildHelp,
-  showSearchHelp,
-  showImportHelp,
-  showDiffHelp,
-  showDocHelp,
-  showDoctorHelp,
-  showValidateHelp,
-  showDrcHelp,
-} from './help.js';
+import logger from '../../logging.js';
 
 function outputJson(data: unknown): void {
-  console.log(JSON.stringify(data));
+  logger.log(JSON.stringify(data));
 }
 
 function getVersion(): string {
@@ -35,58 +22,58 @@ function getVersion(): string {
   }
 }
 
-function showCommandHelp(command: string, subcommand: string): boolean {
+async function showCommandHelp(command: string, subcommand: string): Promise<boolean> {
+  const help = await import('./help.js');
   if (command === 'create') {
-    showCreateHelp();
+    help.showCreateHelp();
     return true;
   }
   if (command === 'add' && subcommand === 'component') {
-    showAddComponentHelp();
+    help.showAddComponentHelp();
     return true;
   }
   if (command === 'add' && subcommand === 'package') {
-    showAddPackageHelp();
+    help.showAddPackageHelp();
     return true;
   }
   if (command === 'build') {
-    showBuildHelp();
+    help.showBuildHelp();
     return true;
   }
   if (command === 'search') {
-    showSearchHelp();
+    help.showSearchHelp();
     return true;
   }
   if (command === 'import') {
-    showImportHelp();
+    help.showImportHelp();
     return true;
   }
   if (command === 'diff') {
-    showDiffHelp();
+    help.showDiffHelp();
     return true;
   }
   if (command === 'doc') {
-    showDocHelp();
+    help.showDocHelp();
     return true;
   }
   if (command === 'doctor') {
-    showDoctorHelp();
+    help.showDoctorHelp();
     return true;
   }
   if (command === 'validate') {
-    showValidateHelp();
+    help.showValidateHelp();
     return true;
   }
   if (command === 'drc') {
-    showDrcHelp();
+    help.showDrcHelp();
     return true;
   }
-  if (command === 'add') {
-    console.log(
-      chalk.white.bold('typecad add') + ' - Available subcommands:\n'
-    );
-    console.log('  component    Add a component to the current project');
-    console.log('  package      Create a reusable component package\n');
-    console.log("Run 'typecad add <subcommand> --help' for details.");
+  if (command === 'erc') {
+    help.showErcHelp();
+    return true;
+  }
+  if (command === 'skills') {
+    help.showSkillsHelp();
     return true;
   }
   return false;
@@ -99,16 +86,17 @@ async function main(): Promise<void> {
     if (parsed.json) {
       outputJson({ version: getVersion() });
     } else {
-      console.log(`typeCAD v${getVersion()}`);
+      logger.log(`typeCAD v${getVersion()}`);
     }
     return;
   }
 
   if (!parsed.command || parsed.help) {
-    if (parsed.command && showCommandHelp(parsed.command, parsed.subcommand)) {
+    if (parsed.command && await showCommandHelp(parsed.command, parsed.subcommand)) {
       return;
     }
-    showTopLevelHelp();
+    const help = await import('./help.js');
+    help.showTopLevelHelp();
     return;
   }
 
@@ -124,7 +112,7 @@ async function main(): Promise<void> {
         } else if (parsed.subcommand === 'package') {
           await (await import('./commands/add-package.js')).run(parsed);
         } else if (!parsed.subcommand) {
-          showCommandHelp('add', '');
+          await showCommandHelp('add', '');
         } else {
           if (parsed.json) {
             outputJson({
@@ -133,7 +121,7 @@ async function main(): Promise<void> {
               code: 'UNKNOWN_SUBCOMMAND',
             });
           } else {
-            console.error(
+            logger.error(
               chalk.red(
                 `Unknown subcommand 'add ${parsed.subcommand}'. Use 'component' or 'package'.`
               )
@@ -175,6 +163,14 @@ async function main(): Promise<void> {
         await (await import('./commands/drc.js')).run(parsed);
         break;
 
+      case 'erc':
+        await (await import('./commands/erc.js')).run(parsed);
+        break;
+
+      case 'skills':
+        await (await import('./commands/skills.js')).run(parsed);
+        break;
+
       default:
         if (parsed.json) {
           outputJson({
@@ -183,7 +179,7 @@ async function main(): Promise<void> {
             code: 'UNKNOWN_COMMAND',
           });
         } else {
-          console.error(
+          logger.error(
             chalk.red(
               `Unknown command '${parsed.command}'. Run 'typecad --help' for available commands.`
             )
@@ -199,7 +195,7 @@ async function main(): Promise<void> {
         code: 'COMMAND_ERROR',
       });
     } else {
-      console.error(
+      logger.error(
         chalk.red(error instanceof Error ? error.message : String(error))
       );
     }

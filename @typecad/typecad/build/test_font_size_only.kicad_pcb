@@ -9,15 +9,24 @@
   (
     footprint
     "Package_SO:SOIC-8_3.9x4.9mm_P1.27mm"
-    (property "Code" "typecad:v1:eyJ2IjoxLCJ1IjoiIiwibiI6ImNvbXBvbmVudCJ9" (at 0 0 0) (layer "F.Fab") (hide yes) (uuid "11cbf72e-139c-4ee3-8100-c3be32301a1c") (effects (font (size 1 1) (thickness 0.15))))
-    (uuid "d6205586-e73a-41e2-9d38-881cb51d418d")
+    (
+      property
+      "Code"
+      "typecad:v1:eyJ2IjoxLCJ1IjoiIiwiZiI6IkM6XFx0eXBlY2FkXFx0eXBlQ0FEXFxAdHlwZWNhZFxcdHlwZWNhZFxcdGVzdHNcXHJlZmVyZW5jZV93aWR0aF9oZWlnaHRfb3V0cHV0LnRlc3QudHMiLCJsIjoyMX0"
+      (at 0 0 0)
+      (layer "F.Fab")
+      (hide yes)
+      (uuid "8b8f9b9c-766d-4695-96d6-9f7681888d3f")
+      (effects (font (size 1 1) (thickness 0.15)))
+    )
+    (uuid "3db24ba4-1374-44e2-ac51-38b00ac0a765")
     (at 100 100 0)
     (version 20260206)
     (generator "kicad-footprint-generator")
     (layer "F.Cu")
     (descr "SOIC, 8 Pin (JEDEC MS-012AA, https://www.analog.com/media/en/package-pcb-resources/package/pkg_pdf/soic_narrow-r/r_8.pdf)")
     (tags "SOIC SO")
-    (property "Reference" "U3" (at 0 0 0) (layer "F.SilkS") (effects (font (size 2 2) (thickness 0.15))) (hide no))
+    (property "Reference" "U3" (at 0 -3.4 0) (layer "F.SilkS") (effects (font (size 1 1) (thickness 0.15))))
     (property "Value" "TestValue" (at 0 3.4 0) (layer "F.Fab") (effects (font (size 1 1) (thickness 0.15))))
     (property "KiLib_Generator" "package/gullwing" (at 0 0 0) (layer "F.SilkS") (hide yes) (effects (font (size 1 1) (thickness 0.15))))
     (attr smd)

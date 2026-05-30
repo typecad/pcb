@@ -23,6 +23,7 @@ import {
 } from './pcb_interfaces.js';
 import type { ITrackBuilder } from '../routing/types/length_match.js';
 import { TrackBuilder } from './pcb_track_builder.js';
+import { PCB_CONSTANTS } from './pcb_routing_calculations.js';
 import { IPcbBoardContext } from './pcb_board_context.js';
 import type { ISchematicNode } from '../types/schematic_types.js';
 import { IRoutingObstacle } from '../routing/shared/routing_grid.js';
@@ -48,6 +49,7 @@ import {
 } from './pcb_routing_core.js';
 import { collectManualViaFreeLocations } from './manual_via_helpers.js';
 import { formatCallSite, getErrorMessage } from './pcb_utils.js';
+import { getCallSite } from '../utils/stack_trace.js';
 import os from 'os';
 
 // Extracted sub-modules
@@ -72,7 +74,7 @@ export { enqueueAutoroute } from './pcb_autoroute_helpers.js';
 export function autoroute(pcb: IPcbBoardContext, options: IAutorouteOptions): IAutorouteResult {
     // ── 1. Validate required parameters ──────────────────────────────────
     if (!options.from || !options.to) {
-        throw new RoutingError(`autoroute() requires both 'from' and 'to' parameters${formatCallSite(pcb.getCallSite())}`);
+        throw new RoutingError(`autoroute() requires both 'from' and 'to' parameters${formatCallSite(getCallSite())}`);
     }
 
     debugLog(options.debug, chalk.blue(`[PCB] Starting autoroute operation`));
@@ -93,14 +95,14 @@ export function autoroute(pcb: IPcbBoardContext, options: IAutorouteOptions): IA
             if (isAutorouteResultRouteItem(routeItem)) {
                 const rd = routeItem.routeDetails;
                 if (rd.length === 0 || !rd[0].path) {
-                    throw new RoutingError(`${context}: IAutorouteResult has no path data${formatCallSite(pcb.getCallSite())}`);
+                    throw new RoutingError(`${context}: IAutorouteResult has no path data${formatCallSite(getCallSite())}`);
                 }
                 path = rd[0].path;
             } else {
                 path = routeItem;
             }
             if (!path || !path.nodes || path.nodes.length < 2) {
-                throw new RoutingError(`${context}: Path must have at least 2 nodes${formatCallSite(pcb.getCallSite())}`);
+                throw new RoutingError(`${context}: Path must have at least 2 nodes${formatCallSite(getCallSite())}`);
             }
         }
     }
@@ -112,7 +114,7 @@ export function autoroute(pcb: IPcbBoardContext, options: IAutorouteOptions): IA
             validatePin(exclude.from, `${context} 'from' pin`);
             validatePin(exclude.to, `${context} 'to' pin`);
             if (pinsMatch(exclude.from, exclude.to)) {
-                throw new RoutingError(`${context}: 'from' and 'to' pins are the same (${pinToIdentifier(exclude.from)})${formatCallSite(pcb.getCallSite())}`);
+                throw new RoutingError(`${context}: 'from' and 'to' pins are the same (${pinToIdentifier(exclude.from)})${formatCallSite(getCallSite())}`);
             }
         }
     }
@@ -150,7 +152,7 @@ export function autoroute(pcb: IPcbBoardContext, options: IAutorouteOptions): IA
     const invalidEnds = endPositions.filter(p => p === null).length;
 
     if (invalidStarts > 0 || invalidEnds > 0) {
-        throw new RoutingError(`Unable to resolve pin positions: ${invalidStarts} invalid start pins, ${invalidEnds} invalid end pins${formatCallSite(pcb.getCallSite())}`);
+        throw new RoutingError(`Unable to resolve pin positions: ${invalidStarts} invalid start pins, ${invalidEnds} invalid end pins${formatCallSite(getCallSite())}`);
     }
 
     const validStartPositions = startPositions.filter((p): p is { x: number; y: number; layer: string } => p !== null);
@@ -185,8 +187,8 @@ export function autoroute(pcb: IPcbBoardContext, options: IAutorouteOptions): IA
         }
     }
 
-    if (pcb.Schematic && pcb.Schematic.Nodes) {
-        for (const node of pcb.Schematic.Nodes) {
+    if (pcb.schematic && pcb.schematic.nodes) {
+        for (const node of pcb.schematic.nodes) {
             if (node.nodes) {
                 for (const schematicPin of node.nodes) {
                     if (schematicPin.owner && !componentsFromPins.includes(schematicPin.owner)) {
@@ -197,8 +199,8 @@ export function autoroute(pcb: IPcbBoardContext, options: IAutorouteOptions): IA
         }
     }
 
-    if (pcb.Schematic && Array.isArray(pcb.Schematic.components)) {
-        for (const comp of pcb.Schematic.components) {
+    if (pcb.schematic && Array.isArray(pcb.schematic.components)) {
+        for (const comp of pcb.schematic.components) {
             if (comp && !componentsFromPins.includes(comp)) {
                 componentsFromPins.push(comp);
             }
@@ -209,12 +211,12 @@ export function autoroute(pcb: IPcbBoardContext, options: IAutorouteOptions): IA
 
     // ── 7. Infer net from pins ───────────────────────────────────────────
     let netName = options.net;
-    if (!netName && pcb.Schematic && pcb.Schematic.Nodes) {
+    if (!netName && pcb.schematic && pcb.schematic.nodes) {
         const firstPin = fromPins[0];
         debugLog(options.debug, chalk.blue(`[PCB] Attempting to infer net from pin ${firstPin.reference}.${firstPin.number}`));
         if (firstPin.owner) {
-            debugLog(options.debug, chalk.blue(`[PCB] Pin owner: ${firstPin.owner.reference}, searching ${pcb.Schematic.Nodes.length} schematic nodes`));
-            for (const schematicNode of pcb.Schematic.Nodes) {
+            debugLog(options.debug, chalk.blue(`[PCB] Pin owner: ${firstPin.owner.reference}, searching ${pcb.schematic.nodes.length} schematic nodes`));
+            for (const schematicNode of pcb.schematic.nodes) {
                 if (schematicNode.nodes) {
                     const pinInSchematic = schematicNode.nodes.find((p: Pin) =>
                         p.reference === firstPin.owner!.reference &&
@@ -232,7 +234,7 @@ export function autoroute(pcb: IPcbBoardContext, options: IAutorouteOptions): IA
             }
         }
     } else if (!netName) {
-        debugLog(options.debug, chalk.yellow(`[PCB] No schematic available for net inference (Schematic: ${!!pcb.Schematic}, Nodes: ${pcb.Schematic?.Nodes?.length || 0})`));
+        debugLog(options.debug, chalk.yellow(`[PCB] No schematic available for net inference (Schematic: ${!!pcb.schematic}, nodes: ${pcb.schematic?.nodes?.length || 0})`));
     }
 
     // ── 8. Determine trace width ─────────────────────────────────────────
@@ -290,7 +292,7 @@ export function autoroute(pcb: IPcbBoardContext, options: IAutorouteOptions): IA
 
     const expandedBounds = expandBoundsToIncludeTracks(
         bounds,
-        Array.isArray(pcb.grLines) ? pcb.grLines as IGrLine[] : [],
+        Array.isArray(pcb.state.grLines) ? pcb.state.grLines as IGrLine[] : [],
         stagedOutlines,
         boundsExpansionMargin
     );
@@ -351,8 +353,8 @@ export function autoroute(pcb: IPcbBoardContext, options: IAutorouteOptions): IA
     // ── 13. Collect free via locations ───────────────────────────────────
     const freeViaLocations: { x: number; y: number }[] = [];
 
-    if (netName && pcb.Schematic && pcb.Schematic.Nodes) {
-        const schematicNode = pcb.Schematic.Nodes.find((node: ISchematicNode) => node.name === netName);
+    if (netName && pcb.schematic && pcb.schematic.nodes) {
+        const schematicNode = pcb.schematic.nodes.find((node: ISchematicNode) => node.name === netName);
         if (schematicNode && schematicNode.nodes) {
             for (const schematicPin of schematicNode.nodes) {
                 if (schematicPin.owner) {
@@ -511,10 +513,10 @@ export function autoroute(pcb: IPcbBoardContext, options: IAutorouteOptions): IA
     }
 
     // ── 20. Report results ───────────────────────────────────────────────
-    debugLog(options.debug, chalk.gray(`[PCB][DEBUG] After processing track builders: stagedOutlines=${pcb.stagedOutlines.length}, tracks=${pcb.tracks.length}, outlines_public=${pcb.outlines_public.length}`));
-    if (options.debug && pcb.stagedOutlines.length > 0) {
+    debugLog(options.debug, chalk.gray(`[PCB][DEBUG] After processing track builders: stagedOutlines=${pcb.state.stagedOutlines.length}, tracks=${pcb.tracks.length}, outlines_public=${pcb.state.outlines.length}`));
+    if (options.debug && pcb.state.stagedOutlines.length > 0) {
         try {
-            const sample = pcb.stagedOutlines.slice(0, 5).map((o: IOutline) => ({
+            const sample = pcb.state.stagedOutlines.slice(0, 5).map((o: IOutline) => ({
                 uuid: o.uuid,
                 elements: o.elements.map((el) => {
                     const typedEl = el as unknown as (OutlineElement & { details?: { layer?: string; start?: { x: number; y: number }; end?: { x: number; y: number } } });
@@ -527,7 +529,7 @@ export function autoroute(pcb: IPcbBoardContext, options: IAutorouteOptions): IA
                 })
             }));
             logger.debug('[PCB][DEBUG] stagedOutlines sample:', JSON.stringify(sample, null, 2));
-        } catch (e) { /* ignore */ }
+        } catch (e) { logger.debug('[PCB][DEBUG] failed to stage debug visualization', e); }
     }
 
     const successCount = routeDetails.filter(d => d.success).length;
@@ -547,7 +549,7 @@ export function autoroute(pcb: IPcbBoardContext, options: IAutorouteOptions): IA
             }
         });
 
-        logger.warn(`[PCB] WARNING: Some routes failed. Check routing constraints and available space${formatCallSite(pcb.getCallSite())}`);
+        logger.warn(`[PCB] WARNING: Some routes failed. Check routing constraints and available space${formatCallSite(getCallSite())}`);
     }
 
     // ── 21. Debug visualization ──────────────────────────────────────────

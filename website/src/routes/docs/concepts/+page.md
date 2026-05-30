@@ -7,7 +7,7 @@
 
 # Concepts
 
-Instead of using the KiCAD schematic editor, you write code and then build it into a KiCAD schematic.
+Instead of using the KiCAD schematic editor, you write code and then build it into a KiCAD project.
 
 **type**CAD uses TypeScript. You don't need an extensive knowledge of TypeScript to get started. 
 
@@ -40,10 +40,12 @@ typecad.create();
 ```
 </ScrollArea>
 
-That code will create a KiCAD board file in `./build/typecad.kicad_pcb`.
+That code will create a KiCAD board file, schematic file, and netlist in `./build/typecad.kicad_pcb`, `./build/typecad.kicad_sch`, and `./build/typecad.net`.
 
 ### Build
-**type**CAD projects have a build process. It takes the TypeScript code and turns it into a KiCAD project. The code you write, plus the **type**CAD API simply runs itself and the result is the KiCAD project. 
+**type**CAD projects have a build process. It takes the TypeScript code and turns it into a KiCAD project. The code you write, plus the **type**CAD API simply runs itself and the result is the KiCAD project.
+
+Run `typecad build` from your project's `hw/` directory to build. You can configure the build using a `typecad.conf.ts` file in the `hw/` directory. 
 
 ### Workflow
 The new layout becomes:
@@ -58,6 +60,6 @@ The new layout becomes:
 <br/>
 <br/>
     <p class="absolute right-0">
-       <a href="/docs/tooling" class={buttonVariants({ variant: "outline" })}>Tooling<ChevronRight /></a>
+       <a href="/docs/configuration" class={buttonVariants({ variant: "outline" })}>Configuration<ChevronRight /></a>
     </p>
 </div>

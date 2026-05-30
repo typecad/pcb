@@ -33,7 +33,7 @@ describe('PCB Text Functionality', () => {
   })
 
   it('should add basic text to PCB', async () => {
-    pcb = new PCB(testBoardName, { Schematic: new Schematic(testBoardName) })
+    pcb = new PCB(testBoardName, { schematic: new Schematic(testBoardName) })
 
     pcb.text({
       text: 'Hello PCB',
@@ -59,7 +59,7 @@ describe('PCB Text Functionality', () => {
   })
 
   it('should add text with custom font and size', async () => {
-    pcb = new PCB(testBoardName, { Schematic: new Schematic(testBoardName) })
+    pcb = new PCB(testBoardName, { schematic: new Schematic(testBoardName) })
 
     pcb.text({
       text: 'TYPECAD 1HZ',
@@ -135,7 +135,7 @@ describe('PCB Text Functionality', () => {
   })
 
   it('should add multiple text elements', async () => {
-    pcb = new PCB(testBoardName, { Schematic: new Schematic(testBoardName) })
+    pcb = new PCB(testBoardName, { schematic: new Schematic(testBoardName) })
 
     pcb.text({
       text: 'Title',
@@ -171,7 +171,7 @@ describe('PCB Text Functionality', () => {
   })
 
   it('should support text formatting options', async () => {
-    pcb = new PCB(testBoardName, { Schematic: new Schematic(testBoardName) })
+    pcb = new PCB(testBoardName, { schematic: new Schematic(testBoardName) })
 
     pcb.text({
       text: 'Bold Italic',
@@ -218,7 +218,7 @@ describe('PCB Text Functionality', () => {
   })
 
   it('should support text justification', async () => {
-    pcb = new PCB(testBoardName, { Schematic: new Schematic(testBoardName) })
+    pcb = new PCB(testBoardName, { schematic: new Schematic(testBoardName) })
 
     pcb.text({
       text: 'Centered',
@@ -257,7 +257,7 @@ describe('PCB Text Functionality', () => {
   })
 
   it('should apply default values', async () => {
-    pcb = new PCB(testBoardName, { Schematic: new Schematic(testBoardName) })
+    pcb = new PCB(testBoardName, { schematic: new Schematic(testBoardName) })
 
     pcb.text({
       text: 'Default Text',
@@ -312,7 +312,7 @@ describe('PCB Text Functionality', () => {
   })
 
   it('should support rotation', async () => {
-    pcb = new PCB(testBoardName, { Schematic: new Schematic(testBoardName) })
+    pcb = new PCB(testBoardName, { schematic: new Schematic(testBoardName) })
 
     pcb.text({
       text: 'Rotated',
@@ -339,7 +339,7 @@ describe('PCB Text Functionality', () => {
   })
 
   it('should support hide flag', async () => {
-    pcb = new PCB(testBoardName, { Schematic: new Schematic(testBoardName) })
+    pcb = new PCB(testBoardName, { schematic: new Schematic(testBoardName) })
 
     pcb.text({
       text: 'Hidden',

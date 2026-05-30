@@ -1,4 +1,4 @@
-import { PCB, Schematic, KiCAD, kicad_cli_path } from "@typecad/typecad";
+import { PCB, Schematic, KiCAD } from "@typecad/typecad";
 import chalk from 'chalk';
 import { execSync } from "node:child_process";
 import fs from 'node:fs';
@@ -27,7 +27,7 @@ export function jlcpcb_export(schematic: Schematic, pcb: PCB, ignore?: boolean) 
 
     // run DRC on the board
     try {
-        execSync(`"${kicad_cli_path}" pcb drc --exit-code-violations --all-track-errors --format json ${input_path}/${pcb.Boardname}.kicad_pcb`);
+        execSync(`"${KiCAD.cliPath}" pcb drc --exit-code-violations --all-track-errors --format json ${input_path}/${pcb.boardName}.kicad_pcb`);
     } catch (error) {
         if (!_ignore) {
             schematic.error('DRC failed');
@@ -55,34 +55,34 @@ export function jlcpcb_export(schematic: Schematic, pcb: PCB, ignore?: boolean) 
     process.stdout.write(chalk.blue.bold(`${output_path}`) + ' folder created\n');
 
     // make position file and edit fields
-    process.stdout.write(chalk.blue.bold(`${output_path}/${pcb.Boardname}_cpl.csv`) + ' Position/PnP file written\n');
-    runCommand(`"${kicad_cli_path}" pcb export pos --exclude-dnp --units=mm --format=csv --output ${output_path}/${pcb.Boardname}_cpl.csv ${input_path}/${pcb.Boardname}.kicad_pcb`)
+    process.stdout.write(chalk.blue.bold(`${output_path}/${pcb.boardName}_cpl.csv`) + ' Position/PnP file written\n');
+    runCommand(`"${KiCAD.cliPath}" pcb export pos --exclude-dnp --units=mm --format=csv --output ${output_path}/${pcb.boardName}_cpl.csv ${input_path}/${pcb.boardName}.kicad_pcb`)
 
     replaceInFileSync({
-        files: `${output_path}/${pcb.Boardname}_cpl.csv`,
+        files: `${output_path}/${pcb.boardName}_cpl.csv`,
         from: /Ref/g,
         to: 'Designator',
     });
     replaceInFileSync({
-        files: `${output_path}/${pcb.Boardname}_cpl.csv`,
+        files: `${output_path}/${pcb.boardName}_cpl.csv`,
         from: /PosX/g,
         to: 'Mid X',
     });
 
     replaceInFileSync({
-        files: `${output_path}/${pcb.Boardname}_cpl.csv`,
+        files: `${output_path}/${pcb.boardName}_cpl.csv`,
         from: /PosY/g,
         to: 'Mid Y',
     });
 
     replaceInFileSync({
-        files: `${output_path}/${pcb.Boardname}_cpl.csv`,
+        files: `${output_path}/${pcb.boardName}_cpl.csv`,
         from: /Rot/g,
         to: 'Rotation',
     });
 
     replaceInFileSync({
-        files: `${output_path}/${pcb.Boardname}_cpl.csv`,
+        files: `${output_path}/${pcb.boardName}_cpl.csv`,
         from: /Side/g,
         to: 'Layer',
     });
@@ -92,11 +92,11 @@ export function jlcpcb_export(schematic: Schematic, pcb: PCB, ignore?: boolean) 
     fs.mkdirSync(`${output_path}/gerbers`, { recursive: true });
     // make gerbers
     process.stdout.write(chalk.blue.bold(`${output_path}/gerbers/`) + ' Gerber files written\n');
-    runCommand(`"${kicad_cli_path}" pcb export gerbers --output ${output_path}/gerbers ${input_path}/${pcb.Boardname}.kicad_pcb`)
+    runCommand(`"${KiCAD.cliPath}" pcb export gerbers --output ${output_path}/gerbers ${input_path}/${pcb.boardName}.kicad_pcb`)
 
     // make drill files
-    process.stdout.write(chalk.blue.bold(`${output_path}/gerbers/${pcb.Boardname}.drl`) + ' Drill file written\n');
-    runCommand(`"${kicad_cli_path}" pcb export drill --output ${output_path}/gerbers ${input_path}/${pcb.Boardname}.kicad_pcb`)
+    process.stdout.write(chalk.blue.bold(`${output_path}/gerbers/${pcb.boardName}.drl`) + ' Drill file written\n');
+    runCommand(`"${KiCAD.cliPath}" pcb export drill --output ${output_path}/gerbers ${input_path}/${pcb.boardName}.kicad_pcb`)
 
     // zip them
     process.stdout.write(chalk.blue.bold(`${output_path}/gerbers.zip`) + ' zipping Gerbers and drill file\n');
@@ -105,7 +105,7 @@ export function jlcpcb_export(schematic: Schematic, pcb: PCB, ignore?: boolean) 
     // bom file
     schematic.bom(output_path);
     replaceInFileSync({
-        files: `${output_path}/${pcb.Boardname}.csv`,
+        files: `${output_path}/${pcb.boardName}.csv`,
         from: /MPN/g,
         to: 'JLCPCB Part#',
     });

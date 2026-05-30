@@ -101,20 +101,20 @@ export function logZeroClearanceSample(
         : undefined;
     try {
       logger.debug(chalk.yellow(`[LengthMatch] ZERO-CLEAR sample at (${worldX.toFixed(3)},${worldY.toFixed(3)}) grid=(${g.x},${g.y}) layer=${layer} note=${note || ''}`));
-    } catch {}
+    } catch { logger.debug('[LengthMatch] logZeroClearanceSample: failed to log ZERO-CLEAR sample'); }
     try {
       logger.debug(
         chalk.yellow(
           `[LengthMatch]   cell: ${cell ? JSON.stringify({ occupied: cell.occupied, net: cell.net, isManualRoute: cell.isManualRoute, absoluteBlock: cell.absoluteBlock, clearance: cell.clearance, obstacleHalfWidthMm: cell.obstacleHalfWidthMm }) : 'null'}`,
         ),
       );
-    } catch {}
+    } catch { logger.debug('[LengthMatch] logZeroClearanceSample: failed to log cell info'); }
     try {
       logger.debug(chalk.yellow(`[LengthMatch]   checkTrackObstaclePrecise => ${String(precise)}`));
-    } catch {}
+    } catch { logger.debug('[LengthMatch] logZeroClearanceSample: failed to log checkTrackObstaclePrecise'); }
   } catch (err) {
     try {
       logger.debug(chalk.gray(`[LengthMatch] logZeroClearanceSample threw: ${err instanceof Error ? err.message : String(err)}`));
-    } catch {}
+    } catch { logger.debug('[LengthMatch] logZeroClearanceSample: failed to log error info'); }
   }
 }

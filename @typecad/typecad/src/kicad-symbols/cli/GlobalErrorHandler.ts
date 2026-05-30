@@ -1,4 +1,5 @@
 import { ErrorHandler } from './ErrorHandler.js';
+import logger from '../../logging.js';
 
 /**
  * Class for handling global unhandled exceptions and rejections
@@ -34,7 +35,7 @@ export class GlobalErrorHandler {
   private static handleUncaughtException(error: Error): void {
     // Use ErrorHandler to get a user-friendly error message
     const errorMessage = ErrorHandler.handleError(error);
-    console.error(`\nFatal error: ${errorMessage}`);
+    logger.error(`\nFatal error: ${errorMessage}`);
     
     // Exit with error code
     process.exit(1);
@@ -55,7 +56,7 @@ export class GlobalErrorHandler {
     
     // Use ErrorHandler to get a user-friendly error message
     const errorMessage = ErrorHandler.handleError(error);
-    console.error(`\nFatal error: ${errorMessage}`);
+    logger.error(`\nFatal error: ${errorMessage}`);
     
     // Exit with error code
     process.exit(1);

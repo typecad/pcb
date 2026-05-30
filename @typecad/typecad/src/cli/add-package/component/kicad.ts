@@ -1,22 +1,32 @@
 import fs from 'node:fs';
 import { parse, serialize, Sym, nameOf } from '../../../sexpr/index.js';
+import type { SExpr } from '../../../sexpr/index.js';
 import os from 'node:os';
+import type { CliPinInfo } from '../../types.js';
+import { KiCAD } from "../../../kicad.js";
+import logger from '../../../logging.js';
+import { sanitize_name as sharedSanitizeName, sanitize_number as sharedSanitizeNumber } from '../../shared/cli_utils.js';
+
+const MAX_EXTENDS_DEPTH = 10;
 
 let symbol_file_contents = '';
-let _parsed: any = null;
-import { KiCAD } from "../../../kicad.js";
+let _parsed: SExpr | null = null;
 
-let _pins: any[] = [];
+let _pins: CliPinInfo[] = [];
 let symbol_lib = '';
 
 export function kicad_cli() {
   return KiCAD.cliPath;
 }
 
-export function kicad_symbol(symbol: string, _folder?: string) {
+export function kicad_symbol(symbol: string, _folder?: string, depth = 0): string | undefined {
+  if (depth >= MAX_EXTENDS_DEPTH) {
+    logger.error(`Max extends depth (${MAX_EXTENDS_DEPTH}) reached for symbol: ${symbol}`);
+    return undefined;
+  }
   let symbol_file_name = symbol.split(':');
 
-  const kicad = new KiCAD();
+  const kicad = KiCAD.instance;
   const _kicad_symbol = kicad.getSymbolsPath();
 
   try {
@@ -32,7 +42,7 @@ export function kicad_symbol(symbol: string, _folder?: string) {
       );
     }
 
-    const l: any = parse(symbol_file_contents);
+    const l = parse(symbol_file_contents) as SExpr[];
 
     for (const i in l) {
       if (!Array.isArray(l[i])) continue;
@@ -45,7 +55,7 @@ export function kicad_symbol(symbol: string, _folder?: string) {
 
             l[i][ii][1] = `${symbol_file_name[0]}:${extends_name}`;
             symbol_lib = `${symbol_file_name[0]}:${extends_name}`;
-            return kicad_symbol(`${symbol_file_name[0]}:${extends_name}`);
+            return kicad_symbol(`${symbol_file_name[0]}:${extends_name}`, undefined, depth + 1);
           }
 
           symbol_file_contents = serialize(l[i]);
@@ -63,16 +73,17 @@ export function kicad_symbol(symbol: string, _folder?: string) {
       }
     }
   } catch (err) {
-    console.error(err);
+    logger.error(err);
   }
 }
 
-export function kicad_pins(_symbol?: string): any[] {
+export function kicad_pins(_symbol?: string): CliPinInfo[] {
+_pins = [];
 let _type = '';
 let _name = '';
 let _number: string | number = -1;
 
-  const l = _parsed || parse(symbol_file_contents);
+  const l = (_parsed || parse(symbol_file_contents)) as SExpr[];
   for (const i in l) {
     if (!Array.isArray(l[i])) continue;
     for (const ii in l[i]) {
@@ -150,7 +161,7 @@ export function return_list_of_symbols(symbol_path: string) {
   try {
     symbol_file_contents = fs.readFileSync(symbol_path, 'utf8');
 
-    const l: any = parse(symbol_file_contents);
+    const l = parse(symbol_file_contents) as SExpr[];
 
     for (const i in l) {
       if (!Array.isArray(l[i])) continue;
@@ -159,7 +170,7 @@ export function return_list_of_symbols(symbol_path: string) {
       }
     }
   } catch (err) {
-    console.error(err);
+    logger.error(err);
   }
 
   return found_symbols;
@@ -169,7 +180,7 @@ export function local_symbol_to_footprint(symbol_path: string) {
   try {
     symbol_file_contents = fs.readFileSync(symbol_path, 'utf8');
 
-    const l: any = parse(symbol_file_contents);
+    const l = parse(symbol_file_contents) as SExpr[];
 
     for (const i in l) {
       if (!Array.isArray(l[i])) continue;
@@ -189,29 +200,12 @@ export function local_symbol_to_footprint(symbol_path: string) {
       }
     }
   } catch (err) {
-    console.error(err);
+    logger.error(err);
   }
 
   return '';
 }
 
-export function sanitize_name(string: string) {
-  let _string = string;
-  _string = _string.replace(/[\|~{}//&;\$%@"*=<>\(\)\+,-]/g, '_');
-  _string = _string.replaceAll('__', '_');
-  // catch if starts with a number
-  if (!isNaN(Number(_string.charAt(0)))) {
-    //If is a number
-    _string = '_' + _string;
-  }
-  return _string;
-}
+export const sanitize_name = sharedSanitizeName;
 
-export function sanitize_number(number: string | number) {
-  let _number = number;
-
-  if (isNaN(Number(_number))) {
-    _number = "'" + _number + "'";
-  }
-  return _number;
-}
+export const sanitize_number = sharedSanitizeNumber;

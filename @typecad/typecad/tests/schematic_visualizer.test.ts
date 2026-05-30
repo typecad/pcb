@@ -1,8 +1,7 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { Schematic } from '../src/schematic.js'
 import { Component } from '../src/component.js'
 
-// Mock KiCAD detection and fs to avoid requiring KiCAD installation
 vi.mock('../src/kicad.js', () => ({
   KiCAD: class {
     static path = ''
@@ -31,7 +30,7 @@ describe('schematic_visualizer', () => {
     vi.clearAllMocks()
   })
 
-  it('should export a schematic function', async () => {
+  it('should still export schematic function for internal use', async () => {
     const mod = await import('../src/schematic_visualizer.js')
     expect(mod.schematic).toBeTypeOf('function')
   })
@@ -40,20 +39,19 @@ describe('schematic_visualizer', () => {
     const { schematic } = await import('../src/schematic_visualizer.js')
     const emptySchematic = new Schematic('empty_test')
 
-    // Should not throw even with no components
     expect(() => schematic(emptySchematic)).not.toThrow()
   })
 
-  it('should skip null and non-object entries in Components', async () => {
+  it('should skip null and non-object entries in components', async () => {
     const { schematic } = await import('../src/schematic_visualizer.js')
     const sch = new Schematic('null_test')
 
-    // Add a valid component
-    const comp = new Component({ reference: 'XSV1', value: 'test' })
+    const comp = new Component('');
+    comp.reference = 'XSV1';
+    comp.value = 'test';
     sch.add(comp)
 
-    // Manually push a null entry to test the guard
-    sch.Components.push(null as any)
+    sch.components.push(null as any)
 
     expect(() => schematic(sch)).not.toThrow()
   })

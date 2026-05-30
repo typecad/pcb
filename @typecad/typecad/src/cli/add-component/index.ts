@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-import { select, input } from "@inquirer/prompts";
 import {
   kicad_symbol,
   kicad_pins,
@@ -12,12 +11,35 @@ import {
 import { findExecutable } from "../../kicad.js";
 import { create_component } from "./typecad.js";
 import { basename } from "node:path";
-import { fileSelector } from "inquirer-file-selector";
 import chalk from "chalk";
-import { convertEasyedaToKicad } from "../../kipm/easyeda2kicadCore.js";
 import fs from "node:fs";
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import path from "node:path";
+import type { CliArgs, CliPinInfo, SymbolData, FootprintData } from '../types.js';
+import logger from '../../logging.js';
+
+type InquirerPrompts = typeof import("@inquirer/prompts");
+type FileSelector = typeof import("inquirer-file-selector");
+type EasyEdaConverter = typeof import("../../kipm/easyeda2kicadCore.js");
+
+let _inquirer: InquirerPrompts | undefined;
+let _fileSelector: FileSelector | undefined;
+let _easyeda: EasyEdaConverter | undefined;
+
+async function getInquirer() {
+  if (!_inquirer) _inquirer = await import("@inquirer/prompts");
+  return _inquirer;
+}
+
+async function getFileSelector() {
+  if (!_fileSelector) _fileSelector = await import("inquirer-file-selector");
+  return _fileSelector;
+}
+
+async function getEasyedaConverter() {
+  if (!_easyeda) _easyeda = await import("../../kipm/easyeda2kicadCore.js");
+  return _easyeda;
+}
 
 /**
  * Parse command line arguments
@@ -25,7 +47,7 @@ import path from "node:path";
  */
 function parseArguments() {
   const args = process.argv.slice(2);
-  const parsedArgs: Record<string, any> = {};
+  const parsedArgs: CliArgs = {};
 
   // Handle backward compatibility: if there's exactly one argument without -- prefix,
   // treat it as the folder parameter (old argv[2] behavior)
@@ -58,7 +80,7 @@ function parseArguments() {
  * @param {Object} args - Parsed arguments
  * @returns {boolean} True if all required args are present
  */
-function hasAllRequiredArgs(args: Record<string, any>) {
+function hasAllRequiredArgs(args: CliArgs) {
   // Check if we have symbol and footprint source specifications
   const hasSymbolSource = args.hasOwnProperty("symbol_source");
   const hasFootprintSource = args.hasOwnProperty("footprint_source");
@@ -120,71 +142,71 @@ function hasAllRequiredArgs(args: Record<string, any>) {
  * Display help information
  */
 function showHelp() {
-  console.log(
+  logger.log(
     chalk.white.bold("🧩 typeCAD Add Component - Command Line Usage\n")
   );
-  console.log("Usage: npx @typecad/add-component [options]\n");
-  console.log(
+  logger.log("Usage: npx @typecad/add-component [options]\n");
+  logger.log(
     "Mixed Source Options (NEW - allows mixing symbol and footprint sources):"
   );
-  console.log(
+  logger.log(
     "  --symbol_source=<source>     Symbol source: kicad, local, or jlcpcb"
   );
-  console.log(
+  logger.log(
     "  --footprint_source=<source>  Footprint source: kicad, local, or jlcpcb"
   );
-  console.log(
+  logger.log(
     "  --symbol=<symbol_name>       Symbol name (format: library:symbol or path/to/file.kicad_sym) - for kicad/local"
   );
-  console.log(
+  logger.log(
     "  --footprint=<footprint>      Footprint name (format: library:footprint or path/to/file.kicad_mod) - optional for kicad/local (uses auto-association if not provided)"
   );
-  console.log(
+  logger.log(
     "  --c=<component_number>       Component number (format: C1234567) - for jlcpcb\n"
   );
-  console.log("Legacy Component Source Options (choose exactly one):");
-  console.log("  --kicad=<value>           Use KiCAD library component");
-  console.log(
+  logger.log("Legacy Component Source Options (choose exactly one):");
+  logger.log("  --kicad=<value>           Use KiCAD library component");
+  logger.log(
     "  --local=<value>           Use local component (symbol and footprint names)"
   );
-  console.log("  --jlcpcb=<value>          Use EasyEDA/JLCPCB component\n");
-  console.log("Other Options:");
-  console.log(
+  logger.log("  --jlcpcb=<value>          Use EasyEDA/JLCPCB component\n");
+  logger.log("Other Options:");
+  logger.log(
     "  --folder=<path>           Output folder (default: current directory)"
   );
-  console.log("  --help                    Show this help message\n");
-  console.log("Examples:");
-  console.log("Mixed sources:");
-  console.log(
+  logger.log("  --help                    Show this help message\n");
+  logger.log("Examples:");
+  logger.log("Mixed sources:");
+  logger.log(
     "  npx @typecad/add-component --symbol_source=kicad --footprint_source=local --symbol=MCU_Microchip_ATtiny:ATtiny3227-M --footprint=MyLib:MyFootprint"
   );
-  console.log(
+  logger.log(
     "  npx @typecad/add-component --symbol_source=kicad --footprint_source=kicad --symbol=MCU_Microchip_ATtiny:ATtiny3227-M"
   );
-  console.log(
+  logger.log(
     "  npx @typecad/add-component --symbol_source=local --footprint_source=local --symbol=./MyComponent.kicad_sym --footprint=./MyFootprint.kicad_mod"
   );
-  console.log(
+  logger.log(
     "  npx @typecad/add-component --symbol_source=jlcpcb --footprint_source=kicad --c=C3217148 --footprint=Package_QFN:QFN-32-1EP_5x5mm_P0.5mm_EP3.45x3.45mm"
   );
-  console.log("Legacy format:");
-  console.log(
+  logger.log("Legacy format:");
+  logger.log(
     "  npx @typecad/add-component --kicad=true --symbol=MCU_Microchip_ATtiny:ATtiny3227-M --footprint=Package_QFN:QFN-32-1EP_5x5mm_P0.5mm_EP3.45x3.45mm"
   );
-  console.log(
+  logger.log(
     "  npx @typecad/add-component --kicad=true --symbol=MCU_Microchip_ATtiny:ATtiny3227-M"
   );
-  console.log(
+  logger.log(
     "  npx @typecad/add-component --local=true --symbol=MyLib:MySymbol --footprint=MyLib:MyFootprint"
   );
-  console.log(
+  logger.log(
     "  npx @typecad/add-component --local=true --symbol=./MyComponent.kicad_sym --footprint=./MyFootprint.kicad_mod"
   );
-  console.log("  npx @typecad/add-component --jlcpcb=true --c=C3217148");
-  console.log("  npx @typecad/add-component # starts interactive mode");
+  logger.log("  npx @typecad/add-component --jlcpcb=true --c=C3217148");
+  logger.log("  npx @typecad/add-component # starts interactive mode");
 }
 
-async function main(preparsedArgs?: Record<string, any>) {
+async function main(preparsedArgs?: CliArgs) {
   const cmdArgs = preparsedArgs || parseArguments();
 
   if (cmdArgs.help) {
@@ -195,7 +217,7 @@ async function main(preparsedArgs?: Record<string, any>) {
   // Mode detection
   const isNonInteractive = hasAllRequiredArgs(cmdArgs);
 
-  console.log("🧩 " + chalk.whiteBright.bold("type") + "CAD Create Component");
+  logger.log("🧩 " + chalk.whiteBright.bold("type") + "CAD Create Component");
 
   let symbolSource, footprintSource;
 
@@ -203,26 +225,26 @@ async function main(preparsedArgs?: Record<string, any>) {
     // Handle legacy format first
     if (cmdArgs.kicad !== undefined) {
       symbolSource = footprintSource = "kicad";
-      console.log(
+      logger.log(
         chalk.green(`Using kicad source from command line arguments`)
       );
     } else if (cmdArgs.local !== undefined) {
       symbolSource = footprintSource = "local";
-      console.log(
+      logger.log(
         chalk.green(`Using local source from command line arguments`)
       );
     } else if (cmdArgs.jlcpcb !== undefined) {
       symbolSource = footprintSource = "easyeda";
-      console.log(
+      logger.log(
         chalk.green(`Using easyeda source from command line arguments`)
       );
     } else {
       // New mixed format
-      symbolSource = cmdArgs.symbol_source;
-      footprintSource = cmdArgs.footprint_source;
+      symbolSource = cmdArgs.symbol_source as string;
+      footprintSource = cmdArgs.footprint_source as string;
       if (symbolSource === "jlcpcb") symbolSource = "easyeda";
       if (footprintSource === "jlcpcb") footprintSource = "easyeda";
-      console.log(
+      logger.log(
         chalk.green(
           `Using symbol source: ${symbolSource}, footprint source: ${footprintSource}`
         )
@@ -230,7 +252,7 @@ async function main(preparsedArgs?: Record<string, any>) {
     }
   } else {
     // Interactive mode - ask for symbol source first
-    symbolSource = await select({
+    symbolSource = await (await getInquirer()).select({
       message: "Select symbol source:",
       choices: [
         {
@@ -252,7 +274,7 @@ async function main(preparsedArgs?: Record<string, any>) {
     });
 
     // Ask for footprint source
-    footprintSource = await select({
+    footprintSource = await (await getInquirer()).select({
       message: "Select footprint source:",
       choices: [
         {
@@ -286,12 +308,12 @@ async function main(preparsedArgs?: Record<string, any>) {
 async function handleMixedSources(
   symbolSource: string,
   footprintSource: string,
-  cmdArgs: Record<string, any>,
+  cmdArgs: CliArgs,
   isNonInteractive: boolean
 ) {
-  let symbolData: any = {};
-  let footprintData: any = {};
-  let pins: any[] = [];
+  let symbolData: SymbolData | null = null;
+  let footprintData: FootprintData | null = null;
+  let pins: CliPinInfo[] = [];
   let componentName: string = "";
 
   symbolData = await handleSymbolSource(
@@ -299,7 +321,7 @@ async function handleMixedSources(
     cmdArgs,
     isNonInteractive
   );
-  if (!symbolData) process.exit(1);
+  if (!symbolData) throw new Error('Failed to get symbol data');
 
   footprintData = await handleFootprintSource(
     footprintSource,
@@ -307,7 +329,7 @@ async function handleMixedSources(
     isNonInteractive,
     symbolData
   );
-  if (!footprintData) process.exit(1);
+  if (!footprintData) throw new Error('Failed to get footprint data');
 
   pins = symbolData.pins || [];
   componentName = symbolData.name || "Component";
@@ -320,7 +342,7 @@ async function handleMixedSources(
     pins,
     symbol_path: symbolData.symbol_path,
     footprint_path: footprintData.footprint_path,
-    folder: cmdArgs.folder || ".",
+    folder: (cmdArgs.folder || ".") as string,
   };
 
   create_component(data);
@@ -334,7 +356,7 @@ async function handleMixedSources(
   }
 }
 
-async function handleSymbolSource(source: string, cmdArgs: Record<string, any>, isNonInteractive: boolean) {
+async function handleSymbolSource(source: string, cmdArgs: CliArgs, isNonInteractive: boolean) {
   if (source === "kicad") {
     return await handleKicadSymbol(cmdArgs, isNonInteractive);
   } else if (source === "local") {
@@ -347,9 +369,9 @@ async function handleSymbolSource(source: string, cmdArgs: Record<string, any>, 
 
 async function handleFootprintSource(
   source: string,
-  cmdArgs: Record<string, any>,
+  cmdArgs: CliArgs,
   isNonInteractive: boolean,
-  symbolData: any
+  symbolData: SymbolData
 ) {
   if (source === "kicad") {
     return await handleKicadFootprint(cmdArgs, isNonInteractive, symbolData);
@@ -361,17 +383,17 @@ async function handleFootprintSource(
   return null;
 }
 
-async function handleKicadSymbol(cmdArgs: Record<string, any>, isNonInteractive: boolean) {
+async function handleKicadSymbol(cmdArgs: CliArgs, isNonInteractive: boolean) {
   let entered_symbol;
 
   if (isNonInteractive) {
-    entered_symbol = cmdArgs.symbol;
+    entered_symbol = cmdArgs.symbol as string | undefined;
     
     // Check if this is a direct .kicad_sym file path or library:symbol format
     if (entered_symbol && entered_symbol.endsWith('.kicad_sym')) {
       // Handle direct .kicad_sym file path - treat as local symbol
       if (!fs.existsSync(entered_symbol)) {
-        console.log(
+        logger.log(
           chalk.red(
             `Error: Symbol file '${entered_symbol}' not found.`
           )
@@ -381,7 +403,7 @@ async function handleKicadSymbol(cmdArgs: Record<string, any>, isNonInteractive:
       
       let _found_symbols = return_list_of_symbols(entered_symbol);
       if (_found_symbols.length === 0) {
-        console.log(
+        logger.log(
           chalk.red(
             `Error: No symbols found in file '${entered_symbol}'.`
           )
@@ -394,7 +416,7 @@ async function handleKicadSymbol(cmdArgs: Record<string, any>, isNonInteractive:
       
       // Issue warning if multiple symbols found
       if (_found_symbols.length > 1) {
-        console.log(
+        logger.log(
           chalk.yellow(
             `Warning: Multiple symbols found in '${entered_symbol}'. Using first symbol: '${_chosen_symbol}'. Other symbols found: ${_found_symbols.slice(1).map(s => s.value).join(', ')}`
           )
@@ -416,7 +438,7 @@ async function handleKicadSymbol(cmdArgs: Record<string, any>, isNonInteractive:
     } else {
       // Handle library:symbol format (existing logic)
       if (!entered_symbol || !entered_symbol.includes(":")) {
-        console.log(
+        logger.log(
           chalk.red(
             `Error: Invalid symbol format. Must be 'symbol_library:symbol_name' or path to .kicad_sym file`
           )
@@ -425,16 +447,16 @@ async function handleKicadSymbol(cmdArgs: Record<string, any>, isNonInteractive:
       }
     }
   } else {
-    entered_symbol = await input({
+    entered_symbol = await (await getInquirer()).input({
       message: "Symbol name?",
-      default: cmdArgs.symbol || "MCU_Microchip_ATtiny:ATtiny3227-M",
+      default: (cmdArgs.symbol || "MCU_Microchip_ATtiny:ATtiny3227-M") as string,
       validate: (entered_symbol) => {
         if (!entered_symbol.includes(":")) {
           return `Not a valid symbol. It needs to be in this format 'symbol_library:symbol_name'`;
         }
-        const footprint_recommendation: any = kicad_symbol(
+        const footprint_recommendation: string | undefined = kicad_symbol(
           entered_symbol,
-          cmdArgs.folder || "."
+          (cmdArgs.folder || ".") as string
         );
         if (footprint_recommendation === undefined) {
           return `Provide a valid KiCAD library symbol ('symbol_library:symbol_name')`;
@@ -444,12 +466,12 @@ async function handleKicadSymbol(cmdArgs: Record<string, any>, isNonInteractive:
     });
   }
 
-  const footprint_recommendation: any = kicad_symbol(
+  const footprint_recommendation: string | undefined = kicad_symbol(
     entered_symbol,
-    cmdArgs.folder || "."
+    (cmdArgs.folder || ".") as string
   );
   if (footprint_recommendation === undefined) {
-    console.log(
+    logger.log(
       chalk.red(`Error: Invalid KiCAD library symbol '${entered_symbol}'`)
     );
     return null;
@@ -465,11 +487,11 @@ async function handleKicadSymbol(cmdArgs: Record<string, any>, isNonInteractive:
   };
 }
 
-async function handleLocalSymbol(cmdArgs: Record<string, any>, isNonInteractive: boolean) {
+async function handleLocalSymbol(cmdArgs: CliArgs, isNonInteractive: boolean) {
   let entered_symbol, symbolPath, _chosen_symbol;
 
   if (isNonInteractive) {
-    entered_symbol = cmdArgs.symbol;
+    entered_symbol = cmdArgs.symbol as string | undefined;
     
     // Check if this is a direct .kicad_sym file path or library:symbol format
     if (entered_symbol && entered_symbol.endsWith('.kicad_sym')) {
@@ -477,7 +499,7 @@ async function handleLocalSymbol(cmdArgs: Record<string, any>, isNonInteractive:
       symbolPath = entered_symbol;
       
       if (!fs.existsSync(symbolPath)) {
-        console.log(
+        logger.log(
           chalk.red(
             `Error: Symbol file '${symbolPath}' not found.`
           )
@@ -487,7 +509,7 @@ async function handleLocalSymbol(cmdArgs: Record<string, any>, isNonInteractive:
       
       let _found_symbols = return_list_of_symbols(symbolPath);
       if (_found_symbols.length === 0) {
-        console.log(
+        logger.log(
           chalk.red(
             `Error: No symbols found in file '${symbolPath}'.`
           )
@@ -500,7 +522,7 @@ async function handleLocalSymbol(cmdArgs: Record<string, any>, isNonInteractive:
       
       // Issue warning if multiple symbols found
       if (_found_symbols.length > 1) {
-        console.log(
+        logger.log(
           chalk.yellow(
             `Warning: Multiple symbols found in '${symbolPath}'. Using first symbol: '${_chosen_symbol}'. Other symbols found: ${_found_symbols.slice(1).map(s => s.value).join(', ')}`
           )
@@ -522,7 +544,7 @@ async function handleLocalSymbol(cmdArgs: Record<string, any>, isNonInteractive:
     } else {
       // Handle library:symbol format (existing logic)
       if (!entered_symbol || !entered_symbol.includes(":")) {
-        console.log(
+        logger.log(
           chalk.red(
             `Error: Invalid symbol format. Must be 'symbol_library:symbol_name' or path to .kicad_sym file`
           )
@@ -531,7 +553,7 @@ async function handleLocalSymbol(cmdArgs: Record<string, any>, isNonInteractive:
       }
 
       _chosen_symbol = entered_symbol.split(":")[1];
-      kicad_symbol(entered_symbol, cmdArgs.folder || "./src");
+      kicad_symbol(entered_symbol, (cmdArgs.folder || "./src") as string);
       const pins = kicad_pins();
 
       return {
@@ -542,19 +564,19 @@ async function handleLocalSymbol(cmdArgs: Record<string, any>, isNonInteractive:
     }
   } else {
     do {
-      symbolPath = (await fileSelector({
+      symbolPath = (await (await getFileSelector()).fileSelector({
         message: "Select a KiCAD Symbol file (kicad_sym):",
         filter: (file) => file.isDirectory || file.path.includes(".kicad_sym"),
         showExcluded: false,
       })).path;
       if (fs.statSync(symbolPath).isDirectory()) {
-        console.log(chalk.yellow("Please select a file, not a directory."));
+        logger.log(chalk.yellow("Please select a file, not a directory."));
       }
     } while (fs.statSync(symbolPath).isDirectory());
 
     let _found_symbols = return_list_of_symbols(symbolPath);
     if (_found_symbols.length > 1) {
-      _chosen_symbol = await select({
+      _chosen_symbol = await (await getInquirer()).select({
         message: "Select a symbol from in the file",
         choices: _found_symbols,
       });
@@ -576,14 +598,14 @@ async function handleLocalSymbol(cmdArgs: Record<string, any>, isNonInteractive:
   }
 }
 
-async function handleEasyedaSymbol(cmdArgs: Record<string, any>, isNonInteractive: boolean) {
+async function handleEasyedaSymbol(cmdArgs: CliArgs, isNonInteractive: boolean) {
   const pattern = /^C\d+$/;
   let c_component;
 
   if (isNonInteractive) {
-    c_component = cmdArgs.c;
-    if (!pattern.test(c_component)) {
-      console.log(
+    c_component = cmdArgs.c as string | undefined;
+    if (!pattern.test(c_component as string)) {
+      logger.log(
         chalk.red(
           `Error: Invalid component number '${c_component}'. Must start with 'C' followed by digits.`
         )
@@ -591,9 +613,9 @@ async function handleEasyedaSymbol(cmdArgs: Record<string, any>, isNonInteractiv
       return null;
     }
   } else {
-    c_component = await input({
+    c_component = await (await getInquirer()).input({
       message: "Component #?",
-      default: cmdArgs.c || "C3217148",
+      default: (cmdArgs.c || "C3217148") as string,
       validate: (c_component) => {
         if (!pattern.test(c_component)) {
           return `Not a valid component number: must start with 'C'`;
@@ -605,16 +627,16 @@ async function handleEasyedaSymbol(cmdArgs: Record<string, any>, isNonInteractiv
 
   let convertedComponent;
   try {
-    convertedComponent = await convertEasyedaToKicad(c_component, {
+    convertedComponent = await (await getEasyedaConverter()).convertEasyedaToKicad(c_component as string, {
       footprintLibName: "lib",
       kicadVersion: "v6_99",
     });
   } catch (error) {
-    console.log("Error converting EasyEDA component to KiCAD:", error);
+    logger.log("Error converting EasyEDA component to KiCAD:", error);
     return null;
   }
 
-  const baseFolder = cmdArgs.folder || ".";
+  const baseFolder = (cmdArgs.folder || ".") as string;
   const prettyFolder = path.join(
     baseFolder,
     `${convertedComponent.symbol.name}.pretty`
@@ -637,9 +659,11 @@ async function handleEasyedaSymbol(cmdArgs: Record<string, any>, isNonInteractiv
   );
 
   try {
-    execSync(`"${kicad_cli()}" sym upgrade "${symbolFilePath}"`);
+    const cli = kicad_cli();
+    if (!cli) throw new Error('kicad-cli not found');
+    execFileSync(cli, ['sym', 'upgrade', symbolFilePath], { stdio: 'pipe' });
   } catch (e) {
-    console.error(`Failed executing`, e);
+    logger.error(`Failed executing kicad-cli sym upgrade`, e);
   }
 
   local_symbol_to_footprint(symbolFilePath);
@@ -660,29 +684,29 @@ async function handleEasyedaSymbol(cmdArgs: Record<string, any>, isNonInteractiv
       try {
         fs.rmSync(prettyFolder, { recursive: true, force: true });
       } catch (error) {
-        console.error("Error cleaning up temp directory:", error);
+        logger.error("Error cleaning up temp directory:", error);
       }
     },
   };
 }
 
-async function handleKicadFootprint(cmdArgs: Record<string, any>, isNonInteractive: boolean, symbolData: any) {
+async function handleKicadFootprint(cmdArgs: CliArgs, isNonInteractive: boolean, symbolData: SymbolData) {
   let entered_footprint;
 
   if (isNonInteractive) {
-    entered_footprint = cmdArgs.footprint;
+    entered_footprint = cmdArgs.footprint as string | undefined;
     
     // If no footprint provided, try to use auto-associated footprint
     if (!entered_footprint) {
       if (symbolData.footprint_recommendation) {
         entered_footprint = symbolData.footprint_recommendation;
-        console.log(
+        logger.log(
           chalk.yellow(
             `No footprint specified, using auto-associated footprint: ${entered_footprint}`
           )
         );
       } else {
-        console.log(
+        logger.log(
           chalk.red(
             `Error: No footprint specified and no auto-associated footprint found for symbol '${symbolData.symbol}'`
           )
@@ -695,7 +719,7 @@ async function handleKicadFootprint(cmdArgs: Record<string, any>, isNonInteracti
     if (entered_footprint && entered_footprint.endsWith('.kicad_mod')) {
       // Handle direct .kicad_mod file path - treat as local footprint
       if (!fs.existsSync(entered_footprint)) {
-        console.log(
+        logger.log(
           chalk.red(
             `Error: Footprint file '${entered_footprint}' not found.`
           )
@@ -705,7 +729,7 @@ async function handleKicadFootprint(cmdArgs: Record<string, any>, isNonInteracti
       
       let _found_footprints = return_list_of_footprints(entered_footprint);
       if (_found_footprints.length === 0) {
-        console.log(
+        logger.log(
           chalk.red(
             `Error: No footprints found in file '${entered_footprint}'.`
           )
@@ -718,7 +742,7 @@ async function handleKicadFootprint(cmdArgs: Record<string, any>, isNonInteracti
       
       // Issue warning if multiple footprints found
       if (_found_footprints.length > 1) {
-        console.log(
+        logger.log(
           chalk.yellow(
             `Warning: Multiple footprints found in '${entered_footprint}'. Using first footprint: '${_chosen_footprint}'. Other footprints found: ${_found_footprints.slice(1).map(f => f.value).join(', ')}`
           )
@@ -734,7 +758,7 @@ async function handleKicadFootprint(cmdArgs: Record<string, any>, isNonInteracti
     } else {
       // Handle library:footprint format (existing logic)
       if (!entered_footprint.includes(":")) {
-        console.log(
+        logger.log(
           chalk.red(
             `Error: Invalid footprint format. Must be 'footprint_library:footprint_name' or path to .kicad_mod file`
           )
@@ -743,9 +767,9 @@ async function handleKicadFootprint(cmdArgs: Record<string, any>, isNonInteracti
       }
     }
   } else {
-    entered_footprint = await input({
+    entered_footprint = await (await getInquirer()).input({
       message: "Footprint name?",
-      default: cmdArgs.footprint || symbolData.footprint_recommendation || "",
+      default: (cmdArgs.footprint || symbolData.footprint_recommendation || "") as string,
       validate: (footprint) => {
         if (!footprint.includes(":")) {
           return `Not a valid footprint. It needs to be in this format 'footprint_library:footprint_name'`;
@@ -760,11 +784,11 @@ async function handleKicadFootprint(cmdArgs: Record<string, any>, isNonInteracti
   };
 }
 
-async function handleLocalFootprint(cmdArgs: Record<string, any>, isNonInteractive: boolean, symbolData: any) {
+async function handleLocalFootprint(cmdArgs: CliArgs, isNonInteractive: boolean, symbolData: SymbolData) {
   let entered_footprint, footprintPath;
 
   if (isNonInteractive) {
-    entered_footprint = cmdArgs.footprint;
+    entered_footprint = cmdArgs.footprint as string | undefined;
     
     // Check if this is a direct .kicad_mod file path or library:footprint format
     if (entered_footprint && entered_footprint.endsWith('.kicad_mod')) {
@@ -772,7 +796,7 @@ async function handleLocalFootprint(cmdArgs: Record<string, any>, isNonInteracti
       footprintPath = entered_footprint;
       
       if (!fs.existsSync(footprintPath)) {
-        console.log(
+        logger.log(
           chalk.red(
             `Error: Footprint file '${footprintPath}' not found.`
           )
@@ -782,7 +806,7 @@ async function handleLocalFootprint(cmdArgs: Record<string, any>, isNonInteracti
       
       let _found_footprints = return_list_of_footprints(footprintPath);
       if (_found_footprints.length === 0) {
-        console.log(
+        logger.log(
           chalk.red(
             `Error: No footprints found in file '${footprintPath}'.`
           )
@@ -795,7 +819,7 @@ async function handleLocalFootprint(cmdArgs: Record<string, any>, isNonInteracti
       
       // Issue warning if multiple footprints found
       if (_found_footprints.length > 1) {
-        console.log(
+        logger.log(
           chalk.yellow(
             `Warning: Multiple footprints found in '${footprintPath}'. Using first footprint: '${_chosen_footprint}'. Other footprints found: ${_found_footprints.slice(1).map(f => f.value).join(', ')}`
           )
@@ -811,7 +835,7 @@ async function handleLocalFootprint(cmdArgs: Record<string, any>, isNonInteracti
     } else {
       // Handle library:footprint format (existing logic)
       if (!entered_footprint || !entered_footprint.includes(":")) {
-        console.log(
+        logger.log(
           chalk.red(
             `Error: Invalid footprint format. Must be 'footprint_library:footprint_name' or path to .kicad_mod file`
           )
@@ -827,13 +851,13 @@ async function handleLocalFootprint(cmdArgs: Record<string, any>, isNonInteracti
     const defaultFootprint =
       symbolData.footprint_recommendation || "lib:footprint";
     do {
-      footprintPath = (await fileSelector({
+      footprintPath = (await (await getFileSelector()).fileSelector({
         message: `Select footprint file (.kicad_mod) for ${defaultFootprint}:`,
         filter: (file) => file.isDirectory || file.path.includes(".kicad_mod"),
         showExcluded: false,
       })).path;
       if (fs.statSync(footprintPath).isDirectory()) {
-        console.log(chalk.yellow("Please select a file, not a directory."));
+        logger.log(chalk.yellow("Please select a file, not a directory."));
       }
     } while (fs.statSync(footprintPath).isDirectory());
 
@@ -844,15 +868,15 @@ async function handleLocalFootprint(cmdArgs: Record<string, any>, isNonInteracti
   }
 }
 
-async function handleEasyedaFootprint(cmdArgs: Record<string, any>, isNonInteractive: boolean, symbolData: any) {
+async function handleEasyedaFootprint(cmdArgs: CliArgs, isNonInteractive: boolean, symbolData: SymbolData) {
   // For EasyEDA footprints, we need to get the component and process it
   const pattern = /^C\d+$/;
   let c_component;
 
   if (isNonInteractive) {
-    c_component = cmdArgs.c;
-    if (!pattern.test(c_component)) {
-      console.log(
+    c_component = cmdArgs.c as string | undefined;
+    if (!pattern.test(c_component as string)) {
+      logger.log(
         chalk.red(
           `Error: Invalid component number '${c_component}'. Must start with 'C' followed by digits.`
         )
@@ -860,9 +884,9 @@ async function handleEasyedaFootprint(cmdArgs: Record<string, any>, isNonInterac
       return null;
     }
   } else {
-    c_component = await input({
+    c_component = await (await getInquirer()).input({
       message: "Component # for footprint?",
-      default: symbolData.c_component || cmdArgs.c || "C3217148",
+      default: (symbolData.c_component || cmdArgs.c || "C3217148") as string,
       validate: (c_component) => {
         if (!pattern.test(c_component)) {
           return `Not a valid component number: must start with 'C'`;
@@ -874,16 +898,16 @@ async function handleEasyedaFootprint(cmdArgs: Record<string, any>, isNonInterac
 
   let convertedComponent;
   try {
-    convertedComponent = await convertEasyedaToKicad(c_component, {
+    convertedComponent = await (await getEasyedaConverter()).convertEasyedaToKicad(c_component as string, {
       footprintLibName: "lib",
       kicadVersion: "v6_99",
     });
   } catch (error) {
-    console.error("Error converting EasyEDA component to KiCAD:", error);
+    logger.error("Error converting EasyEDA component to KiCAD:", error);
     return null;
   }
 
-  const baseFolder = cmdArgs.folder || ".";
+  const baseFolder = (cmdArgs.folder || ".") as string;
   const prettyFolder = path.join(
     baseFolder,
     `${convertedComponent.footprint.name}.pretty`
@@ -904,9 +928,11 @@ async function handleEasyedaFootprint(cmdArgs: Record<string, any>, isNonInterac
   );
 
   try {
-    execSync(`"${kicad_cli()}" fp upgrade "${prettyFolder}"`);
+    const cli = kicad_cli();
+    if (!cli) throw new Error('kicad-cli not found');
+    execFileSync(cli, ['fp', 'upgrade', prettyFolder], { stdio: 'pipe' });
   } catch (e) {
-    console.error(`Failed executing`, e);
+    logger.error(`Failed executing kicad-cli fp upgrade`, e);
   }
 
   // Handle 3D models
@@ -937,7 +963,7 @@ async function handleEasyedaFootprint(cmdArgs: Record<string, any>, isNonInterac
       try {
         fs.rmSync(prettyFolder, { recursive: true, force: true });
       } catch (error) {
-        console.error("Error cleaning up temp directory:", error);
+        logger.error("Error cleaning up temp directory:", error);
       }
     },
   };

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-class Resistor extends Component { constructor(opts = {}) { super({ prefix: 'R', footprint: 'Resistor_SMD:R_0603_1608Metric', ...opts }); } }
+class Resistor extends Component { constructor(opts: any = {}) { super('Resistor_SMD:R_0603_1608Metric'); if (opts.value) this.value = opts.value; } }
 import { PCB, Component } from '../src/index.js';
 
 describe('QFN Intersecting Routing Tests', () => {
@@ -12,9 +12,7 @@ describe('QFN Intersecting Routing Tests', () => {
 
     it('should route intersecting traces around QFN component', async () => {
         // Test 4: QFN-12 component with resistors creating intersecting traces
-        const qfn_test4 = new Component({
-            footprint: 'Package_DFN_QFN:QFN-12-1EP_3x3mm_P0.5mm_EP1.45x1.45mm'
-        });
+        const qfn_test4 = new Component('Package_DFN_QFN:QFN-12-1EP_3x3mm_P0.5mm_EP1.45x1.45mm');
 
         // Create resistors for Test 4 - positioned to force intersecting traces
         const r1_test4 = new Resistor();

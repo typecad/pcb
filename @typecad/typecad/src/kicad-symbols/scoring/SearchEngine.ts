@@ -423,7 +423,7 @@ export class ComponentSearchEngine implements SearchEngine {
       try {
         extraData = JSON.parse(component.extra) as IExtraData;
       } catch (e) {
-        // ignore
+        logger.debug('SearchEngine: failed to parse component extra data', e);
       }
 
       let footprint = '';

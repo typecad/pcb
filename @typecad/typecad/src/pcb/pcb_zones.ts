@@ -5,9 +5,10 @@ import {
     IOutline,
     OutlineElement
 } from './pcb_interfaces.js';
-import { IPcbBoardContext } from './pcb_board_context.js';
+import type { PcbInternalState } from './pcb_state.js';
 import { generateUuid, formatCallSite } from './pcb_utils.js';
 import { Pin } from '../pin.js';
+import { getCallSite } from '../utils/stack_trace.js';
 
 /**
  * PCB Zone Management Module
@@ -86,7 +87,7 @@ import { Pin } from '../pin.js';
  * });
  * ```
  */
-export function zone(pcb: IPcbBoardContext, options: {
+export function zone(state: PcbInternalState, options: {
     // Net specification (required - one of these)
     pin?: Pin;
     net?: string;
@@ -176,11 +177,11 @@ export function zone(pcb: IPcbBoardContext, options: {
 
     // Validate that exactly one of pin or net is provided
     if (!pin && !net) {
-        logger.error(`[PCB ZONE] ERROR: Must provide either 'pin' or 'net' parameter${formatCallSite(pcb.getCallSite())}`);
+        logger.error(`[PCB ZONE] ERROR: Must provide either 'pin' or 'net' parameter${formatCallSite(getCallSite())}`);
         return;
     }
     if (pin && net) {
-        logger.error(`[PCB ZONE] ERROR: Cannot provide both 'pin' and 'net' parameters. Use one or the other${formatCallSite(pcb.getCallSite())}`);
+        logger.error(`[PCB ZONE] ERROR: Cannot provide both 'pin' and 'net' parameters. Use one or the other${formatCallSite(getCallSite())}`);
         return;
     }
 
@@ -255,7 +256,7 @@ export function zone(pcb: IPcbBoardContext, options: {
         filledAreasThickness
     };
 
-    pcb.zones.push(zone);
+    state.zones.push(zone);
 }
 
 /**
@@ -366,7 +367,7 @@ export function zone(pcb: IPcbBoardContext, options: {
  * });
  * ```
  */
-export function keepout(pcb: IPcbBoardContext, options: {
+export function keepout(state: PcbInternalState, options: {
     // Position and size (required)
     layers: string[];
     x: number;
@@ -447,5 +448,5 @@ export function keepout(pcb: IPcbBoardContext, options: {
         smoothingRadius
     };
 
-    pcb.keepoutZones.push(keepoutZone);
+    state.keepoutZones.push(keepoutZone);
 }

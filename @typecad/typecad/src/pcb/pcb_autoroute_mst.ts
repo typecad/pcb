@@ -43,10 +43,10 @@ export function routeMstNet(
     // Detect if we're routing a net (all pins on same net)
     const uniqueNets = new Set<string>();
 
-    if (pcb.Schematic && pcb.Schematic.Nodes) {
+    if (pcb.schematic && pcb.schematic.nodes) {
         for (const pin of allPins) {
             if (pin.owner) {
-                for (const schematicNode of pcb.Schematic.Nodes) {
+                for (const schematicNode of pcb.schematic.nodes) {
                     if (schematicNode.nodes) {
                         const pinInSchematic = schematicNode.nodes.find((p: Pin) =>
                             p.reference === pin.owner!.reference &&
@@ -141,7 +141,7 @@ export function routeMstNet(
         try {
             const dbg = { success: path.success, length: path.length, viaCount: path.viaCount, segments: path.segments?.map((s: IRoutePath) => ({ nodes: s.nodes.length, viaCount: s.viaCount })) };
             logger.debug('[PCB][DEBUG] MST path full summary:', JSON.stringify(dbg, null, 2));
-        } catch (e) { /* ignore */ }
+        } catch (e) { logger.debug('[PCB][DEBUG] MST path summary logging failed', e); }
     }
 
     if (path.success || (path.nodes?.length ?? 0) > 0) {

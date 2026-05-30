@@ -30,11 +30,8 @@
 |         [ngspice](https://www.npmjs.com/package/@typecad/ngspice)         | ngspice Simulation for typeCAD                                                                      |
 |          [wiring](https://www.npmjs.com/package/@typecad/wiring)          | Programmatically Create Wiring Diagrams                                                             |
 |   [jlcpcb-export](https://www.npmjs.com/package/@typecad/jlcpcb-export)   | export all the required files for JLCPCB assembly from a typeCAD project                            |
-|  [typecad-docgen](https://www.npmjs.com/package/@typecad/typecad-docgen)  | convert markdown files and KiCAD PCBs into documentation with support for layer exports and renders |
-| [typecad-gitdiff](https://www.npmjs.com/package/@typecad/typecad-gitdiff) | See the differences between KiCAD PCB files                                                         |
+                                                 |
 |    [jlcpcb-parts](https://www.npmjs.com/package/@typecad/jlcpcb-parts)    | Fuzzy search for JLCPCB basic and preferred electrical components                                   |
-|    [typecad-mcp](https://www.npmjs.com/package/@typecad/typecad-mcp)    |  Provides AI assistants with direct access to typeCAD tools and workflows                                   |
-
 <SvelteSeo
 {title}
 {description}

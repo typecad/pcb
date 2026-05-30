@@ -1,19 +1,21 @@
 import { EeSymbol, EeSymbolBbox } from "./easyeda/parametersEasyeda.js";
+import { EasyedaRawData } from "./types.js";
 import easyeda_handlers from "./helpers/easyeda_handlers.js";
 import { ExporterSymbolKicad } from "./kicad/exportKicadSymbol.js";
 import { EasyedaFootprintImporter, Easyeda3dModelImporter } from "./easyeda/easyedaImporter.js";
 import { ExporterFootprintKicad } from "./kicad/exportKicadFootprint.js";
 import { Exporter3dModelKicad } from "./kicad/exportKicad3dmodel.js";
 import { Ki3dModelBase } from "./kicad/parametersKicadFootprint.js";
+import logger from '../logging.js';
 
 class LcscComponent {
-    lcscId: any;
-    kicadVersion: any;
-    footprintLibName: any;
+    lcscId: string;
+    kicadVersion: string;
+    footprintLibName: string;
     source: Record<string, any>;
-    translation: any;
+    translation: Ki3dModelBase;
 
-    constructor(lcscId: any, kicadVersion: any, footprintLibName: any) {
+    constructor(lcscId: string, kicadVersion: string, footprintLibName: string) {
         if (!lcscId || typeof lcscId !== 'string') {
             throw new Error('LCSC ID is required and must be a string');
         }
@@ -44,23 +46,23 @@ class LcscComponent {
         return this.footprintLibName;
     }
 
-    set3dRawObj(data: any) {
+    set3dRawObj(data: string | null) {
         this.source["3dRawObj"] = data;
     }
 
-    get3dRawObj(data?: any) {
+    get3dRawObj(data?: string | null) {
         return this.source["3dRawObj"];
     }
 
-    set3dStep(data: any) {
+    set3dStep(data: ArrayBuffer | null) {
         this.source["3dStep"] = data;
     }
 
-    get3dStep(data?: any) {
+    get3dStep(data?: ArrayBuffer | null) {
         return this.source["3dStep"];
     }
 
-    setCadData(data: any) {
+    setCadData(data: Record<string, unknown>) {
         if (!data || typeof data !== 'object') {
             throw new Error('CAD data must be a non-null object');
         }
@@ -160,15 +162,15 @@ class LcscComponent {
             bbox: new EeSymbolBbox({
                 x: parseFloat(this.getCadData().dataStr.head.x),
                 y: parseFloat(this.getCadData().dataStr.head.y),
-            }),
+            }) as unknown as EasyedaRawData,
         });
 
-        this.getCadData().dataStr.shape.forEach((line: any) => {
+        this.getCadData().dataStr.shape.forEach((line: string) => {
             const designator = line.split("~")[0];
             if (easyeda_handlers.hasOwnProperty(designator)) {
                 easyeda_handlers[designator](line, new_ee_symbol);
             } else {
-                console.warn(`Unknown symbol designator: ${designator}`);
+                logger.warn(`Unknown symbol designator: ${designator}`);
             }
         });
 

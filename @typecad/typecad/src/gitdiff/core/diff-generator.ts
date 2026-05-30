@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'node:crypto';
-import { kicad_cli_path } from '../../kicad.js';
+import { KiCAD } from '../../kicad.js';
 import { allLayers, standardLayers } from '../constants.js';
 import { executeKicadSvgExportCached, computeSvgBBox, cropSvgToBBox, detectInnerCopperLayers, type BBox } from '../utils/file-utils.js';
 import { LayerInfo, generateHtmlReport } from '../utils/html-generator.js';
@@ -56,7 +56,7 @@ export async function generateDiffs(options: DiffOptions): Promise<string> {
 
         const allSvgResults: Array<{ originalSvg: string; modifiedSvg: string } | null> = [];
 
-        const kicadCli = options.kicadCliPath || kicad_cli_path;
+        const kicadCli = options.kicadCliPath || KiCAD.cliPath;
         if (!kicadCli) {
             throw new Error('KiCAD CLI not found. Ensure KiCAD is installed and accessible. You may need to run `new KiCAD()` before calling generateDiffs().');
         }
@@ -166,7 +166,7 @@ export async function generateDiffs(options: DiffOptions): Promise<string> {
             }
 
         } catch (e) {
-    
+            logger.debug('diff-generator: SVG offset calculation failed', e);
         }
 
         const htmlContent = await generateHtmlReport(htmlLayers, textualDiff, netlistDiff, bomDiff, { original: originalFile, modified: modifiedFile }, svgOffset);

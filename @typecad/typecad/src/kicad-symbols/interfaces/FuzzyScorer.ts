@@ -1,4 +1,5 @@
 import { ComponentRecord, ComponentScore, ParsedParameters } from '../types/index.js';
+import logger from '../../logging.js';
 
 /**
  * Interface for the intelligent fuzzy scoring system that evaluates how well components match search criteria.
@@ -15,7 +16,7 @@ import { ComponentRecord, ComponentScore, ParsedParameters } from '../types/inde
  * 
  * // Score individual component
  * const score = scorer.scoreComponent(component, parameters);
- * console.log(`Score: ${score.score}, Matches: ${score.matchDetails.length}`);
+ * logger.log(`Score: ${score.score}, Matches: ${score.matchDetails.length}`);
  * 
  * // Rank all components
  * const ranked = scorer.rankComponents(allComponents, parameters);
@@ -75,7 +76,7 @@ export interface FuzzyScorer {
    * const parameters = parser.parseQuery("100nF capacitor 0603");
    * 
    * const rankedResults = scorer.rankComponents(allComponents, parameters);
-   * console.log(`Best match: ${rankedResults[0].component.description} (${rankedResults[0].score})`);
+   * logger.log(`Best match: ${rankedResults[0].component.description} (${rankedResults[0].score})`);
    * ```
    */
   rankComponents(components: ComponentRecord[], parameters: ParsedParameters): ComponentScore[];
@@ -116,7 +117,7 @@ export interface FuzzyScorer {
    * const summary = scorer.generateMatchSummary(score);
    * // Returns: "Exact resistance match (100 pts), Package match (80 pts), Tolerance match (70 pts)"
    * 
-   * console.log(`${component.lcsc}: ${summary}`);
+   * logger.log(`${component.lcsc}: ${summary}`);
    * ```
    */
   generateMatchSummary(componentScore: ComponentScore): string;

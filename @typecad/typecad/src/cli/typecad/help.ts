@@ -17,7 +17,9 @@ export function showTopLevelHelp(): void {
   console.log('  doc                 Generate PCB documentation from Markdown');
   console.log('  doctor              Check your environment for common issues');
   console.log('  validate            Validate project source without full build');
-  console.log('  drc                 Run Design Rule Check on a KiCad PCB file\n');
+  console.log('  drc                 Run Design Rule Check on a KiCad PCB file');
+  console.log('  erc                 Run Electrical Rules Check on a KiCad schematic');
+  console.log('  skills              List and query typeCAD skills and API patterns\n');
   console.log('Global Options:');
   console.log('  --json              Output in machine-readable JSON');
   console.log('  --help              Show help for a command');
@@ -244,26 +246,97 @@ export function showDocHelp(): void {
   console.log('  typecad doc docs/board.md build/board.kicad_pcb --no-open');
 }
 
+export function showErcHelp(): void {
+  console.log(
+    chalk.white.bold('typecad erc') +
+      ' - Run Electrical Rules Check on a KiCad schematic\n'
+  );
+  console.log(
+    'Runs kicad-cli sch erc on a .kicad_sch file, parses the JSON report,\n' +
+    'and displays a summary of errors and warnings.\n'
+  );
+  console.log('Usage:');
+  console.log('  typecad erc [path] [typecad-options] -- [kicad-cli flags]\n');
+  console.log('Arguments:');
+  console.log(
+    '  <path>             Path to .kicad_sch file (default: auto-detected from ./build/)\n'
+  );
+  console.log('typecad Options:');
+  console.log('  --json             Output typecad results as JSON');
+  console.log('  --help             Show this help\n');
+  console.log('Passthrough:');
+  console.log(
+    '  All flags after -- are forwarded directly to kicad-cli sch erc.'
+  );
+  console.log(
+    '  See `kicad-cli sch erc --help` for the full list of available flags.\n'
+  );
+  console.log('  Common kicad-cli flags:');
+  console.log('    --severity-all              Report all violations');
+  console.log('    --severity-error            Report error-level violations');
+  console.log('    --severity-warning          Report warning-level violations');
+  console.log('    --severity-exclusions       Report excluded violations');
+  console.log('    --exit-code-violations      Non-zero exit on violations');
+  console.log('    --format <report|json>      Report format (typecad always uses json internally)');
+  console.log('    --units <mm|in|mils>        Report units');
+  console.log('    -o, --output <file>         Output file path\n');
+  console.log('Output:');
+  console.log(
+    '  Report saved to <name>_erc.json alongside the schematic file.\n'
+  );
+  console.log('Examples:');
+  console.log('  typecad erc');
+  console.log('  typecad erc --json');
+  console.log('  typecad erc -- --severity-all');
+  console.log('  typecad erc ./build/board.kicad_sch -- --exit-code-violations');
+}
+
 export function showDrcHelp(): void {
   console.log(
     chalk.white.bold('typecad drc') +
       ' - Run Design Rule Check on a KiCad PCB file\n'
   );
   console.log(
-    'Run kicad-cli drc on a .kicad_pcb file to check for design rule\n' +
-    'violations.\n'
+    'Runs kicad-cli pcb drc on a .kicad_pcb file, parses the JSON report,\n' +
+    'and displays a summary of errors, warnings, and unconnected items.\n'
   );
-  console.log('Usage: typecad drc [path] [options]\n');
+  console.log('Usage:');
+  console.log('  typecad drc [path] [typecad-options] -- [kicad-cli flags]\n');
   console.log('Arguments:');
   console.log(
     '  <path>             Path to .kicad_pcb file (default: auto-detected from ./build/)\n'
   );
-  console.log('Options:');
-  console.log('  --json             Output results as JSON\n');
+  console.log('typecad Options:');
+  console.log('  --json             Output typecad results as JSON');
+  console.log('  --help             Show this help\n');
+  console.log('Passthrough:');
+  console.log(
+    '  All flags after -- are forwarded directly to kicad-cli pcb drc.'
+  );
+  console.log(
+    '  See `kicad-cli pcb drc --help` for the full list of available flags.\n'
+  );
+  console.log('  Common kicad-cli flags:');
+  console.log('    --severity-all              Report all violations');
+  console.log('    --severity-error            Report error-level violations');
+  console.log('    --severity-warning          Report warning-level violations');
+  console.log('    --severity-exclusions       Report excluded violations');
+  console.log('    --schematic-parity          Test PCB vs schematic parity');
+  console.log('    --all-track-errors          Report all errors per track');
+  console.log('    --exit-code-violations      Non-zero exit on violations');
+  console.log('    --refill-zones              Refill zones before DRC');
+  console.log('    --save-board                Save board after DRC');
+  console.log('    --units <mm|in|mils>        Report units');
+  console.log('    -o, --output <file>         Output file path\n');
+  console.log('Output:');
+  console.log(
+    '  Report saved to <name>_drc.json alongside the board file.\n'
+  );
   console.log('Examples:');
   console.log('  typecad drc');
-  console.log('  typecad drc ./build/my-board.kicad_pcb');
   console.log('  typecad drc --json');
+  console.log('  typecad drc -- --severity-all --schematic-parity');
+  console.log('  typecad drc ./build/board.kicad_pcb -- --refill-zones');
 }
 
 export function showValidateHelp(): void {
@@ -308,4 +381,26 @@ export function showDoctorHelp(): void {
   console.log('  kicad-cli / PATH    KiCad symbol libraries');
   console.log('  arduino-cli         Git');
   console.log('  build/ directory');
+}
+
+export function showSkillsHelp(): void {
+  console.log(
+    chalk.white.bold('typecad skills') +
+      ' - Query typeCAD API patterns and design knowledge\n'
+  );
+  console.log(
+    'List and query skills that document typeCAD concepts, API patterns,\n' +
+    'electrical design concepts, and KiCad-related information.\n'
+  );
+  console.log('Usage:');
+  console.log('  typecad skills list              List all available skills');
+  console.log('  typecad skills get <name>        Get details on a specific skill\n');
+  console.log('Options:');
+  console.log('  --json              Output in machine-readable JSON\n');
+  console.log('Examples:');
+  console.log('  typecad skills list');
+  console.log('  typecad skills list --json');
+  console.log('  typecad skills get resistor');
+  console.log('  typecad skills get power --json');
+  console.log('  typecad skills get pcb-structure');
 }

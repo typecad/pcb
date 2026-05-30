@@ -1,4 +1,5 @@
 import { SearchResult } from '../types/index.js';
+import logger from '../../logging.js';
 
 /**
  * Interface for the main search engine that orchestrates the complete search workflow.
@@ -14,11 +15,11 @@ import { SearchResult } from '../types/index.js';
  * 
  * // Search for components
  * const results = await searchEngine.search("10k resistor 0603");
- * console.log(`Found ${results.length} matching components`);
+ * logger.log(`Found ${results.length} matching components`);
  * 
  * // Display results
  * results.forEach(result => {
- *   console.log(`${result.lcsc}: ${result.description} (Score: ${result.score})`);
+ *   logger.log(`${result.lcsc}: ${result.description} (Score: ${result.score})`);
  * });
  * ```
  */

@@ -18,8 +18,9 @@ import {
     OutlineElement
 } from './pcb_interfaces.js';
 import { normalizeNetName, formatCallSite, getErrorMessage } from './pcb_utils.js';
-import { setPendingBoardFilePath } from '../schematic.js';
+import { setPendingBoardFilePath } from '../pending_summary.js';
 import logger from '../logging.js';
+import { getCallSite } from '../utils/stack_trace.js';
 
 export function renderVias(
     viaMap: Map<string, IVia>,
@@ -63,7 +64,7 @@ export function renderVias(
             );
             boardContents.push(viaNode);
         } catch (e: unknown) {
-            logger.error(`Error: Failed to build via node for UUID ${uuid}: ${getErrorMessage(e)}${formatCallSite(pcb.getCallSite())}`);
+            logger.error(`Error: Failed to build via node for UUID ${uuid}: ${getErrorMessage(e)}${formatCallSite(getCallSite())}`);
         }
     });
 }
@@ -118,7 +119,7 @@ export function renderOutlinesAndTracks(
                     ));
                 }
             } catch (e: unknown) {
-                logger.error(`Error: Failed to build outline element for UUID ${element.uuid}: ${getErrorMessage(e)}${formatCallSite(pcb.getCallSite())}`);
+                logger.error(`Error: Failed to build outline element for UUID ${element.uuid}: ${getErrorMessage(e)}${formatCallSite(getCallSite())}`);
             }
         }
     }
@@ -128,7 +129,7 @@ export function renderGraphics(
     pcb: IPcbBoardContext,
     boardContents: SExpr[]
 ): void {
-    for (const textElement of pcb.grTexts) {
+    for (const textElement of pcb.state.grTexts) {
         const fontChildren: SExpr[] = [];
         if (textElement.font) fontChildren.push(s('face', textElement.font));
         const width = textElement.width ?? 1.27;
@@ -155,11 +156,11 @@ export function renderGraphics(
                 s('effects', ...effectsChildren)
             ));
         } catch (e: unknown) {
-            logger.error(`Error: Failed to build gr_text node for UUID ${textElement.uuid}: ${getErrorMessage(e)}${formatCallSite(pcb.getCallSite())}`);
+            logger.error(`Error: Failed to build gr_text node for UUID ${textElement.uuid}: ${getErrorMessage(e)}${formatCallSite(getCallSite())}`);
         }
     }
 
-    for (const line of pcb.grLines) {
+    for (const line of pcb.state.grLines) {
         const children: SExpr[] = [
             s('start', line.start.x, line.start.y),
             s('end', line.end.x, line.end.y),
@@ -171,7 +172,7 @@ export function renderGraphics(
         boardContents.push(s('gr_line', ...children));
     }
 
-    for (const circle of pcb.grCircles) {
+    for (const circle of pcb.state.grCircles) {
         const children: SExpr[] = [
             s('center', circle.center.x, circle.center.y),
             s('end', circle.end.x, circle.end.y),
@@ -184,7 +185,7 @@ export function renderGraphics(
         boardContents.push(s('gr_circle', ...children));
     }
 
-    for (const rect of pcb.grRects) {
+    for (const rect of pcb.state.grRects) {
         const children: SExpr[] = [
             s('start', rect.start.x, rect.start.y),
             s('end', rect.end.x, rect.end.y),
@@ -197,7 +198,7 @@ export function renderGraphics(
         boardContents.push(s('gr_rect', ...children));
     }
 
-    for (const poly of pcb.grPolys) {
+    for (const poly of pcb.state.grPolys) {
         const ptsChildren = poly.points.map((pt: { x: number; y: number }) => s('xy', pt.x, pt.y));
         const children: SExpr[] = [
             s('pts', ...ptsChildren),
@@ -233,8 +234,8 @@ export function renderZones(
                 netName = netResolution.netName;
             } else if (identifier === 'net' && parts.length === 2) {
                 const searchNetName = parts[1];
-                if (pcb.Schematic && pcb.Schematic.Nodes) {
-                    const foundNet = pcb.Schematic.Nodes.find((node: ISchematicNode) => {
+    if (pcb.schematic && pcb.schematic.nodes) {
+        const foundNet = pcb.schematic.nodes.find((node: ISchematicNode) => {
                         let nodeName = node.name.toLowerCase();
                         let searchName = searchNetName.toLowerCase();
                         if (nodeName.startsWith('/')) nodeName = nodeName.substring(1);
@@ -251,7 +252,7 @@ export function renderZones(
                             netCode = boardNetNameToCodeMap.get(lookupKey)!;
                             netName = searchNetName;
                         } else {
-                            logger.error(`[PCB ZONE] ERROR: Net "${searchNetName}" not found in schematic or board${formatCallSite(pcb.getCallSite())}`);
+                            logger.error(`[PCB ZONE] ERROR: Net "${searchNetName}" not found in schematic or board${formatCallSite(getCallSite())}`);
                         }
                     }
                 }
@@ -388,7 +389,9 @@ export function serializeAndWriteBoard(
     const finalStructure: SExpr = [sym('kicad_pcb'), ...boardContents];
 
     try {
-        runDiagnostics(pcb, boardContents);
+        if (process.env.TYPECAD_DEBUG === '1') {
+            runDiagnostics(pcb, boardContents);
+        }
 
         const serialized = serialize(finalStructure, { pretty: true });
 
@@ -402,8 +405,8 @@ export function serializeAndWriteBoard(
 
         try {
             if (process.env.TYPECAD_DEBUG_BOARD_WRITE === '1') {
-                const debugPath = `./build/${pcb.Boardname}.debug.kicad_pcb`;
-                fs.writeFileSync(debugPath, pcb.pcb, { encoding: 'utf8' });
+                const debugPath = `./build/${pcb.boardName}.debug.kicad_pcb`;
+                fs.writeFileSync(debugPath, pcb.state.pcb, { encoding: 'utf8' });
                 const debugContents = fs.readFileSync(debugPath, { encoding: 'utf8' });
                 logger.debug(`[BoardCreation][DIAG] debug file written: ${debugPath}, length=${debugContents.length}`);
             }
@@ -411,15 +414,15 @@ export function serializeAndWriteBoard(
             logger.error(`[BoardCreation][DIAG] Could not write/read debug PCB file: ${String(e)}`);
         }
     } catch (e: unknown) {
-        logger.error(` Error: Failed to serialize final board structure: ${getErrorMessage(e)}${formatCallSite(pcb.getCallSite())}`);
+        logger.error(` Error: Failed to serialize final board structure: ${getErrorMessage(e)}${formatCallSite(getCallSite())}`);
         pcb.state.pcb = '';
         return;
     }
 
-    const boardFilePath = `./build/${pcb.Boardname}.kicad_pcb`;
+    const boardFilePath = `./build/${pcb.boardName}.kicad_pcb`;
 
     try {
-        fs.writeFileSync(boardFilePath, pcb.pcb);
+        fs.writeFileSync(boardFilePath, pcb.state.pcb);
 
         try {
             const fileContents = fs.readFileSync(boardFilePath, { encoding: 'utf8' });
@@ -427,7 +430,7 @@ export function serializeAndWriteBoard(
             const hasGrLines = fileContents.includes('(gr_line');
             logger.debug(`[BoardCreation][VERIFY] file contains segments=${hasSegments}, gr_lines=${hasGrLines}`);
 
-            const stagedElementUuids = pcb.stagedOutlines.slice(0, 10).flatMap((o: IOutline) => (o.elements ?? []).map((el: OutlineElement) => el.uuid)).filter(Boolean);
+            const stagedElementUuids = pcb.state.stagedOutlines.slice(0, 10).flatMap((o: IOutline) => (o.elements ?? []).map((el: OutlineElement) => el.uuid)).filter(Boolean);
             const foundElementUuids = stagedElementUuids.filter((u: string) => fileContents.includes(u));
             logger.debug(`[BoardCreation][VERIFY] staged ELEMENT UUIDs present in file: ${foundElementUuids.length}/${stagedElementUuids.length}`);
             if (foundElementUuids.length < stagedElementUuids.length) {
@@ -439,27 +442,27 @@ export function serializeAndWriteBoard(
 
         setPendingBoardFilePath(boardFilePath);
     } catch (err: unknown) {
-        logger.error(`Error: Could not write board file ${boardFilePath}: ${getErrorMessage(err)}${formatCallSite(pcb.getCallSite())}`);
+        logger.error(`Error: Could not write board file ${boardFilePath}: ${getErrorMessage(err)}${formatCallSite(getCallSite())}`);
     }
 }
 
 function runDiagnostics(pcb: IPcbBoardContext, boardContents: SExpr[]): void {
     try {
         try {
-            const stagedUuids = pcb.stagedOutlines.map((o: IOutline) => o.uuid).filter(Boolean);
+            const stagedUuids = pcb.state.stagedOutlines.map((o: IOutline) => o.uuid).filter(Boolean);
             const missingInFinal = stagedUuids.filter((u: string) => !JSON.stringify(boardContents).includes(u));
             if (missingInFinal.length > 0) {
                 for (const miss of missingInFinal) {
-                    const so = pcb.stagedOutlines.find((o: IOutline) => o.uuid === miss);
+                    const so = pcb.state.stagedOutlines.find((o: IOutline) => o.uuid === miss);
                     logger.debug(`[BoardCreation][DIAG] missing outline ${miss}: fullOutline=${JSON.stringify(so)}`);
                 }
             } else {
                 logger.debug('[BoardCreation][DIAG] all staged outlines present in final_board_contents');
             }
         } catch {
-            // ignore
+            logger.debug('[BoardCreation][DIAG] diagnostic block failed');
         }
     } catch {
-        // ignore diagnostics
+        logger.debug('[BoardCreation][DIAG] outer diagnostic block failed');
     }
 }

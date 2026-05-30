@@ -1,11 +1,6 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
-import { KiCAD, kicad_cli_path } from '../../kicad.js';
-import MarkdownIt from 'markdown-it';
-import Shiki from '@shikijs/markdown-it';
-import multimd_table_plugin from 'markdown-it-multimd-table-ext';
-import markdownItAttrs from 'markdown-it-attrs';
-import markdownItTextualUml from 'markdown-it-textual-uml'
+import { KiCAD } from '../../kicad.js';
 import { IMetadata, defaultMetadata } from './types/metadata.js';
 import { parseMetadata } from './utils/metadata.js';
 import { wrapSectionsInHtml } from './utils/html.js';
@@ -20,16 +15,13 @@ import { extractComponents } from './utils/pcbParser.js';
 import { tempManager } from './utils/tempFileManager.js';
 import { generateHtmlDocument } from './utils/template.js';
 import { pathExists, ensureDir } from './utils/fs.js';
-import markdownItMath from "markdown-it-math";
-import mathup from "mathup";
-import temml from "temml";
-import taskList from "@hackmd/markdown-it-task-lists";
 import chalk from 'chalk';
 import yoctoSpinner from './utils/spinner.js';
 import open from './utils/openFile.js';
 import githubAlertsPlugin from './plugins/githubAlerts.js';
 import namedCodeBlocks from './plugins/namedCodeBlocks.js';
 import * as url from 'url';
+import logger from '../../logging.js';
 
 function cleanSvgForInlining(svgContent: string): string {
     let svg = svgContent.replace(/<\?xml[^?]*\?>\s*/g, '');
@@ -147,19 +139,20 @@ function inlineLocalImages(
     return result;
 }
 
-const logger = {
-    info: (message: string) => console.log(chalk.blue('ℹ'), message),
-    success: (message: string) => console.log(chalk.green('✔'), message),
-    warning: (message: string) => console.log(chalk.yellow('⚠'), message),
-    error: (message: string) => console.error(chalk.red('✖'), message),
+const docLogger = {
+    info: (message: string) => logger.log(chalk.blue('ℹ'), message),
+    success: (message: string) => logger.log(chalk.green('✔'), message),
+    warning: (message: string) => logger.warn(message),
+    error: (message: string) => logger.error(message),
+    log: (...args: unknown[]) => logger.log(...args),
     debug: (message: string, verbose?: boolean) => {
-        if (verbose) console.log(chalk.gray('🔍'), chalk.gray(message));
+        if (verbose) logger.log(chalk.gray('🔍'), chalk.gray(message));
     },
     banner: () => {
-        console.log();
-        console.log(chalk.bold.cyan('typeCAD Documentation Generator'));
-        console.log(chalk.gray('Generate beautiful PCB documentation'));
-        console.log();
+        logger.log();
+        logger.log(chalk.bold.cyan('typeCAD Documentation Generator'));
+        logger.log(chalk.gray('Generate beautiful PCB documentation'));
+        logger.log();
     }
 };
 
@@ -229,26 +222,26 @@ export async function generateDocumentation(
     const shouldOpenFile = options.openFile !== false;
 
     if (!quiet) {
-        logger.info(`Processing: ${chalk.cyan(path.basename(inputFile))}`);
-        logger.debug(`Input file: ${inputFile}`, verbose);
-        logger.debug(`PCB file: ${pcbFilePath}`, verbose);
-        logger.debug(`Output file: ${outputFile}`, verbose);
+        docLogger.info(`Processing: ${chalk.cyan(path.basename(inputFile))}`);
+        docLogger.debug(`Input file: ${inputFile}`, verbose);
+        docLogger.debug(`PCB file: ${pcbFilePath}`, verbose);
+        docLogger.debug(`Output file: ${outputFile}`, verbose);
     }
 
-    if (!quiet) logger.info('Validating input files...');
+    if (!quiet) docLogger.info('Validating input files...');
     await validateInputFile(inputFile);
     await validatePcbFile(pcbFilePath);
     await validateOutputDir(outputFile);
 
-    if (!quiet) logger.info('Initializing KiCad environment...');
+    if (!quiet) docLogger.info('Initializing KiCad environment...');
     try {
-        new KiCAD();
-        logger.debug('KiCad CLI found and initialized', verbose);
+        KiCAD.instance;
+        docLogger.debug('KiCad CLI found and initialized', verbose);
     } catch (error) {
         throw new Error(`Failed to initialize KiCad: ${error}`);
     }
 
-    const cliPath = kicad_cli_path;
+    const cliPath = KiCAD.cliPath;
     if (!cliPath) {
         throw new Error('KiCad CLI path could not be resolved. Please ensure KiCad is installed.');
     }
@@ -259,31 +252,64 @@ export async function generateDocumentation(
     const svgContentMap: Map<string, string> = new Map();
     const pngBufferMap: Map<string, Buffer> = new Map();
 
-    if (!quiet) logger.info('Reading markdown content...');
+    if (!quiet) docLogger.info('Reading markdown content...');
     const markdownContent = await fs.readFile(inputFile, 'utf-8');
-    logger.debug(`Read ${markdownContent.length} characters from input file`, verbose);
+    docLogger.debug(`Read ${markdownContent.length} characters from input file`, verbose);
 
-    if (!quiet) logger.info('Parsing document metadata...');
+    if (!quiet) docLogger.info('Parsing document metadata...');
     const frontMatterMatch = markdownContent.match(/^---\s*\n([\s\S]*?)\n---\s*\n/);
     let contentToRender = markdownContent;
     if (frontMatterMatch) {
         const parsedMetadata = parseMetadata(frontMatterMatch[1]);
         Object.assign(metadata, parsedMetadata);
         contentToRender = markdownContent.replace(/^---\s*\n[\s\S]*?\n---\s*\n/, '');
-        logger.debug(`Found metadata: ${Object.keys(parsedMetadata).join(', ')}`, verbose);
+        docLogger.debug(`Found metadata: ${Object.keys(parsedMetadata).join(', ')}`, verbose);
     } else {
-        logger.debug('No frontmatter found, using defaults', verbose);
+        docLogger.debug('No frontmatter found, using defaults', verbose);
     }
 
-    if (!quiet) logger.info('Initializing markdown processor...');
+    if (!quiet) docLogger.info('Initializing markdown processor...');
+    let MarkdownIt: any, Shiki: any, multimd_table_plugin: any, markdownItAttrs: any,
+        markdownItTextualUml: any, markdownItMath: any, mathup: any, temml: any, taskList: any;
+    try {
+        ([
+            { default: MarkdownIt },
+            { default: Shiki },
+            { default: multimd_table_plugin },
+            { default: markdownItAttrs },
+            { default: markdownItTextualUml },
+            { default: markdownItMath },
+            { default: mathup },
+            { default: temml },
+            { default: taskList },
+        ] = await Promise.all([
+            import('markdown-it'),
+            import('@shikijs/markdown-it'),
+            import('markdown-it-multimd-table-ext'),
+            import('markdown-it-attrs'),
+            import('markdown-it-textual-uml'),
+            import('markdown-it-math'),
+            import('mathup'),
+            import('temml'),
+            import('@hackmd/markdown-it-task-lists'),
+        ]));
+    } catch (err: unknown) {
+        const missingPkg = err instanceof Error && err.message ? err.message : String(err);
+        throw new Error(
+            `Documentation generation requires optional dependencies that are not installed.\n` +
+            `Install them with: npm install --save-optional markdown-it @shikijs/markdown-it markdown-it-multimd-table-ext markdown-it-attrs markdown-it-textual-uml markdown-it-math mathup temml @hackmd/markdown-it-task-lists\n` +
+            `Original error: ${missingPkg}`
+        );
+    }
+
     const md = new MarkdownIt({ html: true, linkify: true, typographer: true });
 
-    logger.debug(`Using syntax highlighting theme: ${metadata.highlight}`, verbose);
+    docLogger.debug(`Using syntax highlighting theme: ${metadata.highlight}`, verbose);
     const shikiPromise = Shiki({ themes: { light: metadata.highlight, dark: metadata.highlight } });
 
     const imageProcessingPromises: Promise<void>[] = [];
 
-    if (!quiet) logger.info('Configuring image processing...');
+    if (!quiet) docLogger.info('Configuring image processing...');
     md.use(customImagePlugin, (layers: string[], imagePath: string, width?: number) => {
         const imageKey = `${layers.join(',')}-${imagePath}-${width || 'default'}`;
 
@@ -293,18 +319,18 @@ export async function generateDocumentation(
 
         const imageProcessingPromise = (async () => {
             if (layers.length === 1 && layers[0] === 'Stackup') {
-                logger.debug('Processing stackup layer...', verbose);
+                docLogger.debug('Processing stackup layer...', verbose);
                 const svgContent = await generateStackupSvgString(pcbFilePath);
                 if (svgContent) {
                     stackupSvgMap.set(imagePath, svgContent);
                 } else {
-                    console.error('⚠️ No stackup information found in PCB file, skipping stackup image');
+                    docLogger.error('⚠️ No stackup information found in PCB file, skipping stackup image');
                 }
                 return;
             }
 
             if (layers.length === 1 && layers[0] === 'Drill') {
-                logger.debug('Processing drill layer...', verbose);
+                docLogger.debug('Processing drill layer...', verbose);
                 const svgContent = await executeKicadDrillExport(cliPath, pcbFilePath);
                 svgContentMap.set(imagePath, svgContent);
                 return;
@@ -317,7 +343,7 @@ export async function generateDocumentation(
                 const uniqueLayers = Array.from(new Set<string>(filteredLayers))
                     .filter(layer => layer !== 'Render' && layer !== 'Stackup' && layer !== 'Drill');
                 if (uniqueLayers.length > 0) {
-                    logger.debug(`Processing PCB layers: [${uniqueLayers.join(', ')}]`, verbose);
+                    docLogger.debug(`Processing PCB layers: [${uniqueLayers.join(', ')}]`, verbose);
                     const svgContent = await processKicadSvgLayers(
                         uniqueLayers, pcbFilePath,
                         cliPath, metadata.kicad_theme
@@ -327,7 +353,7 @@ export async function generateDocumentation(
             }
 
             if (renderLayers.length > 0) {
-                logger.debug(`Processing 3D render layers: [${renderLayers.join(', ')}]`, verbose);
+                docLogger.debug(`Processing 3D render layers: [${renderLayers.join(', ')}]`, verbose);
                 const renderResults = await Promise.all(
                     renderLayers.map(layer => {
                         const [, side, x, y, z] = layer.split('/');
@@ -346,17 +372,17 @@ export async function generateDocumentation(
         return imageProcessingPromise;
     });
 
-    logger.debug('Configuring markdown plugins...', verbose);
+    docLogger.debug('Configuring markdown plugins...', verbose);
     md.use(multimd_table_plugin as any, { multiline: true, rowspan: true, headerless: true, multibody: true, autolabel: true });
     md.use(markdownItAttrs, { leftDelimiter: '{', rightDelimiter: '}', allowedAttributes: [] });
     md.use(markdownItTextualUml);
     md.use(markdownItMath, {
         inlineDelimiters: ["$", ["\\(", "\\)"]],
-        inlineRenderer(src, token) {
+        inlineRenderer(src: string, token: any) {
             return token.markup === "$" ? mathup(src).toString() : temml.renderToString(src);
         },
         blockDelimiters: ["$$", ["\\[", "\\]"]],
-        blockRenderer(src, token) {
+        blockRenderer(src: string, token: any) {
             return token.markup === "$$" ? mathup(src, { display: "block" }).toString() : temml.renderToString(src, { displayMode: true });
         },
     });
@@ -364,11 +390,11 @@ export async function generateDocumentation(
     md.use(githubAlertsPlugin);
     md.use(namedCodeBlocks);
 
-    if (!quiet) logger.info('Rendering markdown to HTML...');
+    if (!quiet) docLogger.info('Rendering markdown to HTML...');
     md.use(await shikiPromise);
     const rawHtmlContent = md.render(contentToRender);
     const wrappedHtmlContent = wrapSectionsInHtml(rawHtmlContent);
-    logger.debug(`Generated ${wrappedHtmlContent.length} characters of HTML`, verbose);
+    docLogger.debug(`Generated ${wrappedHtmlContent.length} characters of HTML`, verbose);
 
     if (!quiet && imageProcessingPromises.length > 0) {
         const spinner = yoctoSpinner({text: ' Processing images, please wait...'}).start();
@@ -383,7 +409,7 @@ export async function generateDocumentation(
     } else {
         var components = await extractComponents(pcbFilePath).catch(() => new Map());
     }
-    logger.debug(`Found ${components.size} components`, verbose);
+    docLogger.debug(`Found ${components.size} components`, verbose);
 
     let finalHtmlContent = wrappedHtmlContent;
     if (stackupSvgMap.size > 0) {
@@ -411,46 +437,46 @@ export async function generateDocumentation(
         }
     }
 
-    if (!quiet) logger.info('Loading CSS styles...');
+    if (!quiet) docLogger.info('Loading CSS styles...');
     let mainCssContent = '';
     try {
         const currentFilePath = url.fileURLToPath(import.meta.url);
         const currentDir = path.dirname(currentFilePath);
         const mainCssPath = path.resolve(currentDir, 'styles', 'main.css');
         mainCssContent = await fs.readFile(mainCssPath, 'utf-8');
-        logger.debug(`Loaded ${mainCssContent.length} characters of CSS`, verbose);
+        docLogger.debug(`Loaded ${mainCssContent.length} characters of CSS`, verbose);
     } catch (error) {
-        logger.warning(`Could not load custom styles: ${error}`);
+        docLogger.warning(`Could not load custom styles: ${error}`);
     }
 
-    if (!quiet) logger.info('Generating final HTML document...');
+    if (!quiet) docLogger.info('Generating final HTML document...');
     let finalHtml = generateHtmlDocument(metadata, path.basename(pcbFilePath), finalHtmlContent, mainCssContent);
 
-    if (!quiet) logger.info('Inlining images...');
+    if (!quiet) docLogger.info('Inlining images...');
     finalHtml = inlineLocalImages(finalHtml, svgContentMap, pngBufferMap, components);
 
-    if (!quiet) logger.info(`Writing output file: ${chalk.cyan(path.basename(outputFile))}`);
+    if (!quiet) docLogger.info(`Writing output file: ${chalk.cyan(path.basename(outputFile))}`);
     await fs.writeFile(outputFile, finalHtml);
-    logger.debug(`Wrote ${finalHtml.length} characters to output file`, verbose);
+    docLogger.debug(`Wrote ${finalHtml.length} characters to output file`, verbose);
 
-    logger.debug('Cleaning up temporary files...', verbose);
+    docLogger.debug('Cleaning up temporary files...', verbose);
     await tempManager.cleanupAll();
 
     if (!quiet) {
-        logger.success(`Documentation generated: ${chalk.cyan(path.basename(inputFile))} → ${chalk.cyan(path.basename(outputFile))}`);
+        docLogger.success(`Documentation generated: ${chalk.cyan(path.basename(inputFile))} → ${chalk.cyan(path.basename(outputFile))}`);
         if (shouldOpenFile) {
             try {
-                logger.info('Opening documentation in browser...');
+                docLogger.info('Opening documentation in browser...');
                 await open(outputFile);
-                logger.debug(`Opened file: ${outputFile}`, verbose);
+                docLogger.debug(`Opened file: ${outputFile}`, verbose);
             } catch (error) {
-                logger.warning(`Could not open file automatically: ${error}`);
+                docLogger.warning(`Could not open file automatically: ${error}`);
             }
         }
-        console.log();
-        console.log(chalk.italic.gray('This program is part of the typeCAD ecosystem'));
-        console.log(chalk.italic.gray('Visit https://typecad.net for more information about schematic-as-code for KiCAD'));
+        docLogger.log();
+        docLogger.log(chalk.italic.gray('This program is part of the typeCAD ecosystem'));
+        docLogger.log(chalk.italic.gray('Visit https://typecad.net for more information about schematic-as-code for KiCAD'));
     } else if (shouldOpenFile) {
-        try { await open(outputFile); } catch {}
+        try { await open(outputFile); } catch { logger.debug('Failed to open output file in browser'); }
     }
 }

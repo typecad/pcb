@@ -52,8 +52,8 @@ interface Component {
 }
 
 interface Schematic {
-    Components: Component[];
-    Sheetname: string;
+    components: Component[];
+    sheetName: string;
     Nodes: Node[];
 }
 

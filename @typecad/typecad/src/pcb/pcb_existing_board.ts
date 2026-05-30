@@ -85,8 +85,8 @@ export function parseExistingBoard(
     const boardNetNameToCodeMap = new Map<string, number>();
 
     let existingBoardContents: SExpr[] = [];
-    if (pcb.existingBoardElements.length > 0) {
-        existingBoardContents = [sym('kicad_pcb'), ...(pcb.existingBoardElements as SExpr[])];
+    if (pcb.state.existingBoardElements.length > 0) {
+        existingBoardContents = [sym('kicad_pcb'), ...(pcb.state.existingBoardElements as SExpr[])];
     }
 
     let boardContents: SExpr[];

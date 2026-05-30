@@ -5,6 +5,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { tmpdir } from 'node:os';
 import { parse, SNode, isList } from '../../sexpr/index.js';
+import logger from '../../logging.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -299,7 +300,7 @@ export function cleanupTempFiles(filePaths: string[]): number {
                 cleanedCount++;
             }
         } catch (cleanupError) {
-            console.error(`Failed to delete temporary file: ${filePath}`, cleanupError);
+            logger.error(`Failed to delete temporary file: ${filePath}`, cleanupError);
         }
     }
     return cleanedCount;

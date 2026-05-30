@@ -41,8 +41,8 @@ This method fits in nicely with the rest of the **type**CAD API.
 ### Connections
 `TrackBuilder` objects don't take any connection information. This is because KiCAD will connect any track that touches an element with a net, ie. a track that touches a pad connected to the 'gnd' net will make the entire track also connected to the 'gnd' net. Since there's no use for an unconnected track, this simplifies to process.
 
-## typecad/kicad2typecad
-[@typecad/kicad2typecad](https://www.npmjs.com/package/@typecad/kicad2typecad) is a package to simplify making tracks. This is particularly useful for making packages. You can lay out the entire package in KiCAD; components placed, tracks drawn, and vias added. Then use `kicad2typecad` to generate the code snippets to create them programmatically in the package. 
+## kicad2typecad
+`kicad2typecad` (bundled with [@typecad/typecad](https://www.npmjs.com/package/@typecad/typecad)) is a tool to simplify making tracks. This is particularly useful for making packages. You can lay out the entire package in KiCAD; components placed, tracks drawn, and vias added. Then use `kicad2typecad` to generate the code snippets to create them programmatically in the package.
 
 ### Making a package
 The workflow for creating a reusable package is:

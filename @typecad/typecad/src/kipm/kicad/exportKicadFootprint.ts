@@ -2,8 +2,21 @@ import fs from "fs";
 
 const { acos, cos, sin, sqrt, PI } = Math;
 
-import { ee_footprint, convertToMm } from "../easyeda/parametersEasyeda.js";
+import {
+    ee_footprint,
+    convertToMm,
+    Ee3dModel,
+    EeFootprintPad,
+    EeFootprintTrack,
+    EeFootprintHole,
+    EeFootprintVia,
+    EeFootprintCircle,
+    EeFootprintRectangle,
+    EeFootprintArc,
+    EeFootprintText,
+} from "../easyeda/parametersEasyeda.js";
 
+import logger from '../../logging.js';
 import {
     KiFootprintInfo,
     Ki3dModel,
@@ -46,26 +59,27 @@ function pyStr(num: number) {
     return s;
 }
 
-function formatTemplate(template: string, data: Record<string, any>) {
+function formatTemplate(template: string, data: object) {
+    const record = data as Record<string, unknown>;
     return template.replace(/{(\w+)(:[^}]+)?}/g, (match, key, formatSpec) => {
-        let value = data[key];
-        if (value === undefined) return match;
+        const raw = record[key];
+        if (raw === undefined) return match;
         if (formatSpec) {
-            const num = Number(value);
+            const num = Number(raw);
             if (!isNaN(num)) {
-                value = num;
                 const m = formatSpec.match(/\.([0-9]+)f/);
                 if (m) {
                     const decimals = parseInt(m[1], 10);
-                    const isNegZero = (1 / value === -Infinity);
-                    value = (value as number).toFixed(decimals);
-                    if (isNegZero && !(value as string).startsWith("-")) {
-                        value = "-" + value;
+                    const isNegZero = (1 / num === -Infinity);
+                    let formatted = num.toFixed(decimals);
+                    if (isNegZero && !formatted.startsWith("-")) {
+                        formatted = "-" + formatted;
                     }
+                    return formatted;
                 }
             }
         }
-        return value;
+        return String(raw);
     });
 }
 
@@ -163,29 +177,30 @@ function computeArc(
     return [cx, cy, angle_extent];
 }
 
-function fpToKi(dim: any) {
-    if (dim !== "" && dim !== null && !isNaN(parseFloat(dim))) {
-        return parseFloat((parseFloat(dim) * 10 * 0.0254).toFixed(2));
+function fpToKi(dim: number | string): number {
+    const n = Number(dim);
+    if (dim !== "" && dim !== null && !isNaN(n)) {
+        return parseFloat((n * 10 * 0.0254).toFixed(2));
     }
-    return dim;
+    return 0;
 }
 
-function drillToKi(hole_radius: number, hole_length: any, pad_height: number, pad_width: number) {
+function drillToKi(hole_radius: number, hole_length: number | string, pad_height: number, pad_width: number): string {
+    const hl = Number(hole_length);
     if (
         hole_radius > 0 &&
-        hole_length !== "" &&
-        hole_length !== null &&
-        hole_length !== 0
+        hl !== 0 &&
+        !isNaN(hl)
     ) {
-        const max_distance_hole = Math.max(hole_radius * 2, hole_length);
+        const max_distance_hole = Math.max(hole_radius * 2, hl);
         const pos_0 = pad_height - max_distance_hole;
         const pos_90 = pad_width - max_distance_hole;
         const max_distance = Math.max(pos_0, pos_90);
 
         if (max_distance === pos_0) {
-            return `(drill oval ${hole_radius * 2} ${hole_length})`;
+            return `(drill oval ${hole_radius * 2} ${hl})`;
         } else {
-            return `(drill oval ${hole_length} ${hole_radius * 2})`;
+            return `(drill oval ${hl} ${hole_radius * 2})`;
         }
     }
     if (hole_radius > 0) {
@@ -194,11 +209,12 @@ function drillToKi(hole_radius: number, hole_length: any, pad_height: number, pa
     return "";
 }
 
-function angleToKi(rotation: any) {
-    if (!isNaN(rotation)) {
-        return rotation > 180 ? -(360 - rotation) : rotation;
+function angleToKi(rotation: number | string): number {
+    const r = Number(rotation);
+    if (!isNaN(r)) {
+        return r > 180 ? -(360 - r) : r;
     }
-    return "";
+    return 0;
 }
 
 function rotate(x: number, y: number, degrees: number) {
@@ -209,17 +225,17 @@ function rotate(x: number, y: number, degrees: number) {
 }
 
 class ExporterFootprintKicad {
-    model_3d: any;
-    input: any;
-    translation: any;
-    output: any;
+    model_3d: Ee3dModel | null;
+    input: ee_footprint;
+    translation: Ki3dModelBase;
+    output!: KiFootprint;
 
-    constructor(footprint: any, model_3d: any, translation: any) {
+    constructor(footprint: ee_footprint, model_3d: Ee3dModel | null, translation: Ki3dModelBase) {
         this.model_3d = model_3d;
         this.input = footprint;
         this.translation = translation;
         if (!(this.input instanceof ee_footprint)) {
-            console.error("Unsupported conversion");
+            logger.error("Unsupported conversion");
         } else {
             this.generateKicadFootprint();
         }
@@ -245,6 +261,9 @@ class ExporterFootprintKicad {
             });
         });
 
+        const bboxX = Number(this.input.bbox.x);
+        const bboxY = Number(this.input.bbox.y);
+
         const infoData = this.input.info || { name: "unknown", fp_type: "tht" };
         const ki_info = new KiFootprintInfo({
             name: infoData.name,
@@ -256,17 +275,17 @@ class ExporterFootprintKicad {
         if (this.model_3d !== null && this.model_3d !== undefined) {
             this.model_3d.convert_to_mm();
 
-            if (!this.translation.fixedZHere) {
-                this.translation.fixedZHere = true;
-                this.translation.z += parseFloat(this.model_3d.translation.z.toFixed(2));
+            if (!((this.translation as unknown as Record<string, unknown>).fixedZHere)) {
+                (this.translation as unknown as Record<string, unknown>).fixedZHere = true;
+                this.translation.z += parseFloat(Number(this.model_3d.translation.z).toFixed(2));
             }
             ki_3d_model_info = new Ki3dModel({
                 name: this.model_3d.name,
                 translation: this.translation,
                 rotation: new Ki3dModelBase({
-                    x: (360 - this.model_3d.rotation.x) % 360,
-                    y: (360 - this.model_3d.rotation.y) % 360,
-                    z: (360 - this.model_3d.rotation.z) % 360,
+                    x: (360 - Number(this.model_3d.rotation.x)) % 360,
+                    y: (360 - Number(this.model_3d.rotation.y)) % 360,
+                    z: (360 - Number(this.model_3d.rotation.z)) % 360,
                 }),
                 raw_wrl: null,
             });
@@ -277,19 +296,25 @@ class ExporterFootprintKicad {
             model_3d: ki_3d_model_info,
         });
 
-        this.input.pads.forEach((ee_pad: any) => {
+        this.input.pads.forEach((ee_pad: EeFootprintPad) => {
+            const holeRadius = Number(ee_pad.hole_radius);
+            const layerId = Number(ee_pad.layer_id);
+            const padCx = Number(ee_pad.center_x);
+            const padCy = Number(ee_pad.center_y);
+            const padW = Number(ee_pad.width);
+            const padH = Number(ee_pad.height);
             const ki_pad = new KiFootprintPad({
-                type: ee_pad.hole_radius > 0 ? "thru_hole" : "smd",
+                type: holeRadius > 0 ? "thru_hole" : "smd",
                 shape: KI_PAD_SHAPE.hasOwnProperty(ee_pad.shape)
                     ? KI_PAD_SHAPE[ee_pad.shape]
                     : "custom",
-                pos_x: ee_pad.center_x - this.input.bbox.x,
-                pos_y: ee_pad.center_y - this.input.bbox.y,
-                width: Math.max(ee_pad.width, 0.01),
-                height: Math.max(ee_pad.height, 0.01),
+                pos_x: padCx - bboxX,
+                pos_y: padCy - bboxY,
+                width: Math.max(padW, 0.01),
+                height: Math.max(padH, 0.01),
                 layers:
-                    (ee_pad.hole_radius <= 0 ? KI_PAD_LAYER : KI_PAD_LAYER_THT)[
-                        ee_pad.layer_id
+                    (holeRadius <= 0 ? KI_PAD_LAYER : KI_PAD_LAYER_THT)[
+                        layerId
                         ] || "",
                 number: ee_pad.number,
                 drill: 0.0,
@@ -298,7 +323,7 @@ class ExporterFootprintKicad {
             });
 
             ki_pad.drill = drillToKi(
-                ee_pad.hole_radius,
+                holeRadius,
                 ee_pad.hole_length,
                 ki_pad.height,
                 ki_pad.width
@@ -313,7 +338,7 @@ class ExporterFootprintKicad {
             if (ki_pad.shape === "custom") {
                 const point_list = ee_pad.points.split(" ").map(fpToKi);
                 if (point_list.length <= 0) {
-                    console.warn(
+                    logger.warn(
                         `PAD ${ee_pad.id} is a polygon, but has no points defined`
                     );
                 } else {
@@ -323,10 +348,10 @@ class ExporterFootprintKicad {
                     let path = "";
                     for (let i = 0; i < point_list.length; i += 2) {
                         const x_val = parseFloat(
-                            (point_list[i] - this.input.bbox.x - ki_pad.pos_x).toFixed(2)
+                            (point_list[i] - bboxX - ki_pad.pos_x).toFixed(2)
                         );
                         const y_val = parseFloat(
-                            (point_list[i + 1] - this.input.bbox.y - ki_pad.pos_y).toFixed(2)
+                            (point_list[i + 1] - bboxY - ki_pad.pos_y).toFixed(2)
                         );
                         path += `(xy ${x_val} ${y_val})`;
                     }
@@ -337,79 +362,82 @@ class ExporterFootprintKicad {
             this.output.pads.push(ki_pad);
         });
 
-        this.input.tracks.forEach((ee_track: any) => {
+        this.input.tracks.forEach((ee_track: EeFootprintTrack) => {
+            const trackLayerId = Number(ee_track.layer_id);
             const ki_track = new KiFootprintTrack({
-                layers: KI_PAD_LAYER.hasOwnProperty(ee_track.layer_id)
-                    ? KI_PAD_LAYER[ee_track.layer_id]
+                layers: KI_PAD_LAYER.hasOwnProperty(trackLayerId)
+                    ? KI_PAD_LAYER[trackLayerId]
                     : "F.Fab",
-                stroke_width: Math.max(ee_track.stroke_width, 0.01),
+                stroke_width: Math.max(Number(ee_track.stroke_width), 0.01),
             });
 
             const point_list = ee_track.points.split(" ").map(fpToKi);
             for (let i = 0; i < point_list.length - 3; i += 2) {
                 ki_track.points_start_x.push(
-                    parseFloat((point_list[i] - this.input.bbox.x).toFixed(2))
+                    parseFloat((point_list[i] - bboxX).toFixed(2))
                 );
                 ki_track.points_start_y.push(
-                    parseFloat((point_list[i + 1] - this.input.bbox.y).toFixed(2))
+                    parseFloat((point_list[i + 1] - bboxY).toFixed(2))
                 );
                 ki_track.points_end_x.push(
-                    parseFloat((point_list[i + 2] - this.input.bbox.x).toFixed(2))
+                    parseFloat((point_list[i + 2] - bboxX).toFixed(2))
                 );
                 ki_track.points_end_y.push(
-                    parseFloat((point_list[i + 3] - this.input.bbox.y).toFixed(2))
+                    parseFloat((point_list[i + 3] - bboxY).toFixed(2))
                 );
             }
 
             this.output.tracks.push(ki_track);
         });
 
-        this.input.holes.forEach((ee_hole: any) => {
+        this.input.holes.forEach((ee_hole: EeFootprintHole) => {
             const ki_hole = new KiFootprintHole({
-                pos_x: ee_hole.center_x - this.input.bbox.x,
-                pos_y: ee_hole.center_y - this.input.bbox.y,
-                size: ee_hole.radius * 2,
+                pos_x: Number(ee_hole.center_x) - bboxX,
+                pos_y: Number(ee_hole.center_y) - bboxY,
+                size: Number(ee_hole.radius) * 2,
             });
             this.output.holes.push(ki_hole);
         });
 
-        this.input.vias.forEach((ee_via: any) => {
+        this.input.vias.forEach((ee_via: EeFootprintVia) => {
             const ki_via = new KiFootprintVia({
-                pos_x: ee_via.center_x - this.input.bbox.x,
-                pos_y: ee_via.center_y - this.input.bbox.y,
-                size: ee_via.radius * 2,
-                diameter: ee_via.diameter,
+                pos_x: Number(ee_via.center_x) - bboxX,
+                pos_y: Number(ee_via.center_y) - bboxY,
+                size: Number(ee_via.radius) * 2,
+                diameter: Number(ee_via.diameter),
             });
             this.output.vias.push(ki_via);
         });
 
-        this.input.circles.forEach((ee_circle: any) => {
+        this.input.circles.forEach((ee_circle: EeFootprintCircle) => {
+            const circleLayerId = Number(ee_circle.layer_id);
             const ki_circle = new KiFootprintCircle({
-                cx: ee_circle.cx - this.input.bbox.x,
-                cy: ee_circle.cy - this.input.bbox.y,
+                cx: Number(ee_circle.cx) - bboxX,
+                cy: Number(ee_circle.cy) - bboxY,
                 end_x: 0.0,
                 end_y: 0.0,
-                layers: KI_LAYERS.hasOwnProperty(ee_circle.layer_id)
-                    ? KI_LAYERS[ee_circle.layer_id]
+                layers: KI_LAYERS.hasOwnProperty(circleLayerId)
+                    ? KI_LAYERS[circleLayerId]
                     : "F.Fab",
-                stroke_width: Math.max(ee_circle.stroke_width, 0.01),
+                stroke_width: Math.max(Number(ee_circle.stroke_width), 0.01),
             });
-            ki_circle.end_x = ki_circle.cx + ee_circle.radius;
+            ki_circle.end_x = ki_circle.cx + Number(ee_circle.radius);
             ki_circle.end_y = ki_circle.cy;
             this.output.circles.push(ki_circle);
         });
 
-        this.input.rectangles.forEach((ee_rectangle: any) => {
+        this.input.rectangles.forEach((ee_rectangle: EeFootprintRectangle) => {
+            const rectLayerId = Number(ee_rectangle.layer_id);
             const ki_rectangle = new KiFootprintRectangle({
-                layers: KI_PAD_LAYER.hasOwnProperty(ee_rectangle.layer_id)
-                    ? KI_PAD_LAYER[ee_rectangle.layer_id]
+                layers: KI_PAD_LAYER.hasOwnProperty(rectLayerId)
+                    ? KI_PAD_LAYER[rectLayerId]
                     : "F.Fab",
-                stroke_width: Math.max(ee_rectangle.stroke_width, 0.01),
+                stroke_width: Math.max(Number(ee_rectangle.stroke_width), 0.01),
             });
-            const start_x = ee_rectangle.x - this.input.bbox.x;
-            const start_y = ee_rectangle.y - this.input.bbox.y;
-            const width = ee_rectangle.width;
-            const height = ee_rectangle.height;
+            const start_x = Number(ee_rectangle.x) - bboxX;
+            const start_y = Number(ee_rectangle.y) - bboxY;
+            const width = Number(ee_rectangle.width);
+            const height = Number(ee_rectangle.height);
 
             ki_rectangle.points_start_x = [
                 start_x,
@@ -439,7 +467,8 @@ class ExporterFootprintKicad {
             this.output.rectangles.push(ki_rectangle);
         });
 
-        this.input.arcs.forEach((ee_arc: any) => {
+        this.input.arcs.forEach((ee_arc: EeFootprintArc) => {
+            const arcLayerId = Number(ee_arc.layer_id);
             let arc_path = ee_arc.path
                 .replace(/,/g, " ")
                 .replace("M ", "M")
@@ -447,16 +476,16 @@ class ExporterFootprintKicad {
 
             const mIndex = arc_path.indexOf("A");
             const startCoords = arc_path.substring(1, mIndex).trim().split(" ");
-            let start_x = fpToKi(startCoords[0]) - this.input.bbox.x;
-            let start_y = fpToKi(startCoords[1]) - this.input.bbox.y;
+            let start_x = fpToKi(startCoords[0]) - bboxX;
+            let start_y = fpToKi(startCoords[1]) - bboxY;
 
             let arcParameters = arc_path.substring(mIndex + 1).replace(/  /g, " ").trim();
             const parts = arcParameters.split(" ");
             const [svg_rx, svg_ry, x_axis_rotation, large_arc, sweep, end_x_str, end_y_str] =
                 parts;
             const [rx, ry] = rotate(fpToKi(svg_rx), fpToKi(svg_ry), 0);
-            const end_x = fpToKi(end_x_str) - this.input.bbox.x;
-            const end_y = fpToKi(end_y_str) - this.input.bbox.y;
+            const end_x = fpToKi(end_x_str) - bboxX;
+            const end_y = fpToKi(end_y_str) - bboxY;
             let cx = 0.0,
                 cy = 0.0,
                 extent = 0.0;
@@ -479,26 +508,27 @@ class ExporterFootprintKicad {
                 end_x: end_x,
                 end_y: end_y,
                 angle: extent,
-                layers: KI_LAYERS.hasOwnProperty(ee_arc.layer_id)
-                    ? KI_LAYERS[ee_arc.layer_id]
+                layers: KI_LAYERS.hasOwnProperty(arcLayerId)
+                    ? KI_LAYERS[arcLayerId]
                     : "F.Fab",
                 stroke_width: Math.max(fpToKi(ee_arc.stroke_width), 0.01),
             });
             this.output.arcs.push(ki_arc);
         });
 
-        this.input.texts.forEach((ee_text: any) => {
+        this.input.texts.forEach((ee_text: EeFootprintText) => {
+            const textLayerId = Number(ee_text.layer_id);
             const ki_text = new KiFootprintText({
-                pos_x: ee_text.center_x - this.input.bbox.x,
-                pos_y: ee_text.center_y - this.input.bbox.y,
+                pos_x: Number(ee_text.center_x) - bboxX,
+                pos_y: Number(ee_text.center_y) - bboxY,
                 orientation: angleToKi(ee_text.rotation),
                 text: ee_text.text,
-                layers: KI_LAYERS.hasOwnProperty(ee_text.layer_id)
-                    ? KI_LAYERS[ee_text.layer_id]
+                layers: KI_LAYERS.hasOwnProperty(textLayerId)
+                    ? KI_LAYERS[textLayerId]
                     : "F.Fab",
-                font_size: Math.max(ee_text.font_size, 1),
-                thickness: Math.max(ee_text.stroke_width, 0.01),
-                display: ee_text.is_displayed === false ? " hide" : "",
+                font_size: Math.max(Number(ee_text.font_size), 1),
+                thickness: Math.max(Number(ee_text.stroke_width), 0.01),
+                display: ee_text.is_displayed === "hide" ? " hide" : "",
                 mirror: "",
             });
             if (ee_text.type === "N") {
@@ -515,6 +545,8 @@ class ExporterFootprintKicad {
 
     getContent(model_3d_path = "${KIPRJMOD}") {
         const ki = this.output;
+        if (!ki.info) return "";
+
         let ki_lib = "";
 
         ki_lib += formatTemplate(KI_MODULE_INFO, {
@@ -529,7 +561,7 @@ class ExporterFootprintKicad {
             });
         }
 
-        const y_values = ki.pads.map((pad: any) => pad.pos_y);
+        const y_values = ki.pads.map((pad: KiFootprintPad) => pad.pos_y);
         const y_low = Math.min(...y_values);
         const y_high = Math.max(...y_values);
 
@@ -550,7 +582,7 @@ class ExporterFootprintKicad {
         let yPts: number[] = [];
 
         const combinedTracks = ki.tracks.concat(ki.rectangles);
-        combinedTracks.forEach((track: any) => {
+        combinedTracks.forEach((track: KiFootprintTrack) => {
             for (let i = 0; i < track.points_start_x.length; i++) {
                 ki_lib += formatTemplate(KI_LINE, {
                     start_x: track.points_start_x[i],
@@ -565,7 +597,7 @@ class ExporterFootprintKicad {
             yPts = yPts.concat(track.points_start_y.concat(track.points_end_y));
         });
 
-        ki.pads.forEach((pad: any) => {
+        ki.pads.forEach((pad: KiFootprintPad) => {
             ki_lib += formatTemplate(KI_PAD, pad);
             xPts.push(pad.pos_x + pad.width / 2);
             xPts.push(pad.pos_x - pad.width / 2);
@@ -573,25 +605,27 @@ class ExporterFootprintKicad {
             yPts.push(pad.pos_y - pad.height / 2);
         });
 
-        ki.holes.forEach((hole: any) => {
+        ki.holes.forEach((hole: KiFootprintHole) => {
             ki_lib += formatTemplate(KI_HOLE, hole);
 
-            xPts.push(hole.center_x + hole.radius);
-            xPts.push(hole.center_x - hole.radius);
-            yPts.push(hole.center_y + hole.radius);
-            yPts.push(hole.center_y - hole.radius);
+            const halfSize = hole.size / 2;
+            xPts.push(hole.pos_x + halfSize);
+            xPts.push(hole.pos_x - halfSize);
+            yPts.push(hole.pos_y + halfSize);
+            yPts.push(hole.pos_y - halfSize);
         });
 
-        ki.vias.forEach((via: any) => {
+        ki.vias.forEach((via: KiFootprintVia) => {
             ki_lib += formatTemplate(KI_VIA, via);
 
-            xPts.push(via.center_x + via.radius);
-            xPts.push(via.center_x - via.radius);
-            yPts.push(via.center_y + via.radius);
-            yPts.push(via.center_y - via.radius);
+            const halfSize = via.size / 2;
+            xPts.push(via.pos_x + halfSize);
+            xPts.push(via.pos_x - halfSize);
+            yPts.push(via.pos_y + halfSize);
+            yPts.push(via.pos_y - halfSize);
         });
 
-        ki.circles.forEach((circle: any) => {
+        ki.circles.forEach((circle: KiFootprintCircle) => {
             ki_lib += formatTemplate(KI_CIRCLE, circle);
 
             const radius = (circle.cx - circle.end_x);
@@ -604,7 +638,7 @@ class ExporterFootprintKicad {
             }
         });
 
-        ki.arcs.forEach((arc: any) => {
+        ki.arcs.forEach((arc: KiFootprintArc) => {
             ki_lib += formatTemplate(KI_ARC, arc);
 
             const bbox = arc.getBoundingBox();
@@ -617,7 +651,7 @@ class ExporterFootprintKicad {
             }
         });
 
-        ki.texts.forEach((text: any) => {
+        ki.texts.forEach((text: KiFootprintText) => {
             ki_lib += formatTemplate(KI_TEXT, text);
         });
 
@@ -640,7 +674,7 @@ class ExporterFootprintKicad {
 
         const hasFiniteMaxMinValues = (isFinite(minY) && isFinite(minX) && isFinite(maxY) && isFinite(maxX));
 
-        if (ki.model_3d !== null && ki.model_3d !== undefined) {
+        if (ki.model_3d !== null && ki.model_3d !== undefined && ki.model_3d.rotation) {
             ki_lib += formatTemplate(KI_MODEL_3D, {
                 file_3d: `/${model_3d_path}/${ki.model_3d.name}.wrl`,
                 pos_x: this.translation.x + (hasFiniteMaxMinValues ? (minX + maxX) / 2 : 0),

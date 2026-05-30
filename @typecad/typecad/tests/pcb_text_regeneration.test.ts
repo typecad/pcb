@@ -33,7 +33,7 @@ describe('PCB Text Regeneration (Remove Old gr_text)', () => {
 
   it('should remove old gr_text elements when board is regenerated', async () => {
     // First generation - create PCB with text "Version 1.0"
-    let pcb = new PCB(testBoardName, { Schematic: new Schematic(testBoardName) })
+    let pcb = new PCB(testBoardName, { schematic: new Schematic(testBoardName) })
 
     pcb.text({
       text: 'Version 1.0',
@@ -64,7 +64,7 @@ describe('PCB Text Regeneration (Remove Old gr_text)', () => {
 
     // Second generation - create new PCB instance that loads the existing file
     // This time, only add "Version 2.0" text
-    pcb = new PCB(testBoardName, { Schematic: new Schematic(testBoardName) })
+    pcb = new PCB(testBoardName, { schematic: new Schematic(testBoardName) })
 
     pcb.text({
       text: 'Version 2.0',
@@ -103,7 +103,7 @@ describe('PCB Text Regeneration (Remove Old gr_text)', () => {
 
   it('should allow removing all text by not adding any', async () => {
     // First generation - create PCB with text
-    let pcb = new PCB(testBoardName, { Schematic: new Schematic(testBoardName) })
+    let pcb = new PCB(testBoardName, { schematic: new Schematic(testBoardName) })
 
     pcb.text({
       text: 'Temporary Text',
@@ -123,7 +123,7 @@ describe('PCB Text Regeneration (Remove Old gr_text)', () => {
     expect(grTextElements.length).toBe(1)
 
     // Second generation - don't add any text
-    pcb = new PCB(testBoardName, { Schematic: new Schematic(testBoardName) })
+    pcb = new PCB(testBoardName, { schematic: new Schematic(testBoardName) })
     // No pcb.text() calls
     await pcb.create()
 
@@ -145,7 +145,7 @@ describe('PCB Text Regeneration (Remove Old gr_text)', () => {
     ]
 
     for (let i = 0; i < textVersions.length; i++) {
-      const pcb = new PCB(testBoardName, { Schematic: new Schematic(testBoardName) })
+      const pcb = new PCB(testBoardName, { schematic: new Schematic(testBoardName) })
 
       // Add current version's text
       textVersions[i].forEach((text, idx) => {

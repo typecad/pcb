@@ -1,5 +1,4 @@
-import { Package, PackageOptions } from '@typecad/typecad';
-import * as _0603 from '@typecad/passives/0603';
+import { Package, PackageOptions, Component } from '@typecad/typecad';
 
 /**
  * ### Typecad_package - Description
@@ -10,7 +9,7 @@ import * as _0603 from '@typecad/passives/0603';
  *
  */
 export class Typecad_package extends Package {
-    declare r1: _0603.Resistor;
+    declare r1: Component;
     build(options: PackageOptions) {
         // Passives
         this.r1 = new this.passives.Resistor({ value: '10k' });

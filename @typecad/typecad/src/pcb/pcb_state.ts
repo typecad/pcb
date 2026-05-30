@@ -36,4 +36,23 @@ export class PcbInternalState {
     constructor(options: IPcbOptions) {
         this.options = options;
     }
+
+    pushOffset(x: number, y: number): void {
+        this.offsetStack.push({ ...this.currentOffset });
+        this.currentOffset.x += x;
+        this.currentOffset.y += y;
+    }
+
+    popOffset(): void {
+        const prev = this.offsetStack.pop();
+        if (prev) {
+            this.currentOffset = prev;
+        } else {
+            this.currentOffset = { x: 0, y: 0 };
+        }
+    }
+
+    getOffset(): { x: number; y: number } {
+        return { ...this.currentOffset };
+    }
 }

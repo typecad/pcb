@@ -50,27 +50,28 @@ This package uses an options interface. All options are optional. They can also 
 
 ### Example Usage
 ```ts
-import { Schematic } from '@typecad/typecad'
+import { PCB } from '@typecad/typecad'
 import { Resistor, LED, Capacitor, Diode, Inductor, Fuse } from '@typecad/passives/0805'
-import  *  as _0603 from '@typecad/passives/0603'
+import { LED as LED0603 } from '@typecad/passives/0603'
 
-let typecad = new Schematic('passives');
+let typecad = new PCB('passives');
 
-let resistor = new Resistor({ reference: "R1", value: "4.7 kOhm" });
-let capacitor = new Capacitor({value: "100 nF", voltage: "6 V"});
+let resistor = new Resistor({ value: "4.7 kOhm" });
+let capacitor = new Capacitor({ value: "100 nF", voltage: "6 V" });
 let diode = new Diode();
-let inductor = new Inductor({ value: "2.2 uH"});
-let fuse = new Fuse({ reference: "F1" });
-let led = new _0603.LED();      // a 0603 instead of 0805
+let inductor = new Inductor({ value: "2.2 uH" });
+let fuse = new Fuse();
+let led0805 = new LED();
+let led0603 = new LED0603();     // a 0603 LED instead of 0805
 
-typecad.create(resistor, led, capacitor, inductor, diode, fuse);
+typecad.create(resistor, led0805, led0603, capacitor, inductor, diode, fuse);
 ```
 All of the sizes are:
 - `@typecad/passives/1210`
 - `@typecad/passives/1206`
 - `@typecad/passives/0805`
 - `@typecad/passives/0603`
-- `@typecad/passives/0402`
+- `@typecad/passives/0402` **no fuses**
 - `@typecad/passives/0201` **no fuses**
 
 ### Auto designation
@@ -104,3 +105,40 @@ let tp = new Testpoint({ footprint: 'TestPoint:TestPoint_Keystone_5015_Micro_Min
 ```
 
 Connect a testpoint using `tp.pin(1)` in the `::net()` method.
+
+## Mounting Holes
+Mounting holes can be created:
+
+```ts
+import { MountingHole } from '@typecad/passives/mounting_hole';
+
+// M2 mounting hole (default)
+let mh1 = new MountingHole();
+
+// M3 mounting hole
+let mh2 = new MountingHole({ size: 'M3' });
+```
+
+Available sizes: `M2` (default), `M2.5`, `M3`, `M4`, `M5`, `M6`, `M8`.
+
+A custom footprint can also be provided:
+
+```ts
+let mh3 = new MountingHole({ footprint: 'MountingHole:MountingHole_3.2mm_M3_Pad' });
+```
+
+## Net Ties
+Net ties connect two or more nets together:
+
+```ts
+import { Tie } from '@typecad/passives/tie';
+
+// 2-pin tie
+let tie1 = new Tie({ schematic, net1: pinA, net2: pinB });
+
+// 3-pin tie
+let tie2 = new Tie({ schematic, net1: pinA, net2: pinB, net3: pinC });
+
+// 4-pin tie
+let tie3 = new Tie({ schematic, net1: pinA, net2: pinB, net3: pinC, net4: pinD });
+```

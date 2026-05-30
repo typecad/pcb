@@ -16,8 +16,14 @@ cover: https://unsplash.com/photos/QCOg4dicY74/download?ixid=M3wxMjA3fDB8MXxzZWF
 
 A schematic file isn't needed since typeCAD code takes the place of it, but it can be useful to have one available. People will likely still want to look at a schematic rather than code.
 
-This functionality is now built into `@typecad/typecad`. Use the `schematic` export to generate KiCAD schematic files from your typeCAD project.
+Schematic generation is now built into `PCB.create()` — calling `create()` produces a `.kicad_pcb`, `.kicad_sch`, and `.net` file automatically.
 
 ```ts
-import { schematic } from '@typecad/typecad';
-``` 
+import { PCB } from '@typecad/typecad';
+
+let typecad = new PCB('my-board');
+typecad.create(r1, c1, led);
+// Generates: ./build/my-board.kicad_pcb, ./build/my-board.kicad_sch, ./build/my-board.net
+```
+
+No separate import or function call is needed.

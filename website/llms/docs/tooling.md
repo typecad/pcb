@@ -1,17 +1,16 @@
 # Tooling
 
-**type**CAD provides a collection of tools to make the development process easier.
+**type**CAD provides a unified CLI tool with a collection of commands to make the development process easier. All commands are accessed through the `typecad` binary, which is included when you install `@typecad/typecad`.
 
-## Project Creation
-To create a new project enter the following command in your terminal:
+## `typecad create`
+
+To create a new project:
 
 ```bash
-npx --package=@typecad/typecad create-typecad
+typecad create
 ```
 
-The first time, `npx` will ask you to download the script so it can run it. 
-
-Then you'll be prompted to enter project details:
+You'll be prompted to enter project details:
 - name for the project
 - if you want to create a PlatformIO project and if so, the [board ID](https://docs.platformio.org/en/latest/boards/index.html)
 - if you want to create a `git` repository
@@ -23,43 +22,30 @@ A project will be created in the current directory. Inside the project directory
 All the information can be passed by command-line arguments and the script will automatically create a project. `--help` will show all the parameters.
 
 ```bash
-npx --package=@typecad/typecad create-typecad --name=typecad_project --git=false --pio=false
+typecad create --name=typecad_project --git=false --pio=false
 ```
 
-The above is the minimum to run automatically. 
+---
 
---- 
+## `typecad build`
 
-### Project Use
-A **type**CAD project is just an npm package. All the normal npm-based tools are available to you. A `package.json` file is created with access to the following scripts:
-- Project Building
-- Adding Components
-- Opening the `kicad_pcb` file in KiCAD
-
-> [!tip]
-> In VSCode, there's a sidebar that allows you to just click the various scripts to run them
-
-### Project Building
-Click the `Build` script in VSCode's `NPM Scripts` sidebar. 
-
-To build the project in a terminal, run the following command:
+Builds your typeCAD project, running the TypeScript entry file and generating KiCAD output files.
 
 ```bash
-npx tsx [path/to/file.ts]
+typecad build
 ```
 
-The outputs will be in `./build/`.
+The outputs will be in `./build/`. Use `--verbose` for detailed output.
 
-## Adding Components
-Components are discussed in the [Components](/docs/components) page. But for now, they are anything with a footprint that you'd add to your PCB like MCUs and resistors.
+## `typecad add component`
 
-To add a component to the project:
+Adds a component to the project. It is available as the `Add Component` script in VSCode's NPM Scripts sidebar.
 
 ```bash
-npx --package=@typecad/typecad add-component --folder=./src
+typecad add component
 ```
 
-When the script runs, you'll be asked the source for the symbol and footprint files. You can mix any of the sources ie. a KiCAD symbol, but a local file. 
+When the command runs, you'll be asked the source for the symbol and footprint files. You can mix any of the sources ie. a KiCAD symbol, but a local file. 
 - If it's a KiCAD library component, you'll be prompted to enter the symbol and footprint names
 - If it's a local file, you'll be prompted to enter the path to the file
 - If it's an EasyEDA/JLCPCB component, you'll be asked for the `C###` number
@@ -67,26 +53,107 @@ When the script runs, you'll be asked the source for the symbol and footprint fi
 A `[component].ts` file will be generated along with instructions on how to use it. Files will also be copied into the `./build/` directory.
 
 ### Non-interactive mode
-All the information can be passed by command-line arguments and the script will automatically create a component. `--help` will show all the parameters.
 
 ```bash
-  npx --package=@typecad/typecad add-component --symbol_source=kicad --footprint_source=local --symbol=MCU_Microchip_ATtiny:ATtiny3227-M --footprint=MyLib:MyFootprint
-  
-  npx --package=@typecad/typecad add-component --symbol_source=jlcpcb --footprint_source=kicad --c=C3217148 --footprint=Package_QFN:QFN-32-1EP_5x5mm_P0.5mm_EP3.45x3.45mm
-```
+typecad add component --symbol_source=kicad --footprint_source=local --symbol=MCU_Microchip_ATtiny:ATtiny3227-M --footprint=MyLib:MyFootprint
 
-The above is the minimum to run automatically.
+typecad add component --symbol_source=jlcpcb --footprint_source=kicad --c=C3217148 --footprint=Package_QFN:QFN-32-1EP_5x5mm_P0.5mm_EP3.45x3.45mm
+```
 
 > [!important]
 > There's no need to add passives (resistors, capacitors etc.) this way. See the  [Passives](/docs/passives) page for more information.
 
-## Package Creation
-typeCAD has a command-line tool to generate all the boilerplate code for a package. It sets up the package for easy publishing and reuse. It is discussed in more detail in the [Package Overview](/docs/package/overview) page.
+## `typecad add package`
 
-Execute the following command in `./hw` of an already existing **type**CAD project.
+Creates a reusable **type**CAD package with all the boilerplate code. It sets up the package for easy publishing and reuse. It is discussed in more detail in the [Package Overview](/docs/package/overview) page.
+
+Execute in `./hw` of an already existing **type**CAD project.
 
 ```bash
-npx --package=@typecad/typecad add-package --folder=./src
+typecad add package
 ```
+
+### Non-interactive mode
+
+```bash
+typecad add package --empty=true --name=my_package
+typecad add package --component=true --name=attiny_package --kicad=true --symbol=MCU_Microchip_ATtiny:ATtiny3227-M --footprint=Package_DFN_QFN:DFN-20-1EP_3x4mm_P0.5mm_EP1.65x3.1mm
+```
+
+## `typecad search`
+
+Search KiCAD's symbol libraries with fuzzy matching:
+
+```bash
+typecad search "attiny"
+typecad search "voltage regulator" --format=json --limit=10
+```
+
+Results include symbol names, footprint suggestions, and component parameters.
+
+## `typecad import`
+
+Convert an existing KiCAD `.kicad_pcb` file into typeCAD TypeScript code. Useful for importing existing designs. See [Import](/docs/import) for details.
+
+```bash
+typecad import build/board.kicad_pcb
+```
+
+## `typecad diff`
+
+Compare two KiCAD PCB files visually with layer-by-layer diff, netlist comparison, and BOM diff. See [Git Diff](/docs/gitdiff) for details.
+
+```bash
+typecad diff board_v1.kicad_pcb board_v2.kicad_pcb
+typecad diff HEAD~1 ./build/board.kicad_pcb
+```
+
+## `typecad doc`
+
+Generate HTML documentation from Markdown and KiCAD PCB files. Supports layer exports, 3D renders, and rich formatting. See [DocGen](/docs/docgen) for details.
+
+```bash
+typecad doc docs/board.md build/board.kicad_pcb -o output.html
+```
+
+## `typecad doctor`
+
+Check that your environment has all the required tools installed and properly configured.
+
+```bash
+typecad doctor
+typecad doctor --fix
+typecad doctor --json
+```
+
+Use `--fix` to attempt automatic fixes, and `--json` for machine-readable output.
+
+## `typecad validate`
+
+Validate your typeCAD source code without performing a full build.
+
+```bash
+typecad validate
+typecad validate --verbose --json
+```
+
+## `typecad drc`
+
+Run KiCAD's Design Rule Check as a passthrough to `kicad-cli`.
+
+```bash
+typecad drc
+```
+
+## `typecad erc`
+
+Run KiCAD's Electrical Rules Check as a passthrough to `kicad-cli`.
+
+```bash
+typecad erc
+```
+
+> [!note] Global options
+> All `typecad` commands support `--json` for machine-readable output, `--help` for usage info, and `--version` to check the version.
 
        Project Structure

@@ -1,6 +1,6 @@
 {
   "name": "@typecad/typecad",
-  "version": "0.2.30",
+  "version": "0.3.0",
   "description": "🤖programmatically 💥create 🛰️hardware",
   "keywords": [
     "kicad",
@@ -18,6 +18,38 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./routing": {
+      "types": "./dist/routing/index.d.ts",
+      "import": "./dist/routing/index.js",
+      "default": "./dist/routing/index.js"
+    },
+    "./search": {
+      "types": "./dist/kicad-symbols/index.d.ts",
+      "import": "./dist/kicad-symbols/index.js",
+      "default": "./dist/kicad-symbols/index.js"
+    },
+    "./diff": {
+      "types": "./dist/gitdiff/core/diff-generator.d.ts",
+      "import": "./dist/gitdiff/core/diff-generator.js",
+      "default": "./dist/gitdiff/core/diff-generator.js"
+    },
+    "./docgen": {
+      "types": "./dist/cli/docgen/index.d.ts",
+      "import": "./dist/cli/docgen/index.js",
+      "default": "./dist/cli/docgen/index.js"
+    },
+    "./dist/sexpr/index.js": {
+      "types": "./dist/sexpr/index.d.ts",
+      "import": "./dist/sexpr/index.js",
+      "default": "./dist/sexpr/index.js"
+    }
+  },
   "engines": {
     "node": ">=18.0.0"
   },
@@ -42,7 +74,6 @@
     "kicad2typecad": "node dist/kicad2typecad/bin.js",
     "make": "npx tsx --",
     "package_publish": "npm run prepublishOnly && npm publish --access public",
-    "publish:private": "npm publish --tag private --registry http://192.168.2.207:4873/",
     "make_docs": "npx typedoc --plugin typedoc-plugin-markdown --flattenOutputFiles true --out ./docs ./src/index.ts",
     "dev": "node watch.js",
     "test": "vitest run",
@@ -51,7 +82,7 @@
     "test:coverage": "vitest run --coverage"
   },
   "author": "typeCAD",
-  "license": "EULA",
+  "license": "SEE LICENSE IN LICENSE",
   "devDependencies": {
     "@types/markdown-it": "^14.1.2",
     "@types/node": "^22.13.0",
@@ -66,15 +97,19 @@
     "vitest": "^3.2.1"
   },
   "dependencies": {
-    "@hackmd/markdown-it-task-lists": "^2.1.4",
     "@inquirer/prompts": "^8.4.2",
-    "@shikijs/markdown-it": "^4.1.0",
     "@typecad/passives": "^0.1.44",
     "acorn": "^8.16.0",
     "acorn-walk": "^8.3.5",
     "chalk": "^5.6.2",
+    "cli-table3": "^0.6.5",
     "inquirer-file-selector": "^1.0.1",
     "inquirer-select-pro": "1.0.0-alpha.9",
+    "which": "^5.0.0"
+  },
+  "optionalDependencies": {
+    "@hackmd/markdown-it-task-lists": "^2.1.4",
+    "@shikijs/markdown-it": "^4.1.0",
     "markdown-it": "^14.1.1",
     "markdown-it-attrs": "^4.5.0",
     "markdown-it-math": "^5.2.1",

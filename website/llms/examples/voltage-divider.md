@@ -13,7 +13,7 @@ Very simple, just two resistors. Voltage on the top, ground on the bottom, with 
 From a terminal, run:
 
 ```bash
-npx @typecad/create-typecad
+typecad create
 ```
 
 Call this project `voltage_divider`. No need to make a PlatformIO project or initialize a git repo unless you want to. No extra packages are needed either, but feel free to add them later if you want. 
@@ -71,7 +71,7 @@ typecad.create(r1, r2);
 ```
 
 ## Build
-Build the schematic again. Click the `✳️ Open Board` script. When KiCAD opens you should see two resistors on the board. 
+Build the schematic again. Click the `open_board` script. When KiCAD opens you should see two resistors on the board. 
 
 > [!TIP]
 > To see the changes in your code in KiCAD, use the `Revert` menu item in `File`. You may want to hotkey this function since you'll be using it a lot with typeCAD. 
@@ -103,7 +103,7 @@ typecad.named('vdiv').net(r1.pin(2), r2.pin(1));// [!code ++]
 When you build again, you'll see the connection we just made inside KiCAD.
 
 ## Power
-We need to add a power source to make something happen. A `Power` object represents a physical source of power in **type**CAD. Don't think of it like the VCC or GND symbol in a schematic, but more like a power regulator or battery as it would be in your PCB; it has pins and is an actual component. For this simple example, the pins will be the top of `R1` and the bottom of `R2`. In a more practical example, the pins of a `Power` object would be a voltage regulator, battery holder, or similar source. 
+We need to add a power source to make something happen. A `Power` object represents a physical source of power in **type**CAD. Don't think of it like the VCC or GND symbol in a schematic, but more like a power regulator or battery as it would be in your PCB; it has pins and is an actual component. For this simple example, the pins will be the top of `R1` and the bottom of `R2`. 
 
 ```ts
 import { PCB, Power } from "@typecad/typecad" // [!code ++]
@@ -119,4 +119,4 @@ typecad.named('vdiv').net(r1.pin(2), r2.pin(1));
 typecad.create(r1, r2);
 ```
 
-There won't be anything to see after this change from with KiCAD.
+There won't be anything to see after this change from with KiCAD, but the schematic will have a VCC, GND and power flags.

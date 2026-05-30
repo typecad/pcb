@@ -2,78 +2,77 @@
 A `Power` object is extra information that is used for:
 - ERC: by setting `Pin` types to `power_out` or `power_in`
 - voltage compatibility checks
+- automatic trace width calculation via `powerInfo`
 
-Another thing that is important to know is that `Power` is not the equivalent of a power or ground symbol on a schematic. A `Power` object represents a physical set of pins, not an abstract concept of power or ground. 
+A `Power` object represents a physical set of pins, not an abstract concept of power or ground.
+
+Options for the `Power` class are:
+- _power_ — pin that supplies power
+- _gnd_ — pin that supplies ground
+- _voltage_ — voltage of the power source
+- _current_ — current capacity
+- _direction_ — `'output'` (default) for power sources, `'input'` for power consumers
+
+## How Pin Types Are Set
+
+When a `Power` object is created, pin types are set automatically for ERC:
+
+- The `power` pin is set to `power_out` when `direction` is `'output'`, or `power_in` when `direction` is `'input'`.
+- The `gnd` pin is **always** set to `power_in`, regardless of direction.
+
+Additionally, `voltage` and `current` are propagated to the pins' `powerInfo` property, which is used by ERC for voltage compatibility checks and by the routing system for automatic trace width calculation.
 
 ## Output `Power`
 
-An output `Power` object defines a source of electrical power within your design.
+An output `Power` object defines a source of electrical power within your design. If `direction` is omitted, it defaults to `'output'`.
 
 ```ts
 import { Component, Power } from '@typecad/typecad';
 
 let bt1 = new Component({ footprint: 'Battery:BatteryHolder_Keystone_3008_1x2450' });
-// bt1 represents a coin cell battery holder.
-// The following Power object defines its output characteristics:
 let coin_cell = new Power({
-    power: bt1.pin(1), // Pin 1 is the positive terminal
-    gnd: bt1.pin(2),   // Pin 2 is the ground terminal
-    voltage: 3.7,      // Nominal voltage of 3.7V
-    direction: 'output' // Indicates this is a power source
+    power: bt1.pin(1),  // Pin 1 is the positive terminal → type set to 'power_out'
+    gnd: bt1.pin(2),    // Pin 2 is the ground terminal → type set to 'power_in'
+    voltage: 3.7,       // Nominal voltage
+    current: 0.5,       // Current capacity
+    direction: 'output' // This is a power source (default)
 });
 ```
 
-In this example, `coin_cell` configures `bt1` (a coin cell battery holder) as a power source.
-- It specifies `bt1.pin(1)` as the positive terminal and `bt1.pin(2)` as the ground.
-- It declares that this source provides a nominal 3.7 volts.
-- Because `direction` is set to `output`, typeCAD automatically sets the `type` of `bt1.pin(1)` and `bt1.pin(2)` to `power_out`. This is important for Electrical Rules Checking (ERC).
+In this example:
+- `bt1.pin(1)` gets `type: 'power_out'` and `powerInfo: { minimum_voltage: 3.7, maximum_voltage: 3.7, current: 0.5 }`
+- `bt1.pin(2)` gets `type: 'power_in'` and `powerInfo: { current: 0.5 }`
 
-### Handling `output` and `input` `Power` in Components
+### Shared Ground Pins
 
-Components like voltage regulators often have both power inputs and outputs. For instance, a voltage regulator takes an input voltage and produces a different output voltage.
-
-A common scenario is when the input and output sides of such a component share the same ground pin. If you define separate `Power` objects for the input and output, and both reference the same physical pin as ground, this can lead to ERC conflicts because a pin would be assigned as `power_out` (from the output `Power` object) and potentially `power_in` or another type (from the input `Power` object).
-
-To avoid such ERC errors for a shared ground pin, you can manually set the pin's type to `passive` after the `Power` objects have been defined:
+Components like voltage regulators often have both power inputs and outputs that share the same ground pin. Since the `gnd` pin is always set to `power_in` regardless of direction, this typically works without conflict. However, if you need to override the pin type for ERC purposes, you can set it manually:
 
 ```ts
-// Assuming U1 is a voltage regulator component
-// and U1.pin(2) is the shared ground pin.
-
+// U1 is a voltage regulator, pin 2 is shared ground
 let vin = new Power({ power: U1.pin(1), gnd: U1.pin(2), voltage: 5, direction: 'input' });
 let vout = new Power({ power: U1.pin(3), gnd: U1.pin(2), voltage: 3.3, direction: 'output' });
 
-// Manually set the shared ground pin to passive to avoid ERC conflicts
-U1.pin(2).type = 'passive';
+// Both Power objects set U1.pin(2) to 'power_in', so no conflict here.
+// If needed, override manually:
+// U1.pin(2).type = 'passive';
 ```
-
-This tells typeCAD that the pin is a common connection point not actively sourcing or sinking power in a way that conflicts with its dual role.
 
 ## Input `Power`
 
-Just as components can source power, they often need to receive it. An input `Power` object is used to specify the power requirements for a component or a part of your circuit.
-
-When creating reusable typeCAD packages (e.g., a module for a specific sensor that requires power), you can define a constructor parameter for a `Power` object. This allows users of your package to easily connect a suitable power source.
-
-Inside your package's code, you can then use the properties of this input `Power` object to make connections. For example, if `vin` is an input `Power` object passed to your component, and `U1` is an internal part that needs power:
+An input `Power` object specifies the power requirements for a component or sub-circuit. It is commonly passed into reusable packages so users can connect a suitable power source.
 
 ```ts
-// Assuming 'vin' is a Power object passed as a parameter (direction: 'input')
-// and U1 is a component within your design that needs power.
+// 'vin' is an input Power object passed as a parameter
+// U1 is a component within your design that needs power
 
-// Connect the power line from the input Power object to U1's VCC pin
 typecad.net(vin.power, U1.VCC);
-
-// Connect the ground line from the input Power object to U1's GND pin
 typecad.net(vin.gnd, U1.GND);
 ```
 
-By using `vin.power` and `vin.gnd`, you are connecting to the pins that were defined when the input `Power` object (`vin`) was created. This ensures that your component correctly receives power according to its design.
-
-If `direction` is set to `input`, typeCAD will automatically set the `type` of the associated pins to `power_in` for ERC purposes.
+When `direction` is `'input'`, the `power` pin is set to `power_in` and the `gnd` pin is also set to `power_in`.
 
 ### Voltage checks
-A package can check that the voltage levels coming in are correct as well. 
+A package can check that the voltage levels coming in are correct as well.
 
 ```ts
 if (vin.voltage != 3.3) {

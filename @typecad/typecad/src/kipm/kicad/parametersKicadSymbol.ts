@@ -1,3 +1,5 @@
+import type { EasyedaRawData } from '../types.js';
+
 function dedent(text: string) {
     const lines = text.split('\n');
 
@@ -186,16 +188,16 @@ export class KiSymbolInfo {
                     jlc_id,
                     y_low = 0,
                     y_high = 0,
-                }: Record<string, any>) {
-        this.name = name;
-        this.prefix = prefix;
-        this.package = pkg;
-        this.manufacturer = manufacturer;
-        this.datasheet = datasheet;
-        this.lcsc_id = lcsc_id;
-        this.jlc_id = jlc_id;
-        this.y_low = y_low;
-        this.y_high = y_high;
+                }: EasyedaRawData) {
+        this.name = name as string;
+        this.prefix = prefix as string;
+        this.package = pkg as string;
+        this.manufacturer = manufacturer as string;
+        this.datasheet = datasheet as string;
+        this.lcsc_id = lcsc_id as string;
+        this.jlc_id = jlc_id as string;
+        this.y_low = y_low as number;
+        this.y_high = y_high as number;
     }
 
     export_v5() {
@@ -356,15 +358,15 @@ export class KiSymbolPin {
     pos_x: number;
     pos_y: number;
 
-    constructor({ name, number, style, length, type, orientation, pos_x, pos_y }: Record<string, any>) {
-        this.name = name;
-        this.number = number;
-        this.style = style;
-        this.length = length;
-        this.type = type;
-        this.orientation = orientation;
-        this.pos_x = pos_x;
-        this.pos_y = pos_y;
+    constructor({ name, number, style, length, type, orientation, pos_x, pos_y }: EasyedaRawData) {
+        this.name = name as string;
+        this.number = number as string | number;
+        this.style = style as string;
+        this.length = length as number;
+        this.type = type as string;
+        this.orientation = orientation as string | number;
+        this.pos_x = pos_x as number;
+        this.pos_y = pos_y as number;
     }
 
     export_v5() {
@@ -401,11 +403,11 @@ export class KiSymbolRectangle {
     pos_x1: number;
     pos_y1: number;
 
-    constructor({ pos_x0 = 0, pos_y0 = 0, pos_x1 = 0, pos_y1 = 0 }: Record<string, any> = {}) {
-        this.pos_x0 = pos_x0;
-        this.pos_y0 = pos_y0;
-        this.pos_x1 = pos_x1;
-        this.pos_y1 = pos_y1;
+    constructor({ pos_x0 = 0, pos_y0 = 0, pos_x1 = 0, pos_y1 = 0 }: EasyedaRawData = {}) {
+        this.pos_x0 = pos_x0 as number;
+        this.pos_y0 = pos_y0 as number;
+        this.pos_x1 = pos_x1 as number;
+        this.pos_y1 = pos_y1 as number;
     }
 
     export_v5() {
@@ -431,7 +433,7 @@ export class KiSymbolPolygon {
     points_number: number;
     is_closed: boolean;
 
-    constructor({ points = [], points_number = 0, is_closed = false }: Record<string, any> = {}) {
+    constructor({ points = [], points_number = 0, is_closed = false }: { points?: number[][]; points_number?: number; is_closed?: boolean } = {}) {
         this.points = points;
         this.points_number = points_number;
         this.is_closed = is_closed;
@@ -468,11 +470,11 @@ export class KiSymbolCircle {
     radius: number;
     background_filling: boolean;
 
-    constructor({ pos_x = 0, pos_y = 0, radius = 0, background_filling = false }: Record<string, any> = {}) {
-        this.pos_x = pos_x;
-        this.pos_y = pos_y;
-        this.radius = radius;
-        this.background_filling = background_filling;
+    constructor({ pos_x = 0, pos_y = 0, radius = 0, background_filling = false }: EasyedaRawData = {}) {
+        this.pos_x = pos_x as number;
+        this.pos_y = pos_y as number;
+        this.radius = radius as number;
+        this.background_filling = background_filling as boolean;
     }
 
     export_v5() {
@@ -522,18 +524,18 @@ export class KiSymbolArc {
                     middle_y = 0,
                     end_x = 0,
                     end_y = 0,
-                }: Record<string, any> = {}) {
-        this.center_x = center_x;
-        this.center_y = center_y;
-        this.radius = radius;
-        this.angle_start = angle_start;
-        this.angle_end = angle_end;
-        this.start_x = start_x;
-        this.start_y = start_y;
-        this.middle_x = middle_x;
-        this.middle_y = middle_y;
-        this.end_x = end_x;
-        this.end_y = end_y;
+                }: EasyedaRawData = {}) {
+        this.center_x = center_x as number;
+        this.center_y = center_y as number;
+        this.radius = radius as number;
+        this.angle_start = angle_start as number;
+        this.angle_end = angle_end as number;
+        this.start_x = start_x as number;
+        this.start_y = start_y as number;
+        this.middle_x = middle_x as number;
+        this.middle_y = middle_y as number;
+        this.end_x = end_x as number;
+        this.end_y = end_y as number;
     }
 
     export_v5() {
@@ -568,7 +570,7 @@ export class KiSymbolBezier {
     points_number: number;
     is_closed: boolean;
 
-    constructor({ points = [], points_number = 0, is_closed = false }: Record<string, any> = {}) {
+    constructor({ points = [], points_number = 0, is_closed = false }: { points?: number[][]; points_number?: number; is_closed?: boolean } = {}) {
         this.points = points;
         this.points_number = points_number;
         this.is_closed = is_closed;
@@ -597,14 +599,16 @@ export class KiSymbolBezier {
     }
 }
 
+type KiSymbolExportable = KiSymbolInfo | KiSymbolPin | KiSymbolRectangle | KiSymbolPolygon | KiSymbolCircle | KiSymbolArc | KiSymbolBezier;
+
 export class KiSymbol {
-    info: any;
-    pins: any[];
-    rectangles: any[];
-    circles: any[];
-    arcs: any[];
-    polygons: any[];
-    beziers: any[];
+    info: KiSymbolInfo;
+    pins: KiSymbolPin[];
+    rectangles: KiSymbolRectangle[];
+    circles: KiSymbolCircle[];
+    arcs: KiSymbolArc[];
+    polygons: KiSymbolPolygon[];
+    beziers: KiSymbolBezier[];
 
     constructor({
                     info,
@@ -614,8 +618,16 @@ export class KiSymbol {
                     arcs = [],
                     polygons = [],
                     beziers = [],
-                }: Record<string, any> = {}) {
-        this.info = info;
+                }: {
+                    info?: KiSymbolInfo;
+                    pins?: KiSymbolPin[];
+                    rectangles?: KiSymbolRectangle[];
+                    circles?: KiSymbolCircle[];
+                    arcs?: KiSymbolArc[];
+                    polygons?: KiSymbolPolygon[];
+                    beziers?: KiSymbolBezier[];
+                } = {}) {
+        this.info = info!;
         this.pins = pins;
         this.rectangles = rectangles;
         this.circles = circles;
@@ -624,7 +636,7 @@ export class KiSymbol {
         this.beziers = beziers;
     }
 
-    export_handler(kicad_version: string) {
+    export_handler(kicad_version: string): Record<string, string | string[]> {
         if (this.pins.length > 0) {
             this.info.y_low = Math.min(...this.pins.map(pin => pin.pos_y));
             this.info.y_high = Math.max(...this.pins.map(pin => pin.pos_y));
@@ -633,30 +645,23 @@ export class KiSymbol {
             this.info.y_high = 0;
         }
 
-        const data: Record<string, any> = {};
-        for (const key in this) {
-            if (Object.prototype.hasOwnProperty.call(this, key)) {
-                const value = this[key];
-                if (Array.isArray(value)) {
-                    data[key] = value.map((item: any) =>
-                      typeof (item as any)[`export_v${kicad_version}`] === "function"
-                        ? (item as any)[`export_v${kicad_version}`]()
-                        : ""
-                    );
-                } else if (
-                  value &&
-                  typeof (value as any)[`export_v${kicad_version}`] === "function"
-                ) {
-                    data[key] = (value as any)[`export_v${kicad_version}`]();
-                }
-            }
-        }
+        const versionKey = kicad_version as '5' | '6';
+        const exportMethod = `export_v${versionKey}` as 'export_v5' | 'export_v6';
+
+        const data: Record<string, string | string[]> = {};
+        data.info = this.info[exportMethod]();
+        data.pins = this.pins.map(pin => pin[exportMethod]());
+        data.rectangles = this.rectangles.map(r => r[exportMethod]());
+        data.circles = this.circles.map(c => c[exportMethod]());
+        data.arcs = this.arcs.map(a => a[exportMethod]());
+        data.polygons = this.polygons.map(p => p[exportMethod]());
+        data.beziers = this.beziers.map(b => b[exportMethod]());
         return data;
     }
 
     export_v5() {
         const exportData = this.export_handler("5");
-        const sym_info = exportData.info;
+        const sym_info = exportData.info as string;
         const graphicItems = Object.keys(exportData)
           .filter((key) => key !== "info")
           .map((key) => exportData[key])
@@ -671,8 +676,8 @@ ENDDEF
 
     export_v6() {
         const exportData = this.export_handler("6");
-        const sym_info = exportData.info;
-        const sym_pins = exportData.pins;
+        const sym_info = exportData.info as string[];
+        const sym_pins = exportData.pins as string[];
         const graphicItems = Object.keys(exportData)
           .filter((key) => key !== "info" && key !== "pins")
           .map((key) => exportData[key])

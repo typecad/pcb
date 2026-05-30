@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { select, input } from '@inquirer/prompts';
+import type { CliArgs } from '../types.js';
 import { sanitize_name } from './package/kicad.js';
 import { create_package } from './package/typecad.js';
 import { create_component } from './component/typecad.js';
@@ -10,13 +10,35 @@ import {
   local_symbol_to_footprint,
   kicad_cli,
 } from './component/kicad.js';
-import { fileSelector } from 'inquirer-file-selector';
-import { convertEasyedaToKicad } from '../../kipm/easyeda2kicadCore.js';
 import chalk from 'chalk';
 import { basename } from 'node:path';
 import fs from 'node:fs';
-import { execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import path from 'node:path';
+import logger from '../../logging.js';
+
+type InquirerPrompts = typeof import('@inquirer/prompts');
+type FileSelector = typeof import('inquirer-file-selector');
+type EasyEdaConverter = typeof import('../../kipm/easyeda2kicadCore.js');
+
+let _inquirer: InquirerPrompts | undefined;
+let _fileSelector: FileSelector | undefined;
+let _easyeda: EasyEdaConverter | undefined;
+
+async function getInquirer() {
+  if (!_inquirer) _inquirer = await import('@inquirer/prompts');
+  return _inquirer;
+}
+
+async function getFileSelector() {
+  if (!_fileSelector) _fileSelector = await import('inquirer-file-selector');
+  return _fileSelector;
+}
+
+async function getEasyedaConverter() {
+  if (!_easyeda) _easyeda = await import('../../kipm/easyeda2kicadCore.js');
+  return _easyeda;
+}
 
 process.on('uncaughtException', (error) => {
   if (error instanceof Error && error.name === 'ExitPromptError') {
@@ -30,7 +52,7 @@ process.on('uncaughtException', (error) => {
  */
 function parseArguments() {
   const args = process.argv.slice(2);
-  const parsedArgs: Record<string, string | boolean | undefined> = {};
+  const parsedArgs: CliArgs = {};
   
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
@@ -68,7 +90,7 @@ function parseArguments() {
 /**
  * Check if all required arguments are provided for non-interactive mode
  */
-function hasAllRequiredArgs(args: Record<string, string | boolean | undefined>) {
+function hasAllRequiredArgs(args: CliArgs) {
   // Must have exactly one of empty or component
   const hasExactlyOneMode = (args.empty === true && args.component !== true) || 
                            (args.component === true && args.empty !== true);
@@ -110,38 +132,38 @@ function hasAllRequiredArgs(args: Record<string, string | boolean | undefined>) 
  * Show help information
  */
 function showHelp() {
-  console.log(chalk.white.bold('📦 typeCAD Add Package - Command Line Usage\n'));
-  console.log('Usage: node @typecad/add-package [options]\n');
-  console.log('Package Type Options (exactly one required):');
-  console.log('  --empty=true              Create an empty package');
-  console.log('  --component=true          Create a component package\n');
-  console.log('Required Parameters:');
-  console.log('  --name=<package_name>     Package name (required for both modes)\n');
-  console.log('Component Mode - Source Options (exactly one required):');
-  console.log('  --kicad=<value>           Use KiCAD library component');
-  console.log('  --local=<value>           Use local component (symbol and footprint names)');
-  console.log('  --jlcpcb=<value>          Use EasyEDA/JLCPCB component\n');
-  console.log('Required Parameters for KiCAD and Local modes:');
-  console.log('  --symbol=<library:symbol> Symbol name in format library:symbol_name');
-  console.log('  --footprint=<library:footprint> Footprint name in format library:footprint_name\n');
-  console.log('Required Parameters for JLCPCB mode:');
-  console.log('  --c=<component_number>    Component number starting with \'C\' (e.g., C3217148)\n');
-  console.log('Optional Parameters:');
-  console.log('  --folder=<path>           Output directory (default: current directory)');
-  console.log('  --help                    Show this help message\n');
-  console.log('Examples:');
-  console.log('  # Create empty package');
-  console.log('  node @typecad/add-package --empty=true --name=my_package');
-  console.log('  node @typecad/add-package --empty=true --name=my_package --folder=./packages\n');
-  console.log('  # Create component package from KiCAD');
-  console.log('  node @typecad/add-package --component=true --name=attiny_package --kicad=true --symbol=MCU_Microchip_ATtiny:ATtiny3227-M --footprint=Package_DFN_QFN:DFN-20-1EP_3x4mm_P0.5mm_EP1.65x3.1mm\n');
-  console.log('  # Create component package from JLCPCB');
-  console.log('  node @typecad/add-package --component=true --name=resistor_package --jlcpcb=true --c=C3217148\n');
-  console.log('  # Create component package from local files');
-  console.log('  node @typecad/add-package --component=true --name=custom_package --local=true --symbol=MyLib:MySymbol --footprint=MyLib:MyFootprint');
+  logger.log(chalk.white.bold('📦 typeCAD Add Package - Command Line Usage\n'));
+  logger.log('Usage: node @typecad/add-package [options]\n');
+  logger.log('Package Type Options (exactly one required):');
+  logger.log('  --empty=true              Create an empty package');
+  logger.log('  --component=true          Create a component package\n');
+  logger.log('Required Parameters:');
+  logger.log('  --name=<package_name>     Package name (required for both modes)\n');
+  logger.log('Component Mode - Source Options (exactly one required):');
+  logger.log('  --kicad=<value>           Use KiCAD library component');
+  logger.log('  --local=<value>           Use local component (symbol and footprint names)');
+  logger.log('  --jlcpcb=<value>          Use EasyEDA/JLCPCB component\n');
+  logger.log('Required Parameters for KiCAD and Local modes:');
+  logger.log('  --symbol=<library:symbol> Symbol name in format library:symbol_name');
+  logger.log('  --footprint=<library:footprint> Footprint name in format library:footprint_name\n');
+  logger.log('Required Parameters for JLCPCB mode:');
+  logger.log('  --c=<component_number>    Component number starting with \'C\' (e.g., C3217148)\n');
+  logger.log('Optional Parameters:');
+  logger.log('  --folder=<path>           Output directory (default: current directory)');
+  logger.log('  --help                    Show this help message\n');
+  logger.log('Examples:');
+  logger.log('  # Create empty package');
+  logger.log('  node @typecad/add-package --empty=true --name=my_package');
+  logger.log('  node @typecad/add-package --empty=true --name=my_package --folder=./packages\n');
+  logger.log('  # Create component package from KiCAD');
+  logger.log('  node @typecad/add-package --component=true --name=attiny_package --kicad=true --symbol=MCU_Microchip_ATtiny:ATtiny3227-M --footprint=Package_DFN_QFN:DFN-20-1EP_3x4mm_P0.5mm_EP1.65x3.1mm\n');
+  logger.log('  # Create component package from JLCPCB');
+  logger.log('  node @typecad/add-package --component=true --name=resistor_package --jlcpcb=true --c=C3217148\n');
+  logger.log('  # Create component package from local files');
+  logger.log('  node @typecad/add-package --component=true --name=custom_package --local=true --symbol=MyLib:MySymbol --footprint=MyLib:MyFootprint');
 }
 
-async function main(preparsedArgs?: Record<string, any>) {
+async function main(preparsedArgs?: CliArgs) {
   let entered_package_name = '';
   let footprint_recommendation = '';
   let entered_footprint = '';
@@ -160,9 +182,9 @@ async function main(preparsedArgs?: Record<string, any>) {
   const isNonInteractive = hasAllRequiredArgs(cmdArgs);
   
   // Determine folder - if we have command line args, don't use process.argv[2] as folder
-  const folderPath = cmdArgs.folder || (preparsedArgs ? './src' : (isNonInteractive ? './src' : process.argv[2] || './src'));
+  const folderPath = (typeof cmdArgs.folder === 'string' ? cmdArgs.folder : undefined) || (preparsedArgs ? './src' : (isNonInteractive ? './src' : process.argv[2] || './src'));
   
-  console.log('📦 ' + chalk.whiteBright.bold('type') + 'CAD Create Package');
+  logger.log('📦 ' + chalk.whiteBright.bold('type') + 'CAD Create Package');
 
   let answer;
   if (isNonInteractive) {
@@ -174,7 +196,7 @@ async function main(preparsedArgs?: Record<string, any>) {
     }
   } else {
     // Interactive mode: show selection prompt
-    answer = await select({
+    answer = await (await getInquirer()).select({
       message: 'Package type?',
       choices: [
         {
@@ -194,17 +216,17 @@ async function main(preparsedArgs?: Record<string, any>) {
   if (answer == 'empty_package') {
     if (isNonInteractive) {
       // Non-interactive mode: use provided values
-      entered_package_name = cmdArgs.name;
+      entered_package_name = cmdArgs.name as string;
       
-      console.log(chalk.green('Creating empty package with the following settings:'));
-      console.log(`  Name: ${entered_package_name}`);
-      console.log(`  Folder: ${folderPath}`);
-      console.log();
+      logger.log(chalk.green('Creating empty package with the following settings:'));
+      logger.log(`  Name: ${entered_package_name}`);
+      logger.log(`  Folder: ${folderPath}`);
+      logger.log();
     } else {
       // Interactive/hybrid mode: use args as defaults
-      entered_package_name = await input({
+      entered_package_name = await (await getInquirer()).input({
         message: 'Package name?',
-        default: cmdArgs.name || 'typecad_package',
+        default: (cmdArgs.name as string) || 'typecad_package',
       });
     }
 
@@ -218,29 +240,29 @@ async function main(preparsedArgs?: Record<string, any>) {
   if (answer == 'component_package') {
     if (isNonInteractive) {
       // Non-interactive mode: use provided values
-      entered_package_name = cmdArgs.name;
+      entered_package_name = cmdArgs.name as string;
       
-      console.log(chalk.green('Creating component package with the following settings:'));
-      console.log(`  Name: ${entered_package_name}`);
-      console.log(`  Folder: ${folderPath}`);
+      logger.log(chalk.green('Creating component package with the following settings:'));
+      logger.log(`  Name: ${entered_package_name}`);
+      logger.log(`  Folder: ${folderPath}`);
       if (cmdArgs.kicad) {
-        console.log(`  Source: KiCAD`);
-        console.log(`  Symbol: ${cmdArgs.symbol}`);
-        console.log(`  Footprint: ${cmdArgs.footprint}`);
+        logger.log(`  Source: KiCAD`);
+        logger.log(`  Symbol: ${cmdArgs.symbol}`);
+        logger.log(`  Footprint: ${cmdArgs.footprint}`);
       } else if (cmdArgs.local) {
-        console.log(`  Source: Local`);
-        console.log(`  Symbol: ${cmdArgs.symbol}`);
-        console.log(`  Footprint: ${cmdArgs.footprint}`);
+        logger.log(`  Source: Local`);
+        logger.log(`  Symbol: ${cmdArgs.symbol}`);
+        logger.log(`  Footprint: ${cmdArgs.footprint}`);
       } else if (cmdArgs.jlcpcb) {
-        console.log(`  Source: EasyEDA/JLCPCB`);
-        console.log(`  Component: ${cmdArgs.c}`);
+        logger.log(`  Source: EasyEDA/JLCPCB`);
+        logger.log(`  Component: ${cmdArgs.c}`);
       }
-      console.log();
+      logger.log();
     } else {
       // Interactive/hybrid mode: use args as defaults
-      entered_package_name = await input({
+      entered_package_name = await (await getInquirer()).input({
         message: 'Package name?',
-        default: cmdArgs.name || 'typecad_package',
+        default: (cmdArgs.name as string) || 'typecad_package',
       });
     }
 
@@ -256,7 +278,7 @@ async function main(preparsedArgs?: Record<string, any>) {
       }
     } else {
       // Interactive mode: show selection prompt
-      componentSource = await select({
+      componentSource = await (await getInquirer()).select({
         message: 'Component source?',
         choices: [
           {
@@ -281,31 +303,31 @@ async function main(preparsedArgs?: Record<string, any>) {
     if (componentSource == 'kicad') {
       if (isNonInteractive) {
         // Non-interactive mode: use provided values
-        entered_symbol = cmdArgs.symbol;
-        entered_footprint = cmdArgs.footprint;
+        entered_symbol = cmdArgs.symbol as string;
+        entered_footprint = cmdArgs.footprint as string;
         
         // Validate symbol format
         if (!entered_symbol.includes(':')) {
-          console.error(chalk.red(`Error: Invalid symbol format. Expected 'symbol_library:symbol_name', got '${entered_symbol}'`));
+          logger.error(chalk.red(`Error: Invalid symbol format. Expected 'symbol_library:symbol_name', got '${entered_symbol}'`));
           return;
         }
         
         // Validate footprint format
         if (!entered_footprint.includes(':')) {
-          console.error(chalk.red(`Error: Invalid footprint format. Expected 'footprint_library:footprint_name', got '${entered_footprint}'`));
+          logger.error(chalk.red(`Error: Invalid footprint format. Expected 'footprint_library:footprint_name', got '${entered_footprint}'`));
           return;
         }
         
         footprint_recommendation = kicad_symbol(entered_symbol, '')!;
         if (!footprint_recommendation) {
-          console.error(chalk.red(`Error: Invalid KiCAD library symbol '${entered_symbol}'`));
+          logger.error(chalk.red(`Error: Invalid KiCAD library symbol '${entered_symbol}'`));
           return;
         }
       } else {
         // Interactive mode: show prompts with argument defaults
-        entered_symbol = await input({
+        entered_symbol = await (await getInquirer()).input({
           message: 'Symbol name?',
-          default: cmdArgs.symbol || 'MCU_Microchip_ATtiny:ATtiny3227-M',
+          default: (cmdArgs.symbol as string) || 'MCU_Microchip_ATtiny:ATtiny3227-M',
           validate: (entered_symbol) => {
             if (!entered_symbol.includes(':')) {
               return `Not a valid symbol. It needs to be in this format 'symbol_library:symbol_name'`;
@@ -318,9 +340,9 @@ async function main(preparsedArgs?: Record<string, any>) {
           },
         });
 
-        entered_footprint = await input({
+        entered_footprint = await (await getInquirer()).input({
           message: 'Footprint name?',
-          default: cmdArgs.footprint || footprint_recommendation,
+          default: (cmdArgs.footprint as string) || footprint_recommendation,
           validate: (symbol) => {
             if (!symbol.includes(':')) {
               return `Not a valid footprint. It needs to be in this format 'footprint_library:footprint_name'`;
@@ -349,18 +371,18 @@ async function main(preparsedArgs?: Record<string, any>) {
     } else if (componentSource == 'local') {
       if (isNonInteractive) {
         // Non-interactive mode: use provided values
-        entered_symbol = cmdArgs.symbol;
-        entered_footprint = cmdArgs.footprint;
+        entered_symbol = cmdArgs.symbol as string;
+        entered_footprint = cmdArgs.footprint as string;
         
         // Validate symbol format
         if (!entered_symbol.includes(':')) {
-          console.error(chalk.red(`Error: Invalid symbol format. Expected 'library:symbol_name', got '${entered_symbol}'`));
+          logger.error(chalk.red(`Error: Invalid symbol format. Expected 'library:symbol_name', got '${entered_symbol}'`));
           return;
         }
         
         // Validate footprint format
         if (!entered_footprint.includes(':')) {
-          console.error(chalk.red(`Error: Invalid footprint format. Expected 'library:footprint_name', got '${entered_footprint}'`));
+          logger.error(chalk.red(`Error: Invalid footprint format. Expected 'library:footprint_name', got '${entered_footprint}'`));
           return;
         }
         
@@ -381,7 +403,7 @@ async function main(preparsedArgs?: Record<string, any>) {
         return;
       }
       
-      const symbolPath = (await fileSelector({
+      const symbolPath = (await (await getFileSelector()).fileSelector({
         message: 'Select a KiCAD Symbol file (kicad_sym):',
         filter: (file) => file.isDirectory || file.path.includes('.kicad_sym'),
         showExcluded: false,
@@ -390,7 +412,7 @@ async function main(preparsedArgs?: Record<string, any>) {
       // if there are more than one symbols, pick, else, select the one available
       let _found_symbols = return_list_of_symbols(symbolPath);
       if (_found_symbols.length > 1) {
-        _chosen_symbol = await select({
+        _chosen_symbol = await (await getInquirer()).select({
           message: 'Select a symbol from in the file',
           choices: _found_symbols,
         });
@@ -399,7 +421,7 @@ async function main(preparsedArgs?: Record<string, any>) {
       }
 
       let _footprint = local_symbol_to_footprint(symbolPath);
-      const footprintPath = (await fileSelector({
+      const footprintPath = (await (await getFileSelector()).fileSelector({
         message: `The symbol file says the footprint should be ${_footprint}. What .kicad_mod is it located in?:`,
         filter: (file) => file.isDirectory || file.path.includes('.kicad_mod'),
         showExcluded: false,
@@ -426,18 +448,18 @@ async function main(preparsedArgs?: Record<string, any>) {
       
       if (isNonInteractive) {
         // Non-interactive mode: use provided value
-        c_component = cmdArgs.c;
+        c_component = cmdArgs.c as string;
         
         // Validate component number format
         if (!pattern.test(c_component)) {
-          console.error(chalk.red(`Error: Invalid component number format. Expected 'C' followed by digits, got '${c_component}'`));
+          logger.error(chalk.red(`Error: Invalid component number format. Expected 'C' followed by digits, got '${c_component}'`));
           return;
         }
       } else {
         // Interactive mode: show prompt with argument default
-        c_component = await input({
+        c_component = await (await getInquirer()).input({
           message: 'Component #?',
-          default: cmdArgs.c || 'C3217148',
+          default: (cmdArgs.c as string) || 'C3217148',
           validate: (c_component) => {
             if (!pattern.test(c_component)) {
               return `Not a valid component number: must start with 'C'`;
@@ -449,12 +471,12 @@ async function main(preparsedArgs?: Record<string, any>) {
 
       let convertedComponent;
       try {
-        convertedComponent = await convertEasyedaToKicad(c_component, {
+        convertedComponent = await (await getEasyedaConverter()).convertEasyedaToKicad(c_component, {
           footprintLibName: 'lib',
           kicadVersion: 'v6_99', // We always use v6 format in this context
         });
       } catch (error) {
-        console.error('Error converting EasyEDA component to KiCAD:', error);
+        logger.error('Error converting EasyEDA component to KiCAD:', error);
         return;
       }
 
@@ -472,13 +494,11 @@ async function main(preparsedArgs?: Record<string, any>) {
         { encoding: 'utf-8' }
       );
       try {
-        execSync(
-          `"${kicad_cli()}" sym upgrade ./${
-            convertedComponent.symbol.name
-          }.pretty/${convertedComponent.symbol.name}.kicad_sym`
-        );
+        const cli = kicad_cli();
+        if (!cli) throw new Error('kicad-cli not found');
+        execFileSync(cli, ['sym', 'upgrade', `./${convertedComponent.symbol.name}.pretty/${convertedComponent.symbol.name}.kicad_sym`], { stdio: 'pipe' });
       } catch (e) {
-        console.error(`Failed executing`, e);
+        logger.error(`Failed executing kicad-cli sym upgrade`, e);
       }
 
       // write footprint file, remove KIPRJMOD to fix 3d model path and upgrade it
@@ -490,14 +510,12 @@ async function main(preparsedArgs?: Record<string, any>) {
         }
       );
       try {
-        execSync(
-          `"${kicad_cli()}" fp upgrade ./${
-            convertedComponent.symbol.name
-          }.pretty/`
-        );
+        const cli = kicad_cli();
+        if (!cli) throw new Error('kicad-cli not found');
+        execFileSync(cli, ['fp', 'upgrade', `./${convertedComponent.symbol.name}.pretty/`], { stdio: 'pipe' });
       } catch (e) {
-        console.error(
-          `Failed executing "${kicad_cli()}" fp upgrade ./${
+        logger.error(
+          `Failed executing kicad-cli fp upgrade ./${
             convertedComponent.symbol.name
           }.pretty/`,
           e
@@ -567,7 +585,7 @@ async function main(preparsedArgs?: Record<string, any>) {
           force: true,
         });
       } catch (error) {
-        console.error(`Error cleaning up temporary folder: ${(error as Error).message}`);
+        logger.error(`Error cleaning up temporary folder: ${(error as Error).message}`);
       }
     }
   }

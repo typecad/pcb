@@ -1,6 +1,7 @@
 import { ComponentRecord, ComponentScore, MatchDetail, ParsedParameters } from '../types/index.js';
 import { FuzzyScorer } from '../interfaces/FuzzyScorer.js';
 import { isFuzzyMatch, MANUFACTURER_VARIATIONS } from './scoring_utils.js';
+import logger from '../../logging.js';
 
 /**
  * Enhanced scoring system with advanced matching capabilities
@@ -205,7 +206,7 @@ export class EnhancedScoringSystem implements FuzzyScorer {
         searchTerms = extraData.searchTerms.map((term: string) => term.toLowerCase());
       }
     } catch (error) {
-      // If parsing fails, continue without searchTerms
+      logger.debug('EnhancedScoringSystem: searchTerms parse failed', error);
     }
     
     // Check each keyword for a match
@@ -606,7 +607,7 @@ export class EnhancedScoringSystem implements FuzzyScorer {
         library = extraData.library.toLowerCase();
       }
     } catch (error) {
-      // If parsing fails, continue without library info
+      logger.debug('EnhancedScoringSystem: library info parse failed in type scoring', error);
     }
     
     // First, check for negative matches (components that contain the word but are NOT that type)
@@ -764,7 +765,7 @@ export class EnhancedScoringSystem implements FuzzyScorer {
         library = extraData.library.toLowerCase();
       }
     } catch (error) {
-      // If parsing fails, continue without library info
+      logger.debug('EnhancedScoringSystem: library info parse failed in package scoring', error);
     }
     
     // Bonus for Device library components (basic components)

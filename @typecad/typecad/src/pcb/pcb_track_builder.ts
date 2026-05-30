@@ -5,6 +5,7 @@ import logger from '../logging.js';
 import { RoutingError } from '../errors.js';
 import { calculateMinTraceWidth, calculateMinViaSize as calculateMinimumViaSize } from './pcb_routing_calculations.js';
 import { getCallSite } from '../utils/stack_trace.js';
+import { validateFinite, validateNonNegative } from '../utils/numeric_validation.js';
 
 export class TrackBuilder {
     private pcb: IPcbBoardContext;
@@ -58,6 +59,10 @@ export class TrackBuilder {
             throw new RoutingError(`'from()' must be called before 'to()'${formatCallSite(this.getCallSite())}`);
         }
 
+        validateFinite(endPos.x, 'endPos.x');
+        validateFinite(endPos.y, 'endPos.y');
+        if (endPos.width !== undefined) validateNonNegative(endPos.width, 'endPos.width');
+
         const targetLayer = endPos.layer ?? this.currentLayer;
         const targetWidth = endPos.width ?? this.currentWidth;
 
@@ -80,8 +85,7 @@ export class TrackBuilder {
             const roundedTargetWidth = Math.round(targetWidth * 1000) / 1000;
             if (roundedTargetWidth < roundedMinWidth) {
                 const error = `Track width ${roundedTargetWidth}mm is too narrow for ${this._powerInfo.current}A current on ${targetLayer}. Minimum width should be ${roundedMinWidth.toFixed(3)}mm.${formatCallSite(this.getCallSite())}`;
-                logger.error(`[TrackBuilder] ERROR: ${error}`);
-                // throw new Error(error);
+                throw new RoutingError(error);
             }
         }
 
@@ -106,7 +110,7 @@ export class TrackBuilder {
                 try {
                     logger.debug(`[TrackBuilder][DEBUG] Staged track: uuid=${persistentTrackUuid}, from=(${this.currentPosition.x},${this.currentPosition.y}) -> (${endPos.x},${endPos.y}), layer=${targetLayer}, width=${targetWidth}, net=${this._net}`);
                 } catch (e) {
-                    // Fallback: silent
+                    logger.debug('[TrackBuilder][DEBUG] debug logging failed', e);
                 }
             }
 

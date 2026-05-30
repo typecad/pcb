@@ -13,24 +13,26 @@ import {
 import { createFootprintNode } from './pcb_footprint.js';
 import { mergeNets } from './pcb_net_merger.js';
 import { parseExistingBoard, insertNetsIntoBoardContents, processExistingFootprints } from './pcb_existing_board.js';
+import { getCallSite } from '../utils/stack_trace.js';
 import { renderVias, renderOutlinesAndTracks, renderGraphics, renderZones, renderKeepoutZones, serializeAndWriteBoard } from './pcb_board_serializer.js';
 import { IPcbBoardContext } from './pcb_board_context.js';
 import { getErrorMessage } from './pcb_utils.js';
 import { reportError } from '../utils/error_reporter.js';
+import { schematic } from '../schematic_visualizer.js';
 
 function buildComponentMaps(pcb: IPcbBoardContext): {
     componentMap: Map<string, Component>;
     viaMap: Map<string, IVia>;
 } {
     const componentMap = new Map<string, Component>();
-    pcb.components.forEach((comp: Component) => {
+    pcb.state.components.forEach((comp: Component) => {
         if (!comp.dnp && comp.uuid && comp.via === false) {
             componentMap.set(comp.uuid, comp);
         }
     });
 
     const viaMap = new Map<string, IVia>();
-    pcb.components.forEach((comp: Component) => {
+    pcb.state.components.forEach((comp: Component) => {
         if (comp.via === true && comp.uuid && comp.viaData) {
             const viaDataFromComponent = { ...comp.viaData };
             if (comp.pcb && typeof comp.pcb.x === 'number' && typeof comp.pcb.y === 'number') {
@@ -49,7 +51,7 @@ function collectBoardComponents(
     components: Component[]
 ): void {
     const viaComponents: Component[] = [];
-    pcb.components.forEach((comp: Component) => {
+    pcb.state.components.forEach((comp: Component) => {
         if (comp.via === true) viaComponents.push(comp);
     });
 
@@ -60,7 +62,7 @@ function collectBoardComponents(
         if (component.dnp !== true) pcb.state.components.push(component);
     }
 
-    pcb.stagedComponents.forEach((stagedComponent: Component) => {
+    pcb.state.stagedComponents.forEach((stagedComponent: Component) => {
         if (stagedComponent.dnp !== true) pcb.state.components.push(stagedComponent);
     });
 
@@ -70,11 +72,11 @@ function collectBoardComponents(
 }
 
 function separateOutlinesAndTracks(pcb: IPcbBoardContext): void {
-    logger.debug(`[BoardCreation][DEBUG] Including staged outlines: stagedOutlines=${pcb.stagedOutlines.length}, outlines_public(before)=${pcb.outlines_public.length}`);
-    pcb.outlines_public.push(...pcb.stagedOutlines);
-    logger.debug(`[BoardCreation][DEBUG] outlines_public(after)=${pcb.outlines_public.length}`);
+    logger.debug(`[BoardCreation][DEBUG] Including staged outlines: stagedOutlines=${pcb.state.stagedOutlines.length}, outlines_public(before)=${pcb.state.outlines.length}`);
+    pcb.state.outlines.push(...pcb.state.stagedOutlines);
+    logger.debug(`[BoardCreation][DEBUG] outlines_public(after)=${pcb.state.outlines.length}`);
 
-    pcb.outlines = pcb.outlines_public.filter((outline: IOutline) => {
+    pcb.outlines = pcb.state.outlines.filter((outline: IOutline) => {
         return outline.elements.some((element: OutlineElement) => {
             if (element.type === 'arc') return true;
             if (element.type === 'line') {
@@ -85,7 +87,7 @@ function separateOutlinesAndTracks(pcb: IPcbBoardContext): void {
         });
     });
 
-    pcb.tracks = pcb.outlines_public.filter((outline: IOutline) => {
+    pcb.tracks = pcb.state.outlines.filter((outline: IOutline) => {
         return outline.elements.some((element: OutlineElement) => {
             if (element.type === 'line') {
                 const isCopperLayer = /\.Cu$/.test((element as IGrLine).layer);
@@ -104,14 +106,15 @@ export function createBoard(
     const trackBuilders: TrackBuilder[] = [];
 
     items.forEach(item => {
-        if (item && typeof item === 'object' && 'reference' in item) {
+        if (item instanceof Component) {
             components.push(item);
         } else if (item instanceof TrackBuilder) {
             trackBuilders.push(item);
         }
     });
 
-    pcb.Schematic!.create(...components);
+    pcb.schematic!.create(...components);
+    schematic(pcb.schematic!);
     collectBoardComponents(pcb, items, components);
     separateOutlinesAndTracks(pcb);
 
@@ -127,8 +130,8 @@ export function createBoard(
     const { boardContents, boardNetNameToCodeMap, componentMap: updatedComponentMap } = parseExistingBoard(pcb, headerItems, componentMap);
 
     const { allNets, boardNetNameToCodeMap: finalNetMap } = mergeNets(
-        pcb.Schematic,
-        pcb.Schematic?.Nodes,
+        pcb.schematic,
+        pcb.schematic?.nodes,
         boardContents,
         viaMap
     );
@@ -139,12 +142,12 @@ export function createBoard(
 
     const finalBoardContents = insertNetsIntoBoardContents(boardContents, allNets);
 
-    pcb.groups.forEach((groupString: string) => {
+    pcb.state.groups.forEach((groupString: string) => {
         try {
             const groupNode = parse(groupString) as SExpr[];
             if (groupNode) finalBoardContents.push(groupNode);
         } catch (e: unknown) {
-            const callSite = pcb.getCallSite();
+            const callSite = getCallSite();
             reportError(`Failed to parse group string: ${getErrorMessage(e)}`, {
                 reference: 'Group',
                 sourceInfo: callSite ? { file: callSite.file, line: callSite.line } : undefined
@@ -153,7 +156,7 @@ export function createBoard(
     });
     pcb.state.groups = [];
 
-    processExistingFootprints(pcb.existingBoardElements, pcb, updatedComponentMap, boardNetNameToCodeMap, finalBoardContents);
+    processExistingFootprints(pcb.state.existingBoardElements, pcb, updatedComponentMap, boardNetNameToCodeMap, finalBoardContents);
 
     updatedComponentMap.forEach(component => {
         try {
@@ -165,10 +168,10 @@ export function createBoard(
     });
 
     renderVias(viaMap, pcb, finalNetMap, finalBoardContents);
-    renderOutlinesAndTracks(pcb.outlines_public, pcb, finalNetMap, finalBoardContents);
+    renderOutlinesAndTracks(pcb.state.outlines, pcb, finalNetMap, finalBoardContents);
     renderGraphics(pcb, finalBoardContents);
-    renderZones(pcb.zones, pcb, finalNetMap, finalBoardContents);
-    renderKeepoutZones(pcb.keepoutZones, finalBoardContents);
+    renderZones(pcb.state.zones, pcb, finalNetMap, finalBoardContents);
+    renderKeepoutZones(pcb.state.keepoutZones, finalBoardContents);
 
     serializeAndWriteBoard(pcb, finalBoardContents, version);
 }

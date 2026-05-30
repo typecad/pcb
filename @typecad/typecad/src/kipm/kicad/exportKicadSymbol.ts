@@ -14,6 +14,7 @@ import {
 import { SvgPathEllipticalArc, SvgPathMoveTo } from "../easyeda/svgPathParser.js";
 import { getMiddleArcPos } from "../arcUtils.js";
 import { computeArc } from "./exportKicadFootprint.js";
+import logger from '../../logging.js';
 import {
     KiPinType,
     KiPinStyle,
@@ -22,6 +23,7 @@ import {
     KiSymbolCircle,
     KiSymbolArc,
     KiSymbolPolygon,
+    KiSymbolBezier,
     KiSymbolInfo,
     KiSymbol,
     KicadVersion
@@ -35,19 +37,19 @@ const eePinTypeToKiPinType = {
     [EasyedaPinType.power]: KiPinType.power_in,
 };
 
-function pxToMil(dim: any) {
+function pxToMil(dim: number) {
     return Math.floor(10 * dim);
 }
 
-function pxToMm(dim: any) {
+function pxToMm(dim: number) {
     return 10.0 * dim * 0.0254;
 }
 
-function convertEePins(eePins: any, eeBbox: any, kicadVersion: any) {
+function convertEePins(eePins: EeSymbolPin[], eeBbox: EeSymbolBbox, kicadVersion: string) {
     const toKi = kicadVersion === KicadVersion.v5 ? pxToMil : pxToMm;
-    const kicadPins: any[] = [];
+    const kicadPins: KiSymbolPin[] = [];
 
-    eePins.forEach((eePin: any) => {
+    eePins.forEach((eePin: EeSymbolPin) => {
         const pathParts = eePin.pin_path.path.split("h");
         const pinLength = Math.abs(Math.round(parseFloat(pathParts[pathParts.length - 1])));
 
@@ -58,8 +60,8 @@ function convertEePins(eePins: any, eeBbox: any, kicadVersion: any) {
             length: toKi(pinLength),
             type: eePinTypeToKiPinType[eePin.settings.type as keyof typeof eePinTypeToKiPinType],
             orientation: eePin.settings.rotation,
-            pos_x: toKi(parseInt(eePin.settings.pos_x) - parseInt(eeBbox.x)),
-            pos_y: -toKi(parseInt(eePin.settings.pos_y) - parseInt(eeBbox.y)),
+            pos_x: toKi(parseInt(String(eePin.settings.pos_x)) - parseInt(String(eeBbox.x))),
+            pos_y: -toKi(parseInt(String(eePin.settings.pos_y)) - parseInt(String(eeBbox.y))),
         });
 
         if (+eePin.dot.is_displayed && +eePin.clock.is_displayed) {
@@ -76,17 +78,17 @@ function convertEePins(eePins: any, eeBbox: any, kicadVersion: any) {
     return kicadPins;
 }
 
-function convertEeRectangles(eeRectangles: any, eeBbox: any, kicadVersion: any) {
+function convertEeRectangles(eeRectangles: EeSymbolRectangle[], eeBbox: EeSymbolBbox, kicadVersion: string) {
     const toKi = kicadVersion === KicadVersion.v5 ? pxToMil : pxToMm;
-    const kicadRectangles: any[] = [];
+    const kicadRectangles: KiSymbolRectangle[] = [];
 
-    eeRectangles.forEach((eeRect: any) => {
+    eeRectangles.forEach((eeRect: EeSymbolRectangle) => {
         const kiRect = new KiSymbolRectangle({
-            pos_x0: toKi(parseInt(eeRect.pos_x) - parseInt(eeBbox.x)),
-            pos_y0: -toKi(parseInt(eeRect.pos_y) - parseInt(eeBbox.y)),
+            pos_x0: toKi(parseInt(String(eeRect.pos_x)) - parseInt(String(eeBbox.x))),
+            pos_y0: -toKi(parseInt(String(eeRect.pos_y)) - parseInt(String(eeBbox.y))),
         });
-        kiRect.pos_x1 = toKi(parseInt(eeRect.width)) + kiRect.pos_x0;
-        kiRect.pos_y1 = -toKi(parseInt(eeRect.height)) + kiRect.pos_y0;
+        kiRect.pos_x1 = toKi(parseInt(String(eeRect.width))) + kiRect.pos_x0;
+        kiRect.pos_y1 = -toKi(parseInt(String(eeRect.height))) + kiRect.pos_y0;
 
         kicadRectangles.push(kiRect);
     });
@@ -94,63 +96,67 @@ function convertEeRectangles(eeRectangles: any, eeBbox: any, kicadVersion: any) 
     return kicadRectangles;
 }
 
-function convertEeCircles(eeCircles: any, eeBbox: any, kicadVersion: any) {
+function convertEeCircles(eeCircles: EeSymbolCircle[], eeBbox: EeSymbolBbox, kicadVersion: string) {
     const toKi = kicadVersion === KicadVersion.v5 ? pxToMil : pxToMm;
 
-    return eeCircles.map((eeCircle: any) => new KiSymbolCircle({
-        pos_x: toKi(parseInt(eeCircle.center_x) - parseInt(eeBbox.x)),
-        pos_y: -toKi(parseInt(eeCircle.center_y) - parseInt(eeBbox.y)),
-        radius: toKi(eeCircle.radius),
+    return eeCircles.map((eeCircle: EeSymbolCircle) => new KiSymbolCircle({
+        pos_x: toKi(parseInt(String(eeCircle.center_x)) - parseInt(String(eeBbox.x))),
+        pos_y: -toKi(parseInt(String(eeCircle.center_y)) - parseInt(String(eeBbox.y))),
+        radius: toKi(Number(eeCircle.radius)),
         background_filling: eeCircle.fill_color,
     }));
 }
 
-function convertEeEllipses(eeEllipses: any, eeBbox: any, kicadVersion: any) {
+function convertEeEllipses(eeEllipses: EeSymbolEllipse[], eeBbox: EeSymbolBbox, kicadVersion: string) {
     const toKi = kicadVersion === KicadVersion.v5 ? pxToMil : pxToMm;
 
     return eeEllipses
-        .filter((ellipse: any) => ellipse.radius_x === ellipse.radius_y)
-        .map((ellipse: any) => new KiSymbolCircle({
-            pos_x: toKi(parseInt(ellipse.center_x) - parseInt(eeBbox.x)),
-            pos_y: -toKi(parseInt(ellipse.center_y) - parseInt(eeBbox.y)),
-            radius: toKi(ellipse.radius_x),
+        .filter((ellipse: EeSymbolEllipse) => ellipse.radius_x === ellipse.radius_y)
+        .map((ellipse: EeSymbolEllipse) => new KiSymbolCircle({
+            pos_x: toKi(parseInt(String(ellipse.center_x)) - parseInt(String(eeBbox.x))),
+            pos_y: -toKi(parseInt(String(ellipse.center_y)) - parseInt(String(eeBbox.y))),
+            radius: toKi(Number(ellipse.radius_x)),
         }));
 }
 
-function convertEeArcs(eeArcs: any, eeBbox: any, kicadVersion: any) {
+function convertEeArcs(eeArcs: EeSymbolArc[], eeBbox: EeSymbolBbox, kicadVersion: string) {
     const toKi = kicadVersion === KicadVersion.v5 ? pxToMil : pxToMm;
-    const kicadArcs: any[] = [];
+    const kicadArcs: KiSymbolArc[] = [];
 
-    eeArcs.forEach((eeArc: any) => {
+    eeArcs.forEach((eeArc: EeSymbolArc) => {
+        const pathMove = eeArc.path[0];
+        const pathArc = eeArc.path[1];
         if (
-            !(eeArc.path[0] instanceof SvgPathMoveTo ||
-                eeArc.path[1] instanceof SvgPathEllipticalArc)
+            !(pathMove instanceof SvgPathMoveTo ||
+                pathArc instanceof SvgPathEllipticalArc)
         ) {
-            console.error("Can't convert this arc");
+            logger.error("Can't convert this arc");
         } else {
+            const svgMove = pathMove as SvgPathMoveTo;
+            const svgArc = pathArc as SvgPathEllipticalArc;
             const kiArc = new KiSymbolArc({
-                radius: toKi(Math.max(eeArc.path[1].radius_x, eeArc.path[1].radius_y)),
-                angle_start: eeArc.path[1].x_axis_rotation,
-                start_x: toKi(eeArc.path[0].start_x - eeBbox.x),
-                start_y: toKi(eeArc.path[0].start_y - eeBbox.y),
-                end_x: toKi(eeArc.path[1].end_x - eeBbox.x),
-                end_y: toKi(eeArc.path[1].end_y - eeBbox.y),
+                radius: toKi(Math.max(svgArc.radius_x, svgArc.radius_y)),
+                angle_start: svgArc.x_axis_rotation,
+                start_x: toKi(svgMove.start_x - Number(eeBbox.x)),
+                start_y: toKi(svgMove.start_y - Number(eeBbox.y)),
+                end_x: toKi(svgArc.end_x - Number(eeBbox.x)),
+                end_y: toKi(svgArc.end_y - Number(eeBbox.y)),
             });
 
-            const { center_x, center_y, angle_end } = (computeArc as any)({
-                start_x: kiArc.start_x,
-                start_y: kiArc.start_y,
-                radius_x: toKi(eeArc.path[1].radius_x),
-                radius_y: toKi(eeArc.path[1].radius_y),
-                angle: kiArc.angle_start,
-                large_arc_flag: eeArc.path[1].flag_large_arc,
-                sweep_flag: eeArc.path[1].flag_sweep,
-                end_x: kiArc.end_x,
-                end_y: kiArc.end_y,
-            });
+            const [center_x, center_y, angle_end] = computeArc(
+                kiArc.start_x,
+                kiArc.start_y,
+                toKi(svgArc.radius_x),
+                toKi(svgArc.radius_y),
+                kiArc.angle_start,
+                svgArc.flag_large_arc,
+                svgArc.flag_sweep,
+                kiArc.end_x,
+                kiArc.end_y
+            );
             kiArc.center_x = center_x;
-            kiArc.center_y = eeArc.path[1].flag_large_arc ? center_y : -center_y;
-            kiArc.angle_end = eeArc.path[1].flag_large_arc ? (360 - angle_end) : angle_end;
+            kiArc.center_y = svgArc.flag_large_arc ? center_y : -center_y;
+            kiArc.angle_end = svgArc.flag_large_arc ? (360 - angle_end) : angle_end;
 
             const { x: middleX, y: middleY } = getMiddleArcPos({
                 center_x: kiArc.center_x,
@@ -162,8 +168,8 @@ function convertEeArcs(eeArcs: any, eeBbox: any, kicadVersion: any) {
             kiArc.middle_x = middleX;
             kiArc.middle_y = middleY;
 
-            kiArc.start_y = eeArc.path[1].flag_large_arc ? kiArc.start_y : -kiArc.start_y;
-            kiArc.end_y = eeArc.path[1].flag_large_arc ? kiArc.end_y : -kiArc.end_y;
+            kiArc.start_y = svgArc.flag_large_arc ? kiArc.start_y : -kiArc.start_y;
+            kiArc.end_y = svgArc.flag_large_arc ? kiArc.end_y : -kiArc.end_y;
 
             kicadArcs.push(kiArc);
         }
@@ -172,14 +178,14 @@ function convertEeArcs(eeArcs: any, eeBbox: any, kicadVersion: any) {
     return kicadArcs;
 }
 
-function convertEePolylines(eePolylines: any, eeBbox: any, kicadVersion: any) {
+function convertEePolylines(eePolylines: EeSymbolPolyline[], eeBbox: EeSymbolBbox, kicadVersion: string) {
     const toKi = kicadVersion === KicadVersion.v5 ? pxToMil : pxToMm;
-    const kicadPolygons: any[] = [];
+    const kicadPolygons: KiSymbolPolygon[] = [];
 
-    eePolylines.forEach((eePolyline: any) => {
+    eePolylines.forEach((eePolyline: EeSymbolPolyline) => {
         const rawPts = eePolyline.points.split(" ");
-        const xPoints: any[] = [];
-        const yPoints: any[] = [];
+        const xPoints: number[] = [];
+        const yPoints: number[] = [];
 
         for (let i = 0; i < rawPts.length; i += 2) {
             xPoints.push(toKi(Math.round(parseFloat(rawPts[i])) - parseInt(String(eeBbox.x))));
@@ -191,7 +197,7 @@ function convertEePolylines(eePolylines: any, eeBbox: any, kicadVersion: any) {
             yPoints.push(yPoints[0]);
         }
         if (xPoints.length > 0 && yPoints.length > 0) {
-            const points: any[] = [];
+            const points: number[][] = [];
             const numPoints = Math.min(xPoints.length, yPoints.length);
             for (let i = 0; i < numPoints; i++) {
                 points.push([xPoints[i], yPoints[i]]);
@@ -200,32 +206,32 @@ function convertEePolylines(eePolylines: any, eeBbox: any, kicadVersion: any) {
                 xPoints[0] === xPoints[xPoints.length - 1] &&
                 yPoints[0] === yPoints[yPoints.length - 1];
             const kicadPolygon = new KiSymbolPolygon({
-                points,
+                points: points as number[][],
                 points_number: numPoints,
                 is_closed: isClosed,
             });
             kicadPolygons.push(kicadPolygon);
         } else {
-            console.warn("Skipping polygon with no parseable points");
+            logger.warn("Skipping polygon with no parseable points");
         }
     });
 
     return kicadPolygons;
 }
 
-function convertEePolygons(eePolygons: any, eeBbox: any, kicadVersion: any) {
+function convertEePolygons(eePolygons: EeSymbolPolygon[], eeBbox: EeSymbolBbox, kicadVersion: string) {
     return convertEePolylines(eePolygons, eeBbox, kicadVersion);
 }
 
-function convertEePaths(eePaths: any, eeBbox: any, kicadVersion: any) {
+function convertEePaths(eePaths: EeSymbolPath[], eeBbox: EeSymbolBbox, kicadVersion: string) {
     const toKi = kicadVersion === KicadVersion.v5 ? pxToMil : pxToMm;
-    const kicadPolygons: any[] = [];
-    const kicadBeziers: any[] = [];
+    const kicadPolygons: KiSymbolPolygon[] = [];
+    const kicadBeziers: (KiSymbolPolygon | KiSymbolBezier)[] = [];
 
-    eePaths.forEach((eePath: any) => {
+    eePaths.forEach((eePath: EeSymbolPath) => {
         const rawPts = eePath.paths.split(" ");
-        const xPoints: any[] = [];
-        const yPoints: any[] = [];
+        const xPoints: number[] = [];
+        const yPoints: number[] = [];
         let i = 0;
         while (i < rawPts.length) {
             const cmd = rawPts[i];
@@ -248,7 +254,7 @@ function convertEePaths(eePaths: any, eeBbox: any, kicadVersion: any) {
             }
         }
         if (xPoints.length > 0 && yPoints.length > 0) {
-            const points: any[] = [];
+            const points: number[][] = [];
             const numPoints = Math.min(xPoints.length, yPoints.length);
             for (let j = 0; j < numPoints; j++) {
                 points.push([xPoints[j], yPoints[j]]);
@@ -257,20 +263,20 @@ function convertEePaths(eePaths: any, eeBbox: any, kicadVersion: any) {
                 xPoints[0] === xPoints[xPoints.length - 1] &&
                 yPoints[0] === yPoints[yPoints.length - 1];
             const kiPolygon = new KiSymbolPolygon({
-                points,
+                points: points as number[][],
                 points_number: numPoints,
                 is_closed: isClosed,
             });
             kicadPolygons.push(kiPolygon);
         } else {
-            console.warn("Skipping path with no parseable points");
+            logger.warn("Skipping path with no parseable points");
         }
     });
 
     return [kicadPolygons, kicadBeziers];
 }
 
-function convertToKicad(eeSymbol: any, kicadVersion: any) {
+function convertToKicad(eeSymbol: EeSymbol, kicadVersion: string) {
     const kiInfo = new KiSymbolInfo({
         name: eeSymbol.info.name,
         prefix: eeSymbol.info.prefix.replace("?", ""),
@@ -305,26 +311,26 @@ function convertToKicad(eeSymbol: any, kicadVersion: any) {
     return kicadSymbol;
 }
 
-function tuneFootprintRefPath(kiSymbol: any, footprintLibName: any) {
+function tuneFootprintRefPath(kiSymbol: KiSymbol, footprintLibName: string) {
     kiSymbol.info.package = `${footprintLibName}:${kiSymbol.info.package}`;
 }
 
 class ExporterSymbolKicad {
-    input: any;
-    version: any;
-    output: any;
+    input: EeSymbol;
+    version: string;
+    output!: KiSymbol;
 
-    constructor(symbol: any, kicadVersion: any) {
+    constructor(symbol: EeSymbol, kicadVersion: string) {
         this.input = symbol;
         this.version = kicadVersion;
         if (this.input instanceof EeSymbol) {
             this.output = convertToKicad(this.input, kicadVersion);
         } else {
-            console.error("Unknown input symbol format");
+            logger.error("Unknown input symbol format");
         }
     }
 
-    export(footprintLibName: any) {
+    export(footprintLibName: string) {
         tuneFootprintRefPath(this.output, footprintLibName);
         return this.output.export(this.version);
     }

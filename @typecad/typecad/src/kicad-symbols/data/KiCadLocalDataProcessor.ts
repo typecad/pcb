@@ -108,7 +108,7 @@ export class KiCadLocalDataProcessor {
   private startTime: number = 0;
 
   constructor(config: Partial<ProcessingConfig> = {}) {
-    this.kicad = new KiCAD();
+    this.kicad = KiCAD.instance;
     this.config = { ...DEFAULT_PROCESSING_CONFIG, ...config };
     this.statistics = this.initializeStatistics();
   }

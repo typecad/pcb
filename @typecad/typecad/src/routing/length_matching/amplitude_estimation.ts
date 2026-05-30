@@ -150,7 +150,7 @@ export function estimateMaxAmplitudeOneSide(
     if (isEnvDebug()) {
       try {
         logger.debug(chalk.gray(`[LengthMatch] sample ${i + 1}/${samples} at (${px.toFixed(3)},${py.toFixed(3)}) side=${side} -> maxFree=${low.toFixed(3)}`));
-      } catch {}
+      } catch { logger.debug('[LengthMatch] failed to log per-sample debug info'); }
     }
   }
 
@@ -162,7 +162,7 @@ export function estimateMaxAmplitudeOneSide(
     if (isEnvDebug()) {
       try {
         logger.debug(chalk.yellow(`[LengthMatch] ampLimit global min=0 but local max=${maxPer.toFixed(3)} — using local best span`));
-      } catch {}
+      } catch { logger.debug('[LengthMatch] failed to log ampLimit fallback info'); }
     }
     return Math.max(0, maxPer);
   }

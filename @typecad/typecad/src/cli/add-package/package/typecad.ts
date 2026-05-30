@@ -1,7 +1,9 @@
 import fs from 'node:fs';
 import chalk from 'chalk';
+import type { PackageRenderData } from '../../types.js';
+import logger from '../../../logging.js';
 
-function renderComponent(data: any) {
+function renderComponent(data: PackageRenderData) {
   const componentImport = data.component_name
     ? `\nimport { ${data.component_name} } from './${data.component_name}';`
     : '';
@@ -11,8 +13,7 @@ function renderComponent(data: any) {
   const initU1 = data.component_name
     ? `        this.${data.component_name} = new ${data.component_name}(this.reference);\n        this.${data.component_name}.pcb = { x: 0, y: 0, rotation: 0 };\n\n`
     : '';
-  return `import { Package, PackageOptions${data.component_name ? `, Component` : ``} } from '@typecad/typecad';${componentImport}
-import * as _0603 from '@typecad/passives/0603';
+  return `import { Package, PackageOptions, Component } from '@typecad/typecad';${componentImport}
 
 /**
  * ### ${data.package_name_pascal} - Description
@@ -42,7 +43,7 @@ ${initU1}        // Passives
 `;
 }
 
-function renderPackageJson(data: any) {
+function renderPackageJson(data: PackageRenderData) {
   return `{
   "name": "${data.package_name}",
   "version": "1.0.0",
@@ -56,8 +57,8 @@ function renderPackageJson(data: any) {
     "tsx": "^4.19.1"
   },
   "peerDependencies": {
-    "@typecad/passives": "~0.1.0",
-    "@typecad/typecad": "~0.1.0"
+    "@typecad/passives": "^0.1.0",
+    "@typecad/typecad": "^0.1.0"
   },
   "scripts": {
     "postinstall": "node postinstall.js"
@@ -80,7 +81,7 @@ fs.cp(
   }
 );`
 
-export async function create_package(data: any) {
+export async function create_package(data: PackageRenderData) {
   const pascal_package_name = data.package_name.charAt(0).toUpperCase() + data.package_name.slice(1);
   const enriched_data = { ...data, package_name_pascal: pascal_package_name };
 
@@ -99,8 +100,8 @@ export async function create_package(data: any) {
     fs.writeFileSync(`${data.folder}/${data.package_name}/postinstall.js`, postinstall);
     fs.writeFileSync(`${data.folder}/${data.package_name}/build/lib/README`, 'Files placed in this folder will be copied to the typeCAD project folder structure on npm install.');
 
-    console.log(`Finished package creation. You can use it like this:`);
-    console.log(chalk.whiteBright.bold(`
+    logger.log(`Finished package creation. You can use it like this:`);
+    logger.log(chalk.whiteBright.bold(`
 import { PCB } from '@typecad/typecad'
 import { ${pascal_package_name} } from "./${data.package_name}";
 
@@ -110,12 +111,12 @@ let u1 = new ${pascal_package_name}({ pcb: typecad, x: 0, y: 0, name: '${data.pa
 
 typecad.create(u1.components);
 `));
-    console.log();
-    console.log("Report any creation issues: https://www.reddit.com/r/typecad/");
-    console.log();
+    logger.log();
+    logger.log("Report any creation issues: https://www.reddit.com/r/typecad/");
+    logger.log();
 
   } catch (error) {
-    console.log(
+    logger.log(
       chalk.red(`ERROR - ${error}`)
     );
     return;

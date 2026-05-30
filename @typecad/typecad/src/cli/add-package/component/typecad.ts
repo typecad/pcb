@@ -1,11 +1,13 @@
 import fs from 'node:fs';
 import chalk from 'chalk';
 import { basename } from 'node:path';
+import type { PackageComponentRenderData, CliPinInfo } from '../../types.js';
+import logger from '../../../logging.js';
 
-function renderComponent(data: any) {
-    const pinsTableRows = data.pins.map((p: any) => ` | ${p.number}     | ${p.name}  | ${p.type}      |`).join('\n');
-    const pinProperties = data.pins.map((p: any) => `    ${p.name} = new Pin(this.reference, ${p.number}, '${p.type}', this);`).join('\n');
-    return `import { Component, Pin } from "@typecad/typecad";
+function renderComponent(data: PackageComponentRenderData) {
+    const pinsTableRows = data.pins.map((p: CliPinInfo) => ` | ${p.number}     | ${p.name}  | ${p.type}      |`).join('\n');
+    const pinProperties = data.pins.map((p: CliPinInfo) => `    ${p.name} = this.pin(${p.number}, { type: '${p.type}' });`).join('\n');
+    return `import { Component } from "@typecad/typecad";
 /**
  | Pin # | Name | Type          |
  | --:   | :--  | :--           |
@@ -15,12 +17,14 @@ export class ${data.component_name} extends Component {
 ${pinProperties}
     
     constructor(reference?: string | undefined) {
-        super({ reference, footprint: "${data.footprint}", symbol: "${data.symbol}" });
+        super("${data.footprint}");
+        this.symbol = "${data.symbol}";
+        if (reference) this.reference = reference;
     }
 }`;
 }
 
-export async function create_component(data: any) {
+export async function create_component(data: PackageComponentRenderData) {
   const result = renderComponent(data);
 
   // make folder structure
@@ -45,7 +49,7 @@ export async function create_component(data: any) {
 
 
   } catch (error) {
-    console.log(
+    logger.log(
       chalk.red(`ERROR - ${error}`)
     );
     return;

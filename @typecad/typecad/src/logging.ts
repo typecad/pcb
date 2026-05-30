@@ -44,4 +44,10 @@ export function log(...args: unknown[]) {
   }
 }
 
-export default { debug, info, warn, error, log };
+export function success(...args: unknown[]) {
+  if (!SILENT_ENABLED && !QUIET_ENABLED) {
+    console.log(chalk.green('✔'), ...args.map(String));
+  }
+}
+
+export default { debug, info, warn, error, log, success };

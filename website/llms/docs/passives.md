@@ -52,7 +52,7 @@ Auto-generation works as follows:
 - if the `prefix` property is not passed, it will be `R` by default for resistors, `C` for capacitors, `L` for inductors, etc.
 
 > [!warning]
-> Because ultimately, KiCAD is tracking components by reference designator, components will sometimes swap reference designators with eachother based on when the **type**CAD build process encounters it during the build process. This only happens when a similar component is created before an already laid-out component. 
+> Because ultimately, KiCAD is tracking components by reference designator, components will sometimes swap reference designators with each other based on when the **type**CAD build process encounters it during the build process. This only happens when a similar component is created before an already laid-out component. **This is avoided by only using one or the other: auto-generation or explicit reference passing.**
 
 ## Unique Footprints
 Sometimes, passive components will have a unique footprint. To use that footprint with this package:

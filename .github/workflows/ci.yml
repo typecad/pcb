@@ -20,6 +20,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
+          cache: 'npm'
 
       - name: Install dependencies
         run: npm install
@@ -35,5 +36,15 @@ jobs:
 
       - name: Test
         run: npm run test
+        env:
+          KICAD_NOT_AVAILABLE: "1"
+
+      - name: Routing tests
+        run: npm run test:routing
+        env:
+          KICAD_NOT_AVAILABLE: "1"
+
+      - name: Coverage
+        run: npm run test:coverage
         env:
           KICAD_NOT_AVAILABLE: "1"

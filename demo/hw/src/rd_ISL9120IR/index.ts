@@ -1,6 +1,5 @@
 import { Power, Package, PackageOptions, Component } from '@typecad/typecad';
 import { ISL9120IRTNZ } from './ISL9120IRTNZ';
-import * as _0603 from '@typecad/passives/0603';
 
 // Package-specific options (everything beyond the standard pcb/x/y/reference/passives/name)
 interface PowerRegulatorOptions {
@@ -19,9 +18,9 @@ interface PowerRegulatorOptions {
  */
 export class rd_isl9120ir extends Package<PowerRegulatorOptions> {
     declare regulator: ISL9120IRTNZ;
-    declare inputCap: _0603.Capacitor;
-    declare outputCap: _0603.Capacitor;
-    declare inductor: _0603.Inductor;
+    declare inputCap: Component;
+    declare outputCap: Component;
+    declare inductor: Component;
     declare via1: Component;
     declare via2: Component;
     declare vin: Power;

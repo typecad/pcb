@@ -7,6 +7,25 @@
  */
 import * as fs from 'fs';
 
+const fileContentCache = new Map<string, string>();
+
+function getCachedFileContent(filePath: string): string | undefined {
+    let content = fileContentCache.get(filePath);
+    if (content === undefined) {
+        try {
+            content = fs.readFileSync(filePath, 'utf8');
+            fileContentCache.set(filePath, content);
+            if (fileContentCache.size > 50) {
+                const firstKey = fileContentCache.keys().next().value;
+                if (firstKey !== undefined) fileContentCache.delete(firstKey);
+            }
+        } catch {
+            return undefined;
+        }
+    }
+    return content;
+}
+
 export function getCallSite(skipFiles: string[] = []): { file: string; line: number; column: number; function?: string } | undefined {
     const stack = new Error().stack;
     if (!stack) return undefined;
@@ -46,11 +65,13 @@ export function getCallSite(skipFiles: string[] = []): { file: string; line: num
                     let isSuperCall = false;
 
                     try {
-                        const fileContent = fs.readFileSync(filePath, 'utf8');
-                        const fileLines = fileContent.split('\n');
-                        const lineText = fileLines[lineNum - 1];
-                        if (lineText && lineText.includes('super(')) {
-                            isSuperCall = true;
+                        const fileContent = getCachedFileContent(filePath);
+                        if (fileContent) {
+                            const fileLines = fileContent.split('\n');
+                            const lineText = fileLines[lineNum - 1];
+                            if (lineText && lineText.includes('super(')) {
+                                isSuperCall = true;
+                            }
                         }
                     } catch { /* file read failed, use heuristic */
                         if (funcName && funcName.startsWith('new ')) {

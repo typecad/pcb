@@ -75,7 +75,7 @@ export class PadResolver {
      * ```ts
      * const center = PadResolver.getPadCenter(resistor.pin(1));
      * if (center) {
-     *   console.log(`Pad is at ${center.x}, ${center.y}`);
+     *   logger.log(`Pad is at ${center.x}, ${center.y}`);
      * }
      * ```
      */
@@ -108,7 +108,7 @@ export class PadResolver {
      * ```ts
      * const padGeom = PadResolver.getPadGeometry(resistor, 1);
      * if (padGeom) {
-     *   console.log(`Pad shape: ${padGeom.shape}, size: ${padGeom.size.width}x${padGeom.size.height}mm`);
+     *   logger.log(`Pad shape: ${padGeom.shape}, size: ${padGeom.size.width}x${padGeom.size.height}mm`);
      * }
      * ```
      */

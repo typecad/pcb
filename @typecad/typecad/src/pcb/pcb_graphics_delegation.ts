@@ -1,0 +1,115 @@
+import type {
+    IGrLine,
+    IGrTextOptions,
+    IPcbZoneOptions,
+    IPcbKeepoutOptions,
+    IPcbLineOptions,
+    IPcbCircleOptions,
+    IPcbRectOptions,
+    IPcbPolyOptions
+} from './pcb_interfaces.js';
+import { generateUuid } from './pcb_utils.js';
+import { pcbLine, pcbCircle, pcbRect, pcbPoly, pcbOutline, pcbText } from './pcb_graphics.js';
+import { zone, keepout } from './pcb_zones.js';
+import type { PcbInternalState } from './pcb_state.js';
+
+export function pcbTextWithOffset(state: PcbInternalState, options: IGrTextOptions): void {
+    const modifiedOptions: IGrTextOptions = {
+        ...options,
+        x: options.x + state.currentOffset.x,
+        y: options.y + state.currentOffset.y,
+    };
+    pcbText(state, modifiedOptions);
+}
+
+export function pcbZoneWithOffset(state: PcbInternalState, options: IPcbZoneOptions): void {
+    const modifiedOptions = {
+        ...options,
+        x: options.x + state.currentOffset.x,
+        y: options.y + state.currentOffset.y
+    };
+    zone(state, modifiedOptions);
+}
+
+export function pcbKeepoutWithOffset(state: PcbInternalState, options: IPcbKeepoutOptions): void {
+    const modifiedOptions = {
+        ...options,
+        x: options.x + state.currentOffset.x,
+        y: options.y + state.currentOffset.y
+    };
+    keepout(state, modifiedOptions);
+}
+
+export function pcbLineWithOffset(state: PcbInternalState, options: IPcbLineOptions): void {
+    const modifiedOptions = {
+        ...options,
+        start: { x: options.start.x + state.currentOffset.x, y: options.start.y + state.currentOffset.y },
+        end: { x: options.end.x + state.currentOffset.x, y: options.end.y + state.currentOffset.y }
+    };
+    pcbLine(state, modifiedOptions);
+}
+
+export function pcbCircleWithOffset(state: PcbInternalState, options: IPcbCircleOptions): void {
+    const modifiedOptions = {
+        ...options,
+        center: { x: options.center.x + state.currentOffset.x, y: options.center.y + state.currentOffset.y }
+    };
+    if (options.end) {
+        modifiedOptions.end = { x: options.end.x + state.currentOffset.x, y: options.end.y + state.currentOffset.y };
+    }
+    pcbCircle(state, modifiedOptions);
+}
+
+export function pcbRectWithOffset(state: PcbInternalState, options: IPcbRectOptions): void {
+    const modifiedOptions = { ...options };
+    if (modifiedOptions.x !== undefined) modifiedOptions.x += state.currentOffset.x;
+    if (modifiedOptions.y !== undefined) modifiedOptions.y += state.currentOffset.y;
+    if (modifiedOptions.start) {
+        modifiedOptions.start = { x: modifiedOptions.start.x + state.currentOffset.x, y: modifiedOptions.start.y + state.currentOffset.y };
+    }
+    if (modifiedOptions.end) {
+        modifiedOptions.end = { x: modifiedOptions.end.x + state.currentOffset.x, y: modifiedOptions.end.y + state.currentOffset.y };
+    }
+    pcbRect(state, modifiedOptions);
+}
+
+export function pcbPolyWithOffset(state: PcbInternalState, options: IPcbPolyOptions): void {
+    const modifiedOptions = {
+        ...options,
+        points: options.points.map(p => ({ x: p.x + state.currentOffset.x, y: p.y + state.currentOffset.y }))
+    };
+    pcbPoly(state, modifiedOptions);
+}
+
+export function pcbOutlineWithOffset(state: PcbInternalState, x: number, y: number, width: number, height: number, filletRadius: number = 0, conceptualUuidFromUser?: string): void {
+    pcbOutline(state, x + state.currentOffset.x, y + state.currentOffset.y, width, height, filletRadius, conceptualUuidFromUser);
+}
+
+export function pcbTrackWithOffset(state: PcbInternalState, start: { x: number, y: number }, end: { x: number, y: number }, width: number, layer: string, locked: boolean, uuid?: string, net?: string): string {
+    const trackUuid = uuid || generateUuid();
+    const offsetStart = { x: start.x + state.currentOffset.x, y: start.y + state.currentOffset.y };
+    const offsetEnd = { x: end.x + state.currentOffset.x, y: end.y + state.currentOffset.y };
+
+    const lineData: IGrLine = {
+        type: 'line',
+        uuid: trackUuid,
+        layer: layer,
+        strokeWidth: width,
+        start: offsetStart,
+        end: offsetEnd,
+        locked: locked,
+        net: net
+    };
+
+    state.stagedOutlines.push({
+        uuid: trackUuid,
+        x: lineData.start.x,
+        y: lineData.start.y,
+        width: Math.abs(lineData.end.x - lineData.start.x),
+        height: Math.abs(lineData.end.y - lineData.start.y),
+        filletRadius: 0,
+        elements: [lineData]
+    });
+
+    return trackUuid;
+}

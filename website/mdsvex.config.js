@@ -60,7 +60,7 @@ const theme = ['vitesse-dark', 'vitesse-light'];
 
 const highlighter = await createHighlighter({
   themes: theme,
-  langs: ['shellsession', 'typescript', 'javascript', 'csv', 'diff', 'json', 'yaml'],
+  langs: ['shellsession', 'typescript', 'javascript', 'csv', 'diff', 'json', 'yaml', 'md'],
 });
 
 const config = defineConfig({

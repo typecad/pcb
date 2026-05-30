@@ -1,4 +1,3 @@
-import { Component } from "./component.js";
 import { Pin } from "./pin.js";
 import { serialize, s, sym, yes, no } from "./sexpr/index.js";
 import { randomUUID, UUID } from "node:crypto";
@@ -13,6 +12,14 @@ import {
 import type { ISchematicNode } from './types/schematic_types.js';
 import { renderLabel } from './schematic_templates.js';
 
+interface RenderableSymbol {
+    symbol?: string;
+    reference: string;
+    value: string;
+    footprint?: string;
+    sch: { x: number; y: number; rotation?: number };
+}
+
 export class KiCADSchematic {
     lib_symbols: string[] = [];
     symbols: string[] = [];
@@ -21,12 +28,15 @@ export class KiCADSchematic {
     sheetname: string = '';
     uuid: UUID = randomUUID();
     private symbolManager: SymbolLibraryManager;
+    #pwrCounter = 0;
+    #flgCounter = 0;
+    #powerNetEntries: Map<string, { firstPinX: number; firstPinY: number }> = new Map();
 
     constructor(symbolManager: SymbolLibraryManager) {
         this.symbolManager = symbolManager;
     }
 
-    update(component: Component): string | null {
+    update(component: RenderableSymbol): string | null {
         if (!component.symbol) {
             logError(`Component ${component.reference || 'undefined'} has no symbol defined.`);
             return null;
@@ -81,7 +91,7 @@ export class KiCADSchematic {
         const propertiesToAdd = ['Reference', 'Value', 'Footprint'];
         const textOffsetY = 5.08;
         propertiesToAdd.forEach((propName) => {
-            const key = propName.toLowerCase() as keyof Component;
+            const key = propName.toLowerCase() as keyof RenderableSymbol;
             const propVal = component[key];
             if (propVal !== undefined && (typeof propVal === "string" || typeof propVal === "number")) {
                 const propX = x;
@@ -106,7 +116,7 @@ export class KiCADSchematic {
         return `(symbol ${parts.map(p => serialize(p as Parameters<typeof serialize>[0])).join(' ')})`;
     }
 
-    getAbsolutePinCoordinates(component: Component, pin: Pin): [number, number] | null {
+    getAbsolutePinCoordinates(component: RenderableSymbol, pin: Pin): [number, number] | null {
         if (!component.symbol) {
             logError(`Component ${component.reference} has no symbol.`);
             return null;
@@ -225,15 +235,102 @@ export class KiCADSchematic {
                 logWarning(`Net "${netName}", pin ${pinDef.owner?.reference}:${pinDef.number}: Could not get pin location details. Using default label placement.`);
             }
 
-            this.labels.push(renderLabel({
-                net_name: netName,
-                x: labelX,
-                y: labelY,
-                label_rotation,
-                justify_horizontal: justifyHorizontal,
-                justify_vertical: justifyVertical,
-                uuid: randomUUID()
-            }));
+            const isPowerPin = pinDef.type === 'power_in' || pinDef.type === 'power_out';
+            if (!isPowerPin) {
+                this.labels.push(renderLabel({
+                    net_name: netName,
+                    x: labelX,
+                    y: labelY,
+                    label_rotation,
+                    justify_horizontal: justifyHorizontal,
+                    justify_vertical: justifyVertical,
+                    uuid: randomUUID()
+                }));
+            }
+
+            if (isPowerPin && !this.#powerNetEntries.has(netName)) {
+                this.#powerNetEntries.set(netName, { firstPinX: labelX, firstPinY: labelY });
+            }
+        }
+    }
+
+    addPowerSymbols(): void {
+        if (this.#powerNetEntries.size === 0) return;
+
+        const pwrFlagFqn = 'power:PWR_FLAG';
+        const pwrFlagDef = this.symbolManager.getSymbolDefinition(pwrFlagFqn);
+        if (!pwrFlagDef) {
+            logWarning('power:PWR_FLAG symbol not found in library. Skipping power flag generation.');
+            return;
+        }
+
+        const PWR_FLAG_OFFSET_X = 8.89;
+
+        for (const [netName, { firstPinX, firstPinY }] of this.#powerNetEntries) {
+            const powerSymbolFqn = `power:${netName}`;
+            let isGndType = false;
+            let powerSymbolDef = this.symbolManager.getSymbolDefinition(powerSymbolFqn);
+
+            if (powerSymbolDef) {
+                const pinLocation = this.symbolManager.getPinLocation(powerSymbolFqn, '1');
+                isGndType = pinLocation?.angle === 270;
+            } else {
+                logWarning(`Power symbol ${powerSymbolFqn} not found in library. Skipping power symbol for net "${netName}".`);
+                isGndType = /^(gnd|ground|gn\d+)$/i.test(netName);
+            }
+
+            if (powerSymbolDef) {
+                this.#pwrCounter++;
+                const pwrRef = `#PWR${String(this.#pwrCounter).padStart(2, '0')}`;
+
+                const pwrComp: RenderableSymbol = {
+                    symbol: powerSymbolFqn,
+                    reference: pwrRef,
+                    value: netName,
+                    footprint: '',
+                    sch: { x: firstPinX, y: firstPinY, rotation: 0 }
+                };
+
+                const symbolStr = this.update(pwrComp);
+                if (symbolStr) {
+                    this.symbols.push(symbolStr);
+                }
+
+
+            }
+
+            this.#flgCounter++;
+            const flgRef = `#FLG${String(this.#flgCounter).padStart(2, '0')}`;
+            const flgRotation = isGndType ? 180 : 0;
+            const flgX = firstPinX + PWR_FLAG_OFFSET_X;
+            const flgY = isGndType ? firstPinY - 1.27 : firstPinY;
+
+            const flgComp: RenderableSymbol = {
+                symbol: pwrFlagFqn,
+                reference: flgRef,
+                value: 'PWR_FLAG',
+                footprint: '',
+                sch: { x: flgX, y: flgY, rotation: flgRotation }
+            };
+
+            const flagStr = this.update(flgComp);
+            if (flagStr) {
+                this.symbols.push(flagStr);
+            }
+
+            const flgPin = new Pin(flgRef, '1');
+            const flgPinCoords = this.getAbsolutePinCoordinates(flgComp, flgPin);
+            if (flgPinCoords) {
+                this.labels.push(renderLabel({
+                    net_name: netName,
+                    x: flgPinCoords[0],
+                    y: flgPinCoords[1],
+                    label_rotation: isGndType ? 0 : 270,
+                    justify_horizontal: isGndType ? 'left' : 'right',
+                    justify_vertical: 'bottom',
+                    uuid: randomUUID()
+                }));
+            }
         }
     }
 }

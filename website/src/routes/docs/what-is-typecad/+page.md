@@ -25,10 +25,10 @@ This **type**CAD code...
 <ScrollArea orientation="both">
 
 ```ts
-import { Schematic, Component } from '@typecad/typecad'
+import { PCB, Component } from '@typecad/typecad'
 import { Resistor, LED } from '@typecad/passives/0805'
 
-let typecad = new Schematic('typecad');
+let typecad = new PCB('typecad');
 let bt1 = new Component({ footprint: 'BatteryHolder_Keystone_500' });
 let r1 = new Resistor({ value: "1 kOhm" });
 let d1 = new LED();

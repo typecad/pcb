@@ -1151,4 +1151,14 @@ constructor(grid: RoutingGrid, options: IRoutingOptions) {
   public resetCaches(scope: { windows?: boolean; paths?: boolean; occupancy?: boolean } = {}): void {
     this.invalidateCaches(scope);
   }
+
+  dispose(): void {
+    if (this._mstWorker) {
+      this._mstWorker.dispose();
+      this._mstWorker = null;
+    }
+    if (this.gridSearch) {
+      this.gridSearch.dispose();
+    }
+  }
 }

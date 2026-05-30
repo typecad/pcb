@@ -14,7 +14,7 @@ There's obviously a lot of options here and this is just a simple example of one
 From a terminal, run:
 
 ```bash
-npx @typecad/create-typecad
+typecad create
 ```
 
 Call this project `jig`. No need to make a PlatformIO project or initialize a git repo unless you want to. No extra packages are needed either, but feel free to add them later if you want. 

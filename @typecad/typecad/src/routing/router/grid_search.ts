@@ -2146,6 +2146,19 @@ export class GridSearch {
     return { key: hash, clearanceBucket, variant };
   }
 
+  dispose(): void {
+    this.windowCache.clear();
+    this.pathCache.clear();
+    this.pathCacheOrder = [];
+    this.globalOccupancyCache.clear();
+    this.layerCodeMap.clear();
+    this.openMapArr = [];
+    this.closedSet = new Uint32Array(0);
+    this.localOccupancyCache = new Int32Array(0);
+    this.openMapTouchedIndices = [];
+    this.openPQ.clear();
+  }
+
   private storeGlobalOccupancyValue(entry: GlobalOccupancyEntry): void {
     // Update recency by reinserting.
     if (this.globalOccupancyCache.has(entry.key)) {

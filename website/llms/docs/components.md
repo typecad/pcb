@@ -19,11 +19,11 @@ let u1 = new Component({ footprint: 'Package_SO:SOIC-8_5.3x5.3mm_P1.27mm' });
 
 The above creates a SOIC-8 component. `footprint` is the KiCAD footprint path and split into two strings.
 
-That method works well for simple components, but there is a better way using the `add-component` tool.
+That method works well for simple components, but there is a better way using the `typecad add component` tool.
 
-## npx --package=@typecad/typecad add-component
+## `typecad add component`
 
-**type**CAD has a command line tool that can be used to create a component. It is in your project's `package.json` file, you can simply click the `Add Component` button in the VSCode GUI under `NPM Scripts`. If you're not using VSCode, you can run `npx --package=@typecad/typecad add-component --folder=./src` from the `./hw` directory of your project.
+**type**CAD has a command line tool that can be used to create a component. Run `typecad add component` from the `./hw` directory, or click the `add_component` button in the VSCode GUI under `NPM Scripts`.
 
 The script will ask where the component is coming from, either the KiCAD library, a local file, or an EasyEDA/JLCPCB component.
 
@@ -35,30 +35,28 @@ If it's an [EasyEDA/JLCPCB component](https://jlcpcb.com/parts), you'll be asked
 
 ### KiCAD Library Components
 
-If you'll be creating a component that is in the KiCAD library, you need two pieces of information:
+To find the symbol and footprint for a KiCAD library component, use `typecad search`:
 
-- footprint library name
-- component footprint name
+```bash
+typecad search "voltage regulator"
+typecad search LM358
+typecad search "op amp" --format=json --limit=10
+```
 
-Right now, the easiest way to get that information is to add the part you want to a schematic. For this example, we'll make an ATtiny85 MCU so add it to a KiCAD schematic. Select it and press `e`. You should see a dialog that looks like this:
+It fuzzy-matches against the KiCAD symbol libraries and returns the symbol name, footprint, and description. The symbol name is in `LibraryName:SymbolName` format (e.g. `MCU_Microchip_ATtiny:ATtiny85-20S`).
 
-![KiCAD Symbol Properties](/docs/attiny85.png)
+Without a query, it prompts for search terms interactively. Available options:
 
-The highlighted `Library link` text on the bottom has the information you need. The first part, before the `:` is the symbol library name (`MCU_Microchip_ATtiny`), the second part is the symbol name (`ATtiny85-20S`).
-
-> [!important]
-> Making components is the only point in **type**CAD where you need to deal with KiCAD symbols. It uses the information in them to create some boilerplate code for you.
-
-### Local File Components
-
-If you're creating a component that is not in the KiCAD library, you need the symbol file (.kicad_sym) and footprint file (.kicad_mod) for the component. It is easiest to copy the files to your project directory. They can be deleted after the component is created.
+- `--format` — output format: `detailed`, `compact`, `table`, `json` (default: detailed)
+- `--sort` — sort by: `score`, `id`, `manufacturer`, `package` (default: score)
+- `--limit` — maximum number of results (default: 5)
 
 ### EasyEDA/JLCPCB Component
 
-If you are working within JLC's ecosystem for design or assembly, you can use the `C###` numbers of their parts to create a component. The footprint and 3d model will be downloaded and a **type**CAD component will be created.
+If you are working within JLC's ecosystem for design or assembly, you can use the `C###` numbers of their parts to create a component. The footprint and 3d model will be downloaded and a **type**CAD component will be created. 
 
 > [!WARNING]
-> The parts are converted from EasyEDA's format to KiCAD's footprint. The conversion isn't always perfect. The most common issue is pin types being `unspecified` rather than what they should actually be.
+> The parts are converted from EasyEDA's format to KiCAD's footprint. The conversion isn't always perfect. The most common issue is pin types being `unspecified` rather than what they should actually be. Not all parts have associated symbols or footprints.
 
 ### Component Use
 
@@ -148,9 +146,9 @@ The file `extends` the `Component` by adding some extras to it. In particular, i
 
 `minimum_voltage`, `maximum_voltage`, and `current` are optional and provide additional information for the power-aware system to check trace widths, and ensure voltage/current restrictions are met. 
 
-## `add`
+## `create`
 
-After a `Component` has been created and modified, call `add` to include it in the schematic and netlist.
+After a `Component` has been created and modified, call `create` to include it in the PCB, schematic and netlist.
 
 ```ts
 import { PCB } from '@typecad/typecad';
@@ -159,11 +157,7 @@ import { ATtiny85_20S } from './ATtiny85_20S';
 let typecad = new PCB('typecad_docs');
 let u1 = new ATtiny85_20S();
 
-typecad.add(u1);        // method 1
-// --or--
-typecad.create(u1, ...);    // method 2
+typecad.create(u1);
 ```
-
-The `add` method adds the component explicitly and the `::create(...)` method adds them all at once just prior to building. Functionally, there is no difference, but if a components are being created dynamically, it is useful to have a method to add them.
 
        Pins

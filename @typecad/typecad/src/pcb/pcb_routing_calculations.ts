@@ -6,6 +6,7 @@
  */
 
 import { Component } from "../component.js";
+import { validatePositive, validateNonNegative, validateFinite } from '../utils/numeric_validation.js';
 
 /**
  * PCB design constants used across routing and calculation modules.
@@ -30,6 +31,10 @@ export const PCB_CONSTANTS = {
     DEFAULT_VIA_SIZE: 0.6,
     /** Default via drill size in mm */
     DEFAULT_VIA_DRILL: 0.3,
+    /** Default via size in mm for component-level vias */
+    DEFAULT_VIA_SIZE_COMPONENT: 0.8,
+    /** Default via drill size in mm for component-level vias */
+    DEFAULT_VIA_DRILL_COMPONENT: 0.4,
     /** Standard schematic grid unit in mm (0.1 inch) */
     SCHEMATIC_GRID_UNIT: 2.54,
 } as const;
@@ -91,6 +96,12 @@ export function calculateMinTraceWidth(
     maxTempRise: number,
     thickness: number
 ): number {
+    validateNonNegative(current, 'current');
+    validatePositive(maxTempRise, 'maxTempRise');
+    validatePositive(thickness, 'thickness');
+
+    if (current === 0) return 0;
+
     // IPC-2221 formula constants
     const k = (layer === "F.Cu" || layer === "B.Cu") ? 0.048 : 0.024;
     const b = 0.44;

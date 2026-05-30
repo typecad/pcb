@@ -3,6 +3,7 @@ export interface ParsedArgs {
   subcommand: string;
   args: Record<string, string | boolean>;
   positional: string[];
+  passthrough: string[];
   json: boolean;
   help: boolean;
   version: boolean;
@@ -14,6 +15,7 @@ export function parseArgv(argv: string[]): ParsedArgs {
     subcommand: '',
     args: {},
     positional: [],
+    passthrough: [],
     json: false,
     help: false,
     version: false,
@@ -21,22 +23,32 @@ export function parseArgv(argv: string[]): ParsedArgs {
 
   const tokens = argv.slice(2);
 
+  const passthroughIdx = tokens.indexOf('--');
+  let passthroughTokens: string[] = [];
+  let typecadTokens: string[];
+  if (passthroughIdx !== -1) {
+    typecadTokens = tokens.slice(0, passthroughIdx);
+    passthroughTokens = tokens.slice(passthroughIdx + 1);
+  } else {
+    typecadTokens = tokens;
+  }
+
   let i = 0;
 
-  if (tokens.length > 0 && !tokens[0].startsWith('-')) {
-    result.command = tokens[i++];
+  if (typecadTokens.length > 0 && !typecadTokens[0].startsWith('-')) {
+    result.command = typecadTokens[i++];
   }
 
   if (
-    result.command === 'add' &&
-    tokens.length > i &&
-    !tokens[i].startsWith('-')
+    (result.command === 'add' || result.command === 'skills') &&
+    typecadTokens.length > i &&
+    !typecadTokens[i].startsWith('-')
   ) {
-    result.subcommand = tokens[i++];
+    result.subcommand = typecadTokens[i++];
   }
 
-  while (i < tokens.length) {
-    const token = tokens[i++];
+  while (i < typecadTokens.length) {
+    const token = typecadTokens[i++];
 
     if (token === undefined) continue;
 
@@ -67,7 +79,7 @@ export function parseArgv(argv: string[]): ParsedArgs {
       } else if (flag === 'v') {
         result.version = true;
       } else {
-        const next = tokens[i];
+        const next = typecadTokens[i];
         if (next && !next.startsWith('-')) {
           result.args[flag] = next;
           i++;
@@ -79,6 +91,8 @@ export function parseArgv(argv: string[]): ParsedArgs {
       result.positional.push(token);
     }
   }
+
+  result.passthrough = passthroughTokens;
 
   return result;
 }

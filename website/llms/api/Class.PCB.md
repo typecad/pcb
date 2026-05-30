@@ -941,21 +941,6 @@ Create a routing engine by name from this PCB instance's registry.
 
 ***
 
-### erc()
-
-> **erc**(): `void`
-
-Defined in: [pcb/pcb.ts:3308](https://github.com/typecad/typecad/blob/6bbcc8ae1b7d95ad4656019e0545a2a6bf8c25eb/pcb/pcb.ts#L3308)
-
-Performs electrical rule checks on the associated schematic.
-This is a pass-through to the Schematic.erc() method.
-
-#### Returns
-
-`void`
-
-***
-
 ### getCallSite()
 
 > **getCallSite**(): `undefined` \| \{ `column`: `number`; `file`: `string`; `line`: `number`; \}

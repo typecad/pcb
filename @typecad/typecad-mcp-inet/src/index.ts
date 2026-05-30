@@ -51,6 +51,7 @@ registerAddFuseTool(server);
 registerAddLedTool(server);
 registerAddConnectorTool(server);
 registerAddTestpointTool(server);
+registerAddMountingHoleTool(server);
 registerAddPowerSourceTool(server);
 registerCreateNamedNetTool(server);
 registerAddViaTool(server);

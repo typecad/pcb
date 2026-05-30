@@ -20,11 +20,13 @@ describe('Component', () => {
     expect(component.pcb).toEqual({ x: 100, y: 100, rotation: 45, side: 'back' })
   })
 
-  it('should validate reference format', () => {
+  it('should accept any reference via property assignment', () => {
     expect(() => new Component({ reference: 'R1' })).not.toThrow()
     expect(() => new Component({ reference: 'U123' })).not.toThrow()
-    expect(() => new Component({ reference: 'invalid' })).toThrow()
-    expect(() => new Component({ reference: '123' })).toThrow()
+    const c = new Component({ reference: 'invalid' })
+    expect(c.reference).toBe('invalid')
+    const c2 = new Component({ reference: '123' })
+    expect(c2.reference).toBe('123')
   })
 
   it('should validate footprint format', () => {

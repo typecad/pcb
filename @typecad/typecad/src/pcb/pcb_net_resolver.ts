@@ -35,8 +35,8 @@ export function resolveNet(
     let schematicNetName: string | undefined;
 
     // Try to find the pin in the schematic nets
-    if (schematic && schematic.Nodes) {
-        for (const schematicNode of schematic.Nodes as ISchematicNode[]) {
+    if (schematic && schematic.nodes) {
+        for (const schematicNode of schematic.nodes as ISchematicNode[]) {
             if (schematicNode.nodes) {
                 // For vias, look for UUID match with pin number "1"
                 // For regular components, look for reference + pin number match

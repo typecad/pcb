@@ -33,7 +33,7 @@ The highlighted `Library link` text on the bottom has the information you need. 
 The next question asks for the `Footprint name`. For KiCAD components, the default text will contain the symbol-specified footprint file. For some components this might not be what you want, but for this particular component, `Package_DFN_QFN:QFN-20-1EP_4x4mm_P0.5mm_EP2.6x2.6mm` is the right one. Hit enter. Footprints are defined in the sam way as symbols ([footprint_lib:footprint_name]).
 
 ```
-🧩 typeCAD Create Component
+🧩 typeCAD Add Component
 ✔ Select symbol source: KiCAD
 ✔ Select footprint source: KiCAD
 ✔ Symbol name? MCU_Microchip_ATtiny:ATtiny85-20M

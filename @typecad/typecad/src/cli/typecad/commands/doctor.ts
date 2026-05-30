@@ -5,6 +5,7 @@ import chalk from 'chalk';
 import { findExecutable } from '../../../kicad.js';
 import { KiCAD } from '../../../kicad.js';
 import type { ParsedArgs } from '../parser.js';
+import logger from '../../../logging.js';
 
 interface CheckResult {
   name: string;
@@ -177,7 +178,7 @@ function checkEntryFile(): CheckResult {
         const m = raw.match(/entry\s*[:=]\s*['"](.+?)['"]/);
         if (m) entry = m[1];
       }
-    } catch { /* fall through */ }
+    } catch { logger.debug('Failed to parse config file for entry'); }
   }
 
   if (!entry) {
@@ -186,7 +187,7 @@ function checkEntryFile(): CheckResult {
       const buildScript = pkg.scripts?.build || '';
       const m = buildScript.match(/tsx\s+(.+)$/);
       if (m) entry = m[1];
-    } catch { /* fall through */ }
+    } catch { logger.debug('Failed to parse package.json for entry'); }
   }
 
   if (!entry) {
@@ -194,7 +195,7 @@ function checkEntryFile(): CheckResult {
       const srcDir = path.join(process.cwd(), 'src');
       const files = fs.readdirSync(srcDir).filter(f => f.endsWith('.ts') && !f.endsWith('.d.ts'));
       if (files.length === 1) entry = `./src/${files[0]}`;
-    } catch { /* fall through */ }
+    } catch { logger.debug('Failed to read src directory for entry'); }
   }
 
   if (!entry) {
@@ -220,7 +221,7 @@ function checkEntryFile(): CheckResult {
 }
 
 function checkKiCadCli(): CheckResult {
-  const configCli = runQuiet('node -e "try{const c=new(require(\'@typecad/typecad/dist/config.js\').Config)();console.log(c.get(\'kicad_cli\'))}catch{}"');
+  const configCli = runQuiet('node -e "try{const c=new(require(\'@typecad/typecad/dist/config.js\').Config)();logger.log(c.get(\'kicad_cli\'))}catch{}"');
   if (configCli && fs.existsSync(configCli)) {
     return { name: 'kicad-cli', passed: true, message: configCli };
   }
@@ -235,6 +236,8 @@ function checkKiCadCli(): CheckResult {
     'C:/Program Files/KiCad/9.0/bin/kicad-cli.exe',
     'C:/Program Files/KiCad/8.0/bin/kicad-cli.exe',
     'C:/Program Files/KiCad/7.0/bin/kicad-cli.exe',
+    '/Applications/KiCad/KiCad.app/Contents/MacOS/kicad-cli',
+    '/usr/local/bin/kicad-cli',
   ];
 
   for (const p of possiblePaths) {
@@ -395,35 +398,35 @@ function checkBuildDir(): CheckResult {
 }
 
 function printResults(results: CheckResult[]): void {
-  console.log(chalk.white.bold('typecad doctor') + ' - Checking your environment...\n');
+  logger.log(chalk.white.bold('typecad doctor') + ' - Checking your environment...\n');
 
   const failures: CheckResult[] = [];
 
   for (const r of results) {
     const icon = r.passed ? chalk.green('✔') : chalk.red('✖');
-    console.log(`  ${icon} ${chalk.bold(r.name)}: ${r.message}`);
+    logger.log(`  ${icon} ${chalk.bold(r.name)}: ${r.message}`);
     if (!r.passed && r.fixHint) {
       failures.push(r);
     }
   }
 
-  console.log('');
+  logger.log('');
 
   if (failures.length > 0) {
-    console.log(chalk.yellow(`${failures.length} problem(s) found:\n`));
+    logger.log(chalk.yellow(`${failures.length} problem(s) found:\n`));
     for (const f of failures) {
-      console.log(chalk.bold(`  ${f.name}:`));
+      logger.log(chalk.bold(`  ${f.name}:`));
       for (const line of f.fixHint!.split('\n')) {
-        console.log(chalk.gray(`    ${line}`));
+        logger.log(chalk.gray(`    ${line}`));
       }
       if (f.fixCommand) {
-        console.log(chalk.cyan(`    Fix: ${f.fixCommand}`));
+        logger.log(chalk.cyan(`    Fix: ${f.fixCommand}`));
       }
-      console.log('');
+      logger.log('');
     }
-    console.log(chalk.gray("Run 'typecad doctor --fix' to attempt automatic fixes.\n"));
+    logger.log(chalk.gray("Run 'typecad doctor --fix' to attempt automatic fixes.\n"));
   } else {
-    console.log(chalk.green('All checks passed. Your environment looks good.\n'));
+    logger.log(chalk.green('All checks passed. Your environment looks good.\n'));
   }
 }
 
@@ -448,7 +451,7 @@ export async function run(parsed: ParsedArgs): Promise<void> {
   ];
 
   if (json) {
-    console.log(JSON.stringify({
+    logger.log(JSON.stringify({
       checks: results,
       problems: results.filter(r => !r.passed).length,
     }, null, 2));
@@ -457,6 +460,6 @@ export async function run(parsed: ParsedArgs): Promise<void> {
   }
 
   if (results.some(r => !r.passed)) {
-    process.exit(1);
+    throw new Error('Environment check failed. See above for details.');
   }
 }

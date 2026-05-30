@@ -13,7 +13,8 @@ vi.mock('fs', () => ({
 // Mock execSync and exec
 vi.mock('node:child_process', () => ({
   execSync: vi.fn(),
-  exec: vi.fn()
+  exec: vi.fn(),
+  execFile: vi.fn()
 }));
 
 describe('Schematic', () => {
@@ -27,7 +28,7 @@ describe('Schematic', () => {
   describe('Basic Schematic Operations', () => {
     it('should create a Schematic instance', () => {
       expect(schematic).toBeDefined();
-      expect(schematic.Sheetname).toBe('test_schematic');
+      expect(schematic.sheetName).toBe('test_schematic');
     });
   });
 
@@ -41,9 +42,9 @@ describe('Schematic', () => {
 
       schematic.add(resistor);
 
-      expect(schematic.Components).toHaveLength(1);
-      expect(schematic.Components[0]).toBe(resistor);
-      expect(schematic.Components[0].value).toBe('10k');
+      expect(schematic.components).toHaveLength(1);
+      expect(schematic.components[0]).toBe(resistor);
+      expect(schematic.components[0].value).toBe('10k');
     });
 
     it('should handle multiple components in add()', () => {
@@ -61,9 +62,9 @@ describe('Schematic', () => {
 
       schematic.add(resistor, capacitor);
 
-      expect(schematic.Components).toHaveLength(2);
-      expect(schematic.Components).toContain(resistor);
-      expect(schematic.Components).toContain(capacitor);
+      expect(schematic.components).toHaveLength(2);
+      expect(schematic.components).toContain(resistor);
+      expect(schematic.components).toContain(capacitor);
     });
 
     it('should skip DNP components', () => {
@@ -75,7 +76,7 @@ describe('Schematic', () => {
 
       schematic.add(dnpResistor);
 
-      expect(schematic.Components).toHaveLength(0);
+      expect(schematic.components).toHaveLength(0);
     });
 
   });
@@ -110,8 +111,8 @@ describe('Schematic', () => {
       const netDef = schematic.named('VCC').net(pin1, pin2);
 
       expect(netDef.name).toBe('VCC');
-      expect(schematic.Nodes).toHaveLength(1);
-      expect(schematic.Nodes[0].name).toBe('VCC');
+      expect(schematic.nodes).toHaveLength(1);
+      expect(schematic.nodes[0].name).toBe('VCC');
     });
 
     it('should track Nodes with correct structure', () => {
@@ -124,9 +125,9 @@ describe('Schematic', () => {
 
       schematic.net(pin1);
 
-      expect(schematic.Nodes).toHaveLength(1);
-      expect(schematic.Nodes[0].nodes).toHaveLength(1);
-      expect(schematic.Nodes[0].nodes[0].reference).toBe(resistor.reference);
+      expect(schematic.nodes).toHaveLength(1);
+      expect(schematic.nodes[0].nodes).toHaveLength(1);
+      expect(schematic.nodes[0].nodes[0].reference).toBe(resistor.reference);
     });
   });
 
@@ -142,7 +143,7 @@ describe('Schematic', () => {
       schematic.dnc(pin);
 
       expect(pin.type).toBe('no_connect');
-      expect(schematic.Nodes).toHaveLength(1);
+      expect(schematic.nodes).toHaveLength(1);
     });
 
     it('should handle multiple pins for DNC', () => {
@@ -158,7 +159,7 @@ describe('Schematic', () => {
 
       expect(pin1.type).toBe('no_connect');
       expect(pin2.type).toBe('no_connect');
-      expect(schematic.Nodes.length).toBeGreaterThanOrEqual(1);
+      expect(schematic.nodes.length).toBeGreaterThanOrEqual(1);
     });
   });
 

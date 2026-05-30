@@ -1,4 +1,17 @@
 import { parseSvgPath as parse_svg_path } from "./svgPathParser.js";
+import type { SvgPathMoveTo, SvgPathLineTo, SvgPathEllipticalArc, SvgPathClosePath } from './svgPathParser.js';
+import type { EasyedaRawData } from '../types.js';
+
+type SvgPathElement = SvgPathMoveTo | SvgPathLineTo | SvgPathEllipticalArc | SvgPathClosePath;
+
+interface BoundingBox3d {
+    minX: number;
+    maxX: number;
+    minY: number;
+    maxY: number;
+    minZ: number;
+    maxZ: number;
+}
 
 const EasyedaPinType = {
     unspecified: 0,
@@ -22,16 +35,16 @@ class EeSymbolBbox {
 }
 
 class EeSymbolPinSettings {
-    constructor(data: Record<string, any>) {
-        this.is_displayed = data.is_displayed === "show" ? true : data.is_displayed;
-        const t = parseInt(data.type || "0", 10);
+    constructor(data: EasyedaRawData) {
+        this.is_displayed = data.is_displayed === "show" ? true : data.is_displayed as boolean;
+        const t = parseInt((data.type ?? "0") as string, 10);
         this.type = [0, 1, 2, 3, 4].includes(t) ? t : EasyedaPinType.unspecified;
-        this.spice_pin_number = data.spice_pin_number;
-        this.pos_x = data.pos_x;
-        this.pos_y = data.pos_y;
-        this.rotation = data.rotation || 0.0;
-        this.id = data.id;
-        this.is_locked = data.is_locked || false;
+        this.spice_pin_number = data.spice_pin_number as number | string;
+        this.pos_x = data.pos_x as number | string;
+        this.pos_y = data.pos_y as number | string;
+        this.rotation = (data.rotation as number) || 0.0;
+        this.id = data.id as number | string;
+        this.is_locked = (data.is_locked as boolean) || false;
     }
     is_displayed: boolean;
     type: number;
@@ -80,18 +93,18 @@ class EeSymbolPinPath {
 }
 
 class EeSymbolPinName {
-    constructor(data: Record<string, any>) {
-        this.is_displayed = data.is_displayed === "show" ? true : data.is_displayed;
-        this.pos_x = data.pos_x;
-        this.pos_y = data.pos_y;
-        this.rotation = data.rotation || 0.0;
-        this.text = data.text;
-        this.text_anchor = data.text_anchor;
-        this.font = data.font;
+    constructor(data: EasyedaRawData) {
+        this.is_displayed = data.is_displayed === "show" ? true : data.is_displayed as boolean;
+        this.pos_x = data.pos_x as number | string;
+        this.pos_y = data.pos_y as number | string;
+        this.rotation = (data.rotation as number) || 0.0;
+        this.text = data.text as string;
+        this.text_anchor = data.text_anchor as string;
+        this.font = data.font as string;
         if (typeof data.font_size === "string" && data.font_size.includes("pt")) {
             this.font_size = parseFloat(data.font_size.replace("pt", ""));
         } else {
-            this.font_size = data.font_size || 7.0;
+            this.font_size = (data.font_size as number) || 7.0;
         }
     }
     is_displayed: boolean;
@@ -117,10 +130,10 @@ class EeSymbolPinName {
 }
 
 class EeSymbolPinDotBis {
-    constructor(data: Record<string, any>) {
-        this.is_displayed = data.is_displayed === "show" ? true : data.is_displayed;
-        this.circle_x = data.circle_x;
-        this.circle_y = data.circle_y;
+    constructor(data: EasyedaRawData) {
+        this.is_displayed = data.is_displayed === "show" ? true : data.is_displayed as boolean;
+        this.circle_x = data.circle_x as number | string;
+        this.circle_y = data.circle_y as number | string;
     }
     is_displayed: boolean;
     circle_x: number | string;
@@ -131,9 +144,9 @@ class EeSymbolPinDotBis {
 }
 
 class EeSymbolPinClock {
-    constructor(data: Record<string, any>) {
-        this.is_displayed = data.is_displayed === "show" ? true : data.is_displayed;
-        this.path = data.path;
+    constructor(data: EasyedaRawData) {
+        this.is_displayed = data.is_displayed === "show" ? true : data.is_displayed as boolean;
+        this.path = data.path as string;
     }
     is_displayed: boolean;
     path: string;
@@ -144,16 +157,16 @@ class EeSymbolPinClock {
 
 class EeSymbolPin {
     constructor({ settings, pin_dot, pin_path, name, dot, clock }: {
-        settings?: Record<string, any>;
-        pin_dot?: Record<string, any>;
-        pin_path?: Record<string, any>;
-        name?: Record<string, any>;
-        dot?: Record<string, any>;
-        clock?: Record<string, any>;
+        settings?: EasyedaRawData;
+        pin_dot?: EasyedaRawData;
+        pin_path?: EasyedaRawData;
+        name?: EasyedaRawData;
+        dot?: EasyedaRawData;
+        clock?: EasyedaRawData;
     }) {
         this.settings = new EeSymbolPinSettings(settings!);
-        this.pin_dot = new EeSymbolPinDot(pin_dot!);
-        this.pin_path = new EeSymbolPinPath(pin_path!);
+        this.pin_dot = new EeSymbolPinDot(pin_dot! as Record<string, number | string>);
+        this.pin_path = new EeSymbolPinPath(pin_path! as Record<string, string>);
         this.name = new EeSymbolPinName(name!);
         this.dot = new EeSymbolPinDotBis(dot!);
         this.clock = new EeSymbolPinClock(clock!);
@@ -167,19 +180,19 @@ class EeSymbolPin {
 }
 
 class EeSymbolRectangle {
-    constructor(data: Record<string, any>) {
-        this.pos_x = data.pos_x;
-        this.pos_y = data.pos_y;
-        this.rx = data.rx || null;
-        this.ry = data.ry || null;
-        this.width = data.width;
-        this.height = data.height;
-        this.stroke_color = data.stroke_color;
-        this.stroke_width = data.stroke_width;
-        this.stroke_style = data.stroke_style;
-        this.fill_color = data.fill_color;
-        this.id = data.id;
-        this.is_locked = data.is_locked;
+    constructor(data: EasyedaRawData) {
+        this.pos_x = data.pos_x as number | string;
+        this.pos_y = data.pos_y as number | string;
+        this.rx = (data.rx as number | string) || null;
+        this.ry = (data.ry as number | string) || null;
+        this.width = data.width as number | string;
+        this.height = data.height as number | string;
+        this.stroke_color = data.stroke_color as string;
+        this.stroke_width = data.stroke_width as number | string;
+        this.stroke_style = data.stroke_style as string;
+        this.fill_color = data.fill_color as string;
+        this.id = data.id as number | string;
+        this.is_locked = data.is_locked as boolean;
     }
     pos_x: number | string;
     pos_y: number | string;
@@ -212,18 +225,18 @@ class EeSymbolRectangle {
 }
 
 class EeSymbolCircle {
-    constructor(data: Record<string, any>) {
-        this.center_x = data.center_x;
-        this.center_y = data.center_y;
-        this.radius = data.radius;
-        this.stroke_color = data.stroke_color;
-        this.stroke_width = data.stroke_width;
-        this.stroke_style = data.stroke_style;
+    constructor(data: EasyedaRawData) {
+        this.center_x = data.center_x as number | string;
+        this.center_y = data.center_y as number | string;
+        this.radius = data.radius as number | string;
+        this.stroke_color = data.stroke_color as string;
+        this.stroke_width = data.stroke_width as number | string;
+        this.stroke_style = data.stroke_style as string;
         this.fill_color =
             Boolean(data.fill_color) &&
-            data.fill_color.toLowerCase() !== "none";
-        this.id = data.id;
-        this.is_locked = data.is_locked || false;
+            (data.fill_color as string).toLowerCase() !== "none";
+        this.id = data.id as number | string;
+        this.is_locked = (data.is_locked as boolean) || false;
     }
     center_x: number | string;
     center_y: number | string;
@@ -250,19 +263,19 @@ class EeSymbolCircle {
 }
 
 class EeSymbolArc {
-    constructor(data: Record<string, any>) {
-        this.path = parse_svg_path(data.path);
-        this.helper_dots = data.helper_dots;
-        this.stroke_color = data.stroke_color;
-        this.stroke_width = data.stroke_width;
-        this.stroke_style = data.stroke_style;
+    constructor(data: EasyedaRawData) {
+        this.path = parse_svg_path(data.path as string);
+        this.helper_dots = data.helper_dots as string;
+        this.stroke_color = data.stroke_color as string;
+        this.stroke_width = data.stroke_width as number | string;
+        this.stroke_style = data.stroke_style as string;
         this.fill_color =
             Boolean(data.fill_color) &&
-            data.fill_color.toLowerCase() !== "none";
-        this.id = data.id;
-        this.is_locked = data.is_locked || false;
+            (data.fill_color as string).toLowerCase() !== "none";
+        this.id = data.id as number | string;
+        this.is_locked = (data.is_locked as boolean) || false;
     }
-    path: any;
+    path: SvgPathElement[];
     helper_dots: string;
     stroke_color: string;
     stroke_width: number | string;
@@ -285,19 +298,19 @@ class EeSymbolArc {
 }
 
 class EeSymbolEllipse {
-    constructor(data: Record<string, any>) {
-        this.center_x = data.center_x;
-        this.center_y = data.center_y;
-        this.radius_x = data.radius_x;
-        this.radius_y = data.radius_y;
-        this.stroke_color = data.stroke_color;
-        this.stroke_width = data.stroke_width;
-        this.stroke_style = data.stroke_style;
+    constructor(data: EasyedaRawData) {
+        this.center_x = data.center_x as number | string;
+        this.center_y = data.center_y as number | string;
+        this.radius_x = data.radius_x as number | string;
+        this.radius_y = data.radius_y as number | string;
+        this.stroke_color = data.stroke_color as string;
+        this.stroke_width = data.stroke_width as number | string;
+        this.stroke_style = data.stroke_style as string;
         this.fill_color =
             Boolean(data.fill_color) &&
-            data.fill_color.toLowerCase() !== "none";
-        this.id = data.id;
-        this.is_locked = data.is_locked || false;
+            (data.fill_color as string).toLowerCase() !== "none";
+        this.id = data.id as number | string;
+        this.is_locked = (data.is_locked as boolean) || false;
     }
     center_x: number | string;
     center_y: number | string;
@@ -326,16 +339,16 @@ class EeSymbolEllipse {
 }
 
 class EeSymbolPolyline {
-    constructor(data: Record<string, any>) {
-        this.points = data.points;
-        this.stroke_color = data.stroke_color;
-        this.stroke_width = data.stroke_width;
-        this.stroke_style = data.stroke_style;
+    constructor(data: EasyedaRawData) {
+        this.points = data.points as string;
+        this.stroke_color = data.stroke_color as string;
+        this.stroke_width = data.stroke_width as number | string;
+        this.stroke_style = data.stroke_style as string;
         this.fill_color =
             Boolean(data.fill_color) &&
-            data.fill_color.toLowerCase() !== "none";
-        this.id = data.id;
-        this.is_locked = data.is_locked || false;
+            (data.fill_color as string).toLowerCase() !== "none";
+        this.id = data.id as number | string;
+        this.is_locked = (data.is_locked as boolean) || false;
     }
     points: string;
     stroke_color: string;
@@ -358,7 +371,7 @@ class EeSymbolPolyline {
 }
 
 class EeSymbolPolygon extends EeSymbolPolyline {
-    constructor(data: Record<string, any>) {
+    constructor(data: EasyedaRawData) {
         super(data);
     }
     static get fields() {
@@ -367,16 +380,16 @@ class EeSymbolPolygon extends EeSymbolPolyline {
 }
 
 class EeSymbolPath {
-    constructor(data: Record<string, any>) {
-        this.paths = data.paths;
-        this.stroke_color = data.stroke_color;
-        this.stroke_width = data.stroke_width;
-        this.stroke_style = data.stroke_style;
+    constructor(data: EasyedaRawData) {
+        this.paths = data.paths as string;
+        this.stroke_color = data.stroke_color as string;
+        this.stroke_width = data.stroke_width as number | string;
+        this.stroke_style = data.stroke_style as string;
         this.fill_color =
             Boolean(data.fill_color) &&
-            data.fill_color.toLowerCase() !== "none";
-        this.id = data.id;
-        this.is_locked = data.is_locked || false;
+            (data.fill_color as string).toLowerCase() !== "none";
+        this.id = data.id as number | string;
+        this.is_locked = (data.is_locked as boolean) || false;
     }
     paths: string;
     stroke_color: string;
@@ -457,19 +470,19 @@ class EeSymbol {
         polygons = [],
         paths = [],
     }: {
-        info?: Record<string, any>;
-        bbox?: Record<string, any>;
-        pins?: Record<string, any>[];
-        rectangles?: Record<string, any>[];
-        circles?: Record<string, any>[];
-        arcs?: Record<string, any>[];
-        ellipses?: Record<string, any>[];
-        polylines?: Record<string, any>[];
-        polygons?: Record<string, any>[];
-        paths?: Record<string, any>[];
+        info?: EasyedaRawData;
+        bbox?: EasyedaRawData;
+        pins?: EasyedaRawData[];
+        rectangles?: EasyedaRawData[];
+        circles?: EasyedaRawData[];
+        arcs?: EasyedaRawData[];
+        ellipses?: EasyedaRawData[];
+        polylines?: EasyedaRawData[];
+        polygons?: EasyedaRawData[];
+        paths?: EasyedaRawData[];
     } = {}) {
         this.info = new EeSymbolInfo(info!);
-        this.bbox = new EeSymbolBbox(bbox!);
+        this.bbox = new EeSymbolBbox(bbox! as Record<string, number | string>);
         this.pins = pins.map((p) => new EeSymbolPin(p));
         this.rectangles = rectangles.map((r) => new EeSymbolRectangle(r));
         this.circles = circles.map((c) => new EeSymbolCircle(c));
@@ -512,23 +525,23 @@ class EeFootprintBbox {
 }
 
 class EeFootprintPad {
-    constructor(data: Record<string, any>) {
-        this.shape = data.shape;
-        this.center_x = data.center_x;
-        this.center_y = data.center_y;
-        this.width = data.width;
-        this.height = data.height;
-        this.layer_id = data.layer_id;
-        this.net = data.net;
-        this.number = data.number;
-        this.hole_radius = data.hole_radius;
-        this.points = data.points;
-        this.rotation = data.rotation || 0.0;
-        this.id = data.id;
-        this.hole_length = data.hole_length;
-        this.hole_point = data.hole_point;
-        this.is_plated = data.is_plated;
-        this.is_locked = data.is_locked || false;
+    constructor(data: EasyedaRawData) {
+        this.shape = data.shape as string;
+        this.center_x = data.center_x as number | string;
+        this.center_y = data.center_y as number | string;
+        this.width = data.width as number | string;
+        this.height = data.height as number | string;
+        this.layer_id = data.layer_id as number | string;
+        this.net = data.net as number | string;
+        this.number = data.number as number | string;
+        this.hole_radius = data.hole_radius as number | string;
+        this.points = data.points as string;
+        this.rotation = (data.rotation as number) || 0.0;
+        this.id = data.id as number | string;
+        this.hole_length = data.hole_length as number | string;
+        this.hole_point = data.hole_point as string;
+        this.is_plated = data.is_plated as boolean;
+        this.is_locked = (data.is_locked as boolean) || false;
     }
     shape: string;
     center_x: number | string;
@@ -577,13 +590,13 @@ class EeFootprintPad {
 }
 
 class EeFootprintTrack {
-    constructor(data: Record<string, any>) {
-        this.stroke_width = data.stroke_width;
-        this.layer_id = data.layer_id;
-        this.net = data.net;
-        this.points = data.points;
-        this.id = data.id;
-        this.is_locked = data.is_locked || false;
+    constructor(data: EasyedaRawData) {
+        this.stroke_width = data.stroke_width as number | string;
+        this.layer_id = data.layer_id as number | string;
+        this.net = data.net as number | string;
+        this.points = data.points as string;
+        this.id = data.id as number | string;
+        this.is_locked = (data.is_locked as boolean) || false;
     }
     stroke_width: number | string;
     layer_id: number | string;
@@ -607,12 +620,12 @@ class EeFootprintTrack {
 }
 
 class EeFootprintHole {
-    constructor(data: Record<string, any>) {
-        this.center_x = data.center_x;
-        this.center_y = data.center_y;
-        this.radius = data.radius;
-        this.id = data.id;
-        this.is_locked = data.is_locked || false;
+    constructor(data: EasyedaRawData) {
+        this.center_x = data.center_x as number | string;
+        this.center_y = data.center_y as number | string;
+        this.radius = data.radius as number | string;
+        this.id = data.id as number | string;
+        this.is_locked = (data.is_locked as boolean) || false;
     }
     center_x: number | string;
     center_y: number | string;
@@ -630,14 +643,14 @@ class EeFootprintHole {
 }
 
 class EeFootprintVia {
-    constructor(data: Record<string, any>) {
-        this.center_x = data.center_x;
-        this.center_y = data.center_y;
-        this.diameter = data.diameter;
-        this.net = data.net;
-        this.radius = data.radius;
-        this.id = data.id;
-        this.is_locked = data.is_locked || false;
+    constructor(data: EasyedaRawData) {
+        this.center_x = data.center_x as number | string;
+        this.center_y = data.center_y as number | string;
+        this.diameter = data.diameter as number | string;
+        this.net = data.net as number | string;
+        this.radius = data.radius as number | string;
+        this.id = data.id as number | string;
+        this.is_locked = (data.is_locked as boolean) || false;
     }
     center_x: number | string;
     center_y: number | string;
@@ -658,14 +671,14 @@ class EeFootprintVia {
 }
 
 class EeFootprintCircle {
-    constructor(data: Record<string, any>) {
-        this.cx = data.cx;
-        this.cy = data.cy;
-        this.radius = data.radius;
-        this.stroke_width = data.stroke_width;
-        this.layer_id = data.layer_id;
-        this.id = data.id;
-        this.is_locked = data.is_locked || false;
+    constructor(data: EasyedaRawData) {
+        this.cx = data.cx as number | string;
+        this.cy = data.cy as number | string;
+        this.radius = data.radius as number | string;
+        this.stroke_width = data.stroke_width as number | string;
+        this.layer_id = data.layer_id as number | string;
+        this.id = data.id as number | string;
+        this.is_locked = (data.is_locked as boolean) || false;
     }
     cx: number | string;
     cy: number | string;
@@ -686,15 +699,15 @@ class EeFootprintCircle {
 }
 
 class EeFootprintRectangle {
-    constructor(data: Record<string, any>) {
-        this.x = data.x;
-        this.y = data.y;
-        this.width = data.width;
-        this.height = data.height;
-        this.stroke_width = data.stroke_width;
-        this.id = data.id;
-        this.layer_id = data.layer_id;
-        this.is_locked = data.is_locked;
+    constructor(data: EasyedaRawData) {
+        this.x = data.x as number | string;
+        this.y = data.y as number | string;
+        this.width = data.width as number | string;
+        this.height = data.height as number | string;
+        this.stroke_width = data.stroke_width as number | string;
+        this.id = data.id as number | string;
+        this.layer_id = data.layer_id as number | string;
+        this.is_locked = data.is_locked as boolean;
     }
     x: number | string;
     y: number | string;
@@ -717,14 +730,14 @@ class EeFootprintRectangle {
 }
 
 class EeFootprintArc {
-    constructor(data: Record<string, any>) {
-        this.stroke_width = data.stroke_width;
-        this.layer_id = data.layer_id;
-        this.net = data.net;
-        this.path = data.path;
-        this.helper_dots = data.helper_dots;
-        this.id = data.id;
-        this.is_locked = data.is_locked;
+    constructor(data: EasyedaRawData) {
+        this.stroke_width = data.stroke_width as number | string;
+        this.layer_id = data.layer_id as number | string;
+        this.net = data.net as number | string;
+        this.path = data.path as string;
+        this.helper_dots = data.helper_dots as string;
+        this.id = data.id as number | string;
+        this.is_locked = data.is_locked as boolean;
     }
     stroke_width: number | string;
     layer_id: number | string;
@@ -739,21 +752,21 @@ class EeFootprintArc {
 }
 
 class EeFootprintText {
-    constructor(data: Record<string, any>) {
-        this.type = data.type;
-        this.center_x = data.center_x;
-        this.center_y = data.center_y;
-        this.stroke_width = data.stroke_width;
-        this.rotation = data.rotation;
-        this.miror = data.miror;
-        this.layer_id = data.layer_id;
-        this.net = data.net;
-        this.font_size = data.font_size;
-        this.text = data.text;
-        this.text_path = data.text_path;
-        this.is_displayed = data.is_displayed;
-        this.id = data.id;
-        this.is_locked = data.is_locked;
+    constructor(data: EasyedaRawData) {
+        this.type = data.type as string;
+        this.center_x = data.center_x as number | string;
+        this.center_y = data.center_y as number | string;
+        this.stroke_width = data.stroke_width as number | string;
+        this.rotation = data.rotation as number | string;
+        this.miror = data.miror as number | string;
+        this.layer_id = data.layer_id as number | string;
+        this.net = data.net as number | string;
+        this.font_size = data.font_size as number | string;
+        this.text = data.text as string;
+        this.text_path = data.text_path as string;
+        this.is_displayed = data.is_displayed as string;
+        this.id = data.id as number | string;
+        this.is_locked = data.is_locked as boolean;
     }
     type: string;
     center_x: number | string;
@@ -821,15 +834,15 @@ class Ee3dModel {
     constructor({ name, uuid, translation, rotation, raw_obj = null, step = null }: {
         name?: string;
         uuid?: string;
-        translation?: Record<string, any>;
-        rotation?: Record<string, any>;
+        translation?: EasyedaRawData;
+        rotation?: EasyedaRawData;
         raw_obj?: string | null;
         step?: string | null;
     }) {
         this.name = name!;
         this.uuid = uuid!;
-        this.translation = new Ee3dModelBase(translation!);
-        this.rotation = new Ee3dModelBase(rotation);
+        this.translation = new Ee3dModelBase(translation! as Record<string, number | string>);
+        this.rotation = new Ee3dModelBase(rotation as Record<string, number | string>);
         this.raw_obj = raw_obj;
         this.step = step;
     }
@@ -839,7 +852,7 @@ class Ee3dModel {
     rotation: Ee3dModelBase;
     raw_obj: string | null;
     step: string | null;
-    boundingBox?: any;
+    boundingBox?: BoundingBox3d;
     convert_to_mm() {
         this.translation.convert_to_mm();
     }
@@ -862,20 +875,20 @@ class ee_footprint {
         rectangles = [],
         texts = [],
     }: {
-        info?: Record<string, any>;
-        bbox?: Record<string, any>;
-        model_3d?: Record<string, any>;
-        pads?: Record<string, any>[];
-        tracks?: Record<string, any>[];
-        holes?: Record<string, any>[];
-        vias?: Record<string, any>[];
-        circles?: Record<string, any>[];
-        arcs?: Record<string, any>[];
-        rectangles?: Record<string, any>[];
-        texts?: Record<string, any>[];
+        info?: EasyedaRawData;
+        bbox?: EasyedaRawData;
+        model_3d?: EasyedaRawData;
+        pads?: EasyedaRawData[];
+        tracks?: EasyedaRawData[];
+        holes?: EasyedaRawData[];
+        vias?: EasyedaRawData[];
+        circles?: EasyedaRawData[];
+        arcs?: EasyedaRawData[];
+        rectangles?: EasyedaRawData[];
+        texts?: EasyedaRawData[];
     }) {
         this.info = new EeFootprintInfo(info!);
-        this.bbox = new EeFootprintBbox(bbox!);
+        this.bbox = new EeFootprintBbox(bbox! as Record<string, number | string>);
         this.model_3d = model_3d ? new Ee3dModel(model_3d) : null;
         this.pads = pads.map((p) => new EeFootprintPad(p));
         this.tracks = tracks.map((t) => new EeFootprintTrack(t));

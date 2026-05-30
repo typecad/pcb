@@ -8,27 +8,10 @@ import {
     ISourceInfo
 } from './pcb_interfaces.js';
 import { generateUuid, formatCallSite } from './pcb_utils.js';
+import type { PcbInternalState } from './pcb_state.js';
 import fs from "node:fs";
 import logger from '../logging.js';
-
-/**
- * Graphics methods extracted from PCB class for standalone use.
- * These functions accept a PCB instance as the first parameter to access
- * the PCB's internal graphics storage arrays.
- */
-
-/**
- * PCB interface for graphics functions - only the properties needed by graphics methods
- */
-export interface PcbGraphicsInstance {
-    getCallSite(): { file: string; line: number; column: number } | undefined;
-    get grLines(): IGrLine[];
-    get grCircles(): IGrCircle[];
-    get grRects(): IGrRect[];
-    get grPolys(): IGrPoly[];
-    get grTexts(): import('./pcb_interfaces.js').IGrTextOptions[];
-    get stagedOutlines(): IOutline[];
-}
+import { getCallSite } from '../utils/stack_trace.js';
 
 /**
  * Creates a graphical line on the board.
@@ -62,7 +45,7 @@ export interface PcbGraphicsInstance {
  * });
  * ```
  */
-export function pcbLine(pcb: PcbGraphicsInstance, options: {
+export function pcbLine(state: PcbInternalState, options: {
     start: { x: number; y: number };
     end: { x: number; y: number };
     layer?: string;
@@ -87,7 +70,7 @@ export function pcbLine(pcb: PcbGraphicsInstance, options: {
         locked
     };
 
-    pcb.grLines.push(line);
+    state.grLines.push(line);
 }
 
 /**
@@ -123,7 +106,7 @@ export function pcbLine(pcb: PcbGraphicsInstance, options: {
  * });
  * ```
  */
-export function pcbCircle(pcb: PcbGraphicsInstance, options: {
+export function pcbCircle(state: PcbInternalState, options: {
     center: { x: number; y: number };
     radius?: number;
     end?: { x: number; y: number };
@@ -149,7 +132,7 @@ export function pcbCircle(pcb: PcbGraphicsInstance, options: {
     } else if (end !== undefined) {
         endPoint = end;
     } else {
-        logger.error(`[PCB CIRCLE] ERROR: Must provide either 'radius' or 'end' parameter${formatCallSite(pcb.getCallSite())}`);
+        logger.error(`[PCB CIRCLE] ERROR: Must provide either 'radius' or 'end' parameter${formatCallSite(getCallSite())}`);
         return;
     }
 
@@ -164,7 +147,7 @@ export function pcbCircle(pcb: PcbGraphicsInstance, options: {
         locked
     };
 
-    pcb.grCircles.push(circle);
+    state.grCircles.push(circle);
 }
 
 /**
@@ -211,7 +194,7 @@ export function pcbCircle(pcb: PcbGraphicsInstance, options: {
  * });
  * ```
  */
-export function pcbRect(pcb: PcbGraphicsInstance, options: {
+export function pcbRect(state: PcbInternalState, options: {
     x?: number;
     y?: number;
     width?: number;
@@ -247,7 +230,7 @@ export function pcbRect(pcb: PcbGraphicsInstance, options: {
         startPoint = { x, y };
         endPoint = { x: x + width, y: y + height };
     } else {
-        logger.error(`[PCB RECT] ERROR: Must provide either (x, y, width, height) or (start, end) parameters${formatCallSite(pcb.getCallSite())}`);
+        logger.error(`[PCB RECT] ERROR: Must provide either (x, y, width, height) or (start, end) parameters${formatCallSite(getCallSite())}`);
         return;
     }
 
@@ -262,7 +245,7 @@ export function pcbRect(pcb: PcbGraphicsInstance, options: {
         locked
     };
 
-    pcb.grRects.push(rect);
+    state.grRects.push(rect);
 }
 
 /**
@@ -315,7 +298,7 @@ export function pcbRect(pcb: PcbGraphicsInstance, options: {
  * });
  * ```
  */
-export function pcbPoly(pcb: PcbGraphicsInstance, options: {
+export function pcbPoly(state: PcbInternalState, options: {
     points: { x: number; y: number }[];
     layer?: string;
     width?: number;
@@ -331,7 +314,7 @@ export function pcbPoly(pcb: PcbGraphicsInstance, options: {
     } = options;
 
     if (!points || points.length < 3) {
-        logger.error(`[PCB POLY] ERROR: Polygon must have at least 3 points${formatCallSite(pcb.getCallSite())}`);
+        logger.error(`[PCB POLY] ERROR: Polygon must have at least 3 points${formatCallSite(getCallSite())}`);
         return;
     }
 
@@ -345,7 +328,7 @@ export function pcbPoly(pcb: PcbGraphicsInstance, options: {
         locked
     };
 
-    pcb.grPolys.push(poly);
+    state.grPolys.push(poly);
 }
 
 /**
@@ -358,9 +341,9 @@ export function pcbPoly(pcb: PcbGraphicsInstance, options: {
  * @param filletRadius - The radius for filleted corners (0 for sharp).
  * @param conceptualUuidFromUser - Optional UUID for the conceptual outline.
  */
-export function pcbOutline(pcb: PcbGraphicsInstance, x: number, y: number, width: number, height: number, filletRadius: number = 0, conceptualUuidFromUser?: string): void {
+export function pcbOutline(state: PcbInternalState, x: number, y: number, width: number, height: number, filletRadius: number = 0, conceptualUuidFromUser?: string): void {
     // Capture source info
-    const callSite = pcb.getCallSite();
+    const callSite = getCallSite();
     let sourceInfo: ISourceInfo | undefined = callSite ? {
         file: callSite.file,
         line: callSite.line,
@@ -391,7 +374,7 @@ export function pcbOutline(pcb: PcbGraphicsInstance, x: number, y: number, width
                 };
             }
         } catch (err) {
-            // Silently ignore if we can't read the file
+            logger.debug('pcb_graphics: failed to read existing file for outline reuse', err);
         }
     }
 
@@ -508,10 +491,10 @@ export function pcbOutline(pcb: PcbGraphicsInstance, x: number, y: number, width
         elements,
         sourceInfo
     };
-    pcb.stagedOutlines.push(outlineData);
+    state.stagedOutlines.push(outlineData);
 }
 
-export function pcbText(pcb: PcbGraphicsInstance, options: import('./pcb_interfaces.js').IGrTextOptions): void {
+export function pcbText(state: PcbInternalState, options: import('./pcb_interfaces.js').IGrTextOptions): void {
     const textElement: import('./pcb_interfaces.js').IGrTextOptions = {
         text: options.text,
         x: options.x,
@@ -529,5 +512,5 @@ export function pcbText(pcb: PcbGraphicsInstance, options: import('./pcb_interfa
         uuid: options.uuid || generateUuid()
     };
 
-    pcb.grTexts.push(textElement);
+    state.grTexts.push(textElement);
 }

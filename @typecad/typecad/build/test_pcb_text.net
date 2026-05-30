@@ -1,6 +1,6 @@
 (export (version "E")
   (design
-    (tool "typeCAD 0.2.30"))
+    (tool "typeCAD"))
   (components
 )
   (nets

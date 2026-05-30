@@ -10,6 +10,7 @@
     "declaration": true,
     "declarationMap": true,
     "removeComments": true,
+    "stripInternal": true,
     "skipLibCheck": true,
     "rootDir": "./src",
     "outDir": "./dist",

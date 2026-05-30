@@ -4,11 +4,12 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import * as crypto from 'node:crypto';
 import { tmpdir } from 'node:os';
-import { KiCAD, kicad_cli_path } from '../../../kicad.js';
+import { KiCAD } from '../../../kicad.js';
 import { generateDiffs } from '../../../gitdiff/core/diff-generator.js';
 import { openInBrowser } from '../../../gitdiff/utils/open.js';
 import createSpinner from '../../../gitdiff/utils/spinner.js';
 import type { ParsedArgs } from '../parser.js';
+import logger from '../../../logging.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -26,8 +27,7 @@ async function getGitRepoRoot(): Promise<string> {
         cachedRepoRoot = stdout.trim();
         return cachedRepoRoot;
     } catch {
-        console.error('Error: not inside a git repository');
-        process.exit(1);
+        throw new Error('Not inside a git repository');
     }
 }
 
@@ -47,14 +47,13 @@ async function resolveGitFile(rev: string, localPath: string): Promise<string> {
         gitTempFiles.push(outPath);
         return outPath;
     } catch {
-        console.error(`Error: unable to resolve git revision "${rev}" for file "${gitPath}"`);
-        process.exit(1);
+        throw new Error(`Unable to resolve git revision "${rev}" for file "${gitPath}"`);
     }
 }
 
 function cleanupGitTempFiles(): void {
     for (const f of gitTempFiles) {
-        try { fs.unlinkSync(f); } catch {}
+        try { fs.unlinkSync(f); } catch { logger.debug('Failed to delete file', f); }
     }
     gitTempFiles = [];
 }
@@ -102,26 +101,24 @@ export async function run(parsed: ParsedArgs): Promise<void> {
     }
 
     if (!originalFile || !modifiedFile) {
-        console.error("Usage: typecad diff [options] <original.kicad_pcb> <modified.kicad_pcb>");
-        console.error("       typecad diff [options] <rev> <file.kicad_pcb>");
-        console.error("       typecad diff [options] <rev1> <rev2> [--] <file.kicad_pcb>");
-        console.log("Use 'typecad diff --help' for more information");
-        process.exit(1);
+        throw new Error("Usage: typecad diff [options] <original.kicad_pcb> <modified.kicad_pcb>\n" +
+            "       typecad diff [options] <rev> <file.kicad_pcb>\n" +
+            "       typecad diff [options] <rev1> <rev2> [--] <file.kicad_pcb>\n" +
+            "Use 'typecad diff --help' for more information");
     }
 
-    console.log("");
-    console.log("typeCAD GitDiff - Visual PCB Comparison Tool");
-    console.log("");
+    logger.log("");
+    logger.log("typeCAD GitDiff - Visual PCB Comparison Tool");
+    logger.log("");
 
     if (isGitVsFileMode) {
         if (!fs.existsSync(modifiedFile)) {
-            console.error(`Error: file not found: ${modifiedFile}`);
-            process.exit(1);
+            throw new Error(`File not found: ${modifiedFile}`);
         }
-        console.log("Git vs File Mode:");
-        console.log(`   Original:  ${originalFile} (git)`);
-        console.log(`   Modified:  ${modifiedFile} (working tree)`);
-        console.log("");
+        logger.log("Git vs File Mode:");
+        logger.log(`   Original:  ${originalFile} (git)`);
+        logger.log(`   Modified:  ${modifiedFile} (working tree)`);
+        logger.log("");
 
         const spinner1 = createSpinner({ text: `extracting ${originalFile} from git...` }).start();
         originalFile = await resolveGitFile(originalFile, modifiedFile);
@@ -129,14 +126,13 @@ export async function run(parsed: ParsedArgs): Promise<void> {
     } else if (isGitRevisionMode) {
         const pcbFile = nonDashArgs[nonDashArgs.length - 1];
         if (!pcbFile.endsWith('.kicad_pcb')) {
-            console.error("Error: git revision mode requires a .kicad_pcb file path");
-            process.exit(1);
+            throw new Error("Git revision mode requires a .kicad_pcb file path");
         }
-        console.log("Git Revision Mode:");
-        console.log(`   File:  ${pcbFile}`);
-        console.log(`   From:  ${originalFile}`);
-        console.log(`   To:    ${modifiedFile}`);
-        console.log("");
+        logger.log("Git Revision Mode:");
+        logger.log(`   File:  ${pcbFile}`);
+        logger.log(`   From:  ${originalFile}`);
+        logger.log(`   To:    ${modifiedFile}`);
+        logger.log("");
 
         const absPcbFile = path.resolve(pcbFile);
 
@@ -150,28 +146,27 @@ export async function run(parsed: ParsedArgs): Promise<void> {
     } else {
         for (const f of [originalFile, modifiedFile]) {
             if (!fs.existsSync(f)) {
-                console.error(`Error: file not found: ${f}`);
-                process.exit(1);
+                throw new Error(`File not found: ${f}`);
             }
         }
 
-        console.log("Analyzing PCB files:");
-        console.log(`   Original:  ${originalFile}`);
-        console.log(`   Modified:  ${modifiedFile}`);
-        console.log("");
+        logger.log("Analyzing PCB files:");
+        logger.log(`   Original:  ${originalFile}`);
+        logger.log(`   Modified:  ${modifiedFile}`);
+        logger.log("");
     }
 
-    console.log("Configuration:");
-    if (fullMode) console.log("   Processing mode: Full (all layers including User layers)");
-    else console.log("   Processing mode: Standard");
-    if (theme) console.log(`   Theme: ${theme}`);
-    if (outputHtmlPath) console.log(`   Output: ${outputHtmlPath}`);
-    console.log("");
+    logger.log("Configuration:");
+    if (fullMode) logger.log("   Processing mode: Full (all layers including User layers)");
+    else logger.log("   Processing mode: Standard");
+    if (theme) logger.log(`   Theme: ${theme}`);
+    if (outputHtmlPath) logger.log(`   Output: ${outputHtmlPath}`);
+    logger.log("");
 
     const spinner = createSpinner({ text: 'processing files...' }).start();
     try {
-        const kicad = new KiCAD();
-        const resolvedCliPath = kicad_cli_path;
+        const kicad = KiCAD.instance;
+        const resolvedCliPath = KiCAD.cliPath;
 
         const htmlFilePath = await generateDiffs({
             originalFile,
@@ -185,21 +180,21 @@ export async function run(parsed: ParsedArgs): Promise<void> {
         await openInBrowser(htmlFilePath);
 
         spinner.success('Processing complete!');
-        console.log("");
-        console.log("Success! Visual diff report generated");
-        console.log(`Report location: ${htmlFilePath}`);
-        console.log("Opening in your default browser...");
+        logger.log("");
+        logger.log("Success! Visual diff report generated");
+        logger.log(`Report location: ${htmlFilePath}`);
+        logger.log("Opening in your default browser...");
     } catch (error) {
         spinner.error('Processing failed');
-        console.log("");
-        console.error(`   ${error}`);
-        console.log("");
-        console.log("Troubleshooting tips:");
-        console.log("   - Ensure both PCB files exist and are valid KiCAD files");
-        console.log("   - Check that KiCAD CLI is properly installed");
-        console.log("   - For git revisions, ensure you're inside a git repository");
+        logger.log("");
+        logger.error(`   ${error}`);
+        logger.log("");
+        logger.log("Troubleshooting tips:");
+        logger.log("   - Ensure both PCB files exist and are valid KiCAD files");
+        logger.log("   - Check that KiCAD CLI is properly installed");
+        logger.log("   - For git revisions, ensure you're inside a git repository");
         cleanupGitTempFiles();
-        process.exit(1);
+        throw error;
     }
     cleanupGitTempFiles();
 }

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-class Resistor extends Component { constructor(opts = {}) { super({ prefix: 'R', footprint: 'Resistor_SMD:R_0603_1608Metric', ...opts }); } }
+class Resistor extends Component { constructor(opts: any = {}) { super('Resistor_SMD:R_0603_1608Metric'); if (opts.value) this.value = opts.value; } }
 import { PCB, Component } from '../src/index.js';
 
 describe('DSBGA Complex Routing Tests', () => {
@@ -12,9 +12,7 @@ describe('DSBGA Complex Routing Tests', () => {
 
     it('should route complex connections around DSBGA component', async () => {
         // Test 9: Texas DSBGA-12 component with complex routing
-        const dsbga_test9 = new Component({
-            footprint: 'Package_BGA:Texas_DSBGA-12_1.36x1.86mm_Layout3x4_P0.5mm'
-        });
+        const dsbga_test9 = new Component('Package_BGA:Texas_DSBGA-12_1.36x1.86mm_Layout3x4_P0.5mm');
 
         // Create resistors for Test 9 - positioned to test BGA routing challenges
         const r1_test9 = new Resistor();

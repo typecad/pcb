@@ -141,36 +141,36 @@ async function applyMode(ir: KicadIR, kicadFilePath: string): Promise<void> {
     if (footprintChanges.length > 0) {
         const footprintResult = await interactiveApplyFootprints(footprintChanges);
         if (footprintResult.applied > 0) {
-            console.log(chalk.green(
+            logger.log(chalk.green(
                 `\n✓ Applied ${footprintResult.applied} component change(s) to ${footprintResult.filesModified} file(s).`
             ));
         }
     } else {
-        console.log(chalk.green('\nAll component positions are up to date. No changes needed.'));
+        logger.log(chalk.green('\nAll component positions are up to date. No changes needed.'));
     }
 
     // 5. Apply text changes interactively
     if (textChanges.length > 0) {
         const textResult = await interactiveApplyTexts(textChanges);
         if (textResult.applied > 0) {
-            console.log(chalk.green(
+            logger.log(chalk.green(
                 `\n✓ Applied ${textResult.applied} text change(s) to ${textResult.filesModified} file(s).`
             ));
         }
     } else if (ir.textElements.length > 0) {
-        console.log(chalk.green('\nAll text positions are up to date.'));
+        logger.log(chalk.green('\nAll text positions are up to date.'));
     }
 
     if (footprintChanges.length === 0 && textChanges.length === 0) {
-        console.log(chalk.green('\nNo changes detected. Everything is in sync.'));
+        logger.log(chalk.green('\nNo changes detected. Everything is in sync.'));
     }
 
-    console.log(chalk.gray('\nRebuild with: npm run build'));
+    logger.log(chalk.gray('\nRebuild with: npm run build'));
 }
 
 async function interactiveApplyFootprints(changes: PendingChange[]): Promise<{ filesModified: number; applied: number }> {
     // Show summary
-    console.log(chalk.bold(`\n${changes.length} component(s) have new positions:\n`));
+    logger.log(chalk.bold(`\n${changes.length} component(s) have new positions:\n`));
     const byFile: Record<string, PendingChange[]> = {};
     for (const c of changes) {
         if (!byFile[c.filePath]) byFile[c.filePath] = [];
@@ -178,13 +178,13 @@ async function interactiveApplyFootprints(changes: PendingChange[]): Promise<{ f
     }
     for (const [file, fileChanges] of Object.entries(byFile)) {
         const shortFile = file.replace(/\\/g, '/').split('/').slice(-2).join('/');
-        console.log(chalk.yellow(`  ${shortFile}:`));
+        logger.log(chalk.yellow(`  ${shortFile}:`));
         for (const c of fileChanges) {
             const oldStr = c.existingPcbLine !== null ? `(${c.oldX}, ${c.oldY})` : '(not set)';
             const effectiveOldSide = c.oldSide || 'front';
             const sideChanged = effectiveOldSide !== c.newSide;
             const sideInfo = sideChanged ? ` ${chalk.magenta(`[${effectiveOldSide} → ${c.newSide}]`)}` : '';
-            console.log(`    ${chalk.blueBright(c.prefix + c.variableName.padEnd(14))} ${oldStr} → (${c.newX}, ${c.newY})${sideInfo}`);
+            logger.log(`    ${chalk.blueBright(c.prefix + c.variableName.padEnd(14))} ${oldStr} → (${c.newX}, ${c.newY})${sideInfo}`);
         }
     }
 
@@ -198,7 +198,7 @@ async function interactiveApplyFootprints(changes: PendingChange[]): Promise<{ f
     });
 
     if (selected.length === 0) {
-        console.log(chalk.gray('\nNo changes selected.'));
+        logger.log(chalk.gray('\nNo changes selected.'));
         return { filesModified: 0, applied: 0 };
     }
 
@@ -210,12 +210,12 @@ async function interactiveApplyFootprints(changes: PendingChange[]): Promise<{ f
 
 async function interactiveApplyTexts(changes: PendingTextChange[]): Promise<{ filesModified: number; applied: number }> {
     // Show summary
-    console.log(chalk.bold(`\n${changes.length} text element(s) have changes:\n`));
+    logger.log(chalk.bold(`\n${changes.length} text element(s) have changes:\n`));
     for (const c of changes) {
         const propsStr = c.changedProps.length > 0
             ? ` ${chalk.magenta(`[${c.changedProps.join(', ')}]`)}`
             : '';
-        console.log(`    ${chalk.blueBright(`"${c.sourceTextContent}"`)}  (${c.oldX}, ${c.oldY}) → (${c.newX}, ${c.newY})${propsStr}`);
+        logger.log(`    ${chalk.blueBright(`"${c.sourceTextContent}"`)}  (${c.oldX}, ${c.oldY}) → (${c.newX}, ${c.newY})${propsStr}`);
     }
 
     // Interactive selection
@@ -228,7 +228,7 @@ async function interactiveApplyTexts(changes: PendingTextChange[]): Promise<{ fi
     });
 
     if (selected.length === 0) {
-        console.log(chalk.gray('\nNo text changes selected.'));
+        logger.log(chalk.gray('\nNo text changes selected.'));
         return { filesModified: 0, applied: 0 };
     }
 

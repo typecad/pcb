@@ -41,7 +41,6 @@ watch.js
 logging.js
 src/
 examples/
-true
 scripts/
 package-lock.json
 tsconfig.cli.json

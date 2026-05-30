@@ -9,7 +9,9 @@ import { ComponentError } from "./errors.js";
 import logger from "./logging.js";
 import { inspectSource } from "./source_inspector.js";
 import { getCallSite } from "./utils/stack_trace.js";
+import { validateFinite } from "./utils/numeric_validation.js";
 import { LIBRARY_SEPARATOR } from './constants.js';
+import { PCB_CONSTANTS } from './pcb/pcb_routing_calculations.js';
 import {
     parseTextOrPositioning,
     applyTextPositioning,
@@ -25,6 +27,13 @@ import type {
 import { loadFootprintLib } from './component_footprint_loader.js';
 import { loadSymbolLib } from './component_symbol_loader.js';
 
+const defaultCounter = new ReferenceCounter();
+const pendingInspections: Set<Promise<void>> = new Set();
+
+export function awaitPendingInspections(): Promise<void> {
+    return Promise.all(Array.from(pendingInspections)).then(() => {});
+}
+
 export type { TextOrPositioning, TextPositioning, TextWithPositioning, TextEntry, FabEntry };
 export { parseTextOrPositioning };
 
@@ -36,22 +45,6 @@ export interface ITypeHalInfo {
     pinLookup?: Record<string, string>;
 }
 
-export interface IComponent {
-    symbol?: string,
-    reference?: TextOrPositioning,
-    value?: TextOrPositioning,
-    fab?: TextPositioning | TextWithPositioning,
-    footprint?: string,
-    prefix?: string, datasheet?: string, description?: string, voltage?: string,
-    wattage?: string, uuid?: string, mpn?: string, dnp?: boolean,
-    pcb?: { x: number, y: number, rotation?: number, side?: 'front' | 'back' }, pins?: Pin[], via?: boolean,
-    simulation?: { include: boolean, model?: string }, sch?: { x: number, y: number, rotation: number },
-    viaData?: IVia;
-    sourceInfo?: SourceInfo;
-    typehal?: ITypeHalInfo;
-    text?: TextEntry[];
-}
-
 export interface SourceInfo {
     file: string;
     line: number;
@@ -60,71 +53,238 @@ export interface SourceInfo {
     isThis?: boolean;
 }
 
-export class Component {
-    private static _activeCounter: ReferenceCounter | null = null;
-    private static _defaultCounter: ReferenceCounter | null = null;
-
-    static setActiveCounter(counter: ReferenceCounter | null): void {
-        Component._activeCounter = counter;
-    }
-
-    static getActiveCounter(): ReferenceCounter {
-        if (Component._activeCounter) return Component._activeCounter;
-        if (!Component._defaultCounter) {
-            Component._defaultCounter = new ReferenceCounter();
-        }
-        return Component._defaultCounter;
-    }
-
-    reference: string = '';
-    value: string = '';
-    footprint: string = '';
-    datasheet: string = '';
-    description: string = '';
-    voltage: string = '';
-    wattage: string = '';
-    mpn: string = '';
-    pcb: { x: number, y: number, rotation?: number, side?: 'front' | 'back' } = { x: 0, y: 0, rotation: 0, side: 'front' };
-    dnp: boolean = false;
-    #footprint_file?: string = '';
-    #symbol_file?: string = '';
-    pins: Pin[] = [];
-    via: boolean = false;
+export interface ComponentInit {
+    footprint?: string;
+    reference?: string;
+    prefix?: string;
+    value?: string;
+    via?: boolean;
     viaData?: IVia;
-    simulation: { include: boolean, model: string } = { include: false, model: '' };
-    symbol?: string = '';
-    sch: { x: number, y: number, rotation?: number } = { x: 0, y: 0, rotation: 0 };
-    groups: string[] = [];
+    uuid?: string;
+    pcb?: { x: number; y: number; rotation?: number; side?: 'front' | 'back' };
+    sch?: { x: number; y: number; rotation?: number };
+    simulation?: { include: boolean; model?: string };
+    symbol?: string;
     sourceInfo?: SourceInfo;
     typehal?: ITypeHalInfo;
+    datasheet?: string;
+    description?: string;
+    voltage?: string;
+    wattage?: string;
+    mpn?: string;
+    dnp?: boolean;
+    fab?: TextPositioning | TextWithPositioning;
+    text?: TextEntry[];
+}
+
+/** @deprecated Use `ComponentInit` instead. */
+export type IComponent = ComponentInit;
+
+export class Component {
+    #ref: string = '';
+    #prefix: string = '';
+    #refLocked: boolean = false;
+    #committed: boolean = false;
+    #footprint: string = '';
+    #value: string = '';
+    #datasheet: string = '';
+    #description: string = '';
+    #voltage: string = '';
+    #wattage: string = '';
+    #mpn: string = '';
+    #symbol: string = '';
+    pcb: { x: number, y: number, rotation?: number, side?: 'front' | 'back' } = { x: 0, y: 0, rotation: 0, side: 'front' };
+    dnp: boolean = false;
+    via: boolean = false;
+    viaData: IVia | undefined = undefined;
+    simulation: { include: boolean, model?: string } = { include: false };
+    sch: { x: number, y: number, rotation?: number } = { x: 0, y: 0, rotation: 0 };
+    /** @internal */
+    groups: string[] = [];
+    /** @internal */
+    sourceInfo?: SourceInfo;
+    /** @internal */
+    typehal?: ITypeHalInfo;
     text: TextEntry[] = [];
-    fab?: FabEntry;
-    valueFootprint?: ITextPositioning;
+    fab: FabEntry | undefined = undefined;
+    /** @internal */
+    valueFootprint?: import('./pcb/pcb_interfaces.js').ITextPositioning;
+    /** @internal */
+    pins: Pin[] = [];
+    #pinMap: Map<string, Pin> = new Map();
+    #footprint_file?: string = '';
+    #symbol_file?: string = '';
     #isInitialized: boolean = false;
     #uuid: string = '';
 
-    constructor({ reference, value, footprint, prefix, datasheet, description, voltage, wattage, mpn, via, uuid, simulation, symbol, sch, pcb, viaData, text, fab, dnp, typehal }: IComponent = {}) {
+    get footprint(): string { return this.#footprint; }
+    set footprint(value: string) {
+        if (this.#committed && value !== this.#footprint) {
+            logger.warn(chalk.whiteBright.bgYellow(`\u26A0\uFE0F  Changing footprint on "${this.#ref}" after it was added to a schematic/PCB. Changes may not take effect.`));
+        }
+        this.#footprint = value;
+    }
+
+    get value(): string { return this.#value; }
+    set value(v: string) {
+        if (this.#committed && v !== this.#value) {
+            logger.warn(chalk.whiteBright.bgYellow(`\u26A0\uFE0F  Changing value on "${this.#ref}" after it was added to a schematic/PCB. Changes may not take effect.`));
+        }
+        this.#value = v;
+    }
+
+    get datasheet(): string { return this.#datasheet; }
+    set datasheet(v: string) {
+        if (this.#committed && v !== this.#datasheet) {
+            logger.warn(chalk.whiteBright.bgYellow(`\u26A0\uFE0F  Changing datasheet on "${this.#ref}" after it was added to a schematic/PCB. Changes may not take effect.`));
+        }
+        this.#datasheet = v;
+    }
+
+    get description(): string { return this.#description; }
+    set description(v: string) {
+        if (this.#committed && v !== this.#description) {
+            logger.warn(chalk.whiteBright.bgYellow(`\u26A0\uFE0F  Changing description on "${this.#ref}" after it was added to a schematic/PCB. Changes may not take effect.`));
+        }
+        this.#description = v;
+    }
+
+    get voltage(): string { return this.#voltage; }
+    set voltage(v: string) {
+        if (this.#committed && v !== this.#voltage) {
+            logger.warn(chalk.whiteBright.bgYellow(`\u26A0\uFE0F  Changing voltage on "${this.#ref}" after it was added to a schematic/PCB. Changes may not take effect.`));
+        }
+        this.#voltage = v;
+    }
+
+    get wattage(): string { return this.#wattage; }
+    set wattage(v: string) {
+        if (this.#committed && v !== this.#wattage) {
+            logger.warn(chalk.whiteBright.bgYellow(`\u26A0\uFE0F  Changing wattage on "${this.#ref}" after it was added to a schematic/PCB. Changes may not take effect.`));
+        }
+        this.#wattage = v;
+    }
+
+    get mpn(): string { return this.#mpn; }
+    set mpn(v: string) {
+        if (this.#committed && v !== this.#mpn) {
+            logger.warn(chalk.whiteBright.bgYellow(`\u26A0\uFE0F  Changing mpn on "${this.#ref}" after it was added to a schematic/PCB. Changes may not take effect.`));
+        }
+        this.#mpn = v;
+    }
+
+    get symbol(): string { return this.#symbol; }
+    set symbol(v: string) {
+        if (this.#committed && v !== this.#symbol) {
+            logger.warn(chalk.whiteBright.bgYellow(`\u26A0\uFE0F  Changing symbol on "${this.#ref}" after it was added to a schematic/PCB. Changes may not take effect.`));
+        }
+        this.#symbol = v;
+    }
+
+    get reference(): string {
+        if (!this.#ref && this.#isInitialized) {
+            this.#ref = defaultCounter.getNextReference(this.#prefix || this.#inferPrefix());
+            this.#refLocked = true;
+        }
+        return this.#ref;
+    }
+
+    set reference(value: string) {
+        this.#ref = value;
+        this.#refLocked = true;
+        if (value && this.#isInitialized) {
+            if (!/\d/.test(value)) {
+                logger.warn(chalk.whiteBright.bgYellow(`\u26A0\uFE0F  reference="${value}" has no number suffix. KiCad requires references like "R1", "C2", "U3".`));
+            }
+            defaultCounter.setReference(value);
+        }
+    }
+
+    set prefix(value: string) {
+        if (this.#refLocked) {
+            const refPrefix = this.#ref.match(/^[A-Za-z]+/)?.[0] ?? '';
+            if (refPrefix && refPrefix !== value) {
+                logger.warn(chalk.whiteBright.bgYellow(`\u26A0\uFE0F  prefix="${value}" conflicts with reference="${this.#ref}". Set prefix before reference.`));
+            } else {
+                logger.warn(chalk.whiteBright.bgYellow(`\u26A0\uFE0F  prefix="${value}" has no effect \u2014 reference is already set to "${this.#ref}".`));
+            }
+            return;
+        }
+        this.#prefix = value;
+    }
+
+    constructor(footprint: string | ComponentInit) {
         this.captureSourceInfo();
-        const counter = Component.getActiveCounter();
-        const { referenceStr, referencePositioning } = this.parseReference(reference, prefix, counter);
-        const { valueStr, valuePositioning } = this.parseValue(value);
-        this.assignProperties({ footprint, datasheet, description, voltage, wattage, mpn, simulation, symbol, sch, pcb, via, viaData, text, reference, value });
-        applyTextPositioning(this.text, 'Reference', referenceStr ?? this.reference, referencePositioning);
-        applyTextPositioning(this.text, 'Value', valueStr ?? this.value, valuePositioning);
-        if (valuePositioning) {
-            this.valueFootprint = valuePositioning;
+        if (typeof footprint !== 'string') {
+            const init = footprint as Partial<ComponentInit>;
+            const fp = init.footprint ?? '';
+            if (fp && !fp.includes(LIBRARY_SEPARATOR)) {
+                throw new ComponentError(`[${fp}] Footprint must be in format "library${LIBRARY_SEPARATOR}footprint"`);
+            }
+            this.#footprint = fp;
+            this.#applyInit(init);
+            this.#isInitialized = true;
+            if (init.reference) defaultCounter.setReference(init.reference);
+            return;
         }
-        this.fab = parseFab(fab);
-        if (dnp !== undefined) {
-            this.dnp = dnp;
+        if (footprint && !footprint.includes(LIBRARY_SEPARATOR)) {
+            throw new ComponentError(`[${footprint}] Footprint must be in format "library${LIBRARY_SEPARATOR}footprint" (e.g., "Resistor_SMD${LIBRARY_SEPARATOR}R_0603_1608Metric")`);
         }
-        if (uuid !== undefined) {
-            this.#uuid = uuid;
-        }
-        if (typehal !== undefined) {
-            this.typehal = typehal;
-        }
+        this.#footprint = footprint;
         this.#isInitialized = true;
+    }
+
+    #applyInit(init: ComponentInit): void {
+        if (init.prefix) this.#prefix = init.prefix;
+        if (init.reference) this.#ref = init.reference;
+        if (init.value !== undefined) this.#value = init.value;
+        if (init.symbol) this.#symbol = init.symbol;
+        if (init.datasheet) this.#datasheet = init.datasheet;
+        if (init.description) this.#description = init.description;
+        if (init.voltage) this.#voltage = init.voltage;
+        if (init.wattage) this.#wattage = init.wattage;
+        if (init.mpn) this.#mpn = init.mpn;
+        if (init.dnp !== undefined) this.dnp = init.dnp;
+        if (init.pcb) {
+            validateFinite(init.pcb.x, 'pcb.x');
+            validateFinite(init.pcb.y, 'pcb.y');
+            if (init.pcb.rotation !== undefined) validateFinite(init.pcb.rotation, 'pcb.rotation');
+            this.pcb = init.pcb;
+        }
+        if (init.sch) this.sch = init.sch;
+        if (init.via) this.via = init.via;
+        if (init.viaData) this.viaData = init.viaData;
+        if (init.simulation) this.simulation = { include: init.simulation.include, model: init.simulation.model ?? '' };
+        if (init.uuid) this.#uuid = init.uuid;
+        if (init.fab) this.fab = parseFab(init.fab);
+        if (init.text) this.text = init.text;
+        if (init.typehal) this.typehal = init.typehal;
+        if (init.sourceInfo) this.sourceInfo = init.sourceInfo;
+    }
+
+    static via(at: { x: number; y: number }, options?: { size?: number; drill?: number }): Component {
+        const viaUuid = randomUUID();
+        return Component._create({
+            via: true,
+            prefix: 'V',
+            uuid: viaUuid,
+            footprint: '',
+            pcb: { x: at.x, y: at.y, rotation: 0, side: 'front' },
+            viaData: {
+                uuid: viaUuid,
+                at,
+                size: options?.size ?? 0.8,
+                drill: options?.drill ?? 0.4,
+                layers: ['F.Cu', 'B.Cu'],
+            }
+        });
+    }
+
+    /** @internal */
+    static _create(init: ComponentInit): Component {
+        const c = new Component(init.footprint ?? '');
+        c.#applyInit(init);
+        return c;
     }
 
     private captureSourceInfo(): void {
@@ -137,79 +297,47 @@ export class Component {
                 params: undefined,
                 isThis: undefined
             };
-            const inspection = inspectSource(callSite.file, callSite.line);
-            if (inspection.variable) {
-                this.sourceInfo!.variable = inspection.variable;
-                this.sourceInfo!.params = inspection.params;
-                this.sourceInfo!.isThis = inspection.isThis;
-            }
+            const inspectionPromise = inspectSource(callSite.file, callSite.line).then((inspection) => {
+                if (inspection.variable) {
+                    this.sourceInfo!.variable = inspection.variable;
+                    this.sourceInfo!.params = inspection.params;
+                    this.sourceInfo!.isThis = inspection.isThis;
+                }
+            }).catch((e: unknown) => logger.debug('Source inspection failed:', String(e))).finally(() => {
+                pendingInspections.delete(inspectionPromise);
+            });
+            pendingInspections.add(inspectionPromise);
         }
     }
 
-    private parseReference(
-        reference: IComponent['reference'],
-        prefix: string | undefined,
-        counter: ReferenceCounter
-    ): { referenceStr: string | undefined; referencePositioning: ITextPositioning | undefined } {
-        const { text, positioning } = parseTextOrPositioning(reference);
-
-        if (text !== undefined && text !== '') {
-            this.reference = text;
-            const referencePattern = /^[A-Za-z]+\d+$/;
-            if (!referencePattern.test(text)) {
-                throw new ComponentError(`[${text}, undefined, undefined] Reference designator must match the format {prefix}{number} (e.g. R1, U3)`);
-            }
-            if (!counter.setReference(text)) {
-                this.reference = counter.getNextReference(prefix || 'U');
-                logger.warn(chalk.whiteBright.bgYellow(`🚩  renaming ${text} to ${this.reference}`));
-            }
-        } else if (reference !== undefined) {
-            this.reference = counter.getNextReference(prefix || 'U');
-        } else {
-            this.reference = counter.getNextReference(prefix || 'U');
+    /** @internal */
+    registerReference(counter: ReferenceCounter): boolean {
+        const ref = this.reference;
+        if (!counter.setReference(ref)) {
+            const newRef = counter.getNextReference(this.#prefix || this.#inferPrefix());
+            logger.warn(chalk.whiteBright.bgYellow(`\u{1F6A9}  renaming ${ref} to ${newRef}`));
+            this.#ref = newRef;
         }
-
-        return { referenceStr: text, referencePositioning: positioning };
+        if (!this.#footprint && !this.via) {
+            logger.warn(chalk.whiteBright.bgYellow(`\u26A0\uFE0F  "${ref}" has no footprint. It will not appear in the output.`));
+        }
+        this.#committed = true;
+        return true;
     }
 
-    private parseValue(value: IComponent['value']): { valueStr: string | undefined; valuePositioning: ITextPositioning | undefined } {
-        const { text, positioning } = parseTextOrPositioning(value);
-        if (text !== undefined) {
-            this.value = text;
-        } else if (value !== undefined && positioning !== undefined) {
-            this.value = '';
-        }
-        return { valueStr: text, valuePositioning: positioning };
-    }
-
-    private assignProperties(props: {
-        footprint?: string; datasheet?: string; description?: string; voltage?: string;
-        wattage?: string; mpn?: string; simulation?: { include?: boolean; model?: string };
-        symbol?: string; sch?: { x: number; y: number; rotation?: number; side?: 'front' | 'back' };
-        pcb?: { x: number; y: number; rotation?: number; side?: 'front' | 'back' };
-        via?: boolean; viaData?: IVia;
-        text?: IComponent['text'];
-        reference?: IComponent['reference'];
-        value?: IComponent['value'];
-    }): void {
-        if (props.footprint !== undefined) {
-            if (props.footprint && !props.footprint.includes(LIBRARY_SEPARATOR)) {
-                throw new ComponentError(`[${props.reference || 'Unknown'}, ${props.value || 'Unknown'}, ${props.footprint}] Footprint must be in format "library${LIBRARY_SEPARATOR}footprint" (e.g., "Resistor_SMD${LIBRARY_SEPARATOR}R_0603_1608Metric" or "lib${LIBRARY_SEPARATOR}Local_Footprint"))`);
+    #inferPrefix(): string {
+        const fp = this.#footprint;
+        if (!fp) return 'U';
+        const parts = fp.split(LIBRARY_SEPARATOR);
+        const name = parts[parts.length - 1] || parts[0];
+        const match = name.match(/^([A-Za-z]+)/);
+        if (match) {
+            const prefix = match[1].charAt(0).toUpperCase();
+            if (['R', 'C', 'L', 'D', 'Q', 'U', 'J', 'F', 'T', 'Y', 'S', 'K'].includes(prefix)) {
+                return prefix;
             }
-            this.footprint = props.footprint;
         }
-        if (props.datasheet !== undefined) this.datasheet = props.datasheet;
-        if (props.description !== undefined) this.description = props.description;
-        if (props.voltage !== undefined) this.voltage = props.voltage;
-        if (props.wattage !== undefined) this.wattage = props.wattage;
-        if (props.symbol !== undefined) this.symbol = props.symbol;
-        if (props.sch !== undefined) this.sch = props.sch;
-        if (props.pcb !== undefined) this.pcb = props.pcb;
-        if (props.mpn !== undefined) this.mpn = props.mpn;
-        if (props.simulation !== undefined) this.simulation = { include: props.simulation.include ?? false, model: props.simulation.model || '' };
-        this.via = props.via || false;
-        if (props.viaData) this.viaData = props.viaData;
-        if (props.text !== undefined) this.text = props.text;
+        return 'U';
     }
 
     private getCallSiteForInstantiation(): { file: string; line: number; column: number; function: string } | null {
@@ -235,8 +363,9 @@ export class Component {
         this.#uuid = value;
     }
 
-    get footprintHash(): string {
-        const str = `${this.footprint || ''}:${this.reference || ''}`;
+    /** @internal */
+    get footprintFingerprint(): string {
+        const str = `${this.#footprint || ''}:${this.reference || ''}`;
         let hash = 5381;
         for (let i = 0; i < str.length; i++) {
             hash = ((hash << 5) + hash) + str.charCodeAt(i);
@@ -245,41 +374,56 @@ export class Component {
         return Math.abs(hash).toString(36);
     }
 
-    pin(number: number | string): Pin {
+    pin(number: number | string, config?: { type?: Pin['type']; powerInfo?: import('./pcb/pcb_interfaces.js').IPinPowerInfo }): Pin {
         if (typeof number !== 'number' && typeof number !== 'string') {
             throw new ComponentError(`Pin number must be a number or a string`);
         }
         const pinNumberStr = String(number);
 
-        const existingPin = this.pins.find(pin => pin.number === pinNumberStr);
+        const existingPin = this.#pinMap.get(pinNumberStr);
         if (existingPin) {
+            if (config?.type) existingPin.type = config.type;
+            if (config?.powerInfo) existingPin.powerInfo = config.powerInfo;
             if (!existingPin.uuid) {
                 existingPin.uuid = this.uuid;
             }
             return existingPin;
         }
 
-        const newPin = new Pin(this.reference, pinNumberStr, undefined, this);
+        const newPin = new Pin(this.reference, pinNumberStr, config?.type);
+        newPin.owner = this;
         newPin.uuid = this.uuid;
+        if (config?.powerInfo) newPin.powerInfo = config.powerInfo;
         this.pins.push(newPin);
+        this.#pinMap.set(pinNumberStr, newPin);
         return newPin;
     }
 
-    isInGroup(groupName: string): boolean {
+    #isInGroup(groupName: string): boolean {
         return this.groups.includes(groupName);
     }
 
+    /** @internal */
     getGroups(): string[] {
         return [...this.groups];
     }
 
+    #registerPin(pin: Pin): void {
+        if (this.#pinMap.has(pin.number)) return;
+        this.#pinMap.set(pin.number, pin);
+        if (!this.pins.includes(pin)) {
+            this.pins.push(pin);
+        }
+    }
+
+    /** @internal */
     footprint_lib(footprint: string): string {
         const result = loadFootprintLib(footprint, this.reference, this.value, this.#footprint_file);
         this.#footprint_file = result;
         return result;
     }
 
-    symbol_lib(symbol: string): string {
+    #symbolLib(symbol: string): string {
         const result = loadSymbolLib(symbol, this.reference, this.value, this.#symbol_file);
         this.#symbol_file = result;
         return result;

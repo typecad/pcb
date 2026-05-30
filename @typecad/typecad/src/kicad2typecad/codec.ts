@@ -1,4 +1,5 @@
 import type { CodeMetadata, LegacyCodeMetadata } from './types.js';
+import logger from '../logging.js';
 
 /** Prefix identifying the new stable codec format */
 const PREFIX = 'typecad:v1:';
@@ -40,7 +41,7 @@ export function decodeCodeMetadata(rawValue: string | null | undefined): CodeMet
                 return parsed as CodeMetadata;
             }
         } catch {
-            // Fall through to legacy parser
+            logger.debug('codec: JSON parse failed, falling through to legacy parser');
         }
     }
 

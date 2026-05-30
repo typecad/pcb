@@ -1,7 +1,5 @@
 # Adding typeCAD Packages
-**type**CAD is just code and code can be easily packaged and distributed. Read more about them at their [doc](/docs/package/overview) page, but quickly they allow for easy packaging/installation/reuse of blocks of code. A particularly useful thing is implementing a particular IC, including all the passives, connections, and tracks to use it. The result is simply importing packages and connecting them together. 
-
-### Video
+**type**CAD is just code and code can be easily packaged and distributed. Read more about them at their [doc](/docs/package/overview) page, but quickly they allow for easy packaging/installation/reuse of blocks of code. A particularly useful thing is implementing a particular IC, including all the passives, connections, and tracks to use it. The result is simply importing packages and connecting them together.
 
 Since a package is entirely defined by the package itself and what it does, there is no _one way_ to use them, so each package comes with its own documentation. 
 
@@ -38,11 +36,11 @@ According to the package documentation, there are a couple things that can be co
 Charging current is determined by a simple formula that results in a resistor value connected to the IC, the package does the calculations and returns a resistor value to provide the specified current. 
 
 ### `create`
-The package has a property, `::components` which includes all `create`-able elements. This can be passed to your `PCB::create()` method using the [spread](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/Spread_syntax) operator.
+The package has a property, `::components` which includes all `create`-able elements. This can be passed directly to your `PCB::create()` method.
 
 ```ts
 ...
-typecad.create(...charger.components);
+typecad.create(charger.components);
 ...
 ```
 

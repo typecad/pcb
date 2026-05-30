@@ -284,20 +284,6 @@ typecad.dnc(r1.pin(1));
 
 ***
 
-### erc()
-
-> **erc**(): `void`
-
-Defined in: [@typecad/typecad/src/schematic.ts:252](https://github.com/typecad/typecad/blob/b72da98d85f9b29fc7bb1602b3a7c35124dbd31c/src/schematic.ts#L252)
-
-Performs electrical rule checks.
-
-#### Returns
-
-`void`
-
-***
-
 ### error()
 
 > **error**(`error`): `void`

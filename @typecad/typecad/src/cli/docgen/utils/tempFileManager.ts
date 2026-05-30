@@ -4,6 +4,7 @@ import * as path from 'path';
 import * as os from 'os';
 import { randomUUID } from 'crypto';
 import { pathExists } from './fs.js';
+import logger from '../../../logging.js';
 
 export class TempFileManager {
   private tempFiles: Set<string> = new Set();
@@ -148,7 +149,7 @@ export class TempFileManager {
       }
       this.tempFiles.delete(filepath);
     } catch (error) {
-      console.error(`Error cleaning up file ${filepath}:`, error);
+      logger.error(`Error cleaning up file ${filepath}:`, error);
     }
   }
 
@@ -160,7 +161,7 @@ export class TempFileManager {
       }
       this.tempFiles.delete(filepath);
     } catch (error) {
-      console.error(`Error cleaning up file ${filepath}:`, error);
+      logger.error(`Error cleaning up file ${filepath}:`, error);
     }
   }
 
@@ -182,7 +183,7 @@ export class TempFileManager {
       }
       this.tempDirs.delete(dirpath);
     } catch (error) {
-      console.error(`Error cleaning up directory ${dirpath}:`, error);
+      logger.error(`Error cleaning up directory ${dirpath}:`, error);
     }
   }
 
@@ -207,7 +208,7 @@ export class TempFileManager {
       }
       this.tempDirs.delete(dirpath);
     } catch (error) {
-      console.error(`Error cleaning up directory ${dirpath}:`, error);
+      logger.error(`Error cleaning up directory ${dirpath}:`, error);
     }
   }
 
@@ -234,7 +235,7 @@ export class TempFileManager {
             await fs.unlink(targetPath);
         }
     } catch (error) {
-        console.error(`Error cleaning up path ${targetPath}:`, error);
+        logger.error(`Error cleaning up path ${targetPath}:`, error);
     }
   }
 

@@ -3,6 +3,7 @@ import { promisify } from 'node:util';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { pathExists, ensureDir } from './fs.js';
+import logger from '../../../logging.js';
 import { tempManager } from './tempFileManager.js';
 import { cropSvg } from '../../../gitdiff/utils/file-utils.js';
 
@@ -77,7 +78,7 @@ export async function executeKicadDrillExport(
     const rawSvg = await fs.readFile(srcPath, 'utf-8');
 
     const drlPath = path.join(tempDir, `${pcbFileName}.drl`);
-    await fs.unlink(drlPath).catch(() => {});
+    await fs.unlink(drlPath).catch(() => { logger.debug('svg: failed to delete temp drl file', drlPath); });
 
     return cropSvg(rawSvg);
 }

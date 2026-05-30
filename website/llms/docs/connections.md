@@ -1,19 +1,18 @@
 # Connections
-In **type**CAD, connections are created by calling the `Schematic::net()` function. Connections are made between components in the same `Schematic`. 
+In **type**CAD, connections are created by calling the `PCB::net()` function. Connections are made between components in the same `PCB`. 
 
 The `net()` function takes a list of `Pin` objects.
 
 ## Connecting Pins
-Let's add a decoupling capacitor to the ATtiny85 example we've been working with.
 
 ```ts
-import { Capacitor } from '@typecad/passives/0805'// [!code highlight]
+import { Capacitor } from '@typecad/passives/0805'
 import { ATtiny85_20S } from './ATtiny85_20S';
 import { PCB } from '@typecad/typecad';
 
 let typecad = new PCB('typecad_docs');
 let u1 = new ATtiny85_20S();
-let c1 = new Capacitor({ value: '1uF' });// [!code highlight]
+let c1 = new Capacitor({ value: '1uF' });
 
 typecad.net(u1.VCC, c1.pin(1));     // power [!code highlight]
 typecad.net(u1.GND, c1.pin(2));     // ground [!code highlight]

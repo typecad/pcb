@@ -10,7 +10,7 @@ import { Exporter3dModelKicad } from "./kicad/exportKicad3dmodel.js";
 import { KicadVersion } from "./kicad/parametersKicadSymbol.js";
 import LcscComponent from "./LcscComponent.js";
 
-async function convertEasyedaToKicad(componentId: any, options: Record<string, any> = {}) {
+async function convertEasyedaToKicad(componentId: string, options: Record<string, any> = {}) {
     const {
         kicadVersion = KicadVersion.v6,
         footprintLibName = 'easyeda2kicad'

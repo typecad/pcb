@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import logger from '../../logging.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -22,6 +23,6 @@ export async function openInBrowser(target: string): Promise<void> {
     try {
         await execFileAsync(command, args);
     } catch {
-        console.warn(`Could not open ${target} in browser. Please open it manually.`);
+        logger.warn(`Could not open ${target} in browser. Please open it manually.`);
     }
 }

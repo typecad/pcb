@@ -1,46 +1,17 @@
 <script lang="ts">
     import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
-
+    import { buttonVariants } from "$lib/components/ui/button";
+    import ChevronRight from "lucide-svelte/icons/chevron-right";
     let { data }: { data: PageData } = $props();
 </script>
 
 # Board Layout
 
-**type**CAD can help with board layout. Component locations can be set in code and then reused.
-
-## Recommended workflow
-
-1. If you're using a **type**CAD package that includes a board layout
-2. `import` and configure as usual
-3. At the end of the main file, include the package's components in `PCB::create(package.components)`.
-4. Call `PCB::create();` to generate the KiCAD board file.
-
-<br />
-
-
-When you open the board in KiCAD, you'll see the components placed.
-
-## `PCB`
-
-Here is the minimal code to create a PCB.
-
-<ScrollArea orientation="both">
-
-```ts
-import { PCB } from '@typecad/typecad';
-let pcb = new PCB('typecad_docs');
-
-// add components to the PCB
-pcb.create();
-```
-
-</ScrollArea>
-
-After running the code, there will be a `typecad_docs.kicad_pcb` file in `./build`.
+**type**CAD can help with board layout. Component locations can be set in code.
 
 ## PCB Coordinates
 
-Each `Component` has a `pcb` property that contains `{x, y, rotation}`. That's how the component's location is specified. You can take them directly from KiCAD when you're finished laying out the components.
+Each `Component` has a `pcb` property that contains `{x, y, rotation, side}`.
 
 <ScrollArea orientation="both">
 
@@ -52,10 +23,14 @@ let pcb = new PCB('typecad_docs');
 let r1 = new Resistor({ value: '1kohm', reference: 'R1' });
 
 r1.pcb = { x: 10, y: 10, rotation: 0 }; // [!code highlight]
+// Optionally place on the back side:
+// r1.pcb = { x: 10, y: 10, rotation: 0, side: 'back' };
 pcb.create();
 ```
 
 </ScrollArea>
+
+`side` defaults to `'front'` and can be set to `'back'` to place a component on the bottom of the board.
 
 ## Group or Place Components
 
@@ -110,29 +85,22 @@ import { Resistor } from '@typecad/passives/0805';
 let typecad = new PCB('typecad_docs');
 let r1 = new Resistor({ value: '1kohm' });
 
-// create a via with a diameter of 0.6mm and a drill size of 0.3mm
 let via = typecad.via({
   at: { x: 10, y: 10 },
   size: 0.6,
   drill: 0.3,
-  powerInfo: { current: 1, maxTempRise: 5, thickness: 35 },
 });
 
-// connect the resistor and via together
 typecad.net(r1.pin(1), via.pin(1));
-
-// group it
 typecad.group('typecad_docs', r1, via);
-
-// create it like any other component
 typecad.create(r1, via);
 ```
+
+</ScrollArea>
 
 ### Power aware
 
 Vias can be created with the optional `powerInfo` object. This allows **type**CAD to check that the current draw through the via is within the limits of the via's rating using the IPC-2221 standard. `maxTempRise` is the maximum wanted rise in temperature of the via, default is 10 C. `thickness` is the thickness of the via's copper in microns. 35 is the default (1 oz).
-
-</ScrollArea>
 
 ## Outlines
 
@@ -145,50 +113,163 @@ import { PCB } from '@typecad/typecad';
 
 let pcb = new PCB('typecad_docs');
 
-// create an outline x=100, y=100, width=50, height=50, with a corner fillet of 1mm
-pcb.outline(100, 100, 50, 50, 1);
+pcb.outline(100, 100, 50, 50, 1);   // x, y, w, h, fillet
+
 
 pcb.create();
 ```
 
 </ScrollArea>
 
-_The corner fillet is optional and can be omitted._
+Parameters are:
+- **x** — x position of the top-left corner
+- **y** — y position of the top-left corner
+- **width** — board width in mm
+- **height** — board height in mm
+- **fillet** — (optional) corner fillet radius in mm
 
 ## Tracks
 
-Tracks are created using the `TrackBuilder` object.
+Traces can be created manually using `pcb.track()` for point-to-point routing with vias:
 
 <ScrollArea orientation="both">
 
 ```ts
-import { PCB, TrackBuilder } from '@typecad/typecad';
+import { PCB } from '@typecad/typecad';
 
 let pcb = new PCB('typecad_docs');
 
-let power_track: TrackBuilder = this.pcb
+let power_track = pcb
   .track()
-  .powerInfo({ current: 1.0, maxTempRise: 10, thickness: 35 }) // optional power information
-  .from({ x: 100, y: 100 }, 'F.Cu', 0.2) // Start on F.Cu, 0.2mm wide (these are the defaults and can be omitted)
-  .to({ x: 110, y: 100 }) // go to 110, 100
-  .via({ size: 0.8, drill: 0.4 }) // create a via at 110, 100
-  .to({ x: 110, y: 120, layer: 'B.Cu' }); // Continues on B.Cu
+  .powerInfo({ current: 1.0, maxTempRise: 10, thickness: 35 })
+  .from({ x: 100, y: 100 }, 'F.Cu', 0.2)
+  .to({ x: 110, y: 100 })
+  .via({ size: 0.8, drill: 0.4 })
+  .to({ x: 110, y: 120, layer: 'B.Cu' });
 
-pcb.group('typecad_docs', power_track); // add the TrackBuilder to the group
+pcb.create(power_track);
+```
+
+</ScrollArea>
+
+Tracks are created by going from point to point, using vias to transition between layers. Nets and connections are not required to be specified. KiCAD will connect any track that touches an element with a net.
+
+### Auto-routing
+
+For automatic pin-to-pin routing, use `pcb.route()`:
+
+<ScrollArea orientation="both">
+
+```ts
+import { PCB } from '@typecad/typecad';
+
+let pcb = new PCB('typecad_docs');
+
+let tracks = await pcb.route({
+  from: r1.pin(1),
+  to: r2.pin(2),
+});
+
+pcb.create(r1, r2, ...tracks);
+```
+
+</ScrollArea>
+
+`route()` finds an optimized path between the `from` and `to` pins. Options include:
+- _from_ / _to_ — pin or array of pins (required)
+- _width_ — trace width in mm (calculated from `powerInfo` if omitted)
+- _layers_ — restrict to specific copper layers (e.g. `['F.Cu', 'B.Cu']`)
+- _powerInfo_ — `{ current, maxTempRise, thickness }` for automatic IPC-2221 trace width calculation
+- _waypoints_ — array of `{ x, y }` points to guide the path
+- _clearance_ — minimum clearance from other objects in mm
+
+
+## Zones
+
+Filled copper zones (e.g., ground pours) and keepout areas can be added to the board:
+
+<ScrollArea orientation="both">
+
+```ts
+import { PCB } from '@typecad/typecad';
+
+let pcb = new PCB('zone_example');
+
+pcb.zone({
+  net: 'GND',
+  layers: ['B.Cu'],
+  x: 0,
+  y: 0,
+  width: 50,
+  height: 30,
+});
+
+pcb.keepout({
+  layers: ['F.Cu', 'B.Cu'],
+  x: 20,
+  y: 10,
+  width: 20,
+  height: 15,
+  restrictions: { tracks: true, vias: true, copperpour: true },
+});
 
 pcb.create();
 ```
 
 </ScrollArea>
 
-Using the above method, tracks can be created by going from point to point, using vias to transition between layers. Nets and connections are not required to be specified. KiCAD will connect any track that touches an element with a net, ie. a track that touches a pad connected to the 'gnd' net will make the entire track also connected to the 'gnd' net.
+## Graphics
 
-### Power aware
+Draw graphical elements on the PCB:
 
-`TrackBuilder` objects can be created with the optional `powerInfo` object. This allows **type**CAD to check that the current draw through the track is within the limits of the track's rating using the IPC-2221 standard. `maxTempRise` is the maximum wanted rise in temperature of the track, default is 10 C. `thickness` is the thickness of the track's copper in microns. 35 is the default (1 oz).
+<ScrollArea orientation="both">
 
-<br />
+```ts
+import { PCB } from '@typecad/typecad';
 
-> [!note] There is an easier way
-> `kicad2typecad` (bundled with [@typecad/typecad](https://www.npmjs.com/package/@typecad/typecad)) is a command-line tool that can be used to convert a KiCAD board file into **type**CAD code snippets. It will give component locations, TrackBuilder objects and vias.<br>
-> This is particularly useful for [package](/docs/package/overview) creation. You can lay out the entire package in KiCAD; components placed, tracks drawn, and vias added. Then use `kicad2typecad` to generate the code snippets to create them programmatically in the package.
+let pcb = new PCB('graphics_example');
+
+pcb.line({ start: { x: 0, y: 0 }, end: { x: 10, y: 10 }, layer: 'F.SilkS', width: 0.15 });
+pcb.circle({ center: { x: 25, y: 25 }, radius: 5, layer: 'F.SilkS', width: 0.15 });
+pcb.rect({ start: { x: 0, y: 0 }, end: { x: 20, y: 15 }, layer: 'Edge.Cuts', width: 0.15 });
+pcb.text({ text: 'REV 1.0', at: { x: 5, y: 5 }, layer: 'F.SilkS', size: 1 });
+
+pcb.create();
+```
+
+</ScrollArea>
+
+## Round-Trip Editing with `typecad import`
+
+You can lay out components, draw tracks, and place vias in the KiCAD interactive editor, then sync those changes back into your **type**CAD source code using `typecad import`.
+
+### Snippet Mode
+
+Print generated **type**CAD code snippets for the board layout:
+
+```bash
+typecad import ./build/board.kicad_pcb
+```
+
+This outputs component positions, `TrackBuilder` chains, vias, and outlines as TypeScript snippets you can copy into your code.
+
+### Apply Mode (Round-Trip Sync)
+
+Interactively apply layout changes from a `.kicad_pcb` file back to your source `.ts` files:
+
+```bash
+typecad import ./build/board.kicad_pcb --apply
+```
+
+This compares the KiCAD board file against your **type**CAD source, shows coordinate and side changes for each component, and lets you select which ones to write back.
+
+This is particularly useful for [packages](/docs/package/overview): lay out the entire package in KiCAD, then round-trip the positions back into your package code.
+
+<div class="relative">
+<br/>
+<br/>
+<br/>
+    <p class="absolute right-0">
+       <a href="/docs/autorouter" class={buttonVariants({ variant: "outline" })}>Auto Router<ChevronRight /></a>
+    </p>
+</div>

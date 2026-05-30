@@ -8,11 +8,7 @@
 </script>
 
 # Adding typeCAD Packages
-**type**CAD is just code and code can be easily packaged and distributed. Read more about them at their [doc](/docs/package/overview) page, but quickly they allow for easy packaging/installation/reuse of blocks of code. A particularly useful thing is implementing a particular IC, including all the passives, connections, and tracks to use it. The result is simply importing packages and connecting them together. 
-
-### Video
-
-<Youtube id="zRPp4lW8bq4" />
+**type**CAD is just code and code can be easily packaged and distributed. Read more about them at their [doc](/docs/package/overview) page, but quickly they allow for easy packaging/installation/reuse of blocks of code. A particularly useful thing is implementing a particular IC, including all the passives, connections, and tracks to use it. The result is simply importing packages and connecting them together.
 
 Since a package is entirely defined by the package itself and what it does, there is no _one way_ to use them, so each package comes with its own documentation. 
 

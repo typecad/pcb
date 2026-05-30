@@ -1,8 +1,36 @@
 import fs from 'node:fs';
-import * as acorn from 'acorn';
-import { simple as walk } from 'acorn-walk';
-import type { Node, ObjectExpression, VariableDeclaration, AssignmentExpression, NewExpression } from 'acorn';
+import type { Node as AcornNode, ObjectExpression, VariableDeclaration, AssignmentExpression, NewExpression } from 'acorn';
 import { createRequire } from 'node:module';
+import logger from './logging.js';
+
+type AcornModule = typeof import('acorn');
+type AcornWalkModule = typeof import('acorn-walk');
+
+let _acorn: AcornModule | undefined;
+let _walk: AcornWalkModule['simple'] | undefined;
+
+const MAX_CACHE_SIZE = 256;
+const _sourceCache = new Map<string, { mtimeMs: number; content: string }>();
+
+function cacheSource(filePath: string, mtimeMs: number, content: string): void {
+    if (_sourceCache.size >= MAX_CACHE_SIZE) {
+        const firstKey = _sourceCache.keys().next().value;
+        if (firstKey !== undefined) _sourceCache.delete(firstKey);
+    }
+    _sourceCache.set(filePath, { mtimeMs, content });
+}
+
+async function loadAcorn(): Promise<{ acorn: AcornModule; walk: AcornWalkModule['simple'] }> {
+    if (!_acorn || !_walk) {
+        const [acornMod, walkMod] = await Promise.all([
+            import('acorn'),
+            import('acorn-walk'),
+        ]);
+        _acorn = acornMod;
+        _walk = walkMod.simple;
+    }
+    return { acorn: _acorn, walk: _walk };
+}
 
 const _require = createRequire(import.meta.url);
 
@@ -12,7 +40,8 @@ const getTsPluginModule = (() => {
         if (cached === undefined) {
             try {
                 cached = _require('acorn-typescript') || null;
-            } catch { /* acorn-typescript not installed */
+            } catch (e: unknown) {
+                logger.debug('source_inspector: acorn-typescript not available:', String(e));
                 cached = null;
             }
         }
@@ -20,18 +49,41 @@ const getTsPluginModule = (() => {
     };
 })();
 
+function readSourceCached(filePath: string): string | undefined {
+    try {
+        const stat = fs.statSync(filePath);
+        const cached = _sourceCache.get(filePath);
+        if (cached && cached.mtimeMs === stat.mtimeMs) {
+            return cached.content;
+        }
+        const content = fs.readFileSync(filePath, 'utf8');
+        cacheSource(filePath, stat.mtimeMs, content);
+        return content;
+    } catch (e: unknown) {
+        logger.debug('source_inspector: cannot read/cached source file:', filePath, String(e));
+        return undefined;
+    }
+}
+
+export function clearSourceCache(): void {
+    _sourceCache.clear();
+}
+
 /**
  * Inspects source code to find variable name and params for a instantiation.
  */
-export function inspectSource(filePath: string, line: number): { variable?: string, params?: Record<string, unknown>, isThis?: boolean } {
-    let sourceContent = '';
+export async function inspectSource(filePath: string, line: number): Promise<{ variable?: string, params?: Record<string, unknown>, isThis?: boolean }> {
+    const sourceContent = readSourceCached(filePath);
+    if (!sourceContent) {
+        return {};
+    }
     try {
-        sourceContent = fs.readFileSync(filePath, 'utf8');
 
         // 1. Try AST Parsing
         try {
+            const { acorn, walk } = await loadAcorn();
             const tsPlugin = getTsPluginModule();
-            let ast: acorn.Node;
+            let ast: AcornNode;
             if (tsPlugin) {
                 // @ts-expect-error - acorn-typescript loaded lazily
                 const Parser = acorn.Parser.extend(tsPlugin.default ? tsPlugin.default() : tsPlugin());
@@ -61,7 +113,7 @@ export function inspectSource(filePath: string, line: number): { variable?: stri
             let targetStartLine = -1; // track the best match proximity
 
             walk(ast, {
-                VariableDeclaration(node: Node) {
+                VariableDeclaration(node: AcornNode) {
                     if (!node.loc) return;
                     const declStart = node.loc.start.line;
                     const declEnd = node.loc.end.line;
@@ -89,7 +141,7 @@ export function inspectSource(filePath: string, line: number): { variable?: stri
                         });
                     }
                 },
-                AssignmentExpression(node: Node) {
+                AssignmentExpression(node: AcornNode) {
                     if (!node.loc) return;
                     const exprStart = node.loc.start.line;
                     const exprEnd = node.loc.end.line;
@@ -141,7 +193,9 @@ export function inspectSource(filePath: string, line: number): { variable?: stri
             if (foundVariable) {
                 return { variable: targetVariable, params: targetParams, isThis: targetIsThis };
             }
-        } catch { /* AST parsing failed, fall through to regex fallback */ }
+        } catch (e: unknown) {
+            logger.debug('source_inspector: AST parsing failed for', filePath, ':', String(e));
+        }
 
         // 2. Fallback to Regex and Text Parsing
         const lines = sourceContent.split('\n');
@@ -195,8 +249,10 @@ export function inspectSource(filePath: string, line: number): { variable?: stri
             while (searchLine >= Math.max(0, line - 20)) {
                 const lineText = lines[searchLine];
                 if (lineText) {
-                    // Skip Pin initializers - they're not Component instantiations
-                    if (lineText.includes('new Pin(')) continue;
+                    if (lineText.includes('new Pin(')) {
+                        searchLine--;
+                        continue;
+                    }
                     const varMatch = lineText.match(/^\s*(let|const|var|)\s*(this\.)?(\w+)\s*=\s*new\s+[\w.#]+\s*\(/);
                     if (varMatch) {
                         return { variable: varMatch[3], isThis: !!varMatch[2] };
@@ -207,7 +263,8 @@ export function inspectSource(filePath: string, line: number): { variable?: stri
         }
 
         return {};
-    } catch { /* source inspection failed entirely */
+    } catch (e: unknown) {
+        logger.debug('source_inspector: inspection failed for', filePath, ':', String(e));
     }
     return {};
 }
@@ -224,16 +281,15 @@ function extractAstObject(node: ObjectExpression): Record<string, unknown> {
     return obj;
 }
 
-type AcornNode = acorn.Node & {
+type WalkableNode = AcornNode & {
     value?: unknown;
     name?: string;
     quasis?: { value: { raw: string } }[];
-    elements?: acorn.Node[];
+    elements?: AcornNode[];
 };
 
-// Recursive helper to extract values from AST nodes
-function extractAstValue(node: acorn.Node): unknown {
-    const n = node as AcornNode;
+function extractAstValue(node: AcornNode): unknown {
+    const n = node as WalkableNode;
     switch (n.type) {
         case 'Literal': return n.value;
         case 'StringLiteral': return n.value;
@@ -254,15 +310,16 @@ function extractAstValue(node: acorn.Node): unknown {
 // Helper function to parse object literals from string
 function parseObjectLiteral(objStr: string): Record<string, unknown> {
     const obj: Record<string, unknown> = {};
-    const content = objStr.slice(1, -1).trim(); // Remove braces
+    let content = objStr.slice(1, -1).trim();
     
     const pairs = splitObjectPairs(content);
     
     for (const pair of pairs) {
-        const colonIndex = pair.indexOf(':');
+        const trimmed = pair.replace(/,\s*$/, '');
+        const colonIndex = trimmed.indexOf(':');
         if (colonIndex > 0) {
-            const key = pair.substring(0, colonIndex).trim();
-            const val = pair.substring(colonIndex + 1).trim();
+            const key = trimmed.substring(0, colonIndex).trim();
+            const val = trimmed.substring(colonIndex + 1).trim();
             if (key && val) {
                 obj[key] = parseValue(val);
             }

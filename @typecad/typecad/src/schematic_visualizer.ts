@@ -1,4 +1,5 @@
-import { Schematic, setPendingSchematicPath } from "./schematic.js";
+import { Schematic } from "./schematic.js";
+import { setPendingSchematicPath } from "./pending_summary.js";
 import { KiCAD } from "./kicad.js";
 import fs from "node:fs";
 import { SymbolLibraryManager } from './symbol_library_manager.js';
@@ -7,11 +8,11 @@ import { logWarning, logError } from './schematic_visualizer_types.js';
 import { renderSchematic } from './schematic_templates.js';
 
 export function schematic(schematicData: Schematic): boolean {
-    new KiCAD();
+    KiCAD.instance;
     const symbolManager = new SymbolLibraryManager();
     const kicad = new KiCADSchematic(symbolManager);
 
-    kicad.sheetname = schematicData.Sheetname;
+    kicad.sheetname = schematicData.sheetName;
 
     schematicData.components.forEach(component => {
         if (typeof component !== 'object' || component === null) {
@@ -31,9 +32,11 @@ export function schematic(schematicData: Schematic): boolean {
         }
     });
 
-    for (const node of schematicData.Nodes) {
+    for (const node of schematicData.nodes) {
         kicad.net(node);
     }
+
+    kicad.addPowerSymbols();
 
     const _schematic = renderSchematic({
         lib_symbols: kicad.lib_symbols,
@@ -44,8 +47,8 @@ export function schematic(schematicData: Schematic): boolean {
     });
 
     try {
-        fs.writeFileSync(`./build/${schematicData.Sheetname}.kicad_sch`, _schematic);
-        setPendingSchematicPath(`./build/${schematicData.Sheetname}.kicad_sch`);
+        fs.writeFileSync(`./build/${schematicData.sheetName}.kicad_sch`, _schematic);
+        setPendingSchematicPath(`./build/${schematicData.sheetName}.kicad_sch`);
     } catch (err) {
         logError(`Failed to write schematic file:`, err);
         throw err;

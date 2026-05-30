@@ -1027,7 +1027,11 @@ function zoomToChange(pcbX: number, pcbY: number, highlightRadius?: number, high
 }
 
 function escapeHtml(str: string): string {
-    return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+function escapeAttr(str: string): string {
+    return escapeHtml(str);
 }
 
 // Theme
@@ -1133,7 +1137,7 @@ function renderNetsFilterBadges(): void {
         } else {
             badgeClass = 'badge--outline inactive';
         }
-        html += `<span class="badge ${badgeClass} filter-badge" data-filter="${s.key}">${s.count} ${s.label}</span>`;
+        html += `<span class="badge ${escapeAttr(badgeClass)} filter-badge" data-filter="${escapeAttr(s.key)}">${s.count} ${s.label}</span>`;
     }
 
     summaryEl.innerHTML = html;
@@ -1316,7 +1320,7 @@ function renderBomFilterBadges(): void {
         } else {
             badgeClass = 'badge--outline inactive';
         }
-        html += `<span class="badge ${badgeClass} filter-badge" data-filter="${s.key}">${s.count} ${s.label}</span>`;
+        html += `<span class="badge ${escapeAttr(badgeClass)} filter-badge" data-filter="${escapeAttr(s.key)}">${s.count} ${s.label}</span>`;
     }
 
     summaryEl.innerHTML = html;

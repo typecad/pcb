@@ -62,7 +62,7 @@ export class Power {
         }
         if (gnd) {
             this.gnd = gnd;
-            this.gnd.type = direction === 'input' ? 'power_in' : 'power_out';
+            this.gnd.type = 'power_in';
             
             // GND pins typically don't need voltage specs, but we can set current if provided
             if (current !== undefined) {

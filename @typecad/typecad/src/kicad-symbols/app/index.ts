@@ -119,7 +119,7 @@ export class Application {
         this.searchEngine.clearCache();
       }
     } catch (error) {
-      // Silently handle shutdown errors
+      logger.debug('App: shutdown error', error);
     }
   }
   

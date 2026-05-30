@@ -17,7 +17,7 @@ import { validatePin } from './pcb_routing_helpers.js';
 import { Pin } from '../pin.js';
 import chalk from 'chalk';
 import logger from '../logging.js';
-import { ISchematicNetDefinition } from '../schematic.js';
+import { ISchematicNetDefinition } from '../net_manager.js';
 import { getCallSite } from '../utils/stack_trace.js';
 import { formatCallSite } from './pcb_utils.js';
 import { RoutingError } from '../errors.js';
@@ -330,7 +330,7 @@ export function pathToTrackBuilder(
                 // When manual routes are present, trim away any portions of this segment
                 // that overlap existing same-net copper, and only emit the non-overlapping parts.
                 if (options.routes && options.routes.length > 0) {
-                    const existingLines = getExistingLines(pcb.grLines, pcb.state.stagedOutlines);
+                    const existingLines = getExistingLines(pcb.state.grLines, pcb.state.stagedOutlines);
                     const subSegments = subtractOverlapsFromSegment(
                         { x: segmentStart.x, y: segmentStart.y },
                         { x: prevNode.x, y: prevNode.y },
@@ -353,7 +353,7 @@ export function pathToTrackBuilder(
                         prevNode.layer,
                         net,
                         width,
-                        pcb.grLines,
+                        pcb.state.grLines,
                         pcb.state.stagedOutlines
                     );
                     if (!onExisting) {
@@ -451,7 +451,7 @@ export function pathToTrackBuilder(
         if (dir.dx !== lastDir.dx || dir.dy !== lastDir.dy) {
             // Commit merged segment up to prevNode (trim partial overlaps when manual routes exist)
             if (options.routes && options.routes.length > 0) {
-                const existingLines = getExistingLines(pcb.grLines, pcb.state.stagedOutlines);
+                const existingLines = getExistingLines(pcb.state.grLines, pcb.state.stagedOutlines);
                 const subSegments = subtractOverlapsFromSegment(
                     { x: segmentStart.x, y: segmentStart.y },
                     { x: prevNode.x, y: prevNode.y },
@@ -472,7 +472,7 @@ export function pathToTrackBuilder(
                     prevNode.layer,
                     net,
                     width,
-                    pcb.grLines,
+                    pcb.state.grLines,
                     pcb.state.stagedOutlines
                 );
                 if (!onExisting) {
@@ -489,7 +489,7 @@ export function pathToTrackBuilder(
     const lastNode = path.nodes[path.nodes.length - 1];
     if (Math.abs(lastNode.x - segmentStart.x) > eps || Math.abs(lastNode.y - segmentStart.y) > eps) {
         if (options.routes && options.routes.length > 0) {
-            const existingLines = getExistingLines(pcb.grLines, pcb.state.stagedOutlines);
+            const existingLines = getExistingLines(pcb.state.grLines, pcb.state.stagedOutlines);
             const subSegments = subtractOverlapsFromSegment(
                 { x: segmentStart.x, y: segmentStart.y },
                 { x: lastNode.x, y: lastNode.y },
@@ -510,7 +510,7 @@ export function pathToTrackBuilder(
                 lastNode.layer,
                 net,
                 width,
-                pcb.grLines,
+                pcb.state.grLines,
                 pcb.state.stagedOutlines
             );
             if (!onExisting) {
@@ -534,19 +534,19 @@ export function routeNet(
     logger.info(`⏳ Routing net '${netName}'...`);
     debugLog(options?.debug, chalk.blue(`[PCB] route() called for net: ${netName}`));
 
-    if (!pcb.Schematic || !pcb.Schematic.Nodes) {
+    if (!pcb.schematic || !pcb.schematic.nodes) {
         throw new RoutingError(`route() requires a schematic with defined nets${formatCallSite(getCallSite())}`);
     }
 
     const providedPins: Pin[] = typeof netRef === 'string'
         ? []
-        : (netRef.pins ?? []).filter((pin): pin is Pin => Boolean(pin));
+        : (netRef.pins ?? []).filter((pin: Pin): pin is Pin => Boolean(pin));
 
-    let schematicNode: SchematicRuntimeNode | undefined = (pcb.Schematic.Nodes as SchematicRuntimeNode[]).find((node) => node.name === netName);
+    let schematicNode: SchematicRuntimeNode | undefined = (pcb.schematic.nodes as SchematicRuntimeNode[]).find((node) => node.name === netName);
 
     if (!schematicNode) {
         if (typeof netRef === 'string') {
-            const availableNets = (pcb.Schematic.Nodes as SchematicRuntimeNode[]).map((n) => n.name).join(', ');
+            const availableNets = (pcb.schematic.nodes as SchematicRuntimeNode[]).map((n) => n.name).join(', ');
             throw new RoutingError(`Net '${netName}' not found in schematic. Available nets: ${availableNets}${formatCallSite(getCallSite())}`);
         }
 

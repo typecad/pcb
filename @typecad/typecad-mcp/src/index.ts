@@ -17,6 +17,7 @@ import { registerAddFuseTool } from './tools/add_fuse';
 import { registerAddLedTool } from './tools/add_led';
 import { registerAddConnectorTool } from './tools/add_connector';
 import { registerAddTestpointTool } from './tools/add_testpoint';
+import { registerAddMountingHoleTool } from './tools/add_mounting_hole';
 import { registerAddPowerSourceTool } from './tools/add_power_source';
 import { registerCreateNamedNetTool } from './tools/create_named_net';
 import { registerAddViaTool } from './tools/add_via';

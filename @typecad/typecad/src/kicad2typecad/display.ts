@@ -2,6 +2,7 @@ import chalk from 'chalk';
 import type { PCB } from '../pcb/pcb.js';
 import type { TrackBuilder } from '../pcb/pcb_track_builder.js';
 import { DEFAULT_NET_PREFIX } from '../constants.js';
+import logger from '../logging.js';
 import type {
     KicadIR,
     KicadFootprintIR,
@@ -48,7 +49,7 @@ export function generateTrackCode(
     const trackVariableNames: string[] = [];
 
     if (segments.length > 0) {
-        console.log(`Found ${segments.length} segments. Generating TrackBuilder chains organized by nets from ${sourceDescription}.`);
+        logger.log(`Found ${segments.length} segments. Generating TrackBuilder chains organized by nets from ${sourceDescription}.`);
 
         const netMap = new Map<number, string>();
         nets.forEach(net => { netMap.set(net.number, net.name); });
@@ -110,12 +111,12 @@ export function generateTrackCode(
         });
 
         if (allNetTrackLogs.length > 0) {
-            console.log(chalk.bold(`\n--- Generated typeCAD TrackBuilder Code from ${sourceDescription} ---`));
-            allNetTrackLogs.forEach(log => console.log(log));
-            console.log(chalk.bold('---------------------------------------------------------'));
+            logger.log(chalk.bold(`\n--- Generated typeCAD TrackBuilder Code from ${sourceDescription} ---`));
+            allNetTrackLogs.forEach(log => logger.log(log));
+            logger.log(chalk.bold('---------------------------------------------------------'));
         }
     } else {
-        console.log(`No segments found in ${sourceDescription} content.`);
+        logger.log(`No segments found in ${sourceDescription} content.`);
     }
 
     return trackVariableNames;
@@ -133,7 +134,7 @@ export function generatePlacementCode(
     const { chKey, chProp, chStr, chNum, chPunc, chVar } = ch;
 
     if (footprints.length > 0) {
-        console.log(`Found ${footprints.length} footprints. Generating placement code from ${sourceDescription}.`);
+        logger.log(`Found ${footprints.length} footprints. Generating placement code from ${sourceDescription}.`);
         const groups: Record<string, KicadFootprintIR[]> = {};
 
         // Group by any available source hint (footprint name for display)
@@ -143,9 +144,9 @@ export function generatePlacementCode(
             groups[key].push(fp);
         });
 
-        console.log(chalk.bold(`\n--- Generated Component Placement Code from ${sourceDescription} ---`));
+        logger.log(chalk.bold(`\n--- Generated Component Placement Code from ${sourceDescription} ---`));
         for (const [key, fps] of Object.entries(groups)) {
-            console.log(chalk.yellow(`\n// Footprint: ${key}`));
+            logger.log(chalk.yellow(`\n// Footprint: ${key}`));
             fps.forEach(fp => {
                 const variableName = fp.reference;
                 const prefix = '';
@@ -155,12 +156,12 @@ export function generatePlacementCode(
                 placementLog += ` ${chProp('rotation')}${chPunc(':')} ${chNum(fp.position.rotation)}`;
                 if (fp.side === 'back') placementLog += `${chPunc(',')} ${chProp('side')}${chPunc(':')} ${chStr("'back'")}`;
                 placementLog += ` ${chPunc('}')}${chPunc(';')}`;
-                console.log(placementLog);
+                logger.log(placementLog);
             });
         }
-        console.log(chalk.bold('\n-------------------------------------------------------------'));
+        logger.log(chalk.bold('\n-------------------------------------------------------------'));
     } else {
-        console.log(`No footprints found in ${sourceDescription} content.`);
+        logger.log(`No footprints found in ${sourceDescription} content.`);
     }
 
     // Component constructors with reference/fab options
@@ -168,10 +169,10 @@ export function generatePlacementCode(
         fp => fp.referenceProperty && (fp.referenceProperty.x !== 0 || fp.referenceProperty.rotation !== 0)
     );
     if (componentsWithRefProps.length > 0) {
-        console.log(
+        logger.log(
             `Found ${componentsWithRefProps.length} component(s) with custom reference positioning. Generating Component constructor code.`
         );
-        console.log(chalk.bold(`\n--- Generated Component Constructor Code from ${sourceDescription} ---`));
+        logger.log(chalk.bold(`\n--- Generated Component Constructor Code from ${sourceDescription} ---`));
 
         componentsWithRefProps.forEach(fp => {
             const variableName = fp.reference;
@@ -186,15 +187,15 @@ export function generatePlacementCode(
                     : formatPosObj(fab, chProp, chPunc, chNum))
                 : null;
 
-            console.log(`${chVar(prefix + variableName)} ${chPunc('=')} ${chKey('new')} ${chKey('Component')}({`);
+            logger.log(`${chVar(prefix + variableName)} ${chPunc('=')} ${chKey('new')} ${chKey('Component')}({`);
             if (fp.footprintName) {
-                console.log(`    ${chProp('footprint')}${chPunc(':')} ${chStr("'" + fp.footprintName + "'")}${chPunc(',')}`);
+                logger.log(`    ${chProp('footprint')}${chPunc(':')} ${chStr("'" + fp.footprintName + "'")}${chPunc(',')}`);
             }
-            console.log(`    ${chProp('reference')}${chPunc(':')} [${chStr("'" + fp.reference + "'")}, ${refPosObj}]${chPunc(',')}`);
-            if (fabArg) console.log(`    ${chProp('fab')}${chPunc(':')} ${fabArg},`);
-            console.log(`${chPunc(')};')}`);
+            logger.log(`    ${chProp('reference')}${chPunc(':')} [${chStr("'" + fp.reference + "'")}, ${refPosObj}]${chPunc(',')}`);
+            if (fabArg) logger.log(`    ${chProp('fab')}${chPunc(':')} ${fabArg},`);
+            logger.log(`${chPunc(')};')}`);
         });
-        console.log(chalk.bold('\n-------------------------------------------------------------'));
+        logger.log(chalk.bold('\n-------------------------------------------------------------'));
     }
 }
 
@@ -210,10 +211,10 @@ export function generateTextCode(
     const textElements = ir.textElements;
 
     if (textElements.length > 0) {
-        console.log(`Found ${textElements.length} text element(s). Generating typeCAD code from ${sourceDescription}.`);
-        console.log(chalk.bold(`\n--- Generated Text Element Code from ${sourceDescription} ---`));
+        logger.log(`Found ${textElements.length} text element(s). Generating typeCAD code from ${sourceDescription}.`);
+        logger.log(chalk.bold(`\n--- Generated Text Element Code from ${sourceDescription} ---`));
         textElements.forEach(t => {
-            console.log(chalk.gray(`// Text: "${t.text}"`));
+            logger.log(chalk.gray(`// Text: "${t.text}"`));
             let textLog = `${chVar('typecad')}${chPunc('.')}${chKey('text')}${chPunc('({ ')}`;
             textLog += `${chProp('text')}${chPunc(':')} ${chStr('"' + t.text + '"')}${chPunc(',')}`;
             textLog += ` ${chProp('x')}${chPunc(':')} ${chNum(t.x)}${chPunc(',')}`;
@@ -237,11 +238,11 @@ export function generateTextCode(
             }
             textLog = textLog.replace(/,$/, '');
             textLog += ` ${chPunc('})')}${chPunc(';')}`;
-            console.log(textLog);
+            logger.log(textLog);
         });
-        console.log(chalk.bold('----------------------------------------------------------'));
+        logger.log(chalk.bold('----------------------------------------------------------'));
     } else {
-        console.log(`No text elements found in ${sourceDescription} content.`);
+        logger.log(`No text elements found in ${sourceDescription} content.`);
     }
 }
 
@@ -257,7 +258,7 @@ export function generateViaCode(
     const vias = ir.vias;
 
     if (vias.length > 0) {
-        console.log(`Found ${vias.length} vias. Generating typeCAD code from ${sourceDescription}.`);
+        logger.log(`Found ${vias.length} vias. Generating typeCAD code from ${sourceDescription}.`);
         const allViaLogs: string[] = [];
         vias.forEach((via, index) => {
             let viaLog = `${chVar('this.v' + (index + 1))} ${chPunc('=')} ${chVar('this.pcb')}${chPunc('.')}${chKey('via')}${chPunc('({')}`;
@@ -268,12 +269,12 @@ export function generateViaCode(
             allViaLogs.push(viaLog);
         });
         if (allViaLogs.length > 0) {
-            console.log(chalk.bold(`\n--- Generated typeCAD Via Code from ${sourceDescription} ---`));
-            allViaLogs.forEach(log => console.log(log));
-            console.log(chalk.bold('-----------------------------------------------------'));
+            logger.log(chalk.bold(`\n--- Generated typeCAD Via Code from ${sourceDescription} ---`));
+            allViaLogs.forEach(log => logger.log(log));
+            logger.log(chalk.bold('-----------------------------------------------------'));
         }
     } else {
-        console.log(`No vias found in ${sourceDescription} content.`);
+        logger.log(`No vias found in ${sourceDescription} content.`);
     }
 }
 
@@ -289,7 +290,7 @@ export function generateOutlineCode(
     const outlines = ir.outlines;
 
     if (outlines.length > 0) {
-        console.log(
+        logger.log(
             `Found ${outlines.length} board outline element(s) on Edge.Cuts layer. Generating typeCAD code from ${sourceDescription}.`
         );
         const allOutlineLogs: string[] = [];
@@ -409,12 +410,12 @@ export function generateOutlineCode(
         }
 
         if (allOutlineLogs.length > 0) {
-            console.log(chalk.bold(`\n--- Generated typeCAD Board Outline Code from ${sourceDescription} ---`));
-            allOutlineLogs.forEach(log => console.log(log));
-            console.log(chalk.bold('---------------------------------------------------------------'));
+            logger.log(chalk.bold(`\n--- Generated typeCAD Board Outline Code from ${sourceDescription} ---`));
+            allOutlineLogs.forEach(log => logger.log(log));
+            logger.log(chalk.bold('---------------------------------------------------------------'));
         }
     } else {
-        console.log(`No board outline found in ${sourceDescription} content (looking for Edge.Cuts layer).`);
+        logger.log(`No board outline found in ${sourceDescription} content (looking for Edge.Cuts layer).`);
     }
 }
 
@@ -431,7 +432,7 @@ export function generateCreateStatement(
     const componentReferences = footprints.map(fp => fp.reference);
 
     if (componentReferences.length > 0 || trackVariableNames.length > 0) {
-        console.log(chalk.bold(`\n--- Generated typecad.create() Statement from ${sourceDescription} ---`));
+        logger.log(chalk.bold(`\n--- Generated typecad.create() Statement from ${sourceDescription} ---`));
         let createStatement = `${chVar('typecad')}${chPunc('.')}${chKey('create')}${chPunc('(')}`;
         const allItems: string[] = [
             ...componentReferences.map(ref => `${chVar(ref)}`),
@@ -445,8 +446,8 @@ export function generateCreateStatement(
             });
         }
         createStatement += `${chPunc(')')}${chPunc(';')}`;
-        console.log(createStatement);
-        console.log(chalk.bold('--------------------------------------------------------------'));
+        logger.log(createStatement);
+        logger.log(chalk.bold('--------------------------------------------------------------'));
     }
 }
 

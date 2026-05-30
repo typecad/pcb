@@ -63,7 +63,7 @@ describe('Power', () => {
         const gnd = makePin('U1', 4)
         new Power({ power, gnd })
         expect(power.type).toBe('power_out')
-        expect(gnd.type).toBe('power_out')
+        expect(gnd.type).toBe('power_in')
     })
 
     it('should set power_in type when direction is input', () => {

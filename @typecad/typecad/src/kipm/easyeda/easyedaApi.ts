@@ -1,3 +1,4 @@
+import logger from '../../logging.js';
 const API_ENDPOINT = "https://easyeda.com/api/products/{lcsc_id}/components?version=6.4.19.5";
 const ENDPOINT_3D_MODEL = "https://modules.easyeda.com/3dmodel/{uuid}";
 const ENDPOINT_3D_MODEL_STEP = "https://modules.easyeda.com/qAxj6KHrDKw4blvCG8QJPs7Y/{uuid}";
@@ -19,7 +20,7 @@ export class EasyedaApi {
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
             const text = await response.text();
-            let apiResponse: any;
+            let apiResponse: Record<string, unknown>;
             try {
                 apiResponse = JSON.parse(text);
             } catch (e) {
@@ -29,12 +30,12 @@ export class EasyedaApi {
                 !apiResponse ||
                 (("code" in apiResponse) && apiResponse.success === false)
             ) {
-                console.debug(apiResponse);
+                logger.debug(apiResponse);
                 return {};
             }
             return apiResponse;
         } catch (error) {
-            console.error(`Failed to fetch info from EasyEDA API for ${lcsc_id}:`, (error as Error).message);
+            logger.error(`Failed to fetch info from EasyEDA API for ${lcsc_id}:`, (error as Error).message);
             throw error;
         }
     }
@@ -59,12 +60,12 @@ export class EasyedaApi {
                 headers: { "User-Agent": this.headers["User-Agent"] },
             });
             if (!response.ok) {
-                console.error(`No raw 3D model data found for uuid:${uuid} on easyeda`);
+                logger.error(`No raw 3D model data found for uuid:${uuid} on easyeda`);
                 return null;
             }
             return await response.text();
         } catch (error) {
-            console.error(`Failed to fetch raw 3D model for uuid:${uuid}:`, (error as Error).message);
+            logger.error(`Failed to fetch raw 3D model for uuid:${uuid}:`, (error as Error).message);
             return null;
         }
     }
@@ -76,12 +77,12 @@ export class EasyedaApi {
                 headers: { "User-Agent": this.headers["User-Agent"] },
             });
             if (!response.ok) {
-                console.error(`No step 3D model data found for uuid:${uuid} on easyeda`);
+                logger.error(`No step 3D model data found for uuid:${uuid} on easyeda`);
                 return null;
             }
             return await response.arrayBuffer();
         } catch (error) {
-            console.error(`Failed to fetch step 3D model for uuid:${uuid}:`, (error as Error).message);
+            logger.error(`Failed to fetch step 3D model for uuid:${uuid}:`, (error as Error).message);
             return null;
         }
     }

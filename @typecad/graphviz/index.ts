@@ -40,7 +40,7 @@ class SchematicAnalyzer {
     }
 
     private validateSchematic(schematic: Schematic): boolean {
-        return !!schematic && Array.isArray(schematic.Components) && Array.isArray(schematic.Nodes);
+        return !!schematic && Array.isArray(schematic.components) && Array.isArray(schematic.Nodes);
     }
 
 
@@ -68,7 +68,7 @@ class SchematicAnalyzer {
 
     private processComponents(): void {
         // Only process components that should be included
-        this.schematic.Components.forEach(component => {
+        this.schematic.components.forEach(component => {
             if (this.shouldIncludeComponent(component)) {
                 const prefixMatch = component.reference.match(/^[A-Za-z]+/);
                 const groupPrefix = prefixMatch ? prefixMatch[0] : 'MISC';
@@ -373,8 +373,8 @@ ${nodes}
     public async analyzeNetConnectivity(): Promise<string> {
         this.processComponents();
         const dot = this.generateNetConnectivityDot();
-        await this.writeDotFile(`${this.schematic.Sheetname}_net_connectivity.dot`, dot);
-        console.log(`⚫ ${this.schematic.Sheetname}_net_connectivity.dot written`);
+        await this.writeDotFile(`${this.schematic.sheetName}_net_connectivity.dot`, dot);
+        console.log(`⚫ ${this.schematic.sheetName}_net_connectivity.dot written`);
         return dot;
     }
 
@@ -637,8 +637,8 @@ digraph ElectricalSchematic {
     public async generateSchematic(): Promise<string> {
         this.processComponents();
         const dot = this.generateSchematicDot();
-        await this.writeSchematicDotFile(`${this.schematic.Sheetname}_schematic.dot`, dot);
-        console.log(`⚫ ${this.schematic.Sheetname}_schematic.dot written`);
+        await this.writeSchematicDotFile(`${this.schematic.sheetName}_schematic.dot`, dot);
+        console.log(`⚫ ${this.schematic.sheetName}_schematic.dot written`);
         return dot;
     }
 
@@ -813,8 +813,8 @@ ${connections.join('\n')}
     public async analyzeConnectivityClusters(): Promise<string> {
         this.processComponents();
         const dot = this.generateConnectivityBasedDot();
-        await this.writeDotFile(`${this.schematic.Sheetname}_connectivity_clusters.dot`, dot);
-        console.log(`⚫ ${this.schematic.Sheetname}_connectivity_clusters.dot written`);
+        await this.writeDotFile(`${this.schematic.sheetName}_connectivity_clusters.dot`, dot);
+        console.log(`⚫ ${this.schematic.sheetName}_connectivity_clusters.dot written`);
         return dot;
     }
 

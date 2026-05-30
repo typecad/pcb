@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { performance } from 'node:perf_hooks';
-class Resistor extends Component { constructor(opts = {}) { super({ prefix: 'R', footprint: 'Resistor_SMD:R_0603_1608Metric', ...opts }); } }
+class Resistor extends Component { constructor(opts: any = {}) { super('Resistor_SMD:R_0603_1608Metric'); if (opts.value) this.value = opts.value; } }
 import { PCB, Component } from '../src/index.js';
 
 describe('Keepout Area Routing Tests', () => {

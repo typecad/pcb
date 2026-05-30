@@ -17,7 +17,7 @@ Execute the following command in `./hw` of an already existing **type**CAD proje
 <ScrollArea orientation="both">
 
 ```bash
-npx --package=@typecad/typecad add-package
+typecad add package
 ```
 </ScrollArea>
 
@@ -34,16 +34,16 @@ All the information can be passed by command-line arguments and the script will 
 
 ```bash
 # An empty package
-npx --package=@typecad/typecad add-package --empty=true --name=my_package
+typecad add package --empty=true --name=my_package
 
 # Component from KiCAD
-npx --package=@typecad/typecad add-package --component=true --name=attiny_package --kicad=true --symbol=MCU_Microchip_ATtiny:ATtiny3227-M --footprint=Package_DFN_QFN:DFN-20-1EP_3x4mm_P0.5mm_EP1.65x3.1mm
+typecad add package --component=true --name=attiny_package --kicad=true --symbol=MCU_Microchip_ATtiny:ATtiny3227-M --footprint=Package_DFN_QFN:DFN-20-1EP_3x4mm_P0.5mm_EP1.65x3.1mm
 
 # local files
-npx --package=@typecad/typecad add-package --component=true --name=local_component --local=true --symbol=kicad_sch:symbol_name --footprint=kicad_mod:footprint_name
+typecad add package --component=true --name=local_component --local=true --symbol=kicad_sch:symbol_name --footprint=kicad_mod:footprint_name
 
 # JLCPCB components
-npx --package=@typecad/typecad add-package --component=true --name=resistor_package --jlcpcb=true --c=C3217148
+typecad add package --component=true --name=resistor_package --jlcpcb=true --c=C3217148
 ```
 </ScrollArea>
 

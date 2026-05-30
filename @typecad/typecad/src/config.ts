@@ -1,9 +1,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
-import { execSync } from 'node:child_process';
 import chalk from 'chalk';
 import logger from './logging.js';
+import { parse } from 'acorn';
+import { simple as walk } from 'acorn-walk';
+import type { Node, ObjectExpression, Property, Identifier, Literal, TemplateLiteral, ExportDefaultDeclaration as ExportDefaultDeclarationNode } from 'acorn';
 
 export interface TypeCADConfig {
   entry?: string;
@@ -25,7 +27,8 @@ let _cachedMtimeMs: number | undefined;
 function getMtimeMs(filePath: string): number | undefined {
   try {
     return fs.statSync(filePath).mtimeMs;
-  } catch {
+  } catch (err) {
+    logger.debug('config: failed to stat file:', filePath, err);
     return undefined;
   }
 }
@@ -42,35 +45,77 @@ function findConfigPath(): string | null {
   return null;
 }
 
-function loadTsConfig(configPath: string): TypeCADConfig {
-  const configDir = path.dirname(configPath);
-  const loadCode = [
-    `import('file://${configPath.replace(/\\/g, '/')}')`,
-    `.then(m=>process.stdout.write(JSON.stringify(m.default??m)))`,
-    `.catch(e=>{process.stderr.write(e.message||String(e));process.exit(1)})`,
-  ].join('');
-
-  try {
-    const result = execSync(
-      `npx tsx --conditions=import -e "${loadCode}"`,
-      { stdio: ['pipe', 'pipe', 'pipe'], timeout: 15000, cwd: configDir }
-    );
-    const parsed = JSON.parse(result.toString());
-    if (parsed && typeof parsed === 'object' && 'default' in parsed) {
-      return parsed.default;
+function extractObjectValue(node: ObjectExpression): Record<string, unknown> {
+    const obj: Record<string, unknown> = {};
+    for (const prop of node.properties) {
+        if (prop.type !== 'Property') continue;
+        const keyNode = prop.key;
+        if (keyNode.type !== 'Identifier') continue;
+        obj[keyNode.name] = extractValue(prop.value);
     }
-    return parsed;
-  } catch (error) {
-    const stderr = error instanceof Error && 'stderr' in error
-      ? (error as { stderr: Buffer }).stderr?.toString().trim()
-      : '';
-    logger.error(
-      chalk.red.bold(
-        `ERROR: cannot load ${path.basename(configPath)}. ${stderr || 'Check for syntax errors.'}`
-      )
-    );
-    return {};
-  }
+    return obj;
+}
+
+function extractValue(node: Node): unknown {
+    switch (node.type) {
+        case 'Literal':
+            return (node as Literal).value;
+        case 'TemplateLiteral': {
+            const tl = node as TemplateLiteral;
+            if (tl.quasis.length === 1 && tl.expressions.length === 0) {
+                return tl.quasis[0].value.cooked;
+            }
+            return undefined;
+        }
+        case 'ObjectExpression':
+            return extractObjectValue(node as ObjectExpression);
+        case 'Identifier':
+            return undefined;
+        default:
+            return undefined;
+    }
+}
+
+function loadTsConfig(configPath: string): TypeCADConfig {
+    try {
+        const source = fs.readFileSync(configPath, 'utf8');
+        const ast = parse(source, {
+            ecmaVersion: 2022,
+            sourceType: 'module',
+            allowReturnOutsideFunction: true,
+            allowImportExportEverywhere: true,
+        });
+
+        let configObj: Record<string, unknown> | undefined;
+
+        walk(ast, {
+            ExportDefaultDeclaration(node: Node) {
+                const decl = (node as ExportDefaultDeclarationNode).declaration;
+                if (!decl) return;
+
+                let arg: Node | undefined;
+                if (decl.type === 'CallExpression' && decl.arguments.length > 0) {
+                    arg = decl.arguments[0] as Node;
+                } else if (decl.type === 'ObjectExpression') {
+                    arg = decl;
+                }
+
+                if (arg && arg.type === 'ObjectExpression') {
+                    configObj = extractObjectValue(arg as ObjectExpression);
+                }
+            },
+        });
+
+        return configObj || {};
+    } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error);
+        logger.error(
+            chalk.red.bold(
+                `ERROR: cannot load ${path.basename(configPath)}. ${msg}`
+            )
+        );
+        return {};
+    }
 }
 
 function invalidateIfStale(): void {
@@ -112,11 +157,12 @@ export function loadConfig(): TypeCADConfig {
     try {
       _cachedConfig = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
       return _cachedConfig!;
-    } catch {
+    } catch (err) {
       logger.error(
         chalk.red.bold(
           'ERROR: cannot read/process typecad.json. Try editing or deleting the file.'
-        )
+        ),
+        err
       );
     }
   }
@@ -125,6 +171,9 @@ export function loadConfig(): TypeCADConfig {
   return _cachedConfig!;
 }
 
+/**
+ * Must be called between test cases that change the working directory or config file.
+ */
 export function clearConfigCache(): void {
   _cachedConfig = null;
   _cachedConfigPath = null;
@@ -140,13 +189,22 @@ export class Config {
   }
 
   set(key: string, value: string): boolean {
+    const tsPath = path.join(process.cwd(), 'typecad.conf.ts');
+    if (fs.existsSync(tsPath)) {
+      logger.warn(
+        chalk.yellow('WARNING: typecad.conf.ts exists and takes priority over typecad.json. ' +
+          'Edit typecad.conf.ts directly, or delete it to use typecad.json.')
+      );
+    }
+
     const jsonPath = path.join(process.cwd(), 'typecad.json');
 
     let contents: Record<string, string> = {};
     if (fs.existsSync(jsonPath)) {
       try {
         contents = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
-      } catch {
+      } catch (err) {
+        logger.debug('config: failed to parse typecad.json', err);
         contents = {};
       }
     }

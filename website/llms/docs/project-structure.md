@@ -13,10 +13,11 @@ project
 ```
 
 ## `fw`
-Intended for firmware. If a PlatformIO project is created when you run `npx @typecad/create-typecad`, you can open the `workspace` file to open both the firmware and hardware projects in the same VSCode and have access to their respective build tools.
+Intended for firmware. If a PlatformIO project is created when you run `typecad create`, you can open the `workspace` file to open both the firmware and hardware projects in the same VSCode and have access to their respective build tools.
 
 ## `hw`
 All the hardware-related files are here.
+- `typecad.conf.ts` — configuration file (see [Configuration](/docs/configuration))
 - `build` holds all the KiCAD files
 - `./build/lib` is where KiCAD symbols are stored
 - `./build/footprints` is where KiCAD footprints are stored

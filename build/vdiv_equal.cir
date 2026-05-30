@@ -1,0 +1,16 @@
+* Ngspice Netlist for vdiv_equal
+R1 in vdiv 10k
+R2 vdiv gnd 10k
+V1 in gnd 5
+
+.control
+op
+set wr_vecnames
+set filetype=ascii
+set keep#branch = 0
+.probe p(R1) i(R1)
+.probe p(R2) i(R2)
+
+write vdiv_equal.out all
+.endc
+.end

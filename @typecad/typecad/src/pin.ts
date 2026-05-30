@@ -1,51 +1,31 @@
 import { Component } from './component.js';
 import { IPinPowerInfo } from './pcb/pcb_interfaces.js';
-/**
- * Type representing the possible types of a pin.
- *
- * @typedef {"passive" | "input" | "output" | "bidirectional" | "tri_state" | "power_in" | "unspecified" | "power_out" | "free" | "open_collector" | "open_emitter" | "no_connect"} TPinType
- */
+
 type TPinType = "passive" | "input" | "output" | "bidirectional" | "tri_state" | "power_in" | "unspecified" | "power_out" | "free" | "open_collector" | "open_emitter" | "no_connect";
 
-/**
- * Class representing a pin in a schematic.
- *
- * @class Pin
- */
 export class Pin {
-    number: string = '';
-    reference: string = '';
+    readonly number: string = '';
+    readonly reference: string = '';
     type: TPinType;
+    /** @internal */
     owner: Component | null;
+    /** @internal */
     powerInfo?: IPinPowerInfo;
+    /** @internal */
     uuid?: string;
 
     /**
-     * Initializes a new pin with a given reference, number, and optional type.
+     * Creates a standalone pin. To create and register a pin on a component,
+     * use `component.pin(number, { type, powerInfo })` instead.
      *
      * @param {string} reference - The reference identifier for the pin.
      * @param {number|string} number - The pin number or identifier. Stored as string internally.
      * @param {TPinType} [type] - The type of the pin. Defaults to 'passive'.
-     * @param {Component} [owner] - The owner component of this pin.
-     * @param {IPinPowerInfo} [powerInfo] - Power characteristics of the pin.
-     * @example
-     * ```ts
-     * let pin = new Pin('R1', 1, 'input');
-     * let powerPin = new Pin('U1', 5, 'power_in', this, { minimum_voltage: -0.3, maximum_voltage: 6.5, current: 2 });
-     * ```
      */
-    constructor(reference: string, number: number | string, type?: TPinType, owner?: Component, powerInfo?: IPinPowerInfo) {
+    constructor(reference: string, number: number | string, type?: TPinType) {
         this.reference = reference;
         this.number = String(number);
         this.type = type || 'passive';
-        this.owner = owner || null;
-        this.powerInfo = powerInfo;
-
-        if (this.owner) {
-            const existingPin = this.owner.pins.find(p => p.number === this.number);
-            if (!existingPin) {
-                this.owner.pins.push(this);
-            }
-        }
+        this.owner = null;
     }
 }

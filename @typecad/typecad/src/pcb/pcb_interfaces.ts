@@ -32,7 +32,7 @@ export interface IPcbOptions {
      * Associated schematic. If not provided, a new Schematic is created
      * with the same board name.
      */
-    Schematic?: Schematic;
+    schematic?: Schematic;
     /**
      * If true (default), unmatched existing board elements are removed
      * during board generation. Set to false to preserve them.
@@ -638,3 +638,99 @@ export interface IAutorouteResult extends Array<import("./pcb_track_builder.js")
  * Used by autorouteBatch where from/to are provided separately.
  */
 export type IAutorouteRouteOptions = Omit<IAutorouteOptions, 'from' | 'to'>;
+
+export interface IPcbZoneOptions {
+    pin?: Pin;
+    net?: string;
+    layers: string[];
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    fillMode?: 'solid' | 'hatched';
+    filled?: boolean;
+    priority?: number;
+    locked?: boolean;
+    name?: string;
+    minThickness?: number;
+    hatchStyle?: 'none' | 'edge' | 'full';
+    hatchPitch?: number;
+    clearance?: number;
+    connectPads?: 'thru_hole_only' | 'full' | 'no';
+    thermalGap?: number;
+    thermalBridgeWidth?: number;
+    smoothing?: 'chamfer' | 'fillet' | 'none';
+    smoothingRadius?: number;
+    islandRemovalMode?: number;
+    islandAreaMin?: number;
+    hatchThickness?: number;
+    hatchGap?: number;
+    hatchOrientation?: number;
+    hatchSmoothingLevel?: number;
+    hatchSmoothingValue?: number;
+    hatchBorderAlgorithm?: 'hatch_thickness' | 'min_thickness';
+    hatchMinHoleArea?: number;
+    fillArcSegments?: number;
+    filledAreasThickness?: boolean;
+}
+
+export interface IPcbKeepoutOptions {
+    layers: string[];
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    restrictions?: {
+        tracks?: boolean;
+        vias?: boolean;
+        pads?: boolean;
+        copperpour?: boolean;
+        footprints?: boolean;
+    };
+    priority?: number;
+    locked?: boolean;
+    name?: string;
+    hatchStyle?: 'none' | 'edge' | 'full';
+    hatchPitch?: number;
+    smoothing?: 'chamfer' | 'fillet' | 'none';
+    smoothingRadius?: number;
+}
+
+export interface IPcbLineOptions {
+    start: { x: number; y: number };
+    end: { x: number; y: number };
+    layer?: string;
+    width?: number;
+    locked?: boolean;
+}
+
+export interface IPcbCircleOptions {
+    center: { x: number; y: number };
+    radius?: number;
+    end?: { x: number; y: number };
+    layer?: string;
+    width?: number;
+    fill?: boolean;
+    locked?: boolean;
+}
+
+export interface IPcbRectOptions {
+    x?: number;
+    y?: number;
+    width?: number;
+    height?: number;
+    start?: { x: number; y: number };
+    end?: { x: number; y: number };
+    layer?: string;
+    strokeWidth?: number;
+    fill?: boolean;
+    locked?: boolean;
+}
+
+export interface IPcbPolyOptions {
+    points: { x: number; y: number }[];
+    layer?: string;
+    width?: number;
+    fill?: boolean;
+    locked?: boolean;
+}

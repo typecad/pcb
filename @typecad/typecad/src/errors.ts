@@ -7,40 +7,50 @@
  *   pcb_track_builder.ts, length_matcher.ts),
  * BoardCreationError (pcb_board_creation.ts, pcb_footprint.ts),
  * KiCadNotFoundError (kicad.ts, kicad_commands.ts),
- * TypeCadError (schematic.ts, erc.ts, source_inspector.ts, pad_resolver.ts).
+ * TypeCadError (schematic.ts, source_inspector.ts, pad_resolver.ts).
  */
 
 export class TypeCadError extends Error {
-    constructor(message: string) {
+    constructor(message: string, options?: { cause?: unknown }) {
         super(message);
         this.name = 'TypeCadError';
+        if (options?.cause !== undefined) {
+            (this as any).cause = options.cause;
+        }
     }
 }
 
 export class RoutingError extends TypeCadError {
-    constructor(message: string) {
-        super(message);
+    constructor(message: string, options?: { cause?: unknown }) {
+        super(message, options);
         this.name = 'RoutingError';
     }
 }
 
 export class ComponentError extends TypeCadError {
-    constructor(message: string) {
-        super(message);
+    constructor(message: string, options?: { cause?: unknown }) {
+        super(message, options);
         this.name = 'ComponentError';
     }
 }
 
 export class BoardCreationError extends TypeCadError {
-    constructor(message: string) {
-        super(message);
+    constructor(message: string, options?: { cause?: unknown }) {
+        super(message, options);
         this.name = 'BoardCreationError';
     }
 }
 
 export class KiCadNotFoundError extends TypeCadError {
-    constructor(message: string) {
-        super(message);
+    constructor(message: string, options?: { cause?: unknown }) {
+        super(message, options);
         this.name = 'KiCadNotFoundError';
+    }
+}
+
+export class KiCadCommandError extends TypeCadError {
+    constructor(message: string, options?: { cause?: unknown }) {
+        super(message, options);
+        this.name = 'KiCadCommandError';
     }
 }

@@ -203,7 +203,7 @@ export function tryMultiSegmentPattern(
             `[LengthMatch] Trying multi-segment fit: using ${k} segments lengths=[${chosen.map(s => s.length.toFixed(3)).join(', ')}] for remaining=${remainingDelta.toFixed(3)}`,
           ),
         );
-      } catch {}
+      } catch { logger.debug('[LengthMatch] failed to log multi-segment try info'); }
     }
     const sumLen = chosen.reduce((acc, s) => acc + s.length, 0);
     const perSegDeltas = chosen.map(s => remainingDelta * (s.length / sumLen));
@@ -239,7 +239,7 @@ export function tryMultiSegmentPattern(
       if (config.debug)
         try {
           logger.debug(chalk.cyan(`[LengthMatch] Multi-segment fit succeeded: achieved=${achievedTotal.toFixed(3)}mm`));
-        } catch {}
+        } catch { logger.debug('[LengthMatch] failed to log multi-segment success info'); }
       return { builders: createdBuilders, achieved: achievedTotal };
     }
   }

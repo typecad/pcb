@@ -1,61 +1,59 @@
 (export (version "E")
   (design
-    (tool "typeCAD 0.2.30"))
+    (tool "typeCAD"))
   (components
     (comp
       (ref "U1")
         (value "")
         (footprint "test:pad")
         (fields
-          (field (name "Footprint") "test:pad")
+                  (field (name "Footprint") "test:pad")
         )
      )
-        (comp
+    (comp
       (ref "U2")
         (value "")
         (footprint "test:pad")
         (fields
-          (field (name "Footprint") "test:pad")
+                  (field (name "Footprint") "test:pad")
         )
      )
-        (comp
+    (comp
       (ref "J1")
         (value "")
         (footprint "test:pad")
         (fields
-          (field (name "Footprint") "test:pad")
+                  (field (name "Footprint") "test:pad")
         )
      )
-        (comp
-      (ref "U1")
+    (comp
+      (ref "U3")
         (value "")
         (footprint "test:pad")
         (fields
-          (field (name "Footprint") "test:pad")
+                  (field (name "Footprint") "test:pad")
         )
      )
-        (comp
-      (ref "U2")
+    (comp
+      (ref "U4")
         (value "")
         (footprint "test:pad")
         (fields
-          (field (name "Footprint") "test:pad")
+                  (field (name "Footprint") "test:pad")
         )
      )
-        (comp
-      (ref "J1")
+    (comp
+      (ref "U5")
         (value "")
         (footprint "test:pad")
         (fields
-          (field (name "Footprint") "test:pad")
+                  (field (name "Footprint") "test:pad")
         )
-     )
-    )
+     ))
   (nets
     (net (code "1") (name "net1")
         (node (ref "U1") (pin "1") (pintype "passive"))
         (node (ref "U2") (pin "1") (pintype "passive"))
         (node (ref "J1") (pin "1") (pintype "passive"))
 )
-
 ))

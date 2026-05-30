@@ -97,7 +97,13 @@ function getVertices(objData: string) {
     return vertices;
 }
 
-function generateWrlModel(model3d: any) {
+function generateWrlModel(model3d: Ee3dModel) {
+    if (!model3d.raw_obj) return new Ki3dModel({
+        name: model3d.name,
+        translation: null,
+        rotation: null,
+        raw_wrl: "",
+    });
     const materials = getMaterials(model3d.raw_obj);
     const vertices = getVertices(model3d.raw_obj);
 
@@ -172,11 +178,11 @@ Shape{
 }
 
 class Exporter3dModelKicad {
-    input: any;
-    output: any;
-    output_step: any;
+    input: Ee3dModel;
+    output: Ki3dModel | null;
+    output_step: string | null;
 
-    constructor(model3d: any) {
+    constructor(model3d: Ee3dModel) {
         this.input = model3d;
         this.output =
             model3d && model3d.raw_obj ? generateWrlModel(model3d) : null;
@@ -201,16 +207,17 @@ class Exporter3dModelKicad {
 
     export(libPath: string) {
         if (this.output) {
+            const output = this.output;
             fs.writeFileSync(
-                `${libPath}.3dshapes/${this.output.name}.wrl`,
-                this.output.raw_wrl,
+                `${libPath}.3dshapes/${output.name}.wrl`,
+                output.raw_wrl!,
                 { encoding: "utf-8" }
             );
         }
         if (this.output_step) {
             fs.writeFileSync(
-                `${libPath}.3dshapes/${this.output.name}.step`,
-                Buffer.from(this.output_step),
+                `${libPath}.3dshapes/${this.output!.name}.step`,
+                Buffer.from(this.output_step!),
                 { encoding: "binary" }
             );
         }

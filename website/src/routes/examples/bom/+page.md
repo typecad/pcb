@@ -17,7 +17,7 @@
 
 ```ts
 import { Component, PCB, Power } from '@typecad/typecad';
-let typecad = new pcb('bom');
+let typecad = new PCB('bom');
 
 // add components
 
@@ -56,7 +56,7 @@ This is the bulk of the function and is simple to change.
 
 ```ts
 bom += 'Reference,Value,Datasheet,Footprint,MPN\n';
-this.Components.forEach(component => {
+this.components.forEach(component => {
 	bom += `${component.reference},${component.value},${component.datasheet},${component.footprint},${component.mpn}\n`;
 });
 ```

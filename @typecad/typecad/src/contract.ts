@@ -4,8 +4,10 @@ import { Pin } from './pin.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import logger from './logging.js';
-import { SymbolLibraryManager } from './symbol_library_manager.js';
+import { SymbolLibraryManager, getSymbolLibraryManager } from './symbol_library_manager.js';
 import type { PinInfo } from './schematic_visualizer_types.js';
+import { TypeCadError } from './errors.js';
+import { DEFAULT_BUILD_DIR } from './constants.js';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -116,13 +118,13 @@ export function exportContract(pcb: PCB, options: ContractOptions = {}): void {
     let mcu: Component | undefined;
 
     // Auto-detect: first component with a typehal object
-    mcu = pcb.components.find(
+    mcu = pcb.state.components.find(
         (comp) => comp.typehal
     );
 
     // Fallback to exact reference
     if (!mcu && options.mcuReference) {
-        mcu = pcb.components.find(
+        mcu = pcb.state.components.find(
             (comp) => comp.reference === options.mcuReference
         );
     }
@@ -130,7 +132,7 @@ export function exportContract(pcb: PCB, options: ContractOptions = {}): void {
     // Fallback to symbol pattern
     if (!mcu && options.mcuSymbolPattern) {
         const pattern = options.mcuSymbolPattern;
-        mcu = pcb.components.find(
+        mcu = pcb.state.components.find(
             (comp) => comp.symbol && comp.symbol.includes(pattern)
         );
     }
@@ -148,26 +150,27 @@ export function exportContract(pcb: PCB, options: ContractOptions = {}): void {
         return;
     }
 
+    const foundMcu = mcu;
+
     // 2. Read KiCAD symbol pin info (name + type) via SymbolLibraryManager
     let pinNameMap = new Map<string, PinInfo>();
 
-    if (mcu.symbol) {
-        const libManager = new SymbolLibraryManager();
-        const result = libManager.getPinInfoMap(mcu.symbol);
+    if (foundMcu.symbol) {
+        const libManager = getSymbolLibraryManager();
+        const result = libManager.getPinInfoMap(foundMcu.symbol);
         if (result) {
             pinNameMap = result;
         } else {
-            logger.warn(`contract: Could not load pin info for "${mcu.symbol}".`);
+            logger.warn(`contract: Could not load pin info for "${foundMcu.symbol}".`);
         }
     }
 
-    // 4. Walk nets and collect connected GPIO pins
+    // 3. Walk nets and collect connected GPIO pins
     const connectedPins: Record<string, ContractPin> = {};
 
-    for (const node of pcb.Schematic.Nodes) {
-        // Find MCU pins in this net
+    for (const node of pcb.schematic.nodes) {
         const mcuPinsInNet = node.nodes.filter(
-            (pin) => pin.reference === mcu!.reference
+            (pin) => pin.reference === foundMcu.reference
         );
 
         for (const mcuPin of mcuPinsInNet) {
@@ -191,7 +194,7 @@ export function exportContract(pcb: PCB, options: ContractOptions = {}): void {
             const externalComponents: ContractComponent[] = [];
 
             for (const netPin of node.nodes) {
-                if (netPin.reference === mcu!.reference) {
+                if (netPin.reference === foundMcu.reference) {
                     continue;
                 }
                 if (seen.has(netPin.reference)) {
@@ -207,7 +210,7 @@ export function exportContract(pcb: PCB, options: ContractOptions = {}): void {
             }
 
             // Look up board name from typehal.pinLookup if available
-            const boardName = mcu!.typehal?.pinLookup?.[pinName] || undefined;
+            const boardName = foundMcu.typehal?.pinLookup?.[pinName] || undefined;
 
             connectedPins[key] = {
                 pinName,
@@ -250,7 +253,7 @@ export function exportContract(pcb: PCB, options: ContractOptions = {}): void {
             spi: peripheralPins.spi.every((name) => connectedBoardNames.has(name)),
             uart: peripheralPins.uart.every((name) => connectedBoardNames.has(name)),
         };
-    } else if (mcu.typehal?.pinLookup) {
+    } else if (foundMcu.typehal?.pinLookup) {
         // pinLookup mode: use board names from the lookup for peripheral checks
         const connectedBoardNames = new Set<string>();
         for (const info of Object.values(connectedPins)) {
@@ -282,17 +285,17 @@ export function exportContract(pcb: PCB, options: ContractOptions = {}): void {
         };
     }
 
-    // 5. Build and write contract
+    // 4. Build and write contract
     const contract: HwContract = {
         version: 1,
         mcu: {
-            symbol: mcu.symbol || '',
-            reference: mcu.reference,
-            value: mcu.value || '',
-            footprint: mcu.footprint || '',
-            mpn: mcu.mpn || '',
-            datasheet: mcu.datasheet || '',
-            description: mcu.description || '',
+            symbol: foundMcu.symbol || '',
+            reference: foundMcu.reference,
+            value: foundMcu.value || '',
+            footprint: foundMcu.footprint || '',
+            mpn: foundMcu.mpn || '',
+            datasheet: foundMcu.datasheet || '',
+            description: foundMcu.description || '',
         },
         connectedPins,
         availablePeripherals,
@@ -300,11 +303,15 @@ export function exportContract(pcb: PCB, options: ContractOptions = {}): void {
 
     const outputPath =
         options.outputPath ??
-        `./build/${pcb.Boardname}.contract.json`;
+        `${DEFAULT_BUILD_DIR}/${pcb.boardName}.contract.json`;
 
-    const dir = path.dirname(outputPath);
-    fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(outputPath, JSON.stringify(contract, null, 2));
+    try {
+        const dir = path.dirname(outputPath);
+        fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(outputPath, JSON.stringify(contract, null, 2));
+    } catch (err) {
+        throw new TypeCadError(`Failed to write contract file: ${(err as Error).message}`, { cause: err });
+    }
 
     logger.log(
         `📝 Contract written to ${outputPath} (${Object.keys(connectedPins).length} connected pins)`
@@ -335,7 +342,7 @@ function componentToContract(comp: Component): ContractComponent {
  */
 function findComponent(pcb: PCB, pin: Pin): Component | undefined {
     return (
-        pcb.components.find((c) => c.reference === pin.reference) ??
-        pcb.Schematic.components.find((c) => c.reference === pin.reference)
+        pcb.state.components.find((c) => c.reference === pin.reference) ??
+        pcb.schematic.components.find((c) => c.reference === pin.reference)
     );
 }

@@ -56,6 +56,10 @@ class PendingSummaryManager {
         if (data.schPath) {
             logger.log('    └── ' + chalk.green(data.schPath));
         }
+        const bomPath = `./build/${data.sheetName}.csv`;
+        if (bomPath) {
+            logger.log('    └── ' + chalk.green(bomPath));
+        }
 
         data.printed = true;
         return true;

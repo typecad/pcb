@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-class Resistor extends Component { constructor(opts = {}) { super({ prefix: 'R', footprint: 'Resistor_SMD:R_0603_1608Metric', ...opts }); } }
-class Connector extends Component { constructor(opts = {}) { super({ prefix: 'J', footprint: 'Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Vertical', ...opts }); } }
+class Resistor extends Component { constructor(opts: any = {}) { super('Resistor_SMD:R_0603_1608Metric'); if (opts.value) this.value = opts.value; } }
+class Connector extends Component { constructor(opts: any = {}) { super('Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Vertical'); if (opts.value) this.value = opts.value; } }
 import { PCB, Component } from '../src/index.js';
 
 describe('Multilayer Connectors Routing Tests', () => {

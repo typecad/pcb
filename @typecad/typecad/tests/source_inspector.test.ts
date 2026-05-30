@@ -25,84 +25,82 @@ describe('inspectSource', () => {
     return filePath
   }
 
-  it('should extract variable name from const declaration', () => {
+  it('should extract variable name from const declaration', async () => {
     const filePath = writeSource('test1.ts', `import { Component } from './component.js'
 const resistor = new Component({ reference: 'R1', value: '10k' })
 console.log(resistor)
 `)
 
-    const result = inspectSource(filePath, 2)
+    const result = await inspectSource(filePath, 2)
     expect(result.variable).toBe('resistor')
   })
 
-  it('should extract params from constructor call', () => {
+  it('should extract params from constructor call', async () => {
     const filePath = writeSource('test2.ts', `import { Component } from './component.js'
 const resistor = new Component({ reference: 'R1', value: '10k' })
 console.log(resistor)
 `)
 
-    const result = inspectSource(filePath, 2)
+    const result = await inspectSource(filePath, 2)
     expect(result.variable).toBe('resistor')
     expect(result.params).toBeDefined()
     expect(result.params?.reference).toBe('R1')
     expect(result.params?.value).toBe('10k')
   })
 
-  it('should extract params with numeric values', () => {
+  it('should extract params with numeric values', async () => {
     const filePath = writeSource('test3.ts', `const cap = new Component({ reference: 'C1', voltage: 25 })
 `)
 
-    const result = inspectSource(filePath, 1)
+    const result = await inspectSource(filePath, 1)
     expect(result.variable).toBe('cap')
     expect(result.params?.reference).toBe('C1')
     expect(result.params?.voltage).toBe(25)
   })
 
-  it('should return empty object for missing file', () => {
-    const result = inspectSource('/nonexistent/file.ts', 1)
+  it('should return empty object for missing file', async () => {
+    const result = await inspectSource('/nonexistent/file.ts', 1)
     expect(result).toEqual({})
   })
 
-  it('should return empty object for line number out of range', () => {
+  it('should return empty object for line number out of range', async () => {
     const filePath = writeSource('test4.ts', `const x = 1\n`)
-    const result = inspectSource(filePath, 999)
-    // Should not throw, may return empty or find nothing
+    const result = await inspectSource(filePath, 999)
     expect(result).toBeDefined()
   })
 
-  it('should handle new expression without assignment', () => {
+  it('should handle new expression without assignment', async () => {
     const filePath = writeSource('test5.ts', `new Component({ reference: 'R1' })
 `)
 
-    const result = inspectSource(filePath, 1)
-    // No variable assignment — variable should be undefined
+    const result = await inspectSource(filePath, 1)
     expect(result.variable).toBeUndefined()
   })
 
-  it('should handle source with no matching pattern', () => {
+  it('should handle source with no matching pattern', async () => {
     const filePath = writeSource('test6.ts', `const x = 42
 const y = "hello"
 console.log(x + y)
 `)
 
-    const result = inspectSource(filePath, 1)
+    const result = await inspectSource(filePath, 1)
     expect(result).toEqual({})
   })
 
-  it('should handle assignment expression (not declaration)', () => {
+  it('should handle assignment expression (not declaration)', async () => {
     const filePath = writeSource('test7.ts', `let comp
 comp = new Component({ reference: 'U1' })
 `)
 
-    const result = inspectSource(filePath, 2)
+    const result = await inspectSource(filePath, 2)
     expect(result.variable).toBe('comp')
   })
 
-  it('should handle empty constructor call', () => {
+  it('should handle empty constructor call', async () => {
     const filePath = writeSource('test8.ts', `const comp = new Component()
 `)
 
-    const result = inspectSource(filePath, 1)
+    const result = await inspectSource(filePath, 1)
     expect(result.variable).toBe('comp')
     expect(result.params).toBeUndefined()
   })

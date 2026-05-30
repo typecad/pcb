@@ -11,26 +11,53 @@
     footprint
     "test:pad"
     (layer "F.Cu")
-    (property "Code" "typecad:v1:eyJ2IjoxLCJ1IjoiIiwibiI6ImMxIn0" (at 0 0 0) (layer "F.Fab") (hide yes) (uuid "9c368a6d-61ba-49d0-a574-9f85352d1915") (effects (font (size 1 1) (thickness 0.15))))
-    (uuid "0ccb026e-d8b4-4047-bc41-75a521ea780e")
+    (
+      property
+      "Code"
+      "typecad:v1:eyJ2IjoxLCJ1IjoiIiwiZiI6IkM6XFx0eXBlY2FkXFx0eXBlQ0FEXFxAdHlwZWNhZFxcdHlwZWNhZFxcdGVzdHNcXGF1dG9yb3V0ZV9pbnRlZ3JhdGlvbi50ZXN0LnRzIiwibCI6MTh9"
+      (at 0 0 0)
+      (layer "F.Fab")
+      (hide yes)
+      (uuid "14060fd0-0602-43d6-9a1d-7881de5426e7")
+      (effects (font (size 1 1) (thickness 0.15)))
+    )
+    (uuid "bb89135f-5064-470d-83d7-9dc7e186ca64")
     (at 10 10 0)
   )
   (
     footprint
     "test:pad"
     (layer "F.Cu")
-    (property "Code" "typecad:v1:eyJ2IjoxLCJ1IjoiIiwibiI6ImMyIn0" (at 0 0 0) (layer "F.Fab") (hide yes) (uuid "9516748b-0287-4bd7-a4c0-a59a0f7277ae") (effects (font (size 1 1) (thickness 0.15))))
-    (uuid "2a27a701-fb0c-4333-9f45-6f65fbb54b7b")
+    (
+      property
+      "Code"
+      "typecad:v1:eyJ2IjoxLCJ1IjoiIiwiZiI6IkM6XFx0eXBlY2FkXFx0eXBlQ0FEXFxAdHlwZWNhZFxcdHlwZWNhZFxcdGVzdHNcXGF1dG9yb3V0ZV9pbnRlZ3JhdGlvbi50ZXN0LnRzIiwibCI6MjN9"
+      (at 0 0 0)
+      (layer "F.Fab")
+      (hide yes)
+      (uuid "466add70-93d9-4b5d-8d5f-769cd5fd3911")
+      (effects (font (size 1 1) (thickness 0.15)))
+    )
+    (uuid "d91e103d-83f3-471a-807f-ca8f6f5ab0b6")
     (at 30 30 0)
   )
   (
     footprint
     "test:pad"
     (layer "F.Cu")
-    (property "Code" "typecad:v1:eyJ2IjoxLCJ1IjoiIiwibiI6ImMzIn0" (at 0 0 0) (layer "F.Fab") (hide yes) (uuid "4b4dc9cf-f995-4526-b048-107128f4c405") (effects (font (size 1 1) (thickness 0.15))))
-    (uuid "47168c8c-c661-4e3c-b4fb-2ba6bb460046")
+    (
+      property
+      "Code"
+      "typecad:v1:eyJ2IjoxLCJ1IjoiIiwiZiI6IkM6XFx0eXBlY2FkXFx0eXBlQ0FEXFxAdHlwZWNhZFxcdHlwZWNhZFxcdGVzdHNcXGF1dG9yb3V0ZV9pbnRlZ3JhdGlvbi50ZXN0LnRzIiwibCI6Mjh9"
+      (at 0 0 0)
+      (layer "F.Fab")
+      (hide yes)
+      (uuid "d5ff14af-1e5f-4657-84aa-baf3f0338dba")
+      (effects (font (size 1 1) (thickness 0.15)))
+    )
+    (uuid "96d6a122-e27c-4423-a858-5f2544b8d08b")
     (at 50 50 0)
   )
-  (segment (start 10 10) (end 30 30) (width 0.2) (locked no) (layer "F.Cu") (net 1) (uuid "ba879226-acc1-4a1f-ba30-c871906c61c1"))
-  (segment (start 30 30) (end 50 50) (width 0.2) (locked no) (layer "F.Cu") (net 1) (uuid "df89ca60-3c3f-474b-b0d9-3f4d173c665e"))
+  (segment (start 10 10) (end 30 30) (width 0.2) (locked no) (layer "F.Cu") (net 1) (uuid "a23393dc-9226-4e88-9801-15d710830546"))
+  (segment (start 30 30) (end 50 50) (width 0.2) (locked no) (layer "F.Cu") (net 1) (uuid "0acf8e05-22d7-4751-8df6-bd56a78acb9c"))
 )

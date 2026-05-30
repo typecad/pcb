@@ -1,19 +1,44 @@
 import fs from "node:fs";
 import path from "node:path";
 import chalk from "chalk";
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
+import type { ProjectAnswers } from '../types.js';
+import logger from '../../logging.js';
 
-const runCommandQuiet = (command: string) => {
+function sanitizeProjectName(name: string): string {
+  if (/[;&|$`\\!#(){}[\]<>]/.test(name)) {
+    throw new Error(`Project name contains invalid characters: ${name}`);
+  }
+  if (name.includes('..') || name.includes('/') || name.includes('\\') || name.includes('\0')) {
+    throw new Error(`Project name contains invalid path characters: ${name}`);
+  }
+  return name;
+}
+
+const runCommand = (command: string, args: string[], cwd?: string) => {
   try {
-    execSync(`${command}`);
-  } catch (e) {
-    console.error(`Failed executing ${command}`, e);
+    execFileSync(command, args, { cwd, stdio: 'pipe', timeout: 120_000 });
+  } catch (e: unknown) {
+    const err = e as { stderr?: { toString(): string } };
+    const detail = err.stderr?.toString().trim() || (e instanceof Error ? e.message : String(e));
+    logger.error(`Failed executing ${command} ${args.join(' ')}`, detail);
     return false;
   }
   return true;
 };
 
-export function create_project(answers: any) {
+const runCommandQuiet = (command: string, args: string[], cwd?: string) => {
+  try {
+    execFileSync(command, args, { cwd, stdio: 'pipe', timeout: 120_000 });
+  } catch (e: unknown) {
+    logger.error(`Failed executing ${command} ${args.join(' ')}`, e);
+    return false;
+  }
+  return true;
+};
+
+export function create_project(answers: ProjectAnswers) {
+  sanitizeProjectName(answers.name);
   let dir = `./${answers.name}/hw/build/lib/footprints`;
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
@@ -29,7 +54,7 @@ export function create_project(answers: any) {
     fs.mkdirSync(dir, { recursive: true });
   }
 
-  console.log(chalk.green("+"), "Project folders created");
+  logger.log(chalk.green("+"), "Project folders created");
 
   // make files
   try {
@@ -38,7 +63,7 @@ export function create_project(answers: any) {
       ""
     );
   } catch (error) {
-    console.log(
+    logger.log(
       chalk.red(
         `- ERROR creating ./${answers.name}/hw/build/${answers.name}.kicad_pro. ${error}`
       )
@@ -52,7 +77,7 @@ export function create_project(answers: any) {
       '(kicad_pcb(version 20240108)(generator "pcbnew")(generator_version "8.0"))'
     );
   } catch (error) {
-    console.log(
+    logger.log(
       chalk.red(
         `- ERROR creating ./hw/build/${answers.name}/${answers.name}.kicad_pcb. ${error}`
       )
@@ -66,7 +91,7 @@ export function create_project(answers: any) {
       '(fp_lib_table(version 8)(lib (name "lib")(type "KiCad")(uri "${KIPRJMOD}/lib/footprints")(options "")(descr "")))'
     );
   } catch (error) {
-    console.log(
+    logger.log(
       chalk.red(
         `- ERROR creating ./${answers.name}/hw/build/fp-lib-table. ${error}`
       )
@@ -116,8 +141,8 @@ ${[
 ]
   .filter(Boolean)
   .join("\n")}
-// 1. run the npm script '🤖 Build'
-// 2. run the npm script 'Open Board ✳️' to edit the board in KiCAD
+// 1. run the npm script 'build'
+// 2. run the npm script 'open_board' to edit the board in KiCAD
 ${[
   answers.packages.includes("ngspice")
     ? `// * read more about ngspice simulation: https://www.npmjs.com/package/@typecad/ngspice`
@@ -134,14 +159,14 @@ ${[
  `
     );
   } catch (error) {
-    console.log(
+    logger.log(
       chalk.red(
         `- ERROR creating ./${answers.name}/src/${answers.name}.ts. ${error}`
       )
     );
     return;
   }
-  console.log(chalk.green("+"), "KiCAD project created");
+  logger.log(chalk.green("+"), "KiCAD project created");
 
   try {
     fs.writeFileSync(
@@ -154,36 +179,34 @@ export default defineConfig({
 `
     );
   } catch (error) {
-    console.log(
+    logger.log(
       chalk.red(`- ERROR creating ./${answers.name}/hw/typecad.conf.ts. ${error}`)
     );
     return;
   }
-  console.log(chalk.green("+"), "typecad.conf.ts created");
+  logger.log(chalk.green("+"), "typecad.conf.ts created");
 
-  // install npm deps
-  const npmInitCommand = `cd ${answers.name}/hw && npm init -y`;
-  console.log(chalk.green("+"), "Creating npm package");
-  const npmInit = runCommandQuiet(npmInitCommand);
+  logger.log(chalk.green("+"), "Creating npm package");
+  const npmInit = runCommand('npm', ['init', '-y'], path.join(process.cwd(), answers.name, 'hw'));
   if (!npmInit) {
-    console.error(`Error installing dependencies`);
+    logger.error(`Error installing dependencies`);
   }
 
-  const installDepsCommand = `cd ${
-    answers.name
-  }/hw && npm i tsx @typecad/typecad @typecad/passives ${
-    answers.packages.includes("ngspice") ? `@typecad/ngspice` : ""
-  } ${answers.packages.includes("graphviz") ? `@typecad/graphviz` : ""} ${
-    answers.packages.includes("jlcpcb") ? `@typecad/jlcpcb-export` : ""
-  } ${answers.packages.includes("prompt") ? `@typecad/typecad-prompt` : ""} ${
-    answers.packages.includes("wiring") ? `@typecad/wiring` : ""} ${
-    answers.packages.includes("jlcpcb-parts") ? `@typecad/jlcpcb-parts` : ""
-  } ${answers.packages.includes("typecad-mcp") ? `@typecad/typecad-mcp` : ""
-  }`;
-  console.log(chalk.green("+"), "Installing dependencies");
-  const installedDeps = runCommandQuiet(installDepsCommand);
+  const pkgList = [
+    'tsx', '@typecad/typecad', '@typecad/passives',
+    ...answers.packages.includes("ngspice") ? ['@typecad/ngspice'] : [],
+    ...answers.packages.includes("graphviz") ? ['@typecad/graphviz'] : [],
+    ...answers.packages.includes("jlcpcb") ? ['@typecad/jlcpcb-export'] : [],
+    ...answers.packages.includes("prompt") ? ['@typecad/typecad-prompt'] : [],
+    ...answers.packages.includes("wiring") ? ['@typecad/wiring'] : [],
+    ...answers.packages.includes("jlcpcb-parts") ? ['@typecad/jlcpcb-parts'] : [],
+    ...answers.packages.includes("typecad-mcp") ? ['@typecad/typecad-mcp'] : [],
+  ].filter(Boolean);
+
+  logger.log(chalk.green("+"), "Installing dependencies");
+  const installedDeps = runCommandQuiet('npm', ['i', ...pkgList], path.join(process.cwd(), answers.name, 'hw'));
   if (!installedDeps) {
-    console.error(`Error installing dependencies`);
+    logger.error(`Error installing dependencies`);
   }
 
   // make a .gitignore file
@@ -193,7 +216,7 @@ export default defineConfig({
       "node_modules/"
     );
   } catch (error) {
-    console.log(
+    logger.log(
       chalk.red(`- ERROR writing ./${answers.name}/hw/.gitignore ${error}`)
     );
     return;
@@ -209,7 +232,7 @@ export default defineConfig({
       )
     );
   } catch (error) {
-    console.log(
+    logger.log(
       chalk.red(`- ERROR reading ./${answers.name}/hw/package.json ${error}`)
     );
     return;
@@ -250,7 +273,7 @@ export default defineConfig({
       JSON.stringify(package_json, null, 2)
     );
   } catch (error) {
-    console.log(
+    logger.log(
       chalk.red(`- ERROR writing ./${answers.name}/hw/package.json ${error}`)
     );
     return;
@@ -285,7 +308,7 @@ export default defineConfig({
   //     JSON.stringify(snippets, null, 2)
   //   );
   // } catch (error) {
-  //   console.log(
+  //   logger.log(
   //     chalk.red(
   //       `- ERROR writing ./${answers.name}/hw/.vscode/typecad.code-snippets ${error}`
   //     )
@@ -298,11 +321,10 @@ export default defineConfig({
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
     }
-    console.log(chalk.green("+"), "Creating pio project in ./fw");
-    const installPIOCommand = `cd ${answers.name} && pio project init --project-dir ./fw/ -b ${answers.board}`;
-    const installedPIO = runCommandQuiet(installPIOCommand);
+    logger.log(chalk.green("+"), "Creating pio project in ./fw");
+    const installedPIO = runCommand('pio', ['project', 'init', '--project-dir', './fw/', '-b', answers.board], path.join(process.cwd(), answers.name));
     if (!installedPIO) {
-      console.error(`Error creating PlatformIO project`);
+      logger.error(`Error creating PlatformIO project`);
     }
   }
 
@@ -311,11 +333,10 @@ export default defineConfig({
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
     }
-    console.log(chalk.green("+"), "Initializing git repo ./fw");
-    const installGitCommand = `cd ${answers.name} && git init`;
-    const installedGit = runCommandQuiet(installGitCommand);
+    logger.log(chalk.green("+"), "Initializing git repo ./fw");
+    const installedGit = runCommand('git', ['init'], path.join(process.cwd(), answers.name));
     if (!installedGit) {
-      console.error(`Error initializing git repo`);
+      logger.error(`Error initializing git repo`);
     }
   }
 
@@ -371,9 +392,9 @@ _flipped_
       `${process.cwd()}/${answers.name}/hw/docs/${answers.name}.md`,
       docContent
     );
-    console.log(chalk.green("+"), "Documentation template created");
+    logger.log(chalk.green("+"), "Documentation template created");
   } catch (error) {
-    console.log(
+    logger.log(
       chalk.red(
         `- ERROR writing ./${answers.name}/hw/docs/${answers.name}.md ${error}`
       )
@@ -396,14 +417,14 @@ _flipped_
       JSON.stringify(code_workspace, null, 2)
     );
   } catch (error) {
-    console.log(
+    logger.log(
       chalk.red(`- ERROR writing ./${answers.name}.code-workspace ${error}`)
     );
     return;
   }
 
-  console.log(chalk.green("+"), "Finished");
-  console.log(
+  logger.log(chalk.green("+"), "Finished");
+  logger.log(
     chalk.green("+"),
     `Open ${answers.name}.code-workspace in VS Code to get started`
   );

@@ -13,13 +13,13 @@ import type { CodeMetadata, LegacyCodeMetadata } from '../kicad2typecad/types.js
  *
  * @param info - Source information object
  * @param uuid - Component UUID (primary identity for round-trip matching)
- * @param footprintHash - Footprint identity hash (fallback for anonymous components)
+ * @param footprintFingerprint - Footprint identity fingerprint (fallback for anonymous components)
  * @returns Encoded string safe for KiCad property values
  */
 export function formatSourceInfoForProperty(
     info?: ISourceInfo,
     uuid?: string,
-    footprintHash?: string
+    footprintFingerprint?: string
 ): string | undefined {
     if (!info) return undefined;
 
@@ -28,7 +28,7 @@ export function formatSourceInfoForProperty(
         u: uuid || '',
         n: info.variable || undefined,
         t: info.isThis || undefined,
-        h: footprintHash || undefined,
+        h: footprintFingerprint || undefined,
     };
 
     // Include file/line only as fallback (when no variable name — anonymous components)

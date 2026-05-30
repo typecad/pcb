@@ -14,8 +14,8 @@ export type PinType =
     | 'no_connect';
 
 export interface Schematic {
-    Sheetname: string;
-    Components: Component[];
+    sheetName: string;
+    components: Component[];
     Nodes: Node[];
 }
 

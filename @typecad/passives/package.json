@@ -17,6 +17,18 @@
   "homepage": "https://typecad.net",
   "funding": "https://www.buymeacoffee.com/typecad",
   "type": "module",
+  "exports": {
+    "./0201": "./0201/index.ts",
+    "./0402": "./0402/index.ts",
+    "./0603": "./0603/index.ts",
+    "./0805": "./0805/index.ts",
+    "./1206": "./1206/index.ts",
+    "./1210": "./1210/index.ts",
+    "./connector": "./connector/index.ts",
+    "./testpoint": "./testpoint/index.ts",
+    "./mounting_hole": "./mounting_hole/index.ts",
+    "./tie": "./tie/index.ts"
+  },
   "publishConfig": {
     "access": "public"
   },

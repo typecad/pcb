@@ -34,6 +34,11 @@ A list of small examples to show how to use **type**CAD
 | [ngspice](/examples/ngspice)             | run a simulation with your **type**CAD code        |
 | [JLCPCB-Export](/examples/jlcpcb-export) | export all the assembly files for JLCPCB           |
 | [Jig/Multi-boards](/examples/jig)        | Create a test jig/multi-board with one codebase    |
+| [Auto Router](/examples/autorouter)      | Auto-route tracks between connected pins           |
+| [Zones](/examples/zones)                 | Create copper zones and keepout areas              |
+| [Visual PCB Diff](/examples/gitdiff)     | Compare two KiCAD PCB files visually               |
+| [Documentation Gen](/examples/docgen)    | Generate HTML docs from Markdown + KiCAD PCB       |
+| [Import KiCAD Board](/examples/import-kicad) | Convert a KiCAD PCB to typeCAD code            |
 
 <SvelteSeo
 {title}

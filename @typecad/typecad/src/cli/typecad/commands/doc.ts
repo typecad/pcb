@@ -2,6 +2,7 @@ import path from 'node:path';
 import { generateDocumentation } from '../../docgen/index.js';
 import { tempManager } from '../../docgen/utils/tempFileManager.js';
 import type { ParsedArgs } from '../parser.js';
+import logger from '../../../logging.js';
 
 export async function run(parsed: ParsedArgs): Promise<void> {
     const markdownFile = parsed.positional[0];
@@ -36,7 +37,7 @@ export async function run(parsed: ParsedArgs): Promise<void> {
             openFile,
         });
     } catch (error) {
-        try { await tempManager.cleanupAll(); } catch {}
+        try { await tempManager.cleanupAll(); } catch { logger.debug('Failed to cleanup temp files'); }
         throw error;
     }
 }

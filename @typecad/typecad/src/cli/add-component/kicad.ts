@@ -1,23 +1,33 @@
 import fs from "node:fs";
-import { parse, serialize, Sym, nameOf } from "../../sexpr/index.js";
+import { parse, serialize, Sym, nameOf, type SExpr } from "../../sexpr/index.js";
 import os from "node:os";
 import { join } from "node:path";
 
 import { KiCAD } from "../../kicad.js";
+import type { CliPinInfo } from '../types.js';
+import logger from '../../logging.js';
+import { sanitize_name as sharedSanitizeName, sanitize_number as sharedSanitizeNumber } from '../shared/cli_utils.js';
+
+const MAX_EXTENDS_DEPTH = 10;
 
 let symbol_file_contents = "";
-let _parsed: any = null;
-let _pins: any[] = [];
+let _parsed: SExpr | null = null;
+let _pins: CliPinInfo[] = [];
 let symbol_lib = "";
 
 export function kicad_cli() {
   return KiCAD.cliPath;
 }
 
-export function kicad_symbol(symbol: string, folder = "./") {
+export function kicad_symbol(symbol: string, folder = "./", depth = 0): string | undefined {
+  if (depth >= MAX_EXTENDS_DEPTH) {
+    logger.error(`Max extends depth (${MAX_EXTENDS_DEPTH}) reached for symbol: ${symbol}`);
+    return undefined;
+  }
+
   let symbol_file_name = symbol.split(":");
 
-  const kicad = new KiCAD();
+  const kicad = KiCAD.instance;
   const _kicad_symbol = kicad.getSymbolsPath();
 
   try {
@@ -33,7 +43,7 @@ export function kicad_symbol(symbol: string, folder = "./") {
       );
     }
 
-    const l: any = parse(symbol_file_contents);
+    const l = parse(symbol_file_contents) as SExpr[];
 
     for (const i in l) {
       if (!Array.isArray(l[i])) continue;
@@ -64,16 +74,17 @@ export function kicad_symbol(symbol: string, folder = "./") {
       }
     }
   } catch (err) {
-    console.error(err);
+    logger.error(err);
   }
 }
 
-export function kicad_pins(_symbol?: string): any[] {
+export function kicad_pins(_symbol?: string): CliPinInfo[] {
+_pins = [];
 let _type = "";
 let _name = "";
 let _number: string | number = -1;
 
-const l = _parsed || parse(symbol_file_contents);
+const l = (_parsed || parse(symbol_file_contents)) as SExpr[];
 for (const i in l) {
   if (!Array.isArray(l[i])) continue;
   for (const ii in l[i]) {
@@ -156,7 +167,7 @@ export function return_list_of_symbols(symbol_path: string) {
   try {
     symbol_file_contents = fs.readFileSync(symbol_path, "utf8");
 
-    const l: any = parse(symbol_file_contents);
+    const l = parse(symbol_file_contents) as SExpr[];
 
     for (const i in l) {
       if (!Array.isArray(l[i])) continue;
@@ -165,7 +176,7 @@ export function return_list_of_symbols(symbol_path: string) {
       }
     }
   } catch (err) {
-    console.error(err);
+    logger.error(err);
   }
 
   return found_symbols;
@@ -175,7 +186,7 @@ export function local_symbol_to_footprint(symbol_path: string) {
   try {
     symbol_file_contents = fs.readFileSync(symbol_path, "utf8");
 
-    const l: any = parse(symbol_file_contents);
+    const l = parse(symbol_file_contents) as SExpr[];
 
     for (const i in l) {
       if (!Array.isArray(l[i])) continue;
@@ -192,30 +203,13 @@ export function local_symbol_to_footprint(symbol_path: string) {
       }
     }
   } catch (err) {
-    console.error(err);
+    logger.error(err);
   }
 
   return "";
 }
 
-export function sanitize_name(string: string) {
-  let _string = string;
-  // catch invalid symbols and replace with _
-  _string = _string.replace(/[\|~{}//&;\$%@"*=<>#\(\)\+,-]/g, "_");
-  _string = _string.replaceAll("__", "_");
-  if (_string.startsWith("_")) {
-    _string = _string.substring(1);
-  }
-  if (_string.endsWith("_")) {
-    _string = _string.substring(0, _string.length - 1);
-  }
-  // catch if starts with a number
-  if (!isNaN(Number(_string.charAt(0)))) {
-    //If is a number
-    _string = "_" + _string;
-  }
-  return _string;
-}
+export const sanitize_name = sharedSanitizeName;
 
 export function return_list_of_footprints(footprint_path: string) {
   let found_footprints = [];
@@ -232,17 +226,10 @@ export function return_list_of_footprints(footprint_path: string) {
       found_footprints.push({ value: footprintName });
     }
   } catch (err) {
-    console.error(err);
+    logger.error(err);
   }
 
   return found_footprints;
 }
 
-export function sanitize_number(number: string | number) {
-  let _number = number;
-
-  if (isNaN(Number(_number))) {
-    _number = "'" + _number + "'";
-  }
-  return _number;
-}
+export const sanitize_number = sharedSanitizeNumber;

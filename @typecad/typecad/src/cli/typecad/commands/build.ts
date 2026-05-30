@@ -1,7 +1,8 @@
 import fs from 'node:fs';
-import { execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import { loadConfig } from '../../../config.js';
 import type { ParsedArgs } from '../parser.js';
+import logger from '../../../logging.js';
 
 function detectEntryFile(): string | null {
   const config = loadConfig();
@@ -12,14 +13,14 @@ function detectEntryFile(): string | null {
     const buildScript = pkg.scripts?.build || '';
     const match = buildScript.match(/tsx\s+(.+)$/);
     if (match) return match[1];
-  } catch {}
+  } catch { logger.debug('Failed to read or parse package.json'); }
 
   try {
     const srcFiles = fs
       .readdirSync('./src')
       .filter((f) => f.endsWith('.ts') && !f.endsWith('.d.ts'));
     if (srcFiles.length === 1) return `./src/${srcFiles[0]}`;
-  } catch {}
+  } catch { logger.debug('Failed to read src directory'); }
 
   return null;
 }
@@ -46,11 +47,11 @@ export async function run(parsed: ParsedArgs): Promise<void> {
   }
 
   try {
-    execSync(`npx tsx "${entry}"`, {
+    execFileSync('tsx', [entry], {
       stdio: 'inherit',
       env,
     });
   } catch (error) {
-    process.exit(1);
+    throw new Error(`Build failed: ${error instanceof Error ? error.message : String(error)}`);
   }
 }

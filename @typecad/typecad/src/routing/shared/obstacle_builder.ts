@@ -240,10 +240,10 @@ export class ObstacleBuilder {
 
         // Precompute (reference:pin) -> net map once per component to avoid repeated scans
         let pinNetMap: Map<string, string> | null = null;
-        const schematic = pcb.Schematic;
-        if (schematic && Array.isArray(schematic.Nodes)) {
+        const schematic = pcb.schematic;
+        if (schematic && Array.isArray(schematic.nodes)) {
             pinNetMap = new Map<string, string>();
-            for (const schematicNode of schematic.Nodes) {
+            for (const schematicNode of schematic.nodes) {
                 const netName = schematicNode?.name as string | undefined;
                 const nodes = schematicNode?.nodes as Array<{ reference: string; number: string | number }> | undefined;
                 if (!netName || !Array.isArray(nodes)) continue;

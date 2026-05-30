@@ -1,3 +1,5 @@
+import type { EasyedaRawData } from '../types.js';
+
 export const KI_MODULE_INFO = "(module {package_lib}:{package_name} (layer F.Cu) (tedit {edit})\n";
 export const KI_DESCRIPTION = `\t(descr "{datasheet_link}, generated with easyeda2kicad.py on {date}")\n`;
 export const KI_TAGS_INFO = `\t(tags "{tag}")\n`;
@@ -66,11 +68,12 @@ export const KI_LAYERS: Record<number, string> = {
     101: "F.Fab",
 };
 
-function roundFloatValues(obj: Record<string, any>) {
-    for (const key in obj) {
-        if (Object.prototype.hasOwnProperty.call(obj, key)) {
-            if (typeof obj[key] === "number") {
-                obj[key] = Math.round(obj[key] * 100) / 100;
+function roundFloatValues(obj: object): void {
+    const o = obj as Record<string, unknown>;
+    for (const key in o) {
+        if (Object.prototype.hasOwnProperty.call(o, key)) {
+            if (typeof o[key] === "number") {
+                (o as Record<string, unknown>)[key] = Math.round(o[key] as number * 100) / 100;
             }
         }
     }
@@ -85,9 +88,9 @@ export class KiFootprintPad {
     height: number;
     layers: string;
     number: number | string;
-    drill: any;
+    drill: number | string;
     orientation: number;
-    polygon: any;
+    polygon: string;
 
     constructor({
                     type,
@@ -101,18 +104,18 @@ export class KiFootprintPad {
                     drill,
                     orientation,
                     polygon,
-                }: Record<string, any>) {
-        this.type = type;
-        this.shape = shape;
-        this.pos_x = pos_x;
-        this.pos_y = pos_y;
-        this.width = width;
-        this.height = height;
-        this.layers = layers;
-        this.number = number;
-        this.drill = drill;
-        this.orientation = orientation;
-        this.polygon = polygon;
+                }: EasyedaRawData) {
+        this.type = type as string;
+        this.shape = shape as string;
+        this.pos_x = pos_x as number;
+        this.pos_y = pos_y as number;
+        this.width = width as number;
+        this.height = height as number;
+        this.layers = layers as string;
+        this.number = number as number | string;
+        this.drill = drill as number | string;
+        this.orientation = orientation as number;
+        this.polygon = polygon as string;
         roundFloatValues(this);
     }
 }
@@ -125,20 +128,13 @@ export class KiFootprintTrack {
     stroke_width: number;
     layers: string;
 
-    constructor({
-                    points_start_x = [],
-                    points_start_y = [],
-                    points_end_x = [],
-                    points_end_y = [],
-                    stroke_width = 0,
-                    layers = "",
-                }: Record<string, any> = {}) {
-        this.points_start_x = points_start_x;
-        this.points_start_y = points_start_y;
-        this.points_end_x = points_end_x;
-        this.points_end_y = points_end_y;
-        this.stroke_width = stroke_width;
-        this.layers = layers;
+    constructor(data: EasyedaRawData = {}) {
+        this.points_start_x = (data.points_start_x ?? []) as number[];
+        this.points_start_y = (data.points_start_y ?? []) as number[];
+        this.points_end_x = (data.points_end_x ?? []) as number[];
+        this.points_end_y = (data.points_end_y ?? []) as number[];
+        this.stroke_width = (data.stroke_width ?? 0) as number;
+        this.layers = (data.layers ?? "") as string;
     }
 }
 
@@ -147,10 +143,10 @@ export class KiFootprintHole {
     pos_y: number;
     size: number;
 
-    constructor({ pos_x, pos_y, size }: Record<string, any>) {
-        this.pos_x = pos_x;
-        this.pos_y = pos_y;
-        this.size = size;
+    constructor({ pos_x, pos_y, size }: EasyedaRawData) {
+        this.pos_x = pos_x as number;
+        this.pos_y = pos_y as number;
+        this.size = size as number;
         roundFloatValues(this);
     }
 }
@@ -163,19 +159,19 @@ export class KiFootprintCircle {
     layers: string;
     stroke_width: number;
 
-    constructor({ cx, cy, end_x, end_y, layers, stroke_width }: Record<string, any>) {
-        this.cx = cx;
-        this.cy = cy;
-        this.end_x = end_x;
-        this.end_y = end_y;
-        this.layers = layers;
-        this.stroke_width = stroke_width;
+    constructor({ cx, cy, end_x, end_y, layers, stroke_width }: EasyedaRawData) {
+        this.cx = cx as number;
+        this.cy = cy as number;
+        this.end_x = end_x as number;
+        this.end_y = end_y as number;
+        this.layers = layers as string;
+        this.stroke_width = stroke_width as number;
         roundFloatValues(this);
     }
 }
 
 export class KiFootprintRectangle extends KiFootprintTrack {
-    constructor(options: Record<string, any> = {}) {
+    constructor(options: EasyedaRawData = {}) {
         super(options);
     }
 }
@@ -189,14 +185,14 @@ export class KiFootprintArc {
     layers: string;
     stroke_width: number;
 
-    constructor({ start_x, start_y, end_x, end_y, angle, layers, stroke_width }: Record<string, any>) {
-        this.start_x = start_x;
-        this.start_y = start_y;
-        this.end_x = end_x;
-        this.end_y = end_y;
-        this.angle = angle;
-        this.layers = layers;
-        this.stroke_width = stroke_width;
+    constructor({ start_x, start_y, end_x, end_y, angle, layers, stroke_width }: EasyedaRawData) {
+        this.start_x = start_x as number;
+        this.start_y = start_y as number;
+        this.end_x = end_x as number;
+        this.end_y = end_y as number;
+        this.angle = angle as number;
+        this.layers = layers as string;
+        this.stroke_width = stroke_width as number;
         roundFloatValues(this);
     }
 
@@ -263,16 +259,16 @@ export class KiFootprintText {
                     thickness,
                     display,
                     mirror,
-                }: Record<string, any>) {
-        this.pos_x = pos_x;
-        this.pos_y = pos_y;
-        this.orientation = orientation;
-        this.text = text;
-        this.layers = layers;
-        this.font_size = font_size;
-        this.thickness = thickness;
-        this.display = display;
-        this.mirror = mirror;
+                }: EasyedaRawData) {
+        this.pos_x = pos_x as number;
+        this.pos_y = pos_y as number;
+        this.orientation = orientation as number;
+        this.text = text as string;
+        this.layers = layers as string;
+        this.font_size = font_size as number;
+        this.thickness = thickness as number;
+        this.display = display as string;
+        this.mirror = mirror as string;
         roundFloatValues(this);
     }
 }
@@ -283,11 +279,11 @@ export class KiFootprintVia {
     size: number;
     diameter: number;
 
-    constructor({ pos_x, pos_y, size, diameter }: Record<string, any>) {
-        this.pos_x = pos_x;
-        this.pos_y = pos_y;
-        this.size = size;
-        this.diameter = diameter;
+    constructor({ pos_x, pos_y, size, diameter }: EasyedaRawData) {
+        this.pos_x = pos_x as number;
+        this.pos_y = pos_y as number;
+        this.size = size as number;
+        this.diameter = diameter as number;
         roundFloatValues(this);
     }
 }
@@ -295,16 +291,16 @@ export class KiFootprintVia {
 export class KiFootprintSolidRegion {
     name: string;
 
-    constructor({ name = "" }: Record<string, any> = {}) {
-        this.name = name;
+    constructor({ name = "" }: EasyedaRawData = {}) {
+        this.name = name as string;
     }
 }
 
 export class KiFootprintCopperArea {
     name: string;
 
-    constructor({ name = "" }: Record<string, any> = {}) {
-        this.name = name;
+    constructor({ name = "" }: EasyedaRawData = {}) {
+        this.name = name as string;
     }
 }
 
@@ -312,9 +308,9 @@ export class KiFootprintInfo {
     name: string;
     fp_type: string;
 
-    constructor({ name, fp_type }: Record<string, any>) {
-        this.name = name;
-        this.fp_type = fp_type;
+    constructor({ name, fp_type }: EasyedaRawData) {
+        this.name = name as string;
+        this.fp_type = fp_type as string;
     }
 }
 
@@ -323,20 +319,25 @@ export class Ki3dModelBase {
     y: number;
     z: number;
 
-    constructor({ x = 0.0, y = 0.0, z = 0.0 }: Record<string, any> = {}) {
-        this.x = x;
-        this.y = y;
-        this.z = z;
+    constructor({ x = 0.0, y = 0.0, z = 0.0 }: EasyedaRawData = {}) {
+        this.x = x as number;
+        this.y = y as number;
+        this.z = z as number;
     }
 }
 
 export class Ki3dModel {
     name: string;
-    translation: any;
-    rotation: any;
-    raw_wrl: any;
+    translation: Ki3dModelBase | null;
+    rotation: Ki3dModelBase | null;
+    raw_wrl: string | null;
 
-    constructor({ name, translation, rotation, raw_wrl = null }: Record<string, any>) {
+    constructor({ name, translation, rotation, raw_wrl = null }: {
+        name: string;
+        translation: Ki3dModelBase | null;
+        rotation: Ki3dModelBase | null;
+        raw_wrl?: string | null;
+    }) {
         this.name = name;
         this.translation = translation;
         this.rotation = rotation;
@@ -345,18 +346,18 @@ export class Ki3dModel {
 }
 
 export class KiFootprint {
-    info: any;
-    model_3d: any;
-    pads: any[];
-    tracks: any[];
-    vias: any[];
-    holes: any[];
-    circles: any[];
-    arcs: any[];
-    rectangles: any[];
-    texts: any[];
-    solid_regions: any[];
-    copper_areas: any[];
+    info: KiFootprintInfo | undefined;
+    model_3d: Ki3dModel | null | undefined;
+    pads: KiFootprintPad[];
+    tracks: KiFootprintTrack[];
+    vias: KiFootprintVia[];
+    holes: KiFootprintHole[];
+    circles: KiFootprintCircle[];
+    arcs: KiFootprintArc[];
+    rectangles: KiFootprintRectangle[];
+    texts: KiFootprintText[];
+    solid_regions: KiFootprintSolidRegion[];
+    copper_areas: KiFootprintCopperArea[];
 
     constructor({
                     info,
@@ -371,7 +372,20 @@ export class KiFootprint {
                     texts = [],
                     solid_regions = [],
                     copper_areas = [],
-                }: Record<string, any> = {}) {
+                }: {
+                    info?: KiFootprintInfo;
+                    model_3d?: Ki3dModel | null;
+                    pads?: KiFootprintPad[];
+                    tracks?: KiFootprintTrack[];
+                    vias?: KiFootprintVia[];
+                    holes?: KiFootprintHole[];
+                    circles?: KiFootprintCircle[];
+                    arcs?: KiFootprintArc[];
+                    rectangles?: KiFootprintRectangle[];
+                    texts?: KiFootprintText[];
+                    solid_regions?: KiFootprintSolidRegion[];
+                    copper_areas?: KiFootprintCopperArea[];
+                } = {}) {
         this.info = info;
         this.model_3d = model_3d;
         this.pads = pads;

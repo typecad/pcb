@@ -13,8 +13,8 @@ describe('PCB', () => {
   describe('Basic PCB Operations', () => {
     it('should create a PCB instance', () => {
       expect(pcb).toBeDefined();
-      expect(pcb.Boardname).toBe('test_board');
-      expect(pcb.Schematic).toBeDefined();
+      expect(pcb.boardName).toBe('test_board');
+      expect(pcb.schematic).toBeDefined();
     });
 
     it('should have default options', () => {
@@ -32,8 +32,8 @@ describe('PCB', () => {
 
       pcb.add(resistor);
 
-      expect(pcb.Schematic.Components).toHaveLength(1);
-      expect(pcb.Schematic.Components[0]).toBe(resistor);
+      expect(pcb.schematic.components).toHaveLength(1);
+      expect(pcb.schematic.components[0]).toBe(resistor);
     });
 
     it('should place components without errors', () => {
@@ -47,7 +47,7 @@ describe('PCB', () => {
 
       pcb.place(resistor);
 
-      expect(pcb.components).toContain(resistor);
+      expect(pcb.state.components).toContain(resistor);
     });
 
     it('should handle multiple components placement', () => {
@@ -68,8 +68,8 @@ describe('PCB', () => {
 
       pcb.place(resistor, capacitor);
 
-      expect(pcb.components).toContain(resistor);
-      expect(pcb.components).toContain(capacitor);
+      expect(pcb.state.components).toContain(resistor);
+      expect(pcb.state.components).toContain(capacitor);
     });
 
     it('should handle DNP components correctly', () => {
@@ -85,7 +85,7 @@ describe('PCB', () => {
       pcb.place(resistor);
 
       // DNP components are not added to the board components list
-      expect(pcb.components).not.toContain(resistor);
+      expect(pcb.state.components).not.toContain(resistor);
       expect(resistor.dnp).toBe(true);
     });
 
@@ -114,7 +114,7 @@ describe('PCB', () => {
 
       pcb.place(resistor);
 
-      expect(pcb.components).toContain(resistor);
+      expect(pcb.state.components).toContain(resistor);
       expect(resistor.pcb.rotation).toBe(45);
       expect(resistor.pcb.side).toBe('back');
     });
@@ -134,7 +134,7 @@ describe('PCB', () => {
 
       pcb.place(resistor);
 
-      expect(pcb.components).toContain(resistor);
+      expect(pcb.state.components).toContain(resistor);
       expect(resistor.pins).toHaveLength(2);
       expect(resistor.pins[0]).toBe(pin1);
       expect(resistor.pins[1]).toBe(pin2);
@@ -173,7 +173,7 @@ describe('PCB', () => {
       pcb.place(via);
 
       expect(via.via).toBe(true);
-      expect(pcb.components).toContain(via);
+      expect(pcb.state.components).toContain(via);
     });
 
     it('should allow assigning a net name to a via', () => {
@@ -186,18 +186,18 @@ describe('PCB', () => {
     });
 
     it('should stage vias automatically and remove them from staging when placed', () => {
-      const stagedBefore = pcb.stagedComponents.length;
+      const stagedBefore = pcb.state.stagedComponents.length;
       const via = pcb.via({ at: { x: 5, y: 5 }, net: 'AUTO' });
 
-      const stagedAfterCreate = pcb.stagedComponents.some(component => component.uuid === via.uuid);
+      const stagedAfterCreate = pcb.state.stagedComponents.some(component => component.uuid === via.uuid);
       expect(stagedAfterCreate).toBe(true);
-      expect(pcb.stagedComponents.length).toBe(stagedBefore + 1);
+      expect(pcb.state.stagedComponents.length).toBe(stagedBefore + 1);
 
       pcb.place(via);
 
-      const stillStaged = pcb.stagedComponents.some(component => component.uuid === via.uuid);
+      const stillStaged = pcb.state.stagedComponents.some(component => component.uuid === via.uuid);
       expect(stillStaged).toBe(false);
-      expect(pcb.components.some(component => component.uuid === via.uuid)).toBe(true);
+      expect(pcb.state.components.some(component => component.uuid === via.uuid)).toBe(true);
     });
   });
 
@@ -213,8 +213,8 @@ describe('PCB', () => {
 
       pcb.group('resistors', resistor);
 
-      expect(pcb.groups.some(g => g.includes('"resistors"'))).toBe(true);
-      expect(pcb.groups.some(g => g.includes(resistor.uuid))).toBe(true);
+      expect(pcb.state.groups.some(g => g.includes('"resistors"'))).toBe(true);
+      expect(pcb.state.groups.some(g => g.includes(resistor.uuid))).toBe(true);
     });
 
     it('should handle grouping multiple components', () => {
@@ -235,7 +235,7 @@ describe('PCB', () => {
 
       pcb.group('resistors', resistor1, resistor2);
 
-      const group = pcb.groups.find(g => g.includes('"resistors"'));
+      const group = pcb.state.groups.find(g => g.includes('"resistors"'));
       expect(group).toBeDefined();
       expect(group).toContain(resistor1.uuid);
       expect(group).toContain(resistor2.uuid);
@@ -283,21 +283,21 @@ describe('PCB', () => {
   describe('Outline Operations', () => {
     it('should create rectangular outline', () => {
       pcb.outline(0, 0, 100, 80);
-      expect(pcb.stagedOutlines).toHaveLength(1);
-      expect(pcb.stagedOutlines[0].width).toBe(100);
-      expect(pcb.stagedOutlines[0].height).toBe(80);
+      expect(pcb.state.stagedOutlines).toHaveLength(1);
+      expect(pcb.state.stagedOutlines[0].width).toBe(100);
+      expect(pcb.state.stagedOutlines[0].height).toBe(80);
     });
 
     it('should create rectangular outline with fillet', () => {
       pcb.outline(0, 0, 100, 80, 5);
-      expect(pcb.stagedOutlines).toHaveLength(1);
-      expect(pcb.stagedOutlines[0].filletRadius).toBe(5);
+      expect(pcb.state.stagedOutlines).toHaveLength(1);
+      expect(pcb.state.stagedOutlines[0].filletRadius).toBe(5);
     });
 
     it('should handle custom outline UUID', () => {
       const customUuid = 'custom-outline-uuid';
       pcb.outline(0, 0, 100, 80, 0, customUuid);
-      expect(pcb.stagedOutlines.some((o: any) => o.uuid === customUuid)).toBe(true);
+      expect(pcb.state.stagedOutlines.some((o: any) => o.uuid === customUuid)).toBe(true);
     });
   });
 
@@ -310,12 +310,13 @@ describe('PCB', () => {
       const netDef = pcb.net(pin1, pin2);
 
       expect(netDef.pins).toHaveLength(2);
-      expect(pcb.Schematic.Nodes).toHaveLength(1);
+      expect(pcb.schematic.nodes).toHaveLength(1);
     });
 
     it('should handle named nets via PCB method', () => {
       const result = pcb.named('VCC');
-      expect(result).toBe(pcb);
+      expect(result).toHaveProperty('net');
+      expect(result).toHaveProperty('dnc');
     });
 
     it('should handle empty net calls', () => {
@@ -331,8 +332,7 @@ describe('PCB', () => {
     });
 
     it('should delegate ERC to schematic', () => {
-      // erc() returns void — just verify it doesn't throw
-      expect(() => pcb.erc()).not.toThrow();
+      expect(() => pcb.bom()).not.toThrow();
     });
   });
 });

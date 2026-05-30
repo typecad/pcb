@@ -28,9 +28,11 @@ export class WorkerPool {
       w.on('message', (m: WorkerResult) => this.handleWorkerMessage(idx, m));
       w.on('error', (err) => this.handleWorkerError(idx, err));
       w.on('exit', (code) => {
-        // If a worker dies unexpectedly, remove from workers.
-        // We keep the pool small and don't respawn automatically.
         this.workers[idx] = null;
+        for (const [id, cb] of this.pending.entries()) {
+          cb({ id, result: undefined, error: new Error(`Worker ${idx} exited with code ${code}`) });
+        }
+        this.pending.clear();
       });
     }
   }
@@ -96,5 +98,14 @@ export class WorkerPool {
     for (const w of this.workers) {
       if (w) w.terminate();
     }
+  }
+
+  dispose(): void {
+    for (const [id, cb] of this.pending.entries()) {
+      cb({ id, result: undefined, error: new Error('WorkerPool disposed') });
+    }
+    this.pending.clear();
+    this.taskQueue.length = 0;
+    this.terminateAll();
   }
 }

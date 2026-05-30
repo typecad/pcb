@@ -14,10 +14,6 @@ interface TieOptions {
     uuid?: string;
 }
 export declare class Tie extends Component {
-    power: string;
-    ground: string;
-    maximum: number;
-    minimum: number;
     power_pin: Pin;
     ground_pin: Pin;
     name: string;

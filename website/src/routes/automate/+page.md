@@ -16,17 +16,16 @@ Traditional hardware design is manual, error-prone, and time-consuming. **type**
 <ScrollArea orientation="both">
 
 ```typescript
-import { PCB } from "@typecad/typecad";
+import { runERC } from "@typecad/typecad";
 
-let typecad = new PCB("my_circuit");
-// ... add components and connections ...
+// Run ERC programmatically
+let report = await runERC("./build/my_circuit.kicad_sch");
 
-typecad.create();
-typecad.erc(); // Automatic electrical validation
+// Or use the CLI: typecad erc
 ```
 </ScrollArea>
 
-Every build automatically validates your circuit against KiCAD's electrical rules. Catch connection errors, power mismatches, and pin type conflicts before they become hardware problems.
+Run ERC to validate your circuit against KiCAD's electrical rules. Catch connection errors, power mismatches, and pin type conflicts before they become hardware problems.
 
 ### 🔋 **Power-Aware Design Validation**
 
@@ -81,17 +80,18 @@ Automatically verify that power supplies can handle load requirements and voltag
 <ScrollArea orientation="both">
 
 ```bash
-npm install -g @typecad/typecad-docgen
-typecad-docgen --input docs/ --output build/docs/
+typecad doc docs/board.md build/board.kicad_pcb -o output.html
 ```
 </ScrollArea>
 
-The [@typecad/typecad-docgen](https://www.npmjs.com/package/@typecad/typecad-docgen) package converts markdown files and KiCAD PCBs into comprehensive documentation with layer exports and 3D renders. Perfect for:
+The `typecad doc` command converts markdown files and KiCAD PCBs into comprehensive documentation with layer exports and 3D renders. Perfect for:
 
 - **Assembly instructions** with layer-by-layer visuals
 - **Technical documentation** with automated BOM generation  
 - **Manufacturing packages** with pick-and-place files
 - **Quality assurance** with automated test procedures
+
+See the [DocGen](/docs/docgen) documentation for full details.
 
 ### 🔧 **In-House Design Processing**
 

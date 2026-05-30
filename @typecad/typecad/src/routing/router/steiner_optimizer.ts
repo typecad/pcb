@@ -95,7 +95,7 @@ export class SteinerOptimizer {
     }
 
     private debugEnabled(): boolean {
-        try { return !!this.router?.routingOptions?.debug; } catch { return false; }
+        try { return !!this.router?.routingOptions?.debug; } catch { logger.debug('[SteinerOptimizer] debugEnabled check failed'); return false; }
     }
 
     /**

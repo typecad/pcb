@@ -11,5 +11,6 @@ git_disabled/
 # Notes
 NOTES
 
-# Orphaned build output
+# Test/build artifacts in project root
+*.out
 true

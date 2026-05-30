@@ -47,7 +47,7 @@ The next question asks for the `Footprint name`. For KiCAD components, the defau
 <br />
 
 ```
-🧩 typeCAD Create Component
+🧩 typeCAD Add Component
 ✔ Select symbol source: KiCAD
 ✔ Select footprint source: KiCAD
 ✔ Symbol name? MCU_Microchip_ATtiny:ATtiny85-20M

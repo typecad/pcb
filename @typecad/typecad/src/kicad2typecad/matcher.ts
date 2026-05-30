@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { LIBRARY_SEPARATOR } from '../constants.js';
+import logger from '../logging.js';
 import type {
     KicadFootprintIR,
     SourceLocation,
@@ -93,7 +94,7 @@ export class SourceMatcher {
         let content: string;
         try {
             content = fs.readFileSync(resolvedPath, 'utf-8');
-        } catch { /* file not readable */
+        } catch { logger.debug('Failed to read file', resolvedPath);
             return null;
         }
 
@@ -166,7 +167,7 @@ export class SourceMatcher {
             let content: string;
             try {
                 content = fs.readFileSync(filePath, 'utf-8');
-            } catch { /* file not readable, skip */
+            } catch { logger.debug('Failed to read file', filePath);
                 continue;
             }
 
@@ -218,7 +219,7 @@ export class SourceMatcher {
                     results.push(fullPath);
                 }
             }
-        } catch { /* directory not readable, skip */ }
+        } catch { logger.debug('Directory not readable', dir); }
         return results;
     }
 }

@@ -1,5 +1,6 @@
 import { Sym } from './sym.js';
 import type { SExpr } from './types.js';
+import { escapeSexprString } from './escape.js';
 
 export interface SerializeOptions {
     pretty?: boolean;
@@ -79,7 +80,7 @@ export function serialize(expr: SExpr, options?: SerializeOptions): string {
         }
         if (typeof expr === 'string') {
             emit('"');
-            emit(expr);
+            emit(escapeSexprString(expr));
             emit('"');
             return;
         }

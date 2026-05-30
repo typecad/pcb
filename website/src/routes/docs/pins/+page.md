@@ -27,7 +27,7 @@ r1.pin(2);      // second pin
 </ScrollArea>
 
 ### Named Pin Access: `component.PINNAME`
-Use this for complex components (ICs, connectors) where pins have descriptive names:
+Use this for complex components (ICs, connectors) where pins have descriptive names and their own `.ts` file where `Pin` objects are defined:
 
 <ScrollArea orientation="both">
 
@@ -41,14 +41,8 @@ u1.PB0      // GPIO pin PB0
 ```
 </ScrollArea>
 
-**When to use each:**
-- **Passives** (resistors, capacitors, LEDs): Use `component.pin(1)`, `component.pin(2)`
-- **ICs and complex components**: Use named pins like `component.VCC`, `component.GND`
-- **Connectors**: Can use either `connector.pin(1)` or named pins if defined
-
-
 ## Power aware
-Each `Pin` object has a `powerInfo` object that can be optionally passed when creating the `Pin`. It has the following properties:
+Each `Pin` object has an optional `powerInfo` object that can be optionally passed when creating the `Pin`. It has the following properties:
 - `minimum_voltage` — minimum voltage the pin can tolerate
 - `maximum_voltage` — maximum voltage the pin can tolerate
 - `current` — maximum current the pin can handle

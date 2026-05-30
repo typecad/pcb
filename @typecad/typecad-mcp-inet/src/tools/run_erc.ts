@@ -20,46 +20,23 @@ IMPORTANT: This tool only provides instructions on how to run ERC. It does not a
 
 ## Running ERC in typeCAD:
 \`\`\`typescript
-import { PCB, Power } from '@typecad/typecad';
+import { runERC } from '@typecad/typecad';
 
-let typecad = new PCB('project_name');
+// Programmatic ERC
+let report = await runERC('./build/my-board.kicad_sch');
+console.log(report);
+\`\`\`
 
-// Set up proper pin types for effective ERC:
+## CLI:
+\`\`\`bash
+# Run ERC on the built schematic
+typecad erc
 
-// Power pins - use Power objects to set pin types
-let power_source = new Power({
-  power: battery.pin(1),    // Sets pin type to 'power_out'
-  gnd: battery.pin(2),      // Sets pin type to 'power_out'
-  voltage: 3.7,
-  direction: 'output'
-});
+# With KiCad flags
+typecad erc -- --severity-all
 
-let power_input = new Power({
-  power: mcu.pin(8),        // Sets pin type to 'power_in'
-  gnd: mcu.pin(4),          // Sets pin type to 'power_in'
-  voltage: 3.3,
-  direction: 'input'
-});
-
-// Manual pin type setting for custom components
-mcu.pin(1).type = 'input';
-mcu.pin(2).type = 'output';
-mcu.pin(3).type = 'bidirectional';
-mcu.pin(4).type = 'passive';
-
-// First create the design
-typecad.create();
-
-// Then explicitly run ERC - this step is required!
-const ercResults = typecad.erc();
-
-// Analyze the ERC results
-if (ercResults.errors.length > 0) {
-  console.log('ERC found errors:', ercResults.errors);
-}
-if (ercResults.warnings.length > 0) {
-  console.log('ERC found warnings:', ercResults.warnings);
-}
+# Specific file
+typecad erc ./build/board.kicad_sch -- --exit-code-violations
 \`\`\`
 
 ## Pin Types for ERC:
@@ -77,9 +54,8 @@ if (ercResults.warnings.length > 0) {
 - Short circuits: incompatible pin types connected
 
 ## Important Notes: 
-- ERC does NOT run automatically during the build process
-- You MUST explicitly call \`typecad::erc()\` after \`create()\`
-- Always analyze the returned results to identify and fix issues
+- ERC uses kicad-cli sch erc
+- Requires KiCad to be installed
 - Use Power objects to automatically set correct pin types
 - For shared pins (like ground in regulators), manually set to 'passive' to avoid conflicts
 - For more details, refer to the typeCAD documentation which can be downloaded with 'download_typecad_docs'`;

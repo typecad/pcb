@@ -8,6 +8,7 @@
 
 import chalk from 'chalk';
 import { Pin } from '../pin.js';
+import logger from '../logging.js';
 import { TrackBuilder } from './pcb_track_builder.js';
 import { AStarRouter } from '../routing/router/astar_router.js';
 import { ObstacleBuilder } from '../routing/shared/obstacle_builder.js';
@@ -101,8 +102,8 @@ export function routePairwise(
 
         // Determine net for this pair (may differ across pairs)
         let pairNetName: string | undefined = undefined;
-        if (pcb.Schematic && pcb.Schematic.Nodes && fromPin?.owner) {
-            for (const schematicNode of pcb.Schematic.Nodes) {
+    if (pcb.schematic && pcb.schematic.nodes && fromPin?.owner) {
+        for (const schematicNode of pcb.schematic.nodes) {
                 if (schematicNode.nodes) {
                     const pinInSchematic = schematicNode.nodes.find((p: Pin) =>
                         p.reference === fromPin.owner!.reference &&
@@ -141,7 +142,7 @@ export function routePairwise(
                         }
                     }
                 } catch (e) {
-                    // Ignore fast attempt errors and proceed to full routing
+                    logger.debug('[PCB] fast fallback attempt failed, proceeding to full routing', e);
                 }
             }
 
@@ -231,7 +232,7 @@ export function routePairwise(
                 debugLog(options.debug, chalk.blue(`[PCB] Added ${path.nodes.length - 1} track segments as obstacles for subsequent routes`));
 
                 // DEBUG: Report staged outlines and tracks counts after adding segments
-                debugLog(options.debug, chalk.gray(`[PCB][DEBUG] stagedOutlines=${pcb.stagedOutlines.length}, tracks=${pcb.tracks.length}, outlines_public=${pcb.outlines_public.length}`));
+                debugLog(options.debug, chalk.gray(`[PCB][DEBUG] stagedOutlines=${pcb.state.stagedOutlines.length}, tracks=${pcb.tracks.length}, outlines_public=${pcb.state.outlines.length}`));
             }  // end if (!manualTrackBuilders)
         }  // end if (path.success)
 

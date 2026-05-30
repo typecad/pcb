@@ -60,8 +60,14 @@ export class SymbolLibraryManager {
         }
     }
 
-    private findSymbolInLibrary(libraryContent: SExprNode, libraryName: string, symbolName: string): SymbolDefinition | null {
+    private findSymbolInLibrary(libraryContent: SExprNode, libraryName: string, symbolName: string, visited?: Set<string>): SymbolDefinition | null {
         const symbolFqn = `${libraryName}:${symbolName}`;
+
+        if (visited && visited.has(symbolFqn)) {
+            logError(`Circular extends detected for symbol ${symbolFqn}. Resolution aborted to prevent infinite recursion.`);
+            return null;
+        }
+
         if (this.symbolCache.has(symbolFqn)) {
             return this.symbolCache.get(symbolFqn)!;
         }
@@ -79,7 +85,9 @@ export class SymbolLibraryManager {
                     if (extendsIndex !== -1 && Array.isArray(rawSexpr[extendsIndex]) && rawSexpr[extendsIndex].length > 1) {
                         const baseSymbolName = String(rawSexpr[extendsIndex][1]);
                         rawSexpr[extendsIndex][1] = `${libraryName}:${baseSymbolName}`;
-                        const baseSymbolDef = this.getSymbolDefinition(`${libraryName}:${baseSymbolName}`);
+                        const nextVisited = new Set(visited);
+                        nextVisited.add(symbolFqn);
+                        const baseSymbolDef = this.getSymbolDefinition(`${libraryName}:${baseSymbolName}`, nextVisited);
                         if (baseSymbolDef) {
                             this.symbolCache.set(symbolFqn, baseSymbolDef);
                             return baseSymbolDef;
@@ -103,7 +111,7 @@ export class SymbolLibraryManager {
         return null;
     }
 
-    public getSymbolDefinition(symbolFqn: string): SymbolDefinition | null {
+    public getSymbolDefinition(symbolFqn: string, visited?: Set<string>): SymbolDefinition | null {
         if (this.symbolCache.has(symbolFqn)) {
             return this.symbolCache.get(symbolFqn)!;
         }
@@ -120,7 +128,7 @@ export class SymbolLibraryManager {
             return null;
         }
 
-        const definition = this.findSymbolInLibrary(libraryContent, libraryName, symbolName);
+        const definition = this.findSymbolInLibrary(libraryContent, libraryName, symbolName, visited);
         if (!definition) {
             logError(`Symbol definition ${symbolFqn} not found in library ${libraryName}.`);
         }
@@ -142,15 +150,15 @@ export class SymbolLibraryManager {
             for (const element of symbolDef.rawSexpr) {
                 if (!Array.isArray(element)) continue;
 
-                if (element[0] === 'pin') {
+                if (Sym.isSym(element[0]) && element[0].name === 'pin') {
                     let currentPinNumber: string | null = null;
                     let atData: number[] | null = null;
 
                     for (const prop of element) {
                         if (!Array.isArray(prop)) continue;
-                        if (prop[0] === 'number' && prop.length > 1) {
+                        if (Sym.isSym(prop[0]) && prop[0].name === 'number' && prop.length > 1) {
                             currentPinNumber = String(prop[1]);
-                        } else if (prop[0] === 'at' && prop.length > 3) {
+                        } else if (Sym.isSym(prop[0]) && prop[0].name === 'at' && prop.length > 3) {
                             atData = [parseFloat(String(prop[1])), parseFloat(String(prop[2])), parseFloat(String(prop[3]))];
                         }
                     }
@@ -163,16 +171,16 @@ export class SymbolLibraryManager {
                 }
                 else if (Array.isArray(element) && element.length > 1 && Sym.isSym(element[0]) && element[0].name === 'symbol' && typeof element[1] === 'string') {
                     for (const subElement of element.slice(2)) {
-                        if (!Array.isArray(subElement) || subElement.length === 0 || subElement[0] !== 'pin') continue;
+                        if (!Array.isArray(subElement) || subElement.length === 0 || !(Sym.isSym(subElement[0]) && subElement[0].name === 'pin')) continue;
 
                         let currentPinNumber: string | null = null;
                         let atData: number[] | null = null;
 
                         for (const prop of subElement) {
                             if (!Array.isArray(prop)) continue;
-                            if (prop[0] === 'number' && prop.length > 1) {
+                            if (Sym.isSym(prop[0]) && prop[0].name === 'number' && prop.length > 1) {
                                 currentPinNumber = String(prop[1]);
-                            } else if (prop[0] === 'at' && prop.length > 3) {
+                            } else if (Sym.isSym(prop[0]) && prop[0].name === 'at' && prop.length > 3) {
                                 atData = [parseFloat(String(prop[1])), parseFloat(String(prop[2])), parseFloat(String(prop[3]))];
                             }
                         }
@@ -191,7 +199,6 @@ export class SymbolLibraryManager {
         }
 
         logError(`Pin ${pinNumber} not found in symbol ${symbolFqn}`);
-        logError(`Failed structure for ${symbolFqn}:`, JSON.stringify(symbolDef?.rawSexpr, null, 2));
         return null;
     }
 
@@ -334,4 +341,17 @@ export class SymbolLibraryManager {
         this.boundingBoxCache.set(symbolFqn, boundingBox);
         return boundingBox;
     }
+}
+
+let _sharedInstance: SymbolLibraryManager | undefined;
+
+export function getSymbolLibraryManager(): SymbolLibraryManager {
+    if (!_sharedInstance) {
+        _sharedInstance = new SymbolLibraryManager();
+    }
+    return _sharedInstance;
+}
+
+export function resetSymbolLibraryManager(): void {
+    _sharedInstance = undefined;
 }

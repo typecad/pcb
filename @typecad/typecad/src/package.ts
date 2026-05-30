@@ -2,6 +2,8 @@ import { Component } from './component.js';
 import { TrackBuilder, PCB } from './pcb/pcb.js';
 import { Pin } from './pin.js';
 import { createRequire } from 'node:module';
+import { PCB_CONSTANTS } from './pcb/pcb_routing_calculations.js';
+import { validateFinite } from './utils/numeric_validation.js';
 
 const _require = createRequire(import.meta.url);
 
@@ -10,6 +12,9 @@ export type PassiveFactory = {
     Resistor: new (options?: { value?: string; [key: string]: unknown }) => Component;
     Capacitor: new (options?: { value?: string; [key: string]: unknown }) => Component;
     Inductor: new (options?: { value?: string; [key: string]: unknown }) => Component;
+    Diode: new (options?: { value?: string; [key: string]: unknown }) => Component;
+    LED: new (options?: { value?: string; [key: string]: unknown }) => Component;
+    Fuse: new (options?: { value?: string; [key: string]: unknown }) => Component;
 };
 
 /**
@@ -81,18 +86,26 @@ export abstract class Package<TOptions extends object = {}> {
         this.passives = (options.passives ?? this._defaultPassives()) as PassiveFactory;
         this.reference = options.reference;
 
-        this.pcb.pushOffset(options.x, options.y);
-        // Scope component references to this PCB's schematic during build().
-        Component.setActiveCounter(this.pcb.Schematic.referenceCounter);
+        validateFinite(options.x, 'Package x offset');
+        validateFinite(options.y, 'Package y offset');
+
         try {
-            this.build(options);
+            this.pcb.pushOffset(options.x, options.y);
+            try {
+                this.build(options);
+            } finally {
+                this._autoCollect();
+                for (const item of this.components) {
+                    if (item instanceof Component) {
+                        item.registerReference(this.pcb.schematic.referenceCounter);
+                    }
+                }
+                this._applyOffset();
+                this.pcb.group(options.name ?? this.constructor.name, ...this.components);
+            }
         } finally {
-            Component.setActiveCounter(null);
+            this.pcb.popOffset();
         }
-        this._autoCollect();
-        this._applyOffset();
-        this.pcb.group(options.name ?? this.constructor.name, ...this.components);
-        this.pcb.popOffset();
     }
 
     /**
@@ -112,7 +125,7 @@ export abstract class Package<TOptions extends object = {}> {
     /**
      * Place a PCB via and automatically register it in `components`.
      */
-    protected via(at: { x: number; y: number }, size = 0.6, drill = 0.3): Component {
+    protected via(at: { x: number; y: number }, size = PCB_CONSTANTS.DEFAULT_VIA_SIZE, drill = PCB_CONSTANTS.DEFAULT_VIA_DRILL): Component {
         const v = this.pcb.via({ at, size, drill });
         this.components.push(v);
         return v;

@@ -1,9 +1,18 @@
+import type { EasyedaRawData } from '../types.js';
+import logger from '../../logging.js';
+
+type SvgPathCommand = SvgPathMoveTo | SvgPathLineTo | SvgPathEllipticalArc | SvgPathClosePath;
+type SvgPathConstructor = {
+    new (data?: EasyedaRawData): SvgPathCommand;
+    fields: string[];
+};
+
 export class SvgPathMoveTo {
     start_x: number;
     start_y: number;
-    constructor({ start_x, start_y }: Record<string, any>) {
-        this.start_x = parseFloat(start_x);
-        this.start_y = parseFloat(start_y);
+    constructor({ start_x, start_y }: EasyedaRawData = {}) {
+        this.start_x = parseFloat(String(start_x));
+        this.start_y = parseFloat(String(start_y));
     }
     static get fields() {
         return ["start_x", "start_y"];
@@ -13,9 +22,9 @@ export class SvgPathMoveTo {
 export class SvgPathLineTo {
     pos_x: number;
     pos_y: number;
-    constructor({ pos_x, pos_y }: Record<string, any>) {
-        this.pos_x = parseFloat(pos_x);
-        this.pos_y = parseFloat(pos_y);
+    constructor({ pos_x, pos_y }: EasyedaRawData = {}) {
+        this.pos_x = parseFloat(String(pos_x));
+        this.pos_y = parseFloat(String(pos_y));
     }
     static get fields() {
         return ["pos_x", "pos_y"];
@@ -38,14 +47,14 @@ export class SvgPathEllipticalArc {
                     flag_sweep,
                     end_x,
                     end_y,
-                }: Record<string, any>) {
-        this.radius_x = parseFloat(radius_x);
-        this.radius_y = parseFloat(radius_y);
-        this.x_axis_rotation = parseFloat(x_axis_rotation);
+                }: EasyedaRawData = {}) {
+        this.radius_x = parseFloat(String(radius_x));
+        this.radius_y = parseFloat(String(radius_y));
+        this.x_axis_rotation = parseFloat(String(x_axis_rotation));
         this.flag_large_arc = flag_large_arc === "1" || flag_large_arc === 1;
         this.flag_sweep = flag_sweep === "1" || flag_sweep === 1;
-        this.end_x = parseFloat(end_x);
-        this.end_y = parseFloat(end_y);
+        this.end_x = parseFloat(String(end_x));
+        this.end_y = parseFloat(String(end_y));
     }
     static get fields() {
         return [
@@ -61,14 +70,14 @@ export class SvgPathEllipticalArc {
 }
 
 export class SvgPathClosePath {
-    constructor() {
+    constructor(_data?: EasyedaRawData) {
     }
     static get fields() {
         return [];
     }
 }
 
-const svgPathHandlers: Record<string, [any, number]> = {
+const svgPathHandlers: Record<string, [SvgPathConstructor, number]> = {
     "M": [SvgPathMoveTo, 2],
     "A": [SvgPathEllipticalArc, 7],
     "L": [SvgPathLineTo, 2],
@@ -83,7 +92,7 @@ export function parseSvgPath(svgPath: string) {
 
     const regex = /([a-zA-Z])([ ,\-\+.\d]+)/g;
     const matches = svgPath.matchAll(regex);
-    const parsedPath: any[] = [];
+    const parsedPath: SvgPathCommand[] = [];
 
     for (const match of matches) {
         const command = match[1];
@@ -96,7 +105,7 @@ export function parseSvgPath(svgPath: string) {
             } else {
                 for (let i = 0; i < args.length; i += nbArgs) {
                     const fields = CmdClass.fields;
-                    const obj: Record<string, any> = {};
+                    const obj: EasyedaRawData = {};
                     for (let j = 0; j < nbArgs; j++) {
                         obj[fields[j]] = args[i + j];
                     }
@@ -104,7 +113,7 @@ export function parseSvgPath(svgPath: string) {
                 }
             }
         } else {
-            console.warn(`SVG command "${command}" not supported`);
+            logger.warn(`SVG command "${command}" not supported`);
         }
     }
     return parsedPath;

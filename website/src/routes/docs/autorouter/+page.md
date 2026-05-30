@@ -1,18 +1,17 @@
 <script lang="ts">
     import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
-
+    import { buttonVariants } from "$lib/components/ui/button";
+    import ChevronRight from "lucide-svelte/icons/chevron-right";
     let { data }: { data: PageData } = $props();
 </script>
 
 # Auto Router
 
-The TypeCAD framework includes a grid-based auto router that generates tracks between connected pins. It uses an A* search algorithm to find valid paths while respecting obstacles.
+**type**CAD includes an auto router that generates tracks between connected pins.
 
 ## Usage
 
-To use the auto router, call the `route` method on the `PCB` instance, passing a net definition.
-
-Here is a minimal example showing how to define components, connect them, and instruct the router to generate the track.
+Call `route()` on the `PCB` instance with a net definition:
 
 <ScrollArea orientation="both">
 
@@ -22,48 +21,139 @@ import { Resistor } from '@typecad/passives/0805';
 
 let typecad = new PCB('autoroute_example');
 
-// Define components
 let r1 = new Resistor({ value: '1kohm', reference: 'R1' });
 let r2 = new Resistor({ value: '1kohm', reference: 'R2' });
 
-// Place components on the board
 r1.pcb = { x: 10, y: 10, rotation: 0 };
 r2.pcb = { x: 20, y: 10, rotation: 0 };
 
-// Create a net connecting the two resistors
 const signal_net = typecad.named('signal').net(r1.pin(1), r2.pin(1));
 
-// Instruct the router to connect the net
-typecad.route(signal_net);
+typecad.route(signal_net);       // [!code highlight]
 
-// Generate the board file
 typecad.create(r1, r2);
 ```
 
 </ScrollArea>
 
-## How it works
+You can also route directly between pins without a named net:
 
-The router performs the following steps when `route()` is called:
+<ScrollArea orientation="both">
 
-1. **Grid Generation**: A routing grid is constructed covering the area occupied by the components.
-2. **Obstacle Mapping**: Pad geometries and existing tracks are mapped onto the grid as obstacles.
-3. **Path Search**: For nets with more than two points, the router constructs a Minimum Spanning Tree (MST) to determine the order of connections. It then uses the A* algorithm to find the shortest path for each edge on the grid.
-4. **Track Generation**: Valid paths are converted into track segments and written to the board file.
+```ts
+let tracks = await typecad.route({
+  from: r1.pin(1),
+  to: r2.pin(1),
+});
+
+typecad.create(r1, r2, ...tracks);
+```
+
+</ScrollArea>
 
 ## Configuration
 
-The `route` method accepts an optional configuration object to control the search behavior.
+The `route` method accepts an optional configuration object:
 
 <ScrollArea orientation="both">
 
 ```ts
 typecad.route(signal_net, {
-    gridResolution: 0.15, // Grid cell size in mm
-    debug: false          // Enable detailed search logging
+    gridResolution: 0.15,
+    debug: false,
 });
 ```
 
 </ScrollArea>
 
 By default, the router uses a resolution derived from the trace width and clearance settings. Decreasing the resolution value increases the search space and memory usage but may help find paths in congested layouts.
+
+<!-- ## Batch Autorouting
+
+Route multiple connections together with automatic rip-up-and-retry using `autorouteBatch()`:
+
+<ScrollArea orientation="both">
+
+```ts
+let result = await pcb.autorouteBatch([
+  { from: mcu.SDA, to: sensor.SDA, name: 'SDA' },
+  { from: mcu.SCL, to: sensor.SCL, name: 'SCL' },
+  { from: power.pin, to: mcu.VCC, name: 'VCC' },
+], {
+  rounds: 3,
+  reorder: 'byDistance',
+});
+
+pcb.create();
+```
+
+</ScrollArea>
+
+It routes all items, then retries failed routes across multiple rounds with relaxed parameters and reordered priorities to negotiate congestion. Options:
+- _rounds_ — number of retry rounds (default: 3)
+- _reorder_ — reorder strategy: `'byDistance'` (default, longest first), `'reverse'`, or `'none'`
+- _relaxViaCostPerRound_ — reduce via cost each round (default: 5)
+- _increaseIterationsPerRound_ — add iterations each round (default: 25000)
+
+## Length Matching
+
+> [!WARNING]
+> Length matching is **experimental**. The API may change.
+
+For differential pairs that require matched lengths, `LengthMatcher.apply()` extends shorter routes with sawtooth meanders:
+
+<ScrollArea orientation="both">
+
+```ts
+import { LengthMatcher } from '@typecad/typecad/routing';
+
+LengthMatcher.apply(ctx, routeDetails, trackBuilders, {
+  tolerance: 0.5,
+});
+```
+
+</ScrollArea>
+
+Parameters:
+- _ctx_ — length match context (board context)
+- _routeDetails_ — array of `{ path, success }` from routing results
+- _trackBuilders_ — array of track builder arrays for each route
+- _config_ — tolerance in mm (number) or `{ tolerance, pattern, minStraightSegment, debug }`
+
+## Debug Visualization
+
+Generate debug images of the routing grid to troubleshoot routing issues. Outputs PPM image files:
+
+<ScrollArea orientation="both">
+
+```ts
+import { DebugVisualizer } from '@typecad/typecad/routing';
+
+DebugVisualizer.visualizeRouting(
+  grid,
+  obstacles,
+  paths,
+  'debug_route',
+  'F.Cu',
+  1,
+);
+```
+
+</ScrollArea>
+
+Parameters:
+- _grid_ — the routing grid
+- _obstacles_ — array of routing obstacles
+- _paths_ — array of routed paths
+- _filename_ — output filename (without extension), saves as `.ppm`
+- _layer_ — which layer to visualize
+- _cellSize_ — pixels per grid cell (default: 1) -->
+
+<div class="relative">
+<br/>
+<br/>
+<br/>
+    <p class="absolute right-0">
+       <a href="/docs/gitdiff" class={buttonVariants({ variant: "outline" })}>Git Diff<ChevronRight /></a>
+    </p>
+</div>

@@ -1,10 +1,11 @@
 #!/usr/bin/env node
-import { input, select, confirm } from "@inquirer/prompts";
 import chalk from "chalk";
 import { create_project } from "./create_project.js";
-import * as multi_select from "inquirer-select-pro";
 
-let answers: Record<string, any> = {};
+import type { ProjectAnswers } from '../types.js';
+import logger from '../../logging.js';
+
+let answers: Partial<ProjectAnswers> = {};
 process.on("uncaughtException", (error) => {
   if (error && error.name === "ExitPromptError") {
     process.exit(0);
@@ -74,42 +75,42 @@ function hasAllRequiredArgs(args: Record<string, string | boolean | string[] | u
 
 // Display help information
 function showHelp() {
-  console.log(
+  logger.log(
     chalk.white.bold("🤖 typeCAD Project Creator - Command Line Usage\n")
   );
-  console.log("Usage: node @typecad/create-typecad [options]\n");
-  console.log("Options:");
-  console.log(
+  logger.log("Usage: node @typecad/create-typecad [options]\n");
+  logger.log("Options:");
+  logger.log(
     "  --name=<project_name>     Project name (required for non-interactive mode)"
   );
-  console.log(
+  logger.log(
     "  --pio=<true|false>        Create PlatformIO project (required for non-interactive mode)"
   );
-  console.log(
+  logger.log(
     "  --git=<true|false>        Initialize git repository (required for non-interactive mode)"
   );
-  console.log(
+  logger.log(
     "  --board=<board_name>      PlatformIO board (required when --pio=true, default: esp32dev)"
   );
-  console.log(
+  logger.log(
     "  --packages=<pkg1,pkg2>    Comma-separated list of optional packages"
   );
-  console.log("  --help                    Show this help message\n");
-  console.log("Available packages:");
-  console.log(
+  logger.log("  --help                    Show this help message\n");
+  logger.log("Available packages:");
+  logger.log(
     "  @typecad/ngspice, @typecad/graphviz, @typecad/jlcpcb-export, @typecad/typecad-prompt,"
   );
-  console.log(
+  logger.log(
     "  @typecad/wiring, @typecad/jlcpcb-parts, @typecad/typecad-mcp\n"
   );
-  console.log("Examples:");
-  console.log(
+  logger.log("Examples:");
+  logger.log(
     "  node @typecad/create-typecad --name=my_project --pio=false --git=true"
   );
-  console.log(
+  logger.log(
     "  node @typecad/create-typecad --name=my_project --pio=true --git=true --board=esp32dev"
   );
-  console.log(
+  logger.log(
     "  node @typecad/create-typecad --name=my_project --pio=true --git=true --board=esp32dev --packages=@typecad/ngspice,@typecad/graphviz"
   );
 }
@@ -144,7 +145,7 @@ async function main(preparsedArgs?: Record<string, any>) {
     // Validate provided name
     const nameValidation = validateProjectName(cmdArgs.name);
     if (nameValidation !== true) {
-      console.error(chalk.red("Error:"), nameValidation);
+      logger.error(chalk.red("Error:"), nameValidation);
       process.exit(1);
     }
 
@@ -155,18 +156,21 @@ async function main(preparsedArgs?: Record<string, any>) {
     answers.board = cmdArgs.board || "esp32dev";
     answers.packages = cmdArgs.packages || [];
 
-    console.log(chalk.green("Creating project with the following settings:"));
-    console.log(`  Name: ${answers.name}`);
-    console.log(`  PlatformIO: ${answers.pio}`);
-    console.log(`  Git: ${answers.git}`);
+    logger.log(chalk.green("Creating project with the following settings:"));
+    logger.log(`  Name: ${answers.name}`);
+    logger.log(`  PlatformIO: ${answers.pio}`);
+    logger.log(`  Git: ${answers.git}`);
     if (answers.pio) {
-      console.log(`  Board: ${answers.board}`);
+      logger.log(`  Board: ${answers.board}`);
     }
-    if (answers.packages.length > 0) {
-      console.log(`  Packages: ${answers.packages.join(", ")}`);
+    if (answers.packages && answers.packages.length > 0) {
+      logger.log(`  Packages: ${answers.packages.join(", ")}`);
     }
   } else {
     // Interactive mode - ask questions as before
+    const { input, confirm } = await import("@inquirer/prompts");
+    const multi_select = await import("inquirer-select-pro");
+
     answers.name = await input({
       message: "Project name?",
       default: cmdArgs.name || "typecad_project",
@@ -234,7 +238,7 @@ async function main(preparsedArgs?: Record<string, any>) {
       }));
   }
 
-  await create_project(answers);
+  await create_project(answers as ProjectAnswers);
 }
 
 export { main };

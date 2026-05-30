@@ -8,11 +8,18 @@
 - [Code](code.md): Code as Schematic
 - [Docs](docs.md): 📗 **type**CAD Documentation
 - [Ai](docs/ai.md): AI Notes
+- [Autorouter](docs/autorouter.md): Auto Router
 - [Board Layout](docs/board_layout.md): Board Layout
 - [Classes](docs/classes.md): Classes
+- [Cli](docs/cli.md): CLI Reference
 - [Components](docs/components.md): Components
 - [Concepts](docs/concepts.md): Concepts
+- [Configuration](docs/configuration.md): Configuration
 - [Connections](docs/connections.md): Connections
+- [Docgen](docs/docgen.md): DocGen
+- [Gitdiff](docs/gitdiff.md): Git Diff
+- [Hardware Contract](docs/hardware-contract.md): Hardware Contract
+- [Import](docs/import.md): Import from KiCAD
 - [Package Code](docs/package.md): Code
 - [Passives](docs/passives.md): Passives
 - [Pins](docs/pins.md): Pins
@@ -24,18 +31,26 @@
 - [What Is Typecad](docs/what-is-typecad.md): What is typeCAD
 - [Examples](examples.md): Examples
 - [Attiny85](examples/attiny85.md): Adding KiCAD Library Components
+- [Autorouter](examples/autorouter.md): Auto Router
 - [Bom](examples/bom.md): BOM
+- [Docgen](examples/docgen.md): Documentation Generation
 - [Erc](examples/erc.md): ERC
+- [Gitdiff](examples/gitdiff.md): Visual PCB Diff
+- [Import Kicad](examples/import-kicad.md): Import a KiCAD Board
 - [Jig](examples/jig.md): Test jig/multi-board creation
 - [Jlcpcb Export](examples/jlcpcb-export.md): JLCPCB-Export
 - [Ngspice](examples/ngspice.md): ngspice
 - [Packages](examples/packages.md): Adding typeCAD Packages
 - [Voltage Divider](examples/voltage-divider.md): Make a Voltage Divider in **type**CAD
+- [Zones](examples/zones.md): Zones and Keepout Areas
 - [Getting Started](getting-started.md): Getting Started with typeCAD
 - [Git](git.md): Git for Hardware Design
 - [Ai](news/ai.md): Hardware Design with AI
 - [Command Line Suite](news/command-line-suite.md): A suite of command-line tools
+- [Hardware Contract](news/hardware-contract.md): Bridging Hardware and Firmware
+- [Introducing The Autorouter](news/introducing-the-autorouter.md): Introducing the Auto Router
 - [Jlcpcb Parts](news/jlcpcb-parts.md): JLCPCB Parts
+- [Kicad 10 Compatibility](news/kicad-10-compatibility.md): KiCad 10 Compatibility
 - [Kicad Symbols](news/kicad-symbols.md): Search for operational amplifier symbols
 - [Kicad Typecad Sync](news/kicad-typecad-sync.md): Code and KiCAD
 - [Layout Improvements](news/layout-improvements.md): Major improvements in typeCAD PCB layout

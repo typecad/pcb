@@ -2,7 +2,6 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import fs from 'node:fs'
 import { PCB } from '../src/pcb/pcb.js'
 import { Component } from '../src/component.js'
-import { Pin } from '../src/pin.js'
 
 describe('Autoroute integration', () => {
   const buildDir = './build';
@@ -16,16 +15,19 @@ describe('Autoroute integration', () => {
   it('routes a 3-pin net (MST) and writes segments to the board file', async () => {
     const pcb = new PCB(boardName);
 
-    const c1 = new Component({ reference: 'U1', footprint: 'test:pad' });
-    c1.pins = [new Pin('U1', 1, 'passive', c1)];
+    const c1 = new Component('test:pad');
+    c1.reference = 'U1';
+    c1.pins = [c1.pin(1)];
     c1.pcb = { x: 10, y: 10 } as any;
 
-    const c2 = new Component({ reference: 'U2', footprint: 'test:pad' });
-    c2.pins = [new Pin('U2', 1, 'passive', c2)];
+    const c2 = new Component('test:pad');
+    c2.reference = 'U2';
+    c2.pins = [c2.pin(1)];
     c2.pcb = { x: 30, y: 30 } as any;
 
-    const c3 = new Component({ reference: 'J1', footprint: 'test:pad' });
-    c3.pins = [new Pin('J1', 1, 'passive', c3)];
+    const c3 = new Component('test:pad');
+    c3.reference = 'J1';
+    c3.pins = [c3.pin(1)];
     c3.pcb = { x: 50, y: 50 } as any;
 
     pcb.add(c1, c2, c3);
@@ -46,14 +48,14 @@ describe('Autoroute integration', () => {
     });
     expect(result.success).toBe(true);
 
-    expect(pcb.stagedOutlines.length).toBeGreaterThan(0);
+    expect(pcb.state.stagedOutlines.length).toBeGreaterThan(0);
 
     await pcb.create(c1, c2, c3);
 
     const contents = fs.readFileSync(`${buildDir}/${boardName}.kicad_pcb`, 'utf8');
     expect(contents.includes('(segment')).toBeTruthy();
 
-    const stagedElementUuids = pcb.stagedOutlines.flatMap((o: any) => (o.elements ?? []).map((el: any) => el.uuid)).filter(Boolean);
+    const stagedElementUuids = pcb.state.stagedOutlines.flatMap((o: any) => (o.elements ?? []).map((el: any) => el.uuid)).filter(Boolean);
     expect(stagedElementUuids.length).toBeGreaterThan(0);
     const foundAny = stagedElementUuids.some((u: string) => contents.includes(u));
     expect(foundAny).toBeTruthy();

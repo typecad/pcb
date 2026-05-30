@@ -1,31 +1,7 @@
 (export (version "E")
   (design
-    (tool "typeCAD 0.2.30"))
+    (tool "typeCAD"))
   (components
-    (comp
-      (ref "U1")
-        (value "")
-        (footprint "test:pad")
-        (fields
-                  (field (name "Footprint") "test:pad")
-        )
-     )
-    (comp
-      (ref "U2")
-        (value "")
-        (footprint "test:pad")
-        (fields
-                  (field (name "Footprint") "test:pad")
-        )
-     )
-    (comp
-      (ref "J1")
-        (value "")
-        (footprint "test:pad")
-        (fields
-                  (field (name "Footprint") "test:pad")
-        )
-     )
     (comp
       (ref "U1")
         (value "")

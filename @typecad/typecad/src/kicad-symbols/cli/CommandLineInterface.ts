@@ -5,11 +5,12 @@ import chalk from 'chalk';
 import { ProgressIndicator } from './ProgressIndicator.js';
 import { ErrorHandler } from './ErrorHandler.js';
 import * as readline from 'readline';
-import { input, confirm } from '@inquirer/prompts';
-import { execSync } from 'child_process';
+
+import { execFileSync } from 'child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import fs from 'node:fs';
+import logger from '../../logging.js';
 
 /**
  * Command-line interface implementation for the KiCad symbols search tool
@@ -39,7 +40,7 @@ export class CommandLineInterface implements CLI {
     });
 
     return new Promise((resolve) => {
-      console.log(chalk.blue(`\n${this.programName} - KiCad Symbols Search Tool`));
+      logger.log(chalk.blue(`\n${this.programName} - KiCad Symbols Search Tool`));
       
       rl.question(chalk.cyan('Search query: '), (answer) => {
         rl.close();
@@ -91,7 +92,7 @@ public async run(args: string[]): Promise<void> {
         if (parsedArgs.format === 'json') {
           this.displayJsonError(new Error('No search query provided'), 'MISSING_QUERY');
         } else {
-          console.log(chalk.yellow('No search query provided. Exiting.'));
+          logger.log(chalk.yellow('No search query provided. Exiting.'));
         }
         process.exit(0);
       }
@@ -102,9 +103,9 @@ public async run(args: string[]): Promise<void> {
       if (parsedArgs.format === 'json') {
         this.displayJsonError(new Error(`Invalid search query: "${parsedArgs.query}"`), 'INVALID_QUERY');
       } else {
-        console.error(chalk.red(`Error: Invalid search query: "${parsedArgs.query}"`));
-        console.error(chalk.yellow('Search query must not be empty and should contain valid characters'));
-        console.error(chalk.yellow('Try using alphanumeric characters, spaces, and common symbols.'));
+        logger.error(chalk.red(`Error: Invalid search query: "${parsedArgs.query}"`));
+        logger.error(chalk.yellow('Search query must not be empty and should contain valid characters'));
+        logger.error(chalk.yellow('Try using alphanumeric characters, spaces, and common symbols.'));
       }
       process.exit(1);
     }
@@ -140,12 +141,12 @@ public async run(args: string[]): Promise<void> {
       
       // If no results, provide suggestions (only if not in JSON mode)
       if (results.length === 0 && parsedArgs.format !== 'json') {
-        console.log(chalk.yellow('No components found matching your search criteria.'));
-        console.log(chalk.yellow('Suggestions:'));
-        console.log(chalk.yellow('- Try using more general terms (e.g., "capacitor" instead of "ceramic capacitor")'));
-        console.log(chalk.yellow('- Check your spelling and try alternative terms'));
-        console.log(chalk.yellow('- Remove specific parameters that might be too restrictive'));
-        console.log(chalk.yellow('- Try searching for a different package size or value'));
+        logger.log(chalk.yellow('No components found matching your search criteria.'));
+        logger.log(chalk.yellow('Suggestions:'));
+        logger.log(chalk.yellow('- Try using more general terms (e.g., "capacitor" instead of "ceramic capacitor")'));
+        logger.log(chalk.yellow('- Check your spelling and try alternative terms'));
+        logger.log(chalk.yellow('- Remove specific parameters that might be too restrictive'));
+        logger.log(chalk.yellow('- Try searching for a different package size or value'));
         return;
       }
       
@@ -164,19 +165,20 @@ public async run(args: string[]): Promise<void> {
       
       // Show additional information if results were limited (only if not in JSON mode)
       if (results.length > limitedResults.length && parsedArgs.format !== 'json') {
-        console.log(chalk.blue(`Showing ${limitedResults.length} of ${results.length} matching components. Use --limit option to see more.`));
+        logger.log(chalk.blue(`Showing ${limitedResults.length} of ${results.length} matching components. Use --limit option to see more.`));
       }
       
       // Display top match summary at the end (only if not in JSON mode)
       if (results.length > 0 && parsedArgs.format !== 'json') {
         const topMatch = results[0];
-        console.log(chalk.bold.blue(`Top match: ${chalk.italic(topMatch.lcsc)} - ${topMatch.description}`));
+        logger.log(chalk.bold.blue(`Top match: ${chalk.italic(topMatch.lcsc)} - ${topMatch.description}`));
       }
       
       const actionableResults = limitedResults.filter(r => r.footprint && r.footprint.length > 0);
 
       if (actionableResults.length > 0 && parsedArgs.format !== 'json') {
-        console.log();
+        logger.log();
+        const { confirm, input } = await import('@inquirer/prompts');
         const wantToAdd = await confirm({
           message: 'Do you want to add a component from these results?',
           default: false
@@ -195,14 +197,14 @@ public async run(args: string[]): Promise<void> {
           const selectedResult = limitedResults[selectedIdx];
           
           if (!selectedResult.footprint || selectedResult.footprint.length === 0) {
-            console.log(chalk.yellow('This result does not have a specific footprint. Cannot create component.'));
+            logger.log(chalk.yellow('This result does not have a specific footprint. Cannot create component.'));
           } else {
             const componentName = await input({
               message: 'Component name?',
               default: selectedResult.partNumber.toLowerCase().replace(/[^a-z0-9_]/g, '_')
             });
             
-            console.log(chalk.blue(`Running add-component for ${selectedResult.lcsc}...`));
+            logger.log(chalk.blue(`Running add-component for ${selectedResult.lcsc}...`));
             
             try {
               const __filename = fileURLToPath(import.meta.url);
@@ -214,12 +216,10 @@ public async run(args: string[]): Promise<void> {
                 folder = '.';
               }
               
-              const cmd = `node "${addComponentPath}" --kicad=true --symbol="${selectedResult.lcsc}" --folder="${folder}" --footprint="${selectedResult.footprint}"`;
-              
-              execSync(cmd, { stdio: 'inherit' });
-              console.log(chalk.green('Component created successfully!'));
+              execFileSync(process.execPath, [addComponentPath, '--kicad=true', `--symbol=${selectedResult.lcsc}`, `--folder=${folder}`, `--footprint=${selectedResult.footprint}`], { stdio: 'inherit' });
+              logger.log(chalk.green('Component created successfully!'));
             } catch (error) {
-              console.error(chalk.red('Failed to create component.'));
+              logger.error(chalk.red('Failed to create component.'));
             }
           }
         }
@@ -262,7 +262,7 @@ public async run(args: string[]): Promise<void> {
     } else {
       // Use ErrorHandler to provide user-friendly error messages
       const errorMessage = ErrorHandler.handleError(error);
-      console.error(chalk.red(errorMessage));
+      logger.error(chalk.red(errorMessage));
     }
     
     // Exit with error code
@@ -323,7 +323,7 @@ private parseArguments(args: string[]): {
         result.format = formatValue;
       } else {
         if (!isJsonFormat) {
-          console.warn(chalk.yellow(`Warning: Invalid format '${formatValue}'. Using default 'detailed' format.`));
+          logger.warn(chalk.yellow(`Warning: Invalid format '${formatValue}'. Using default 'detailed' format.`));
         }
       }
       continue;
@@ -336,7 +336,7 @@ private parseArguments(args: string[]): {
         result.sortBy = sortValue;
       } else {
         if (!isJsonFormat) {
-          console.warn(chalk.yellow(`Warning: Invalid sort option '${sortValue}'. Using default 'score' sort.`));
+          logger.warn(chalk.yellow(`Warning: Invalid sort option '${sortValue}'. Using default 'score' sort.`));
         }
       }
       continue;
@@ -349,7 +349,7 @@ private parseArguments(args: string[]): {
         result.limit = limitValue;
       } else {
         if (!isJsonFormat) {
-          console.warn(chalk.yellow(`Warning: Invalid limit '${args[i]}'. Using default limit of 5.`));
+          logger.warn(chalk.yellow(`Warning: Invalid limit '${args[i]}'. Using default limit of 5.`));
         }
       }
       continue;
@@ -440,12 +440,12 @@ public displayResults(results: SearchResult[], format: 'detailed' | 'compact' | 
   }
   
   if (results.length === 0) {
-    console.log(chalk.yellow('No components found matching your search criteria.'));
-    console.log(chalk.yellow('Try using more general terms or check your spelling.'));
+    logger.log(chalk.yellow('No components found matching your search criteria.'));
+    logger.log(chalk.yellow('Try using more general terms or check your spelling.'));
     return;
   }
   
-  console.log(chalk.green(`\nFound ${results.length} matching components:\n`));
+  logger.log(chalk.green(`\nFound ${results.length} matching components:\n`));
   
   // Display results based on format
   switch (format) {
@@ -471,15 +471,15 @@ private displayDetailedResults(results: SearchResult[]): void {
   results.forEach((result, index) => {
     const scoreColor = this.getScoreColor(result.score);
     
-    console.log(chalk.bold(`${index + 1}. ${result.lcsc} - ${result.description}`));
-    console.log(`   ${chalk.cyan('Part Number:')} ${result.partNumber}`);
+    logger.log(chalk.bold(`${index + 1}. ${result.lcsc} - ${result.description}`));
+    logger.log(`   ${chalk.cyan('Part Number:')} ${result.partNumber}`);
     if (result.footprint) {
-      console.log(`   ${chalk.cyan('Footprint:')} ${result.footprint}`);
+      logger.log(`   ${chalk.cyan('Footprint:')} ${result.footprint}`);
     }
     if (result.fpFilters && result.fpFilters.length > 0) {
-      console.log(`   ${chalk.cyan('Footprint Filters:')} ${result.fpFilters.join(', ')}`);
+      logger.log(`   ${chalk.cyan('Footprint Filters:')} ${result.fpFilters.join(', ')}`);
     }
-    console.log(); // Empty line between results
+    logger.log(); // Empty line between results
   });
 }
   
@@ -490,13 +490,13 @@ private displayDetailedResults(results: SearchResult[]): void {
 private displayCompactResults(results: SearchResult[]): void {
   results.forEach((result, index) => {
     const scoreColor = this.getScoreColor(result.score);
-    console.log(
+    logger.log(
       `${index + 1}. ${chalk.bold(result.lcsc)} - ` +
       `${result.description.substring(0, 40)}${result.description.length > 40 ? '...' : ''} - ` +
       `${scoreColor(result.score.toFixed(1))}`
     );
   });
-  console.log(); // Empty line at the end
+  logger.log(); // Empty line at the end
 }
   
 /**
@@ -509,7 +509,7 @@ private displayTableResults(results: SearchResult[]): void {
   const descWidth = Math.min(60, Math.max(11, ...results.map(r => r.description.length)));
   
   // Print table header
-  console.log(chalk.bold(
+  logger.log(chalk.bold(
     `${'#'.padEnd(3)} ` +
     `${'ID'.padEnd(symbolWidth)} ` +
     `${'Score'.padEnd(6)} ` +
@@ -517,7 +517,7 @@ private displayTableResults(results: SearchResult[]): void {
   ));
   
   // Print separator
-  console.log(
+  logger.log(
     `${''.padEnd(3, '-')} ` +
     `${''.padEnd(symbolWidth, '-')} ` +
     `${''.padEnd(6, '-')} ` +
@@ -533,7 +533,7 @@ private displayTableResults(results: SearchResult[]): void {
       ? result.description.substring(0, descWidth - 3) + '...' 
       : result.description;
     
-    console.log(
+    logger.log(
       `${(index + 1).toString().padEnd(3)} ` +
       `${chalk.cyan(result.lcsc.padEnd(symbolWidth))} ` +
       `${scoreColor(result.score.toFixed(1).padEnd(6))} ` +
@@ -541,7 +541,7 @@ private displayTableResults(results: SearchResult[]): void {
     );
   });
   
-  console.log(); // Empty line at the end
+  logger.log(); // Empty line at the end
 }
 
 /**
@@ -551,7 +551,7 @@ private displayTableResults(results: SearchResult[]): void {
 private displayJsonResults(results: SearchResult[]): void {
   // Handle empty results by outputting empty JSON array
   if (results.length === 0) {
-    console.log('[]');
+    logger.log('[]');
     return;
   }
 
@@ -564,7 +564,7 @@ private displayJsonResults(results: SearchResult[]): void {
   }));
 
   // Output clean JSON with no additional formatting or colors
-  console.log(JSON.stringify(jsonResults));
+  logger.log(JSON.stringify(jsonResults));
 }
 
 /**
@@ -637,48 +637,48 @@ private displayJsonError(error: unknown, code?: string): void {
   };
 
   // Output JSON error to stdout (not stderr) for consistent JSON output
-  console.log(JSON.stringify(jsonError));
+  logger.log(JSON.stringify(jsonError));
 }
 
 /**
  * Displays help text and usage information
  */
 public displayHelp(): void {
-  console.log(chalk.bold(`\n${this.programName} - KiCad Symbols Search Tool\n`));
-  console.log('A command-line tool for searching KiCad symbols using fuzzy matching.\n');
+  logger.log(chalk.bold(`\n${this.programName} - KiCad Symbols Search Tool\n`));
+  logger.log('A command-line tool for searching KiCad symbols using fuzzy matching.\n');
   
-  console.log(chalk.bold('Usage:'));
-  console.log(`  ${this.programName} [options] <search query>\n`);
+  logger.log(chalk.bold('Usage:'));
+  logger.log(`  ${this.programName} [options] <search query>\n`);
   
-  console.log(chalk.bold('Options:'));
-  console.log('  -h, --help                Display this help message');
-  console.log('  -v, --version             Display version information');
-  console.log('  -f, --format <format>     Output format: detailed, compact, table, or json (default: detailed)');
-  console.log('  -s, --sort <field>        Sort by: score, id, manufacturer, or package (default: score)');
-  console.log('  -l, --limit <number>      Limit number of results (default: 5)\n');
+  logger.log(chalk.bold('Options:'));
+  logger.log('  -h, --help                Display this help message');
+  logger.log('  -v, --version             Display version information');
+  logger.log('  -f, --format <format>     Output format: detailed, compact, table, or json (default: detailed)');
+  logger.log('  -s, --sort <field>        Sort by: score, id, manufacturer, or package (default: score)');
+  logger.log('  -l, --limit <number>      Limit number of results (default: 5)\n');
   
-  console.log(chalk.bold('Output Formats:'));
-  console.log('  detailed                  Human-readable detailed output with colors and formatting');
-  console.log('  compact                   Compact single-line format for each symbol');
-  console.log('  table                     Tabular format with aligned columns');
-  console.log('  json                      Machine-readable JSON format (suppresses all formatting and progress indicators)\n');
+  logger.log(chalk.bold('Output Formats:'));
+  logger.log('  detailed                  Human-readable detailed output with colors and formatting');
+  logger.log('  compact                   Compact single-line format for each symbol');
+  logger.log('  table                     Tabular format with aligned columns');
+  logger.log('  json                      Machine-readable JSON format (suppresses all formatting and progress indicators)\n');
   
-  console.log(chalk.bold('JSON Format:'));
-  console.log('  The JSON format outputs clean, machine-readable JSON without any formatting, colors, or progress indicators.');
-  console.log('  This format is ideal for programmatic integration and automated scripts.');
-  console.log('  When no results are found, an empty array [] is returned.');
-  console.log('  Error responses include an "error" field set to true with a "message" and optional "code".\n');
+  logger.log(chalk.bold('JSON Format:'));
+  logger.log('  The JSON format outputs clean, machine-readable JSON without any formatting, colors, or progress indicators.');
+  logger.log('  This format is ideal for programmatic integration and automated scripts.');
+  logger.log('  When no results are found, an empty array [] is returned.');
+  logger.log('  Error responses include an "error" field set to true with a "message" and optional "code".\n');
   
-  console.log(chalk.bold('Examples:'));
-  console.log(`  ${this.programName} "4xxx:14528"`);
-  console.log(`  ${this.programName} "op amp" --format table`);
-  console.log(`  ${this.programName} "connector" --sort id --limit 10`);
-  console.log(`  ${this.programName} "LM358" --format compact`);
-  console.log(`  ${this.programName} "capacitor" --format json`);
-  console.log(`  ${this.programName} "resistor" --format json --limit 3 | jq '.[0].id'`);
-  console.log();
-  console.log('This is part of the typeCAD project. Visit https://typecad.net to learn more about code-as-schematic.');
-  console.log();
+  logger.log(chalk.bold('Examples:'));
+  logger.log(`  ${this.programName} "4xxx:14528"`);
+  logger.log(`  ${this.programName} "op amp" --format table`);
+  logger.log(`  ${this.programName} "connector" --sort id --limit 10`);
+  logger.log(`  ${this.programName} "LM358" --format compact`);
+  logger.log(`  ${this.programName} "capacitor" --format json`);
+  logger.log(`  ${this.programName} "resistor" --format json --limit 3 | jq '.[0].id'`);
+  logger.log();
+  logger.log('This is part of the typeCAD project. Visit https://typecad.net to learn more about code-as-schematic.');
+  logger.log();
 }
 
 /**
@@ -687,6 +687,6 @@ public displayHelp(): void {
 private displayVersion(): void {
   // For simplicity in testing, just use a hardcoded version
   // In a real implementation, we would read from package.json
-  console.log(`${this.programName} version 1.0.0`);
+  logger.log(`${this.programName} version 1.0.0`);
 }
 }

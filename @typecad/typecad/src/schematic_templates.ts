@@ -1,3 +1,5 @@
+import { escapeSexprString } from "./sexpr/escape.js";
+
 export function renderSchematic(data: {
     uuid: string;
     lib_symbols: string[];
@@ -41,7 +43,7 @@ export function renderLabel(data: {
     uuid: string;
 }): string {
     return `
-		(label "${data.net_name}"
+		(label "${escapeSexprString(data.net_name)}"
 			(at ${data.x} ${data.y} ${data.label_rotation})
 			(effects
 				(font

@@ -50,8 +50,13 @@ export const docsConfig: DocsConfig = {
 					items: [],
 				},
 				{
-					title: "Tooling",
-					href: "/docs/tooling",
+					title: "Configuration",
+					href: "/docs/configuration",
+					items: [],
+				},
+				{
+					title: "CLI Reference",
+					href: "/docs/cli",
 					items: [],
 				},
 				{
@@ -263,8 +268,13 @@ export const docsConfig: DocsConfig = {
 					items: [],
 				},
 				{
-					title: "Tooling",
-					href: "/docs/tooling",
+					title: "Configuration",
+					href: "/docs/configuration",
+					items: [],
+				},
+				{
+					title: "CLI Reference",
+					href: "/docs/cli",
 					items: [],
 				},
 				{
@@ -312,14 +322,34 @@ export const docsConfig: DocsConfig = {
 					href: "/docs/autorouter",
 					items: [],
 				},
+				{
+					title: "Git Diff",
+					href: "/docs/gitdiff",
+					items: [],
+				},
+				{
+					title: "DocGen",
+					href: "/docs/docgen",
+					items: [],
+				},
+				{
+					title: "Import from KiCAD",
+					href: "/docs/import",
+					items: [],
+				},
 				// {
-				// 	title: "IoT Reference Designs",
-				// 	href: "/buy/rd",
+				// 	title: "Hardware Contract",
+				// 	href: "/docs/hardware-contract",
 				// 	items: [],
 				// },
 				// {
-				// 	title: "Extras",
-				// 	href: "/buy/extras",
+				// 	title: "AI Notes",
+				// 	href: "/docs/ai",
+				// 	items: [],
+				// },
+				// {
+				// 	title: "Troubleshooting",
+				// 	href: "/docs/troubleshooting",
 				// 	items: [],
 				// },
 			],

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildProjectTree } from '../src/project_tree.js';
+import { buildProjectTree } from '../src/cli/project_tree.js';
 import { Component } from '../src/component.js';
 import type { ISchematicNode } from '../src/types/schematic_types.js';
 import { Pin } from '../src/pin.js';

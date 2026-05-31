@@ -5,8 +5,8 @@ import {
     setPendingSchematicPath,
     setPendingBoardFilePath,
     printTypecadOutputSummary,
-} from '../src/pending_summary.js';
-import type { IPendingSummaryHost, PendingTypecadSummary } from '../src/pending_summary.js';
+} from '../src/cli/pending_summary.js';
+import type { IPendingSummaryHost, PendingTypecadSummary } from '../src/cli/pending_summary.js';
 
 describe('PendingSummary', () => {
     let host: IPendingSummaryHost;

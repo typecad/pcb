@@ -1,31 +1,27 @@
 import { randomUUID } from "node:crypto";
-import fs from "node:fs";
-import { KiCAD } from "./kicad.js";
 import { Pin } from "./pin.js";
 import chalk from 'chalk';
-import { ReferenceCounter } from "./reference_counter.js";
-import { IVia, ITextPositioning } from "./pcb/pcb_interfaces.js";
-import { ComponentError } from "./errors.js";
-import logger from "./logging.js";
-import { inspectSource } from "./source_inspector.js";
+import { ReferenceCounter } from "./utils/reference_counter.js";
+import { IVia } from "./pcb/pcb_interfaces.js";
+import { ComponentError } from "./utils/errors.js";
+import logger from "./utils/logging.js";
+import { inspectSource } from "./utils/source_inspector.js";
 import { getCallSite } from "./utils/stack_trace.js";
 import { validateFinite } from "./utils/numeric_validation.js";
-import { LIBRARY_SEPARATOR } from './constants.js';
-import { PCB_CONSTANTS } from './pcb/pcb_routing_calculations.js';
+import { LIBRARY_SEPARATOR } from './utils/constants.js';
 import {
     parseTextOrPositioning,
-    applyTextPositioning,
     parseFab,
-} from './component_text.js';
+} from './pcb/component_text.js';
 import type {
     TextOrPositioning,
     TextPositioning,
     TextWithPositioning,
     TextEntry,
     FabEntry,
-} from './component_text.js';
-import { loadFootprintLib } from './component_footprint_loader.js';
-import { loadSymbolLib } from './component_symbol_loader.js';
+} from './pcb/component_text.js';
+import { loadFootprintLib } from './pcb/component_footprint_loader.js';
+import { loadSymbolLib } from './renderers/component_symbol_loader.js';
 
 const defaultCounter = new ReferenceCounter();
 const pendingInspections: Set<Promise<void>> = new Set();

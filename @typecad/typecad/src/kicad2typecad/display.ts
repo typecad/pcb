@@ -1,8 +1,8 @@
 import chalk from 'chalk';
 import type { PCB } from '../pcb/pcb.js';
 import type { TrackBuilder } from '../pcb/pcb_track_builder.js';
-import { DEFAULT_NET_PREFIX } from '../constants.js';
-import logger from '../logging.js';
+import { DEFAULT_NET_PREFIX } from '../utils/constants.js';
+import logger from '../utils/logging.js';
 import type {
     KicadIR,
     KicadFootprintIR,

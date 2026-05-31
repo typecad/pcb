@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import type { CliArgs } from '../types.js';
-import { sanitize_name } from './package/kicad.js';
+import { sanitize_name } from '../shared/kicad_sym_utils.js';
 import { create_package } from './package/typecad.js';
 import { create_component } from './component/typecad.js';
 import {
@@ -8,14 +8,15 @@ import {
   kicad_pins,
   return_list_of_symbols,
   local_symbol_to_footprint,
-  kicad_cli,
-} from './component/kicad.js';
+} from '../shared/kicad_sym_utils.js';
 import chalk from 'chalk';
 import { basename } from 'node:path';
 import fs from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
-import logger from '../../logging.js';
+import logger from '../../utils/logging.js';
+import { KiCAD } from '../../kicad.js';
+import { buildKiCADArgs } from '../../kicad_commands.js';
 
 type InquirerPrompts = typeof import('@inquirer/prompts');
 type FileSelector = typeof import('inquirer-file-selector');
@@ -494,9 +495,9 @@ async function main(preparsedArgs?: CliArgs) {
         { encoding: 'utf-8' }
       );
       try {
-        const cli = kicad_cli();
-        if (!cli) throw new Error('kicad-cli not found');
-        execFileSync(cli, ['sym', 'upgrade', `./${convertedComponent.symbol.name}.pretty/${convertedComponent.symbol.name}.kicad_sym`], { stdio: 'pipe' });
+        if (!KiCAD.cliPath) throw new Error('kicad-cli not found');
+        const { executable, execArgs } = buildKiCADArgs('sym', ['upgrade', `./${convertedComponent.symbol.name}.pretty/${convertedComponent.symbol.name}.kicad_sym`]);
+        execFileSync(executable, execArgs, { stdio: 'pipe' });
       } catch (e) {
         logger.error(`Failed executing kicad-cli sym upgrade`, e);
       }
@@ -510,9 +511,9 @@ async function main(preparsedArgs?: CliArgs) {
         }
       );
       try {
-        const cli = kicad_cli();
-        if (!cli) throw new Error('kicad-cli not found');
-        execFileSync(cli, ['fp', 'upgrade', `./${convertedComponent.symbol.name}.pretty/`], { stdio: 'pipe' });
+        if (!KiCAD.cliPath) throw new Error('kicad-cli not found');
+        const { executable, execArgs } = buildKiCADArgs('fp', ['upgrade', `./${convertedComponent.symbol.name}.pretty/`]);
+        execFileSync(executable, execArgs, { stdio: 'pipe' });
       } catch (e) {
         logger.error(
           `Failed executing kicad-cli fp upgrade ./${

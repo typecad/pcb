@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import chalk from 'chalk';
 import { basename } from 'node:path';
 import type { PackageComponentRenderData, CliPinInfo } from '../../types.js';
-import logger from '../../../logging.js';
+import logger from '../../../utils/logging.js';
 
 function renderComponent(data: PackageComponentRenderData) {
     const pinsTableRows = data.pins.map((p: CliPinInfo) => ` | ${p.number}     | ${p.name}  | ${p.type}      |`).join('\n');

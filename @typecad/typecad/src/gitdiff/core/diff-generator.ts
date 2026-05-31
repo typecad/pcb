@@ -7,7 +7,7 @@ import { executeKicadSvgExportCached, computeSvgBBox, cropSvgToBBox, detectInner
 import { LayerInfo, generateHtmlReport } from '../utils/html-generator.js';
 import { computeTextualDiff, computeNetlistDiff, computeBomDiff, computePcbBBox, type TextualDiff, type NetlistDiff, type BomDiff } from './pcb-textual-diff.js';
 import { annotateLayerSvgs } from './svg-diff-annotator.js';
-import logger from '../../logging.js';
+import logger from '../../utils/logging.js';
 
 export interface DiffOptions {
     originalFile: string;
@@ -15,7 +15,6 @@ export interface DiffOptions {
     fullMode: boolean;
     theme?: string;
     outputHtmlPath?: string;
-    kicadCliPath?: string;
 }
 
 function normalizeSvg(svg: string): string {
@@ -56,20 +55,19 @@ export async function generateDiffs(options: DiffOptions): Promise<string> {
 
         const allSvgResults: Array<{ originalSvg: string; modifiedSvg: string } | null> = [];
 
-        const kicadCli = options.kicadCliPath || KiCAD.cliPath;
-        if (!kicadCli) {
+        if (!KiCAD.cliPath) {
             throw new Error('KiCAD CLI not found. Ensure KiCAD is installed and accessible. You may need to run `new KiCAD()` before calling generateDiffs().');
         }
         for (const layer of layers) {
             let orig = '';
             let mod = '';
             try {
-                orig = await executeKicadSvgExportCached(kicadCli, layer, originalFile, theme);
+                orig = await executeKicadSvgExportCached(layer, originalFile, theme);
             } catch (e) {
                 logger.warn(`Warning: failed to export layer "${layer}" from original file:`, e);
             }
             try {
-                mod = await executeKicadSvgExportCached(kicadCli, layer, modifiedFile, theme);
+                mod = await executeKicadSvgExportCached(layer, modifiedFile, theme);
             } catch (e) {
                 logger.warn(`Warning: failed to export layer "${layer}" from modified file:`, e);
             }

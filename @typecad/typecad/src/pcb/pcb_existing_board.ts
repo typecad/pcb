@@ -5,7 +5,7 @@ import { IPcbBoardContext } from './pcb_board_context.js';
 import { normalizeNetName, formatCallSite, getErrorMessage } from './pcb_utils.js';
 import { updateFootprintNode } from './pcb_footprint.js';
 import { reportError } from '../utils/error_reporter.js';
-import logger from '../logging.js';
+import logger from '../utils/logging.js';
 
 export interface ExistingBoardResult {
     boardContents: SExpr[];

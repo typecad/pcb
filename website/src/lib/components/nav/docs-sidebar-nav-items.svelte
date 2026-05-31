@@ -1,21 +1,29 @@
 <script lang="ts">
 	import type { SidebarNavItem } from "$lib/types/nav.js";
-	import { page } from "$app/stores";
+	import { page } from "$app/state";
 	import { cn } from "$lib/utils.js";
 
-	export let items: SidebarNavItem[] = [];
+	let { items }: { items: SidebarNavItem[] } = $props();
 </script>
 
 {#if items.length}
 	<div class="grid grid-flow-row auto-rows-max text-sm">
 		{#each items as item, index (index)}
+			{#if index === 0 || item.group !== items[index - 1].group}
+				{#if item.group}
+					<div class="mt-4 mb-1 flex items-center gap-2 px-2 first:mt-0">
+						<span class="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{item.group}</span>
+						<div class="h-px flex-1 bg-border"></div>
+					</div>
+				{/if}
+			{/if}
 			{#if item.href}
 				<a
 					href={item.href}
 					class={cn(
 						"group flex w-full items-center rounded-md border border-transparent px-2 py-1 hover:underline",
 						item.disabled && "cursor-not-allowed opacity-60",
-						$page.url.pathname === item.href
+						page.url.pathname === item.href
 							? "font-medium text-foreground"
 							: "text-muted-foreground"
 					)}

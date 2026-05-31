@@ -1,5 +1,5 @@
 import chalk from "chalk";
-import logger from '../../logging.js';
+import logger from '../../utils/logging.js';
 import { PriorityQueue } from "../shared/priority_queue.js";
 import type { RoutingGrid } from "../contracts/routing_grid.js";
 import type {

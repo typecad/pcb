@@ -1,9 +1,8 @@
-import { platform } from "node:os";
 import fs from "node:fs";
 import { parse, serialize, Sym } from "./sexpr/index.js";
 import type { SExpr } from './sexpr/types.js';
 import { KiCAD } from "./kicad.js";
-import { LIBRARY_SEPARATOR } from './constants.js';
+import { LIBRARY_SEPARATOR } from './utils/constants.js';
 import type { SExprNode } from './types/sexpr_types.js';
 import {
     type SymbolDefinition,
@@ -12,7 +11,7 @@ import {
     type PinInfo,
     logError,
     logWarning,
-} from './schematic_visualizer_types.js';
+} from './renderers/schematic_visualizer_types.js';
 
 export class SymbolLibraryManager {
     private libraryCache: Map<string, SExprNode> = new Map();
@@ -23,10 +22,9 @@ export class SymbolLibraryManager {
     private kicadSymbolPath: string;
 
     constructor() {
-        const kPath = KiCAD.path;
-        this.kicadSymbolPath = platform() === 'win32'
-            ? `${kPath}share/kicad/symbols`
-            : `${kPath}symbols`;
+        const kicad = KiCAD.instance;
+        const libraryPaths = kicad.getLibraryPaths();
+        this.kicadSymbolPath = libraryPaths.symbols || '';
     }
 
     private getLibraryContent(libraryName: string): SExprNode | null {

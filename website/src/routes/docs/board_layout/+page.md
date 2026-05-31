@@ -1,7 +1,5 @@
 <script lang="ts">
     import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
-    import { buttonVariants } from "$lib/components/ui/button";
-    import ChevronRight from "lucide-svelte/icons/chevron-right";
     let { data }: { data: PageData } = $props();
 </script>
 
@@ -231,8 +229,8 @@ let pcb = new PCB('graphics_example');
 
 pcb.line({ start: { x: 0, y: 0 }, end: { x: 10, y: 10 }, layer: 'F.SilkS', width: 0.15 });
 pcb.circle({ center: { x: 25, y: 25 }, radius: 5, layer: 'F.SilkS', width: 0.15 });
-pcb.rect({ start: { x: 0, y: 0 }, end: { x: 20, y: 15 }, layer: 'Edge.Cuts', width: 0.15 });
-pcb.text({ text: 'REV 1.0', at: { x: 5, y: 5 }, layer: 'F.SilkS', size: 1 });
+pcb.rect({ x: 0, y: 0, width: 20, height: 15, layer: 'Edge.Cuts', strokeWidth: 0.15 });
+pcb.text({ text: 'REV 1.0', x: 5, y: 5, layer: 'F.SilkS', width: 1, height: 1 });
 
 pcb.create();
 ```
@@ -265,11 +263,3 @@ This compares the KiCAD board file against your **type**CAD source, shows coordi
 
 This is particularly useful for [packages](/docs/package/overview): lay out the entire package in KiCAD, then round-trip the positions back into your package code.
 
-<div class="relative">
-<br/>
-<br/>
-<br/>
-    <p class="absolute right-0">
-       <a href="/docs/autorouter" class={buttonVariants({ variant: "outline" })}>Auto Router<ChevronRight /></a>
-    </p>
-</div>

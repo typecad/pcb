@@ -2,8 +2,8 @@ import { Component } from "../component.js";
 import { TrackBuilder } from './pcb_track_builder.js';
 import { parse, nameOf } from '../sexpr/index.js';
 import type { SExpr } from '../sexpr/types.js';
-import logger from '../logging.js';
-import { BoardCreationError } from '../errors.js';
+import logger from '../utils/logging.js';
+import { BoardCreationError } from '../utils/errors.js';
 import {
     IVia,
     IGrLine,
@@ -18,7 +18,27 @@ import { renderVias, renderOutlinesAndTracks, renderGraphics, renderZones, rende
 import { IPcbBoardContext } from './pcb_board_context.js';
 import { getErrorMessage } from './pcb_utils.js';
 import { reportError } from '../utils/error_reporter.js';
-import { schematic } from '../schematic_visualizer.js';
+import { schematic } from '../renderers/schematic_visualizer.js';
+
+export function isComponentLike(obj: unknown): obj is Component {
+    if (obj instanceof Component) return true;
+    if (typeof obj !== 'object' || obj === null) return false;
+    const o = obj as Record<string, unknown>;
+    return typeof o.footprint === 'string' &&
+           typeof o.pcb === 'object' && o.pcb !== null &&
+           typeof o.dnp === 'boolean' &&
+           typeof o.via === 'boolean' &&
+           Array.isArray(o.pins);
+}
+
+export function isTrackBuilderLike(obj: unknown): obj is TrackBuilder {
+    if (obj instanceof TrackBuilder) return true;
+    if (typeof obj !== 'object' || obj === null) return false;
+    const o = obj as Record<string, unknown>;
+    return typeof o.from === 'function' &&
+           typeof o.to === 'function' &&
+           typeof o.route === 'function';
+}
 
 function buildComponentMaps(pcb: IPcbBoardContext): {
     componentMap: Map<string, Component>;
@@ -105,11 +125,14 @@ export function createBoard(
     const components: Component[] = [];
     const trackBuilders: TrackBuilder[] = [];
 
-    items.forEach(item => {
-        if (item instanceof Component) {
+    items.forEach((item: unknown) => {
+        if (isComponentLike(item)) {
             components.push(item);
-        } else if (item instanceof TrackBuilder) {
+        } else if (isTrackBuilderLike(item)) {
             trackBuilders.push(item);
+        } else {
+            const name = item !== null && typeof item === 'object' && 'constructor' in item ? (item as { constructor: { name: string } }).constructor.name : typeof item;
+            logger.warn(`[BoardCreation] Unrecognized item passed to create(): ${name}. Items must be Component or TrackBuilder instances.`);
         }
     });
 
@@ -163,7 +186,8 @@ export function createBoard(
             const newNode = createFootprintNode(component, (ref, pin, uuid, map) => pcb.resolveNet(ref, pin, uuid, map), boardNetNameToCodeMap);
             finalBoardContents.push(newNode);
         } catch (e: unknown) {
-            throw new BoardCreationError(`[${component.footprint} ${component.reference} ${component.description}] Failed to create footprint node. Is the .kicad_mod missing or empty in build/footprints/? Footprint must be in format "library:footprint" (e.g., "Resistor_SMD:R_0603_1608Metric" or "lib:Local_Footprint"`);
+            const detail = e instanceof Error ? e.message : String(e);
+            throw new BoardCreationError(`[${component.footprint} ${component.reference} ${component.description}] Failed to create footprint node: ${detail}`);
         }
     });
 

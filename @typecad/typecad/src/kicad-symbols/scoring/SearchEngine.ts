@@ -2,7 +2,7 @@ import { SearchEngine } from '../interfaces/SearchEngine.js';
 import { FuzzyScorer } from '../interfaces/FuzzyScorer.js';
 import { DataManager } from '../interfaces/DataManager.js';
 import { ParameterParser } from '../interfaces/ParameterParser.js';
-import logger from '../../logging.js';
+import logger from '../../utils/logging.js';
 import { ComponentRecord, ComponentScore, ParsedParameters, SearchResult } from '../types/index.js';
 
 /**

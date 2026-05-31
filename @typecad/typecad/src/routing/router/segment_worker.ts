@@ -1,5 +1,5 @@
 import { parentPort } from 'worker_threads';
-import logger from '../../logging.js';
+import logger from '../../utils/logging.js';
 import type { IRoutingObstacle } from '../shared/routing_grid.js';
 import type { IRoutePath, IRoutingOptions, RouteEndpoint } from './types.js';
 

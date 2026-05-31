@@ -21,7 +21,7 @@ import open from './utils/openFile.js';
 import githubAlertsPlugin from './plugins/githubAlerts.js';
 import namedCodeBlocks from './plugins/namedCodeBlocks.js';
 import * as url from 'url';
-import logger from '../../logging.js';
+import logger from '../../utils/logging.js';
 
 function cleanSvgForInlining(svgContent: string): string {
     let svg = svgContent.replace(/<\?xml[^?]*\?>\s*/g, '');
@@ -241,8 +241,7 @@ export async function generateDocumentation(
         throw new Error(`Failed to initialize KiCad: ${error}`);
     }
 
-    const cliPath = KiCAD.cliPath;
-    if (!cliPath) {
+    if (!KiCAD.cliPath) {
         throw new Error('KiCad CLI path could not be resolved. Please ensure KiCad is installed.');
     }
 
@@ -297,7 +296,7 @@ export async function generateDocumentation(
         const missingPkg = err instanceof Error && err.message ? err.message : String(err);
         throw new Error(
             `Documentation generation requires optional dependencies that are not installed.\n` +
-            `Install them with: npm install --save-optional markdown-it @shikijs/markdown-it markdown-it-multimd-table-ext markdown-it-attrs markdown-it-textual-uml markdown-it-math mathup temml @hackmd/markdown-it-task-lists\n` +
+            `Install them with: npm install markdown-it @shikijs/markdown-it markdown-it-multimd-table-ext markdown-it-attrs markdown-it-textual-uml markdown-it-math mathup temml @hackmd/markdown-it-task-lists\n` +
             `Original error: ${missingPkg}`
         );
     }
@@ -331,7 +330,7 @@ export async function generateDocumentation(
 
             if (layers.length === 1 && layers[0] === 'Drill') {
                 docLogger.debug('Processing drill layer...', verbose);
-                const svgContent = await executeKicadDrillExport(cliPath, pcbFilePath);
+                const svgContent = await executeKicadDrillExport(pcbFilePath);
                 svgContentMap.set(imagePath, svgContent);
                 return;
             }
@@ -346,7 +345,7 @@ export async function generateDocumentation(
                     docLogger.debug(`Processing PCB layers: [${uniqueLayers.join(', ')}]`, verbose);
                     const svgContent = await processKicadSvgLayers(
                         uniqueLayers, pcbFilePath,
-                        cliPath, metadata.kicad_theme
+                        metadata.kicad_theme
                     );
                     svgContentMap.set(imagePath, svgContent);
                 }
@@ -357,7 +356,7 @@ export async function generateDocumentation(
                 const renderResults = await Promise.all(
                     renderLayers.map(layer => {
                         const [, side, x, y, z] = layer.split('/');
-                        return renderKicad3DView({ side, x, y, z }, pcbFilePath, cliPath);
+                        return renderKicad3DView({ side, x, y, z }, pcbFilePath);
                     })
                 );
                 const combinedBuffer = renderResults[renderResults.length - 1];

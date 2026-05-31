@@ -1,5 +1,5 @@
 import { RoutingGrid } from '../routing/shared/routing_grid.js';
-import { RoutingError } from '../errors.js';
+import { RoutingError } from '../utils/errors.js';
 
 export interface IRouterContext {
     [key: string]: unknown;

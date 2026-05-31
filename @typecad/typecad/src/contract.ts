@@ -3,11 +3,11 @@ import { Component } from './component.js';
 import { Pin } from './pin.js';
 import fs from 'node:fs';
 import path from 'node:path';
-import logger from './logging.js';
+import logger from './utils/logging.js';
 import { SymbolLibraryManager, getSymbolLibraryManager } from './symbol_library_manager.js';
-import type { PinInfo } from './schematic_visualizer_types.js';
-import { TypeCadError } from './errors.js';
-import { DEFAULT_BUILD_DIR } from './constants.js';
+import type { PinInfo } from './renderers/schematic_visualizer_types.js';
+import { TypeCadError } from './utils/errors.js';
+import { DEFAULT_BUILD_DIR } from './utils/constants.js';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 

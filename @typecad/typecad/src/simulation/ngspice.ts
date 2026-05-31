@@ -8,8 +8,8 @@ import type { Schematic } from "../schematic.js";
 import type { Component } from "../component.js";
 import type { Power } from "../buses.js";
 import type { NgspiceResult, Variable } from "./types.js";
-import logger from '../logging.js';
-import { DEFAULT_BUILD_DIR } from '../constants.js';
+import logger from '../utils/logging.js';
+import { DEFAULT_BUILD_DIR } from '../utils/constants.js';
 
 class NgspiceResultImpl implements NgspiceResult {
     title = "";

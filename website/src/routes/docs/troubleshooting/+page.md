@@ -1,7 +1,5 @@
 <script lang="ts">
     import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
-    import { buttonVariants } from "$lib/components/ui/button";
-    import ChevronRight from "lucide-svelte/icons/chevron-right";
     let { data }: { data: PageData } = $props();
 </script>
 
@@ -105,12 +103,3 @@ If you're still stuck:
 1. Check the [Examples](/examples) for working code patterns
 2. Join the [Reddit community](https://www.reddit.com/r/typecad/) 
 3. Review the [API documentation](/docs) for correct syntax
-
-<div class="relative">
-<br/>
-<br/>
-<br/>
-    <p class="absolute right-0">
-       <a href="/docs/what-is-typecad" class={buttonVariants({ variant: "outline" })}>What is typeCAD<ChevronRight /></a>
-    </p>
-</div>

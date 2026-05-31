@@ -3,6 +3,7 @@
   "private": true,
   "scripts": {
     "build": "npm run build --ws --if-present",
+    "build:watch": "npm run build:watch -ws --if-present",
     "test": "npm run test -ws --if-present",
     "format": "prettier --write \"**/*/src/**/*.ts\"",
     "format:check": "prettier --check \"**/*/src/**/*.ts\"",

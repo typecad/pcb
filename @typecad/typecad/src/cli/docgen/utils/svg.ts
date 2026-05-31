@@ -3,9 +3,10 @@ import { promisify } from 'node:util';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { pathExists, ensureDir } from './fs.js';
-import logger from '../../../logging.js';
+import logger from '../../../utils/logging.js';
 import { tempManager } from './tempFileManager.js';
 import { cropSvg } from '../../../gitdiff/utils/file-utils.js';
+import { buildKiCADArgs } from '../../../kicad_commands.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -22,7 +23,6 @@ export async function writeStringToFile(content: string, outputPath: string): Pr
 }
 
 export async function executeKicadSvgExport(
-    kicadCliPath: string,
     pcbFilePath: string,
     layer: string,
     theme: string
@@ -32,8 +32,8 @@ export async function executeKicadSvgExport(
     if (layer.includes('B.')) {
         bMirror = true;
     }
-    await execFileAsync(kicadCliPath, [
-        'pcb', 'export', 'svg',
+    const { executable, execArgs } = buildKiCADArgs('pcb', [
+        'export', 'svg',
         '--theme', theme,
         ...(bMirror ? ['--mirror'] : []),
         '--drill-shape-opt', '0',
@@ -45,6 +45,7 @@ export async function executeKicadSvgExport(
         '--output', tempSvgPath,
         pcbFilePath
     ]);
+    await execFileAsync(executable, execArgs);
 
     const svgContent = await fs.readFile(tempSvgPath, 'utf-8');
     await tempManager.cleanupFileAsync(tempSvgPath);
@@ -53,7 +54,6 @@ export async function executeKicadSvgExport(
 }
 
 export async function executeKicadDrillExport(
-    kicadCliPath: string,
     pcbFilePath: string
 ): Promise<string> {
     const pcbFileName = path.basename(pcbFilePath, path.extname(pcbFilePath));
@@ -61,13 +61,14 @@ export async function executeKicadDrillExport(
 
     await ensureDir(tempDir);
 
-    await execFileAsync(kicadCliPath, [
-        'pcb', 'export', 'drill',
+    const { executable, execArgs } = buildKiCADArgs('pcb', [
+        'export', 'drill',
         '--generate-map',
         '--map-format', 'svg',
         '--output', tempDir + path.sep,
         pcbFilePath
     ]);
+    await execFileAsync(executable, execArgs);
 
     const srcPath = path.join(tempDir, `${pcbFileName}-drl_map.svg`);
     const srcExists = await pathExists(srcPath);
@@ -86,7 +87,6 @@ export async function executeKicadDrillExport(
 export async function processKicadSvgLayers(
     layerNames: string[],
     pcbFilePath: string,
-    kicadCliPath: string,
     theme: string
 ): Promise<string> {
     if (layerNames.length === 0) {
@@ -102,8 +102,8 @@ export async function processKicadSvgLayers(
         bMirror = true;
     }
 
-    await execFileAsync(kicadCliPath, [
-        'pcb', 'export', 'svg',
+    const { executable, execArgs } = buildKiCADArgs('pcb', [
+        'export', 'svg',
         '--theme', theme,
         ...(bMirror ? ['--mirror'] : []),
         '--drill-shape-opt', '0',
@@ -115,6 +115,7 @@ export async function processKicadSvgLayers(
         '--output', tempSvgPath,
         pcbFilePath
     ]);
+    await execFileAsync(executable, execArgs);
 
     const svgContent = await fs.readFile(tempSvgPath, 'utf-8');
     await tempManager.cleanupFileAsync(tempSvgPath);
@@ -124,13 +125,12 @@ export async function processKicadSvgLayers(
 
 export async function renderKicad3DView(
     renderSpec: { side: string, x: string, y: string, z: string },
-    pcbFilePath: string,
-    kicadCliPath: string
+    pcbFilePath: string
 ): Promise<Buffer> {
     const tempOutputPath = tempManager.createTempFilePath('.png');
 
-    await execFileAsync(kicadCliPath, [
-        'pcb', 'render',
+    const { executable, execArgs } = buildKiCADArgs('pcb', [
+        'render',
         '--preset', 'follow_pcb_editor',
         '--perspective',
         '--quality', 'high',
@@ -140,6 +140,7 @@ export async function renderKicad3DView(
         '--output', tempOutputPath,
         pcbFilePath
     ]);
+    await execFileAsync(executable, execArgs);
 
     const buffer = await fs.readFile(tempOutputPath);
     await tempManager.cleanupFileAsync(tempOutputPath);

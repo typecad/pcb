@@ -1,5 +1,5 @@
 import { ErrorHandler } from './ErrorHandler.js';
-import logger from '../../logging.js';
+import logger from '../../utils/logging.js';
 
 /**
  * Class for handling global unhandled exceptions and rejections

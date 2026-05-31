@@ -1,5 +1,5 @@
 import { Worker } from 'worker_threads';
-import logger from '../../logging.js';
+import logger from '../../utils/logging.js';
 
 export interface WorkerTask {
   id: number;

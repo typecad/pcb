@@ -1,5 +1,5 @@
 import { promises as fs } from 'node:fs';
-import logger from '../../logging.js';
+import logger from '../../utils/logging.js';
 import { ComponentRecord } from '../types/index.js';
 import { DateBasedCacheManager } from './DateBasedCacheManager.js';
 import { KiCadLocalDataProcessor, ProcessingProgress, ProcessingStatistics } from './KiCadLocalDataProcessor.js';

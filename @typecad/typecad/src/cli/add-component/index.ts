@@ -6,8 +6,8 @@ import {
   return_list_of_footprints,
   local_symbol_to_footprint,
   sanitize_name,
-  kicad_cli,
-} from "./kicad.js";
+} from '../shared/kicad_sym_utils.js';
+import { KiCAD } from '../../kicad.js';
 import { findExecutable } from "../../kicad.js";
 import { create_component } from "./typecad.js";
 import { basename } from "node:path";
@@ -16,7 +16,8 @@ import fs from "node:fs";
 import { execFileSync } from "node:child_process";
 import path from "node:path";
 import type { CliArgs, CliPinInfo, SymbolData, FootprintData } from '../types.js';
-import logger from '../../logging.js';
+import logger from '../../utils/logging.js';
+import { buildKiCADArgs } from '../../kicad_commands.js';
 
 type InquirerPrompts = typeof import("@inquirer/prompts");
 type FileSelector = typeof import("inquirer-file-selector");
@@ -659,9 +660,9 @@ async function handleEasyedaSymbol(cmdArgs: CliArgs, isNonInteractive: boolean) 
   );
 
   try {
-    const cli = kicad_cli();
-    if (!cli) throw new Error('kicad-cli not found');
-    execFileSync(cli, ['sym', 'upgrade', symbolFilePath], { stdio: 'pipe' });
+    if (!KiCAD.cliPath) throw new Error('kicad-cli not found');
+    const { executable, execArgs } = buildKiCADArgs('sym', ['upgrade', symbolFilePath]);
+    execFileSync(executable, execArgs, { stdio: 'pipe' });
   } catch (e) {
     logger.error(`Failed executing kicad-cli sym upgrade`, e);
   }
@@ -928,9 +929,9 @@ async function handleEasyedaFootprint(cmdArgs: CliArgs, isNonInteractive: boolea
   );
 
   try {
-    const cli = kicad_cli();
-    if (!cli) throw new Error('kicad-cli not found');
-    execFileSync(cli, ['fp', 'upgrade', prettyFolder], { stdio: 'pipe' });
+    if (!KiCAD.cliPath) throw new Error('kicad-cli not found');
+    const { executable, execArgs } = buildKiCADArgs('fp', ['upgrade', prettyFolder]);
+    execFileSync(executable, execArgs, { stdio: 'pipe' });
   } catch (e) {
     logger.error(`Failed executing kicad-cli fp upgrade`, e);
   }

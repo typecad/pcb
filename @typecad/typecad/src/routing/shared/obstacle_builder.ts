@@ -4,7 +4,7 @@ import { IFilledZone, IKeepoutZone, IGrLine, IOutline } from "../../pcb/pcb_inte
 import { IRoutingObstacle } from "./routing_grid.js";
 import { PadResolver, IPadGeometry } from "./pad_resolver.js";
 import chalk from 'chalk';
-import logger from '../../logging.js';
+import logger from '../../utils/logging.js';
 
 
 

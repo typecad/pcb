@@ -1,4 +1,4 @@
-import logger from '../logging.js';
+import logger from '../utils/logging.js';
 import {
     IFilledZone,
     IKeepoutZone,

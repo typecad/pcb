@@ -2,8 +2,8 @@ import { Component } from "../../component.js";
 import { Pin } from "../../pin.js";
 import { parse, Sym } from '../../sexpr/index.js';
 import type { SExpr } from '../../sexpr/types.js';
-import { TypeCadError } from '../../errors.js';
-import logger from '../../logging.js';
+import { TypeCadError } from '../../utils/errors.js';
+import logger from '../../utils/logging.js';
 
 
 

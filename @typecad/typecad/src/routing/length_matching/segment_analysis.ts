@@ -13,7 +13,7 @@ import type {
 
 import { segmentKey, isOccupiedWorld, chalk } from './length_matcher_helpers.js';
 import { estimateMaxAmplitudeOneSide } from './amplitude_estimation.js';
-import logger from '../../logging.js';
+import logger from '../../utils/logging.js';
 
 /**
  * Build straight segments by grouping near-colinear steps from a route path.

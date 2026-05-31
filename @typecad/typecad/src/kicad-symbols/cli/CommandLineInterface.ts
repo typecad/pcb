@@ -10,7 +10,7 @@ import { execFileSync } from 'child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import fs from 'node:fs';
-import logger from '../../logging.js';
+import logger from '../../utils/logging.js';
 
 /**
  * Command-line interface implementation for the KiCad symbols search tool

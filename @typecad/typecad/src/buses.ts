@@ -1,5 +1,5 @@
 import { Pin } from "./pin.js";
-import { ComponentError } from "./errors.js";
+import { ComponentError } from "./utils/errors.js";
 
 export class I2C {
     sda: Pin;

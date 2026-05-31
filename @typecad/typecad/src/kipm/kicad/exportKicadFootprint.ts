@@ -16,7 +16,7 @@ import {
     EeFootprintText,
 } from "../easyeda/parametersEasyeda.js";
 
-import logger from '../../logging.js';
+import logger from '../../utils/logging.js';
 import {
     KiFootprintInfo,
     Ki3dModel,

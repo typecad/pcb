@@ -1,7 +1,5 @@
 <script lang="ts">
     import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
-    import { buttonVariants } from "$lib/components/ui/button";
-    import ChevronRight from "lucide-svelte/icons/chevron-right";
     let { data }: { data: PageData } = $props();
 </script>
 
@@ -226,11 +224,33 @@ typecad erc [options]
 |--------|-------------|
 | `--json` | Machine-readable output |
 
-<div class="relative">
-<br/>
-<br/>
-<br/>
-    <p class="absolute right-0">
-       <a href="/docs/project-structure" class={buttonVariants({ variant: "outline" })}>Project Structure<ChevronRight /></a>
-    </p>
-</div>
+### `typecad skills`
+
+List and query typeCAD skills and API patterns.
+
+<ScrollArea orientation="both">
+
+```bash
+typecad skills list [options]
+typecad skills get <name> [options]
+```
+</ScrollArea>
+
+| Subcommand | Description |
+|------------|-------------|
+| `list` | List all available skills, grouped by category |
+| `get <name>` | Show details for a specific skill (usage, parameters, examples) |
+
+| Option | Description |
+|--------|-------------|
+| `--json` | Machine-readable output |
+
+<ScrollArea orientation="both">
+
+```bash
+typecad skills list
+typecad skills get resistor
+typecad skills get power --json
+```
+</ScrollArea>
+

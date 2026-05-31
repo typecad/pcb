@@ -4,7 +4,7 @@ import chalk from 'chalk';
 import { executeKiCADCommand } from '../../../kicad_commands.js';
 import type { ParsedArgs } from '../parser.js';
 import type { ErcViolation } from '../../types.js';
-import logger from '../../../logging.js';
+import logger from '../../../utils/logging.js';
 
 function findPcbFile(argPath?: string): string | null {
   if (argPath) {

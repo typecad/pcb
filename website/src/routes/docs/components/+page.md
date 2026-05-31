@@ -1,7 +1,5 @@
 <script lang="ts">
     import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
-    import { buttonVariants } from "$lib/components/ui/button";
-    import ChevronRight from "lucide-svelte/icons/chevron-right";
     let { data }: { data: PageData } = $props();
 </script>
 
@@ -104,7 +102,7 @@ Let's look at what's in the `ATtiny85_20S.ts` file that was created to get a bet
 <ScrollArea orientation="both">
 
 ```ts
-import { Component, Pin } from '@typecad/typecad';
+import { Component } from '@typecad/typecad';
 /**
  | Pin # | Name         | Type              |
  | --:   | :--          | :--               |
@@ -118,50 +116,20 @@ import { Component, Pin } from '@typecad/typecad';
  | 1     | _RESET_PB5   | bidirectional     |
  */
 export class ATtiny85_20S extends Component {
-  VCC = new Pin(this.reference, 8, 'power_in', this, {
-    minimum_voltage: -0.5,
-    maximum_voltage: 6,
-    current: 0.2,
-  });
-  GND = new Pin(this.reference, 4, 'power_in', this, {
-    minimum_voltage: -0.5,
-    maximum_voltage: 6,
-    current: 0.2,
-  });
-  AREF_PB0 = new Pin(this.reference, 5, 'bidirectional', this, {
-    minimum_voltage: -0.5,
-    maximum_voltage: 6,
-    current: 0.04,
-  });
-  PB1 = new Pin(this.reference, 6, 'bidirectional', this, {
-    minimum_voltage: -0.5,
-    maximum_voltage: 6,
-    current: 0.04,
-  });
-  PB2 = new Pin(this.reference, 7, 'bidirectional', this, {
-    minimum_voltage: -0.5,
-    maximum_voltage: 6,
-    current: 0.04,
-  });
-  XTAL1_PB3 = new Pin(this.reference, 2, 'bidirectional', this, {
-    minimum_voltage: -0.5,
-    maximum_voltage: 6,
-    current: 0.04,
-  });
-  XTAL2_PB4 = new Pin(this.reference, 3, 'bidirectional', this, {
-    minimum_voltage: -0.5,
-    maximum_voltage: 6,
-    current: 0.04,
-  });
-  _RESET_PB5 = new Pin(this.reference, 1, 'bidirectional', this, {
-    minimum_voltage: -0.5,
-    maximum_voltage: 13,
-    current: 0.04,
-  });
+    VCC = this.pin(8, { type: 'power_in' });
+    GND = this.pin(4, { type: 'power_in' });
+    AREF_PB0 = this.pin(5, { type: 'bidirectional' });
+    PB1 = this.pin(6, { type: 'bidirectional' });
+    PB2 = this.pin(7, { type: 'bidirectional' });
+    XTAL1_PB3 = this.pin(2, { type: 'bidirectional' });
+    XTAL2_PB4 = this.pin(3, { type: 'bidirectional' });
+    _RESET_PB5 = this.pin(1, { type: 'bidirectional' });
 
-  constructor(reference?: string | undefined) {
-    super({ reference, footprint: 'Package_SO:SOIC-8_5.3x5.3mm_P1.27mm' });
-  }
+    constructor(reference?: string | undefined) {
+        super("Package_SO:SOIC-8_5.3x5.3mm_P1.27mm");
+        this.symbol = "MCU_Microchip_ATtiny:ATtiny85-20S";
+        if (reference) this.reference = reference;
+    }
 }
 ```
 
@@ -191,11 +159,3 @@ typecad.create(u1);
 
 </ScrollArea>
 
-<div class="relative">
-<br/>
-<br/>
-<br/>
-    <p class="absolute right-0">
-       <a href="/docs/pins" class={buttonVariants({ variant: "outline" })}>Pins<ChevronRight /></a>
-    </p>
-</div>

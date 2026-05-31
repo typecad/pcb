@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { Pin } from '../src/pin.js'
 import { I2C, UART, USB, Power } from '../src/buses.js'
-import { ComponentError } from '../src/errors.js'
+import { ComponentError } from '../src/utils/errors.js'
 
 function makePin(ref: string, num: number | string = 1): Pin {
     return new Pin(ref, num)

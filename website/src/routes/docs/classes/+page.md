@@ -1,7 +1,5 @@
 <script lang="ts">
     import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
-    import { buttonVariants } from "$lib/components/ui/button";
-    import ChevronRight from "lucide-svelte/icons/chevron-right";
     let { data }: { data: PageData } = $props();
 </script>
 
@@ -137,11 +135,3 @@ pcb.create();
 </ScrollArea>
 
 
-<div class="relative">
-<br/>
-<br/>
-<br/>
-    <p class="absolute right-0">
-       <a href="/docs/passives" class={buttonVariants({ variant: "outline" })}>Passives<ChevronRight /></a>
-    </p>
-</div>

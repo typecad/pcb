@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { Component } from '../src/component.js';
-import { parseFab, applyTextPositioning } from '../src/component_text.js';
+import { parseFab, applyTextPositioning } from '../src/pcb/component_text.js';
 
 describe('Component Reference and Value Positioning', () => {
     it('should accept reference as a string (old format)', () => {

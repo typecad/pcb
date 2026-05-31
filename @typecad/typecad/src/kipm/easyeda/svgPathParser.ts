@@ -1,5 +1,5 @@
 import type { EasyedaRawData } from '../types.js';
-import logger from '../../logging.js';
+import logger from '../../utils/logging.js';
 
 type SvgPathCommand = SvgPathMoveTo | SvgPathLineTo | SvgPathEllipticalArc | SvgPathClosePath;
 type SvgPathConstructor = {

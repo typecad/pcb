@@ -1,4 +1,4 @@
-import { TypeCadError } from '../../errors.js';
+import { TypeCadError } from '../../utils/errors.js';
 
 /**
  * Represents a complete component record from the database.

@@ -2,7 +2,7 @@ import { DataManager, DataSourceMode } from '../data/DataManager.js';
 import { EnhancedScoringSystem } from '../scoring/EnhancedScoringSystem.js';
 import { ComponentSearchEngine } from '../scoring/SearchEngine.js';
 import { ElectricalParameterParser, DataSourceType } from '../parsers/ParameterParser.js';
-import logger from '../../logging.js';
+import logger from '../../utils/logging.js';
 import { CommandLineInterface } from '../cli/CommandLineInterface.js';
 import { ErrorHandler } from '../cli/ErrorHandler.js';
 

@@ -1,6 +1,6 @@
 import chalk from 'chalk';
 import * as fs from 'fs';
-import logger from '../../logging.js';
+import logger from '../../utils/logging.js';
 import * as path from 'path';
 import process from 'node:process';
 

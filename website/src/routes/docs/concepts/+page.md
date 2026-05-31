@@ -1,7 +1,5 @@
 <script lang="ts">
     import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
-    import { buttonVariants } from "$lib/components/ui/button";
-    import ChevronRight from "lucide-svelte/icons/chevron-right";
     let { data }: { data: PageData } = $props();
 </script>
 
@@ -40,11 +38,9 @@ typecad.create();
 ```
 </ScrollArea>
 
-That code will create a KiCAD board file, schematic file, and netlist in `./build/typecad.kicad_pcb`, `./build/typecad.kicad_sch`, and `./build/typecad.net`.
+That code will create a KiCAD board file, schematic file, netlist and BOM in `./build/typecad.kicad_pcb`, `./build/typecad.kicad_sch`, `./build/typecad.net`, and `./build/typecad.csv`.
 
 ### Build
-**type**CAD projects have a build process. It takes the TypeScript code and turns it into a KiCAD project. The code you write, plus the **type**CAD API simply runs itself and the result is the KiCAD project.
-
 Run `typecad build` from your project's `hw/` directory to build. You can configure the build using a `typecad.conf.ts` file in the `hw/` directory. 
 
 ### Workflow
@@ -54,12 +50,3 @@ The new layout becomes:
 3. Build it
 4. Open the board in KiCAD to layout
 
-
-<div class="relative">
-<br/>
-<br/>
-<br/>
-    <p class="absolute right-0">
-       <a href="/docs/configuration" class={buttonVariants({ variant: "outline" })}>Configuration<ChevronRight /></a>
-    </p>
-</div>

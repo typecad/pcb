@@ -1,5 +1,4 @@
 declare module 'markdown-it-textual-uml' {
-    import MarkdownIt from 'markdown-it';
-    const markdownItTextualUml: MarkdownIt.PluginWithOptions;
+    const markdownItTextualUml: import('markdown-it').PluginWithOptions;
     export default markdownItTextualUml;
 } 

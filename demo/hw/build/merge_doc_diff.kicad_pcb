@@ -12,8 +12,8 @@
   (
     footprint
     "Resistor_SMD:R_0603_1608Metric"
-    (property "Code" "typecad:v1:eyJ2IjoxLCJ1IjoiIiwiZiI6IkM6XFx0eXBlY2FkXFx0eXBlQ0FEXFxkZW1vXFxod1xcc3JjXFxwcm9fbWluaS50cyIsImwiOjZ9" (at 0 0 0) (layer "F.Fab") (hide yes) (uuid "ef236100-5542-4b34-9e06-d9be88195d0f") (effects (font (size 1 1) (thickness 0.15))))
-    (uuid "146300b6-875b-4cf6-8756-533d373cf96b")
+    (property "Code" "typecad:v1:eyJ2IjoxLCJ1IjoiIiwiZiI6IkM6XFx0eXBlY2FkXFx0eXBlQ0FEXFxkZW1vXFxod1xcc3JjXFxwcm9fbWluaS50cyIsImwiOjZ9" (at 0 0 0) (layer "F.Fab") (hide yes) (uuid "8254e386-4637-4692-a938-bc1649da185e") (effects (font (size 1 1) (thickness 0.15))))
+    (uuid "bc19198e-c31c-4eaa-8c06-ad03acf7b0ed")
     (at 0 0 0)
     (version 20260206)
     (generator "kicad-footprint-generator")
@@ -70,8 +70,8 @@
   (
     footprint
     "Resistor_SMD:R_0603_1608Metric"
-    (property "Code" "typecad:v1:eyJ2IjoxLCJ1IjoiIiwiZiI6IkM6XFx0eXBlY2FkXFx0eXBlQ0FEXFxkZW1vXFxod1xcc3JjXFxwcm9fbWluaS50cyIsImwiOjd9" (at 0 0 0) (layer "F.Fab") (hide yes) (uuid "f5491d18-8edf-4d2d-84a3-488931a1ce7a") (effects (font (size 1 1) (thickness 0.15))))
-    (uuid "4cf0fbc2-cb19-4758-9b3d-256570e18e3f")
+    (property "Code" "typecad:v1:eyJ2IjoxLCJ1IjoiIiwiZiI6IkM6XFx0eXBlY2FkXFx0eXBlQ0FEXFxkZW1vXFxod1xcc3JjXFxwcm9fbWluaS50cyIsImwiOjd9" (at 0 0 0) (layer "F.Fab") (hide yes) (uuid "1f6abb5e-a89b-4698-bf7d-29b6d927001f") (effects (font (size 1 1) (thickness 0.15))))
+    (uuid "37f99f8c-c870-4e73-84e2-94b7cafa0839")
     (at 0 0 0)
     (version 20260206)
     (generator "kicad-footprint-generator")
@@ -128,8 +128,8 @@
   (
     footprint
     "Resistor_SMD:R_0603_1608Metric"
-    (property "Code" "typecad:v1:eyJ2IjoxLCJ1IjoiIiwiZiI6IkM6XFx0eXBlY2FkXFx0eXBlQ0FEXFxkZW1vXFxod1xcc3JjXFxwcm9fbWluaS50cyIsImwiOjh9" (at 0 0 0) (layer "F.Fab") (hide yes) (uuid "551b057e-05bc-4765-ba34-8c08f8908416") (effects (font (size 1 1) (thickness 0.15))))
-    (uuid "c6d134eb-74b5-4896-a0d6-b12cde204b07")
+    (property "Code" "typecad:v1:eyJ2IjoxLCJ1IjoiIiwiZiI6IkM6XFx0eXBlY2FkXFx0eXBlQ0FEXFxkZW1vXFxod1xcc3JjXFxwcm9fbWluaS50cyIsImwiOjh9" (at 0 0 0) (layer "F.Fab") (hide yes) (uuid "8849597e-b6c2-44d3-b4e7-232a04782d0e") (effects (font (size 1 1) (thickness 0.15))))
+    (uuid "eb5494ea-a9a5-4d0c-9fe1-0242764d6480")
     (at 0 0 0)
     (version 20260206)
     (generator "kicad-footprint-generator")

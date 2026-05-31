@@ -6,7 +6,7 @@ import { EasyedaFootprintImporter, Easyeda3dModelImporter } from "./easyeda/easy
 import { ExporterFootprintKicad } from "./kicad/exportKicadFootprint.js";
 import { Exporter3dModelKicad } from "./kicad/exportKicad3dmodel.js";
 import { Ki3dModelBase } from "./kicad/parametersKicadFootprint.js";
-import logger from '../logging.js';
+import logger from '../utils/logging.js';
 
 class LcscComponent {
     lcscId: string;

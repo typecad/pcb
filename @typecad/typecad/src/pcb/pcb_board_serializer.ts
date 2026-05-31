@@ -18,8 +18,8 @@ import {
     OutlineElement
 } from './pcb_interfaces.js';
 import { normalizeNetName, formatCallSite, getErrorMessage } from './pcb_utils.js';
-import { setPendingBoardFilePath } from '../pending_summary.js';
-import logger from '../logging.js';
+import { setPendingBoardFilePath } from '../cli/pending_summary.js';
+import logger from '../utils/logging.js';
 import { getCallSite } from '../utils/stack_trace.js';
 
 export function renderVias(

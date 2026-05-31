@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { pinToIdentifier, pinsMatch, connectionMatches, validatePin } from '../src/pcb/pcb_routing_helpers.js';
 import { Pin } from '../src/pin.js';
-import { RoutingError } from '../src/errors.js';
+import { RoutingError } from '../src/utils/errors.js';
 
 describe('pinToIdentifier', () => {
     it('should format as reference.number', () => {

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { kicadDataToTypeCAD } from './cli.js';
-import logger from '../logging.js';
+import logger from '../utils/logging.js';
 
 const args = process.argv.slice(2);
 const filePathArg = args.find(a => !a.startsWith('--'));

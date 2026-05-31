@@ -2,7 +2,7 @@ import path from 'node:path';
 import { generateDocumentation } from '../../docgen/index.js';
 import { tempManager } from '../../docgen/utils/tempFileManager.js';
 import type { ParsedArgs } from '../parser.js';
-import logger from '../../../logging.js';
+import logger from '../../../utils/logging.js';
 
 export async function run(parsed: ParsedArgs): Promise<void> {
     const markdownFile = parsed.positional[0];

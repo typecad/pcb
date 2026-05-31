@@ -1,9 +1,9 @@
 import fs from 'node:fs';
-import { execFileSync } from 'node:child_process';
 import { loadConfig } from '../../../config.js';
 import type { ParsedArgs } from '../parser.js';
-import logger from '../../../logging.js';
+import logger from '../../../utils/logging.js';
 import chalk from 'chalk';
+import { npxExec } from '../../../utils/process_exec.js';
 
 function detectEntryFile(): string | null {
   const config = loadConfig();
@@ -50,7 +50,7 @@ export async function run(parsed: ParsedArgs): Promise<void> {
 
   if (fs.existsSync('tsconfig.json')) {
     try {
-      execFileSync('npx', ['tsc', '--noEmit'], {
+      npxExec(['tsc', '--noEmit'], {
         stdio: verbose ? 'inherit' : 'pipe',
         timeout: 30000,
       });
@@ -72,7 +72,7 @@ export async function run(parsed: ParsedArgs): Promise<void> {
       env.TYPECAD_DEBUG = '1';
     }
 
-    execFileSync('npx', ['tsx', entry], {
+    npxExec(['tsx', entry], {
       stdio: verbose ? 'inherit' : 'pipe',
       env,
       timeout: 60000,

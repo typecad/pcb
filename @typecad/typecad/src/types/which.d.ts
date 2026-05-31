@@ -1,7 +1,8 @@
 declare module 'which' {
-  function which(command: string, options?: { nothrow?: boolean }): string | null;
-  namespace which {
-    function sync(command: string, options?: { nothrow?: boolean }): string | null;
+  interface WhichFunction {
+    (command: string, options?: { nothrow?: boolean }): string | null;
+    sync(command: string, options?: { nothrow?: boolean }): string | null;
   }
-  export = which;
+  declare const which: WhichFunction;
+  export default which;
 }

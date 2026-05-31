@@ -1,11 +1,9 @@
 import { Component } from './component.js';
 import { TrackBuilder, PCB } from './pcb/pcb.js';
 import { Pin } from './pin.js';
-import { createRequire } from 'node:module';
 import { PCB_CONSTANTS } from './pcb/pcb_routing_calculations.js';
 import { validateFinite } from './utils/numeric_validation.js';
-
-const _require = createRequire(import.meta.url);
+import { isComponentLike, isTrackBuilderLike } from './pcb/pcb_board_creation.js';
 
 // The standard passive component factory shape (matches @typecad/passives/0603 and other sizes)
 export type PassiveFactory = {
@@ -96,7 +94,7 @@ export abstract class Package<TOptions extends object = {}> {
             } finally {
                 this._autoCollect();
                 for (const item of this.components) {
-                    if (item instanceof Component) {
+                    if (isComponentLike(item)) {
                         item.registerReference(this.pcb.schematic.referenceCounter);
                     }
                 }
@@ -153,18 +151,15 @@ export abstract class Package<TOptions extends object = {}> {
     }
 
     /**
-     * Lazily import the default passives package so that @typecad/typecad
-     * does not have a hard compile-time dependency on @typecad/passives.
+     * Called when no passives factory is provided.
+     * @typecad/passives is an ecosystem package — install it separately and
+     * pass it via the `passives` option.
      */
     private _defaultPassives(): PassiveFactory {
-        try {
-            return _require('@typecad/passives/0603') as PassiveFactory;
-        } catch {
-            throw new Error(
-                'Package: no passives factory provided and @typecad/passives is not installed. ' +
-                'Pass a `passives` option or install @typecad/passives.'
-            );
-        }
+        throw new Error(
+            'Package: passives factory not provided. ' +
+            'Install @typecad/passives and pass it: { passives: await import("@typecad/passives/0603"), ... }'
+        );
     }
 
     /**
@@ -181,7 +176,7 @@ export abstract class Package<TOptions extends object = {}> {
             const value = (this as Record<string, unknown>)[key];
             if (!value || typeof value !== 'object') continue;
 
-            if ((value instanceof Component || value instanceof TrackBuilder) && !alreadyRegistered.has(value)) {
+            if ((isComponentLike(value) || isTrackBuilderLike(value)) && !alreadyRegistered.has(value)) {
                 this.components.push(value);
                 alreadyRegistered.add(value);
             }
@@ -198,7 +193,7 @@ export abstract class Package<TOptions extends object = {}> {
         if (offset.x === 0 && offset.y === 0) return;
 
         for (const item of this.components) {
-            if (item instanceof Component && !item.via) {
+            if (isComponentLike(item) && !item.via) {
                 item.pcb.x += offset.x;
                 item.pcb.y += offset.y;
             }

@@ -1,4 +1,4 @@
-import logger from '../../logging.js';
+import logger from '../../utils/logging.js';
 const API_ENDPOINT = "https://easyeda.com/api/products/{lcsc_id}/components?version=6.4.19.5";
 const ENDPOINT_3D_MODEL = "https://modules.easyeda.com/3dmodel/{uuid}";
 const ENDPOINT_3D_MODEL_STEP = "https://modules.easyeda.com/qAxj6KHrDKw4blvCG8QJPs7Y/{uuid}";

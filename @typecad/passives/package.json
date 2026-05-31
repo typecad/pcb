@@ -34,6 +34,7 @@
   },
   "scripts": {
     "build": "tsc",
+    "build:watch": "tsc --watch",
     "prepublishOnly": "npm run build",
     "package_publish": "npm publish --access public",
     "publish:private": "npm publish --tag private --registry http://192.168.2.207:4873/"

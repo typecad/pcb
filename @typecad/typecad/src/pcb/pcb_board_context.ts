@@ -1,6 +1,6 @@
 import { Component } from "../component.js";
 import { Schematic } from "../schematic.js";
-import logger from "../logging.js";
+import logger from "../utils/logging.js";
 import {
     IPcbOptions,
     INetResolution,

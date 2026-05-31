@@ -112,7 +112,10 @@ function generateWrlModel(model3d: Ee3dModel) {
     for (const shape of shapes) {
         const lines = shape.split(/\r?\n/);
         const matKey = lines[0].trim();
-        const material = materials[matKey];
+        const material = materials[matKey] || {
+            diffuse_color: ["0.8", "0.8", "0.8"],
+            specular_color: ["0.5", "0.5", "0.5"],
+        };
         let indexCounter = 0;
         const linkDict: Record<string, number> = {};
         const coordIndex: string[] = [];

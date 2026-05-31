@@ -10,7 +10,7 @@ import type {
   ILengthMatchContext,
 } from '../types/length_match.js';
 
-import logger from '../../logging.js';
+import logger from '../../utils/logging.js';
 
 // Chalk fallback for colorized output (no runtime chalk dependency)
 export const chalk = {

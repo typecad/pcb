@@ -17,7 +17,7 @@ import {
     IRoutePath,
     IRouteMetadata,
 } from './pcb_interfaces.js';
-import logger from '../logging.js';
+import logger from '../utils/logging.js';
 import {
     debugLog,
     AutorouteContext,

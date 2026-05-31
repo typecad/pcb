@@ -1,7 +1,7 @@
 import { ComponentRecord, ComponentScore, MatchDetail, ParsedParameters } from '../types/index.js';
 import { FuzzyScorer } from '../interfaces/FuzzyScorer.js';
 import { isFuzzyMatch, MANUFACTURER_VARIATIONS } from './scoring_utils.js';
-import logger from '../../logging.js';
+import logger from '../../utils/logging.js';
 
 /**
  * Enhanced scoring system with advanced matching capabilities

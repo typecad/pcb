@@ -2,7 +2,7 @@ import chalk from 'chalk';
 import { listSkills, getSkill, getCategories, getSkillsByCategory } from '../skills/registry.js';
 import type { ParsedArgs } from '../parser.js';
 import type { Skill } from '../skills/types.js';
-import logger from '../../../logging.js';
+import logger from '../../../utils/logging.js';
 
 function formatSkillHuman(skill: Skill): void {
   logger.log(chalk.white.bold(skill.name) + chalk.gray(` [${skill.category}]`));

@@ -1,10 +1,10 @@
 import * as fsSync from 'fs';
 import * as fs from 'fs/promises';
 import * as path from 'path';
-import * as os from 'os';
 import { randomUUID } from 'crypto';
 import { pathExists } from './fs.js';
-import logger from '../../../logging.js';
+import logger from '../../../utils/logging.js';
+import { getFlatpakSafeTempDir } from '../../../kicad.js';
 
 export class TempFileManager {
   private tempFiles: Set<string> = new Set();
@@ -13,7 +13,7 @@ export class TempFileManager {
   private prefix: string;
 
   constructor(baseDir?: string, prefix: string = 'typecad-') {
-    this.baseDir = baseDir || path.join(os.tmpdir(), 'typecad-temp-' + randomUUID().slice(0, 8));
+    this.baseDir = baseDir || path.join(getFlatpakSafeTempDir(), 'typecad-temp-' + randomUUID().slice(0, 8));
     this.prefix = prefix;
 
     if (!fsSync.existsSync(this.baseDir)) {

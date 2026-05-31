@@ -1,14 +1,13 @@
-import fs, { existsSync, statSync } from 'node:fs';
+import fs, { existsSync, statSync, readdirSync, mkdirSync } from 'node:fs';
 import { readdir } from 'node:fs/promises';
 import process from 'node:process';
-import { platform } from 'node:os';
+import { arch, platform, tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import chalk from 'chalk';
-import logger from './logging.js';
+import logger from './utils/logging.js';
 import { Config } from './config.js'
 import { execSync } from 'node:child_process';
-import { KiCadNotFoundError } from './errors.js';
+import { KiCadNotFoundError } from './utils/errors.js';
 
 let _conf: Config | null = null;
 function getConfig(): Config {
@@ -34,31 +33,47 @@ export interface KiCADDetection {
     isFlatpak: boolean;
 }
 
-function detectFlatpak(flatpak_paths: string[]): { detected: boolean; path?: string } {
-    if (fs.existsSync('/var/lib/flatpak/app/org.kicad.kicad') ||
-        fs.existsSync('/var/lib/flatpak/runtime/org.kicad.kicad.Library')) {
-
-        for (const path of flatpak_paths) {
-            const expandedPath = path.replace('*/', '*').replace('*', 'active');
-            if (fs.existsSync(expandedPath)) {
-                return { detected: true, path: expandedPath };
-            }
-        }
-
-        const currentPath = '/var/lib/flatpak/app/org.kicad.kicad/current';
-        if (fs.existsSync(currentPath)) {
-            return { detected: true, path: currentPath };
-        }
-
-        return { detected: true };
+function detectFlatpak(): boolean {
+    if (fs.existsSync('/var/lib/flatpak/app/org.kicad.KiCad') ||
+        fs.existsSync('/var/lib/flatpak/runtime/org.kicad.KiCad.Library.Symbols')) {
+        return true;
     }
-
     try {
         execSync('flatpak info org.kicad.KiCad', { stdio: 'ignore' });
-        return { detected: true };
-    } catch (e: unknown) {
-        logger.debug('kicad: flatpak not detected:', String(e));
-        return { detected: false };
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+function resolveFlatpakPath(): string | undefined {
+    const candidates = [
+        '/var/lib/flatpak/app/org.kicad.KiCad/current',
+        ...globFlatpakActive('/var/lib/flatpak/app/org.kicad.KiCad'),
+    ];
+
+    const runtimeSymbols = resolveFlatpakLibraryPaths().symbols;
+    if (runtimeSymbols) return runtimeSymbols;
+
+    for (const c of candidates) {
+        if (existsSync(c)) return c;
+    }
+    return undefined;
+}
+
+function globFlatpakActive(base: string): string[] {
+    try {
+        if (!existsSync(base)) return [];
+        const archDir = join(base, mapNodeArch());
+        if (!existsSync(archDir)) return [];
+        const results: string[] = [];
+        for (const branch of readdirSync(archDir)) {
+            const active = join(archDir, branch, 'active');
+            if (existsSync(active)) results.push(active);
+        }
+        return results;
+    } catch {
+        return [];
     }
 }
 
@@ -66,76 +81,45 @@ export function discoverKiCAD(): KiCADDetection {
     const configCli = getConfig().get("kicad_cli");
     const configPath = getConfig().get("kicad_path");
 
-    let cliPath: string | undefined = configCli;
-    let path: string | undefined = configPath;
-
-    if (cliPath) {
-        return { path, cliPath, isFlatpak: false };
+    if (configCli) {
+        return { path: configPath, cliPath: configCli, isFlatpak: false };
     }
 
-    const useFlatpakConfig = getConfig().get("use_flatpak");
-    let isFlatpak = false;
-    if (useFlatpakConfig === "true" || useFlatpakConfig === "1") {
-        isFlatpak = true;
+    let isFlatpak = getConfig().get("use_flatpak") === "true"
+        || getConfig().get("use_flatpak") === "1";
+
+    let resolvedPath: string | undefined = configPath || undefined;
+
+    if (isFlatpak || !resolvedPath) {
+        isFlatpak = detectFlatpak() || isFlatpak;
     }
 
-    const supported_paths: string[] = [
-        'C:/Program Files/KiCad/10.0/',
-        '/usr/share/kicad/',
-        '/var/lib/flatpak/app/org.kicad.KiCad/current/',
-        '/Applications/KiCAD/KiCad.app/Contents/ShareSupport/'
-    ];
-
-    const unsupported_paths: string[] = [
-        'C:/Program Files/KiCad/9.0/',
-        'C:/Program Files/KiCad/8.0/',
-        'C:/Program Files/KiCad/7.0/',
-    ];
-
-    const flatpak_paths: string[] = [
-        '/var/lib/flatpak/app/org.kicad.KiCad/',
-        '/var/lib/flatpak/app/org.kicad.KiCad/*/active/',
-        '/var/lib/flatpak/runtime/org.kicad.kicad.Library/x86_64/stable/active/files/'
-    ];
-
-    if (configPath) {
-        supported_paths.push(configPath);
+    if (isFlatpak && !resolvedPath) {
+        resolvedPath = resolveFlatpakPath();
     }
 
-    if (isFlatpak || !path) {
-        const flatpakResult = detectFlatpak(flatpak_paths);
-        if (flatpakResult.detected) {
-            isFlatpak = true;
-            if (flatpakResult.path) {
-                path = flatpakResult.path;
-            }
-        }
-    }
+    if (!resolvedPath) {
+        const nativePaths = [
+            'C:/Program Files/KiCad/10.0/',
+            '/usr/share/kicad/',
+            '/Applications/KiCAD/KiCad.app/Contents/ShareSupport/'
+        ];
+        if (configPath) nativePaths.push(configPath);
 
-    if (!path) {
-        for (const p of unsupported_paths) {
-            if (p && fs.existsSync(p)) {
-                logger.warn(chalk.yellow(`Warning: KiCad version at ${p} is unsupported. Only KiCad 10.x is supported.`));
-                break;
-            }
-        }
-
-        for (const p of supported_paths) {
-            if (p && fs.existsSync(p)) {
-                path = p;
-                if (p.includes('flatpak')) {
-                    isFlatpak = true;
-                }
+        for (const p of nativePaths) {
+            if (p && existsSync(p)) {
+                resolvedPath = p;
                 break;
             }
         }
     }
 
-    if (path) {
-        if (isFlatpak) {
-            cliPath = 'flatpak run --command=sh org.kicad.kicad -c "kicad-cli"';
-        } else if (platform() == 'win32') {
-            cliPath = path + 'bin/kicad-cli.exe';
+    let cliPath: string | undefined;
+    if (isFlatpak) {
+        cliPath = 'flatpak run --command=kicad-cli org.kicad.KiCad';
+    } else if (resolvedPath) {
+        if (platform() === 'win32') {
+            cliPath = resolvedPath + 'bin/kicad-cli.exe';
         } else {
             cliPath = findExecutable('kicad-cli');
         }
@@ -145,7 +129,47 @@ export function discoverKiCAD(): KiCADDetection {
         throw new KiCadNotFoundError('KiCad CLI not found. Install KiCad or set kicad_cli in typecad.conf.ts.');
     }
 
-    return { path, cliPath, isFlatpak };
+    return { path: resolvedPath, cliPath, isFlatpak };
+}
+
+function mapNodeArch(): string {
+    const a = arch();
+    if (a === 'x64') return 'x86_64';
+    if (a === 'arm64') return 'aarch64';
+    return a;
+}
+
+function resolveFlatpakLibraryPaths(): { symbols: string, footprints: string } {
+    const flatpakArch = mapNodeArch();
+    const candidates = [
+        { runtime: 'org.kicad.KiCad.Library.Symbols', sub: 'symbols' },
+        { runtime: 'org.kicad.KiCad.Library.Footprints', sub: 'footprints' },
+    ];
+
+    const result: { symbols: string, footprints: string } = { symbols: '', footprints: '' };
+
+    for (const { runtime, sub } of candidates) {
+        const runtimeBase = `/var/lib/flatpak/runtime/${runtime}`;
+        if (!existsSync(runtimeBase)) continue;
+
+        try {
+            const archDir = join(runtimeBase, flatpakArch);
+            if (!existsSync(archDir)) continue;
+
+            const branches = readdirSync(archDir);
+            for (const branch of branches) {
+                const activePath = join(archDir, branch, 'active', 'files', sub);
+                if (existsSync(activePath)) {
+                    result[sub as 'symbols' | 'footprints'] = activePath;
+                    break;
+                }
+            }
+        } catch {
+            logger.debug(`kicad: failed to scan flatpak runtime ${runtime}`);
+        }
+    }
+
+    return result;
 }
 
 export class KiCAD {
@@ -189,24 +213,30 @@ export class KiCAD {
     }
 
     getLibraryPaths(): { symbols: string, footprints: string } {
+        const result: { symbols: string, footprints: string } = { symbols: '', footprints: '' };
+
         if (this.isFlatpak) {
-            return {
-                symbols: '/var/lib/flatpak/runtime/org.kicad.kicad.Library/x86_64/stable/active/files/symbols',
-                footprints: '/var/lib/flatpak/runtime/org.kicad.kicad.Library/x86_64/stable/active/files/footprints'
-            };
-        } else {
-            if (platform() === 'win32') {
-                return {
-                    symbols: this.path ? this.path + 'share/kicad/symbols' : '',
-                    footprints: this.path ? this.path + 'share/kicad/footprints' : ''
-                };
-            } else {
-                return {
-                    symbols: this.path ? this.path + 'symbols' : '',
-                    footprints: this.path ? this.path + 'footprints' : ''
-                };
-            }
+            const flatpakPaths = resolveFlatpakLibraryPaths();
+            if (flatpakPaths.symbols) result.symbols = flatpakPaths.symbols;
+            if (flatpakPaths.footprints) result.footprints = flatpakPaths.footprints;
+            if (result.symbols && result.footprints) return result;
         }
+
+        if (this.path) {
+            const suffixes = platform() === 'win32'
+                ? { symbols: 'share/kicad/symbols', footprints: 'share/kicad/footprints' }
+                : { symbols: 'symbols', footprints: 'footprints' };
+            if (!result.symbols) result.symbols = join(this.path, suffixes.symbols);
+            if (!result.footprints) result.footprints = join(this.path, suffixes.footprints);
+        }
+
+        if (!result.symbols || !result.footprints) {
+            const flatpakPaths = resolveFlatpakLibraryPaths();
+            if (!result.symbols && flatpakPaths.symbols) result.symbols = flatpakPaths.symbols;
+            if (!result.footprints && flatpakPaths.footprints) result.footprints = flatpakPaths.footprints;
+        }
+
+        return result;
     }
 
     private findSymbolsDirectory(): string | undefined {
@@ -241,6 +271,27 @@ export class KiCAD {
             return false;
         }
     }
+}
+
+let _flatpakTempDir: string | undefined;
+
+export function resetFlatpakTempDir(): void {
+    _flatpakTempDir = undefined;
+}
+
+export function getFlatpakSafeTempDir(): string {
+    if (!KiCAD.isFlatpak) return tmpdir();
+    if (_flatpakTempDir) return _flatpakTempDir;
+    const cacheDir = join(process.env.XDG_CACHE_HOME || join(process.env.HOME || tmpdir(), '.cache'), 'typecad', 'tmp');
+    try {
+        if (!existsSync(cacheDir)) {
+            mkdirSync(cacheDir, { recursive: true });
+        }
+    } catch {
+        return tmpdir();
+    }
+    _flatpakTempDir = cacheDir;
+    return cacheDir;
 }
 
 /** Backward-compatible export. Prefer {@link KiCAD.cliPath} for new code. */

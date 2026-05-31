@@ -19,7 +19,7 @@ import type {
   IRoutePath,
   ITrackBuilder,
 } from '../types/length_match.js';
-import { RoutingError } from '../../errors.js';
+import { RoutingError } from '../../utils/errors.js';
 
 import { normalizeConfig, segmentKey, chalk } from './length_matcher_helpers.js';
 import { collectSegments, pickCandidateSegment } from './segment_analysis.js';
@@ -34,7 +34,7 @@ import {
   tryMultiSegmentPattern,
 } from './offset_corridor.js';
 
-import logger from '../../logging.js';
+import logger from '../../utils/logging.js';
 
 export class LengthMatcher {
   /**

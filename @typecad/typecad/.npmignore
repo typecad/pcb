@@ -17,15 +17,16 @@ git_disabled/
 
 # Configuration files
 tsconfig.json
-obfuscator.config.json
+tsconfig.gitdiff-viewer.json
 .eslintrc*
 .prettierrc*
 .editorconfig
 .gitignore
+vitest.config.ts
 
 # Build artifacts
 *.log
-*.map
+
 build/
 coverage/
 .nyc_output/
@@ -36,16 +37,6 @@ coverage/
 *.swo
 .DS_Store 
 
-bundleDocs.js
-watch.js
-logging.js
-src/
 examples/
 scripts/
 package-lock.json
-tsconfig.cli.json
-tsconfig.gitdiff-viewer.json
-tsconfig.base.json
-obfuscator.strong.config.json
-vitest.config.ts
-vitest.config.routing.ts

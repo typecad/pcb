@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { runApplication } from '../app/index.js';
-import logger from '../../logging.js';
+import logger from '../../utils/logging.js';
 
 /**
  * Main entry point for the CLI executable

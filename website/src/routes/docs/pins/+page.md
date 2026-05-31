@@ -1,7 +1,5 @@
 <script lang="ts">
     import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
-    import { buttonVariants } from "$lib/components/ui/button";
-    import ChevronRight from "lucide-svelte/icons/chevron-right";
     let { data }: { data: PageData } = $props();
 </script>
 
@@ -42,7 +40,7 @@ u1.PB0      // GPIO pin PB0
 </ScrollArea>
 
 ## Power aware
-Each `Pin` object has an optional `powerInfo` object that can be optionally passed when creating the `Pin`. It has the following properties:
+Each `Pin` object has an optional `powerInfo` object that can be passed via the `component.pin()` config. It has the following properties:
 - `minimum_voltage` — minimum voltage the pin can tolerate
 - `maximum_voltage` — maximum voltage the pin can tolerate
 - `current` — maximum current the pin can handle
@@ -52,20 +50,11 @@ When pins have the object passed with data, **type**CAD can check that the volta
 <ScrollArea orientation="both">
 
 ```ts
-  VCC = new Pin(this.reference, 8, 'power_in', this, {
+  VCC = this.pin(8, { type: 'power_in', powerInfo: {
     minimum_voltage: -0.5,
     maximum_voltage: 6,
     current: 0.2,
-  });
+  }});
 ```
 `VCC` can accept -0.5 to 6 volts and supply up to 0.2 amps. When connected to other pins, **type**CAD can check that the voltage and current levels are compatible and issue error or warning messages if the voltage is too high or the current draw is too much.
 </ScrollArea>
-
-<div class="relative">
-<br/>
-<br/>
-<br/>
-    <p class="absolute right-0">
-       <a href="/docs/power" class={buttonVariants({ variant: "outline" })}>Power<ChevronRight /></a>
-    </p>
-</div>

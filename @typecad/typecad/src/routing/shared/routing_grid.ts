@@ -1,5 +1,5 @@
 import chalk from 'chalk';
-import logger from '../../logging.js';
+import logger from '../../utils/logging.js';
 const loggerDebug = logger.debug;
 
 /**

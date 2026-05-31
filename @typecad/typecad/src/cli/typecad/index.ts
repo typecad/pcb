@@ -4,7 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import chalk from 'chalk';
 import { parseArgv } from './parser.js';
-import logger from '../../logging.js';
+import logger from '../../utils/logging.js';
 
 function outputJson(data: unknown): void {
   logger.log(JSON.stringify(data));

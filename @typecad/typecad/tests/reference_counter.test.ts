@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { ReferenceCounter } from '../src/reference_counter.js'
+import { ReferenceCounter } from '../src/utils/reference_counter.js'
 
 describe('ReferenceCounter', () => {
   const counter = new ReferenceCounter()

@@ -19,7 +19,7 @@
 import fs from 'node:fs';
 import chalk from 'chalk';
 import { checkbox } from '@inquirer/prompts';
-import logger from '../logging.js';
+import logger from '../utils/logging.js';
 import { PCB } from '../pcb/pcb.js';
 import { SExprNode } from './sexpr_tree.js';
 import { KicadIRBuilder } from './ir_builder.js';

@@ -1,7 +1,5 @@
 <script lang="ts">
     import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
-    import { buttonVariants } from "$lib/components/ui/button";
-    import ChevronRight from "lucide-svelte/icons/chevron-right";
     let { data }: { data: PageData } = $props();
 </script>
 
@@ -13,17 +11,9 @@ Make sure your system has the required software to get started.
 - [Visual Studio Code](https://code.visualstudio.com/) - *not required, but highly recommended and used throughout this website*
 - [PlatformIO](https://docs.platformio.org/en/latest/core/installation/index.html) - *mentioned, but not required*
 - [git](https://git-scm.com/downloads) - *mentioned, but not required*
+- [ngspice](https://ngspice.sourceforge.io/download.html) - *optional, used for circuit simulations*
 
 --- 
 
 > [!WARNING] pio and git in your PATH
 > Ensure that `pio` and `git` are in your PATH. **type**CAD optionally uses these commands in its tooling
-
-<div class="relative">
-<br/>
-<br/>
-<br/>
-    <p class="absolute right-0">
-       <a href="/docs/concepts" class={buttonVariants({ variant: "outline" })}>Concepts <ChevronRight /></a>
-    </p>
-</div>

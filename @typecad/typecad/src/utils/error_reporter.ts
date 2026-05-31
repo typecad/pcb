@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import chalk from 'chalk';
-import logger from '../logging.js';
+import logger from './logging.js';
 
 export interface Locatable {
     reference: string;

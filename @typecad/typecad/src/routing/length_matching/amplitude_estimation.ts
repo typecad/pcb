@@ -17,7 +17,7 @@ import {
   isEnvDebug,
   chalk,
 } from './length_matcher_helpers.js';
-import logger from '../../logging.js';
+import logger from '../../utils/logging.js';
 
 /**
  * Estimate the maximum symmetric amplitude available on **both** sides of

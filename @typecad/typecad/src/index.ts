@@ -34,5 +34,5 @@ export {
 export type { McuPinMapping, HwContract, ContractPin, ContractComponent, ContractOptions } from './contract.js';
 export type { NgspiceResult } from './simulation/types.js';
 export type { ISchematicNetDefinition } from './net_manager.js';
-export { clearSourceCache } from './source_inspector.js';
+export { clearSourceCache } from './utils/source_inspector.js';
 

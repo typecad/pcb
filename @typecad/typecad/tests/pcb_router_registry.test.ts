@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { registerRouter, createRouter, getRegisteredRouters, getRouterGridConfigurator } from '../src/pcb/pcb_router_registry.js';
-import { RoutingError } from '../src/errors.js';
+import { RoutingError } from '../src/utils/errors.js';
 
 describe('pcb_router_registry', () => {
     beforeEach(() => {

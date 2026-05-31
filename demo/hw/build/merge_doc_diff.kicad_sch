@@ -3,7 +3,7 @@
 	(generator "typecad")
 	(generator_version "0.1.0")
 	(paper "A4")
-    (uuid "3faa96da-30d9-440c-a680-714d6ebae9aa")
+    (uuid "310d78c9-efbf-4e10-96f1-76cb6983e42f")
 
     (lib_symbols
     (symbol "Device:R_Small" (pin_numbers (hide yes)) (pin_names (offset 0.254) (hide yes)) (exclude_from_sim no) (in_bom yes) (on_board yes) (in_pos_files yes) (duplicate_pin_numbers_are_jumpers no) (property "Reference" "R" (at 0 0 90) (show_name no) (do_not_autoplace no) (effects (font (size 1.016 1.016)))) (property "Value" "R_Small" (at 1.778 0 90) (show_name no) (do_not_autoplace no) (effects (font (size 1.27 1.27)))) (property "Footprint" "" (at 0 0 0) (show_name no) (do_not_autoplace no) (hide yes) (effects (font (size 1.27 1.27)))) (property "Datasheet" "" (at 0 0 0) (show_name no) (do_not_autoplace no) (hide yes) (effects (font (size 1.27 1.27)))) (property "Description" "Resistor, small symbol" (at 0 0 0) (show_name no) (do_not_autoplace no) (hide yes) (effects (font (size 1.27 1.27)))) (property "ki_keywords" "R resistor" (at 0 0 0) (show_name no) (do_not_autoplace no) (hide yes) (effects (font (size 1.27 1.27)))) (property "ki_fp_filters" "R_*" (at 0 0 0) (show_name no) (do_not_autoplace no) (hide yes) (effects (font (size 1.27 1.27)))) (symbol "R_Small_0_1" (rectangle (start -0.762 1.778) (end 0.762 -1.778) (stroke (width 0.2032) (type default)) (fill (type none)))) (symbol "R_Small_1_1" (pin passive line (at 0 2.54 270) (length 0.762) (name "" (effects (font (size 1.27 1.27)))) (number "1" (effects (font (size 1.27 1.27))))) (pin passive line (at 0 -2.54 90) (length 0.762) (name "" (effects (font (size 1.27 1.27)))) (number "2" (effects (font (size 1.27 1.27)))))) (embedded_fonts no))
@@ -16,60 +16,60 @@
 
 	
 		(label "vdiv"
-			(at 213.36 149.86 270)
+			(at 149.86 99.06 270)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
 				(justify right bottom)
 			)
-			(uuid "f5d66093-c3dd-4f2c-b20d-07da91464cc9")
+			(uuid "94fd9a35-6258-4875-a592-f64b60925261")
 		)
 
 	
 		(label "vdiv"
-			(at 213.36 114.3 90)
+			(at 30.48 53.34 90)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
 				(justify left bottom)
 			)
-			(uuid "e288296d-b9f7-4645-b533-4779f2ee55d0")
+			(uuid "9b5f6ee9-a33a-4860-bb8e-3b7304d85ac6")
 		)
 
 	
 		(label "VCC"
-			(at 223.52 144.78 270)
+			(at 160.02 93.98 270)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
 				(justify right bottom)
 			)
-			(uuid "2fd638dc-bd46-4acc-8a3f-e5ba3be9153c")
+			(uuid "6c18704a-b94d-4b7d-bd29-135b0464bd7a")
 		)
 
 	
 		(label "GND"
-			(at 223.52 119.38 0)
+			(at 40.64 58.42 0)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
 				(justify left bottom)
 			)
-			(uuid "1ee79bc9-274b-424e-a6dc-c7ffa2797a72")
+			(uuid "0befcca3-e1c7-445c-ab1d-9b0606a921d8")
 		)
 
 
-    (symbol (lib_id "Device:R_Small") (at 213.36 147.32 0) (property "Reference" "R1" (at 213.36 152.4 0) (effects (font (size 1.27 1.27)) (hide no))) (property "Value" "1kohm" (at 213.36 152.4 0) (effects (font (size 1.27 1.27)) (hide yes))) (property "Footprint" "Resistor_SMD:R_0603_1608Metric" (at 213.36 152.4 0) (effects (font (size 1.27 1.27)) (hide yes))) (instances (project "merge_doc_diff" (path "/3faa96da-30d9-440c-a680-714d6ebae9aa" (reference "R1") (unit 1)))))
-    (symbol (lib_id "Device:R_Small") (at 213.36 116.84 0) (property "Reference" "R2" (at 213.36 121.92 0) (effects (font (size 1.27 1.27)) (hide no))) (property "Value" "10kohm" (at 213.36 121.92 0) (effects (font (size 1.27 1.27)) (hide yes))) (property "Footprint" "Resistor_SMD:R_0603_1608Metric" (at 213.36 121.92 0) (effects (font (size 1.27 1.27)) (hide yes))) (instances (project "merge_doc_diff" (path "/3faa96da-30d9-440c-a680-714d6ebae9aa" (reference "R2") (unit 1)))))
-    (symbol (lib_id "Device:R_Small") (at 132.08 147.32 0) (property "Reference" "R3" (at 132.08 152.4 0) (effects (font (size 1.27 1.27)) (hide no))) (property "Value" "4.7kohm" (at 132.08 152.4 0) (effects (font (size 1.27 1.27)) (hide yes))) (property "Footprint" "Resistor_SMD:R_0603_1608Metric" (at 132.08 152.4 0) (effects (font (size 1.27 1.27)) (hide yes))) (instances (project "merge_doc_diff" (path "/3faa96da-30d9-440c-a680-714d6ebae9aa" (reference "R3") (unit 1)))))
-    (symbol (lib_id "power:VCC") (at 213.36 144.78 0) (property "Reference" "#PWR01" (at 213.36 149.86 0) (effects (font (size 1.27 1.27)) (hide no))) (property "Value" "VCC" (at 213.36 149.86 0) (effects (font (size 1.27 1.27)) (hide yes))) (property "Footprint" "" (at 213.36 149.86 0) (effects (font (size 1.27 1.27)) (hide yes))) (instances (project "merge_doc_diff" (path "/3faa96da-30d9-440c-a680-714d6ebae9aa" (reference "#PWR01") (unit 1)))))
-    (symbol (lib_id "power:PWR_FLAG") (at 223.52 144.78 0) (property "Reference" "#FLG01" (at 223.52 149.86 0) (effects (font (size 1.27 1.27)) (hide no))) (property "Value" "PWR_FLAG" (at 223.52 149.86 0) (effects (font (size 1.27 1.27)) (hide yes))) (property "Footprint" "" (at 223.52 149.86 0) (effects (font (size 1.27 1.27)) (hide yes))) (instances (project "merge_doc_diff" (path "/3faa96da-30d9-440c-a680-714d6ebae9aa" (reference "#FLG01") (unit 1)))))
-    (symbol (lib_id "power:GND") (at 213.36 119.38 0) (property "Reference" "#PWR02" (at 213.36 124.46 0) (effects (font (size 1.27 1.27)) (hide no))) (property "Value" "GND" (at 213.36 124.46 0) (effects (font (size 1.27 1.27)) (hide yes))) (property "Footprint" "" (at 213.36 124.46 0) (effects (font (size 1.27 1.27)) (hide yes))) (instances (project "merge_doc_diff" (path "/3faa96da-30d9-440c-a680-714d6ebae9aa" (reference "#PWR02") (unit 1)))))
-    (symbol (lib_id "power:PWR_FLAG") (at 223.52 119.38 180) (property "Reference" "#FLG02" (at 223.52 124.46 180) (effects (font (size 1.27 1.27)) (hide no))) (property "Value" "PWR_FLAG" (at 223.52 124.46 180) (effects (font (size 1.27 1.27)) (hide yes))) (property "Footprint" "" (at 223.52 124.46 180) (effects (font (size 1.27 1.27)) (hide yes))) (instances (project "merge_doc_diff" (path "/3faa96da-30d9-440c-a680-714d6ebae9aa" (reference "#FLG02") (unit 1)))))
+    (symbol (lib_id "Device:R_Small") (at 149.86 96.52 0) (property "Reference" "R1" (at 149.86 101.6 0) (effects (font (size 1.27 1.27)) (hide no))) (property "Value" "1kohm" (at 149.86 101.6 0) (effects (font (size 1.27 1.27)) (hide yes))) (property "Footprint" "Resistor_SMD:R_0603_1608Metric" (at 149.86 101.6 0) (effects (font (size 1.27 1.27)) (hide yes))) (instances (project "merge_doc_diff" (path "/310d78c9-efbf-4e10-96f1-76cb6983e42f" (reference "R1") (unit 1)))))
+    (symbol (lib_id "Device:R_Small") (at 30.48 55.88 0) (property "Reference" "R2" (at 30.48 60.96 0) (effects (font (size 1.27 1.27)) (hide no))) (property "Value" "10kohm" (at 30.48 60.96 0) (effects (font (size 1.27 1.27)) (hide yes))) (property "Footprint" "Resistor_SMD:R_0603_1608Metric" (at 30.48 60.96 0) (effects (font (size 1.27 1.27)) (hide yes))) (instances (project "merge_doc_diff" (path "/310d78c9-efbf-4e10-96f1-76cb6983e42f" (reference "R2") (unit 1)))))
+    (symbol (lib_id "Device:R_Small") (at 149.86 99.06 0) (property "Reference" "R3" (at 149.86 104.14 0) (effects (font (size 1.27 1.27)) (hide no))) (property "Value" "4.7kohm" (at 149.86 104.14 0) (effects (font (size 1.27 1.27)) (hide yes))) (property "Footprint" "Resistor_SMD:R_0603_1608Metric" (at 149.86 104.14 0) (effects (font (size 1.27 1.27)) (hide yes))) (instances (project "merge_doc_diff" (path "/310d78c9-efbf-4e10-96f1-76cb6983e42f" (reference "R3") (unit 1)))))
+    (symbol (lib_id "power:VCC") (at 149.86 93.98 0) (property "Reference" "#PWR01" (at 149.86 99.06 0) (effects (font (size 1.27 1.27)) (hide no))) (property "Value" "VCC" (at 149.86 99.06 0) (effects (font (size 1.27 1.27)) (hide yes))) (property "Footprint" "" (at 149.86 99.06 0) (effects (font (size 1.27 1.27)) (hide yes))) (instances (project "merge_doc_diff" (path "/310d78c9-efbf-4e10-96f1-76cb6983e42f" (reference "#PWR01") (unit 1)))))
+    (symbol (lib_id "power:PWR_FLAG") (at 160.02 93.98 0) (property "Reference" "#FLG01" (at 160.02 99.06 0) (effects (font (size 1.27 1.27)) (hide no))) (property "Value" "PWR_FLAG" (at 160.02 99.06 0) (effects (font (size 1.27 1.27)) (hide yes))) (property "Footprint" "" (at 160.02 99.06 0) (effects (font (size 1.27 1.27)) (hide yes))) (instances (project "merge_doc_diff" (path "/310d78c9-efbf-4e10-96f1-76cb6983e42f" (reference "#FLG01") (unit 1)))))
+    (symbol (lib_id "power:GND") (at 30.48 58.42 0) (property "Reference" "#PWR02" (at 30.48 63.5 0) (effects (font (size 1.27 1.27)) (hide no))) (property "Value" "GND" (at 30.48 63.5 0) (effects (font (size 1.27 1.27)) (hide yes))) (property "Footprint" "" (at 30.48 63.5 0) (effects (font (size 1.27 1.27)) (hide yes))) (instances (project "merge_doc_diff" (path "/310d78c9-efbf-4e10-96f1-76cb6983e42f" (reference "#PWR02") (unit 1)))))
+    (symbol (lib_id "power:PWR_FLAG") (at 40.64 58.42 180) (property "Reference" "#FLG02" (at 40.64 63.5 180) (effects (font (size 1.27 1.27)) (hide no))) (property "Value" "PWR_FLAG" (at 40.64 63.5 180) (effects (font (size 1.27 1.27)) (hide yes))) (property "Footprint" "" (at 40.64 63.5 180) (effects (font (size 1.27 1.27)) (hide yes))) (instances (project "merge_doc_diff" (path "/310d78c9-efbf-4e10-96f1-76cb6983e42f" (reference "#FLG02") (unit 1)))))
 
 	(sheet_instances
 		(path "/"

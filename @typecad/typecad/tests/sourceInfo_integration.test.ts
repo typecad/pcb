@@ -4,6 +4,15 @@ import { Component } from '../src/component.js'
 import fs from 'node:fs'
 import path from 'node:path'
 
+vi.mock('fs', async () => {
+  const actual = await vi.importActual<typeof fs>('fs')
+  return {
+    ...actual,
+    readFileSync: vi.fn().mockReturnValue(''),
+    writeFileSync: vi.fn()
+  }
+})
+
 const mockWriteFileSync = vi.spyOn(fs, 'writeFileSync')
 const mockReadFileSync = vi.spyOn(fs, 'readFileSync')
 
@@ -27,16 +36,6 @@ describe('sourceInfo Integration Tests', () => {
       const mockFootprintLib = vi.spyOn(component, 'footprint_lib').mockReturnValue(
         '(footprint "Resistor_SMD:R_0603_1608Metric" (layer "F.Cu") (width 1.6) (height 0.8))'
       )
-      
-      vi.mock('fs', async () => {
-        const actual = await vi.importActual<typeof fs>('fs')
-        return {
-          ...actual,
-          existsSync: vi.fn().mockReturnValue(false),
-          readFileSync: vi.fn().mockReturnValue(''),
-          writeFileSync: vi.fn()
-        }
-      })
       
       await pcb.create(component)
       
@@ -86,16 +85,6 @@ describe('sourceInfo Integration Tests', () => {
         '(footprint "Package_DIP:DIP-28_W7.62mm" (layer "B.Cu") (width 7.62) (height 35.56))'
       )
       
-      vi.mock('fs', async () => {
-        const actual = await vi.importActual<typeof fs>('fs')
-        return {
-          ...actual,
-          existsSync: vi.fn().mockReturnValue(false),
-          readFileSync: vi.fn().mockReturnValue(''),
-          writeFileSync: vi.fn()
-        }
-      })
-      
       await pcb.create(component)
       
       expect(component.sourceInfo).toEqual(originalSourceInfo)
@@ -110,16 +99,6 @@ describe('sourceInfo Integration Tests', () => {
       
       pcb.outline(0, 0, 100, 80, 5)
       
-      vi.mock('fs', async () => {
-        const actual = await vi.importActual<typeof fs>('fs')
-        return {
-          ...actual,
-          existsSync: vi.fn().mockReturnValue(false),
-          readFileSync: vi.fn().mockReturnValue(''),
-          writeFileSync: vi.fn()
-        }
-      })
-      
       await pcb.create()
       
       expect(mockWriteFileSync).toHaveBeenCalled()
@@ -130,16 +109,6 @@ describe('sourceInfo Integration Tests', () => {
       
       pcb.outline(0, 0, 100, 80)
       pcb.outline(10, 10, 90, 70, 2)
-      
-      vi.mock('fs', async () => {
-        const actual = await vi.importActual<typeof fs>('fs')
-        return {
-          ...actual,
-          existsSync: vi.fn().mockReturnValue(false),
-          readFileSync: vi.fn().mockReturnValue(''),
-          writeFileSync: vi.fn()
-        }
-      })
       
       await pcb.create()
       
@@ -159,16 +128,6 @@ describe('sourceInfo Integration Tests', () => {
       
       const originalSourceInfo = via.sourceInfo
       
-      vi.mock('fs', async () => {
-        const actual = await vi.importActual<typeof fs>('fs')
-        return {
-          ...actual,
-          existsSync: vi.fn().mockReturnValue(false),
-          readFileSync: vi.fn().mockReturnValue(''),
-          writeFileSync: vi.fn()
-        }
-      })
-      
       await pcb.create()
       
       expect(via.sourceInfo).toEqual(originalSourceInfo)
@@ -187,16 +146,6 @@ describe('sourceInfo Integration Tests', () => {
       
       expect(via.sourceInfo).toBeDefined()
       expect(via.viaData?.powerInfo).toBeDefined()
-      
-      vi.mock('fs', async () => {
-        const actual = await vi.importActual<typeof fs>('fs')
-        return {
-          ...actual,
-          existsSync: vi.fn().mockReturnValue(false),
-          readFileSync: vi.fn().mockReturnValue(''),
-          writeFileSync: vi.fn()
-        }
-      })
       
       await pcb.create()
       

@@ -2,7 +2,7 @@ import { RoutingGrid } from '../contracts/routing_grid.js';
 import type { AStarRouter, IRoutePath } from './astar_router.js';
 import { mergeSegments } from './path_assembler.js';
 import chalk from 'chalk';
-import logger from '../../logging.js';
+import logger from '../../utils/logging.js';
 import { buildMST as buildSharedMST } from '../shared/mst.js';
 
 /**

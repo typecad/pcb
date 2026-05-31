@@ -2,10 +2,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 import chalk from 'chalk';
-import logger from './logging.js';
+import logger from './utils/logging.js';
 import { parse } from 'acorn';
 import { simple as walk } from 'acorn-walk';
-import type { Node, ObjectExpression, Property, Identifier, Literal, TemplateLiteral, ExportDefaultDeclaration as ExportDefaultDeclarationNode } from 'acorn';
+import type { Node, ObjectExpression, Literal, TemplateLiteral, ExportDefaultDeclaration as ExportDefaultDeclarationNode } from 'acorn';
 
 export interface TypeCADConfig {
   entry?: string;

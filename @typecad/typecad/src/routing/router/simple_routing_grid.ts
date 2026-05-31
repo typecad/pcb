@@ -1,5 +1,5 @@
 import chalk from 'chalk';
-import logger from '../../logging.js';
+import logger from '../../utils/logging.js';
 import type { IRoutingObstacle } from '../shared/routing_grid.js';
 
 export class SimpleRoutingGrid {

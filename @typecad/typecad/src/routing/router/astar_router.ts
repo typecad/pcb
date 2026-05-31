@@ -3,7 +3,7 @@ import { IAutorouteVia, IAutorouteWaypoint } from "../types/pcb.js";
 import type { IPowerInfo } from "./types.js";
 import { SteinerOptimizer, ISteinerOptimizationResult } from "./steiner_optimizer.js";
 import chalk from 'chalk';
-import logger from '../../logging.js';
+import logger from '../../utils/logging.js';
 import os from 'os';
 import { buildMST as buildSharedMST } from "../shared/mst.js";
 import { GridSearch, GridSearchConstants, heuristicDistance } from "./grid_search.js";

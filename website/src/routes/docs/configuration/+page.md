@@ -1,11 +1,10 @@
 <script lang="ts">
     import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
-    import { buttonVariants } from "$lib/components/ui/button";
-    import ChevronRight from "lucide-svelte/icons/chevron-right";
     let { data }: { data: PageData } = $props();
 </script>
 
 # Configuration
+Everything should work out-of-the-box, but there are several items that can be customized. 
 
 **type**CAD projects can be configured using a `typecad.conf.ts` file in the project's `hw/` directory. This file lets you specify build settings, KiCAD paths, and other options.
 
@@ -61,11 +60,3 @@ typecad doctor
 
 This checks that KiCAD, Node.js, and all required tools are installed and accessible. Use `--fix` to attempt automatic fixes and `--json` for machine-readable output.
 
-<div class="relative">
-<br/>
-<br/>
-<br/>
-    <p class="absolute right-0">
-       <a href="/docs/cli" class={buttonVariants({ variant: "outline" })}>CLI Reference<ChevronRight /></a>
-    </p>
-</div>

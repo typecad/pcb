@@ -17,19 +17,19 @@ describe('logging', () => {
     // dynamically changing env vars (which won't affect the cached values).
 
     it('warn should always output', async () => {
-        const { warn } = await import('../src/logging.js')
+        const { warn } = await import('../src/utils/logging.js')
         warn('warning message')
         expect(console.warn).toHaveBeenCalled()
     })
 
     it('error should always output', async () => {
-        const { error } = await import('../src/logging.js')
+        const { error } = await import('../src/utils/logging.js')
         error('error message')
         expect(console.error).toHaveBeenCalled()
     })
 
     it('logger should export all four methods', async () => {
-        const logger = (await import('../src/logging.js')).default
+        const logger = (await import('../src/utils/logging.js')).default
         expect(logger.debug).toBeTypeOf('function')
         expect(logger.info).toBeTypeOf('function')
         expect(logger.warn).toBeTypeOf('function')

@@ -1,7 +1,5 @@
 <script lang="ts">
     import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
-    import { buttonVariants } from "$lib/components/ui/button";
-    import ChevronRight from "lucide-svelte/icons/chevron-right";
     let { data }: { data: PageData } = $props();
 </script>
 
@@ -32,12 +30,3 @@ All the hardware-related files are here.
 
 ## Self-contained
 The entire project is contained in the project folder. Symbols, footprints, 3d files, source files, etc. are all in this project folder.
-
-<div class="relative">
-<br/>
-<br/>
-<br/>
-    <p class="absolute right-0">
-       <a href="/docs/classes" class={buttonVariants({ variant: "outline" })}>Classes<ChevronRight /></a>
-    </p>
-</div>

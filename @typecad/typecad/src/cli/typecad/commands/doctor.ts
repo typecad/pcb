@@ -5,7 +5,7 @@ import chalk from 'chalk';
 import { findExecutable } from '../../../kicad.js';
 import { KiCAD } from '../../../kicad.js';
 import type { ParsedArgs } from '../parser.js';
-import logger from '../../../logging.js';
+import logger from '../../../utils/logging.js';
 
 interface CheckResult {
   name: string;
@@ -220,55 +220,52 @@ function checkEntryFile(): CheckResult {
   };
 }
 
+function getKicadVersion(): string | null {
+  try {
+    const instance = KiCAD.instance;
+    if (instance.isFlatpak) {
+      const out = runQuiet('flatpak run --command=kicad-cli org.kicad.KiCad version');
+      if (!out) return null;
+      return out.match(/version\s+v?(\d+(?:\.\d+)*)/i)?.[1]
+        ?? out.match(/v?(\d+(?:\.\d+)+)/)?.[1]
+        ?? null;
+    }
+    const out = runQuiet(`"${instance.cliPath}" version`);
+    if (!out) return null;
+    const m = out.match(/version\s+v?(\d+(?:\.\d+)*)/i);
+    return m ? m[1] : null;
+  } catch {
+    return null;
+  }
+}
+
 function checkKiCadCli(): CheckResult {
-  const configCli = runQuiet('node -e "try{const c=new(require(\'@typecad/typecad/dist/config.js\').Config)();logger.log(c.get(\'kicad_cli\'))}catch{}"');
-  if (configCli && fs.existsSync(configCli)) {
-    return { name: 'kicad-cli', passed: true, message: configCli };
-  }
+  try {
+    const instance = KiCAD.instance;
+    const ver = getKicadVersion();
 
-  const found = findExecutable('kicad-cli');
-  if (found) {
-    return { name: 'kicad-cli', passed: true, message: found };
-  }
+    if (ver && !semverGte(ver, '10.0.0')) {
+      return { name: 'kicad-cli', passed: false, message: `${instance.cliPath} (v${ver}) — version 10+ required`, fixHint: 'Upgrade KiCad to version 10 or later from https://www.kicad.org/download/' };
+    }
 
-  const possiblePaths = [
-    'C:/Program Files/KiCad/10.0/bin/kicad-cli.exe',
-    'C:/Program Files/KiCad/9.0/bin/kicad-cli.exe',
-    'C:/Program Files/KiCad/8.0/bin/kicad-cli.exe',
-    'C:/Program Files/KiCad/7.0/bin/kicad-cli.exe',
-    '/Applications/KiCad/KiCad.app/Contents/MacOS/kicad-cli',
-    '/usr/local/bin/kicad-cli',
-  ];
+    const label = instance.isFlatpak
+      ? 'Flatpak installation detected'
+      : instance.cliPath;
 
-  for (const p of possiblePaths) {
-    if (fs.existsSync(p)) {
+    return { name: 'kicad-cli', passed: true, message: label + (ver ? ` (v${ver})` : '') };
+  } catch {
     return {
       name: 'kicad-cli',
-      passed: true,
-      message: `found at ${p} but not in PATH — consider adding "${path.dirname(p)}" to PATH or setting kicad_cli in typecad.conf.ts`,
+      passed: false,
+      message: 'not found',
+      fixHint:
+        'Install KiCad from https://www.kicad.org/download/\n' +
+        '  Windows: winget install KiCad.KiCad\n' +
+        '  macOS:   brew install --cask kicad\n' +
+        '  Linux:   sudo apt install kicad  (or equivalent for your distro)\n' +
+        '  Or set kicad_cli in typecad.conf.ts to the full path of kicad-cli',
     };
-    }
   }
-
-  const isFlatpak = fs.existsSync('/var/lib/flatpak/app/org.kicad.kicad');
-  if (isFlatpak) {
-    const flatpakCheck = runQuiet('flatpak info org.kicad.KiCad');
-    if (flatpakCheck !== null) {
-      return { name: 'kicad-cli', passed: true, message: 'Flatpak installation detected' };
-    }
-  }
-
-  return {
-    name: 'kicad-cli',
-    passed: false,
-    message: 'not found',
-    fixHint:
-      'Install KiCad from https://www.kicad.org/download/\n' +
-      '  Windows: winget install KiCad.KiCad\n' +
-      '  macOS:   brew install --cask kicad\n' +
-      '  Linux:   sudo apt install kicad  (or equivalent for your distro)\n' +
-      '  Or set kicad_cli in typecad.conf.ts to the full path of kicad-cli',
-  };
 }
 
 function checkKiCadSymbols(): CheckResult {
@@ -350,6 +347,18 @@ function checkArduinoCli(): CheckResult {
       '  Windows: winget install Arduino.ArduinoCLI\n' +
       '  macOS:   brew install arduino-cli\n' +
       '  Linux:   curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.sh | sh',
+  };
+}
+
+function checkNgspice(): CheckResult {
+  const found = findExecutable('ngspice');
+  if (found) {
+    return { name: 'ngspice', passed: true, message: found };
+  }
+  return {
+    name: 'ngspice',
+    passed: true,
+    message: 'not found (optional — needed for spice simulation)',
   };
 }
 
@@ -446,6 +455,7 @@ export async function run(parsed: ParsedArgs): Promise<void> {
     checkKiCadSymbols(),
     checkKiCadFootprints(),
     checkArduinoCli(),
+    checkNgspice(),
     checkGit(),
     checkBuildDir(),
   ];

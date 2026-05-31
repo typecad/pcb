@@ -1,7 +1,5 @@
 <script lang="ts">
     import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
-    import { buttonVariants } from "$lib/components/ui/button";
-    import ChevronRight from "lucide-svelte/icons/chevron-right";
     let { data }: { data: PageData } = $props();
 </script>
 
@@ -146,11 +144,3 @@ All the components and tracks are collected into the `components` array automati
 ## Variations
 There are many ways to create packages. This is just one example.
 
-<div class="relative">
-<br/>
-<br/>
-<br/>
-    <p class="absolute right-0">
-       <a href="/docs/package/use" class={buttonVariants({ variant: "outline" })}>Use<ChevronRight /></a>
-    </p>
-</div>

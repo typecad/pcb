@@ -2,24 +2,24 @@ import { Component, type ComponentInit } from "./component.js";
 import { Pin } from "./pin.js";
 import fs from "node:fs";
 import chalk from 'chalk';
-import logger from './logging.js';
+import logger from './utils/logging.js';
 import { randomUUID, UUID } from "node:crypto";
-import { TypeCadError } from "./errors.js";
-import { ReferenceCounter } from "./reference_counter.js";
+import { TypeCadError } from "./utils/errors.js";
+import { ReferenceCounter } from "./utils/reference_counter.js";
 import type { ISchematicNode } from "./types/schematic_types.js";
-import { buildProjectTree } from "./project_tree.js";
-import { generateBom } from "./bom-generator.js";
+import { buildProjectTree } from "./cli/project_tree.js";
+import { generateBom } from "./renderers/bom-generator.js";
 import { renderComp, renderNetlist } from "./renderers/sexp_renderers.js";
 import { NetManager } from './net_manager.js';
 import type { ISchematicNetDefinition } from './net_manager.js';
 import {
     setActiveSummaryHost,
     setupPendingSummary,
-} from "./pending_summary.js";
-import type { IPendingSummaryHost, PendingTypecadSummary } from "./pending_summary.js";
+} from "./cli/pending_summary.js";
+import type { IPendingSummaryHost, PendingTypecadSummary } from "./cli/pending_summary.js";
 import type { Power } from "./buses.js";
 import { SimulationContext } from "./simulation/ngspice.js";
-import { DEFAULT_BUILD_DIR } from './constants.js';
+import { DEFAULT_BUILD_DIR } from './utils/constants.js';
 
 export type BomField =
     | 'Reference'

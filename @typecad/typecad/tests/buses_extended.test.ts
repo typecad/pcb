@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { I2C, UART, USB, Power } from '../src/buses.js';
 import { Pin } from '../src/pin.js';
-import { ComponentError } from '../src/errors.js';
+import { ComponentError } from '../src/utils/errors.js';
 
 describe('I2C', () => {
     it('should assign sda and scl pins', () => {

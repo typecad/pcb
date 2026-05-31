@@ -44,7 +44,7 @@
       "import": "./dist/cli/docgen/index.js",
       "default": "./dist/cli/docgen/index.js"
     },
-    "./dist/sexpr/index.js": {
+    "./sexpr": {
       "types": "./dist/sexpr/index.d.ts",
       "import": "./dist/sexpr/index.js",
       "default": "./dist/sexpr/index.js"
@@ -58,47 +58,24 @@
     "kicad-symbols": "dist/kicad-symbols/cli/bin.js",
     "kicad2typecad": "dist/kicad2typecad/bin.js"
   },
+  "files": ["dist/", "LICENSE", "README.md"],
   "publishConfig": {
     "access": "public"
   },
   "scripts": {
     "typecad": "node ./dist/cli/typecad/index.js",
     "build": "tsc && tsc -p tsconfig.gitdiff-viewer.json && node scripts/assemble-gitdiff-viewer.mjs && node scripts/copy-docgen-assets.mjs",
+    "build:watch": "tsc --watch",
     "typecheck": "tsc --noEmit",
-    "obfuscate": "javascript-obfuscator dist --output dist-obfuscated --config obfuscator.config.json",
-    "obfuscate:strong": "javascript-obfuscator dist --output dist-obfuscated --config obfuscator.strong.config.json",
-    "copy-files": "cpy \"dist-obfuscated/**/*\" dist --parents",
-    "prepublishOnly": "npm run typecheck &&npm run build && npm run obfuscate && npm run copy-files",
-    "prepack": "npm run typecheck",
-    "kicad-symbols": "node dist/kicad-symbols/cli/bin.js",
-    "kicad2typecad": "node dist/kicad2typecad/bin.js",
-    "make": "npx tsx --",
-    "package_publish": "npm run prepublishOnly && npm publish --access public",
-    "make_docs": "npx typedoc --plugin typedoc-plugin-markdown --flattenOutputFiles true --out ./docs ./src/index.ts",
-    "dev": "node watch.js",
+    "prepublishOnly": "npm run typecheck && npm run build",
     "test": "vitest run",
-    "test:routing": "vitest run --config vitest.config.routing.ts",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage"
   },
   "author": "typeCAD",
   "license": "SEE LICENSE IN LICENSE",
-  "devDependencies": {
-    "@types/markdown-it": "^14.1.2",
-    "@types/node": "^22.13.0",
-    "@vitest/coverage-v8": "^3.2.4",
-    "cpy-cli": "^6.0.0",
-    "javascript-obfuscator": "^4.1.0",
-    "nodemon": "^3.1.0",
-    "tsx": "^4.22.3",
-    "typedoc": "^0.28.7",
-    "typedoc-plugin-markdown": "^4.7.0",
-    "typescript": "^5.7.3",
-    "vitest": "^3.2.1"
-  },
   "dependencies": {
     "@inquirer/prompts": "^8.4.2",
-    "@typecad/passives": "^0.1.44",
     "acorn": "^8.16.0",
     "acorn-walk": "^8.3.5",
     "chalk": "^5.6.2",
@@ -107,21 +84,26 @@
     "inquirer-select-pro": "1.0.0-alpha.9",
     "which": "^5.0.0"
   },
-  "optionalDependencies": {
+  "devDependencies": {
     "@hackmd/markdown-it-task-lists": "^2.1.4",
     "@shikijs/markdown-it": "^4.1.0",
+    "@types/markdown-it": "^14.1.2",
+    "@types/node": "^22.13.0",
+    "@vitest/coverage-v8": "^3.2.4",
+
     "markdown-it": "^14.1.1",
     "markdown-it-attrs": "^4.5.0",
     "markdown-it-math": "^5.2.1",
     "markdown-it-multimd-table-ext": "^4.2.35",
     "markdown-it-textual-uml": "^0.17.1",
     "mathup": "^1.0.0",
-    "temml": "^0.11.11"
-  },
-  "directories": {
-    "doc": "docs",
-    "example": "examples",
-    "test": "tests"
+
+    "temml": "^0.11.11",
+    "tsx": "^4.22.3",
+    "typedoc": "^0.28.7",
+    "typedoc-plugin-markdown": "^4.7.0",
+    "typescript": "^5.7.3",
+    "vitest": "^3.2.1"
   },
   "repository": {
     "type": "git",

@@ -1,52 +1,44 @@
 <script lang="ts">
-	import { Icons } from "./icons/index.js";
-	import type { NavItem, NavItemWithChildren } from "$lib/types/nav.js";
-	import { page } from "$app/stores";
-	import { Button } from "$lib/components/ui/button/index.js";
+	import { page } from "$app/state";
 	import { docsConfig } from "$lib/config/docs.js";
+	import type { NavItem, SidebarNavItem } from "$lib/types/nav.js";
+	import ChevronLeft from "lucide-svelte/icons/chevron-left";
+	import ChevronRight from "lucide-svelte/icons/chevron-right";
 
-	let pager: ReturnType<typeof getPagerForDoc>;
+	function flatten(navItems: SidebarNavItem[]): NavItem[] {
+		return navItems
+			.flatMap((group) => group.items ?? [])
+			.filter((item) => !item?.disabled && item.href);
+	}
 
-	function getPagerForDoc(slug: string) {
-		const flattenedLinks = [null, ...flatten(docsConfig.sidebarNav), null];
-		let activeIndex: number;
-		if (!slug) {
-			activeIndex = 1;
-		} else {
-			activeIndex = flattenedLinks.findIndex((link) => `/docs/${slug}` === link?.href);
-		}
+	const allDocsLinks = $derived(
+		flatten(docsConfig.docsNav).concat(flatten(docsConfig.packageNav))
+	);
 
-		const prev = activeIndex !== 0 ? flattenedLinks[activeIndex - 1] : null;
-		const next =
-			activeIndex !== flattenedLinks.length - 1 ? flattenedLinks[activeIndex + 1] : null;
+	const pager = $derived.by(() => {
+		const pathname = page.url.pathname;
+		const activeIndex = allDocsLinks.findIndex((link) => link.href === pathname);
+		if (activeIndex === -1) return { prev: null, next: null };
 		return {
-			prev,
-			next,
+			prev: activeIndex > 0 ? allDocsLinks[activeIndex - 1] : null,
+			next: activeIndex < allDocsLinks.length - 1 ? allDocsLinks[activeIndex + 1] : null,
 		};
-	}
-
-	function flatten(links: NavItemWithChildren[]): NavItem[] {
-		return links
-			.reduce<NavItem[]>((flat, link) => {
-				return flat.concat(link.items?.length ? flatten(link.items) : link);
-			}, [])
-			.filter((link) => !link?.disabled);
-	}
-
-	$: pager = getPagerForDoc($page.params.slug);
+	});
 </script>
 
-<div class="flex flex-row items-center justify-between">
-	{#if pager?.prev?.href}
-		<Button href={pager.prev.href} variant="outline">
-			<Icons.chevronLeft class="mr-2 h-4 w-4" />
+<div class="flex items-center justify-between mt-12 pt-6 border-t">
+	{#if pager.prev?.href}
+		<a href={pager.prev.href} class="inline-flex items-center gap-1 text-sm font-medium text-[#4d9375] hover:underline">
+			<ChevronLeft class="h-4 w-4" />
 			{pager.prev.title}
-		</Button>
+		</a>
+	{:else}
+		<div></div>
 	{/if}
-	{#if pager?.next?.href}
-		<Button href={pager.next.href} variant="outline" class="ml-auto">
+	{#if pager.next?.href}
+		<a href={pager.next.href} class="inline-flex items-center gap-1 text-sm font-medium text-[#4d9375] hover:underline ml-auto">
 			{pager.next.title}
-			<Icons.chevronRight class="ml-2 h-4 w-4" />
-		</Button>
+			<ChevronRight class="h-4 w-4" />
+		</a>
 	{/if}
 </div>

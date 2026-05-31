@@ -5,7 +5,7 @@
 
 import { ComponentRecord } from '../types/index.js';
 import { ExtractedSymbol } from './KiCadSymbolExtractor.js';
-import logger from '../../logging.js';
+import logger from '../../utils/logging.js';
 
 /**
  * Options for controlling symbol conversion

@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { LIBRARY_SEPARATOR } from '../constants.js';
-import logger from '../logging.js';
+import { LIBRARY_SEPARATOR } from '../utils/constants.js';
+import logger from '../utils/logging.js';
 import type {
     KicadFootprintIR,
     SourceLocation,

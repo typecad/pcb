@@ -56,14 +56,16 @@ let via = pcb.via({
 ```typescript
 // Define power requirements
 let mcu = new Component({ /* ... */ });
-mcu.pin("VCC").powerInfo = { 
+mcu.pin(8, { powerInfo: { 
   minimum_voltage: 3.0, 
   maximum_voltage: 3.6, 
   current: 0.25 
-};
+}});
 
 // Automatic power compatibility checking
 let power_supply = new Power({ 
+  power: mcu.pin(8),
+  gnd: mcu.pin(4),
   voltage: 3.3, 
   current: 1.0,
   direction: "output" 

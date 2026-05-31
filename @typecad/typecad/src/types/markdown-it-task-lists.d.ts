@@ -1,5 +1,4 @@
 declare module '@hackmd/markdown-it-task-lists' {
-    import MarkdownIt from 'markdown-it';
-    const taskList: MarkdownIt.PluginWithOptions;
+    const taskList: import('markdown-it').PluginWithOptions;
     export default taskList;
 } 

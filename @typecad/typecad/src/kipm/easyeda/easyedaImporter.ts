@@ -37,7 +37,7 @@ function parseObjVertices(objText: string) {
     return vertices;
 }
 
-import logger from '../../logging.js';
+import logger from '../../utils/logging.js';
 import type { EasyedaRawData } from '../types.js';
 import type LcscComponent from '../LcscComponent.js';
 import { EasyedaApi } from "./easyedaApi.js";

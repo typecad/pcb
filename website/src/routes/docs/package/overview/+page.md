@@ -1,7 +1,5 @@
 <script lang="ts">
     import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
-    import { buttonVariants } from "$lib/components/ui/button";
-    import ChevronRight from "lucide-svelte/icons/chevron-right";
     let { data }: { data: PageData } = $props();
 </script>
 
@@ -58,12 +56,3 @@ You can track verified working designs and know 100% that block of code works, a
 Hardware design can be complicated. The ability to write your own tools that can hook directly into the codebase is a huge advantage. With programmatic access to all the components, pins, nets and everything else, complicated board analysis can be done. 
 
 You could write a script that takes the finished KiCAD PCB, generates a BOM, runs DRC, checks if the repo is dirty, and packages any files needed to send to your fab.
-
-<div class="relative">
-<br/>
-<br/>
-<br/>
-    <p class="absolute right-0">
-       <a href="/docs/package/tooling" class={buttonVariants({ variant: "outline" })}>Tooling<ChevronRight /></a>
-    </p>
-</div>

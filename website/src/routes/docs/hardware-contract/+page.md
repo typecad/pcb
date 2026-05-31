@@ -1,7 +1,5 @@
 <script lang="ts">
     import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
-    import { buttonVariants } from "$lib/components/ui/button";
-    import ChevronRight from "lucide-svelte/icons/chevron-right";
     let { data }: { data: PageData } = $props();
 </script>
 
@@ -45,7 +43,7 @@ pcb.net(mcu.pin(7), sensor.SCL);
 
 // After create, export the contract
 pcb.create(mcu, sensor);
-const contract = pcb.contract({ mcu: mcu });
+pcb.contract({ mcuReference: mcu.reference });
 ```
 </ScrollArea>
 
@@ -55,26 +53,37 @@ const contract = pcb.contract({ mcu: mcu });
 
 ```json
 {
-  "version": "1.0",
+  "version": 1,
   "mcu": {
-    "package": "ATtiny3227",
-    "driver": "megaTinyCore"
+    "symbol": "MCU_Microchip_ATtiny:ATtiny3227-M",
+    "reference": "U1",
+    "value": "",
+    "footprint": "Package_DFN_QFN:QFN-20-1EP_4x4mm_P0.5mm",
+    "mpn": "",
+    "datasheet": "",
+    "description": ""
   },
-  "connectedPins": [
-    {
-      "pin": 5,
-      "boardPin": "PB0",
+  "connectedPins": {
+    "5": {
+      "pinName": "PA0",
+      "pinType": "bidirectional",
+      "boardName": "PB0",
       "net": "SDA",
-      "peripheral": "I2C"
+      "externalComponents": []
     },
-    {
-      "pin": 7,
-      "boardPin": "PB2",
+    "7": {
+      "pinName": "PA2",
+      "pinType": "bidirectional",
+      "boardName": "PB2",
       "net": "SCL",
-      "peripheral": "I2C"
+      "externalComponents": []
     }
-  ],
-  "availablePeripherals": ["I2C", "SPI", "UART"]
+  },
+  "availablePeripherals": {
+    "i2c": true,
+    "spi": false,
+    "uart": false
+  }
 }
 ```
 </ScrollArea>
@@ -99,11 +108,3 @@ The `typehal` property on `Component` provides the metadata needed for contract 
 
 The hardware contract is designed to work with TypeHAL, a firmware generation tool that can take the contract JSON and produce initialization code for your MCU. This enables a seamless flow from hardware design to firmware development.
 
-<div class="relative">
-<br/>
-<br/>
-<br/>
-    <p class="absolute right-0">
-       <a href="/docs/ai" class={buttonVariants({ variant: "outline" })}>AI Notes<ChevronRight /></a>
-    </p>
-</div>

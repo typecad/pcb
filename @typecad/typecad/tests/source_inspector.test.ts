@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
-import { inspectSource } from '../src/source_inspector.js'
+import { inspectSource } from '../src/utils/source_inspector.js'
 
 describe('inspectSource', () => {
   const tmpDir = path.join(os.tmpdir(), `typecad-inspector-test-${Date.now()}`)

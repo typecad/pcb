@@ -4,7 +4,7 @@ import type { ISchematicNode } from '../types/schematic_types.js';
 import { Schematic } from '../schematic.js';
 import { IVia } from './pcb_interfaces.js';
 import { normalizeNetName } from './pcb_utils.js';
-import logger from '../logging.js';
+import logger from '../utils/logging.js';
 
 export interface NetMergeResult {
     allNets: SExpr[];

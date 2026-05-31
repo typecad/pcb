@@ -16,7 +16,7 @@ import {
     IOutline
 } from './pcb_interfaces.js';
 import { PadResolver } from '../routing/shared/pad_resolver.js';
-import logger from '../logging.js';
+import logger from '../utils/logging.js';
 import type { BoardBounds } from './pcb_routing_calculations.js';
 import { TrackBuilder } from './pcb_track_builder.js';
 import { RoutingGrid } from '../routing/shared/routing_grid.js';

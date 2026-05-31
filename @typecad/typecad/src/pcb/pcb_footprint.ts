@@ -4,8 +4,9 @@ import type { SExpr } from "../sexpr/types.js";
 import type { SexprNode } from "../types/sexpr_types.js";
 import { generateUuid, formatSourceInfoForProperty, getErrorMessage } from "./pcb_utils.js";
 import { mapLayerToSide, transformSexprLayers, mirrorChamferDirection } from "./pcb_layer_utils.js";
-import { BoardCreationError } from '../errors.js';
+import { BoardCreationError } from '../utils/errors.js';
 import type { INetResolution } from "./pcb_interfaces.js";
+import { loadFootprintLib } from "./component_footprint_loader.js";
 
 function stringifyTags(node: SExpr[]): void {
     if (node.length > 0 && Sym.isSym(node[0])) {
@@ -419,7 +420,11 @@ export function updateFootprintNode(node: SexprNode, component: Component, resol
 export function createFootprintNode(component: Component, resolveNet: (ref: string, pin: string, uuid?: string, map?: Map<string, number>) => INetResolution, boardNetNameToCodeMap?: Map<string, number>): SexprNode {
     let footprint_contents: string;
     try {
-        footprint_contents = component.footprint_lib(component.footprint!);
+        try {
+            footprint_contents = component.footprint_lib(component.footprint!);
+        } catch {
+            footprint_contents = loadFootprintLib(component.footprint!, component.reference || '', component.value || '', undefined);
+        }
     } catch (e: unknown) {
         throw new BoardCreationError(`[${component.reference || 'Unknown'}, ${component.value || 'Unknown'}, ${component.footprint}] Failed to create footprint node. ${getErrorMessage(e)}`);
     }

@@ -1,7 +1,5 @@
 <script lang="ts">
     import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
-    import { buttonVariants } from "$lib/components/ui/button";
-    import ChevronRight from "lucide-svelte/icons/chevron-right";
     let { data }: { data: PageData } = $props();
 </script>
 
@@ -80,11 +78,3 @@ The most common use case is creating [packages](/docs/package/overview). You can
 
 If you have an existing KiCAD project, you can import it into typeCAD to get the benefits of code-based design while preserving your existing layout.
 
-<div class="relative">
-<br/>
-<br/>
-<br/>
-    <p class="absolute right-0">
-       <a href="/docs/hardware-contract" class={buttonVariants({ variant: "outline" })}>Hardware Contract<ChevronRight /></a>
-    </p>
-</div>

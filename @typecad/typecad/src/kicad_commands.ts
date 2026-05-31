@@ -1,7 +1,8 @@
 import { execFile, execFileSync } from 'node:child_process';
 import { promisify } from 'node:util';
+import { resolve } from 'node:path';
 import { KiCAD } from './kicad.js';
-import { KiCadNotFoundError, KiCadCommandError } from './errors.js';
+import { KiCadNotFoundError, KiCadCommandError } from './utils/errors.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -11,12 +12,21 @@ export interface KiCADCommandOptions {
     timeout?: number;
 }
 
-function buildKiCADArgs(command: string, args: string[]): { executable: string; execArgs: string[] } {
+const HAS_PATH_SEP = /[/\\]/;
+const HAS_KICAD_EXT = /\.(?:kicad_pcb|kicad_sch|kicad_mod|kicad_sym|pretty|kicad_pro)$/;
+
+function maybeResolve(arg: string): string {
+    if (arg.startsWith('-')) return arg;
+    if (HAS_PATH_SEP.test(arg) || HAS_KICAD_EXT.test(arg)) return resolve(arg);
+    return arg;
+}
+
+export function buildKiCADArgs(command: string, args: string[]): { executable: string; execArgs: string[] } {
     if (KiCAD.isFlatpak) {
-        const innerCommand = `kicad-cli ${command} ${args.map(a => shellEscape(a)).join(' ')}`;
+        const resolvedArgs = args.map(maybeResolve);
         return {
             executable: 'flatpak',
-            execArgs: ['run', '--command=sh', 'org.kicad.kicad', '-c', innerCommand]
+            execArgs: ['run', '--command=kicad-cli', 'org.kicad.KiCad', command, ...resolvedArgs]
         };
     } else {
         const cliExecutable = KiCAD.cliPath || 'kicad-cli';
@@ -25,11 +35,6 @@ function buildKiCADArgs(command: string, args: string[]): { executable: string; 
             execArgs: [command, ...args]
         };
     }
-}
-
-function shellEscape(arg: string): string {
-    if (/^[a-zA-Z0-9_\-./:=]+$/.test(arg)) return arg;
-    return `'${arg.replace(/'/g, "'\\''")}'`;
 }
 
 /**
@@ -46,16 +51,14 @@ export async function executeKiCADCommand(
             execFileSync(executable, execArgs, {
                 cwd: options.cwd,
                 stdio: 'inherit',
-                timeout: options.timeout,
-                shell: KiCAD.isFlatpak
+                timeout: options.timeout
             });
             return '';
         } else {
             const result = await execFileAsync(executable, execArgs, {
                 cwd: options.cwd,
                 timeout: options.timeout,
-                encoding: 'utf8',
-                shell: KiCAD.isFlatpak
+                encoding: 'utf8'
             });
             return result.stdout;
         }
@@ -79,8 +82,7 @@ export function executeKiCADCommandSync(
             execFileSync(executable, execArgs, {
                 cwd: options.cwd,
                 stdio: 'inherit',
-                timeout: options.timeout,
-                shell: KiCAD.isFlatpak
+                timeout: options.timeout
             });
             return '';
         } else {
@@ -88,8 +90,7 @@ export function executeKiCADCommandSync(
                 cwd: options.cwd,
                 encoding: 'utf8',
                 timeout: options.timeout,
-                stdio: ['pipe', 'pipe', 'pipe'],
-                shell: KiCAD.isFlatpak
+                stdio: ['pipe', 'pipe', 'pipe']
             });
         }
     } catch (error) {

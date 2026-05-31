@@ -3,7 +3,7 @@ import chalk from "chalk";
 import { create_project } from "./create_project.js";
 
 import type { ProjectAnswers } from '../types.js';
-import logger from '../../logging.js';
+import logger from '../../utils/logging.js';
 
 let answers: Partial<ProjectAnswers> = {};
 process.on("uncaughtException", (error) => {

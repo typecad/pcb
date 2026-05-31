@@ -1,9 +1,9 @@
 import { Pin } from "./pin.js";
-import { DEFAULT_NET_PREFIX } from './constants.js';
+import { DEFAULT_NET_PREFIX } from './utils/constants.js';
 import type { ISchematicNode } from "./types/schematic_types.js";
 import { renderNets } from "./renderers/sexp_renderers.js";
 import type { Component } from './component.js';
-import { TypeCadError } from './errors.js';
+import { TypeCadError } from './utils/errors.js';
 
 export interface INetConnectionInfo {
     reference: string;

@@ -1,8 +1,8 @@
 import { IPcbBoardContext } from './pcb_board_context.js';
 import { generateUuid, formatCallSite } from './pcb_utils.js';
 import { IVia, IGeneratedElement, IPowerInfo, ITrackDetails, IViaPowerInfo, IGrLine } from './pcb_interfaces.js';
-import logger from '../logging.js';
-import { RoutingError } from '../errors.js';
+import logger from '../utils/logging.js';
+import { RoutingError } from '../utils/errors.js';
 import { calculateMinTraceWidth, calculateMinViaSize as calculateMinimumViaSize } from './pcb_routing_calculations.js';
 import { getCallSite } from '../utils/stack_trace.js';
 import { validateFinite, validateNonNegative } from '../utils/numeric_validation.js';

@@ -1,7 +1,7 @@
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promises as fs } from 'node:fs';
-import logger from '../../logging.js';
+import logger from '../../utils/logging.js';
 
 /**
  * Utility functions for cache directory management

@@ -1,7 +1,5 @@
 <script lang="ts">
     import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
-    import { buttonVariants } from "$lib/components/ui/button";
-    import ChevronRight from "lucide-svelte/icons/chevron-right";
     let { data }: { data: PageData } = $props();
 </script>
 
@@ -48,12 +46,3 @@ typecad add package --component=true --name=resistor_package --jlcpcb=true --c=C
 </ScrollArea>
 
 The above is the minimum to run automatically.
-
-<div class="relative">
-<br/>
-<br/>
-<br/>
-    <p class="absolute right-0">
-       <a href="/docs/package/structure" class={buttonVariants({ variant: "outline" })}>Structure<ChevronRight /></a>
-    </p>
-</div>

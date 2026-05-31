@@ -10,7 +10,7 @@ import { autoroute } from './pcb_autoroute.js';
 import { autorouteBatch } from './pcb_autoroute_batch.js';
 import { IPcbBoardContext } from './pcb_board_context.js';
 import { PcbInternalState } from './pcb_state.js';
-import logger from '../logging.js';
+import logger from '../utils/logging.js';
 
 function isSchematicNetDefinition(value: unknown): value is ISchematicNetDefinition {
     return Boolean(

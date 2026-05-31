@@ -1,5 +1,5 @@
 import type { CodeMetadata, LegacyCodeMetadata } from './types.js';
-import logger from '../logging.js';
+import logger from '../utils/logging.js';
 
 /** Prefix identifying the new stable codec format */
 const PREFIX = 'typecad:v1:';

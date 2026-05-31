@@ -1,22 +1,22 @@
 {
-  "extends": "../tsconfig.base.json",
   "compilerOptions": {
     "target": "ES2021",
     "lib": ["ES2021"],
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
-    "experimentalDecorators": true,
+    "strict": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "experimentalDecorators": false,
     "sourceMap": true,
     "declaration": true,
     "declarationMap": true,
-    "removeComments": true,
+    "removeComments": false,
     "stripInternal": true,
-    "skipLibCheck": true,
     "rootDir": "./src",
     "outDir": "./dist",
-    "paths": {
-      "@typecad/typecad-astar": ["./src/types/typecad-astar.d.ts"]
-    },
     "typeRoots": ["./src/types/", "./node_modules/@types"]
   },
   "include": [

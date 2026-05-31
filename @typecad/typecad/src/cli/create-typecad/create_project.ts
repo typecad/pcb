@@ -3,7 +3,7 @@ import path from "node:path";
 import chalk from "chalk";
 import { execFileSync } from "node:child_process";
 import type { ProjectAnswers } from '../types.js';
-import logger from '../../logging.js';
+import logger from '../../utils/logging.js';
 
 function sanitizeProjectName(name: string): string {
   if (/[;&|$`\\!#(){}[\]<>]/.test(name)) {

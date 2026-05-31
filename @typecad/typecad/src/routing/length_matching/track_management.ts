@@ -12,7 +12,7 @@ import type {
 } from '../types/length_match.js';
 
 import { chalk, isEnvDebug } from './length_matcher_helpers.js';
-import logger from '../../logging.js';
+import logger from '../../utils/logging.js';
 import type { ITrackDetails } from '../../pcb/pcb_interfaces.js';
 
 /**

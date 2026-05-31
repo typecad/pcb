@@ -1,7 +1,5 @@
 <script lang="ts">
     import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
-    import { buttonVariants } from "$lib/components/ui/button";
-    import ChevronRight from "lucide-svelte/icons/chevron-right";
     let { data }: { data: PageData } = $props();
 </script>
 
@@ -93,12 +91,3 @@ typecad.named('SCL').net(microcontroller.PB1, sensor.SCL);
 
 > [!WARNING]
 > **type**CAD merges nets with similar `Pin` connections. If you make a connection to an already connected pin, that newer net will be merged into the existing net. This will mean your `named` net may not keep the name you give it if it is merged with another net later. You'll see a warning in the build output if this happens. 
-
-<div class="relative">
-<br/>
-<br/>
-<br/>
-    <p class="absolute right-0">
-       <a href="/docs/board_layout" class={buttonVariants({ variant: "outline" })}>Board Layout<ChevronRight /></a>
-    </p>
-</div>

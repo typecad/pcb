@@ -7,6 +7,7 @@ vi.mock('../src/kicad.js', () => ({
     static path = ''
     static cliPath = ''
     static isFlatpak = false
+    static instance = { getLibraryPaths: () => ({ symbols: '', footprints: '' }) }
   },
   kicad_cli_path: '',
   getKicadCliPath: () => '',
@@ -31,19 +32,19 @@ describe('schematic_visualizer', () => {
   })
 
   it('should still export schematic function for internal use', async () => {
-    const mod = await import('../src/schematic_visualizer.js')
+    const mod = await import('../src/renderers/schematic_visualizer.js')
     expect(mod.schematic).toBeTypeOf('function')
   })
 
   it('should handle empty schematic without throwing', async () => {
-    const { schematic } = await import('../src/schematic_visualizer.js')
+    const { schematic } = await import('../src/renderers/schematic_visualizer.js')
     const emptySchematic = new Schematic('empty_test')
 
     expect(() => schematic(emptySchematic)).not.toThrow()
   })
 
   it('should skip null and non-object entries in components', async () => {
-    const { schematic } = await import('../src/schematic_visualizer.js')
+    const { schematic } = await import('../src/renderers/schematic_visualizer.js')
     const sch = new Schematic('null_test')
 
     const comp = new Component('');

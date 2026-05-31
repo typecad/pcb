@@ -54,6 +54,7 @@
   },
   "scripts": {
     "build": "tsc",
+    "build:watch": "tsc --watch",
     "build:clean": "powershell -Command \"if (Test-Path dist) { Remove-Item -Recurse -Force dist }\" && npm run build",
     "dev": "tsx index.ts",
     "test": "vitest --run",

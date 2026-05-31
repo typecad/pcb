@@ -8,7 +8,7 @@
 
 import chalk from 'chalk';
 import { Pin } from '../pin.js';
-import logger from '../logging.js';
+import logger from '../utils/logging.js';
 import { TrackBuilder } from './pcb_track_builder.js';
 import { AStarRouter } from '../routing/router/astar_router.js';
 import { ObstacleBuilder } from '../routing/shared/obstacle_builder.js';

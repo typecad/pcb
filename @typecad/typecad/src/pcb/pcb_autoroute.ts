@@ -11,7 +11,7 @@
 import chalk from 'chalk';
 import { Component } from '../component.js';
 import { Pin } from '../pin.js';
-import { RoutingError } from '../errors.js';
+import { RoutingError } from '../utils/errors.js';
 import {
     IAutorouteOptions,
     IAutorouteResult,
@@ -31,7 +31,7 @@ import { PadResolver } from '../routing/shared/pad_resolver.js';
 import { RoutingGrid } from '../routing/shared/routing_grid.js';
 import { ObstacleBuilder } from '../routing/shared/obstacle_builder.js';
 import { DebugVisualizer } from '../routing/utils/debug_visualizer.js';
-import logger from '../logging.js';
+import logger from '../utils/logging.js';
 import { LengthMatcher } from '../routing/length_matching/length_matcher.js';
 import { configureGridResolution } from '../routing/grid_resolution_policy.js';
 

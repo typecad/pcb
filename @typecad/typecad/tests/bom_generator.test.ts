@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { generateBom } from '../src/bom-generator.js';
+import { generateBom } from '../src/renderers/bom-generator.js';
 import { Component } from '../src/component.js';
 import { createTempDir, cleanupTempDir, readTempFile } from './helpers/temp_dir.js';
 import type { BomField } from '../src/schematic.js';

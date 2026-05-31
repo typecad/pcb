@@ -3,13 +3,11 @@ import * as path from 'path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import * as crypto from 'node:crypto';
-import { tmpdir } from 'node:os';
-import { KiCAD } from '../../../kicad.js';
 import { generateDiffs } from '../../../gitdiff/core/diff-generator.js';
 import { openInBrowser } from '../../../gitdiff/utils/open.js';
 import createSpinner from '../../../gitdiff/utils/spinner.js';
 import type { ParsedArgs } from '../parser.js';
-import logger from '../../../logging.js';
+import logger from '../../../utils/logging.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -40,7 +38,8 @@ function toGitPath(localPath: string, repoRoot: string): string {
 async function resolveGitFile(rev: string, localPath: string): Promise<string> {
     const repoRoot = await getGitRepoRoot();
     const gitPath = toGitPath(localPath, repoRoot);
-    const outPath = path.join(tmpdir(), `typecad-gitdiff-${crypto.randomUUID()}-${path.basename(localPath)}`);
+    const outDir = path.dirname(path.resolve(localPath));
+    const outPath = path.join(outDir, `.typecad-gitdiff-${crypto.randomUUID()}-${path.basename(localPath)}`);
     try {
         const result = await execFileAsync('git', ['show', `${rev}:${gitPath}`], { maxBuffer: 50 * 1024 * 1024 });
         fs.writeFileSync(outPath, result.stdout);
@@ -165,16 +164,12 @@ export async function run(parsed: ParsedArgs): Promise<void> {
 
     const spinner = createSpinner({ text: 'processing files...' }).start();
     try {
-        const kicad = KiCAD.instance;
-        const resolvedCliPath = KiCAD.cliPath;
-
         const htmlFilePath = await generateDiffs({
             originalFile,
             modifiedFile,
             fullMode,
             theme,
             outputHtmlPath,
-            kicadCliPath: resolvedCliPath,
         });
 
         await openInBrowser(htmlFilePath);

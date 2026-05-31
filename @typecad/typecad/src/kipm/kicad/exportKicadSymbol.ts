@@ -14,7 +14,7 @@ import {
 import { SvgPathEllipticalArc, SvgPathMoveTo } from "../easyeda/svgPathParser.js";
 import { getMiddleArcPos } from "../arcUtils.js";
 import { computeArc } from "./exportKicadFootprint.js";
-import logger from '../../logging.js';
+import logger from '../../utils/logging.js';
 import {
     KiPinType,
     KiPinStyle,

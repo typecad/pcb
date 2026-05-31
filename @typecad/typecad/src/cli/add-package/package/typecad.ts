@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import chalk from 'chalk';
 import type { PackageRenderData } from '../../types.js';
-import logger from '../../../logging.js';
+import logger from '../../../utils/logging.js';
 
 function renderComponent(data: PackageRenderData) {
   const componentImport = data.component_name

@@ -17,7 +17,7 @@ import {
 import { ObstacleBuilder } from '../routing/shared/obstacle_builder.js';
 import { PadResolver } from '../routing/shared/pad_resolver.js';
 import { pinToIdentifier } from './pcb_routing_helpers.js';
-import logger from '../logging.js';
+import logger from '../utils/logging.js';
 import {
     debugLog,
     isAutorouteResultRouteItem,

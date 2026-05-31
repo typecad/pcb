@@ -272,4 +272,155 @@ describe('UnitConverter', () => {
       expect(UnitConverter.normalizeValue(100, 'units', 'unknown')).toBeCloseTo(100);
     });
   });
+
+  describe('convertCapacitance', () => {
+    it('should convert from pF to nF', () => {
+      expect(UnitConverter.convertCapacitance({ value: 1000, unit: 'pF', originalText: '1000pF' }, 'nF')).toBeCloseTo(1);
+    });
+
+    it('should convert from nF to µF', () => {
+      expect(UnitConverter.convertCapacitance({ value: 100, unit: 'nF', originalText: '100nF' }, 'µF')).toBeCloseTo(0.1);
+    });
+
+    it('should convert from µF to mF', () => {
+      expect(UnitConverter.convertCapacitance({ value: 10, unit: 'µF', originalText: '10µF' }, 'mF')).toBeCloseTo(0.01);
+    });
+
+    it('should convert from mF to F', () => {
+      expect(UnitConverter.convertCapacitance({ value: 5, unit: 'mF', originalText: '5mF' }, 'F')).toBeCloseTo(0.005);
+    });
+
+    it('should convert from F to pF', () => {
+      expect(UnitConverter.convertCapacitance({ value: 1, unit: 'F', originalText: '1F' }, 'pF')).toBeCloseTo(1e12);
+    });
+
+    it('should convert from uF to nF (alternate µ)', () => {
+      expect(UnitConverter.convertCapacitance({ value: 1, unit: 'uF', originalText: '1uF' }, 'nF')).toBeCloseTo(1000);
+    });
+  });
+
+  describe('convertResistance', () => {
+    it('should convert from kΩ to Ω', () => {
+      expect(UnitConverter.convertResistance({ value: 4.7, unit: 'kΩ', originalText: '4.7kΩ' }, 'Ω')).toBeCloseTo(4700);
+    });
+
+    it('should convert from MΩ to kΩ', () => {
+      expect(UnitConverter.convertResistance({ value: 1, unit: 'MΩ', originalText: '1MΩ' }, 'kΩ')).toBeCloseTo(1000);
+    });
+
+    it('should convert from GΩ to MΩ', () => {
+      expect(UnitConverter.convertResistance({ value: 2.2, unit: 'GΩ', originalText: '2.2GΩ' }, 'MΩ')).toBeCloseTo(2200);
+    });
+
+    it('should convert from mΩ to Ω', () => {
+      expect(UnitConverter.convertResistance({ value: 500, unit: 'mΩ', originalText: '500mΩ' }, 'Ω')).toBeCloseTo(0.5);
+    });
+
+    it('should convert from Ω to mΩ', () => {
+      expect(UnitConverter.convertResistance({ value: 1, unit: 'Ω', originalText: '1Ω' }, 'mΩ')).toBeCloseTo(1000);
+    });
+  });
+
+  describe('convertInductance', () => {
+    it('should convert from mH to µH', () => {
+      expect(UnitConverter.convertInductance({ value: 1, unit: 'mH', originalText: '1mH' }, 'µH')).toBeCloseTo(1000);
+    });
+
+    it('should convert from µH to nH', () => {
+      expect(UnitConverter.convertInductance({ value: 10, unit: 'µH', originalText: '10µH' }, 'nH')).toBeCloseTo(10000);
+    });
+
+    it('should convert from nH to H', () => {
+      expect(UnitConverter.convertInductance({ value: 100, unit: 'nH', originalText: '100nH' }, 'H')).toBeCloseTo(100e-9);
+    });
+
+    it('should convert from uH to nH (alternate µ)', () => {
+      expect(UnitConverter.convertInductance({ value: 1, unit: 'uH', originalText: '1uH' }, 'nH')).toBeCloseTo(1000);
+    });
+
+    it('should convert from H to mH', () => {
+      expect(UnitConverter.convertInductance({ value: 1, unit: 'H', originalText: '1H' }, 'mH')).toBeCloseTo(1000);
+    });
+  });
+
+  describe('convertVoltage', () => {
+    it('should convert from kV to V', () => {
+      expect(UnitConverter.convertVoltage({ value: 1, unit: 'kV', originalText: '1kV' }, 'V')).toBeCloseTo(1000);
+    });
+
+    it('should convert from mV to V', () => {
+      expect(UnitConverter.convertVoltage({ value: 500, unit: 'mV', originalText: '500mV' }, 'V')).toBeCloseTo(0.5);
+    });
+
+    it('should convert from V to mV', () => {
+      expect(UnitConverter.convertVoltage({ value: 5, unit: 'V', originalText: '5V' }, 'mV')).toBeCloseTo(5000);
+    });
+
+    it('should convert from V to kV', () => {
+      expect(UnitConverter.convertVoltage({ value: 1000, unit: 'V', originalText: '1000V' }, 'kV')).toBeCloseTo(1);
+    });
+  });
+
+  describe('getBestCapacitanceUnit', () => {
+    it('returns pF for values below 1nF', () => {
+      expect(UnitConverter.getBestCapacitanceUnit(100e-12)).toBe('pF');
+    });
+
+    it('returns nF for values below 1µF', () => {
+      expect(UnitConverter.getBestCapacitanceUnit(47e-9)).toBe('nF');
+    });
+
+    it('returns µF for values below 1mF', () => {
+      expect(UnitConverter.getBestCapacitanceUnit(10e-6)).toBe('µF');
+    });
+
+    it('returns mF for values below 1F', () => {
+      expect(UnitConverter.getBestCapacitanceUnit(0.5)).toBe('mF');
+    });
+
+    it('returns F for values >= 1F', () => {
+      expect(UnitConverter.getBestCapacitanceUnit(1)).toBe('F');
+      expect(UnitConverter.getBestCapacitanceUnit(100)).toBe('F');
+    });
+  });
+
+  describe('getBestResistanceUnit', () => {
+    it('returns mΩ for values below 1Ω', () => {
+      expect(UnitConverter.getBestResistanceUnit(0.5)).toBe('mΩ');
+    });
+
+    it('returns Ω for values below 1kΩ', () => {
+      expect(UnitConverter.getBestResistanceUnit(470)).toBe('Ω');
+    });
+
+    it('returns kΩ for values below 1MΩ', () => {
+      expect(UnitConverter.getBestResistanceUnit(10e3)).toBe('kΩ');
+    });
+
+    it('returns MΩ for values below 1GΩ', () => {
+      expect(UnitConverter.getBestResistanceUnit(4.7e6)).toBe('MΩ');
+    });
+
+    it('returns GΩ for values >= 1GΩ', () => {
+      expect(UnitConverter.getBestResistanceUnit(1e9)).toBe('GΩ');
+    });
+  });
+
+  describe('getBestInductanceUnit', () => {
+    it('returns nH for values below 1µH', () => {
+      expect(UnitConverter.getBestInductanceUnit(100e-9)).toBe('nH');
+    });
+
+    it('returns µH for values below 1mH', () => {
+      expect(UnitConverter.getBestInductanceUnit(47e-6)).toBe('µH');
+    });
+
+    it('returns mH for values below 1H', () => {
+      expect(UnitConverter.getBestInductanceUnit(10e-3)).toBe('mH');
+    });
+
+    it('returns H for values >= 1H', () => {
+      expect(UnitConverter.getBestInductanceUnit(1)).toBe('H');
+    });
+  });
 });

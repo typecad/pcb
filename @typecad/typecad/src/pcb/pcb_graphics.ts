@@ -10,7 +10,7 @@ import {
 import { generateUuid, formatCallSite } from './pcb_utils.js';
 import type { PcbInternalState } from './pcb_state.js';
 import fs from "node:fs";
-import logger from '../logging.js';
+import logger from '../utils/logging.js';
 import { getCallSite } from '../utils/stack_trace.js';
 
 /**

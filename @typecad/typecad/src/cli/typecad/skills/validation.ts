@@ -1,5 +1,5 @@
 import type { Skill } from './types.js';
-import logger from '../../../logging.js';
+import logger from '../../../utils/logging.js';
 
 export const validationSkills: Skill[] = [
   {

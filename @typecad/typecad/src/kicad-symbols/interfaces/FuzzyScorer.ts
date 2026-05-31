@@ -1,5 +1,5 @@
 import { ComponentRecord, ComponentScore, ParsedParameters } from '../types/index.js';
-import logger from '../../logging.js';
+import logger from '../../utils/logging.js';
 
 /**
  * Interface for the intelligent fuzzy scoring system that evaluates how well components match search criteria.

@@ -1,5 +1,5 @@
 import { SearchResult } from '../types/index.js';
-import logger from '../../logging.js';
+import logger from '../../utils/logging.js';
 
 /**
  * Interface for the main search engine that orchestrates the complete search workflow.

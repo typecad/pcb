@@ -22,7 +22,7 @@ import {
   estimateMaxAmplitude,
   estimateMaxAmplitudeOneSide,
 } from './amplitude_estimation.js';
-import logger from '../../logging.js';
+import logger from '../../utils/logging.js';
 
 // ─── Polyline construction ──────────────────────────────────────────
 

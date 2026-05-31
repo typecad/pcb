@@ -5,7 +5,7 @@ import {
     ComponentError,
     BoardCreationError,
     KiCadNotFoundError,
-} from '../src/errors.js'
+} from '../src/utils/errors.js'
 
 describe('Error hierarchy', () => {
     it('TypeCadError should have correct name and be instanceof Error', () => {

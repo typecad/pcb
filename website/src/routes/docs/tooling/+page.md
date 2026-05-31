@@ -1,7 +1,5 @@
 <script lang="ts">
     import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
-    import { buttonVariants } from "$lib/components/ui/button";
-    import ChevronRight from "lucide-svelte/icons/chevron-right";
     let { data }: { data: PageData } = $props();
 </script>
 
@@ -212,11 +210,3 @@ typecad erc
 > [!note] Global options
 > All `typecad` commands support `--json` for machine-readable output, `--help` for usage info, and `--version` to check the version.
 
-<div class="relative">
-<br/>
-<br/>
-<br/>
-    <p class="absolute right-0">
-       <a href="/docs/project-structure" class={buttonVariants({ variant: "outline" })}>Project Structure<ChevronRight /></a>
-    </p>
-</div>

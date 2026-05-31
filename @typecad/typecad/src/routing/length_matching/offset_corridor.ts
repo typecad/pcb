@@ -28,7 +28,7 @@ import {
   removeElementsFromBuilders,
   createBuilderFromFittedPattern,
 } from './track_management.js';
-import logger from '../../logging.js';
+import logger from '../../utils/logging.js';
 
 // ─── Offset corridor ────────────────────────────────────────────────
 

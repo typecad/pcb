@@ -1,7 +1,5 @@
 <script lang="ts">
     import { ScrollArea } from "$lib/components/ui/scroll-area/index.js";
-    import { buttonVariants } from "$lib/components/ui/button";
-    import ChevronRight from "lucide-svelte/icons/chevron-right";
     let { data }: { data: PageData } = $props();
 </script>
 
@@ -42,11 +40,3 @@ Inside the package folder, you'll see the following:
 ### More about the `./build` directory
 **type**CAD creates a KiCAD project that expects symbols and footprints to be in the `./build` directory. In the case of the ATtiny3227 component, it is already in the KiCAD library. If we picked a component that wasn't in the library, we would need to distribute the symbol, footprint, and 3d models along with the package. This isn't limited to just those files though; the `postinstall.js` script can be modified to do anything that may be needed. Remember that when the package is installed using `npm i typecad_package`, all the files will be in the `./node_modules/typecad_package` directory, not the `./src` directory.
 
-<div class="relative">
-<br/>
-<br/>
-<br/>
-    <p class="absolute right-0">
-       <a href="/docs/package/code" class={buttonVariants({ variant: "outline" })}>Code<ChevronRight /></a>
-    </p>
-</div>

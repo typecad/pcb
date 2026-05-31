@@ -1,7 +1,7 @@
 import { Pin } from "../pin.js";
 import { getCallSite } from '../utils/stack_trace.js';
 import { formatCallSite } from './pcb_utils.js';
-import { RoutingError } from '../errors.js';
+import { RoutingError } from '../utils/errors.js';
 
 /**
  * Convert a Pin object to a string identifier.

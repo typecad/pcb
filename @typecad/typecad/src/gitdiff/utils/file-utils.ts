@@ -3,9 +3,10 @@ import { promisify } from 'node:util';
 import * as crypto from 'node:crypto';
 import * as fs from 'fs';
 import * as path from 'path';
-import { tmpdir } from 'node:os';
 import { parse, SNode, isList } from '../../sexpr/index.js';
-import logger from '../../logging.js';
+import logger from '../../utils/logging.js';
+import { buildKiCADArgs } from '../../kicad_commands.js';
+import { getFlatpakSafeTempDir } from '../../kicad.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -218,7 +219,6 @@ function applyViewBox(svgContent: string, viewBox: string): string {
 }
 
 export async function executeKicadSvgExport(
-    kicadCliPath: string,
     layer: string,
     pcbFile: string,
     theme?: string
@@ -227,8 +227,8 @@ export async function executeKicadSvgExport(
     const tempSvgPath = createTempFilePath(`gitdiff_${pcbBasename}_`, `${layer}.svg`);
 
     try {
-        await execFileAsync(kicadCliPath, [
-            'pcb', 'export', 'svg',
+        const { executable, execArgs } = buildKiCADArgs('pcb', [
+            'export', 'svg',
             ...(theme ? ['--theme', theme] : []),
             '--drill-shape-opt', '0',
             '--cdnp',
@@ -239,6 +239,7 @@ export async function executeKicadSvgExport(
             '--output', tempSvgPath,
             pcbFile
         ]);
+        await execFileAsync(executable, execArgs);
 
         if (!fs.existsSync(tempSvgPath)) {
             return '';
@@ -252,7 +253,7 @@ export async function executeKicadSvgExport(
 
 export function createTempFilePath(prefix: string, suffix: string): string {
     const uniqueId = crypto.randomUUID();
-    return path.join(tmpdir(), `${prefix}${uniqueId}_${suffix}`);
+    return path.join(getFlatpakSafeTempDir(), `${prefix}${uniqueId}_${suffix}`);
 }
 
 export function parseHexColor(hexColor: string): { r: number; g: number; b: number } {
@@ -277,7 +278,6 @@ export function sanitizeSvg(svgContent: string): string {
 }
 
 export async function executeKicadSvgExportCached(
-    kicadCliPath: string,
     layer: string,
     pcbFile: string,
     theme?: string
@@ -285,7 +285,7 @@ export async function executeKicadSvgExportCached(
     const key = getCacheKey(pcbFile, layer, theme);
     const cached = svgCache.get(key);
     if (cached !== undefined) return cached;
-    const svg = await executeKicadSvgExport(kicadCliPath, layer, pcbFile, theme);
+    const svg = await executeKicadSvgExport(layer, pcbFile, theme);
     evictIfNeeded(svgCache);
     svgCache.set(key, svg);
     return svg;
@@ -295,7 +295,7 @@ export function cleanupTempFiles(filePaths: string[]): number {
     let cleanedCount = 0;
     for (const filePath of filePaths) {
         try {
-            if (filePath.startsWith(tmpdir()) && fs.existsSync(filePath)) {
+            if (filePath.startsWith(getFlatpakSafeTempDir()) && fs.existsSync(filePath)) {
                 fs.unlinkSync(filePath);
                 cleanedCount++;
             }

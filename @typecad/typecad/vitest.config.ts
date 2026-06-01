@@ -6,7 +6,6 @@ export default defineConfig({
     exclude: [
       '**/node_modules/**',
       '**/dist/**',
-      '**/dist-obfuscated/**',
       '**/.{idea,git,cache,output,temp}/**',
     ],
     coverage: {
@@ -21,7 +20,6 @@ export default defineConfig({
       exclude: [
         'node_modules/**',
         'dist/**',
-        'dist-obfuscated/**',
         'tests/**',
         '**/*.d.ts',
         '**/*.test.ts',

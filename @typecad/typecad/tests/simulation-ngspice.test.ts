@@ -1,5 +1,14 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterAll } from 'vitest';
 import { Schematic, Power, Component } from '../src/index.js';
+import fs from 'fs';
+
+const outputFiles = ['vdiv_equal.out', 'vdiv_netlist.out', 'vdiv_unequal.out'];
+
+afterAll(() => {
+    for (const f of outputFiles) {
+        if (fs.existsSync(f)) fs.unlinkSync(f);
+    }
+});
 
 class Resistor extends Component {
     constructor(opts: { value?: string; simulation?: { include: boolean; model?: string } } = {}) {
@@ -80,7 +89,6 @@ describe('Voltage Divider ngspice Simulation', () => {
         const result = typecad.simulate(vin).op();
 
         if (result !== null) {
-            const fs = require('fs');
             const netlist = fs.readFileSync('./build/vdiv_netlist.cir', 'utf-8');
             expect(netlist).toContain(r1.reference);
             expect(netlist).toContain(r2.reference);

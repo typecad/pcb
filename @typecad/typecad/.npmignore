@@ -8,7 +8,6 @@
 .vscode/
 .claude/
 node_modules/
-dist-obfuscated/
 docs/
 tests/
 *.test.ts

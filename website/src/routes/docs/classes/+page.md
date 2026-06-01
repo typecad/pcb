@@ -61,8 +61,50 @@ Options for the `Component` class are:
 - _simulation_ — an object with simulation data `{ include: true, model: 'ngspice-model' }`
 - _pcb_ — position on the board `{ x, y, rotation }`
 <!-- - _typehal_ — metadata for hardware contract generation -->
-- _text_ — text positioning for reference and value labels
-- _fab_ — fabrication layer text positioning
+- _text_ — array of arbitrary text entries on the board, each with `property`, `text`, position, and styling
+- _fab_ — fabrication layer text entry; accepts a positioning object or `[text, positioning]` tuple
+- _referenceLayout_ — controls reference designator text position and style (defaults to **F.SilkS** layer)
+- _valueLayout_ — controls value text position and style (defaults to **F.Fab** layer)
+- _fabLayout_ — controls fabrication text position and style (defaults to **F.Fab** layer); `text` defaults to `${REFERENCE}` if omitted
+
+All three layout properties accept an `ITextPositioning` object and can be set at construction or assigned after creation:
+
+<ScrollArea orientation="both">
+
+```ts
+import { Component } from '@typecad/typecad';
+
+let r1 = new Component({
+  footprint: 'Resistor_SMD:R_0603_1608Metric',
+  reference: 'R1',
+  referenceLayout: { x: 0, y: -1.5, rotation: 90, width: 0.8, height: 0.8 },
+  valueLayout: { x: 0, y: 1.5, width: 0.6, height: 0.6 },
+  fabLayout: { x: 0, y: 0, text: 'R1' },
+});
+
+// Or assign after creation:
+r1.referenceLayout = { x: 2, y: -1, rotation: 0 };
+```
+</ScrollArea>
+
+### `ITextPositioning` Fields
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `x` | `number` | Yes | X position in mm |
+| `y` | `number` | Yes | Y position in mm |
+| `rotation` | `number` | No | Rotation in degrees |
+| `layer` | `string` | No | KiCad layer name |
+| `width` | `number` | No | Font width in mm |
+| `height` | `number` | No | Font height in mm |
+| `fontSize` | `number` | No | Font size |
+| `thickness` | `number` | No | Text stroke thickness |
+| `bold` | `boolean` | No | Bold font style |
+| `italic` | `boolean` | No | Italic font style |
+| `justify` | `object` | No | `{ horizontal?: 'left'\|'right'\|'center', vertical?: 'top'\|'bottom'\|'middle', mirror?: boolean }` |
+| `show` | `boolean` | No | Visibility toggle |
+
+`fabLayout` extends `ITextPositioning` with an optional `text` field (`string`) that defaults to `${REFERENCE}`.
 
 <br >
 

@@ -14,7 +14,6 @@
     "declaration": true,
     "declarationMap": true,
     "removeComments": false,
-    "stripInternal": true,
     "rootDir": "./src",
     "outDir": "./dist",
     "typeRoots": ["./src/types/", "./node_modules/@types"]
@@ -22,5 +21,5 @@
   "include": [
     "src/**/*.ts"
   ],
-  "exclude": ["node_modules", "dist", "dist-obfuscated", "src/gitdiff/viewer", "**/__tests__/**", "**/*.test.ts", "**/*.spec.ts"]
+  "exclude": ["node_modules", "dist", "src/gitdiff/viewer", "**/__tests__/**", "**/*.test.ts", "**/*.spec.ts"]
 }

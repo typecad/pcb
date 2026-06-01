@@ -222,6 +222,44 @@ export default defineConfig({
     return;
   }
 
+  try {
+    fs.writeFileSync(
+      `${process.cwd()}/${answers.name}/hw/AGENTS.md`,
+      `# typeCAD Project
+
+This is a typeCAD project. typeCAD is a TypeScript framework for programmatically
+creating PCB designs that output KiCad files.
+
+## AI Reference: typecad skills
+
+The \`typecad\` CLI includes a knowledge lookup system. Use it before writing typeCAD code:
+
+- \`npx typecad skills\` — list all available topics
+- \`npx typecad skills get <name>\` — detailed API patterns and examples for a topic
+- \`npx typecad skills get <name> --json\` — machine-readable JSON output
+
+Use skills to look up: components, pins, nets, power, buses, passives (resistor,
+capacitor, inductor, diode, LED, fuse, connector, testpoint, mounting-hole, net-tie),
+PCB layout (tracks, vias, zones, keepout, outlines, autoroute, placement),
+graphics, text, validation (ERC, DRC), packages, contracts, BOM, simulation,
+config, KiCad integration, and project commands.
+
+## npm Scripts
+
+- \`npm run build\` — generate KiCad files from typeCAD source
+- \`npm run add_component\` — add a component interactively
+- \`npm run add_package\` — create a reusable component package
+- \`npm run kicad-search\` — search KiCad symbol libraries
+`
+    );
+    logger.log(chalk.green("+"), "AGENTS.md created for AI tool discoverability");
+  } catch (error) {
+    logger.log(
+      chalk.red(`- ERROR writing ./${answers.name}/hw/AGENTS.md ${error}`)
+    );
+    return;
+  }
+
   // add scripts to package.json
   let package_json;
   try {

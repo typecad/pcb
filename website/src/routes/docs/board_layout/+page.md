@@ -30,6 +30,61 @@ pcb.create();
 
 `side` defaults to `'front'` and can be set to `'back'` to place a component on the bottom of the board.
 
+## Component Text Positioning
+
+Each component has silkscreen and fabrication text labels (reference designator, value, and fab text). You can control their position and style using layout properties:
+
+| Property | Default Layer | Description |
+|----------|--------------|-------------|
+| `referenceLayout` | F.SilkS | Controls the reference designator text (e.g. "R1") |
+| `valueLayout` | F.Fab | Controls the value text (e.g. "1kohm") |
+| `fabLayout` | F.Fab | Controls fabrication text; `text` defaults to `${REFERENCE}` |
+
+All three accept an `ITextPositioning` object and can be set at construction or assigned later:
+
+<ScrollArea orientation="both">
+
+```ts
+import { PCB } from '@typecad/typecad';
+import { Resistor } from '@typecad/passives/0805';
+
+let pcb = new PCB('text_layout');
+let r1 = new Resistor({
+  value: '1kohm',
+  reference: 'R1',
+  referenceLayout: { x: 0, y: -1.5, rotation: 90, width: 0.8, height: 0.8 }, // [!code highlight]
+  valueLayout: { x: 0, y: 1.5, width: 0.6, height: 0.6 }, // [!code highlight]
+  fabLayout: { x: 0, y: 0, text: 'R1' }, // [!code highlight]
+});
+
+r1.pcb = { x: 10, y: 10, rotation: 0 };
+
+// Layouts can also be set after creation:
+// r1.referenceLayout = { x: 2, y: -1, rotation: 0 };
+
+pcb.create();
+```
+</ScrollArea>
+
+### `ITextPositioning` Fields
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `x` | `number` | Yes | X position in mm |
+| `y` | `number` | Yes | Y position in mm |
+| `rotation` | `number` | No | Rotation in degrees |
+| `layer` | `string` | No | KiCad layer name |
+| `width` | `number` | No | Font width in mm |
+| `height` | `number` | No | Font height in mm |
+| `fontSize` | `number` | No | Font size |
+| `thickness` | `number` | No | Text stroke thickness |
+| `bold` | `boolean` | No | Bold font style |
+| `italic` | `boolean` | No | Italic font style |
+| `justify` | `object` | No | `{ horizontal?: 'left'\|'right'\|'center', vertical?: 'top'\|'bottom'\|'middle', mirror?: boolean }` |
+| `show` | `boolean` | No | Visibility toggle |
+
+`fabLayout` additionally accepts an optional `text` field (`string`) that defaults to `${REFERENCE}` when omitted.
+
 ## Group or Place Components
 
 In KiCAD, you can group components together. They will move around together when you click and drag anywhere in the group. There is also a labeled box around the components.

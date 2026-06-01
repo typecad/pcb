@@ -73,7 +73,7 @@
     "test:coverage": "vitest run --coverage"
   },
   "author": "typeCAD",
-  "license": "SEE LICENSE IN LICENSE",
+  "license": "Apache-2.0",
   "dependencies": {
     "@hackmd/markdown-it-task-lists": "^2.1.4",
     "@inquirer/prompts": "^8.4.2",

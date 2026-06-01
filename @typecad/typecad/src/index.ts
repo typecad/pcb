@@ -1,5 +1,6 @@
 export { defineConfig, type TypeCADConfig } from './config.js'
 export { Component, type ComponentInit, IComponent, ITypeHalInfo } from './component.js'
+export type { ITextPositioning } from './pcb/pcb_interfaces.js'
 export { Schematic } from './schematic.js'
 export { Pin } from './pin.js'
 export { I2C, UART, USB, Power } from './buses.js'

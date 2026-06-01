@@ -1,0 +1,24 @@
+Title: * ngspice netlist for vdiv_equal
+Date: Mon Jun  1 07:02:14  2026
+Command: ngspice-44.2, Build Jan 11 2025   14:28:27
+Plotname: Operating Point
+Flags: real
+No. Variables: 7
+No. Points: 1
+Variables:
+	0	r1:power	power
+	1	v(in)	voltage
+	2	i(r1)	current
+	3	i(r2)	current
+	4	r2:power	power
+	5	i(v1)	current
+	6	v(vdiv)	voltage
+Values:
+ 0	6.250000000000002e-04
+	5.000000000000000e+00
+	2.500000000000000e-04
+	2.500000000000000e-04
+	6.250000000000000e-04
+	-2.500000000000000e-04
+	2.500000000000000e+00
+

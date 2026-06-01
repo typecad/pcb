@@ -174,6 +174,89 @@ describe('processFootprintItem', () => {
         processFootprintItem(item as SexprNode, comp, defaultResolveNet);
         expect(JSON.stringify(item)).toBe(original);
     });
+
+    it('applies referenceLayout to fp_text reference', () => {
+        const comp = new Component({
+            footprint: 'Resistor_SMD:R_0603', reference: 'R1',
+            referenceLayout: { x: 3, y: -2, rotation: 90, width: 1.5, height: 1.5, thickness: 0.2 },
+        });
+        const text: SExpr[] = ['fp_text', 'reference', 'REF**', ['at', 0, 0, 0], ['layer', 'F.SilkS'], ['effects', ['font', ['size', 1, 1], ['thickness', 0.15]]]];
+        processFootprintItem(text as SexprNode, comp, defaultResolveNet);
+        expect(text[2]).toBe('R1');
+        const atChild = text.find((item): item is SExpr[] => Array.isArray(item) && nameOf(item[0]) === 'at')!;
+        expect(atChild[1]).toBe(3);
+        expect(atChild[2]).toBe(-2);
+        expect(atChild[3]).toBe(90);
+        const effectsChild = text.find((item): item is SExpr[] => Array.isArray(item) && nameOf(item[0]) === 'effects')!;
+        const fontChild = effectsChild.find((item): item is SExpr[] => Array.isArray(item) && nameOf(item[0]) === 'font')!;
+        const sizeChild = fontChild.find((item): item is SExpr[] => Array.isArray(item) && nameOf(item[0]) === 'size')!;
+        expect(sizeChild[1]).toBe(1.5);
+        expect(sizeChild[2]).toBe(1.5);
+        const thickChild = fontChild.find((item): item is SExpr[] => Array.isArray(item) && nameOf(item[0]) === 'thickness')!;
+        expect(thickChild[1]).toBe(0.2);
+    });
+
+    it('applies valueLayout to fp_text value', () => {
+        const comp = new Component({
+            footprint: 'Resistor_SMD:R_0603', reference: 'R1', value: '10k',
+            valueLayout: { x: 5, y: 7, rotation: 180, width: 2, height: 2 },
+        });
+        const text: SExpr[] = ['fp_text', 'value', 'VAL**', ['at', 0, 0, 0], ['layer', 'F.Fab'], ['effects', ['font', ['size', 1, 1], ['thickness', 0.15]]]];
+        processFootprintItem(text as SexprNode, comp, defaultResolveNet);
+        expect(text[2]).toBe('10k');
+        const atChild = text.find((item): item is SExpr[] => Array.isArray(item) && nameOf(item[0]) === 'at')!;
+        expect(atChild[1]).toBe(5);
+        expect(atChild[2]).toBe(7);
+        expect(atChild[3]).toBe(180);
+        const effectsChild = text.find((item): item is SExpr[] => Array.isArray(item) && nameOf(item[0]) === 'effects')!;
+        const fontChild = effectsChild.find((item): item is SExpr[] => Array.isArray(item) && nameOf(item[0]) === 'font')!;
+        const sizeChild = fontChild.find((item): item is SExpr[] => Array.isArray(item) && nameOf(item[0]) === 'size')!;
+        expect(sizeChild[1]).toBe(2);
+        expect(sizeChild[2]).toBe(2);
+    });
+
+    it('applies fabLayout to fp_text user ${REFERENCE} via fab sync', () => {
+        const comp = new Component({
+            footprint: 'Resistor_SMD:R_0603', reference: 'R1',
+            fabLayout: { x: 4, y: 6, rotation: 45, width: 1.2, height: 1.2, thickness: 0.25, text: 'CUSTOM_FAB' },
+        });
+        const text: SExpr[] = ['fp_text', 'user', '${REFERENCE}', ['at', 0, 0, 0], ['layer', 'F.Fab'], ['effects', ['font', ['size', 1, 1], ['thickness', 0.15]]]];
+        processFootprintItem(text as SexprNode, comp, defaultResolveNet);
+        expect(text[2]).toBe('CUSTOM_FAB');
+        const atChild = text.find((item): item is SExpr[] => Array.isArray(item) && nameOf(item[0]) === 'at')!;
+        expect(atChild[1]).toBe(4);
+        expect(atChild[2]).toBe(6);
+        expect(atChild[3]).toBe(45);
+        const effectsChild = text.find((item): item is SExpr[] => Array.isArray(item) && nameOf(item[0]) === 'effects')!;
+        const fontChild = effectsChild.find((item): item is SExpr[] => Array.isArray(item) && nameOf(item[0]) === 'font')!;
+        const sizeChild = fontChild.find((item): item is SExpr[] => Array.isArray(item) && nameOf(item[0]) === 'size')!;
+        expect(sizeChild[1]).toBe(1.2);
+        expect(sizeChild[2]).toBe(1.2);
+        const thickChild = fontChild.find((item): item is SExpr[] => Array.isArray(item) && nameOf(item[0]) === 'thickness')!;
+        expect(thickChild[1]).toBe(0.25);
+    });
+
+    it('applies referenceLayout layer override', () => {
+        const comp = new Component({
+            footprint: 'Resistor_SMD:R_0603', reference: 'R1',
+            referenceLayout: { x: 0, y: 0, layer: 'F.Fab' },
+        });
+        const text: SExpr[] = ['fp_text', 'reference', 'REF**', ['at', 0, 0, 0], ['layer', 'F.SilkS'], ['effects', ['font', ['size', 1, 1], ['thickness', 0.15]]]];
+        processFootprintItem(text as SexprNode, comp, defaultResolveNet);
+        const layerChild = text.find((item): item is SExpr[] => Array.isArray(item) && nameOf(item[0]) === 'layer')!;
+        expect(layerChild[1]).toBe('F.Fab');
+    });
+
+    it('ignores layout properties when not set', () => {
+        const comp = new Component({ footprint: 'Resistor_SMD:R_0603', reference: 'R1' });
+        const text: SExpr[] = ['fp_text', 'reference', 'REF**', ['at', 5, 10, 45], ['layer', 'F.SilkS'], ['effects', ['font', ['size', 2, 2], ['thickness', 0.3]]]];
+        const originalAt = JSON.stringify(text.find((item): item is SExpr[] => Array.isArray(item) && nameOf(item[0]) === 'at'));
+        processFootprintItem(text as SexprNode, comp, defaultResolveNet);
+        expect(text[2]).toBe('R1');
+        const atChild = text.find((item): item is SExpr[] => Array.isArray(item) && nameOf(item[0]) === 'at')!;
+        expect(atChild[1]).toBe(5);
+        expect(atChild[2]).toBe(10);
+    });
 });
 
 describe('updateFootprintNode', () => {
@@ -295,5 +378,50 @@ describe('createFootprintNode', () => {
         expect(vi.mocked(loadFootprintLib)).not.toHaveBeenCalled();
 
         comp.footprint_lib = originalFootprintLib;
+    });
+
+    it('applies valueLayout to property Value node', () => {
+        const comp = new Component({
+            footprint: 'Resistor_SMD:R_0603', reference: 'R1', value: '10k',
+            valueLayout: { x: 5, y: 7, rotation: 90, width: 0.8, height: 0.8, thickness: 0.1 },
+        });
+        const prop: SExpr[] = ['property', 'Value', '10k', ['at', 0, 1.43, 0], ['layer', 'F.Fab'], ['effects', ['font', ['size', 1, 1], ['thickness', 0.15]]]];
+        processFootprintItem(prop as SexprNode, comp, defaultResolveNet);
+        const atChild = prop.find((item): item is SExpr[] => Array.isArray(item) && nameOf(item[0]) === 'at')!;
+        expect(atChild[1]).toBe(5);
+        expect(atChild[2]).toBe(7);
+        expect(atChild[3]).toBe(90);
+        const effectsChild = prop.find((item): item is SExpr[] => Array.isArray(item) && nameOf(item[0]) === 'effects')!;
+        const fontChild = effectsChild.find((item): item is SExpr[] => Array.isArray(item) && nameOf(item[0]) === 'font')!;
+        const sizeChild = fontChild.find((item): item is SExpr[] => Array.isArray(item) && nameOf(item[0]) === 'size')!;
+        expect(sizeChild[1]).toBe(0.8);
+        expect(sizeChild[2]).toBe(0.8);
+    });
+
+    it('applies referenceLayout to property Reference node', () => {
+        const comp = new Component({
+            footprint: 'Resistor_SMD:R_0603', reference: 'R1',
+            referenceLayout: { x: 3, y: -2, layer: 'F.Fab' },
+        });
+        const prop: SExpr[] = ['property', 'Reference', 'R?', ['at', 0, -1.43, 0], ['layer', 'F.SilkS'], ['effects', ['font', ['size', 1, 1], ['thickness', 0.15]]]];
+        processFootprintItem(prop as SexprNode, comp, defaultResolveNet);
+        expect(prop[2]).toBe('R1');
+        const atChild = prop.find((item): item is SExpr[] => Array.isArray(item) && nameOf(item[0]) === 'at')!;
+        expect(atChild[1]).toBe(3);
+        expect(atChild[2]).toBe(-2);
+        const layerChild = prop.find((item): item is SExpr[] => Array.isArray(item) && nameOf(item[0]) === 'layer')!;
+        expect(layerChild[1]).toBe('F.Fab');
+    });
+
+    it('does not apply layout to unrelated property nodes', () => {
+        const comp = new Component({
+            footprint: 'Resistor_SMD:R_0603', reference: 'R1',
+            valueLayout: { x: 99, y: 99 },
+        });
+        const prop: SExpr[] = ['property', 'Footprint', 'old', ['at', 0, 0, 0], ['layer', 'F.Fab']];
+        const originalAt = JSON.stringify(prop.find((item): item is SExpr[] => Array.isArray(item) && nameOf(item[0]) === 'at'));
+        processFootprintItem(prop as SexprNode, comp, defaultResolveNet);
+        const atChild = prop.find((item): item is SExpr[] => Array.isArray(item) && nameOf(item[0]) === 'at')!;
+        expect(JSON.stringify(atChild)).toBe(originalAt);
     });
 });

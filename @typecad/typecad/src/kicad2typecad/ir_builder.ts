@@ -12,7 +12,15 @@ import type {
     ReferencePropertyIR,
     CodeMetadata,
     LegacyCodeMetadata,
+    TextLayoutIR,
+    FabLayoutIR,
 } from './types.js';
+
+function getSymName(item: unknown): string {
+    if (Sym.isSym(item)) return item.name;
+    if (typeof item === 'string') return item.replace(/[`"]/g, '');
+    return '';
+}
 
 /**
  * Builds a typed KicadIR from a parsed S-expression tree.
@@ -63,7 +71,7 @@ export class KicadIRBuilder {
             const name = p.getString(1);
             return name === 'Reference';
         });
-        const reference = refPropNode?.stringValue || '?';
+        const reference = refPropNode?.getString(2) || '?';
         const referenceProperty = refPropNode
             ? this.extractPropertyPositioning(refPropNode)
             : null;
@@ -73,18 +81,9 @@ export class KicadIRBuilder {
             const name = p.getString(1);
             return name === 'Code';
         });
-        const codeMetadata = codePropNode
-            ? decodeCodeMetadata(codePropNode.stringValue)
-            : null;
-
-        // Fab text property
-        const fabTextNode = node.children('fp_text').find(t => {
-            const textType = t.getString(1);
-            const textLayer = t.child('layer')?.stringValue;
-            return textType === 'user' && textLayer === 'F.Fab';
-        });
-        const fabTextProperty = fabTextNode
-            ? this.extractTextPositioning(fabTextNode)
+        const codeValue = codePropNode?.getString(2);
+        const codeMetadata = codeValue
+            ? decodeCodeMetadata(codeValue)
             : null;
 
         // Extract UUID from the footprint's uuid child node
@@ -111,6 +110,35 @@ export class KicadIRBuilder {
             ? this.extractPropertyPositioning(valuePropNode)
             : null;
 
+        let referenceLayout: TextLayoutIR | undefined;
+        let valueLayout: TextLayoutIR | undefined;
+        let fabLayout: FabLayoutIR | undefined;
+
+        const fpTextNodes = node.children('fp_text');
+        for (const ft of fpTextNodes) {
+            const textType = ft.getString(1)?.toLowerCase();
+            if (textType === 'reference') {
+                referenceLayout = this.extractFpTextLayout(ft) ?? undefined;
+            } else if (textType === 'value') {
+                valueLayout = this.extractFpTextLayout(ft) ?? undefined;
+            } else if (textType === 'user') {
+                const textContent = ft.getString(2);
+                if (textContent === '${REFERENCE}') {
+                    const layout = this.extractFpTextLayout(ft);
+                    if (layout) fabLayout = { ...layout, text: textContent };
+                }
+            }
+        }
+
+        if (!referenceLayout && refPropNode) {
+            const propLayout = this.propertyToTextLayout(refPropNode);
+            if (propLayout) referenceLayout = propLayout;
+        }
+        if (!valueLayout && valuePropNode) {
+            const propLayout = this.propertyToTextLayout(valuePropNode);
+            if (propLayout) valueLayout = propLayout;
+        }
+
         return {
             footprintName,
             reference,
@@ -119,8 +147,10 @@ export class KicadIRBuilder {
             uuid,
             codeMetadata,
             referenceProperty,
-            fabTextProperty,
             valueProperty,
+            referenceLayout,
+            valueLayout,
+            fabLayout,
         };
     }
 
@@ -162,24 +192,60 @@ export class KicadIRBuilder {
         return { x, y, rotation, layer, width, height, thickness };
     }
 
-    /**
-     * Extract positioning from fp_text nodes.
-     * fp_text format: (fp_text "user" "text" (at x y rot) (layer "F.Fab") (effects ...))
-     */
-    private extractTextPositioning(node: SExprNode): ReferencePropertyIR | null {
+    private propertyToTextLayout(node: SExprNode): TextLayoutIR | null {
+        const atNode = node.child('at');
+        if (!atNode) return null;
+        const x = atNode.getNumber(1);
+        const y = atNode.getNumber(2);
+        if (isNaN(x) || isNaN(y)) return null;
+        const rotation = atNode.getNumber(3, 0);
+        const layerNode = node.child('layer');
+        const layer = layerNode?.stringValue || undefined;
+        const hideNode = node.child('hide');
+        const show = hideNode?.stringValue !== 'yes';
+        let width: number | undefined;
+        let height: number | undefined;
+        let thickness: number | undefined;
+        const effectsNode = node.child('effects');
+        if (effectsNode) {
+            const fontNode = effectsNode.child('font');
+            if (fontNode) {
+                const sizeNode = fontNode.child('size');
+                if (sizeNode) {
+                    height = sizeNode.getNumber(1, NaN);
+                    width = sizeNode.getNumber(2, NaN);
+                    if (isNaN(height)) height = undefined;
+                    if (isNaN(width)) width = undefined;
+                }
+                const thickNode = fontNode.child('thickness');
+                if (thickNode) {
+                    thickness = thickNode.getNumber(1, NaN);
+                    if (isNaN(thickness)) thickness = undefined;
+                }
+            }
+        }
+        return { x, y, rotation, layer, width, height, thickness, show };
+    }
+
+    private extractFpTextLayout(node: SExprNode): TextLayoutIR | null {
         const atNode = node.child('at');
         if (!atNode) return null;
 
         const x = atNode.getNumber(1);
         const y = atNode.getNumber(2);
+        if (isNaN(x) || isNaN(y)) return null;
+
         const rotation = atNode.getNumber(3, 0);
-
         const layerNode = node.child('layer');
-        const layer = layerNode?.stringValue || 'F.Fab';
+        const layer = layerNode?.stringValue || undefined;
 
-        let width = 1;
-        let height = 1;
-        let thickness = 0.15;
+        let width: number | undefined;
+        let height: number | undefined;
+        let thickness: number | undefined;
+        let bold = false;
+        let italic = false;
+        let show = true;
+        let justify: TextLayoutIR['justify'];
 
         const effectsNode = node.child('effects');
         if (effectsNode) {
@@ -187,19 +253,64 @@ export class KicadIRBuilder {
             if (fontNode) {
                 const sizeNode = fontNode.child('size');
                 if (sizeNode) {
-                    height = sizeNode.getNumber(1, 1);
-                    width = sizeNode.getNumber(2, 1);
+                    height = sizeNode.getNumber(1, NaN);
+                    width = sizeNode.getNumber(2, NaN);
+                    if (isNaN(height)) height = undefined;
+                    if (isNaN(width)) width = undefined;
                 }
                 const thickNode = fontNode.child('thickness');
                 if (thickNode) {
-                    thickness = thickNode.getNumber(1, 0.15);
+                    thickness = thickNode.getNumber(1, NaN);
+                    if (isNaN(thickness)) thickness = undefined;
                 }
+                const fontRaw = fontNode.toArray();
+                for (let i = 1; i < fontRaw.length; i++) {
+                    const item = fontRaw[i];
+                    const name = getSymName(item);
+                    if (name === 'bold') bold = true;
+                    if (name === 'italic') italic = true;
+                }
+            }
+
+            const justifyNode = effectsNode.child('justify');
+            if (justifyNode) {
+                justify = {};
+                const justifyRaw = justifyNode.toArray();
+                for (let i = 1; i < justifyRaw.length; i++) {
+                    const item = justifyRaw[i];
+                    const name = getSymName(item);
+                    if (name === 'left' || name === 'right' || name === 'center') {
+                        justify.horizontal = name;
+                    } else if (name === 'top' || name === 'bottom' || name === 'middle') {
+                        justify.vertical = name;
+                    } else if (name === 'mirror') {
+                        justify.mirror = true;
+                    }
+                }
+            }
+
+            const effectsRaw = effectsNode.toArray();
+            for (let i = 1; i < effectsRaw.length; i++) {
+                const item = effectsRaw[i];
+                const name = getSymName(item);
+                if (name === 'hide') show = false;
             }
         }
 
-        const text = node.joinedStringValue || undefined;
+        const nodeRaw = node.toArray();
+        for (let i = 1; i < nodeRaw.length; i++) {
+            const item = nodeRaw[i];
+            const name = getSymName(item);
+            if (name === 'hide') show = false;
+        }
 
-        return { x, y, rotation, layer, width, height, thickness, text };
+        return {
+            x, y,
+            rotation,
+            layer,
+            width, height, thickness, bold,
+            italic, justify, show,
+        };
     }
 
     // === Segments ===
@@ -275,10 +386,14 @@ export class KicadIRBuilder {
 
         if (isNaN(size as number) || isNaN(drill as number)) return null;
 
+        const netNode = node.child('net');
+        const net = netNode ? netNode.getNumber(1) : undefined;
+
         return {
             at: { x, y },
             size: size as number,
             drill: drill as number,
+            net: isNaN(net as number) ? undefined : net,
         };
     }
 
@@ -397,7 +512,7 @@ export class KicadIRBuilder {
                 // Bold/italic are direct string children of 'font'
                 for (let i = 1; i < fontNode.toArray().length; i++) {
                     const item = fontNode.toArray()[i];
-                    const name = Sym.isSym(item) ? item.name : (typeof item === 'string' ? item.replace(/[`"]/g, '') : '');
+                    const name = getSymName(item);
                     if (name === 'bold') bold = true;
                     if (name === 'italic') italic = true;
                 }
@@ -414,7 +529,7 @@ export class KicadIRBuilder {
                 justify = {};
                 for (let i = 1; i < justifyNode.toArray().length; i++) {
                     const item = justifyNode.toArray()[i];
-                    const name = Sym.isSym(item) ? item.name : (typeof item === 'string' ? item.replace(/[`"]/g, '') : '');
+                    const name = getSymName(item);
                     if (name === 'left' || name === 'right' || name === 'center') {
                         justify.horizontal = name;
                     } else if (name === 'top' || name === 'bottom' || name === 'middle') {
@@ -428,7 +543,7 @@ export class KicadIRBuilder {
             // Check for hide - as a string child of effects
             for (let i = 1; i < effectsNode.toArray().length; i++) {
                 const item = effectsNode.toArray()[i];
-                const name = Sym.isSym(item) ? item.name : (typeof item === 'string' ? item.replace(/[`"]/g, '') : '');
+                const name = getSymName(item);
                 if (name === 'hide') hide = true;
             }
         }
@@ -436,7 +551,7 @@ export class KicadIRBuilder {
         // Also check for hide at the top level of the node (outside effects)
         for (let i = 1; i < node.toArray().length; i++) {
             const item = node.toArray()[i];
-            const name = Sym.isSym(item) ? item.name : (typeof item === 'string' ? item.replace(/[`"]/g, '') : '');
+            const name = getSymName(item);
             if (name === 'hide') hide = true;
         }
 

@@ -1,7 +1,5 @@
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
-import which from "which";
-import Table from "cli-table3";
 import chalk from "chalk";
 import { platform } from "node:os";
 import type { Schematic } from "../schematic.js";
@@ -10,6 +8,7 @@ import type { Power } from "../buses.js";
 import type { NgspiceResult, Variable } from "./types.js";
 import logger from '../utils/logging.js';
 import { DEFAULT_BUILD_DIR } from '../utils/constants.js';
+import { findExecutable } from '../kicad.js';
 
 class NgspiceResultImpl implements NgspiceResult {
     title = "";
@@ -186,15 +185,15 @@ write ${this.schematic.sheetName}.out all
         const isWindows = platform() === "win32";
         const isDcAnalysis = mode === undefined;
         const executable = isWindows && isDcAnalysis ? "ngspice_con" : "ngspice";
-        const path = which.sync(executable, { nothrow: true });
+        const resolvedPath = findExecutable(executable);
 
-        if (!path) {
+        if (!resolvedPath) {
             logger.error(
                 `\`${executable}\` not found. Please ensure it's installed and in your PATH.`
             );
         }
 
-        return path;
+        return resolvedPath ?? null;
     }
 
     private parseNgspiceAscii(filePath: string): NgspiceResult {
@@ -239,30 +238,36 @@ write ${this.schematic.sheetName}.out all
     }
 
     private displayTable(data: NgspiceResult): void {
-        const table = new Table({
-            head: [
-                chalk.bold.underline.gray("Variable"),
-                chalk.bold.underline.gray("Type"),
-                chalk.bold.underline.gray("Value"),
-            ],
-            colWidths: [20, 15, 20],
-        });
+        const colWidths = [20, 15, 20];
+        const separator = colWidths.map(w => '\u2500'.repeat(w)).join('\u253C');
+
+        const header = [
+            chalk.bold.underline.gray('Variable').padEnd(colWidths[0]),
+            chalk.bold.underline.gray('Type').padEnd(colWidths[1]),
+            chalk.bold.underline.gray('Value').padEnd(colWidths[2]),
+        ].join('\u2502');
+
+        logger.log(header);
+        logger.log(separator);
 
         for (const variable of data.variables) {
             for (const value of data.values[variable.name]) {
                 const formattedValue =
-                    variable.type === "power"
+                    variable.type === 'power'
                         ? chalk.red(`${(value * 1000).toFixed(4)} mW`)
-                        : variable.type === "voltage"
+                        : variable.type === 'voltage'
                           ? chalk.yellow(`${value.toFixed(4)} V`)
-                          : variable.type === "current"
+                          : variable.type === 'current'
                             ? chalk.cyan(`${(value * 1000).toFixed(4)} mA`)
                             : `${value.toFixed(4)}`;
 
-                table.push([variable.name, variable.type, formattedValue]);
+                const row = [
+                    variable.name.padEnd(colWidths[0]),
+                    variable.type.padEnd(colWidths[1]),
+                    formattedValue.padEnd(colWidths[2]),
+                ].join('\u2502');
+                logger.log(row);
             }
         }
-
-        logger.log(table.toString());
     }
 }

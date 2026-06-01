@@ -1,36 +1,27 @@
 import fs from 'node:fs';
+import {
+    analyzeFile,
+    applyReplacements,
+    findPcbAssignmentByVariable,
+    findTextCalls,
+    findLayoutAssignments,
+    getMemberPrefix,
+} from './source_analyzer.js';
+import type { Replacement, LayoutAssignmentInfo } from './source_analyzer.js';
 import type {
-    KicadFootprintIR,
     KicadIR,
     KicadTextIR,
     MatchResult,
     PendingChange,
     PendingTextChange,
-    PositionChange,
-    SourceLocation,
+    PendingLayoutChange,
+    TextLayoutIR,
 } from './types.js';
 
-/**
- * Computes and applies source-file changes detected from KiCad → TypeCAD
- * round-trip comparison.
- *
- * The rewriter handles two categories:
- * 1. **Footprint changes** — position (x/y/rotation/side), reference positioning,
- *    and fab text positioning changes for Component instances.
- * 2. **Text element changes** — gr_text positioning, styling (font, size, justify),
- *    and text content changes for pcb.text() calls.
- */
 export class SourceRewriter {
-    /**
-     * Compute pending footprint changes by comparing matched IR footprints
-     * against their corresponding TypeScript source files.
-     *
-     * Only footprints with a valid sourceLocation are considered.
-     */
-    computeFootprintChanges(matchResults: MatchResult[]): PendingChange[] {
+    async computeFootprintChanges(matchResults: MatchResult[]): Promise<PendingChange[]> {
         const changes: PendingChange[] = [];
 
-        // Group by source file
         const byFile: Record<string, MatchResult[]> = {};
         for (const mr of matchResults) {
             if (!mr.sourceLocation) continue;
@@ -40,13 +31,8 @@ export class SourceRewriter {
         }
 
         for (const [filePath, mrs] of Object.entries(byFile)) {
-            let content: string;
-            try {
-                content = fs.readFileSync(filePath, 'utf-8');
-            } catch {
-                continue;
-            }
-            const lines = content.split('\n');
+            const analysis = await analyzeFile(filePath);
+            if (!analysis) continue;
 
             for (const mr of mrs) {
                 const fp = mr.irFootprint;
@@ -54,167 +40,61 @@ export class SourceRewriter {
                 const variable = loc.variableName;
                 if (!variable) continue;
 
-                // Find the creation line by regex
-                const creationRegex = new RegExp(
-                    `^\\s*(let|const|var|)\\s*(this\\.)?\\s*${escapeRegex(variable)}\\s*=\\s*new\\s+`
+                const component = analysis.components.find(c =>
+                    c.variableName === variable && c.isThis === loc.isThis
                 );
-                let creationIdx = -1;
-                let prefix = loc.isThis ? 'this.' : '';
+                if (!component) continue;
 
-                for (let i = 0; i < lines.length; i++) {
-                    const m = lines[i].match(creationRegex);
-                    if (m) {
-                        creationIdx = i;
-                        prefix = m[2] ? 'this.' : '';
-                        break;
-                    }
-                }
-                if (creationIdx === -1) continue;
+                const prefix = getMemberPrefix(loc.isThis);
 
-                // Find end of creation statement
-                let statementEndIdx = creationIdx;
-                for (let i = creationIdx; i < Math.min(lines.length, creationIdx + 20); i++) {
-                    if (lines[i].match(/;\s*$/)) {
-                        statementEndIdx = i;
-                        break;
-                    }
-                }
-
-                // Search for existing .pcb = { ... }
-                let existingPcbLine: number | null = null;
                 let oldX: number | null = null;
                 let oldY: number | null = null;
                 let oldRotation: number | null = null;
                 let oldSide: 'front' | 'back' | null = null;
 
-                const escapedPrefix = prefix.replace('.', '\\.');
-                const pcbRegex = new RegExp(
-                    `^\\s*${escapedPrefix}\\s*${escapeRegex(variable)}\\.pcb\\s*=\\s*\\{([^}]+)\\}`
+                const pcbAssignment = analysis.pcbAssignments.find(p =>
+                    p.variableName === variable && p.isThis === loc.isThis
                 );
 
-                for (let i = statementEndIdx + 1; i < Math.min(lines.length, statementEndIdx + 5); i++) {
-                    const pcbMatch = lines[i]?.match(pcbRegex);
-                    if (pcbMatch) {
-                        existingPcbLine = i + 1;
-                        const inner = pcbMatch[1];
-                        const xm = inner.match(/x:\s*(-?[\d.]+)/);
-                        const ym = inner.match(/y:\s*(-?[\d.]+)/);
-                        const rm = inner.match(/rotation:\s*(-?[\d.]+)/);
-                        const sm = inner.match(/side:\s*['"](front|back)['"]/);
-                        oldX = xm ? parseFloat(xm[1]) : null;
-                        oldY = ym ? parseFloat(ym[1]) : null;
-                        oldRotation = rm ? parseFloat(rm[1]) : null;
-                        oldSide = sm ? (sm[1] as 'front' | 'back') : null;
-                        break;
-                    }
-                }
-
-                // Also check for inline pcb: { ... } within the constructor
-                if (existingPcbLine === null) {
-                    for (let i = creationIdx; i <= statementEndIdx; i++) {
-                        const inlineMatch = lines[i]?.match(/\bpcb:\s*\{([^}]+)\}/);
-                        if (inlineMatch) {
-                            const inner = inlineMatch[1];
-                            const xm = inner.match(/x:\s*(-?[\d.]+)/);
-                            const ym = inner.match(/y:\s*(-?[\d.]+)/);
-                            const rm = inner.match(/rotation:\s*(-?[\d.]+)/);
-                            const sm = inner.match(/side:\s*['"](front|back)['"]/);
-                            if (xm) oldX = parseFloat(xm[1]);
-                            if (ym) oldY = parseFloat(ym[1]);
-                            if (rm) oldRotation = parseFloat(rm[1]);
-                            if (sm) oldSide = sm[1] as 'front' | 'back';
-                            break;
-                        }
-                    }
+                if (pcbAssignment) {
+                    oldX = pcbAssignment.props['x']?.value as number ?? null;
+                    oldY = pcbAssignment.props['y']?.value as number ?? null;
+                    oldRotation = pcbAssignment.props['rotation']?.value as number ?? null;
+                    const sideVal = pcbAssignment.props['side']?.value;
+                    oldSide = (sideVal === 'back' || sideVal === 'front') ? sideVal : null;
+                } else if (component.inlinePcb) {
+                    oldX = component.inlinePcb.props['x']?.value as number ?? null;
+                    oldY = component.inlinePcb.props['y']?.value as number ?? null;
+                    oldRotation = component.inlinePcb.props['rotation']?.value as number ?? null;
+                    const sideVal = component.inlinePcb.props['side']?.value;
+                    oldSide = (sideVal === 'back' || sideVal === 'front') ? sideVal : null;
                 }
 
                 const newSide = fp.side || 'front';
                 const effectiveOldSide = oldSide || 'front';
-                const hasSourceCoords = existingPcbLine !== null || oldX !== null;
+                const hasSourceCoords = oldX !== null || oldY !== null;
+                const positionDiffers = oldX !== fp.position.x || oldY !== fp.position.y || oldRotation !== fp.position.rotation || effectiveOldSide !== newSide;
                 const coordsChanged = hasSourceCoords
-                    && (oldX !== fp.position.x || oldY !== fp.position.y || oldRotation !== fp.position.rotation || effectiveOldSide !== newSide);
+                    ? positionDiffers
+                    : (fp.position.x !== 0 || fp.position.y !== 0 || fp.position.rotation !== 0 || newSide !== 'front');
 
-                // Check reference/fab position changes
-                let refPositionChange: PositionChange | undefined;
-                let fabPositionChange: PositionChange | undefined;
-
-                if (fp.referenceProperty) {
-                    const rp = fp.referenceProperty;
-                    for (let i = creationIdx; i <= statementEndIdx; i++) {
-                        if (lines[i]?.match(/reference:\s*\[/)) {
-                            const inner = lines[i].match(/\{\s*x:\s*(-?[\d.]+)\s*,\s*y:\s*(-?[\d.]+)(?:\s*,\s*rotation:\s*(-?[\d.]+))?/);
-                            if (inner) {
-                                const oldRefX = parseFloat(inner[1]);
-                                const oldRefY = parseFloat(inner[2]);
-                                const oldRefR = inner[3] ? parseFloat(inner[3]) : 0;
-                                if (oldRefX !== rp.x || oldRefY !== rp.y || oldRefR !== rp.rotation) {
-                                    refPositionChange = {
-                                        oldX: oldRefX, oldY: oldRefY, oldRotation: oldRefR,
-                                        newX: rp.x, newY: rp.y, newRotation: rp.rotation,
-                                    };
-                                }
-                            }
-                            break;
-                        }
-                    }
-                }
-
-                if (fp.fabTextProperty) {
-                    const fabPcb = fp.fabTextProperty;
-                    for (let i = creationIdx; i <= statementEndIdx; i++) {
-                        const fabMatch = lines[i]?.match(/\bfab:\s*(?:\[.*?,\s*)?\{/);
-                        if (fabMatch) {
-                            const innerMatches = [...lines[i].matchAll(/\{\s*x:\s*(-?[\d.]+)\s*,\s*y:\s*(-?[\d.]+)(?:\s*,\s*rotation:\s*(-?[\d.]+))?/g)];
-                            const inner = innerMatches[innerMatches.length - 1];
-                            if (inner) {
-                                const oldFabX = parseFloat(inner[1]);
-                                const oldFabY = parseFloat(inner[2]);
-                                const oldFabR = inner[3] ? parseFloat(inner[3]) : 0;
-                                if (oldFabX !== fabPcb.x || oldFabY !== fabPcb.y || oldFabR !== fabPcb.rotation) {
-                                    fabPositionChange = {
-                                        oldX: oldFabX, oldY: oldFabY, oldRotation: oldFabR,
-                                        newX: fabPcb.x, newY: fabPcb.y, newRotation: fabPcb.rotation,
-                                    };
-                                }
-                            }
-                            break;
-                        }
-                    }
-                }
-
-                if (!coordsChanged && !refPositionChange && !fabPositionChange) continue;
+                if (!coordsChanged) continue;
 
                 const shortFile = filePath.replace(/\\/g, '/').split('/').slice(-2).join('/');
-                const labelParts: string[] = [`${prefix}${variable}`, `${shortFile}:${creationIdx + 1}`];
-                if (coordsChanged) {
-                    const oldStr = existingPcbLine !== null ? `(${oldX}, ${oldY})` : '(not set)';
-                    const sideInfo = effectiveOldSide !== newSide ? ` [${effectiveOldSide} → ${newSide}]` : '';
-                    labelParts.push(`pcb: ${oldStr} → (${fp.position.x}, ${fp.position.y})${sideInfo}`);
-                }
-                if (refPositionChange) {
-                    const rotInfo = refPositionChange.oldRotation !== refPositionChange.newRotation
-                        ? ` r:${refPositionChange.oldRotation}→${refPositionChange.newRotation}` : '';
-                    labelParts.push(`ref: (${refPositionChange.oldX}, ${refPositionChange.oldY}) → (${refPositionChange.newX}, ${refPositionChange.newY})${rotInfo}`);
-                }
-                if (fabPositionChange) {
-                    const rotInfo = fabPositionChange.oldRotation !== fabPositionChange.newRotation
-                        ? ` r:${fabPositionChange.oldRotation}→${fabPositionChange.newRotation}` : '';
-                    labelParts.push(`fab: (${fabPositionChange.oldX}, ${fabPositionChange.oldY}) → (${fabPositionChange.newX}, ${fabPositionChange.newY})${rotInfo}`);
-                }
+                const labelParts: string[] = [`${prefix}${variable}`, `${shortFile}:${component.line}`];
+                const oldStr = hasSourceCoords ? `(${oldX}, ${oldY})` : '(not set)';
+                const sideInfo = effectiveOldSide !== newSide ? ` [${effectiveOldSide} → ${newSide}]` : '';
+                labelParts.push(`pcb: ${oldStr} → (${fp.position.x}, ${fp.position.y})${sideInfo}`);
 
                 changes.push({
                     filePath,
                     variableName: variable,
                     prefix,
-                    sourceLine: statementEndIdx + 1,
                     oldX, oldY, oldRotation, oldSide,
                     newX: fp.position.x,
                     newY: fp.position.y,
                     newRotation: fp.position.rotation,
                     newSide,
-                    existingPcbLine,
-                    refPositionChange,
-                    fabPositionChange,
                     label: labelParts.join('  '),
                 });
             }
@@ -223,11 +103,189 @@ export class SourceRewriter {
         return changes;
     }
 
-    /**
-     * Compute pending text element changes by comparing IR text elements
-     * against .text() calls in source files.
-     */
-    computeTextChanges(ir: KicadIR, sourceFiles: string[]): PendingTextChange[] {
+    async computeLayoutChanges(matchResults: MatchResult[]): Promise<PendingLayoutChange[]> {
+        const changes: PendingLayoutChange[] = [];
+        const layoutTypes = ['referenceLayout', 'valueLayout', 'fabLayout'] as const;
+
+        const byFile: Record<string, MatchResult[]> = {};
+        for (const mr of matchResults) {
+            if (!mr.sourceLocation) continue;
+            const f = mr.sourceLocation.filePath;
+            if (!byFile[f]) byFile[f] = [];
+            byFile[f].push(mr);
+        }
+
+        for (const [filePath, mrs] of Object.entries(byFile)) {
+            const analysis = await analyzeFile(filePath);
+            if (!analysis) continue;
+
+            for (const mr of mrs) {
+                const fp = mr.irFootprint;
+                const loc = mr.sourceLocation!;
+                const variable = loc.variableName;
+                if (!variable) continue;
+
+                const component = analysis.components.find(c =>
+                    c.variableName === variable && c.isThis === loc.isThis
+                );
+                if (!component) continue;
+
+                const prefix = getMemberPrefix(loc.isThis);
+
+                for (const layoutType of layoutTypes) {
+                    const irLayout: TextLayoutIR | undefined = fp[layoutType];
+                    if (!irLayout) continue;
+
+                    const sourceLayout = this.getSourceLayout(
+                        analysis.layoutAssignments,
+                        component,
+                        variable,
+                        loc.isThis,
+                        layoutType
+                    );
+
+                    const diff = this.computeLayoutDiff(sourceLayout, irLayout);
+                    if (diff.length === 0) continue;
+
+                    const shortFile = filePath.replace(/\\/g, '/').split('/').slice(-2).join('/');
+                    const labelParts: string[] = [
+                        `${prefix}${variable}.${layoutType}`,
+                        `${shortFile}:${component.line}`,
+                        diff.join(', '),
+                    ];
+
+                    changes.push({
+                        filePath,
+                        variableName: variable,
+                        prefix,
+                        layoutType,
+                        oldLayout: sourceLayout,
+                        newLayout: irLayout,
+                        label: labelParts.join('  '),
+                        changedProps: diff,
+                    });
+                }
+            }
+        }
+
+        return changes;
+    }
+
+    private getSourceLayout(
+        layoutAssignments: LayoutAssignmentInfo[],
+        component: { properties: Record<string, import('./source_analyzer.js').PropertyValue>; inlinePcb?: any },
+        variableName: string,
+        isThis: boolean,
+        layoutType: string
+    ): TextLayoutIR | null {
+        const assignment = layoutAssignments.find(la =>
+            la.variableName === variableName && la.isThis === isThis && la.propertyName === layoutType
+        );
+        if (assignment) {
+            return propsToLayoutIR(assignment.props);
+        }
+
+        const inlineProp = component.properties[layoutType];
+        if (inlineProp && inlineProp.value && typeof inlineProp.value === 'object') {
+            return propsToLayoutIR(inlineProp.value as Record<string, import('./source_analyzer.js').PropertyValue>);
+        }
+
+        return null;
+    }
+
+    private computeLayoutDiff(oldLayout: TextLayoutIR | null, newLayout: TextLayoutIR): string[] {
+        const changed: string[] = [];
+        const oldX = oldLayout?.x ?? 0;
+        const oldY = oldLayout?.y ?? 0;
+        if (Math.abs(oldX - newLayout.x) > 0.001 || Math.abs(oldY - newLayout.y) > 0.001) {
+            changed.push(`position: (${oldX}, ${oldY}) → (${newLayout.x}, ${newLayout.y})`);
+        }
+        const oldR = oldLayout?.rotation ?? 0;
+        const newR = newLayout.rotation ?? 0;
+        if (Math.abs(oldR - newR) > 0.001) changed.push(`rotation: ${oldR} → ${newR}`);
+        if (oldLayout?.layer !== newLayout.layer && newLayout.layer !== undefined) changed.push('layer');
+        if (oldLayout?.width !== newLayout.width && newLayout.width !== undefined) changed.push('width');
+        if (oldLayout?.height !== newLayout.height && newLayout.height !== undefined) changed.push('height');
+        if (oldLayout?.thickness !== newLayout.thickness && newLayout.thickness !== undefined) changed.push('thickness');
+        if ((oldLayout?.bold ?? false) !== (newLayout.bold ?? false)) changed.push('bold');
+        if ((oldLayout?.italic ?? false) !== (newLayout.italic ?? false)) changed.push('italic');
+        if (!justifyEquals(
+            oldLayout?.justify as { horizontal?: string; vertical?: string; mirror?: boolean } | undefined,
+            newLayout.justify as { horizontal?: string; vertical?: string; mirror?: boolean } | undefined
+        )) changed.push('justify');
+        const oldShow = oldLayout?.show ?? true;
+        const newShow = newLayout.show ?? true;
+        if (oldShow !== newShow) changed.push('show');
+        return changed;
+    }
+
+    async applyLayoutChanges(changes: PendingLayoutChange[]): Promise<{ filesModified: number; changesApplied: number }> {
+        const selectedByFile: Record<string, PendingLayoutChange[]> = {};
+        for (const c of changes) {
+            if (!selectedByFile[c.filePath]) selectedByFile[c.filePath] = [];
+            selectedByFile[c.filePath].push(c);
+        }
+
+        let filesModified = 0;
+
+        for (const [filePath, fileChanges] of Object.entries(selectedByFile)) {
+            const analysis = await analyzeFile(filePath);
+            if (!analysis) continue;
+
+            const replacements: Replacement[] = [];
+
+            for (const change of fileChanges) {
+                const component = analysis.components.find(c =>
+                    c.variableName === change.variableName && c.isThis === change.prefix.startsWith('this.')
+                );
+                if (!component) continue;
+
+                const assignment = analysis.layoutAssignments.find(la =>
+                    la.variableName === change.variableName &&
+                    la.isThis === change.prefix.startsWith('this.') &&
+                    la.propertyName === change.layoutType
+                );
+
+                if (assignment) {
+                    applyLayoutPropsToReplacements(replacements, assignment.objectRange, assignment.props, change.newLayout);
+                } else {
+                    const inlineProp = component.properties[change.layoutType];
+                    if (inlineProp && inlineProp.value && typeof inlineProp.value === 'object') {
+                        const inlineProps = inlineProp.value as Record<string, import('./source_analyzer.js').PropertyValue>;
+                        applyLayoutPropsToReplacements(replacements, inlineProp.range, inlineProps, change.newLayout);
+                    } else {
+                        let source: string;
+                        try {
+                            source = fs.readFileSync(filePath, 'utf-8');
+                        } catch { continue; }
+
+                        const insertPos = component.creationRange.end;
+                        const lineStart = source.lastIndexOf('\n', component.creationRange.start - 1);
+                        const indent = lineStart >= 0
+                            ? source.slice(lineStart + 1).match(/^(\s*)/)?.[1] || ''
+                            : '';
+
+                        const layoutObj = layoutIRToString(change.newLayout, change.layoutType);
+                        const newLine = `\n${indent}${change.prefix}${change.variableName}.${change.layoutType} = ${layoutObj};`;
+
+                        replacements.push({
+                            range: { start: insertPos, end: insertPos },
+                            newValue: newLine,
+                        });
+                    }
+                }
+            }
+
+            if (replacements.length > 0) {
+                const modified = applyReplacements(filePath, replacements);
+                if (modified) filesModified++;
+            }
+        }
+
+        return { filesModified, changesApplied: changes.length };
+    }
+
+    async computeTextChanges(ir: KicadIR, sourceFiles: string[]): Promise<PendingTextChange[]> {
         if (ir.textElements.length === 0) return [];
 
         interface SourceTextCall {
@@ -250,6 +308,7 @@ export class SourceRewriter {
         const sourceCalls: SourceTextCall[] = [];
 
         for (const filePath of sourceFiles) {
+            const textCallInfos = await findTextCalls(filePath);
             let content: string;
             try {
                 content = fs.readFileSync(filePath, 'utf-8');
@@ -258,60 +317,47 @@ export class SourceRewriter {
             }
             const lines = content.split('\n');
 
-            for (let i = 0; i < lines.length; i++) {
-                if (!lines[i].match(/\.text\s*\(/)) continue;
+            for (const tc of textCallInfos) {
+                const lineIdx = tc.line - 1;
 
-                let callText = lines[i];
-                let endIdx = i;
-                if (!lines[i].match(/\}\s*\)/)) {
-                    for (let j = i + 1; j < Math.min(lines.length, i + 30); j++) {
-                        callText += '\n' + lines[j];
-                        if (lines[j].match(/\}\s*\)/)) {
-                            endIdx = j;
-                            break;
-                        }
-                    }
+                let callText = '';
+                let endIdx = lineIdx;
+                for (let j = lineIdx; j < Math.min(lines.length, lineIdx + 30); j++) {
+                    callText += (j > lineIdx ? '\n' : '') + lines[j];
+                    endIdx = j;
+                    if (lines[j].match(/\}\s*\)/)) break;
                 }
 
-                const textMatch = callText.match(/text:\s*["']([^"']+)["']/);
-                if (!textMatch) continue;
-
-                const xm = callText.match(/x:\s*(-?[\d.]+)/);
-                const ym = callText.match(/y:\s*(-?[\d.]+)/);
-                const rm = callText.match(/rotation:\s*(-?[\d.]+)/);
-                const lm = callText.match(/layer:\s*["']([^"']+)["']/);
-                const fm = callText.match(/font:\s*["']([^"']+)["']/);
-                const wm = callText.match(/width:\s*(-?[\d.]+)/);
-                const hm = callText.match(/height:\s*(-?[\d.]+)/);
-                const tm = callText.match(/thickness:\s*(-?[\d.]+)/);
-                const bm = callText.match(/\bbold:\s*(true|false)/);
-                const im = callText.match(/\bitalic:\s*(true|false)/);
-                const jm = callText.match(/justify:\s*\{([^}]*)\}/);
+                const props = tc.props;
+                const justifyVal = props['justify']?.value;
+                let justify: { horizontal?: string; vertical?: string; mirror?: boolean } | undefined;
+                if (justifyVal && typeof justifyVal === 'object') {
+                    justify = justifyVal as { horizontal?: string; vertical?: string; mirror?: boolean };
+                }
 
                 sourceCalls.push({
                     filePath,
-                    lineIdx: i,
+                    lineIdx,
                     endIdx,
                     callText,
-                    sourceText: textMatch[1],
-                    x: xm ? parseFloat(xm[1]) : 0,
-                    y: ym ? parseFloat(ym[1]) : 0,
-                    rotation: rm ? parseFloat(rm[1]) : 0,
-                    layer: lm ? lm[1] : 'F.SilkS',
-                    font: fm ? fm[1] : undefined,
-                    width: wm ? parseFloat(wm[1]) : undefined,
-                    height: hm ? parseFloat(hm[1]) : undefined,
-                    thickness: tm ? parseFloat(tm[1]) : undefined,
-                    bold: bm ? bm[1] === 'true' : false,
-                    italic: im ? im[1] === 'true' : false,
-                    justify: jm ? parseSourceJustify(jm[1]) : undefined,
+                    sourceText: tc.text,
+                    x: props['x']?.value as number ?? 0,
+                    y: props['y']?.value as number ?? 0,
+                    rotation: props['rotation']?.value as number ?? 0,
+                    layer: props['layer']?.value as string ?? 'F.SilkS',
+                    font: props['font']?.value as string | undefined,
+                    width: props['width']?.value as number | undefined,
+                    height: props['height']?.value as number | undefined,
+                    thickness: props['thickness']?.value as number | undefined,
+                    bold: props['bold']?.value === true,
+                    italic: props['italic']?.value === true,
+                    justify,
                 });
             }
         }
 
         if (sourceCalls.length === 0) return [];
 
-        // Match source calls to PCB texts (fuzzy text match + position proximity)
         const matchedSourceIdxs = new Set<number>();
         const matchedPcbTexts = new Set<string>();
         const pairs: { source: SourceTextCall; pcb: KicadTextIR }[] = [];
@@ -329,7 +375,6 @@ export class SourceRewriter {
             }
         }
 
-        // Position proximity fallback
         const unmatchedSource = sourceCalls.filter((_, i) => !matchedSourceIdxs.has(i));
         const unmatchedPcb = ir.textElements.filter(t => !matchedPcbTexts.has(t.text));
 
@@ -354,7 +399,6 @@ export class SourceRewriter {
             }
         }
 
-        // Build pending changes
         const changes: PendingTextChange[] = [];
         for (const { source: src, pcb } of pairs) {
             const pcbWidth = pcb.fontSize ? pcb.fontSize[1] : undefined;
@@ -421,12 +465,7 @@ export class SourceRewriter {
         return changes;
     }
 
-    /**
-     * Apply selected footprint changes to source files.
-     * Uses string-based line replacement, sorted descending to avoid shift issues.
-     * Creates .backup files before overwriting.
-     */
-    applyFootprintChanges(changes: PendingChange[]): { filesModified: number; changesApplied: number } {
+    async applyFootprintChanges(changes: PendingChange[]): Promise<{ filesModified: number; changesApplied: number }> {
         const selectedByFile: Record<string, PendingChange[]> = {};
         for (const c of changes) {
             if (!selectedByFile[c.filePath]) selectedByFile[c.filePath] = [];
@@ -436,190 +475,87 @@ export class SourceRewriter {
         let filesModified = 0;
 
         for (const [filePath, fileChanges] of Object.entries(selectedByFile)) {
-            let content = fs.readFileSync(filePath, 'utf-8');
+            const analysis = await analyzeFile(filePath);
+            if (!analysis) continue;
 
-            // Sort descending by sourceLine
-            fileChanges.sort((a, b) => b.sourceLine - a.sourceLine);
+            const replacements: Replacement[] = [];
 
             for (const change of fileChanges) {
-                const lines = content.split('\n');
-                const escapedPrefix = change.prefix.replace('.', '\\.');
-                const varName = change.variableName;
+                const component = analysis.components.find(c =>
+                    c.variableName === change.variableName && c.isThis === change.prefix.startsWith('this.')
+                );
+                if (!component) continue;
 
-                if (change.existingPcbLine !== null) {
-                    // Update existing .pcb = line
-                    const pcbRegex = new RegExp(
-                        `^\\s*${escapedPrefix}\\s*${escapeRegex(varName)}\\.pcb\\s*=\\s*\\{([^}]+)\\}`
-                    );
-                    for (let i = 0; i < lines.length; i++) {
-                        if (lines[i].match(pcbRegex)) {
-                            lines[i] = lines[i]
-                                .replace(/x:\s*-?[\d.]+/, `x: ${change.newX}`)
-                                .replace(/y:\s*-?[\d.]+/, `y: ${change.newY}`)
-                                .replace(/rotation:\s*-?[\d.]+/, `rotation: ${change.newRotation}`);
-                            if (change.newSide === 'back') {
-                                if (lines[i].match(/side:\s*['"](front|back)['"]/)) {
-                                    lines[i] = lines[i].replace(/side:\s*['"](?:front|back)['"]/, `side: 'back'`);
-                                } else {
-                                    lines[i] = lines[i].replace(/(\})/, `, side: 'back'$1`);
-                                }
-                            } else if (change.newSide === 'front' && lines[i].match(/side:\s*['"]back['"]/)) {
-                                lines[i] = lines[i].replace(/,\s*side:\s*['"]back['"]/, '');
-                                if (!lines[i].match(/side:/)) {
-                                    lines[i] = lines[i].replace(/side:\s*['"]back['"]\s*,\s*/, '');
-                                }
-                            }
-                            break;
+                const pcbAssignment = analysis.pcbAssignments.find(p =>
+                    p.variableName === change.variableName && p.isThis === change.prefix.startsWith('this.')
+                );
+
+                if (pcbAssignment) {
+                    const props = pcbAssignment.props;
+                    if (props['x'] && change.newX !== undefined) {
+                        replacements.push({ range: props['x'].range, newValue: String(change.newX) });
+                    }
+                    if (props['y'] && change.newY !== undefined) {
+                        replacements.push({ range: props['y'].range, newValue: String(change.newY) });
+                    }
+                    if (props['rotation'] && change.newRotation !== undefined) {
+                        replacements.push({ range: props['rotation'].range, newValue: String(change.newRotation) });
+                    }
+                    if (change.newSide === 'back') {
+                        if (props['side']) {
+                            replacements.push({ range: props['side'].range, newValue: "'back'" });
+                        } else {
+                            const insertPos = pcbAssignment.objectRange.end - 1;
+                            replacements.push({
+                                range: { start: insertPos, end: insertPos },
+                                newValue: `, side: 'back'`,
+                            });
                         }
                     }
-
-                    // Also update inline pcb: in constructor
-                    const creationRegex = new RegExp(
-                        `^\\s*(let|const|var|)\\s*${escapedPrefix}\\s*${escapeRegex(varName)}\\s*=\\s*new\\s+`
-                    );
-                    for (let i = 0; i < lines.length; i++) {
-                        if (lines[i].match(creationRegex)) {
-                            for (let j = i; j < Math.min(lines.length, i + 20); j++) {
-                                const inlineMatch = lines[j]?.match(/\bpcb:\s*\{/);
-                                if (inlineMatch) {
-                                    lines[j] = lines[j]
-                                        .replace(/(pcb:\s*\{[^}]*?)x:\s*-?[\d.]+/, `$1x: ${change.newX}`)
-                                        .replace(/(pcb:\s*\{[^}]*?)y:\s*-?[\d.]+/, `$1y: ${change.newY}`)
-                                        .replace(/(pcb:\s*\{[^}]*?)rotation:\s*-?[\d.]+/, `$1rotation: ${change.newRotation}`);
-                                    break;
-                                }
-                                if (lines[j].match(/;\s*$/)) break;
-                            }
-                            break;
-                        }
+                } else if (component.inlinePcb) {
+                    const props = component.inlinePcb.props;
+                    if (props['x'] && change.newX !== undefined) {
+                        replacements.push({ range: props['x'].range, newValue: String(change.newX) });
                     }
-
-                    // Apply reference position changes
-                    if (change.refPositionChange) {
-                        const rc = change.refPositionChange;
-                        for (let i = 0; i < lines.length; i++) {
-                            if (lines[i].match(/reference:\s*\[/)) {
-                                lines[i] = lines[i]
-                                    .replace(/(reference:\s*\[[\s\S]*?\{[^}]*?)x:\s*-?[\d.]+/, `$1x: ${rc.newX}`)
-                                    .replace(/(reference:\s*\[[\s\S]*?\{[^}]*?)y:\s*-?[\d.]+/, `$1y: ${rc.newY}`);
-                                if (rc.newRotation !== 0) {
-                                    if (lines[i].match(/(reference:\s*\[[\s\S]*?\{[^}]*?)rotation:\s*-?[\d.]+/)) {
-                                        lines[i] = lines[i].replace(
-                                            /(reference:\s*\[[\s\S]*?\{[^}]*?)rotation:\s*-?[\d.]+/,
-                                            `$1rotation: ${rc.newRotation}`
-                                        );
-                                    }
-                                }
-                                break;
-                            }
-                        }
+                    if (props['y'] && change.newY !== undefined) {
+                        replacements.push({ range: props['y'].range, newValue: String(change.newY) });
                     }
-
-                    // Apply fab position changes
-                    if (change.fabPositionChange) {
-                        const fc = change.fabPositionChange;
-                        for (let i = 0; i < lines.length; i++) {
-                            if (lines[i].match(/\bfab:\s*(?:\[.*?,\s*)?\{/)) {
-                                const tupleMatch = lines[i].match(/\bfab:\s*\[/);
-                                if (tupleMatch) {
-                                    lines[i] = lines[i]
-                                        .replace(/(,\s*\{\s*x:\s*)(-?[\d.]+)/, `$1${fc.newX}`)
-                                        .replace(/(,\s*\{[^}]*?y:\s*)(-?[\d.]+)/, `$1${fc.newY}`);
-                                    if (fc.newRotation !== 0) {
-                                        if (lines[i].match(/(,\s*\{[^}]*?)rotation:\s*-?[\d.]+/)) {
-                                            lines[i] = lines[i].replace(
-                                                /(,\s*\{[^}]*?)rotation:\s*-?[\d.]+/,
-                                                `$1rotation: ${fc.newRotation}`
-                                            );
-                                        }
-                                    }
-                                } else {
-                                    lines[i] = lines[i]
-                                        .replace(/(fab:\s*\{[^}]*?)x:\s*-?[\d.]+/, `$1x: ${fc.newX}`)
-                                        .replace(/(fab:\s*\{[^}]*?)y:\s*-?[\d.]+/, `$1y: ${fc.newY}`);
-                                    if (fc.newRotation !== 0) {
-                                        if (lines[i].match(/(fab:\s*\{[^}]*?)rotation:\s*-?[\d.]+/)) {
-                                            lines[i] = lines[i].replace(
-                                                /(fab:\s*\{[^}]*?)rotation:\s*-?[\d.]+/,
-                                                `$1rotation: ${fc.newRotation}`
-                                            );
-                                        }
-                                    }
-                                }
-                                break;
-                            }
-                        }
+                    if (props['rotation'] && change.newRotation !== undefined) {
+                        replacements.push({ range: props['rotation'].range, newValue: String(change.newRotation) });
                     }
-
-                    content = lines.join('\n');
                 } else {
-                    // No separate .pcb = line; check for inline pcb: in constructor
-                    const creationRegex = new RegExp(
-                        `^\\s*(let|const|var|)\\s*${escapedPrefix}\\s*${escapeRegex(varName)}\\s*=\\s*new\\s+`
-                    );
-                    let updatedInline = false;
+                    let source: string;
+                    try {
+                        source = fs.readFileSync(filePath, 'utf-8');
+                    } catch { continue; }
 
-                    for (let i = 0; i < lines.length; i++) {
-                        if (lines[i].match(creationRegex)) {
-                            for (let j = i; j < Math.min(lines.length, i + 20); j++) {
-                                if (lines[j]?.match(/\bpcb:\s*\{/)) {
-                                    lines[j] = lines[j]
-                                        .replace(/(pcb:\s*\{[^}]*?)x:\s*-?[\d.]+/, `$1x: ${change.newX}`)
-                                        .replace(/(pcb:\s*\{[^}]*?)y:\s*-?[\d.]+/, `$1y: ${change.newY}`)
-                                        .replace(/(pcb:\s*\{[^}]*?)rotation:\s*-?[\d.]+/, `$1rotation: ${change.newRotation}`);
-                                    updatedInline = true;
-                                    break;
-                                }
-                                if (lines[j].match(/;\s*$/)) break;
-                            }
-                            break;
-                        }
-                    }
+                    const insertPos = component.creationRange.end;
+                    const lineStart = source.lastIndexOf('\n', component.creationRange.start - 1);
+                    const indent = lineStart >= 0
+                        ? source.slice(lineStart + 1).match(/^(\s*)/)?.[1] || ''
+                        : '';
 
-                    if (!updatedInline) {
-                        // Insert new .pcb = line after the statement
-                        let insertIdx = -1;
-                        let indent = '';
-                        const creationRegex2 = new RegExp(
-                            `^\\s*(let|const|var|)\\s*${escapedPrefix}\\s*${escapeRegex(varName)}\\s*=\\s*new\\s+`
-                        );
-                        for (let i = 0; i < lines.length; i++) {
-                            if (lines[i].match(creationRegex2)) {
-                                indent = lines[i].match(/^(\s*)/)?.[1] || '';
-                                for (let j = i; j < Math.min(lines.length, i + 20); j++) {
-                                    if (lines[j].match(/;\s*$/)) {
-                                        insertIdx = j;
-                                        break;
-                                    }
-                                }
-                                break;
-                            }
-                        }
-                        if (insertIdx !== -1) {
-                            const sidePart = change.newSide === 'back' ? `, side: 'back'` : '';
-                            const newLine = `${indent}${change.prefix}${varName}.pcb = { x: ${change.newX}, y: ${change.newY}, rotation: ${change.newRotation}${sidePart} };`;
-                            lines.splice(insertIdx + 1, 0, newLine);
-                        }
-                    }
-                    content = lines.join('\n');
+                    const sidePart = change.newSide === 'back' ? `, side: 'back'` : '';
+                    const newLine = `\n${indent}${change.prefix}${change.variableName}.pcb = { x: ${change.newX}, y: ${change.newY}, rotation: ${change.newRotation}${sidePart} };`;
+
+                    replacements.push({
+                        range: { start: insertPos, end: insertPos },
+                        newValue: newLine,
+                    });
+                    continue;
                 }
             }
 
-            const original = fs.readFileSync(filePath, 'utf-8');
-            if (content !== original) {
-                fs.writeFileSync(filePath + '.backup', original, 'utf-8');
-                fs.writeFileSync(filePath, content, 'utf-8');
-                filesModified++;
+            if (replacements.length > 0) {
+                const modified = applyReplacements(filePath, replacements);
+                if (modified) filesModified++;
             }
         }
 
         return { filesModified, changesApplied: changes.length };
     }
 
-    /**
-     * Apply selected text element changes to source files.
-     */
-    applyTextChanges(changes: PendingTextChange[]): { filesModified: number; changesApplied: number } {
+    async applyTextChanges(changes: PendingTextChange[]): Promise<{ filesModified: number; changesApplied: number }> {
         const selectedByFile: Record<string, PendingTextChange[]> = {};
         for (const c of changes) {
             if (!selectedByFile[c.filePath]) selectedByFile[c.filePath] = [];
@@ -629,129 +565,75 @@ export class SourceRewriter {
         let filesModified = 0;
 
         for (const [filePath, fileChanges] of Object.entries(selectedByFile)) {
-            let content = fs.readFileSync(filePath, 'utf-8');
-            const lines = content.split('\n');
-
-            // Sort descending by line index
-            fileChanges.sort((a, b) => b.lineIdx - a.lineIdx);
+            const textCallInfos = await findTextCalls(filePath);
+            const replacements: Replacement[] = [];
 
             for (const change of fileChanges) {
-                const escapedSourceText = escapeRegex(change.sourceTextContent);
-                for (let i = 0; i < lines.length; i++) {
-                    if (!lines[i].match(/\.text\s*\(/)) continue;
+                const tc = textCallInfos.find(t => t.text === change.sourceTextContent);
+                if (!tc) continue;
 
-                    let callBlock = lines[i];
-                    let endLine = i;
-                    if (!lines[i].match(/\}\s*\)/)) {
-                        for (let j = i + 1; j < Math.min(lines.length, i + 20); j++) {
-                            callBlock += '\n' + lines[j];
-                            if (lines[j].match(/\}\s*\)/)) {
-                                endLine = j;
-                                break;
-                            }
-                        }
-                    }
+                const props = tc.props;
 
-                    const textMatch = callBlock.match(new RegExp(`text:\\s*["']${escapedSourceText}["']`));
-                    if (!textMatch) continue;
-
-                    let updated = callBlock;
-
-                    if (change.sourceTextContent !== change.newPcbText) {
-                        updated = updated.replace(change.sourceTextContent, change.newPcbText);
+                if (change.sourceTextContent !== change.newPcbText && props['text']) {
+                    const textRange = props['text'].range;
+                    replacements.push({
+                        range: textRange,
+                        newValue: `'${change.newPcbText}'`,
+                    });
+                }
+                if (Math.abs(change.oldX - change.newX) > 0.001 && props['x']) {
+                    replacements.push({ range: props['x'].range, newValue: String(change.newX) });
+                }
+                if (Math.abs(change.oldY - change.newY) > 0.001 && props['y']) {
+                    replacements.push({ range: props['y'].range, newValue: String(change.newY) });
+                }
+                if (Math.abs(change.oldRotation - change.newRotation) > 0.001 && props['rotation']) {
+                    replacements.push({ range: props['rotation'].range, newValue: String(change.newRotation) });
+                }
+                if (change.oldLayer !== change.newLayer && props['layer']) {
+                    replacements.push({ range: props['layer'].range, newValue: `'${change.newLayer}'` });
+                }
+                if (change.oldFont !== change.newFont && change.newFont && props['font']) {
+                    replacements.push({ range: props['font'].range, newValue: `'${change.newFont}'` });
+                }
+                if (change.newWidth !== undefined && change.oldWidth !== change.newWidth && props['width']) {
+                    replacements.push({ range: props['width'].range, newValue: String(change.newWidth) });
+                }
+                if (change.newHeight !== undefined && change.oldHeight !== change.newHeight && props['height']) {
+                    replacements.push({ range: props['height'].range, newValue: String(change.newHeight) });
+                }
+                if (change.newThickness !== undefined && change.oldThickness !== change.newThickness && props['thickness']) {
+                    replacements.push({ range: props['thickness'].range, newValue: String(change.newThickness) });
+                }
+                if (change.oldBold !== change.newBold && props['bold']) {
+                    replacements.push({ range: props['bold'].range, newValue: String(change.newBold) });
+                }
+                if (change.oldItalic !== change.newItalic && props['italic']) {
+                    replacements.push({ range: props['italic'].range, newValue: String(change.newItalic) });
+                }
+                if (!justifyEquals(change.oldJustify, change.newJustify) && change.newJustify && props['justify']) {
+                    const j = change.newJustify;
+                    const newParts: string[] = [];
+                    if (j.horizontal) newParts.push(`horizontal: '${j.horizontal}'`);
+                    if (j.vertical) newParts.push(`vertical: '${j.vertical}'`);
+                    if (j.mirror) newParts.push('mirror: true');
+                    if (newParts.length > 0) {
+                        replacements.push({
+                            range: props['justify'].range,
+                            newValue: `{ ${newParts.join(', ')} }`,
+                        });
                     }
-                    if (Math.abs(change.oldX - change.newX) > 0.001) {
-                        updated = updated.replace(/x:\s*-?[\d.]+/, `x: ${change.newX}`);
-                    }
-                    if (Math.abs(change.oldY - change.newY) > 0.001) {
-                        updated = updated.replace(/y:\s*-?[\d.]+/, `y: ${change.newY}`);
-                    }
-                    if (Math.abs(change.oldRotation - change.newRotation) > 0.001) {
-                        if (updated.match(/rotation:\s*-?[\d.]+/)) {
-                            updated = updated.replace(/rotation:\s*-?[\d.]+/, `rotation: ${change.newRotation}`);
-                        }
-                    }
-                    if (change.oldLayer !== change.newLayer && change.newLayer !== 'F.SilkS') {
-                        if (updated.match(/layer:\s*["'][^"']+["']/)) {
-                            updated = updated.replace(/layer:\s*["'][^"']+["']/, `layer: '${change.newLayer}'`);
-                        }
-                    }
-                    if (change.oldFont !== change.newFont) {
-                        if (change.newFont) {
-                            if (updated.match(/font:\s*["'][^"']+["']/)) {
-                                updated = updated.replace(/font:\s*["'][^"']+["']/, `font: '${change.newFont}'`);
-                            }
-                        }
-                    }
-                    if (change.newWidth !== undefined && change.oldWidth !== change.newWidth) {
-                        if (updated.match(/width:\s*-?[\d.]+/)) {
-                            updated = updated.replace(/width:\s*-?[\d.]+/, `width: ${change.newWidth}`);
-                        }
-                    }
-                    if (change.newHeight !== undefined && change.oldHeight !== change.newHeight) {
-                        if (updated.match(/height:\s*-?[\d.]+/)) {
-                            updated = updated.replace(/height:\s*-?[\d.]+/, `height: ${change.newHeight}`);
-                        }
-                    }
-                    if (change.newThickness !== undefined && change.oldThickness !== change.newThickness) {
-                        if (updated.match(/thickness:\s*-?[\d.]+/)) {
-                            updated = updated.replace(/thickness:\s*-?[\d.]+/, `thickness: ${change.newThickness}`);
-                        }
-                    }
-                    if (change.oldBold !== change.newBold) {
-                        if (updated.match(/\bbold:\s*(true|false)/)) {
-                            updated = updated.replace(/\bbold:\s*(true|false)/, `bold: ${change.newBold}`);
-                        }
-                    }
-                    if (change.oldItalic !== change.newItalic) {
-                        if (updated.match(/\bitalic:\s*(true|false)/)) {
-                            updated = updated.replace(/\bitalic:\s*(true|false)/, `italic: ${change.newItalic}`);
-                        }
-                    }
-                    if (!justifyEquals(change.oldJustify, change.newJustify) && change.newJustify) {
-                        const j = change.newJustify;
-                        const newParts: string[] = [];
-                        if (j.horizontal) newParts.push(`horizontal: '${j.horizontal}'`);
-                        if (j.vertical) newParts.push(`vertical: '${j.vertical}'`);
-                        if (j.mirror) newParts.push('mirror: true');
-                        if (newParts.length > 0) {
-                            const newJustifyStr = `justify: { ${newParts.join(', ')} }`;
-                            if (updated.match(/justify:\s*\{[^}]*\}/)) {
-                                updated = updated.replace(/justify:\s*\{[^}]*\}/, newJustifyStr);
-                            }
-                        }
-                    }
-
-                    const updatedLines = updated.split('\n');
-                    lines.splice(i, endLine - i + 1, ...updatedLines);
-                    break;
                 }
             }
 
-            content = lines.join('\n');
-            const original = fs.readFileSync(filePath, 'utf-8');
-            if (content !== original) {
-                fs.writeFileSync(filePath + '.backup', original, 'utf-8');
-                fs.writeFileSync(filePath, content, 'utf-8');
-                filesModified++;
+            if (replacements.length > 0) {
+                const modified = applyReplacements(filePath, replacements);
+                if (modified) filesModified++;
             }
         }
 
         return { filesModified, changesApplied: changes.length };
     }
-}
-
-// === Utility helpers (shared with original cli.ts logic) ===
-
-function parseSourceJustify(raw: string): { horizontal?: string; vertical?: string; mirror?: boolean } {
-    const result: { horizontal?: string; vertical?: string; mirror?: boolean } = {};
-    const hm = raw.match(/horizontal:\s*['"](\w+)['"]/);
-    const vm = raw.match(/vertical:\s*['"](\w+)['"]/);
-    const mm = raw.match(/mirror:\s*(true)/);
-    if (hm) result.horizontal = hm[1];
-    if (vm) result.vertical = vm[1];
-    if (mm) result.mirror = true;
-    return result;
 }
 
 function justifyEquals(
@@ -772,6 +654,91 @@ function textFuzzyMatch(sourceText: string, pcbText: string): boolean {
     return false;
 }
 
-function escapeRegex(str: string): string {
-    return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+function propsToLayoutIR(props: Record<string, import('./source_analyzer.js').PropertyValue>): TextLayoutIR {
+    const result: TextLayoutIR = {
+        x: (props['x']?.value as number) ?? 0,
+        y: (props['y']?.value as number) ?? 0,
+    };
+    if (props['rotation']?.value !== undefined) result.rotation = props['rotation'].value as number;
+    if (props['layer']?.value !== undefined) result.layer = props['layer'].value as string;
+    if (props['width']?.value !== undefined) result.width = props['width'].value as number;
+    if (props['height']?.value !== undefined) result.height = props['height'].value as number;
+    if (props['thickness']?.value !== undefined) result.thickness = props['thickness'].value as number;
+    if (props['bold']?.value !== undefined) result.bold = props['bold'].value as boolean;
+    if (props['italic']?.value !== undefined) result.italic = props['italic'].value as boolean;
+    if (props['show']?.value !== undefined) result.show = props['show'].value as boolean;
+    const justifyVal = props['justify']?.value;
+    if (justifyVal && typeof justifyVal === 'object') {
+        result.justify = justifyVal as TextLayoutIR['justify'];
+    }
+    return result;
+}
+
+function applyLayoutPropsToReplacements(
+    replacements: Replacement[],
+    objectRange: { start: number; end: number },
+    props: Record<string, import('./source_analyzer.js').PropertyValue>,
+    newLayout: TextLayoutIR
+): void {
+    const layoutKeys = ['x', 'y', 'rotation', 'layer', 'width', 'height', 'thickness', 'bold', 'italic', 'show'] as const;
+    const hasMissing = layoutKeys.some(k => newLayout[k as keyof TextLayoutIR] !== undefined && !props[k]);
+
+    if (hasMissing) {
+        replacements.push({
+            range: objectRange,
+            newValue: layoutIRToString(newLayout, ''),
+        });
+        return;
+    }
+
+    if (props['x'] && newLayout.x !== undefined) {
+        replacements.push({ range: props['x'].range, newValue: String(newLayout.x) });
+    }
+    if (props['y'] && newLayout.y !== undefined) {
+        replacements.push({ range: props['y'].range, newValue: String(newLayout.y) });
+    }
+    if (props['rotation'] && newLayout.rotation !== undefined) {
+        replacements.push({ range: props['rotation'].range, newValue: String(newLayout.rotation) });
+    }
+    if (props['layer'] && newLayout.layer !== undefined) {
+        replacements.push({ range: props['layer'].range, newValue: `'${newLayout.layer}'` });
+    }
+    if (props['width'] && newLayout.width !== undefined) {
+        replacements.push({ range: props['width'].range, newValue: String(newLayout.width) });
+    }
+    if (props['height'] && newLayout.height !== undefined) {
+        replacements.push({ range: props['height'].range, newValue: String(newLayout.height) });
+    }
+    if (props['thickness'] && newLayout.thickness !== undefined) {
+        replacements.push({ range: props['thickness'].range, newValue: String(newLayout.thickness) });
+    }
+    if (props['bold'] && newLayout.bold !== undefined) {
+        replacements.push({ range: props['bold'].range, newValue: String(newLayout.bold) });
+    }
+    if (props['italic'] && newLayout.italic !== undefined) {
+        replacements.push({ range: props['italic'].range, newValue: String(newLayout.italic) });
+    }
+    if (props['show'] && newLayout.show !== undefined) {
+        replacements.push({ range: props['show'].range, newValue: String(newLayout.show) });
+    }
+}
+
+function layoutIRToString(layout: TextLayoutIR, layoutType: string): string {
+    const parts: string[] = [`x: ${layout.x}`, `y: ${layout.y}`];
+    if (layout.rotation !== undefined) parts.push(`rotation: ${layout.rotation}`);
+    if (layout.layer !== undefined) parts.push(`layer: '${layout.layer}'`);
+    if (layout.width !== undefined) parts.push(`width: ${layout.width}`);
+    if (layout.height !== undefined) parts.push(`height: ${layout.height}`);
+    if (layout.thickness !== undefined) parts.push(`thickness: ${layout.thickness}`);
+    if (layout.bold !== undefined) parts.push(`bold: ${layout.bold}`);
+    if (layout.italic !== undefined) parts.push(`italic: ${layout.italic}`);
+    if (layout.show !== undefined) parts.push(`show: ${layout.show}`);
+    if (layout.justify) {
+        const jParts: string[] = [];
+        if (layout.justify.horizontal) jParts.push(`horizontal: '${layout.justify.horizontal}'`);
+        if (layout.justify.vertical) jParts.push(`vertical: '${layout.justify.vertical}'`);
+        if (layout.justify.mirror) jParts.push('mirror: true');
+        if (jParts.length > 0) parts.push(`justify: { ${jParts.join(', ')} }`);
+    }
+    return `{ ${parts.join(', ')} }`;
 }

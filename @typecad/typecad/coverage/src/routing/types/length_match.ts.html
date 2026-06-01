@@ -25,28 +25,28 @@
             <div class='fl pad1y space-right2'>
                 <span class="strong">0% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>0/0</span>
+                <span class='fraction'>0/30</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
                 <span class="strong">0% </span>
                 <span class="quiet">Branches</span>
-                <span class='fraction'>1/1</span>
+                <span class='fraction'>0/1</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
                 <span class="strong">0% </span>
                 <span class="quiet">Functions</span>
-                <span class='fraction'>1/1</span>
+                <span class='fraction'>0/1</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
                 <span class="strong">0% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>0/0</span>
+                <span class='fraction'>0/30</span>
             </div>
         
             
@@ -93,66 +93,66 @@
 <a name='L28'></a><a href='#L28'>28</a>
 <a name='L29'></a><a href='#L29'>29</a>
 <a name='L30'></a><a href='#L30'>30</a>
-<a name='L31'></a><a href='#L31'>31</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">import type { RoutingGrid } from '../contracts/routing_grid.js';
-import type { IRoutePath as FullRoutePath, IGeneratedElement, ILengthMatchPatternConfig, ILengthMatchConfig } from '../../pcb/pcb_interfaces.js';
-import type { IPcbBoardContext } from '../../pcb/pcb_board_context.js';
-&nbsp;
-export type { ILengthMatchPatternConfig, ILengthMatchConfig };
-&nbsp;
-export type IRoutePath = Pick&lt;FullRoutePath, 'nodes' | 'length'&gt;;
-&nbsp;
-export interface ILengthMatchContext {
-  pcb: IPcbBoardContext;
-  grid: RoutingGrid;
-  traceWidth: number;
-  clearance: number;
-  net?: string;
-  locked?: boolean;
-}
-&nbsp;
-// Use a more flexible type that matches the actual TrackBuilder implementation
-export type ITrackBuilder = {
-  from(point: { x: number; y: number }, layer?: string, width?: number): ITrackBuilder;
-  to(point: { x: number; y: number; layer?: string; width?: number }): ITrackBuilder;
-  getElements(): IGeneratedElement[];
-};
-&nbsp;
-export interface IStraightSegment {
-  start: { x: number; y: number; layer: string };
-  end: { x: number; y: number; layer: string };
-  length: number;
-  centerAlongPath: number; // distance along the overall path to the segment center (for middle prioritization)
-}
+<a name='L31'></a><a href='#L31'>31</a></td><td class="line-coverage quiet"><span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js"><span class="cstat-no" title="statement not covered" ><span class="fstat-no" title="function not covered" ><span class="branch-0 cbranch-no" title="branch not covered" >import type { RoutingGrid } from '../contracts/routing_grid.js';</span></span></span>
+<span class="cstat-no" title="statement not covered" >import type { IRoutePath as FullRoutePath, IGeneratedElement, ILengthMatchPatternConfig, ILengthMatchConfig } from '../../pcb/pcb_interfaces.js';</span>
+<span class="cstat-no" title="statement not covered" >import type { IPcbBoardContext } from '../../pcb/pcb_board_context.js';</span>
+<span class="cstat-no" title="statement not covered" ></span>
+<span class="cstat-no" title="statement not covered" >export type { ILengthMatchPatternConfig, ILengthMatchConfig };</span>
+<span class="cstat-no" title="statement not covered" ></span>
+<span class="cstat-no" title="statement not covered" >export type IRoutePath = Pick&lt;FullRoutePath, 'nodes' | 'length'&gt;;</span>
+<span class="cstat-no" title="statement not covered" ></span>
+<span class="cstat-no" title="statement not covered" >export interface ILengthMatchContext {</span>
+<span class="cstat-no" title="statement not covered" >  pcb: IPcbBoardContext;</span>
+<span class="cstat-no" title="statement not covered" >  grid: RoutingGrid;</span>
+<span class="cstat-no" title="statement not covered" >  traceWidth: number;</span>
+<span class="cstat-no" title="statement not covered" >  clearance: number;</span>
+<span class="cstat-no" title="statement not covered" >  net?: string;</span>
+<span class="cstat-no" title="statement not covered" >  locked?: boolean;</span>
+<span class="cstat-no" title="statement not covered" >}</span>
+<span class="cstat-no" title="statement not covered" ></span>
+<span class="cstat-no" title="statement not covered" >// Use a more flexible type that matches the actual TrackBuilder implementation</span>
+<span class="cstat-no" title="statement not covered" >export type ITrackBuilder = {</span>
+<span class="cstat-no" title="statement not covered" >  from(point: { x: number; y: number }, layer?: string, width?: number): ITrackBuilder;</span>
+<span class="cstat-no" title="statement not covered" >  to(point: { x: number; y: number; layer?: string; width?: number }): ITrackBuilder;</span>
+<span class="cstat-no" title="statement not covered" >  getElements(): IGeneratedElement[];</span>
+<span class="cstat-no" title="statement not covered" >};</span>
+<span class="cstat-no" title="statement not covered" ></span>
+<span class="cstat-no" title="statement not covered" >export interface IStraightSegment {</span>
+<span class="cstat-no" title="statement not covered" >  start: { x: number; y: number; layer: string };</span>
+<span class="cstat-no" title="statement not covered" >  end: { x: number; y: number; layer: string };</span>
+<span class="cstat-no" title="statement not covered" >  length: number;</span>
+<span class="cstat-no" title="statement not covered" >  centerAlongPath: number; // distance along the overall path to the segment center (for middle prioritization)</span>
+<span class="cstat-no" title="statement not covered" >}</span>
 &nbsp;</pre></td></tr></table></pre>
 
                 <div class='push'></div><!-- for sticky footer -->
@@ -160,7 +160,7 @@ export interface IStraightSegment {
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2026-05-30T17:36:08.948Z
+                at 2026-06-01T13:03:40.672Z
             </div>
         <script src="../../../prettify.js"></script>
         <script>

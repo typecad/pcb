@@ -37,7 +37,7 @@ export function decodeCodeMetadata(rawValue: string | null | undefined): CodeMet
             const base64 = cleaned.slice(PREFIX.length);
             const json = Buffer.from(base64, 'base64url').toString('utf-8');
             const parsed = JSON.parse(json);
-            if (parsed && parsed.v === 1 && parsed.u) {
+            if (parsed && parsed.v === 1 && parsed.u !== undefined) {
                 return parsed as CodeMetadata;
             }
         } catch {

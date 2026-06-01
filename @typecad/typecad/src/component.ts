@@ -19,7 +19,9 @@ import type {
     TextWithPositioning,
     TextEntry,
     FabEntry,
+    FabLayout,
 } from './pcb/component_text.js';
+import type { ITextPositioning } from './pcb/pcb_interfaces.js';
 import { loadFootprintLib } from './pcb/component_footprint_loader.js';
 import { loadSymbolLib } from './renderers/component_symbol_loader.js';
 
@@ -30,7 +32,7 @@ export function awaitPendingInspections(): Promise<void> {
     return Promise.all(Array.from(pendingInspections)).then(() => {});
 }
 
-export type { TextOrPositioning, TextPositioning, TextWithPositioning, TextEntry, FabEntry };
+export type { TextOrPositioning, TextPositioning, TextWithPositioning, TextEntry, FabEntry, FabLayout };
 export { parseTextOrPositioning };
 
 export interface ITypeHalInfo {
@@ -71,6 +73,9 @@ export interface ComponentInit {
     dnp?: boolean;
     fab?: TextPositioning | TextWithPositioning;
     text?: TextEntry[];
+    referenceLayout?: ITextPositioning;
+    valueLayout?: ITextPositioning;
+    fabLayout?: FabLayout;
 }
 
 /** @deprecated Use `ComponentInit` instead. */
@@ -103,6 +108,32 @@ export class Component {
     typehal?: ITypeHalInfo;
     text: TextEntry[] = [];
     fab: FabEntry | undefined = undefined;
+    referenceLayout: ITextPositioning | undefined = undefined;
+    valueLayout: ITextPositioning | undefined = undefined;
+    #fabLayout: FabLayout | undefined = undefined;
+    get fabLayout(): FabLayout | undefined { return this.#fabLayout; }
+    set fabLayout(value: FabLayout | undefined) {
+        this.#fabLayout = value;
+        if (value) {
+            this.fab = {
+                text: value.text || '${REFERENCE}',
+                x: value.x,
+                y: value.y,
+                rotation: value.rotation,
+                layer: value.layer,
+                width: value.width,
+                height: value.height,
+                fontSize: value.fontSize,
+                thickness: value.thickness,
+                bold: value.bold,
+                italic: value.italic,
+                justify: value.justify,
+                show: value.show,
+            };
+        } else {
+            this.fab = undefined;
+        }
+    }
     /** @internal */
     valueFootprint?: import('./pcb/pcb_interfaces.js').ITextPositioning;
     /** @internal */
@@ -254,6 +285,9 @@ export class Component {
         if (init.uuid) this.#uuid = init.uuid;
         if (init.fab) this.fab = parseFab(init.fab);
         if (init.text) this.text = init.text;
+        if (init.referenceLayout) this.referenceLayout = init.referenceLayout;
+        if (init.valueLayout) this.valueLayout = init.valueLayout;
+        if (init.fabLayout) this.fabLayout = init.fabLayout;
         if (init.typehal) this.typehal = init.typehal;
         if (init.sourceInfo) this.sourceInfo = init.sourceInfo;
     }

@@ -87,6 +87,8 @@ export function applyTextPositioning(
     }
 }
 
+export type FabLayout = ITextPositioning & { text?: string };
+
 export function parseFab(
     fab: TextPositioning | TextWithPositioning | undefined
 ): FabEntry | undefined {

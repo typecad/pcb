@@ -22,5 +22,5 @@
   "include": [
     "src/**/*.ts"
   ],
-  "exclude": ["node_modules", "dist", "dist-obfuscated", "src/gitdiff/viewer"]
+  "exclude": ["node_modules", "dist", "dist-obfuscated", "src/gitdiff/viewer", "**/__tests__/**", "**/*.test.ts", "**/*.spec.ts"]
 }

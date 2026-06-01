@@ -23,30 +23,30 @@
         <div class='clearfix'>
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">100% </span>
+                <span class="strong">0% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>38/38</span>
+                <span class='fraction'>0/58</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">100% </span>
+                <span class="strong">0% </span>
                 <span class="quiet">Branches</span>
-                <span class='fraction'>6/6</span>
+                <span class='fraction'>0/1</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">100% </span>
+                <span class="strong">0% </span>
                 <span class="quiet">Functions</span>
-                <span class='fraction'>4/4</span>
+                <span class='fraction'>0/1</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">100% </span>
+                <span class="strong">0% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>38/38</span>
+                <span class='fraction'>0/58</span>
             </div>
         
             
@@ -61,7 +61,7 @@
             </div>
         </template>
     </div>
-    <div class='status-line high'></div>
+    <div class='status-line low'></div>
     <pre><table class="coverage">
 <tr><td class="line-count quiet"><a name='L1'></a><a href='#L1'>1</a>
 <a name='L2'></a><a href='#L2'>2</a>
@@ -121,122 +121,122 @@
 <a name='L56'></a><a href='#L56'>56</a>
 <a name='L57'></a><a href='#L57'>57</a>
 <a name='L58'></a><a href='#L58'>58</a>
-<a name='L59'></a><a href='#L59'>59</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">190x</span>
-<span class="cline-any cline-yes">190x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">25x</span>
-<span class="cline-any cline-yes">25x</span>
-<span class="cline-any cline-yes">25x</span>
-<span class="cline-any cline-yes">25x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">14x</span>
-<span class="cline-any cline-yes">14x</span>
-<span class="cline-any cline-yes">12x</span>
-<span class="cline-any cline-yes">14x</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-yes">14x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">9x</span>
-<span class="cline-any cline-yes">9x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">import { type Component } from "../component.js";
-import type { SExpr } from '../sexpr/types.js';
-import type {
-    IPcbOptions,
-    IGrLine,
-    IGrCircle,
-    IGrRect,
-    IGrPoly,
-    IOutline,
-    IGrTextOptions,
-    IFilledZone,
-    IKeepoutZone,
-    IAutorouteResult
-} from './pcb_interfaces.js';
-&nbsp;
-export class PcbInternalState {
-    offsetStack: { x: number; y: number }[] = [];
-    currentOffset: { x: number; y: number } = { x: 0, y: 0 };
-    pcb: string = '';
-    components: Component[] = [];
-    stagedComponents: Component[] = [];
-    groups: string[] = [];
-    outlines: IOutline[] = [];
-    stagedOutlines: IOutline[] = [];
-    readonly options: IPcbOptions;
-    existingBoardElements: SExpr[] = [];
-    grTexts: IGrTextOptions[] = [];
-    zones: IFilledZone[] = [];
-    keepoutZones: IKeepoutZone[] = [];
-    grLines: IGrLine[] = [];
-    grCircles: IGrCircle[] = [];
-    grRects: IGrRect[] = [];
-    grPolys: IGrPoly[] = [];
-    pendingAutoroutes: Set&lt;Promise&lt;IAutorouteResult&gt;&gt; = new Set();
-&nbsp;
-    constructor(options: IPcbOptions) {
-        this.options = options;
-    }
-&nbsp;
-    pushOffset(x: number, y: number): void {
-        this.offsetStack.push({ ...this.currentOffset });
-        this.currentOffset.x += x;
-        this.currentOffset.y += y;
-    }
-&nbsp;
-    popOffset(): void {
-        const prev = this.offsetStack.pop();
-        if (prev) {
-            this.currentOffset = prev;
-        } else {
-            this.currentOffset = { x: 0, y: 0 };
-        }
-    }
-&nbsp;
-    getOffset(): { x: number; y: number } {
-        return { ...this.currentOffset };
-    }
-}
+<a name='L59'></a><a href='#L59'>59</a></td><td class="line-coverage quiet"><span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js"><span class="cstat-no" title="statement not covered" ><span class="fstat-no" title="function not covered" ><span class="branch-0 cbranch-no" title="branch not covered" >import { type Component } from "../component.js";</span></span></span>
+<span class="cstat-no" title="statement not covered" >import type { SExpr } from '../sexpr/types.js';</span>
+<span class="cstat-no" title="statement not covered" >import type {</span>
+<span class="cstat-no" title="statement not covered" >    IPcbOptions,</span>
+<span class="cstat-no" title="statement not covered" >    IGrLine,</span>
+<span class="cstat-no" title="statement not covered" >    IGrCircle,</span>
+<span class="cstat-no" title="statement not covered" >    IGrRect,</span>
+<span class="cstat-no" title="statement not covered" >    IGrPoly,</span>
+<span class="cstat-no" title="statement not covered" >    IOutline,</span>
+<span class="cstat-no" title="statement not covered" >    IGrTextOptions,</span>
+<span class="cstat-no" title="statement not covered" >    IFilledZone,</span>
+<span class="cstat-no" title="statement not covered" >    IKeepoutZone,</span>
+<span class="cstat-no" title="statement not covered" >    IAutorouteResult</span>
+<span class="cstat-no" title="statement not covered" >} from './pcb_interfaces.js';</span>
+<span class="cstat-no" title="statement not covered" ></span>
+<span class="cstat-no" title="statement not covered" >export class PcbInternalState {</span>
+<span class="cstat-no" title="statement not covered" >    offsetStack: { x: number; y: number }[] = [];</span>
+<span class="cstat-no" title="statement not covered" >    currentOffset: { x: number; y: number } = { x: 0, y: 0 };</span>
+<span class="cstat-no" title="statement not covered" >    pcb: string = '';</span>
+<span class="cstat-no" title="statement not covered" >    components: Component[] = [];</span>
+<span class="cstat-no" title="statement not covered" >    stagedComponents: Component[] = [];</span>
+<span class="cstat-no" title="statement not covered" >    groups: string[] = [];</span>
+<span class="cstat-no" title="statement not covered" >    outlines: IOutline[] = [];</span>
+<span class="cstat-no" title="statement not covered" >    stagedOutlines: IOutline[] = [];</span>
+<span class="cstat-no" title="statement not covered" >    readonly options: IPcbOptions;</span>
+<span class="cstat-no" title="statement not covered" >    existingBoardElements: SExpr[] = [];</span>
+<span class="cstat-no" title="statement not covered" >    grTexts: IGrTextOptions[] = [];</span>
+<span class="cstat-no" title="statement not covered" >    zones: IFilledZone[] = [];</span>
+<span class="cstat-no" title="statement not covered" >    keepoutZones: IKeepoutZone[] = [];</span>
+<span class="cstat-no" title="statement not covered" >    grLines: IGrLine[] = [];</span>
+<span class="cstat-no" title="statement not covered" >    grCircles: IGrCircle[] = [];</span>
+<span class="cstat-no" title="statement not covered" >    grRects: IGrRect[] = [];</span>
+<span class="cstat-no" title="statement not covered" >    grPolys: IGrPoly[] = [];</span>
+<span class="cstat-no" title="statement not covered" >    pendingAutoroutes: Set&lt;Promise&lt;IAutorouteResult&gt;&gt; = new Set();</span>
+<span class="cstat-no" title="statement not covered" ></span>
+<span class="cstat-no" title="statement not covered" >    constructor(options: IPcbOptions) {</span>
+<span class="cstat-no" title="statement not covered" >        this.options = options;</span>
+<span class="cstat-no" title="statement not covered" >    }</span>
+<span class="cstat-no" title="statement not covered" ></span>
+<span class="cstat-no" title="statement not covered" >    pushOffset(x: number, y: number): void {</span>
+<span class="cstat-no" title="statement not covered" >        this.offsetStack.push({ ...this.currentOffset });</span>
+<span class="cstat-no" title="statement not covered" >        this.currentOffset.x += x;</span>
+<span class="cstat-no" title="statement not covered" >        this.currentOffset.y += y;</span>
+<span class="cstat-no" title="statement not covered" >    }</span>
+<span class="cstat-no" title="statement not covered" ></span>
+<span class="cstat-no" title="statement not covered" >    popOffset(): void {</span>
+<span class="cstat-no" title="statement not covered" >        const prev = this.offsetStack.pop();</span>
+<span class="cstat-no" title="statement not covered" >        if (prev) {</span>
+<span class="cstat-no" title="statement not covered" >            this.currentOffset = prev;</span>
+<span class="cstat-no" title="statement not covered" >        } else {</span>
+<span class="cstat-no" title="statement not covered" >            this.currentOffset = { x: 0, y: 0 };</span>
+<span class="cstat-no" title="statement not covered" >        }</span>
+<span class="cstat-no" title="statement not covered" >    }</span>
+<span class="cstat-no" title="statement not covered" ></span>
+<span class="cstat-no" title="statement not covered" >    getOffset(): { x: number; y: number } {</span>
+<span class="cstat-no" title="statement not covered" >        return { ...this.currentOffset };</span>
+<span class="cstat-no" title="statement not covered" >    }</span>
+<span class="cstat-no" title="statement not covered" >}</span>
 &nbsp;</pre></td></tr></table></pre>
 
                 <div class='push'></div><!-- for sticky footer -->
@@ -244,7 +244,7 @@ export class PcbInternalState {
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2026-05-30T17:36:08.948Z
+                at 2026-06-01T13:03:40.672Z
             </div>
         <script src="../../prettify.js"></script>
         <script>

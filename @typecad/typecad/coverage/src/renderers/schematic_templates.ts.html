@@ -23,30 +23,30 @@
         <div class='clearfix'>
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">61.11% </span>
+                <span class="strong">0% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>11/18</span>
+                <span class='fraction'>0/57</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">100% </span>
+                <span class="strong">0% </span>
                 <span class="quiet">Branches</span>
-                <span class='fraction'>1/1</span>
+                <span class='fraction'>0/1</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">50% </span>
+                <span class="strong">0% </span>
                 <span class="quiet">Functions</span>
-                <span class='fraction'>1/2</span>
+                <span class='fraction'>0/1</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">61.11% </span>
+                <span class="strong">0% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>11/18</span>
+                <span class='fraction'>0/57</span>
             </div>
         
             
@@ -61,7 +61,7 @@
             </div>
         </template>
     </div>
-    <div class='status-line medium'></div>
+    <div class='status-line low'></div>
     <pre><table class="coverage">
 <tr><td class="line-count quiet"><a name='L1'></a><a href='#L1'>1</a>
 <a name='L2'></a><a href='#L2'>2</a>
@@ -120,119 +120,119 @@
 <a name='L55'></a><a href='#L55'>55</a>
 <a name='L56'></a><a href='#L56'>56</a>
 <a name='L57'></a><a href='#L57'>57</a>
-<a name='L58'></a><a href='#L58'>58</a></td><td class="line-coverage quiet"><span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">27x</span>
-<span class="cline-any cline-yes">27x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">27x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">27x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">27x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">27x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">27x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">27x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
+<a name='L58'></a><a href='#L58'>58</a></td><td class="line-coverage quiet"><span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">import { escapeSexprString } from "../sexpr/escape.js";
-&nbsp;
-export function renderSchematic(data: {
-    uuid: string;
-    lib_symbols: string[];
-    wires: string[];
-    labels: string[];
-    symbols: string[];
-}): string {
-    return `(kicad_sch
-	(version 20250114)
-	(generator "typecad")
-	(generator_version "0.1.0")
-	(paper "A4")
-    (uuid "${data.uuid}")
-&nbsp;
-    (lib_symbols
-${data.lib_symbols.map(s =&gt; `    ${s}`).join('\n')}
-    )
-&nbsp;
-${data.wires.map(s =&gt; `\t${s}`).join('\n')}
-&nbsp;
-${data.labels.map(s =&gt; `\t${s}`).join('\n')}
-&nbsp;
-${data.symbols.map(s =&gt; `    ${s}`).join('\n')}
-&nbsp;
-	(sheet_instances
-		(path "/"
-			(page "1")
-		)
-	)
-	(embedded_fonts no)
-)`;
-}
-&nbsp;
-export <span class="fstat-no" title="function not covered" >function renderLabel(data: {</span>
-    net_name: string;
-    x: number;
-    y: number;
-    label_rotation: number;
-    justify_horizontal: string;
-    justify_vertical: string;
-    uuid: string;
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js"><span class="cstat-no" title="statement not covered" ><span class="fstat-no" title="function not covered" ><span class="branch-0 cbranch-no" title="branch not covered" >import { escapeSexprString } from "../sexpr/escape.js";</span></span></span>
+<span class="cstat-no" title="statement not covered" ></span>
+<span class="cstat-no" title="statement not covered" >export function renderSchematic(data: {</span>
+<span class="cstat-no" title="statement not covered" >    uuid: string;</span>
+<span class="cstat-no" title="statement not covered" >    lib_symbols: string[];</span>
+<span class="cstat-no" title="statement not covered" >    wires: string[];</span>
+<span class="cstat-no" title="statement not covered" >    labels: string[];</span>
+<span class="cstat-no" title="statement not covered" >    symbols: string[];</span>
+<span class="cstat-no" title="statement not covered" >}): string {</span>
+<span class="cstat-no" title="statement not covered" >    return `(kicad_sch</span>
+<span class="cstat-no" title="statement not covered" >	(version 20250114)</span>
+<span class="cstat-no" title="statement not covered" >	(generator "typecad")</span>
+<span class="cstat-no" title="statement not covered" >	(generator_version "0.1.0")</span>
+<span class="cstat-no" title="statement not covered" >	(paper "A4")</span>
+<span class="cstat-no" title="statement not covered" >    (uuid "${data.uuid}")</span>
+<span class="cstat-no" title="statement not covered" ></span>
+<span class="cstat-no" title="statement not covered" >    (lib_symbols</span>
+<span class="cstat-no" title="statement not covered" >${data.lib_symbols.map(s =&gt; `    ${s}`).join('\n')}</span>
+<span class="cstat-no" title="statement not covered" >    )</span>
+<span class="cstat-no" title="statement not covered" ></span>
+<span class="cstat-no" title="statement not covered" >${data.wires.map(s =&gt; `\t${s}`).join('\n')}</span>
+<span class="cstat-no" title="statement not covered" ></span>
+<span class="cstat-no" title="statement not covered" >${data.labels.map(s =&gt; `\t${s}`).join('\n')}</span>
+<span class="cstat-no" title="statement not covered" ></span>
+<span class="cstat-no" title="statement not covered" >${data.symbols.map(s =&gt; `    ${s}`).join('\n')}</span>
+<span class="cstat-no" title="statement not covered" ></span>
+<span class="cstat-no" title="statement not covered" >	(sheet_instances</span>
+<span class="cstat-no" title="statement not covered" >		(path "/"</span>
+<span class="cstat-no" title="statement not covered" >			(page "1")</span>
+<span class="cstat-no" title="statement not covered" >		)</span>
+<span class="cstat-no" title="statement not covered" >	)</span>
+<span class="cstat-no" title="statement not covered" >	(embedded_fonts no)</span>
+<span class="cstat-no" title="statement not covered" >)`;</span>
+<span class="cstat-no" title="statement not covered" >}</span>
+<span class="cstat-no" title="statement not covered" ></span>
+<span class="cstat-no" title="statement not covered" >export function renderLabel(data: {</span>
+<span class="cstat-no" title="statement not covered" >    net_name: string;</span>
+<span class="cstat-no" title="statement not covered" >    x: number;</span>
+<span class="cstat-no" title="statement not covered" >    y: number;</span>
+<span class="cstat-no" title="statement not covered" >    label_rotation: number;</span>
+<span class="cstat-no" title="statement not covered" >    justify_horizontal: string;</span>
+<span class="cstat-no" title="statement not covered" >    justify_vertical: string;</span>
+<span class="cstat-no" title="statement not covered" >    uuid: string;</span>
 <span class="cstat-no" title="statement not covered" >}): string {</span>
 <span class="cstat-no" title="statement not covered" >    return `</span>
 <span class="cstat-no" title="statement not covered" >		(label "${escapeSexprString(data.net_name)}"</span>
 <span class="cstat-no" title="statement not covered" >			(at ${data.x} ${data.y} ${data.label_rotation})</span>
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
+<span class="cstat-no" title="statement not covered" >			(effects</span>
+<span class="cstat-no" title="statement not covered" >				(font</span>
+<span class="cstat-no" title="statement not covered" >					(size 1.27 1.27)</span>
+<span class="cstat-no" title="statement not covered" >				)</span>
 <span class="cstat-no" title="statement not covered" >				(justify ${data.justify_horizontal} ${data.justify_vertical})</span>
-			)
+<span class="cstat-no" title="statement not covered" >			)</span>
 <span class="cstat-no" title="statement not covered" >			(uuid "${data.uuid}")</span>
-		)
-`;
+<span class="cstat-no" title="statement not covered" >		)</span>
+<span class="cstat-no" title="statement not covered" >`;</span>
 <span class="cstat-no" title="statement not covered" >}</span>
 &nbsp;</pre></td></tr></table></pre>
 
@@ -241,7 +241,7 @@ export <span class="fstat-no" title="function not covered" >function renderLabel
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2026-05-30T17:36:08.948Z
+                at 2026-06-01T13:03:40.672Z
             </div>
         <script src="../../prettify.js"></script>
         <script>

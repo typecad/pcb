@@ -23,30 +23,30 @@
         <div class='clearfix'>
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">82.85% </span>
+                <span class="strong">0% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>29/35</span>
+                <span class='fraction'>0/54</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">80% </span>
+                <span class="strong">0% </span>
                 <span class="quiet">Branches</span>
-                <span class='fraction'>8/10</span>
+                <span class='fraction'>0/1</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">88.88% </span>
+                <span class="strong">0% </span>
                 <span class="quiet">Functions</span>
-                <span class='fraction'>8/9</span>
+                <span class='fraction'>0/1</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">82.85% </span>
+                <span class="strong">0% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>29/35</span>
+                <span class='fraction'>0/54</span>
             </div>
         
             
@@ -61,7 +61,7 @@
             </div>
         </template>
     </div>
-    <div class='status-line high'></div>
+    <div class='status-line low'></div>
     <pre><table class="coverage">
 <tr><td class="line-count quiet"><a name='L1'></a><a href='#L1'>1</a>
 <a name='L2'></a><a href='#L2'>2</a>
@@ -117,114 +117,114 @@
 <a name='L52'></a><a href='#L52'>52</a>
 <a name='L53'></a><a href='#L53'>53</a>
 <a name='L54'></a><a href='#L54'>54</a>
-<a name='L55'></a><a href='#L55'>55</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">485x</span>
-<span class="cline-any cline-yes">386x</span>
-<span class="cline-any cline-yes">949x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">485x</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-yes">485x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">78x</span>
-<span class="cline-any cline-yes">78x</span>
-<span class="cline-any cline-yes">78x</span>
-<span class="cline-any cline-yes">78x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">38x</span>
-<span class="cline-any cline-yes">38x</span>
-<span class="cline-any cline-yes">38x</span>
-<span class="cline-any cline-yes">38x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">40x</span>
-<span class="cline-any cline-yes">40x</span>
-<span class="cline-any cline-yes">40x</span>
-<span class="cline-any cline-yes">40x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">308x</span>
-<span class="cline-any cline-yes">308x</span>
-<span class="cline-any cline-yes">308x</span>
-<span class="cline-any cline-yes">308x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
+<a name='L55'></a><a href='#L55'>55</a></td><td class="line-coverage quiet"><span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">/* eslint-disable no-console */
-import chalk from 'chalk';
-&nbsp;
-/**
- * Unified logging for typeCAD.
- *
- * Environment variables:
- *   TYPECAD_DEBUG=1  - Enables debug output
- *   TYPECAD_QUIET=1  - Suppresses debug and info output
- *   TYPECAD_SILENT=1 - Suppresses all output (warn/error still shown unless set)
- */
-&nbsp;
-function isDebug(): boolean { return process.env.TYPECAD_DEBUG === '1'; }
-function isQuiet(): boolean { return process.env.TYPECAD_QUIET === '1'; }
-function isSilent(): boolean { return process.env.TYPECAD_SILENT === '1'; }
-&nbsp;
-export function debug(...args: unknown[]) {
-  if (!isSilent() &amp;&amp; isDebug(<span class="branch-0 cbranch-no" title="branch not covered" >) &amp;&amp; !isQuiet()) <span class="branch-0 cbranch-no" title="branch not covered" >{</span></span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js"><span class="cstat-no" title="statement not covered" ><span class="fstat-no" title="function not covered" ><span class="branch-0 cbranch-no" title="branch not covered" >/* eslint-disable no-console */</span></span></span>
+<span class="cstat-no" title="statement not covered" >import chalk from 'chalk';</span>
+<span class="cstat-no" title="statement not covered" ></span>
+<span class="cstat-no" title="statement not covered" >/**</span>
+<span class="cstat-no" title="statement not covered" > * Unified logging for typeCAD.</span>
+<span class="cstat-no" title="statement not covered" > *</span>
+<span class="cstat-no" title="statement not covered" > * Environment variables:</span>
+<span class="cstat-no" title="statement not covered" > *   TYPECAD_DEBUG=1  - Enables debug output</span>
+<span class="cstat-no" title="statement not covered" > *   TYPECAD_QUIET=1  - Suppresses debug and info output</span>
+<span class="cstat-no" title="statement not covered" > *   TYPECAD_SILENT=1 - Suppresses all output (warn/error still shown unless set)</span>
+<span class="cstat-no" title="statement not covered" > */</span>
+<span class="cstat-no" title="statement not covered" ></span>
+<span class="cstat-no" title="statement not covered" >function isDebug(): boolean { return process.env.TYPECAD_DEBUG === '1'; }</span>
+<span class="cstat-no" title="statement not covered" >function isQuiet(): boolean { return process.env.TYPECAD_QUIET === '1'; }</span>
+<span class="cstat-no" title="statement not covered" >function isSilent(): boolean { return process.env.TYPECAD_SILENT === '1'; }</span>
+<span class="cstat-no" title="statement not covered" ></span>
+<span class="cstat-no" title="statement not covered" >export function debug(...args: unknown[]) {</span>
+<span class="cstat-no" title="statement not covered" >  if (!isSilent() &amp;&amp; isDebug() &amp;&amp; !isQuiet()) {</span>
 <span class="cstat-no" title="statement not covered" >    console.log(chalk.gray(...args));</span>
 <span class="cstat-no" title="statement not covered" >  }</span>
-}
-&nbsp;
-export function info(...args: unknown[]) {
-  if (!isSilent() &amp;&amp; !isQuiet()) {
-    console.info(chalk.blue(...args));
-  }
-}
-&nbsp;
-export function warn(...args: unknown[]) {
-  if (!isSilent()) {
-    console.warn(chalk.yellow(...args));
-  }
-}
-&nbsp;
-export function error(...args: unknown[]) {
-  if (!isSilent()) {
-    console.error(chalk.red(...args));
-  }
-}
-&nbsp;
-/** Log without additional chalk styling, respecting QUIET/SILENT flags. */
-export function log(...args: unknown[]) {
-  if (!isSilent() &amp;&amp; !isQuiet()) {
-    console.log(...args);
-  }
-}
-&nbsp;
-export <span class="fstat-no" title="function not covered" >function success(...args: unknown[]) {</span>
+<span class="cstat-no" title="statement not covered" >}</span>
+<span class="cstat-no" title="statement not covered" ></span>
+<span class="cstat-no" title="statement not covered" >export function info(...args: unknown[]) {</span>
+<span class="cstat-no" title="statement not covered" >  if (!isSilent() &amp;&amp; !isQuiet()) {</span>
+<span class="cstat-no" title="statement not covered" >    console.info(chalk.blue(...args));</span>
+<span class="cstat-no" title="statement not covered" >  }</span>
+<span class="cstat-no" title="statement not covered" >}</span>
+<span class="cstat-no" title="statement not covered" ></span>
+<span class="cstat-no" title="statement not covered" >export function warn(...args: unknown[]) {</span>
+<span class="cstat-no" title="statement not covered" >  if (!isSilent()) {</span>
+<span class="cstat-no" title="statement not covered" >    console.warn(chalk.yellow(...args));</span>
+<span class="cstat-no" title="statement not covered" >  }</span>
+<span class="cstat-no" title="statement not covered" >}</span>
+<span class="cstat-no" title="statement not covered" ></span>
+<span class="cstat-no" title="statement not covered" >export function error(...args: unknown[]) {</span>
+<span class="cstat-no" title="statement not covered" >  if (!isSilent()) {</span>
+<span class="cstat-no" title="statement not covered" >    console.error(chalk.red(...args));</span>
+<span class="cstat-no" title="statement not covered" >  }</span>
+<span class="cstat-no" title="statement not covered" >}</span>
+<span class="cstat-no" title="statement not covered" ></span>
+<span class="cstat-no" title="statement not covered" >/** Log without additional chalk styling, respecting QUIET/SILENT flags. */</span>
+<span class="cstat-no" title="statement not covered" >export function log(...args: unknown[]) {</span>
+<span class="cstat-no" title="statement not covered" >  if (!isSilent() &amp;&amp; !isQuiet()) {</span>
+<span class="cstat-no" title="statement not covered" >    console.log(...args);</span>
+<span class="cstat-no" title="statement not covered" >  }</span>
+<span class="cstat-no" title="statement not covered" >}</span>
+<span class="cstat-no" title="statement not covered" ></span>
+<span class="cstat-no" title="statement not covered" >export function success(...args: unknown[]) {</span>
 <span class="cstat-no" title="statement not covered" >  if (!isSilent() &amp;&amp; !isQuiet()) {</span>
 <span class="cstat-no" title="statement not covered" >    console.log(chalk.green('✔'), ...args);</span>
 <span class="cstat-no" title="statement not covered" >  }</span>
 <span class="cstat-no" title="statement not covered" >}</span>
-&nbsp;
-export default { debug, info, warn, error, log, success };
+<span class="cstat-no" title="statement not covered" ></span>
+<span class="cstat-no" title="statement not covered" >export default { debug, info, warn, error, log, success };</span>
 &nbsp;</pre></td></tr></table></pre>
 
                 <div class='push'></div><!-- for sticky footer -->
@@ -232,7 +232,7 @@ export default { debug, info, warn, error, log, success };
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2026-05-30T17:36:08.948Z
+                at 2026-06-01T13:03:40.672Z
             </div>
         <script src="../../prettify.js"></script>
         <script>

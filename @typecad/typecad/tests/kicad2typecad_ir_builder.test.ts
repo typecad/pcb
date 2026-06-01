@@ -167,13 +167,6 @@ describe('KicadIRBuilder', () => {
             expect(r1.valueProperty).not.toBeNull();
         });
 
-        it('should parse fab text property', () => {
-            const tree = SExprNode.parse(pcbWithFootprint());
-            const ir = builder.build(tree);
-            const r1 = ir.footprints[0];
-            expect(r1.fabTextProperty).not.toBeNull();
-        });
-
         it('should return null for footprint without name', () => {
             const pcb = `(kicad_pcb (footprint (at 0 0)))`;
             const tree = SExprNode.parse(pcb);
@@ -335,6 +328,128 @@ describe('KicadIRBuilder', () => {
             const tree = SExprNode.parse(pcb);
             const ir = builder.build(tree);
             expect(ir.footprints[0].position).toEqual({ x: 0, y: 0, rotation: 0 });
+        });
+    });
+
+    describe('build - fp_text layout parsing', () => {
+        const pcbWithFpText = `(kicad_pcb (version 20221018) (generator pcbnew)
+  (footprint "Package_SO:SOIC-8_3.9x4.9mm_P1.27mm" (layer "F.Cu")
+    (at 100 80 0)
+    (uuid "test-uuid-1")
+    (property "Reference" "U1" (at 0 -5) (layer "F.SilkS"))
+    (property "Value" "LM358" (at 0 5) (layer "F.Fab"))
+    (fp_text reference "U1" (at 0 -3.81 0) (layer "F.SilkS")
+      (effects (font (size 1.27 1.27) (thickness 0.15)))
+    )
+    (fp_text value "LM358" (at 0 3.81 90) (layer "F.Fab")
+      (effects (font (size 1 1) (thickness 0.1)))
+    )
+    (fp_text user "\${REFERENCE}" (at 0 0 180) (layer "F.Fab")
+      (effects (font (size 0.8 0.8) (thickness 0.08)))
+    )
+  )
+  (footprint "Resistor_SMD:R_0603_1608Metric" (layer "F.Cu")
+    (at 50 50 0)
+    (uuid "test-uuid-2")
+    (property "Reference" "R1" (at 0 -1) (layer "F.SilkS"))
+    (fp_text reference "R1" (at 0 -1.5 0) (layer "F.SilkS")
+      (effects (font (size 1 1) (thickness 0.15)))
+    )
+    (fp_text value "10k" (at 0 1.5 0) (layer "F.Fab")
+      (effects (font (size 0.5 0.5) (thickness 0.05) bold italic))
+    )
+  )
+)`;
+
+        it('should parse referenceLayout from fp_text reference', () => {
+            const tree = SExprNode.parse(pcbWithFpText);
+            const ir = builder.build(tree);
+            const u1 = ir.footprints.find(f => f.reference === 'U1');
+            expect(u1).toBeDefined();
+            expect(u1!.referenceLayout).toBeDefined();
+            expect(u1!.referenceLayout!.x).toBe(0);
+            expect(u1!.referenceLayout!.y).toBe(-3.81);
+            expect(u1!.referenceLayout!.rotation).toBe(0);
+        });
+
+        it('should parse valueLayout from fp_text value', () => {
+            const tree = SExprNode.parse(pcbWithFpText);
+            const ir = builder.build(tree);
+            const u1 = ir.footprints.find(f => f.reference === 'U1');
+            expect(u1!.valueLayout).toBeDefined();
+            expect(u1!.valueLayout!.x).toBe(0);
+            expect(u1!.valueLayout!.y).toBe(3.81);
+            expect(u1!.valueLayout!.rotation).toBe(90);
+        });
+
+        it('should parse fabLayout from fp_text user ${REFERENCE}', () => {
+            const tree = SExprNode.parse(pcbWithFpText);
+            const ir = builder.build(tree);
+            const u1 = ir.footprints.find(f => f.reference === 'U1');
+            expect(u1!.fabLayout).toBeDefined();
+            expect(u1!.fabLayout!.text).toBe('${REFERENCE}');
+            expect(u1!.fabLayout!.x).toBe(0);
+            expect(u1!.fabLayout!.y).toBe(0);
+            expect(u1!.fabLayout!.rotation).toBe(180);
+            expect(u1!.fabLayout!.width).toBe(0.8);
+            expect(u1!.fabLayout!.height).toBe(0.8);
+            expect(u1!.fabLayout!.thickness).toBe(0.08);
+        });
+
+        it('should not parse non-REFERENCE user text as fabLayout', () => {
+            const pcb = `(kicad_pcb
+  (footprint "Test:FP" (layer "F.Cu")
+    (at 0 0 0)
+    (uuid "test-uuid")
+    (property "Reference" "U2")
+    (fp_text user "some other text" (at 1 1 0) (layer "F.Fab"))
+  )
+)`;
+            const tree = SExprNode.parse(pcb);
+            const ir = builder.build(tree);
+            expect(ir.footprints[0].fabLayout).toBeUndefined();
+        });
+
+        it('should parse bold and italic from fp_text value', () => {
+            const tree = SExprNode.parse(pcbWithFpText);
+            const ir = builder.build(tree);
+            const r1 = ir.footprints.find(f => f.reference === 'R1');
+            expect(r1!.valueLayout).toBeDefined();
+            expect(r1!.valueLayout!.bold).toBe(true);
+            expect(r1!.valueLayout!.italic).toBe(true);
+        });
+
+        it('should leave layouts undefined for footprints without fp_text', () => {
+            const pcb = `(kicad_pcb
+  (footprint "Test:FP" (layer "F.Cu")
+    (at 10 20 0)
+    (uuid "test-uuid-3")
+    (property "Reference" "U99")
+  )
+)`;
+            const tree = SExprNode.parse(pcb);
+            const ir = builder.build(tree);
+            const u99 = ir.footprints.find(f => f.reference === 'U99');
+            expect(u99!.referenceLayout).toBeUndefined();
+            expect(u99!.valueLayout).toBeUndefined();
+            expect(u99!.fabLayout).toBeUndefined();
+        });
+
+        it('should handle hide flag in fp_text', () => {
+            const pcb = `(kicad_pcb
+  (footprint "Test:FP" (layer "F.Cu")
+    (at 0 0 0)
+    (uuid "test-uuid")
+    (property "Reference" "U3")
+    (fp_text reference "U3" (at 0 0 0) (layer "F.SilkS")
+      (effects (font (size 1 1)) hide)
+    )
+  )
+)`;
+            const tree = SExprNode.parse(pcb);
+            const ir = builder.build(tree);
+            expect(ir.footprints[0].referenceLayout).toBeDefined();
+            expect(ir.footprints[0].referenceLayout!.show).toBe(false);
         });
     });
 });

@@ -25,28 +25,28 @@
             <div class='fl pad1y space-right2'>
                 <span class="strong">0% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>0/0</span>
+                <span class='fraction'>0/54</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
                 <span class="strong">0% </span>
                 <span class="quiet">Branches</span>
-                <span class='fraction'>1/1</span>
+                <span class='fraction'>0/1</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
                 <span class="strong">0% </span>
                 <span class="quiet">Functions</span>
-                <span class='fraction'>1/1</span>
+                <span class='fraction'>0/1</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
                 <span class="strong">0% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>0/0</span>
+                <span class='fraction'>0/54</span>
             </div>
         
             
@@ -117,114 +117,114 @@
 <a name='L52'></a><a href='#L52'>52</a>
 <a name='L53'></a><a href='#L53'>53</a>
 <a name='L54'></a><a href='#L54'>54</a>
-<a name='L55'></a><a href='#L55'>55</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">import { SearchResult } from '../types/index.js';
-import logger from '../../utils/logging.js';
-&nbsp;
-/**
- * Interface for the main search engine that orchestrates the complete search workflow.
- * 
- * The SearchEngine coordinates between data management, parameter parsing, and fuzzy scoring
- * to provide intelligent component search capabilities. It handles the complete pipeline from
- * natural language query to ranked, formatted results.
- * 
- * @interface SearchEngine
- * @example
- * ```typescript
- * const searchEngine: SearchEngine = new ComponentSearchEngine(dataManager, parser, scorer);
- * 
- * // Search for components
- * const results = await searchEngine.search("10k resistor 0603");
- * logger.log(`Found ${results.length} matching components`);
- * 
- * // Display results
- * results.forEach(result =&gt; {
- *   logger.log(`${result.lcsc}: ${result.description} (Score: ${result.score})`);
- * });
- * ```
- */
-export interface SearchEngine {
-  /**
-   * Performs a complete search operation from natural language query to ranked results.
-   * 
-   * This method:
-   * 1. Ensures component database is available and up-to-date
-   * 2. Parses the search query to extract electrical parameters
-   * 3. Scores all components against the parsed parameters
-   * 4. Ranks and filters results to return the best matches
-   * 5. Formats results for display
-   * 
-   * @param query - Natural language search query (e.g., "10k resistor 0603", "100uF 16V capacitor")
-   * @returns Promise resolving to array of top matching components formatted for display
-   * @throws {Error} When database cannot be loaded or search fails
-   * 
-   * @example
-   * ```typescript
-   * // Basic component search
-   * const results = await searchEngine.search("10k resistor 0603");
-   * 
-   * // Complex search with multiple parameters
-   * const capacitors = await searchEngine.search("100uF 16V X7R ceramic capacitor 0805");
-   * 
-   * // IC search
-   * const ics = await searchEngine.search("STM32F103 microcontroller LQFP64");
-   * ```
-   */
-  search(query: string): Promise&lt;SearchResult[]&gt;;
-}
+<a name='L55'></a><a href='#L55'>55</a></td><td class="line-coverage quiet"><span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js"><span class="cstat-no" title="statement not covered" ><span class="fstat-no" title="function not covered" ><span class="branch-0 cbranch-no" title="branch not covered" >import { SearchResult } from '../types/index.js';</span></span></span>
+<span class="cstat-no" title="statement not covered" >import logger from '../../utils/logging.js';</span>
+<span class="cstat-no" title="statement not covered" ></span>
+<span class="cstat-no" title="statement not covered" >/**</span>
+<span class="cstat-no" title="statement not covered" > * Interface for the main search engine that orchestrates the complete search workflow.</span>
+<span class="cstat-no" title="statement not covered" > * </span>
+<span class="cstat-no" title="statement not covered" > * The SearchEngine coordinates between data management, parameter parsing, and fuzzy scoring</span>
+<span class="cstat-no" title="statement not covered" > * to provide intelligent component search capabilities. It handles the complete pipeline from</span>
+<span class="cstat-no" title="statement not covered" > * natural language query to ranked, formatted results.</span>
+<span class="cstat-no" title="statement not covered" > * </span>
+<span class="cstat-no" title="statement not covered" > * @interface SearchEngine</span>
+<span class="cstat-no" title="statement not covered" > * @example</span>
+<span class="cstat-no" title="statement not covered" > * ```typescript</span>
+<span class="cstat-no" title="statement not covered" > * const searchEngine: SearchEngine = new ComponentSearchEngine(dataManager, parser, scorer);</span>
+<span class="cstat-no" title="statement not covered" > * </span>
+<span class="cstat-no" title="statement not covered" > * // Search for components</span>
+<span class="cstat-no" title="statement not covered" > * const results = await searchEngine.search("10k resistor 0603");</span>
+<span class="cstat-no" title="statement not covered" > * logger.log(`Found ${results.length} matching components`);</span>
+<span class="cstat-no" title="statement not covered" > * </span>
+<span class="cstat-no" title="statement not covered" > * // Display results</span>
+<span class="cstat-no" title="statement not covered" > * results.forEach(result =&gt; {</span>
+<span class="cstat-no" title="statement not covered" > *   logger.log(`${result.lcsc}: ${result.description} (Score: ${result.score})`);</span>
+<span class="cstat-no" title="statement not covered" > * });</span>
+<span class="cstat-no" title="statement not covered" > * ```</span>
+<span class="cstat-no" title="statement not covered" > */</span>
+<span class="cstat-no" title="statement not covered" >export interface SearchEngine {</span>
+<span class="cstat-no" title="statement not covered" >  /**</span>
+<span class="cstat-no" title="statement not covered" >   * Performs a complete search operation from natural language query to ranked results.</span>
+<span class="cstat-no" title="statement not covered" >   * </span>
+<span class="cstat-no" title="statement not covered" >   * This method:</span>
+<span class="cstat-no" title="statement not covered" >   * 1. Ensures component database is available and up-to-date</span>
+<span class="cstat-no" title="statement not covered" >   * 2. Parses the search query to extract electrical parameters</span>
+<span class="cstat-no" title="statement not covered" >   * 3. Scores all components against the parsed parameters</span>
+<span class="cstat-no" title="statement not covered" >   * 4. Ranks and filters results to return the best matches</span>
+<span class="cstat-no" title="statement not covered" >   * 5. Formats results for display</span>
+<span class="cstat-no" title="statement not covered" >   * </span>
+<span class="cstat-no" title="statement not covered" >   * @param query - Natural language search query (e.g., "10k resistor 0603", "100uF 16V capacitor")</span>
+<span class="cstat-no" title="statement not covered" >   * @returns Promise resolving to array of top matching components formatted for display</span>
+<span class="cstat-no" title="statement not covered" >   * @throws {Error} When database cannot be loaded or search fails</span>
+<span class="cstat-no" title="statement not covered" >   * </span>
+<span class="cstat-no" title="statement not covered" >   * @example</span>
+<span class="cstat-no" title="statement not covered" >   * ```typescript</span>
+<span class="cstat-no" title="statement not covered" >   * // Basic component search</span>
+<span class="cstat-no" title="statement not covered" >   * const results = await searchEngine.search("10k resistor 0603");</span>
+<span class="cstat-no" title="statement not covered" >   * </span>
+<span class="cstat-no" title="statement not covered" >   * // Complex search with multiple parameters</span>
+<span class="cstat-no" title="statement not covered" >   * const capacitors = await searchEngine.search("100uF 16V X7R ceramic capacitor 0805");</span>
+<span class="cstat-no" title="statement not covered" >   * </span>
+<span class="cstat-no" title="statement not covered" >   * // IC search</span>
+<span class="cstat-no" title="statement not covered" >   * const ics = await searchEngine.search("STM32F103 microcontroller LQFP64");</span>
+<span class="cstat-no" title="statement not covered" >   * ```</span>
+<span class="cstat-no" title="statement not covered" >   */</span>
+<span class="cstat-no" title="statement not covered" >  search(query: string): Promise&lt;SearchResult[]&gt;;</span>
+<span class="cstat-no" title="statement not covered" >}</span>
 &nbsp;</pre></td></tr></table></pre>
 
                 <div class='push'></div><!-- for sticky footer -->
@@ -232,7 +232,7 @@ export interface SearchEngine {
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2026-05-30T17:36:08.948Z
+                at 2026-06-01T13:03:40.672Z
             </div>
         <script src="../../../prettify.js"></script>
         <script>

@@ -23,30 +23,30 @@
         <div class='clearfix'>
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">100% </span>
+                <span class="strong">0% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>43/43</span>
+                <span class='fraction'>0/51</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">83.33% </span>
+                <span class="strong">0% </span>
                 <span class="quiet">Branches</span>
-                <span class='fraction'>15/18</span>
+                <span class='fraction'>0/1</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">100% </span>
+                <span class="strong">0% </span>
                 <span class="quiet">Functions</span>
-                <span class='fraction'>3/3</span>
+                <span class='fraction'>0/1</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">100% </span>
+                <span class="strong">0% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>43/43</span>
+                <span class='fraction'>0/51</span>
             </div>
         
             
@@ -61,7 +61,7 @@
             </div>
         </template>
     </div>
-    <div class='status-line high'></div>
+    <div class='status-line low'></div>
     <pre><table class="coverage">
 <tr><td class="line-count quiet"><a name='L1'></a><a href='#L1'>1</a>
 <a name='L2'></a><a href='#L2'>2</a>
@@ -114,108 +114,108 @@
 <a name='L49'></a><a href='#L49'>49</a>
 <a name='L50'></a><a href='#L50'>50</a>
 <a name='L51'></a><a href='#L51'>51</a>
-<a name='L52'></a><a href='#L52'>52</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">6x</span>
-<span class="cline-any cline-yes">6x</span>
-<span class="cline-any cline-yes">6x</span>
-<span class="cline-any cline-yes">6x</span>
-<span class="cline-any cline-yes">6x</span>
-<span class="cline-any cline-yes">6x</span>
-<span class="cline-any cline-yes">6x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">6x</span>
-<span class="cline-any cline-yes">5x</span>
-<span class="cline-any cline-yes">5x</span>
-<span class="cline-any cline-yes">5x</span>
-<span class="cline-any cline-yes">6x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">3x</span>
-<span class="cline-any cline-yes">3x</span>
-<span class="cline-any cline-yes">3x</span>
-<span class="cline-any cline-yes">3x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">7x</span>
-<span class="cline-any cline-yes">7x</span>
-<span class="cline-any cline-yes">7x</span>
-<span class="cline-any cline-yes">7x</span>
-<span class="cline-any cline-yes">7x</span>
-<span class="cline-any cline-yes">7x</span>
-<span class="cline-any cline-yes">7x</span>
-<span class="cline-any cline-yes">5x</span>
-<span class="cline-any cline-yes">5x</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">7x</span>
-<span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">import type { IRoutePath, RouteEndpoint } from "./types.js";
-&nbsp;
-export function appendSegmentNodes(
-  destination: RouteEndpoint[],
-  destinationGrid: { gridX: number; gridY: number; layer: string }[],
-  segment: IRoutePath
-): void {
-  const skipFirst = destination.length &gt; 0 &amp;&amp; pointsEqual(destination[destination.length - 1], segment.nodes[0]);
-  const nodesToAdd = skipFirst ? segment.nodes.slice(1) : segment.nodes;
-  destination.push(...nodesToAdd);
-&nbsp;
-  if (segment.gridNodes &amp;&amp; segment.gridNodes.length &gt; 0) {
-    const gridSlice = skipFirst ? segment.gridNodes.slice(1) : segment.gridNodes;
-    destinationGrid.push(...gridSlice);
-  }
-}
-&nbsp;
-export function mergeSegments(segments: IRoutePath[]): IRoutePath {
-  const mergedNodes: RouteEndpoint[] = [];
-  const mergedGridNodes: { gridX: number; gridY: number; layer: string }[] = [];
-  let mergedLength = 0;
-  let mergedVias = 0;
-&nbsp;
-  for (const seg of segments) {
-    appendSegmentNodes(mergedNodes, mergedGridNodes, seg);
-    mergedLength += seg.length;
-    mergedVias += seg.viaCount;
-  }
-&nbsp;
-  return {
-    nodes: mergedNodes,
-    gridNodes: mergedGridNodes.length &gt; 0 ? <span class="branch-0 cbranch-no" title="branch not covered" >mergedGridNodes : undefined,</span>
-    length: mergedLength,
-    viaCount: mergedVias,
-    success: segments.every((s) =&gt; s.success),
-    error: segments.every((s) =&gt; s.success) ? <span class="branch-0 cbranch-no" title="branch not covered" >undefined : "One or more segments failed",</span>
-  };
-}
-&nbsp;
-export function pointsEqual(
-  a: RouteEndpoint | undefined,
-  b: RouteEndpoint | undefined,
-  tolerance = 0.001
-): boolean {
-  if (!a || !b) <span class="branch-0 cbranch-no" title="branch not covered" >return false;</span>
-  return (
-    Math.abs(a.x - b.x) &lt; tolerance &amp;&amp;
-    Math.abs(a.y - b.y) &lt; tolerance &amp;&amp;
-    a.layer === b.layer
-  );
-}
+<a name='L52'></a><a href='#L52'>52</a></td><td class="line-coverage quiet"><span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js"><span class="cstat-no" title="statement not covered" ><span class="fstat-no" title="function not covered" ><span class="branch-0 cbranch-no" title="branch not covered" >import type { IRoutePath, RouteEndpoint } from "./types.js";</span></span></span>
+<span class="cstat-no" title="statement not covered" ></span>
+<span class="cstat-no" title="statement not covered" >export function appendSegmentNodes(</span>
+<span class="cstat-no" title="statement not covered" >  destination: RouteEndpoint[],</span>
+<span class="cstat-no" title="statement not covered" >  destinationGrid: { gridX: number; gridY: number; layer: string }[],</span>
+<span class="cstat-no" title="statement not covered" >  segment: IRoutePath</span>
+<span class="cstat-no" title="statement not covered" >): void {</span>
+<span class="cstat-no" title="statement not covered" >  const skipFirst = destination.length &gt; 0 &amp;&amp; pointsEqual(destination[destination.length - 1], segment.nodes[0]);</span>
+<span class="cstat-no" title="statement not covered" >  const nodesToAdd = skipFirst ? segment.nodes.slice(1) : segment.nodes;</span>
+<span class="cstat-no" title="statement not covered" >  destination.push(...nodesToAdd);</span>
+<span class="cstat-no" title="statement not covered" ></span>
+<span class="cstat-no" title="statement not covered" >  if (segment.gridNodes &amp;&amp; segment.gridNodes.length &gt; 0) {</span>
+<span class="cstat-no" title="statement not covered" >    const gridSlice = skipFirst ? segment.gridNodes.slice(1) : segment.gridNodes;</span>
+<span class="cstat-no" title="statement not covered" >    destinationGrid.push(...gridSlice);</span>
+<span class="cstat-no" title="statement not covered" >  }</span>
+<span class="cstat-no" title="statement not covered" >}</span>
+<span class="cstat-no" title="statement not covered" ></span>
+<span class="cstat-no" title="statement not covered" >export function mergeSegments(segments: IRoutePath[]): IRoutePath {</span>
+<span class="cstat-no" title="statement not covered" >  const mergedNodes: RouteEndpoint[] = [];</span>
+<span class="cstat-no" title="statement not covered" >  const mergedGridNodes: { gridX: number; gridY: number; layer: string }[] = [];</span>
+<span class="cstat-no" title="statement not covered" >  let mergedLength = 0;</span>
+<span class="cstat-no" title="statement not covered" >  let mergedVias = 0;</span>
+<span class="cstat-no" title="statement not covered" ></span>
+<span class="cstat-no" title="statement not covered" >  for (const seg of segments) {</span>
+<span class="cstat-no" title="statement not covered" >    appendSegmentNodes(mergedNodes, mergedGridNodes, seg);</span>
+<span class="cstat-no" title="statement not covered" >    mergedLength += seg.length;</span>
+<span class="cstat-no" title="statement not covered" >    mergedVias += seg.viaCount;</span>
+<span class="cstat-no" title="statement not covered" >  }</span>
+<span class="cstat-no" title="statement not covered" ></span>
+<span class="cstat-no" title="statement not covered" >  return {</span>
+<span class="cstat-no" title="statement not covered" >    nodes: mergedNodes,</span>
+<span class="cstat-no" title="statement not covered" >    gridNodes: mergedGridNodes.length &gt; 0 ? mergedGridNodes : undefined,</span>
+<span class="cstat-no" title="statement not covered" >    length: mergedLength,</span>
+<span class="cstat-no" title="statement not covered" >    viaCount: mergedVias,</span>
+<span class="cstat-no" title="statement not covered" >    success: segments.every((s) =&gt; s.success),</span>
+<span class="cstat-no" title="statement not covered" >    error: segments.every((s) =&gt; s.success) ? undefined : "One or more segments failed",</span>
+<span class="cstat-no" title="statement not covered" >  };</span>
+<span class="cstat-no" title="statement not covered" >}</span>
+<span class="cstat-no" title="statement not covered" ></span>
+<span class="cstat-no" title="statement not covered" >export function pointsEqual(</span>
+<span class="cstat-no" title="statement not covered" >  a: RouteEndpoint | undefined,</span>
+<span class="cstat-no" title="statement not covered" >  b: RouteEndpoint | undefined,</span>
+<span class="cstat-no" title="statement not covered" >  tolerance = 0.001</span>
+<span class="cstat-no" title="statement not covered" >): boolean {</span>
+<span class="cstat-no" title="statement not covered" >  if (!a || !b) return false;</span>
+<span class="cstat-no" title="statement not covered" >  return (</span>
+<span class="cstat-no" title="statement not covered" >    Math.abs(a.x - b.x) &lt; tolerance &amp;&amp;</span>
+<span class="cstat-no" title="statement not covered" >    Math.abs(a.y - b.y) &lt; tolerance &amp;&amp;</span>
+<span class="cstat-no" title="statement not covered" >    a.layer === b.layer</span>
+<span class="cstat-no" title="statement not covered" >  );</span>
+<span class="cstat-no" title="statement not covered" >}</span>
 &nbsp;</pre></td></tr></table></pre>
 
                 <div class='push'></div><!-- for sticky footer -->
@@ -223,7 +223,7 @@ export function pointsEqual(
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2026-05-30T17:36:08.948Z
+                at 2026-06-01T13:03:40.672Z
             </div>
         <script src="../../../prettify.js"></script>
         <script>

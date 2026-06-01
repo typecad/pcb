@@ -75,30 +75,26 @@
   "author": "typeCAD",
   "license": "SEE LICENSE IN LICENSE",
   "dependencies": {
+    "@hackmd/markdown-it-task-lists": "^2.1.4",
     "@inquirer/prompts": "^8.4.2",
+    "@shikijs/markdown-it": "^4.1.0",
     "acorn": "^8.16.0",
     "acorn-walk": "^8.3.5",
     "chalk": "^5.6.2",
-    "cli-table3": "^0.6.5",
     "inquirer-file-selector": "^1.0.1",
     "inquirer-select-pro": "1.0.0-alpha.9",
-    "which": "^5.0.0"
-  },
-  "devDependencies": {
-    "@hackmd/markdown-it-task-lists": "^2.1.4",
-    "@shikijs/markdown-it": "^4.1.0",
-    "@types/markdown-it": "^14.1.2",
-    "@types/node": "^22.13.0",
-    "@vitest/coverage-v8": "^3.2.4",
-
     "markdown-it": "^14.1.1",
     "markdown-it-attrs": "^4.5.0",
     "markdown-it-math": "^5.2.1",
     "markdown-it-multimd-table-ext": "^4.2.35",
     "markdown-it-textual-uml": "^0.17.1",
     "mathup": "^1.0.0",
-
-    "temml": "^0.11.11",
+    "temml": "^0.11.11"
+  },
+  "devDependencies": {
+    "@types/markdown-it": "^14.1.2",
+    "@types/node": "^22.13.0",
+    "@vitest/coverage-v8": "^3.2.4",
     "tsx": "^4.22.3",
     "typedoc": "^0.28.7",
     "typedoc-plugin-markdown": "^4.7.0",

@@ -44,6 +44,28 @@ export interface ReferencePropertyIR {
     text?: string;
 }
 
+export interface TextLayoutIR {
+    x: number;
+    y: number;
+    rotation?: number;
+    layer?: string;
+    width?: number;
+    height?: number;
+    thickness?: number;
+    bold?: boolean;
+    italic?: boolean;
+    justify?: {
+        horizontal?: 'left' | 'right' | 'center';
+        vertical?: 'top' | 'bottom' | 'middle';
+        mirror?: boolean;
+    };
+    show?: boolean;
+}
+
+export interface FabLayoutIR extends TextLayoutIR {
+    text?: string;
+}
+
 export interface KicadFootprintIR {
     footprintName: string;
     reference: string;
@@ -52,8 +74,10 @@ export interface KicadFootprintIR {
     uuid: string;
     codeMetadata: CodeMetadata | LegacyCodeMetadata | null;
     referenceProperty: ReferencePropertyIR | null;
-    fabTextProperty: ReferencePropertyIR | null;
     valueProperty: ReferencePropertyIR | null;
+    referenceLayout?: TextLayoutIR;
+    valueLayout?: TextLayoutIR;
+    fabLayout?: FabLayoutIR;
 }
 
 export interface KicadSegmentIR {
@@ -87,6 +111,7 @@ export interface KicadViaIR {
     at: { x: number; y: number };
     size: number;
     drill: number;
+    net?: number;
 }
 
 export interface KicadNetIR {
@@ -118,20 +143,10 @@ export interface KicadIR {
 
 // === Change Tracking Types ===
 
-export interface PositionChange {
-    oldX: number;
-    oldY: number;
-    oldRotation: number;
-    newX: number;
-    newY: number;
-    newRotation: number;
-}
-
 export interface PendingChange {
     filePath: string;
     variableName: string;
     prefix: string;
-    sourceLine: number;
     oldX: number | null;
     oldY: number | null;
     oldRotation: number | null;
@@ -140,9 +155,6 @@ export interface PendingChange {
     newY: number;
     newRotation: number;
     newSide: 'front' | 'back';
-    existingPcbLine: number | null;
-    refPositionChange?: PositionChange;
-    fabPositionChange?: PositionChange;
     label: string;
 }
 
@@ -175,6 +187,17 @@ export interface PendingTextChange {
     newItalic: boolean;
     oldJustify: { horizontal?: string; vertical?: string; mirror?: boolean } | undefined;
     newJustify: { horizontal?: string; vertical?: string; mirror?: boolean } | undefined;
+    label: string;
+    changedProps: string[];
+}
+
+export interface PendingLayoutChange {
+    filePath: string;
+    variableName: string;
+    prefix: string;
+    layoutType: 'referenceLayout' | 'valueLayout' | 'fabLayout';
+    oldLayout: TextLayoutIR | null;
+    newLayout: TextLayoutIR;
     label: string;
     changedProps: string[];
 }

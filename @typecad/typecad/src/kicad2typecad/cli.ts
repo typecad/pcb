@@ -29,13 +29,12 @@ import {
     generateTrackCode,
     generatePlacementCode,
     generateTextCode,
-    generateViaCode,
     generateOutlineCode,
     generateCreateStatement,
     DEFAULT_CH,
 } from './display.js';
 import type { ChalkHelpers } from './display.js';
-import type { KicadIR, MatchResult, PendingChange, PendingTextChange } from './types.js';
+import type { KicadIR, MatchResult, PendingChange, PendingTextChange, PendingLayoutChange } from './types.js';
 
 // === Main entry point ===
 
@@ -78,7 +77,7 @@ export async function kicadDataToTypeCAD(
 
         // 4. --apply mode: round-trip back to source files
         if (options?.apply) {
-            await applyMode(ir, filePath);
+            await applyMode(ir, filePath, sourceDescription);
             return;
         }
 
@@ -94,9 +93,6 @@ export async function kicadDataToTypeCAD(
         // Text elements
         generateTextCode(ir, sourceDescription, ch);
 
-        // Vias
-        generateViaCode(ir, sourceDescription, ch);
-
         // Board outline
         generateOutlineCode(ir, sourceDescription, ch);
 
@@ -109,7 +105,7 @@ export async function kicadDataToTypeCAD(
 
 // === Apply mode implementation ===
 
-async function applyMode(ir: KicadIR, kicadFilePath: string): Promise<void> {
+async function applyMode(ir: KicadIR, kicadFilePath: string, sourceDescription: string): Promise<void> {
     // Determine source root from the KiCad file location
     // The KiCad file is typically in a build/ directory; source is usually in src/
     const kicadDir = kicadFilePath.replace(/\\/g, '/').split('/').slice(0, -1).join('/') || '.';
@@ -120,14 +116,14 @@ async function applyMode(ir: KicadIR, kicadFilePath: string): Promise<void> {
 
     // 1. Match IR footprints to source locations
     const matcher = new SourceMatcher(sourceRoot);
-    const matchResults = matcher.matchAll(ir.footprints);
+    const matchResults = await matcher.matchAll(ir.footprints);
 
     const matchedCount = matchResults.filter(mr => mr.sourceLocation !== null).length;
     logger.info(`Matched ${matchedCount}/${ir.footprints.length} footprints to source locations`);
 
     // 2. Compute footprint changes
     const rewriter = new SourceRewriter();
-    const footprintChanges = rewriter.computeFootprintChanges(matchResults);
+    const footprintChanges = await rewriter.computeFootprintChanges(matchResults);
 
     // 3. Compute text changes (scan source files for .text() calls)
     const sourceFiles = [...new Set(
@@ -135,7 +131,10 @@ async function applyMode(ir: KicadIR, kicadFilePath: string): Promise<void> {
             .filter(mr => mr.sourceLocation)
             .map(mr => mr.sourceLocation!.filePath)
     )];
-    const textChanges = rewriter.computeTextChanges(ir, sourceFiles);
+    const textChanges = await rewriter.computeTextChanges(ir, sourceFiles);
+
+    // 3b. Compute layout changes (referenceLayout, valueLayout, fabLayout)
+    const layoutChanges = await rewriter.computeLayoutChanges(matchResults);
 
     // 4. Apply footprint changes interactively
     if (footprintChanges.length > 0) {
@@ -161,7 +160,23 @@ async function applyMode(ir: KicadIR, kicadFilePath: string): Promise<void> {
         logger.log(chalk.green('\nAll text positions are up to date.'));
     }
 
-    if (footprintChanges.length === 0 && textChanges.length === 0) {
+    // 5b. Apply layout changes interactively
+    if (layoutChanges.length > 0) {
+        const layoutResult = await interactiveApplyLayouts(layoutChanges);
+        if (layoutResult.applied > 0) {
+            logger.log(chalk.green(
+                `\n✓ Applied ${layoutResult.applied} layout change(s) to ${layoutResult.filesModified} file(s).`
+            ));
+        }
+    }
+
+    // 6. Display track/via code for manual insertion
+    if (ir.segments.length > 0 || ir.vias.length > 0) {
+        const pcb = new PCB('KicadImportFromFile');
+        generateTrackCode(ir, pcb, sourceDescription);
+    }
+
+    if (footprintChanges.length === 0 && textChanges.length === 0 && layoutChanges.length === 0 && ir.segments.length === 0 && ir.vias.length === 0) {
         logger.log(chalk.green('\nNo changes detected. Everything is in sync.'));
     }
 
@@ -180,7 +195,7 @@ async function interactiveApplyFootprints(changes: PendingChange[]): Promise<{ f
         const shortFile = file.replace(/\\/g, '/').split('/').slice(-2).join('/');
         logger.log(chalk.yellow(`  ${shortFile}:`));
         for (const c of fileChanges) {
-            const oldStr = c.existingPcbLine !== null ? `(${c.oldX}, ${c.oldY})` : '(not set)';
+            const oldStr = c.oldX !== null ? `(${c.oldX}, ${c.oldY})` : '(not set)';
             const effectiveOldSide = c.oldSide || 'front';
             const sideChanged = effectiveOldSide !== c.newSide;
             const sideInfo = sideChanged ? ` ${chalk.magenta(`[${effectiveOldSide} → ${c.newSide}]`)}` : '';
@@ -204,7 +219,7 @@ async function interactiveApplyFootprints(changes: PendingChange[]): Promise<{ f
 
     // Apply
     const rewriter = new SourceRewriter();
-    const result = rewriter.applyFootprintChanges(selected);
+    const result = await rewriter.applyFootprintChanges(selected);
     return { filesModified: result.filesModified, applied: selected.length };
 }
 
@@ -234,6 +249,33 @@ async function interactiveApplyTexts(changes: PendingTextChange[]): Promise<{ fi
 
     // Apply
     const rewriter = new SourceRewriter();
-    const result = rewriter.applyTextChanges(selected);
+    const result = await rewriter.applyTextChanges(selected);
+    return { filesModified: result.filesModified, applied: selected.length };
+}
+
+async function interactiveApplyLayouts(changes: PendingLayoutChange[]): Promise<{ filesModified: number; applied: number }> {
+    logger.log(chalk.bold(`\n${changes.length} text layout(s) have changes:\n`));
+    for (const c of changes) {
+        const propsStr = c.changedProps.length > 0
+            ? ` ${chalk.magenta(`[${c.changedProps.join(', ')}]`)}`
+            : '';
+        logger.log(`    ${chalk.blueBright(`${c.prefix}${c.variableName}.${c.layoutType}`)}${propsStr}`);
+    }
+
+    const selected: PendingLayoutChange[] = await checkbox({
+        message: 'Select layout changes to apply:',
+        choices: changes.map(c => ({
+            name: c.label,
+            value: c,
+        })),
+    });
+
+    if (selected.length === 0) {
+        logger.log(chalk.gray('\nNo layout changes selected.'));
+        return { filesModified: 0, applied: 0 };
+    }
+
+    const rewriter = new SourceRewriter();
+    const result = await rewriter.applyLayoutChanges(selected);
     return { filesModified: result.filesModified, applied: selected.length };
 }

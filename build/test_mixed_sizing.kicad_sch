@@ -1,0 +1,24 @@
+(kicad_sch
+	(version 20250114)
+	(generator "typecad")
+	(generator_version "0.1.0")
+	(paper "A4")
+    (uuid "e7c40a8e-d774-46bc-ac24-69a0b518e8b7")
+
+    (lib_symbols
+
+    )
+
+
+
+
+
+
+
+	(sheet_instances
+		(path "/"
+			(page "1")
+		)
+	)
+	(embedded_fonts no)
+)

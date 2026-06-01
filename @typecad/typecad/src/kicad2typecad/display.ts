@@ -11,6 +11,7 @@ import type {
     KicadViaIR,
     KicadNetIR,
     KicadOutlineIR,
+    TextLayoutIR,
 } from './types.js';
 
 /** Helper for colored console output */
@@ -46,6 +47,7 @@ export function generateTrackCode(
     const { chKey, chProp, chStr, chNum, chPunc, chVar } = ch;
     const segments = ir.segments;
     const nets = ir.nets;
+    const vias = ir.vias;
     const trackVariableNames: string[] = [];
 
     if (segments.length > 0) {
@@ -62,6 +64,7 @@ export function generateTrackCode(
         });
 
         const allNetTrackLogs: string[] = [];
+        const usedViaIndexes = new Set<number>();
 
         segmentsByNet.forEach((netSegments, netNum) => {
             const netName = netMap.get(netNum) || '';
@@ -104,6 +107,13 @@ export function generateTrackCode(
                     currentChainLog += `${chKey('.to')}${chPunc('(')}{ ${chProp('x')}${chPunc(':')} ${chNum(segment.end.x)}${chPunc(',')} ${chProp('y')}${chPunc(':')} ${chNum(segment.end.y)}${chPunc(',')} ${chProp('layer')}${chPunc(':')} ${chStr('"' + segment.layer + '"')}${chPunc(',')} ${chProp('width')}${chPunc(':')} ${chNum(segment.width)} }${chPunc(')')}`;
                 }
                 lastEndPoint = segment.end;
+
+                const viaIdx = findViaAtPosition(vias, segment.end.x, segment.end.y, netNum, usedViaIndexes);
+                if (viaIdx !== -1) {
+                    const via = vias[viaIdx];
+                    usedViaIndexes.add(viaIdx);
+                    currentChainLog += `${chKey('.via')}${chPunc('(')}{ ${chProp('size')}${chPunc(':')} ${chNum(via.size)}${chPunc(',')} ${chProp('drill')}${chPunc(':')} ${chNum(via.drill)} }${chPunc(')')}`;
+                }
             });
 
             if (currentChainLog) allNetTrackLogs.push(currentChainLog + chPunc(')') + chPunc(';'));
@@ -115,6 +125,10 @@ export function generateTrackCode(
             allNetTrackLogs.forEach(log => logger.log(log));
             logger.log(chalk.bold('---------------------------------------------------------'));
         }
+
+        showStandaloneVias(vias, usedViaIndexes, sourceDescription, ch);
+    } else if (vias.length > 0) {
+        showStandaloneVias(vias, new Set(), sourceDescription, ch);
     } else {
         logger.log(`No segments found in ${sourceDescription} content.`);
     }
@@ -157,6 +171,16 @@ export function generatePlacementCode(
                 if (fp.side === 'back') placementLog += `${chPunc(',')} ${chProp('side')}${chPunc(':')} ${chStr("'back'")}`;
                 placementLog += ` ${chPunc('}')}${chPunc(';')}`;
                 logger.log(placementLog);
+
+                if (fp.referenceLayout) {
+                    logLayoutAssignment(ch, prefix + variableName, 'referenceLayout', fp.referenceLayout);
+                }
+                if (fp.valueLayout) {
+                    logLayoutAssignment(ch, prefix + variableName, 'valueLayout', fp.valueLayout);
+                }
+                if (fp.fabLayout) {
+                    logLayoutAssignment(ch, prefix + variableName, 'fabLayout', fp.fabLayout);
+                }
             });
         }
         logger.log(chalk.bold('\n-------------------------------------------------------------'));
@@ -164,36 +188,26 @@ export function generatePlacementCode(
         logger.log(`No footprints found in ${sourceDescription} content.`);
     }
 
-    // Component constructors with reference/fab options
-    const componentsWithRefProps = footprints.filter(
-        fp => fp.referenceProperty && (fp.referenceProperty.x !== 0 || fp.referenceProperty.rotation !== 0)
+    const componentsWithDetails = footprints.filter(
+        fp => fp.referenceProperty
     );
-    if (componentsWithRefProps.length > 0) {
+    if (componentsWithDetails.length > 0) {
         logger.log(
-            `Found ${componentsWithRefProps.length} component(s) with custom reference positioning. Generating Component constructor code.`
+            `Found ${componentsWithDetails.length} component(s) with reference properties. Generating Component constructor code.`
         );
         logger.log(chalk.bold(`\n--- Generated Component Constructor Code from ${sourceDescription} ---`));
 
-        componentsWithRefProps.forEach(fp => {
+        componentsWithDetails.forEach(fp => {
             const variableName = fp.reference;
             const prefix = '';
-            const rp = fp.referenceProperty!;
-            const refPosObj = formatPosObj(rp, chProp, chPunc, chNum);
-
-            const fab = fp.fabTextProperty;
-            const fabArg = fab
-                ? (fab.text && fab.text !== '${REFERENCE}'
-                    ? `[${chStr("'" + fab.text + "'")}, ${formatPosObj(fab, chProp, chPunc, chNum)}]`
-                    : formatPosObj(fab, chProp, chPunc, chNum))
-                : null;
 
             logger.log(`${chVar(prefix + variableName)} ${chPunc('=')} ${chKey('new')} ${chKey('Component')}({`);
             if (fp.footprintName) {
                 logger.log(`    ${chProp('footprint')}${chPunc(':')} ${chStr("'" + fp.footprintName + "'")}${chPunc(',')}`);
             }
-            logger.log(`    ${chProp('reference')}${chPunc(':')} [${chStr("'" + fp.reference + "'")}, ${refPosObj}]${chPunc(',')}`);
-            if (fabArg) logger.log(`    ${chProp('fab')}${chPunc(':')} ${fabArg},`);
-            logger.log(`${chPunc(')};')}`);
+            logger.log(`    ${chProp('reference')}${chPunc(':')} ${chStr("'" + fp.reference + "'")}${chPunc(',')}`);
+
+            logger.log(`${chPunc('});')}`);
         });
         logger.log(chalk.bold('\n-------------------------------------------------------------'));
     }
@@ -246,36 +260,45 @@ export function generateTextCode(
     }
 }
 
-/**
- * Generate via code display from IR vias.
- */
-export function generateViaCode(
-    ir: KicadIR,
-    sourceDescription: string,
-    ch: ChalkHelpers = DEFAULT_CH
-): void {
-    const { chKey, chProp, chNum, chPunc, chVar } = ch;
-    const vias = ir.vias;
-
-    if (vias.length > 0) {
-        logger.log(`Found ${vias.length} vias. Generating typeCAD code from ${sourceDescription}.`);
-        const allViaLogs: string[] = [];
-        vias.forEach((via, index) => {
-            let viaLog = `${chVar('this.v' + (index + 1))} ${chPunc('=')} ${chVar('this.pcb')}${chPunc('.')}${chKey('via')}${chPunc('({')}`;
-            viaLog += ` ${chProp('at')}${chPunc(': {')} ${chProp('x')}${chPunc(':')} ${chNum(via.at.x)}${chPunc(',')} ${chProp('y')}${chPunc(':')} ${chNum(via.at.y)} ${chPunc('}')}${chPunc(',')}`;
-            viaLog += ` ${chProp('size')}${chPunc(':')} ${chNum(via.size)}${chPunc(',')}`;
-            viaLog += ` ${chProp('drill')}${chPunc(':')} ${chNum(via.drill)}`;
-            viaLog += ` ${chPunc('})')}${chPunc(';')}`;
-            allViaLogs.push(viaLog);
-        });
-        if (allViaLogs.length > 0) {
-            logger.log(chalk.bold(`\n--- Generated typeCAD Via Code from ${sourceDescription} ---`));
-            allViaLogs.forEach(log => logger.log(log));
-            logger.log(chalk.bold('-----------------------------------------------------'));
+function findViaAtPosition(
+    vias: KicadViaIR[],
+    x: number,
+    y: number,
+    net: number,
+    used: Set<number>
+): number {
+    for (let i = 0; i < vias.length; i++) {
+        if (used.has(i)) continue;
+        const v = vias[i];
+        if (Math.abs(v.at.x - x) < 0.001 && Math.abs(v.at.y - y) < 0.001) {
+            if (v.net !== undefined && v.net !== net) continue;
+            return i;
         }
-    } else {
-        logger.log(`No vias found in ${sourceDescription} content.`);
     }
+    return -1;
+}
+
+function showStandaloneVias(
+    vias: KicadViaIR[],
+    usedViaIndexes: Set<number>,
+    sourceDescription: string,
+    ch: ChalkHelpers
+): void {
+    const standalone = vias.filter((_, i) => !usedViaIndexes.has(i));
+    if (standalone.length === 0) return;
+
+    const { chKey, chProp, chNum, chPunc, chVar } = ch;
+    logger.log(`Found ${standalone.length} standalone via(es). Generating typeCAD code from ${sourceDescription}.`);
+    logger.log(chalk.bold(`\n--- Generated typeCAD Via Code from ${sourceDescription} ---`));
+    standalone.forEach((via) => {
+        let viaLog = `${chVar('typecad')}${chPunc('.')}${chKey('via')}${chPunc('({')}`;
+        viaLog += ` ${chProp('at')}${chPunc(': {')} ${chProp('x')}${chPunc(':')} ${chNum(via.at.x)}${chPunc(',')} ${chProp('y')}${chPunc(':')} ${chNum(via.at.y)} ${chPunc('}')}${chPunc(',')}`;
+        viaLog += ` ${chProp('size')}${chPunc(':')} ${chNum(via.size)}${chPunc(',')}`;
+        viaLog += ` ${chProp('drill')}${chPunc(':')} ${chNum(via.drill)}`;
+        viaLog += ` ${chPunc('})')}${chPunc(';')}`;
+        logger.log(viaLog);
+    });
+    logger.log(chalk.bold('-----------------------------------------------------'));
 }
 
 /**
@@ -453,13 +476,24 @@ export function generateCreateStatement(
 
 // === Utility helpers ===
 
-function formatPosObj(
-    pos: { x: number; y: number; rotation: number; thickness: number; width: number; height: number },
-    chProp: (s: string) => string,
-    chPunc: (s: string) => string,
-    chNum: (n: number) => string
-): string {
-    return `{ ${chProp('x')}${chPunc(':')} ${chNum(pos.x)}${chPunc(',')} ${chProp('y')}${chPunc(':')} ${chNum(pos.y)}${chPunc(',')} ${chProp('rotation')}${chPunc(':')} ${chNum(pos.rotation)}${chPunc(',')} ${chProp('thickness')}${chPunc(':')} ${chNum(pos.thickness)}${chPunc(',')} ${chProp('width')}${chPunc(':')} ${chNum(pos.width)}${chPunc(',')} ${chProp('height')}${chPunc(':')} ${chNum(pos.height)} }`;
+function logLayoutAssignment(
+    ch: ChalkHelpers,
+    variableName: string,
+    propertyName: string,
+    layout: TextLayoutIR
+): void {
+    const { chProp, chNum, chPunc, chVar, chStr } = ch;
+    let log = `${chVar(variableName)}${chPunc('.')}${chProp(propertyName)} ${chPunc('=')} ${chPunc('{')}`;
+    log += ` ${chProp('x')}${chPunc(':')} ${chNum(layout.x)}${chPunc(',')}`;
+    log += ` ${chProp('y')}${chPunc(':')} ${chNum(layout.y)}`;
+    if (layout.rotation !== undefined) log += `${chPunc(',')} ${chProp('rotation')}${chPunc(':')} ${chNum(layout.rotation)}`;
+    if (layout.layer !== undefined) log += `${chPunc(',')} ${chProp('layer')}${chPunc(':')} ${chStr("'" + layout.layer + "'")}`;
+    if (layout.width !== undefined) log += `${chPunc(',')} ${chProp('width')}${chPunc(':')} ${chNum(layout.width)}`;
+    if (layout.height !== undefined) log += `${chPunc(',')} ${chProp('height')}${chPunc(':')} ${chNum(layout.height)}`;
+    if (layout.thickness !== undefined) log += `${chPunc(',')} ${chProp('thickness')}${chPunc(':')} ${chNum(layout.thickness)}`;
+    if (layout.show === false) log += `${chPunc(',')} ${chProp('show')}${chPunc(':')} ${chVar('false')}`;
+    log += ` ${chPunc('}')}${chPunc(';')}`;
+    logger.log(log);
 }
 
 function sanitizeNetNameForVariable(netName: string): string {

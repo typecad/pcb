@@ -5,7 +5,7 @@ import type { SexprNode } from "../types/sexpr_types.js";
 import { generateUuid, formatSourceInfoForProperty, getErrorMessage } from "./pcb_utils.js";
 import { mapLayerToSide, transformSexprLayers, mirrorChamferDirection } from "./pcb_layer_utils.js";
 import { BoardCreationError } from '../utils/errors.js';
-import type { INetResolution } from "./pcb_interfaces.js";
+import type { INetResolution, ITextPositioning } from "./pcb_interfaces.js";
 import { loadFootprintLib } from "./component_footprint_loader.js";
 
 function stringifyTags(node: SExpr[]): void {
@@ -103,6 +103,50 @@ function ensureCodePropertySubNodes(propNode: SNode): void {
 const BACK_SIDE_GRAPHICS = new Set(['fp_line', 'fp_circle', 'fp_arc', 'fp_rect', 'fp_poly', 'fp_text', 'fp_text_box', 'fp_curve']);
 const MIRRORABLE_COORD_NODES = new Set(['start', 'end', 'center', 'mid']);
 
+function applyLayoutToFpText(sn: SNode, layout: ITextPositioning): void {
+    const atChild = sn.child('at');
+    if (atChild) {
+        atChild.raw[1] = layout.x;
+        atChild.raw[2] = layout.y;
+        if (layout.rotation !== undefined) {
+            if (atChild.raw.length > 3) {
+                atChild.raw[3] = layout.rotation;
+            } else {
+                atChild.raw.push(layout.rotation);
+            }
+        }
+    }
+
+    if (layout.layer !== undefined) {
+        const layerChild = sn.child('layer');
+        if (layerChild) {
+            layerChild.raw[1] = layout.layer;
+        }
+    }
+
+    const effectiveHeight = layout.height ?? layout.fontSize;
+    const effectiveWidth = layout.width ?? layout.fontSize;
+    if (effectiveHeight !== undefined || effectiveWidth !== undefined || layout.thickness !== undefined) {
+        const effectsChild = sn.child('effects');
+        if (effectsChild) {
+            const fontChild = effectsChild.child('font');
+            if (fontChild) {
+                const sizeChild = fontChild.child('size');
+                if (sizeChild) {
+                    if (effectiveHeight !== undefined) sizeChild.raw[1] = effectiveHeight;
+                    if (effectiveWidth !== undefined) sizeChild.raw[2] = effectiveWidth;
+                }
+                if (layout.thickness !== undefined) {
+                    const thickChild = fontChild.child('thickness');
+                    if (thickChild) {
+                        thickChild.raw[1] = layout.thickness;
+                    }
+                }
+            }
+        }
+    }
+}
+
 export function processFootprintItem(subItem: SexprNode, component: Component, resolveNet: (ref: string, pin: string, uuid?: string, map?: Map<string, number>) => INetResolution, boardNetNameToCodeMap?: Map<string, number>) {
     const sn = SNode.from(subItem);
     const itemType = sn.name;
@@ -133,6 +177,12 @@ export function processFootprintItem(subItem: SexprNode, component: Component, r
 
         splicePropertyStringValue(subItem, newValue);
 
+        if (propName === 'Reference' && component.referenceLayout) {
+            applyLayoutToFpText(sn, component.referenceLayout);
+        } else if (propName === 'Value' && component.valueLayout) {
+            applyLayoutToFpText(sn, component.valueLayout);
+        }
+
         if (component.pcb?.side === 'back') {
             applyBackSideTransform(subItem);
         }
@@ -142,43 +192,20 @@ export function processFootprintItem(subItem: SexprNode, component: Component, r
         const textType = String(subItem[1]).toLowerCase();
         if (textType === 'reference' && component.reference !== undefined) {
             subItem[2] = component.reference;
+            if (component.referenceLayout) {
+                applyLayoutToFpText(sn, component.referenceLayout);
+            }
         } else if (textType === 'value' && component.value !== undefined) {
             subItem[2] = component.value;
+            if (component.valueLayout) {
+                applyLayoutToFpText(sn, component.valueLayout);
+            }
         } else if (textType === 'user' && component.fab) {
             const textContent = subItem.length > 2 ? String(subItem[2]) : '';
             if (textContent === '${REFERENCE}') {
                 const fab = component.fab;
                 if (fab.text) subItem[2] = fab.text;
-                const atChild = sn.child('at');
-                if (atChild) {
-                    const atRaw = atChild.raw;
-                    atRaw[1] = fab.x;
-                    atRaw[2] = fab.y;
-                    if (fab.rotation !== undefined) {
-                        if (atRaw.length > 3) {
-                            atRaw[3] = fab.rotation;
-                        } else {
-                            atRaw.push(fab.rotation);
-                        }
-                    }
-                }
-                if (fab.width !== undefined || fab.height !== undefined || fab.thickness !== undefined) {
-                    const effectsChild = sn.child('effects');
-                    if (effectsChild) {
-                        const fontChild = effectsChild.child('font');
-                        if (fontChild) {
-                            const sizeChild = fontChild.child('size');
-                            if (sizeChild) {
-                                if (fab.height !== undefined) sizeChild.raw[1] = fab.height;
-                                if (fab.width !== undefined) sizeChild.raw[2] = fab.width;
-                            }
-                            const thickChild = fontChild.child('thickness');
-                            if (thickChild && fab.thickness !== undefined) {
-                                thickChild.raw[1] = fab.thickness;
-                            }
-                        }
-                    }
-                }
+                applyLayoutToFpText(sn, fab);
             }
         }
 

@@ -1,0 +1,16 @@
+* Ngspice Netlist for vdiv_netlist
+R5 in vdiv 10k
+R6 vdiv gnd 10k
+V1 in gnd 5
+
+.control
+op
+set wr_vecnames
+set filetype=ascii
+set keep#branch = 0
+.probe p(R5) i(R5)
+.probe p(R6) i(R6)
+
+write vdiv_netlist.out all
+.endc
+.end

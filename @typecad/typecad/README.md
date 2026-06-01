@@ -41,7 +41,7 @@ _...is the same as this schematic._
 Read through the [documentation](https://typecad.net/getting-started) for a full walkthrough:
 
 ```bash
-npx @typecad/create-typecad
+npx @typecad/typecad create
 ```
 
 ---

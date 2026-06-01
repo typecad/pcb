@@ -27,10 +27,8 @@
 |                                                                           |                                                                                                     |
 | :-----------------------------------------------------------------------: | --------------------------------------------------------------------------------------------------- |
 |        [graphviz](https://www.npmjs.com/package/@typecad/graphviz)        | view connections in your typeCAD project                                                            |
-|         [ngspice](https://www.npmjs.com/package/@typecad/ngspice)         | ngspice Simulation for typeCAD                                                                      |
 |          [wiring](https://www.npmjs.com/package/@typecad/wiring)          | Programmatically Create Wiring Diagrams                                                             |
 |   [jlcpcb-export](https://www.npmjs.com/package/@typecad/jlcpcb-export)   | export all the required files for JLCPCB assembly from a typeCAD project                            |
-                                                 |
 |    [jlcpcb-parts](https://www.npmjs.com/package/@typecad/jlcpcb-parts)    | Fuzzy search for JLCPCB basic and preferred electrical components                                   |
 <SvelteSeo
 {title}

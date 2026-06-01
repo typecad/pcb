@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import chalk from "chalk";
 import { execFileSync } from "node:child_process";
+import { findExecutable } from '../../kicad.js';
 import type { ProjectAnswers } from '../types.js';
 import logger from '../../utils/logging.js';
 
@@ -15,9 +16,22 @@ function sanitizeProjectName(name: string): string {
   return name;
 }
 
+const IS_WIN = process.platform === 'win32';
+const IS_CMD_EXT = /\.(?:cmd|bat)$/i;
+
+function runSync(command: string, args: string[], cwd?: string): void {
+  const resolved = findExecutable(command);
+  if (IS_WIN && (!resolved || IS_CMD_EXT.test(resolved))) {
+    // .cmd/.bat shims (npm, npx) need cmd.exe; pass bare name to avoid path-with-spaces issues
+    execFileSync('cmd.exe', ['/d', '/s', '/c', command, ...args], { cwd, stdio: 'pipe', timeout: 120_000 });
+  } else {
+    execFileSync(resolved ?? command, args, { cwd, stdio: 'pipe', timeout: 120_000 });
+  }
+}
+
 const runCommand = (command: string, args: string[], cwd?: string) => {
   try {
-    execFileSync(command, args, { cwd, stdio: 'pipe', timeout: 120_000 });
+    runSync(command, args, cwd);
   } catch (e: unknown) {
     const err = e as { stderr?: { toString(): string } };
     const detail = err.stderr?.toString().trim() || (e instanceof Error ? e.message : String(e));
@@ -29,7 +43,7 @@ const runCommand = (command: string, args: string[], cwd?: string) => {
 
 const runCommandQuiet = (command: string, args: string[], cwd?: string) => {
   try {
-    execFileSync(command, args, { cwd, stdio: 'pipe', timeout: 120_000 });
+    runSync(command, args, cwd);
   } catch (e: unknown) {
     logger.error(`Failed executing ${command} ${args.join(' ')}`, e);
     return false;
@@ -170,7 +184,7 @@ export default defineConfig({
     logger.log(chalk.green("+"), "Creating npm package");
     const npmInit = runCommand('npm', ['init', '-y'], path.join(process.cwd(), answers.name, 'hw'));
     if (!npmInit) {
-      logger.error(`Error installing dependencies`);
+      throw new Error(`Failed to initialize npm package. Is npm installed and on your PATH?`);
     }
 
     const pkgList = [
@@ -187,7 +201,7 @@ export default defineConfig({
     logger.log(chalk.green("+"), "Installing dependencies");
     const installedDeps = runCommandQuiet('npm', ['i', ...pkgList], path.join(process.cwd(), answers.name, 'hw'));
     if (!installedDeps) {
-      logger.error(`Error installing dependencies`);
+      throw new Error(`Failed to install dependencies. Is npm installed and on your PATH?`);
     }
 
     try {

@@ -78,7 +78,7 @@ function showHelp() {
   logger.log(
     chalk.white.bold("🤖 typeCAD Project Creator - Command Line Usage\n")
   );
-  logger.log("Usage: node @typecad/create-typecad [options]\n");
+  logger.log("Usage: npx @typecad/typecad create [options]\n");
   logger.log("Options:");
   logger.log(
     "  --name=<project_name>     Project name (required for non-interactive mode)"
@@ -105,13 +105,13 @@ function showHelp() {
   );
   logger.log("Examples:");
   logger.log(
-    "  node @typecad/create-typecad --name=my_project --pio=false --git=true"
+    "  npx @typecad/typecad create --name=my_project --pio=false --git=true"
   );
   logger.log(
-    "  node @typecad/create-typecad --name=my_project --pio=true --git=true --board=esp32dev"
+    "  npx @typecad/typecad create --name=my_project --pio=true --git=true --board=esp32dev"
   );
   logger.log(
-    "  node @typecad/create-typecad --name=my_project --pio=true --git=true --board=esp32dev --packages=@typecad/ngspice,@typecad/graphviz"
+    "  npx @typecad/typecad create --name=my_project --pio=true --git=true --board=esp32dev --packages=@typecad/ngspice,@typecad/graphviz"
   );
 }
 

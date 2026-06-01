@@ -1,6 +1,6 @@
 {
   "name": "@typecad/typecad",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "🤖programmatically 💥create 🛰️hardware",
   "keywords": [
     "kicad",
@@ -58,7 +58,11 @@
     "kicad-symbols": "dist/kicad-symbols/cli/bin.js",
     "kicad2typecad": "dist/kicad2typecad/bin.js"
   },
-  "files": ["dist/", "LICENSE", "README.md"],
+  "files": [
+    "dist/",
+    "LICENSE",
+    "README.md"
+  ],
   "publishConfig": {
     "access": "public"
   },
@@ -68,6 +72,7 @@
     "build:watch": "tsc --watch",
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "npm run typecheck && npm run build",
+    "package_publish": "npm publish --access public",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage"
@@ -109,5 +114,9 @@
   },
   "bugs": {
     "url": "https://github.com/typecad/typecad/issues"
+  },
+  "directories": {
+    "doc": "docs",
+    "test": "tests"
   }
 }

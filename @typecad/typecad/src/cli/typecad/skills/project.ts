@@ -16,7 +16,7 @@ export const projectSkills: Skill[] = [
       },
       {
         title: 'Programmatic equivalent',
-        code: `npx @typecad/create-typecad --name=my-board --pio=false --git=true`,
+        code: `npx @typecad/typecad create --name=my-board --pio=false --git=true`,
       },
     ],
     notes: [

@@ -3,8 +3,7 @@
 	import { writable } from "svelte/store";
 	import Tree from "./tree.svelte";
 	import type { TableOfContents, TableOfContentsItem } from "$lib/types/docs.js";
-	import { page } from "$app/state";
-	import ExternalLink from "lucide-svelte/icons/external-link";
+
 
 	let filteredHeadingsList = $state<TableOfContents>();
 
@@ -111,17 +110,5 @@
 <div class="space-y-2">
 	<p class="inline-flex font-medium">On This Page</p>
 	<Tree tree={filteredHeadingsList} activeItem={$activeItem} />
-	{#if page.url.pathname !== '/docs'}
-		<div class="pt-4 mt-4 border-t">
-			<a
-				href="https://github.com/typecad/typecad/edit/main/website/src/routes{page.url.pathname}/+page.md"
-				target="_blank"
-				rel="noreferrer"
-				class="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
-			>
-				<ExternalLink class="h-3 w-3" />
-				Edit this page on GitHub
-			</a>
-		</div>
-	{/if}
+
 </div>

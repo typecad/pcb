@@ -91,7 +91,7 @@ const config = defineConfig({
             transformerNotationWordHighlight(),
             transformerMetaHighlight(),
             transformerMetaWordHighlight(),
-            // addCopyButton({ toggle: 2000 }),
+            addCopyButton({ toggle: 2000 }),
           ],
         })
       );

@@ -5,16 +5,11 @@
 
 # Components
 
-In the [passives](https://www.npmjs.com/package/@typecad/passives) package, components are created with a couple properties that have been predetermined:
-
-- footprint
-- prefix
-
-Doing that takes some of the effort out of creating common components. But all it was really doing was calling the `Component` class with a few properties already set.
+A component is anything that has a KiCAD symbol or footprint, ie. resistors, MCUs, vias, mounting holes or regulatory images. 
 
 ## `Component`
 
-The `Component` class is the base class for all components in **type**CAD. A component is anything added to the board. In KiCAD, it would be anything that has a footprint file associated with it.
+The `Component` class is the base class for all components in **type**CAD.  In KiCAD, it would be anything that has a footprint file associated with it.
 
 <br>
 

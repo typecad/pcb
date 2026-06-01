@@ -85,13 +85,8 @@
 </script>
 
 <section class="mx-auto max-w-[980px] flex flex-col items-center gap-2 py-8 md:py-12 md:pb-4 lg:py-16 lg:pb-8">
-    <h1 class="text-3xl font-bold tracking-tight md:text-4xl">📗 **type**CAD Documentation</h1>
+    <h1 class="text-3xl font-bold tracking-tight md:text-4xl">📗 typeCAD Documentation</h1>
     <p class="max-w-[600px] text-center text-muted-foreground">Programmatically create hardware designs with TypeScript and the npm ecosystem.</p>
-    <div class="mt-4">
-        <Button href="/docs/what-is-typecad">
-            Start Here <ArrowRight class="ml-2 h-4 w-4" />
-        </Button>
-    </div>
 </section>
 
 <section class="container py-0 pb-8">
@@ -125,47 +120,7 @@
     </div>
 </section>
 
-<section class="container py-8">
-    <div class="rounded-lg border bg-muted/30 p-6">
-        <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:gap-8">
-            <div class="flex-1 min-w-0">
-                <h2 class="text-lg font-semibold mb-2">What you'll build</h2>
-                <p class="text-sm text-muted-foreground mb-3">A few lines of TypeScript replace an entire schematic.</p>
-                <ScrollArea orientation="both" class="rounded-md border bg-background">
 
-```ts
-import { PCB, Component } from '@typecad/typecad'
-import { Resistor, LED } from '@typecad/passives/0805'
-
-let typecad = new PCB('typecad');
-let bt1 = new Component({ footprint: 'BatteryHolder_Keystone_500' });
-let r1 = new Resistor({ value: "1 kOhm" });
-let d1 = new LED();
-
-typecad.named('vin').net(bt1.pin(1), r1.pin(1));
-typecad.net(r1.pin(2), d1.pin(2));
-typecad.named('gnd').net(d1.pin(1), bt1.pin(2));
-
-typecad.create(r1, d1, bt1);
-```
-
-                </ScrollArea>
-            </div>
-            <div class="flex flex-col gap-2 lg:w-48">
-                <p class="text-xs text-muted-foreground uppercase tracking-wider font-semibold">Next steps</p>
-                <a href="/docs/what-is-typecad" class="text-sm text-primary hover:underline flex items-center gap-1">
-                    What is typeCAD <ArrowRight class="h-3 w-3" />
-                </a>
-                <a href="/docs/requirements" class="text-sm text-primary hover:underline flex items-center gap-1">
-                    Requirements <ArrowRight class="h-3 w-3" />
-                </a>
-                <a href="/getting-started" class="text-sm text-primary hover:underline flex items-center gap-1">
-                    Getting Started <ArrowRight class="h-3 w-3" />
-                </a>
-            </div>
-        </div>
-    </div>
-</section>
 
 <SvelteSeo
     {title}

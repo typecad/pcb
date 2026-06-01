@@ -222,7 +222,7 @@ export function exportContract(pcb: PCB, options: ContractOptions = {}): void {
         }
     }
 
-    // 5. Peripheral availability (legacy — based on board names if pinMapping provided)
+    // 4. Peripheral availability (legacy — based on board names if pinMapping provided)
     const peripheralPins = {
         i2c: options.peripheralPins?.i2c ?? DEFAULT_PERIPHERAL_PINS.i2c,
         spi: options.peripheralPins?.spi ?? DEFAULT_PERIPHERAL_PINS.spi,
@@ -285,7 +285,7 @@ export function exportContract(pcb: PCB, options: ContractOptions = {}): void {
         };
     }
 
-    // 4. Build and write contract
+    // 5. Build and write contract
     const contract: HwContract = {
         version: 1,
         mcu: {

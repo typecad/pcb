@@ -133,10 +133,10 @@ async function applyMode(ir: KicadIR, kicadFilePath: string, sourceDescription: 
     )];
     const textChanges = await rewriter.computeTextChanges(ir, sourceFiles);
 
-    // 3b. Compute layout changes (referenceLayout, valueLayout, fabLayout)
+    // 4. Compute layout changes (referenceLayout, valueLayout, fabLayout)
     const layoutChanges = await rewriter.computeLayoutChanges(matchResults);
 
-    // 4. Apply footprint changes interactively
+    // 5. Apply footprint changes interactively
     if (footprintChanges.length > 0) {
         const footprintResult = await interactiveApplyFootprints(footprintChanges);
         if (footprintResult.applied > 0) {
@@ -148,7 +148,7 @@ async function applyMode(ir: KicadIR, kicadFilePath: string, sourceDescription: 
         logger.log(chalk.green('\nAll component positions are up to date. No changes needed.'));
     }
 
-    // 5. Apply text changes interactively
+    // 6. Apply text changes interactively
     if (textChanges.length > 0) {
         const textResult = await interactiveApplyTexts(textChanges);
         if (textResult.applied > 0) {
@@ -160,7 +160,7 @@ async function applyMode(ir: KicadIR, kicadFilePath: string, sourceDescription: 
         logger.log(chalk.green('\nAll text positions are up to date.'));
     }
 
-    // 5b. Apply layout changes interactively
+    // 7. Apply layout changes interactively
     if (layoutChanges.length > 0) {
         const layoutResult = await interactiveApplyLayouts(layoutChanges);
         if (layoutResult.applied > 0) {
@@ -170,7 +170,7 @@ async function applyMode(ir: KicadIR, kicadFilePath: string, sourceDescription: 
         }
     }
 
-    // 6. Display track/via code for manual insertion
+    // 8. Display track/via code for manual insertion
     if (ir.segments.length > 0 || ir.vias.length > 0) {
         const pcb = new PCB('KicadImportFromFile');
         generateTrackCode(ir, pcb, sourceDescription);

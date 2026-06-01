@@ -5,7 +5,6 @@ git_disabled/
 # Build output directories
 /dist/
 /build/
-/.claude/
 /coverage/
 # Notes
 NOTES

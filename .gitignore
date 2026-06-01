@@ -5,8 +5,9 @@ git_disabled/
 # Build output directories
 */dist/
 */dist-obfuscated/
-/.claude/
 
-# Notes
-NOTES
+# AI tool directories
+.opencode/
+.typecode/
+
 node_modules

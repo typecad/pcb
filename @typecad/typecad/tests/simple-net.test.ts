@@ -11,7 +11,7 @@ describe('Basic Routing Tests', () => {
     });
 
     it('should create three resistors and connect their pins in a 3-pin net', async () => {
-        // Test 1: Tree resistors placed apart with terminals connected (positioned around 20, 20)
+        // Test 1: Three resistors placed apart with terminals connected (positioned around 20, 20)
         const r1_test1 = new Resistor();
         const r2_test1 = new Resistor();
         const r3_test1 = new Resistor();

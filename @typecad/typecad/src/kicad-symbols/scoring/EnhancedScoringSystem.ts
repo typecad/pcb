@@ -10,8 +10,8 @@ import logger from '../../utils/logging.js';
 export class EnhancedScoringSystem implements FuzzyScorer {
   // Enhanced scoring constants
   private readonly EXACT_MATCH_SCORE = 100;
-  private readonly KEYWORD_MATCH_SCORE = 70;        // Increased for better visibility
-  private readonly PACKAGE_MATCH_SCORE = 85;        // Increased for footprint importance
+  private readonly KEYWORD_MATCH_SCORE = 70;
+  private readonly PACKAGE_MATCH_SCORE = 85;
   private readonly TYPE_MATCH_SCORE = 75;
   private readonly CATEGORY_MATCH_SCORE = 40;
   private readonly MANUFACTURER_MATCH_SCORE = 60;

@@ -1,4 +1,4 @@
-import { parse, s, nameOf } from '../sexpr/index.js';
+import { parseAsList, s, nameOf } from '../sexpr/index.js';
 import type { SExpr } from '../sexpr/types.js';
 import type { ISchematicNode } from '../types/schematic_types.js';
 import { Schematic } from '../schematic.js';
@@ -34,7 +34,7 @@ function collectExistingNets(
             }
         } else if (typeof item === 'string' && item.trim().startsWith('(net ')) {
             try {
-                const parsedItem = parse(item) as SExpr[];
+                const parsedItem = parseAsList(item);
                 if (Array.isArray(parsedItem) && nameOf(parsedItem[0]) === 'net') {
                     const netCode = parseInt(String(parsedItem[1]));
                     const netName = String(parsedItem[2] || '').replace(/["`]/g, '');

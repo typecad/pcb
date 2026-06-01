@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import { join } from 'node:path';
-import { parse, serialize, nameOf, type SExpr } from '../../sexpr/index.js';
+import { parse, parseAsList, serialize, nameOf, type SExpr } from '../../sexpr/index.js';
 import { KiCAD } from '../../kicad.js';
 import type { CliPinInfo } from '../types.js';
 import logger from '../../utils/logging.js';
@@ -42,7 +42,7 @@ export function kicad_symbol(symbol: string, folder = './', depth = 0): string |
       symbol_file_contents = fs.readFileSync(localPath, 'utf8');
     }
 
-    const l = parse(symbol_file_contents) as SExpr[];
+    const l = parseAsList(symbol_file_contents);
 
     for (const i in l) {
       if (!Array.isArray(l[i])) continue;
@@ -82,7 +82,7 @@ export function kicad_pins(_symbol?: string): CliPinInfo[] {
   let _name = '';
   let _number: string | number = -1;
 
-  const l = (_parsed || parse(symbol_file_contents)) as SExpr[];
+  const l = (_parsed || parseAsList(symbol_file_contents)) as SExpr[];
   for (const i in l) {
     if (!Array.isArray(l[i])) continue;
     for (const ii in l[i]) {
@@ -163,7 +163,7 @@ export function return_list_of_symbols(symbol_path: string): { value: string }[]
 
   try {
     symbol_file_contents = fs.readFileSync(symbol_path, 'utf8');
-    const l = parse(symbol_file_contents) as SExpr[];
+    const l = parseAsList(symbol_file_contents);
 
     for (const i in l) {
       if (!Array.isArray(l[i])) continue;
@@ -181,7 +181,7 @@ export function return_list_of_symbols(symbol_path: string): { value: string }[]
 export function local_symbol_to_footprint(symbol_path: string): string {
   try {
     symbol_file_contents = fs.readFileSync(symbol_path, 'utf8');
-    const l = parse(symbol_file_contents) as SExpr[];
+    const l = parseAsList(symbol_file_contents);
 
     for (const i in l) {
       if (!Array.isArray(l[i])) continue;

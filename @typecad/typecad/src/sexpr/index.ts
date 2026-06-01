@@ -1,6 +1,6 @@
 export { Sym } from './sym.js';
 export type { SExpr, SList } from './types.js';
-export { parse, ParseError } from './parse.js';
+export { parse, parseAsList, ParseError } from './parse.js';
 export { serialize, prettyPrint } from './serialize.js';
 export type { SerializeOptions } from './serialize.js';
 export { s, ss, sym, str, num, yes, no } from './build.js';

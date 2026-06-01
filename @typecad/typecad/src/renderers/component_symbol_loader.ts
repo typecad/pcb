@@ -1,5 +1,5 @@
 import fs from "node:fs";
-import { parse, serialize, Sym } from '../sexpr/index.js';
+import { parseAsList, serialize, Sym } from '../sexpr/index.js';
 import type { SExpr } from '../sexpr/types.js';
 import { KiCAD } from "../kicad.js";
 import { ComponentError } from "../utils/errors.js";
@@ -29,7 +29,7 @@ export function loadSymbolLib(
         if (kicad_symbols && fs.existsSync(`${kicad_symbols}/${library}.kicad_sym`)) {
             const library_content = fs.readFileSync(`${kicad_symbols}/${library}.kicad_sym`, "utf8");
 
-            const parsed = parse(library_content) as SExpr[];
+            const parsed = parseAsList(library_content);
             for (const item of parsed) {
                 if (Array.isArray(item) && Sym.isSym(item[0]) && item[0].name === 'symbol' && item[1] === symbol_name) {
                     symbol_file_contents = serialize(item);

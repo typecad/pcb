@@ -109,12 +109,9 @@ function loadTsConfig(configPath: string): TypeCADConfig {
         return configObj || {};
     } catch (error) {
         const msg = error instanceof Error ? error.message : String(error);
-        logger.error(
-            chalk.red.bold(
-                `ERROR: cannot load ${path.basename(configPath)}. ${msg}`
-            )
+        throw new Error(
+            `Cannot load ${path.basename(configPath)}: ${msg}. Fix or delete the file.`
         );
-        return {};
     }
 }
 
@@ -146,7 +143,12 @@ export function loadConfig(): TypeCADConfig {
   if (confPath) {
     _cachedConfigPath = confPath;
     _cachedMtimeMs = getMtimeMs(confPath);
-    _cachedConfig = loadTsConfig(confPath);
+    try {
+      _cachedConfig = loadTsConfig(confPath);
+    } catch (err) {
+      logger.error(chalk.red.bold(err instanceof Error ? err.message : String(err)));
+      throw err;
+    }
     return _cachedConfig!;
   }
 

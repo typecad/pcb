@@ -11,14 +11,16 @@ vi.mock('node:fs', () => ({
     default: { existsSync: mockExistsSync, readFileSync: mockReadFileSync },
 }));
 
-const { mockParse, mockSerialize, mockIsSym } = vi.hoisted(() => ({
+const { mockParse, mockParseAsList, mockSerialize, mockIsSym } = vi.hoisted(() => ({
     mockParse: vi.fn(),
+    mockParseAsList: vi.fn(),
     mockSerialize: vi.fn(),
     mockIsSym: vi.fn(),
 }));
 
 vi.mock('../../src/sexpr/index.js', () => ({
     parse: mockParse,
+    parseAsList: mockParseAsList,
     serialize: mockSerialize,
     Sym: { isSym: mockIsSym },
 }));
@@ -88,7 +90,7 @@ describe('loadSymbolLib', () => {
     it('should load symbol from kicad library path', () => {
         mockExistsSync.mockImplementation((path: string) => path.includes('Device.kicad_sym'));
         mockReadFileSync.mockReturnValue('(kicad_symbol_lib (symbol "R" (pin (number 1))))');
-        mockParse.mockReturnValue([
+        mockParseAsList.mockReturnValue([
             makeSym('kicad_symbol_lib'),
             [makeSym('symbol'), 'R', [makeSym('pin'), [makeSym('number'), '1']]]
         ]);
@@ -100,7 +102,7 @@ describe('loadSymbolLib', () => {
         expect(result).toBe('(symbol "R" ...)');
         expect(mockExistsSync).toHaveBeenCalledWith(expect.stringContaining('Device.kicad_sym'));
         expect(mockReadFileSync).toHaveBeenCalledWith(expect.stringContaining('Device.kicad_sym'), 'utf8');
-        expect(mockParse).toHaveBeenCalled();
+        expect(mockParseAsList).toHaveBeenCalled();
     });
 
     it('should fall back to build/lib/symbols/ when not in kicad library', () => {
@@ -116,7 +118,7 @@ describe('loadSymbolLib', () => {
     it('should throw when symbol not found in library', () => {
         mockExistsSync.mockImplementation((path: string) => path.includes('Device.kicad_sym'));
         mockReadFileSync.mockReturnValue('(kicad_symbol_lib)');
-        mockParse.mockReturnValue([
+        mockParseAsList.mockReturnValue([
             makeSym('kicad_symbol_lib'),
             [makeSym('symbol'), 'Other', [makeSym('pin')]]
         ]);

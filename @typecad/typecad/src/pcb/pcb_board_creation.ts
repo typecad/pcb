@@ -1,6 +1,6 @@
 import { Component } from "../component.js";
 import { TrackBuilder } from './pcb_track_builder.js';
-import { parse, nameOf } from '../sexpr/index.js';
+import { parse, parseAsList, nameOf } from '../sexpr/index.js';
 import type { SExpr } from '../sexpr/types.js';
 import logger from '../utils/logging.js';
 import { BoardCreationError } from '../utils/errors.js';
@@ -167,7 +167,7 @@ export function createBoard(
 
     pcb.state.groups.forEach((groupString: string) => {
         try {
-            const groupNode = parse(groupString) as SExpr[];
+            const groupNode = parseAsList(groupString);
             if (groupNode) finalBoardContents.push(groupNode);
         } catch (e: unknown) {
             const callSite = getCallSite();

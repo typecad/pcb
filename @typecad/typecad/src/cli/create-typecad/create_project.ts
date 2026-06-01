@@ -38,71 +38,60 @@ const runCommandQuiet = (command: string, args: string[], cwd?: string) => {
 };
 
 export function create_project(answers: ProjectAnswers) {
-  sanitizeProjectName(answers.name);
-  let dir = `./${answers.name}/hw/build/lib/footprints`;
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
-  }
-
-  dir = `./${answers.name}/hw/src`;
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
-  }
-
-  dir = `./${answers.name}/hw/.vscode`;
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
-  }
-
-  logger.log(chalk.green("+"), "Project folders created");
-
-  // make files
-  try {
-    fs.writeFileSync(
-      `./${answers.name}/hw/build/${answers.name}.kicad_pro`,
-      ""
-    );
-  } catch (error) {
-    logger.log(
-      chalk.red(
-        `- ERROR creating ./${answers.name}/hw/build/${answers.name}.kicad_pro. ${error}`
-      )
-    );
-    return;
-  }
+  answers.name = sanitizeProjectName(answers.name);
+  const projectRoot = path.resolve(answers.name);
+  let createdDirs = false;
 
   try {
-    fs.writeFileSync(
-      `./${answers.name}/hw/build/${answers.name}.kicad_pcb`,
-      '(kicad_pcb(version 20240108)(generator "pcbnew")(generator_version "8.0"))'
-    );
-  } catch (error) {
-    logger.log(
-      chalk.red(
-        `- ERROR creating ./hw/build/${answers.name}/${answers.name}.kicad_pcb. ${error}`
-      )
-    );
-    return;
-  }
+    let dir = `./${answers.name}/hw/build/lib/footprints`;
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    createdDirs = true;
 
-  try {
-    fs.writeFileSync(
-      `./${answers.name}/hw/build/fp-lib-table`,
-      '(fp_lib_table(version 8)(lib (name "lib")(type "KiCad")(uri "${KIPRJMOD}/lib/footprints")(options "")(descr "")))'
-    );
-  } catch (error) {
-    logger.log(
-      chalk.red(
-        `- ERROR creating ./${answers.name}/hw/build/fp-lib-table. ${error}`
-      )
-    );
-    return;
-  }
+    dir = `./${answers.name}/hw/src`;
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
 
-  try {
-    fs.writeFileSync(
-      `./${answers.name}/hw/src/${answers.name}.ts`,
-      `import { PCB } from '@typecad/typecad'
+    dir = `./${answers.name}/hw/.vscode`;
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+
+    logger.log(chalk.green("+"), "Project folders created");
+
+    try {
+      fs.writeFileSync(
+        `./${answers.name}/hw/build/${answers.name}.kicad_pro`,
+        ""
+      );
+    } catch (error) {
+      throw new Error(`ERROR creating ./${answers.name}/hw/build/${answers.name}.kicad_pro. ${error}`);
+    }
+
+    try {
+      fs.writeFileSync(
+        `./${answers.name}/hw/build/${answers.name}.kicad_pcb`,
+        '(kicad_pcb(version 20240108)(generator "pcbnew")(generator_version "8.0"))'
+      );
+    } catch (error) {
+      throw new Error(`ERROR creating ./hw/build/${answers.name}/${answers.name}.kicad_pcb. ${error}`);
+    }
+
+    try {
+      fs.writeFileSync(
+        `./${answers.name}/hw/build/fp-lib-table`,
+        '(fp_lib_table(version 8)(lib (name "lib")(type "KiCad")(uri "${KIPRJMOD}/lib/footprints")(options "")(descr "")))'
+      );
+    } catch (error) {
+      throw new Error(`ERROR creating ./${answers.name}/hw/build/fp-lib-table. ${error}`);
+    }
+
+    try {
+      fs.writeFileSync(
+        `./${answers.name}/hw/src/${answers.name}.ts`,
+        `import { PCB } from '@typecad/typecad'
 import { Resistor } from '@typecad/passives/0603';
 ${[
   answers.packages.includes("ngspice")
@@ -157,75 +146,63 @@ ${[
   .filter(Boolean)
   .join("\n")}
  `
-    );
-  } catch (error) {
-    logger.log(
-      chalk.red(
-        `- ERROR creating ./${answers.name}/src/${answers.name}.ts. ${error}`
-      )
-    );
-    return;
-  }
-  logger.log(chalk.green("+"), "KiCAD project created");
+      );
+    } catch (error) {
+      throw new Error(`ERROR creating ./${answers.name}/src/${answers.name}.ts. ${error}`);
+    }
+    logger.log(chalk.green("+"), "KiCAD project created");
 
-  try {
-    fs.writeFileSync(
-      `./${answers.name}/hw/typecad.conf.ts`,
-      `import { defineConfig } from '@typecad/typecad';
+    try {
+      fs.writeFileSync(
+        `./${answers.name}/hw/typecad.conf.ts`,
+        `import { defineConfig } from '@typecad/typecad';
 
 export default defineConfig({
   entry: './src/${answers.name}.ts',
 });
 `
-    );
-  } catch (error) {
-    logger.log(
-      chalk.red(`- ERROR creating ./${answers.name}/hw/typecad.conf.ts. ${error}`)
-    );
-    return;
-  }
-  logger.log(chalk.green("+"), "typecad.conf.ts created");
+      );
+    } catch (error) {
+      throw new Error(`ERROR creating ./${answers.name}/hw/typecad.conf.ts. ${error}`);
+    }
+    logger.log(chalk.green("+"), "typecad.conf.ts created");
 
-  logger.log(chalk.green("+"), "Creating npm package");
-  const npmInit = runCommand('npm', ['init', '-y'], path.join(process.cwd(), answers.name, 'hw'));
-  if (!npmInit) {
-    logger.error(`Error installing dependencies`);
-  }
+    logger.log(chalk.green("+"), "Creating npm package");
+    const npmInit = runCommand('npm', ['init', '-y'], path.join(process.cwd(), answers.name, 'hw'));
+    if (!npmInit) {
+      logger.error(`Error installing dependencies`);
+    }
 
-  const pkgList = [
-    'tsx', '@typecad/typecad', '@typecad/passives',
-    ...answers.packages.includes("ngspice") ? ['@typecad/ngspice'] : [],
-    ...answers.packages.includes("graphviz") ? ['@typecad/graphviz'] : [],
-    ...answers.packages.includes("jlcpcb") ? ['@typecad/jlcpcb-export'] : [],
-    ...answers.packages.includes("prompt") ? ['@typecad/typecad-prompt'] : [],
-    ...answers.packages.includes("wiring") ? ['@typecad/wiring'] : [],
-    ...answers.packages.includes("jlcpcb-parts") ? ['@typecad/jlcpcb-parts'] : [],
-    ...answers.packages.includes("typecad-mcp") ? ['@typecad/typecad-mcp'] : [],
-  ].filter(Boolean);
+    const pkgList = [
+      'tsx', '@typecad/typecad', '@typecad/passives',
+      ...answers.packages.includes("ngspice") ? ['@typecad/ngspice'] : [],
+      ...answers.packages.includes("graphviz") ? ['@typecad/graphviz'] : [],
+      ...answers.packages.includes("jlcpcb") ? ['@typecad/jlcpcb-export'] : [],
+      ...answers.packages.includes("prompt") ? ['@typecad/typecad-prompt'] : [],
+      ...answers.packages.includes("wiring") ? ['@typecad/wiring'] : [],
+      ...answers.packages.includes("jlcpcb-parts") ? ['@typecad/jlcpcb-parts'] : [],
+      ...answers.packages.includes("typecad-mcp") ? ['@typecad/typecad-mcp'] : [],
+    ].filter(Boolean);
 
-  logger.log(chalk.green("+"), "Installing dependencies");
-  const installedDeps = runCommandQuiet('npm', ['i', ...pkgList], path.join(process.cwd(), answers.name, 'hw'));
-  if (!installedDeps) {
-    logger.error(`Error installing dependencies`);
-  }
+    logger.log(chalk.green("+"), "Installing dependencies");
+    const installedDeps = runCommandQuiet('npm', ['i', ...pkgList], path.join(process.cwd(), answers.name, 'hw'));
+    if (!installedDeps) {
+      logger.error(`Error installing dependencies`);
+    }
 
-  // make a .gitignore file
-  try {
-    fs.writeFileSync(
-      `${process.cwd()}/${answers.name}/hw/.gitignore`,
-      "node_modules/"
-    );
-  } catch (error) {
-    logger.log(
-      chalk.red(`- ERROR writing ./${answers.name}/hw/.gitignore ${error}`)
-    );
-    return;
-  }
+    try {
+      fs.writeFileSync(
+        `${process.cwd()}/${answers.name}/hw/.gitignore`,
+        "node_modules/"
+      );
+    } catch (error) {
+      throw new Error(`ERROR writing ./${answers.name}/hw/.gitignore ${error}`);
+    }
 
-  try {
-    fs.writeFileSync(
-      `${process.cwd()}/${answers.name}/hw/AGENTS.md`,
-      `# typeCAD Project
+    try {
+      fs.writeFileSync(
+        `${process.cwd()}/${answers.name}/hw/AGENTS.md`,
+        `# typeCAD Project
 
 This is a typeCAD project. typeCAD is a TypeScript framework for programmatically
 creating PCB designs that output KiCad files.
@@ -251,139 +228,92 @@ config, KiCad integration, and project commands.
 - \`npm run add_package\` — create a reusable component package
 - \`npm run kicad-search\` — search KiCad symbol libraries
 `
-    );
-    logger.log(chalk.green("+"), "AGENTS.md created for AI tool discoverability");
-  } catch (error) {
-    logger.log(
-      chalk.red(`- ERROR writing ./${answers.name}/hw/AGENTS.md ${error}`)
-    );
-    return;
-  }
+      );
+      logger.log(chalk.green("+"), "AGENTS.md created for AI tool discoverability");
+    } catch (error) {
+      throw new Error(`ERROR writing ./${answers.name}/hw/AGENTS.md ${error}`);
+    }
 
-  // add scripts to package.json
-  let package_json;
-  try {
-    package_json = JSON.parse(
-      fs.readFileSync(
-        `${process.cwd()}/${answers.name}/hw/package.json`,
-        "utf8"
-      )
-    );
-  } catch (error) {
-    logger.log(
-      chalk.red(`- ERROR reading ./${answers.name}/hw/package.json ${error}`)
-    );
-    return;
-  }
+    let package_json;
+    try {
+      package_json = JSON.parse(
+        fs.readFileSync(
+          `${process.cwd()}/${answers.name}/hw/package.json`,
+          "utf8"
+        )
+      );
+    } catch (error) {
+      throw new Error(`ERROR reading ./${answers.name}/hw/package.json ${error}`);
+    }
 
-  package_json.type = "module";
+    package_json.type = "module";
 
-  package_json.scripts["build"] = `typecad build`;
-  package_json.scripts["add_component"] = `typecad add component`;
-  package_json.scripts["add_package"] = `typecad add package`;
-  package_json.scripts["kicad-search"] = `typecad search`;
-  package_json.scripts["import"] = `typecad import ${path.join(".", "build", `${answers.name}.kicad_pcb`)}`;
-  package_json.scripts[
-    "open_board"
-  ] = `npx open-cli ./build/${answers.name}.kicad_pcb`;
-  package_json.scripts["diff"] = `typecad diff HEAD ./build/${answers.name}.kicad_pcb`;
+    package_json.scripts["build"] = `typecad build`;
+    package_json.scripts["add_component"] = `typecad add component`;
+    package_json.scripts["add_package"] = `typecad add package`;
+    package_json.scripts["kicad-search"] = `typecad search`;
+    package_json.scripts["import"] = `typecad import ${path.join(".", "build", `${answers.name}.kicad_pcb`)}`;
+    package_json.scripts[
+      "open_board"
+    ] = `npx open-cli ./build/${answers.name}.kicad_pcb`;
+    package_json.scripts["diff"] = `typecad diff HEAD ./build/${answers.name}.kicad_pcb`;
 
-  package_json.scripts["docs"] = `typecad doc ${path.join(".", "docs", `${answers.name}.md`)} ${path.join(
-    ".",
-    "build",
-    `${answers.name}.kicad_pcb`
-  )}`;
-
-  if (answers.packages.includes("jlcpcb-parts")) {
-    package_json.scripts["jlcpcb_parts"] = `${path.join(
+    package_json.scripts["docs"] = `typecad doc ${path.join(".", "docs", `${answers.name}.md`)} ${path.join(
       ".",
-      "node_modules",
-      ".bin",
-      "jlcpcb-search"
+      "build",
+      `${answers.name}.kicad_pcb`
     )}`;
-  }
 
-  delete package_json.scripts.test;
-
-  try {
-    fs.writeFileSync(
-      `${process.cwd()}/${answers.name}/hw/package.json`,
-      JSON.stringify(package_json, null, 2)
-    );
-  } catch (error) {
-    logger.log(
-      chalk.red(`- ERROR writing ./${answers.name}/hw/package.json ${error}`)
-    );
-    return;
-  }
-
-  // typecad.code-snippets
-  // let snippets = {
-  //   'typeCAD Named Net': {
-  //     prefix: '.net',
-  //     body: ['.net( { net: ${1}, pins: [${2}] });'],
-  //     description: 'typeCAD Named Net',
-  //   },
-  //   'typeCAD Unnamed Net': {
-  //     prefix: '.net',
-  //     body: ['.net({ pins: [${1}] });'],
-  //     description: 'typeCAD Unnamed Net',
-  //   },
-  //   'typeCAD Input Net': {
-  //     prefix: '.in',
-  //     body: ['.in({ net: ${1}, pins: [${2}] });'],
-  //     description: 'typeCAD Input Net',
-  //   },
-  //   'typeCAD Output Net': {
-  //     prefix: '.out',
-  //     body: ['.out({ net: ${1}, pins: [${2}] });'],
-  //     description: 'typeCAD Output Net',
-  //   },
-  // };
-  // try {
-  //   fs.writeFileSync(
-  //     `${process.cwd()}/${answers.name}/hw/.vscode/typecad.code-snippets`,
-  //     JSON.stringify(snippets, null, 2)
-  //   );
-  // } catch (error) {
-  //   logger.log(
-  //     chalk.red(
-  //       `- ERROR writing ./${answers.name}/hw/.vscode/typecad.code-snippets ${error}`
-  //     )
-  //   );
-  //   return;
-  // }
-
-  if (answers.pio) {
-    dir = `./${answers.name}/fw`;
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
+    if (answers.packages.includes("jlcpcb-parts")) {
+      package_json.scripts["jlcpcb_parts"] = `${path.join(
+        ".",
+        "node_modules",
+        ".bin",
+        "jlcpcb-search"
+      )}`;
     }
-    logger.log(chalk.green("+"), "Creating pio project in ./fw");
-    const installedPIO = runCommand('pio', ['project', 'init', '--project-dir', './fw/', '-b', answers.board], path.join(process.cwd(), answers.name));
-    if (!installedPIO) {
-      logger.error(`Error creating PlatformIO project`);
-    }
-  }
 
-  if (answers.git) {
-    dir = `./${answers.name}/fw`;
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
-    logger.log(chalk.green("+"), "Initializing git repo ./fw");
-    const installedGit = runCommand('git', ['init'], path.join(process.cwd(), answers.name));
-    if (!installedGit) {
-      logger.error(`Error initializing git repo`);
-    }
-  }
+    delete package_json.scripts.test;
 
-  const docsDir = `./${answers.name}/hw/docs`;
-  if (!fs.existsSync(docsDir)) {
-    fs.mkdirSync(docsDir, { recursive: true });
-  }
+    try {
+      fs.writeFileSync(
+        `${process.cwd()}/${answers.name}/hw/package.json`,
+        JSON.stringify(package_json, null, 2)
+      );
+    } catch (error) {
+      throw new Error(`ERROR writing ./${answers.name}/hw/package.json ${error}`);
+    }
 
-  const docContent = `# Fabrication Notes
+    if (answers.pio) {
+      dir = `./${answers.name}/fw`;
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+      logger.log(chalk.green("+"), "Creating pio project in ./fw");
+      const installedPIO = runCommand('pio', ['project', 'init', '--project-dir', './fw/', '-b', answers.board], path.join(process.cwd(), answers.name));
+      if (!installedPIO) {
+        logger.error(`Error creating PlatformIO project`);
+      }
+    }
+
+    if (answers.git) {
+      dir = `./${answers.name}/fw`;
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+      logger.log(chalk.green("+"), "Initializing git repo ./fw");
+      const installedGit = runCommand('git', ['init'], path.join(process.cwd(), answers.name));
+      if (!installedGit) {
+        logger.error(`Error initializing git repo`);
+      }
+    }
+
+    const docsDir = `./${answers.name}/hw/docs`;
+    if (!fs.existsSync(docsDir)) {
+      fs.mkdirSync(docsDir, { recursive: true });
+    }
+
+    const docContent = `# Fabrication Notes
 
 |                 Stackup                 |                        Dimensions                         |                Drills                |
 | :-------------------------------------: | :-------------------------------------------------------: | :----------------------------------: |
@@ -425,49 +355,48 @@ _flipped_
 | ![{B.Cu,B.Mask,B.Fab}](./images/bottom-assembly.png =550) | ![Bottom render](./images/back-render.png =550) |
 `;
 
-  try {
-    fs.writeFileSync(
-      `${process.cwd()}/${answers.name}/hw/docs/${answers.name}.md`,
-      docContent
-    );
-    logger.log(chalk.green("+"), "Documentation template created");
-  } catch (error) {
+    try {
+      fs.writeFileSync(
+        `${process.cwd()}/${answers.name}/hw/docs/${answers.name}.md`,
+        docContent
+      );
+      logger.log(chalk.green("+"), "Documentation template created");
+    } catch (error) {
+      throw new Error(`ERROR writing ./${answers.name}/hw/docs/${answers.name}.md ${error}`);
+    }
+
+    let code_workspace: Record<string, any> = {};
+
+    if (answers.pio) {
+      code_workspace.folders = [{ path: "hw" }, { path: "fw" }];
+    } else {
+      code_workspace.folders = [{ path: "hw" }];
+    }
+    code_workspace.settings = {};
+
+    try {
+      fs.writeFileSync(
+        `${process.cwd()}/${answers.name}/${answers.name}.code-workspace`,
+        JSON.stringify(code_workspace, null, 2)
+      );
+    } catch (error) {
+      throw new Error(`ERROR writing ./${answers.name}.code-workspace ${error}`);
+    }
+
+    logger.log(chalk.green("+"), "Finished");
     logger.log(
-      chalk.red(
-        `- ERROR writing ./${answers.name}/hw/docs/${answers.name}.md ${error}`
-      )
+      chalk.green("+"),
+      `Open ${answers.name}.code-workspace in VS Code to get started`
     );
-    return;
+  } catch (err) {
+    if (createdDirs && fs.existsSync(projectRoot)) {
+      try {
+        fs.rmSync(projectRoot, { recursive: true, force: true });
+        logger.log(chalk.yellow("!"), "Cleaned up partial project:", projectRoot);
+      } catch (cleanupErr) {
+        logger.error(`Failed to clean up ${projectRoot}. Remove it manually.`);
+      }
+    }
+    logger.error(chalk.red(`Project creation failed: ${(err as Error).message}`));
   }
-
-  let code_workspace: Record<string, any> = {};
-
-  if (answers.pio) {
-    code_workspace.folders = [{ path: "hw" }, { path: "fw" }];
-  } else {
-    code_workspace.folders = [{ path: "hw" }];
-  }
-  code_workspace.settings = {};
-
-  try {
-    fs.writeFileSync(
-      `${process.cwd()}/${answers.name}/${answers.name}.code-workspace`,
-      JSON.stringify(code_workspace, null, 2)
-    );
-  } catch (error) {
-    logger.log(
-      chalk.red(`- ERROR writing ./${answers.name}.code-workspace ${error}`)
-    );
-    return;
-  }
-
-  logger.log(chalk.green("+"), "Finished");
-  logger.log(
-    chalk.green("+"),
-    `Open ${answers.name}.code-workspace in VS Code to get started`
-  );
 }
-
-// module.exports = {
-//   create_project,
-// };

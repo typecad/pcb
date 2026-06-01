@@ -1,5 +1,5 @@
 import fs from "node:fs";
-import { parse, prettyPrint, Sym } from '../sexpr/index.js';
+import { parseAsList, prettyPrint, Sym } from '../sexpr/index.js';
 import type { SExpr } from '../sexpr/types.js';
 import { KiCAD } from "../kicad.js";
 import { ComponentError } from "../utils/errors.js";
@@ -30,7 +30,7 @@ export function loadFootprintLib(
     if (kicadFootprintPath && fs.existsSync(kicadFootprintPath)) {
         try {
             const footprint_file_contents = fs.readFileSync(kicadFootprintPath, "utf8");
-            const l = parse(footprint_file_contents) as SExpr[];
+            const l = parseAsList(footprint_file_contents);
             if (Sym.isSym(l[0]) && l[0].name === 'module') {
                 l[0] = Sym.for('footprint');
             }
@@ -55,7 +55,7 @@ export function loadFootprintLib(
     if (fs.existsSync(buildFootprintPath)) {
         try {
             const footprint_file_contents = fs.readFileSync(buildFootprintPath, "utf8");
-            const l = parse(footprint_file_contents) as SExpr[];
+            const l = parseAsList(footprint_file_contents);
             if (Sym.isSym(l[0]) && l[0].name === 'module') {
                 l[0] = Sym.for('footprint');
             }

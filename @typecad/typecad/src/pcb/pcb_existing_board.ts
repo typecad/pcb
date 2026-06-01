@@ -1,5 +1,5 @@
 import { Component } from '../component.js';
-import { parse, nameOf, sym } from '../sexpr/index.js';
+import { parseAsList, nameOf, sym } from '../sexpr/index.js';
 import type { SExpr } from '../sexpr/types.js';
 import { IPcbBoardContext } from './pcb_board_context.js';
 import { normalizeNetName, formatCallSite, getErrorMessage } from './pcb_utils.js';
@@ -25,7 +25,7 @@ function extractItemType(item: SExpr): string {
     }
     if (typeof item === 'string' && item.startsWith('(')) {
         try {
-            const parsed = parse(item) as SExpr[];
+                const parsed = parseAsList(item);
             if (Array.isArray(parsed) && parsed.length > 0) {
                 return nameOf(parsed[0]);
             }
@@ -44,7 +44,7 @@ function buildBoardContentsFromExisting(existingElements: SExpr[], headerItems: 
     for (const item of existingElements.slice(1)) {
         if (typeof item === 'string' && item.startsWith('(')) {
             try {
-                contents.push(parse(item) as SExpr[]);
+                contents.push(parseAsList(item));
             } catch {
                 contents.push(item);
             }
@@ -123,7 +123,7 @@ export function insertNetsIntoBoardContents(
         if (Array.isArray(item) && nameOf(item[0]) === 'net') return false;
         if (typeof item === 'string' && (item as string).trim().startsWith('(net ')) {
             try {
-                const parsed = parse(item) as SExpr[];
+            const parsed = parseAsList(item);
                 if (Array.isArray(parsed) && parsed[0] && nameOf(parsed[0]) === 'net') return false;
             } catch {
                 logger.debug('[ExistingBoard] Failed to parse string element as net');

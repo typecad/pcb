@@ -37,6 +37,19 @@ export interface ISchematicOptions {
     bom_separator: string;
 }
 
+function validateSheetName(name: string): void {
+    if (!name || name.includes('..') || name.includes('/') || name.includes('\\') || name.includes('\0')) {
+        throw new TypeCadError(
+            `Invalid sheet name '${name}': must not contain path traversal characters (.., /, \\)`
+        );
+    }
+    if (name.trim() !== name) {
+        throw new TypeCadError(
+            `Invalid sheet name '${name}': must not have leading/trailing whitespace`
+        );
+    }
+}
+
 export class Schematic {
     /** @internal */
     components: Component[] = [];
@@ -72,6 +85,7 @@ export class Schematic {
     }
 
     constructor(sheetName: string) {
+        validateSheetName(sheetName);
         this.sheetName = sheetName;
         this.netManager = new NetManager(this.#options.net_prefix);
     }

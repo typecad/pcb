@@ -1,5 +1,5 @@
 import fs from "node:fs";
-import { parse, serialize, Sym } from "./sexpr/index.js";
+import { parseAsList, serialize, Sym } from "./sexpr/index.js";
 import type { SExpr } from './sexpr/types.js';
 import { KiCAD } from "./kicad.js";
 import { LIBRARY_SEPARATOR } from './utils/constants.js';
@@ -48,7 +48,7 @@ export class SymbolLibraryManager {
                 }
             }
 
-            const parsedLibrary = parse(symbolFileContents) as SExpr[];
+            const parsedLibrary = parseAsList(symbolFileContents);
             this.libraryCache.set(libraryName, parsedLibrary);
             return parsedLibrary;
 

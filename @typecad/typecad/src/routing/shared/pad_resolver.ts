@@ -1,6 +1,6 @@
 import { Component } from "../../component.js";
 import { Pin } from "../../pin.js";
-import { parse, Sym } from '../../sexpr/index.js';
+import { parseAsList, Sym } from '../../sexpr/index.js';
 import type { SExpr } from '../../sexpr/types.js';
 import { TypeCadError } from '../../utils/errors.js';
 import logger from '../../utils/logging.js';
@@ -53,8 +53,7 @@ export class PadResolver {
         let cached = this._parseCache.get(footprintName);
         if (cached !== undefined) return cached;
         try {
-            const parsed = parse(footprintSExpr);
-            cached = (Array.isArray(parsed) && parsed.length > 0) ? (parsed as SExpr[]) : null;
+            cached = parseAsList(footprintSExpr);
         } catch {
             cached = null;
         }

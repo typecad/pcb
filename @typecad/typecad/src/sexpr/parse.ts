@@ -142,3 +142,9 @@ export function parse(input: string): SExpr {
     if (results.length === 1) return results[0];
     return results;
 }
+
+export function parseAsList(input: string): SExpr[] {
+    const result = parse(input);
+    if (Array.isArray(result)) return result;
+    throw new ParseError('Expected a list expression', 0);
+}

@@ -75,6 +75,14 @@ describe('loadConfig', () => {
     expect(c1).toBe(c2)
   })
 
+  it('should throw on malformed typecad.conf.ts', () => {
+    fs.writeFileSync(
+      path.join(tmpDir, 'typecad.conf.ts'),
+      'this is {{{ not valid JS'
+    )
+    expect(() => loadConfig()).toThrow(/Cannot load typecad\.conf\.ts/)
+  })
+
   it('clearConfigCache should force reload', () => {
     loadConfig()
     clearConfigCache()

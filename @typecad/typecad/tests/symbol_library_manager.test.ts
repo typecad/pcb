@@ -15,8 +15,9 @@ vi.mock('node:os', () => ({
     platform: mockPlatform,
 }));
 
-const { mockParse, mockSerialize, mockIsSym } = vi.hoisted(() => ({
+const { mockParse, mockParseAsList, mockSerialize, mockIsSym } = vi.hoisted(() => ({
     mockParse: vi.fn(),
+    mockParseAsList: vi.fn(),
     mockSerialize: vi.fn((x: any) => {
         if (Array.isArray(x)) return `(${x.map((e: any) => typeof e === 'object' && e.name ? e.name : String(e)).join(' ')})`;
         return String(x);
@@ -26,6 +27,7 @@ const { mockParse, mockSerialize, mockIsSym } = vi.hoisted(() => ({
 
 vi.mock('../src/sexpr/index.js', () => ({
     parse: mockParse,
+    parseAsList: mockParseAsList,
     serialize: mockSerialize,
     Sym: { isSym: mockIsSym },
 }));
@@ -116,7 +118,7 @@ describe('SymbolLibraryManager', () => {
         it('should load symbol from library file', () => {
             mockExistsSync.mockReturnValue(true);
             mockReadFileSync.mockReturnValue('(kicad_symbol_lib (symbol "R" (pin number 1) (pin number 2)))');
-            mockParse.mockReturnValue([
+            mockParseAsList.mockReturnValue([
                 makeSym('kicad_symbol_lib'), [makeSym('symbol'), 'R', [makeSym('pin'), [makeSym('number'), '1']]]
             ]);
 
@@ -131,7 +133,7 @@ describe('SymbolLibraryManager', () => {
             const baseSymbol = [
                 makeSym('symbol'), 'Base', [makeSym('pin'), [makeSym('number'), '1'], [makeSym('at'), '0', '0', '0']]
             ];
-            mockParse.mockReturnValue([
+            mockParseAsList.mockReturnValue([
                 makeSym('kicad_symbol_lib'), baseSymbol, [makeSym('symbol'), 'R', [makeSym('extends'), 'Base']]
             ]);
 
@@ -142,7 +144,7 @@ describe('SymbolLibraryManager', () => {
         it('should detect circular extends', () => {
             mockExistsSync.mockReturnValue(true);
             mockReadFileSync.mockReturnValue('(kicad_symbol_lib (symbol "R" (extends "R")))');
-            mockParse.mockReturnValue([
+            mockParseAsList.mockReturnValue([
                 makeSym('kicad_symbol_lib'), [makeSym('symbol'), 'R', [makeSym('extends'), 'R']]
             ]);
 
@@ -156,7 +158,7 @@ describe('SymbolLibraryManager', () => {
         it('should log error when symbol definition not found in library', () => {
             mockExistsSync.mockReturnValue(true);
             mockReadFileSync.mockReturnValue('(kicad_symbol_lib)');
-            mockParse.mockReturnValue([makeSym('kicad_symbol_lib')]);
+            mockParseAsList.mockReturnValue([makeSym('kicad_symbol_lib')]);
 
             const result = manager.getSymbolDefinition('Device:Nonexistent');
             expect(result).toBeNull();
@@ -180,7 +182,7 @@ describe('SymbolLibraryManager', () => {
         it('should find pin location in top-level pin', () => {
             mockExistsSync.mockReturnValue(true);
             mockReadFileSync.mockReturnValue('(kicad_symbol_lib (symbol "R" (pin (number "1") (at 5.08 0 0))))');
-            mockParse.mockReturnValue([
+            mockParseAsList.mockReturnValue([
                 makeSym('kicad_symbol_lib'), [makeSym('symbol'), 'R',
                     [makeSym('pin'), [makeSym('number'), '1'], [makeSym('at'), '5.08', '0', '0']]
                 ]
@@ -193,7 +195,7 @@ describe('SymbolLibraryManager', () => {
         it('should find pin location in nested symbol unit', () => {
             mockExistsSync.mockReturnValue(true);
             mockReadFileSync.mockReturnValue('(kicad_symbol_lib (symbol "R" (symbol "R_1_1" (pin (number "1") (at 0 0 0)))))');
-            mockParse.mockReturnValue([
+            mockParseAsList.mockReturnValue([
                 makeSym('kicad_symbol_lib'), [makeSym('symbol'), 'R',
                     [makeSym('symbol'), 'R_1_1',
                         [makeSym('pin'), [makeSym('number'), '1'], [makeSym('at'), '0', '0', '0']]
@@ -208,7 +210,7 @@ describe('SymbolLibraryManager', () => {
         it('should log error when pin not found', () => {
             mockExistsSync.mockReturnValue(true);
             mockReadFileSync.mockReturnValue('(kicad_symbol_lib (symbol "R"))');
-            mockParse.mockReturnValue([makeSym('kicad_symbol_lib'), [makeSym('symbol'), 'R']]);
+            mockParseAsList.mockReturnValue([makeSym('kicad_symbol_lib'), [makeSym('symbol'), 'R']]);
 
             const result = manager.getPinLocation('Device:R', '99');
             expect(result).toBeNull();
@@ -218,7 +220,7 @@ describe('SymbolLibraryManager', () => {
         it('should handle parsing errors gracefully', () => {
             mockExistsSync.mockReturnValue(true);
             mockReadFileSync.mockReturnValue('(invalid)');
-            mockParse.mockImplementation(() => { throw new Error('parse error'); });
+            mockParseAsList.mockImplementation(() => { throw new Error('parse error'); });
 
             const result = manager.getPinLocation('Device:R', '1');
             expect(result).toBeNull();
@@ -241,7 +243,7 @@ describe('SymbolLibraryManager', () => {
         it('should extract pin info from symbol', () => {
             mockExistsSync.mockReturnValue(true);
             mockReadFileSync.mockReturnValue('(kicad_symbol_lib (symbol "R" (pin bidirectional passive (name "A0") (number "1"))))');
-            mockParse.mockReturnValue([
+            mockParseAsList.mockReturnValue([
                 makeSym('kicad_symbol_lib'), [makeSym('symbol'), 'R',
                     [makeSym('pin'), 'bidirectional', 'passive',
                         [makeSym('name'), 'A0'],
@@ -258,7 +260,7 @@ describe('SymbolLibraryManager', () => {
         it('should return null when no pins found', () => {
             mockExistsSync.mockReturnValue(true);
             mockReadFileSync.mockReturnValue('(kicad_symbol_lib (symbol "R"))');
-            mockParse.mockReturnValue([makeSym('kicad_symbol_lib'), [makeSym('symbol'), 'R']]);
+            mockParseAsList.mockReturnValue([makeSym('kicad_symbol_lib'), [makeSym('symbol'), 'R']]);
 
             const result = manager.getPinInfoMap('Device:R');
             expect(result).toBeNull();
@@ -282,7 +284,7 @@ describe('SymbolLibraryManager', () => {
         it('should calculate bounding box from rectangle elements', () => {
             mockExistsSync.mockReturnValue(true);
             mockReadFileSync.mockReturnValue('(kicad_symbol_lib (symbol "R" (rectangle (start -5.08 2.54) (end 5.08 -2.54))))');
-            mockParse.mockReturnValue([
+            mockParseAsList.mockReturnValue([
                 makeSym('kicad_symbol_lib'), [makeSym('symbol'), 'R',
                     [makeSym('rectangle'), [makeSym('start'), '-5.08', '2.54'], [makeSym('end'), '5.08', '-2.54']]
                 ]
@@ -295,7 +297,7 @@ describe('SymbolLibraryManager', () => {
         it('should calculate bounding box from pin elements', () => {
             mockExistsSync.mockReturnValue(true);
             mockReadFileSync.mockReturnValue('(kicad_symbol_lib (symbol "R" (pin (at 0 0 90) (number "1")) (pin (at 10 5 270) (number "2"))))');
-            mockParse.mockReturnValue([
+            mockParseAsList.mockReturnValue([
                 makeSym('kicad_symbol_lib'), [makeSym('symbol'), 'R',
                     [makeSym('pin'), [makeSym('at'), '0', '0', '90'], [makeSym('number'), '1']],
                     [makeSym('pin'), [makeSym('at'), '10', '5', '270'], [makeSym('number'), '2']]
@@ -309,7 +311,7 @@ describe('SymbolLibraryManager', () => {
         it('should calculate bounding box from circle elements', () => {
             mockExistsSync.mockReturnValue(true);
             mockReadFileSync.mockReturnValue('(kicad_symbol_lib (symbol "R" (circle (center 0 0) (radius 5))))');
-            mockParse.mockReturnValue([
+            mockParseAsList.mockReturnValue([
                 makeSym('kicad_symbol_lib'), [makeSym('symbol'), 'R',
                     [makeSym('circle'), [makeSym('center'), '0', '0'], [makeSym('radius'), '5']]
                 ]
@@ -322,7 +324,7 @@ describe('SymbolLibraryManager', () => {
         it('should warn and return null when no graphical elements found', () => {
             mockExistsSync.mockReturnValue(true);
             mockReadFileSync.mockReturnValue('(kicad_symbol_lib (symbol "R" (property (key "value"))))');
-            mockParse.mockReturnValue([
+            mockParseAsList.mockReturnValue([
                 makeSym('kicad_symbol_lib'), [makeSym('symbol'), 'R', [makeSym('property'), [makeSym('key'), 'value']]]
             ]);
 
@@ -351,7 +353,7 @@ describe('SymbolLibraryManager', () => {
         it('should return null when library file parse fails', () => {
             mockExistsSync.mockReturnValue(true);
             mockReadFileSync.mockReturnValue('invalid content');
-            mockParse.mockImplementation(() => { throw new Error('parse error'); });
+            mockParseAsList.mockImplementation(() => { throw new Error('parse error'); });
 
             const result = (manager as any).getLibraryContent('Device');
             expect(result).toBeNull();

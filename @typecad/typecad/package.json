@@ -75,14 +75,16 @@
   "author": "typeCAD",
   "license": "Apache-2.0",
   "dependencies": {
-    "@hackmd/markdown-it-task-lists": "^2.1.4",
     "@inquirer/prompts": "^8.4.2",
-    "@shikijs/markdown-it": "^4.1.0",
     "acorn": "^8.16.0",
     "acorn-walk": "^8.3.5",
     "chalk": "^5.6.2",
     "inquirer-file-selector": "^1.0.1",
-    "inquirer-select-pro": "1.0.0-alpha.9",
+    "inquirer-select-pro": "1.0.0-alpha.9"
+  },
+  "optionalDependencies": {
+    "@hackmd/markdown-it-task-lists": "^2.1.4",
+    "@shikijs/markdown-it": "^4.1.0",
     "markdown-it": "^14.1.1",
     "markdown-it-attrs": "^4.5.0",
     "markdown-it-math": "^5.2.1",

@@ -4,6 +4,8 @@ import type { ISchematicNode } from "./types/schematic_types.js";
 import { renderNets } from "./renderers/sexp_renderers.js";
 import type { Component } from './component.js';
 import { TypeCadError } from './utils/errors.js';
+import { getCallSite } from './utils/stack_trace.js';
+import { formatSourceError } from './utils/error_reporter.js';
 
 export interface INetConnectionInfo {
     reference: string;
@@ -87,7 +89,10 @@ export class NetManager {
 
         for (const pin of pins) {
             if (!pin || typeof pin !== 'object' || !('number' in pin) || !('reference' in pin)) {
-                throw new TypeCadError(`Invalid object passed to net(). Expected Pin, received ${typeof pin}`);
+                const site = getCallSite();
+                const err = new TypeCadError(formatSourceError(`Invalid object passed to net(). Expected Pin, received ${typeof pin}`, site));
+                err.stack = err.message;
+                throw err;
             }
             const key = `${pin.reference}:${pin.number}`;
             const existing = this.pinToNetIndex.get(key);

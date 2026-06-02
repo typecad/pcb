@@ -1,6 +1,6 @@
-import { Component, IComponent } from '@typecad/typecad'
+import { Component, type ComponentInit } from '@typecad/typecad'
 
-interface IMountingHole extends IComponent {
+interface IMountingHole extends ComponentInit {
     size?: 'M2' | 'M2.5' | 'M3' | 'M4' | 'M5' | 'M6' | 'M8';
 }
 

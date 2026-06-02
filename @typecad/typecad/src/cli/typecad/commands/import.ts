@@ -7,11 +7,12 @@ export async function run(parsed: ParsedArgs): Promise<void> {
   if (!filePath) {
     throw new Error(
       'No KiCad file path provided.\n' +
-      'Usage: typecad import <path_to_kicad_pcb_file> [--apply]'
+      'Usage: typecad import <path_to_kicad_pcb_file> [--apply] [--capture-layouts]'
     );
   }
 
   const apply = parsed.args['apply'] === true;
+  const captureLayouts = parsed.args['capture-layouts'] === true;
 
-  await kicadDataToTypeCAD(filePath, { apply });
+  await kicadDataToTypeCAD(filePath, { apply, captureLayouts });
 }

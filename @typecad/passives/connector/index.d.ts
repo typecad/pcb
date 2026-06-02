@@ -1,5 +1,5 @@
-import { Component, IComponent } from '@typecad/typecad';
-interface IConnector extends IComponent {
+import { Component, type ComponentInit } from '@typecad/typecad';
+interface IConnector extends ComponentInit {
     number: number;
 }
 export declare class Connector extends Component {

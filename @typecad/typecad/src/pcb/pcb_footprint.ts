@@ -5,6 +5,7 @@ import type { SexprNode } from "../types/sexpr_types.js";
 import { generateUuid, formatSourceInfoForProperty, getErrorMessage } from "./pcb_utils.js";
 import { mapLayerToSide, transformSexprLayers, mirrorChamferDirection } from "./pcb_layer_utils.js";
 import { BoardCreationError } from '../utils/errors.js';
+import { reportError } from '../utils/error_reporter.js';
 import type { INetResolution, ITextPositioning } from "./pcb_interfaces.js";
 import { loadFootprintLib } from "./component_footprint_loader.js";
 
@@ -453,6 +454,7 @@ export function createFootprintNode(component: Component, resolveNet: (ref: stri
             footprint_contents = loadFootprintLib(component.footprint!, component.reference || '', component.value || '', undefined);
         }
     } catch (e: unknown) {
+        reportError('Failed to create footprint node.', component);
         throw new BoardCreationError(`[${component.reference || 'Unknown'}, ${component.value || 'Unknown'}, ${component.footprint}] Failed to create footprint node. ${getErrorMessage(e)}`);
     }
 
@@ -463,6 +465,7 @@ export function createFootprintNode(component: Component, resolveNet: (ref: stri
             throw new BoardCreationError("Parsed footprint is undefined or not an array");
         }
     } catch (e: unknown) {
+        reportError('Failed to parse footprint.', component);
         throw new BoardCreationError(`[${component.reference || 'Unknown'}, ${component.value || 'Unknown'}, ${component.footprint}] Failed to parse footprint: ${getErrorMessage(e)}`);
     }
 

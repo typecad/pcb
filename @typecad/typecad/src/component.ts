@@ -4,6 +4,7 @@ import chalk from 'chalk';
 import { ReferenceCounter } from "./utils/reference_counter.js";
 import { IVia } from "./pcb/pcb_interfaces.js";
 import { ComponentError } from "./utils/errors.js";
+import { displayName, formatSourceError } from "./utils/error_reporter.js";
 import logger from "./utils/logging.js";
 import { inspectSource } from "./utils/source_inspector.js";
 import { getCallSite } from "./utils/stack_trace.js";
@@ -147,7 +148,7 @@ export class Component {
     get footprint(): string { return this.#footprint; }
     set footprint(value: string) {
         if (this.#committed && value !== this.#footprint) {
-            logger.warn(chalk.whiteBright.bgYellow(`\u26A0\uFE0F  Changing footprint on "${this.#ref}" after it was added to a schematic/PCB. Changes may not take effect.`));
+            logger.warn(chalk.whiteBright.bgYellow(`\u26A0\uFE0F  Changing footprint on "${displayName(this)}" after it was added to a schematic/PCB. Changes may not take effect.`));
         }
         this.#footprint = value;
     }
@@ -155,7 +156,7 @@ export class Component {
     get value(): string { return this.#value; }
     set value(v: string) {
         if (this.#committed && v !== this.#value) {
-            logger.warn(chalk.whiteBright.bgYellow(`\u26A0\uFE0F  Changing value on "${this.#ref}" after it was added to a schematic/PCB. Changes may not take effect.`));
+            logger.warn(chalk.whiteBright.bgYellow(`\u26A0\uFE0F  Changing value on "${displayName(this)}" after it was added to a schematic/PCB. Changes may not take effect.`));
         }
         this.#value = v;
     }
@@ -163,7 +164,7 @@ export class Component {
     get datasheet(): string { return this.#datasheet; }
     set datasheet(v: string) {
         if (this.#committed && v !== this.#datasheet) {
-            logger.warn(chalk.whiteBright.bgYellow(`\u26A0\uFE0F  Changing datasheet on "${this.#ref}" after it was added to a schematic/PCB. Changes may not take effect.`));
+            logger.warn(chalk.whiteBright.bgYellow(`\u26A0\uFE0F  Changing datasheet on "${displayName(this)}" after it was added to a schematic/PCB. Changes may not take effect.`));
         }
         this.#datasheet = v;
     }
@@ -171,7 +172,7 @@ export class Component {
     get description(): string { return this.#description; }
     set description(v: string) {
         if (this.#committed && v !== this.#description) {
-            logger.warn(chalk.whiteBright.bgYellow(`\u26A0\uFE0F  Changing description on "${this.#ref}" after it was added to a schematic/PCB. Changes may not take effect.`));
+            logger.warn(chalk.whiteBright.bgYellow(`\u26A0\uFE0F  Changing description on "${displayName(this)}" after it was added to a schematic/PCB. Changes may not take effect.`));
         }
         this.#description = v;
     }
@@ -179,7 +180,7 @@ export class Component {
     get voltage(): string { return this.#voltage; }
     set voltage(v: string) {
         if (this.#committed && v !== this.#voltage) {
-            logger.warn(chalk.whiteBright.bgYellow(`\u26A0\uFE0F  Changing voltage on "${this.#ref}" after it was added to a schematic/PCB. Changes may not take effect.`));
+            logger.warn(chalk.whiteBright.bgYellow(`\u26A0\uFE0F  Changing voltage on "${displayName(this)}" after it was added to a schematic/PCB. Changes may not take effect.`));
         }
         this.#voltage = v;
     }
@@ -187,7 +188,7 @@ export class Component {
     get wattage(): string { return this.#wattage; }
     set wattage(v: string) {
         if (this.#committed && v !== this.#wattage) {
-            logger.warn(chalk.whiteBright.bgYellow(`\u26A0\uFE0F  Changing wattage on "${this.#ref}" after it was added to a schematic/PCB. Changes may not take effect.`));
+            logger.warn(chalk.whiteBright.bgYellow(`\u26A0\uFE0F  Changing wattage on "${displayName(this)}" after it was added to a schematic/PCB. Changes may not take effect.`));
         }
         this.#wattage = v;
     }
@@ -195,7 +196,7 @@ export class Component {
     get mpn(): string { return this.#mpn; }
     set mpn(v: string) {
         if (this.#committed && v !== this.#mpn) {
-            logger.warn(chalk.whiteBright.bgYellow(`\u26A0\uFE0F  Changing mpn on "${this.#ref}" after it was added to a schematic/PCB. Changes may not take effect.`));
+            logger.warn(chalk.whiteBright.bgYellow(`\u26A0\uFE0F  Changing mpn on "${displayName(this)}" after it was added to a schematic/PCB. Changes may not take effect.`));
         }
         this.#mpn = v;
     }
@@ -203,7 +204,7 @@ export class Component {
     get symbol(): string { return this.#symbol; }
     set symbol(v: string) {
         if (this.#committed && v !== this.#symbol) {
-            logger.warn(chalk.whiteBright.bgYellow(`\u26A0\uFE0F  Changing symbol on "${this.#ref}" after it was added to a schematic/PCB. Changes may not take effect.`));
+            logger.warn(chalk.whiteBright.bgYellow(`\u26A0\uFE0F  Changing symbol on "${displayName(this)}" after it was added to a schematic/PCB. Changes may not take effect.`));
         }
         this.#symbol = v;
     }
@@ -221,7 +222,7 @@ export class Component {
         this.#refLocked = true;
         if (value && this.#isInitialized) {
             if (!/\d/.test(value)) {
-                logger.warn(chalk.whiteBright.bgYellow(`\u26A0\uFE0F  reference="${value}" has no number suffix. KiCad requires references like "R1", "C2", "U3".`));
+                logger.warn(chalk.whiteBright.bgYellow(`\u26A0\uFE0F  reference="${value}" for ${displayName(this)} has no number suffix. KiCad requires references like "R1", "C2", "U3".`));
             }
             defaultCounter.setReference(value);
         }
@@ -231,9 +232,9 @@ export class Component {
         if (this.#refLocked) {
             const refPrefix = this.#ref.match(/^[A-Za-z]+/)?.[0] ?? '';
             if (refPrefix && refPrefix !== value) {
-                logger.warn(chalk.whiteBright.bgYellow(`\u26A0\uFE0F  prefix="${value}" conflicts with reference="${this.#ref}". Set prefix before reference.`));
+                logger.warn(chalk.whiteBright.bgYellow(`\u26A0\uFE0F  prefix="${value}" conflicts with reference="${this.#ref}" for ${displayName(this)}. Set prefix before reference.`));
             } else {
-                logger.warn(chalk.whiteBright.bgYellow(`\u26A0\uFE0F  prefix="${value}" has no effect \u2014 reference is already set to "${this.#ref}".`));
+                logger.warn(chalk.whiteBright.bgYellow(`\u26A0\uFE0F  prefix="${value}" has no effect \u2014 reference is already set to "${this.#ref}" for ${displayName(this)}.`));
             }
             return;
         }
@@ -246,7 +247,9 @@ export class Component {
             const init = footprint as Partial<ComponentInit>;
             const fp = init.footprint ?? '';
             if (fp && !fp.includes(LIBRARY_SEPARATOR)) {
-                throw new ComponentError(`[${fp}] Footprint must be in format "library${LIBRARY_SEPARATOR}footprint"`);
+                const err = new ComponentError(formatSourceError(`[${fp}] Footprint must be in format "library${LIBRARY_SEPARATOR}footprint"`, this.sourceInfo));
+                err.stack = err.message;
+                throw err;
             }
             this.#footprint = fp;
             this.#applyInit(init);
@@ -255,7 +258,9 @@ export class Component {
             return;
         }
         if (footprint && !footprint.includes(LIBRARY_SEPARATOR)) {
-            throw new ComponentError(`[${footprint}] Footprint must be in format "library${LIBRARY_SEPARATOR}footprint" (e.g., "Resistor_SMD${LIBRARY_SEPARATOR}R_0603_1608Metric")`);
+            const err = new ComponentError(formatSourceError(`[${footprint}] Footprint must be in format "library${LIBRARY_SEPARATOR}footprint" (e.g., "Resistor_SMD${LIBRARY_SEPARATOR}R_0603_1608Metric")`, this.sourceInfo));
+            err.stack = err.message;
+            throw err;
         }
         this.#footprint = footprint;
         this.#isInitialized = true;
@@ -345,11 +350,11 @@ export class Component {
         const ref = this.reference;
         if (!counter.setReference(ref)) {
             const newRef = counter.getNextReference(this.#prefix || this.#inferPrefix());
-            logger.warn(chalk.whiteBright.bgYellow(`\u{1F6A9}  renaming ${ref} to ${newRef}`));
+            logger.warn(chalk.whiteBright.bgYellow(`\u{1F6A9}  renaming ${displayName(this)} to ${newRef}`));
             this.#ref = newRef;
         }
         if (!this.#footprint && !this.via) {
-            logger.warn(chalk.whiteBright.bgYellow(`\u26A0\uFE0F  "${ref}" has no footprint. It will not appear in the output.`));
+            logger.warn(chalk.whiteBright.bgYellow(`\u26A0\uFE0F  "${displayName(this)}" has no footprint. It will not appear in the output.`));
         }
         this.#committed = true;
         return true;
@@ -406,7 +411,10 @@ export class Component {
 
     pin(number: number | string, config?: { type?: Pin['type']; powerInfo?: import('./pcb/pcb_interfaces.js').IPinPowerInfo }): Pin {
         if (typeof number !== 'number' && typeof number !== 'string') {
-            throw new ComponentError(`Pin number must be a number or a string`);
+            const site = getCallSite();
+            const err = new ComponentError(formatSourceError(`Pin number must be a number or a string`, site));
+            err.stack = err.message;
+            throw err;
         }
         const pinNumberStr = String(number);
 
@@ -417,6 +425,12 @@ export class Component {
             if (!existingPin.uuid) {
                 existingPin.uuid = this.uuid;
             }
+            const site = getCallSite();
+            if (site) {
+                existingPin.sourceFile = site.file;
+                existingPin.sourceLine = site.line;
+                existingPin.sourceColumn = site.column;
+            }
             return existingPin;
         }
 
@@ -424,6 +438,12 @@ export class Component {
         newPin.owner = this;
         newPin.uuid = this.uuid;
         if (config?.powerInfo) newPin.powerInfo = config.powerInfo;
+        const site = getCallSite();
+        if (site) {
+            newPin.sourceFile = site.file;
+            newPin.sourceLine = site.line;
+            newPin.sourceColumn = site.column;
+        }
         this.pins.push(newPin);
         this.#pinMap.set(pinNumberStr, newPin);
         return newPin;

@@ -26,14 +26,15 @@ import { TrackBuilder } from './pcb_track_builder.js';
 import { PCB_CONSTANTS } from './pcb_routing_calculations.js';
 import { IPcbBoardContext } from './pcb_board_context.js';
 import type { ISchematicNode } from '../types/schematic_types.js';
-import { IRoutingObstacle } from '../routing/shared/routing_grid.js';
+import { IRoutingObstacle, RoutingGrid } from '../routing/shared/routing_grid.js';
 import { PadResolver } from '../routing/shared/pad_resolver.js';
-import { RoutingGrid } from '../routing/shared/routing_grid.js';
 import { ObstacleBuilder } from '../routing/shared/obstacle_builder.js';
 import { DebugVisualizer } from '../routing/utils/debug_visualizer.js';
 import logger from '../utils/logging.js';
 import { LengthMatcher } from '../routing/length_matching/length_matcher.js';
 import { configureGridResolution } from '../routing/grid_resolution_policy.js';
+import { formatPinResolutionError, formatSourceError } from '../utils/error_reporter.js';
+import type { IPinFailureDetail } from '../utils/error_reporter.js';
 
 import {
     calculateBoardBounds,
@@ -74,7 +75,9 @@ export { enqueueAutoroute } from './pcb_autoroute_helpers.js';
 export function autoroute(pcb: IPcbBoardContext, options: IAutorouteOptions): IAutorouteResult {
     // ── 1. Validate required parameters ──────────────────────────────────
     if (!options.from || !options.to) {
-        throw new RoutingError(`autoroute() requires both 'from' and 'to' parameters${formatCallSite(getCallSite())}`);
+        const err = new RoutingError(formatSourceError(`autoroute() requires both 'from' and 'to' parameters`, getCallSite()));
+        err.stack = err.message;
+        throw err;
     }
 
     debugLog(options.debug, chalk.blue(`[PCB] Starting autoroute operation`));
@@ -95,14 +98,18 @@ export function autoroute(pcb: IPcbBoardContext, options: IAutorouteOptions): IA
             if (isAutorouteResultRouteItem(routeItem)) {
                 const rd = routeItem.routeDetails;
                 if (rd.length === 0 || !rd[0].path) {
-                    throw new RoutingError(`${context}: IAutorouteResult has no path data${formatCallSite(getCallSite())}`);
+                    const err = new RoutingError(formatSourceError(`${context}: IAutorouteResult has no path data`, getCallSite()));
+                    err.stack = err.message;
+                    throw err;
                 }
                 path = rd[0].path;
             } else {
                 path = routeItem;
             }
             if (!path || !path.nodes || path.nodes.length < 2) {
-                throw new RoutingError(`${context}: Path must have at least 2 nodes${formatCallSite(getCallSite())}`);
+                const err = new RoutingError(formatSourceError(`${context}: Path must have at least 2 nodes`, getCallSite()));
+                err.stack = err.message;
+                throw err;
             }
         }
     }
@@ -114,7 +121,9 @@ export function autoroute(pcb: IPcbBoardContext, options: IAutorouteOptions): IA
             validatePin(exclude.from, `${context} 'from' pin`);
             validatePin(exclude.to, `${context} 'to' pin`);
             if (pinsMatch(exclude.from, exclude.to)) {
-                throw new RoutingError(`${context}: 'from' and 'to' pins are the same (${pinToIdentifier(exclude.from)})${formatCallSite(getCallSite())}`);
+                const err = new RoutingError(formatSourceError(`${context}: 'from' and 'to' pins are the same (${pinToIdentifier(exclude.from)})`, getCallSite()));
+                err.stack = err.message;
+                throw err;
             }
         }
     }
@@ -122,37 +131,45 @@ export function autoroute(pcb: IPcbBoardContext, options: IAutorouteOptions): IA
     // ── 4. Resolve pin positions with layer preference ───────────────────
     const preferredLayer = options.layers && options.layers.length > 0 ? options.layers[0] : undefined;
 
-    const startPositions: ({ x: number; y: number; layer: string } | null)[] = fromPins.map(pin => {
-        const pos = PadResolver.getPadCenter(pin);
+    const startResults = fromPins.map(pin => {
+        const result = PadResolver.getPadCenterWithFailure(pin);
+        if ('failure' in result) return { pos: null, failure: { pin, failure: result.failure } };
+        let pos: { x: number; y: number; layer: string } | null = result;
         if (pos && preferredLayer && pin.owner) {
             const geometry = PadResolver.getPadGeometry(pin.owner, pin.number);
             if (geometry && (geometry.type === 'thru_hole' || geometry.type === 'np_thru_hole')) {
                 if (geometry.layers.includes(preferredLayer)) {
-                    return { ...pos, layer: preferredLayer };
+                    pos = { ...pos, layer: preferredLayer };
                 }
             }
         }
-        return pos;
+        return { pos, failure: null };
     });
 
-    const endPositions: ({ x: number; y: number; layer: string } | null)[] = toPins.map(pin => {
-        const pos = PadResolver.getPadCenter(pin);
+    const endResults = toPins.map(pin => {
+        const result = PadResolver.getPadCenterWithFailure(pin);
+        if ('failure' in result) return { pos: null, failure: { pin, failure: result.failure } };
+        let pos: { x: number; y: number; layer: string } | null = result;
         if (pos && preferredLayer && pin.owner) {
             const geometry = PadResolver.getPadGeometry(pin.owner, pin.number);
             if (geometry && (geometry.type === 'thru_hole' || geometry.type === 'np_thru_hole')) {
                 if (geometry.layers.includes(preferredLayer)) {
-                    return { ...pos, layer: preferredLayer };
+                    pos = { ...pos, layer: preferredLayer };
                 }
             }
         }
-        return pos;
+        return { pos, failure: null };
     });
 
-    const invalidStarts = startPositions.filter(p => p === null).length;
-    const invalidEnds = endPositions.filter(p => p === null).length;
+    const startPositions = startResults.map(r => r.pos);
+    const endPositions = endResults.map(r => r.pos);
+    const fromFailures: IPinFailureDetail[] = startResults.filter((r): r is { pos: null; failure: IPinFailureDetail } => r.failure !== null).map(r => r.failure);
+    const toFailures: IPinFailureDetail[] = endResults.filter((r): r is { pos: null; failure: IPinFailureDetail } => r.failure !== null).map(r => r.failure);
 
-    if (invalidStarts > 0 || invalidEnds > 0) {
-        throw new RoutingError(`Unable to resolve pin positions: ${invalidStarts} invalid start pins, ${invalidEnds} invalid end pins${formatCallSite(getCallSite())}`);
+    if (fromFailures.length > 0 || toFailures.length > 0) {
+        const err = new RoutingError(formatPinResolutionError(fromFailures, toFailures));
+        err.stack = err.message;
+        throw err;
     }
 
     const validStartPositions = startPositions.filter((p): p is { x: number; y: number; layer: string } => p !== null);

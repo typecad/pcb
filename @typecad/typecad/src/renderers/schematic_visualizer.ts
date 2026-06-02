@@ -4,8 +4,9 @@ import { KiCAD } from "../kicad.js";
 import fs from "node:fs";
 import { SymbolLibraryManager } from '../symbol_library_manager.js';
 import { KiCADSchematic } from './kicad_schematic_renderer.js';
-import { logWarning, logError } from './schematic_visualizer_types.js';
+import { logWarning, logError, displayName } from './schematic_visualizer_types.js';
 import { renderSchematic } from './schematic_templates.js';
+import { reportError } from '../utils/error_reporter.js';
 
 export function schematic(schematicData: Schematic): boolean {
     KiCAD.instance;
@@ -20,15 +21,15 @@ export function schematic(schematicData: Schematic): boolean {
             return;
         }
 
-        if (component.symbol) {
+            if (component.symbol) {
             const symbolInstanceData = kicad.update(component);
             if (symbolInstanceData) {
                 kicad.symbols.push(symbolInstanceData);
             } else {
-                logWarning(`Skipping symbol instance for component ${component.reference || component.symbol} due to previous errors.`);
+                logWarning(`Skipping symbol instance for ${displayName(component)} due to previous errors.`);
             }
         } else {
-            logWarning(`Component ${component.reference || 'UNKNOWN'} is missing a symbol. Skipping.`);
+            reportError('Component is missing a symbol. Skipping.', component);
         }
     });
 

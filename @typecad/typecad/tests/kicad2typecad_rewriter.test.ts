@@ -419,6 +419,85 @@ describe('SourceRewriter', () => {
             const changes = await rewriter.computeLayoutChanges(results);
             expect(changes).toHaveLength(0);
         });
+
+        it('should skip new layouts when captureLayouts is false and source has no layout', async () => {
+            const tempDir = createTempDir();
+            try {
+                const srcFile = path.join(tempDir, 'board.ts');
+                fs.writeFileSync(srcFile, [
+                    `import { Component } from '@typecad/typecad';`,
+                    `this.r1 = new Component({ reference: 'R1' });`,
+                ].join('\n'));
+
+                const newLayout: TextLayoutIR = { x: 0, y: -1.5 };
+                const results = [makeMatchResult({ referenceLayout: newLayout }, srcFile)];
+                const changes = await rewriter.computeLayoutChanges(results, false);
+                expect(changes).toHaveLength(0);
+            } finally {
+                removeTempDir(tempDir);
+            }
+        });
+
+        it('should skip new layouts by default (no captureLayouts arg)', async () => {
+            const tempDir = createTempDir();
+            try {
+                const srcFile = path.join(tempDir, 'board.ts');
+                fs.writeFileSync(srcFile, [
+                    `this.r1 = new Component({ reference: 'R1' });`,
+                ].join('\n'));
+
+                const results = [makeMatchResult({
+                    referenceLayout: { x: 0, y: -1.5 },
+                    valueLayout: { x: 0, y: 1.5 },
+                    fabLayout: { x: 0, y: 0 },
+                }, srcFile)];
+                const changes = await rewriter.computeLayoutChanges(results);
+                expect(changes).toHaveLength(0);
+            } finally {
+                removeTempDir(tempDir);
+            }
+        });
+
+        it('should generate new layouts when captureLayouts is true', async () => {
+            const tempDir = createTempDir();
+            try {
+                const srcFile = path.join(tempDir, 'board.ts');
+                fs.writeFileSync(srcFile, [
+                    `this.r1 = new Component({ reference: 'R1' });`,
+                ].join('\n'));
+
+                const results = [makeMatchResult({
+                    referenceLayout: { x: 0, y: -1.5 },
+                }, srcFile)];
+                const changes = await rewriter.computeLayoutChanges(results, true);
+                expect(changes).toHaveLength(1);
+                expect(changes[0].layoutType).toBe('referenceLayout');
+                expect(changes[0].oldLayout).toBeNull();
+                expect(changes[0].newLayout.x).toBe(0);
+                expect(changes[0].newLayout.y).toBe(-1.5);
+            } finally {
+                removeTempDir(tempDir);
+            }
+        });
+
+        it('should still update existing layouts regardless of captureLayouts flag', async () => {
+            const tempDir = createTempDir();
+            try {
+                const srcFile = path.join(tempDir, 'board.ts');
+                fs.writeFileSync(srcFile, [
+                    `this.r1 = new Component({ reference: 'R1' });`,
+                    `this.r1.referenceLayout = { x: 0, y: -1.43 };`,
+                ].join('\n'));
+
+                const newLayout: TextLayoutIR = { x: 0, y: -3 };
+                const results = [makeMatchResult({ referenceLayout: newLayout }, srcFile)];
+                const changes = await rewriter.computeLayoutChanges(results, false);
+                expect(changes).toHaveLength(1);
+                expect(changes[0].layoutType).toBe('referenceLayout');
+            } finally {
+                removeTempDir(tempDir);
+            }
+        });
     });
 
     describe('applyLayoutChanges', () => {

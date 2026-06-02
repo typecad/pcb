@@ -5,6 +5,7 @@ import logger from '../utils/logging.js';
 import { RoutingError } from '../utils/errors.js';
 import { calculateMinTraceWidth, calculateMinViaSize as calculateMinimumViaSize } from './pcb_routing_calculations.js';
 import { getCallSite } from '../utils/stack_trace.js';
+import { formatSourceError } from '../utils/error_reporter.js';
 import { validateFinite, validateNonNegative } from '../utils/numeric_validation.js';
 
 export class TrackBuilder {
@@ -53,10 +54,14 @@ export class TrackBuilder {
 
     to(endPos: { x: number, y: number, layer?: string, width?: number }): this {
         if (!this.lastOperationSuccessful) {
-            throw new RoutingError(`Previous track operation failed${formatCallSite(this.getCallSite())}`);
+            const err = new RoutingError(formatSourceError(`Previous track operation failed`, this.getCallSite()));
+            err.stack = err.message;
+            throw err;
         }
         if (!this.currentPosition) {
-            throw new RoutingError(`'from()' must be called before 'to()'${formatCallSite(this.getCallSite())}`);
+            const err = new RoutingError(formatSourceError(`'from()' must be called before 'to()'`, this.getCallSite()));
+            err.stack = err.message;
+            throw err;
         }
 
         validateFinite(endPos.x, 'endPos.x');
@@ -84,8 +89,9 @@ export class TrackBuilder {
             const roundedMinWidth = Math.round(minWidth * 1000) / 1000;
             const roundedTargetWidth = Math.round(targetWidth * 1000) / 1000;
             if (roundedTargetWidth < roundedMinWidth) {
-                const error = `Track width ${roundedTargetWidth}mm is too narrow for ${this._powerInfo.current}A current on ${targetLayer}. Minimum width should be ${roundedMinWidth.toFixed(3)}mm.${formatCallSite(this.getCallSite())}`;
-                throw new RoutingError(error);
+                const err = new RoutingError(formatSourceError(`Track width ${roundedTargetWidth}mm is too narrow for ${this._powerInfo.current}A current on ${targetLayer}. Minimum width should be ${roundedMinWidth.toFixed(3)}mm.`, this.getCallSite()));
+                err.stack = err.message;
+                throw err;
             }
         }
 
@@ -167,10 +173,14 @@ export class TrackBuilder {
 
     via(params: { size?: number, drill?: number, layers?: string[], net?: string, powerInfo?: IViaPowerInfo } = {}): this {
         if (!this.lastOperationSuccessful) {
-            throw new RoutingError(`Previous track operation failed${formatCallSite(this.getCallSite())}`);
+            const err = new RoutingError(formatSourceError(`Previous track operation failed`, this.getCallSite()));
+            err.stack = err.message;
+            throw err;
         }
         if (!this.currentPosition) {
-            throw new RoutingError(`'from()' must be called before 'via()'${formatCallSite(this.getCallSite())}`);
+            const err = new RoutingError(formatSourceError(`'from()' must be called before 'via()'`, this.getCallSite()));
+            err.stack = err.message;
+            throw err;
         }
 
         // If power info exists, calculate minimum via size

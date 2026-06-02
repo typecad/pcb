@@ -233,7 +233,7 @@ export class PCB implements IPcbBoardContext {
                 flattened.push(item);
             }
         }
-        const result = createBoard(this, ...flattened);
+        const result = await createBoard(this, ...flattened);
         this.bom();
         return result;
     }

@@ -20,6 +20,8 @@ import type {
   ITrackBuilder,
 } from '../types/length_match.js';
 import { RoutingError } from '../../utils/errors.js';
+import { getCallSite } from '../../utils/stack_trace.js';
+import { formatSourceError } from '../../utils/error_reporter.js';
 
 import { normalizeConfig, segmentKey, chalk } from './length_matcher_helpers.js';
 import { collectSegments, pickCandidateSegment } from './segment_analysis.js';
@@ -108,23 +110,29 @@ export class LengthMatcher {
 
       const builders = routeTrackBuilders[item.index] || [];
       if (!builders || builders.length === 0) {
-        throw new RoutingError(`[LengthMatch] No track builders available for route index ${item.index}`);
+        const err = new RoutingError(formatSourceError(`[LengthMatch] No track builders available for route index ${item.index}`, getCallSite()));
+        err.stack = err.message;
+        throw err;
       }
 
       let remaining = deltaNeeded;
       const attemptedThisRound = new Set<string>();
       const pattern = config.pattern || { type: 'sawtooth' as const };
       if (pattern.type !== 'sawtooth') {
-        throw new RoutingError(`[LengthMatch] Unsupported pattern type: ${pattern.type}`);
+        const err = new RoutingError(formatSourceError(`[LengthMatch] Unsupported pattern type: ${pattern.type}`, getCallSite()));
+        err.stack = err.message;
+        throw err;
       }
       // Validate fixed sawtooth parameters early: pitch must be >= 2*amplitude
       if (typeof pattern.pitch === 'number' && typeof pattern.amplitude === 'number') {
         const p = pattern.pitch;
         const a = pattern.amplitude;
         if (p < 2 * a - 1e-9) {
-          throw new RoutingError(
-            `[LengthMatch] Invalid sawtooth parameters: pitch=${p}mm < 2*amplitude=${(2 * a).toFixed(3)}mm. Increase pitch or reduce amplitude, or omit one to allow auto-adjust.`,
+          const err = new RoutingError(
+            formatSourceError(`[LengthMatch] Invalid sawtooth parameters: pitch=${p}mm < 2*amplitude=${(2 * a).toFixed(3)}mm. Increase pitch or reduce amplitude, or omit one to allow auto-adjust.`, getCallSite())
           );
+          err.stack = err.message;
+          throw err;
         }
       }
 
@@ -193,9 +201,11 @@ export class LengthMatcher {
         if (!segment) {
           const tried = Array.from(attemptedThisRound).map(k => k.slice(k.indexOf(':') + 1));
           const triedDesc = tried.length ? tried.join(';') : 'none';
-          throw new RoutingError(
-            `[LengthMatch] No eligible straight segment found for remaining ΔL=${remaining.toFixed(3)}mm (minStraightSegment=${config.minStraightSegment ?? 2.0}mm). Segments attempted: ${triedDesc}`,
+          const err = new RoutingError(
+            formatSourceError(`[LengthMatch] No eligible straight segment found for remaining ΔL=${remaining.toFixed(3)}mm (minStraightSegment=${config.minStraightSegment ?? 2.0}mm). Segments attempted: ${triedDesc}`, getCallSite())
           );
+          err.stack = err.message;
+          throw err;
         }
 
         const fitted = fitSawtoothBidirectional(
@@ -334,9 +344,11 @@ export class LengthMatcher {
     const newMax = Math.max(...items.map(it => it.length));
     for (const it of items) {
       if (newMax - it.length > config.tolerance + 1e-6) {
-        throw new RoutingError(
-          `[LengthMatch] Post-apply verification failed: length mismatch exceeds tolerance (${(newMax - it.length).toFixed(3)}mm > ${config.tolerance}mm)`,
+        const err = new RoutingError(
+          formatSourceError(`[LengthMatch] Post-apply verification failed: length mismatch exceeds tolerance (${(newMax - it.length).toFixed(3)}mm > ${config.tolerance}mm)`, getCallSite())
         );
+        err.stack = err.message;
+        throw err;
       }
     }
 

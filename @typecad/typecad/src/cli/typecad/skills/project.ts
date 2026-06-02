@@ -31,7 +31,7 @@ export const projectSkills: Skill[] = [
   {
     name: 'add-component',
     category: 'project',
-    description: 'Add a component to the current typeCAD project from KiCad libraries, local files, or JLCPCB/EasyEDA',
+    description: 'Add a component to the current typeCAD project from KiCad libraries, local files, or JLCPCB/EasyEDA. Generates a .ts file with all pin names and numbers — this is the source of pin information',
     examples: [
       {
         title: 'Interactive component addition',
@@ -56,12 +56,17 @@ export const projectSkills: Skill[] = [
     ],
     notes: [
       'Creates a .ts component file with a class extending Component',
+      'IMPORTANT: The generated .ts file contains ALL pin names and numbers. Read this file after creation to get pin mappings — do not parse raw .kicad_sym files.',
       'KiCad format: library:symbol_name (e.g. MCU_Microchip_ATmega:ATmega328P-A)',
       'JLCPCB format: C followed by digits (e.g. C8282)',
       'Use --folder to specify output directory (default: current directory)',
       'Run typecad search to find KiCad symbol names',
+      'SYMBOL/FOOTPRINT MISMATCH: Some symbols found by search may fail in add-component with "Invalid KiCAD library symbol". This happens when the symbol has no default footprint association. Try specifying the footprint explicitly from a different library, or create the component manually.',
+      'CLASS NAMING: If the generated class name contains dots or special characters (e.g. AP2112K_3.3), rename the class and file to use underscores (AP2112K_3_3) to produce valid TypeScript identifiers.',
+      'FOLDER OUTPUT: When using --folder=./src, the file is created inside that directory. Verify the output path to avoid nested src/src/ structures.',
+      'MANUAL FALLBACK: If add-component fails, create the component file manually following the custom-component skill pattern. You will need the footprint string (library:footprint format) and pin assignments.',
     ],
-    related: ['create-project', 'component', 'custom-component', 'search'],
+    related: ['create-project', 'component', 'custom-component', 'search', 'circuit-design'],
   },
   {
     name: 'add-package',
@@ -123,7 +128,7 @@ export const projectSkills: Skill[] = [
   {
     name: 'search',
     category: 'project',
-    description: 'Search KiCad schematic symbol libraries to find component symbols for use in add-component',
+    description: 'Search KiCad schematic symbol libraries to find component symbols. Note: search finds symbols only — a matching KiCad footprint may not exist for every symbol',
     examples: [
       {
         title: 'Interactive search',
@@ -141,8 +146,11 @@ typecad search "voltage regulator" --format=json --limit=10`,
       'Output formats: detailed (default), compact, table, json',
       'Sort by: score (default), id, manufacturer, package',
       'Returns the library:symbol format needed for add-component',
+      'IMPORTANT: Search finds schematic symbols only. Not all symbols have associated KiCad footprints. When add-component fails after a successful search, it usually means the symbol lacks a default footprint. In this case, ask the user for the correct footprint or try specifying --footprint explicitly.',
+      'When searching for specific ICs (e.g. "AMS1117-3.3"), exact model numbers may not appear in results. Try searching for the base part number (e.g. "1117") or the manufacturer prefix.',
+      'When multiple results match, ask the user which variant to use — different packages (SOIC, SOT-23, TO-220, etc.) have different footprints and thermal characteristics.',
     ],
-    related: ['add-component', 'kicad-symbols'],
+    related: ['add-component', 'kicad-symbols', 'circuit-design'],
   },
   {
     name: 'import',

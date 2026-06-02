@@ -266,7 +266,7 @@ config, KiCad integration, and project commands.
     package_json.scripts["add_component"] = `typecad add component`;
     package_json.scripts["add_package"] = `typecad add package`;
     package_json.scripts["kicad-search"] = `typecad search`;
-    package_json.scripts["import"] = `typecad import ${path.join(".", "build", `${answers.name}.kicad_pcb`)}`;
+    package_json.scripts["import"] = `typecad import ${path.join(".", "build", `${answers.name}.kicad_pcb`)} --apply`;
     package_json.scripts[
       "open_board"
     ] = `npx open-cli ./build/${answers.name}.kicad_pcb`;

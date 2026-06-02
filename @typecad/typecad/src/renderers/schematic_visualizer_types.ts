@@ -39,3 +39,5 @@ export interface PinInfo {
 export const GRID_UNIT_MM = 2.54;
 export const PAGE_WIDTH_MM = 284.73;
 export const PAGE_HEIGHT_MM = 165.86;
+
+export { displayName } from '../utils/error_reporter.js';

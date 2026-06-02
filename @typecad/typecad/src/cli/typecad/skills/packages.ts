@@ -4,7 +4,7 @@ export const packageSkills: Skill[] = [
   {
     name: 'package-base',
     category: 'packages',
-    description: 'The Package abstract base class for creating reusable IC packages with their typical application circuits',
+    description: 'The Package abstract base class for creating reusable IC packages with their typical application circuits. Strongly recommended when an IC requires 3+ supporting components (decoupling caps, pull-ups, crystals, etc.)',
     package: '@typecad/typecad',
     import: "import { Package, PCB } from '@typecad/typecad';",
     usage: {
@@ -67,6 +67,39 @@ typecad.net(battery.pin(2), vreg.U1.GND);
 
 typecad.create(vreg);`,
       },
+      {
+        title: 'MCU minimum system package',
+        code: `// An ESP32 dev board benefits greatly from package encapsulation.
+// Instead of 12+ components in the entry file, wrap them:
+
+export class ESP32System extends Package<ESP32Options> {
+  MCU: ESP32_PICO_D4;
+  C_BYPASS1: Capacitor;
+  C_BYPASS2: Capacitor;
+  C_BULK: Capacitor;
+  R_EN_PULLUP: Resistor;
+  R_BOOT_PULLUP: Resistor;
+  SW_BOOT: SW_Push;
+  SW_RESET: SW_Push;
+  R_LED: Resistor;
+  D_LED: LED;
+
+  protected build(options: ESP32Options): void {
+    this.MCU = new ESP32_PICO_D4();
+    this.C_BYPASS1 = new Capacitor({ value: '100nF' });
+    this.C_BYPASS2 = new Capacitor({ value: '100nF' });
+    this.C_BULK = new Capacitor({ value: '10uF' });
+    this.R_EN_PULLUP = new Resistor({ value: '10kOhm' });
+    this.R_BOOT_PULLUP = new Resistor({ value: '10kOhm' });
+    // ... add buttons, LED, connect everything internally ...
+    this.add(this.MCU, this.C_BYPASS1, /* ... */);
+  }
+}
+
+// Entry file is now clean and readable:
+let esp32 = new ESP32System({ pcb: typecad, x: 0, y: 0 });
+typecad.create(esp32, j_left, j_right);`,
+      },
     ],
     notes: [
       'Extend Package<TOptions> and implement the abstract build() method',
@@ -74,13 +107,15 @@ typecad.create(vreg);`,
       'this.components auto-collects everything added via add() for use in create()',
       'Passives factory can be overridden via options for different package sizes',
       'Create with: typecad add package --component=true',
+      'WHEN TO USE PACKAGES: Any IC that needs 3+ supporting components (decoupling caps, pull resistors, crystals, LEDs, buttons) should be a package. This includes: MCU minimum systems, voltage regulator circuits, motor driver circuits, sensor modules with filtering, USB interfaces with ESD protection.',
+      'BENEFITS: (1) Entry file stays readable. (2) Sub-circuit is tested and reusable. (3) Internal connections are hidden. (4) External interface is clear (access via package.property).',
     ],
-    related: ['custom-component', 'pcb-structure', 'add-package', 'component'],
+    related: ['custom-component', 'pcb-structure', 'add-package', 'component', 'circuit-design'],
   },
   {
     name: 'custom-component',
     category: 'packages',
-    description: 'Create a custom component class with named pins and proper pin types for ERC and power validation',
+    description: 'Create a custom component class with named pins and proper pin types for ERC and power validation. Use this when add-component fails or when you need to define a component manually',
     package: '@typecad/typecad',
     import: "import { Component } from '@typecad/typecad';",
     examples: [
@@ -120,6 +155,30 @@ typecad.named('MOSI').net(mcu.PB0, spi_device.MOSI);
 typecad.net(mcu.VCC, vcc_3v3);
 typecad.net(mcu.GND, gnd);`,
       },
+      {
+        title: 'Manual component when add-component fails',
+        code: `// When "typecad add component" fails with "Invalid KiCAD library symbol",
+// create the component manually. You need:
+// 1. The KiCad footprint string (library:footprint format)
+// 2. The pin assignments (from the component datasheet)
+
+import { Component } from '@typecad/typecad';
+
+export class USB_B_Micro extends Component {
+  VBUS = this.pin(1, { type: 'power_in' });
+  D_MINUS = this.pin(2, { type: 'bidirectional' });
+  D_PLUS = this.pin(3, { type: 'bidirectional' });
+  ID = this.pin(4, { type: 'passive' });
+  GND = this.pin(5, { type: 'power_in' });
+  SHIELD = this.pin('SH', { type: 'passive' });
+
+  constructor(reference?: string) {
+    super('Connector_USB:USB_Micro-B_Amphenol_10118192-0001LF');
+    this.value = 'USB_B_Micro';
+    if (reference) this.reference = reference;
+  }
+}`,
+      },
     ],
     notes: [
       'Use component.pin(number, { type, powerInfo }) to create and register pins',
@@ -127,7 +186,10 @@ typecad.net(mcu.GND, gnd);`,
       'powerInfo: { minimum_voltage, maximum_voltage, current } for automatic validation',
       'Always pass reference through the constructor to support auto-numbering',
       'Use typecad add component to auto-generate component files from KiCad libraries',
+      'PIN INFO SOURCE: Prefer using "typecad add component" to generate files automatically. The generated file contains all pin names and numbers. Only create components manually when add-component fails.',
+      'MANUAL CREATION: When creating manually, you need the component datasheet for pin assignments. The footprint string must be a valid KiCad footprint in library:footprint format. Ask the user for the specific footprint if unsure.',
+      'Pin numbers can be strings for non-numeric pins (e.g. "SH" for shield, "EP" for exposed pad)',
     ],
-    related: ['component', 'pin', 'package-base', 'add-component'],
+    related: ['component', 'pin', 'package-base', 'add-component', 'circuit-design'],
   },
 ];

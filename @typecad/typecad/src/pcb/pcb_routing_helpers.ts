@@ -1,7 +1,7 @@
 import { Pin } from "../pin.js";
 import { getCallSite } from '../utils/stack_trace.js';
-import { formatCallSite } from './pcb_utils.js';
 import { RoutingError } from '../utils/errors.js';
+import { formatSourceError } from '../utils/error_reporter.js';
 
 /**
  * Convert a Pin object to a string identifier.
@@ -52,22 +52,30 @@ export function connectionMatches(
  * @throws Error if pin is invalid
  */
 export function validatePin(pin: Pin, context: string): boolean {
-    const callSiteInfo = formatCallSite(getCallSite());
+    const site = getCallSite();
 
     if (!pin) {
-        throw new RoutingError(`${context}: Pin is null or undefined${callSiteInfo}`);
+        const err = new RoutingError(formatSourceError(`${context}: Pin is null or undefined`, site));
+        err.stack = err.message;
+        throw err;
     }
 
     if (typeof pin !== 'object') {
-        throw new RoutingError(`${context}: Expected Pin object, got ${typeof pin}${callSiteInfo}`);
+        const err = new RoutingError(formatSourceError(`${context}: Expected Pin object, got ${typeof pin}`, site));
+        err.stack = err.message;
+        throw err;
     }
 
     if (!pin.reference || typeof pin.reference !== 'string') {
-        throw new RoutingError(`${context}: Pin has invalid or missing 'reference' property${callSiteInfo}`);
+        const err = new RoutingError(formatSourceError(`${context}: Pin has invalid or missing 'reference' property`, site));
+        err.stack = err.message;
+        throw err;
     }
 
     if (pin.number === undefined || pin.number === null) {
-        throw new RoutingError(`${context}: Pin has invalid or missing 'number' property${callSiteInfo}`);
+        const err = new RoutingError(formatSourceError(`${context}: Pin has invalid or missing 'number' property`, site));
+        err.stack = err.message;
+        throw err;
     }
 
     return true;

@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import path from 'node:path';
 import type {
     Node as AcornNode,
     ObjectExpression,
@@ -712,10 +713,11 @@ export function getMemberPrefix(isThis: boolean): string {
 
 export function collectTypeScriptFiles(dir: string): string[] {
     const results: string[] = [];
+    const absDir = path.resolve(dir);
     try {
-        const entries = fs.readdirSync(dir, { withFileTypes: true });
+        const entries = fs.readdirSync(absDir, { withFileTypes: true });
         for (const entry of entries) {
-            const fullPath = dir + '/' + entry.name;
+            const fullPath = path.join(absDir, entry.name);
             if (entry.isDirectory()) {
                 if (['node_modules', 'dist', 'build', '.git', '.typecode'].includes(entry.name)) continue;
                 results.push(...collectTypeScriptFiles(fullPath));
@@ -724,7 +726,6 @@ export function collectTypeScriptFiles(dir: string): string[] {
             }
         }
     } catch {
-        // Directory not readable
     }
     return results;
 }

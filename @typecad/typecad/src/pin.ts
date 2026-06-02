@@ -13,6 +13,12 @@ export class Pin {
     powerInfo?: IPinPowerInfo;
     /** @internal */
     uuid?: string;
+    /** @internal */
+    sourceFile?: string;
+    /** @internal */
+    sourceLine?: number;
+    /** @internal */
+    sourceColumn?: number;
 
     /**
      * Creates a standalone pin. To create and register a pin on a component,

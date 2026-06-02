@@ -40,7 +40,7 @@ import type { KicadIR, MatchResult, PendingChange, PendingTextChange, PendingLay
 
 export async function kicadDataToTypeCAD(
     filePath: string,
-    options?: { apply?: boolean }
+    options?: { apply?: boolean; captureLayouts?: boolean }
 ): Promise<void> {
     const sourceDescription = `File: ${filePath}`;
 
@@ -77,7 +77,7 @@ export async function kicadDataToTypeCAD(
 
         // 4. --apply mode: round-trip back to source files
         if (options?.apply) {
-            await applyMode(ir, filePath, sourceDescription);
+            await applyMode(ir, filePath, sourceDescription, options);
             return;
         }
 
@@ -105,13 +105,13 @@ export async function kicadDataToTypeCAD(
 
 // === Apply mode implementation ===
 
-async function applyMode(ir: KicadIR, kicadFilePath: string, sourceDescription: string): Promise<void> {
+async function applyMode(ir: KicadIR, kicadFilePath: string, sourceDescription: string, options?: { apply?: boolean; captureLayouts?: boolean }): Promise<void> {
     // Determine source root from the KiCad file location
     // The KiCad file is typically in a build/ directory; source is usually in src/
     const kicadDir = kicadFilePath.replace(/\\/g, '/').split('/').slice(0, -1).join('/') || '.';
 
     // Try src/ as sibling of build/, or fall back to the project root
-    const projectRoot = kicadDir.replace(/\/build$/, '') || '.';
+    const projectRoot = kicadDir.replace(/(^|\/)build$/, '') || '.';
     const sourceRoot = fs.existsSync(projectRoot + '/src') ? projectRoot + '/src' : projectRoot;
 
     // 1. Match IR footprints to source locations
@@ -134,7 +134,7 @@ async function applyMode(ir: KicadIR, kicadFilePath: string, sourceDescription: 
     const textChanges = await rewriter.computeTextChanges(ir, sourceFiles);
 
     // 4. Compute layout changes (referenceLayout, valueLayout, fabLayout)
-    const layoutChanges = await rewriter.computeLayoutChanges(matchResults);
+    const layoutChanges = await rewriter.computeLayoutChanges(matchResults, options?.captureLayouts ?? false);
 
     // 5. Apply footprint changes interactively
     if (footprintChanges.length > 0) {
@@ -166,6 +166,16 @@ async function applyMode(ir: KicadIR, kicadFilePath: string, sourceDescription: 
         if (layoutResult.applied > 0) {
             logger.log(chalk.green(
                 `\n✓ Applied ${layoutResult.applied} layout change(s) to ${layoutResult.filesModified} file(s).`
+            ));
+        }
+    } else if (!options?.captureLayouts) {
+        const hasLayoutsInIR = matchResults.some(mr =>
+            mr.irFootprint.referenceLayout || mr.irFootprint.valueLayout || mr.irFootprint.fabLayout
+        );
+        if (hasLayoutsInIR) {
+            logger.log(chalk.gray(
+                '\nLayout positions use footprint template defaults. ' +
+                'Use --capture-layouts to import all text positions into source.'
             ));
         }
     }

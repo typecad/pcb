@@ -9,8 +9,10 @@ import { packageSkills } from './packages.js';
 import { configSkills } from './config.js';
 import { advancedSkills } from './advanced.js';
 import { kicadSkills } from './kicad.js';
+import { workflowSkills } from './workflow.js';
 
 const allSkills: Skill[] = [
+  ...workflowSkills,
   ...coreSkills,
   ...passiveSkills,
   ...layoutSkills,

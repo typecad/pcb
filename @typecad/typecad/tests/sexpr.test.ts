@@ -218,7 +218,19 @@ describe('Parser', () => {
 
     it('handles escaped characters in strings', () => {
         const result = parse('"hello \\"world\\""') as string;
-        expect(result).toBe('hello \\"world\\"');
+        expect(result).toBe('hello "world"');
+    });
+
+    it('round-trips strings with escaped quotes', () => {
+        const input = '(property "Description" "Power symbol creates a global label with name \\"GND\\" , ground")';
+        const parsed = parse(input);
+        expect(serialize(parsed)).toBe(input);
+    });
+
+    it('round-trips strings with escaped backslashes', () => {
+        const input = '(property "Path" "C:\\\\Users\\\\test")';
+        const parsed = parse(input);
+        expect(serialize(parsed)).toBe(input);
     });
 
     it('handles exponential notation', () => {

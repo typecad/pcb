@@ -103,7 +103,7 @@ export class SourceRewriter {
         return changes;
     }
 
-    async computeLayoutChanges(matchResults: MatchResult[]): Promise<PendingLayoutChange[]> {
+    async computeLayoutChanges(matchResults: MatchResult[], captureLayouts = false): Promise<PendingLayoutChange[]> {
         const changes: PendingLayoutChange[] = [];
         const layoutTypes = ['referenceLayout', 'valueLayout', 'fabLayout'] as const;
 
@@ -143,6 +143,8 @@ export class SourceRewriter {
                         loc.isThis,
                         layoutType
                     );
+
+                    if (sourceLayout === null && !captureLayouts) continue;
 
                     const diff = this.computeLayoutDiff(sourceLayout, irLayout);
                     if (diff.length === 0) continue;
@@ -511,6 +513,8 @@ export class SourceRewriter {
                                 newValue: `, side: 'back'`,
                             });
                         }
+                    } else if (change.newSide === 'front' && props['side']) {
+                        replacements.push({ range: props['side'].range, newValue: "'front'" });
                     }
                 } else if (component.inlinePcb) {
                     const props = component.inlinePcb.props;
@@ -522,6 +526,19 @@ export class SourceRewriter {
                     }
                     if (props['rotation'] && change.newRotation !== undefined) {
                         replacements.push({ range: props['rotation'].range, newValue: String(change.newRotation) });
+                    }
+                    if (change.newSide === 'back') {
+                        if (props['side']) {
+                            replacements.push({ range: props['side'].range, newValue: "'back'" });
+                        } else {
+                            const insertPos = component.inlinePcb.range.end - 1;
+                            replacements.push({
+                                range: { start: insertPos, end: insertPos },
+                                newValue: `, side: 'back'`,
+                            });
+                        }
+                    } else if (change.newSide === 'front' && props['side']) {
+                        replacements.push({ range: props['side'].range, newValue: "'front'" });
                     }
                 } else {
                     let source: string;

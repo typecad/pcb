@@ -33,13 +33,29 @@ const { mockLogError, mockLogWarning } = vi.hoisted(() => ({
     mockLogWarning: vi.fn(),
 }));
 
-vi.mock('../../src/renderers/schematic_visualizer_types.js', () => ({
-    logError: mockLogError,
-    logWarning: mockLogWarning,
-    GRID_UNIT_MM: 2.54,
-    PAGE_WIDTH_MM: 279.4,
-    PAGE_HEIGHT_MM: 215.9,
+const { mockReportError } = vi.hoisted(() => ({
+    mockReportError: vi.fn(),
 }));
+
+vi.mock('../../src/renderers/schematic_visualizer_types.js', async (importOriginal) => {
+    const actual = await importOriginal() as any;
+    return {
+        logError: mockLogError,
+        logWarning: mockLogWarning,
+        displayName: actual.displayName,
+        GRID_UNIT_MM: 2.54,
+        PAGE_WIDTH_MM: 279.4,
+        PAGE_HEIGHT_MM: 215.9,
+    };
+});
+
+vi.mock('../../src/utils/error_reporter.js', async (importOriginal) => {
+    const actual = await importOriginal() as any;
+    return {
+        reportError: mockReportError,
+        displayName: actual.displayName,
+    };
+});
 
 vi.mock('../../src/pin.js', () => ({
     Pin: vi.fn((ref, num) => ({ reference: ref, number: num, owner: undefined })),
@@ -80,7 +96,7 @@ describe('KiCADSchematic', () => {
         it('should return null when component has no symbol', () => {
             const result = schematic.update(makeComp({ symbol: undefined }));
             expect(result).toBeNull();
-            expect(mockLogError).toHaveBeenCalledWith(expect.stringContaining('no symbol'));
+            expect(mockReportError).toHaveBeenCalledWith(expect.stringContaining('no symbol'), expect.anything());
         });
 
         it('should return null when symbol definition not found', () => {
@@ -179,7 +195,7 @@ describe('KiCADSchematic', () => {
         it('should return null when component has no symbol', () => {
             const result = schematic.getAbsolutePinCoordinates(makeComp({ symbol: undefined }), { number: 1 } as any);
             expect(result).toBeNull();
-            expect(mockLogError).toHaveBeenCalledWith(expect.stringContaining('no symbol'));
+            expect(mockReportError).toHaveBeenCalledWith(expect.stringContaining('no symbol'), expect.anything());
         });
 
         it('should return null when component has no sch data', () => {

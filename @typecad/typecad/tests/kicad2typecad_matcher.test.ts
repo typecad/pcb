@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { SourceMatcher } from '../src/kicad2typecad/matcher.js';
+import { collectTypeScriptFiles } from '../src/kicad2typecad/source_analyzer.js';
 import type { KicadFootprintIR, CodeMetadata, LegacyCodeMetadata } from '../src/kicad2typecad/types.js';
 
 function createTempDir(): string {
@@ -202,6 +203,130 @@ describe('SourceMatcher', () => {
             const fp = makeFootprint({ codeMetadata: null, reference: 'X0' });
             const results = await matcher.matchAll([fp]);
             expect(results[0].matchConfidence).toBe('none');
+        });
+    });
+
+    describe('regression: src/ subdirectory matching', () => {
+        it('should match components in src/ subdirectory when sourceRoot has src/ subdirectory', async () => {
+            const srcDir = path.join(tempDir, 'src');
+            fs.mkdirSync(srcDir);
+            const srcFile = path.join(srcDir, 'board.ts');
+            fs.writeFileSync(srcFile, `const r1 = new Component({ reference: 'R1' });\n`);
+
+            const meta: CodeMetadata = { v: 1, u: '', n: 'r1' };
+            const fp = makeFootprint({ codeMetadata: meta, reference: 'R1' });
+            const matcher = new SourceMatcher(srcDir);
+            const results = await matcher.matchAll([fp]);
+            expect(results[0].sourceLocation).not.toBeNull();
+            expect(results[0].sourceLocation!.variableName).toBe('r1');
+        });
+
+        it('should match components when sourceRoot is a relative path to src/ subdirectory', async () => {
+            const srcDir = path.join(tempDir, 'src');
+            fs.mkdirSync(srcDir);
+            fs.writeFileSync(path.join(srcDir, 'main.ts'), `const r1 = new Component({ reference: 'R1' });\n`);
+
+            const origCwd = process.cwd();
+            try {
+                process.chdir(tempDir);
+                const meta: CodeMetadata = { v: 1, u: '', n: 'r1' };
+                const fp = makeFootprint({ codeMetadata: meta, reference: 'R1' });
+                const matcher = new SourceMatcher('./src');
+                const results = await matcher.matchAll([fp]);
+                expect(results[0].sourceLocation).not.toBeNull();
+                expect(results[0].sourceLocation!.variableName).toBe('r1');
+            } finally {
+                process.chdir(origCwd);
+            }
+        });
+
+        it('should match imported-class components (Resistor, LED) by variable name via findVariableInSources', async () => {
+            const srcDir = path.join(tempDir, 'src');
+            fs.mkdirSync(srcDir);
+            const srcFile = path.join(srcDir, 'main.ts');
+            fs.writeFileSync(srcFile, [
+                `import { Component, PCB } from '@typecad/typecad'`,
+                `import { Resistor, LED } from '@typecad/passives/0805'`,
+                ``,
+                `const r1 = new Resistor({ value: '1 kOhm' });`,
+                `const d1 = new LED({});`,
+                `const bt1 = new Component({ footprint: 'Battery:BatteryHolder_Keystone_500' });`,
+            ].join('\n') + '\n');
+
+            const matcher = new SourceMatcher(srcDir);
+
+            const fpR1 = makeFootprint({
+                codeMetadata: { v: 1, u: '', n: 'r1' } as CodeMetadata,
+                reference: 'R1',
+                footprintName: 'Resistor_SMD:R_0805_2012Metric',
+            });
+            const fpD1 = makeFootprint({
+                codeMetadata: { v: 1, u: '', n: 'd1' } as CodeMetadata,
+                reference: 'D1',
+                footprintName: 'LED_SMD:LED_0805_2012Metric',
+            });
+            const fpBt1 = makeFootprint({
+                codeMetadata: { v: 1, u: '', n: 'bt1' } as CodeMetadata,
+                reference: 'BT1',
+                footprintName: 'Battery:BatteryHolder_Keystone_500',
+            });
+
+            const results = await matcher.matchAll([fpR1, fpD1, fpBt1]);
+            expect(results).toHaveLength(3);
+            for (const r of results) {
+                expect(r.sourceLocation).not.toBeNull();
+            }
+            expect(results[0].sourceLocation!.variableName).toBe('r1');
+            expect(results[1].sourceLocation!.variableName).toBe('d1');
+            expect(results[2].sourceLocation!.variableName).toBe('bt1');
+        });
+
+        it('should match by footprint fallback for object constructor without explicit reference', async () => {
+            const srcDir = path.join(tempDir, 'src');
+            fs.mkdirSync(srcDir);
+            const srcFile = path.join(srcDir, 'board.ts');
+            fs.writeFileSync(srcFile, `const bt1 = new Component({ footprint: 'Battery:BatteryHolder_Keystone_500' });\n`);
+
+            const fp = makeFootprint({
+                codeMetadata: null,
+                reference: 'BT1',
+                footprintName: 'Battery:BatteryHolder_Keystone_500',
+            });
+            const matcher = new SourceMatcher(srcDir);
+            const results = await matcher.matchAll([fp]);
+            expect(results[0].sourceLocation).not.toBeNull();
+            expect(results[0].sourceLocation!.variableName).toBe('bt1');
+            expect(results[0].matchConfidence).toBe('variable-fallback');
+        });
+    });
+
+    describe('collectTypeScriptFiles returns absolute paths', () => {
+        it('should return absolute paths when given a relative-style directory', () => {
+            const srcDir = path.join(tempDir, 'src');
+            fs.mkdirSync(srcDir);
+            fs.writeFileSync(path.join(srcDir, 'a.ts'), '');
+            fs.writeFileSync(path.join(srcDir, 'b.ts'), '');
+
+            const files = collectTypeScriptFiles(srcDir);
+            expect(files).toHaveLength(2);
+            for (const f of files) {
+                expect(path.isAbsolute(f)).toBe(true);
+                expect(fs.existsSync(f)).toBe(true);
+            }
+        });
+
+        it('should return absolute paths for nested subdirectories', () => {
+            const srcDir = path.join(tempDir, 'src');
+            const subDir = path.join(srcDir, 'lib');
+            fs.mkdirSync(subDir, { recursive: true });
+            fs.writeFileSync(path.join(srcDir, 'root.ts'), '');
+            fs.writeFileSync(path.join(subDir, 'nested.ts'), '');
+
+            const files = collectTypeScriptFiles(srcDir);
+            expect(files).toHaveLength(2);
+            for (const f of files) {
+                expect(path.isAbsolute(f)).toBe(true);
+            }
         });
     });
 });

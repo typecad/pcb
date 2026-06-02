@@ -15,7 +15,7 @@ export type { IGridCell, IRoutingObstacle } from './shared/routing_grid.js';
 
 export { ObstacleBuilder } from './shared/obstacle_builder.js';
 export { PadResolver } from './shared/pad_resolver.js';
-export type { IPadGeometry } from './shared/pad_resolver.js';
+export type { IPadGeometry, IPadResolutionFailure } from './shared/pad_resolver.js';
 
 // Debug utilities
 export { DebugVisualizer } from './utils/debug_visualizer.js';

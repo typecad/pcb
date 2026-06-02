@@ -1,121 +1,88 @@
 import { json } from '@sveltejs/kit';
-import { readFileSync, readdirSync, existsSync } from 'fs';
-import { join, dirname } from 'path';
-import { fileURLToPath } from 'url';
 
 export interface SearchResult {
 	title: string;
 	href: string;
 	content: string;
-	preview: string; // Short preview for display
+	preview: string;
 	category: 'docs' | 'examples' | 'news' | 'packages' | 'getting-started';
 }
 
-function readMarkdownFiles(dirPath: string, category: SearchResult['category'], basePath: string = ''): SearchResult[] {
+const docsModules = import.meta.glob<{ default: string }>('../../docs/**/*.md', { eager: true, query: '?raw', import: 'default' });
+const examplesModules = import.meta.glob<{ default: string }>('../../examples/**/*.md', { eager: true, query: '?raw', import: 'default' });
+const newsModules = import.meta.glob<{ default: string }>('../../news/*.md', { eager: true, query: '?raw', import: 'default' });
+const packagesModules = import.meta.glob<{ default: string }>('../../packages/**/*.md', { eager: true, query: '?raw', import: 'default' });
+const gettingStartedModules = import.meta.glob<{ default: string }>('../../getting-started/**/*.md', { eager: true, query: '?raw', import: 'default' });
+
+function processGlobModules(
+	modules: Record<string, string>,
+	category: SearchResult['category'],
+	globPrefix: string
+): SearchResult[] {
 	const results: SearchResult[] = [];
 
-	// Check if directory exists first
-	if (!existsSync(dirPath)) {
-		return results;
-	}
+	for (const [path, content] of Object.entries(modules)) {
+		const relativePath = path.replace(globPrefix, '').replace('.md', '').replace('/+page', '');
+		const slug = `/${relativePath}`;
+		const title = extractTitle(content) || getPageTitle(slug);
+		const textContent = extractTextContent(content);
 
-	try {
-		const files = readdirSync(dirPath, { withFileTypes: true });
-
-		for (const file of files) {
-			const fullPath = join(dirPath, file.name);
-
-			if (file.isDirectory()) {
-				// Recursively read subdirectories
-				results.push(...readMarkdownFiles(fullPath, category, `${basePath}/${file.name}`));
-			} else if (file.name.endsWith('.md')) {
-				const content = readFileSync(fullPath, 'utf-8');
-				const slug = `${basePath}/${file.name.replace('.md', '')}`.replace('/+page', '');
-
-				const title = extractTitle(content) || getPageTitle(slug);
-				const textContent = extractTextContent(content);
-
-				results.push({
-					title,
-					href: slug,
-					content: textContent,
-					preview: textContent.slice(0, 200),
-					category
-				});
-			}
-		}
-	} catch (error) {
-		console.error(`Error reading directory ${dirPath}:`, error);
+		results.push({
+			title,
+			href: slug,
+			content: textContent,
+			preview: textContent.slice(0, 200),
+			category
+		});
 	}
 
 	return results;
 }
 
-async function getSearchableContent(): Promise<SearchResult[]> {
+function processNewsModules(modules: Record<string, string>): SearchResult[] {
 	const results: SearchResult[] = [];
 
-	// Get the current directory path
-	const currentDir = fileURLToPath(new URL('.', import.meta.url));
-	const apiDir = dirname(currentDir);
-	const routesDir = dirname(apiDir);
+	for (const [path, content] of Object.entries(modules)) {
+		const filename = path.split('/').pop()!;
+		const frontmatterMatch = content.match(/^---\r?\n(.*?)\r?\n---/s);
+		let title = getPageTitle(`/news/${filename.replace('.md', '')}`);
+		let description = '';
+		let published = true;
 
-	// Get docs content
-	results.push(...readMarkdownFiles(join(routesDir, 'docs'), 'docs', '/docs'));
+		if (frontmatterMatch) {
+			const frontmatter = frontmatterMatch[1];
+			const titleMatch = frontmatter.match(/title:\s*(.+)/);
+			const descMatch = frontmatter.match(/description:\s*(.+)/);
+			const pubMatch = frontmatter.match(/published:\s*(.+)/);
 
-	// Get examples content
-	results.push(...readMarkdownFiles(join(routesDir, 'examples'), 'examples', '/examples'));
-
-	// Get news content (different structure - has frontmatter)
-	try {
-		const newsDir = join(routesDir, 'news');
-		if (!existsSync(newsDir)) {
-			// News directory not found - skipping news content
-		} else {
-			const allFiles = readdirSync(newsDir);
-			const files = allFiles.filter(file => file.endsWith('.md'));
-
-			for (const file of files) {
-				const filePath = join(newsDir, file);
-				const content = readFileSync(filePath, 'utf-8');
-
-				// Extract frontmatter
-				const frontmatterMatch = content.match(/^---\r?\n(.*?)\r?\n---/s);
-				let title = getPageTitle(`/news/${file.replace('.md', '')}`);
-				let description = '';
-				let published = true;
-
-				if (frontmatterMatch) {
-					const frontmatter = frontmatterMatch[1];
-					const titleMatch = frontmatter.match(/title:\s*(.+)/);
-					const descMatch = frontmatter.match(/description:\s*(.+)/);
-					const pubMatch = frontmatter.match(/published:\s*(.+)/);
-
-					if (titleMatch) title = titleMatch[1].trim().replace(/^['"]|['"]$/g, '');
-					if (descMatch) description = descMatch[1].trim().replace(/^['"]|['"]$/g, '');
-					if (pubMatch) published = pubMatch[1].trim() === 'true';
-				}
-
-				if (published) {
-					const textContent = extractTextContent(content);
-					results.push({
-						title,
-						href: `/news/${file.replace('.md', '')}`,
-						content: description || textContent,
-						preview: description || textContent.slice(0, 200),
-						category: 'news'
-					});
-				}
-			}
+			if (titleMatch) title = titleMatch[1].trim().replace(/^['"]|['"]$/g, '');
+			if (descMatch) description = descMatch[1].trim().replace(/^['"]|['"]$/g, '');
+			if (pubMatch) published = pubMatch[1].trim() === 'true';
 		}
-	} catch (error) {
-		console.error('Error reading news files:', error);
+
+		if (published) {
+			const textContent = extractTextContent(content);
+			results.push({
+				title,
+				href: `/news/${filename.replace('.md', '')}`,
+				content: description || textContent,
+				preview: description || textContent.slice(0, 200),
+				category: 'news'
+			});
+		}
 	}
 
-	// Get packages content
-	results.push(...readMarkdownFiles(join(routesDir, 'packages'), 'packages', '/packages'));
+	return results;
+}
 
-	// Get getting-started content
-	results.push(...readMarkdownFiles(join(routesDir, 'getting-started'), 'getting-started', '/getting-started'));
+function getSearchableContent(): SearchResult[] {
+	const results: SearchResult[] = [];
+
+	results.push(...processGlobModules(docsModules, 'docs', '../../docs/'));
+	results.push(...processGlobModules(examplesModules, 'examples', '../../examples/'));
+	results.push(...processNewsModules(newsModules));
+	results.push(...processGlobModules(packagesModules, 'packages', '../../packages/'));
+	results.push(...processGlobModules(gettingStartedModules, 'getting-started', '../../getting-started/'));
 
 	return results;
 }
@@ -217,25 +184,14 @@ function getPageTitle(slug: string): string {
 
 export async function GET({ request }) {
 	try {
-		// Security: Basic rate limiting check (could be enhanced with Redis/database)
+		const content = getSearchableContent();
 		const userAgent = request.headers.get('user-agent') || '';
-		if (userAgent.includes('bot') || userAgent.includes('crawler')) {
-			// Allow legitimate crawlers but with cache headers
-			const content = await getSearchableContent();
-			return json(content, {
-				headers: {
-					'Cache-Control': 'public, max-age=3600', // Cache for crawlers
-				}
-			});
-		}
+		const isCrawler = userAgent.includes('bot') || userAgent.includes('crawler');
 
-		const content = await getSearchableContent();
-		// Add cache control headers to prevent stale results for regular users
 		return json(content, {
 			headers: {
-				'Cache-Control': 'no-cache, no-store, must-revalidate',
-				'Pragma': 'no-cache',
-				'Expires': '0'
+				'Cache-Control': isCrawler ? 'public, max-age=3600' : 'no-cache, no-store, must-revalidate',
+				...(isCrawler ? {} : { 'Pragma': 'no-cache', 'Expires': '0' })
 			}
 		});
 	} catch (error) {

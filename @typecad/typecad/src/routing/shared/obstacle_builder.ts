@@ -3,6 +3,7 @@ import { IPcbBoardContext } from "../../pcb/pcb_board_context.js";
 import { IFilledZone, IKeepoutZone, IGrLine, IOutline } from "../../pcb/pcb_interfaces.js";
 import { IRoutingObstacle } from "./routing_grid.js";
 import { PadResolver, IPadGeometry } from "./pad_resolver.js";
+import { displayName } from '../../utils/error_reporter.js';
 import chalk from 'chalk';
 import logger from '../../utils/logging.js';
 
@@ -87,7 +88,7 @@ export class ObstacleBuilder {
                 } catch (error: unknown) {
                     failedComponents++;
                     failedRefs.push(component.reference);
-                    logger.warn(chalk.yellow(`[ObstacleBuilder] Error processing component ${component.reference}: ${error instanceof Error ? error.message : String(error)}`));
+                    logger.warn(chalk.yellow(`[ObstacleBuilder] Error processing component ${displayName(component)}: ${error instanceof Error ? error.message : String(error)}`));
                 }
             }
 
@@ -220,7 +221,7 @@ export class ObstacleBuilder {
             };
 
         } catch (error: unknown) {
-            logger.warn(chalk.yellow(`[ObstacleBuilder] Could not build obstacle for ${component.reference}: ${error instanceof Error ? error.message : String(error)}`));
+            logger.warn(chalk.yellow(`[ObstacleBuilder] Could not build obstacle for ${displayName(component)}: ${error instanceof Error ? error.message : String(error)}`));
             return this.buildSimpleComponentObstacle(component, clearance);
         }
     }

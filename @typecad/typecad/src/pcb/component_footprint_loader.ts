@@ -6,6 +6,8 @@ import { ComponentError } from "../utils/errors.js";
 import logger from "../utils/logging.js";
 import { executeKiCADCommandSync } from "../kicad_commands.js";
 import { LIBRARY_SEPARATOR } from '../utils/constants.js';
+import { getCallSite } from '../utils/stack_trace.js';
+import { formatSourceError } from '../utils/error_reporter.js';
 
 export function loadFootprintLib(
     footprint: string,
@@ -37,7 +39,10 @@ export function loadFootprintLib(
             return prettyPrint(l);
         } catch (err: unknown) {
             const msg = err instanceof Error ? err.message : String(err);
-            throw new ComponentError(`[${reference || 'Unknown'}, ${value || 'Unknown'}, ${footprint}] Error reading footprint from ${kicadFootprintPath}: ${msg}`);
+            const site = getCallSite();
+            const error = new ComponentError(formatSourceError(`[${reference || 'Unknown'}, ${value || 'Unknown'}, ${footprint}] Error reading footprint from ${kicadFootprintPath}: ${msg}`, site));
+            error.stack = error.message;
+            throw error;
         }
     }
 
@@ -62,7 +67,10 @@ export function loadFootprintLib(
             return prettyPrint(l);
         } catch (err: unknown) {
             const msg = err instanceof Error ? err.message : String(err);
-            throw new ComponentError(`[${reference || 'Unknown'}, ${value || 'Unknown'}, ${footprint}] Error reading fallback footprint from ${buildFootprintPath}: ${msg}`);
+            const site = getCallSite();
+            const error = new ComponentError(formatSourceError(`[${reference || 'Unknown'}, ${value || 'Unknown'}, ${footprint}] Error reading fallback footprint from ${buildFootprintPath}: ${msg}`, site));
+            error.stack = error.message;
+            throw error;
         }
     }
 
@@ -71,9 +79,15 @@ export function loadFootprintLib(
         buildFootprintPath,
     ].filter(Boolean).join(', ');
 
-    throw new ComponentError(
-        `[${reference || 'Unknown'}, ${value || 'Unknown'}, ${footprint}] Footprint file not found. Searched: ${searched}. ` +
-        `isFlatpak=${kicad.isFlatpak}, footprints_dir="${kicad_footprint || '(empty)'}". ` +
-        `Ensure KiCad footprint libraries are installed.`
+    const site = getCallSite();
+    const error = new ComponentError(
+        formatSourceError(
+            `[${reference || 'Unknown'}, ${value || 'Unknown'}, ${footprint}] Footprint file not found. Searched: ${searched}. ` +
+            `isFlatpak=${kicad.isFlatpak}, footprints_dir="${kicad_footprint || '(empty)'}". ` +
+            `Ensure KiCad footprint libraries are installed.`,
+            site
+        )
     );
+    error.stack = error.message;
+    throw error;
 }

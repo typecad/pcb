@@ -5,12 +5,14 @@ import { SymbolLibraryManager } from '../symbol_library_manager.js';
 import {
     logError,
     logWarning,
+    displayName,
     GRID_UNIT_MM,
     PAGE_WIDTH_MM,
     PAGE_HEIGHT_MM,
 } from './schematic_visualizer_types.js';
 import type { ISchematicNode } from '../types/schematic_types.js';
 import { renderLabel } from './schematic_templates.js';
+import { reportError } from '../utils/error_reporter.js';
 
 interface RenderableSymbol {
     symbol?: string;
@@ -18,6 +20,7 @@ interface RenderableSymbol {
     value: string;
     footprint?: string;
     sch: { x: number; y: number; rotation?: number };
+    sourceInfo?: { file: string; line: number; variable?: string };
 }
 
 export class KiCADSchematic {
@@ -38,30 +41,30 @@ export class KiCADSchematic {
 
     update(component: RenderableSymbol): string | null {
         if (!component.symbol) {
-            logError(`Component ${component.reference || 'undefined'} has no symbol defined.`);
+            reportError('Component has no symbol defined.', component);
             return null;
         }
 
         if (!component.sch) {
             component.sch = { x: 0, y: 0, rotation: 0 };
-            logWarning(`Component ${component.reference || component.symbol} missing schematic placement data (sch). Initializing to x=0, y=0 for potential random placement.`);
+            logWarning(`Component ${displayName(component)} missing schematic placement data (sch). Initializing to x=0, y=0 for potential random placement.`);
         } else {
             if (component.sch.x === null || component.sch.x === undefined) {
-                logWarning(`Component ${component.reference || component.symbol} missing sch.x. Initializing to 0 for potential random placement.`);
+                logWarning(`Component ${displayName(component)} missing sch.x. Initializing to 0 for potential random placement.`);
                 component.sch.x = 0;
             }
             if (component.sch.y === null || component.sch.y === undefined) {
-                logWarning(`Component ${component.reference || component.symbol} missing sch.y. Initializing to 0 for potential random placement.`);
+                logWarning(`Component ${displayName(component)} missing sch.y. Initializing to 0 for potential random placement.`);
                 component.sch.y = 0;
             }
             if (component.sch.rotation === null || component.sch.rotation === undefined) {
-                logWarning(`Component ${component.reference || component.symbol} missing sch.rotation. Defaulting to 0.`);
+                logWarning(`Component ${displayName(component)} missing sch.rotation. Defaulting to 0.`);
                 component.sch.rotation = 0;
             }
         }
 
         if (component.sch.x === 0 && component.sch.y === 0) {
-            logWarning(`Component ${component.reference || component.symbol} has coordinates (0,0). Placing randomly.`);
+            logWarning(`Component ${displayName(component)} has coordinates (0,0). Placing randomly.`);
             const maxX = Math.max(0, Math.ceil(PAGE_WIDTH_MM / GRID_UNIT_MM) - 1);
             const maxY = Math.max(0, Math.ceil(PAGE_HEIGHT_MM / GRID_UNIT_MM) - 1);
             const randXGrid = Math.floor(Math.random() * (maxX + 1));
@@ -72,7 +75,7 @@ export class KiCADSchematic {
 
         const symbolDef = this.symbolManager.getSymbolDefinition(component.symbol);
         if (!symbolDef) {
-            logError(`Cannot update component ${component.reference}: Symbol ${component.symbol} definition not found.`);
+            logError(`Cannot update component ${displayName(component)}: Symbol ${component.symbol} definition not found.`);
             return null;
         }
         if (!this.lib_symbols.includes(symbolDef.serializedLibEntry)) {
@@ -110,7 +113,7 @@ export class KiCADSchematic {
                         s('reference', component.reference),
                         s('unit', 1)))));
         } else {
-            logWarning(`Component with symbol ${component.symbol} is missing a reference designator. Skipping instances entry.`);
+            logWarning(`Component ${displayName(component)} is missing a reference designator. Skipping instances entry.`);
         }
 
         return `(symbol ${parts.map(p => serialize(p as Parameters<typeof serialize>[0])).join(' ')})`;
@@ -118,15 +121,15 @@ export class KiCADSchematic {
 
     getAbsolutePinCoordinates(component: RenderableSymbol, pin: Pin): [number, number] | null {
         if (!component.symbol) {
-            logError(`Component ${component.reference} has no symbol.`);
+            reportError('Component has no symbol.', component);
             return null;
         }
         if (!component.sch) {
-            logError(`Component ${component.reference} has no schematic placement data.`);
+            logError(`Component ${displayName(component)} has no schematic placement data.`);
             return null;
         }
         if (pin === undefined || pin.number === undefined) {
-            logError(`Pin is malformed for component ${component.reference}.`);
+            logError(`Pin is malformed for component ${displayName(component)}.`);
             return null;
         }
 
@@ -172,7 +175,7 @@ export class KiCADSchematic {
 
             const absCoords = this.getAbsolutePinCoordinates(pinDef.owner, pinDef);
             if (!absCoords) {
-                logWarning(`Net "${netName}", pin ${pinDef.owner?.reference}:${pinDef.number}: Could not get absolute coordinates. Skipping label.`);
+                logWarning(`Net "${netName}", pin ${displayName(pinDef.owner)}:${pinDef.number}: Could not get absolute coordinates. Skipping label.`);
                 continue;
             }
 
@@ -228,11 +231,11 @@ export class KiCADSchematic {
                         justifyVertical = 'bottom';
                         break;
                     default:
-                        logWarning(`Net "${netName}", pin ${pinDef.owner?.reference}:${pinDef.number}: Unknown effective pin angle ${effectivePinSymbolAngle}. Using default label placement.`);
+                        logWarning(`Net "${netName}", pin ${displayName(pinDef.owner!)}:${pinDef.number}: Unknown effective pin angle ${effectivePinSymbolAngle}. Using default label placement.`);
                         break;
                 }
             } else {
-                logWarning(`Net "${netName}", pin ${pinDef.owner?.reference}:${pinDef.number}: Could not get pin location details. Using default label placement.`);
+                logWarning(`Net "${netName}", pin ${displayName(pinDef.owner!)}:${pinDef.number}: Could not get pin location details. Using default label placement.`);
             }
 
             const isPowerPin = pinDef.type === 'power_in' || pinDef.type === 'power_out';

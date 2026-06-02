@@ -1,4 +1,4 @@
-import { Component } from "../component.js";
+import { Component, awaitPendingInspections } from "../component.js";
 import { TrackBuilder } from './pcb_track_builder.js';
 import { parse, parseAsList, nameOf } from '../sexpr/index.js';
 import type { SExpr } from '../sexpr/types.js';
@@ -18,6 +18,7 @@ import { renderVias, renderOutlinesAndTracks, renderGraphics, renderZones, rende
 import { IPcbBoardContext } from './pcb_board_context.js';
 import { getErrorMessage } from './pcb_utils.js';
 import { reportError } from '../utils/error_reporter.js';
+import { displayName } from '../utils/error_reporter.js';
 import { schematic } from '../renderers/schematic_visualizer.js';
 
 export function isComponentLike(obj: unknown): obj is Component {
@@ -118,7 +119,7 @@ function separateOutlinesAndTracks(pcb: IPcbBoardContext): void {
     });
 }
 
-export function createBoard(
+export async function createBoard(
     pcb: IPcbBoardContext,
     ...items: Array<Component | TrackBuilder>
 ) {
@@ -132,11 +133,13 @@ export function createBoard(
             trackBuilders.push(item);
         } else {
             const name = item !== null && typeof item === 'object' && 'constructor' in item ? (item as { constructor: { name: string } }).constructor.name : typeof item;
-            logger.warn(`[BoardCreation] Unrecognized item passed to create(): ${name}. Items must be Component or TrackBuilder instances.`);
+            const site = getCallSite();
+            logger.warn(`[BoardCreation] Unrecognized item passed to create(): ${name}. Items must be Component or TrackBuilder instances.${site ? ` (called from ${site.file}:${site.line})` : ''}`);
         }
     });
 
     pcb.schematic!.create(...components);
+    await awaitPendingInspections();
     schematic(pcb.schematic!);
     collectBoardComponents(pcb, items, components);
     separateOutlinesAndTracks(pcb);
@@ -187,6 +190,7 @@ export function createBoard(
             finalBoardContents.push(newNode);
         } catch (e: unknown) {
             const detail = e instanceof Error ? e.message : String(e);
+            reportError(`Failed to create footprint node for ${displayName(component)}.`, component);
             throw new BoardCreationError(`[${component.footprint} ${component.reference} ${component.description}] Failed to create footprint node: ${detail}`);
         }
     });

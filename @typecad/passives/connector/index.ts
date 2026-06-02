@@ -1,6 +1,6 @@
-import { Component, IComponent } from '@typecad/typecad'
+import { Component, type ComponentInit } from '@typecad/typecad'
 
-interface IConnector extends IComponent {
+interface IConnector extends ComponentInit {
     number: number;
 }
 

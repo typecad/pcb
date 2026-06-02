@@ -37,6 +37,7 @@ export function getCallSite(skipFiles: string[] = []): { file: string; line: num
         '\\dist\\',
         '/dist/',
         '@typecad/passives',
+        '@typecad/typecad',
         'component.ts',
         'component.js',
         'pcb.ts',
@@ -44,7 +45,7 @@ export function getCallSite(skipFiles: string[] = []): { file: string; line: num
         'pcb_track_builder.ts',
         'pcb_routing_core.ts',
         'pcb_routing_helpers.ts',
-        'stack_trace.ts' // Skip this file too
+        'stack_trace.ts',
     ];
 
     const allSkips = [...defaultSkips, ...skipFiles];

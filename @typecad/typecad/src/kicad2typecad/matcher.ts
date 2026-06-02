@@ -170,6 +170,16 @@ export class SourceMatcher {
                                 isThis: comp.isThis,
                             };
                         }
+                    } else if (comp.constructorArgType === 'object' && !comp.reference) {
+                        const refPrefix = reference.match(/^[A-Za-z]+/)?.[0] || '';
+                        const refNum = parseInt(reference.slice(refPrefix.length), 10);
+                        if (refPrefix && !isNaN(refNum)) {
+                            return {
+                                filePath,
+                                variableName: comp.variableName,
+                                isThis: comp.isThis,
+                            };
+                        }
                     }
                 }
             }

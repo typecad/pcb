@@ -33,16 +33,29 @@ export function parse(input: string): SExpr {
 
     function readString(): string {
         pos++;
+        const parts: string[] = [];
         const start = pos;
+        let segStart = pos;
         while (pos < len) {
             const ch = input.charCodeAt(pos);
             if (ch === 34) {
-                const value = input.substring(start, pos);
+                if (segStart < pos) {
+                    parts.push(input.substring(segStart, pos));
+                }
                 pos++;
-                return value;
+                return parts.length === 0 ? input.substring(start, pos - 1) : parts.join('');
             }
             if (ch === 92) {
+                if (segStart < pos) {
+                    parts.push(input.substring(segStart, pos));
+                }
                 pos++;
+                if (pos < len) {
+                    parts.push(input[pos]);
+                }
+                pos++;
+                segStart = pos;
+                continue;
             }
             pos++;
         }

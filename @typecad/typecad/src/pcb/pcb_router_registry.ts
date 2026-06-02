@@ -1,5 +1,7 @@
 import { RoutingGrid } from '../routing/shared/routing_grid.js';
 import { RoutingError } from '../utils/errors.js';
+import { getCallSite } from '../utils/stack_trace.js';
+import { formatSourceError } from '../utils/error_reporter.js';
 
 export interface IRouterContext {
     [key: string]: unknown;
@@ -45,7 +47,9 @@ export function registerRouter(
 export function createRouter(name: string, grid: RoutingGrid, options: unknown): IRouterContext {
     const registration = registry.get(name);
     if (!registration) {
-        throw new RoutingError(`Routing algorithm '${name}' is not registered with this PCB instance. Use typecad.registerRouter() first.`);
+        const err = new RoutingError(formatSourceError(`Routing algorithm '${name}' is not registered with this PCB instance. Use typecad.registerRouter() first.`, getCallSite()));
+        err.stack = err.message;
+        throw err;
     }
     return registration.factory(grid, options);
 }

@@ -3,9 +3,17 @@ import { Pin } from "../../pin.js";
 import { parseAsList, Sym } from '../../sexpr/index.js';
 import type { SExpr } from '../../sexpr/types.js';
 import { TypeCadError } from '../../utils/errors.js';
+import { displayName } from '../../utils/error_reporter.js';
 import logger from '../../utils/logging.js';
 
 
+
+export interface IPadResolutionFailure {
+    pinNumber: string;
+    component: Component;
+    reason: 'no_owner' | 'footprint_unparseable' | 'pad_not_found' | 'pad_data_unextractable' | 'unknown';
+    availablePads: (string | number)[];
+}
 
 /**
  * Geometry information for a component pad on the PCB.
@@ -79,20 +87,28 @@ export class PadResolver {
      * ```
      */
     static getPadCenter(pin: Pin): { x: number; y: number; layer: string } | null {
+        const result = this.getPadCenterWithFailure(pin);
+        if ('failure' in result) return null;
+        return { x: result.x, y: result.y, layer: result.layer };
+    }
+
+    static getPadCenterWithFailure(pin: Pin):
+        { x: number; y: number; layer: string } |
+        { failure: IPadResolutionFailure } {
         if (!pin.owner) {
             logger.warn(`[PadResolver] Pin ${pin.number} has no owner component`);
-            return null;
+            return { failure: { pinNumber: String(pin.number), component: pin.owner as unknown as Component, reason: 'no_owner', availablePads: [] } };
         }
 
-        const geometry = this.getPadGeometry(pin.owner, pin.number);
-        if (!geometry) {
-            return null;
+        const result = this.getPadGeometryWithFailure(pin.owner, pin.number);
+        if ('failure' in result) {
+            return { failure: result.failure };
         }
 
         return {
-            x: geometry.center.x,
-            y: geometry.center.y,
-            layer: geometry.layer
+            x: result.center.x,
+            y: result.center.y,
+            layer: result.layer
         };
     }
 
@@ -112,36 +128,43 @@ export class PadResolver {
      * ```
      */
     static getPadGeometry(component: Component, pinNumber: string | number): IPadGeometry | null {
+        const result = this.getPadGeometryWithFailure(component, pinNumber);
+        if ('failure' in result) return null;
+        return result;
+    }
+
+    static getPadGeometryWithFailure(component: Component, pinNumber: string | number):
+        IPadGeometry |
+        { failure: IPadResolutionFailure } {
         try {
             const footprintSExpr = component.footprint_lib(component.footprint);
             const parsed = this.getCachedParse(component.footprint, footprintSExpr);
             if (!parsed) {
-                logger.warn(`[PadResolver] Unable to parse footprint for ${component.reference}`);
-                return null;
+                logger.warn(`[PadResolver] Unable to parse footprint for ${displayName(component)}`);
+                return { failure: { pinNumber: String(pinNumber), component, reason: 'footprint_unparseable', availablePads: [] } };
             }
 
-            // Find the pad matching the pin number
             const padNode = this.findPadNode(parsed, pinNumber);
             if (!padNode) {
-                logger.warn(`[PadResolver] Pad ${pinNumber} not found in footprint ${component.footprint} for ${component.reference}`);
-                return null;
+                logger.warn(`[PadResolver] Pad ${pinNumber} not found in footprint ${component.footprint} for ${displayName(component)}`);
+                const available = this.collectAvailablePadNumbers(parsed);
+                return { failure: { pinNumber: String(pinNumber), component, reason: 'pad_not_found', availablePads: available } };
             }
 
-            // Extract pad data from the S-expression
             const relativeData = this.extractPadData(padNode);
             if (!relativeData) {
-                logger.warn(`[PadResolver] Unable to extract pad data for ${component.reference} pin ${pinNumber}`);
-                return null;
+                logger.warn(`[PadResolver] Unable to extract pad data for ${displayName(component)} pin ${pinNumber}`);
+                const available = this.collectAvailablePadNumbers(parsed);
+                return { failure: { pinNumber: String(pinNumber), component, reason: 'pad_data_unextractable', availablePads: available } };
             }
 
-            // Transform from footprint-relative to board-absolute coordinates
             const absoluteGeometry = this.transformToAbsolute(relativeData, component);
 
             return absoluteGeometry;
 
         } catch (error: unknown) {
-            logger.warn(`[PadResolver] Error resolving pad geometry for ${component.reference} pin ${pinNumber}: ${error instanceof Error ? error.message : String(error)}`);
-            return null;
+            logger.warn(`[PadResolver] Error resolving pad geometry for ${displayName(component)} pin ${pinNumber}: ${error instanceof Error ? error.message : String(error)}`);
+            return { failure: { pinNumber: String(pinNumber), component, reason: 'unknown', availablePads: [] } };
         }
     }
 
@@ -173,6 +196,21 @@ export class PadResolver {
         };
 
         return search(sexpr);
+    }
+
+    private static collectAvailablePadNumbers(sexpr: SExpr[]): (string | number)[] {
+        const numbers: (string | number)[] = [];
+        const collect = (node: SExpr | SExpr[]) => {
+            if (!Array.isArray(node)) return;
+            if (node.length > 0 && Sym.isSym(node[0]) && node[0].name === 'pad' && node.length > 1) {
+                numbers.push(String(node[1]));
+            }
+            for (const child of node) {
+                if (Array.isArray(child)) collect(child);
+            }
+        };
+        collect(sexpr);
+        return numbers;
     }
 
     /**
@@ -247,11 +285,12 @@ export class PadResolver {
 
         // Apply rotation transformation to pad position
         let padX = relativeData.at.x;
-        const padY = relativeData.at.y;
+        let padY = relativeData.at.y;
 
-        // For back side, flip X coordinate (KiCad convention)
+        // For back side, negate Y to match pcb_footprint.ts back-side transform
+        // (pcb_footprint.ts negates pad Y and adjusts rotation for B.Cu modules)
         if (componentSide === 'back') {
-            padX = -padX;
+            padY = -padY;
         }
 
         // Rotate the pad position around component origin
@@ -372,7 +411,7 @@ export class PadResolver {
                 if (abs) geometries.push(abs);
             }
         } catch {
-            logger.debug(`[PadResolver] Footprint cannot be parsed, no pads resolved for ${component.reference || 'unknown'}`);
+            logger.debug(`[PadResolver] Footprint cannot be parsed, no pads resolved for ${displayName(component)}`);
         }
 
         return geometries;

@@ -188,6 +188,13 @@ export function showImportHelp(): void {
   console.log(
     '  --apply                   Interactively apply coordinate changes back'
   );
+  console.log('                            to the typeCAD source files');
+  console.log(
+    '  --capture-layouts         Also import text layout positions'
+  );
+  console.log(
+    '                            (referenceLayout, valueLayout, fabLayout)\n'
+  );
   console.log('                            to the typeCAD source files\n');
   console.log(
     "Variable names are sourced from each footprint's 'Code' property."

@@ -82,8 +82,9 @@ typecad search "op amp" --format=json`,
       'Passive symbols (Device:R_Small, Device:C_Small) are auto-set by @typecad/passives',
       'For ICs, use typecad search or typecad add component to find the correct symbol',
       'Symbol names often include the package type (e.g. ATmega328P-AU for TQFP)',
+      'A symbol existing in the KiCad library does not guarantee a matching footprint exists. When add-component fails, the symbol may lack a default footprint association. Specify the footprint explicitly or ask the user.',
     ],
-    related: ['kicad-footprints', 'add-component', 'search', 'component'],
+    related: ['kicad-footprints', 'add-component', 'search', 'component', 'circuit-design'],
   },
   {
     name: 'kicad-footprints',
@@ -126,5 +127,30 @@ typecad search "op amp" --format=json`,
       'SOT-23 is common for small regulators and transistors',
     ],
     related: ['kicad-symbols', 'add-component', 'passive-sizes', 'component'],
+  },
+  {
+    name: 'roundtrip',
+    category: 'kicad',
+    description: 'Round-trip workflow: edit in KiCad, sync changes back to typeCAD source using kicad2typecad --apply. Controls how component positions and text layouts are synchronized',
+    examples: [
+      {
+        title: 'Apply component position changes',
+        code: `# After editing in KiCad, sync positions back:
+npx kicad2typecad build/board.kicad_pcb --apply`,
+      },
+      {
+        title: 'Capture all text layout positions',
+        code: `# Import reference/value/fab text positions from KiCad:
+npx kicad2typecad build/board.kicad_pcb --apply --capture-layouts`,
+      },
+    ],
+    notes: [
+      '--apply interactively syncs KiCad changes back to your TypeScript source files',
+      'Component positions (x, y, rotation, side) are always synced',
+      'Text layouts (referenceLayout, valueLayout, fabLayout) are only updated if already present in source',
+      'Use --capture-layouts to import all text layout positions, even for components without layout assignments',
+      'Display mode (without --apply) shows all layout code for reference',
+    ],
+    related: ['pcb-placement', 'component', 'kicad-integration'],
   },
 ];

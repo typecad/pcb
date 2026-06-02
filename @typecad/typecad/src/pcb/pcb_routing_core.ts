@@ -21,6 +21,7 @@ import { ISchematicNetDefinition } from '../net_manager.js';
 import { getCallSite } from '../utils/stack_trace.js';
 import { formatCallSite } from './pcb_utils.js';
 import { RoutingError } from '../utils/errors.js';
+import { displayName, formatSourceError } from '../utils/error_reporter.js';
 import { calculateMinViaSize as calculateMinimumViaSize } from './pcb_routing_calculations.js';
 import { debugLog } from './pcb_autoroute_helpers.js';
 import type { IPcbBoardContext } from './pcb_board_context.js';
@@ -535,7 +536,9 @@ export function routeNet(
     debugLog(options?.debug, chalk.blue(`[PCB] route() called for net: ${netName}`));
 
     if (!pcb.schematic || !pcb.schematic.nodes) {
-        throw new RoutingError(`route() requires a schematic with defined nets${formatCallSite(getCallSite())}`);
+        const err = new RoutingError(formatSourceError(`route() requires a schematic with defined nets`, getCallSite()));
+        err.stack = err.message;
+        throw err;
     }
 
     const providedPins: Pin[] = typeof netRef === 'string'
@@ -547,7 +550,9 @@ export function routeNet(
     if (!schematicNode) {
         if (typeof netRef === 'string') {
             const availableNets = (pcb.schematic.nodes as SchematicRuntimeNode[]).map((n) => n.name).join(', ');
-            throw new RoutingError(`Net '${netName}' not found in schematic. Available nets: ${availableNets}${formatCallSite(getCallSite())}`);
+            const err = new RoutingError(formatSourceError(`Net '${netName}' not found in schematic. Available nets: ${availableNets}`, getCallSite()));
+            err.stack = err.message;
+            throw err;
         }
 
         schematicNode = {
@@ -564,7 +569,9 @@ export function routeNet(
     }
 
     if (!schematicNode.nodes || schematicNode.nodes.length === 0) {
-        throw new RoutingError(`Net '${netName}' has no pins connected${formatCallSite(getCallSite())}`);
+        const err = new RoutingError(formatSourceError(`Net '${netName}' has no pins connected`, getCallSite()));
+        err.stack = err.message;
+        throw err;
     }
 
     if (schematicNode.nodes.length < 2) {
@@ -595,13 +602,13 @@ export function routeNet(
 
         if (pin) {
             try {
-                validatePin(pin, `Net '${netName}' pin ${schematicPin.owner.reference}.${schematicPin.number}`);
+                validatePin(pin, `Net '${netName}' pin ${displayName(schematicPin.owner)}.${schematicPin.number}`);
                 pinsToRoute.push(pin);
             } catch (error: unknown) {
-                unresolvedPins.push(`${schematicPin.owner.reference}.${schematicPin.number} (invalid: ${error instanceof Error ? error.message : String(error)})`);
+                unresolvedPins.push(`${displayName(schematicPin.owner)}.${schematicPin.number} (invalid: ${error instanceof Error ? error.message : String(error)})`);
             }
         } else {
-            unresolvedPins.push(`${schematicPin.owner.reference}.${schematicPin.number} (not found on component)`);
+            unresolvedPins.push(`${displayName(schematicPin.owner)}.${schematicPin.number} (not found on component)`);
         }
     }
 
@@ -610,7 +617,9 @@ export function routeNet(
     }
 
     if (pinsToRoute.length < 2) {
-        throw new RoutingError(`Could not resolve enough pins for net '${netName}'. Found ${pinsToRoute.length}, need at least 2. Check component placements and pin definitions${formatCallSite(getCallSite())}`);
+        const err = new RoutingError(formatSourceError(`Could not resolve enough pins for net '${netName}'. Found ${pinsToRoute.length}, need at least 2. Check component placements and pin definitions`, getCallSite()));
+        err.stack = err.message;
+        throw err;
     }
 
     const fromPins = [pinsToRoute[0]];

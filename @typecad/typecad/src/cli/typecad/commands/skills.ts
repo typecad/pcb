@@ -66,13 +66,14 @@ function formatSkillHuman(skill: Skill): void {
 
 function formatListHuman(): void {
   logger.log(chalk.white.bold('typeCAD Skills') + '\n');
+  logger.log(chalk.gray('Start with: ') + chalk.white('typecad skills get circuit-design') + chalk.gray(' for the end-to-end design workflow.\n'));
 
   const categories = getCategories();
   for (const cat of categories) {
     const skills = getSkillsByCategory(cat);
     logger.log(chalk.cyan.bold(cat));
     for (const s of skills) {
-      const desc = s.description.length > 70 ? s.description.slice(0, 67) + '...' : s.description;
+      const desc = s.description.length > 120 ? s.description.slice(0, 117) + '...' : s.description;
       logger.log(`  ${chalk.white(s.name.padEnd(22))} ${desc}`);
     }
     logger.log('');

@@ -4,6 +4,9 @@ import { Pin } from './pin.js';
 import { PCB_CONSTANTS } from './pcb/pcb_routing_calculations.js';
 import { validateFinite } from './utils/numeric_validation.js';
 import { isComponentLike, isTrackBuilderLike } from './pcb/pcb_board_creation.js';
+import { ComponentError } from './utils/errors.js';
+import { getCallSite } from './utils/stack_trace.js';
+import { formatSourceError } from './utils/error_reporter.js';
 
 // The standard passive component factory shape (matches @typecad/passives/0603 and other sizes)
 export type PassiveFactory = {
@@ -156,10 +159,15 @@ export abstract class Package<TOptions extends object = {}> {
      * pass it via the `passives` option.
      */
     private _defaultPassives(): PassiveFactory {
-        throw new Error(
-            'Package: passives factory not provided. ' +
-            'Install @typecad/passives and pass it: { passives: await import("@typecad/passives/0603"), ... }'
+        const err = new ComponentError(
+            formatSourceError(
+                'Package: passives factory not provided. ' +
+                'Install @typecad/passives and pass it: { passives: await import("@typecad/passives/0603"), ... }',
+                getCallSite()
+            )
         );
+        err.stack = err.message;
+        throw err;
     }
 
     /**

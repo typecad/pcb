@@ -1,5 +1,7 @@
 import { Pin } from "./pin.js";
 import { ComponentError } from "./utils/errors.js";
+import { getCallSite } from "./utils/stack_trace.js";
+import { formatSourceError } from "./utils/error_reporter.js";
 
 export class I2C {
     sda: Pin;
@@ -58,7 +60,10 @@ export class Power {
                 };
             }
         } else {
-            throw new ComponentError('`Power` missing required `power` element');
+            const site = getCallSite();
+            const err = new ComponentError(formatSourceError('`Power` missing required `power` element', site));
+            err.stack = err.message;
+            throw err;
         }
         if (gnd) {
             this.gnd = gnd;
@@ -71,7 +76,10 @@ export class Power {
                 };
             }
         } else {
-            throw new ComponentError('`Power` missing required `gnd` element');
+            const site = getCallSite();
+            const err = new ComponentError(formatSourceError('`Power` missing required `gnd` element', site));
+            err.stack = err.message;
+            throw err;
         }
         if (voltage !== undefined) {
             this.voltage = voltage;

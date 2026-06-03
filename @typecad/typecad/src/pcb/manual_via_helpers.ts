@@ -1,4 +1,4 @@
-import { IPcbBoardContext } from './pcb_board_context.js';
+import { PCB, getPcbState } from './pcb.js';
 import { normalizeNetName } from './pcb_utils.js';
 
 type ViaComponentLike = {
@@ -15,15 +15,16 @@ const pushComponents = (container: unknown, results: ViaComponentLike[]) => {
     }
 };
 
-export function collectManualViaFreeLocations(pcb: IPcbBoardContext, netName?: string): { x: number; y: number }[] {
+export function collectManualViaFreeLocations(pcb: PCB, netName?: string): { x: number; y: number }[] {
     const normalizedTarget = normalizeNetName(netName);
     if (!normalizedTarget) {
         return [];
     }
 
+    const state = getPcbState(pcb);
     const viaComponents: ViaComponentLike[] = [];
-    pushComponents(pcb.state.components, viaComponents);
-    pushComponents(pcb.state.stagedComponents, viaComponents);
+    pushComponents(state.components, viaComponents);
+    pushComponents(state.stagedComponents, viaComponents);
 
     if (viaComponents.length === 0) {
         return [];

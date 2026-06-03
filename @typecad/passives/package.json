@@ -1,8 +1,9 @@
 {
   "name": "@typecad/passives",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "typeCAD package that includes simple access to common components",
   "keywords": [
+    "typecad-package",
     "typecad",
     "passives",
     "resistor",
@@ -40,6 +41,6 @@
     "publish:private": "npm publish --tag private --registry http://192.168.2.207:4873/"
   },
   "peerDependencies": {
-    "@typecad/typecad": "^0.2.19"
+    "@typecad/typecad": "^0.3.0"
   }
 }

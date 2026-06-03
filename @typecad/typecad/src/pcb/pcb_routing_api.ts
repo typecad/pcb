@@ -8,7 +8,7 @@ import { pinToIdentifier } from './pcb_routing_helpers.js';
 import { routeNet as extractRouteNet } from './pcb_routing_core.js';
 import { autoroute } from './pcb_autoroute.js';
 import { autorouteBatch } from './pcb_autoroute_batch.js';
-import { IPcbBoardContext } from './pcb_board_context.js';
+import { PCB, getPcbState } from './pcb.js';
 import { PcbInternalState } from './pcb_state.js';
 import logger from '../utils/logging.js';
 
@@ -24,7 +24,7 @@ function isSchematicNetDefinition(value: unknown): value is ISchematicNetDefinit
 }
 
 export async function pcbRoute(
-    pcb: IPcbBoardContext,
+    pcb: PCB,
     state: PcbInternalState,
     arg1: ISchematicNetDefinition | IAutorouteOptions,
     options?: import('./pcb_interfaces.js').IAutorouteRouteOptions
@@ -44,7 +44,7 @@ export async function pcbRoute(
     return result;
 }
 
-export async function pcbAutoroute(pcb: IPcbBoardContext, state: PcbInternalState, options: IAutorouteOptions): Promise<IAutorouteResult> {
+export async function pcbAutoroute(pcb: PCB, state: PcbInternalState, options: IAutorouteOptions): Promise<IAutorouteResult> {
     const task = Promise.resolve(autoroute(pcb, options));
     state.pendingAutoroutes.add(task);
     try {
@@ -60,7 +60,7 @@ export async function pcbWaitForPendingAutoroutes(state: PcbInternalState): Prom
 }
 
 export async function pcbAutorouteBatch(
-    pcb: IPcbBoardContext,
+    pcb: PCB,
     items: Array<{ from: Pin | Pin[]; to: Pin | Pin[]; options?: import('./pcb_interfaces.js').IAutorouteRouteOptions; name?: string }>,
     batchOptions?: {
         rounds?: number;

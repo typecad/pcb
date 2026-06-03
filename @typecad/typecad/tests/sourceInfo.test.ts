@@ -7,7 +7,7 @@ const mockReadFileSync = vi.spyOn(fs, 'readFileSync')
 
 describe('sourceInfo Object', () => {
   beforeEach(() => {
-    vi.clearAllMocks()
+    vi.restoreAllMocks()
   })
 
   describe('Component sourceInfo', () => {

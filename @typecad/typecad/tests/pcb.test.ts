@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { PCB } from '../src/pcb/pcb.js';
+import { PCB, getPcbState, pcbTrackSegment, pcbGetTrackData } from '../src/pcb/pcb.js';
 import { Component } from '../src/component.js';
 import { Pin } from '../src/pin.js';
 
@@ -18,7 +18,7 @@ describe('PCB', () => {
     });
 
     it('should have default options', () => {
-      expect(pcb.option.remove_orphans).toBe(true);
+      expect(pcb.options.remove_orphans).toBe(true);
     });
   });
 
@@ -47,7 +47,7 @@ describe('PCB', () => {
 
       pcb.place(resistor);
 
-      expect(pcb.state.components).toContain(resistor);
+      expect(getPcbState(pcb).components).toContain(resistor);
     });
 
     it('should handle multiple components placement', () => {
@@ -68,8 +68,8 @@ describe('PCB', () => {
 
       pcb.place(resistor, capacitor);
 
-      expect(pcb.state.components).toContain(resistor);
-      expect(pcb.state.components).toContain(capacitor);
+      expect(getPcbState(pcb).components).toContain(resistor);
+      expect(getPcbState(pcb).components).toContain(capacitor);
     });
 
     it('should handle DNP components correctly', () => {
@@ -85,7 +85,7 @@ describe('PCB', () => {
       pcb.place(resistor);
 
       // DNP components are not added to the board components list
-      expect(pcb.state.components).not.toContain(resistor);
+      expect(getPcbState(pcb).components).not.toContain(resistor);
       expect(resistor.dnp).toBe(true);
     });
 
@@ -114,7 +114,7 @@ describe('PCB', () => {
 
       pcb.place(resistor);
 
-      expect(pcb.state.components).toContain(resistor);
+      expect(getPcbState(pcb).components).toContain(resistor);
       expect(resistor.pcb.rotation).toBe(45);
       expect(resistor.pcb.side).toBe('back');
     });
@@ -134,7 +134,7 @@ describe('PCB', () => {
 
       pcb.place(resistor);
 
-      expect(pcb.state.components).toContain(resistor);
+      expect(getPcbState(pcb).components).toContain(resistor);
       expect(resistor.pins).toHaveLength(2);
       expect(resistor.pins[0]).toBe(pin1);
       expect(resistor.pins[1]).toBe(pin2);
@@ -173,7 +173,7 @@ describe('PCB', () => {
       pcb.place(via);
 
       expect(via.via).toBe(true);
-      expect(pcb.state.components).toContain(via);
+      expect(getPcbState(pcb).components).toContain(via);
     });
 
     it('should allow assigning a net name to a via', () => {
@@ -186,18 +186,18 @@ describe('PCB', () => {
     });
 
     it('should stage vias automatically and remove them from staging when placed', () => {
-      const stagedBefore = pcb.state.stagedComponents.length;
+      const stagedBefore = getPcbState(pcb).stagedComponents.length;
       const via = pcb.via({ at: { x: 5, y: 5 }, net: 'AUTO' });
 
-      const stagedAfterCreate = pcb.state.stagedComponents.some(component => component.uuid === via.uuid);
+      const stagedAfterCreate = getPcbState(pcb).stagedComponents.some(component => component.uuid === via.uuid);
       expect(stagedAfterCreate).toBe(true);
-      expect(pcb.state.stagedComponents.length).toBe(stagedBefore + 1);
+      expect(getPcbState(pcb).stagedComponents.length).toBe(stagedBefore + 1);
 
       pcb.place(via);
 
-      const stillStaged = pcb.state.stagedComponents.some(component => component.uuid === via.uuid);
+      const stillStaged = getPcbState(pcb).stagedComponents.some(component => component.uuid === via.uuid);
       expect(stillStaged).toBe(false);
-      expect(pcb.state.components.some(component => component.uuid === via.uuid)).toBe(true);
+      expect(getPcbState(pcb).components.some(component => component.uuid === via.uuid)).toBe(true);
     });
   });
 
@@ -213,8 +213,8 @@ describe('PCB', () => {
 
       pcb.group('resistors', resistor);
 
-      expect(pcb.state.groups.some(g => g.includes('"resistors"'))).toBe(true);
-      expect(pcb.state.groups.some(g => g.includes(resistor.uuid))).toBe(true);
+      expect(getPcbState(pcb).groups.some(g => g.includes('"resistors"'))).toBe(true);
+      expect(getPcbState(pcb).groups.some(g => g.includes(resistor.uuid))).toBe(true);
     });
 
     it('should handle grouping multiple components', () => {
@@ -235,7 +235,7 @@ describe('PCB', () => {
 
       pcb.group('resistors', resistor1, resistor2);
 
-      const group = pcb.state.groups.find(g => g.includes('"resistors"'));
+      const group = getPcbState(pcb).groups.find(g => g.includes('"resistors"'));
       expect(group).toBeDefined();
       expect(group).toContain(resistor1.uuid);
       expect(group).toContain(resistor2.uuid);
@@ -244,7 +244,7 @@ describe('PCB', () => {
 
   describe('Track Operations', () => {
     it('should create a track with default parameters', () => {
-      const trackUuid = pcb._track(
+      const trackUuid = pcbTrackSegment(pcb,
         { x: 0, y: 0 },
         { x: 10, y: 10 }
       );
@@ -254,7 +254,7 @@ describe('PCB', () => {
     });
 
     it('should create a track with custom parameters', () => {
-      const trackUuid = pcb._track(
+      const trackUuid = pcbTrackSegment(pcb,
         { x: 0, y: 0 },
         { x: 10, y: 10 },
         0.2,
@@ -264,7 +264,7 @@ describe('PCB', () => {
 
       expect(trackUuid).toBeDefined();
 
-      const trackData = pcb._getTrackData(trackUuid);
+      const trackData = pcbGetTrackData(pcb,trackUuid);
       expect(trackData).toBeDefined();
       expect(trackData?.start).toEqual({ x: 0, y: 0 });
       expect(trackData?.end).toEqual({ x: 10, y: 10 });
@@ -283,21 +283,21 @@ describe('PCB', () => {
   describe('Outline Operations', () => {
     it('should create rectangular outline', () => {
       pcb.outline(0, 0, 100, 80);
-      expect(pcb.state.stagedOutlines).toHaveLength(1);
-      expect(pcb.state.stagedOutlines[0].width).toBe(100);
-      expect(pcb.state.stagedOutlines[0].height).toBe(80);
+      expect(getPcbState(pcb).stagedOutlines).toHaveLength(1);
+      expect(getPcbState(pcb).stagedOutlines[0].width).toBe(100);
+      expect(getPcbState(pcb).stagedOutlines[0].height).toBe(80);
     });
 
     it('should create rectangular outline with fillet', () => {
       pcb.outline(0, 0, 100, 80, 5);
-      expect(pcb.state.stagedOutlines).toHaveLength(1);
-      expect(pcb.state.stagedOutlines[0].filletRadius).toBe(5);
+      expect(getPcbState(pcb).stagedOutlines).toHaveLength(1);
+      expect(getPcbState(pcb).stagedOutlines[0].filletRadius).toBe(5);
     });
 
     it('should handle custom outline UUID', () => {
       const customUuid = 'custom-outline-uuid';
       pcb.outline(0, 0, 100, 80, 0, customUuid);
-      expect(pcb.state.stagedOutlines.some((o: any) => o.uuid === customUuid)).toBe(true);
+      expect(getPcbState(pcb).stagedOutlines.some((o: any) => o.uuid === customUuid)).toBe(true);
     });
   });
 

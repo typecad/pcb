@@ -20,15 +20,15 @@ import logger from '../utils/logging.js';
 import type { BoardBounds } from './pcb_routing_calculations.js';
 import { TrackBuilder } from './pcb_track_builder.js';
 import { RoutingGrid } from '../routing/shared/routing_grid.js';
-import type { IPcbBoardContext } from './pcb_board_context.js';
 import type { IRoutingOptions } from '../routing/router/types.js';
-import type { PcbInternalState } from './pcb_state.js';
+import { PcbInternalState } from './pcb_state.js';
+import { PCB, getPcbState } from './pcb.js';
 
 // ── Types ────────────────────────────────────────────────────────────────
 
 /** Shared context for routing sub-modules. */
 export interface AutorouteContext {
-    pcb: IPcbBoardContext;
+    pcb: PCB;
     options: IAutorouteOptions;
     fromPins: Pin[];
     toPins: Pin[];
@@ -79,16 +79,17 @@ export function isAutorouteResultRouteItem(routeItem: IRoutePath | IAutorouteRes
     return Array.isArray(routeItem) && 'routeDetails' in routeItem && Array.isArray(routeItem.routeDetails);
 }
 
-export function collectComponentsForBounds(pcb: { state: PcbInternalState }, netComponents: Component[]): {
+export function collectComponentsForBounds(pcb: PCB, netComponents: Component[]): {
     components: Component[];
     stagedComponents: Component[];
 } {
+    const state = getPcbState(pcb);
     const componentSet = new Set<Component>(netComponents);
-    pcb.state.components.forEach(comp => componentSet.add(comp));
+    state.components.forEach(comp => componentSet.add(comp));
 
     return {
         components: Array.from(componentSet),
-        stagedComponents: [...pcb.state.stagedComponents]
+        stagedComponents: [...state.stagedComponents]
     };
 }
 

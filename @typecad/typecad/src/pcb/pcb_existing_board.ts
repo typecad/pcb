@@ -1,7 +1,7 @@
 import { Component } from '../component.js';
 import { parseAsList, nameOf, sym } from '../sexpr/index.js';
 import type { SExpr } from '../sexpr/types.js';
-import { IPcbBoardContext } from './pcb_board_context.js';
+import { PCB, getPcbState, pcbResolveNet } from './pcb.js';
 import { normalizeNetName, formatCallSite, getErrorMessage } from './pcb_utils.js';
 import { updateFootprintNode } from './pcb_footprint.js';
 import { reportError } from '../utils/error_reporter.js';
@@ -78,15 +78,16 @@ function buildEmptyBoardContents(headerItems: SExpr[]): SExpr[] {
 }
 
 export function parseExistingBoard(
-    pcb: IPcbBoardContext,
+    pcb: PCB,
     headerItems: SExpr[],
     componentMap: Map<string, Component>
 ): ExistingBoardResult {
     const boardNetNameToCodeMap = new Map<string, number>();
 
     let existingBoardContents: SExpr[] = [];
-    if (pcb.state.existingBoardElements.length > 0) {
-        existingBoardContents = [sym('kicad_pcb'), ...(pcb.state.existingBoardElements as SExpr[])];
+    const state = getPcbState(pcb);
+    if (state.existingBoardElements.length > 0) {
+        existingBoardContents = [sym('kicad_pcb'), ...(state.existingBoardElements as SExpr[])];
     }
 
     let boardContents: SExpr[];
@@ -163,7 +164,7 @@ export function insertNetsIntoBoardContents(
 
 export function processExistingFootprints(
     existingBoardElements: SExpr[],
-    pcb: IPcbBoardContext,
+    pcb: PCB,
     componentMap: Map<string, Component>,
     boardNetNameToCodeMap: Map<string, number>,
     boardContents: SExpr[]
@@ -238,7 +239,7 @@ export function processExistingFootprints(
                 const updatedNode = updateFootprintNode(
                     item as SExpr[],
                     component,
-                    (ref, pin, uuidVal, map) => pcb.resolveNet(ref, pin, uuidVal, map),
+                    (ref, pin, uuidVal, map) => pcbResolveNet(pcb, ref, pin, uuidVal, map),
                     boardNetNameToCodeMap
                 );
                 boardContents.push(updatedNode);

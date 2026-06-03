@@ -12,7 +12,7 @@ export const projectSkills: Skill[] = [
       },
       {
         title: 'Non-interactive project creation',
-        code: `typecad create --name=my-board --pio=true --board=esp32dev --packages=@typecad/passives,@typecad/ngspice`,
+        code: `typecad create --name=my-board --pio=true --board=esp32dev --packages=@typecad/passives,@typecad/graphviz`,
       },
       {
         title: 'Programmatic equivalent',
@@ -24,7 +24,7 @@ export const projectSkills: Skill[] = [
       '--packages: comma-separated list of optional packages to install',
       '--pio=true creates a PlatformIO firmware project inside the typeCAD project',
       '--board specifies the PlatformIO board (default: esp32dev)',
-      'Available packages: @typecad/ngspice, @typecad/graphviz, @typecad/jlcpcb-export, @typecad/wiring, @typecad/jlcpcb-parts, @typecad/typecad-mcp',
+      'Available packages: @typecad/graphviz, @typecad/jlcpcb-export, @typecad/wiring, @typecad/jlcpcb-parts, @typecad/typecad-mcp',
     ],
     related: ['build', 'add-component', 'add-package', 'config'],
   },

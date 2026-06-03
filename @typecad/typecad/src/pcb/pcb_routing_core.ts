@@ -24,7 +24,8 @@ import { RoutingError } from '../utils/errors.js';
 import { displayName, formatSourceError } from '../utils/error_reporter.js';
 import { calculateMinViaSize as calculateMinimumViaSize } from './pcb_routing_calculations.js';
 import { debugLog } from './pcb_autoroute_helpers.js';
-import type { IPcbBoardContext } from './pcb_board_context.js';
+import type { PCB } from './pcb.js';
+import { getPcbState } from './pcb.js';
 import type { ISchematicNode } from '../types/schematic_types.js';
 
 type SchematicRuntimeNode = ISchematicNode & {
@@ -263,7 +264,7 @@ function calculateMinViaSize(current: number, thickness?: number): { size: numbe
  * @returns TrackBuilder instance or null if path is too short
  */
 export function pathToTrackBuilder(
-    pcb: IPcbBoardContext,
+    pcb: PCB,
     path: IRoutePath,
     width: number,
     options: IAutorouteOptions,
@@ -271,6 +272,7 @@ export function pathToTrackBuilder(
     freeViaLocations?: { x: number; y: number }[],
     deferStaging?: boolean
 ): TrackBuilder | null {
+    const state = getPcbState(pcb);
     if (path.nodes.length < 2) {
         return null;
     }
@@ -331,7 +333,7 @@ export function pathToTrackBuilder(
                 // When manual routes are present, trim away any portions of this segment
                 // that overlap existing same-net copper, and only emit the non-overlapping parts.
                 if (options.routes && options.routes.length > 0) {
-                    const existingLines = getExistingLines(pcb.state.grLines, pcb.state.stagedOutlines);
+                    const existingLines = getExistingLines(state.grLines, state.stagedOutlines);
                     const subSegments = subtractOverlapsFromSegment(
                         { x: segmentStart.x, y: segmentStart.y },
                         { x: prevNode.x, y: prevNode.y },
@@ -354,8 +356,8 @@ export function pathToTrackBuilder(
                         prevNode.layer,
                         net,
                         width,
-                        pcb.state.grLines,
-                        pcb.state.stagedOutlines
+                        state.grLines,
+                        state.stagedOutlines
                     );
                     if (!onExisting) {
                         track.to({ x: prevNode.x, y: prevNode.y, layer: prevNode.layer, width });
@@ -452,7 +454,7 @@ export function pathToTrackBuilder(
         if (dir.dx !== lastDir.dx || dir.dy !== lastDir.dy) {
             // Commit merged segment up to prevNode (trim partial overlaps when manual routes exist)
             if (options.routes && options.routes.length > 0) {
-                const existingLines = getExistingLines(pcb.state.grLines, pcb.state.stagedOutlines);
+                const existingLines = getExistingLines(state.grLines, state.stagedOutlines);
                 const subSegments = subtractOverlapsFromSegment(
                     { x: segmentStart.x, y: segmentStart.y },
                     { x: prevNode.x, y: prevNode.y },
@@ -473,8 +475,8 @@ export function pathToTrackBuilder(
                     prevNode.layer,
                     net,
                     width,
-                    pcb.state.grLines,
-                    pcb.state.stagedOutlines
+                    state.grLines,
+                    state.stagedOutlines
                 );
                 if (!onExisting) {
                     track.to({ x: prevNode.x, y: prevNode.y, layer: prevNode.layer, width });
@@ -490,7 +492,7 @@ export function pathToTrackBuilder(
     const lastNode = path.nodes[path.nodes.length - 1];
     if (Math.abs(lastNode.x - segmentStart.x) > eps || Math.abs(lastNode.y - segmentStart.y) > eps) {
         if (options.routes && options.routes.length > 0) {
-            const existingLines = getExistingLines(pcb.state.grLines, pcb.state.stagedOutlines);
+            const existingLines = getExistingLines(state.grLines, state.stagedOutlines);
             const subSegments = subtractOverlapsFromSegment(
                 { x: segmentStart.x, y: segmentStart.y },
                 { x: lastNode.x, y: lastNode.y },
@@ -511,8 +513,8 @@ export function pathToTrackBuilder(
                 lastNode.layer,
                 net,
                 width,
-                pcb.state.grLines,
-                pcb.state.stagedOutlines
+                state.grLines,
+                state.stagedOutlines
             );
             if (!onExisting) {
                 track.to({ x: lastNode.x, y: lastNode.y, layer: lastNode.layer, width });
@@ -527,7 +529,7 @@ export function pathToTrackBuilder(
  * Routes a named net by resolving its pins and delegating to autoroute().
  */
 export function routeNet(
-    pcb: IPcbBoardContext,
+    pcb: PCB,
     netRef: string | ISchematicNetDefinition,
     options?: IAutorouteRouteOptions
 ): IAutorouteResult {

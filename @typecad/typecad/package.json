@@ -1,6 +1,6 @@
 {
   "name": "@typecad/typecad",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "🤖programmatically 💥create 🛰️hardware",
   "keywords": [
     "kicad",
@@ -9,6 +9,7 @@
     "ee",
     "electrical design",
     "code-as-schematic",
+    "schematic-as-code",
     "typecad"
   ],
   "homepage": "https://typecad.net",

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import fs from 'node:fs'
-import { PCB } from '../src/pcb/pcb.js'
+import { PCB, getPcbState } from '../src/pcb/pcb.js'
 import { Component } from '../src/component.js'
 
 describe('Autoroute integration', () => {
@@ -48,14 +48,14 @@ describe('Autoroute integration', () => {
     });
     expect(result.success).toBe(true);
 
-    expect(pcb.state.stagedOutlines.length).toBeGreaterThan(0);
+    expect(getPcbState(pcb).stagedOutlines.length).toBeGreaterThan(0);
 
     await pcb.create(c1, c2, c3);
 
     const contents = fs.readFileSync(`${buildDir}/${boardName}.kicad_pcb`, 'utf8');
     expect(contents.includes('(segment')).toBeTruthy();
 
-    const stagedElementUuids = pcb.state.stagedOutlines.flatMap((o: any) => (o.elements ?? []).map((el: any) => el.uuid)).filter(Boolean);
+    const stagedElementUuids = getPcbState(pcb).stagedOutlines.flatMap((o: any) => (o.elements ?? []).map((el: any) => el.uuid)).filter(Boolean);
     expect(stagedElementUuids.length).toBeGreaterThan(0);
     const foundAny = stagedElementUuids.some((u: string) => contents.includes(u));
     expect(foundAny).toBeTruthy();

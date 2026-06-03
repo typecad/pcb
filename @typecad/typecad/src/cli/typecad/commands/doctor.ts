@@ -1,6 +1,7 @@
 import { execSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
+import { platform } from 'node:os';
 import chalk from 'chalk';
 import { findExecutable } from '../../../kicad.js';
 import { KiCAD } from '../../../kicad.js';
@@ -327,38 +328,37 @@ function checkKiCadFootprints(): CheckResult {
   }
 }
 
-function checkArduinoCli(): CheckResult {
-  const found = findExecutable('arduino-cli');
-  if (found) {
-    return { name: 'arduino-cli', passed: true, message: found };
-  }
-
-  const version = runQuiet('arduino-cli version');
-  if (version) {
-    return { name: 'arduino-cli', passed: true, message: 'detected' };
-  }
-
-  return {
-    name: 'arduino-cli',
-    passed: false,
-    message: 'not found',
-    fixHint:
-      'Install arduino-cli from https://arduino.github.io/arduino-cli/latest/installation/\n' +
-      '  Windows: winget install Arduino.ArduinoCLI\n' +
-      '  macOS:   brew install arduino-cli\n' +
-      '  Linux:   curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.sh | sh',
-  };
-}
 
 function checkNgspice(): CheckResult {
-  const found = findExecutable('ngspice');
-  if (found) {
-    return { name: 'ngspice', passed: true, message: found };
+  const isWindows = platform() === 'win32';
+  const foundNgspice = findExecutable('ngspice');
+  const foundNgspiceCon = isWindows ? findExecutable('ngspice_con') : undefined;
+
+  if (isWindows) {
+    if (foundNgspice && foundNgspiceCon) {
+      return { name: 'ngspice', passed: true, message: `ngspice: ${foundNgspice}, ngspice_con: ${foundNgspiceCon}` };
+    }
+    if (foundNgspice) {
+      return { name: 'ngspice', passed: true, message: foundNgspice, fixHint: 'ngspice_con not found — DC analysis (.op) requires ngspice_con.exe in PATH' };
+    }
+    if (foundNgspiceCon) {
+      return { name: 'ngspice', passed: true, message: `ngspice_con: ${foundNgspiceCon}`, fixHint: 'ngspice not found — transient analysis (.tran) requires ngspice.exe in PATH' };
+    }
+  } else {
+    if (foundNgspice) {
+      return { name: 'ngspice', passed: true, message: foundNgspice };
+    }
   }
+
   return {
     name: 'ngspice',
     passed: true,
     message: 'not found (optional — needed for spice simulation)',
+    fixHint:
+      'Install ngspice from https://ngspice.org/\n' +
+      '  Windows: winget install ngspice\n' +
+      '  macOS:   brew install ngspice\n' +
+      '  Linux:   sudo apt install ngspice  (or equivalent for your distro)',
   };
 }
 
@@ -454,7 +454,7 @@ export async function run(parsed: ParsedArgs): Promise<void> {
     checkKiCadCli(),
     checkKiCadSymbols(),
     checkKiCadFootprints(),
-    checkArduinoCli(),
+
     checkNgspice(),
     checkGit(),
     checkBuildDir(),

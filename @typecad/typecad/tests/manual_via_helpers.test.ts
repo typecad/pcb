@@ -14,9 +14,9 @@ describe('collectManualViaFreeLocations', () => {
             { via: true, viaData: { at: { x: 5, y: 5 }, net: 'GND' } } as any,
             { via: false } as any
         ];
-        const pcbStub = { state };
+        const pcbStub = { _state: state };
 
-        const gndVias = collectManualViaFreeLocations(pcbStub, 'GND');
+        const gndVias = collectManualViaFreeLocations(pcbStub as any, 'GND');
         expect(gndVias).toHaveLength(2);
         expect(gndVias).toEqual(
             expect.arrayContaining([
@@ -25,10 +25,10 @@ describe('collectManualViaFreeLocations', () => {
             ])
         );
 
-        const vccVias = collectManualViaFreeLocations(pcbStub, 'vcc');
+        const vccVias = collectManualViaFreeLocations(pcbStub as any, 'vcc');
         expect(vccVias).toEqual([{ x: 20, y: 5 }]);
 
-        const none = collectManualViaFreeLocations(pcbStub, 'USB_DP');
+        const none = collectManualViaFreeLocations(pcbStub as any, 'USB_DP');
         expect(none).toHaveLength(0);
     });
 });

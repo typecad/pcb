@@ -1,13 +1,13 @@
 import type { RoutingGrid } from '../contracts/routing_grid.js';
 import type { IRoutePath as FullRoutePath, IGeneratedElement, ILengthMatchPatternConfig, ILengthMatchConfig } from '../../pcb/pcb_interfaces.js';
-import type { IPcbBoardContext } from '../../pcb/pcb_board_context.js';
+import type { PCB } from '../../pcb/pcb.js';
 
 export type { ILengthMatchPatternConfig, ILengthMatchConfig };
 
 export type IRoutePath = Pick<FullRoutePath, 'nodes' | 'length'>;
 
 export interface ILengthMatchContext {
-  pcb: IPcbBoardContext;
+  pcb: PCB;
   grid: RoutingGrid;
   traceWidth: number;
   clearance: number;

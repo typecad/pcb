@@ -3,7 +3,7 @@ import { Component } from '../component.js';
 import { parse, serialize, s, sym, yes, no, nameOf } from '../sexpr/index.js';
 import type { SExpr } from '../sexpr/types.js';
 import type { ISchematicNode } from '../types/schematic_types.js';
-import { IPcbBoardContext } from './pcb_board_context.js';
+import { PCB, getPcbState, pcbResolveNet } from './pcb.js';
 import {
     IVia,
     IGrLine,
@@ -24,7 +24,7 @@ import { getCallSite } from '../utils/stack_trace.js';
 
 export function renderVias(
     viaMap: Map<string, IVia>,
-    pcb: IPcbBoardContext,
+    pcb: PCB,
     boardNetNameToCodeMap: Map<string, number>,
     boardContents: SExpr[]
 ): void {
@@ -41,7 +41,7 @@ export function renderVias(
                 logger.warn(`[BoardCreation] Could not resolve via net "${viaData.net}" in board net map, defaulting to net 0`);
             }
         } else if (viaData.uuid) {
-            const netResolution = pcb.resolveNet('', '1', viaData.uuid, boardNetNameToCodeMap, viaData.net);
+            const netResolution = pcbResolveNet(pcb, '', '1', viaData.uuid, boardNetNameToCodeMap, viaData.net);
             finalViaNetCode = netResolution.netCode;
             if (netResolution.found) {
                 viaData.net = netResolution.netName;
@@ -71,7 +71,7 @@ export function renderVias(
 
 export function renderOutlinesAndTracks(
     outlines: IOutline[],
-    pcb: IPcbBoardContext,
+    pcb: PCB,
     boardNetNameToCodeMap: Map<string, number>,
     boardContents: SExpr[]
 ): void {
@@ -126,10 +126,11 @@ export function renderOutlinesAndTracks(
 }
 
 export function renderGraphics(
-    pcb: IPcbBoardContext,
+    pcb: PCB,
     boardContents: SExpr[]
 ): void {
-    for (const textElement of pcb.state.grTexts) {
+    const state = getPcbState(pcb);
+    for (const textElement of state.grTexts) {
         const fontChildren: SExpr[] = [];
         if (textElement.font) fontChildren.push(s('face', textElement.font));
         const width = textElement.width ?? 1.27;
@@ -160,7 +161,7 @@ export function renderGraphics(
         }
     }
 
-    for (const line of pcb.state.grLines) {
+    for (const line of state.grLines) {
         const children: SExpr[] = [
             s('start', line.start.x, line.start.y),
             s('end', line.end.x, line.end.y),
@@ -172,7 +173,7 @@ export function renderGraphics(
         boardContents.push(s('gr_line', ...children));
     }
 
-    for (const circle of pcb.state.grCircles) {
+    for (const circle of state.grCircles) {
         const children: SExpr[] = [
             s('center', circle.center.x, circle.center.y),
             s('end', circle.end.x, circle.end.y),
@@ -185,7 +186,7 @@ export function renderGraphics(
         boardContents.push(s('gr_circle', ...children));
     }
 
-    for (const rect of pcb.state.grRects) {
+    for (const rect of state.grRects) {
         const children: SExpr[] = [
             s('start', rect.start.x, rect.start.y),
             s('end', rect.end.x, rect.end.y),
@@ -198,7 +199,7 @@ export function renderGraphics(
         boardContents.push(s('gr_rect', ...children));
     }
 
-    for (const poly of pcb.state.grPolys) {
+    for (const poly of state.grPolys) {
         const ptsChildren = poly.points.map((pt: { x: number; y: number }) => s('xy', pt.x, pt.y));
         const children: SExpr[] = [
             s('pts', ...ptsChildren),
@@ -214,7 +215,7 @@ export function renderGraphics(
 
 export function renderZones(
     zones: IFilledZone[],
-    pcb: IPcbBoardContext,
+    pcb: PCB,
     boardNetNameToCodeMap: Map<string, number>,
     boardContents: SExpr[]
 ): void {
@@ -229,7 +230,7 @@ export function renderZones(
             if (identifier === 'pin' && parts.length === 3) {
                 const reference = parts[1];
                 const pinNumber = parts[2];
-                const netResolution = pcb.resolveNet(reference, pinNumber, undefined, boardNetNameToCodeMap);
+                const netResolution = pcbResolveNet(pcb, reference, pinNumber, undefined, boardNetNameToCodeMap);
                 netCode = netResolution.netCode;
                 netName = netResolution.netName;
             } else if (identifier === 'net' && parts.length === 2) {
@@ -380,7 +381,7 @@ function ensureSingleVersionNode(boardContents: SExpr[], defaultVersion: SExpr):
 }
 
 export function serializeAndWriteBoard(
-    pcb: IPcbBoardContext,
+    pcb: PCB,
     boardContents: SExpr[],
     defaultVersion: SExpr
 ): void {
@@ -401,12 +402,13 @@ export function serializeAndWriteBoard(
             logger.debug('[BoardCreation][DIAG] Failed to log serialized diagnostics');
         }
 
-        pcb.state.pcb = serialized;
+        const state = getPcbState(pcb);
+        state.pcb = serialized;
 
         try {
             if (process.env.TYPECAD_DEBUG_BOARD_WRITE === '1') {
                 const debugPath = `./build/${pcb.boardName}.debug.kicad_pcb`;
-                fs.writeFileSync(debugPath, pcb.state.pcb, { encoding: 'utf8' });
+                fs.writeFileSync(debugPath, state.pcb, { encoding: 'utf8' });
                 const debugContents = fs.readFileSync(debugPath, { encoding: 'utf8' });
                 logger.debug(`[BoardCreation][DIAG] debug file written: ${debugPath}, length=${debugContents.length}`);
             }
@@ -415,14 +417,15 @@ export function serializeAndWriteBoard(
         }
     } catch (e: unknown) {
         logger.error(` Error: Failed to serialize final board structure: ${getErrorMessage(e)}${formatCallSite(getCallSite())}`);
-        pcb.state.pcb = '';
+        getPcbState(pcb).pcb = '';
         return;
     }
 
     const boardFilePath = `./build/${pcb.boardName}.kicad_pcb`;
+    const state = getPcbState(pcb);
 
     try {
-        fs.writeFileSync(boardFilePath, pcb.state.pcb);
+        fs.writeFileSync(boardFilePath, state.pcb);
 
         try {
             const fileContents = fs.readFileSync(boardFilePath, { encoding: 'utf8' });
@@ -430,7 +433,7 @@ export function serializeAndWriteBoard(
             const hasGrLines = fileContents.includes('(gr_line');
             logger.debug(`[BoardCreation][VERIFY] file contains segments=${hasSegments}, gr_lines=${hasGrLines}`);
 
-            const stagedElementUuids = pcb.state.stagedOutlines.slice(0, 10).flatMap((o: IOutline) => (o.elements ?? []).map((el: OutlineElement) => el.uuid)).filter(Boolean);
+            const stagedElementUuids = state.stagedOutlines.slice(0, 10).flatMap((o: IOutline) => (o.elements ?? []).map((el: OutlineElement) => el.uuid)).filter(Boolean);
             const foundElementUuids = stagedElementUuids.filter((u: string) => fileContents.includes(u));
             logger.debug(`[BoardCreation][VERIFY] staged ELEMENT UUIDs present in file: ${foundElementUuids.length}/${stagedElementUuids.length}`);
             if (foundElementUuids.length < stagedElementUuids.length) {
@@ -446,14 +449,15 @@ export function serializeAndWriteBoard(
     }
 }
 
-function runDiagnostics(pcb: IPcbBoardContext, boardContents: SExpr[]): void {
+function runDiagnostics(pcb: PCB, boardContents: SExpr[]): void {
+    const state = getPcbState(pcb);
     try {
         try {
-            const stagedUuids = pcb.state.stagedOutlines.map((o: IOutline) => o.uuid).filter(Boolean);
+            const stagedUuids = state.stagedOutlines.map((o: IOutline) => o.uuid).filter(Boolean);
             const missingInFinal = stagedUuids.filter((u: string) => !JSON.stringify(boardContents).includes(u));
             if (missingInFinal.length > 0) {
                 for (const miss of missingInFinal) {
-                    const so = pcb.state.stagedOutlines.find((o: IOutline) => o.uuid === miss);
+                    const so = state.stagedOutlines.find((o: IOutline) => o.uuid === miss);
                     logger.debug(`[BoardCreation][DIAG] missing outline ${miss}: fullOutline=${JSON.stringify(so)}`);
                 }
             } else {

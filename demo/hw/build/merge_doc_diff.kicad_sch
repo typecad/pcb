@@ -3,73 +3,73 @@
 	(generator "typecad")
 	(generator_version "0.1.0")
 	(paper "A4")
-    (uuid "aa128540-4b7c-4615-b94f-a61eac0cf3ea")
+    (uuid "6a63b2fd-95bd-4577-8dd0-b39e630773a5")
 
     (lib_symbols
     (symbol "Device:R_Small" (pin_numbers (hide yes)) (pin_names (offset 0.254) (hide yes)) (exclude_from_sim no) (in_bom yes) (on_board yes) (in_pos_files yes) (duplicate_pin_numbers_are_jumpers no) (property "Reference" "R" (at 0 0 90) (show_name no) (do_not_autoplace no) (effects (font (size 1.016 1.016)))) (property "Value" "R_Small" (at 1.778 0 90) (show_name no) (do_not_autoplace no) (effects (font (size 1.27 1.27)))) (property "Footprint" "" (at 0 0 0) (show_name no) (do_not_autoplace no) (hide yes) (effects (font (size 1.27 1.27)))) (property "Datasheet" "" (at 0 0 0) (show_name no) (do_not_autoplace no) (hide yes) (effects (font (size 1.27 1.27)))) (property "Description" "Resistor, small symbol" (at 0 0 0) (show_name no) (do_not_autoplace no) (hide yes) (effects (font (size 1.27 1.27)))) (property "ki_keywords" "R resistor" (at 0 0 0) (show_name no) (do_not_autoplace no) (hide yes) (effects (font (size 1.27 1.27)))) (property "ki_fp_filters" "R_*" (at 0 0 0) (show_name no) (do_not_autoplace no) (hide yes) (effects (font (size 1.27 1.27)))) (symbol "R_Small_0_1" (rectangle (start -0.762 1.778) (end 0.762 -1.778) (stroke (width 0.2032) (type default)) (fill (type none)))) (symbol "R_Small_1_1" (pin passive line (at 0 2.54 270) (length 0.762) (name "" (effects (font (size 1.27 1.27)))) (number "1" (effects (font (size 1.27 1.27))))) (pin passive line (at 0 -2.54 90) (length 0.762) (name "" (effects (font (size 1.27 1.27)))) (number "2" (effects (font (size 1.27 1.27)))))) (embedded_fonts no))
-    (symbol "power:VCC" (power global) (pin_numbers (hide yes)) (pin_names (offset 0) (hide yes)) (exclude_from_sim no) (in_bom yes) (on_board yes) (in_pos_files yes) (duplicate_pin_numbers_are_jumpers no) (property "Reference" "#PWR" (at 0 -3.81 0) (show_name no) (do_not_autoplace no) (hide yes) (effects (font (size 1.27 1.27)))) (property "Value" "VCC" (at 0 3.556 0) (show_name no) (do_not_autoplace no) (effects (font (size 1.27 1.27)))) (property "Footprint" "" (at 0 0 0) (show_name no) (do_not_autoplace no) (hide yes) (effects (font (size 1.27 1.27)))) (property "Datasheet" "" (at 0 0 0) (show_name no) (do_not_autoplace no) (hide yes) (effects (font (size 1.27 1.27)))) (property "Description" "Power symbol creates a global label with name \\\"VCC\\\"" (at 0 0 0) (show_name no) (do_not_autoplace no) (hide yes) (effects (font (size 1.27 1.27)))) (property "ki_keywords" "global power" (at 0 0 0) (show_name no) (do_not_autoplace no) (hide yes) (effects (font (size 1.27 1.27)))) (symbol "VCC_0_1" (polyline (pts (xy -0.762 1.27) (xy 0 2.54)) (stroke (width 0) (type default)) (fill (type none))) (polyline (pts (xy 0 2.54) (xy 0.762 1.27)) (stroke (width 0) (type default)) (fill (type none))) (polyline (pts (xy 0 0) (xy 0 2.54)) (stroke (width 0) (type default)) (fill (type none)))) (symbol "VCC_1_1" (pin power_in line (at 0 0 90) (length 0) (name "" (effects (font (size 1.27 1.27)))) (number "1" (effects (font (size 1.27 1.27)))))) (embedded_fonts no))
+    (symbol "power:VCC" (power global) (pin_numbers (hide yes)) (pin_names (offset 0) (hide yes)) (exclude_from_sim no) (in_bom yes) (on_board yes) (in_pos_files yes) (duplicate_pin_numbers_are_jumpers no) (property "Reference" "#PWR" (at 0 -3.81 0) (show_name no) (do_not_autoplace no) (hide yes) (effects (font (size 1.27 1.27)))) (property "Value" "VCC" (at 0 3.556 0) (show_name no) (do_not_autoplace no) (effects (font (size 1.27 1.27)))) (property "Footprint" "" (at 0 0 0) (show_name no) (do_not_autoplace no) (hide yes) (effects (font (size 1.27 1.27)))) (property "Datasheet" "" (at 0 0 0) (show_name no) (do_not_autoplace no) (hide yes) (effects (font (size 1.27 1.27)))) (property "Description" "Power symbol creates a global label with name \"VCC\"" (at 0 0 0) (show_name no) (do_not_autoplace no) (hide yes) (effects (font (size 1.27 1.27)))) (property "ki_keywords" "global power" (at 0 0 0) (show_name no) (do_not_autoplace no) (hide yes) (effects (font (size 1.27 1.27)))) (symbol "VCC_0_1" (polyline (pts (xy -0.762 1.27) (xy 0 2.54)) (stroke (width 0) (type default)) (fill (type none))) (polyline (pts (xy 0 2.54) (xy 0.762 1.27)) (stroke (width 0) (type default)) (fill (type none))) (polyline (pts (xy 0 0) (xy 0 2.54)) (stroke (width 0) (type default)) (fill (type none)))) (symbol "VCC_1_1" (pin power_in line (at 0 0 90) (length 0) (name "" (effects (font (size 1.27 1.27)))) (number "1" (effects (font (size 1.27 1.27)))))) (embedded_fonts no))
     (symbol "power:PWR_FLAG" (power global) (pin_numbers (hide yes)) (pin_names (offset 0) (hide yes)) (exclude_from_sim no) (in_bom yes) (on_board yes) (in_pos_files yes) (duplicate_pin_numbers_are_jumpers no) (property "Reference" "#FLG" (at 0 1.905 0) (show_name no) (do_not_autoplace no) (hide yes) (effects (font (size 1.27 1.27)))) (property "Value" "PWR_FLAG" (at 0 3.81 0) (show_name no) (do_not_autoplace no) (effects (font (size 1.27 1.27)))) (property "Footprint" "" (at 0 0 0) (show_name no) (do_not_autoplace no) (hide yes) (effects (font (size 1.27 1.27)))) (property "Datasheet" "" (at 0 0 0) (show_name no) (do_not_autoplace no) (hide yes) (effects (font (size 1.27 1.27)))) (property "Description" "Special symbol for telling ERC where power comes from" (at 0 0 0) (show_name no) (do_not_autoplace no) (hide yes) (effects (font (size 1.27 1.27)))) (property "ki_keywords" "flag power" (at 0 0 0) (show_name no) (do_not_autoplace no) (hide yes) (effects (font (size 1.27 1.27)))) (symbol "PWR_FLAG_0_0" (pin power_out line (at 0 0 90) (length 0) (name "" (effects (font (size 1.27 1.27)))) (number "1" (effects (font (size 1.27 1.27)))))) (symbol "PWR_FLAG_0_1" (polyline (pts (xy 0 0) (xy 0 1.27) (xy -1.016 1.905) (xy 0 2.54) (xy 1.016 1.905) (xy 0 1.27)) (stroke (width 0) (type default)) (fill (type none)))) (embedded_fonts no))
-    (symbol "power:GND" (power global) (pin_numbers (hide yes)) (pin_names (offset 0) (hide yes)) (exclude_from_sim no) (in_bom yes) (on_board yes) (in_pos_files yes) (duplicate_pin_numbers_are_jumpers no) (property "Reference" "#PWR" (at 0 -6.35 0) (show_name no) (do_not_autoplace no) (hide yes) (effects (font (size 1.27 1.27)))) (property "Value" "GND" (at 0 -3.81 0) (show_name no) (do_not_autoplace no) (effects (font (size 1.27 1.27)))) (property "Footprint" "" (at 0 0 0) (show_name no) (do_not_autoplace no) (hide yes) (effects (font (size 1.27 1.27)))) (property "Datasheet" "" (at 0 0 0) (show_name no) (do_not_autoplace no) (hide yes) (effects (font (size 1.27 1.27)))) (property "Description" "Power symbol creates a global label with name \\\"GND\\\" , ground" (at 0 0 0) (show_name no) (do_not_autoplace no) (hide yes) (effects (font (size 1.27 1.27)))) (property "ki_keywords" "global power" (at 0 0 0) (show_name no) (do_not_autoplace no) (hide yes) (effects (font (size 1.27 1.27)))) (symbol "GND_0_1" (polyline (pts (xy 0 0) (xy 0 -1.27) (xy 1.27 -1.27) (xy 0 -2.54) (xy -1.27 -1.27) (xy 0 -1.27)) (stroke (width 0) (type default)) (fill (type none)))) (symbol "GND_1_1" (pin power_in line (at 0 0 270) (length 0) (name "" (effects (font (size 1.27 1.27)))) (number "1" (effects (font (size 1.27 1.27)))))) (embedded_fonts no))
+    (symbol "power:GND" (power global) (pin_numbers (hide yes)) (pin_names (offset 0) (hide yes)) (exclude_from_sim no) (in_bom yes) (on_board yes) (in_pos_files yes) (duplicate_pin_numbers_are_jumpers no) (property "Reference" "#PWR" (at 0 -6.35 0) (show_name no) (do_not_autoplace no) (hide yes) (effects (font (size 1.27 1.27)))) (property "Value" "GND" (at 0 -3.81 0) (show_name no) (do_not_autoplace no) (effects (font (size 1.27 1.27)))) (property "Footprint" "" (at 0 0 0) (show_name no) (do_not_autoplace no) (hide yes) (effects (font (size 1.27 1.27)))) (property "Datasheet" "" (at 0 0 0) (show_name no) (do_not_autoplace no) (hide yes) (effects (font (size 1.27 1.27)))) (property "Description" "Power symbol creates a global label with name \"GND\" , ground" (at 0 0 0) (show_name no) (do_not_autoplace no) (hide yes) (effects (font (size 1.27 1.27)))) (property "ki_keywords" "global power" (at 0 0 0) (show_name no) (do_not_autoplace no) (hide yes) (effects (font (size 1.27 1.27)))) (symbol "GND_0_1" (polyline (pts (xy 0 0) (xy 0 -1.27) (xy 1.27 -1.27) (xy 0 -2.54) (xy -1.27 -1.27) (xy 0 -1.27)) (stroke (width 0) (type default)) (fill (type none)))) (symbol "GND_1_1" (pin power_in line (at 0 0 270) (length 0) (name "" (effects (font (size 1.27 1.27)))) (number "1" (effects (font (size 1.27 1.27)))))) (embedded_fonts no))
     )
 
 
 
 	
 		(label "vdiv"
-			(at 55.88 68.58 270)
+			(at 223.52 157.48 270)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
 				(justify right bottom)
 			)
-			(uuid "5b41b119-f1e9-4b91-86e5-d08feebe972c")
+			(uuid "b479f67e-21b1-4576-a8dd-b976adb17f11")
 		)
 
 	
 		(label "vdiv"
-			(at 144.78 78.74 90)
+			(at 99.06 99.06 90)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
 				(justify left bottom)
 			)
-			(uuid "15739fe9-d1c0-43ba-a42f-9f4236193d31")
+			(uuid "89f8dd2e-fe9f-4326-b33a-bcd598c39cce")
 		)
 
 	
 		(label "VCC"
-			(at 66.04 63.5 270)
+			(at 233.68 152.4 270)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
 				(justify right bottom)
 			)
-			(uuid "eb0c07b0-2270-45d7-b502-0d9007fd190d")
+			(uuid "230571d3-7f69-4359-9cce-de8ebaed948a")
 		)
 
 	
 		(label "GND"
-			(at 154.94 83.82000000000001 0)
+			(at 109.22 104.14 0)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
 				(justify left bottom)
 			)
-			(uuid "f5d7b8a3-6282-4e20-8b0b-54548f2c4599")
+			(uuid "0ca8705a-b4af-42c5-b42b-65aeff62085f")
 		)
 
 
-    (symbol (lib_id "Device:R_Small") (at 55.88 66.04 0) (property "Reference" "R1" (at 55.88 71.12 0) (effects (font (size 1.27 1.27)) (hide no))) (property "Value" "1kohm" (at 55.88 71.12 0) (effects (font (size 1.27 1.27)) (hide yes))) (property "Footprint" "Resistor_SMD:R_0603_1608Metric" (at 55.88 71.12 0) (effects (font (size 1.27 1.27)) (hide yes))) (instances (project "merge_doc_diff" (path "/aa128540-4b7c-4615-b94f-a61eac0cf3ea" (reference "R1") (unit 1)))))
-    (symbol (lib_id "Device:R_Small") (at 144.78 81.28 0) (property "Reference" "R2" (at 144.78 86.36 0) (effects (font (size 1.27 1.27)) (hide no))) (property "Value" "10kohm" (at 144.78 86.36 0) (effects (font (size 1.27 1.27)) (hide yes))) (property "Footprint" "Resistor_SMD:R_0603_1608Metric" (at 144.78 86.36 0) (effects (font (size 1.27 1.27)) (hide yes))) (instances (project "merge_doc_diff" (path "/aa128540-4b7c-4615-b94f-a61eac0cf3ea" (reference "R2") (unit 1)))))
-    (symbol (lib_id "Device:R_Small") (at 175.26 99.06 0) (property "Reference" "R3" (at 175.26 104.14 0) (effects (font (size 1.27 1.27)) (hide no))) (property "Value" "4.7kohm" (at 175.26 104.14 0) (effects (font (size 1.27 1.27)) (hide yes))) (property "Footprint" "Resistor_SMD:R_0603_1608Metric" (at 175.26 104.14 0) (effects (font (size 1.27 1.27)) (hide yes))) (instances (project "merge_doc_diff" (path "/aa128540-4b7c-4615-b94f-a61eac0cf3ea" (reference "R3") (unit 1)))))
-    (symbol (lib_id "power:VCC") (at 55.88 63.5 0) (property "Reference" "#PWR01" (at 55.88 68.58 0) (effects (font (size 1.27 1.27)) (hide no))) (property "Value" "VCC" (at 55.88 68.58 0) (effects (font (size 1.27 1.27)) (hide yes))) (property "Footprint" "" (at 55.88 68.58 0) (effects (font (size 1.27 1.27)) (hide yes))) (instances (project "merge_doc_diff" (path "/aa128540-4b7c-4615-b94f-a61eac0cf3ea" (reference "#PWR01") (unit 1)))))
-    (symbol (lib_id "power:PWR_FLAG") (at 66.04 63.5 0) (property "Reference" "#FLG01" (at 66.04 68.58 0) (effects (font (size 1.27 1.27)) (hide no))) (property "Value" "PWR_FLAG" (at 66.04 68.58 0) (effects (font (size 1.27 1.27)) (hide yes))) (property "Footprint" "" (at 66.04 68.58 0) (effects (font (size 1.27 1.27)) (hide yes))) (instances (project "merge_doc_diff" (path "/aa128540-4b7c-4615-b94f-a61eac0cf3ea" (reference "#FLG01") (unit 1)))))
-    (symbol (lib_id "power:GND") (at 144.78 83.82000000000001 0) (property "Reference" "#PWR02" (at 144.78 88.9 0) (effects (font (size 1.27 1.27)) (hide no))) (property "Value" "GND" (at 144.78 88.9 0) (effects (font (size 1.27 1.27)) (hide yes))) (property "Footprint" "" (at 144.78 88.9 0) (effects (font (size 1.27 1.27)) (hide yes))) (instances (project "merge_doc_diff" (path "/aa128540-4b7c-4615-b94f-a61eac0cf3ea" (reference "#PWR02") (unit 1)))))
-    (symbol (lib_id "power:PWR_FLAG") (at 154.94 83.82000000000001 180) (property "Reference" "#FLG02" (at 154.94 88.9 180) (effects (font (size 1.27 1.27)) (hide no))) (property "Value" "PWR_FLAG" (at 154.94 88.9 180) (effects (font (size 1.27 1.27)) (hide yes))) (property "Footprint" "" (at 154.94 88.9 180) (effects (font (size 1.27 1.27)) (hide yes))) (instances (project "merge_doc_diff" (path "/aa128540-4b7c-4615-b94f-a61eac0cf3ea" (reference "#FLG02") (unit 1)))))
+    (symbol (lib_id "Device:R_Small") (at 223.52 154.94 0) (property "Reference" "R1" (at 223.52 160.02 0) (effects (font (size 1.27 1.27)) (hide no))) (property "Value" "1kohm" (at 223.52 160.02 0) (effects (font (size 1.27 1.27)) (hide yes))) (property "Footprint" "Resistor_SMD:R_0603_1608Metric" (at 223.52 160.02 0) (effects (font (size 1.27 1.27)) (hide yes))) (instances (project "merge_doc_diff" (path "/6a63b2fd-95bd-4577-8dd0-b39e630773a5" (reference "R1") (unit 1)))))
+    (symbol (lib_id "Device:R_Small") (at 99.06 101.6 0) (property "Reference" "R2" (at 99.06 106.67999999999999 0) (effects (font (size 1.27 1.27)) (hide no))) (property "Value" "10kohm" (at 99.06 106.67999999999999 0) (effects (font (size 1.27 1.27)) (hide yes))) (property "Footprint" "Resistor_SMD:R_0603_1608Metric" (at 99.06 106.67999999999999 0) (effects (font (size 1.27 1.27)) (hide yes))) (instances (project "merge_doc_diff" (path "/6a63b2fd-95bd-4577-8dd0-b39e630773a5" (reference "R2") (unit 1)))))
+    (symbol (lib_id "Device:R_Small") (at 279.4 43.18 0) (property "Reference" "R3" (at 279.4 48.26 0) (effects (font (size 1.27 1.27)) (hide no))) (property "Value" "4.7kohm" (at 279.4 48.26 0) (effects (font (size 1.27 1.27)) (hide yes))) (property "Footprint" "Resistor_SMD:R_0603_1608Metric" (at 279.4 48.26 0) (effects (font (size 1.27 1.27)) (hide yes))) (instances (project "merge_doc_diff" (path "/6a63b2fd-95bd-4577-8dd0-b39e630773a5" (reference "R3") (unit 1)))))
+    (symbol (lib_id "power:VCC") (at 223.52 152.4 0) (property "Reference" "#PWR01" (at 223.52 157.48000000000002 0) (effects (font (size 1.27 1.27)) (hide no))) (property "Value" "VCC" (at 223.52 157.48000000000002 0) (effects (font (size 1.27 1.27)) (hide yes))) (property "Footprint" "" (at 223.52 157.48000000000002 0) (effects (font (size 1.27 1.27)) (hide yes))) (instances (project "merge_doc_diff" (path "/6a63b2fd-95bd-4577-8dd0-b39e630773a5" (reference "#PWR01") (unit 1)))))
+    (symbol (lib_id "power:PWR_FLAG") (at 233.68 152.4 0) (property "Reference" "#FLG01" (at 233.68 157.48000000000002 0) (effects (font (size 1.27 1.27)) (hide no))) (property "Value" "PWR_FLAG" (at 233.68 157.48000000000002 0) (effects (font (size 1.27 1.27)) (hide yes))) (property "Footprint" "" (at 233.68 157.48000000000002 0) (effects (font (size 1.27 1.27)) (hide yes))) (instances (project "merge_doc_diff" (path "/6a63b2fd-95bd-4577-8dd0-b39e630773a5" (reference "#FLG01") (unit 1)))))
+    (symbol (lib_id "power:GND") (at 99.06 104.14 0) (property "Reference" "#PWR02" (at 99.06 109.22 0) (effects (font (size 1.27 1.27)) (hide no))) (property "Value" "GND" (at 99.06 109.22 0) (effects (font (size 1.27 1.27)) (hide yes))) (property "Footprint" "" (at 99.06 109.22 0) (effects (font (size 1.27 1.27)) (hide yes))) (instances (project "merge_doc_diff" (path "/6a63b2fd-95bd-4577-8dd0-b39e630773a5" (reference "#PWR02") (unit 1)))))
+    (symbol (lib_id "power:PWR_FLAG") (at 109.22 104.14 180) (property "Reference" "#FLG02" (at 109.22 109.22 180) (effects (font (size 1.27 1.27)) (hide no))) (property "Value" "PWR_FLAG" (at 109.22 109.22 180) (effects (font (size 1.27 1.27)) (hide yes))) (property "Footprint" "" (at 109.22 109.22 180) (effects (font (size 1.27 1.27)) (hide yes))) (instances (project "merge_doc_diff" (path "/6a63b2fd-95bd-4577-8dd0-b39e630773a5" (reference "#FLG02") (unit 1)))))
 
 	(sheet_instances
 		(path "/"

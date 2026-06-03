@@ -23,14 +23,12 @@ import type {
 import { resolveNet as resolveNetStandalone } from './pcb_net_resolver.js';
 import { createVia } from './pcb_via.js';
 import { loadExistingBoardElements } from './pcb_board_loader.js';
-import { IPcbBoardContext } from './pcb_board_context.js';
 import { PcbInternalState } from './pcb_state.js';
-import { RoutingGrid } from '../routing/shared/routing_grid.js';
 
 import { createBoard } from './pcb_board_creation.js';
 import { placeComponent, stageComponent, groupComponents } from './pcb_component_lifecycle.js';
-import { registerRouter, createRouter, getRouterGridConfigurator, getRegisteredRouters } from './pcb_router_registry.js';
-import type { RouterFactory, RouterGridConfigurator, IRouterContext } from './pcb_router_registry.js';
+import { registerRouter } from './pcb_router_registry.js';
+import type { RouterFactory, RouterGridConfigurator } from './pcb_router_registry.js';
 import { pcbNet, pcbNamed, pcbBom, pcbContract, pcbAdd } from './pcb_schematic_bridge.js';
 import { pcbRoute, pcbWaitForPendingAutoroutes, pcbAutorouteBatch } from './pcb_routing_api.js';
 import {
@@ -80,17 +78,12 @@ export type {
 /**
  * Represents a printed circuit board (PCB).
  */
-export class PCB implements IPcbBoardContext {
-    boardName: string;
-    /** @internal */
-    schematic: Schematic;
-    thickness: number;
-    copper_thickness: number;
-    outlines: IOutline[] = [];
-    tracks: IOutline[] = [];
-
-    /** @internal Mutable state capsule shared with extracted sub-modules. */
-    readonly state: PcbInternalState;
+export class PCB {
+    readonly boardName: string;
+    private _schematic: Schematic;
+    private _state: PcbInternalState;
+    private _outlines: IOutline[] = [];
+    private _tracks: IOutline[] = [];
 
     /**
      * Initializes a new PCB.
@@ -106,92 +99,37 @@ export class PCB implements IPcbBoardContext {
             schematic: new Schematic(boardName),
             ...options,
         };
-        this.state = new PcbInternalState(resolvedOptions);
-        this.thickness = resolvedOptions.thickness ?? 1.6;
-        this.copper_thickness = resolvedOptions.copper_thickness ?? 35;
-        this.schematic = resolvedOptions.schematic ?? new Schematic(boardName);
+        this._state = new PcbInternalState(resolvedOptions);
+        this._schematic = resolvedOptions.schematic ?? new Schematic(boardName);
 
-        this.state.existingBoardElements = loadExistingBoardElements(boardName);
+        this._state.existingBoardElements = loadExistingBoardElements(boardName);
     }
 
-    /**
-     * Pushes a new offset to the stack. All subsequent coordinates will be relative to this offset.
-     */
-    pushOffset(x: number, y: number): void {
-        this.state.pushOffset(x, y);
+    get schematic(): Schematic {
+        return this._schematic;
     }
 
-    popOffset(): void {
-        this.state.popOffset();
+    get thickness(): number {
+        return this._state.options.thickness ?? 1.6;
     }
 
-    get currentOffset(): { x: number, y: number } {
-        return this.state.getOffset();
+    get copper_thickness(): number {
+        return this._state.options.copper_thickness ?? 35;
     }
 
-    /**
-     * Register a routing algorithm with this PCB instance.
-     *
-     * @param registerFn - A registerRouter function (e.g., from @typecad-astar)
-     * @param algorithm - Optional algorithm name (defaults to 'astar')
-     */
-    registerRouter(
-        registerFn: (
-            registry: {
-                register(
-                    name: string,
-                    factory: RouterFactory,
-                    options?: { configureGrid?: RouterGridConfigurator }
-                ): void;
-            },
-            algorithm?: string
-        ) => void
-    ): void {
-        registerRouter(registerFn);
+    get outlines(): readonly IOutline[] {
+        return this._outlines;
     }
 
-    createRouter(name: string, grid: RoutingGrid, options: unknown): IRouterContext {
-        return createRouter(name, grid, options);
-    }
-
-    getRouterGridConfigurator(name: string): RouterGridConfigurator | undefined {
-        return getRouterGridConfigurator(name);
-    }
-
-    getRegisteredRouters(): string[] {
-        return getRegisteredRouters();
-    }
-
-    /**
-     * Getter for PCB options.
-     */
-    get option(): IPcbOptions {
-        return this.state.options;
+    get tracks(): readonly IOutline[] {
+        return this._tracks;
     }
 
     get options(): IPcbOptions {
         return {
-            ...this.state.options,
-            remove_orphans: this.state.options.remove_orphans ?? true
+            ...this._state.options,
+            remove_orphans: this._state.options.remove_orphans ?? true
         };
-    }
-
-    
-    resolveNet(
-        componentReference: string,
-        pinNumber: string,
-        componentUuid?: string,
-        boardNetNameToCodeMap?: Map<string, number>,
-        fallbackNetName?: string
-    ): INetResolution {
-        return resolveNetStandalone(
-            this.schematic,
-            componentReference,
-            pinNumber,
-            componentUuid,
-            boardNetNameToCodeMap,
-            fallbackNetName
-        );
     }
 
     /**
@@ -200,13 +138,13 @@ export class PCB implements IPcbBoardContext {
      */
     place(...components: Component[]) {
         components.forEach(component => {
-            placeComponent(this.state, component);
+            placeComponent(this._state, component);
         });
     }
 
     stage(...components: Component[]) {
         components.forEach(component => {
-            stageComponent(this.state, component);
+            stageComponent(this._state, component);
         });
     }
 
@@ -216,15 +154,14 @@ export class PCB implements IPcbBoardContext {
      * @param items - A list of Component instances or TrackBuilder instances.
      */
     group(group_name: string, ...items: Array<Component | TrackBuilder>) {
-        groupComponents(this.state, (...comps) => this.place(...comps), group_name, ...items);
+        groupComponents(this._state, (...comps) => this.place(...comps), group_name, ...items);
     }
 
     text(options: IGrTextOptions): void {
-        pcbTextWithOffset(this.state, options);
+        pcbTextWithOffset(this._state, options);
     }
 
     async create(...items: Array<Component | TrackBuilder | Array<Component | TrackBuilder>>) {
-        // Flatten any arrays passed as arguments
         const flattened: Array<Component | TrackBuilder> = [];
         for (const item of items) {
             if (Array.isArray(item)) {
@@ -245,81 +182,64 @@ export class PCB implements IPcbBoardContext {
      */
     via({ at, size, drill, net, powerInfo }: Omit<IVia, 'uuid' | 'netCode' | 'layers'> = {}): Component {
         return createVia(
-            this.state.currentOffset,
+            this._state.currentOffset,
             (c) => this.stage(c),
             { at, size, drill, net, powerInfo }
         );
     }
 
     zone(options: IPcbZoneOptions): void {
-        pcbZoneWithOffset(this.state, options);
+        pcbZoneWithOffset(this._state, options);
     }
 
     keepout(options: IPcbKeepoutOptions): void {
-        pcbKeepoutWithOffset(this.state, options);
+        pcbKeepoutWithOffset(this._state, options);
     }
 
     line(options: IPcbLineOptions): void {
-        pcbLineWithOffset(this.state, options);
+        pcbLineWithOffset(this._state, options);
     }
 
     circle(options: IPcbCircleOptions): void {
-        pcbCircleWithOffset(this.state, options);
+        pcbCircleWithOffset(this._state, options);
     }
 
     rect(options: IPcbRectOptions): void {
-        pcbRectWithOffset(this.state, options);
+        pcbRectWithOffset(this._state, options);
     }
 
     poly(options: IPcbPolyOptions): void {
-        pcbPolyWithOffset(this.state, options);
+        pcbPolyWithOffset(this._state, options);
     }
 
     outline(x: number, y: number, width: number, height: number, filletRadius: number = 0, conceptualUuidFromUser?: string): void {
-        pcbOutlineWithOffset(this.state, x, y, width, height, filletRadius, conceptualUuidFromUser);
+        pcbOutlineWithOffset(this._state, x, y, width, height, filletRadius, conceptualUuidFromUser);
     }
 
-    /** @internal */
-    _track(start: { x: number, y: number }, end: { x: number, y: number }, width: number = 0.05, layer: string = "F.Cu", locked: boolean = false, uuid?: string, net?: string): string {
-        return pcbTrackWithOffset(this.state, start, end, width, layer, locked, uuid, net);
-    }
-
-    track(options?: { locked?: boolean; net?: string; deferStaging?: boolean }): TrackBuilder {
+    track(options?: { locked?: boolean; net?: string; deferStaging?: boolean; debug?: boolean }): TrackBuilder {
         return new TrackBuilder(this, options);
     }
 
     route(options: IAutorouteOptions): Promise<IAutorouteResult>;
     route(netDefinition: ISchematicNetDefinition, options?: import('./pcb_interfaces.js').IAutorouteRouteOptions): Promise<IAutorouteResult>;
     async route(arg1: ISchematicNetDefinition | IAutorouteOptions, options?: import('./pcb_interfaces.js').IAutorouteRouteOptions): Promise<IAutorouteResult> {
-        return pcbRoute(this, this.state, arg1, options);
+        return pcbRoute(this, this._state, arg1, options);
     }
 
     async waitForPendingAutoroutes(): Promise<void> {
-        return pcbWaitForPendingAutoroutes(this.state);
-    }
-
-    async autorouteBatch(
-        items: Array<{ from: Pin | Pin[]; to: Pin | Pin[]; options?: import('./pcb_interfaces.js').IAutorouteRouteOptions; name?: string }>,
-        batchOptions?: {
-            rounds?: number;
-            reorder?: 'none' | 'reverse' | 'byDistance';
-            relaxViaCostPerRound?: number;
-            increaseIterationsPerRound?: number;
-        }
-    ): Promise<{ results: IAutorouteResult[]; success: boolean; rounds: number }> {
-        return pcbAutorouteBatch(this, items, batchOptions);
+        return pcbWaitForPendingAutoroutes(this._state);
     }
 
     net(...pins: Pin[]): ISchematicNetDefinition {
-        return pcbNet(this.schematic, ...pins);
+        return pcbNet(this._schematic, ...pins);
     }
 
     named(name: string) {
-        return pcbNamed(this.schematic, name);
+        return pcbNamed(this._schematic, name);
     }
 
     bom(output_folder?: string): void {
-        pcbBom(this.schematic, output_folder);
+        pcbBom(this._schematic, output_folder);
     }
 
     contract(options: import('../contract.js').ContractOptions = {}): void {
@@ -327,17 +247,101 @@ export class PCB implements IPcbBoardContext {
     }
 
     add(...components: Component[]): void {
-        pcbAdd(this.schematic, ...components);
+        pcbAdd(this._schematic, ...components);
     }
+}
 
-    /** @internal */
-    _getTrackData(uuid: string): IGrLine | null {
-        for (const outline of this.state.stagedOutlines) {
-            if (outline.uuid === uuid && outline.elements.length === 1 && outline.elements[0].type === 'line') {
-                return outline.elements[0] as IGrLine;
-            }
+export function getPcbState(pcb: PCB): PcbInternalState {
+    return (pcb as unknown as { _state: PcbInternalState })._state;
+}
+
+export function setPcbOutlines(pcb: PCB, outlines: IOutline[]): void {
+    (pcb as unknown as { _outlines: IOutline[] })._outlines = outlines;
+}
+
+export function setPcbTracks(pcb: PCB, tracks: IOutline[]): void {
+    (pcb as unknown as { _tracks: IOutline[] })._tracks = tracks;
+}
+
+export function pcbTrackSegment(
+    pcb: PCB,
+    start: { x: number, y: number },
+    end: { x: number, y: number },
+    width: number = 0.05,
+    layer: string = "F.Cu",
+    locked: boolean = false,
+    uuid?: string,
+    net?: string
+): string {
+    const state = getPcbState(pcb);
+    return pcbTrackWithOffset(state, start, end, width, layer, locked, uuid, net);
+}
+
+export function pcbGetTrackData(pcb: PCB, uuid: string): IGrLine | null {
+    const state = getPcbState(pcb);
+    for (const outline of state.stagedOutlines) {
+        if (outline.uuid === uuid && outline.elements.length === 1 && outline.elements[0].type === 'line') {
+            return outline.elements[0] as IGrLine;
         }
-        return null;
     }
+    return null;
+}
 
+export function pcbResolveNet(
+    pcb: PCB,
+    componentReference: string,
+    pinNumber: string,
+    componentUuid?: string,
+    boardNetNameToCodeMap?: Map<string, number>,
+    fallbackNetName?: string
+): INetResolution {
+    return resolveNetStandalone(
+        (pcb as unknown as { _schematic: Schematic })._schematic,
+        componentReference,
+        pinNumber,
+        componentUuid,
+        boardNetNameToCodeMap,
+        fallbackNetName
+    );
+}
+
+export function pcbPushOffset(pcb: PCB, x: number, y: number): void {
+    getPcbState(pcb).pushOffset(x, y);
+}
+
+export function pcbPopOffset(pcb: PCB): void {
+    getPcbState(pcb).popOffset();
+}
+
+export function pcbGetCurrentOffset(pcb: PCB): { x: number, y: number } {
+    return getPcbState(pcb).getOffset();
+}
+
+export function pcbRegisterRouter(
+    pcb: PCB,
+    registerFn: (
+        registry: {
+            register(
+                name: string,
+                factory: RouterFactory,
+                options?: { configureGrid?: RouterGridConfigurator }
+            ): void;
+        },
+        algorithm?: string
+    ) => void
+): void {
+    registerRouter(registerFn);
+}
+
+export function autorouteBatchOnPcb(
+    pcb: PCB,
+    items: Array<{ from: Pin | Pin[]; to: Pin | Pin[]; options?: import('./pcb_interfaces.js').IAutorouteRouteOptions; name?: string }>,
+    batchOptions?: {
+        rounds?: number;
+        reorder?: 'none' | 'reverse' | 'byDistance';
+        relaxViaCostPerRound?: number;
+        increaseIterationsPerRound?: number;
+    }
+): Promise<{ results: IAutorouteResult[]; success: boolean; rounds: number }> {
+    return pcbAutorouteBatch(pcb, items, batchOptions);
 }

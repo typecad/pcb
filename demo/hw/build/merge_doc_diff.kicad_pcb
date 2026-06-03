@@ -12,8 +12,8 @@
   (
     footprint
     "Resistor_SMD:R_0603_1608Metric"
-    (property "Code" "typecad:v1:eyJ2IjoxLCJ1IjoiIiwiZiI6IkM6XFx0eXBlY2FkXFx0eXBlQ0FEXFxkZW1vXFxod1xcc3JjXFxwcm9fbWluaS50cyIsImwiOjZ9" (at 0 0 0) (layer "F.Fab") (hide yes) (uuid "eddbe4ab-c348-4e2e-bcd3-3e461c932025") (effects (font (size 1 1) (thickness 0.15))))
-    (uuid "df0556e1-4c78-491e-83db-8d73cf24f57e")
+    (property "Code" "typecad:v1:eyJ2IjoxLCJ1IjoiIiwibiI6InIxIn0" (at 0 0 0) (layer "F.Fab") (hide yes) (uuid "d1f7a703-53fe-4c09-aa50-a3186c2730c5") (effects (font (size 1 1) (thickness 0.15))))
+    (uuid "62346a16-16d4-4fa1-9e6b-29f48d4781b9")
     (at 0 0 0)
     (version 20260206)
     (generator "kicad-footprint-generator")
@@ -70,8 +70,8 @@
   (
     footprint
     "Resistor_SMD:R_0603_1608Metric"
-    (property "Code" "typecad:v1:eyJ2IjoxLCJ1IjoiIiwiZiI6IkM6XFx0eXBlY2FkXFx0eXBlQ0FEXFxkZW1vXFxod1xcc3JjXFxwcm9fbWluaS50cyIsImwiOjd9" (at 0 0 0) (layer "F.Fab") (hide yes) (uuid "00b33126-a9dc-4a93-9a06-ca5537a07737") (effects (font (size 1 1) (thickness 0.15))))
-    (uuid "bf0797bd-b396-40d4-a47b-4786a2280e44")
+    (property "Code" "typecad:v1:eyJ2IjoxLCJ1IjoiIiwibiI6InIyIn0" (at 0 0 0) (layer "F.Fab") (hide yes) (uuid "dd3ae6c5-4e9a-43f8-bcad-00aded16b4ca") (effects (font (size 1 1) (thickness 0.15))))
+    (uuid "2c179400-8f88-4bc1-be6f-ff509bbc610d")
     (at 0 0 0)
     (version 20260206)
     (generator "kicad-footprint-generator")
@@ -128,8 +128,8 @@
   (
     footprint
     "Resistor_SMD:R_0603_1608Metric"
-    (property "Code" "typecad:v1:eyJ2IjoxLCJ1IjoiIiwiZiI6IkM6XFx0eXBlY2FkXFx0eXBlQ0FEXFxkZW1vXFxod1xcc3JjXFxwcm9fbWluaS50cyIsImwiOjh9" (at 0 0 0) (layer "F.Fab") (hide yes) (uuid "a61d44ca-b4e6-438e-96ea-e97c7a159fcd") (effects (font (size 1 1) (thickness 0.15))))
-    (uuid "e320e27b-e1ed-4fc1-b50c-8be3cf86a52b")
+    (property "Code" "typecad:v1:eyJ2IjoxLCJ1IjoiIiwibiI6InIzIn0" (at 0 0 0) (layer "F.Fab") (hide yes) (uuid "d617a3f9-4189-4c70-89dd-37f63426a9b6") (effects (font (size 1 1) (thickness 0.15))))
+    (uuid "c6b0194c-1b27-4784-88bc-beaf2d8f87cb")
     (at 0 0 0)
     (version 20260206)
     (generator "kicad-footprint-generator")

@@ -55,4 +55,38 @@ export class PcbInternalState {
     getOffset(): { x: number; y: number } {
         return { ...this.currentOffset };
     }
+
+    /**
+     * Computes the bounding box of all board outlines (line and arc elements)
+     * across both `outlines` and `stagedOutlines`. Used by {@link board}
+     * to determine the board's physical extent.
+     *
+     * @returns `{ minX, minY, maxX, maxY }` in mm, or `null` if no outlines exist.
+     */
+    getOutlineBounds(): { minX: number; minY: number; maxX: number; maxY: number } | null {
+        const allOutlines = [...this.outlines, ...this.stagedOutlines];
+        if (allOutlines.length === 0) return null;
+
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+
+        for (const outline of allOutlines) {
+            for (const el of outline.elements) {
+                if (el.type === 'line') {
+                    minX = Math.min(minX, el.start.x, el.end.x);
+                    minY = Math.min(minY, el.start.y, el.end.y);
+                    maxX = Math.max(maxX, el.start.x, el.end.x);
+                    maxY = Math.max(maxY, el.start.y, el.end.y);
+                } else if (el.type === 'arc') {
+                    minX = Math.min(minX, el.start.x, el.mid.x, el.end.x);
+                    minY = Math.min(minY, el.start.y, el.mid.y, el.end.y);
+                    maxX = Math.max(maxX, el.start.x, el.mid.x, el.end.x);
+                    maxY = Math.max(maxY, el.start.y, el.mid.y, el.end.y);
+                }
+            }
+        }
+
+        if (minX === Infinity) return null;
+
+        return { minX, minY, maxX, maxY };
+    }
 }

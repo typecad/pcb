@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
-import { PCB } from '../src/pcb/pcb.js';
+import { PCB, getPcbState } from '../src/pcb/pcb.js';
 import { Component } from '../src/component.js';
 import { Pin } from '../src/pin.js';
 import { createTempDir, cleanupTempDir, writeTempFile, readTempFile } from './helpers/temp_dir.js';
@@ -50,7 +50,7 @@ describe('Contract Functionality', () => {
             }
         });
         
-        pcb.state.components.push(mcu);
+        getPcbState(pcb).components.push(mcu);
         
         // Mock fs functions
         const writeFileSyncMock = vi.spyOn(fs, 'writeFileSync');
@@ -78,7 +78,7 @@ describe('Contract Functionality', () => {
             reference: 'U1'
         });
         
-        pcb.state.components.push(mcu);
+        getPcbState(pcb).components.push(mcu);
         
         // Mock fs functions
         const writeFileSyncMock = vi.spyOn(fs, 'writeFileSync');
@@ -106,7 +106,7 @@ describe('Contract Functionality', () => {
             reference: 'U1'
         });
         
-        pcb.state.components.push(mcu);
+        getPcbState(pcb).components.push(mcu);
         
         // Mock fs functions
         const writeFileSyncMock = vi.spyOn(fs, 'writeFileSync');
@@ -154,7 +154,7 @@ describe('Contract Functionality', () => {
             }
         });
         
-        pcb.state.components.push(mcu);
+        getPcbState(pcb).components.push(mcu);
         
         // Mock fs functions
         const writeFileSyncMock = vi.spyOn(fs, 'writeFileSync');
@@ -190,7 +190,7 @@ describe('Contract Functionality', () => {
             }
         });
         
-        pcb.state.components.push(mcu);
+        getPcbState(pcb).components.push(mcu);
         
         // Mock fs functions
         const writeFileSpy = vi.spyOn(fs, 'writeFileSync');

@@ -55,7 +55,7 @@ describe('normalizeNetName in existing board context', () => {
 describe('parseExistingBoard', () => {
     it('should build empty board contents when no existing elements', () => {
         const pcb = {
-            state: { existingBoardElements: [] },
+            _state: { existingBoardElements: [] },
             boardName: 'test',
             options: {},
         };
@@ -77,7 +77,7 @@ describe('parseExistingBoard', () => {
             [sym('footprint'), sym('Resistor_SMD:R_0402'), [sym('at'), 10, 20, 0], [sym('layer'), 'F.Cu']],
         ];
         const pcb = {
-            state: { existingBoardElements: existingElements },
+            _state: { existingBoardElements: existingElements },
             boardName: 'test',
             options: {},
         };
@@ -120,7 +120,7 @@ describe('processExistingFootprints', () => {
 
         const boardContents: SExpr[] = [];
         processExistingFootprints(existingElements, {
-            state: {},
+            _state: {},
             resolveNet: () => ({ found: false, netCode: 0, netName: '' }),
             options: { remove_orphans: true },
         } as any, componentMap, new Map(), boardContents);
@@ -141,7 +141,7 @@ describe('processExistingFootprints', () => {
         ];
         const boardContents: SExpr[] = [];
         processExistingFootprints(existingElements, {
-            state: {},
+            _state: {},
             resolveNet: () => ({ found: false, netCode: 0, netName: '' }),
             options: { remove_orphans: false },
         } as any, new Map(), new Map(), boardContents);
@@ -157,7 +157,7 @@ describe('processExistingFootprints', () => {
         ];
         const boardContents: SExpr[] = [];
         processExistingFootprints(existingElements, {
-            state: {},
+            _state: {},
             resolveNet: () => ({ found: false, netCode: 0, netName: '' }),
             options: { remove_orphans: true },
         } as any, new Map(), new Map(), boardContents);

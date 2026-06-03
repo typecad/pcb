@@ -22,7 +22,8 @@ import {
     debugLog,
     isAutorouteResultRouteItem,
 } from './pcb_autoroute_helpers.js';
-import type { IPcbBoardContext } from './pcb_board_context.js';
+import type { PCB } from './pcb.js';
+import { getPcbState } from './pcb.js';
 
 /** Data tracked for each manually-routed pin pair. */
 export interface ManualRouteData {
@@ -45,7 +46,7 @@ export interface ManualRouteProcessingResult {
  *  - Add manual route segments as obstacles to the grid
  */
 export function processManualRoutes(
-    pcb: IPcbBoardContext,
+    pcb: PCB,
     options: IAutorouteOptions,
     allPins: Pin[],
     traceWidth: number,
@@ -87,7 +88,8 @@ export function processManualRoutes(
             if (uuidsToRemove.length > 0) {
                 debugLog(options.debug, chalk.blue(`[PCB] Removing ${uuidsToRemove.length} staged tracks from manual route to prevent duplicates`));
                 const uuidSet = new Set(uuidsToRemove);
-                pcb.state.stagedOutlines = pcb.state.stagedOutlines.filter((outline) => {
+                const state = getPcbState(pcb);
+                state.stagedOutlines = state.stagedOutlines.filter((outline) => {
                     const hasMatchingUuid = outline.elements.some((el) =>
                         'uuid' in el && uuidSet.has(el.uuid)
                     );

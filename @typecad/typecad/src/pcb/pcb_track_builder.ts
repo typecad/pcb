@@ -1,4 +1,4 @@
-import { IPcbBoardContext } from './pcb_board_context.js';
+import { PCB, pcbTrackSegment, pcbGetTrackData } from './pcb.js';
 import { generateUuid, formatCallSite } from './pcb_utils.js';
 import { IVia, IGeneratedElement, IPowerInfo, ITrackDetails, IViaPowerInfo, IGrLine } from './pcb_interfaces.js';
 import logger from '../utils/logging.js';
@@ -9,19 +9,19 @@ import { formatSourceError } from '../utils/error_reporter.js';
 import { validateFinite, validateNonNegative } from '../utils/numeric_validation.js';
 
 export class TrackBuilder {
-    private pcb: IPcbBoardContext;
-    private currentPosition!: { x: number, y: number }; // Initialized by from()
-    private currentLayer: string = "F.Cu"; // Default layer
-    private currentWidth: number = 0.2; // Default track width
+    private pcb: PCB;
+    private currentPosition!: { x: number, y: number };
+    private currentLayer: string = "F.Cu";
+    private currentWidth: number = 0.2;
     private elements: IGeneratedElement[] = [];
     private lastOperationSuccessful: boolean = true;
     private _powerInfo?: IPowerInfo;
-    private _locked: boolean = false; // Default locked state
-    private _net?: string; // Net name for obstacle detection
-    private _deferStaging: boolean = false; // If true, don't stage tracks immediately
-    private _debug: boolean = false; // Debug flag for console logging
+    private _locked: boolean = false;
+    private _net?: string;
+    private _deferStaging: boolean = false;
+    private _debug: boolean = false;
 
-    constructor(pcb: IPcbBoardContext, options?: { locked?: boolean, net?: string, deferStaging?: boolean, debug?: boolean }) {
+    constructor(pcb: PCB, options?: { locked?: boolean, net?: string, deferStaging?: boolean, debug?: boolean }) {
         this.pcb = pcb;
         this._locked = options?.locked ?? false;
         this._debug = options?.debug ?? false;
@@ -100,14 +100,15 @@ export class TrackBuilder {
 
         if (!this._deferStaging) {
             // Normal behavior: stage the track immediately
-            persistentTrackUuid = this.pcb._track(
+            persistentTrackUuid = pcbTrackSegment(
+                this.pcb,
                 this.currentPosition,
                 { x: endPos.x, y: endPos.y },
                 targetWidth,
                 targetLayer,
                 this._locked,
-                undefined,  // uuid
-                this._net   // net for obstacle detection
+                undefined,
+                this._net
             );
 
             // DEBUG: log that we staged a track immediately
@@ -121,7 +122,7 @@ export class TrackBuilder {
             }
 
             // Get the actual track data from the PCB to include any preserved manual edits
-            actualTrackData = this.pcb._getTrackData(persistentTrackUuid);
+            actualTrackData = pcbGetTrackData(this.pcb, persistentTrackUuid);
         } else {
             // Deferred staging: just generate a UUID but don't stage yet
             persistentTrackUuid = generateUuid();

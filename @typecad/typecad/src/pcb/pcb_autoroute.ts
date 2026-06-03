@@ -24,7 +24,7 @@ import {
 import type { ITrackBuilder } from '../routing/types/length_match.js';
 import { TrackBuilder } from './pcb_track_builder.js';
 import { PCB_CONSTANTS } from './pcb_routing_calculations.js';
-import { IPcbBoardContext } from './pcb_board_context.js';
+import { PCB, getPcbState, pcbTrackSegment } from './pcb.js';
 import type { ISchematicNode } from '../types/schematic_types.js';
 import { IRoutingObstacle, RoutingGrid } from '../routing/shared/routing_grid.js';
 import { PadResolver } from '../routing/shared/pad_resolver.js';
@@ -71,8 +71,8 @@ import { routePairwise } from './pcb_autoroute_pairwise.js';
 // Re-export enqueueAutoroute for pcb_routing_core.ts (which imports it)
 export { enqueueAutoroute } from './pcb_autoroute_helpers.js';
 
-// pcb parameter is typed as IPcbBoardContext.
-export function autoroute(pcb: IPcbBoardContext, options: IAutorouteOptions): IAutorouteResult {
+// pcb parameter is typed as PCB.
+export function autoroute(pcb: PCB, options: IAutorouteOptions): IAutorouteResult {
     // ── 1. Validate required parameters ──────────────────────────────────
     if (!options.from || !options.to) {
         const err = new RoutingError(formatSourceError(`autoroute() requires both 'from' and 'to' parameters`, getCallSite()));
@@ -296,9 +296,10 @@ export function autoroute(pcb: IPcbBoardContext, options: IAutorouteOptions): IA
     // ── 10. Calculate board bounds ───────────────────────────────────────
     const { components: componentsForBounds, stagedComponents: stagedComponentsForBounds } =
         collectComponentsForBounds(pcb, componentsFromPins);
-    let bounds = calculateBoardBounds(componentsForBounds, pcb.outlines, stagedComponentsForBounds);
+    let bounds = calculateBoardBounds(componentsForBounds, pcb.outlines as IOutline[], stagedComponentsForBounds);
 
-    const stagedOutlines = pcb.state.stagedOutlines;
+    const state = getPcbState(pcb);
+    const stagedOutlines = state.stagedOutlines;
     const requestedGridResolution = options.gridResolution ?? 0.1;
     const boundsExpansionMargin = Math.max(
         5,
@@ -309,7 +310,7 @@ export function autoroute(pcb: IPcbBoardContext, options: IAutorouteOptions): IA
 
     const expandedBounds = expandBoundsToIncludeTracks(
         bounds,
-        Array.isArray(pcb.state.grLines) ? pcb.state.grLines as IGrLine[] : [],
+        Array.isArray(state.grLines) ? state.grLines as IGrLine[] : [],
         stagedOutlines,
         boundsExpansionMargin
     );
@@ -511,7 +512,8 @@ export function autoroute(pcb: IPcbBoardContext, options: IAutorouteOptions): IA
                 if (el.type === 'track' && el.details) {
                     const trackDetails = el.details as ITrackDetails;
                     debugLog(options.debug, chalk.gray(`[PCB] Staging track: (${trackDetails.start.x.toFixed(3)}, ${trackDetails.start.y.toFixed(3)}) -> (${trackDetails.end.x.toFixed(3)}, ${trackDetails.end.y.toFixed(3)})`));
-                    pcb._track(
+                    pcbTrackSegment(
+                        pcb,
                         trackDetails.start,
                         trackDetails.end,
                         trackDetails.width,
@@ -530,10 +532,10 @@ export function autoroute(pcb: IPcbBoardContext, options: IAutorouteOptions): IA
     }
 
     // ── 20. Report results ───────────────────────────────────────────────
-    debugLog(options.debug, chalk.gray(`[PCB][DEBUG] After processing track builders: stagedOutlines=${pcb.state.stagedOutlines.length}, tracks=${pcb.tracks.length}, outlines_public=${pcb.state.outlines.length}`));
-    if (options.debug && pcb.state.stagedOutlines.length > 0) {
+    debugLog(options.debug, chalk.gray(`[PCB][DEBUG] After processing track builders: stagedOutlines=${state.stagedOutlines.length}, tracks=${pcb.tracks.length}, outlines_public=${state.outlines.length}`));
+    if (options.debug && state.stagedOutlines.length > 0) {
         try {
-            const sample = pcb.state.stagedOutlines.slice(0, 5).map((o: IOutline) => ({
+            const sample = state.stagedOutlines.slice(0, 5).map((o: IOutline) => ({
                 uuid: o.uuid,
                 elements: o.elements.map((el) => {
                     const typedEl = el as unknown as (OutlineElement & { details?: { layer?: string; start?: { x: number; y: number }; end?: { x: number; y: number } } });
@@ -612,7 +614,8 @@ export function autoroute(pcb: IPcbBoardContext, options: IAutorouteOptions): IA
                         for (const el of elements) {
                             if (el.type === 'track' && el.details && 'start' in el.details) {
                                 const trackDetails = el.details as import('./pcb_interfaces.js').ITrackDetails;
-                                pcb._track(
+                                pcbTrackSegment(
+                                    pcb,
                                     trackDetails.start,
                                     trackDetails.end,
                                     trackDetails.width,

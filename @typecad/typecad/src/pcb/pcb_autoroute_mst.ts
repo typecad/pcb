@@ -25,6 +25,7 @@ import {
 } from './pcb_autoroute_helpers.js';
 import { ManualRouteData } from './pcb_autoroute_manual_routes.js';
 import type { ISchematicNode } from '../types/schematic_types.js';
+import { pcbTrackSegment } from './pcb.js';
 
 /**
  * Attempt MST-based single-net routing.
@@ -185,7 +186,7 @@ export function routeMstNet(
                                 for (const el of elements) {
                                     if (el.type === 'track' && el.details && 'start' in el.details) {
                                         const td = el.details as import('./pcb_interfaces.js').ITrackDetails;
-                                        pcb._track(td.start, td.end, td.width, td.layer, td.locked ?? false, el.uuid, undefined);
+                                        pcbTrackSegment(pcb, td.start, td.end, td.width, td.layer, td.locked ?? false, el.uuid, undefined);
                                     }
                                 }
                             }

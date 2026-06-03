@@ -52,7 +52,7 @@ export function showCreateHelp(): void {
   );
   console.log('  --packages=<list>     Comma-separated packages to install');
   console.log(
-    '                        Available: @typecad/ngspice, @typecad/graphviz,'
+    '                        Available: @typecad/graphviz,'
   );
   console.log(
     '                        @typecad/jlcpcb-export, @typecad/typecad-prompt,'
@@ -386,7 +386,7 @@ export function showDoctorHelp(): void {
   console.log('  package.json        node_modules integrity');
   console.log('  typecad config      entry file');
   console.log('  kicad-cli / PATH    KiCad symbol libraries');
-  console.log('  arduino-cli         Git');
+  console.log('  Git');
   console.log('  build/ directory');
 }
 

@@ -12,7 +12,7 @@ import type { IGrLine, IGrArc, IKeepoutZone, IOutline, IVia, IFilledZone, IGrTex
 
 function makeContext() {
     return {
-        state: {
+        _state: {
             grTexts: [],
             grLines: [],
             grCircles: [],
@@ -226,7 +226,7 @@ describe('pcb_board_serializer', () => {
         it('should render gr_text element', () => {
             const boardContents: SExpr[] = [];
             const ctx = makeContext();
-            ctx.state.grTexts = [{
+            ctx._state.grTexts = [{
                 text: 'TEST_LABEL',
                 x: 10,
                 y: 20,
@@ -244,7 +244,7 @@ describe('pcb_board_serializer', () => {
         it('should render gr_text with font effects', () => {
             const boardContents: SExpr[] = [];
             const ctx = makeContext();
-            ctx.state.grTexts = [{
+            ctx._state.grTexts = [{
                 text: 'BOLD',
                 x: 0, y: 0,
                 font: 'Arial',
@@ -267,7 +267,7 @@ describe('pcb_board_serializer', () => {
         it('should render gr_text with hide flag', () => {
             const boardContents: SExpr[] = [];
             const ctx = makeContext();
-            ctx.state.grTexts = [{
+            ctx._state.grTexts = [{
                 text: 'HIDDEN',
                 x: 0, y: 0,
                 hide: true,
@@ -281,7 +281,7 @@ describe('pcb_board_serializer', () => {
         it('should render gr_line element', () => {
             const boardContents: SExpr[] = [];
             const ctx = makeContext();
-            ctx.state.grLines = [{
+            ctx._state.grLines = [{
                 type: 'line',
                 start: { x: 0, y: 0 },
                 end: { x: 10, y: 10 },
@@ -298,7 +298,7 @@ describe('pcb_board_serializer', () => {
         it('should render gr_line with locked flag', () => {
             const boardContents: SExpr[] = [];
             const ctx = makeContext();
-            ctx.state.grLines = [{
+            ctx._state.grLines = [{
                 type: 'line',
                 start: { x: 0, y: 0 }, end: { x: 5, y: 5 },
                 strokeWidth: 0.1, layer: 'F.SilkS', uuid: 'grline-2',
@@ -312,7 +312,7 @@ describe('pcb_board_serializer', () => {
         it('should render gr_circle element', () => {
             const boardContents: SExpr[] = [];
             const ctx = makeContext();
-            ctx.state.grCircles = [{
+            ctx._state.grCircles = [{
                 type: 'circle',
                 center: { x: 0, y: 0 },
                 end: { x: 5, y: 0 },
@@ -329,7 +329,7 @@ describe('pcb_board_serializer', () => {
         it('should render filled gr_circle', () => {
             const boardContents: SExpr[] = [];
             const ctx = makeContext();
-            ctx.state.grCircles = [{
+            ctx._state.grCircles = [{
                 type: 'circle',
                 center: { x: 0, y: 0 }, end: { x: 3, y: 0 },
                 strokeWidth: 0.1, layer: 'F.SilkS', uuid: 'circle-2',
@@ -344,7 +344,7 @@ describe('pcb_board_serializer', () => {
         it('should render gr_rect element', () => {
             const boardContents: SExpr[] = [];
             const ctx = makeContext();
-            ctx.state.grRects = [{
+            ctx._state.grRects = [{
                 type: 'rect',
                 start: { x: 0, y: 0 },
                 end: { x: 10, y: 5 },
@@ -361,7 +361,7 @@ describe('pcb_board_serializer', () => {
         it('should render filled gr_rect', () => {
             const boardContents: SExpr[] = [];
             const ctx = makeContext();
-            ctx.state.grRects = [{
+            ctx._state.grRects = [{
                 type: 'rect',
                 start: { x: 0, y: 0 }, end: { x: 5, y: 5 },
                 strokeWidth: 0.1, layer: 'F.SilkS', uuid: 'rect-2',
@@ -376,7 +376,7 @@ describe('pcb_board_serializer', () => {
         it('should render gr_poly element', () => {
             const boardContents: SExpr[] = [];
             const ctx = makeContext();
-            ctx.state.grPolys = [{
+            ctx._state.grPolys = [{
                 type: 'poly',
                 points: [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 5 }],
                 strokeWidth: 0.2,
@@ -392,7 +392,7 @@ describe('pcb_board_serializer', () => {
         it('should render filled gr_poly', () => {
             const boardContents: SExpr[] = [];
             const ctx = makeContext();
-            ctx.state.grPolys = [{
+            ctx._state.grPolys = [{
                 type: 'poly',
                 points: [{ x: 0, y: 0 }, { x: 5, y: 0 }, { x: 5, y: 3 }],
                 strokeWidth: 0.1, layer: 'F.SilkS', uuid: 'poly-2',

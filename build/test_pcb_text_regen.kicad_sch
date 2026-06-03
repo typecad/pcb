@@ -3,7 +3,7 @@
 	(generator "typecad")
 	(generator_version "0.1.0")
 	(paper "A4")
-    (uuid "943a7e2d-e70e-49bd-a5dd-5e18311124e6")
+    (uuid "e73175d4-8d28-4bd4-be4f-ad235f9e445b")
 
     (lib_symbols
 

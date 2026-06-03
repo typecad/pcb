@@ -22,7 +22,6 @@ function parseArguments() {
 
   // Mapping from npm package names to internal short names
   const packageNameMap: Record<string, string> = {
-    "@typecad/ngspice": "ngspice",
     "@typecad/graphviz": "graphviz",
     "@typecad/jlcpcb-export": "jlcpcb",
     "@typecad/typecad-prompt": "prompt",
@@ -98,7 +97,7 @@ function showHelp() {
   logger.log("  --help                    Show this help message\n");
   logger.log("Available packages:");
   logger.log(
-    "  @typecad/ngspice, @typecad/graphviz, @typecad/jlcpcb-export, @typecad/typecad-prompt,"
+    "  @typecad/graphviz, @typecad/jlcpcb-export, @typecad/typecad-prompt,"
   );
   logger.log(
     "  @typecad/wiring, @typecad/jlcpcb-parts, @typecad/typecad-mcp\n"
@@ -111,7 +110,7 @@ function showHelp() {
     "  npx @typecad/typecad create --name=my_project --pio=true --git=true --board=esp32dev"
   );
   logger.log(
-    "  npx @typecad/typecad create --name=my_project --pio=true --git=true --board=esp32dev --packages=@typecad/ngspice,@typecad/graphviz"
+    "  npx @typecad/typecad create --name=my_project --pio=true --git=true --board=esp32dev --packages=@typecad/graphviz"
   );
 }
 
@@ -206,10 +205,6 @@ async function main(preparsedArgs?: Record<string, any>) {
         multiple: true,
         defaultValue: [],
         options: [
-          {
-            name: "@typecad/ngspice - use typeCAD to design your hardware and run simulations with ngspice with the same codebase",
-            value: "ngspice",
-          },
           {
             name: "@typecad/graphviz - view connections in your typeCAD project",
             value: "graphviz",

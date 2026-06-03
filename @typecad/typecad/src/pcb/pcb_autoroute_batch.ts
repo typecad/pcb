@@ -1,6 +1,6 @@
 import { Pin } from '../pin.js';
 import { IAutorouteRouteOptions, IAutorouteResult, IAutorouteOptions } from './pcb_interfaces.js';
-import { IPcbBoardContext } from './pcb_board_context.js';
+import { PCB, getPcbState } from './pcb.js';
 import { PadResolver } from '../routing/shared/pad_resolver.js';
 
 /**
@@ -9,7 +9,7 @@ import { PadResolver } from '../routing/shared/pad_resolver.js';
  * and relaxed parameters across rounds to negotiate congestion.
  */
 export async function autorouteBatch(
-    pcb: IPcbBoardContext,
+    pcb: PCB,
     items: Array<{ from: Pin | Pin[]; to: Pin | Pin[]; options?: IAutorouteRouteOptions; name?: string }>,
     batchOptions?: {
         rounds?: number;
@@ -24,7 +24,7 @@ export async function autorouteBatch(
     const increaseIterationsPerRound = batchOptions?.increaseIterationsPerRound ?? 25000;
 
     // Use accessor for staged outlines and track preserved segments across rounds
-    const stagedRef = pcb.state.stagedOutlines;
+    const stagedRef = getPcbState(pcb).stagedOutlines;
     const batchBaseline = stagedRef ? stagedRef.length : 0;
     let preservedEnd = batchBaseline; // index up to which tracks are preserved
     const doneSet = new Set<number>(); // indices of items already successfully routed

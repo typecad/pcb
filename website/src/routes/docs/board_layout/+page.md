@@ -30,6 +30,142 @@ pcb.create();
 
 `side` defaults to `'front'` and can be set to `'back'` to place a component on the bottom of the board.
 
+## Relative Placement
+
+Instead of hard-coding millimeter coordinates, use the placement helpers to position components relative to each other and the board edges. All gaps are measured **courtyard edge to courtyard edge**.
+
+### `board()`
+
+Get the board's physical dimensions from the outlines you've defined. Use it to place components at the center, or a fixed distance from any edge.
+
+<ScrollArea orientation="both">
+
+```ts
+import { PCB, board } from '@typecad/typecad';
+
+let pcb = new PCB('typecad_docs');
+pcb.outline(0, 0, 60, 45);
+
+const b = board(pcb);
+
+let u1 = new Component({ footprint: '...' });
+u1.pcb = { x: b.center.x, y: b.center.y }; // center of the board
+```
+
+</ScrollArea>
+
+`board()` returns a `BoardBounds` object with these properties:
+
+| Property | Description |
+|----------|-------------|
+| `center` | `{ x, y }` center point |
+| `left`, `right`, `top`, `bottom` | Edge coordinates in mm |
+| `width`, `height` | Board dimensions in mm |
+| `topLeft`, `topRight`, `bottomLeft`, `bottomRight` | Corner coordinates |
+
+### Edge-relative placement with `fromLeft()`, `fromRight()`, `fromTop()`, `fromBottom()`
+
+Place a component a fixed distance from a board edge, accounting for the component's own footprint size:
+
+<ScrollArea orientation="both">
+
+```ts
+import { PCB, Component, board } from '@typecad/typecad';
+
+let pcb = new PCB('typecad_docs');
+pcb.outline(0, 0, 60, 45);
+const b = board(pcb);
+
+// Connector 5mm from the left edge (courtyard-to-edge)
+const j1 = new Component({
+  footprint: 'Connector_PinHeader_2.54mm:PinHeader_1x03_P2.54mm_Vertical',
+  pcb: { x: b.fromLeft(5), y: b.center.y },
+});
+
+// Test point 1mm from the top-right corner (courtyard-to-edge)
+const tp1 = new Component({
+  footprint: 'TestPoint:TestPoint_Pad_D1.0mm',
+  pcb: { x: b.fromRight(1), y: b.fromTop(1) },
+});
+
+pcb.create(j1, tp1);
+```
+
+</ScrollArea>
+
+The margin defaults to **2mm** if omitted: `b.fromLeft()` places the component 2mm from the left edge.
+
+### Directional placement: `below()`, `above()`, `rightOf()`, `leftOf()`
+
+Place components relative to each other with a specified gap. Each returns a builder — call `.by(gap)` to set the edge-to-edge distance in mm (defaults to **2mm**).
+
+<ScrollArea orientation="both">
+
+```ts
+import { PCB, Component, below, above, rightOf, leftOf, sameAs, board } from '@typecad/typecad';
+import { Resistor, Capacitor, LED } from '@typecad/passives/0603';
+
+let pcb = new PCB('typecad_docs');
+pcb.outline(0, 0, 60, 45);
+const b = board(pcb);
+
+// MCU at center
+let mcu = new Component({ footprint: 'Package_DFN_QFN:QFN-24-1EP_4x4mm_P0.5mm_EP2.6x2.6mm' });
+mcu.pcb = { x: b.center.x, y: b.center.y };
+
+// Decoupling cap 3mm below MCU, aligned in X
+let c1 = new Capacitor({ value: '100nF', pcb: {
+  x: sameAs(mcu).x,
+  y: below(mcu).by(3),
+}});
+
+// Pull-up resistor 2mm right of the cap, same row
+let r1 = new Resistor({ value: '10k', pcb: {
+  x: rightOf(c1).by(2),
+  y: sameAs(c1).y,
+}});
+
+// LED 8mm above the MCU
+let led1 = new LED({ value: 'Red', pcb: {
+  x: sameAs(mcu).x,
+  y: above(mcu).by(8),
+}});
+
+// Current-limiting resistor 4mm left of the LED
+let r2 = new Resistor({ value: '330', pcb: {
+  x: leftOf(led1).by(4),
+  y: sameAs(led1).y,
+}});
+
+// Default 2mm gap
+let c2 = new Capacitor({ value: '10uF', pcb: {
+  x: sameAs(r1).x,
+  y: below(r1).by(),
+}});
+
+pcb.create(mcu, c1, r1, led1, r2, c2);
+```
+
+</ScrollArea>
+
+### `sameAs()`
+
+Align a component's X or Y coordinate with another component:
+
+<ScrollArea orientation="both">
+
+```ts
+import { sameAs } from '@typecad/typecad';
+
+// Same X as r1, custom Y
+let c1 = new Capacitor({ pcb: { x: sameAs(r1).x, y: 20 } });
+
+// Same Y as r1, custom X
+let r2 = new Resistor({ pcb: { x: 30, y: sameAs(r1).y } });
+```
+
+</ScrollArea>
+
 ## Component Text Positioning
 
 Each component has silkscreen and fabrication text labels (reference designator, value, and fab text). You can control their position and style using layout properties:
@@ -66,7 +202,7 @@ pcb.create();
 ```
 </ScrollArea>
 
-### `ITextPositioning` Fields
+<br>
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|

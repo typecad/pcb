@@ -20,13 +20,13 @@ import {
     IAutorouteWaypoint
 } from './pcb_interfaces.js';
 import { IRouteDirectives } from '../routing/router/types.js';
-import {
-    debugLog,
+import { debugLog,
     AutorouteContext,
     RoutingOutput,
 } from './pcb_autoroute_helpers.js';
 import { ManualRouteData } from './pcb_autoroute_manual_routes.js';
 import type { ISchematicNode } from '../types/schematic_types.js';
+import { pcbTrackSegment, getPcbState } from './pcb.js';
 
 /**
  * Route connections pairwise (from[i] → to[i]).
@@ -175,14 +175,15 @@ export function routePairwise(
                         if (el.type === 'track' && el.details && 'start' in el.details) {
                             // It's a track (not a via)
                             const trackDetails = el.details as import('./pcb_interfaces.js').ITrackDetails;
-                            pcb._track(
+                            pcbTrackSegment(
+                                pcb,
                                 trackDetails.start,
                                 trackDetails.end,
                                 trackDetails.width,
                                 trackDetails.layer,
                                 trackDetails.locked ?? false,
-                                el.uuid,  // Use the same UUID
-                                undefined  // net - already set in the track
+                                el.uuid,
+                                undefined
                             );
                         }
                     }
@@ -232,7 +233,8 @@ export function routePairwise(
                 debugLog(options.debug, chalk.blue(`[PCB] Added ${path.nodes.length - 1} track segments as obstacles for subsequent routes`));
 
                 // DEBUG: Report staged outlines and tracks counts after adding segments
-                debugLog(options.debug, chalk.gray(`[PCB][DEBUG] stagedOutlines=${pcb.state.stagedOutlines.length}, tracks=${pcb.tracks.length}, outlines_public=${pcb.state.outlines.length}`));
+                const pState = getPcbState(pcb);
+                debugLog(options.debug, chalk.gray(`[PCB][DEBUG] stagedOutlines=${pState.stagedOutlines.length}, tracks=${pcb.tracks.length}, outlines_public=${pState.outlines.length}`));
             }  // end if (!manualTrackBuilders)
         }  // end if (path.success)
 

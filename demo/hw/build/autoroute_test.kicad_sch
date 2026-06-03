@@ -1,0 +1,322 @@
+(kicad_sch
+	(version 20250114)
+	(generator "typecad")
+	(generator_version "0.1.0")
+	(paper "A4")
+    (uuid "99a145fc-404c-48d3-9aa0-62d5b91178b9")
+
+    (lib_symbols
+    (symbol "Device:R_Small" (pin_numbers (hide yes)) (pin_names (offset 0.254) (hide yes)) (exclude_from_sim no) (in_bom yes) (on_board yes) (in_pos_files yes) (duplicate_pin_numbers_are_jumpers no) (property "Reference" "R" (at 0 0 90) (show_name no) (do_not_autoplace no) (effects (font (size 1.016 1.016)))) (property "Value" "R_Small" (at 1.778 0 90) (show_name no) (do_not_autoplace no) (effects (font (size 1.27 1.27)))) (property "Footprint" "" (at 0 0 0) (show_name no) (do_not_autoplace no) (hide yes) (effects (font (size 1.27 1.27)))) (property "Datasheet" "" (at 0 0 0) (show_name no) (do_not_autoplace no) (hide yes) (effects (font (size 1.27 1.27)))) (property "Description" "Resistor, small symbol" (at 0 0 0) (show_name no) (do_not_autoplace no) (hide yes) (effects (font (size 1.27 1.27)))) (property "ki_keywords" "R resistor" (at 0 0 0) (show_name no) (do_not_autoplace no) (hide yes) (effects (font (size 1.27 1.27)))) (property "ki_fp_filters" "R_*" (at 0 0 0) (show_name no) (do_not_autoplace no) (hide yes) (effects (font (size 1.27 1.27)))) (symbol "R_Small_0_1" (rectangle (start -0.762 1.778) (end 0.762 -1.778) (stroke (width 0.2032) (type default)) (fill (type none)))) (symbol "R_Small_1_1" (pin passive line (at 0 2.54 270) (length 0.762) (name "" (effects (font (size 1.27 1.27)))) (number "1" (effects (font (size 1.27 1.27))))) (pin passive line (at 0 -2.54 90) (length 0.762) (name "" (effects (font (size 1.27 1.27)))) (number "2" (effects (font (size 1.27 1.27)))))) (embedded_fonts no))
+    )
+
+
+
+	
+		(label "test1_1"
+			(at 20.32 17.78 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left bottom)
+			)
+			(uuid "e2561b1e-ed29-4ce5-bed7-7f0de413780c")
+		)
+
+	
+		(label "test1_1"
+			(at 25.4 17.78 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left bottom)
+			)
+			(uuid "6358b459-bbd1-4fab-941c-f4b1e43d617b")
+		)
+
+	
+		(label "test1_2"
+			(at 20.32 22.86 270)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify right bottom)
+			)
+			(uuid "2ed02d7a-bbd9-4ac4-b30d-bdbdd21755b3")
+		)
+
+	
+		(label "test1_2"
+			(at 25.4 22.86 270)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify right bottom)
+			)
+			(uuid "e953dddf-2e3a-4ce8-a7ad-ea74dd07a14a")
+		)
+
+	
+		(label "test16_1"
+			(at 20.32 116.84 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left bottom)
+			)
+			(uuid "58c9471f-4120-49bb-8fad-f8a59afe8da9")
+		)
+
+	
+		(label "test16_1"
+			(at 25.4 116.84 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left bottom)
+			)
+			(uuid "887030db-f22c-4c85-a7f4-edbc516d594f")
+		)
+
+	
+		(label "test16_2"
+			(at 20.32 121.92 270)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify right bottom)
+			)
+			(uuid "478f55c8-9b6d-431e-8d7e-e7884a205432")
+		)
+
+	
+		(label "test16_2"
+			(at 25.4 121.92 270)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify right bottom)
+			)
+			(uuid "dbfcd4e0-5900-49ee-9788-cf2a68e39a11")
+		)
+
+	
+		(label "test17_1"
+			(at 55.88 58.42 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left bottom)
+			)
+			(uuid "8946eeeb-b846-4263-9729-b716ad964044")
+		)
+
+	
+		(label "test17_2"
+			(at 55.88 68.58 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left bottom)
+			)
+			(uuid "8fa3a1fe-794d-4ce4-bb70-b446744e22e3")
+		)
+
+	
+		(label "test17_3"
+			(at 55.88 76.2 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left bottom)
+			)
+			(uuid "f3b401f7-160e-479a-a31b-a836c82bcaea")
+		)
+
+	
+		(label "test17_4"
+			(at 83.82000000000001 58.42 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left bottom)
+			)
+			(uuid "71a49ea0-f1f1-458a-885b-9985a29c05e2")
+		)
+
+	
+		(label "test17_5"
+			(at 83.82000000000001 68.58 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left bottom)
+			)
+			(uuid "00e4b7bb-97ce-4bb6-ac7a-caede3b7a906")
+		)
+
+	
+		(label "test17_6"
+			(at 83.82000000000001 76.2 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left bottom)
+			)
+			(uuid "39c5964b-5b74-433f-87f7-465004cbf334")
+		)
+
+	
+		(label "test17_7"
+			(at 71.12 53.34 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left bottom)
+			)
+			(uuid "2aa9cbc3-9882-42ad-8402-f55d012462e2")
+		)
+
+	
+		(label "test17_8"
+			(at 71.12 81.28 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left bottom)
+			)
+			(uuid "765b7057-fb7e-4156-8067-489cf9a5bc08")
+		)
+
+	
+		(label "test17_9"
+			(at 55.88 63.5 270)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify right bottom)
+			)
+			(uuid "85fb82fe-95a7-4138-86a6-f46a2a41d50a")
+		)
+
+	
+		(label "test17_9"
+			(at 83.82000000000001 81.28 270)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify right bottom)
+			)
+			(uuid "74451b5b-704a-4100-a8e5-d665c2abf0dd")
+		)
+
+	
+		(label "test17_10"
+			(at 55.88 73.66 270)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify right bottom)
+			)
+			(uuid "11b51ce1-7518-4062-b916-65cecd2bffae")
+		)
+
+	
+		(label "test17_10"
+			(at 83.82000000000001 73.66 270)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify right bottom)
+			)
+			(uuid "c9df97e4-613a-4140-9ec6-c874a5d719f6")
+		)
+
+	
+		(label "test17_11"
+			(at 55.88 81.28 270)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify right bottom)
+			)
+			(uuid "810772c3-e0ae-4dca-9eaf-d41403ee07d5")
+		)
+
+	
+		(label "test17_11"
+			(at 83.82000000000001 63.5 270)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify right bottom)
+			)
+			(uuid "22ef3474-f49c-46d1-8ec6-5e831d30e32c")
+		)
+
+	
+		(label "test17_12"
+			(at 71.12 58.42 270)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify right bottom)
+			)
+			(uuid "e41d87cb-7b6a-48d0-a3e8-d27800db3ce3")
+		)
+
+	
+		(label "test17_12"
+			(at 71.12 86.36 270)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify right bottom)
+			)
+			(uuid "27539f6f-cf03-4d2c-a1ad-c9405f09c030")
+		)
+
+
+    (symbol (lib_id "Device:R_Small") (at 20.32 20.32 0) (property "Reference" "R1" (at 20.32 25.4 0) (effects (font (size 1.27 1.27)) (hide no))) (property "Value" "" (at 20.32 25.4 0) (effects (font (size 1.27 1.27)) (hide yes))) (property "Footprint" "Resistor_SMD:R_0603_1608Metric" (at 20.32 25.4 0) (effects (font (size 1.27 1.27)) (hide yes))) (instances (project "autoroute_test" (path "/99a145fc-404c-48d3-9aa0-62d5b91178b9" (reference "R1") (unit 1)))))
+    (symbol (lib_id "Device:R_Small") (at 25.4 20.32 0) (property "Reference" "R2" (at 25.4 25.4 0) (effects (font (size 1.27 1.27)) (hide no))) (property "Value" "" (at 25.4 25.4 0) (effects (font (size 1.27 1.27)) (hide yes))) (property "Footprint" "Resistor_SMD:R_0603_1608Metric" (at 25.4 25.4 0) (effects (font (size 1.27 1.27)) (hide yes))) (instances (project "autoroute_test" (path "/99a145fc-404c-48d3-9aa0-62d5b91178b9" (reference "R2") (unit 1)))))
+    (symbol (lib_id "Device:R_Small") (at 20.32 119.38 0) (property "Reference" "R3" (at 20.32 124.46 0) (effects (font (size 1.27 1.27)) (hide no))) (property "Value" "" (at 20.32 124.46 0) (effects (font (size 1.27 1.27)) (hide yes))) (property "Footprint" "Resistor_SMD:R_0603_1608Metric" (at 20.32 124.46 0) (effects (font (size 1.27 1.27)) (hide yes))) (instances (project "autoroute_test" (path "/99a145fc-404c-48d3-9aa0-62d5b91178b9" (reference "R3") (unit 1)))))
+    (symbol (lib_id "Device:R_Small") (at 25.4 119.38 0) (property "Reference" "R4" (at 25.4 124.46 0) (effects (font (size 1.27 1.27)) (hide no))) (property "Value" "" (at 25.4 124.46 0) (effects (font (size 1.27 1.27)) (hide yes))) (property "Footprint" "Resistor_SMD:R_0603_1608Metric" (at 25.4 124.46 0) (effects (font (size 1.27 1.27)) (hide yes))) (instances (project "autoroute_test" (path "/99a145fc-404c-48d3-9aa0-62d5b91178b9" (reference "R4") (unit 1)))))
+    (symbol (lib_id "Device:R_Small") (at 55.88 60.96 0) (property "Reference" "R5" (at 55.88 66.04 0) (effects (font (size 1.27 1.27)) (hide no))) (property "Value" "" (at 55.88 66.04 0) (effects (font (size 1.27 1.27)) (hide yes))) (property "Footprint" "Resistor_SMD:R_0603_1608Metric" (at 55.88 66.04 0) (effects (font (size 1.27 1.27)) (hide yes))) (instances (project "autoroute_test" (path "/99a145fc-404c-48d3-9aa0-62d5b91178b9" (reference "R5") (unit 1)))))
+    (symbol (lib_id "Device:R_Small") (at 55.88 71.12 0) (property "Reference" "R6" (at 55.88 76.2 0) (effects (font (size 1.27 1.27)) (hide no))) (property "Value" "" (at 55.88 76.2 0) (effects (font (size 1.27 1.27)) (hide yes))) (property "Footprint" "Resistor_SMD:R_0603_1608Metric" (at 55.88 76.2 0) (effects (font (size 1.27 1.27)) (hide yes))) (instances (project "autoroute_test" (path "/99a145fc-404c-48d3-9aa0-62d5b91178b9" (reference "R6") (unit 1)))))
+    (symbol (lib_id "Device:R_Small") (at 55.88 78.74 0) (property "Reference" "R7" (at 55.88 83.82 0) (effects (font (size 1.27 1.27)) (hide no))) (property "Value" "" (at 55.88 83.82 0) (effects (font (size 1.27 1.27)) (hide yes))) (property "Footprint" "Resistor_SMD:R_0603_1608Metric" (at 55.88 83.82 0) (effects (font (size 1.27 1.27)) (hide yes))) (instances (project "autoroute_test" (path "/99a145fc-404c-48d3-9aa0-62d5b91178b9" (reference "R7") (unit 1)))))
+    (symbol (lib_id "Device:R_Small") (at 83.82000000000001 60.96 0) (property "Reference" "R8" (at 83.82000000000001 66.04 0) (effects (font (size 1.27 1.27)) (hide no))) (property "Value" "" (at 83.82000000000001 66.04 0) (effects (font (size 1.27 1.27)) (hide yes))) (property "Footprint" "Resistor_SMD:R_0603_1608Metric" (at 83.82000000000001 66.04 0) (effects (font (size 1.27 1.27)) (hide yes))) (instances (project "autoroute_test" (path "/99a145fc-404c-48d3-9aa0-62d5b91178b9" (reference "R8") (unit 1)))))
+    (symbol (lib_id "Device:R_Small") (at 83.82000000000001 71.12 0) (property "Reference" "R9" (at 83.82000000000001 76.2 0) (effects (font (size 1.27 1.27)) (hide no))) (property "Value" "" (at 83.82000000000001 76.2 0) (effects (font (size 1.27 1.27)) (hide yes))) (property "Footprint" "Resistor_SMD:R_0603_1608Metric" (at 83.82000000000001 76.2 0) (effects (font (size 1.27 1.27)) (hide yes))) (instances (project "autoroute_test" (path "/99a145fc-404c-48d3-9aa0-62d5b91178b9" (reference "R9") (unit 1)))))
+    (symbol (lib_id "Device:R_Small") (at 83.82000000000001 78.74 0) (property "Reference" "R10" (at 83.82000000000001 83.82 0) (effects (font (size 1.27 1.27)) (hide no))) (property "Value" "" (at 83.82000000000001 83.82 0) (effects (font (size 1.27 1.27)) (hide yes))) (property "Footprint" "Resistor_SMD:R_0603_1608Metric" (at 83.82000000000001 83.82 0) (effects (font (size 1.27 1.27)) (hide yes))) (instances (project "autoroute_test" (path "/99a145fc-404c-48d3-9aa0-62d5b91178b9" (reference "R10") (unit 1)))))
+    (symbol (lib_id "Device:R_Small") (at 71.12 55.88 0) (property "Reference" "R11" (at 71.12 60.96 0) (effects (font (size 1.27 1.27)) (hide no))) (property "Value" "" (at 71.12 60.96 0) (effects (font (size 1.27 1.27)) (hide yes))) (property "Footprint" "Resistor_SMD:R_0603_1608Metric" (at 71.12 60.96 0) (effects (font (size 1.27 1.27)) (hide yes))) (instances (project "autoroute_test" (path "/99a145fc-404c-48d3-9aa0-62d5b91178b9" (reference "R11") (unit 1)))))
+    (symbol (lib_id "Device:R_Small") (at 71.12 83.82000000000001 0) (property "Reference" "R12" (at 71.12 88.9 0) (effects (font (size 1.27 1.27)) (hide no))) (property "Value" "" (at 71.12 88.9 0) (effects (font (size 1.27 1.27)) (hide yes))) (property "Footprint" "Resistor_SMD:R_0603_1608Metric" (at 71.12 88.9 0) (effects (font (size 1.27 1.27)) (hide yes))) (instances (project "autoroute_test" (path "/99a145fc-404c-48d3-9aa0-62d5b91178b9" (reference "R12") (unit 1)))))
+
+	(sheet_instances
+		(path "/"
+			(page "1")
+		)
+	)
+	(embedded_fonts no)
+)

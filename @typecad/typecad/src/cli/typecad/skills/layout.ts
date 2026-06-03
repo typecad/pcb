@@ -206,7 +206,7 @@ let result2 = await pcb.route(net);`,
       },
       {
         title: 'Batch routing',
-        code: `let results = await pcb.autorouteBatch([
+        code: `let results = await autorouteBatchOnPcb(pcb, [
   { from: u1.pin(1), to: r1.pin(1) },
   { from: u1.pin(2), to: r2.pin(1) },
   { from: u1.pin(3), to: r3.pin(1) },
@@ -218,8 +218,8 @@ let result2 = await pcb.route(net);`,
     ],
     notes: [
       'route() returns an IAutorouteResult with success status and route details',
-      'autorouteBatch() supports rip-up-and-retry with multiple rounds',
-      'Register external routers with registerRouter() (e.g. @typecad-astar)',
+      'autorouteBatchOnPcb() supports rip-up-and-retry with multiple rounds',
+      'Register external routers with pcbRegisterRouter() (e.g. @typecad-astar)',
       'Options include: width, layers, allowVias, clearance, gridResolution, impedance constraints',
     ],
     related: ['track', 'via', 'pcb-structure'],
@@ -243,18 +243,18 @@ pcb.group('mcu_section', mcu, bypass1, bypass2);`,
       },
       {
         title: 'Coordinate offsets',
-        code: `pcb.pushOffset(25, 10);
+        code: `pcbPushOffset(pcb, 25, 10);
 // All subsequent coordinates are relative to (25, 10)
 let r1 = new Resistor({ pcb: { x: 0, y: 0 } }); // actually at (25, 10)
 let r2 = new Resistor({ pcb: { x: 5, y: 0 } }); // actually at (30, 10)
-pcb.popOffset();`,
+pcbPopOffset(pcb);`,
       },
     ],
     notes: [
       'Coordinates are in mm, rotation in degrees',
       'side: "front" (default) or "back" for component placement on either side',
       'group() keeps components together on the board',
-      'pushOffset/popOffset for relative positioning of component clusters',
+      'pcbPushOffset/pcbPopOffset for relative positioning of component clusters',
       'kicad2typecad --apply syncs KiCad position changes back; use --capture-layouts to also import text layouts',
     ],
     related: ['component', 'pcb-structure', 'track', 'roundtrip'],

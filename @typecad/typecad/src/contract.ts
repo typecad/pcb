@@ -1,4 +1,4 @@
-import { PCB } from './pcb/pcb.js';
+import { PCB, getPcbState } from './pcb/pcb.js';
 import { Component } from './component.js';
 import { Pin } from './pin.js';
 import fs from 'node:fs';
@@ -118,13 +118,13 @@ export function exportContract(pcb: PCB, options: ContractOptions = {}): void {
     let mcu: Component | undefined;
 
     // Auto-detect: first component with a typehal object
-    mcu = pcb.state.components.find(
+    mcu = getPcbState(pcb).components.find(
         (comp) => comp.typehal
     );
 
     // Fallback to exact reference
     if (!mcu && options.mcuReference) {
-        mcu = pcb.state.components.find(
+        mcu = getPcbState(pcb).components.find(
             (comp) => comp.reference === options.mcuReference
         );
     }
@@ -132,7 +132,7 @@ export function exportContract(pcb: PCB, options: ContractOptions = {}): void {
     // Fallback to symbol pattern
     if (!mcu && options.mcuSymbolPattern) {
         const pattern = options.mcuSymbolPattern;
-        mcu = pcb.state.components.find(
+        mcu = getPcbState(pcb).components.find(
             (comp) => comp.symbol && comp.symbol.includes(pattern)
         );
     }
@@ -342,7 +342,7 @@ function componentToContract(comp: Component): ContractComponent {
  */
 function findComponent(pcb: PCB, pin: Pin): Component | undefined {
     return (
-        pcb.state.components.find((c) => c.reference === pin.reference) ??
+        getPcbState(pcb).components.find((c) => c.reference === pin.reference) ??
         pcb.schematic.components.find((c) => c.reference === pin.reference)
     );
 }

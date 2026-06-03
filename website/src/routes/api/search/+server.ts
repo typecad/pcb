@@ -22,8 +22,8 @@ function processGlobModules(
 	const results: SearchResult[] = [];
 
 	for (const [path, content] of Object.entries(modules)) {
-		const relativePath = path.replace(globPrefix, '').replace('.md', '').replace('/+page', '');
-		const slug = `/${relativePath}`;
+		const relativePath = path.replace(globPrefix, '').replace('.md', '').replace(/\/?\+page$/, '');
+		const slug = relativePath ? `/${category}/${relativePath}` : `/${category}`;
 		const title = extractTitle(content) || getPageTitle(slug);
 		const textContent = extractTextContent(content);
 

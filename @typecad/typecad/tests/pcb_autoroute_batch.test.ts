@@ -10,7 +10,7 @@ describe('pcb_autoroute_batch', () => {
     it('should return success with default options', async () => {
         const { autorouteBatch } = await import('../src/pcb/pcb_autoroute_batch.js');
         const mockPcb = {
-            state: { stagedOutlines: [] },
+            _state: { stagedOutlines: [] },
             route: vi.fn(() => Promise.resolve({ success: true, routeCount: 1, completedCount: 1, routeDetails: [] } as any)),
         };
         const { Pin } = await import('../src/pin.js');
@@ -24,7 +24,7 @@ describe('pcb_autoroute_batch', () => {
         const { autorouteBatch } = await import('../src/pcb/pcb_autoroute_batch.js');
         let callCount = 0;
         const mockPcb = {
-            state: { stagedOutlines: [] },
+            _state: { stagedOutlines: [] },
             route: vi.fn(() => {
                 callCount++;
                 if (callCount < 3) {
@@ -43,7 +43,7 @@ describe('pcb_autoroute_batch', () => {
     it('should fail after exhausting rounds', async () => {
         const { autorouteBatch } = await import('../src/pcb/pcb_autoroute_batch.js');
         const mockPcb = {
-            state: { stagedOutlines: [] },
+            _state: { stagedOutlines: [] },
             route: vi.fn(() => Promise.resolve({ success: false, routeCount: 1, completedCount: 0, routeDetails: [] } as any)),
         };
         const { Pin } = await import('../src/pin.js');
@@ -56,7 +56,7 @@ describe('pcb_autoroute_batch', () => {
         const { autorouteBatch } = await import('../src/pcb/pcb_autoroute_batch.js');
         let callCount = 0;
         const mockPcb = {
-            state: { stagedOutlines: [] },
+            _state: { stagedOutlines: [] },
             route: vi.fn(() => {
                 callCount++;
                 return Promise.resolve({ success: true, routeCount: 1, completedCount: 1, routeDetails: [] } as any);
@@ -75,7 +75,7 @@ describe('pcb_autoroute_batch', () => {
     it('should handle reverse reorder', async () => {
         const { autorouteBatch } = await import('../src/pcb/pcb_autoroute_batch.js');
         const mockPcb = {
-            state: { stagedOutlines: [] },
+            _state: { stagedOutlines: [] },
             route: vi.fn(() => Promise.resolve({ success: true, routeCount: 1, completedCount: 1, routeDetails: [] } as any)),
         };
         const { Pin } = await import('../src/pin.js');
@@ -90,7 +90,7 @@ describe('pcb_autoroute_batch', () => {
     it('should handle none reorder', async () => {
         const { autorouteBatch } = await import('../src/pcb/pcb_autoroute_batch.js');
         const mockPcb = {
-            state: { stagedOutlines: [] },
+            _state: { stagedOutlines: [] },
             route: vi.fn(() => Promise.resolve({ success: true, routeCount: 1, completedCount: 1, routeDetails: [] } as any)),
         };
         const { Pin } = await import('../src/pin.js');
@@ -106,7 +106,7 @@ describe('pcb_autoroute_batch', () => {
         const { autorouteBatch } = await import('../src/pcb/pcb_autoroute_batch.js');
         const stagedOutlines: any[] = ['preserved'];
         const mockPcb = {
-            state: { stagedOutlines },
+            _state: { stagedOutlines },
             route: vi.fn(() => Promise.resolve({ success: false, routeCount: 1, completedCount: 0, routeDetails: [] } as any)),
         };
         const { Pin } = await import('../src/pin.js');

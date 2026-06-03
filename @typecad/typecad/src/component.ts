@@ -25,6 +25,8 @@ import type {
 import type { ITextPositioning } from './pcb/pcb_interfaces.js';
 import { loadFootprintLib } from './pcb/component_footprint_loader.js';
 import { loadSymbolLib } from './renderers/component_symbol_loader.js';
+import { getFootprintBounds } from './pcb/footprint_bounds.js';
+import { isPlacementValue, type PlacementNumber } from './placement.js';
 
 const defaultCounter = new ReferenceCounter();
 const pendingInspections: Set<Promise<void>> = new Set();
@@ -60,7 +62,7 @@ export interface ComponentInit {
     via?: boolean;
     viaData?: IVia;
     uuid?: string;
-    pcb?: { x: number; y: number; rotation?: number; side?: 'front' | 'back' };
+    pcb?: { x: number | PlacementNumber; y: number | PlacementNumber; rotation?: number; side?: 'front' | 'back' };
     sch?: { x: number; y: number; rotation?: number };
     simulation?: { include: boolean; model?: string };
     symbol?: string;
@@ -144,6 +146,7 @@ export class Component {
     #symbol_file?: string = '';
     #isInitialized: boolean = false;
     #uuid: string = '';
+    #bounds?: { width: number; height: number } | null;
 
     get footprint(): string { return this.#footprint; }
     set footprint(value: string) {
@@ -151,6 +154,24 @@ export class Component {
             logger.warn(chalk.whiteBright.bgYellow(`\u26A0\uFE0F  Changing footprint on "${displayName(this)}" after it was added to a schematic/PCB. Changes may not take effect.`));
         }
         this.#footprint = value;
+        this.#bounds = undefined;
+    }
+
+    /**
+     * The bounding box of this component's footprint in mm, derived from
+     * pad positions and graphical elements in the `.kicad_mod` file.
+     *
+     * Lazily computed on first access and cached. Returns `null` if the
+     * footprint cannot be resolved (e.g., missing library).
+     *
+     * Used internally by placement functions ({@link below}, {@link above},
+     * {@link rightOf}, {@link leftOf}) for size-aware, edge-to-edge spacing.
+     */
+    get bounds(): { width: number; height: number } | null {
+        if (this.#bounds === undefined) {
+            this.#bounds = getFootprintBounds(this.#footprint);
+        }
+        return this.#bounds;
     }
 
     get value(): string { return this.#value; }
@@ -278,10 +299,14 @@ export class Component {
         if (init.mpn) this.#mpn = init.mpn;
         if (init.dnp !== undefined) this.dnp = init.dnp;
         if (init.pcb) {
-            validateFinite(init.pcb.x, 'pcb.x');
-            validateFinite(init.pcb.y, 'pcb.y');
+            const rawX = init.pcb.x;
+            const rawY = init.pcb.y;
+            const x = isPlacementValue(rawX) ? rawX.resolveWithFootprint(this.#footprint) : rawX;
+            const y = isPlacementValue(rawY) ? rawY.resolveWithFootprint(this.#footprint) : rawY;
+            validateFinite(x, 'pcb.x');
+            validateFinite(y, 'pcb.y');
             if (init.pcb.rotation !== undefined) validateFinite(init.pcb.rotation, 'pcb.rotation');
-            this.pcb = init.pcb;
+            this.pcb = { ...init.pcb, x, y };
         }
         if (init.sch) this.sch = init.sch;
         if (init.via) this.via = init.via;

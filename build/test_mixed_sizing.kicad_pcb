@@ -9,17 +9,8 @@
   (
     footprint
     "Package_SO:SOIC-8_3.9x4.9mm_P1.27mm"
-    (
-      property
-      "Code"
-      "typecad:v1:eyJ2IjoxLCJ1IjoiIiwiZiI6IkM6XFx0eXBlY2FkXFx0eXBlQ0FEXFxAdHlwZWNhZFxcdHlwZWNhZFxcdGVzdHNcXHJlZmVyZW5jZV93aWR0aF9oZWlnaHRfb3V0cHV0LnRlc3QudHMiLCJsIjozNX0"
-      (at 0 0 0)
-      (layer "F.Fab")
-      (hide yes)
-      (uuid "8ada408f-3596-4d88-8c7b-23ea51bd435c")
-      (effects (font (size 1 1) (thickness 0.15)))
-    )
-    (uuid "9c9994e9-e9b8-4018-ad39-f8fa0b46d41c")
+    (property "Code" "typecad:v1:eyJ2IjoxLCJ1IjoiIiwibiI6ImNvbXBvbmVudCJ9" (at 0 0 0) (layer "F.Fab") (hide yes) (uuid "7af8c29e-1f8c-4ade-9a24-ee7a286e705d") (effects (font (size 1 1) (thickness 0.15))))
+    (uuid "1d4aca2a-35fd-40c6-86e3-07d1a64981b3")
     (at 100 100 0)
     (version 20260206)
     (generator "kicad-footprint-generator")

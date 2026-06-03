@@ -1,5 +1,5 @@
 import { Component } from './component.js';
-import { TrackBuilder, PCB } from './pcb/pcb.js';
+import { TrackBuilder, PCB, pcbPushOffset, pcbPopOffset, pcbGetCurrentOffset } from './pcb/pcb.js';
 import { Pin } from './pin.js';
 import { PCB_CONSTANTS } from './pcb/pcb_routing_calculations.js';
 import { validateFinite } from './utils/numeric_validation.js';
@@ -91,7 +91,7 @@ export abstract class Package<TOptions extends object = {}> {
         validateFinite(options.y, 'Package y offset');
 
         try {
-            this.pcb.pushOffset(options.x, options.y);
+            pcbPushOffset(this.pcb, options.x, options.y);
             try {
                 this.build(options);
             } finally {
@@ -105,7 +105,7 @@ export abstract class Package<TOptions extends object = {}> {
                 this.pcb.group(options.name ?? this.constructor.name, ...this.components);
             }
         } finally {
-            this.pcb.popOffset();
+            pcbPopOffset(this.pcb);
         }
     }
 
@@ -197,7 +197,7 @@ export abstract class Package<TOptions extends object = {}> {
      * so only regular Components need adjustment.
      */
     private _applyOffset(): void {
-        const offset = this.pcb.currentOffset;
+        const offset = pcbGetCurrentOffset(this.pcb);
         if (offset.x === 0 && offset.y === 0) return;
 
         for (const item of this.components) {

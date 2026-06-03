@@ -1,5 +1,5 @@
 import { Component } from "../../component.js";
-import { IPcbBoardContext } from "../../pcb/pcb_board_context.js";
+import { PCB, getPcbState } from "../../pcb/pcb.js";
 import { IFilledZone, IKeepoutZone, IGrLine, IOutline } from "../../pcb/pcb_interfaces.js";
 import { IRoutingObstacle } from "./routing_grid.js";
 import { PadResolver, IPadGeometry } from "./pad_resolver.js";
@@ -29,16 +29,17 @@ export class ObstacleBuilder {
      * obstacles.forEach(obs => grid.addObstacle(obs));
      * ```
      */
-    static buildFromPCB(pcb: IPcbBoardContext, defaultClearance: number = 0.2, additionalComponents?: Component[], debug: boolean = false): IRoutingObstacle[] {
+    static buildFromPCB(pcb: PCB, defaultClearance: number = 0.2, additionalComponents?: Component[], debug: boolean = false): IRoutingObstacle[] {
         const obstacles: IRoutingObstacle[] = [];
+        const state = getPcbState(pcb);
 
         if (debug) {
             logger.debug(chalk.blue(`[ObstacleBuilder] Building obstacles from PCB`));
         }
 
         const allComponents: Component[] = [];
-        const components = pcb.state.components;
-        const stagedComponents = pcb.state.stagedComponents;
+        const components = state.components;
+        const stagedComponents = state.stagedComponents;
 
         if (components) {
             allComponents.push(...components);
@@ -102,7 +103,7 @@ export class ObstacleBuilder {
         }
 
         // Add zones
-        const zones = pcb.state.zones;
+        const zones = state.zones;
         if (zones) {
             if (debug) {
                 logger.debug(chalk.blue(`[ObstacleBuilder] Processing ${zones.length} filled zones`));
@@ -116,7 +117,7 @@ export class ObstacleBuilder {
         }
 
         // Add keepout zones
-        const keepoutZones = pcb.state.keepoutZones;
+        const keepoutZones = state.keepoutZones;
         if (keepoutZones) {
             if (debug) {
                 logger.debug(chalk.blue(`[ObstacleBuilder] Processing ${keepoutZones.length} keepout zones`));
@@ -130,7 +131,7 @@ export class ObstacleBuilder {
         }
 
         // Add board outlines as keepout
-        const outlines = pcb.outlines;
+        const outlines = pcb.outlines as IOutline[];
         if (outlines && outlines.length > 0) {
             if (debug) {
                 logger.debug(chalk.blue(`[ObstacleBuilder] Processing ${outlines.length} board outlines`));
@@ -144,7 +145,7 @@ export class ObstacleBuilder {
         }
 
         // Add existing tracks as obstacles (from committed tracks)
-        const grLines = pcb.state.grLines;
+        const grLines = state.grLines;
             if (grLines && grLines.length > 0) {
             if (debug) {
                 logger.debug(chalk.blue(`[ObstacleBuilder] Processing ${grLines.length} committed tracks`));
@@ -160,7 +161,7 @@ export class ObstacleBuilder {
         }
 
         // Add staged tracks as obstacles (tracks created but not yet committed via create())
-        const stagedOutlines = pcb.state.stagedOutlines;
+        const stagedOutlines = state.stagedOutlines;
         if (stagedOutlines && stagedOutlines.length > 0) {
             let stagedTrackCount = 0;
             for (const outline of stagedOutlines) {
@@ -234,7 +235,7 @@ export class ObstacleBuilder {
      * @param pcb - PCB instance to resolve nets
      * @returns Array of pad obstacles
      */
-    static buildFromComponentPads(component: Component, clearance: number, pcb: IPcbBoardContext, debug: boolean = false): IRoutingObstacle[] {
+    static buildFromComponentPads(component: Component, clearance: number, pcb: PCB, debug: boolean = false): IRoutingObstacle[] {
         const obstacles: IRoutingObstacle[] = [];
 
         const pads = PadResolver.getAllPadGeometries(component);

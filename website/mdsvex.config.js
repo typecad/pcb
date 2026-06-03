@@ -12,7 +12,7 @@ import {
   transformerMetaHighlight,
   transformerMetaWordHighlight,
 } from '@shikijs/transformers';
-import { addCopyButton } from 'shiki-transformer-copy-button';
+
 import rehypeCallouts from 'rehype-callouts';
 import rehypeLinkProcessor from 'rehype-link-processor';
 import remarkCodeTitles from "remark-flexible-code-titles";
@@ -91,7 +91,42 @@ const config = defineConfig({
             transformerNotationWordHighlight(),
             transformerMetaHighlight(),
             transformerMetaWordHighlight(),
-            addCopyButton({ toggle: 2000 }),
+            {
+              name: 'custom-copy-button',
+              pre(node) {
+                const btn = {
+                  type: 'element',
+                  tagName: 'button',
+                  properties: {
+                    className: ['copy'],
+                    onclick: `
+(function(btn){
+  var text = btn.parentElement.innerText;
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text);
+  } else {
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.left = '-9999px';
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+  }
+  btn.classList.add('copied');
+  setTimeout(function(){ btn.classList.remove('copied'); }, 2000);
+})(this);
+return false;`
+                  },
+                  children: [
+                    { type: 'element', tagName: 'span', properties: { className: ['ready'] }, children: [] },
+                    { type: 'element', tagName: 'span', properties: { className: ['success'] }, children: [] }
+                  ]
+                };
+                node.children.push(btn);
+              }
+            },
           ],
         })
       );

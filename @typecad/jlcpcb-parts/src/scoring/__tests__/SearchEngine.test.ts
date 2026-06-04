@@ -21,14 +21,17 @@ describe('ComponentSearchEngine', () => {
     generateMatchSummary: vi.fn()
   };
   
-  // Mock console.log to avoid cluttering test output
+  // Mock console methods to avoid cluttering test output
   const originalConsoleLog = console.log;
+  const originalConsoleInfo = console.info;
   beforeEach(() => {
     console.log = vi.fn();
+    console.info = vi.fn();
   });
   
   afterEach(() => {
     console.log = originalConsoleLog;
+    console.info = originalConsoleInfo;
   });
   
   // Mock Date.now for consistent cache testing
@@ -180,9 +183,8 @@ describe('ComponentSearchEngine', () => {
     it('should perform the complete search workflow', async () => {
       const query = '100nF 0603 capacitor';
       
-      // Mock scoreComponentsWithTimeout to return expected format
       const originalMethod = searchEngine['scoreComponentsWithTimeout'];
-      searchEngine['scoreComponentsWithTimeout'] = vi.fn().mockResolvedValue({
+      searchEngine['scoreComponentsWithTimeout'] = vi.fn().mockReturnValue({
         components: testComponentScores,
         batchCount: 1
       });
@@ -200,10 +202,9 @@ describe('ComponentSearchEngine', () => {
       expect(results).toHaveLength(1);
       expect(results[0]).toEqual(expectedSearchResult);
       
-      // Should log search information (only check key messages)
-      expect(console.log).toHaveBeenCalledWith('Searching for: "100nF 0603 capacitor"');
-      expect(console.log).toHaveBeenCalledWith('Loaded 2 components.');
-      expect(console.log).toHaveBeenCalledWith('Parsed parameters:', JSON.stringify(testParameters));
+      // Should log search information via Logger
+      expect(console.info).toHaveBeenCalledWith(expect.stringContaining('Searching for: "100nF 0603 capacitor"'));
+      expect(console.info).toHaveBeenCalledWith(expect.stringContaining('Loaded 2 components.'));
       
       // Restore original method
       searchEngine['scoreComponentsWithTimeout'] = originalMethod;
@@ -505,16 +506,16 @@ describe('ComponentSearchEngine', () => {
       // Execute search
       await searchEngine.search('large dataset test');
       
-      // Should log batch processing message
-      expect(console.log).toHaveBeenCalledWith('Large dataset detected (25000 components). Processing in batches...');
+      // Should log batch processing message via Logger
+      expect(console.info).toHaveBeenCalledWith(expect.stringContaining('Large dataset detected (25000 components)'));
       
       // Should call rankComponents multiple times (once per batch)
       expect(mockFuzzyScorer.rankComponents).toHaveBeenCalledTimes(3); // 25000 / 10000 = 3 batches
       
-      // Should log progress
-      expect(console.log).toHaveBeenCalledWith('Processed 10000/25000 components (40%)');
-      expect(console.log).toHaveBeenCalledWith('Processed 20000/25000 components (80%)');
-      expect(console.log).toHaveBeenCalledWith('Processed 25000/25000 components (100%)');
+      // Should log progress via Logger
+      expect(console.info).toHaveBeenCalledWith(expect.stringContaining('Processed 10000/25000 components (40%)'));
+      expect(console.info).toHaveBeenCalledWith(expect.stringContaining('Processed 20000/25000 components (80%)'));
+      expect(console.info).toHaveBeenCalledWith(expect.stringContaining('Processed 25000/25000 components (100%)'));
     });
     
     it('should handle search timeout', async () => {
@@ -531,9 +532,9 @@ describe('ComponentSearchEngine', () => {
       
       // Mock the scoreComponentsWithTimeout method to simulate a timeout
       const originalMethod = timeoutSearchEngine['scoreComponentsWithTimeout'];
-      timeoutSearchEngine['scoreComponentsWithTimeout'] = vi.fn().mockRejectedValue(
-        new Error('Search timed out after 1ms')
-      );
+      timeoutSearchEngine['scoreComponentsWithTimeout'] = vi.fn().mockImplementation(() => {
+        throw new Error('Search timed out after 1ms');
+      });
       
       // Should throw timeout error
       await expect(timeoutSearchEngine.search('timeout test')).rejects.toThrow('Search timed out after 1ms');
@@ -549,6 +550,7 @@ describe('ComponentSearchEngine', () => {
         .mockReturnValueOnce(10)    // parse start
         .mockReturnValueOnce(20)    // parse end
         .mockReturnValueOnce(20)    // scoring start
+        .mockReturnValueOnce(20)    // deadline check in scoreComponentsWithTimeout
         .mockReturnValueOnce(80)    // scoring end
         .mockReturnValueOnce(80)    // formatting start
         .mockReturnValueOnce(90)    // formatting end

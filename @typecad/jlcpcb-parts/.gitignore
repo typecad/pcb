@@ -110,3 +110,8 @@ Thumbs.db
 build/
 dist/
 out/
+
+# Stale root files (compiled from removed index.ts)
+/debug_test.js
+/index.js
+/index.d.ts

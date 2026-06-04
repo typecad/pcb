@@ -173,4 +173,28 @@ typecad search "voltage regulator" --format=json --limit=10`,
     ],
     related: ['build', 'pcb-structure'],
   },
+  {
+    name: 'browse-packages',
+    category: 'project',
+    description: 'Browse and install typeCAD-compatible packages from the npm registry using an interactive multi-select UI',
+    examples: [
+      {
+        title: 'Browse and select packages interactively',
+        code: `typecad package`,
+      },
+      {
+        title: 'List available packages as JSON',
+        code: `typecad package --json`,
+      },
+    ],
+    notes: [
+      'Searches npm for packages with the keyword "typecad-package"',
+      'Already-installed packages are shown as disabled (cannot re-select)',
+      'Packages with a newer version available are selectable and marked as updates',
+      'Walks up from the current directory to find the nearest package.json',
+      'Runs npm install for selected packages in the project directory',
+      '--json outputs a structured list without interactive prompts',
+    ],
+    related: ['create-project', 'add-component', 'add-package'],
+  },
 ];

@@ -122,4 +122,83 @@ typecad.net(v5.power, v33.power);
     ],
     related: ['erc', 'drc', 'power', 'build'],
   },
+  {
+    name: 'export-gerbers',
+    category: 'validation',
+    description: 'Export Gerber files from a KiCad PCB for fabrication using kicad-cli pcb export gerbers',
+    package: '@typecad/typecad',
+    import: "import { exportPCB } from '@typecad/typecad';",
+    examples: [
+      {
+        title: 'CLI export gerbers',
+        code: `# Export Gerbers from auto-detected PCB in ./build/
+typecad export gerbers
+
+# Specify output directory
+typecad export gerbers --output ./fab
+
+# Specify PCB file
+typecad export gerbers ./build/board.kicad_pcb
+
+# Pass kicad-cli flags
+typecad export gerbers -- --exclude-drawing-sheet`,
+      },
+      {
+        title: 'Programmatic export',
+        code: `import { exportPCB } from '@typecad/typecad';
+
+await exportPCB('./build/board.kicad_pcb', './build/gerbers/', 'gerber');`,
+      },
+    ],
+    notes: [
+      'CLI: typecad export gerbers [path] [-o <dir>] [-- kicad-cli flags]',
+      'Default output: ./build/gerbers/',
+      'Uses kicad-cli pcb export gerbers under the hood',
+      'All flags after -- are forwarded to kicad-cli pcb export gerbers',
+      'Gerber files are the standard format for PCB fabrication',
+    ],
+    related: ['export-drill', 'drc', 'kicad-integration', 'build'],
+  },
+  {
+    name: 'export-drill',
+    category: 'validation',
+    description: 'Export Excellon drill files from a KiCad PCB for fabrication using kicad-cli pcb export drill',
+    package: '@typecad/typecad',
+    import: "import { executeKiCADCommand } from '@typecad/typecad';",
+    examples: [
+      {
+        title: 'CLI export drill',
+        code: `# Export drill files from auto-detected PCB in ./build/
+typecad export drill
+
+# Specify output directory
+typecad export drill --output ./fab
+
+# Specify PCB file
+typecad export drill ./build/board.kicad_pcb
+
+# Pass kicad-cli flags
+typecad export drill -- --use-drill-file-origin`,
+      },
+      {
+        title: 'Programmatic drill export',
+        code: `import { executeKiCADCommand } from '@typecad/typecad';
+
+await executeKiCADCommand('pcb', [
+  'export', 'drill',
+  '--output', './build/gerbers/',
+  './build/board.kicad_pcb',
+]);`,
+      },
+    ],
+    notes: [
+      'CLI: typecad export drill [path] [-o <dir>] [-- kicad-cli flags]',
+      'Default output: ./build/gerbers/',
+      'Uses kicad-cli pcb export drill under the hood',
+      'All flags after -- are forwarded to kicad-cli pcb export drill',
+      'Drill files (.drl) define hole locations and sizes for the PCB manufacturer',
+      'Common flags: --use-drill-file-origin, --generate-relational-board-origin',
+    ],
+    related: ['export-gerbers', 'drc', 'kicad-integration', 'build'],
+  },
 ];

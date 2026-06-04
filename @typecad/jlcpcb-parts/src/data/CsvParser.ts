@@ -2,11 +2,17 @@ import { promises as fs } from 'fs';
 import { createReadStream } from 'fs';
 import { createInterface } from 'readline';
 import { ComponentRecord, ParsingError } from '../types/index.js';
+import { Logger } from '../cli/Logger.js';
 
 /**
  * Handles parsing CSV files into ComponentRecord objects
  */
 export class CsvParser {
+  private readonly logger: Logger;
+
+  constructor() {
+    this.logger = Logger.getInstance();
+  }
   /**
    * Parses a CSV file into an array of ComponentRecord objects
    * @param filePath Path to the CSV file
@@ -50,18 +56,16 @@ export class CsvParser {
             const component = this.createComponentRecord(headers, values);
             components.push(component);
           } catch (error) {
-            console.warn(`Warning: Skipping malformed row at line ${lineNumber}: ${error instanceof Error ? error.message : String(error)}`);
+            this.logger.warn(`Skipping malformed row at line ${lineNumber}: ${error instanceof Error ? error.message : String(error)}`);
           }
         }
       }
       
       return components;
     } catch (error) {
-      const parsingError = new Error(
+      throw new ParsingError(
         `Failed to parse CSV file: ${error instanceof Error ? error.message : String(error)}`
-      ) as ParsingError;
-      
-      throw parsingError;
+      );
     }
   }
 

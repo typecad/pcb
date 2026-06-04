@@ -19,7 +19,10 @@ export function showTopLevelHelp(): void {
   console.log('  validate            Validate project source without full build');
   console.log('  drc                 Run Design Rule Check on a KiCad PCB file');
   console.log('  erc                 Run Electrical Rules Check on a KiCad schematic');
-  console.log('  skills              List and query typeCAD skills and API patterns\n');
+  console.log('  export gerbers      Export Gerber files from a KiCad PCB');
+  console.log('  export drill        Export drill files from a KiCad PCB');
+  console.log('  skills              List and query typeCAD skills and API patterns');
+  console.log('  package             Browse and install typeCAD packages from npm\n');
   console.log('Global Options:');
   console.log('  --json              Output in machine-readable JSON');
   console.log('  --help              Show help for a command');
@@ -410,4 +413,106 @@ export function showSkillsHelp(): void {
   console.log('  typecad skills get resistor');
   console.log('  typecad skills get power --json');
   console.log('  typecad skills get pcb-structure');
+}
+
+export function showPackageHelp(): void {
+  console.log(
+    chalk.white.bold('typecad package') +
+      ' - Browse and install typeCAD packages\n'
+  );
+  console.log(
+    'Searches the npm registry for typeCAD-compatible packages and presents'
+  );
+  console.log(
+    'them for selection. Already-installed packages are indicated.\n'
+  );
+  console.log('Usage: typecad package [options]\n');
+  console.log('Options:');
+  console.log('  --json    Output results in JSON format\n');
+  console.log('Examples:');
+  console.log('  typecad package');
+  console.log('  typecad package --json');
+}
+
+export function showExportHelp(): void {
+  console.log(
+    chalk.white.bold('typecad export') +
+      ' - Export KiCad PCB fabrication files\n'
+  );
+  console.log('Usage:');
+  console.log('  typecad export <subcommand> [path] [options] [-- kicad-cli flags]\n');
+  console.log('Subcommands:');
+  console.log('  gerbers             Export Gerber files');
+  console.log('  drill               Export drill files\n');
+  console.log('Options:');
+  console.log('  -o, --output=<dir>  Output directory (default: ./build/gerbers/)');
+  console.log('  --json              Output results as JSON');
+  console.log('  --help              Show help for a subcommand\n');
+  console.log("Run 'typecad export <subcommand> --help' for details.");
+}
+
+export function showExportGerbersHelp(): void {
+  console.log(
+    chalk.white.bold('typecad export gerbers') +
+      ' - Export Gerber files from a KiCad PCB\n'
+  );
+  console.log(
+    'Runs kicad-cli pcb export gerbers on a .kicad_pcb file,\n' +
+    'generating fabrication-ready Gerber output.\n'
+  );
+  console.log('Usage:');
+  console.log('  typecad export gerbers [path] [typecad-options] [-- kicad-cli flags]\n');
+  console.log('Arguments:');
+  console.log(
+    '  <path>             Path to .kicad_pcb file (default: auto-detected from ./build/)\n'
+  );
+  console.log('typecad Options:');
+  console.log('  -o, --output=<dir> Output directory (default: ./build/gerbers/)');
+  console.log('  --json             Output results as JSON');
+  console.log('  --help             Show this help\n');
+  console.log('Passthrough:');
+  console.log(
+    '  All flags after -- are forwarded directly to kicad-cli pcb export gerbers.'
+  );
+  console.log(
+    '  See `kicad-cli pcb export gerbers --help` for the full list of flags.\n'
+  );
+  console.log('Examples:');
+  console.log('  typecad export gerbers');
+  console.log('  typecad export gerbers --output ./fab');
+  console.log('  typecad export gerbers ./build/board.kicad_pcb');
+  console.log('  typecad export gerbers -- --exclude-drawing-sheet');
+}
+
+export function showExportDrillHelp(): void {
+  console.log(
+    chalk.white.bold('typecad export drill') +
+      ' - Export drill files from a KiCad PCB\n'
+  );
+  console.log(
+    'Runs kicad-cli pcb export drill on a .kicad_pcb file,\n' +
+    'generating Excellon drill output.\n'
+  );
+  console.log('Usage:');
+  console.log('  typecad export drill [path] [typecad-options] [-- kicad-cli flags]\n');
+  console.log('Arguments:');
+  console.log(
+    '  <path>             Path to .kicad_pcb file (default: auto-detected from ./build/)\n'
+  );
+  console.log('typecad Options:');
+  console.log('  -o, --output=<dir> Output directory (default: ./build/gerbers/)');
+  console.log('  --json             Output results as JSON');
+  console.log('  --help             Show this help\n');
+  console.log('Passthrough:');
+  console.log(
+    '  All flags after -- are forwarded directly to kicad-cli pcb export drill.'
+  );
+  console.log(
+    '  See `kicad-cli pcb export drill --help` for the full list of flags.\n'
+  );
+  console.log('Examples:');
+  console.log('  typecad export drill');
+  console.log('  typecad export drill --output ./fab');
+  console.log('  typecad export drill ./build/board.kicad_pcb');
+  console.log('  typecad export drill -- --use-drill-file-origin');
 }

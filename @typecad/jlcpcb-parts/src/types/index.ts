@@ -240,6 +240,12 @@ export interface SearchResult {
   
   /** Human-readable summary of why this component matched */
   matchSummary: string;
+  
+  /** KiCad footprint reference (e.g., "Resistor_SMD:R_0603_1608Metric") */
+  footprint?: string;
+  
+  /** KiCad footprint filter strings for footprint matching */
+  fpFilters?: string[];
 }
 
 /**
@@ -271,49 +277,48 @@ export interface CacheMetadata {
   checksum?: string;
 }
 
-/**
- * Network-related error with additional context.
- * Extends the standard Error interface with network-specific information.
- * 
- * @interface NetworkError
- * @extends Error
- */
-export interface NetworkError extends Error {
-  /** Network error code (e.g., "ENOTFOUND", "ETIMEDOUT") */
+export class TypeCadError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'TypeCadError';
+    Object.setPrototypeOf(this, new.target.prototype);
+  }
+}
+
+export class NetworkError extends TypeCadError {
   code?: string;
-  
-  /** HTTP status code if applicable */
   statusCode?: number;
+  constructor(message: string, code?: string, statusCode?: number) {
+    super(message);
+    this.name = 'NetworkError';
+    this.code = code;
+    this.statusCode = statusCode;
+    Object.setPrototypeOf(this, new.target.prototype);
+  }
 }
 
-/**
- * File system operation error with path context.
- * Extends the standard Error interface with file system-specific information.
- * 
- * @interface FileSystemError
- * @extends Error
- */
-export interface FileSystemError extends Error {
-  /** File system error code (e.g., "ENOENT", "EACCES") */
+export class FileSystemError extends TypeCadError {
   code?: string;
-  
-  /** File path that caused the error */
   path?: string;
+  constructor(message: string, code?: string, filePath?: string) {
+    super(message);
+    this.name = 'FileSystemError';
+    this.code = code;
+    this.path = filePath;
+    Object.setPrototypeOf(this, new.target.prototype);
+  }
 }
 
-/**
- * Data parsing error with location context.
- * Extends the standard Error interface with parsing-specific information.
- * 
- * @interface ParsingError
- * @extends Error
- */
-export interface ParsingError extends Error {
-  /** Line number where parsing failed */
+export class ParsingError extends TypeCadError {
   line?: number;
-  
-  /** Column number where parsing failed */
   column?: number;
+  constructor(message: string, line?: number, column?: number) {
+    super(message);
+    this.name = 'ParsingError';
+    this.line = line;
+    this.column = column;
+    Object.setPrototypeOf(this, new.target.prototype);
+  }
 }
 
 /**

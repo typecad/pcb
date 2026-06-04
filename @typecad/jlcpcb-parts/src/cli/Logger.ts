@@ -30,8 +30,8 @@ export interface LoggerOptions {
  * Logger class for debugging and monitoring
  */
 export class Logger {
-  private static instance: Logger;
-  private readonly options: Required<LoggerOptions>;
+  private static instance: Logger | null = null;
+  private options: Required<LoggerOptions>;
   
   /**
    * Creates a new Logger instance with sensible defaults
@@ -57,11 +57,26 @@ export class Logger {
   }
   
   /**
+   * Resets the Logger singleton instance
+   */
+  public static resetInstance(): void {
+    Logger.instance = null;
+  }
+  
+  /**
+   * Sets the console log level at runtime
+   * @param level - The minimum log level to display
+   */
+  public setConsoleLevel(level: LogLevel): void {
+    this.options.consoleLevel = level;
+  }
+  
+  /**
    * Logs a debug message
    * @param message - Message to log
    * @param data - Additional data to log
    */
-  public debug(message: string, data?: any): void {
+  public debug(message: string, data?: unknown): void {
     this.log(LogLevel.DEBUG, message, data);
   }
   
@@ -70,7 +85,7 @@ export class Logger {
    * @param message - Message to log
    * @param data - Additional data to log
    */
-  public info(message: string, data?: any): void {
+  public info(message: string, data?: unknown): void {
     this.log(LogLevel.INFO, message, data);
   }
   
@@ -79,7 +94,7 @@ export class Logger {
    * @param message - Message to log
    * @param data - Additional data to log
    */
-  public warn(message: string, data?: any): void {
+  public warn(message: string, data?: unknown): void {
     this.log(LogLevel.WARN, message, data);
   }
   
@@ -89,7 +104,7 @@ export class Logger {
    * @param error - Error to log
    */
   public error(message: string, error?: unknown): void {
-    let errorData: any;
+    let errorData: unknown;
     
     if (error instanceof Error) {
       errorData = {
@@ -110,7 +125,7 @@ export class Logger {
    * @param message - Message to log
    * @param data - Additional data to log
    */
-  private log(level: LogLevel, message: string, data?: any): void {
+  private log(level: LogLevel, message: string, data?: unknown): void {
     // Skip if log level is too low
     if (level < this.options.consoleLevel) {
       return;

@@ -29,7 +29,7 @@ vi.mock('../../cli/Logger.js', () => ({
 }));
 
 // Import the actual functions to test
-import { runApplication, Application } from '../index.js';
+import { runApplication, Application, _resetSignalHandlers } from '../index.js';
 
 describe('Application Integration', () => {
   // Mock console.log and console.error
@@ -64,6 +64,7 @@ describe('Application Integration', () => {
 
     // Clear mock calls
     vi.clearAllMocks();
+    _resetSignalHandlers();
   });
 
   afterEach(() => {

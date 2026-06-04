@@ -3,6 +3,7 @@ import { FuzzyScorer } from '../interfaces/FuzzyScorer.js';
 import { DataManager } from '../interfaces/DataManager.js';
 import { ParameterParser } from '../interfaces/ParameterParser.js';
 import { ComponentRecord, ComponentScore, ParsedParameters, SearchResult } from '../types/index.js';
+import { Logger } from '../cli/Logger.js';
 
 /**
  * Cache entry for storing search results with timestamp for expiration.
@@ -93,6 +94,7 @@ export class ComponentSearchEngine implements SearchEngine {
   private readonly maxMetricsHistory: number = 20;
   private cacheHits: number = 0;
   private cacheMisses: number = 0;
+  private readonly logger: Logger;
   
   /**
    * Creates a new ComponentSearchEngine
@@ -121,6 +123,7 @@ export class ComponentSearchEngine implements SearchEngine {
     this.cacheExpirationMs = cacheExpirationMs;
     this.searchCache = new Map<string, SearchCacheEntry>();
     this.maxCacheSize = maxCacheSize;
+    this.logger = Logger.getInstance();
   }
   
   /**
@@ -129,7 +132,7 @@ export class ComponentSearchEngine implements SearchEngine {
    * @returns Array of top matching components formatted for display
    */
   public async search(query: string): Promise<SearchResult[]> {
-    console.log(`Searching for: "${query}"`);
+    this.logger.info(`Searching for: "${query}"`);
     const searchStartTime = performance.now();
     
     // Initialize performance metrics
@@ -154,14 +157,8 @@ export class ComponentSearchEngine implements SearchEngine {
       metrics.resultCount = cachedResults.length;
       this.recordPerformanceMetrics(metrics);
       
-      // Manually increment cache hit counter for tests
-      this.cacheHits++;
-      
       return cachedResults;
     }
-    
-    // Manually increment cache miss counter for tests
-    this.cacheMisses++;
     
     try {
       // Ensure data is available
@@ -170,31 +167,29 @@ export class ComponentSearchEngine implements SearchEngine {
       // Get component data
       const components = await this.dataManager.getCsvData();
       metrics.componentCount = components.length;
-      console.log(`Loaded ${components.length} components.`);
+      this.logger.info(`Loaded ${components.length} components.`);
       
       // Parse query parameters
       const parseStartTime = performance.now();
       const parameters = this.parameterParser.parseQuery(query);
       metrics.parsingTime = performance.now() - parseStartTime;
-      console.log('Parsed parameters:', JSON.stringify(parameters));
+      this.logger.debug('Parsed parameters:', JSON.stringify(parameters));
       
       // Score and rank components with timeout protection
       const scoringStartTime = performance.now();
       
-      // Use a promise with timeout to prevent long-running searches
       let rankedComponents: ComponentScore[];
       let batchCount = 0;
       try {
-        const scoringResult = await this.scoreComponentsWithTimeout(components, parameters);
+        const scoringResult = this.scoreComponentsWithTimeout(components, parameters);
         rankedComponents = scoringResult.components;
         batchCount = scoringResult.batchCount;
       } catch (error) {
         if (error instanceof Error && error.message.includes('timed out')) {
-          console.error(error.message);
-          throw error; // Re-throw timeout errors
+          this.logger.error(error.message);
+          throw error;
         }
-        // For other errors, log and continue with empty results
-        console.error('Error during scoring:', error);
+        this.logger.error('Error during scoring:', error);
         rankedComponents = [];
       }
       
@@ -227,7 +222,7 @@ export class ComponentSearchEngine implements SearchEngine {
       metrics.totalSearchTime = searchEndTime - searchStartTime;
       this.recordPerformanceMetrics(metrics);
       
-      console.error(`Error during search: ${error instanceof Error ? error.message : String(error)}`);
+      this.logger.error(`Error during search: ${error instanceof Error ? error.message : String(error)}`);
       throw error;
     }
   }
@@ -241,74 +236,40 @@ export class ComponentSearchEngine implements SearchEngine {
   private scoreComponentsWithTimeout(
     components: ComponentRecord[],
     parameters: ParsedParameters
-  ): Promise<{ components: ComponentScore[], batchCount: number }> {
-    return new Promise<{ components: ComponentScore[], batchCount: number }>((resolve, reject) => {
-      // Set a timeout to abort long-running searches
-      const timeoutId = setTimeout(() => {
-        reject(new Error(`Search timed out after ${this.searchTimeout}ms`));
-      }, this.searchTimeout);
+  ): { components: ComponentScore[], batchCount: number } {
+    const batchSize = 10000;
+    const deadline = performance.now() + this.searchTimeout;
+    let rankedComponents: ComponentScore[] = [];
+    let batchCount = 1;
+    
+    if (components.length > batchSize) {
+      this.logger.info(`Large dataset detected (${components.length} components). Processing in batches...`);
       
-      try {
-        // For large datasets, consider batching the scoring process
-        const batchSize = 10000;
-        let rankedComponents: ComponentScore[] = [];
-        let batchCount = 1; // Default to 1 for non-batched processing
-        
-        // Create a promise for the scoring operation
-        const scoringPromise = new Promise<{ components: ComponentScore[], batchCount: number }>((scoreResolve) => {
-          if (components.length > batchSize) {
-            // Process in batches for large datasets
-            console.log(`Large dataset detected (${components.length} components). Processing in batches...`);
-            
-            // Split components into batches
-            const batches: ComponentRecord[][] = [];
-            for (let i = 0; i < components.length; i += batchSize) {
-              batches.push(components.slice(i, i + batchSize));
-            }
-            
-            batchCount = batches.length;
-            console.log(`Created ${batchCount} batches of up to ${batchSize} components each`);
-            
-            // Process each batch
-            let processedCount = 0;
-            for (const batch of batches) {
-              const batchScores = this.fuzzyScorer.rankComponents(batch, parameters);
-              rankedComponents = this.mergeRankedComponents(rankedComponents, batchScores);
-              
-              processedCount += batch.length;
-              console.log(`Processed ${processedCount}/${components.length} components (${Math.round(processedCount / components.length * 100)}%)`);
-            }
-          } else {
-            // Process all components at once for smaller datasets
-            rankedComponents = this.fuzzyScorer.rankComponents(components, parameters);
-          }
-          
-          scoreResolve({ components: rankedComponents, batchCount });
-        });
-        
-        // Race between the scoring operation and the timeout
-        Promise.race([
-          scoringPromise,
-          new Promise<{ components: ComponentScore[], batchCount: number }>((_, rejectTimeout) => {
-            // This promise never resolves, only rejects on timeout
-            // The timeout itself is handled by the outer timeout
-          })
-        ]).then(
-          (result) => {
-            clearTimeout(timeoutId);
-            resolve(result);
-          },
-          (error) => {
-            clearTimeout(timeoutId);
-            reject(error);
-          }
-        );
-      } catch (error) {
-        // Clear the timeout and reject
-        clearTimeout(timeoutId);
-        reject(error);
+      const batches: ComponentRecord[][] = [];
+      for (let i = 0; i < components.length; i += batchSize) {
+        batches.push(components.slice(i, i + batchSize));
       }
-    });
+      
+      batchCount = batches.length;
+      this.logger.info(`Created ${batchCount} batches of up to ${batchSize} components each`);
+      
+      let processedCount = 0;
+      for (const batch of batches) {
+        if (performance.now() > deadline) {
+          throw new Error(`Search timed out after ${this.searchTimeout}ms`);
+        }
+        
+        const batchScores = this.fuzzyScorer.rankComponents(batch, parameters);
+        rankedComponents = this.mergeRankedComponents(rankedComponents, batchScores);
+        
+        processedCount += batch.length;
+        this.logger.info(`Processed ${processedCount}/${components.length} components (${Math.round(processedCount / components.length * 100)}%)`);
+      }
+    } else {
+      rankedComponents = this.fuzzyScorer.rankComponents(components, parameters);
+    }
+    
+    return { components: rankedComponents, batchCount };
   }
   
   /**
@@ -413,9 +374,25 @@ export class ComponentSearchEngine implements SearchEngine {
     return componentScores.map(componentScore => {
       const { component, score } = componentScore;
       
-      // Generate a detailed match summary
       const matchSummary = this.fuzzyScorer.generateMatchSummary(componentScore);
-      
+
+      let footprint: string | undefined;
+      let fpFilters: string[] | undefined;
+
+      try {
+        if (component.extra) {
+          const extraData = JSON.parse(component.extra);
+          if (extraData.package && typeof extraData.package === 'string') {
+            footprint = extraData.package;
+          }
+          if (Array.isArray(extraData.fpFilters)) {
+            fpFilters = extraData.fpFilters;
+          }
+        }
+      } catch {
+        // extra field is not valid JSON, skip footprint extraction
+      }
+
       return {
         lcsc: component.lcsc,
         manufacturer: component.manufacturer,
@@ -423,7 +400,9 @@ export class ComponentSearchEngine implements SearchEngine {
         description: component.description,
         package: component.package,
         score,
-        matchSummary
+        matchSummary,
+        ...(footprint !== undefined && { footprint }),
+        ...(fpFilters !== undefined && { fpFilters })
       };
     });
   }
@@ -434,7 +413,7 @@ export class ComponentSearchEngine implements SearchEngine {
   public clearCache(): void {
     const cacheSize = this.searchCache.size;
     this.searchCache.clear();
-    console.log(`Cleared search cache (${cacheSize} entries)`);
+    this.logger.info(`Cleared search cache (${cacheSize} entries)`);
   }
   
   /**

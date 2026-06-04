@@ -1,8 +1,9 @@
 {
   "name": "@typecad/jlcpcb-export",
-  "version": "1.0.4",
-  "description": "Generate all the files needed to upload to JLCPCB",
+  "version": "2.0.0",
+  "description": "CLI tool to generate all files needed for JLCPCB assembly from a typeCAD project",
   "keywords": [
+    "typecad-package",
     "typecad",
     "jlcpcb",
     "export",
@@ -15,26 +16,33 @@
   "license": "EULA",
   "homepage": "https://typecad.net",
   "funding": "https://www.buymeacoffee.com/typecad",
-  "main": "index.ts",
-  "types": "index.d.ts",
+  "bin": {
+    "jlcpcb-export": "dist/index.js"
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
   "type": "module",
+  "files": [
+    "dist/"
+  ],
   "publishConfig": {
     "access": "public"
   },
   "dependencies": {
-    "@typecad/typecad": "^0.2.19",
     "chalk": "^5.4.1",
     "replace-in-file": "^8.3.0",
-    "zip-a-folder": "^6.1.1",
-    "tslib": "^2.8.1"
+    "zip-a-folder": "^6.1.1"
   },
   "devDependencies": {
     "@types/node": "^22.13.0",
-    "tsx": "^4.19.2",
-    "typescript": "^5.7.3"
+    "typescript": "^5.7.3",
+    "vitest": "^3.2.6"
   },
   "scripts": {
-    "package_publish": "npm publish --access public",
-    "publish:private": "npm publish --tag private --registry http://192.168.2.207:4873/"
+    "build": "tsc",
+    "test": "vitest --run",
+    "test:watch": "vitest",
+    "prepublishOnly": "npm run build",
+    "package_publish": "npm publish --access public"
   }
 }

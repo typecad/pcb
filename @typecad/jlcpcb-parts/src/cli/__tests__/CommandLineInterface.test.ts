@@ -149,7 +149,7 @@ describe('CommandLineInterface', () => {
       await cli.run(['node', 'script.js', '--version']);
       
       // Assert
-      expect(mockConsoleLog).toHaveBeenCalledWith('jlcpcb-search version 1.0.0');
+      expect(mockConsoleLog).toHaveBeenCalledWith('jlcpcb-search version 1.2.0');
       expect(mockSearchEngine.search).not.toHaveBeenCalled();
     });
     
@@ -162,7 +162,7 @@ describe('CommandLineInterface', () => {
       await cli.run(['node', 'script.js', '-v']);
       
       // Assert
-      expect(mockConsoleLog).toHaveBeenCalledWith('jlcpcb-search version 1.0.0');
+      expect(mockConsoleLog).toHaveBeenCalledWith('jlcpcb-search version 1.2.0');
       expect(mockSearchEngine.search).not.toHaveBeenCalled();
     });
     

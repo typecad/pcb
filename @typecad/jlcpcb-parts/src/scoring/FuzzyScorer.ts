@@ -1,7 +1,6 @@
 import { FuzzyScorer } from '../interfaces/FuzzyScorer.js';
 import { ComponentRecord, ComponentScore, ElectricalValue, MatchDetail, ParsedParameters } from '../types/index.js';
 import { PackageRecognizer } from '../parsers/PackageRecognizer.js';
-import { UnitConverter } from '../parsers/UnitConverter.js';
 
 /**
  * Component types for specialized scoring strategies

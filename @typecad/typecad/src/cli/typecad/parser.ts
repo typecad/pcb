@@ -40,7 +40,7 @@ export function parseArgv(argv: string[]): ParsedArgs {
   }
 
   if (
-    (result.command === 'add' || result.command === 'skills') &&
+    (result.command === 'add' || result.command === 'skills' || result.command === 'export') &&
     typecadTokens.length > i &&
     !typecadTokens[i].startsWith('-')
   ) {

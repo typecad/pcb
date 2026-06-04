@@ -112,17 +112,25 @@ function checkNodeModules(fix: boolean): CheckResult {
   };
 }
 
+function isPkgAvailable(dep: string): boolean {
+  const nmDir = path.join(process.cwd(), 'node_modules');
+  const parts = dep.split('/');
+  const checkDir = parts[0].startsWith('@')
+    ? path.join(nmDir, parts[0], parts[1])
+    : path.join(nmDir, parts[0]);
+  if (!fs.existsSync(checkDir)) return false;
+  const pkgJson = path.join(checkDir, 'package.json');
+  if (!fs.existsSync(pkgJson)) return false;
+  const pkg = JSON.parse(fs.readFileSync(pkgJson, 'utf8'));
+  return !!pkg.name;
+}
+
 function checkCoreDeps(): CheckResult {
   const required = ['@typecad/typecad', '@typecad/passives', 'tsx'];
   const missing: string[] = [];
 
   for (const dep of required) {
-    try {
-      const resolved = require.resolve(dep, { paths: [process.cwd()] });
-      if (!fs.existsSync(resolved)) missing.push(dep);
-    } catch {
-      missing.push(dep);
-    }
+    if (!isPkgAvailable(dep)) missing.push(dep);
   }
 
   if (missing.length === 0) {

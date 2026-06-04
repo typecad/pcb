@@ -7,6 +7,12 @@ import { ErrorHandler } from '../cli/ErrorHandler.js';
 import { Logger, LogLevel } from '../cli/Logger.js';
 import { GlobalErrorHandler } from '../cli/GlobalErrorHandler.js';
 
+let signalHandlersRegistered = false;
+
+export function _resetSignalHandlers(): void {
+  signalHandlersRegistered = false;
+}
+
 /**
  * Application class that initializes and coordinates all components
  */
@@ -84,15 +90,12 @@ export class Application {
       
       this.logger.info('Application completed successfully');
     } catch (error) {
-      // Log the error
       this.logger.error('Application failed', error);
       
-      // Handle any uncaught errors
       const errorMessage = ErrorHandler.handleError(error);
       console.error(errorMessage);
       
-      // Exit with error code
-      process.exit(1);
+      throw error;
     }
   }
   
@@ -177,34 +180,34 @@ export async function runApplication(
     
     const logger = app.getLogger();
     
-    // Set up signal handlers for graceful shutdown
-    process.on('SIGINT', async () => {
-      logger.info('\nReceived SIGINT. Shutting down...');
-      if (app) {
-        await app.shutdown();
-      }
-      process.exit(0);
-    });
-    
-    process.on('SIGTERM', async () => {
-      logger.info('\nReceived SIGTERM. Shutting down...');
-      if (app) {
-        await app.shutdown();
-      }
-      process.exit(0);
-    });
+    if (!signalHandlersRegistered) {
+      signalHandlersRegistered = true;
+      
+      process.on('SIGINT', async () => {
+        logger.info('\nReceived SIGINT. Shutting down...');
+        if (app) {
+          await app.shutdown();
+        }
+        process.exit(0);
+      });
+      
+      process.on('SIGTERM', async () => {
+        logger.info('\nReceived SIGTERM. Shutting down...');
+        if (app) {
+          await app.shutdown();
+        }
+        process.exit(0);
+      });
+    }
     
     // Run the application
     await app.run(args);
   } catch (error) {
-    // If we couldn't even create the application or get the logger,
-    // fall back to console.error
     if (!app) {
       console.error('Failed to initialize application:', error instanceof Error ? error.message : String(error));
       process.exit(1);
     }
     
-    // Otherwise, the application's error handling should have caught this
-    throw error;
+    process.exit(1);
   }
 }

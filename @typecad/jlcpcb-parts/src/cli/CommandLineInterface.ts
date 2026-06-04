@@ -2,13 +2,37 @@ import { CLI } from '../interfaces/CLI.js';
 import { SearchEngine } from '../interfaces/SearchEngine.js';
 import { SearchResult, JsonSearchResult, JsonErrorResponse } from '../types/index.js';
 import chalk from 'chalk';
+import { Logger, LogLevel } from './Logger.js';
 import { ProgressIndicator } from './ProgressIndicator.js';
 import { ErrorHandler } from './ErrorHandler.js';
 import * as readline from 'readline';
+import { execFileSync } from 'child_process';
+import { existsSync } from 'node:fs';
+import { platform } from 'node:os';
+import { createRequire } from 'node:module';
+import { join } from 'node:path';
+
+const require = createRequire(import.meta.url);
+const pkg = require('../../package.json');
 
 /**
  * Command-line interface implementation for the JLCPCB component search tool
  */
+const IS_WIN = platform() === 'win32';
+const IS_CMD_EXT = /\.(?:cmd|bat)$/i;
+
+function findExecutable(name: string): string | undefined {
+  const pathEnv = process.env.PATH?.split(IS_WIN ? ';' : ':') ?? [];
+  const exts = IS_WIN ? (process.env.PATHEXT?.split(';') ?? ['.exe']) : [''];
+  for (const dir of pathEnv) {
+    for (const ext of exts) {
+      const p = join(dir, name + ext);
+      if (existsSync(p)) return p;
+    }
+  }
+  return undefined;
+}
+
 export class CommandLineInterface implements CLI {
   private readonly searchEngine: SearchEngine;
   private readonly programName: string;
@@ -96,20 +120,19 @@ export class CommandLineInterface implements CLI {
         progress.start(`Searching for components matching: "${parsedArgs.query}"`);
       }
       
-      // Suppress console output in JSON mode
-      let originalConsoleLog: typeof console.log | null = null;
+      // Suppress Logger output in JSON mode
       if (parsedArgs.format === 'json') {
-        originalConsoleLog = console.log;
-        console.log = () => {}; // Suppress all console.log output
+        const logger = Logger.getInstance();
+        logger.setConsoleLevel(LogLevel.NONE);
       }
       
       try {
         // Perform search
         const results = await this.searchEngine.search(parsedArgs.query);
         
-        // Restore console.log if it was suppressed
-        if (originalConsoleLog) {
-          console.log = originalConsoleLog;
+        // Restore Logger level if it was suppressed
+        if (parsedArgs.format === 'json') {
+          Logger.getInstance().setConsoleLevel(LogLevel.INFO);
         }
         
         // Stop progress indicator (only if not in JSON mode)
@@ -151,10 +174,14 @@ export class CommandLineInterface implements CLI {
           const topMatch = results[0];
           console.log(chalk.bold.blue(`Top match: #C${topMatch.lcsc} - ${topMatch.description} (Score: ${topMatch.score})`));
         }
+
+        if (limitedResults.length > 0 && parsedArgs.format !== 'json') {
+          await this.promptInstallComponent(limitedResults);
+        }
       } catch (searchError) {
-        // Restore console.log if it was suppressed
-        if (parsedArgs.format === 'json' && originalConsoleLog) {
-          console.log = originalConsoleLog;
+        // Restore Logger level if it was suppressed
+        if (parsedArgs.format === 'json') {
+          Logger.getInstance().setConsoleLevel(LogLevel.INFO);
         }
         
         // Stop progress indicator (only if not in JSON mode)
@@ -197,6 +224,105 @@ export class CommandLineInterface implements CLI {
       process.exit(1);
       return;
     }
+  }
+
+  /**
+   * Prompts the user to install a component from search results
+   * @param results - Array of search results to choose from
+   */
+  private async promptInstallComponent(results: SearchResult[]): Promise<void> {
+    const wantToAdd = await this.promptConfirm('Do you want to add a component from these results?');
+    if (!wantToAdd) return;
+
+    const indexStr = await this.promptInput(
+      `Enter the number of the result (1-${results.length}):`,
+      (val) => {
+        const idx = parseInt(val, 10);
+        return (!isNaN(idx) && idx >= 1 && idx <= results.length)
+          ? true
+          : `Please enter a number between 1 and ${results.length}`;
+      }
+    );
+
+    const selectedIdx = parseInt(indexStr, 10) - 1;
+    const selectedResult = results[selectedIdx];
+
+    const lcscNumber = selectedResult.lcsc.startsWith('C')
+      ? selectedResult.lcsc
+      : `C${selectedResult.lcsc}`;
+
+    console.log(chalk.blue(`Running typecad add component for ${lcscNumber}...`));
+
+    try {
+      const typecadBin = findExecutable('typecad');
+      if (!typecadBin) {
+        console.error(chalk.red('Error: typecad command not found.'));
+        console.error(chalk.yellow('Install typeCAD globally: npm install -g @typecad/typecad'));
+        console.error(chalk.yellow('Or run: npx @typecad/typecad add component --jlcpcb=true --c=' + lcscNumber));
+        return;
+      }
+
+      const args = ['add', 'component', '--jlcpcb=true', `--c=${lcscNumber}`];
+
+      if (IS_WIN && (!typecadBin || IS_CMD_EXT.test(typecadBin))) {
+        execFileSync('cmd.exe', ['/d', '/s', '/c', 'typecad', ...args], { stdio: 'inherit' });
+      } else {
+        execFileSync(typecadBin, args, { stdio: 'inherit' });
+      }
+      console.log(chalk.green('Component created successfully!'));
+    } catch (error) {
+      console.error(chalk.red('Failed to create component.'));
+    }
+  }
+
+  /**
+   * Prompts the user with a yes/no confirmation
+   * @param question - The question to ask
+   * @returns True if the user confirms, false otherwise
+   */
+  private async promptConfirm(question: string): Promise<boolean> {
+    const rl = readline.createInterface({
+      input: process.stdin,
+      output: process.stdout
+    });
+
+    return new Promise((resolve) => {
+      rl.question(`${chalk.cyan(question)} ${chalk.gray('(y/N)')} `, (answer) => {
+        rl.close();
+        resolve(answer.toLowerCase() === 'y' || answer.toLowerCase() === 'yes');
+      });
+    });
+  }
+
+  /**
+   * Prompts the user for text input with optional validation
+   * @param question - The question to ask
+   * @param validate - Optional validation function
+   * @returns The user's input
+   */
+  private async promptInput(question: string, validate?: (input: string) => string | boolean): Promise<string> {
+    const rl = readline.createInterface({
+      input: process.stdin,
+      output: process.stdout
+    });
+
+    return new Promise((resolve) => {
+      const ask = () => {
+        rl.question(chalk.cyan(question + ' '), (answer) => {
+          if (validate) {
+            const result = validate(answer.trim());
+            if (result !== true) {
+              console.log(chalk.yellow(typeof result === 'string' ? result : 'Invalid input'));
+              ask();
+              return;
+            }
+          }
+          rl.close();
+          resolve(answer.trim());
+        });
+      };
+      ask();
+    });
   }
 
   /**
@@ -309,7 +435,7 @@ export class CommandLineInterface implements CLI {
     }
     
     // Query must not contain invalid characters
-    const invalidCharsRegex = /[^\w\s\d.,\-+%()[\]{}:;'"\/\\&@#$^*=<>?!]/g;
+    const invalidCharsRegex = /[^\w\s\d.,\-+%()[\]{}:;'"\/\\&@#$^*=<>?!°Ωωµ±℃]/g;
     if (invalidCharsRegex.test(query)) {
       return false;
     }
@@ -421,15 +547,12 @@ export class CommandLineInterface implements CLI {
    */
   private displayDetailedResults(results: SearchResult[]): void {
     results.forEach((result, index) => {
-      const scoreColor = this.getScoreColor(result.score);
-      
       console.log(chalk.bold(`${index + 1}. #C${result.lcsc} - ${result.description}`));
       console.log(`   ${chalk.cyan('Manufacturer:')} ${result.manufacturer}`);
       console.log(`   ${chalk.cyan('Part Number:')} ${result.partNumber}`);
       console.log(`   ${chalk.cyan('Package:')} ${result.package}`);
-      console.log(`   ${chalk.cyan('Match Score:')} ${scoreColor(result.score.toFixed(1))}`);
-      console.log(`   ${chalk.cyan('Match Details:')} ${result.matchSummary}`);
-      console.log(); // Empty line between results
+      console.log(`   ${chalk.cyan('Details:')} ${result.matchSummary}`);
+      console.log();
     });
   }
   
@@ -534,7 +657,9 @@ export class CommandLineInterface implements CLI {
       description: result.description,
       package: result.package,
       score: result.score,
-      matchSummary: result.matchSummary
+      matchSummary: result.matchSummary,
+      ...(result.footprint && { footprint: result.footprint }),
+      ...(result.fpFilters && result.fpFilters.length > 0 && { fpFilters: result.fpFilters }),
     }));
 
     // Output clean JSON with no additional formatting or colors
@@ -659,8 +784,6 @@ export class CommandLineInterface implements CLI {
    * Displays version information
    */
   private displayVersion(): void {
-    // For simplicity in testing, just use a hardcoded version
-    // In a real implementation, we would read from package.json
-    console.log(`${this.programName} version 1.0.0`);
+    console.log(`${this.programName} version ${pkg.version}`);
   }
 }

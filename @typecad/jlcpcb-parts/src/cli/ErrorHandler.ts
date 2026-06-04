@@ -37,12 +37,7 @@ export class ErrorHandler {
    * @returns True if the error is a network error
    */
   private static isNetworkError(error: Error): error is NetworkError {
-    return 'code' in error && (
-      (error as NetworkError).code === 'ENOTFOUND' ||
-      (error as NetworkError).code === 'ETIMEDOUT' ||
-      (error as NetworkError).code === 'ECONNREFUSED' ||
-      (error as NetworkError).statusCode !== undefined
-    );
+    return error instanceof NetworkError;
   }
 
   /**
@@ -51,12 +46,7 @@ export class ErrorHandler {
    * @returns True if the error is a file system error
    */
   private static isFileSystemError(error: Error): error is FileSystemError {
-    return 'code' in error && (
-      (error as FileSystemError).code === 'ENOENT' ||
-      (error as FileSystemError).code === 'EACCES' ||
-      (error as FileSystemError).code === 'EISDIR' ||
-      (error as FileSystemError).path !== undefined
-    );
+    return error instanceof FileSystemError;
   }
 
   /**
@@ -65,7 +55,7 @@ export class ErrorHandler {
    * @returns True if the error is a parsing error
    */
   private static isParsingError(error: Error): error is ParsingError {
-    return 'line' in error || 'column' in error || error.message.includes('parse');
+    return error instanceof ParsingError;
   }
 
   /**

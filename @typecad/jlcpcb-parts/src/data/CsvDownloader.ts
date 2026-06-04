@@ -1,5 +1,4 @@
 import { promises as fs } from 'fs';
-import { createWriteStream } from 'fs';
 import { NetworkError } from '../types/index.js';
 import { CacheUtils } from '../utils/CacheUtils.js';
 
@@ -80,15 +79,12 @@ export class CsvDownloader {
       }
     }
 
-    // If we get here, all attempts failed
-    const networkError = new Error(
-      `Failed to download CSV after ${this.maxRetries} attempts: ${lastError?.message || 'Unknown error'}`
-    ) as NetworkError;
-    
-    networkError.code = lastError instanceof Error && 'code' in lastError ? 
-      String(lastError.code) : 'DOWNLOAD_FAILED';
-    
-    throw networkError;
+    const errorCode = lastError instanceof Error && 'code' in lastError
+      ? String(lastError.code) : 'DOWNLOAD_FAILED';
+    throw new NetworkError(
+      `Failed to download CSV after ${this.maxRetries} attempts: ${lastError?.message || 'Unknown error'}`,
+      errorCode
+    );
   }
 
   /**
@@ -102,12 +98,11 @@ export class CsvDownloader {
     const response = await fetch(url);
     
     if (!response.ok) {
-      const networkError = new Error(
-        `HTTP error: ${response.status} ${response.statusText}`
-      ) as NetworkError;
-      
-      networkError.statusCode = response.status;
-      throw networkError;
+      throw new NetworkError(
+        `HTTP error: ${response.status} ${response.statusText}`,
+        undefined,
+        response.status
+      );
     }
 
     // Get response as text

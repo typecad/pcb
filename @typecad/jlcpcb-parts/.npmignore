@@ -17,10 +17,3 @@ tsconfig.json
 jest.config.js
 .eslintrc.js
 .prettierrc
-
-# Source files (if publishing built JS)
-src/
-
-# Build artifacts
-dist/
-build/

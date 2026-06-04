@@ -213,21 +213,16 @@ describe('Application', () => {
     });
     
     it('should handle errors gracefully', async () => {
-      // Arrange
       const app = new Application();
       const args = ['node', 'script.js', 'search', 'query'];
       const error = new Error('Test error');
       
-      // Mock CLI to throw an error
       (app as any).cli.run = vi.fn().mockRejectedValue(error);
       
-      // Act
-      await app.run(args);
+      await expect(app.run(args)).rejects.toThrow('Test error');
       
-      // Assert
       expect(app.getLogger().error).toHaveBeenCalledWith('Application failed', error);
       expect(mockConsoleError).toHaveBeenCalled();
-      expect(mockProcessExit).toHaveBeenCalledWith(1);
     });
   });
   

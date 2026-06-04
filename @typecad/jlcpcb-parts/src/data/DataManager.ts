@@ -1,10 +1,10 @@
 import { promises as fs } from 'fs';
-import { join } from 'path';
 import { ComponentRecord } from '../types/index.js';
 import { TimestampManager } from './TimestampManager.js';
 import { CsvDownloader } from './CsvDownloader.js';
 import { CsvParser } from './CsvParser.js';
 import { CacheUtils } from '../utils/CacheUtils.js';
+import { Logger } from '../cli/Logger.js';
 
 /**
  * Manages component data including downloading, caching, and parsing.
@@ -20,6 +20,7 @@ export class DataManager {
   private readonly csvParser: CsvParser;
   private cachedComponents: ComponentRecord[] | null = null;
   private resolvedCsvPath: string | null = null;
+  private readonly logger: Logger;
 
   /**
    * Creates a new DataManager
@@ -43,6 +44,7 @@ export class DataManager {
     this.timestampManager = new TimestampManager(cacheDir, cacheExpirationHours, useSharedCache);
     this.csvDownloader = new CsvDownloader(3, 1000, useSharedCache, cacheDir);
     this.csvParser = new CsvParser();
+    this.logger = Logger.getInstance();
   }
 
   /**
@@ -72,10 +74,10 @@ export class DataManager {
     
     if (isStale) {
       try {
-        console.log('Cache is stale or does not exist. Downloading fresh data...');
+        this.logger.info('Cache is stale or does not exist. Downloading fresh data...');
         await this.downloadCsvFile();
         await this.timestampManager.writeTimestamp();
-        console.log('Download complete and timestamp updated.');
+        this.logger.info('Download complete and timestamp updated.');
         
         // Clear cached components to force reload
         this.cachedComponents = null;
@@ -84,7 +86,7 @@ export class DataManager {
         try {
           const csvPath = await this.getResolvedCsvPath();
           await fs.access(csvPath);
-          console.warn(`Download failed, but using existing local file: ${error instanceof Error ? error.message : String(error)}`);
+          this.logger.warn(`Download failed, but using existing local file: ${error instanceof Error ? error.message : String(error)}`);
         } catch {
           // No local file exists and download failed
           throw new Error(`Failed to download component data and no local cache exists: ${error instanceof Error ? error.message : String(error)}`);
@@ -92,7 +94,7 @@ export class DataManager {
       }
     } else {
       const ageHours = await this.timestampManager.getCacheAgeHours();
-      console.log(`Using cached data (${ageHours?.toFixed(1)} hours old).`);
+      this.logger.info(`Using cached data (${ageHours?.toFixed(1)} hours old).`);
     }
   }
 
@@ -111,10 +113,10 @@ export class DataManager {
     
     // Parse the CSV file
     try {
-      console.log('Parsing component data...');
+      this.logger.info('Parsing component data...');
       const csvPath = await this.getResolvedCsvPath();
       const components = await this.csvParser.parseFile(csvPath);
-      console.log(`Loaded ${components.length} components.`);
+      this.logger.info(`Loaded ${components.length} components.`);
       
       // Cache the components
       this.cachedComponents = components;

@@ -76,6 +76,20 @@ async function showCommandHelp(command: string, subcommand: string): Promise<boo
     help.showSkillsHelp();
     return true;
   }
+  if (command === 'package') {
+    help.showPackageHelp();
+    return true;
+  }
+  if (command === 'export') {
+    if (subcommand === 'gerbers') {
+      help.showExportGerbersHelp();
+    } else if (subcommand === 'drill') {
+      help.showExportDrillHelp();
+    } else {
+      help.showExportHelp();
+    }
+    return true;
+  }
   return false;
 }
 
@@ -169,6 +183,14 @@ async function main(): Promise<void> {
 
       case 'skills':
         await (await import('./commands/skills.js')).run(parsed);
+        break;
+
+      case 'package':
+        await (await import('./commands/package.js')).run(parsed);
+        break;
+
+      case 'export':
+        await (await import('./commands/export.js')).run(parsed);
         break;
 
       default:

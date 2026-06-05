@@ -8,16 +8,16 @@ import { PadResolver } from '../routing/shared/pad_resolver.js';
  * Routes multiple connections together, retrying with different ordering
  * and relaxed parameters across rounds to negotiate congestion.
  */
-export async function autorouteBatch(
+export function autorouteBatch(
     pcb: PCB,
     items: Array<{ from: Pin | Pin[]; to: Pin | Pin[]; options?: IAutorouteRouteOptions; name?: string }>,
     batchOptions?: {
         rounds?: number;
         reorder?: 'none' | 'reverse' | 'byDistance';
-        relaxViaCostPerRound?: number;        // subtract per round (min 0)
-        increaseIterationsPerRound?: number;  // add per round
+        relaxViaCostPerRound?: number;
+        increaseIterationsPerRound?: number;
     }
-): Promise<{ results: IAutorouteResult[]; success: boolean; rounds: number }> {
+): { results: IAutorouteResult[]; success: boolean; rounds: number } {
     const rounds = batchOptions?.rounds ?? 3;
     const reorder = batchOptions?.reorder ?? 'byDistance';
     const relaxViaCostPerRound = batchOptions?.relaxViaCostPerRound ?? 5;
@@ -77,7 +77,7 @@ export async function autorouteBatch(
                 maxIterations: base.maxIterations !== undefined ? base.maxIterations + increaseIterationsPerRound * round : undefined
             };
 
-            const res = await pcb.route({ ...adjusted, from: item.from, to: item.to } as IAutorouteOptions);
+            const res = pcb.route({ ...adjusted, from: item.from, to: item.to } as IAutorouteOptions);
             roundResults.push(res);
             if (!res.success) {
                 roundSuccess = false;

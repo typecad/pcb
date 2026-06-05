@@ -206,7 +206,7 @@ export class KiCadLocalDataProcessor {
   async areLocalSymbolsAvailable(): Promise<boolean> {
     try {
       const symbolsPath = await this.findSymbolsPath();
-      return await this.kicad.hasLocalSymbols();
+      return this.kicad.hasLocalSymbols();
     } catch (error) {
       return false;
     }

@@ -116,14 +116,14 @@ async function applyMode(ir: KicadIR, kicadFilePath: string, sourceDescription: 
 
     // 1. Match IR footprints to source locations
     const matcher = new SourceMatcher(sourceRoot);
-    const matchResults = await matcher.matchAll(ir.footprints);
+    const matchResults = matcher.matchAll(ir.footprints);
 
     const matchedCount = matchResults.filter(mr => mr.sourceLocation !== null).length;
     logger.info(`Matched ${matchedCount}/${ir.footprints.length} footprints to source locations`);
 
     // 2. Compute footprint changes
     const rewriter = new SourceRewriter();
-    const footprintChanges = await rewriter.computeFootprintChanges(matchResults);
+    const footprintChanges = rewriter.computeFootprintChanges(matchResults);
 
     // 3. Compute text changes (scan source files for .text() calls)
     const sourceFiles = [...new Set(
@@ -131,10 +131,10 @@ async function applyMode(ir: KicadIR, kicadFilePath: string, sourceDescription: 
             .filter(mr => mr.sourceLocation)
             .map(mr => mr.sourceLocation!.filePath)
     )];
-    const textChanges = await rewriter.computeTextChanges(ir, sourceFiles);
+    const textChanges = rewriter.computeTextChanges(ir, sourceFiles);
 
     // 4. Compute layout changes (referenceLayout, valueLayout, fabLayout)
-    const layoutChanges = await rewriter.computeLayoutChanges(matchResults, options?.captureLayouts ?? false);
+    const layoutChanges = rewriter.computeLayoutChanges(matchResults, options?.captureLayouts ?? false);
 
     // 5. Apply footprint changes interactively
     if (footprintChanges.length > 0) {
@@ -229,7 +229,7 @@ async function interactiveApplyFootprints(changes: PendingChange[]): Promise<{ f
 
     // Apply
     const rewriter = new SourceRewriter();
-    const result = await rewriter.applyFootprintChanges(selected);
+    const result = rewriter.applyFootprintChanges(selected);
     return { filesModified: result.filesModified, applied: selected.length };
 }
 
@@ -259,7 +259,7 @@ async function interactiveApplyTexts(changes: PendingTextChange[]): Promise<{ fi
 
     // Apply
     const rewriter = new SourceRewriter();
-    const result = await rewriter.applyTextChanges(selected);
+    const result = rewriter.applyTextChanges(selected);
     return { filesModified: result.filesModified, applied: selected.length };
 }
 
@@ -286,6 +286,6 @@ async function interactiveApplyLayouts(changes: PendingLayoutChange[]): Promise<
     }
 
     const rewriter = new SourceRewriter();
-    const result = await rewriter.applyLayoutChanges(selected);
+    const result = rewriter.applyLayoutChanges(selected);
     return { filesModified: result.filesModified, applied: selected.length };
 }

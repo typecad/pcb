@@ -23,30 +23,30 @@
         <div class='clearfix'>
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">0% </span>
+                <span class="strong">100% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>0/53</span>
+                <span class='fraction'>44/44</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">0% </span>
+                <span class="strong">100% </span>
                 <span class="quiet">Branches</span>
-                <span class='fraction'>0/1</span>
+                <span class='fraction'>18/18</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">0% </span>
+                <span class="strong">100% </span>
                 <span class="quiet">Functions</span>
-                <span class='fraction'>0/1</span>
+                <span class='fraction'>5/5</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">0% </span>
+                <span class="strong">100% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>0/53</span>
+                <span class='fraction'>44/44</span>
             </div>
         
             
@@ -61,7 +61,7 @@
             </div>
         </template>
     </div>
-    <div class='status-line low'></div>
+    <div class='status-line high'></div>
     <pre><table class="coverage">
 <tr><td class="line-count quiet"><a name='L1'></a><a href='#L1'>1</a>
 <a name='L2'></a><a href='#L2'>2</a>
@@ -116,112 +116,112 @@
 <a name='L51'></a><a href='#L51'>51</a>
 <a name='L52'></a><a href='#L52'>52</a>
 <a name='L53'></a><a href='#L53'>53</a>
-<a name='L54'></a><a href='#L54'>54</a></td><td class="line-coverage quiet"><span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js"><span class="cstat-no" title="statement not covered" ><span class="fstat-no" title="function not covered" ><span class="branch-0 cbranch-no" title="branch not covered" >export class ReferenceCounter {</span></span></span>
-<span class="cstat-no" title="statement not covered" >    private counters: Map&lt;string, number&gt; = new Map();</span>
-<span class="cstat-no" title="statement not covered" >    private usedReferences: Set&lt;string&gt; = new Set();</span>
-<span class="cstat-no" title="statement not covered" ></span>
-<span class="cstat-no" title="statement not covered" >    private static normalizeKey(reference: string): string {</span>
-<span class="cstat-no" title="statement not covered" >        return reference.toLowerCase();</span>
-<span class="cstat-no" title="statement not covered" >    }</span>
-<span class="cstat-no" title="statement not covered" ></span>
-<span class="cstat-no" title="statement not covered" >    getNextReference(prefix: string): string {</span>
-<span class="cstat-no" title="statement not covered" >        const normalizedPrefix = prefix.toLowerCase();</span>
-<span class="cstat-no" title="statement not covered" >        let nextRef: string;</span>
-<span class="cstat-no" title="statement not covered" >        let nextRefNormalized: string;</span>
-<span class="cstat-no" title="statement not covered" >        let currentCount = this.counters.get(normalizedPrefix) || 0;</span>
-<span class="cstat-no" title="statement not covered" ></span>
-<span class="cstat-no" title="statement not covered" >        do {</span>
-<span class="cstat-no" title="statement not covered" >            currentCount++;</span>
-<span class="cstat-no" title="statement not covered" >            nextRef = `${prefix}${currentCount}`;</span>
-<span class="cstat-no" title="statement not covered" >            nextRefNormalized = ReferenceCounter.normalizeKey(nextRef);</span>
-<span class="cstat-no" title="statement not covered" >        } while (this.usedReferences.has(nextRefNormalized));</span>
-<span class="cstat-no" title="statement not covered" ></span>
-<span class="cstat-no" title="statement not covered" >        this.counters.set(normalizedPrefix, currentCount);</span>
-<span class="cstat-no" title="statement not covered" >        this.usedReferences.add(nextRefNormalized);</span>
-<span class="cstat-no" title="statement not covered" >        return nextRef;</span>
-<span class="cstat-no" title="statement not covered" >    }</span>
-<span class="cstat-no" title="statement not covered" ></span>
-<span class="cstat-no" title="statement not covered" >    setReference(reference: string): boolean {</span>
-<span class="cstat-no" title="statement not covered" >        const normalized = ReferenceCounter.normalizeKey(reference);</span>
-<span class="cstat-no" title="statement not covered" >        if (this.usedReferences.has(normalized)) {</span>
-<span class="cstat-no" title="statement not covered" >            return false;</span>
-<span class="cstat-no" title="statement not covered" >        }</span>
-<span class="cstat-no" title="statement not covered" ></span>
-<span class="cstat-no" title="statement not covered" >        const prefixMatch = reference.match(/^[#]?[a-zA-Z]+/);</span>
-<span class="cstat-no" title="statement not covered" >        const numberMatch = reference.match(/\d+/);</span>
-<span class="cstat-no" title="statement not covered" >        if (!prefixMatch || !numberMatch) {</span>
-<span class="cstat-no" title="statement not covered" >            return false;</span>
-<span class="cstat-no" title="statement not covered" >        }</span>
-<span class="cstat-no" title="statement not covered" ></span>
-<span class="cstat-no" title="statement not covered" >        const prefix = prefixMatch[0].toLowerCase();</span>
-<span class="cstat-no" title="statement not covered" >        const number = parseInt(numberMatch[0], 10);</span>
-<span class="cstat-no" title="statement not covered" ></span>
-<span class="cstat-no" title="statement not covered" >        this.usedReferences.add(normalized);</span>
-<span class="cstat-no" title="statement not covered" >        const currentCount = this.counters.get(prefix) || 0;</span>
-<span class="cstat-no" title="statement not covered" >        if (number &gt; currentCount) {</span>
-<span class="cstat-no" title="statement not covered" >            this.counters.set(prefix, number);</span>
-<span class="cstat-no" title="statement not covered" >        }</span>
-<span class="cstat-no" title="statement not covered" >        return true;</span>
-<span class="cstat-no" title="statement not covered" >    }</span>
-<span class="cstat-no" title="statement not covered" ></span>
-<span class="cstat-no" title="statement not covered" >    reset(): void {</span>
-<span class="cstat-no" title="statement not covered" >        this.counters.clear();</span>
-<span class="cstat-no" title="statement not covered" >        this.usedReferences.clear();</span>
-<span class="cstat-no" title="statement not covered" >    }</span>
-<span class="cstat-no" title="statement not covered" >}</span>
+<a name='L54'></a><a href='#L54'>54</a></td><td class="line-coverage quiet"><span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">319x</span>
+<span class="cline-any cline-yes">319x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">363x</span>
+<span class="cline-any cline-yes">363x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">94x</span>
+<span class="cline-any cline-yes">94x</span>
+<span class="cline-any cline-yes">94x</span>
+<span class="cline-any cline-yes">94x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">94x</span>
+<span class="cline-any cline-yes">94x</span>
+<span class="cline-any cline-yes">94x</span>
+<span class="cline-any cline-yes">94x</span>
+<span class="cline-any cline-yes">94x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">94x</span>
+<span class="cline-any cline-yes">94x</span>
+<span class="cline-any cline-yes">94x</span>
+<span class="cline-any cline-yes">94x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">269x</span>
+<span class="cline-any cline-yes">269x</span>
+<span class="cline-any cline-yes">85x</span>
+<span class="cline-any cline-yes">85x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">184x</span>
+<span class="cline-any cline-yes">184x</span>
+<span class="cline-any cline-yes">269x</span>
+<span class="cline-any cline-yes">11x</span>
+<span class="cline-any cline-yes">11x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">173x</span>
+<span class="cline-any cline-yes">173x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">173x</span>
+<span class="cline-any cline-yes">212x</span>
+<span class="cline-any cline-yes">269x</span>
+<span class="cline-any cline-yes">159x</span>
+<span class="cline-any cline-yes">159x</span>
+<span class="cline-any cline-yes">173x</span>
+<span class="cline-any cline-yes">269x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">export class ReferenceCounter {
+    private counters: Map&lt;string, number&gt; = new Map();
+    private usedReferences: Set&lt;string&gt; = new Set();
+&nbsp;
+    private static normalizeKey(reference: string): string {
+        return reference.toLowerCase();
+    }
+&nbsp;
+    getNextReference(prefix: string): string {
+        const normalizedPrefix = prefix.toLowerCase();
+        let nextRef: string;
+        let nextRefNormalized: string;
+        let currentCount = this.counters.get(normalizedPrefix) || 0;
+&nbsp;
+        do {
+            currentCount++;
+            nextRef = `${prefix}${currentCount}`;
+            nextRefNormalized = ReferenceCounter.normalizeKey(nextRef);
+        } while (this.usedReferences.has(nextRefNormalized));
+&nbsp;
+        this.counters.set(normalizedPrefix, currentCount);
+        this.usedReferences.add(nextRefNormalized);
+        return nextRef;
+    }
+&nbsp;
+    setReference(reference: string): boolean {
+        const normalized = ReferenceCounter.normalizeKey(reference);
+        if (this.usedReferences.has(normalized)) {
+            return false;
+        }
+&nbsp;
+        const prefixMatch = reference.match(/^[#]?[a-zA-Z]+/);
+        const numberMatch = reference.match(/\d+/);
+        if (!prefixMatch || !numberMatch) {
+            return false;
+        }
+&nbsp;
+        const prefix = prefixMatch[0].toLowerCase();
+        const number = parseInt(numberMatch[0], 10);
+&nbsp;
+        this.usedReferences.add(normalized);
+        const currentCount = this.counters.get(prefix) || 0;
+        if (number &gt; currentCount) {
+            this.counters.set(prefix, number);
+        }
+        return true;
+    }
+&nbsp;
+    reset(): void {
+        this.counters.clear();
+        this.usedReferences.clear();
+    }
+}
 &nbsp;</pre></td></tr></table></pre>
 
                 <div class='push'></div><!-- for sticky footer -->
@@ -229,7 +229,7 @@
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2026-06-01T13:03:40.672Z
+                at 2026-06-05T00:28:02.673Z
             </div>
         <script src="../../prettify.js"></script>
         <script>

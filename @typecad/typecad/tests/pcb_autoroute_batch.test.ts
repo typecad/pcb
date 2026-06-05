@@ -11,11 +11,11 @@ describe('pcb_autoroute_batch', () => {
         const { autorouteBatch } = await import('../src/pcb/pcb_autoroute_batch.js');
         const mockPcb = {
             _state: { stagedOutlines: [] },
-            route: vi.fn(() => Promise.resolve({ success: true, routeCount: 1, completedCount: 1, routeDetails: [] } as any)),
+            route: vi.fn(() => ({ success: true, routeCount: 1, completedCount: 1, routeDetails: [] } as any)),
         };
         const { Pin } = await import('../src/pin.js');
         const items = [{ from: new Pin(1, 'R1'), to: new Pin(2, 'R1') }];
-        const result = await autorouteBatch(mockPcb as any, items);
+        const result = autorouteBatch(mockPcb as any, items);
         expect(result.success).toBe(true);
         expect(result.rounds).toBe(3);
     });
@@ -28,14 +28,14 @@ describe('pcb_autoroute_batch', () => {
             route: vi.fn(() => {
                 callCount++;
                 if (callCount < 3) {
-                    return Promise.resolve({ success: false, routeCount: 1, completedCount: 0, routeDetails: [] } as any);
+                    return { success: false, routeCount: 1, completedCount: 0, routeDetails: [] } as any;
                 }
-                return Promise.resolve({ success: true, routeCount: 1, completedCount: 1, routeDetails: [] } as any);
+                return { success: true, routeCount: 1, completedCount: 1, routeDetails: [] } as any;
             }),
         };
         const { Pin } = await import('../src/pin.js');
         const items = [{ from: new Pin(1, 'R1'), to: new Pin(2, 'R1') }];
-        const result = await autorouteBatch(mockPcb as any, items, { rounds: 5 });
+        const result = autorouteBatch(mockPcb as any, items, { rounds: 5 });
         expect(result.success).toBe(true);
         expect(callCount).toBe(3);
     });
@@ -44,11 +44,11 @@ describe('pcb_autoroute_batch', () => {
         const { autorouteBatch } = await import('../src/pcb/pcb_autoroute_batch.js');
         const mockPcb = {
             _state: { stagedOutlines: [] },
-            route: vi.fn(() => Promise.resolve({ success: false, routeCount: 1, completedCount: 0, routeDetails: [] } as any)),
+            route: vi.fn(() => ({ success: false, routeCount: 1, completedCount: 0, routeDetails: [] } as any)),
         };
         const { Pin } = await import('../src/pin.js');
         const items = [{ from: new Pin(1, 'R1'), to: new Pin(2, 'R1') }];
-        const result = await autorouteBatch(mockPcb as any, items, { rounds: 2 });
+        const result = autorouteBatch(mockPcb as any, items, { rounds: 2 });
         expect(result.success).toBe(false);
     });
 
@@ -59,7 +59,7 @@ describe('pcb_autoroute_batch', () => {
             _state: { stagedOutlines: [] },
             route: vi.fn(() => {
                 callCount++;
-                return Promise.resolve({ success: true, routeCount: 1, completedCount: 1, routeDetails: [] } as any);
+                return { success: true, routeCount: 1, completedCount: 1, routeDetails: [] } as any;
             }),
         };
         const { Pin } = await import('../src/pin.js');
@@ -67,7 +67,7 @@ describe('pcb_autoroute_batch', () => {
             { from: new Pin(1, 'R1'), to: new Pin(2, 'R1') },
             { from: new Pin(1, 'R2'), to: new Pin(2, 'R2') },
         ];
-        const result = await autorouteBatch(mockPcb as any, items, { rounds: 3 });
+        const result = autorouteBatch(mockPcb as any, items, { rounds: 3 });
         expect(result.success).toBe(true);
         expect(callCount).toBe(2);
     });
@@ -76,14 +76,14 @@ describe('pcb_autoroute_batch', () => {
         const { autorouteBatch } = await import('../src/pcb/pcb_autoroute_batch.js');
         const mockPcb = {
             _state: { stagedOutlines: [] },
-            route: vi.fn(() => Promise.resolve({ success: true, routeCount: 1, completedCount: 1, routeDetails: [] } as any)),
+            route: vi.fn(() => ({ success: true, routeCount: 1, completedCount: 1, routeDetails: [] } as any)),
         };
         const { Pin } = await import('../src/pin.js');
         const items = [
             { from: new Pin(1, 'R1'), to: new Pin(2, 'R1') },
             { from: new Pin(1, 'R2'), to: new Pin(2, 'R2') },
         ];
-        const result = await autorouteBatch(mockPcb as any, items, { reorder: 'reverse', rounds: 1 });
+        const result = autorouteBatch(mockPcb as any, items, { reorder: 'reverse', rounds: 1 });
         expect(result.success).toBe(true);
     });
 
@@ -91,14 +91,14 @@ describe('pcb_autoroute_batch', () => {
         const { autorouteBatch } = await import('../src/pcb/pcb_autoroute_batch.js');
         const mockPcb = {
             _state: { stagedOutlines: [] },
-            route: vi.fn(() => Promise.resolve({ success: true, routeCount: 1, completedCount: 1, routeDetails: [] } as any)),
+            route: vi.fn(() => ({ success: true, routeCount: 1, completedCount: 1, routeDetails: [] } as any)),
         };
         const { Pin } = await import('../src/pin.js');
         const items = [
             { from: new Pin(1, 'R1'), to: new Pin(2, 'R1') },
             { from: new Pin(1, 'R2'), to: new Pin(2, 'R2') },
         ];
-        const result = await autorouteBatch(mockPcb as any, items, { reorder: 'none', rounds: 1 });
+        const result = autorouteBatch(mockPcb as any, items, { reorder: 'none', rounds: 1 });
         expect(result.success).toBe(true);
     });
 
@@ -107,11 +107,11 @@ describe('pcb_autoroute_batch', () => {
         const stagedOutlines: any[] = ['preserved'];
         const mockPcb = {
             _state: { stagedOutlines },
-            route: vi.fn(() => Promise.resolve({ success: false, routeCount: 1, completedCount: 0, routeDetails: [] } as any)),
+            route: vi.fn(() => ({ success: false, routeCount: 1, completedCount: 0, routeDetails: [] } as any)),
         };
         const { Pin } = await import('../src/pin.js');
         const items = [{ from: new Pin(1, 'R1'), to: new Pin(2, 'R1') }];
-        await autorouteBatch(mockPcb as any, items, { rounds: 2 });
+        autorouteBatch(mockPcb as any, items, { rounds: 2 });
         expect(stagedOutlines.length).toBe(1);
         expect(stagedOutlines[0]).toBe('preserved');
     });

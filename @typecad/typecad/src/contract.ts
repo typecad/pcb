@@ -4,21 +4,13 @@ import { Pin } from './pin.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import logger from './utils/logging.js';
-import { SymbolLibraryManager, getSymbolLibraryManager } from './symbol_library_manager.js';
+import { getSymbolLibraryManager } from './symbol_library_manager.js';
 import type { PinInfo } from './renderers/schematic_visualizer_types.js';
 import { TypeCadError } from './utils/errors.js';
 import { DEFAULT_BUILD_DIR } from './utils/constants.js';
+import { addOutputPath } from './cli/pending_summary.js';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-
-/** A single pin mapping entry: IC pin → MCU name → board framework name.
- *  Only needed for legacy usage when the component has no typehal property. */
-export interface McuPinMapping {
-    icPin: number;
-    mcuName: string;
-    boardName: string;
-    category: 'gpio' | 'power' | 'gnd' | 'clock' | 'reset';
-}
 
 /** An external component connected on the same net as an MCU pin */
 export interface ContractComponent {
@@ -39,7 +31,7 @@ export interface ContractPin {
     pinName: string;
     /** Pin electrical type from KiCAD symbol (e.g. "bidirectional", "power_in", "passive", "input", "output") */
     pinType: string;
-    /** Board framework pin name (e.g. "D13") — populated when typehal.pinLookup is provided */
+    /** Board framework pin name (e.g. "D13") — populated when typehal is provided */
     boardName?: string;
     net: string;
     externalComponents: ContractComponent[];
@@ -68,20 +60,9 @@ export interface HwContract {
 /** Options passed to pcb.contract() */
 export interface ContractOptions {
     /**
-     * Substring to match against Component.symbol to find the MCU.
-     * Ignored when the MCU component has a typehal.boardPackage property.
+     * The MCU component to generate a contract for.
      */
-    mcuSymbolPattern?: string;
-    /**
-     * Exact reference designator of the target MCU (e.g. 'U1').
-     * Takes priority over mcuSymbolPattern when both are provided.
-     */
-    mcuReference?: string;
-    /**
-     * Pin mapping table for the MCU (legacy — only needed when the component
-     * has no typehal property and you need board names in the output).
-     */
-    pinMapping?: McuPinMapping[];
+    mcu: Component;
     /** Peripheral pin requirements (board pin names) */
     peripheralPins?: {
         i2c?: string[];
@@ -100,6 +81,43 @@ const DEFAULT_PERIPHERAL_PINS = {
     uart: ['D0', 'D1'],
 };
 
+// ── Path helpers ─────────────────────────────────────────────────────────────
+
+/**
+ * Resolves and validates the contract output path.
+ *
+ * - If the user passes a bare directory (no extension), appends
+ *   `<boardName>.contract.json` automatically.
+ * - Ensures the final path ends with `.json`.
+ * - Rejects filenames containing illegal characters.
+ */
+function resolveOutputPath(rawPath: string, boardName: string): string {
+    let resolved = path.resolve(rawPath);
+
+    // Auto-correct: if it looks like a directory (no extension), append filename
+    if (path.extname(resolved) === '') {
+        resolved = path.join(resolved, `${boardName}.contract.json`);
+        logger.info(`contract: outputPath was a directory, using "${resolved}"`);
+    }
+
+    // Validate extension
+    if (path.extname(resolved).toLowerCase() !== '.json') {
+        throw new TypeCadError(
+            `contract: outputPath must be a .json file, got "${rawPath}"`
+        );
+    }
+
+    // Reject illegal filename characters
+    const filename = path.basename(resolved);
+    if (/[<>:"|?*\x00-\x1f]/.test(filename)) {
+        throw new TypeCadError(
+            `contract: outputPath contains invalid characters: "${filename}"`
+        );
+    }
+
+    return resolved;
+}
+
 // ─── Export ───────────────────────────────────────────────────────────────────
 
 /**
@@ -107,70 +125,64 @@ const DEFAULT_PERIPHERAL_PINS = {
  * in the circuit. The firmware toolchain (TypeHAL) consumes this contract to
  * generate a board wrapper that only exposes connected pins and peripherals.
  *
- * When a component has a `typehal.boardPackage` property, it is auto-detected
- * as the MCU and pin names are read directly from the KiCAD symbol file.
- *
  * @param pcb - The PCB instance to analyze.
- * @param options - Contract generation options (all optional when typehal is set on the MCU).
+ * @param options - Contract generation options (mcuReference required).
  */
-export function exportContract(pcb: PCB, options: ContractOptions = {}): void {
-    // 1. Find the MCU — prefer typehal.boardPackage, then exact reference, then symbol pattern
-    let mcu: Component | undefined;
-
-    // Auto-detect: first component with a typehal object
-    mcu = getPcbState(pcb).components.find(
-        (comp) => comp.typehal
-    );
-
-    // Fallback to exact reference
-    if (!mcu && options.mcuReference) {
-        mcu = getPcbState(pcb).components.find(
-            (comp) => comp.reference === options.mcuReference
-        );
+export function exportContract(pcb: PCB, options: ContractOptions): void {
+    if (!options?.mcu) {
+        throw new TypeCadError('contract: options.mcu is required. Pass an MCU Component, e.g. pcb.contract({ mcu: myMcu }).');
     }
+    const mcu = options.mcu;
 
-    // Fallback to symbol pattern
-    if (!mcu && options.mcuSymbolPattern) {
-        const pattern = options.mcuSymbolPattern;
-        mcu = getPcbState(pcb).components.find(
-            (comp) => comp.symbol && comp.symbol.includes(pattern)
-        );
-    }
-
-    if (!mcu) {
-        const hints: string[] = [];
-        if (options.mcuReference) hints.push(`reference "${options.mcuReference}"`);
-        if (options.mcuSymbolPattern) hints.push(`symbol matching "${options.mcuSymbolPattern}"`);
-        const hint = hints.length > 0
-            ? hints.join(' or ')
-            : 'typehal';
-        logger.warn(
-            `contract: No MCU found (${hint}). Skipping contract generation.`
-        );
-        return;
-    }
-
-    const foundMcu = mcu;
-
-    // 2. Read KiCAD symbol pin info (name + type) via SymbolLibraryManager
+    // 1. Read KiCAD symbol pin info (name + type) via SymbolLibraryManager
     let pinNameMap = new Map<string, PinInfo>();
 
-    if (foundMcu.symbol) {
+    if (mcu.symbol) {
         const libManager = getSymbolLibraryManager();
-        const result = libManager.getPinInfoMap(foundMcu.symbol);
+        const result = libManager.getPinInfoMap(mcu.symbol);
         if (result) {
             pinNameMap = result;
         } else {
-            logger.warn(`contract: Could not load pin info for "${foundMcu.symbol}".`);
+            logger.warn(`contract: Could not load pin info for "${mcu.symbol}".`);
         }
     }
 
-    // 3. Walk nets and collect connected GPIO pins
+    // 1b. Build alias map for compound/overbar pin names (e.g. "~{RESET}/PA0" → "PA0", "RESET")
+    const pinAliasMap = new Map<string, string>(); // alias → pinNumber
+
+    for (const [pinNumber, info] of pinNameMap) {
+        pinAliasMap.set(info.name, pinNumber); // exact full name
+        const parts = info.name.split('/');
+        for (const part of parts) {
+            const trimmed = part.trim();
+            pinAliasMap.set(trimmed, pinNumber); // raw sub-name "~{RESET}"
+            const stripped = trimmed.replace(/^~\{(.+)\}$/, '$1').trim();
+            if (stripped !== trimmed) {
+                pinAliasMap.set(stripped, pinNumber); // overbar stripped "RESET"
+            }
+        }
+    }
+
+    // 1c. Validate typehal keys against all pin aliases
+    if (mcu.typehal && pinAliasMap.size > 0) {
+        for (const key of Object.keys(mcu.typehal)) {
+            if (!pinAliasMap.has(key)) {
+                const validNames = [...new Set([
+                    ...pinNameMap.values()
+                ].map(i => i.name))].join(', ');
+                logger.warn(
+                    `contract: typehal key "${key}" does not match any pin on "${mcu.symbol}". Valid pins: ${validNames}`
+                );
+            }
+        }
+    }
+
+    // 2. Walk nets and collect connected GPIO pins
     const connectedPins: Record<string, ContractPin> = {};
 
     for (const node of pcb.schematic.nodes) {
         const mcuPinsInNet = node.nodes.filter(
-            (pin) => pin.reference === foundMcu.reference
+            (pin) => pin.reference === mcu.reference
         );
 
         for (const mcuPin of mcuPinsInNet) {
@@ -194,7 +206,7 @@ export function exportContract(pcb: PCB, options: ContractOptions = {}): void {
             const externalComponents: ContractComponent[] = [];
 
             for (const netPin of node.nodes) {
-                if (netPin.reference === foundMcu.reference) {
+                if (netPin.reference === mcu.reference) {
                     continue;
                 }
                 if (seen.has(netPin.reference)) {
@@ -209,8 +221,18 @@ export function exportContract(pcb: PCB, options: ContractOptions = {}): void {
                 }
             }
 
-            // Look up board name from typehal.pinLookup if available
-            const boardName = foundMcu.typehal?.pinLookup?.[pinName] || undefined;
+            let boardName: string | undefined;
+            if (mcu.typehal) {
+                boardName = mcu.typehal[pinName];
+                if (boardName === undefined) {
+                    for (const [alias, num] of pinAliasMap) {
+                        if (num === pinNumber && mcu.typehal[alias] !== undefined) {
+                            boardName = mcu.typehal[alias];
+                            break;
+                        }
+                    }
+                }
+            }
 
             connectedPins[key] = {
                 pinName,
@@ -222,39 +244,16 @@ export function exportContract(pcb: PCB, options: ContractOptions = {}): void {
         }
     }
 
-    // 4. Peripheral availability (legacy — based on board names if pinMapping provided)
+    // 3. Peripheral availability
     const peripheralPins = {
         i2c: options.peripheralPins?.i2c ?? DEFAULT_PERIPHERAL_PINS.i2c,
         spi: options.peripheralPins?.spi ?? DEFAULT_PERIPHERAL_PINS.spi,
         uart: options.peripheralPins?.uart ?? DEFAULT_PERIPHERAL_PINS.uart,
     };
 
-    // When pinMapping is provided, we can map to board names for peripheral checks
-    // Otherwise, use pin names for a best-effort check
     let availablePeripherals = { i2c: false, spi: false, uart: false };
 
-    if (options.pinMapping) {
-        // Legacy mode: use board names from pin mapping
-        const pinLookup = new Map<number, McuPinMapping>();
-        for (const mapping of options.pinMapping) {
-            pinLookup.set(mapping.icPin, mapping);
-        }
-
-        const connectedBoardNames = new Set<string>();
-        for (const [icPin, _info] of Object.entries(connectedPins)) {
-            const mapping = pinLookup.get(Number(icPin));
-            if (mapping) {
-                connectedBoardNames.add(mapping.boardName);
-            }
-        }
-
-        availablePeripherals = {
-            i2c: peripheralPins.i2c.every((name) => connectedBoardNames.has(name)),
-            spi: peripheralPins.spi.every((name) => connectedBoardNames.has(name)),
-            uart: peripheralPins.uart.every((name) => connectedBoardNames.has(name)),
-        };
-    } else if (foundMcu.typehal?.pinLookup) {
-        // pinLookup mode: use board names from the lookup for peripheral checks
+    if (mcu.typehal) {
         const connectedBoardNames = new Set<string>();
         for (const info of Object.values(connectedPins)) {
             if (info.boardName) connectedBoardNames.add(info.boardName);
@@ -285,25 +284,26 @@ export function exportContract(pcb: PCB, options: ContractOptions = {}): void {
         };
     }
 
-    // 5. Build and write contract
+    // 4. Build and write contract
     const contract: HwContract = {
         version: 1,
         mcu: {
-            symbol: foundMcu.symbol || '',
-            reference: foundMcu.reference,
-            value: foundMcu.value || '',
-            footprint: foundMcu.footprint || '',
-            mpn: foundMcu.mpn || '',
-            datasheet: foundMcu.datasheet || '',
-            description: foundMcu.description || '',
+            symbol: mcu.symbol || '',
+            reference: mcu.reference,
+            value: mcu.value || '',
+            footprint: mcu.footprint || '',
+            mpn: mcu.mpn || '',
+            datasheet: mcu.datasheet || '',
+            description: mcu.description || '',
         },
         connectedPins,
         availablePeripherals,
     };
 
-    const outputPath =
+    const rawOutputPath =
         options.outputPath ??
         `${DEFAULT_BUILD_DIR}/${pcb.boardName}.contract.json`;
+    const outputPath = resolveOutputPath(rawOutputPath, pcb.boardName);
 
     try {
         const dir = path.dirname(outputPath);
@@ -313,9 +313,7 @@ export function exportContract(pcb: PCB, options: ContractOptions = {}): void {
         throw new TypeCadError(`Failed to write contract file: ${(err as Error).message}`, { cause: err });
     }
 
-    logger.log(
-        `📝 Contract written to ${outputPath} (${Object.keys(connectedPins).length} connected pins)`
-    );
+    addOutputPath(outputPath);
 }
 
 /**

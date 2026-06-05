@@ -1,5 +1,6 @@
 import { describe, it, expect, afterAll } from 'vitest';
-import { Schematic, Power, Component } from '../src/index.js';
+import { Power, Component } from '../src/index.js';
+import { Schematic } from '../src/schematic.js';
 import fs from 'fs';
 
 const outputFiles = ['vdiv_equal.out', 'vdiv_netlist.out', 'vdiv_unequal.out'];

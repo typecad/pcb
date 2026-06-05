@@ -50,13 +50,13 @@ describe('SourceRewriter', () => {
     const rewriter = new SourceRewriter();
 
     describe('computeFootprintChanges', () => {
-        it('should skip footprints without source location', async () => {
+        it('should skip footprints without source location', () => {
             const results = [makeMatchResult()];
-            const changes = await rewriter.computeFootprintChanges(results);
+            const changes = rewriter.computeFootprintChanges(results);
             expect(changes).toHaveLength(0);
         });
 
-        it('should detect position change with separate .pcb = line', async () => {
+        it('should detect position change with separate .pcb = line', () => {
             const tempDir = createTempDir();
             try {
                 const srcFile = path.join(tempDir, 'board.ts');
@@ -67,7 +67,7 @@ describe('SourceRewriter', () => {
                 ].join('\n'));
 
                 const results = [makeMatchResult({ position: { x: 10, y: 20, rotation: 0 } }, srcFile)];
-                const changes = await rewriter.computeFootprintChanges(results);
+                const changes = rewriter.computeFootprintChanges(results);
                 expect(changes).toHaveLength(1);
                 expect(changes[0].newX).toBe(10);
                 expect(changes[0].newY).toBe(20);
@@ -76,7 +76,7 @@ describe('SourceRewriter', () => {
             }
         });
 
-        it('should detect inline pcb: change', async () => {
+        it('should detect inline pcb: change', () => {
             const tempDir = createTempDir();
             try {
                 const srcFile = path.join(tempDir, 'board.ts');
@@ -86,7 +86,7 @@ describe('SourceRewriter', () => {
                 ].join('\n'));
 
                 const results = [makeMatchResult({ position: { x: 15, y: 25, rotation: 45 } }, srcFile)];
-                const changes = await rewriter.computeFootprintChanges(results);
+                const changes = rewriter.computeFootprintChanges(results);
                 expect(changes).toHaveLength(1);
                 expect(changes[0].newX).toBe(15);
                 expect(changes[0].newRotation).toBe(45);
@@ -95,7 +95,7 @@ describe('SourceRewriter', () => {
             }
         });
 
-        it('should detect side change', async () => {
+        it('should detect side change', () => {
             const tempDir = createTempDir();
             try {
                 const srcFile = path.join(tempDir, 'board.ts');
@@ -105,7 +105,7 @@ describe('SourceRewriter', () => {
                 ].join('\n'));
 
                 const results = [makeMatchResult({ side: 'back' }, srcFile)];
-                const changes = await rewriter.computeFootprintChanges(results);
+                const changes = rewriter.computeFootprintChanges(results);
                 expect(changes).toHaveLength(1);
                 expect(changes[0].newSide).toBe('back');
             } finally {
@@ -113,7 +113,7 @@ describe('SourceRewriter', () => {
             }
         });
 
-        it('should not generate change when position unchanged', async () => {
+        it('should not generate change when position unchanged', () => {
             const tempDir = createTempDir();
             try {
                 const srcFile = path.join(tempDir, 'board.ts');
@@ -123,22 +123,22 @@ describe('SourceRewriter', () => {
                 ].join('\n'));
 
                 const results = [makeMatchResult({ position: { x: 10, y: 20, rotation: 90 } }, srcFile)];
-                const changes = await rewriter.computeFootprintChanges(results);
+                const changes = rewriter.computeFootprintChanges(results);
                 expect(changes).toHaveLength(0);
             } finally {
                 removeTempDir(tempDir);
             }
         });
 
-        it('should skip when file does not exist', async () => {
+        it('should skip when file does not exist', () => {
             const results = [makeMatchResult({}, '/nonexistent/file.ts')];
-            const changes = await rewriter.computeFootprintChanges(results);
+            const changes = rewriter.computeFootprintChanges(results);
             expect(changes).toHaveLength(0);
         });
     });
 
     describe('computeTextChanges', () => {
-        it('should detect text position change', async () => {
+        it('should detect text position change', () => {
             const tempDir = createTempDir();
             try {
                 const srcFile = path.join(tempDir, 'board.ts');
@@ -161,7 +161,7 @@ describe('SourceRewriter', () => {
                     }],
                 };
 
-                const changes = await rewriter.computeTextChanges(ir, [srcFile]);
+                const changes = rewriter.computeTextChanges(ir, [srcFile]);
                 expect(changes).toHaveLength(1);
                 expect(changes[0].newX).toBe(15);
                 expect(changes[0].newY).toBe(25);
@@ -170,7 +170,7 @@ describe('SourceRewriter', () => {
             }
         });
 
-        it('should detect text content change', async () => {
+        it('should detect text content change', () => {
             const tempDir = createTempDir();
             try {
                 const srcFile = path.join(tempDir, 'board.ts');
@@ -193,7 +193,7 @@ describe('SourceRewriter', () => {
                     }],
                 };
 
-                const changes = await rewriter.computeTextChanges(ir, [srcFile]);
+                const changes = rewriter.computeTextChanges(ir, [srcFile]);
                 expect(changes).toHaveLength(1);
                 expect(changes[0].newPcbText).toBe('NewLabel');
                 expect(changes[0].changedProps).toContain('text');
@@ -202,7 +202,7 @@ describe('SourceRewriter', () => {
             }
         });
 
-        it('should detect font/size changes', async () => {
+        it('should detect font/size changes', () => {
             const tempDir = createTempDir();
             try {
                 const srcFile = path.join(tempDir, 'board.ts');
@@ -230,7 +230,7 @@ describe('SourceRewriter', () => {
                     }],
                 };
 
-                const changes = await rewriter.computeTextChanges(ir, [srcFile]);
+                const changes = rewriter.computeTextChanges(ir, [srcFile]);
                 expect(changes).toHaveLength(1);
                 expect(changes[0].changedProps).toContain('font');
                 expect(changes[0].changedProps).toContain('size');
@@ -242,7 +242,7 @@ describe('SourceRewriter', () => {
             }
         });
 
-        it('should return empty when no text elements', async () => {
+        it('should return empty when no text elements', () => {
             const ir: KicadIR = {
                 version: '0',
                 generator: '',
@@ -253,11 +253,11 @@ describe('SourceRewriter', () => {
                 nets: [],
                 textElements: [],
             };
-            const changes = await rewriter.computeTextChanges(ir, ['/dummy.ts']);
+            const changes = rewriter.computeTextChanges(ir, ['/dummy.ts']);
             expect(changes).toHaveLength(0);
         });
 
-        it('should return empty when no matching source calls', async () => {
+        it('should return empty when no matching source calls', () => {
             const tempDir = createTempDir();
             try {
                 const srcFile = path.join(tempDir, 'board.ts');
@@ -272,7 +272,7 @@ describe('SourceRewriter', () => {
                     nets: [],
                     textElements: [{ text: 'Hello', x: 0, y: 0, rotation: 0, layer: 'F.SilkS' }],
                 };
-                const changes = await rewriter.computeTextChanges(ir, [srcFile]);
+                const changes = rewriter.computeTextChanges(ir, [srcFile]);
                 expect(changes).toHaveLength(0);
             } finally {
                 removeTempDir(tempDir);
@@ -310,7 +310,7 @@ describe('SourceRewriter', () => {
                     label: 'test',
                 };
 
-                const result = await rewriter.applyFootprintChanges([change]);
+                const result = rewriter.applyFootprintChanges([change]);
                 expect(result.filesModified).toBe(1);
                 const updated = fs.readFileSync(srcFile, 'utf-8');
                 expect(updated).toContain('x: 15');
@@ -322,7 +322,7 @@ describe('SourceRewriter', () => {
             }
         });
 
-        it('should add side when switching to back', async () => {
+        it('should add side when switching to back', () => {
             const tempDir = createTempDir();
             try {
                 const srcFile = path.join(tempDir, 'board.ts');
@@ -346,7 +346,7 @@ describe('SourceRewriter', () => {
                     label: 'test',
                 };
 
-                const result = await rewriter.applyFootprintChanges([change]);
+                const result = rewriter.applyFootprintChanges([change]);
                 expect(result.filesModified).toBe(1);
                 const updated = fs.readFileSync(srcFile, 'utf-8');
                 expect(updated).toContain("side: 'back'");
@@ -357,7 +357,7 @@ describe('SourceRewriter', () => {
     });
 
     describe('computeLayoutChanges', () => {
-        it('should detect referenceLayout change with separate assignment', async () => {
+        it('should detect referenceLayout change with separate assignment', () => {
             const tempDir = createTempDir();
             try {
                 const srcFile = path.join(tempDir, 'board.ts');
@@ -369,7 +369,7 @@ describe('SourceRewriter', () => {
 
                 const newLayout: TextLayoutIR = { x: 0, y: -3 };
                 const results = [makeMatchResult({ referenceLayout: newLayout }, srcFile)];
-                const changes = await rewriter.computeLayoutChanges(results);
+                const changes = rewriter.computeLayoutChanges(results);
                 expect(changes).toHaveLength(1);
                 expect(changes[0].layoutType).toBe('referenceLayout');
                 expect(changes[0].changedProps).toContainEqual(expect.stringContaining('position'));
@@ -378,7 +378,7 @@ describe('SourceRewriter', () => {
             }
         });
 
-        it('should detect valueLayout change', async () => {
+        it('should detect valueLayout change', () => {
             const tempDir = createTempDir();
             try {
                 const srcFile = path.join(tempDir, 'board.ts');
@@ -388,7 +388,7 @@ describe('SourceRewriter', () => {
 
                 const newValueLayout: TextLayoutIR = { x: 0, y: 5, rotation: 90 };
                 const results = [makeMatchResult({ valueLayout: newValueLayout }, srcFile)];
-                const changes = await rewriter.computeLayoutChanges(results);
+                const changes = rewriter.computeLayoutChanges(results);
                 expect(changes).toHaveLength(1);
                 expect(changes[0].layoutType).toBe('valueLayout');
                 expect(changes[0].changedProps).toContainEqual(expect.stringContaining('position'));
@@ -397,7 +397,7 @@ describe('SourceRewriter', () => {
             }
         });
 
-        it('should detect no change when layouts match', async () => {
+        it('should detect no change when layouts match', () => {
             const tempDir = createTempDir();
             try {
                 const srcFile = path.join(tempDir, 'board.ts');
@@ -407,20 +407,20 @@ describe('SourceRewriter', () => {
                 ].join('\n'));
 
                 const results = [makeMatchResult({ referenceLayout: { x: 0, y: -3 } }, srcFile)];
-                const changes = await rewriter.computeLayoutChanges(results);
+                const changes = rewriter.computeLayoutChanges(results);
                 expect(changes).toHaveLength(0);
             } finally {
                 removeTempDir(tempDir);
             }
         });
 
-        it('should skip footprints without source location', async () => {
+        it('should skip footprints without source location', () => {
             const results = [makeMatchResult({ referenceLayout: { x: 0, y: -3 } })];
-            const changes = await rewriter.computeLayoutChanges(results);
+            const changes = rewriter.computeLayoutChanges(results);
             expect(changes).toHaveLength(0);
         });
 
-        it('should skip new layouts when captureLayouts is false and source has no layout', async () => {
+        it('should skip new layouts when captureLayouts is false and source has no layout', () => {
             const tempDir = createTempDir();
             try {
                 const srcFile = path.join(tempDir, 'board.ts');
@@ -431,14 +431,14 @@ describe('SourceRewriter', () => {
 
                 const newLayout: TextLayoutIR = { x: 0, y: -1.5 };
                 const results = [makeMatchResult({ referenceLayout: newLayout }, srcFile)];
-                const changes = await rewriter.computeLayoutChanges(results, false);
+                const changes = rewriter.computeLayoutChanges(results, false);
                 expect(changes).toHaveLength(0);
             } finally {
                 removeTempDir(tempDir);
             }
         });
 
-        it('should skip new layouts by default (no captureLayouts arg)', async () => {
+        it('should skip new layouts by default (no captureLayouts arg)', () => {
             const tempDir = createTempDir();
             try {
                 const srcFile = path.join(tempDir, 'board.ts');
@@ -451,14 +451,14 @@ describe('SourceRewriter', () => {
                     valueLayout: { x: 0, y: 1.5 },
                     fabLayout: { x: 0, y: 0 },
                 }, srcFile)];
-                const changes = await rewriter.computeLayoutChanges(results);
+                const changes = rewriter.computeLayoutChanges(results);
                 expect(changes).toHaveLength(0);
             } finally {
                 removeTempDir(tempDir);
             }
         });
 
-        it('should generate new layouts when captureLayouts is true', async () => {
+        it('should generate new layouts when captureLayouts is true', () => {
             const tempDir = createTempDir();
             try {
                 const srcFile = path.join(tempDir, 'board.ts');
@@ -469,7 +469,7 @@ describe('SourceRewriter', () => {
                 const results = [makeMatchResult({
                     referenceLayout: { x: 0, y: -1.5 },
                 }, srcFile)];
-                const changes = await rewriter.computeLayoutChanges(results, true);
+                const changes = rewriter.computeLayoutChanges(results, true);
                 expect(changes).toHaveLength(1);
                 expect(changes[0].layoutType).toBe('referenceLayout');
                 expect(changes[0].oldLayout).toBeNull();
@@ -480,7 +480,7 @@ describe('SourceRewriter', () => {
             }
         });
 
-        it('should still update existing layouts regardless of captureLayouts flag', async () => {
+        it('should still update existing layouts regardless of captureLayouts flag', () => {
             const tempDir = createTempDir();
             try {
                 const srcFile = path.join(tempDir, 'board.ts');
@@ -491,7 +491,7 @@ describe('SourceRewriter', () => {
 
                 const newLayout: TextLayoutIR = { x: 0, y: -3 };
                 const results = [makeMatchResult({ referenceLayout: newLayout }, srcFile)];
-                const changes = await rewriter.computeLayoutChanges(results, false);
+                const changes = rewriter.computeLayoutChanges(results, false);
                 expect(changes).toHaveLength(1);
                 expect(changes[0].layoutType).toBe('referenceLayout');
             } finally {
@@ -501,7 +501,7 @@ describe('SourceRewriter', () => {
     });
 
     describe('applyLayoutChanges', () => {
-        it('should update existing referenceLayout assignment', async () => {
+        it('should update existing referenceLayout assignment', () => {
             const tempDir = createTempDir();
             try {
                 const srcFile = path.join(tempDir, 'board.ts');
@@ -521,7 +521,7 @@ describe('SourceRewriter', () => {
                     changedProps: ['position'],
                 };
 
-                const result = await rewriter.applyLayoutChanges([change]);
+                const result = rewriter.applyLayoutChanges([change]);
                 expect(result.filesModified).toBe(1);
                 const updated = fs.readFileSync(srcFile, 'utf-8');
                 expect(updated).toContain('y: -3');
@@ -531,7 +531,7 @@ describe('SourceRewriter', () => {
             }
         });
 
-        it('should insert new layout assignment when none exists', async () => {
+        it('should insert new layout assignment when none exists', () => {
             const tempDir = createTempDir();
             try {
                 const srcFile = path.join(tempDir, 'board.ts');
@@ -550,7 +550,7 @@ describe('SourceRewriter', () => {
                     changedProps: ['position', 'rotation'],
                 };
 
-                const result = await rewriter.applyLayoutChanges([change]);
+                const result = rewriter.applyLayoutChanges([change]);
                 expect(result.filesModified).toBe(1);
                 const updated = fs.readFileSync(srcFile, 'utf-8');
                 expect(updated).toContain('fabLayout = { x: 0, y: 1, rotation: 180 }');
@@ -559,7 +559,7 @@ describe('SourceRewriter', () => {
             }
         });
 
-        it('should update inline layout in constructor', async () => {
+        it('should update inline layout in constructor', () => {
             const tempDir = createTempDir();
             try {
                 const srcFile = path.join(tempDir, 'board.ts');
@@ -578,7 +578,7 @@ describe('SourceRewriter', () => {
                     changedProps: ['position'],
                 };
 
-                const result = await rewriter.applyLayoutChanges([change]);
+                const result = rewriter.applyLayoutChanges([change]);
                 expect(result.filesModified).toBe(1);
                 const updated = fs.readFileSync(srcFile, 'utf-8');
                 expect(updated).toContain('y: -5');
@@ -587,7 +587,7 @@ describe('SourceRewriter', () => {
             }
         });
 
-        it('should add missing properties to existing fabLayout assignment', async () => {
+        it('should add missing properties to existing fabLayout assignment', () => {
             const tempDir = createTempDir();
             try {
                 const srcFile = path.join(tempDir, 'test.ts');
@@ -608,7 +608,7 @@ describe('SourceRewriter', () => {
                     changedProps: ['layer', 'width', 'height', 'thickness'],
                 };
 
-                const result = await rewriter.applyLayoutChanges([change]);
+                const result = rewriter.applyLayoutChanges([change]);
                 expect(result.filesModified).toBe(1);
                 const updated = fs.readFileSync(srcFile, 'utf-8');
                 expect(updated).toContain('layer');

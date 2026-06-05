@@ -23,30 +23,30 @@
         <div class='clearfix'>
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">0% </span>
+                <span class="strong">100% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>0/36</span>
+                <span class='fraction'>31/31</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">0% </span>
+                <span class="strong">100% </span>
                 <span class="quiet">Branches</span>
-                <span class='fraction'>0/1</span>
+                <span class='fraction'>7/7</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">0% </span>
+                <span class="strong">100% </span>
                 <span class="quiet">Functions</span>
-                <span class='fraction'>0/1</span>
+                <span class='fraction'>1/1</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">0% </span>
+                <span class="strong">100% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>0/36</span>
+                <span class='fraction'>31/31</span>
             </div>
         
             
@@ -61,7 +61,7 @@
             </div>
         </template>
     </div>
-    <div class='status-line low'></div>
+    <div class='status-line high'></div>
     <pre><table class="coverage">
 <tr><td class="line-count quiet"><a name='L1'></a><a href='#L1'>1</a>
 <a name='L2'></a><a href='#L2'>2</a>
@@ -99,78 +99,78 @@
 <a name='L34'></a><a href='#L34'>34</a>
 <a name='L35'></a><a href='#L35'>35</a>
 <a name='L36'></a><a href='#L36'>36</a>
-<a name='L37'></a><a href='#L37'>37</a></td><td class="line-coverage quiet"><span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js"><span class="cstat-no" title="statement not covered" ><span class="fstat-no" title="function not covered" ><span class="branch-0 cbranch-no" title="branch not covered" >import { Component } from "../component.js";</span></span></span>
-<span class="cstat-no" title="statement not covered" >import type { IVia } from "./pcb_interfaces.js";</span>
-<span class="cstat-no" title="statement not covered" >import { generateUuid } from "./pcb_utils.js";</span>
-<span class="cstat-no" title="statement not covered" ></span>
-<span class="cstat-no" title="statement not covered" >export function createVia(</span>
-<span class="cstat-no" title="statement not covered" >    offset: { x: number; y: number },</span>
-<span class="cstat-no" title="statement not covered" >    stageFn: (component: Component) =&gt; void,</span>
-<span class="cstat-no" title="statement not covered" >    options: Omit&lt;IVia, 'uuid' | 'netCode' | 'layers'&gt; = {}</span>
-<span class="cstat-no" title="statement not covered" >): Component {</span>
-<span class="cstat-no" title="statement not covered" >    const viaPosition = {</span>
-<span class="cstat-no" title="statement not covered" >        x: (options.at?.x ?? 0) + offset.x,</span>
-<span class="cstat-no" title="statement not covered" >        y: (options.at?.y ?? 0) + offset.y</span>
-<span class="cstat-no" title="statement not covered" >    };</span>
-<span class="cstat-no" title="statement not covered" ></span>
-<span class="cstat-no" title="statement not covered" >    const viaUuid = generateUuid();</span>
-<span class="cstat-no" title="statement not covered" >    const viaComponent = Component._create({</span>
-<span class="cstat-no" title="statement not covered" >        via: true,</span>
-<span class="cstat-no" title="statement not covered" >        prefix: 'V',</span>
-<span class="cstat-no" title="statement not covered" >        uuid: viaUuid,</span>
-<span class="cstat-no" title="statement not covered" >        footprint: '',</span>
-<span class="cstat-no" title="statement not covered" >        pcb: { x: viaPosition.x, y: viaPosition.y, rotation: 0, side: 'front' },</span>
-<span class="cstat-no" title="statement not covered" >        viaData: {</span>
-<span class="cstat-no" title="statement not covered" >            uuid: viaUuid,</span>
-<span class="cstat-no" title="statement not covered" >            at: viaPosition,</span>
-<span class="cstat-no" title="statement not covered" >            size: options.size || 0.8,</span>
-<span class="cstat-no" title="statement not covered" >            drill: options.drill || 0.4,</span>
-<span class="cstat-no" title="statement not covered" >            layers: ["F.Cu", "B.Cu"],</span>
-<span class="cstat-no" title="statement not covered" >            net: options.net,</span>
-<span class="cstat-no" title="statement not covered" >            powerInfo: options.powerInfo</span>
-<span class="cstat-no" title="statement not covered" >        }</span>
-<span class="cstat-no" title="statement not covered" >    });</span>
-<span class="cstat-no" title="statement not covered" ></span>
-<span class="cstat-no" title="statement not covered" >    stageFn(viaComponent);</span>
-<span class="cstat-no" title="statement not covered" ></span>
-<span class="cstat-no" title="statement not covered" >    return viaComponent;</span>
-<span class="cstat-no" title="statement not covered" >}</span>
+<a name='L37'></a><a href='#L37'>37</a></td><td class="line-coverage quiet"><span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">52x</span>
+<span class="cline-any cline-yes">52x</span>
+<span class="cline-any cline-yes">52x</span>
+<span class="cline-any cline-yes">52x</span>
+<span class="cline-any cline-yes">52x</span>
+<span class="cline-any cline-yes">52x</span>
+<span class="cline-any cline-yes">52x</span>
+<span class="cline-any cline-yes">52x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">52x</span>
+<span class="cline-any cline-yes">52x</span>
+<span class="cline-any cline-yes">52x</span>
+<span class="cline-any cline-yes">52x</span>
+<span class="cline-any cline-yes">52x</span>
+<span class="cline-any cline-yes">52x</span>
+<span class="cline-any cline-yes">52x</span>
+<span class="cline-any cline-yes">52x</span>
+<span class="cline-any cline-yes">52x</span>
+<span class="cline-any cline-yes">52x</span>
+<span class="cline-any cline-yes">52x</span>
+<span class="cline-any cline-yes">52x</span>
+<span class="cline-any cline-yes">52x</span>
+<span class="cline-any cline-yes">52x</span>
+<span class="cline-any cline-yes">52x</span>
+<span class="cline-any cline-yes">52x</span>
+<span class="cline-any cline-yes">52x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">52x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">52x</span>
+<span class="cline-any cline-yes">52x</span>
+<span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">import { Component } from "../component.js";
+import type { IVia } from "./pcb_interfaces.js";
+import { generateUuid } from "./pcb_utils.js";
+&nbsp;
+export function createVia(
+    offset: { x: number; y: number },
+    stageFn: (component: Component) =&gt; void,
+    options: Omit&lt;IVia, 'uuid' | 'netCode' | 'layers'&gt; = {}
+): Component {
+    const viaPosition = {
+        x: (options.at?.x ?? 0) + offset.x,
+        y: (options.at?.y ?? 0) + offset.y
+    };
+&nbsp;
+    const viaUuid = generateUuid();
+    const viaComponent = Component._create({
+        via: true,
+        prefix: 'V',
+        uuid: viaUuid,
+        footprint: '',
+        pcb: { x: viaPosition.x, y: viaPosition.y, rotation: 0, side: 'front' },
+        viaData: {
+            uuid: viaUuid,
+            at: viaPosition,
+            size: options.size || 0.8,
+            drill: options.drill || 0.4,
+            layers: ["F.Cu", "B.Cu"],
+            net: options.net,
+            powerInfo: options.powerInfo
+        }
+    });
+&nbsp;
+    stageFn(viaComponent);
+&nbsp;
+    return viaComponent;
+}
 &nbsp;</pre></td></tr></table></pre>
 
                 <div class='push'></div><!-- for sticky footer -->
@@ -178,7 +178,7 @@
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2026-06-01T13:03:40.672Z
+                at 2026-06-05T00:28:02.673Z
             </div>
         <script src="../../prettify.js"></script>
         <script>

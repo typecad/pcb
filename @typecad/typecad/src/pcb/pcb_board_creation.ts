@@ -1,4 +1,4 @@
-import { Component, awaitPendingInspections } from "../component.js";
+import { Component } from "../component.js";
 import { TrackBuilder } from './pcb_track_builder.js';
 import { parse, parseAsList, nameOf } from '../sexpr/index.js';
 import type { SExpr } from '../sexpr/types.js';
@@ -122,7 +122,7 @@ function separateOutlinesAndTracks(pcb: PCB): void {
     }));
 }
 
-export async function createBoard(
+export function createBoard(
     pcb: PCB,
     ...items: Array<Component | TrackBuilder>
 ) {
@@ -143,7 +143,6 @@ export async function createBoard(
     });
 
     pcb.schematic.create(...components);
-    await awaitPendingInspections();
     schematic(pcb.schematic);
     collectBoardComponents(pcb, items, components);
     separateOutlinesAndTracks(pcb);

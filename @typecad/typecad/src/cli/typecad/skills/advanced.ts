@@ -11,8 +11,7 @@ export const advancedSkills: Skill[] = [
       {
         title: 'Export hardware contract',
         code: `pcb.contract({
-  mcuReference: 'U1',
-  mcuSymbolPattern: 'ATmega',
+  mcu,
   outputPath: './hw-contract.json',
 });`,
       },
@@ -20,7 +19,6 @@ export const advancedSkills: Skill[] = [
     notes: [
       'Generates a JSON file describing MCU connections for firmware tooling',
       'Auto-detects connected peripherals (I2C, SPI, UART)',
-      'Can include custom pin mappings via the pinMapping option',
     ],
     related: ['pcb-structure', 'buses'],
   },
@@ -46,11 +44,11 @@ export const advancedSkills: Skill[] = [
   {
     name: 'simulation',
     category: 'advanced',
-    description: 'Run ngspice SPICE simulations directly from your typeCAD code. Use the fluent simulate() method on Schematic/PCB to run DC operating point (.op) or transient (.tran) analysis and get programmatic access to results for testing',
+    description: 'Run ngspice SPICE simulations directly from your typeCAD code. Use the fluent simulate() method on PCB to run DC operating point (.op) or transient (.tran) analysis and get programmatic access to results for testing',
     package: '@typecad/typecad',
-    import: "import { Schematic, Power } from '@typecad/typecad';",
+    import: "import { PCB, Power } from '@typecad/typecad';",
     usage: {
-      signature: 'typecad.simulate(...powers: Power[]): SimulationContext',
+      signature: 'pcb.simulate(...powers: Power[]): SimulationContext',
       parameters: [
         { name: 'powers', type: 'Power[]', required: true, description: 'One or more Power objects defining voltage sources for the simulation' },
       ],
@@ -58,20 +56,20 @@ export const advancedSkills: Skill[] = [
     examples: [
       {
         title: 'DC operating point analysis (voltage divider)',
-        code: `import { Schematic, Power } from '@typecad/typecad';
+        code: `import { PCB, Power } from '@typecad/typecad';
 import { Resistor } from '@typecad/passives/0603';
 
-let typecad = new Schematic('vdiv');
+let pcb = new PCB('vdiv');
 let r1 = new Resistor({ value: '10k', simulation: { include: true } });
 let r2 = new Resistor({ value: '10k', simulation: { include: true } });
 
-typecad.named('in').net(r1.pin(1));
-typecad.named('vdiv').net(r1.pin(2), r2.pin(1));
-typecad.named('gnd').net(r2.pin(2));
-typecad.add(r1, r2);
+pcb.named('in').net(r1.pin(1));
+pcb.named('vdiv').net(r1.pin(2), r2.pin(1));
+pcb.named('gnd').net(r2.pin(2));
+pcb.add(r1, r2);
 
 let vin = new Power({ power: r1.pin(1), gnd: r2.pin(2), voltage: 5.0 });
-const result = typecad.simulate(vin).op();
+const result = pcb.simulate(vin).op();
 
 // result.getVoltage('vdiv')  → 2.5
 // result.getCurrent(r1.reference)  → 0.00025
@@ -80,7 +78,7 @@ const result = typecad.simulate(vin).op();
       {
         title: 'Transient analysis',
         code: `// Same setup as above, then:
-typecad.simulate(vin).tran('1us', '100ms');
+pcb.simulate(vin).tran('1us', '100ms');
 
 // Opens ngspice plot windows for each component`,
       },
@@ -89,7 +87,7 @@ typecad.simulate(vin).tran('1us', '100ms');
         code: `let battery = new Power({ power: r1.pin(1), gnd: r3.pin(2), voltage: 9.0 });
 let regulated = new Power({ power: r2.pin(1), gnd: r4.pin(2), voltage: 3.3 });
 
-const result = typecad.simulate(battery, regulated).op();`,
+const result = pcb.simulate(battery, regulated).op();`,
       },
       {
         title: 'Test assertions with vitest',

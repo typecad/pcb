@@ -7,6 +7,7 @@ export type PendingTypecadSummary = {
     projectTree?: string;
     schPath?: string;
     boardFilePath?: string;
+    additionalPaths: string[];
     printed: boolean;
     hookInstalled: boolean;
 };
@@ -37,6 +38,13 @@ class PendingSummaryManager {
         }
     }
 
+    addOutputPath(outputPath: string): void {
+        const data = this.#active?.pendingSummaryData();
+        if (data) {
+            data.additionalPaths.push(outputPath);
+        }
+    }
+
     printSummary(boardFilePath?: string): boolean {
         const data = this.#active?.pendingSummaryData();
         if (!data || data.printed) return false;
@@ -61,6 +69,10 @@ class PendingSummaryManager {
             logger.log('    └── ' + chalk.green(bomPath));
         }
 
+        for (const extraPath of data.additionalPaths) {
+            logger.log('    └── ' + chalk.green(extraPath));
+        }
+
         data.printed = true;
         return true;
     }
@@ -77,6 +89,7 @@ class PendingSummaryManager {
                 sheetName,
                 netPath,
                 projectTree,
+                additionalPaths: [],
                 printed: false,
                 hookInstalled: false
             };
@@ -125,6 +138,11 @@ export function setPendingSchematicPath(schPath: string): void {
 /** @internal */
 export function setPendingBoardFilePath(boardFilePath: string): void {
     getManager().setPendingBoardFilePath(boardFilePath);
+}
+
+/** @internal */
+export function addOutputPath(outputPath: string): void {
+    getManager().addOutputPath(outputPath);
 }
 
 /** @internal */

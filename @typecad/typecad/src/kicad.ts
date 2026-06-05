@@ -1,5 +1,4 @@
 import fs, { existsSync, statSync, readdirSync, mkdirSync } from 'node:fs';
-import { readdir } from 'node:fs/promises';
 import process from 'node:process';
 import { arch, platform, tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -260,11 +259,11 @@ export class KiCAD {
         return this.findSymbolsDirectory();
     }
 
-    async hasLocalSymbols(): Promise<boolean> {
+    hasLocalSymbols(): boolean {
         const symbolsPath = this.getSymbolsPath();
         if (!symbolsPath) return false;
         try {
-            const files = await readdir(symbolsPath);
+            const files = readdirSync(symbolsPath);
             return files.some(file => file.endsWith('.kicad_sym'));
         } catch (err) {
             logger.debug('kicad: hasLocalSymbols failed for', symbolsPath, err);

@@ -40,14 +40,14 @@ describe('SourceMatcher', () => {
     });
 
     describe('matchAll with Code metadata', () => {
-        it('should match footprint using variable name + file from metadata', async () => {
+        it('should match footprint using variable name + file from metadata', () => {
             const srcFile = path.join(tempDir, 'index.ts');
             fs.writeFileSync(srcFile, `import { Component } from '@typecad/typecad';\nthis.r1 = new Component({ reference: 'R1' });\n`);
 
             const meta: CodeMetadata = { v: 1, u: 'uuid-1', n: 'r1', t: true, f: srcFile };
             const fp = makeFootprint({ codeMetadata: meta });
             const matcher = new SourceMatcher(tempDir);
-            const results = await matcher.matchAll([fp]);
+            const results = matcher.matchAll([fp]);
             expect(results).toHaveLength(1);
             expect(results[0].sourceLocation).not.toBeNull();
             expect(results[0].sourceLocation!.variableName).toBe('r1');
@@ -55,65 +55,65 @@ describe('SourceMatcher', () => {
             expect(results[0].matchConfidence).toBe('uuid');
         });
 
-        it('should return null when file does not exist', async () => {
+        it('should return null when file does not exist', () => {
             const meta: CodeMetadata = { v: 1, u: 'uuid-1', n: 'r1', t: true, f: '/nonexistent/file.ts' };
             const fp = makeFootprint({ codeMetadata: meta });
             const matcher = new SourceMatcher(tempDir);
-            const results = await matcher.matchAll([fp]);
+            const results = matcher.matchAll([fp]);
             expect(results[0].sourceLocation).toBeNull();
             expect(results[0].matchConfidence).toBe('none');
         });
 
-        it('should scan all source files when file path is missing', async () => {
+        it('should scan all source files when file path is missing', () => {
             const srcFile = path.join(tempDir, 'main.ts');
             fs.writeFileSync(srcFile, `const led = new Component({ reference: 'D1' });\n`);
 
             const meta: CodeMetadata = { v: 1, u: 'uuid-2', n: 'led', t: false };
             const fp = makeFootprint({ codeMetadata: meta, reference: 'D1' });
             const matcher = new SourceMatcher(tempDir);
-            const results = await matcher.matchAll([fp]);
+            const results = matcher.matchAll([fp]);
             expect(results[0].sourceLocation).not.toBeNull();
             expect(results[0].sourceLocation!.variableName).toBe('led');
         });
     });
 
     describe('matchAll with legacy metadata', () => {
-        it('should handle legacy Code metadata', async () => {
+        it('should handle legacy Code metadata', () => {
             const srcFile = path.join(tempDir, 'legacy.ts');
             fs.writeFileSync(srcFile, `this.cap = new Component({ reference: 'C1' });\n`);
 
             const meta: LegacyCodeMetadata = { v: 0, u: '', n: 'cap', t: true, f: srcFile };
             const fp = makeFootprint({ codeMetadata: meta, reference: 'C1' });
             const matcher = new SourceMatcher(tempDir);
-            const results = await matcher.matchAll([fp]);
+            const results = matcher.matchAll([fp]);
             expect(results[0].sourceLocation).not.toBeNull();
             expect(results[0].matchConfidence).toBe('variable-fallback');
         });
     });
 
     describe('matchAll without metadata (reference fallback)', () => {
-        it('should find by reference + footprint name on same line', async () => {
+        it('should find by reference + footprint name on same line', () => {
             const srcFile = path.join(tempDir, 'board.ts');
             fs.writeFileSync(srcFile, `const resistor = new Component({ reference: 'R1', footprint: 'Resistor_SMD:R_0603_1608Metric' });\n`);
 
             const fp = makeFootprint({ codeMetadata: null });
             const matcher = new SourceMatcher(tempDir);
-            const results = await matcher.matchAll([fp]);
+            const results = matcher.matchAll([fp]);
             expect(results[0].sourceLocation).not.toBeNull();
             expect(results[0].sourceLocation!.variableName).toBe('resistor');
         });
 
-        it('should return none when no match found', async () => {
+        it('should return none when no match found', () => {
             const fp = makeFootprint({ codeMetadata: null, reference: 'X99' });
             const matcher = new SourceMatcher(tempDir);
-            const results = await matcher.matchAll([fp]);
+            const results = matcher.matchAll([fp]);
             expect(results[0].sourceLocation).toBeNull();
             expect(results[0].matchConfidence).toBe('none');
         });
     });
 
     describe('matchAll with file+line but no variable name', () => {
-        it('should find component by file path and line number when variable name is missing', async () => {
+        it('should find component by file path and line number when variable name is missing', () => {
             const srcFile = path.join(tempDir, 'board.ts');
             const lines = [
                 `import { Resistor } from '@typecad/passives/0603';`,
@@ -125,13 +125,13 @@ describe('SourceMatcher', () => {
             const meta: CodeMetadata = { v: 1, u: '', f: srcFile, l: 2 };
             const fp = makeFootprint({ codeMetadata: meta, reference: 'R1' });
             const matcher = new SourceMatcher(tempDir);
-            const results = await matcher.matchAll([fp]);
+            const results = matcher.matchAll([fp]);
             expect(results[0].sourceLocation).not.toBeNull();
             expect(results[0].sourceLocation!.variableName).toBe('r1');
             expect(results[0].sourceLocation!.isThis).toBe(false);
         });
 
-        it('should match second component on different line', async () => {
+        it('should match second component on different line', () => {
             const srcFile = path.join(tempDir, 'board.ts');
             const lines = [
                 `import { Resistor } from '@typecad/passives/0603';`,
@@ -143,44 +143,44 @@ describe('SourceMatcher', () => {
             const meta: CodeMetadata = { v: 1, u: '', f: srcFile, l: 3 };
             const fp = makeFootprint({ codeMetadata: meta, reference: 'R2' });
             const matcher = new SourceMatcher(tempDir);
-            const results = await matcher.matchAll([fp]);
+            const results = matcher.matchAll([fp]);
             expect(results[0].sourceLocation).not.toBeNull();
             expect(results[0].sourceLocation!.variableName).toBe('r2');
         });
     });
 
     describe('findVariableInFile', () => {
-        it('should match this.X = new ... pattern', async () => {
+        it('should match this.X = new ... pattern', () => {
             const srcFile = path.join(tempDir, 'test.ts');
             fs.writeFileSync(srcFile, `    this.led = new Component({ reference: 'D1' });\n`);
             const matcher = new SourceMatcher(tempDir);
-            const loc = await matcher.findVariableInFile(srcFile, 'led', true);
+            const loc = matcher.findVariableInFile(srcFile, 'led', true);
             expect(loc).not.toBeNull();
             expect(loc!.isThis).toBe(true);
         });
 
-        it('should match const X = new ... pattern', async () => {
+        it('should match const X = new ... pattern', () => {
             const srcFile = path.join(tempDir, 'test.ts');
             fs.writeFileSync(srcFile, `const sensor = new Component({ reference: 'U1' });\n`);
             const matcher = new SourceMatcher(tempDir);
-            const loc = await matcher.findVariableInFile(srcFile, 'sensor', false);
+            const loc = matcher.findVariableInFile(srcFile, 'sensor', false);
             expect(loc).not.toBeNull();
             expect(loc!.isThis).toBe(false);
         });
 
-        it('should resolve relative paths', async () => {
+        it('should resolve relative paths', () => {
             const subDir = path.join(tempDir, 'src');
             fs.mkdirSync(subDir);
             const srcFile = path.join(subDir, 'app.ts');
             fs.writeFileSync(srcFile, `this.button = new Component({});\n`);
             const matcher = new SourceMatcher(tempDir);
-            const loc = await matcher.findVariableInFile(path.join('src', 'app.ts'), 'button', true);
+            const loc = matcher.findVariableInFile(path.join('src', 'app.ts'), 'button', true);
             expect(loc).not.toBeNull();
         });
     });
 
     describe('collectTypeScriptFiles', () => {
-        it('should find .ts, .tsx, .mts, .cts files', async () => {
+        it('should find .ts, .tsx, .mts, .cts files', () => {
             fs.writeFileSync(path.join(tempDir, 'a.ts'), '');
             fs.writeFileSync(path.join(tempDir, 'b.tsx'), '');
             fs.writeFileSync(path.join(tempDir, 'c.mts'), '');
@@ -188,11 +188,11 @@ describe('SourceMatcher', () => {
             fs.writeFileSync(path.join(tempDir, 'e.js'), '');
             const matcher = new SourceMatcher(tempDir);
             const fp = makeFootprint({ codeMetadata: null, reference: 'X0' });
-            const results = await matcher.matchAll([fp]);
+            const results = matcher.matchAll([fp]);
             expect(results[0].matchConfidence).toBe('none');
         });
 
-        it('should skip node_modules, dist, build, .git directories', async () => {
+        it('should skip node_modules, dist, build, .git directories', () => {
             for (const dir of ['node_modules', 'dist', 'build', '.git']) {
                 const subDir = path.join(tempDir, dir);
                 fs.mkdirSync(subDir);
@@ -201,13 +201,13 @@ describe('SourceMatcher', () => {
             fs.writeFileSync(path.join(tempDir, 'visible.ts'), '');
             const matcher = new SourceMatcher(tempDir);
             const fp = makeFootprint({ codeMetadata: null, reference: 'X0' });
-            const results = await matcher.matchAll([fp]);
+            const results = matcher.matchAll([fp]);
             expect(results[0].matchConfidence).toBe('none');
         });
     });
 
     describe('regression: src/ subdirectory matching', () => {
-        it('should match components in src/ subdirectory when sourceRoot has src/ subdirectory', async () => {
+        it('should match components in src/ subdirectory when sourceRoot has src/ subdirectory', () => {
             const srcDir = path.join(tempDir, 'src');
             fs.mkdirSync(srcDir);
             const srcFile = path.join(srcDir, 'board.ts');
@@ -216,12 +216,12 @@ describe('SourceMatcher', () => {
             const meta: CodeMetadata = { v: 1, u: '', n: 'r1' };
             const fp = makeFootprint({ codeMetadata: meta, reference: 'R1' });
             const matcher = new SourceMatcher(srcDir);
-            const results = await matcher.matchAll([fp]);
+            const results = matcher.matchAll([fp]);
             expect(results[0].sourceLocation).not.toBeNull();
             expect(results[0].sourceLocation!.variableName).toBe('r1');
         });
 
-        it('should match components when sourceRoot is a relative path to src/ subdirectory', async () => {
+        it('should match components when sourceRoot is a relative path to src/ subdirectory', () => {
             const srcDir = path.join(tempDir, 'src');
             fs.mkdirSync(srcDir);
             fs.writeFileSync(path.join(srcDir, 'main.ts'), `const r1 = new Component({ reference: 'R1' });\n`);
@@ -232,7 +232,7 @@ describe('SourceMatcher', () => {
                 const meta: CodeMetadata = { v: 1, u: '', n: 'r1' };
                 const fp = makeFootprint({ codeMetadata: meta, reference: 'R1' });
                 const matcher = new SourceMatcher('./src');
-                const results = await matcher.matchAll([fp]);
+                const results = matcher.matchAll([fp]);
                 expect(results[0].sourceLocation).not.toBeNull();
                 expect(results[0].sourceLocation!.variableName).toBe('r1');
             } finally {
@@ -240,7 +240,7 @@ describe('SourceMatcher', () => {
             }
         });
 
-        it('should match imported-class components (Resistor, LED) by variable name via findVariableInSources', async () => {
+        it('should match imported-class components (Resistor, LED) by variable name via findVariableInSources', () => {
             const srcDir = path.join(tempDir, 'src');
             fs.mkdirSync(srcDir);
             const srcFile = path.join(srcDir, 'main.ts');
@@ -271,7 +271,7 @@ describe('SourceMatcher', () => {
                 footprintName: 'Battery:BatteryHolder_Keystone_500',
             });
 
-            const results = await matcher.matchAll([fpR1, fpD1, fpBt1]);
+            const results = matcher.matchAll([fpR1, fpD1, fpBt1]);
             expect(results).toHaveLength(3);
             for (const r of results) {
                 expect(r.sourceLocation).not.toBeNull();
@@ -281,7 +281,7 @@ describe('SourceMatcher', () => {
             expect(results[2].sourceLocation!.variableName).toBe('bt1');
         });
 
-        it('should match by footprint fallback for object constructor without explicit reference', async () => {
+        it('should match by footprint fallback for object constructor without explicit reference', () => {
             const srcDir = path.join(tempDir, 'src');
             fs.mkdirSync(srcDir);
             const srcFile = path.join(srcDir, 'board.ts');
@@ -293,7 +293,7 @@ describe('SourceMatcher', () => {
                 footprintName: 'Battery:BatteryHolder_Keystone_500',
             });
             const matcher = new SourceMatcher(srcDir);
-            const results = await matcher.matchAll([fp]);
+            const results = matcher.matchAll([fp]);
             expect(results[0].sourceLocation).not.toBeNull();
             expect(results[0].sourceLocation!.variableName).toBe('bt1');
             expect(results[0].matchConfidence).toBe('variable-fallback');

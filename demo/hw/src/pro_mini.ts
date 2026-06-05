@@ -16,10 +16,10 @@ const typecad = new PCB('autoroute_test');
 // Test execution control
 const runTests = {
     test1: true,
-    test2: false,
-    test3: false,
-    test4: false,
-    test5: false,
+    test2: true,
+    test3: true,
+    test4: true,
+    test5: true,
     test6: false,
     test7: false,
     test8: false,
@@ -31,7 +31,7 @@ const runTests = {
     test14: false,
     test15: false,   // errors
     test16: true,
-    test17: true,
+    test17: false,
 };
 
 // Run individual test files based on configuration and collect all components

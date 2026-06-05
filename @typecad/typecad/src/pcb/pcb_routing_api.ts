@@ -23,19 +23,19 @@ function isSchematicNetDefinition(value: unknown): value is ISchematicNetDefinit
     );
 }
 
-export async function pcbRoute(
+export function pcbRoute(
     pcb: PCB,
     state: PcbInternalState,
     arg1: ISchematicNetDefinition | IAutorouteOptions,
     options?: import('./pcb_interfaces.js').IAutorouteRouteOptions
-): Promise<IAutorouteResult> {
+): IAutorouteResult {
     if (isSchematicNetDefinition(arg1)) {
         return extractRouteNet(pcb, arg1, options);
     }
     const opts = arg1 as IAutorouteOptions;
     const netLabel = opts.net || `${pinToIdentifier(Array.isArray(opts.from) ? opts.from[0] : opts.from)} → ${pinToIdentifier(Array.isArray(opts.to) ? opts.to[0] : opts.to)}`;
     logger.info(`⏳ Routing '${netLabel}'...`);
-    const result = await pcbAutoroute(pcb, state, opts);
+    const result = pcbAutoroute(pcb, state, opts);
     if (result.success) {
         logger.info(`✔ Routing '${netLabel}' complete (${result.completedCount}/${result.routeCount} routes)`);
     } else {
@@ -44,22 +44,14 @@ export async function pcbRoute(
     return result;
 }
 
-export async function pcbAutoroute(pcb: PCB, state: PcbInternalState, options: IAutorouteOptions): Promise<IAutorouteResult> {
-    const task = Promise.resolve(autoroute(pcb, options));
-    state.pendingAutoroutes.add(task);
-    try {
-        return await task;
-    } finally {
-        state.pendingAutoroutes.delete(task);
-    }
+export function pcbAutoroute(pcb: PCB, state: PcbInternalState, options: IAutorouteOptions): IAutorouteResult {
+    return autoroute(pcb, options);
 }
 
-export async function pcbWaitForPendingAutoroutes(state: PcbInternalState): Promise<void> {
-    if (state.pendingAutoroutes.size === 0) return;
-    await Promise.all(Array.from(state.pendingAutoroutes));
+export function pcbWaitForPendingAutoroutes(_state: PcbInternalState): void {
 }
 
-export async function pcbAutorouteBatch(
+export function pcbAutorouteBatch(
     pcb: PCB,
     items: Array<{ from: Pin | Pin[]; to: Pin | Pin[]; options?: import('./pcb_interfaces.js').IAutorouteRouteOptions; name?: string }>,
     batchOptions?: {
@@ -68,6 +60,6 @@ export async function pcbAutorouteBatch(
         relaxViaCostPerRound?: number;
         increaseIterationsPerRound?: number;
     }
-): Promise<{ results: IAutorouteResult[]; success: boolean; rounds: number }> {
+): { results: IAutorouteResult[]; success: boolean; rounds: number } {
     return autorouteBatch(pcb, items, batchOptions);
 }

@@ -1,7 +1,6 @@
 export { defineConfig, type TypeCADConfig } from './config.js'
-export { Component, type ComponentInit, IComponent, ITypeHalInfo } from './component.js'
+export { Component, type ComponentInit, IComponent } from './component.js'
 export type { ITextPositioning } from './pcb/pcb_interfaces.js'
-export { Schematic } from './schematic.js'
 export { Pin } from './pin.js'
 export { I2C, UART, USB, Power } from './buses.js'
 export type { IPower } from './buses.js'
@@ -32,8 +31,9 @@ export {
     exportSchematic,
 } from './kicad_commands.js'
 
-export type { McuPinMapping, HwContract, ContractPin, ContractComponent, ContractOptions } from './contract.js';
+export type { HwContract, ContractPin, ContractComponent, ContractOptions } from './contract.js';
 export type { NgspiceResult } from './simulation/types.js';
+export type { SimulationContext } from './simulation/ngspice.js';
 export type { ISchematicNetDefinition } from './net_manager.js';
 export { clearSourceCache } from './utils/source_inspector.js';
 

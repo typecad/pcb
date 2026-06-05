@@ -68,9 +68,6 @@ import { processManualRoutes } from './pcb_autoroute_manual_routes.js';
 import { routeMstNet } from './pcb_autoroute_mst.js';
 import { routePairwise } from './pcb_autoroute_pairwise.js';
 
-// Re-export enqueueAutoroute for pcb_routing_core.ts (which imports it)
-export { enqueueAutoroute } from './pcb_autoroute_helpers.js';
-
 // pcb parameter is typed as PCB.
 export function autoroute(pcb: PCB, options: IAutorouteOptions): IAutorouteResult {
     // ── 1. Validate required parameters ──────────────────────────────────

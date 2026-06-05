@@ -12,7 +12,7 @@ describe('Autoroute integration', () => {
     try { fs.mkdirSync(buildDir); } catch (e) { /* ignore */ }
   });
 
-  it('routes a 3-pin net (MST) and writes segments to the board file', async () => {
+  it('routes a 3-pin net (MST) and writes segments to the board file', () => {
     const pcb = new PCB(boardName);
 
     const c1 = new Component('test:pad');
@@ -41,7 +41,7 @@ describe('Autoroute integration', () => {
 
     const vcc_net = pcb.net(c1.pins[0], c2.pins[0], c3.pins[0]);
 
-    const result = await pcb.route(vcc_net, {
+    const result = pcb.route(vcc_net, {
       gridResolution: 0.5,
       layers: ['F.Cu'],
       maxIterations: 50000
@@ -50,7 +50,7 @@ describe('Autoroute integration', () => {
 
     expect(getPcbState(pcb).stagedOutlines.length).toBeGreaterThan(0);
 
-    await pcb.create(c1, c2, c3);
+    pcb.create(c1, c2, c3);
 
     const contents = fs.readFileSync(`${buildDir}/${boardName}.kicad_pcb`, 'utf8');
     expect(contents.includes('(segment')).toBeTruthy();

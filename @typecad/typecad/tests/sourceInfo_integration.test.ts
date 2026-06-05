@@ -24,7 +24,7 @@ describe('sourceInfo Integration Tests', () => {
   })
 
   describe('Component sourceInfo in PCB creation', () => {
-    it('should include sourceInfo in KiCad output when creating board', async () => {
+    it('should include sourceInfo in KiCad output when creating board', () => {
       const pcb = new PCB('test_board')
       
       const component = new Component('Resistor_SMD:R_0603_1608Metric');
@@ -37,7 +37,7 @@ describe('sourceInfo Integration Tests', () => {
         '(footprint "Resistor_SMD:R_0603_1608Metric" (layer "F.Cu") (width 1.6) (height 0.8))'
       )
       
-      await pcb.create(component)
+      pcb.create(component)
       
       expect(component.sourceInfo).toBeDefined()
       expect(mockFootprintLib).toHaveBeenCalled()
@@ -68,7 +68,7 @@ describe('sourceInfo Integration Tests', () => {
       expect(component2.sourceInfo).toEqual(originalSourceInfo2)
     })
 
-    it('should handle sourceInfo when components are placed and then created', async () => {
+    it('should handle sourceInfo when components are placed and then created', () => {
       const pcb = new PCB('test_board')
       
       const component = new Component('Package_DIP:DIP-28_W7.62mm');
@@ -85,7 +85,7 @@ describe('sourceInfo Integration Tests', () => {
         '(footprint "Package_DIP:DIP-28_W7.62mm" (layer "B.Cu") (width 7.62) (height 35.56))'
       )
       
-      await pcb.create(component)
+      pcb.create(component)
       
       expect(component.sourceInfo).toEqual(originalSourceInfo)
       
@@ -94,30 +94,30 @@ describe('sourceInfo Integration Tests', () => {
   })
 
   describe('Outline sourceInfo in PCB creation', () => {
-    it('should preserve sourceInfo for outlines when creating board', async () => {
+    it('should preserve sourceInfo for outlines when creating board', () => {
       const pcb = new PCB('test_board')
       
       pcb.outline(0, 0, 100, 80, 5)
       
-      await pcb.create()
+      pcb.create()
       
       expect(mockWriteFileSync).toHaveBeenCalled()
     })
 
-    it('should handle multiple outlines with sourceInfo', async () => {
+    it('should handle multiple outlines with sourceInfo', () => {
       const pcb = new PCB('test_board')
       
       pcb.outline(0, 0, 100, 80)
       pcb.outline(10, 10, 90, 70, 2)
       
-      await pcb.create()
+      pcb.create()
       
       expect(mockWriteFileSync).toHaveBeenCalled()
     })
   })
 
   describe('Via sourceInfo in PCB creation', () => {
-    it('should preserve sourceInfo for vias when creating board', async () => {
+    it('should preserve sourceInfo for vias when creating board', () => {
       const pcb = new PCB('test_board')
       
       const via = pcb.via({ 
@@ -128,13 +128,13 @@ describe('sourceInfo Integration Tests', () => {
       
       const originalSourceInfo = via.sourceInfo
       
-      await pcb.create()
+      pcb.create()
       
       expect(via.sourceInfo).toEqual(originalSourceInfo)
       expect(mockWriteFileSync).toHaveBeenCalled()
     })
 
-    it('should handle vias with powerInfo and sourceInfo', async () => {
+    it('should handle vias with powerInfo and sourceInfo', () => {
       const pcb = new PCB('test_board')
       
       const via = pcb.via({ 
@@ -147,14 +147,14 @@ describe('sourceInfo Integration Tests', () => {
       expect(via.sourceInfo).toBeDefined()
       expect(via.viaData?.powerInfo).toBeDefined()
       
-      await pcb.create()
+      pcb.create()
       
       expect(mockWriteFileSync).toHaveBeenCalled()
     })
   })
 
   describe('Error handling with sourceInfo', () => {
-    it('should include sourceInfo in error messages when board creation fails', async () => {
+    it('should include sourceInfo in error messages when board creation fails', () => {
       const pcb = new PCB('test_board')
       
       const mockExit = vi.spyOn(process, 'exit').mockImplementation(() => {

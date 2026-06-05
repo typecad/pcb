@@ -1,13 +1,9 @@
 import fs from 'node:fs';
 import type { Node as AcornNode, ObjectExpression, VariableDeclaration, AssignmentExpression, NewExpression } from 'acorn';
+import * as acorn from 'acorn';
+import { simple as walkSimple } from 'acorn-walk';
 import { createRequire } from 'node:module';
 import logger from './logging.js';
-
-type AcornModule = typeof import('acorn');
-type AcornWalkModule = typeof import('acorn-walk');
-
-let _acorn: AcornModule | undefined;
-let _walk: AcornWalkModule['simple'] | undefined;
 
 const MAX_CACHE_SIZE = 256;
 const _sourceCache = new Map<string, { mtimeMs: number; content: string }>();
@@ -18,18 +14,6 @@ function cacheSource(filePath: string, mtimeMs: number, content: string): void {
         if (firstKey !== undefined) _sourceCache.delete(firstKey);
     }
     _sourceCache.set(filePath, { mtimeMs, content });
-}
-
-async function loadAcorn(): Promise<{ acorn: AcornModule; walk: AcornWalkModule['simple'] }> {
-    if (!_acorn || !_walk) {
-        const [acornMod, walkMod] = await Promise.all([
-            import('acorn'),
-            import('acorn-walk'),
-        ]);
-        _acorn = acornMod;
-        _walk = walkMod.simple;
-    }
-    return { acorn: _acorn, walk: _walk };
 }
 
 const _require = createRequire(import.meta.url);
@@ -77,7 +61,7 @@ export function clearSourceCache(): void {
 /**
  * Inspects source code to find variable name and params for a instantiation.
  */
-export async function inspectSource(filePath: string, line: number): Promise<{ variable?: string, params?: Record<string, unknown>, isThis?: boolean }> {
+export function inspectSource(filePath: string, line: number): { variable?: string, params?: Record<string, unknown>, isThis?: boolean } {
     const sourceContent = readSourceCached(filePath);
     if (!sourceContent) {
         return {};
@@ -86,7 +70,6 @@ export async function inspectSource(filePath: string, line: number): Promise<{ v
 
         // 1. Try AST Parsing
         try {
-            const { acorn, walk } = await loadAcorn();
             const tsPlugin = getTsPluginModule();
             let ast: AcornNode;
             if (tsPlugin) {
@@ -100,8 +83,6 @@ export async function inspectSource(filePath: string, line: number): Promise<{ v
                     allowImportExportEverywhere: true
                 });
             } else {
-                // Fall back to plain acorn (no TypeScript-specific syntax support,
-                // but handles the common `new` patterns we care about)
                 ast = acorn.parse(sourceContent, {
                     ecmaVersion: 2022,
                     sourceType: 'module',
@@ -117,7 +98,7 @@ export async function inspectSource(filePath: string, line: number): Promise<{ v
             let foundVariable = false;
             let targetStartLine = -1; // track the best match proximity
 
-            walk(ast, {
+            walkSimple(ast, {
                 VariableDeclaration(node: AcornNode) {
                     if (!node.loc) return;
                     const declStart = node.loc.start.line;

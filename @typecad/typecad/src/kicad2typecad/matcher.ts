@@ -21,16 +21,16 @@ export class SourceMatcher {
         this.sourceRoot = sourceRoot;
     }
 
-    async matchAll(footprints: KicadFootprintIR[]): Promise<MatchResult[]> {
+    matchAll(footprints: KicadFootprintIR[]): MatchResult[] {
         const results: MatchResult[] = [];
         for (const fp of footprints) {
-            const result = await this.matchFootprint(fp);
+            const result = this.matchFootprint(fp);
             results.push(result);
         }
         return results;
     }
 
-    async matchFootprint(fp: KicadFootprintIR): Promise<MatchResult> {
+    matchFootprint(fp: KicadFootprintIR): MatchResult {
         const metadata = fp.codeMetadata;
 
         if (metadata) {
@@ -39,7 +39,7 @@ export class SourceMatcher {
             const isThis = metadata.t ?? false;
 
             if (variableName && filePath) {
-                const location = await this.findVariableInFile(filePath, variableName, isThis);
+                const location = this.findVariableInFile(filePath, variableName, isThis);
                 if (location) {
                     const confidence = (metadata as CodeMetadata).u ? 'uuid' : 'variable-fallback';
                     return { irFootprint: fp, sourceLocation: location, matchConfidence: confidence };
@@ -47,21 +47,21 @@ export class SourceMatcher {
             }
 
             if (variableName && !filePath) {
-                const location = await this.findVariableInSources(variableName, isThis);
+                const location = this.findVariableInSources(variableName, isThis);
                 if (location) {
                     return { irFootprint: fp, sourceLocation: location, matchConfidence: 'variable-fallback' };
                 }
             }
 
             if (!variableName && filePath && metadata.l) {
-                const location = await this.findByFileAndLine(filePath, metadata.l);
+                const location = this.findByFileAndLine(filePath, metadata.l);
                 if (location) {
                     return { irFootprint: fp, sourceLocation: location, matchConfidence: 'variable-fallback' };
                 }
             }
         }
 
-        const refLocation = await this.findByReference(fp.reference, fp.footprintName);
+        const refLocation = this.findByReference(fp.reference, fp.footprintName);
         if (refLocation) {
             return { irFootprint: fp, sourceLocation: refLocation, matchConfidence: 'variable-fallback' };
         }
@@ -69,16 +69,16 @@ export class SourceMatcher {
         return { irFootprint: fp, sourceLocation: null, matchConfidence: 'none' };
     }
 
-    async findVariableInFile(
+    findVariableInFile(
         filePath: string,
         variableName: string,
         isThis: boolean
-    ): Promise<SourceLocation | null> {
+    ): SourceLocation | null {
         const resolvedPath = path.isAbsolute(filePath)
             ? filePath
             : path.resolve(this.sourceRoot, filePath);
 
-        const analysis = await analyzeFile(resolvedPath);
+        const analysis = analyzeFile(resolvedPath);
         if (!analysis) return null;
 
         const component = analysis.components.find(c =>
@@ -97,21 +97,21 @@ export class SourceMatcher {
         return null;
     }
 
-    private async findVariableInSources(variableName: string, isThis: boolean): Promise<SourceLocation | null> {
+    private findVariableInSources(variableName: string, isThis: boolean): SourceLocation | null {
         const tsFiles = collectTypeScriptFiles(this.sourceRoot);
         for (const filePath of tsFiles) {
-            const location = await this.findVariableInFile(filePath, variableName, isThis);
+            const location = this.findVariableInFile(filePath, variableName, isThis);
             if (location) return location;
         }
         return null;
     }
 
-    private async findByFileAndLine(filePath: string, line: number): Promise<SourceLocation | null> {
+    private findByFileAndLine(filePath: string, line: number): SourceLocation | null {
         const resolvedPath = path.isAbsolute(filePath)
             ? filePath
             : path.resolve(this.sourceRoot, filePath);
 
-        const analysis = await analyzeFile(resolvedPath);
+        const analysis = analyzeFile(resolvedPath);
         if (!analysis) return null;
 
         const component = analysis.components.find(c => c.line === line);
@@ -126,12 +126,12 @@ export class SourceMatcher {
         return null;
     }
 
-    private async findByReference(reference: string, footprintName: string): Promise<SourceLocation | null> {
+    private findByReference(reference: string, footprintName: string): SourceLocation | null {
         const tsFiles = collectTypeScriptFiles(this.sourceRoot);
         const libPart = footprintName.split(LIBRARY_SEPARATOR)[0] || '';
 
         for (const filePath of tsFiles) {
-            const analysis = await analyzeFile(filePath);
+            const analysis = analyzeFile(filePath);
             if (!analysis) continue;
 
             for (const comp of analysis.components) {

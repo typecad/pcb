@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { PCB, Schematic } from '../src/index.js'
+import { PCB } from '../src/index.js'
+import { Schematic } from '../src/schematic.js'
 import fs from 'node:fs'
 import { parse, nameOf } from '../src/sexpr/index.js'
 
@@ -31,7 +32,7 @@ describe('PCB Text Regeneration (Remove Old gr_text)', () => {
     }
   })
 
-  it('should remove old gr_text elements when board is regenerated', async () => {
+  it('should remove old gr_text elements when board is regenerated', () => {
     // First generation - create PCB with text "Version 1.0"
     let pcb = new PCB(testBoardName, { schematic: new Schematic(testBoardName) })
 
@@ -49,7 +50,7 @@ describe('PCB Text Regeneration (Remove Old gr_text)', () => {
       layer: 'F.SilkS'
     })
 
-    await pcb.create()
+    pcb.create()
 
     // Verify first generation has 2 text elements
     let pcbFile = fs.readFileSync(`./build/${testBoardName}.kicad_pcb`, 'utf8')
@@ -80,7 +81,7 @@ describe('PCB Text Regeneration (Remove Old gr_text)', () => {
       layer: 'F.SilkS'
     })
 
-    await pcb.create()
+    pcb.create()
 
     // Verify second generation ONLY has the new text elements
     pcbFile = fs.readFileSync(`./build/${testBoardName}.kicad_pcb`, 'utf8')
@@ -101,7 +102,7 @@ describe('PCB Text Regeneration (Remove Old gr_text)', () => {
     expect(grTextElements.some((el: any) => getTextContent(el) === 'Old Text')).toBe(false)
   })
 
-  it('should allow removing all text by not adding any', async () => {
+  it('should allow removing all text by not adding any', () => {
     // First generation - create PCB with text
     let pcb = new PCB(testBoardName, { schematic: new Schematic(testBoardName) })
 
@@ -111,7 +112,7 @@ describe('PCB Text Regeneration (Remove Old gr_text)', () => {
       y: 50
     })
 
-    await pcb.create()
+    pcb.create()
 
     // Verify first generation has text
     let pcbFile = fs.readFileSync(`./build/${testBoardName}.kicad_pcb`, 'utf8')
@@ -125,7 +126,7 @@ describe('PCB Text Regeneration (Remove Old gr_text)', () => {
     // Second generation - don't add any text
     pcb = new PCB(testBoardName, { schematic: new Schematic(testBoardName) })
     // No pcb.text() calls
-    await pcb.create()
+    pcb.create()
 
     // Verify second generation has NO text elements
     pcbFile = fs.readFileSync(`./build/${testBoardName}.kicad_pcb`, 'utf8')
@@ -137,7 +138,7 @@ describe('PCB Text Regeneration (Remove Old gr_text)', () => {
     expect(grTextElements.length).toBe(0)
   })
 
-  it('should handle multiple regenerations with different text', async () => {
+  it('should handle multiple regenerations with different text', () => {
     const textVersions = [
       ['Alpha', 'Beta'],
       ['Gamma', 'Delta', 'Epsilon'],
@@ -156,7 +157,7 @@ describe('PCB Text Regeneration (Remove Old gr_text)', () => {
         })
       })
 
-      await pcb.create()
+      pcb.create()
 
       // Verify only current version's text exists
       const pcbFile = fs.readFileSync(`./build/${testBoardName}.kicad_pcb`, 'utf8')

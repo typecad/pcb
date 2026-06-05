@@ -19,18 +19,6 @@ Options passed to pcb.contract()
 Defined in: @typecad/typecad/src/contract.ts:77
 
 Exact reference designator of the target MCU (e.g. 'U1').
-Takes priority over mcuSymbolPattern when both are provided.
-
-***
-
-### mcuSymbolPattern?
-
-> `optional` **mcuSymbolPattern?**: `string`
-
-Defined in: @typecad/typecad/src/contract.ts:72
-
-Substring to match against Component.symbol to find the MCU.
-Ignored when the MCU component has a typehal.boardPackage property.
 
 ***
 

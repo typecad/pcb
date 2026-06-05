@@ -9,8 +9,7 @@ import type {
     IOutline,
     IGrTextOptions,
     IFilledZone,
-    IKeepoutZone,
-    IAutorouteResult
+    IKeepoutZone
 } from './pcb_interfaces.js';
 
 export class PcbInternalState {
@@ -31,7 +30,6 @@ export class PcbInternalState {
     grCircles: IGrCircle[] = [];
     grRects: IGrRect[] = [];
     grPolys: IGrPoly[] = [];
-    pendingAutoroutes: Set<Promise<IAutorouteResult>> = new Set();
 
     constructor(options: IPcbOptions) {
         this.options = options;

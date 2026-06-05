@@ -27,8 +27,6 @@ let mcu = new Component({
   symbol: 'MCU_Microchip_ATtiny:ATtiny3227-M',
   footprint: 'Package_DFN_QFN:QFN-20-1EP_4x4mm_P0.5mm',
   typehal: {
-    boardPackage: 'ATtiny3227',
-    driver: 'megaTinyCore',
     pinLookup: {
       1: 'PB5',
       2: 'PB3',
@@ -90,14 +88,10 @@ pcb.contract({ mcuReference: mcu.reference });
 
 ## `typehal` Property
 
-The `typehal` property on `Component` provides the metadata needed for contract generation:
+The `typehal` property on `Component` provides pin mapping for contract generation:
 
 | Field | Description |
 |-------|-------------|
-| `boardPackage` | MCU package identifier for firmware tools |
-| `driver` | Firmware framework/driver name |
-| `role` | Component role in the design |
-| `config` | Additional configuration for the firmware |
 | `pinLookup` | Mapping from IC pin numbers to board framework pin names |
 
 ## Peripheral Detection

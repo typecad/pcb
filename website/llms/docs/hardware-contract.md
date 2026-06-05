@@ -20,8 +20,6 @@ let mcu = new Component({
   symbol: 'MCU_Microchip_ATtiny:ATtiny3227-M',
   footprint: 'Package_DFN_QFN:QFN-20-1EP_4x4mm_P0.5mm',
   typehal: {
-    boardPackage: 'ATtiny3227',
-    driver: 'megaTinyCore',
     pinLookup: {
       1: 'PB5',
       2: 'PB3',
@@ -36,46 +34,53 @@ pcb.net(mcu.pin(7), sensor.SCL);
 
 // After create, export the contract
 pcb.create(mcu, sensor);
-const contract = pcb.contract({ mcu: mcu });
+pcb.contract({ mcuReference: mcu.reference });
 ```
 
 ## Contract Output
 
 ```json
 {
-  "version": "1.0",
+  "version": 1,
   "mcu": {
-    "package": "ATtiny3227",
-    "driver": "megaTinyCore"
+    "symbol": "MCU_Microchip_ATtiny:ATtiny3227-M",
+    "reference": "U1",
+    "value": "",
+    "footprint": "Package_DFN_QFN:QFN-20-1EP_4x4mm_P0.5mm",
+    "mpn": "",
+    "datasheet": "",
+    "description": ""
   },
-  "connectedPins": [
-    {
-      "pin": 5,
-      "boardPin": "PB0",
+  "connectedPins": {
+    "5": {
+      "pinName": "PA0",
+      "pinType": "bidirectional",
+      "boardName": "PB0",
       "net": "SDA",
-      "peripheral": "I2C"
+      "externalComponents": []
     },
-    {
-      "pin": 7,
-      "boardPin": "PB2",
+    "7": {
+      "pinName": "PA2",
+      "pinType": "bidirectional",
+      "boardName": "PB2",
       "net": "SCL",
-      "peripheral": "I2C"
+      "externalComponents": []
     }
-  ],
-  "availablePeripherals": ["I2C", "SPI", "UART"]
+  },
+  "availablePeripherals": {
+    "i2c": true,
+    "spi": false,
+    "uart": false
+  }
 }
 ```
 
 ## `typehal` Property
 
-The `typehal` property on `Component` provides the metadata needed for contract generation:
+The `typehal` property on `Component` provides pin mapping for contract generation:
 
 | Field | Description |
 |-------|-------------|
-| `boardPackage` | MCU package identifier for firmware tools |
-| `driver` | Firmware framework/driver name |
-| `role` | Component role in the design |
-| `config` | Additional configuration for the firmware |
 | `pinLookup` | Mapping from IC pin numbers to board framework pin names |
 
 ## Peripheral Detection

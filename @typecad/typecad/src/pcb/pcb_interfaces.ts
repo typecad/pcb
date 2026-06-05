@@ -31,6 +31,8 @@ export interface IPcbOptions {
     /**
      * Associated schematic. If not provided, a new Schematic is created
      * with the same board name.
+     *
+     * @internal Use `pcb.schematic` to access the schematic after construction.
      */
     schematic?: Schematic;
     /**

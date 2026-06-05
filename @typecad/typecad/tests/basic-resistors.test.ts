@@ -10,7 +10,7 @@ describe('Basic Routing Tests', () => {
         typecad = new PCB('basic_resistors');
     });
 
-    it('should create two resistors and connect their pins', async () => {
+    it('should create two resistors and connect their pins', () => {
         // Test 1: Two resistors placed apart with terminals connected (positioned around 20, 20)
         const r1_test1 = new Resistor();
         const r2_test1 = new Resistor();
@@ -33,8 +33,8 @@ describe('Basic Routing Tests', () => {
         let test1_2 = typecad.named('test1_2').net(r1_test1.pin(2), r2_test1.pin(2));
 
         // Route the connections
-        const route1 = await typecad.route(test1_1);
-        const route2 = await typecad.route(test1_2);
+        const route1 = typecad.route(test1_1);
+        const route2 = typecad.route(test1_2);
 
         // Check that routes were created successfully
         expect(route1.success).toBe(true);

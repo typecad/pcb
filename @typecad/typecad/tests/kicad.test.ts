@@ -2,7 +2,6 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as cp from 'node:child_process';
-import { readdir } from 'node:fs/promises';
 
 const { mockJoin } = vi.hoisted(() => {
   const mockJoin = vi.fn((...parts: string[]) => parts.filter(Boolean).join('/').replace(/\/+/g, '/'));
@@ -13,7 +12,6 @@ vi.mock('node:path', () => ({ join: mockJoin, default: { join: mockJoin } }));
 vi.mock('node:fs');
 vi.mock('node:os');
 vi.mock('node:child_process');
-vi.mock('node:fs/promises', () => ({ readdir: vi.fn() }));
 
 const { mockConfigGet } = vi.hoisted(() => ({ mockConfigGet: vi.fn() }));
 
@@ -40,7 +38,7 @@ describe('kicad.ts', () => {
   const mockExistsSync = fs.existsSync as ReturnType<typeof vi.fn>;
   const mockPlatform = os.platform as ReturnType<typeof vi.fn>;
   const mockExecSync = cp.execSync as ReturnType<typeof vi.fn>;
-  const mockReaddir = readdir as ReturnType<typeof vi.fn>;
+  const mockReaddirSync = fs.readdirSync as ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -196,39 +194,38 @@ describe('kicad.ts', () => {
       expect((k as any).findSymbolsDirectory()).toBe('/base/share/kicad/symbols');
     });
 
-    it('hasLocalSymbols returns true when .kicad_sym files exist', async () => {
+    it('hasLocalSymbols returns true when .kicad_sym files exist', () => {
       const k = new KiCAD({ path: '/base', cliPath: '', isFlatpak: false });
       mockExistsSync.mockReturnValue(true);
       vi.spyOn(fs, 'statSync').mockReturnValue({ isDirectory: () => true } as any);
-      mockReaddir.mockResolvedValue(['file.kicad_sym']);
-      expect(await k.hasLocalSymbols()).toBe(true);
+      mockReaddirSync.mockReturnValue(['file.kicad_sym'] as any);
+      expect(k.hasLocalSymbols()).toBe(true);
     });
 
-    it('hasLocalSymbols returns false when no .kicad_sym files', async () => {
+    it('hasLocalSymbols returns false when no .kicad_sym files', () => {
       const k = new KiCAD({ path: '/base', cliPath: '', isFlatpak: false });
       mockExistsSync.mockReturnValue(true);
       vi.spyOn(fs, 'statSync').mockReturnValue({ isDirectory: () => true } as any);
-      mockReaddir.mockResolvedValue(['file.txt']);
-      expect(await k.hasLocalSymbols()).toBe(false);
+      mockReaddirSync.mockReturnValue(['file.txt'] as any);
+      expect(k.hasLocalSymbols()).toBe(false);
     });
 
-    it('hasLocalSymbols returns false when getSymbolsPath returns undefined', async () => {
+    it('hasLocalSymbols returns false when getSymbolsPath returns undefined', () => {
       const k = new KiCAD({ path: '/base', cliPath: '', isFlatpak: false });
       mockExistsSync.mockReturnValue(false);
-      expect(await k.hasLocalSymbols()).toBe(false);
+      expect(k.hasLocalSymbols()).toBe(false);
     });
 
-    it('hasLocalSymbols handles readdir errors', async () => {
+    it('hasLocalSymbols handles readdir errors', () => {
       const k = new KiCAD({ path: '/base', cliPath: '', isFlatpak: false });
       mockExistsSync.mockReturnValue(true);
       vi.spyOn(fs, 'statSync').mockReturnValue({ isDirectory: () => true } as any);
-      mockReaddir.mockRejectedValue(new Error('err'));
-      expect(await k.hasLocalSymbols()).toBe(false);
+      mockReaddirSync.mockImplementation(() => { throw new Error('err'); });
+      expect(k.hasLocalSymbols()).toBe(false);
     });
   });
 
   describe('getLibraryPaths flatpak regression', () => {
-    const mockReaddirSync = fs.readdirSync as ReturnType<typeof vi.fn>;
     const mockArch = os.arch as ReturnType<typeof vi.fn>;
 
     it('falls back to flatpak runtime paths even when isFlatpak is false', () => {

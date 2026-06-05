@@ -184,14 +184,3 @@ export function collectPadSummariesForRouting(components: Component[]): {
 
     return pads;
 }
-
-// ── Autoroute serialization lock ─────────────────────────────────────────
-
-export const enqueueAutoroute: <T>(work: () => Promise<T>) => Promise<T> = (() => {
-    let lock: Promise<void> = Promise.resolve();
-    return <T>(work: () => Promise<T>): Promise<T> => {
-        const next = lock.then(() => work(), () => work());
-        lock = next.then(() => undefined, () => undefined);
-        return next;
-    };
-})();

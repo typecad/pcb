@@ -51,7 +51,6 @@ This produces a JSON file that looks like:
 ```json
 {
   "version": 1,
-  "boardPackage": "@typehal/board-arduino-uno",
   "mcu": {
     "symbol": "MCU_Microchip_ATmega:ATmega328P-PU",
     "reference": "U1"
@@ -98,7 +97,6 @@ If your board has more than one MCU, target a specific one by reference designat
 ```ts
 pcb.contract({
   mcuReference: 'U1',
-  mcuSymbolPattern: 'ATmega328',
   pinMapping: pinMapping,
 });
 ```
@@ -109,14 +107,12 @@ By default, the contract checks for Arduino Uno peripheral pins. You can overrid
 
 ```ts
 pcb.contract({
-  mcuSymbolPattern: 'ESP32',
-  pinMapping: esp32PinMapping,
+  mcuReference: 'U1',
   peripheralPins: {
     i2c: ['D21', 'D22'],
     spi: ['D23', 'D19', 'D18'],
     uart: ['D1', 'D3'],
   },
-  boardPackage: '@typehal/board-esp32-devkit',
 });
 ```
 

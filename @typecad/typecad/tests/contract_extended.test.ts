@@ -37,133 +37,99 @@ describe('Contract Functionality', () => {
         return await import('../src/contract.js');
     }
 
-    it('should handle MCU detection with typehal property', async () => {
+    it('should handle MCU with typehal property', async () => {
         const { exportContract } = await importContract();
         const pcb = new PCB('test');
-        
-        // Create a mock MCU component with typehal and proper footprint format
+
         const mcu = new Component({
             symbol: 'MCU_Symbol',
             footprint: 'Library:MCU_Footprint',
-            typehal: {
-                boardPackage: 'arduino:avr:uno'
-            }
+            reference: 'U1',
+            typehal: { 'PB5': 'D13' }
         });
-        
+
         getPcbState(pcb).components.push(mcu);
-        
-        // Mock fs functions
+
         const writeFileSyncMock = vi.spyOn(fs, 'writeFileSync');
         const mkdirSyncMock = vi.spyOn(fs, 'mkdirSync');
         writeFileSyncMock.mockImplementation(() => {});
         mkdirSyncMock.mockImplementation(() => {});
-        
-        // Should not throw and should call writeFileSync
-        exportContract(pcb, {});
+
+        exportContract(pcb, { mcu });
         expect(writeFileSyncMock).toHaveBeenCalled();
-        
-        // Clean up mocks
+
         writeFileSyncMock.mockRestore();
         mkdirSyncMock.mockRestore();
     });
 
-    it('should handle MCU detection with reference', async () => {
+    it('should handle MCU component directly', async () => {
         const { exportContract } = await importContract();
         const pcb = new PCB('test');
-        
-        // Create components without typehal
+
         const mcu = new Component({
             symbol: 'MCU_Symbol',
             footprint: 'Library:MCU_Footprint',
             reference: 'U1'
         });
-        
+
         getPcbState(pcb).components.push(mcu);
-        
-        // Mock fs functions
+
         const writeFileSyncMock = vi.spyOn(fs, 'writeFileSync');
         const mkdirSyncMock = vi.spyOn(fs, 'mkdirSync');
         writeFileSyncMock.mockImplementation(() => {});
         mkdirSyncMock.mockImplementation(() => {});
-        
-        // Should detect MCU by reference
-        exportContract(pcb, { mcuReference: 'U1' });
+
+        exportContract(pcb, { mcu });
         expect(writeFileSyncMock).toHaveBeenCalled();
-        
-        // Clean up mocks
+
         writeFileSyncMock.mockRestore();
         mkdirSyncMock.mockRestore();
     });
 
-    it('should handle MCU detection with symbol pattern', async () => {
+    it('should handle MCU without typehal', async () => {
         const { exportContract } = await importContract();
         const pcb = new PCB('test');
-        
-        // Create components without typehal
+
         const mcu = new Component({
             symbol: 'ATmega328P',
             footprint: 'Library:MCU_Footprint',
             reference: 'U1'
         });
-        
+
         getPcbState(pcb).components.push(mcu);
-        
-        // Mock fs functions
+
         const writeFileSyncMock = vi.spyOn(fs, 'writeFileSync');
         const mkdirSyncMock = vi.spyOn(fs, 'mkdirSync');
         writeFileSyncMock.mockImplementation(() => {});
         mkdirSyncMock.mockImplementation(() => {});
-        
-        // Should detect MCU by symbol pattern
-        exportContract(pcb, { mcuSymbolPattern: 'ATmega' });
+
+        exportContract(pcb, { mcu });
         expect(writeFileSyncMock).toHaveBeenCalled();
-        
-        // Clean up mocks
+
         writeFileSyncMock.mockRestore();
         mkdirSyncMock.mockRestore();
-    });
-
-    it('should warn when no MCU is found', async () => {
-        const { exportContract } = await importContract();
-        const pcb = new PCB('test');
-        
-        // Mock console.warn to capture warnings
-        const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-        const writeFileSyncMock = vi.spyOn(fs, 'writeFileSync');
-        
-        // Should warn and not write file
-        exportContract(pcb, {});
-        expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('No MCU found'));
-        expect(writeFileSyncMock).not.toHaveBeenCalled();
-        
-        // Clean up mocks
-        warnSpy.mockRestore();
-        writeFileSyncMock.mockRestore();
     });
 
     it('should handle peripheral pin requirements', async () => {
         const { exportContract } = await importContract();
         const pcb = new PCB('test');
-        
-        // Create a mock MCU component with typehal
+
         const mcu = new Component({
             symbol: 'MCU_Symbol',
             footprint: 'Library:MCU_Footprint',
-            typehal: {
-                boardPackage: 'arduino:avr:uno'
-            }
+            reference: 'U1',
+            typehal: { 'PB5': 'D13' }
         });
-        
+
         getPcbState(pcb).components.push(mcu);
-        
-        // Mock fs functions
+
         const writeFileSyncMock = vi.spyOn(fs, 'writeFileSync');
         const mkdirSyncMock = vi.spyOn(fs, 'mkdirSync');
         writeFileSyncMock.mockImplementation(() => {});
         mkdirSyncMock.mockImplementation(() => {});
-        
-        // Should handle custom peripheral pins
+
         exportContract(pcb, {
+            mcu,
             peripheralPins: {
                 i2c: ['A4', 'A5'],
                 spi: ['D11', 'D12', 'D13'],
@@ -171,8 +137,7 @@ describe('Contract Functionality', () => {
             }
         });
         expect(writeFileSyncMock).toHaveBeenCalled();
-        
-        // Clean up mocks
+
         writeFileSyncMock.mockRestore();
         mkdirSyncMock.mockRestore();
     });
@@ -180,31 +145,26 @@ describe('Contract Functionality', () => {
     it('should handle custom output path', async () => {
         const { exportContract } = await importContract();
         const pcb = new PCB('test');
-        
-        // Create a mock MCU component with typehal
+
         const mcu = new Component({
             symbol: 'MCU_Symbol',
             footprint: 'Library:MCU_Footprint',
-            typehal: {
-                boardPackage: 'arduino:avr:uno'
-            }
+            reference: 'U1',
+            typehal: { 'PB5': 'D13' }
         });
-        
+
         getPcbState(pcb).components.push(mcu);
-        
-        // Mock fs functions
+
         const writeFileSpy = vi.spyOn(fs, 'writeFileSync');
         const mkdirSyncMock = vi.spyOn(fs, 'mkdirSync');
         writeFileSpy.mockImplementation(() => {});
         mkdirSyncMock.mockImplementation(() => {});
-        
+
         const customPath = path.join(tempDir, 'custom-contract.json');
-        
-        // Should use custom output path
-        exportContract(pcb, { outputPath: customPath });
+
+        exportContract(pcb, { mcu, outputPath: customPath });
         expect(writeFileSpy).toHaveBeenCalledWith(expect.stringContaining('custom-contract.json'), expect.any(String));
-        
-        // Clean up mocks
+
         writeFileSpy.mockRestore();
         mkdirSyncMock.mockRestore();
     });

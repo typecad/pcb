@@ -29,22 +29,41 @@ import { getFootprintBounds } from './pcb/footprint_bounds.js';
 import { isPlacementValue, type PlacementNumber } from './placement.js';
 
 const defaultCounter = new ReferenceCounter();
-const pendingInspections: Set<Promise<void>> = new Set();
-
-export function awaitPendingInspections(): Promise<void> {
-    return Promise.all(Array.from(pendingInspections)).then(() => {});
-}
 
 export type { TextOrPositioning, TextPositioning, TextWithPositioning, TextEntry, FabEntry, FabLayout };
 export { parseTextOrPositioning };
 
-export interface ITypeHalInfo {
-    boardPackage?: string;
-    driver?: string;
-    role?: string;
-    config?: Record<string, unknown>;
-    pinLookup?: Record<string, string>;
-}
+/**
+ * Maps KiCAD symbol pin names to board framework pin names.
+ *
+ * Attach this to an MCU {@link Component} via the `typehal` property so that
+ * `pcb.contract()` can produce a firmware-friendly JSON manifest. Without it,
+ * the contract will only contain raw KiCAD pin names (e.g. `"PB5"`) which
+ * firmware code cannot meaningfully use.
+ *
+ * @example
+ * ```ts
+ * const mcu = new Component({
+ *   symbol: 'MCU_Microchip_ATmega:ATmega328P-PU',
+ *   footprint: 'Package_DIP:DIP-28_W7.62mm',
+ *   reference: 'U1',
+ *   typehal: {
+ *     'PB5': 'D13',
+ *     'PB4': 'D12',
+ *     'PB3': 'D11',
+ *     'PB2': 'D10',
+ *     'PD2': 'D2',
+ *     'PC4': 'A4',
+ *     'PC5': 'A5',
+ *   },
+ * });
+ *
+ * const pcb = new PCB('uno_shield');
+ * // ... add nets, components ...
+ * pcb.create(mcu, led, sensor);
+ * pcb.contract({ mcu });
+ * ```
+ */
 
 export interface SourceInfo {
     file: string;
@@ -67,7 +86,7 @@ export interface ComponentInit {
     simulation?: { include: boolean; model?: string };
     symbol?: string;
     sourceInfo?: SourceInfo;
-    typehal?: ITypeHalInfo;
+    typehal?: Record<string, string>;
     datasheet?: string;
     description?: string;
     voltage?: string;
@@ -107,8 +126,7 @@ export class Component {
     groups: string[] = [];
     /** @internal */
     sourceInfo?: SourceInfo;
-    /** @internal */
-    typehal?: ITypeHalInfo;
+    typehal?: Record<string, string>;
     text: TextEntry[] = [];
     fab: FabEntry | undefined = undefined;
     referenceLayout: ITextPositioning | undefined = undefined;
@@ -357,16 +375,16 @@ export class Component {
                 params: undefined,
                 isThis: undefined
             };
-            const inspectionPromise = inspectSource(callSite.file, callSite.line).then((inspection) => {
+            try {
+                const inspection = inspectSource(callSite.file, callSite.line);
                 if (inspection.variable) {
-                    this.sourceInfo!.variable = inspection.variable;
-                    this.sourceInfo!.params = inspection.params;
-                    this.sourceInfo!.isThis = inspection.isThis;
+                    this.sourceInfo.variable = inspection.variable;
+                    this.sourceInfo.params = inspection.params;
+                    this.sourceInfo.isThis = inspection.isThis;
                 }
-            }).catch((e: unknown) => logger.debug('Source inspection failed:', String(e))).finally(() => {
-                pendingInspections.delete(inspectionPromise);
-            });
-            pendingInspections.add(inspectionPromise);
+            } catch (e: unknown) {
+                logger.debug('Source inspection failed:', String(e));
+            }
         }
     }
 

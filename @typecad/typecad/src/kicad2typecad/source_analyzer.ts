@@ -13,14 +13,10 @@ import type {
     ArrayExpression,
     Property,
 } from 'acorn';
+import * as acorn from 'acorn';
+import { simple as walkSimple } from 'acorn-walk';
 import { createRequire } from 'node:module';
 import logger from '../utils/logging.js';
-
-type AcornModule = typeof import('acorn');
-type AcornWalkModule = typeof import('acorn-walk');
-
-let _acorn: AcornModule | undefined;
-let _walk: AcornWalkModule['simple'] | undefined;
 
 const _require = createRequire(import.meta.url);
 
@@ -42,18 +38,6 @@ const getTsPluginModule = (() => {
         return cached;
     };
 })();
-
-async function loadAcorn(): Promise<{ acorn: AcornModule; walk: AcornWalkModule['simple'] }> {
-    if (!_acorn || !_walk) {
-        const [acornMod, walkMod] = await Promise.all([
-            import('acorn'),
-            import('acorn-walk'),
-        ]);
-        _acorn = acornMod;
-        _walk = walkMod.simple;
-    }
-    return { acorn: _acorn, walk: _walk };
-}
 
 export interface Range {
     start: number;
@@ -169,56 +153,6 @@ function parseSource(filePath: string): { ast: AcornNode; source: string } | nul
         return { ast, source };
     } catch {
         logger.debug('source_analyzer: acorn parse failed for', filePath);
-        return null;
-    }
-}
-
-async function parseSourceAsync(filePath: string): Promise<{ ast: AcornNode; source: string } | null> {
-    let source: string;
-    try {
-        source = fs.readFileSync(filePath, 'utf-8');
-    } catch {
-        return null;
-    }
-
-    try {
-        const { acorn, walk } = await loadAcorn();
-
-        let ast: AcornNode;
-        try {
-            const tsPlugin = getTsPluginModule();
-            if (tsPlugin) {
-                const pluginModule = (tsPlugin.default ? tsPlugin.default() : tsPlugin()) as Parameters<typeof acorn.Parser.extend>[0];
-                const Parser = acorn.Parser.extend(pluginModule);
-                ast = Parser.parse(source, {
-                    ecmaVersion: 2022,
-                    sourceType: 'module',
-                    locations: true,
-                    allowReturnOutsideFunction: true,
-                    allowImportExportEverywhere: true,
-                });
-            } else {
-                ast = acorn.parse(source, {
-                    ecmaVersion: 2022,
-                    sourceType: 'module',
-                    locations: true,
-                    allowReturnOutsideFunction: true,
-                    allowImportExportEverywhere: true,
-                });
-            }
-        } catch {
-            ast = acorn.parse(source, {
-                ecmaVersion: 2022,
-                sourceType: 'module',
-                locations: true,
-                allowReturnOutsideFunction: true,
-                allowImportExportEverywhere: true,
-            });
-        }
-
-        return { ast, source };
-    } catch (e: unknown) {
-        logger.debug('source_analyzer: parse failed for', filePath, String(e));
         return null;
     }
 }
@@ -607,13 +541,13 @@ function analyzeAst(ast: AcornNode, source: string): {
     return { components, pcbAssignments, layoutAssignments, textCalls };
 }
 
-export async function analyzeFile(filePath: string): Promise<{
+export function analyzeFile(filePath: string): {
     components: ComponentInfo[];
     pcbAssignments: PcbAssignmentInfo[];
     layoutAssignments: LayoutAssignmentInfo[];
     textCalls: TextCallInfo[];
-} | null> {
-    const result = await parseSourceAsync(filePath);
+} | null {
+    const result = parseSource(filePath);
     if (!result) return null;
     return analyzeAst(result.ast, result.source);
 }
@@ -629,12 +563,12 @@ export function analyzeFileSync(filePath: string): {
     return analyzeAst(result.ast, result.source);
 }
 
-export async function findComponentByVariable(
+export function findComponentByVariable(
     filePath: string,
     variableName: string,
     isThis?: boolean
-): Promise<ComponentInfo | null> {
-    const analysis = await analyzeFile(filePath);
+): ComponentInfo | null {
+    const analysis = analyzeFile(filePath);
     if (!analysis) return null;
 
     return analysis.components.find(c =>
@@ -643,12 +577,12 @@ export async function findComponentByVariable(
     ) ?? null;
 }
 
-export async function findPcbAssignmentByVariable(
+export function findPcbAssignmentByVariable(
     filePath: string,
     variableName: string,
     isThis?: boolean
-): Promise<PcbAssignmentInfo | null> {
-    const analysis = await analyzeFile(filePath);
+): PcbAssignmentInfo | null {
+    const analysis = analyzeFile(filePath);
     if (!analysis) return null;
 
     return analysis.pcbAssignments.find(p =>
@@ -657,12 +591,12 @@ export async function findPcbAssignmentByVariable(
     ) ?? null;
 }
 
-export async function findLayoutAssignments(
+export function findLayoutAssignments(
     filePath: string,
     variableName: string,
     isThis?: boolean
-): Promise<LayoutAssignmentInfo[]> {
-    const analysis = await analyzeFile(filePath);
+): LayoutAssignmentInfo[] {
+    const analysis = analyzeFile(filePath);
     if (!analysis) return [];
 
     return analysis.layoutAssignments.filter(la =>
@@ -671,8 +605,8 @@ export async function findLayoutAssignments(
     );
 }
 
-export async function findTextCalls(filePath: string): Promise<TextCallInfo[]> {
-    const analysis = await analyzeFile(filePath);
+export function findTextCalls(filePath: string): TextCallInfo[] {
+    const analysis = analyzeFile(filePath);
     if (!analysis) return [];
     return analysis.textCalls;
 }

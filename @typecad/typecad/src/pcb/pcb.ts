@@ -2,6 +2,8 @@ import { Component } from "../component.js";
 import { Schematic } from "../schematic.js";
 import type { ISchematicNetDefinition } from "../net_manager.js";
 import { Pin } from "../pin.js";
+import type { Power } from "../buses.js";
+import { SimulationContext } from "../simulation/ngspice.js";
 import { TrackBuilder } from './pcb_track_builder.js';
 import type {
     IPcbOptions,
@@ -161,7 +163,13 @@ export class PCB {
         pcbTextWithOffset(this._state, options);
     }
 
-    async create(...items: Array<Component | TrackBuilder | Array<Component | TrackBuilder>>) {
+    /**
+     * Generates all KiCad project files: schematic (.net), PCB (.kicad_pcb),
+     * and BOM. Writes outputs to the build directory.
+     *
+     * @param items - Components, TrackBuilders, or arrays thereof to include.
+     */
+    create(...items: Array<Component | TrackBuilder | Array<Component | TrackBuilder>>) {
         const flattened: Array<Component | TrackBuilder> = [];
         for (const item of items) {
             if (Array.isArray(item)) {
@@ -170,7 +178,7 @@ export class PCB {
                 flattened.push(item);
             }
         }
-        const result = await createBoard(this, ...flattened);
+        const result = createBoard(this, ...flattened);
         this.bom();
         return result;
     }
@@ -220,14 +228,14 @@ export class PCB {
         return new TrackBuilder(this, options);
     }
 
-    route(options: IAutorouteOptions): Promise<IAutorouteResult>;
-    route(netDefinition: ISchematicNetDefinition, options?: import('./pcb_interfaces.js').IAutorouteRouteOptions): Promise<IAutorouteResult>;
-    async route(arg1: ISchematicNetDefinition | IAutorouteOptions, options?: import('./pcb_interfaces.js').IAutorouteRouteOptions): Promise<IAutorouteResult> {
+    route(options: IAutorouteOptions): IAutorouteResult;
+    route(netDefinition: ISchematicNetDefinition, options?: import('./pcb_interfaces.js').IAutorouteRouteOptions): IAutorouteResult;
+    route(arg1: ISchematicNetDefinition | IAutorouteOptions, options?: import('./pcb_interfaces.js').IAutorouteRouteOptions): IAutorouteResult {
         return pcbRoute(this, this._state, arg1, options);
     }
 
-    async waitForPendingAutoroutes(): Promise<void> {
-        return pcbWaitForPendingAutoroutes(this._state);
+    waitForPendingAutoroutes(): void {
+        pcbWaitForPendingAutoroutes(this._state);
     }
 
     net(...pins: Pin[]): ISchematicNetDefinition {
@@ -242,12 +250,53 @@ export class PCB {
         pcbBom(this._schematic, output_folder);
     }
 
-    contract(options: import('../contract.js').ContractOptions = {}): void {
+    contract(options: import('../contract.js').ContractOptions): void {
         pcbContract(this, options);
     }
 
     add(...components: Component[]): void {
         pcbAdd(this._schematic, ...components);
+    }
+
+    /**
+     * Mark pins as do-not-connect (no-connect flag in the schematic).
+     * Equivalent to placing a no-connect flag on unused pins in KiCad's
+     * schematic editor.
+     */
+    dnc(...pins: Pin[]): void {
+        this._schematic.dnc(...pins);
+    }
+
+    /**
+     * Run ngspice SPICE simulation on this board's schematic.
+     * Returns a {@link SimulationContext} for running DC operating point
+     * (`.op()`) or transient (`.tran()`) analyses.
+     *
+     * @param powers - One or more {@link Power} objects defining voltage sources.
+     *
+     * @example
+     * ```ts
+     * const result = pcb.simulate(vin).op();
+     * const voltage = result.getVoltage('vdiv');
+     * ```
+     */
+    simulate(...powers: Power[]): SimulationContext {
+        return this._schematic.simulate(...powers);
+    }
+
+    /**
+     * Throw a typed error with a user-defined message. Useful for validating
+     * design constraints in build code.
+     */
+    error(message: string): void {
+        this._schematic.error(message);
+    }
+
+    /**
+     * Emit a warning message to the console.
+     */
+    warn(message: string): void {
+        this._schematic.warn(message);
     }
 }
 
@@ -342,6 +391,6 @@ export function autorouteBatchOnPcb(
         relaxViaCostPerRound?: number;
         increaseIterationsPerRound?: number;
     }
-): Promise<{ results: IAutorouteResult[]; success: boolean; rounds: number }> {
+): { results: IAutorouteResult[]; success: boolean; rounds: number } {
     return pcbAutorouteBatch(pcb, items, batchOptions);
 }

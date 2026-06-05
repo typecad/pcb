@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { PCB, Schematic } from '../src/index.js'
+import { PCB } from '../src/index.js'
+import { Schematic } from '../src/schematic.js'
 import fs from 'node:fs'
 import { parse, Sym, nameOf } from '../src/sexpr/index.js'
 
@@ -32,7 +33,7 @@ describe('PCB Text Functionality', () => {
     }
   })
 
-  it('should add basic text to PCB', async () => {
+  it('should add basic text to PCB', () => {
     pcb = new PCB(testBoardName, { schematic: new Schematic(testBoardName) })
 
     pcb.text({
@@ -41,7 +42,7 @@ describe('PCB Text Functionality', () => {
       y: 50
     })
 
-    await pcb.create()
+    pcb.create()
 
     // Read the generated PCB file
     const pcbFile = fs.readFileSync(`./build/${testBoardName}.kicad_pcb`, 'utf8')
@@ -58,7 +59,7 @@ describe('PCB Text Functionality', () => {
     expect(textElement).toBeDefined()
   })
 
-  it('should add text with custom font and size', async () => {
+  it('should add text with custom font and size', () => {
     pcb = new PCB(testBoardName, { schematic: new Schematic(testBoardName) })
 
     pcb.text({
@@ -72,7 +73,7 @@ describe('PCB Text Functionality', () => {
       height: 5
     })
 
-    await pcb.create()
+    pcb.create()
 
     // Read and parse the generated PCB file
     const pcbFile = fs.readFileSync(`./build/${testBoardName}.kicad_pcb`, 'utf8')
@@ -134,7 +135,7 @@ describe('PCB Text Functionality', () => {
     expect(parseFloat(sizeNode[2])).toBe(5) // width
   })
 
-  it('should add multiple text elements', async () => {
+  it('should add multiple text elements', () => {
     pcb = new PCB(testBoardName, { schematic: new Schematic(testBoardName) })
 
     pcb.text({
@@ -158,7 +159,7 @@ describe('PCB Text Functionality', () => {
       layer: 'B.SilkS'
     })
 
-    await pcb.create()
+    pcb.create()
 
     const pcbFile = fs.readFileSync(`./build/${testBoardName}.kicad_pcb`, 'utf8')
     const boardContents = parse(pcbFile)
@@ -170,7 +171,7 @@ describe('PCB Text Functionality', () => {
     expect(grTextElements.length).toBeGreaterThanOrEqual(3)
   })
 
-  it('should support text formatting options', async () => {
+  it('should support text formatting options', () => {
     pcb = new PCB(testBoardName, { schematic: new Schematic(testBoardName) })
 
     pcb.text({
@@ -182,7 +183,7 @@ describe('PCB Text Functionality', () => {
       thickness: 0.5
     })
 
-    await pcb.create()
+    pcb.create()
 
     const pcbFile = fs.readFileSync(`./build/${testBoardName}.kicad_pcb`, 'utf8')
     const boardContents = parse(pcbFile)
@@ -217,7 +218,7 @@ describe('PCB Text Functionality', () => {
     expect(parseFloat(thicknessNode[1])).toBe(0.5)
   })
 
-  it('should support text justification', async () => {
+  it('should support text justification', () => {
     pcb = new PCB(testBoardName, { schematic: new Schematic(testBoardName) })
 
     pcb.text({
@@ -230,7 +231,7 @@ describe('PCB Text Functionality', () => {
       }
     })
 
-    await pcb.create()
+    pcb.create()
 
     const pcbFile = fs.readFileSync(`./build/${testBoardName}.kicad_pcb`, 'utf8')
     const boardContents = parse(pcbFile)
@@ -256,7 +257,7 @@ describe('PCB Text Functionality', () => {
     expect(justifyNode.some((item: any) => String(item) === 'middle')).toBe(true)
   })
 
-  it('should apply default values', async () => {
+  it('should apply default values', () => {
     pcb = new PCB(testBoardName, { schematic: new Schematic(testBoardName) })
 
     pcb.text({
@@ -265,7 +266,7 @@ describe('PCB Text Functionality', () => {
       y: 50
     })
 
-    await pcb.create()
+    pcb.create()
 
     const pcbFile = fs.readFileSync(`./build/${testBoardName}.kicad_pcb`, 'utf8')
     const boardContents = parse(pcbFile)
@@ -311,7 +312,7 @@ describe('PCB Text Functionality', () => {
     expect(justifyNode.length).toBe(1) // Just [Sym('justify')] with no values
   })
 
-  it('should support rotation', async () => {
+  it('should support rotation', () => {
     pcb = new PCB(testBoardName, { schematic: new Schematic(testBoardName) })
 
     pcb.text({
@@ -321,7 +322,7 @@ describe('PCB Text Functionality', () => {
       rotation: 90
     })
 
-    await pcb.create()
+    pcb.create()
 
     const pcbFile = fs.readFileSync(`./build/${testBoardName}.kicad_pcb`, 'utf8')
     const boardContents = parse(pcbFile)
@@ -338,7 +339,7 @@ describe('PCB Text Functionality', () => {
     expect(parseFloat(atNode[3])).toBe(90)
   })
 
-  it('should support hide flag', async () => {
+  it('should support hide flag', () => {
     pcb = new PCB(testBoardName, { schematic: new Schematic(testBoardName) })
 
     pcb.text({
@@ -348,7 +349,7 @@ describe('PCB Text Functionality', () => {
       hide: true
     })
 
-    await pcb.create()
+    pcb.create()
 
     const pcbFile = fs.readFileSync(`./build/${testBoardName}.kicad_pcb`, 'utf8')
     const boardContents = parse(pcbFile)

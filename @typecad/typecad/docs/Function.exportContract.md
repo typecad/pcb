@@ -14,8 +14,7 @@ Exports a hardware contract JSON file describing which MCU pins are wired
 in the circuit. The firmware toolchain (TypeHAL) consumes this contract to
 generate a board wrapper that only exposes connected pins and peripherals.
 
-When a component has a `typehal.boardPackage` property, it is auto-detected
-as the MCU and pin names are read directly from the KiCAD symbol file.
+Requires `mcuReference` in options to identify the target MCU.
 
 ## Parameters
 
@@ -25,11 +24,11 @@ as the MCU and pin names are read directly from the KiCAD symbol file.
 
 The PCB instance to analyze.
 
-### options?
+### options
 
-[`ContractOptions`](Interface.ContractOptions.md) = `{}`
+[`ContractOptions`](Interface.ContractOptions.md)
 
-Contract generation options (all optional when typehal is set on the MCU).
+Contract generation options. `mcuReference` is required.
 
 ## Returns
 

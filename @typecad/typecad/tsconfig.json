@@ -13,6 +13,7 @@
     "sourceMap": true,
     "declaration": true,
     "declarationMap": true,
+    "stripInternal": true,
     "removeComments": false,
     "rootDir": "./src",
     "outDir": "./dist",

@@ -22,7 +22,7 @@ export function pcbBom(schematic: Schematic | undefined, output_folder?: string)
 
 export function pcbContract(
     pcb: PCB,
-    options: ContractOptions = {}
+    options: ContractOptions
 ): void {
     const outputPath = options.outputPath ?? `./build/${pcb.boardName}.contract.json`;
     exportContract(pcb, { ...options, outputPath });

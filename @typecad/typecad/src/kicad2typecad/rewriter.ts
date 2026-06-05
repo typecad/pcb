@@ -19,7 +19,7 @@ import type {
 } from './types.js';
 
 export class SourceRewriter {
-    async computeFootprintChanges(matchResults: MatchResult[]): Promise<PendingChange[]> {
+    computeFootprintChanges(matchResults: MatchResult[]): PendingChange[] {
         const changes: PendingChange[] = [];
 
         const byFile: Record<string, MatchResult[]> = {};
@@ -31,7 +31,7 @@ export class SourceRewriter {
         }
 
         for (const [filePath, mrs] of Object.entries(byFile)) {
-            const analysis = await analyzeFile(filePath);
+            const analysis = analyzeFile(filePath);
             if (!analysis) continue;
 
             for (const mr of mrs) {
@@ -103,7 +103,7 @@ export class SourceRewriter {
         return changes;
     }
 
-    async computeLayoutChanges(matchResults: MatchResult[], captureLayouts = false): Promise<PendingLayoutChange[]> {
+    computeLayoutChanges(matchResults: MatchResult[], captureLayouts = false): PendingLayoutChange[] {
         const changes: PendingLayoutChange[] = [];
         const layoutTypes = ['referenceLayout', 'valueLayout', 'fabLayout'] as const;
 
@@ -116,7 +116,7 @@ export class SourceRewriter {
         }
 
         for (const [filePath, mrs] of Object.entries(byFile)) {
-            const analysis = await analyzeFile(filePath);
+            const analysis = analyzeFile(filePath);
             if (!analysis) continue;
 
             for (const mr of mrs) {
@@ -221,7 +221,7 @@ export class SourceRewriter {
         return changed;
     }
 
-    async applyLayoutChanges(changes: PendingLayoutChange[]): Promise<{ filesModified: number; changesApplied: number }> {
+    applyLayoutChanges(changes: PendingLayoutChange[]): { filesModified: number; changesApplied: number } {
         const selectedByFile: Record<string, PendingLayoutChange[]> = {};
         for (const c of changes) {
             if (!selectedByFile[c.filePath]) selectedByFile[c.filePath] = [];
@@ -231,7 +231,7 @@ export class SourceRewriter {
         let filesModified = 0;
 
         for (const [filePath, fileChanges] of Object.entries(selectedByFile)) {
-            const analysis = await analyzeFile(filePath);
+            const analysis = analyzeFile(filePath);
             if (!analysis) continue;
 
             const replacements: Replacement[] = [];
@@ -287,7 +287,7 @@ export class SourceRewriter {
         return { filesModified, changesApplied: changes.length };
     }
 
-    async computeTextChanges(ir: KicadIR, sourceFiles: string[]): Promise<PendingTextChange[]> {
+    computeTextChanges(ir: KicadIR, sourceFiles: string[]): PendingTextChange[] {
         if (ir.textElements.length === 0) return [];
 
         interface SourceTextCall {
@@ -310,7 +310,7 @@ export class SourceRewriter {
         const sourceCalls: SourceTextCall[] = [];
 
         for (const filePath of sourceFiles) {
-            const textCallInfos = await findTextCalls(filePath);
+            const textCallInfos = findTextCalls(filePath);
             let content: string;
             try {
                 content = fs.readFileSync(filePath, 'utf-8');
@@ -467,7 +467,7 @@ export class SourceRewriter {
         return changes;
     }
 
-    async applyFootprintChanges(changes: PendingChange[]): Promise<{ filesModified: number; changesApplied: number }> {
+    applyFootprintChanges(changes: PendingChange[]): { filesModified: number; changesApplied: number } {
         const selectedByFile: Record<string, PendingChange[]> = {};
         for (const c of changes) {
             if (!selectedByFile[c.filePath]) selectedByFile[c.filePath] = [];
@@ -477,7 +477,7 @@ export class SourceRewriter {
         let filesModified = 0;
 
         for (const [filePath, fileChanges] of Object.entries(selectedByFile)) {
-            const analysis = await analyzeFile(filePath);
+            const analysis = analyzeFile(filePath);
             if (!analysis) continue;
 
             const replacements: Replacement[] = [];
@@ -572,7 +572,7 @@ export class SourceRewriter {
         return { filesModified, changesApplied: changes.length };
     }
 
-    async applyTextChanges(changes: PendingTextChange[]): Promise<{ filesModified: number; changesApplied: number }> {
+    applyTextChanges(changes: PendingTextChange[]): { filesModified: number; changesApplied: number } {
         const selectedByFile: Record<string, PendingTextChange[]> = {};
         for (const c of changes) {
             if (!selectedByFile[c.filePath]) selectedByFile[c.filePath] = [];
@@ -582,7 +582,7 @@ export class SourceRewriter {
         let filesModified = 0;
 
         for (const [filePath, fileChanges] of Object.entries(selectedByFile)) {
-            const textCallInfos = await findTextCalls(filePath);
+            const textCallInfos = findTextCalls(filePath);
             const replacements: Replacement[] = [];
 
             for (const change of fileChanges) {

@@ -1,6 +1,6 @@
 import { Component } from "../component.js";
 import { TrackBuilder } from './pcb_track_builder.js';
-import { parse, parseAsList, nameOf } from '../sexpr/index.js';
+import { parse, parseAsList, nameOf, s, no } from '../sexpr/index.js';
 import type { SExpr } from '../sexpr/types.js';
 import logger from '../utils/logging.js';
 import { BoardCreationError } from '../utils/errors.js';
@@ -14,7 +14,9 @@ import { createFootprintNode } from './pcb_footprint.js';
 import { mergeNets } from './pcb_net_merger.js';
 import { parseExistingBoard, insertNetsIntoBoardContents, processExistingFootprints } from './pcb_existing_board.js';
 import { getCallSite } from '../utils/stack_trace.js';
-import { renderVias, renderOutlinesAndTracks, renderGraphics, renderZones, renderKeepoutZones, serializeAndWriteBoard } from './pcb_board_serializer.js';
+import { renderVias, renderOutlinesAndTracks, renderGraphics, renderZones, renderKeepoutZones, serializeAndWriteBoard, ensureSingleSetupNode, ensureSingleLayersNode } from './pcb_board_serializer.js';
+import { writeRulesToProject } from './pcb_rules.js';
+import { buildStackup, buildLayersNode } from './pcb_stackup.js';
 import { PCB, getPcbState, setPcbOutlines, setPcbTracks, pcbResolveNet } from './pcb.js';
 import { getErrorMessage } from './pcb_utils.js';
 import { reportError } from '../utils/error_reporter.js';
@@ -102,7 +104,9 @@ function separateOutlinesAndTracks(pcb: PCB): void {
 
     setPcbOutlines(pcb, state.outlines.filter((outline: IOutline) => {
         return outline.elements.some((element: OutlineElement) => {
-            if (element.type === 'arc') return true;
+            if (element.type === 'arc' || element.type === 'circle' || element.type === 'rect' || element.type === 'poly') {
+                return true;
+            }
             if (element.type === 'line') {
                 const isCopperLayer = /\.Cu$/.test((element as IGrLine).layer);
                 return !isCopperLayer;
@@ -152,11 +156,28 @@ export function createBoard(
     const version = parse('(version 20241229)');
     const generator = parse('(generator "typecad")');
     const generator_version = parse('(generator_version "0.1.0")');
-    const general = parse('(general (thickness 1.6) (legacy_teardrops no))');
+    const general = s('general', s('thickness', pcb.thickness), s('legacy_teardrops', no()));
     const paper = parse('(paper "A4")');
     const headerItems = [version, generator, generator_version, general, paper];
 
     const { boardContents, boardNetNameToCodeMap, componentMap: updatedComponentMap } = parseExistingBoard(pcb, headerItems, componentMap);
+
+    // Generate the layer stackup and layer declarations when configured. The
+    // stackup lives inside `(setup ...)`, and the `(layers ...)` block must
+    // match the copper-layer count. Both use dedup helpers so an existing
+    // board's setup/layers are replaced (not duplicated).
+    const stackupCfg = pcb.stackupConfig;
+    if (stackupCfg) {
+        const stackupNode = buildStackup(
+            stackupCfg.layerCount,
+            pcb.thickness,
+            pcb.copper_thickness,
+            stackupCfg.options
+        );
+        const setupNode = s('setup', stackupNode);
+        ensureSingleSetupNode(boardContents, setupNode);
+        ensureSingleLayersNode(boardContents, buildLayersNode(stackupCfg.layerCount));
+    }
 
     const { allNets, boardNetNameToCodeMap: finalNetMap } = mergeNets(
         pcb.schematic,
@@ -205,4 +226,10 @@ export function createBoard(
     renderKeepoutZones(state.keepoutZones, finalBoardContents);
 
     serializeAndWriteBoard(pcb, finalBoardContents, version);
+    writeRulesToProject(
+        pcb.boardName,
+        pcb.rules,
+        pcb.netClasses.definitions,
+        pcb.netClasses.assignmentEntries
+    );
 }

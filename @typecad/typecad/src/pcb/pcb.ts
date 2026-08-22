@@ -26,6 +26,11 @@ import { resolveNet as resolveNetStandalone } from './pcb_net_resolver.js';
 import { createVia } from './pcb_via.js';
 import { loadExistingBoardElements } from './pcb_board_loader.js';
 import { PcbInternalState } from './pcb_state.js';
+import { resolveRules } from './pcb_rules.js';
+import type { IPcbRules, INetClass, INetClassOptions } from './pcb_rules.js';
+import { NetClassRegistry } from './pcb_net_class.js';
+import { validateLayerCount } from './pcb_stackup.js';
+import type { IStackupOptions } from './pcb_stackup.js';
 
 import { createBoard } from './pcb_board_creation.js';
 import { placeComponent, stageComponent, groupComponents } from './pcb_component_lifecycle.js';
@@ -42,6 +47,11 @@ import {
     pcbRectWithOffset,
     pcbPolyWithOffset,
     pcbOutlineWithOffset,
+    pcbOutlinePolygonWithOffset,
+    pcbOutlineCircleWithOffset,
+    pcbCutoutWithOffset,
+    pcbCutoutCircleWithOffset,
+    pcbOutlinePathWithOffset,
     pcbTrackWithOffset
 } from './pcb_graphics_delegation.js';
 
@@ -75,6 +85,8 @@ export type {
     IManualRoute,
     IAutorouteRouteOptions
 } from './pcb_interfaces.js';
+export type { IPcbRules, INetClass, INetClassOptions } from './pcb_rules.js';
+export type { IStackupOptions } from './pcb_stackup.js';
 
 
 /**
@@ -86,6 +98,8 @@ export class PCB {
     private _state: PcbInternalState;
     private _outlines: IOutline[] = [];
     private _tracks: IOutline[] = [];
+    private _netClasses = new NetClassRegistry();
+    private _stackup?: { layerCount: number; options: IStackupOptions };
 
     /**
      * Initializes a new PCB.
@@ -117,6 +131,24 @@ export class PCB {
 
     get copper_thickness(): number {
         return this._state.options.copper_thickness ?? 35;
+    }
+
+    /**
+     * Resolved board-wide design rules (JLCPCB no-surcharge defaults merged
+     * with any constructor overrides). The autorouter reads these as its
+     * fallback clearance and track width; they are also written to the
+     * `.kicad_pro` file for DRC.
+     */
+    get rules(): Required<IPcbRules> {
+        return resolveRules(this._state.options.rules);
+    }
+
+    /**
+     * The net-class registry, holding user-defined net classes and net→class
+     * assignments. Consumed by the build write path and the autorouter.
+     */
+    get netClasses(): NetClassRegistry {
+        return this._netClasses;
     }
 
     get outlines(): readonly IOutline[] {
@@ -222,6 +254,99 @@ export class PCB {
 
     outline(x: number, y: number, width: number, height: number, filletRadius: number = 0, conceptualUuidFromUser?: string): void {
         pcbOutlineWithOffset(this._state, x, y, width, height, filletRadius, conceptualUuidFromUser);
+    }
+
+    /**
+     * Define a custom polygon board outline on Edge.Cuts. The polygon is
+     * emitted as a single `gr_poly`; KiCad treats it as a closed contour.
+     * @param points - Polygon vertices in mm (≥3).
+     */
+    outlinePolygon(points: Array<{ x: number; y: number }>): void {
+        pcbOutlinePolygonWithOffset(this._state, points);
+    }
+
+    /**
+     * Define a circular board outline on Edge.Cuts.
+     * @param cx - Center X in mm.
+     * @param cy - Center Y in mm.
+     * @param radius - Radius in mm.
+     */
+    outlineCircle(cx: number, cy: number, radius: number): void {
+        pcbOutlineCircleWithOffset(this._state, cx, cy, radius);
+    }
+
+    /**
+     * Define an internal cutout (e.g. a milled slot or non-circular mounting
+     * cutout) on Edge.Cuts. Same mechanism as a polygon outline; KiCad treats
+     * nested closed contours on Edge.Cuts as holes.
+     * @param points - Cutout vertices in mm (≥3).
+     */
+    cutout(points: Array<{ x: number; y: number }>): void {
+        pcbCutoutWithOffset(this._state, points);
+    }
+
+    /**
+     * Define a circular cutout (e.g. a mounting hole) on Edge.Cuts.
+     * @param cx - Center X in mm.
+     * @param cy - Center Y in mm.
+     * @param radius - Radius in mm.
+     */
+    cutoutCircle(cx: number, cy: number, radius: number): void {
+        pcbCutoutCircleWithOffset(this._state, cx, cy, radius);
+    }
+
+    /**
+     * Start building an arbitrary outline path of line/arc segments on
+     * Edge.Cuts. Use `.lineTo()`, `.arcTo()`, and `.close()` on the returned
+     * builder.
+     * @param x - Start X in mm.
+     * @param y - Start Y in mm.
+     */
+    outlinePath(x: number, y: number) {
+        return pcbOutlinePathWithOffset(this._state, x, y);
+    }
+
+    /**
+     * Define a net class with per-net physical dimensions (mm). Nets assigned
+     * to the class (via {@link assign}) get these dimensions for routing and
+     * DRC. Unspecified fields fall back to the board design rules.
+     *
+     * @param name - Class name. Must not be `Default` (reserved).
+     * @param options - Partial dimensions.
+     */
+    netClass(name: string, options: INetClassOptions): void {
+        this._netClasses.define(name, options, this.rules);
+    }
+
+    /**
+     * Assign a net to a previously-defined net class. Accepts the
+     * {@link ISchematicNetDefinition} returned by `pcb.net()` or
+     * `pcb.named().net()`, so it works for named and auto-named nets.
+     *
+     * @param netDef - The net definition object.
+     * @param className - The class name (must have been defined via {@link netClass}).
+     */
+    assign(netDef: ISchematicNetDefinition, className: string): void {
+        this._netClasses.assign(netDef, className);
+    }
+
+    /**
+     * Configure the board's physical layer stackup. Generates the
+     * `(setup (stackup ...))` block and regenerates the `(layers ...)` block to
+     * match the copper-layer count. Uses JLCPCB-standard materials (FR4,
+     * 1oz copper, green mask) at the board's total thickness.
+     *
+     * @param layerCount - Number of copper layers (2–32).
+     * @param options - Optional stackup-level overrides (copper finish, etc.).
+     */
+    stackup(layerCount: number, options?: IStackupOptions): void {
+        validateLayerCount(layerCount);
+        this._stackup = { layerCount, options: options ?? {} };
+    }
+
+    /** The configured stackup, if `pcb.stackup()` was called. */
+    get stackupConfig(): Readonly<{ layerCount: number; options: IStackupOptions }> | undefined {
+        return this._stackup;
     }
 
     track(options?: { locked?: boolean; net?: string; deferStaging?: boolean; debug?: boolean }): TrackBuilder {

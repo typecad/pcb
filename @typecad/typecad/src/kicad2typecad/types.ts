@@ -120,13 +120,34 @@ export interface KicadNetIR {
 }
 
 export interface KicadOutlineIR {
-    type: 'rect' | 'line' | 'arc' | 'circle';
+    type: 'rect' | 'line' | 'arc' | 'circle' | 'poly';
     start?: { x: number; y: number };
     end?: { x: number; y: number };
     center?: { x: number; y: number };
     mid?: { x: number; y: number };
     width?: number;
     height?: number;
+    /** Ordered polygon vertices (gr_poly outlines only). */
+    points?: { x: number; y: number }[];
+}
+
+/** A single layer in a `(setup (stackup ...))` block. */
+export interface KicadStackupLayerIR {
+    /** Canonical layer name, e.g. "F.Cu", "dielectric 1", "F.Mask". */
+    name: string;
+    type?: string;
+    thickness?: number;
+    material?: string;
+}
+
+/** Parsed stackup from `(setup (stackup ...))`. */
+export interface KicadStackupIR {
+    /** Number of copper layers (derived from layer names ending in ".Cu"). */
+    copperLayerCount: number;
+    /** Layers top → bottom. */
+    layers: KicadStackupLayerIR[];
+    copperFinish?: string;
+    dielectricConstraints?: boolean;
 }
 
 /** Top-level intermediate representation of a .kicad_pcb file */
@@ -139,6 +160,8 @@ export interface KicadIR {
     vias: KicadViaIR[];
     outlines: KicadOutlineIR[];
     nets: KicadNetIR[];
+    /** Layer stackup from `(setup (stackup ...))`, or null if absent. */
+    stackup: KicadStackupIR | null;
 }
 
 // === Change Tracking Types ===

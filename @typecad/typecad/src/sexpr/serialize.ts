@@ -28,6 +28,8 @@ const INLINE_ATOMS = new Set([
     'stroke', 'fill', 'hatch',
     'group', 'members',
     'connect_pads', 'keepout',
+    'stackup', 'copper_finish', 'dielectric_constraints', 'roughening',
+    'epsilon_r', 'loss_tangent',
 ]);
 
 export function serialize(expr: SExpr, options?: SerializeOptions): string {

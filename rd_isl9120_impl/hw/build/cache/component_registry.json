@@ -1,0 +1,42 @@
+{
+  "components": {
+    "component:lib:QFN50P300X300X75-13N-D:VR1::ISL9120IRTNZ:front": "7161e8a1-afe0-472c-a826-2b41642c4af0",
+    "component:Capacitor_SMD:C_0603_1608Metric:C1:22 uF::front": "55f776d6-d2ae-4525-90ac-562b450efb7d",
+    "component:Capacitor_SMD:C_0603_1608Metric:C2:10 uF::front": "fcc8f7dc-1fb4-43fd-bc47-307d63012200",
+    "component:lib:1285ASH1R0MP2:L1:1 µH:1285AS-H-1R0M=P2:front": "626f68e6-9955-43fe-8171-732bfec8201b",
+    "component::VIA1:::front": "2236b6e2-5c1a-4ddb-a43e-527f8889e069",
+    "component::VIA2:::front": "9b0302d6-229d-449c-beb3-1d7a9b9d7a34"
+  },
+  "meta": {
+    "lastUpdated": "2025-07-09T04:48:16.467Z",
+    "componentCount": 1
+  },
+  "vias": {
+    "via:151.765:100.33:0.6:0.3": "2236b6e2-5c1a-4ddb-a43e-527f8889e069",
+    "via:152.4:96.52:0.6:0.3": "9b0302d6-229d-449c-beb3-1d7a9b9d7a34"
+  },
+  "outlineElements": {
+    "segment:152.05:96.87:152.4:96.52:F.Cu:false": "b6202002-4364-4476-81d4-f5e5c0262cb9",
+    "segment:151.1:99.665:151.765:100.33:F.Cu:false": "77c36704-aac1-488f-9fae-e66d5f0ed308",
+    "segment:151.765:100.33:152.273:99.822:F.Cu:false": "355395de-da5d-4867-8e22-5c54d49e48f6",
+    "segment:152.273:99.822:153.67:99.822:F.Cu:false": "f6b72a3d-2f52-4a09-8ff3-197121f64da1",
+    "segment:150.6:99.175:151.1:99.175:F.Cu:false": "79778df5-d1a5-499c-8d86-d0cc992dfb22",
+    "segment:151.1:99.175:151.1:99.665:F.Cu:false": "36dc3a21-20d4-470c-a210-02efa5e7cc1f",
+    "segment:152.05:97.225:152.05:96.87:F.Cu:false": "b547102b-0d75-45a2-b222-434da9514b5d",
+    "segment:152.4:99.695:151.765:100.33:B.Cu:false": "36a3a018-07d7-41f8-9944-dec2a34a3ab0",
+    "segment:152.4:96.52:152.4:99.695:B.Cu:false": "09ab6f7a-b509-4ffe-a36c-c6a20f89a0bf",
+    "segment:152.05:97.725:152.05:98.225:F.Cu:false": "05a5f974-8473-4072-8bb2-6dbbd00bb773",
+    "segment:149.15:97.725:152.05:97.725:F.Cu:false": "aeb7e32b-b386-428e-9edc-8b2a6e6d6dc9",
+    "segment:152.05:98.225:153.623:98.225:F.Cu:false": "28278f04-fdfa-4f92-bcc7-d8720b630933",
+    "segment:149.15:98.225:147.723:98.225:F.Cu:false": "cd95bb99-6285-4d9f-b581-b60ea829ca86",
+    "segment:147.723:98.225:147.32:98.628:F.Cu:false": "466c52ca-c774-4f2e-8796-20681ab36b0f",
+    "segment:149.15:98.225:150.1:99.175:F.Cu:false": "c234d9b3-f43d-4909-b4dd-9a532c6d461f",
+    "segment:147.517:97.225:147.32:97.028:F.Cu:false": "b87db2d6-ade5-4a0c-aa6e-43e71b6eb1c8",
+    "segment:149.15:97.225:147.517:97.225:F.Cu:false": "83ba2686-7e97-48e3-9b51-867a9f0a2f0f",
+    "segment:153.67:98.272:153.67:96.761:F.Cu:false": "31ca5349-7191-4e74-ad3c-361ceda2008a",
+    "segment:150.1:96.275:149.15:97.225:F.Cu:false": "8ce1a1ef-6d0a-4795-8a24-e63ffa987977",
+    "segment:150.6:96.275:151.1:96.275:F.Cu:false": "8d721a07-c02c-4c10-a50d-117a0c06f83f",
+    "segment:151.1:96.275:152.164:95.211:F.Cu:false": "2221eb67-6750-44d5-89b4-8172d9979d20",
+    "segment:152.164:95.211:153.67:95.211:F.Cu:false": "1bc6d066-f138-49be-b83f-76c7659a492f"
+  }
+}

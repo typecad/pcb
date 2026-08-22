@@ -251,6 +251,13 @@ export function autoroute(pcb: PCB, options: IAutorouteOptions): IAutorouteResul
         debugLog(options.debug, chalk.yellow(`[PCB] No schematic available for net inference (Schematic: ${!!pcb.schematic}, nodes: ${pcb.schematic?.nodes?.length || 0})`));
     }
 
+    // Resolve the net class (if any) for per-net dimensions. Falls back to
+    // board rules when no class is assigned.
+    const netClass = netName ? pcb.netClasses.netClassFor(netName) : undefined;
+    if (netClass) {
+        debugLog(options.debug, chalk.blue(`[PCB] Net '${netName}' resolved to net class: width=${netClass.track_width}mm clearance=${netClass.clearance}mm via=${netClass.via_diameter}/${netClass.via_drill}mm`));
+    }
+
     // ── 8. Determine trace width ─────────────────────────────────────────
     let traceWidth = options.width;
     let powerInfo = options.powerInfo;
@@ -283,12 +290,17 @@ export function autoroute(pcb: PCB, options: IAutorouteOptions): IAutorouteResul
         options.powerInfo = powerInfo;
     }
 
-    traceWidth = traceWidth || 0.2; // Default 0.2mm
+    traceWidth = traceWidth ?? netClass?.track_width ?? pcb.rules.min_track_width;
 
     // ── 9. Determine clearance ───────────────────────────────────────────
-    const baseClearance = options.clearance || 0.2;
+    const baseClearance = options.clearance ?? netClass?.clearance ?? pcb.rules.min_clearance;
     const clearanceBuffer = Math.min(0.05, baseClearance * 0.25);
     const clearance = baseClearance + clearanceBuffer;
+
+    // Via dimensions default to the net class (or board rules) so the same
+    // per-net physical model governs vias. Power info may grow these later.
+    options.viaSize = options.viaSize ?? netClass?.via_diameter ?? pcb.rules.min_via_diameter;
+    options.viaDrill = options.viaDrill ?? netClass?.via_drill ?? pcb.rules.min_through_hole_diameter;
 
     // ── 10. Calculate board bounds ───────────────────────────────────────
     const { components: componentsForBounds, stagedComponents: stagedComponentsForBounds } =

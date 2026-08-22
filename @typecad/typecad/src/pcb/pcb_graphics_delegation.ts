@@ -10,6 +10,8 @@ import type {
 } from './pcb_interfaces.js';
 import { generateUuid } from './pcb_utils.js';
 import { pcbLine, pcbCircle, pcbRect, pcbPoly, pcbOutline, pcbText } from './pcb_graphics.js';
+import { pcbOutlinePolygon, pcbOutlineCircle, pcbCutout, pcbCutoutCircle, pcbOutlinePath } from './pcb_outline.js';
+import type { OutlinePathBuilder } from './pcb_outline.js';
 import { zone, keepout } from './pcb_zones.js';
 import type { PcbInternalState } from './pcb_state.js';
 
@@ -83,6 +85,27 @@ export function pcbPolyWithOffset(state: PcbInternalState, options: IPcbPolyOpti
 
 export function pcbOutlineWithOffset(state: PcbInternalState, x: number, y: number, width: number, height: number, filletRadius: number = 0, conceptualUuidFromUser?: string): void {
     pcbOutline(state, x + state.currentOffset.x, y + state.currentOffset.y, width, height, filletRadius, conceptualUuidFromUser);
+}
+
+export function pcbOutlinePolygonWithOffset(state: PcbInternalState, points: { x: number; y: number }[]): void {
+    const offsetPoints = points.map(p => ({ x: p.x + state.currentOffset.x, y: p.y + state.currentOffset.y }));
+    pcbOutlinePolygon(state, offsetPoints);
+}
+
+export function pcbOutlineCircleWithOffset(state: PcbInternalState, cx: number, cy: number, radius: number): void {
+    pcbOutlineCircle(state, cx + state.currentOffset.x, cy + state.currentOffset.y, radius);
+}
+
+export function pcbCutoutWithOffset(state: PcbInternalState, points: { x: number; y: number }[]): void {
+    pcbCutout(state, points.map(p => ({ x: p.x + state.currentOffset.x, y: p.y + state.currentOffset.y })));
+}
+
+export function pcbCutoutCircleWithOffset(state: PcbInternalState, cx: number, cy: number, radius: number): void {
+    pcbCutoutCircle(state, cx + state.currentOffset.x, cy + state.currentOffset.y, radius);
+}
+
+export function pcbOutlinePathWithOffset(state: PcbInternalState, x: number, y: number): OutlinePathBuilder {
+    return pcbOutlinePath(state, x + state.currentOffset.x, y + state.currentOffset.y);
 }
 
 export function pcbTrackWithOffset(state: PcbInternalState, start: { x: number, y: number }, end: { x: number, y: number }, width: number, layer: string, locked: boolean, uuid?: string, net?: string): string {

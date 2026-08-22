@@ -61,25 +61,10 @@ function renderPackageJson(data: PackageRenderData) {
     "@typecad/typecad": "^0.1.0"
   },
   "scripts": {
-    "postinstall": "node postinstall.js"
+    "package_publish": "npm publish --access public"
   }
 }`;
 }
-
-const postinstall_template = `import fs from 'node:fs';
-
-const package_json = JSON.parse(fs.readFileSync(new URL('./package.json', import.meta.url), 'utf8'));
-
-fs.cp(
-  process.env.INIT_CWD + \`/node_modules/\${package_json.name}/build\`,
-  process.env.INIT_CWD + '/build',
-  { recursive: true },
-  (err) => {
-    if (err) {
-      console.error(err);
-    }
-  }
-);`
 
 export async function create_package(data: PackageRenderData) {
   const pascal_package_name = data.package_name.charAt(0).toUpperCase() + data.package_name.slice(1);
@@ -87,7 +72,6 @@ export async function create_package(data: PackageRenderData) {
 
   const result = renderComponent(enriched_data);
   const package_json = renderPackageJson(data);
-  const postinstall = postinstall_template;
 
   const dir = data.package_name;
   if (!fs.existsSync(`${data.folder}/${dir}`)) {
@@ -97,8 +81,7 @@ export async function create_package(data: PackageRenderData) {
   try {
     fs.writeFileSync(`${data.folder}/${data.package_name}/index.ts`, result);
     fs.writeFileSync(`${data.folder}/${data.package_name}/package.json`, package_json);
-    fs.writeFileSync(`${data.folder}/${data.package_name}/postinstall.js`, postinstall);
-    fs.writeFileSync(`${data.folder}/${data.package_name}/build/lib/README`, 'Files placed in this folder will be copied to the typeCAD project folder structure on npm install.');
+    fs.writeFileSync(`${data.folder}/${data.package_name}/build/lib/README`, 'Files placed in this folder are synced into the typeCAD project\'s ./build/lib/ directory automatically whenever a Package that uses them is constructed during a build. No install script is required.');
 
     logger.log(`Finished package creation. You can use it like this:`);
     logger.log(chalk.whiteBright.bold(`

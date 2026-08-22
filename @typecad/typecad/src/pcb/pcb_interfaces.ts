@@ -1,5 +1,6 @@
 import { Schematic } from "../schematic.js";
 import { Pin } from "../pin.js";
+import type { IPcbRules } from "./pcb_rules.js";
 
 
 /**
@@ -22,6 +23,14 @@ export interface ILengthMatchConfig {
   debug?: boolean; // enable debug logging
 }
 
+
+/**
+ * Board-wide design rules (minimum clearances, track/via dimensions) in mm.
+ * All fields optional; unspecified fields fall back to the JLCPCB no-surcharge
+ * standard. Written to the `.kicad_pro` project file and honored by the
+ * autorouter. See `pcb_rules.ts` for the canonical definition and defaults.
+ */
+export type { IPcbRules } from './pcb_rules.js';
 
 /**
  * Options for creating a PCB instance.
@@ -48,6 +57,13 @@ export interface IPcbOptions {
      * Copper plating thickness in microns. Defaults to 35μm (1 oz/ft²).
      */
     copper_thickness?: number;
+    /**
+     * Board-wide design rules. Unspecified fields default to the JLCPCB
+     * no-surcharge standard (0.2mm clearance/track, 0.6/0.3mm via, etc.).
+     * Rules are written to the `.kicad_pro` file for DRC and read by the
+     * autorouter as the fallback clearance and track width.
+     */
+    rules?: IPcbRules;
 }
 
 /**
@@ -175,8 +191,10 @@ export interface IGrPoly extends IGraphicPrimitive {
 
 /**
  * Elements that can appear in outlines (board edge cuts and track segments).
+ * Circles, rectangles, and polygons are valid on Edge.Cuts for arbitrary
+ * board shapes, cutouts, and mounting holes.
  */
-export type OutlineElement = IGrLine | IGrArc;
+export type OutlineElement = IGrLine | IGrArc | IGrCircle | IGrRect | IGrPoly;
 
 /**
  * Source location information for tracking where PCB elements originate from.
@@ -512,6 +530,19 @@ export interface IAutorouteOptions {
      * Defaults to 0.2mm if omitted; used in addition to obstacle clearances when placing vias.
      */
     viaClearance?: number;
+
+    /**
+     * Via pad diameter in mm to use when this route needs a via. Set internally
+     * from the resolved net class (or board rules); not user-facing.
+     * @internal
+     */
+    viaSize?: number;
+    /**
+     * Via drill diameter in mm to use when this route needs a via. Set internally
+     * from the resolved net class (or board rules); not user-facing.
+     * @internal
+     */
+    viaDrill?: number;
 
     /**
      * Routing grid resolution in mm per cell.

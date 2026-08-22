@@ -1,6 +1,6 @@
 {
   "name": "@typecad/wiring",
-  "version": "0.1.1",
+  "version": "0.1.2-alpha.0",
   "description": "🤖 Programmatically 💥 Create 🪢 Wiring Diagrams",
   "keywords": [
     "typecad",
@@ -30,6 +30,6 @@
     "typescript": "^5.7.3"
   },
   "dependencies": {
-    "chalk": "^5.4.1"
+    "chalk": "^6.0.0"
   }
 }

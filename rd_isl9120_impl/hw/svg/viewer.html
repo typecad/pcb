@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>rd_isl9120_impl - KiCad Symbol Viewer</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: Arial, sans-serif;
+            background-color: #f5f5f5;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        .header h1 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+        .header p {
+            color: #666;
+            margin: 5px 0;
+        }
+        #svg-container {
+            width: 100%;
+            max-width: 2000px;
+            height: 600px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            background: white;
+            margin: 0 auto;
+            display: block;
+            overflow: auto;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+        .controls {
+            text-align: center;
+            margin: 15px 0;
+            color: #666;
+            font-size: 14px;
+        }
+        svg {
+            display: block;
+            cursor: default;
+        }
+        g[data-component] {
+            cursor: grab;
+        }
+        g[data-component]:active {
+            cursor: grabbing;
+        }
+        .info {
+            background: #e8f4f8;
+            padding: 15px;
+            border-radius: 6px;
+            margin: 20px auto;
+            max-width: 800px;
+            border-left: 4px solid #2196F3;
+        }
+        .connection-wire {
+            transition: all 0.1s ease-out;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>rd_isl9120_impl - KiCad Symbol Viewer</h1>
+        <p>Interactive KiCad Symbol Viewer</p>
+        <div class="info">
+            <strong>Instructions:</strong> Click and drag any component to move it around the canvas. 
+            Components automatically snap to the grid points (visible as dots) for precise alignment.
+        </div>
+    </div>
+    
+    <div class="controls">
+        Canvas Size: 2000 × 1500 pixels | Grid: 2.54mm (0.1") | Components snap to grid when dragged
+    </div>
+
+    <div id="svg-container">
+        <svg width="2000" height="1500" xmlns="http://www.w3.org/2000/svg">
+            <!-- Grid pattern definition -->
+            <defs>
+                <pattern id="grid" width="25.4" height="25.4" patternUnits="userSpaceOnUse">
+                    <circle cx="0" cy="0" r="1.5" fill="#bbb" opacity="0.8"/>
+                </pattern>
+                <pattern id="smallgrid" width="2.54" height="2.54" patternUnits="userSpaceOnUse">
+                    <circle cx="0" cy="0" r="0.4" fill="#e0e0e0" opacity="0.6"/>
+                </pattern>
+            </defs>
+            
+            <!-- Grid background layers -->
+            <rect width="100%" height="100%" fill="white"/>
+            <rect width="100%" height="100%" fill="url(#smallgrid)"/>
+            <rect width="100%" height="100%" fill="url(#grid)"/>
+            
+            
+<defs>
+  <pattern id="grid" width="25.4" height="25.4" patternUnits="userSpaceOnUse">
+    <rect width="25.4" height="25.4" fill="white" stroke="none"/>
+    <circle cx="12.7" cy="12.7" r="1" fill="#d0d0d0" stroke="none"/>
+  </pattern>
+</defs>
+<rect width="2000" height="1500" fill="url(#grid)"/>
+<g transform="translate(1524, 939.8)" data-component="VR1"><g transform="translate(25.4, 203.2)">
+<rect x="50.8" y="-127" width="203.2" height="304.8" fill="none" stroke="black" stroke-width="2"/>
+<line x1="0" y1="0" x2="50.8" y2="0" stroke="black" stroke-width="2" stroke-linecap="round"/>
+<circle cx="0" cy="0" r="3" fill="red" stroke="red"/>
+<text x="234" y="0" font-family="Arial, sans-serif" font-size="10" fill="blue" text-anchor="end" dominant-baseline="central">LX2_1</text>
+<text x="25.4" y="-5" font-family="Arial, sans-serif" font-size="8" fill="green" text-anchor="middle" dominant-baseline="central">1</text>
+<line x1="0" y1="25.4" x2="50.8" y2="25.4" stroke="black" stroke-width="2" stroke-linecap="round"/>
+<circle cx="0" cy="25.4" r="3" fill="red" stroke="red"/>
+<text x="234" y="25.4" font-family="Arial, sans-serif" font-size="10" fill="blue" text-anchor="end" dominant-baseline="central">PGND</text>
+<text x="25.4" y="20.4" font-family="Arial, sans-serif" font-size="8" fill="green" text-anchor="middle" dominant-baseline="central">2</text>
+<line x1="0" y1="50.8" x2="50.8" y2="50.8" stroke="black" stroke-width="2" stroke-linecap="round"/>
+<circle cx="0" cy="50.8" r="3" fill="red" stroke="red"/>
+<text x="234" y="50.8" font-family="Arial, sans-serif" font-size="10" fill="blue" text-anchor="end" dominant-baseline="central">LX1_1</text>
+<text x="25.4" y="45.8" font-family="Arial, sans-serif" font-size="8" fill="green" text-anchor="middle" dominant-baseline="central">3</text>
+<line x1="127" y1="228.6" x2="127" y2="177.8" stroke="black" stroke-width="2" stroke-linecap="round"/>
+<circle cx="127" cy="228.6" r="3" fill="red" stroke="red"/>
+<text x="127" y="157.8" font-family="Arial, sans-serif" font-size="10" fill="blue" text-anchor="middle" dominant-baseline="central" transform="rotate(-90, 127, 157.8)">LX1_2</text>
+<text x="122" y="203.2" font-family="Arial, sans-serif" font-size="8" fill="green" text-anchor="middle" dominant-baseline="central" transform="rotate(-90, 122, 203.2)">4</text>
+<line x1="152.4" y1="228.6" x2="152.4" y2="177.8" stroke="black" stroke-width="2" stroke-linecap="round"/>
+<circle cx="152.4" cy="228.6" r="3" fill="red" stroke="red"/>
+<text x="152.4" y="157.8" font-family="Arial, sans-serif" font-size="10" fill="blue" text-anchor="middle" dominant-baseline="central" transform="rotate(-90, 152.4, 157.8)">VIN_1</text>
+<text x="147.4" y="203.2" font-family="Arial, sans-serif" font-size="8" fill="green" text-anchor="middle" dominant-baseline="central" transform="rotate(-90, 147.4, 203.2)">5</text>
+<line x1="177.8" y1="228.6" x2="177.8" y2="177.8" stroke="black" stroke-width="2" stroke-linecap="round"/>
+<circle cx="177.8" cy="228.6" r="3" fill="red" stroke="red"/>
+<text x="177.8" y="157.8" font-family="Arial, sans-serif" font-size="10" fill="blue" text-anchor="middle" dominant-baseline="central" transform="rotate(-90, 177.8, 157.8)">VIN_2</text>
+<text x="172.8" y="203.2" font-family="Arial, sans-serif" font-size="8" fill="green" text-anchor="middle" dominant-baseline="central" transform="rotate(-90, 172.8, 203.2)">6</text>
+<line x1="304.8" y1="0" x2="254" y2="0" stroke="black" stroke-width="2" stroke-linecap="round"/>
+<circle cx="304.8" cy="0" r="3" fill="red" stroke="red"/>
+<text x="70.8" y="0" font-family="Arial, sans-serif" font-size="10" fill="blue" text-anchor="start" dominant-baseline="central">EN</text>
+<text x="279.4" y="-5" font-family="Arial, sans-serif" font-size="8" fill="green" text-anchor="middle" dominant-baseline="central">9</text>
+<line x1="304.8" y1="25.4" x2="254" y2="25.4" stroke="black" stroke-width="2" stroke-linecap="round"/>
+<circle cx="304.8" cy="25.4" r="3" fill="red" stroke="red"/>
+<text x="70.8" y="25.4" font-family="Arial, sans-serif" font-size="10" fill="blue" text-anchor="start" dominant-baseline="central">GND</text>
+<text x="279.4" y="20.4" font-family="Arial, sans-serif" font-size="8" fill="green" text-anchor="middle" dominant-baseline="central">8</text>
+<line x1="304.8" y1="50.8" x2="254" y2="50.8" stroke="black" stroke-width="2" stroke-linecap="round"/>
+<circle cx="304.8" cy="50.8" r="3" fill="red" stroke="red"/>
+<text x="70.8" y="50.8" font-family="Arial, sans-serif" font-size="10" fill="blue" text-anchor="start" dominant-baseline="central">BYPS</text>
+<text x="279.4" y="45.8" font-family="Arial, sans-serif" font-size="8" fill="green" text-anchor="middle" dominant-baseline="central">7</text>
+<line x1="101.6" y1="-177.8" x2="101.6" y2="-127" stroke="black" stroke-width="2" stroke-linecap="round"/>
+<circle cx="101.6" cy="-177.8" r="3" fill="red" stroke="red"/>
+<text x="101.6" y="-107" font-family="Arial, sans-serif" font-size="10" fill="blue" text-anchor="middle" dominant-baseline="central" transform="rotate(-90, 101.6, -107)">EP</text>
+<text x="96.6" y="-152.4" font-family="Arial, sans-serif" font-size="8" fill="green" text-anchor="middle" dominant-baseline="central" transform="rotate(-90, 96.6, -152.4)">13</text>
+<line x1="127" y1="-177.8" x2="127" y2="-127" stroke="black" stroke-width="2" stroke-linecap="round"/>
+<circle cx="127" cy="-177.8" r="3" fill="red" stroke="red"/>
+<text x="127" y="-107" font-family="Arial, sans-serif" font-size="10" fill="blue" text-anchor="middle" dominant-baseline="central" transform="rotate(-90, 127, -107)">LX2_2</text>
+<text x="122" y="-152.4" font-family="Arial, sans-serif" font-size="8" fill="green" text-anchor="middle" dominant-baseline="central" transform="rotate(-90, 122, -152.4)">12</text>
+<line x1="152.4" y1="-177.8" x2="152.4" y2="-127" stroke="black" stroke-width="2" stroke-linecap="round"/>
+<circle cx="152.4" cy="-177.8" r="3" fill="red" stroke="red"/>
+<text x="152.4" y="-107" font-family="Arial, sans-serif" font-size="10" fill="blue" text-anchor="middle" dominant-baseline="central" transform="rotate(-90, 152.4, -107)">VOUT</text>
+<text x="147.4" y="-152.4" font-family="Arial, sans-serif" font-size="8" fill="green" text-anchor="middle" dominant-baseline="central" transform="rotate(-90, 147.4, -152.4)">11</text>
+<line x1="177.8" y1="-177.8" x2="177.8" y2="-127" stroke="black" stroke-width="2" stroke-linecap="round"/>
+<circle cx="177.8" cy="-177.8" r="3" fill="red" stroke="red"/>
+<text x="177.8" y="-107" font-family="Arial, sans-serif" font-size="10" fill="blue" text-anchor="middle" dominant-baseline="central" transform="rotate(-90, 177.8, -107)">FB</text>
+<text x="172.8" y="-152.4" font-family="Arial, sans-serif" font-size="8" fill="green" text-anchor="middle" dominant-baseline="central" transform="rotate(-90, 172.8, -152.4)">10</text>
+</g></g>
+<g transform="translate(431.79999999999995, 584.1999999999999)" data-component="C1"><g transform="translate(50.8, 50.8)">
+<polyline points="-15.24,-5.08 15.24,-5.08" fill="none" stroke="black" stroke-width="2"/>
+<polyline points="-15.24,5.08 15.24,5.08" fill="none" stroke="black" stroke-width="2"/>
+<line x1="0" y1="-25.4" x2="0" y2="-5.08" stroke="black" stroke-width="2" stroke-linecap="round"/>
+<circle cx="0" cy="-25.4" r="3" fill="red" stroke="red"/>
+<text x="-5" y="-15.239999999999998" font-family="Arial, sans-serif" font-size="8" fill="green" text-anchor="middle" dominant-baseline="central" transform="rotate(-90, -5, -15.239999999999998)">1</text>
+<line x1="0" y1="25.4" x2="0" y2="5.08" stroke="black" stroke-width="2" stroke-linecap="round"/>
+<circle cx="0" cy="25.4" r="3" fill="red" stroke="red"/>
+<text x="-5" y="15.239999999999998" font-family="Arial, sans-serif" font-size="8" fill="green" text-anchor="middle" dominant-baseline="central" transform="rotate(-90, -5, 15.239999999999998)">2</text>
+</g></g>
+<g transform="translate(152.39999999999998, 1168.3999999999999)" data-component="C2"><g transform="translate(50.8, 50.8)">
+<polyline points="-15.24,-5.08 15.24,-5.08" fill="none" stroke="black" stroke-width="2"/>
+<polyline points="-15.24,5.08 15.24,5.08" fill="none" stroke="black" stroke-width="2"/>
+<line x1="0" y1="-25.4" x2="0" y2="-5.08" stroke="black" stroke-width="2" stroke-linecap="round"/>
+<circle cx="0" cy="-25.4" r="3" fill="red" stroke="red"/>
+<text x="-5" y="-15.239999999999998" font-family="Arial, sans-serif" font-size="8" fill="green" text-anchor="middle" dominant-baseline="central" transform="rotate(-90, -5, -15.239999999999998)">1</text>
+<line x1="0" y1="25.4" x2="0" y2="5.08" stroke="black" stroke-width="2" stroke-linecap="round"/>
+<circle cx="0" cy="25.4" r="3" fill="red" stroke="red"/>
+<text x="-5" y="15.239999999999998" font-family="Arial, sans-serif" font-size="8" fill="green" text-anchor="middle" dominant-baseline="central" transform="rotate(-90, -5, 15.239999999999998)">2</text>
+</g></g>
+<g transform="translate(1422.3999999999999, 304.79999999999995)" data-component="L1"><g transform="translate(25.4, 50.8)">
+<path d="M 0 -20.32 A 5.080039525691699 5.080039525691699 0 0 1 0 -10.16" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M 0 -10.16 A 5.080039525691701 5.080039525691701 0 0 1 0 0" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M 0 0 A 5.080039525691699 5.080039525691699 0 0 1 0 10.16" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M 0 10.16 A 5.080039525691699 5.080039525691699 0 0 1 0 20.32" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<line x1="0" y1="-25.4" x2="0" y2="-20.32" stroke="black" stroke-width="2" stroke-linecap="round"/>
+<circle cx="0" cy="-25.4" r="3" fill="red" stroke="red"/>
+<text x="-5" y="-22.86" font-family="Arial, sans-serif" font-size="8" fill="green" text-anchor="middle" dominant-baseline="central" transform="rotate(-90, -5, -22.86)">1</text>
+<line x1="0" y1="25.4" x2="0" y2="20.32" stroke="black" stroke-width="2" stroke-linecap="round"/>
+<circle cx="0" cy="25.4" r="3" fill="red" stroke="red"/>
+<text x="-5" y="22.86" font-family="Arial, sans-serif" font-size="8" fill="green" text-anchor="middle" dominant-baseline="central" transform="rotate(-90, -5, 22.86)">2</text>
+</g></g>
+<line x1="1701.8" y1="1371.6" x2="1727.2" y2="1371.6" stroke="#FF6B6B" stroke-width="3" stroke-linecap="round" data-net="net1" class="connection-wire"/>
+<line x1="1701.8" y1="1371.6" x2="482.59999999999997" y2="660.3999999999999" stroke="#FF6B6B" stroke-width="3" stroke-linecap="round" data-net="net1" class="connection-wire"/>
+<line x1="1727.2" y1="1371.6" x2="482.59999999999997" y2="660.3999999999999" stroke="#FF6B6B" stroke-width="3" stroke-linecap="round" data-net="net1" class="connection-wire"/>
+<line x1="1549.4" y1="1193.8" x2="1676.4" y2="1371.6" stroke="#FF6B6B" stroke-width="3" stroke-linecap="round" data-net="net2" class="connection-wire"/>
+<line x1="1549.4" y1="1193.8" x2="1447.8" y2="330.19999999999993" stroke="#FF6B6B" stroke-width="3" stroke-linecap="round" data-net="net2" class="connection-wire"/>
+<line x1="1676.4" y1="1371.6" x2="1447.8" y2="330.19999999999993" stroke="#FF6B6B" stroke-width="3" stroke-linecap="round" data-net="net2" class="connection-wire"/>
+<line x1="1549.4" y1="1143" x2="1676.4" y2="965.1999999999999" stroke="#FF6B6B" stroke-width="3" stroke-linecap="round" data-net="net3" class="connection-wire"/>
+<line x1="1549.4" y1="1143" x2="1447.8" y2="380.99999999999994" stroke="#FF6B6B" stroke-width="3" stroke-linecap="round" data-net="net3" class="connection-wire"/>
+<line x1="1676.4" y1="965.1999999999999" x2="1447.8" y2="380.99999999999994" stroke="#FF6B6B" stroke-width="3" stroke-linecap="round" data-net="net3" class="connection-wire"/>
+<line x1="203.2" y1="1193.8" x2="1727.2" y2="965.1999999999999" stroke="#FF6B6B" stroke-width="3" stroke-linecap="round" data-net="net4" class="connection-wire"/>
+<line x1="203.2" y1="1193.8" x2="1701.8" y2="965.1999999999999" stroke="#FF6B6B" stroke-width="3" stroke-linecap="round" data-net="net4" class="connection-wire"/>
+<line x1="1727.2" y1="965.1999999999999" x2="1701.8" y2="965.1999999999999" stroke="#FF6B6B" stroke-width="3" stroke-linecap="round" data-net="net4" class="connection-wire"/>
+<line x1="1854.2" y1="1168.3999999999999" x2="1549.4" y2="1168.3999999999999" stroke="#FF6B6B" stroke-width="3" stroke-linecap="round" data-net="net5" class="connection-wire"/>
+<line x1="1854.2" y1="1168.3999999999999" x2="1651" y2="965.1999999999999" stroke="#FF6B6B" stroke-width="3" stroke-linecap="round" data-net="net5" class="connection-wire"/>
+<line x1="1854.2" y1="1168.3999999999999" x2="1854.2" y2="1193.8" stroke="#FF6B6B" stroke-width="3" stroke-linecap="round" data-net="net5" class="connection-wire"/>
+<line x1="1854.2" y1="1168.3999999999999" x2="482.59999999999997" y2="609.5999999999999" stroke="#FF6B6B" stroke-width="3" stroke-linecap="round" data-net="net5" class="connection-wire"/>
+<line x1="1854.2" y1="1168.3999999999999" x2="203.2" y2="1244.6" stroke="#FF6B6B" stroke-width="3" stroke-linecap="round" data-net="net5" class="connection-wire"/>
+<line x1="1549.4" y1="1168.3999999999999" x2="1651" y2="965.1999999999999" stroke="#FF6B6B" stroke-width="3" stroke-linecap="round" data-net="net5" class="connection-wire"/>
+<line x1="1549.4" y1="1168.3999999999999" x2="1854.2" y2="1193.8" stroke="#FF6B6B" stroke-width="3" stroke-linecap="round" data-net="net5" class="connection-wire"/>
+<line x1="1549.4" y1="1168.3999999999999" x2="482.59999999999997" y2="609.5999999999999" stroke="#FF6B6B" stroke-width="3" stroke-linecap="round" data-net="net5" class="connection-wire"/>
+<line x1="1549.4" y1="1168.3999999999999" x2="203.2" y2="1244.6" stroke="#FF6B6B" stroke-width="3" stroke-linecap="round" data-net="net5" class="connection-wire"/>
+<line x1="1651" y1="965.1999999999999" x2="1854.2" y2="1193.8" stroke="#FF6B6B" stroke-width="3" stroke-linecap="round" data-net="net5" class="connection-wire"/>
+<line x1="1651" y1="965.1999999999999" x2="482.59999999999997" y2="609.5999999999999" stroke="#FF6B6B" stroke-width="3" stroke-linecap="round" data-net="net5" class="connection-wire"/>
+<line x1="1651" y1="965.1999999999999" x2="203.2" y2="1244.6" stroke="#FF6B6B" stroke-width="3" stroke-linecap="round" data-net="net5" class="connection-wire"/>
+<line x1="1854.2" y1="1193.8" x2="482.59999999999997" y2="609.5999999999999" stroke="#FF6B6B" stroke-width="3" stroke-linecap="round" data-net="net5" class="connection-wire"/>
+<line x1="1854.2" y1="1193.8" x2="203.2" y2="1244.6" stroke="#FF6B6B" stroke-width="3" stroke-linecap="round" data-net="net5" class="connection-wire"/>
+<line x1="482.59999999999997" y1="609.5999999999999" x2="203.2" y2="1244.6" stroke="#FF6B6B" stroke-width="3" stroke-linecap="round" data-net="net5" class="connection-wire"/>
+
+        </svg>
+    </div>
+
+    <script>
+        const container = document.getElementById('svg-container');
+        const svg = container.querySelector('svg');
+        
+        // Parse embedded data
+        const pinPositionsData = [["VR1_1",{"x":1549.4,"y":1143,"componentRef":"VR1","pinNumber":"1","pinName":"LX2_1","originalOffset":{"x":1524,"y":939.8},"localX":25.4,"localY":203.2}],["VR1_2",{"x":1549.4,"y":1168.3999999999999,"componentRef":"VR1","pinNumber":"2","pinName":"PGND","originalOffset":{"x":1524,"y":939.8},"localX":25.4,"localY":228.6}],["VR1_3",{"x":1549.4,"y":1193.8,"componentRef":"VR1","pinNumber":"3","pinName":"LX1_1","originalOffset":{"x":1524,"y":939.8},"localX":25.4,"localY":254}],["VR1_4",{"x":1676.4,"y":1371.6,"componentRef":"VR1","pinNumber":"4","pinName":"LX1_2","originalOffset":{"x":1524,"y":939.8},"localX":152.4,"localY":431.79999999999995}],["VR1_5",{"x":1701.8,"y":1371.6,"componentRef":"VR1","pinNumber":"5","pinName":"VIN_1","originalOffset":{"x":1524,"y":939.8},"localX":177.8,"localY":431.79999999999995}],["VR1_6",{"x":1727.2,"y":1371.6,"componentRef":"VR1","pinNumber":"6","pinName":"VIN_2","originalOffset":{"x":1524,"y":939.8},"localX":203.20000000000002,"localY":431.79999999999995}],["VR1_9",{"x":1854.2,"y":1143,"componentRef":"VR1","pinNumber":"9","pinName":"EN","originalOffset":{"x":1524,"y":939.8},"localX":330.2,"localY":203.2}],["VR1_8",{"x":1854.2,"y":1168.3999999999999,"componentRef":"VR1","pinNumber":"8","pinName":"GND","originalOffset":{"x":1524,"y":939.8},"localX":330.2,"localY":228.6}],["VR1_7",{"x":1854.2,"y":1193.8,"componentRef":"VR1","pinNumber":"7","pinName":"BYPS","originalOffset":{"x":1524,"y":939.8},"localX":330.2,"localY":254}],["VR1_13",{"x":1651,"y":965.1999999999999,"componentRef":"VR1","pinNumber":"13","pinName":"EP","originalOffset":{"x":1524,"y":939.8},"localX":127,"localY":25.399999999999977}],["VR1_12",{"x":1676.4,"y":965.1999999999999,"componentRef":"VR1","pinNumber":"12","pinName":"LX2_2","originalOffset":{"x":1524,"y":939.8},"localX":152.4,"localY":25.399999999999977}],["VR1_11",{"x":1701.8,"y":965.1999999999999,"componentRef":"VR1","pinNumber":"11","pinName":"VOUT","originalOffset":{"x":1524,"y":939.8},"localX":177.8,"localY":25.399999999999977}],["VR1_10",{"x":1727.2,"y":965.1999999999999,"componentRef":"VR1","pinNumber":"10","pinName":"FB","originalOffset":{"x":1524,"y":939.8},"localX":203.20000000000002,"localY":25.399999999999977}],["C1_1",{"x":482.59999999999997,"y":609.5999999999999,"componentRef":"C1","pinNumber":"1","pinName":"~","originalOffset":{"x":431.79999999999995,"y":584.1999999999999},"localX":50.8,"localY":25.4}],["C1_2",{"x":482.59999999999997,"y":660.3999999999999,"componentRef":"C1","pinNumber":"2","pinName":"~","originalOffset":{"x":431.79999999999995,"y":584.1999999999999},"localX":50.8,"localY":76.19999999999999}],["C2_1",{"x":203.2,"y":1193.8,"componentRef":"C2","pinNumber":"1","pinName":"~","originalOffset":{"x":152.39999999999998,"y":1168.3999999999999},"localX":50.8,"localY":25.4}],["C2_2",{"x":203.2,"y":1244.6,"componentRef":"C2","pinNumber":"2","pinName":"~","originalOffset":{"x":152.39999999999998,"y":1168.3999999999999},"localX":50.8,"localY":76.19999999999999}],["L1_1",{"x":1447.8,"y":330.19999999999993,"componentRef":"L1","pinNumber":"1","pinName":"~","originalOffset":{"x":1422.3999999999999,"y":304.79999999999995},"localX":25.4,"localY":25.4}],["L1_2",{"x":1447.8,"y":380.99999999999994,"componentRef":"L1","pinNumber":"2","pinName":"~","originalOffset":{"x":1422.3999999999999,"y":304.79999999999995},"localX":25.4,"localY":76.19999999999999}]];
+        const connectionsData = [{"netName":"net1","netCode":1,"pins":[{"reference":"VR1","pinNumber":5,"pinType":"power_out"},{"reference":"VR1","pinNumber":6,"pinType":"power_in"},{"reference":"C1","pinNumber":"2","pinType":"passive"}]},{"netName":"net2","netCode":2,"pins":[{"reference":"VR1","pinNumber":3,"pinType":"passive"},{"reference":"VR1","pinNumber":4,"pinType":"passive"},{"reference":"L1","pinNumber":"1","pinType":"passive"}]},{"netName":"net3","netCode":3,"pins":[{"reference":"VR1","pinNumber":1,"pinType":"passive"},{"reference":"VR1","pinNumber":12,"pinType":"passive"},{"reference":"L1","pinNumber":"2","pinType":"passive"}]},{"netName":"net4","netCode":4,"pins":[{"reference":"C2","pinNumber":"1","pinType":"passive"},{"reference":"VR1","pinNumber":10,"pinType":"passive"},{"reference":"VR1","pinNumber":11,"pinType":"power_out"}]},{"netName":"net5","netCode":5,"pins":[{"reference":"VR1","pinNumber":8,"pinType":"power_out"},{"reference":"VR1","pinNumber":2,"pinType":"passive"},{"reference":"VR1","pinNumber":13,"pinType":"passive"},{"reference":"VR1","pinNumber":7,"pinType":"passive"},{"reference":"C1","pinNumber":"1","pinType":"passive"},{"reference":"C2","pinNumber":"2","pinType":"passive"}]}];
+        
+        // Convert pin positions data back to a Map
+        const pinPositions = new Map(pinPositionsData);
+        
+        console.log('Loaded', connectionsData.length, 'connections and', pinPositions.size, 'pin positions');
+
+        function updateWires() {
+            // Remove existing wires
+            const existingWires = svg.querySelectorAll('.connection-wire');
+            existingWires.forEach(wire => wire.remove());
+            
+            // Redraw all wires based on current component positions
+            connectionsData.forEach((connection, connIdx) => {
+                const connectedPins = [];
+                
+                // Find current positions of all pins in this net
+                connection.pins.forEach(pin => {
+                    const pinKey = `${pin.reference}_${pin.pinNumber}`;
+                    const pinData = pinPositions.get(pinKey);
+                    
+                    if (pinData) {
+                        // Get component element and its current transform
+                        const component = svg.querySelector(`g[data-component="${pin.reference}"]`);
+                        if (component) {
+                            const transform = component.getAttribute('transform') || 'translate(0, 0)';
+                            const match = transform.match(/translate\(([^,]+),\s*([^)]+)\)/);
+                            const currentOffset = match ? { x: parseFloat(match[1]), y: parseFloat(match[2]) } : { x: 0, y: 0 };
+                            
+                            // Calculate pin position using local coordinates plus current component offset
+                            const pinX = pinData.localX + currentOffset.x;
+                            const pinY = pinData.localY + currentOffset.y;
+                            
+                            connectedPins.push({
+                                x: pinX,
+                                y: pinY,
+                                ref: pin.reference,
+                                pin: pin.pinNumber
+                            });
+                        }
+                    }
+                });
+                
+                // Draw wires in a chain topology (each pin connects to the next)
+                // This reduces visual clutter compared to star topology
+                if (connectedPins.length > 1) {
+                    for (let i = 0; i < connectedPins.length - 1; i++) {
+                        const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                        line.setAttribute('x1', connectedPins[i].x);
+                        line.setAttribute('y1', connectedPins[i].y);
+                        line.setAttribute('x2', connectedPins[i + 1].x);
+                        line.setAttribute('y2', connectedPins[i + 1].y);
+                        line.setAttribute('stroke', '#FF6B6B');
+                        line.setAttribute('stroke-width', '3');
+                        line.setAttribute('stroke-linecap', 'round');
+                        line.setAttribute('data-net', connection.netName);
+                        line.setAttribute('class', 'connection-wire');
+                        
+                        svg.appendChild(line);
+                    }
+                }
+            });
+        }
+
+        function makeDraggable(g) {
+            let isDragging = false;
+            let startX, startY, initialTransform;
+            const gridSize = 25.4; // 2.54mm grid spacing
+            
+            // Helper function to snap to grid
+            const snapToGrid = (value) => {
+                return Math.round(value / gridSize) * gridSize;
+            };
+
+            g.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                isDragging = true;
+                startX = e.clientX;
+                startY = e.clientY;
+
+                const transform = g.getAttribute('transform') || 'translate(0, 0)';
+                const match = transform.match(/translate\(([^,]+),\s*([^)]+)\)/);
+                initialTransform = match ? { x: parseFloat(match[1]), y: parseFloat(match[2]) } : { x: 0, y: 0 };
+                
+                // Bring dragged element to front
+                g.parentNode.appendChild(g);
+            });
+
+            document.addEventListener('mousemove', (e) => {
+                if (isDragging) {
+                    e.preventDefault();
+                    const dx = e.clientX - startX;
+                    const dy = e.clientY - startY;
+                    
+                    // Calculate new position and snap to grid
+                    const newX = snapToGrid(initialTransform.x + dx);
+                    const newY = snapToGrid(initialTransform.y + dy);
+                    
+                    g.setAttribute('transform', `translate(${newX}, ${newY})`);
+                    
+                    // Update wires in real-time
+                    updateWires();
+                }
+            });
+
+            document.addEventListener('mouseup', () => {
+                if (isDragging) {
+                    isDragging = false;
+                }
+            });
+        }
+
+        // Make all components draggable
+        function initializeDragging() {
+            const components = svg.querySelectorAll('g[data-component]');
+            components.forEach(component => {
+                makeDraggable(component);
+            });
+            
+            // Initial wire drawing
+            updateWires();
+            
+            console.log(`Initialized dragging for ${components.length} components`);
+        }
+
+        // Initialize when DOM is ready
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initializeDragging);
+        } else {
+            initializeDragging();
+        }
+    </script>
+</body>
+</html>

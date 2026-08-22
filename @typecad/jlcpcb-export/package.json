@@ -1,6 +1,6 @@
 {
   "name": "@typecad/jlcpcb-export",
-  "version": "2.0.0",
+  "version": "2.0.1-alpha.0",
   "description": "CLI tool to generate all files needed for JLCPCB assembly from a typeCAD project",
   "keywords": [
     "typecad-package",
@@ -29,14 +29,14 @@
     "access": "public"
   },
   "dependencies": {
-    "chalk": "^5.4.1",
-    "replace-in-file": "^8.3.0",
+    "chalk": "^6.0.0",
+    "replace-in-file": "^9.0.0",
     "zip-a-folder": "^6.1.1"
   },
   "devDependencies": {
     "@types/node": "^22.13.0",
     "typescript": "^5.7.3",
-    "vitest": "^3.2.6"
+    "vitest": "^4.1.11"
   },
   "scripts": {
     "build": "tsc",

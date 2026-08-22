@@ -5,14 +5,17 @@
   "main": "index.ts",
   "author": "",
   "license": "ISC",
-  "keywords": ["typeCAD", "package", "layout"],
+  "keywords": [
+    "typeCAD",
+    "package",
+    "layout"
+  ],
   "devDependencies": {
     "@typecad/passives": "~0.0.15",
     "@typecad/typecad": "~0.0.18",
     "tsx": "^4.19.1"
   },
   "scripts": {
-    "postinstall": "node postinstall.js",
     "package_publish": "npm publish --access public"
   }
 }

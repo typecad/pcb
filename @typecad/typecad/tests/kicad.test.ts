@@ -16,11 +16,16 @@ vi.mock('node:child_process');
 const { mockConfigGet } = vi.hoisted(() => ({ mockConfigGet: vi.fn() }));
 
 vi.mock('../src/config.js', () => ({
-  Config: vi.fn().mockImplementation(() => ({ get: mockConfigGet }))
+  Config: vi.fn().mockImplementation(function () {
+    return { get: mockConfigGet };
+  }),
 }));
 vi.mock('../src/utils/errors.js', () => {
   class KiCadNotFoundError extends Error {
-    constructor(msg?: string) { super(msg ?? 'KiCadNotFoundError'); this.name = 'KiCadNotFoundError'; }
+    constructor(msg?: string) {
+      super(msg ?? 'KiCadNotFoundError');
+      this.name = 'KiCadNotFoundError';
+    }
   }
   return { KiCadNotFoundError };
 });
@@ -82,10 +87,10 @@ describe('kicad.ts', () => {
 
     it('uses supported path when no config', () => {
       mockConfigGet.mockReturnValue(undefined);
-      mockExistsSync.mockImplementation((p) =>
-        p === '/usr/share/kicad/' || p === '/usr/bin/kicad-cli'
-      );
-      mockExecSync.mockImplementation(() => { throw new Error('no flatpak'); });
+      mockExistsSync.mockImplementation((p) => p === '/usr/share/kicad/' || p === '/usr/bin/kicad-cli');
+      mockExecSync.mockImplementation(() => {
+        throw new Error('no flatpak');
+      });
       const r = discoverKiCAD();
       expect(r.path).toBe('/usr/share/kicad/');
       expect(r.isFlatpak).toBe(false);
@@ -95,14 +100,18 @@ describe('kicad.ts', () => {
     it('throws when only unsupported path exists', () => {
       mockConfigGet.mockReturnValue(undefined);
       mockExistsSync.mockImplementation((p) => p === 'C:/Program Files/KiCad/7.0/');
-      mockExecSync.mockImplementation(() => { throw new Error('no flatpak'); });
+      mockExecSync.mockImplementation(() => {
+        throw new Error('no flatpak');
+      });
       expect(() => discoverKiCAD()).toThrow(KiCadNotFoundError);
     });
 
     it('throws when nothing found', () => {
       mockConfigGet.mockReturnValue(undefined);
       mockExistsSync.mockReturnValue(false);
-      mockExecSync.mockImplementation(() => { throw new Error('no flatpak'); });
+      mockExecSync.mockImplementation(() => {
+        throw new Error('no flatpak');
+      });
       expect(() => discoverKiCAD()).toThrow(KiCadNotFoundError);
     });
 
@@ -111,9 +120,8 @@ describe('kicad.ts', () => {
         if (key === 'use_flatpak') return 'true';
         return undefined;
       });
-      mockExistsSync.mockImplementation((p) =>
-        p === '/var/lib/flatpak/app/org.kicad.KiCad' ||
-        p === '/var/lib/flatpak/app/org.kicad.KiCad/current/'
+      mockExistsSync.mockImplementation(
+        (p) => p === '/var/lib/flatpak/app/org.kicad.KiCad' || p === '/var/lib/flatpak/app/org.kicad.KiCad/current/',
       );
       const r = discoverKiCAD();
       expect(r.isFlatpak).toBe(true);
@@ -220,7 +228,9 @@ describe('kicad.ts', () => {
       const k = new KiCAD({ path: '/base', cliPath: '', isFlatpak: false });
       mockExistsSync.mockReturnValue(true);
       vi.spyOn(fs, 'statSync').mockReturnValue({ isDirectory: () => true } as any);
-      mockReaddirSync.mockImplementation(() => { throw new Error('err'); });
+      mockReaddirSync.mockImplementation(() => {
+        throw new Error('err');
+      });
       expect(k.hasLocalSymbols()).toBe(false);
     });
   });
@@ -233,10 +243,12 @@ describe('kicad.ts', () => {
       mockExistsSync.mockImplementation((p: string) => {
         if (p === '/var/lib/flatpak/runtime/org.kicad.KiCad.Library.Symbols') return true;
         if (p === '/var/lib/flatpak/runtime/org.kicad.KiCad.Library.Symbols/x86_64') return true;
-        if (p === '/var/lib/flatpak/runtime/org.kicad.KiCad.Library.Symbols/x86_64/stable/active/files/symbols') return true;
+        if (p === '/var/lib/flatpak/runtime/org.kicad.KiCad.Library.Symbols/x86_64/stable/active/files/symbols')
+          return true;
         if (p === '/var/lib/flatpak/runtime/org.kicad.KiCad.Library.Footprints') return true;
         if (p === '/var/lib/flatpak/runtime/org.kicad.KiCad.Library.Footprints/x86_64') return true;
-        if (p === '/var/lib/flatpak/runtime/org.kicad.KiCad.Library.Footprints/x86_64/stable/active/files/footprints') return true;
+        if (p === '/var/lib/flatpak/runtime/org.kicad.KiCad.Library.Footprints/x86_64/stable/active/files/footprints')
+          return true;
         return false;
       });
       mockReaddirSync.mockImplementation((dir: string) => {
@@ -247,8 +259,12 @@ describe('kicad.ts', () => {
 
       const k = new KiCAD({ path: '', cliPath: '', isFlatpak: false });
       const paths = k.getLibraryPaths();
-      expect(paths.symbols).toBe('/var/lib/flatpak/runtime/org.kicad.KiCad.Library.Symbols/x86_64/stable/active/files/symbols');
-      expect(paths.footprints).toBe('/var/lib/flatpak/runtime/org.kicad.KiCad.Library.Footprints/x86_64/stable/active/files/footprints');
+      expect(paths.symbols).toBe(
+        '/var/lib/flatpak/runtime/org.kicad.KiCad.Library.Symbols/x86_64/stable/active/files/symbols',
+      );
+      expect(paths.footprints).toBe(
+        '/var/lib/flatpak/runtime/org.kicad.KiCad.Library.Footprints/x86_64/stable/active/files/footprints',
+      );
     });
 
     it('prefers KiCAD.path over flatpak fallback when path is set', () => {
@@ -272,10 +288,12 @@ describe('kicad.ts', () => {
       mockExistsSync.mockImplementation((p: string) => {
         if (p === '/var/lib/flatpak/runtime/org.kicad.KiCad.Library.Symbols') return true;
         if (p === '/var/lib/flatpak/runtime/org.kicad.KiCad.Library.Symbols/aarch64') return true;
-        if (p === '/var/lib/flatpak/runtime/org.kicad.KiCad.Library.Symbols/aarch64/stable/active/files/symbols') return true;
+        if (p === '/var/lib/flatpak/runtime/org.kicad.KiCad.Library.Symbols/aarch64/stable/active/files/symbols')
+          return true;
         if (p === '/var/lib/flatpak/runtime/org.kicad.KiCad.Library.Footprints') return true;
         if (p === '/var/lib/flatpak/runtime/org.kicad.KiCad.Library.Footprints/aarch64') return true;
-        if (p === '/var/lib/flatpak/runtime/org.kicad.KiCad.Library.Footprints/aarch64/stable/active/files/footprints') return true;
+        if (p === '/var/lib/flatpak/runtime/org.kicad.KiCad.Library.Footprints/aarch64/stable/active/files/footprints')
+          return true;
         return false;
       });
       mockReaddirSync.mockImplementation((dir: string) => {
@@ -295,10 +313,12 @@ describe('kicad.ts', () => {
       mockExistsSync.mockImplementation((p: string) => {
         if (p === '/var/lib/flatpak/runtime/org.kicad.KiCad.Library.Symbols') return true;
         if (p === '/var/lib/flatpak/runtime/org.kicad.KiCad.Library.Symbols/x86_64') return true;
-        if (p === '/var/lib/flatpak/runtime/org.kicad.KiCad.Library.Symbols/x86_64/testing/active/files/symbols') return true;
+        if (p === '/var/lib/flatpak/runtime/org.kicad.KiCad.Library.Symbols/x86_64/testing/active/files/symbols')
+          return true;
         if (p === '/var/lib/flatpak/runtime/org.kicad.KiCad.Library.Footprints') return true;
         if (p === '/var/lib/flatpak/runtime/org.kicad.KiCad.Library.Footprints/x86_64') return true;
-        if (p === '/var/lib/flatpak/runtime/org.kicad.KiCad.Library.Footprints/x86_64/testing/active/files/footprints') return true;
+        if (p === '/var/lib/flatpak/runtime/org.kicad.KiCad.Library.Footprints/x86_64/testing/active/files/footprints')
+          return true;
         return false;
       });
       mockReaddirSync.mockImplementation((dir: string) => {

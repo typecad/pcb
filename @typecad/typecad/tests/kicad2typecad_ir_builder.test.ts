@@ -218,6 +218,92 @@ describe('KicadIRBuilder', () => {
             expect(ir.outlines[0].width).toBe(40);
             expect(ir.outlines[0].height).toBe(50);
         });
+
+        it('should parse gr_poly outline points', () => {
+            const pcb = `(kicad_pcb
+  (gr_poly (pts (xy 0 0) (xy 100 0) (xy 100 80) (xy 50 100) (xy 0 80)) (layer "Edge.Cuts"))
+)`;
+            const tree = SExprNode.parse(pcb);
+            const ir = builder.build(tree);
+            expect(ir.outlines).toHaveLength(1);
+            expect(ir.outlines[0].type).toBe('poly');
+            expect(ir.outlines[0].points).toEqual([
+                { x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 80 }, { x: 50, y: 100 }, { x: 0, y: 80 },
+            ]);
+        });
+
+        it('should reject gr_poly with fewer than 3 points', () => {
+            const pcb = `(kicad_pcb
+  (gr_poly (pts (xy 0 0) (xy 10 10)) (layer "Edge.Cuts"))
+)`;
+            const tree = SExprNode.parse(pcb);
+            const ir = builder.build(tree);
+            expect(ir.outlines).toHaveLength(0);
+        });
+
+        it('should skip gr_poly on non-Edge.Cuts layers', () => {
+            const pcb = `(kicad_pcb
+  (gr_poly (pts (xy 0 0) (xy 10 0) (xy 10 10)) (layer "F.SilkS"))
+)`;
+            const tree = SExprNode.parse(pcb);
+            const ir = builder.build(tree);
+            expect(ir.outlines).toHaveLength(0);
+        });
+    });
+
+    describe('build - stackup', () => {
+        it('should return null when no setup/stackup present', () => {
+            const pcb = `(kicad_pcb (version 20221018) (generator pcbnew))`;
+            const tree = SExprNode.parse(pcb);
+            const ir = builder.build(tree);
+            expect(ir.stackup).toBeNull();
+        });
+
+        it('should parse a 2-layer stackup and count copper layers', () => {
+            const pcb = `(kicad_pcb
+  (setup
+    (stackup
+      (layer "F.Cu" (type "copper") (thickness 0.035))
+      (layer "dielectric 1" (type "core") (thickness 1.51) (material "FR4"))
+      (layer "B.Cu" (type "copper") (thickness 0.035))
+      (copper_finish "None")
+      (dielectric_constraints no)
+    )
+  )
+)`;
+            const tree = SExprNode.parse(pcb);
+            const ir = builder.build(tree);
+            expect(ir.stackup).not.toBeNull();
+            expect(ir.stackup!.copperLayerCount).toBe(2);
+            expect(ir.stackup!.layers).toHaveLength(3);
+            expect(ir.stackup!.layers[0].name).toBe('F.Cu');
+            expect(ir.stackup!.layers[0].thickness).toBe(0.035);
+            expect(ir.stackup!.copperFinish).toBe('None');
+            expect(ir.stackup!.dielectricConstraints).toBe(false);
+        });
+
+        it('should parse a 4-layer stackup with In1.Cu/In2.Cu', () => {
+            const pcb = `(kicad_pcb
+  (setup
+    (stackup
+      (layer "F.Cu" (type "copper") (thickness 0.035))
+      (layer "dielectric 1" (type "prepreg") (thickness 0.21))
+      (layer "In1.Cu" (type "copper") (thickness 0.035))
+      (layer "dielectric 2" (type "core") (thickness 1.065))
+      (layer "In2.Cu" (type "copper") (thickness 0.035))
+      (layer "dielectric 3" (type "prepreg") (thickness 0.21))
+      (layer "B.Cu" (type "copper") (thickness 0.035))
+      (copper_finish "ENIG")
+      (dielectric_constraints yes)
+    )
+  )
+)`;
+            const tree = SExprNode.parse(pcb);
+            const ir = builder.build(tree);
+            expect(ir.stackup!.copperLayerCount).toBe(4);
+            expect(ir.stackup!.copperFinish).toBe('ENIG');
+            expect(ir.stackup!.dielectricConstraints).toBe(true);
+        });
     });
 
     describe('build - text elements with effects', () => {

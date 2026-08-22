@@ -198,6 +198,9 @@ typecad validate [options]
 
 Run KiCAD Design Rule Check.
 
+The rules DRC validates against are configurable in code — see
+[Board Layout → Design Rules](/docs/board_layout#design-rules).
+
 <ScrollArea orientation="both">
 
 ```bash

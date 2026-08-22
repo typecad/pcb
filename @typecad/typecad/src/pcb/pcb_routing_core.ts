@@ -385,9 +385,10 @@ export function pathToTrackBuilder(
                 const viaKey = `${prevNode.x.toFixed(4)}:${prevNode.y.toFixed(4)}:${[prevNode.layer, node.layer].sort().join(">")}`;
                 if (placedViaKeys.has(viaKey)) {
                 } else {
-                    // Calculate via dimensions based on power requirements if available
-                    let viaSize = 0.6;
-                    let viaDrill = 0.3;
+                    // Via dimensions default to the net class / board rules
+                    // (threaded in via options); power info may grow them.
+                    let viaSize = options.viaSize ?? 0.6;
+                    let viaDrill = options.viaDrill ?? 0.3;
 
                     if (options.powerInfo) {
                         const minViaSize = calculateMinViaSize(

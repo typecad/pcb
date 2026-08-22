@@ -30,6 +30,7 @@ import {
     generatePlacementCode,
     generateTextCode,
     generateOutlineCode,
+    generateStackupCode,
     generateCreateStatement,
     DEFAULT_CH,
 } from './display.js';
@@ -95,6 +96,9 @@ export async function kicadDataToTypeCAD(
 
         // Board outline
         generateOutlineCode(ir, sourceDescription, ch);
+
+        // Layer stackup
+        generateStackupCode(ir, sourceDescription, ch);
 
         // Create statement
         generateCreateStatement(ir.footprints, trackVariableNames, sourceDescription, ch);

@@ -50,3 +50,8 @@ The new layout becomes:
 3. Build it
 4. Open the board in KiCAD to layout
 
+Design rules (minimum clearances, track/via dimensions) default to the JLCPCB
+no-surcharge standard and are written to the project file for DRC; see
+[Board Layout → Design Rules](/docs/board_layout#design-rules). You only need
+to open KiCad for the final visual layout pass.
+

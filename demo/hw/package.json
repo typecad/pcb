@@ -1,6 +1,7 @@
 {
   "name": "hw",
   "version": "1.0.0",
+  "private": true,
   "description": "",
   "main": "index.js",
   "scripts": {
@@ -8,7 +9,7 @@
     "add_component": "typecad add component",
     "add_package": "typecad add package",
     "open_board": "npx open-cli ./build/pro_mini.kicad_pcb",
-    "docs": "typecad-docgen ./docs/dev.md ./build/pro_mini.kicad_pcb",
+    "docs": "typecad doc ./docs/dev.md ./build/pro_mini.kicad_pcb",
     "search": "typecad search",
     "import": "typecad import ./build/pro_mini.kicad_pcb --apply",
     "git_diff": "git difftool -y --extcmd \"typecad-gitdiff\" ./build/pro_mini.kicad_pcb",
@@ -21,14 +22,13 @@
   "license": "ISC",
   "dependencies": {
     "@typecad/mast": "*",
-    "@typecad/passives": "*",
+    "@typecad/passives": "0.2.3-alpha.0",
     "@typecad/typecad": "*",
-    "@typecad/typecad-docgen": "*",
     "express": "^5.1.0",
     "tsx": "^4.20.3"
   },
   "devDependencies": {
     "@types/node": "^24.5.2",
-    "typescript": "^5.4.2"
+    "typescript": "^5.9.3"
   }
 }

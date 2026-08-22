@@ -6,7 +6,10 @@
   "type": "module",
   "author": "",
   "license": "ISC",
-  "keywords": ["typeCAD", "package"],
+  "keywords": [
+    "typeCAD",
+    "package"
+  ],
   "devDependencies": {
     "tsx": "^4.19.1"
   },
@@ -14,7 +17,5 @@
     "@typecad/passives": "~0.1.0",
     "@typecad/typecad": "~0.1.0"
   },
-  "scripts": {
-    "postinstall": "node postinstall.js"
-  }
+  "scripts": {}
 }

@@ -1,175 +1,176 @@
 (export (version "E")
   (design
-    (tool "typeCAD"))
+    (tool "typeCAD 0.2.30"))
   (components
     (comp
       (ref "R1")
         (value "")
         (footprint "Resistor_SMD:R_0603_1608Metric")
         (fields
-                  (field (name "Footprint") "Resistor_SMD:R_0603_1608Metric")
+          (field (name "Footprint") "Resistor_SMD:R_0603_1608Metric")
         )
-     )
-    (comp
+    )
+        (comp
       (ref "R2")
         (value "")
         (footprint "Resistor_SMD:R_0603_1608Metric")
         (fields
-                  (field (name "Footprint") "Resistor_SMD:R_0603_1608Metric")
+          (field (name "Footprint") "Resistor_SMD:R_0603_1608Metric")
         )
-     )
-    (comp
+    )
+        (comp
       (ref "R3")
         (value "")
         (footprint "Resistor_SMD:R_0603_1608Metric")
         (fields
-                  (field (name "Footprint") "Resistor_SMD:R_0603_1608Metric")
+          (field (name "Footprint") "Resistor_SMD:R_0603_1608Metric")
         )
-     )
-    (comp
+    )
+        (comp
       (ref "R4")
         (value "")
         (footprint "Resistor_SMD:R_0603_1608Metric")
         (fields
-                  (field (name "Footprint") "Resistor_SMD:R_0603_1608Metric")
+          (field (name "Footprint") "Resistor_SMD:R_0603_1608Metric")
         )
-     )
-    (comp
+    )
+        (comp
       (ref "R5")
         (value "")
         (footprint "Resistor_SMD:R_0603_1608Metric")
         (fields
-                  (field (name "Footprint") "Resistor_SMD:R_0603_1608Metric")
+          (field (name "Footprint") "Resistor_SMD:R_0603_1608Metric")
         )
-     )
-    (comp
+    )
+        (comp
       (ref "R6")
         (value "")
         (footprint "Resistor_SMD:R_0603_1608Metric")
         (fields
-                  (field (name "Footprint") "Resistor_SMD:R_0603_1608Metric")
+          (field (name "Footprint") "Resistor_SMD:R_0603_1608Metric")
         )
-     )
-    (comp
+    )
+        (comp
       (ref "R7")
         (value "")
         (footprint "Resistor_SMD:R_0603_1608Metric")
         (fields
-                  (field (name "Footprint") "Resistor_SMD:R_0603_1608Metric")
+          (field (name "Footprint") "Resistor_SMD:R_0603_1608Metric")
         )
-     )
-    (comp
+    )
+        (comp
       (ref "R8")
         (value "")
         (footprint "Resistor_SMD:R_0603_1608Metric")
         (fields
-                  (field (name "Footprint") "Resistor_SMD:R_0603_1608Metric")
+          (field (name "Footprint") "Resistor_SMD:R_0603_1608Metric")
         )
-     )
-    (comp
-      (ref "Q1")
+    )
+        (comp
+      (ref "U1")
         (value "")
         (footprint "Package_DFN_QFN:QFN-12-1EP_3x3mm_P0.5mm_EP1.45x1.45mm")
         (fields
-                  (field (name "Footprint") "Package_DFN_QFN:QFN-12-1EP_3x3mm_P0.5mm_EP1.45x1.45mm")
+          (field (name "Footprint") "Package_DFN_QFN:QFN-12-1EP_3x3mm_P0.5mm_EP1.45x1.45mm")
         )
-     )
-    (comp
+    )
+        (comp
       (ref "R9")
         (value "")
         (footprint "Resistor_SMD:R_0603_1608Metric")
         (fields
-                  (field (name "Footprint") "Resistor_SMD:R_0603_1608Metric")
+          (field (name "Footprint") "Resistor_SMD:R_0603_1608Metric")
         )
-     )
-    (comp
+    )
+        (comp
       (ref "R10")
         (value "")
         (footprint "Resistor_SMD:R_0603_1608Metric")
         (fields
-                  (field (name "Footprint") "Resistor_SMD:R_0603_1608Metric")
+          (field (name "Footprint") "Resistor_SMD:R_0603_1608Metric")
         )
-     )
-    (comp
+    )
+        (comp
       (ref "R11")
         (value "")
         (footprint "Resistor_SMD:R_0603_1608Metric")
         (fields
-                  (field (name "Footprint") "Resistor_SMD:R_0603_1608Metric")
+          (field (name "Footprint") "Resistor_SMD:R_0603_1608Metric")
         )
-     )
-    (comp
+    )
+        (comp
       (ref "R12")
         (value "")
         (footprint "Resistor_SMD:R_0603_1608Metric")
         (fields
-                  (field (name "Footprint") "Resistor_SMD:R_0603_1608Metric")
+          (field (name "Footprint") "Resistor_SMD:R_0603_1608Metric")
         )
-     )
-    (comp
+    )
+        (comp
       (ref "R13")
         (value "")
         (footprint "Resistor_SMD:R_0603_1608Metric")
         (fields
-                  (field (name "Footprint") "Resistor_SMD:R_0603_1608Metric")
+          (field (name "Footprint") "Resistor_SMD:R_0603_1608Metric")
         )
-     )
-    (comp
+    )
+        (comp
       (ref "R14")
         (value "")
         (footprint "Resistor_SMD:R_0603_1608Metric")
         (fields
-                  (field (name "Footprint") "Resistor_SMD:R_0603_1608Metric")
+          (field (name "Footprint") "Resistor_SMD:R_0603_1608Metric")
         )
-     )
-    (comp
+    )
+        (comp
       (ref "J1")
         (value "")
         (footprint "Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Vertical")
         (fields
-                  (field (name "Footprint") "Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Vertical")
+          (field (name "Footprint") "Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Vertical")
         )
-     )
-    (comp
+    )
+        (comp
       (ref "J2")
         (value "")
         (footprint "Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Vertical")
         (fields
-                  (field (name "Footprint") "Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Vertical")
+          (field (name "Footprint") "Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Vertical")
         )
-     )
-    (comp
+    )
+        (comp
       (ref "R15")
         (value "")
         (footprint "Resistor_SMD:R_0603_1608Metric")
         (fields
-                  (field (name "Footprint") "Resistor_SMD:R_0603_1608Metric")
+          (field (name "Footprint") "Resistor_SMD:R_0603_1608Metric")
         )
-     )
-    (comp
+    )
+        (comp
       (ref "R16")
         (value "")
         (footprint "Resistor_SMD:R_0603_1608Metric")
         (fields
-                  (field (name "Footprint") "Resistor_SMD:R_0603_1608Metric")
+          (field (name "Footprint") "Resistor_SMD:R_0603_1608Metric")
         )
-     )
-    (comp
+    )
+        (comp
       (ref "R17")
         (value "")
         (footprint "Resistor_SMD:R_0603_1608Metric")
         (fields
-                  (field (name "Footprint") "Resistor_SMD:R_0603_1608Metric")
+          (field (name "Footprint") "Resistor_SMD:R_0603_1608Metric")
         )
-     )
-    (comp
+    )
+        (comp
       (ref "R18")
         (value "")
         (footprint "Resistor_SMD:R_0603_1608Metric")
         (fields
-                  (field (name "Footprint") "Resistor_SMD:R_0603_1608Metric")
+          (field (name "Footprint") "Resistor_SMD:R_0603_1608Metric")
         )
-     ))
+    )
+    )
   (nets
     (net (code "1") (name "test1_1")
         (node (ref "R1") (pin "1") (pintype "passive"))
@@ -204,27 +205,27 @@
         (node (ref "R5") (pin "1") (pintype "passive"))
 )
 (net (code "9") (name "test4_1")
-        (node (ref "Q1") (pin "1") (pintype "passive"))
+        (node (ref "U1") (pin "1") (pintype "passive"))
         (node (ref "R9") (pin "1") (pintype "passive"))
 )
 (net (code "10") (name "test4_2")
-        (node (ref "Q1") (pin "2") (pintype "passive"))
+        (node (ref "U1") (pin "2") (pintype "passive"))
         (node (ref "R10") (pin "1") (pintype "passive"))
 )
 (net (code "11") (name "test4_3")
-        (node (ref "Q1") (pin "3") (pintype "passive"))
+        (node (ref "U1") (pin "3") (pintype "passive"))
         (node (ref "R11") (pin "1") (pintype "passive"))
 )
 (net (code "12") (name "test4_4")
-        (node (ref "Q1") (pin "4") (pintype "passive"))
+        (node (ref "U1") (pin "4") (pintype "passive"))
         (node (ref "R12") (pin "1") (pintype "passive"))
 )
 (net (code "13") (name "test4_5")
-        (node (ref "Q1") (pin "5") (pintype "passive"))
+        (node (ref "U1") (pin "5") (pintype "passive"))
         (node (ref "R13") (pin "1") (pintype "passive"))
 )
 (net (code "14") (name "test4_6")
-        (node (ref "Q1") (pin "6") (pintype "passive"))
+        (node (ref "U1") (pin "6") (pintype "passive"))
         (node (ref "R14") (pin "1") (pintype "passive"))
 )
 (net (code "15") (name "test4_7")
@@ -267,4 +268,5 @@
         (node (ref "R17") (pin "2") (pintype "passive"))
         (node (ref "R18") (pin "2") (pintype "passive"))
 )
+
 ))

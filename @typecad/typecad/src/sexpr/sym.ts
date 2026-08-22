@@ -70,6 +70,8 @@ const PRE_INTERN = [
     'tenting', 'front', 'back',
     'teardrop', 'best_width', 'max_length', 'max_height',
     'curved', 'filter',
+    'stackup', 'copper_finish', 'dielectric_constraints',
+    'epsilon_r', 'loss_tangent', 'roughening',
     'image', 'scale', 'pos', 'anchor', 'corner_radius',
 ];
 

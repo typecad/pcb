@@ -1,0 +1,26 @@
+<svg width="81.28" height="101.6" xmlns="http://www.w3.org/2000/svg">
+<defs>
+<style><![CDATA[
+g[data-component][data-rotated-180] .pin-name-text,
+g[data-component][data-rotated-180] .pin-number-text,
+g[data-component][data-rotated-180] .pin-name-overline {
+    transform: scale(-1, -1);
+    transform-origin: center;
+    transform-box: fill-box;
+}
+/* Keep overline above text when flipped */
+g[data-component][data-rotated-180] .pin-name-overline { display: none; }
+g[data-component][data-rotated-180] .pin-name-text--overline { text-decoration: overline; }
+]]></style>
+</defs>
+<g transform="translate(50.8, 50.8)">
+<polyline points="-15.24,-5.08 15.24,-5.08" fill="none" stroke="#83a598" stroke-width="3.048" stroke-linejoin="round" stroke-linecap="round"/>
+<polyline points="-15.24,5.08 15.24,5.08" fill="none" stroke="#83a598" stroke-width="3.302" stroke-linejoin="round" stroke-linecap="round"/>
+<line x1="0" y1="-25.4" x2="0" y2="-5.08" stroke="#689d6a" stroke-width="2" stroke-linecap="round"/>
+<circle cx="0" cy="-25.4" r="3" fill="#689d6a" stroke="#689d6a" class="pin-connection-indicator"/>
+<text x="-12" y="-15.239999999999998" font-family="Consolas, Monaco, Courier New, monospace" font-size="16" fill="#fabd2f" text-anchor="middle" dominant-baseline="central" class="pin-number-text" transform="rotate(-90, -12, -15.239999999999998)">1</text>
+<line x1="0" y1="25.4" x2="0" y2="5.08" stroke="#689d6a" stroke-width="2" stroke-linecap="round"/>
+<circle cx="0" cy="25.4" r="3" fill="#689d6a" stroke="#689d6a" class="pin-connection-indicator"/>
+<text x="-12" y="15.239999999999998" font-family="Consolas, Monaco, Courier New, monospace" font-size="16" fill="#fabd2f" text-anchor="middle" dominant-baseline="central" class="pin-number-text" transform="rotate(-90, -12, 15.239999999999998)">2</text>
+</g>
+</svg>

@@ -1,0 +1,141 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="800" height="600" viewBox="140 90 25 20" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- Define styles -->
+    <style>
+      .component-text { font-family: Arial, sans-serif; font-size: 0.8px; fill: #000; text-anchor: middle; }
+      .pin-text { font-family: Arial, sans-serif; font-size: 0.4px; fill: #666; text-anchor: middle; }
+      .trace { stroke: #d4af37; stroke-width: 0.2; fill: none; }
+      .trace-f-cu { stroke: #d4af37; stroke-width: 0.2; fill: none; }
+      .trace-b-cu { stroke: #c0392b; stroke-width: 0.2; fill: none; stroke-dasharray: 0.1,0.1; }
+      .component-outline { stroke: #333; stroke-width: 0.1; fill: #f8f8f8; }
+      .ic-outline { stroke: #333; stroke-width: 0.1; fill: #e8e8e8; }
+      .via { stroke: #666; stroke-width: 0.1; fill: #999; }
+      .pin { stroke: #333; stroke-width: 0.05; fill: #ffd700; }
+    </style>
+  </defs>
+
+  <!-- Title -->
+  <text x="152.5" y="92" class="component-text" font-size="1.2px">ISL9120IR 3.3V Power Regulator Module</text>
+
+  <!-- PCB Background -->
+  <rect x="145" y="94" width="12" height="8" fill="#2d5016" stroke="#1a3009" stroke-width="0.1" opacity="0.3"/>
+
+  <!-- ISL9120IRTNZ IC (QFN package) at (150.6, 97.725) -->
+  <g transform="translate(150.6, 97.725)">
+    <rect x="-1.5" y="-1.5" width="3" height="3" class="ic-outline"/>
+    <text x="0" y="-2" class="component-text">U1</text>
+    <text x="0" y="-1.6" class="component-text" font-size="0.6px">ISL9120IRTNZ</text>
+    
+    <!-- Pin markers and labels -->
+    <!-- Left side pins -->
+    <circle cx="-1.5" cy="-1" r="0.1" class="pin"/><text x="-2" y="-1" class="pin-text">1</text>
+    <circle cx="-1.5" cy="-0.5" r="0.1" class="pin"/><text x="-2" y="-0.5" class="pin-text">2</text>
+    <circle cx="-1.5" cy="0" r="0.1" class="pin"/><text x="-2" y="0" class="pin-text">3</text>
+    <circle cx="-1.5" cy="0.5" r="0.1" class="pin"/><text x="-2" y="0.5" class="pin-text">4</text>
+    <circle cx="-1.5" cy="1" r="0.1" class="pin"/><text x="-2" y="1" class="pin-text">5</text>
+    
+    <!-- Bottom pins -->
+    <circle cx="-1" cy="1.5" r="0.1" class="pin"/><text x="-1" y="2" class="pin-text">6</text>
+    <circle cx="-0.5" cy="1.5" r="0.1" class="pin"/><text x="-0.5" y="2" class="pin-text">7</text>
+    <circle cx="0" cy="1.5" r="0.1" class="pin"/><text x="0" y="2" class="pin-text">8</text>
+    
+    <!-- Right side pins -->
+    <circle cx="1.5" cy="1" r="0.1" class="pin"/><text x="2" y="1" class="pin-text">9</text>
+    <circle cx="1.5" cy="0.5" r="0.1" class="pin"/><text x="2" y="0.5" class="pin-text">10</text>
+    <circle cx="1.5" cy="0" r="0.1" class="pin"/><text x="2" y="0" class="pin-text">11</text>
+    <circle cx="1.5" cy="-0.5" r="0.1" class="pin"/><text x="2" y="-0.5" class="pin-text">12</text>
+    
+    <!-- Exposed pad (center) -->
+    <circle cx="0" cy="0" r="0.2" class="pin"/><text x="0" y="0.5" class="pin-text">EP</text>
+  </g>
+
+  <!-- Input Capacitor C1 (22µF) at (153.67, 99.047) rotated -90° -->
+  <g transform="translate(153.67, 99.047) rotate(-90)">
+    <rect x="-0.8" y="-0.4" width="1.6" height="0.8" class="component-outline"/>
+    <text x="0" y="-0.8" class="component-text">C1</text>
+    <text x="0" y="-0.5" class="component-text" font-size="0.5px">22µF</text>
+    <circle cx="-0.8" cy="0" r="0.1" class="pin"/>
+    <circle cx="0.8" cy="0" r="0.1" class="pin"/>
+  </g>
+
+  <!-- Output Capacitor C2 (10µF) at (153.67, 95.986) rotated -90° -->
+  <g transform="translate(153.67, 95.986) rotate(-90)">
+    <rect x="-0.8" y="-0.4" width="1.6" height="0.8" class="component-outline"/>
+    <text x="0" y="-0.8" class="component-text">C2</text>
+    <text x="0" y="-0.5" class="component-text" font-size="0.5px">10µF</text>
+    <circle cx="-0.8" cy="0" r="0.1" class="pin"/>
+    <circle cx="0.8" cy="0" r="0.1" class="pin"/>
+  </g>
+
+  <!-- Inductor L1 (1µH) at (147.32, 97.828) rotated 90° -->
+  <g transform="translate(147.32, 97.828) rotate(90)">
+    <rect x="-0.8" y="-0.4" width="1.6" height="0.8" class="component-outline" fill="#ffeaa7"/>
+    <text x="0" y="-0.8" class="component-text">L1</text>
+    <text x="0" y="-0.5" class="component-text" font-size="0.5px">1µH</text>
+    <circle cx="-0.8" cy="0" r="0.1" class="pin"/>
+    <circle cx="0.8" cy="0" r="0.1" class="pin"/>
+    <!-- Inductor coil symbol -->
+    <path d="M -0.6,-0.2 Q -0.3,-0.4 0,-0.2 Q 0.3,-0.4 0.6,-0.2" stroke="#333" stroke-width="0.05" fill="none"/>
+  </g>
+
+  <!-- Via1 at (151.765, 100.33) -->
+  <circle cx="151.765" cy="100.33" r="0.3" class="via"/>
+  <text x="151.765" y="100.8" class="pin-text">V1</text>
+
+  <!-- Via2 at (152.4, 96.52) -->
+  <circle cx="152.4" cy="96.52" r="0.3" class="via"/>
+  <text x="152.4" y="96.1" class="pin-text">V2</text>
+
+  <!-- PCB Traces (Front Copper - F.Cu) -->
+  <!-- Input power routing -->
+  <path d="M 152.05,96.87 L 152.4,96.52" class="trace-f-cu"/>
+  <path d="M 151.1,99.665 L 151.765,100.33 L 152.273,99.822 L 153.67,99.822" class="trace-f-cu"/>
+  <path d="M 150.6,99.175 L 151.1,99.175 L 151.1,99.665" class="trace-f-cu"/>
+  
+  <!-- Ground routing -->
+  <path d="M 152.05,97.225 L 152.05,96.87" class="trace-f-cu"/>
+  
+  <!-- Switching node routing -->
+  <path d="M 152.05,97.725 L 152.05,98.225" class="trace-f-cu"/>
+  <path d="M 149.15,97.725 L 152.05,97.725" class="trace-f-cu"/>
+  <path d="M 152.05,98.225 L 153.623,98.225" class="trace-f-cu"/>
+  
+  <!-- Inductor connections -->
+  <path d="M 149.15,98.225 L 147.723,98.225 L 147.32,98.628" class="trace-f-cu"/>
+  <path d="M 149.15,98.225 L 150.1,99.175" class="trace-f-cu"/>
+  <path d="M 147.517,97.225 L 147.32,97.028" class="trace-f-cu"/>
+  <path d="M 149.15,97.225 L 147.517,97.225" class="trace-f-cu"/>
+  
+  <!-- Output power routing -->
+  <path d="M 153.67,98.272 L 153.67,96.761" class="trace-f-cu"/>
+  <path d="M 150.1,96.275 L 149.15,97.225" class="trace-f-cu"/>
+  <path d="M 150.6,96.275 L 151.1,96.275 L 152.164,95.211 L 153.67,95.211" class="trace-f-cu"/>
+
+  <!-- PCB Traces (Back Copper - B.Cu) - shown as dashed red lines -->
+  <path d="M 152.4,99.695 L 151.765,100.33" class="trace-b-cu"/>
+  <path d="M 152.4,96.52 L 152.4,99.695" class="trace-b-cu"/>
+
+  <!-- Power connection labels -->
+  <text x="145" y="100.5" class="component-text" font-size="0.8px" fill="#c0392b">VIN (1.8-5.5V)</text>
+  <text x="145" y="95" class="component-text" font-size="0.8px" fill="#27ae60">VOUT (3.3V)</text>
+
+  <!-- Net labels -->
+  <text x="147" y="96.5" class="pin-text" fill="#666">LX1</text>
+  <text x="147" y="99.3" class="pin-text" fill="#666">LX2</text>
+  <text x="154.5" y="99.5" class="pin-text" fill="#c0392b">VIN</text>
+  <text x="154.5" y="95.5" class="pin-text" fill="#27ae60">VOUT</text>
+  <text x="151" y="101" class="pin-text" fill="#333">GND</text>
+
+  <!-- Legend -->
+  <g transform="translate(145, 103)">
+    <text x="0" y="0" class="component-text" font-size="0.6px">Legend:</text>
+    <line x1="0" y1="0.5" x2="1" y2="0.5" class="trace-f-cu"/>
+    <text x="1.2" y="0.5" class="pin-text">Front Copper</text>
+    <line x1="0" y1="1" x2="1" y2="1" class="trace-b-cu"/>
+    <text x="1.2" y="1" class="pin-text">Back Copper</text>
+    <circle cx="0.5" cy="1.5" r="0.1" class="via"/>
+    <text x="1.2" y="1.5" class="pin-text">Via</text>
+  </g>
+</svg>
+

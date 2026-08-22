@@ -1,0 +1,21 @@
+{
+  "name": "@typecad/rd_isl9120ir",
+  "version": "1.0.0",
+  "description": "rd_ISL9120IR typeCAD package",
+  "main": "index.js",
+  "scripts": {
+    "🤖 Build": "npx tsx ./src/rd_isl9120_impl",
+    "Add Component 🧩": "npx @typecad/add-component ./src",
+    "📦 Add Package": "npx @typecad/add-package ./src",
+    "Open Board ✳️": "npx open-cli ./build/rd_isl9120_impl.kicad_pcb"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@typecad/passives": "^0.2.2",
+    "@typecad/schematic": "^1.1.4",
+    "@typecad/typecad": "file:../../@typecad/typecad",
+    "tsx": "^4.19.2"
+  }
+}

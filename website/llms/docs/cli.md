@@ -163,6 +163,9 @@ typecad validate [options]
 
 Run KiCAD Design Rule Check.
 
+The rules DRC validates against are configurable in code — see
+[Board Layout → Design Rules](/docs/board_layout#design-rules).
+
 ```bash
 typecad drc [options]
 ```
@@ -183,4 +186,26 @@ typecad erc [options]
 |--------|-------------|
 | `--json` | Machine-readable output |
 
-       Project Structure
+### `typecad skills`
+
+List and query typeCAD skills and API patterns.
+
+```bash
+typecad skills list [options]
+typecad skills get  [options]
+```
+
+| Subcommand | Description |
+|------------|-------------|
+| `list` | List all available skills, grouped by category |
+| `get ` | Show details for a specific skill (usage, parameters, examples) |
+
+| Option | Description |
+|--------|-------------|
+| `--json` | Machine-readable output |
+
+```bash
+typecad skills list
+typecad skills get resistor
+typecad skills get power --json
+```

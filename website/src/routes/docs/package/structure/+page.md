@@ -34,9 +34,11 @@ Inside the package folder, you'll see the following:
 - `package.json` - the package.json file for the package. This is used by npm to manage the package.
 - `ATtiny3227_M.ts` - the component file. This is the file that contains the code to create the component.
 - `index.ts` - the main code for the package. This is where the majority of the code will be.
-- `postinstall.js` - a script that runs after the package is installed in other projects. It will copy the symbol and footprint files from the package (which is located in ./node_modules), to the project's `./build` directory. This step is needed to allow KiCAD to find the files, and also to create a fully-modular and self-contained directory structure for the package.
 - `./build` - this directory contains symbol, footprint, 3d models or any other files that are needed by the component for use in KiCAD.
 
 ### More about the `./build` directory
-**type**CAD creates a KiCAD project that expects symbols and footprints to be in the `./build` directory. In the case of the ATtiny3227 component, it is already in the KiCAD library. If we picked a component that wasn't in the library, we would need to distribute the symbol, footprint, and 3d models along with the package. This isn't limited to just those files though; the `postinstall.js` script can be modified to do anything that may be needed. Remember that when the package is installed using `npm i typecad_package`, all the files will be in the `./node_modules/typecad_package` directory, not the `./src` directory.
+**type**CAD creates a KiCAD project that expects symbols and footprints to be in the `./build` directory. In the case of the ATtiny3227 component, it is already in the KiCAD library. If we picked a component that wasn't in the library, we would need to distribute the symbol, footprint, and 3d models along with the package.
+
+When a package that bundles these files is used in a project, **type**CAD automatically syncs the package's `./build/lib/` contents (symbols, footprints, 3D models, etc.) into the project's `./build/lib/` directory the first time the `Package` is constructed during a build. This happens on every build, is mtime-guarded so unchanged files are skipped, and requires no install script — which aligns with npm's deprecation of `postinstall` scripts for security reasons. Remember that when the package is installed using `npm i typecad_package`, all the files will be in the `./node_modules/typecad_package` directory, not the `./src` directory; the sync reads them from there.
+
 

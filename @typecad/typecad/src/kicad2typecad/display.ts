@@ -11,6 +11,7 @@ import type {
     KicadViaIR,
     KicadNetIR,
     KicadOutlineIR,
+    KicadStackupIR,
     TextLayoutIR,
 } from './types.js';
 
@@ -33,6 +34,11 @@ export const DEFAULT_CH: ChalkHelpers = {
     chPunc: chalk.gray,
     chVar: chalk.blueBright,
 };
+
+/** Round a number to 3 decimal places (mm precision for display). */
+function round3(n: number): number {
+    return Math.round(n * 1000) / 1000;
+}
 
 /**
  * Generate TrackBuilder code display from IR segments and nets.
@@ -309,7 +315,7 @@ export function generateOutlineCode(
     sourceDescription: string,
     ch: ChalkHelpers = DEFAULT_CH
 ): void {
-    const { chKey, chNum, chPunc, chVar } = ch;
+    const { chKey, chStr, chProp, chNum, chPunc, chVar } = ch;
     const outlines = ir.outlines;
 
     if (outlines.length > 0) {
@@ -320,8 +326,12 @@ export function generateOutlineCode(
 
         const rectOutlines = outlines.filter(o => o.type === 'rect');
         const lineOutlines = outlines.filter(o => o.type === 'line');
+        const polyOutlines = outlines.filter(o => o.type === 'poly');
+        const circleOutlines = outlines.filter(o => o.type === 'circle');
+        const hasRectOutline = rectOutlines.length === 1 || lineOutlines.length === 4 ||
+            (lineOutlines.length + outlines.filter(o => o.type === 'arc').length >= 4);
 
-        if (rectOutlines.length === 1) {
+        if (rectOutlines.length === 1 && polyOutlines.length === 0 && circleOutlines.length === 0) {
             const rect = rectOutlines[0];
             if (rect.start && rect.end && rect.width && rect.height) {
                 const x = Math.min(rect.start.x, rect.end.x);
@@ -331,7 +341,7 @@ export function generateOutlineCode(
                 outlineLog += `${chPunc(')')}${chPunc(';')}`;
                 allOutlineLogs.push(outlineLog);
             }
-        } else if (lineOutlines.length === 4 || (lineOutlines.length + outlines.filter(o => o.type === 'arc').length >= 4)) {
+        } else if (hasRectOutline && polyOutlines.length === 0 && circleOutlines.length === 0) {
             const arcOutlines = outlines.filter(o => o.type === 'arc');
             let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
 
@@ -388,49 +398,90 @@ export function generateOutlineCode(
                 allOutlineLogs.push(outlineLog);
             }
         } else {
-            outlines.forEach((outline, index) => {
-                let comment = `${chalk.gray('// Board outline element ' + (index + 1) + ': ')}`;
-                switch (outline.type) {
-                    case 'rect':
-                        if (outline.start && outline.end) {
-                            comment += chalk.gray(
-                                `Rectangle from (${outline.start.x}, ${outline.start.y}) to (${outline.end.x}, ${outline.end.y})`
-                            );
-                        }
-                        break;
-                    case 'line':
-                        if (outline.start && outline.end) {
-                            comment += chalk.gray(
-                                `Line from (${outline.start.x}, ${outline.start.y}) to (${outline.end.x}, ${outline.end.y})`
-                            );
-                        }
-                        break;
-                    case 'arc':
-                        if (outline.start && outline.end) {
-                            comment += chalk.gray(
-                                `Arc from (${outline.start.x}, ${outline.start.y}) to (${outline.end.x}, ${outline.end.y})`
-                            );
-                        }
-                        break;
-                    case 'circle':
-                        if (outline.center && outline.end) {
-                            const radius = Math.sqrt(
-                                (outline.end.x - outline.center.x) ** 2 + (outline.end.y - outline.center.y) ** 2
-                            );
-                            comment += chalk.gray(
-                                `Circle at (${outline.center.x}, ${outline.center.y}) with radius ${radius.toFixed(3)}`
-                            );
-                        }
-                        break;
+            // Non-rectangular outlines: emit executable typeCAD builder calls.
+            // A circle/poly that appears alongside a rectangular outer contour
+            // is treated as a cutout; otherwise it's the board outline itself.
+            const hasOuterRect = rectOutlines.length === 1;
+            const arcOutlines = outlines.filter(o => o.type === 'arc');
+            const hasOuter4Line = lineOutlines.length === 4 ||
+                (lineOutlines.length + arcOutlines.length >= 4);
+            const hasOuter = hasOuterRect || hasOuter4Line;
+
+            // Emit the outer rectangular contour first (if present alongside
+            // cutouts), so the generated code reads outline → cutout.
+            if (hasOuterRect) {
+                const rect = rectOutlines[0];
+                if (rect.start && rect.end && rect.width && rect.height) {
+                    const x = Math.min(rect.start.x, rect.end.x);
+                    const y = Math.min(rect.start.y, rect.end.y);
+                    let log = `${chVar('typecad')}${chPunc('.')}${chKey('outline')}${chPunc('(')}`;
+                    log += `${chNum(x)}${chPunc(',')} ${chNum(y)}${chPunc(',')} ${chNum(rect.width)}${chPunc(',')} ${chNum(rect.height)}`;
+                    log += `${chPunc(')')}${chPunc(';')}`;
+                    allOutlineLogs.push(log);
                 }
-                allOutlineLogs.push(comment);
-            });
-            allOutlineLogs.push(
-                chalk.yellow(
-                    '// Note: Complex board outlines with multiple elements or curves may need manual conversion to TypeCAD'
-                )
-            );
+            } else if (hasOuter4Line) {
+                // Emit the 4-line rectilinear rectangle as an outline too.
+                let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+                lineOutlines.forEach(line => {
+                    if (line.start && line.end) {
+                        minX = Math.min(minX, line.start.x, line.end.x);
+                        minY = Math.min(minY, line.start.y, line.end.y);
+                        maxX = Math.max(maxX, line.start.x, line.end.x);
+                        maxY = Math.max(maxY, line.start.y, line.end.y);
+                    }
+                });
+                arcOutlines.forEach(arc => {
+                    if (arc.start) { minX = Math.min(minX, arc.start.x); minY = Math.min(minY, arc.start.y); maxX = Math.max(maxX, arc.start.x); maxY = Math.max(maxY, arc.start.y); }
+                    if (arc.end) { minX = Math.min(minX, arc.end.x); minY = Math.min(minY, arc.end.y); maxX = Math.max(maxX, arc.end.x); maxY = Math.max(maxY, arc.end.y); }
+                });
+                if (isFinite(minX) && isFinite(maxX)) {
+                    const width = Math.round((maxX - minX) * 1000) / 1000;
+                    const height = Math.round((maxY - minY) * 1000) / 1000;
+                    let log = `${chVar('typecad')}${chPunc('.')}${chKey('outline')}${chPunc('(')}`;
+                    log += `${chNum(minX)}${chPunc(',')} ${chNum(minY)}${chPunc(',')} ${chNum(width)}${chPunc(',')} ${chNum(height)}`;
+                    log += `${chPunc(')')}${chPunc(';')}`;
+                    allOutlineLogs.push(log);
+                }
+            }
+
+            for (const circle of circleOutlines) {
+                if (!circle.center || !circle.end) continue;
+                const radius = Math.sqrt(
+                    (circle.end.x - circle.center.x) ** 2 + (circle.end.y - circle.center.y) ** 2
+                );
+                const method = hasOuter ? 'cutoutCircle' : 'outlineCircle';
+                let log = `${chVar('typecad')}${chPunc('.')}${chKey(method)}${chPunc('(')}`;
+                log += `${chNum(circle.center.x)}${chPunc(',')} ${chNum(circle.center.y)}${chPunc(',')} ${chNum(round3(radius))}`;
+                log += `${chPunc(')')}${chPunc(';')}`;
+                allOutlineLogs.push(log);
+            }
+
+            for (const poly of polyOutlines) {
+                if (!poly.points || poly.points.length < 3) continue;
+                const method = hasOuter ? 'cutout' : 'outlinePolygon';
+                const ptsStr = poly.points
+                    .map(p => `${chPunc('{')} ${chProp('x')}${chPunc(':')} ${chNum(p.x)}${chPunc(',')} ${chProp('y')}${chPunc(':')} ${chNum(p.y)} ${chPunc('}')}`)
+                    .join(`${chPunc(',')} `);
+                let log = `${chVar('typecad')}${chPunc('.')}${chKey(method)}${chPunc('(')}`;
+                log += `${chPunc('[')}${ptsStr}${chPunc(']')}`;
+                log += `${chPunc(')')}${chPunc(';')}`;
+                allOutlineLogs.push(log);
+            }
+
+            // Emit a comment for any remaining unsupported element types so the
+            // user knows something was skipped (e.g. standalone arcs/lines not
+            // forming a recognized rectangle).
+            const handled = new Set<string>(['rect', 'line', 'arc', 'circle', 'poly']);
+            const leftovers = outlines.filter(o => !handled.has(o.type));
+            if (leftovers.length > 0) {
+                allOutlineLogs.push(
+                    chalk.yellow(
+                        `// Note: ${leftovers.length} outline element(s) of an unrecognized type were skipped.`
+                    )
+                );
+            }
         }
+
 
         if (allOutlineLogs.length > 0) {
             logger.log(chalk.bold(`\n--- Generated typeCAD Board Outline Code from ${sourceDescription} ---`));
@@ -440,6 +491,48 @@ export function generateOutlineCode(
     } else {
         logger.log(`No board outline found in ${sourceDescription} content (looking for Edge.Cuts layer).`);
     }
+}
+
+/**
+ * Generate `typecad.stackup(...)` code from the parsed stackup IR.
+ * Emits nothing if no stackup was found in the board.
+ */
+export function generateStackupCode(
+    ir: KicadIR,
+    sourceDescription: string,
+    ch: ChalkHelpers = DEFAULT_CH
+): void {
+    const { chKey, chStr, chProp, chNum, chPunc, chVar } = ch;
+    const stackup = ir.stackup;
+    if (!stackup || stackup.copperLayerCount < 2) {
+        return;
+    }
+
+    logger.log(
+        `Found layer stackup (${stackup.copperLayerCount} copper layers) in ${sourceDescription}. Generating typeCAD code.`
+    );
+
+    const parts: string[] = [`${chNum(stackup.copperLayerCount)}`];
+
+    // Emit options only when non-default.
+    const opts: string[] = [];
+    if (stackup.copperFinish && stackup.copperFinish !== 'None') {
+        opts.push(`${chProp('copper_finish')}${chPunc(':')} ${chStr(`'${stackup.copperFinish}'`)}`);
+    }
+    if (stackup.dielectricConstraints === true) {
+        opts.push(`${chProp('dielectric_constraints')}${chPunc(':')} ${chStr('true')}`);
+    }
+    if (opts.length > 0) {
+        parts.push(`${chPunc('{')} ${opts.join(`${chPunc(',')} `)} ${chPunc('}')}`);
+    }
+
+    let log = `${chVar('typecad')}${chPunc('.')}${chKey('stackup')}${chPunc('(')}`;
+    log += parts.join(`${chPunc(',')} `);
+    log += `${chPunc(')')}${chPunc(';')}`;
+
+    logger.log(chalk.bold(`\n--- Generated typeCAD Stackup Code from ${sourceDescription} ---`));
+    logger.log(log);
+    logger.log(chalk.bold('-----------------------------------------------------------'));
 }
 
 /**

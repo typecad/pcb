@@ -9,6 +9,8 @@ import type {
     KicadViaIR,
     KicadNetIR,
     KicadOutlineIR,
+    KicadStackupIR,
+    KicadStackupLayerIR,
     ReferencePropertyIR,
     CodeMetadata,
     LegacyCodeMetadata,
@@ -38,6 +40,7 @@ export class KicadIRBuilder {
             vias: this.parseVias(tree),
             outlines: this.parseOutlines(tree),
             nets: this.parseNets(tree),
+            stackup: this.parseStackup(tree),
         };
     }
 
@@ -400,18 +403,18 @@ export class KicadIRBuilder {
     // === Outlines ===
 
     private parseOutlines(tree: SExprNode): KicadOutlineIR[] {
-        const outlineTypes = ['gr_rect', 'gr_line', 'gr_arc', 'gr_circle'];
         return tree.findAll('gr_rect')
             .concat(tree.findAll('gr_line'))
             .concat(tree.findAll('gr_arc'))
             .concat(tree.findAll('gr_circle'))
+            .concat(tree.findAll('gr_poly'))
             .map(node => this.parseOutline(node))
             .filter((o): o is KicadOutlineIR => o !== null);
     }
 
     private parseOutline(node: SExprNode): KicadOutlineIR | null {
         const elementType = node.name;
-        const validTypes = ['gr_rect', 'gr_line', 'gr_arc', 'gr_circle'];
+        const validTypes = ['gr_rect', 'gr_line', 'gr_arc', 'gr_circle', 'gr_poly'];
         if (!validTypes.includes(elementType)) return null;
 
         // Only process Edge.Cuts layer outlines
@@ -437,7 +440,7 @@ export class KicadIRBuilder {
             ? { x: midNode.getNumber(1), y: midNode.getNumber(2) }
             : undefined;
 
-        let type: 'rect' | 'line' | 'arc' | 'circle';
+        let type: 'rect' | 'line' | 'arc' | 'circle' | 'poly';
         switch (elementType) {
             case 'gr_rect':
                 type = 'rect';
@@ -459,9 +462,57 @@ export class KicadIRBuilder {
                 type = 'circle';
                 if (center && end) return { type, center, end };
                 return null;
+            case 'gr_poly': {
+                type = 'poly';
+                const ptsNode = node.child('pts');
+                if (!ptsNode) return null;
+                const xyNodes = ptsNode.children('xy');
+                const points = xyNodes
+                    .map(xy => ({ x: xy.getNumber(1), y: xy.getNumber(2) }))
+                    .filter(p => Number.isFinite(p.x) && Number.isFinite(p.y));
+                if (points.length < 3) return null;
+                return { type, points };
+            }
             default:
                 return null;
         }
+    }
+
+    // === Stackup ===
+
+    /**
+     * Parse the `(setup (stackup ...))` block. Returns null if absent (e.g. a
+     * board with no stackup, or one generated without `pcb.stackup()`).
+     */
+    private parseStackup(tree: SExprNode): KicadStackupIR | null {
+        const stackupNode = tree.child('setup')?.child('stackup');
+        if (!stackupNode) return null;
+
+        const layerNodes = stackupNode.children('layer');
+        const layers: KicadStackupLayerIR[] = layerNodes.map(ln => {
+            const name = ln.stringValue ?? '';
+            const typeNode = ln.child('type');
+            const thicknessNode = ln.child('thickness');
+            const materialNode = ln.child('material');
+            return {
+                name,
+                type: typeNode?.stringValue ?? undefined,
+                thickness: thicknessNode ? thicknessNode.getNumber(1) : undefined,
+                material: materialNode?.stringValue ?? undefined,
+            };
+        });
+
+        const copperLayerCount = layers.filter(l => l.name.endsWith('.Cu')).length;
+
+        const finishNode = stackupNode.child('copper_finish');
+        const constraintsNode = stackupNode.child('dielectric_constraints');
+
+        return {
+            copperLayerCount,
+            layers,
+            copperFinish: finishNode?.stringValue ?? undefined,
+            dielectricConstraints: constraintsNode ? constraintsNode.getBool(1) ?? undefined : undefined,
+        };
     }
 
     // === Text Elements ===

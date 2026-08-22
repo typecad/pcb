@@ -1,0 +1,2688 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>rd_isl9120_impl - KiCad Symbol Viewer</title>
+    
+    <!-- Component Location Manager -->
+    <script>
+        // SVG Embedded Component Location Manager
+        class ComponentLocationManager {
+            constructor() {
+                this.locations = new Map();
+                this.VERSION = '1.0.0';
+                this.svgContent = '';
+                this.loadLocations();
+            }
+
+            async loadLocations() {
+                try {
+                    // Load from SVG data element
+                    this.loadFromSvg();
+                } catch (error) {
+                    console.warn(`Could not load component locations: ${error}`);
+                }
+            }
+            
+            loadFromSvg() {
+                try {
+                    // Get SVG element and look for location data directly in the DOM
+                    const svgElement = document.querySelector('svg');
+                    if (svgElement) {
+                        // Look for location data element directly in the DOM
+                        const dataElement = svgElement.querySelector('data[id="component-locations"]');
+                        if (dataElement) {
+                            const jsonData = dataElement.textContent.trim();
+                            if (jsonData) {
+                                const locationData = JSON.parse(jsonData);
+                                
+                                if (locationData.version === this.VERSION) {
+                                    locationData.components.forEach(comp => {
+                                        this.locations.set(comp.uuid, comp);
+                                    });
+                                    console.log(`Loaded ${this.locations.size} component locations from SVG data element`);
+                                } else {
+                                    console.warn(`Location data version mismatch. Expected ${this.VERSION}, found ${locationData.version}. Starting fresh.`);
+                                }
+                            } else {
+                                console.log('No location data content found in SVG data element');
+                            }
+                        } else {
+                            console.log('No location data element found in SVG');
+                        }
+                    } else {
+                        console.log('No SVG element found on page');
+                    }
+                } catch (error) {
+                    console.warn(`Could not load component locations from SVG: ${error}`);
+                }
+            }
+
+            saveLocations() {
+                const locationData = {
+                    version: this.VERSION,
+                    lastUpdated: Date.now(),
+                    components: Array.from(this.locations.values())
+                };
+
+                try {
+                    const jsonData = JSON.stringify(locationData, null, 2);
+                    const dataElement = `<data id="component-locations" type="application/json">${jsonData}</data>`;
+                    
+                    // Get the SVG element
+                    const svgElement = document.querySelector('svg');
+                    if (svgElement) {
+                        // Check if data element already exists
+                        const existingData = svgElement.querySelector('data[id="component-locations"]');
+                        if (existingData) {
+                            // Replace existing data element content
+                            existingData.textContent = jsonData;
+                        } else {
+                            // Insert new data element before closing </svg> tag
+                            svgElement.insertAdjacentHTML('beforeend', dataElement);
+                        }
+                        
+                        console.log(`Updated SVG with ${this.locations.size} component locations`);
+                    } else {
+                        console.error('No SVG element found for saving locations');
+                    }
+                    
+                    // Also save to server API for persistence
+                    this.saveToServer(locationData);
+                } catch (error) {
+                    console.error(`Failed to save component locations to SVG: ${error}`);
+                }
+            }
+            
+            async saveToServer(locationData) {
+                try {
+                    // Extract schematic name from the page title or use a default
+                    const title = document.title || 'schematic';
+                    const schematicName = title.replace(' - KiCad Symbol Viewer', '').toLowerCase().replace(/[^a-z0-9]/g, '_');
+                    
+                    // Save updated SVG with new component positions
+                    const svgElement = document.querySelector('svg');
+                    if (svgElement) {
+                        // Create a clean copy of the SVG without zoom transforms
+                        const cleanSvg = svgElement.cloneNode(true);
+                        
+                        // Remove zoom transform group and move its children back to the main SVG
+                        const transformGroup = cleanSvg.querySelector('#zoom-transform-group');
+                        if (transformGroup) {
+                            const children = Array.from(transformGroup.children);
+                            children.forEach(child => {
+                                cleanSvg.appendChild(child);
+                            });
+                            transformGroup.remove();
+                        }
+                        
+                        // Reset zoom and pan to default values
+                        cleanSvg.setAttribute('width', '2000');
+                        cleanSvg.setAttribute('height', '1500');
+                        
+                        const updatedSvgContent = cleanSvg.outerHTML;
+                        const svgResponse = await fetch(`/api/save-svg/${schematicName}`, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({ svgContent: updatedSvgContent })
+                        });
+                        
+                        if (svgResponse.ok) {
+                            console.log('Updated SVG saved to server successfully');
+                        } else {
+                            console.warn('Failed to save updated SVG to server:', svgResponse.statusText);
+                        }
+                    }
+                } catch (error) {
+                    console.warn('Could not save to server:', error);
+                }
+            }
+
+            generateSymbolHash(component, symbolContent) {
+                // Create a hash based on the symbol content to detect when the symbol changes
+                // This allows us to invalidate locations when the symbol definition changes
+                const hashString = symbolContent || '';
+                let hash = 0;
+                for (let i = 0; i < hashString.length; i++) {
+                    const char = hashString.charCodeAt(i);
+                    hash = ((hash << 5) - hash) + char;
+                    hash = hash & hash;
+                }
+                return hash.toString(16);
+            }
+
+            ensureComponentHasUUID(component) {
+                if (!component._uuid) {
+                    // Use only the reference for UUID generation to ensure consistency
+                    // between saving and loading, regardless of symbol/footprint/value changes
+                    const uuidString = component.reference;
+                    let hash = 0;
+                    for (let i = 0; i < uuidString.length; i++) {
+                        const char = uuidString.charCodeAt(i);
+                        hash = ((hash << 5) - hash) + char;
+                        hash = hash & hash;
+                    }
+                    component._uuid = `comp_${hash.toString(16)}`;
+                }
+            }
+
+            getLocation(component) {
+                this.ensureComponentHasUUID(component);
+                const location = this.locations.get(component._uuid);
+                if (location) {
+                    return { x: location.x, y: location.y, rotation: location.rotation || 0 };
+                }
+                return null;
+            }
+
+            setLocation(component, x, y, symbolContent, rotation = 0) {
+                this.ensureComponentHasUUID(component);
+                const symbolHash = this.generateSymbolHash(component, symbolContent);
+                
+                const location = {
+                    uuid: component._uuid,
+                    reference: component.reference,
+                    x,
+                    y,
+                    rotation,
+                    lastModified: Date.now(),
+                    symbolHash
+                };
+
+                this.locations.set(component._uuid, location);
+                this.saveLocations();
+            }
+
+            hasLocation(component) {
+                this.ensureComponentHasUUID(component);
+                return this.locations.has(component._uuid);
+            }
+
+            isLocationValid(component, symbolContent) {
+                this.ensureComponentHasUUID(component);
+                const location = this.locations.get(component._uuid);
+                if (!location) return false;
+
+                const currentHash = this.generateSymbolHash(component, symbolContent);
+                return location.symbolHash === currentHash;
+            }
+
+            removeLocation(component) {
+                this.ensureComponentHasUUID(component);
+                this.locations.delete(component._uuid);
+                this.saveLocations();
+            }
+
+            clearAllLocations() {
+                this.locations.clear();
+                this.saveLocations();
+            }
+
+            getLocationStats() {
+                let valid = 0;
+                let invalid = 0;
+
+                this.locations.forEach(location => {
+                    const ageInDays = (Date.now() - location.lastModified) / (1000 * 60 * 60 * 24);
+                    if (ageInDays < 30) {
+                        valid++;
+                    } else {
+                        invalid++;
+                    }
+                });
+
+                return {
+                    total: this.locations.size,
+                    valid,
+                    invalid
+                };
+            }
+
+            // Reference text positioning methods
+            setReferenceTextPosition(component, x, y) {
+                this.ensureComponentHasUUID(component);
+                
+                const location = this.locations.get(component._uuid);
+                if (location) {
+                    // Update existing location with reference text position
+                    location.referenceTextX = x;
+                    location.referenceTextY = y;
+                    location.lastModified = Date.now();
+                } else {
+                    // Create new location entry with just reference text position
+                    const newLocation = {
+                        uuid: component._uuid,
+                        reference: component.reference,
+                        x: 0, // Default component position
+                        y: 0,
+                        rotation: 0,
+                        lastModified: Date.now(),
+                        symbolHash: '',
+                        referenceTextX: x,
+                        referenceTextY: y
+                    };
+                    this.locations.set(component._uuid, newLocation);
+                }
+                
+                this.saveLocations();
+            }
+
+            getReferenceTextPosition(component) {
+                this.ensureComponentHasUUID(component);
+                
+                const location = this.locations.get(component._uuid);
+                if (location && location.referenceTextX !== undefined && location.referenceTextY !== undefined) {
+                    return { x: location.referenceTextX, y: location.referenceTextY };
+                }
+                return null;
+            }
+
+            updateSvgContent(svgContent) {
+                // For browser implementation, we don't need to update SVG content string
+                // since we're working directly with the DOM
+                console.log('SVG content update requested (browser implementation)');
+            }
+        }
+    </script>
+    <style>
+        :root {
+            
+            --schematic-background: #282828;
+            --schematic-component-body: #32302f;
+            --schematic-component-outline: #83a598;
+            --schematic-pin: #689d6a;
+            --schematic-pin-name: #d5c4a1;
+            --schematic-pin-number: #fabd2f;
+            --schematic-wire: #789d6a;
+            --schematic-reference: #fbf1c7;
+            --schematic-shadow: #fbf1c7;
+        }
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            background-color: #f5f5f5;
+        }
+        #svg-container {
+            width: 100%;
+            height: 100vh;
+            background: white;
+            margin: 0;
+            display: block;
+            overflow: auto;
+        }
+        svg {
+            display: block;
+            cursor: crosshair;
+        }
+        svg.panning {
+            cursor: grab;
+        }
+        svg.panning:active {
+            cursor: grabbing;
+        }
+        svg.dragging {
+            cursor: grabbing !important;
+        }
+        g[data-component] {
+            cursor: grab;
+        }
+        .component-overlay {
+            cursor: grab;
+        }
+
+        .connection-wire {
+            transition: all 0.1s ease-out;
+        }
+        .connection-wire:hover {
+            stroke-width: 4;
+            filter: drop-shadow(0 0 3px var(--schematic-shadow));
+        }
+        .component-blocked {
+            opacity: 0.5;
+            filter: drop-shadow(0 0 8px red);
+        }
+        .component-dragging {
+            opacity: 0.8;
+            filter: drop-shadow(0 0 4px rgba(0, 0, 0, 0.3));
+            cursor: grabbing !important;
+        }
+        .component-selected {
+            /* No outline on the component group itself */
+        }
+        
+        /* Highlight symbol body elements when component is selected */
+        .component-selected rect:not(.component-overlay):not(.pin-connection-indicator) {
+            stroke: var(--schematic-shadow, rgb(251, 241, 199));
+            stroke-width: 2px;
+        }
+        
+        .component-selected circle:not(.pin-connection-indicator) {
+            stroke: var(--schematic-shadow, rgb(251, 241, 199));
+            stroke-width: 2px;
+        }
+        
+        .component-selected polyline {
+            stroke: var(--schematic-shadow, rgb(251, 241, 199));
+            stroke-width: 2px;
+        }
+        
+        .component-selected line:not(.pin-connection-indicator) {
+            stroke: var(--schematic-shadow, rgb(251, 241, 199));
+            stroke-width: 2px;
+        }
+        
+        /* Highlight all text elements within selected component */
+        .component-selected text {
+            stroke: var(--schematic-shadow, rgb(251, 241, 199));
+            stroke-width: 1px;
+            paint-order: stroke;
+            stroke-linejoin: round;
+        }
+        
+        /* Reference text selection styling - outline only */
+        .reference-selected {
+            stroke: var(--schematic-shadow, rgb(251, 241, 199));
+            stroke-width: 2px;
+            paint-order: stroke;
+            stroke-linejoin: round;
+        }
+        
+
+        
+
+        
+        /* Wire label styling - color will be set dynamically by JavaScript */
+        .wire-label {
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            font-size: 10px;
+            text-anchor: middle;
+            dominant-baseline: central;
+            pointer-events: none; /* Labels don't interfere with interactions */
+            font-weight: bold;
+        }
+        
+        /* Make labels scale appropriately with zoom */
+        .wire-label {
+            transition: opacity 0.1s ease;
+        }
+        
+        /* Ensure reference text is always visible on top */
+        text[data-reference] {
+            pointer-events: auto;
+            cursor: grab;
+            user-select: none;
+        }
+        
+        text[data-reference]:hover {
+            opacity: 0.8;
+        }
+
+        /* Fix for pin text elements that appear upside down when component is rotated 180 degrees */
+        /* Target pin text elements inside components marked as rotated 180 degrees */
+        g[data-component][data-rotated-180] .pin-name-text,
+        g[data-component][data-rotated-180] .pin-number-text,
+        g[data-component][data-rotated-180] .pin-name-text--overline {
+            transform: scale(-1, -1);
+            transform-origin: center;
+            transform-box: fill-box;
+        }
+
+        /* Ensure overlines mirror with flipped text */
+        g[data-component][data-rotated-180] .pin-name-overline {
+            transform: scale(-1, -1);
+            transform-origin: center;
+            transform-box: fill-box;
+        }
+
+        /* Keep overline above text when flipped by using text-decoration and hiding the line */
+        g[data-component][data-rotated-180] .pin-name-overline { display: none; }
+        g[data-component][data-rotated-180] .pin-name-text--overline { text-decoration: overline; }
+
+        /* Pure-CSS fallback: detect 180° via transform attribute on the component group */
+        g[data-component][transform*="rotate(180"] .pin-name-text,
+        g[data-component][transform*="rotate(180"] .pin-number-text,
+        g[data-component][transform*="rotate(180"] .pin-name-overline,
+        g[data-component][transform*="rotate(180"] .pin-name-text--overline,
+        g[data-component][transform*="rotate(-180"] .pin-name-text,
+        g[data-component][transform*="rotate(-180"] .pin-number-text,
+        g[data-component][transform*="rotate(-180"] .pin-name-overline,
+        g[data-component][transform*="rotate(-180"] .pin-name-text--overline {
+            transform: scale(-1, -1);
+            transform-origin: center;
+            transform-box: fill-box;
+        }
+
+        /* Fallback for transform attribute detection */
+        g[data-component][transform*="rotate(180"] .pin-name-overline { display: none; }
+        g[data-component][transform*="rotate(180"] .pin-name-text--overline { text-decoration: overline; }
+    </style>
+</head>
+<body>
+
+
+    <div id="svg-container">
+        <svg width="2000" height="1500" xmlns="http://www.w3.org/2000/svg">
+            <!-- Grid pattern definition -->
+            <defs>
+                <pattern id="grid" width="25.4" height="25.4" patternUnits="userSpaceOnUse">
+                    <circle cx="0" cy="0" r="1.5" fill="#d0d0d0" stroke="none"/>
+                </pattern>
+                <pattern id="smallgrid" width="2.54" height="2.54" patternUnits="userSpaceOnUse">
+                    <circle cx="0" cy="0" r="0.8" fill="#e0e0e0" opacity="0.6"/>
+                </pattern>
+            </defs>
+            
+            <!-- Grid background layers -->
+            <rect width="100%" height="100%" fill="white"/>
+            <rect width="100%" height="100%" fill="url(#smallgrid)"/>
+            <rect width="100%" height="100%" fill="url(#grid)"/>
+            
+            
+<defs>
+  <style><![CDATA[
+g[data-component][data-rotated-180] .pin-name-text,
+g[data-component][data-rotated-180] .pin-number-text,
+g[data-component][data-rotated-180] .pin-name-overline {
+    transform: scale(-1, -1);
+    transform-origin: center;
+    transform-box: fill-box;
+}
+/* Keep overline above text when flipped */
+g[data-component][data-rotated-180] .pin-name-overline { display: none; }
+g[data-component][data-rotated-180] .pin-name-text--overline { text-decoration: overline; }
+  ]]></style>
+</defs>
+<defs>
+  <pattern id="grid" width="25.4" height="25.4" patternUnits="userSpaceOnUse">
+    <rect width="25.4" height="25.4" fill="none" stroke="none"/>
+    <circle cx="0" cy="0" r="1" fill="#928374" stroke="none"/>
+  </pattern>
+</defs>
+<rect width="2000" height="1500" fill="#282828"/>
+<rect width="2000" height="1500" fill="url(#grid)" opacity="0.3"/>
+<g transform="translate(508, 254)" data-component="VR1"><defs>
+<style><![CDATA[
+g[data-component][data-rotated-180] .pin-name-text,
+g[data-component][data-rotated-180] .pin-number-text,
+g[data-component][data-rotated-180] .pin-name-overline {
+    transform: scale(-1, -1);
+    transform-origin: center;
+    transform-box: fill-box;
+}
+/* Keep overline above text when flipped */
+g[data-component][data-rotated-180] .pin-name-overline { display: none; }
+g[data-component][data-rotated-180] .pin-name-text--overline { text-decoration: overline; }
+]]></style>
+</defs>
+<g transform="translate(25.4, 203.2)">
+<rect x="50.8" y="-127" width="203.2" height="304.8" fill="#32302f" stroke="#83a598" stroke-width="2.54"/>
+<line x1="0" y1="0" x2="50.8" y2="0" stroke="#689d6a" stroke-width="2" stroke-linecap="round"/>
+<circle cx="0" cy="0" r="3" fill="#689d6a" stroke="#689d6a" class="pin-connection-indicator"/>
+<text x="70.8" y="0" font-family="Consolas, Monaco, Courier New, monospace" font-size="16" fill="#d5c4a1" text-anchor="start" dominant-baseline="central" class="pin-name-text">LX2_1</text>
+<text x="25.4" y="-12" font-family="Consolas, Monaco, Courier New, monospace" font-size="16" fill="#fabd2f" text-anchor="middle" dominant-baseline="central" class="pin-number-text">1</text>
+<line x1="0" y1="25.4" x2="50.8" y2="25.4" stroke="#689d6a" stroke-width="2" stroke-linecap="round"/>
+<circle cx="0" cy="25.4" r="3" fill="#689d6a" stroke="#689d6a" class="pin-connection-indicator"/>
+<text x="70.8" y="25.4" font-family="Consolas, Monaco, Courier New, monospace" font-size="16" fill="#d5c4a1" text-anchor="start" dominant-baseline="central" class="pin-name-text">PGND</text>
+<text x="25.4" y="13.399999999999999" font-family="Consolas, Monaco, Courier New, monospace" font-size="16" fill="#fabd2f" text-anchor="middle" dominant-baseline="central" class="pin-number-text">2</text>
+<line x1="0" y1="50.8" x2="50.8" y2="50.8" stroke="#689d6a" stroke-width="2" stroke-linecap="round"/>
+<circle cx="0" cy="50.8" r="3" fill="#689d6a" stroke="#689d6a" class="pin-connection-indicator"/>
+<text x="70.8" y="50.8" font-family="Consolas, Monaco, Courier New, monospace" font-size="16" fill="#d5c4a1" text-anchor="start" dominant-baseline="central" class="pin-name-text">LX1_1</text>
+<text x="25.4" y="38.8" font-family="Consolas, Monaco, Courier New, monospace" font-size="16" fill="#fabd2f" text-anchor="middle" dominant-baseline="central" class="pin-number-text">3</text>
+<line x1="127" y1="228.6" x2="127" y2="177.8" stroke="#689d6a" stroke-width="2" stroke-linecap="round"/>
+<circle cx="127" cy="228.6" r="3" fill="#689d6a" stroke="#689d6a" class="pin-connection-indicator"/>
+<text x="103" y="-107" font-family="Consolas, Monaco, Courier New, monospace" font-size="16" fill="#d5c4a1" text-anchor="start" dominant-baseline="central" class="pin-name-text" transform="rotate(-90, 127, -107)">LX1_2</text>
+<text x="115" y="203.2" font-family="Consolas, Monaco, Courier New, monospace" font-size="16" fill="#fabd2f" text-anchor="middle" dominant-baseline="central" class="pin-number-text" transform="rotate(-90, 115, 203.2)">4</text>
+<line x1="152.4" y1="228.6" x2="152.4" y2="177.8" stroke="#689d6a" stroke-width="2" stroke-linecap="round"/>
+<circle cx="152.4" cy="228.6" r="3" fill="#689d6a" stroke="#689d6a" class="pin-connection-indicator"/>
+<text x="128.4" y="-107" font-family="Consolas, Monaco, Courier New, monospace" font-size="16" fill="#d5c4a1" text-anchor="start" dominant-baseline="central" class="pin-name-text" transform="rotate(-90, 152.4, -107)">VIN_1</text>
+<text x="140.4" y="203.2" font-family="Consolas, Monaco, Courier New, monospace" font-size="16" fill="#fabd2f" text-anchor="middle" dominant-baseline="central" class="pin-number-text" transform="rotate(-90, 140.4, 203.2)">5</text>
+<line x1="177.8" y1="228.6" x2="177.8" y2="177.8" stroke="#689d6a" stroke-width="2" stroke-linecap="round"/>
+<circle cx="177.8" cy="228.6" r="3" fill="#689d6a" stroke="#689d6a" class="pin-connection-indicator"/>
+<text x="153.8" y="-107" font-family="Consolas, Monaco, Courier New, monospace" font-size="16" fill="#d5c4a1" text-anchor="start" dominant-baseline="central" class="pin-name-text" transform="rotate(-90, 177.8, -107)">VIN_2</text>
+<text x="165.8" y="203.2" font-family="Consolas, Monaco, Courier New, monospace" font-size="16" fill="#fabd2f" text-anchor="middle" dominant-baseline="central" class="pin-number-text" transform="rotate(-90, 165.8, 203.2)">6</text>
+<line x1="304.8" y1="0" x2="254" y2="0" stroke="#689d6a" stroke-width="2" stroke-linecap="round"/>
+<circle cx="304.8" cy="0" r="3" fill="#689d6a" stroke="#689d6a" class="pin-connection-indicator"/>
+<text x="214.8" y="0" font-family="Consolas, Monaco, Courier New, monospace" font-size="16" fill="#d5c4a1" text-anchor="start" dominant-baseline="central" class="pin-name-text">EN</text>
+<text x="279.4" y="-12" font-family="Consolas, Monaco, Courier New, monospace" font-size="16" fill="#fabd2f" text-anchor="middle" dominant-baseline="central" class="pin-number-text">9</text>
+<line x1="304.8" y1="25.4" x2="254" y2="25.4" stroke="#689d6a" stroke-width="2" stroke-linecap="round"/>
+<circle cx="304.8" cy="25.4" r="3" fill="#689d6a" stroke="#689d6a" class="pin-connection-indicator"/>
+<text x="205.2" y="25.4" font-family="Consolas, Monaco, Courier New, monospace" font-size="16" fill="#d5c4a1" text-anchor="start" dominant-baseline="central" class="pin-name-text">GND</text>
+<text x="279.4" y="13.399999999999999" font-family="Consolas, Monaco, Courier New, monospace" font-size="16" fill="#fabd2f" text-anchor="middle" dominant-baseline="central" class="pin-number-text">8</text>
+<line x1="304.8" y1="50.8" x2="254" y2="50.8" stroke="#689d6a" stroke-width="2" stroke-linecap="round"/>
+<circle cx="304.8" cy="50.8" r="3" fill="#689d6a" stroke="#689d6a" class="pin-connection-indicator"/>
+<text x="195.6" y="50.8" font-family="Consolas, Monaco, Courier New, monospace" font-size="16" fill="#d5c4a1" text-anchor="start" dominant-baseline="central" class="pin-name-text">BYPS</text>
+<text x="279.4" y="38.8" font-family="Consolas, Monaco, Courier New, monospace" font-size="16" fill="#fabd2f" text-anchor="middle" dominant-baseline="central" class="pin-number-text">7</text>
+<line x1="101.6" y1="-177.8" x2="101.6" y2="-127" stroke="#689d6a" stroke-width="2" stroke-linecap="round"/>
+<circle cx="101.6" cy="-177.8" r="3" fill="#689d6a" stroke="#689d6a" class="pin-connection-indicator"/>
+<text x="92" y="157.8" font-family="Consolas, Monaco, Courier New, monospace" font-size="16" fill="#d5c4a1" text-anchor="start" dominant-baseline="central" class="pin-name-text" transform="rotate(-90, 101.6, 157.8)">EP</text>
+<text x="89.6" y="-152.4" font-family="Consolas, Monaco, Courier New, monospace" font-size="16" fill="#fabd2f" text-anchor="middle" dominant-baseline="central" class="pin-number-text" transform="rotate(-90, 89.6, -152.4)">13</text>
+<line x1="127" y1="-177.8" x2="127" y2="-127" stroke="#689d6a" stroke-width="2" stroke-linecap="round"/>
+<circle cx="127" cy="-177.8" r="3" fill="#689d6a" stroke="#689d6a" class="pin-connection-indicator"/>
+<text x="103" y="157.8" font-family="Consolas, Monaco, Courier New, monospace" font-size="16" fill="#d5c4a1" text-anchor="start" dominant-baseline="central" class="pin-name-text" transform="rotate(-90, 127, 157.8)">LX2_2</text>
+<text x="115" y="-152.4" font-family="Consolas, Monaco, Courier New, monospace" font-size="16" fill="#fabd2f" text-anchor="middle" dominant-baseline="central" class="pin-number-text" transform="rotate(-90, 115, -152.4)">12</text>
+<line x1="152.4" y1="-177.8" x2="152.4" y2="-127" stroke="#689d6a" stroke-width="2" stroke-linecap="round"/>
+<circle cx="152.4" cy="-177.8" r="3" fill="#689d6a" stroke="#689d6a" class="pin-connection-indicator"/>
+<text x="133.20000000000002" y="157.8" font-family="Consolas, Monaco, Courier New, monospace" font-size="16" fill="#d5c4a1" text-anchor="start" dominant-baseline="central" class="pin-name-text" transform="rotate(-90, 152.4, 157.8)">VOUT</text>
+<text x="140.4" y="-152.4" font-family="Consolas, Monaco, Courier New, monospace" font-size="16" fill="#fabd2f" text-anchor="middle" dominant-baseline="central" class="pin-number-text" transform="rotate(-90, 140.4, -152.4)">11</text>
+<line x1="177.8" y1="-177.8" x2="177.8" y2="-127" stroke="#689d6a" stroke-width="2" stroke-linecap="round"/>
+<circle cx="177.8" cy="-177.8" r="3" fill="#689d6a" stroke="#689d6a" class="pin-connection-indicator"/>
+<text x="168.20000000000002" y="157.8" font-family="Consolas, Monaco, Courier New, monospace" font-size="16" fill="#d5c4a1" text-anchor="start" dominant-baseline="central" class="pin-name-text" transform="rotate(-90, 177.8, 157.8)">FB</text>
+<text x="165.8" y="-152.4" font-family="Consolas, Monaco, Courier New, monospace" font-size="16" fill="#fabd2f" text-anchor="middle" dominant-baseline="central" class="pin-number-text" transform="rotate(-90, 165.8, -152.4)">10</text>
+</g></g>
+<text x="533.4" y="271.4" font-family="Consolas, Monaco, Courier New, monospace" font-size="18" fill="#fbf1c7" text-anchor="start" dominant-baseline="text-after-edge" class="component-reference" data-reference="VR1">VR1</text>
+<g transform="translate(1270, 1016)" data-component="C1"><defs>
+<style><![CDATA[
+g[data-component][data-rotated-180] .pin-name-text,
+g[data-component][data-rotated-180] .pin-number-text,
+g[data-component][data-rotated-180] .pin-name-overline {
+    transform: scale(-1, -1);
+    transform-origin: center;
+    transform-box: fill-box;
+}
+/* Keep overline above text when flipped */
+g[data-component][data-rotated-180] .pin-name-overline { display: none; }
+g[data-component][data-rotated-180] .pin-name-text--overline { text-decoration: overline; }
+]]></style>
+</defs>
+<g transform="translate(50.8, 50.8)">
+<polyline points="-15.24,-5.08 15.24,-5.08" fill="none" stroke="#83a598" stroke-width="3.048" stroke-linejoin="round" stroke-linecap="round"/>
+<polyline points="-15.24,5.08 15.24,5.08" fill="none" stroke="#83a598" stroke-width="3.302" stroke-linejoin="round" stroke-linecap="round"/>
+<line x1="0" y1="-25.4" x2="0" y2="-5.08" stroke="#689d6a" stroke-width="2" stroke-linecap="round"/>
+<circle cx="0" cy="-25.4" r="3" fill="#689d6a" stroke="#689d6a" class="pin-connection-indicator"/>
+<text x="-12" y="-15.239999999999998" font-family="Consolas, Monaco, Courier New, monospace" font-size="16" fill="#fabd2f" text-anchor="middle" dominant-baseline="central" class="pin-number-text" transform="rotate(-90, -12, -15.239999999999998)">1</text>
+<line x1="0" y1="25.4" x2="0" y2="5.08" stroke="#689d6a" stroke-width="2" stroke-linecap="round"/>
+<circle cx="0" cy="25.4" r="3" fill="#689d6a" stroke="#689d6a" class="pin-connection-indicator"/>
+<text x="-12" y="15.239999999999998" font-family="Consolas, Monaco, Courier New, monospace" font-size="16" fill="#fabd2f" text-anchor="middle" dominant-baseline="central" class="pin-number-text" transform="rotate(-90, -12, 15.239999999999998)">2</text>
+</g></g>
+<text x="1305.56" y="1033.4" font-family="Consolas, Monaco, Courier New, monospace" font-size="18" fill="#fbf1c7" text-anchor="start" dominant-baseline="text-after-edge" class="component-reference" data-reference="C1">C1</text>
+<g transform="translate(508, 1016)" data-component="C2"><defs>
+<style><![CDATA[
+g[data-component][data-rotated-180] .pin-name-text,
+g[data-component][data-rotated-180] .pin-number-text,
+g[data-component][data-rotated-180] .pin-name-overline {
+    transform: scale(-1, -1);
+    transform-origin: center;
+    transform-box: fill-box;
+}
+/* Keep overline above text when flipped */
+g[data-component][data-rotated-180] .pin-name-overline { display: none; }
+g[data-component][data-rotated-180] .pin-name-text--overline { text-decoration: overline; }
+]]></style>
+</defs>
+<g transform="translate(50.8, 50.8)">
+<polyline points="-15.24,-5.08 15.24,-5.08" fill="none" stroke="#83a598" stroke-width="3.048" stroke-linejoin="round" stroke-linecap="round"/>
+<polyline points="-15.24,5.08 15.24,5.08" fill="none" stroke="#83a598" stroke-width="3.302" stroke-linejoin="round" stroke-linecap="round"/>
+<line x1="0" y1="-25.4" x2="0" y2="-5.08" stroke="#689d6a" stroke-width="2" stroke-linecap="round"/>
+<circle cx="0" cy="-25.4" r="3" fill="#689d6a" stroke="#689d6a" class="pin-connection-indicator"/>
+<text x="-12" y="-15.239999999999998" font-family="Consolas, Monaco, Courier New, monospace" font-size="16" fill="#fabd2f" text-anchor="middle" dominant-baseline="central" class="pin-number-text" transform="rotate(-90, -12, -15.239999999999998)">1</text>
+<line x1="0" y1="25.4" x2="0" y2="5.08" stroke="#689d6a" stroke-width="2" stroke-linecap="round"/>
+<circle cx="0" cy="25.4" r="3" fill="#689d6a" stroke="#689d6a" class="pin-connection-indicator"/>
+<text x="-12" y="15.239999999999998" font-family="Consolas, Monaco, Courier New, monospace" font-size="16" fill="#fabd2f" text-anchor="middle" dominant-baseline="central" class="pin-number-text" transform="rotate(-90, -12, 15.239999999999998)">2</text>
+</g></g>
+<text x="543.56" y="1033.4" font-family="Consolas, Monaco, Courier New, monospace" font-size="18" fill="#fbf1c7" text-anchor="start" dominant-baseline="text-after-edge" class="component-reference" data-reference="C2">C2</text>
+<g transform="translate(1270, 1270)" data-component="L1"><defs>
+<style><![CDATA[
+g[data-component][data-rotated-180] .pin-name-text,
+g[data-component][data-rotated-180] .pin-number-text,
+g[data-component][data-rotated-180] .pin-name-overline {
+    transform: scale(-1, -1);
+    transform-origin: center;
+    transform-box: fill-box;
+}
+/* Keep overline above text when flipped */
+g[data-component][data-rotated-180] .pin-name-overline { display: none; }
+g[data-component][data-rotated-180] .pin-name-text--overline { text-decoration: overline; }
+]]></style>
+</defs>
+<g transform="translate(25.4, 50.8)">
+<path d="M 0 -20.32 A 5.080039525691699 5.080039525691699 0 0 1 0 -10.16" fill="none" stroke="#83a598" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M 0 -10.16 A 5.080039525691701 5.080039525691701 0 0 1 0 0" fill="none" stroke="#83a598" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M 0 0 A 5.080039525691699 5.080039525691699 0 0 1 0 10.16" fill="none" stroke="#83a598" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M 0 10.16 A 5.080039525691699 5.080039525691699 0 0 1 0 20.32" fill="none" stroke="#83a598" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<line x1="0" y1="-25.4" x2="0" y2="-20.32" stroke="#689d6a" stroke-width="2" stroke-linecap="round"/>
+<circle cx="0" cy="-25.4" r="3" fill="#689d6a" stroke="#689d6a" class="pin-connection-indicator"/>
+<text x="-12" y="-22.86" font-family="Consolas, Monaco, Courier New, monospace" font-size="16" fill="#fabd2f" text-anchor="middle" dominant-baseline="central" class="pin-number-text" transform="rotate(-90, -12, -22.86)">1</text>
+<line x1="0" y1="25.4" x2="0" y2="20.32" stroke="#689d6a" stroke-width="2" stroke-linecap="round"/>
+<circle cx="0" cy="25.4" r="3" fill="#689d6a" stroke="#689d6a" class="pin-connection-indicator"/>
+<text x="-12" y="22.86" font-family="Consolas, Monaco, Courier New, monospace" font-size="16" fill="#fabd2f" text-anchor="middle" dominant-baseline="central" class="pin-number-text" transform="rotate(-90, -12, 22.86)">2</text>
+</g></g>
+<text x="1285.3000000000002" y="1287.3999999999999" font-family="Consolas, Monaco, Courier New, monospace" font-size="18" fill="#fbf1c7" text-anchor="start" dominant-baseline="text-after-edge" class="component-reference" data-reference="L1">L1</text>
+<line x1="685.8" y1="685.8" x2="711.2" y2="685.8" stroke="#789d6a" stroke-width="3" stroke-linecap="round" data-net="net1" class="connection-wire"/>
+<text x="698.5" y="680.8" font-family="Consolas, Monaco, Courier New, monospace" font-size="12" fill="#d65d0e" text-anchor="middle" dominant-baseline="central" transform="rotate(0 698.5 685.8)" class="wire-label">net1</text>
+<line x1="711.2" y1="685.8" x2="1320.8" y2="1092.2" stroke="#789d6a" stroke-width="3" stroke-linecap="round" data-net="net1" class="connection-wire"/>
+<text x="1016" y="884" font-family="Consolas, Monaco, Courier New, monospace" font-size="12" fill="#d65d0e" text-anchor="middle" dominant-baseline="central" transform="rotate(33.6900675259798 1016 889)" class="wire-label">net1</text>
+<line x1="533.4" y1="508" x2="660.4" y2="685.8" stroke="#789d6a" stroke-width="3" stroke-linecap="round" data-net="net2" class="connection-wire"/>
+<text x="596.9" y="591.9" font-family="Consolas, Monaco, Courier New, monospace" font-size="12" fill="#d65d0e" text-anchor="middle" dominant-baseline="central" transform="rotate(54.46232220802562 596.9 596.9)" class="wire-label">net2</text>
+<line x1="660.4" y1="685.8" x2="1295.4" y2="1295.4" stroke="#789d6a" stroke-width="3" stroke-linecap="round" data-net="net2" class="connection-wire"/>
+<text x="977.9000000000001" y="985.6" font-family="Consolas, Monaco, Courier New, monospace" font-size="12" fill="#d65d0e" text-anchor="middle" dominant-baseline="central" transform="rotate(43.830860672092584 977.9000000000001 990.6)" class="wire-label">net2</text>
+<line x1="533.4" y1="457.2" x2="660.4" y2="279.4" stroke="#789d6a" stroke-width="3" stroke-linecap="round" data-net="net3" class="connection-wire"/>
+<text x="596.9" y="363.29999999999995" font-family="Consolas, Monaco, Courier New, monospace" font-size="12" fill="#d65d0e" text-anchor="middle" dominant-baseline="central" transform="rotate(-54.46232220802562 596.9 368.29999999999995)" class="wire-label">net3</text>
+<line x1="533.4" y1="457.2" x2="1295.4" y2="1346.2" stroke="#789d6a" stroke-width="3" stroke-linecap="round" data-net="net3" class="connection-wire"/>
+<text x="914.4000000000001" y="896.7" font-family="Consolas, Monaco, Courier New, monospace" font-size="12" fill="#d65d0e" text-anchor="middle" dominant-baseline="central" transform="rotate(49.39870535499553 914.4000000000001 901.7)" class="wire-label">net3</text>
+<line x1="558.8" y1="1041.4" x2="685.8" y2="279.4" stroke="#789d6a" stroke-width="3" stroke-linecap="round" data-net="net4" class="connection-wire"/>
+<text x="622.3" y="655.4000000000001" font-family="Consolas, Monaco, Courier New, monospace" font-size="12" fill="#d65d0e" text-anchor="middle" dominant-baseline="central" transform="rotate(-80.53767779197439 622.3 660.4000000000001)" class="wire-label">net4</text>
+<line x1="685.8" y1="279.4" x2="711.2" y2="279.4" stroke="#789d6a" stroke-width="3" stroke-linecap="round" data-net="net4" class="connection-wire"/>
+<text x="698.5" y="274.4" font-family="Consolas, Monaco, Courier New, monospace" font-size="12" fill="#d65d0e" text-anchor="middle" dominant-baseline="central" transform="rotate(0 698.5 279.4)" class="wire-label">net4</text>
+<line x1="838.2" y1="482.6" x2="838.2" y2="508" stroke="#789d6a" stroke-width="3" stroke-linecap="round" data-net="net5" class="connection-wire"/>
+<text x="838.2" y="490.3" font-family="Consolas, Monaco, Courier New, monospace" font-size="12" fill="#d65d0e" text-anchor="middle" dominant-baseline="central" transform="rotate(90 838.2 495.3)" class="wire-label">net5</text>
+<line x1="838.2" y1="482.6" x2="635" y2="279.4" stroke="#789d6a" stroke-width="3" stroke-linecap="round" data-net="net5" class="connection-wire"/>
+<text x="736.6" y="376" font-family="Consolas, Monaco, Courier New, monospace" font-size="12" fill="#d65d0e" text-anchor="middle" dominant-baseline="central" transform="rotate(45 736.6 381)" class="wire-label">net5</text>
+<line x1="635" y1="279.4" x2="533.4" y2="482.6" stroke="#789d6a" stroke-width="3" stroke-linecap="round" data-net="net5" class="connection-wire"/>
+<text x="584.2" y="376" font-family="Consolas, Monaco, Courier New, monospace" font-size="12" fill="#d65d0e" text-anchor="middle" dominant-baseline="central" transform="rotate(296.565051177078 584.2 381)" class="wire-label">net5</text>
+<path d="M 533.4,482.6 Q 665.9959687710822,782.4043346345384 558.8,1092.2" stroke="#789d6a" stroke-width="3" stroke-linecap="round" fill="none" data-net="net5" class="connection-wire"/>
+<text x="606.047984385541" y="776.9021673172692" font-family="Consolas, Monaco, Courier New, monospace" font-size="12" fill="#d65d0e" text-anchor="middle" dominant-baseline="central" transform="rotate(87.61405596961119 606.047984385541 784.9021673172692)" class="wire-label">net5</text>
+<line x1="838.2" y1="508" x2="1320.8" y2="1041.4" stroke="#789d6a" stroke-width="3" stroke-linecap="round" data-net="net5" class="connection-wire"/>
+<text x="1079.5" y="769.7" font-family="Consolas, Monaco, Courier New, monospace" font-size="12" fill="#d65d0e" text-anchor="middle" dominant-baseline="central" transform="rotate(47.862405226111754 1079.5 774.7)" class="wire-label">net5</text>
+<data id="component-locations" type="application/json">{
+  "version": "1.0.0",
+  "lastUpdated": 1775743623234,
+  "components": [
+    {
+      "uuid": "comp_14cf5",
+      "reference": "VR1",
+      "x": 508,
+      "y": 254,
+      "rotation": 0,
+      "lastModified": 1775743623230,
+      "symbolHash": "-40afc615"
+    },
+    {
+      "uuid": "comp_84e",
+      "reference": "C1",
+      "x": 1270,
+      "y": 1016,
+      "rotation": 0,
+      "lastModified": 1775743623231,
+      "symbolHash": "e3da62f"
+    },
+    {
+      "uuid": "comp_84f",
+      "reference": "C2",
+      "x": 508,
+      "y": 1016,
+      "rotation": 0,
+      "lastModified": 1775743623231,
+      "symbolHash": "e3da62f"
+    },
+    {
+      "uuid": "comp_965",
+      "reference": "L1",
+      "x": 1270,
+      "y": 1270,
+      "rotation": 0,
+      "lastModified": 1775743623232,
+      "symbolHash": "-5aa95518"
+    }
+  ]
+}</data>
+
+        </svg>
+    </div>
+
+    <script>
+        const container = document.getElementById('svg-container');
+        // Function to get the current SVG element
+        function getSvg() {
+            return container.querySelector('svg');
+        }
+        let svg = getSvg();
+        
+        // Parse embedded data
+        const pinPositionsData = [["VR1_1",{"x":533.4,"y":457.2,"componentRef":"VR1","pinNumber":"1","pinName":"LX2_1","pinType":"unspecified","originalOffset":{"x":508,"y":254},"localX":25.4,"localY":203.2,"rotation":0}],["VR1_2",{"x":533.4,"y":482.6,"componentRef":"VR1","pinNumber":"2","pinName":"PGND","pinType":"unspecified","originalOffset":{"x":508,"y":254},"localX":25.4,"localY":228.6,"rotation":0}],["VR1_3",{"x":533.4,"y":508,"componentRef":"VR1","pinNumber":"3","pinName":"LX1_1","pinType":"unspecified","originalOffset":{"x":508,"y":254},"localX":25.4,"localY":254,"rotation":0}],["VR1_4",{"x":660.4,"y":685.8,"componentRef":"VR1","pinNumber":"4","pinName":"LX1_2","pinType":"unspecified","originalOffset":{"x":508,"y":254},"localX":152.4,"localY":431.79999999999995,"rotation":0}],["VR1_5",{"x":685.8,"y":685.8,"componentRef":"VR1","pinNumber":"5","pinName":"VIN_1","pinType":"unspecified","originalOffset":{"x":508,"y":254},"localX":177.8,"localY":431.79999999999995,"rotation":0}],["VR1_6",{"x":711.2,"y":685.8,"componentRef":"VR1","pinNumber":"6","pinName":"VIN_2","pinType":"unspecified","originalOffset":{"x":508,"y":254},"localX":203.20000000000002,"localY":431.79999999999995,"rotation":0}],["VR1_9",{"x":838.2,"y":457.2,"componentRef":"VR1","pinNumber":"9","pinName":"EN","pinType":"unspecified","originalOffset":{"x":508,"y":254},"localX":330.2,"localY":203.2,"rotation":0}],["VR1_8",{"x":838.2,"y":482.6,"componentRef":"VR1","pinNumber":"8","pinName":"GND","pinType":"unspecified","originalOffset":{"x":508,"y":254},"localX":330.2,"localY":228.6,"rotation":0}],["VR1_7",{"x":838.2,"y":508,"componentRef":"VR1","pinNumber":"7","pinName":"BYPS","pinType":"unspecified","originalOffset":{"x":508,"y":254},"localX":330.2,"localY":254,"rotation":0}],["VR1_13",{"x":635,"y":279.4,"componentRef":"VR1","pinNumber":"13","pinName":"EP","pinType":"unspecified","originalOffset":{"x":508,"y":254},"localX":127,"localY":25.399999999999977,"rotation":0}],["VR1_12",{"x":660.4,"y":279.4,"componentRef":"VR1","pinNumber":"12","pinName":"LX2_2","pinType":"unspecified","originalOffset":{"x":508,"y":254},"localX":152.4,"localY":25.399999999999977,"rotation":0}],["VR1_11",{"x":685.8,"y":279.4,"componentRef":"VR1","pinNumber":"11","pinName":"VOUT","pinType":"unspecified","originalOffset":{"x":508,"y":254},"localX":177.8,"localY":25.399999999999977,"rotation":0}],["VR1_10",{"x":711.2,"y":279.4,"componentRef":"VR1","pinNumber":"10","pinName":"FB","pinType":"unspecified","originalOffset":{"x":508,"y":254},"localX":203.20000000000002,"localY":25.399999999999977,"rotation":0}],["C1_1",{"x":1320.8,"y":1041.4,"componentRef":"C1","pinNumber":"1","pinName":"~","pinType":"passive","originalOffset":{"x":1270,"y":1016},"localX":50.8,"localY":25.4,"rotation":0}],["C1_2",{"x":1320.8,"y":1092.2,"componentRef":"C1","pinNumber":"2","pinName":"~","pinType":"passive","originalOffset":{"x":1270,"y":1016},"localX":50.8,"localY":76.19999999999999,"rotation":0}],["C2_1",{"x":558.8,"y":1041.4,"componentRef":"C2","pinNumber":"1","pinName":"~","pinType":"passive","originalOffset":{"x":508,"y":1016},"localX":50.8,"localY":25.4,"rotation":0}],["C2_2",{"x":558.8,"y":1092.2,"componentRef":"C2","pinNumber":"2","pinName":"~","pinType":"passive","originalOffset":{"x":508,"y":1016},"localX":50.8,"localY":76.19999999999999,"rotation":0}],["L1_1",{"x":1295.4,"y":1295.4,"componentRef":"L1","pinNumber":"1","pinName":"~","pinType":"passive","originalOffset":{"x":1270,"y":1270},"localX":25.4,"localY":25.4,"rotation":0}],["L1_2",{"x":1295.4,"y":1346.2,"componentRef":"L1","pinNumber":"2","pinName":"~","pinType":"passive","originalOffset":{"x":1270,"y":1270},"localX":25.4,"localY":76.19999999999999,"rotation":0}]];
+        const connectionsData = [{"netName":"net1","netCode":1,"pins":[{"reference":"VR1","pinNumber":5,"pinType":"power_out"},{"reference":"VR1","pinNumber":6,"pinType":"power_in"},{"reference":"C1","pinNumber":"2","pinType":"passive"}]},{"netName":"net2","netCode":2,"pins":[{"reference":"VR1","pinNumber":3,"pinType":"passive"},{"reference":"VR1","pinNumber":4,"pinType":"passive"},{"reference":"L1","pinNumber":"1","pinType":"passive"}]},{"netName":"net3","netCode":3,"pins":[{"reference":"VR1","pinNumber":1,"pinType":"passive"},{"reference":"VR1","pinNumber":12,"pinType":"passive"},{"reference":"L1","pinNumber":"2","pinType":"passive"}]},{"netName":"net4","netCode":4,"pins":[{"reference":"C2","pinNumber":"1","pinType":"passive"},{"reference":"VR1","pinNumber":10,"pinType":"passive"},{"reference":"VR1","pinNumber":11,"pinType":"power_out"}]},{"netName":"net5","netCode":5,"pins":[{"reference":"VR1","pinNumber":8,"pinType":"power_out"},{"reference":"VR1","pinNumber":2,"pinType":"passive"},{"reference":"VR1","pinNumber":13,"pinType":"passive"},{"reference":"VR1","pinNumber":7,"pinType":"passive"},{"reference":"C1","pinNumber":"1","pinType":"passive"},{"reference":"C2","pinNumber":"2","pinType":"passive"}]}];
+        const themeColors = {"background":"#282828","componentBody":"#32302f","componentOutline":"#83a598","pin":"#689d6a","pinName":"#d5c4a1","pinNumber":"#fabd2f","wire":"#789d6a","bus":"#8ec07c","junction":"#8ec07c","noConnect":"#fb4934","reference":"#fbf1c7","value":"#fbf1c7","grid":"#928374","cursor":"#ebdbb2","sheet":"#d65d0e","note":"#ebdbb2","labelLocal":"#d65d0e","shadow":"#fbf1c7"};
+        
+        // Convert pin positions data back to a Map
+        const pinPositions = new Map(pinPositionsData);
+        
+        // Debug: Log pin positions to check for no_connect pins
+        console.log('Pin positions loaded:', pinPositions.size, 'pins');
+        pinPositions.forEach((pinData, pinKey) => {
+            if (pinData.pinType === 'no_connect') {
+                console.log('Found no_connect pin:', pinKey, pinData);
+            }
+        });
+        
+        // Initialize location manager (will be done after DOM is ready)
+        let locationManager;
+        
+        // Zoom state variables
+        let zoomLevel = 1.0;
+        let panX = 0;
+        let panY = 0;
+        const MIN_ZOOM = 0.1;
+        const MAX_ZOOM = 5.0;
+        const ZOOM_STEP = 0.1;
+        
+        // Panning state variables
+        let isPanning = false;
+        let panStartX = 0;
+        let panStartY = 0;
+        let panInitialX = 0;
+        let panInitialY = 0;
+        
+        // Component selection and rotation state
+        let selectedComponent = null;
+        
+        console.log('Loaded', connectionsData.length, 'connections and', pinPositions.size, 'pin positions');
+        
+        // Debug: Log connections data to check for no_connect pins
+        connectionsData.forEach((connection, idx) => {
+            connection.pins.forEach(pin => {
+                if (pin.pinType === 'no_connect') {
+                    console.log('Found no_connect pin in connections:', pin.reference + '_' + pin.pinNumber, pin);
+                }
+            });
+        });
+        
+        // Debug: Check for no_connect pins in pinPositions
+        console.log('Checking pinPositions for no_connect pins...');
+        let noConnectCount = 0;
+        pinPositions.forEach((position, key) => {
+            if (position.pinType === 'no_connect') {
+                console.log('Found no_connect pin in pinPositions:', key, position);
+                noConnectCount++;
+            }
+        });
+        console.log('Total no_connect pins in pinPositions:', noConnectCount);
+         console.log('Sample pinPositions entries:', Array.from(pinPositions.entries()).slice(0, 5));
+         
+         // Debug: Log first 10 pinPositions to see their structure
+         console.log('First 10 pinPositions entries:');
+         let count = 0;
+         pinPositions.forEach((position, key) => {
+             if (count < 10) {
+                 console.log(`  ${key}:`, position);
+                 count++;
+             }
+         });
+         
+         // Check if any pinPositions have pinType field at all
+         let hasAnyPinType = false;
+         pinPositions.forEach((position) => {
+             if (position.hasOwnProperty('pinType')) {
+                 hasAnyPinType = true;
+             }
+         });
+         console.log('Any pinPositions have pinType field:', hasAnyPinType);
+
+        // Function to update grid rectangles to cover the proper area
+        function updateGridRectangles() {
+            const transformGroup = svg.querySelector('#zoom-transform-group');
+            if (!transformGroup) return;
+            
+            // Find grid rectangles within the transform group
+            const whiteRect = transformGroup.querySelector('rect[fill="white"]');
+            const smallGridRect = transformGroup.querySelector('rect[fill="url(#smallgrid)"]');
+            const gridRect = transformGroup.querySelector('rect[fill="url(#grid)"]');
+            
+            if (whiteRect && smallGridRect && gridRect) {
+                // Calculate the viewport size in the transformed coordinate system
+                const viewportWidth = parseInt('2000');
+                const viewportHeight = parseInt('1500');
+                
+                // Scale the rectangles to cover the entire viewport
+                // We need to scale inversely and offset to cover the visible area
+                const scaledWidth = viewportWidth / zoomLevel;
+                const scaledHeight = viewportHeight / zoomLevel;
+                const offsetX = -panX / zoomLevel;
+                const offsetY = -panY / zoomLevel;
+                
+                [whiteRect, smallGridRect, gridRect].forEach(rect => {
+                    rect.setAttribute('x', offsetX.toString());
+                    rect.setAttribute('y', offsetY.toString());
+                    rect.setAttribute('width', scaledWidth.toString());
+                    rect.setAttribute('height', scaledHeight.toString());
+                });
+            }
+        }
+
+        // Function to apply zoom and pan transform to the SVG
+        function applyZoomTransform() {
+            // Create a transform group if it doesn't exist
+            let transformGroup = svg.querySelector('#zoom-transform-group');
+            if (!transformGroup) {
+                transformGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+                transformGroup.id = 'zoom-transform-group';
+                
+                // Move all content except defs and the transform group itself
+                const children = Array.from(svg.children);
+                children.forEach(child => {
+                    if (child.tagName !== 'defs' && 
+                        child.id !== 'zoom-transform-group') {
+                        transformGroup.appendChild(child);
+                    }
+                });
+                
+                svg.appendChild(transformGroup);
+            }
+            
+            // Apply transform to the group
+            transformGroup.setAttribute('transform', `translate(${panX}, ${panY}) scale(${zoomLevel})`);
+            
+            // Update grid rectangles to cover the proper area
+            updateGridRectangles();
+            
+            // Update zoom level display
+            updateZoomDisplay();
+        }
+        
+        // Function to reset zoom and pan to defaults
+        function resetZoom() {
+            zoomLevel = 1.0;
+            panX = 0;
+            panY = 0;
+            applyZoomTransform();
+            updateWires();
+            addComponentOverlays();
+        }
+        
+        // Make resetZoom available globally for the button onclick
+        window.resetZoom = resetZoom;
+        
+        // Function to update zoom level display
+        function updateZoomDisplay() {
+            const zoomDisplay = document.getElementById('zoom-display');
+            if (zoomDisplay) {
+                zoomDisplay.textContent = `Zoom: ${Math.round(zoomLevel * 100)}%`;
+            }
+        }
+        
+        // Function to handle zoom with mouse wheel
+        function handleWheel(event) {
+            event.preventDefault();
+            
+            // Get mouse position relative to SVG container
+            const rect = container.getBoundingClientRect();
+            const mouseX = event.clientX - rect.left + container.scrollLeft;
+            const mouseY = event.clientY - rect.top + container.scrollTop;
+            
+            // Calculate mouse position in SVG coordinates before zoom
+            const svgX = (mouseX - panX) / zoomLevel;
+            const svgY = (mouseY - panY) / zoomLevel;
+            
+            // Calculate new zoom level
+            const zoomDirection = event.deltaY > 0 ? -1 : 1;
+            const newZoomLevel = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, zoomLevel + (zoomDirection * ZOOM_STEP)));
+            
+            if (newZoomLevel !== zoomLevel) {
+                // Calculate new pan to keep mouse position fixed
+                const newPanX = mouseX - svgX * newZoomLevel;
+                const newPanY = mouseY - svgY * newZoomLevel;
+                
+                // Update zoom and pan
+                zoomLevel = newZoomLevel;
+                panX = newPanX;
+                panY = newPanY;
+                
+                // Apply the transform
+                applyZoomTransform();
+                
+                // Update wire connections after zoom
+                updateWires();
+                
+                // Update component overlays after zoom
+                addComponentOverlays();
+            }
+        }
+        
+        // Add mousewheel event listener to the container
+        container.addEventListener('wheel', handleWheel, { passive: false });
+        
+        // Panning functionality
+        function startPanning(event) {
+            // Only start panning with right mouse button (button 2)
+            if (event.button !== 2) {
+                return;
+            }
+            
+            // Allow panning even when clicking on components with right mouse button
+            // This enables panning the entire image when right-clicking on symbols
+            
+            isPanning = true;
+            panStartX = event.clientX;
+            panStartY = event.clientY;
+            panInitialX = panX;
+            panInitialY = panY;
+            
+            svg.classList.add('panning');
+            event.preventDefault();
+        }
+        
+        function doPanning(event) {
+            if (!isPanning) return;
+            
+            // Don't pan if any component is being dragged
+            if (document.querySelector('.component-dragging')) {
+                return;
+            }
+            
+            const dx = event.clientX - panStartX;
+            const dy = event.clientY - panStartY;
+            
+            panX = panInitialX + dx;
+            panY = panInitialY + dy;
+            
+            applyZoomTransform();
+            event.preventDefault();
+        }
+        
+        function stopPanning(event) {
+            if (isPanning) {
+                isPanning = false;
+                svg.classList.remove('panning');
+                event.preventDefault();
+            }
+        }
+        
+        // Function to initialize panning
+        function initializePanning() {
+            const currentSvg = getSvg();
+            if (currentSvg) {
+                // Remove existing event listeners if any
+                currentSvg.removeEventListener('mousedown', startPanning);
+                currentSvg.removeEventListener('contextmenu', preventContextMenu);
+                document.removeEventListener('mousemove', doPanning);
+                document.removeEventListener('mouseup', stopPanning);
+                
+                // Add panning event listeners
+                currentSvg.addEventListener('mousedown', startPanning);
+                currentSvg.addEventListener('contextmenu', preventContextMenu);
+                document.addEventListener('mousemove', doPanning);
+                document.addEventListener('mouseup', stopPanning);
+            }
+        }
+        
+        // Prevent context menu on right-click for better panning experience
+        function preventContextMenu(e) {
+            e.preventDefault();
+        }
+        
+        // Initialize panning
+        initializePanning();
+
+        // Function to detect if a line segment intersects with a pin (circular area around pin)
+        function lineIntersectsPin(lineStart, lineEnd, pinPos, pinRadius = 8) {
+            // Skip if the pin is at the exact same position as start or end (it's one of the connection endpoints)
+            const tolerance = 0.1;
+            if ((Math.abs(pinPos.x - lineStart.x) < tolerance && Math.abs(pinPos.y - lineStart.y) < tolerance) ||
+                (Math.abs(pinPos.x - lineEnd.x) < tolerance && Math.abs(pinPos.y - lineEnd.y) < tolerance)) {
+                return false;
+            }
+            
+            // Distance from point to line segment
+            const A = lineEnd.x - lineStart.x;
+            const B = lineEnd.y - lineStart.y;
+            const C = pinPos.x - lineStart.x;
+            const D = pinPos.y - lineStart.y;
+            
+            const dot = C * A + D * B;
+            const lenSq = A * A + B * B;
+            
+            if (lenSq === 0) return false; // Line has zero length
+            
+            const param = dot / lenSq;
+            
+            let xx, yy;
+            if (param < 0) {
+                xx = lineStart.x;
+                yy = lineStart.y;
+            } else if (param > 1) {
+                xx = lineEnd.x;
+                yy = lineEnd.y;
+            } else {
+                xx = lineStart.x + param * A;
+                yy = lineStart.y + param * B;
+            }
+            
+            const dx = pinPos.x - xx;
+            const dy = pinPos.y - yy;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            
+            return distance <= pinRadius;
+        }
+        
+        // Function to get all pin positions for overlap detection
+        function getAllPinPositions() {
+            const allPins = [];
+            pinPositions.forEach((pinData, pinKey) => {
+                const [reference, pinNumber] = pinKey.split('_');
+                const component = svg.querySelector(`g[data-component="${reference}"]`);
+                if (component) {
+                    const transform = component.getAttribute('transform') || 'translate(0, 0)';
+                    // Parse transform using string methods
+                    let currentOffset = { x: 0, y: 0 };
+                    let rotation = 0;
+                    
+                    // Parse translate
+                    if (transform.includes('translate(')) {
+                        const start = transform.indexOf('translate(') + 10;
+                        const end = transform.indexOf(')', start);
+                        const coords = transform.substring(start, end).split(',');
+                        if (coords.length === 2) {
+                            currentOffset = { 
+                                x: parseFloat(coords[0].trim()), 
+                                y: parseFloat(coords[1].trim()) 
+                            };
+                        }
+                    }
+                    
+                    // Parse rotation
+                    if (transform.includes('rotate(')) {
+                        const rotateStart = transform.indexOf('rotate(') + 7;
+                        const rotateEnd = transform.indexOf(')', rotateStart);
+                        const rotateValue = transform.substring(rotateStart, rotateEnd).trim();
+                        const rotationParts = rotateValue.split(' ');
+                        if (rotationParts.length >= 1) {
+                            rotation = parseFloat(rotationParts[0]) || 0;
+                            // rotationParts[1] and [2] are centerX and centerY if specified
+                        }
+                    }
+                    
+                    // Calculate pin position with rotation applied
+                    let pinX = pinData.localX;
+                    let pinY = pinData.localY;
+                    
+                    // Apply rotation if component is rotated
+                    if (rotation !== 0) {
+                        // Parse rotation center from the transform (if specified)
+                        let rotationCenterX = 0;
+                        let rotationCenterY = 0;
+                        
+                        // The rotation center is specified in the SVG transform as "rotate(angle centerX centerY)"
+                        // If not specified, rotation is around the component center (0,0)
+                        if (transform.includes('rotate(')) {
+                            const rotateStart = transform.indexOf('rotate(') + 7;
+                            const rotateEnd = transform.indexOf(')', rotateStart);
+                            const rotateValue = transform.substring(rotateStart, rotateEnd).trim();
+                            const rotationParts = rotateValue.split(' ');
+                            if (rotationParts.length >= 3) {
+                                rotationCenterX = parseFloat(rotationParts[1]) || 0;
+                                rotationCenterY = parseFloat(rotationParts[2]) || 0;
+                            }
+                            // If only one value (angle), center is (0,0) - no need to change defaults
+                        }
+                        
+                        // Convert rotation to radians
+                        const radians = (rotation * Math.PI) / 180;
+                        
+                        // Translate pin to rotation center origin
+                        const relativeX = pinX - rotationCenterX;
+                        const relativeY = pinY - rotationCenterY;
+                        
+                        // Apply 2D rotation matrix
+                        const rotatedX = relativeX * Math.cos(radians) - relativeY * Math.sin(radians);
+                        const rotatedY = relativeX * Math.sin(radians) + relativeY * Math.cos(radians);
+                        
+                        // Translate back to final position
+                        pinX = rotatedX + rotationCenterX;
+                        pinY = rotatedY + rotationCenterY;
+                    }
+                    
+                    // Add component offset
+                    pinX += currentOffset.x;
+                    pinY += currentOffset.y;
+                    
+                    allPins.push({
+                        x: pinX,
+                        y: pinY,
+                        ref: reference,
+                        pin: pinNumber
+                    });
+                }
+            });
+            return allPins;
+        }
+        
+        // Function to create a bezier curve that avoids pin overlaps
+        function createAvoidancePath(startPin, endPin, obstaclePins) {
+            const start = { x: startPin.x, y: startPin.y };
+            const end = { x: endPin.x, y: endPin.y };
+            
+            // Check if direct line intersects any obstacle pins
+            const directLineIntersects = obstaclePins.some(pin => 
+                lineIntersectsPin(start, end, pin)
+            );
+            
+            if (!directLineIntersects) {
+                // No obstacles, use straight line
+                return null;
+            }
+            
+            // Calculate bezier control points to route around obstacles
+            const midX = (start.x + end.x) / 2;
+            const midY = (start.y + end.y) / 2;
+            
+            // Determine direction to offset the curve
+            const dx = end.x - start.x;
+            const dy = end.y - start.y;
+            const length = Math.sqrt(dx * dx + dy * dy);
+            
+            if (length === 0) return null;
+            
+            // Perpendicular vector for offset
+            const perpX = -dy / length;
+            const perpY = dx / length;
+            
+            // Try different offset distances to find a clear path
+            const offsets = [30, 50, 80, 120]; // Increasing offset distances
+            
+            for (const offset of offsets) {
+                const controlX = midX + perpX * offset;
+                const controlY = midY + perpY * offset;
+                
+                // Check if this curved path avoids obstacles
+                const curvePoints = getBezierPoints(start, { x: controlX, y: controlY }, end, 20);
+                let pathClear = true;
+                
+                for (let i = 0; i < curvePoints.length - 1; i++) {
+                    if (obstaclePins.some(pin => 
+                        lineIntersectsPin(curvePoints[i], curvePoints[i + 1], pin)
+                    )) {
+                        pathClear = false;
+                        break;
+                    }
+                }
+                
+                if (pathClear) {
+                    return { x: controlX, y: controlY };
+                }
+                
+                // Try the opposite direction
+                const controlX2 = midX - perpX * offset;
+                const controlY2 = midY - perpY * offset;
+                
+                const curvePoints2 = getBezierPoints(start, { x: controlX2, y: controlY2 }, end, 20);
+                pathClear = true;
+                
+                for (let i = 0; i < curvePoints2.length - 1; i++) {
+                    if (obstaclePins.some(pin => 
+                        lineIntersectsPin(curvePoints2[i], curvePoints2[i + 1], pin)
+                    )) {
+                        pathClear = false;
+                        break;
+                    }
+                }
+                
+                if (pathClear) {
+                    return { x: controlX2, y: controlY2 };
+                }
+            }
+            
+            // If all attempts fail, use a larger offset as fallback
+            return { x: midX + perpX * 150, y: midY + perpY * 150 };
+        }
+        
+        // Function to get points along a quadratic bezier curve
+        function getBezierPoints(start, control, end, numPoints) {
+            const points = [];
+            for (let i = 0; i <= numPoints; i++) {
+                const t = i / numPoints;
+                const x = (1 - t) * (1 - t) * start.x + 2 * (1 - t) * t * control.x + t * t * end.x;
+                const y = (1 - t) * (1 - t) * start.y + 2 * (1 - t) * t * control.y + t * t * end.y;
+                points.push({ x, y });
+            }
+            return points;
+        }
+
+        // Function to calculate distance between two points
+        function calculateDistance(pin1, pin2) {
+            const dx = pin2.x - pin1.x;
+            const dy = pin2.y - pin1.y;
+            return Math.sqrt(dx * dx + dy * dy);
+        }
+
+        // Function to update pin connection indicators visibility
+        function updatePinConnectionIndicators() {
+            console.log('Updating pin connection indicators...');
+            
+            // Get all connected pin keys
+            const connectedPinKeys = new Set();
+            connectionsData.forEach(connection => {
+                connection.pins.forEach(pin => {
+                    const pinKey = `${pin.reference}_${pin.pinNumber}`;
+                    connectedPinKeys.add(pinKey);
+                });
+            });
+            
+            console.log('Connected pin keys:', Array.from(connectedPinKeys));
+            console.log('Available pin positions:', Array.from(pinPositions.keys()));
+            
+            // Update all pin connection indicators - try both class and attribute selectors
+            let pinIndicators = svg.querySelectorAll('.pin-connection-indicator');
+            if (pinIndicators.length === 0) {
+                // Fallback: find red circles by their attributes
+                pinIndicators = svg.querySelectorAll('circle[fill="red"][stroke="red"]');
+                console.log('Using fallback selector for red circles');
+            }
+            console.log('Found', pinIndicators.length, 'pin indicators');
+            
+            pinIndicators.forEach(indicator => {
+                // Find the component this indicator belongs to
+                const component = indicator.closest('g[data-component]');
+                if (component) {
+                    const componentRef = component.getAttribute('data-component');
+                    
+                    // Find the pin number by looking at the indicator's position
+                    const cx = parseFloat(indicator.getAttribute('cx'));
+                    const cy = parseFloat(indicator.getAttribute('cy'));
+                    
+                    // Find the pin that matches this position
+                    let pinKey = null;
+                    pinPositions.forEach((pinData, key) => {
+                        const [ref, pinNum] = key.split('_');
+                        if (ref === componentRef) {
+                            // Get component's current transform
+                            const transform = component.getAttribute('transform') || 'translate(0, 0)';
+                            let currentOffset = { x: 0, y: 0 };
+                            if (transform.includes('translate(')) {
+                                const start = transform.indexOf('translate(') + 10;
+                                const end = transform.indexOf(')', start);
+                                const coords = transform.substring(start, end).split(',');
+                                if (coords.length === 2) {
+                                    currentOffset = { 
+                                        x: parseFloat(coords[0].trim()), 
+                                        y: parseFloat(coords[1].trim()) 
+                                    };
+                                }
+                            }
+                            
+                            // Calculate expected position
+                            const expectedX = pinData.localX + currentOffset.x;
+                            const expectedY = pinData.localY + currentOffset.y;
+                            
+                            // Check if positions match (with small tolerance)
+                            const tolerance = 2; // Increased tolerance for better matching
+                            const distance = Math.sqrt(Math.pow(cx - expectedX, 2) + Math.pow(cy - expectedY, 2));
+                            if (distance < tolerance) {
+                                pinKey = key;
+                                console.log('Matched pin:', key, 'at position (', cx, ',', cy, ') to expected (', expectedX, ',', expectedY, ')');
+                            }
+                        }
+                    });
+                    
+                    // Hide indicator if pin is connected
+                    console.log('Pin key found:', pinKey, 'Connected:', pinKey && connectedPinKeys.has(pinKey));
+                    if (pinKey && connectedPinKeys.has(pinKey)) {
+                        indicator.style.display = 'none';
+                        console.log('Hiding indicator for pin:', pinKey);
+                    } else {
+                        indicator.style.display = 'block';
+                        console.log('Showing indicator for pin:', pinKey);
+                    }
+                }
+            });
+        }
+
+        // Function to find closest point connections using minimum spanning tree
+        function findClosestPinConnections(connectedPins) {
+            if (connectedPins.length <= 1) return [];
+
+            const connections = [];
+            const connected = new Set();
+            
+            // Start with the first pin
+            connected.add(0);
+            
+            // Build minimum spanning tree using closest point algorithm
+            while (connected.size < connectedPins.length) {
+                let minDistance = Infinity;
+                let bestConnection = null;
+                
+                // Find the closest unconnected pin to any connected pin
+                for (const connectedIndex of connected) {
+                    for (let i = 0; i < connectedPins.length; i++) {
+                        if (!connected.has(i)) {
+                            const distance = calculateDistance(connectedPins[connectedIndex], connectedPins[i]);
+                            if (distance < minDistance) {
+                                minDistance = distance;
+                                bestConnection = {from: connectedIndex, to: i};
+                            }
+                        }
+                    }
+                }
+                
+                if (bestConnection) {
+                    connections.push(bestConnection);
+                    connected.add(bestConnection.to);
+                } else {
+                    break; // Safety break if no connection found
+                }
+            }
+            
+            return connections;
+        }
+
+        function updateWires() {
+            // Remove existing wires and labels (look in both svg and transform group)
+            const existingWires = svg.querySelectorAll('.connection-wire');
+            existingWires.forEach(wire => wire.remove());
+            const existingLabels = svg.querySelectorAll('.wire-label');
+            existingLabels.forEach(label => label.remove());
+            
+            // Update pin connection indicators visibility
+            updatePinConnectionIndicators();
+            
+            // Get all pin positions for overlap detection
+            const allPins = getAllPinPositions();
+            
+            // Redraw all wires based on current component positions
+            connectionsData.forEach((connection, connIdx) => {
+                const connectedPins = [];
+                
+                // Find current positions of all pins in this net
+                connection.pins.forEach(pin => {
+                    const pinKey = `${pin.reference}_${pin.pinNumber}`;
+                    const pinData = pinPositions.get(pinKey);
+                    
+                    if (pinData) {
+                        // Get component element and its current transform
+                        const component = svg.querySelector(`g[data-component="${pin.reference}"]`);
+                        if (component) {
+                            const transform = component.getAttribute('transform') || 'translate(0, 0)';
+                            // Parse transform using string methods
+                            let currentOffset = { x: 0, y: 0 };
+                            let rotation = 0;
+                            
+                            // Parse translate
+                            if (transform.includes('translate(')) {
+                                const start = transform.indexOf('translate(') + 10;
+                                const end = transform.indexOf(')', start);
+                                const coords = transform.substring(start, end).split(',');
+                                if (coords.length === 2) {
+                                    currentOffset = { 
+                                        x: parseFloat(coords[0].trim()), 
+                                        y: parseFloat(coords[1].trim()) 
+                                    };
+                                }
+                            }
+                            
+                            // Parse rotation
+                            if (transform.includes('rotate(')) {
+                                const rotateStart = transform.indexOf('rotate(') + 7;
+                                const rotateEnd = transform.indexOf(')', rotateStart);
+                                const rotateValue = transform.substring(rotateStart, rotateEnd).trim();
+                                const rotationParts = rotateValue.split(' ');
+                                if (rotationParts.length >= 1) {
+                                    rotation = parseFloat(rotationParts[0]) || 0;
+                                    // rotationParts[1] and [2] are centerX and centerY if specified
+                                }
+                            }
+                            
+                            // Calculate pin position with rotation applied
+                            let pinX = pinData.localX;
+                            let pinY = pinData.localY;
+                            
+                            // Apply rotation if component is rotated
+                            if (rotation !== 0) {
+                                // Parse rotation center from the transform (if specified)
+                                let rotationCenterX = 0;
+                                let rotationCenterY = 0;
+                                
+                                // The rotation center is specified in the SVG transform as "rotate(angle centerX centerY)"
+                                // If not specified, rotation is around the component center (0,0)
+                                if (transform.includes('rotate(')) {
+                                    const rotateStart = transform.indexOf('rotate(') + 7;
+                                    const rotateEnd = transform.indexOf(')', rotateStart);
+                                    const rotateValue = transform.substring(rotateStart, rotateEnd).trim();
+                                    const rotationParts = rotateValue.split(' ');
+                                    if (rotationParts.length >= 3) {
+                                        rotationCenterX = parseFloat(rotationParts[1]) || 0;
+                                        rotationCenterY = parseFloat(rotationParts[2]) || 0;
+                                    }
+                                    // If only one value (angle), center is (0,0) - no need to change defaults
+                                }
+                                
+                                // Convert rotation to radians
+                                const radians = (rotation * Math.PI) / 180;
+                                
+                                // Translate pin to rotation center origin
+                                const relativeX = pinX - rotationCenterX;
+                                const relativeY = pinY - rotationCenterY;
+                                
+                                // Apply 2D rotation matrix
+                                const rotatedX = relativeX * Math.cos(radians) - relativeY * Math.sin(radians);
+                                const rotatedY = relativeX * Math.sin(radians) + relativeY * Math.cos(radians);
+                                
+                                // Translate back to final position
+                                pinX = rotatedX + rotationCenterX;
+                                pinY = rotatedY + rotationCenterY;
+                            }
+                            
+                            // Add component offset
+                            pinX += currentOffset.x;
+                            pinY += currentOffset.y;
+                            
+                            connectedPins.push({
+                                x: pinX,
+                                y: pinY,
+                                ref: pin.reference,
+                                pin: pin.pinNumber
+                            });
+                        }
+                    }
+                });
+                
+                // Use closest point connection method instead of chain topology
+                if (connectedPins.length > 1) {
+                    const connectionPairs = findClosestPinConnections(connectedPins);
+                    
+                    for (const connectionPair of connectionPairs) {
+                        const startPin = connectedPins[connectionPair.from];
+                        const endPin = connectedPins[connectionPair.to];
+                        
+                        // Find obstacle pins (all pins except ALL pins in the current connection)
+                        const currentConnectionPinKeys = connection.pins.map(p => `${p.reference}_${p.pinNumber}`);
+                        const obstaclePins = allPins.filter(pin => {
+                            const pinKey = `${pin.ref}_${pin.pin}`;
+                            return !currentConnectionPinKeys.includes(pinKey);
+                        });
+                        
+                        // Try to create an avoidance path
+                        const controlPoint = createAvoidancePath(startPin, endPin, obstaclePins);
+                        
+                        const transformGroup = svg.querySelector('#zoom-transform-group') || svg;
+                        
+                        if (controlPoint) {
+                            // Create bezier curve
+                            const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                            const pathData = `M ${startPin.x},${startPin.y} Q ${controlPoint.x},${controlPoint.y} ${endPin.x},${endPin.y}`;
+                            path.setAttribute('d', pathData);
+                            path.setAttribute('stroke', themeColors?.wire || '#FF6B6B');
+                            path.setAttribute('stroke-width', '3');
+                            path.setAttribute('stroke-linecap', 'round');
+                            path.setAttribute('fill', 'none');
+                            path.setAttribute('data-net', connection.netName);
+                            path.setAttribute('class', 'connection-wire');
+                            path.setAttribute('title', `Net: ${connection.netName} (curved to avoid pin overlaps)`);
+                            
+                            transformGroup.appendChild(path);
+                            
+                            // Add wire name label if netName is not empty
+                            console.log(`HTML Viewer bezier - Checking netName: "${connection.netName}"`);
+                            if (connection.netName && connection.netName.trim() !== '') {
+                                // For bezier curves, place the label at the midpoint (t=0.5)
+                                const t = 0.5;
+                                const labelX = (1 - t) * (1 - t) * startPin.x + 2 * (1 - t) * t * controlPoint.x + t * t * endPin.x;
+                                const labelY = (1 - t) * (1 - t) * startPin.y + 2 * (1 - t) * t * controlPoint.y + t * t * endPin.y;
+                                
+                                // Calculate tangent angle at midpoint for text rotation
+                                const tangentX = 2 * (1 - t) * (controlPoint.x - startPin.x) + 2 * t * (endPin.x - controlPoint.x);
+                                const tangentY = 2 * (1 - t) * (controlPoint.y - startPin.y) + 2 * t * (endPin.y - controlPoint.y);
+                                const angle = Math.atan2(tangentY, tangentX) * 180 / Math.PI;
+                                
+                                // Normalize angle to be readable (not upside down)
+                                const normalizedAngle = (angle > 90 || angle < -90) ? angle + 180 : angle;
+                                
+                                const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                                label.setAttribute('x', labelX);
+                                label.setAttribute('y', labelY - 8);
+                                label.setAttribute('font-family', 'Consolas, Monaco, Courier New, monospace');
+                                label.setAttribute('font-size', '14');
+                                label.setAttribute('fill', themeColors?.labelLocal || '#000000');
+                                label.setAttribute('text-anchor', 'middle');
+                                label.setAttribute('dominant-baseline', 'central');
+                                label.setAttribute('transform', `rotate(${normalizedAngle} ${labelX} ${labelY})`);
+                                label.setAttribute('class', 'wire-label');
+                                label.textContent = connection.netName;
+                                
+                                transformGroup.appendChild(label);
+                                console.log(`Added bezier label: "${connection.netName}"`);
+                            }
+                            
+                            console.log(`Bezier curve: "${connection.netName}" from ${startPin.ref}:${startPin.pin} to ${endPin.ref}:${endPin.pin} (closest point)`);
+                        } else {
+                            // No obstacles, use straight line
+                            const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                            line.setAttribute('x1', startPin.x);
+                            line.setAttribute('y1', startPin.y);
+                            line.setAttribute('x2', endPin.x);
+                            line.setAttribute('y2', endPin.y);
+                            line.setAttribute('stroke', themeColors?.wire || '#FF6B6B');
+                            line.setAttribute('stroke-width', '3');
+                            line.setAttribute('stroke-linecap', 'round');
+                            line.setAttribute('data-net', connection.netName);
+                            line.setAttribute('class', 'connection-wire');
+                            line.setAttribute('title', `Net: ${connection.netName} (direct connection)`);
+                            
+                            transformGroup.appendChild(line);
+                            
+                            // Add wire name label if netName is not empty
+                            console.log(`HTML Viewer line - Checking netName: "${connection.netName}"`);
+                            if (connection.netName && connection.netName.trim() !== '') {
+                                const midX = (startPin.x + endPin.x) / 2;
+                                const midY = (startPin.y + endPin.y) / 2;
+                                
+                                // Calculate text angle to align with wire
+                                const dx = endPin.x - startPin.x;
+                                const dy = endPin.y - startPin.y;
+                                const angle = Math.atan2(dy, dx) * 180 / Math.PI;
+                                
+                                // Normalize angle to be readable (not upside down)
+                                const normalizedAngle = (angle > 90 || angle < -90) ? angle + 180 : angle;
+                                
+                                const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                                label.setAttribute('x', midX);
+                                label.setAttribute('y', midY - 5);
+                                label.setAttribute('font-family', 'Consolas, Monaco, Courier New, monospace');
+                                label.setAttribute('font-size', '14');
+                                label.setAttribute('fill', themeColors?.labelLocal || '#000000');
+                                label.setAttribute('text-anchor', 'middle');
+                                label.setAttribute('dominant-baseline', 'central');
+                                label.setAttribute('transform', `rotate(${normalizedAngle} ${midX} ${midY})`);
+                                label.setAttribute('class', 'wire-label');
+                                label.textContent = connection.netName;
+                                
+                                transformGroup.appendChild(label);
+                                console.log(`Added line label: "${connection.netName}"`);
+                            }
+                            
+                            console.log(`Direct line: "${connection.netName}" from ${startPin.ref}:${startPin.pin} to ${endPin.ref}:${endPin.pin} (closest point)`);
+                        }
+                    }
+                }
+            });
+        }
+
+        // Function to check if a pin position would overlap with another pin
+        function checkPinOverlaps(componentRef, newOffset) {
+            const overlaps = [];
+            const pinRadius = 8; // Same radius used for wire collision detection
+            
+            // Get all pins for the component being moved
+            const componentPins = [];
+            pinPositions.forEach((pinData, pinKey) => {
+                if (pinKey.startsWith(componentRef + '_')) {
+                    const pinX = pinData.localX + newOffset.x;
+                    const pinY = pinData.localY + newOffset.y;
+                    componentPins.push({
+                        key: pinKey,
+                        x: pinX,
+                        y: pinY,
+                        ref: componentRef,
+                        pin: pinKey.split('_')[1]
+                    });
+                }
+            });
+            
+            // Check against all other pins in the design
+            pinPositions.forEach((otherPinData, otherPinKey) => {
+                if (!otherPinKey.startsWith(componentRef + '_')) {
+                    // Get the other component's current position
+                    const [otherRef] = otherPinKey.split('_');
+                    const otherComponent = svg.querySelector(`g[data-component="${otherRef}"]`);
+                    let otherOffset = { x: 0, y: 0 };
+                    
+                    if (otherComponent) {
+                        const transform = otherComponent.getAttribute('transform') || 'translate(0, 0)';
+                        // Parse transform using string methods
+                        otherOffset = { x: 0, y: 0 };
+                        if (transform.includes('translate(')) {
+                            const start = transform.indexOf('translate(') + 10;
+                            const end = transform.indexOf(')', start);
+                            const coords = transform.substring(start, end).split(',');
+                            if (coords.length === 2) {
+                                otherOffset = { 
+                                    x: parseFloat(coords[0].trim()), 
+                                    y: parseFloat(coords[1].trim()) 
+                                };
+                            }
+                        }
+                    }
+                    
+                    const otherPinX = otherPinData.localX + otherOffset.x;
+                    const otherPinY = otherPinData.localY + otherOffset.y;
+                    
+                    // Check each pin of the moving component against this other pin
+                    for (const componentPin of componentPins) {
+                        const distance = Math.sqrt(
+                            Math.pow(componentPin.x - otherPinX, 2) + 
+                            Math.pow(componentPin.y - otherPinY, 2)
+                        );
+                        
+                        if (distance < pinRadius * 2) { // Two pin radii = minimum distance
+                            overlaps.push({
+                                movingPin: componentPin,
+                                conflictPin: {
+                                    key: otherPinKey,
+                                    x: otherPinX,
+                                    y: otherPinY,
+                                    ref: otherRef,
+                                    pin: otherPinKey.split('_')[1]
+                                },
+                                distance: distance
+                            });
+                        }
+                    }
+                }
+            });
+            
+            return overlaps;
+        }
+        
+        // Function to check if two pins are connected in the same net
+        function arePinsConnected(pin1Key, pin2Key) {
+            for (const connection of connectionsData) {
+                const pinKeys = connection.pins.map(p => `${p.reference}_${p.pinNumber}`);
+                if (pinKeys.includes(pin1Key) && pinKeys.includes(pin2Key)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+        
+        // Function to filter overlaps to only show those that are not allowed
+        function getBlockingOverlaps(overlaps) {
+            return overlaps.filter(overlap => {
+                const movingPinKey = overlap.movingPin.key;
+                const conflictPinKey = overlap.conflictPin.key;
+                return !arePinsConnected(movingPinKey, conflictPinKey);
+            });
+        }
+
+        // Function to check if component bounding boxes would overlap
+        function checkComponentOverlaps(componentRef, newOffset) {
+            const movingComponent = svg.querySelector(`g[data-component="${componentRef}"]`);
+            if (!movingComponent) return [];
+            
+            // Add tolerance to allow components to get closer together
+            // This represents how much the collision area is shrunk from each side
+            const collisionTolerance = 10; // pixels - adjust this to control how close components can get
+            
+            // Calculate the bounding box of the moving component at the new position
+            const movingBBox = movingComponent.getBBox();
+            const movingBounds = {
+                left: movingBBox.x + newOffset.x + collisionTolerance,
+                right: Math.max(movingBBox.x + newOffset.x + collisionTolerance + 1, movingBBox.x + movingBBox.width + newOffset.x - collisionTolerance),
+                top: movingBBox.y + newOffset.y + collisionTolerance,
+                bottom: Math.max(movingBBox.y + newOffset.y + collisionTolerance + 1, movingBBox.y + movingBBox.height + newOffset.y - collisionTolerance)
+            };
+            
+            const overlaps = [];
+            
+            // Check against all other components
+            const allComponents = svg.querySelectorAll('g[data-component]');
+            allComponents.forEach(otherComponent => {
+                const otherRef = otherComponent.getAttribute('data-component');
+                if (otherRef === componentRef) return; // Skip self
+                
+                // Get the current position of the other component
+                const otherTransform = otherComponent.getAttribute('transform') || 'translate(0, 0)';
+                // Parse transform using string methods
+                let otherOffset = { x: 0, y: 0 };
+                if (otherTransform.includes('translate(')) {
+                    const start = otherTransform.indexOf('translate(') + 10;
+                    const end = otherTransform.indexOf(')', start);
+                    const coords = otherTransform.substring(start, end).split(',');
+                    if (coords.length === 2) {
+                        otherOffset = { 
+                            x: parseFloat(coords[0].trim()), 
+                            y: parseFloat(coords[1].trim()) 
+                        };
+                    }
+                }
+                
+                // Calculate the bounding box of the other component with same tolerance
+                const otherBBox = otherComponent.getBBox();
+                const otherBounds = {
+                    left: otherBBox.x + otherOffset.x + collisionTolerance,
+                    right: Math.max(otherBBox.x + otherOffset.x + collisionTolerance + 1, otherBBox.x + otherBBox.width + otherOffset.x - collisionTolerance),
+                    top: otherBBox.y + otherOffset.y + collisionTolerance,
+                    bottom: Math.max(otherBBox.y + otherOffset.y + collisionTolerance + 1, otherBBox.y + otherBBox.height + otherOffset.y - collisionTolerance)
+                };
+                
+                // Check for bounding box overlap
+                const isOverlapping = !(
+                    movingBounds.right <= otherBounds.left ||
+                    movingBounds.left >= otherBounds.right ||
+                    movingBounds.bottom <= otherBounds.top ||
+                    movingBounds.top >= otherBounds.bottom
+                );
+                
+                if (isOverlapping) {
+                    overlaps.push({
+                        movingComponent: componentRef,
+                        conflictComponent: otherRef,
+                        movingBounds: movingBounds,
+                        otherBounds: otherBounds
+                    });
+                }
+            });
+            
+            return overlaps;
+        }
+
+        function makeDraggable(g) {
+            let isDragging = false;
+            let hasDragged = false; // Track if actual dragging occurred
+            let startX, startY;
+            let initialTransform = { x: 0, y: 0 };
+            const gridSize = 25.4; // 2.54mm grid spacing
+            const dragThreshold = 5; // Minimum distance to consider it a drag
+            
+            // Helper function to snap to grid
+            const snapToGrid = (value) => {
+                return Math.round(value / gridSize) * gridSize;
+            };
+
+            g.addEventListener('mousedown', (e) => {
+                // Only allow dragging with left mouse button (button 0)
+                if (e.button !== 0) {
+                    return;
+                }
+                
+                e.preventDefault();
+                e.stopPropagation(); // Prevent event bubbling
+                
+                // Stop any active panning when starting component drag
+                if (isPanning) {
+                    isPanning = false;
+                    svg.classList.remove('panning');
+                }
+                
+                isDragging = true;
+                hasDragged = false;
+                startX = e.clientX;
+                startY = e.clientY;
+                
+                                // Set cursor to grabbing immediately when starting drag
+                document.body.style.cursor = 'grabbing';
+                svg.classList.add('dragging');
+                
+                const transform = g.getAttribute('transform') || 'translate(0, 0)';
+                // Parse transform to extract current position (not rotation)
+                if (transform.includes('translate(')) {
+                    const start = transform.indexOf('translate(') + 10;
+                    const end = transform.indexOf(')', start);
+                    if (start !== -1 && end !== -1) {
+                        const coords = transform.substring(start, end).split(',');
+                        if (coords.length === 2) {
+                            const x = parseFloat(coords[0].trim());
+                            const y = parseFloat(coords[1].trim());
+                            if (!isNaN(x) && !isNaN(y)) {
+                                initialTransform = { x, y };
+                                
+                                // Store the symbol's original position in the reference text element
+                                const componentRef = g.getAttribute('data-component');
+                                if (componentRef) {
+                                    const referenceTextElement = svg.querySelector(`text[data-reference="${componentRef}"]`);
+                                    if (referenceTextElement) {
+                                        referenceTextElement._symbolOriginalX = x;
+                                        referenceTextElement._symbolOriginalY = y;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                // Bring dragged element to front
+                g.parentNode.appendChild(g);
+            });
+
+            document.addEventListener('mousemove', (e) => {
+                if (isDragging) {
+                    e.preventDefault();
+                    const dx = (e.clientX - startX) / zoomLevel;
+                    const dy = (e.clientY - startY) / zoomLevel;
+                    
+                    // Check if we've moved enough to consider this a drag
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    if (distance > dragThreshold && !hasDragged) {
+                        hasDragged = true;
+                        // Add dragging visual feedback only when actual dragging starts
+                        g.classList.add('component-dragging');
+                        // Ensure cursor is grabbing during drag
+                        document.body.style.cursor = 'grabbing';
+                    }
+                    
+                    // Only move component if we've exceeded drag threshold
+                    if (hasDragged) {
+                        // Calculate new position and snap to grid
+                        const newX = snapToGrid(initialTransform.x + dx);
+                        const newY = snapToGrid(initialTransform.y + dy);
+                        const newOffset = { x: newX, y: newY };
+                        
+                        // Get component reference from data attribute
+                        const componentRef = g.getAttribute('data-component');
+                        
+                        // Check for pin overlaps at the new position
+                        const pinOverlaps = checkPinOverlaps(componentRef, newOffset);
+                        const blockingPinOverlaps = getBlockingOverlaps(pinOverlaps);
+                        
+                        // Check for component bounding box overlaps
+                        const componentOverlaps = checkComponentOverlaps(componentRef, newOffset);
+                        
+                        if (blockingPinOverlaps.length > 0 || componentOverlaps.length > 0) {
+                            // Overlap detected - prevent movement and show visual feedback
+                            g.classList.add('component-blocked');
+                            g.classList.remove('component-dragging');
+                            
+                            // Log the overlap for debugging
+                            if (blockingPinOverlaps.length > 0) {
+                                const firstOverlap = blockingPinOverlaps[0];
+                                console.log(`Pin overlap prevented: ${firstOverlap.movingPin.ref}:${firstOverlap.movingPin.pin} would overlap ${firstOverlap.conflictPin.ref}:${firstOverlap.conflictPin.pin}`);
+                            }
+                            if (componentOverlaps.length > 0) {
+                                const firstOverlap = componentOverlaps[0];
+                                console.log(`Component overlap prevented: ${firstOverlap.movingComponent} would overlap ${firstOverlap.conflictComponent}`);
+                            }
+                            
+                            // Don't update position - keep component at last valid position
+                            return;
+                        } else {
+                            // No blocking overlaps - allow movement and clear visual feedback
+                            g.classList.remove('component-blocked');
+                            g.classList.add('component-dragging');
+                            
+                            // Preserve existing rotation when updating position
+                            const currentTransform = g.getAttribute('transform') || 'translate(0, 0)';
+                            let existingRotation = '';
+                            
+                            // Extract existing rotation if present
+                            if (currentTransform.includes('rotate(')) {
+                                const rotateStart = currentTransform.indexOf('rotate(');
+                                const rotateEnd = currentTransform.indexOf(')', rotateStart) + 1;
+                                existingRotation = ' ' + currentTransform.substring(rotateStart, rotateEnd);
+                            }
+                            
+                            // Apply new position while preserving rotation
+                            g.setAttribute('transform', `translate(${newX}, ${newY})${existingRotation}`);
+                            
+                            // Move the associated reference text by the same amount
+                            moveReferenceTextWithSymbol(componentRef, newOffset);
+                            
+                            // Update wires in real-time
+                            updateWires();
+                            
+                            // Update component overlays after movement
+                            addComponentOverlays();
+                        }
+                    }
+                }
+            });
+
+            document.addEventListener('mouseup', (e) => {
+                if (isDragging) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    
+                    // Store the hasDragged state before resetting
+                    const actuallyDragged = hasDragged;
+                    
+                    // If we didn't actually drag, treat this as a selection click
+                    if (!actuallyDragged) {
+                        selectComponent(g);
+                    }
+                    
+                    isDragging = false;
+                    
+                    // Clear any visual feedback when dragging ends
+                    g.classList.remove('component-dragging', 'component-blocked');
+                    
+                    // Reset cursor to default when dragging ends
+                    document.body.style.cursor = '';
+                    svg.classList.remove('dragging');
+                    
+                    // Only save position if we actually dragged
+                    if (actuallyDragged) {
+                        // Save the final position and rotation
+                        const componentRef = g.getAttribute('data-component');
+                        const transform = g.getAttribute('transform') || 'translate(0, 0)';
+                        // Parse transform using string methods
+                        let finalPosition = { x: 0, y: 0 };
+                        let finalRotation = 0;
+                        console.log('Parsing transform for', componentRef, ':', transform);
+                        
+                        // Parse translate
+                        if (transform.includes('translate(')) {
+                            const start = transform.indexOf('translate(') + 10;
+                            const end = transform.indexOf(')', start);
+                            const coords = transform.substring(start, end).split(',');
+                            console.log('Found coordinates:', coords);
+                            if (coords.length === 2) {
+                                const x = parseFloat(coords[0].trim());
+                                const y = parseFloat(coords[1].trim());
+                                if (!isNaN(x) && !isNaN(y)) {
+                                    finalPosition = { x, y };
+                                    console.log('Parsed position:', finalPosition);
+                                } else {
+                                    console.error('Invalid coordinates:', coords[0], coords[1]);
+                                }
+                            } else {
+                                console.error('Expected 2 coordinates, found:', coords.length);
+                            }
+                        } else {
+                            console.log('No translate found in transform:', transform);
+                        }
+                        
+                        // Parse rotate
+                        if (transform.includes('rotate(')) {
+                            const rotateStart = transform.indexOf('rotate(') + 7;
+                            const rotateEnd = transform.indexOf(')', rotateStart);
+                            const rotateValue = transform.substring(rotateStart, rotateEnd).trim();
+                            const rotationParts = rotateValue.split(' ');
+                            if (rotationParts.length >= 1) {
+                                finalRotation = parseFloat(rotationParts[0]) || 0;
+                                console.log('Parsed rotation:', finalRotation);
+                            }
+                        }
+                        
+                        // Create a component object for the location manager
+                        const component = {
+                            reference: componentRef,
+                            symbol: 'unknown', // We don't have this info in the viewer
+                            footprint: 'unknown', // We don't have this info in the viewer
+                            value: 'unknown' // We don't have this info in the viewer
+                        };
+                        
+                        // Save the location and rotation (synchronous for embedded storage)
+                        if (finalPosition && typeof finalPosition.x === 'number' && typeof finalPosition.y === 'number') {
+                            try {
+                                locationManager.setLocation(component, finalPosition.x, finalPosition.y, 'viewer-position', finalRotation);
+                                console.log(`Saved position for ${componentRef}: (${finalPosition.x}, ${finalPosition.y}) rotation: ${finalRotation}°`);
+                                
+                                // Also save the reference text position
+                                const referenceTextElement = svg.querySelector(`text[data-reference="${componentRef}"]`);
+                                if (referenceTextElement) {
+                                    const referenceX = parseFloat(referenceTextElement.getAttribute('x')) || 0;
+                                    const referenceY = parseFloat(referenceTextElement.getAttribute('y')) || 0;
+                                    locationManager.setReferenceTextPosition(component, referenceX, referenceY);
+                                    console.log(`Saved reference text position for ${componentRef}: (${referenceX}, ${referenceY})`);
+                                }
+                                
+                                // Note: Automatic saving disabled to prevent unwanted saves of selected components
+                                // Manual save can be triggered if needed
+                            } catch (error) {
+                                console.error('Failed to save location:', error);
+                            }
+                        } else {
+                            console.error('Invalid final position for component', componentRef, ':', finalPosition);
+                        }
+                        
+                        // Clear symbol drag base positions for reference text to ensure fresh tracking next time
+                        const referenceTextElement = svg.querySelector(`text[data-reference="${componentRef}"]`);
+                        if (referenceTextElement) {
+                            delete referenceTextElement._symbolDragBaseX;
+                            delete referenceTextElement._symbolDragBaseY;
+                            delete referenceTextElement._symbolOriginalX;
+                            delete referenceTextElement._symbolOriginalY;
+                        }
+                    }
+                    
+                    // Reset hasDragged after all processing is complete
+                    hasDragged = false;
+                }
+            });
+        }
+
+        // Function to add invisible overlay rectangles to make components fully grabbable
+        function addComponentOverlays() {
+            const components = svg.querySelectorAll('g[data-component]');
+            components.forEach(component => {
+                // Skip if overlay already exists
+                if (component.querySelector('.component-overlay')) {
+                    return;
+                }
+                
+                // Calculate bounding box of the component
+                const bbox = component.getBBox();
+                
+                // Add some padding to make it easier to grab
+                const padding = 5;
+                const overlayX = bbox.x - padding;
+                const overlayY = bbox.y - padding;
+                const overlayWidth = bbox.width + (padding * 2);
+                const overlayHeight = bbox.height + (padding * 2);
+                
+                // Create invisible overlay rectangle
+                const overlay = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+                overlay.setAttribute('x', overlayX.toString());
+                overlay.setAttribute('y', overlayY.toString());
+                overlay.setAttribute('width', overlayWidth.toString());
+                overlay.setAttribute('height', overlayHeight.toString());
+                overlay.setAttribute('fill', 'transparent');
+                overlay.setAttribute('stroke', 'none');
+                overlay.setAttribute('class', 'component-overlay');
+                overlay.setAttribute('cursor', 'grab');
+                
+                // Insert overlay as the first child so it's behind visual elements but still clickable
+                component.insertBefore(overlay, component.firstChild);
+            });
+        }
+
+        // Function to ensure reference text is always on the topmost layer
+        function ensureReferenceTextOnTop() {
+            // Find all reference text elements
+            const referenceTexts = svg.querySelectorAll('text[data-reference]');
+            
+            // Move each reference text to the end of its parent container to appear on top
+            referenceTexts.forEach(textElement => {
+                const parent = textElement.parentNode;
+                if (parent) {
+                    // Remove and re-append to move to the end (topmost layer)
+                    parent.removeChild(textElement);
+                    parent.appendChild(textElement);
+                }
+            });
+        }
+
+        // Make reference text draggable
+        function makeReferenceTextDraggable(textElement) {
+            let isDragging = false;
+            let hasDragged = false;
+            let startX, startY;
+            let initialPosition = { x: 0, y: 0 };
+            const gridSize = 25.4; // 2.54mm grid spacing
+            const dragThreshold = 5;
+            
+            // Helper function to snap to grid
+            const snapToGrid = (value) => {
+                return Math.round(value / gridSize) * gridSize;
+            };
+
+            textElement.addEventListener('mousedown', (e) => {
+                if (e.button !== 0) return; // Only left mouse button
+                
+                e.preventDefault();
+                e.stopPropagation();
+                
+                // Stop any active panning
+                if (isPanning) {
+                    isPanning = false;
+                    svg.classList.remove('panning');
+                }
+                
+                isDragging = true;
+                hasDragged = false;
+                startX = e.clientX;
+                startY = e.clientY;
+
+                // Get current position
+                const currentX = parseFloat(textElement.getAttribute('x')) || 0;
+                const currentY = parseFloat(textElement.getAttribute('y')) || 0;
+                initialPosition = { x: currentX, y: currentY };
+                
+                // Visual feedback
+                textElement.style.cursor = 'grabbing';
+                textElement.style.opacity = '0.7';
+                // Set document cursor to grabbing for consistency
+                document.body.style.cursor = 'grabbing';
+                svg.classList.add('dragging');
+            });
+
+            document.addEventListener('mousemove', (e) => {
+                if (isDragging) {
+                    e.preventDefault();
+                    const dx = (e.clientX - startX) / zoomLevel;
+                    const dy = (e.clientY - startY) / zoomLevel;
+                    
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    if (distance > dragThreshold && !hasDragged) {
+                        hasDragged = true;
+                    }
+                    
+                    if (hasDragged) {
+                        // Calculate new position and snap to grid
+                        const newX = snapToGrid(initialPosition.x + dx);
+                        const newY = snapToGrid(initialPosition.y + dy);
+                        
+                        // Update position
+                        textElement.setAttribute('x', newX.toString());
+                        textElement.setAttribute('y', newY.toString());
+                    }
+                }
+            });
+
+            document.addEventListener('mouseup', async (e) => {
+                if (isDragging) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    
+                    const actuallyDragged = hasDragged;
+                    isDragging = false;
+                    
+                    // Reset visual feedback
+                    textElement.style.cursor = 'grab';
+                    textElement.style.opacity = '1';
+                    // Reset document cursor
+                    svg.classList.remove('dragging');
+                    document.body.style.cursor = '';
+                    
+                    if (actuallyDragged) {
+                        // Save the new position
+                        const componentRef = textElement.getAttribute('data-reference');
+                        const finalX = parseFloat(textElement.getAttribute('x'));
+                        const finalY = parseFloat(textElement.getAttribute('y'));
+                        
+                        // Update the original position tracking for this reference text
+                        // This ensures that future symbol movements will use the correct baseline
+                        textElement._originalX = finalX;
+                        textElement._originalY = finalY;
+                        
+                        // Create component object for location manager
+                        const component = {
+                            reference: componentRef,
+                            symbol: 'unknown',
+                            footprint: 'unknown',
+                            value: 'unknown'
+                        };
+                        
+                        // Save reference text position
+                        try {
+                            locationManager.setReferenceTextPosition(component, finalX, finalY);
+                            console.log(`Saved reference text position for ${componentRef}: (${finalX}, ${finalY})`);
+                            
+                            // Update the SVG content in the ComponentLocationManager with current DOM state
+                            const currentSvg = getSvg();
+                            if (currentSvg) {
+                                // Get the current SVG content and update the location manager
+                                const updatedSvgContent = currentSvg.outerHTML;
+                                locationManager.updateSvgContent(updatedSvgContent);
+                                
+                                // Save the updated SVG to server
+                                await saveUpdatedSvgToServer();
+                            }
+                        } catch (error) {
+                            console.error('Failed to save reference text position:', error);
+                        }
+                    }
+                    
+                    hasDragged = false;
+                }
+            });
+        }
+
+        // Make all components draggable
+        function initializeDragging() {
+            const components = svg.querySelectorAll('g[data-component]');
+            components.forEach(component => {
+                makeDraggable(component);
+            });
+            
+            // Make all reference text elements draggable
+            const referenceTexts = svg.querySelectorAll('text[data-reference]');
+            referenceTexts.forEach(textElement => {
+                makeReferenceTextDraggable(textElement);
+                // Set cursor style for reference text
+                textElement.style.cursor = 'grab';
+                textElement.style.userSelect = 'none'; // Prevent text selection
+            });
+            
+            // Add invisible overlays to make components fully grabbable
+            addComponentOverlays();
+            
+            // Ensure reference text is on the topmost layer
+            ensureReferenceTextOnTop();
+            
+            // Initialize zoom transform
+            applyZoomTransform();
+            
+            console.log(`Initialized dragging for ${components.length} components and ${referenceTexts.length} reference texts`);
+        }
+
+
+
+        // Function to clear all locations (made available globally)
+        function clearAllLocations() {
+            try {
+                locationManager.clearAllLocations();
+                console.log('All component locations cleared');
+            } catch (error) {
+                console.error('Failed to clear locations:', error);
+            }
+        }
+
+        // Make clearAllLocations available globally
+        window.clearAllLocations = clearAllLocations;
+
+        // Function to load saved positions
+        async function loadSavedPositions() {
+            // Load locations and then apply them (async for server storage)
+            try {
+                await locationManager.loadLocations();
+                const components = svg.querySelectorAll('g[data-component]');
+                components.forEach(component => {
+                    const componentRef = component.getAttribute('data-component');
+                    
+                    // Create a component object for the location manager
+                    const componentObj = {
+                        reference: componentRef,
+                        symbol: 'unknown',
+                        footprint: 'unknown',
+                        value: 'unknown'
+                    };
+                    
+                    // Check if we have a saved position
+                    const savedLocation = locationManager.getLocation(componentObj);
+                    if (savedLocation) {
+                        // Apply the saved position and rotation
+                        const rotation = savedLocation.rotation || 0;
+                        let transform = `translate(${savedLocation.x}, ${savedLocation.y})`;
+                        
+                        if (rotation !== 0) {
+                            // Get component bounding box to calculate rotation center
+                            const bbox = component.getBBox();
+                            const centerX = bbox.x + bbox.width / 2;
+                            const centerY = bbox.y + bbox.height / 2;
+                            transform += ` rotate(${rotation} ${centerX} ${centerY})`;
+                        }
+                        
+                        component.setAttribute('transform', transform);
+                        // Mark 180° rotation so CSS can flip pin texts
+                        const normalized = ((rotation % 360) + 360) % 360;
+                        if (normalized === 180) {
+                            component.setAttribute('data-rotated-180', 'true');
+                        } else {
+                            component.removeAttribute('data-rotated-180');
+                        }
+                        console.log(`Loaded saved position for ${componentRef}: (${savedLocation.x}, ${savedLocation.y}) rotation: ${rotation}°`);
+                    }
+                });
+                
+                // Load saved reference text positions
+                const referenceTexts = svg.querySelectorAll('text[data-reference]');
+                referenceTexts.forEach(textElement => {
+                    const componentRef = textElement.getAttribute('data-reference');
+                    
+                    // Create a component object for the location manager
+                    const componentObj = {
+                        reference: componentRef,
+                        symbol: 'unknown',
+                        footprint: 'unknown',
+                        value: 'unknown'
+                    };
+                    
+                    // Check if we have a saved reference text position
+                    const savedTextPosition = locationManager.getReferenceTextPosition(componentObj);
+                    if (savedTextPosition) {
+                        // Apply the saved position
+                        textElement.setAttribute('x', savedTextPosition.x.toString());
+                        textElement.setAttribute('y', savedTextPosition.y.toString());
+                        console.log(`Loaded saved reference text position for ${componentRef}: (${savedTextPosition.x}, ${savedTextPosition.y})`);
+                    }
+                    
+                    // Initialize original position tracking for this reference text
+                    // This ensures that future symbol movements will use the correct baseline
+                    const currentX = parseFloat(textElement.getAttribute('x')) || 0;
+                    const currentY = parseFloat(textElement.getAttribute('y')) || 0;
+                    textElement._originalX = currentX;
+                    textElement._originalY = currentY;
+                });
+                
+                // Ensure reference text is on the topmost layer after loading
+                ensureReferenceTextOnTop();
+                
+                // Draw wires after positions are loaded
+                updateWires();
+            } catch (error) {
+                console.error('Failed to load saved positions:', error);
+                // Still draw wires even if loading failed
+                updateWires();
+            }
+        }
+
+        // Function to load updated SVG from server
+        async function loadUpdatedSvg() {
+            try {
+                const title = document.title || 'schematic';
+                const schematicName = title.replace(' - KiCad Symbol Viewer', '').toLowerCase().replace(/[^a-z0-9]/g, '_');
+                
+                const response = await fetch(`/api/get-svg/${schematicName}`);
+                if (response.ok) {
+                    const svgContent = await response.text();
+                    const svgContainer = document.getElementById('svg-container');
+                    svgContainer.innerHTML = svgContent;
+                    
+                    // Update the svg reference to point to the new SVG element
+                    svg = getSvg();
+                    console.log('Loaded updated SVG from server and updated reference');
+                    
+                    // Re-initialize panning for the new SVG
+                    initializePanning();
+                    
+                    // Save the updated SVG back to the server to ensure it's persisted
+                    await saveUpdatedSvgToServer();
+                    
+                    return true;
+                } else {
+                    console.log('No updated SVG found on server, using embedded SVG');
+                    return false;
+                }
+            } catch (error) {
+                console.warn('Could not load updated SVG from server:', error);
+                return false;
+            }
+        }
+        
+        // Function to save the current SVG state to server
+        async function saveUpdatedSvgToServer() {
+            try {
+                const title = document.title || 'schematic';
+                const schematicName = title.replace(' - KiCad Symbol Viewer', '').toLowerCase().replace(/[^a-z0-9]/g, '_');
+                
+                const currentSvg = getSvg();
+                if (currentSvg) {
+                    // Create a clean copy of the SVG without zoom transforms
+                    const cleanSvg = currentSvg.cloneNode(true);
+                    
+                    // Remove zoom transform group and move its children back to the main SVG
+                    const transformGroup = cleanSvg.querySelector('#zoom-transform-group');
+                    if (transformGroup) {
+                        const children = Array.from(transformGroup.children);
+                        children.forEach(child => {
+                            cleanSvg.appendChild(child);
+                        });
+                        transformGroup.remove();
+                    }
+                    
+                    // Reset zoom and pan to default values
+                    cleanSvg.setAttribute('width', '2000');
+                    cleanSvg.setAttribute('height', '1500');
+                    
+                    const updatedSvgContent = cleanSvg.outerHTML;
+                    const svgResponse = await fetch(`/api/save-svg/${schematicName}`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ svgContent: updatedSvgContent })
+                    });
+                    
+                    if (svgResponse.ok) {
+                        console.log('Updated SVG automatically saved to server');
+                    } else {
+                        console.warn('Failed to automatically save updated SVG to server:', svgResponse.statusText);
+                    }
+                }
+            } catch (error) {
+                console.warn('Could not automatically save updated SVG to server:', error);
+            }
+        }
+
+        // Function to handle component selection
+        function selectComponent(componentElement) {
+            console.log('selectComponent called with:', componentElement ? componentElement.getAttribute('data-component') : 'null');
+            
+            // Remove selection from all components and reference text
+            const allComponents = svg.querySelectorAll('g[data-component]');
+            allComponents.forEach(comp => {
+                comp.classList.remove('component-selected');
+            });
+            
+            // Remove selection from all reference text elements
+            const allReferenceTexts = svg.querySelectorAll('text[data-reference]');
+            allReferenceTexts.forEach(text => {
+                text.classList.remove('reference-selected');
+            });
+            
+            // Select the clicked component
+            if (componentElement) {
+                componentElement.classList.add('component-selected');
+                selectedComponent = componentElement;
+                console.log('Selected component:', componentElement.getAttribute('data-component'));
+                
+                // Apply selection styling to reference text
+                applyReferenceSelection(componentElement);
+            } else {
+                selectedComponent = null;
+                console.log('Deselected all components');
+            }
+            
+            // Ensure reference text stays on top after selection
+            ensureReferenceTextOnTop();
+            
+            // Debug: Log all selection bounding boxes after selection is complete
+            setTimeout(() => {
+                const allBoxes = svg.querySelectorAll('.selection-bounding-box');
+                console.log('=== FINAL STATE: All selection bounding boxes ===');
+                allBoxes.forEach((box, index) => {
+                    console.log('Box ' + (index + 1) + ':', {
+                        id: box.getAttribute('id'),
+                        x: box.getAttribute('x'),
+                        y: box.getAttribute('y'),
+                        width: box.getAttribute('width'),
+                        height: box.getAttribute('height'),
+                        class: box.getAttribute('class')
+                    });
+                });
+                console.log('=== END FINAL STATE ===');
+                
+                // Also check for any other rectangles that might be visible
+                const allRects = svg.querySelectorAll('rect');
+                console.log('=== ALL RECTANGLES IN SVG ===');
+                allRects.forEach((rect, index) => {
+                    const stroke = rect.getAttribute('stroke');
+                    const fill = rect.getAttribute('fill');
+                    if (stroke === '#4CAF50' || stroke === 'rgb(76, 175, 80)' || 
+                        (stroke && stroke.includes('4CAF50')) || 
+                        (stroke && stroke.includes('76, 175, 80'))) {
+                        console.log('Green rectangle ' + (index + 1) + ':', {
+                            id: rect.getAttribute('id'),
+                            class: rect.getAttribute('class'),
+                            x: rect.getAttribute('x'),
+                            y: rect.getAttribute('y'),
+                            width: rect.getAttribute('width'),
+                            height: rect.getAttribute('height'),
+                            stroke: stroke,
+                            fill: fill
+                        });
+                    }
+                });
+                console.log('=== END ALL RECTANGLES ===');
+            }, 10);
+        }
+        
+        // Function to apply selection styling to reference text element
+        function applyReferenceSelection(componentElement) {
+            if (!componentElement) return;
+            
+            const componentRef = componentElement.getAttribute('data-component');
+            if (!componentRef) return;
+            
+            // Find the corresponding reference text element
+            const referenceTextElement = svg.querySelector(`text[data-reference="${componentRef}"]`);
+            if (!referenceTextElement) return;
+            
+            // Apply the same selection styling as symbols
+            referenceTextElement.classList.add('reference-selected');
+        }
+        
+        // Function to move reference text with symbol during dragging
+        function moveReferenceTextWithSymbol(componentRef, newOffset) {
+            const referenceTextElement = svg.querySelector(`text[data-reference="${componentRef}"]`);
+            if (!referenceTextElement) return;
+            
+            // Get the symbol's original position (stored when dragging started)
+            const symbolOriginalX = referenceTextElement._symbolOriginalX || 0;
+            const symbolOriginalY = referenceTextElement._symbolOriginalY || 0;
+            
+            // Use separate tracking for symbol-relative positioning to avoid conflicts
+            // with independent text dragging (_originalX/_originalY)
+            if (!referenceTextElement._symbolDragBaseX) {
+                // Store the reference text position at the start of symbol dragging
+                referenceTextElement._symbolDragBaseX = parseFloat(referenceTextElement.getAttribute('x')) || 0;
+                referenceTextElement._symbolDragBaseY = parseFloat(referenceTextElement.getAttribute('y')) || 0;
+            }
+            
+            // Calculate the delta (change) from the symbol's original position
+            const deltaX = newOffset.x - symbolOriginalX;
+            const deltaY = newOffset.y - symbolOriginalY;
+            
+            // Apply the delta to the reference text's position at the start of symbol dragging
+            const newX = referenceTextElement._symbolDragBaseX + deltaX;
+            const newY = referenceTextElement._symbolDragBaseY + deltaY;
+            
+            // Update the reference text position
+            referenceTextElement.setAttribute('x', newX.toString());
+            referenceTextElement.setAttribute('y', newY.toString());
+        }
+        
+
+
+
+
+        // Function to rotate selected component
+        function rotateSelectedComponent() {
+            if (!selectedComponent) {
+                console.log('No component selected for rotation');
+                return;
+            }
+            
+            const componentRef = selectedComponent.getAttribute('data-component');
+            const currentTransform = selectedComponent.getAttribute('transform') || 'translate(0, 0)';
+            
+            // Parse current transform
+            let currentX = 0;
+            let currentY = 0;
+            let currentRotation = 0;
+            
+            // Extract translate values
+            if (currentTransform.includes('translate(')) {
+                const translateStart = currentTransform.indexOf('translate(') + 10;
+                const translateEnd = currentTransform.indexOf(')', translateStart);
+                const coords = currentTransform.substring(translateStart, translateEnd).split(',');
+                if (coords.length === 2) {
+                    currentX = parseFloat(coords[0].trim());
+                    currentY = parseFloat(coords[1].trim());
+                }
+            }
+            
+            // Extract rotate values
+            if (currentTransform.includes('rotate(')) {
+                const rotateStart = currentTransform.indexOf('rotate(') + 7;
+                const rotateEnd = currentTransform.indexOf(')', rotateStart);
+                const rotateValue = currentTransform.substring(rotateStart, rotateEnd).trim();
+                currentRotation = parseFloat(rotateValue.split(' ')[0]) || 0;
+            }
+            
+            // Increment rotation by 90 degrees
+            const newRotation = (currentRotation + 90) % 360;
+            
+            // Get component bounding box to calculate rotation center
+            const bbox = selectedComponent.getBBox();
+            const centerX = bbox.x + bbox.width / 2;
+            const centerY = bbox.y + bbox.height / 2;
+            
+            // Apply new transform with rotation around component center
+            const newTransform = `translate(${currentX}, ${currentY}) rotate(${newRotation} ${centerX} ${centerY})`;
+            selectedComponent.setAttribute('transform', newTransform);
+            
+            // Mark 180° rotation so CSS can flip pin texts
+            const normalizedRotation = ((newRotation % 360) + 360) % 360;
+            if (normalizedRotation === 180) {
+                selectedComponent.setAttribute('data-rotated-180', 'true');
+            } else {
+                selectedComponent.removeAttribute('data-rotated-180');
+            }
+            
+            // Keep all text elements upright and readable
+            // Handle reference text (should not rotate at all)
+            const referenceTextElement = svg.querySelector(`text[data-reference="${componentRef}"]`);
+            if (referenceTextElement) {
+                // Reference text should stay completely upright - no rotation needed
+                // Just ensure it has no transform that would make it rotate
+                referenceTextElement.removeAttribute('transform');
+                console.log(`Kept reference text for ${componentRef} upright (no rotation)`);
+            }
+            
+            // Handle all text elements within the component (pin names, pin numbers, etc.)
+            // The SVG generator now correctly positions pin names and numbers relative to pin coordinates.
+            // Since the component group is rotated, the text inside will naturally rotate with it.
+            // We should NOT apply any counter-rotations as they interfere with the natural positioning.
+            // Let the text rotate naturally with the component - this is standard CAD behavior.
+            const componentTextElements = selectedComponent.querySelectorAll('text');
+            componentTextElements.forEach(textElement => {
+                // Remove any existing transforms on the text elements
+                // Let them rotate naturally with the component group
+                textElement.removeAttribute('transform');
+                
+                console.log(`Removed transform from component text to let it rotate naturally with component`);
+            });
+            
+            // Update wires after rotation
+            updateWires();
+            
+            // Save the new rotation
+            const component = {
+                reference: componentRef,
+                symbol: 'unknown',
+                footprint: 'unknown',
+                value: 'unknown'
+            };
+            
+            if (locationManager) {
+                const symbolContent = selectedComponent.outerHTML;
+                locationManager.setLocation(component, currentX, currentY, symbolContent, newRotation);
+            }
+            
+            console.log(`Rotated component ${componentRef} to ${newRotation} degrees`);
+        }
+
+        // Add keyboard event listener for rotation
+        document.addEventListener('keydown', (event) => {
+            if (event.key.toLowerCase() === 'r' && selectedComponent) {
+                event.preventDefault();
+                rotateSelectedComponent();
+            }
+            // ESC key to deselect
+            if (event.key === 'Escape') {
+                selectComponent(null);
+            }
+        });
+        
+        // Add click event listener for component selection on background
+        document.addEventListener('click', (event) => {
+            // Only deselect if click was on empty space (not on a component or reference text)
+            const clickedComponent = event.target.closest('g[data-component]');
+            const clickedReferenceText = event.target.closest('text[data-reference]');
+            
+            if (!clickedComponent && !clickedReferenceText) {
+                // Clicked on empty space - deselect all
+                selectComponent(null);
+            }
+        });
+
+        // Initialize when DOM is ready
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', async () => {
+                // Try to load updated SVG from server first
+                const updatedSvgLoaded = await loadUpdatedSvg();
+                
+                // Initialize location manager after DOM is ready
+                locationManager = new ComponentLocationManager();
+                console.log('Location manager initialized for server storage');
+                
+                await loadSavedPositions();
+                initializeDragging();
+                // Draw initial wires after everything is loaded
+                setTimeout(() => {
+                    updateWires();
+                    updatePinConnectionIndicators();
+                }, 100);
+            });
+        } else {
+            // Initialize location manager after DOM is ready
+            locationManager = new ComponentLocationManager();
+            console.log('Location manager initialized for server storage');
+            
+            (async () => {
+                // Try to load updated SVG from server first
+                const updatedSvgLoaded = await loadUpdatedSvg();
+                
+                await loadSavedPositions();
+                initializeDragging();
+                // Draw initial wires after everything is loaded
+                setTimeout(() => {
+                    updateWires();
+                    updatePinConnectionIndicators();
+                }, 100);
+            })();
+        }
+    </script>
+</body>
+</html>

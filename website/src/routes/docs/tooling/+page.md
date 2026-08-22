@@ -187,6 +187,10 @@ typecad validate --verbose --json
 
 Run KiCAD's Design Rule Check as a passthrough to `kicad-cli`.
 
+The board-wide rules DRC validates against (minimum clearance, track width, via
+dimensions) default to the JLCPCB no-surcharge standard and are configurable in
+code — see [Board Layout → Design Rules](/docs/board_layout#design-rules).
+
 <ScrollArea orientation="both">
 
 ```bash

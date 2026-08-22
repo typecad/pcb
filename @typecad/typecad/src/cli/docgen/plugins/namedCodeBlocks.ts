@@ -1,4 +1,4 @@
-import type MarkdownIt from 'markdown-it';
+import type { MarkdownIt } from 'markdown-it';
 
 export default function namedCodeBlocksPlugin(md: MarkdownIt): void {
     const defaultRender = md.renderer.rules.fence;

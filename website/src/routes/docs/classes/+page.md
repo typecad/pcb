@@ -29,6 +29,7 @@ The `PCB` class is where:
 - Components are added
 - Connections are made between components
 - Board layout is defined
+- Board outlines are drawn — rectangles, polygons, circles, cutouts, and free-form line/arc paths
 - Utility functions like ERC and BOM
 - Routing with `route()` and `autorouteBatch()`
 - Zones, keepout areas, and graphics
@@ -151,7 +152,7 @@ export class MyResistor extends Package {
 ```
 </ScrollArea>
 
-The constructor handles offset positioning (`x`, `y`), auto-collects all `Component` properties set on `this`, groups them on the PCB.
+The constructor handles offset positioning (`x`, `y`), auto-collects all `Component` properties set on `this`, groups them on the PCB, and automatically syncs the package's bundled KiCad symbol/footprint files (its `./build/lib/`) into the project's `./build/lib/` directory — no install script required. For classes that don't extend `Package`, the exported `syncThisPackageBuildLib()` helper provides the same sync with one call.
 
 ## `TrackBuilder`
 

@@ -49,6 +49,12 @@ typecad.route(signal_net, {
 
 By default, the router uses a resolution derived from the trace width and clearance settings. Decreasing the resolution value increases the search space and memory usage but may help find paths in congested layouts.
 
+The router's fallback trace width and clearance come from the board's
+[design rules](/docs/board_layout#design-rules) (JLCPCB no-surcharge standard by
+default), or from the net's [net class](/docs/board_layout#net-classes) if it has
+been assigned one. Per-route `width` and `clearance` options override them for an
+individual trace.
+
 ```ts
 let result = await pcb.autorouteBatch([
   { from: mcu.SDA, to: sensor.SDA, name: 'SDA' },
@@ -113,5 +119,3 @@ Parameters:
 - _filename_ — output filename (without extension), saves as `.ppm`
 - _layer_ — which layer to visualize
 - _cellSize_ — pixels per grid cell (default: 1) -->
-
-       Git Diff

@@ -1,4 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { readFileSync } from 'node:fs';
+
+const { version } = JSON.parse(readFileSync(new URL('../../../package.json', import.meta.url), 'utf-8'));
+
 import { CommandLineInterface } from '../CommandLineInterface.js';
 import { SearchEngine } from '../../interfaces/SearchEngine.js';
 import { SearchResult } from '../../types/index.js';
@@ -16,32 +20,36 @@ vi.mock('chalk', () => ({
     bold: (text: string) => text,
     gray: (text: string) => text,
     italic: (text: string) => text,
-    hex: () => (text: string) => text
-  }
+    hex: () => (text: string) => text,
+  },
 }));
 
 // Mock the ProgressIndicator class
 vi.mock('../ProgressIndicator.js', () => ({
-  ProgressIndicator: vi.fn().mockImplementation(() => ({
-    start: vi.fn(),
-    stop: vi.fn(),
-    updateMessage: vi.fn()
-  }))
+  ProgressIndicator: vi.fn().mockImplementation(function () {
+    return {
+      start: vi.fn(),
+      stop: vi.fn(),
+      updateMessage: vi.fn(),
+    };
+  }),
 }));
 
 // Mock the ErrorHandler class
 vi.mock('../ErrorHandler.js', () => ({
   ErrorHandler: {
-    handleError: vi.fn().mockImplementation((error) => `Handled error: ${error instanceof Error ? error.message : String(error)}`)
-  }
+    handleError: vi
+      .fn()
+      .mockImplementation((error) => `Handled error: ${error instanceof Error ? error.message : String(error)}`),
+  },
 }));
 
 // Mock readline module
 vi.mock('readline', () => ({
   createInterface: vi.fn().mockReturnValue({
     question: vi.fn(),
-    close: vi.fn()
-  })
+    close: vi.fn(),
+  }),
 }));
 
 // Create a mock SearchEngine for testing
@@ -52,7 +60,7 @@ const createMockSearchEngine = () => {
       if (query === 'empty') {
         return [];
       }
-      
+
       return [
         {
           lcsc: 'C1234',
@@ -61,7 +69,7 @@ const createMockSearchEngine = () => {
           description: 'Test Component',
           package: '0603',
           score: 95.5,
-          matchSummary: 'Matched on value and package'
+          matchSummary: 'Matched on value and package',
         },
         {
           lcsc: 'C5678',
@@ -70,12 +78,12 @@ const createMockSearchEngine = () => {
           description: 'Another Component',
           package: '0805',
           score: 85.2,
-          matchSummary: 'Matched on value'
-        }
+          matchSummary: 'Matched on value',
+        },
       ] as SearchResult[];
-    })
+    }),
   };
-  
+
   return mockSearchEngine;
 };
 
@@ -87,22 +95,22 @@ describe('CommandLineInterface', () => {
   const mockConsoleLog = vi.fn();
   const mockConsoleError = vi.fn();
   const mockConsoleWarn = vi.fn();
-  
+
   // Mock process.exit
   const originalProcessExit = process.exit;
   const mockProcessExit = vi.fn() as unknown as typeof process.exit;
-  
+
   beforeEach(() => {
     // Setup mocks before each test
     console.log = mockConsoleLog;
     console.error = mockConsoleError;
     console.warn = mockConsoleWarn;
     process.exit = mockProcessExit;
-    
+
     // Clear mock calls
     vi.clearAllMocks();
   });
-  
+
   afterEach(() => {
     // Restore original functions after each test
     console.log = originalConsoleLog;
@@ -110,73 +118,73 @@ describe('CommandLineInterface', () => {
     console.warn = originalConsoleWarn;
     process.exit = originalProcessExit;
   });
-  
+
   describe('run', () => {
     it('should display help when --help flag is provided', async () => {
       // Arrange
       const mockSearchEngine = createMockSearchEngine();
       const cli = new CommandLineInterface(mockSearchEngine);
       const displayHelpSpy = vi.spyOn(cli, 'displayHelp');
-      
+
       // Act
       await cli.run(['node', 'script.js', '--help']);
-      
+
       // Assert
       expect(displayHelpSpy).toHaveBeenCalled();
       expect(mockSearchEngine.search).not.toHaveBeenCalled();
     });
-    
+
     it('should display help when -h flag is provided', async () => {
       // Arrange
       const mockSearchEngine = createMockSearchEngine();
       const cli = new CommandLineInterface(mockSearchEngine);
       const displayHelpSpy = vi.spyOn(cli, 'displayHelp');
-      
+
       // Act
       await cli.run(['node', 'script.js', '-h']);
-      
+
       // Assert
       expect(displayHelpSpy).toHaveBeenCalled();
       expect(mockSearchEngine.search).not.toHaveBeenCalled();
     });
-    
+
     it('should display version when --version flag is provided', async () => {
       // Arrange
       const mockSearchEngine = createMockSearchEngine();
       const cli = new CommandLineInterface(mockSearchEngine);
-      
+
       // Act
       await cli.run(['node', 'script.js', '--version']);
-      
+
       // Assert
-      expect(mockConsoleLog).toHaveBeenCalledWith('jlcpcb-search version 1.2.0');
+      expect(mockConsoleLog).toHaveBeenCalledWith(`jlcpcb-search version ${version}`);
       expect(mockSearchEngine.search).not.toHaveBeenCalled();
     });
-    
+
     it('should display version when -v flag is provided', async () => {
       // Arrange
       const mockSearchEngine = createMockSearchEngine();
       const cli = new CommandLineInterface(mockSearchEngine);
-      
+
       // Act
       await cli.run(['node', 'script.js', '-v']);
-      
+
       // Assert
-      expect(mockConsoleLog).toHaveBeenCalledWith('jlcpcb-search version 1.2.0');
+      expect(mockConsoleLog).toHaveBeenCalledWith(`jlcpcb-search version ${version}`);
       expect(mockSearchEngine.search).not.toHaveBeenCalled();
     });
-    
+
     it('should prompt for query when no query is provided in interactive mode', async () => {
       // Arrange
       const mockSearchEngine = createMockSearchEngine();
       const cli = new CommandLineInterface(mockSearchEngine);
-      
+
       // Mock the promptForSearchQuery method to return empty string (user pressed enter)
       const promptSpy = vi.spyOn(cli as any, 'promptForSearchQuery').mockResolvedValue('');
-      
+
       // Act
       await cli.run(['node', 'script.js']);
-      
+
       // Assert
       expect(promptSpy).toHaveBeenCalled();
       expect(mockConsoleLog).toHaveBeenCalledWith('No search query provided. Exiting.');
@@ -188,13 +196,13 @@ describe('CommandLineInterface', () => {
       const mockSearchEngine = createMockSearchEngine();
       const cli = new CommandLineInterface(mockSearchEngine);
       const displayResultsSpy = vi.spyOn(cli, 'displayResults');
-      
+
       // Mock the promptForSearchQuery method to return a search query
       const promptSpy = vi.spyOn(cli as any, 'promptForSearchQuery').mockResolvedValue('resistor 10k');
-      
+
       // Act
       await cli.run(['node', 'script.js']);
-      
+
       // Assert
       expect(promptSpy).toHaveBeenCalled();
       expect(mockSearchEngine.search).toHaveBeenCalledWith('resistor 10k');
@@ -205,191 +213,191 @@ describe('CommandLineInterface', () => {
       // Arrange
       const mockSearchEngine = createMockSearchEngine();
       const cli = new CommandLineInterface(mockSearchEngine);
-      
+
       // Act
       await cli.run(['node', 'script.js', '--format', 'json']);
-      
+
       // Assert
       expect(mockConsoleLog).toHaveBeenCalledWith(
         JSON.stringify({
           error: true,
           message: 'No search query provided',
-          code: 'MISSING_QUERY'
-        })
+          code: 'MISSING_QUERY',
+        }),
       );
       expect(mockProcessExit).toHaveBeenCalledWith(1);
     });
-    
+
     it('should validate the search query', async () => {
       // Arrange
       const mockSearchEngine = createMockSearchEngine();
       const cli = new CommandLineInterface(mockSearchEngine);
-      
+
       // Override the validateQuery method to fail for our test
       const originalValidateQuery = cli['validateQuery'];
       cli['validateQuery'] = vi.fn().mockReturnValue(false);
-      
+
       // Act
       await cli.run(['node', 'script.js', '!@#$%^&*']);
-      
+
       // Assert
       expect(mockConsoleError).toHaveBeenCalledWith('Error: Invalid search query: "!@#$%^&*"');
       expect(mockProcessExit).toHaveBeenCalledWith(1);
-      
+
       // Restore original method
       cli['validateQuery'] = originalValidateQuery;
     });
-    
+
     it('should perform search with valid query', async () => {
       // Arrange
       const mockSearchEngine = createMockSearchEngine();
       const cli = new CommandLineInterface(mockSearchEngine);
       const displayResultsSpy = vi.spyOn(cli, 'displayResults');
-      
+
       // Act
       await cli.run(['node', 'script.js', '10k', 'resistor']);
-      
+
       // Assert
       expect(mockSearchEngine.search).toHaveBeenCalledWith('10k resistor');
       expect(displayResultsSpy).toHaveBeenCalled();
     });
-    
+
     it('should handle search errors gracefully', async () => {
       // Arrange
       const mockSearchEngine = createMockSearchEngine();
       mockSearchEngine.search = vi.fn().mockRejectedValue(new Error('Search failed'));
       const cli = new CommandLineInterface(mockSearchEngine);
-      
+
       // Act
       await cli.run(['node', 'script.js', 'test']);
-      
+
       // Assert
       expect(ErrorHandler.handleError).toHaveBeenCalled();
       expect(mockConsoleError).toHaveBeenCalled();
       expect(mockProcessExit).toHaveBeenCalledWith(1);
     });
-    
+
     it('should use progress indicator during search', async () => {
       // Arrange
       const mockSearchEngine = createMockSearchEngine();
       const cli = new CommandLineInterface(mockSearchEngine);
-      
+
       // Act
       await cli.run(['node', 'script.js', 'resistor']);
-      
+
       // Assert
       expect(ProgressIndicator).toHaveBeenCalled();
       const progressInstance = (ProgressIndicator as any).mock.results[0].value;
       expect(progressInstance.start).toHaveBeenCalled();
       expect(progressInstance.stop).toHaveBeenCalled();
     });
-    
+
     it('should stop progress indicator when search fails', async () => {
       // Arrange
       const mockSearchEngine = createMockSearchEngine();
       mockSearchEngine.search = vi.fn().mockRejectedValue(new Error('Search failed'));
       const cli = new CommandLineInterface(mockSearchEngine);
-      
+
       // Act
       await cli.run(['node', 'script.js', 'test']).catch(() => {});
-      
+
       // Assert
       const progressInstance = (ProgressIndicator as any).mock.results[0].value;
       expect(progressInstance.start).toHaveBeenCalled();
       expect(progressInstance.stop).toHaveBeenCalled();
     });
-    
+
     it('should provide suggestions when no results are found', async () => {
       // Arrange
       const mockSearchEngine = createMockSearchEngine();
       mockSearchEngine.search = vi.fn().mockResolvedValue([]);
       const cli = new CommandLineInterface(mockSearchEngine);
-      
+
       // Act
       await cli.run(['node', 'script.js', 'empty']);
-      
+
       // Assert
       expect(mockConsoleLog).toHaveBeenCalledWith('No components found matching your search criteria.');
       expect(mockConsoleLog).toHaveBeenCalledWith('Suggestions:');
       // Check that we have multiple suggestion lines
-      const suggestionCalls = mockConsoleLog.mock.calls.filter(call => 
-        call[0] && typeof call[0] === 'string' && call[0].includes('-')
+      const suggestionCalls = mockConsoleLog.mock.calls.filter(
+        (call) => call[0] && typeof call[0] === 'string' && call[0].includes('-'),
       );
       expect(suggestionCalls.length).toBeGreaterThan(0);
     });
-    
+
     it('should use format option when provided', async () => {
       // Arrange
       const mockSearchEngine = createMockSearchEngine();
       const cli = new CommandLineInterface(mockSearchEngine);
       const displayResultsSpy = vi.spyOn(cli, 'displayResults');
-      
+
       // Act
       await cli.run(['node', 'script.js', '--format', 'table', 'resistor']);
-      
+
       // Assert
       expect(mockSearchEngine.search).toHaveBeenCalledWith('resistor');
       expect(displayResultsSpy).toHaveBeenCalledWith(expect.anything(), 'table');
     });
-    
+
     it('should use sort option when provided', async () => {
       // Arrange
       const mockSearchEngine = createMockSearchEngine();
       const cli = new CommandLineInterface(mockSearchEngine);
       const sortResultsSpy = vi.spyOn(cli as any, 'sortResults');
-      
+
       // Act
       await cli.run(['node', 'script.js', '--sort', 'manufacturer', 'resistor']);
-      
+
       // Assert
       expect(mockSearchEngine.search).toHaveBeenCalledWith('resistor');
       expect(sortResultsSpy).toHaveBeenCalled();
     });
-    
+
     it('should use limit option when provided', async () => {
       // Arrange
       const mockSearchEngine = createMockSearchEngine();
       const cli = new CommandLineInterface(mockSearchEngine);
       const displayResultsSpy = vi.spyOn(cli, 'displayResults');
-      
+
       // Act
       await cli.run(['node', 'script.js', '--limit', '1', 'resistor']);
-      
+
       // Assert
       expect(mockSearchEngine.search).toHaveBeenCalledWith('resistor');
       // Should only pass one result to displayResults
       expect(displayResultsSpy).toHaveBeenCalledWith(expect.arrayContaining([expect.anything()]), expect.anything());
       expect(displayResultsSpy.mock.calls[0][0].length).toBe(1);
     });
-    
+
     it('should warn about invalid format option', async () => {
       // Arrange
       const mockSearchEngine = createMockSearchEngine();
       const cli = new CommandLineInterface(mockSearchEngine);
-      
+
       // Act
       await cli.run(['node', 'script.js', '--format', 'invalid', 'resistor']);
-      
+
       // Assert
       expect(mockConsoleWarn).toHaveBeenCalledWith(expect.stringContaining('Invalid format'));
       expect(mockSearchEngine.search).toHaveBeenCalledWith('resistor');
     });
   });
-  
+
   describe('displayResults', () => {
     it('should display message when no results are found', () => {
       // Arrange
       const mockSearchEngine = createMockSearchEngine();
       const cli = new CommandLineInterface(mockSearchEngine);
       const results: SearchResult[] = [];
-      
+
       // Act
       cli.displayResults(results);
-      
+
       // Assert
       expect(mockConsoleLog).toHaveBeenCalledWith('No components found matching your search criteria.');
     });
-    
+
     it('should display detailed results by default', () => {
       // Arrange
       const mockSearchEngine = createMockSearchEngine();
@@ -403,17 +411,17 @@ describe('CommandLineInterface', () => {
           description: 'Test Component',
           package: '0603',
           score: 95.5,
-          matchSummary: 'Matched on value and package'
-        }
+          matchSummary: 'Matched on value and package',
+        },
       ];
-      
+
       // Act
       cli.displayResults(results);
-      
+
       // Assert
       expect(displayDetailedResultsSpy).toHaveBeenCalled();
     });
-    
+
     it('should display compact results when format is compact', () => {
       // Arrange
       const mockSearchEngine = createMockSearchEngine();
@@ -427,17 +435,17 @@ describe('CommandLineInterface', () => {
           description: 'Test Component',
           package: '0603',
           score: 95.5,
-          matchSummary: 'Matched on value and package'
-        }
+          matchSummary: 'Matched on value and package',
+        },
       ];
-      
+
       // Act
       cli.displayResults(results, 'compact');
-      
+
       // Assert
       expect(displayCompactResultsSpy).toHaveBeenCalled();
     });
-    
+
     it('should display table results when format is table', () => {
       // Arrange
       const mockSearchEngine = createMockSearchEngine();
@@ -451,27 +459,27 @@ describe('CommandLineInterface', () => {
           description: 'Test Component',
           package: '0603',
           score: 95.5,
-          matchSummary: 'Matched on value and package'
-        }
+          matchSummary: 'Matched on value and package',
+        },
       ];
-      
+
       // Act
       cli.displayResults(results, 'table');
-      
+
       // Assert
       expect(displayTableResultsSpy).toHaveBeenCalled();
     });
   });
-  
+
   describe('displayHelp', () => {
     it('should display help text with all options and format descriptions', () => {
       // Arrange
       const mockSearchEngine = createMockSearchEngine();
       const cli = new CommandLineInterface(mockSearchEngine);
-      
+
       // Act
       cli.displayHelp();
-      
+
       // Assert
       expect(mockConsoleLog).toHaveBeenCalled();
       // Check for specific help text sections
@@ -482,7 +490,7 @@ describe('CommandLineInterface', () => {
       expect(calls).toContain('--format');
       expect(calls).toContain('--sort');
       expect(calls).toContain('--limit');
-      
+
       // Check for new format descriptions
       expect(calls).toContain('Output Formats:');
       expect(calls).toContain('detailed');
@@ -491,7 +499,7 @@ describe('CommandLineInterface', () => {
       expect(calls).toContain('json');
       expect(calls).toContain('Machine-readable JSON format');
       expect(calls).toContain('suppresses all formatting and progress indicators');
-      
+
       // Check for JSON format section
       expect(calls).toContain('JSON Format:');
       expect(calls).toContain('machine-readable JSON without any formatting');
@@ -499,13 +507,13 @@ describe('CommandLineInterface', () => {
       expect(calls).toContain('automated scripts');
       expect(calls).toContain('empty array []');
       expect(calls).toContain('Error responses include an "error" field');
-      
+
       // Check for enhanced examples
       expect(calls).toContain('--format json');
       expect(calls).toContain('jq');
     });
   });
-  
+
   describe('sortResults', () => {
     it('should sort results by lcsc', () => {
       // Arrange
@@ -519,7 +527,7 @@ describe('CommandLineInterface', () => {
           description: 'Test Component',
           package: '0603',
           score: 95.5,
-          matchSummary: 'Matched on value and package'
+          matchSummary: 'Matched on value and package',
         },
         {
           lcsc: 'C1234',
@@ -528,18 +536,18 @@ describe('CommandLineInterface', () => {
           description: 'Another Component',
           package: '0805',
           score: 85.2,
-          matchSummary: 'Matched on value'
-        }
+          matchSummary: 'Matched on value',
+        },
       ];
-      
+
       // Act
       (cli as any).sortResults(results, 'lcsc');
-      
+
       // Assert
       expect(results[0].lcsc).toBe('C1234');
       expect(results[1].lcsc).toBe('C5678');
     });
-    
+
     it('should sort results by manufacturer', () => {
       // Arrange
       const mockSearchEngine = createMockSearchEngine();
@@ -552,7 +560,7 @@ describe('CommandLineInterface', () => {
           description: 'Test Component',
           package: '0603',
           score: 95.5,
-          matchSummary: 'Matched on value and package'
+          matchSummary: 'Matched on value and package',
         },
         {
           lcsc: 'C5678',
@@ -561,28 +569,28 @@ describe('CommandLineInterface', () => {
           description: 'Another Component',
           package: '0805',
           score: 85.2,
-          matchSummary: 'Matched on value'
-        }
+          matchSummary: 'Matched on value',
+        },
       ];
-      
+
       // Act
       (cli as any).sortResults(results, 'manufacturer');
-      
+
       // Assert
       expect(results[0].manufacturer).toBe('Another Manufacturer');
       expect(results[1].manufacturer).toBe('Test Manufacturer');
     });
   });
-  
+
   describe('getScoreColor', () => {
     it('should return green for high scores', () => {
       // Arrange
       const mockSearchEngine = createMockSearchEngine();
       const cli = new CommandLineInterface(mockSearchEngine);
-      
+
       // Act
       const colorFn = (cli as any).getScoreColor(95);
-      
+
       // Assert
       // Since we mocked chalk, we can't test the actual color
       // Just verify it returns a function
@@ -595,17 +603,17 @@ describe('CommandLineInterface', () => {
       // Arrange
       const mockSearchEngine = createMockSearchEngine();
       const cli = new CommandLineInterface(mockSearchEngine);
-      
+
       // Act
       await cli.run(['node', 'script.js', '--format', 'json']);
-      
+
       // Assert
       expect(mockConsoleLog).toHaveBeenCalledWith(
         JSON.stringify({
           error: true,
           message: 'No search query provided',
-          code: 'MISSING_QUERY'
-        })
+          code: 'MISSING_QUERY',
+        }),
       );
       expect(mockProcessExit).toHaveBeenCalledWith(1);
     });
@@ -614,24 +622,24 @@ describe('CommandLineInterface', () => {
       // Arrange
       const mockSearchEngine = createMockSearchEngine();
       const cli = new CommandLineInterface(mockSearchEngine);
-      
+
       // Override the validateQuery method to fail for our test
       const originalValidateQuery = cli['validateQuery'];
       cli['validateQuery'] = vi.fn().mockReturnValue(false);
-      
+
       // Act
       await cli.run(['node', 'script.js', '--format', 'json', '!@#$%^&*']);
-      
+
       // Assert
       expect(mockConsoleLog).toHaveBeenCalledWith(
         JSON.stringify({
           error: true,
           message: 'Invalid search query: "!@#$%^&*"',
-          code: 'INVALID_QUERY'
-        })
+          code: 'INVALID_QUERY',
+        }),
       );
       expect(mockProcessExit).toHaveBeenCalledWith(1);
-      
+
       // Restore original method
       cli['validateQuery'] = originalValidateQuery;
     });
@@ -641,17 +649,17 @@ describe('CommandLineInterface', () => {
       const mockSearchEngine = createMockSearchEngine();
       mockSearchEngine.search = vi.fn().mockRejectedValue(new Error('Search engine error'));
       const cli = new CommandLineInterface(mockSearchEngine);
-      
+
       // Act
       await cli.run(['node', 'script.js', '--format', 'json', 'resistor']);
-      
+
       // Assert
       expect(mockConsoleLog).toHaveBeenCalledWith(
         JSON.stringify({
           error: true,
           message: 'Search engine error',
-          code: 'SEARCH_ERROR'
-        })
+          code: 'SEARCH_ERROR',
+        }),
       );
       expect(mockProcessExit).toHaveBeenCalledWith(1);
     });
@@ -660,26 +668,26 @@ describe('CommandLineInterface', () => {
       // Arrange
       const mockSearchEngine = createMockSearchEngine();
       const cli = new CommandLineInterface(mockSearchEngine);
-      
+
       // Override parseArguments to throw an error
       const originalParseArguments = cli['parseArguments'];
       cli['parseArguments'] = vi.fn().mockImplementation(() => {
         throw new Error('Invalid arguments');
       });
-      
+
       // Act
       await cli.run(['node', 'script.js', '--format', 'json', 'resistor']);
-      
+
       // Assert
       expect(mockConsoleLog).toHaveBeenCalledWith(
         JSON.stringify({
           error: true,
           message: 'Invalid arguments',
-          code: 'SYSTEM_ERROR'
-        })
+          code: 'SYSTEM_ERROR',
+        }),
       );
       expect(mockProcessExit).toHaveBeenCalledWith(1);
-      
+
       // Restore original method
       cli['parseArguments'] = originalParseArguments;
     });
@@ -691,17 +699,17 @@ describe('CommandLineInterface', () => {
       networkError.message = 'ENOTFOUND';
       mockSearchEngine.search = vi.fn().mockRejectedValue(networkError);
       const cli = new CommandLineInterface(mockSearchEngine);
-      
+
       // Act
       await cli.run(['node', 'script.js', '--format', 'json', 'resistor']);
-      
+
       // Assert
       expect(mockConsoleLog).toHaveBeenCalledWith(
         JSON.stringify({
           error: true,
           message: 'ENOTFOUND',
-          code: 'NETWORK_ERROR'
-        })
+          code: 'NETWORK_ERROR',
+        }),
       );
       expect(mockProcessExit).toHaveBeenCalledWith(1);
     });
@@ -712,17 +720,17 @@ describe('CommandLineInterface', () => {
       const timeoutError = new Error('Operation timed out after 10000ms');
       mockSearchEngine.search = vi.fn().mockRejectedValue(timeoutError);
       const cli = new CommandLineInterface(mockSearchEngine);
-      
+
       // Act
       await cli.run(['node', 'script.js', '--format', 'json', 'resistor']);
-      
+
       // Assert
       expect(mockConsoleLog).toHaveBeenCalledWith(
         JSON.stringify({
           error: true,
           message: 'Operation timed out after 10000ms',
-          code: 'TIMEOUT_ERROR'
-        })
+          code: 'TIMEOUT_ERROR',
+        }),
       );
       expect(mockProcessExit).toHaveBeenCalledWith(1);
     });
@@ -734,17 +742,17 @@ describe('CommandLineInterface', () => {
       fileError.message = 'ENOENT: no such file or directory';
       mockSearchEngine.search = vi.fn().mockRejectedValue(fileError);
       const cli = new CommandLineInterface(mockSearchEngine);
-      
+
       // Act
       await cli.run(['node', 'script.js', '--format', 'json', 'resistor']);
-      
+
       // Assert
       expect(mockConsoleLog).toHaveBeenCalledWith(
         JSON.stringify({
           error: true,
           message: 'ENOENT: no such file or directory',
-          code: 'FILE_SYSTEM_ERROR'
-        })
+          code: 'FILE_SYSTEM_ERROR',
+        }),
       );
       expect(mockProcessExit).toHaveBeenCalledWith(1);
     });
@@ -756,17 +764,17 @@ describe('CommandLineInterface', () => {
       parseError.message = 'Unexpected token in JSON at position 10';
       mockSearchEngine.search = vi.fn().mockRejectedValue(parseError);
       const cli = new CommandLineInterface(mockSearchEngine);
-      
+
       // Act
       await cli.run(['node', 'script.js', '--format', 'json', 'resistor']);
-      
+
       // Assert
       expect(mockConsoleLog).toHaveBeenCalledWith(
         JSON.stringify({
           error: true,
           message: 'Unexpected token in JSON at position 10',
-          code: 'PARSING_ERROR'
-        })
+          code: 'PARSING_ERROR',
+        }),
       );
       expect(mockProcessExit).toHaveBeenCalledWith(1);
     });
@@ -776,17 +784,17 @@ describe('CommandLineInterface', () => {
       const mockSearchEngine = createMockSearchEngine();
       mockSearchEngine.search = vi.fn().mockRejectedValue('String error');
       const cli = new CommandLineInterface(mockSearchEngine);
-      
+
       // Act
       await cli.run(['node', 'script.js', '--format', 'json', 'resistor']);
-      
+
       // Assert
       expect(mockConsoleLog).toHaveBeenCalledWith(
         JSON.stringify({
           error: true,
           message: 'String error',
-          code: 'UNKNOWN_ERROR'
-        })
+          code: 'UNKNOWN_ERROR',
+        }),
       );
       expect(mockProcessExit).toHaveBeenCalledWith(1);
     });
@@ -797,17 +805,17 @@ describe('CommandLineInterface', () => {
       const genericError = new Error('Some generic error');
       mockSearchEngine.search = vi.fn().mockRejectedValue(genericError);
       const cli = new CommandLineInterface(mockSearchEngine);
-      
+
       // Act
       await cli.run(['node', 'script.js', '--format', 'json', 'resistor']);
-      
+
       // Assert
       expect(mockConsoleLog).toHaveBeenCalledWith(
         JSON.stringify({
           error: true,
           message: 'Some generic error',
-          code: 'SEARCH_ERROR'
-        })
+          code: 'SEARCH_ERROR',
+        }),
       );
       expect(mockProcessExit).toHaveBeenCalledWith(1);
     });
@@ -816,26 +824,26 @@ describe('CommandLineInterface', () => {
       // Arrange
       const mockSearchEngine = createMockSearchEngine();
       const cli = new CommandLineInterface(mockSearchEngine);
-      
+
       // Override parseArguments to throw an error
       const originalParseArguments = cli['parseArguments'];
       cli['parseArguments'] = vi.fn().mockImplementation(() => {
         throw new Error('Parse error');
       });
-      
+
       // Act - Test with explicit JSON format flag
       await cli.run(['node', 'script.js', '--format', 'json', 'resistor']);
-      
+
       // Assert - Should still output JSON error
       expect(mockConsoleLog).toHaveBeenCalledWith(
         JSON.stringify({
           error: true,
           message: 'Parse error',
-          code: 'SYSTEM_ERROR'
-        })
+          code: 'SYSTEM_ERROR',
+        }),
       );
       expect(mockProcessExit).toHaveBeenCalledWith(1);
-      
+
       // Restore original method
       cli['parseArguments'] = originalParseArguments;
     });
@@ -844,10 +852,10 @@ describe('CommandLineInterface', () => {
       // Arrange
       const mockSearchEngine = createMockSearchEngine();
       const cli = new CommandLineInterface(mockSearchEngine);
-      
+
       // Act
       await cli.run(['node', 'script.js', '--format', 'json', 'resistor']);
-      
+
       // Assert - Progress indicator should not be created in JSON mode
       expect(ProgressIndicator).not.toHaveBeenCalled();
     });
@@ -857,18 +865,18 @@ describe('CommandLineInterface', () => {
       const mockSearchEngine = createMockSearchEngine();
       const cli = new CommandLineInterface(mockSearchEngine);
       const displayHelpSpy = vi.spyOn(cli, 'displayHelp');
-      
+
       // Act
       await cli.run(['node', 'script.js', '--format', 'json']);
-      
+
       // Assert - Help should not be displayed in JSON mode
       expect(displayHelpSpy).not.toHaveBeenCalled();
       expect(mockConsoleLog).toHaveBeenCalledWith(
         JSON.stringify({
           error: true,
           message: 'No search query provided',
-          code: 'MISSING_QUERY'
-        })
+          code: 'MISSING_QUERY',
+        }),
       );
     });
   });
@@ -878,10 +886,10 @@ describe('CommandLineInterface', () => {
       // Arrange
       const mockSearchEngine = createMockSearchEngine();
       const cli = new CommandLineInterface(mockSearchEngine);
-      
+
       // Act
       const result = (cli as any).parseArguments(['--format', 'json', 'resistor']);
-      
+
       // Assert
       expect(result.format).toBe('json');
       expect(result.query).toBe('resistor');
@@ -891,10 +899,10 @@ describe('CommandLineInterface', () => {
       // Arrange
       const mockSearchEngine = createMockSearchEngine();
       const cli = new CommandLineInterface(mockSearchEngine);
-      
+
       // Act
       const result = (cli as any).parseArguments(['-f', 'json', 'resistor']);
-      
+
       // Assert
       expect(result.format).toBe('json');
       expect(result.query).toBe('resistor');
@@ -904,15 +912,19 @@ describe('CommandLineInterface', () => {
       // Arrange
       const mockSearchEngine = createMockSearchEngine();
       const cli = new CommandLineInterface(mockSearchEngine);
-      
+
       // Act
       const result = (cli as any).parseArguments([
-        '--format', 'json',
-        '--sort', 'manufacturer',
-        '--limit', '5',
-        '10k', 'resistor'
+        '--format',
+        'json',
+        '--sort',
+        'manufacturer',
+        '--limit',
+        '5',
+        '10k',
+        'resistor',
       ]);
-      
+
       // Assert
       expect(result.format).toBe('json');
       expect(result.sortBy).toBe('manufacturer');
@@ -924,7 +936,7 @@ describe('CommandLineInterface', () => {
       // Arrange
       const mockSearchEngine = createMockSearchEngine();
       const cli = new CommandLineInterface(mockSearchEngine);
-      
+
       // Act & Assert
       expect((cli as any).parseArguments(['--format', 'detailed', 'resistor']).format).toBe('detailed');
       expect((cli as any).parseArguments(['--format', 'compact', 'resistor']).format).toBe('compact');
@@ -946,13 +958,13 @@ describe('CommandLineInterface', () => {
           description: '10kΩ ±1% 0603 Thick Film Resistor',
           package: '0603',
           score: 95.5,
-          matchSummary: 'Exact resistance match (100 pts), Package match (80 pts)'
-        }
+          matchSummary: 'Exact resistance match (100 pts), Package match (80 pts)',
+        },
       ];
-      
+
       // Act
       (cli as any).displayJsonResults(results);
-      
+
       // Assert
       expect(mockConsoleLog).toHaveBeenCalledWith(expect.any(String));
       const jsonOutput = JSON.parse(mockConsoleLog.mock.calls[0][0]);
@@ -972,10 +984,10 @@ describe('CommandLineInterface', () => {
       const mockSearchEngine = createMockSearchEngine();
       const cli = new CommandLineInterface(mockSearchEngine);
       const results: SearchResult[] = [];
-      
+
       // Act
       (cli as any).displayJsonResults(results);
-      
+
       // Assert
       expect(mockConsoleLog).toHaveBeenCalledWith('[]');
     });
@@ -992,7 +1004,7 @@ describe('CommandLineInterface', () => {
           description: '10kΩ Resistor',
           package: '0603',
           score: 95.5,
-          matchSummary: 'Exact match'
+          matchSummary: 'Exact match',
         },
         {
           lcsc: 'C5678',
@@ -1001,13 +1013,13 @@ describe('CommandLineInterface', () => {
           description: '10kΩ Resistor',
           package: '0805',
           score: 85.2,
-          matchSummary: 'Partial match'
-        }
+          matchSummary: 'Partial match',
+        },
       ];
-      
+
       // Act
       (cli as any).displayJsonResults(results);
-      
+
       // Assert
       const jsonOutput = JSON.parse(mockConsoleLog.mock.calls[0][0]);
       expect(Array.isArray(jsonOutput)).toBe(true);
@@ -1028,13 +1040,13 @@ describe('CommandLineInterface', () => {
           description: '10kΩ Resistor',
           package: '0603',
           score: 95.5,
-          matchSummary: 'Exact match'
-        }
+          matchSummary: 'Exact match',
+        },
       ];
-      
+
       // Act
       (cli as any).displayJsonResults(results);
-      
+
       // Assert
       const jsonOutput = JSON.parse(mockConsoleLog.mock.calls[0][0]);
       expect(typeof jsonOutput[0].score).toBe('number');
@@ -1055,13 +1067,13 @@ describe('CommandLineInterface', () => {
           description: '10kΩ Resistor',
           package: '0603',
           score: 95.5,
-          matchSummary: 'Exact match'
-        }
+          matchSummary: 'Exact match',
+        },
       ];
-      
+
       // Act
       (cli as any).displayJsonResults(results);
-      
+
       // Assert
       const jsonString = mockConsoleLog.mock.calls[0][0];
       // Should be compact (no extra whitespace or newlines)
@@ -1077,17 +1089,17 @@ describe('CommandLineInterface', () => {
       // Arrange
       const mockSearchEngine = createMockSearchEngine();
       const cli = new CommandLineInterface(mockSearchEngine);
-      
+
       // Act
       (cli as any).displayJsonError(new Error('No search query provided'));
-      
+
       // Assert
       expect(mockConsoleLog).toHaveBeenCalledWith(
         JSON.stringify({
           error: true,
           message: 'No search query provided',
-          code: 'MISSING_QUERY'
-        })
+          code: 'MISSING_QUERY',
+        }),
       );
     });
 
@@ -1095,17 +1107,17 @@ describe('CommandLineInterface', () => {
       // Arrange
       const mockSearchEngine = createMockSearchEngine();
       const cli = new CommandLineInterface(mockSearchEngine);
-      
+
       // Act
       (cli as any).displayJsonError(new Error('Invalid search query: "test"'));
-      
+
       // Assert
       expect(mockConsoleLog).toHaveBeenCalledWith(
         JSON.stringify({
           error: true,
           message: 'Invalid search query: "test"',
-          code: 'INVALID_QUERY'
-        })
+          code: 'INVALID_QUERY',
+        }),
       );
     });
 
@@ -1113,17 +1125,17 @@ describe('CommandLineInterface', () => {
       // Arrange
       const mockSearchEngine = createMockSearchEngine();
       const cli = new CommandLineInterface(mockSearchEngine);
-      
+
       // Act
       (cli as any).displayJsonError(new Error('Operation timed out after 10000ms'));
-      
+
       // Assert
       expect(mockConsoleLog).toHaveBeenCalledWith(
         JSON.stringify({
           error: true,
           message: 'Operation timed out after 10000ms',
-          code: 'TIMEOUT_ERROR'
-        })
+          code: 'TIMEOUT_ERROR',
+        }),
       );
     });
 
@@ -1131,17 +1143,17 @@ describe('CommandLineInterface', () => {
       // Arrange
       const mockSearchEngine = createMockSearchEngine();
       const cli = new CommandLineInterface(mockSearchEngine);
-      
+
       // Act
       (cli as any).displayJsonError(new Error('ENOTFOUND: getaddrinfo ENOTFOUND'));
-      
+
       // Assert
       expect(mockConsoleLog).toHaveBeenCalledWith(
         JSON.stringify({
           error: true,
           message: 'ENOTFOUND: getaddrinfo ENOTFOUND',
-          code: 'NETWORK_ERROR'
-        })
+          code: 'NETWORK_ERROR',
+        }),
       );
     });
 
@@ -1149,17 +1161,17 @@ describe('CommandLineInterface', () => {
       // Arrange
       const mockSearchEngine = createMockSearchEngine();
       const cli = new CommandLineInterface(mockSearchEngine);
-      
+
       // Act
       (cli as any).displayJsonError(new Error('ENOENT: no such file or directory'));
-      
+
       // Assert
       expect(mockConsoleLog).toHaveBeenCalledWith(
         JSON.stringify({
           error: true,
           message: 'ENOENT: no such file or directory',
-          code: 'FILE_SYSTEM_ERROR'
-        })
+          code: 'FILE_SYSTEM_ERROR',
+        }),
       );
     });
 
@@ -1167,17 +1179,17 @@ describe('CommandLineInterface', () => {
       // Arrange
       const mockSearchEngine = createMockSearchEngine();
       const cli = new CommandLineInterface(mockSearchEngine);
-      
+
       // Act
       (cli as any).displayJsonError(new Error('Unexpected token in JSON at position 10'));
-      
+
       // Assert
       expect(mockConsoleLog).toHaveBeenCalledWith(
         JSON.stringify({
           error: true,
           message: 'Unexpected token in JSON at position 10',
-          code: 'PARSING_ERROR'
-        })
+          code: 'PARSING_ERROR',
+        }),
       );
     });
 
@@ -1185,17 +1197,17 @@ describe('CommandLineInterface', () => {
       // Arrange
       const mockSearchEngine = createMockSearchEngine();
       const cli = new CommandLineInterface(mockSearchEngine);
-      
+
       // Act
       (cli as any).displayJsonError(new Error('Some error'), 'CUSTOM_ERROR');
-      
+
       // Assert
       expect(mockConsoleLog).toHaveBeenCalledWith(
         JSON.stringify({
           error: true,
           message: 'Some error',
-          code: 'CUSTOM_ERROR'
-        })
+          code: 'CUSTOM_ERROR',
+        }),
       );
     });
 
@@ -1203,17 +1215,17 @@ describe('CommandLineInterface', () => {
       // Arrange
       const mockSearchEngine = createMockSearchEngine();
       const cli = new CommandLineInterface(mockSearchEngine);
-      
+
       // Act
       (cli as any).displayJsonError(new Error('ENOTFOUND: getaddrinfo ENOTFOUND'), 'SEARCH_ERROR');
-      
+
       // Assert
       expect(mockConsoleLog).toHaveBeenCalledWith(
         JSON.stringify({
           error: true,
           message: 'ENOTFOUND: getaddrinfo ENOTFOUND',
-          code: 'NETWORK_ERROR'
-        })
+          code: 'NETWORK_ERROR',
+        }),
       );
     });
 
@@ -1221,17 +1233,17 @@ describe('CommandLineInterface', () => {
       // Arrange
       const mockSearchEngine = createMockSearchEngine();
       const cli = new CommandLineInterface(mockSearchEngine);
-      
+
       // Act
       (cli as any).displayJsonError(new Error('ENOENT: no such file or directory'), 'SYSTEM_ERROR');
-      
+
       // Assert
       expect(mockConsoleLog).toHaveBeenCalledWith(
         JSON.stringify({
           error: true,
           message: 'ENOENT: no such file or directory',
-          code: 'FILE_SYSTEM_ERROR'
-        })
+          code: 'FILE_SYSTEM_ERROR',
+        }),
       );
     });
 
@@ -1239,17 +1251,17 @@ describe('CommandLineInterface', () => {
       // Arrange
       const mockSearchEngine = createMockSearchEngine();
       const cli = new CommandLineInterface(mockSearchEngine);
-      
+
       // Act
       (cli as any).displayJsonError('String error', 'SEARCH_ERROR');
-      
+
       // Assert
       expect(mockConsoleLog).toHaveBeenCalledWith(
         JSON.stringify({
           error: true,
           message: 'String error',
-          code: 'UNKNOWN_ERROR'
-        })
+          code: 'UNKNOWN_ERROR',
+        }),
       );
     });
 
@@ -1257,17 +1269,17 @@ describe('CommandLineInterface', () => {
       // Arrange
       const mockSearchEngine = createMockSearchEngine();
       const cli = new CommandLineInterface(mockSearchEngine);
-      
+
       // Act
       (cli as any).displayJsonError(new Error('Some generic error'));
-      
+
       // Assert
       expect(mockConsoleLog).toHaveBeenCalledWith(
         JSON.stringify({
           error: true,
           message: 'Some generic error',
-          code: 'SYSTEM_ERROR'
-        })
+          code: 'SYSTEM_ERROR',
+        }),
       );
     });
 
@@ -1275,17 +1287,17 @@ describe('CommandLineInterface', () => {
       // Arrange
       const mockSearchEngine = createMockSearchEngine();
       const cli = new CommandLineInterface(mockSearchEngine);
-      
+
       // Act
       (cli as any).displayJsonError('Some string error');
-      
+
       // Assert
       expect(mockConsoleLog).toHaveBeenCalledWith(
         JSON.stringify({
           error: true,
           message: 'Some string error',
-          code: 'UNKNOWN_ERROR'
-        })
+          code: 'UNKNOWN_ERROR',
+        }),
       );
     });
   });
@@ -1295,17 +1307,17 @@ describe('CommandLineInterface', () => {
       // Arrange
       const mockSearchEngine = createMockSearchEngine();
       const cli = new CommandLineInterface(mockSearchEngine);
-      
+
       // Act
       await cli.run(['node', 'script.js', '--format', 'json']);
-      
+
       // Assert
       expect(mockConsoleLog).toHaveBeenCalledWith(
         JSON.stringify({
           error: true,
           message: 'No search query provided',
-          code: 'MISSING_QUERY'
-        })
+          code: 'MISSING_QUERY',
+        }),
       );
       expect(mockProcessExit).toHaveBeenCalledWith(1);
       // Ensure no help text or other output was displayed
@@ -1318,17 +1330,17 @@ describe('CommandLineInterface', () => {
       const networkError = new Error('ENOTFOUND: getaddrinfo ENOTFOUND');
       mockSearchEngine.search = vi.fn().mockRejectedValue(networkError);
       const cli = new CommandLineInterface(mockSearchEngine);
-      
+
       // Act
       await cli.run(['node', 'script.js', '--format', 'json', 'resistor']);
-      
+
       // Assert
       expect(mockConsoleLog).toHaveBeenCalledWith(
         JSON.stringify({
           error: true,
           message: 'ENOTFOUND: getaddrinfo ENOTFOUND',
-          code: 'NETWORK_ERROR'
-        })
+          code: 'NETWORK_ERROR',
+        }),
       );
       expect(mockProcessExit).toHaveBeenCalledWith(1);
       // Ensure no progress indicators were shown
@@ -1339,24 +1351,24 @@ describe('CommandLineInterface', () => {
       // Arrange
       const mockSearchEngine = createMockSearchEngine();
       const cli = new CommandLineInterface(mockSearchEngine);
-      
+
       // Override validateQuery to fail
       const originalValidateQuery = cli['validateQuery'];
       cli['validateQuery'] = vi.fn().mockReturnValue(false);
-      
+
       // Act
       await cli.run(['node', 'script.js', '--format', 'json', '!@#$%^&*']);
-      
+
       // Assert
       expect(mockConsoleLog).toHaveBeenCalledWith(
         JSON.stringify({
           error: true,
           message: 'Invalid search query: "!@#$%^&*"',
-          code: 'INVALID_QUERY'
-        })
+          code: 'INVALID_QUERY',
+        }),
       );
       expect(mockProcessExit).toHaveBeenCalledWith(1);
-      
+
       // Restore original method
       cli['validateQuery'] = originalValidateQuery;
     });
@@ -1367,10 +1379,10 @@ describe('CommandLineInterface', () => {
       // Arrange
       const mockSearchEngine = createMockSearchEngine();
       const cli = new CommandLineInterface(mockSearchEngine);
-      
+
       // Act
       await cli.run(['node', 'script.js', '--format', 'json', 'resistor']);
-      
+
       // Assert
       expect(mockConsoleLog).toHaveBeenCalledWith(expect.any(String));
       const jsonOutput = JSON.parse(mockConsoleLog.mock.calls[0][0]);
@@ -1386,10 +1398,10 @@ describe('CommandLineInterface', () => {
       const mockSearchEngine = createMockSearchEngine();
       mockSearchEngine.search = vi.fn().mockResolvedValue([]);
       const cli = new CommandLineInterface(mockSearchEngine);
-      
+
       // Act
       await cli.run(['node', 'script.js', '--format', 'json', 'empty']);
-      
+
       // Assert
       expect(mockConsoleLog).toHaveBeenCalledWith('[]');
       // Ensure no suggestions or other text was output
@@ -1400,10 +1412,10 @@ describe('CommandLineInterface', () => {
       // Arrange
       const mockSearchEngine = createMockSearchEngine();
       const cli = new CommandLineInterface(mockSearchEngine);
-      
+
       // Act
       await cli.run(['node', 'script.js', '--format', 'json', '--limit', '1', 'resistor']);
-      
+
       // Assert
       const jsonOutput = JSON.parse(mockConsoleLog.mock.calls[0][0]);
       expect(jsonOutput).toHaveLength(1);
@@ -1413,10 +1425,10 @@ describe('CommandLineInterface', () => {
       // Arrange
       const mockSearchEngine = createMockSearchEngine();
       const cli = new CommandLineInterface(mockSearchEngine);
-      
+
       // Act
       await cli.run(['node', 'script.js', '--format', 'json', '--sort', 'manufacturer', 'resistor']);
-      
+
       // Assert
       const jsonOutput = JSON.parse(mockConsoleLog.mock.calls[0][0]);
       expect(jsonOutput).toHaveLength(2);
@@ -1429,10 +1441,10 @@ describe('CommandLineInterface', () => {
       // Arrange
       const mockSearchEngine = createMockSearchEngine();
       const cli = new CommandLineInterface(mockSearchEngine);
-      
+
       // Act
       await cli.run(['node', 'script.js', '--format', 'json', 'resistor']);
-      
+
       // Assert
       // Should only have one console.log call with JSON output
       expect(mockConsoleLog).toHaveBeenCalledTimes(1);
@@ -1446,10 +1458,10 @@ describe('CommandLineInterface', () => {
       // Arrange
       const mockSearchEngine = createMockSearchEngine();
       const cli = new CommandLineInterface(mockSearchEngine);
-      
+
       // Act
       await cli.run(['node', 'script.js', '--format', 'json', '10k', 'resistor', '0603', '1%', '50V']);
-      
+
       // Assert
       expect(mockSearchEngine.search).toHaveBeenCalledWith('10k resistor 0603 1% 50V');
       // Get the last console.log call which should be the JSON output
@@ -1464,20 +1476,20 @@ describe('CommandLineInterface', () => {
       // Arrange
       const mockSearchEngine = createMockSearchEngine();
       const cli = new CommandLineInterface(mockSearchEngine);
-      
+
       // Act & Assert - Test that existing formats still work
       await cli.run(['node', 'script.js', '--format', 'detailed', 'resistor']);
       expect(mockConsoleLog).toHaveBeenCalledWith(expect.stringContaining('Test Component'));
-      
+
       // Clear mocks
       vi.clearAllMocks();
-      
+
       await cli.run(['node', 'script.js', '--format', 'compact', 'resistor']);
       expect(mockConsoleLog).toHaveBeenCalledWith(expect.stringContaining('C1234'));
-      
+
       // Clear mocks
       vi.clearAllMocks();
-      
+
       await cli.run(['node', 'script.js', '--format', 'table', 'resistor']);
       expect(mockConsoleLog).toHaveBeenCalledWith(expect.stringContaining('LCSC'));
     });
@@ -1486,12 +1498,12 @@ describe('CommandLineInterface', () => {
       // Arrange
       const mockSearchEngine = createMockSearchEngine();
       const cli = new CommandLineInterface(mockSearchEngine);
-      
+
       // Act - Test that JSON format doesn't interfere with other formats
       await cli.run(['node', 'script.js', '--format', 'json', 'resistor']);
       const jsonOutput = JSON.parse(mockConsoleLog.mock.calls[0][0]);
       expect(Array.isArray(jsonOutput)).toBe(true);
-      
+
       // Clear mocks and test detailed format
       vi.clearAllMocks();
       await cli.run(['node', 'script.js', '--format', 'detailed', 'resistor']);
@@ -1512,13 +1524,13 @@ describe('CommandLineInterface', () => {
           description: '10kΩ ±1% 0603 Thick Film Resistor with "quotes"',
           package: '0603',
           score: 95.5,
-          matchSummary: 'Exact match with "quotes" and \n newlines'
-        }
+          matchSummary: 'Exact match with "quotes" and \n newlines',
+        },
       ];
-      
+
       // Act
       (cli as any).displayJsonResults(results);
-      
+
       // Assert
       const jsonOutput = JSON.parse(mockConsoleLog.mock.calls[0][0]);
       expect(jsonOutput[0].manufacturer).toBe('Test "Manufacturer" & Co.');
@@ -1538,12 +1550,12 @@ describe('CommandLineInterface', () => {
         description: `Component ${i}`,
         package: '0603',
         score: 100 - i,
-        matchSummary: `Match ${i}`
+        matchSummary: `Match ${i}`,
       }));
-      
+
       // Act
       (cli as any).displayJsonResults(results);
-      
+
       // Assert
       const jsonOutput = JSON.parse(mockConsoleLog.mock.calls[0][0]);
       expect(jsonOutput).toHaveLength(1000);
@@ -1563,13 +1575,13 @@ describe('CommandLineInterface', () => {
           description: '10kΩ Resistor',
           package: '0603',
           score: 0,
-          matchSummary: 'No match'
-        }
+          matchSummary: 'No match',
+        },
       ];
-      
+
       // Act
       (cli as any).displayJsonResults(results);
-      
+
       // Assert
       const jsonOutput = JSON.parse(mockConsoleLog.mock.calls[0][0]);
       expect(jsonOutput[0].score).toBe(0);
@@ -1587,13 +1599,13 @@ describe('CommandLineInterface', () => {
           description: '10kΩ Resistor',
           package: '0603',
           score: 95.123456789,
-          matchSummary: 'Exact match'
-        }
+          matchSummary: 'Exact match',
+        },
       ];
-      
+
       // Act
       (cli as any).displayJsonResults(results);
-      
+
       // Assert
       const jsonOutput = JSON.parse(mockConsoleLog.mock.calls[0][0]);
       expect(jsonOutput[0].score).toBe(95.123456789);

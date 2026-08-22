@@ -1,0 +1,30 @@
+{
+  "typeCAD Named Net": {
+    "prefix": ".net",
+    "body": [
+      ".net( { net: ${1}, pins: [${2}] });"
+    ],
+    "description": "typeCAD Named Net"
+  },
+  "typeCAD Unnamed Net": {
+    "prefix": ".net",
+    "body": [
+      ".net({ pins: [${1}] });"
+    ],
+    "description": "typeCAD Unnamed Net"
+  },
+  "typeCAD Input Net": {
+    "prefix": ".in",
+    "body": [
+      ".in({ net: ${1}, pins: [${2}] });"
+    ],
+    "description": "typeCAD Input Net"
+  },
+  "typeCAD Output Net": {
+    "prefix": ".out",
+    "body": [
+      ".out({ net: ${1}, pins: [${2}] });"
+    ],
+    "description": "typeCAD Output Net"
+  }
+}

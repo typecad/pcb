@@ -2,10 +2,7 @@
 Now that we've created a package, we need to know how to use it.
 
 ## Self-documenting
-A benefit of TypeScript is that you can write a lot of documentation in the code itself. You'll notice the JSDoc comments in the package code. This will result in VSCode hints and tips as you write the code, explaining parameters and providing examples if fully implemented.
-
-## Copying files
-Refer to the [structure](../package/structure) section for the file structure of a package, particularly the `postinstall.js` file. KiCAD expects symbols and footprints to be in the `./build` directory, but we haven't actually `npm install`ed the package, so those files will need to be manually copied there.
+A benefit of TypeScript is that you can write a lot of documentation in the code itself. You'll notice the JSDoc comments in the package code. This will result in VSCode hints and tips as you write your code, explaining parameters and providing examples if fully implemented.
 
 ## `import`
 The tooling gave us the `import` statement for the package.

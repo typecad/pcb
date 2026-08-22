@@ -49,6 +49,7 @@
 - [Command Line Suite](news/command-line-suite.md): A suite of command-line tools
 - [Hardware Contract](news/hardware-contract.md): Bridging Hardware and Firmware
 - [Introducing The Autorouter](news/introducing-the-autorouter.md): Introducing the Auto Router
+- [Irregular Outlines](news/irregular-outlines.md): Boards beyond the rectangle
 - [Jlcpcb Parts](news/jlcpcb-parts.md): JLCPCB Parts
 - [Kicad 10 Compatibility](news/kicad-10-compatibility.md): KiCad 10 Compatibility
 - [Kicad Symbols](news/kicad-symbols.md): Search for operational amplifier symbols
@@ -57,6 +58,7 @@
 - [Llms Txt](news/llms-txt.md): The llms.txt standard
 - [Mcp](news/mcp.md): typeCAD MCP Server
 - [New Site](news/new-site.md): cover: https://unsplash.com/photos/b0p818k8Ok8/download?ixid=M3wxMjA3fDB8MXxjb2xsZWN0aW9ufDh8MjU1MTgzMXx8fHx8Mnx8MTcyNTU0MDM2N3w&force=true&w=640
+- [Packages Without Install Scripts](news/package-auto-sync.md): KiCad files sync at build time
 - [Power Aware](news/power-aware.md): Building power aware circuits with typeCAD
 - [Private Npm Packages](news/private-npm-packages.md): Keeping your work private
 - [Schematics](news/schematics.md): Make a schematic file in typeCAD

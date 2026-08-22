@@ -317,6 +317,216 @@ Parameters are:
 - **height** — board height in mm
 - **fillet** — (optional) corner fillet radius in mm
 
+### Arbitrary Outlines
+
+Beyond rectangles, typeCAD supports custom board shapes — polygons, circles,
+and internal cutouts (mounting holes, milled slots). All are emitted on the
+`Edge.Cuts` layer as native KiCad `gr_*` primitives.
+
+<ScrollArea orientation="both">
+
+```ts
+import { PCB } from '@typecad/typecad';
+
+let pcb = new PCB('board');
+
+// custom polygon outline
+pcb.outlinePolygon([
+  { x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 80 }, { x: 50, y: 100 }, { x: 0, y: 80 },
+]);
+
+// circular board
+pcb.outlineCircle(50, 50, 50);   // center x, y, radius
+
+// internal cutout (e.g. a milled rectangular pocket)
+pcb.cutout([
+  { x: 20, y: 20 }, { x: 40, y: 20 }, { x: 40, y: 40 }, { x: 20, y: 40 },
+]);
+
+// circular cutout (mounting hole)
+pcb.cutoutCircle(25, 25, 3);     // center x, y, radius
+```
+
+</ScrollArea>
+
+For outlines made of mixed line and arc segments (e.g. a DXF-imported shape),
+use the `outlinePath()` builder:
+
+<ScrollArea orientation="both">
+
+```ts
+pcb.outlinePath(0, 0)            // start point
+  .lineTo(100, 0)
+  .arcTo(100, 80, { x: 150, y: 40 })  // end, then a point on the arc
+  .lineTo(0, 80)
+  .close();                      // auto-closes back to the start
+```
+
+</ScrollArea>
+
+The `board()` bounds and edge-relative placement helpers (`fromLeft`,
+`fromRight`, etc.) work off the outline's bounding box, so they remain correct
+for any shape. KiCad treats nested closed contours on Edge.Cuts as cutouts —
+there is no separate cutout layer.
+
+## Design Rules
+
+typeCAD writes board-wide design rules (minimum clearances, track/via dimensions)
+into the `.kicad_pro` project file so that `typecad drc` validates against them.
+The autorouter also honors these rules as its fallback clearance and track width.
+You don't need to open KiCad's Board Setup dialog to configure them.
+
+If you do nothing, rules default to the **JLCPCB no-surcharge standard** — the
+most permissive values JLCPCB manufactures without a premium surcharge:
+
+| Rule | Default |
+|---|---|
+| Min clearance | 0.20 mm |
+| Min track width | 0.20 mm |
+| Min via diameter | 0.60 mm |
+| Min through-hole (drill) diameter | 0.30 mm |
+| Min via annular width | 0.15 mm |
+| Min copper-to-edge clearance | 0.20 mm |
+| Min hole-to-hole | 0.25 mm |
+
+Pass a `rules` option to the `PCB` constructor to override any subset; the rest
+keep the JLC standard default:
+
+<ScrollArea orientation="both">
+
+```ts
+import { PCB } from '@typecad/typecad';
+
+// dense board: tighten clearance and track width
+let pcb = new PCB('dense-board', {
+  rules: { min_clearance: 0.15, min_track_width: 0.15 },
+});
+
+pcb.create();
+```
+
+</ScrollArea>
+
+`pcb.rules` returns the fully resolved (merged) rules — useful when you want to
+read back the effective value after partial overrides:
+
+<ScrollArea orientation="both">
+
+```ts
+let pcb = new PCB('board', { rules: { min_clearance: 0.15 } });
+
+console.log(pcb.rules.min_clearance);   // 0.15  (overridden)
+console.log(pcb.rules.min_track_width); // 0.2   (JLC standard default)
+```
+
+</ScrollArea>
+
+The `Default` net class in the project file is kept consistent with these
+values, so the autorouter and DRC share a single source of truth. Per-route
+`width` and `clearance` passed to `pcb.route()` still take precedence over the
+board rules for that individual trace.
+
+> [!note] Checking rules
+> Run `typecad drc` to validate the board against these rules. See
+> [Tooling](/docs/tooling#typecad-drc) and the [CLI reference](/docs/cli).
+
+## Net Classes
+
+Design rules apply board-wide. Net classes let you give a *specific group of
+nets* their own track width, clearance, and via dimensions — for example,
+wider traces and larger vias for power nets. Classes are written to the
+`.kicad_pro` project file (KiCad's `net_settings.classes`), enforced by DRC,
+and honored by the autorouter.
+
+Define a class with `pcb.netClass(name, options)`:
+
+| Option | Description |
+|---|---|
+| `track_width` | Trace width for nets in this class (mm). Defaults to rules min. |
+| `clearance` | Copper clearance for nets in this class (mm). Defaults to rules min. |
+| `via_diameter` | Via pad diameter for nets in this class (mm). Defaults to rules min. |
+| `via_drill` | Via drill for nets in this class (mm). Defaults to rules min. |
+
+Then assign a net to it with `pcb.assign(netDef, className)`. `assign` takes the
+object returned by `pcb.net()` or `pcb.named().net()`, so it works for both
+named and auto-named nets:
+
+<ScrollArea orientation="both">
+
+```ts
+import { PCB } from '@typecad/typecad';
+
+let pcb = new PCB('board');
+
+// wider traces and bigger vias for power
+pcb.netClass('power', {
+  track_width: 0.5,
+  clearance: 0.3,
+  via_diameter: 0.8,
+  via_drill: 0.4,
+});
+
+// named net
+const gnd = pcb.named('gnd').net(regulator.GND, mcu.GND);
+pcb.assign(gnd, 'power');
+
+// also works for auto-named nets (the common case)
+const sw = pcb.net(regulator.LX, inductor.pin(1));
+pcb.assign(sw, 'power');
+```
+
+</ScrollArea>
+
+Nets you don't assign fall back to the `Default` class, which mirrors the
+board [design rules](#design-rules). The autorouter resolves a net's class
+automatically and uses its dimensions — a per-route `width` or `clearance`
+passed to `pcb.route()` still takes precedence for that individual trace.
+
+## Stackup
+
+The layer stackup describes the board's physical construction — copper,
+dielectric, solder mask, and silkscreen layers with their materials and
+thicknesses. KiCad stores it in the `(setup (stackup ...))` block of the
+`.kicad_pcb` and requires it for 4+ layer boards and impedance-controlled
+routing.
+
+typeCAD generates a JLCPCB-standard stackup (FR4, 1oz copper, green mask) with
+one call. The total thickness comes from `pcb.thickness` (default 1.6mm) and
+the copper thickness from `pcb.copper_thickness` (default 35μm):
+
+<ScrollArea orientation="both">
+
+```ts
+import { PCB } from '@typecad/typecad';
+
+let pcb = new PCB('board');
+
+// JLCPCB-standard 4-layer stackup at 1.6mm
+pcb.stackup(4);
+
+// 2-layer with a custom copper finish
+pcb.stackup(2, { copper_finish: 'ENIG' });
+
+// 6-layer, thicker board — thickness flows from the constructor
+let pcb = new PCB('board', { thickness: 2.0 });
+pcb.stackup(6);
+```
+
+</ScrollArea>
+
+The layer count can be any value from 2 to 32 (KiCad's maximum). Optional
+overrides:
+
+| Option | Description |
+|---|---|
+| `copper_finish` | Copper surface finish, e.g. `"None"`, `"HASL"`, `"ENIG"`. Default `"None"`. |
+| `dielectric_constraints` | Whether dielectric constraints are enforced. Default `false`. |
+
+When you call `pcb.stackup()`, typeCAD regenerates the board's `(layers ...)`
+declaration block to match the copper-layer count (so the layer declarations
+and the stackup stay consistent) and writes the board thickness into
+`(general (thickness ...))`.
+
 ## Tracks
 
 Traces can be created manually using `pcb.track()` for point-to-point routing with vias:

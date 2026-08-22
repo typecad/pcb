@@ -79,6 +79,24 @@ export class PcbInternalState {
                     minY = Math.min(minY, el.start.y, el.mid.y, el.end.y);
                     maxX = Math.max(maxX, el.start.x, el.mid.x, el.end.x);
                     maxY = Math.max(maxY, el.start.y, el.mid.y, el.end.y);
+                } else if (el.type === 'circle') {
+                    const r = Math.hypot(el.end.x - el.center.x, el.end.y - el.center.y);
+                    minX = Math.min(minX, el.center.x - r);
+                    minY = Math.min(minY, el.center.y - r);
+                    maxX = Math.max(maxX, el.center.x + r);
+                    maxY = Math.max(maxY, el.center.y + r);
+                } else if (el.type === 'rect') {
+                    minX = Math.min(minX, el.start.x, el.end.x);
+                    minY = Math.min(minY, el.start.y, el.end.y);
+                    maxX = Math.max(maxX, el.start.x, el.end.x);
+                    maxY = Math.max(maxY, el.start.y, el.end.y);
+                } else if (el.type === 'poly') {
+                    for (const pt of el.points) {
+                        minX = Math.min(minX, pt.x);
+                        minY = Math.min(minY, pt.y);
+                        maxX = Math.max(maxX, pt.x);
+                        maxY = Math.max(maxY, pt.y);
+                    }
                 }
             }
         }

@@ -117,6 +117,39 @@ export function renderOutlinesAndTracks(
                         s('layer', arc.layer),
                         s('uuid', arc.uuid)
                     ));
+                } else if (element.type === 'circle') {
+                    const circle = element as IGrCircle;
+                    const circleChildren: SExpr[] = [
+                        s('center', circle.center.x, circle.center.y),
+                        s('end', circle.end.x, circle.end.y),
+                        s('stroke', s('width', circle.strokeWidth), s('type', sym('default'))),
+                        s('layer', circle.layer),
+                    ];
+                    if (circle.fill) circleChildren.push(s('fill', sym('solid')));
+                    circleChildren.push(s('uuid', circle.uuid));
+                    boardContents.push(s('gr_circle', ...circleChildren));
+                } else if (element.type === 'rect') {
+                    const rect = element as IGrRect;
+                    const rectChildren: SExpr[] = [
+                        s('start', rect.start.x, rect.start.y),
+                        s('end', rect.end.x, rect.end.y),
+                        s('stroke', s('width', rect.strokeWidth), s('type', sym('default'))),
+                        s('layer', rect.layer),
+                    ];
+                    if (rect.fill) rectChildren.push(s('fill', sym('solid')));
+                    rectChildren.push(s('uuid', rect.uuid));
+                    boardContents.push(s('gr_rect', ...rectChildren));
+                } else if (element.type === 'poly') {
+                    const poly = element as IGrPoly;
+                    const ptsChildren = poly.points.map((pt: { x: number; y: number }) => s('xy', pt.x, pt.y));
+                    const polyChildren: SExpr[] = [
+                        s('pts', ...ptsChildren),
+                        s('stroke', s('width', poly.strokeWidth), s('type', sym('default'))),
+                        s('layer', poly.layer),
+                    ];
+                    if (poly.fill) polyChildren.push(s('fill', sym('solid')));
+                    polyChildren.push(s('uuid', poly.uuid));
+                    boardContents.push(s('gr_poly', ...polyChildren));
                 }
             } catch (e: unknown) {
                 logger.error(`Error: Failed to build outline element for UUID ${element.uuid}: ${getErrorMessage(e)}${formatCallSite(getCallSite())}`);
@@ -378,6 +411,66 @@ function ensureSingleVersionNode(boardContents: SExpr[], defaultVersion: SExpr):
     }
 
     boardContents.unshift(definitiveVersionNode);
+}
+
+/**
+ * Replace any existing `(setup ...)` node with `setupNode`, or insert one at
+ * the correct position (after `layers`/`paper`/`general`, before `net`/footprints).
+ * Mirrors `ensureSingleVersionNode` but preserves document ordering.
+ */
+export function ensureSingleSetupNode(boardContents: SExpr[], setupNode: SExpr): void {
+    let setupIdx = -1;
+    for (let i = boardContents.length - 1; i >= 0; i--) {
+        const item = boardContents[i];
+        if (Array.isArray(item) && nameOf(item[0]) === 'setup') {
+            setupIdx = i;
+            boardContents[i] = setupNode;
+        }
+    }
+    if (setupIdx === -1) {
+        // No existing setup — insert after the last of these markers.
+        const markers = ['layers', 'paper', 'general', 'generator_version', 'generator', 'version'];
+        let insertAt = 0;
+        for (let i = 0; i < boardContents.length; i++) {
+            const t = extractNodeName(boardContents[i]);
+            if (markers.includes(t)) insertAt = i + 1;
+        }
+        boardContents.splice(insertAt, 0, setupNode);
+    }
+}
+
+/**
+ * Replace any existing `(layers ...)` node with `layersNode`, or insert one
+ * after `paper`/`general` if none exists.
+ */
+export function ensureSingleLayersNode(boardContents: SExpr[], layersNode: SExpr): void {
+    let found = false;
+    for (let i = boardContents.length - 1; i >= 0; i--) {
+        const item = boardContents[i];
+        if (Array.isArray(item) && nameOf(item[0]) === 'layers') {
+            if (!found) {
+                boardContents[i] = layersNode;
+                found = true;
+            } else {
+                boardContents.splice(i, 1); // remove duplicates
+            }
+        }
+    }
+    if (!found) {
+        // Insert after paper/general, before setup if present.
+        const markers = ['paper', 'general', 'generator_version', 'generator', 'version'];
+        let insertAt = 0;
+        for (let i = 0; i < boardContents.length; i++) {
+            const t = extractNodeName(boardContents[i]);
+            if (markers.includes(t)) insertAt = i + 1;
+        }
+        boardContents.splice(insertAt, 0, layersNode);
+    }
+}
+
+function extractNodeName(item: SExpr): string {
+    if (Array.isArray(item) && item.length > 0) return nameOf(item[0]);
+    return '';
 }
 
 export function serializeAndWriteBoard(

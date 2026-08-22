@@ -1,6 +1,6 @@
 {
   "name": "@typecad/jlcpcb-parts",
-  "version": "1.2.0",
+  "version": "1.2.1-alpha.0",
   "description": "Intelligent fuzzy search for JLCPCB electrical components with CLI interface",
   "keywords": [
     "typecad",
@@ -22,7 +22,9 @@
     "inductor"
   ],
   "homepage": "https://typecad.net",
-  "funding": { "url": "https://www.buymeacoffee.com/typecad" },
+  "funding": {
+    "url": "https://www.buymeacoffee.com/typecad"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/typecad/jlcpcb-parts.git"
@@ -56,10 +58,10 @@
   "devDependencies": {
     "@types/node": "^22.13.0",
     "typescript": "^5.7.3",
-    "vitest": "^3.2.1"
+    "vitest": "^4.1.11"
   },
   "dependencies": {
-    "chalk": "^5.4.1"
+    "chalk": "^6.0.0"
   },
   "scripts": {
     "build": "tsc",
@@ -69,7 +71,6 @@
     "test:watch": "vitest",
     "prepublishOnly": "npm run build:clean && npm test",
     "package_publish": "npm publish --access public"
-
   },
   "bin": {
     "jlcpcb-search": "dist/cli/bin.js"

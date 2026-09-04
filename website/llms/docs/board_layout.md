@@ -25,7 +25,7 @@ pcb.create();
 
 Instead of hard-coding millimeter coordinates, use the placement helpers to position components relative to each other and the board edges. All gaps are measured **courtyard edge to courtyard edge**.
 
-All placement helpers live on the PCB object: `pcb.board`, `pcb.sameAs(c)`, `pcb.below(c)`, `pcb.above(c)`, `pcb.rightOf(c)`, `pcb.leftOf(c)` — no separate imports. Placement values are live and order-independent: they re-read their source (component position or board outline) whenever they are resolved, and every deferred expression is re-resolved at `create()` against final positions. Assign positions in any order — `pcb.board` reads before the outline exists, `r2` below `r1` before `r1` moves — and the relationships still hold. Manually moving a component after assigning an expression freezes that axis: the manual value wins. The helpers can be assigned directly: `{ x: pcb.sameAs(mh1), y: pcb.below(mh1) }` (default gap) as well as `{ y: pcb.below(mh1).by(3) }`.
+All placement lives on `pcb.board` — bounds (`left`, `center`, `fromLeft()`), the relational verbs (`below(c)`, `above(c)`, `rightOf(c)`, `leftOf(c)`, `sameAs(c)`) — one namespace, no separate imports. Placement values are live and order-independent: they re-read their source (component position or board outline) whenever they are resolved, and every deferred expression is re-resolved at `create()` against final positions. Assign positions in any order — `pcb.board` reads before the outline exists, `r2` below `r1` before `r1` moves — and the relationships still hold. Manually moving a component after assigning an expression freezes that axis: the manual value wins. The helpers can be assigned directly: `{ x: pcb.board.sameAs(mh1), y: pcb.board.below(mh1) }` (default gap) as well as `{ y: pcb.board.below(mh1).by(3) }`.
 
 ### `pcb.board`
 
@@ -80,7 +80,7 @@ pcb.create(j1, tp1);
 
 The margin defaults to **2mm** if omitted: `b.fromLeft()` places the component 2mm from the left edge.
 
-### Directional placement: `pcb.below()`, `pcb.above()`, `pcb.rightOf()`, `pcb.leftOf()`
+### Directional placement: `pcb.board.below()`, `pcb.board.above()`, `pcb.board.rightOf()`, `pcb.board.leftOf()`
 
 Place components relative to each other with a specified gap. Each returns a builder — call `.by(gap)` to set the edge-to-edge distance in mm (defaults to **2mm**).
 
@@ -98,38 +98,38 @@ mcu.pcb = { x: b.center.x, y: b.center.y };
 
 // Decoupling cap 3mm below MCU, aligned in X
 let c1 = new Capacitor({ value: '100nF', pcb: {
-  x: pcb.sameAs(mcu),
-  y: pcb.below(mcu).by(3),
+  x: pcb.board.sameAs(mcu),
+  y: pcb.board.below(mcu).by(3),
 }});
 
 // Pull-up resistor 2mm right of the cap, same row
 let r1 = new Resistor({ value: '10k', pcb: {
-  x: pcb.rightOf(c1).by(2),
-  y: pcb.sameAs(c1),
+  x: pcb.board.rightOf(c1).by(2),
+  y: pcb.board.sameAs(c1),
 }});
 
 // LED 8mm above the MCU
 let led1 = new LED({ value: 'Red', pcb: {
-  x: pcb.sameAs(mcu),
-  y: pcb.above(mcu).by(8),
+  x: pcb.board.sameAs(mcu),
+  y: pcb.board.above(mcu).by(8),
 }});
 
 // Current-limiting resistor 4mm left of the LED
 let r2 = new Resistor({ value: '330', pcb: {
-  x: pcb.leftOf(led1).by(4),
-  y: pcb.sameAs(led1),
+  x: pcb.board.leftOf(led1).by(4),
+  y: pcb.board.sameAs(led1),
 }});
 
 // Default 2mm gap
 let c2 = new Capacitor({ value: '10uF', pcb: {
-  x: pcb.sameAs(r1),
-  y: pcb.below(r1),
+  x: pcb.board.sameAs(r1),
+  y: pcb.board.below(r1),
 }});
 
 pcb.create(mcu, c1, r1, led1, r2, c2);
 ```
 
-### `pcb.sameAs()`
+### `pcb.board.sameAs()`
 
 Align a component's X or Y coordinate with another component:
 
@@ -137,10 +137,10 @@ Align a component's X or Y coordinate with another component:
 import { sameAs } from '@typecad/typecad';
 
 // Same X as r1, custom Y
-let c1 = new Capacitor({ pcb: { x: pcb.sameAs(r1), y: 20 } });
+let c1 = new Capacitor({ pcb: { x: pcb.board.sameAs(r1), y: 20 } });
 
 // Same Y as r1, custom X
-let r2 = new Resistor({ pcb: { x: 30, y: pcb.sameAs(r1).y } });
+let r2 = new Resistor({ pcb: { x: 30, y: pcb.board.sameAs(r1).y } });
 ```
 
 ## Component Text Positioning

@@ -245,6 +245,24 @@ export interface BoardBounds {
    * @param margin - Gap from board edge to component courtyard in mm. Defaults to `2`.
    */
   fromBottom(margin?: number): PlacementValue;
+  /**
+   * Placement value for a coordinate below a component (courtyard
+   * edge-to-edge). Call `.by(gap)` for an explicit gap, or assign the
+   * builder directly for the default 2mm gap.
+   */
+  below(component: Component): PlacementBuilder;
+  /** Placement value above a component (courtyard edge-to-edge). */
+  above(component: Component): PlacementBuilder;
+  /** Placement value to the right of a component (courtyard edge-to-edge). */
+  rightOf(component: Component): PlacementBuilder;
+  /** Placement value to the left of a component (courtyard edge-to-edge). */
+  leftOf(component: Component): PlacementBuilder;
+  /**
+   * A component's live position for alignment: `{ x, y }` values that
+   * re-read the component whenever they are resolved. Assignable directly
+   * to a coordinate (`x: pcb.board.sameAs(r1)` picks r1's X).
+   */
+  sameAs(component: Component): SameAsResult;
 }
 
 /**
@@ -494,6 +512,13 @@ function makeBoardBounds(
     fromBottom(margin: number = 2): PlacementValue {
       return new PlacementValue((tb, rot) => b().bottom - margin - targetEdges(tb, rot).bottom);
     },
+    // Component-relative verbs: stateless, hosted here so all placement
+    // flows through the one `pcb.board` namespace.
+    below: (c: Component) => below(c),
+    above: (c: Component) => above(c),
+    rightOf: (c: Component) => rightOf(c),
+    leftOf: (c: Component) => leftOf(c),
+    sameAs: (c: Component) => sameAs(c),
   };
 }
 

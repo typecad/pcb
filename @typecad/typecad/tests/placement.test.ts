@@ -683,7 +683,7 @@ describe('off-center footprint origin (rotation around at point)', () => {
 });
 
 describe('PCB placement surface (methods)', () => {
-  it('exposes board and all verbs as PCB members', () => {
+  it('board hosts bounds and all placement verbs', () => {
     const pcb = new PCB('pcb_methods');
     pcb.outline(0, 0, 100, 50);
     expect(pcb.board.left).toBe(0);
@@ -691,7 +691,7 @@ describe('PCB placement surface (methods)', () => {
 
     const r1 = new Resistor({ pcb: { x: 10, y: 10 } });
     const r2 = new Resistor();
-    r2.pcb = { x: pcb.sameAs(r1), y: pcb.below(r1).by(3) };
+    r2.pcb = { x: pcb.board.sameAs(r1), y: pcb.board.below(r1).by(3) };
     expect(r2.pcb.x).toBe(10);
     expect(r2.pcb.y).toBeGreaterThan(10);
 
@@ -702,12 +702,12 @@ describe('PCB placement surface (methods)', () => {
     expect(r3.pcb.x).toBeLessThan(9);
   });
 
-  it('method results compose with direct assignment', () => {
+  it('board verbs compose with direct assignment', () => {
     const pcb = new PCB('pcb_methods2');
     const r1 = new Resistor({ pcb: { x: 10, y: 10 } });
     const r2 = new Resistor();
     // no .by() — default gap via builder coercion
-    r2.pcb = { x: pcb.sameAs(r1), y: pcb.below(r1) };
+    r2.pcb = { x: pcb.board.sameAs(r1), y: pcb.board.below(r1) };
     pcb.create(r1, r2);
     expect(r2.pcb.y).toBeGreaterThan(10);
   });

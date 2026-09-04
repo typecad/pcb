@@ -618,56 +618,21 @@ export class PCB {
   }
 
   /**
-   * The board's physical bounds, derived live from the outline. Readable at
-   * any time — before or after `pcb.outline()` — values follow the final
-   * outline. Use the `from*` methods for edge-relative placement values.
+   * The board's placement namespace: live physical bounds derived from the
+   * outline (`center`, edges, corners, `from*` edge-relative values) plus
+   * the component-relative verbs (`below`, `above`, `rightOf`, `leftOf`,
+   * `sameAs`). Readable at any time — before or after `pcb.outline()` —
+   * values follow the final outline.
    *
    * @example
    * ```ts
    * u1.pcb = { x: pcb.board.center.x, y: pcb.board.center.y };
    * mh1.pcb = { x: pcb.board.fromLeft(5), y: pcb.board.fromTop(5) };
+   * r2.pcb = { x: pcb.board.sameAs(r1), y: pcb.board.below(r1).by(3) };
    * ```
    */
   get board(): BoardBounds {
     return boardBounds(this);
-  }
-
-  /**
-   * Placement value for a coordinate below a component (courtyard
-   * edge-to-edge). Call `.by(gap)` for an explicit gap, or assign the
-   * builder directly for the default 2mm gap.
-   *
-   * @example
-   * ```ts
-   * r2.pcb = { x: pcb.sameAs(r1), y: pcb.below(r1).by(3) };
-   * ```
-   */
-  below(component: Component): PlacementBuilder {
-    return below(component);
-  }
-
-  /** Placement value above a component (courtyard edge-to-edge). */
-  above(component: Component): PlacementBuilder {
-    return above(component);
-  }
-
-  /** Placement value to the right of a component (courtyard edge-to-edge). */
-  rightOf(component: Component): PlacementBuilder {
-    return rightOf(component);
-  }
-
-  /** Placement value to the left of a component (courtyard edge-to-edge). */
-  leftOf(component: Component): PlacementBuilder {
-    return leftOf(component);
-  }
-
-  /**
-   * A component's live position for alignment: `{ x, y }` values that
-   * re-read the component whenever they are resolved. Assignable directly
-   * to a coordinate (`x: pcb.sameAs(r1)` picks r1's X).
-   */
-  sameAs(component: Component): SameAsResult {
-    return sameAs(component);
   }
 
   net(...pins: Pin[]): ISchematicNetDefinition {

@@ -24,8 +24,8 @@ mh2.pcb = { x: typecad.board.fromRight(2.5), y: typecad.board.fromTop(2.5) };
 mh3.pcb = { x: typecad.board.fromLeft(2.5), y: typecad.board.fromBottom(2.5) };
 mh4.pcb = { x: typecad.board.fromRight(2.5), y: typecad.board.fromBottom(2.5) };
 
-j1.pcb = {x: typecad.sameAs(mh1), y: typecad.below(mh1).by(1), rotation: -90};
-j2.pcb = {x: typecad.sameAs(mh2), y: typecad.below(mh2).by(1), rotation: -90};
+j1.pcb = {x: typecad.board.sameAs(mh1), y: typecad.board.below(mh1).by(1), rotation: -90};
+j2.pcb = {x: typecad.board.sameAs(mh2), y: typecad.board.below(mh2).by(1), rotation: -90};
 
 // typecad.plane('GND', 'F.Cu');
 typecad.zone({net: 'GND', x: typecad.board.left, y: typecad.board.top, width: typecad.board.width, height: typecad.board.height, layers: ['F.Cu', 'B.Cu'], fillMode: 'hatched', hatchGap: 0.5, hatchThickness: 0.25, })

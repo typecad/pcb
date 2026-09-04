@@ -681,3 +681,34 @@ describe('off-center footprint origin (rotation around at point)', () => {
     expect(part.pcb.y).toBeCloseTo(1 + tb.width / 2, 2);
   });
 });
+
+describe('PCB placement surface (methods)', () => {
+  it('exposes board and all verbs as PCB members', () => {
+    const pcb = new PCB('pcb_methods');
+    pcb.outline(0, 0, 100, 50);
+    expect(pcb.board.left).toBe(0);
+    expect(pcb.board.width).toBe(100);
+
+    const r1 = new Resistor({ pcb: { x: 10, y: 10 } });
+    const r2 = new Resistor();
+    r2.pcb = { x: pcb.sameAs(r1), y: pcb.below(r1).by(3) };
+    expect(r2.pcb.x).toBe(10);
+    expect(r2.pcb.y).toBeGreaterThan(10);
+
+    const r3 = new Resistor();
+    r3.pcb = { x: pcb.board.fromLeft(5), y: pcb.board.fromTop(5) };
+    pcb.create(r1, r2, r3);
+    expect(r3.pcb.x).toBeGreaterThan(5);
+    expect(r3.pcb.x).toBeLessThan(9);
+  });
+
+  it('method results compose with direct assignment', () => {
+    const pcb = new PCB('pcb_methods2');
+    const r1 = new Resistor({ pcb: { x: 10, y: 10 } });
+    const r2 = new Resistor();
+    // no .by() — default gap via builder coercion
+    r2.pcb = { x: pcb.sameAs(r1), y: pcb.below(r1) };
+    pcb.create(r1, r2);
+    expect(r2.pcb.y).toBeGreaterThan(10);
+  });
+});

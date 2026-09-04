@@ -17,4 +17,4 @@ node_modules
 *.lck
 *.backup
 ~*
-build/*-backups/
+*-backups/

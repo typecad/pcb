@@ -3,7 +3,6 @@ import fs from 'node:fs';
 import { PCB } from '../src/pcb/pcb.js';
 import { getPcbState } from '../src/pcb/pcb.js';
 import { Component } from '../src/component.js';
-import { board } from '../src/placement.js';
 
 const buildDir = './build';
 
@@ -13,7 +12,7 @@ function makeFootprintedComponent(ref: string, x: number, y: number): Component 
   c.pins = [c.pin(1)];
   c.pcb = { x, y } as any;
   vi.spyOn(c, 'footprint_lib').mockReturnValue(
-    '(footprint (pad "1" smd rect (at 0 0) (size 1 1) (layers "F.Cu"))) ' as any
+    '(footprint (pad "1" smd rect (at 0 0) (size 1 1) (layers "F.Cu"))) ' as any,
   );
   return c;
 }
@@ -22,7 +21,11 @@ describe('outlinePolygon', () => {
   it('stages a single gr_poly element on Edge.Cuts', () => {
     const pcb = new PCB('op');
     pcb.outlinePolygon([
-      { x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 80 }, { x: 50, y: 100 }, { x: 0, y: 80 },
+      { x: 0, y: 0 },
+      { x: 100, y: 0 },
+      { x: 100, y: 80 },
+      { x: 50, y: 100 },
+      { x: 0, y: 80 },
     ]);
     const staged = getPcbState(pcb).stagedOutlines;
     expect(staged).toHaveLength(1);
@@ -35,7 +38,12 @@ describe('outlinePolygon', () => {
 
   it('rejects fewer than 3 points', () => {
     const pcb = new PCB('op');
-    expect(() => pcb.outlinePolygon([{ x: 0, y: 0 }, { x: 10, y: 0 }])).toThrow(RangeError);
+    expect(() =>
+      pcb.outlinePolygon([
+        { x: 0, y: 0 },
+        { x: 10, y: 0 },
+      ]),
+    ).toThrow(RangeError);
     expect(() => pcb.outlinePolygon([])).toThrow(RangeError);
   });
 });
@@ -61,7 +69,12 @@ describe('outlineCircle', () => {
 describe('cutout / cutoutCircle', () => {
   it('cutout stages a polygon on Edge.Cuts', () => {
     const pcb = new PCB('ct');
-    pcb.cutout([{ x: 20, y: 20 }, { x: 40, y: 20 }, { x: 40, y: 40 }, { x: 20, y: 40 }]);
+    pcb.cutout([
+      { x: 20, y: 20 },
+      { x: 40, y: 20 },
+      { x: 40, y: 40 },
+      { x: 20, y: 40 },
+    ]);
     const el = getPcbState(pcb).stagedOutlines[0].elements[0];
     expect(el.type).toBe('poly');
     expect(el.layer).toBe('Edge.Cuts');
@@ -79,11 +92,7 @@ describe('cutout / cutoutCircle', () => {
 describe('outlinePath builder', () => {
   it('accumulates line and arc segments and closes the chain', () => {
     const pcb = new PCB('opb');
-    pcb.outlinePath(0, 0)
-      .lineTo(100, 0)
-      .arcTo(100, 80, { x: 150, y: 40 })
-      .lineTo(0, 80)
-      .close();
+    pcb.outlinePath(0, 0).lineTo(100, 0).arcTo(100, 80, { x: 150, y: 40 }).lineTo(0, 80).close();
     const elements = getPcbState(pcb).stagedOutlines[0].elements;
     // 3 explicit segments + 1 auto-close line = 4
     expect(elements).toHaveLength(4);
@@ -115,7 +124,7 @@ describe('getOutlineBounds with new shapes', () => {
   it('circle bounds are center ± radius', () => {
     const pcb = new PCB('ob');
     pcb.outlineCircle(50, 60, 40);
-    const b = board(pcb);
+    const b = pcb.board;
     expect(b.center.x).toBeCloseTo(50, 5);
     expect(b.center.y).toBeCloseTo(60, 5);
     expect(b.width).toBeCloseTo(80, 5);
@@ -125,9 +134,12 @@ describe('getOutlineBounds with new shapes', () => {
   it('polygon bounds are the min/max of points', () => {
     const pcb = new PCB('ob2');
     pcb.outlinePolygon([
-      { x: 10, y: 20 }, { x: 110, y: 20 }, { x: 110, y: 100 }, { x: 10, y: 100 },
+      { x: 10, y: 20 },
+      { x: 110, y: 20 },
+      { x: 110, y: 100 },
+      { x: 10, y: 100 },
     ]);
-    const b = board(pcb);
+    const b = pcb.board;
     expect(b.left).toBeCloseTo(10, 5);
     expect(b.right).toBeCloseTo(110, 5);
     expect(b.width).toBeCloseTo(100, 5);
@@ -139,21 +151,38 @@ describe('PCB create() with arbitrary outlines', () => {
   const boardName = 'outline_create';
 
   beforeEach(() => {
-    try { fs.mkdirSync(buildDir); } catch { /* ignore */ }
+    try {
+      fs.mkdirSync(buildDir);
+    } catch {
+      /* ignore */
+    }
     for (const ext of ['kicad_pcb', 'kicad_sch', 'kicad_pro', 'net', 'csv']) {
-      try { fs.rmSync(`${buildDir}/${boardName}.${ext}`); } catch { /* ignore */ }
+      try {
+        fs.rmSync(`${buildDir}/${boardName}.${ext}`);
+      } catch {
+        /* ignore */
+      }
     }
   });
 
   afterEach(() => {
     for (const ext of ['kicad_pcb', 'kicad_sch', 'kicad_pro', 'net', 'csv']) {
-      try { fs.rmSync(`${buildDir}/${boardName}.${ext}`); } catch { /* ignore */ }
+      try {
+        fs.rmSync(`${buildDir}/${boardName}.${ext}`);
+      } catch {
+        /* ignore */
+      }
     }
   });
 
   it('writes a polygon outline as gr_poly on Edge.Cuts', () => {
     const pcb = new PCB(boardName);
-    pcb.outlinePolygon([{ x: 0, y: 0 }, { x: 50, y: 0 }, { x: 50, y: 50 }, { x: 0, y: 50 }]);
+    pcb.outlinePolygon([
+      { x: 0, y: 0 },
+      { x: 50, y: 0 },
+      { x: 50, y: 50 },
+      { x: 0, y: 50 },
+    ]);
     const c = makeFootprintedComponent('R1', 10, 10);
     pcb.add(c);
     pcb.create(c);
@@ -196,11 +225,7 @@ describe('PCB create() with arbitrary outlines', () => {
 
   it('writes a path-built outline as gr_line + gr_arc on Edge.Cuts', () => {
     const pcb = new PCB(boardName);
-    pcb.outlinePath(0, 0)
-      .lineTo(80, 0)
-      .arcTo(80, 80, { x: 120, y: 40 })
-      .lineTo(0, 80)
-      .close();
+    pcb.outlinePath(0, 0).lineTo(80, 0).arcTo(80, 80, { x: 120, y: 40 }).lineTo(0, 80).close();
     const c = makeFootprintedComponent('R1', 40, 40);
     pcb.add(c);
     pcb.create(c);

@@ -34,21 +34,21 @@ pcb.create();
 
 Instead of hard-coding millimeter coordinates, use the placement helpers to position components relative to each other and the board edges. All gaps are measured **courtyard edge to courtyard edge**.
 
-Placement values are live and order-independent: they re-read their source (component position or board outline) whenever they are resolved, and every deferred expression is re-resolved at `create()` against final positions. Assign positions in any order — `board()` before the outline, `r2` below `r1` before `r1` moves — and the relationships still hold. Manually moving a component after assigning an expression freezes that axis: the manual value wins. The helpers can be assigned directly: `{ x: sameAs(mh1), y: below(mh1) }` (default gap) as well as `{ x: sameAs(mh1).x, y: below(mh1).by(3) }`.
+All placement helpers live on the PCB object: `pcb.board`, `pcb.sameAs(c)`, `pcb.below(c)`, `pcb.above(c)`, `pcb.rightOf(c)`, `pcb.leftOf(c)` — no separate imports. Placement values are live and order-independent: they re-read their source (component position or board outline) whenever they are resolved, and every deferred expression is re-resolved at `create()` against final positions. Assign positions in any order — `pcb.board` reads before the outline exists, `r2` below `r1` before `r1` moves — and the relationships still hold. Manually moving a component after assigning an expression freezes that axis: the manual value wins. The helpers can be assigned directly: `{ x: pcb.sameAs(mh1), y: pcb.below(mh1) }` (default gap) as well as `{ y: pcb.below(mh1).by(3) }`.
 
-### `board()`
+### `pcb.board`
 
-Get the board's physical dimensions from the outlines you've defined. Use it to place components at the center, or a fixed distance from any edge. `board()` reads the outline live — call it before or after `pcb.outline()`; values follow the final outline.
+Get the board's physical dimensions from the outlines you've defined. Use it to place components at the center, or a fixed distance from any edge. `pcb.board` reads the outline live — usable before or after `pcb.outline()`; values follow the final outline.
 
 <ScrollArea orientation="both">
 
 ```ts
-import { PCB, board } from '@typecad/typecad';
+import { PCB } from '@typecad/typecad';
 
 let pcb = new PCB('typecad_docs');
 pcb.outline(0, 0, 60, 45);
 
-const b = board(pcb);
+const b = pcb.board;
 
 let u1 = new Component({ footprint: '...' });
 u1.pcb = { x: b.center.x, y: b.center.y }; // center of the board
@@ -56,7 +56,7 @@ u1.pcb = { x: b.center.x, y: b.center.y }; // center of the board
 
 </ScrollArea>
 
-`board()` returns a `BoardBounds` object with these properties:
+`pcb.board` returns a `BoardBounds` object with these properties:
 
 | Property | Description |
 |----------|-------------|
@@ -76,7 +76,7 @@ import { PCB, Component, board } from '@typecad/typecad';
 
 let pcb = new PCB('typecad_docs');
 pcb.outline(0, 0, 60, 45);
-const b = board(pcb);
+const b = pcb.board;
 
 // Connector 5mm from the left edge (courtyard-to-edge)
 const j1 = new Component({
@@ -97,7 +97,7 @@ pcb.create(j1, tp1);
 
 The margin defaults to **2mm** if omitted: `b.fromLeft()` places the component 2mm from the left edge.
 
-### Directional placement: `below()`, `above()`, `rightOf()`, `leftOf()`
+### Directional placement: `pcb.below()`, `pcb.above()`, `pcb.rightOf()`, `pcb.leftOf()`
 
 Place components relative to each other with a specified gap. Each returns a builder — call `.by(gap)` to set the edge-to-edge distance in mm (defaults to **2mm**).
 
@@ -109,7 +109,7 @@ import { Resistor, Capacitor, LED } from '@typecad/passives/0603';
 
 let pcb = new PCB('typecad_docs');
 pcb.outline(0, 0, 60, 45);
-const b = board(pcb);
+const b = pcb.board;
 
 // MCU at center
 let mcu = new Component({ footprint: 'Package_DFN_QFN:QFN-24-1EP_4x4mm_P0.5mm_EP2.6x2.6mm' });
@@ -117,32 +117,32 @@ mcu.pcb = { x: b.center.x, y: b.center.y };
 
 // Decoupling cap 3mm below MCU, aligned in X
 let c1 = new Capacitor({ value: '100nF', pcb: {
-  x: sameAs(mcu).x,
-  y: below(mcu).by(3),
+  x: pcb.sameAs(mcu),
+  y: pcb.below(mcu).by(3),
 }});
 
 // Pull-up resistor 2mm right of the cap, same row
 let r1 = new Resistor({ value: '10k', pcb: {
-  x: rightOf(c1).by(2),
-  y: sameAs(c1).y,
+  x: pcb.rightOf(c1).by(2),
+  y: pcb.sameAs(c1),
 }});
 
 // LED 8mm above the MCU
 let led1 = new LED({ value: 'Red', pcb: {
-  x: sameAs(mcu).x,
-  y: above(mcu).by(8),
+  x: pcb.sameAs(mcu),
+  y: pcb.above(mcu).by(8),
 }});
 
 // Current-limiting resistor 4mm left of the LED
 let r2 = new Resistor({ value: '330', pcb: {
-  x: leftOf(led1).by(4),
-  y: sameAs(led1).y,
+  x: pcb.leftOf(led1).by(4),
+  y: pcb.sameAs(led1),
 }});
 
 // Default 2mm gap
 let c2 = new Capacitor({ value: '10uF', pcb: {
-  x: sameAs(r1).x,
-  y: below(r1).by(),
+  x: pcb.sameAs(r1),
+  y: pcb.below(r1),
 }});
 
 pcb.create(mcu, c1, r1, led1, r2, c2);
@@ -150,7 +150,7 @@ pcb.create(mcu, c1, r1, led1, r2, c2);
 
 </ScrollArea>
 
-### `sameAs()`
+### `pcb.sameAs()`
 
 Align a component's X or Y coordinate with another component:
 
@@ -160,10 +160,10 @@ Align a component's X or Y coordinate with another component:
 import { sameAs } from '@typecad/typecad';
 
 // Same X as r1, custom Y
-let c1 = new Capacitor({ pcb: { x: sameAs(r1).x, y: 20 } });
+let c1 = new Capacitor({ pcb: { x: pcb.sameAs(r1), y: 20 } });
 
 // Same Y as r1, custom X
-let r2 = new Resistor({ pcb: { x: 30, y: sameAs(r1).y } });
+let r2 = new Resistor({ pcb: { x: 30, y: pcb.sameAs(r1).y } });
 ```
 
 </ScrollArea>

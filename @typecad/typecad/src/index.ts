@@ -48,7 +48,5 @@ export type { SimulationContext } from './simulation/ngspice.js';
 export type { ISchematicNetDefinition } from './net_manager.js';
 export { clearSourceCache } from './utils/source_inspector.js';
 
-export { below, above, rightOf, leftOf, sameAs, board } from './placement.js';
-export type { PlacementBuilder, BoardBounds, SameAsResult, PlacementNumber } from './placement.js';
-export { PlacementValue, isPlacementValue } from './placement.js';
+export type { PlacementBuilder, BoardBounds, SameAsResult, PlacementNumber, PlacementInput } from './placement.js';
 export type { IPoint, OutlinePathBuilder } from './pcb/pcb_outline.js';

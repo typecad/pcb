@@ -1,15 +1,10 @@
-import chalk from "chalk";
+import chalk from 'chalk';
 import logger from '../../utils/logging.js';
-import { PriorityQueue } from "../shared/priority_queue.js";
-import type { RoutingGrid } from "../contracts/routing_grid.js";
-import type {
-  IRouteNode,
-  IRoutePath,
-  NormalizedRoutingOptions,
-  RouteEndpoint,
-} from "./types.js";
-import { ClearanceProfile } from "./clearance_profile.js";
-import { profiler } from "../shared/profiler.js";
+import { PriorityQueue } from '../shared/priority_queue.js';
+import type { RoutingGrid } from '../contracts/routing_grid.js';
+import type { IRouteNode, IRoutePath, NormalizedRoutingOptions, RouteEndpoint } from './types.js';
+import { ClearanceProfile } from './clearance_profile.js';
+import { profiler } from '../shared/profiler.js';
 
 interface SearchWindow {
   minX: number;
@@ -49,7 +44,7 @@ type OccupancyLookup = (
   gridY: number,
   clearanceMm: number,
   ignoreSameNet: boolean,
-  treatManualRoutesAsBlocks: boolean
+  treatManualRoutesAsBlocks: boolean,
 ) => boolean;
 
 interface NeighborContext {
@@ -78,7 +73,7 @@ interface NeighborContext {
 }
 
 interface ISearchRunResult {
-  status: "success" | "failure" | "expand";
+  status: 'success' | 'failure' | 'expand';
   path?: IRoutePath;
   error?: string;
   iterations?: number;
@@ -129,8 +124,7 @@ export class GridSearch {
    * when the host board changes underneath the router.
    */
   public resetCaches(scope: { windows?: boolean; paths?: boolean; occupancy?: boolean } = {}): void {
-    const hasExplicitScope =
-      "windows" in scope || "paths" in scope || "occupancy" in scope;
+    const hasExplicitScope = 'windows' in scope || 'paths' in scope || 'occupancy' in scope;
     const windows = hasExplicitScope ? scope.windows === true : true;
     const paths = hasExplicitScope ? scope.paths === true : true;
     const occupancy = hasExplicitScope ? scope.occupancy === true : true;
@@ -151,7 +145,7 @@ export class GridSearch {
 
   private buildPathCacheKey(start: RouteEndpoint, end: RouteEndpoint): string {
     return `${start.layer}:${start.x.toFixed(3)}:${start.y.toFixed(
-      3
+      3,
     )}->${end.layer}:${end.x.toFixed(3)}:${end.y.toFixed(3)}`;
   }
 
@@ -176,15 +170,7 @@ export class GridSearch {
     for (const node of path.gridNodes) {
       if (
         !this.grid.isInBounds(node.gridX, node.gridY) ||
-        this.grid.isOccupied(
-          node.gridX,
-          node.gridY,
-          node.layer,
-          clearance,
-          this.options.net,
-          false,
-          true
-        )
+        this.grid.isOccupied(node.gridX, node.gridY, node.layer, clearance, this.options.net, false, true)
       ) {
         return false;
       }
@@ -217,10 +203,7 @@ export class GridSearch {
     };
   }
 
-  private getWindowCacheKey(
-    start: { gridX: number; gridY: number },
-    end: { gridX: number; gridY: number }
-  ): string {
+  private getWindowCacheKey(start: { gridX: number; gridY: number }, end: { gridX: number; gridY: number }): string {
     const a = `${start.gridX},${start.gridY}`;
     const b = `${end.gridX},${end.gridY}`;
     return a <= b ? `${a}->${b}` : `${b}->${a}`;
@@ -230,7 +213,7 @@ export class GridSearch {
     start: { gridX: number; gridY: number },
     end: { gridX: number; gridY: number },
     startLayer: string,
-    endLayer: string
+    endLayer: string,
   ): CachedWindow {
     const key = this.getWindowCacheKey(start, end);
     const cached = this.windowCache.get(key);
@@ -241,10 +224,7 @@ export class GridSearch {
       ) {
         return cached;
       }
-      const merged = this.mergeWindows(
-        cached.window,
-        this.buildSearchWindow(start, end, cached.window.expansionLevel)
-      );
+      const merged = this.mergeWindows(cached.window, this.buildSearchWindow(start, end, cached.window.expansionLevel));
       const updated = this.buildWindowData(key, merged, startLayer, endLayer, cached);
       this.windowCache.set(key, updated);
       return updated;
@@ -261,7 +241,7 @@ export class GridSearch {
     start: { gridX: number; gridY: number },
     end: { gridX: number; gridY: number },
     startLayer: string,
-    endLayer: string
+    endLayer: string,
   ): CachedWindow {
     const nextLevel = windowData.window.expansionLevel + 1;
     const expandedWindow = this.buildSearchWindow(start, end, nextLevel);
@@ -273,7 +253,7 @@ export class GridSearch {
 
   private canReusePreviousWindow(
     previous: CachedWindow | undefined,
-    nextWindow: SearchWindow
+    nextWindow: SearchWindow,
   ): previous is CachedWindow {
     if (!previous) return false;
     const prevWindow = previous.window;
@@ -305,7 +285,7 @@ export class GridSearch {
     window: SearchWindow,
     startLayer: string,
     endLayer: string,
-    previous?: CachedWindow
+    previous?: CachedWindow,
   ): CachedWindow {
     const layerOrder = this.buildLayerOrderWithReuse(previous?.layerOrder, [
       ...(this.options.allowedLayers ?? []),
@@ -375,12 +355,33 @@ export class GridSearch {
     };
   }
 
+  /**
+   * Via cost for a layer transition. With a board `layerOrder` configured
+   * (blind/buried vias), the cost scales with the number of layer
+   * boundaries crossed — span depth is the real manufacturing cost of a
+   * blind/buried via. Without `layerOrder` (or unknown layers) the flat
+   * `viaCost` applies.
+   */
+  private computeViaCost(fromLayer: string, toLayer: string): number {
+    const base = this.options.viaCost || 0;
+    const order = this.options.layerOrder;
+    if (!order || base <= 0) {
+      return base;
+    }
+    const fromIdx = order.indexOf(fromLayer);
+    const toIdx = order.indexOf(toLayer);
+    if (fromIdx === -1 || toIdx === -1 || fromIdx === toIdx) {
+      return base;
+    }
+    return base * Math.abs(fromIdx - toIdx);
+  }
+
   private sampleCellCost(
     layer: string,
     gridX: number,
     gridY: number,
     windowData: CachedWindow,
-    layerIndex?: number
+    layerIndex?: number,
   ): number {
     const win = windowData.window;
     const localX = gridX - win.minX;
@@ -388,7 +389,7 @@ export class GridSearch {
     if (localX < 0 || localY < 0 || localX >= win.width || localY >= win.height) {
       return this.grid.getCellCost(gridX, gridY, layer);
     }
-    
+
     if (layerIndex === undefined) {
       layerIndex = windowData.layerIdMap.get(layer);
     }
@@ -396,7 +397,7 @@ export class GridSearch {
     if (!tile) {
       return this.grid.getCellCost(gridX, gridY, layer);
     }
-    
+
     const idx = localY * win.width + localX;
     let cost = tile[idx];
     if (Number.isNaN(cost)) {
@@ -405,8 +406,6 @@ export class GridSearch {
     }
     return cost;
   }
-
-
 
   private runSearchWithWindow(config: {
     adjustedStart: RouteEndpoint;
@@ -420,104 +419,128 @@ export class GridSearch {
   }): ISearchRunResult {
     profiler.start('GridSearch.runSearchWithWindow');
     try {
-    const {
-      adjustedStart,
-      adjustedEnd,
-      startGrid,
-      endGrid,
-      startIsFreeVia,
-      endIsLayerAgnosticGoal,
-      forceSingleLayer,
-      windowData,
-    } = config;
+      const {
+        adjustedStart,
+        adjustedEnd,
+        startGrid,
+        endGrid,
+        startIsFreeVia,
+        endIsLayerAgnosticGoal,
+        forceSingleLayer,
+        windowData,
+      } = config;
 
-    const searchWindow = windowData.window;
-    const layerIdMap = windowData.layerIdMap;
-    const coordsPerLayer = windowData.coordsPerLayer;
-    const totalCoordSlots = windowData.totalCoordSlots;
-    const boundaryTracker = { touched: false };
+      const searchWindow = windowData.window;
+      const layerIdMap = windowData.layerIdMap;
+      const coordsPerLayer = windowData.coordsPerLayer;
+      const totalCoordSlots = windowData.totalCoordSlots;
+      const boundaryTracker = { touched: false };
 
-    this.searchGeneration++;
-    if (this.openMapArr.length < totalCoordSlots) {
-      this.openMapArr = new Array(totalCoordSlots).fill(undefined);
-    }
-    if (this.closedSet.length < totalCoordSlots) {
-      const newClosedSet = new Uint32Array(totalCoordSlots);
-      newClosedSet.set(this.closedSet);
-      this.closedSet = newClosedSet;
-    }
-    if (this.localOccupancyCache.length < totalCoordSlots) {
-      const newLocalOccupancyCache = new Int32Array(totalCoordSlots);
-      newLocalOccupancyCache.set(this.localOccupancyCache);
-      this.localOccupancyCache = newLocalOccupancyCache;
-    }
-
-    const encodeKey = (layer: string, gridX: number, gridY: number, layerIndex?: number): number => {
-      if (layerIndex === undefined) {
-        layerIndex = layerIdMap.get(layer);
+      this.searchGeneration++;
+      if (this.openMapArr.length < totalCoordSlots) {
+        this.openMapArr = new Array(totalCoordSlots).fill(undefined);
       }
-      if (layerIndex === undefined) {
-        return -1;
+      if (this.closedSet.length < totalCoordSlots) {
+        const newClosedSet = new Uint32Array(totalCoordSlots);
+        newClosedSet.set(this.closedSet);
+        this.closedSet = newClosedSet;
       }
-      const localX = gridX - searchWindow.minX;
-      const localY = gridY - searchWindow.minY;
-      if (
-        localX < 0 ||
-        localY < 0 ||
-        localX >= searchWindow.width ||
-        localY >= searchWindow.height
-      ) {
-        boundaryTracker.touched = true;
-        return -1;
-      }
-      return layerIndex * coordsPerLayer + localY * searchWindow.width + localX;
-    };
-
-    // ClearanceProfile is currently constant for a full search. Pull it once to
-    // avoid allocations and repeated calls in the hot neighbor loop.
-    const fastTraceClearance = this.clearanceProfile.getTraceClearance();
-
-    // Hot-path local occupancy cache.
-    // Values: -1 = unknown, 0 = free, 1 = blocked.
-    // We use this.localOccupancyCache instead of a local allocation.
-
-    const lookupOccupancy: OccupancyLookup = (
-      layer: string,
-      gridX: number,
-      gridY: number,
-      clearanceMm: number,
-      ignoreSameNet: boolean,
-      treatManualRoutesAsBlocks: boolean
-    ): boolean => {
-      if (!this.isWithinWindow(gridX, gridY, searchWindow)) {
-        boundaryTracker.touched = true;
-        return true;
+      if (this.localOccupancyCache.length < totalCoordSlots) {
+        const newLocalOccupancyCache = new Int32Array(totalCoordSlots);
+        newLocalOccupancyCache.set(this.localOccupancyCache);
+        this.localOccupancyCache = newLocalOccupancyCache;
       }
 
-      // Fast path: the router always queries occupancy using the same variant
-      // (ignoreSameNet=false, treatManualRoutesAsBlocks=true) and a constant
-      // trace clearance for the whole run.
-      if (
-        clearanceMm === fastTraceClearance &&
-        ignoreSameNet === false &&
-        treatManualRoutesAsBlocks === true
-      ) {
-        const cellIndex = encodeKey(layer, gridX, gridY);
-        if (cellIndex < 0) {
+      const encodeKey = (layer: string, gridX: number, gridY: number, layerIndex?: number): number => {
+        if (layerIndex === undefined) {
+          layerIndex = layerIdMap.get(layer);
+        }
+        if (layerIndex === undefined) {
+          return -1;
+        }
+        const localX = gridX - searchWindow.minX;
+        const localY = gridY - searchWindow.minY;
+        if (localX < 0 || localY < 0 || localX >= searchWindow.width || localY >= searchWindow.height) {
+          boundaryTracker.touched = true;
+          return -1;
+        }
+        return layerIndex * coordsPerLayer + localY * searchWindow.width + localX;
+      };
+
+      // ClearanceProfile is currently constant for a full search. Pull it once to
+      // avoid allocations and repeated calls in the hot neighbor loop.
+      const fastTraceClearance = this.clearanceProfile.getTraceClearance();
+
+      // Hot-path local occupancy cache.
+      // Values: -1 = unknown, 0 = free, 1 = blocked.
+      // We use this.localOccupancyCache instead of a local allocation.
+
+      const lookupOccupancy: OccupancyLookup = (
+        layer: string,
+        gridX: number,
+        gridY: number,
+        clearanceMm: number,
+        ignoreSameNet: boolean,
+        treatManualRoutesAsBlocks: boolean,
+      ): boolean => {
+        if (!this.isWithinWindow(gridX, gridY, searchWindow)) {
+          boundaryTracker.touched = true;
           return true;
         }
 
-        const localCached = this.localOccupancyCache[cellIndex];
-        if (localCached === this.searchGeneration) return true;
-        if (localCached === -this.searchGeneration) return false;
+        // Fast path: the router always queries occupancy using the same variant
+        // (ignoreSameNet=false, treatManualRoutesAsBlocks=true) and a constant
+        // trace clearance for the whole run.
+        if (clearanceMm === fastTraceClearance && ignoreSameNet === false && treatManualRoutesAsBlocks === true) {
+          const cellIndex = encodeKey(layer, gridX, gridY);
+          if (cellIndex < 0) {
+            return true;
+          }
+
+          const localCached = this.localOccupancyCache[cellIndex];
+          if (localCached === this.searchGeneration) return true;
+          if (localCached === -this.searchGeneration) return false;
+
+          const globalKey = this.buildGlobalOccupancyKey(layer, gridX, gridY, fastTraceClearance, false, true);
+          if (globalKey) {
+            const cached = this.globalOccupancyCache.get(globalKey.key);
+            if (
+              cached &&
+              cached.layer === layer &&
+              cached.gridX === gridX &&
+              cached.gridY === gridY &&
+              cached.clearanceBucket === globalKey.clearanceBucket &&
+              cached.variant === globalKey.variant
+            ) {
+              this.localOccupancyCache[cellIndex] = cached.blocked ? this.searchGeneration : -this.searchGeneration;
+              return cached.blocked;
+            }
+          }
+
+          const blocked = this.grid.isOccupied(gridX, gridY, layer, fastTraceClearance, this.options.net, false, true);
+
+          this.localOccupancyCache[cellIndex] = blocked ? this.searchGeneration : -this.searchGeneration;
+          if (globalKey) {
+            this.storeGlobalOccupancyValue({
+              key: globalKey.key,
+              layer,
+              gridX,
+              gridY,
+              clearanceBucket: globalKey.clearanceBucket,
+              variant: globalKey.variant,
+              blocked,
+            });
+          }
+          return blocked;
+        }
 
         const globalKey = this.buildGlobalOccupancyKey(
           layer,
           gridX,
           gridY,
-          fastTraceClearance,
-          false,
-          true
+          clearanceMm,
+          ignoreSameNet,
+          treatManualRoutesAsBlocks,
         );
         if (globalKey) {
           const cached = this.globalOccupancyCache.get(globalKey.key);
@@ -529,22 +552,18 @@ export class GridSearch {
             cached.clearanceBucket === globalKey.clearanceBucket &&
             cached.variant === globalKey.variant
           ) {
-            this.localOccupancyCache[cellIndex] = cached.blocked ? this.searchGeneration : -this.searchGeneration;
             return cached.blocked;
           }
         }
-
         const blocked = this.grid.isOccupied(
           gridX,
           gridY,
           layer,
-          fastTraceClearance,
+          clearanceMm,
           this.options.net,
-          false,
-          true
+          ignoreSameNet,
+          treatManualRoutesAsBlocks,
         );
-
-        this.localOccupancyCache[cellIndex] = blocked ? this.searchGeneration : -this.searchGeneration;
         if (globalKey) {
           this.storeGlobalOccupancyValue({
             key: globalKey.key,
@@ -557,184 +576,133 @@ export class GridSearch {
           });
         }
         return blocked;
+      };
+
+      // Use preallocated arrays from class instance
+      const openMapArr = this.openMapArr;
+      const closedSet = this.closedSet;
+      const openPQ = this.openPQ;
+      openPQ.clear();
+
+      const viaPenalty = this.options.allowVias ? (this.options.viaCost ?? 0) : 0;
+
+      const mmPerCell = this.grid.getResolution();
+      const strideDisableRadius = Math.max(
+        1,
+        Math.ceil((this.options.strideNearPadDisableRadiusMm ?? 3.0) / mmPerCell),
+      );
+
+      const preferredLayerIndexMap = new Map<string, number>();
+      if (this.options.preferredLayers) {
+        this.options.preferredLayers.forEach((l, idx) => preferredLayerIndexMap.set(l, idx));
       }
 
-      const globalKey = this.buildGlobalOccupancyKey(
-        layer,
-        gridX,
-        gridY,
-        clearanceMm,
-        ignoreSameNet,
-        treatManualRoutesAsBlocks
-      );
-      if (globalKey) {
-        const cached = this.globalOccupancyCache.get(globalKey.key);
-        if (
-          cached &&
-          cached.layer === layer &&
-          cached.gridX === gridX &&
-          cached.gridY === gridY &&
-          cached.clearanceBucket === globalKey.clearanceBucket &&
-          cached.variant === globalKey.variant
-        ) {
-          return cached.blocked;
+      const goalCosts = new Float32Array(layerIdMap.size);
+      for (const [layer, idx] of layerIdMap.entries()) {
+        goalCosts[idx] = this.sampleCellCost(layer, endGrid.gridX, endGrid.gridY, windowData, idx);
+      }
+
+      // Weighted A*: for longer routes, bias harder toward the goal to reduce
+      // exploration. This trades some optimality for a large speed win.
+      const baseHeuristicWeight = this.options.heuristicWeight ?? 2.0;
+      const manhattanToGoal = Math.abs(startGrid.gridX - endGrid.gridX) + Math.abs(startGrid.gridY - endGrid.gridY);
+      let heuristicWeight = baseHeuristicWeight;
+      if (manhattanToGoal > 800) {
+        heuristicWeight = Math.max(heuristicWeight, 4.5);
+      } else if (manhattanToGoal > 500) {
+        heuristicWeight = Math.max(heuristicWeight, 3.5);
+      } else if (manhattanToGoal > 250) {
+        heuristicWeight = Math.max(heuristicWeight, 2.75);
+      }
+
+      const neighborContext: NeighborContext = {
+        goalX: endGrid.gridX,
+        goalY: endGrid.gridY,
+        goalLayer: adjustedEnd.layer,
+        forceSingleLayer,
+        endLayerAgnostic: endIsLayerAgnosticGoal,
+        startX: startGrid.gridX,
+        startY: startGrid.gridY,
+        startLayerAgnostic: !forceSingleLayer && startIsFreeVia,
+        searchWindow,
+        lookupOccupancy,
+        viaPenalty,
+        strideDisableRadius,
+        strideDisableRadiusSq: strideDisableRadius * strideDisableRadius,
+        startGrid,
+        endGrid,
+        windowData,
+        boundaryTracker,
+        heuristicWeight,
+        allowDiagonalRuns: this.options.allow45DegreeRuns ?? true,
+        preferredLayerIndexMap,
+        goalCosts,
+      };
+
+      const startLayers: string[] =
+        !forceSingleLayer && startIsFreeVia
+          ? this.options.allowedLayers && this.options.allowedLayers.length > 0
+            ? this.options.allowedLayers
+            : [adjustedStart.layer]
+          : [adjustedStart.layer];
+
+      for (const sl of startLayers) {
+        const slIndex = layerIdMap.get(sl);
+        if (slIndex === undefined) {
+          continue;
+        }
+        const dx = Math.abs(endGrid.gridX - startGrid.gridX);
+        const dy = Math.abs(endGrid.gridY - startGrid.gridY);
+        const manhattan = dx + dy;
+
+        const startCost = this.sampleCellCost(sl, startGrid.gridX, startGrid.gridY, windowData, slIndex);
+        const goalCost = goalCosts[slIndex];
+        const avgCost = startCost > 0 && goalCost > 0 ? (startCost + goalCost) * 0.5 : windowData.averageCost;
+        const congestionPenalty = avgCost * (manhattan > 1 ? manhattan : 1) * 0.01;
+
+        let planar: number;
+        if (this.options.allow45DegreeRuns ?? true) {
+          const maxComponent = Math.max(dx, dy);
+          const minComponent = Math.min(dx, dy);
+          planar = minComponent * Math.SQRT2 + (maxComponent - minComponent);
+        } else {
+          planar = manhattan;
+        }
+        let hCost = planar;
+        if (sl !== adjustedEnd.layer && viaPenalty > 0) {
+          hCost += viaPenalty;
+        }
+        if (congestionPenalty > 0) {
+          hCost += congestionPenalty;
+        }
+        hCost *= heuristicWeight;
+        const sNode: IRouteNode = {
+          gridX: startGrid.gridX,
+          gridY: startGrid.gridY,
+          worldX: adjustedStart.x,
+          worldY: adjustedStart.y,
+          layer: sl,
+          layerIndex: slIndex,
+          gCost: 0,
+          hCost,
+          fCost: hCost,
+          parent: null,
+          viaUsed: false,
+        };
+        const key = encodeKey(sNode.layer, sNode.gridX, sNode.gridY, slIndex);
+        if (key === -1) {
+          continue;
+        }
+        const existing = openMapArr[key];
+        if (!existing || sNode.fCost < existing.fCost) {
+          if (!existing) this.openMapTouchedIndices.push(key);
+          openMapArr[key] = sNode;
+          openPQ.push(sNode);
         }
       }
-      const blocked = this.grid.isOccupied(
-        gridX,
-        gridY,
-        layer,
-        clearanceMm,
-        this.options.net,
-        ignoreSameNet,
-        treatManualRoutesAsBlocks
-      );
-      if (globalKey) {
-        this.storeGlobalOccupancyValue({
-          key: globalKey.key,
-          layer,
-          gridX,
-          gridY,
-          clearanceBucket: globalKey.clearanceBucket,
-          variant: globalKey.variant,
-          blocked,
-        });
-      }
-      return blocked;
-    };
 
-    // Use preallocated arrays from class instance
-    const openMapArr = this.openMapArr;
-    const closedSet = this.closedSet;
-    const openPQ = this.openPQ;
-    openPQ.clear();
-
-    const viaPenalty = this.options.allowVias ? this.options.viaCost ?? 0 : 0;
-
-    const mmPerCell = this.grid.getResolution();
-    const strideDisableRadius = Math.max(
-      1,
-      Math.ceil(
-        (this.options.strideNearPadDisableRadiusMm ?? 3.0) / mmPerCell
-      )
-    );
-
-    const preferredLayerIndexMap = new Map<string, number>();
-    if (this.options.preferredLayers) {
-      this.options.preferredLayers.forEach((l, idx) => preferredLayerIndexMap.set(l, idx));
-    }
-
-    const goalCosts = new Float32Array(layerIdMap.size);
-    for (const [layer, idx] of layerIdMap.entries()) {
-      goalCosts[idx] = this.sampleCellCost(layer, endGrid.gridX, endGrid.gridY, windowData, idx);
-    }
-
-    // Weighted A*: for longer routes, bias harder toward the goal to reduce
-    // exploration. This trades some optimality for a large speed win.
-    const baseHeuristicWeight = this.options.heuristicWeight ?? 2.0;
-    const manhattanToGoal =
-      Math.abs(startGrid.gridX - endGrid.gridX) +
-      Math.abs(startGrid.gridY - endGrid.gridY);
-    let heuristicWeight = baseHeuristicWeight;
-    if (manhattanToGoal > 800) {
-      heuristicWeight = Math.max(heuristicWeight, 4.5);
-    } else if (manhattanToGoal > 500) {
-      heuristicWeight = Math.max(heuristicWeight, 3.5);
-    } else if (manhattanToGoal > 250) {
-      heuristicWeight = Math.max(heuristicWeight, 2.75);
-    }
-
-    const neighborContext: NeighborContext = {
-      goalX: endGrid.gridX,
-      goalY: endGrid.gridY,
-      goalLayer: adjustedEnd.layer,
-      forceSingleLayer,
-      endLayerAgnostic: endIsLayerAgnosticGoal,
-      startX: startGrid.gridX,
-      startY: startGrid.gridY,
-      startLayerAgnostic: !forceSingleLayer && startIsFreeVia,
-      searchWindow,
-      lookupOccupancy,
-      viaPenalty,
-      strideDisableRadius,
-      strideDisableRadiusSq: strideDisableRadius * strideDisableRadius,
-      startGrid,
-      endGrid,
-      windowData,
-      boundaryTracker,
-      heuristicWeight,
-      allowDiagonalRuns: this.options.allow45DegreeRuns ?? true,
-      preferredLayerIndexMap,
-      goalCosts,
-    };
-
-    const startLayers: string[] =
-      !forceSingleLayer && startIsFreeVia
-        ? (this.options.allowedLayers && this.options.allowedLayers.length > 0
-            ? this.options.allowedLayers
-            : [adjustedStart.layer])
-        : [adjustedStart.layer];
-
-    for (const sl of startLayers) {
-      const slIndex = layerIdMap.get(sl);
-      if (slIndex === undefined) {
-        continue;
-      }
-      const dx = Math.abs(endGrid.gridX - startGrid.gridX);
-      const dy = Math.abs(endGrid.gridY - startGrid.gridY);
-      const manhattan = dx + dy;
-
-      const startCost = this.sampleCellCost(sl, startGrid.gridX, startGrid.gridY, windowData, slIndex);
-      const goalCost = goalCosts[slIndex];
-      const avgCost =
-        startCost > 0 && goalCost > 0
-          ? (startCost + goalCost) * 0.5
-          : windowData.averageCost;
-      const congestionPenalty = avgCost * (manhattan > 1 ? manhattan : 1) * 0.01;
-
-      let planar: number;
-      if (this.options.allow45DegreeRuns ?? true) {
-        const maxComponent = Math.max(dx, dy);
-        const minComponent = Math.min(dx, dy);
-        planar = minComponent * Math.SQRT2 + (maxComponent - minComponent);
-      } else {
-        planar = manhattan;
-      }
-      let hCost = planar;
-      if (sl !== adjustedEnd.layer && viaPenalty > 0) {
-        hCost += viaPenalty;
-      }
-      if (congestionPenalty > 0) {
-        hCost += congestionPenalty;
-      }
-      hCost *= heuristicWeight;
-      const sNode: IRouteNode = {
-        gridX: startGrid.gridX,
-        gridY: startGrid.gridY,
-        worldX: adjustedStart.x,
-        worldY: adjustedStart.y,
-        layer: sl,
-        layerIndex: slIndex,
-        gCost: 0,
-        hCost,
-        fCost: hCost,
-        parent: null,
-        viaUsed: false,
-      };
-      const key = encodeKey(sNode.layer, sNode.gridX, sNode.gridY, slIndex);
-      if (key === -1) {
-        continue;
-      }
-      const existing = openMapArr[key];
-      if (!existing || sNode.fCost < existing.fCost) {
-        if (!existing) this.openMapTouchedIndices.push(key);
-        openMapArr[key] = sNode;
-        openPQ.push(sNode);
-      }
-    }
-
-    let iterations = 0;
-    const maxIterations = this.options.maxIterations ?? 500000;
+      let iterations = 0;
+      const maxIterations = this.options.maxIterations ?? 500000;
 
       while (openPQ.size() > 0 && iterations < maxIterations) {
         iterations++;
@@ -753,7 +721,7 @@ export class GridSearch {
         const atGoalPosition = current.gridX === endGrid.gridX && current.gridY === endGrid.gridY;
         if (atGoalPosition && (current.layer === adjustedEnd.layer || endIsLayerAgnosticGoal)) {
           return {
-            status: "success",
+            status: 'success',
             path: this.reconstructPath(current, {
               start: adjustedStart,
               end: adjustedEnd,
@@ -772,12 +740,7 @@ export class GridSearch {
         }
 
         for (const neighbor of neighbors) {
-          const neighborKey = encodeKey(
-            neighbor.layer,
-            neighbor.gridX,
-            neighbor.gridY,
-            neighbor.layerIndex
-          );
+          const neighborKey = encodeKey(neighbor.layer, neighbor.gridX, neighbor.gridY, neighbor.layerIndex);
 
           if (neighborKey === -1 || closedSet[neighborKey] === this.searchGeneration) {
             continue;
@@ -788,7 +751,7 @@ export class GridSearch {
             neighbor.gridX === endGrid.gridX &&
             neighbor.gridY === endGrid.gridY &&
             (neighbor.layer === adjustedEnd.layer || endIsLayerAgnosticGoal);
-          
+
           if (!isGoalNeighbor) {
             const isStartNeighbor =
               current.gridX === startGrid.gridX &&
@@ -797,14 +760,7 @@ export class GridSearch {
 
             if (!isStartNeighbor) {
               const effectiveClearance = fastTraceClearance;
-              if (lookupOccupancy(
-                neighbor.layer,
-                neighbor.gridX,
-                neighbor.gridY,
-                effectiveClearance,
-                false,
-                true
-              )) {
+              if (lookupOccupancy(neighbor.layer, neighbor.gridX, neighbor.gridY, effectiveClearance, false, true)) {
                 continue;
               }
             }
@@ -825,11 +781,11 @@ export class GridSearch {
       }
 
       if (boundaryTracker.touched) {
-        return { status: "expand", iterations };
+        return { status: 'expand', iterations };
       }
 
       return {
-        status: "failure",
+        status: 'failure',
         iterations,
         error: `No path found after ${iterations} iterations`,
       };
@@ -858,18 +814,10 @@ export class GridSearch {
 
       if (startIsFreeVia && endIsFreeVia) {
         forceSingleLayer = false;
-      } else if (
-        startIsFreeVia &&
-        start.layer !== end.layer &&
-        !endIsFreeVia
-      ) {
+      } else if (startIsFreeVia && start.layer !== end.layer && !endIsFreeVia) {
         adjustedStart = { ...start, layer: end.layer };
         forceSingleLayer = true;
-      } else if (
-        endIsFreeVia &&
-        start.layer !== end.layer &&
-        !startIsFreeVia
-      ) {
+      } else if (endIsFreeVia && start.layer !== end.layer && !startIsFreeVia) {
         adjustedEnd = { ...end, layer: start.layer };
         forceSingleLayer = true;
       }
@@ -906,12 +854,7 @@ export class GridSearch {
         return cached;
       }
 
-      let windowData = this.getOrCreateWindowData(
-        startGrid,
-        endGrid,
-        adjustedStart.layer,
-        adjustedEnd.layer
-      );
+      let windowData = this.getOrCreateWindowData(startGrid, endGrid, adjustedStart.layer, adjustedEnd.layer);
 
       while (true) {
         const result = this.runSearchWithWindow({
@@ -925,38 +868,29 @@ export class GridSearch {
           windowData,
         });
 
-        if (result.status === "expand") {
-          windowData = this.expandWindowData(
-            windowData,
-            startGrid,
-            endGrid,
-            adjustedStart.layer,
-            adjustedEnd.layer
-          );
+        if (result.status === 'expand') {
+          windowData = this.expandWindowData(windowData, startGrid, endGrid, adjustedStart.layer, adjustedEnd.layer);
           continue;
         }
 
-        if (result.status === "success" && result.path) {
+        if (result.status === 'success' && result.path) {
           this.storePathCache(cacheKey, result.path);
           return result.path;
         }
 
         if (this.options.debug) {
-          logger.warn(
-            chalk.yellow(
-              `[GridSearch] Failed to find path after ${result.iterations ?? 0} iterations`
-            )
-          );
+          logger.warn(chalk.yellow(`[GridSearch] Failed to find path after ${result.iterations ?? 0} iterations`));
         }
 
-        return result.path ??
-          {
+        return (
+          result.path ?? {
             nodes: [],
             length: 0,
             viaCount: 0,
             success: false,
             error: result.error ?? `No path found after ${result.iterations ?? 0} iterations`,
-          };
+          }
+        );
       }
     })();
   }
@@ -977,50 +911,26 @@ export class GridSearch {
     { dx: 1, dy: -1, cost: Math.SQRT2 },
     { dx: -1, dy: -1, cost: Math.SQRT2 },
     { dx: 1, dy: 1, cost: Math.SQRT2 },
-    { dx: -1, dy: 1, cost: Math.SQRT2 }
+    { dx: -1, dy: 1, cost: Math.SQRT2 },
   ]);
 
-  private getNeighbors(
-    node: IRouteNode,
-    context: NeighborContext,
-    disableStride: boolean = false
-  ): IRouteNode[] {
+  private getNeighbors(node: IRouteNode, context: NeighborContext, disableStride: boolean = false): IRouteNode[] {
     const neighbors: IRouteNode[] = [];
-    const {
-      goalX,
-      goalY,
-      goalLayer,
-      viaPenalty,
-      allowDiagonalRuns,
-      heuristicWeight,
-      windowData,
-      goalCosts
-    } = context;
+    const { goalX, goalY, goalLayer, viaPenalty, allowDiagonalRuns, heuristicWeight, windowData, goalCosts } = context;
     const averageCost = windowData.averageCost;
     const nodeLayerIndex = windowData.layerIdMap.get(node.layer);
     const nodeGoalCost = nodeLayerIndex !== undefined && goalCosts ? goalCosts[nodeLayerIndex] : undefined;
-    const directions = this.options.allow45DegreeRuns 
-      ? GridSearch.DIRECTIONS_8WAY 
-      : GridSearch.DIRECTIONS_4WAY;
+    const directions = this.options.allow45DegreeRuns ? GridSearch.DIRECTIONS_8WAY : GridSearch.DIRECTIONS_4WAY;
     const strideClearance = this.clearanceProfile.getTraceClearance();
 
     for (const dir of directions) {
       if (this.options.useAdaptiveStride && !disableStride) {
-        const jumped = this.jump(
-          node,
-          dir,
-          strideClearance,
-          context
-        );
+        const jumped = this.jump(node, dir, strideClearance, context);
         if (jumped) {
           neighbors.push(jumped);
           continue;
         }
-        const single = this.makeSingleStepNeighbor(
-          node,
-          dir,
-          context
-        );
+        const single = this.makeSingleStepNeighbor(node, dir, context);
         if (single) neighbors.push(single);
         continue;
       }
@@ -1038,20 +948,13 @@ export class GridSearch {
 
       let bendPenalty = 0;
       if (node.directionFrom) {
-        if (
-          node.directionFrom.dx !== dir.dx ||
-          node.directionFrom.dy !== dir.dy
-        ) {
+        if (node.directionFrom.dx !== dir.dx || node.directionFrom.dy !== dir.dy) {
           bendPenalty = this.options.bendCost;
         }
       }
 
       let layerPenalty = 0;
-      if (
-        !context.endLayerAgnostic &&
-        context.preferredLayerIndexMap &&
-        context.preferredLayerIndexMap.size > 0
-      ) {
+      if (!context.endLayerAgnostic && context.preferredLayerIndexMap && context.preferredLayerIndexMap.size > 0) {
         const layerIndex = context.preferredLayerIndexMap.get(node.layer);
         if (layerIndex === undefined) {
           layerPenalty = GridSearchConstants.NON_PREFERRED_LAYER_PENALTY;
@@ -1059,10 +962,7 @@ export class GridSearch {
       }
 
       const moveCost =
-        dir.cost +
-        bendPenalty +
-        layerPenalty +
-        this.sampleCellCost(node.layer, nx, ny, windowData, nodeLayerIndex);
+        dir.cost + bendPenalty + layerPenalty + this.sampleCellCost(node.layer, nx, ny, windowData, nodeLayerIndex);
 
       const dx = Math.abs(goalX - nx);
       const dy = Math.abs(goalY - ny);
@@ -1125,34 +1025,17 @@ export class GridSearch {
 
         if (context.endLayerAgnostic) {
           const mmPerCell = this.grid.getResolution();
-          const radiusCells = Math.max(
-            1,
-            Math.ceil(
-              GridSearchConstants.TH_GOAL_VIA_AVOID_RADIUS_MM / mmPerCell
-            )
-          );
+          const radiusCells = Math.max(1, Math.ceil(GridSearchConstants.TH_GOAL_VIA_AVOID_RADIUS_MM / mmPerCell));
           const distToGoal = Math.hypot(context.goalX - nx, context.goalY - ny);
           if (distToGoal <= radiusCells) {
             continue;
           }
         }
 
-        if (
-          context.startLayerAgnostic &&
-          context.startX !== undefined &&
-          context.startY !== undefined
-        ) {
+        if (context.startLayerAgnostic && context.startX !== undefined && context.startY !== undefined) {
           const mmPerCell = this.grid.getResolution();
-          const radiusCells = Math.max(
-            1,
-            Math.ceil(
-              GridSearchConstants.TH_START_VIA_AVOID_RADIUS_MM / mmPerCell
-            )
-          );
-          const distToStart = Math.hypot(
-            context.startX - nx,
-            context.startY - ny
-          );
+          const radiusCells = Math.max(1, Math.ceil(GridSearchConstants.TH_START_VIA_AVOID_RADIUS_MM / mmPerCell));
+          const distToStart = Math.hypot(context.startX - nx, context.startY - ny);
           if (distToStart <= radiusCells) {
             continue;
           }
@@ -1166,36 +1049,13 @@ export class GridSearch {
 
         const padKeepout = this.clearanceProfile.getViaKeepoutRadius();
 
-        if (
-          this.isPadWithinClearance(
-            nx,
-            ny,
-            [node.layer, targetLayer],
-            padKeepout
-          )
-        ) {
+        if (this.isPadWithinClearance(nx, ny, [node.layer, targetLayer], padKeepout)) {
           continue;
         }
 
         const viaBlocked =
-          this.grid.isOccupied(
-            nx,
-            ny,
-            node.layer,
-            padKeepout,
-            this.options.net,
-            true,
-            true
-          ) ||
-          this.grid.isOccupied(
-            nx,
-            ny,
-            targetLayer,
-            padKeepout,
-            this.options.net,
-            true,
-            true
-          );
+          this.grid.isOccupied(nx, ny, node.layer, padKeepout, this.options.net, true, true) ||
+          this.grid.isOccupied(nx, ny, targetLayer, padKeepout, this.options.net, true, true);
 
         if (viaBlocked) {
           continue;
@@ -1210,14 +1070,10 @@ export class GridSearch {
           continue;
         }
 
-        const viaCostAtLocation = this.options.viaCost || 0;
+        const viaCostAtLocation = this.computeViaCost(node.layer, targetLayer);
 
         let targetLayerPenalty = 0;
-        if (
-          !context.endLayerAgnostic &&
-          context.preferredLayerIndexMap &&
-          context.preferredLayerIndexMap.size > 0
-        ) {
+        if (!context.endLayerAgnostic && context.preferredLayerIndexMap && context.preferredLayerIndexMap.size > 0) {
           const layerIndex = context.preferredLayerIndexMap.get(targetLayer);
           if (layerIndex === undefined) {
             targetLayerPenalty = GridSearchConstants.NON_PREFERRED_LAYER_PENALTY;
@@ -1283,18 +1139,9 @@ export class GridSearch {
     node: IRouteNode,
     dir: { dx: number; dy: number; cost: number },
     clearance: number,
-    context: NeighborContext
+    context: NeighborContext,
   ): IRouteNode | null {
-    const {
-      goalX,
-      goalY,
-      goalLayer,
-      viaPenalty,
-      allowDiagonalRuns,
-      heuristicWeight,
-      windowData,
-      goalCosts
-    } = context;
+    const { goalX, goalY, goalLayer, viaPenalty, allowDiagonalRuns, heuristicWeight, windowData, goalCosts } = context;
     const averageCost = windowData.averageCost;
     const maxStride = Math.max(1, this.options.maxStrideCells ?? 16);
     const nodeLayerIndex = windowData.layerIdMap.get(node.layer);
@@ -1303,15 +1150,12 @@ export class GridSearch {
     const startDx = node.gridX - context.startGrid.gridX;
     const startDy = node.gridY - context.startGrid.gridY;
     const startDistSq = startDx * startDx + startDy * startDy;
-    
+
     const goalDx = node.gridX - context.endGrid.gridX;
     const goalDy = node.gridY - context.endGrid.gridY;
     const goalDistSq = goalDx * goalDx + goalDy * goalDy;
-    
-    if (
-      startDistSq <= context.strideDisableRadiusSq ||
-      goalDistSq <= context.strideDisableRadiusSq
-    ) {
+
+    if (startDistSq <= context.strideDisableRadiusSq || goalDistSq <= context.strideDisableRadiusSq) {
       return null;
     }
 
@@ -1329,16 +1173,7 @@ export class GridSearch {
         return null;
       }
 
-      if (
-        context.lookupOccupancy(
-          node.layer,
-          nx,
-          ny,
-          clearance,
-          false,
-          true
-        )
-      ) {
+      if (context.lookupOccupancy(node.layer, nx, ny, clearance, false, true)) {
         return null;
       }
 
@@ -1357,43 +1192,27 @@ export class GridSearch {
 
       currentX = nx;
       currentY = ny;
-      accMoveCost +=
-        dir.cost +
-        this.sampleCellCost(node.layer, currentX, currentY, windowData, nodeLayerIndex);
+      accMoveCost += dir.cost + this.sampleCellCost(node.layer, currentX, currentY, windowData, nodeLayerIndex);
       if (!penaltyApplied) {
-        accMoveCost += this.getDirectionalPenalty(
-          node,
-          dir,
-          context.endLayerAgnostic,
-          context
-        );
+        accMoveCost += this.getDirectionalPenalty(node, dir, context.endLayerAgnostic, context);
         penaltyApplied = true;
       }
 
       const reachedGoal =
-        currentX === goalX &&
-        currentY === goalY &&
-        (node.layer === goalLayer || context.endLayerAgnostic);
+        currentX === goalX && currentY === goalY && (node.layer === goalLayer || context.endLayerAgnostic);
 
-      const forced = this.hasForcedNeighbor(
-        currentX,
-        currentY,
-        node.layer,
-        dir,
-        clearance,
-        context
-      );
+      const forced = this.hasForcedNeighbor(currentX, currentY, node.layer, dir, clearance, context);
 
       const nearStart = (() => {
         const dx = currentX - context.startGrid.gridX;
         const dy = currentY - context.startGrid.gridY;
-        return (dx * dx + dy * dy) <= context.strideDisableRadiusSq;
+        return dx * dx + dy * dy <= context.strideDisableRadiusSq;
       })();
-      
+
       const nearGoal = (() => {
         const dx = currentX - context.endGrid.gridX;
         const dy = currentY - context.endGrid.gridY;
-        return (dx * dx + dy * dy) <= context.strideDisableRadiusSq;
+        return dx * dx + dy * dy <= context.strideDisableRadiusSq;
       })();
 
       if (reachedGoal || forced || nearStart || nearGoal) {
@@ -1445,7 +1264,7 @@ export class GridSearch {
   private makeSingleStepNeighbor(
     node: IRouteNode,
     dir: { dx: number; dy: number; cost: number },
-    context: NeighborContext
+    context: NeighborContext,
   ): IRouteNode | null {
     const {
       goalX,
@@ -1456,7 +1275,7 @@ export class GridSearch {
       windowData,
       goalCosts,
       allowDiagonalRuns,
-      heuristicWeight
+      heuristicWeight,
     } = context;
     const averageCost = windowData.averageCost;
     const nx = node.gridX + dir.dx;
@@ -1465,20 +1284,13 @@ export class GridSearch {
 
     let bendPenalty = 0;
     if (node.directionFrom) {
-      if (
-        node.directionFrom.dx !== dir.dx ||
-        node.directionFrom.dy !== dir.dy
-      ) {
+      if (node.directionFrom.dx !== dir.dx || node.directionFrom.dy !== dir.dy) {
         bendPenalty = this.options.bendCost;
       }
     }
 
     let layerPenalty = 0;
-    if (
-      !endLayerAgnostic &&
-      context.preferredLayerIndexMap &&
-      context.preferredLayerIndexMap.size > 0
-    ) {
+    if (!endLayerAgnostic && context.preferredLayerIndexMap && context.preferredLayerIndexMap.size > 0) {
       const layerIndex = context.preferredLayerIndexMap.get(node.layer);
       if (layerIndex === undefined) {
         layerPenalty = GridSearchConstants.NON_PREFERRED_LAYER_PENALTY;
@@ -1489,10 +1301,7 @@ export class GridSearch {
     const nodeGoalCost = nodeLayerIndex !== undefined && goalCosts ? goalCosts[nodeLayerIndex] : undefined;
 
     const moveCost =
-      dir.cost +
-      bendPenalty +
-      layerPenalty +
-      this.sampleCellCost(node.layer, nx, ny, windowData, nodeLayerIndex);
+      dir.cost + bendPenalty + layerPenalty + this.sampleCellCost(node.layer, nx, ny, windowData, nodeLayerIndex);
 
     const dx = Math.abs(goalX - nx);
     const dy = Math.abs(goalY - ny);
@@ -1500,9 +1309,7 @@ export class GridSearch {
 
     const startCost = this.sampleCellCost(node.layer, nx, ny, windowData, nodeLayerIndex);
     const avgCost =
-      startCost > 0 && nodeGoalCost !== undefined && nodeGoalCost > 0
-        ? (startCost + nodeGoalCost) * 0.5
-        : averageCost;
+      startCost > 0 && nodeGoalCost !== undefined && nodeGoalCost > 0 ? (startCost + nodeGoalCost) * 0.5 : averageCost;
     const congestionPenalty = avgCost * (manhattan > 1 ? manhattan : 1) * 0.01;
 
     let planar: number;
@@ -1538,7 +1345,7 @@ export class GridSearch {
 
   private reconstructPath(
     endNode: IRouteNode,
-    snapEndpoints?: { start: RouteEndpoint; end: RouteEndpoint }
+    snapEndpoints?: { start: RouteEndpoint; end: RouteEndpoint },
   ): IRoutePath {
     const nodes: RouteEndpoint[] = [];
     const gridNodes: { gridX: number; gridY: number; layer: string }[] = [];
@@ -1551,10 +1358,7 @@ export class GridSearch {
       if (current.worldX !== undefined && current.worldY !== undefined) {
         worldPos = { x: current.worldX, y: current.worldY };
       } else {
-        const gridWorldPos = this.grid.gridToWorld(
-          current.gridX,
-          current.gridY
-        );
+        const gridWorldPos = this.grid.gridToWorld(current.gridX, current.gridY);
         const gridResolution = this.grid.getResolution();
         worldPos = {
           x: gridWorldPos.x - gridResolution * 0.125,
@@ -1613,18 +1417,18 @@ export class GridSearch {
     if (snapEndpoints) {
       nodes[0] = snapEndpoints.start;
       nodes[nodes.length - 1] = snapEndpoints.end;
-      
+
       // Remove intermediate grid nodes that are very close to the snapped endpoints
       // These create "zigzag" patterns when the pad position doesn't align with the grid
       const gridResolution = this.grid.getResolution();
       const removalThreshold = gridResolution * 2.5; // Remove nodes within ~2.5 grid cells of endpoint
-      
+
       // Check if we should remove node[1] (first grid node after snapped start)
       if (nodes.length >= 3) {
         const start = nodes[0];
         const firstGrid = nodes[1];
         const secondPoint = nodes[2];
-        
+
         if (start.layer === firstGrid.layer && firstGrid.layer === secondPoint.layer) {
           const distToFirstGrid = Math.hypot(firstGrid.x - start.x, firstGrid.y - start.y);
           if (distToFirstGrid <= removalThreshold) {
@@ -1634,13 +1438,13 @@ export class GridSearch {
           }
         }
       }
-      
+
       // Check if we should remove node[n-2] (last grid node before snapped end)
       if (nodes.length >= 3) {
         const end = nodes[nodes.length - 1];
         const lastGrid = nodes[nodes.length - 2];
         const secondToLast = nodes[nodes.length - 3];
-        
+
         if (end.layer === lastGrid.layer && lastGrid.layer === secondToLast.layer) {
           const distToLastGrid = Math.hypot(end.x - lastGrid.x, end.y - lastGrid.y);
           if (distToLastGrid <= removalThreshold) {
@@ -1653,8 +1457,7 @@ export class GridSearch {
     }
 
     const filteredNodes: RouteEndpoint[] = [];
-    const filteredGridNodes: { gridX: number; gridY: number; layer: string }[] =
-      [];
+    const filteredGridNodes: { gridX: number; gridY: number; layer: string }[] = [];
 
     for (let i = 0; i < nodes.length; i++) {
       const prev = filteredNodes[filteredNodes.length - 1];
@@ -1701,28 +1504,28 @@ export class GridSearch {
     }
 
     const result: RouteEndpoint[] = [nodes[0]];
-    
+
     for (let i = 1; i < nodes.length - 1; i++) {
       const prev = result[result.length - 1];
       const curr = nodes[i];
       const next = nodes[i + 1];
-      
+
       // Skip points where there's a layer change - these are via locations
       if (prev.layer !== curr.layer || curr.layer !== next.layer) {
         result.push(curr);
         continue;
       }
-      
+
       // Check if curr is collinear with prev and next
       if (!this.isCollinear(prev, curr, next)) {
         result.push(curr);
       }
       // If collinear, skip curr (it's redundant)
     }
-    
+
     // Always include the last node
     result.push(nodes[nodes.length - 1]);
-    
+
     return result;
   }
 
@@ -1734,22 +1537,22 @@ export class GridSearch {
     // Vector from a to b
     const abx = b.x - a.x;
     const aby = b.y - a.y;
-    
+
     // Vector from a to c
     const acx = c.x - a.x;
     const acy = c.y - a.y;
-    
+
     // Cross product: if zero (within tolerance), points are collinear
     const cross = abx * acy - aby * acx;
-    
+
     // Use a relative tolerance based on the segment lengths
     const lenAB = Math.hypot(abx, aby);
     const lenAC = Math.hypot(acx, acy);
     const maxLen = Math.max(lenAB, lenAC, 0.001);
-    
+
     // Tolerance scaled by segment length - allows for small floating point errors
     const tolerance = maxLen * 0.001;
-    
+
     return Math.abs(cross) <= tolerance;
   }
 
@@ -1765,22 +1568,22 @@ export class GridSearch {
     if (nodes.length <= 2) {
       return nodes;
     }
-    
+
     const result = [...nodes];
     const gridResolution = this.grid.getResolution();
     // Consider points within 3 grid cells of endpoints as "near"
     const nearThreshold = gridResolution * 3;
-    
+
     // Check start: if nodes[1] is very close to nodes[0], remove it
     // This eliminates the "jog" right at the pad entry
     if (result.length >= 3) {
       const start = result[0];
       const mid = result[1];
       const next = result[2];
-      
+
       if (start.layer === mid.layer && mid.layer === next.layer) {
         const distStartToMid = Math.hypot(mid.x - start.x, mid.y - start.y);
-        
+
         // Remove the intermediate point if it's close to the start
         // Don't require the resulting segment to be at an allowed angle -
         // a small deviation is better than a visible zigzag
@@ -1789,22 +1592,22 @@ export class GridSearch {
         }
       }
     }
-    
+
     // Check end: if nodes[n-2] is very close to nodes[n-1], remove it
     if (result.length >= 3) {
       const prev = result[result.length - 3];
       const mid = result[result.length - 2];
       const end = result[result.length - 1];
-      
+
       if (prev.layer === mid.layer && mid.layer === end.layer) {
         const distMidToEnd = Math.hypot(end.x - mid.x, end.y - mid.y);
-        
+
         if (distMidToEnd <= nearThreshold) {
           result.splice(result.length - 2, 1);
         }
       }
     }
-    
+
     return result;
   }
 
@@ -1812,12 +1615,7 @@ export class GridSearch {
    * Prevents placing vias directly adjacent to pads by checking
    * for pad cells within a clearance radius on both involved layers.
    */
-  private isPadWithinClearance(
-    gridX: number,
-    gridY: number,
-    layers: string[],
-    clearanceMm: number
-  ): boolean {
+  private isPadWithinClearance(gridX: number, gridY: number, layers: string[], clearanceMm: number): boolean {
     if (clearanceMm <= 0) {
       return false;
     }
@@ -1851,14 +1649,11 @@ export class GridSearch {
     node: IRouteNode,
     dir: { dx: number; dy: number },
     endLayerAgnostic: boolean,
-    context?: NeighborContext
+    context?: NeighborContext,
   ): number {
     let bendPenalty = 0;
     if (node.directionFrom) {
-      if (
-        node.directionFrom.dx !== dir.dx ||
-        node.directionFrom.dy !== dir.dy
-      ) {
+      if (node.directionFrom.dx !== dir.dx || node.directionFrom.dy !== dir.dy) {
         bendPenalty = this.options.bendCost;
       }
     }
@@ -1886,41 +1681,36 @@ export class GridSearch {
     if (nodes.length <= 1) {
       return nodes;
     }
-    
+
     const gridResolution = this.grid.getResolution();
     // Don't enforce strict angles on segments very close to endpoints
     // These small deviations are visually acceptable and avoiding the
     // angle enforcement prevents ugly "zigzag" patterns at pad entries
     const endpointProximityThreshold = gridResolution * 3;
-    
+
     const result: RouteEndpoint[] = [nodes[0]];
     const firstPoint = nodes[0];
     const lastPoint = nodes[nodes.length - 1];
-    
+
     for (let i = 1; i < nodes.length; i++) {
       const target = nodes[i];
       const current = result[result.length - 1];
-      if (
-        !current ||
-        current.layer !== target.layer ||
-        this.isAllowedRunSegment(current, target)
-      ) {
+      if (!current || current.layer !== target.layer || this.isAllowedRunSegment(current, target)) {
         result.push(target);
         continue;
       }
-      
+
       // Check if this segment is near an endpoint - if so, skip angle enforcement
       const distToFirst = Math.hypot(current.x - firstPoint.x, current.y - firstPoint.y);
       const distToLast = Math.hypot(target.x - lastPoint.x, target.y - lastPoint.y);
-      const nearEndpoint = distToFirst <= endpointProximityThreshold || 
-                          distToLast <= endpointProximityThreshold;
-      
+      const nearEndpoint = distToFirst <= endpointProximityThreshold || distToLast <= endpointProximityThreshold;
+
       if (nearEndpoint) {
         // Don't split this segment - accept the small angle deviation
         result.push(target);
         continue;
       }
-      
+
       const replacements = this.splitIntoAllowedSegments(current, target);
       result.push(...replacements);
     }
@@ -1940,10 +1730,7 @@ export class GridSearch {
     return Math.abs(dx - dy) <= tol;
   }
 
-  private splitIntoAllowedSegments(
-    start: RouteEndpoint,
-    end: RouteEndpoint
-  ): RouteEndpoint[] {
+  private splitIntoAllowedSegments(start: RouteEndpoint, end: RouteEndpoint): RouteEndpoint[] {
     if (start.layer !== end.layer) {
       return [end];
     }
@@ -2016,37 +1803,21 @@ export class GridSearch {
     layer: string,
     dir: { dx: number; dy: number },
     clearance: number,
-    context: NeighborContext
+    context: NeighborContext,
   ): boolean {
     const lookup = (dx: number, dy: number): boolean =>
-      context.lookupOccupancy(
-        layer,
-        gridX + dx,
-        gridY + dy,
-        clearance,
-        false,
-        true
-      );
+      context.lookupOccupancy(layer, gridX + dx, gridY + dy, clearance, false, true);
 
     if (dir.dx !== 0 && dir.dy !== 0) {
-      return (
-        (lookup(-dir.dx, 0) && !lookup(-dir.dx, dir.dy)) ||
-        (lookup(0, -dir.dy) && !lookup(dir.dx, -dir.dy))
-      );
+      return (lookup(-dir.dx, 0) && !lookup(-dir.dx, dir.dy)) || (lookup(0, -dir.dy) && !lookup(dir.dx, -dir.dy));
     }
 
     if (dir.dx !== 0) {
-      return (
-        (lookup(0, 1) && !lookup(dir.dx, 1)) ||
-        (lookup(0, -1) && !lookup(dir.dx, -1))
-      );
+      return (lookup(0, 1) && !lookup(dir.dx, 1)) || (lookup(0, -1) && !lookup(dir.dx, -1));
     }
 
     if (dir.dy !== 0) {
-      return (
-        (lookup(1, 0) && !lookup(1, dir.dy)) ||
-        (lookup(-1, 0) && !lookup(-1, dir.dy))
-      );
+      return (lookup(1, 0) && !lookup(1, dir.dy)) || (lookup(-1, 0) && !lookup(-1, dir.dy));
     }
 
     return false;
@@ -2069,18 +1840,14 @@ export class GridSearch {
   private buildSearchWindow(
     start: { gridX: number; gridY: number },
     end: { gridX: number; gridY: number },
-    expansionLevel: number = 0
+    expansionLevel: number = 0,
   ): SearchWindow {
-    const paddingMm = Math.max(
-      this.clearanceProfile.getTraceClearance(),
-      this.clearanceProfile.getViaKeepoutRadius()
-    ) + GridSearchConstants.SEARCH_WINDOW_PADDING_MM;
+    const paddingMm =
+      Math.max(this.clearanceProfile.getTraceClearance(), this.clearanceProfile.getViaKeepoutRadius()) +
+      GridSearchConstants.SEARCH_WINDOW_PADDING_MM;
     const resolution = this.grid.getResolution();
     const expansionMultiplier = 1 + expansionLevel * 0.75;
-    const paddingCells = Math.max(
-      4,
-      Math.ceil((paddingMm * expansionMultiplier) / resolution)
-    );
+    const paddingCells = Math.max(4, Math.ceil((paddingMm * expansionMultiplier) / resolution));
 
     const minX = Math.min(start.gridX, end.gridX) - paddingCells;
     const maxX = Math.max(start.gridX, end.gridX) + paddingCells;
@@ -2098,17 +1865,8 @@ export class GridSearch {
     };
   }
 
-  private isWithinWindow(
-    gridX: number,
-    gridY: number,
-    window: SearchWindow
-  ): boolean {
-    return (
-      gridX >= window.minX &&
-      gridX <= window.maxX &&
-      gridY >= window.minY &&
-      gridY <= window.maxY
-    );
+  private isWithinWindow(gridX: number, gridY: number, window: SearchWindow): boolean {
+    return gridX >= window.minX && gridX <= window.maxX && gridY >= window.minY && gridY <= window.maxY;
   }
 
   private getLayerCode(layer: string): number {
@@ -2125,7 +1883,7 @@ export class GridSearch {
     gridY: number,
     clearanceMm: number,
     ignoreSameNet: boolean,
-    treatManualRoutesAsBlocks: boolean
+    treatManualRoutesAsBlocks: boolean,
   ): { key: number; clearanceBucket: number; variant: number } | null {
     if (!this.grid.isInBounds(gridX, gridY)) {
       return null;
@@ -2185,7 +1943,7 @@ export function heuristicDistance(
   layer2: string,
   viaPenalty: number = 0,
   congestionPenalty: number = 0,
-  allowDiagonalRuns: boolean = true
+  allowDiagonalRuns: boolean = true,
 ): number {
   const dx = Math.abs(x2 - x1);
   const dy = Math.abs(y2 - y1);

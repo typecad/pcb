@@ -1,0 +1,11 @@
+---
+'@typecad/typecad': minor
+---
+
+Via stitching, teardrops, and arc graphics.
+
+- `pcb.stitch(net, options?)` ties a net across layers with a clearance-aware grid of vias — the standard way to connect outer-layer pours to inner planes. Candidates on a pitch grid over the board outline (inset by `margin`) or an explicit `area` are skipped when they would violate clearance against existing copper (pads, tracks, vias, zones, keepouts) on any layer the stitch spans; same-net pours and tracks never block (connecting through them is the point), while same-net pads/vias still enforce hole-to-hole spacing. Components block stitches regardless of net — including components that are only net-registered and not yet placed (discovered from the schematic) — so stitches never land on footprints. A partial `layers` span emits blind vias over exactly that span, and a pitch below via size + clearance is rejected. Options: `layers` (span, default all copper), `pitch` (default 1.5mm), `size`/`drill`, `area`, `margin`. Returns the number of vias placed.
+- `pcb.teardrops(options?)` reinforces track-to-via junctions. It writes KiCad's teardrop tool configuration (`teardrop_options`/`teardrop_parameters`, fixture-verified shape) to the `.kicad_pro`, and — for vias placed by the autorouter — generates the teardrop geometry itself as tapered side segments on each layer the via's tracks arrive and leave, part of the routed net. Options: `vias`/`throughHolePads`/`smdPads`/`trackEnds` targets, `shape: 'round' | 'rect'`, `maxLength` (default 1mm), `maxHeight` (default 2mm).
+- `pcb.arc({ start, mid, end, layer, width })` draws arcs on any board layer — KiCad's three-point arc definition — completing the graphics set alongside line/circle/rect/poly.
+- The `Default` net class seed in `.kicad_pro` output no longer carries hard-coded `diff_pair_*` values (matching the earlier fix for user classes).
+- Text blocks stitches: `pcb.text()` elements, component reference/value/fab text (explicit layouts, text entries, and the footprint's default positions — transformed for rotation and back-side placement), and reference designators all keep stitch vias off their bounding boxes on the side of the board they occupy.

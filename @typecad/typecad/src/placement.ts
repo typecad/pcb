@@ -1,7 +1,7 @@
 import type { Component } from './component.js';
 import type { PCB } from './pcb/pcb.js';
 import { getPcbState } from './pcb/pcb.js';
-import { getFootprintBounds } from './pcb/footprint_bounds.js';
+import { getFootprintBounds, type FootprintBox } from './pcb/footprint_bounds.js';
 
 const DEFAULT_PLACEMENT_GAP = 2;
 
@@ -15,16 +15,84 @@ const DEFAULT_PLACEMENT_GAP = 2;
  * and {@link BoardBounds.fromLeft}.
  */
 export class PlacementValue {
-    private readonly _resolve: (targetBounds: { width: number; height: number } | null) => number;
+  private readonly _resolve: (targetBox: FootprintBox | null, rotationDeg: number) => number;
 
-    constructor(resolve: (targetBounds: { width: number; height: number } | null) => number) {
-        this._resolve = resolve;
-    }
+  constructor(resolve: (targetBox: FootprintBox | null, rotationDeg: number) => number) {
+    this._resolve = resolve;
+  }
 
-    /** @internal */
-    resolveWithFootprint(footprint: string): number {
-        return this._resolve(getFootprintBounds(footprint));
-    }
+  /** @internal */
+  resolveWithFootprint(footprint: string, rotationDeg: number = 0): number {
+    return this._resolve(getFootprintBounds(footprint), rotationDeg);
+  }
+}
+
+/**
+ * Rotate a footprint's origin-relative box by a KiCad rotation (degrees,
+ * same transform as footprint pad placement) and return the new
+ * origin-relative AABB. Many footprints' origin is pin 1 or a corner, not
+ * the body center — rotating the full box (not just extents) keeps the
+ * physical edges where KiCad renders them.
+ */
+function rotatedBox(box: FootprintBox | null, rotationDeg: number): FootprintBox {
+  if (!box) {
+    return { minX: 0, minY: 0, maxX: 0, maxY: 0, width: 0, height: 0 };
+  }
+  // Reduced-shape compat: a {width, height}-only box is treated as
+  // origin-centered (the pre-box semantics).
+  if (box.minX === undefined || box.minY === undefined || box.maxX === undefined || box.maxY === undefined) {
+    const w = (box as { width?: number }).width ?? 0;
+    const h = (box as { height?: number }).height ?? 0;
+    box = { minX: -w / 2, minY: -h / 2, maxX: w / 2, maxY: h / 2, width: w, height: h };
+  }
+  const rad = (-rotationDeg * Math.PI) / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  const corners = [
+    [box.minX, box.minY],
+    [box.maxX, box.minY],
+    [box.maxX, box.maxY],
+    [box.minX, box.maxY],
+  ].map(([x, y]) => [x * cos - y * sin, x * sin + y * cos]);
+  const xs = corners.map((c) => c[0]);
+  const ys = corners.map((c) => c[1]);
+  const minX = Math.min(...xs);
+  const maxX = Math.max(...xs);
+  const minY = Math.min(...ys);
+  const maxY = Math.max(...ys);
+  return { minX, minY, maxX, maxY, width: maxX - minX, height: maxY - minY };
+}
+
+/** Occupied-box edges of a component, in board coordinates. */
+function srcEdges(component: Component): { left: number; right: number; top: number; bottom: number } {
+  // component.bounds delegates to the footprint cache; since bounds now
+  // carry the origin-relative box, no second lookup is needed.
+  const box = rotatedBox(component.bounds as FootprintBox | null, component.pcb?.rotation ?? 0);
+  return {
+    left: component.pcb.x + box.minX,
+    right: component.pcb.x + box.maxX,
+    top: component.pcb.y + box.minY,
+    bottom: component.pcb.y + box.maxY,
+  };
+}
+
+/** Occupied-box edges of an implicit target at a rotation, relative to its at point. */
+function targetEdges(
+  box: FootprintBox | null,
+  rotationDeg: number,
+): { left: number; right: number; top: number; bottom: number } {
+  const rb = rotatedBox(box, rotationDeg);
+  return { left: rb.minX, right: rb.maxX, top: rb.minY, bottom: rb.maxY };
+}
+
+/**
+ * Resolve a {@link PlacementNumber} to a concrete number against a footprint.
+ * Plain numbers pass through; placement values evaluate their expression
+ * against the footprint's bounds (rotation-aware) at call time.
+ * @internal
+ */
+export function resolvePlacement(value: PlacementNumber, footprint: string, rotationDeg: number = 0): number {
+  return isPlacementValue(value) ? value.resolveWithFootprint(footprint, rotationDeg) : value;
 }
 
 /**
@@ -33,11 +101,31 @@ export class PlacementValue {
  * @param value - Any value to check.
  */
 export function isPlacementValue(value: unknown): value is PlacementValue {
-    return value instanceof PlacementValue;
+  return value instanceof PlacementValue;
 }
 
 /** A number or a deferred {@link PlacementValue} that resolves to a number. */
 export type PlacementNumber = number | PlacementValue;
+
+/**
+ * Anything assignable to a `pcb` coordinate: a number, a deferred
+ * {@link PlacementValue}, a directional builder (`below(r1)` — default gap),
+ * or a `sameAs(c)` result (`x: sameAs(r1)` picks up r1's X).
+ */
+export type PlacementInput = PlacementNumber | PlacementBuilder | SameAsResult;
+
+/**
+ * Coerce a {@link PlacementInput} to a {@link PlacementNumber} for one axis.
+ * Builders resolve with their default gap; `sameAs` results pick the axis.
+ * @internal
+ */
+export function coercePlacementInput(value: PlacementInput, axis: 'x' | 'y'): PlacementNumber {
+  if (typeof value === 'number' || isPlacementValue(value)) return value;
+  const v = value as PlacementBuilder & SameAsResult;
+  if (typeof v.by === 'function') return v.by();
+  if (axis in (v as SameAsResult)) return (v as SameAsResult)[axis];
+  return value as unknown as PlacementNumber;
+}
 
 /**
  * Returned by directional placement functions ({@link below}, {@link above},
@@ -49,36 +137,36 @@ export type PlacementNumber = number | PlacementValue;
  * ```
  */
 export interface PlacementBuilder {
-    /**
-     * Specify the gap in millimeters from the source component's edge to the
-     * target component's edge (edge-to-edge). Returns a number or a
-     * {@link PlacementValue} that the Component constructor resolves
-     * automatically.
-     *
-     * When no `target` is provided, a {@link PlacementValue} is returned that
-     * resolves using the new component's own footprint — so the gap is
-     * edge-to-edge with no extra work.
-     *
-     * When a `target` is provided (a {@link Component} or footprint string
-     * like `"Capacitor_SMD:C_0603_1608Metric"`), a plain number is returned
-     * immediately.
-     *
-     * @param gap - Edge-to-edge gap in mm. Defaults to `2`.
-     * @param target - Optional target component or footprint string for explicit bounds lookup.
-     *
-     * @example
-     * ```ts
-     * // Automatic — resolves using the new component's own footprint
-     * new Capacitor({ pcb: { y: below(r1).by(3) } });
-     *
-     * // Explicit target component
-     * new Capacitor({ pcb: { y: below(r1).by(3, someOtherCap) } });
-     *
-     * // Default 2mm gap
-     * new Capacitor({ pcb: { y: below(r1).by() } });
-     * ```
-     */
-    by(gap?: number, target?: Component | string): PlacementNumber;
+  /**
+   * Specify the gap in millimeters from the source component's edge to the
+   * target component's edge (edge-to-edge). Returns a number or a
+   * {@link PlacementValue} that the Component constructor resolves
+   * automatically.
+   *
+   * When no `target` is provided, a {@link PlacementValue} is returned that
+   * resolves using the new component's own footprint — so the gap is
+   * edge-to-edge with no extra work.
+   *
+   * When a `target` is provided (a {@link Component} or footprint string
+   * like `"Capacitor_SMD:C_0603_1608Metric"`), a plain number is returned
+   * immediately.
+   *
+   * @param gap - Edge-to-edge gap in mm. Defaults to `2`.
+   * @param target - Optional target component or footprint string for explicit bounds lookup.
+   *
+   * @example
+   * ```ts
+   * // Automatic — resolves using the new component's own footprint
+   * new Capacitor({ pcb: { y: below(r1).by(3) } });
+   *
+   * // Explicit target component
+   * new Capacitor({ pcb: { y: below(r1).by(3, someOtherCap) } });
+   *
+   * // Default 2mm gap
+   * new Capacitor({ pcb: { y: below(r1).by() } });
+   * ```
+   */
+  by(gap?: number, target?: Component | string): PlacementNumber;
 }
 
 /**
@@ -89,74 +177,74 @@ export interface PlacementBuilder {
  * coordinate system where Y increases downward.
  */
 export interface BoardBounds {
-    /** Center point of the board outline. */
-    readonly center: { x: number; y: number };
-    /** Minimum Y of the board edge (top edge). */
-    readonly top: number;
-    /** Maximum Y of the board edge (bottom edge). */
-    readonly bottom: number;
-    /** Minimum X of the board edge (left edge). */
-    readonly left: number;
-    /** Maximum X of the board edge (right edge). */
-    readonly right: number;
-    /** Board width in mm (right − left). */
-    readonly width: number;
-    /** Board height in mm (bottom − top). */
-    readonly height: number;
-    /** Top-left corner coordinates. */
-    readonly topLeft: { x: number; y: number };
-    /** Top-right corner coordinates. */
-    readonly topRight: { x: number; y: number };
-    /** Bottom-left corner coordinates. */
-    readonly bottomLeft: { x: number; y: number };
-    /** Bottom-right corner coordinates. */
-    readonly bottomRight: { x: number; y: number };
-    /**
-     * Returns a placement value for the X coordinate that positions a
-     * component's courtyard `margin` mm from the left board edge (edge-to-edge).
-     *
-     * @param margin - Gap from board edge to component courtyard in mm. Defaults to `2`.
-     *
-     * @example
-     * ```ts
-     * const b = board(pcb);
-     * const j1 = new Component({ footprint: '...', pcb: {
-     *   x: b.fromLeft(5),
-     *   y: b.center.y,
-     * }});
-     * ```
-     */
-    fromLeft(margin?: number): PlacementValue;
-    /**
-     * Returns a placement value for the X coordinate that positions a
-     * component's courtyard `margin` mm from the right board edge (edge-to-edge).
-     *
-     * @param margin - Gap from board edge to component courtyard in mm. Defaults to `2`.
-     *
-     * @example
-     * ```ts
-     * const b = board(pcb);
-     * const tp = new Component({ footprint: '...', pcb: {
-     *   x: b.fromRight(1),
-     *   y: b.fromTop(1),
-     * }});
-     * ```
-     */
-    fromRight(margin?: number): PlacementValue;
-    /**
-     * Returns a placement value for the Y coordinate that positions a
-     * component's courtyard `margin` mm from the top board edge (edge-to-edge).
-     *
-     * @param margin - Gap from board edge to component courtyard in mm. Defaults to `2`.
-     */
-    fromTop(margin?: number): PlacementValue;
-    /**
-     * Returns a placement value for the Y coordinate that positions a
-     * component's courtyard `margin` mm from the bottom board edge (edge-to-edge).
-     *
-     * @param margin - Gap from board edge to component courtyard in mm. Defaults to `2`.
-     */
-    fromBottom(margin?: number): PlacementValue;
+  /** Center point of the board outline. */
+  readonly center: { x: number; y: number };
+  /** Minimum Y of the board edge (top edge). */
+  readonly top: number;
+  /** Maximum Y of the board edge (bottom edge). */
+  readonly bottom: number;
+  /** Minimum X of the board edge (left edge). */
+  readonly left: number;
+  /** Maximum X of the board edge (right edge). */
+  readonly right: number;
+  /** Board width in mm (right − left). */
+  readonly width: number;
+  /** Board height in mm (bottom − top). */
+  readonly height: number;
+  /** Top-left corner coordinates. */
+  readonly topLeft: { x: number; y: number };
+  /** Top-right corner coordinates. */
+  readonly topRight: { x: number; y: number };
+  /** Bottom-left corner coordinates. */
+  readonly bottomLeft: { x: number; y: number };
+  /** Bottom-right corner coordinates. */
+  readonly bottomRight: { x: number; y: number };
+  /**
+   * Returns a placement value for the X coordinate that positions a
+   * component's courtyard `margin` mm from the left board edge (edge-to-edge).
+   *
+   * @param margin - Gap from board edge to component courtyard in mm. Defaults to `2`.
+   *
+   * @example
+   * ```ts
+   * const b = board(pcb);
+   * const j1 = new Component({ footprint: '...', pcb: {
+   *   x: b.fromLeft(5),
+   *   y: b.center.y,
+   * }});
+   * ```
+   */
+  fromLeft(margin?: number): PlacementValue;
+  /**
+   * Returns a placement value for the X coordinate that positions a
+   * component's courtyard `margin` mm from the right board edge (edge-to-edge).
+   *
+   * @param margin - Gap from board edge to component courtyard in mm. Defaults to `2`.
+   *
+   * @example
+   * ```ts
+   * const b = board(pcb);
+   * const tp = new Component({ footprint: '...', pcb: {
+   *   x: b.fromRight(1),
+   *   y: b.fromTop(1),
+   * }});
+   * ```
+   */
+  fromRight(margin?: number): PlacementValue;
+  /**
+   * Returns a placement value for the Y coordinate that positions a
+   * component's courtyard `margin` mm from the top board edge (edge-to-edge).
+   *
+   * @param margin - Gap from board edge to component courtyard in mm. Defaults to `2`.
+   */
+  fromTop(margin?: number): PlacementValue;
+  /**
+   * Returns a placement value for the Y coordinate that positions a
+   * component's courtyard `margin` mm from the bottom board edge (edge-to-edge).
+   *
+   * @param margin - Gap from board edge to component courtyard in mm. Defaults to `2`.
+   */
+  fromBottom(margin?: number): PlacementValue;
 }
 
 /**
@@ -170,26 +258,10 @@ export interface BoardBounds {
  * ```
  */
 export interface SameAsResult {
-    /** The component's current PCB X coordinate (live). */
-    readonly x: number;
-    /** The component's current PCB Y coordinate (live). */
-    readonly y: number;
-}
-
-function halfHeight(component: Component): number {
-    return (component.bounds?.height ?? 0) / 2;
-}
-
-function halfWidth(component: Component): number {
-    return (component.bounds?.width ?? 0) / 2;
-}
-
-function resolveTargetHalfSize(target: Component | string, dimension: 'width' | 'height'): number {
-    if (typeof target === 'string') {
-        const bounds = getFootprintBounds(target);
-        return ((dimension === 'width' ? bounds?.width : bounds?.height) ?? 0) / 2;
-    }
-    return ((dimension === 'width' ? target.bounds?.width : target.bounds?.height) ?? 0) / 2;
+  /** The component's PCB X coordinate (re-read whenever resolved). */
+  readonly x: PlacementNumber;
+  /** The component's PCB Y coordinate (re-read whenever resolved). */
+  readonly y: PlacementNumber;
 }
 
 /**
@@ -215,17 +287,20 @@ function resolveTargetHalfSize(target: Component | string, dimension: 'width' | 
  * ```
  */
 export function below(component: Component): PlacementBuilder {
-    return {
-        by(gap: number = DEFAULT_PLACEMENT_GAP, target?: Component | string): PlacementNumber {
-            const srcEdge = component.pcb.y + halfHeight(component);
-            if (target) {
-                return srcEdge + gap + resolveTargetHalfSize(target, 'height');
-            }
-            return new PlacementValue((targetBounds) => {
-                return srcEdge + gap + ((targetBounds?.height ?? 0) / 2);
-            });
-        }
-    };
+  return {
+    by(gap: number = DEFAULT_PLACEMENT_GAP, target?: Component | string): PlacementNumber {
+      return new PlacementValue((targetBox, rotationDeg) => {
+        // Source position is read at resolve time so the value
+        // follows a target that moves later.
+        const srcBottom = srcEdges(component).bottom;
+        const tgtTop =
+          typeof target !== 'string' && target
+            ? targetEdges(target.bounds as FootprintBox | null, target.pcb?.rotation ?? 0).top
+            : targetEdges(targetBox, rotationDeg).top;
+        return srcBottom + gap - tgtTop;
+      });
+    },
+  };
 }
 
 /**
@@ -248,17 +323,18 @@ export function below(component: Component): PlacementBuilder {
  * ```
  */
 export function above(component: Component): PlacementBuilder {
-    return {
-        by(gap: number = DEFAULT_PLACEMENT_GAP, target?: Component | string): PlacementNumber {
-            const srcEdge = component.pcb.y - halfHeight(component);
-            if (target) {
-                return srcEdge - gap - resolveTargetHalfSize(target, 'height');
-            }
-            return new PlacementValue((targetBounds) => {
-                return srcEdge - gap - ((targetBounds?.height ?? 0) / 2);
-            });
-        }
-    };
+  return {
+    by(gap: number = DEFAULT_PLACEMENT_GAP, target?: Component | string): PlacementNumber {
+      return new PlacementValue((targetBox, rotationDeg) => {
+        const srcTop = srcEdges(component).top;
+        const tgtBottom =
+          typeof target !== 'string' && target
+            ? targetEdges(target.bounds as FootprintBox | null, target.pcb?.rotation ?? 0).bottom
+            : targetEdges(targetBox, rotationDeg).bottom;
+        return srcTop - gap - tgtBottom;
+      });
+    },
+  };
 }
 
 /**
@@ -281,17 +357,18 @@ export function above(component: Component): PlacementBuilder {
  * ```
  */
 export function rightOf(component: Component): PlacementBuilder {
-    return {
-        by(gap: number = DEFAULT_PLACEMENT_GAP, target?: Component | string): PlacementNumber {
-            const srcEdge = component.pcb.x + halfWidth(component);
-            if (target) {
-                return srcEdge + gap + resolveTargetHalfSize(target, 'width');
-            }
-            return new PlacementValue((targetBounds) => {
-                return srcEdge + gap + ((targetBounds?.width ?? 0) / 2);
-            });
-        }
-    };
+  return {
+    by(gap: number = DEFAULT_PLACEMENT_GAP, target?: Component | string): PlacementNumber {
+      return new PlacementValue((targetBox, rotationDeg) => {
+        const srcRight = srcEdges(component).right;
+        const tgtLeft =
+          typeof target !== 'string' && target
+            ? targetEdges(target.bounds as FootprintBox | null, target.pcb?.rotation ?? 0).left
+            : targetEdges(targetBox, rotationDeg).left;
+        return srcRight + gap - tgtLeft;
+      });
+    },
+  };
 }
 
 /**
@@ -314,17 +391,18 @@ export function rightOf(component: Component): PlacementBuilder {
  * ```
  */
 export function leftOf(component: Component): PlacementBuilder {
-    return {
-        by(gap: number = DEFAULT_PLACEMENT_GAP, target?: Component | string): PlacementNumber {
-            const srcEdge = component.pcb.x - halfWidth(component);
-            if (target) {
-                return srcEdge - gap - resolveTargetHalfSize(target, 'width');
-            }
-            return new PlacementValue((targetBounds) => {
-                return srcEdge - gap - ((targetBounds?.width ?? 0) / 2);
-            });
-        }
-    };
+  return {
+    by(gap: number = DEFAULT_PLACEMENT_GAP, target?: Component | string): PlacementNumber {
+      return new PlacementValue((targetBox, rotationDeg) => {
+        const srcLeft = srcEdges(component).left;
+        const tgtRight =
+          typeof target !== 'string' && target
+            ? targetEdges(target.bounds as FootprintBox | null, target.pcb?.rotation ?? 0).right
+            : targetEdges(targetBox, rotationDeg).right;
+        return srcLeft - gap - tgtRight;
+      });
+    },
+  };
 }
 
 /**
@@ -344,43 +422,79 @@ export function leftOf(component: Component): PlacementBuilder {
  * ```
  */
 export function sameAs(component: Component): SameAsResult {
-    return {
-        get x(): number { return component.pcb.x; },
-        get y(): number { return component.pcb.y; }
-    };
+  return {
+    get x(): PlacementNumber {
+      return new PlacementValue(() => component.pcb.x);
+    },
+    get y(): PlacementNumber {
+      return new PlacementValue(() => component.pcb.y);
+    },
+  };
 }
 
-function makeBoardBounds(left: number, right: number, top: number, bottom: number): BoardBounds {
-    const width = right - left;
-    const height = bottom - top;
-    const centerX = left + width / 2;
-    const centerY = top + height / 2;
-
-    return {
-        center: { x: centerX, y: centerY },
-        top,
-        bottom,
-        left,
-        right,
-        width,
-        height,
-        topLeft: { x: left, y: top },
-        topRight: { x: right, y: top },
-        bottomLeft: { x: left, y: bottom },
-        bottomRight: { x: right, y: bottom },
-        fromLeft(margin: number = 2): PlacementValue {
-            return new PlacementValue((tb) => left + margin + ((tb?.width ?? 0) / 2));
-        },
-        fromRight(margin: number = 2): PlacementValue {
-            return new PlacementValue((tb) => right - margin - ((tb?.width ?? 0) / 2));
-        },
-        fromTop(margin: number = 2): PlacementValue {
-            return new PlacementValue((tb) => top + margin + ((tb?.height ?? 0) / 2));
-        },
-        fromBottom(margin: number = 2): PlacementValue {
-            return new PlacementValue((tb) => bottom - margin - ((tb?.height ?? 0) / 2));
-        },
-    };
+/**
+ * Board bounds view over the PCB's outline. Geometry is re-read on every
+ * access so `board(pcb)` can be called before `pcb.outline()` — the values
+ * follow the final outline.
+ */
+function makeBoardBounds(
+  readBounds: () => { left: number; right: number; top: number; bottom: number } | null,
+): BoardBounds {
+  const b = () => readBounds() ?? { left: 0, right: 0, top: 0, bottom: 0 };
+  return {
+    get center() {
+      const { left, right, top, bottom } = b();
+      return { x: left + (right - left) / 2, y: top + (bottom - top) / 2 };
+    },
+    get top() {
+      return b().top;
+    },
+    get bottom() {
+      return b().bottom;
+    },
+    get left() {
+      return b().left;
+    },
+    get right() {
+      return b().right;
+    },
+    get width() {
+      const { left, right } = b();
+      return right - left;
+    },
+    get height() {
+      const { top, bottom } = b();
+      return bottom - top;
+    },
+    get topLeft() {
+      const { left, top } = b();
+      return { x: left, y: top };
+    },
+    get topRight() {
+      const { right, top } = b();
+      return { x: right, y: top };
+    },
+    get bottomLeft() {
+      const { left, bottom } = b();
+      return { x: left, y: bottom };
+    },
+    get bottomRight() {
+      const { right, bottom } = b();
+      return { x: right, y: bottom };
+    },
+    fromLeft(margin: number = 2): PlacementValue {
+      return new PlacementValue((tb, rot) => b().left + margin - targetEdges(tb, rot).left);
+    },
+    fromRight(margin: number = 2): PlacementValue {
+      return new PlacementValue((tb, rot) => b().right - margin - targetEdges(tb, rot).right);
+    },
+    fromTop(margin: number = 2): PlacementValue {
+      return new PlacementValue((tb, rot) => b().top + margin - targetEdges(tb, rot).top);
+    },
+    fromBottom(margin: number = 2): PlacementValue {
+      return new PlacementValue((tb, rot) => b().bottom - margin - targetEdges(tb, rot).bottom);
+    },
+  };
 }
 
 /**
@@ -416,11 +530,9 @@ function makeBoardBounds(left: number, right: number, top: number, bottom: numbe
  * ```
  */
 export function board(pcb: PCB): BoardBounds {
+  return makeBoardBounds(() => {
     const bounds = getPcbState(pcb).getOutlineBounds();
-
-    if (!bounds) {
-        return makeBoardBounds(0, 0, 0, 0);
-    }
-
-    return makeBoardBounds(bounds.minX, bounds.maxX, bounds.minY, bounds.maxY);
+    if (!bounds) return null;
+    return { left: bounds.minX, right: bounds.maxX, top: bounds.minY, bottom: bounds.maxY };
+  });
 }

@@ -1,14 +1,11 @@
 import logger from '../utils/logging.js';
-import {
-    IFilledZone,
-    IKeepoutZone,
-    IOutline,
-    OutlineElement
-} from './pcb_interfaces.js';
+import { IFilledZone, IKeepoutZone, IOutline, OutlineElement } from './pcb_interfaces.js';
+import type { IZoneFillOptions } from './pcb_interfaces.js';
 import type { PcbInternalState } from './pcb_state.js';
 import { generateUuid, formatCallSite } from './pcb_utils.js';
 import { Pin } from '../pin.js';
 import { getCallSite } from '../utils/stack_trace.js';
+import { BoardCreationError } from '../utils/errors.js';
 
 /**
  * PCB Zone Management Module
@@ -87,17 +84,24 @@ import { getCallSite } from '../utils/stack_trace.js';
  * });
  * ```
  */
-export function zone(state: PcbInternalState, options: {
-    // Net specification (required - one of these)
+export function zone(
+  state: PcbInternalState,
+  options: {
+    // Net attachment: `pin` XOR `net`; neither = unconnected pour (net 0)
     pin?: Pin;
     net?: string;
 
-    // Position and size (required)
+    // Geometry: either an explicit polygon (points, >= 3 vertices) or a
+    // rectangle (all four of x/y/width/height)
     layers: string[];
-    x: number;
-    y: number;
-    width: number;
-    height: number;
+    points?: Array<{ x: number; y: number }>;
+    x?: number;
+    y?: number;
+    width?: number;
+    height?: number;
+
+    // Grouped fill settings (KiCad's (fill ...) block); `false` = unfilled
+    fill?: IZoneFillOptions | false;
 
     // Basic zone settings
     fillMode?: 'solid' | 'hatched';
@@ -129,6 +133,8 @@ export function zone(state: PcbInternalState, options: {
 
     // Hatched fill options
     hatchThickness?: number;
+    /** Alias of hatchThickness — KiCad's zone dialog labels it "Hatch width". */
+    hatchWidth?: number;
     hatchGap?: number;
     hatchOrientation?: number;
     hatchSmoothingLevel?: number;
@@ -139,124 +145,238 @@ export function zone(state: PcbInternalState, options: {
     // Additional fill settings
     fillArcSegments?: number;
     filledAreasThickness?: boolean;
-}): void {
-    const {
-        pin,
-        net,
-        layers,
-        x,
-        y,
-        width,
-        height,
-        fillMode = 'solid',
-        filled = true,
-        priority = 0,
-        locked = false,
-        name,
-        minThickness = 0.1778,
-        hatchStyle = 'edge',
-        hatchPitch = 0.508,
-        clearance = 0.2,
-        connectPads,
-        thermalGap = 0.254,
-        thermalBridgeWidth = 0.4064,
-        smoothing,
-        smoothingRadius,
-        islandRemovalMode,
-        islandAreaMin,
-        hatchThickness,
-        hatchGap,
-        hatchOrientation,
-        hatchSmoothingLevel,
-        hatchSmoothingValue,
-        hatchBorderAlgorithm,
-        hatchMinHoleArea,
-        fillArcSegments = 16,
-        filledAreasThickness
-    } = options;
+  },
+): void {
+  const {
+    pin,
+    net,
+    layers,
+    points,
+    x,
+    y,
+    width,
+    height,
+    fill,
+    fillMode,
+    filled,
+    priority = 0,
+    locked = false,
+    name,
+    minThickness = 0.1778,
+    hatchStyle = 'edge',
+    hatchPitch = 0.508,
+    clearance = 0.2,
+    connectPads,
+    thermalGap,
+    thermalBridgeWidth,
+    smoothing,
+    smoothingRadius,
+    islandRemovalMode,
+    islandAreaMin,
+    hatchThickness,
+    hatchWidth, // alias of hatchThickness (KiCad dialog: "Hatch width")
+    hatchGap,
+    hatchOrientation,
+    hatchSmoothingLevel,
+    hatchSmoothingValue,
+    hatchBorderAlgorithm,
+    hatchMinHoleArea,
+    fillArcSegments,
+    filledAreasThickness,
+  } = options;
 
-    // Validate that exactly one of pin or net is provided
-    if (!pin && !net) {
-        logger.error(`[PCB ZONE] ERROR: Must provide either 'pin' or 'net' parameter${formatCallSite(getCallSite())}`);
-        return;
-    }
-    if (pin && net) {
-        logger.error(`[PCB ZONE] ERROR: Cannot provide both 'pin' and 'net' parameters. Use one or the other${formatCallSite(getCallSite())}`);
-        return;
-    }
+  // Effective fill settings: the grouped `fill` object (KiCad's `(fill ...)`
+  // block) wins over the flat options, which fall back to the defaults.
+  // `fill: false` creates an unfilled zone outline.
+  const fillSpec = fill === false ? undefined : fill;
+  const pick = <T>(nested: T | undefined, flat: T | undefined, fallback: T): T =>
+    nested !== undefined ? nested : flat !== undefined ? flat : fallback;
+  const effFillMode = fillSpec?.mode ?? fillMode ?? 'solid';
+  const effFilled = fill === false ? false : (filled ?? true);
+  const effThermalGap = pick(fillSpec?.thermalGap, thermalGap, 0.254);
+  const effThermalBridgeWidth = pick(fillSpec?.thermalBridgeWidth, thermalBridgeWidth, 0.4064);
+  const effSmoothing = pick(fillSpec?.smoothing, smoothing, undefined);
+  const effSmoothingRadius = pick(fillSpec?.smoothingRadius, smoothingRadius, undefined);
+  const effIslandRemovalMode = pick(fillSpec?.islandRemovalMode, islandRemovalMode, 2);
+  const effIslandAreaMin = pick(fillSpec?.islandAreaMin, islandAreaMin, undefined);
+  const effFillArcSegments = pick(fillSpec?.arcSegments, fillArcSegments, 16);
+  // hatchWidth is the KiCad-dialog alias of hatchThickness; the file-token
+  // name wins when both are given at the same level.
+  const effHatchThickness = pick(
+    fillSpec?.hatchThickness ?? fillSpec?.hatchWidth,
+    hatchThickness ?? hatchWidth,
+    undefined,
+  );
+  const effHatchGap = pick(fillSpec?.hatchGap, hatchGap, undefined);
+  const effHatchOrientation = pick(fillSpec?.hatchOrientation, hatchOrientation, undefined);
+  const effHatchSmoothingLevel = pick(fillSpec?.hatchSmoothingLevel, hatchSmoothingLevel, undefined);
+  const effHatchSmoothingValue = pick(fillSpec?.hatchSmoothingValue, hatchSmoothingValue, undefined);
+  const effHatchBorderAlgorithm = pick(fillSpec?.hatchBorderAlgorithm, hatchBorderAlgorithm, undefined);
+  const effHatchMinHoleArea = pick(fillSpec?.hatchMinHoleArea, hatchMinHoleArea, undefined);
 
-    // Create rectangular polygon (4 corners)
-    const polygon = [
-        { x, y },
-        { x: x + width, y },
-        { x: x + width, y: y + height },
-        { x, y: y + height }
+  // Net attachment: `pin` and `net` are mutually exclusive; neither means an
+  // unconnected pour (KiCad net 0) — used e.g. when importing boards.
+  if (pin && net) {
+    logger.error(
+      `[PCB ZONE] ERROR: Cannot provide both 'pin' and 'net' parameters. Use one or the other${formatCallSite(getCallSite())}`,
+    );
+    return;
+  }
+
+  // Geometry: an explicit polygon (points) or a rectangle (all four of
+  // x/y/width/height). The bounding box of either fills x/y/width/height so
+  // obstacle building and outline math work identically.
+  let polygon: Array<{ x: number; y: number }>;
+  if (points !== undefined) {
+    if (
+      !Array.isArray(points) ||
+      points.length < 3 ||
+      points.some((p) => !Number.isFinite(p?.x) || !Number.isFinite(p?.y))
+    ) {
+      logger.error(
+        `[PCB ZONE] ERROR: 'points' must be an array of at least 3 finite {x, y} vertices${formatCallSite(getCallSite())}`,
+      );
+      return;
+    }
+    if (x !== undefined || y !== undefined || width !== undefined || height !== undefined) {
+      logger.error(
+        `[PCB ZONE] ERROR: Provide either 'points' or (x, y, width, height), not both${formatCallSite(getCallSite())}`,
+      );
+      return;
+    }
+    polygon = points.map((p) => ({ x: p.x, y: p.y }));
+  } else if (x !== undefined && y !== undefined && width !== undefined && height !== undefined) {
+    polygon = [
+      { x, y },
+      { x: x + width, y },
+      { x: x + width, y: y + height },
+      { x, y: y + height },
     ];
+  } else {
+    logger.error(
+      `[PCB ZONE] ERROR: Zone geometry requires either 'points' (>= 3 vertices) or all of x, y, width, height${formatCallSite(getCallSite())}`,
+    );
+    return;
+  }
+  const boundsX = Math.min(...polygon.map((p) => p.x));
+  const boundsY = Math.min(...polygon.map((p) => p.y));
+  const boundsW = Math.max(...polygon.map((p) => p.x)) - boundsX;
+  const boundsH = Math.max(...polygon.map((p) => p.y)) - boundsY;
 
-    const zoneUuid = generateUuid();
+  const zoneUuid = generateUuid();
 
-    // Store net information for later resolution
-    // Format: "pin:reference:pinNumber" or "net:netName"
-    let netIdentifier: string | undefined;
-    if (pin) {
-        netIdentifier = `pin:${pin.reference}:${pin.number}`;
-    } else if (net) {
-        netIdentifier = `net:${net}`;
+  // Store net information for later resolution
+  // Format: "pin:reference:pinNumber" or "net:netName"
+  let netIdentifier: string | undefined;
+  if (pin) {
+    netIdentifier = `pin:${pin.reference}:${pin.number}`;
+  } else if (net) {
+    netIdentifier = `net:${net}`;
+  }
+
+  const zone: IFilledZone = {
+    uuid: zoneUuid,
+    layers,
+    x: boundsX,
+    y: boundsY,
+    width: boundsW,
+    height: boundsH,
+    polygon,
+    net: netIdentifier,
+
+    // Basic zone settings (fill values merged from the `fill` object)
+    fillMode: effFillMode,
+    filled: effFilled,
+    priority,
+    locked,
+    name,
+    minThickness,
+
+    // Hatch display settings
+    hatchStyle,
+    hatchPitch,
+
+    // Pad connection
+    clearance,
+    connectPads,
+
+    // Thermal relief
+    thermalGap: effThermalGap,
+    thermalBridgeWidth: effThermalBridgeWidth,
+
+    // Corner smoothing
+    smoothing: effSmoothing,
+    smoothingRadius: effSmoothingRadius,
+
+    // Island removal
+    islandRemovalMode: effIslandRemovalMode,
+    islandAreaMin: effIslandAreaMin,
+
+    // Hatched fill options
+    hatchThickness: effHatchThickness,
+    hatchGap: effHatchGap,
+    hatchOrientation: effHatchOrientation,
+    hatchSmoothingLevel: effHatchSmoothingLevel,
+    hatchSmoothingValue: effHatchSmoothingValue,
+    hatchBorderAlgorithm: effHatchBorderAlgorithm,
+    hatchMinHoleArea: effHatchMinHoleArea,
+
+    // Additional fill settings
+    fillArcSegments: effFillArcSegments,
+    filledAreasThickness,
+  };
+
+  state.zones.push(zone);
+}
+
+/**
+ * Materialize declared planes (`pcb.plane()`) into board-covering filled
+ * zones. Called from createBoard, where the board outline extent is known.
+ *
+ * Each plane becomes one zone on its layer, connected to its net with
+ * through-hole-only pad connections (the classic plane setup: SMD pads reach
+ * the plane through vias, not solid spokes). Re-running create() replaces
+ * the previously materialized zone instead of duplicating it.
+ *
+ * @param state - The PCB internal state carrying the plane declarations.
+ * @throws {BoardCreationError} when a plane is declared but the board has no
+ *   outline to derive the plane extent from.
+ */
+export function materializePlanes(state: PcbInternalState): void {
+  if (state.planes.length === 0) return;
+
+  const bounds = state.getOutlineBounds();
+  if (!bounds) {
+    const described = state.planes.map((p) => `"${p.net}" on ${p.layer}`).join(', ');
+    throw new BoardCreationError(
+      `pcb.plane() requires a board outline to derive the plane extent ` +
+        `(planes declared: ${described}). Call pcb.outline() before create().`,
+    );
+  }
+
+  for (const plane of state.planes) {
+    // Drop a previous create()'s materialization so repeated create()
+    // calls don't accumulate duplicate planes.
+    if (plane.zoneUuid) {
+      state.zones = state.zones.filter((z) => z.uuid !== plane.zoneUuid);
     }
 
-    const zone: IFilledZone = {
-        uuid: zoneUuid,
-        layers,
-        x,
-        y,
-        width,
-        height,
-        polygon,
-        net: netIdentifier,
+    zone(state, {
+      net: plane.net,
+      layers: [plane.layer],
+      x: bounds.minX,
+      y: bounds.minY,
+      width: bounds.maxX - bounds.minX,
+      height: bounds.maxY - bounds.minY,
+      name: `${plane.net} plane`,
+      connectPads: 'thru_hole_only',
+    });
 
-        // Basic zone settings
-        fillMode,
-        filled,
-        priority,
-        locked,
-        name,
-        minThickness,
-
-        // Hatch display settings
-        hatchStyle,
-        hatchPitch,
-
-        // Pad connection
-        clearance,
-        connectPads,
-
-        // Thermal relief
-        thermalGap,
-        thermalBridgeWidth,
-
-        // Corner smoothing
-        smoothing,
-        smoothingRadius,
-
-        // Island removal
-        islandRemovalMode,
-        islandAreaMin,
-
-        // Hatched fill options
-        hatchThickness,
-        hatchGap,
-        hatchOrientation,
-        hatchSmoothingLevel,
-        hatchSmoothingValue,
-        hatchBorderAlgorithm,
-        hatchMinHoleArea,
-
-        // Additional fill settings
-        fillArcSegments,
-        filledAreasThickness
-    };
-
-    state.zones.push(zone);
+    // zone() generates its own uuid; record it for replacement on the
+    // next create() (it is the zone just pushed).
+    const materialized = state.zones[state.zones.length - 1];
+    plane.zoneUuid = materialized?.uuid ?? generateUuid();
+  }
 }
 
 /**
@@ -344,45 +464,32 @@ export function zone(state: PcbInternalState, options: {
  *   name: 'Critical Area',
  *   priority: 100
  * });
- *
- * // ============================================
- * // CORNER SMOOTHING
- * // ============================================
- *
- * // Filleted corners
- * pcb.keepout({
- *   layers: ['F.Cu'],
- *   x: 0, y: 0, width: 15, height: 15,
- *   smoothing: 'fillet',
- *   smoothingRadius: 0.5,
- *   name: 'Smooth Keepout'
- * });
- *
- * // Chamfered corners
- * pcb.keepout({
- *   layers: ['B.Cu'],
- *   x: 0, y: 0, width: 15, height: 15,
- *   smoothing: 'chamfer',
- *   smoothingRadius: 0.3
- * });
  * ```
  */
-export function keepout(state: PcbInternalState, options: {
-    // Position and size (required)
+export function keepout(
+  state: PcbInternalState,
+  options: {
+    // Geometry: either an explicit polygon (points, >= 3 vertices) or a
+    // rectangle (all four of x/y/width/height)
     layers: string[];
-    x: number;
-    y: number;
-    width: number;
-    height: number;
+    points?: Array<{ x: number; y: number }>;
+    x?: number;
+    y?: number;
+    width?: number;
+    height?: number;
 
     // Restrictions
     restrictions?: {
-        tracks?: boolean;
-        vias?: boolean;
-        pads?: boolean;
-        copperpour?: boolean;
-        footprints?: boolean;
+      tracks?: boolean;
+      vias?: boolean;
+      pads?: boolean;
+      copperpour?: boolean;
+      footprints?: boolean;
     };
+
+    // Rule-area options (KiCad 9+ rule areas)
+    /** Whether the rule area also applies to footprints placed from a schematic sheet. Default false. */
+    placement?: boolean;
 
     // Basic zone settings
     priority?: number;
@@ -392,61 +499,87 @@ export function keepout(state: PcbInternalState, options: {
     // Hatch display settings
     hatchStyle?: 'none' | 'edge' | 'full';
     hatchPitch?: number;
+  },
+): void {
+  const {
+    layers,
+    points,
+    x,
+    y,
+    width,
+    height,
+    restrictions = {},
+    placement,
+    priority = 0,
+    locked = false,
+    name,
+    hatchStyle = 'edge',
+    hatchPitch = 0.508,
+  } = options;
 
-    // Corner smoothing
-    smoothing?: 'chamfer' | 'fillet' | 'none';
-    smoothingRadius?: number;
-}): void {
-    const {
-        layers,
-        x,
-        y,
-        width,
-        height,
-        restrictions = {},
-        priority = 0,
-        locked = false,
-        name,
-        hatchStyle = 'edge',
-        hatchPitch = 0.508,
-        smoothing,
-        smoothingRadius
-    } = options;
-
-    // Create rectangular polygon (4 corners)
-    const polygon = [
-        { x, y },
-        { x: x + width, y },
-        { x: x + width, y: y + height },
-        { x, y: y + height }
+  // Geometry: same contract as zone() — explicit polygon or rectangle
+  let polygon: Array<{ x: number; y: number }>;
+  if (points !== undefined) {
+    if (
+      !Array.isArray(points) ||
+      points.length < 3 ||
+      points.some((p) => !Number.isFinite(p?.x) || !Number.isFinite(p?.y))
+    ) {
+      logger.error(
+        `[PCB KEEPOUT] ERROR: 'points' must be an array of at least 3 finite {x, y} vertices${formatCallSite(getCallSite())}`,
+      );
+      return;
+    }
+    if (x !== undefined || y !== undefined || width !== undefined || height !== undefined) {
+      logger.error(
+        `[PCB KEEPOUT] ERROR: Provide either 'points' or (x, y, width, height), not both${formatCallSite(getCallSite())}`,
+      );
+      return;
+    }
+    polygon = points.map((p) => ({ x: p.x, y: p.y }));
+  } else if (x !== undefined && y !== undefined && width !== undefined && height !== undefined) {
+    polygon = [
+      { x, y },
+      { x: x + width, y },
+      { x: x + width, y: y + height },
+      { x, y: y + height },
     ];
+  } else {
+    logger.error(
+      `[PCB KEEPOUT] ERROR: Keepout geometry requires either 'points' (>= 3 vertices) or all of x, y, width, height${formatCallSite(getCallSite())}`,
+    );
+    return;
+  }
+  const boundsX = Math.min(...polygon.map((p) => p.x));
+  const boundsY = Math.min(...polygon.map((p) => p.y));
+  const boundsW = Math.max(...polygon.map((p) => p.x)) - boundsX;
+  const boundsH = Math.max(...polygon.map((p) => p.y)) - boundsY;
 
-    const zoneUuid = generateUuid();
+  const zoneUuid = generateUuid();
 
-    // Default all restrictions to true (not allowed)
-    const keepoutZone: IKeepoutZone = {
-        uuid: zoneUuid,
-        layers,
-        x,
-        y,
-        width,
-        height,
-        polygon,
-        priority,
-        locked,
-        name,
-        restrictions: {
-            tracks: restrictions.tracks !== false,
-            vias: restrictions.vias !== false,
-            pads: restrictions.pads !== false,
-            copperpour: restrictions.copperpour !== false,
-            footprints: restrictions.footprints !== false
-        },
-        hatchStyle,
-        hatchPitch,
-        smoothing,
-        smoothingRadius
-    };
+  // Default all restrictions to true (not allowed)
+  const keepoutZone: IKeepoutZone = {
+    uuid: zoneUuid,
+    layers,
+    x: boundsX,
+    y: boundsY,
+    width: boundsW,
+    height: boundsH,
+    polygon,
+    priority,
+    locked,
+    name,
+    restrictions: {
+      tracks: restrictions.tracks !== false,
+      vias: restrictions.vias !== false,
+      pads: restrictions.pads !== false,
+      copperpour: restrictions.copperpour !== false,
+      footprints: restrictions.footprints !== false,
+    },
+    placement,
+    hatchStyle,
+    hatchPitch,
+  };
 
-    state.keepoutZones.push(keepoutZone);
+  state.keepoutZones.push(keepoutZone);
 }

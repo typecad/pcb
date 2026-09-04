@@ -5,6 +5,15 @@ export { Pin } from './pin.js';
 export { I2C, UART, USB, Power } from './buses.js';
 export type { IPower } from './buses.js';
 export { PCB, TrackBuilder } from './pcb/pcb.js';
+export { copperLayerNames, validateLayerCount, MAX_COPPER_LAYERS, MIN_COPPER_LAYERS } from './pcb/pcb_stackup.js';
+export type { IStackupLayerOverride } from './pcb/pcb_stackup.js';
+export {
+  impedanceOfWidth,
+  widthForImpedance,
+  widthForImpedanceWithinTolerance,
+  stackupImpedanceGeometry,
+} from './pcb/pcb_impedance.js';
+export type { IImpedanceGeometry, ImpedanceModel } from './pcb/pcb_impedance.js';
 export { Schematic } from './schematic.js';
 export type {
   IConnectionIdentifier,
@@ -12,6 +21,7 @@ export type {
   IPcbOptions,
   IPcbRules,
   IVia,
+  IViaPolicy,
   IAutorouteOptions,
   IAutorouteResult,
   IAutorouteRouteOptions,
@@ -22,6 +32,7 @@ export type {
   INetClass,
   INetClassOptions,
   IStackupOptions,
+  IZoneFillOptions,
 } from './pcb/pcb.js';
 export { Package } from './package.js';
 export type { PackageOptions, PassiveFactory } from './package.js';

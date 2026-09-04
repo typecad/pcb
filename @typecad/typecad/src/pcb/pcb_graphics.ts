@@ -1,15 +1,7 @@
-import {
-    IGrLine,
-    IGrCircle,
-    IGrRect,
-    IGrPoly,
-    OutlineElement,
-    IOutline,
-    ISourceInfo
-} from './pcb_interfaces.js';
+import { IGrLine, IGrCircle, IGrRect, IGrPoly, OutlineElement, IOutline, ISourceInfo } from './pcb_interfaces.js';
 import { generateUuid, formatCallSite } from './pcb_utils.js';
 import type { PcbInternalState } from './pcb_state.js';
-import fs from "node:fs";
+import fs from 'node:fs';
 import logger from '../utils/logging.js';
 import { getCallSite } from '../utils/stack_trace.js';
 
@@ -45,32 +37,29 @@ import { getCallSite } from '../utils/stack_trace.js';
  * });
  * ```
  */
-export function pcbLine(state: PcbInternalState, options: {
+export function pcbLine(
+  state: PcbInternalState,
+  options: {
     start: { x: number; y: number };
     end: { x: number; y: number };
     layer?: string;
     width?: number;
     locked?: boolean;
-}): void {
-    const {
-        start,
-        end,
-        layer = 'F.SilkS',
-        width = 0.15,
-        locked = false
-    } = options;
+  },
+): void {
+  const { start, end, layer = 'F.SilkS', width = 0.15, locked = false } = options;
 
-    const line: IGrLine = {
-        type: 'line',
-        uuid: generateUuid(),
-        layer,
-        strokeWidth: width,
-        start,
-        end,
-        locked
-    };
+  const line: IGrLine = {
+    type: 'line',
+    uuid: generateUuid(),
+    layer,
+    strokeWidth: width,
+    start,
+    end,
+    locked,
+  };
 
-    state.grLines.push(line);
+  state.grLines.push(line);
 }
 
 /**
@@ -106,7 +95,9 @@ export function pcbLine(state: PcbInternalState, options: {
  * });
  * ```
  */
-export function pcbCircle(state: PcbInternalState, options: {
+export function pcbCircle(
+  state: PcbInternalState,
+  options: {
     center: { x: number; y: number };
     radius?: number;
     end?: { x: number; y: number };
@@ -114,40 +105,33 @@ export function pcbCircle(state: PcbInternalState, options: {
     width?: number;
     fill?: boolean;
     locked?: boolean;
-}): void {
-    const {
-        center,
-        radius,
-        end,
-        layer = 'F.SilkS',
-        width = 0.15,
-        fill = false,
-        locked = false
-    } = options;
+  },
+): void {
+  const { center, radius, end, layer = 'F.SilkS', width = 0.15, fill = false, locked = false } = options;
 
-    // Calculate end point from radius if provided
-    let endPoint: { x: number; y: number };
-    if (radius !== undefined) {
-        endPoint = { x: center.x + radius, y: center.y };
-    } else if (end !== undefined) {
-        endPoint = end;
-    } else {
-        logger.error(`[PCB CIRCLE] ERROR: Must provide either 'radius' or 'end' parameter${formatCallSite(getCallSite())}`);
-        return;
-    }
+  // Calculate end point from radius if provided
+  let endPoint: { x: number; y: number };
+  if (radius !== undefined) {
+    endPoint = { x: center.x + radius, y: center.y };
+  } else if (end !== undefined) {
+    endPoint = end;
+  } else {
+    logger.error(`[PCB CIRCLE] ERROR: Must provide either 'radius' or 'end' parameter${formatCallSite(getCallSite())}`);
+    return;
+  }
 
-    const circle: IGrCircle = {
-        type: 'circle',
-        uuid: generateUuid(),
-        layer,
-        strokeWidth: width,
-        center,
-        end: endPoint,
-        fill,
-        locked
-    };
+  const circle: IGrCircle = {
+    type: 'circle',
+    uuid: generateUuid(),
+    layer,
+    strokeWidth: width,
+    center,
+    end: endPoint,
+    fill,
+    locked,
+  };
 
-    state.grCircles.push(circle);
+  state.grCircles.push(circle);
 }
 
 /**
@@ -194,7 +178,9 @@ export function pcbCircle(state: PcbInternalState, options: {
  * });
  * ```
  */
-export function pcbRect(state: PcbInternalState, options: {
+export function pcbRect(
+  state: PcbInternalState,
+  options: {
     x?: number;
     y?: number;
     width?: number;
@@ -205,47 +191,50 @@ export function pcbRect(state: PcbInternalState, options: {
     strokeWidth?: number;
     fill?: boolean;
     locked?: boolean;
-}): void {
-    const {
-        x,
-        y,
-        width,
-        height,
-        start,
-        end,
-        layer = 'F.SilkS',
-        strokeWidth = 0.15,
-        fill = false,
-        locked = false
-    } = options;
+  },
+): void {
+  const {
+    x,
+    y,
+    width,
+    height,
+    start,
+    end,
+    layer = 'F.SilkS',
+    strokeWidth = 0.15,
+    fill = false,
+    locked = false,
+  } = options;
 
-    // Determine start and end points
-    let startPoint: { x: number; y: number };
-    let endPoint: { x: number; y: number };
+  // Determine start and end points
+  let startPoint: { x: number; y: number };
+  let endPoint: { x: number; y: number };
 
-    if (start !== undefined && end !== undefined) {
-        startPoint = start;
-        endPoint = end;
-    } else if (x !== undefined && y !== undefined && width !== undefined && height !== undefined) {
-        startPoint = { x, y };
-        endPoint = { x: x + width, y: y + height };
-    } else {
-        logger.error(`[PCB RECT] ERROR: Must provide either (x, y, width, height) or (start, end) parameters${formatCallSite(getCallSite())}`);
-        return;
-    }
+  if (start !== undefined && end !== undefined) {
+    startPoint = start;
+    endPoint = end;
+  } else if (x !== undefined && y !== undefined && width !== undefined && height !== undefined) {
+    startPoint = { x, y };
+    endPoint = { x: x + width, y: y + height };
+  } else {
+    logger.error(
+      `[PCB RECT] ERROR: Must provide either (x, y, width, height) or (start, end) parameters${formatCallSite(getCallSite())}`,
+    );
+    return;
+  }
 
-    const rect: IGrRect = {
-        type: 'rect',
-        uuid: generateUuid(),
-        layer,
-        strokeWidth,
-        start: startPoint,
-        end: endPoint,
-        fill,
-        locked
-    };
+  const rect: IGrRect = {
+    type: 'rect',
+    uuid: generateUuid(),
+    layer,
+    strokeWidth,
+    start: startPoint,
+    end: endPoint,
+    fill,
+    locked,
+  };
 
-    state.grRects.push(rect);
+  state.grRects.push(rect);
 }
 
 /**
@@ -298,37 +287,34 @@ export function pcbRect(state: PcbInternalState, options: {
  * });
  * ```
  */
-export function pcbPoly(state: PcbInternalState, options: {
+export function pcbPoly(
+  state: PcbInternalState,
+  options: {
     points: { x: number; y: number }[];
     layer?: string;
     width?: number;
     fill?: boolean;
     locked?: boolean;
-}): void {
-    const {
-        points,
-        layer = 'F.SilkS',
-        width = 0.15,
-        fill = false,
-        locked = false
-    } = options;
+  },
+): void {
+  const { points, layer = 'F.SilkS', width = 0.15, fill = false, locked = false } = options;
 
-    if (!points || points.length < 3) {
-        logger.error(`[PCB POLY] ERROR: Polygon must have at least 3 points${formatCallSite(getCallSite())}`);
-        return;
-    }
+  if (!points || points.length < 3) {
+    logger.error(`[PCB POLY] ERROR: Polygon must have at least 3 points${formatCallSite(getCallSite())}`);
+    return;
+  }
 
-    const poly: IGrPoly = {
-        type: 'poly',
-        uuid: generateUuid(),
-        layer,
-        strokeWidth: width,
-        points,
-        fill,
-        locked
-    };
+  const poly: IGrPoly = {
+    type: 'poly',
+    uuid: generateUuid(),
+    layer,
+    strokeWidth: width,
+    points,
+    fill,
+    locked,
+  };
 
-    state.grPolys.push(poly);
+  state.grPolys.push(poly);
 }
 
 /**
@@ -341,176 +327,271 @@ export function pcbPoly(state: PcbInternalState, options: {
  * @param filletRadius - The radius for filleted corners (0 for sharp).
  * @param conceptualUuidFromUser - Optional UUID for the conceptual outline.
  */
-export function pcbOutline(state: PcbInternalState, x: number, y: number, width: number, height: number, filletRadius: number = 0, conceptualUuidFromUser?: string): void {
-    // Capture source info
-    const callSite = getCallSite();
-    let sourceInfo: ISourceInfo | undefined = callSite ? {
+export function pcbOutline(
+  state: PcbInternalState,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  filletRadius: number = 0,
+  conceptualUuidFromUser?: string,
+): void {
+  // Capture source info
+  const callSite = getCallSite();
+  let sourceInfo: ISourceInfo | undefined = callSite
+    ? {
         file: callSite.file,
         line: callSite.line,
-        column: callSite.column
-    } : undefined;
+        column: callSite.column,
+      }
+    : undefined;
 
-    // Try to capture variable and params from source code
-    if (callSite && sourceInfo) {
-        try {
-            const sourceContent = fs.readFileSync(callSite.file, 'utf8');
-            const lines = sourceContent.split('\n');
-            const targetLine = lines[callSite.line - 1];
+  // Try to capture variable and params from source code
+  if (callSite && sourceInfo) {
+    try {
+      const sourceContent = fs.readFileSync(callSite.file, 'utf8');
+      const lines = sourceContent.split('\n');
+      const targetLine = lines[callSite.line - 1];
 
-            // Match patterns like: const outline1 = pcb.outline(...) or just pcb.outline(...)
-            const varMatch = targetLine.match(/^\s*(?:(const|let|var)\s+(\w+)\s*=\s*)?(\w+)\.outline\s*\(\s*(.+?)\s*\)\s*;?\s*$/);
-            if (varMatch) {
-                if (varMatch[2]) {
-                    sourceInfo.variable = varMatch[2]; // Variable name if assigned
-                }
-                // Store the actual parameter values
-                sourceInfo.params = {
-                    x,
-                    y,
-                    width,
-                    height,
-                    filletRadius,
-                    ...(conceptualUuidFromUser ? { conceptualUuidFromUser } : {})
-                };
-            }
-        } catch (err) {
-            logger.debug('pcb_graphics: failed to read existing file for outline reuse', err);
+      // Match patterns like: const outline1 = pcb.outline(...) or just pcb.outline(...)
+      const varMatch = targetLine.match(
+        /^\s*(?:(const|let|var)\s+(\w+)\s*=\s*)?(\w+)\.outline\s*\(\s*(.+?)\s*\)\s*;?\s*$/,
+      );
+      if (varMatch) {
+        if (varMatch[2]) {
+          sourceInfo.variable = varMatch[2]; // Variable name if assigned
         }
+        // Store the actual parameter values
+        sourceInfo.params = {
+          x,
+          y,
+          width,
+          height,
+          filletRadius,
+          ...(conceptualUuidFromUser ? { conceptualUuidFromUser } : {}),
+        };
+      }
+    } catch (err) {
+      logger.debug('pcb_graphics: failed to read existing file for outline reuse', err);
     }
+  }
 
-    const conceptualOutlineUuid: string = conceptualUuidFromUser || generateUuid();
+  const conceptualOutlineUuid: string = conceptualUuidFromUser || generateUuid();
 
-    const elements: OutlineElement[] = [];
-    const strokeW = 0.05;
-    const layerName = "Edge.Cuts";
+  const elements: OutlineElement[] = [];
+  const strokeW = 0.05;
+  const layerName = 'Edge.Cuts';
 
-    // Helper to generate element UUID
-    const getElementUuid = (): string => {
-        return generateUuid();
-    };
+  // Helper to generate element UUID
+  const getElementUuid = (): string => {
+    return generateUuid();
+  };
 
-    const r = Math.max(0, filletRadius); // Ensure radius is not negative
+  const r = Math.max(0, filletRadius); // Ensure radius is not negative
 
-    // Calculate corner points and line segment points
-    // Points for the outer rectangle corners
-    const x0 = x;
-    const y0 = y;
-    const x1 = x + width;
-    const y1 = y + height;
+  // Calculate corner points and line segment points
+  // Points for the outer rectangle corners
+  const x0 = x;
+  const y0 = y;
+  const x1 = x + width;
+  const y1 = y + height;
 
-    // Points for line segments, adjusted for fillet radius
-    const p_top_start = { x: x0 + r, y: y0 };
-    const p_top_end = { x: x1 - r, y: y0 };
+  // Points for line segments, adjusted for fillet radius
+  const p_top_start = { x: x0 + r, y: y0 };
+  const p_top_end = { x: x1 - r, y: y0 };
 
-    const p_right_start = { x: x1, y: y0 + r };
-    const p_right_end = { x: x1, y: y1 - r };
+  const p_right_start = { x: x1, y: y0 + r };
+  const p_right_end = { x: x1, y: y1 - r };
 
-    const p_bottom_start = { x: x1 - r, y: y1 };
-    const p_bottom_end = { x: x0 + r, y: y1 };
+  const p_bottom_start = { x: x1 - r, y: y1 };
+  const p_bottom_end = { x: x0 + r, y: y1 };
 
-    const p_left_start = { x: x0, y: y1 - r };
-    const p_left_end = { x: x0, y: y0 + r };
+  const p_left_start = { x: x0, y: y1 - r };
+  const p_left_end = { x: x0, y: y0 + r };
 
+  // Top line
+  if (p_top_start.x < p_top_end.x) {
+    // Only add line if its length is positive
+    elements.push({
+      type: 'line',
+      uuid: getElementUuid(),
+      layer: layerName,
+      strokeWidth: strokeW,
+      start: p_top_start,
+      end: p_top_end,
+      locked: false,
+    });
+  }
+  // Right line
+  if (p_right_start.y < p_right_end.y) {
+    elements.push({
+      type: 'line',
+      uuid: getElementUuid(),
+      layer: layerName,
+      strokeWidth: strokeW,
+      start: p_right_start,
+      end: p_right_end,
+      locked: false,
+    });
+  }
+  // Bottom line
+  if (p_bottom_end.x < p_bottom_start.x) {
+    // Note: KiCad typically has x increasing left to right
+    elements.push({
+      type: 'line',
+      uuid: getElementUuid(),
+      layer: layerName,
+      strokeWidth: strokeW,
+      start: p_bottom_start,
+      end: p_bottom_end,
+      locked: false, // Corrected order for bottom line
+    });
+  }
+  // Left line
+  if (p_left_end.y < p_left_start.y) {
+    elements.push({
+      type: 'line',
+      uuid: getElementUuid(),
+      layer: layerName,
+      strokeWidth: strokeW,
+      start: p_left_start,
+      end: p_left_end,
+      locked: false, // Corrected order for left line
+    });
+  }
 
-    // Top line
-    if (p_top_start.x < p_top_end.x) { // Only add line if its length is positive
-        elements.push({
-            type: 'line', uuid: getElementUuid(), layer: layerName, strokeWidth: strokeW,
-            start: p_top_start, end: p_top_end, locked: false
-        });
-    }
-    // Right line
-    if (p_right_start.y < p_right_end.y) {
-        elements.push({
-            type: 'line', uuid: getElementUuid(), layer: layerName, strokeWidth: strokeW,
-            start: p_right_start, end: p_right_end, locked: false
-        });
-    }
-    // Bottom line
-    if (p_bottom_end.x < p_bottom_start.x) { // Note: KiCad typically has x increasing left to right
-        elements.push({
-            type: 'line', uuid: getElementUuid(), layer: layerName, strokeWidth: strokeW,
-            start: p_bottom_start, end: p_bottom_end, locked: false // Corrected order for bottom line
-        });
-    }
-    // Left line
-    if (p_left_end.y < p_left_start.y) {
-        elements.push({
-            type: 'line', uuid: getElementUuid(), layer: layerName, strokeWidth: strokeW,
-            start: p_left_start, end: p_left_end, locked: false // Corrected order for left line
-        });
-    }
+  if (r > 0) {
+    // Arc centers
+    const center_tr = { x: x1 - r, y: y0 + r };
+    const center_br = { x: x1 - r, y: y1 - r };
+    const center_bl = { x: x0 + r, y: y1 - r };
+    const center_tl = { x: x0 + r, y: y0 + r };
 
+    // Top-Right Arc (clockwise in KiCad coordinate system for this orientation)
+    // Starts from end of top line, ends at start of right line
+    elements.push({
+      type: 'arc',
+      uuid: getElementUuid(),
+      layer: layerName,
+      strokeWidth: strokeW,
+      start: p_top_end, // (x1-r, y0)
+      mid: { x: center_tr.x + r * Math.cos(Math.PI * 1.75), y: center_tr.y + r * Math.sin(Math.PI * 1.75) }, // Midpoint on arc (angle -45 deg or 315 deg)
+      end: p_right_start, // (x1, y0+r)
+    });
+    // Bottom-Right Arc
+    elements.push({
+      type: 'arc',
+      uuid: getElementUuid(),
+      layer: layerName,
+      strokeWidth: strokeW,
+      start: p_right_end, // (x1, y1-r)
+      mid: { x: center_br.x + r * Math.cos(Math.PI * 0.25), y: center_br.y + r * Math.sin(Math.PI * 0.25) }, // Corrected: Midpoint on arc (angle 45 deg for BR)
+      end: p_bottom_start, // (x1-r, y1)
+    });
+    // Bottom-Left Arc
+    elements.push({
+      type: 'arc',
+      uuid: getElementUuid(),
+      layer: layerName,
+      strokeWidth: strokeW,
+      start: p_bottom_end, // (x0+r, y1)
+      mid: { x: center_bl.x + r * Math.cos(Math.PI * 0.75), y: center_bl.y + r * Math.sin(Math.PI * 0.75) }, // Midpoint on arc (angle 135 deg)
+      end: p_left_start, // (x0, y1-r)
+    });
+    // Top-Left Arc
+    elements.push({
+      type: 'arc',
+      uuid: getElementUuid(),
+      layer: layerName,
+      strokeWidth: strokeW,
+      start: p_left_end, // (x0, y0+r)
+      mid: { x: center_tl.x + r * Math.cos(Math.PI * 1.25), y: center_tl.y + r * Math.sin(Math.PI * 1.25) }, // Corrected: Midpoint on arc (angle 225 deg for TL)
+      end: p_top_start, // (x0+r, y0)
+    });
+  }
 
-    if (r > 0) {
-        // Arc centers
-        const center_tr = { x: x1 - r, y: y0 + r };
-        const center_br = { x: x1 - r, y: y1 - r };
-        const center_bl = { x: x0 + r, y: y1 - r };
-        const center_tl = { x: x0 + r, y: y0 + r };
-
-        // Top-Right Arc (clockwise in KiCad coordinate system for this orientation)
-        // Starts from end of top line, ends at start of right line
-        elements.push({
-            type: 'arc', uuid: getElementUuid(), layer: layerName, strokeWidth: strokeW,
-            start: p_top_end,     // (x1-r, y0)
-            mid: { x: center_tr.x + r * Math.cos(Math.PI * 1.75), y: center_tr.y + r * Math.sin(Math.PI * 1.75) }, // Midpoint on arc (angle -45 deg or 315 deg)
-            end: p_right_start  // (x1, y0+r)
-        });
-        // Bottom-Right Arc
-        elements.push({
-            type: 'arc', uuid: getElementUuid(), layer: layerName, strokeWidth: strokeW,
-            start: p_right_end,   // (x1, y1-r)
-            mid: { x: center_br.x + r * Math.cos(Math.PI * 0.25), y: center_br.y + r * Math.sin(Math.PI * 0.25) }, // Corrected: Midpoint on arc (angle 45 deg for BR)
-            end: p_bottom_start // (x1-r, y1)
-        });
-        // Bottom-Left Arc
-        elements.push({
-            type: 'arc', uuid: getElementUuid(), layer: layerName, strokeWidth: strokeW,
-            start: p_bottom_end,  // (x0+r, y1)
-            mid: { x: center_bl.x + r * Math.cos(Math.PI * 0.75), y: center_bl.y + r * Math.sin(Math.PI * 0.75) }, // Midpoint on arc (angle 135 deg)
-            end: p_left_start   // (x0, y1-r)
-        });
-        // Top-Left Arc
-        elements.push({
-            type: 'arc', uuid: getElementUuid(), layer: layerName, strokeWidth: strokeW,
-            start: p_left_end,    // (x0, y0+r)
-            mid: { x: center_tl.x + r * Math.cos(Math.PI * 1.25), y: center_tl.y + r * Math.sin(Math.PI * 1.25) }, // Corrected: Midpoint on arc (angle 225 deg for TL)
-            end: p_top_start    // (x0+r, y0)
-        });
-    }
-
-
-    const outlineData: IOutline = {
-        uuid: conceptualOutlineUuid,
-        x,
-        y,
-        width,
-        height,
-        filletRadius: r,
-        elements,
-        sourceInfo
-    };
-    state.stagedOutlines.push(outlineData);
+  const outlineData: IOutline = {
+    uuid: conceptualOutlineUuid,
+    x,
+    y,
+    width,
+    height,
+    filletRadius: r,
+    elements,
+    sourceInfo,
+  };
+  state.stagedOutlines.push(outlineData);
 }
 
 export function pcbText(state: PcbInternalState, options: import('./pcb_interfaces.js').IGrTextOptions): void {
-    const textElement: import('./pcb_interfaces.js').IGrTextOptions = {
-        text: options.text,
-        x: options.x,
-        y: options.y,
-        layer: options.layer || 'F.SilkS',
-        width: options.width || 1.27,
-        height: options.height || 1.27,
-        thickness: options.thickness,
-        rotation: options.rotation || 0,
-        font: options.font,
-        bold: options.bold,
-        italic: options.italic,
-        justify: options.justify,
-        hide: options.hide,
-        uuid: options.uuid || generateUuid()
-    };
+  const textElement: import('./pcb_interfaces.js').IGrTextOptions = {
+    text: options.text,
+    x: options.x,
+    y: options.y,
+    layer: options.layer || 'F.SilkS',
+    width: options.width || 1.27,
+    height: options.height || 1.27,
+    thickness: options.thickness,
+    rotation: options.rotation || 0,
+    font: options.font,
+    bold: options.bold,
+    italic: options.italic,
+    justify: options.justify,
+    hide: options.hide,
+    uuid: options.uuid || generateUuid(),
+  };
 
-    state.grTexts.push(textElement);
+  state.grTexts.push(textElement);
+}
+/**
+ * Draw an arc on a board layer (e.g. silkscreen, fabrication, or copper).
+ * KiCad defines arcs by three points: start, a point on the arc (mid), and
+ * end — a mid point halfway along the intended arc yields the expected shape.
+ * @param options.start - Arc start point in mm.
+ * @param options.mid - A point on the arc between start and end.
+ * @param options.end - Arc end point in mm.
+ * @param options.layer - Layer name (default 'F.SilkS').
+ * @param options.width - Stroke width in mm (default 0.15).
+ */
+export function pcbArc(state: PcbInternalState, options: import('./pcb_interfaces.js').IPcbArcOptions): void {
+  const { start, mid, end, layer = 'F.SilkS', width = 0.15 } = options;
+
+  const finite = (p: { x?: number; y?: number } | undefined) =>
+    p !== undefined && Number.isFinite(p.x) && Number.isFinite(p.y);
+  if (!finite(start) || !finite(mid) || !finite(end)) {
+    logger.error(`[PCB ARC] ERROR: start, mid, and end must be finite {x, y} points${formatCallSite(getCallSite())}`);
+    return;
+  }
+  // Degenerate: all three points identical
+  if (start.x === mid.x && start.y === mid.y && mid.x === end.x && mid.y === end.y) {
+    logger.error(`[PCB ARC] ERROR: start, mid, and end must not all be the same point${formatCallSite(getCallSite())}`);
+    return;
+  }
+
+  const elements = [
+    {
+      type: 'arc' as const,
+      uuid: generateUuid(),
+      layer,
+      strokeWidth: width,
+      start: { ...start },
+      mid: { ...mid },
+      end: { ...end },
+    },
+  ];
+
+  // Bounding box feeds outline classification and bounds math
+  const xs = [start.x, mid.x, end.x];
+  const ys = [start.y, mid.y, end.y];
+
+  const outlineData: import('./pcb_interfaces.js').IOutline = {
+    uuid: generateUuid(),
+    x: Math.min(...xs),
+    y: Math.min(...ys),
+    width: Math.max(...xs) - Math.min(...xs),
+    height: Math.max(...ys) - Math.min(...ys),
+    filletRadius: 0,
+    elements,
+  };
+  state.stagedOutlines.push(outlineData);
 }

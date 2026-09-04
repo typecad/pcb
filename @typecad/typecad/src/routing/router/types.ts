@@ -1,6 +1,6 @@
-import type { RoutingGrid } from "../contracts/routing_grid.js";
-import { IImpedanceConstraint } from "../types/pcb.js";
-import type { ILengthMatchConfig } from "../types/length_match.js";
+import type { RoutingGrid } from '../contracts/routing_grid.js';
+import { IImpedanceConstraint } from '../types/pcb.js';
+import type { ILengthMatchConfig } from '../types/length_match.js';
 import type { IPowerInfo } from '../../pcb/pcb_interfaces.js';
 import type { IRoutePath as PcbRoutePath } from '../../pcb/pcb_interfaces.js';
 import type { IRoutingObstacle } from '../shared/routing_grid.js';
@@ -41,6 +41,14 @@ export interface IRoutingOptions {
   allowedLayers: string[];
   /** Cost penalty for placing a via. Higher discourages layer changes. Example: 10 */
   viaCost?: number;
+  /**
+   * Board copper layer names, top → bottom. When provided, via cost scales
+   * with the number of layer boundaries a transition crosses (a via from
+   * In1.Cu to In4.Cu costs 3× `viaCost`, adjacent layers 1×). Set by the
+   * host when the board uses blind/buried vias, where span depth is the real
+   * manufacturing cost. Example: ['F.Cu', 'In1.Cu', 'In2.Cu', 'B.Cu']
+   */
+  layerOrder?: string[];
   /** Clearance enforced around vias. Defaults to clearance. Example: 0.25 */
   viaClearance?: number;
   /** Cost penalty applied when changing direction. Example: 0.5 */
@@ -101,59 +109,58 @@ export interface IRoutingOptions {
   disableResumeGrid?: boolean;
 }
 
-export type NormalizedRoutingOptions =
-  Required<
-    Omit<
-      IRoutingOptions,
-      | "impedance"
-      | "net"
-      | "freeViaLocations"
-      | "preferredLayers"
-      | "debug"
-      | "coarseGridFactory"
-    | "parallelMSTWorkers"
-      | "disableResumeGrid"
-      | "powerInfo"
-      | "lengthMatch"
-    >
-  > &
-    Pick<
-      IRoutingOptions,
-      | "impedance"
-      | "net"
-      | "freeViaLocations"
-      | "preferredLayers"
-      | "debug"
-      | "useAdaptiveStride"
-      | "maxStrideCells"
-      | "strideNearPadDisableRadiusMm"
-      | "heuristicWeight"
-      | "requestedGridResolution"
-      | "resumeGridResolution"
-      | "coarseGridFactory"
-      | "gridObstacles"
-      | "gridBounds"
-      | "disableResumeGrid"
-      | "powerInfo"
-      | "lengthMatch"
-    > & {
-      preferredLayers: string[];
-      useAdaptiveStride: boolean;
-      maxStrideCells: number;
-      strideNearPadDisableRadiusMm: number;
-      heuristicWeight: number;
-      allow45DegreeRuns: boolean;
-      parallelMSTWorkers: number;
-    };
+export type NormalizedRoutingOptions = Required<
+  Omit<
+    IRoutingOptions,
+    | 'impedance'
+    | 'net'
+    | 'freeViaLocations'
+    | 'preferredLayers'
+    | 'debug'
+    | 'coarseGridFactory'
+    | 'parallelMSTWorkers'
+    | 'disableResumeGrid'
+    | 'powerInfo'
+    | 'lengthMatch'
+  >
+> &
+  Pick<
+    IRoutingOptions,
+    | 'impedance'
+    | 'net'
+    | 'freeViaLocations'
+    | 'preferredLayers'
+    | 'debug'
+    | 'useAdaptiveStride'
+    | 'maxStrideCells'
+    | 'strideNearPadDisableRadiusMm'
+    | 'heuristicWeight'
+    | 'requestedGridResolution'
+    | 'resumeGridResolution'
+    | 'coarseGridFactory'
+    | 'gridObstacles'
+    | 'gridBounds'
+    | 'disableResumeGrid'
+    | 'powerInfo'
+    | 'lengthMatch'
+  > & {
+    preferredLayers: string[];
+    useAdaptiveStride: boolean;
+    maxStrideCells: number;
+    strideNearPadDisableRadiusMm: number;
+    heuristicWeight: number;
+    allow45DegreeRuns: boolean;
+    parallelMSTWorkers: number;
+  };
 
 export type RouteEndpoint = { x: number; y: number; layer: string };
 
 /**
  * Enhanced route endpoint that includes pre-computed grid coordinates for performance.
  */
-export type RouteEndpointWithGrid = { 
-  x: number; 
-  y: number; 
+export type RouteEndpointWithGrid = {
+  x: number;
+  y: number;
   layer: string;
   gridX: number;
   gridY: number;
@@ -171,9 +178,8 @@ export interface IWaypointPlanner {
     p1: RouteEndpoint,
     p2: RouteEndpoint,
     allPoints: RouteEndpoint[],
-    routedPoints: Set<number>
+    routedPoints: Set<number>,
   ): IWaypointPlan;
 }
 
 export type { IRouteDirectives } from '../../pcb/pcb_interfaces.js';
-

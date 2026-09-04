@@ -176,12 +176,24 @@ describe('writeRulesToProject', () => {
   const boardName = 'rules_write_test';
 
   beforeEach(() => {
-    try { fs.mkdirSync(buildDir); } catch { /* ignore */ }
-    try { fs.rmSync(`${buildDir}/${boardName}.kicad_pro`); } catch { /* ignore */ }
+    try {
+      fs.mkdirSync(buildDir);
+    } catch {
+      /* ignore */
+    }
+    try {
+      fs.rmSync(`${buildDir}/${boardName}.kicad_pro`);
+    } catch {
+      /* ignore */
+    }
   });
 
   afterEach(() => {
-    try { fs.rmSync(`${buildDir}/${boardName}.kicad_pro`); } catch { /* ignore */ }
+    try {
+      fs.rmSync(`${buildDir}/${boardName}.kicad_pro`);
+    } catch {
+      /* ignore */
+    }
   });
 
   it('creates the project file when it does not exist', () => {
@@ -202,14 +214,34 @@ describe('PCB rules integration', () => {
   const boardName = 'rules_pcb_test';
 
   beforeEach(() => {
-    try { fs.mkdirSync(buildDir); } catch { /* ignore */ }
-    try { fs.rmSync(`${buildDir}/${boardName}.kicad_pcb`); } catch { /* ignore */ }
-    try { fs.rmSync(`${buildDir}/${boardName}.kicad_pro`); } catch { /* ignore */ }
+    try {
+      fs.mkdirSync(buildDir);
+    } catch {
+      /* ignore */
+    }
+    try {
+      fs.rmSync(`${buildDir}/${boardName}.kicad_pcb`);
+    } catch {
+      /* ignore */
+    }
+    try {
+      fs.rmSync(`${buildDir}/${boardName}.kicad_pro`);
+    } catch {
+      /* ignore */
+    }
   });
 
   afterEach(() => {
-    try { fs.rmSync(`${buildDir}/${boardName}.kicad_pcb`); } catch { /* ignore */ }
-    try { fs.rmSync(`${buildDir}/${boardName}.kicad_pro`); } catch { /* ignore */ }
+    try {
+      fs.rmSync(`${buildDir}/${boardName}.kicad_pcb`);
+    } catch {
+      /* ignore */
+    }
+    try {
+      fs.rmSync(`${buildDir}/${boardName}.kicad_pro`);
+    } catch {
+      /* ignore */
+    }
   });
 
   it('PCB.rules returns JLCPCB standard defaults when no rules given', () => {
@@ -249,9 +281,7 @@ describe('PCB rules integration', () => {
     const pcb = new PCB(boardName);
     pcb.create();
     const doc = readProject(boardName);
-    const cls = doc.net_settings.classes.find(
-      (c: { name: string }) => c.name === 'Default'
-    );
+    const cls = doc.net_settings.classes.find((c: { name: string }) => c.name === 'Default');
     expect(cls).toBeDefined();
     expect(cls.clearance).toBe(0.2);
     expect(cls.track_width).toBe(0.2);
@@ -274,9 +304,20 @@ describe('resolveNetClassOptions', () => {
   it('resolves all four dimensions when fully specified', () => {
     const resolved = resolveNetClassOptions(
       { track_width: 0.5, clearance: 0.3, via_diameter: 0.8, via_drill: 0.4 },
-      rules
+      rules,
     );
-    expect(resolved).toEqual({ track_width: 0.5, clearance: 0.3, via_diameter: 0.8, via_drill: 0.4 });
+    expect(resolved).toEqual({
+      track_width: 0.5,
+      clearance: 0.3,
+      via_diameter: 0.8,
+      via_drill: 0.4,
+      layers: [],
+    });
+  });
+
+  it('passes preferred routing layers through', () => {
+    const resolved = resolveNetClassOptions({ layers: ['In1.Cu'] }, rules);
+    expect(resolved.layers).toEqual(['In1.Cu']);
   });
 });
 
@@ -284,7 +325,7 @@ describe('mergeRulesIntoProject with net classes', () => {
   const rules = resolveRules();
   const powerClass = resolveNetClassOptions(
     { track_width: 0.5, clearance: 0.3, via_diameter: 0.8, via_drill: 0.4 },
-    rules
+    rules,
   );
 
   it('writes user-defined classes into net_settings.classes', () => {
@@ -298,6 +339,18 @@ describe('mergeRulesIntoProject with net classes', () => {
     expect(cls.via_diameter).toBe(0.8);
     expect(cls.via_drill).toBe(0.4);
     expect(cls.priority).toBeLessThan(2147483647);
+  });
+
+  it('never writes diff-pair dimensions for user classes', () => {
+    // typeCAD has no differential pair routing; hard-coded values here would
+    // make KiCad's DRC enforce geometry the user never chose.
+    const classes = new Map([['power', powerClass]]);
+    const out = mergeRulesIntoProject('', rules, classes);
+    const doc = JSON.parse(out);
+    const cls = doc.net_settings.classes.find((c: { name: string }) => c.name === 'power');
+    expect(cls.diff_pair_gap).toBeUndefined();
+    expect(cls.diff_pair_via_gap).toBeUndefined();
+    expect(cls.diff_pair_width).toBeUndefined();
   });
 
   it('always keeps the Default class alongside user classes', () => {
@@ -324,9 +377,7 @@ describe('mergeRulesIntoProject with net classes', () => {
   });
 
   it('replaces managed classes of the same name on re-define', () => {
-    const classes = new Map([
-      ['power', resolveNetClassOptions({ track_width: 0.7 }, rules)],
-    ]);
+    const classes = new Map([['power', resolveNetClassOptions({ track_width: 0.7 }, rules)]]);
     // first write with 0.5, then re-define to 0.7
     let out = mergeRulesIntoProject('', rules, new Map([['power', powerClass]]));
     out = mergeRulesIntoProject(out, rules, classes);
@@ -339,16 +390,16 @@ describe('mergeRulesIntoProject with net classes', () => {
   it('preserves existing non-managed classes and patterns', () => {
     const existing = JSON.stringify({
       net_settings: {
-        classes: [{ name: 'Default', clearance: 0.2 }, { name: 'custom', track_width: 0.3 }],
+        classes: [
+          { name: 'Default', clearance: 0.2 },
+          { name: 'custom', track_width: 0.3 },
+        ],
         netclass_patterns: [{ netclass: 'custom', pattern: '/UART/*' }],
       },
     });
-    const out = mergeRulesIntoProject(
-      existing,
-      rules,
-      new Map([['power', powerClass]]),
-      [{ netName: 'gnd', className: 'power' }]
-    );
+    const out = mergeRulesIntoProject(existing, rules, new Map([['power', powerClass]]), [
+      { netName: 'gnd', className: 'power' },
+    ]);
     const doc = JSON.parse(out);
     const names = doc.net_settings.classes.map((c: { name: string }) => c.name);
     expect(names).toContain('custom'); // preserved

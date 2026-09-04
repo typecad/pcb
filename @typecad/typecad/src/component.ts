@@ -23,7 +23,7 @@ import type { ITextPositioning } from './pcb/pcb_interfaces.js';
 import { loadFootprintLib } from './pcb/component_footprint_loader.js';
 import { loadSymbolLib } from './renderers/component_symbol_loader.js';
 import { getFootprintBounds } from './pcb/footprint_bounds.js';
-import { isPlacementValue, type PlacementNumber } from './placement.js';
+import { isPlacementValue, coercePlacementInput, type PlacementNumber, type PlacementInput } from './placement.js';
 
 const defaultCounter = new ReferenceCounter();
 
@@ -113,12 +113,81 @@ export class Component {
   #wattage: string = '';
   #mpn: string = '';
   #symbol: string = '';
-  pcb: { x: number; y: number; rotation?: number; side?: 'front' | 'back' } = {
+  #pcb: { x: number; y: number; rotation?: number; side?: 'front' | 'back' } = {
     x: 0,
     y: 0,
     rotation: 0,
     side: 'front',
   };
+  /** Raw placement expressions from the last assignment, for create()-time re-resolution. */
+  #pcbSource: { x?: PlacementNumber; y?: PlacementNumber } | undefined = undefined;
+  /** Snapshot of resolved coordinates at assignment time — detects manual moves. */
+  #pcbSnapshot: { x: number; y: number } | undefined = undefined;
+  /**
+   * Board position. Assignment accepts deferred placement values (e.g.
+   * `board(pcb).fromTop(5)`, `below(r1).by(3)`) alongside plain numbers —
+   * they resolve against the component's footprint immediately, so reads
+   * always see numbers. Deferred expressions are re-resolved at `create()`
+   * against final positions; manually moving a component afterwards wins.
+   */
+  get pcb(): { x: number; y: number; rotation?: number; side?: 'front' | 'back' } {
+    return this.#pcb;
+  }
+  set pcb(value: { x: PlacementInput; y: PlacementInput; rotation?: number; side?: 'front' | 'back' }) {
+    const rawX = coercePlacementInput(value.x, 'x');
+    const rawY = coercePlacementInput(value.y, 'y');
+    // The component's own rotation shapes its occupied box — the placement
+    // expression needs it for correct edge-to-edge resolution.
+    const rotation = value.rotation ?? this.#pcb.rotation ?? 0;
+    const x = isPlacementValue(rawX) ? rawX.resolveWithFootprint(this.#footprint, rotation) : rawX;
+    const y = isPlacementValue(rawY) ? rawY.resolveWithFootprint(this.#footprint, rotation) : rawY;
+    validateFinite(x, 'pcb.x');
+    validateFinite(y, 'pcb.y');
+    if (value.rotation !== undefined) validateFinite(value.rotation, 'pcb.rotation');
+    this.#pcb = { ...value, x, y };
+    this.#pcbSource = isPlacementValue(rawX) || isPlacementValue(rawY) ? { x: rawX, y: rawY } : undefined;
+    this.#pcbSnapshot = { x, y };
+  }
+  /**
+   * Re-resolve deferred placement expressions (e.g. `below(r1).by(3)`)
+   * against current state. An axis that was manually moved since assignment
+   * is frozen — the manual value wins permanently. Returns whether anything
+   * changed.
+   * @internal
+   */
+  _refreshPlacement(): boolean {
+    const source = this.#pcbSource;
+    const snapshot = this.#pcbSnapshot;
+    if (!source || !snapshot) return false;
+    let changed = false;
+    const next = { ...this.#pcb };
+    const rotation = this.#pcb.rotation ?? 0;
+    if (isPlacementValue(source.x) && this.#pcb.x === snapshot.x) {
+      const x = source.x.resolveWithFootprint(this.#footprint, rotation);
+      if (x !== this.#pcb.x) {
+        next.x = x;
+        changed = true;
+      }
+    } else if (isPlacementValue(source.x)) {
+      source.x = undefined; // manual move detected — freeze this axis
+    }
+    if (isPlacementValue(source.y) && this.#pcb.y === snapshot.y) {
+      const y = source.y.resolveWithFootprint(this.#footprint, rotation);
+      if (y !== this.#pcb.y) {
+        next.y = y;
+        changed = true;
+      }
+    } else if (isPlacementValue(source.y)) {
+      source.y = undefined; // manual move detected — freeze this axis
+    }
+    if (changed) {
+      validateFinite(next.x, 'pcb.x');
+      validateFinite(next.y, 'pcb.y');
+      this.#pcb = next;
+      this.#pcbSnapshot = { x: next.x, y: next.y };
+    }
+    return changed;
+  }
   dnp: boolean = false;
   via: boolean = false;
   viaData: IVia | undefined = undefined;
@@ -391,14 +460,8 @@ export class Component {
     if (init.mpn) this.#mpn = init.mpn;
     if (init.dnp !== undefined) this.dnp = init.dnp;
     if (init.pcb) {
-      const rawX = init.pcb.x;
-      const rawY = init.pcb.y;
-      const x = isPlacementValue(rawX) ? rawX.resolveWithFootprint(this.#footprint) : rawX;
-      const y = isPlacementValue(rawY) ? rawY.resolveWithFootprint(this.#footprint) : rawY;
-      validateFinite(x, 'pcb.x');
-      validateFinite(y, 'pcb.y');
-      if (init.pcb.rotation !== undefined) validateFinite(init.pcb.rotation, 'pcb.rotation');
-      this.pcb = { ...init.pcb, x, y };
+      // The pcb setter resolves deferred placement values and validates.
+      this.pcb = init.pcb;
     }
     if (init.sch) this.sch = init.sch;
     if (init.via) this.via = init.via;

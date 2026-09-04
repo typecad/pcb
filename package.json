@@ -15,7 +15,8 @@
   },
   "workspaces": [
     "@typecad/*",
-    "demo/hw"
+    "demo/hw",
+    "rd_skeleton/hw"
   ],
   "devDependencies": {
     "@changesets/changelog-github": "^1.0.0",

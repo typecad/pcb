@@ -2,6 +2,16 @@ import { PCB, Component } from '@typecad/typecad';
 import { Resistor } from '@typecad/passives/0603';
 import { RESOLUTION } from '../autoroute_test';
 
+/**
+ * DORMANT — not wired into pro_mini.ts.
+ *
+ * Differential pair routing is not implemented; the `differential`/`gap`
+ * route options used below were never part of the public API and were
+ * silently ignored. Kept as the reference scenario for when coupled routing
+ * lands (the intended shape: coupled routing, gap-from-impedance, intra-pair
+ * skew via lengthMatch).
+ */
+
 // Export function that accepts the main typecad object
 export function runTest12(typecad: PCB): Component[] {
     // Test 12: Differential pair routing test

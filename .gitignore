@@ -11,3 +11,10 @@ git_disabled/
 .typecode/
 
 node_modules
+
+# Editor local history (contains its own .git)
+.history/
+*.lck
+*.backup
+~*
+build/*-backups/

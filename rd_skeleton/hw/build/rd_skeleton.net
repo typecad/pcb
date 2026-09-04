@@ -1,0 +1,58 @@
+(export (version "E")
+  (design
+    (tool "typeCAD"))
+  (components
+    (comp
+      (ref "MH1")
+        (value "")
+        (footprint "MountingHole:MountingHole_2.7mm_M2.5")
+        (fields
+                  (field (name "Footprint") "MountingHole:MountingHole_2.7mm_M2.5")
+        )
+     )
+    (comp
+      (ref "MH2")
+        (value "")
+        (footprint "MountingHole:MountingHole_2.7mm_M2.5")
+        (fields
+                  (field (name "Footprint") "MountingHole:MountingHole_2.7mm_M2.5")
+        )
+     )
+    (comp
+      (ref "MH3")
+        (value "")
+        (footprint "MountingHole:MountingHole_2.7mm_M2.5")
+        (fields
+                  (field (name "Footprint") "MountingHole:MountingHole_2.7mm_M2.5")
+        )
+     )
+    (comp
+      (ref "MH4")
+        (value "")
+        (footprint "MountingHole:MountingHole_2.7mm_M2.5")
+        (fields
+                  (field (name "Footprint") "MountingHole:MountingHole_2.7mm_M2.5")
+        )
+     )
+    (comp
+      (ref "J1")
+        (value "")
+        (footprint "TerminalBlock_TE-Connectivity:TerminalBlock_TE_282834-4_1x04_P2.54mm_Horizontal")
+        (fields
+                  (field (name "Footprint") "TerminalBlock_TE-Connectivity:TerminalBlock_TE_282834-4_1x04_P2.54mm_Horizontal")
+        )
+     )
+    (comp
+      (ref "J2")
+        (value "")
+        (footprint "TerminalBlock_TE-Connectivity:TerminalBlock_TE_282834-4_1x04_P2.54mm_Horizontal")
+        (fields
+                  (field (name "Footprint") "TerminalBlock_TE-Connectivity:TerminalBlock_TE_282834-4_1x04_P2.54mm_Horizontal")
+        )
+     ))
+  (nets
+    (net (code "1") (name "GND")
+        (node (ref "J1") (pin "1") (pintype "passive"))
+        (node (ref "J2") (pin "1") (pintype "passive"))
+)
+))

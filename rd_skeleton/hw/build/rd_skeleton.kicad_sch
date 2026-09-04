@@ -1,0 +1,53 @@
+(kicad_sch
+	(version 20250114)
+	(generator "typecad")
+	(generator_version "0.1.0")
+	(paper "A4")
+    (uuid "0de65af1-b8b4-4d2f-9b6b-ad2ab872f870")
+
+    (lib_symbols
+    (symbol "Mechanical:MountingHole_Pad" (pin_numbers (hide yes)) (pin_names (offset 1.016) (hide yes)) (exclude_from_sim no) (in_bom no) (on_board yes) (in_pos_files yes) (duplicate_pin_numbers_are_jumpers no) (property "Reference" "H" (at 0 6.35 0) (show_name no) (do_not_autoplace no) (effects (font (size 1.27 1.27)))) (property "Value" "MountingHole_Pad" (at 0 4.445 0) (show_name no) (do_not_autoplace no) (effects (font (size 1.27 1.27)))) (property "Footprint" "" (at 0 0 0) (show_name no) (do_not_autoplace no) (hide yes) (effects (font (size 1.27 1.27)))) (property "Datasheet" "" (at 0 0 0) (show_name no) (do_not_autoplace no) (hide yes) (effects (font (size 1.27 1.27)))) (property "Description" "Mounting Hole with connection" (at 0 0 0) (show_name no) (do_not_autoplace no) (hide yes) (effects (font (size 1.27 1.27)))) (property "ki_keywords" "mounting hole" (at 0 0 0) (show_name no) (do_not_autoplace no) (hide yes) (effects (font (size 1.27 1.27)))) (property "ki_fp_filters" "MountingHole*Pad*" (at 0 0 0) (show_name no) (do_not_autoplace no) (hide yes) (effects (font (size 1.27 1.27)))) (symbol "MountingHole_Pad_0_1" (circle (center 0 1.27) (radius 1.27) (stroke (width 1.27) (type default)) (fill (type none)))) (symbol "MountingHole_Pad_1_1" (pin input line (at 0 -2.54 90) (length 2.54) (name "1" (effects (font (size 1.27 1.27)))) (number "1" (effects (font (size 1.27 1.27)))))) (embedded_fonts no))
+    (symbol "Connector:Conn_01x04_Pin" (pin_names (offset 1.016) (hide yes)) (exclude_from_sim no) (in_bom yes) (on_board yes) (in_pos_files yes) (duplicate_pin_numbers_are_jumpers no) (property "Reference" "J" (at 0 5.08 0) (show_name no) (do_not_autoplace no) (effects (font (size 1.27 1.27)))) (property "Value" "Conn_01x04_Pin" (at 0 -7.62 0) (show_name no) (do_not_autoplace no) (effects (font (size 1.27 1.27)))) (property "Footprint" "" (at 0 0 0) (show_name no) (do_not_autoplace no) (hide yes) (effects (font (size 1.27 1.27)))) (property "Datasheet" "" (at 0 0 0) (show_name no) (do_not_autoplace no) (hide yes) (effects (font (size 1.27 1.27)))) (property "Description" "Generic connector, single row, 01x04, script generated" (at 0 0 0) (show_name no) (do_not_autoplace no) (hide yes) (effects (font (size 1.27 1.27)))) (property "ki_locked" "" (at 0 0 0) (show_name no) (do_not_autoplace no) (effects (font (size 1.27 1.27)))) (property "ki_keywords" "connector" (at 0 0 0) (show_name no) (do_not_autoplace no) (hide yes) (effects (font (size 1.27 1.27)))) (property "ki_fp_filters" "Connector*:*_1x??_*" (at 0 0 0) (show_name no) (do_not_autoplace no) (hide yes) (effects (font (size 1.27 1.27)))) (symbol "Conn_01x04_Pin_1_1" (rectangle (start 0.8636 2.667) (end 0 2.413) (stroke (width 0.1524) (type default)) (fill (type outline))) (rectangle (start 0.8636 0.127) (end 0 -0.127) (stroke (width 0.1524) (type default)) (fill (type outline))) (rectangle (start 0.8636 -2.413) (end 0 -2.667) (stroke (width 0.1524) (type default)) (fill (type outline))) (rectangle (start 0.8636 -4.953) (end 0 -5.207) (stroke (width 0.1524) (type default)) (fill (type outline))) (polyline (pts (xy 1.27 2.54) (xy 0.8636 2.54)) (stroke (width 0.1524) (type default)) (fill (type none))) (polyline (pts (xy 1.27 0) (xy 0.8636 0)) (stroke (width 0.1524) (type default)) (fill (type none))) (polyline (pts (xy 1.27 -2.54) (xy 0.8636 -2.54)) (stroke (width 0.1524) (type default)) (fill (type none))) (polyline (pts (xy 1.27 -5.08) (xy 0.8636 -5.08)) (stroke (width 0.1524) (type default)) (fill (type none))) (pin passive line (at 5.08 2.54 180) (length 3.81) (name "Pin_1" (effects (font (size 1.27 1.27)))) (number "1" (effects (font (size 1.27 1.27))))) (pin passive line (at 5.08 0 180) (length 3.81) (name "Pin_2" (effects (font (size 1.27 1.27)))) (number "2" (effects (font (size 1.27 1.27))))) (pin passive line (at 5.08 -2.54 180) (length 3.81) (name "Pin_3" (effects (font (size 1.27 1.27)))) (number "3" (effects (font (size 1.27 1.27))))) (pin passive line (at 5.08 -5.08 180) (length 3.81) (name "Pin_4" (effects (font (size 1.27 1.27)))) (number "4" (effects (font (size 1.27 1.27)))))) (embedded_fonts no))
+    )
+
+
+
+	
+		(label "GND"
+			(at 53.34 157.48 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left bottom)
+			)
+			(uuid "bb754083-344c-4f3f-b704-2f6a11c9144f")
+		)
+
+	
+		(label "GND"
+			(at 215.9 142.24 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left bottom)
+			)
+			(uuid "9b4d1779-cc5f-414e-92bd-e52aebd4b955")
+		)
+
+
+    (symbol (lib_id "Mechanical:MountingHole_Pad") (at 172.72 132.08 0) (property "Reference" "MH1" (at 172.72 137.16000000000003 0) (effects (font (size 1.27 1.27)) (hide no))) (property "Value" "" (at 172.72 137.16000000000003 0) (effects (font (size 1.27 1.27)) (hide yes))) (property "Footprint" "MountingHole:MountingHole_2.7mm_M2.5" (at 172.72 137.16000000000003 0) (effects (font (size 1.27 1.27)) (hide yes))) (instances (project "rd_skeleton" (path "/0de65af1-b8b4-4d2f-9b6b-ad2ab872f870" (reference "MH1") (unit 1)))))
+    (symbol (lib_id "Mechanical:MountingHole_Pad") (at 193.04 109.22 0) (property "Reference" "MH2" (at 193.04 114.3 0) (effects (font (size 1.27 1.27)) (hide no))) (property "Value" "" (at 193.04 114.3 0) (effects (font (size 1.27 1.27)) (hide yes))) (property "Footprint" "MountingHole:MountingHole_2.7mm_M2.5" (at 193.04 114.3 0) (effects (font (size 1.27 1.27)) (hide yes))) (instances (project "rd_skeleton" (path "/0de65af1-b8b4-4d2f-9b6b-ad2ab872f870" (reference "MH2") (unit 1)))))
+    (symbol (lib_id "Mechanical:MountingHole_Pad") (at 185.42000000000002 127 0) (property "Reference" "MH3" (at 185.42000000000002 132.08 0) (effects (font (size 1.27 1.27)) (hide no))) (property "Value" "" (at 185.42000000000002 132.08 0) (effects (font (size 1.27 1.27)) (hide yes))) (property "Footprint" "MountingHole:MountingHole_2.7mm_M2.5" (at 185.42000000000002 132.08 0) (effects (font (size 1.27 1.27)) (hide yes))) (instances (project "rd_skeleton" (path "/0de65af1-b8b4-4d2f-9b6b-ad2ab872f870" (reference "MH3") (unit 1)))))
+    (symbol (lib_id "Mechanical:MountingHole_Pad") (at 99.06 109.22 0) (property "Reference" "MH4" (at 99.06 114.3 0) (effects (font (size 1.27 1.27)) (hide no))) (property "Value" "" (at 99.06 114.3 0) (effects (font (size 1.27 1.27)) (hide yes))) (property "Footprint" "MountingHole:MountingHole_2.7mm_M2.5" (at 99.06 114.3 0) (effects (font (size 1.27 1.27)) (hide yes))) (instances (project "rd_skeleton" (path "/0de65af1-b8b4-4d2f-9b6b-ad2ab872f870" (reference "MH4") (unit 1)))))
+    (symbol (lib_id "Connector:Conn_01x04_Pin") (at 48.26 160.02 0) (property "Reference" "J1" (at 48.26 165.10000000000002 0) (effects (font (size 1.27 1.27)) (hide no))) (property "Value" "" (at 48.26 165.10000000000002 0) (effects (font (size 1.27 1.27)) (hide yes))) (property "Footprint" "TerminalBlock_TE-Connectivity:TerminalBlock_TE_282834-4_1x04_P2.54mm_Horizontal" (at 48.26 165.10000000000002 0) (effects (font (size 1.27 1.27)) (hide yes))) (instances (project "rd_skeleton" (path "/0de65af1-b8b4-4d2f-9b6b-ad2ab872f870" (reference "J1") (unit 1)))))
+    (symbol (lib_id "Connector:Conn_01x04_Pin") (at 210.82 144.78 0) (property "Reference" "J2" (at 210.82 149.86 0) (effects (font (size 1.27 1.27)) (hide no))) (property "Value" "" (at 210.82 149.86 0) (effects (font (size 1.27 1.27)) (hide yes))) (property "Footprint" "TerminalBlock_TE-Connectivity:TerminalBlock_TE_282834-4_1x04_P2.54mm_Horizontal" (at 210.82 149.86 0) (effects (font (size 1.27 1.27)) (hide yes))) (instances (project "rd_skeleton" (path "/0de65af1-b8b4-4d2f-9b6b-ad2ab872f870" (reference "J2") (unit 1)))))
+
+	(sheet_instances
+		(path "/"
+			(page "1")
+		)
+	)
+	(embedded_fonts no)
+)

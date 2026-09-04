@@ -12,26 +12,30 @@ export const options = {
 };
 
 // Create the main typecad object
-const typecad = new PCB('autoroute_test');
+const typecad = new PCB('autoroute_test', { layers: 4 });
 // Test execution control
 const runTests = {
     test1: true,
-    test2: true,
-    test3: true,
-    test4: true,
-    test5: true,
+    test2: false,
+    test3: false,
+    test4: false,
+    test5: false,
     test6: false,
     test7: false,
     test8: false,
     test9: false,
     test10: false,
     test11: false,
-    test12: false,   // errors
+    // test12 (differential pairs) is unwired: no diff-pair routing API exists
+    // yet — the options it passed were silently ignored. File kept for when
+    // the feature lands.
     test13: false,
     test14: false,
     test15: false,   // errors
-    test16: true,
+    test16: false,
     test17: false,
+    test18: true,    // multilayer features: planes, affinity, impedance, via policy
+    test19: true,    // zone options: polygon geometry, rule areas, fill options
 };
 
 // Run individual test files based on configuration and collect all components
@@ -93,11 +97,6 @@ const runTests = {
         const components = runTest11(typecad);
         allComponents.push(...components);
     }
-    if (runTests.test12) {
-        const { runTest12 } = await import('./tests/test12_differential_pairs');
-        const components = runTest12(typecad);
-        allComponents.push(...components);
-    }
     if (runTests.test13) {
         const { runTest13 } = await import('./tests/test13_impedance_control');
         const components = runTest13(typecad);
@@ -121,6 +120,16 @@ const runTests = {
     if (runTests.test17) {
         const { runTest17 } = await import('./tests/test17_qfn_front_back');
         const components = runTest17(typecad);
+        allComponents.push(...components);
+    }
+    if (runTests.test18) {
+        const { runTest18 } = await import('./tests/test18_multilayer_features');
+        const components = runTest18(typecad);
+        allComponents.push(...components);
+    }
+    if (runTests.test19) {
+        const { runTest19 } = await import('./tests/test19_zone_options');
+        const components = runTest19(typecad);
         allComponents.push(...components);
     }
     // Create all components in a single call

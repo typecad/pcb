@@ -6,7 +6,7 @@
 
 - [Automate](automate.md): Automate Your Hardware Design
 - [Code](code.md): Code as Schematic
-- [Docs](docs.md): 📗 **type**CAD Documentation
+- [Docs](docs.md)
 - [Ai](docs/ai.md): AI Notes
 - [Autorouter](docs/autorouter.md): Auto Router
 - [Board Layout](docs/board_layout.md): Board Layout
@@ -39,6 +39,7 @@
 - [Import Kicad](examples/import-kicad.md): Import a KiCAD Board
 - [Jig](examples/jig.md): Test jig/multi-board creation
 - [Jlcpcb Export](examples/jlcpcb-export.md): JLCPCB-Export
+- [Multilayer Board](examples/multilayer-board.md): Multilayer Boards
 - [Ngspice](examples/ngspice.md): ngspice
 - [Packages](examples/packages.md): Adding typeCAD Packages
 - [Voltage Divider](examples/voltage-divider.md): Make a Voltage Divider in **type**CAD
@@ -49,7 +50,7 @@
 - [Command Line Suite](news/command-line-suite.md): A suite of command-line tools
 - [Hardware Contract](news/hardware-contract.md): Bridging Hardware and Firmware
 - [Introducing The Autorouter](news/introducing-the-autorouter.md): Introducing the Auto Router
-- [Irregular Outlines](news/irregular-outlines.md): Boards beyond the rectangle
+- [Irregular Outlines](news/irregular-outlines.md): Irregular board outlines
 - [Jlcpcb Parts](news/jlcpcb-parts.md): JLCPCB Parts
 - [Kicad 10 Compatibility](news/kicad-10-compatibility.md): KiCad 10 Compatibility
 - [Kicad Symbols](news/kicad-symbols.md): Search for operational amplifier symbols
@@ -57,12 +58,14 @@
 - [Layout Improvements](news/layout-improvements.md): Major improvements in typeCAD PCB layout
 - [Llms Txt](news/llms-txt.md): The llms.txt standard
 - [Mcp](news/mcp.md): typeCAD MCP Server
+- [Multilayer Boards](news/multilayer-boards.md): Boards grew a third dimension
 - [New Site](news/new-site.md): cover: https://unsplash.com/photos/b0p818k8Ok8/download?ixid=M3wxMjA3fDB8MXxjb2xsZWN0aW9ufDh8MjU1MTgzMXx8fHx8Mnx8MTcyNTU0MDM2N3w&force=true&w=640
-- [Packages Without Install Scripts](news/package-auto-sync.md): KiCad files sync at build time
+- [Package Auto Sync](news/package-auto-sync.md): Packages without install scripts
 - [Power Aware](news/power-aware.md): Building power aware circuits with typeCAD
 - [Private Npm Packages](news/private-npm-packages.md): Keeping your work private
 - [Schematics](news/schematics.md): Make a schematic file in typeCAD
 - [Simplification](news/simplification.md): Simplification
 - [Tracks](news/tracks.md): Create tracks with typeCAD
+- [V0.3 Release](news/v0.3-release.md): typeCAD 0.3
 - [Package](package.md): npm Packages for Hardware
 - [Packages](packages.md): Packages

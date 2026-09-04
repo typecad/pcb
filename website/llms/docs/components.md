@@ -1,15 +1,10 @@
 # Components
 
-In the [passives](https://www.npmjs.com/package/@typecad/passives) package, components are created with a couple properties that have been predetermined:
-
-- footprint
-- prefix
-
-Doing that takes some of the effort out of creating common components. But all it was really doing was calling the `Component` class with a few properties already set.
+A component is anything that has a KiCAD symbol or footprint, ie. resistors, MCUs, vias, mounting holes or regulatory images. 
 
 ## `Component`
 
-The `Component` class is the base class for all components in **type**CAD. A component is anything added to the board. In KiCAD, it would be anything that has a footprint file associated with it.
+The `Component` class is the base class for all components in **type**CAD.  In KiCAD, it would be anything that has a footprint file associated with it.
 
 ```ts
 import { Component } from '@typecad/typecad';
@@ -79,7 +74,7 @@ Let's look at what's in the `ATtiny85_20S.ts` file that was created to get a bet
 ### `ATtiny85_20S.ts`
 
 ```ts
-import { Component, Pin } from '@typecad/typecad';
+import { Component } from '@typecad/typecad';
 /**
  | Pin # | Name         | Type              |
  | --:   | :--          | :--               |
@@ -93,50 +88,20 @@ import { Component, Pin } from '@typecad/typecad';
  | 1     | _RESET_PB5   | bidirectional     |
  */
 export class ATtiny85_20S extends Component {
-  VCC = new Pin(this.reference, 8, 'power_in', this, {
-    minimum_voltage: -0.5,
-    maximum_voltage: 6,
-    current: 0.2,
-  });
-  GND = new Pin(this.reference, 4, 'power_in', this, {
-    minimum_voltage: -0.5,
-    maximum_voltage: 6,
-    current: 0.2,
-  });
-  AREF_PB0 = new Pin(this.reference, 5, 'bidirectional', this, {
-    minimum_voltage: -0.5,
-    maximum_voltage: 6,
-    current: 0.04,
-  });
-  PB1 = new Pin(this.reference, 6, 'bidirectional', this, {
-    minimum_voltage: -0.5,
-    maximum_voltage: 6,
-    current: 0.04,
-  });
-  PB2 = new Pin(this.reference, 7, 'bidirectional', this, {
-    minimum_voltage: -0.5,
-    maximum_voltage: 6,
-    current: 0.04,
-  });
-  XTAL1_PB3 = new Pin(this.reference, 2, 'bidirectional', this, {
-    minimum_voltage: -0.5,
-    maximum_voltage: 6,
-    current: 0.04,
-  });
-  XTAL2_PB4 = new Pin(this.reference, 3, 'bidirectional', this, {
-    minimum_voltage: -0.5,
-    maximum_voltage: 6,
-    current: 0.04,
-  });
-  _RESET_PB5 = new Pin(this.reference, 1, 'bidirectional', this, {
-    minimum_voltage: -0.5,
-    maximum_voltage: 13,
-    current: 0.04,
-  });
+    VCC = this.pin(8, { type: 'power_in' });
+    GND = this.pin(4, { type: 'power_in' });
+    AREF_PB0 = this.pin(5, { type: 'bidirectional' });
+    PB1 = this.pin(6, { type: 'bidirectional' });
+    PB2 = this.pin(7, { type: 'bidirectional' });
+    XTAL1_PB3 = this.pin(2, { type: 'bidirectional' });
+    XTAL2_PB4 = this.pin(3, { type: 'bidirectional' });
+    _RESET_PB5 = this.pin(1, { type: 'bidirectional' });
 
-  constructor(reference?: string | undefined) {
-    super({ reference, footprint: 'Package_SO:SOIC-8_5.3x5.3mm_P1.27mm' });
-  }
+    constructor(reference?: string | undefined) {
+        super("Package_SO:SOIC-8_5.3x5.3mm_P1.27mm");
+        this.symbol = "MCU_Microchip_ATtiny:ATtiny85-20S";
+        if (reference) this.reference = reference;
+    }
 }
 ```
 
@@ -159,5 +124,3 @@ let u1 = new ATtiny85_20S();
 
 typecad.create(u1);
 ```
-
-       Pins

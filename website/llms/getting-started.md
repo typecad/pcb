@@ -19,8 +19,7 @@ typeCAD is a modern hardware design platform that brings the power of TypeScript
 
 2. **Create Your First Project**
    ```bash
-   npm install @typecad/typecad
-   npx typecad create
+   npx @typecad/typecad create
    ```
 3. **Start Designing**
 - Open the project in VS Code

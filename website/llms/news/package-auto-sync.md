@@ -1,16 +1,3 @@
----
-title: Packages without install scripts
-description: Component packages now sync their KiCad files at build time — no postinstall required
-date: '2026-8-21'
-categories:
-  - typecad
-  - package
-  - npm
-  - security
-published: true
-cover: https://images.unsplash.com/photo-1518770660439-4636190af475?w=640
----
-
 # Packages without install scripts
 
 npm is deprecating `postinstall` and other install scripts for security reasons, and typeCAD packages historically relied on exactly that: a generated `postinstall.js` that copied each package's bundled KiCad symbol and footprint files from `node_modules` into the project's `./build/` directory at install time.

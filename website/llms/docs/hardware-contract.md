@@ -90,5 +90,3 @@ The `typehal` property on `Component` provides pin mapping for contract generati
 ## TypeHAL Integration
 
 The hardware contract is designed to work with TypeHAL, a firmware generation tool that can take the contract JSON and produce initialization code for your MCU. This enables a seamless flow from hardware design to firmware development.
-
-       AI Notes

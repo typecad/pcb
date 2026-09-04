@@ -49,11 +49,12 @@
         {/if}
       </div>
       <div class="hidden text-sm xl:block">
-        <div
-          class="sticky top-16 -mt-10 h-[calc(100vh-3.5rem)] overflow-hidden pt-6">
-          {#key page.url.pathname}
-            <TableOfContents />
-          {/key}
+        <div class="sticky top-16 -mt-10 h-[calc(100vh-3.5rem)] pt-6">
+          <ScrollArea class="h-full">
+            {#key page.url.pathname}
+              <TableOfContents />
+            {/key}
+          </ScrollArea>
         </div>
       </div>
     </main>

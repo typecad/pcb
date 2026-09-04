@@ -64,6 +64,15 @@ This is especially useful when you've moved components in KiCAD and want to capt
 
 Component variable names in the generated code are sourced from the footprint's `Code` property in KiCAD if available, falling back to the KiCAD reference designator (e.g., `C1`, `R1`).
 
+## What Gets Imported
+
+- **Components** — footprints, positions, rotation, front/back side
+- **Tracks and vias** — as `pcb.track()` chains with nets
+- **Zones and rule areas** — filled pours as `pcb.zone()` (polygon geometry, fill settings via the grouped `fill` object) and keepouts as `pcb.keepout()` with their restrictions; unconnected pours import without a net
+- **Board outline** — rectangles, polygons, circles on `Edge.Cuts`
+- **Layer stackup** — as `pcb.stackup(N)` when the board declares one
+- **Text elements** — as `pcb.text()` calls
+
 ## Use Cases
 
 ### Package Creation

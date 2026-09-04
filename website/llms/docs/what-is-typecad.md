@@ -34,7 +34,7 @@ typecad.create(r1, d1, bt1);
 
 ...is the same as this schematic.
 
-![simple led circuit](https://typecad.net/led-circuit.png)
+![simple led circuit](https://typecad.net/led.png)
 
 >The difference is that code can be copied, turned into reusable packages, version controlled, and used within the npm/Node.js system.
 

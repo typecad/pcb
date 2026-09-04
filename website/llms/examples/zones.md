@@ -14,13 +14,11 @@ let pcb = new PCB('zone_example');
 // Create a ground zone on the bottom copper layer
 pcb.zone({
   net: 'GND',
-  layer: 'B.Cu',
-  outline: [
-    { x: 0, y: 0 },
-    { x: 50, y: 0 },
-    { x: 50, y: 30 },
-    { x: 0, y: 30 },
-  ],
+  layers: ['B.Cu'],
+  x: 0,
+  y: 0,
+  width: 50,
+  height: 30,
 });
 
 pcb.create();
@@ -29,8 +27,9 @@ pcb.create();
 ### Zone Options
 
 - **net**: The net name for the zone (e.g., `GND`, `VCC`)
-- **layer**: Copper layer (`F.Cu`, `B.Cu`, or inner layers)
-- **outline**: Array of `{x, y}` points defining the zone boundary
+- **layers**: Array of copper layers (`['F.Cu']`, `['B.Cu']`, or inner layers)
+- **x**, **y**: Position of the zone
+- **width**, **height**: Dimensions of the zone
 
 ## Keepout Zones
 
@@ -43,15 +42,12 @@ let pcb = new PCB('keepout_example');
 
 // Create a keepout zone (e.g., around a sensitive analog section)
 pcb.keepout({
-  outline: [
-    { x: 20, y: 10 },
-    { x: 40, y: 10 },
-    { x: 40, y: 25 },
-    { x: 20, y: 25 },
-  ],
-  tracks: true,
-  vias: true,
-  copper: true,
+  layers: ['F.Cu', 'B.Cu'],
+  x: 20,
+  y: 10,
+  width: 20,
+  height: 15,
+  restrictions: { tracks: true, vias: true, copperpour: true },
 });
 
 pcb.create();
@@ -59,10 +55,10 @@ pcb.create();
 
 ### Keepout Options
 
-- **outline**: Array of `{x, y}` points defining the keepout boundary
-- **tracks**: Keep tracks out of this area
-- **vias**: Keep vias out of this area
-- **copper**: Keep copper fills out of this area
+- **layers**: Array of layers to apply the keepout to
+- **x**, **y**: Position of the keepout zone
+- **width**, **height**: Dimensions of the keepout zone
+- **restrictions**: Object with boolean flags: `tracks`, `vias`, `copperpour`, `pads`, `footprints`
 
 ## Graphics
 
@@ -80,10 +76,10 @@ pcb.line({ start: { x: 0, y: 0 }, end: { x: 10, y: 10 }, layer: 'F.SilkS', width
 pcb.circle({ center: { x: 25, y: 25 }, radius: 5, layer: 'F.SilkS', width: 0.15 });
 
 // Draw a rectangle
-pcb.rect({ start: { x: 0, y: 0 }, end: { x: 20, y: 15 }, layer: 'Edge.Cuts', width: 0.15 });
+pcb.rect({ x: 0, y: 0, width: 20, height: 15, layer: 'Edge.Cuts', strokeWidth: 0.15 });
 
 // Draw text
-pcb.text({ text: 'REV 1.0', at: { x: 5, y: 5 }, layer: 'F.SilkS', size: 1 });
+pcb.text({ text: 'REV 1.0', x: 5, y: 5, layer: 'F.SilkS', width: 1, height: 1 });
 
 pcb.create();
 ```

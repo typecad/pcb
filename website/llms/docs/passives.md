@@ -63,5 +63,3 @@ Sometimes, passive components will have a unique footprint. To use that footprin
 import { Inductor } from '@typecad/passives/0805'
 let l1 = new Inductor({ value: '1uH', footprint: 'unique_inductor_footprint' });
 ```
-
-       Components

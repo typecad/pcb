@@ -79,5 +79,3 @@ if (vin.voltage != 3.3) {
     throw new Error('Voltage must be 3.3v');
 }
 ```
-
-       Connections

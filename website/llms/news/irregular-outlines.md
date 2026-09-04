@@ -1,16 +1,3 @@
----
-title: Irregular board outlines
-description: Boards beyond the rectangle — polygons, circles, cutouts, and free-form line/arc paths
-date: '2026-8-21'
-categories:
-  - typecad
-  - layout
-  - outline
-  - pcb
-published: true
-cover: https://images.unsplash.com/photo-1558618666-fcd25c85f82e?w=640
----
-
 # Irregular board outlines
 
 `pcb.outline()` gives you a filleted rectangle. Real boards are rarely rectangles: they have rounded corners, chamfers, mounting holes, and milled slots for enclosures. typeCAD now ships a full set of Edge.Cuts shape builders for exactly those cases.

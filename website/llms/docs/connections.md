@@ -71,6 +71,4 @@ typecad.named('SCL').net(microcontroller.PB1, sensor.SCL);
 ```
 
 > [!WARNING]
-> **type**CAD merges nets with similar `Pin` connections. If you make a connection to an already connected pin, that newer net will be merged into the existing net. This will mean your `named` net may not keep the name you give it if it is merged with another net later. You'll see a warning in the build output if this happens. 
-
-       Board Layout
+> **type**CAD merges nets with similar `Pin` connections. If you make a connection to an already connected pin, that newer net will be merged into the existing net. This will mean your `named` net may not keep the name you give it if it is merged with another net later. You'll see a warning in the build output if this happens.

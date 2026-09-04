@@ -55,6 +55,14 @@ default), or from the net's [net class](/docs/board_layout#net-classes) if it ha
 been assigned one. Per-route `width` and `clearance` options override them for an
 individual trace.
 
+By default the router uses every copper layer the board declares, minus layers
+dedicated as [planes](/docs/board_layout#planes); pass `layers` to restrict a
+route (e.g. `layers: ['In3.Cu']`). Pass an `impedance` constraint
+(`impedance: { target: 50, tolerance: 5 }`) and the trace widens to hit the
+target computed from the board's [stackup](/docs/board_layout#stackup) — see
+[controlled impedance](/docs/board_layout#controlled-impedance). Router-placed
+vias follow the board's [via policy](/docs/board_layout#via-policy).
+
 ```ts
 let result = await pcb.autorouteBatch([
   { from: mcu.SDA, to: sensor.SDA, name: 'SDA' },

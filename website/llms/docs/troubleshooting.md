@@ -87,5 +87,3 @@ If you're still stuck:
 1. Check the [Examples](/examples) for working code patterns
 2. Join the [Reddit community](https://www.reddit.com/r/typecad/) 
 3. Review the [API documentation](/docs) for correct syntax
-
-       What is typeCAD

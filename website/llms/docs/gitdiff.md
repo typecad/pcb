@@ -64,5 +64,3 @@ await generateDiffs({
   outputHtmlPath: './report.html',
 });
 ```
-
-       DocGen

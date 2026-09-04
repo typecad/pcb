@@ -27,5 +27,3 @@ Files under `./build/lib/` come from two sources: components you add locally via
 
 ## Self-contained
 The entire project is contained in the project folder. Symbols, footprints, 3d files, source files, etc. are all in this project folder.
-
-       Classes

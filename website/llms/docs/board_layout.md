@@ -25,9 +25,11 @@ pcb.create();
 
 Instead of hard-coding millimeter coordinates, use the placement helpers to position components relative to each other and the board edges. All gaps are measured **courtyard edge to courtyard edge**.
 
+Placement values are live and order-independent: they re-read their source (component position or board outline) whenever they are resolved, and every deferred expression is re-resolved at `create()` against final positions. Assign positions in any order — `board()` before the outline, `r2` below `r1` before `r1` moves — and the relationships still hold. Manually moving a component after assigning an expression freezes that axis: the manual value wins. The helpers can be assigned directly: `{ x: sameAs(mh1), y: below(mh1) }` (default gap) as well as `{ x: sameAs(mh1).x, y: below(mh1).by(3) }`.
+
 ### `board()`
 
-Get the board's physical dimensions from the outlines you've defined. Use it to place components at the center, or a fixed distance from any edge.
+Get the board's physical dimensions from the outlines you've defined. Use it to place components at the center, or a fixed distance from any edge. `board()` reads the outline live — call it before or after `pcb.outline()`; values follow the final outline.
 
 ```ts
 import { PCB, board } from '@typecad/typecad';
@@ -183,6 +185,7 @@ pcb.create();
 | `width` | `number` | No | Font width in mm |
 | `height` | `number` | No | Font height in mm |
 | `fontSize` | `number` | No | Font size |
+| `font` | `string` | No | TrueType font face (KiCad `(face ...)`); omit for KiCad's default stroke font |
 | `thickness` | `number` | No | Text stroke thickness |
 | `bold` | `boolean` | No | Bold font style |
 | `italic` | `boolean` | No | Italic font style |
@@ -190,6 +193,14 @@ pcb.create();
 | `show` | `boolean` | No | Visibility toggle |
 
 `fabLayout` additionally accepts an optional `text` field (`string`) that defaults to `${REFERENCE}` when omitted.
+
+To change the silkscreen font, set a TrueType face — the font must be installed on the machine that opens the board (KiCad falls back to its stroke font otherwise):
+
+```ts
+r1.referenceLayout = { x: 0, y: -1.5, font: 'Arial', bold: true, height: 1.2 };
+```
+
+`pcb.text()` accepts the same `font` field.
 
 ## Group or Place Components
 
@@ -384,6 +395,7 @@ Define a class with `pcb.netClass(name, options)`:
 | `clearance` | Copper clearance for nets in this class (mm). Defaults to rules min. |
 | `via_diameter` | Via pad diameter for nets in this class (mm). Defaults to rules min. |
 | `via_drill` | Via drill for nets in this class (mm). Defaults to rules min. |
+| `layers` | Preferred routing layers for nets in this class (e.g. `['In1.Cu']`). Must be declared copper layers. |
 
 Then assign a net to it with `pcb.assign(netDef, className)`. `assign` takes the
 object returned by `pcb.net()` or `pcb.named().net()`, so it works for both
@@ -411,6 +423,19 @@ const sw = pcb.net(regulator.LX, inductor.pin(1));
 pcb.assign(sw, 'power');
 ```
 
+On an N-layer board, a class can also claim preferred routing layers — the
+autorouter anchors the net's through-hole endpoints on the class's layer and
+favors it while routing (a typeCAD routing directive; not written to the
+`.kicad_pro`):
+
+```ts
+let pcb = new PCB('board', { layers: 4 });
+
+// keep the SPI bus on the first inner layer
+pcb.netClass('spi', { layers: ['In1.Cu'] });
+pcb.assign(spiNet, 'spi');
+```
+
 Nets you don't assign fall back to the `Default` class, which mirrors the
 board [design rules](#design-rules). The autorouter resolves a net's class
 automatically and uses its dimensions — a per-route `width` or `clearance`
@@ -424,9 +449,24 @@ thicknesses. KiCad stores it in the `(setup (stackup ...))` block of the
 `.kicad_pcb` and requires it for 4+ layer boards and impedance-controlled
 routing.
 
-typeCAD generates a JLCPCB-standard stackup (FR4, 1oz copper, green mask) with
-one call. The total thickness comes from `pcb.thickness` (default 1.6mm) and
-the copper thickness from `pcb.copper_thickness` (default 35μm):
+The simplest way to build an N-layer board is the `layers` constructor option.
+It is the single source of truth for the board's copper layer set: routing
+defaults, through-hole pad clearance, and layer validation all derive from it.
+
+```ts
+import { PCB } from '@typecad/typecad';
+
+// 4-layer board — routing may use all four copper layers
+let pcb = new PCB('board', { layers: 4 });
+
+// Inspect the resolved copper layers, top to bottom
+pcb.copperLayers; // ['F.Cu', 'In1.Cu', 'In2.Cu', 'B.Cu']
+```
+
+For control over the stackup's materials, use `pcb.stackup()`. typeCAD
+generates a JLCPCB-standard stackup (FR4, 1oz copper, green mask). The total
+thickness comes from `pcb.thickness` (default 1.6mm) and the copper thickness
+from `pcb.copper_thickness` (default 35μm):
 
 ```ts
 import { PCB } from '@typecad/typecad';
@@ -451,11 +491,99 @@ overrides:
 |---|---|
 | `copper_finish` | Copper surface finish, e.g. `"None"`, `"HASL"`, `"ENIG"`. Default `"None"`. |
 | `dielectric_constraints` | Whether dielectric constraints are enforced. Default `false`. |
+| `layers` | Per-layer material overrides, keyed by layer name — see below. |
 
-When you call `pcb.stackup()`, typeCAD regenerates the board's `(layers ...)`
-declaration block to match the copper-layer count (so the layer declarations
+### Per-layer material overrides
+
+Individual layers can override the JLCPCB preset's thickness, material,
+dielectric constant, and loss tangent — keyed by copper layer name
+(`"In1.Cu"`), dielectric name (`"dielectric 2"`), or mask/silk name. Any
+remaining dielectric budget is redistributed across the non-overridden
+dielectrics so the board still totals `pcb.thickness`:
+
+```ts
+let pcb = new PCB('board', { layers: 4 });
+
+pcb.stackup(4, {
+  layers: {
+    'dielectric 1': { thickness: 0.21, epsilon_r: 4.4 },
+    'dielectric 2': { material: 'Rogers 4350B', epsilon_r: 3.48, loss_tangent: 0.0037 },
+  },
+});
+```
+
+### Controlled impedance
+
+`pcb.impedanceWidth(layer, targetOhms)` computes the trace width that hits a
+target characteristic impedance on a copper layer of the board's stackup —
+outer layers are modeled as microstrip, inner layers as symmetric stripline.
+`pcb.route()` uses it automatically when you pass an `impedance` constraint
+(the trace is only ever widened, never below the design-rule floor):
+
+```ts
+// what width hits 50Ω on the first inner layer?
+pcb.impedanceWidth('In1.Cu', 50); // e.g. 0.354 (mm)
+
+// with a ±5Ω tolerance the width snaps to a 0.01mm
+// fabrication grid inside the 50±5Ω band:
+pcb.impedanceWidth('F.Cu', 50, 5);
+
+// autoroute a net at 100Ω (tolerance optional); if the design-rule
+// floor forces the trace outside the band, routing warns with the
+// achieved impedance
+pcb.route(clk, { impedance: { target: 100, tolerance: 10 } });
+```
+
+Accuracy is engineering-grade (typically within fab tolerance), not
+field-solver grade. An unreachable target (e.g. 1Ω) throws a `RangeError`.
+
+When you configure the layer count (either way), typeCAD regenerates the
+board's `(layers ...)` declaration block to match (so the layer declarations
 and the stackup stay consistent) and writes the board thickness into
 `(general (thickness ...))`.
+
+Every layer referenced by a zone, keepout, via, or route is validated against
+the declared layer set when the board is written — referencing `"In3.Cu"` on a
+4-layer board fails with an actionable error instead of producing a broken
+`.kicad_pcb`.
+
+### Planes
+
+`pcb.plane(net, layer)` dedicates a copper layer to a net. At `create()` the
+plane becomes a board-covering filled zone on that layer (through-hole pads
+connect solidly; SMD pads reach it through vias), and the layer is removed
+from the autorouter's default routing layers:
+
+```ts
+import { PCB } from '@typecad/typecad';
+
+let pcb = new PCB('board', { layers: 4 });
+pcb.outline(0, 0, 50, 40);
+
+pcb.plane('GND', 'In1.Cu');
+pcb.plane('+3V3', 'In2.Cu');
+```
+
+The plane extent comes from the board outline, so call `pcb.outline()` before
+`create()`. A layer can carry only one plane; signal routes stay off plane
+layers unless a `pcb.route()` call explicitly asks for them.
+
+### Via policy
+
+Vias placed by the autorouter follow a manufacturing policy set with
+`pcb.viaPolicy()`:
+
+```ts
+// default: every router via spans F.Cu→B.Cu (through via) —
+// always manufacturable at budget fabs
+pcb.viaPolicy({ type: 'through' });
+
+// opt in to blind/buried vias: the router uses the exact layer
+// pair a route transitions between, up to `maxSpan` layer
+// boundaries (default 2); deeper transitions fall back to through vias.
+// Via cost scales with span depth, so the router prefers shallow vias.
+pcb.viaPolicy({ type: 'blind-buried', maxSpan: 2 });
+```
 
 ## Tracks
 
@@ -534,6 +662,89 @@ pcb.keepout({
 pcb.create();
 ```
 
+### Zone options
+
+Beyond the rectangle (`x`/`y`/`width`/`height`), a zone accepts an explicit
+polygon via `points` (≥ 3 vertices — provide one or the other, not both).
+`net` (or `pin`) attaches the pour to a net; omitting both creates an
+unconnected pour (KiCad net 0):
+
+```ts
+// L-shaped ground pour
+pcb.zone({
+  net: 'GND',
+  layers: ['F.Cu'],
+  points: [
+    { x: 10, y: 10 },
+    { x: 20, y: 10 },
+    { x: 20, y: 14 },
+    { x: 14, y: 14 },
+    { x: 14, y: 20 },
+    { x: 10, y: 20 },
+  ],
+});
+```
+
+Commonly used options:
+
+| Option | Description |
+|---|---|
+| `points` | Arbitrary polygon geometry (≥ 3 vertices); alternative to the rectangle. |
+| `fill` | Grouped fill settings (see below); `false` creates an unfilled outline. |
+| `priority` | Zone priority — higher-priority zones win overlaps. Default 0. |
+| `clearance` | Clearance from pads. Default 0.2mm. |
+| `connectPads` | `'thru_hole_only'`, `'full'`, or `'no'` pad connections. Default: thermal relief. |
+| `minThickness` | Minimum fill thickness. Default 0.1778mm. |
+| `filledAreasThickness` | Whether filled areas use the minimum thickness. |
+| `name` / `locked` | Zone name and lock flag. |
+
+Fill settings can be passed grouped in a single optional `fill` object —
+mirroring KiCad's `(fill ...)` block — instead of one flat option at a time:
+
+```ts
+pcb.zone({
+  net: 'GND',
+  layers: ['F.Cu'],
+  x: 0, y: 0, width: 50, height: 30,
+  fill: {
+    mode: 'hatched',        // 'solid' (default) or 'hatched'
+    thermalGap: 0.3,
+    thermalBridgeWidth: 0.5,
+    smoothing: 'fillet',
+    smoothingRadius: 0.5,
+    islandRemovalMode: 2,   // 0 = keep, 1 = always remove, 2 = below islandAreaMin
+    islandAreaMin: 4,
+    hatchThickness: 0.2,    // hatched fill only (alias: hatchWidth —)
+    hatchGap: 0.8,          // KiCad's dialog calls hatchThickness "Hatch width"
+    hatchOrientation: 45,
+    hatchSmoothingLevel: 1,
+    hatchSmoothingValue: 0.1,
+    hatchBorderAlgorithm: 'min_thickness',
+    hatchMinHoleArea: 0.5,
+    arcSegments: 24,
+  },
+});
+
+// outline-only zone (no fill):
+pcb.zone({ net: 'GND', layers: ['B.Cu'], x: 0, y: 40, width: 20, height: 10, fill: false });
+```
+
+The same settings are also accepted as flat zone options
+(`fillMode`, `thermalGap`, `islandRemovalMode`, `hatchThickness`, ...); when
+both are given, the `fill` object wins per field. `hatchWidth` is accepted
+everywhere `hatchThickness` is — KiCad's zone dialog labels the setting
+"Hatch width" while the file token is `hatch_thickness`; the file-token name
+wins when both are given at the same level.
+
+### Keepout options
+
+Keepouts take the same geometry (rectangle or `points`) plus per-category
+`restrictions` (`tracks`, `vias`, `pads`, `copperpour`, `footprints` — all
+default to restricted) and the rule-area `placement` option (also applies to
+footprints placed from a schematic sheet; default false).
+
+See also [planes](#planes) for dedicating a whole copper layer to a net.
+
 ## Graphics
 
 Draw graphical elements on the PCB:
@@ -546,10 +757,62 @@ let pcb = new PCB('graphics_example');
 pcb.line({ start: { x: 0, y: 0 }, end: { x: 10, y: 10 }, layer: 'F.SilkS', width: 0.15 });
 pcb.circle({ center: { x: 25, y: 25 }, radius: 5, layer: 'F.SilkS', width: 0.15 });
 pcb.rect({ x: 0, y: 0, width: 20, height: 15, layer: 'Edge.Cuts', strokeWidth: 0.15 });
+pcb.arc({ start: { x: 10, y: 10 }, mid: { x: 13.5, y: 13.5 }, end: { x: 15, y: 10 }, layer: 'F.SilkS', width: 0.15 });
 pcb.text({ text: 'REV 1.0', x: 5, y: 5, layer: 'F.SilkS', width: 1, height: 1 });
 
 pcb.create();
 ```
+
+Arcs use KiCad's three-point definition: `start`, `mid` (a point on the arc),
+and `end`.
+
+## Via Stitching
+
+`pcb.stitch(net, options?)` ties a net across layers with a grid of vias —
+the standard way to connect outer-layer pours to inner [planes](#planes).
+Like `pcb.plane()`, stitching is a declaration: the vias are placed at
+`create()` time against the complete board contents — every component
+passed to `create()` is considered, net or no net, so nothing needs to be
+registered beforehand. Candidates on a pitch grid are skipped when they
+would violate clearance against existing copper (pads, tracks, vias, zones,
+keepouts) on any layer the stitch spans; same-net pours never block.
+Component footprints block stitches regardless of net (full keep-clear
+extent — a mounting hole's screw-head zone, not just its pad), and board
+text blocks stitches on its side of the board so silkscreen stays readable.
+A `pitch` smaller than the via size plus clearance is rejected at the call.
+
+```ts
+pcb.plane('GND', 'In2.Cu');
+pcb.zone({ net: 'GND', layers: ['F.Cu'], x: 0, y: 0, width: 50, height: 30 });
+
+pcb.stitch('GND', { pitch: 1.5 }); // vias placed at create()
+```
+
+| Option | Description |
+|---|---|
+| `layers` | The layers the vias span (default: all copper layers, i.e. through vias). A partial span like `['F.Cu', 'In1.Cu']` emits blind vias over exactly that range. |
+| `pitch` | Grid spacing in mm. Default 1.5. Must be at least `size` + clearance. |
+| `size` / `drill` | Via dimensions. Default: design-rule minimums. |
+| `area` | Restrict stitching to a region (default: the board outline). |
+| `margin` | Inset from the board edge in mm. Default 0.5. |
+
+## Teardrops
+
+`pcb.teardrops(options?)` reinforces track-to-via junctions. It writes
+KiCad's teardrop tool settings to the `.kicad_pro` (so boards open
+preconfigured) and, for vias placed by the autorouter, generates the teardrop
+geometry itself — tapered side segments on each layer the via connects:
+
+```ts
+pcb.teardrops();                                  // defaults: vias + pads, round, ≤1mm
+pcb.teardrops({ maxLength: 0.8, shape: 'rect' }); // straight-sided wedges
+```
+
+| Option | Description |
+|---|---|
+| `vias` / `throughHolePads` / `smdPads` / `trackEnds` | Which junctions get teardrops. Defaults: all but `trackEnds`. |
+| `shape` | `'round'` (curved sides, default) or `'rect'` (straight-sided). |
+| `maxLength` / `maxHeight` | Wedge caps in mm. Defaults 1.0 / 2.0. |
 
 ## Round-Trip Editing with `typecad import`
 

@@ -36,8 +36,8 @@ export interface IStitchOptions {
   size?: number;
   /** Stitch via drill in mm. Default: rules min_through_hole_diameter. */
   drill?: number;
-  /** Restrict stitching to a region (default: the board outline). */
-  area?: { x: number; y: number; width: number; height: number };
+  /** Restrict stitching to a region (default: the board outline); accepts bounds-style rectangles (e.g. `pcb.board`). */
+  area?: import('./pcb_interfaces.js').IBoundsLike;
   /** Inset from the board edge in mm. Default 0.5. */
   margin?: number;
 }
@@ -132,7 +132,11 @@ function placeStitchVias(pcb: PCB, net: string, options: IStitchOptions, placedU
 
   // Region: explicit area, or the board outline inset by the margin.
   const state: PcbInternalState = getPcbState(pcb);
-  let region = options.area;
+  let region = options.area
+    ? 'left' in options.area && 'top' in options.area
+      ? { x: options.area.left, y: options.area.top, width: options.area.width, height: options.area.height }
+      : options.area
+    : undefined;
   if (!region) {
     const bounds = state.getOutlineBounds();
     if (!bounds) {

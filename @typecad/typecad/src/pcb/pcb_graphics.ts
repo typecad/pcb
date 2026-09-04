@@ -181,6 +181,7 @@ export function pcbCircle(
 export function pcbRect(
   state: PcbInternalState,
   options: {
+    bounds?: import('./pcb_interfaces.js').IBoundsLike;
     x?: number;
     y?: number;
     width?: number;
@@ -194,6 +195,7 @@ export function pcbRect(
   },
 ): void {
   const {
+    bounds,
     x,
     y,
     width,
@@ -206,6 +208,22 @@ export function pcbRect(
     locked = false,
   } = options;
 
+  // Expand bounds (e.g. pcb.board) to the rect form first
+  let rectX = x;
+  let rectY = y;
+  let rectW = width;
+  let rectH = height;
+  if (bounds !== undefined) {
+    const r =
+      'left' in bounds && 'top' in bounds
+        ? { x: bounds.left, y: bounds.top, width: bounds.width, height: bounds.height }
+        : { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height };
+    rectX = r.x;
+    rectY = r.y;
+    rectW = r.width;
+    rectH = r.height;
+  }
+
   // Determine start and end points
   let startPoint: { x: number; y: number };
   let endPoint: { x: number; y: number };
@@ -213,12 +231,12 @@ export function pcbRect(
   if (start !== undefined && end !== undefined) {
     startPoint = start;
     endPoint = end;
-  } else if (x !== undefined && y !== undefined && width !== undefined && height !== undefined) {
-    startPoint = { x, y };
-    endPoint = { x: x + width, y: y + height };
+  } else if (rectX !== undefined && rectY !== undefined && rectW !== undefined && rectH !== undefined) {
+    startPoint = { x: rectX, y: rectY };
+    endPoint = { x: rectX + rectW, y: rectY + rectH };
   } else {
     logger.error(
-      `[PCB RECT] ERROR: Must provide either (x, y, width, height) or (start, end) parameters${formatCallSite(getCallSite())}`,
+      `[PCB RECT] ERROR: Must provide 'bounds', (x, y, width, height), or (start, end) parameters${formatCallSite(getCallSite())}`,
     );
     return;
   }

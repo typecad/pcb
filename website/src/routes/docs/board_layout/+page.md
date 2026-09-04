@@ -776,9 +776,15 @@ pcb.create();
 ### Zone options
 
 Beyond the rectangle (`x`/`y`/`width`/`height`), a zone accepts an explicit
-polygon via `points` (≥ 3 vertices — provide one or the other, not both).
+polygon via `points` (≥ 3 vertices), or a bounds rectangle via `bounds`
+(≥ e.g. `bounds: pcb.board` — provide one form, not combinations).
 `net` (or `pin`) attaches the pour to a net; omitting both creates an
 unconnected pour (KiCad net 0):
+
+```ts
+// full-board pour, no field mapping
+pcb.zone({ net: 'GND', bounds: pcb.board, layers: ['F.Cu', 'B.Cu'] });
+```
 
 <ScrollArea orientation="both">
 
@@ -805,6 +811,7 @@ Commonly used options:
 | Option | Description |
 |---|---|
 | `points` | Arbitrary polygon geometry (≥ 3 vertices); alternative to the rectangle. |
+| `bounds` | Bounds rectangle — `bounds: pcb.board` passes the outline straight through. |
 | `fill` | Grouped fill settings (see below); `false` creates an unfilled outline. |
 | `priority` | Zone priority — higher-priority zones win overlaps. Default 0. |
 | `clearance` | Clearance from pads. Default 0.2mm. |
@@ -857,7 +864,7 @@ wins when both are given at the same level.
 
 ### Keepout options
 
-Keepouts take the same geometry (rectangle or `points`) plus per-category
+Keepouts take the same geometry (`bounds`, rectangle, or `points`) plus per-category
 `restrictions` (`tracks`, `vias`, `pads`, `copperpour`, `footprints` — all
 default to restricted) and the rule-area `placement` option (also applies to
 footprints placed from a schematic sheet; default false).
@@ -920,7 +927,7 @@ pcb.stitch('GND', { pitch: 1.5 }); // vias placed at create()
 | `layers` | The layers the vias span (default: all copper layers, i.e. through vias). A partial span like `['F.Cu', 'In1.Cu']` emits blind vias over exactly that range. |
 | `pitch` | Grid spacing in mm. Default 1.5. Must be at least `size` + clearance. |
 | `size` / `drill` | Via dimensions. Default: design-rule minimums. |
-| `area` | Restrict stitching to a region (default: the board outline). |
+| `area` | Restrict stitching to a region (default: the board outline); accepts bounds-style rectangles. |
 | `margin` | Inset from the board edge in mm. Default 0.5. |
 
 ## Teardrops

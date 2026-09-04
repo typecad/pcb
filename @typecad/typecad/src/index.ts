@@ -49,4 +49,5 @@ export type { ISchematicNetDefinition } from './net_manager.js';
 export { clearSourceCache } from './utils/source_inspector.js';
 
 export type { PlacementBuilder, BoardBounds, SameAsResult, PlacementNumber, PlacementInput } from './placement.js';
+export type { IBoundsLike } from './pcb/pcb_interfaces.js';
 export type { IPoint, OutlinePathBuilder } from './pcb/pcb_outline.js';

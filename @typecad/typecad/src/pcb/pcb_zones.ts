@@ -1,11 +1,19 @@
 import logger from '../utils/logging.js';
 import { IFilledZone, IKeepoutZone, IOutline, OutlineElement } from './pcb_interfaces.js';
-import type { IZoneFillOptions } from './pcb_interfaces.js';
+import type { IZoneFillOptions, IBoundsLike } from './pcb_interfaces.js';
 import type { PcbInternalState } from './pcb_state.js';
 import { generateUuid, formatCallSite } from './pcb_utils.js';
 import { Pin } from '../pin.js';
 import { getCallSite } from '../utils/stack_trace.js';
 import { BoardCreationError } from '../utils/errors.js';
+
+/** Expand a bounds-like rectangle ({left,top,...} or {x,y,...}) to x/y/width/height. */
+function boundsToRect(bounds: IBoundsLike): { x: number; y: number; width: number; height: number } {
+  if ('left' in bounds && 'top' in bounds) {
+    return { x: bounds.left, y: bounds.top, width: bounds.width, height: bounds.height };
+  }
+  return { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height };
+}
 
 /**
  * PCB Zone Management Module
@@ -91,10 +99,11 @@ export function zone(
     pin?: Pin;
     net?: string;
 
-    // Geometry: either an explicit polygon (points, >= 3 vertices) or a
-    // rectangle (all four of x/y/width/height)
+    // Geometry: an explicit polygon (points, >= 3 vertices), a bounds
+    // rectangle (bounds), or explicit x/y/width/height
     layers: string[];
     points?: Array<{ x: number; y: number }>;
+    bounds?: IBoundsLike;
     x?: number;
     y?: number;
     width?: number;
@@ -152,6 +161,7 @@ export function zone(
     net,
     layers,
     points,
+    bounds,
     x,
     y,
     width,
@@ -223,9 +233,27 @@ export function zone(
     return;
   }
 
-  // Geometry: an explicit polygon (points) or a rectangle (all four of
-  // x/y/width/height). The bounding box of either fills x/y/width/height so
-  // obstacle building and outline math work identically.
+  // Geometry: a bounds rectangle (e.g. pcb.board), an explicit polygon
+  // (points), or explicit x/y/width/height. Bounds expand to the rect form
+  // first; the bounding box of any form fills x/y/width/height so obstacle
+  // building and outline math work identically.
+  let rectX = x;
+  let rectY = y;
+  let rectW = width;
+  let rectH = height;
+  if (bounds !== undefined) {
+    if (x !== undefined || y !== undefined || width !== undefined || height !== undefined) {
+      logger.error(
+        `[PCB ZONE] ERROR: Provide 'bounds', 'points', or (x, y, width, height) — not combinations${formatCallSite(getCallSite())}`,
+      );
+      return;
+    }
+    const r = boundsToRect(bounds);
+    rectX = r.x;
+    rectY = r.y;
+    rectW = r.width;
+    rectH = r.height;
+  }
   let polygon: Array<{ x: number; y: number }>;
   if (points !== undefined) {
     if (
@@ -238,23 +266,23 @@ export function zone(
       );
       return;
     }
-    if (x !== undefined || y !== undefined || width !== undefined || height !== undefined) {
+    if (bounds !== undefined || x !== undefined || y !== undefined || width !== undefined || height !== undefined) {
       logger.error(
-        `[PCB ZONE] ERROR: Provide either 'points' or (x, y, width, height), not both${formatCallSite(getCallSite())}`,
+        `[PCB ZONE] ERROR: Provide 'bounds', 'points', or (x, y, width, height) — not combinations${formatCallSite(getCallSite())}`,
       );
       return;
     }
     polygon = points.map((p) => ({ x: p.x, y: p.y }));
-  } else if (x !== undefined && y !== undefined && width !== undefined && height !== undefined) {
+  } else if (rectX !== undefined && rectY !== undefined && rectW !== undefined && rectH !== undefined) {
     polygon = [
-      { x, y },
-      { x: x + width, y },
-      { x: x + width, y: y + height },
-      { x, y: y + height },
+      { x: rectX, y: rectY },
+      { x: rectX + rectW, y: rectY },
+      { x: rectX + rectW, y: rectY + rectH },
+      { x: rectX, y: rectY + rectH },
     ];
   } else {
     logger.error(
-      `[PCB ZONE] ERROR: Zone geometry requires either 'points' (>= 3 vertices) or all of x, y, width, height${formatCallSite(getCallSite())}`,
+      `[PCB ZONE] ERROR: Zone geometry requires 'bounds', 'points' (>= 3 vertices), or all of x, y, width, height${formatCallSite(getCallSite())}`,
     );
     return;
   }
@@ -469,10 +497,11 @@ export function materializePlanes(state: PcbInternalState): void {
 export function keepout(
   state: PcbInternalState,
   options: {
-    // Geometry: either an explicit polygon (points, >= 3 vertices) or a
-    // rectangle (all four of x/y/width/height)
+    // Geometry: an explicit polygon (points, >= 3 vertices), a bounds
+    // rectangle (bounds), or explicit x/y/width/height
     layers: string[];
     points?: Array<{ x: number; y: number }>;
+    bounds?: IBoundsLike;
     x?: number;
     y?: number;
     width?: number;
@@ -504,6 +533,7 @@ export function keepout(
   const {
     layers,
     points,
+    bounds,
     x,
     y,
     width,
@@ -517,7 +547,24 @@ export function keepout(
     hatchPitch = 0.508,
   } = options;
 
-  // Geometry: same contract as zone() — explicit polygon or rectangle
+  // Geometry: same contract as zone() — bounds, explicit polygon, or rectangle
+  let rectX = x;
+  let rectY = y;
+  let rectW = width;
+  let rectH = height;
+  if (bounds !== undefined) {
+    if (x !== undefined || y !== undefined || width !== undefined || height !== undefined) {
+      logger.error(
+        `[PCB KEEPOUT] ERROR: Provide 'bounds', 'points', or (x, y, width, height) — not combinations${formatCallSite(getCallSite())}`,
+      );
+      return;
+    }
+    const r = boundsToRect(bounds);
+    rectX = r.x;
+    rectY = r.y;
+    rectW = r.width;
+    rectH = r.height;
+  }
   let polygon: Array<{ x: number; y: number }>;
   if (points !== undefined) {
     if (
@@ -530,23 +577,23 @@ export function keepout(
       );
       return;
     }
-    if (x !== undefined || y !== undefined || width !== undefined || height !== undefined) {
+    if (bounds !== undefined || x !== undefined || y !== undefined || width !== undefined || height !== undefined) {
       logger.error(
-        `[PCB KEEPOUT] ERROR: Provide either 'points' or (x, y, width, height), not both${formatCallSite(getCallSite())}`,
+        `[PCB KEEPOUT] ERROR: Provide 'bounds', 'points', or (x, y, width, height) — not combinations${formatCallSite(getCallSite())}`,
       );
       return;
     }
     polygon = points.map((p) => ({ x: p.x, y: p.y }));
-  } else if (x !== undefined && y !== undefined && width !== undefined && height !== undefined) {
+  } else if (rectX !== undefined && rectY !== undefined && rectW !== undefined && rectH !== undefined) {
     polygon = [
-      { x, y },
-      { x: x + width, y },
-      { x: x + width, y: y + height },
-      { x, y: y + height },
+      { x: rectX, y: rectY },
+      { x: rectX + rectW, y: rectY },
+      { x: rectX + rectW, y: rectY + rectH },
+      { x: rectX, y: rectY + rectH },
     ];
   } else {
     logger.error(
-      `[PCB KEEPOUT] ERROR: Keepout geometry requires either 'points' (>= 3 vertices) or all of x, y, width, height${formatCallSite(getCallSite())}`,
+      `[PCB KEEPOUT] ERROR: Keepout geometry requires 'bounds', 'points' (>= 3 vertices), or all of x, y, width, height${formatCallSite(getCallSite())}`,
     );
     return;
   }

@@ -740,6 +740,16 @@ export interface IZoneFillOptions {
   hatchMinHoleArea?: number;
 }
 
+/**
+ * Rectangle geometry by bounds: anything with `left`/`top`/`width`/`height`
+ * (e.g. `pcb.board`) or `x`/`y`/`width`/`height`. Accepted wherever a zone,
+ * keepout, rect, or stitch area takes an explicit rectangle, so board-state
+ * geometry passes through without field-by-field mapping.
+ */
+export type IBoundsLike =
+  | { left: number; top: number; width: number; height: number }
+  | { x: number; y: number; width: number; height: number };
+
 export interface IPcbZoneOptions {
   pin?: Pin;
   net?: string;
@@ -749,6 +759,8 @@ export interface IPcbZoneOptions {
    * x/y/width/height rectangle — provide one or the other, not both.
    */
   points?: Array<{ x: number; y: number }>;
+  /** Bounds rectangle (e.g. `pcb.board`); alternative to points or x/y/width/height. */
+  bounds?: IBoundsLike;
   x?: number;
   y?: number;
   width?: number;
@@ -795,6 +807,8 @@ export interface IPcbKeepoutOptions {
   layers: string[];
   /** Arbitrary polygon geometry (>= 3 vertices); alternative to the rectangle. */
   points?: Array<{ x: number; y: number }>;
+  /** Bounds rectangle (e.g. `pcb.board`); alternative to points or x/y/width/height. */
+  bounds?: IBoundsLike;
   x?: number;
   y?: number;
   width?: number;
@@ -834,6 +848,8 @@ export interface IPcbCircleOptions {
 }
 
 export interface IPcbRectOptions {
+  /** Bounds rectangle (e.g. `pcb.board`); alternative to x/y/width/height. */
+  bounds?: IBoundsLike;
   x?: number;
   y?: number;
   width?: number;

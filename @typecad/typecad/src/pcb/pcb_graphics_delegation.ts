@@ -8,6 +8,7 @@ import type {
   IPcbRectOptions,
   IPcbPolyOptions,
   IPcbArcOptions,
+  IBoundsLike,
 } from './pcb_interfaces.js';
 import { generateUuid } from './pcb_utils.js';
 import { pcbLine, pcbCircle, pcbRect, pcbPoly, pcbOutline, pcbText, pcbArc } from './pcb_graphics.js';
@@ -25,11 +26,20 @@ export function pcbTextWithOffset(state: PcbInternalState, options: IGrTextOptio
   pcbText(state, modifiedOptions);
 }
 
+/** Shift a bounds-like rectangle by the active offset (group placement). */
+function shiftBounds(bounds: IBoundsLike, dx: number, dy: number): IBoundsLike {
+  if ('left' in bounds && 'top' in bounds) {
+    return { left: bounds.left + dx, top: bounds.top + dy, width: bounds.width, height: bounds.height };
+  }
+  return { x: bounds.x + dx, y: bounds.y + dy, width: bounds.width, height: bounds.height };
+}
+
 export function pcbZoneWithOffset(state: PcbInternalState, options: IPcbZoneOptions): void {
   const modifiedOptions = {
     ...options,
     ...(options.x !== undefined ? { x: options.x + state.currentOffset.x } : {}),
     ...(options.y !== undefined ? { y: options.y + state.currentOffset.y } : {}),
+    ...(options.bounds ? { bounds: shiftBounds(options.bounds, state.currentOffset.x, state.currentOffset.y) } : {}),
     ...(options.points
       ? { points: options.points.map((p) => ({ x: p.x + state.currentOffset.x, y: p.y + state.currentOffset.y })) }
       : {}),
@@ -42,6 +52,7 @@ export function pcbKeepoutWithOffset(state: PcbInternalState, options: IPcbKeepo
     ...options,
     ...(options.x !== undefined ? { x: options.x + state.currentOffset.x } : {}),
     ...(options.y !== undefined ? { y: options.y + state.currentOffset.y } : {}),
+    ...(options.bounds ? { bounds: shiftBounds(options.bounds, state.currentOffset.x, state.currentOffset.y) } : {}),
     ...(options.points
       ? { points: options.points.map((p) => ({ x: p.x + state.currentOffset.x, y: p.y + state.currentOffset.y })) }
       : {}),
@@ -73,6 +84,9 @@ export function pcbRectWithOffset(state: PcbInternalState, options: IPcbRectOpti
   const modifiedOptions = { ...options };
   if (modifiedOptions.x !== undefined) modifiedOptions.x += state.currentOffset.x;
   if (modifiedOptions.y !== undefined) modifiedOptions.y += state.currentOffset.y;
+  if (modifiedOptions.bounds) {
+    modifiedOptions.bounds = shiftBounds(modifiedOptions.bounds, state.currentOffset.x, state.currentOffset.y);
+  }
   if (modifiedOptions.start) {
     modifiedOptions.start = {
       x: modifiedOptions.start.x + state.currentOffset.x,

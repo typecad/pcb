@@ -28,7 +28,7 @@ j1.pcb = {x: typecad.board.sameAs(mh1), y: typecad.board.below(mh1).by(1), rotat
 j2.pcb = {x: typecad.board.sameAs(mh2), y: typecad.board.below(mh2).by(1), rotation: -90};
 
 // typecad.plane('GND', 'F.Cu');
-typecad.zone({net: 'GND', x: typecad.board.left, y: typecad.board.top, width: typecad.board.width, height: typecad.board.height, layers: ['F.Cu', 'B.Cu'], fillMode: 'hatched', hatchGap: 0.5, hatchThickness: 0.25, })
+typecad.zone({net: 'GND', bounds: typecad.board, layers: ['F.Cu', 'B.Cu'], fillMode: 'hatched', hatchGap: 0.5, hatchThickness: 0.25, })
 typecad.text({ text: 'OCR A Std 0123', x: 150, y: 112, layer: 'F.SilkS', font: 'OCR A Std', width: 1.5, height: 1.5 });
 typecad.stitch('GND', { pitch: 2.5, margin: 5,  });
 typecad.create(mh1, mh2, mh3, mh4, j1, j2);

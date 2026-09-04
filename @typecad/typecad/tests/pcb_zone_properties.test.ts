@@ -454,3 +454,57 @@ describe('hatchWidth alias (KiCad dialog naming)', () => {
     }
   });
 });
+
+describe('bounds geometry (pcb.board passthrough)', () => {
+  const boardName = 'zone_bounds';
+
+  beforeEach(() => {
+    try {
+      fs.mkdirSync(buildDir);
+    } catch {
+      /* ignore */
+    }
+  });
+  afterEach(() => {
+    for (const ext of ['kicad_pcb', 'kicad_sch', 'kicad_pro', 'net', 'csv']) {
+      try {
+        fs.rmSync(`${buildDir}/${boardName}.${ext}`);
+      } catch {
+        /* ignore */
+      }
+    }
+  });
+
+  it('zone/keepout/rect accept a bounds rectangle identical to the rect form', () => {
+    const bounds = { left: 10, top: 20, width: 30, height: 15 };
+    const a = new PcbInternalState({});
+    zone(a, { net: 'GND', layers: ['F.Cu'], bounds });
+    const b = new PcbInternalState({});
+    zone(b, { net: 'GND', layers: ['F.Cu'], x: 10, y: 20, width: 30, height: 15 });
+    expect(a.zones[0].polygon).toEqual(b.zones[0].polygon);
+    expect(a.zones[0].width).toBe(30);
+
+    const ka = new PcbInternalState({});
+    keepout(ka, { layers: ['F.Cu'], bounds });
+    expect(ka.keepoutZones[0].width).toBe(30);
+  });
+
+  it('zone accepts pcb.board directly and tracks the outline', () => {
+    const pcb = new PCB(boardName);
+    pcb.outline(127.38, 85.9, 45, 30);
+    const c = padComponent();
+    pcb.add(c);
+    pcb.zone({ net: 'GND', bounds: pcb.board, layers: ['F.Cu', 'B.Cu'] });
+    pcb.create(c);
+    const board = fs.readFileSync(`${buildDir}/${boardName}.kicad_pcb`, 'utf8');
+    // full-outline pour: vertices at the outline corners
+    expect(board).toMatch(/\(xy 127\.38 85\.9\)/);
+    expect(board).toMatch(/\(xy 172\.38 115\.9\)/);
+  });
+
+  it('rejects bounds combined with x/y', () => {
+    const state = new PcbInternalState({});
+    zone(state, { net: 'GND', layers: ['F.Cu'], bounds: { left: 0, top: 0, width: 5, height: 5 }, x: 1 } as any);
+    expect(state.zones).toHaveLength(0);
+  });
+});

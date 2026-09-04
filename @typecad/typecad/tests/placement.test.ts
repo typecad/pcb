@@ -7,6 +7,7 @@ import { PcbInternalState } from '../src/pcb/pcb_state.js';
 import { Schematic } from '../src/schematic.js';
 import { PCB } from '../src/pcb/pcb.js';
 import { clearFootprintBoundsCache, getFootprintBounds } from '../src/pcb/footprint_bounds.js';
+import logger from '../src/utils/logging.js';
 
 const buildDir = './build';
 
@@ -710,5 +711,83 @@ describe('PCB placement surface (methods)', () => {
     r2.pcb = { x: pcb.board.sameAs(r1), y: pcb.board.below(r1) };
     pcb.create(r1, r2);
     expect(r2.pcb.y).toBeGreaterThan(10);
+  });
+});
+
+describe('placement DX: coercion errors, arithmetic, centered, bounds warnings', () => {
+  const pcb = new PCB('dx_gaps');
+  pcb.outline(0, 0, 100, 50);
+
+  it('names an un-called placement helper instead of dumping a function', () => {
+    const r = new Resistor();
+    expect(() => (r.pcb = { x: 5, y: (pcb.board as any).fromLeft })).toThrow(
+      /received the function "fromLeft".*did you mean to call it/s,
+    );
+    expect(() => (r.pcb = { x: 5, y: (pcb.board as any).fromTop })).toThrow(/"fromTop"/);
+  });
+
+  it('rejects garbage inputs with the axis and a hint', () => {
+    const r = new Resistor();
+    expect(() => (r.pcb = { x: '10', y: 5 } as any)).toThrow(/pcb\.x .* got string/);
+    expect(() => (r.pcb = { x: 5, y: { nope: 1 } } as any)).toThrow(/no usable y value/);
+    expect(() => (r.pcb = { x: 5, y: null as any })).toThrow(/pcb\.y .* got null/);
+  });
+
+  it('plus/minus nudges stay live through create()', () => {
+    const r1 = new Resistor({ pcb: { x: 10, y: 10 } });
+    const r2 = new Resistor();
+    r2.pcb = { x: pcb.board.sameAs(r1).x.plus(2), y: pcb.board.below(r1).by(1).minus(0.5) };
+    expect(r2.pcb.x).toBe(12);
+    r1.pcb = { x: 40, y: 10 };
+    pcb.create(r1, r2);
+    expect(r2.pcb.x).toBe(42); // followed the move
+  });
+
+  it('centered() body-centers off-center footprints (real TerminalBlock)', () => {
+    // TerminalBlock box rel origin x[-2, 9.63] y[-3.75, 3.98]: center offset (3.815, 0.115)
+    const part = new Component({
+      footprint: 'TerminalBlock_TE-Connectivity:TerminalBlock_TE_282834-4_1x04_P2.54mm_Horizontal',
+    });
+    const tb = getFootprintBounds(part.footprint)!;
+    const offX = (tb.minX + tb.maxX) / 2;
+    const offY = (tb.minY + tb.maxY) / 2;
+    part.pcb = { ...pcb.board.centered(), rotation: 0 };
+    expect(part.pcb.x).toBeCloseTo(50 - offX, 2);
+    expect(part.pcb.y).toBeCloseTo(25 - offY, 2);
+    // body box lands on the board center
+    expect(part.pcb.x + offX).toBeCloseTo(50, 2);
+  });
+
+  it('centered() with rotation rotates the origin offset', () => {
+    const part = new Component({
+      footprint: 'TerminalBlock_TE-Connectivity:TerminalBlock_TE_282834-4_1x04_P2.54mm_Horizontal',
+    });
+    const tb = getFootprintBounds(part.footprint)!;
+    const offX = (tb.minX + tb.maxX) / 2;
+    const offY = (tb.minY + tb.maxY) / 2;
+    part.pcb = { ...pcb.board.centered(), rotation: -90 };
+    // rotated -90: (x,y)->(-y,x); offset (offX, offY) -> (offY... sign per transform)
+    // just assert the BODY is centered: at + rotatedBox center == board center
+    expect(part.pcb.x).not.toBeCloseTo(50 - offX, 2); // differs from unrotated
+    // body center in board coords:
+    const rad = (90 * Math.PI) / 180;
+    const cx = part.pcb.x + (offX * Math.cos(rad) - offY * Math.sin(rad));
+    const cy = part.pcb.y + (offX * Math.sin(rad) + offY * Math.cos(rad));
+    expect(cx).toBeCloseTo(50, 1);
+    expect(cy).toBeCloseTo(25, 1);
+  });
+
+  it('warns once for a footprint whose bounds cannot resolve', () => {
+    const ghost = new Component({ footprint: 'Ghost:NoBounds' });
+    const r = new Resistor();
+    const spy = vi.spyOn(logger, 'warn').mockImplementation(() => {});
+    try {
+      r.pcb = { x: 1, y: below(ghost).by(1) } as any; // first resolution warns
+      r.pcb = { x: 1, y: below(ghost).by(2) } as any; // second does not
+      const calls = spy.mock.calls.map((c) => String(c[0]));
+      expect(calls.filter((w) => w.includes('Ghost:NoBounds'))).toHaveLength(1);
+    } finally {
+      spy.mockRestore();
+    }
   });
 });

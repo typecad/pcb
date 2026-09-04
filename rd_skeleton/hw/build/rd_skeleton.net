@@ -13,9 +13,9 @@
     (comp
       (ref "MH2")
         (value "")
-        (footprint "MountingHole:MountingHole_2.7mm_M2.5")
+        (footprint "MountingHole:MountingHole_2.5mm_Pad")
         (fields
-                  (field (name "Footprint") "MountingHole:MountingHole_2.7mm_M2.5")
+                  (field (name "Footprint") "MountingHole:MountingHole_2.5mm_Pad")
         )
      )
     (comp

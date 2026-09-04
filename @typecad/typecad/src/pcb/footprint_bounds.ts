@@ -6,6 +6,9 @@ import type { SExpr } from '../sexpr/types.js';
 import { LIBRARY_SEPARATOR } from '../utils/constants.js';
 import logger from '../utils/logging.js';
 
+/** Footprints already warned about for unresolved bounds — warn once each. */
+const unresolvedFootprintWarnings = new Set<string>();
+
 /** Full occupied box of a footprint, relative to its origin. */
 export interface FootprintBox {
   minX: number;
@@ -48,6 +51,13 @@ export function getFootprintBounds(footprintName: string): FootprintBox | null {
 
   const result = computeFootprintBounds(footprintName);
   boundsCache.set(footprintName, result);
+  if (result === null && !unresolvedFootprintWarnings.has(footprintName)) {
+    unresolvedFootprintWarnings.add(footprintName);
+    logger.warn(
+      `[placement] Footprint "${footprintName}" could not be resolved to bounds — ` +
+        `edge-to-edge placement treats it as zero-size. Check the footprint name/library path.`,
+    );
+  }
   return result;
 }
 

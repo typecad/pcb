@@ -6,7 +6,7 @@ import { Connector } from '@typecad/passives/connector'
 let typecad = new PCB('rd_skeleton');
 // let r1 = new Resistor({ value: '1kohm' });
 let mh1 = new MountingHole({ size: 'M2.5' });
-let mh2 = new MountingHole({ size: 'M2.5' });
+let mh2 = new MountingHole({ size: 'M2.5', footprint: 'MountingHole:MountingHole_2.5mm_Pad' });
 let mh3 = new MountingHole({ size: 'M2.5' });
 let mh4 = new MountingHole({ size: 'M2.5' });
 let j1 = new Connector({ number: 4, footprint: 'TerminalBlock_TE-Connectivity:TerminalBlock_TE_282834-4_1x04_P2.54mm_Horizontal' });

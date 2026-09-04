@@ -34,7 +34,7 @@ pcb.create();
 
 Instead of hard-coding millimeter coordinates, use the placement helpers to position components relative to each other and the board edges. All gaps are measured **courtyard edge to courtyard edge**.
 
-All placement lives on `pcb.board` — bounds (`left`, `center`, `fromLeft()`), the relational verbs (`below(c)`, `above(c)`, `rightOf(c)`, `leftOf(c)`, `sameAs(c)`) — one namespace, no separate imports. Placement values are live and order-independent: they re-read their source (component position or board outline) whenever they are resolved, and every deferred expression is re-resolved at `create()` against final positions. Assign positions in any order — `pcb.board` reads before the outline exists, `r2` below `r1` before `r1` moves — and the relationships still hold. Manually moving a component after assigning an expression freezes that axis: the manual value wins. The helpers can be assigned directly: `{ x: pcb.board.sameAs(mh1), y: pcb.board.below(mh1) }` (default gap) as well as `{ y: pcb.board.below(mh1).by(3) }`.
+All placement lives on `pcb.board` — bounds (`left`, `center`, `fromLeft()`, `centered()`), the relational verbs (`below(c)`, `above(c)`, `rightOf(c)`, `leftOf(c)`, `sameAs(c)`) — one namespace, no separate imports. Placement values support live arithmetic: `.plus(n)` / `.minus(n)` return new deferred values, so `pcb.board.sameAs(r1).x.plus(2)` follows r1 at `create()`. Placement values are live and order-independent: they re-read their source (component position or board outline) whenever they are resolved, and every deferred expression is re-resolved at `create()` against final positions. Assign positions in any order — `pcb.board` reads before the outline exists, `r2` below `r1` before `r1` moves — and the relationships still hold. Manually moving a component after assigning an expression freezes that axis: the manual value wins. The helpers can be assigned directly: `{ x: pcb.board.sameAs(mh1), y: pcb.board.below(mh1) }` (default gap) as well as `{ y: pcb.board.below(mh1).by(3) }`.
 
 ### `pcb.board`
 
@@ -60,7 +60,8 @@ u1.pcb = { x: b.center.x, y: b.center.y }; // center of the board
 
 | Property | Description |
 |----------|-------------|
-| `center` | `{ x, y }` center point |
+| `center` | `{ x, y }` center point (centers the component's origin) |
+| `centered()` | `{ x, y }` placement values that center the component's occupied box — rotation- and origin-aware: `u1.pcb = { ...pcb.board.centered() }` |
 | `left`, `right`, `top`, `bottom` | Edge coordinates in mm |
 | `width`, `height` | Board dimensions in mm |
 | `topLeft`, `topRight`, `bottomLeft`, `bottomRight` | Corner coordinates |

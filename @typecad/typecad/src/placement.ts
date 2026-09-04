@@ -2,6 +2,7 @@ import type { Component } from './component.js';
 import type { PCB } from './pcb/pcb.js';
 import { getPcbState } from './pcb/pcb.js';
 import { getFootprintBounds, type FootprintBox } from './pcb/footprint_bounds.js';
+import logger from './utils/logging.js';
 
 const DEFAULT_PLACEMENT_GAP = 2;
 
@@ -24,6 +25,19 @@ export class PlacementValue {
   /** @internal */
   resolveWithFootprint(footprint: string, rotationDeg: number = 0): number {
     return this._resolve(getFootprintBounds(footprint), rotationDeg);
+  }
+
+  /**
+   * A new deferred value that resolves to this value plus `n` — the nudge
+   * stays live: `x: pcb.board.sameAs(r1).plus(2)` follows r1 at create().
+   */
+  plus(n: number): PlacementValue {
+    return new PlacementValue((box, rot) => this._resolve(box, rot) + n);
+  }
+
+  /** A new deferred value that resolves to this value minus `n` (live). */
+  minus(n: number): PlacementValue {
+    return new PlacementValue((box, rot) => this._resolve(box, rot) - n);
   }
 }
 
@@ -117,14 +131,39 @@ export type PlacementInput = PlacementNumber | PlacementBuilder | SameAsResult;
 /**
  * Coerce a {@link PlacementInput} to a {@link PlacementNumber} for one axis.
  * Builders resolve with their default gap; `sameAs` results pick the axis.
+ * Anything else fails with a targeted message instead of a cryptic
+ * "must be a finite number" later — most commonly a placement helper
+ * passed without being called (`y: pcb.board.fromLeft` instead of
+ * `fromLeft()`).
  * @internal
  */
 export function coercePlacementInput(value: PlacementInput, axis: 'x' | 'y'): PlacementNumber {
   if (typeof value === 'number' || isPlacementValue(value)) return value;
-  const v = value as PlacementBuilder & SameAsResult;
+  if (value === null || value === undefined) {
+    throw new RangeError(`pcb.${axis} must be a number or a placement value, got ${String(value)}`);
+  }
+  if (typeof value === 'function') {
+    const name = (value as { name?: string }).name || 'an unnamed function';
+    throw new RangeError(
+      `pcb.${axis} received the function "${name}" — did you mean to call it? ` +
+        `E.g. pcb.${axis}: pcb.board.${name}(margin) or .by(gap).`,
+    );
+  }
+  if (typeof value !== 'object') {
+    throw new RangeError(`pcb.${axis} must be a number or a placement value, got ${typeof value}`);
+  }
+  const v = value as PlacementBuilder & SameAsResult & Record<string, unknown>;
   if (typeof v.by === 'function') return v.by();
-  if (axis in (v as SameAsResult)) return (v as SameAsResult)[axis];
-  return value as unknown as PlacementNumber;
+  if (axis in v) {
+    const axisValue = v[axis];
+    if (typeof axisValue === 'number' || isPlacementValue(axisValue)) return axisValue;
+  }
+  throw new RangeError(
+    `pcb.${axis} received an object with no usable ${axis} value ` +
+      `(keys: ${Object.keys(v).slice(0, 8).join(', ') || 'none'}). ` +
+      `Expected a number, a placement value (pcb.board.fromLeft(5), pcb.board.below(r1).by(3)), ` +
+      `a builder, or a sameAs result.`,
+  );
 }
 
 /**
@@ -246,6 +285,18 @@ export interface BoardBounds {
    */
   fromBottom(margin?: number): PlacementValue;
   /**
+   * Placement values for both axes that center the component's occupied box
+   * (rotation-aware, footprint-relative) in the board — unlike
+   * `center.x/y`, which centers the component's origin point. Assign the
+   * pair directly to `pcb`.
+   *
+   * @example
+   * ```ts
+   * mcu.pcb = { ...pcb.board.centered() };
+   * ```
+   */
+  centered(): { x: PlacementValue; y: PlacementValue };
+  /**
    * Placement value for a coordinate below a component (courtyard
    * edge-to-edge). Call `.by(gap)` for an explicit gap, or assign the
    * builder directly for the default 2mm gap.
@@ -276,10 +327,10 @@ export interface BoardBounds {
  * ```
  */
 export interface SameAsResult {
-  /** The component's PCB X coordinate (re-read whenever resolved). */
-  readonly x: PlacementNumber;
-  /** The component's PCB Y coordinate (re-read whenever resolved). */
-  readonly y: PlacementNumber;
+  /** The component's PCB X coordinate (re-read whenever resolved; `.plus/.minus` chain). */
+  readonly x: PlacementValue;
+  /** The component's PCB Y coordinate (re-read whenever resolved; `.plus/.minus` chain). */
+  readonly y: PlacementValue;
 }
 
 /**
@@ -441,10 +492,10 @@ export function leftOf(component: Component): PlacementBuilder {
  */
 export function sameAs(component: Component): SameAsResult {
   return {
-    get x(): PlacementNumber {
+    get x(): PlacementValue {
       return new PlacementValue(() => component.pcb.x);
     },
-    get y(): PlacementNumber {
+    get y(): PlacementValue {
       return new PlacementValue(() => component.pcb.y);
     },
   };
@@ -511,6 +562,23 @@ function makeBoardBounds(
     },
     fromBottom(margin: number = 2): PlacementValue {
       return new PlacementValue((tb, rot) => b().bottom - margin - targetEdges(tb, rot).bottom);
+    },
+    centered(): { x: PlacementValue; y: PlacementValue } {
+      // Body-centering: place the occupied box's center at the board center.
+      // The origin offset (box center rel at-point) shifts the anchor so the
+      // body lands centered even for off-center, rotated footprints.
+      return {
+        x: new PlacementValue((tb, rot) => {
+          const { left, right } = b();
+          const boxCenterOffsetX = (targetEdges(tb, rot).left + targetEdges(tb, rot).right) / 2;
+          return (left + right) / 2 - boxCenterOffsetX;
+        }),
+        y: new PlacementValue((tb, rot) => {
+          const { top, bottom } = b();
+          const boxCenterOffsetY = (targetEdges(tb, rot).top + targetEdges(tb, rot).bottom) / 2;
+          return (top + bottom) / 2 - boxCenterOffsetY;
+        }),
+      };
     },
     // Component-relative verbs: stateless, hosted here so all placement
     // flows through the one `pcb.board` namespace.

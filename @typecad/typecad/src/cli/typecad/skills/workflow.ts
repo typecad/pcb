@@ -4,7 +4,8 @@ export const workflowSkills: Skill[] = [
   {
     name: 'circuit-design',
     category: 'workflow',
-    description: 'End-to-end workflow for designing a PCB in typeCAD: from requirements to generated KiCad files. Covers when to ask the user, how to structure components, common circuit patterns, and pitfalls to avoid',
+    description:
+      'End-to-end workflow for designing a PCB in typeCAD: from requirements to generated KiCad files. Covers when to ask the user, how to structure components, common circuit patterns, and pitfalls to avoid',
     examples: [
       {
         title: 'Complete design workflow (MCU dev board example)',

@@ -4,7 +4,9 @@
   "scripts": {
     "build": "npm run build --ws --if-present",
     "build:watch": "npm run build:watch -ws --if-present",
+    "typecheck": "npm run typecheck -ws --if-present",
     "test": "npm run test -ws --if-present",
+    "test:coverage": "npm run test:coverage -ws --if-present",
     "format": "prettier --write \"**/*/src/**/*.ts\"",
     "format:check": "prettier --check \"**/*/src/**/*.ts\"",
     "lint": "eslint \"**/*/src/**/*.ts\" \"**/*/*.ts\" --ignore-pattern \"**/*/node_modules/**\" --ignore-pattern \"**/*/dist/**\" --ignore-pattern \"**/*/examples/**\"",

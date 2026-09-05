@@ -356,7 +356,7 @@ export function pcbOutline(
 ): void {
   // Capture source info
   const callSite = getCallSite();
-  let sourceInfo: ISourceInfo | undefined = callSite
+  const sourceInfo: ISourceInfo | undefined = callSite
     ? {
         file: callSite.file,
         line: callSite.line,

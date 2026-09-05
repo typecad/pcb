@@ -4,7 +4,8 @@ export const coreSkills: Skill[] = [
   {
     name: 'pcb-structure',
     category: 'core',
-    description: 'How a typeCAD program is structured: PCB instance, component creation, net connections, and the create() call that generates KiCad files (.kicad_pcb, .kicad_sch, .net)',
+    description:
+      'How a typeCAD program is structured: PCB instance, component creation, net connections, and the create() call that generates KiCad files (.kicad_pcb, .kicad_sch, .net)',
     package: '@typecad/typecad',
     import: "import { PCB } from '@typecad/typecad';",
     examples: [
@@ -50,18 +51,47 @@ typecad.create(battery);`,
   {
     name: 'component',
     category: 'core',
-    description: 'The Component class is the base building block for all parts in a typeCAD design. It holds reference, value, footprint, pins, and PCB placement',
+    description:
+      'The Component class is the base building block for all parts in a typeCAD design. It holds reference, value, footprint, pins, and PCB placement',
     package: '@typecad/typecad',
     import: "import { Component } from '@typecad/typecad';",
     usage: {
       signature: 'new Component(footprint: string)',
       parameters: [
-        { name: 'footprint', type: 'string', required: true, description: 'KiCad footprint in library:name format (e.g. "Package_SO:SOIC-8_3.9x4.9mm_P1.27mm")' },
-        { name: 'reference', type: 'string', required: false, description: 'Set reference designator via property assignment. Auto-assigned if omitted' },
+        {
+          name: 'footprint',
+          type: 'string',
+          required: true,
+          description: 'KiCad footprint in library:name format (e.g. "Package_SO:SOIC-8_3.9x4.9mm_P1.27mm")',
+        },
+        {
+          name: 'reference',
+          type: 'string',
+          required: false,
+          description: 'Set reference designator via property assignment. Auto-assigned if omitted',
+        },
         { name: 'value', type: 'string', required: false, description: 'Set component value via property assignment' },
-        { name: 'referenceLayout', type: 'ITextPositioning', required: false, description: 'Position and styling for the reference text (F.SilkS layer). Fields: x, y, rotation?, layer?, width?, height?, thickness?' },
-        { name: 'valueLayout', type: 'ITextPositioning', required: false, description: 'Position and styling for the value text (F.Fab layer). Fields: x, y, rotation?, layer?, width?, height?, thickness?' },
-        { name: 'fabLayout', type: 'ITextPositioning & { text?: string }', required: false, description: 'Position and styling for the FAB text (F.Fab layer). Optionally set text (defaults to ${REFERENCE}). Fields: x, y, rotation?, layer?, width?, height?, thickness?, text?' },
+        {
+          name: 'referenceLayout',
+          type: 'ITextPositioning',
+          required: false,
+          description:
+            'Position and styling for the reference text (F.SilkS layer). All fields optional; omitted fields keep the footprint layout. Fields: x?, y?, rotation?, layer?, width?, height?, thickness?, show? (false hides the designator)',
+        },
+        {
+          name: 'valueLayout',
+          type: 'ITextPositioning',
+          required: false,
+          description:
+            'Position and styling for the value text (F.Fab layer). All fields optional; omitted fields keep the footprint layout. Fields: x?, y?, rotation?, layer?, width?, height?, thickness?, show?',
+        },
+        {
+          name: 'fabLayout',
+          type: 'ITextPositioning & { text?: string }',
+          required: false,
+          description:
+            'Position and styling for the FAB text (F.Fab layer). Optionally set text (defaults to ${REFERENCE}). All fields optional. Fields: x?, y?, rotation?, layer?, width?, height?, thickness?, text?, show?',
+        },
       ],
     },
     examples: [
@@ -119,15 +149,27 @@ r1.pcb = { x: 10, y: 20, rotation: 90 };`,
   {
     name: 'pin',
     category: 'core',
-    description: 'Pins represent the electrical connections on a component. Each pin has a number, type, and optional power info for validation',
+    description:
+      'Pins represent the electrical connections on a component. Each pin has a number, type, and optional power info for validation',
     package: '@typecad/typecad',
     import: "import { Pin } from '@typecad/typecad';",
     usage: {
       signature: 'component.pin(number: number|string, config?: { type?: TPinType, powerInfo?: IPinPowerInfo }): Pin',
       parameters: [
         { name: 'number', type: 'number | string', required: true, description: 'Pin number on the component package' },
-        { name: 'config.type', type: 'TPinType', required: false, description: 'Electrical pin type for ERC', default: '"passive"' },
-        { name: 'config.powerInfo', type: 'IPinPowerInfo', required: false, description: 'Voltage/current ratings for power validation' },
+        {
+          name: 'config.type',
+          type: 'TPinType',
+          required: false,
+          description: 'Electrical pin type for ERC',
+          default: '"passive"',
+        },
+        {
+          name: 'config.powerInfo',
+          type: 'IPinPowerInfo',
+          required: false,
+          description: 'Voltage/current ratings for power validation',
+        },
       ],
     },
     examples: [
@@ -185,7 +227,8 @@ u1.pin(4).type = 'passive'; // shared ground in regulators`,
   {
     name: 'net',
     category: 'core',
-    description: 'Nets connect pins together to form electrical circuits. Use net() for unnamed connections or named().net() for named nets that appear in KiCad',
+    description:
+      'Nets connect pins together to form electrical circuits. Use net() for unnamed connections or named().net() for named nets that appear in KiCad',
     package: '@typecad/typecad',
     import: "import { PCB } from '@typecad/typecad';",
     examples: [
@@ -230,17 +273,25 @@ typecad.net(r1.pin(2), u1.pin(4));`,
   {
     name: 'power',
     category: 'core',
-    description: 'The Power class defines power sources and sinks. It automatically sets pin types for ERC, generates KiCad power symbols (VCC, GND, +3V3, etc.) and PWR_FLAG symbols in the schematic, and enables voltage validation between connected power domains',
+    description:
+      'The Power class defines power sources and sinks. It automatically sets pin types for ERC, generates KiCad power symbols (VCC, GND, +3V3, etc.) and PWR_FLAG symbols in the schematic, and enables voltage validation between connected power domains',
     package: '@typecad/typecad',
     import: "import { Power } from '@typecad/typecad';",
     usage: {
-      signature: 'new Power(options: { power?: Pin, gnd?: Pin, voltage?: number, current?: number, direction?: "input"|"output" })',
+      signature:
+        'new Power(options: { power?: Pin, gnd?: Pin, voltage?: number, current?: number, direction?: "input"|"output" })',
       parameters: [
         { name: 'power', type: 'Pin', required: false, description: 'Pin that supplies or receives power' },
         { name: 'gnd', type: 'Pin', required: false, description: 'Pin that supplies or receives ground' },
         { name: 'voltage', type: 'number', required: false, description: 'Nominal voltage (e.g. 3.3, 5.0, 12)' },
         { name: 'current', type: 'number', required: false, description: 'Current draw or supply capability in amps' },
-        { name: 'direction', type: '"input" | "output"', required: false, description: '"output" for power sources, "input" for power consumers', default: '"output"' },
+        {
+          name: 'direction',
+          type: '"input" | "output"',
+          required: false,
+          description: '"output" for power sources, "input" for power consumers',
+          default: '"output"',
+        },
       ],
     },
     examples: [

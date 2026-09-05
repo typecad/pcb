@@ -476,7 +476,7 @@ export class AStarRouter {
       let totalVias = 0;
       let successCount = 0;
 
-      let segmentResults: IRoutePath[] = [];
+      const segmentResults: IRoutePath[] = [];
       const worker = this.getMstWorker();
       for (let i = 0; i < mstEdges.length; i++) {
         const edge = mstEdges[i];

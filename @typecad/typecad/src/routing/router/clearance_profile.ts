@@ -1,4 +1,4 @@
-import { NormalizedRoutingOptions } from "./types.js";
+import { NormalizedRoutingOptions } from './types.js';
 
 /**
  * Common context describing where a clearance query is being evaluated.
@@ -37,10 +37,7 @@ export class ClearanceProfile {
 
   constructor(config: ClearanceProfileConfig) {
     this.traceClearance = Math.max(0, config.options.clearance);
-    this.viaClearance = Math.max(
-      0,
-      config.options.viaClearance ?? config.options.clearance
-    );
+    this.viaClearance = Math.max(0, config.options.viaClearance ?? config.options.clearance);
     this.viaDiameter = Math.max(0, config.viaDiameter);
     this.viaRadius = this.viaDiameter / 2;
     this.gridResolution = config.gridResolution;

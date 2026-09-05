@@ -10,9 +10,15 @@ import chalk from 'chalk';
  *   TYPECAD_SILENT=1 - Suppresses all output (warn/error still shown unless set)
  */
 
-function isDebug(): boolean { return process.env.TYPECAD_DEBUG === '1'; }
-function isQuiet(): boolean { return process.env.TYPECAD_QUIET === '1'; }
-function isSilent(): boolean { return process.env.TYPECAD_SILENT === '1'; }
+function isDebug(): boolean {
+  return process.env.TYPECAD_DEBUG === '1';
+}
+function isQuiet(): boolean {
+  return process.env.TYPECAD_QUIET === '1';
+}
+function isSilent(): boolean {
+  return process.env.TYPECAD_SILENT === '1';
+}
 
 export function debug(...args: unknown[]) {
   if (!isSilent() && isDebug() && !isQuiet()) {

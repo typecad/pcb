@@ -22,11 +22,25 @@ export function parseTextOrPositioning(input: TextOrPositioning | undefined): {
   return { text: input, positioning: undefined };
 }
 
+/**
+ * Names of footprint text properties. The conventional KiCad set is listed for
+ * autocomplete; any other footprint-specific name is still accepted.
+ */
+export type FootprintPropertyName =
+  'Reference' | 'Value' | 'Footprint' | 'Datasheet' | 'Description' | 'MPN' | (string & {});
+
 export type TextEntry = {
-  property: string;
-  text: string;
-  x: number;
-  y: number;
+  /** Which footprint property this entry controls. */
+  property: FootprintPropertyName;
+  /**
+   * Replacement text. Omit to keep the property's own content (e.g. the
+   * component's reference or the footprint's original value). Required when
+   * creating a property the footprint does not have.
+   */
+  text?: string;
+  /** Omitted fields keep the footprint's existing layout. */
+  x?: number;
+  y?: number;
   rotation?: number;
   layer?: string;
   font?: string;
@@ -42,8 +56,8 @@ export type TextEntry = {
 
 export type FabEntry = {
   text: string;
-  x: number;
-  y: number;
+  x?: number;
+  y?: number;
   rotation?: number;
   layer?: string;
   font?: string;

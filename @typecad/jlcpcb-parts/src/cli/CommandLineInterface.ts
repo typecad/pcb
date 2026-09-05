@@ -54,7 +54,7 @@ export class CommandLineInterface implements CLI {
   public async run(args: string[]): Promise<void> {
     // Remove the first two arguments (node executable and script path)
     const cliArgs = args.slice(2);
-    
+
     let parsedArgs: {
       query: string;
       help: boolean;
@@ -67,19 +67,19 @@ export class CommandLineInterface implements CLI {
     try {
       // Parse command-line arguments
       parsedArgs = this.parseArguments(cliArgs);
-      
+
       // Handle help flag
       if (parsedArgs.help) {
         this.displayHelp();
         return;
       }
-      
+
       // Handle version flag
       if (parsedArgs.version) {
         this.displayVersion();
         return;
       }
-      
+
       // Check if we have a search query
       if (!parsedArgs.query) {
         // In JSON format, don't prompt - just return error immediately
@@ -88,7 +88,7 @@ export class CommandLineInterface implements CLI {
           process.exit(1);
           return;
         }
-        
+
         // Prompt for user input if no query provided (non-JSON mode only)
         parsedArgs.query = await this.promptForSearchQuery();
         // If user still didn't provide a query, exit gracefully
@@ -98,7 +98,7 @@ export class CommandLineInterface implements CLI {
           return;
         }
       }
-      
+
       // Validate search query
       if (!this.validateQuery(parsedArgs.query)) {
         if (parsedArgs.format === 'json') {
@@ -111,68 +111,75 @@ export class CommandLineInterface implements CLI {
         process.exit(1);
         return;
       }
-      
+
       // Create progress indicator only if not in JSON mode
       const progress = parsedArgs.format === 'json' ? null : new ProgressIndicator();
-      
+
       // Start progress indicator for search (only if not in JSON mode)
       if (progress) {
         progress.start(`Searching for components matching: "${parsedArgs.query}"`);
       }
-      
+
       // Suppress Logger output in JSON mode
       if (parsedArgs.format === 'json') {
         const logger = Logger.getInstance();
         logger.setConsoleLevel(LogLevel.NONE);
       }
-      
+
       try {
         // Perform search
         const results = await this.searchEngine.search(parsedArgs.query);
-        
+
         // Restore Logger level if it was suppressed
         if (parsedArgs.format === 'json') {
           Logger.getInstance().setConsoleLevel(LogLevel.INFO);
         }
-        
+
         // Stop progress indicator (only if not in JSON mode)
         if (progress) {
           progress.stop();
         }
-        
+
         // If no results, provide suggestions (only if not in JSON mode)
         if (results.length === 0 && parsedArgs.format !== 'json') {
           console.log(chalk.yellow('No components found matching your search criteria.'));
           console.log(chalk.yellow('Suggestions:'));
-          console.log(chalk.yellow('- Try using more general terms (e.g., "capacitor" instead of "ceramic capacitor")'));
+          console.log(
+            chalk.yellow('- Try using more general terms (e.g., "capacitor" instead of "ceramic capacitor")'),
+          );
           console.log(chalk.yellow('- Check your spelling and try alternative terms'));
           console.log(chalk.yellow('- Remove specific parameters that might be too restrictive'));
           console.log(chalk.yellow('- Try searching for a different package size or value'));
           return;
         }
-        
+
         // Sort results if needed
         if (parsedArgs.sortBy !== 'score') {
           this.sortResults(results, parsedArgs.sortBy);
         }
-        
+
         // Limit results if needed
-        const limitedResults = parsedArgs.limit > 0 && parsedArgs.limit < results.length
-          ? results.slice(0, parsedArgs.limit)
-          : results;
-        
+        const limitedResults =
+          parsedArgs.limit > 0 && parsedArgs.limit < results.length ? results.slice(0, parsedArgs.limit) : results;
+
         // Display results
         this.displayResults(limitedResults, parsedArgs.format);
-        
+
         // Show additional information if results were limited (only if not in JSON mode)
         if (results.length > limitedResults.length && parsedArgs.format !== 'json') {
-          console.log(chalk.blue(`Showing ${limitedResults.length} of ${results.length} matching components. Use --limit option to see more.`));
+          console.log(
+            chalk.blue(
+              `Showing ${limitedResults.length} of ${results.length} matching components. Use --limit option to see more.`,
+            ),
+          );
         }
-        
+
         // Display top match summary at the end (only if not in JSON mode)
         if (results.length > 0 && parsedArgs.format !== 'json') {
           const topMatch = results[0];
-          console.log(chalk.bold.blue(`Top match: #C${topMatch.lcsc} - ${topMatch.description} (Score: ${topMatch.score})`));
+          console.log(
+            chalk.bold.blue(`Top match: #C${topMatch.lcsc} - ${topMatch.description} (Score: ${topMatch.score})`),
+          );
         }
 
         if (limitedResults.length > 0 && parsedArgs.format !== 'json') {
@@ -183,19 +190,19 @@ export class CommandLineInterface implements CLI {
         if (parsedArgs.format === 'json') {
           Logger.getInstance().setConsoleLevel(LogLevel.INFO);
         }
-        
+
         // Stop progress indicator (only if not in JSON mode)
         if (progress) {
           progress.stop();
         }
-        
+
         // Handle search errors in JSON format if needed
         if (parsedArgs.format === 'json') {
           this.displayJsonError(searchError, 'SEARCH_ERROR');
           process.exit(1);
           return;
         }
-        
+
         throw searchError;
       }
     } catch (error) {
@@ -207,10 +214,11 @@ export class CommandLineInterface implements CLI {
         isJsonFormat = tempParsedArgs.format === 'json';
       } catch (parseError) {
         // If parsing fails, check if JSON format was explicitly requested in args
-        isJsonFormat = cliArgs.includes('--format') && cliArgs.includes('json') ||
-                      cliArgs.includes('-f') && cliArgs.includes('json');
+        isJsonFormat =
+          (cliArgs.includes('--format') && cliArgs.includes('json')) ||
+          (cliArgs.includes('-f') && cliArgs.includes('json'));
       }
-      
+
       if (isJsonFormat) {
         // Output error in JSON format using dedicated method
         this.displayJsonError(error, 'SYSTEM_ERROR');
@@ -219,7 +227,7 @@ export class CommandLineInterface implements CLI {
         const errorMessage = ErrorHandler.handleError(error);
         console.error(chalk.red(errorMessage));
       }
-      
+
       // Exit with error code
       process.exit(1);
       return;
@@ -234,22 +242,17 @@ export class CommandLineInterface implements CLI {
     const wantToAdd = await this.promptConfirm('Do you want to add a component from these results?');
     if (!wantToAdd) return;
 
-    const indexStr = await this.promptInput(
-      `Enter the number of the result (1-${results.length}):`,
-      (val) => {
-        const idx = parseInt(val, 10);
-        return (!isNaN(idx) && idx >= 1 && idx <= results.length)
-          ? true
-          : `Please enter a number between 1 and ${results.length}`;
-      }
-    );
+    const indexStr = await this.promptInput(`Enter the number of the result (1-${results.length}):`, (val) => {
+      const idx = parseInt(val, 10);
+      return !isNaN(idx) && idx >= 1 && idx <= results.length
+        ? true
+        : `Please enter a number between 1 and ${results.length}`;
+    });
 
     const selectedIdx = parseInt(indexStr, 10) - 1;
     const selectedResult = results[selectedIdx];
 
-    const lcscNumber = selectedResult.lcsc.startsWith('C')
-      ? selectedResult.lcsc
-      : `C${selectedResult.lcsc}`;
+    const lcscNumber = selectedResult.lcsc.startsWith('C') ? selectedResult.lcsc : `C${selectedResult.lcsc}`;
 
     console.log(chalk.blue(`Running typecad add component for ${lcscNumber}...`));
 
@@ -283,7 +286,7 @@ export class CommandLineInterface implements CLI {
   private async promptConfirm(question: string): Promise<boolean> {
     const rl = readline.createInterface({
       input: process.stdin,
-      output: process.stdout
+      output: process.stdout,
     });
 
     return new Promise((resolve) => {
@@ -303,7 +306,7 @@ export class CommandLineInterface implements CLI {
   private async promptInput(question: string, validate?: (input: string) => string | boolean): Promise<string> {
     const rl = readline.createInterface({
       input: process.stdin,
-      output: process.stdout
+      output: process.stdout,
     });
 
     return new Promise((resolve) => {
@@ -344,9 +347,9 @@ export class CommandLineInterface implements CLI {
       version: false,
       format: 'detailed' as 'detailed' | 'compact' | 'table' | 'json',
       sortBy: 'score' as 'score' | 'lcsc' | 'manufacturer' | 'package',
-      limit: 5
+      limit: 5,
     };
-    
+
     // First pass: check if JSON format is requested to suppress warnings
     let isJsonFormat = false;
     for (let i = 0; i < args.length; i++) {
@@ -355,26 +358,31 @@ export class CommandLineInterface implements CLI {
         break;
       }
     }
-    
+
     // Process arguments
     for (let i = 0; i < args.length; i++) {
       const arg = args[i];
-      
+
       // Handle flags
       if (arg === '--help' || arg === '-h') {
         result.help = true;
         continue;
       }
-      
+
       if (arg === '--version' || arg === '-v') {
         result.version = true;
         continue;
       }
-      
+
       // Handle format option
       if (arg === '--format' || arg === '-f') {
         const formatValue = args[++i];
-        if (formatValue === 'detailed' || formatValue === 'compact' || formatValue === 'table' || formatValue === 'json') {
+        if (
+          formatValue === 'detailed' ||
+          formatValue === 'compact' ||
+          formatValue === 'table' ||
+          formatValue === 'json'
+        ) {
           result.format = formatValue;
         } else {
           if (!isJsonFormat) {
@@ -383,7 +391,7 @@ export class CommandLineInterface implements CLI {
         }
         continue;
       }
-      
+
       // Handle sort option
       if (arg === '--sort' || arg === '-s') {
         const sortValue = args[++i];
@@ -396,7 +404,7 @@ export class CommandLineInterface implements CLI {
         }
         continue;
       }
-      
+
       // Handle limit option
       if (arg === '--limit' || arg === '-l') {
         const limitValue = parseInt(args[++i], 10);
@@ -409,7 +417,7 @@ export class CommandLineInterface implements CLI {
         }
         continue;
       }
-      
+
       // If not a flag, treat as part of the query
       if (!arg.startsWith('-')) {
         // If we already have a query, append with space
@@ -419,7 +427,7 @@ export class CommandLineInterface implements CLI {
         result.query += arg;
       }
     }
-    
+
     return result;
   }
 
@@ -433,13 +441,13 @@ export class CommandLineInterface implements CLI {
     if (!query || query.trim().length === 0) {
       return false;
     }
-    
+
     // Query must not contain invalid characters
     const invalidCharsRegex = /[^\w\s\d.,\-+%()[\]{}:;'"\/\\&@#$^*=<>?!°Ωωµ±℃]/g;
     if (invalidCharsRegex.test(query)) {
       return false;
     }
-    
+
     return true;
   }
 
@@ -450,7 +458,7 @@ export class CommandLineInterface implements CLI {
   private async promptForSearchQuery(): Promise<string> {
     const rl = readline.createInterface({
       input: process.stdin,
-      output: process.stdout
+      output: process.stdout,
     });
 
     return new Promise((resolve) => {
@@ -516,15 +524,15 @@ export class CommandLineInterface implements CLI {
       this.displayJsonResults(results);
       return;
     }
-    
+
     if (results.length === 0) {
       console.log(chalk.yellow('No components found matching your search criteria.'));
       console.log(chalk.yellow('Try using more general terms or check your spelling.'));
       return;
     }
-    
+
     console.log(chalk.green(`\nFound ${results.length} matching components:\n`));
-    
+
     // Display results based on format
     switch (format) {
       case 'detailed':
@@ -540,7 +548,7 @@ export class CommandLineInterface implements CLI {
         this.displayDetailedResults(results);
     }
   }
-  
+
   /**
    * Displays results in detailed format
    * @param results - Array of search results to display
@@ -555,7 +563,7 @@ export class CommandLineInterface implements CLI {
       console.log();
     });
   }
-  
+
   /**
    * Displays results in compact format
    * @param results - Array of search results to display
@@ -565,76 +573,81 @@ export class CommandLineInterface implements CLI {
       const scoreColor = this.getScoreColor(result.score);
       console.log(
         `${index + 1}. ${chalk.bold('#C' + result.lcsc)} - ` +
-        `${result.description.substring(0, 40)}${result.description.length > 40 ? '...' : ''} - ` +
-        `${result.package} - ` +
-        `${scoreColor(result.score.toFixed(1))}`
+          `${result.description.substring(0, 40)}${result.description.length > 40 ? '...' : ''} - ` +
+          `${result.package} - ` +
+          `${scoreColor(result.score.toFixed(1))}`,
       );
     });
     console.log(); // Empty line at the end
   }
-  
+
   /**
    * Displays results in table format
    * @param results - Array of search results to display
    */
   private displayTableResults(results: SearchResult[]): void {
     // Calculate column widths (accounting for #C prefix)
-    const lcscWidth = Math.max(8, ...results.map(r => ('#C' + r.lcsc).length));
-    const mfrWidth = Math.max(12, ...results.map(r => r.manufacturer.length > 15 ? 15 : r.manufacturer.length));
-    const partWidth = Math.max(12, ...results.map(r => r.partNumber.length > 15 ? 15 : r.partNumber.length));
-    const pkgWidth = Math.max(7, ...results.map(r => r.package.length));
-    const descWidth = Math.min(40, Math.max(11, ...results.map(r => r.description.length)));
-    
+    const lcscWidth = Math.max(8, ...results.map((r) => ('#C' + r.lcsc).length));
+    const mfrWidth = Math.max(12, ...results.map((r) => (r.manufacturer.length > 15 ? 15 : r.manufacturer.length)));
+    const partWidth = Math.max(12, ...results.map((r) => (r.partNumber.length > 15 ? 15 : r.partNumber.length)));
+    const pkgWidth = Math.max(7, ...results.map((r) => r.package.length));
+    const descWidth = Math.min(40, Math.max(11, ...results.map((r) => r.description.length)));
+
     // Print table header
-    console.log(chalk.bold(
-      `${'#'.padEnd(3)} ` +
-      `${'LCSC'.padEnd(lcscWidth)} ` +
-      `${'Manufacturer'.padEnd(mfrWidth)} ` +
-      `${'Part Number'.padEnd(partWidth)} ` +
-      `${'Package'.padEnd(pkgWidth)} ` +
-      `${'Score'.padEnd(6)} ` +
-      `${'Description'.padEnd(descWidth)}`
-    ));
-    
+    console.log(
+      chalk.bold(
+        `${'#'.padEnd(3)} ` +
+          `${'LCSC'.padEnd(lcscWidth)} ` +
+          `${'Manufacturer'.padEnd(mfrWidth)} ` +
+          `${'Part Number'.padEnd(partWidth)} ` +
+          `${'Package'.padEnd(pkgWidth)} ` +
+          `${'Score'.padEnd(6)} ` +
+          `${'Description'.padEnd(descWidth)}`,
+      ),
+    );
+
     // Print separator
     console.log(
       `${''.padEnd(3, '-')} ` +
-      `${''.padEnd(lcscWidth, '-')} ` +
-      `${''.padEnd(mfrWidth, '-')} ` +
-      `${''.padEnd(partWidth, '-')} ` +
-      `${''.padEnd(pkgWidth, '-')} ` +
-      `${''.padEnd(6, '-')} ` +
-      `${''.padEnd(descWidth, '-')}`
+        `${''.padEnd(lcscWidth, '-')} ` +
+        `${''.padEnd(mfrWidth, '-')} ` +
+        `${''.padEnd(partWidth, '-')} ` +
+        `${''.padEnd(pkgWidth, '-')} ` +
+        `${''.padEnd(6, '-')} ` +
+        `${''.padEnd(descWidth, '-')}`,
     );
-    
+
     // Print table rows
     results.forEach((result, index) => {
       const scoreColor = this.getScoreColor(result.score);
-      
+
       // Truncate long text
-      const manufacturer = result.manufacturer.length > mfrWidth 
-        ? result.manufacturer.substring(0, mfrWidth - 3) + '...' 
-        : result.manufacturer;
-      
-      const partNumber = result.partNumber.length > partWidth 
-        ? result.partNumber.substring(0, partWidth - 3) + '...' 
-        : result.partNumber;
-      
-      const description = result.description.length > descWidth 
-        ? result.description.substring(0, descWidth - 3) + '...' 
-        : result.description;
-      
+      const manufacturer =
+        result.manufacturer.length > mfrWidth
+          ? result.manufacturer.substring(0, mfrWidth - 3) + '...'
+          : result.manufacturer;
+
+      const partNumber =
+        result.partNumber.length > partWidth
+          ? result.partNumber.substring(0, partWidth - 3) + '...'
+          : result.partNumber;
+
+      const description =
+        result.description.length > descWidth
+          ? result.description.substring(0, descWidth - 3) + '...'
+          : result.description;
+
       console.log(
         `${(index + 1).toString().padEnd(3)} ` +
-        `${chalk.cyan(('#C' + result.lcsc).padEnd(lcscWidth))} ` +
-        `${manufacturer.padEnd(mfrWidth)} ` +
-        `${partNumber.padEnd(partWidth)} ` +
-        `${result.package.padEnd(pkgWidth)} ` +
-        `${scoreColor(result.score.toFixed(1).padEnd(6))} ` +
-        `${description}`
+          `${chalk.cyan(('#C' + result.lcsc).padEnd(lcscWidth))} ` +
+          `${manufacturer.padEnd(mfrWidth)} ` +
+          `${partNumber.padEnd(partWidth)} ` +
+          `${result.package.padEnd(pkgWidth)} ` +
+          `${scoreColor(result.score.toFixed(1).padEnd(6))} ` +
+          `${description}`,
       );
     });
-    
+
     console.log(); // Empty line at the end
   }
 
@@ -650,7 +663,7 @@ export class CommandLineInterface implements CLI {
     }
 
     // Convert SearchResult array to JsonSearchResult array for consistent serialization
-    const jsonResults = results.map(result => ({
+    const jsonResults = results.map((result) => ({
       lcsc: result.lcsc,
       manufacturer: result.manufacturer,
       partNumber: result.partNumber,
@@ -691,11 +704,23 @@ export class CommandLineInterface implements CLI {
           errorCode = 'INVALID_QUERY';
         } else if (error.message.includes('timed out') || error.message.includes('timeout')) {
           errorCode = 'TIMEOUT_ERROR';
-        } else if (error.message.includes('network') || error.message.includes('ENOTFOUND') || error.message.includes('ETIMEDOUT')) {
+        } else if (
+          error.message.includes('network') ||
+          error.message.includes('ENOTFOUND') ||
+          error.message.includes('ETIMEDOUT')
+        ) {
           errorCode = 'NETWORK_ERROR';
-        } else if (error.message.includes('file') || error.message.includes('ENOENT') || error.message.includes('EACCES')) {
+        } else if (
+          error.message.includes('file') ||
+          error.message.includes('ENOENT') ||
+          error.message.includes('EACCES')
+        ) {
           errorCode = 'FILE_SYSTEM_ERROR';
-        } else if (error.message.includes('parse') || error.message.includes('parsing') || error.message.includes('Unexpected token')) {
+        } else if (
+          error.message.includes('parse') ||
+          error.message.includes('parsing') ||
+          error.message.includes('Unexpected token')
+        ) {
           errorCode = 'PARSING_ERROR';
         } else {
           errorCode = 'SYSTEM_ERROR';
@@ -711,11 +736,23 @@ export class CommandLineInterface implements CLI {
           // Refine the error code based on the actual error message
           if (error.message.includes('timed out') || error.message.includes('timeout')) {
             errorCode = 'TIMEOUT_ERROR';
-          } else if (error.message.includes('network') || error.message.includes('ENOTFOUND') || error.message.includes('ETIMEDOUT')) {
+          } else if (
+            error.message.includes('network') ||
+            error.message.includes('ENOTFOUND') ||
+            error.message.includes('ETIMEDOUT')
+          ) {
             errorCode = 'NETWORK_ERROR';
-          } else if (error.message.includes('file') || error.message.includes('ENOENT') || error.message.includes('EACCES')) {
+          } else if (
+            error.message.includes('file') ||
+            error.message.includes('ENOENT') ||
+            error.message.includes('EACCES')
+          ) {
             errorCode = 'FILE_SYSTEM_ERROR';
-          } else if (error.message.includes('parse') || error.message.includes('parsing') || error.message.includes('Unexpected token')) {
+          } else if (
+            error.message.includes('parse') ||
+            error.message.includes('parsing') ||
+            error.message.includes('Unexpected token')
+          ) {
             errorCode = 'PARSING_ERROR';
           }
           // Keep the provided code if no more specific match is found
@@ -732,7 +769,7 @@ export class CommandLineInterface implements CLI {
     const jsonError: JsonErrorResponse = {
       error: true,
       message: errorMessage,
-      code: errorCode
+      code: errorCode,
     };
 
     // Output JSON error to stdout (not stderr) for consistent JSON output
@@ -745,29 +782,33 @@ export class CommandLineInterface implements CLI {
   public displayHelp(): void {
     console.log(chalk.bold(`\n${this.programName} - JLCPCB Component Search Tool\n`));
     console.log('A command-line tool for searching JLCPCB components using fuzzy matching.\n');
-    
+
     console.log(chalk.bold('Usage:'));
     console.log(`  ${this.programName} [options] <search query>\n`);
-    
+
     console.log(chalk.bold('Options:'));
     console.log('  -h, --help                Display this help message');
     console.log('  -v, --version             Display version information');
     console.log('  -f, --format <format>     Output format: detailed, compact, table, or json (default: detailed)');
     console.log('  -s, --sort <field>        Sort by: score, lcsc, manufacturer, or package (default: score)');
     console.log('  -l, --limit <number>      Limit number of results (default: 5)\n');
-    
+
     console.log(chalk.bold('Output Formats:'));
     console.log('  detailed                  Human-readable detailed output with colors and formatting');
     console.log('  compact                   Compact single-line format for each component');
     console.log('  table                     Tabular format with aligned columns');
-    console.log('  json                      Machine-readable JSON format (suppresses all formatting and progress indicators)\n');
-    
+    console.log(
+      '  json                      Machine-readable JSON format (suppresses all formatting and progress indicators)\n',
+    );
+
     console.log(chalk.bold('JSON Format:'));
-    console.log('  The JSON format outputs clean, machine-readable JSON without any formatting, colors, or progress indicators.');
+    console.log(
+      '  The JSON format outputs clean, machine-readable JSON without any formatting, colors, or progress indicators.',
+    );
     console.log('  This format is ideal for programmatic integration and automated scripts.');
     console.log('  When no results are found, an empty array [] is returned.');
     console.log('  Error responses include an "error" field set to true with a "message" and optional "code".\n');
-    
+
     console.log(chalk.bold('Examples:'));
     console.log(`  ${this.programName} "10k resistor 0603"`);
     console.log(`  ${this.programName} "100uF capacitor 16V" --format table`);
@@ -776,7 +817,11 @@ export class CommandLineInterface implements CLI {
     console.log(`  ${this.programName} "capacitor" --format json`);
     console.log(`  ${this.programName} "resistor" --format json --limit 3 | jq '.[0].lcsc'`);
     console.log();
-    console.log(chalk.italic('This is part of the typeCAD project. Visit https://typecad.net to learn more about code-as-schematic.'));
+    console.log(
+      chalk.italic(
+        'This is part of the typeCAD project. Visit https://typecad.net to learn more about code-as-schematic.',
+      ),
+    );
     console.log();
   }
 

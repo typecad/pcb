@@ -207,9 +207,7 @@ describe('KiCadSymbolExtractor', () => {
     it('throws on error when continueOnError is false', async () => {
       const extractor = new KiCadSymbolExtractor({ continueOnError: false });
       await expect(
-        extractor.extractSymbolsFromFiles([
-          makeFileInfo({ filePath: '/nonexistent/file.kicad_sym' }),
-        ])
+        extractor.extractSymbolsFromFiles([makeFileInfo({ filePath: '/nonexistent/file.kicad_sym' })]),
       ).rejects.toThrow();
     });
 
@@ -239,9 +237,7 @@ describe('KiCadSymbolExtractor', () => {
       await fs.promises.writeFile(filePath, VALID_SYMBOL_CONTENT, 'utf8');
 
       const extractor = new KiCadSymbolExtractor();
-      await extractor.extractSymbolsFromFiles([
-        makeFileInfo({ filePath, fileName: 'Stats', directory: tmpDir }),
-      ]);
+      await extractor.extractSymbolsFromFiles([makeFileInfo({ filePath, fileName: 'Stats', directory: tmpDir })]);
       const stats = extractor.getStatistics();
       expect(stats.filesProcessed).toBe(1);
       expect(stats.symbolsExtracted).toBe(2);
@@ -268,9 +264,7 @@ describe('KiCadSymbolExtractor', () => {
       await fs.promises.writeFile(filePath, VALID_SYMBOL_CONTENT, 'utf8');
 
       const extractor = new KiCadSymbolExtractor();
-      await extractor.extractSymbolsFromFiles([
-        makeFileInfo({ filePath, fileName: 'Summary', directory: tmpDir }),
-      ]);
+      await extractor.extractSymbolsFromFiles([makeFileInfo({ filePath, fileName: 'Summary', directory: tmpDir })]);
       const summary = extractor.getExtractionSummary();
       expect(summary).toContain('Extraction Summary:');
       expect(summary).toContain('Files processed: 1');
@@ -308,7 +302,7 @@ describe('KiCadSymbolExtractor', () => {
 
       const extractor = new KiCadSymbolExtractor({ strictValidation: true });
       const symbols = await extractor.extractSymbolsFromFile(
-        makeFileInfo({ filePath, fileName: 'Strict', directory: tmpDir })
+        makeFileInfo({ filePath, fileName: 'Strict', directory: tmpDir }),
       );
       expect(symbols).toHaveLength(0);
     });

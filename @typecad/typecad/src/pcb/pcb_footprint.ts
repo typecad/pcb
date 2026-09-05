@@ -6,6 +6,8 @@ import { generateUuid, formatSourceInfoForProperty, getErrorMessage } from './pc
 import { mapLayerToSide, transformSexprLayers, mirrorChamferDirection } from './pcb_layer_utils.js';
 import { BoardCreationError } from '../utils/errors.js';
 import { reportError } from '../utils/error_reporter.js';
+import logger from '../utils/logging.js';
+import chalk from 'chalk';
 import type { INetResolution, ITextPositioning } from './pcb_interfaces.js';
 import { loadFootprintLib } from './component_footprint_loader.js';
 
@@ -117,8 +119,8 @@ const MIRRORABLE_COORD_NODES = new Set(['start', 'end', 'center', 'mid']);
 function applyLayoutToFpText(sn: SNode, layout: ITextPositioning): void {
   const atChild = sn.child('at');
   if (atChild) {
-    atChild.raw[1] = layout.x;
-    atChild.raw[2] = layout.y;
+    if (layout.x !== undefined) atChild.raw[1] = layout.x;
+    if (layout.y !== undefined) atChild.raw[2] = layout.y;
     if (layout.rotation !== undefined) {
       if (atChild.raw.length > 3) {
         atChild.raw[3] = layout.rotation;
@@ -191,6 +193,23 @@ function applyLayoutToFpText(sn: SNode, layout: ITextPositioning): void {
         setFlag('bold', layout.bold);
         setFlag('italic', layout.italic);
       }
+    }
+  }
+
+  // Three-state visibility: false hides, true shows, undefined leaves the
+  // footprint's own hide flag untouched.
+  const hideChild = sn.child('hide');
+  if (layout.show === false) {
+    if (hideChild) {
+      hideChild.raw[1] = yes();
+    } else {
+      sn.push(['hide', yes()] as SExpr[]);
+    }
+  } else if (layout.show === true) {
+    if (hideChild) {
+      hideChild.raw[1] = no();
+    } else {
+      sn.push(['hide', no()] as SExpr[]);
     }
   }
 }
@@ -288,7 +307,7 @@ export function processFootprintItem(
         }
         padAtRaw.push(rotation);
       } else if (padAtRaw.length === 4) {
-        let componentRotation = component.pcb.rotation || 0;
+        const componentRotation = component.pcb.rotation || 0;
         const padRotation = parseFloat(String(padAtRaw[3]));
 
         if (component.pcb?.side === 'back') {
@@ -598,53 +617,97 @@ export function createFootprintNode(
   if (component.text && component.text.length > 0) {
     for (const textItem of component.text) {
       const propName = textItem.property;
-      const fontSize = textItem.fontSize ?? 1.27;
-      const fontWidth = textItem.width ?? fontSize;
-      const fontHeight = textItem.height ?? fontSize;
-      const thickness = textItem.thickness ?? 0.15;
-      const rotation = textItem.rotation ?? 0;
-      const layer = textItem.layer ?? (textItem.property === 'Reference' ? 'F.SilkS' : 'F.Fab');
-      const hideValue = textItem.show === false ? yes() : no();
-
       const existingProp = findPropertyNodeByName(sn, propName);
 
       if (existingProp) {
         const existingPropRaw = existingProp.raw;
-        splicePropertyStringValue(existingPropRaw, textItem.text);
 
-        if (existingProp.hasChild('at')) {
-          existingProp.replaceChild('at', ['at', textItem.x, textItem.y, rotation] as SExpr[]);
-        } else {
-          existingPropRaw.splice(3, 0, ['at', textItem.x, textItem.y, rotation] as SExpr[]);
+        // Keep the footprint's own text unless an explicit replacement is given
+        if (textItem.text !== undefined) {
+          splicePropertyStringValue(existingPropRaw, textItem.text);
         }
 
-        if (existingProp.hasChild('layer')) {
-          existingProp.replaceChild('layer', ['layer', layer] as SExpr[]);
+        // Merge position: omitted fields keep the footprint's coordinates
+        const atChild = existingProp.child('at');
+        const curX = atChild && atChild.raw.length > 2 ? atChild.raw[1] : 0;
+        const curY = atChild && atChild.raw.length > 2 ? atChild.raw[2] : 0;
+        const curRotation = atChild && atChild.raw.length > 3 ? atChild.raw[3] : 0;
+        const at = ['at', textItem.x ?? curX, textItem.y ?? curY, textItem.rotation ?? curRotation] as SExpr[];
+        if (existingProp.hasChild('at')) {
+          existingProp.replaceChild('at', at);
         } else {
-          const insertAfterAt = existingPropRaw.findIndex(
-            (item: SExpr, idx: number) => idx > 2 && Array.isArray(item) && SNode.from(item as SExpr[]).name === 'at',
-          );
-          existingPropRaw.splice(insertAfterAt >= 0 ? insertAfterAt + 1 : 3, 0, ['layer', layer] as SExpr[]);
+          existingPropRaw.splice(3, 0, at);
+        }
+
+        if (textItem.layer !== undefined) {
+          if (existingProp.hasChild('layer')) {
+            existingProp.replaceChild('layer', ['layer', textItem.layer] as SExpr[]);
+          } else {
+            const insertAfterAt = existingPropRaw.findIndex(
+              (item: SExpr, idx: number) => idx > 2 && Array.isArray(item) && SNode.from(item as SExpr[]).name === 'at',
+            );
+            existingPropRaw.splice(insertAfterAt >= 0 ? insertAfterAt + 1 : 3, 0, ['layer', textItem.layer] as SExpr[]);
+          }
         }
 
         const fontParts: SExpr[] = [];
         if (textItem.bold) fontParts.push(Sym.for('bold'));
         if (textItem.italic) fontParts.push(Sym.for('italic'));
         if (textItem.font) fontParts.push([Sym.for('face'), textItem.font]);
-        fontParts.push([Sym.for('size'), fontWidth, fontHeight], [Sym.for('thickness'), thickness]);
-        const newEffects = [Sym.for('effects'), [Sym.for('font'), ...fontParts]] as SExpr[];
-        if (existingProp.hasChild('effects')) {
-          existingProp.replaceChild('effects', newEffects);
-        } else {
-          existingProp.push(newEffects);
+        const hasFontOverride =
+          fontParts.length > 0 ||
+          textItem.fontSize !== undefined ||
+          textItem.width !== undefined ||
+          textItem.height !== undefined ||
+          textItem.thickness !== undefined;
+        if (hasFontOverride) {
+          const fontWidth = textItem.width ?? textItem.fontSize ?? 1.27;
+          const fontHeight = textItem.height ?? textItem.fontSize ?? 1.27;
+          const thickness = textItem.thickness ?? 0.15;
+          fontParts.push([Sym.for('size'), fontWidth, fontHeight], [Sym.for('thickness'), thickness]);
+          const newEffects = [Sym.for('effects'), [Sym.for('font'), ...fontParts]] as SExpr[];
+          if (existingProp.hasChild('effects')) {
+            existingProp.replaceChild('effects', newEffects);
+          } else {
+            existingProp.push(newEffects);
+          }
         }
 
-        if (existingProp.hasChild('hide')) {
-          existingProp.replaceChild('hide', ['hide', hideValue] as SExpr[]);
-        } else {
-          existingProp.push(['hide', hideValue] as SExpr[]);
+        // Three-state visibility: false hides, true shows, undefined leaves
+        // the footprint's own hide flag untouched.
+        if (textItem.show !== undefined) {
+          const hideValue = textItem.show ? no() : yes();
+          if (existingProp.hasChild('hide')) {
+            existingProp.replaceChild('hide', ['hide', hideValue] as SExpr[]);
+          } else {
+            existingProp.push(['hide', hideValue] as SExpr[]);
+          }
         }
       } else {
+        const fontSize = textItem.fontSize ?? 1.27;
+        const fontWidth = textItem.width ?? fontSize;
+        const fontHeight = textItem.height ?? fontSize;
+        const thickness = textItem.thickness ?? 0.15;
+        const rotation = textItem.rotation ?? 0;
+        const layer = textItem.layer ?? (textItem.property === 'Reference' ? 'F.SilkS' : 'F.Fab');
+        const hideValue = textItem.show === false ? yes() : no();
+        const text =
+          textItem.text ??
+          (textItem.property === 'Reference'
+            ? component.reference
+            : textItem.property === 'Value'
+              ? component.value
+              : undefined);
+
+        if (text === undefined) {
+          logger.warn(
+            chalk.yellow(
+              `footprint text entry "${propName}" has no text and the footprint has no such property; skipping`,
+            ),
+          );
+          continue;
+        }
+
         const insertPos = findPropertyInsertPosition(sn);
         const fontParts: SExpr[] = [];
         if (textItem.bold) fontParts.push(Sym.for('bold'));
@@ -654,8 +717,8 @@ export function createFootprintNode(
         const textProp: SExpr[] = [
           'property',
           propName,
-          textItem.text,
-          ['at', textItem.x, textItem.y, rotation],
+          text,
+          ['at', textItem.x ?? 0, textItem.y ?? 0, rotation],
           ['layer', layer],
           ['uuid', generateUuid()],
           [Sym.for('effects'), [Sym.for('font'), ...fontParts]] as SExpr[],

@@ -5,7 +5,8 @@ export const validationSkills: Skill[] = [
   {
     name: 'erc',
     category: 'validation',
-    description: 'Electrical Rules Check runs via kicad-cli sch erc to validate pin type compatibility, power connections, floating pins, and short circuits',
+    description:
+      'Electrical Rules Check runs via kicad-cli sch erc to validate pin type compatibility, power connections, floating pins, and short circuits',
     package: '@typecad/typecad',
     import: "import { Power } from '@typecad/typecad';",
     examples: [
@@ -54,7 +55,8 @@ typecad erc ./build/board.kicad_sch -- --exit-code-violations`,
   {
     name: 'drc',
     category: 'validation',
-    description: 'Design Rules Check validates PCB manufacturing constraints like clearance, trace width, and drill sizes using KiCad\'s kicad-cli',
+    description:
+      "Design Rules Check validates PCB manufacturing constraints like clearance, trace width, and drill sizes using KiCad's kicad-cli",
     package: '@typecad/typecad',
     import: "import { runDRC } from '@typecad/typecad';",
     examples: [
@@ -88,7 +90,8 @@ typecad drc ./build/board.kicad_pcb -- --refill-zones`,
   {
     name: 'validation',
     category: 'validation',
-    description: 'Automatic validation that runs during build: power compatibility, current capacity, pin types, reference conflicts, and net merging',
+    description:
+      'Automatic validation that runs during build: power compatibility, current capacity, pin types, reference conflicts, and net merging',
     package: '@typecad/typecad',
     import: "import { PCB } from '@typecad/typecad';",
     examples: [

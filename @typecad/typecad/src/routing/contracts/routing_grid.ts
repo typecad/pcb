@@ -22,9 +22,9 @@ export interface IRoutingCellFull extends IRoutingCell {
 }
 
 /**
-  * Minimal routing grid contract shared between host and plugins.
-  * Concrete grid implementations should satisfy this interface.
-  */
+ * Minimal routing grid contract shared between host and plugins.
+ * Concrete grid implementations should satisfy this interface.
+ */
 export interface IRoutingGrid {
   worldToGrid(x: number, y: number): IGridCoordinate;
   gridToWorld(gridX: number, gridY: number): { x: number; y: number };
@@ -37,7 +37,7 @@ export interface IRoutingGrid {
     clearance?: number,
     net?: string,
     considerObstacleClearance?: boolean,
-    sumObstacleClearance?: boolean
+    sumObstacleClearance?: boolean,
   ): boolean;
   getResolution(): number;
   readonly gridResolution: number;
@@ -45,13 +45,8 @@ export interface IRoutingGrid {
   markTerminal(gx: number, gy: number, layer: string, radiusCells: number, net?: string): void;
   getCellCost(x: number, y: number, layer: string): number;
   isPadCell(x: number, y: number, layer: string): boolean;
-  isOccupiedById(
-    x: number,
-    y: number,
-    layer: string,
-    obstacleIds: Set<string> | string[]
-  ): boolean;
-  addObstacle(obstacle: import("../shared/routing_grid.js").IRoutingObstacle): void;
+  isOccupiedById(x: number, y: number, layer: string, obstacleIds: Set<string> | string[]): boolean;
+  addObstacle(obstacle: import('../shared/routing_grid.js').IRoutingObstacle): void;
   getCellsArray(): readonly (IRoutingCellFull | undefined)[];
   getDimensions(): { width: number; height: number; layers: number };
   getBounds(): { minX: number; maxX: number; minY: number; maxY: number };

@@ -1,9 +1,6 @@
-import type { ISchematicNetDefinition } from "../net_manager.js";
-import { Pin } from "../pin.js";
-import type {
-    IAutorouteOptions,
-    IAutorouteResult
-} from './pcb_interfaces.js';
+import type { ISchematicNetDefinition } from '../net_manager.js';
+import { Pin } from '../pin.js';
+import type { IAutorouteOptions, IAutorouteResult } from './pcb_interfaces.js';
 import { pinToIdentifier } from './pcb_routing_helpers.js';
 import { routeNet as extractRouteNet } from './pcb_routing_core.js';
 import { autoroute } from './pcb_autoroute.js';
@@ -13,53 +10,59 @@ import { PcbInternalState } from './pcb_state.js';
 import logger from '../utils/logging.js';
 
 function isSchematicNetDefinition(value: unknown): value is ISchematicNetDefinition {
-    return Boolean(
-        value &&
-        typeof value === 'object' &&
-        'name' in value &&
-        typeof (value as { name: unknown }).name === 'string' &&
-        'pins' in value &&
-        Array.isArray((value as { pins: unknown }).pins)
-    );
+  return Boolean(
+    value &&
+    typeof value === 'object' &&
+    'name' in value &&
+    typeof (value as { name: unknown }).name === 'string' &&
+    'pins' in value &&
+    Array.isArray((value as { pins: unknown }).pins),
+  );
 }
 
 export function pcbRoute(
-    pcb: PCB,
-    state: PcbInternalState,
-    arg1: ISchematicNetDefinition | IAutorouteOptions,
-    options?: import('./pcb_interfaces.js').IAutorouteRouteOptions
+  pcb: PCB,
+  state: PcbInternalState,
+  arg1: ISchematicNetDefinition | IAutorouteOptions,
+  options?: import('./pcb_interfaces.js').IAutorouteRouteOptions,
 ): IAutorouteResult {
-    if (isSchematicNetDefinition(arg1)) {
-        return extractRouteNet(pcb, arg1, options);
-    }
-    const opts = arg1 as IAutorouteOptions;
-    const netLabel = opts.net || `${pinToIdentifier(Array.isArray(opts.from) ? opts.from[0] : opts.from)} → ${pinToIdentifier(Array.isArray(opts.to) ? opts.to[0] : opts.to)}`;
-    logger.info(`⏳ Routing '${netLabel}'...`);
-    const result = pcbAutoroute(pcb, state, opts);
-    if (result.success) {
-        logger.info(`✔ Routing '${netLabel}' complete (${result.completedCount}/${result.routeCount} routes)`);
-    } else {
-        logger.warn(`⚠ Routing '${netLabel}' incomplete (${result.completedCount}/${result.routeCount} routes)`);
-    }
-    return result;
+  if (isSchematicNetDefinition(arg1)) {
+    return extractRouteNet(pcb, arg1, options);
+  }
+  const opts = arg1 as IAutorouteOptions;
+  const netLabel =
+    opts.net ||
+    `${pinToIdentifier(Array.isArray(opts.from) ? opts.from[0] : opts.from)} → ${pinToIdentifier(Array.isArray(opts.to) ? opts.to[0] : opts.to)}`;
+  logger.info(`⏳ Routing '${netLabel}'...`);
+  const result = pcbAutoroute(pcb, state, opts);
+  if (result.success) {
+    logger.info(`✔ Routing '${netLabel}' complete (${result.completedCount}/${result.routeCount} routes)`);
+  } else {
+    logger.warn(`⚠ Routing '${netLabel}' incomplete (${result.completedCount}/${result.routeCount} routes)`);
+  }
+  return result;
 }
 
 export function pcbAutoroute(pcb: PCB, state: PcbInternalState, options: IAutorouteOptions): IAutorouteResult {
-    return autoroute(pcb, options);
+  return autoroute(pcb, options);
 }
 
-export function pcbWaitForPendingAutoroutes(_state: PcbInternalState): void {
-}
+export function pcbWaitForPendingAutoroutes(_state: PcbInternalState): void {}
 
 export function pcbAutorouteBatch(
-    pcb: PCB,
-    items: Array<{ from: Pin | Pin[]; to: Pin | Pin[]; options?: import('./pcb_interfaces.js').IAutorouteRouteOptions; name?: string }>,
-    batchOptions?: {
-        rounds?: number;
-        reorder?: 'none' | 'reverse' | 'byDistance';
-        relaxViaCostPerRound?: number;
-        increaseIterationsPerRound?: number;
-    }
+  pcb: PCB,
+  items: Array<{
+    from: Pin | Pin[];
+    to: Pin | Pin[];
+    options?: import('./pcb_interfaces.js').IAutorouteRouteOptions;
+    name?: string;
+  }>,
+  batchOptions?: {
+    rounds?: number;
+    reorder?: 'none' | 'reverse' | 'byDistance';
+    relaxViaCostPerRound?: number;
+    increaseIterationsPerRound?: number;
+  },
 ): { results: IAutorouteResult[]; success: boolean; rounds: number } {
-    return autorouteBatch(pcb, items, batchOptions);
+  return autorouteBatch(pcb, items, batchOptions);
 }

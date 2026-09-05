@@ -1,10 +1,10 @@
 declare module 'markdown-it-attrs' {
-    interface MarkdownItAttrsOptions {
-        leftDelimiter?: string;
-        rightDelimiter?: string;
-        allowedAttributes?: string[];
-    }
+  interface MarkdownItAttrsOptions {
+    leftDelimiter?: string;
+    rightDelimiter?: string;
+    allowedAttributes?: string[];
+  }
 
-    const markdownItAttrs: import('markdown-it').PluginWithOptions<MarkdownItAttrsOptions>;
-    export default markdownItAttrs;
-} 
+  const markdownItAttrs: import('markdown-it').PluginWithOptions<MarkdownItAttrsOptions>;
+  export default markdownItAttrs;
+}

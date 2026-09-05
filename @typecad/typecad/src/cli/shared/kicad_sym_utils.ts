@@ -53,11 +53,7 @@ export function kicad_symbol(symbol: string, folder = './', depth = 0): string |
           if (nameOf(l[i][ii][0]) === 'extends') {
             const extends_name = String(l[i][ii][1]);
             l[i][ii][1] = `${symbol_file_name[0]}:${extends_name}`;
-            return kicad_symbol(
-              `${symbol_file_name[0]}:${extends_name}`,
-              folder,
-              depth + 1
-            );
+            return kicad_symbol(`${symbol_file_name[0]}:${extends_name}`, folder, depth + 1);
           }
 
           symbol_file_contents = serialize(l[i]);

@@ -24,30 +24,30 @@ export class CsvParser {
       const components: ComponentRecord[] = [];
       let headers: string[] = [];
       let lineNumber = 0;
-      
+
       // Create a read stream for the file
       const fileStream = createReadStream(filePath, { encoding: 'utf-8' });
       const rl = createInterface({
         input: fileStream,
-        crlfDelay: Infinity
+        crlfDelay: Infinity,
       });
 
       // Process each line
       for await (const line of rl) {
         lineNumber++;
-        
+
         // Skip empty lines
         if (!line.trim()) {
           continue;
         }
-        
+
         // Parse the CSV line
         const values = this.parseCsvLine(line);
-        
+
         if (lineNumber === 1) {
           // First line contains headers
           headers = values;
-          
+
           // Validate headers
           this.validateHeaders(headers);
         } else {
@@ -56,16 +56,16 @@ export class CsvParser {
             const component = this.createComponentRecord(headers, values);
             components.push(component);
           } catch (error) {
-            this.logger.warn(`Skipping malformed row at line ${lineNumber}: ${error instanceof Error ? error.message : String(error)}`);
+            this.logger.warn(
+              `Skipping malformed row at line ${lineNumber}: ${error instanceof Error ? error.message : String(error)}`,
+            );
           }
         }
       }
-      
+
       return components;
     } catch (error) {
-      throw new ParsingError(
-        `Failed to parse CSV file: ${error instanceof Error ? error.message : String(error)}`
-      );
+      throw new ParsingError(`Failed to parse CSV file: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
@@ -79,10 +79,10 @@ export class CsvParser {
     const values: string[] = [];
     let currentValue = '';
     let inQuotes = false;
-    
+
     for (let i = 0; i < line.length; i++) {
       const char = line[i];
-      
+
       if (char === '"') {
         // Handle quotes
         if (inQuotes && i + 1 < line.length && line[i + 1] === '"') {
@@ -102,10 +102,10 @@ export class CsvParser {
         currentValue += char;
       }
     }
-    
+
     // Add the last value
     values.push(currentValue);
-    
+
     return values;
   }
 
@@ -117,12 +117,18 @@ export class CsvParser {
    */
   private validateHeaders(headers: string[]): void {
     const requiredHeaders = [
-      'lcsc', 'category', 'subcategory', 'mfr', 'package', 
-      'manufacturer', 'description', 'datasheet'
+      'lcsc',
+      'category',
+      'subcategory',
+      'mfr',
+      'package',
+      'manufacturer',
+      'description',
+      'datasheet',
     ];
-    
-    const missingHeaders = requiredHeaders.filter(header => !headers.includes(header));
-    
+
+    const missingHeaders = requiredHeaders.filter((header) => !headers.includes(header));
+
     if (missingHeaders.length > 0) {
       throw new Error(`CSV file is missing required headers: ${missingHeaders.join(', ')}`);
     }
@@ -140,14 +146,14 @@ export class CsvParser {
     if (headers.length !== values.length) {
       throw new Error(`Value count (${values.length}) doesn't match header count (${headers.length})`);
     }
-    
+
     // Create an object with all headers as keys
     const record: Record<string, string> = {};
-    
+
     for (let i = 0; i < headers.length; i++) {
       record[headers[i]] = values[i];
     }
-    
+
     // Extract description from extra JSON field if description column is empty
     if (!record.description || record.description.trim() === '') {
       try {
@@ -163,7 +169,7 @@ export class CsvParser {
         // This is not a critical error, so we just continue
       }
     }
-    
+
     // Cast to ComponentRecord
     return record as unknown as ComponentRecord;
   }

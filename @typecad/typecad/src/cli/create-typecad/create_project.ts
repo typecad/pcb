@@ -1,7 +1,7 @@
-import fs from "node:fs";
-import path from "node:path";
-import chalk from "chalk";
-import { execFileSync } from "node:child_process";
+import fs from 'node:fs';
+import path from 'node:path';
+import chalk from 'chalk';
+import { execFileSync } from 'node:child_process';
 import { findExecutable } from '../../kicad.js';
 import type { ProjectAnswers } from '../types.js';
 import logger from '../../utils/logging.js';
@@ -73,13 +73,10 @@ export function create_project(answers: ProjectAnswers) {
       fs.mkdirSync(dir, { recursive: true });
     }
 
-    logger.log(chalk.green("+"), "Project folders created");
+    logger.log(chalk.green('+'), 'Project folders created');
 
     try {
-      fs.writeFileSync(
-        `./${answers.name}/hw/build/${answers.name}.kicad_pro`,
-        ""
-      );
+      fs.writeFileSync(`./${answers.name}/hw/build/${answers.name}.kicad_pro`, '');
     } catch (error) {
       throw new Error(`ERROR creating ./${answers.name}/hw/build/${answers.name}.kicad_pro. ${error}`);
     }
@@ -87,7 +84,7 @@ export function create_project(answers: ProjectAnswers) {
     try {
       fs.writeFileSync(
         `./${answers.name}/hw/build/${answers.name}.kicad_pcb`,
-        '(kicad_pcb(version 20240108)(generator "pcbnew")(generator_version "8.0"))'
+        '(kicad_pcb(version 20240108)(generator "pcbnew")(generator_version "8.0"))',
       );
     } catch (error) {
       throw new Error(`ERROR creating ./hw/build/${answers.name}/${answers.name}.kicad_pcb. ${error}`);
@@ -96,7 +93,7 @@ export function create_project(answers: ProjectAnswers) {
     try {
       fs.writeFileSync(
         `./${answers.name}/hw/build/fp-lib-table`,
-        '(fp_lib_table(version 8)(lib (name "lib")(type "KiCad")(uri "${KIPRJMOD}/lib/footprints")(options "")(descr "")))'
+        '(fp_lib_table(version 8)(lib (name "lib")(type "KiCad")(uri "${KIPRJMOD}/lib/footprints")(options "")(descr "")))',
       );
     } catch (error) {
       throw new Error(`ERROR creating ./${answers.name}/hw/build/fp-lib-table. ${error}`);
@@ -108,63 +105,53 @@ export function create_project(answers: ProjectAnswers) {
         `import { PCB } from '@typecad/typecad'
 import { Resistor } from '@typecad/passives/0603';
 ${[
-  answers.packages.includes("ngspice")
-    ? `import { ngspiceSimulator } from '@typecad/ngspice';`
-    : "",
-  answers.packages.includes("graphviz")
-    ? `import { graphviz } from '@typecad/graphviz';`
-    : "",
-  answers.packages.includes("jlcpcb")
-    ? `import { jlcpcb_export } from '@typecad/jlcpcb-export';`
-    : "",
+  answers.packages.includes('ngspice') ? `import { ngspiceSimulator } from '@typecad/ngspice';` : '',
+  answers.packages.includes('graphviz') ? `import { graphviz } from '@typecad/graphviz';` : '',
+  answers.packages.includes('jlcpcb') ? `import { jlcpcb_export } from '@typecad/jlcpcb-export';` : '',
 ]
   .filter(Boolean)
-  .join("\n")}
+  .join('\n')}
 let typecad = new PCB('${answers.name}');
-${[
-  answers.packages.includes("ngspice")
-    ? `let ngspice = new ngspiceSimulator(typecad);`
-    : "",
-]
+${[answers.packages.includes('ngspice') ? `let ngspice = new ngspiceSimulator(typecad);` : '']
   .filter(Boolean)
-  .join("\n")}
+  .join('\n')}
 ${[
-  answers.packages.includes("ngspice")
+  answers.packages.includes('ngspice')
     ? `let r1 = new Resistor({ value: '1kohm', simulation: { include: true } });`
     : `let r1 = new Resistor({ value: '1kohm' });`,
 ]
   .filter(Boolean)
-  .join("\n")}
+  .join('\n')}
 
 typecad.create(r1);
 ${[
-  answers.packages.includes("ngspice") ? `ngspice.op();` : "",
-  answers.packages.includes("graphviz") ? `graphviz(typecad);` : "",
-  answers.packages.includes("jlcpcb") ? `jlcpcb_export(typecad, pcb);` : "",
+  answers.packages.includes('ngspice') ? `ngspice.op();` : '',
+  answers.packages.includes('graphviz') ? `graphviz(typecad);` : '',
+  answers.packages.includes('jlcpcb') ? `jlcpcb_export(typecad, pcb);` : '',
 ]
   .filter(Boolean)
-  .join("\n")}
+  .join('\n')}
 // 1. run the npm script 'build'
 // 2. run the npm script 'open_board' to edit the board in KiCAD
 ${[
-  answers.packages.includes("ngspice")
+  answers.packages.includes('ngspice')
     ? `// * read more about ngspice simulation: https://www.npmjs.com/package/@typecad/ngspice`
-    : "",
-  answers.packages.includes("graphviz")
+    : '',
+  answers.packages.includes('graphviz')
     ? `// * read more about the graphviz package: https://www.npmjs.com/package/@typecad/graphviz`
-    : "",
-  answers.packages.includes("jlcpcb")
+    : '',
+  answers.packages.includes('jlcpcb')
     ? `// * read more about the jlcpcb-export package: https://www.npmjs.com/package/@typecad/jlcpcb-export`
-    : "",
+    : '',
 ]
   .filter(Boolean)
-  .join("\n")}
- `
+  .join('\n')}
+ `,
       );
     } catch (error) {
       throw new Error(`ERROR creating ./${answers.name}/src/${answers.name}.ts. ${error}`);
     }
-    logger.log(chalk.green("+"), "KiCAD project created");
+    logger.log(chalk.green('+'), 'KiCAD project created');
 
     try {
       fs.writeFileSync(
@@ -174,41 +161,40 @@ ${[
 export default defineConfig({
   entry: './src/${answers.name}.ts',
 });
-`
+`,
       );
     } catch (error) {
       throw new Error(`ERROR creating ./${answers.name}/hw/typecad.conf.ts. ${error}`);
     }
-    logger.log(chalk.green("+"), "typecad.conf.ts created");
+    logger.log(chalk.green('+'), 'typecad.conf.ts created');
 
-    logger.log(chalk.green("+"), "Creating npm package");
+    logger.log(chalk.green('+'), 'Creating npm package');
     const npmInit = runCommand('npm', ['init', '-y'], path.join(process.cwd(), answers.name, 'hw'));
     if (!npmInit) {
       throw new Error(`Failed to initialize npm package. Is npm installed and on your PATH?`);
     }
 
     const pkgList = [
-      'tsx', '@typecad/typecad', '@typecad/passives',
-      ...answers.packages.includes("ngspice") ? ['@typecad/ngspice'] : [],
-      ...answers.packages.includes("graphviz") ? ['@typecad/graphviz'] : [],
-      ...answers.packages.includes("jlcpcb") ? ['@typecad/jlcpcb-export'] : [],
-      ...answers.packages.includes("prompt") ? ['@typecad/typecad-prompt'] : [],
-      ...answers.packages.includes("wiring") ? ['@typecad/wiring'] : [],
-      ...answers.packages.includes("jlcpcb-parts") ? ['@typecad/jlcpcb-parts'] : [],
-      ...answers.packages.includes("typecad-mcp") ? ['@typecad/typecad-mcp'] : [],
+      'tsx',
+      '@typecad/typecad',
+      '@typecad/passives',
+      ...(answers.packages.includes('ngspice') ? ['@typecad/ngspice'] : []),
+      ...(answers.packages.includes('graphviz') ? ['@typecad/graphviz'] : []),
+      ...(answers.packages.includes('jlcpcb') ? ['@typecad/jlcpcb-export'] : []),
+      ...(answers.packages.includes('prompt') ? ['@typecad/typecad-prompt'] : []),
+      ...(answers.packages.includes('wiring') ? ['@typecad/wiring'] : []),
+      ...(answers.packages.includes('jlcpcb-parts') ? ['@typecad/jlcpcb-parts'] : []),
+      ...(answers.packages.includes('typecad-mcp') ? ['@typecad/typecad-mcp'] : []),
     ].filter(Boolean);
 
-    logger.log(chalk.green("+"), "Installing dependencies");
+    logger.log(chalk.green('+'), 'Installing dependencies');
     const installedDeps = runCommandQuiet('npm', ['i', ...pkgList], path.join(process.cwd(), answers.name, 'hw'));
     if (!installedDeps) {
       throw new Error(`Failed to install dependencies. Is npm installed and on your PATH?`);
     }
 
     try {
-      fs.writeFileSync(
-        `${process.cwd()}/${answers.name}/hw/.gitignore`,
-        "node_modules/"
-      );
+      fs.writeFileSync(`${process.cwd()}/${answers.name}/hw/.gitignore`, 'node_modules/');
     } catch (error) {
       throw new Error(`ERROR writing ./${answers.name}/hw/.gitignore ${error}`);
     }
@@ -241,59 +227,44 @@ config, KiCad integration, and project commands.
 - \`npm run add_component\` — add a component interactively
 - \`npm run add_package\` — create a reusable component package
 - \`npm run kicad-search\` — search KiCad symbol libraries
-`
+`,
       );
-      logger.log(chalk.green("+"), "AGENTS.md created for AI tool discoverability");
+      logger.log(chalk.green('+'), 'AGENTS.md created for AI tool discoverability');
     } catch (error) {
       throw new Error(`ERROR writing ./${answers.name}/hw/AGENTS.md ${error}`);
     }
 
     let package_json;
     try {
-      package_json = JSON.parse(
-        fs.readFileSync(
-          `${process.cwd()}/${answers.name}/hw/package.json`,
-          "utf8"
-        )
-      );
+      package_json = JSON.parse(fs.readFileSync(`${process.cwd()}/${answers.name}/hw/package.json`, 'utf8'));
     } catch (error) {
       throw new Error(`ERROR reading ./${answers.name}/hw/package.json ${error}`);
     }
 
-    package_json.type = "module";
+    package_json.type = 'module';
 
-    package_json.scripts["build"] = `typecad build`;
-    package_json.scripts["add_component"] = `typecad add component`;
-    package_json.scripts["add_package"] = `typecad add package`;
-    package_json.scripts["kicad-search"] = `typecad search`;
-    package_json.scripts["import"] = `typecad import ${path.join(".", "build", `${answers.name}.kicad_pcb`)} --apply`;
-    package_json.scripts[
-      "open_board"
-    ] = `npx open-cli ./build/${answers.name}.kicad_pcb`;
-    package_json.scripts["diff"] = `typecad diff HEAD ./build/${answers.name}.kicad_pcb`;
+    package_json.scripts['build'] = `typecad build`;
+    package_json.scripts['add_component'] = `typecad add component`;
+    package_json.scripts['add_package'] = `typecad add package`;
+    package_json.scripts['kicad-search'] = `typecad search`;
+    package_json.scripts['import'] = `typecad import ${path.join('.', 'build', `${answers.name}.kicad_pcb`)} --apply`;
+    package_json.scripts['open_board'] = `npx open-cli ./build/${answers.name}.kicad_pcb`;
+    package_json.scripts['diff'] = `typecad diff HEAD ./build/${answers.name}.kicad_pcb`;
 
-    package_json.scripts["docs"] = `typecad doc ${path.join(".", "docs", `${answers.name}.md`)} ${path.join(
-      ".",
-      "build",
-      `${answers.name}.kicad_pcb`
+    package_json.scripts['docs'] = `typecad doc ${path.join('.', 'docs', `${answers.name}.md`)} ${path.join(
+      '.',
+      'build',
+      `${answers.name}.kicad_pcb`,
     )}`;
 
-    if (answers.packages.includes("jlcpcb-parts")) {
-      package_json.scripts["jlcpcb_parts"] = `${path.join(
-        ".",
-        "node_modules",
-        ".bin",
-        "jlcpcb-search"
-      )}`;
+    if (answers.packages.includes('jlcpcb-parts')) {
+      package_json.scripts['jlcpcb_parts'] = `${path.join('.', 'node_modules', '.bin', 'jlcpcb-search')}`;
     }
 
     delete package_json.scripts.test;
 
     try {
-      fs.writeFileSync(
-        `${process.cwd()}/${answers.name}/hw/package.json`,
-        JSON.stringify(package_json, null, 2)
-      );
+      fs.writeFileSync(`${process.cwd()}/${answers.name}/hw/package.json`, JSON.stringify(package_json, null, 2));
     } catch (error) {
       throw new Error(`ERROR writing ./${answers.name}/hw/package.json ${error}`);
     }
@@ -303,8 +274,12 @@ config, KiCad integration, and project commands.
       if (!fs.existsSync(dir)) {
         fs.mkdirSync(dir, { recursive: true });
       }
-      logger.log(chalk.green("+"), "Creating pio project in ./fw");
-      const installedPIO = runCommand('pio', ['project', 'init', '--project-dir', './fw/', '-b', answers.board], path.join(process.cwd(), answers.name));
+      logger.log(chalk.green('+'), 'Creating pio project in ./fw');
+      const installedPIO = runCommand(
+        'pio',
+        ['project', 'init', '--project-dir', './fw/', '-b', answers.board],
+        path.join(process.cwd(), answers.name),
+      );
       if (!installedPIO) {
         logger.error(`Error creating PlatformIO project`);
       }
@@ -315,7 +290,7 @@ config, KiCad integration, and project commands.
       if (!fs.existsSync(dir)) {
         fs.mkdirSync(dir, { recursive: true });
       }
-      logger.log(chalk.green("+"), "Initializing git repo ./fw");
+      logger.log(chalk.green('+'), 'Initializing git repo ./fw');
       const installedGit = runCommand('git', ['init'], path.join(process.cwd(), answers.name));
       if (!installedGit) {
         logger.error(`Error initializing git repo`);
@@ -370,43 +345,37 @@ _flipped_
 `;
 
     try {
-      fs.writeFileSync(
-        `${process.cwd()}/${answers.name}/hw/docs/${answers.name}.md`,
-        docContent
-      );
-      logger.log(chalk.green("+"), "Documentation template created");
+      fs.writeFileSync(`${process.cwd()}/${answers.name}/hw/docs/${answers.name}.md`, docContent);
+      logger.log(chalk.green('+'), 'Documentation template created');
     } catch (error) {
       throw new Error(`ERROR writing ./${answers.name}/hw/docs/${answers.name}.md ${error}`);
     }
 
-    let code_workspace: Record<string, any> = {};
+    const code_workspace: Record<string, unknown> = {};
 
     if (answers.pio) {
-      code_workspace.folders = [{ path: "hw" }, { path: "fw" }];
+      code_workspace.folders = [{ path: 'hw' }, { path: 'fw' }];
     } else {
-      code_workspace.folders = [{ path: "hw" }];
+      code_workspace.folders = [{ path: 'hw' }];
     }
     code_workspace.settings = {};
 
     try {
       fs.writeFileSync(
         `${process.cwd()}/${answers.name}/${answers.name}.code-workspace`,
-        JSON.stringify(code_workspace, null, 2)
+        JSON.stringify(code_workspace, null, 2),
       );
     } catch (error) {
       throw new Error(`ERROR writing ./${answers.name}.code-workspace ${error}`);
     }
 
-    logger.log(chalk.green("+"), "Finished");
-    logger.log(
-      chalk.green("+"),
-      `Open ${answers.name}.code-workspace in VS Code to get started`
-    );
+    logger.log(chalk.green('+'), 'Finished');
+    logger.log(chalk.green('+'), `Open ${answers.name}.code-workspace in VS Code to get started`);
   } catch (err) {
     if (createdDirs && fs.existsSync(projectRoot)) {
       try {
         fs.rmSync(projectRoot, { recursive: true, force: true });
-        logger.log(chalk.yellow("!"), "Cleaned up partial project:", projectRoot);
+        logger.log(chalk.yellow('!'), 'Cleaned up partial project:', projectRoot);
       } catch (cleanupErr) {
         logger.error(`Failed to clean up ${projectRoot}. Remove it manually.`);
       }

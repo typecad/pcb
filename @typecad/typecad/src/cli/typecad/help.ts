@@ -1,9 +1,7 @@
 import chalk from 'chalk';
 
 export function showTopLevelHelp(): void {
-  console.log(
-    chalk.white.bold('typeCAD') + ' - programmatically create hardware\n'
-  );
+  console.log(chalk.white.bold('typeCAD') + ' - programmatically create hardware\n');
   console.log('Usage:');
   console.log('  typecad <command> [subcommand] [options]\n');
   console.log('Commands:');
@@ -31,66 +29,32 @@ export function showTopLevelHelp(): void {
 }
 
 export function showCreateHelp(): void {
-  console.log(
-    chalk.white.bold('typecad create') +
-      ' - Create a new typeCAD project\n'
-  );
-  console.log(
-    'Create a new typeCAD project with KiCAD project files, npm package,'
-  );
+  console.log(chalk.white.bold('typecad create') + ' - Create a new typeCAD project\n');
+  console.log('Create a new typeCAD project with KiCAD project files, npm package,');
   console.log('and optional firmware.\n');
   console.log('Usage: typecad create [options]\n');
   console.log('Options:');
-  console.log(
-    '  --name=<name>         Project name (required for non-interactive mode)'
-  );
-  console.log(
-    '  --pio=<true|false>    Create a PlatformIO firmware project (default: false)'
-  );
-  console.log(
-    '  --git=<true|false>    Initialize a git repository (default: false)'
-  );
-  console.log(
-    '  --board=<board>       PlatformIO board (required when --pio=true, default: esp32dev)'
-  );
+  console.log('  --name=<name>         Project name (required for non-interactive mode)');
+  console.log('  --pio=<true|false>    Create a PlatformIO firmware project (default: false)');
+  console.log('  --git=<true|false>    Initialize a git repository (default: false)');
+  console.log('  --board=<board>       PlatformIO board (required when --pio=true, default: esp32dev)');
   console.log('  --packages=<list>     Comma-separated packages to install');
-  console.log(
-    '                        Available: @typecad/graphviz,'
-  );
-  console.log(
-    '                        @typecad/jlcpcb-export, @typecad/typecad-prompt,'
-  );
-  console.log(
-    '                        @typecad/wiring, @typecad/jlcpcb-parts,'
-  );
-  console.log(
-    '                        @typecad/typecad-mcp\n'
-  );
+  console.log('                        Available: @typecad/graphviz,');
+  console.log('                        @typecad/jlcpcb-export, @typecad/typecad-prompt,');
+  console.log('                        @typecad/wiring, @typecad/jlcpcb-parts,');
+  console.log('                        @typecad/typecad-mcp\n');
   console.log('Without options, runs interactively with prompts.');
 }
 
 export function showAddComponentHelp(): void {
-  console.log(
-    chalk.white.bold('typecad add component') +
-      ' - Add a component to the current project\n'
-  );
+  console.log(chalk.white.bold('typecad add component') + ' - Add a component to the current project\n');
   console.log('Usage: typecad add component [options]\n');
   console.log('Mixed Source Options:');
-  console.log(
-    '  --symbol_source=<src>     Symbol source: kicad, local, or jlcpcb'
-  );
-  console.log(
-    '  --footprint_source=<src>  Footprint source: kicad, local, or jlcpcb'
-  );
-  console.log(
-    '  --symbol=<name>           Symbol (library:symbol or path to .kicad_sym)'
-  );
-  console.log(
-    '  --footprint=<name>        Footprint (library:footprint or path to .kicad_mod)'
-  );
-  console.log(
-    '  --c=<C-number>            JLCPCB component number (e.g. C3217148)\n'
-  );
+  console.log('  --symbol_source=<src>     Symbol source: kicad, local, or jlcpcb');
+  console.log('  --footprint_source=<src>  Footprint source: kicad, local, or jlcpcb');
+  console.log('  --symbol=<name>           Symbol (library:symbol or path to .kicad_sym)');
+  console.log('  --footprint=<name>        Footprint (library:footprint or path to .kicad_mod)');
+  console.log('  --c=<C-number>            JLCPCB component number (e.g. C3217148)\n');
   console.log('Legacy Source Options (choose one):');
   console.log('  --kicad=<value>           Use KiCAD library');
   console.log('  --local=<value>           Use local files');
@@ -101,10 +65,7 @@ export function showAddComponentHelp(): void {
 }
 
 export function showAddPackageHelp(): void {
-  console.log(
-    chalk.white.bold('typecad add package') +
-      ' - Create a reusable component package\n'
-  );
+  console.log(chalk.white.bold('typecad add package') + ' - Create a reusable component package\n');
   console.log('Usage: typecad add package [options]\n');
   console.log('Package Type (exactly one required):');
   console.log('  --empty=true              Create an empty package template');
@@ -116,100 +77,60 @@ export function showAddPackageHelp(): void {
   console.log('  --local=true              From local files');
   console.log('  --jlcpcb=true             From EasyEDA/JLCPCB\n');
   console.log('Component Parameters:');
-  console.log(
-    '  --symbol=<name>           Symbol (format: library:symbol_name)'
-  );
-  console.log(
-    '  --footprint=<name>        Footprint (format: library:footprint_name)'
-  );
-  console.log(
-    "  --c=<C-number>            JLCPCB component number (e.g. C3217148)\n"
-  );
+  console.log('  --symbol=<name>           Symbol (format: library:symbol_name)');
+  console.log('  --footprint=<name>        Footprint (format: library:footprint_name)');
+  console.log('  --c=<C-number>            JLCPCB component number (e.g. C3217148)\n');
   console.log('Other Options:');
   console.log('  --folder=<path>           Output folder (default: ./src)\n');
   console.log('Without options, runs interactively with prompts.');
 }
 
 export function showBuildHelp(): void {
-  console.log(
-    chalk.white.bold('typecad build') +
-      ' - Build KiCAD output from typeCAD source\n'
-  );
-  console.log(
-    'Run the typeCAD entry point to generate KiCAD schematic and PCB files.'
-  );
+  console.log(chalk.white.bold('typecad build') + ' - Build KiCAD output from typeCAD source\n');
+  console.log('Run the typeCAD entry point to generate KiCAD schematic and PCB files.');
   console.log('\nUsage: typecad build [entry] [options]\n');
   console.log('Arguments:');
-  console.log(
-    '  <entry>                   Path to .ts entry file (default: auto-detected'
-  );
-  console.log(
-    '                            from typecad.conf.ts, package.json, or ./src/*.ts)\n'
-  );
+  console.log('  <entry>                   Path to .ts entry file (default: auto-detected');
+  console.log('                            from typecad.conf.ts, package.json, or ./src/*.ts)\n');
   console.log('Options:');
   console.log('  --verbose                 Enable verbose logging output\n');
-  console.log(
-    'The build command executes your typeCAD TypeScript source, which generates'
-  );
+  console.log('The build command executes your typeCAD TypeScript source, which generates');
   console.log('KiCAD .kicad_pcb, .kicad_pro, .net, and related files in ./build/.');
 }
 
 export function showSearchHelp(): void {
-  console.log(
-    chalk.white.bold('typecad search') +
-      ' - Search KiCad schematic symbols\n'
-  );
-  console.log(
-    'Search for KiCad schematic symbols using fuzzy matching.\n'
-  );
+  console.log(chalk.white.bold('typecad search') + ' - Search KiCad schematic symbols\n');
+  console.log('Search for KiCad schematic symbols using fuzzy matching.\n');
   console.log('Usage: typecad search [options] <query>\n');
   console.log('Arguments:');
   console.log('  <query>                   Search terms (e.g. "op amp", "LM358")\n');
   console.log('Options:');
-  console.log(
-    '  --format=<fmt>            Output format: detailed, compact, table, json'
-  );
+  console.log('  --format=<fmt>            Output format: detailed, compact, table, json');
   console.log('                            (default: detailed)');
-  console.log(
-    '  --sort=<field>            Sort by: score, id, manufacturer, package'
-  );
+  console.log('  --sort=<field>            Sort by: score, id, manufacturer, package');
   console.log('                            (default: score)');
   console.log('  --limit=<n>               Maximum results (default: 5)\n');
   console.log('Without a query, prompts for search terms interactively.');
 }
 
 export function showImportHelp(): void {
-  console.log(
-    chalk.white.bold('typecad import') +
-      ' - Convert KiCad PCB to typeCAD code\n'
-  );
+  console.log(chalk.white.bold('typecad import') + ' - Convert KiCad PCB to typeCAD code\n');
   console.log('Convert a KiCad .kicad_pcb file into typeCAD TypeScript code.\n');
   console.log('Usage: typecad import <file_path> [options]\n');
   console.log('Arguments:');
   console.log('  <file_path>               Path to the .kicad_pcb file\n');
   console.log('Options:');
-  console.log(
-    '  --apply                   Interactively apply coordinate changes back'
-  );
+  console.log('  --apply                   Interactively apply coordinate changes back');
   console.log('                            to the typeCAD source files');
-  console.log(
-    '  --capture-layouts         Also import text layout positions'
-  );
-  console.log(
-    '                            (referenceLayout, valueLayout, fabLayout)\n'
-  );
+  console.log('  --capture-layouts         Also import text layout positions');
+  console.log('                            (referenceLayout, valueLayout, fabLayout)\n');
   console.log('                            to the typeCAD source files\n');
-  console.log(
-    "Variable names are sourced from each footprint's 'Code' property."
-  );
+  console.log("Variable names are sourced from each footprint's 'Code' property.");
   console.log('If missing, the KiCad reference is used (e.g., U1, R3).');
 }
 
 export function showDiffHelp(): void {
-  console.log(
-    chalk.white.bold('typecad diff') +
-      ' - Visual PCB Comparison Tool\n'
-  );
+  console.log(chalk.white.bold('typecad diff') + ' - Visual PCB Comparison Tool\n');
   console.log('Compare two KiCad PCB files and generate a visual diff report.\n');
   console.log('Usage:');
   console.log('  typecad diff [options] <original.kicad_pcb> <modified.kicad_pcb>');
@@ -232,13 +153,8 @@ export function showDiffHelp(): void {
 }
 
 export function showDocHelp(): void {
-  console.log(
-    chalk.white.bold('typecad doc') +
-      ' - Generate PCB documentation from Markdown\n'
-  );
-  console.log(
-    'Generate a self-contained HTML document from a Markdown file and KiCad PCB file.'
-  );
+  console.log(chalk.white.bold('typecad doc') + ' - Generate PCB documentation from Markdown\n');
+  console.log('Generate a self-contained HTML document from a Markdown file and KiCad PCB file.');
   console.log('\nUsage: typecad doc <markdown_file> <pcb_file> [options]\n');
   console.log('Arguments:');
   console.log('  <markdown_file>       Input Markdown file (.md)');
@@ -257,30 +173,21 @@ export function showDocHelp(): void {
 }
 
 export function showErcHelp(): void {
-  console.log(
-    chalk.white.bold('typecad erc') +
-      ' - Run Electrical Rules Check on a KiCad schematic\n'
-  );
+  console.log(chalk.white.bold('typecad erc') + ' - Run Electrical Rules Check on a KiCad schematic\n');
   console.log(
     'Runs kicad-cli sch erc on a .kicad_sch file, parses the JSON report,\n' +
-    'and displays a summary of errors and warnings.\n'
+      'and displays a summary of errors and warnings.\n',
   );
   console.log('Usage:');
   console.log('  typecad erc [path] [typecad-options] -- [kicad-cli flags]\n');
   console.log('Arguments:');
-  console.log(
-    '  <path>             Path to .kicad_sch file (default: auto-detected from ./build/)\n'
-  );
+  console.log('  <path>             Path to .kicad_sch file (default: auto-detected from ./build/)\n');
   console.log('typecad Options:');
   console.log('  --json             Output typecad results as JSON');
   console.log('  --help             Show this help\n');
   console.log('Passthrough:');
-  console.log(
-    '  All flags after -- are forwarded directly to kicad-cli sch erc.'
-  );
-  console.log(
-    '  See `kicad-cli sch erc --help` for the full list of available flags.\n'
-  );
+  console.log('  All flags after -- are forwarded directly to kicad-cli sch erc.');
+  console.log('  See `kicad-cli sch erc --help` for the full list of available flags.\n');
   console.log('  Common kicad-cli flags:');
   console.log('    --severity-all              Report all violations');
   console.log('    --severity-error            Report error-level violations');
@@ -291,9 +198,7 @@ export function showErcHelp(): void {
   console.log('    --units <mm|in|mils>        Report units');
   console.log('    -o, --output <file>         Output file path\n');
   console.log('Output:');
-  console.log(
-    '  Report saved to <name>_erc.json alongside the schematic file.\n'
-  );
+  console.log('  Report saved to <name>_erc.json alongside the schematic file.\n');
   console.log('Examples:');
   console.log('  typecad erc');
   console.log('  typecad erc --json');
@@ -302,30 +207,21 @@ export function showErcHelp(): void {
 }
 
 export function showDrcHelp(): void {
-  console.log(
-    chalk.white.bold('typecad drc') +
-      ' - Run Design Rule Check on a KiCad PCB file\n'
-  );
+  console.log(chalk.white.bold('typecad drc') + ' - Run Design Rule Check on a KiCad PCB file\n');
   console.log(
     'Runs kicad-cli pcb drc on a .kicad_pcb file, parses the JSON report,\n' +
-    'and displays a summary of errors, warnings, and unconnected items.\n'
+      'and displays a summary of errors, warnings, and unconnected items.\n',
   );
   console.log('Usage:');
   console.log('  typecad drc [path] [typecad-options] -- [kicad-cli flags]\n');
   console.log('Arguments:');
-  console.log(
-    '  <path>             Path to .kicad_pcb file (default: auto-detected from ./build/)\n'
-  );
+  console.log('  <path>             Path to .kicad_pcb file (default: auto-detected from ./build/)\n');
   console.log('typecad Options:');
   console.log('  --json             Output typecad results as JSON');
   console.log('  --help             Show this help\n');
   console.log('Passthrough:');
-  console.log(
-    '  All flags after -- are forwarded directly to kicad-cli pcb drc.'
-  );
-  console.log(
-    '  See `kicad-cli pcb drc --help` for the full list of available flags.\n'
-  );
+  console.log('  All flags after -- are forwarded directly to kicad-cli pcb drc.');
+  console.log('  See `kicad-cli pcb drc --help` for the full list of available flags.\n');
   console.log('  Common kicad-cli flags:');
   console.log('    --severity-all              Report all violations');
   console.log('    --severity-error            Report error-level violations');
@@ -339,9 +235,7 @@ export function showDrcHelp(): void {
   console.log('    --units <mm|in|mils>        Report units');
   console.log('    -o, --output <file>         Output file path\n');
   console.log('Output:');
-  console.log(
-    '  Report saved to <name>_drc.json alongside the board file.\n'
-  );
+  console.log('  Report saved to <name>_drc.json alongside the board file.\n');
   console.log('Examples:');
   console.log('  typecad drc');
   console.log('  typecad drc --json');
@@ -350,19 +244,13 @@ export function showDrcHelp(): void {
 }
 
 export function showValidateHelp(): void {
+  console.log(chalk.white.bold('typecad validate') + ' - Validate project source without full build\n');
   console.log(
-    chalk.white.bold('typecad validate') +
-      ' - Validate project source without full build\n'
-  );
-  console.log(
-    'Type-check and run your typeCAD entry file, reporting errors without\n' +
-    'producing verbose build output.\n'
+    'Type-check and run your typeCAD entry file, reporting errors without\n' + 'producing verbose build output.\n',
   );
   console.log('Usage: typecad validate [entry] [options]\n');
   console.log('Arguments:');
-  console.log(
-    '  <entry>                   Path to .ts entry file (default: auto-detected)\n'
-  );
+  console.log('  <entry>                   Path to .ts entry file (default: auto-detected)\n');
   console.log('Options:');
   console.log('  --verbose                 Show full build output');
   console.log('  --json                    Output results as JSON\n');
@@ -372,13 +260,9 @@ export function showValidateHelp(): void {
 }
 
 export function showDoctorHelp(): void {
+  console.log(chalk.white.bold('typecad doctor') + ' - Check your environment for common issues\n');
   console.log(
-    chalk.white.bold('typecad doctor') +
-      ' - Check your environment for common issues\n'
-  );
-  console.log(
-    'Diagnose your typeCAD environment by checking for required tools,\n' +
-    'dependencies, and configuration.\n'
+    'Diagnose your typeCAD environment by checking for required tools,\n' + 'dependencies, and configuration.\n',
   );
   console.log('Usage: typecad doctor [options]\n');
   console.log('Options:');
@@ -394,13 +278,10 @@ export function showDoctorHelp(): void {
 }
 
 export function showSkillsHelp(): void {
-  console.log(
-    chalk.white.bold('typecad skills') +
-      ' - Query typeCAD API patterns and design knowledge\n'
-  );
+  console.log(chalk.white.bold('typecad skills') + ' - Query typeCAD API patterns and design knowledge\n');
   console.log(
     'List and query skills that document typeCAD concepts, API patterns,\n' +
-    'electrical design concepts, and KiCad-related information.\n'
+      'electrical design concepts, and KiCad-related information.\n',
   );
   console.log('Usage:');
   console.log('  typecad skills list              List all available skills');
@@ -416,16 +297,9 @@ export function showSkillsHelp(): void {
 }
 
 export function showPackageHelp(): void {
-  console.log(
-    chalk.white.bold('typecad package') +
-      ' - Browse and install typeCAD packages\n'
-  );
-  console.log(
-    'Searches the npm registry for typeCAD-compatible packages and presents'
-  );
-  console.log(
-    'them for selection. Already-installed packages are indicated.\n'
-  );
+  console.log(chalk.white.bold('typecad package') + ' - Browse and install typeCAD packages\n');
+  console.log('Searches the npm registry for typeCAD-compatible packages and presents');
+  console.log('them for selection. Already-installed packages are indicated.\n');
   console.log('Usage: typecad package [options]\n');
   console.log('Options:');
   console.log('  --json    Output results in JSON format\n');
@@ -435,10 +309,7 @@ export function showPackageHelp(): void {
 }
 
 export function showExportHelp(): void {
-  console.log(
-    chalk.white.bold('typecad export') +
-      ' - Export KiCad PCB fabrication files\n'
-  );
+  console.log(chalk.white.bold('typecad export') + ' - Export KiCad PCB fabrication files\n');
   console.log('Usage:');
   console.log('  typecad export <subcommand> [path] [options] [-- kicad-cli flags]\n');
   console.log('Subcommands:');
@@ -452,31 +323,21 @@ export function showExportHelp(): void {
 }
 
 export function showExportGerbersHelp(): void {
+  console.log(chalk.white.bold('typecad export gerbers') + ' - Export Gerber files from a KiCad PCB\n');
   console.log(
-    chalk.white.bold('typecad export gerbers') +
-      ' - Export Gerber files from a KiCad PCB\n'
-  );
-  console.log(
-    'Runs kicad-cli pcb export gerbers on a .kicad_pcb file,\n' +
-    'generating fabrication-ready Gerber output.\n'
+    'Runs kicad-cli pcb export gerbers on a .kicad_pcb file,\n' + 'generating fabrication-ready Gerber output.\n',
   );
   console.log('Usage:');
   console.log('  typecad export gerbers [path] [typecad-options] [-- kicad-cli flags]\n');
   console.log('Arguments:');
-  console.log(
-    '  <path>             Path to .kicad_pcb file (default: auto-detected from ./build/)\n'
-  );
+  console.log('  <path>             Path to .kicad_pcb file (default: auto-detected from ./build/)\n');
   console.log('typecad Options:');
   console.log('  -o, --output=<dir> Output directory (default: ./build/gerbers/)');
   console.log('  --json             Output results as JSON');
   console.log('  --help             Show this help\n');
   console.log('Passthrough:');
-  console.log(
-    '  All flags after -- are forwarded directly to kicad-cli pcb export gerbers.'
-  );
-  console.log(
-    '  See `kicad-cli pcb export gerbers --help` for the full list of flags.\n'
-  );
+  console.log('  All flags after -- are forwarded directly to kicad-cli pcb export gerbers.');
+  console.log('  See `kicad-cli pcb export gerbers --help` for the full list of flags.\n');
   console.log('Examples:');
   console.log('  typecad export gerbers');
   console.log('  typecad export gerbers --output ./fab');
@@ -485,31 +346,19 @@ export function showExportGerbersHelp(): void {
 }
 
 export function showExportDrillHelp(): void {
-  console.log(
-    chalk.white.bold('typecad export drill') +
-      ' - Export drill files from a KiCad PCB\n'
-  );
-  console.log(
-    'Runs kicad-cli pcb export drill on a .kicad_pcb file,\n' +
-    'generating Excellon drill output.\n'
-  );
+  console.log(chalk.white.bold('typecad export drill') + ' - Export drill files from a KiCad PCB\n');
+  console.log('Runs kicad-cli pcb export drill on a .kicad_pcb file,\n' + 'generating Excellon drill output.\n');
   console.log('Usage:');
   console.log('  typecad export drill [path] [typecad-options] [-- kicad-cli flags]\n');
   console.log('Arguments:');
-  console.log(
-    '  <path>             Path to .kicad_pcb file (default: auto-detected from ./build/)\n'
-  );
+  console.log('  <path>             Path to .kicad_pcb file (default: auto-detected from ./build/)\n');
   console.log('typecad Options:');
   console.log('  -o, --output=<dir> Output directory (default: ./build/gerbers/)');
   console.log('  --json             Output results as JSON');
   console.log('  --help             Show this help\n');
   console.log('Passthrough:');
-  console.log(
-    '  All flags after -- are forwarded directly to kicad-cli pcb export drill.'
-  );
-  console.log(
-    '  See `kicad-cli pcb export drill --help` for the full list of flags.\n'
-  );
+  console.log('  All flags after -- are forwarded directly to kicad-cli pcb export drill.');
+  console.log('  See `kicad-cli pcb export drill --help` for the full list of flags.\n');
   console.log('Examples:');
   console.log('  typecad export drill');
   console.log('  typecad export drill --output ./fab');

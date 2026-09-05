@@ -5,23 +5,10 @@
  * pitch, and tooth count, as well as polyline construction and DRC validation.
  */
 
-import type {
-  ILengthMatchContext,
-  ILengthMatchPatternConfig,
-  IStraightSegment,
-} from '../types/length_match.js';
+import type { ILengthMatchContext, ILengthMatchPatternConfig, IStraightSegment } from '../types/length_match.js';
 
-import {
-  pointsEqual,
-  isOccupiedWorld,
-  logZeroClearanceSample,
-  isEnvDebug,
-  chalk,
-} from './length_matcher_helpers.js';
-import {
-  estimateMaxAmplitude,
-  estimateMaxAmplitudeOneSide,
-} from './amplitude_estimation.js';
+import { pointsEqual, isOccupiedWorld, logZeroClearanceSample, isEnvDebug, chalk } from './length_matcher_helpers.js';
+import { estimateMaxAmplitude, estimateMaxAmplitudeOneSide } from './amplitude_estimation.js';
 import logger from '../../utils/logging.js';
 
 // ─── Polyline construction ──────────────────────────────────────────
@@ -144,11 +131,7 @@ export function buildSawtoothPolyline(
 // ─── DRC validation ─────────────────────────────────────────────────
 
 /** Validate a polyline by sampling along each segment for DRC clearance. */
-export function validatePolylineDRC(
-  ctx: ILengthMatchContext,
-  pts: { x: number; y: number }[],
-  layer: string,
-): boolean {
+export function validatePolylineDRC(ctx: ILengthMatchContext, pts: { x: number; y: number }[], layer: string): boolean {
   if (pts.length < 2) return false;
   const step = Math.max(ctx.grid.getResolution() / 2, 0.05);
 
@@ -194,7 +177,9 @@ export function fitSawtooth(
     if (debug) {
       try {
         logger.debug(chalk.gray(`[LengthMatch] fit aborted: ampMax=0 for segment length=${seg.length.toFixed(3)}`));
-      } catch { logger.debug('[SawtoothFitting] logging failure'); }
+      } catch {
+        logger.debug('[SawtoothFitting] logging failure');
+      }
     }
     return null;
   }
@@ -211,7 +196,9 @@ export function fitSawtooth(
           `[LengthMatch] fit init: ampMax=${ampMax.toFixed(3)} requestedAmp=${pattern.amplitude ?? 'auto'} usingAmp=${amplitude.toFixed(3)}`,
         ),
       );
-    } catch { logger.debug('[SawtoothFitting] logging failure'); }
+    } catch {
+      logger.debug('[SawtoothFitting] logging failure');
+    }
   }
 
   let nNeeded = 1;
@@ -225,8 +212,14 @@ export function fitSawtooth(
       if (fixedPitch && fixedAmp) {
         if (debug) {
           try {
-            logger.debug(chalk.gray(`[LengthMatch] fit fail: fixed pitch ${pitch.toFixed(3)} < 2*amp ${(2 * amplitude).toFixed(3)}`));
-          } catch { logger.debug('[SawtoothFitting] logging failure'); }
+            logger.debug(
+              chalk.gray(
+                `[LengthMatch] fit fail: fixed pitch ${pitch.toFixed(3)} < 2*amp ${(2 * amplitude).toFixed(3)}`,
+              ),
+            );
+          } catch {
+            logger.debug('[SawtoothFitting] logging failure');
+          }
         }
         return null;
       }
@@ -240,8 +233,14 @@ export function fitSawtooth(
     if (forwardAvail <= 0) {
       if (debug) {
         try {
-          logger.debug(chalk.gray(`[LengthMatch] fit fail: forwardAvail<=0 (segLen=${seg.length.toFixed(3)} margin=${margin.toFixed(3)})`));
-        } catch { logger.debug('[SawtoothFitting] logging failure'); }
+          logger.debug(
+            chalk.gray(
+              `[LengthMatch] fit fail: forwardAvail<=0 (segLen=${seg.length.toFixed(3)} margin=${margin.toFixed(3)})`,
+            ),
+          );
+        } catch {
+          logger.debug('[SawtoothFitting] logging failure');
+        }
       }
       return null;
     }
@@ -257,7 +256,9 @@ export function fitSawtooth(
                 `[LengthMatch] fit fail: fixed amp ${amplitude.toFixed(3)} too large for forwardAvail=${forwardAvail.toFixed(3)} (maxPitchToFit=${maxPitchToFit.toFixed(3)})`,
               ),
             );
-          } catch { logger.debug('[SawtoothFitting] logging failure'); }
+          } catch {
+            logger.debug('[SawtoothFitting] logging failure');
+          }
         }
         return null;
       }
@@ -281,8 +282,14 @@ export function fitSawtooth(
     const err = Math.abs(achieved - deltaL);
     if (debug) {
       try {
-        logger.debug(chalk.gray(`[LengthMatch] fit try: amp=${amplitude.toFixed(3)} pitch=${pitch.toFixed(3)} n=${nPlace} achieved=${achieved.toFixed(3)} err=${err.toFixed(3)}`));
-      } catch { logger.debug('[SawtoothFitting] logging failure'); }
+        logger.debug(
+          chalk.gray(
+            `[LengthMatch] fit try: amp=${amplitude.toFixed(3)} pitch=${pitch.toFixed(3)} n=${nPlace} achieved=${achieved.toFixed(3)} err=${err.toFixed(3)}`,
+          ),
+        );
+      } catch {
+        logger.debug('[SawtoothFitting] logging failure');
+      }
     }
 
     // Fine tune amplitude if both params are algorithmic and we need better precision
@@ -330,8 +337,12 @@ export function fitSawtoothWithSide(
   if (ampMax <= 0) {
     if (debug) {
       try {
-        logger.debug(chalk.gray(`[LengthMatch] fit aborted (side=${side}): ampMax=0 for segment length=${seg.length.toFixed(3)}`));
-      } catch { logger.debug('[SawtoothFitting] logging failure'); }
+        logger.debug(
+          chalk.gray(`[LengthMatch] fit aborted (side=${side}): ampMax=0 for segment length=${seg.length.toFixed(3)}`),
+        );
+      } catch {
+        logger.debug('[SawtoothFitting] logging failure');
+      }
     }
     return null;
   }
@@ -348,7 +359,9 @@ export function fitSawtoothWithSide(
           `[LengthMatch] fit init (side=${side}): ampMax=${ampMax.toFixed(3)} requestedAmp=${pattern.amplitude ?? 'auto'} usingAmp=${amplitude.toFixed(3)}`,
         ),
       );
-    } catch { logger.debug('[SawtoothFitting] logging failure'); }
+    } catch {
+      logger.debug('[SawtoothFitting] logging failure');
+    }
   }
 
   let nNeeded = 1;
@@ -362,8 +375,14 @@ export function fitSawtoothWithSide(
       if (fixedPitch && fixedAmp) {
         if (debug) {
           try {
-            logger.debug(chalk.gray(`[LengthMatch] fit fail (side=${side}): fixed pitch ${pitch.toFixed(3)} < 2*amp ${(2 * amplitude).toFixed(3)}`));
-          } catch { logger.debug('[SawtoothFitting] logging failure'); }
+            logger.debug(
+              chalk.gray(
+                `[LengthMatch] fit fail (side=${side}): fixed pitch ${pitch.toFixed(3)} < 2*amp ${(2 * amplitude).toFixed(3)}`,
+              ),
+            );
+          } catch {
+            logger.debug('[SawtoothFitting] logging failure');
+          }
         }
         return null;
       }
@@ -377,8 +396,14 @@ export function fitSawtoothWithSide(
     if (forwardAvail <= 0) {
       if (debug) {
         try {
-          logger.debug(chalk.gray(`[LengthMatch] fit fail (side=${side}): forwardAvail<=0 (segLen=${seg.length.toFixed(3)} margin=${margin.toFixed(3)})`));
-        } catch { logger.debug('[SawtoothFitting] logging failure'); }
+          logger.debug(
+            chalk.gray(
+              `[LengthMatch] fit fail (side=${side}): forwardAvail<=0 (segLen=${seg.length.toFixed(3)} margin=${margin.toFixed(3)})`,
+            ),
+          );
+        } catch {
+          logger.debug('[SawtoothFitting] logging failure');
+        }
       }
       return null;
     }
@@ -394,7 +419,9 @@ export function fitSawtoothWithSide(
                 `[LengthMatch] fit fail (side=${side}): fixed amp ${amplitude.toFixed(3)} too large for forwardAvail=${forwardAvail.toFixed(3)} (maxPitchToFit=${maxPitchToFit.toFixed(3)})`,
               ),
             );
-          } catch { logger.debug('[SawtoothFitting] logging failure'); }
+          } catch {
+            logger.debug('[SawtoothFitting] logging failure');
+          }
         }
         return null;
       }
@@ -418,8 +445,14 @@ export function fitSawtoothWithSide(
     const err = Math.abs(achieved - deltaL);
     if (debug) {
       try {
-        logger.debug(chalk.gray(`[LengthMatch] fit try (side=${side}): amp=${amplitude.toFixed(3)} pitch=${pitch.toFixed(3)} n=${nPlace} achieved=${achieved.toFixed(3)} err=${err.toFixed(3)}`));
-      } catch { logger.debug('[SawtoothFitting] logging failure'); }
+        logger.debug(
+          chalk.gray(
+            `[LengthMatch] fit try (side=${side}): amp=${amplitude.toFixed(3)} pitch=${pitch.toFixed(3)} n=${nPlace} achieved=${achieved.toFixed(3)} err=${err.toFixed(3)}`,
+          ),
+        );
+      } catch {
+        logger.debug('[SawtoothFitting] logging failure');
+      }
     }
 
     if (!fixedAmp && err > tolerance && achieved !== 0) {
@@ -430,8 +463,12 @@ export function fitSawtoothWithSide(
         best = { points: pts, achievedDelta: achieved };
         if (debug)
           try {
-            logger.debug(chalk.cyan(`[LengthMatch] fit best (side=${side}) achieved=${achieved.toFixed(3)} err=${err.toFixed(3)}`));
-          } catch { logger.debug('[SawtoothFitting] logging failure'); }
+            logger.debug(
+              chalk.cyan(`[LengthMatch] fit best (side=${side}) achieved=${achieved.toFixed(3)} err=${err.toFixed(3)}`),
+            );
+          } catch {
+            logger.debug('[SawtoothFitting] logging failure');
+          }
         break;
       }
       amplitude = newAmp;
@@ -441,8 +478,14 @@ export function fitSawtoothWithSide(
     best = { points: pts, achievedDelta: achieved };
     if (debug)
       try {
-        logger.debug(chalk.cyan(`[LengthMatch] fit success (side=${side}) amp=${amplitude.toFixed(3)} pitch=${pitch.toFixed(3)} n=${nPlace} achieved=${achieved.toFixed(3)} err=${err.toFixed(3)}`));
-      } catch { logger.debug('[SawtoothFitting] logging failure'); }
+        logger.debug(
+          chalk.cyan(
+            `[LengthMatch] fit success (side=${side}) amp=${amplitude.toFixed(3)} pitch=${pitch.toFixed(3)} n=${nPlace} achieved=${achieved.toFixed(3)} err=${err.toFixed(3)}`,
+          ),
+        );
+      } catch {
+        logger.debug('[SawtoothFitting] logging failure');
+      }
     if (err <= tolerance) break;
 
     if (!fixedAmp) {
@@ -486,8 +529,12 @@ export function fitSawtoothBidirectional(
   } catch (err) {
     if (debug)
       try {
-        logger.debug(chalk.gray(`[LengthMatch] sub-span attempt threw: ${err instanceof Error ? err.message : String(err)}`));
-      } catch { logger.debug('[SawtoothFitting] logging failure'); }
+        logger.debug(
+          chalk.gray(`[LengthMatch] sub-span attempt threw: ${err instanceof Error ? err.message : String(err)}`),
+        );
+      } catch {
+        logger.debug('[SawtoothFitting] logging failure');
+      }
   }
   return null;
 }
@@ -545,7 +592,9 @@ export function attemptSubSpanFit(
               `[LengthMatch] subspan sample ${i + 1}/${samples} at (${(seg.start.x + ux * (margin + i * step)).toFixed(3)},${(seg.start.y + uy * (margin + i * step)).toFixed(3)}) side=${side} -> maxFree=${low.toFixed(3)}`,
             ),
           );
-        } catch { logger.debug('[SawtoothFitting] logging failure'); }
+        } catch {
+          logger.debug('[SawtoothFitting] logging failure');
+        }
       }
     }
 
@@ -589,8 +638,14 @@ export function attemptSubSpanFit(
 
     if (debug) {
       try {
-        logger.debug(chalk.cyan(`[LengthMatch] Found free sub-span side=${side} samples=${bestStart}-${bestEnd} length=${subSeg.length.toFixed(3)}mm, attempting fit`));
-      } catch { logger.debug('[SawtoothFitting] logging failure'); }
+        logger.debug(
+          chalk.cyan(
+            `[LengthMatch] Found free sub-span side=${side} samples=${bestStart}-${bestEnd} length=${subSeg.length.toFixed(3)}mm, attempting fit`,
+          ),
+        );
+      } catch {
+        logger.debug('[SawtoothFitting] logging failure');
+      }
     }
 
     // First try multi-subspan stitching
@@ -600,7 +655,16 @@ export function attemptSubSpanFit(
     // Attempt to fit on this sub-segment (allow both sides but prefer this side)
     const res = fitSawtoothWithSide(ctx, subSeg, deltaL, tolerance, pattern, maxIterations, debug, side);
     if (res) return res;
-    const resOther = fitSawtoothWithSide(ctx, subSeg, deltaL, tolerance, pattern, maxIterations, debug, side === 1 ? -1 : 1);
+    const resOther = fitSawtoothWithSide(
+      ctx,
+      subSeg,
+      deltaL,
+      tolerance,
+      pattern,
+      maxIterations,
+      debug,
+      side === 1 ? -1 : 1,
+    );
     if (resOther) return resOther;
   }
 
@@ -649,7 +713,16 @@ export function attemptMultiFitOnSubSeg(
 
       let fitted = fitSawtoothWithSide(ctx, piece, want, tolerance, pattern, maxIterations, debug, preferredSide);
       if (!fitted)
-        fitted = fitSawtoothWithSide(ctx, piece, want, tolerance, pattern, maxIterations, debug, preferredSide === 1 ? -1 : 1);
+        fitted = fitSawtoothWithSide(
+          ctx,
+          piece,
+          want,
+          tolerance,
+          pattern,
+          maxIterations,
+          debug,
+          preferredSide === 1 ? -1 : 1,
+        );
       if (!fitted) {
         okAll = false;
         break;
@@ -671,8 +744,12 @@ export function attemptMultiFitOnSubSeg(
 
     if (debug)
       try {
-        logger.debug(chalk.cyan(`[LengthMatch] multi-subspan fit succeeded parts=${parts} achieved=${achievedSum.toFixed(3)}mm`));
-      } catch { logger.debug('[SawtoothFitting] logging failure'); }
+        logger.debug(
+          chalk.cyan(`[LengthMatch] multi-subspan fit succeeded parts=${parts} achieved=${achievedSum.toFixed(3)}mm`),
+        );
+      } catch {
+        logger.debug('[SawtoothFitting] logging failure');
+      }
     return { points: combined, achievedDelta: achievedSum };
   }
   return null;

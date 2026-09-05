@@ -19,7 +19,7 @@ export function normalizeComponentName(name: string): string {
   
   let normalizedName = name;
   let hasChanged = false;
-  let changeDetails: string[] = []; // Explicitly type the array as string[]
+  const changeDetails: string[] = []; // Explicitly type the array as string[]
   
   // Replace hyphens with underscores
   if (normalizedName.includes('-')) {

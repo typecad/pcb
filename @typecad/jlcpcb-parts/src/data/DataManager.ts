@@ -35,7 +35,7 @@ export class DataManager {
     localCsvFileName: string = 'jlcpcb-components-basic-preferred.csv',
     cacheDir: string = '.',
     cacheExpirationHours: number = 24,
-    useSharedCache: boolean = true
+    useSharedCache: boolean = true,
   ) {
     this.csvUrl = csvUrl;
     this.localCsvFileName = localCsvFileName;
@@ -59,9 +59,9 @@ export class DataManager {
     this.resolvedCsvPath = await CacheUtils.resolveCacheFilePath(
       this.localCsvFileName,
       this.useSharedCache,
-      this.cacheDir
+      this.cacheDir,
     );
-    
+
     return this.resolvedCsvPath;
   }
 
@@ -71,14 +71,14 @@ export class DataManager {
    */
   async ensureDataAvailable(): Promise<void> {
     const isStale = await this.timestampManager.isCacheStale();
-    
+
     if (isStale) {
       try {
         this.logger.info('Cache is stale or does not exist. Downloading fresh data...');
         await this.downloadCsvFile();
         await this.timestampManager.writeTimestamp();
         this.logger.info('Download complete and timestamp updated.');
-        
+
         // Clear cached components to force reload
         this.cachedComponents = null;
       } catch (error) {
@@ -86,10 +86,14 @@ export class DataManager {
         try {
           const csvPath = await this.getResolvedCsvPath();
           await fs.access(csvPath);
-          this.logger.warn(`Download failed, but using existing local file: ${error instanceof Error ? error.message : String(error)}`);
+          this.logger.warn(
+            `Download failed, but using existing local file: ${error instanceof Error ? error.message : String(error)}`,
+          );
         } catch {
           // No local file exists and download failed
-          throw new Error(`Failed to download component data and no local cache exists: ${error instanceof Error ? error.message : String(error)}`);
+          throw new Error(
+            `Failed to download component data and no local cache exists: ${error instanceof Error ? error.message : String(error)}`,
+          );
         }
       }
     } else {
@@ -107,20 +111,20 @@ export class DataManager {
     if (this.cachedComponents) {
       return this.cachedComponents;
     }
-    
+
     // Ensure data is available
     await this.ensureDataAvailable();
-    
+
     // Parse the CSV file
     try {
       this.logger.info('Parsing component data...');
       const csvPath = await this.getResolvedCsvPath();
       const components = await this.csvParser.parseFile(csvPath);
       this.logger.info(`Loaded ${components.length} components.`);
-      
+
       // Cache the components
       this.cachedComponents = components;
-      
+
       return components;
     } catch (error) {
       throw new Error(`Failed to parse component data: ${error instanceof Error ? error.message : String(error)}`);

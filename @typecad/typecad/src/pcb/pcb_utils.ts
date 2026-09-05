@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { randomUUID } from 'node:crypto';
 import { ISourceInfo } from './pcb_interfaces.js';
 import { encodeCodeMetadata, decodeCodeMetadata } from '../kicad2typecad/codec.js';
 import type { CodeMetadata, LegacyCodeMetadata } from '../kicad2typecad/types.js';
@@ -17,38 +17,38 @@ import type { CodeMetadata, LegacyCodeMetadata } from '../kicad2typecad/types.js
  * @returns Encoded string safe for KiCad property values
  */
 export function formatSourceInfoForProperty(
-    info?: ISourceInfo,
-    uuid?: string,
-    footprintFingerprint?: string
+  info?: ISourceInfo,
+  uuid?: string,
+  footprintFingerprint?: string,
 ): string | undefined {
-    if (!info) return undefined;
+  if (!info) return undefined;
 
-    const metadata: CodeMetadata = {
-        v: 1,
-        u: uuid || '',
-        n: info.variable || undefined,
-        t: info.isThis || undefined,
-        h: footprintFingerprint || undefined,
+  const metadata: CodeMetadata = {
+    v: 1,
+    u: uuid || '',
+    n: info.variable || undefined,
+    t: info.isThis || undefined,
+    h: footprintFingerprint || undefined,
+  };
+
+  // Include file/line only as fallback (when no variable name — anonymous components)
+  if (!info.variable) {
+    metadata.f = info.file;
+    metadata.l = info.line;
+  }
+
+  try {
+    return encodeCodeMetadata(metadata);
+  } catch {
+    // Fallback: encode just the essential info
+    const minimal: CodeMetadata = {
+      v: 1,
+      u: uuid || '',
+      f: String(info.file || '').replace(/[`\"\\]/g, ''),
+      l: info.line,
     };
-
-    // Include file/line only as fallback (when no variable name — anonymous components)
-    if (!info.variable) {
-        metadata.f = info.file;
-        metadata.l = info.line;
-    }
-
-    try {
-        return encodeCodeMetadata(metadata);
-    } catch {
-        // Fallback: encode just the essential info
-        const minimal: CodeMetadata = {
-            v: 1,
-            u: uuid || '',
-            f: String(info.file || '').replace(/[`\"\\]/g, ''),
-            l: info.line,
-        };
-        return encodeCodeMetadata(minimal);
-    }
+    return encodeCodeMetadata(minimal);
+  }
 }
 
 /**
@@ -57,8 +57,10 @@ export function formatSourceInfoForProperty(
  * @param rawValue - Raw Code property string from a KiCad file
  * @returns Decoded metadata or null
  */
-export function parseSourceInfoFromProperty(rawValue: string | null | undefined): CodeMetadata | LegacyCodeMetadata | null {
-    return decodeCodeMetadata(rawValue);
+export function parseSourceInfoFromProperty(
+  rawValue: string | null | undefined,
+): CodeMetadata | LegacyCodeMetadata | null {
+  return decodeCodeMetadata(rawValue);
 }
 
 /**
@@ -66,24 +68,24 @@ export function parseSourceInfoFromProperty(rawValue: string | null | undefined)
  * @returns Random UUID string
  */
 export function generateUuid(): string {
-    return randomUUID();
+  return randomUUID();
 }
 
 export function normalizeNetName(name?: string): string | undefined {
-    if (typeof name !== 'string') {
-        return undefined;
-    }
+  if (typeof name !== 'string') {
+    return undefined;
+  }
 
-    let normalized = name.trim().toLowerCase();
-    if (!normalized) {
-        return undefined;
-    }
+  let normalized = name.trim().toLowerCase();
+  if (!normalized) {
+    return undefined;
+  }
 
-    if (normalized.startsWith('/')) {
-        normalized = normalized.substring(1);
-    }
+  if (normalized.startsWith('/')) {
+    normalized = normalized.substring(1);
+  }
 
-    return normalized;
+  return normalized;
 }
 
 /**
@@ -91,8 +93,10 @@ export function normalizeNetName(name?: string): string | undefined {
  * @param callSite - Call site info from getCallSite(), or undefined
  * @returns Formatted string like " (called from file.ts:42)" or empty string
  */
-export function formatCallSite(callSite: { file: string; line: number; column: number; function?: string } | undefined | null): string {
-    return callSite ? ` (called from ${callSite.file}:${callSite.line})` : '';
+export function formatCallSite(
+  callSite: { file: string; line: number; column: number; function?: string } | undefined | null,
+): string {
+  return callSite ? ` (called from ${callSite.file}:${callSite.line})` : '';
 }
 
 /**
@@ -101,5 +105,5 @@ export function formatCallSite(callSite: { file: string; line: number; column: n
  * @returns Error message string
  */
 export function getErrorMessage(error: unknown): string {
-    return error instanceof Error ? error.message : String(error);
+  return error instanceof Error ? error.message : String(error);
 }

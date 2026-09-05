@@ -103,10 +103,29 @@ The config lives in `.changeset/config.json`:
 | Setting | Value | Meaning |
 |---------|-------|---------|
 | `access` | `"public"` | All packages publish as public (required for scoped `@typecad/` packages) |
-| `baseBranch` | `"main"` | The branch changesets compares against |
+| `baseBranch` | `"master"` | The branch changesets compares against |
 | `updateInternalDependencies` | `"patch"` | When a dep changes, auto-bump packages that depend on it |
 | `changelog` | `"@changesets/changelog-github"` | Generates GitHub-linked changelogs |
 | `commit` | `false` | Don't auto-commit (you commit manually) |
+
+## Pre-release mode
+
+The repo is currently **in changeset pre-release mode** (see `.changeset/pre.json`, `"mode": "pre", "tag": "alpha"`). While in this mode:
+
+- `npm run version` only bumps the **prerelease counter** (e.g., `1.0.0-alpha.1` → `1.0.0-alpha.2`); the accumulated major/minor changesets are consumed but do **not** produce a stable release until pre mode is exited.
+- `npm run publish` publishes under the `alpha` dist-tag.
+
+To cut the next alpha: `npm run version && npm run publish`, then commit the version bumps.
+
+To ship a **stable** release, exit pre-release mode first so accumulated version bumps land in one go:
+
+```
+npx changeset pre exit
+npm run version
+npm run publish
+```
+
+(Re-enter anytime with `npx changeset pre enter alpha`.) Don't leave pre mode open unintentionally — pending changesets accumulate silently while it is on.
 
 ## CI integration (optional)
 

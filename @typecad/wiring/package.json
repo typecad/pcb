@@ -14,7 +14,6 @@
   "homepage": "https://typecad.net",
   "funding": "https://www.buymeacoffee.com/typecad",
   "main": "index.ts",
-  "types": "index.d.ts",
   "type": "module",
   "publishConfig": {
     "access": "public"

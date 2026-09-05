@@ -1,7 +1,7 @@
 import { PCB } from '@typecad/typecad';
 import { rd_isl9120ir } from '@typecad/rd_isl9120ir';
 
-let typecad = new PCB('isl9120_demo');
+const typecad = new PCB('isl9120_demo');
 
 // Irregular board outline: straight edges, two rounded corners (arcs), an
 // angled chamfer at the bottom-left, and an auto-closing edge back to the
@@ -31,6 +31,6 @@ typecad.cutoutCircle(161, 93, 1.6);
 // Constructing the regulator module automatically syncs the package's bundled
 // KiCad symbol/footprint files from node_modules into ./build/lib/ — no
 // postinstall script was run when this package was installed.
-let isl9120 = new rd_isl9120ir({ pcb: typecad });
+const isl9120 = new rd_isl9120ir({ pcb: typecad });
 
 typecad.create(isl9120.components);

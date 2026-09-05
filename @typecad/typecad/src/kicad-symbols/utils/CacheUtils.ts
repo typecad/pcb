@@ -17,7 +17,7 @@ export class CacheUtils {
   static async getSharedCacheDir(): Promise<string> {
     const tempDir = tmpdir();
     const cacheDir = join(tempDir, this.CACHE_DIR_NAME);
-    
+
     try {
       // Ensure the cache directory exists
       await fs.mkdir(cacheDir, { recursive: true });
@@ -50,7 +50,8 @@ export class CacheUtils {
    * Cleans up old cache files (optional utility for maintenance)
    * @param maxAgeHours Maximum age in hours before files are considered old
    */
-  static async cleanupOldCacheFiles(maxAgeHours: number = 168): Promise<void> { // Default 7 days
+  static async cleanupOldCacheFiles(maxAgeHours: number = 168): Promise<void> {
+    // Default 7 days
     try {
       const cacheDir = await this.getSharedCacheDir();
       const files = await fs.readdir(cacheDir);
@@ -62,7 +63,7 @@ export class CacheUtils {
         try {
           const stats = await fs.stat(filePath);
           const fileAge = now - stats.mtime.getTime();
-          
+
           if (fileAge > maxAgeMs) {
             await fs.unlink(filePath);
             logger.info(`Cleaned up old cache file: ${file}`);

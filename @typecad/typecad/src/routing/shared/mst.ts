@@ -52,4 +52,3 @@ export function buildMST<T>(nodes: T[], costFn: (i: number, j: number) => number
 
   return edges;
 }
-

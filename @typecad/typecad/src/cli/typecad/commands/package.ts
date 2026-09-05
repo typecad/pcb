@@ -53,11 +53,7 @@ function getInstalledDeps(pkgPath: string): Map<string, string> {
   try {
     const raw = fs.readFileSync(pkgPath, 'utf8');
     const pkg = JSON.parse(raw);
-    for (const section of [
-      'dependencies',
-      'devDependencies',
-      'optionalDependencies',
-    ] as const) {
+    for (const section of ['dependencies', 'devDependencies', 'optionalDependencies'] as const) {
       const deps = pkg[section];
       if (deps && typeof deps === 'object') {
         for (const [name, version] of Object.entries(deps)) {
@@ -74,8 +70,7 @@ function getInstalledDeps(pkgPath: string): Map<string, string> {
 }
 
 async function fetchTypecadPackages(): Promise<NpmPackage[]> {
-  const url =
-    'https://registry.npmjs.org/-/v1/search?text=scope:typecad+keywords:typecad-package&size=250';
+  const url = 'https://registry.npmjs.org/-/v1/search?text=scope:typecad+keywords:typecad-package&size=250';
   const res = await fetch(url);
   if (!res.ok) {
     throw new Error(`npm registry returned ${res.status}: ${res.statusText}`);
@@ -88,11 +83,7 @@ function stripVersionPrefix(v: string): string {
   return v.replace(/^[^0-9]*/, '');
 }
 
-async function runInteractive(
-  packages: NpmPackage[],
-  installed: Map<string, string>,
-  pkgDir: string
-): Promise<void> {
+async function runInteractive(packages: NpmPackage[], installed: Map<string, string>, pkgDir: string): Promise<void> {
   const { checkbox } = await import('@inquirer/prompts');
 
   const choices = packages.map((pkg) => {
@@ -102,9 +93,7 @@ async function runInteractive(
       if (installedClean === pkg.version) {
         return {
           value: pkg.name,
-          name: chalk.gray(
-            `${pkg.name} - ${pkg.description ?? 'No description'} (installed)`
-          ),
+          name: chalk.gray(`${pkg.name} - ${pkg.description ?? 'No description'} (installed)`),
           disabled: 'already installed',
         };
       }
@@ -140,9 +129,7 @@ function installPackages(names: string[], cwd: string): void {
     runSync('npm', ['i', ...names], cwd);
   } catch (e: unknown) {
     const err = e as { stderr?: { toString(): string } };
-    const detail =
-      err.stderr?.toString().trim() ||
-      (e instanceof Error ? e.message : String(e));
+    const detail = err.stderr?.toString().trim() || (e instanceof Error ? e.message : String(e));
     throw new Error(`Failed to install packages: ${detail}`);
   }
   for (const name of names) {
@@ -153,12 +140,7 @@ function installPackages(names: string[], cwd: string): void {
 }
 
 export async function run(parsed: ParsedArgs): Promise<void> {
-  logger.log(
-    chalk.green('+') +
-      ' ' +
-      chalk.white.bold('typecad package') +
-      ' - Browse and install typeCAD packages\n'
-  );
+  logger.log(chalk.green('+') + ' ' + chalk.white.bold('typecad package') + ' - Browse and install typeCAD packages\n');
 
   const pkgPath = findProjectPackageJson();
   const pkgDir = pkgPath ? path.dirname(pkgPath) : process.cwd();
@@ -181,9 +163,7 @@ export async function run(parsed: ParsedArgs): Promise<void> {
   try {
     packages = await fetchTypecadPackages();
   } catch (e) {
-    throw new Error(
-      `Failed to fetch packages from npm: ${e instanceof Error ? e.message : String(e)}`
-    );
+    throw new Error(`Failed to fetch packages from npm: ${e instanceof Error ? e.message : String(e)}`);
   }
 
   if (packages.length === 0) {

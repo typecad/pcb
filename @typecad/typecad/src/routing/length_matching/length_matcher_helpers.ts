@@ -5,10 +5,7 @@
  * geometry comparisons, occupancy queries, and debug diagnostics.
  */
 
-import type {
-  ILengthMatchConfig,
-  ILengthMatchContext,
-} from '../types/length_match.js';
+import type { ILengthMatchConfig, ILengthMatchContext } from '../types/length_match.js';
 
 import logger from '../../utils/logging.js';
 
@@ -28,11 +25,7 @@ export function normalizeConfig(raw: number | ILengthMatchConfig): ILengthMatchC
 }
 
 /** Check whether two 2-D points are equal within `eps`. */
-export function pointsEqual(
-  a: { x: number; y: number },
-  b: { x: number; y: number },
-  eps: number = 1e-6,
-): boolean {
+export function pointsEqual(a: { x: number; y: number }, b: { x: number; y: number }, eps: number = 1e-6): boolean {
   return Math.abs(a.x - b.x) < eps && Math.abs(a.y - b.y) < eps;
 }
 
@@ -60,8 +53,11 @@ export function isOccupiedWorld(
 /** Check whether the TYPECAD_LM_DEBUG env var is set. */
 export function isEnvDebug(): boolean {
   try {
-    // eslint-disable-next-line no-undef
-    return typeof process !== 'undefined' && process?.env && (process.env.TYPECAD_LM_DEBUG === '1' || process.env.TYPECAD_LM_DEBUG === 'true');
+    return (
+      typeof process !== 'undefined' &&
+      process?.env &&
+      (process.env.TYPECAD_LM_DEBUG === '1' || process.env.TYPECAD_LM_DEBUG === 'true')
+    );
   } catch {
     return false;
   }
@@ -91,7 +87,8 @@ export function logZeroClearanceSample(
       clearance?: number;
       obstacleHalfWidthMm?: number;
     }
-    const cell = typeof ctx.grid.getCell === 'function' ? ctx.grid.getCell(g.x, g.y, layer) as ICellInfo | undefined : undefined;
+    const cell =
+      typeof ctx.grid.getCell === 'function' ? (ctx.grid.getCell(g.x, g.y, layer) as ICellInfo | undefined) : undefined;
     const gridEx = ctx.grid as unknown as {
       checkTrackObstaclePrecise?: (x: number, y: number, layer: string, clearance: number, net: string) => boolean;
     };
@@ -100,21 +97,35 @@ export function logZeroClearanceSample(
         ? gridEx.checkTrackObstaclePrecise(worldX, worldY, layer, ctx.clearance, ctx.net ?? '')
         : undefined;
     try {
-      logger.debug(chalk.yellow(`[LengthMatch] ZERO-CLEAR sample at (${worldX.toFixed(3)},${worldY.toFixed(3)}) grid=(${g.x},${g.y}) layer=${layer} note=${note || ''}`));
-    } catch { logger.debug('[LengthMatch] logZeroClearanceSample: failed to log ZERO-CLEAR sample'); }
+      logger.debug(
+        chalk.yellow(
+          `[LengthMatch] ZERO-CLEAR sample at (${worldX.toFixed(3)},${worldY.toFixed(3)}) grid=(${g.x},${g.y}) layer=${layer} note=${note || ''}`,
+        ),
+      );
+    } catch {
+      logger.debug('[LengthMatch] logZeroClearanceSample: failed to log ZERO-CLEAR sample');
+    }
     try {
       logger.debug(
         chalk.yellow(
           `[LengthMatch]   cell: ${cell ? JSON.stringify({ occupied: cell.occupied, net: cell.net, isManualRoute: cell.isManualRoute, absoluteBlock: cell.absoluteBlock, clearance: cell.clearance, obstacleHalfWidthMm: cell.obstacleHalfWidthMm }) : 'null'}`,
         ),
       );
-    } catch { logger.debug('[LengthMatch] logZeroClearanceSample: failed to log cell info'); }
+    } catch {
+      logger.debug('[LengthMatch] logZeroClearanceSample: failed to log cell info');
+    }
     try {
       logger.debug(chalk.yellow(`[LengthMatch]   checkTrackObstaclePrecise => ${String(precise)}`));
-    } catch { logger.debug('[LengthMatch] logZeroClearanceSample: failed to log checkTrackObstaclePrecise'); }
+    } catch {
+      logger.debug('[LengthMatch] logZeroClearanceSample: failed to log checkTrackObstaclePrecise');
+    }
   } catch (err) {
     try {
-      logger.debug(chalk.gray(`[LengthMatch] logZeroClearanceSample threw: ${err instanceof Error ? err.message : String(err)}`));
-    } catch { logger.debug('[LengthMatch] logZeroClearanceSample: failed to log error info'); }
+      logger.debug(
+        chalk.gray(`[LengthMatch] logZeroClearanceSample threw: ${err instanceof Error ? err.message : String(err)}`),
+      );
+    } catch {
+      logger.debug('[LengthMatch] logZeroClearanceSample: failed to log error info');
+    }
   }
 }

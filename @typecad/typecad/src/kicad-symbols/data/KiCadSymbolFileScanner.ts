@@ -66,7 +66,7 @@ const DEFAULT_SCAN_OPTIONS: ScanOptions = {
   maxDepth: 0, // No limit
   maxFileSize: 0, // No limit
   followSymlinks: false,
-  excludePatterns: ['.git', '.svn', '.hg', 'node_modules', '__pycache__']
+  excludePatterns: ['.git', '.svn', '.hg', 'node_modules', '__pycache__'],
 };
 
 /**
@@ -85,7 +85,7 @@ export class KiCadSymbolFileScanner {
       totalSize: 0,
       directoriesScanned: 0,
       scanDuration: 0,
-      errors: []
+      errors: [],
     };
   }
 
@@ -107,7 +107,7 @@ export class KiCadSymbolFileScanner {
     }
 
     const symbolFiles: SymbolFileInfo[] = [];
-    
+
     try {
       await this.scanDirectory(this.symbolsRootPath, symbolFiles, 0);
     } catch (error) {
@@ -135,11 +135,7 @@ export class KiCadSymbolFileScanner {
    * @param currentDepth - Current scanning depth
    * @private
    */
-  private async scanDirectory(
-    dirPath: string, 
-    symbolFiles: SymbolFileInfo[], 
-    currentDepth: number
-  ): Promise<void> {
+  private async scanDirectory(dirPath: string, symbolFiles: SymbolFileInfo[], currentDepth: number): Promise<void> {
     // Check depth limit
     if (this.options.maxDepth > 0 && currentDepth >= this.options.maxDepth) {
       return;
@@ -198,7 +194,7 @@ export class KiCadSymbolFileScanner {
   private async createFileInfo(filePath: string): Promise<SymbolFileInfo | null> {
     try {
       const stat = await fs.promises.stat(filePath);
-      
+
       // Skip if it's not actually a file (could be a directory with .kicad_sym name)
       if (!stat.isFile()) {
         return null;
@@ -216,7 +212,7 @@ export class KiCadSymbolFileScanner {
         directory,
         relativePath,
         size: stat.size,
-        lastModified: stat.mtime
+        lastModified: stat.mtime,
       };
     } catch (error) {
       const errorMessage = `Cannot access file ${filePath}: ${error instanceof Error ? error.message : String(error)}`;
@@ -242,12 +238,10 @@ export class KiCadSymbolFileScanner {
    * @private
    */
   private shouldExcludeDirectory(dirName: string): boolean {
-    return this.options.excludePatterns.some(pattern => {
+    return this.options.excludePatterns.some((pattern) => {
       if (pattern.includes('*') || pattern.includes('?')) {
         // Simple glob pattern matching
-        const regexPattern = pattern
-          .replace(/\*/g, '.*')
-          .replace(/\?/g, '.');
+        const regexPattern = pattern.replace(/\*/g, '.*').replace(/\?/g, '.');
         return new RegExp(`^${regexPattern}$`, 'i').test(dirName);
       } else {
         // Exact match (case insensitive)
@@ -279,7 +273,7 @@ export class KiCadSymbolFileScanner {
       totalSize: 0,
       directoriesScanned: 0,
       scanDuration: 0,
-      errors: []
+      errors: [],
     };
   }
 
@@ -297,17 +291,17 @@ export class KiCadSymbolFileScanner {
     summary += `  Total size: ${sizeInMB} MB\n`;
     summary += `  Directories scanned: ${stats.directoriesScanned}\n`;
     summary += `  Scan duration: ${durationInSeconds} seconds\n`;
-    
+
     if (stats.errors.length > 0) {
       summary += `  Errors encountered: ${stats.errors.length}\n`;
       if (stats.errors.length <= 5) {
         summary += `  Error details:\n`;
-        stats.errors.forEach(error => {
+        stats.errors.forEach((error) => {
           summary += `    - ${error}\n`;
         });
       } else {
         summary += `  First 5 errors:\n`;
-        stats.errors.slice(0, 5).forEach(error => {
+        stats.errors.slice(0, 5).forEach((error) => {
           summary += `    - ${error}\n`;
         });
         summary += `    ... and ${stats.errors.length - 5} more errors\n`;

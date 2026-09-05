@@ -106,7 +106,7 @@ async function main(): Promise<void> {
   }
 
   if (!parsed.command || parsed.help) {
-    if (parsed.command && await showCommandHelp(parsed.command, parsed.subcommand)) {
+    if (parsed.command && (await showCommandHelp(parsed.command, parsed.subcommand))) {
       return;
     }
     const help = await import('./help.js');
@@ -135,11 +135,7 @@ async function main(): Promise<void> {
               code: 'UNKNOWN_SUBCOMMAND',
             });
           } else {
-            logger.error(
-              chalk.red(
-                `Unknown subcommand 'add ${parsed.subcommand}'. Use 'component' or 'package'.`
-              )
-            );
+            logger.error(chalk.red(`Unknown subcommand 'add ${parsed.subcommand}'. Use 'component' or 'package'.`));
           }
           process.exit(1);
         }
@@ -201,11 +197,7 @@ async function main(): Promise<void> {
             code: 'UNKNOWN_COMMAND',
           });
         } else {
-          logger.error(
-            chalk.red(
-              `Unknown command '${parsed.command}'. Run 'typecad --help' for available commands.`
-            )
-          );
+          logger.error(chalk.red(`Unknown command '${parsed.command}'. Run 'typecad --help' for available commands.`));
         }
         process.exit(1);
     }
@@ -217,9 +209,7 @@ async function main(): Promise<void> {
         code: 'COMMAND_ERROR',
       });
     } else {
-      logger.error(
-        chalk.red(error instanceof Error ? error.message : String(error))
-      );
+      logger.error(chalk.red(error instanceof Error ? error.message : String(error)));
     }
     process.exit(1);
   }

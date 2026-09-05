@@ -14,7 +14,7 @@ export class DateBasedCacheManager extends TimestampManager {
   constructor(cacheDir: string = '.', cacheExpirationHours: number = 24, useSharedCache: boolean = true) {
     super(cacheDir, cacheExpirationHours, useSharedCache);
     this.useSharedCacheForDates = useSharedCache;
-    
+
     if (useSharedCache) {
       // Will be set asynchronously in getLastUpdatedFile()
       this.lastUpdatedFile = '';
@@ -44,12 +44,12 @@ export class DateBasedCacheManager extends TimestampManager {
       const lastUpdatedFile = await this.getLastUpdatedFile();
       const dateStr = await fs.readFile(lastUpdatedFile, 'utf-8');
       const date = new Date(dateStr.trim());
-      
+
       // Validate that the date is a valid date
       if (isNaN(date.getTime())) {
         return null;
       }
-      
+
       return date;
     } catch (error) {
       // File doesn't exist or can't be read
@@ -66,7 +66,9 @@ export class DateBasedCacheManager extends TimestampManager {
       const lastUpdatedFile = await this.getLastUpdatedFile();
       await fs.writeFile(lastUpdatedFile, date.toISOString(), 'utf-8');
     } catch (error) {
-      throw new Error(`Failed to write last updated date file: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      throw new Error(
+        `Failed to write last updated date file: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      );
     }
   }
 
@@ -77,7 +79,7 @@ export class DateBasedCacheManager extends TimestampManager {
    */
   async isCacheStaleByDate(remoteDate: Date): Promise<boolean> {
     const storedDate = await this.getLastUpdatedDate();
-    
+
     if (!storedDate) {
       // No stored date exists, cache is considered stale
       return true;
@@ -95,7 +97,7 @@ export class DateBasedCacheManager extends TimestampManager {
   async isCacheStale(remoteDate?: Date): Promise<boolean> {
     // First check if we need to validate based on 24-hour interval
     const shouldCheckRemote = await this.shouldCheckRemoteDate();
-    
+
     if (!shouldCheckRemote && !remoteDate) {
       // Within 24-hour window and no remote date provided, cache is fresh
       return false;
@@ -104,11 +106,11 @@ export class DateBasedCacheManager extends TimestampManager {
     if (remoteDate) {
       // We have a remote date, use date-based validation
       const isStaleByDate = await this.isCacheStaleByDate(remoteDate);
-      
+
       if (isStaleByDate) {
         return true;
       }
-      
+
       // Dates match, update our check timestamp and consider cache fresh
       await this.writeTimestamp();
       return false;
@@ -124,7 +126,7 @@ export class DateBasedCacheManager extends TimestampManager {
    */
   private async shouldCheckRemoteDate(): Promise<boolean> {
     const cacheAge = await this.getCacheAgeHours();
-    
+
     if (cacheAge === null) {
       // No timestamp exists, should check remote
       return true;
@@ -139,7 +141,7 @@ export class DateBasedCacheManager extends TimestampManager {
    */
   async deleteTimestamp(): Promise<void> {
     await super.deleteTimestamp();
-    
+
     try {
       const lastUpdatedFile = await this.getLastUpdatedFile();
       await fs.unlink(lastUpdatedFile);

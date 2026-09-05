@@ -1,21 +1,21 @@
 import { IMetadata } from '../types/metadata.js';
 
 export function escapeHtml(str: string): string {
-    return str
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#039;');
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
 }
 
 export function generateHtmlDocument(
-    metadata: IMetadata,
-    pcbFilePath: string,
-    wrappedHtmlContent: string,
-    mainCssContent: string
+  metadata: IMetadata,
+  pcbFilePath: string,
+  wrappedHtmlContent: string,
+  mainCssContent: string,
 ): string {
-    return `<!DOCTYPE html>
+  return `<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">

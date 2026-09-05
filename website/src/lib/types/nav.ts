@@ -1,19 +1,19 @@
-import type { Icons } from "$lib/components/icons/index.js";
+import type { Icons } from '$lib/components/icons/index.js';
 
 export type NavItem = {
-	title: string;
-	href?: string;
-	disabled?: boolean;
-	external?: boolean;
-	icon?: keyof typeof Icons;
-	label?: string;
-	group?: string;
+  title: string;
+  href?: string;
+  disabled?: boolean;
+  external?: boolean;
+  icon?: keyof typeof Icons;
+  label?: string;
+  group?: string;
 };
 
 export type SidebarNavItem = NavItem & {
-	items: SidebarNavItem[];
+  items: SidebarNavItem[];
 };
 
 export type NavItemWithChildren = NavItem & {
-	items: NavItemWithChildren[];
+  items: NavItemWithChildren[];
 };

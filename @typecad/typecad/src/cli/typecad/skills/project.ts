@@ -31,7 +31,8 @@ export const projectSkills: Skill[] = [
   {
     name: 'add-component',
     category: 'project',
-    description: 'Add a component to the current typeCAD project from KiCad libraries, local files, or JLCPCB/EasyEDA. Generates a .ts file with all pin names and numbers — this is the source of pin information',
+    description:
+      'Add a component to the current typeCAD project from KiCad libraries, local files, or JLCPCB/EasyEDA. Generates a .ts file with all pin names and numbers — this is the source of pin information',
     examples: [
       {
         title: 'Interactive component addition',
@@ -128,7 +129,8 @@ export const projectSkills: Skill[] = [
   {
     name: 'search',
     category: 'project',
-    description: 'Search KiCad schematic symbol libraries to find component symbols. Note: search finds symbols only — a matching KiCad footprint may not exist for every symbol',
+    description:
+      'Search KiCad schematic symbol libraries to find component symbols. Note: search finds symbols only — a matching KiCad footprint may not exist for every symbol',
     examples: [
       {
         title: 'Interactive search',
@@ -155,7 +157,8 @@ typecad search "voltage regulator" --format=json --limit=10`,
   {
     name: 'import',
     category: 'project',
-    description: 'Convert an existing KiCad .kicad_pcb file into typeCAD TypeScript code for reverse engineering or migration',
+    description:
+      'Convert an existing KiCad .kicad_pcb file into typeCAD TypeScript code for reverse engineering or migration',
     examples: [
       {
         title: 'Import a KiCad PCB',
@@ -176,7 +179,8 @@ typecad search "voltage regulator" --format=json --limit=10`,
   {
     name: 'browse-packages',
     category: 'project',
-    description: 'Browse and install typeCAD-compatible packages from the npm registry using an interactive multi-select UI',
+    description:
+      'Browse and install typeCAD-compatible packages from the npm registry using an interactive multi-select UI',
     examples: [
       {
         title: 'Browse and select packages interactively',

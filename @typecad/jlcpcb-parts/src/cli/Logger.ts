@@ -8,7 +8,7 @@ export enum LogLevel {
   INFO = 1,
   WARN = 2,
   ERROR = 3,
-  NONE = 4
+  NONE = 4,
 }
 
 /**
@@ -19,7 +19,7 @@ export interface LoggerOptions {
    * Minimum log level to display in the console (default: INFO)
    */
   consoleLevel?: LogLevel;
-  
+
   /**
    * Whether to include timestamps in log messages (default: true)
    */
@@ -32,7 +32,7 @@ export interface LoggerOptions {
 export class Logger {
   private static instance: Logger | null = null;
   private options: Required<LoggerOptions>;
-  
+
   /**
    * Creates a new Logger instance with sensible defaults
    * @param options - Configuration options for the Logger
@@ -40,10 +40,10 @@ export class Logger {
   private constructor(options: LoggerOptions = {}) {
     this.options = {
       consoleLevel: options.consoleLevel ?? LogLevel.INFO,
-      includeTimestamps: options.includeTimestamps ?? true
+      includeTimestamps: options.includeTimestamps ?? true,
     };
   }
-  
+
   /**
    * Gets the Logger instance (singleton)
    * @param options - Configuration options for the Logger (only used on first call)
@@ -55,14 +55,14 @@ export class Logger {
     }
     return Logger.instance;
   }
-  
+
   /**
    * Resets the Logger singleton instance
    */
   public static resetInstance(): void {
     Logger.instance = null;
   }
-  
+
   /**
    * Sets the console log level at runtime
    * @param level - The minimum log level to display
@@ -70,7 +70,7 @@ export class Logger {
   public setConsoleLevel(level: LogLevel): void {
     this.options.consoleLevel = level;
   }
-  
+
   /**
    * Logs a debug message
    * @param message - Message to log
@@ -79,7 +79,7 @@ export class Logger {
   public debug(message: string, data?: unknown): void {
     this.log(LogLevel.DEBUG, message, data);
   }
-  
+
   /**
    * Logs an info message
    * @param message - Message to log
@@ -88,7 +88,7 @@ export class Logger {
   public info(message: string, data?: unknown): void {
     this.log(LogLevel.INFO, message, data);
   }
-  
+
   /**
    * Logs a warning message
    * @param message - Message to log
@@ -97,7 +97,7 @@ export class Logger {
   public warn(message: string, data?: unknown): void {
     this.log(LogLevel.WARN, message, data);
   }
-  
+
   /**
    * Logs an error message
    * @param message - Message to log
@@ -105,20 +105,20 @@ export class Logger {
    */
   public error(message: string, error?: unknown): void {
     let errorData: unknown;
-    
+
     if (error instanceof Error) {
       errorData = {
         name: error.name,
         message: error.message,
-        stack: error.stack
+        stack: error.stack,
       };
     } else if (error !== undefined) {
       errorData = error;
     }
-    
+
     this.log(LogLevel.ERROR, message, errorData);
   }
-  
+
   /**
    * Logs a message with the specified level
    * @param level - Log level
@@ -130,17 +130,17 @@ export class Logger {
     if (level < this.options.consoleLevel) {
       return;
     }
-    
+
     // Format the log message
     const timestamp = this.options.includeTimestamps ? new Date().toISOString() : '';
     const levelString = LogLevel[level];
-    
+
     // Format the log message for console
     let consoleMessage = '';
     if (this.options.includeTimestamps) {
       consoleMessage += `[${timestamp}] `;
     }
-    
+
     // Add level with color
     switch (level) {
       case LogLevel.DEBUG:
@@ -156,10 +156,10 @@ export class Logger {
         consoleMessage += chalk.red(`[${levelString}] `);
         break;
     }
-    
+
     // Add message
     consoleMessage += message;
-    
+
     // Add data if provided
     if (data !== undefined) {
       if (typeof data === 'object') {
@@ -168,7 +168,7 @@ export class Logger {
         consoleMessage += ' ' + String(data);
       }
     }
-    
+
     // Log to console
     switch (level) {
       case LogLevel.DEBUG:

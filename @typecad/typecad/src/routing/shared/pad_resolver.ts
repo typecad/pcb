@@ -317,7 +317,7 @@ export class PadResolver {
     const sinRot = Math.sin(rotRad);
 
     // Apply rotation transformation to pad position
-    let padX = relativeData.at.x;
+    const padX = relativeData.at.x;
     let padY = relativeData.at.y;
 
     // For back side, negate Y to match pcb_footprint.ts back-side transform

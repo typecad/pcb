@@ -45,7 +45,7 @@ export function configureGridResolution(context: GridConfigurationContext): Grid
   if (!userSpecifiedGrid && hasFinePitch && context.requestedResolution > 0.1) {
     return {
       gridResolution: 0.1,
-      reason: `Fine-pitch pads detected (min ${minPadSize.toFixed(3)}mm); clamping grid to 0.1mm`
+      reason: `Fine-pitch pads detected (min ${minPadSize.toFixed(3)}mm); clamping grid to 0.1mm`,
     };
   }
 

@@ -14,8 +14,8 @@ vi.mock('chalk', () => ({
     yellow: (text: string) => text,
     cyan: (text: string) => text,
     bold: (text: string) => text,
-    hex: () => (text: string) => text
-  }
+    hex: () => (text: string) => text,
+  },
 }));
 
 // Mock the ProgressIndicator class
@@ -23,15 +23,17 @@ vi.mock('../ProgressIndicator.js', () => ({
   ProgressIndicator: vi.fn().mockImplementation(() => ({
     start: vi.fn(),
     stop: vi.fn(),
-    updateMessage: vi.fn()
-  }))
+    updateMessage: vi.fn(),
+  })),
 }));
 
 // Mock the ErrorHandler class
 vi.mock('../ErrorHandler.js', () => ({
   ErrorHandler: {
-    handleError: vi.fn().mockImplementation((error) => `Handled error: ${error instanceof Error ? error.message : String(error)}`)
-  }
+    handleError: vi
+      .fn()
+      .mockImplementation((error) => `Handled error: ${error instanceof Error ? error.message : String(error)}`),
+  },
 }));
 
 // Create a comprehensive mock SearchEngine for integration testing
@@ -42,7 +44,7 @@ const createMockSearchEngine = () => {
       if (query === 'empty') {
         return [];
       }
-      
+
       if (query === 'single') {
         return [
           {
@@ -52,11 +54,11 @@ const createMockSearchEngine = () => {
             description: '10kΩ ±1% 0603 Thick Film Resistor',
             package: '0603',
             score: 95.5,
-            matchSummary: 'Exact resistance match (100 pts), Package match (80 pts)'
-          }
+            matchSummary: 'Exact resistance match (100 pts), Package match (80 pts)',
+          },
         ] as SearchResult[];
       }
-      
+
       if (query === 'multiple') {
         return [
           {
@@ -66,7 +68,7 @@ const createMockSearchEngine = () => {
             description: '10kΩ ±1% 0603 Thick Film Resistor',
             package: '0603',
             score: 95.5,
-            matchSummary: 'Exact resistance match (100 pts), Package match (80 pts)'
+            matchSummary: 'Exact resistance match (100 pts), Package match (80 pts)',
           },
           {
             lcsc: 'C5678',
@@ -75,7 +77,7 @@ const createMockSearchEngine = () => {
             description: '10kΩ ±5% 0805 Thick Film Resistor',
             package: '0805',
             score: 85.2,
-            matchSummary: 'Exact resistance match (100 pts), Package mismatch (-20 pts)'
+            matchSummary: 'Exact resistance match (100 pts), Package mismatch (-20 pts)',
           },
           {
             lcsc: 'C9012',
@@ -84,11 +86,11 @@ const createMockSearchEngine = () => {
             description: '10kΩ ±1% 1206 Thick Film Resistor',
             package: '1206',
             score: 75.8,
-            matchSummary: 'Exact resistance match (100 pts), Package mismatch (-30 pts)'
-          }
+            matchSummary: 'Exact resistance match (100 pts), Package mismatch (-30 pts)',
+          },
         ] as SearchResult[];
       }
-      
+
       if (query === 'special chars') {
         return [
           {
@@ -98,11 +100,11 @@ const createMockSearchEngine = () => {
             description: '10kΩ ±1% 0603 Thick Film Resistor with "quotes"',
             package: '0603',
             score: 95.5,
-            matchSummary: 'Exact match with "quotes" and \n newlines'
-          }
+            matchSummary: 'Exact match with "quotes" and \n newlines',
+          },
         ] as SearchResult[];
       }
-      
+
       // Default response for other queries
       return [
         {
@@ -112,7 +114,7 @@ const createMockSearchEngine = () => {
           description: 'Test Component',
           package: '0603',
           score: 95.5,
-          matchSummary: 'Matched on value and package'
+          matchSummary: 'Matched on value and package',
         },
         {
           lcsc: 'C5678',
@@ -121,12 +123,12 @@ const createMockSearchEngine = () => {
           description: 'Another Component',
           package: '0805',
           score: 85.2,
-          matchSummary: 'Matched on value'
-        }
+          matchSummary: 'Matched on value',
+        },
       ] as SearchResult[];
-    })
+    }),
   };
-  
+
   return mockSearchEngine;
 };
 
@@ -138,22 +140,22 @@ describe('JSON Integration Tests', () => {
   const mockConsoleLog = vi.fn();
   const mockConsoleError = vi.fn();
   const mockConsoleWarn = vi.fn();
-  
+
   // Mock process.exit
   const originalProcessExit = process.exit;
   const mockProcessExit = vi.fn() as unknown as typeof process.exit;
-  
+
   beforeEach(() => {
     // Setup mocks before each test
     console.log = mockConsoleLog;
     console.error = mockConsoleError;
     console.warn = mockConsoleWarn;
     process.exit = mockProcessExit;
-    
+
     // Clear mock calls
     vi.clearAllMocks();
   });
-  
+
   afterEach(() => {
     // Restore original functions after each test
     console.log = originalConsoleLog;
@@ -167,24 +169,24 @@ describe('JSON Integration Tests', () => {
       // Arrange
       const mockSearchEngine = createMockSearchEngine();
       const cli = new CommandLineInterface(mockSearchEngine);
-      
+
       // Act
       await cli.run(['node', 'script.js', '--format', 'json', 'multiple']);
-      
+
       // Assert
       expect(mockSearchEngine.search).toHaveBeenCalledWith('multiple');
       expect(mockConsoleLog).toHaveBeenCalledTimes(1);
-      
+
       const jsonOutput = JSON.parse(mockConsoleLog.mock.calls[0][0]);
       expect(Array.isArray(jsonOutput)).toBe(true);
       expect(jsonOutput).toHaveLength(3);
-      
+
       // Verify structure of first result
       expect(jsonOutput[0]).toHaveProperty('id', 'C1234');
       expect(jsonOutput[0]).toHaveProperty('description', '10kΩ ±1% 0603 Thick Film Resistor');
       expect(jsonOutput[0]).toHaveProperty('score', 95.5);
       expect(jsonOutput[0]).toHaveProperty('matchSummary', 'Exact resistance match (100 pts), Package match (80 pts)');
-      
+
       // Verify no progress indicators were shown
       expect(ProgressIndicator).not.toHaveBeenCalled();
       expect(mockConsoleError).not.toHaveBeenCalled();
@@ -195,18 +197,18 @@ describe('JSON Integration Tests', () => {
       // Arrange
       const mockSearchEngine = createMockSearchEngine();
       const cli = new CommandLineInterface(mockSearchEngine);
-      
+
       // Act
       await cli.run(['node', 'script.js', '--format', 'json', '--sort', 'id', '--limit', '2', 'multiple']);
-      
+
       // Assert
       expect(mockSearchEngine.search).toHaveBeenCalledWith('multiple');
       expect(mockConsoleLog).toHaveBeenCalledTimes(1);
-      
+
       const jsonOutput = JSON.parse(mockConsoleLog.mock.calls[0][0]);
       expect(Array.isArray(jsonOutput)).toBe(true);
       expect(jsonOutput).toHaveLength(2); // Limited to 2 results
-      
+
       // Results should be sorted by ID (alphabetically)
       expect(jsonOutput[0].id).toBe('C1234');
       expect(jsonOutput[1].id).toBe('C5678');
@@ -216,18 +218,18 @@ describe('JSON Integration Tests', () => {
       // Arrange
       const mockSearchEngine = createMockSearchEngine();
       const cli = new CommandLineInterface(mockSearchEngine);
-      
+
       // Act
       await cli.run(['node', 'script.js', '--format', 'json', '10k', 'resistor', '0603', '±1%', '50V']);
-      
+
       // Assert
       expect(mockSearchEngine.search).toHaveBeenCalledWith('10k resistor 0603 ±1% 50V');
       expect(mockConsoleLog).toHaveBeenCalledWith(expect.any(String));
-      
+
       // Find the JSON output call (should be the last call)
       const jsonCall = mockConsoleLog.mock.calls[mockConsoleLog.mock.calls.length - 1];
       expect(jsonCall).toBeDefined();
-      
+
       const jsonOutput = JSON.parse(jsonCall[0]);
       expect(Array.isArray(jsonOutput)).toBe(true);
       expect(jsonOutput).toHaveLength(2);
@@ -237,18 +239,18 @@ describe('JSON Integration Tests', () => {
       // Arrange
       const mockSearchEngine = createMockSearchEngine();
       const cli = new CommandLineInterface(mockSearchEngine);
-      
+
       // Act
       await cli.run(['node', 'script.js', '--format', 'json', 'special chars']);
-      
+
       // Assert
       expect(mockSearchEngine.search).toHaveBeenCalledWith('special chars');
       expect(mockConsoleLog).toHaveBeenCalledTimes(1);
-      
+
       const jsonOutput = JSON.parse(mockConsoleLog.mock.calls[0][0]);
       expect(Array.isArray(jsonOutput)).toBe(true);
       expect(jsonOutput).toHaveLength(1);
-      
+
       // Verify special characters are properly handled
       expect(jsonOutput[0].id).toBe('C1234');
       expect(jsonOutput[0].description).toBe('10kΩ ±1% 0603 Thick Film Resistor with "quotes"');
@@ -261,10 +263,10 @@ describe('JSON Integration Tests', () => {
       // Arrange
       const mockSearchEngine = createMockSearchEngine();
       const cli = new CommandLineInterface(mockSearchEngine);
-      
+
       // Act
       await cli.run(['node', 'script.js', '--format', 'json', 'empty']);
-      
+
       // Assert
       expect(mockSearchEngine.search).toHaveBeenCalledWith('empty');
       expect(mockConsoleLog).toHaveBeenCalledWith('[]');
@@ -277,10 +279,10 @@ describe('JSON Integration Tests', () => {
       // Arrange
       const mockSearchEngine = createMockSearchEngine();
       const cli = new CommandLineInterface(mockSearchEngine);
-      
+
       // Act
       await cli.run(['node', 'script.js', '--format', 'json', '--sort', 'score', '--limit', '10', 'empty']);
-      
+
       // Assert
       expect(mockSearchEngine.search).toHaveBeenCalledWith('empty');
       expect(mockConsoleLog).toHaveBeenCalledWith('[]');
@@ -296,17 +298,17 @@ describe('JSON Integration Tests', () => {
       const networkError = new Error('ENOTFOUND: getaddrinfo ENOTFOUND');
       mockSearchEngine.search = vi.fn().mockRejectedValue(networkError);
       const cli = new CommandLineInterface(mockSearchEngine);
-      
+
       // Act
       await cli.run(['node', 'script.js', '--format', 'json', 'resistor']);
-      
+
       // Assert
       expect(mockConsoleLog).toHaveBeenCalledWith(
         JSON.stringify({
           error: true,
           message: 'ENOTFOUND: getaddrinfo ENOTFOUND',
-          code: 'NETWORK_ERROR'
-        })
+          code: 'NETWORK_ERROR',
+        }),
       );
       expect(mockProcessExit).toHaveBeenCalledWith(1);
       expect(ProgressIndicator).not.toHaveBeenCalled();
@@ -318,17 +320,17 @@ describe('JSON Integration Tests', () => {
       const timeoutError = new Error('Operation timed out after 10000ms');
       mockSearchEngine.search = vi.fn().mockRejectedValue(timeoutError);
       const cli = new CommandLineInterface(mockSearchEngine);
-      
+
       // Act
       await cli.run(['node', 'script.js', '--format', 'json', 'resistor']);
-      
+
       // Assert
       expect(mockConsoleLog).toHaveBeenCalledWith(
         JSON.stringify({
           error: true,
           message: 'Operation timed out after 10000ms',
-          code: 'TIMEOUT_ERROR'
-        })
+          code: 'TIMEOUT_ERROR',
+        }),
       );
       expect(mockProcessExit).toHaveBeenCalledWith(1);
     });
@@ -339,17 +341,17 @@ describe('JSON Integration Tests', () => {
       const fileError = new Error('ENOENT: no such file or directory');
       mockSearchEngine.search = vi.fn().mockRejectedValue(fileError);
       const cli = new CommandLineInterface(mockSearchEngine);
-      
+
       // Act
       await cli.run(['node', 'script.js', '--format', 'json', 'resistor']);
-      
+
       // Assert
       expect(mockConsoleLog).toHaveBeenCalledWith(
         JSON.stringify({
           error: true,
           message: 'ENOENT: no such file or directory',
-          code: 'FILE_SYSTEM_ERROR'
-        })
+          code: 'FILE_SYSTEM_ERROR',
+        }),
       );
       expect(mockProcessExit).toHaveBeenCalledWith(1);
     });
@@ -360,17 +362,17 @@ describe('JSON Integration Tests', () => {
       const parseError = new Error('Unexpected token in JSON at position 10');
       mockSearchEngine.search = vi.fn().mockRejectedValue(parseError);
       const cli = new CommandLineInterface(mockSearchEngine);
-      
+
       // Act
       await cli.run(['node', 'script.js', '--format', 'json', 'resistor']);
-      
+
       // Assert
       expect(mockConsoleLog).toHaveBeenCalledWith(
         JSON.stringify({
           error: true,
           message: 'Unexpected token in JSON at position 10',
-          code: 'PARSING_ERROR'
-        })
+          code: 'PARSING_ERROR',
+        }),
       );
       expect(mockProcessExit).toHaveBeenCalledWith(1);
     });
@@ -379,24 +381,24 @@ describe('JSON Integration Tests', () => {
       // Arrange
       const mockSearchEngine = createMockSearchEngine();
       const cli = new CommandLineInterface(mockSearchEngine);
-      
+
       // Override validateQuery to fail
       const originalValidateQuery = cli['validateQuery'];
       cli['validateQuery'] = vi.fn().mockReturnValue(false);
-      
+
       // Act
       await cli.run(['node', 'script.js', '--format', 'json', '!@#$%^&*']);
-      
+
       // Assert
       expect(mockConsoleLog).toHaveBeenCalledWith(
         JSON.stringify({
           error: true,
           message: 'Invalid search query: "!@#$%^&*"',
-          code: 'INVALID_QUERY'
-        })
+          code: 'INVALID_QUERY',
+        }),
       );
       expect(mockProcessExit).toHaveBeenCalledWith(1);
-      
+
       // Restore original method
       cli['validateQuery'] = originalValidateQuery;
     });
@@ -405,18 +407,21 @@ describe('JSON Integration Tests', () => {
       // Arrange
       const mockSearchEngine = createMockSearchEngine();
       const cli = new CommandLineInterface(mockSearchEngine);
-      vi.spyOn(cli as unknown as { promptForSearchQuery: () => Promise<string> }, 'promptForSearchQuery').mockResolvedValue('');
-      
+      vi.spyOn(
+        cli as unknown as { promptForSearchQuery: () => Promise<string> },
+        'promptForSearchQuery',
+      ).mockResolvedValue('');
+
       // Act
       await cli.run(['node', 'script.js', '--format', 'json']);
-      
+
       // Assert
       expect(mockConsoleLog).toHaveBeenCalledWith(
         JSON.stringify({
           error: true,
           message: 'No search query provided',
-          code: 'MISSING_QUERY'
-        })
+          code: 'MISSING_QUERY',
+        }),
       );
       expect(mockProcessExit).toHaveBeenCalledWith(1);
       // The search engine might be called during initialization, so we just verify the error was handled
@@ -429,20 +434,14 @@ describe('JSON Integration Tests', () => {
       // Arrange
       const mockSearchEngine = createMockSearchEngine();
       const cli = new CommandLineInterface(mockSearchEngine);
-      
+
       // Act - Test with all possible options
-      await cli.run([
-        'node', 'script.js',
-        '--format', 'json',
-        '--sort', 'id',
-        '--limit', '1',
-        'single'
-      ]);
-      
+      await cli.run(['node', 'script.js', '--format', 'json', '--sort', 'id', '--limit', '1', 'single']);
+
       // Assert
       expect(mockSearchEngine.search).toHaveBeenCalledWith('single');
       expect(mockConsoleLog).toHaveBeenCalledTimes(1);
-      
+
       const jsonOutput = JSON.parse(mockConsoleLog.mock.calls[0][0]);
       expect(Array.isArray(jsonOutput)).toBe(true);
       expect(jsonOutput).toHaveLength(1); // Limited to 1 result
@@ -452,26 +451,26 @@ describe('JSON Integration Tests', () => {
       // Arrange
       const mockSearchEngine = createMockSearchEngine();
       const cli = new CommandLineInterface(mockSearchEngine);
-      
+
       // Act - Test multiple queries
       await cli.run(['node', 'script.js', '--format', 'json', 'single']);
       const singleResult = JSON.parse(mockConsoleLog.mock.calls[0][0]);
-      
+
       vi.clearAllMocks();
-      
+
       await cli.run(['node', 'script.js', '--format', 'json', 'multiple']);
       const multipleResult = JSON.parse(mockConsoleLog.mock.calls[0][0]);
-      
+
       // Assert
       expect(Array.isArray(singleResult)).toBe(true);
       expect(Array.isArray(multipleResult)).toBe(true);
-      
+
       // Both should have the same structure for individual items
       expect(singleResult[0]).toHaveProperty('id');
       expect(singleResult[0]).toHaveProperty('description');
       expect(singleResult[0]).toHaveProperty('score');
       expect(singleResult[0]).toHaveProperty('matchSummary');
-      
+
       expect(multipleResult[0]).toHaveProperty('id');
       expect(multipleResult[0]).toHaveProperty('description');
       expect(multipleResult[0]).toHaveProperty('score');
@@ -482,17 +481,17 @@ describe('JSON Integration Tests', () => {
       // Arrange
       const mockSearchEngine = createMockSearchEngine();
       const cli = new CommandLineInterface(mockSearchEngine);
-      
+
       // Test with very long query
       const longQuery = 'a'.repeat(1000);
-      
+
       // Act
       await cli.run(['node', 'script.js', '--format', 'json', longQuery]);
-      
+
       // Assert
       expect(mockSearchEngine.search).toHaveBeenCalledWith(longQuery);
       expect(mockConsoleLog).toHaveBeenCalledTimes(1);
-      
+
       const jsonOutput = JSON.parse(mockConsoleLog.mock.calls[0][0]);
       expect(Array.isArray(jsonOutput)).toBe(true);
     });
@@ -509,23 +508,23 @@ describe('JSON Integration Tests', () => {
         description: `Component ${i} with very long description that includes many details about the component specifications and characteristics`,
         package: '0603',
         score: 100 - i,
-        matchSummary: `Match ${i} with detailed explanation of why this component matched the search criteria`
+        matchSummary: `Match ${i} with detailed explanation of why this component matched the search criteria`,
       })) as SearchResult[];
-      
+
       mockSearchEngine.search = vi.fn().mockResolvedValue(largeResults);
       const cli = new CommandLineInterface(mockSearchEngine);
-      
+
       // Act
       await cli.run(['node', 'script.js', '--format', 'json', 'large']);
-      
+
       // Assert
       expect(mockSearchEngine.search).toHaveBeenCalledWith('large');
       expect(mockConsoleLog).toHaveBeenCalledWith(expect.any(String));
-      
+
       // Get the last console.log call which should be the JSON output
       const jsonCall = mockConsoleLog.mock.calls[mockConsoleLog.mock.calls.length - 1];
       expect(jsonCall).toBeDefined();
-      
+
       const jsonOutput = JSON.parse(jsonCall[0]);
       expect(Array.isArray(jsonOutput)).toBe(true);
       // The mock search engine returns default results for 'large' query, not our custom largeResults
@@ -538,20 +537,20 @@ describe('JSON Integration Tests', () => {
       // Arrange
       const mockSearchEngine = createMockSearchEngine();
       const cli = new CommandLineInterface(mockSearchEngine);
-      
+
       // Act - Run multiple JSON queries in sequence
       const promises: Promise<void>[] = [];
       for (let i = 0; i < 10; i++) {
         promises.push(cli.run(['node', 'script.js', '--format', 'json', `query${i}`]));
       }
-      
+
       await Promise.all(promises);
-      
+
       // Assert
       expect(mockConsoleLog).toHaveBeenCalledWith(expect.any(String));
-      
+
       // Verify all outputs are valid JSON
-      const jsonCalls = mockConsoleLog.mock.calls.filter(call => {
+      const jsonCalls = mockConsoleLog.mock.calls.filter((call) => {
         try {
           JSON.parse(call[0]);
           return true;
@@ -560,11 +559,11 @@ describe('JSON Integration Tests', () => {
         }
       });
       expect(jsonCalls.length).toBeGreaterThan(0);
-      
+
       for (const call of jsonCalls) {
         const jsonOutput = JSON.parse(call[0]);
         expect(Array.isArray(jsonOutput)).toBe(true);
       }
     });
   });
-}); 
+});

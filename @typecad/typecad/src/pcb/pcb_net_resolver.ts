@@ -23,83 +23,83 @@ import { normalizeNetName } from './pcb_utils.js';
  * @returns Net resolution result containing net code, name, and status
  */
 export function resolveNet(
-    schematic: Schematic | undefined,
-    componentReference: string,
-    pinNumber: string,
-    componentUuid?: string,
-    boardNetNameToCodeMap?: Map<string, number>,
-    fallbackNetName?: string
+  schematic: Schematic | undefined,
+  componentReference: string,
+  pinNumber: string,
+  componentUuid?: string,
+  boardNetNameToCodeMap?: Map<string, number>,
+  fallbackNetName?: string,
 ): INetResolution {
-    let foundInSchematic = false;
-    let schematicNetCode: number | undefined;
-    let schematicNetName: string | undefined;
+  let foundInSchematic = false;
+  let schematicNetCode: number | undefined;
+  let schematicNetName: string | undefined;
 
-    // Try to find the pin in the schematic nets
-    if (schematic && schematic.nodes) {
-        for (const schematicNode of schematic.nodes as ISchematicNode[]) {
-            if (schematicNode.nodes) {
-                // For vias, look for UUID match with pin number "1"
-                // For regular components, look for reference + pin number match
-                const pinInSchematic = schematicNode.nodes.find((p) => {
-                    if (componentUuid) {
-                        // Via lookup by UUID
-                        return p.uuid === componentUuid && String(p.number) === pinNumber;
-                    } else {
-                        // Component lookup by reference + pin number
-                        return p.reference === componentReference && String(p.number) === pinNumber;
-                    }
-                });
+  // Try to find the pin in the schematic nets
+  if (schematic && schematic.nodes) {
+    for (const schematicNode of schematic.nodes as ISchematicNode[]) {
+      if (schematicNode.nodes) {
+        // For vias, look for UUID match with pin number "1"
+        // For regular components, look for reference + pin number match
+        const pinInSchematic = schematicNode.nodes.find((p) => {
+          if (componentUuid) {
+            // Via lookup by UUID
+            return p.uuid === componentUuid && String(p.number) === pinNumber;
+          } else {
+            // Component lookup by reference + pin number
+            return p.reference === componentReference && String(p.number) === pinNumber;
+          }
+        });
 
-                if (pinInSchematic) {
-                    schematicNetName = schematicNode.name;
-                    schematicNetCode = schematicNode.code;
-                    foundInSchematic = true;
-                    break;
-                }
-            }
+        if (pinInSchematic) {
+          schematicNetName = schematicNode.name;
+          schematicNetCode = schematicNode.code;
+          foundInSchematic = true;
+          break;
         }
+      }
+    }
+  }
+
+  if (foundInSchematic && schematicNetName !== undefined && schematicNetCode !== undefined) {
+    // Found in schematic - check if board has different code for this net
+    let finalNetCode = schematicNetCode;
+    let finalNetName = schematicNetName;
+
+    if (boardNetNameToCodeMap) {
+      const lookupKey = normalizeNetName(schematicNetName);
+
+      if (lookupKey && boardNetNameToCodeMap.has(lookupKey)) {
+        finalNetCode = boardNetNameToCodeMap.get(lookupKey)!;
+        finalNetName = schematicNetName; // Keep original name format
+      }
     }
 
-    if (foundInSchematic && schematicNetName !== undefined && schematicNetCode !== undefined) {
-        // Found in schematic - check if board has different code for this net
-        let finalNetCode = schematicNetCode;
-        let finalNetName = schematicNetName;
-
-        if (boardNetNameToCodeMap) {
-            const lookupKey = normalizeNetName(schematicNetName);
-
-            if (lookupKey && boardNetNameToCodeMap.has(lookupKey)) {
-                finalNetCode = boardNetNameToCodeMap.get(lookupKey)!;
-                finalNetName = schematicNetName; // Keep original name format
-            }
-        }
-
-        return {
-            found: true,
-            netCode: finalNetCode,
-            netName: finalNetName,
-            schematicNetCode,
-            schematicNetName
-        };
-    }
-    
-    // Not found in schematic - try fallback options
-    if (fallbackNetName && boardNetNameToCodeMap) {
-        const lookupNetName = normalizeNetName(fallbackNetName);
-        if (lookupNetName && boardNetNameToCodeMap.has(lookupNetName)) {
-            const boardNetCode = boardNetNameToCodeMap.get(lookupNetName)!;
-            return {
-                found: false,
-                netCode: boardNetCode,
-                netName: fallbackNetName
-            };
-        }
-    }
-
-    // Default to net 0 (unconnected)
     return {
-        found: false,
-        netCode: 0,
-        netName: ""
+      found: true,
+      netCode: finalNetCode,
+      netName: finalNetName,
+      schematicNetCode,
+      schematicNetName,
     };
+  }
+
+  // Not found in schematic - try fallback options
+  if (fallbackNetName && boardNetNameToCodeMap) {
+    const lookupNetName = normalizeNetName(fallbackNetName);
+    if (lookupNetName && boardNetNameToCodeMap.has(lookupNetName)) {
+      const boardNetCode = boardNetNameToCodeMap.get(lookupNetName)!;
+      return {
+        found: false,
+        netCode: boardNetCode,
+        netName: fallbackNetName,
+      };
+    }
+  }
+
+  // Default to net 0 (unconnected)
+  return {
+    found: false,
+    netCode: 0,
+    netName: '',
+  };
 }

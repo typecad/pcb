@@ -6,8 +6,7 @@ export async function run(parsed: ParsedArgs): Promise<void> {
 
   if (!filePath) {
     throw new Error(
-      'No KiCad file path provided.\n' +
-      'Usage: typecad import <path_to_kicad_pcb_file> [--apply] [--capture-layouts]'
+      'No KiCad file path provided.\n' + 'Usage: typecad import <path_to_kicad_pcb_file> [--apply] [--capture-layouts]',
     );
   }
 

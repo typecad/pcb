@@ -65,6 +65,7 @@
   },
   "scripts": {
     "build": "tsc",
+    "typecheck": "tsc --noEmit",
     "build:watch": "tsc --watch",
     "build:clean": "powershell -Command \"if (Test-Path dist) { Remove-Item -Recurse -Force dist }\" && npm run build",
     "test": "vitest --run",

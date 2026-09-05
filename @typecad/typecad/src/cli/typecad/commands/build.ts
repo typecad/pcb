@@ -13,14 +13,16 @@ function detectEntryFile(): string | null {
     const buildScript = pkg.scripts?.build || '';
     const match = buildScript.match(/tsx\s+(.+)$/);
     if (match) return match[1];
-  } catch { logger.debug('Failed to read or parse package.json'); }
+  } catch {
+    logger.debug('Failed to read or parse package.json');
+  }
 
   try {
-    const srcFiles = fs
-      .readdirSync('./src')
-      .filter((f) => f.endsWith('.ts') && !f.endsWith('.d.ts'));
+    const srcFiles = fs.readdirSync('./src').filter((f) => f.endsWith('.ts') && !f.endsWith('.d.ts'));
     if (srcFiles.length === 1) return `./src/${srcFiles[0]}`;
-  } catch { logger.debug('Failed to read src directory'); }
+  } catch {
+    logger.debug('Failed to read src directory');
+  }
 
   return null;
 }
@@ -31,8 +33,8 @@ export async function run(parsed: ParsedArgs): Promise<void> {
   if (!entry) {
     throw new Error(
       'No entry file specified and none could be auto-detected.\n' +
-      'Provide a file path: typecad build <entry.ts>\n' +
-      'Or configure one in typecad.conf.ts: { entry: "./src/main.ts" }'
+        'Provide a file path: typecad build <entry.ts>\n' +
+        'Or configure one in typecad.conf.ts: { entry: "./src/main.ts" }',
     );
   }
 
@@ -40,7 +42,7 @@ export async function run(parsed: ParsedArgs): Promise<void> {
     throw new Error(`Entry file not found: ${entry}`);
   }
 
-  const env: Record<string, string> = { ...process.env as Record<string, string> };
+  const env: Record<string, string> = { ...(process.env as Record<string, string>) };
 
   if (parsed.args['verbose'] === true) {
     env.TYPECAD_DEBUG = '1';

@@ -16,7 +16,7 @@ function findSchFile(argPath?: string): string | null {
   const buildDir = path.join(process.cwd(), 'build');
   if (!fs.existsSync(buildDir)) return null;
 
-  const schFiles = fs.readdirSync(buildDir).filter(f => f.endsWith('.kicad_sch'));
+  const schFiles = fs.readdirSync(buildDir).filter((f) => f.endsWith('.kicad_sch'));
   if (schFiles.length === 1) return path.join(buildDir, schFiles[0]);
   if (schFiles.length > 1) return null;
 
@@ -48,7 +48,7 @@ export async function run(parsed: ParsedArgs): Promise<void> {
     }
     throw new Error(
       'No .kicad_sch file found in ./build/.\n' +
-      'Run `typecad build` first, or specify a path: typecad erc <path/to/schematic.kicad_sch>'
+        'Run `typecad build` first, or specify a path: typecad erc <path/to/schematic.kicad_sch>',
     );
   }
 
@@ -60,13 +60,7 @@ export async function run(parsed: ParsedArgs): Promise<void> {
   const reportName = path.basename(schPath, '.kicad_sch') + '_erc.json';
   const reportPath = path.join(path.dirname(schPath), reportName);
 
-  const args = [
-    'erc',
-    '--format', 'json',
-    '--output', reportPath,
-    ...parsed.passthrough,
-    schPath,
-  ];
+  const args = ['erc', '--format', 'json', '--output', reportPath, ...parsed.passthrough, schPath];
 
   try {
     await executeKiCADCommand('sch', args, { stdio: 'pipe' });
@@ -102,13 +96,19 @@ export async function run(parsed: ParsedArgs): Promise<void> {
   const passed = errors === 0 && warnings === 0;
 
   if (json) {
-    logger.log(JSON.stringify({
-      schematic: schPath,
-      passed,
-      errors,
-      warnings,
-      output: rawReport,
-    }, null, 2));
+    logger.log(
+      JSON.stringify(
+        {
+          schematic: schPath,
+          passed,
+          errors,
+          warnings,
+          output: rawReport,
+        },
+        null,
+        2,
+      ),
+    );
   } else {
     if (!passed) {
       for (const line of violationLines) {

@@ -4,7 +4,8 @@ export const packageSkills: Skill[] = [
   {
     name: 'package-base',
     category: 'packages',
-    description: 'The Package abstract base class for creating reusable IC packages with their typical application circuits. Strongly recommended when an IC requires 3+ supporting components (decoupling caps, pull-ups, crystals, etc.)',
+    description:
+      'The Package abstract base class for creating reusable IC packages with their typical application circuits. Strongly recommended when an IC requires 3+ supporting components (decoupling caps, pull-ups, crystals, etc.)',
     package: '@typecad/typecad',
     import: "import { Package, PCB } from '@typecad/typecad';",
     usage: {
@@ -15,7 +16,12 @@ export const packageSkills: Skill[] = [
         { name: 'y', type: 'number', required: true, description: 'Y position offset in mm' },
         { name: 'reference', type: 'string', required: false, description: 'Optional reference prefix' },
         { name: 'name', type: 'string', required: false, description: 'Optional package name' },
-        { name: 'passives', type: 'PassiveFactory', required: false, description: 'Override default passive component classes' },
+        {
+          name: 'passives',
+          type: 'PassiveFactory',
+          required: false,
+          description: 'Override default passive component classes',
+        },
       ],
     },
     examples: [
@@ -115,7 +121,8 @@ typecad.create(esp32, j_left, j_right);`,
   {
     name: 'custom-component',
     category: 'packages',
-    description: 'Create a custom component class with named pins and proper pin types for ERC and power validation. Use this when add-component fails or when you need to define a component manually',
+    description:
+      'Create a custom component class with named pins and proper pin types for ERC and power validation. Use this when add-component fails or when you need to define a component manually',
     package: '@typecad/typecad',
     import: "import { Component } from '@typecad/typecad';",
     examples: [

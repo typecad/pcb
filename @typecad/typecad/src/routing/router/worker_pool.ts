@@ -47,10 +47,10 @@ export class WorkerPool {
       // complete in quick succession.
       setImmediate(() => {
         try {
-            cb(message);
-          } catch (e) {
-            logger.warn('[WorkerPool] Callback error:', e);
-          }
+          cb(message);
+        } catch (e) {
+          logger.warn('[WorkerPool] Callback error:', e);
+        }
       });
       this.pending.delete(message.id);
     }

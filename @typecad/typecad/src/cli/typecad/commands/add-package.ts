@@ -8,7 +8,7 @@ function toBool(val: string | boolean | undefined): boolean | undefined {
 }
 
 export async function run(parsed: ParsedArgs): Promise<void> {
-  const args: Record<string, any> = { ...parsed.args };
+  const args: Record<string, string | boolean | undefined> = { ...parsed.args };
 
   args.empty = toBool(args.empty);
   args.component = toBool(args.component);

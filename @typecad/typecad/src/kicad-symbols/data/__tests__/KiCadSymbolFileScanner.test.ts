@@ -30,7 +30,7 @@ describe('KiCadSymbolFileScanner', () => {
       const scanner = new KiCadSymbolFileScanner(tmpDir);
       const files = await scanner.scanForSymbolFiles();
       expect(files).toHaveLength(2);
-      expect(files.map(f => f.fileName).sort()).toEqual(['Device', 'MCU']);
+      expect(files.map((f) => f.fileName).sort()).toEqual(['Device', 'MCU']);
     });
 
     it('ignores non-symbol files', async () => {
@@ -211,7 +211,9 @@ describe('KiCadSymbolFileScanner', () => {
 
     it('shows errors when present', async () => {
       const scanner = new KiCadSymbolFileScanner('/nonexistent');
-      try { await scanner.scanForSymbolFiles(); } catch {}
+      try {
+        await scanner.scanForSymbolFiles();
+      } catch {}
       const summary = scanner.getScanSummary();
       expect(summary).toContain('Files found: 0');
     });

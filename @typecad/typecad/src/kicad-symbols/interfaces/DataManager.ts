@@ -9,13 +9,13 @@ export interface DataManager {
    * @returns Promise that resolves when data is available
    */
   ensureDataAvailable(): Promise<void>;
-  
+
   /**
    * Gets the parsed CSV data as component records
    * @returns Array of component records
    */
   getCsvData(): Promise<ComponentRecord[]>;
-  
+
   /**
    * Checks if the data is stale and needs to be refreshed
    * @returns Promise that resolves to true if data is stale, false otherwise

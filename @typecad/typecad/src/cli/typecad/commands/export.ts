@@ -15,7 +15,7 @@ function findPcbFile(argPath?: string): string | null {
   const buildDir = path.join(process.cwd(), 'build');
   if (!fs.existsSync(buildDir)) return null;
 
-  const pcbFiles = fs.readdirSync(buildDir).filter(f => f.endsWith('.kicad_pcb'));
+  const pcbFiles = fs.readdirSync(buildDir).filter((f) => f.endsWith('.kicad_pcb'));
   if (pcbFiles.length === 1) return path.join(buildDir, pcbFiles[0]);
   if (pcbFiles.length > 1) return null;
 
@@ -43,7 +43,7 @@ async function runGerbers(parsed: ParsedArgs): Promise<void> {
     }
     throw new Error(
       'No .kicad_pcb file found in ./build/.\n' +
-      'Run `typecad build` first, or specify a path: typecad export gerbers <path/to/board.kicad_pcb>'
+        'Run `typecad build` first, or specify a path: typecad export gerbers <path/to/board.kicad_pcb>',
     );
   }
 
@@ -57,27 +57,37 @@ async function runGerbers(parsed: ParsedArgs): Promise<void> {
     logger.log(`  Output: ${outputDir}\n`);
   }
 
-  const args = [
-    'export', 'gerbers',
-    '--output', outputDir,
-    ...parsed.passthrough,
-    pcbPath,
-  ];
+  const args = ['export', 'gerbers', '--output', outputDir, ...parsed.passthrough, pcbPath];
 
   await executeKiCADCommand('pcb', args, { stdio: 'inherit' });
 
-  const gerberFiles = fs.readdirSync(outputDir).filter(f =>
-    f.endsWith('.gbr') || f.endsWith('.gtl') || f.endsWith('.gbl') ||
-    f.endsWith('.gts') || f.endsWith('.gbs') || f.endsWith('.gbo') ||
-    f.endsWith('.gto') || f.endsWith('.gko') || f.endsWith('.gm1')
-  );
+  const gerberFiles = fs
+    .readdirSync(outputDir)
+    .filter(
+      (f) =>
+        f.endsWith('.gbr') ||
+        f.endsWith('.gtl') ||
+        f.endsWith('.gbl') ||
+        f.endsWith('.gts') ||
+        f.endsWith('.gbs') ||
+        f.endsWith('.gbo') ||
+        f.endsWith('.gto') ||
+        f.endsWith('.gko') ||
+        f.endsWith('.gm1'),
+    );
 
   if (json) {
-    logger.log(JSON.stringify({
-      pcb: pcbPath,
-      outputDir,
-      files: gerberFiles,
-    }, null, 2));
+    logger.log(
+      JSON.stringify(
+        {
+          pcb: pcbPath,
+          outputDir,
+          files: gerberFiles,
+        },
+        null,
+        2,
+      ),
+    );
   } else {
     logger.log('');
     logger.log(chalk.green(`Exported ${gerberFiles.length} Gerber file(s) to ${outputDir}`));
@@ -95,7 +105,7 @@ async function runDrill(parsed: ParsedArgs): Promise<void> {
     }
     throw new Error(
       'No .kicad_pcb file found in ./build/.\n' +
-      'Run `typecad build` first, or specify a path: typecad export drill <path/to/board.kicad_pcb>'
+        'Run `typecad build` first, or specify a path: typecad export drill <path/to/board.kicad_pcb>',
     );
   }
 
@@ -109,25 +119,24 @@ async function runDrill(parsed: ParsedArgs): Promise<void> {
     logger.log(`  Output: ${outputDir}\n`);
   }
 
-  const args = [
-    'export', 'drill',
-    '--output', outputDir,
-    ...parsed.passthrough,
-    pcbPath,
-  ];
+  const args = ['export', 'drill', '--output', outputDir, ...parsed.passthrough, pcbPath];
 
   await executeKiCADCommand('pcb', args, { stdio: 'inherit' });
 
-  const drillFiles = fs.readdirSync(outputDir).filter(f =>
-    f.endsWith('.drl') || f.endsWith('.xln')
-  );
+  const drillFiles = fs.readdirSync(outputDir).filter((f) => f.endsWith('.drl') || f.endsWith('.xln'));
 
   if (json) {
-    logger.log(JSON.stringify({
-      pcb: pcbPath,
-      outputDir,
-      files: drillFiles,
-    }, null, 2));
+    logger.log(
+      JSON.stringify(
+        {
+          pcb: pcbPath,
+          outputDir,
+          files: drillFiles,
+        },
+        null,
+        2,
+      ),
+    );
   } else {
     logger.log('');
     logger.log(chalk.green(`Exported ${drillFiles.length} drill file(s) to ${outputDir}`));
@@ -145,17 +154,15 @@ export async function run(parsed: ParsedArgs): Promise<void> {
 
   if (!VALID_SUBCOMMANDS.includes(sub)) {
     if (parsed.json) {
-      logger.log(JSON.stringify({
-        error: true,
-        message: `Unknown subcommand 'export ${sub}'. Use '${VALID_SUBCOMMANDS.join("' or '")}'.`,
-        code: 'UNKNOWN_SUBCOMMAND',
-      }));
-    } else {
-      logger.error(
-        chalk.red(
-          `Unknown subcommand 'export ${sub}'. Use '${VALID_SUBCOMMANDS.join("' or '")}'.`
-        )
+      logger.log(
+        JSON.stringify({
+          error: true,
+          message: `Unknown subcommand 'export ${sub}'. Use '${VALID_SUBCOMMANDS.join("' or '")}'.`,
+          code: 'UNKNOWN_SUBCOMMAND',
+        }),
       );
+    } else {
+      logger.error(chalk.red(`Unknown subcommand 'export ${sub}'. Use '${VALID_SUBCOMMANDS.join("' or '")}'.`));
     }
     process.exit(1);
   }

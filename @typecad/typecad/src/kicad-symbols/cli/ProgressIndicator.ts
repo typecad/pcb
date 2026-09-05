@@ -27,24 +27,24 @@ export class ProgressIndicator {
     if (message) {
       this.message = message;
     }
-    
+
     if (this.isActive) {
       return;
     }
-    
+
     this.isActive = true;
     this.startTime = Date.now();
-    
+
     // Clear the line and hide the cursor
     process.stdout.write('\x1B[?25l');
-    
+
     this.interval = setInterval(() => {
       const frame = this.frames[this.frameIndex];
       const elapsedSeconds = ((Date.now() - this.startTime) / 1000).toFixed(1);
-      
+
       // Clear the line and write the new frame
       process.stdout.write(`\r${chalk.cyan(frame)} ${this.message} (${elapsedSeconds}s)`);
-      
+
       // Update frame index
       this.frameIndex = (this.frameIndex + 1) % this.frames.length;
     }, 80);
@@ -58,15 +58,15 @@ export class ProgressIndicator {
     if (!this.isActive) {
       return;
     }
-    
+
     if (this.interval) {
       clearInterval(this.interval);
       this.interval = null;
     }
-    
+
     // Show the cursor again
     process.stdout.write('\x1B[?25h');
-    
+
     if (clearLine) {
       // Clear the line
       process.stdout.write('\r\x1B[K');
@@ -74,7 +74,7 @@ export class ProgressIndicator {
       // Just move to the next line
       process.stdout.write('\n');
     }
-    
+
     this.isActive = false;
   }
 

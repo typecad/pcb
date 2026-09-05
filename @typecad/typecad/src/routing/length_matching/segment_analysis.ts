@@ -5,11 +5,7 @@
  * picking the best candidate segment for sawtooth pattern placement.
  */
 
-import type {
-  ILengthMatchContext,
-  IRoutePath,
-  IStraightSegment,
-} from '../types/length_match.js';
+import type { ILengthMatchContext, IRoutePath, IStraightSegment } from '../types/length_match.js';
 
 import { segmentKey, isOccupiedWorld, chalk } from './length_matcher_helpers.js';
 import { estimateMaxAmplitudeOneSide } from './amplitude_estimation.js';
@@ -90,9 +86,7 @@ export function pickCandidateSegment(
   const segments = collectSegments(path);
   if (!segments.length) return null;
 
-  const eligible = segments
-    .filter(s => s.length >= minLen)
-    .filter(s => !exclude?.has(segmentKey(s)));
+  const eligible = segments.filter((s) => s.length >= minLen).filter((s) => !exclude?.has(segmentKey(s)));
   if (!eligible.length) return null;
 
   const scored: { seg: IStraightSegment; score: number; amp: number }[] = [];

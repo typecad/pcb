@@ -54,10 +54,10 @@ process.on('uncaughtException', (error) => {
 function parseArguments() {
   const args = process.argv.slice(2);
   const parsedArgs: CliArgs = {};
-  
+
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
-    
+
     if (arg.startsWith('--')) {
       const equalIndex = arg.indexOf('=');
       if (equalIndex === -1) {
@@ -70,7 +70,7 @@ function parseArguments() {
         // Handle key=value pairs
         const key = arg.slice(2, equalIndex);
         const value = arg.slice(equalIndex + 1);
-        
+
         if (key === 'empty' || key === 'component') {
           // Boolean parameters
           parsedArgs[key] = value === 'true';
@@ -84,7 +84,7 @@ function parseArguments() {
       parsedArgs.folder = arg;
     }
   }
-  
+
   return parsedArgs;
 }
 
@@ -93,18 +93,18 @@ function parseArguments() {
  */
 function hasAllRequiredArgs(args: CliArgs) {
   // Must have exactly one of empty or component
-  const hasExactlyOneMode = (args.empty === true && args.component !== true) || 
-                           (args.component === true && args.empty !== true);
-  
+  const hasExactlyOneMode =
+    (args.empty === true && args.component !== true) || (args.component === true && args.empty !== true);
+
   if (!hasExactlyOneMode) {
     return false;
   }
-  
+
   // Both modes require name
   if (!args.name) {
     return false;
   }
-  
+
   // Component mode requires source and additional parameters
   if (args.component === true) {
     // Must have exactly one source
@@ -112,20 +112,20 @@ function hasAllRequiredArgs(args: CliArgs) {
     if (sources.length !== 1) {
       return false;
     }
-    
+
     // KiCAD and Local modes require symbol and footprint
     if (args.kicad || args.local) {
       if (!args.symbol || !args.footprint) {
         return false;
       }
     }
-    
+
     // JLCPCB mode requires component number
     if (args.jlcpcb && !args.c) {
       return false;
     }
   }
-  
+
   return true;
 }
 
@@ -148,7 +148,7 @@ function showHelp() {
   logger.log('  --symbol=<library:symbol> Symbol name in format library:symbol_name');
   logger.log('  --footprint=<library:footprint> Footprint name in format library:footprint_name\n');
   logger.log('Required Parameters for JLCPCB mode:');
-  logger.log('  --c=<component_number>    Component number starting with \'C\' (e.g., C3217148)\n');
+  logger.log("  --c=<component_number>    Component number starting with 'C' (e.g., C3217148)\n");
   logger.log('Optional Parameters:');
   logger.log('  --folder=<path>           Output directory (default: current directory)');
   logger.log('  --help                    Show this help message\n');
@@ -157,11 +157,15 @@ function showHelp() {
   logger.log('  node @typecad/add-package --empty=true --name=my_package');
   logger.log('  node @typecad/add-package --empty=true --name=my_package --folder=./packages\n');
   logger.log('  # Create component package from KiCAD');
-  logger.log('  node @typecad/add-package --component=true --name=attiny_package --kicad=true --symbol=MCU_Microchip_ATtiny:ATtiny3227-M --footprint=Package_DFN_QFN:DFN-20-1EP_3x4mm_P0.5mm_EP1.65x3.1mm\n');
+  logger.log(
+    '  node @typecad/add-package --component=true --name=attiny_package --kicad=true --symbol=MCU_Microchip_ATtiny:ATtiny3227-M --footprint=Package_DFN_QFN:DFN-20-1EP_3x4mm_P0.5mm_EP1.65x3.1mm\n',
+  );
   logger.log('  # Create component package from JLCPCB');
   logger.log('  node @typecad/add-package --component=true --name=resistor_package --jlcpcb=true --c=C3217148\n');
   logger.log('  # Create component package from local files');
-  logger.log('  node @typecad/add-package --component=true --name=custom_package --local=true --symbol=MyLib:MySymbol --footprint=MyLib:MyFootprint');
+  logger.log(
+    '  node @typecad/add-package --component=true --name=custom_package --local=true --symbol=MyLib:MySymbol --footprint=MyLib:MyFootprint',
+  );
 }
 
 async function main(preparsedArgs?: CliArgs) {
@@ -173,18 +177,20 @@ async function main(preparsedArgs?: CliArgs) {
   let _chosen_symbol;
 
   const cmdArgs = preparsedArgs || parseArguments();
-  
+
   if (cmdArgs.help) {
     showHelp();
     return;
   }
-  
+
   // Mode detection
   const isNonInteractive = hasAllRequiredArgs(cmdArgs);
-  
+
   // Determine folder - if we have command line args, don't use process.argv[2] as folder
-  const folderPath = (typeof cmdArgs.folder === 'string' ? cmdArgs.folder : undefined) || (preparsedArgs ? './src' : (isNonInteractive ? './src' : process.argv[2] || './src'));
-  
+  const folderPath =
+    (typeof cmdArgs.folder === 'string' ? cmdArgs.folder : undefined) ||
+    (preparsedArgs ? './src' : isNonInteractive ? './src' : process.argv[2] || './src');
+
   logger.log('📦 ' + chalk.whiteBright.bold('type') + 'CAD Create Package');
 
   let answer;
@@ -197,7 +203,9 @@ async function main(preparsedArgs?: CliArgs) {
     }
   } else {
     // Interactive mode: show selection prompt
-    answer = await (await getInquirer()).select({
+    answer = await (
+      await getInquirer()
+    ).select({
       message: 'Package type?',
       choices: [
         {
@@ -218,14 +226,16 @@ async function main(preparsedArgs?: CliArgs) {
     if (isNonInteractive) {
       // Non-interactive mode: use provided values
       entered_package_name = cmdArgs.name as string;
-      
+
       logger.log(chalk.green('Creating empty package with the following settings:'));
       logger.log(`  Name: ${entered_package_name}`);
       logger.log(`  Folder: ${folderPath}`);
       logger.log();
     } else {
       // Interactive/hybrid mode: use args as defaults
-      entered_package_name = await (await getInquirer()).input({
+      entered_package_name = await (
+        await getInquirer()
+      ).input({
         message: 'Package name?',
         default: (cmdArgs.name as string) || 'typecad_package',
       });
@@ -242,7 +252,7 @@ async function main(preparsedArgs?: CliArgs) {
     if (isNonInteractive) {
       // Non-interactive mode: use provided values
       entered_package_name = cmdArgs.name as string;
-      
+
       logger.log(chalk.green('Creating component package with the following settings:'));
       logger.log(`  Name: ${entered_package_name}`);
       logger.log(`  Folder: ${folderPath}`);
@@ -261,7 +271,9 @@ async function main(preparsedArgs?: CliArgs) {
       logger.log();
     } else {
       // Interactive/hybrid mode: use args as defaults
-      entered_package_name = await (await getInquirer()).input({
+      entered_package_name = await (
+        await getInquirer()
+      ).input({
         message: 'Package name?',
         default: (cmdArgs.name as string) || 'typecad_package',
       });
@@ -279,7 +291,9 @@ async function main(preparsedArgs?: CliArgs) {
       }
     } else {
       // Interactive mode: show selection prompt
-      componentSource = await (await getInquirer()).select({
+      componentSource = await (
+        await getInquirer()
+      ).select({
         message: 'Component source?',
         choices: [
           {
@@ -306,19 +320,25 @@ async function main(preparsedArgs?: CliArgs) {
         // Non-interactive mode: use provided values
         entered_symbol = cmdArgs.symbol as string;
         entered_footprint = cmdArgs.footprint as string;
-        
+
         // Validate symbol format
         if (!entered_symbol.includes(':')) {
-          logger.error(chalk.red(`Error: Invalid symbol format. Expected 'symbol_library:symbol_name', got '${entered_symbol}'`));
+          logger.error(
+            chalk.red(`Error: Invalid symbol format. Expected 'symbol_library:symbol_name', got '${entered_symbol}'`),
+          );
           return;
         }
-        
+
         // Validate footprint format
         if (!entered_footprint.includes(':')) {
-          logger.error(chalk.red(`Error: Invalid footprint format. Expected 'footprint_library:footprint_name', got '${entered_footprint}'`));
+          logger.error(
+            chalk.red(
+              `Error: Invalid footprint format. Expected 'footprint_library:footprint_name', got '${entered_footprint}'`,
+            ),
+          );
           return;
         }
-        
+
         footprint_recommendation = kicad_symbol(entered_symbol, '')!;
         if (!footprint_recommendation) {
           logger.error(chalk.red(`Error: Invalid KiCAD library symbol '${entered_symbol}'`));
@@ -326,7 +346,9 @@ async function main(preparsedArgs?: CliArgs) {
         }
       } else {
         // Interactive mode: show prompts with argument defaults
-        entered_symbol = await (await getInquirer()).input({
+        entered_symbol = await (
+          await getInquirer()
+        ).input({
           message: 'Symbol name?',
           default: (cmdArgs.symbol as string) || 'MCU_Microchip_ATtiny:ATtiny3227-M',
           validate: (entered_symbol) => {
@@ -341,7 +363,9 @@ async function main(preparsedArgs?: CliArgs) {
           },
         });
 
-        entered_footprint = await (await getInquirer()).input({
+        entered_footprint = await (
+          await getInquirer()
+        ).input({
           message: 'Footprint name?',
           default: (cmdArgs.footprint as string) || footprint_recommendation,
           validate: (symbol) => {
@@ -358,9 +382,7 @@ async function main(preparsedArgs?: CliArgs) {
       const data = {
         package_name: sanitize_name(entered_package_name),
         folder: folderPath,
-        component_folder:
-          folderPath + '/' + entered_package_name ||
-          `./${entered_package_name}/`,
+        component_folder: folderPath + '/' + entered_package_name || `./${entered_package_name}/`,
         component_name: sanitize_name(entered_symbol.split(':')[1]),
         symbol: entered_symbol,
         footprint: entered_footprint,
@@ -374,22 +396,26 @@ async function main(preparsedArgs?: CliArgs) {
         // Non-interactive mode: use provided values
         entered_symbol = cmdArgs.symbol as string;
         entered_footprint = cmdArgs.footprint as string;
-        
+
         // Validate symbol format
         if (!entered_symbol.includes(':')) {
-          logger.error(chalk.red(`Error: Invalid symbol format. Expected 'library:symbol_name', got '${entered_symbol}'`));
+          logger.error(
+            chalk.red(`Error: Invalid symbol format. Expected 'library:symbol_name', got '${entered_symbol}'`),
+          );
           return;
         }
-        
+
         // Validate footprint format
         if (!entered_footprint.includes(':')) {
-          logger.error(chalk.red(`Error: Invalid footprint format. Expected 'library:footprint_name', got '${entered_footprint}'`));
+          logger.error(
+            chalk.red(`Error: Invalid footprint format. Expected 'library:footprint_name', got '${entered_footprint}'`),
+          );
           return;
         }
-        
+
         // For local mode, we need to get pins from the symbol
         pins = kicad_pins(entered_symbol);
-        
+
         const data = {
           package_name: sanitize_name(entered_package_name),
           component_name: sanitize_name(entered_symbol.split(':')[1]),
@@ -398,22 +424,28 @@ async function main(preparsedArgs?: CliArgs) {
           symbol: entered_symbol,
           folder: folderPath,
         };
-        
+
         create_component(data);
         create_package(data);
         return;
       }
-      
-      const symbolPath = (await (await getFileSelector()).fileSelector({
-        message: 'Select a KiCAD Symbol file (kicad_sym):',
-        filter: (file) => file.isDirectory || file.path.includes('.kicad_sym'),
-        showExcluded: false,
-      })).path;
+
+      const symbolPath = (
+        await (
+          await getFileSelector()
+        ).fileSelector({
+          message: 'Select a KiCAD Symbol file (kicad_sym):',
+          filter: (file) => file.isDirectory || file.path.includes('.kicad_sym'),
+          showExcluded: false,
+        })
+      ).path;
 
       // if there are more than one symbols, pick, else, select the one available
-      let _found_symbols = return_list_of_symbols(symbolPath);
+      const _found_symbols = return_list_of_symbols(symbolPath);
       if (_found_symbols.length > 1) {
-        _chosen_symbol = await (await getInquirer()).select({
+        _chosen_symbol = await (
+          await getInquirer()
+        ).select({
           message: 'Select a symbol from in the file',
           choices: _found_symbols,
         });
@@ -421,12 +453,16 @@ async function main(preparsedArgs?: CliArgs) {
         _chosen_symbol = _found_symbols[0].value;
       }
 
-      let _footprint = local_symbol_to_footprint(symbolPath);
-      const footprintPath = (await (await getFileSelector()).fileSelector({
-        message: `The symbol file says the footprint should be ${_footprint}. What .kicad_mod is it located in?:`,
-        filter: (file) => file.isDirectory || file.path.includes('.kicad_mod'),
-        showExcluded: false,
-      })).path;
+      const _footprint = local_symbol_to_footprint(symbolPath);
+      const footprintPath = (
+        await (
+          await getFileSelector()
+        ).fileSelector({
+          message: `The symbol file says the footprint should be ${_footprint}. What .kicad_mod is it located in?:`,
+          filter: (file) => file.isDirectory || file.path.includes('.kicad_mod'),
+          showExcluded: false,
+        })
+      ).path;
 
       pins = kicad_pins(entered_symbol);
 
@@ -446,19 +482,23 @@ async function main(preparsedArgs?: CliArgs) {
     } else if (componentSource == 'easyeda') {
       const pattern = /^C\d+$/;
       let c_component;
-      
+
       if (isNonInteractive) {
         // Non-interactive mode: use provided value
         c_component = cmdArgs.c as string;
-        
+
         // Validate component number format
         if (!pattern.test(c_component)) {
-          logger.error(chalk.red(`Error: Invalid component number format. Expected 'C' followed by digits, got '${c_component}'`));
+          logger.error(
+            chalk.red(`Error: Invalid component number format. Expected 'C' followed by digits, got '${c_component}'`),
+          );
           return;
         }
       } else {
         // Interactive mode: show prompt with argument default
-        c_component = await (await getInquirer()).input({
+        c_component = await (
+          await getInquirer()
+        ).input({
           message: 'Component #?',
           default: (cmdArgs.c as string) || 'C3217148',
           validate: (c_component) => {
@@ -472,7 +512,9 @@ async function main(preparsedArgs?: CliArgs) {
 
       let convertedComponent;
       try {
-        convertedComponent = await (await getEasyedaConverter()).convertEasyedaToKicad(c_component, {
+        convertedComponent = await (
+          await getEasyedaConverter()
+        ).convertEasyedaToKicad(c_component, {
           footprintLibName: 'lib',
           kicadVersion: 'v6_99', // We always use v6 format in this context
         });
@@ -492,11 +534,14 @@ async function main(preparsedArgs?: CliArgs) {
         '(kicad_symbol_lib(version 20200101)(generator https://github.com/uPesy/easyeda2kicad.py)' +
           convertedComponent.symbol.content +
           ')',
-        { encoding: 'utf-8' }
+        { encoding: 'utf-8' },
       );
       try {
         if (!KiCAD.cliPath) throw new Error('kicad-cli not found');
-        const { executable, execArgs } = buildKiCADArgs('sym', ['upgrade', `./${convertedComponent.symbol.name}.pretty/${convertedComponent.symbol.name}.kicad_sym`]);
+        const { executable, execArgs } = buildKiCADArgs('sym', [
+          'upgrade',
+          `./${convertedComponent.symbol.name}.pretty/${convertedComponent.symbol.name}.kicad_sym`,
+        ]);
         execFileSync(executable, execArgs, { stdio: 'pipe' });
       } catch (e) {
         logger.error(`Failed executing kicad-cli sym upgrade`, e);
@@ -508,48 +553,46 @@ async function main(preparsedArgs?: CliArgs) {
         convertedComponent.footprint.content.replace('/${KIPRJMOD}/', ''),
         {
           encoding: 'utf-8',
-        }
+        },
       );
       try {
         if (!KiCAD.cliPath) throw new Error('kicad-cli not found');
-        const { executable, execArgs } = buildKiCADArgs('fp', ['upgrade', `./${convertedComponent.symbol.name}.pretty/`]);
+        const { executable, execArgs } = buildKiCADArgs('fp', [
+          'upgrade',
+          `./${convertedComponent.symbol.name}.pretty/`,
+        ]);
         execFileSync(executable, execArgs, { stdio: 'pipe' });
       } catch (e) {
-        logger.error(
-          `Failed executing kicad-cli fp upgrade ./${
-            convertedComponent.symbol.name
-          }.pretty/`,
-          e
-        );
+        logger.error(`Failed executing kicad-cli fp upgrade ./${convertedComponent.symbol.name}.pretty/`, e);
       }
 
       // gets pin names from symbol
       local_symbol_to_footprint(
-        `./${convertedComponent.symbol.name}.pretty/${convertedComponent.symbol.name}.kicad_sym`
+        `./${convertedComponent.symbol.name}.pretty/${convertedComponent.symbol.name}.kicad_sym`,
       );
       pins = kicad_pins();
 
-              const data = {
-          package_name: sanitize_name(entered_package_name),
-          component_name: sanitize_name(`${convertedComponent.symbol.name}`),
-          component_folder:
-            folderPath + '/' + entered_package_name + '/',
-          symbol:
-            basename(
-              `./${convertedComponent.symbol.name}.pretty/${convertedComponent.symbol.name}.kicad_sym`
-            ).replace(/\.[^/\\.]+$/, '') +
-            ':' +
-            `${convertedComponent.symbol.name}`,
-          footprint: `lib:${convertedComponent.footprint.name}`,
-          pins,
-          symbol_path: `./${convertedComponent.symbol.name}.pretty/${convertedComponent.symbol.name}.kicad_sym`,
-          footprint_path: `./${convertedComponent.symbol.name}.pretty/${convertedComponent.footprint.name}.kicad_mod`,
-          folder: folderPath,
-        };
+      const data = {
+        package_name: sanitize_name(entered_package_name),
+        component_name: sanitize_name(`${convertedComponent.symbol.name}`),
+        component_folder: folderPath + '/' + entered_package_name + '/',
+        symbol:
+          basename(`./${convertedComponent.symbol.name}.pretty/${convertedComponent.symbol.name}.kicad_sym`).replace(
+            /\.[^/\\.]+$/,
+            '',
+          ) +
+          ':' +
+          `${convertedComponent.symbol.name}`,
+        footprint: `lib:${convertedComponent.footprint.name}`,
+        pins,
+        symbol_path: `./${convertedComponent.symbol.name}.pretty/${convertedComponent.symbol.name}.kicad_sym`,
+        footprint_path: `./${convertedComponent.symbol.name}.pretty/${convertedComponent.footprint.name}.kicad_mod`,
+        folder: folderPath,
+      };
 
       // make folder structure for the package
-      let packageDir = `${data.folder}/${data.package_name}`;
-      let packageBuildDir = `${packageDir}/build/lib/footprints`;
+      const packageDir = `${data.folder}/${data.package_name}`;
+      const packageBuildDir = `${packageDir}/build/lib/footprints`;
       if (!fs.existsSync(packageBuildDir)) {
         fs.mkdirSync(packageBuildDir, { recursive: true });
       }
@@ -558,20 +601,14 @@ async function main(preparsedArgs?: CliArgs) {
       if (convertedComponent.model3d) {
         if (convertedComponent.model3d.wrlContent) {
           fs.writeFileSync(
-            path.join(
-              packageBuildDir,
-              `${convertedComponent.model3d.name}.wrl`
-            ),
-            convertedComponent.model3d.wrlContent
+            path.join(packageBuildDir, `${convertedComponent.model3d.name}.wrl`),
+            convertedComponent.model3d.wrlContent,
           );
         }
         if (convertedComponent.model3d.stepContent) {
           fs.writeFileSync(
-            path.join(
-              packageBuildDir,
-              `${convertedComponent.model3d.name}.step`
-            ),
-            convertedComponent.model3d.stepContent
+            path.join(packageBuildDir, `${convertedComponent.model3d.name}.step`),
+            convertedComponent.model3d.stepContent,
           );
         }
       }
@@ -594,9 +631,6 @@ async function main(preparsedArgs?: CliArgs) {
 
 export { main, showHelp };
 
-if (
-  process.argv[1]?.endsWith('add-package/index.js') ||
-  process.argv[1]?.endsWith('add-package\\index.js')
-) {
+if (process.argv[1]?.endsWith('add-package/index.js') || process.argv[1]?.endsWith('add-package\\index.js')) {
   main();
 }

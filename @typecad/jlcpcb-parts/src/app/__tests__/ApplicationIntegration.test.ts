@@ -17,15 +17,15 @@ vi.mock('../../cli/Logger.js', () => ({
       debug: vi.fn(),
       info: vi.fn(),
       warn: vi.fn(),
-      error: vi.fn()
-    })
+      error: vi.fn(),
+    }),
   },
   LogLevel: {
     DEBUG: 'debug',
     INFO: 'info',
     WARN: 'warn',
-    ERROR: 'error'
-  }
+    ERROR: 'error',
+  },
 }));
 
 // Import the actual functions to test
@@ -91,7 +91,7 @@ describe('Application Integration', () => {
     it('should handle application initialization errors', async () => {
       // Arrange
       const args = ['node', 'script.js', 'search', 'query'];
-      
+
       // Mock one of the dependencies to throw during construction
       const { DataManager } = await import('../../data/DataManager.js');
       vi.mocked(DataManager).mockImplementationOnce(() => {
@@ -110,7 +110,7 @@ describe('Application Integration', () => {
       // Assert
       expect(mockConsoleError).toHaveBeenCalledWith(
         expect.stringContaining('Failed to initialize application'),
-        expect.any(String)
+        expect.any(String),
       );
       expect(mockProcessExit).toHaveBeenCalledWith(1);
     });
@@ -142,7 +142,7 @@ describe('Application Integration', () => {
         cacheDir: './cache',
         cacheExpirationHours: 12,
         programName: 'custom-program',
-        logLevel: LogLevel.DEBUG
+        logLevel: LogLevel.DEBUG,
       };
 
       // Act
@@ -155,7 +155,7 @@ describe('Application Integration', () => {
         options.localCsvFileName,
         options.cacheDir,
         options.cacheExpirationHours,
-        true // useSharedCache default
+        true, // useSharedCache default
       );
     });
   });
@@ -164,12 +164,15 @@ describe('Application Integration', () => {
     it('should handle application run errors', async () => {
       // Arrange
       const args = ['node', 'script.js', 'search', 'query'];
-      
+
       // Mock CLI to throw an error during run
       const { CommandLineInterface } = await import('../../cli/CommandLineInterface.js');
-      vi.mocked(CommandLineInterface).mockImplementationOnce(() => ({
-        run: vi.fn().mockRejectedValue(new Error('Run error'))
-      }) as any);
+      vi.mocked(CommandLineInterface).mockImplementationOnce(
+        () =>
+          ({
+            run: vi.fn().mockRejectedValue(new Error('Run error')),
+          }) as any,
+      );
 
       // Act
       await runApplication(args);

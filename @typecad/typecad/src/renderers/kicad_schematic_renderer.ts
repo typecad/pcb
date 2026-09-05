@@ -297,7 +297,7 @@ export class KiCADSchematic {
       const isAutoNamedNet = new RegExp(`^${DEFAULT_NET_PREFIX}\\d+$`).test(netName);
       const powerSymbolFqn = `power:${netName}`;
       let isGndType = false;
-      let powerSymbolDef = isAutoNamedNet ? null : this.symbolManager.getSymbolDefinition(powerSymbolFqn);
+      const powerSymbolDef = isAutoNamedNet ? null : this.symbolManager.getSymbolDefinition(powerSymbolFqn);
 
       if (powerSymbolDef) {
         const pinLocation = this.symbolManager.getPinLocation(powerSymbolFqn, '1');

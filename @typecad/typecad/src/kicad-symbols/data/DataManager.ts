@@ -11,7 +11,7 @@ import { CacheUtils } from '../utils/CacheUtils.js';
  */
 export enum DataSourceMode {
   /** Process local KiCad symbol files */
-  LOCAL_FILES = 'local_files'
+  LOCAL_FILES = 'local_files',
 }
 
 /**
@@ -33,7 +33,7 @@ export interface DataManagerConfig {
  */
 const DEFAULT_CONFIG: DataManagerConfig = {
   mode: DataSourceMode.LOCAL_FILES,
-  enableProgress: false
+  enableProgress: false,
 };
 
 /**
@@ -62,17 +62,17 @@ export class DataManager {
     cacheDir: string = '.',
     cacheExpirationHours: number = 24,
     config: Partial<DataManagerConfig> = {},
-    useSharedCache: boolean = true
+    useSharedCache: boolean = true,
   ) {
     this.useSharedCache = useSharedCache;
     this.localDataPath = localDataPath;
     this.config = { ...DEFAULT_CONFIG, ...config };
     this.currentMode = DataSourceMode.LOCAL_FILES;
-    
+
     this.cacheManager = new DateBasedCacheManager(cacheDir, cacheExpirationHours, useSharedCache);
     this.localProcessor = new KiCadLocalDataProcessor({
       customSymbolsPath: this.config.customSymbolsPath,
-      enableProgress: this.config.enableProgress
+      enableProgress: this.config.enableProgress,
     });
   }
 
@@ -93,7 +93,7 @@ export class DataManager {
     try {
       // Always use local files mode
       this.currentMode = DataSourceMode.LOCAL_FILES;
-      
+
       await this.ensureLocalDataAvailable();
     } catch (error) {
       logger.error('Failed to ensure data availability:', error);
@@ -122,19 +122,18 @@ export class DataManager {
 
       // Process local symbols
       const extractedSymbols = await this.localProcessor.processLocalSymbols();
-      
+
       // Convert to ComponentRecord format
       const converter = new KiCadSymbolConverter();
       const components = converter.convertSymbolsToComponentRecords(extractedSymbols);
-      
+
       // Save processed data
       await this.saveDataToFile(components);
-      
+
       // Update cache timestamp
       await this.cacheManager.writeTimestamp();
-      
+
       logger.info(`Successfully processed ${components.length} symbols from local files.`);
-      
     } catch (error) {
       logger.error('Failed to process local symbols:', error);
       throw error;
@@ -150,7 +149,7 @@ export class DataManager {
     }
 
     await this.ensureDataAvailable();
-    
+
     try {
       this.cachedComponents = await this.loadDataFromFile();
       return this.cachedComponents;
@@ -226,13 +225,13 @@ export class DataManager {
    */
   async forceRefresh(): Promise<void> {
     logger.info('Forcing data refresh...');
-    
+
     // Clear cached data
     this.cachedComponents = null;
-    
+
     // Clear cache timestamp
     await this.cacheManager.deleteTimestamp();
-    
+
     // Reprocess data
     await this.ensureDataAvailable();
   }

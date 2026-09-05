@@ -31,10 +31,7 @@ import {
   removeElementsFromBuilders,
   createBuilderFromFittedPattern,
 } from './track_management.js';
-import {
-  tryOffsetCorridorAndPattern,
-  tryMultiSegmentPattern,
-} from './offset_corridor.js';
+import { tryOffsetCorridorAndPattern, tryMultiSegmentPattern } from './offset_corridor.js';
 
 import logger from '../../utils/logging.js';
 
@@ -55,12 +52,16 @@ export class LengthMatcher {
 
     // Allow env override for debug: TYPECAD_LM_DEBUG=1|true
     try {
-      // eslint-disable-next-line no-undef
-      const envDbg = typeof process !== 'undefined' && process?.env && (process.env.TYPECAD_LM_DEBUG === '1' || process.env.TYPECAD_LM_DEBUG === 'true');
+      const envDbg =
+        typeof process !== 'undefined' &&
+        process?.env &&
+        (process.env.TYPECAD_LM_DEBUG === '1' || process.env.TYPECAD_LM_DEBUG === 'true');
       if (envDbg) {
         config.debug = true;
       }
-    } catch { logger.debug('[LengthMatch] env debug check failed'); }
+    } catch {
+      logger.debug('[LengthMatch] env debug check failed');
+    }
 
     // Collect only successful routes with their indices
     const items: { index: number; length: number; path: IRoutePath }[] = [];
@@ -72,17 +73,20 @@ export class LengthMatcher {
     }
     if (config.debug) {
       try {
-        const lengths = items.map(it => it.length.toFixed(3)).join(', ');
-        logger.debug(chalk.cyan(`[LengthMatch] Candidates: ${items.length} successful route(s). Lengths = [${lengths}]`));
-      } catch { logger.debug('[LengthMatch] failed to log candidate debug info'); }
+        const lengths = items.map((it) => it.length.toFixed(3)).join(', ');
+        logger.debug(
+          chalk.cyan(`[LengthMatch] Candidates: ${items.length} successful route(s). Lengths = [${lengths}]`),
+        );
+      } catch {
+        logger.debug('[LengthMatch] failed to log candidate debug info');
+      }
     }
     if (items.length < 2) {
-      if (config.debug)
-        logger.debug(chalk.yellow(`[LengthMatch] Skipping: need >= 2 successful routes to match`));
+      if (config.debug) logger.debug(chalk.yellow(`[LengthMatch] Skipping: need >= 2 successful routes to match`));
       return { updates: [], builders: [] };
     }
 
-    const Lmax = Math.max(...items.map(it => it.length));
+    const Lmax = Math.max(...items.map((it) => it.length));
 
     // Sort ascending by length so we try to extend shorter ones first
     items.sort((a, b) => a.length - b.length);
@@ -110,7 +114,9 @@ export class LengthMatcher {
 
       const builders = routeTrackBuilders[item.index] || [];
       if (!builders || builders.length === 0) {
-        const err = new RoutingError(formatSourceError(`[LengthMatch] No track builders available for route index ${item.index}`, getCallSite()));
+        const err = new RoutingError(
+          formatSourceError(`[LengthMatch] No track builders available for route index ${item.index}`, getCallSite()),
+        );
         err.stack = err.message;
         throw err;
       }
@@ -119,7 +125,9 @@ export class LengthMatcher {
       const attemptedThisRound = new Set<string>();
       const pattern = config.pattern || { type: 'sawtooth' as const };
       if (pattern.type !== 'sawtooth') {
-        const err = new RoutingError(formatSourceError(`[LengthMatch] Unsupported pattern type: ${pattern.type}`, getCallSite()));
+        const err = new RoutingError(
+          formatSourceError(`[LengthMatch] Unsupported pattern type: ${pattern.type}`, getCallSite()),
+        );
         err.stack = err.message;
         throw err;
       }
@@ -129,7 +137,10 @@ export class LengthMatcher {
         const a = pattern.amplitude;
         if (p < 2 * a - 1e-9) {
           const err = new RoutingError(
-            formatSourceError(`[LengthMatch] Invalid sawtooth parameters: pitch=${p}mm < 2*amplitude=${(2 * a).toFixed(3)}mm. Increase pitch or reduce amplitude, or omit one to allow auto-adjust.`, getCallSite())
+            formatSourceError(
+              `[LengthMatch] Invalid sawtooth parameters: pitch=${p}mm < 2*amplitude=${(2 * a).toFixed(3)}mm. Increase pitch or reduce amplitude, or omit one to allow auto-adjust.`,
+              getCallSite(),
+            ),
           );
           err.stack = err.message;
           throw err;
@@ -141,15 +152,17 @@ export class LengthMatcher {
         const minLen = config.minStraightSegment ?? 2.0;
         if (config.debug) {
           const dbgSegs = collectSegments(item.path);
-          const allLens = dbgSegs.map(s => s.length.toFixed(3)).join(', ');
+          const allLens = dbgSegs.map((s) => s.length.toFixed(3)).join(', ');
           const eligLens = dbgSegs
-            .filter(s => s.length >= minLen)
-            .map(s => s.length.toFixed(3))
+            .filter((s) => s.length >= minLen)
+            .map((s) => s.length.toFixed(3))
             .join(', ');
           try {
             logger.debug(chalk.cyan(`[LengthMatch] Segments: [${allLens}]`));
             logger.debug(chalk.cyan(`[LengthMatch] Eligible (>=${minLen}): [${eligLens}]`));
-          } catch { logger.debug('[LengthMatch] failed to log segment debug info'); }
+          } catch {
+            logger.debug('[LengthMatch] failed to log segment debug info');
+          }
         }
 
         const segment = pickCandidateSegment(ctx, item.path, minLen, attemptedThisRound);
@@ -166,7 +179,7 @@ export class LengthMatcher {
           }
 
           // Relaxed fallback: try any straight segment (even if below minLen) in descending length order.
-          const allSegs = collectSegments(item.path).filter(s => !attemptedThisRound.has(segmentKey(s)));
+          const allSegs = collectSegments(item.path).filter((s) => !attemptedThisRound.has(segmentKey(s)));
           allSegs.sort((a, b) => b.length - a.length);
           let relaxedFitted = false;
           for (const cand of allSegs) {
@@ -199,10 +212,13 @@ export class LengthMatcher {
           if (relaxedFitted) continue;
         }
         if (!segment) {
-          const tried = Array.from(attemptedThisRound).map(k => k.slice(k.indexOf(':') + 1));
+          const tried = Array.from(attemptedThisRound).map((k) => k.slice(k.indexOf(':') + 1));
           const triedDesc = tried.length ? tried.join(';') : 'none';
           const err = new RoutingError(
-            formatSourceError(`[LengthMatch] No eligible straight segment found for remaining ΔL=${remaining.toFixed(3)}mm (minStraightSegment=${config.minStraightSegment ?? 2.0}mm). Segments attempted: ${triedDesc}`, getCallSite())
+            formatSourceError(
+              `[LengthMatch] No eligible straight segment found for remaining ΔL=${remaining.toFixed(3)}mm (minStraightSegment=${config.minStraightSegment ?? 2.0}mm). Segments attempted: ${triedDesc}`,
+              getCallSite(),
+            ),
           );
           err.stack = err.message;
           throw err;
@@ -253,7 +269,9 @@ export class LengthMatcher {
                 `[LengthMatch] About to remove overlapping tracks for segment length=${segment.length.toFixed(3)}, builders count=${builders.length}`,
               ),
             );
-          } catch { logger.debug('[LengthMatch] failed to log removal debug info'); }
+          } catch {
+            logger.debug('[LengthMatch] failed to log removal debug info');
+          }
         }
         const removalAndResiduals = removeOrTrimOverlappingStraight(ctx, segment, builders);
         if (config.debug) {
@@ -263,7 +281,9 @@ export class LengthMatcher {
                 `[LengthMatch] Removal result: toRemove=${removalAndResiduals.toRemove.length}, residuals=${removalAndResiduals.residuals.length}`,
               ),
             );
-          } catch { logger.debug('[LengthMatch] failed to log removal result debug info'); }
+          } catch {
+            logger.debug('[LengthMatch] failed to log removal result debug info');
+          }
         }
         if (removalAndResiduals.toRemove.length > 0) {
           removeElementsFromBuilders(removalAndResiduals.toRemove, builders);
@@ -283,10 +303,7 @@ export class LengthMatcher {
 
           let lastPoint = startPoint;
           for (const residual of removalAndResiduals.residuals) {
-            if (
-              Math.abs(lastPoint.x - residual.start.x) > 1e-6 ||
-              Math.abs(lastPoint.y - residual.start.y) > 1e-6
-            ) {
+            if (Math.abs(lastPoint.x - residual.start.x) > 1e-6 || Math.abs(lastPoint.y - residual.start.y) > 1e-6) {
               nb.from({ x: residual.start.x, y: residual.start.y }, residual.layer, ctx.traceWidth);
             }
             nb.to({
@@ -300,10 +317,7 @@ export class LengthMatcher {
 
           const patternPts = fitted.points;
           if (patternPts.length > 0) {
-            if (
-              Math.abs(lastPoint.x - patternPts[0].x) > 1e-6 ||
-              Math.abs(lastPoint.y - patternPts[0].y) > 1e-6
-            ) {
+            if (Math.abs(lastPoint.x - patternPts[0].x) > 1e-6 || Math.abs(lastPoint.y - patternPts[0].y) > 1e-6) {
               nb.from({ x: patternPts[0].x, y: patternPts[0].y }, segment.start.layer, ctx.traceWidth);
             }
             for (let i = 1; i < patternPts.length; i++) {
@@ -341,11 +355,14 @@ export class LengthMatcher {
     }
 
     // Final verification: ensure all are within tolerance
-    const newMax = Math.max(...items.map(it => it.length));
+    const newMax = Math.max(...items.map((it) => it.length));
     for (const it of items) {
       if (newMax - it.length > config.tolerance + 1e-6) {
         const err = new RoutingError(
-          formatSourceError(`[LengthMatch] Post-apply verification failed: length mismatch exceeds tolerance (${(newMax - it.length).toFixed(3)}mm > ${config.tolerance}mm)`, getCallSite())
+          formatSourceError(
+            `[LengthMatch] Post-apply verification failed: length mismatch exceeds tolerance (${(newMax - it.length).toFixed(3)}mm > ${config.tolerance}mm)`,
+            getCallSite(),
+          ),
         );
         err.stack = err.message;
         throw err;
@@ -353,9 +370,9 @@ export class LengthMatcher {
     }
 
     return {
-      updates: Array.from(modifiedIndices).map(index => ({
+      updates: Array.from(modifiedIndices).map((index) => ({
         index,
-        newLength: items.find(it => it.index === index)!.length,
+        newLength: items.find((it) => it.index === index)!.length,
       })),
       builders: createdBuilders,
     };

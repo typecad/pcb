@@ -577,7 +577,9 @@ function generateCableNetRows(cable: Cable): string {
 /**
  * Generates additional items rows for connectors or cables
  */
-function generateAdditionalsRows(additionals: any[] | undefined): string {
+function generateAdditionalsRows(
+  additionals: Array<{ quantity?: number | string; item?: string; mpn?: string }> | undefined,
+): string {
   if (!additionals || additionals.length === 0) {
     return '';
   }

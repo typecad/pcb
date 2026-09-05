@@ -11,47 +11,47 @@
  */
 
 export class TypeCadError extends Error {
-    constructor(message: string, options?: { cause?: unknown }) {
-        super(message);
-        this.name = 'TypeCadError';
-        if (options?.cause !== undefined) {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            (this as any).cause = options.cause;
-        }
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message);
+    this.name = 'TypeCadError';
+    if (options?.cause !== undefined) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (this as any).cause = options.cause;
     }
+  }
 }
 
 export class RoutingError extends TypeCadError {
-    constructor(message: string, options?: { cause?: unknown }) {
-        super(message, options);
-        this.name = 'RoutingError';
-    }
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message, options);
+    this.name = 'RoutingError';
+  }
 }
 
 export class ComponentError extends TypeCadError {
-    constructor(message: string, options?: { cause?: unknown }) {
-        super(message, options);
-        this.name = 'ComponentError';
-    }
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message, options);
+    this.name = 'ComponentError';
+  }
 }
 
 export class BoardCreationError extends TypeCadError {
-    constructor(message: string, options?: { cause?: unknown }) {
-        super(message, options);
-        this.name = 'BoardCreationError';
-    }
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message, options);
+    this.name = 'BoardCreationError';
+  }
 }
 
 export class KiCadNotFoundError extends TypeCadError {
-    constructor(message: string, options?: { cause?: unknown }) {
-        super(message, options);
-        this.name = 'KiCadNotFoundError';
-    }
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message, options);
+    this.name = 'KiCadNotFoundError';
+  }
 }
 
 export class KiCadCommandError extends TypeCadError {
-    constructor(message: string, options?: { cause?: unknown }) {
-        super(message, options);
-        this.name = 'KiCadCommandError';
-    }
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message, options);
+    this.name = 'KiCadCommandError';
+  }
 }

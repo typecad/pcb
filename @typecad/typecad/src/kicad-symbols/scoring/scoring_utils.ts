@@ -5,21 +5,21 @@
 
 /** Bidirectional manufacturer name aliases for fuzzy matching */
 export const MANUFACTURER_VARIATIONS: Record<string, string[]> = {
-  'sensiron': ['sensirion'],
-  'sensirion': ['sensiron'],
-  'stmicro': ['st', 'stmicroelectronics'],
-  'st': ['stmicro', 'stmicroelectronics'],
-  'ti': ['texas instruments', 'texas'],
+  sensiron: ['sensirion'],
+  sensirion: ['sensiron'],
+  stmicro: ['st', 'stmicroelectronics'],
+  st: ['stmicro', 'stmicroelectronics'],
+  ti: ['texas instruments', 'texas'],
   'texas instruments': ['ti', 'texas'],
   'analog devices': ['adi', 'analog'],
-  'adi': ['analog devices', 'analog'],
-  'maxim': ['maxim integrated'],
+  adi: ['analog devices', 'analog'],
+  maxim: ['maxim integrated'],
   'maxim integrated': ['maxim'],
-  'microchip': ['microchip technology'],
+  microchip: ['microchip technology'],
   'microchip technology': ['microchip'],
-  'nxp': ['nxp semiconductors'],
+  nxp: ['nxp semiconductors'],
   'nxp semiconductors': ['nxp'],
-  'infineon': ['infineon technologies'],
+  infineon: ['infineon technologies'],
   'infineon technologies': ['infineon'],
 };
 
@@ -29,7 +29,9 @@ export const MANUFACTURER_VARIATIONS: Record<string, string[]> = {
  * substitutions) required to transform str1 into str2.
  */
 export function levenshteinDistance(str1: string, str2: string): number {
-  const matrix = Array(str2.length + 1).fill(null).map(() => Array(str1.length + 1).fill(null));
+  const matrix = Array(str2.length + 1)
+    .fill(null)
+    .map(() => Array(str1.length + 1).fill(null));
 
   for (let i = 0; i <= str1.length; i++) matrix[0][i] = i;
   for (let j = 0; j <= str2.length; j++) matrix[j][0] = j;
@@ -37,11 +39,7 @@ export function levenshteinDistance(str1: string, str2: string): number {
   for (let j = 1; j <= str2.length; j++) {
     for (let i = 1; i <= str1.length; i++) {
       const cost = str1[i - 1] === str2[j - 1] ? 0 : 1;
-      matrix[j][i] = Math.min(
-        matrix[j][i - 1] + 1,
-        matrix[j - 1][i] + 1,
-        matrix[j - 1][i - 1] + cost
-      );
+      matrix[j][i] = Math.min(matrix[j][i - 1] + 1, matrix[j - 1][i] + 1, matrix[j - 1][i - 1] + cost);
     }
   }
 

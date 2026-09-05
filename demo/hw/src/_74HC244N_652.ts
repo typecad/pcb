@@ -1,4 +1,4 @@
-import { Component, Pin } from "@typecad/typecad";
+import { Component, Pin } from '@typecad/typecad';
 /**
  | Pin # | Name | Type          |
  | --:   | :--  | :--           |
@@ -24,28 +24,28 @@ import { Component, Pin } from "@typecad/typecad";
  | 9     | _2Y3  | output      |
  */
 export class _74HC244N_652 extends Component {
-    VCC = new Pin(this.reference, 20, 'power_in', this);
-    _1OE = new Pin(this.reference, 1, 'input', this);
-    _2OE = new Pin(this.reference, 19, 'input', this);
-    _1A0 = new Pin(this.reference, 2, 'input', this);
-    _1A1 = new Pin(this.reference, 4, 'input', this);
-    _1A2 = new Pin(this.reference, 6, 'input', this);
-    _1A3 = new Pin(this.reference, 8, 'input', this);
-    _2A0 = new Pin(this.reference, 17, 'input', this);
-    _2A1 = new Pin(this.reference, 15, 'input', this);
-    _2A2 = new Pin(this.reference, 13, 'input', this);
-    _2A3 = new Pin(this.reference, 11, 'input', this);
-    GND = new Pin(this.reference, 10, 'passive', this);
-    _1Y0 = new Pin(this.reference, 18, 'output', this);
-    _1Y1 = new Pin(this.reference, 16, 'output', this);
-    _1Y2 = new Pin(this.reference, 14, 'output', this);
-    _1Y3 = new Pin(this.reference, 12, 'output', this);
-    _2Y0 = new Pin(this.reference, 3, 'output', this);
-    _2Y1 = new Pin(this.reference, 5, 'output', this);
-    _2Y2 = new Pin(this.reference, 7, 'output', this);
-    _2Y3 = new Pin(this.reference, 9, 'output', this);
-    
-    constructor(reference?: string | undefined) {
-        super({ reference, footprint: "lib:DIP254P762X420-20", symbol: "74HC244N_652:74HC244N_652" });
-    }
+  VCC = new Pin(this.reference, 20, 'power_in', this);
+  _1OE = new Pin(this.reference, 1, 'input', this);
+  _2OE = new Pin(this.reference, 19, 'input', this);
+  _1A0 = new Pin(this.reference, 2, 'input', this);
+  _1A1 = new Pin(this.reference, 4, 'input', this);
+  _1A2 = new Pin(this.reference, 6, 'input', this);
+  _1A3 = new Pin(this.reference, 8, 'input', this);
+  _2A0 = new Pin(this.reference, 17, 'input', this);
+  _2A1 = new Pin(this.reference, 15, 'input', this);
+  _2A2 = new Pin(this.reference, 13, 'input', this);
+  _2A3 = new Pin(this.reference, 11, 'input', this);
+  GND = new Pin(this.reference, 10, 'passive', this);
+  _1Y0 = new Pin(this.reference, 18, 'output', this);
+  _1Y1 = new Pin(this.reference, 16, 'output', this);
+  _1Y2 = new Pin(this.reference, 14, 'output', this);
+  _1Y3 = new Pin(this.reference, 12, 'output', this);
+  _2Y0 = new Pin(this.reference, 3, 'output', this);
+  _2Y1 = new Pin(this.reference, 5, 'output', this);
+  _2Y2 = new Pin(this.reference, 7, 'output', this);
+  _2Y3 = new Pin(this.reference, 9, 'output', this);
+
+  constructor(reference?: string | undefined) {
+    super({ reference, footprint: 'lib:DIP254P762X420-20', symbol: '74HC244N_652:74HC244N_652' });
+  }
 }

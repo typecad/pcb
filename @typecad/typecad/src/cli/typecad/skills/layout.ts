@@ -4,7 +4,8 @@ export const layoutSkills: Skill[] = [
   {
     name: 'track',
     category: 'pcb-layout',
-    description: 'Create PCB traces with the TrackBuilder fluent API for manual routing between points with layer transitions',
+    description:
+      'Create PCB traces with the TrackBuilder fluent API for manual routing between points with layer transitions',
     package: '@typecad/typecad',
     import: "import { PCB, TrackBuilder } from '@typecad/typecad';",
     examples: [

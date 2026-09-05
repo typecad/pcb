@@ -18,11 +18,7 @@ import type {
 import { chalk } from './length_matcher_helpers.js';
 import { collectSegments } from './segment_analysis.js';
 import { estimateMaxAmplitudeOneSide } from './amplitude_estimation.js';
-import {
-  fitSawtoothWithSide,
-  fitSawtoothBidirectional,
-  validatePolylineDRC,
-} from './sawtooth_fitting.js';
+import { fitSawtoothWithSide, fitSawtoothBidirectional, validatePolylineDRC } from './sawtooth_fitting.js';
 import {
   removeOrTrimOverlappingStraight,
   removeElementsFromBuilders,
@@ -48,8 +44,7 @@ export function tryOffsetCorridorAndPattern(
   const totalLen = item.path.length;
   segments.sort(
     (a, b) =>
-      b.length - a.length ||
-      Math.abs(a.centerAlongPath - totalLen / 2) - Math.abs(b.centerAlongPath - totalLen / 2),
+      b.length - a.length || Math.abs(a.centerAlongPath - totalLen / 2) - Math.abs(b.centerAlongPath - totalLen / 2),
   );
 
   const pattern = (config.pattern || { type: 'sawtooth' }) as ILengthMatchPatternConfig;
@@ -126,14 +121,12 @@ export function findOffsetCorridor(
   ctx: ILengthMatchContext,
   seg: IStraightSegment,
   requiredAmp: number,
-):
-  | {
-      offsetSeg: IStraightSegment;
-      jogOut: { x: number; y: number }[];
-      jogIn: { x: number; y: number }[];
-      side: 1 | -1;
-    }
-  | null {
+): {
+  offsetSeg: IStraightSegment;
+  jogOut: { x: number; y: number }[];
+  jogIn: { x: number; y: number }[];
+  side: 1 | -1;
+} | null {
   const layer = seg.start.layer;
   const ux = (seg.end.x - seg.start.x) / seg.length;
   const uy = (seg.end.y - seg.start.y) / seg.length;
@@ -188,7 +181,7 @@ export function tryMultiSegmentPattern(
   remainingDelta: number,
 ): { builders: ITrackBuilder[]; achieved: number } | null {
   const minLen = config.minStraightSegment ?? 2.0;
-  const segments = collectSegments(item.path).filter(s => s.length >= minLen);
+  const segments = collectSegments(item.path).filter((s) => s.length >= minLen);
   if (!segments.length) return null;
 
   const maxSegments = Math.min(5, segments.length);
@@ -200,13 +193,15 @@ export function tryMultiSegmentPattern(
       try {
         logger.debug(
           chalk.cyan(
-            `[LengthMatch] Trying multi-segment fit: using ${k} segments lengths=[${chosen.map(s => s.length.toFixed(3)).join(', ')}] for remaining=${remainingDelta.toFixed(3)}`,
+            `[LengthMatch] Trying multi-segment fit: using ${k} segments lengths=[${chosen.map((s) => s.length.toFixed(3)).join(', ')}] for remaining=${remainingDelta.toFixed(3)}`,
           ),
         );
-      } catch { logger.debug('[LengthMatch] failed to log multi-segment try info'); }
+      } catch {
+        logger.debug('[LengthMatch] failed to log multi-segment try info');
+      }
     }
     const sumLen = chosen.reduce((acc, s) => acc + s.length, 0);
-    const perSegDeltas = chosen.map(s => remainingDelta * (s.length / sumLen));
+    const perSegDeltas = chosen.map((s) => remainingDelta * (s.length / sumLen));
     const createdBuilders: ITrackBuilder[] = [];
     let achievedTotal = 0;
     let okAll = true;
@@ -239,10 +234,11 @@ export function tryMultiSegmentPattern(
       if (config.debug)
         try {
           logger.debug(chalk.cyan(`[LengthMatch] Multi-segment fit succeeded: achieved=${achievedTotal.toFixed(3)}mm`));
-        } catch { logger.debug('[LengthMatch] failed to log multi-segment success info'); }
+        } catch {
+          logger.debug('[LengthMatch] failed to log multi-segment success info');
+        }
       return { builders: createdBuilders, achieved: achievedTotal };
     }
   }
   return null;
 }
-

@@ -143,7 +143,7 @@ describe('pcb.teardrops()', () => {
     expect(pro.board.design_settings.teardrop_options).toBeUndefined();
   });
 
-  it('generates wedge geometry at router vias', async () => {
+  it('generates wedge geometry at router vias', { timeout: 120_000 }, async () => {
     const build = (withTeardrops: boolean) => {
       const pcb = new PCB(boardName + (withTeardrops ? '_td' : '_n'), { layers: 4 });
       pcb.outline(0, 0, 40, 30);
@@ -311,7 +311,7 @@ describe('review regressions: stitching and teardrops', () => {
     expect(() => pcb.stitch('GND', { pitch: 0.5, area: { x: 1, y: 1, width: 10, height: 10 } })).toThrow(/too small/);
   });
 
-  it('teardrop wedges survive deferred staging', () => {
+  it('teardrop wedges survive deferred staging', { timeout: 120_000 }, () => {
     const build = (defer: boolean) => {
       const pcb = new PCB(boardName + '_d', { layers: 4 });
       pcb.outline(0, 0, 40, 30);

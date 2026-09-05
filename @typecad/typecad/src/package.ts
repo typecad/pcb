@@ -67,7 +67,7 @@ export interface PackageOptions {
  * For tracks, use `this.add(this.track().from(...).to(...))` since track chains
  * are not stored as named properties.
  */
-export abstract class Package<TOptions extends object = {}> {
+export abstract class Package<TOptions extends object = object> {
   /** The PCB instance this package is placed on. */
   protected readonly pcb: PCB;
 

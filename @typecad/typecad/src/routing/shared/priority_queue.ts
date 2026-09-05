@@ -54,21 +54,21 @@ export class PriorityQueue<T> {
     const n = this.heap.length;
     const item = this.heap[idx];
     const halfN = n >>> 1;
-    
+
     while (idx < halfN) {
       let childIdx = (idx << 1) + 1;
       let child = this.heap[childIdx];
       const rightIdx = childIdx + 1;
-      
+
       if (rightIdx < n && this.compare(this.heap[rightIdx], child) < 0) {
         childIdx = rightIdx;
         child = this.heap[rightIdx];
       }
-      
+
       if (this.compare(item, child) <= 0) {
         break;
       }
-      
+
       this.heap[idx] = child;
       idx = childIdx;
     }

@@ -9,7 +9,7 @@ import { UnitConverter } from './UnitConverter.js';
  */
 export enum DataSourceType {
   /** KiCad symbols without electrical values */
-  KICAD = 'kicad'
+  KICAD = 'kicad',
 }
 
 /**
@@ -18,7 +18,7 @@ export enum DataSourceType {
  */
 export class ElectricalParameterParser implements ParameterParser {
   private readonly dataSourceType: DataSourceType;
-  
+
   // Regex patterns for electrical parameters
   private readonly voltagePattern = /(\d+(?:\.\d+)?)\s*[Vv](?:olt)?(?:DC|AC)?/g;
   private readonly capacitancePattern = /(\d+(?:\.\d+)?)\s*(?:p|n|µ|u|m)?[Ff](?:arad)?/g;
@@ -167,7 +167,7 @@ export class ElectricalParameterParser implements ParameterParser {
     return {
       value: parseFloat(match[1]),
       unit: match[0].substring(match[1].length).trim(),
-      originalText: match[0]
+      originalText: match[0],
     };
   }
 
@@ -187,7 +187,7 @@ export class ElectricalParameterParser implements ParameterParser {
       return {
         value,
         unit: multiplier + 'Ω',
-        originalText: match[0]
+        originalText: match[0],
       };
     }
 
@@ -210,7 +210,7 @@ export class ElectricalParameterParser implements ParameterParser {
       return {
         value,
         unit: multiplier + 'F',
-        originalText: match[0]
+        originalText: match[0],
       };
     }
 
@@ -233,7 +233,7 @@ export class ElectricalParameterParser implements ParameterParser {
       return {
         value,
         unit: multiplier + 'H',
-        originalText: match[0]
+        originalText: match[0],
       };
     }
 
@@ -249,7 +249,7 @@ export class ElectricalParameterParser implements ParameterParser {
     return {
       value: UnitConverter.normalizeVoltage(value.value, value.unit),
       unit: 'V',
-      originalText: value.originalText
+      originalText: value.originalText,
     };
   }
 
@@ -257,7 +257,7 @@ export class ElectricalParameterParser implements ParameterParser {
     return {
       value: UnitConverter.normalizeCapacitance(value.value, value.unit),
       unit: 'F',
-      originalText: value.originalText
+      originalText: value.originalText,
     };
   }
 
@@ -265,7 +265,7 @@ export class ElectricalParameterParser implements ParameterParser {
     return {
       value: UnitConverter.normalizeResistance(value.value, value.unit),
       unit: 'Ω',
-      originalText: value.originalText
+      originalText: value.originalText,
     };
   }
 
@@ -273,7 +273,7 @@ export class ElectricalParameterParser implements ParameterParser {
     return {
       value: UnitConverter.normalizeInductance(value.value, value.unit),
       unit: 'H',
-      originalText: value.originalText
+      originalText: value.originalText,
     };
   }
 }

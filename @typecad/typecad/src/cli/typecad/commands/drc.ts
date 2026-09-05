@@ -16,7 +16,7 @@ function findPcbFile(argPath?: string): string | null {
   const buildDir = path.join(process.cwd(), 'build');
   if (!fs.existsSync(buildDir)) return null;
 
-  const pcbFiles = fs.readdirSync(buildDir).filter(f => f.endsWith('.kicad_pcb'));
+  const pcbFiles = fs.readdirSync(buildDir).filter((f) => f.endsWith('.kicad_pcb'));
   if (pcbFiles.length === 1) return path.join(buildDir, pcbFiles[0]);
   if (pcbFiles.length > 1) return null;
 
@@ -48,7 +48,7 @@ export async function run(parsed: ParsedArgs): Promise<void> {
     }
     throw new Error(
       'No .kicad_pcb file found in ./build/.\n' +
-      'Run `typecad build` first, or specify a path: typecad drc <path/to/board.kicad_pcb>'
+        'Run `typecad build` first, or specify a path: typecad drc <path/to/board.kicad_pcb>',
     );
   }
 
@@ -60,13 +60,7 @@ export async function run(parsed: ParsedArgs): Promise<void> {
   const reportName = path.basename(pcbPath, '.kicad_pcb') + '_drc.json';
   const reportPath = path.join(path.dirname(pcbPath), reportName);
 
-  const args = [
-    'drc',
-    '--format', 'json',
-    '--output', reportPath,
-    ...parsed.passthrough,
-    pcbPath,
-  ];
+  const args = ['drc', '--format', 'json', '--output', reportPath, ...parsed.passthrough, pcbPath];
 
   try {
     await executeKiCADCommand('pcb', args, { stdio: 'pipe' });
@@ -116,14 +110,20 @@ export async function run(parsed: ParsedArgs): Promise<void> {
   const passed = errors === 0 && warnings === 0 && unconnected === 0;
 
   if (json) {
-    logger.log(JSON.stringify({
-      pcb: pcbPath,
-      passed,
-      errors,
-      warnings,
-      unconnected,
-      output: rawReport,
-    }, null, 2));
+    logger.log(
+      JSON.stringify(
+        {
+          pcb: pcbPath,
+          passed,
+          errors,
+          warnings,
+          unconnected,
+          output: rawReport,
+        },
+        null,
+        2,
+      ),
+    );
   } else {
     if (!passed) {
       for (const line of violationLines) {

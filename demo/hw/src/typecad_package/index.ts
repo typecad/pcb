@@ -9,18 +9,18 @@ import { Package, PackageOptions, Component } from '@typecad/typecad';
  *
  */
 export class Typecad_package extends Package {
-    declare r1: Component;
-    build(options: PackageOptions) {
-        // Passives
-        this.r1 = new this.passives.Resistor({ value: '10k' });
+  declare r1: Component;
+  build(options: PackageOptions) {
+    // Passives
+    this.r1 = new this.passives.Resistor({ value: '10k' });
 
-        // Nets
-        // this.net(this.U1.pin(1), r1.pin(1));
+    // Nets
+    // this.net(this.U1.pin(1), r1.pin(1));
 
-        // Vias
-        // let v1 = this.via({ x: 0, y: 0 });
+    // Vias
+    // let v1 = this.via({ x: 0, y: 0 });
 
-        // Tracks
-        // this.add(this.track().from({ x: 0, y: 0 }).to({ x: 1, y: 1, layer: 'F.Cu', width: 0.2 }));
-    }
+    // Tracks
+    // this.add(this.track().from({ x: 0, y: 0 }).to({ x: 1, y: 1, layer: 'F.Cu', width: 0.2 }));
+  }
 }

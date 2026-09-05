@@ -2,9 +2,13 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, master]
   pull_request:
-    branches: [main]
+    branches: [main, master]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -23,10 +27,13 @@ jobs:
           cache: 'npm'
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci
 
       - name: Build
         run: npm run build
+
+      - name: Typecheck
+        run: npm run typecheck
 
       - name: Lint
         run: npm run lint
@@ -36,11 +43,6 @@ jobs:
 
       - name: Test
         run: npm run test
-        env:
-          KICAD_NOT_AVAILABLE: "1"
-
-      - name: Routing tests
-        run: npm run test:routing
         env:
           KICAD_NOT_AVAILABLE: "1"
 

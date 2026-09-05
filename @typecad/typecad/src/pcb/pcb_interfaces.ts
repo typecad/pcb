@@ -295,8 +295,10 @@ export interface IGeneratedElement {
 }
 
 export interface ITextPositioning {
-  x: number;
-  y: number;
+  /** Omit to keep the footprint's existing horizontal position. */
+  x?: number;
+  /** Omit to keep the footprint's existing vertical position. */
+  y?: number;
   rotation?: number;
   layer?: string;
   /** TrueType font face (KiCad `(face ...)`); omit for KiCad's default stroke font. */

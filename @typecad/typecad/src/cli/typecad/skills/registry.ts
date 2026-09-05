@@ -31,7 +31,7 @@ for (const skill of allSkills) {
 }
 
 export function listSkills(): SkillSummary[] {
-  return allSkills.map(s => ({
+  return allSkills.map((s) => ({
     name: s.name,
     category: s.category,
     description: s.description,
@@ -43,16 +43,16 @@ export function getSkill(name: string): Skill | undefined {
 }
 
 export function getSkillNames(): string[] {
-  return allSkills.map(s => s.name);
+  return allSkills.map((s) => s.name);
 }
 
 export function getCategories(): string[] {
-  const cats = new Set(allSkills.map(s => s.category));
+  const cats = new Set(allSkills.map((s) => s.category));
   return [...cats];
 }
 
 export function getSkillsByCategory(category: string): SkillSummary[] {
   return allSkills
-    .filter(s => s.category === category)
-    .map(s => ({ name: s.name, category: s.category, description: s.description }));
+    .filter((s) => s.category === category)
+    .map((s) => ({ name: s.name, category: s.category, description: s.description }));
 }

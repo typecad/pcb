@@ -549,7 +549,11 @@ digraph ElectricalSchematic {
         ${this.generateInvisibleEdges(reference, leftPins, rightPins)}`;
     }
 
-    private generateInvisibleEdges(reference: string, leftPins: any[], rightPins: any[]): string {
+    private generateInvisibleEdges(
+        reference: string,
+        leftPins: { numbers: Array<string | number> }[],
+        rightPins: { numbers: Array<string | number> }[],
+    ): string {
         const leftEdges = leftPins.length > 1 ? 
             leftPins.slice(0, -1).map((p, i) => 
                 `"${reference}":p${p.numbers.join('_')} -> "${reference}":p${leftPins[i+1].numbers.join('_')}`

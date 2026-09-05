@@ -15,7 +15,7 @@ export class CacheUtils {
    * Uses OS-appropriate temporary directory locations:
    * - Windows: %TEMP%\typecad-jlcpcb-parts-cache\
    * - macOS/Linux: /tmp/typecad-jlcpcb-parts-cache/
-   * 
+   *
    * @returns Promise that resolves to the shared cache directory path
    */
   static async getSharedCacheDir(): Promise<string> {
@@ -30,28 +30,30 @@ export class CacheUtils {
     try {
       // Ensure the directory exists
       await fs.mkdir(sharedCacheDir, { recursive: true });
-      
+
       // Cache the path for future calls
       this._sharedCacheDir = sharedCacheDir;
-      
+
       return sharedCacheDir;
     } catch (error) {
-      throw new Error(`Failed to create shared cache directory at ${sharedCacheDir}: ${error instanceof Error ? error.message : String(error)}`);
+      throw new Error(
+        `Failed to create shared cache directory at ${sharedCacheDir}: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
   }
 
   /**
    * Resolves a cache file path, either in the shared cache directory or a custom directory.
-   * 
+   *
    * @param fileName - Name of the cache file
    * @param useSharedCache - Whether to use shared cache directory (default: true)
    * @param customCacheDir - Custom cache directory to use when useSharedCache is false (default: current directory)
    * @returns Promise that resolves to the full file path
    */
   static async resolveCacheFilePath(
-    fileName: string, 
-    useSharedCache: boolean = true, 
-    customCacheDir: string = '.'
+    fileName: string,
+    useSharedCache: boolean = true,
+    customCacheDir: string = '.',
   ): Promise<string> {
     if (useSharedCache) {
       const sharedCacheDir = await this.getSharedCacheDir();
@@ -64,19 +66,19 @@ export class CacheUtils {
   /**
    * Clears the shared cache directory by removing all files within it.
    * The directory itself is kept for future use.
-   * 
+   *
    * @returns Promise that resolves when cache is cleared
    */
   static async clearSharedCache(): Promise<void> {
     try {
       const sharedCacheDir = await this.getSharedCacheDir();
       const files = await fs.readdir(sharedCacheDir);
-      
+
       // Remove all files in the cache directory
       for (const file of files) {
         const filePath = join(sharedCacheDir, file);
         const stat = await fs.stat(filePath);
-        
+
         if (stat.isFile()) {
           await fs.unlink(filePath);
         } else if (stat.isDirectory()) {
@@ -94,7 +96,7 @@ export class CacheUtils {
 
   /**
    * Gets information about the shared cache directory.
-   * 
+   *
    * @returns Promise that resolves to cache directory info, or null if directory doesn't exist
    */
   static async getCacheInfo(): Promise<{
@@ -105,7 +107,7 @@ export class CacheUtils {
   } | null> {
     try {
       const sharedCacheDir = await this.getSharedCacheDir();
-      
+
       try {
         const files = await fs.readdir(sharedCacheDir);
         let totalSize = 0;
@@ -114,7 +116,7 @@ export class CacheUtils {
         for (const file of files) {
           const filePath = join(sharedCacheDir, file);
           const stat = await fs.stat(filePath);
-          
+
           if (stat.isFile()) {
             totalSize += stat.size;
             fileCount++;
@@ -125,7 +127,7 @@ export class CacheUtils {
           path: sharedCacheDir,
           exists: true,
           size: totalSize,
-          fileCount
+          fileCount,
         };
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
@@ -133,7 +135,7 @@ export class CacheUtils {
             path: sharedCacheDir,
             exists: false,
             size: 0,
-            fileCount: 0
+            fileCount: 0,
           };
         }
         throw error;
@@ -145,7 +147,7 @@ export class CacheUtils {
 
   /**
    * Validates that a cache directory is writable.
-   * 
+   *
    * @param cacheDir - Directory path to validate
    * @returns Promise that resolves to true if directory is writable
    */
@@ -153,12 +155,12 @@ export class CacheUtils {
     try {
       // Try to create the directory if it doesn't exist
       await fs.mkdir(cacheDir, { recursive: true });
-      
+
       // Test write access by creating and removing a temporary file
       const testFile = join(cacheDir, '.write-test');
       await fs.writeFile(testFile, 'test', 'utf-8');
       await fs.unlink(testFile);
-      
+
       return true;
     } catch (error) {
       return false;

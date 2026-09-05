@@ -2,7 +2,7 @@
  * Represents a complete JLCPCB component record from the CSV database.
  * Contains all available information about an electronic component including
  * identification, specifications, availability, and pricing.
- * 
+ *
  * @interface ComponentRecord
  * @example
  * ```typescript
@@ -19,58 +19,58 @@
 export interface ComponentRecord {
   /** JLCPCB component identifier (e.g., "C25804") */
   lcsc: string;
-  
+
   /** Internal category ID for component classification */
   category_id: string;
-  
+
   /** Main component category (e.g., "Resistors", "Capacitors") */
   category: string;
-  
+
   /** Detailed subcategory (e.g., "Chip Resistor - Surface Mount") */
   subcategory: string;
-  
+
   /** Manufacturer part number */
   mfr: string;
-  
+
   /** Component package type (e.g., "0603", "SOT-23") */
   package: string;
-  
+
   /** Number of pins/joints as string */
   joints: string;
-  
+
   /** Manufacturer company name */
   manufacturer: string;
-  
+
   /** Basic part flag ("0" or "1") - indicates if part is in basic library */
   basic: string;
-  
+
   /** Preferred part flag ("0" or "1") - indicates if part is preferred for assembly */
   preferred: string;
-  
+
   /** Full component description with specifications */
   description: string;
-  
+
   /** URL to component datasheet */
   datasheet: string;
-  
+
   /** Current stock quantity as string */
   stock: string;
-  
+
   /** Timestamp of last stock update */
   last_on_stock: string;
-  
+
   /** Pricing information as JSON string */
   price: string;
-  
+
   /** Additional component data as JSON string */
   extra: string;
-  
+
   /** Assembly process type (e.g., "SMT", "THT") */
   assembly_process: string;
-  
+
   /** Minimum order quantity as string */
   min_order_qty: string;
-  
+
   /** Attrition quantity for assembly as string */
   attrition_qty: string;
 }
@@ -78,7 +78,7 @@ export interface ComponentRecord {
 /**
  * Represents an electrical parameter value with its unit and original text.
  * Used for storing parsed electrical values like resistance, capacitance, voltage, etc.
- * 
+ *
  * @interface ElectricalValue
  * @example
  * ```typescript
@@ -87,7 +87,7 @@ export interface ComponentRecord {
  *   unit: "Ω",           // Base unit symbol
  *   originalText: "10k"  // Original text from search query
  * };
- * 
+ *
  * const capacitance: ElectricalValue = {
  *   value: 100e-9,       // Normalized to Farads
  *   unit: "F",           // Base unit
@@ -98,10 +98,10 @@ export interface ComponentRecord {
 export interface ElectricalValue {
   /** Numerical value normalized to base unit (e.g., Ohms, Farads, Henries) */
   value: number;
-  
+
   /** Base unit symbol (e.g., "Ω", "F", "H", "V") */
   unit: string;
-  
+
   /** Original text from the search query before parsing */
   originalText: string;
 }
@@ -109,7 +109,7 @@ export interface ElectricalValue {
 /**
  * Contains all parameters extracted from a search query.
  * Used by the fuzzy scoring algorithm to match against component specifications.
- * 
+ *
  * @interface ParsedParameters
  * @example
  * ```typescript
@@ -127,19 +127,19 @@ export interface ElectricalValue {
 export interface ParsedParameters {
   /** Voltage rating parameter (e.g., 50V, 3.3V) */
   voltage?: ElectricalValue;
-  
+
   /** Primary electrical value (resistance, capacitance, inductance) */
   value?: ElectricalValue;
-  
+
   /** Tolerance specification (e.g., "±1%", "±5%") */
   tolerance?: string;
-  
+
   /** Component package type (e.g., "0603", "SOT-23") */
   package?: string;
-  
+
   /** Component type identifier (e.g., "resistor", "capacitor") */
   componentType?: string;
-  
+
   /** Additional keywords from the search query */
   keywords?: string[];
 }
@@ -147,7 +147,7 @@ export interface ParsedParameters {
 /**
  * Detailed information about how a specific parameter matched during scoring.
  * Used to explain why a component received a particular score.
- * 
+ *
  * @interface MatchDetail
  * @example
  * ```typescript
@@ -162,13 +162,13 @@ export interface ParsedParameters {
 export interface MatchDetail {
   /** Name of the parameter that was matched (e.g., "resistance", "package") */
   parameter: string;
-  
+
   /** Score awarded for this parameter match (0-100+) */
   score: number;
-  
+
   /** Whether this was an exact match or approximate */
   exact: boolean;
-  
+
   /** Human-readable explanation of the match */
   reason: string;
 }
@@ -176,7 +176,7 @@ export interface MatchDetail {
 /**
  * A component record paired with its calculated match score and detailed explanations.
  * Used internally by the scoring system before converting to SearchResult.
- * 
+ *
  * @interface ComponentScore
  * @example
  * ```typescript
@@ -193,10 +193,10 @@ export interface MatchDetail {
 export interface ComponentScore {
   /** The component record being scored */
   component: ComponentRecord;
-  
+
   /** Total calculated score for this component */
   score: number;
-  
+
   /** Detailed breakdown of how the score was calculated */
   matchDetails: MatchDetail[];
 }
@@ -204,7 +204,7 @@ export interface ComponentScore {
 /**
  * Final search result formatted for display to the user.
  * Contains essential component information and match summary.
- * 
+ *
  * @interface SearchResult
  * @example
  * ```typescript
@@ -222,28 +222,28 @@ export interface ComponentScore {
 export interface SearchResult {
   /** JLCPCB component identifier */
   lcsc: string;
-  
+
   /** Component manufacturer name */
   manufacturer: string;
-  
+
   /** Manufacturer's part number */
   partNumber: string;
-  
+
   /** Full component description */
   description: string;
-  
+
   /** Component package type */
   package: string;
-  
+
   /** Total match score */
   score: number;
-  
+
   /** Human-readable summary of why this component matched */
   matchSummary: string;
-  
+
   /** KiCad footprint reference (e.g., "Resistor_SMD:R_0603_1608Metric") */
   footprint?: string;
-  
+
   /** KiCad footprint filter strings for footprint matching */
   fpFilters?: string[];
 }
@@ -251,7 +251,7 @@ export interface SearchResult {
 /**
  * Metadata about cached component database files.
  * Used for cache validation and management.
- * 
+ *
  * @interface CacheMetadata
  * @example
  * ```typescript
@@ -266,13 +266,13 @@ export interface SearchResult {
 export interface CacheMetadata {
   /** Timestamp when the cache was last updated */
   lastDownload: Date;
-  
+
   /** Size of the cached file in bytes */
   fileSize: number;
-  
+
   /** Number of component records in the cache */
   recordCount: number;
-  
+
   /** Optional checksum for cache integrity verification */
   checksum?: string;
 }
@@ -324,7 +324,7 @@ export class ParsingError extends TypeCadError {
 /**
  * Clean interface for JSON output that ensures consistent serialization.
  * Contains the same essential information as SearchResult but optimized for JSON format.
- * 
+ *
  * @interface JsonSearchResult
  * @example
  * ```typescript
@@ -342,22 +342,22 @@ export class ParsingError extends TypeCadError {
 export interface JsonSearchResult {
   /** JLCPCB component identifier */
   lcsc: string;
-  
+
   /** Component manufacturer name */
   manufacturer: string;
-  
+
   /** Manufacturer's part number */
   partNumber: string;
-  
+
   /** Full component description */
   description: string;
-  
+
   /** Component package type */
   package: string;
-  
+
   /** Total match score as number */
   score: number;
-  
+
   /** Human-readable summary of why this component matched */
   matchSummary: string;
 }
@@ -365,7 +365,7 @@ export interface JsonSearchResult {
 /**
  * Structured error response for JSON output mode.
  * Provides consistent error formatting when JSON format is selected.
- * 
+ *
  * @interface JsonErrorResponse
  * @example
  * ```typescript
@@ -379,10 +379,10 @@ export interface JsonSearchResult {
 export interface JsonErrorResponse {
   /** Always true to indicate this is an error response */
   error: true;
-  
+
   /** Human-readable error message */
   message: string;
-  
+
   /** Optional error code for programmatic handling */
   code?: string;
 }

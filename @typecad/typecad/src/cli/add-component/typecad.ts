@@ -5,9 +5,13 @@ import type { ComponentRenderData, CliPinInfo } from '../types.js';
 import logger from '../../utils/logging.js';
 
 function renderComponent(data: ComponentRenderData) {
-    const pinsTableRows = data.pins.map((p: CliPinInfo) => ` | ${p.number}     | ${p.name}  | ${p.type}      |`).join('\n');
-    const pinProperties = data.pins.map((p: CliPinInfo) => `    ${p.name} = this.pin(${p.number}, { type: '${p.type}' });`).join('\n');
-    return `import { Component } from "@typecad/typecad";
+  const pinsTableRows = data.pins
+    .map((p: CliPinInfo) => ` | ${p.number}     | ${p.name}  | ${p.type}      |`)
+    .join('\n');
+  const pinProperties = data.pins
+    .map((p: CliPinInfo) => `    ${p.name} = this.pin(${p.number}, { type: '${p.type}' });`)
+    .join('\n');
+  return `import { Component } from "@typecad/typecad";
 /**
  | Pin # | Name | Type          |
  | --:   | :--  | :--           |
@@ -40,7 +44,7 @@ export async function create_component(data: ComponentRenderData) {
       fs.mkdirSync(buildLibPath, { recursive: true });
     }
 
-    fs.copyFileSync(data.symbol_path, pathJoin(buildLibPath, basename(data.symbol_path))); 
+    fs.copyFileSync(data.symbol_path, pathJoin(buildLibPath, basename(data.symbol_path)));
   }
 
   // if a footprint file was passed, copy into ./build/lib/footprints/
@@ -50,7 +54,7 @@ export async function create_component(data: ComponentRenderData) {
       fs.mkdirSync(buildFootprintsPath, { recursive: true });
     }
 
-    fs.copyFileSync(data.footprint_path, pathJoin(buildFootprintsPath, basename(data.footprint_path))); 
+    fs.copyFileSync(data.footprint_path, pathJoin(buildFootprintsPath, basename(data.footprint_path)));
   }
 
   try {
@@ -62,17 +66,14 @@ export async function create_component(data: ComponentRenderData) {
 
     fs.writeFileSync(pathJoin(srcPath, `${data.name}.ts`), result);
 
-    logger.log(`Finished component creation, use it with:`)
-    logger.log(chalk.whiteBright.bold(` import { ${data.name} } from './${data.name}';`))
-    logger.log(chalk.whiteBright.bold(` let u1 = new ${data.name}();`))
+    logger.log(`Finished component creation, use it with:`);
+    logger.log(chalk.whiteBright.bold(` import { ${data.name} } from './${data.name}';`));
+    logger.log(chalk.whiteBright.bold(` let u1 = new ${data.name}();`));
     logger.log();
-    logger.log("Report any component creation issues: https://www.reddit.com/r/typecad/");
+    logger.log('Report any component creation issues: https://www.reddit.com/r/typecad/');
     logger.log();
-
   } catch (error) {
-    logger.log(
-      chalk.red(`ERROR - ${error}`)
-    );
+    logger.log(chalk.red(`ERROR - ${error}`));
     return;
   }
 }

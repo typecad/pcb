@@ -66,7 +66,11 @@ function formatSkillHuman(skill: Skill): void {
 
 function formatListHuman(): void {
   logger.log(chalk.white.bold('typeCAD Skills') + '\n');
-  logger.log(chalk.gray('Start with: ') + chalk.white('typecad skills get circuit-design') + chalk.gray(' for the end-to-end design workflow.\n'));
+  logger.log(
+    chalk.gray('Start with: ') +
+      chalk.white('typecad skills get circuit-design') +
+      chalk.gray(' for the end-to-end design workflow.\n'),
+  );
 
   const categories = getCategories();
   for (const cat of categories) {
@@ -98,10 +102,16 @@ export async function run(parsed: ParsedArgs): Promise<void> {
     const skillName = parsed.positional[0];
     if (!skillName) {
       if (parsed.json) {
-        logger.log(JSON.stringify({ error: true, message: 'Skill name required. Usage: typecad skills get <name>', code: 'MISSING_SKILL_NAME' }));
+        logger.log(
+          JSON.stringify({
+            error: true,
+            message: 'Skill name required. Usage: typecad skills get <name>',
+            code: 'MISSING_SKILL_NAME',
+          }),
+        );
       } else {
         logger.error(chalk.red('Skill name required.'));
-        logger.log("Usage: typecad skills get <name>");
+        logger.log('Usage: typecad skills get <name>');
       }
       process.exit(1);
     }
@@ -109,7 +119,13 @@ export async function run(parsed: ParsedArgs): Promise<void> {
     const skill = getSkill(skillName);
     if (!skill) {
       if (parsed.json) {
-        logger.log(JSON.stringify({ error: true, message: `Unknown skill '${skillName}'. Run 'typecad skills list' for available skills.`, code: 'UNKNOWN_SKILL' }));
+        logger.log(
+          JSON.stringify({
+            error: true,
+            message: `Unknown skill '${skillName}'. Run 'typecad skills list' for available skills.`,
+            code: 'UNKNOWN_SKILL',
+          }),
+        );
       } else {
         logger.error(chalk.red(`Unknown skill '${skillName}'.`));
         logger.log("Run 'typecad skills list' for available skills.");
@@ -126,7 +142,13 @@ export async function run(parsed: ParsedArgs): Promise<void> {
   }
 
   if (parsed.json) {
-    logger.log(JSON.stringify({ error: true, message: `Unknown subcommand 'skills ${subcommand}'. Use 'list' or 'get'.`, code: 'UNKNOWN_SUBCOMMAND' }));
+    logger.log(
+      JSON.stringify({
+        error: true,
+        message: `Unknown subcommand 'skills ${subcommand}'. Use 'list' or 'get'.`,
+        code: 'UNKNOWN_SUBCOMMAND',
+      }),
+    );
   } else {
     logger.error(chalk.red(`Unknown subcommand 'skills ${subcommand}'. Use 'list' or 'get'.`));
   }

@@ -348,7 +348,7 @@ function collectTextBoxes(
 
   // 2. Component text — layouts/text entries are footprint-relative
   const transform = (c: import('../component.js').Component, px: number, py: number) => {
-    let x = px;
+    const x = px;
     let y = py;
     if (c.pcb?.side === 'back') y = -y;
     const rad = (-(c.pcb?.rotation ?? 0) * Math.PI) / 180;
@@ -364,51 +364,70 @@ function collectTextBoxes(
     seen.add(c);
     const side = c.pcb?.side === 'back' ? 'B' : 'F';
 
-    const layoutEntries: Array<{
-      layout: {
-        x: number;
-        y: number;
-        rotation?: number;
-        layer?: string;
-        width?: number;
-        height?: number;
-        fontSize?: number;
-      };
-      text: string;
-      defaultLayer: string;
-    }> = [];
-    if (c.referenceLayout) {
-      layoutEntries.push({ layout: c.referenceLayout, text: c.reference ?? '', defaultLayer: 'F.SilkS' });
-    }
-    if (c.valueLayout) {
-      layoutEntries.push({ layout: c.valueLayout, text: c.value ?? '', defaultLayer: 'F.Fab' });
-    }
-    if (c.fabLayout) {
-      layoutEntries.push({
-        layout: c.fabLayout,
-        text: (c.fabLayout as { text?: string }).text ?? c.reference ?? '',
-        defaultLayer: 'F.Fab',
-      });
-    }
-    for (const entry of layoutEntries) {
-      const fontSize = entry.layout.height ?? entry.layout.width ?? entry.layout.fontSize ?? 1.0;
-      const width = entry.layout.width ?? entry.layout.fontSize ?? fontSize;
+    // Properties (Reference/Value) whose text is explicitly placed or
+    // explicitly hidden — the footprint-default box must not be added for these.
+    const explicitBoxProps = new Set<string>();
+
+    const pushLayoutBox = (
+      prop: 'Reference' | 'Value',
+      layout:
+        | {
+            x?: number;
+            y?: number;
+            rotation?: number;
+            layer?: string;
+            width?: number;
+            height?: number;
+            fontSize?: number;
+            show?: boolean;
+          }
+        | undefined,
+      text: string,
+      defaultLayer: string,
+    ) => {
+      if (!layout) return;
+      if (layout.show === false) {
+        // Hidden: nothing visible to avoid, and the default box must go too
+        explicitBoxProps.add(prop);
+        return;
+      }
+      if (layout.x === undefined || layout.y === undefined) return; // merge keeps the footprint's position → template box applies
+      const fontSize = layout.height ?? layout.width ?? layout.fontSize ?? 1.0;
+      const width = layout.width ?? layout.fontSize ?? fontSize;
       pushBox(
-        transform(c, entry.layout.x, entry.layout.y),
-        (entry.layout.rotation ?? 0) + (c.pcb?.rotation ?? 0),
-        entry.text,
+        transform(c, layout.x, layout.y),
+        (layout.rotation ?? 0) + (c.pcb?.rotation ?? 0),
+        text,
         width,
         fontSize,
-        sideOf(entry.layout.layer ?? (side === 'B' ? 'B.SilkS' : entry.defaultLayer)),
+        sideOf(layout.layer ?? (side === 'B' ? 'B.SilkS' : defaultLayer)),
       );
+      explicitBoxProps.add(prop);
+    };
+    pushLayoutBox('Reference', c.referenceLayout, c.reference ?? '', 'F.SilkS');
+    pushLayoutBox('Value', c.valueLayout, c.value ?? '', 'F.Fab');
+    if (c.fabLayout) {
+      const fab = c.fabLayout;
+      if (fab.show !== false && fab.x !== undefined && fab.y !== undefined) {
+        const fontSize = fab.height ?? fab.width ?? fab.fontSize ?? 1.0;
+        const width = fab.width ?? fab.fontSize ?? fontSize;
+        pushBox(
+          transform(c, fab.x, fab.y),
+          (fab.rotation ?? 0) + (c.pcb?.rotation ?? 0),
+          (c.fabLayout as { text?: string }).text ?? c.reference ?? '',
+          width,
+          fontSize,
+          sideOf(fab.layer ?? (side === 'B' ? 'B.SilkS' : 'F.Fab')),
+        );
+      }
     }
 
     // Explicit text entries (component.text)
     for (const item of (c.text ?? []) as Array<{
       property: string;
-      text: string;
-      x: number;
-      y: number;
+      text?: string;
+      x?: number;
+      y?: number;
       rotation?: number;
       layer?: string;
       width?: number;
@@ -416,17 +435,30 @@ function collectTextBoxes(
       fontSize?: number;
       show?: boolean;
     }>) {
-      if (item.show === false) continue;
+      const isTemplateProp = item.property === 'Reference' || item.property === 'Value';
+      if (item.show === false) {
+        // Hidden: nothing to avoid, and a Reference/Value default box must not appear either
+        if (isTemplateProp) explicitBoxProps.add(item.property);
+        continue;
+      }
+      if (isTemplateProp && (item.x === undefined || item.y === undefined)) {
+        // Merges onto the footprint's own position → the template-default box below covers it
+        continue;
+      }
       const fontSize = item.height ?? item.fontSize ?? 1.0;
       const width = item.width ?? item.fontSize ?? fontSize;
+      const text =
+        item.text ??
+        (item.property === 'Reference' ? (c.reference ?? '') : item.property === 'Value' ? (c.value ?? '') : '');
       pushBox(
-        transform(c, item.x, item.y),
+        transform(c, item.x ?? 0, item.y ?? 0),
         (item.rotation ?? 0) + (c.pcb?.rotation ?? 0),
-        item.text,
+        text,
         width,
         fontSize,
         sideOf(item.layer ?? (side === 'B' ? 'B.SilkS' : 'F.SilkS')),
       );
+      if (isTemplateProp) explicitBoxProps.add(item.property);
     }
 
     // Default Reference/Value positions from the footprint itself
@@ -439,9 +471,8 @@ function collectTextBoxes(
         if (Sym.isSym(head) && head.name === 'property' && typeof node[1] === 'string') {
           const propName = node[1];
           if (propName !== 'Reference' && propName !== 'Value') return;
-          // Already covered by an explicit layout above
-          if (propName === 'Reference' && c.referenceLayout) return;
-          if (propName === 'Value' && c.valueLayout) return;
+          // Explicitly placed or explicitly hidden above — no default box
+          if (explicitBoxProps.has(propName)) return;
           const text = propName === 'Reference' ? (c.reference ?? '') : (c.value ?? '');
           let px = 0;
           let py = 0;

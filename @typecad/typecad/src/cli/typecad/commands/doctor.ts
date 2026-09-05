@@ -40,9 +40,7 @@ function checkNodeVersion(): CheckResult {
   return {
     name: 'Node.js',
     passed: ok,
-    message: ok
-      ? `${version} (>= 18.0.0)`
-      : `${version} is below the minimum 18.0.0`,
+    message: ok ? `${version} (>= 18.0.0)` : `${version} is below the minimum 18.0.0`,
     fixHint: 'Install Node.js >= 18 from https://nodejs.org/',
   };
 }
@@ -76,9 +74,7 @@ function checkPackageJson(): CheckResult {
     return {
       name: 'package.json',
       passed: isModule,
-      message: isModule
-        ? 'found (type: module)'
-        : 'found but "type" is not set to "module"',
+      message: isModule ? 'found (type: module)' : 'found but "type" is not set to "module"',
       fixHint: isModule ? undefined : 'Add "type": "module" to your package.json',
       fixCommand: isModule ? undefined : 'npm pkg set type=module',
     };
@@ -115,9 +111,7 @@ function checkNodeModules(fix: boolean): CheckResult {
 function isPkgAvailable(dep: string): boolean {
   const nmDir = path.join(process.cwd(), 'node_modules');
   const parts = dep.split('/');
-  const checkDir = parts[0].startsWith('@')
-    ? path.join(nmDir, parts[0], parts[1])
-    : path.join(nmDir, parts[0]);
+  const checkDir = parts[0].startsWith('@') ? path.join(nmDir, parts[0], parts[1]) : path.join(nmDir, parts[0]);
   if (!fs.existsSync(checkDir)) return false;
   const pkgJson = path.join(checkDir, 'package.json');
   if (!fs.existsSync(pkgJson)) return false;
@@ -164,7 +158,8 @@ function checkConfig(): CheckResult {
     name: 'Config file',
     passed: false,
     message: 'no typecad.conf.ts, typecad.conf.js, or typecad.json found',
-    fixHint: 'Create a config file. Example:\n  typecad.conf.ts:\n    import { defineConfig } from "@typecad/typecad";\n    export default defineConfig({ entry: "./src/project.ts" });',
+    fixHint:
+      'Create a config file. Example:\n  typecad.conf.ts:\n    import { defineConfig } from "@typecad/typecad";\n    export default defineConfig({ entry: "./src/project.ts" });',
   };
 }
 
@@ -187,7 +182,9 @@ function checkEntryFile(): CheckResult {
         const m = raw.match(/entry\s*[:=]\s*['"](.+?)['"]/);
         if (m) entry = m[1];
       }
-    } catch { logger.debug('Failed to parse config file for entry'); }
+    } catch {
+      logger.debug('Failed to parse config file for entry');
+    }
   }
 
   if (!entry) {
@@ -196,15 +193,19 @@ function checkEntryFile(): CheckResult {
       const buildScript = pkg.scripts?.build || '';
       const m = buildScript.match(/tsx\s+(.+)$/);
       if (m) entry = m[1];
-    } catch { logger.debug('Failed to parse package.json for entry'); }
+    } catch {
+      logger.debug('Failed to parse package.json for entry');
+    }
   }
 
   if (!entry) {
     try {
       const srcDir = path.join(process.cwd(), 'src');
-      const files = fs.readdirSync(srcDir).filter(f => f.endsWith('.ts') && !f.endsWith('.d.ts'));
+      const files = fs.readdirSync(srcDir).filter((f) => f.endsWith('.ts') && !f.endsWith('.d.ts'));
       if (files.length === 1) entry = `./src/${files[0]}`;
-    } catch { logger.debug('Failed to read src directory for entry'); }
+    } catch {
+      logger.debug('Failed to read src directory for entry');
+    }
   }
 
   if (!entry) {
@@ -235,9 +236,7 @@ function getKicadVersion(): string | null {
     if (instance.isFlatpak) {
       const out = runQuiet('flatpak run --command=kicad-cli org.kicad.KiCad version');
       if (!out) return null;
-      return out.match(/version\s+v?(\d+(?:\.\d+)*)/i)?.[1]
-        ?? out.match(/v?(\d+(?:\.\d+)+)/)?.[1]
-        ?? null;
+      return out.match(/version\s+v?(\d+(?:\.\d+)*)/i)?.[1] ?? out.match(/v?(\d+(?:\.\d+)+)/)?.[1] ?? null;
     }
     const out = runQuiet(`"${instance.cliPath}" version`);
     if (!out) return null;
@@ -254,12 +253,15 @@ function checkKiCadCli(): CheckResult {
     const ver = getKicadVersion();
 
     if (ver && !semverGte(ver, '10.0.0')) {
-      return { name: 'kicad-cli', passed: false, message: `${instance.cliPath} (v${ver}) — version 10+ required`, fixHint: 'Upgrade KiCad to version 10 or later from https://www.kicad.org/download/' };
+      return {
+        name: 'kicad-cli',
+        passed: false,
+        message: `${instance.cliPath} (v${ver}) — version 10+ required`,
+        fixHint: 'Upgrade KiCad to version 10 or later from https://www.kicad.org/download/',
+      };
     }
 
-    const label = instance.isFlatpak
-      ? 'Flatpak installation detected'
-      : instance.cliPath;
+    const label = instance.isFlatpak ? 'Flatpak installation detected' : instance.cliPath;
 
     return { name: 'kicad-cli', passed: true, message: label + (ver ? ` (v${ver})` : '') };
   } catch {
@@ -289,11 +291,14 @@ function checkKiCadSymbols(): CheckResult {
         fixHint: 'Ensure KiCad is installed with symbol libraries. Reinstall KiCad if needed.',
       };
     }
-    const files = fs.readdirSync(symbolsPath).filter(f => f.endsWith('.kicad_sym'));
+    const files = fs.readdirSync(symbolsPath).filter((f) => f.endsWith('.kicad_sym'));
     return {
       name: 'KiCad symbol libraries',
       passed: files.length > 0,
-      message: files.length > 0 ? `${files.length} .kicad_sym files in ${symbolsPath}` : `no .kicad_sym files found in ${symbolsPath}`,
+      message:
+        files.length > 0
+          ? `${files.length} .kicad_sym files in ${symbolsPath}`
+          : `no .kicad_sym files found in ${symbolsPath}`,
       fixHint: files.length > 0 ? undefined : 'KiCad symbol libraries appear empty. Reinstall KiCad.',
     };
   } catch {
@@ -319,11 +324,14 @@ function checkKiCadFootprints(): CheckResult {
         fixHint: 'Ensure KiCad is installed with footprint libraries. Reinstall KiCad if needed.',
       };
     }
-    const files = fs.readdirSync(footprintsPath).filter(f => f.endsWith('.pretty') || f.endsWith('.kicad_mod'));
+    const files = fs.readdirSync(footprintsPath).filter((f) => f.endsWith('.pretty') || f.endsWith('.kicad_mod'));
     return {
       name: 'KiCad footprint libraries',
       passed: files.length > 0,
-      message: files.length > 0 ? `${files.length} libraries in ${footprintsPath}` : `no footprint libraries found in ${footprintsPath}`,
+      message:
+        files.length > 0
+          ? `${files.length} libraries in ${footprintsPath}`
+          : `no footprint libraries found in ${footprintsPath}`,
       fixHint: files.length > 0 ? undefined : 'KiCad footprint libraries appear empty. Reinstall KiCad.',
     };
   } catch {
@@ -336,7 +344,6 @@ function checkKiCadFootprints(): CheckResult {
   }
 }
 
-
 function checkNgspice(): CheckResult {
   const isWindows = platform() === 'win32';
   const foundNgspice = findExecutable('ngspice');
@@ -347,10 +354,20 @@ function checkNgspice(): CheckResult {
       return { name: 'ngspice', passed: true, message: `ngspice: ${foundNgspice}, ngspice_con: ${foundNgspiceCon}` };
     }
     if (foundNgspice) {
-      return { name: 'ngspice', passed: true, message: foundNgspice, fixHint: 'ngspice_con not found — DC analysis (.op) requires ngspice_con.exe in PATH' };
+      return {
+        name: 'ngspice',
+        passed: true,
+        message: foundNgspice,
+        fixHint: 'ngspice_con not found — DC analysis (.op) requires ngspice_con.exe in PATH',
+      };
     }
     if (foundNgspiceCon) {
-      return { name: 'ngspice', passed: true, message: `ngspice_con: ${foundNgspiceCon}`, fixHint: 'ngspice not found — transient analysis (.tran) requires ngspice.exe in PATH' };
+      return {
+        name: 'ngspice',
+        passed: true,
+        message: `ngspice_con: ${foundNgspiceCon}`,
+        fixHint: 'ngspice not found — transient analysis (.tran) requires ngspice.exe in PATH',
+      };
     }
   } else {
     if (foundNgspice) {
@@ -398,9 +415,7 @@ function checkBuildDir(): CheckResult {
     };
   }
 
-  const kicadFiles = fs.readdirSync(buildPath).filter(f =>
-    f.endsWith('.kicad_pcb') || f.endsWith('.kicad_pro')
-  );
+  const kicadFiles = fs.readdirSync(buildPath).filter((f) => f.endsWith('.kicad_pcb') || f.endsWith('.kicad_pro'));
 
   if (kicadFiles.length > 0) {
     return { name: 'build/ directory', passed: true, message: `contains ${kicadFiles.join(', ')}` };
@@ -469,15 +484,21 @@ export async function run(parsed: ParsedArgs): Promise<void> {
   ];
 
   if (json) {
-    logger.log(JSON.stringify({
-      checks: results,
-      problems: results.filter(r => !r.passed).length,
-    }, null, 2));
+    logger.log(
+      JSON.stringify(
+        {
+          checks: results,
+          problems: results.filter((r) => !r.passed).length,
+        },
+        null,
+        2,
+      ),
+    );
   } else {
     printResults(results);
   }
 
-  if (results.some(r => !r.passed)) {
+  if (results.some((r) => !r.passed)) {
     throw new Error('Environment check failed. See above for details.');
   }
 }

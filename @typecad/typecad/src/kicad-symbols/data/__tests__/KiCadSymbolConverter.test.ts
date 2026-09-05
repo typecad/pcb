@@ -5,7 +5,10 @@ import { ExtractedSymbol } from '../KiCadSymbolExtractor.js';
 function makeSymbol(overrides: Partial<ExtractedSymbol> = {}): ExtractedSymbol {
   return {
     name: 'R',
-    properties: [{ name: 'Reference', value: 'R' }, { name: 'Value', value: 'R' }],
+    properties: [
+      { name: 'Reference', value: 'R' },
+      { name: 'Value', value: 'R' },
+    ],
     description: 'Resistor',
     keywords: 'R resistor',
     library: 'Device',
@@ -198,7 +201,14 @@ describe('KiCadSymbolConverter', () => {
       converter.convertSymbolsToComponentRecords([
         makeSymbol({ library: 'Device', description: 'Resistor', keywords: 'R' }),
         makeSymbol({ name: 'C', library: 'Device', description: 'Capacitor', keywords: undefined, hasKeywords: false }),
-        makeSymbol({ name: 'U', library: 'MCU', description: undefined, hasDescription: false, keywords: undefined, hasKeywords: false }),
+        makeSymbol({
+          name: 'U',
+          library: 'MCU',
+          description: undefined,
+          hasDescription: false,
+          keywords: undefined,
+          hasKeywords: false,
+        }),
       ]);
       const stats = converter.getStatistics();
       expect(stats.symbolsConverted).toBe(3);
@@ -242,9 +252,7 @@ describe('KiCadSymbolConverter', () => {
 
     it('limits library display to top 10', () => {
       const converter = new KiCadSymbolConverter();
-      const symbols = Array.from({ length: 12 }, (_, i) =>
-        makeSymbol({ name: `Sym${i}`, library: `Lib${i}` })
-      );
+      const symbols = Array.from({ length: 12 }, (_, i) => makeSymbol({ name: `Sym${i}`, library: `Lib${i}` }));
       converter.convertSymbolsToComponentRecords(symbols);
       const summary = converter.getConversionSummary();
       expect(summary).toContain('Top 10 Libraries by Symbol Count:');
@@ -259,7 +267,14 @@ describe('KiCadSymbolConverter', () => {
     });
 
     it('returns false when lcsc is missing', () => {
-      const record = { ...makeSymbol(), lcsc: '', category: 'Device', description: 'test', manufacturer: 'KiCad', extra: '{}' } as any;
+      const record = {
+        ...makeSymbol(),
+        lcsc: '',
+        category: 'Device',
+        description: 'test',
+        manufacturer: 'KiCad',
+        extra: '{}',
+      } as any;
       expect(KiCadSymbolConverter.validateComponentRecord(record)).toBe(false);
     });
 
@@ -279,7 +294,13 @@ describe('KiCadSymbolConverter', () => {
     });
 
     it('returns false when extra is not valid JSON', () => {
-      const record = { lcsc: 'test', category: 'Device', description: 'test', manufacturer: 'KiCad', extra: 'not json' } as any;
+      const record = {
+        lcsc: 'test',
+        category: 'Device',
+        description: 'test',
+        manufacturer: 'KiCad',
+        extra: 'not json',
+      } as any;
       expect(KiCadSymbolConverter.validateComponentRecord(record)).toBe(false);
     });
   });

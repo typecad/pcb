@@ -32,9 +32,7 @@ export class TempFileManager {
   }
 
   createTempFilePath(extension: string, subDir?: string): string {
-    const targetDir = subDir
-      ? this.createTempDir(subDir)
-      : this.baseDir;
+    const targetDir = subDir ? this.createTempDir(subDir) : this.baseDir;
 
     const filename = `${this.prefix}${randomUUID()}${extension}`;
     const filepath = path.join(targetDir, filename);
@@ -193,16 +191,18 @@ export class TempFileManager {
       if (exists) {
         const files = await fs.readdir(dirpath);
 
-        await Promise.all(files.map(async (file) => {
-          const filePath = path.join(dirpath, file);
+        await Promise.all(
+          files.map(async (file) => {
+            const filePath = path.join(dirpath, file);
 
-          const stats = await fs.stat(filePath);
-          if (stats.isDirectory()) {
-            await this.cleanupDirectoryAsync(filePath);
-          } else {
-            await fs.unlink(filePath);
-          }
-        }));
+            const stats = await fs.stat(filePath);
+            if (stats.isDirectory()) {
+              await this.cleanupDirectoryAsync(filePath);
+            } else {
+              await fs.unlink(filePath);
+            }
+          }),
+        );
 
         await fs.rmdir(dirpath);
       }
@@ -225,17 +225,17 @@ export class TempFileManager {
 
   private async cleanupPath(targetPath: string): Promise<void> {
     try {
-        const exists = await pathExists(targetPath);
-        if (!exists) return;
+      const exists = await pathExists(targetPath);
+      if (!exists) return;
 
-        const stats = await fs.stat(targetPath);
-        if (stats.isDirectory()) {
-            await this.cleanupDirectoryAsync(targetPath);
-        } else {
-            await fs.unlink(targetPath);
-        }
+      const stats = await fs.stat(targetPath);
+      if (stats.isDirectory()) {
+        await this.cleanupDirectoryAsync(targetPath);
+      } else {
+        await fs.unlink(targetPath);
+      }
     } catch (error) {
-        logger.error(`Error cleaning up path ${targetPath}:`, error);
+      logger.error(`Error cleaning up path ${targetPath}:`, error);
     }
   }
 

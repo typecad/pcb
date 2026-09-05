@@ -7,9 +7,7 @@ function renderComponent(data: PackageRenderData) {
   const componentImport = data.component_name
     ? `\nimport { ${data.component_name} } from './${data.component_name}';`
     : '';
-  const declareU1 = data.component_name
-    ? `    declare ${data.component_name}: ${data.component_name};\n`
-    : '';
+  const declareU1 = data.component_name ? `    declare ${data.component_name}: ${data.component_name};\n` : '';
   const initU1 = data.component_name
     ? `        this.${data.component_name} = new ${data.component_name}(this.reference);\n        this.${data.component_name}.pcb = { x: 0, y: 0, rotation: 0 };\n\n`
     : '';
@@ -81,10 +79,14 @@ export async function create_package(data: PackageRenderData) {
   try {
     fs.writeFileSync(`${data.folder}/${data.package_name}/index.ts`, result);
     fs.writeFileSync(`${data.folder}/${data.package_name}/package.json`, package_json);
-    fs.writeFileSync(`${data.folder}/${data.package_name}/build/lib/README`, 'Files placed in this folder are synced into the typeCAD project\'s ./build/lib/ directory automatically whenever a Package that uses them is constructed during a build. No install script is required.');
+    fs.writeFileSync(
+      `${data.folder}/${data.package_name}/build/lib/README`,
+      "Files placed in this folder are synced into the typeCAD project's ./build/lib/ directory automatically whenever a Package that uses them is constructed during a build. No install script is required.",
+    );
 
     logger.log(`Finished package creation. You can use it like this:`);
-    logger.log(chalk.whiteBright.bold(`
+    logger.log(
+      chalk.whiteBright.bold(`
 import { PCB } from '@typecad/typecad'
 import { ${pascal_package_name} } from "./${data.package_name}";
 
@@ -93,15 +95,13 @@ let typecad = new PCB('board_name');
 let u1 = new ${pascal_package_name}({ pcb: typecad, x: 0, y: 0, name: '${data.package_name}' });
 
 typecad.create(u1.components);
-`));
-    logger.log();
-    logger.log("Report any creation issues: https://www.reddit.com/r/typecad/");
-    logger.log();
-
-  } catch (error) {
-    logger.log(
-      chalk.red(`ERROR - ${error}`)
+`),
     );
+    logger.log();
+    logger.log('Report any creation issues: https://www.reddit.com/r/typecad/');
+    logger.log();
+  } catch (error) {
+    logger.log(chalk.red(`ERROR - ${error}`));
     return;
   }
 }

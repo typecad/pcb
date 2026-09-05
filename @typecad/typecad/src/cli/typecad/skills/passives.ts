@@ -10,7 +10,12 @@ export const passiveSkills: Skill[] = [
     usage: {
       signature: 'new Resistor(options?: ComponentInit)',
       parameters: [
-        { name: 'reference', type: 'string', required: false, description: 'Reference designator. Auto-assigned as R1, R2, etc. if omitted' },
+        {
+          name: 'reference',
+          type: 'string',
+          required: false,
+          description: 'Reference designator. Auto-assigned as R1, R2, etc. if omitted',
+        },
         { name: 'value', type: 'string', required: false, description: 'Resistance value (e.g. "4.7kOhm", "10kOhm")' },
         { name: 'wattage', type: 'string', required: false, description: 'Power rating (e.g. "0.25W", "0.125W")' },
         { name: 'voltage', type: 'string', required: false, description: 'Voltage rating' },
@@ -250,7 +255,12 @@ typecad.net(f1.pin(2), regulator.VIN);`,
       parameters: [
         { name: 'number', type: 'number', required: false, description: 'Number of pins', default: '1' },
         { name: 'reference', type: 'string', required: false, description: 'Auto-assigned as J1, J2, etc. if omitted' },
-        { name: 'footprint', type: 'string', required: false, description: 'Custom KiCad footprint. Default: 2.54mm pin header' },
+        {
+          name: 'footprint',
+          type: 'string',
+          required: false,
+          description: 'Custom KiCad footprint. Default: 2.54mm pin header',
+        },
         { name: 'pcb', type: '{ x, y, rotation }', required: false, description: 'PCB placement' },
       ],
     },
@@ -290,8 +300,18 @@ typecad.net(j1.pin(10), gnd);`,
     usage: {
       signature: 'new Testpoint(options?: { reference?: string, footprint?: string, pcb?, sch? })',
       parameters: [
-        { name: 'reference', type: 'string', required: false, description: 'Auto-assigned as TP1, TP2, etc. if omitted' },
-        { name: 'footprint', type: 'string', required: false, description: 'Custom footprint. Default: TestPoint:TestPoint_Pad_D1.0mm' },
+        {
+          name: 'reference',
+          type: 'string',
+          required: false,
+          description: 'Auto-assigned as TP1, TP2, etc. if omitted',
+        },
+        {
+          name: 'footprint',
+          type: 'string',
+          required: false,
+          description: 'Custom footprint. Default: TestPoint:TestPoint_Pad_D1.0mm',
+        },
         { name: 'pcb', type: '{ x, y, rotation }', required: false, description: 'PCB placement' },
       ],
     },
@@ -322,11 +342,28 @@ typecad.named('TP_GND').net(tp_gnd.pin(1), gnd_net);`,
     package: '@typecad/passives',
     import: "import { MountingHole } from '@typecad/passives/mounting_hole';",
     usage: {
-      signature: "new MountingHole(options?: { reference?: string, footprint?: string, size?: 'M2'|'M2.5'|'M3'|'M4'|'M5'|'M6'|'M8', pcb? })",
+      signature:
+        "new MountingHole(options?: { reference?: string, footprint?: string, size?: 'M2'|'M2.5'|'M3'|'M4'|'M5'|'M6'|'M8', pcb? })",
       parameters: [
-        { name: 'reference', type: 'string', required: false, description: 'Auto-assigned as MH1, MH2, etc. if omitted' },
-        { name: 'size', type: 'string', required: false, description: 'Metric bolt size: M2, M2.5, M3, M4, M5, M6, M8', default: 'M2' },
-        { name: 'footprint', type: 'string', required: false, description: 'Custom footprint. Overrides size-derived default' },
+        {
+          name: 'reference',
+          type: 'string',
+          required: false,
+          description: 'Auto-assigned as MH1, MH2, etc. if omitted',
+        },
+        {
+          name: 'size',
+          type: 'string',
+          required: false,
+          description: 'Metric bolt size: M2, M2.5, M3, M4, M5, M6, M8',
+          default: 'M2',
+        },
+        {
+          name: 'footprint',
+          type: 'string',
+          required: false,
+          description: 'Custom footprint. Overrides size-derived default',
+        },
         { name: 'pcb', type: '{ x, y, rotation }', required: false, description: 'PCB placement' },
       ],
     },
@@ -353,7 +390,8 @@ typecad.create(mh1, mh2, mh3, mh4);`,
   {
     name: 'net-tie',
     category: 'passive-components',
-    description: 'Net ties connect 2-4 nets together on the PCB without adding a visible component. Used for shorting nets or splitting ground planes',
+    description:
+      'Net ties connect 2-4 nets together on the PCB without adding a visible component. Used for shorting nets or splitting ground planes',
     package: '@typecad/passives',
     import: "import { Tie } from '@typecad/passives/tie';",
     usage: {

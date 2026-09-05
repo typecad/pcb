@@ -20,10 +20,10 @@ export class CsvDownloader {
    * @param customCacheDir Custom cache directory (used when useSharedCache is false)
    */
   constructor(
-    maxRetries: number = 3, 
+    maxRetries: number = 3,
     initialBackoffMs: number = 1000,
     useSharedCache: boolean = true,
-    customCacheDir: string = '.'
+    customCacheDir: string = '.',
   ) {
     this.maxRetries = maxRetries;
     this.initialBackoffMs = initialBackoffMs;
@@ -43,33 +43,29 @@ export class CsvDownloader {
     let lastError: Error | null = null;
 
     // Resolve the actual file path based on cache configuration
-    const outputPath = await CacheUtils.resolveCacheFilePath(
-      fileName,
-      this.useSharedCache,
-      this.customCacheDir
-    );
+    const outputPath = await CacheUtils.resolveCacheFilePath(fileName, this.useSharedCache, this.customCacheDir);
 
     while (attempt < this.maxRetries) {
       try {
         // Attempt to download the file
         await this.performDownload(url, outputPath);
-        
+
         // If download succeeds, validate the file
         await this.validateCsvFile(outputPath);
-        
+
         // If we get here, both download and validation succeeded
         return;
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
-        
+
         // If it's a validation error, don't retry
         if (errorMessage.includes('CSV validation failed')) {
           throw error;
         }
-        
+
         lastError = error instanceof Error ? error : new Error(String(error));
         attempt++;
-        
+
         if (attempt < this.maxRetries) {
           // Calculate exponential backoff time
           const backoffTime = this.initialBackoffMs * Math.pow(2, attempt - 1);
@@ -79,11 +75,10 @@ export class CsvDownloader {
       }
     }
 
-    const errorCode = lastError instanceof Error && 'code' in lastError
-      ? String(lastError.code) : 'DOWNLOAD_FAILED';
+    const errorCode = lastError instanceof Error && 'code' in lastError ? String(lastError.code) : 'DOWNLOAD_FAILED';
     throw new NetworkError(
       `Failed to download CSV after ${this.maxRetries} attempts: ${lastError?.message || 'Unknown error'}`,
-      errorCode
+      errorCode,
     );
   }
 
@@ -96,18 +91,14 @@ export class CsvDownloader {
   private async performDownload(url: string, outputPath: string): Promise<void> {
     // Use native fetch API for Node.js
     const response = await fetch(url);
-    
+
     if (!response.ok) {
-      throw new NetworkError(
-        `HTTP error: ${response.status} ${response.statusText}`,
-        undefined,
-        response.status
-      );
+      throw new NetworkError(`HTTP error: ${response.status} ${response.statusText}`, undefined, response.status);
     }
 
     // Get response as text
     const text = await response.text();
-    
+
     // Write to file
     await fs.writeFile(outputPath, text, 'utf-8');
   }
@@ -121,7 +112,7 @@ export class CsvDownloader {
     try {
       // Check if file exists and has content
       const stats = await fs.stat(filePath);
-      
+
       if (stats.size === 0) {
         throw new Error('Downloaded CSV file is empty');
       }
@@ -129,16 +120,16 @@ export class CsvDownloader {
       // Read the first few bytes to check if it starts with valid CSV content
       const fileHandle = await fs.open(filePath, 'r');
       const buffer = Buffer.alloc(1024); // Read first 1KB
-      
+
       const { bytesRead } = await fileHandle.read(buffer, 0, 1024, 0);
       await fileHandle.close();
-      
+
       if (bytesRead === 0) {
         throw new Error('Could not read from CSV file');
       }
 
       const fileStart = buffer.toString('utf8', 0, bytesRead);
-      
+
       // Basic validation: Check if the file starts with expected CSV header format
       // This is a simple check - we're looking for comma-separated values in the first line
       if (!fileStart.includes(',')) {
@@ -153,7 +144,7 @@ export class CsvDownloader {
       } catch {
         // Ignore errors when trying to delete the file
       }
-      
+
       throw new Error(`CSV validation failed: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
@@ -164,6 +155,6 @@ export class CsvDownloader {
    * @private
    */
   private delay(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 }

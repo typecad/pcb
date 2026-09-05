@@ -5,7 +5,13 @@ import chalk from 'chalk';
 import logger from './utils/logging.js';
 import { parse } from 'acorn';
 import { simple as walk } from 'acorn-walk';
-import type { Node, ObjectExpression, Literal, TemplateLiteral, ExportDefaultDeclaration as ExportDefaultDeclarationNode } from 'acorn';
+import type {
+  Node,
+  ObjectExpression,
+  Literal,
+  TemplateLiteral,
+  ExportDefaultDeclaration as ExportDefaultDeclarationNode,
+} from 'acorn';
 
 export interface TypeCADConfig {
   entry?: string;
@@ -35,10 +41,7 @@ function getMtimeMs(filePath: string): number | undefined {
 
 function findConfigPath(): string | null {
   const cwd = process.cwd();
-  const candidates = [
-    path.join(cwd, 'typecad.conf.ts'),
-    path.join(cwd, 'typecad.conf.js'),
-  ];
+  const candidates = [path.join(cwd, 'typecad.conf.ts'), path.join(cwd, 'typecad.conf.js')];
   for (const candidate of candidates) {
     if (fs.existsSync(candidate)) return candidate;
   }
@@ -46,73 +49,71 @@ function findConfigPath(): string | null {
 }
 
 function extractObjectValue(node: ObjectExpression): Record<string, unknown> {
-    const obj: Record<string, unknown> = {};
-    for (const prop of node.properties) {
-        if (prop.type !== 'Property') continue;
-        const keyNode = prop.key;
-        if (keyNode.type !== 'Identifier') continue;
-        obj[keyNode.name] = extractValue(prop.value);
-    }
-    return obj;
+  const obj: Record<string, unknown> = {};
+  for (const prop of node.properties) {
+    if (prop.type !== 'Property') continue;
+    const keyNode = prop.key;
+    if (keyNode.type !== 'Identifier') continue;
+    obj[keyNode.name] = extractValue(prop.value);
+  }
+  return obj;
 }
 
 function extractValue(node: Node): unknown {
-    switch (node.type) {
-        case 'Literal':
-            return (node as Literal).value;
-        case 'TemplateLiteral': {
-            const tl = node as TemplateLiteral;
-            if (tl.quasis.length === 1 && tl.expressions.length === 0) {
-                return tl.quasis[0].value.cooked;
-            }
-            return undefined;
-        }
-        case 'ObjectExpression':
-            return extractObjectValue(node as ObjectExpression);
-        case 'Identifier':
-            return undefined;
-        default:
-            return undefined;
+  switch (node.type) {
+    case 'Literal':
+      return (node as Literal).value;
+    case 'TemplateLiteral': {
+      const tl = node as TemplateLiteral;
+      if (tl.quasis.length === 1 && tl.expressions.length === 0) {
+        return tl.quasis[0].value.cooked;
+      }
+      return undefined;
     }
+    case 'ObjectExpression':
+      return extractObjectValue(node as ObjectExpression);
+    case 'Identifier':
+      return undefined;
+    default:
+      return undefined;
+  }
 }
 
 function loadTsConfig(configPath: string): TypeCADConfig {
-    try {
-        const source = fs.readFileSync(configPath, 'utf8');
-        const ast = parse(source, {
-            ecmaVersion: 2022,
-            sourceType: 'module',
-            allowReturnOutsideFunction: true,
-            allowImportExportEverywhere: true,
-        });
+  try {
+    const source = fs.readFileSync(configPath, 'utf8');
+    const ast = parse(source, {
+      ecmaVersion: 2022,
+      sourceType: 'module',
+      allowReturnOutsideFunction: true,
+      allowImportExportEverywhere: true,
+    });
 
-        let configObj: Record<string, unknown> | undefined;
+    let configObj: Record<string, unknown> | undefined;
 
-        walk(ast, {
-            ExportDefaultDeclaration(node: Node) {
-                const decl = (node as ExportDefaultDeclarationNode).declaration;
-                if (!decl) return;
+    walk(ast, {
+      ExportDefaultDeclaration(node: Node) {
+        const decl = (node as ExportDefaultDeclarationNode).declaration;
+        if (!decl) return;
 
-                let arg: Node | undefined;
-                if (decl.type === 'CallExpression' && decl.arguments.length > 0) {
-                    arg = decl.arguments[0] as Node;
-                } else if (decl.type === 'ObjectExpression') {
-                    arg = decl;
-                }
+        let arg: Node | undefined;
+        if (decl.type === 'CallExpression' && decl.arguments.length > 0) {
+          arg = decl.arguments[0] as Node;
+        } else if (decl.type === 'ObjectExpression') {
+          arg = decl;
+        }
 
-                if (arg && arg.type === 'ObjectExpression') {
-                    configObj = extractObjectValue(arg as ObjectExpression);
-                }
-            },
-        });
+        if (arg && arg.type === 'ObjectExpression') {
+          configObj = extractObjectValue(arg as ObjectExpression);
+        }
+      },
+    });
 
-        return configObj || {};
-    } catch (error) {
-        const msg = error instanceof Error ? error.message : String(error);
-        throw new Error(
-            `Cannot load ${path.basename(configPath)}: ${msg}. Fix or delete the file.`
-        );
-    }
+    return configObj || {};
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    throw new Error(`Cannot load ${path.basename(configPath)}: ${msg}. Fix or delete the file.`);
+  }
 }
 
 function invalidateIfStale(): void {
@@ -160,12 +161,7 @@ export function loadConfig(): TypeCADConfig {
       _cachedConfig = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
       return _cachedConfig!;
     } catch (err) {
-      logger.error(
-        chalk.red.bold(
-          'ERROR: cannot read/process typecad.json. Try editing or deleting the file.'
-        ),
-        err
-      );
+      logger.error(chalk.red.bold('ERROR: cannot read/process typecad.json. Try editing or deleting the file.'), err);
     }
   }
 
@@ -194,8 +190,10 @@ export class Config {
     const tsPath = path.join(process.cwd(), 'typecad.conf.ts');
     if (fs.existsSync(tsPath)) {
       logger.warn(
-        chalk.yellow('WARNING: typecad.conf.ts exists and takes priority over typecad.json. ' +
-          'Edit typecad.conf.ts directly, or delete it to use typecad.json.')
+        chalk.yellow(
+          'WARNING: typecad.conf.ts exists and takes priority over typecad.json. ' +
+            'Edit typecad.conf.ts directly, or delete it to use typecad.json.',
+        ),
       );
     }
 

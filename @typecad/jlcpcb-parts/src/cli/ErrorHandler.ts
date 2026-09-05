@@ -22,11 +22,11 @@ export class ErrorHandler {
       } else if (error.message.includes('timed out')) {
         return this.handleTimeoutError(error);
       }
-      
+
       // Generic error handling
       return `${error.message}\n${chalk.yellow('This is an unexpected error. Please report it to the developers.')}`;
     }
-    
+
     // Unknown error type
     return `An unknown error occurred: ${String(error)}`;
   }
@@ -64,9 +64,9 @@ export class ErrorHandler {
    * @returns User-friendly error message with suggestions
    */
   private static handleNetworkError(error: NetworkError): string {
-    let message = `Network error: ${error.message}`;
+    const message = `Network error: ${error.message}`;
     let suggestion = '';
-    
+
     // Add specific suggestions based on error code
     switch (error.code) {
       case 'ENOTFOUND':
@@ -76,14 +76,16 @@ export class ErrorHandler {
         suggestion = 'The server took too long to respond. Try again later.';
         break;
       case 'ECONNREFUSED':
-        suggestion = 'The server refused the connection. It might be down or your firewall might be blocking the connection.';
+        suggestion =
+          'The server refused the connection. It might be down or your firewall might be blocking the connection.';
         break;
       default:
         if (error.statusCode) {
           if (error.statusCode === 404) {
             suggestion = 'The requested resource was not found. The JLCPCB data source might have changed.';
           } else if (error.statusCode === 403) {
-            suggestion = 'Access to the resource was forbidden. Check if you need to authenticate or if the resource is no longer public.';
+            suggestion =
+              'Access to the resource was forbidden. Check if you need to authenticate or if the resource is no longer public.';
           } else if (error.statusCode >= 500) {
             suggestion = 'The server encountered an error. Try again later.';
           }
@@ -91,7 +93,7 @@ export class ErrorHandler {
           suggestion = 'Check your internet connection and try again.';
         }
     }
-    
+
     return `${message}\n${chalk.yellow(suggestion)}`;
   }
 
@@ -101,9 +103,9 @@ export class ErrorHandler {
    * @returns User-friendly error message with suggestions
    */
   private static handleFileSystemError(error: FileSystemError): string {
-    let message = `File system error: ${error.message}`;
+    const message = `File system error: ${error.message}`;
     let suggestion = '';
-    
+
     // Add specific suggestions based on error code
     switch (error.code) {
       case 'ENOENT':
@@ -118,7 +120,7 @@ export class ErrorHandler {
       default:
         suggestion = `There was an issue with the file system operation on: ${error.path}.`;
     }
-    
+
     return `${message}\n${chalk.yellow(suggestion)}`;
   }
 
@@ -128,15 +130,15 @@ export class ErrorHandler {
    * @returns User-friendly error message with suggestions
    */
   private static handleParsingError(error: ParsingError): string {
-    let message = `Parsing error: ${error.message}`;
+    const message = `Parsing error: ${error.message}`;
     let suggestion = '';
-    
+
     if (error.line !== undefined && error.column !== undefined) {
       suggestion = `Error occurred at line ${error.line}, column ${error.column}. The data format might be corrupted or invalid.`;
     } else {
       suggestion = 'The data format might be corrupted or invalid. Try refreshing the data source.';
     }
-    
+
     return `${message}\n${chalk.yellow(suggestion)}`;
   }
 
@@ -147,8 +149,9 @@ export class ErrorHandler {
    */
   private static handleTimeoutError(error: Error): string {
     const message = `Timeout error: ${error.message}`;
-    const suggestion = 'The operation took too long to complete. Try using more specific search terms or check your internet connection.';
-    
+    const suggestion =
+      'The operation took too long to complete. Try using more specific search terms or check your internet connection.';
+
     return `${message}\n${chalk.yellow(suggestion)}`;
   }
 }

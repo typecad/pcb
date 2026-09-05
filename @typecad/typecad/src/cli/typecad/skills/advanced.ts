@@ -4,7 +4,8 @@ export const advancedSkills: Skill[] = [
   {
     name: 'contract',
     category: 'advanced',
-    description: 'Export a hardware contract JSON file that describes the MCU pin assignments, peripherals, and connections for firmware integration (TypeHAL)',
+    description:
+      'Export a hardware contract JSON file that describes the MCU pin assignments, peripherals, and connections for firmware integration (TypeHAL)',
     package: '@typecad/typecad',
     import: "import { PCB } from '@typecad/typecad';",
     examples: [
@@ -44,13 +45,19 @@ export const advancedSkills: Skill[] = [
   {
     name: 'simulation',
     category: 'advanced',
-    description: 'Run ngspice SPICE simulations directly from your typeCAD code. Use the fluent simulate() method on PCB to run DC operating point (.op) or transient (.tran) analysis and get programmatic access to results for testing',
+    description:
+      'Run ngspice SPICE simulations directly from your typeCAD code. Use the fluent simulate() method on PCB to run DC operating point (.op) or transient (.tran) analysis and get programmatic access to results for testing',
     package: '@typecad/typecad',
     import: "import { PCB, Power } from '@typecad/typecad';",
     usage: {
       signature: 'pcb.simulate(...powers: Power[]): SimulationContext',
       parameters: [
-        { name: 'powers', type: 'Power[]', required: true, description: 'One or more Power objects defining voltage sources for the simulation' },
+        {
+          name: 'powers',
+          type: 'Power[]',
+          required: true,
+          description: 'One or more Power objects defining voltage sources for the simulation',
+        },
       ],
     },
     examples: [

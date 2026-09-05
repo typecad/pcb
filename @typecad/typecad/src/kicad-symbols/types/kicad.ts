@@ -8,7 +8,7 @@ import { CacheMetadata } from './index.js';
 /**
  * Represents metadata about a KiCad symbol library.
  * Contains information extracted from the main symbols page.
- * 
+ *
  * @interface LibraryInfo
  * @example
  * ```typescript
@@ -22,10 +22,10 @@ import { CacheMetadata } from './index.js';
 export interface LibraryInfo {
   /** Library name (e.g., "4xxx", "Analog", "MCU_Microchip_ATtiny") */
   name: string;
-  
+
   /** Full URL to the library's symbol page */
   url: string;
-  
+
   /** Optional description of the library contents */
   description?: string;
 }
@@ -33,7 +33,7 @@ export interface LibraryInfo {
 /**
  * Represents an individual KiCad symbol with its metadata.
  * Contains information extracted from library symbol tables.
- * 
+ *
  * @interface SymbolInfo
  * @example
  * ```typescript
@@ -48,13 +48,13 @@ export interface LibraryInfo {
 export interface SymbolInfo {
   /** Name of the library containing this symbol */
   library: string;
-  
+
   /** Symbol name within the library */
   symbol: string;
-  
+
   /** Description of the symbol's function or purpose */
   description: string;
-  
+
   /** Formatted name in "library:symbol" format for display and search */
   formattedName: string;
 }
@@ -62,7 +62,7 @@ export interface SymbolInfo {
 /**
  * Extended cache metadata specifically for KiCad symbol data.
  * Includes KiCad-specific information like the "Last updated" date from the website.
- * 
+ *
  * @interface KiCadCacheMetadata
  * @extends CacheMetadata
  * @example
@@ -80,10 +80,10 @@ export interface SymbolInfo {
 export interface KiCadCacheMetadata extends CacheMetadata {
   /** Date extracted from "Last updated on [date]" text on the KiCad website */
   lastUpdatedDate: Date;
-  
+
   /** Number of symbol libraries processed */
   libraryCount: number;
-  
+
   /** Total number of symbols across all libraries */
   symbolCount: number;
 }

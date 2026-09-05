@@ -6,27 +6,16 @@
  * sampling against the routing grid.
  */
 
-import type {
-  ILengthMatchContext,
-  IStraightSegment,
-} from '../types/length_match.js';
+import type { ILengthMatchContext, IStraightSegment } from '../types/length_match.js';
 
-import {
-  isOccupiedWorld,
-  logZeroClearanceSample,
-  isEnvDebug,
-  chalk,
-} from './length_matcher_helpers.js';
+import { isOccupiedWorld, logZeroClearanceSample, isEnvDebug, chalk } from './length_matcher_helpers.js';
 import logger from '../../utils/logging.js';
 
 /**
  * Estimate the maximum symmetric amplitude available on **both** sides of
  * a segment. Returns the minimum clearance found across all sample points.
  */
-export function estimateMaxAmplitude(
-  ctx: ILengthMatchContext,
-  seg: IStraightSegment,
-): number {
+export function estimateMaxAmplitude(ctx: ILengthMatchContext, seg: IStraightSegment): number {
   const layer = seg.start.layer;
 
   // Unit vectors along and normal to the segment
@@ -81,11 +70,7 @@ export function estimateMaxAmplitude(
  * normal side (`+1` or `-1`). Used when we intentionally meander on one
  * side of the baseline only.
  */
-export function estimateMaxAmplitudeOneSide(
-  ctx: ILengthMatchContext,
-  seg: IStraightSegment,
-  side: 1 | -1,
-): number {
+export function estimateMaxAmplitudeOneSide(ctx: ILengthMatchContext, seg: IStraightSegment, side: 1 | -1): number {
   const layer = seg.start.layer;
   const ux = (seg.end.x - seg.start.x) / seg.length;
   const uy = (seg.end.y - seg.start.y) / seg.length;
@@ -149,8 +134,14 @@ export function estimateMaxAmplitudeOneSide(
     // Optional debug: per-sample occupancy report when enabled via env var
     if (isEnvDebug()) {
       try {
-        logger.debug(chalk.gray(`[LengthMatch] sample ${i + 1}/${samples} at (${px.toFixed(3)},${py.toFixed(3)}) side=${side} -> maxFree=${low.toFixed(3)}`));
-      } catch { logger.debug('[LengthMatch] failed to log per-sample debug info'); }
+        logger.debug(
+          chalk.gray(
+            `[LengthMatch] sample ${i + 1}/${samples} at (${px.toFixed(3)},${py.toFixed(3)}) side=${side} -> maxFree=${low.toFixed(3)}`,
+          ),
+        );
+      } catch {
+        logger.debug('[LengthMatch] failed to log per-sample debug info');
+      }
     }
   }
 
@@ -161,8 +152,14 @@ export function estimateMaxAmplitudeOneSide(
   if (ampLimit <= 1e-9 && maxPer > 1e-9) {
     if (isEnvDebug()) {
       try {
-        logger.debug(chalk.yellow(`[LengthMatch] ampLimit global min=0 but local max=${maxPer.toFixed(3)} — using local best span`));
-      } catch { logger.debug('[LengthMatch] failed to log ampLimit fallback info'); }
+        logger.debug(
+          chalk.yellow(
+            `[LengthMatch] ampLimit global min=0 but local max=${maxPer.toFixed(3)} — using local best span`,
+          ),
+        );
+      } catch {
+        logger.debug('[LengthMatch] failed to log ampLimit fallback info');
+      }
     }
     return Math.max(0, maxPer);
   }

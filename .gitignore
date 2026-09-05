@@ -1,16 +1,30 @@
 # Dependencies
-*/node_modules/
+node_modules/
 git_disabled/
 
 # Build output directories
-*/dist/
-*/dist-obfuscated/
+build/
+dist/
+dist-obfuscated/
+coverage/
+*.js.map
+*.d.ts.map
+
+# Compiled output emitted beside sources (passives compiles in place)
+@typecad/passives/**/*.js
+@typecad/passives/**/*.d.ts
+
+# Nested workspace lockfiles (root package-lock.json is authoritative)
+@typecad/typecad/package-lock.json
+rd_skeleton/hw/package-lock.json
+
+# Generated renders (rd_isl9120_impl)
+rd_isl9120_impl/hw/svg/
+rd_isl9120_impl/hw/circuit_visualization.svg
 
 # AI tool directories
 .opencode/
 .typecode/
-
-node_modules
 
 # Editor local history (contains its own .git)
 .history/
@@ -18,3 +32,11 @@ node_modules
 *.backup
 ~*
 *-backups/
+
+# KiCad local state and generated caches
+*.kicad_prl
+fp-info-cache
+sym-lib-table
+svg-cache.json
+component_registry.json
+.jlcpcb-cache-timestamp

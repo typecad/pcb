@@ -1,5 +1,0 @@
-Reference,Value,Datasheet,Footprint,MPN
-VR1,,https://www.mouser.com/datasheet/2/698/REN_isl9120ir_DST_20050421-1998698.pdf,lib:QFN50P300X300X75-13N-D,ISL9120IRTNZ
-C1,22 uF,,Capacitor_SMD:C_0603_1608Metric,
-C2,10 µF,,Capacitor_SMD:C_0603_1608Metric,
-U1,1 µH,https://www.mouser.com/datasheet/2/281/1/J_E_TE243A_0011-2303275.pdf,lib:1285ASH1R0MP2,1285AS-H-1R0M=P2

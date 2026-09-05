@@ -17,11 +17,7 @@ export class TimestampManager {
    * @param cacheExpirationHours Number of hours before cache expires
    * @param useSharedCache Whether to use shared cache directory (default: true)
    */
-  constructor(
-    cacheDir: string = '.', 
-    cacheExpirationHours: number = 24, 
-    useSharedCache: boolean = true
-  ) {
+  constructor(cacheDir: string = '.', cacheExpirationHours: number = 24, useSharedCache: boolean = true) {
     this.cacheExpirationHours = cacheExpirationHours;
     this.useSharedCache = useSharedCache;
     this.customCacheDir = cacheDir;
@@ -39,9 +35,9 @@ export class TimestampManager {
     this.timestampFilePath = await CacheUtils.resolveCacheFilePath(
       '.jlcpcb-cache-timestamp',
       this.useSharedCache,
-      this.customCacheDir
+      this.customCacheDir,
     );
-    
+
     return this.timestampFilePath;
   }
 
@@ -54,12 +50,12 @@ export class TimestampManager {
       const timestampFile = await this.getTimestampFilePath();
       const timestampStr = await fs.readFile(timestampFile, 'utf-8');
       const timestamp = new Date(timestampStr.trim());
-      
+
       // Validate that the timestamp is a valid date
       if (isNaN(timestamp.getTime())) {
         return null;
       }
-      
+
       return timestamp;
     } catch (error) {
       // File doesn't exist or can't be read
@@ -86,15 +82,15 @@ export class TimestampManager {
    */
   async isCacheStale(): Promise<boolean> {
     const timestamp = await this.readTimestamp();
-    
+
     if (!timestamp) {
       // No timestamp file exists, cache is considered stale
       return true;
     }
 
     const now = new Date();
-    const expirationTime = new Date(timestamp.getTime() + (this.cacheExpirationHours * 60 * 60 * 1000));
-    
+    const expirationTime = new Date(timestamp.getTime() + this.cacheExpirationHours * 60 * 60 * 1000);
+
     return now > expirationTime;
   }
 
@@ -104,7 +100,7 @@ export class TimestampManager {
    */
   async getCacheAgeHours(): Promise<number | null> {
     const timestamp = await this.readTimestamp();
-    
+
     if (!timestamp) {
       return null;
     }

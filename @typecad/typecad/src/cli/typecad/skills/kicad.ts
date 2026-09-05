@@ -131,7 +131,8 @@ typecad search "op amp" --format=json`,
   {
     name: 'roundtrip',
     category: 'kicad',
-    description: 'Round-trip workflow: edit in KiCad, sync changes back to typeCAD source using kicad2typecad --apply. Controls how component positions and text layouts are synchronized',
+    description:
+      'Round-trip workflow: edit in KiCad, sync changes back to typeCAD source using kicad2typecad --apply. Controls how component positions and text layouts are synchronized',
     examples: [
       {
         title: 'Apply component position changes',

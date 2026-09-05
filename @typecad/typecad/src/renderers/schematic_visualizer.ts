@@ -10,7 +10,8 @@ import { reportError } from '../utils/error_reporter.js';
 import type { Component } from '../component.js';
 
 export function schematic(schematicData: Schematic): boolean {
-  KiCAD.instance;
+  // Initializing the singleton throws when the KiCad CLI is unavailable.
+  if (!KiCAD.instance) return false;
   const symbolManager = new SymbolLibraryManager();
   const kicad = new KiCADSchematic(symbolManager);
 

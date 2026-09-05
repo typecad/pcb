@@ -1,9 +1,9 @@
-import type { IRoutePath, RouteEndpoint } from "./types.js";
+import type { IRoutePath, RouteEndpoint } from './types.js';
 
 export function appendSegmentNodes(
   destination: RouteEndpoint[],
   destinationGrid: { gridX: number; gridY: number; layer: string }[],
-  segment: IRoutePath
+  segment: IRoutePath,
 ): void {
   const skipFirst = destination.length > 0 && pointsEqual(destination[destination.length - 1], segment.nodes[0]);
   const nodesToAdd = skipFirst ? segment.nodes.slice(1) : segment.nodes;
@@ -33,19 +33,11 @@ export function mergeSegments(segments: IRoutePath[]): IRoutePath {
     length: mergedLength,
     viaCount: mergedVias,
     success: segments.every((s) => s.success),
-    error: segments.every((s) => s.success) ? undefined : "One or more segments failed",
+    error: segments.every((s) => s.success) ? undefined : 'One or more segments failed',
   };
 }
 
-export function pointsEqual(
-  a: RouteEndpoint | undefined,
-  b: RouteEndpoint | undefined,
-  tolerance = 0.001
-): boolean {
+export function pointsEqual(a: RouteEndpoint | undefined, b: RouteEndpoint | undefined, tolerance = 0.001): boolean {
   if (!a || !b) return false;
-  return (
-    Math.abs(a.x - b.x) < tolerance &&
-    Math.abs(a.y - b.y) < tolerance &&
-    a.layer === b.layer
-  );
+  return Math.abs(a.x - b.x) < tolerance && Math.abs(a.y - b.y) < tolerance && a.layer === b.layer;
 }

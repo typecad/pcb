@@ -112,7 +112,7 @@ export class ElectricalParameterParser implements ParameterParser {
     return {
       value: parseFloat(match[1]),
       unit: match[0].substring(match[1].length).trim(),
-      originalText: match[0]
+      originalText: match[0],
     };
   }
 
@@ -132,7 +132,7 @@ export class ElectricalParameterParser implements ParameterParser {
       return {
         value,
         unit: multiplier + 'Ω',
-        originalText: match[0]
+        originalText: match[0],
       };
     }
 
@@ -155,7 +155,7 @@ export class ElectricalParameterParser implements ParameterParser {
       return {
         value,
         unit: multiplier + 'F',
-        originalText: match[0]
+        originalText: match[0],
       };
     }
 
@@ -178,7 +178,7 @@ export class ElectricalParameterParser implements ParameterParser {
       return {
         value,
         unit: multiplier + 'H',
-        originalText: match[0]
+        originalText: match[0],
       };
     }
 
@@ -195,7 +195,7 @@ export class ElectricalParameterParser implements ParameterParser {
     return {
       value: value.value,
       unit: 'V',
-      originalText: value.originalText
+      originalText: value.originalText,
     };
   }
 
@@ -206,7 +206,7 @@ export class ElectricalParameterParser implements ParameterParser {
    */
   private normalizeCapacitance(value: ElectricalValue): ElectricalValue {
     let normalizedValue = value.value;
-    let normalizedUnit = 'F';
+    const normalizedUnit = 'F';
 
     // Convert to base unit (F)
     if (value.unit.includes('p')) {
@@ -222,7 +222,7 @@ export class ElectricalParameterParser implements ParameterParser {
     return {
       value: normalizedValue,
       unit: normalizedUnit,
-      originalText: value.originalText
+      originalText: value.originalText,
     };
   }
 
@@ -233,7 +233,7 @@ export class ElectricalParameterParser implements ParameterParser {
    */
   private normalizeResistance(value: ElectricalValue): ElectricalValue {
     let normalizedValue = value.value;
-    let normalizedUnit = 'Ω';
+    const normalizedUnit = 'Ω';
 
     // Convert to base unit (Ω)
     if (value.unit.includes('m')) {
@@ -249,7 +249,7 @@ export class ElectricalParameterParser implements ParameterParser {
     return {
       value: normalizedValue,
       unit: normalizedUnit,
-      originalText: value.originalText
+      originalText: value.originalText,
     };
   }
 
@@ -260,7 +260,7 @@ export class ElectricalParameterParser implements ParameterParser {
    */
   private normalizeInductance(value: ElectricalValue): ElectricalValue {
     let normalizedValue = value.value;
-    let normalizedUnit = 'H';
+    const normalizedUnit = 'H';
 
     // Convert to base unit (H)
     if (value.unit.includes('n')) {
@@ -274,7 +274,7 @@ export class ElectricalParameterParser implements ParameterParser {
     return {
       value: normalizedValue,
       unit: normalizedUnit,
-      originalText: value.originalText
+      originalText: value.originalText,
     };
   }
 
@@ -285,7 +285,7 @@ export class ElectricalParameterParser implements ParameterParser {
    */
   private normalizeFrequency(value: ElectricalValue): ElectricalValue {
     let normalizedValue = value.value;
-    let normalizedUnit = 'Hz';
+    const normalizedUnit = 'Hz';
 
     // Convert to base unit (Hz)
     if (value.unit.toLowerCase().includes('khz')) {
@@ -299,7 +299,7 @@ export class ElectricalParameterParser implements ParameterParser {
     return {
       value: normalizedValue,
       unit: normalizedUnit,
-      originalText: value.originalText
+      originalText: value.originalText,
     };
   }
 }

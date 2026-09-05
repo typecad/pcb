@@ -1,18 +1,11 @@
-import { RoutingGrid } from "../contracts/routing_grid.js";
-import type {
-  IWaypointPlan,
-  RouteEndpoint,
-  RouteEndpointWithGrid,
-} from "./types.js";
-import { heuristicDistance } from "./grid_search.js";
+import { RoutingGrid } from '../contracts/routing_grid.js';
+import type { IWaypointPlan, RouteEndpoint, RouteEndpointWithGrid } from './types.js';
+import { heuristicDistance } from './grid_search.js';
 
 /**
  * Utility function to convert a RouteEndpoint to RouteEndpointWithGrid.
  */
-export function enrichEndpointWithGrid(
-  endpoint: RouteEndpoint,
-  grid: RoutingGrid
-): RouteEndpointWithGrid {
+export function enrichEndpointWithGrid(endpoint: RouteEndpoint, grid: RoutingGrid): RouteEndpointWithGrid {
   const gridPos = grid.worldToGrid(endpoint.x, endpoint.y);
   return {
     x: endpoint.x,
@@ -66,21 +59,16 @@ export class WaypointPlanner {
 
   estimateEdgeCost(p1: RouteEndpoint, p2: RouteEndpoint): number {
     // Use pre-computed grid coordinates if available (from RouteEndpointWithGrid)
-    const gridStart = 'gridX' in p1 && 'gridY' in p1
-      ? { x: (p1 as RouteEndpointWithGrid).gridX, y: (p1 as RouteEndpointWithGrid).gridY }
-      : this.grid.worldToGrid(p1.x, p1.y);
-    const gridEnd = 'gridX' in p2 && 'gridY' in p2
-      ? { x: (p2 as RouteEndpointWithGrid).gridX, y: (p2 as RouteEndpointWithGrid).gridY }
-      : this.grid.worldToGrid(p2.x, p2.y);
+    const gridStart =
+      'gridX' in p1 && 'gridY' in p1
+        ? { x: (p1 as RouteEndpointWithGrid).gridX, y: (p1 as RouteEndpointWithGrid).gridY }
+        : this.grid.worldToGrid(p1.x, p1.y);
+    const gridEnd =
+      'gridX' in p2 && 'gridY' in p2
+        ? { x: (p2 as RouteEndpointWithGrid).gridX, y: (p2 as RouteEndpointWithGrid).gridY }
+        : this.grid.worldToGrid(p2.x, p2.y);
 
-    const directCost = heuristicDistance(
-      gridStart.x,
-      gridStart.y,
-      p1.layer,
-      gridEnd.x,
-      gridEnd.y,
-      p2.layer
-    );
+    const directCost = heuristicDistance(gridStart.x, gridStart.y, p1.layer, gridEnd.x, gridEnd.y, p2.layer);
 
     if (!this.preferredLayer) {
       return directCost;
@@ -91,12 +79,7 @@ export class WaypointPlanner {
     const isThroughHole1 = this.isThroughHole(key1);
     const isThroughHole2 = this.isThroughHole(key2);
 
-    if (
-      p1.layer === this.preferredLayer ||
-      p2.layer === this.preferredLayer ||
-      isThroughHole1 ||
-      isThroughHole2
-    ) {
+    if (p1.layer === this.preferredLayer || p2.layer === this.preferredLayer || isThroughHole1 || isThroughHole2) {
       return directCost;
     }
 
@@ -109,22 +92,12 @@ export class WaypointPlanner {
       return directCost;
     }
 
-    const costP1ToTH =
-      nearest.nearestToP1.dist *
-      this.constants.WAYPOINT_ROUTING_OVERHEAD;
+    const costP1ToTH = nearest.nearestToP1.dist * this.constants.WAYPOINT_ROUTING_OVERHEAD;
     const costTHToTH = Math.sqrt(
-      Math.pow(
-        nearest.nearestToP2.gridX - nearest.nearestToP1.gridX,
-        2
-      ) +
-        Math.pow(
-          nearest.nearestToP2.gridY - nearest.nearestToP1.gridY,
-          2
-        )
+      Math.pow(nearest.nearestToP2.gridX - nearest.nearestToP1.gridX, 2) +
+        Math.pow(nearest.nearestToP2.gridY - nearest.nearestToP1.gridY, 2),
     );
-    const costTHToP2 =
-      nearest.nearestToP2.dist *
-      this.constants.WAYPOINT_ROUTING_OVERHEAD;
+    const costTHToP2 = nearest.nearestToP2.dist * this.constants.WAYPOINT_ROUTING_OVERHEAD;
 
     const viaRouteCost = costP1ToTH + costTHToTH + costTHToP2;
     return Math.min(viaRouteCost, directCost);
@@ -134,7 +107,7 @@ export class WaypointPlanner {
     p1: RouteEndpoint,
     p2: RouteEndpoint,
     _allPoints: RouteEndpoint[],
-    _routedPoints: Set<number>
+    _routedPoints: Set<number>,
   ): IWaypointPlan {
     const result: IWaypointPlan = {
       waypoints: [],
@@ -153,8 +126,7 @@ export class WaypointPlanner {
       return result;
     }
 
-    const bothOnPreferred =
-      p1.layer === this.preferredLayer && p2.layer === this.preferredLayer;
+    const bothOnPreferred = p1.layer === this.preferredLayer && p2.layer === this.preferredLayer;
     if (bothOnPreferred) {
       return result;
     }
@@ -166,15 +138,14 @@ export class WaypointPlanner {
 
     const waypointDistance = Math.hypot(
       nearest.nearestToP1.x - nearest.nearestToP2.x,
-      nearest.nearestToP1.y - nearest.nearestToP2.y
+      nearest.nearestToP1.y - nearest.nearestToP2.y,
     );
     if (waypointDistance < this.constants.MIN_WAYPOINT_SEPARATION) {
       return result;
     }
 
     const directDistance = Math.hypot(p2.x - p1.x, p2.y - p1.y);
-    const waypointCost =
-      nearest.nearestToP1.dist + waypointDistance + nearest.nearestToP2.dist;
+    const waypointCost = nearest.nearestToP1.dist + waypointDistance + nearest.nearestToP2.dist;
     const viaCostSavings = this.viaCost * 2;
     const effectiveWaypointCost = waypointCost - viaCostSavings;
 
@@ -182,10 +153,8 @@ export class WaypointPlanner {
       return result;
     }
 
-    const skipFirst =
-      nearest.nearestToP1.dist < this.constants.VERY_CLOSE_THRESHOLD;
-    const skipLast =
-      nearest.nearestToP2.dist < this.constants.VERY_CLOSE_THRESHOLD;
+    const skipFirst = nearest.nearestToP1.dist < this.constants.VERY_CLOSE_THRESHOLD;
+    const skipLast = nearest.nearestToP2.dist < this.constants.VERY_CLOSE_THRESHOLD;
 
     result.waypoints = [
       {
@@ -205,9 +174,7 @@ export class WaypointPlanner {
   }
 
   private isThroughHole(key: string): boolean {
-    return this.throughHoles.some(
-      (hole) => `${hole.gridX}:${hole.gridY}` === key
-    );
+    return this.throughHoles.some((hole) => `${hole.gridX}:${hole.gridY}` === key);
   }
 
   private isPointThroughHole(point: RouteEndpoint): boolean {
@@ -217,7 +184,7 @@ export class WaypointPlanner {
 
   private findNearestPair(
     p1: RouteEndpoint,
-    p2: RouteEndpoint
+    p2: RouteEndpoint,
   ): {
     nearestToP1: (EnrichedVia & { dist: number }) | null;
     nearestToP2: (EnrichedVia & { dist: number }) | null;
@@ -228,18 +195,12 @@ export class WaypointPlanner {
 
     for (const via of this.throughHoles) {
       const dist1 = Math.hypot(via.x - p1.x, via.y - p1.y);
-      if (
-        dist1 < maxProximity &&
-        (!nearestToP1 || dist1 < nearestToP1.dist)
-      ) {
+      if (dist1 < maxProximity && (!nearestToP1 || dist1 < nearestToP1.dist)) {
         nearestToP1 = { ...via, dist: dist1 };
       }
 
       const dist2 = Math.hypot(via.x - p2.x, via.y - p2.y);
-      if (
-        dist2 < maxProximity &&
-        (!nearestToP2 || dist2 < nearestToP2.dist)
-      ) {
+      if (dist2 < maxProximity && (!nearestToP2 || dist2 < nearestToP2.dist)) {
         nearestToP2 = { ...via, dist: dist2 };
       }
     }

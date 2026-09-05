@@ -109,7 +109,7 @@ const DEFAULT_EXTRACTION_OPTIONS: ExtractionOptions = {
   maxFileSize: 10 * 1024 * 1024, // 10MB limit
   encoding: 'utf8',
   continueOnError: true,
-  strictValidation: false
+  strictValidation: false,
 };
 
 /**
@@ -124,7 +124,7 @@ export class KiCadSymbolExtractor {
     symbolsWithDescriptions: 0,
     symbolsWithKeywords: 0,
     processingTime: 0,
-    errors: []
+    errors: [],
   };
 
   constructor(options: Partial<ExtractionOptions> = {}) {
@@ -194,12 +194,12 @@ export class KiCadSymbolExtractor {
     for (const symbolDef of symbolDefinitions) {
       try {
         const extractedSymbol = this.createExtractedSymbol(symbolDef, fileInfo, libraryName);
-        
+
         // Apply filtering based on options
         if (this.shouldIncludeSymbol(extractedSymbol)) {
           extractedSymbols.push(extractedSymbol);
           this.statistics.symbolsExtracted++;
-          
+
           if (extractedSymbol.hasDescription) {
             this.statistics.symbolsWithDescriptions++;
           }
@@ -212,10 +212,10 @@ export class KiCadSymbolExtractor {
           file: fileInfo.filePath,
           message: error instanceof Error ? error.message : String(error),
           symbolName: symbolDef.name,
-          type: 'invalid_format'
+          type: 'invalid_format',
         };
         this.statistics.errors.push(extractionError);
-        
+
         if (!this.options.continueOnError) {
           throw error;
         }
@@ -300,13 +300,13 @@ export class KiCadSymbolExtractor {
    * @private
    */
   private createExtractedSymbol(
-    symbolDef: KiCadParsedSymbol, 
-    fileInfo: SymbolFileInfo, 
-    libraryName: string
+    symbolDef: KiCadParsedSymbol,
+    fileInfo: SymbolFileInfo,
+    libraryName: string,
   ): ExtractedSymbol {
     const hasDescription = Boolean(symbolDef.description && symbolDef.description.trim().length > 0);
     const hasKeywords = Boolean(symbolDef.keywords && symbolDef.keywords.trim().length > 0);
-    
+
     // Create combined search text
     const searchParts: string[] = [];
     if (symbolDef.description) {
@@ -317,7 +317,7 @@ export class KiCadSymbolExtractor {
     }
     searchParts.push(symbolDef.name);
     searchParts.push(libraryName);
-    
+
     const searchText = searchParts.join(' ').toLowerCase();
 
     return {
@@ -328,7 +328,7 @@ export class KiCadSymbolExtractor {
       fileModified: fileInfo.lastModified,
       hasDescription,
       hasKeywords,
-      searchText
+      searchText,
     };
   }
 
@@ -353,7 +353,7 @@ export class KiCadSymbolExtractor {
     if (!this.options.includeWithoutDescription && !symbol.hasDescription) {
       return false;
     }
-    
+
     if (!this.options.includeWithoutKeywords && !symbol.hasKeywords) {
       return false;
     }
@@ -376,10 +376,10 @@ export class KiCadSymbolExtractor {
    */
   private handleFileError(fileInfo: SymbolFileInfo, error: unknown): void {
     this.statistics.filesWithErrors++;
-    
+
     let errorType: ExtractionError['type'] = 'parse_error';
     const errorMessage = error instanceof Error ? error.message : String(error);
-    
+
     if (errorMessage.includes('Failed to read file')) {
       errorType = 'file_read_error';
     } else if (errorMessage.includes('encoding') || errorMessage.includes('decode')) {
@@ -391,9 +391,9 @@ export class KiCadSymbolExtractor {
     const extractionError: ExtractionError = {
       file: fileInfo.filePath,
       message: errorMessage,
-      type: errorType
+      type: errorType,
     };
-    
+
     this.statistics.errors.push(extractionError);
   }
 
@@ -409,7 +409,7 @@ export class KiCadSymbolExtractor {
       symbolsWithDescriptions: 0,
       symbolsWithKeywords: 0,
       processingTime: 0,
-      errors: []
+      errors: [],
     };
   }
 
@@ -420,9 +420,10 @@ export class KiCadSymbolExtractor {
   getExtractionSummary(): string {
     const stats = this.statistics;
     const processingTimeSeconds = (stats.processingTime / 1000).toFixed(2);
-    const successRate = stats.filesProcessed > 0 
-      ? ((stats.filesProcessed - stats.filesWithErrors) / stats.filesProcessed * 100).toFixed(1)
-      : '0';
+    const successRate =
+      stats.filesProcessed > 0
+        ? (((stats.filesProcessed - stats.filesWithErrors) / stats.filesProcessed) * 100).toFixed(1)
+        : '0';
 
     let summary = `Extraction Summary:\n`;
     summary += `  Files processed: ${stats.filesProcessed}\n`;
@@ -432,17 +433,17 @@ export class KiCadSymbolExtractor {
     summary += `  Symbols with descriptions: ${stats.symbolsWithDescriptions}\n`;
     summary += `  Symbols with keywords: ${stats.symbolsWithKeywords}\n`;
     summary += `  Processing time: ${processingTimeSeconds} seconds\n`;
-    
+
     if (stats.errors.length > 0) {
       summary += `\nErrors encountered:\n`;
       const errorsByType = this.groupErrorsByType();
       for (const [type, count] of Object.entries(errorsByType)) {
         summary += `  ${type}: ${count}\n`;
       }
-      
+
       if (stats.errors.length <= 3) {
         summary += `\nError details:\n`;
-        stats.errors.forEach(error => {
+        stats.errors.forEach((error) => {
           summary += `  - ${path.basename(error.file)}: ${error.message}\n`;
         });
       }
@@ -458,11 +459,11 @@ export class KiCadSymbolExtractor {
    */
   private groupErrorsByType(): Record<string, number> {
     const errorCounts: Record<string, number> = {};
-    
+
     for (const error of this.statistics.errors) {
       errorCounts[error.type] = (errorCounts[error.type] || 0) + 1;
     }
-    
+
     return errorCounts;
   }
 }

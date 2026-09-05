@@ -80,16 +80,16 @@ const DEFAULT_PROCESSING_CONFIG: ProcessingConfig = {
     recursive: true,
     maxDepth: 10,
     followSymlinks: false,
-    excludePatterns: ['.git', '.svn', '__pycache__', 'backup', 'cache']
+    excludePatterns: ['.git', '.svn', '__pycache__', 'backup', 'cache'],
   },
   extractionOptions: {
     includeWithoutDescription: true,
     includeWithoutKeywords: true,
     continueOnError: true,
-    strictValidation: false
+    strictValidation: false,
   },
   enableProgress: true,
-  progressInterval: 1000
+  progressInterval: 1000,
 };
 
 /**
@@ -131,7 +131,7 @@ export class KiCadLocalDataProcessor {
         percentage: 5,
         filesProcessed: 0,
         totalFiles: 0,
-        symbolsExtracted: 0
+        symbolsExtracted: 0,
       });
 
       const symbolsPath = await this.findSymbolsPath();
@@ -144,7 +144,7 @@ export class KiCadLocalDataProcessor {
         percentage: 10,
         filesProcessed: 0,
         totalFiles: 0,
-        symbolsExtracted: 0
+        symbolsExtracted: 0,
       });
 
       const symbolFiles = await this.scanForSymbolFiles(symbolsPath);
@@ -157,7 +157,7 @@ export class KiCadLocalDataProcessor {
         percentage: 20,
         filesProcessed: 0,
         totalFiles: symbolFiles.length,
-        symbolsExtracted: 0
+        symbolsExtracted: 0,
       });
 
       const extractedSymbols = await this.extractSymbols(symbolFiles);
@@ -170,12 +170,11 @@ export class KiCadLocalDataProcessor {
         percentage: 100,
         filesProcessed: symbolFiles.length,
         totalFiles: symbolFiles.length,
-        symbolsExtracted: extractedSymbols.length
+        symbolsExtracted: extractedSymbols.length,
       });
 
       this.statistics.totalProcessingTime = Date.now() - this.startTime;
       return extractedSymbols;
-
     } catch (error) {
       this.reportProgress({
         phase: 'error',
@@ -183,7 +182,7 @@ export class KiCadLocalDataProcessor {
         percentage: 0,
         filesProcessed: 0,
         totalFiles: 0,
-        symbolsExtracted: 0
+        symbolsExtracted: 0,
       });
 
       this.statistics.totalProcessingTime = Date.now() - this.startTime;
@@ -249,7 +248,7 @@ export class KiCadLocalDataProcessor {
    */
   private async scanForSymbolFiles(symbolsPath: string): Promise<SymbolFileInfo[]> {
     const scanner = new KiCadSymbolFileScanner(symbolsPath, this.config.scanOptions);
-    
+
     const scanStartTime = Date.now();
     const symbolFiles = await scanner.scanForSymbolFiles();
     const scanStats = scanner.getStatistics();
@@ -260,14 +259,14 @@ export class KiCadLocalDataProcessor {
       percentage: 15,
       filesProcessed: 0,
       totalFiles: symbolFiles.length,
-      symbolsExtracted: 0
+      symbolsExtracted: 0,
     });
 
     this.statistics.scanStats = {
       filesFound: scanStats.totalFiles,
       directoriesScanned: scanStats.directoriesScanned,
       scanTime: Date.now() - scanStartTime,
-      errors: scanStats.errors
+      errors: scanStats.errors,
     };
 
     return symbolFiles;
@@ -282,7 +281,7 @@ export class KiCadLocalDataProcessor {
   private async extractSymbols(symbolFiles: SymbolFileInfo[]): Promise<ExtractedSymbol[]> {
     const extractor = new KiCadSymbolExtractor(this.config.extractionOptions);
     const extractedSymbols: ExtractedSymbol[] = [];
-    
+
     let progressInterval: NodeJS.Timeout | undefined;
     let lastProgressTime = Date.now();
 
@@ -297,7 +296,7 @@ export class KiCadLocalDataProcessor {
     try {
       // Process files in batches for better progress reporting
       const batchSize = Math.max(1, Math.floor(symbolFiles.length / 20)); // 20 progress updates
-      
+
       for (let i = 0; i < symbolFiles.length; i += batchSize) {
         const batch = symbolFiles.slice(i, i + batchSize);
         const batchSymbols = await extractor.extractSymbolsFromFiles(batch);
@@ -305,7 +304,11 @@ export class KiCadLocalDataProcessor {
 
         // Report progress
         if (this.config.enableProgress && Date.now() - lastProgressTime > 500) {
-          const progress = this.calculateExtractionProgress(i + batch.length, symbolFiles.length, extractedSymbols.length);
+          const progress = this.calculateExtractionProgress(
+            i + batch.length,
+            symbolFiles.length,
+            extractedSymbols.length,
+          );
           this.reportProgress(progress);
           lastProgressTime = Date.now();
         }
@@ -328,9 +331,9 @@ export class KiCadLocalDataProcessor {
    * @private
    */
   private calculateExtractionProgress(
-    filesProcessed: number, 
-    totalFiles: number, 
-    symbolsExtracted: number = 0
+    filesProcessed: number,
+    totalFiles: number,
+    symbolsExtracted: number = 0,
   ): ProcessingProgress {
     const percentage = Math.min(95, 20 + (filesProcessed / totalFiles) * 75);
     const elapsedTime = Date.now() - this.startTime;
@@ -344,7 +347,7 @@ export class KiCadLocalDataProcessor {
       filesProcessed,
       totalFiles,
       symbolsExtracted,
-      estimatedTimeRemaining
+      estimatedTimeRemaining,
     };
   }
 
@@ -388,7 +391,7 @@ export class KiCadLocalDataProcessor {
         filesFound: 0,
         directoriesScanned: 0,
         scanTime: 0,
-        errors: []
+        errors: [],
       },
       extractionStats: {
         filesProcessed: 0,
@@ -397,8 +400,8 @@ export class KiCadLocalDataProcessor {
         symbolsWithDescriptions: 0,
         symbolsWithKeywords: 0,
         extractionTime: 0,
-        errors: []
-      }
+        errors: [],
+      },
     };
   }
 
@@ -416,13 +419,13 @@ export class KiCadLocalDataProcessor {
     summary += `  Total processing time: ${totalTimeSeconds} seconds\n`;
     summary += `  KiCad path: ${stats.kicadPath || 'Not detected'}\n`;
     summary += `  Symbols path: ${stats.symbolsPath || 'Not found'}\n\n`;
-    
+
     summary += `Scanning Results:\n`;
     summary += `  Files found: ${stats.scanStats.filesFound}\n`;
     summary += `  Directories scanned: ${stats.scanStats.directoriesScanned}\n`;
     summary += `  Scan time: ${scanTimeSeconds} seconds\n`;
     summary += `  Scan errors: ${stats.scanStats.errors.length}\n\n`;
-    
+
     summary += `Extraction Results:\n`;
     summary += `  Files processed: ${stats.extractionStats.filesProcessed}\n`;
     summary += `  Files with errors: ${stats.extractionStats.filesWithErrors}\n`;

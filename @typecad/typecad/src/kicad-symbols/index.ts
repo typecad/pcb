@@ -14,11 +14,7 @@ export type {
 // Error classes
 export { NetworkError, FileSystemError, ParsingError } from './types/index.js';
 
-export type {
-  LibraryInfo,
-  SymbolInfo,
-  KiCadCacheMetadata,
-} from './types/kicad.js';
+export type { LibraryInfo, SymbolInfo, KiCadCacheMetadata } from './types/kicad.js';
 
 // Public classes
 export { Application, runApplication } from './app/index.js';

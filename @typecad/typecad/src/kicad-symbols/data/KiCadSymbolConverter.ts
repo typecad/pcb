@@ -33,7 +33,7 @@ const DEFAULT_CONVERSION_OPTIONS: ConversionOptions = {
   defaultPackage: 'Symbol',
   includeFilePath: true,
   includeMetadata: true,
-  generateSearchableExtra: true
+  generateSearchableExtra: true,
 };
 
 /**
@@ -65,7 +65,7 @@ export class KiCadSymbolConverter {
     symbolsWithKeywords: 0,
     uniqueLibraries: 0,
     conversionTime: 0,
-    libraryDistribution: {}
+    libraryDistribution: {},
   };
 
   constructor(options: Partial<ConversionOptions> = {}) {
@@ -89,22 +89,23 @@ export class KiCadSymbolConverter {
       try {
         const componentRecord = this.convertSingleSymbol(symbol);
         componentRecords.push(componentRecord);
-        
+
         this.statistics.symbolsConverted++;
-        
+
         if (symbol.hasDescription) {
           this.statistics.symbolsWithDescriptions++;
         }
-        
+
         if (symbol.hasKeywords) {
           this.statistics.symbolsWithKeywords++;
         }
 
         // Track library distribution
         libraryCount[symbol.library] = (libraryCount[symbol.library] || 0) + 1;
-        
       } catch (error) {
-        logger.warn(`Failed to convert symbol ${symbol.name} from ${symbol.library}: ${error instanceof Error ? error.message : String(error)}`);
+        logger.warn(
+          `Failed to convert symbol ${symbol.name} from ${symbol.library}: ${error instanceof Error ? error.message : String(error)}`,
+        );
         continue;
       }
     }
@@ -125,16 +126,16 @@ export class KiCadSymbolConverter {
   private convertSingleSymbol(symbol: ExtractedSymbol): ComponentRecord {
     // Generate unique identifier in library:symbol format
     const lcsc = `${symbol.library}:${symbol.name}`;
-    
+
     // Use library as category, with optional mapping
     const category = this.options.categoryMapping?.[symbol.library] || symbol.library;
-    
+
     // Build description with fallback
     const description = this.buildDescription(symbol);
-    
+
     // Build extra data object
     const extraData = this.buildExtraData(symbol);
-    
+
     // Create formatted timestamp
     const timestamp = new Date().toISOString();
 
@@ -157,7 +158,7 @@ export class KiCadSymbolConverter {
       extra: JSON.stringify(extraData),
       assembly_process: 'N/A', // Not applicable for symbols
       min_order_qty: '0',
-      attrition_qty: '0'
+      attrition_qty: '0',
     };
 
     return componentRecord;
@@ -171,28 +172,28 @@ export class KiCadSymbolConverter {
    */
   private buildDescription(symbol: ExtractedSymbol): string {
     const parts: string[] = [];
-    
+
     // Primary description from symbol
     if (symbol.description && symbol.description.trim()) {
       parts.push(symbol.description.trim());
     }
-    
+
     // Add library context if no description
     if (parts.length === 0) {
       parts.push(`Symbol from ${symbol.library} library`);
     }
-    
+
     // Add keywords as additional context if available and not already in description
     if (symbol.keywords && symbol.keywords.trim()) {
       const keywords = symbol.keywords.trim();
       const description = parts[0].toLowerCase();
-      
+
       // Only add keywords if they provide additional information
       if (!description.includes(keywords.toLowerCase())) {
         parts.push(`Keywords: ${keywords}`);
       }
     }
-    
+
     return parts.join(' - ');
   }
 
@@ -206,7 +207,7 @@ export class KiCadSymbolConverter {
     const extraData: Record<string, unknown> = {
       symbolType: 'schematic',
       library: symbol.library,
-      source: 'local_files'
+      source: 'local_files',
     };
 
     // Include original description if different from processed description
@@ -218,7 +219,7 @@ export class KiCadSymbolConverter {
     if (symbol.keywords) {
       extraData.keywords = symbol.keywords;
       // Split keywords for easier searching
-      extraData.keywordList = symbol.keywords.split(/\s+/).filter(k => k.length > 0);
+      extraData.keywordList = symbol.keywords.split(/\s+/).filter((k) => k.length > 0);
     }
 
     // Include file metadata if enabled
@@ -242,9 +243,9 @@ export class KiCadSymbolConverter {
 
     // Include all properties for advanced users
     if (symbol.properties && symbol.properties.length > 0) {
-      extraData.properties = symbol.properties.map(prop => ({
+      extraData.properties = symbol.properties.map((prop) => ({
         name: prop.name,
-        value: prop.value
+        value: prop.value,
       }));
     }
 
@@ -259,36 +260,36 @@ export class KiCadSymbolConverter {
    */
   private generateSearchTerms(symbol: ExtractedSymbol): string[] {
     const terms = new Set<string>();
-    
+
     // Add symbol name parts
-    const nameParts = symbol.name.split(/[_\-\s]+/).filter(part => part.length > 1);
-    nameParts.forEach(part => terms.add(part.toLowerCase()));
-    
+    const nameParts = symbol.name.split(/[_\-\s]+/).filter((part) => part.length > 1);
+    nameParts.forEach((part) => terms.add(part.toLowerCase()));
+
     // Add library name
     terms.add(symbol.library.toLowerCase());
-    
+
     // Add description words
     if (symbol.description) {
       const descWords = symbol.description
         .split(/\s+/)
-        .filter(word => word.length > 2)
-        .map(word => word.toLowerCase().replace(/[^a-z0-9]/g, ''));
-      descWords.forEach(word => {
+        .filter((word) => word.length > 2)
+        .map((word) => word.toLowerCase().replace(/[^a-z0-9]/g, ''));
+      descWords.forEach((word) => {
         if (word.length > 2) {
           terms.add(word);
         }
       });
     }
-    
+
     // Add keywords
     if (symbol.keywords) {
       const keywords = symbol.keywords
         .split(/\s+/)
-        .filter(keyword => keyword.length > 1)
-        .map(keyword => keyword.toLowerCase());
-      keywords.forEach(keyword => terms.add(keyword));
+        .filter((keyword) => keyword.length > 1)
+        .map((keyword) => keyword.toLowerCase());
+      keywords.forEach((keyword) => terms.add(keyword));
     }
-    
+
     return Array.from(terms);
   }
 
@@ -311,7 +312,7 @@ export class KiCadSymbolConverter {
       symbolsWithKeywords: 0,
       uniqueLibraries: 0,
       conversionTime: 0,
-      libraryDistribution: {}
+      libraryDistribution: {},
     };
   }
 
@@ -322,9 +323,8 @@ export class KiCadSymbolConverter {
   getConversionSummary(): string {
     const stats = this.statistics;
     const conversionTimeSeconds = (stats.conversionTime / 1000).toFixed(2);
-    const averagePerSymbol = stats.symbolsConverted > 0 
-      ? (stats.conversionTime / stats.symbolsConverted).toFixed(2)
-      : '0';
+    const averagePerSymbol =
+      stats.symbolsConverted > 0 ? (stats.conversionTime / stats.symbolsConverted).toFixed(2) : '0';
 
     let summary = `Conversion Summary:\n`;
     summary += `  Symbols converted: ${stats.symbolsConverted}\n`;
@@ -337,9 +337,9 @@ export class KiCadSymbolConverter {
     if (stats.uniqueLibraries > 0) {
       summary += `\nTop 10 Libraries by Symbol Count:\n`;
       const sortedLibraries = Object.entries(stats.libraryDistribution)
-        .sort(([,a], [,b]) => b - a)
+        .sort(([, a], [, b]) => b - a)
         .slice(0, 10);
-      
+
       sortedLibraries.forEach(([library, count]) => {
         summary += `  ${library}: ${count} symbols\n`;
       });
@@ -358,8 +358,10 @@ export class KiCadSymbolConverter {
     // Check required fields
     const requiredFields = ['lcsc', 'category', 'description', 'manufacturer'];
     for (const field of requiredFields) {
-      if (!record[field as keyof ComponentRecord] || 
-          String(record[field as keyof ComponentRecord]).trim().length === 0) {
+      if (
+        !record[field as keyof ComponentRecord] ||
+        String(record[field as keyof ComponentRecord]).trim().length === 0
+      ) {
         return false;
       }
     }

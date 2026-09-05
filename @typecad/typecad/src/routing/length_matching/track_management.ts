@@ -5,11 +5,7 @@
  * TrackBuilder instances from fitted sawtooth patterns.
  */
 
-import type {
-  ILengthMatchContext,
-  ITrackBuilder,
-  IStraightSegment,
-} from '../types/length_match.js';
+import type { ILengthMatchContext, ITrackBuilder, IStraightSegment } from '../types/length_match.js';
 
 import { chalk, isEnvDebug } from './length_matcher_helpers.js';
 import logger from '../../utils/logging.js';
@@ -46,7 +42,7 @@ export function removeOrTrimOverlappingStraight(
 
   let totalTracks = 0;
   let collinearTracks = 0;
-  let overlappingTracks = 0;
+  const overlappingTracks = 0;
 
   for (const tb of builders) {
     for (const el of tb.getElements()) {
@@ -146,7 +142,9 @@ export function removeOrTrimOverlappingStraight(
           }
         }
       }
-    } catch { logger.debug('[LengthMatch] Debug logging failed in findOverlapping'); }
+    } catch {
+      logger.debug('[LengthMatch] Debug logging failed in findOverlapping');
+    }
   }
 
   return { toRemove, residuals };
@@ -155,15 +153,14 @@ export function removeOrTrimOverlappingStraight(
 /**
  * Remove overlapping track elements (by UUID) from a set of builders.
  */
-export function removeElementsFromBuilders(
-  uuids: string[],
-  builders: ITrackBuilder[],
-): void {
+export function removeElementsFromBuilders(uuids: string[], builders: ITrackBuilder[]): void {
   if (uuids.length === 0) return;
   const uuidSet = new Set(uuids);
   for (const builder of builders) {
     const elements = builder.getElements();
-    (builder as unknown as { elements: typeof elements }).elements = elements.filter((el) => !(el.uuid && uuidSet.has(el.uuid)));
+    (builder as unknown as { elements: typeof elements }).elements = elements.filter(
+      (el) => !(el.uuid && uuidSet.has(el.uuid)),
+    );
   }
 }
 
@@ -209,14 +206,22 @@ export function createBuilderFromFittedPattern(
             `[LengthMatch] createBuilderFromFittedPattern: created builder for segment length=${segment.length.toFixed(3)} achieved=${fitted.achievedDelta.toFixed(3)}`,
           ),
         );
-      } catch { logger.debug('[LengthMatch] Debug logging failed'); }
+      } catch {
+        logger.debug('[LengthMatch] Debug logging failed');
+      }
     }
     return nb;
   } catch (err) {
     if (isEnvDebug()) {
       try {
-        logger.debug(chalk.gray(`[LengthMatch] createBuilderFromFittedPattern threw: ${err instanceof Error ? err.message : String(err)}`));
-      } catch { logger.debug('[LengthMatch] Debug logging failed in error handler'); }
+        logger.debug(
+          chalk.gray(
+            `[LengthMatch] createBuilderFromFittedPattern threw: ${err instanceof Error ? err.message : String(err)}`,
+          ),
+        );
+      } catch {
+        logger.debug('[LengthMatch] Debug logging failed in error handler');
+      }
     }
     return null;
   }

@@ -8,6 +8,10 @@ export interface BoardPad {
   net: string | null;
   type: string;
   pinType?: string;
+  /** Pad center in the footprint's local (unrotated) frame, mm. */
+  at: { x: number; y: number };
+  /** Copper layers the pad exists on ('*.Cu' expands during analysis). */
+  layers: string[];
 }
 
 export interface BoardComponent {
@@ -36,6 +40,49 @@ export interface BoardNet {
   pins: string[];
   vias: { x: number; y: number }[];
   zones: { layers: string[] }[];
+  segments: BoardSegment[];
+  /** Copper connectivity analysis; null when the net has no pins. */
+  route: NetRoute | null;
+}
+
+export interface BoardSegment {
+  layer: string;
+  width: number;
+  length: number;
+  start: Pt;
+  end: Pt;
+}
+
+/** Copper pours and keepout regions parsed from zone nodes. */
+export interface BoardZone {
+  netCode: number;
+  netName: string | null;
+  layers: string[];
+  keepout: boolean;
+  filled: boolean;
+  fillMode: string | null;
+  bbox: { x: number; y: number; width: number; height: number };
+  polygon: Pt[];
+}
+
+/**
+ * Per-net copper connectivity: which pins are joined by tracks, vias, and
+ * pours, and which are still waiting for copper.
+ */
+export interface NetRoute {
+  segments: number;
+  /** Total routed track length in mm. */
+  length: number;
+  layers: string[];
+  pinsTotal: number;
+  /** Pins in the largest copper island (all pins when fully routed). */
+  pinsConnected: number;
+  /** Pin groups with no copper path between them; empty when routed. */
+  disconnectedGroups: string[][];
+  /** True when every pin of the net sits in one copper island. */
+  routed: boolean;
+  /** True when a zone pour contributes to the connection. */
+  pourAssisted: boolean;
 }
 
 export interface BoardSummary {
@@ -44,6 +91,7 @@ export interface BoardSummary {
   namedNets: number;
   vias: number;
   zones: number;
+  keepouts: number;
   tracks: number;
   unconnectedPads: number;
   board: { minX: number; minY: number; maxX: number; maxY: number } | null;
@@ -53,6 +101,7 @@ export interface BoardModel {
   file: string;
   components: BoardComponent[];
   nets: BoardNet[];
+  zones: BoardZone[];
   summary: BoardSummary;
 }
 
@@ -217,11 +266,22 @@ export function buildBoardModel(pcbPath: string): BoardModel {
     for (const pad of padNodes) {
       const net = netNameOf(pad);
       const pintypeNode = pad.child('pintype');
+      const padAt = pad.child('at');
+      const layersNode = pad.child('layers');
+      const padLayers: string[] = [];
+      if (layersNode) {
+        for (let i = 1; i < layersNode.length; i++) {
+          const l = layersNode.getString(i);
+          if (l) padLayers.push(l);
+        }
+      }
       pads.push({
         pad: pad.getString(1) ?? '',
         type: pad.getString(2) ?? '',
         net: net ? nameFor(net.code, net.name) : null,
         pinType: pintypeNode ? (pintypeNode.getString(1) ?? undefined) : undefined,
+        at: { x: padAt?.getNumber(1, 0) ?? 0, y: padAt?.getNumber(2, 0) ?? 0 },
+        layers: padLayers,
       });
     }
 
@@ -247,7 +307,7 @@ export function buildBoardModel(pcbPath: string): BoardModel {
   const netByCode = (code: number, name: string | null): BoardNet => {
     let n = nets.get(code);
     if (!n) {
-      n = { code, name: name ?? netNames.get(code) ?? '', pins: [], vias: [], zones: [] };
+      n = { code, name: name ?? netNames.get(code) ?? '', pins: [], vias: [], zones: [], segments: [], route: null };
       nets.set(code, n);
     }
     if (!n.name && name) n.name = name;
@@ -269,24 +329,69 @@ export function buildBoardModel(pcbPath: string): BoardModel {
     netByCode(net.code, net.name).vias.push({ x: at?.getNumber(1, 0) ?? 0, y: at?.getNumber(2, 0) ?? 0 });
   }
 
+  const round = (v: number) => Math.round(v * 1000) / 1000;
+  const segments = root.findAll('segment');
+  for (const seg of segments) {
+    const net = netNameOf(seg);
+    if (!net || net.code < 0) continue;
+    const start = nodeChildPoint(seg, 'start');
+    const end = nodeChildPoint(seg, 'end');
+    if (!start || !end) continue;
+    netByCode(net.code, net.name).segments.push({
+      layer: seg.child('layer')?.getString(1) ?? '',
+      width: seg.child('width')?.getNumber(1, 0) ?? 0,
+      length: round(Math.hypot(end.x - start.x, end.y - start.y)),
+      start,
+      end,
+    });
+  }
+
+  // Zones: copper pours (net-assigned) and keepouts (net-less)
+  const zones: BoardZone[] = [];
   for (const zone of root.findAll('zone')) {
     const netCodeNode = zone.child('net');
     const netNameNode = zone.child('net_name');
     const code = netCodeNode?.getNumber(1, -1) ?? -1;
-    const rawName = netNameNode?.rawAt(1);
-    const name = typeof rawName === 'string' ? rawName : null;
+    const name = netNameNode?.getString(1) ?? null;
     const layersNode = zone.child('layers');
     const layers: string[] = [];
     if (layersNode) {
       for (let i = 1; i < layersNode.length; i++) {
-        const l = layersNode.rawAt(i);
-        if (typeof l === 'string') layers.push(l);
+        const l = layersNode.getString(i);
+        if (l) layers.push(l);
       }
     }
-    if (code >= 0) netByCode(code, name).zones.push({ layers });
+    const polygon: Pt[] = [];
+    for (const pts of zone.findAll('pts')) {
+      for (const xy of pts.children('xy')) polygon.push({ x: xy.getNumber(1, 0), y: xy.getNumber(2, 0) });
+    }
+    const xs = polygon.map((p) => p.x);
+    const ys = polygon.map((p) => p.y);
+    const fillNode = zone.child('fill');
+    const filled = fillNode ? fillNode.getBool(1) === true : false;
+    const fillMode = fillNode?.child('mode')?.getString(1) ?? null;
+    const keepout = zone.child('keepout') !== null || (!netNameNode && code < 0);
+    const entry: BoardZone = {
+      netCode: code,
+      netName: name,
+      layers,
+      keepout,
+      filled,
+      fillMode,
+      bbox:
+        polygon.length > 0
+          ? {
+              x: round(Math.min(...xs)),
+              y: round(Math.min(...ys)),
+              width: round(Math.max(...xs) - Math.min(...xs)),
+              height: round(Math.max(...ys) - Math.min(...ys)),
+            }
+          : { x: 0, y: 0, width: 0, height: 0 },
+      polygon,
+    };
+    zones.push(entry);
+    if (!keepout && code >= 0) netByCode(code, name).zones.push({ layers });
   }
-
-  const trackCount = root.findAll('segment').length;
 
   // Board bounds from Edge.Cuts graphics
   let board: BoardSummary['board'] = null;
@@ -315,22 +420,207 @@ export function buildBoardModel(pcbPath: string): BoardModel {
     0,
   );
 
+  // Copper layers observed anywhere on the board (defaults to F/B.Cu)
+  const copperLayers = new Set<string>(['F.Cu', 'B.Cu']);
+  const isCopper = (l: string) => /^[FB]\.Cu$|^In\d+\.Cu$/.test(l);
+  for (const z of zones) for (const l of z.layers) if (isCopper(l)) copperLayers.add(l);
+  for (const n of allNets) {
+    for (const s of n.segments) if (isCopper(s.layer)) copperLayers.add(s.layer);
+  }
+
+  for (const net of allNets) {
+    net.route = analyzeNetRouting(net, components, zones, copperLayers);
+  }
+
   return {
     file: pcbPath,
     components,
     nets: allNets,
+    zones,
     summary: {
       file: pcbPath,
       components: components.length,
       namedNets: allNets.filter((n) => n.name !== '').length,
       vias: viaTotal,
-      zones: allNets.reduce((acc, n) => acc + n.zones.length, 0),
-      tracks: trackCount,
+      zones: zones.filter((z) => !z.keepout).length,
+      keepouts: zones.filter((z) => z.keepout).length,
+      tracks: segments.length,
       unconnectedPads,
       board,
     },
   };
 }
+
+// ─── Copper connectivity analysis ─────────────────────────────────────────────
+
+/** Union-find over `x:y:layer` node keys. */
+class UnionFind {
+  #parent = new Map<string, string>();
+
+  find(k: string): string {
+    let root = this.#parent.get(k) ?? k;
+    while (root !== (this.#parent.get(root) ?? root)) root = this.#parent.get(root)!;
+    this.#parent.set(k, root);
+    return root;
+  }
+
+  union(a: string, b: string): boolean {
+    const ra = this.find(a);
+    const rb = this.find(b);
+    if (ra === rb) return false;
+    this.#parent.set(ra, rb);
+    return true;
+  }
+}
+
+const pointKey = (p: Pt, layer: string) => `${Math.round(p.x * 1e4)}:${Math.round(p.y * 1e4)}:${layer}`;
+
+/** Ray-casting point-in-polygon. */
+function pointInPolygon(p: Pt, polygon: Pt[]): boolean {
+  let inside = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const xi = polygon[i].x;
+    const yi = polygon[i].y;
+    const xj = polygon[j].x;
+    const yj = polygon[j].y;
+    const intersects = yi > p.y !== yj > p.y && p.x < ((xj - xi) * (p.y - yi)) / (yj - yi) + xi;
+    if (intersects) inside = !inside;
+  }
+  return inside;
+}
+
+/**
+ * Pad center transformed from footprint-local coordinates to board space.
+ * KiCad y axis points down; positive footprint rotation is CCW on screen.
+ * Back-side footprints mirror their children's x coordinates.
+ */
+function padAbsolutePosition(comp: BoardComponent, pad: BoardPad): Pt {
+  const rad = ((comp.at.rotation ?? 0) * Math.PI) / 180;
+  let lx = pad.at.x;
+  const ly = pad.at.y;
+  if (comp.side === 'back') lx = -lx;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  return {
+    x: comp.at.x + lx * cos + ly * sin,
+    y: comp.at.y - lx * sin + ly * cos,
+  };
+}
+
+function padCopperLayers(pad: BoardPad, boardCopper: Set<string>): string[] {
+  const isThrough =
+    pad.type === 'thru_hole' || pad.type === 'connect' || pad.type === 'np_thru_hole' || pad.layers.includes('*.Cu');
+  if (isThrough) return [...boardCopper];
+  return pad.layers.filter((l) => boardCopper.has(l));
+}
+
+/**
+ * Builds the copper connectivity graph for one net — pads, vias, track
+ * segments, and zone pours — and reports which pins are joined and which
+ * still have no copper path between them.
+ */
+function analyzeNetRouting(
+  net: BoardNet,
+  components: BoardComponent[],
+  zones: BoardZone[],
+  boardCopper: Set<string>,
+): NetRoute | null {
+  interface NetPad {
+    pin: string;
+    point: Pt;
+    layers: string[];
+    key0: string;
+  }
+  const netPads: NetPad[] = [];
+  for (const comp of components) {
+    for (const pad of comp.pads) {
+      if (pad.net !== net.name) continue;
+      const point = padAbsolutePosition(comp, pad);
+      const layers = padCopperLayers(pad, boardCopper);
+      netPads.push({ pin: `${comp.reference}.${pad.pad}`, point, layers, key0: pointKey(point, layers[0] ?? 'F.Cu') });
+    }
+  }
+
+  const uf = new UnionFind();
+  let pourAssisted = false;
+
+  // Pads: a through pad bridges all its layers at its position
+  for (const pad of netPads) {
+    for (let i = 1; i < pad.layers.length; i++) {
+      uf.union(pointKey(pad.point, pad.layers[0]), pointKey(pad.point, pad.layers[i]));
+    }
+  }
+
+  // Vias bridge their layers (typeCAD places standard through vias)
+  for (const via of net.vias) {
+    const p = { x: via.x, y: via.y };
+    uf.union(pointKey(p, 'F.Cu'), pointKey(p, 'B.Cu'));
+  }
+
+  // Segments connect their endpoints on their layer
+  for (const seg of net.segments) {
+    uf.union(pointKey(seg.start, seg.layer), pointKey(seg.end, seg.layer));
+  }
+
+  // Pours: same-net pads, vias, and segment endpoints inside the polygon
+  // (on a shared layer) all connect through the copper fill
+  for (const zone of zones) {
+    if (zone.keepout || zone.netName !== net.name || zone.polygon.length < 3) continue;
+    const zoneKey = `pour:${zone.netCode}:${zone.layers.join('+')}`;
+    let zoneTouched = false;
+    const attach = (p: Pt, layers: string[]) => {
+      const shared = layers.filter((l) => zone.layers.includes(l));
+      if (shared.length === 0 || !pointInPolygon(p, zone.polygon)) return;
+      for (const l of shared) {
+        if (uf.union(pointKey(p, l), zoneKey)) zoneTouched = true;
+      }
+    };
+    for (const pad of netPads) attach(pad.point, pad.layers);
+    for (const via of net.vias) attach({ x: via.x, y: via.y }, ['F.Cu', 'B.Cu']);
+    for (const seg of net.segments) {
+      attach(seg.start, [seg.layer]);
+      attach(seg.end, [seg.layer]);
+    }
+    if (zoneTouched) pourAssisted = true;
+  }
+
+  // Group pins by copper island
+  const groups = new Map<string, string[]>();
+  for (const pad of netPads) {
+    const root = uf.find(pad.key0);
+    const list = groups.get(root) ?? [];
+    list.push(pad.pin);
+    groups.set(root, list);
+  }
+
+  const pinsTotal = netPads.length;
+  if (pinsTotal === 0) {
+    return {
+      segments: net.segments.length,
+      length: round3(net.segments.reduce((acc, s) => acc + s.length, 0)),
+      layers: [...new Set(net.segments.map((s) => s.layer))],
+      pinsTotal: 0,
+      pinsConnected: 0,
+      disconnectedGroups: [],
+      routed: true,
+      pourAssisted,
+    };
+  }
+
+  const sortedGroups = [...groups.values()].map((g) => [...g].sort()).sort((a, b) => b.length - a.length);
+  return {
+    segments: net.segments.length,
+    length: round3(net.segments.reduce((acc, s) => acc + s.length, 0)),
+    layers: [...new Set(net.segments.map((s) => s.layer))],
+    pinsTotal,
+    pinsConnected: sortedGroups[0]?.length ?? 0,
+    disconnectedGroups: sortedGroups.slice(1),
+    routed: sortedGroups.length <= 1,
+    pourAssisted,
+  };
+}
+
+const round3 = (v: number) => Math.round(v * 1000) / 1000;
 
 export function findNet(model: BoardModel, name: string): BoardNet | undefined {
   const lower = name.toLowerCase();

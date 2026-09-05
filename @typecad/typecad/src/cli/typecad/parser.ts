@@ -14,7 +14,20 @@ export interface ParsedArgs {
  * `--flag value` forms; other double-dash flags are boolean unless written
  * with `=`.
  */
-const VALUE_FLAGS = new Set(['out', 'file', 'category', 'to', 'gap', 'rot', 'left-of', 'right-of', 'above', 'below']);
+const VALUE_FLAGS = new Set([
+  'out',
+  'file',
+  'category',
+  'to',
+  'gap',
+  'rot',
+  'width',
+  'layers',
+  'left-of',
+  'right-of',
+  'above',
+  'below',
+]);
 
 export function parseArgv(argv: string[]): ParsedArgs {
   const result: ParsedArgs = {

@@ -429,6 +429,8 @@ export function showEditHelp(): void {
   console.log('        connect VCC R1.1 R2.1          join onto named net VCC\n');
   console.log('  typecad edit move <ref> --to x,y [--rot deg]');
   console.log('  typecad edit move <ref> --left-of|--right-of|--above|--below <otherRef> [--gap mm]\n');
+  console.log('  typecad edit route <from> <to>       Autoroute copper between two pins');
+  console.log('        [--width mm] [--layers F.Cu,B.Cu]\n');
   console.log('Options:');
   console.log('  --file <path>       Source file to edit (default: auto-detect entry)');
   console.log('  --dry-run           Show the planned edit without writing');
@@ -437,4 +439,5 @@ export function showEditHelp(): void {
   console.log('  typecad edit connect R1.1 U1.3');
   console.log('  typecad edit connect GND C1.2 C2.2 --json');
   console.log('  typecad edit move U1 --right-of C3 --gap 2.54');
+  console.log('  typecad edit route U1.3 R1.1 --width 0.25');
 }

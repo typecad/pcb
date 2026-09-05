@@ -194,7 +194,7 @@ pcb.create();`,
     examples: [
       {
         title: 'Route between two pins',
-        code: `let result = await pcb.route({
+        code: `let result = pcb.route({
   from: u1.pin(1),
   to: r1.pin(1),
   width: 0.25,
@@ -203,7 +203,7 @@ pcb.create();`,
 
 // Or use a net definition:
 let net = pcb.net(u1.pin(1), r1.pin(1));
-let result2 = await pcb.route(net);`,
+let result2 = pcb.route(net);`,
       },
       {
         title: 'Batch routing',
@@ -218,10 +218,12 @@ let result2 = await pcb.route(net);`,
       },
     ],
     notes: [
-      'route() returns an IAutorouteResult with success status and route details',
+      'route() is synchronous and returns an IAutorouteResult with success status and route details',
       'autorouteBatchOnPcb() supports rip-up-and-retry with multiple rounds',
       'Register external routers with pcbRegisterRouter() (e.g. @typecad-astar)',
       'Options include: width, layers, allowVias, clearance, gridResolution, impedance constraints',
+      'CLI: "typecad edit route U1.3 R1.1" writes a validated route() call into the source',
+      'CLI: "typecad query routes" reports per-net copper status (routed pins, lengths, pours); "typecad query zones" lists pours and keepouts',
     ],
     related: ['track', 'via', 'pcb-structure'],
   },

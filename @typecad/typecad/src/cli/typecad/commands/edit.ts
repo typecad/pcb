@@ -89,6 +89,19 @@ function insertionIndexForNet(lines: string[]): { index: number; indent: string 
   return { index: lines.length, indent: '' };
 }
 
+/** Route calls cluster after existing route calls, else after the nets. */
+function insertionIndexForRoute(lines: string[]): { index: number; indent: string } {
+  let lastRoute = -1;
+  for (let i = 0; i < lines.length; i++) {
+    if (/\.route\(/.test(lines[i])) lastRoute = i;
+  }
+  if (lastRoute !== -1) {
+    const indentMatch = lines[lastRoute].match(/^(\s*)/);
+    return { index: lastRoute + 1, indent: indentMatch ? indentMatch[1] : '' };
+  }
+  return insertionIndexForNet(lines);
+}
+
 function findAssignmentLine(lines: string[], variable: string): number {
   const pattern = new RegExp(`^\\s*${variable}\\.pcb\\s*=`);
   for (let i = 0; i < lines.length; i++) {
@@ -376,5 +389,70 @@ export async function run(parsed: ParsedArgs): Promise<void> {
     return;
   }
 
-  fail({ code: 'UNKNOWN_OP', message: `Unknown edit operation '${op}'. Use 'connect' or 'move'.` }, json);
+  if (op === 'route') {
+    const endpoints = parsed.positional.filter((p) => !p.endsWith('.kicad_pcb'));
+    if (endpoints.length !== 2) {
+      fail(
+        {
+          code: 'ROUTE_NEEDS_TWO_PINS',
+          message: 'route needs exactly two pins: typecad edit route U1.3 R1.1 [--width=0.25] [--layers=F.Cu,B.Cu]',
+        },
+        json,
+      );
+    }
+    const from = parseEndpoint(endpoints[0], model, json);
+    const to = parseEndpoint(endpoints[1], model, json);
+    if (from.kind !== 'pin' || to.kind !== 'pin') {
+      fail(
+        {
+          code: 'ROUTE_PINS_ONLY',
+          message: 'route endpoints must be pins (REF.PAD). Net names are for `edit connect`; route draws the copper.',
+        },
+        json,
+      );
+    }
+
+    const pcbVar = findPcbVariable(source) ?? 'typecad';
+    const args = parsed.args;
+    const options: string[] = [];
+    const width = args['width'];
+    if (typeof width === 'string' && width !== '') options.push(`width: ${parseFloat(width)}`);
+    const layers = args['layers'];
+    if (typeof layers === 'string' && layers !== '') {
+      const layerList = layers
+        .split(',')
+        .map((l) => `'${l.trim()}'`)
+        .join(', ');
+      options.push(`layers: [${layerList}]`);
+    }
+    const inner = [
+      `from: ${requireVariable(from.comp, json)}.pin(${pinLiteral(from.pad)})`,
+      `to: ${requireVariable(to.comp, json)}.pin(${pinLiteral(to.pad)})`,
+      ...options,
+    ].join(', ');
+    const code = `${pcbVar}.route({ ${inner} });`;
+
+    const { index, indent } = insertionIndexForRoute(lines);
+    lines.splice(index, 0, `${indent}${code}`);
+    const lineNumber = index + 1;
+
+    if (dryRun) {
+      if (json)
+        logger.log(JSON.stringify({ ok: true, dryRun: true, file: sourcePath, line: lineNumber, code }, null, 2));
+      else {
+        logger.log(chalk.white.bold('Dry run — would insert at ') + `${sourcePath}:${lineNumber}`);
+        logger.log(chalk.green(`+ ${code}`));
+      }
+      return;
+    }
+    fs.writeFileSync(sourcePath, lines.join('\n'), 'utf8');
+    if (json) logger.log(JSON.stringify({ ok: true, file: sourcePath, line: lineNumber, code }, null, 2));
+    else {
+      logger.log(chalk.green(`✓ routed ${from.comp.reference}.${from.pad} ↔ ${to.comp.reference}.${to.pad}`));
+      logger.log(chalk.gray(`  ${sourcePath}:${lineNumber}  ${code}`));
+    }
+    return;
+  }
+
+  fail({ code: 'UNKNOWN_OP', message: `Unknown edit operation '${op}'. Use 'connect', 'move', or 'route'.` }, json);
 }

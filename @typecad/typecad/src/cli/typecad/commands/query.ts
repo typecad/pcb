@@ -36,6 +36,26 @@ function netSummaryJson(net: BoardNet) {
     zones: net.zones.map((z) => z.layers),
     power: isPowerNet(net),
     pins: net.pins,
+    route: net.route,
+  };
+}
+
+function routeJson(net: BoardNet) {
+  return {
+    net: net.name,
+    power: isPowerNet(net),
+    ...(net.route ?? {
+      segments: net.segments.length,
+      length: net.segments.reduce((acc, s) => acc + s.length, 0),
+      layers: [...new Set(net.segments.map((s) => s.layer))],
+      pinsTotal: net.pins.length,
+      pinsConnected: 0,
+      disconnectedGroups: [],
+      routed: net.pins.length === 0,
+      pourAssisted: net.zones.length > 0,
+    }),
+    vias: net.vias.length,
+    pours: net.zones.map((z) => z.layers),
   };
 }
 
@@ -67,7 +87,18 @@ export async function run(parsed: ParsedArgs): Promise<void> {
     if (json) {
       logger.log(
         JSON.stringify({
-          subjects: ['summary', 'nets', 'net <name>', 'components', 'component <ref>', 'unconnected', 'power'],
+          subjects: [
+            'summary',
+            'nets',
+            'net <name>',
+            'components',
+            'component <ref>',
+            'unconnected',
+            'power',
+            'routes',
+            'routes <net>',
+            'zones',
+          ],
         }),
       );
       return;
@@ -81,12 +112,25 @@ export async function run(parsed: ParsedArgs): Promise<void> {
     logger.log('  typecad query component <ref>    one component, pad-by-pad');
     logger.log('  typecad query unconnected        pads with no net; single-pin nets');
     logger.log('  typecad query power              power rails, stitching vias, zones');
+    logger.log('  typecad query routes             copper status per net: routed pins, lengths, layers');
+    logger.log('  typecad query routes <net>       one net’s routing in detail');
+    logger.log('  typecad query zones              copper pours and keepout regions');
     logger.log('');
     logger.log(chalk.gray('Queries the .kicad_pcb in ./build/ (or pass a path). Add --json for machine output.'));
     return;
   }
 
-  const validSubjects = ['summary', 'nets', 'net', 'components', 'component', 'unconnected', 'power'];
+  const validSubjects = [
+    'summary',
+    'nets',
+    'net',
+    'components',
+    'component',
+    'unconnected',
+    'power',
+    'routes',
+    'zones',
+  ];
   if (!validSubjects.includes(subject)) {
     if (json) {
       logger.log(
@@ -134,7 +178,9 @@ export async function run(parsed: ParsedArgs): Promise<void> {
       logger.log(`  named nets        ${s.namedNets}`);
       logger.log(`  vias              ${s.vias}`);
       logger.log(`  zones             ${s.zones}`);
+      logger.log(`  keepouts          ${s.keepouts}`);
       logger.log(`  track segments    ${s.tracks}`);
+      logger.log(`  unrouted nets     ${model.nets.filter((n) => n.route && !n.route.routed).length}`);
       logger.log(`  unconnected pads  ${chalk.yellow(s.unconnectedPads)}`);
       if (s.board) {
         const w = (s.board.maxX - s.board.minX).toFixed(2);
@@ -205,6 +251,19 @@ export async function run(parsed: ParsedArgs): Promise<void> {
       }
       if (net.zones.length > 0) {
         logger.log(`  zones     ${net.zones.map((z) => z.layers.join('+')).join(', ')}`);
+      }
+      if (net.route) {
+        const r = net.route;
+        const status = r.routed
+          ? chalk.green('fully routed')
+          : chalk.red(`${r.pinsConnected}/${r.pinsTotal} pins connected`);
+        const detail: string[] = [];
+        if (r.segments > 0) detail.push(`${r.segments} segments, ${r.length} mm on ${r.layers.join('+')}`);
+        if (r.pourAssisted) detail.push('pour-assisted');
+        logger.log(`  copper    ${status}${detail.length > 0 ? chalk.gray(` — ${detail.join(', ')}`) : ''}`);
+        for (const group of r.disconnectedGroups) {
+          logger.log(chalk.yellow(`    no copper path to: ${group.join(', ')}`));
+        }
       }
       return;
     }
@@ -325,6 +384,103 @@ export async function run(parsed: ParsedArgs): Promise<void> {
         if (net.zones.length > 0)
           logger.log(chalk.gray(`      pours: ${net.zones.map((z) => z.layers.join('+')).join(', ')}`));
         logger.log(chalk.gray(`      ${net.pins.join('  ')}`));
+      }
+      return;
+    }
+
+    case 'routes': {
+      const name = parsed.positional.find((p) => !p.endsWith('.kicad_pcb'));
+      let nets = model.nets;
+      if (name) {
+        const net = findNet(model, name);
+        if (!net) {
+          if (json) {
+            logger.log(
+              JSON.stringify(
+                {
+                  error: true,
+                  message: `Net '${name}' not found.`,
+                  code: 'NET_NOT_FOUND',
+                  available: model.nets.map((n) => n.name),
+                },
+                null,
+                2,
+              ),
+            );
+          } else {
+            logger.error(chalk.red(`Net '${name}' not found. Run 'typecad query nets' to list them.`));
+          }
+          process.exit(1);
+        }
+        nets = [net];
+      }
+      if (json) {
+        logger.log(JSON.stringify(nets.map(routeJson), null, 2));
+        return;
+      }
+      printHeader(name ? `Routing — ${name}` : 'Routing', pcbPath);
+      const unroutedCount = nets.filter((n) => n.route && !n.route.routed).length;
+      if (unroutedCount === 0) {
+        logger.log(chalk.green(`  All nets fully routed (${nets.length}).`) + '\n');
+      }
+      for (const net of nets) {
+        const r = net.route;
+        if (!r) continue;
+        const status = r.routed ? chalk.green('✓') : chalk.red('✖');
+        const detail: string[] = [`${r.pinsConnected}/${r.pinsTotal} pins`];
+        if (r.segments > 0) detail.push(`${r.segments} segments`, `${r.length} mm`, r.layers.join('+'));
+        if (net.vias.length > 0) detail.push(`${net.vias.length} vias`);
+        if (r.pourAssisted) detail.push('pour-assisted');
+        logger.log(`  ${status} ${chalk.white(net.name.padEnd(14))} ${detail.join(', ')}`);
+        for (const group of r.disconnectedGroups) {
+          logger.log(chalk.yellow(`      no copper path to: ${group.join(', ')}`));
+        }
+      }
+      return;
+    }
+
+    case 'zones': {
+      if (json) {
+        logger.log(
+          JSON.stringify(
+            model.zones.map((z) => ({
+              net: z.netName,
+              keepout: z.keepout,
+              layers: z.layers,
+              filled: z.filled,
+              fillMode: z.fillMode,
+              bbox: z.bbox,
+            })),
+            null,
+            2,
+          ),
+        );
+        return;
+      }
+      printHeader('Zones', pcbPath);
+      const pours = model.zones.filter((z) => !z.keepout);
+      const keepouts = model.zones.filter((z) => z.keepout);
+      if (pours.length === 0 && keepouts.length === 0) {
+        logger.log(chalk.gray('  No zones on this board.'));
+        return;
+      }
+      if (pours.length > 0) {
+        logger.log(chalk.white(`Copper pours (${pours.length})`));
+        for (const z of pours) {
+          const fill = z.filled ? `filled${z.fillMode ? ` (${z.fillMode})` : ''}` : 'unfilled';
+          logger.log(
+            `  ${chalk.white(z.netName ?? '(unnamed)')}  ${z.layers.join('+')}  ${fill}  ${z.bbox.width} × ${z.bbox.height} mm at (${z.bbox.x}, ${z.bbox.y})`,
+          );
+        }
+        logger.log('');
+      }
+      if (keepouts.length > 0) {
+        logger.log(chalk.white(`Keepouts (${keepouts.length})`));
+        for (const z of keepouts) {
+          logger.log(
+            `  ${chalk.white(z.layers.join('+'))}  ${z.bbox.width} × ${z.bbox.height} mm at (${z.bbox.x}, ${z.bbox.y})`,
+          );
+        }
       }
       return;
     }

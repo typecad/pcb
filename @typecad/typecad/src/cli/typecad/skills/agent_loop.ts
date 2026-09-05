@@ -77,6 +77,19 @@ typecad check --json`,
           required: false,
           description: 'Detected power rails with pours and stitching vias',
         },
+        {
+          name: 'routes',
+          type: 'subject',
+          required: false,
+          description:
+            'Copper status per net: routed/unrouted pins, segment count, total length, layers, pour assistance',
+        },
+        {
+          name: 'zones',
+          type: 'subject',
+          required: false,
+          description: 'Copper pours (net, layers, fill mode, extent) and keepout regions',
+        },
       ],
     },
     examples: [
@@ -154,11 +167,18 @@ typecad check --json`,
         code: `typecad edit move U1 --right-of=C3 --gap=2.54
 #   u1.pcb = { x: typecad.board.rightOf(c3).by(2.54), y: typecad.board.sameAs(c3), rotation: 90 };`,
       },
+      {
+        title: 'Autoroute copper between two pins',
+        code: `typecad edit route U1.3 R1.1 --width 0.25 --layers F.Cu,B.Cu
+#   typecad.route({ from: u1.pin(3), to: r1.pin(1), width: 0.25, layers: ['F.Cu', 'B.Cu'] });
+# verify with: typecad query routes  (flags nets whose pins have no copper path)`,
+      },
     ],
     notes: [
       'Every endpoint is checked: unknown component, missing pad, or unknown net fails BEFORE the file is modified, with did-you-mean suggestions.',
       'Generated code references the source variable names embedded in the built board (Code property), so the code stays human-idiomatic.',
       'move preserves an existing rotation unless --rot is given; --to writes absolute millimetre coordinates.',
+      'route emits a synchronous pcb.route() call; the router can still fail to find a path (saturated boards, tight clearances) — check the return value or "typecad query routes".',
       'Run typecad build or check first — edit validates against ./build/*.kicad_pcb.',
     ],
     related: ['agent-loop', 'board-query', 'pcb-structure'],

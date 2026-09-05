@@ -363,18 +363,30 @@ export class KicadIRBuilder {
   // === Nets ===
 
   private parseNets(tree: SExprNode): KicadNetIR[] {
-    return tree
-      .findAll('net')
-      .map((node) => this.parseNet(node))
-      .filter((n): n is KicadNetIR => n !== null);
+    const byKey = new Map<string, KicadNetIR>();
+    for (const raw of tree.findAll('net').map((node) => this.parseNet(node))) {
+      if (raw === null) continue;
+      // findAll is recursive, so the same net appears on every pad/via/zone
+      // referencing it — dedupe by (number, name).
+      const key = `${raw.number}|${raw.name}`;
+      if (!byKey.has(key)) byKey.set(key, raw);
+    }
+    return [...byKey.values()];
   }
 
   private parseNet(node: SExprNode): KicadNetIR | null {
-    const number = node.getNumber(1, NaN);
-    if (isNaN(number)) return null;
-
-    const name = node.getString(2) || '';
-    return { number, name };
+    // typeCAD-authored boards: (net <code> "<name>"). kicad-cli --save-board
+    // resaves (zone-fill round-trip) strip the net table and inline the name
+    // as (net "<name>"); bare (net <code>) also occurs.
+    if (node.rawAt(2) !== undefined) {
+      const number = node.getNumber(1, NaN);
+      if (isNaN(number)) return null;
+      return { number, name: node.getString(2) || '' };
+    }
+    const first = node.getString(1) ?? '';
+    if (/^-?\d+$/.test(first)) return { number: parseInt(first, 10), name: '' };
+    if (first !== '') return { number: -1, name: first };
+    return null;
   }
 
   // === Vias ===
@@ -445,12 +457,19 @@ export class KicadIRBuilder {
       }
     }
 
-    // Net: prefer the net_name child, fall back to the net number → name map.
+    // Net: prefer the net_name child, then an inline `(net "NAME")` (the
+    // form kicad-cli --save-board writes), then the net number → name map.
     let netName: string | null = node.child('net_name')?.stringValue ?? null;
     if (!netName) {
-      const netNum = node.child('net')?.getNumber(1, NaN) ?? NaN;
-      if (Number.isFinite(netNum) && netNum > 0) {
-        netName = nets.find((n) => n.number === netNum)?.name ?? null;
+      const netChild = node.child('net');
+      const inlineName = netChild && netChild.rawAt(2) === undefined ? (netChild.getString(1) ?? '') : '';
+      if (inlineName !== '' && !/^-?\d+$/.test(inlineName)) {
+        netName = inlineName;
+      } else {
+        const netNum = netChild?.getNumber(1, NaN) ?? NaN;
+        if (Number.isFinite(netNum) && netNum > 0) {
+          netName = nets.find((n) => n.number === netNum)?.name ?? null;
+        }
       }
     }
     if (netName === '') netName = null;

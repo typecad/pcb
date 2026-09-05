@@ -5,6 +5,7 @@ import { execFileSync } from 'node:child_process';
 import { findExecutable } from '../../kicad.js';
 import type { ProjectAnswers } from '../types.js';
 import logger from '../../utils/logging.js';
+import { getCategories, getSkillsByCategory } from '../typecad/skills/registry.js';
 
 function sanitizeProjectName(name: string): string {
   if (/[;&|$`\\!#(){}[\]<>]/.test(name)) {
@@ -200,6 +201,14 @@ export default defineConfig({
     }
 
     try {
+      // Skills section is generated from the live registry so it can never
+      // drift from the CLI's actual knowledge.
+      const skillSections = getCategories()
+        .map((cat) => {
+          const names = getSkillsByCategory(cat).map((s) => s.name);
+          return `### ${cat}\n\n${names.join(', ')}\n`;
+        })
+        .join('\n');
       fs.writeFileSync(
         `${process.cwd()}/${answers.name}/hw/AGENTS.md`,
         `# typeCAD Project
@@ -207,20 +216,20 @@ export default defineConfig({
 This is a typeCAD project. typeCAD is a TypeScript framework for programmatically
 creating PCB designs that output KiCad files.
 
-## AI Reference: typecad skills
+## The agent loop
 
-The \`typecad\` CLI includes a knowledge lookup system. Use it before writing typeCAD code:
+- \`npx typecad skills search <query>\` — find the right API pattern before writing code
+- \`npx typecad skills get <name> --json\` — detailed patterns and examples
+- \`npx typecad edit connect R1.1 U1.3\` — checked semantic edits to the source
+- \`npx typecad check --json\` — build + unconnected + ERC + DRC in one report
+- \`npx typecad query <subject>\` — inspect the compiled board (nets, pins, power, placement)
 
-- \`npx typecad skills\` — list all available topics
-- \`npx typecad skills get <name>\` — detailed API patterns and examples for a topic
-- \`npx typecad skills get <name> --json\` — machine-readable JSON output
+Edits are validated against the compiled board before the source is touched, and
+build output is deterministic, so you can verify your changes by diffing \`build/\`.
 
-Use skills to look up: components, pins, nets, power, buses, passives (resistor,
-capacitor, inductor, diode, LED, fuse, connector, testpoint, mounting-hole, net-tie),
-PCB layout (tracks, vias, zones, keepout, outlines, autoroute, placement),
-graphics, text, validation (ERC, DRC), packages, contracts, BOM, simulation,
-config, KiCad integration, and project commands.
+## Skill categories (live from the CLI)
 
+${skillSections}
 ## npm Scripts
 
 - \`npm run build\` — generate KiCad files from typeCAD source

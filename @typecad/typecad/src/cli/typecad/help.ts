@@ -9,6 +9,9 @@ export function showTopLevelHelp(): void {
   console.log('  add component       Add a component to the current project');
   console.log('  add package         Create a reusable component package');
   console.log('  build               Build KiCAD output from typeCAD source');
+  console.log('  check               Build + ERC + DRC in one pass, one report');
+  console.log('  query               Inspect the compiled board (nets, pins, placement)');
+  console.log('  edit                Checked semantic edits (connect, move)');
   console.log('  search              Search KiCad schematic symbols');
   console.log('  import              Convert a KiCad PCB file to typeCAD code');
   console.log('  diff                Compare two KiCad PCB files visually');
@@ -285,15 +288,20 @@ export function showSkillsHelp(): void {
   );
   console.log('Usage:');
   console.log('  typecad skills list              List all available skills');
-  console.log('  typecad skills get <name>        Get details on a specific skill\n');
+  console.log('  typecad skills get <name>        Get details on a specific skill');
+  console.log('  typecad skills search <query>    Fuzzy-find skills by keyword');
+  console.log('  typecad skills export            Export skills as SKILL.md files\n');
   console.log('Options:');
-  console.log('  --json              Output in machine-readable JSON\n');
+  console.log('  --json              Output in machine-readable JSON');
+  console.log('  --out=<dir>         Export target (default .claude/skills)');
+  console.log('  --category=<name>   Export only one category\n');
   console.log('Examples:');
   console.log('  typecad skills list');
   console.log('  typecad skills list --json');
+  console.log('  typecad skills search placement');
   console.log('  typecad skills get resistor');
   console.log('  typecad skills get power --json');
-  console.log('  typecad skills get pcb-structure');
+  console.log('  typecad skills export --out .claude/skills');
 }
 
 export function showPackageHelp(): void {
@@ -364,4 +372,69 @@ export function showExportDrillHelp(): void {
   console.log('  typecad export drill --output ./fab');
   console.log('  typecad export drill ./build/board.kicad_pcb');
   console.log('  typecad export drill -- --use-drill-file-origin');
+}
+
+export function showQueryHelp(): void {
+  console.log(chalk.white.bold('typecad query') + ' - Inspect the compiled board as data\n');
+  console.log('Answers questions about the design graph by parsing the built');
+  console.log('.kicad_pcb: what is connected to what, which pins are floating,');
+  console.log('where every component sits. Agents should prefer this over');
+  console.log('grepping source files.\n');
+  console.log('Usage:');
+  console.log('  typecad query summary            Board totals, bounds, unconnected count');
+  console.log('  typecad query nets               Every net with its member pins');
+  console.log('  typecad query net <name>         One net in detail (pins, vias, zones)');
+  console.log('  typecad query components         All components: value, footprint, position');
+  console.log('  typecad query component <ref>    One component, pad-by-pad with nets');
+  console.log('  typecad query unconnected        Pads with no net; single-pin nets');
+  console.log('  typecad query power              Power rails, stitching vias, pours\n');
+  console.log('Options:');
+  console.log('  --json              Output in machine-readable JSON\n');
+  console.log('Examples:');
+  console.log('  typecad query summary');
+  console.log('  typecad query net GND --json');
+  console.log('  typecad query component U1');
+  console.log('  typecad query unconnected');
+}
+
+export function showCheckHelp(): void {
+  console.log(chalk.white.bold('typecad check') + ' - Build, then verify, in one pass\n');
+  console.log('Runs the full gauntlet and emits a single report:');
+  console.log('  1. build   - compile typeCAD source to KiCad files');
+  console.log('  2. unconnected - pads with no net, single-pin nets');
+  console.log('  3. erc     - electrical rules check (needs kicad-cli)');
+  console.log('  4. drc     - design rules check (needs kicad-cli)\n');
+  console.log('Every violation maps back to designators and nets so an agent');
+  console.log('can act on it directly. Exits non-zero when anything fails.\n');
+  console.log('Usage: typecad check [entry.ts] [options]\n');
+  console.log('Options:');
+  console.log('  --json              Output the full report as JSON');
+  console.log('  --skip-erc          Skip the ERC step');
+  console.log('  --skip-drc          Skip the DRC step\n');
+  console.log('Examples:');
+  console.log('  typecad check');
+  console.log('  typecad check --json');
+  console.log('  typecad check ./src/board.ts --skip-drc');
+}
+
+export function showEditHelp(): void {
+  console.log(chalk.white.bold('typecad edit') + ' - Checked semantic edits\n');
+  console.log('Rewrites typeCAD source through declarative, validated operations.');
+  console.log('Pins, nets, and references are verified against the compiled board');
+  console.log('BEFORE the file is touched, so invalid edits fail harmlessly.\n');
+  console.log('Usage:');
+  console.log('  typecad edit connect <a> <b> [...]   Join pins onto a net');
+  console.log('        <a> = pin (R1.1), net (GND), or Power object');
+  console.log('        connect R1.1 U1.3              join both onto an auto net');
+  console.log('        connect VCC R1.1 R2.1          join onto named net VCC\n');
+  console.log('  typecad edit move <ref> --to x,y [--rot deg]');
+  console.log('  typecad edit move <ref> --left-of|--right-of|--above|--below <otherRef> [--gap mm]\n');
+  console.log('Options:');
+  console.log('  --file <path>       Source file to edit (default: auto-detect entry)');
+  console.log('  --dry-run           Show the planned edit without writing');
+  console.log('  --json              Output result as JSON\n');
+  console.log('Examples:');
+  console.log('  typecad edit connect R1.1 U1.3');
+  console.log('  typecad edit connect GND C1.2 C2.2 --json');
+  console.log('  typecad edit move U1 --right-of C3 --gap 2.54');
 }

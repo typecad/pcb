@@ -76,6 +76,18 @@ async function showCommandHelp(command: string, subcommand: string): Promise<boo
     help.showSkillsHelp();
     return true;
   }
+  if (command === 'query') {
+    help.showQueryHelp();
+    return true;
+  }
+  if (command === 'edit') {
+    help.showEditHelp();
+    return true;
+  }
+  if (command === 'check') {
+    help.showCheckHelp();
+    return true;
+  }
   if (command === 'package') {
     help.showPackageHelp();
     return true;
@@ -179,6 +191,18 @@ async function main(): Promise<void> {
 
       case 'skills':
         await (await import('./commands/skills.js')).run(parsed);
+        break;
+
+      case 'query':
+        await (await import('./commands/query.js')).run(parsed);
+        break;
+
+      case 'edit':
+        await (await import('./commands/edit.js')).run(parsed);
+        break;
+
+      case 'check':
+        await (await import('./commands/check.js')).run(parsed);
         break;
 
       case 'package':

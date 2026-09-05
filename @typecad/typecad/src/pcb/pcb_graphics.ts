@@ -51,7 +51,7 @@ export function pcbLine(
 
   const line: IGrLine = {
     type: 'line',
-    uuid: generateUuid(),
+    uuid: generateUuid('gr-line', layer, width, start.x, start.y, end.x, end.y),
     layer,
     strokeWidth: width,
     start,
@@ -122,7 +122,7 @@ export function pcbCircle(
 
   const circle: IGrCircle = {
     type: 'circle',
-    uuid: generateUuid(),
+    uuid: generateUuid('gr-circle', layer, width, center.x, center.y, endPoint.x, endPoint.y),
     layer,
     strokeWidth: width,
     center,
@@ -243,7 +243,7 @@ export function pcbRect(
 
   const rect: IGrRect = {
     type: 'rect',
-    uuid: generateUuid(),
+    uuid: generateUuid('gr-rect', layer, strokeWidth, startPoint.x, startPoint.y, endPoint.x, endPoint.y),
     layer,
     strokeWidth,
     start: startPoint,
@@ -324,7 +324,7 @@ export function pcbPoly(
 
   const poly: IGrPoly = {
     type: 'poly',
-    uuid: generateUuid(),
+    uuid: generateUuid('gr-poly', layer, width, points.map((p) => `${p.x},${p.y}`).join(';')),
     layer,
     strokeWidth: width,
     points,
@@ -394,15 +394,22 @@ export function pcbOutline(
     }
   }
 
-  const conceptualOutlineUuid: string = conceptualUuidFromUser || generateUuid();
+  const conceptualOutlineUuid: string = conceptualUuidFromUser || generateUuid('outline', x, y, width, height);
 
   const elements: OutlineElement[] = [];
   const strokeW = 0.05;
   const layerName = 'Edge.Cuts';
 
-  // Helper to generate element UUID
-  const getElementUuid = (): string => {
-    return generateUuid();
+  // Helper to generate element UUID (deterministic from segment geometry)
+  const getElementUuid = (
+    kind: string,
+    ax: number,
+    ay: number,
+    bx: number,
+    by: number,
+    stroke: number,
+  ): string => {
+    return generateUuid('outline-el', layerName, kind, stroke, ax, ay, bx, by);
   };
 
   const r = Math.max(0, filletRadius); // Ensure radius is not negative
@@ -432,7 +439,7 @@ export function pcbOutline(
     // Only add line if its length is positive
     elements.push({
       type: 'line',
-      uuid: getElementUuid(),
+      uuid: getElementUuid('line', p_top_start.x, p_top_start.y, p_top_end.x, p_top_end.y, strokeW),
       layer: layerName,
       strokeWidth: strokeW,
       start: p_top_start,
@@ -444,7 +451,7 @@ export function pcbOutline(
   if (p_right_start.y < p_right_end.y) {
     elements.push({
       type: 'line',
-      uuid: getElementUuid(),
+      uuid: getElementUuid('line', p_right_start.x, p_right_start.y, p_right_end.x, p_right_end.y, strokeW),
       layer: layerName,
       strokeWidth: strokeW,
       start: p_right_start,
@@ -457,7 +464,7 @@ export function pcbOutline(
     // Note: KiCad typically has x increasing left to right
     elements.push({
       type: 'line',
-      uuid: getElementUuid(),
+      uuid: getElementUuid('line', p_bottom_start.x, p_bottom_start.y, p_bottom_end.x, p_bottom_end.y, strokeW),
       layer: layerName,
       strokeWidth: strokeW,
       start: p_bottom_start,
@@ -469,7 +476,7 @@ export function pcbOutline(
   if (p_left_end.y < p_left_start.y) {
     elements.push({
       type: 'line',
-      uuid: getElementUuid(),
+      uuid: getElementUuid('line', p_left_start.x, p_left_start.y, p_left_end.x, p_left_end.y, strokeW),
       layer: layerName,
       strokeWidth: strokeW,
       start: p_left_start,
@@ -489,7 +496,7 @@ export function pcbOutline(
     // Starts from end of top line, ends at start of right line
     elements.push({
       type: 'arc',
-      uuid: getElementUuid(),
+      uuid: getElementUuid('arc-tr', p_top_end.x, p_top_end.y, p_right_start.x, p_right_start.y, r),
       layer: layerName,
       strokeWidth: strokeW,
       start: p_top_end, // (x1-r, y0)
@@ -499,7 +506,7 @@ export function pcbOutline(
     // Bottom-Right Arc
     elements.push({
       type: 'arc',
-      uuid: getElementUuid(),
+      uuid: getElementUuid('arc-br', p_right_end.x, p_right_end.y, p_bottom_start.x, p_bottom_start.y, r),
       layer: layerName,
       strokeWidth: strokeW,
       start: p_right_end, // (x1, y1-r)
@@ -509,7 +516,7 @@ export function pcbOutline(
     // Bottom-Left Arc
     elements.push({
       type: 'arc',
-      uuid: getElementUuid(),
+      uuid: getElementUuid('arc-bl', p_bottom_end.x, p_bottom_end.y, p_left_start.x, p_left_start.y, r),
       layer: layerName,
       strokeWidth: strokeW,
       start: p_bottom_end, // (x0+r, y1)
@@ -519,7 +526,7 @@ export function pcbOutline(
     // Top-Left Arc
     elements.push({
       type: 'arc',
-      uuid: getElementUuid(),
+      uuid: getElementUuid('arc-tl', p_left_end.x, p_left_end.y, p_top_start.x, p_top_start.y, r),
       layer: layerName,
       strokeWidth: strokeW,
       start: p_left_end, // (x0, y0+r)
@@ -556,7 +563,16 @@ export function pcbText(state: PcbInternalState, options: import('./pcb_interfac
     italic: options.italic,
     justify: options.justify,
     hide: options.hide,
-    uuid: options.uuid || generateUuid(),
+    uuid:
+      options.uuid ||
+      generateUuid(
+        'gr-text',
+        options.text,
+        options.x,
+        options.y,
+        options.layer || 'F.SilkS',
+        options.rotation || 0,
+      ),
   };
 
   state.grTexts.push(textElement);
@@ -589,7 +605,7 @@ export function pcbArc(state: PcbInternalState, options: import('./pcb_interface
   const elements = [
     {
       type: 'arc' as const,
-      uuid: generateUuid(),
+      uuid: generateUuid('gr-arc', layer, width, start.x, start.y, mid.x, mid.y, end.x, end.y),
       layer,
       strokeWidth: width,
       start: { ...start },
@@ -603,7 +619,17 @@ export function pcbArc(state: PcbInternalState, options: import('./pcb_interface
   const ys = [start.y, mid.y, end.y];
 
   const outlineData: import('./pcb_interfaces.js').IOutline = {
-    uuid: generateUuid(),
+    uuid: generateUuid(
+      'gr-arc-outline',
+      layer,
+      width,
+      start.x,
+      start.y,
+      mid.x,
+      mid.y,
+      end.x,
+      end.y,
+    ),
     x: Math.min(...xs),
     y: Math.min(...ys),
     width: Math.max(...xs) - Math.min(...xs),

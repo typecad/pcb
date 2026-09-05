@@ -1,7 +1,7 @@
-import { randomUUID } from 'node:crypto';
 import { ISourceInfo } from './pcb_interfaces.js';
 import { encodeCodeMetadata, decodeCodeMetadata } from '../kicad2typecad/codec.js';
 import type { CodeMetadata, LegacyCodeMetadata } from '../kicad2typecad/types.js';
+import { designUUID } from '../utils/deterministic_id.js';
 
 /**
  * Utility functions for PCB operations
@@ -64,11 +64,12 @@ export function parseSourceInfoFromProperty(
 }
 
 /**
- * Generates a unique UUID using crypto module
- * @returns Random UUID string
+ * Generates a UUID for design output. When identity parts are supplied the
+ * UUID is derived deterministically (same design → same bytes); without
+ * parts it falls back to a random UUID.
  */
-export function generateUuid(): string {
-  return randomUUID();
+export function generateUuid(...parts: (string | number | boolean | undefined | null)[]): string {
+  return designUUID(...parts);
 }
 
 export function normalizeNetName(name?: string): string | undefined {

@@ -1,6 +1,6 @@
 import { Pin } from '../pin.js';
 import { serialize, s, sym, yes, no } from '../sexpr/index.js';
-import { randomUUID, UUID } from 'node:crypto';
+import { UUID } from 'node:crypto';
 import { SymbolLibraryManager } from '../symbol_library_manager.js';
 import {
   logError,
@@ -14,6 +14,7 @@ import type { ISchematicNode } from '../types/schematic_types.js';
 import { renderLabel } from './schematic_templates.js';
 import { reportError } from '../utils/error_reporter.js';
 import { DEFAULT_NET_PREFIX } from '../utils/constants.js';
+import { deterministicUUID, stableIndex } from '../utils/deterministic_id.js';
 
 interface RenderableSymbol {
   symbol?: string;
@@ -30,7 +31,7 @@ export class KiCADSchematic {
   wires: string[] = [];
   labels: string[] = [];
   sheetname: string = '';
-  uuid: UUID = randomUUID();
+  #uuid: UUID | null = null;
   private symbolManager: SymbolLibraryManager;
   #pwrCounter = 0;
   #flgCounter = 0;
@@ -38,6 +39,18 @@ export class KiCADSchematic {
 
   constructor(symbolManager: SymbolLibraryManager) {
     this.symbolManager = symbolManager;
+  }
+
+  /**
+   * Derived from the sheet name so the same design always renders to
+   * byte-identical output. Computed lazily because sheetname is assigned
+   * after construction.
+   */
+  get uuid(): UUID {
+    if (this.#uuid === null) {
+      this.#uuid = deterministicUUID('sheet', this.sheetname) as UUID;
+    }
+    return this.#uuid;
   }
 
   update(component: RenderableSymbol): string | null {
@@ -71,11 +84,14 @@ export class KiCADSchematic {
     }
 
     if (component.sch.x === 0 && component.sch.y === 0) {
-      logWarning(`Component ${displayName(component)} has coordinates (0,0). Placing randomly.`);
+      logWarning(`Component ${displayName(component)} has coordinates (0,0). Placing deterministically.`);
       const maxX = Math.max(0, Math.ceil(PAGE_WIDTH_MM / GRID_UNIT_MM) - 1);
       const maxY = Math.max(0, Math.ceil(PAGE_HEIGHT_MM / GRID_UNIT_MM) - 1);
-      const randXGrid = Math.floor(Math.random() * (maxX + 1));
-      const randYGrid = Math.floor(Math.random() * (maxY + 1));
+      // Stable per component identity: the same unplaced component lands on
+      // the same cell every build, so output stays byte-identical.
+      const seed = `${component.reference || component.value || 'anon'}`;
+      const randXGrid = stableIndex(`x:${seed}`, maxX + 1);
+      const randYGrid = stableIndex(`y:${seed}`, maxY + 1);
       component.sch.x = randXGrid * GRID_UNIT_MM;
       component.sch.y = randYGrid * GRID_UNIT_MM;
     }
@@ -267,7 +283,7 @@ export class KiCADSchematic {
             label_rotation,
             justify_horizontal: justifyHorizontal,
             justify_vertical: justifyVertical,
-            uuid: randomUUID(),
+            uuid: deterministicUUID('label', netName, labelX, labelY, this.labels.length),
           }),
         );
       }
@@ -359,7 +375,7 @@ export class KiCADSchematic {
             label_rotation: isGndType ? 0 : 270,
             justify_horizontal: isGndType ? 'left' : 'right',
             justify_vertical: 'bottom',
-            uuid: randomUUID(),
+            uuid: deterministicUUID('pwr-label', netName, flgPinCoords[0], flgPinCoords[1], this.labels.length),
           }),
         );
       }

@@ -3,9 +3,10 @@ import { Pin } from './pin.js';
 import fs from 'node:fs';
 import chalk from 'chalk';
 import logger from './utils/logging.js';
-import { randomUUID, UUID } from 'node:crypto';
+import { UUID } from 'node:crypto';
 import { TypeCadError } from './utils/errors.js';
 import { ReferenceCounter } from './utils/reference_counter.js';
+import { deterministicUUID } from './utils/deterministic_id.js';
 import type { ISchematicNode } from './types/schematic_types.js';
 import { buildProjectTree } from './cli/project_tree.js';
 import { generateBom } from './renderers/bom-generator.js';
@@ -40,7 +41,8 @@ export class Schematic {
   /** @internal */
   components: Component[] = [];
   sheetName: string;
-  #uuid: UUID = randomUUID();
+  // Derived from the sheet name so identical designs render identically.
+  #uuid: UUID;
   private sexpr_components: string[] = [];
   /** @internal */
   readonly referenceCounter = new ReferenceCounter();
@@ -81,6 +83,7 @@ export class Schematic {
   constructor(sheetName: string) {
     validateSheetName(sheetName);
     this.sheetName = sheetName;
+    this.#uuid = deterministicUUID('schematic-sheet', sheetName) as UUID;
     this.netManager = new NetManager(this.#options.net_prefix);
   }
 

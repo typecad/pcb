@@ -3,7 +3,7 @@
 	(generator "typecad")
 	(generator_version "0.1.0")
 	(paper "A4")
-    (uuid "fc2d3556-027e-4de5-811e-b9c1f5d92d1e")
+    (uuid "de2f94c1-7c8e-55f0-87d3-a29d4b429f2f")
 
     (lib_symbols
     (symbol "Mechanical:MountingHole_Pad" (pin_numbers (hide yes)) (pin_names (offset 1.016) (hide yes)) (exclude_from_sim no) (in_bom no) (on_board yes) (in_pos_files yes) (duplicate_pin_numbers_are_jumpers no) (property "Reference" "H" (at 0 6.35 0) (show_name no) (do_not_autoplace no) (effects (font (size 1.27 1.27)))) (property "Value" "MountingHole_Pad" (at 0 4.445 0) (show_name no) (do_not_autoplace no) (effects (font (size 1.27 1.27)))) (property "Footprint" "" (at 0 0 0) (show_name no) (do_not_autoplace no) (hide yes) (effects (font (size 1.27 1.27)))) (property "Datasheet" "" (at 0 0 0) (show_name no) (do_not_autoplace no) (hide yes) (effects (font (size 1.27 1.27)))) (property "Description" "Mounting Hole with connection" (at 0 0 0) (show_name no) (do_not_autoplace no) (hide yes) (effects (font (size 1.27 1.27)))) (property "ki_keywords" "mounting hole" (at 0 0 0) (show_name no) (do_not_autoplace no) (hide yes) (effects (font (size 1.27 1.27)))) (property "ki_fp_filters" "MountingHole*Pad*" (at 0 0 0) (show_name no) (do_not_autoplace no) (hide yes) (effects (font (size 1.27 1.27)))) (symbol "MountingHole_Pad_0_1" (circle (center 0 1.27) (radius 1.27) (stroke (width 1.27) (type default)) (fill (type none)))) (symbol "MountingHole_Pad_1_1" (pin input line (at 0 -2.54 90) (length 2.54) (name "1" (effects (font (size 1.27 1.27)))) (number "1" (effects (font (size 1.27 1.27)))))) (embedded_fonts no))
@@ -14,35 +14,35 @@
 
 	
 		(label "GND"
-			(at 63.5 88.9 0)
+			(at 205.74 2.54 0)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
 				(justify left bottom)
 			)
-			(uuid "afa78a22-2830-4a8a-8eb4-4fce379581f3")
+			(uuid "6938c7e1-f324-5cbc-8824-bda699ae79de")
 		)
 
 	
 		(label "GND"
-			(at 137.16 20.32 0)
+			(at 187.96 73.66 0)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
 				(justify left bottom)
 			)
-			(uuid "7d03edc8-e777-4bc0-9504-747bd7b3cab2")
+			(uuid "72d5645f-8710-57cf-b619-22b145f8a5e1")
 		)
 
 
-    (symbol (lib_id "Mechanical:MountingHole_Pad") (at 187.96 132.08 0) (property "Reference" "MH1" (at 187.96 137.16000000000003 0) (effects (font (size 1.27 1.27)) (hide no))) (property "Value" "" (at 187.96 137.16000000000003 0) (effects (font (size 1.27 1.27)) (hide yes))) (property "Footprint" "MountingHole:MountingHole_2.7mm_M2.5" (at 187.96 137.16000000000003 0) (effects (font (size 1.27 1.27)) (hide yes))) (instances (project "rd_skeleton" (path "/fc2d3556-027e-4de5-811e-b9c1f5d92d1e" (reference "MH1") (unit 1)))))
-    (symbol (lib_id "Mechanical:MountingHole_Pad") (at 22.86 2.54 0) (property "Reference" "MH2" (at 22.86 7.62 0) (effects (font (size 1.27 1.27)) (hide no))) (property "Value" "" (at 22.86 7.62 0) (effects (font (size 1.27 1.27)) (hide yes))) (property "Footprint" "MountingHole:MountingHole_2.5mm_Pad" (at 22.86 7.62 0) (effects (font (size 1.27 1.27)) (hide yes))) (instances (project "rd_skeleton" (path "/fc2d3556-027e-4de5-811e-b9c1f5d92d1e" (reference "MH2") (unit 1)))))
-    (symbol (lib_id "Mechanical:MountingHole_Pad") (at 7.62 83.82000000000001 0) (property "Reference" "MH3" (at 7.62 88.9 0) (effects (font (size 1.27 1.27)) (hide no))) (property "Value" "" (at 7.62 88.9 0) (effects (font (size 1.27 1.27)) (hide yes))) (property "Footprint" "MountingHole:MountingHole_2.7mm_M2.5" (at 7.62 88.9 0) (effects (font (size 1.27 1.27)) (hide yes))) (instances (project "rd_skeleton" (path "/fc2d3556-027e-4de5-811e-b9c1f5d92d1e" (reference "MH3") (unit 1)))))
-    (symbol (lib_id "Mechanical:MountingHole_Pad") (at 162.56 124.46000000000001 0) (property "Reference" "MH4" (at 162.56 129.54000000000002 0) (effects (font (size 1.27 1.27)) (hide no))) (property "Value" "" (at 162.56 129.54000000000002 0) (effects (font (size 1.27 1.27)) (hide yes))) (property "Footprint" "MountingHole:MountingHole_2.7mm_M2.5" (at 162.56 129.54000000000002 0) (effects (font (size 1.27 1.27)) (hide yes))) (instances (project "rd_skeleton" (path "/fc2d3556-027e-4de5-811e-b9c1f5d92d1e" (reference "MH4") (unit 1)))))
-    (symbol (lib_id "Connector:Conn_01x04_Pin") (at 58.42 91.44 0) (property "Reference" "J1" (at 58.42 96.52 0) (effects (font (size 1.27 1.27)) (hide no))) (property "Value" "" (at 58.42 96.52 0) (effects (font (size 1.27 1.27)) (hide yes))) (property "Footprint" "TerminalBlock_TE-Connectivity:TerminalBlock_TE_282834-4_1x04_P2.54mm_Horizontal" (at 58.42 96.52 0) (effects (font (size 1.27 1.27)) (hide yes))) (instances (project "rd_skeleton" (path "/fc2d3556-027e-4de5-811e-b9c1f5d92d1e" (reference "J1") (unit 1)))))
-    (symbol (lib_id "Connector:Conn_01x04_Pin") (at 132.08 22.86 0) (property "Reference" "J2" (at 132.08 27.939999999999998 0) (effects (font (size 1.27 1.27)) (hide no))) (property "Value" "" (at 132.08 27.939999999999998 0) (effects (font (size 1.27 1.27)) (hide yes))) (property "Footprint" "TerminalBlock_TE-Connectivity:TerminalBlock_TE_282834-4_1x04_P2.54mm_Horizontal" (at 132.08 27.939999999999998 0) (effects (font (size 1.27 1.27)) (hide yes))) (instances (project "rd_skeleton" (path "/fc2d3556-027e-4de5-811e-b9c1f5d92d1e" (reference "J2") (unit 1)))))
+    (symbol (lib_id "Mechanical:MountingHole_Pad") (at 256.54 88.9 0) (property "Reference" "MH1" (at 256.54 93.98 0) (effects (font (size 1.27 1.27)) (hide no))) (property "Value" "" (at 256.54 93.98 0) (effects (font (size 1.27 1.27)) (hide yes))) (property "Footprint" "MountingHole:MountingHole_2.7mm_M2.5" (at 256.54 93.98 0) (effects (font (size 1.27 1.27)) (hide yes))) (instances (project "rd_skeleton" (path "/de2f94c1-7c8e-55f0-87d3-a29d4b429f2f" (reference "MH1") (unit 1)))))
+    (symbol (lib_id "Mechanical:MountingHole_Pad") (at 53.34 43.18 0) (property "Reference" "MH2" (at 53.34 48.26 0) (effects (font (size 1.27 1.27)) (hide no))) (property "Value" "" (at 53.34 48.26 0) (effects (font (size 1.27 1.27)) (hide yes))) (property "Footprint" "MountingHole:MountingHole_2.5mm_Pad" (at 53.34 48.26 0) (effects (font (size 1.27 1.27)) (hide yes))) (instances (project "rd_skeleton" (path "/de2f94c1-7c8e-55f0-87d3-a29d4b429f2f" (reference "MH2") (unit 1)))))
+    (symbol (lib_id "Mechanical:MountingHole_Pad") (at 129.54 154.94 0) (property "Reference" "MH3" (at 129.54 160.02 0) (effects (font (size 1.27 1.27)) (hide no))) (property "Value" "" (at 129.54 160.02 0) (effects (font (size 1.27 1.27)) (hide yes))) (property "Footprint" "MountingHole:MountingHole_2.7mm_M2.5" (at 129.54 160.02 0) (effects (font (size 1.27 1.27)) (hide yes))) (instances (project "rd_skeleton" (path "/de2f94c1-7c8e-55f0-87d3-a29d4b429f2f" (reference "MH3") (unit 1)))))
+    (symbol (lib_id "Mechanical:MountingHole_Pad") (at 228.6 144.78 0) (property "Reference" "MH4" (at 228.6 149.86 0) (effects (font (size 1.27 1.27)) (hide no))) (property "Value" "" (at 228.6 149.86 0) (effects (font (size 1.27 1.27)) (hide yes))) (property "Footprint" "MountingHole:MountingHole_2.7mm_M2.5" (at 228.6 149.86 0) (effects (font (size 1.27 1.27)) (hide yes))) (instances (project "rd_skeleton" (path "/de2f94c1-7c8e-55f0-87d3-a29d4b429f2f" (reference "MH4") (unit 1)))))
+    (symbol (lib_id "Connector:Conn_01x04_Pin") (at 200.66 5.08 0) (property "Reference" "J1" (at 200.66 10.16 0) (effects (font (size 1.27 1.27)) (hide no))) (property "Value" "" (at 200.66 10.16 0) (effects (font (size 1.27 1.27)) (hide yes))) (property "Footprint" "TerminalBlock_TE-Connectivity:TerminalBlock_TE_282834-4_1x04_P2.54mm_Horizontal" (at 200.66 10.16 0) (effects (font (size 1.27 1.27)) (hide yes))) (instances (project "rd_skeleton" (path "/de2f94c1-7c8e-55f0-87d3-a29d4b429f2f" (reference "J1") (unit 1)))))
+    (symbol (lib_id "Connector:Conn_01x04_Pin") (at 182.88 76.2 0) (property "Reference" "J2" (at 182.88 81.28 0) (effects (font (size 1.27 1.27)) (hide no))) (property "Value" "" (at 182.88 81.28 0) (effects (font (size 1.27 1.27)) (hide yes))) (property "Footprint" "TerminalBlock_TE-Connectivity:TerminalBlock_TE_282834-4_1x04_P2.54mm_Horizontal" (at 182.88 81.28 0) (effects (font (size 1.27 1.27)) (hide yes))) (instances (project "rd_skeleton" (path "/de2f94c1-7c8e-55f0-87d3-a29d4b429f2f" (reference "J2") (unit 1)))))
 
 	(sheet_instances
 		(path "/"

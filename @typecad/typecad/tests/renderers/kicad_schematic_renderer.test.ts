@@ -67,10 +67,14 @@ vi.mock('../../src/renderers/schematic_templates.js', () => ({
   renderLabel: vi.fn((params) => `(label ${params.net_name} at ${params.x} ${params.y})`),
 }));
 
-vi.mock('node:crypto', () => ({
-  randomUUID: vi.fn(() => '00000000-0000-0000-0000-000000000000'),
-  UUID: vi.fn(),
-}));
+vi.mock('node:crypto', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:crypto')>();
+  return {
+    ...actual,
+    randomUUID: vi.fn(() => '00000000-0000-0000-0000-000000000000'),
+    UUID: vi.fn(),
+  };
+});
 
 import { KiCADSchematic } from '../../src/renderers/kicad_schematic_renderer.js';
 

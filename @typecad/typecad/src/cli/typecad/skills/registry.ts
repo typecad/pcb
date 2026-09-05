@@ -10,9 +10,11 @@ import { configSkills } from './config.js';
 import { advancedSkills } from './advanced.js';
 import { kicadSkills } from './kicad.js';
 import { workflowSkills } from './workflow.js';
+import { agentLoopSkills } from './agent_loop.js';
 
 const allSkills: Skill[] = [
   ...workflowSkills,
+  ...agentLoopSkills,
   ...coreSkills,
   ...passiveSkills,
   ...layoutSkills,

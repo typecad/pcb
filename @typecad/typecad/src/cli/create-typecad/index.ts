@@ -47,7 +47,8 @@ function parseArguments() {
           parsedArgs[key] = [];
         }
       } else {
-        parsedArgs[key] = value;
+        // Valueless flags become true so they can never read as "undefined"
+        parsedArgs[key] = value === undefined ? true : value;
       }
     }
   }
@@ -57,11 +58,18 @@ function parseArguments() {
 
 // Check if all required arguments are provided for non-interactive mode
 function hasAllRequiredArgs(args: Record<string, string | boolean | string[] | undefined>) {
-  const hasBasicArgs = args.hasOwnProperty('name') && args.hasOwnProperty('pio') && args.hasOwnProperty('git');
+  // --yes fills sensible defaults (pio=false, git=true) so agents only need --name
+  if (args.yes === true && typeof args.name === 'string') {
+    args.pio = args.pio === true;
+    args.git = args.git !== false;
+    return true;
+  }
+
+  const hasBasicArgs = typeof args.name === 'string' && typeof args.pio === 'boolean' && typeof args.git === 'boolean';
 
   // If pio is true, board is also required
   if (args.pio === true) {
-    return hasBasicArgs && args.hasOwnProperty('board');
+    return hasBasicArgs && typeof args.board === 'string';
   }
 
   return hasBasicArgs;
@@ -73,6 +81,7 @@ function showHelp() {
   logger.log('Usage: npx @typecad/typecad create [options]\n');
   logger.log('Options:');
   logger.log('  --name=<project_name>     Project name (required for non-interactive mode)');
+  logger.log('  --yes                     Non-interactive with defaults (pio=false, git=true)');
   logger.log('  --pio=<true|false>        Create PlatformIO project (required for non-interactive mode)');
   logger.log('  --git=<true|false>        Initialize git repository (required for non-interactive mode)');
   logger.log('  --board=<board_name>      PlatformIO board (required when --pio=true, default: esp32dev)');

@@ -175,9 +175,10 @@ export function pcbTrackWithOffset(
   uuid?: string,
   net?: string,
 ): string {
-  const trackUuid = uuid || generateUuid();
   const offsetStart = { x: start.x + state.currentOffset.x, y: start.y + state.currentOffset.y };
   const offsetEnd = { x: end.x + state.currentOffset.x, y: end.y + state.currentOffset.y };
+  const trackUuid =
+    uuid || generateUuid('track', layer, width, offsetStart.x, offsetStart.y, offsetEnd.x, offsetEnd.y, net ?? '');
 
   const lineData: IGrLine = {
     type: 'line',

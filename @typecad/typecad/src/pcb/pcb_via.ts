@@ -12,7 +12,16 @@ export function createVia(
     y: (options.at?.y ?? 0) + offset.y,
   };
 
-  const viaUuid = generateUuid();
+  // Geometry-derived: two vias at the same spot with the same geometry are
+  // the same via, so identical designs produce identical output.
+  const viaUuid = generateUuid(
+    'via',
+    viaPosition.x,
+    viaPosition.y,
+    options.size || 0.8,
+    options.drill || 0.4,
+    options.net ?? '',
+  );
   const viaComponent = Component._create({
     via: true,
     prefix: 'V',

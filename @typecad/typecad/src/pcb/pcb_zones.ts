@@ -291,7 +291,18 @@ export function zone(
   const boundsW = Math.max(...polygon.map((p) => p.x)) - boundsX;
   const boundsH = Math.max(...polygon.map((p) => p.y)) - boundsY;
 
-  const zoneUuid = generateUuid();
+  // Bounds + layers + net identify the zone; the derived UUID keeps builds
+  // byte-identical.
+  const zoneUuid = generateUuid(
+    'zone',
+    layers.join('+'),
+    boundsX,
+    boundsY,
+    boundsW,
+    boundsH,
+    pin ? `${pin.reference}:${pin.number}` : '',
+    net ?? '',
+  );
 
   // Store net information for later resolution
   // Format: "pin:reference:pinNumber" or "net:netName"
@@ -602,7 +613,7 @@ export function keepout(
   const boundsW = Math.max(...polygon.map((p) => p.x)) - boundsX;
   const boundsH = Math.max(...polygon.map((p) => p.y)) - boundsY;
 
-  const zoneUuid = generateUuid();
+  const zoneUuid = generateUuid('keepout', layers.join('+'), boundsX, boundsY, boundsW, boundsH);
 
   // Default all restrictions to true (not allowed)
   const keepoutZone: IKeepoutZone = {

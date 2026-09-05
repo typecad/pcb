@@ -99,7 +99,10 @@ function ensureCodePropertySubNodes(propNode: SNode): void {
   if (!propNode.hasChild('hide')) propNode.push(['hide', yes()] as SExpr[]);
   if (!propNode.hasChild('layer')) propNode.push(['layer', 'F.Fab'] as SExpr[]);
   if (!propNode.hasChild('at')) propNode.push(['at', 0, 0, 0] as SExpr[]);
-  if (!propNode.hasChild('uuid')) propNode.push(['uuid', generateUuid()] as SExpr[]);
+  // The property value (raw[2] of a (property "Code" <value> ...) node) is
+  // stable per component, so the derived UUID is deterministic.
+  if (!propNode.hasChild('uuid'))
+    propNode.push(['uuid', generateUuid('code-prop', String(propNode.raw[2] ?? ''))] as SExpr[]);
   if (!propNode.hasChild('effects'))
     propNode.push(['effects', ['font', ['size', 1, 1], ['thickness', 0.15]]] as SExpr[]);
 }
@@ -414,7 +417,7 @@ function makeCodeProperty(valueToken: string): SExpr[] {
     ['at', 0, 0, 0],
     ['layer', 'F.Fab'],
     ['hide', yes()],
-    ['uuid', generateUuid()],
+    ['uuid', generateUuid('code-prop', valueToken)],
     ['effects', ['font', ['size', 1, 1], ['thickness', 0.15]]],
   ] as SExpr[];
 }
@@ -578,7 +581,7 @@ export function createFootprintNode(
       ['at', 0, 0, 0],
       ['layer', 'F.Fab'],
       ['hide', yes()],
-      ['uuid', generateUuid()],
+      ['uuid', generateUuid('code-prop', codeValue)],
       ['effects', ['font', ['size', 1, 1], ['thickness', 0.15]]],
     ] as SExpr[]);
   }
@@ -720,7 +723,7 @@ export function createFootprintNode(
           text,
           ['at', textItem.x ?? 0, textItem.y ?? 0, rotation],
           ['layer', layer],
-          ['uuid', generateUuid()],
+          ['uuid', generateUuid('text-prop', component.uuid, propName, text, textItem.x ?? 0, textItem.y ?? 0, layer)],
           [Sym.for('effects'), [Sym.for('font'), ...fontParts]] as SExpr[],
           ['hide', hideValue],
         ] as SExpr[];

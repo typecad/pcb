@@ -3,6 +3,7 @@ import { Pin } from './pin.js';
 import chalk from 'chalk';
 import { ReferenceCounter } from './utils/reference_counter.js';
 import { IVia } from './pcb/pcb_interfaces.js';
+import { deterministicUUID } from './utils/deterministic_id.js';
 import { ComponentError } from './utils/errors.js';
 import { displayName, formatSourceError } from './utils/error_reporter.js';
 import logger from './utils/logging.js';
@@ -101,6 +102,9 @@ export interface ComponentInit {
 export type IComponent = ComponentInit;
 
 export class Component {
+  /** Creation counter used as a deterministic disambiguator in UUID fallbacks. */
+  static #instanceCounter = 0;
+  readonly #instanceIndex = ++Component.#instanceCounter;
   #ref: string = '';
   #prefix: string = '';
   #refLocked: boolean = false;
@@ -478,7 +482,15 @@ export class Component {
   }
 
   static via(at: { x: number; y: number }, options?: { size?: number; drill?: number }): Component {
-    const viaUuid = randomUUID();
+    // Geometry-derived: two vias at the same spot with the same geometry are
+    // the same via, so identical designs produce identical output.
+    const viaUuid = deterministicUUID(
+      'via',
+      at.x,
+      at.y,
+      options?.size ?? 0.8,
+      options?.drill ?? 0.4,
+    );
     return Component._create({
       via: true,
       prefix: 'V',
@@ -578,7 +590,23 @@ export class Component {
 
   get uuid(): string {
     if (this.#uuid === '' && this.#isInitialized) {
-      this.#uuid = randomUUID();
+      // Deterministic when the component has identity: identical designs
+      // render to byte-identical output. Creation order (instance index)
+      // is itself deterministic for a given program, so the sourceInfo
+      // fallback stays stable too.
+      if (this.reference) {
+        this.#uuid = deterministicUUID('component', this.reference);
+      } else if (this.sourceInfo?.file) {
+        this.#uuid = deterministicUUID(
+          'component-src',
+          this.sourceInfo.file,
+          this.sourceInfo.line,
+          this.sourceInfo.variable ?? '',
+          this.#instanceIndex,
+        );
+      } else {
+        this.#uuid = randomUUID();
+      }
     }
     return this.#uuid;
   }

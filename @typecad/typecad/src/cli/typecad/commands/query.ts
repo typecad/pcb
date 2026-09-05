@@ -59,7 +59,7 @@ function printHeader(title: string, file: string): void {
 }
 
 export async function run(parsed: ParsedArgs): Promise<void> {
-  const subject = parsed.subcommand;
+  let subject = parsed.subcommand;
   const json = parsed.json;
 
   if (!subject || subject === 'help') {
@@ -113,6 +113,13 @@ export async function run(parsed: ParsedArgs): Promise<void> {
   }
 
   const model: BoardModel = buildBoardModel(pcbPath);
+
+  // Plural subject with a detail argument delegates to the singular view, so
+  // `query components MH3` behaves like `query component MH3` instead of
+  // silently ignoring the argument.
+  const detailArg = parsed.positional.find((p) => !p.endsWith('.kicad_pcb'));
+  if (detailArg && subject === 'components') subject = 'component';
+  if (detailArg && subject === 'nets') subject = 'net';
 
   switch (subject) {
     case 'summary': {

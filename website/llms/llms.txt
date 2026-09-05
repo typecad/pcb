@@ -65,6 +65,7 @@
 - [Private Npm Packages](news/private-npm-packages.md): Keeping your work private
 - [Schematics](news/schematics.md): Make a schematic file in typeCAD
 - [Simplification](news/simplification.md): Simplification
+- [typeCAD for Agents](news/typecad-for-agents.md): Check, query, and edit PCBs from the command line — a tight verify-and-edit loop for AI coding agents
 - [Tracks](news/tracks.md): Create tracks with typeCAD
 - [V0.3 Release](news/v0.3-release.md): typeCAD 0.3
 - [Package](package.md): npm Packages for Hardware

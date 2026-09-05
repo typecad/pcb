@@ -191,3 +191,61 @@ describe('buildBoardModel', () => {
     expect(model.summary.board).toEqual({ minX: 0, minY: 0, maxX: 50, maxY: 30 });
   });
 });
+
+// A board as kicad-cli --save-board reserializes it: zones carry
+// `(net "GND")` instead of `(net 1) (net_name "GND")`, and the fill
+// geometry exists as (filled_polygon) nodes alongside the declared outline.
+const RESAVED_PCB = `(kicad_pcb
+  (version 20241229)
+  (net 0 "")
+  (net 1 "GND")
+  (footprint "Device:R" (layer "F.Cu")
+    (at 10 10)
+    (property "Reference" "R9" (at 0 0 0))
+    (property "Value" "1k" (at 0 0 0))
+    (pad "1" smd rect (at -1 0) (size 1 1) (layers "F.Cu") (net 1 "GND"))
+    (pad "2" smd rect (at 1 0) (size 1 1) (layers "F.Cu") (net 1 "GND"))
+  )
+  (zone
+    (net "GND")
+    (layers "F.Cu" "B.Cu")
+    (hatch edge 0.508)
+    (fill yes (mode hatch))
+    (polygon (pts (xy 0 0) (xy 30 0) (xy 30 20) (xy 0 20)))
+    (filled_polygon (layer "F.Cu") (pts (xy 0.2 0.2) (xy 29.8 0.2) (xy 29.8 19.8) (xy 0.2 19.8)))
+    (filled_polygon (layer "B.Cu") (pts (xy 0.2 0.2) (xy 29.8 0.2) (xy 29.8 19.8) (xy 0.2 19.8)))
+  )
+  (zone
+    (layers "F.Cu")
+    (keepout (tracks not_allowed) (vias not_allowed))
+    (polygon (pts (xy 40 5) (xy 45 5) (xy 45 10) (xy 40 10)))
+  )
+)`;
+
+describe('buildBoardModel on kicad-cli resaved boards', () => {
+  const model = buildBoardModel(writeTempPcb(RESAVED_PCB));
+
+  it('recognizes the resaved (net "NAME") zone form as a pour with that net', () => {
+    const pours = model.zones.filter((z) => !z.keepout);
+    expect(pours).toHaveLength(1);
+    expect(pours[0].netName).toBe('GND');
+    expect(pours[0].netCode).toBe(1);
+    expect(pours[0].layers).toEqual(['F.Cu', 'B.Cu']);
+    expect(model.zones.filter((z) => z.keepout)).toHaveLength(1);
+  });
+
+  it('reports materialized fills from (filled_polygon) nodes', () => {
+    expect(model.zones.filter((z) => !z.keepout)[0].materialized).toBe(true);
+    expect(model.zones.filter((z) => z.keepout)[0].materialized).toBe(false);
+  });
+
+  it('uses the declared outline for the bbox, not clipped fill fragments', () => {
+    const pour = model.zones.filter((z) => !z.keepout)[0];
+    expect(pour.bbox).toEqual({ x: 0, y: 0, width: 30, height: 20 });
+  });
+
+  it('still resolves pour connectivity through resaved zones', () => {
+    const gnd = findNet(model, 'GND')!;
+    expect(gnd.route).toMatchObject({ routed: true, pinsConnected: 2, pourAssisted: true });
+  });
+});

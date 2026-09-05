@@ -3,6 +3,7 @@ import { parse, Sym, yes, no, nameOf, sym, SNode } from '../sexpr/index.js';
 import type { SExpr } from '../sexpr/types.js';
 import type { SexprNode } from '../types/sexpr_types.js';
 import { generateUuid, formatSourceInfoForProperty, getErrorMessage } from './pcb_utils.js';
+import { deterministicUUID } from '../utils/deterministic_id.js';
 import { mapLayerToSide, transformSexprLayers, mirrorChamferDirection } from './pcb_layer_utils.js';
 import { BoardCreationError } from '../utils/errors.js';
 import { reportError } from '../utils/error_reporter.js';
@@ -226,6 +227,19 @@ export function processFootprintItem(
   const sn = SNode.from(subItem);
   const itemType = sn.name;
 
+  // KiCad 10 invents random UUIDs for footprint graphics (fp_line, fp_circle,
+  // ...) that lack one when it resaves — zone-fill round-trips the file
+  // through pcbnew. Emit deterministic UUIDs derived from the geometry so
+  // refilled boards stay byte-stable.
+  if (itemType.startsWith('fp_') && !sn.hasChild('uuid')) {
+    const geoKey = sn
+      .children()
+      .filter((c) => ['start', 'end', 'center', 'mid', 'pts', 'at'].includes(c.name))
+      .map((c) => JSON.stringify(c.raw))
+      .join('|');
+    subItem.push(['uuid', deterministicUUID('fp-gfx', component.uuid, itemType, geoKey)]);
+  }
+
   if (itemType === 'property') {
     const propName = sn.getString(1);
     let newValue: string | undefined = undefined;
@@ -257,6 +271,13 @@ export function processFootprintItem(
     }
 
     splicePropertyStringValue(subItem, newValue);
+
+    // Base library properties carry no UUID; KiCad 10 invents random ones
+    // when it resaves (zone-fill round-trip). Emit deterministic UUIDs so
+    // refilled boards stay byte-stable.
+    if (!sn.hasChild('uuid')) {
+      subItem.push(['uuid', deterministicUUID('fp-prop', component.uuid, propName ?? '', String(subItem[2] ?? ''))]);
+    }
 
     if (propName === 'Reference' && component.referenceLayout) {
       applyLayoutToFpText(sn, component.referenceLayout);
@@ -359,6 +380,13 @@ export function processFootprintItem(
 
     if (!pintypeNodeFound) {
       subItem.push(['pintype', Sym.for('passive')]);
+    }
+
+    // KiCad 10 invents random UUIDs for pads that lack one when it resaves
+    // (zone fill round-trips the file through pcbnew). Emit a deterministic
+    // UUID derived from the component so refilled boards stay byte-stable.
+    if (!sn.hasChild('uuid') && component.reference) {
+      subItem.push(['uuid', deterministicUUID('pad', component.uuid, padNumber)]);
     }
 
     if (component.pcb?.side === 'back') {
@@ -517,6 +545,27 @@ export function updateFootprintNode(
     }
   }
 
+  // KiCad 10 requires Datasheet/Description properties; when missing, its
+  // resave (zone-fill round-trip) adds them with random UUIDs. Emit them
+  // ourselves so refilled boards stay byte-stable.
+  for (const [name, value] of [
+    ['Datasheet', component.datasheet ?? ''],
+    ['Description', component.description ?? ''],
+  ] as const) {
+    if (findPropertyNodeByName(sn, name) !== null) continue;
+    const insertPos = findPropertyInsertPosition(SNode.from(node));
+    node.splice(insertPos, 0, [
+      'property',
+      name,
+      value,
+      ['at', 0, 0, 0],
+      ['layer', 'F.Fab'],
+      ['hide', yes()],
+      ['uuid', deterministicUUID('fp-prop', component.uuid, name, value)],
+      ['effects', ['font', ['size', 1, 1], ['thickness', 0.15]]],
+    ] as SExpr[]);
+  }
+
   symifyTags(node);
   return node;
 }
@@ -615,6 +664,27 @@ export function createFootprintNode(
   if (!hasCodeProperty) {
     const insertPos = findPropertyInsertPosition(sn);
     l.splice(insertPos, 0, makeCodeProperty(valueToken));
+  }
+
+  // KiCad 10 requires Datasheet/Description properties; when missing, its
+  // resave (zone-fill round-trip) adds them with random UUIDs. Emit them
+  // ourselves so refilled boards stay byte-stable.
+  for (const [name, value] of [
+    ['Datasheet', component.datasheet ?? ''],
+    ['Description', component.description ?? ''],
+  ] as const) {
+    if (findPropertyNodeByName(sn, name) !== null) continue;
+    const insertPos = findPropertyInsertPosition(sn);
+    l.splice(insertPos, 0, [
+      'property',
+      name,
+      value,
+      ['at', 0, 0, 0],
+      ['layer', 'F.Fab'],
+      ['hide', yes()],
+      ['uuid', deterministicUUID('fp-prop', component.uuid, name, value)],
+      ['effects', ['font', ['size', 1, 1], ['thickness', 0.15]]],
+    ] as SExpr[]);
   }
 
   if (component.text && component.text.length > 0) {

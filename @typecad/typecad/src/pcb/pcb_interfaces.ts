@@ -71,6 +71,14 @@ export interface IPcbOptions {
    * autorouter as the fallback clearance and track width.
    */
   rules?: IPcbRules;
+  /**
+   * Materialize zone fills at create() time by round-tripping the written
+   * board through `kicad-cli pcb drc --refill-zones --save-board`
+   * (default: true). Individual zones opt out with `fill: false`. Without
+   * kicad-cli the fill is skipped with a warning — zones stay declared but
+   * exports contain no pour copper until a fill runs.
+   */
+  fill_zones?: boolean;
 }
 
 /**

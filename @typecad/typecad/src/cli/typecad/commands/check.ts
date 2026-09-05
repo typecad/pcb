@@ -185,7 +185,13 @@ export async function run(parsed: ParsedArgs): Promise<void> {
   if (!skipDrc && report.build.passed && pcbPath) {
     const reportPath = path.join(path.dirname(pcbPath), path.basename(pcbPath, '.kicad_pcb') + '_drc.json');
     try {
-      await executeKiCADCommand('pcb', ['drc', '--format', 'json', '--output', reportPath, pcbPath], { stdio: 'pipe' });
+      // --refill-zones: DRC judges real pour copper (and --save-board keeps
+      // the fill in the file, matching what build materializes).
+      await executeKiCADCommand(
+        'pcb',
+        ['drc', '--refill-zones', '--save-board', '--format', 'json', '--output', reportPath, pcbPath],
+        { stdio: 'pipe' },
+      );
     } catch {
       // non-zero exit is expected when violations exist
     }

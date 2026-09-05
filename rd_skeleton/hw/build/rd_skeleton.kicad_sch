@@ -36,6 +36,18 @@
 			(uuid "72d5645f-8710-57cf-b619-22b145f8a5e1")
 		)
 
+	
+		(label "GND"
+			(at 205.74 5.08 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left bottom)
+			)
+			(uuid "733a736d-6811-5138-a4eb-ea1f4f4bf91f")
+		)
+
 
     (symbol (lib_id "Mechanical:MountingHole_Pad") (at 256.54 88.9 0) (property "Reference" "MH1" (at 256.54 93.98 0) (effects (font (size 1.27 1.27)) (hide no))) (property "Value" "" (at 256.54 93.98 0) (effects (font (size 1.27 1.27)) (hide yes))) (property "Footprint" "MountingHole:MountingHole_2.7mm_M2.5" (at 256.54 93.98 0) (effects (font (size 1.27 1.27)) (hide yes))) (instances (project "rd_skeleton" (path "/de2f94c1-7c8e-55f0-87d3-a29d4b429f2f" (reference "MH1") (unit 1)))))
     (symbol (lib_id "Mechanical:MountingHole_Pad") (at 53.34 43.18 0) (property "Reference" "MH2" (at 53.34 48.26 0) (effects (font (size 1.27 1.27)) (hide no))) (property "Value" "" (at 53.34 48.26 0) (effects (font (size 1.27 1.27)) (hide yes))) (property "Footprint" "MountingHole:MountingHole_2.5mm_Pad" (at 53.34 48.26 0) (effects (font (size 1.27 1.27)) (hide yes))) (instances (project "rd_skeleton" (path "/de2f94c1-7c8e-55f0-87d3-a29d4b429f2f" (reference "MH2") (unit 1)))))

@@ -448,6 +448,7 @@ export async function run(parsed: ParsedArgs): Promise<void> {
               keepout: z.keepout,
               layers: z.layers,
               filled: z.filled,
+              materialized: z.materialized,
               fillMode: z.fillMode,
               bbox: z.bbox,
             })),
@@ -467,7 +468,11 @@ export async function run(parsed: ParsedArgs): Promise<void> {
       if (pours.length > 0) {
         logger.log(chalk.white(`Copper pours (${pours.length})`));
         for (const z of pours) {
-          const fill = z.filled ? `filled${z.fillMode ? ` (${z.fillMode})` : ''}` : 'unfilled';
+          const fill = z.materialized
+            ? `filled${z.fillMode ? ` (${z.fillMode})` : ''}`
+            : z.filled
+              ? chalk.yellow('fill declared, no fill polygons — build with kicad-cli to materialize')
+              : 'unfilled (declared)';
           logger.log(
             `  ${chalk.white(z.netName ?? '(unnamed)')}  ${z.layers.join('+')}  ${fill}  ${z.bbox.width} × ${z.bbox.height} mm at (${z.bbox.x}, ${z.bbox.y})`,
           );

@@ -22,6 +22,8 @@ const j2 = new Connector({
 // r1.referenceLayout = { x: 0, y: -2.5, font: 'OCR A Std', height: 1.2, width: 1.2 };
 typecad.named('GND').net(j1.pin(1), j2.pin(1));
 // typecad.named('GND').net(r1.pin(1))
+typecad.net(j1.pin(1), j1.pin(2));
+typecad.net(j1.pin(1), j1.pin(2));
 typecad.outline(127.38, 85.9, 45, 30, 0.1);
 
 // mh1.text = [{ property: 'Reference', text: 'R1', x: 1, y: 1, show: false }]

@@ -9,6 +9,7 @@ import { createFootprintNode } from './pcb_footprint.js';
 import { mergeNets } from './pcb_net_merger.js';
 import { materializePlanes } from './pcb_zones.js';
 import { materializeStitches } from './pcb_stitching.js';
+import { materializeZoneFills } from './pcb_zone_fill.js';
 import { parseExistingBoard, insertNetsIntoBoardContents, processExistingFootprints } from './pcb_existing_board.js';
 import { getCallSite } from '../utils/stack_trace.js';
 import {
@@ -284,4 +285,8 @@ export function createBoard(pcb: PCB, ...items: Array<Component | TrackBuilder>)
   // Mark the board as written: autorouting from here on can never reach the
   // board file, so the routing API throws on it instead of failing quietly.
   state.boardWritten = true;
+
+  // Materialize declared zone fills on the written board (KiCad computes
+  // the fill geometry; skipped gracefully without kicad-cli).
+  materializeZoneFills(pcb, state);
 }

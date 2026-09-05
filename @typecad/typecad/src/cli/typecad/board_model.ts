@@ -59,8 +59,11 @@ export interface BoardZone {
   netName: string | null;
   layers: string[];
   keepout: boolean;
+  /** Fill requested in the zone declaration (`(fill yes ...)`). */
   filled: boolean;
   fillMode: string | null;
+  /** KiCad computed actual fill geometry into the file (`(filled_polygon)`). */
+  materialized: boolean;
   bbox: { x: number; y: number; width: number; height: number };
   polygon: Pt[];
 }
@@ -105,11 +108,22 @@ export interface BoardModel {
   summary: BoardSummary;
 }
 
-function netNameOf(parent: SNode): { code: number; name: string | null } | null {
+/**
+ * Net reference on a pad/via/segment/zone. Two shapes exist: typeCAD writes
+ * `(net 1 "GND")`; kicad-cli --save-board reserializes as `(net "GND")`
+ * (name inline, no code) or `(net 1)` (bare code). `netCodesByName`
+ * resolves resaved names back to their codes.
+ */
+function netNameOf(parent: SNode, netCodesByName: Map<string, number>): { code: number; name: string | null } | null {
   const net = parent.child('net');
   if (!net) return null;
-  const code = net.getNumber(1, -1);
-  return { code, name: net.getString(2) };
+  if (net.rawAt(2) !== undefined) {
+    return { code: net.getNumber(1, -1), name: net.getString(2) };
+  }
+  const first = net.getString(1) ?? '';
+  if (/^-?\d+$/.test(first)) return { code: parseInt(first, 10), name: null };
+  if (first !== '') return { code: netCodesByName.get(first) ?? -1, name: first };
+  return { code: -1, name: null };
 }
 
 function isPowerNetName(name: string): boolean {
@@ -264,7 +278,7 @@ export function buildBoardModel(pcbPath: string): BoardModel {
     const padNodes = fp.children('pad');
     const pads: BoardPad[] = [];
     for (const pad of padNodes) {
-      const net = netNameOf(pad);
+      const net = netNameOf(pad, netCodesByName);
       const pintypeNode = pad.child('pintype');
       const padAt = pad.child('at');
       const layersNode = pad.child('layers');
@@ -317,13 +331,15 @@ export function buildBoardModel(pcbPath: string): BoardModel {
   for (const comp of components) {
     for (const pad of comp.pads) {
       if (pad.net === null) continue;
-      const code = netCodesByName.get(pad.net) ?? 0;
+      // Resaved boards carry inline net names without a global code table,
+      // so aggregate by name; the code (when present) only merges entries.
+      const code = netCodesByName.get(pad.net) ?? -1;
       netByCode(code, pad.net).pins.push(`${comp.reference}.${pad.pad}`);
     }
   }
 
   for (const via of root.findAll('via')) {
-    const net = netNameOf(via);
+    const net = netNameOf(via, netCodesByName);
     if (!net) continue;
     const at = via.child('at');
     netByCode(net.code, net.name).vias.push({ x: at?.getNumber(1, 0) ?? 0, y: at?.getNumber(2, 0) ?? 0 });
@@ -332,8 +348,9 @@ export function buildBoardModel(pcbPath: string): BoardModel {
   const round = (v: number) => Math.round(v * 1000) / 1000;
   const segments = root.findAll('segment');
   for (const seg of segments) {
-    const net = netNameOf(seg);
-    if (!net || net.code < 0) continue;
+    const net = netNameOf(seg, netCodesByName);
+    // Skip only genuinely net-less segments; resaved inline names carry code -1
+    if (!net || (net.code < 0 && net.name === null)) continue;
     const start = nodeChildPoint(seg, 'start');
     const end = nodeChildPoint(seg, 'end');
     if (!start || !end) continue;
@@ -349,10 +366,29 @@ export function buildBoardModel(pcbPath: string): BoardModel {
   // Zones: copper pours (net-assigned) and keepouts (net-less)
   const zones: BoardZone[] = [];
   for (const zone of root.findAll('zone')) {
-    const netCodeNode = zone.child('net');
+    // Net comes in two shapes: typeCAD writes `(net 1 "GND") (net_name "GND")`,
+    // while kicad-cli --save-board reserializes zones as `(net "GND")`.
+    const netNode = zone.child('net');
     const netNameNode = zone.child('net_name');
-    const code = netCodeNode?.getNumber(1, -1) ?? -1;
-    const name = netNameNode?.getString(1) ?? null;
+    let code = -1;
+    let name = netNameNode?.getString(1) ?? null;
+    if (netNode) {
+      if (netNode.rawAt(2) !== undefined) {
+        // (net <code> "<name>") — original form
+        code = netNode.getNumber(1, -1);
+        name = name ?? netNode.getString(2);
+      } else {
+        const first = netNode.getString(1) ?? '';
+        if (/^-?\d+$/.test(first)) {
+          // (net <code>) — resaved form with a bare code
+          code = parseInt(first, 10);
+        } else if (first !== '') {
+          // (net "<name>") — resaved form with the name inline
+          name = name ?? first;
+        }
+      }
+    }
+    if (name !== null && name !== '') code = netCodesByName.get(name) ?? code;
     const layersNode = zone.child('layers');
     const layers: string[] = [];
     if (layersNode) {
@@ -361,16 +397,20 @@ export function buildBoardModel(pcbPath: string): BoardModel {
         if (l) layers.push(l);
       }
     }
+    // Only the declared outline — filled_polygon pts are clipped fragments
     const polygon: Pt[] = [];
-    for (const pts of zone.findAll('pts')) {
-      for (const xy of pts.children('xy')) polygon.push({ x: xy.getNumber(1, 0), y: xy.getNumber(2, 0) });
+    const declaredPts = zone.child('polygon')?.child('pts');
+    if (declaredPts) {
+      for (const xy of declaredPts.children('xy')) polygon.push({ x: xy.getNumber(1, 0), y: xy.getNumber(2, 0) });
     }
     const xs = polygon.map((p) => p.x);
     const ys = polygon.map((p) => p.y);
     const fillNode = zone.child('fill');
     const filled = fillNode ? fillNode.getBool(1) === true : false;
     const fillMode = fillNode?.child('mode')?.getString(1) ?? null;
-    const keepout = zone.child('keepout') !== null || (!netNameNode && code < 0);
+    // Materialized = KiCad actually computed fill geometry into the file
+    const materialized = zone.child('filled_polygon') !== null;
+    const keepout = zone.child('keepout') !== null || (name === null && code < 0);
     const entry: BoardZone = {
       netCode: code,
       netName: name,
@@ -378,6 +418,7 @@ export function buildBoardModel(pcbPath: string): BoardModel {
       keepout,
       filled,
       fillMode,
+      materialized,
       bbox:
         polygon.length > 0
           ? {
@@ -390,7 +431,7 @@ export function buildBoardModel(pcbPath: string): BoardModel {
       polygon,
     };
     zones.push(entry);
-    if (!keepout && code >= 0) netByCode(code, name).zones.push({ layers });
+    if (!keepout && (code >= 0 || name !== null)) netByCode(code >= 0 ? code : -1, name).zones.push({ layers });
   }
 
   // Board bounds from Edge.Cuts graphics
@@ -413,7 +454,9 @@ export function buildBoardModel(pcbPath: string): BoardModel {
     };
   }
 
-  const allNets = [...nets.values()].filter((n) => n.code !== 0);
+  // Drop only the unnamed no-net pseudo-net (code 0, ""); named nets from
+  // resaved boards legitimately carry code 0 or -1 with inline names.
+  const allNets = [...nets.values()].filter((n) => !(n.code === 0 && n.name === ''));
   const viaTotal = allNets.reduce((acc, n) => acc + n.vias.length, 0);
   const unconnectedPads = components.reduce(
     (acc, c) => acc + c.pads.filter((p) => p.net === null && p.type !== 'np_thru_hole').length,

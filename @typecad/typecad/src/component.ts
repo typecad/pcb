@@ -484,13 +484,7 @@ export class Component {
   static via(at: { x: number; y: number }, options?: { size?: number; drill?: number }): Component {
     // Geometry-derived: two vias at the same spot with the same geometry are
     // the same via, so identical designs produce identical output.
-    const viaUuid = deterministicUUID(
-      'via',
-      at.x,
-      at.y,
-      options?.size ?? 0.8,
-      options?.drill ?? 0.4,
-    );
+    const viaUuid = deterministicUUID('via', at.x, at.y, options?.size ?? 0.8, options?.drill ?? 0.4);
     return Component._create({
       via: true,
       prefix: 'V',

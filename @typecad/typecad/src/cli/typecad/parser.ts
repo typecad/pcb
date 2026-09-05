@@ -9,6 +9,13 @@ export interface ParsedArgs {
   version: boolean;
 }
 
+/**
+ * Double-dash flags that take a value. They accept both `--flag=value` and
+ * `--flag value` forms; other double-dash flags are boolean unless written
+ * with `=`.
+ */
+const VALUE_FLAGS = new Set(['out', 'file', 'category', 'to', 'gap', 'rot', 'left-of', 'right-of', 'above', 'below']);
+
 export function parseArgv(argv: string[]): ParsedArgs {
   const result: ParsedArgs = {
     command: '',
@@ -40,8 +47,11 @@ export function parseArgv(argv: string[]): ParsedArgs {
   }
 
   if (
-    (result.command === 'add' || result.command === 'skills' || result.command === 'export' ||
-      result.command === 'query' || result.command === 'edit') &&
+    (result.command === 'add' ||
+      result.command === 'skills' ||
+      result.command === 'export' ||
+      result.command === 'query' ||
+      result.command === 'edit') &&
     typecadTokens.length > i &&
     !typecadTokens[i].startsWith('-')
   ) {
@@ -70,6 +80,18 @@ export function parseArgv(argv: string[]): ParsedArgs {
         result.help = true;
       } else if (body === 'version') {
         result.version = true;
+      } else if (VALUE_FLAGS.has(body)) {
+        // Value flags accept `--flag value` as well as `--flag=value`; a bare
+        // `--flag` with no following token stays `true` so callers can reject it.
+        // Tokens that look like numbers are consumed even with a leading '-'
+        // (negative coordinates for --to, --gap, ...).
+        const next = typecadTokens[i];
+        if (next && (!next.startsWith('-') || /^-?\d/.test(next))) {
+          result.args[body] = next;
+          i++;
+        } else {
+          result.args[body] = true;
+        }
       } else {
         result.args[body] = true;
       }

@@ -401,14 +401,7 @@ export function pcbOutline(
   const layerName = 'Edge.Cuts';
 
   // Helper to generate element UUID (deterministic from segment geometry)
-  const getElementUuid = (
-    kind: string,
-    ax: number,
-    ay: number,
-    bx: number,
-    by: number,
-    stroke: number,
-  ): string => {
+  const getElementUuid = (kind: string, ax: number, ay: number, bx: number, by: number, stroke: number): string => {
     return generateUuid('outline-el', layerName, kind, stroke, ax, ay, bx, by);
   };
 
@@ -565,14 +558,7 @@ export function pcbText(state: PcbInternalState, options: import('./pcb_interfac
     hide: options.hide,
     uuid:
       options.uuid ||
-      generateUuid(
-        'gr-text',
-        options.text,
-        options.x,
-        options.y,
-        options.layer || 'F.SilkS',
-        options.rotation || 0,
-      ),
+      generateUuid('gr-text', options.text, options.x, options.y, options.layer || 'F.SilkS', options.rotation || 0),
   };
 
   state.grTexts.push(textElement);
@@ -619,17 +605,7 @@ export function pcbArc(state: PcbInternalState, options: import('./pcb_interface
   const ys = [start.y, mid.y, end.y];
 
   const outlineData: import('./pcb_interfaces.js').IOutline = {
-    uuid: generateUuid(
-      'gr-arc-outline',
-      layer,
-      width,
-      start.x,
-      start.y,
-      mid.x,
-      mid.y,
-      end.x,
-      end.y,
-    ),
+    uuid: generateUuid('gr-arc-outline', layer, width, start.x, start.y, mid.x, mid.y, end.x, end.y),
     x: Math.min(...xs),
     y: Math.min(...ys),
     width: Math.max(...xs) - Math.min(...xs),

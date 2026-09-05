@@ -176,7 +176,13 @@ export async function run(parsed: ParsedArgs): Promise<void> {
     const query = parsed.positional.join(' ');
     if (!query) {
       if (parsed.json) {
-        logger.log(JSON.stringify({ error: true, message: 'Query required. Usage: typecad skills search <query>', code: 'MISSING_QUERY' }));
+        logger.log(
+          JSON.stringify({
+            error: true,
+            message: 'Query required. Usage: typecad skills search <query>',
+            code: 'MISSING_QUERY',
+          }),
+        );
       } else {
         logger.error(chalk.red('Query required.'));
         logger.log('Usage: typecad skills search <query>');
@@ -185,7 +191,13 @@ export async function run(parsed: ParsedArgs): Promise<void> {
     }
     const results = searchSkills(query, 10);
     if (parsed.json) {
-      logger.log(JSON.stringify(results.map(({ name, category, description, score }) => ({ name, category, description, score })), null, 2));
+      logger.log(
+        JSON.stringify(
+          results.map(({ name, category, description, score }) => ({ name, category, description, score })),
+          null,
+          2,
+        ),
+      );
       return;
     }
     if (results.length === 0) {
@@ -202,6 +214,20 @@ export async function run(parsed: ParsedArgs): Promise<void> {
   }
 
   if (subcommand === 'export') {
+    if (parsed.args['out'] === true) {
+      if (parsed.json) {
+        logger.log(
+          JSON.stringify({
+            error: true,
+            message: '--out needs a value: typecad skills export --out <dir>',
+            code: 'MISSING_VALUE',
+          }),
+        );
+      } else {
+        logger.error(chalk.red('--out needs a value: typecad skills export --out <dir>'));
+      }
+      process.exit(1);
+    }
     const outDir = typeof parsed.args['out'] === 'string' ? parsed.args['out'] : '.claude/skills';
     const categoryFilter = typeof parsed.args['category'] === 'string' ? parsed.args['category'] : undefined;
     const categories = categoryFilter ? [categoryFilter] : getCategories();

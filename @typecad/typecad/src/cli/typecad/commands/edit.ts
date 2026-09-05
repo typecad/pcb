@@ -174,6 +174,9 @@ export async function run(parsed: ParsedArgs): Promise<void> {
   const pcbFile = fs.readdirSync(buildDir).find((f) => f.endsWith('.kicad_pcb'))!;
   const model = buildBoardModel(path.join(buildDir, pcbFile));
 
+  if (parsed.args['file'] === true) {
+    fail({ code: 'MISSING_VALUE', message: '--file needs a value: typecad edit <op> ... --file <path>' }, json);
+  }
   const fileArg = typeof parsed.args['file'] === 'string' ? parsed.args['file'] : undefined;
   const sourcePath = path.resolve(fileArg || detectEntryFile() || '');
   if (!sourcePath || !fs.existsSync(sourcePath)) {

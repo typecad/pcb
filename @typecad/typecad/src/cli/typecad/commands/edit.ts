@@ -89,15 +89,25 @@ function insertionIndexForNet(lines: string[]): { index: number; indent: string 
   return { index: lines.length, indent: '' };
 }
 
-/** Route calls cluster after existing route calls, else after the nets. */
+/**
+ * Route calls must run BEFORE create() — create() writes the board and the
+ * router operates on live staging state. Anchor after existing route calls,
+ * else immediately before the first create(), else after the nets.
+ */
 function insertionIndexForRoute(lines: string[]): { index: number; indent: string } {
   let lastRoute = -1;
+  let firstCreate = -1;
   for (let i = 0; i < lines.length; i++) {
     if (/\.route\(/.test(lines[i])) lastRoute = i;
+    if (firstCreate === -1 && /\.create\(/.test(lines[i])) firstCreate = i;
   }
   if (lastRoute !== -1) {
     const indentMatch = lines[lastRoute].match(/^(\s*)/);
     return { index: lastRoute + 1, indent: indentMatch ? indentMatch[1] : '' };
+  }
+  if (firstCreate !== -1) {
+    const indentMatch = lines[firstCreate].match(/^(\s*)/);
+    return { index: firstCreate, indent: indentMatch ? indentMatch[1] : '' };
   }
   return insertionIndexForNet(lines);
 }

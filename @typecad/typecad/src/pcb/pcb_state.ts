@@ -39,6 +39,13 @@ export class PcbInternalState {
    */
   stitchRequests: Array<{ net: string; options: import('./pcb_stitching.js').IStitchOptions; placedUuids: string[] }> =
     [];
+  /**
+   * Set once createBoard has written the board. Autorouting after this point
+   * can never reach the board file (staging state is consumed by the write),
+   * so the routing API treats it as a usage error and throws instead of
+   * silently returning a failed result.
+   */
+  boardWritten = false;
   grLines: IGrLine[] = [];
   grCircles: IGrCircle[] = [];
   grRects: IGrRect[] = [];

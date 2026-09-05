@@ -219,7 +219,7 @@ let result2 = pcb.route(net);`,
     ],
     notes: [
       'route() is synchronous and returns an IAutorouteResult with success status and route details',
-      'ORDER IS LOAD-BEARING: put the pins on a net first, and call route() BEFORE create() — create() writes the board, and routing after it fails silently (0/1 routes)',
+      'ORDER IS LOAD-BEARING: put the pins on a net first, and call route() BEFORE create() — create() writes the board, and route() after create() throws a TypeCadError telling you to reorder (routes staged after the write can never reach the board)',
       'Stitch vias materialize inside create() regardless of where stitch() is registered, so routing before create is what matters, not stitch() call order',
       'autorouteBatchOnPcb() supports rip-up-and-retry with multiple rounds',
       'Register external routers with pcbRegisterRouter() (e.g. @typecad-astar)',

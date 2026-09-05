@@ -8,6 +8,7 @@ import { autorouteBatch } from './pcb_autoroute_batch.js';
 import { PCB, getPcbState } from './pcb.js';
 import { PcbInternalState } from './pcb_state.js';
 import logger from '../utils/logging.js';
+import { TypeCadError } from '../utils/errors.js';
 
 function isSchematicNetDefinition(value: unknown): value is ISchematicNetDefinition {
   return Boolean(
@@ -20,12 +21,29 @@ function isSchematicNetDefinition(value: unknown): value is ISchematicNetDefinit
   );
 }
 
+/**
+ * Route calls after create() are a known bad-code pattern: create() writes
+ * the board and consumes the staging state the router needs, so routes
+ * staged afterwards never reach the board file. Reject loudly instead of
+ * returning a silently-failed result.
+ */
+function assertRoutingBeforeCreate(pcb: PCB): void {
+  if (getPcbState(pcb)?.boardWritten) {
+    throw new TypeCadError(
+      'route() was called after create(). The board is already written, so routes staged now can never reach it. ' +
+        'Reorder the program: put the pins on a net, call route() BEFORE create(), then call create(). ' +
+        '(If you need to route more, move every route() above the first create().)',
+    );
+  }
+}
+
 export function pcbRoute(
   pcb: PCB,
   state: PcbInternalState,
   arg1: ISchematicNetDefinition | IAutorouteOptions,
   options?: import('./pcb_interfaces.js').IAutorouteRouteOptions,
 ): IAutorouteResult {
+  assertRoutingBeforeCreate(pcb);
   if (isSchematicNetDefinition(arg1)) {
     return extractRouteNet(pcb, arg1, options);
   }
@@ -64,5 +82,6 @@ export function pcbAutorouteBatch(
     increaseIterationsPerRound?: number;
   },
 ): { results: IAutorouteResult[]; success: boolean; rounds: number } {
+  assertRoutingBeforeCreate(pcb);
   return autorouteBatch(pcb, items, batchOptions);
 }

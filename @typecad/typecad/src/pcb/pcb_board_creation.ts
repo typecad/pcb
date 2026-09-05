@@ -280,4 +280,8 @@ export function createBoard(pcb: PCB, ...items: Array<Component | TrackBuilder>)
     pcb.netClasses.assignmentEntries,
     pcb.teardropConfig,
   );
+
+  // Mark the board as written: autorouting from here on can never reach the
+  // board file, so the routing API throws on it instead of failing quietly.
+  state.boardWritten = true;
 }

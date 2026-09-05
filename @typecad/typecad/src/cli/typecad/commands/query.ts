@@ -48,6 +48,7 @@ function componentJson(comp: BoardComponent) {
     source: comp.source,
     side: comp.side,
     at: comp.at,
+    dimensions: comp.dimensions,
     padCount: comp.pads.length,
     unconnectedPads: comp.pads.filter((p) => p.net === null && p.type !== 'np_thru_hole').map((p) => p.pad),
     pads: comp.pads,
@@ -219,6 +220,7 @@ export async function run(parsed: ParsedArgs): Promise<void> {
               variable: c.variable,
               side: c.side,
               at: c.at,
+              dimensions: c.dimensions,
               padCount: c.pads.length,
             })),
             null,
@@ -232,9 +234,10 @@ export async function run(parsed: ParsedArgs): Promise<void> {
         a.reference.localeCompare(b.reference, undefined, { numeric: true }),
       )) {
         const v = c.variable ? chalk.gray(` (as ${c.variable})`) : '';
+        const d = c.dimensions ? ` — ${c.dimensions.width} × ${c.dimensions.height} mm` : '';
         logger.log(`  ${chalk.white(c.reference.padEnd(6))} ${c.value.padEnd(14)} ${c.footprint}${v}`);
         logger.log(
-          chalk.gray(`        at (${c.at.x}, ${c.at.y}) rot ${c.at.rotation} ${c.side} — ${c.pads.length} pads`),
+          chalk.gray(`        at (${c.at.x}, ${c.at.y}) rot ${c.at.rotation} ${c.side} — ${c.pads.length} pads${d}`),
         );
       }
       return;
@@ -269,6 +272,9 @@ export async function run(parsed: ParsedArgs): Promise<void> {
       }
       printHeader(`${comp.reference} — ${comp.value}`, pcbPath);
       logger.log(`  footprint   ${comp.footprint}`);
+      if (comp.dimensions) {
+        logger.log(`  dimensions  ${comp.dimensions.width} × ${comp.dimensions.height} mm`);
+      }
       if (comp.variable) logger.log(`  source var  ${comp.variable}`);
       if (comp.source) logger.log(`  source loc  ${comp.source}`);
       logger.log(`  placement   (${comp.at.x}, ${comp.at.y}) rotation ${comp.at.rotation} — ${comp.side} side`);

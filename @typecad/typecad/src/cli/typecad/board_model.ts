@@ -16,6 +16,13 @@ export interface BoardComponent {
   footprint: string;
   side: 'front' | 'back';
   at: { x: number; y: number; rotation: number };
+  /**
+   * Footprint bounding box in mm, measured in the footprint's own
+   * (unrotated) frame from its fabrication outline — falls back to
+   * silkscreen geometry, then to pad extents. Null when the footprint
+   * has no measurable geometry at all.
+   */
+  dimensions: { width: number; height: number } | null;
   /** Source variable name recovered from the "Code" property, when present. */
   variable?: string;
   /** Source file:line recovered from the "Code" property, when present. */
@@ -60,6 +67,89 @@ function isPowerNetName(name: string): boolean {
   return /^(gnd|ground|gn\d+|vcc|vdd|vss|vbat(t)?|vin|vout|avcc|avdd|avss|\+?-?\d+(\.\d+)?v\d*(_|$|[0-9a-z]))/i.test(
     name.trim(),
   );
+}
+
+interface Pt {
+  x: number;
+  y: number;
+}
+
+function nodeChildPoint(node: SNode, name: string): Pt | null {
+  const child = node.child(name);
+  if (!child) return null;
+  return { x: child.getNumber(1, 0), y: child.getNumber(2, 0) };
+}
+
+function nodeLayer(node: SNode): string | null {
+  return node.child('layer')?.getString(1) ?? null;
+}
+
+function bboxSize(points: Pt[]): { width: number; height: number } | null {
+  if (points.length === 0) return null;
+  const xs = points.map((p) => p.x);
+  const ys = points.map((p) => p.y);
+  const round = (v: number) => Math.round(v * 1000) / 1000;
+  return { width: round(Math.max(...xs) - Math.min(...xs)), height: round(Math.max(...ys) - Math.min(...ys)) };
+}
+
+/**
+ * Footprint bounding box from its own geometry, in the footprint's local
+ * (unrotated) frame. Preference: fabrication outline (the physical body),
+ * then silkscreen, then any fp_* graphics, then pad extents.
+ */
+function footprintDimensions(fp: SNode, padNodes: SNode[]): { width: number; height: number } | null {
+  const byLayer = new Map<string, Pt[]>();
+  const add = (layer: string | null, ...pts: (Pt | null)[]) => {
+    if (!layer) return;
+    const list = byLayer.get(layer) ?? [];
+    for (const p of pts) if (p) list.push(p);
+    byLayer.set(layer, list);
+  };
+
+  for (const line of fp.children('fp_line'))
+    add(nodeLayer(line), nodeChildPoint(line, 'start'), nodeChildPoint(line, 'end'));
+  for (const rect of fp.children('fp_rect'))
+    add(nodeLayer(rect), nodeChildPoint(rect, 'start'), nodeChildPoint(rect, 'end'));
+  for (const poly of fp.children('fp_poly')) {
+    const pts = poly.child('pts');
+    const layer = nodeLayer(poly);
+    if (pts) for (const xy of pts.children('xy')) add(layer, { x: xy.getNumber(1, 0), y: xy.getNumber(2, 0) });
+  }
+  for (const circle of fp.children('fp_circle')) {
+    // KiCad defines a circle by center + a point on the circumference:
+    // its bbox is center ± radius in both axes.
+    const center = nodeChildPoint(circle, 'center');
+    const edge = nodeChildPoint(circle, 'end');
+    const layer = nodeLayer(circle);
+    if (center && edge) {
+      const r = Math.hypot(edge.x - center.x, edge.y - center.y);
+      add(layer, { x: center.x - r, y: center.y - r }, { x: center.x + r, y: center.y + r });
+    } else {
+      add(layer, center, edge);
+    }
+  }
+
+  for (const layer of ['F.Fab', 'B.Fab', 'F.SilkS', 'B.SilkS']) {
+    const size = bboxSize(byLayer.get(layer) ?? []);
+    if (size) return size;
+  }
+  const allGraphics = [...byLayer.values()].flat();
+  const graphicsSize = bboxSize(allGraphics);
+  if (graphicsSize) return graphicsSize;
+
+  // Last resort: pad extents (pad centers ± half sizes)
+  const padPts: Pt[] = [];
+  for (const pad of padNodes) {
+    const at = pad.child('at');
+    const size = pad.child('size');
+    if (!at) continue;
+    const cx = at.getNumber(1, 0);
+    const cy = at.getNumber(2, 0);
+    const w = size ? size.getNumber(1, 0) : 0;
+    const h = size ? size.getNumber(2, 0) : 0;
+    padPts.push({ x: cx - w / 2, y: cy - h / 2 }, { x: cx + w / 2, y: cy + h / 2 });
+  }
+  return bboxSize(padPts);
 }
 
 export function isPowerNet(net: BoardNet): boolean {
@@ -122,8 +212,9 @@ export function buildBoardModel(pcbPath: string): BoardModel {
       }
     }
 
+    const padNodes = fp.children('pad');
     const pads: BoardPad[] = [];
-    for (const pad of fp.children('pad')) {
+    for (const pad of padNodes) {
       const net = netNameOf(pad);
       const pintypeNode = pad.child('pintype');
       pads.push({
@@ -144,6 +235,7 @@ export function buildBoardModel(pcbPath: string): BoardModel {
         y: atNode?.getNumber(2, 0) ?? 0,
         rotation: atNode?.getNumber(3, 0) ?? 0,
       },
+      dimensions: footprintDimensions(fp, padNodes),
       variable,
       source,
       pads,

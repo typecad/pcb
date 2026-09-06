@@ -14,6 +14,7 @@ This repository contains the published `@typecad/` packages, example hardware pr
 | [`@typecad/graphviz`](./@typecad/graphviz)           | Graphviz visualizations of schematics (connectivity, power hierarchy)                                                                                     |
 | [`@typecad/jlcpcb-parts`](./@typecad/jlcpcb-parts)   | `jlcpcb-search` CLI for fuzzy-searching the JLCPCB parts catalog                                                                                          |
 | [`@typecad/jlcpcb-export`](./@typecad/jlcpcb-export) | `jlcpcb-export` CLI for generating JLCPCB fab outputs (BOM/CPL/gerbers)                                                                                   |
+| [`@typecad/gerber-viewer`](./@typecad/gerber-viewer) | Zero-dependency Gerber/Excellon viewer: parse fab output and render an interactive HTML board view (`gerber-viewer` CLI)                                  |
 
 ## Example projects
 

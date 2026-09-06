@@ -173,6 +173,29 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     if (ev.key === '+') zoomAt(viewCenter(), 1.3);
     if (ev.key === '-') zoomAt(viewCenter(), 1 / 1.3);
   });
+
+  // Dark/light theme: saved per browser (shared across boards); falls back to
+  // the OS preference on first visit. The canvas stays light in both themes —
+  // silkscreen/fab layers use near-black colors and clear-polarity cutouts
+  // assume a light background.
+  var THEME_KEY = 'gerber-viewer:theme:v1';
+  var themeBtn = document.getElementById('btn-theme');
+  function applyTheme(theme) {
+    document.body.classList.toggle('light', theme === 'light');
+    // the button shows the mode you would switch to
+    themeBtn.textContent = theme === 'light' ? '\u263E' : '\u2600';
+    themeBtn.title = theme === 'light' ? 'switch to dark theme' : 'switch to light theme';
+    try { localStorage.setItem(THEME_KEY, theme); } catch (e) {}
+  }
+  var savedTheme = null;
+  try { savedTheme = localStorage.getItem(THEME_KEY); } catch (e) {}
+  if (savedTheme !== 'light' && savedTheme !== 'dark') {
+    savedTheme = window.matchMedia && matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+  }
+  applyTheme(savedTheme);
+  themeBtn.addEventListener('click', function () {
+    applyTheme(document.body.classList.contains('light') ? 'dark' : 'light');
+  });
 })();
 `;
 
@@ -185,19 +208,32 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
 <style>
   * { box-sizing: border-box; }
   html, body { height: 100%; margin: 0; font: 13px/1.4 system-ui, sans-serif; }
-  body { display: flex; }
-  #sidebar { width: 260px; min-width: 260px; background: #1e1e1e; color: #ddd; display: flex; flex-direction: column; border-right: 1px solid #000; }
-  #sidebar header { padding: 12px 14px; font-weight: 600; border-bottom: 1px solid #333; }
-  #sidebar header small { display: block; font-weight: 400; color: #888; margin-top: 2px; }
+  body {
+    display: flex;
+    --chrome-bg: #1e1e1e; --chrome-fg: #ddd; --muted: #888;
+    --chrome-border: #333; --row-hover: #2a2a2a;
+    --btn-bg: #333; --btn-border: #444; --btn-hover: #444;
+  }
+  body.light {
+    --chrome-bg: #f7f7f7; --chrome-fg: #333; --muted: #666;
+    --chrome-border: #ddd; --row-hover: #ebebeb;
+    --btn-bg: #fff; --btn-border: #ccc; --btn-hover: #eee;
+  }
+  #sidebar { width: 260px; min-width: 260px; background: var(--chrome-bg); color: var(--chrome-fg); display: flex; flex-direction: column; border-right: 1px solid var(--chrome-border); }
+  #sidebar header { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 12px 14px; font-weight: 600; border-bottom: 1px solid var(--chrome-border); }
+  #sidebar header .title { min-width: 0; }
+  #sidebar header small { display: block; font-weight: 400; color: var(--muted); margin-top: 2px; }
+  .icon-btn { flex: none; width: 28px; height: 28px; line-height: 1; background: var(--btn-bg); color: var(--chrome-fg); border: 1px solid var(--btn-border); border-radius: 4px; cursor: pointer; font: 14px/1 system-ui, sans-serif; }
+  .icon-btn:hover { background: var(--btn-hover); }
   #layers { flex: 1; overflow-y: auto; padding: 6px 0; }
   .layer-row { display: flex; align-items: center; gap: 8px; padding: 5px 14px; cursor: pointer; }
-  .layer-row:hover { background: #2a2a2a; }
+  .layer-row:hover { background: var(--row-hover); }
   .chip { width: 12px; height: 12px; border-radius: 3px; flex: none; border: 1px solid #0006; }
   .layer-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .layer-opacity { width: 60px; flex: none; }
-  #toolbar { display: flex; gap: 6px; padding: 10px 14px; border-top: 1px solid #333; }
-  #toolbar button { flex: 1; background: #333; color: #eee; border: 1px solid #444; border-radius: 4px; padding: 4px 6px; cursor: pointer; font: inherit; }
-  #toolbar button:hover { background: #444; }
+  #toolbar { display: flex; gap: 6px; padding: 10px 14px; border-top: 1px solid var(--chrome-border); }
+  #toolbar button { flex: 1; background: var(--btn-bg); color: var(--chrome-fg); border: 1px solid var(--btn-border); border-radius: 4px; padding: 4px 6px; cursor: pointer; font: inherit; }
+  #toolbar button:hover { background: var(--btn-hover); }
   #board-area { position: relative; flex: 1; background: var(--page, #ffffff); }
   #status { position: absolute; left: 10px; bottom: 8px; background: #000a; color: #fff; padding: 3px 8px; border-radius: 4px; font: 12px/1.2 ui-monospace, monospace; pointer-events: none; }
   #board { position: absolute; inset: 0; display: block; }
@@ -205,7 +241,10 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
 </head>
 <body>
 <div id="sidebar">
-  <header>${escapeHtml(title)}<small>${layers.length} layers - wheel zoom, drag pan</small></header>
+  <header>
+    <div class="title">${escapeHtml(title)}<small>${layers.length} layers - wheel zoom, drag pan</small></div>
+    <button id="btn-theme" class="icon-btn" title="toggle dark/light theme"></button>
+  </header>
   <div id="layers">
 ${rows}
   </div>

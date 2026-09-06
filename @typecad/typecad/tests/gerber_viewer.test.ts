@@ -35,6 +35,15 @@ describe('buildViewerHtml', () => {
     expect(html).toMatch(/function setAll\(on\) \{[\s\S]*?persist\(\);/);
   });
 
+  it('has a dark/light theme selector that persists and respects the OS preference', () => {
+    expect(html).toContain('id="btn-theme"');
+    expect(html).toContain("'gerber-viewer:theme:v1'");
+    // light theme overrides via a body class; OS preference is the first-visit default
+    expect(html).toMatch(/body\.light\s*\{/);
+    expect(html).toContain('prefers-color-scheme: light');
+    expect(html).toMatch(/applyTheme\(savedTheme\)/);
+  });
+
   it('lists layers with toggles and opacity sliders', () => {
     expect(html).toContain('demo-F_Cu.gbr');
     expect(html).toContain('class="layer-vis"');

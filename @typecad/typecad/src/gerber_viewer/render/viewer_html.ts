@@ -42,6 +42,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
 
   function apply() {
     panzoom.setAttribute('transform', 'translate(' + tx + ' ' + ty + ') scale(' + k + ')');
+    renderMeasure();
   }
   function clientToView(pt) {
     var ctm = svg.getScreenCTM();
@@ -73,24 +74,102 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
 
   var drag = null;
   svg.addEventListener('mousedown', function (ev) {
-    drag = { x: ev.clientX, y: ev.clientY, tx: tx, ty: ty };
+    drag = { x: ev.clientX, y: ev.clientY, tx: tx, ty: ty, moved: false };
   });
   window.addEventListener('mousemove', function (ev) {
     if (drag) {
+      if (Math.hypot(ev.clientX - drag.x, ev.clientY - drag.y) > 3) drag.moved = true;
       var a = clientToView({ x: drag.x, y: drag.y });
       var b = clientToView({ x: ev.clientX, y: ev.clientY });
       tx = drag.tx + (b.x - a.x);
       ty = drag.ty + (b.y - a.y);
       apply();
     } else if (ev.target && svg.contains(ev.target)) {
+      mouseBoard = boardCoords(ev);
+      if (measuring && measureStart) renderMeasure();
       var v = clientToView({ x: ev.clientX, y: ev.clientY });
       var bx = (v.x - tx) / k;
       var by = -((v.y - ty) / k);
       statusEl.textContent = bx.toFixed(3) + ', ' + by.toFixed(3) + ' ' + units + '   zoom ' + k.toFixed(2) + 'x';
     }
   });
-  window.addEventListener('mouseup', function () {
+  window.addEventListener('mouseup', function (ev) {
+    if (drag && !drag.moved && measuring) {
+      // undo the sub-threshold pan so the ruler point lands where clicked
+      tx = drag.tx;
+      ty = drag.ty;
+      apply();
+      var p = boardCoords(ev);
+      if (!measureStart) {
+        measureStart = p; // first click: start measuring
+      } else {
+        rulers.push({ ax: measureStart.x, ay: measureStart.y, bx: p.x, by: p.y });
+        measureStart = null; // second click: stick the ruler, next click starts anew
+      }
+      renderMeasure();
+    }
     drag = null;
+  });
+
+  // Measurement tool: arm with the ruler button, click start, move to see the
+  // live dimension, click end to stick the ruler. Rulers accumulate; Escape
+  // cancels the in-progress one, clears them all and disarms the tool.
+  var measureGroup = document.getElementById('measure');
+  var measureBtn = document.getElementById('btn-measure');
+  var measuring = false;
+  var rulers = [];
+  var measureStart = null;
+  var mouseBoard = null;
+
+  function boardCoords(ev) {
+    var v = clientToView({ x: ev.clientX, y: ev.clientY });
+    return { x: (v.x - tx) / k, y: -((v.y - ty) / k) };
+  }
+  function drawRuler(ax, ay, bx, by) {
+    // the overlay group sits inside panzoom but outside the y-flip, so
+    // board->svg is just y negation; s counter-scales to a constant screen size
+    var x1 = ax, y1 = -ay, x2 = bx, y2 = -by;
+    var dx = x2 - x1, dy = y2 - y1;
+    var len = Math.hypot(dx, dy);
+    var px = len ? -dy / len : 0, py = len ? dx / len : 0; // unit perpendicular
+    var s = 1 / k;
+    var t = 5 * s;
+    var label =
+      len.toFixed(3) + ' ' + units +
+      '  (dx ' + Math.abs(bx - ax).toFixed(3) + ', dy ' + Math.abs(by - ay).toFixed(3) + ')';
+    return (
+      '<line x1="' + x1 + '" y1="' + y1 + '" x2="' + x2 + '" y2="' + y2 + '" stroke-width="' + 1.5 * s + '"></line>' +
+      '<line x1="' + (x1 - px * t) + '" y1="' + (y1 - py * t) + '" x2="' + (x1 + px * t) + '" y2="' + (y1 + py * t) + '" stroke-width="' + 1.5 * s + '"></line>' +
+      '<line x1="' + (x2 - px * t) + '" y1="' + (y2 - py * t) + '" x2="' + (x2 + px * t) + '" y2="' + (y2 + py * t) + '" stroke-width="' + 1.5 * s + '"></line>' +
+      '<circle cx="' + x1 + '" cy="' + y1 + '" r="' + 2 * s + '" fill="var(--measure)"></circle>' +
+      '<text x="' + ((x1 + x2) / 2 + px * 9 * s) + '" y="' + ((y1 + y2) / 2 + py * 9 * s) +
+      '" font-size="' + 12 * s + '" text-anchor="middle" dominant-baseline="middle">' + label + '</text>'
+    );
+  }
+  function renderMeasure() {
+    var out = '';
+    for (var i = 0; i < rulers.length; i++) {
+      out += drawRuler(rulers[i].ax, rulers[i].ay, rulers[i].bx, rulers[i].by);
+    }
+    if (measuring && measureStart && mouseBoard) {
+      out += drawRuler(measureStart.x, measureStart.y, mouseBoard.x, mouseBoard.y);
+    }
+    measureGroup.innerHTML = out;
+  }
+  measureBtn.addEventListener('click', function () {
+    measuring = !measuring;
+    measureBtn.classList.toggle('armed', measuring);
+    measureStart = null;
+    renderMeasure();
+  });
+  window.addEventListener('keydown', function (ev) {
+    if (ev.key === 'Escape' && (measuring || measureStart || rulers.length)) {
+      measuring = false;
+      measureStart = null;
+      rulers = [];
+      measureBtn.classList.remove('armed');
+      renderMeasure();
+    }
   });
 
   document.getElementById('btn-fit').addEventListener('click', fit);
@@ -210,16 +289,28 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   html, body { height: 100%; margin: 0; font: 13px/1.4 system-ui, sans-serif; }
   body {
     display: flex;
-    --chrome-bg: #1e1e1e; --chrome-fg: #ddd; --muted: #888;
-    --chrome-border: #333; --row-hover: #2a2a2a;
-    --btn-bg: #333; --btn-border: #444; --btn-hover: #444;
+    --chrome-bg: #1e1e1e;
+    --chrome-fg: #ddd;
+    --muted: #888;
+    --chrome-border: #333;
+    --row-hover: #2a2a2a;
+    --btn-bg: #333;
+    --btn-border: #444;
+    --btn-hover: #444;
     --page: #16181d;
+    --measure: #6db3f2;
   }
   body.light {
-    --chrome-bg: #f7f7f7; --chrome-fg: #333; --muted: #666;
-    --chrome-border: #ddd; --row-hover: #ebebeb;
-    --btn-bg: #fff; --btn-border: #ccc; --btn-hover: #eee;
+    --chrome-bg: #f7f7f7;
+    --chrome-fg: #333;
+    --muted: #666;
+    --chrome-border: #ddd;
+    --row-hover: #ebebeb;
+    --btn-bg: #fff;
+    --btn-border: #ccc;
+    --btn-hover: #eee;
     --page: #ffffff;
+    --measure: #0b62c4;
   }
   /* layers whose palette colors are near-black would vanish on the dark
      canvas — recolor them (and their sidebar chips) in dark theme; strokes
@@ -267,6 +358,11 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   #toolbar { display: flex; gap: 6px; padding: 10px 14px; border-top: 1px solid var(--chrome-border); }
   #toolbar button { flex: 1; background: var(--btn-bg); color: var(--chrome-fg); border: 1px solid var(--btn-border); border-radius: 4px; padding: 4px 6px; cursor: pointer; font: inherit; }
   #toolbar button:hover { background: var(--btn-hover); }
+  #toolbar button.armed { box-shadow: inset 0 0 0 1px var(--chrome-fg); background: var(--btn-hover); }
+  /* measurement rulers: theme-following geometry + labels */
+  #measure line { stroke: var(--measure); }
+  #measure circle { fill: var(--measure); }
+  #measure text { fill: var(--measure); font-family: ui-monospace, monospace; }
   #board-area { position: relative; flex: 1; background: var(--page, #ffffff); }
   #status { position: absolute; left: 10px; bottom: 8px; background: #000a; color: #fff; padding: 3px 8px; border-radius: 4px; font: 12px/1.2 ui-monospace, monospace; pointer-events: none; }
   #board { position: absolute; inset: 0; display: block; cursor: crosshair; }
@@ -287,10 +383,11 @@ ${rows}
     <button id="btn-out">&#8722;</button>
     <button id="btn-all-on" title="show all layers">All</button>
     <button id="btn-all-off" title="hide all layers">None</button>
+    <button id="btn-measure" title="measure: click start, click end — rulers stick; Esc clears all">&#x1F4CF;</button>
   </div>
 </div>
 <div id="board-area">
-  ${svg.replace('<svg ', '<svg id="board" ')}
+  ${svg.replace('<svg ', '<svg id="board" ').replace('</g></g></svg>', '</g><g id="measure"></g></g></svg>')}
   <div id="status"></div>
 </div>
 <script>

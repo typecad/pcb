@@ -78,6 +78,21 @@ describe('buildViewerHtml', () => {
     expect(html).toMatch(/#board\s*\{[^}]*cursor:\s*crosshair/);
     expect(html).not.toContain("cursor = 'grab'");
   });
+
+  it('has a measurement tool that sticks rulers, clears on Escape, and follows the theme', () => {
+    expect(html).toContain('id="btn-measure"');
+    // overlay group rides inside panzoom (injected after the y-flip group)
+    expect(html).toContain('id="yflip"');
+    expect(html).toMatch(/<\/g><g id="measure"><\/g><\/g><\/svg>/);
+    // click-to-start / click-to-stick state machine + Escape clears all
+    expect(html).toContain('measureStart = p;');
+    expect(html).toContain('rulers.push(');
+    expect(html).toMatch(/ev\.key === 'Escape'[\s\S]*?rulers = \[\]/);
+    // theme-following ruler colors
+    expect(html).toMatch(/--measure:\s*#6db3f2/);
+    expect(html).toMatch(/body\.light\s*\{[\s\S]*?--measure:\s*#0b62c4/);
+    expect(html).toMatch(/#measure line\s*\{[^}]*var\(--measure\)/);
+  });
 });
 
 describe('buildViewerFromFiles', () => {

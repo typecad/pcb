@@ -24,7 +24,7 @@ Usage:
 
 serve options:
   [dir]               project root containing build/ (default: cwd)
-  -p, --port <n>      port to listen on (default: 4173)
+  -p, --port <n>      first port to try (default: 4173; walks up if in use)
   --open              open the viewer in the default browser
 
 Options:

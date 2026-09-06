@@ -60,4 +60,21 @@ describe('startGerberViewerServer', () => {
     expect(await page.text()).toContain('VIEWER-MARKER');
     fs.rmSync(projectDir, { recursive: true, force: true });
   });
+
+  it('walks up to the next free port when the requested one is in use', async () => {
+    const busy = startGerberViewerServer({ projectDir: os.tmpdir(), port: 0, pollMs: 60 });
+    handles.push(busy);
+    await new Promise((resolve) => busy.server.once('listening', resolve));
+    const busyPort = busy.server.address()!.port;
+
+    const second = startGerberViewerServer({ projectDir: os.tmpdir(), port: busyPort, pollMs: 60 });
+    handles.push(second);
+    await new Promise((resolve) => second.server.once('listening', resolve));
+
+    const secondPort = second.server.address()!.port;
+    expect(Number(secondPort)).toBeGreaterThan(busyPort);
+    // both serve independently
+    expect(await (await fetch(`${busy.url}/__build`)).json()).toEqual({ g: 0 });
+    expect(await (await fetch(`${second.url}/__build`)).json()).toEqual({ g: 0 });
+  });
 });

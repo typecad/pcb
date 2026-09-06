@@ -7,7 +7,8 @@ import { buildViewerFromFiles } from './build.js';
 export interface ServeOptions {
   /** Project root containing build/ (defaults to cwd). */
   projectDir?: string;
-  /** Port to listen on (default 4173; pass 0 for an ephemeral port). */
+  /** First port to try (default 4173; pass 0 for an ephemeral port). When the
+   * port is already in use the server walks up to the next free port. */
   port?: number;
   /** Open the viewer in the default browser once listening. */
   open?: boolean;
@@ -140,19 +141,29 @@ export function startGerberViewerServer(options: ServeOptions = {}): ServeHandle
     res.end('not found');
   });
 
-  server.on('error', (error: NodeJS.ErrnoException) => {
-    if (error.code === 'EADDRINUSE') {
-      process.stderr.write(`error: port ${options.port ?? 4173} is already in use (try --port <n>)\n`);
-      process.exit(1);
-    }
-    throw error;
-  });
+  // If the requested port is taken (a dev server, another viewer instance...),
+  // walk up to the next free port instead of exiting; the log states where it
+  // actually landed.
+  const firstPort = options.port ?? 4173;
+  const MAX_PORT_ATTEMPTS = 50;
+  function listenFrom(port: number, attemptsLeft: number): void {
+    server.once('error', (error: NodeJS.ErrnoException) => {
+      if (error.code !== 'EADDRINUSE') throw error;
+      if (attemptsLeft <= 0) {
+        process.stderr.write(`error: no free port in ${firstPort}-${port} (all in use — pass --port <n>)\n`);
+        process.exit(1);
+      }
+      log(`port ${port} is in use — trying ${port + 1}`);
+      listenFrom(port + 1, attemptsLeft - 1);
+    });
+    server.listen(port);
+  }
 
   const handle: ServeHandle = {
     server,
     get url() {
       const address = server.address();
-      const port = typeof address === 'object' && address ? address.port : (options.port ?? 4173);
+      const port = typeof address === 'object' && address ? address.port : firstPort;
       return `http://localhost:${port}`;
     },
     buildDir,
@@ -161,7 +172,8 @@ export function startGerberViewerServer(options: ServeOptions = {}): ServeHandle
     generation: () => generation,
   };
 
-  server.listen(options.port ?? 4173, () => {
+  listenFrom(firstPort, MAX_PORT_ATTEMPTS);
+  server.on('listening', () => {
     log(`project: ${projectDir}`);
     log(`board viewer: ${handle.url}`);
     log('watching build/*.kicad_pcb — every `npm run build` refreshes the page');

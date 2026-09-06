@@ -2,9 +2,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { parseExcellon } from '../src/gerber/parse_excellon.js';
+import { parseExcellon } from '../src/gerber_viewer/gerber/parse_excellon.js';
 
-const fixtures = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures');
+const fixtures = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures', 'gerber');
 
 describe('parseExcellon', () => {
   const image = parseExcellon(fs.readFileSync(path.join(fixtures, 'drill.drl'), 'utf8'), {

@@ -8,13 +8,12 @@ This repository contains the published `@typecad/` packages, example hardware pr
 
 | Package                                              | What it does                                                                                                                                              |
 | ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [`@typecad/typecad`](./@typecad/typecad)             | Core library: schematics, PCBs, placement, autorouting, zones, stitching, simulation, diffing, and the `typecad` / `kicad-symbols` / `kicad2typecad` CLIs |
+| [`@typecad/typecad`](./@typecad/typecad)             | Core library: schematics, PCBs, placement, autorouting, zones, stitching, simulation, diffing, the `typecad` / `kicad-symbols` / `kicad2typecad` CLIs, and the built-in `gerber-viewer` board viewer |
 | [`@typecad/passives`](./@typecad/passives)           | Ready-made resistors, capacitors, inductors, diodes, LEDs, connectors, and more per footprint size                                                        |
 | [`@typecad/wiring`](./@typecad/wiring)               | Wiring-harness diagrams (WireViz-style) from code                                                                                                         |
 | [`@typecad/graphviz`](./@typecad/graphviz)           | Graphviz visualizations of schematics (connectivity, power hierarchy)                                                                                     |
 | [`@typecad/jlcpcb-parts`](./@typecad/jlcpcb-parts)   | `jlcpcb-search` CLI for fuzzy-searching the JLCPCB parts catalog                                                                                          |
 | [`@typecad/jlcpcb-export`](./@typecad/jlcpcb-export) | `jlcpcb-export` CLI for generating JLCPCB fab outputs (BOM/CPL/gerbers)                                                                                   |
-| [`@typecad/gerber-viewer`](./@typecad/gerber-viewer) | Zero-dependency Gerber/Excellon viewer: parse fab output and render an interactive HTML board view (`gerber-viewer` CLI)                                  |
 
 ## Example projects
 

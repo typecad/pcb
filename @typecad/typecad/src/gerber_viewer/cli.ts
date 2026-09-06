@@ -77,7 +77,8 @@ function parseArgs(argv: string[]): CliArgs {
 }
 
 function readVersion(): string {
-  const pkgPath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../package.json');
+  // dist/gerber_viewer/cli.js -> package root is two levels up
+  const pkgPath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../package.json');
   try {
     return JSON.parse(fs.readFileSync(pkgPath, 'utf8')).version ?? '0.0.0';
   } catch {

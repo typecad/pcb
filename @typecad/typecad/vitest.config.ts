@@ -25,6 +25,7 @@ export default defineConfig({
         '**/*.test.ts',
         '**/*.spec.ts',
         'src/cli/**',
+        'src/gerber_viewer/cli.ts',
         'src/gitdiff/viewer/**',
         'scripts/**',
         'vitest.config.ts',

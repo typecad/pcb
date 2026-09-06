@@ -2,12 +2,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { detectLayer, finalizeAndSortLayers } from '../src/detect_layer.js';
-import { parseExcellon } from '../src/gerber/parse_excellon.js';
-import { parseGerber } from '../src/gerber/parse_gerber.js';
-import { computeLayerBounds, renderSvg, type RenderLayer } from '../src/render/svg.js';
+import { detectLayer, finalizeAndSortLayers } from '../src/gerber_viewer/detect_layer.js';
+import { parseExcellon } from '../src/gerber_viewer/gerber/parse_excellon.js';
+import { parseGerber } from '../src/gerber_viewer/gerber/parse_gerber.js';
+import { computeLayerBounds, renderSvg, type RenderLayer } from '../src/gerber_viewer/render/svg.js';
 
-const fixtures = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures');
+const fixtures = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures', 'gerber');
 const read = (name: string) => fs.readFileSync(path.join(fixtures, name), 'utf8');
 
 const parsed = [

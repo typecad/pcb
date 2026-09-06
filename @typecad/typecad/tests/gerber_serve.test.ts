@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
-import { findBoardFile, startGerberViewerServer } from '../src/serve.js';
+import { findBoardFile, startGerberViewerServer } from '../src/gerber_viewer/serve.js';
 
 describe('findBoardFile', () => {
   it('finds the pcb in a build directory', () => {

@@ -3,13 +3,13 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { buildViewerFromFiles } from '../src/build.js';
-import { buildViewerHtml } from '../src/render/viewer_html.js';
-import { renderSvg } from '../src/render/svg.js';
-import { detectLayer } from '../src/detect_layer.js';
-import { parseGerber } from '../src/gerber/parse_gerber.js';
+import { buildViewerFromFiles } from '../src/gerber_viewer/build.js';
+import { buildViewerHtml } from '../src/gerber_viewer/render/viewer_html.js';
+import { renderSvg } from '../src/gerber_viewer/render/svg.js';
+import { detectLayer } from '../src/gerber_viewer/detect_layer.js';
+import { parseGerber } from '../src/gerber_viewer/gerber/parse_gerber.js';
 
-const fixtures = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures');
+const fixtures = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures', 'gerber');
 const read = (name: string) => fs.readFileSync(path.join(fixtures, name), 'utf8');
 
 describe('buildViewerHtml', () => {

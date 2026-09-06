@@ -2,11 +2,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { evaluateAperture, parseApertureTemplate } from '../src/gerber/apertures.js';
-import { parseCoordinate, parseGerber } from '../src/gerber/parse_gerber.js';
-import type { FormatSpec } from '../src/gerber/types.js';
+import { evaluateAperture, parseApertureTemplate } from '../src/gerber_viewer/gerber/apertures.js';
+import { parseCoordinate, parseGerber } from '../src/gerber_viewer/gerber/parse_gerber.js';
+import type { FormatSpec } from '../src/gerber_viewer/gerber/types.js';
 
-const fixtures = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures');
+const fixtures = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures', 'gerber');
 const read = (name: string) => fs.readFileSync(path.join(fixtures, name), 'utf8');
 
 describe('parseCoordinate', () => {

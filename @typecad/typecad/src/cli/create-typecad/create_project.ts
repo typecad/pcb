@@ -179,7 +179,6 @@ export default defineConfig({
       'tsx',
       '@typecad/typecad',
       '@typecad/passives',
-      '@typecad/gerber-viewer',
       ...(answers.packages.includes('ngspice') ? ['@typecad/ngspice'] : []),
       ...(answers.packages.includes('graphviz') ? ['@typecad/graphviz'] : []),
       ...(answers.packages.includes('jlcpcb') ? ['@typecad/jlcpcb-export'] : []),

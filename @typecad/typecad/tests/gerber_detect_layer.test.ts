@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { detectLayer, finalizeAndSortLayers } from '../src/detect_layer.js';
-import { parseExcellon } from '../src/gerber/parse_excellon.js';
-import { parseGerber } from '../src/gerber/parse_gerber.js';
+import { detectLayer, finalizeAndSortLayers } from '../src/gerber_viewer/detect_layer.js';
+import { parseExcellon } from '../src/gerber_viewer/gerber/parse_excellon.js';
+import { parseGerber } from '../src/gerber_viewer/gerber/parse_gerber.js';
 
 const emptyGerber = parseGerber('%FSLAX36Y36*%\n%MOMM*%\nM02*\n');
 

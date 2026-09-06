@@ -44,6 +44,30 @@ Read through the [documentation](https://typecad.net/getting-started) for a full
 npx @typecad/typecad create
 ```
 
+## Board viewer
+
+This package ships a built-in, zero-dependency Gerber (RS-274X) + Excellon viewer:
+
+```bash
+# one-shot: render a fab-output directory to a self-contained interactive HTML file
+npx gerber-viewer gerbers/ -o board-view.html --open
+
+# dev server inside a typeCAD project: watches build/*.kicad_pcb, re-exports
+# gerbers via `typecad export`, and live-reloads on every `npm run build`
+npx gerber-viewer serve            # http://localhost:4173
+```
+
+Programmatic use (parsing, layer detection, SVG rendering, the dev server):
+
+```ts
+import {
+  parseGerber, parseExcellon, detectLayer, renderSvg,
+  buildViewerFromFiles, startGerberViewerServer,
+} from '@typecad/typecad/gerber-viewer';
+```
+
+Projects created with `typecad create` get a `gerber_viewer` npm script wired to `gerber-viewer serve`.
+
 ---
 ## Support
 <a href="https://www.buymeacoffee.com/typecad" target="_blank" title="buymeacoffee">

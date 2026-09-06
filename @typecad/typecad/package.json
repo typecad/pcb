@@ -49,6 +49,11 @@
       "types": "./dist/sexpr/index.d.ts",
       "import": "./dist/sexpr/index.js",
       "default": "./dist/sexpr/index.js"
+    },
+    "./gerber-viewer": {
+      "types": "./dist/gerber_viewer/index.d.ts",
+      "import": "./dist/gerber_viewer/index.js",
+      "default": "./dist/gerber_viewer/index.js"
     }
   },
   "engines": {
@@ -56,6 +61,7 @@
   },
   "bin": {
     "typecad": "dist/cli/typecad/index.js",
+    "gerber-viewer": "dist/gerber_viewer/cli.js",
     "kicad-symbols": "dist/kicad-symbols/cli/bin.js",
     "kicad2typecad": "dist/kicad2typecad/bin.js"
   },

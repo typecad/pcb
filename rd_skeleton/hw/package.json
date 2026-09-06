@@ -20,7 +20,6 @@
   "license": "ISC",
   "type": "module",
   "dependencies": {
-    "@typecad/gerber-viewer": "0.2.0-alpha.0",
     "@typecad/passives": "0.2.3-alpha.0",
     "@typecad/typecad": "1.0.0-alpha.2",
     "tsx": "^4.23.13"

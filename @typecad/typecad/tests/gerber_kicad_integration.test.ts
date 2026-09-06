@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { buildViewerFromFiles } from '../src/build.js';
+import { buildViewerFromFiles } from '../src/gerber_viewer/build.js';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const board = path.join(repoRoot, 'rd_isl9120_demo', 'build', 'isl9120_demo.kicad_pcb');

@@ -34,7 +34,7 @@ You get a single self-contained HTML file — no server, no assets, works over `
 The viewer is more useful as a live companion. In any project created with `typecad create` you'll find a `gerber_viewer` npm script wired to the serve mode:
 
 ```bash
-npm run gerber_viewer    # http://localhost:4173
+npm run gerber_viewer    # http://localhost:4273
 ```
 
 The dev server watches `build/*.kicad_pcb`. Every time you run `npm run build`, it re-exports the gerbers (`typecad export gerbers` + drill), re-renders the viewer, and live-reloads the open page. Change a component value in code, rebuild, and the board on screen updates — no KiCad launch, no manual export, no browser refresh. Before the first build it shows a "waiting" page that flips to the board the moment one exists.
@@ -71,4 +71,4 @@ npx @typecad/typecad create   # new projects include the gerber_viewer script
 npx gerber-viewer serve
 ```
 
-The viewer is part of `@typecad/typecad` — no extra install, no extra dependencies, nothing new to keep at arm's length. Build your board, open `localhost:4173`, and see what your code just made.
+The viewer is part of `@typecad/typecad` — no extra install, no extra dependencies, nothing new to keep at arm's length. Build your board, open `localhost:4273`, and see what your code just made.

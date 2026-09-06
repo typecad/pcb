@@ -24,7 +24,7 @@ Usage:
 
 serve options:
   [dir]               project root containing build/ (default: cwd)
-  -p, --port <n>      first port to try (default: 4173; walks up if in use)
+  -p, --port <n>      first port to try (default: 4273; walks up if in use)
   --open              open the viewer in the default browser
 
 Options:
@@ -41,11 +41,11 @@ Examples:
 
 function runServe(argv: string[]): number {
   let projectDir = process.cwd();
-  let port = 4173;
+  let port = 4273;
   let open = false;
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]!;
-    if (arg === '-p' || arg === '--port') port = Number(argv[++i] ?? 4173);
+    if (arg === '-p' || arg === '--port') port = Number(argv[++i] ?? 4273);
     else if (arg === '--open') open = true;
     else if (arg.startsWith('-')) throw new Error(`unknown serve option "${arg}"`);
     else projectDir = path.resolve(arg);

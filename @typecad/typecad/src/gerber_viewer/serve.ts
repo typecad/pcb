@@ -7,7 +7,7 @@ import { buildViewerFromFiles } from './build.js';
 export interface ServeOptions {
   /** Project root containing build/ (defaults to cwd). */
   projectDir?: string;
-  /** First port to try (default 4173; pass 0 for an ephemeral port). When the
+  /** First port to try (default 4273; pass 0 for an ephemeral port). When the
    * port is already in use the server walks up to the next free port. */
   port?: number;
   /** Open the viewer in the default browser once listening. */
@@ -144,7 +144,7 @@ export function startGerberViewerServer(options: ServeOptions = {}): ServeHandle
   // If the requested port is taken (a dev server, another viewer instance...),
   // walk up to the next free port instead of exiting; the log states where it
   // actually landed.
-  const firstPort = options.port ?? 4173;
+  const firstPort = options.port ?? 4273;
   const MAX_PORT_ATTEMPTS = 50;
   function listenFrom(port: number, attemptsLeft: number): void {
     server.once('error', (error: NodeJS.ErrnoException) => {

@@ -54,8 +54,8 @@ npx gerber-viewer gerbers/ -o board-view.html --open
 
 # dev server inside a typeCAD project: watches build/*.kicad_pcb, re-exports
 # gerbers via `typecad export`, and live-reloads on every `npm run build`
-npx gerber-viewer serve            # http://localhost:4173 (walks up to the
-                                   # next free port when 4173 is taken)
+npx gerber-viewer serve            # http://localhost:4273 (walks up to the
+                                   # next free port when 4273 is taken)
 ```
 
 Programmatic use (parsing, layer detection, SVG rendering, the dev server):

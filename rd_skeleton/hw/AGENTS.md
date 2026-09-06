@@ -20,7 +20,7 @@ config, KiCad integration, and project commands.
 ## npm Scripts
 
 - `npm run build` — generate KiCad files from typeCAD source
-- `npm run gerber_viewer` — board viewer dev server (`gerber-viewer serve`, http://localhost:4173): re-exports gerbers and refreshes the page on every `npm run build`
+- `npm run gerber_viewer` — board viewer dev server (`gerber-viewer serve`, http://localhost:4273): re-exports gerbers and refreshes the page on every `npm run build`
 - `npm run add_component` — add a component interactively
 - `npm run add_package` — create a reusable component package
 - `npm run kicad-search` — search KiCad symbol libraries

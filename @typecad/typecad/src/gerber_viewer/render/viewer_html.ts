@@ -86,7 +86,10 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       apply();
     } else if (ev.target && svg.contains(ev.target)) {
       mouseBoard = boardCoords(ev);
-      if (measuring && measureStart) renderMeasure();
+      if (measuring && measureStart) {
+        if (ev.shiftKey) mouseBoard = snapToAngles(measureStart, mouseBoard);
+        renderMeasure();
+      }
       var v = clientToView({ x: ev.clientX, y: ev.clientY });
       var bx = (v.x - tx) / k;
       var by = -((v.y - ty) / k);
@@ -103,6 +106,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       if (!measureStart) {
         measureStart = p; // first click: start measuring
       } else {
+        if (ev.shiftKey) p = snapToAngles(measureStart, p);
         rulers.push({ ax: measureStart.x, ay: measureStart.y, bx: p.x, by: p.y });
         measureStart = null; // second click: stick the ruler, next click starts anew
       }
@@ -124,6 +128,14 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   function boardCoords(ev) {
     var v = clientToView({ x: ev.clientX, y: ev.clientY });
     return { x: (v.x - tx) / k, y: -((v.y - ty) / k) };
+  }
+  // shift-snap: constrain the measured endpoint to 45-degree increments from
+  // the start point (0/45/90/...), keeping the radial distance
+  function snapToAngles(start, p) {
+    var dx = p.x - start.x, dy = p.y - start.y;
+    var angle = Math.round(Math.atan2(dy, dx) / (Math.PI / 4)) * (Math.PI / 4);
+    var len = Math.hypot(dx, dy);
+    return { x: start.x + Math.cos(angle) * len, y: start.y + Math.sin(angle) * len };
   }
   // viewBox units are board millimeters, not pixels — convert a desired
   // screen-pixel size into local units via the fit scale, then divide by the

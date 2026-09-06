@@ -60,7 +60,8 @@ npx gerber-viewer serve            # http://localhost:4273 (walks up to the
 
 A ruler button in the toolbar arms a measurement mode: click a start point, move the mouse to
 see the live distance, click again to stick the ruler — measurements accumulate, and `Esc`
-clears them all. Rulers scale and pan with the board, keep a constant on-screen size while
+clears them all. Hold `Shift` while measuring to snap the endpoint to 0/45/90-degree angles.
+Rulers scale and pan with the board, keep a constant on-screen size while
 zooming, and follow the dark/light theme.
 
 Programmatic use (parsing, layer detection, SVG rendering, the dev server):

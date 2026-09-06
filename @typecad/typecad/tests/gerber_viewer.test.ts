@@ -96,6 +96,10 @@ describe('buildViewerHtml', () => {
     expect(html).toMatch(/--measure:\s*#6db3f2/);
     expect(html).toMatch(/body\.light\s*\{[\s\S]*?--measure:\s*#0b62c4/);
     expect(html).toMatch(/#measure line\s*\{[^}]*var\(--measure\)/);
+    // shift snaps the endpoint to 45-degree increments (live and on stick)
+    expect(html).toContain('function snapToAngles');
+    expect(html).toMatch(/if \(ev\.shiftKey\) mouseBoard = snapToAngles\(measureStart, mouseBoard\)/);
+    expect(html).toMatch(/if \(ev\.shiftKey\) p = snapToAngles\(measureStart, p\)/);
   });
 });
 

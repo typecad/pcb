@@ -54,6 +54,9 @@ describe('buildViewerHtml', () => {
     expect(html).toMatch(/\[data-kind="silkscreen"\]/);
     expect(html).toMatch(/\[data-kind="drill"\]/);
     expect(html).toMatch(/\[data-kind\] \.cut\s*\{/);
+    // region paths carry stroke="none" — they must NOT get the recolor stroke
+    // or TrueType text glyphs balloon with a 1-unit outline
+    expect(html).toMatch(/\[stroke\]:not\(\[stroke='none'\]\)/);
     // sidebar chips follow the dark-theme recoloring
     expect(html).toMatch(/\.layer-row\[data-kind="silkscreen"\] \.chip/);
   });

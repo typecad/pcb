@@ -226,16 +226,30 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   }
   /* layers whose palette colors are near-black would vanish on the dark
      canvas — recolor them (and their sidebar chips) in dark theme; strokes
-     and non-none fills carry explicit attributes, so override those too */
+     and non-none fills carry explicit attributes, so override those too.
+     stroke="none" must be excluded: region paths (TrueType text glyphs, pour
+     outlines) carry it and would gain a 1-unit outline — ballooned glyphs */
   body:not(.light) #board [data-kind="silkscreen"],
-  body:not(.light) #board [data-kind="paste"] { fill: #d6d6d6; }
-  body:not(.light) #board [data-kind="silkscreen"] [stroke],
-  body:not(.light) #board [data-kind="paste"] [stroke] { stroke: #d6d6d6 !important; }
-  body:not(.light) #board [data-kind="silkscreen"] [fill]:not([fill="none"]),
-  body:not(.light) #board [data-kind="paste"] [fill]:not([fill="none"]) { fill: #d6d6d6 !important; }
-  body:not(.light) #board [data-kind="drill"] { fill: #2fbfae; }
-  body:not(.light) #board [data-kind="drill"] [stroke] { stroke: #2fbfae !important; }
-  body:not(.light) #board [data-kind="drill"] [fill]:not([fill="none"]) { fill: #2fbfae !important; }
+  body:not(.light) #board [data-kind="paste"] {
+    fill: #d6d6d6;
+  }
+  body:not(.light) #board [data-kind="silkscreen"] [stroke]:not([stroke='none']),
+  body:not(.light) #board [data-kind='paste'] [stroke]:not([stroke='none']) {
+    stroke: #d6d6d6 !important;
+  }
+  body:not(.light) #board [data-kind='silkscreen'] [fill]:not([fill='none']),
+  body:not(.light) #board [data-kind='paste'] [fill]:not([fill='none']) {
+    fill: #d6d6d6 !important;
+  }
+  body:not(.light) #board [data-kind='drill'] {
+    fill: #2fbfae;
+  }
+  body:not(.light) #board [data-kind='drill'] [stroke]:not([stroke='none']) {
+    stroke: #2fbfae !important;
+  }
+  body:not(.light) #board [data-kind='drill'] [fill]:not([fill='none']) {
+    fill: #2fbfae !important;
+  }
   /* clear-polarity shapes must always paint the canvas color, not the override */
   #board [data-kind] .cut { fill: var(--bg) !important; stroke: var(--bg) !important; }
   body:not(.light) .layer-row[data-kind="silkscreen"] .chip,

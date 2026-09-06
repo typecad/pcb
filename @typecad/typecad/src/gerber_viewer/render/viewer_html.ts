@@ -125,14 +125,24 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     var v = clientToView({ x: ev.clientX, y: ev.clientY });
     return { x: (v.x - tx) / k, y: -((v.y - ty) / k) };
   }
+  // viewBox units are board millimeters, not pixels — convert a desired
+  // screen-pixel size into local units via the fit scale, then divide by the
+  // user zoom so rulers keep a constant on-screen size at any zoom level
+  function unitsPerPx() {
+    var rect = svg.getBoundingClientRect();
+    var vb = svg.viewBox.baseVal;
+    if (!rect.width || !rect.height || !vb.width || !vb.height) return 1;
+    var fitScale = Math.min(rect.width / vb.width, rect.height / vb.height); // px per unit at k=1
+    return 1 / fitScale;
+  }
   function drawRuler(ax, ay, bx, by) {
     // the overlay group sits inside panzoom but outside the y-flip, so
-    // board->svg is just y negation; s counter-scales to a constant screen size
+    // board->svg is just y negation; s converts screen px to local units
     var x1 = ax, y1 = -ay, x2 = bx, y2 = -by;
     var dx = x2 - x1, dy = y2 - y1;
     var len = Math.hypot(dx, dy);
     var px = len ? -dy / len : 0, py = len ? dx / len : 0; // unit perpendicular
-    var s = 1 / k;
+    var s = unitsPerPx() / k;
     var t = 5 * s;
     var label =
       len.toFixed(3) + ' ' + units +
@@ -162,6 +172,8 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     measureStart = null;
     renderMeasure();
   });
+  // the px->unit conversion changes when the window resizes
+  window.addEventListener('resize', renderMeasure);
   window.addEventListener('keydown', function (ev) {
     if (ev.key === 'Escape' && (measuring || measureStart || rulers.length)) {
       measuring = false;

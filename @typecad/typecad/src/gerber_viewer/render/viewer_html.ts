@@ -152,8 +152,8 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       '<line x1="' + (x1 - px * t) + '" y1="' + (y1 - py * t) + '" x2="' + (x1 + px * t) + '" y2="' + (y1 + py * t) + '" stroke-width="' + 1.5 * s + '"></line>' +
       '<line x1="' + (x2 - px * t) + '" y1="' + (y2 - py * t) + '" x2="' + (x2 + px * t) + '" y2="' + (y2 + py * t) + '" stroke-width="' + 1.5 * s + '"></line>' +
       '<circle cx="' + x1 + '" cy="' + y1 + '" r="' + 2 * s + '" fill="var(--measure)"></circle>' +
-      '<text x="' + ((x1 + x2) / 2 + px * 9 * s) + '" y="' + ((y1 + y2) / 2 + py * 9 * s) +
-      '" font-size="' + 12 * s + '" text-anchor="middle" dominant-baseline="middle">' + label + '</text>'
+      '<text x="' + ((x1 + x2) / 2 + px * 11 * s) + '" y="' + ((y1 + y2) / 2 + py * 11 * s) +
+      '" font-size="' + 16 * s + '" text-anchor="middle" dominant-baseline="middle">' + label + '</text>'
     );
   }
   function renderMeasure() {

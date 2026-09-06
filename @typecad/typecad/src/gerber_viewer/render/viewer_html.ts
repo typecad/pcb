@@ -72,10 +72,8 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   }, { passive: false });
 
   var drag = null;
-  svg.style.cursor = 'grab';
   svg.addEventListener('mousedown', function (ev) {
     drag = { x: ev.clientX, y: ev.clientY, tx: tx, ty: ty };
-    svg.style.cursor = 'grabbing';
   });
   window.addEventListener('mousemove', function (ev) {
     if (drag) {
@@ -93,7 +91,6 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   });
   window.addEventListener('mouseup', function () {
     drag = null;
-    svg.style.cursor = 'grab';
   });
 
   document.getElementById('btn-fit').addEventListener('click', fit);
@@ -272,7 +269,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   #toolbar button:hover { background: var(--btn-hover); }
   #board-area { position: relative; flex: 1; background: var(--page, #ffffff); }
   #status { position: absolute; left: 10px; bottom: 8px; background: #000a; color: #fff; padding: 3px 8px; border-radius: 4px; font: 12px/1.2 ui-monospace, monospace; pointer-events: none; }
-  #board { position: absolute; inset: 0; display: block; }
+  #board { position: absolute; inset: 0; display: block; cursor: crosshair; }
 </style>
 </head>
 <body>

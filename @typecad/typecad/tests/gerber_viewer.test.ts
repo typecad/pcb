@@ -73,6 +73,11 @@ describe('buildViewerHtml', () => {
     expect(html).toContain('id="panzoom"');
     expect(html).toContain('id="yflip"');
   });
+
+  it('uses a crosshair cursor on the board canvas', () => {
+    expect(html).toMatch(/#board\s*\{[^}]*cursor:\s*crosshair/);
+    expect(html).not.toContain("cursor = 'grab'");
+  });
 });
 
 describe('buildViewerFromFiles', () => {

@@ -274,7 +274,10 @@ describe('zone serialization (create integration)', () => {
   });
 
   it('writes filled_areas_thickness, island removal default, polygon zones, and rule-area options', () => {
-    const pcb = new PCB(boardName);
+    // fill_zones: false — these assertions cover typeCAD's own serialization;
+    // materialization re-saves through kicad-cli, whose formatter drops
+    // filled_areas_thickness and rewrites zone heads
+    const pcb = new PCB(boardName, { fill_zones: false });
     const c = padComponent();
     pcb.add(c);
 
@@ -355,7 +358,8 @@ describe('zone serialization (create integration)', () => {
   });
 
   it('emits filled_areas_thickness yes when set true, and omits it when unset', () => {
-    const pcb = new PCB(boardName);
+    // fill_zones: false — assert on typeCAD's serialization, not the kicad-cli resave
+    const pcb = new PCB(boardName, { fill_zones: false });
     const c = padComponent();
     pcb.add(c);
     pcb.zone({ net: 'GND', layers: ['F.Cu'], x: 0, y: 0, width: 5, height: 5, filledAreasThickness: true });
@@ -363,7 +367,7 @@ describe('zone serialization (create integration)', () => {
     const board = fs.readFileSync(`${buildDir}/${boardName}.kicad_pcb`, 'utf8');
     expect(board).toContain('(filled_areas_thickness yes)');
 
-    const pcb2 = new PCB(boardName + '_b');
+    const pcb2 = new PCB(boardName + '_b', { fill_zones: false });
     const c2 = padComponent();
     pcb2.add(c2);
     pcb2.zone({ net: 'GND', layers: ['F.Cu'], x: 0, y: 0, width: 5, height: 5 });

@@ -225,7 +225,7 @@ describe('pcb.stitch()', () => {
     pcb.create(c1, c2);
 
     const board = fs.readFileSync(`${buildDir}/${boardName}.kicad_pcb`, 'utf8');
-    const viaCount = (board.match(/\(via \(at/g) ?? []).length;
+    const viaCount = (board.match(/\(via\s+\(at/g) ?? []).length;
     expect(viaCount).toBeGreaterThan(0);
   });
 
@@ -245,7 +245,7 @@ describe('pcb.stitch()', () => {
     pcb.stitch('GND', { pitch: 2.0, area: { x: 2, y: 2, width: 36, height: 26 } });
     pcb.create(c1);
     const board = fs.readFileSync(`${buildDir}/${boardName}.kicad_pcb`, 'utf8');
-    const viaCount = (board.match(/\(via \(at/g) ?? []).length;
+    const viaCount = (board.match(/\(via\s+\(at/g) ?? []).length;
     // a 2mm grid over 36x26 ≈ 19 × 14 = 266 candidates; the through-hole
     // connector pads block only a handful
     expect(viaCount).toBeGreaterThan(250);
@@ -380,7 +380,7 @@ describe('stitch avoids components (rd_skeleton regression)', () => {
     pcb.create(r1);
 
     const board = fs.readFileSync(`${buildDir}/${boardName}.kicad_pcb`, 'utf8');
-    const vias = [...board.matchAll(/\(via \(at ([\d.]+) ([\d.]+)\)/g)].map((m) => ({
+    const vias = [...board.matchAll(/\(via\s+\(at\s+([\d.]+)\s+([\d.]+)\)/g)].map((m) => ({
       x: parseFloat(m[1]),
       y: parseFloat(m[2]),
     }));
@@ -483,7 +483,7 @@ describe('stitch avoids text (rd_skeleton regression)', () => {
     pcb.create(r1);
 
     const board = fs.readFileSync(`${buildDir}/${boardName}.kicad_pcb`, 'utf8');
-    const vias = [...board.matchAll(/\(via \(at ([\d.]+) ([\d.]+)\)/g)].map((m) => ({
+    const vias = [...board.matchAll(/\(via\s+\(at\s+([\d.]+)\s+([\d.]+)\)/g)].map((m) => ({
       x: parseFloat(m[1]),
       y: parseFloat(m[2]),
     }));
@@ -546,7 +546,7 @@ describe('stitch avoids mounting holes (rd_skeleton regression)', () => {
     pcb.create(r1, mh1, mh2);
 
     const board = fs.readFileSync(`${buildDir}/${boardName}.kicad_pcb`, 'utf8');
-    const vias = [...board.matchAll(/\(via \(at ([\d.]+) ([\d.]+)\)/g)].map((m) => ({
+    const vias = [...board.matchAll(/\(via\s+\(at\s+([\d.]+)\s+([\d.]+)\)/g)].map((m) => ({
       x: parseFloat(m[1]),
       y: parseFloat(m[2]),
     }));

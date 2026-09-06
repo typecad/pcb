@@ -184,7 +184,7 @@ describe('footprint text overrides', () => {
     });
 
     function viaPositions(boardFile: string): Array<{ x: number; y: number }> {
-      const matches = [...boardFile.matchAll(/\(via \(at ([-\d.]+) ([-\d.]+)/g)];
+      const matches = [...boardFile.matchAll(/\(via\s+\(at\s+([-\d.]+)\s+([-\d.]+)/g)];
       return matches.map((m) => ({ x: parseFloat(m[1]), y: parseFloat(m[2]) }));
     }
 

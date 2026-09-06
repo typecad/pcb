@@ -61,12 +61,18 @@ describe('pcb.plane()', () => {
     pcb.create(c1, c2);
 
     const board = fs.readFileSync(`${buildDir}/${boardName}.kicad_pcb`, 'utf8');
-    // the materialized zone references its layer via (layers "In1.Cu")
-    expect(board).toContain('(layers "In1.Cu")');
+    // count plane zones by looking for the layer ref inside each zone head
+    // (KiCad 9 resaves write `(layers "In1.Cu")`, KiCad 10 `(layer "In1.Cu")`;
+    // segments also use the singular form, so anchor on the zone block)
+    const planeZoneCount = (b: string) =>
+      (b.match(/\(zone[\s\S]*?\(polygon/g) ?? []).filter((head) =>
+        /\(layers? "In1\.Cu"\)/.test(head),
+      ).length;
+    expect(planeZoneCount(board)).toBeGreaterThan(0);
     // exactly one plane zone even after a second create()
     pcb.create(c1, c2);
     const board2 = fs.readFileSync(`${buildDir}/${boardName}.kicad_pcb`, 'utf8');
-    expect(board2.split('(layers "In1.Cu")').length - 1).toBe(1);
+    expect(planeZoneCount(board2)).toBe(1);
   });
 
   it('keeps autorouted signal tracks off the plane layer', () => {

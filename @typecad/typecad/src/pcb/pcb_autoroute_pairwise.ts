@@ -7,7 +7,6 @@
  */
 
 import chalk from 'chalk';
-import { Pin } from '../pin.js';
 import logger from '../utils/logging.js';
 import { TrackBuilder } from './pcb_track_builder.js';
 import { AStarRouter } from '../routing/router/astar_router.js';
@@ -18,7 +17,6 @@ import { IAutorouteOptions, IRoutePath, IAutorouteWaypoint } from './pcb_interfa
 import { IRouteDirectives } from '../routing/router/types.js';
 import { debugLog, AutorouteContext, RoutingOutput } from './pcb_autoroute_helpers.js';
 import { ManualRouteData } from './pcb_autoroute_manual_routes.js';
-import type { ISchematicNode } from '../types/schematic_types.js';
 import { pcbTrackSegment, getPcbState } from './pcb.js';
 
 /**
@@ -41,6 +39,7 @@ export function routePairwise(
     validEndPositions,
     allPins,
     netName,
+    pinNetMap,
     traceWidth,
     clearance,
     freeViaLocations,
@@ -109,20 +108,9 @@ export function routePairwise(
     }
 
     // Determine net for this pair (may differ across pairs)
-    let pairNetName: string | undefined = undefined;
-    if (pcb.schematic && pcb.schematic.nodes && fromPin?.owner) {
-      for (const schematicNode of pcb.schematic.nodes) {
-        if (schematicNode.nodes) {
-          const pinInSchematic = schematicNode.nodes.find(
-            (p: Pin) => p.reference === fromPin.owner!.reference && String(p.number) === String(fromPin.number),
-          );
-          if (pinInSchematic) {
-            pairNetName = schematicNode.name;
-            break;
-          }
-        }
-      }
-    }
+    const pairNetName = fromPin?.owner
+      ? pinNetMap.get(`${fromPin.owner.reference}:${String(fromPin.number)}`)
+      : undefined;
 
     // If no manual route, use autorouter
     if (!path) {
@@ -169,37 +157,38 @@ export function routePairwise(
       }
     }
 
-    if (path && path.success && !manualTrackBuilders) {
-    }
-
     out.allPaths.push(path); // Store for visualization
 
     if (path.success) {
-      // If we have manual TrackBuilders, reuse them to avoid creating duplicates
+      // If we have manual TrackBuilders, reuse them to avoid creating duplicates.
+      // They are registered ONLY in routeTrackBuilders — autoroute()'s merge
+      // step moves them into the result exactly once.
       if (manualTrackBuilders) {
         debugLog(
           options.debug,
           chalk.blue(`[PCB] Reusing ${manualTrackBuilders.length} existing TrackBuilder(s) from manual route`),
         );
         for (const tb of manualTrackBuilders) {
-          out.result.push(tb);
-
-          // Re-stage the tracks from this TrackBuilder since we removed them earlier
-          const elements = tb.getElements();
-          for (const el of elements) {
-            if (el.type === 'track' && el.details && 'start' in el.details) {
-              // It's a track (not a via)
-              const trackDetails = el.details as import('./pcb_interfaces.js').ITrackDetails;
-              pcbTrackSegment(
-                pcb,
-                trackDetails.start,
-                trackDetails.end,
-                trackDetails.width,
-                trackDetails.layer,
-                trackDetails.locked ?? false,
-                el.uuid,
-                undefined,
-              );
+          // Re-stage the tracks from this TrackBuilder since we removed them earlier.
+          // Deferred builders are staged by autoroute()'s staging loop instead,
+          // so guard here to avoid staging their elements twice.
+          if (!tb.deferStaging) {
+            const elements = tb.getElements();
+            for (const el of elements) {
+              if (el.type === 'track' && el.details && 'start' in el.details) {
+                // It's a track (not a via)
+                const trackDetails = el.details as import('./pcb_interfaces.js').ITrackDetails;
+                pcbTrackSegment(
+                  pcb,
+                  trackDetails.start,
+                  trackDetails.end,
+                  trackDetails.width,
+                  trackDetails.layer,
+                  trackDetails.locked ?? false,
+                  el.uuid,
+                  undefined,
+                );
+              }
             }
           }
         }
@@ -213,6 +202,12 @@ export function routePairwise(
         out.routeTrackBuilders[i] = track ? [track] : [];
       }
 
+      // Register the net for rip-up eligibility: these tracks are the
+      // router's own staging, safe to rip and re-route later.
+      const routedNet = typeof pairNetName === 'string' ? pairNetName : netName;
+      if (routedNet) {
+        getPcbState(pcb).routerRoutedNets.add(routedNet);
+      }
       // Only add tracks as obstacles if we created new ones (not manual)
       if (!manualTrackBuilders) {
         // Add newly created tracks as obstacles for subsequent routes

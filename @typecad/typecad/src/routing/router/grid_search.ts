@@ -43,8 +43,8 @@ type OccupancyLookup = (
   gridX: number,
   gridY: number,
   clearanceMm: number,
-  ignoreSameNet: boolean,
-  treatManualRoutesAsBlocks: boolean,
+  considerObstacleClearance: boolean,
+  sumObstacleClearance: boolean,
 ) => boolean;
 
 interface NeighborContext {
@@ -70,6 +70,9 @@ interface NeighborContext {
   allowDiagonalRuns: boolean;
   preferredLayerIndexMap?: Map<string, number>;
   goalCosts?: Float32Array;
+  /** Vias that already exist at the segment start (e.g. forced vias the
+   *  caller knows about) — organic vias must keep their distance. */
+  seedVias: { gridX: number; gridY: number }[];
 }
 
 interface ISearchRunResult {
@@ -77,6 +80,8 @@ interface ISearchRunResult {
   path?: IRoutePath;
   error?: string;
   iterations?: number;
+  /** Nets whose copper blocked the search (rip-up candidates). */
+  blockedBy?: string[];
 }
 
 export interface GridSearchConfig {
@@ -106,11 +111,28 @@ export class GridSearch {
   private closedSet: Uint32Array = new Uint32Array(0);
   private localOccupancyCache: Int32Array = new Int32Array(0);
   private searchGeneration: number = 0;
+  /** Nets that blocked the current search (for rip-up-and-reroute). */
+  private currentBlockers: Set<string> | null = null;
   private openMapTouchedIndices: number[] = [];
   private openPQ = new PriorityQueue<IRouteNode>((a, b) => a.fCost - b.fCost);
   private static readonly MAX_PATH_CACHE_ENTRIES = 64;
   private static readonly MAX_GLOBAL_OCCUPANCY_CACHE_ENTRIES = 400000;
   private static readonly ANGLE_TOLERANCE = 1e-6;
+  /**
+   * Straightening only applies to escape-length diagonals near a pad. Longer
+   * diagonals are intentional trunk routing — replacing them with orthogonal
+   * runs would add walls that seal off neighboring escape corridors.
+   */
+  private static readonly STRAIGHTEN_MAX_ESCAPE_MM = 2.0;
+  /** How many nodes ahead the staircase simplifier may look for a shortcut. */
+  private static readonly SIMPLIFY_WINDOW_NODES = 16;
+  /**
+   * The direct two-segment escape path is an escape-scale shortcut. Longer
+   * connections are trunk routing: giving them idealized straight/diagonal
+   * geometry reshapes congestion across the whole board (and slows later
+   * searches), so they go through the regular grid search.
+   */
+  private static readonly DIRECT_ESCAPE_MAX_MM = 8.0;
 
   constructor(config: GridSearchConfig) {
     this.grid = config.grid;
@@ -170,7 +192,7 @@ export class GridSearch {
     for (const node of path.gridNodes) {
       if (
         !this.grid.isInBounds(node.gridX, node.gridY) ||
-        this.grid.isOccupied(node.gridX, node.gridY, node.layer, clearance, this.options.net, false, true)
+        this.grid.isOccupied(node.gridX, node.gridY, node.layer, clearance, this.options.net, true, false)
       ) {
         return false;
       }
@@ -363,7 +385,7 @@ export class GridSearch {
    * `viaCost` applies.
    */
   private computeViaCost(fromLayer: string, toLayer: string): number {
-    const base = this.options.viaCost || 0;
+    const base = (this.options.viaCost || 0) * (0.1 / this.grid.getResolution());
     const order = this.options.layerOrder;
     if (!order || base <= 0) {
       return base;
@@ -416,6 +438,7 @@ export class GridSearch {
     endIsLayerAgnosticGoal: boolean;
     forceSingleLayer: boolean;
     windowData: CachedWindow;
+    seedVias?: { x: number; y: number }[];
   }): ISearchRunResult {
     profiler.start('GridSearch.runSearchWithWindow');
     try {
@@ -480,8 +503,8 @@ export class GridSearch {
         gridX: number,
         gridY: number,
         clearanceMm: number,
-        ignoreSameNet: boolean,
-        treatManualRoutesAsBlocks: boolean,
+        considerObstacleClearance: boolean,
+        sumObstacleClearance: boolean,
       ): boolean => {
         if (!this.isWithinWindow(gridX, gridY, searchWindow)) {
           boundaryTracker.touched = true;
@@ -489,9 +512,17 @@ export class GridSearch {
         }
 
         // Fast path: the router always queries occupancy using the same variant
-        // (ignoreSameNet=false, treatManualRoutesAsBlocks=true) and a constant
-        // trace clearance for the whole run.
-        if (clearanceMm === fastTraceClearance && ignoreSameNet === false && treatManualRoutesAsBlocks === true) {
+        // (considerObstacleClearance=true, sumObstacleClearance=false — the
+        // strongest of the trace keepout (clearance + own half-width, from
+        // ClearanceProfile) or the obstacle's clearance applies, plus the
+        // obstacle's half-width) and a constant trace clearance for the whole
+        // run. The flags map straight through to RoutingGrid.isOccupied's
+        // trailing booleans.
+        if (
+          considerObstacleClearance === true &&
+          sumObstacleClearance === false &&
+          clearanceMm === fastTraceClearance
+        ) {
           const cellIndex = encodeKey(layer, gridX, gridY);
           if (cellIndex < 0) {
             return true;
@@ -501,7 +532,7 @@ export class GridSearch {
           if (localCached === this.searchGeneration) return true;
           if (localCached === -this.searchGeneration) return false;
 
-          const globalKey = this.buildGlobalOccupancyKey(layer, gridX, gridY, fastTraceClearance, false, true);
+          const globalKey = this.buildGlobalOccupancyKey(layer, gridX, gridY, fastTraceClearance, true, false);
           if (globalKey) {
             const cached = this.globalOccupancyCache.get(globalKey.key);
             if (
@@ -517,7 +548,16 @@ export class GridSearch {
             }
           }
 
-          const blocked = this.grid.isOccupied(gridX, gridY, layer, fastTraceClearance, this.options.net, false, true);
+          const blocked = this.grid.isOccupied(
+            gridX,
+            gridY,
+            layer,
+            fastTraceClearance,
+            this.options.net,
+            true,
+            false,
+            this.currentBlockers ?? undefined,
+          );
 
           this.localOccupancyCache[cellIndex] = blocked ? this.searchGeneration : -this.searchGeneration;
           if (globalKey) {
@@ -539,8 +579,8 @@ export class GridSearch {
           gridX,
           gridY,
           clearanceMm,
-          ignoreSameNet,
-          treatManualRoutesAsBlocks,
+          considerObstacleClearance,
+          sumObstacleClearance,
         );
         if (globalKey) {
           const cached = this.globalOccupancyCache.get(globalKey.key);
@@ -561,8 +601,9 @@ export class GridSearch {
           layer,
           clearanceMm,
           this.options.net,
-          ignoreSameNet,
-          treatManualRoutesAsBlocks,
+          considerObstacleClearance,
+          sumObstacleClearance,
+          this.currentBlockers ?? undefined,
         );
         if (globalKey) {
           this.storeGlobalOccupancyValue({
@@ -584,9 +625,13 @@ export class GridSearch {
       const openPQ = this.openPQ;
       openPQ.clear();
 
-      const viaPenalty = this.options.allowVias ? (this.options.viaCost ?? 0) : 0;
-
       const mmPerCell = this.grid.getResolution();
+      // Via cost is priced in grid cells, so a fixed viaCost implicitly
+      // shrinks as the grid refines (20 cells = 2mm at 0.1mm, only 1mm at
+      // 0.05mm) — making fine-pitch boards via-happy. Scale it back to the
+      // equivalent price at the reference 0.1mm resolution.
+      const viaCostScale = 0.1 / mmPerCell;
+      const viaPenalty = this.options.allowVias ? (this.options.viaCost ?? 0) * viaCostScale : 0;
       const strideDisableRadius = Math.max(
         1,
         Math.ceil((this.options.strideNearPadDisableRadiusMm ?? 3.0) / mmPerCell),
@@ -637,6 +682,10 @@ export class GridSearch {
         allowDiagonalRuns: this.options.allow45DegreeRuns ?? true,
         preferredLayerIndexMap,
         goalCosts,
+        seedVias: (config.seedVias ?? []).map((v) => {
+          const g = this.grid.worldToGrid(v.x, v.y);
+          return { gridX: g.x, gridY: g.y };
+        }),
       };
 
       const startLayers: string[] =
@@ -727,6 +776,11 @@ export class GridSearch {
               end: adjustedEnd,
             }),
             iterations,
+            // Nets that blocked the search along the way: a successful but
+            // congested route (long detour) still names its blockers so
+            // rip-up-and-reroute can act on quality, not just failure.
+            blockedBy:
+              this.currentBlockers && this.currentBlockers.size > 0 ? Array.from(this.currentBlockers) : undefined,
           };
         }
 
@@ -760,7 +814,7 @@ export class GridSearch {
 
             if (!isStartNeighbor) {
               const effectiveClearance = fastTraceClearance;
-              if (lookupOccupancy(neighbor.layer, neighbor.gridX, neighbor.gridY, effectiveClearance, false, true)) {
+              if (lookupOccupancy(neighbor.layer, neighbor.gridX, neighbor.gridY, effectiveClearance, true, false)) {
                 continue;
               }
             }
@@ -788,6 +842,7 @@ export class GridSearch {
         status: 'failure',
         iterations,
         error: `No path found after ${iterations} iterations`,
+        blockedBy: this.currentBlockers ? Array.from(this.currentBlockers) : undefined,
       };
     } finally {
       for (const idx of this.openMapTouchedIndices) {
@@ -798,7 +853,7 @@ export class GridSearch {
     }
   }
 
-  public findPath(start: RouteEndpoint, end: RouteEndpoint): IRoutePath {
+  public findPath(start: RouteEndpoint, end: RouteEndpoint, seedVias?: { x: number; y: number }[]): IRoutePath {
     return profiler.profile('GridSearch.findPath', () => {
       let adjustedStart = { ...start };
       let adjustedEnd = { ...end };
@@ -854,8 +909,22 @@ export class GridSearch {
         return cached;
       }
 
+      // Canonical escape shape first: straight along the start axis, then a
+      // single 45° into the goal (or the mirror). When the space allows it
+      // this is shorter and cleaner than anything the grid search would
+      // staircase together, and it keeps pad exits on the pad's axis.
+      const direct = this.tryDirectEscapePath(adjustedStart, adjustedEnd);
+      if (direct) {
+        this.storePathCache(cacheKey, direct);
+        return direct;
+      }
+
       let windowData = this.getOrCreateWindowData(startGrid, endGrid, adjustedStart.layer, adjustedEnd.layer);
 
+      // Blockers accumulate across window expansions of this search — each
+      // expansion re-runs with a fresh open set, but the rip-up intelligence
+      // gathered along the way must survive to the final failure result.
+      this.currentBlockers = new Set<string>();
       while (true) {
         const result = this.runSearchWithWindow({
           adjustedStart,
@@ -866,6 +935,7 @@ export class GridSearch {
           endIsLayerAgnosticGoal,
           forceSingleLayer,
           windowData,
+          seedVias,
         });
 
         if (result.status === 'expand') {
@@ -875,7 +945,9 @@ export class GridSearch {
 
         if (result.status === 'success' && result.path) {
           this.storePathCache(cacheKey, result.path);
-          return result.path;
+          return result.blockedBy && result.blockedBy.length > 0
+            ? { ...result.path, blockedBy: result.blockedBy }
+            : result.path;
         }
 
         if (this.options.debug) {
@@ -889,6 +961,7 @@ export class GridSearch {
             viaCount: 0,
             success: false,
             error: result.error ?? `No path found after ${result.iterations ?? 0} iterations`,
+            blockedBy: result.blockedBy,
           }
         );
       }
@@ -1003,6 +1076,7 @@ export class GridSearch {
         parent: node,
         directionFrom: { dx: dir.dx, dy: dir.dy },
         viaUsed: false,
+        viaChain: node.viaChain,
       });
     }
 
@@ -1047,15 +1121,48 @@ export class GridSearch {
           continue;
         }
 
-        const padKeepout = this.clearanceProfile.getViaKeepoutRadius();
-
-        if (this.isPadWithinClearance(nx, ny, [node.layer, targetLayer], padKeepout)) {
+        // Same-net via spacing: keep the new via away from vias already on
+        // this path (and any seeded positions such as forced vias). The fab
+        // constraint is hole-to-hole (drill edge to drill edge), so the
+        // minimum center distance is one drill diameter plus the hole
+        // clearance — NOT the pad-to-pad clearance, which would also outlaw
+        // perfectly manufacturable neighboring vias.
+        const minViaCenterSpacing =
+          (this.options.viaSize ?? GridSearchConstants.DEFAULT_VIA_SIZE) / 2 + GridSearchConstants.MIN_HOLE_TO_HOLE_MM;
+        const spacingCells = minViaCenterSpacing / this.grid.getResolution();
+        let tooCloseToVia = false;
+        for (let chain = node.viaChain; chain && !tooCloseToVia; chain = chain.next) {
+          if (Math.hypot(nx - chain.gridX, ny - chain.gridY) < spacingCells) {
+            tooCloseToVia = true;
+          }
+        }
+        for (const seed of context.seedVias) {
+          if (Math.hypot(nx - seed.gridX, ny - seed.gridY) < spacingCells) {
+            tooCloseToVia = true;
+            break;
+          }
+        }
+        if (tooCloseToVia) {
           continue;
         }
 
-        const viaBlocked =
-          this.grid.isOccupied(nx, ny, node.layer, padKeepout, this.options.net, true, true) ||
-          this.grid.isOccupied(nx, ny, targetLayer, padKeepout, this.options.net, true, true);
+        const padKeepout = this.clearanceProfile.getViaKeepoutRadius();
+        // The via's barrel occupies every layer it spans, not just the two
+        // endpoints — an inner-layer track under a through via is a short.
+        const spanLayers = viaSpanLayers(
+          this.options.allowedLayers ?? [node.layer],
+          this.options.layerOrder ?? [],
+          node.layer,
+          targetLayer,
+        );
+
+        if (this.isPadWithinClearance(nx, ny, spanLayers, padKeepout)) {
+          continue;
+        }
+
+        const viaBlocked = spanLayers.some((spanLayer) =>
+          this.grid.isOccupied(nx, ny, spanLayer, padKeepout, this.options.net, true, true),
+        );
 
         if (viaBlocked) {
           continue;
@@ -1128,6 +1235,7 @@ export class GridSearch {
           parent: node,
           directionFrom: node.directionFrom,
           viaUsed: true,
+          viaChain: { gridX: nx, gridY: ny, next: node.viaChain },
         });
       }
     }
@@ -1173,7 +1281,7 @@ export class GridSearch {
         return null;
       }
 
-      if (context.lookupOccupancy(node.layer, nx, ny, clearance, false, true)) {
+      if (context.lookupOccupancy(node.layer, nx, ny, clearance, true, false)) {
         return null;
       }
 
@@ -1183,8 +1291,8 @@ export class GridSearch {
         const bx = currentX;
         const by = currentY + dir.dy;
         if (
-          context.lookupOccupancy(node.layer, ax, ay, clearance, false, true) ||
-          context.lookupOccupancy(node.layer, bx, by, clearance, false, true)
+          context.lookupOccupancy(node.layer, ax, ay, clearance, true, false) ||
+          context.lookupOccupancy(node.layer, bx, by, clearance, true, false)
         ) {
           return null;
         }
@@ -1254,6 +1362,7 @@ export class GridSearch {
           parent: node,
           directionFrom: { dx: dir.dx, dy: dir.dy },
           viaUsed: false,
+          viaChain: node.viaChain,
         };
       }
     }
@@ -1340,6 +1449,7 @@ export class GridSearch {
       parent: node,
       directionFrom: { dx: dir.dx, dy: dir.dy },
       viaUsed: false,
+      viaChain: node.viaChain,
     };
   }
 
@@ -1367,23 +1477,23 @@ export class GridSearch {
       }
 
       if (current.viaUsed && current.parent) {
-        const prevNode = nodes[0];
-        const needsParentNode =
-          !prevNode ||
-          prevNode.x !== worldPos.x ||
-          prevNode.y !== worldPos.y ||
-          prevNode.layer !== current.parent.layer;
-
-        if (needsParentNode) {
+        // A via node always sits at its parent's cell, so the backward walk
+        // unshifts the parent (same XY, parent layer) immediately after this
+        // node — forming the proper via pair. Inserting a parent-layer node
+        // here as well would duplicate it and produce B/F/B/F sandwiches:
+        // two overlapping opposite vias at one spot. Only bridge in the
+        // defensive case of a parent that is somehow not at the via cell.
+        const parent = current.parent;
+        if (parent.gridX !== current.gridX || parent.gridY !== current.gridY) {
           nodes.unshift({
             x: worldPos.x,
             y: worldPos.y,
-            layer: current.parent.layer,
+            layer: parent.layer,
           });
           gridNodes.unshift({
             gridX: current.gridX,
             gridY: current.gridY,
-            layer: current.parent.layer,
+            layer: parent.layer,
           });
         }
 
@@ -1415,8 +1525,14 @@ export class GridSearch {
     }
 
     if (snapEndpoints) {
-      nodes[0] = snapEndpoints.start;
-      nodes[nodes.length - 1] = snapEndpoints.end;
+      // Snap the endpoint POSITIONS exactly, but keep the layers the search
+      // actually chose. Layer-agnostic endpoints (through-hole pads) may
+      // start or end on any copper layer; overwriting with the caller's
+      // declared layer here would manufacture a phantom layer transition at
+      // the pad — which downstream code happily emits as a real via in the
+      // pad's hole even though the pad barrel already connects the layers.
+      nodes[0] = { ...snapEndpoints.start, layer: nodes[0].layer };
+      nodes[nodes.length - 1] = { ...snapEndpoints.end, layer: nodes[nodes.length - 1].layer };
 
       // Remove intermediate grid nodes that are very close to the snapped endpoints
       // These create "zigzag" patterns when the pad position doesn't align with the grid
@@ -1431,7 +1547,18 @@ export class GridSearch {
 
         if (start.layer === firstGrid.layer && firstGrid.layer === secondPoint.layer) {
           const distToFirstGrid = Math.hypot(firstGrid.x - start.x, firstGrid.y - start.y);
-          if (distToFirstGrid <= removalThreshold) {
+          // Removing the grid node creates an unsearched direct segment —
+          // keep the node when that shortcut would violate clearance.
+          if (
+            distToFirstGrid <= removalThreshold &&
+            segmentClearOfObstacles(
+              this.grid,
+              this.options.net,
+              this.clearanceProfile.getTraceClearance(),
+              start,
+              secondPoint,
+            )
+          ) {
             // Remove the first grid node - connect directly from start to second point
             nodes.splice(1, 1);
             gridNodes.splice(1, 1);
@@ -1447,7 +1574,16 @@ export class GridSearch {
 
         if (end.layer === lastGrid.layer && lastGrid.layer === secondToLast.layer) {
           const distToLastGrid = Math.hypot(end.x - lastGrid.x, end.y - lastGrid.y);
-          if (distToLastGrid <= removalThreshold) {
+          if (
+            distToLastGrid <= removalThreshold &&
+            segmentClearOfObstacles(
+              this.grid,
+              this.options.net,
+              this.clearanceProfile.getTraceClearance(),
+              secondToLast,
+              end,
+            )
+          ) {
             // Remove the last grid node - connect directly from second-to-last to end
             nodes.splice(nodes.length - 2, 1);
             gridNodes.splice(gridNodes.length - 2, 1);
@@ -1470,12 +1606,44 @@ export class GridSearch {
     }
 
     const angledNodes = this.ensureAllowedRunAngles(filteredNodes);
-    const simplifiedNodes = this.removeRedundantNearEndpoints(angledNodes);
+    const collapsedNodes = this.simplifyToFortyFive(angledNodes);
+    const simplifiedNodes = this.removeRedundantNearEndpoints(collapsedNodes);
     const finalNodes = this.removeCollinearPoints(simplifiedNodes);
+    this.straightenPadExits(finalNodes);
+    // Defense in depth: the post-processing passes above are individually
+    // clearance-gated, but ship the result only when the WHOLE final path is
+    // clear end to end — otherwise fall back to the raw search-validated
+    // path, which is never worse than the pre-simplification behavior.
+    if (finalNodes !== filteredNodes && !this.pathIsClear(finalNodes)) {
+      return this.assemblePath(filteredNodes, gridNodes.length > 0 ? gridNodes : undefined, viaCount);
+    }
 
-    for (let i = 1; i < finalNodes.length; i++) {
-      const a = finalNodes[i - 1];
-      const b = finalNodes[i];
+    return this.assemblePath(finalNodes, filteredGridNodes.length > 0 ? filteredGridNodes : undefined, viaCount);
+  }
+
+  /** True when every same-layer segment of the path is clearance-clear. */
+  private pathIsClear(nodes: RouteEndpoint[]): boolean {
+    const clearance = this.clearanceProfile.getTraceClearance();
+    for (let i = 1; i < nodes.length; i++) {
+      if (
+        nodes[i].layer === nodes[i - 1].layer &&
+        !segmentClearOfObstacles(this.grid, this.options.net, clearance, nodes[i - 1], nodes[i])
+      ) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  private assemblePath(
+    nodes: RouteEndpoint[],
+    gridNodes: { gridX: number; gridY: number; layer: string }[] | undefined,
+    viaCount: number,
+  ): IRoutePath {
+    let length = 0;
+    for (let i = 1; i < nodes.length; i++) {
+      const a = nodes[i - 1];
+      const b = nodes[i];
       if (a.layer === b.layer) {
         length += Math.hypot(b.x - a.x, b.y - a.y);
       } else {
@@ -1483,14 +1651,330 @@ export class GridSearch {
         length += planar + this.clearanceProfile.getViaDiameter();
       }
     }
-
     return {
-      nodes: finalNodes,
-      gridNodes: filteredGridNodes,
+      nodes,
+      gridNodes,
       length,
       viaCount,
       success: true,
     };
+  }
+
+  /**
+   * Try the canonical two-segment escape shape directly, bypassing the grid
+   * search: a pure 45° when the offsets match, otherwise a straight run
+   * along the start axis with a single 45° into the goal (the straight pad
+   * exit), or the mirror (45° out of the start, straight into the goal
+   * axis). Every candidate is clearance-validated end to end; when none fit
+   * the caller falls back to the grid search. The returned path is exact —
+   * endpoints are used verbatim, so nothing snaps or drifts off the pad
+   * axes.
+   */
+  private tryDirectEscapePath(start: RouteEndpoint, end: RouteEndpoint): IRoutePath | null {
+    if (start.layer !== end.layer) {
+      return null;
+    }
+    // Respect layer preference: when the caller pinned preferred layers
+    // (route() layers, net-class affinity), a direct path on a non-preferred
+    // layer would silently skip the vias the preference implies.
+    const preferred = this.options.preferredLayers;
+    if (preferred && preferred.length > 0 && !preferred.includes(start.layer)) {
+      return null;
+    }
+    const dx = end.x - start.x;
+    const dy = end.y - start.y;
+    const adx = Math.abs(dx);
+    const ady = Math.abs(dy);
+    if (adx <= GridSearch.ANGLE_TOLERANCE && ady <= GridSearch.ANGLE_TOLERANCE) {
+      return null;
+    }
+    if (Math.hypot(dx, dy) > GridSearch.DIRECT_ESCAPE_MAX_MM) {
+      return null;
+    }
+
+    const clearance = this.clearanceProfile.getTraceClearance();
+    const clear = (a: RouteEndpoint, b: RouteEndpoint) =>
+      segmentClearOfObstacles(this.grid, this.options.net, clearance, a, b);
+
+    const build = (corners: RouteEndpoint[]): IRoutePath => {
+      const nodes = [start, ...corners, end];
+      let length = 0;
+      for (let i = 1; i < nodes.length; i++) {
+        if (!clear(nodes[i - 1], nodes[i])) {
+          return null as unknown as IRoutePath;
+        }
+        length += Math.hypot(nodes[i].x - nodes[i - 1].x, nodes[i].y - nodes[i - 1].y);
+      }
+      return { nodes, gridNodes: undefined, length, viaCount: 0, success: true };
+    };
+
+    // Pure 45° when the offsets match.
+    if (Math.abs(adx - ady) <= GridSearch.ANGLE_TOLERANCE) {
+      const direct = build([]);
+      if (direct) {
+        return direct;
+      }
+    }
+
+    if (adx > GridSearch.ANGLE_TOLERANCE && ady > adx) {
+      // Straight down/up the start's x, then 45° into the goal.
+      const straight = build([{ x: start.x, y: end.y - Math.sign(dy) * adx, layer: start.layer }]);
+      if (straight) {
+        return straight;
+      }
+      // Mirror: 45° out of the start, then straight into the goal's x.
+      const mirrored = build([{ x: end.x, y: start.y + Math.sign(dy) * adx, layer: start.layer }]);
+      if (mirrored) {
+        return mirrored;
+      }
+    }
+
+    if (ady > GridSearch.ANGLE_TOLERANCE && adx > ady) {
+      // Straight across the start's y, then 45° into the goal.
+      const straight = build([{ x: end.x - Math.sign(dx) * ady, y: start.y, layer: start.layer }]);
+      if (straight) {
+        return straight;
+      }
+      // Mirror: 45° out of the start, then straight into the goal's y.
+      const mirrored = build([{ x: start.x + Math.sign(dx) * ady, y: end.y, layer: start.layer }]);
+      if (mirrored) {
+        return mirrored;
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Collapses staircase runs into canonical 45° geometry. The grid search
+   * assembles paths from unit steps, so a diagonal drift becomes many tiny
+   * alternating 45°/axis jogs; collinear merging cannot touch those. Between
+   * anchor points (path ends, via nodes — layer changes — and any node the
+   * window cannot validly shortcut), each run is replaced by the canonical
+   * two-segment 45° route between the same endpoints: pure diagonal, pure
+   * straight, or diagonal + straight. Every replacement segment is
+   * clearance-validated, so a shortcut that would cut a corner into other
+   * copper is rejected and the original steps are kept. Already-clean runs
+   * are reproduced unchanged (no churn), and the first segment keeps the
+   * straight-first form so pad exits stay on the pad axis.
+   */
+  private simplifyToFortyFive(nodes: RouteEndpoint[]): RouteEndpoint[] {
+    const count = nodes.length;
+    if (count <= 3) {
+      return nodes;
+    }
+
+    const result: RouteEndpoint[] = [nodes[0]];
+    let i = 0;
+
+    while (i < count - 1) {
+      if (nodes[i + 1].layer !== nodes[i].layer) {
+        // Via transition: pin both nodes, they are deliberate layer changes.
+        result.push(nodes[i + 1]);
+        i++;
+        continue;
+      }
+
+      // End of the same-layer chunk reachable from i.
+      let limit = i + 1;
+      while (limit < count - 1 && nodes[limit + 1].layer === nodes[limit].layer) {
+        limit++;
+      }
+
+      let cursor = i;
+      while (cursor < limit) {
+        const windowEnd = Math.min(limit, cursor + GridSearch.SIMPLIFY_WINDOW_NODES);
+        let advanced = false;
+        for (let j = windowEnd; j >= cursor + 2; j--) {
+          // Keep the pad-exit form: straight first when leaving the path start.
+          const straightFirst = cursor === 0;
+          const replacement = this.canonicalFortyFiveRoute(nodes[cursor], nodes[j], straightFirst);
+          if (!replacement || replacement.length >= j - cursor) {
+            continue; // no strict reduction in segment count
+          }
+          if (this.replacementRouteIsClear(nodes[cursor], replacement, nodes[j])) {
+            // The replacement holds only intermediate points — the shortcut's
+            // endpoint node must be carried too, or every collapsed anchor
+            // (including the final pad node) is silently dropped.
+            result.push(...replacement, nodes[j]);
+            cursor = j;
+            advanced = true;
+            break;
+          }
+        }
+        if (!advanced) {
+          result.push(nodes[cursor + 1]);
+          cursor++;
+        }
+      }
+      i = limit;
+    }
+
+    return result;
+  }
+
+  /**
+   * Intermediate points of the canonical 45° route from `a` to `b` (same
+   * layer): none when aligned or a pure diagonal, otherwise one corner.
+   * `straightFirst` picks whether the straight run leaves `a` (diagonal
+   * arrives at `b`) or the diagonal leaves `a` — both forms have exactly one
+   * 45° turn. Returns null when the points coincide.
+   */
+  private canonicalFortyFiveRoute(a: RouteEndpoint, b: RouteEndpoint, straightFirst: boolean): RouteEndpoint[] | null {
+    const tol = GridSearch.ANGLE_TOLERANCE;
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const adx = Math.abs(dx);
+    const ady = Math.abs(dy);
+    if (adx <= tol && ady <= tol) {
+      return null;
+    }
+    if (adx <= tol || ady <= tol) {
+      return []; // already a single straight segment
+    }
+    if (Math.abs(adx - ady) <= tol) {
+      return []; // already a single 45° diagonal
+    }
+    const sx = Math.sign(dx);
+    const sy = Math.sign(dy);
+    if (straightFirst) {
+      return adx > ady
+        ? [{ x: a.x + sx * (adx - ady), y: a.y, layer: a.layer }]
+        : [{ x: a.x, y: a.y + sy * (ady - adx), layer: a.layer }];
+    }
+    return adx > ady
+      ? [{ x: a.x + sx * ady, y: a.y + sy * ady, layer: a.layer }]
+      : [{ x: a.x + sx * adx, y: a.y + sy * adx, layer: a.layer }];
+  }
+
+  /** Clearance-check every segment of a candidate replacement route. */
+  private replacementRouteIsClear(a: RouteEndpoint, mid: RouteEndpoint[], b: RouteEndpoint): boolean {
+    const clearance = this.clearanceProfile.getTraceClearance();
+    const points = [a, ...mid, b];
+    for (let k = 1; k < points.length; k++) {
+      if (!segmentClearOfObstacles(this.grid, this.options.net, clearance, points[k - 1], points[k])) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /**
+   * Straightens pad exits and entries. The search allows 45° moves from the
+   * first cell, so the trace often leaves a pad at an angle — sometimes as a
+   * run of consecutive diagonals. Convention (and readable boards) want the
+   * pad-touching segment perfectly straight along an axis, with any 45°
+   * occurring after the escape. The pad-side diagonal run is rebuilt as
+   * straight-along-the-continuation-axis plus a 45° merge (or a perpendicular
+   * jog when the lateral offset dominates). Every replacement segment is
+   * clearance-validated — if it would not fit, the diagonals are kept, so
+   * this can never break routability.
+   */
+  private straightenPadExits(nodes: RouteEndpoint[]): void {
+    const isDiagonal = (a: RouteEndpoint, b: RouteEndpoint) =>
+      Math.abs(b.x - a.x) > GridSearch.ANGLE_TOLERANCE && Math.abs(b.y - a.y) > GridSearch.ANGLE_TOLERANCE;
+    const sameLayer = (a: RouteEndpoint, b: RouteEndpoint) => a.layer === b.layer;
+
+    const count = nodes.length;
+    if (count < 3) {
+      return;
+    }
+
+    // Start side: pad → diagonal run → first axis-aligned continuation.
+    if (isDiagonal(nodes[0], nodes[1])) {
+      let k = 1;
+      while (k + 1 < count && sameLayer(nodes[k], nodes[k + 1]) && isDiagonal(nodes[k], nodes[k + 1])) {
+        k++;
+      }
+      if (
+        k + 1 < count &&
+        sameLayer(nodes[k], nodes[k + 1]) &&
+        !isDiagonal(nodes[k], nodes[k + 1]) &&
+        Math.hypot(nodes[k].x - nodes[0].x, nodes[k].y - nodes[0].y) <= GridSearch.STRAIGHTEN_MAX_ESCAPE_MM
+      ) {
+        const mid = this.buildStraightExitReplacement(nodes[0], nodes[k], nodes[k + 1]);
+        if (mid) {
+          nodes.splice(1, k - 1, mid);
+        }
+      }
+    }
+
+    // End side: last axis-aligned approach → diagonal run → pad.
+    const end = nodes.length;
+    if (end >= 3 && isDiagonal(nodes[end - 2], nodes[end - 1])) {
+      let k = end - 2;
+      while (k - 1 >= 0 && sameLayer(nodes[k - 1], nodes[k]) && isDiagonal(nodes[k - 1], nodes[k])) {
+        k--;
+      }
+      if (
+        k - 1 >= 0 &&
+        sameLayer(nodes[k - 1], nodes[k]) &&
+        !isDiagonal(nodes[k - 1], nodes[k]) &&
+        Math.hypot(nodes[k].x - nodes[end - 1].x, nodes[k].y - nodes[end - 1].y) <= GridSearch.STRAIGHTEN_MAX_ESCAPE_MM
+      ) {
+        const mid = this.buildStraightExitReplacement(nodes[end - 1], nodes[k], nodes[k - 1]);
+        if (mid) {
+          nodes.splice(k + 1, end - 2 - k, mid);
+        }
+      }
+    }
+  }
+
+  /**
+   * Compute the replacement point that straightens the pad-touching diagonal
+   * `pad → corner` to exit along the axis of the adjacent segment
+   * `corner → adjacent` (start side) / `adjacent → corner` (end side).
+   * Returns null when the diagonal is already straight, too small to matter,
+   * or the replacement would violate clearance.
+   */
+  private buildStraightExitReplacement(
+    pad: RouteEndpoint,
+    corner: RouteEndpoint,
+    adjacent: RouteEndpoint,
+  ): RouteEndpoint | null {
+    const dx = corner.x - pad.x;
+    const dy = corner.y - pad.y;
+    const lateralX = Math.abs(dx);
+    const lateralY = Math.abs(dy);
+    if (lateralX <= GridSearch.ANGLE_TOLERANCE || lateralY <= GridSearch.ANGLE_TOLERANCE) {
+      return null; // already axis-aligned
+    }
+
+    // The exit axis follows the direction of travel beyond the corner, so
+    // the straight escape flows into the rest of the route.
+    const adjDx = Math.abs(adjacent.x - corner.x);
+    const adjDy = Math.abs(adjacent.y - corner.y);
+    const axisVertical = adjDy > adjDx ? true : adjDx > adjDy ? false : null;
+    if (axisVertical === null) {
+      return null; // the route continues diagonally; leave the pair alone
+    }
+
+    const along = axisVertical ? lateralY : lateralX;
+    const perp = axisVertical ? lateralX : lateralY;
+    if (perp <= this.grid.getResolution() * 0.5) {
+      return null; // sub-half-cell offset: the angle is invisible
+    }
+
+    const sign = axisVertical ? Math.sign(dy) : Math.sign(dx);
+    let mid: RouteEndpoint;
+    if (along > perp + GridSearch.ANGLE_TOLERANCE) {
+      // Straight escape of (along - perp), then a 45° merge into the corner.
+      mid = axisVertical
+        ? { x: pad.x, y: pad.y + sign * (along - perp), layer: pad.layer }
+        : { x: pad.x + sign * (along - perp), y: pad.y, layer: pad.layer };
+    } else {
+      // Lateral offset dominates (or ties): straight along the axis for the
+      // full `along`, then a perpendicular jog of `perp`.
+      mid = axisVertical ? { x: pad.x, y: corner.y, layer: pad.layer } : { x: corner.x, y: pad.y, layer: pad.layer };
+    }
+
+    const clearance = this.clearanceProfile.getTraceClearance();
+    const clear = (a: RouteEndpoint, b: RouteEndpoint) =>
+      segmentClearOfObstacles(this.grid, this.options.net, clearance, a, b);
+    if (!clear(pad, mid) || !clear(mid, corner)) {
+      return null;
+    }
+    return mid;
   }
 
   /**
@@ -1586,8 +2070,12 @@ export class GridSearch {
 
         // Remove the intermediate point if it's close to the start
         // Don't require the resulting segment to be at an allowed angle -
-        // a small deviation is better than a visible zigzag
-        if (distStartToMid <= nearThreshold) {
+        // a small deviation is better than a visible zigzag — but never
+        // remove it when the direct segment would violate clearance.
+        if (
+          distStartToMid <= nearThreshold &&
+          segmentClearOfObstacles(this.grid, this.options.net, this.clearanceProfile.getTraceClearance(), start, next)
+        ) {
           result.splice(1, 1);
         }
       }
@@ -1602,7 +2090,10 @@ export class GridSearch {
       if (prev.layer === mid.layer && mid.layer === end.layer) {
         const distMidToEnd = Math.hypot(end.x - mid.x, end.y - mid.y);
 
-        if (distMidToEnd <= nearThreshold) {
+        if (
+          distMidToEnd <= nearThreshold &&
+          segmentClearOfObstacles(this.grid, this.options.net, this.clearanceProfile.getTraceClearance(), prev, end)
+        ) {
           result.splice(result.length - 2, 1);
         }
       }
@@ -1712,7 +2203,24 @@ export class GridSearch {
       }
 
       const replacements = this.splitIntoAllowedSegments(current, target);
-      result.push(...replacements);
+      // The split geometry was never occupancy-checked by the search — a
+      // diagonal sweeping past a neighboring pad is the classic DRC leak.
+      // Fall back to the original segment when any replacement violates.
+      const replacementsClear = replacements.every((rep, i) => {
+        const from = i === 0 ? current : replacements[i - 1];
+        return segmentClearOfObstacles(
+          this.grid,
+          this.options.net,
+          this.clearanceProfile.getTraceClearance(),
+          from,
+          rep,
+        );
+      });
+      if (replacementsClear) {
+        result.push(...replacements);
+      } else {
+        result.push(target);
+      }
     }
     return result;
   }
@@ -1806,7 +2314,7 @@ export class GridSearch {
     context: NeighborContext,
   ): boolean {
     const lookup = (dx: number, dy: number): boolean =>
-      context.lookupOccupancy(layer, gridX + dx, gridY + dy, clearance, false, true);
+      context.lookupOccupancy(layer, gridX + dx, gridY + dy, clearance, true, false);
 
     if (dir.dx !== 0 && dir.dy !== 0) {
       return (lookup(-dir.dx, 0) && !lookup(-dir.dx, dir.dy)) || (lookup(0, -dir.dy) && !lookup(dir.dx, -dir.dy));
@@ -1934,6 +2442,66 @@ export class GridSearch {
   }
 }
 
+/**
+ * Every routing layer a via between `fromLayer` and `toLayer` physically
+ * spans. A through via's barrel occupies every copper layer it passes
+ * through, so clearance must be kept on all of them — checking only the two
+ * endpoint layers lets a via land on top of an inner-layer track. With a
+ * board `layerOrder` configured (blind/buried policy), the span is the
+ * layers between the endpoints; without it (through policy), all layers.
+ */
+export function viaSpanLayers(
+  allowedLayers: string[],
+  layerOrder: string[],
+  fromLayer: string,
+  toLayer: string,
+): string[] {
+  if (!layerOrder || layerOrder.length === 0) {
+    return allowedLayers;
+  }
+  const fromIdx = allowedLayers.indexOf(fromLayer);
+  const toIdx = allowedLayers.indexOf(toLayer);
+  if (fromIdx === -1 || toIdx === -1) {
+    return [fromLayer, toLayer];
+  }
+  const lo = Math.min(fromIdx, toIdx);
+  const hi = Math.max(fromIdx, toIdx);
+  return allowedLayers.slice(lo, hi + 1);
+}
+
+/**
+ * Check a straight trace segment against the grid with the same occupancy
+ * semantics as the search. Post-search path massaging (endpoint snapping,
+ * angle splitting, near-endpoint node removal) creates geometry the A*
+ * never occupancy-checked; this catches clearance violations introduced
+ * there so the caller can revert the massaging step.
+ *
+ * Samples the segment interior at half-cell spacing — close enough to catch
+ * real violations (the massaged segments are typically many cells long).
+ */
+export function segmentClearOfObstacles(
+  grid: RoutingGrid,
+  net: string | undefined,
+  clearance: number,
+  a: { x: number; y: number; layer: string },
+  b: { x: number; y: number; layer: string },
+): boolean {
+  if (a.layer !== b.layer) return true; // via transitions are not trace geometry
+  const resolution = grid.getResolution();
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const length = Math.hypot(dx, dy);
+  if (length <= resolution) return true;
+  const steps = Math.max(2, Math.ceil(length / (resolution * 0.5)));
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    const g = grid.worldToGrid(a.x + dx * t, a.y + dy * t);
+    if (!grid.isInBounds(g.x, g.y)) return false;
+    if (grid.isOccupied(g.x, g.y, a.layer, clearance, net, true, false)) return false;
+  }
+  return true;
+}
+
 export function heuristicDistance(
   x1: number,
   y1: number,
@@ -1968,6 +2536,9 @@ export function heuristicDistance(
 
 export const GridSearchConstants = {
   NON_PREFERRED_LAYER_PENALTY: 10,
+  DEFAULT_VIA_SIZE: 0.6,
+  /** Default drill-edge to drill-edge spacing (KiCad/JLC standard). */
+  MIN_HOLE_TO_HOLE_MM: 0.25,
   TH_GOAL_VIA_AVOID_RADIUS_MM: 5.0,
   TH_START_VIA_AVOID_RADIUS_MM: 5.0,
   SEARCH_WINDOW_PADDING_MM: 8.0,

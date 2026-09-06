@@ -38,11 +38,11 @@ export interface IRoutingGrid {
     net?: string,
     considerObstacleClearance?: boolean,
     sumObstacleClearance?: boolean,
+    blockers?: Set<string>,
   ): boolean;
   getResolution(): number;
   readonly gridResolution: number;
   readonly maxObstacleHalfWidthMm: number;
-  markTerminal(gx: number, gy: number, layer: string, radiusCells: number, net?: string): void;
   getCellCost(x: number, y: number, layer: string): number;
   isPadCell(x: number, y: number, layer: string): boolean;
   isOccupiedById(x: number, y: number, layer: string, obstacleIds: Set<string> | string[]): boolean;

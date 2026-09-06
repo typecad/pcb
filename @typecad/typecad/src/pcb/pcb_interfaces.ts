@@ -563,6 +563,15 @@ export interface IAutorouteOptions {
   clearance?: number;
 
   /**
+   * Fine-pitch note: 0.5mm-pitch parts (QFN/BGA) cannot be escaped with the
+   * default board rules — a 0.2mm trace at 0.2mm clearance needs 0.4mm+
+   * between pad centers where the pitch provides 0.25mm. Pass explicit
+   * `{ width: 0.15, clearance: 0.1 }` (and consider a finer
+   * `gridResolution`) for such parts, and set matching board rules so DRC
+   * agrees with the router.
+   */
+
+  /**
    * Minimum edge-to-edge clearance for vias in mm.
    * Defaults to 0.2mm if omitted; used in addition to obstacle clearances when placing vias.
    */
@@ -586,6 +595,13 @@ export interface IAutorouteOptions {
    * If not provided, defaults to 0.1mm.
    */
   gridResolution?: number;
+  /**
+   * Enable rip-up-and-reroute: when this route fails (or comes out far
+   * worse than the pin-to-pin distance implies), the router rips up the
+   * conflicting nets' tracks, re-routes this net, then re-routes them —
+   * rolling everything back unless the outcome improves. Default: true.
+   */
+  ripup?: boolean;
 
   // Speed/quality trade-offs and advanced router controls
   /** Heuristic weight (>1 speeds up, may be slightly suboptimal) */
@@ -657,6 +673,8 @@ export interface IRoutePath {
   success: boolean;
   /** Error description if routing failed */
   error?: string;
+  /** Nets whose copper blocked a failed search — rip-up candidates */
+  blockedBy?: string[];
   /** Optional sub-segments (e.g., for multi-hop routes) */
   segments?: IRoutePath[];
 }

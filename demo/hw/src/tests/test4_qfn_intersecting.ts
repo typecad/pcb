@@ -1,6 +1,6 @@
 import { PCB, Component } from '@typecad/typecad';
 import { Resistor } from '@typecad/passives/0603';
-import { RESOLUTION, HEURISTIC } from '../autoroute_test';
+import { HEURISTIC } from '../autoroute_test';
 // Export function that accepts the main typecad object
 export function runTest4(typecad: PCB): Component[] {
   // Test 4: QFN-12 component with resistors creating intersecting traces
@@ -93,15 +93,21 @@ export function runTest4(typecad: PCB): Component[] {
   const test4_8 = typecad.named('test4_8').net(r2_test4.pin(2), r5_test4.pin(2)); // Vertical crossing
   const test4_9 = typecad.named('test4_9').net(r3_test4.pin(2), r4_test4.pin(2)); // Diagonal crossing
 
-  typecad.route(test4_1, { gridResolution: RESOLUTION, heuristicWeight: HEURISTIC });
-  typecad.route(test4_2, { gridResolution: 0.1, heuristicWeight: HEURISTIC });
-  typecad.route(test4_4, { gridResolution: RESOLUTION, heuristicWeight: HEURISTIC });
-  typecad.route(test4_5, { gridResolution: RESOLUTION, heuristicWeight: HEURISTIC });
-  typecad.route(test4_6, { gridResolution: RESOLUTION, heuristicWeight: HEURISTIC });
-  typecad.route(test4_7, { gridResolution: RESOLUTION, heuristicWeight: HEURISTIC });
-  typecad.route(test4_8, { gridResolution: RESOLUTION, heuristicWeight: HEURISTIC });
-  typecad.route(test4_9, { gridResolution: RESOLUTION, heuristicWeight: HEURISTIC });
-  typecad.route(test4_3, { gridResolution: RESOLUTION, heuristicWeight: HEURISTIC });
+  // 0.5mm-pitch QFN escapes are only physically routable with fine-pitch
+  // rules: a 0.2mm trace at 0.2mm clearance cannot fit between 0.5mm-pitch
+  // pads (0.25mm mid-channel available, 0.4mm+ needed), so route with 0.15mm
+  // traces at 0.1mm clearance on a finer grid.
+  const fine = { gridResolution: 0.05, width: 0.15, clearance: 0.1, heuristicWeight: HEURISTIC };
+
+  typecad.route(test4_1, fine);
+  typecad.route(test4_2, fine);
+  typecad.route(test4_4, fine);
+  typecad.route(test4_5, fine);
+  typecad.route(test4_6, fine);
+  typecad.route(test4_7, fine);
+  typecad.route(test4_8, fine);
+  typecad.route(test4_9, fine);
+  typecad.route(test4_3, fine);
 
   // Return components for creation
   return [qfn_test4, r1_test4, r2_test4, r3_test4, r4_test4, r5_test4, r6_test4];

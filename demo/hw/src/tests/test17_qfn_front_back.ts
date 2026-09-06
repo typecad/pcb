@@ -1,6 +1,6 @@
 import { PCB, Component } from '@typecad/typecad';
 import { Resistor } from '@typecad/passives/0603';
-import { RESOLUTION, HEURISTIC } from '../autoroute_test';
+import { HEURISTIC } from '../autoroute_test';
 
 export function runTest17(typecad: PCB): Component[] {
   const qfn = new Component({
@@ -101,18 +101,23 @@ export function runTest17(typecad: PCB): Component[] {
   const n11 = typecad.named('test17_11').net(r3.pin(2), r4.pin(2));
   const n12 = typecad.named('test17_12').net(r7.pin(2), r8.pin(2));
 
-  typecad.route(n1, { gridResolution: RESOLUTION, heuristicWeight: HEURISTIC });
-  typecad.route(n2, { gridResolution: RESOLUTION, heuristicWeight: HEURISTIC });
-  typecad.route(n3, { gridResolution: RESOLUTION, heuristicWeight: HEURISTIC });
-  typecad.route(n4, { gridResolution: RESOLUTION, heuristicWeight: HEURISTIC });
-  typecad.route(n5, { gridResolution: RESOLUTION, heuristicWeight: HEURISTIC });
-  typecad.route(n6, { gridResolution: RESOLUTION, heuristicWeight: HEURISTIC });
-  typecad.route(n7, { gridResolution: RESOLUTION, heuristicWeight: HEURISTIC });
-  typecad.route(n8, { gridResolution: RESOLUTION, heuristicWeight: HEURISTIC });
-  typecad.route(n9, { gridResolution: RESOLUTION, heuristicWeight: HEURISTIC });
-  typecad.route(n10, { gridResolution: RESOLUTION, heuristicWeight: HEURISTIC });
-  typecad.route(n11, { gridResolution: RESOLUTION, heuristicWeight: HEURISTIC });
-  typecad.route(n12, { gridResolution: RESOLUTION, heuristicWeight: HEURISTIC });
+  // 0.5mm-pitch QFN escapes need fine-pitch rules: 0.2mm traces at 0.2mm
+  // clearance cannot physically fit between 0.5mm-pitch pads, so route with
+  // 0.15mm traces at 0.1mm clearance on a finer grid.
+  const fine = { gridResolution: 0.05, width: 0.15, clearance: 0.1, heuristicWeight: HEURISTIC };
+
+  typecad.route(n1, fine);
+  typecad.route(n2, fine);
+  typecad.route(n3, fine);
+  typecad.route(n4, fine);
+  typecad.route(n5, fine);
+  typecad.route(n6, fine);
+  typecad.route(n7, fine);
+  typecad.route(n8, fine);
+  typecad.route(n9, fine);
+  typecad.route(n10, fine);
+  typecad.route(n11, fine);
+  typecad.route(n12, fine);
 
   return [qfn, r1, r2, r3, r4, r5, r6, r7, r8];
 }

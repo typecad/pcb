@@ -2,3 +2,5 @@ node_modules/
 *.lck
 typescript-plugin/node_modules/
 typescript-plugin/dist/
+# Router debug visualization output
+*.ppm

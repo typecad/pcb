@@ -700,6 +700,7 @@ export class RoutingGrid {
     net?: string,
     considerObstacleClearance: boolean = false,
     sumObstacleClearance: boolean = false,
+    blockers?: Set<string>,
   ): boolean {
     // Check if coordinates are within bounds
     if (!this.isInBounds(x, y)) {
@@ -711,12 +712,15 @@ export class RoutingGrid {
       return this.isCellOccupied(x, y, layer, net);
     }
 
-    // Determine search radius in cells. If considering obstacle clearance, use the
-    // maximum of the trace clearance and any obstacle's required clearance; otherwise, use trace clearance only.
+    // Determine search radius in cells. The radius must cover every cell that
+    // could block: the clearance (trace keepout incl. the moving trace's own
+    // half-width, or a via keepout) compared against the strongest obstacle
+    // clearance, plus the widest obstacle half-width so wide tracks/pads are
+    // reachable by the scan.
     const searchClearanceMm = considerObstacleClearance
       ? sumObstacleClearance
         ? clearance + this.maxObstacleClearance + this.maxObstacleHalfWidthMm
-        : Math.max(clearance, this.maxObstacleClearance)
+        : Math.max(clearance, this.maxObstacleClearance) + this.maxObstacleHalfWidthMm
       : clearance;
     const searchRadiusCells = Math.ceil(searchClearanceMm / this.gridResolution);
     const gridResSq = this.gridResolution * this.gridResolution;
@@ -763,13 +767,17 @@ export class RoutingGrid {
         // Manual routes: block different nets; allow same net
         if (cell.isManualRoute) {
           if (!(net && cell.net && cell.net === net)) {
-            if (withinThreshold) return true;
+            if (withinThreshold) {
+              if (blockers && cell.net) blockers.add(cell.net);
+              return true;
+            }
           }
           continue;
         }
 
         // General occupied cell: blocks different nets within required clearance
         if (withinThreshold) {
+          if (blockers && cell.net && cell.net !== net) blockers.add(cell.net);
           return true;
         }
       }
@@ -985,27 +993,6 @@ export class RoutingGrid {
       this.cells[idx] = cell;
     } else {
       cell.cost = cost;
-    }
-  }
-
-  markTerminal(gx: number, gy: number, layer: string, radiusCells: number, net?: string): void {
-    for (let dx = -radiusCells; dx <= radiusCells; dx++) {
-      for (let dy = -radiusCells; dy <= radiusCells; dy++) {
-        const nx = gx + dx;
-        const ny = gy + dy;
-        if (!this.isInBounds(nx, ny)) continue;
-        const idx = this.getCellIndex(layer, nx, ny);
-        if (idx < 0) continue;
-        const cell = this.cells[idx];
-        if (!cell || !cell.occupied) continue;
-        if (cell.absoluteBlock) continue;
-        if (net && cell.net && cell.net === net) {
-          cell.occupied = false;
-        } else if (cell.pad && !cell.net && net) {
-          cell.net = net;
-          cell.occupied = false;
-        }
-      }
     }
   }
 

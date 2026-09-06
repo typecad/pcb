@@ -24,6 +24,18 @@ export interface IRouteNode {
   directionFrom?: { dx: number; dy: number };
   viaUsed: boolean;
   layerIndex?: number;
+  /**
+   * Linked list of vias already placed along this path (most recent first),
+   * so new via placements can keep same-net vias spaced apart.
+   */
+  viaChain?: IViaChainEntry;
+}
+
+/** One entry in a path's via chain (see {@link IRouteNode.viaChain}). */
+export interface IViaChainEntry {
+  gridX: number;
+  gridY: number;
+  next?: IViaChainEntry;
 }
 
 /**
@@ -51,6 +63,12 @@ export interface IRoutingOptions {
   layerOrder?: string[];
   /** Clearance enforced around vias. Defaults to clearance. Example: 0.25 */
   viaClearance?: number;
+  /**
+   * Manufactured via diameter (mm). Drives the router's via keepout radius
+   * so via placements keep real clearance for the via pad, not an assumed
+   * default. Example: 0.6
+   */
+  viaSize?: number;
   /** Cost penalty applied when changing direction. Example: 0.5 */
   bendCost?: number;
   /** Net name for same-net clearance exceptions. Example: 'GND' */
@@ -100,8 +118,6 @@ export interface IRoutingOptions {
   gridObstacles?: IRoutingObstacle[];
   /** Grid bounds used to reconstruct a RoutingGrid instance in a worker */
   gridBounds?: { minX: number; maxX: number; minY: number; maxY: number };
-  /** Allow routing of multiple MST edges in parallel (worker count; 1 = disabled) */
-  parallelMSTWorkers?: number;
   /**
    * Internal flag to disable resume-to-coarse-grid behavior (used when the
    * router recursively spawns itself for the coarse segment).
@@ -118,7 +134,6 @@ export type NormalizedRoutingOptions = Required<
     | 'preferredLayers'
     | 'debug'
     | 'coarseGridFactory'
-    | 'parallelMSTWorkers'
     | 'disableResumeGrid'
     | 'powerInfo'
     | 'lengthMatch'
@@ -150,7 +165,6 @@ export type NormalizedRoutingOptions = Required<
     strideNearPadDisableRadiusMm: number;
     heuristicWeight: number;
     allow45DegreeRuns: boolean;
-    parallelMSTWorkers: number;
   };
 
 export type RouteEndpoint = { x: number; y: number; layer: string };
@@ -174,12 +188,7 @@ export interface IWaypointPlan {
 
 export interface IWaypointPlanner {
   estimateEdgeCost(p1: RouteEndpoint, p2: RouteEndpoint): number;
-  planWaypoints(
-    p1: RouteEndpoint,
-    p2: RouteEndpoint,
-    allPoints: RouteEndpoint[],
-    routedPoints: Set<number>,
-  ): IWaypointPlan;
+  planWaypoints(p1: RouteEndpoint, p2: RouteEndpoint): IWaypointPlan;
 }
 
 export type { IRouteDirectives } from '../../pcb/pcb_interfaces.js';

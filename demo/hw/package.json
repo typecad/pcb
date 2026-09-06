@@ -8,7 +8,7 @@
     "build": "typecad build",
     "add_component": "typecad add component",
     "add_package": "typecad add package",
-    "open_board": "npx open-cli ./build/pro_mini.kicad_pcb",
+    "open_board": "npx open-cli ./build/autoroute_test.kicad_pcb",
     "docs": "typecad doc ./docs/dev.md ./build/pro_mini.kicad_pcb",
     "search": "typecad search",
     "import": "typecad import ./build/pro_mini.kicad_pcb --apply",
@@ -23,7 +23,7 @@
   "dependencies": {
     "@typecad/mast": "*",
     "@typecad/passives": "0.2.3-alpha.0",
-    "@typecad/typecad": "1.0.0-alpha.1",
+    "@typecad/typecad": "1.0.0-alpha.2",
     "express": "^5.1.0",
     "tsx": "^4.20.3"
   },

@@ -5,6 +5,7 @@ import { pinToIdentifier } from './pcb_routing_helpers.js';
 import { routeNet as extractRouteNet } from './pcb_routing_core.js';
 import { autoroute } from './pcb_autoroute.js';
 import { autorouteBatch } from './pcb_autoroute_batch.js';
+import { withRipup } from './pcb_ripup.js';
 import { PCB, getPcbState } from './pcb.js';
 import { PcbInternalState } from './pcb_state.js';
 import logger from '../utils/logging.js';
@@ -45,14 +46,27 @@ export function pcbRoute(
 ): IAutorouteResult {
   assertRoutingBeforeCreate(pcb);
   if (isSchematicNetDefinition(arg1)) {
-    return extractRouteNet(pcb, arg1, options);
+    const pins = (arg1.pins ?? []).filter((pin: Pin): pin is Pin => Boolean(pin));
+    // Rip-up reroutes use the same pins; disable inside the thunk to avoid
+    // recursion (the orchestrator re-invokes this exact route).
+    const run = () => extractRouteNet(pcb, arg1, { ...options, ripup: false });
+    return logOutcome(arg1.name, withRipup(pcb, run, options, pins, `'${arg1.name}'`));
   }
   const opts = arg1 as IAutorouteOptions;
   const netLabel =
     opts.net ||
     `${pinToIdentifier(Array.isArray(opts.from) ? opts.from[0] : opts.from)} → ${pinToIdentifier(Array.isArray(opts.to) ? opts.to[0] : opts.to)}`;
+  const pins: Pin[] = [
+    ...(Array.isArray(opts.from) ? opts.from : [opts.from]),
+    ...(Array.isArray(opts.to) ? opts.to : [opts.to]),
+  ];
   logger.info(`⏳ Routing '${netLabel}'...`);
-  const result = pcbAutoroute(pcb, state, opts);
+  const run = () => pcbAutoroute(pcb, state, { ...opts, ripup: false });
+  const result = withRipup(pcb, run, opts, pins, `'${netLabel}'`);
+  return logOutcome(netLabel, result);
+}
+
+function logOutcome(netLabel: string, result: IAutorouteResult): IAutorouteResult {
   if (result.success) {
     logger.info(`✔ Routing '${netLabel}' complete (${result.completedCount}/${result.routeCount} routes)`);
   } else {

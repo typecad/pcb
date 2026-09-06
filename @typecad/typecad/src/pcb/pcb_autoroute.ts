@@ -10,7 +10,6 @@
 
 import chalk from 'chalk';
 import { Component } from '../component.js';
-import { Pin } from '../pin.js';
 import { RoutingError } from '../utils/errors.js';
 import {
   IAutorouteOptions,
@@ -42,7 +41,6 @@ import { pathToTrackBuilder } from './pcb_routing_core.js';
 import { collectManualViaFreeLocations } from './manual_via_helpers.js';
 import { formatCallSite, getErrorMessage } from './pcb_utils.js';
 import { getCallSite } from '../utils/stack_trace.js';
-import os from 'os';
 
 // Extracted sub-modules
 import {
@@ -51,6 +49,7 @@ import {
   collectComponentsForBounds,
   expandBoundsToIncludeTracks,
   collectPadSummariesForRouting,
+  buildPinNetMap,
   AutorouteContext,
   RoutingOutput,
   createEmptyRoutingOutput,
@@ -61,7 +60,11 @@ import { routePairwise } from './pcb_autoroute_pairwise.js';
 import { impedanceOfWidth, stackupImpedanceGeometry } from './pcb_impedance.js';
 
 // pcb parameter is typed as PCB.
-export function autoroute(pcb: PCB, options: IAutorouteOptions): IAutorouteResult {
+export function autoroute(pcb: PCB, callerOptions: IAutorouteOptions): IAutorouteResult {
+  // Work on a shallow copy: below we fill in derived defaults (viaSize,
+  // powerInfo) and must not mutate the caller's options object.
+  const options: IAutorouteOptions = { ...callerOptions };
+
   // ── 1. Validate required parameters ──────────────────────────────────
   if (!options.from || !options.to) {
     const err = new RoutingError(
@@ -150,43 +153,22 @@ export function autoroute(pcb: PCB, options: IAutorouteOptions): IAutorouteResul
   // ── 4. Infer net and resolve its class ──────────────────────────────
   // Resolved before pad positioning so the class's preferred layers can
   // anchor through-hole endpoints on the class's layer.
+  const pinNetMap = buildPinNetMap(pcb);
   let netName = options.net;
-  if (!netName && pcb.schematic && pcb.schematic.nodes) {
+  if (!netName) {
     const firstPin = fromPins[0];
     debugLog(
       options.debug,
       chalk.blue(`[PCB] Attempting to infer net from pin ${firstPin.reference}.${firstPin.number}`),
     );
     if (firstPin.owner) {
-      debugLog(
-        options.debug,
-        chalk.blue(
-          `[PCB] Pin owner: ${firstPin.owner.reference}, searching ${pcb.schematic.nodes.length} schematic nodes`,
-        ),
-      );
-      for (const schematicNode of pcb.schematic.nodes) {
-        if (schematicNode.nodes) {
-          const pinInSchematic = schematicNode.nodes.find(
-            (p: Pin) => p.reference === firstPin.owner!.reference && String(p.number) === String(firstPin.number),
-          );
-          if (pinInSchematic) {
-            netName = schematicNode.name;
-            debugLog(options.debug, chalk.green(`[PCB] ✓ Inferred net from pins: ${netName}`));
-            break;
-          }
-        }
-      }
-      if (!netName) {
+      netName = pinNetMap.get(`${firstPin.owner.reference}:${String(firstPin.number)}`);
+      if (netName) {
+        debugLog(options.debug, chalk.green(`[PCB] ✓ Inferred net from pins: ${netName}`));
+      } else {
         debugLog(options.debug, chalk.yellow(`[PCB] Could not find net for pin in schematic`));
       }
     }
-  } else if (!netName) {
-    debugLog(
-      options.debug,
-      chalk.yellow(
-        `[PCB] No schematic available for net inference (Schematic: ${!!pcb.schematic}, nodes: ${pcb.schematic?.nodes?.length || 0})`,
-      ),
-    );
   }
 
   // Resolve the net class (if any) for per-net dimensions. Falls back to
@@ -498,11 +480,17 @@ export function autoroute(pcb: PCB, options: IAutorouteOptions): IAutorouteResul
   const grid = new RoutingGrid(bounds, gridResolution, routingLayers, options.debug);
 
   // ── 12. Add obstacles ────────────────────────────────────────────────
-  const obstacles = ObstacleBuilder.buildFromPCB(pcb, clearance, componentsFromPins, options.debug);
+  const obstacles = ObstacleBuilder.buildFromPCB(pcb, clearance, componentsFromPins, options.debug, pinNetMap);
   const allObstacles: IRoutingObstacle[] = [];
+  // Coarse grids handed to the router for resume-grid rerouting. They must
+  // see every obstacle added after they were built (manual routes, tracks
+  // staged by earlier pairwise connections) — otherwise a coarse reroute can
+  // overlap copper that only the fine grid knows about.
+  const coarseGridCache = new Map<number, RoutingGrid>();
   const addObstacleToState = (obs: IRoutingObstacle) => {
     allObstacles.push(obs);
     grid.addObstacle(obs);
+    coarseGridCache.forEach((coarseGrid) => coarseGrid.addObstacle(obs));
   };
 
   obstacles.forEach(addObstacleToState);
@@ -570,7 +558,6 @@ export function autoroute(pcb: PCB, options: IAutorouteOptions): IAutorouteResul
   }
 
   // ── 14. Build coarse grid factory and base router options ────────────
-  const coarseGridCache = new Map<number, RoutingGrid>();
   const buildCoarseGrid = (resolution: number) => {
     const cached = coarseGridCache.get(resolution);
     if (cached) return cached;
@@ -580,11 +567,11 @@ export function autoroute(pcb: PCB, options: IAutorouteOptions): IAutorouteResul
     return coarseGrid;
   };
 
-  const defaultParallelWorkers = Math.max(1, (os.cpus()?.length ?? 1) - 1);
   const baseRouterOptions = {
     traceWidth,
     clearance,
     viaClearance: options.viaClearance,
+    viaSize: options.viaSize,
     allowedLayers: routingLayers,
     preferredLayers: options.layers ?? (netClassLayers.length > 0 ? netClassLayers : undefined),
     viaCost: options.viaCost,
@@ -600,7 +587,6 @@ export function autoroute(pcb: PCB, options: IAutorouteOptions): IAutorouteResul
     requestedGridResolution: gridResolution,
     resumeGridResolution: gridResolution,
     coarseGridFactory: buildCoarseGrid,
-    parallelMSTWorkers: options.parallelMSTWorkers ?? defaultParallelWorkers,
     gridObstacles: allObstacles,
     gridBounds: bounds,
     debug: options.debug,
@@ -618,6 +604,7 @@ export function autoroute(pcb: PCB, options: IAutorouteOptions): IAutorouteResul
     validEndPositions,
     allPins,
     netName,
+    pinNetMap,
     traceWidth,
     clearance,
     bounds,
@@ -632,6 +619,8 @@ export function autoroute(pcb: PCB, options: IAutorouteOptions): IAutorouteResul
   const out: RoutingOutput = createEmptyRoutingOutput();
 
   // ── 16. Process manual routes ────────────────────────────────────────
+  // Manual-route obstacles flow through addObstacleToState, which also
+  // syncs them into any cached coarse grids — no cache reset needed.
   const { manuallyRoutedPinPairs, manualRouteDataMap } = processManualRoutes(
     pcb,
     options,
@@ -641,7 +630,6 @@ export function autoroute(pcb: PCB, options: IAutorouteOptions): IAutorouteResul
     netName,
     addObstacleToState,
   );
-  coarseGridCache.clear();
 
   // ── 17. Route: MST or pairwise ───────────────────────────────────────
   const handledSingleNet = routeMstNet(ctx, out, manuallyRoutedPinPairs, manualRouteDataMap);

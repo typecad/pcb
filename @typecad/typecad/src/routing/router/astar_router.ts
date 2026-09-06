@@ -4,9 +4,14 @@ import type { IPowerInfo } from './types.js';
 import { SteinerOptimizer, ISteinerOptimizationResult } from './steiner_optimizer.js';
 import chalk from 'chalk';
 import logger from '../../utils/logging.js';
-import os from 'os';
 import { buildMST as buildSharedMST } from '../shared/mst.js';
-import { GridSearch, GridSearchConstants, heuristicDistance } from './grid_search.js';
+import {
+  GridSearch,
+  GridSearchConstants,
+  heuristicDistance,
+  segmentClearOfObstacles,
+  viaSpanLayers,
+} from './grid_search.js';
 import { WaypointPlanner } from './waypoint_planner.js';
 import { appendSegmentNodes, mergeSegments, pointsEqual } from './path_assembler.js';
 import { IRouteDirectives, IRoutePath, IRoutingOptions, NormalizedRoutingOptions } from './types.js';
@@ -41,6 +46,8 @@ export class AStarRouter {
     TH_START_VIA_AVOID_RADIUS_MM: GridSearchConstants.TH_START_VIA_AVOID_RADIUS_MM,
     /** Overhead factor for waypoint routing vs direct routing */
     WAYPOINT_ROUTING_OVERHEAD: 1.2,
+    /** How much extra trace length a via is worth before routing around it. */
+    VIA_PREFERENCE_MM: 3.0,
   } as const;
 
   private grid: RoutingGrid;
@@ -54,17 +61,45 @@ export class AStarRouter {
   private requestedGridResolution?: number;
   private resumeGridResolution?: number;
   private rawOptions: IRoutingOptions;
-  private _mstWorker: AStarRouter | null = null;
+  private _mstRouter: AStarRouter | null = null;
+  private _viaFreeRouter: AStarRouter | null = null;
 
-  private getMstWorker(): AStarRouter {
-    if (!this._mstWorker) {
-      this._mstWorker = new AStarRouter(this.grid, {
+  /**
+   * Router instance reused for MST edge searches. Shares the grid and
+   * options, but with resume-to-coarse disabled so per-edge searches never
+   * recurse into hierarchical routing.
+   */
+  private getMstRouter(): AStarRouter {
+    if (!this._mstRouter) {
+      this._mstRouter = new AStarRouter(this.grid, {
         ...this.rawOptions,
         disableResumeGrid: true,
         coarseGridFactory: undefined,
       });
     }
-    return this._mstWorker;
+    return this._mstRouter;
+  }
+
+  /**
+   * Router clone with vias disabled, used to attempt forced-via route
+   * segments on a single layer first — the forced vias are the only layer
+   * changes the caller asked for, so organic hops are only acceptable when
+   * the same layer genuinely cannot reach the target.
+   */
+  private getViaFreeRouter(): AStarRouter {
+    if (!this._viaFreeRouter) {
+      this._viaFreeRouter = new AStarRouter(this.grid, {
+        ...this.rawOptions,
+        allowVias: false,
+        disableResumeGrid: true,
+        coarseGridFactory: undefined,
+        // A best-effort probe: an uncongested single-layer route is found in
+        // a few hundred iterations, so a generous budget only pays for slow
+        // failures on sealed corridors — exactly where vias are justified.
+        maxIterations: Math.min(this.options.maxIterations, 40_000),
+      });
+    }
+    return this._viaFreeRouter;
   }
 
   get routingOptions(): NormalizedRoutingOptions {
@@ -94,7 +129,6 @@ export class AStarRouter {
     const requestedGridResolution = options.requestedGridResolution ?? fineGridResolution;
     const resumeGridResolution = options.resumeGridResolution ?? requestedGridResolution;
     const defaultStrideCells = 32;
-    const DEFAULT_PARALLEL_WORKERS = Math.max(1, (os.cpus()?.length ?? 1) - 1);
 
     // Calculate trace width from powerInfo, prioritizing powerInfo over explicit traceWidth
     let calculatedTraceWidth = options.traceWidth;
@@ -128,6 +162,7 @@ export class AStarRouter {
       viaCost: options.viaCost ?? 20.0,
       layerOrder: options.layerOrder ?? [],
       viaClearance: options.viaClearance ?? options.clearance ?? 0.2,
+      viaSize: options.viaSize ?? AStarRouter.ROUTING_CONSTANTS.DEFAULT_VIA_SIZE,
       bendCost: options.bendCost ?? 0.5,
       net: options.net,
       impedance: options.impedance,
@@ -144,7 +179,6 @@ export class AStarRouter {
       heuristicWeight: options.heuristicWeight ?? 2.0,
       requestedGridResolution,
       resumeGridResolution,
-      parallelMSTWorkers: options.parallelMSTWorkers ?? DEFAULT_PARALLEL_WORKERS,
       gridObstacles: options.gridObstacles ?? [],
       gridBounds: options.gridBounds ?? { minX: 0, maxX: 0, minY: 0, maxY: 0 },
       powerInfo: options.powerInfo,
@@ -168,7 +202,10 @@ export class AStarRouter {
 
     this.clearanceProfile = new ClearanceProfile({
       options: this.options,
-      viaDiameter: AStarRouter.ROUTING_CONSTANTS.DEFAULT_VIA_SIZE,
+      // Model the via the board will actually manufacture (net class /
+      // rules resolved by the host), not an assumed default — otherwise
+      // planned via placements under-clear the emitted pad.
+      viaDiameter: this.options.viaSize,
       gridResolution: this.grid.getResolution(),
     });
 
@@ -200,7 +237,7 @@ export class AStarRouter {
   private recomputePathMetrics(nodes: { x: number; y: number; layer: string }[]): { length: number; viaCount: number } {
     let length = 0;
     let viaCount = 0;
-    const viaStubLength = AStarRouter.ROUTING_CONSTANTS.DEFAULT_VIA_SIZE;
+    const viaStubLength = this.clearanceProfile.getViaDiameter();
 
     for (let i = 1; i < nodes.length; i++) {
       const prev = nodes[i - 1];
@@ -238,6 +275,47 @@ export class AStarRouter {
     }
 
     return { forwardIdx, backwardIdx };
+  }
+
+  /**
+   * Enforce the via invariant on a routed path: a layer transition may only
+   * happen at constant XY (that pair of nodes is the via). Merged or
+   * post-processed paths can end up with adjacent nodes that change layer
+   * AND position, which would emit a via disconnected from the following
+   * track (and duplicate near-coincident vias). Insert the missing same-XY
+   * node so the transition becomes a proper via pair.
+   */
+  private normalizeViaPairs(path: IRoutePath): IRoutePath {
+    const nodes = path.nodes;
+    let needsFix = false;
+    for (let i = 1; i < nodes.length; i++) {
+      if (
+        nodes[i].layer !== nodes[i - 1].layer &&
+        (Math.abs(nodes[i].x - nodes[i - 1].x) > 1e-6 || Math.abs(nodes[i].y - nodes[i - 1].y) > 1e-6)
+      ) {
+        needsFix = true;
+        break;
+      }
+    }
+    if (!needsFix) {
+      return path;
+    }
+
+    const fixed: typeof nodes = [nodes[0]];
+    for (let i = 1; i < nodes.length; i++) {
+      const prev = fixed[fixed.length - 1];
+      const cur = nodes[i];
+      if (cur.layer !== prev.layer && (Math.abs(cur.x - prev.x) > 1e-6 || Math.abs(cur.y - prev.y) > 1e-6)) {
+        // Bridge node on the incoming layer at the transition point: the
+        // incoming track runs prev -> bridge, the via sits at bridge XY, and
+        // the outgoing track continues from cur on its layer.
+        fixed.push({ x: cur.x, y: cur.y, layer: prev.layer });
+      }
+      fixed.push(cur);
+    }
+
+    const { length, viaCount } = this.recomputePathMetrics(fixed);
+    return { ...path, nodes: fixed, gridNodes: undefined, length, viaCount };
   }
 
   /**
@@ -319,6 +397,26 @@ export class AStarRouter {
     for (let i = 0; i <= forwardIdx; i++) pushNode(path.nodes[i]);
     for (let i = 1; i < coarsePath.nodes.length - 1; i++) pushNode(coarsePath.nodes[i]);
     for (let i = backwardIdx; i < path.nodes.length; i++) pushNode(path.nodes[i]);
+
+    // The fine→coarse splice points create segments the fine search never
+    // validated. If any merged segment violates clearance, the coarse reroute
+    // is not usable — keep the fully search-validated fine path instead.
+    const mergedClear = mergedNodes.every((node, i) => {
+      if (i === 0) return true;
+      return segmentClearOfObstacles(
+        this.grid,
+        this.options.net,
+        this.clearanceProfile.getTraceClearance(),
+        mergedNodes[i - 1],
+        node,
+      );
+    });
+    if (!mergedClear) {
+      if (this.options.debug) {
+        logger.warn(chalk.gray(`[AStarRouter] Resume-grid reroute violates clearance; keeping fine grid path`));
+      }
+      return path;
+    }
 
     const { length, viaCount } = this.recomputePathMetrics(mergedNodes);
     if (this.options.debug) {
@@ -476,18 +574,15 @@ export class AStarRouter {
       let totalVias = 0;
       let successCount = 0;
 
-      const segmentResults: IRoutePath[] = [];
-      const worker = this.getMstWorker();
-      for (let i = 0; i < mstEdges.length; i++) {
-        const edge = mstEdges[i];
-        const res = worker.routeMSTEdge(points[edge.from], points[edge.to], points, routedPoints, allNodes);
-        segmentResults.push(res);
-      }
-
+      // Route edges in MST order, merging each success into the tree before
+      // the next edge routes — later edges can then branch into the existing
+      // trunk (routeMSTEdge) instead of strictly routing pad-to-pad.
+      const router = this.getMstRouter();
       for (let i = 0; i < mstEdges.length; i++) {
         const edge = mstEdges[i];
         const { from, to } = edge;
-        const segmentResult = segmentResults[i];
+        const segmentResult = router.routeMSTEdge(points[from], points[to], points, routedPoints, allNodes);
+
         if (!segmentResult || !segmentResult.success) {
           // Continue with remaining edges (partial routing)
           continue;
@@ -503,8 +598,6 @@ export class AStarRouter {
           if (segmentResult.gridNodes) {
             allGridNodes.push(...segmentResult.gridNodes);
           }
-          routedPoints.add(from);
-          routedPoints.add(to);
         } else {
           // Subsequent segments - only add nodes if they extend the tree
           // Skip the first node if it duplicates an existing connection point
@@ -515,9 +608,9 @@ export class AStarRouter {
             const gridNodesToAdd = skipFirst ? segmentResult.gridNodes.slice(1) : segmentResult.gridNodes;
             allGridNodes.push(...gridNodesToAdd);
           }
-          routedPoints.add(from);
-          routedPoints.add(to);
         }
+        routedPoints.add(from);
+        routedPoints.add(to);
 
         totalLength += segmentResult.length;
         totalVias += segmentResult.viaCount;
@@ -782,7 +875,7 @@ export class AStarRouter {
     }
 
     // Check if we should route through nearby through-holes
-    const waypointInfo = this.waypointPlanner.planWaypoints(fromPoint, toPoint, allPoints, routedPoints);
+    const waypointInfo = this.waypointPlanner.planWaypoints(fromPoint, toPoint);
 
     if (waypointInfo.waypoints.length === 0) {
       // Direct routing
@@ -939,6 +1032,12 @@ export class AStarRouter {
     const segments: IRoutePath[] = [];
     let currentPoint = { ...start };
 
+    // Organic via placement in every segment keeps its distance from the
+    // forced vias still ahead, so the route does not stack same-net vias
+    // around them. If a seeded segment cannot be found, fall back to an
+    // unseeded search for that segment.
+    const remainingVias = vias.map((v) => ({ x: v.x, y: v.y }));
+
     for (const via of vias) {
       const viaEntryPoint = {
         x: via.x,
@@ -947,7 +1046,10 @@ export class AStarRouter {
       };
 
       if (!pointsEqual(currentPoint, viaEntryPoint)) {
-        const approachResult = this.routeSegment(currentPoint, viaEntryPoint);
+        let approachResult = this.routeSegment(currentPoint, viaEntryPoint, { seedVias: remainingVias });
+        if (!approachResult.success) {
+          approachResult = this.routeSegment(currentPoint, viaEntryPoint);
+        }
         if (!approachResult.success) {
           const endTime = performance.now();
           const errorResult = {
@@ -964,23 +1066,29 @@ export class AStarRouter {
       }
 
       const targetLayer = via.layer;
+      const viaIdx = remainingVias.findIndex((v) => v.x === via.x && v.y === via.y);
+      if (viaIdx !== -1) remainingVias.splice(viaIdx, 1);
       if (targetLayer && targetLayer !== viaEntryPoint.layer) {
         // Before forcing a via at the requested coordinate, ensure it is DRC-legal
-        // with respect to existing copper on both involved layers. Use the same
-        // numeric rule as KiCad (viaClearance / netclass clearance), not the
-        // inflated via keepout radius used for search windows.
+        // with respect to existing copper. Use the same numeric rule as KiCad
+        // (viaClearance / netclass clearance), measured from the via PAD EDGE —
+        // so the via's own radius must be added to the centerline clearance,
+        // matching what organic via placement enforces via
+        // ClearanceProfile.getViaKeepoutRadius(). The check covers every layer
+        // the via spans: a through via's barrel crosses inner layers too, and
+        // an inner-layer track under the via pad is a short.
         const gridPos = this.grid.worldToGrid(via.x, via.y);
         const viaClearance = this.options.viaClearance ?? this.options.clearance;
-        const viaConflicts =
-          this.grid.isOccupied(
-            gridPos.x,
-            gridPos.y,
-            viaEntryPoint.layer,
-            viaClearance,
-            this.options.net,
-            true,
-            false,
-          ) || this.grid.isOccupied(gridPos.x, gridPos.y, targetLayer, viaClearance, this.options.net, true, false);
+        const viaEdgeClearance = viaClearance + this.clearanceProfile.getViaDiameter() / 2;
+        const spanLayers = viaSpanLayers(
+          this.options.allowedLayers ?? [viaEntryPoint.layer],
+          this.options.layerOrder ?? [],
+          viaEntryPoint.layer,
+          targetLayer,
+        );
+        const viaConflicts = spanLayers.some((spanLayer) =>
+          this.grid.isOccupied(gridPos.x, gridPos.y, spanLayer, viaEdgeClearance, this.options.net, true, false),
+        );
 
         if (viaConflicts) {
           const endTime = performance.now();
@@ -1008,7 +1116,11 @@ export class AStarRouter {
       }
     }
 
-    const finalResult = this.routeSegment(currentPoint, end);
+    const forcedPositions = vias.map((v) => ({ x: v.x, y: v.y }));
+    let finalResult = this.routeSegment(currentPoint, end, { seedVias: forcedPositions });
+    if (!finalResult.success) {
+      finalResult = this.routeSegment(currentPoint, end);
+    }
     if (!finalResult.success) {
       const endTime = performance.now();
       const errorResult = {
@@ -1036,11 +1148,58 @@ export class AStarRouter {
   public routeSegment(
     start: { x: number; y: number; layer: string },
     end: { x: number; y: number; layer: string },
+    opts?: { seedVias?: { x: number; y: number }[] },
   ): IRoutePath {
     return profiler.profile('AStarRouter.routeSegment', () => {
-      const path = this.gridSearch.findPath(start, end);
-      return this.maybeResumeOnCoarseGrid(path, start, end);
+      const path = this.gridSearch.findPath(start, end, opts?.seedVias);
+      const normal = this.normalizeViaPairs(this.maybeResumeOnCoarseGrid(path, start, end));
+      return this.preferSingleLayer(start, end, normal, opts?.seedVias);
     })();
+  }
+
+  /**
+   * Vias are a tool, not a default: when the normal path between same-layer
+   * endpoints uses vias, try a single-layer alternative and keep it while it
+   * costs less than the vias it save (a via is worth roughly
+   * VIA_PREFERENCE_MM of trace). This kills the classic gratuitous via —
+   * dropping through a through-hole pad to start the route on a less
+   * congested layer when the same-layer route was perfectly fine.
+   * Unbounded preference would produce absurd detours when the direct
+   * corridor is congested — hopping under it is exactly what vias are for.
+   */
+  private preferSingleLayer(
+    start: { x: number; y: number; layer: string },
+    end: { x: number; y: number; layer: string },
+    normal: IRoutePath,
+    seedVias?: { x: number; y: number }[],
+  ): IRoutePath {
+    // The via-free sub-router has allowVias disabled, so its own
+    // routeSegment skips this preference — no recursion. Same-layer
+    // endpoints only; a layer change needs the via by definition. And no
+    // extra search when the normal path already avoided vias.
+    if (!this.options.allowVias || !normal.success || normal.viaCount === 0 || start.layer !== end.layer) {
+      return normal;
+    }
+    // Explicitly pinned layers (route() `layers`, net-class affinity) are a
+    // user instruction to route there — offering a same-layer shortcut on a
+    // non-preferred layer would silently undo that choice.
+    const preferred = this.options.preferredLayers;
+    const allowed = this.options.allowedLayers;
+    const pinned =
+      preferred &&
+      allowed &&
+      (preferred.length !== allowed.length || preferred.some((l) => !allowed.includes(l)));
+    if (pinned && !preferred.includes(start.layer)) {
+      return normal;
+    }
+    const viaFree = this.getViaFreeRouter().routeSegment(start, end, { seedVias });
+    if (!viaFree.success) {
+      return normal;
+    }
+    if (viaFree.length <= normal.length + normal.viaCount * AStarRouter.ROUTING_CONSTANTS.VIA_PREFERENCE_MM) {
+      return viaFree;
+    }
+    return normal;
   }
 
   /**
@@ -1179,9 +1338,13 @@ export class AStarRouter {
   }
 
   dispose(): void {
-    if (this._mstWorker) {
-      this._mstWorker.dispose();
-      this._mstWorker = null;
+    if (this._mstRouter) {
+      this._mstRouter.dispose();
+      this._mstRouter = null;
+    }
+    if (this._viaFreeRouter) {
+      this._viaFreeRouter.dispose();
+      this._viaFreeRouter = null;
     }
     if (this.gridSearch) {
       this.gridSearch.dispose();

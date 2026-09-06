@@ -103,12 +103,7 @@ export class WaypointPlanner {
     return Math.min(viaRouteCost, directCost);
   }
 
-  planWaypoints(
-    p1: RouteEndpoint,
-    p2: RouteEndpoint,
-    _allPoints: RouteEndpoint[],
-    _routedPoints: Set<number>,
-  ): IWaypointPlan {
+  planWaypoints(p1: RouteEndpoint, p2: RouteEndpoint): IWaypointPlan {
     const result: IWaypointPlan = {
       waypoints: [],
       skipFirstSegment: false,

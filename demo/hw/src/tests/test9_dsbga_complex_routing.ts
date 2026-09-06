@@ -1,5 +1,5 @@
 import { PCB, Component } from '@typecad/typecad';
-import { RESOLUTION, HEURISTIC } from '../autoroute_test';
+import { HEURISTIC } from '../autoroute_test';
 import { Resistor } from '@typecad/passives/0603';
 import { Component, PCB, RoutingAlgorithm } from '@typecad/typecad';
 
@@ -67,21 +67,30 @@ export function runTest9(typecad: PCB): Component[] {
   const test9_8 = typecad.named('test9_8').net(r2_test9.pin(2), r5_test9.pin(2)); // Vertical crossing
   const test9_9 = typecad.named('test9_9').net(r3_test9.pin(2), r4_test9.pin(2)); // Diagonal crossing
 
-  typecad.route(test9_1);
-  typecad.route(test9_2);
+  // 0.5mm-pitch DSBGA escapes need fine-pitch rules: 0.2mm traces at 0.2mm
+  // clearance cannot physically fit between 0.5mm-pitch pads (0.25mm
+  // available, 0.4mm+ needed), so route with 0.15mm traces at 0.1mm clearance.
+  const fine = { gridResolution: 0.05, width: 0.15, clearance: 0.1, heuristicWeight: HEURISTIC };
+
+  typecad.route(test9_1, fine);
+  typecad.route(test9_2, fine);
   typecad.route(test9_3, {
+    ...fine,
     waypoints: [
       { x: 112.02, y: 76.96 },
       { x: 113.02, y: 76.96 },
     ],
   });
-  typecad.route(test9_5, { vias: [{ x: 112.51, y: 76.33, layer: 'B.Cu' }] });
-  typecad.route(test9_4);
+  // The forced via sits below test9_3's horizontal track (y=76.96): forced-via
+  // clearance includes the via pad radius, so the spot must keep 0.6mm-via
+  // clearance from both the BGA pads and that track.
+  typecad.route(test9_5, { ...fine, vias: [{ x: 112.51, y: 78.2, layer: 'B.Cu' }] });
+  typecad.route(test9_4, fine);
 
-  typecad.route(test9_6);
-  typecad.route(test9_7);
-  typecad.route(test9_8);
-  typecad.route(test9_9);
+  typecad.route(test9_6, fine);
+  typecad.route(test9_7, fine);
+  typecad.route(test9_8, fine);
+  typecad.route(test9_9, fine);
 
   // console.log('test9_1', test9_1);
   // Return components for creation

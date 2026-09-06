@@ -13,6 +13,13 @@ import type {
 } from './pcb_interfaces.js';
 
 export class PcbInternalState {
+  /**
+   * Nets the autorouter has successfully staged tracks for. Rip-up-and-
+   * reroute only touches these — a net the user routed manually (or not at
+   * all) is never ripped without consent, and every ripped net is always
+   * re-routed afterwards.
+   */
+  routerRoutedNets: Set<string> = new Set();
   offsetStack: { x: number; y: number }[] = [];
   currentOffset: { x: number; y: number } = { x: 0, y: 0 };
   pcb: string = '';

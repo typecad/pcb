@@ -32,6 +32,7 @@ export class ObstacleBuilder {
     defaultClearance: number = 0.2,
     additionalComponents?: Component[],
     debug: boolean = false,
+    pinNetMap?: Map<string, string>,
   ): IRoutingObstacle[] {
     const obstacles: IRoutingObstacle[] = [];
     const state = getPcbState(pcb);
@@ -40,27 +41,25 @@ export class ObstacleBuilder {
       logger.debug(chalk.blue(`[ObstacleBuilder] Building obstacles from PCB`));
     }
 
-    const allComponents: Component[] = [];
-    const components = state.components;
-    const stagedComponents = state.stagedComponents;
-
-    if (components) {
-      allComponents.push(...components);
+    // Dedupe: the host passes every schematic component (state.components
+    // already contains most of them) — rasterizing duplicates is pure waste.
+    const componentSet = new Set<Component>();
+    if (state.components) {
+      state.components.forEach((c) => componentSet.add(c));
     }
-
-    if (stagedComponents) {
-      allComponents.push(...stagedComponents);
+    if (state.stagedComponents) {
+      state.stagedComponents.forEach((c) => componentSet.add(c));
     }
-
     if (additionalComponents) {
-      allComponents.push(...additionalComponents);
+      additionalComponents.forEach((c) => componentSet.add(c));
     }
+    const allComponents = Array.from(componentSet);
 
     if (allComponents.length > 0) {
       if (debug) {
         logger.debug(
           chalk.blue(
-            `[ObstacleBuilder] Processing ${allComponents.length} components (${components?.length || 0} active, ${stagedComponents?.length || 0} staged, ${additionalComponents?.length || 0} from pins)`,
+            `[ObstacleBuilder] Processing ${allComponents.length} unique components (${state.components?.length || 0} active, ${state.stagedComponents?.length || 0} staged, ${additionalComponents?.length || 0} from pins)`,
           ),
         );
       }
@@ -94,7 +93,7 @@ export class ObstacleBuilder {
         try {
           // Add pad obstacles with net-aware collision detection
           // Pads block routes on different nets but not on same net
-          const padObstacles = this.buildFromComponentPads(component, defaultClearance, pcb, debug);
+          const padObstacles = this.buildFromComponentPads(component, defaultClearance, pcb, debug, pinNetMap);
           obstacles.push(...padObstacles);
         } catch (error: unknown) {
           failedComponents++;
@@ -265,24 +264,28 @@ export class ObstacleBuilder {
     clearance: number,
     pcb: PCB,
     debug: boolean = false,
+    sharedPinNetMap?: Map<string, string>,
   ): IRoutingObstacle[] {
     const obstacles: IRoutingObstacle[] = [];
 
     const pads = PadResolver.getAllPadGeometries(component, pcb.copperLayers);
 
-    // Precompute (reference:pin) -> net map once per component to avoid repeated scans
-    let pinNetMap: Map<string, string> | null = null;
-    const schematic = pcb.schematic;
-    if (schematic && Array.isArray(schematic.nodes)) {
-      pinNetMap = new Map<string, string>();
-      for (const schematicNode of schematic.nodes) {
-        const netName = schematicNode?.name as string | undefined;
-        const nodes = schematicNode?.nodes as Array<{ reference: string; number: string | number }> | undefined;
-        if (!netName || !Array.isArray(nodes)) continue;
-        for (const p of nodes) {
-          const key = `${p.reference}:${String(p.number)}`;
-          if (!pinNetMap.has(key)) {
-            pinNetMap.set(key, netName);
+    // Reuse the host's pin→net map when provided (built once per autoroute
+    // call); otherwise build it from the schematic for this invocation.
+    let pinNetMap = sharedPinNetMap ?? null;
+    if (!pinNetMap) {
+      const schematic = pcb.schematic;
+      if (schematic && Array.isArray(schematic.nodes)) {
+        pinNetMap = new Map<string, string>();
+        for (const schematicNode of schematic.nodes) {
+          const netName = schematicNode?.name as string | undefined;
+          const nodes = schematicNode?.nodes as Array<{ reference: string; number: string | number }> | undefined;
+          if (!netName || !Array.isArray(nodes)) continue;
+          for (const p of nodes) {
+            const key = `${p.reference}:${String(p.number)}`;
+            if (!pinNetMap.has(key)) {
+              pinNetMap.set(key, netName);
+            }
           }
         }
       }

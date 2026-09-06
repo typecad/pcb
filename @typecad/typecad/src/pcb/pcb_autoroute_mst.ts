@@ -16,8 +16,7 @@ import { IAutorouteOptions, IRoutePath, IRouteMetadata } from './pcb_interfaces.
 import logger from '../utils/logging.js';
 import { debugLog, AutorouteContext, RoutingOutput } from './pcb_autoroute_helpers.js';
 import { ManualRouteData } from './pcb_autoroute_manual_routes.js';
-import type { ISchematicNode } from '../types/schematic_types.js';
-import { pcbTrackSegment } from './pcb.js';
+import { pcbTrackSegment, getPcbState } from './pcb.js';
 
 /**
  * Attempt MST-based single-net routing.
@@ -31,27 +30,14 @@ export function routeMstNet(
   manuallyRoutedPinPairs: Set<string>,
   manualRouteDataMap: Map<string, ManualRouteData>,
 ): boolean {
-  const { pcb, options, allPins, netName, traceWidth, freeViaLocations, baseRouterOptions, grid } = ctx;
+  const { pcb, options, allPins, netName, pinNetMap, traceWidth, freeViaLocations, baseRouterOptions, grid } = ctx;
 
   // Detect if we're routing a net (all pins on same net)
   const uniqueNets = new Set<string>();
-
-  if (pcb.schematic && pcb.schematic.nodes) {
-    for (const pin of allPins) {
-      if (pin.owner) {
-        for (const schematicNode of pcb.schematic.nodes) {
-          if (schematicNode.nodes) {
-            const pinInSchematic = schematicNode.nodes.find(
-              (p: Pin) => p.reference === pin.owner!.reference && String(p.number) === String(pin.number),
-            );
-            if (pinInSchematic) {
-              uniqueNets.add(schematicNode.name);
-              break;
-            }
-          }
-        }
-      }
-    }
+  for (const pin of allPins) {
+    if (!pin.owner) continue;
+    const net = pinNetMap.get(`${pin.owner.reference}:${String(pin.number)}`);
+    if (net) uniqueNets.add(net);
   }
 
   // Check if this is a single-net routing scenario with multiple pins
@@ -157,6 +143,9 @@ export function routeMstNet(
   }
 
   if (path.success || (path.nodes?.length ?? 0) > 0) {
+    if (path.success && netName) {
+      getPcbState(pcb).routerRoutedNets.add(netName);
+    }
     // For MST routing, create separate tracks for each segment
     if (path.segments && path.segments.length > 0) {
       debugLog(options.debug, chalk.blue(`[PCB] Creating ${path.segments.length} separate tracks for MST segments`));
@@ -192,12 +181,25 @@ export function routeMstNet(
               debugLog(options.debug, chalk.blue(`[PCB] Reusing manual route for MST segment: ${a} <-> ${b}`));
               for (const tb of md.trackBuilders) {
                 out.result.push(tb);
-                // Re-stage existing track elements so they persist
-                const elements = tb.getElements();
-                for (const el of elements) {
-                  if (el.type === 'track' && el.details && 'start' in el.details) {
-                    const td = el.details as import('./pcb_interfaces.js').ITrackDetails;
-                    pcbTrackSegment(pcb, td.start, td.end, td.width, td.layer, td.locked ?? false, el.uuid, undefined);
+                // Re-stage existing track elements so they persist. Deferred
+                // builders are staged by autoroute()'s staging loop (which sees
+                // this builder in the result) — guard to avoid double staging.
+                if (!tb.deferStaging) {
+                  const elements = tb.getElements();
+                  for (const el of elements) {
+                    if (el.type === 'track' && el.details && 'start' in el.details) {
+                      const td = el.details as import('./pcb_interfaces.js').ITrackDetails;
+                      pcbTrackSegment(
+                        pcb,
+                        td.start,
+                        td.end,
+                        td.width,
+                        td.layer,
+                        td.locked ?? false,
+                        el.uuid,
+                        undefined,
+                      );
+                    }
                   }
                 }
               }

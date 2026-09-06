@@ -78,7 +78,7 @@ export function runTest19(typecad: PCB): Component[] {
   const both = captureErrors(() =>
     typecad.zone({ net: 'GND', layers: ['B.Cu'], points: TRIANGLE, x: 1, y: 1, width: 2, height: 2 }),
   );
-  check('zone rejects points + rectangle together', both.length === 1 && /not both/.test(both[0]));
+  check('zone rejects points + rectangle together', both.length === 1 && /not combinations/.test(both[0]));
 
   const tooFew = captureErrors(() =>
     typecad.zone({
@@ -93,7 +93,7 @@ export function runTest19(typecad: PCB): Component[] {
   check('zone rejects polygons under 3 vertices', tooFew.length === 1 && /at least 3/.test(tooFew[0]));
 
   const neither = captureErrors(() => typecad.keepout({ layers: ['F.Cu'], x: 5, width: 5 } as any));
-  check('keepout rejects incomplete geometry', neither.length === 1 && /requires either 'points'/.test(neither[0]));
+  check('keepout rejects incomplete geometry', neither.length === 1 && /requires 'bounds', 'points'/.test(neither[0]));
 
   // ── Valid zones produce no validation errors ────────────────────────
   const lZone = captureErrors(() =>

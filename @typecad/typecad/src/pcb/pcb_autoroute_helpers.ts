@@ -36,6 +36,8 @@ export interface AutorouteContext {
   validEndPositions: { x: number; y: number; layer: string }[];
   allPins: Pin[];
   netName: string | undefined;
+  /** Schematic pin (`reference:number`) → net name, built once per call. */
+  pinNetMap: Map<string, string>;
   traceWidth: number;
   clearance: number;
   bounds: BoardBounds;
@@ -66,6 +68,31 @@ export function createEmptyRoutingOutput(): RoutingOutput {
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────
+
+/**
+ * Build a `reference:pinNumber` → net-name map from the schematic in one
+ * pass. Replaces the nested per-pin scans that used to run in autoroute()
+ * net inference, MST single-net detection, and per-pair net resolution.
+ */
+export function buildPinNetMap(pcb: PCB): Map<string, string> {
+  const map = new Map<string, string>();
+  const schematic = pcb.schematic;
+  if (!schematic || !Array.isArray(schematic.nodes)) {
+    return map;
+  }
+  for (const schematicNode of schematic.nodes) {
+    const netName = schematicNode?.name;
+    const pins = schematicNode?.nodes as Array<{ reference: string; number: string | number }> | undefined;
+    if (!netName || !Array.isArray(pins)) continue;
+    for (const p of pins) {
+      const key = `${p.reference}:${String(p.number)}`;
+      if (!map.has(key)) {
+        map.set(key, netName);
+      }
+    }
+  }
+  return map;
+}
 
 /** Conditional debug log – prints when local debug flag is set OR TYPECAD_DEBUG env var is enabled. */
 export function debugLog(debug: boolean | undefined, message: string): void {

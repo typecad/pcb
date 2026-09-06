@@ -15,7 +15,7 @@ export const options = {
 const typecad = new PCB('autoroute_test', { layers: 4 });
 // Test execution control
 const runTests = {
-  test1: true,
+  test1: false,
   test2: false,
   test3: false,
   test4: false,
@@ -32,8 +32,8 @@ const runTests = {
   test13: false,
   test14: false,
   test15: false, // errors
-  test16: false,
-  test17: false,
+  test16: true,
+  test17: true,
   test18: true, // multilayer features: planes, affinity, impedance, via policy
   test19: true, // zone options: polygon geometry, rule areas, fill options
 };

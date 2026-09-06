@@ -29,6 +29,7 @@ export interface ClearanceProfileConfig {
  */
 export class ClearanceProfile {
   private readonly traceClearance: number;
+  private readonly traceRadius: number;
   private readonly viaClearance: number;
   private readonly viaDiameter: number;
   private readonly viaRadius: number;
@@ -37,6 +38,7 @@ export class ClearanceProfile {
 
   constructor(config: ClearanceProfileConfig) {
     this.traceClearance = Math.max(0, config.options.clearance);
+    this.traceRadius = Math.max(0, config.options.traceWidth) / 2;
     this.viaClearance = Math.max(0, config.options.viaClearance ?? config.options.clearance);
     this.viaDiameter = Math.max(0, config.viaDiameter);
     this.viaRadius = this.viaDiameter / 2;
@@ -45,11 +47,14 @@ export class ClearanceProfile {
   }
 
   /**
-   * Minimum spacing used when probing occupancy for trace movement.
+   * Minimum spacing used when probing occupancy for trace movement:
+   * the design-rule clearance PLUS the new trace's own half-width, since
+   * occupancy checks measure centerline-to-centerline distance and the
+   * trace's copper extends `traceWidth / 2` beyond its centerline.
    * Context is currently unused but retained for future adaptive logic.
    */
   public getTraceClearance(_context?: TraceClearanceContext): number {
-    return this.traceClearance;
+    return this.traceClearance + this.traceRadius;
   }
 
   /**

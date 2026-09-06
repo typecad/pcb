@@ -181,7 +181,9 @@ export default defineConfig({
       // (gerber_viewer script, check/query/edit/skills in AGENTS.md).
       // `~`, not `^` — cmd.exe (used to spawn npm on Windows) eats carets.
       '@typecad/typecad@~1.0.0-alpha.2',
-      '@typecad/passives',
+      // passives' alpha line pairs its typecad peer with the 1.0 alphas;
+      // `latest` (0.2.2) peers `^0.3.0` and ERESOLVEs against the spec above
+      '@typecad/passives@~0.2.3-alpha.0',
       ...(answers.packages.includes('ngspice') ? ['@typecad/ngspice'] : []),
       ...(answers.packages.includes('graphviz') ? ['@typecad/graphviz'] : []),
       ...(answers.packages.includes('jlcpcb') ? ['@typecad/jlcpcb-export'] : []),

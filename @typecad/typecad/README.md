@@ -66,7 +66,7 @@ import {
 } from '@typecad/typecad/gerber-viewer';
 ```
 
-Projects created with `typecad create` get a `gerber_viewer` npm script wired to `gerber-viewer serve`.
+Projects created with `typecad create` get a `gerber_viewer` npm script wired to `gerber-viewer serve`. Layer visibility and opacity settings persist across rebuilds — they're stored in your browser (localStorage, keyed per board) and re-applied when the page reloads.
 
 ---
 ## Support

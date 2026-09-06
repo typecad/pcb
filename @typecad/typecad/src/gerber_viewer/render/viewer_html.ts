@@ -105,6 +105,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   });
   function setAll(on) {
     document.querySelectorAll('.layer-vis').forEach(function (cb) { cb.checked = on; syncLayer(cb); });
+    persist();
   }
   document.getElementById('btn-all-on').addEventListener('click', function () { setAll(true); });
   document.getElementById('btn-all-off').addEventListener('click', function () { setAll(false); });
@@ -124,11 +125,47 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     if (!group) return;
     group.setAttribute('opacity', slider.value);
   }
+
+  // Layer settings survive rebuilds: the dev server reloads the page on every
+  // build, so visibility/opacity are kept in localStorage keyed per board and
+  // re-applied here. Unknown/new layers fall back to their defaults; stale
+  // saved entries are overwritten on the next persist.
+  var storeKey = 'gerber-viewer:v1:' + document.title;
+  var saved = {};
+  try {
+    saved = JSON.parse(localStorage.getItem(storeKey) || '{}') || {};
+  } catch (e) {
+    saved = {};
+  }
+  function persist() {
+    var state = {};
+    document.querySelectorAll('.layer-row').forEach(function (row) {
+      state[row.getAttribute('data-layer-id')] = {
+        visible: row.querySelector('.layer-vis').checked,
+        opacity: parseFloat(row.querySelector('.layer-opacity').value),
+      };
+    });
+    try {
+      localStorage.setItem(storeKey, JSON.stringify(state));
+    } catch (e) {
+      /* private mode etc. — settings just won't persist */
+    }
+  }
+  document.querySelectorAll('.layer-row').forEach(function (row) {
+    var state = saved[row.getAttribute('data-layer-id')];
+    if (!state) return;
+    var cb = row.querySelector('.layer-vis');
+    var slider = row.querySelector('.layer-opacity');
+    if (typeof state.visible === 'boolean') cb.checked = state.visible;
+    if (Number.isFinite(state.opacity)) slider.value = state.opacity;
+    syncLayer(cb);
+    syncOpacity(slider);
+  });
   document.querySelectorAll('.layer-vis').forEach(function (cb) {
-    cb.addEventListener('change', function () { syncLayer(cb); });
+    cb.addEventListener('change', function () { syncLayer(cb); persist(); });
   });
   document.querySelectorAll('.layer-opacity').forEach(function (slider) {
-    slider.addEventListener('input', function () { syncOpacity(slider); });
+    slider.addEventListener('input', function () { syncOpacity(slider); persist(); });
   });
 
   window.addEventListener('keydown', function (ev) {

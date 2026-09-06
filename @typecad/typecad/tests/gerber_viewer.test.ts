@@ -25,6 +25,16 @@ describe('buildViewerHtml', () => {
     expect(html).toContain('#board');
   });
 
+  it('persists layer settings to localStorage keyed per board', () => {
+    expect(html).toContain("gerber-viewer:v1:' + document.title");
+    expect(html).toContain('localStorage.getItem');
+    expect(html).toContain('localStorage.setItem');
+    // every mutation path saves: checkbox, opacity slider, All/None buttons
+    expect(html).toMatch(/syncLayer\(cb\); persist\(\)/);
+    expect(html).toMatch(/syncOpacity\(slider\); persist\(\)/);
+    expect(html).toMatch(/function setAll\(on\) \{[\s\S]*?persist\(\);/);
+  });
+
   it('lists layers with toggles and opacity sliders', () => {
     expect(html).toContain('demo-F_Cu.gbr');
     expect(html).toContain('class="layer-vis"');

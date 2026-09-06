@@ -65,6 +65,9 @@ describe('renderSvg', () => {
 
   it('tags layer groups and hides non-default layers', () => {
     expect(svg).toContain('data-layer-id="demo-f_cu-gbr"');
+    // kind is exposed for viewer-side theme recoloring
+    expect(svg).toContain('data-kind="copper"');
+    expect(svg).toContain('data-kind="drill"');
     // drill is visible by default, drill group has no display attr
     const drillGroup = svg.split('data-layer-id="demo-drl"')[1]!.slice(0, 200);
     expect(drillGroup).not.toContain('display="none"');

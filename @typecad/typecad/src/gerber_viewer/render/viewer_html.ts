@@ -21,7 +21,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     .map((layer) => {
       const checked = layer.defaultVisible ? ' checked' : '';
       return [
-        `<label class="layer-row" data-layer-id="${escapeHtml(layer.id)}">`,
+        `<label class="layer-row" data-layer-id="${escapeHtml(layer.id)}" data-kind="${escapeHtml(layer.kind)}">`,
         `<input type="checkbox" class="layer-vis"${checked}>`,
         `<span class="chip" style="background:${layer.color}"></span>`,
         `<span class="layer-name" title="${escapeHtml(layer.fullName ?? layer.name)}">${escapeHtml(layer.name)}</span>`,
@@ -175,16 +175,19 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   });
 
   // Dark/light theme: saved per browser (shared across boards); falls back to
-  // the OS preference on first visit. The canvas stays light in both themes —
-  // silkscreen/fab layers use near-black colors and clear-polarity cutouts
-  // assume a light background.
+  // the OS preference on first visit. The canvas follows the theme, and the
+  // SVG's clear-polarity background var stays synced to the canvas color so
+  // cutouts never show as boxes. Near-black layer colors (silkscreen, paste,
+  // drill) are recolored for the dark canvas via the data-kind CSS rules.
   var THEME_KEY = 'gerber-viewer:theme:v1';
   var themeBtn = document.getElementById('btn-theme');
+  var boardArea = document.getElementById('board-area');
   function applyTheme(theme) {
     document.body.classList.toggle('light', theme === 'light');
     // the button shows the mode you would switch to
     themeBtn.textContent = theme === 'light' ? '\u263E' : '\u2600';
     themeBtn.title = theme === 'light' ? 'switch to dark theme' : 'switch to light theme';
+    svg.style.setProperty('--bg', getComputedStyle(boardArea).backgroundColor);
     try { localStorage.setItem(THEME_KEY, theme); } catch (e) {}
   }
   var savedTheme = null;
@@ -213,12 +216,31 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     --chrome-bg: #1e1e1e; --chrome-fg: #ddd; --muted: #888;
     --chrome-border: #333; --row-hover: #2a2a2a;
     --btn-bg: #333; --btn-border: #444; --btn-hover: #444;
+    --page: #16181d;
   }
   body.light {
     --chrome-bg: #f7f7f7; --chrome-fg: #333; --muted: #666;
     --chrome-border: #ddd; --row-hover: #ebebeb;
     --btn-bg: #fff; --btn-border: #ccc; --btn-hover: #eee;
+    --page: #ffffff;
   }
+  /* layers whose palette colors are near-black would vanish on the dark
+     canvas — recolor them (and their sidebar chips) in dark theme; strokes
+     and non-none fills carry explicit attributes, so override those too */
+  body:not(.light) #board [data-kind="silkscreen"],
+  body:not(.light) #board [data-kind="paste"] { fill: #d6d6d6; }
+  body:not(.light) #board [data-kind="silkscreen"] [stroke],
+  body:not(.light) #board [data-kind="paste"] [stroke] { stroke: #d6d6d6 !important; }
+  body:not(.light) #board [data-kind="silkscreen"] [fill]:not([fill="none"]),
+  body:not(.light) #board [data-kind="paste"] [fill]:not([fill="none"]) { fill: #d6d6d6 !important; }
+  body:not(.light) #board [data-kind="drill"] { fill: #2fbfae; }
+  body:not(.light) #board [data-kind="drill"] [stroke] { stroke: #2fbfae !important; }
+  body:not(.light) #board [data-kind="drill"] [fill]:not([fill="none"]) { fill: #2fbfae !important; }
+  /* clear-polarity shapes must always paint the canvas color, not the override */
+  #board [data-kind] .cut { fill: var(--bg) !important; stroke: var(--bg) !important; }
+  body:not(.light) .layer-row[data-kind="silkscreen"] .chip,
+  body:not(.light) .layer-row[data-kind="paste"] .chip { background: #d6d6d6 !important; }
+  body:not(.light) .layer-row[data-kind="drill"] .chip { background: #2fbfae !important; }
   #sidebar { width: 260px; min-width: 260px; background: var(--chrome-bg); color: var(--chrome-fg); display: flex; flex-direction: column; border-right: 1px solid var(--chrome-border); }
   #sidebar header { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 12px 14px; font-weight: 600; border-bottom: 1px solid var(--chrome-border); }
   #sidebar header .title { min-width: 0; }

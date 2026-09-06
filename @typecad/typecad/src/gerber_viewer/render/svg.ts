@@ -329,7 +329,7 @@ export function renderSvg(layers: RenderLayer[], options: RenderOptions = {}): s
       );
     }
     groups.push(
-      `<g data-layer-id="${escapeXml(info.id)}" data-layer-name="${escapeXml(info.name)}" fill="${info.color}"${
+      `<g data-layer-id="${escapeXml(info.id)}" data-layer-name="${escapeXml(info.name)}" data-kind="${info.kind}" fill="${info.color}"${
         info.defaultVisible ? '' : ' display="none"'
       }>${body.join('')}</g>`,
     );

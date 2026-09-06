@@ -44,6 +44,20 @@ describe('buildViewerHtml', () => {
     expect(html).toMatch(/applyTheme\(savedTheme\)/);
   });
 
+  it('themes the board canvas and keeps clear-polarity cutouts in sync', () => {
+    // dark canvas by default, white in light theme
+    expect(html).toMatch(/--page:\s*#16181d/);
+    expect(html).toMatch(/body\.light\s*\{[\s\S]*?--page:\s*#ffffff/);
+    // the svg's clear-polarity var follows the computed canvas color
+    expect(html).toContain("svg.style.setProperty('--bg'");
+    // near-black layer kinds are recolored on the dark canvas, cutouts exempt
+    expect(html).toMatch(/\[data-kind="silkscreen"\]/);
+    expect(html).toMatch(/\[data-kind="drill"\]/);
+    expect(html).toMatch(/\[data-kind\] \.cut\s*\{/);
+    // sidebar chips follow the dark-theme recoloring
+    expect(html).toMatch(/\.layer-row\[data-kind="silkscreen"\] \.chip/);
+  });
+
   it('lists layers with toggles and opacity sliders', () => {
     expect(html).toContain('demo-F_Cu.gbr');
     expect(html).toContain('class="layer-vis"');

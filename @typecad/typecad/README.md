@@ -66,7 +66,7 @@ import {
 } from '@typecad/typecad/gerber-viewer';
 ```
 
-Projects created with `typecad create` get a `gerber_viewer` npm script wired to `gerber-viewer serve`. Layer visibility and opacity settings persist across rebuilds — they're stored in your browser (localStorage, keyed per board) and re-applied when the page reloads. A dark/light theme toggle sits in the sidebar header; the theme is saved per browser and follows your OS preference on first visit.
+Projects created with `typecad create` get a `gerber_viewer` npm script wired to `gerber-viewer serve`. Layer visibility and opacity settings persist across rebuilds — they're stored in your browser (localStorage, keyed per board) and re-applied when the page reloads. A dark/light theme toggle sits in the sidebar header; the theme (including the board canvas) is saved per browser and follows your OS preference on first visit. On the dark canvas, near-black layer colors (silkscreen, paste, drill) are automatically recolored so they stay visible, and clear-polarity cutouts follow the canvas color.
 
 ---
 ## Support

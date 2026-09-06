@@ -181,7 +181,6 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   measureBtn.addEventListener('click', function () {
     measuring = !measuring;
     measureBtn.classList.toggle('armed', measuring);
-    document.body.classList.toggle('measuring', measuring);
     measureStart = null;
     renderMeasure();
   });
@@ -193,7 +192,6 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       measureStart = null;
       rulers = [];
       measureBtn.classList.remove('armed');
-      document.body.classList.remove('measuring');
       renderMeasure();
     }
   });
@@ -392,7 +390,6 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   #board-area { position: relative; flex: 1; background: var(--page, #ffffff); }
   #status { position: absolute; left: 10px; bottom: 8px; background: #000a; color: #fff; padding: 3px 8px; border-radius: 4px; font: 12px/1.2 ui-monospace, monospace; pointer-events: none; }
   #board { position: absolute; inset: 0; display: block; cursor: crosshair; }
-  body.measuring #board { cursor: cell; }
 </style>
 </head>
 <body>

@@ -77,10 +77,8 @@ describe('buildViewerHtml', () => {
   it('uses a crosshair cursor on the board canvas', () => {
     expect(html).toMatch(/#board\s*\{[^}]*cursor:\s*crosshair/);
     expect(html).not.toContain("cursor = 'grab'");
-    // arming the ruler switches the canvas to the cell cursor
-    expect(html).toMatch(/body\.measuring #board\s*\{\s*cursor:\s*cell/);
-    expect(html).toContain("classList.toggle('measuring', measuring)");
-    expect(html).toContain("classList.remove('measuring')");
+    // crosshair everywhere — also while the ruler tool is armed
+    expect(html).not.toContain('cursor: cell');
   });
 
   it('has a measurement tool that sticks rulers, clears on Escape, and follows the theme', () => {

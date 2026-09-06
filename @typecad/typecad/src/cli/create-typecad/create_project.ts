@@ -177,7 +177,10 @@ export default defineConfig({
 
     const pkgList = [
       'tsx',
-      '@typecad/typecad',
+      // tilde on the 1.0 line: `latest` (0.x) predates scaffolded features
+      // (gerber_viewer script, check/query/edit/skills in AGENTS.md).
+      // `~`, not `^` — cmd.exe (used to spawn npm on Windows) eats carets.
+      '@typecad/typecad@~1.0.0-alpha.2',
       '@typecad/passives',
       ...(answers.packages.includes('ngspice') ? ['@typecad/ngspice'] : []),
       ...(answers.packages.includes('graphviz') ? ['@typecad/graphviz'] : []),

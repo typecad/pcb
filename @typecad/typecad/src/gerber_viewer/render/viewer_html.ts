@@ -490,7 +490,14 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     var id = row.getAttribute('data-layer-id');
     var group = svg.querySelector('[data-layer-id="' + id + '"]');
     if (!group) return;
-    group.setAttribute('opacity', slider.value);
+    // Writing opacity="1" over the default is not a no-op for rendering: it
+    // can push the group onto its own compositing layer, which rasterizes
+    // sub-pixel glyph fills differently (they balloon). Leave untouched
+    // layers attribute-free so a settings-restore render matches a fresh
+    // load byte for byte. A missing attribute means opacity 1.
+    if ((group.getAttribute('opacity') ?? '1') !== slider.value) {
+      group.setAttribute('opacity', slider.value);
+    }
   }
 
   // Layer settings survive rebuilds: the dev server reloads the page on every
@@ -631,6 +638,10 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   }
   /* clear-polarity shapes must always paint the canvas color, not the override */
   #board [data-kind] .cut { fill: var(--bg) !important; stroke: var(--bg) !important; }
+  /* region fills (TrueType glyph outlines etc.) must never gain a stroke —
+     stroking those outlines balloons the letters. The .cut rule above is more
+     specific, so clear-polarity regions keep their canvas-color stroke. */
+  #board path[fill-rule] { stroke: none !important; }
   body:not(.light) .layer-row[data-kind="silkscreen"] .chip,
   body:not(.light) .layer-row[data-kind="paste"] .chip { background: #d6d6d6 !important; }
   body:not(.light) .layer-row[data-kind="drill"] .chip { background: #2fbfae !important; }

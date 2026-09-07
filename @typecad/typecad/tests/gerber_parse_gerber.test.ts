@@ -141,6 +141,31 @@ describe('parseGerber (edge + macro fixtures)', () => {
 });
 
 describe('parseGerber (synthetic edge cases)', () => {
+  it('carries %TO.N/%TO.P object attributes onto ops and clears them on %TD', () => {
+    const source = [
+      '%FSLAX36Y36*%',
+      '%MOMM*%',
+      '%ADD10C,1*%',
+      '%TO.N,"GND"*%',
+      'D10*',
+      'X1000000Y1000000D02*',
+      'X2000000Y1000000D01*',
+      '%TD*%',
+      '%TO.P,U1,3*%',
+      'X3000000Y2000000D03*',
+      'M02*',
+    ].join('\n');
+    const parsed = parseGerber(source);
+    const trace = parsed.ops[0] as { type: string; net?: string };
+    expect(trace.type).toBe('trace');
+    expect(trace.net).toBe('GND');
+    const flash = parsed.ops[1] as { type: string; ref?: string; pin?: string; net?: string };
+    expect(flash.type).toBe('flash');
+    expect(flash.ref).toBe('U1');
+    expect(flash.pin).toBe('3');
+    expect(flash.net).toBeUndefined(); // %TD cleared the net before the flash
+  });
+
   it('handles full-circle arcs in multi-quadrant mode', () => {
     const source = [
       '%FSLAX36Y36*%',

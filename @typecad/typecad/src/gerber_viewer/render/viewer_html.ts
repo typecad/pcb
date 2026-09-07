@@ -1,11 +1,50 @@
 import type { LayerInfo } from '../detect_layer.js';
+import type { DrcMarker, FabReport } from '../report.js';
 
 export interface ViewerOptions {
   title?: string;
+  /** fab report data for the sidebar panel (computed by the build pipeline) */
+  report?: FabReport;
+  /** DRC violation markers, already in gerber coordinates (serve mode) */
+  drcMarkers?: DrcMarker[];
 }
 
 function escapeHtml(value: string): string {
   return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function reportPanel(report: FabReport | undefined): string {
+  if (!report) return '';
+  const dims = report.board
+    ? `${report.board.width.toFixed(2)} × ${report.board.height.toFixed(2)} ${report.units}`
+    : '—';
+  const copper = report.copper
+    .map(
+      (c) =>
+        `<tr><td>${escapeHtml(c.layer)}</td><td>${c.traceLength.toFixed(1)}</td>` +
+        `<td>${c.minWidth ?? '—'}</td><td>${c.maxWidth ?? '—'}</td><td>${c.flashes}</td></tr>`,
+    )
+    .join('');
+  const drills = report.drills
+    .map(
+      (d) =>
+        `<tr><td>⌀ ${d.diameter.toFixed(2)}</td><td>${d.count}</td>` +
+        `<td>${d.plated === null ? '—' : d.plated ? 'plated' : 'NPTH'}</td></tr>`,
+    )
+    .join('');
+  return [
+    '<details id="fab-report">',
+    '<summary>fab report</summary>',
+    '<div class="report-body">',
+    `<div class="report-dim">board ${dims}</div>`,
+    '<table><tr><th>cu</th><th>mm</th><th>min</th><th>max</th><th>pads</th></tr>',
+    copper,
+    '</table>',
+    `<div class="report-dim">${report.holes} holes, ${report.slots} slots</div>`,
+    drills ? '<table><tr><th>drill</th><th>#</th><th>type</th></tr>' + drills + '</table>' : '',
+    '</div>',
+    '</details>',
+  ].join('');
 }
 
 /**
@@ -43,6 +82,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   function apply() {
     panzoom.setAttribute('transform', 'translate(' + tx + ' ' + ty + ') scale(' + k + ')');
     renderMeasure();
+    renderDrc();
   }
   function clientToView(pt) {
     var ctm = svg.getScreenCTM();
@@ -93,7 +133,9 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       var v = clientToView({ x: ev.clientX, y: ev.clientY });
       var bx = (v.x - tx) / k;
       var by = -((v.y - ty) / k);
-      statusEl.textContent = bx.toFixed(3) + ', ' + by.toFixed(3) + ' ' + units + '   zoom ' + k.toFixed(2) + 'x';
+      statusEl.textContent =
+        (probe ? probe + '   ' : '') +
+        bx.toFixed(3) + ', ' + by.toFixed(3) + ' ' + units + '   zoom ' + k.toFixed(2) + 'x';
     }
   });
   window.addEventListener('mouseup', function (ev) {
@@ -111,6 +153,20 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         measureStart = null; // second click: stick the ruler, next click starts anew
       }
       renderMeasure();
+    } else if (drag && !drag.moved && ev.target && svg.contains(ev.target)) {
+      // plain click (ruler not armed): probe for net/component highlighting
+      var el = ev.target.closest ? ev.target.closest('[data-net],[data-ref]') : null;
+      if (el) {
+        var net = el.getAttribute('data-net');
+        var ref = el.getAttribute('data-ref');
+        if (net && highlightNet('data-net', net)) {
+          statusEl.textContent = 'net ' + net + ' — Esc or click empty space to clear';
+        } else if (ref && highlightNet('data-ref', ref)) {
+          statusEl.textContent = ref + ' — Esc or click empty space to clear';
+        }
+      } else if (netDimmed.length) {
+        clearNetHighlight();
+      }
     }
     drag = null;
   });
@@ -187,13 +243,224 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   // the px->unit conversion changes when the window resizes
   window.addEventListener('resize', renderMeasure);
   window.addEventListener('keydown', function (ev) {
-    if (ev.key === 'Escape' && (measuring || measureStart || rulers.length)) {
-      measuring = false;
-      measureStart = null;
-      rulers = [];
-      measureBtn.classList.remove('armed');
-      renderMeasure();
+    if (ev.key === 'Escape') {
+      if (measuring || measureStart || rulers.length) {
+        measuring = false;
+        measureStart = null;
+        rulers = [];
+        measureBtn.classList.remove('armed');
+        renderMeasure();
+      }
+      if (netDimmed.length) clearNetHighlight();
     }
+  });
+
+  // ---- net highlighting + hover probing (X2 object attributes) ----
+  var netDimmed = []; // elements dimmed by an active highlight, restored on clear
+  function clearNetHighlight() {
+    for (var i = 0; i < netDimmed.length; i++) netDimmed[i].removeAttribute('opacity');
+    netDimmed = [];
+  }
+  function highlightNet(attr, value) {
+    clearNetHighlight();
+    var hits = svg.querySelectorAll('[' + attr + ']');
+    var any = false;
+    for (var i = 0; i < hits.length; i++) {
+      if (hits[i].getAttribute(attr) !== value) {
+        hits[i].setAttribute('opacity', '0.12');
+        netDimmed.push(hits[i]);
+      } else {
+        any = true;
+      }
+    }
+    if (!any) {
+      clearNetHighlight();
+      return false;
+    }
+    // dim un-attributed geometry too so the net stands out
+    var groups = svg.querySelectorAll('#yflip > g');
+    for (var g = 0; g < groups.length; g++) {
+      var kind = groups[g].getAttribute('data-kind');
+      if (kind === 'copper' && !groups[g].querySelector('[' + attr + '="' + value + '"]')) {
+        var kids = groups[g].children;
+        for (var k = 0; k < kids.length; k++) {
+          if (!kids[k].hasAttribute(attr)) {
+            kids[k].setAttribute('opacity', '0.12');
+            netDimmed.push(kids[k]);
+          }
+        }
+      }
+    }
+    return true;
+  }
+  var probe = '';
+  svg.addEventListener('mousemove', function (ev) {
+    var el = ev.target.closest ? ev.target.closest('[data-net],[data-ref],[data-pin]') : null;
+    var next = '';
+    if (el) {
+      var net = el.getAttribute('data-net');
+      var ref = el.getAttribute('data-ref');
+      var pin = el.getAttribute('data-pin');
+      next = (net || '') + (ref ? (net ? ' · ' : '') + ref + (pin || '') : '');
+    }
+    if (next !== probe) {
+      probe = next;
+      // refresh the readout immediately so the probe appears without moving
+      var box = svg.getBoundingClientRect();
+      if (!drag) {
+        var v = clientToView({ x: box.left + box.width / 2, y: box.top + box.height / 2 });
+        statusEl.textContent = statusEl.textContent; // placeholder; next move recomposes
+      }
+    }
+  });
+
+  // ---- component search: locate, zoom, flash ----
+  document.getElementById('comp-search').addEventListener('keydown', function (ev) {
+    if (ev.key !== 'Enter') return;
+    ev.preventDefault();
+    var q = ev.target.value.trim().toUpperCase();
+    if (!q) return;
+    var all = svg.querySelectorAll('[data-ref]');
+    var hits = [];
+    for (var i = 0; i < all.length; i++) {
+      var ref = (all[i].getAttribute('data-ref') || '').toUpperCase();
+      if (ref === q || ref.indexOf(q) === 0) hits.push(all[i]);
+    }
+    if (!hits.length) {
+      statusEl.textContent = '"' + q + '" not found';
+      return;
+    }
+    // union of local bboxes (getBBox: rendering-independent, unlike client
+    // rects which can be 0x0 for <use> flashes) -> fit the view to it.
+    // local coords are yflip space: view = t + k * (x, -y)
+    var bb = null;
+    for (var j = 0; j < hits.length; j++) {
+      var b;
+      try {
+        b = hits[j].getBBox();
+      } catch (e) {
+        continue;
+      }
+      if (!b.width && !b.height) continue;
+      if (!bb) bb = { x1: b.x, y1: b.y, x2: b.x + b.width, y2: b.y + b.height };
+      else {
+        bb.x1 = Math.min(bb.x1, b.x);
+        bb.y1 = Math.min(bb.y1, b.y);
+        bb.x2 = Math.max(bb.x2, b.x + b.width);
+        bb.y2 = Math.max(bb.y2, b.y + b.height);
+      }
+    }
+    if (bb) {
+      var vb = svg.viewBox.baseVal;
+      var w = Math.max(bb.x2 - bb.x1, 1e-6);
+      var h = Math.max(bb.y2 - bb.y1, 1e-6);
+      // target zoom: the component fills ~1/3 of the canvas
+      var fitK = Math.min(vb.width / w, vb.height / h) * 0.3;
+      fitK = Math.min(5000, Math.max(0.02, fitK));
+      var cx = (bb.x1 + bb.x2) / 2;
+      var cy = (bb.y1 + bb.y2) / 2;
+      tx = vb.x + vb.width / 2 - fitK * cx;
+      ty = vb.y + vb.height / 2 + fitK * cy; // yflip: view = t + k*(-y)
+      k = fitK;
+      apply();
+    }
+    for (var f = 0; f < hits.length; f++) {
+      hits[f].classList.remove('search-flash');
+      hits[f].classList.add('search-flash');
+      setTimeout((function (el) { return function () { el.classList.remove('search-flash'); }; })(hits[f]), 2700);
+    }
+    statusEl.textContent = hits.length + ' pad(s) of ' + hits[0].getAttribute('data-ref');
+  });
+
+  // ---- DRC markers (injected by the serve pipeline) ----
+  var drcGroup = document.getElementById('drc');
+  var drcBtn = document.getElementById('btn-drc');
+  var drcData = [];
+  try {
+    drcData = JSON.parse(document.getElementById('drc-data').textContent) || [];
+  } catch (e) {
+    drcData = [];
+  }
+  function renderDrc() {
+    if (!drcData.length) return;
+    var s = unitsPerPx() / k;
+    var out = '';
+    for (var i = 0; i < drcData.length; i++) {
+      var m = drcData[i];
+      var y = -m.y;
+      out +=
+        '<g class="drc-mark"><circle class="outer" cx="' + m.x + '" cy="' + y + '" r="' + 11 * s + '" stroke-width="' + 1.5 * s + '"></circle>' +
+        '<circle class="inner" cx="' + m.x + '" cy="' + y + '" r="' + 2 * s + '"></circle>' +
+        '<title>' + m.description.replace(/&/g, '&amp;').replace(/</g, '&lt;') + '</title></g>';
+    }
+    drcGroup.innerHTML = out;
+  }
+  if (drcData.length) {
+    drcBtn.hidden = false;
+    drcBtn.title = 'toggle ' + drcData.length + ' DRC marker(s)';
+    renderDrc();
+    drcBtn.addEventListener('click', function () {
+      drcGroup.classList.toggle('hidden');
+      drcBtn.classList.toggle('armed');
+    });
+  }
+
+  // ---- export the current view as SVG / PNG ----
+  function exportSvgString() {
+    var clone = svg.cloneNode(true);
+    clone.removeAttribute('id');
+    var vb = svg.viewBox.baseVal;
+    clone.setAttribute('width', vb.width);
+    clone.setAttribute('height', vb.height);
+    // theme: resolve the canvas/cut color and copy dark-mode recolors
+    var canvas = getComputedStyle(document.getElementById('board-area')).backgroundColor;
+    clone.setAttribute('style', '--bg:' + canvas);
+    var extra = '';
+    if (!document.body.classList.contains('light')) {
+      extra +=
+        '[data-kind="silkscreen"],[data-kind="paste"]{fill:#d6d6d6;}' +
+        '[data-kind="silkscreen"] [stroke]:not([stroke="none"]),[data-kind="paste"] [stroke]:not([stroke="none"]){stroke:#d6d6d6 !important;}' +
+        '[data-kind="silkscreen"] [fill]:not([fill="none"]),[data-kind="paste"] [fill]:not([fill="none"]){fill:#d6d6d6 !important;}' +
+        '[data-kind="drill"]{fill:#2fbfae;}' +
+        '[data-kind="drill"] [stroke]:not([stroke="none"]){stroke:#2fbfae !important;}' +
+        '[data-kind="drill"] [fill]:not([fill="none"]){fill:#2fbfae !important;}';
+    }
+    // bake current element opacities (layer sliders + net highlight) into the clone
+    var live = svg.querySelectorAll('[opacity]');
+    var copy = clone.querySelectorAll('[opacity]');
+    for (var i = 0; i < live.length && i < copy.length; i++) copy[i].setAttribute('opacity', live[i].getAttribute('opacity'));
+    var bg = document.createElementNS('http://www.w3.org/2000/svg', 'style');
+    bg.textContent = 'svg{background:' + canvas + ';}' + extra;
+    clone.insertBefore(bg, clone.firstChild);
+    return new XMLSerializer().serializeToString(clone);
+  }
+  function download(name, blob) {
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = name;
+    a.click();
+    setTimeout(function () { URL.revokeObjectURL(a.href); }, 5000);
+  }
+  document.getElementById('btn-svg').addEventListener('click', function () {
+    download((document.title || 'board') + '.svg', new Blob([exportSvgString()], { type: 'image/svg+xml' }));
+  });
+  document.getElementById('btn-png').addEventListener('click', function () {
+    var vb = svg.viewBox.baseVal;
+    var scale = 2;
+    var img = new Image();
+    img.onload = function () {
+      var canvas = document.createElement('canvas');
+      canvas.width = vb.width * scale;
+      canvas.height = vb.height * scale;
+      var ctx = canvas.getContext('2d');
+      ctx.fillStyle = getComputedStyle(document.getElementById('board-area')).backgroundColor;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      canvas.toBlob(function (blob) {
+        if (blob) download((document.title || 'board') + '.png', blob);
+      }, 'image/png');
+    };
+    img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(exportSvgString());
   });
 
   document.getElementById('btn-fit').addEventListener('click', fit);
@@ -379,10 +646,26 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   .chip { width: 12px; height: 12px; border-radius: 3px; flex: none; border: 1px solid #0006; }
   .layer-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .layer-opacity { width: 60px; flex: none; }
-  #toolbar { display: flex; gap: 6px; padding: 10px 14px; border-top: 1px solid var(--chrome-border); }
-  #toolbar button { flex: 1; background: var(--btn-bg); color: var(--chrome-fg); border: 1px solid var(--btn-border); border-radius: 4px; padding: 4px 6px; cursor: pointer; font: inherit; }
+  #toolbar { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 14px; border-top: 1px solid var(--chrome-border); }
+  #toolbar button { flex: 1 1 auto; min-width: 34px; background: var(--btn-bg); color: var(--chrome-fg); border: 1px solid var(--btn-border); border-radius: 4px; padding: 4px 6px; cursor: pointer; font: inherit; }
   #toolbar button:hover { background: var(--btn-hover); }
   #toolbar button.armed { box-shadow: inset 0 0 0 1px var(--chrome-fg); background: var(--btn-hover); }
+  #search-box { padding: 8px 14px 0; }
+  #comp-search { width: 100%; background: var(--btn-bg); color: var(--chrome-fg); border: 1px solid var(--btn-border); border-radius: 4px; padding: 5px 8px; font: inherit; }
+  #comp-search::placeholder { color: var(--muted); }
+  #fab-report { padding: 8px 14px 0; font-weight: 400; }
+  #fab-report summary { cursor: pointer; color: var(--muted); }
+  #fab-report table { border-collapse: collapse; width: 100%; font-size: 11px; margin: 6px 0; }
+  #fab-report th { text-align: left; color: var(--muted); font-weight: 400; padding: 1px 6px 1px 0; }
+  #fab-report td { padding: 1px 6px 1px 0; }
+  #fab-report .report-dim { color: var(--muted); margin-top: 4px; }
+  /* DRC markers: pinned above geometry, theme-independent red */
+  #drc .drc-mark circle.outer { fill: rgba(229, 72, 77, 0.22); stroke: #e5484d; cursor: pointer; }
+  #drc .drc-mark circle.inner { fill: #e5484d; }
+  #drc.hidden { display: none; }
+  /* search hit pulse */
+  .search-flash { animation: searchpulse 0.9s ease-out 3; }
+  @keyframes searchpulse { 0% { opacity: 1; } 50% { opacity: 0.15; } 100% { opacity: 1; } }
   /* measurement rulers: theme-following geometry + labels */
   #measure line { stroke: var(--measure); }
   #measure circle { fill: var(--measure); }
@@ -398,6 +681,10 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     <div class="title">${escapeHtml(title)}<small>${layers.length} layers - wheel zoom, drag pan</small></div>
     <button id="btn-theme" class="icon-btn" title="toggle dark/light theme"></button>
   </header>
+  ${reportPanel(options.report)}
+  <div id="search-box">
+    <input id="comp-search" type="text" placeholder="find component (e.g. U1)" autocomplete="off" spellcheck="false">
+  </div>
   <div id="layers">
 ${rows}
   </div>
@@ -408,11 +695,15 @@ ${rows}
     <button id="btn-all-on" title="show all layers">All</button>
     <button id="btn-all-off" title="hide all layers">None</button>
     <button id="btn-measure" title="measure: click start, click end — rulers stick; Esc clears all">&#x1F4CF;</button>
+    <button id="btn-drc" class="has-drc-hidden" title="toggle DRC violation markers" hidden>DRC</button>
+    <button id="btn-svg" title="download the current view as SVG">SVG</button>
+    <button id="btn-png" title="download the current view as PNG">PNG</button>
   </div>
 </div>
 <div id="board-area">
-  ${svg.replace('<svg ', '<svg id="board" ').replace('</g></g></svg>', '</g><g id="measure"></g></g></svg>')}
+  ${svg.replace('<svg ', '<svg id="board" ').replace('</g></g></svg>', '</g><g id="measure"></g><g id="drc"></g></g></svg>')}
   <div id="status"></div>
+  <script id="drc-data" type="application/json">${JSON.stringify(options.drcMarkers ?? []).replace(/</g, '\\u003c')}</script>
 </div>
 <script>
 ${js}

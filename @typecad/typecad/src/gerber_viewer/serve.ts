@@ -93,8 +93,12 @@ export function startGerberViewerServer(options: ServeOptions = {}): ServeHandle
     runTypecadExport('gerbers');
     runTypecadExport('drill');
 
+    const boardName = path.basename(board, '.kicad_pcb');
     const { html, layers, warnings } = buildViewerFromFiles([gerbersDir], {
-      title: path.basename(board, '.kicad_pcb'),
+      title: boardName,
+      // netlist fills pad->net (highlighting); DRC report renders markers
+      netlistPath: path.join(buildDir, `${boardName}.net`),
+      drcReportPath: path.join(buildDir, `${boardName}_drc.json`),
     });
     fs.mkdirSync(serveDir, { recursive: true });
     fs.writeFileSync(viewerPath, html.replace('</body>', `${RELOAD_CLIENT}</body>`));

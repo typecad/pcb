@@ -293,21 +293,28 @@ export function renderSvg(layers: RenderLayer[], options: RenderOptions = {}): s
       for (const op of img.ops) {
         if (op.type === 'flash') {
           const attrs = op.polarity === 'clear' ? ' class="cut"' : '';
-          body.push(`<use${attrs} href="#ap${li}_${op.aperture}" x="${fmt(op.at.x)}" y="${fmt(op.at.y)}"/>`);
+          // X2 object attributes ride along for hover probing / highlighting
+          const probe =
+            (op.net ? ` data-net="${escapeXml(op.net)}"` : '') +
+            (op.ref ? ` data-ref="${escapeXml(op.ref)}"` : '') +
+            (op.pin ? ` data-pin="${escapeXml(op.pin)}"` : '');
+          body.push(`<use${attrs}${probe} href="#ap${li}_${op.aperture}" x="${fmt(op.at.x)}" y="${fmt(op.at.y)}"/>`);
         } else if (op.type === 'trace') {
           const ap = evalAp(op.aperture);
           const stroke = strokeFor(ap, warnings);
           const d = pathData(op.from, op.segments, false);
           if (!d) continue;
           const attrs = op.polarity === 'clear' ? ' class="cut"' : ` stroke="${info.color}"`;
+          const net = op.net ? ` data-net="${escapeXml(op.net)}"` : '';
           body.push(
-            `<path${attrs} d="${d}" fill="none" stroke-width="${fmt(stroke.width)}" stroke-linecap="${stroke.cap}" stroke-linejoin="${stroke.cap === 'round' ? 'round' : 'miter'}"/>`,
+            `<path${attrs}${net} d="${d}" fill="none" stroke-width="${fmt(stroke.width)}" stroke-linecap="${stroke.cap}" stroke-linejoin="${stroke.cap === 'round' ? 'round' : 'miter'}"/>`,
           );
         } else {
           const d = op.contours.map((c) => pathData(c.start, c.segments, true)).join(' ');
           if (!d) continue;
           const attrs = op.polarity === 'clear' ? ' class="cut"' : ` fill="${info.color}"`;
-          body.push(`<path${attrs} d="${d}" fill-rule="evenodd" stroke="none"/>`);
+          const net = op.net ? ` data-net="${escapeXml(op.net)}"` : '';
+          body.push(`<path${attrs}${net} d="${d}" fill-rule="evenodd" stroke="none"/>`);
         }
       }
     } else {

@@ -110,6 +110,10 @@ export function parseGerber(source: string, options: ParseGerberOptions = {}): G
   let contours: RegionContour[] = [];
   let contour: RegionContour | null = null;
   let trace: Extract<DrawOp, { type: 'trace' }> | null = null;
+  // X2 object attributes (%TO.N/%TO.C/%TO.P) apply to subsequent objects
+  // until %TD clears them; they ride on the ops for net/component tooling.
+  let objAttrs: { net?: string; ref?: string; pin?: string } = {};
+  let regionNet: string | undefined;
 
   const finishTrace = () => {
     if (trace && trace.segments.length > 0) image.ops.push(trace);
@@ -122,7 +126,7 @@ export function parseGerber(source: string, options: ParseGerberOptions = {}): G
   const finishRegion = () => {
     finishContour();
     if (contours.length > 0) {
-      image.ops.push({ type: 'region', polarity, contours });
+      image.ops.push({ type: 'region', polarity, contours, net: regionNet });
     }
     contours = [];
   };
@@ -225,6 +229,30 @@ export function parseGerber(source: string, options: ParseGerberOptions = {}): G
         case 'IP':
           if (rest === 'NEG') warnings.push('negative image polarity (%IPNEG) is not supported');
           break;
+        case 'TO': {
+          // %TO.N,<net> / %TO.C,<ref> / %TO.P,<ref>,<pin> — strip any quoting
+          const fields = rest.split(',').map((f) => f.trim().replace(/^"|"$/g, ''));
+          const kind = fields[0];
+          if (kind === 'N' && fields[1]) objAttrs.net = fields[1];
+          else if (kind === 'C' && fields[1]) objAttrs.ref = fields[1];
+          else if (kind === 'P' && fields[1]) {
+            objAttrs.ref = fields[1];
+            if (fields[2]) objAttrs.pin = fields[2];
+          }
+          break;
+        }
+        case 'TD': {
+          // %TD* clears everything; %TD.<kind> clears one attribute
+          const kind = rest.replace('.', '').trim();
+          if (!kind) objAttrs = {};
+          else if (kind === 'N') delete objAttrs.net;
+          else if (kind === 'C') delete objAttrs.ref;
+          else if (kind === 'P') {
+            delete objAttrs.ref;
+            delete objAttrs.pin;
+          }
+          break;
+        }
         default:
           // IN/LN names and TA/TD/TO/TH object attributes: safe to ignore
           if (/^[A-Z][A-Z0-9]/.test(code) && !['IN', 'LN', 'TA', 'TD', 'TO', 'TH', 'OF'].includes(code)) {
@@ -270,6 +298,7 @@ export function parseGerber(source: string, options: ParseGerberOptions = {}): G
             inRegion = true;
             contours = [];
             contour = null;
+            regionNet = objAttrs.net;
             break;
           case 37:
             if (inRegion) {
@@ -320,7 +349,7 @@ export function parseGerber(source: string, options: ParseGerberOptions = {}): G
           } else if (d === 1) {
             // interpolate (draw)
             if (!inRegion) {
-              if (!trace || trace.aperture !== aperture || trace.polarity !== polarity) {
+              if (!trace || trace.aperture !== aperture || trace.polarity !== polarity || trace.net !== objAttrs.net) {
                 finishTrace();
                 if (aperture === null) {
                   warnings.push(`interpolation at (${target.x}, ${target.y}) before any aperture was selected`);
@@ -328,7 +357,7 @@ export function parseGerber(source: string, options: ParseGerberOptions = {}): G
                   next = {};
                   continue;
                 }
-                trace = { type: 'trace', polarity, aperture, from: point, segments: [] };
+                trace = { type: 'trace', polarity, aperture, from: point, segments: [], net: objAttrs.net };
               }
             }
             const segment = buildSegment(point, target, next);
@@ -347,7 +376,15 @@ export function parseGerber(source: string, options: ParseGerberOptions = {}): G
             if (aperture === null) {
               warnings.push(`flash at (${target.x}, ${target.y}) before any aperture was selected`);
             } else {
-              image.ops.push({ type: 'flash', polarity, aperture, at: target });
+              image.ops.push({
+                type: 'flash',
+                polarity,
+                aperture,
+                at: target,
+                net: objAttrs.net,
+                ref: objAttrs.ref,
+                pin: objAttrs.pin,
+              });
             }
             point = target;
           }

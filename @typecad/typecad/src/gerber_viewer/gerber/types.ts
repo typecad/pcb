@@ -93,9 +93,20 @@ export type DrawOp =
       aperture: number;
       from: Point;
       segments: PathSegment[];
+      /** X2 object attribute %TO.N, when the plotter stated it. */
+      net?: string;
     }
-  | { type: 'flash'; polarity: Polarity; aperture: number; at: Point }
-  | { type: 'region'; polarity: Polarity; contours: RegionContour[] };
+  | {
+      type: 'flash';
+      polarity: Polarity;
+      aperture: number;
+      at: Point;
+      /** X2 object attributes: %TO.N net, %TO.P ref+pin, %TO.C ref. */
+      net?: string;
+      ref?: string;
+      pin?: string;
+    }
+  | { type: 'region'; polarity: Polarity; contours: RegionContour[]; net?: string };
 
 export interface RegionContour {
   start: Point;

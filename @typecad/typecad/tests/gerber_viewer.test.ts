@@ -85,7 +85,7 @@ describe('buildViewerHtml', () => {
     expect(html).toContain('id="btn-measure"');
     // overlay group rides inside panzoom (injected after the y-flip group)
     expect(html).toContain('id="yflip"');
-    expect(html).toMatch(/<\/g><g id="measure"><\/g><\/g><\/svg>/);
+    expect(html).toMatch(/<\/g><g id="measure"><\/g><g id="drc"><\/g><\/g><\/svg>/);
     // click-to-start / click-to-stick state machine + Escape clears all
     expect(html).toContain('measureStart = p;');
     expect(html).toContain('rulers.push(');
@@ -123,5 +123,69 @@ describe('buildViewerFromFiles', () => {
     fs.writeFileSync(path.join(dir, 'noise.gbr'), 'this is not a gerber\n');
     expect(() => buildViewerFromFiles([dir])).toThrow(/could be parsed/);
     fs.rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+describe('viewer tooling (probing, search, report, DRC, export)', () => {
+  const image = parseGerber(read('traces.gbr'));
+  const info = detectLayer('demo-F_Cu.gbr', image);
+  const svg = renderSvg([{ info, image }]);
+  const html = buildViewerHtml(svg, [info], {
+    title: 'demo board',
+    report: {
+      units: 'mm',
+      board: { width: 29.17, height: 23.17 },
+      copper: [{ layer: 'F_Cu.gtl', traceLength: 4.414, minWidth: 0.5, maxWidth: 0.5, flashes: 2 }],
+      drills: [{ diameter: 0.6, count: 3, plated: true }],
+      holes: 3,
+      slots: 1,
+    },
+    drcMarkers: [{ x: 10, y: 20, description: 'clearance — pad of J1' }],
+  });
+
+  it('renders the fab report panel from the computed stats', () => {
+    expect(html).toContain('id="fab-report"');
+    expect(html).toContain('29.17 × 23.17 mm');
+    expect(html).toContain('F_Cu.gtl');
+    expect(html).toContain('⌀ 0.60');
+    expect(html).toContain('3 holes, 1 slots');
+  });
+
+  it('embeds DRC markers as JSON and renders them client-side with a toggle', () => {
+    expect(html).toContain('id="drc-data"');
+    expect(html).toContain('clearance — pad of J1');
+    expect(html).toContain('id="btn-drc"');
+    expect(html).toMatch(/drcGroup\.classList\.toggle\('hidden'\)/);
+  });
+
+  it('has component search, net highlighting, hover probing, and exports', () => {
+    expect(html).toContain('id="comp-search"');
+    expect(html).toMatch(/highlightNet\('data-net', net\)/);
+    expect(html).toMatch(/closest\('\[data-net\],\[data-ref\],\[data-pin\]'\)/);
+    expect(html).toContain('id="btn-svg"');
+    expect(html).toContain('id="btn-png"');
+    expect(html).toMatch(/exportSvgString/);
+  });
+
+  it('emits data-net/ref/pin attributes on attributed geometry', () => {
+    const attributed = parseGerber(
+      [
+        '%FSLAX36Y36*%',
+        '%MOMM*%',
+        '%ADD10C,1*%',
+        '%TO.N,GND*%',
+        'D10*',
+        'X1000000Y1000000D02*',
+        'X2000000Y1000000D01*',
+        '%TD*%',
+        '%TO.P,U1,3*%',
+        'X3000000Y2000000D03*',
+        'M02*',
+      ].join('\n'),
+    );
+    const out = renderSvg([{ info: detectLayer('x-F_Cu.gtl', attributed), image: attributed }]);
+    expect(out).toContain('data-net="GND"');
+    expect(out).toContain('data-ref="U1"');
+    expect(out).toContain('data-pin="3"');
   });
 });

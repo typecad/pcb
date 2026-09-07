@@ -64,6 +64,16 @@ clears them all. Hold `Shift` while measuring to snap the endpoint to 0/45/90-de
 Rulers scale and pan with the board, keep a constant on-screen size while
 zooming, and follow the dark/light theme.
 
+The viewer also understands what it is showing: KiCad's X2 object attributes (`%TO.N` net,
+`%TO.P` component/pin) are parsed, so hovering copper shows the net and pad in the readout,
+and clicking highlights the whole net (pad→net comes from the project netlist in serve mode).
+A search box locates components — type `U3`, press Enter, and the view zooms to its pads. A
+collapsible *fab report* panel lists board dimensions, per-layer trace lengths and min/max
+widths, and the drill table. In serve mode, DRC violations from the build's `_drc.json` are
+drawn as red markers (hover for the message, toggle with the `DRC` button, refreshed on every
+rebuild). The `SVG`/`PNG` buttons export the current view — theme, layer visibility and
+highlight included — as a vector or 2× raster image.
+
 Programmatic use (parsing, layer detection, SVG rendering, the dev server):
 
 ```ts

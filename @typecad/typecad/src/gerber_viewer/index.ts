@@ -19,6 +19,14 @@ export { detectLayer, finalizeAndSortLayers, type LayerInfo, type LayerKind, typ
 export { computeLayerBounds, renderSvg, type Bounds, type RenderLayer, type RenderOptions } from './render/svg.js';
 export { buildViewerHtml, type ViewerOptions } from './render/viewer_html.js';
 export {
+  computeDrcMarkers,
+  computeFabReport,
+  type CopperLayerStats,
+  type DrillStat,
+  type DrcMarker,
+  type FabReport,
+} from './report.js';
+export {
   buildViewerFromFiles,
   collectGerberFiles,
   sniffKind,

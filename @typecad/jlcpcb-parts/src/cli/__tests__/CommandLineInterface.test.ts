@@ -1612,3 +1612,56 @@ describe('CommandLineInterface', () => {
     });
   });
 });
+
+describe('isTypecadProjectDir', () => {
+  it('recognizes a directory holding any typecad.conf variant', async () => {
+    const { isTypecadProjectDir } = await import('../CommandLineInterface.js');
+    const { mkdtempSync, writeFileSync, rmSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+
+    for (const conf of ['typecad.conf.ts', 'typecad.conf.js', 'typecad.json']) {
+      const dir = mkdtempSync(join(tmpdir(), 'jlcpcb-guard-'));
+      try {
+        writeFileSync(join(dir, conf), '{}');
+        expect(isTypecadProjectDir(dir)).toBe(true);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    }
+  });
+
+  it('rejects a directory with no typecad config', async () => {
+    const { isTypecadProjectDir } = await import('../CommandLineInterface.js');
+    const { mkdtempSync, rmSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+
+    const dir = mkdtempSync(join(tmpdir(), 'jlcpcb-guard-'));
+    try {
+      expect(isTypecadProjectDir(dir)).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('blocks the add prompt outside a project', async () => {
+    const { mkdtempSync, rmSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const dir = mkdtempSync(join(tmpdir(), 'jlcpcb-guard-'));
+    const originalCwd = process.cwd();
+    const confirmSpy = vi.fn(async () => true);
+
+    try {
+      process.chdir(dir);
+      const cli = new CommandLineInterface({} as SearchEngine);
+      (cli as any).promptConfirm = confirmSpy;
+      await (cli as any).promptInstallComponent([]);
+      expect(confirmSpy).not.toHaveBeenCalled();
+    } finally {
+      process.chdir(originalCwd);
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});

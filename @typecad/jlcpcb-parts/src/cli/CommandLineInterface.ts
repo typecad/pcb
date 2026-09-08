@@ -33,6 +33,16 @@ function findExecutable(name: string): string | undefined {
   return undefined;
 }
 
+/**
+ * Whether `dir` is a typeCAD project directory. The typeCAD CLI (`add
+ * component`, `doctor`) operates on the current directory and recognizes a
+ * project by its `typecad.conf.*` file there — scaffolded projects keep it
+ * in `<project>/hw/`.
+ */
+export function isTypecadProjectDir(dir: string = process.cwd()): boolean {
+  return ['typecad.conf.ts', 'typecad.conf.js', 'typecad.json'].some((conf) => existsSync(join(dir, conf)));
+}
+
 export class CommandLineInterface implements CLI {
   private readonly searchEngine: SearchEngine;
   private readonly programName: string;
@@ -239,6 +249,21 @@ export class CommandLineInterface implements CLI {
    * @param results - Array of search results to choose from
    */
   private async promptInstallComponent(results: SearchResult[]): Promise<void> {
+    // The underlying `typecad-pcb add component` writes into the CURRENT
+    // directory's project; run anywhere else and it fails deep inside the
+    // typeCAD CLI. Refuse up front with guidance instead of offering the
+    // option at all.
+    if (!isTypecadProjectDir()) {
+      console.error(chalk.red('Error: no typeCAD project in the current directory.'));
+      console.error(
+        chalk.yellow(
+          'Components can only be added from a project folder — the one containing typecad.conf.ts (scaffolded projects keep it in <project>/hw).',
+        ),
+      );
+      console.error(chalk.yellow('Create a project first with: npx @typecad/pcb create'));
+      return;
+    }
+
     const wantToAdd = await this.promptConfirm('Do you want to add a component from these results?');
     if (!wantToAdd) return;
 

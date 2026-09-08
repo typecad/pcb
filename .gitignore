@@ -46,3 +46,6 @@ rd_skeleton/hw/package-lock.json
 
 # @typecad/wiring is its own git repository (github.com/typecad/wiring) — not tracked here
 @typecad/wiring/
+
+# @typecad/jlcpcb-parts is its own git repository (github.com/typecad/jlcpcb-parts) — not tracked here
+@typecad/jlcpcb-parts/

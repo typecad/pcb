@@ -15,7 +15,7 @@ This package uses [CDFER/jlcpcb-parts-database](https://github.com/CDFER/jlcpcb-
 - **Scored Results** — Ranked results with match explanations
 - **Auto-Updates** — Keeps component database fresh (24-hour cache)
 - **Multiple Output Formats** — Detailed, compact, table, or JSON display options
-- **typeCAD Integration** — Add components directly to your typeCAD project from search results
+- **typeCAD/pcb Integration** — Add components directly to your typeCAD/pcb project from search results
 
 ## Installation
 
@@ -159,17 +159,15 @@ When no results are found, returns `[]`. Errors are output as JSON objects:
 
 Error codes include `MISSING_QUERY`, `INVALID_QUERY`, `TIMEOUT_ERROR`, `NETWORK_ERROR`, `FILE_SYSTEM_ERROR`, `PARSING_ERROR`, and `SYSTEM_ERROR`.
 
-## typeCAD Integration
+## typeCAD/pcb Integration
 
-After displaying results, the CLI prompts to add a component to your typeCAD project:
+After displaying results, the CLI prompts to add a component to your typeCAD/pcb project:
 
 ```
 Do you want to add a component from these results? (y/N) y
 Enter the number of the result (1-5): 1
 Running typecad-pcb add component for C25804...
 ```
-
-This requires `@typecad/pcb` to be installed globally (`npm install -g @typecad/pcb`).
 
 ## How It Works
 

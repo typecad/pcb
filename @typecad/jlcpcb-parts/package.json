@@ -33,7 +33,7 @@
     "url": "https://github.com/typecad/jlcpcb-parts/issues"
   },
   "author": "typeCAD",
-  "license": "MIT",
+  "license": "Apache-2.0",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "type": "module",

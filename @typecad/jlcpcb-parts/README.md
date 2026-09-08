@@ -166,7 +166,7 @@ After displaying results, the CLI prompts to add a component to your typeCAD pro
 ```
 Do you want to add a component from these results? (y/N) y
 Enter the number of the result (1-5): 1
-Running typecad add component for C25804...
+Running typecad-pcb add component for C25804...
 ```
 
 This requires `@typecad/pcb` to be installed globally (`npm install -g @typecad/pcb`).

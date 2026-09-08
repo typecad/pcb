@@ -4,8 +4,6 @@
 
 TypeCAD Wiring is a TypeScript library for programmatically generating wiring harness diagrams and bill of materials (BOM) using code. Design your connectors, cables, and connections with type-safe code, then generate visual diagrams and BOMs automatically. 
 
-It is part of the [typeCAD](https://typecad.net/) ecosystem that allows you to 🤖 Programmatically 💥 Create 🛰️ Hardware
-
 ## Features
 
 - **Programmatic Creation** - Define your entire wiring harness using TypeScript/JavaScript
@@ -209,9 +207,7 @@ motor,Terminal 2-pin,1,
 
 ## License
 
-Licensed under [CC BY-NC-ND](https://creativecommons.org/licenses/by-nc-nd/4.0/)
+Licensed under [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0)
 
-## Links
-
-- [TypeCAD Home](https://typecad.net)
-- [Support Development](https://www.buymeacoffee.com/typecad)
+## Notices
+This project was inspired by [WireViz](https://github.com/wireviz/WireViz). No code comes from the project, but the idea for their visual representation does. 

@@ -10,7 +10,7 @@
     "harness"
   ],
   "author": "typeCAD",
-  "license": "CC BY-NC-ND",
+  "license": "Apache-2.0",
   "homepage": "https://typecad.net",
   "funding": "https://www.buymeacoffee.com/typecad",
   "main": "index.ts",

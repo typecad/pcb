@@ -254,12 +254,12 @@ export class CommandLineInterface implements CLI {
 
     const lcscNumber = selectedResult.lcsc.startsWith('C') ? selectedResult.lcsc : `C${selectedResult.lcsc}`;
 
-    console.log(chalk.blue(`Running typecad add component for ${lcscNumber}...`));
+    console.log(chalk.blue(`Running typecad-pcb add component for ${lcscNumber}...`));
 
     try {
-      const typecadBin = findExecutable('typecad');
+      const typecadBin = findExecutable('typecad-pcb');
       if (!typecadBin) {
-        console.error(chalk.red('Error: typecad command not found.'));
+        console.error(chalk.red('Error: typecad-pcb command not found.'));
         console.error(chalk.yellow('Install typeCAD globally: npm install -g @typecad/pcb'));
         console.error(chalk.yellow('Or run: npx @typecad/pcb add component --jlcpcb=true --c=' + lcscNumber));
         return;
@@ -268,7 +268,7 @@ export class CommandLineInterface implements CLI {
       const args = ['add', 'component', '--jlcpcb=true', `--c=${lcscNumber}`];
 
       if (IS_WIN && (!typecadBin || IS_CMD_EXT.test(typecadBin))) {
-        execFileSync('cmd.exe', ['/d', '/s', '/c', 'typecad', ...args], { stdio: 'inherit' });
+        execFileSync('cmd.exe', ['/d', '/s', '/c', 'typecad-pcb', ...args], { stdio: 'inherit' });
       } else {
         execFileSync(typecadBin, args, { stdio: 'inherit' });
       }

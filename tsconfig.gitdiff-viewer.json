@@ -1,0 +1,15 @@
+{
+  "compilerOptions": {
+    "target": "ES2021",
+    "lib": ["ES2021", "DOM"],
+    "module": "ES2022",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "outDir": "./dist/gitdiff/viewer",
+    "rootDir": "./src/gitdiff/viewer",
+    "declaration": false,
+    "sourceMap": false,
+    "removeComments": true
+  },
+  "include": ["src/gitdiff/viewer/**/*.ts"]
+}

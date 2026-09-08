@@ -1,0 +1,13 @@
+# Dependencies
+/node_modules/
+git_disabled/
+
+# Build output directories
+/dist/
+/build/
+/coverage/
+# Notes
+NOTES
+
+# Test/build artifacts in project root
+*.out

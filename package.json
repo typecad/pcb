@@ -1,0 +1,127 @@
+{
+  "name": "@typecad/pcb",
+  "version": "1.0.0-alpha.4",
+  "description": "🤖programmatically 💥create 🛰️hardware",
+  "keywords": [
+    "kicad",
+    "typescript",
+    "schematic",
+    "ee",
+    "electrical design",
+    "code-as-schematic",
+    "schematic-as-code",
+    "typecad"
+  ],
+  "homepage": "https://typecad.net",
+  "funding": {
+    "url": "https://www.buymeacoffee.com/typecad"
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./routing": {
+      "types": "./dist/routing/index.d.ts",
+      "import": "./dist/routing/index.js",
+      "default": "./dist/routing/index.js"
+    },
+    "./search": {
+      "types": "./dist/kicad-symbols/index.d.ts",
+      "import": "./dist/kicad-symbols/index.js",
+      "default": "./dist/kicad-symbols/index.js"
+    },
+    "./diff": {
+      "types": "./dist/gitdiff/core/diff-generator.d.ts",
+      "import": "./dist/gitdiff/core/diff-generator.js",
+      "default": "./dist/gitdiff/core/diff-generator.js"
+    },
+    "./docgen": {
+      "types": "./dist/cli/docgen/index.d.ts",
+      "import": "./dist/cli/docgen/index.js",
+      "default": "./dist/cli/docgen/index.js"
+    },
+    "./sexpr": {
+      "types": "./dist/sexpr/index.d.ts",
+      "import": "./dist/sexpr/index.js",
+      "default": "./dist/sexpr/index.js"
+    },
+    "./gerber-viewer": {
+      "types": "./dist/gerber_viewer/index.d.ts",
+      "import": "./dist/gerber_viewer/index.js",
+      "default": "./dist/gerber_viewer/index.js"
+    }
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "bin": {
+    "typecad-pcb": "dist/cli/typecad/index.js",
+    "gerber-viewer": "dist/gerber_viewer/cli.js",
+    "kicad-symbols": "dist/kicad-symbols/cli/bin.js",
+    "kicad2typecad": "dist/kicad2typecad/bin.js"
+  },
+  "files": [
+    "dist/",
+    "LICENSE",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "typecad-pcb": "node ./dist/cli/typecad/index.js",
+    "build": "tsc && tsc -p tsconfig.gitdiff-viewer.json && node scripts/assemble-gitdiff-viewer.mjs && node scripts/copy-docgen-assets.mjs",
+    "build:watch": "tsc --watch",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run typecheck && npm run build",
+    "package_publish": "npm publish --access public",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
+  },
+  "author": "typeCAD",
+  "license": "Apache-2.0",
+  "dependencies": {
+    "@inquirer/prompts": "^8.4.2",
+    "acorn": "^8.16.0",
+    "acorn-walk": "^8.3.5",
+    "chalk": "^6.0.0",
+    "inquirer-file-selector": "^1.0.1"
+  },
+  "optionalDependencies": {
+    "@hackmd/markdown-it-task-lists": "^2.1.4",
+    "@shikijs/markdown-it": "^4.4.3",
+    "markdown-it": "^15.0.0",
+    "markdown-it-attrs": "^5.0.1",
+    "markdown-it-math": "^6.0.1",
+    "markdown-it-multimd-table-ext": "^4.2.35",
+    "markdown-it-textual-uml": "^0.17.1",
+    "mathup": "^1.0.0",
+    "temml": "^0.13.4"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.0",
+    "@vitest/coverage-v8": "^4.1.11",
+    "tsx": "^4.22.3",
+    "typedoc": "^0.28.7",
+    "typedoc-plugin-markdown": "^4.7.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.11"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/typecad/typecad.git"
+  },
+  "bugs": {
+    "url": "https://github.com/typecad/typecad/issues"
+  },
+  "directories": {
+    "doc": "docs",
+    "test": "tests"
+  }
+}

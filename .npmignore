@@ -1,0 +1,41 @@
+# Source files
+*.ts
+!*.d.ts
+
+# Development files
+.git/
+.github/
+.vscode/
+.claude/
+node_modules/
+docs/
+tests/
+*.test.ts
+*.spec.ts
+git_disabled/
+
+# Configuration files
+tsconfig.json
+tsconfig.gitdiff-viewer.json
+.eslintrc*
+.prettierrc*
+.editorconfig
+.gitignore
+vitest.config.ts
+
+# Build artifacts
+*.log
+
+build/
+coverage/
+.nyc_output/
+
+# IDE files
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+examples/
+scripts/
+package-lock.json

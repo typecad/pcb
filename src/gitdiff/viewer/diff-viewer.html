@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PCB Layer Diff Viewer</title>
+
+    <!-- INLINE_CSS -->
+  </head>
+  <body>
+    <div class="theme-switcher">
+      <button type="button" id="themeToggle" aria-label="Toggle theme" class="btn-icon-outline size-8">
+        <span id="sunIcon">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="4" />
+            <path d="M12 2v2" />
+            <path d="M12 20v2" />
+            <path d="m4.93 4.93 1.41 1.41" />
+            <path d="m17.66 17.66 1.41 1.41" />
+            <path d="M2 12h2" />
+            <path d="M20 12h2" />
+            <path d="m6.34 17.66-1.41 1.41" />
+            <path d="m19.07 4.93-1.41 1.41" />
+          </svg>
+        </span>
+        <span id="moonIcon" style="display: none">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" />
+          </svg>
+        </span>
+      </button>
+    </div>
+
+    <div class="container">
+      <div class="header">
+        <h1 class="title"><a href="https://typecad.net">typeCAD</a> git-diff</h1>
+      </div>
+
+      <div class="main-card card tabs w-full">
+        <nav role="tablist" aria-orientation="horizontal" class="tabs-header w-full">
+          <button type="button" role="tab" id="tab-visual" aria-controls="panel-visual" aria-selected="true" tabindex="0">Visual</button>
+          <button type="button" role="tab" id="tab-nets" aria-controls="panel-nets" aria-selected="false" tabindex="0">Nets</button>
+          <button type="button" role="tab" id="tab-bom" aria-controls="panel-bom" aria-selected="false" tabindex="0">BOM</button>
+        </nav>
+
+        <div role="tabpanel" id="panel-visual" aria-labelledby="tab-visual" tabindex="-1" aria-selected="true">
+          <div class="layer-controls">
+            <div class="layer-badges-container" id="layerBadgesContainer">
+              <button type="button" class="filter-toggle-all" id="toggleAllLayers" title="Select all layers">Select All</button>
+            </div>
+
+            <div class="layer-opacity" id="globalOpacityControls" style="display: flex;">
+              <label for="globalOpacitySlider">Layer Transparency</label>
+              <input type="range" id="globalOpacitySlider" min="20" max="100" value="70" />
+              <span id="globalOpacityValue">70%</span>
+            </div>
+
+            <div class="layer-opacity" id="opacityControls" style="display: none">
+              <label for="opacitySlider">Overlay Opacity</label>
+              <input type="range" id="opacitySlider" min="0" max="100" value="50" />
+              <span id="opacityValue">50%</span>
+            </div>
+
+            <div class="view-mode-controls">
+              <label for="viewModeSelect">View Mode</label>
+              <select id="viewModeSelect" class="button button--outline">
+                <option value="diff-only">Diff Only</option>
+                <option value="side-by-side">Side by Side</option>
+                <option value="overlay">Overlay</option>
+                <option value="onion-skin">Onion Skin</option>
+                <option value="swipe">Swipe Compare</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="image-viewer">
+            <div class="diff-sidebar" id="diffSidebar">
+              <div class="diff-sidebar-header">
+                <h3>Changes</h3>
+                <span class="diff-sidebar-summary" id="diffSidebarSummary"></span>
+                <button class="diff-sidebar-close" id="diffSidebarClose">&times;</button>
+              </div>
+              <div class="diff-sidebar-content" id="diffSidebarContent"></div>
+            </div>
+
+            <button class="diff-sidebar-toggle" id="diffSidebarToggle">
+              Changes<span class="toggle-count" id="diffToggleCount">0</span>
+            </button>
+
+            <div class="image-stack" id="imageStack">
+              <div class="zoom-controls" id="zoomControls" style="display: none;">
+                <button class="zoom-btn" id="zoomInBtn" title="Zoom In">+</button>
+                <button class="zoom-btn" id="zoomOutBtn" title="Zoom Out">−</button>
+                <button class="zoom-btn" id="zoomResetBtn" title="Reset Zoom">⌂</button>
+              </div>
+
+              <div class="zoom-info" id="zoomInfo" style="display: none;">
+                Zoom: <span id="zoomLevel">100%</span>
+              </div>
+
+              <div class="empty-viewer" id="emptyViewer">
+                <div class="empty-viewer-icon">🔧</div>
+                <h3>No PCB layers selected</h3>
+                <p>Choose PCB layers from the dropdown above to view differences</p>
+              </div>
+
+              <div class="empty-viewer" id="noDifferencesViewer" style="display: none">
+                <div class="empty-viewer-icon">✅</div>
+                <h3>No differences found</h3>
+                <p>All PCB layers are identical between the compared files</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="card-footer" id="cardFooter" style="display: none">
+            <div class="diff-legend">
+              <div class="legend-item">
+                <div class="legend-swatch legend-removed"></div>
+                <span class="legend-label">Removed Feature</span>
+              </div>
+              <div class="legend-item">
+                <div class="legend-swatch legend-added"></div>
+                <span class="legend-label">Added Feature</span>
+              </div>
+            </div>
+            <div class="side-by-side-labels" id="sideBySideLabels" style="display: none !important;">
+              <div class="label-item">
+                <span class="label-text">Original</span>
+              </div>
+              <div class="label-item">
+                <span class="label-text">Modified</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div role="tabpanel" id="panel-nets" aria-labelledby="tab-nets" tabindex="-1" aria-selected="false" hidden>
+          <div id="netsSummary" class="diff-summary-bar"></div>
+          <div id="netsTableContainer"></div>
+          <div id="netsEmpty" class="empty-viewer" style="display: none;">
+            <div class="empty-viewer-icon">🔌</div>
+            <h3>No netlist data</h3>
+            <p>Netlist comparison could not be generated</p>
+          </div>
+        </div>
+
+        <div role="tabpanel" id="panel-bom" aria-labelledby="tab-bom" tabindex="-1" aria-selected="false" hidden>
+          <div id="bomSummary" class="diff-summary-bar"></div>
+          <div id="bomTableContainer"></div>
+          <div id="bomEmpty" class="empty-viewer" style="display: none;">
+            <div class="empty-viewer-icon">📋</div>
+            <h3>No BOM data</h3>
+            <p>Bill of Materials comparison could not be generated</p>
+          </div>
+        </div>
+      </div>
+      <div class="footer-credit" style="text-align: center; margin-top: 1rem; font-size: 0.75rem; color: var(--muted-foreground); flex-shrink: 0;">
+        Generated by <a href="https://typecad.net" target="_blank" style="color: var(--primary); text-decoration: none;">typeCAD</a>
+      </div>
+    </div>
+
+    <!-- INLINE_JS -->
+  </body>
+</html>

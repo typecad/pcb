@@ -1,0 +1,1 @@
+{"version":3,"file":"easyedaApi.d.ts","sourceRoot":"","sources":["easyedaApi.ts"],"names":[],"mappings":"AAIA,qBAAa,UAAU;IACnB,OAAO,EAAE,MAAM,CAAC,MAAM,EAAE,MAAM,CAAC,CAAC;;IAQ1B,qBAAqB,CAAC,OAAO,EAAE,MAAM;IA4BrC,qBAAqB,CAAC,OAAO,EAAE,MAAM;IAarC,gBAAgB,CAAC,IAAI,EAAE,MAAM;IAiB7B,cAAc,CAAC,IAAI,EAAE,MAAM;CAgBpC"}

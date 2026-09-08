@@ -6,7 +6,7 @@ Everything should work out-of-the-box, but there are several items that can be c
 ## `typecad.conf.ts`
 
 ```ts
-import { defineConfig } from '@typecad/typecad';
+import { defineConfig } from '@typecad/pcb';
 
 export default defineConfig({
   entry: 'src/index.ts',
@@ -38,12 +38,12 @@ export default defineConfig({
 
 Supported versions: KiCAD 10.0.
 
-## `typecad doctor`
+## `typecad-pcb doctor`
 
-Use `typecad doctor` to verify your configuration and environment:
+Use `typecad-pcb doctor` to verify your configuration and environment:
 
 ```bash
-typecad doctor
+typecad-pcb doctor
 ```
 
 This checks that KiCAD, Node.js, and all required tools are installed and accessible. Use `--fix` to attempt automatic fixes and `--json` for machine-readable output.

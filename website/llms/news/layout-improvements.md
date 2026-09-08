@@ -11,7 +11,7 @@ cover: https://unsplash.com/photos/T_l246EK19I/download?ixid=M3wxMjA3fDB8MXxzZWF
 
 # Major improvements in typeCAD PCB layout
 
-Version 0.1.2 of [typeCAD](https://www.npmjs.com/package/@typecad/typecad) was just released with major layout improvements. Before there were significant limitations on what was possible with it. Before, when a layout was applied, it moved all the components to whatever location specified in the typeCAD code. This worked well enough as an MVP, but wasn't a great developer experience. 
+Version 0.1.2 of [typeCAD](https://www.npmjs.com/package/@typecad/pcb) was just released with major layout improvements. Before there were significant limitations on what was possible with it. Before, when a layout was applied, it moved all the components to whatever location specified in the typeCAD code. This worked well enough as an MVP, but wasn't a great developer experience. 
 
 Now with this new release, that has been fixed. To keep the components from moving around, they just need to be given a UUID:
 

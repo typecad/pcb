@@ -12,8 +12,7 @@ The **type**CAD auto router generates tracks between connected pins using A* pat
 <ScrollArea orientation="both">
 
 ```ts
-import { PCB } from '@typecad/typecad';
-import { Resistor, Capacitor } from '@typecad/passives/0603';
+import { PCB, Resistor, Capacitor } from '@typecad/pcb';
 
 let pcb = new PCB('autorouter_example');
 
@@ -73,7 +72,7 @@ Use `Power` objects with tracks to ensure adequate trace width:
 <ScrollArea orientation="both">
 
 ```ts
-import { PCB, Power } from '@typecad/typecad';
+import { PCB, Power } from '@typecad/pcb';
 
 let pcb = new PCB('power_example');
 let power = new Power({ power: regulator.pin(3), gnd: regulator.pin(2), voltage: 3.3 });

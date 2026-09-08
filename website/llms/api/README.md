@@ -1,4 +1,4 @@
-**@typecad/typecad**
+**@typecad/pcb**
 
 ***
 
@@ -20,8 +20,8 @@ Code can be version controlled, status tracked, git push/pull/PR/issues can be u
 ## Example
 _This **type**CAD code..._
 ```ts
-import { Component, PCB } from '@typecad/typecad'
-import { Resistor, LED } from '@typecad/passives/0805'
+import { Component, PCB } from '@typecad/pcb'
+import { Resistor, LED } from '@typecad/pcb'
 
 let typecad = new PCB('typecad');
 let bt1 = new Component({ footprint: 'Battery:BatteryHolder_Keystone_500' });

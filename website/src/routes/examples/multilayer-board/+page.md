@@ -16,7 +16,7 @@ Pass `layers` to the PCB constructor. That single number is the source of truth:
 <ScrollArea orientation="both">
 
 ```ts
-import { PCB } from '@typecad/typecad';
+import { PCB } from '@typecad/pcb';
 
 let pcb = new PCB('sensor_board', { layers: 4 });
 
@@ -144,7 +144,7 @@ When the board is written, every layer reference — zones, keepouts, vias, rout
 <ScrollArea orientation="both">
 
 ```ts
-import { PCB } from '@typecad/typecad';
+import { PCB } from '@typecad/pcb';
 
 // 4-layer board: signals outside, GND and +3V3 inside
 let pcb = new PCB('sensor_board', { layers: 4, thickness: 1.6 });

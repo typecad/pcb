@@ -1,5 +1,5 @@
 ---
-'@typecad/typecad': patch
+'@typecad/pcb': patch
 ---
 
 Gerber viewer: keep TrueType title text crisp after a page refresh — restored

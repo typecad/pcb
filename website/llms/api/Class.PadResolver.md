@@ -1,8 +1,8 @@
-[**@typecad/typecad**](README.md)
+[**@typecad/pcb**](README.md)
 
 ***
 
-[@typecad/typecad](globals.md) / PadResolver
+[@typecad/pcb](globals.md) / PadResolver
 
 # Class: PadResolver
 

@@ -5,23 +5,22 @@
   "private": true,
   "main": "index.js",
   "scripts": {
-    "build": "typecad build",
+    "build": "typecad-pcb build",
     "gerber_viewer": "gerber-viewer serve",
-    "add_component": "typecad add component",
-    "add_package": "typecad add package",
-    "kicad-search": "typecad search",
-    "import": "typecad import build\\rd_skeleton.kicad_pcb --apply",
+    "add_component": "typecad-pcb add component",
+    "add_package": "typecad-pcb add package",
+    "kicad-search": "typecad-pcb search",
+    "import": "typecad-pcb import build\\rd_skeleton.kicad_pcb --apply",
     "open_board": "npx open-cli ./build/rd_skeleton.kicad_pcb",
-    "diff": "typecad diff HEAD ./build/rd_skeleton.kicad_pcb",
-    "docs": "typecad doc docs\\rd_skeleton.md build\\rd_skeleton.kicad_pcb"
+    "diff": "typecad-pcb diff HEAD ./build/rd_skeleton.kicad_pcb",
+    "docs": "typecad-pcb doc docs\\rd_skeleton.md build\\rd_skeleton.kicad_pcb"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "module",
   "dependencies": {
-    "@typecad/passives": "0.2.3-alpha.0",
-    "@typecad/typecad": "1.0.0-alpha.2",
+    "@typecad/pcb": "1.0.0-alpha.3",
     "tsx": "^4.23.13"
   }
 }

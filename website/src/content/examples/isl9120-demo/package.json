@@ -1,0 +1,16 @@
+{
+	"name": "isl9120-demo",
+	"version": "1.0.0",
+	"description": "Demo: consuming @typecad/rd_isl9120ir with the no-postinstall auto-sync import process",
+	"license": "ISC",
+	"type": "module",
+	"scripts": {
+		"build": "typecad build ./src/isl9120_demo.ts",
+		"open_board": "npx open-cli ./build/isl9120_demo.kicad_pcb"
+	},
+	"dependencies": {
+		"@typecad/rd_isl9120ir": "^1.0.4",
+		"@typecad/pcb": "~1.0.0-alpha.2",
+		"tsx": "^4.19.2"
+	}
+}

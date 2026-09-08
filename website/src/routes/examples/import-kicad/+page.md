@@ -5,14 +5,14 @@
 
 # Import a KiCAD Board
 
-The `typecad import` command converts an existing KiCAD `.kicad_pcb` file into typeCAD TypeScript code. This is useful for importing existing designs or extracting layout information.
+The `typecad-pcb import` command converts an existing KiCAD `.kicad_pcb` file into typeCAD TypeScript code. This is useful for importing existing designs or extracting layout information.
 
 ## Basic Import
 
 <ScrollArea orientation="both">
 
 ```bash
-typecad import build/board.kicad_pcb
+typecad-pcb import build/board.kicad_pcb
 ```
 </ScrollArea>
 
@@ -46,7 +46,7 @@ Use `--apply` to sync coordinates from KiCAD back to your source files:
 <ScrollArea orientation="both">
 
 ```bash
-typecad import build/board.kicad_pcb --apply
+typecad-pcb import build/board.kicad_pcb --apply
 ```
 </ScrollArea>
 
@@ -60,7 +60,7 @@ This is useful after moving components in KiCAD and wanting to capture those cha
 ## Typical Workflow for Package Creation
 
 1. Design your circuit in **type**CAD
-2. Build and open in KiCAD: `typecad build`
+2. Build and open in KiCAD: `typecad-pcb build`
 3. Lay out the package in KiCAD — place components, draw tracks, add vias
-4. Import the layout back: `typecad import build/board.kicad_pcb`
+4. Import the layout back: `typecad-pcb import build/board.kicad_pcb`
 5. Copy the generated code into your package

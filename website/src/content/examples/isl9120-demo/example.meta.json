@@ -1,0 +1,8 @@
+{
+	"hidden": true,
+	"name": "isl9120-demo",
+	"title": "ISL9120 Regulator Demo",
+	"description": "An irregular board outline drawn with outlinePath() — arcs, a chamfer, a trapezoidal milled slot, and a circular mounting hole — plus a complete regulator module dropped in from the @typecad/rd_isl9120ir package.",
+	"tags": ["board-outline", "cutouts", "packages"],
+	"board": "Custom outline"
+}

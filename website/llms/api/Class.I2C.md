@@ -1,8 +1,8 @@
-[**@typecad/typecad**](README.md)
+[**@typecad/pcb**](README.md)
 
 ***
 
-[@typecad/typecad](globals.md) / I2C
+[@typecad/pcb](globals.md) / I2C
 
 # Class: I2C
 

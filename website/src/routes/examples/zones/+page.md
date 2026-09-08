@@ -14,7 +14,7 @@ Create a filled copper zone (e.g., ground pour):
 <ScrollArea orientation="both">
 
 ```ts
-import { PCB } from '@typecad/typecad';
+import { PCB } from '@typecad/pcb';
 
 let pcb = new PCB('zone_example');
 
@@ -46,7 +46,7 @@ Restrict routing and placement in specific areas:
 <ScrollArea orientation="both">
 
 ```ts
-import { PCB } from '@typecad/typecad';
+import { PCB } from '@typecad/pcb';
 
 let pcb = new PCB('keepout_example');
 
@@ -78,7 +78,7 @@ pcb.create();
 <ScrollArea orientation="both">
 
 ```ts
-import { PCB } from '@typecad/typecad';
+import { PCB } from '@typecad/pcb';
 
 let pcb = new PCB('graphics_example');
 

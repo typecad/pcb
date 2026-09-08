@@ -7,7 +7,7 @@
 Create a filled copper zone (e.g., ground pour):
 
 ```ts
-import { PCB } from '@typecad/typecad';
+import { PCB } from '@typecad/pcb';
 
 let pcb = new PCB('zone_example');
 
@@ -36,7 +36,7 @@ pcb.create();
 Restrict routing and placement in specific areas:
 
 ```ts
-import { PCB } from '@typecad/typecad';
+import { PCB } from '@typecad/pcb';
 
 let pcb = new PCB('keepout_example');
 
@@ -65,7 +65,7 @@ pcb.create();
 **type**CAD also supports drawing graphical elements on the PCB:
 
 ```ts
-import { PCB } from '@typecad/typecad';
+import { PCB } from '@typecad/pcb';
 
 let pcb = new PCB('graphics_example');
 

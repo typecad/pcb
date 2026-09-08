@@ -16,7 +16,7 @@ Run the following command in your project directory, where your typeCAD package.
 ## Usage
 
 ```ts
-import { PCB, Schematic } from '@typecad/typecad';
+import { PCB, Schematic } from '@typecad/pcb';
 import { graphviz } from '@typecad/graphviz';
 
 let typecad = new Schematic('project');

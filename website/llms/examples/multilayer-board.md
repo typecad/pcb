@@ -9,7 +9,7 @@ This example builds a typical 4-layer board — ground and power planes on the i
 Pass `layers` to the PCB constructor. That single number is the source of truth:
 
 ```ts
-import { PCB } from '@typecad/typecad';
+import { PCB } from '@typecad/pcb';
 
 let pcb = new PCB('sensor_board', { layers: 4 });
 
@@ -109,7 +109,7 @@ When the board is written, every layer reference — zones, keepouts, vias, rout
 ## Complete example
 
 ```ts
-import { PCB } from '@typecad/typecad';
+import { PCB } from '@typecad/pcb';
 
 // 4-layer board: signals outside, GND and +3V3 inside
 let pcb = new PCB('sensor_board', { layers: 4, thickness: 1.6 });

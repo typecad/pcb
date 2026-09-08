@@ -1,11 +1,11 @@
 # DocGen
 
-The `typecad doc` command generates self-contained HTML documentation from a Markdown file and a KiCAD PCB file. It automatically exports PCB layers as inline SVGs and supports rich formatting.
+The `typecad-pcb doc` command generates self-contained HTML documentation from a Markdown file and a KiCAD PCB file. It automatically exports PCB layers as inline SVGs and supports rich formatting.
 
 ## Usage
 
 ```bash
-typecad doc docs/board.md build/board.kicad_pcb -o output.html
+typecad-pcb doc docs/board.md build/board.kicad_pcb -o output.html
 ```
 
 ### Options
@@ -170,7 +170,7 @@ dark_mode: true
 You can also use docgen programmatically:
 
 ```ts
-import { generateDocumentation } from '@typecad/typecad/docgen';
+import { generateDocumentation } from '@typecad/pcb/docgen';
 
 await generateDocumentation('input.md', 'board.kicad_pcb', 'output.html', {
   verbose: true,

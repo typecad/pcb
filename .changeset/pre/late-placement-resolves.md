@@ -1,5 +1,5 @@
 ---
-'@typecad/typecad': minor
+'@typecad/pcb': minor
 ---
 
 Late `component.pcb = { x, y }` assignment now accepts deferred placement values.

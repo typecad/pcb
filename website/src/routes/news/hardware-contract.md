@@ -36,7 +36,7 @@ After creating your board, call `contract()` with a pin mapping from your TypeHA
 <ScrollArea orientation="both">
 
 ```ts
-import { PCB } from '@typecad/typecad';
+import { PCB } from '@typecad/pcb';
 import { pinMapping } from '@typehal/board-arduino-uno';
 
 let pcb = new PCB('sensor_board');
@@ -141,4 +141,4 @@ pcb.contract({
 
 This is the TypeCAD side of the bridge. The firmware toolchain (TypeHAL) reads this contract and generates a typed board wrapper so your firmware can only access pins that are actually wired. No more guessing.
 
-Update to the latest `@typecad/typecad` to start using contracts today.
+Update to the latest `@typecad/pcb` to start using contracts today.

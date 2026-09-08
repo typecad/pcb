@@ -7,13 +7,12 @@
 Call `route()` on the `PCB` instance with a net definition:
 
 ```ts
-import { PCB } from '@typecad/typecad';
-import { Resistor } from '@typecad/passives/0805';
+import { PCB, Resistor } from '@typecad/pcb';
 
 let typecad = new PCB('autoroute_example');
 
-let r1 = new Resistor({ value: '1kohm', reference: 'R1' });
-let r2 = new Resistor({ value: '1kohm', reference: 'R2' });
+let r1 = new Resistor({ value: '1kohm', reference: 'R1', size: '0805' });
+let r2 = new Resistor({ value: '1kohm', reference: 'R2', size: '0805' });
 
 r1.pcb = { x: 10, y: 10, rotation: 0 };
 r2.pcb = { x: 20, y: 10, rotation: 0 };
@@ -90,7 +89,7 @@ It routes all items, then retries failed routes across multiple rounds with rela
 For differential pairs that require matched lengths, `LengthMatcher.apply()` extends shorter routes with sawtooth meanders:
 
 ```ts
-import { LengthMatcher } from '@typecad/typecad/routing';
+import { LengthMatcher } from '@typecad/pcb/routing';
 
 LengthMatcher.apply(ctx, routeDetails, trackBuilders, {
   tolerance: 0.5,
@@ -108,7 +107,7 @@ Parameters:
 Generate debug images of the routing grid to troubleshoot routing issues. Outputs PPM image files:
 
 ```ts
-import { DebugVisualizer } from '@typecad/typecad/routing';
+import { DebugVisualizer } from '@typecad/pcb/routing';
 
 DebugVisualizer.visualizeRouting(
   grid,

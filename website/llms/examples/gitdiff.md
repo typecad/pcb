@@ -1,13 +1,13 @@
 # Visual PCB Diff
 
-The `typecad diff` command lets you visually compare two KiCAD PCB files with an interactive HTML report showing layer-by-layer differences, netlist changes, and BOM differences.
+The `typecad-pcb diff` command lets you visually compare two KiCAD PCB files with an interactive HTML report showing layer-by-layer differences, netlist changes, and BOM differences.
 
 ## Basic Usage
 
 Compare two PCB files:
 
 ```bash
-typecad diff build/board_v1.kicad_pcb build/board_v2.kicad_pcb
+typecad-pcb diff build/board_v1.kicad_pcb build/board_v2.kicad_pcb
 ```
 
 This generates an HTML report and opens it in your browser. The report shows each PCB layer with changes highlighted in color.
@@ -18,10 +18,10 @@ Compare against a previous git commit:
 
 ```bash
 # Compare last commit vs current file
-typecad diff HEAD~1 ./build/board.kicad_pcb
+typecad-pcb diff HEAD~1 ./build/board.kicad_pcb
 
 # Compare two specific commits
-typecad diff v1.0.0 HEAD -- board.kicad_pcb
+typecad-pcb diff v1.0.0 HEAD -- board.kicad_pcb
 ```
 
 This is useful for code reviews — see exactly what changed on the PCB between revisions.
@@ -31,7 +31,7 @@ This is useful for code reviews — see exactly what changed on the PCB between 
 By default, only changed layers are included. Use `--full` to include all layers:
 
 ```bash
-typecad diff --full board_v1.kicad_pcb board_v2.kicad_pcb
+typecad-pcb diff --full board_v1.kicad_pcb board_v2.kicad_pcb
 ```
 
 ## What You'll See
@@ -49,5 +49,5 @@ Add diff to your CI to automatically generate visual reports:
 
 ```bash
 # Generate diff report without opening it
-typecad diff HEAD~1 build/board.kicad_pcb --output diff-report.html
+typecad-pcb diff HEAD~1 build/board.kicad_pcb --output diff-report.html
 ```

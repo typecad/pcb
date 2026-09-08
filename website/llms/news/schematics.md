@@ -18,7 +18,7 @@ A schematic file isn't needed since typeCAD code takes the place of it, but it c
 Schematic generation is now built into `PCB.create()` — calling `create()` produces a `.kicad_pcb`, `.kicad_sch`, and `.net` file automatically.
 
 ```ts
-import { PCB } from '@typecad/typecad';
+import { PCB } from '@typecad/pcb';
 
 let typecad = new PCB('my-board');
 typecad.create(r1, c1, led);

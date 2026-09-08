@@ -32,7 +32,7 @@ Additionally, `voltage` and `current` are propagated to the pins' `powerInfo` pr
 An output `Power` object defines a source of electrical power within your design. If `direction` is omitted, it defaults to `'output'`.
 
 ```ts
-import { Component, Power } from '@typecad/typecad';
+import { Component, Power } from '@typecad/pcb';
 
 let bt1 = new Component({ footprint: 'Battery:BatteryHolder_Keystone_3008_1x2450' });
 let coin_cell = new Power({

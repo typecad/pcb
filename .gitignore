@@ -11,11 +11,8 @@ coverage/
 *.d.ts.map
 
 # Compiled output emitted beside sources (passives compiles in place)
-@typecad/passives/**/*.js
-@typecad/passives/**/*.d.ts
 
 # Nested workspace lockfiles (root package-lock.json is authoritative)
-@typecad/typecad/package-lock.json
 rd_skeleton/hw/package-lock.json
 
 # Generated renders (rd_isl9120_impl)
@@ -40,3 +37,6 @@ sym-lib-table
 svg-cache.json
 component_registry.json
 .jlcpcb-cache-timestamp
+# Nested workspace lockfiles (root package-lock.json is authoritative)
+@typecad/pcb/package-lock.json
+rd_skeleton/hw/package-lock.json

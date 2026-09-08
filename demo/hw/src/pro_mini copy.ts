@@ -1,4 +1,4 @@
-import { PCB, Component } from '@typecad/typecad';
+import { PCB, Component } from '@typecad/pcb';
 // import { schematic } from '@typecad/schematic';
 
 // Centralized routing resolution for all tests

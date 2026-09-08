@@ -11,7 +11,14 @@
 		"strict": true,
 		"moduleResolution": "bundler",
 		"allowImportingTsExtensions": true,
-	}
+	},
+	"exclude": [
+		// Example projects under src/content/examples are display content for
+		// the website's project browser, read off disk by a build script — not
+		// compiled or imported by the site. They import hardware packages the
+		// website doesn't depend on, so exclude them from type-checking.
+		"src/content/examples/**"
+	]
 	// Path aliases are handled by https://kit.svelte.dev/docs/configuration#alias
 	// except $lib which is handled by https://kit.svelte.dev/docs/configuration#files
 	//

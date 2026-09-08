@@ -9,8 +9,7 @@
   },
   "dependencies": {
     "@typecad/rd_isl9120ir": "file:../rd_isl9120_impl/hw/src/rd_ISL9120IR",
-    "@typecad/typecad": "file:../@typecad/typecad",
-    "@typecad/passives": "^0.2.2",
+    "@typecad/pcb": "file:../@typecad/pcb",
     "tsx": "^4.19.2"
   }
 }

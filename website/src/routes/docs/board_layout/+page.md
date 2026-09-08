@@ -14,11 +14,10 @@ Each `Component` has a `pcb` property that contains `{x, y, rotation, side}`.
 <ScrollArea orientation="both">
 
 ```ts
-import { PCB } from '@typecad/typecad';
-import { Resistor } from '@typecad/passives/0805';
+import { PCB, Resistor } from '@typecad/pcb';
 
 let pcb = new PCB('typecad_docs');
-let r1 = new Resistor({ value: '1kohm', reference: 'R1' });
+let r1 = new Resistor({ value: '1kohm', reference: 'R1', size: '0805' });
 
 r1.pcb = { x: 10, y: 10, rotation: 0 }; // [!code highlight]
 // Optionally place on the back side:
@@ -43,7 +42,7 @@ Get the board's physical dimensions from the outlines you've defined. Use it to 
 <ScrollArea orientation="both">
 
 ```ts
-import { PCB } from '@typecad/typecad';
+import { PCB } from '@typecad/pcb';
 
 let pcb = new PCB('typecad_docs');
 pcb.outline(0, 0, 60, 45);
@@ -73,7 +72,7 @@ Place a component a fixed distance from a board edge, accounting for the compone
 <ScrollArea orientation="both">
 
 ```ts
-import { PCB, Component, board } from '@typecad/typecad';
+import { PCB, Component, board } from '@typecad/pcb';
 
 let pcb = new PCB('typecad_docs');
 pcb.outline(0, 0, 60, 45);
@@ -105,8 +104,7 @@ Place components relative to each other with a specified gap. Each returns a bui
 <ScrollArea orientation="both">
 
 ```ts
-import { PCB, Component, below, above, rightOf, leftOf, sameAs, board } from '@typecad/typecad';
-import { Resistor, Capacitor, LED } from '@typecad/passives/0603';
+import { PCB, Component, Resistor, Capacitor, LED } from '@typecad/pcb';
 
 let pcb = new PCB('typecad_docs');
 pcb.outline(0, 0, 60, 45);
@@ -158,7 +156,7 @@ Align a component's X or Y coordinate with another component:
 <ScrollArea orientation="both">
 
 ```ts
-import { sameAs } from '@typecad/typecad';
+import { sameAs } from '@typecad/pcb';
 
 // Same X as r1, custom Y
 let c1 = new Capacitor({ pcb: { x: pcb.board.sameAs(r1), y: 20 } });
@@ -184,13 +182,13 @@ All three accept an `ITextPositioning` object and can be set at construction or 
 <ScrollArea orientation="both">
 
 ```ts
-import { PCB } from '@typecad/typecad';
-import { Resistor } from '@typecad/passives/0805';
+import { PCB, Resistor } from '@typecad/pcb';
 
 let pcb = new PCB('text_layout');
 let r1 = new Resistor({
   value: '1kohm',
   reference: 'R1',
+  size: '0805',
   referenceLayout: { x: 0, y: -1.5, rotation: 90, width: 0.8, height: 0.8 }, // [!code highlight]
   valueLayout: { x: 0, y: 1.5, width: 0.6, height: 0.6 }, // [!code highlight]
   fabLayout: { x: 0, y: 0, text: 'R1' }, // [!code highlight]
@@ -245,10 +243,9 @@ To accomplish this for a group of related components:
 <ScrollArea orientation="both">
 
 ```ts
-import { PCB } from '@typecad/typecad';
-import { Resistor } from '@typecad/passives/0805';
+import { PCB, Resistor } from '@typecad/pcb';
 
-let r1 = new Resistor({ value: '1kohm', reference: 'R1' });
+let r1 = new Resistor({ value: '1kohm', reference: 'R1', size: '0805' });
 let pcb = new PCB('typecad_docs');
 
 r1.pcb = { x: 10, y: 10, rotation: 0 };
@@ -263,10 +260,9 @@ Or to place them:
 <ScrollArea orientation="both">
 
 ```ts
-import { PCB } from '@typecad/typecad';
-import { Resistor } from '@typecad/passives/0805';
+import { PCB, Resistor } from '@typecad/pcb';
 
-let r1 = new Resistor({ value: '1kohm', reference: 'R1' });
+let r1 = new Resistor({ value: '1kohm', reference: 'R1', size: '0805' });
 let pcb = new PCB('typecad_docs');
 
 r1.pcb = { x: 10, y: 10, rotation: 0 };
@@ -284,11 +280,10 @@ Vias can be created, placed and connected like any other component. Vias are con
 <ScrollArea orientation="both">
 
 ```ts
-import { PCB } from '@typecad/typecad';
-import { Resistor } from '@typecad/passives/0805';
+import { PCB, Resistor } from '@typecad/pcb';
 
 let typecad = new PCB('typecad_docs');
-let r1 = new Resistor({ value: '1kohm' });
+let r1 = new Resistor({ value: '1kohm', size: '0805' });
 
 let via = typecad.via({
   at: { x: 10, y: 10 },
@@ -314,7 +309,7 @@ Board outlines can be created.
 <ScrollArea orientation="both">
 
 ```ts
-import { PCB } from '@typecad/typecad';
+import { PCB } from '@typecad/pcb';
 
 let pcb = new PCB('typecad_docs');
 
@@ -342,7 +337,7 @@ and internal cutouts (mounting holes, milled slots). All are emitted on the
 <ScrollArea orientation="both">
 
 ```ts
-import { PCB } from '@typecad/typecad';
+import { PCB } from '@typecad/pcb';
 
 let pcb = new PCB('board');
 
@@ -388,7 +383,7 @@ there is no separate cutout layer.
 ## Design Rules
 
 typeCAD writes board-wide design rules (minimum clearances, track/via dimensions)
-into the `.kicad_pro` project file so that `typecad drc` validates against them.
+into the `.kicad_pro` project file so that `typecad-pcb drc` validates against them.
 The autorouter also honors these rules as its fallback clearance and track width.
 You don't need to open KiCad's Board Setup dialog to configure them.
 
@@ -411,7 +406,7 @@ keep the JLC standard default:
 <ScrollArea orientation="both">
 
 ```ts
-import { PCB } from '@typecad/typecad';
+import { PCB } from '@typecad/pcb';
 
 // dense board: tighten clearance and track width
 let pcb = new PCB('dense-board', {
@@ -443,7 +438,7 @@ values, so the autorouter and DRC share a single source of truth. Per-route
 board rules for that individual trace.
 
 > [!note] Checking rules
-> Run `typecad drc` to validate the board against these rules. See
+> Run `typecad-pcb drc` to validate the board against these rules. See
 > [Tooling](/docs/tooling#typecad-drc) and the [CLI reference](/docs/cli).
 
 ## Net Classes
@@ -471,7 +466,7 @@ named and auto-named nets:
 <ScrollArea orientation="both">
 
 ```ts
-import { PCB } from '@typecad/typecad';
+import { PCB } from '@typecad/pcb';
 
 let pcb = new PCB('board');
 
@@ -531,7 +526,7 @@ defaults, through-hole pad clearance, and layer validation all derive from it.
 <ScrollArea orientation="both">
 
 ```ts
-import { PCB } from '@typecad/typecad';
+import { PCB } from '@typecad/pcb';
 
 // 4-layer board — routing may use all four copper layers
 let pcb = new PCB('board', { layers: 4 });
@@ -550,7 +545,7 @@ from `pcb.copper_thickness` (default 35μm):
 <ScrollArea orientation="both">
 
 ```ts
-import { PCB } from '@typecad/typecad';
+import { PCB } from '@typecad/pcb';
 
 let pcb = new PCB('board');
 
@@ -648,7 +643,7 @@ from the autorouter's default routing layers:
 <ScrollArea orientation="both">
 
 ```ts
-import { PCB } from '@typecad/typecad';
+import { PCB } from '@typecad/pcb';
 
 let pcb = new PCB('board', { layers: 4 });
 pcb.outline(0, 0, 50, 40);
@@ -691,7 +686,7 @@ Traces can be created manually using `pcb.track()` for point-to-point routing wi
 <ScrollArea orientation="both">
 
 ```ts
-import { PCB } from '@typecad/typecad';
+import { PCB } from '@typecad/pcb';
 
 let pcb = new PCB('typecad_docs');
 
@@ -717,7 +712,7 @@ For automatic pin-to-pin routing, use `pcb.route()`:
 <ScrollArea orientation="both">
 
 ```ts
-import { PCB } from '@typecad/typecad';
+import { PCB } from '@typecad/pcb';
 
 let pcb = new PCB('typecad_docs');
 
@@ -747,7 +742,7 @@ Filled copper zones (e.g., ground pours) and keepout areas can be added to the b
 <ScrollArea orientation="both">
 
 ```ts
-import { PCB } from '@typecad/typecad';
+import { PCB } from '@typecad/pcb';
 
 let pcb = new PCB('zone_example');
 
@@ -879,7 +874,7 @@ Draw graphical elements on the PCB:
 <ScrollArea orientation="both">
 
 ```ts
-import { PCB } from '@typecad/typecad';
+import { PCB } from '@typecad/pcb';
 
 let pcb = new PCB('graphics_example');
 
@@ -953,16 +948,16 @@ pcb.teardrops({ maxLength: 0.8, shape: 'rect' }); // straight-sided wedges
 | `shape` | `'round'` (curved sides, default) or `'rect'` (straight-sided). |
 | `maxLength` / `maxHeight` | Wedge caps in mm. Defaults 1.0 / 2.0. |
 
-## Round-Trip Editing with `typecad import`
+## Round-Trip Editing with `typecad-pcb import`
 
-You can lay out components, draw tracks, and place vias in the KiCAD interactive editor, then sync those changes back into your **type**CAD source code using `typecad import`.
+You can lay out components, draw tracks, and place vias in the KiCAD interactive editor, then sync those changes back into your **type**CAD source code using `typecad-pcb import`.
 
 ### Snippet Mode
 
 Print generated **type**CAD code snippets for the board layout:
 
 ```bash
-typecad import ./build/board.kicad_pcb
+typecad-pcb import ./build/board.kicad_pcb
 ```
 
 This outputs component positions, `TrackBuilder` chains, vias, and outlines as TypeScript snippets you can copy into your code.
@@ -972,7 +967,7 @@ This outputs component positions, `TrackBuilder` chains, vias, and outlines as T
 Interactively apply layout changes from a `.kicad_pcb` file back to your source `.ts` files:
 
 ```bash
-typecad import ./build/board.kicad_pcb --apply
+typecad-pcb import ./build/board.kicad_pcb --apply
 ```
 
 This compares the KiCAD board file against your **type**CAD source, shows coordinate and side changes for each component, and lets you select which ones to write back.

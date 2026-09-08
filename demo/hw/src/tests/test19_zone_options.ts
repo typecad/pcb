@@ -1,5 +1,5 @@
-import { PCB, Component } from '@typecad/typecad';
-import { Connector } from '@typecad/passives/connector';
+import { PCB, Component, Connector } from '@typecad/pcb';
+
 import { RESOLUTION, HEURISTIC } from '../autoroute_test';
 
 /**

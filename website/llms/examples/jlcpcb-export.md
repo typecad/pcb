@@ -11,7 +11,7 @@ npm i @typecad/jlcpcb-export
 Then `import` it and use it:
 
 ```ts
-import { PCB } from '@typecad/typecad';
+import { PCB } from '@typecad/pcb';
 import { jlcpcb_export } from '@typecad/jlcpcb-export';// [!code highlight]
 
 let typecad = new PCB('project');

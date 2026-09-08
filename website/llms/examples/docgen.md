@@ -1,11 +1,11 @@
 # Documentation Generation
 
-The `typecad doc` command generates self-contained HTML documentation from a Markdown file combined with a KiCAD PCB file. It automatically embeds PCB layer images, 3D renders, and other visuals.
+The `typecad-pcb doc` command generates self-contained HTML documentation from a Markdown file combined with a KiCAD PCB file. It automatically embeds PCB layer images, 3D renders, and other visuals.
 
 ## Basic Usage
 
 ```bash
-typecad doc docs/board.md build/board.kicad_pcb -o docs/board.html
+typecad-pcb doc docs/board.md build/board.kicad_pcb -o docs/board.html
 ```
 
 ## Creating Your Document
@@ -63,7 +63,7 @@ Use custom image syntax to reference PCB layers:
 A common use case is generating assembly documentation:
 
 ```bash
-typecad doc assembly.md build/sensor_board.kicad_pcb -o build/assembly-docs.html
+typecad-pcb doc assembly.md build/sensor_board.kicad_pcb -o build/assembly-docs.html
 ```
 
 This creates a shareable, self-contained HTML file with all images embedded — perfect for sending to manufacturers or archiving.

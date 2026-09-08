@@ -1,4 +1,4 @@
-import { Power, Package, PackageOptions, Component } from '@typecad/typecad';
+import { Power, Package, PackageOptions, Component } from '@typecad/pcb';
 import { ISL9120IRTNZ } from './ISL9120IRTNZ';
 
 // Package-specific options (everything beyond the standard pcb/x/y/reference/passives/name)

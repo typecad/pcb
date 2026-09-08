@@ -1,8 +1,8 @@
-[**@typecad/typecad**](README.md)
+[**@typecad/pcb**](README.md)
 
 ***
 
-[@typecad/typecad](globals.md) / RoutingGrid
+[@typecad/pcb](globals.md) / RoutingGrid
 
 # Class: RoutingGrid
 

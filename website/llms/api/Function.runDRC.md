@@ -1,8 +1,8 @@
-[**@typecad/typecad**](README.md)
+[**@typecad/pcb**](README.md)
 
 ***
 
-[@typecad/typecad](globals.md) / runDRC
+[@typecad/pcb](globals.md) / runDRC
 
 # Function: runDRC()
 

@@ -9,8 +9,7 @@ Traditional electrical design tools force you to click, drag, and manually wire 
 ### � **Familiar Developer Tools**
 
 ```typescript
-import { PCB } from "@typecad/typecad";
-import { Resistor, Capacitor } from "@typecad/passives/0603";
+import { PCB, Resistor, Capacitor } from "@typecad/pcb";
 
 let typecad = new PCB("my_circuit");
 let r1 = new Resistor({ value: "10kohm" });

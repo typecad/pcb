@@ -1,8 +1,8 @@
-[**@typecad/typecad**](README.md)
+[**@typecad/pcb**](README.md)
 
 ***
 
-[@typecad/typecad](globals.md) / kicad\_path
+[@typecad/pcb](globals.md) / kicad\_path
 
 # Variable: kicad\_path
 

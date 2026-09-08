@@ -1,5 +1,5 @@
 ---
-'@typecad/typecad': minor
+'@typecad/pcb': minor
 ---
 
 Placement DX: targeted errors, live arithmetic, body-centering, bounds warnings.

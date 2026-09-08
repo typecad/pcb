@@ -1,5 +1,5 @@
 ---
-'@typecad/typecad': major
+'@typecad/pcb': major
 ---
 
 Placement moved onto `pcb.board`; free functions removed.

@@ -12,7 +12,7 @@ If we continue to use the ATtiny3227 as an example, the generated `index.ts` ext
 <ScrollArea orientation="both">
 
 ```ts
-import { Package, PackageOptions, Component } from '@typecad/typecad';
+import { Package, PackageOptions, Component } from '@typecad/pcb';
 import { ATtiny3227_M } from './ATtiny3227_M';
 
 /**
@@ -53,12 +53,12 @@ Let's break it into smaller pieces and describe what it does.
 <ScrollArea orientation="both">
 
 ```ts
-import { Package, PackageOptions, Component } from '@typecad/typecad';
+import { Package, PackageOptions, Component } from '@typecad/pcb';
 import { ATtiny3227_M } from './ATtiny3227_M';
 ```
 </ScrollArea>
 
-This imports the `Package` base class and `PackageOptions` type from `@typecad/typecad`, and the `ATtiny3227_M` component from the file the tooling created.
+This imports the `Package` base class and `PackageOptions` type from `@typecad/pcb`, and the `ATtiny3227_M` component from the file the tooling created.
 
 ## `extends Package`
 <ScrollArea orientation="both">
@@ -72,7 +72,7 @@ The package **extends `Package`** instead of managing everything manually. The `
 - Offset positioning 
 - Auto-collecting all `Component` and `TrackBuilder` properties assigned to `this`
 - Grouping components on the PCB
-- Providing `this.passives` (defaults to `@typecad/passives/0603`)
+- Providing `this.passives` — built-in passive factories (default size `0603`; set `passiveSize` in the constructor options to change it)
 
 ## `declare` properties
 <ScrollArea orientation="both">
@@ -122,7 +122,7 @@ this.add(this.track().from({ x: 0, y: 0 }).to({ x: 1, y: 1 }));
 ```
 </ScrollArea>
 
-There is a CLI tool to make this step easier. `typecad import` (bundled with [@typecad/typecad](https://www.npmjs.com/package/@typecad/typecad)) will read a .kicad_pcb file and convert component locations and tracks to typeCAD code. See the [Import](/docs/import) page for details.
+There is a CLI tool to make this step easier. `typecad-pcb import` (bundled with [@typecad/pcb](https://www.npmjs.com/package/@typecad/pcb)) will read a .kicad_pcb file and convert component locations and tracks to typeCAD code. See the [Import](/docs/import) page for details.
 
 ## Using it
 The use of this package is similar to an individual component.
@@ -130,7 +130,7 @@ The use of this package is similar to an individual component.
 <ScrollArea orientation="both">
 
 ```ts
-import { PCB } from "@typecad/typecad"
+import { PCB } from "@typecad/pcb"
 import { TypecadPackage } from "./typecad_package";
 
 let typecad = new PCB('new');

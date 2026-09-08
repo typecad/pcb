@@ -5,13 +5,13 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "build": "typecad build",
-    "add_component": "typecad add component",
-    "add_package": "typecad add package",
+    "build": "typecad-pcb build",
+    "add_component": "typecad-pcb add component",
+    "add_package": "typecad-pcb add package",
     "open_board": "npx open-cli ./build/autoroute_test.kicad_pcb",
-    "docs": "typecad doc ./docs/dev.md ./build/pro_mini.kicad_pcb",
-    "search": "typecad search",
-    "import": "typecad import ./build/pro_mini.kicad_pcb --apply",
+    "docs": "typecad-pcb doc ./docs/dev.md ./build/pro_mini.kicad_pcb",
+    "search": "typecad-pcb search",
+    "import": "typecad-pcb import ./build/pro_mini.kicad_pcb --apply",
     "git_diff": "git difftool -y --extcmd \"typecad-gitdiff\" ./build/pro_mini.kicad_pcb",
     "build:plugin": "cd typescript-plugin && npm install && npm run build && npm link && cd .. && npm link typecad-language-plugin",
     "watch:plugin": "cd typescript-plugin && npm run watch"
@@ -21,9 +21,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@typecad/mast": "*",
-    "@typecad/passives": "0.2.3-alpha.0",
-    "@typecad/typecad": "1.0.0-alpha.2",
+    "@typecad/pcb": "1.0.0-alpha.3",
     "express": "^5.1.0",
     "tsx": "^4.20.3"
   },

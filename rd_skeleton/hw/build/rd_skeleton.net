@@ -53,7 +53,9 @@
   (nets
     (net (code "1") (name "GND")
         (node (ref "J1") (pin "1") (pintype "passive"))
+)
+(net (code "2") (name "VCC")
         (node (ref "J2") (pin "1") (pintype "passive"))
-        (node (ref "J1") (pin "2") (pintype "passive"))
+        (node (ref "J2") (pin "2") (pintype "passive"))
 )
 ))

@@ -1,5 +1,5 @@
 ---
-'@typecad/typecad': patch
+'@typecad/pcb': patch
 ---
 
 Via stitching keeps clear of mechanical footprints' full keep-clear zones.

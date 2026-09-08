@@ -17,13 +17,12 @@ Code can be version controlled, status tracked, git push/pull/PR/issues can be u
 This **type**CAD code...
 
 ```ts
-import { PCB, Component } from '@typecad/typecad'
-import { Resistor, LED } from '@typecad/passives/0805'
+import { PCB, Component, Resistor, LED } from '@typecad/pcb'
 
 let typecad = new PCB('typecad');
 let bt1 = new Component({ footprint: 'BatteryHolder_Keystone_500' });
-let r1 = new Resistor({ value: "1 kOhm" });
-let d1 = new LED();
+let r1 = new Resistor({ value: "1 kOhm", size: '0805' });
+let d1 = new LED({ size: '0805' });
 
 typecad.named('vin').net(bt1.pin(1), r1.pin(1));
 typecad.net(r1.pin(2), d1.pin(2));

@@ -14,7 +14,7 @@ published: true
 
 # Boards grew a third dimension
 
-This release makes the copper layer count a first-class citizen of a typeCAD board, and fills in the copper features around it: planes, controlled impedance, polygon zones, via stitching, teardrops, per-text fonts, and a zone-aware `typecad import`.
+This release makes the copper layer count a first-class citizen of a typeCAD board, and fills in the copper features around it: planes, controlled impedance, polygon zones, via stitching, teardrops, per-text fonts, and a zone-aware `typecad-pcb import`.
 
 ## The layer set is the source of truth
 
@@ -91,7 +91,7 @@ pcb.arc({ start: { x: 10, y: 10 }, mid: { x: 13.5, y: 13.5 }, end: { x: 15, y: 1
 
 TrueType faces on component text and `pcb.text()` (via KiCad's `(face ...)`), with `bold`/`italic` now actually emitted, plus three-point arcs completing the graphics set.
 
-## `typecad import` keeps zones
+## `typecad-pcb import` keeps zones
 
 Imported boards no longer silently lose their copper: pours emit as `pcb.zone()` with polygon geometry and fill settings, rule areas as `pcb.keepout()` with their restrictions, and stackups as `pcb.stackup(N)`.
 

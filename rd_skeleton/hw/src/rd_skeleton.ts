@@ -1,7 +1,4 @@
-import { PCB } from '@typecad/typecad';
-import { Resistor } from '@typecad/passives/0603';
-import { MountingHole } from '@typecad/passives/mounting_hole';
-import { Connector } from '@typecad/passives/connector';
+import { PCB, Resistor, MountingHole, Connector } from '@typecad/pcb';
 
 const typecad = new PCB('rd_skeleton');
 // let r1 = new Resistor({ value: '1kohm' });
@@ -20,10 +17,9 @@ const j2 = new Connector({
 
 // r1.pcb = {x: 137.4, y: 90.9};
 // r1.referenceLayout = { x: 0, y: -2.5, font: 'OCR A Std', height: 1.2, width: 1.2 };
-typecad.named('GND').net(j1.pin(1), j2.pin(1));
+typecad.named('GND').net(j1.pin(1), j1.pin(1));
 // typecad.named('GND').net(r1.pin(1))
-typecad.net(j1.pin(1), j1.pin(2));
-typecad.net(j1.pin(1), j1.pin(2));
+const vcc = typecad.named('VCC').net(j2.pin(1), j2.pin(2));
 typecad.outline(127.38, 85.9, 45, 30, 0.1);
 
 // mh1.text = [{ property: 'Reference', text: 'R1', x: 1, y: 1, show: false }]
@@ -32,8 +28,15 @@ mh2.pcb = { x: typecad.board.fromRight(2.5), y: typecad.board.fromTop(2.5) };
 mh3.pcb = { x: typecad.board.fromLeft(2.5), y: typecad.board.fromBottom(2.5) };
 mh4.pcb = { x: typecad.board.fromRight(2.5), y: typecad.board.fromBottom(2.5) };
 
+mh1.referenceLayout = { show: false };
+mh2.referenceLayout = { show: false };
+mh3.referenceLayout = { show: false };
+mh4.referenceLayout = { show: false };
+
 j1.pcb = { x: typecad.board.sameAs(mh1), y: typecad.board.below(mh1).by(1), rotation: -90 };
 j2.pcb = { x: typecad.board.sameAs(mh2), y: typecad.board.below(mh2).by(1), rotation: -90 };
+
+typecad.route(vcc);
 
 // typecad.plane('GND', 'F.Cu');
 typecad.zone({
@@ -46,4 +49,5 @@ typecad.zone({
 });
 typecad.text({ text: 'rd-skeleton', x: 150, y: 112, layer: 'F.SilkS', font: 'OCR A Std', width: 1.5, height: 1.5 });
 typecad.stitch('GND', { pitch: 2.5, margin: 5 });
+// typecad.plane('GND', 'F.Cu');
 typecad.create(mh1, mh2, mh3, mh4, j1, j2);

@@ -1,8 +1,8 @@
-[**@typecad/typecad**](README.md)
+[**@typecad/pcb**](README.md)
 
 ***
 
-[@typecad/typecad](globals.md) / executeKiCADCommandSync
+[@typecad/pcb](globals.md) / executeKiCADCommandSync
 
 # Function: executeKiCADCommandSync()
 

@@ -1,5 +1,5 @@
-import * as _0603 from '@typecad/passives/0603';
-import { Power, PCB, Component, TrackBuilder } from '@typecad/typecad';
+import * as _0603 from '@typecad/pcb';
+import { Power, PCB, Component, TrackBuilder } from '@typecad/pcb';
 import { ISL9120IRTNZ } from './ISL9120IRTNZ';
 
 // Configuration options for the ISL9120IR power regulator module

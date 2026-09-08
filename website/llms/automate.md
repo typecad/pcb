@@ -9,12 +9,12 @@ Traditional hardware design is manual, error-prone, and time-consuming. **type**
 ### ⚡ **Electrical Rules Checking (ERC)**
 
 ```typescript
-import { runERC } from "@typecad/typecad";
+import { runERC } from "@typecad/pcb";
 
 // Run ERC programmatically
 let report = await runERC("./build/my_circuit.kicad_sch");
 
-// Or use the CLI: typecad erc
+// Or use the CLI: typecad-pcb erc
 ```
 
 Run ERC to validate your circuit against KiCAD's electrical rules. Catch connection errors, power mismatches, and pin type conflicts before they become hardware problems.
@@ -66,10 +66,10 @@ Automatically verify that power supplies can handle load requirements and voltag
 ### 📊 **Automated Documentation Generation**
 
 ```bash
-typecad doc docs/board.md build/board.kicad_pcb -o output.html
+typecad-pcb doc docs/board.md build/board.kicad_pcb -o output.html
 ```
 
-The `typecad doc` command converts markdown files and KiCAD PCBs into comprehensive documentation with layer exports and 3D renders. Perfect for:
+The `typecad-pcb doc` command converts markdown files and KiCAD PCBs into comprehensive documentation with layer exports and 3D renders. Perfect for:
 
 - **Assembly instructions** with layer-by-layer visuals
 - **Technical documentation** with automated BOM generation  
@@ -84,7 +84,7 @@ Build custom automation workflows using **type**CAD's programmatic API:
 
 ```typescript
 // Custom BOM processing
-import { PCB } from "@typecad/typecad";
+import { PCB } from "@typecad/pcb";
 
 let pcb = new PCB("production_board");
 // ... design your circuit ...
@@ -104,10 +104,10 @@ Create specialized outputs for your manufacturing partners, cost analysis tools,
 ### 🤖 **typeCAD MCP Server**
 
 ```bash
-npm install -g @typecad/typecad-mcp
+npm install -g @typecad/pcb-mcp
 ```
 
-The [typeCAD MCP Server](https://www.npmjs.com/package/@typecad/typecad-mcp) connects AI assistants directly to **type**CAD workflows:
+The [typeCAD MCP Server](https://www.npmjs.com/package/@typecad/pcb-mcp) connects AI assistants directly to **type**CAD workflows:
 
 - **"Create a new sensor board project"** → Automatically scaffolds project structure
 - **"Add an ESP32-S3 with power regulation"** → Finds components and validates connections

@@ -1,8 +1,8 @@
-[**@typecad/typecad**](README.md)
+[**@typecad/pcb**](README.md)
 
 ***
 
-[@typecad/typecad](globals.md) / USB
+[@typecad/pcb](globals.md) / USB
 
 # Class: USB
 

@@ -1,7 +1,5 @@
-import { PCB, Component } from '@typecad/typecad';
+import { PCB, Component, Resistor, RoutingAlgorithm } from '@typecad/pcb';
 import { HEURISTIC } from '../autoroute_test';
-import { Resistor } from '@typecad/passives/0603';
-import { Component, PCB, RoutingAlgorithm } from '@typecad/typecad';
 
 // Export function that accepts the main typecad object
 export function runTest9(typecad: PCB): Component[] {

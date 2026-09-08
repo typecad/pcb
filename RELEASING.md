@@ -33,7 +33,7 @@ This creates a markdown file under `.changeset/` (e.g., `.changeset/happy-pandas
 Example changeset file:
 ```markdown
 ---
-"@typecad/typecad": patch
+"@typecad/pcb": patch
 ---
 
 Fixed via annular ring calculation for high-current tracks
@@ -50,7 +50,7 @@ npm run version
 This:
 - Reads all `.changeset/*.md` files
 - Bumps `package.json` versions in the selected packages
-- Updates internal `@typecad/` dependency ranges (e.g., `@typecad/typecad` ^0.2.19 → ^0.2.20) in packages that depend on the changed ones
+- Updates internal `@typecad/` dependency ranges (e.g., `@typecad/pcb` ^0.2.19 → ^0.2.20) in packages that depend on the changed ones
 - Generates `CHANGELOG.md` entries
 - Deletes the consumed changeset files
 
@@ -72,19 +72,19 @@ If this is your first time publishing from this machine, run `npm login` first.
 
 ```
 npm run changeset
-# Select: @typecad/typecad
+# Select: @typecad/pcb
 # Bump: patch
 # Message: "Fixed pin numbering for reversed connectors"
 ```
 
-Running `npm run version` will also bump `@typecad/typecad` in the `dependencies` of packages that depend on it (docgen, gitdiff, schematic), because `updateInternalDependencies` is set to `"patch"` in `.changeset/config.json`.
+Running `npm run version` will also bump `@typecad/pcb` in the `dependencies` of packages that depend on it (docgen, gitdiff, schematic), because `updateInternalDependencies` is set to `"patch"` in `.changeset/config.json`.
 
 ### Multiple packages changed
 
 ```
 npm run changeset
-# Select: @typecad/typecad, @typecad/mast
-# Bump: @typecad/typecad → minor, @typecad/mast → patch
+# Select: @typecad/pcb, @typecad/mast
+# Bump: @typecad/pcb → minor, @typecad/mast → patch
 # Message: "Added differential pair routing support"
 ```
 

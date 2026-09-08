@@ -4,7 +4,7 @@
 </script>
 
 # Package Structure
-Let's create a component package around the ATtiny3227 as an example. That is the default symbol in the `typecad add package` command. After running the command just hitting enter for defaults, you'll see this output:
+Let's create a component package around the ATtiny3227 as an example. That is the default symbol in the `typecad-pcb add package` command. After running the command just hitting enter for defaults, you'll see this output:
 
 <br />
 <ScrollArea orientation="both">
@@ -12,7 +12,7 @@ Let's create a component package around the ATtiny3227 as an example. That is th
 ```bash
 Finished package creation. You can use it like this:
 
-import { PCB } from '@typecad/typecad'
+import { PCB } from '@typecad/pcb'
 import { TypecadPackage } from "./typecad_package";
 
 let typecad = new PCB('board_name');

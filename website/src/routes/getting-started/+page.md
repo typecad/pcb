@@ -25,12 +25,12 @@ typeCAD is a modern hardware design platform that brings the power of TypeScript
 
 2. **Create Your First Project**
    ```bash
-   npx @typecad/typecad create
+   npx @typecad/pcb create
    ```
 3. **Start Designing**
 - Open the project in VS Code
 - Begin creating your hardware design using TypeScript
-- Run `typecad build` to generate outputs
+- Run `typecad-pcb build` to generate outputs
 
 4. **Layout in KiCAD**
   - Open the `kicad_pcb` file in the `./build` folder

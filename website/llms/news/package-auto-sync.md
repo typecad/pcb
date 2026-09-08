@@ -24,7 +24,7 @@ The sync runs on every build but is mtime-guarded — files that are already up 
 - If your package uses a **hand-rolled class**, call the exported helper once in your constructor:
 
 ```ts
-import { syncThisPackageBuildLib } from '@typecad/typecad';
+import { syncThisPackageBuildLib } from '@typecad/pcb';
 
 export class MyModule {
   constructor(options) {
@@ -34,7 +34,7 @@ export class MyModule {
 }
 ```
 
-`typecad add package` scaffolds new packages with the `Package` base class and no install scripts.
+`typecad-pcb add package` scaffolds new packages with the `Package` base class and no install scripts.
 
 ## For package consumers
 

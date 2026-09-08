@@ -1,8 +1,8 @@
-[**@typecad/typecad**](README.md)
+[**@typecad/pcb**](README.md)
 
 ***
 
-[@typecad/typecad](globals.md) / RoutingAlgorithm
+[@typecad/pcb](globals.md) / RoutingAlgorithm
 
 # Enumeration: RoutingAlgorithm
 

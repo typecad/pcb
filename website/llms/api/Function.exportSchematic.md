@@ -1,8 +1,8 @@
-[**@typecad/typecad**](README.md)
+[**@typecad/pcb**](README.md)
 
 ***
 
-[@typecad/typecad](globals.md) / exportSchematic
+[@typecad/pcb](globals.md) / exportSchematic
 
 # Function: exportSchematic()
 

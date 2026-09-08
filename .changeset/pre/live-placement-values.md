@@ -1,5 +1,5 @@
 ---
-'@typecad/typecad': minor
+'@typecad/pcb': minor
 ---
 
 Relative placement is order-independent — no more call-order fore-knowledge.

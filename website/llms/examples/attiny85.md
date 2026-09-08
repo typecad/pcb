@@ -49,7 +49,7 @@ There will be a little implementation code that shows how to `import` the code a
 The minimal code to use this new component looks like this:
 
 ```ts
-import { PCB } from '@typecad/typecad'
+import { PCB } from '@typecad/pcb'
 import { ATtiny85_20M } from './ATtiny85_20M';
 
 let typecad = new PCB('attiny85');

@@ -5,7 +5,7 @@
 The main class that represents the entire circuit.
 
 ```ts
-import { PCB } from '@typecad/typecad';
+import { PCB } from '@typecad/pcb';
 let typecad = new PCB('typecad_concepts', {thickness: 1.6, copper_thickness: 35 });
 ```
 
@@ -31,7 +31,7 @@ The `PCB` class is where:
 The `Component` class represents individual parts like resistors, capacitors, ICs, etc. You add a `Component` to your `PCB`.
 
 ```ts
-import { Component } from '@typecad/typecad';
+import { Component } from '@typecad/pcb';
 
 let R1 = new Component({ value: '1kohm' });
 ```
@@ -61,7 +61,7 @@ Options for the `Component` class are:
 All three layout properties accept an `ITextPositioning` object and can be set at construction or assigned after creation:
 
 ```ts
-import { Component } from '@typecad/typecad';
+import { Component } from '@typecad/pcb';
 
 let r1 = new Component({
   footprint: 'Resistor_SMD:R_0603_1608Metric',
@@ -102,7 +102,7 @@ r1.referenceLayout = { x: 2, y: -1, rotation: 0 };
 Represents a power source like a battery or voltage regulator. 
 
 ```ts
-import { Power } from '@typecad/typecad';
+import { Power } from '@typecad/pcb';
 
 let coin_cell = new Power({ power: holder.pin(1), gnd: holder.pin(2), voltage: 3.7 });
 ```
@@ -120,7 +120,7 @@ Options are:
 Abstract base class for creating reusable, importable hardware modules. Extend this class to encapsulate a circuit sub-design (e.g. a voltage regulator, sensor module, or MCU subsystem).
 
 ```ts
-import { Package, Component } from '@typecad/typecad';
+import { Package, Component } from '@typecad/pcb';
 
 export class MyResistor extends Package {
   declare resistor: Component;
@@ -139,7 +139,7 @@ The constructor handles offset positioning (`x`, `y`), auto-collects all `Compon
 Fluent API for creating tracks on the PCB:
 
 ```ts
-import { PCB, TrackBuilder } from '@typecad/typecad';
+import { PCB, TrackBuilder } from '@typecad/pcb';
 
 let pcb = new PCB('tracks');
 

@@ -260,8 +260,8 @@ export class CommandLineInterface implements CLI {
       const typecadBin = findExecutable('typecad');
       if (!typecadBin) {
         console.error(chalk.red('Error: typecad command not found.'));
-        console.error(chalk.yellow('Install typeCAD globally: npm install -g @typecad/typecad'));
-        console.error(chalk.yellow('Or run: npx @typecad/typecad add component --jlcpcb=true --c=' + lcscNumber));
+        console.error(chalk.yellow('Install typeCAD globally: npm install -g @typecad/pcb'));
+        console.error(chalk.yellow('Or run: npx @typecad/pcb add component --jlcpcb=true --c=' + lcscNumber));
         return;
       }
 

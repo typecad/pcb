@@ -1,8 +1,8 @@
-[**@typecad/typecad**](README.md)
+[**@typecad/pcb**](README.md)
 
 ***
 
-[@typecad/typecad](globals.md) / runERC
+[@typecad/pcb](globals.md) / runERC
 
 # Function: runERC()
 

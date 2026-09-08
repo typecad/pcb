@@ -16,7 +16,7 @@ The `Component` class is the base class for all components in **type**CAD.  In K
 <ScrollArea orientation="both">
 
 ```ts
-import { Component } from '@typecad/typecad';
+import { Component } from '@typecad/pcb';
 
 let u1 = new Component({ footprint: 'Package_SO:SOIC-8_5.3x5.3mm_P1.27mm' });
 ```
@@ -25,11 +25,11 @@ let u1 = new Component({ footprint: 'Package_SO:SOIC-8_5.3x5.3mm_P1.27mm' });
 
 The above creates a SOIC-8 component. `footprint` is the KiCAD footprint path and split into two strings.
 
-That method works well for simple components, but there is a better way using the `typecad add component` tool.
+That method works well for simple components, but there is a better way using the `typecad-pcb add component` tool.
 
-## `typecad add component`
+## `typecad-pcb add component`
 
-**type**CAD has a command line tool that can be used to create a component. Run `typecad add component` from the `./hw` directory, or click the `add_component` button in the VSCode GUI under `NPM Scripts`.
+**type**CAD has a command line tool that can be used to create a component. Run `typecad-pcb add component` from the `./hw` directory, or click the `add_component` button in the VSCode GUI under `NPM Scripts`.
 
 The script will ask where the component is coming from, either the KiCAD library, a local file, or an EasyEDA/JLCPCB component.
 
@@ -41,14 +41,14 @@ If it's an [EasyEDA/JLCPCB component](https://jlcpcb.com/parts), you'll be asked
 
 ### KiCAD Library Components
 
-To find the symbol and footprint for a KiCAD library component, use `typecad search`:
+To find the symbol and footprint for a KiCAD library component, use `typecad-pcb search`:
 
 <ScrollArea orientation="both">
 
 ```bash
-typecad search "voltage regulator"
-typecad search LM358
-typecad search "op amp" --format=json --limit=10
+typecad-pcb search "voltage regulator"
+typecad-pcb search LM358
+typecad-pcb search "op amp" --format=json --limit=10
 ```
 
 </ScrollArea>
@@ -97,7 +97,7 @@ Let's look at what's in the `ATtiny85_20S.ts` file that was created to get a bet
 <ScrollArea orientation="both">
 
 ```ts
-import { Component } from '@typecad/typecad';
+import { Component } from '@typecad/pcb';
 /**
  | Pin # | Name         | Type              |
  | --:   | :--          | :--               |
@@ -143,7 +143,7 @@ After a `Component` has been created and modified, call `create` to include it i
 <ScrollArea orientation="both">
 
 ```ts
-import { PCB } from '@typecad/typecad';
+import { PCB } from '@typecad/pcb';
 import { ATtiny85_20S } from './ATtiny85_20S';
 
 let typecad = new PCB('typecad_docs');

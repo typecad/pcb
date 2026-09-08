@@ -1,5 +1,4 @@
-import { Package, PackageOptions, Component } from '@typecad/typecad';
-
+import { Package, PackageOptions, Component } from '@typecad/pcb';
 /**
  * ### Typecad_package - Description
  *

@@ -1,5 +1,4 @@
-import * as _0603 from '@typecad/passives/0603';
-import { Power, PCB, Component, Package, type PackageOptions } from '@typecad/typecad';
+import { Power, PCB, Component, Package, type PackageOptions } from '@typecad/pcb';
 import { ISL9120IRTNZ } from './ISL9120IRTNZ';
 
 // Configuration options for the ISL9120IR power regulator module.
@@ -47,7 +46,6 @@ export class rd_isl9120ir extends Package<{ inputPower?: Power }> {
       x: options.x ?? 0,
       y: options.y ?? 0,
       name: options.name ?? 'rd_isl9120',
-      passives: options.passives ?? _0603,
     });
   }
 

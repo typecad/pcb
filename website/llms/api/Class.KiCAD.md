@@ -1,8 +1,8 @@
-[**@typecad/typecad**](README.md)
+[**@typecad/pcb**](README.md)
 
 ***
 
-[@typecad/typecad](globals.md) / KiCAD
+[@typecad/pcb](globals.md) / KiCAD
 
 # Class: KiCAD
 

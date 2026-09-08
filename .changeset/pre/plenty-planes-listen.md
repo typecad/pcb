@@ -1,5 +1,5 @@
 ---
-'@typecad/typecad': minor
+'@typecad/pcb': minor
 ---
 
 N-layer boards, phase 2: layer roles, net-class layer affinity, and a via manufacturing policy.

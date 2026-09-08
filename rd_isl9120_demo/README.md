@@ -41,22 +41,21 @@ npm install
 npm run build
 ```
 
-`npm run build` invokes the `typecad build ./src/isl9120_demo.ts` CLI command (the `typecad` bin installed from the linked `@typecad/typecad` package), which runs the entry through tsx.
+`npm run build` invokes the `typecad build ./src/isl9120_demo.ts` CLI command (the `typecad` bin installed from the linked `@typecad/pcb` package), which runs the entry through tsx.
 
 Watch `./build/lib/` — it starts empty (only the `footprints/` directory scaffold exists). After the build you'll find the package's symbols and footprints there, copied from `./node_modules/@typecad/rd_isl9120ir/build/lib/`, alongside the generated `isl9120_demo.kicad_pcb` / `.kicad_sch` output.
 
 ## Dependencies
 
-Both `@typecad/rd_isl9120ir` and `@typecad/typecad` are linked with `file:` paths in this demo because the auto-sync API is not yet published to npm. Once published, the dependencies become normal version ranges and nothing else changes:
+Both `@typecad/rd_isl9120ir` and `@typecad/pcb` are linked with `file:` paths in this demo because the auto-sync API is not yet published to npm. Once published, the dependencies become normal version ranges and nothing else changes:
 
 ```json
 "@typecad/rd_isl9120ir": "^1.0.4",
-"@typecad/typecad": "^0.3.5"
+"@typecad/pcb": "^0.3.5"
 ```
 
 The `.npmrc` in this project sets `install-links=true`, which makes npm install `file:` dependencies as packed copies inside `./node_modules/` — the same layout a registry install produces — instead of symlinking back to the source folders. That matters for two reasons:
 
 - it faithfully simulates the real post-publish install this demo represents, and
-- the installed package resolves `@typecad/typecad` against *this* project's `node_modules/`, not whatever version happens to sit next to the package's source folder.
+- the installed package resolves `@typecad/pcb` against *this* project's `node_modules/`, not whatever version happens to sit next to the package's source folder.
 
-`@typecad/passives` is pinned to `^0.2.2` because it is the first passives release whose peer range (`@typecad/typecad ^0.3.0`) accepts the local typecad build.

@@ -8,10 +8,10 @@
 
 # ERC
 
-**type**CAD provides ERC via the `typecad erc` CLI command and the `runERC()` programmatic API.
+**type**CAD provides ERC via the `typecad-pcb erc` CLI command and the `runERC()` programmatic API.
 
 ## Electrical Rules Checker
-**type**CAD runs KiCAD's ERC via `kicad-cli sch erc`. After `typecad build` has been run, you can run `typecad erc` to check your schematic for any connection errors.
+**type**CAD runs KiCAD's ERC via `kicad-cli sch erc`. After `typecad-pcb build` has been run, you can run `typecad-pcb erc` to check your schematic for any connection errors.
 
 It uses the same KiCAD rules as shown in this picture.
 
@@ -23,8 +23,8 @@ Here's how to run ERC from the command line:
 <ScrollArea orientation="both">
 
 ```bash
-typecad build
-typecad erc
+typecad-pcb build
+typecad-pcb erc
 ```
 </ScrollArea>
 Assuming no errors, it will show `ERC passed. No errors or warnings.` in the output.
@@ -35,7 +35,7 @@ You can also run ERC programmatically:
 <ScrollArea orientation="both">
 
 ```ts
-import { runERC } from '@typecad/typecad';
+import { runERC } from '@typecad/pcb';
 
 let report = await runERC('./build/erc.kicad_sch');
 console.log(report);
@@ -58,7 +58,7 @@ Pin types can be corrected manually in the component files, or they can be set i
 <ScrollArea orientation="both">
 
 ```ts
-import { Component } from '@typecad/typecad';
+import { Component } from '@typecad/pcb';
 let bt1 = new Component({ footprint: 'Battery:BatteryHolder_Keystone_3008_1x2450', prefix: 'BT', mpn: '3008TR' });
 
 bt1.pin(1).type = 'power_out';

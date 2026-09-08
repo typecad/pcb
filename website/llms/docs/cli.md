@@ -1,6 +1,6 @@
 # CLI Reference
 
-All **type**CAD commands are accessed through the `typecad` binary, included with `@typecad/typecad`.
+All **type**CAD commands are accessed through the `typecad` binary, included with `@typecad/pcb`.
 
 ## Global Options
 
@@ -12,12 +12,12 @@ All **type**CAD commands are accessed through the `typecad` binary, included wit
 
 ## Commands
 
-### `typecad create`
+### `typecad-pcb create`
 
 Create a new typeCAD project.
 
 ```bash
-typecad create [options]
+typecad-pcb create [options]
 ```
 
 | Option | Description |
@@ -26,26 +26,25 @@ typecad create [options]
 | `--pio ` | Create a PlatformIO project |
 | `--board ` | PlatformIO board ID |
 | `--git ` | Initialize a git repository |
-| `--packages ` | Comma-separated list of packages to install |
 
-### `typecad build`
+### `typecad-pcb build`
 
 Build the typeCAD project and generate KiCAD output files.
 
 ```bash
-typecad build [options]
+typecad-pcb build [options]
 ```
 
 | Option | Description |
 |--------|-------------|
 | `--verbose` | Show detailed build output |
 
-### `typecad add component`
+### `typecad-pcb add component`
 
 Add a component to the project.
 
 ```bash
-typecad add component [options]
+typecad-pcb add component [options]
 ```
 
 | Option | Description |
@@ -58,12 +57,12 @@ typecad add component [options]
 | `--symbol_file ` | Path to local symbol file |
 | `--footprint_file ` | Path to local footprint file |
 
-### `typecad add package`
+### `typecad-pcb add package`
 
 Create a reusable typeCAD package.
 
 ```bash
-typecad add package [options]
+typecad-pcb add package [options]
 ```
 
 | Option | Description |
@@ -78,12 +77,12 @@ typecad add package [options]
 | `--footprint ` | Footprint for component package |
 | `--c ` | JLCPCB component number |
 
-### `typecad search`
+### `typecad-pcb search`
 
 Search KiCAD symbol libraries with fuzzy matching.
 
 ```bash
-typecad search  [options]
+typecad-pcb search  [options]
 ```
 
 | Option | Description |
@@ -92,24 +91,24 @@ typecad search  [options]
 | `--sort ` | Sort results by field |
 | `--limit ` | Maximum number of results |
 
-### `typecad import`
+### `typecad-pcb import`
 
 Convert a KiCAD PCB file to typeCAD code.
 
 ```bash
-typecad import  [options]
+typecad-pcb import  [options]
 ```
 
 | Option | Description |
 |--------|-------------|
 | `--apply` | Interactively apply coordinates to source files |
 
-### `typecad diff`
+### `typecad-pcb diff`
 
 Compare two KiCAD PCB files visually.
 
 ```bash
-typecad diff   [options]
+typecad-pcb diff   [options]
 ```
 
 | Option | Description |
@@ -118,12 +117,12 @@ typecad diff   [options]
 | `--theme ` | Color theme for the report |
 | `--output ` | Output HTML file path |
 
-### `typecad doc`
+### `typecad-pcb doc`
 
 Generate HTML documentation from Markdown + KiCAD PCB.
 
 ```bash
-typecad doc   [options]
+typecad-pcb doc   [options]
 ```
 
 | Option | Description |
@@ -133,12 +132,12 @@ typecad doc   [options]
 | `-q` | Quiet mode |
 | `--no-open` | Don't open the file after generation |
 
-### `typecad doctor`
+### `typecad-pcb doctor`
 
 Check your environment for required tools.
 
 ```bash
-typecad doctor [options]
+typecad-pcb doctor [options]
 ```
 
 | Option | Description |
@@ -146,12 +145,12 @@ typecad doctor [options]
 | `--fix` | Attempt automatic fixes |
 | `--json` | Machine-readable output |
 
-### `typecad validate`
+### `typecad-pcb validate`
 
 Validate source without full build.
 
 ```bash
-typecad validate [options]
+typecad-pcb validate [options]
 ```
 
 | Option | Description |
@@ -159,7 +158,7 @@ typecad validate [options]
 | `--verbose` | Show detailed output |
 | `--json` | Machine-readable output |
 
-### `typecad drc`
+### `typecad-pcb drc`
 
 Run KiCAD Design Rule Check.
 
@@ -167,32 +166,32 @@ The rules DRC validates against are configurable in code — see
 [Board Layout → Design Rules](/docs/board_layout#design-rules).
 
 ```bash
-typecad drc [options]
+typecad-pcb drc [options]
 ```
 
 | Option | Description |
 |--------|-------------|
 | `--json` | Machine-readable output |
 
-### `typecad erc`
+### `typecad-pcb erc`
 
 Run KiCAD Electrical Rules Check.
 
 ```bash
-typecad erc [options]
+typecad-pcb erc [options]
 ```
 
 | Option | Description |
 |--------|-------------|
 | `--json` | Machine-readable output |
 
-### `typecad skills`
+### `typecad-pcb skills`
 
 List and query typeCAD skills and API patterns.
 
 ```bash
-typecad skills list [options]
-typecad skills get  [options]
+typecad-pcb skills list [options]
+typecad-pcb skills get  [options]
 ```
 
 | Subcommand | Description |
@@ -205,7 +204,7 @@ typecad skills get  [options]
 | `--json` | Machine-readable output |
 
 ```bash
-typecad skills list
-typecad skills get resistor
-typecad skills get power --json
+typecad-pcb skills list
+typecad-pcb skills get resistor
+typecad-pcb skills get power --json
 ```

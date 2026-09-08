@@ -12,13 +12,12 @@ The `net()` function takes a list of `Pin` objects.
 <ScrollArea orientation="both">
 
 ```ts
-import { Capacitor } from '@typecad/passives/0805'
 import { ATtiny85_20S } from './ATtiny85_20S';
-import { PCB } from '@typecad/typecad';
+import { PCB, Capacitor } from '@typecad/pcb';
 
 let typecad = new PCB('typecad_docs');
 let u1 = new ATtiny85_20S();
-let c1 = new Capacitor({ value: '1uF' });
+let c1 = new Capacitor({ value: '1uF', size: '0805' });
 
 typecad.net(u1.VCC, c1.pin(1));     // power [!code highlight]
 typecad.net(u1.GND, c1.pin(2));     // ground [!code highlight]

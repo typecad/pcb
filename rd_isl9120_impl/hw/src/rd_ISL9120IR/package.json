@@ -7,8 +7,7 @@
   "license": "ISC",
   "keywords": ["typeCAD", "package", "layout"],
   "devDependencies": {
-    "@typecad/passives": "~0.0.15",
-    "@typecad/typecad": "~0.0.18",
+    "@typecad/pcb": "~1.0.0-alpha.0",
     "tsx": "^4.19.1"
   },
   "scripts": {

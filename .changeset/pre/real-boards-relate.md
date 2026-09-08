@@ -1,5 +1,5 @@
 ---
-'@typecad/typecad': minor
+'@typecad/pcb': minor
 ---
 
 Via stitching, teardrops, and arc graphics.

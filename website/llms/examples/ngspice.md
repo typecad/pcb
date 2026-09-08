@@ -11,8 +11,7 @@ This is the circuit:
 And this is the code:
 
 ```ts
-import { PCB } from "@typecad/typecad"
-import { Resistor } from '@typecad/passives/0603';
+import { PCB, Resistor } from "@typecad/pcb"
 
 let typecad = new PCB('voltage_divider');
 let r1 = new Resistor({ value: '10kohm' });
@@ -36,9 +35,8 @@ Then you'll need [ngspice](https://ngspice.sourceforge.io/download.html) install
 Next, we need to add a `Power` component. In addition to helping with simulation, they assist with ERC (electrical rule checking) by ensuring pins are connected as they should be and packages can use it to determine the power supply voltage is correct. 
 
 ```ts
-import { PCB } from "@typecad/typecad" // [!code --]
-import { PCB, Power } from "@typecad/typecad" // [!code ++][!code word:Power]
-import { Resistor } from '@typecad/passives/0603';
+import { PCB } from "@typecad/pcb" // [!code --]
+import { PCB, Power, Resistor } from "@typecad/pcb" // [!code ++][!code word:Power]
 
 let typecad = new PCB('voltage_divider');
 let r1 = new Resistor({ value: '10kohm' });
@@ -66,8 +64,7 @@ Now we need to add the `ngspice` related code.
 
 ```ts
 // [!code word:simulation]
-import { PCB, Power } from "@typecad/typecad"
-import { Resistor } from '@typecad/passives/0603';
+import { PCB, Power, Resistor } from "@typecad/pcb"
 import { ngspiceSimulator } from '@typecad/ngspice'; // [!code highlight]
 
 let typecad = new PCB('voltage_divider');
@@ -91,8 +88,7 @@ Now that our circuit is created, nets are named, we can run the simulation.
 Currently, there are two simulation modes available in the library: DC and transient analysis. 
 
 ```ts
-import { PCB, Power } from "@typecad/typecad"
-import { Resistor } from '@typecad/passives/0603';
+import { PCB, Power, Resistor } from "@typecad/pcb"
 import { ngspiceSimulator } from '@typecad/ngspice';
 
 let typecad = new PCB('voltage_divider');

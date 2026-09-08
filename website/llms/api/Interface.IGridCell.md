@@ -1,8 +1,8 @@
-[**@typecad/typecad**](README.md)
+[**@typecad/pcb**](README.md)
 
 ***
 
-[@typecad/typecad](globals.md) / IGridCell
+[@typecad/pcb](globals.md) / IGridCell
 
 # Interface: IGridCell
 

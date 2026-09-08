@@ -1,4 +1,4 @@
-import { Component, Pin } from '@typecad/typecad';
+import { Component, Pin } from '@typecad/pcb';
 /**
  | Pin # | Name | Type          |
  | --:   | :--  | :--           |

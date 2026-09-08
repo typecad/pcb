@@ -1,0 +1,8 @@
+{
+	"hidden": true,
+	"name": "rd-skeleton",
+	"title": "Project Skeleton",
+	"description": "The project typecad create scaffolds — mounting holes, terminal-block connectors, a hatched GND zone on both layers, via stitching, and board-outline silk text. A quick tour of typeCAD's layout primitives.",
+	"tags": ["starter", "mounting-holes", "connectors", "zone", "via-stitching"],
+	"board": "Generic 45 x 30 mm"
+}

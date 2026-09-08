@@ -4,10 +4,11 @@
 	"private": true,
 	"scripts": {
 		"dev": "vite dev --host",
-		"build": "vite build",
+		"build": "npm run generate-examples && vite build",
 		"preview": "vite preview",
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
+		"generate-examples": "node scripts/generate-examples.js",
 		"convert-md": "node scripts/convert-md.js",
 		"merge-api": "node scripts/merge-api.js",
 		"prep-llm": "npm run convert-md && npm run merge-api && copy llms\\llms-full.txt static\\ && copy llms\\llms.txt static\\"

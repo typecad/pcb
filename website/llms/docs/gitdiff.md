@@ -1,13 +1,13 @@
 # Git Diff
 
-The `typecad diff` command provides visual comparison of KiCAD PCB files with layer-by-layer diff, netlist comparison, and BOM diff. It generates an interactive HTML report you can open in any browser.
+The `typecad-pcb diff` command provides visual comparison of KiCAD PCB files with layer-by-layer diff, netlist comparison, and BOM diff. It generates an interactive HTML report you can open in any browser.
 
 ## Usage
 
 ### File-to-file comparison
 
 ```bash
-typecad diff board_v1.kicad_pcb board_v2.kicad_pcb
+typecad-pcb diff board_v1.kicad_pcb board_v2.kicad_pcb
 ```
 
 ### Git revision comparison
@@ -15,13 +15,13 @@ typecad diff board_v1.kicad_pcb board_v2.kicad_pcb
 Compare a git revision against the current working copy:
 
 ```bash
-typecad diff HEAD~1 ./build/board.kicad_pcb
+typecad-pcb diff HEAD~1 ./build/board.kicad_pcb
 ```
 
 Compare two git revisions:
 
 ```bash
-typecad diff HEAD~1 HEAD -- board.kicad_pcb
+typecad-pcb diff HEAD~1 HEAD -- board.kicad_pcb
 ```
 
 ## Options
@@ -44,7 +44,7 @@ The generated HTML report supports multiple view modes:
 
 ## Textual Diff
 
-In addition to the visual comparison, `typecad diff` provides:
+In addition to the visual comparison, `typecad-pcb diff` provides:
 
 - **Netlist diff**: Shows added, removed, and modified nets with their connected pins
 - **BOM diff**: Compares component lists between revisions, highlighting added/removed/changed parts
@@ -54,7 +54,7 @@ In addition to the visual comparison, `typecad diff` provides:
 You can also use the diff functionality programmatically:
 
 ```ts
-import { generateDiffs } from '@typecad/typecad/diff';
+import { generateDiffs } from '@typecad/pcb/diff';
 
 await generateDiffs({
   originalFile: 'old.kicad_pcb',

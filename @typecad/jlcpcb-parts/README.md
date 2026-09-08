@@ -169,7 +169,7 @@ Enter the number of the result (1-5): 1
 Running typecad add component for C25804...
 ```
 
-This requires `@typecad/typecad` to be installed globally (`npm install -g @typecad/typecad`).
+This requires `@typecad/pcb` to be installed globally (`npm install -g @typecad/pcb`).
 
 ## How It Works
 

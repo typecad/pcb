@@ -13,7 +13,7 @@ Very simple, just two resistors. Voltage on the top, ground on the bottom, with 
 From a terminal, run:
 
 ```bash
-typecad create
+typecad-pcb create
 ```
 
 Call this project `voltage_divider`. No need to make a PlatformIO project or initialize a git repo unless you want to. No extra packages are needed either, but feel free to add them later if you want. 
@@ -29,8 +29,7 @@ The `r1` resistor is there as test code. It, and the rest of the code, is contai
 You can delete most of the starter code in `voltage_divider.ts` so you're left with this:
 
 ```ts
-import { PCB } from '@typecad/typecad'
-import { Resistor } from '@typecad/passives/0603';
+import { PCB, Resistor } from '@typecad/pcb'
 
 let typecad = new PCB('voltage_divider');
 let r1 = new Resistor({ value: '1kohm' });
@@ -41,8 +40,7 @@ typecad.create(r1);
 This code creates a `PCB` object called `typecad` and a `Resistor` object called `r1`. We need two resistors, so let's make another.
 
 ```ts
-import { PCB } from '@typecad/typecad'
-import { Resistor } from '@typecad/passives/0603';
+import { PCB, Resistor } from '@typecad/pcb'
 
 let typecad = new PCB('voltage_divider');
 let r1 = new Resistor({ value: '1kohm' });
@@ -53,15 +51,14 @@ typecad.create(r1, r2); // [!code ++]
 
 Don't forget to add `r2` to the `create` method.
 
-### `@typecad/passives`
-Most passives can be added in this way. For all the documentation, visit the [package](https://www.npmjs.com/package/@typecad/passives) page. Resistors, capacitors, inductors, fuses, diodes and LEDs in various sizes can be made this way. Connectors and testpoints are also in the package. 
+### Passives
+Most passives can be added in this way — they are built into `@typecad/pcb`, so there is nothing extra to install. For all the documentation, visit the [Passives](/docs/passives) page. Resistors, capacitors, inductors, fuses, diodes and LEDs in various sizes (via the `size` option) can be made this way. Connectors and testpoints are also included.
 
 ### Resistor properties
 Components have several properties, the one we're concerned with here is `value` (VSCode tooltips will tell you all the other properties). Our example schematic used 10kOhm resistors, so let's change that.
 
 ```ts
-import { PCB } from '@typecad/typecad'
-import { Resistor } from '@typecad/passives/0603';
+import { PCB, Resistor } from '@typecad/pcb'
 
 let typecad = new PCB('voltage_divider');
 let r1 = new Resistor({ value: '10kohm' }); // [!code ++]
@@ -80,8 +77,7 @@ Build the schematic again. Click the `open_board` script. When KiCAD opens you s
 To create our voltage divider, we need to connect our two resistors together. 
 
 ```ts
-import { PCB } from '@typecad/typecad'
-import { Resistor } from '@typecad/passives/0603';
+import { PCB, Resistor } from '@typecad/pcb'
 
 let typecad = new PCB('voltage_divider');
 let r1 = new Resistor({ value: '10kohm' });
@@ -106,8 +102,7 @@ When you build again, you'll see the connection we just made inside KiCAD.
 We need to add a power source to make something happen. A `Power` object represents a physical source of power in **type**CAD. Don't think of it like the VCC or GND symbol in a schematic, but more like a power regulator or battery as it would be in your PCB; it has pins and is an actual component. For this simple example, the pins will be the top of `R1` and the bottom of `R2`. 
 
 ```ts
-import { PCB, Power } from "@typecad/typecad" // [!code ++]
-import { Resistor } from '@typecad/passives/0603';
+import { PCB, Power, Resistor } from "@typecad/pcb" // [!code ++]
 
 let typecad = new PCB('voltage_divider');
 let r1 = new Resistor({ value: '10kohm' });

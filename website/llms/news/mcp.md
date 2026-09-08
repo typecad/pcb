@@ -36,7 +36,7 @@ The server provides these typeCAD tools to AI assistants:
 
 ### Passive Components
 
-Quick access to common passive components using the @typecad/passives package:
+Quick access to common passive components, built into @typecad/pcb:
 
 - **💈 Add Resistor** - Create resistors with value, wattage, voltage rating options
 - **🪫 Add Capacitor** - Create capacitors with value, voltage rating options
@@ -45,7 +45,7 @@ Quick access to common passive components using the @typecad/passives package:
 - **🌀 Add Inductor** - Create inductors with inductance value specifications
 - **🔒 Add Fuse** - Create fuses with current and voltage ratings
 - **🔗 Add Connector** - Create connectors with pin count and footprint options
-- **🎯 Add Testpoint** - Create testpoints with custom footprint options
+- **🎯 Add TestPoint** - Create testpoints with custom footprint options
 
 ### Power Management
 
@@ -87,7 +87,7 @@ Comprehensive design checking and validation tools:
 Install globally via npm:
 
 ```bash
-npm install -g @typecad/typecad-mcp
+npm install -g @typecad/pcb-mcp
 ```
 
 ## Configuration
@@ -100,7 +100,7 @@ Add this to your MCP configuration file:
     "typecad-mcp": {
       "command": "npx",
       "args": ["-y",
-        "@typecad/typecad-mcp"
+        "@typecad/pcb-mcp"
       ],
       "env": {}
     }

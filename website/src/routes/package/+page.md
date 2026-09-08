@@ -16,8 +16,7 @@ Traditional hardware design forces you to rebuild the same circuits over and ove
 <ScrollArea orientation="both">
 
 ```bash
-# Install common passive components
-npm install @typecad/passives
+# Common passive components (resistors, capacitors, etc.) are built into @typecad/pcb
 
 # Add specialized sensor packages  
 npm install @mycompany/environmental-sensors
@@ -36,7 +35,7 @@ No more hunting through component libraries or rebuilding basic circuits. Instal
 
 ```typescript
 // Import exactly what you need
-import { Resistor, Capacitor, LED } from '@typecad/passives/0603';
+import { Resistor, Capacitor, LED } from '@typecad/pcb';
 import { UsbCConnector } from '@acme/connectors';
 import { BuckConverter5V } from '@acme/power-supplies';
 
@@ -82,8 +81,7 @@ Compose complex IoT devices from well-tested, modular packages. Each package han
   "name": "weather-station-v2",
   "version": "1.2.0",
   "dependencies": {
-    "@typecad/typecad": "^2.1.0",
-    "@typecad/passives": "^1.5.0",
+    "@typecad/pcb": "^2.1.0",
     "@acme/sensors": "^3.2.1",
     "@community/displays": "^2.0.0"
   },

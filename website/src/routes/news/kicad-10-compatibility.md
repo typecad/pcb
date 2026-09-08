@@ -16,7 +16,7 @@ KiCad 10 is currently in release candidate, and we're actively testing typeCAD t
 
 ## Current Status
 
-We're in the process of updating and verifying that typeCAD works correctly with KiCad 10. So far, the main `@typecad/typecad` package is working well with the new release.
+We're in the process of updating and verifying that typeCAD works correctly with KiCad 10. So far, the main `@typecad/pcb` package is working well with the new release.
 
 ## What's Next
 

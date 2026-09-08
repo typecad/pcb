@@ -9,8 +9,8 @@ There are two ways to access pins in **type**CAD:
 Use this for simple components like passives where pin numbers are straightforward:
 
 ```ts
-import { Resistor } from '@typecad/passives/0805'
-let r1 = new Resistor({ value: '1kohm' });
+import { Resistor } from '@typecad/pcb'
+let r1 = new Resistor({ value: '1kohm', size: '0805' });
 
 r1.pin(1);      // first pin
 r1.pin(2);      // second pin

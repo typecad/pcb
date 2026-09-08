@@ -21,8 +21,7 @@ And this is the code:
 <ScrollArea orientation="both">
 
 ```ts
-import { PCB } from "@typecad/typecad"
-import { Resistor } from '@typecad/passives/0603';
+import { PCB, Resistor } from "@typecad/pcb"
 
 let typecad = new PCB('voltage_divider');
 let r1 = new Resistor({ value: '10kohm' });
@@ -52,9 +51,8 @@ Next, we need to add a `Power` component. In addition to helping with simulation
 <ScrollArea orientation="both">
 
 ```ts
-import { PCB } from "@typecad/typecad" // [!code --]
-import { PCB, Power } from "@typecad/typecad" // [!code ++][!code word:Power]
-import { Resistor } from '@typecad/passives/0603';
+import { PCB } from "@typecad/pcb" // [!code --]
+import { PCB, Power, Resistor } from "@typecad/pcb" // [!code ++][!code word:Power]
 
 let typecad = new PCB('voltage_divider');
 let r1 = new Resistor({ value: '10kohm' });
@@ -87,8 +85,7 @@ Now we need to add the `ngspice` related code.
 
 ```ts
 // [!code word:simulation]
-import { PCB, Power } from "@typecad/typecad"
-import { Resistor } from '@typecad/passives/0603';
+import { PCB, Power, Resistor } from "@typecad/pcb"
 import { ngspiceSimulator } from '@typecad/ngspice'; // [!code highlight]
 
 let typecad = new PCB('voltage_divider');
@@ -115,8 +112,7 @@ Currently, there are two simulation modes available in the library: DC and trans
 <ScrollArea orientation="both">
 
 ```ts
-import { PCB, Power } from "@typecad/typecad"
-import { Resistor } from '@typecad/passives/0603';
+import { PCB, Power, Resistor } from "@typecad/pcb"
 import { ngspiceSimulator } from '@typecad/ngspice';
 
 let typecad = new PCB('voltage_divider');

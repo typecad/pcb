@@ -1,5 +1,5 @@
 ---
-'@typecad/typecad': minor
+'@typecad/pcb': minor
 ---
 
 N-layer boards: the copper layer set is now a first-class, always-resolved property of the PCB.

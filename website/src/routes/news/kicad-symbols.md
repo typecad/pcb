@@ -28,10 +28,10 @@ Intelligent fuzzy search for KiCad schematic symbols with CLI interface. This Ty
 
 ## Installation
 
-> **Note:** kicad-symbols is now bundled with `@typecad/typecad`. Install typecad to get the `kicad-symbols` CLI.
+> **Note:** kicad-symbols is now bundled with `@typecad/pcb`. Install typecad to get the `kicad-symbols` CLI.
 
 ```bash
-npm install @typecad/typecad
+npm install @typecad/pcb
 ```
 
 After installation, you can use the `kicad-symbols` command via npx:

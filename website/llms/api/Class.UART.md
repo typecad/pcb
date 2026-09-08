@@ -1,8 +1,8 @@
-[**@typecad/typecad**](README.md)
+[**@typecad/pcb**](README.md)
 
 ***
 
-[@typecad/typecad](globals.md) / UART
+[@typecad/pcb](globals.md) / UART
 
 # Class: UART
 

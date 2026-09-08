@@ -1,8 +1,8 @@
-[**@typecad/typecad**](README.md)
+[**@typecad/pcb**](README.md)
 
 ***
 
-[@typecad/typecad](globals.md) / KiCADCommandOptions
+[@typecad/pcb](globals.md) / KiCADCommandOptions
 
 # Interface: KiCADCommandOptions
 

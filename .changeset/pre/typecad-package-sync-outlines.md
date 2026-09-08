@@ -1,5 +1,5 @@
 ---
-'@typecad/typecad': major
+'@typecad/pcb': major
 ---
 
 #### No-postinstall package file sync
@@ -8,7 +8,7 @@ Component packages no longer need an npm `postinstall` script to install their K
 
 - `Package` subclasses get the sync automatically in the constructor
 - Hand-rolled classes can call the new exported `syncThisPackageBuildLib()` helper
-- `typecad add package` no longer generates a `postinstall.js`
+- `typecad-pcb add package` no longer generates a `postinstall.js`
 
 #### Irregular board outlines
 
@@ -21,7 +21,7 @@ New Edge.Cuts shape builders beyond the filleted rectangle:
 
 #### Fixes
 
-- Re-exported `Schematic` (restores the public API expected by `@typecad/passives/tie`)
+- Re-exported `Schematic` (restores the built-in NetTie API)
 - `registerReference` is now idempotent — components constructed by a `Package` keep their references when `create()` registers them again, instead of being renamed
 - Schematic rendering: via components (which have no symbol by design) are skipped instead of erroring; net-label pin owners are backfilled for standalone `new Pin(...)` declarations; power-symbol lookups no longer warn for auto-generated net names
 - Updated dependencies: chalk 6, markdown-it 15 (types now bundled; `@types/markdown-it` removed), vitest 4, ESLint 10, changesets 3

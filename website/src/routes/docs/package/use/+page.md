@@ -26,15 +26,14 @@ Now create a new instance of the package. `pcb`, `x`, and `y` are required:
 <ScrollArea orientation="both">
 
 ```ts
-import { PCB } from '@typecad/typecad';
+import { PCB } from '@typecad/pcb';
 import { TypecadPackage } from "./typecad_package";
-import * as _0805 from '@typecad/passives/0805'
 
 let typecad = new PCB('typecad_docs');
 
 let u1 = new TypecadPackage({ pcb: typecad, x: 50, y: 50 });
 let u2 = new TypecadPackage({ pcb: typecad, x: 100, y: 50, reference: 'U2' });
-let u3 = new TypecadPackage({ pcb: typecad, x: 150, y: 50, passives: _0805 });
+let u3 = new TypecadPackage({ pcb: typecad, x: 150, y: 50, passiveSize: '0805' });
 ```
 </ScrollArea>
 
@@ -43,7 +42,7 @@ Options:
 - _x_ / _y_ — position on the board (required)
 - _reference_ — reference designator for the main IC
 - _name_ — name for the PCB group (defaults to the class name)
-- _passives_ — override the default 0603 passives factory
+- _passiveSize_ — chip size for the package's built-in passives (defaults to `'0603'`)
 
 ## Connections
 After creating the instance, you can access the pins of any component in the package:
@@ -62,7 +61,7 @@ After the package has been pulled in with an `import` and a `new` instance creat
 <ScrollArea orientation="both">
 
 ```ts
-import { PCB } from '@typecad/typecad';
+import { PCB } from '@typecad/pcb';
 import { TypecadPackage } from "./typecad_package";
 let typecad = new PCB('typecad_docs');
 

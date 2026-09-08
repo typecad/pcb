@@ -23,7 +23,7 @@ Then `import` it and use it:
 <ScrollArea orientation="both">
 
 ```ts
-import { PCB } from '@typecad/typecad';
+import { PCB } from '@typecad/pcb';
 import { jlcpcb_export } from '@typecad/jlcpcb-export';// [!code highlight]
 
 let typecad = new PCB('project');

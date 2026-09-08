@@ -17,12 +17,12 @@ Traditional hardware design is manual, error-prone, and time-consuming. **type**
 ### ⚡ **Electrical Rules Checking (ERC)**
 
 ```typescript
-import { runERC } from "@typecad/typecad";
+import { runERC } from "@typecad/pcb";
 
 // Run ERC programmatically
 let report = await runERC("./build/my_circuit.kicad_sch");
 
-// Or use the CLI: typecad erc
+// Or use the CLI: typecad-pcb erc
 ```
 
 Run ERC to validate your circuit against KiCAD's electrical rules. Catch connection errors, power mismatches, and pin type conflicts before they become hardware problems.
@@ -74,10 +74,10 @@ Automatically verify that power supplies can handle load requirements and voltag
 ### 📊 **Automated Documentation Generation**
 
 ```bash
-typecad doc docs/board.md build/board.kicad_pcb -o output.html
+typecad-pcb doc docs/board.md build/board.kicad_pcb -o output.html
 ```
 
-The `typecad doc` command converts markdown files and KiCAD PCBs into comprehensive documentation with layer exports and 3D renders. Perfect for:
+The `typecad-pcb doc` command converts markdown files and KiCAD PCBs into comprehensive documentation with layer exports and 3D renders. Perfect for:
 
 - **Assembly instructions** with layer-by-layer visuals
 - **Technical documentation** with automated BOM generation  
@@ -92,7 +92,7 @@ Build custom automation workflows using **type**CAD's programmatic API:
 
 ```typescript
 // Custom BOM processing
-import { PCB } from "@typecad/typecad";
+import { PCB } from "@typecad/pcb";
 
 let pcb = new PCB("production_board");
 // ... design your circuit ...
@@ -112,10 +112,10 @@ Create specialized outputs for your manufacturing partners, cost analysis tools,
 ### 🤖 **typeCAD MCP Server**
 
 ```bash
-npm install -g @typecad/typecad-mcp
+npm install -g @typecad/pcb-mcp
 ```
 
-The [typeCAD MCP Server](https://www.npmjs.com/package/@typecad/typecad-mcp) connects AI assistants directly to **type**CAD workflows:
+The [typeCAD MCP Server](https://www.npmjs.com/package/@typecad/pcb-mcp) connects AI assistants directly to **type**CAD workflows:
 
 - **"Create a new sensor board project"** → Automatically scaffolds project structure
 - **"Add an ESP32-S3 with power regulation"** → Finds components and validates connections
@@ -167,8 +167,7 @@ Traditional electrical design tools force you to click, drag, and manually wire 
 ### � **Familiar Developer Tools**
 
 ```typescript
-import { PCB } from "@typecad/typecad";
-import { Resistor, Capacitor } from "@typecad/passives/0603";
+import { PCB, Resistor, Capacitor } from "@typecad/pcb";
 
 let typecad = new PCB("my_circuit");
 let r1 = new Resistor({ value: "10kohm" });
@@ -269,13 +268,12 @@ Ready to design hardware like you write software?
 Call `route()` on the `PCB` instance with a net definition:
 
 ```ts
-import { PCB } from '@typecad/typecad';
-import { Resistor } from '@typecad/passives/0805';
+import { PCB, Resistor } from '@typecad/pcb';
 
 let typecad = new PCB('autoroute_example');
 
-let r1 = new Resistor({ value: '1kohm', reference: 'R1' });
-let r2 = new Resistor({ value: '1kohm', reference: 'R2' });
+let r1 = new Resistor({ value: '1kohm', reference: 'R1', size: '0805' });
+let r2 = new Resistor({ value: '1kohm', reference: 'R2', size: '0805' });
 
 r1.pcb = { x: 10, y: 10, rotation: 0 };
 r2.pcb = { x: 20, y: 10, rotation: 0 };
@@ -352,7 +350,7 @@ It routes all items, then retries failed routes across multiple rounds with rela
 For differential pairs that require matched lengths, `LengthMatcher.apply()` extends shorter routes with sawtooth meanders:
 
 ```ts
-import { LengthMatcher } from '@typecad/typecad/routing';
+import { LengthMatcher } from '@typecad/pcb/routing';
 
 LengthMatcher.apply(ctx, routeDetails, trackBuilders, {
   tolerance: 0.5,
@@ -370,7 +368,7 @@ Parameters:
 Generate debug images of the routing grid to troubleshoot routing issues. Outputs PPM image files:
 
 ```ts
-import { DebugVisualizer } from '@typecad/typecad/routing';
+import { DebugVisualizer } from '@typecad/pcb/routing';
 
 DebugVisualizer.visualizeRouting(
   grid,
@@ -403,11 +401,10 @@ Parameters:
 Each `Component` has a `pcb` property that contains `{x, y, rotation, side}`.
 
 ```ts
-import { PCB } from '@typecad/typecad';
-import { Resistor } from '@typecad/passives/0805';
+import { PCB, Resistor } from '@typecad/pcb';
 
 let pcb = new PCB('typecad_docs');
-let r1 = new Resistor({ value: '1kohm', reference: 'R1' });
+let r1 = new Resistor({ value: '1kohm', reference: 'R1', size: '0805' });
 
 r1.pcb = { x: 10, y: 10, rotation: 0 }; // [!code highlight]
 // Optionally place on the back side:
@@ -428,7 +425,7 @@ All placement lives on `pcb.board` — bounds (`left`, `center`, `fromLeft()`, `
 Get the board's physical dimensions from the outlines you've defined. Use it to place components at the center, or a fixed distance from any edge. `pcb.board` reads the outline live — usable before or after `pcb.outline()`; values follow the final outline.
 
 ```ts
-import { PCB } from '@typecad/typecad';
+import { PCB } from '@typecad/pcb';
 
 let pcb = new PCB('typecad_docs');
 pcb.outline(0, 0, 60, 45);
@@ -454,7 +451,7 @@ u1.pcb = { x: b.center.x, y: b.center.y }; // center of the board
 Place a component a fixed distance from a board edge, accounting for the component's own footprint size:
 
 ```ts
-import { PCB, Component, board } from '@typecad/typecad';
+import { PCB, Component, board } from '@typecad/pcb';
 
 let pcb = new PCB('typecad_docs');
 pcb.outline(0, 0, 60, 45);
@@ -482,8 +479,7 @@ The margin defaults to **2mm** if omitted: `b.fromLeft()` places the component 2
 Place components relative to each other with a specified gap. Each returns a builder — call `.by(gap)` to set the edge-to-edge distance in mm (defaults to **2mm**).
 
 ```ts
-import { PCB, Component, below, above, rightOf, leftOf, sameAs, board } from '@typecad/typecad';
-import { Resistor, Capacitor, LED } from '@typecad/passives/0603';
+import { PCB, Component, Resistor, Capacitor, LED } from '@typecad/pcb';
 
 let pcb = new PCB('typecad_docs');
 pcb.outline(0, 0, 60, 45);
@@ -531,7 +527,7 @@ pcb.create(mcu, c1, r1, led1, r2, c2);
 Align a component's X or Y coordinate with another component:
 
 ```ts
-import { sameAs } from '@typecad/typecad';
+import { sameAs } from '@typecad/pcb';
 
 // Same X as r1, custom Y
 let c1 = new Capacitor({ pcb: { x: pcb.board.sameAs(r1), y: 20 } });
@@ -553,13 +549,13 @@ Each component has silkscreen and fabrication text labels (reference designator,
 All three accept an `ITextPositioning` object and can be set at construction or assigned later:
 
 ```ts
-import { PCB } from '@typecad/typecad';
-import { Resistor } from '@typecad/passives/0805';
+import { PCB, Resistor } from '@typecad/pcb';
 
 let pcb = new PCB('text_layout');
 let r1 = new Resistor({
   value: '1kohm',
   reference: 'R1',
+  size: '0805',
   referenceLayout: { x: 0, y: -1.5, rotation: 90, width: 0.8, height: 0.8 }, // [!code highlight]
   valueLayout: { x: 0, y: 1.5, width: 0.6, height: 0.6 }, // [!code highlight]
   fabLayout: { x: 0, y: 0, text: 'R1' }, // [!code highlight]
@@ -606,10 +602,9 @@ In KiCAD, you can group components together. They will move around together when
 To accomplish this for a group of related components:
 
 ```ts
-import { PCB } from '@typecad/typecad';
-import { Resistor } from '@typecad/passives/0805';
+import { PCB, Resistor } from '@typecad/pcb';
 
-let r1 = new Resistor({ value: '1kohm', reference: 'R1' });
+let r1 = new Resistor({ value: '1kohm', reference: 'R1', size: '0805' });
 let pcb = new PCB('typecad_docs');
 
 r1.pcb = { x: 10, y: 10, rotation: 0 };
@@ -620,10 +615,9 @@ pcb.create();
 Or to place them:
 
 ```ts
-import { PCB } from '@typecad/typecad';
-import { Resistor } from '@typecad/passives/0805';
+import { PCB, Resistor } from '@typecad/pcb';
 
-let r1 = new Resistor({ value: '1kohm', reference: 'R1' });
+let r1 = new Resistor({ value: '1kohm', reference: 'R1', size: '0805' });
 let pcb = new PCB('typecad_docs');
 
 r1.pcb = { x: 10, y: 10, rotation: 0 };
@@ -637,11 +631,10 @@ pcb.create();
 Vias can be created, placed and connected like any other component. Vias are connected through `pin(1)`.
 
 ```ts
-import { PCB } from '@typecad/typecad';
-import { Resistor } from '@typecad/passives/0805';
+import { PCB, Resistor } from '@typecad/pcb';
 
 let typecad = new PCB('typecad_docs');
-let r1 = new Resistor({ value: '1kohm' });
+let r1 = new Resistor({ value: '1kohm', size: '0805' });
 
 let via = typecad.via({
   at: { x: 10, y: 10 },
@@ -663,7 +656,7 @@ Vias can be created with the optional `powerInfo` object. This allows **type**CA
 Board outlines can be created.
 
 ```ts
-import { PCB } from '@typecad/typecad';
+import { PCB } from '@typecad/pcb';
 
 let pcb = new PCB('typecad_docs');
 
@@ -686,7 +679,7 @@ and internal cutouts (mounting holes, milled slots). All are emitted on the
 `Edge.Cuts` layer as native KiCad `gr_*` primitives.
 
 ```ts
-import { PCB } from '@typecad/typecad';
+import { PCB } from '@typecad/pcb';
 
 let pcb = new PCB('board');
 
@@ -726,7 +719,7 @@ there is no separate cutout layer.
 ## Design Rules
 
 typeCAD writes board-wide design rules (minimum clearances, track/via dimensions)
-into the `.kicad_pro` project file so that `typecad drc` validates against them.
+into the `.kicad_pro` project file so that `typecad-pcb drc` validates against them.
 The autorouter also honors these rules as its fallback clearance and track width.
 You don't need to open KiCad's Board Setup dialog to configure them.
 
@@ -747,7 +740,7 @@ Pass a `rules` option to the `PCB` constructor to override any subset; the rest
 keep the JLC standard default:
 
 ```ts
-import { PCB } from '@typecad/typecad';
+import { PCB } from '@typecad/pcb';
 
 // dense board: tighten clearance and track width
 let pcb = new PCB('dense-board', {
@@ -773,7 +766,7 @@ values, so the autorouter and DRC share a single source of truth. Per-route
 board rules for that individual trace.
 
 > [!note] Checking rules
-> Run `typecad drc` to validate the board against these rules. See
+> Run `typecad-pcb drc` to validate the board against these rules. See
 > [Tooling](/docs/tooling#typecad-drc) and the [CLI reference](/docs/cli).
 
 ## Net Classes
@@ -799,7 +792,7 @@ object returned by `pcb.net()` or `pcb.named().net()`, so it works for both
 named and auto-named nets:
 
 ```ts
-import { PCB } from '@typecad/typecad';
+import { PCB } from '@typecad/pcb';
 
 let pcb = new PCB('board');
 
@@ -851,7 +844,7 @@ It is the single source of truth for the board's copper layer set: routing
 defaults, through-hole pad clearance, and layer validation all derive from it.
 
 ```ts
-import { PCB } from '@typecad/typecad';
+import { PCB } from '@typecad/pcb';
 
 // 4-layer board — routing may use all four copper layers
 let pcb = new PCB('board', { layers: 4 });
@@ -866,7 +859,7 @@ thickness comes from `pcb.thickness` (default 1.6mm) and the copper thickness
 from `pcb.copper_thickness` (default 35μm):
 
 ```ts
-import { PCB } from '@typecad/typecad';
+import { PCB } from '@typecad/pcb';
 
 let pcb = new PCB('board');
 
@@ -952,7 +945,7 @@ connect solidly; SMD pads reach it through vias), and the layer is removed
 from the autorouter's default routing layers:
 
 ```ts
-import { PCB } from '@typecad/typecad';
+import { PCB } from '@typecad/pcb';
 
 let pcb = new PCB('board', { layers: 4 });
 pcb.outline(0, 0, 50, 40);
@@ -987,7 +980,7 @@ pcb.viaPolicy({ type: 'blind-buried', maxSpan: 2 });
 Traces can be created manually using `pcb.track()` for point-to-point routing with vias:
 
 ```ts
-import { PCB } from '@typecad/typecad';
+import { PCB } from '@typecad/pcb';
 
 let pcb = new PCB('typecad_docs');
 
@@ -1009,7 +1002,7 @@ Tracks are created by going from point to point, using vias to transition betwee
 For automatic pin-to-pin routing, use `pcb.route()`:
 
 ```ts
-import { PCB } from '@typecad/typecad';
+import { PCB } from '@typecad/pcb';
 
 let pcb = new PCB('typecad_docs');
 
@@ -1034,7 +1027,7 @@ pcb.create(r1, r2, ...tracks);
 Filled copper zones (e.g., ground pours) and keepout areas can be added to the board:
 
 ```ts
-import { PCB } from '@typecad/typecad';
+import { PCB } from '@typecad/pcb';
 
 let pcb = new PCB('zone_example');
 
@@ -1154,7 +1147,7 @@ See also [planes](#planes) for dedicating a whole copper layer to a net.
 Draw graphical elements on the PCB:
 
 ```ts
-import { PCB } from '@typecad/typecad';
+import { PCB } from '@typecad/pcb';
 
 let pcb = new PCB('graphics_example');
 
@@ -1218,16 +1211,16 @@ pcb.teardrops({ maxLength: 0.8, shape: 'rect' }); // straight-sided wedges
 | `shape` | `'round'` (curved sides, default) or `'rect'` (straight-sided). |
 | `maxLength` / `maxHeight` | Wedge caps in mm. Defaults 1.0 / 2.0. |
 
-## Round-Trip Editing with `typecad import`
+## Round-Trip Editing with `typecad-pcb import`
 
-You can lay out components, draw tracks, and place vias in the KiCAD interactive editor, then sync those changes back into your **type**CAD source code using `typecad import`.
+You can lay out components, draw tracks, and place vias in the KiCAD interactive editor, then sync those changes back into your **type**CAD source code using `typecad-pcb import`.
 
 ### Snippet Mode
 
 Print generated **type**CAD code snippets for the board layout:
 
 ```bash
-typecad import ./build/board.kicad_pcb
+typecad-pcb import ./build/board.kicad_pcb
 ```
 
 This outputs component positions, `TrackBuilder` chains, vias, and outlines as TypeScript snippets you can copy into your code.
@@ -1237,7 +1230,7 @@ This outputs component positions, `TrackBuilder` chains, vias, and outlines as T
 Interactively apply layout changes from a `.kicad_pcb` file back to your source `.ts` files:
 
 ```bash
-typecad import ./build/board.kicad_pcb --apply
+typecad-pcb import ./build/board.kicad_pcb --apply
 ```
 
 This compares the KiCAD board file against your **type**CAD source, shows coordinate and side changes for each component, and lets you select which ones to write back.
@@ -1255,7 +1248,7 @@ This is particularly useful for [packages](/docs/package/overview): lay out the 
 The main class that represents the entire circuit.
 
 ```ts
-import { PCB } from '@typecad/typecad';
+import { PCB } from '@typecad/pcb';
 let typecad = new PCB('typecad_concepts', {thickness: 1.6, copper_thickness: 35 });
 ```
 
@@ -1281,7 +1274,7 @@ The `PCB` class is where:
 The `Component` class represents individual parts like resistors, capacitors, ICs, etc. You add a `Component` to your `PCB`.
 
 ```ts
-import { Component } from '@typecad/typecad';
+import { Component } from '@typecad/pcb';
 
 let R1 = new Component({ value: '1kohm' });
 ```
@@ -1311,7 +1304,7 @@ Options for the `Component` class are:
 All three layout properties accept an `ITextPositioning` object and can be set at construction or assigned after creation:
 
 ```ts
-import { Component } from '@typecad/typecad';
+import { Component } from '@typecad/pcb';
 
 let r1 = new Component({
   footprint: 'Resistor_SMD:R_0603_1608Metric',
@@ -1352,7 +1345,7 @@ r1.referenceLayout = { x: 2, y: -1, rotation: 0 };
 Represents a power source like a battery or voltage regulator. 
 
 ```ts
-import { Power } from '@typecad/typecad';
+import { Power } from '@typecad/pcb';
 
 let coin_cell = new Power({ power: holder.pin(1), gnd: holder.pin(2), voltage: 3.7 });
 ```
@@ -1370,7 +1363,7 @@ Options are:
 Abstract base class for creating reusable, importable hardware modules. Extend this class to encapsulate a circuit sub-design (e.g. a voltage regulator, sensor module, or MCU subsystem).
 
 ```ts
-import { Package, Component } from '@typecad/typecad';
+import { Package, Component } from '@typecad/pcb';
 
 export class MyResistor extends Package {
   declare resistor: Component;
@@ -1389,7 +1382,7 @@ The constructor handles offset positioning (`x`, `y`), auto-collects all `Compon
 Fluent API for creating tracks on the PCB:
 
 ```ts
-import { PCB, TrackBuilder } from '@typecad/typecad';
+import { PCB, TrackBuilder } from '@typecad/pcb';
 
 let pcb = new PCB('tracks');
 
@@ -1410,7 +1403,7 @@ pcb.create();
 
 *CLI Reference*
 
-All **type**CAD commands are accessed through the `typecad` binary, included with `@typecad/typecad`.
+All **type**CAD commands are accessed through the `typecad` binary, included with `@typecad/pcb`.
 
 ## Global Options
 
@@ -1422,12 +1415,12 @@ All **type**CAD commands are accessed through the `typecad` binary, included wit
 
 ## Commands
 
-### `typecad create`
+### `typecad-pcb create`
 
 Create a new typeCAD project.
 
 ```bash
-typecad create [options]
+typecad-pcb create [options]
 ```
 
 | Option | Description |
@@ -1436,26 +1429,25 @@ typecad create [options]
 | `--pio ` | Create a PlatformIO project |
 | `--board ` | PlatformIO board ID |
 | `--git ` | Initialize a git repository |
-| `--packages ` | Comma-separated list of packages to install |
 
-### `typecad build`
+### `typecad-pcb build`
 
 Build the typeCAD project and generate KiCAD output files.
 
 ```bash
-typecad build [options]
+typecad-pcb build [options]
 ```
 
 | Option | Description |
 |--------|-------------|
 | `--verbose` | Show detailed build output |
 
-### `typecad add component`
+### `typecad-pcb add component`
 
 Add a component to the project.
 
 ```bash
-typecad add component [options]
+typecad-pcb add component [options]
 ```
 
 | Option | Description |
@@ -1468,12 +1460,12 @@ typecad add component [options]
 | `--symbol_file ` | Path to local symbol file |
 | `--footprint_file ` | Path to local footprint file |
 
-### `typecad add package`
+### `typecad-pcb add package`
 
 Create a reusable typeCAD package.
 
 ```bash
-typecad add package [options]
+typecad-pcb add package [options]
 ```
 
 | Option | Description |
@@ -1488,12 +1480,12 @@ typecad add package [options]
 | `--footprint ` | Footprint for component package |
 | `--c ` | JLCPCB component number |
 
-### `typecad search`
+### `typecad-pcb search`
 
 Search KiCAD symbol libraries with fuzzy matching.
 
 ```bash
-typecad search  [options]
+typecad-pcb search  [options]
 ```
 
 | Option | Description |
@@ -1502,24 +1494,24 @@ typecad search  [options]
 | `--sort ` | Sort results by field |
 | `--limit ` | Maximum number of results |
 
-### `typecad import`
+### `typecad-pcb import`
 
 Convert a KiCAD PCB file to typeCAD code.
 
 ```bash
-typecad import  [options]
+typecad-pcb import  [options]
 ```
 
 | Option | Description |
 |--------|-------------|
 | `--apply` | Interactively apply coordinates to source files |
 
-### `typecad diff`
+### `typecad-pcb diff`
 
 Compare two KiCAD PCB files visually.
 
 ```bash
-typecad diff   [options]
+typecad-pcb diff   [options]
 ```
 
 | Option | Description |
@@ -1528,12 +1520,12 @@ typecad diff   [options]
 | `--theme ` | Color theme for the report |
 | `--output ` | Output HTML file path |
 
-### `typecad doc`
+### `typecad-pcb doc`
 
 Generate HTML documentation from Markdown + KiCAD PCB.
 
 ```bash
-typecad doc   [options]
+typecad-pcb doc   [options]
 ```
 
 | Option | Description |
@@ -1543,12 +1535,12 @@ typecad doc   [options]
 | `-q` | Quiet mode |
 | `--no-open` | Don't open the file after generation |
 
-### `typecad doctor`
+### `typecad-pcb doctor`
 
 Check your environment for required tools.
 
 ```bash
-typecad doctor [options]
+typecad-pcb doctor [options]
 ```
 
 | Option | Description |
@@ -1556,12 +1548,12 @@ typecad doctor [options]
 | `--fix` | Attempt automatic fixes |
 | `--json` | Machine-readable output |
 
-### `typecad validate`
+### `typecad-pcb validate`
 
 Validate source without full build.
 
 ```bash
-typecad validate [options]
+typecad-pcb validate [options]
 ```
 
 | Option | Description |
@@ -1569,7 +1561,7 @@ typecad validate [options]
 | `--verbose` | Show detailed output |
 | `--json` | Machine-readable output |
 
-### `typecad drc`
+### `typecad-pcb drc`
 
 Run KiCAD Design Rule Check.
 
@@ -1577,32 +1569,32 @@ The rules DRC validates against are configurable in code — see
 [Board Layout → Design Rules](/docs/board_layout#design-rules).
 
 ```bash
-typecad drc [options]
+typecad-pcb drc [options]
 ```
 
 | Option | Description |
 |--------|-------------|
 | `--json` | Machine-readable output |
 
-### `typecad erc`
+### `typecad-pcb erc`
 
 Run KiCAD Electrical Rules Check.
 
 ```bash
-typecad erc [options]
+typecad-pcb erc [options]
 ```
 
 | Option | Description |
 |--------|-------------|
 | `--json` | Machine-readable output |
 
-### `typecad skills`
+### `typecad-pcb skills`
 
 List and query typeCAD skills and API patterns.
 
 ```bash
-typecad skills list [options]
-typecad skills get  [options]
+typecad-pcb skills list [options]
+typecad-pcb skills get  [options]
 ```
 
 | Subcommand | Description |
@@ -1615,9 +1607,9 @@ typecad skills get  [options]
 | `--json` | Machine-readable output |
 
 ```bash
-typecad skills list
-typecad skills get resistor
-typecad skills get power --json
+typecad-pcb skills list
+typecad-pcb skills get resistor
+typecad-pcb skills get power --json
 ```
 
 ---
@@ -1633,18 +1625,18 @@ A component is anything that has a KiCAD symbol or footprint, ie. resistors, MCU
 The `Component` class is the base class for all components in **type**CAD.  In KiCAD, it would be anything that has a footprint file associated with it.
 
 ```ts
-import { Component } from '@typecad/typecad';
+import { Component } from '@typecad/pcb';
 
 let u1 = new Component({ footprint: 'Package_SO:SOIC-8_5.3x5.3mm_P1.27mm' });
 ```
 
 The above creates a SOIC-8 component. `footprint` is the KiCAD footprint path and split into two strings.
 
-That method works well for simple components, but there is a better way using the `typecad add component` tool.
+That method works well for simple components, but there is a better way using the `typecad-pcb add component` tool.
 
-## `typecad add component`
+## `typecad-pcb add component`
 
-**type**CAD has a command line tool that can be used to create a component. Run `typecad add component` from the `./hw` directory, or click the `add_component` button in the VSCode GUI under `NPM Scripts`.
+**type**CAD has a command line tool that can be used to create a component. Run `typecad-pcb add component` from the `./hw` directory, or click the `add_component` button in the VSCode GUI under `NPM Scripts`.
 
 The script will ask where the component is coming from, either the KiCAD library, a local file, or an EasyEDA/JLCPCB component.
 
@@ -1656,12 +1648,12 @@ If it's an [EasyEDA/JLCPCB component](https://jlcpcb.com/parts), you'll be asked
 
 ### KiCAD Library Components
 
-To find the symbol and footprint for a KiCAD library component, use `typecad search`:
+To find the symbol and footprint for a KiCAD library component, use `typecad-pcb search`:
 
 ```bash
-typecad search "voltage regulator"
-typecad search LM358
-typecad search "op amp" --format=json --limit=10
+typecad-pcb search "voltage regulator"
+typecad-pcb search LM358
+typecad-pcb search "op amp" --format=json --limit=10
 ```
 
 It fuzzy-matches against the KiCAD symbol libraries and returns the symbol name, footprint, and description. The symbol name is in `LibraryName:SymbolName` format (e.g. `MCU_Microchip_ATtiny:ATtiny85-20S`).
@@ -1700,7 +1692,7 @@ Let's look at what's in the `ATtiny85_20S.ts` file that was created to get a bet
 ### `ATtiny85_20S.ts`
 
 ```ts
-import { Component } from '@typecad/typecad';
+import { Component } from '@typecad/pcb';
 /**
  | Pin # | Name         | Type              |
  | --:   | :--          | :--               |
@@ -1742,7 +1734,7 @@ The file `extends` the `Component` by adding some extras to it. In particular, i
 After a `Component` has been created and modified, call `create` to include it in the PCB, schematic and netlist.
 
 ```ts
-import { PCB } from '@typecad/typecad';
+import { PCB } from '@typecad/pcb';
 import { ATtiny85_20S } from './ATtiny85_20S';
 
 let typecad = new PCB('typecad_docs');
@@ -1780,7 +1772,7 @@ The normal flow in KiCAD is:
 This is how a PCB is created.
 
 ```ts 
-import { PCB } from '@typecad/typecad';
+import { PCB } from '@typecad/pcb';
 let typecad = new PCB('typecad');
 typecad.create();
 ```
@@ -1788,7 +1780,7 @@ typecad.create();
 That code will create a KiCAD board file, schematic file, netlist and BOM in `./build/typecad.kicad_pcb`, `./build/typecad.kicad_sch`, `./build/typecad.net`, and `./build/typecad.csv`.
 
 ### Build
-Run `typecad build` from your project's `hw/` directory to build. You can configure the build using a `typecad.conf.ts` file in the `hw/` directory. 
+Run `typecad-pcb build` from your project's `hw/` directory to build. You can configure the build using a `typecad.conf.ts` file in the `hw/` directory. 
 
 ### Workflow
 The new layout becomes:
@@ -1815,7 +1807,7 @@ Everything should work out-of-the-box, but there are several items that can be c
 ## `typecad.conf.ts`
 
 ```ts
-import { defineConfig } from '@typecad/typecad';
+import { defineConfig } from '@typecad/pcb';
 
 export default defineConfig({
   entry: 'src/index.ts',
@@ -1847,12 +1839,12 @@ export default defineConfig({
 
 Supported versions: KiCAD 10.0.
 
-## `typecad doctor`
+## `typecad-pcb doctor`
 
-Use `typecad doctor` to verify your configuration and environment:
+Use `typecad-pcb doctor` to verify your configuration and environment:
 
 ```bash
-typecad doctor
+typecad-pcb doctor
 ```
 
 This checks that KiCAD, Node.js, and all required tools are installed and accessible. Use `--fix` to attempt automatic fixes and `--json` for machine-readable output.
@@ -1870,13 +1862,12 @@ The `net()` function takes a list of `Pin` objects.
 ## Connecting Pins
 
 ```ts
-import { Capacitor } from '@typecad/passives/0805'
 import { ATtiny85_20S } from './ATtiny85_20S';
-import { PCB } from '@typecad/typecad';
+import { PCB, Capacitor } from '@typecad/pcb';
 
 let typecad = new PCB('typecad_docs');
 let u1 = new ATtiny85_20S();
-let c1 = new Capacitor({ value: '1uF' });
+let c1 = new Capacitor({ value: '1uF', size: '0805' });
 
 typecad.net(u1.VCC, c1.pin(1));     // power [!code highlight]
 typecad.net(u1.GND, c1.pin(2));     // ground [!code highlight]
@@ -1943,12 +1934,12 @@ typecad.named('SCL').net(microcontroller.PB1, sensor.SCL);
 
 *DocGen*
 
-The `typecad doc` command generates self-contained HTML documentation from a Markdown file and a KiCAD PCB file. It automatically exports PCB layers as inline SVGs and supports rich formatting.
+The `typecad-pcb doc` command generates self-contained HTML documentation from a Markdown file and a KiCAD PCB file. It automatically exports PCB layers as inline SVGs and supports rich formatting.
 
 ## Usage
 
 ```bash
-typecad doc docs/board.md build/board.kicad_pcb -o output.html
+typecad-pcb doc docs/board.md build/board.kicad_pcb -o output.html
 ```
 
 ### Options
@@ -2113,7 +2104,7 @@ dark_mode: true
 You can also use docgen programmatically:
 
 ```ts
-import { generateDocumentation } from '@typecad/typecad/docgen';
+import { generateDocumentation } from '@typecad/pcb/docgen';
 
 await generateDocumentation('input.md', 'board.kicad_pcb', 'output.html', {
   verbose: true,
@@ -2126,14 +2117,14 @@ await generateDocumentation('input.md', 'board.kicad_pcb', 'output.html', {
 
 *Git Diff*
 
-The `typecad diff` command provides visual comparison of KiCAD PCB files with layer-by-layer diff, netlist comparison, and BOM diff. It generates an interactive HTML report you can open in any browser.
+The `typecad-pcb diff` command provides visual comparison of KiCAD PCB files with layer-by-layer diff, netlist comparison, and BOM diff. It generates an interactive HTML report you can open in any browser.
 
 ## Usage
 
 ### File-to-file comparison
 
 ```bash
-typecad diff board_v1.kicad_pcb board_v2.kicad_pcb
+typecad-pcb diff board_v1.kicad_pcb board_v2.kicad_pcb
 ```
 
 ### Git revision comparison
@@ -2141,13 +2132,13 @@ typecad diff board_v1.kicad_pcb board_v2.kicad_pcb
 Compare a git revision against the current working copy:
 
 ```bash
-typecad diff HEAD~1 ./build/board.kicad_pcb
+typecad-pcb diff HEAD~1 ./build/board.kicad_pcb
 ```
 
 Compare two git revisions:
 
 ```bash
-typecad diff HEAD~1 HEAD -- board.kicad_pcb
+typecad-pcb diff HEAD~1 HEAD -- board.kicad_pcb
 ```
 
 ## Options
@@ -2170,7 +2161,7 @@ The generated HTML report supports multiple view modes:
 
 ## Textual Diff
 
-In addition to the visual comparison, `typecad diff` provides:
+In addition to the visual comparison, `typecad-pcb diff` provides:
 
 - **Netlist diff**: Shows added, removed, and modified nets with their connected pins
 - **BOM diff**: Compares component lists between revisions, highlighting added/removed/changed parts
@@ -2180,7 +2171,7 @@ In addition to the visual comparison, `typecad diff` provides:
 You can also use the diff functionality programmatically:
 
 ```ts
-import { generateDiffs } from '@typecad/typecad/diff';
+import { generateDiffs } from '@typecad/pcb/diff';
 
 await generateDiffs({
   originalFile: 'old.kicad_pcb',
@@ -2209,7 +2200,7 @@ A hardware contract is a JSON file that describes:
 ## Usage
 
 ```ts
-import { PCB, Component } from '@typecad/typecad';
+import { PCB, Component } from '@typecad/pcb';
 
 let pcb = new PCB('my_board');
 
@@ -2294,12 +2285,12 @@ The hardware contract is designed to work with TypeHAL, a firmware generation to
 
 *Import from KiCAD*
 
-The `typecad import` command converts an existing KiCAD `.kicad_pcb` file into typeCAD TypeScript code. This is useful for importing existing designs or creating typeCAD packages from boards you've already laid out in KiCAD.
+The `typecad-pcb import` command converts an existing KiCAD `.kicad_pcb` file into typeCAD TypeScript code. This is useful for importing existing designs or creating typeCAD packages from boards you've already laid out in KiCAD.
 
 ## Usage
 
 ```bash
-typecad import build/board.kicad_pcb
+typecad-pcb import build/board.kicad_pcb
 ```
 
 This will output TypeScript code snippets for:
@@ -2329,7 +2320,7 @@ this.pcb.via({ at: { x: 140.0, y: 80.1 }, size: 0.8, drill: 0.4 });
 Use `--apply` to interactively sync coordinates back to your source files:
 
 ```bash
-typecad import build/board.kicad_pcb --apply
+typecad-pcb import build/board.kicad_pcb --apply
 ```
 
 In this mode, `kicad2typecad` will:
@@ -2360,7 +2351,7 @@ Component variable names in the generated code are sourced from the footprint's 
 The most common use case is creating [packages](/docs/package/overview). You can:
 
 1. Lay out an entire circuit in KiCAD — components placed, tracks drawn, vias added
-2. Run `typecad import` to generate the code snippets
+2. Run `typecad-pcb import` to generate the code snippets
 3. Copy the snippets into your package's `index.ts`
 
 ### Importing Existing Designs
@@ -2389,15 +2380,14 @@ import { TypecadPackage } from "./typecad_package";
 Now create a new instance of the package. `pcb`, `x`, and `y` are required:
 
 ```ts
-import { PCB } from '@typecad/typecad';
+import { PCB } from '@typecad/pcb';
 import { TypecadPackage } from "./typecad_package";
-import * as _0805 from '@typecad/passives/0805'
 
 let typecad = new PCB('typecad_docs');
 
 let u1 = new TypecadPackage({ pcb: typecad, x: 50, y: 50 });
 let u2 = new TypecadPackage({ pcb: typecad, x: 100, y: 50, reference: 'U2' });
-let u3 = new TypecadPackage({ pcb: typecad, x: 150, y: 50, passives: _0805 });
+let u3 = new TypecadPackage({ pcb: typecad, x: 150, y: 50, passiveSize: '0805' });
 ```
 
 Options:
@@ -2405,7 +2395,7 @@ Options:
 - _x_ / _y_ — position on the board (required)
 - _reference_ — reference designator for the main IC
 - _name_ — name for the PCB group (defaults to the class name)
-- _passives_ — override the default 0603 passives factory
+- _passiveSize_ — chip size for the package's built-in passives (defaults to `'0603'`)
 
 ## Connections
 After creating the instance, you can access the pins of any component in the package:
@@ -2419,7 +2409,7 @@ u1.ATtiny3227_M.VCC // the power pin of the ATtiny3227
 After the package has been pulled in with an `import` and a `new` instance created, configuration is done, and connections made, you `create` it to the schematic.
 
 ```ts
-import { PCB } from '@typecad/typecad';
+import { PCB } from '@typecad/pcb';
 import { TypecadPackage } from "./typecad_package";
 let typecad = new PCB('typecad_docs');
 
@@ -2444,42 +2434,43 @@ u1.ATtiny3227_M.dnp = true;
 
 *Passives*
 
-To simplify adding components, the most common components: resistors, capacitors, etc, have been packaged into [@typecad/passives](https://www.npmjs.com/package/@typecad/passives). It is automatically installed when a project is created.
+To simplify adding components, the most common components: resistors, capacitors, etc, are built into [@typecad/pcb](https://www.npmjs.com/package/@typecad/pcb). No extra package is needed — import them from the same place as `PCB`.
 
 ## Sizes
-The [@typecad/passives](https://www.npmjs.com/package/@typecad/passives) package is organized by component size.
+Passives are sized with the `size` option, which defaults to `'0603'`.
 
 ```ts
-import { Resistor, LED, Capacitor, Diode, Inductor, Fuse } from '@typecad/passives/0805'
+import { Resistor, LED, Capacitor, Diode, Inductor, Fuse } from '@typecad/pcb'
 
-let r1 = new Resistor({ value: '1kohm', reference: 'R1' });
+let r1 = new Resistor({ value: '1kohm', reference: 'R1', size: '0805' });
 ```
 
-Will import all the components in the 0805 size.
+Will create components in the 0805 size.
 
-To import 0603 components, use:
+To use the default 0603 size, simply omit the option:
 
 ```ts
-import { Resistor, LED, Capacitor, Diode, Inductor, Fuse } from '@typecad/passives/0603'// [!code word:0603:1]
+let r1 = new Resistor({ value: '1kohm' }); // 0603 (default) // [!code word:0603:1]
 ```
 
 All of the sizes are:
 
-- @typecad/passives/1210
-- @typecad/passives/1206
-- @typecad/passives/0805
-- @typecad/passives/0603
-- @typecad/passives/0402
-- @typecad/passives/0201 **no fuses*
+- `'1210'`
+- `'1206'`
+- `'0805'`
+- `'0603'` (default)
+- `'0402'`
+- `'0201'` **no fuses**
 
 ### Multi-sizes
-To import multiple sizes, use this `import` statement syntax:
+To work with multiple sizes at once, use the `passiveFactory` helper:
 
 ```ts
-// [!code word:* as _0603]
-// [!code word:* as _0805]
-import * as _0603 from '@typecad/passives/0603'
-import * as _0805 from '@typecad/passives/0805'
+// [!code word:passiveFactory('0603')]
+// [!code word:passiveFactory('0805')]
+import { passiveFactory } from '@typecad/pcb';
+const _0603 = passiveFactory('0603');
+const _0805 = passiveFactory('0805');
 
 let r1 = new _0603.Resistor({ value: '1kohm' }); 
 let c2 = new _0805.Capacitor({ value: '1uF' });
@@ -2489,7 +2480,7 @@ let c2 = new _0805.Capacitor({ value: '1uF' });
 > `_0603` and `_0805` can be changed to any TypeScript-legal name.
 
 ## Reference Designators
-KiCAD tracks components by their reference designator. This is the name that appears on the schematic and the PCB. In the `passives` package, the `reference` property is how components are referenced. It is not a required property of any `passives` component, if it is not passed, one will automatically generated.
+KiCAD tracks components by their reference designator. This is the name that appears on the schematic and the PCB. For passives, the `reference` property is how components are referenced. It is not a required property of any passive component, if it is not passed, one will automatically generated.
 
 Auto-generation works as follows:
 - if `reference` is passed, it will be used. If there is a name conflict, it will be renamed and a warning will be logged in the build output.
@@ -2500,13 +2491,13 @@ Auto-generation works as follows:
 > Because ultimately, KiCAD is tracking components by reference designator, components will sometimes swap reference designators with each other based on when the **type**CAD build process encounters it during the build process. This only happens when a similar component is created before an already laid-out component. **This is avoided by only using one or the other: auto-generation or explicit reference passing.**
 
 ## Unique Footprints
-Sometimes, passive components will have a unique footprint. To use that footprint with this package:
+Sometimes, passive components will have a unique footprint. To use that footprint:
 1. copy the footprint file (.kicad_mod) into ./hw/src/build/lib/footprints
 2. use it in your `new` component:
 
 ```ts
-import { Inductor } from '@typecad/passives/0805'
-let l1 = new Inductor({ value: '1uH', footprint: 'unique_inductor_footprint' });
+import { Inductor } from '@typecad/pcb'
+let l1 = new Inductor({ value: '1uH', footprint: 'unique_inductor_footprint', size: '0805' });
 ```
 
 ---
@@ -2525,8 +2516,8 @@ There are two ways to access pins in **type**CAD:
 Use this for simple components like passives where pin numbers are straightforward:
 
 ```ts
-import { Resistor } from '@typecad/passives/0805'
-let r1 = new Resistor({ value: '1kohm' });
+import { Resistor } from '@typecad/pcb'
+let r1 = new Resistor({ value: '1kohm', size: '0805' });
 
 r1.pin(1);      // first pin
 r1.pin(2);      // second pin
@@ -2595,7 +2586,7 @@ Additionally, `voltage` and `current` are propagated to the pins' `powerInfo` pr
 An output `Power` object defines a source of electrical power within your design. If `direction` is omitted, it defaults to `'output'`.
 
 ```ts
-import { Component, Power } from '@typecad/typecad';
+import { Component, Power } from '@typecad/pcb';
 
 let bt1 = new Component({ footprint: 'Battery:BatteryHolder_Keystone_3008_1x2450' });
 let coin_cell = new Power({
@@ -2667,7 +2658,7 @@ project
 ```
 
 ## `fw`
-Intended for firmware. If a PlatformIO project is created when you run `typecad create`, you can open the `workspace` file to open both the firmware and hardware projects in the same VSCode and have access to their respective build tools.
+Intended for firmware. If a PlatformIO project is created when you run `typecad-pcb create`, you can open the `workspace` file to open both the firmware and hardware projects in the same VSCode and have access to their respective build tools.
 
 ## `hw`
 All the hardware-related files are here.
@@ -2677,7 +2668,7 @@ All the hardware-related files are here.
 - `./build/lib/footprints` is where KiCad footprints are stored
 - `src` is where the TypeScript files are stored
 
-Files under `./build/lib/` come from two sources: components you add locally via the **type**CAD CLI (`typecad add`), and any installed component packages. When a component package that bundles its own `./build/lib/` is used in a project, **type**CAD automatically syncs those bundled files into the project's `./build/lib/` directory the first time the `Package` is constructed during a build — no install script required.
+Files under `./build/lib/` come from two sources: components you add locally via the **type**CAD CLI (`typecad-pcb add`), and any installed component packages. When a component package that bundles its own `./build/lib/` is used in a project, **type**CAD automatically syncs those bundled files into the project's `./build/lib/` directory the first time the `Package` is constructed during a build — no install script required.
 
 ## Self-contained
 The entire project is contained in the project folder. Symbols, footprints, 3d files, source files, etc. are all in this project folder.
@@ -2707,14 +2698,14 @@ Make sure your system has the required software to get started.
 
 *Tooling*
 
-**type**CAD provides a unified CLI tool with a collection of commands to make the development process easier. All commands are accessed through the `typecad` binary, which is included when you install `@typecad/typecad`.
+**type**CAD provides a unified CLI tool with a collection of commands to make the development process easier. All commands are accessed through the `typecad` binary, which is included when you install `@typecad/pcb`.
 
-## `typecad create`
+## `typecad-pcb create`
 
 To create a new project:
 
 ```bash
-typecad create
+typecad-pcb create
 ```
 
 You'll be prompted to enter project details:
@@ -2729,27 +2720,27 @@ A project will be created in the current directory. Inside the project directory
 All the information can be passed by command-line arguments and the script will automatically create a project. `--help` will show all the parameters.
 
 ```bash
-typecad create --name=typecad_project --git=false --pio=false
+typecad-pcb create --name=typecad_project --git=false --pio=false
 ```
 
 ---
 
-## `typecad build`
+## `typecad-pcb build`
 
 Builds your typeCAD project, running the TypeScript entry file and generating KiCAD output files.
 
 ```bash
-typecad build
+typecad-pcb build
 ```
 
 The outputs will be in `./build/`. Use `--verbose` for detailed output.
 
-## `typecad add component`
+## `typecad-pcb add component`
 
 Adds a component to the project. It is available as the `Add Component` script in VSCode's NPM Scripts sidebar.
 
 ```bash
-typecad add component
+typecad-pcb add component
 ```
 
 When the command runs, you'll be asked the source for the symbol and footprint files. You can mix any of the sources ie. a KiCAD symbol, but a local file. 
@@ -2762,89 +2753,89 @@ A `[component].ts` file will be generated along with instructions on how to use 
 ### Non-interactive mode
 
 ```bash
-typecad add component --symbol_source=kicad --footprint_source=local --symbol=MCU_Microchip_ATtiny:ATtiny3227-M --footprint=MyLib:MyFootprint
+typecad-pcb add component --symbol_source=kicad --footprint_source=local --symbol=MCU_Microchip_ATtiny:ATtiny3227-M --footprint=MyLib:MyFootprint
 
-typecad add component --symbol_source=jlcpcb --footprint_source=kicad --c=C3217148 --footprint=Package_QFN:QFN-32-1EP_5x5mm_P0.5mm_EP3.45x3.45mm
+typecad-pcb add component --symbol_source=jlcpcb --footprint_source=kicad --c=C3217148 --footprint=Package_QFN:QFN-32-1EP_5x5mm_P0.5mm_EP3.45x3.45mm
 ```
 
 > [!important]
 > There's no need to add passives (resistors, capacitors etc.) this way. See the  [Passives](/docs/passives) page for more information.
 
-## `typecad add package`
+## `typecad-pcb add package`
 
 Creates a reusable **type**CAD package with all the boilerplate code. It sets up the package for easy publishing and reuse. It is discussed in more detail in the [Package Overview](/docs/package/overview) page.
 
 Execute in `./hw` of an already existing **type**CAD project.
 
 ```bash
-typecad add package
+typecad-pcb add package
 ```
 
 ### Non-interactive mode
 
 ```bash
-typecad add package --empty=true --name=my_package
-typecad add package --component=true --name=attiny_package --kicad=true --symbol=MCU_Microchip_ATtiny:ATtiny3227-M --footprint=Package_DFN_QFN:DFN-20-1EP_3x4mm_P0.5mm_EP1.65x3.1mm
+typecad-pcb add package --empty=true --name=my_package
+typecad-pcb add package --component=true --name=attiny_package --kicad=true --symbol=MCU_Microchip_ATtiny:ATtiny3227-M --footprint=Package_DFN_QFN:DFN-20-1EP_3x4mm_P0.5mm_EP1.65x3.1mm
 ```
 
-## `typecad search`
+## `typecad-pcb search`
 
 Search KiCAD's symbol libraries with fuzzy matching:
 
 ```bash
-typecad search "attiny"
-typecad search "voltage regulator" --format=json --limit=10
+typecad-pcb search "attiny"
+typecad-pcb search "voltage regulator" --format=json --limit=10
 ```
 
 Results include symbol names, footprint suggestions, and component parameters.
 
-## `typecad import`
+## `typecad-pcb import`
 
 Convert an existing KiCAD `.kicad_pcb` file into typeCAD TypeScript code. Useful for importing existing designs. See [Import](/docs/import) for details.
 
 ```bash
-typecad import build/board.kicad_pcb
+typecad-pcb import build/board.kicad_pcb
 ```
 
-## `typecad diff`
+## `typecad-pcb diff`
 
 Compare two KiCAD PCB files visually with layer-by-layer diff, netlist comparison, and BOM diff. See [Git Diff](/docs/gitdiff) for details.
 
 ```bash
-typecad diff board_v1.kicad_pcb board_v2.kicad_pcb
-typecad diff HEAD~1 ./build/board.kicad_pcb
+typecad-pcb diff board_v1.kicad_pcb board_v2.kicad_pcb
+typecad-pcb diff HEAD~1 ./build/board.kicad_pcb
 ```
 
-## `typecad doc`
+## `typecad-pcb doc`
 
 Generate HTML documentation from Markdown and KiCAD PCB files. Supports layer exports, 3D renders, and rich formatting. See [DocGen](/docs/docgen) for details.
 
 ```bash
-typecad doc docs/board.md build/board.kicad_pcb -o output.html
+typecad-pcb doc docs/board.md build/board.kicad_pcb -o output.html
 ```
 
-## `typecad doctor`
+## `typecad-pcb doctor`
 
 Check that your environment has all the required tools installed and properly configured.
 
 ```bash
-typecad doctor
-typecad doctor --fix
-typecad doctor --json
+typecad-pcb doctor
+typecad-pcb doctor --fix
+typecad-pcb doctor --json
 ```
 
 Use `--fix` to attempt automatic fixes, and `--json` for machine-readable output.
 
-## `typecad validate`
+## `typecad-pcb validate`
 
 Validate your typeCAD source code without performing a full build.
 
 ```bash
-typecad validate
-typecad validate --verbose --json
+typecad-pcb validate
+typecad-pcb validate --verbose --json
 ```
 
-## `typecad drc`
+## `typecad-pcb drc`
 
 Run KiCAD's Design Rule Check as a passthrough to `kicad-cli`.
 
@@ -2853,15 +2844,15 @@ dimensions) default to the JLCPCB no-surcharge standard and are configurable in
 code — see [Board Layout → Design Rules](/docs/board_layout#design-rules).
 
 ```bash
-typecad drc
+typecad-pcb drc
 ```
 
-## `typecad erc`
+## `typecad-pcb erc`
 
 Run KiCAD's Electrical Rules Check as a passthrough to `kicad-cli`.
 
 ```bash
-typecad erc
+typecad-pcb erc
 ```
 
 > [!note] Global options
@@ -2877,23 +2868,23 @@ Common errors and their solutions when working with typeCAD.
 
 ## Import and Module Errors
 
-### "Cannot find module '@typecad/typecad'"
-**Cause**: Component created in wrong directory or `@typecad/typecad` not installed.
+### "Cannot find module '@typecad/pcb'"
+**Cause**: Component created in wrong directory or `@typecad/pcb` not installed.
 
 **Solution**: 
 1. Ensure you're working in the `hw/` directory
-2. Check that `hw/package.json` includes `@typecad/typecad` dependency
+2. Check that `hw/package.json` includes `@typecad/pcb` dependency
 3. Run `npm install` in the `hw/` directory
 
 ### "Module has no exported member 'Connector'"
-**Cause**: Importing from wrong package path.
+**Cause**: Importing from a subpath instead of the package root.
 
 ```ts
 // ❌ Wrong
-import { Connector } from '@typecad/passives/0603';
+import { Connector } from '@typecad/pcb/passives';
 
 // ✅ Correct
-import { Connector } from '@typecad/passives/connector';
+import { Connector } from '@typecad/pcb';
 ```
 
 ## Connection Errors
@@ -2926,7 +2917,7 @@ esp32.VDD         // or esp32.pin(8) if VDD is pin 8
 **Cause**: Component file not imported or created in wrong location.
 
 **Solution**:
-1. Ensure component was created with `typecad add component`
+1. Ensure component was created with `typecad-pcb add component`
 2. Check the import statement matches the generated file
 3. Verify component file is in `hw/src/` directory
 
@@ -2984,13 +2975,12 @@ Code can be version controlled, status tracked, git push/pull/PR/issues can be u
 This **type**CAD code...
 
 ```ts
-import { PCB, Component } from '@typecad/typecad'
-import { Resistor, LED } from '@typecad/passives/0805'
+import { PCB, Component, Resistor, LED } from '@typecad/pcb'
 
 let typecad = new PCB('typecad');
 let bt1 = new Component({ footprint: 'BatteryHolder_Keystone_500' });
-let r1 = new Resistor({ value: "1 kOhm" });
-let d1 = new LED();
+let r1 = new Resistor({ value: "1 kOhm", size: '0805' });
+let d1 = new LED({ size: '0805' });
 
 typecad.named('vin').net(bt1.pin(1), r1.pin(1));
 typecad.net(r1.pin(2), d1.pin(2));
@@ -3017,39 +3007,6 @@ expect(power.minimum).to.be.at.least(3.0);      // check voltage levels
 expect(power.maximum).to.be.at.most(3.6);
 typecad.erc();                                  // run ERC on every build
 ``` -->
-
----
-
-## Examples
-
-*Examples*
-
-### Tutorial
-
-|                                                   |                                 |
-| :------------------------------------------------ | ------------------------------- |
-| [Creating a project](/getting-started)            | creating and building a project |
-| [Add/connect passives](/examples/voltage-divider) | make a voltage divider          |
-| [Add KiCAD Components](/examples/attiny85)        | Add an MCU to your project      |
-| [Use typeCAD Packages](/examples/packages)        | Add a typeCAD package           |
-
-### Examples
-
-A list of small examples to show how to use **type**CAD
-
-|                                          |                                                    |
-| :--------------------------------------- | -------------------------------------------------- |
-| [ERC](/examples/erc)                     | run an electrical rule check on your schematic     |
-| [BOM](/examples/bom)                     | export a bill-of-material file from your schematic |
-| [ngspice](/examples/ngspice)             | run a simulation with your **type**CAD code        |
-| [JLCPCB-Export](/examples/jlcpcb-export) | export all the assembly files for JLCPCB           |
-| [Jig/Multi-boards](/examples/jig)        | Create a test jig/multi-board with one codebase    |
-| [Auto Router](/examples/autorouter)      | Auto-route tracks between connected pins           |
-| [Multilayer Boards](/examples/multilayer-board) | 4+ layer boards: planes, impedance control, via policy |
-| [Zones](/examples/zones)                 | Create copper zones and keepout areas              |
-| [Visual PCB Diff](/examples/gitdiff)     | Compare two KiCAD PCB files visually               |
-| [Documentation Gen](/examples/docgen)    | Generate HTML docs from Markdown + KiCAD PCB       |
-| [Import KiCAD Board](/examples/import-kicad) | Convert a KiCAD PCB to typeCAD code            |
 
 ---
 
@@ -3107,7 +3064,7 @@ There will be a little implementation code that shows how to `import` the code a
 The minimal code to use this new component looks like this:
 
 ```ts
-import { PCB } from '@typecad/typecad'
+import { PCB } from '@typecad/pcb'
 import { ATtiny85_20M } from './ATtiny85_20M';
 
 let typecad = new PCB('attiny85');
@@ -3127,8 +3084,7 @@ The **type**CAD auto router generates tracks between connected pins using A* pat
 ## Basic Usage
 
 ```ts
-import { PCB } from '@typecad/typecad';
-import { Resistor, Capacitor } from '@typecad/passives/0603';
+import { PCB, Resistor, Capacitor } from '@typecad/pcb';
 
 let pcb = new PCB('autorouter_example');
 
@@ -3179,7 +3135,7 @@ pcb.create(r1, r2, c1);
 Use `Power` objects with tracks to ensure adequate trace width:
 
 ```ts
-import { PCB, Power } from '@typecad/typecad';
+import { PCB, Power } from '@typecad/pcb';
 
 let pcb = new PCB('power_example');
 let power = new Power({ power: regulator.pin(3), gnd: regulator.pin(2), voltage: 3.3 });
@@ -3202,7 +3158,7 @@ The router considers power info when determining appropriate trace widths.
 **type**CAD can export a CSV file from a `Schematic` object.
 
 ```ts
-import { Component, PCB, Power } from '@typecad/typecad';
+import { Component, PCB, Power } from '@typecad/pcb';
 let typecad = new PCB('bom');
 
 // add components
@@ -3247,12 +3203,12 @@ this.components.forEach(component => {
 
 *Documentation Generation*
 
-The `typecad doc` command generates self-contained HTML documentation from a Markdown file combined with a KiCAD PCB file. It automatically embeds PCB layer images, 3D renders, and other visuals.
+The `typecad-pcb doc` command generates self-contained HTML documentation from a Markdown file combined with a KiCAD PCB file. It automatically embeds PCB layer images, 3D renders, and other visuals.
 
 ## Basic Usage
 
 ```bash
-typecad doc docs/board.md build/board.kicad_pcb -o docs/board.html
+typecad-pcb doc docs/board.md build/board.kicad_pcb -o docs/board.html
 ```
 
 ## Creating Your Document
@@ -3310,7 +3266,7 @@ Use custom image syntax to reference PCB layers:
 A common use case is generating assembly documentation:
 
 ```bash
-typecad doc assembly.md build/sensor_board.kicad_pcb -o build/assembly-docs.html
+typecad-pcb doc assembly.md build/sensor_board.kicad_pcb -o build/assembly-docs.html
 ```
 
 This creates a shareable, self-contained HTML file with all images embedded — perfect for sending to manufacturers or archiving.
@@ -3321,10 +3277,10 @@ This creates a shareable, self-contained HTML file with all images embedded — 
 
 *ERC*
 
-**type**CAD provides ERC via the `typecad erc` CLI command and the `runERC()` programmatic API.
+**type**CAD provides ERC via the `typecad-pcb erc` CLI command and the `runERC()` programmatic API.
 
 ## Electrical Rules Checker
-**type**CAD runs KiCAD's ERC via `kicad-cli sch erc`. After `typecad build` has been run, you can run `typecad erc` to check your schematic for any connection errors.
+**type**CAD runs KiCAD's ERC via `kicad-cli sch erc`. After `typecad-pcb build` has been run, you can run `typecad-pcb erc` to check your schematic for any connection errors.
 
 It uses the same KiCAD rules as shown in this picture.
 
@@ -3334,8 +3290,8 @@ KiCAD includes a lot of other rules, but the majority of them are not relevant t
 Here's how to run ERC from the command line:
 
 ```bash
-typecad build
-typecad erc
+typecad-pcb build
+typecad-pcb erc
 ```
 
 Assuming no errors, it will show `ERC passed. No errors or warnings.` in the output.
@@ -3343,7 +3299,7 @@ Assuming no errors, it will show `ERC passed. No errors or warnings.` in the out
 You can also run ERC programmatically:
 
 ```ts
-import { runERC } from '@typecad/typecad';
+import { runERC } from '@typecad/pcb';
 
 let report = await runERC('./build/erc.kicad_sch');
 console.log(report);
@@ -3360,7 +3316,7 @@ Pin type are typically set in [component](/docs/components) files, generated by 
 Pin types can be corrected manually in the component files, or they can be set in code like this:
 
 ```ts
-import { Component } from '@typecad/typecad';
+import { Component } from '@typecad/pcb';
 let bt1 = new Component({ footprint: 'Battery:BatteryHolder_Keystone_3008_1x2450', prefix: 'BT', mpn: '3008TR' });
 
 bt1.pin(1).type = 'power_out';
@@ -3375,14 +3331,14 @@ This example shows changing a battery holder's pins to `power_out` since they we
 
 *Visual PCB Diff*
 
-The `typecad diff` command lets you visually compare two KiCAD PCB files with an interactive HTML report showing layer-by-layer differences, netlist changes, and BOM differences.
+The `typecad-pcb diff` command lets you visually compare two KiCAD PCB files with an interactive HTML report showing layer-by-layer differences, netlist changes, and BOM differences.
 
 ## Basic Usage
 
 Compare two PCB files:
 
 ```bash
-typecad diff build/board_v1.kicad_pcb build/board_v2.kicad_pcb
+typecad-pcb diff build/board_v1.kicad_pcb build/board_v2.kicad_pcb
 ```
 
 This generates an HTML report and opens it in your browser. The report shows each PCB layer with changes highlighted in color.
@@ -3393,10 +3349,10 @@ Compare against a previous git commit:
 
 ```bash
 # Compare last commit vs current file
-typecad diff HEAD~1 ./build/board.kicad_pcb
+typecad-pcb diff HEAD~1 ./build/board.kicad_pcb
 
 # Compare two specific commits
-typecad diff v1.0.0 HEAD -- board.kicad_pcb
+typecad-pcb diff v1.0.0 HEAD -- board.kicad_pcb
 ```
 
 This is useful for code reviews — see exactly what changed on the PCB between revisions.
@@ -3406,7 +3362,7 @@ This is useful for code reviews — see exactly what changed on the PCB between 
 By default, only changed layers are included. Use `--full` to include all layers:
 
 ```bash
-typecad diff --full board_v1.kicad_pcb board_v2.kicad_pcb
+typecad-pcb diff --full board_v1.kicad_pcb board_v2.kicad_pcb
 ```
 
 ## What You'll See
@@ -3424,7 +3380,7 @@ Add diff to your CI to automatically generate visual reports:
 
 ```bash
 # Generate diff report without opening it
-typecad diff HEAD~1 build/board.kicad_pcb --output diff-report.html
+typecad-pcb diff HEAD~1 build/board.kicad_pcb --output diff-report.html
 ```
 
 ---
@@ -3433,12 +3389,12 @@ typecad diff HEAD~1 build/board.kicad_pcb --output diff-report.html
 
 *Import a KiCAD Board*
 
-The `typecad import` command converts an existing KiCAD `.kicad_pcb` file into typeCAD TypeScript code. This is useful for importing existing designs or extracting layout information.
+The `typecad-pcb import` command converts an existing KiCAD `.kicad_pcb` file into typeCAD TypeScript code. This is useful for importing existing designs or extracting layout information.
 
 ## Basic Import
 
 ```bash
-typecad import build/board.kicad_pcb
+typecad-pcb import build/board.kicad_pcb
 ```
 
 This outputs TypeScript code for all components, tracks, and vias found on the board.
@@ -3466,7 +3422,7 @@ this.pcb.via({ at: { x: 140.0, y: 80.1 }, size: 0.8, drill: 0.4 });
 Use `--apply` to sync coordinates from KiCAD back to your source files:
 
 ```bash
-typecad import build/board.kicad_pcb --apply
+typecad-pcb import build/board.kicad_pcb --apply
 ```
 
 This will:
@@ -3479,9 +3435,9 @@ This is useful after moving components in KiCAD and wanting to capture those cha
 ## Typical Workflow for Package Creation
 
 1. Design your circuit in **type**CAD
-2. Build and open in KiCAD: `typecad build`
+2. Build and open in KiCAD: `typecad-pcb build`
 3. Lay out the package in KiCAD — place components, draw tracks, add vias
-4. Import the layout back: `typecad import build/board.kicad_pcb`
+4. Import the layout back: `typecad-pcb import build/board.kicad_pcb`
 5. Copy the generated code into your package
 
 ---
@@ -3504,7 +3460,7 @@ There's obviously a lot of options here and this is just a simple example of one
 From a terminal, run:
 
 ```bash
-typecad create
+typecad-pcb create
 ```
 
 Call this project `jig`. No need to make a PlatformIO project or initialize a git repo unless you want to. No extra packages are needed either, but feel free to add them later if you want. 
@@ -3516,10 +3472,7 @@ Add some code which will:
 - add a resistor to pretend to be testing something
 
 ```ts
-import { PCB } from "@typecad/typecad"
-import { Resistor } from '@typecad/passives/0603';
-import { MountingHole } from '@typecad/passives/mounting_hole';
-import { Testpoint } from '@typecad/passives/testpoint';
+import { PCB, Resistor, MountingHole, TestPoint } from "@typecad/pcb"
 import { P70_5000045R } from './P70_5000045R';
 
 let typecad = new PCB('main');
@@ -3528,8 +3481,8 @@ let r1 = new Resistor({ value: '1kohm', pcb: {x: 166.815, y: 86.36, rotation: 0}
 let mh1 = new MountingHole({ size: 'M2.5', pcb: {x: 152.4, y: 76.2, rotation: 0} });
 let mh2 = new MountingHole({ size: 'M2.5',  pcb: {x: 177.8, y: 101.6, rotation: 0} });
 
-let tp1 = new Testpoint({  pcb: {x: 165.1, y: 81.28, rotation: 0} });
-let tp2 = new Testpoint({  pcb: {x: 168.04, y: 93.98, rotation: 0} });
+let tp1 = new TestPoint({  pcb: {x: 165.1, y: 81.28, rotation: 0} });
+let tp2 = new TestPoint({  pcb: {x: 168.04, y: 93.98, rotation: 0} });
 
 typecad.create(r1, mh1, mh2, tp1, tp2);
 
@@ -3545,14 +3498,11 @@ jig.create(mh1, mh2, pogo1, pogo2);
 ### `import`
 
 ```ts
-import { PCB } from "@typecad/typecad"
-import { Resistor } from '@typecad/passives/0603';
-import { MountingHole } from '@typecad/passives/mounting_hole';
-import { Testpoint } from '@typecad/passives/testpoint';
+import { PCB, Resistor, MountingHole, TestPoint } from "@typecad/pcb"
 import { P70_5000045R } from './P70_5000045R';
 ```
 
-We import the usual classes, plus a pogo pin from a custom package (_there's a downlink link at the bottom for this whole project_). `MountingHole`, `Testpoint` and `Resistor` are all from the `@typecad/passives` package which should already be installed.
+We import the usual classes, plus a pogo pin from a custom package (_there's a downlink link at the bottom for this whole project_). `MountingHole`, `TestPoint` and `Resistor` are all built into `@typecad/pcb`, which is already installed.
 
 ### `PCB`
 Now create the two PCBs.
@@ -3610,7 +3560,7 @@ npm i @typecad/jlcpcb-export
 Then `import` it and use it:
 
 ```ts
-import { PCB } from '@typecad/typecad';
+import { PCB } from '@typecad/pcb';
 import { jlcpcb_export } from '@typecad/jlcpcb-export';// [!code highlight]
 
 let typecad = new PCB('project');
@@ -3649,7 +3599,7 @@ This example builds a typical 4-layer board — ground and power planes on the i
 Pass `layers` to the PCB constructor. That single number is the source of truth:
 
 ```ts
-import { PCB } from '@typecad/typecad';
+import { PCB } from '@typecad/pcb';
 
 let pcb = new PCB('sensor_board', { layers: 4 });
 
@@ -3749,7 +3699,7 @@ When the board is written, every layer reference — zones, keepouts, vias, rout
 ## Complete example
 
 ```ts
-import { PCB } from '@typecad/typecad';
+import { PCB } from '@typecad/pcb';
 
 // 4-layer board: signals outside, GND and +3V3 inside
 let pcb = new PCB('sensor_board', { layers: 4, thickness: 1.6 });
@@ -3797,8 +3747,7 @@ This is the circuit:
 And this is the code:
 
 ```ts
-import { PCB } from "@typecad/typecad"
-import { Resistor } from '@typecad/passives/0603';
+import { PCB, Resistor } from "@typecad/pcb"
 
 let typecad = new PCB('voltage_divider');
 let r1 = new Resistor({ value: '10kohm' });
@@ -3822,9 +3771,8 @@ Then you'll need [ngspice](https://ngspice.sourceforge.io/download.html) install
 Next, we need to add a `Power` component. In addition to helping with simulation, they assist with ERC (electrical rule checking) by ensuring pins are connected as they should be and packages can use it to determine the power supply voltage is correct. 
 
 ```ts
-import { PCB } from "@typecad/typecad" // [!code --]
-import { PCB, Power } from "@typecad/typecad" // [!code ++][!code word:Power]
-import { Resistor } from '@typecad/passives/0603';
+import { PCB } from "@typecad/pcb" // [!code --]
+import { PCB, Power, Resistor } from "@typecad/pcb" // [!code ++][!code word:Power]
 
 let typecad = new PCB('voltage_divider');
 let r1 = new Resistor({ value: '10kohm' });
@@ -3852,8 +3800,7 @@ Now we need to add the `ngspice` related code.
 
 ```ts
 // [!code word:simulation]
-import { PCB, Power } from "@typecad/typecad"
-import { Resistor } from '@typecad/passives/0603';
+import { PCB, Power, Resistor } from "@typecad/pcb"
 import { ngspiceSimulator } from '@typecad/ngspice'; // [!code highlight]
 
 let typecad = new PCB('voltage_divider');
@@ -3877,8 +3824,7 @@ Now that our circuit is created, nets are named, we can run the simulation.
 Currently, there are two simulation modes available in the library: DC and transient analysis. 
 
 ```ts
-import { PCB, Power } from "@typecad/typecad"
-import { Resistor } from '@typecad/passives/0603';
+import { PCB, Power, Resistor } from "@typecad/pcb"
 import { ngspiceSimulator } from '@typecad/ngspice';
 
 let typecad = new PCB('voltage_divider');
@@ -4003,7 +3949,7 @@ Very simple, just two resistors. Voltage on the top, ground on the bottom, with 
 From a terminal, run:
 
 ```bash
-typecad create
+typecad-pcb create
 ```
 
 Call this project `voltage_divider`. No need to make a PlatformIO project or initialize a git repo unless you want to. No extra packages are needed either, but feel free to add them later if you want. 
@@ -4019,8 +3965,7 @@ The `r1` resistor is there as test code. It, and the rest of the code, is contai
 You can delete most of the starter code in `voltage_divider.ts` so you're left with this:
 
 ```ts
-import { PCB } from '@typecad/typecad'
-import { Resistor } from '@typecad/passives/0603';
+import { PCB, Resistor } from '@typecad/pcb'
 
 let typecad = new PCB('voltage_divider');
 let r1 = new Resistor({ value: '1kohm' });
@@ -4031,8 +3976,7 @@ typecad.create(r1);
 This code creates a `PCB` object called `typecad` and a `Resistor` object called `r1`. We need two resistors, so let's make another.
 
 ```ts
-import { PCB } from '@typecad/typecad'
-import { Resistor } from '@typecad/passives/0603';
+import { PCB, Resistor } from '@typecad/pcb'
 
 let typecad = new PCB('voltage_divider');
 let r1 = new Resistor({ value: '1kohm' });
@@ -4043,15 +3987,14 @@ typecad.create(r1, r2); // [!code ++]
 
 Don't forget to add `r2` to the `create` method.
 
-### `@typecad/passives`
-Most passives can be added in this way. For all the documentation, visit the [package](https://www.npmjs.com/package/@typecad/passives) page. Resistors, capacitors, inductors, fuses, diodes and LEDs in various sizes can be made this way. Connectors and testpoints are also in the package. 
+### Passives
+Most passives can be added in this way — they are built into `@typecad/pcb`, so there is nothing extra to install. For all the documentation, visit the [Passives](/docs/passives) page. Resistors, capacitors, inductors, fuses, diodes and LEDs in various sizes (via the `size` option) can be made this way. Connectors and testpoints are also included.
 
 ### Resistor properties
 Components have several properties, the one we're concerned with here is `value` (VSCode tooltips will tell you all the other properties). Our example schematic used 10kOhm resistors, so let's change that.
 
 ```ts
-import { PCB } from '@typecad/typecad'
-import { Resistor } from '@typecad/passives/0603';
+import { PCB, Resistor } from '@typecad/pcb'
 
 let typecad = new PCB('voltage_divider');
 let r1 = new Resistor({ value: '10kohm' }); // [!code ++]
@@ -4070,8 +4013,7 @@ Build the schematic again. Click the `open_board` script. When KiCAD opens you s
 To create our voltage divider, we need to connect our two resistors together. 
 
 ```ts
-import { PCB } from '@typecad/typecad'
-import { Resistor } from '@typecad/passives/0603';
+import { PCB, Resistor } from '@typecad/pcb'
 
 let typecad = new PCB('voltage_divider');
 let r1 = new Resistor({ value: '10kohm' });
@@ -4096,8 +4038,7 @@ When you build again, you'll see the connection we just made inside KiCAD.
 We need to add a power source to make something happen. A `Power` object represents a physical source of power in **type**CAD. Don't think of it like the VCC or GND symbol in a schematic, but more like a power regulator or battery as it would be in your PCB; it has pins and is an actual component. For this simple example, the pins will be the top of `R1` and the bottom of `R2`. 
 
 ```ts
-import { PCB, Power } from "@typecad/typecad" // [!code ++]
-import { Resistor } from '@typecad/passives/0603';
+import { PCB, Power, Resistor } from "@typecad/pcb" // [!code ++]
 
 let typecad = new PCB('voltage_divider');
 let r1 = new Resistor({ value: '10kohm' });
@@ -4124,7 +4065,7 @@ There won't be anything to see after this change from with KiCAD, but the schema
 Create a filled copper zone (e.g., ground pour):
 
 ```ts
-import { PCB } from '@typecad/typecad';
+import { PCB } from '@typecad/pcb';
 
 let pcb = new PCB('zone_example');
 
@@ -4153,7 +4094,7 @@ pcb.create();
 Restrict routing and placement in specific areas:
 
 ```ts
-import { PCB } from '@typecad/typecad';
+import { PCB } from '@typecad/pcb';
 
 let pcb = new PCB('keepout_example');
 
@@ -4182,7 +4123,7 @@ pcb.create();
 **type**CAD also supports drawing graphical elements on the PCB:
 
 ```ts
-import { PCB } from '@typecad/typecad';
+import { PCB } from '@typecad/pcb';
 
 let pcb = new PCB('graphics_example');
 
@@ -4226,12 +4167,12 @@ typeCAD is a modern hardware design platform that brings the power of TypeScript
 
 2. **Create Your First Project**
    ```bash
-   npx @typecad/typecad create
+   npx @typecad/pcb create
    ```
 3. **Start Designing**
 - Open the project in VS Code
 - Begin creating your hardware design using TypeScript
-- Run `typecad build` to generate outputs
+- Run `typecad-pcb build` to generate outputs
 
 4. **Layout in KiCAD**
   - Open the `kicad_pcb` file in the `./build` folder
@@ -4415,10 +4356,88 @@ cover: https://unsplash.com/photos/XJuogr6jhv8/download?ixid=M3wxMjA3fDB8MXxzZWF
 Install **typeCAD-prompt** globally using the following command:  
 
 ```bash
-npm i -g @typecad/typecad-prompt
+npm i -g @typecad/pcb-prompt
 ```
 
-Read more about using it [here](https://www.npmjs.com/package/@typecad/typecad-prompt).
+Read more about using it [here](https://www.npmjs.com/package/@typecad/pcb-prompt).
+
+---
+
+## Built In Gerber Viewer
+
+*See Your Board — A Built-In Gerber Viewer*
+
+---
+title: See Your Board — A Built-In Gerber Viewer
+description: typeCAD now ships a zero-dependency Gerber/Excellon viewer — a one-shot HTML render of your fab outputs, or a dev server that live-reloads on every build
+date: '2026-09-05'
+categories:
+  - features
+  - pcb
+  - gerber
+  - visualization
+published: true
+cover: https://images.unsplash.com/photo-1591799264318-7e6ef8ddb7ea?w=640
+---
+
+A typeCAD build is deterministic — the same code produces byte-identical KiCad files — but "correct" and "looks right" are different things. Zones pour, planes stitch, the autorouter weaves tracks between pads, and until now the only way to actually *see* the result was to open KiCad and refill zones by hand. The latest release fixes that: **`@typecad/pcb` now ships a built-in Gerber viewer** — a parser for RS-274X and Excellon, an SVG renderer, and an interactive board view, all with **zero npm dependencies**.
+
+Gerbers are the right thing to look at, too. They're the ground truth of what a fab house will actually make — not a rendering of your source, but the compiled output itself.
+
+### One command, one file, your board
+
+Point the new `gerber-viewer` CLI at any gerber directory — the `build/gerbers/` folder `typecad-pcb export` writes, a `jlcpcb-export` output, or any KiCad fab set:
+
+```bash
+typecad-pcb export gerbers
+npx gerber-viewer build/gerbers -o board-view.html --open
+```
+
+You get a single self-contained HTML file — no server, no assets, works over `file://` or attached to an email. The layer sidebar lists every copper, mask, paste, silk, edge, and drill file with visibility toggles and per-layer opacity. Wheel zooms about the cursor, drag pans, `0` fits the board, and a readout tracks the cursor in board coordinates. Copper, edge, and drill layers are visible by default; the rest are one click away.
+
+### The loop: build → see → change → build
+
+The viewer is more useful as a live companion. In any project created with `typecad-pcb create` you'll find a `gerber_viewer` npm script wired to the serve mode:
+
+```bash
+npm run gerber_viewer    # http://localhost:4273
+```
+
+The dev server watches `build/*.kicad_pcb`. Every time you run `npm run build`, it re-exports the gerbers (`typecad-pcb export gerbers` + drill), re-renders the viewer, and live-reloads the open page. Change a component value in code, rebuild, and the board on screen updates — no KiCad launch, no manual export, no browser refresh. Before the first build it shows a "waiting" page that flips to the board the moment one exists.
+
+It reuses the project's own `typecad-pcb export` under the hood, so KiCad discovery, drill output, and zone-refilled boards all behave exactly as they do everywhere else.
+
+### It speaks fab files properly
+
+The parser covers the parts of the Gerber spec real boards actually use: `%FS` coordinate formats with leading- or trailing-zero omission, all four standard aperture templates, aperture macros with full arithmetic evaluation (thermal-style donut pads from your footprints render correctly), multi-quadrant and single-quadrant arcs including full circles, regions with clear polarity, and X2 attributes. Drill files come in Excellon FMAT-2 flavor — point holes and routed slots.
+
+Layer detection reads `%TF.FileFunction` first and falls back to filenames — both KiCad's `F_Cu`/`In2_Cu` style and legacy `.gtl`/`.gbo` extensions — then orders layers in stackup order with KiCad-like colors, so a 4-layer board looks like a 4-layer board. Anything it doesn't understand produces a warning, never a crash; a board with an exotic macro still renders with everything else intact.
+
+### In code, not just on the CLI
+
+Everything is importable via a subpath export — parse fab files, inspect geometry, or embed rendering in your own tooling:
+
+```ts
+import { parseGerber, detectLayer, renderSvg } from '@typecad/pcb/gerber-viewer';
+
+const image = parseGerber(fs.readFileSync('board-F_Cu.gbr', 'utf8'));
+const layer = detectLayer('board-F_Cu.gbr', image); // copper, front
+renderSvg([{ info: layer, image }]); // → SVG string
+```
+
+`buildViewerFromFiles` runs the whole pipeline — parse, detect, order, render, wrap in the interactive HTML — and `startGerberViewerServer` exposes the live server for custom dev setups.
+
+### Try it
+
+Update to the latest alpha and open any board you've already built:
+
+```bash
+npx @typecad/pcb create   # new projects include the gerber_viewer script
+# or in an existing project:
+npx gerber-viewer serve
+```
+
+The viewer is part of `@typecad/pcb` — no extra install, no extra dependencies, nothing new to keep at arm's length. Build your board, open `localhost:4273`, and see what your code just made.
 
 ---
 
@@ -4440,9 +4459,9 @@ published: true
 cover: https://unsplash.com/photos/6EsIiLE3VCs/download?ixid=M3wxMjA3fDB8MXxzZWFyY2h8NzB8fHdvcmtiZW5jaCUyMGVsZWN0cm9uaWNzfGVufDB8fHx8MTc0NDEyNjM2OHww&force=true&w=640
 ---
 
-We've just released [typecad-docgen](https://www.npmjs.com/package/@typecad/typecad-docgen) to automate the generation of KiCAD documentation from markdown files. This works nicely with the other command-line tools we've released.
+We've just released [typecad-docgen](https://www.npmjs.com/package/@typecad/pcb-docgen) to automate the generation of KiCAD documentation from markdown files. This works nicely with the other command-line tools we've released.
 - [wiring](https://www.npmjs.com/package/@typecad/wiring) - Programmatically create wiring diagrams
-- [typecad-gitdiff](https://www.npmjs.com/package/@typecad/typecad-gitdiff) - See the differences between KiCAD PCB files  
+- [typecad-gitdiff](https://www.npmjs.com/package/@typecad/pcb-gitdiff) - See the differences between KiCAD PCB files  
 
 Using those tools along with typeCAD means a huge portion of the workflow can be automated and also easily integrated into your CI/CD pipeline.
 
@@ -4481,7 +4500,7 @@ Most firmware projects start with a board support package that exposes every pin
 After creating your board, call `contract()` with a pin mapping from your TypeHAL board package:
 
 ```ts
-import { PCB } from '@typecad/typecad';
+import { PCB } from '@typecad/pcb';
 import { pinMapping } from '@typehal/board-arduino-uno';
 
 let pcb = new PCB('sensor_board');
@@ -4572,7 +4591,7 @@ pcb.contract({
 
 This is the TypeCAD side of the bridge. The firmware toolchain (TypeHAL) reads this contract and generates a typed board wrapper so your firmware can only access pins that are actually wired. No more guessing.
 
-Update to the latest `@typecad/typecad` to start using contracts today.
+Update to the latest `@typecad/pcb` to start using contracts today.
 
 ---
 
@@ -4607,14 +4626,13 @@ For complex nets with multiple points, the router constructs a Minimum Spanning 
 Using the auto router is straightforward. Once you have defined your components and created a net, simply call `route()` on your PCB instance.
 
 ```ts
-import { PCB } from '@typecad/typecad';
-import { Resistor } from '@typecad/passives/0805';
+import { PCB, Resistor } from '@typecad/pcb';
 
 let typecad = new PCB('autoroute_example');
 
 // Define and place components
-let r1 = new Resistor({ value: '1kohm', reference: 'R1' });
-let r2 = new Resistor({ value: '1kohm', reference: 'R2' });
+let r1 = new Resistor({ value: '1kohm', reference: 'R1', size: '0805' });
+let r2 = new Resistor({ value: '1kohm', reference: 'R2', size: '0805' });
 r1.pcb = { x: 10, y: 10, rotation: 0 };
 r2.pcb = { x: 20, y: 10, rotation: 0 };
 
@@ -4644,7 +4662,7 @@ We are looking forward to seeing the designs you build with this new capability!
 ## Polygons and circles
 
 ```ts
-import { PCB } from '@typecad/typecad';
+import { PCB } from '@typecad/pcb';
 
 let pcb = new PCB('board');
 
@@ -4787,7 +4805,7 @@ KiCad 10 is currently in release candidate, and we're actively testing typeCAD t
 
 ## Current Status
 
-We're in the process of updating and verifying that typeCAD works correctly with KiCad 10. So far, the main `@typecad/typecad` package is working well with the new release.
+We're in the process of updating and verifying that typeCAD works correctly with KiCad 10. So far, the main `@typecad/pcb` package is working well with the new release.
 
 ## What's Next
 
@@ -4834,10 +4852,10 @@ Intelligent fuzzy search for KiCad schematic symbols with CLI interface. This Ty
 
 ## Installation
 
-> **Note:** kicad-symbols is now bundled with `@typecad/typecad`. Install typecad to get the `kicad-symbols` CLI.
+> **Note:** kicad-symbols is now bundled with `@typecad/pcb`. Install typecad to get the `kicad-symbols` CLI.
 
 ```bash
-npm install @typecad/typecad
+npm install @typecad/pcb
 ```
 
 After installation, you can use the `kicad-symbols` command via npx:
@@ -4948,7 +4966,7 @@ published: true
 cover: https://unsplash.com/photos/T_l246EK19I/download?ixid=M3wxMjA3fDB8MXxzZWFyY2h8Mnx8bGV2ZWwlMjB1cHxlbnwwfHx8fDE3NDUxMjUzMTl8MA&force=true&w=640
 ---
 
-Version 0.1.2 of [typeCAD](https://www.npmjs.com/package/@typecad/typecad) was just released with major layout improvements. Before there were significant limitations on what was possible with it. Before, when a layout was applied, it moved all the components to whatever location specified in the typeCAD code. This worked well enough as an MVP, but wasn't a great developer experience. 
+Version 0.1.2 of [typeCAD](https://www.npmjs.com/package/@typecad/pcb) was just released with major layout improvements. Before there were significant limitations on what was possible with it. Before, when a layout was applied, it moved all the components to whatever location specified in the typeCAD code. This worked well enough as an MVP, but wasn't a great developer experience. 
 
 Now with this new release, that has been fixed. To keep the components from moving around, they just need to be given a UUID:
 
@@ -5029,7 +5047,7 @@ The server provides these typeCAD tools to AI assistants:
 
 ### Passive Components
 
-Quick access to common passive components using the @typecad/passives package:
+Quick access to common passive components, built into @typecad/pcb:
 
 - **💈 Add Resistor** - Create resistors with value, wattage, voltage rating options
 - **🪫 Add Capacitor** - Create capacitors with value, voltage rating options
@@ -5038,7 +5056,7 @@ Quick access to common passive components using the @typecad/passives package:
 - **🌀 Add Inductor** - Create inductors with inductance value specifications
 - **🔒 Add Fuse** - Create fuses with current and voltage ratings
 - **🔗 Add Connector** - Create connectors with pin count and footprint options
-- **🎯 Add Testpoint** - Create testpoints with custom footprint options
+- **🎯 Add TestPoint** - Create testpoints with custom footprint options
 
 ### Power Management
 
@@ -5080,7 +5098,7 @@ Comprehensive design checking and validation tools:
 Install globally via npm:
 
 ```bash
-npm install -g @typecad/typecad-mcp
+npm install -g @typecad/pcb-mcp
 ```
 
 ## Configuration
@@ -5093,7 +5111,7 @@ Add this to your MCP configuration file:
     "typecad-mcp": {
       "command": "npx",
       "args": ["-y",
-        "@typecad/typecad-mcp"
+        "@typecad/pcb-mcp"
       ],
       "env": {}
     }
@@ -5134,7 +5152,7 @@ categories:
 published: true
 ---
 
-This release makes the copper layer count a first-class citizen of a typeCAD board, and fills in the copper features around it: planes, controlled impedance, polygon zones, via stitching, teardrops, per-text fonts, and a zone-aware `typecad import`.
+This release makes the copper layer count a first-class citizen of a typeCAD board, and fills in the copper features around it: planes, controlled impedance, polygon zones, via stitching, teardrops, per-text fonts, and a zone-aware `typecad-pcb import`.
 
 ## The layer set is the source of truth
 
@@ -5211,7 +5229,7 @@ pcb.arc({ start: { x: 10, y: 10 }, mid: { x: 13.5, y: 13.5 }, end: { x: 15, y: 1
 
 TrueType faces on component text and `pcb.text()` (via KiCad's `(face ...)`), with `bold`/`italic` now actually emitted, plus three-point arcs completing the graphics set.
 
-## `typecad import` keeps zones
+## `typecad-pcb import` keeps zones
 
 Imported boards no longer silently lose their copper: pours emit as `pcb.zone()` with polygon geometry and fill settings, rule areas as `pcb.keepout()` with their restrictions, and stackups as `pcb.stackup(N)`.
 
@@ -5267,7 +5285,7 @@ The sync runs on every build but is mtime-guarded — files that are already up 
 - If your package uses a **hand-rolled class**, call the exported helper once in your constructor:
 
 ```ts
-import { syncThisPackageBuildLib } from '@typecad/typecad';
+import { syncThisPackageBuildLib } from '@typecad/pcb';
 
 export class MyModule {
   constructor(options) {
@@ -5277,7 +5295,7 @@ export class MyModule {
 }
 ```
 
-`typecad add package` scaffolds new packages with the `Package` base class and no install scripts.
+`typecad-pcb add package` scaffolds new packages with the `Package` base class and no install scripts.
 
 ## For package consumers
 
@@ -5409,7 +5427,7 @@ A schematic file isn't needed since typeCAD code takes the place of it, but it c
 Schematic generation is now built into `PCB.create()` — calling `create()` produces a `.kicad_pcb`, `.kicad_sch`, and `.net` file automatically.
 
 ```ts
-import { PCB } from '@typecad/typecad';
+import { PCB } from '@typecad/pcb';
 
 let typecad = new PCB('my-board');
 typecad.create(r1, c1, led);
@@ -5446,7 +5464,7 @@ The `Schematic` and `PCB` classes have been merged into a single `PCB` class. Th
 Now the bare minimum code to create a board is:
 
 ```ts
-import { PCB } from '@typecad/typecad';
+import { PCB } from '@typecad/pcb';
 let typecad = new PCB('typecad');
 typecad.create();
 ```
@@ -5496,7 +5514,7 @@ One of the last parts of board design was routing and that is largely accomplish
 The `TrackBuilder` object lets you create tracks with a fluent API.
 
 ```ts
-import { PCB, TrackBuilder } from '@typecad/typecad';
+import { PCB, TrackBuilder } from '@typecad/pcb';
 
 let pcb = new PCB('typecad_docs');
 
@@ -5517,7 +5535,7 @@ This method fits in nicely with the rest of the **type**CAD API.
 `TrackBuilder` objects don't take any connection information. This is because KiCAD will connect any track that touches an element with a net, ie. a track that touches a pad connected to the 'gnd' net will make the entire track also connected to the 'gnd' net. Since there's no use for an unconnected track, this simplifies to process.
 
 ## kicad2typecad
-`kicad2typecad` (bundled with [@typecad/typecad](https://www.npmjs.com/package/@typecad/typecad)) is a tool to simplify making tracks. This is particularly useful for making packages. You can lay out the entire package in KiCAD; components placed, tracks drawn, and vias added. Then use `kicad2typecad` to generate the code snippets to create them programmatically in the package.
+`kicad2typecad` (bundled with [@typecad/pcb](https://www.npmjs.com/package/@typecad/pcb)) is a tool to simplify making tracks. This is particularly useful for making packages. You can lay out the entire package in KiCAD; components placed, tracks drawn, and vias added. Then use `kicad2typecad` to generate the code snippets to create them programmatically in the package.
 
 ### Making a package
 The workflow for creating a reusable package is:
@@ -5570,6 +5588,137 @@ For `Component` objects, the package doesn't read your code so it doesn't know w
 
 ---
 
+## Typecad For Agents
+
+*typeCAD for Agents*
+
+---
+title: typeCAD for Agents
+description: Check, query, and edit PCBs from the command line — a tight verify-and-edit loop for AI coding agents
+date: '2026-09-04'
+categories:
+  - ai
+  - llm
+  - command-line
+  - automation
+published: true
+cover: https://images.unsplash.com/photo-1620712943543-bcc4688e7485?w=640
+---
+
+typeCAD has always been a good fit for AI coding agents — hardware described as TypeScript means an agent can work the same way it does on any other codebase. But writing code is only half of what agents do. The other half is the loop: **verify** what was built, **inspect** the result, and **edit** precisely when something is wrong. Until now that loop leaned on generic tools — grep the source, parse errors by eye, hope the diff meant something.
+
+The latest release closes the loop with three new CLI commands — `check`, `query`, and `edit` — plus a foundation that makes all of it trustworthy: deterministic builds.
+
+### Verify everything at once: `typecad-pcb check`
+
+One command runs the full gauntlet — build, unconnected-pad analysis, ERC, and DRC — and emits a single report. With `--json` it is one parseable document with correct exit codes, so an agent can act on it without scraping prose:
+
+```bash
+$ typecad-pcb check --json
+{
+  "ok": false,
+  "build": { "ran": true, "passed": true, "outputs": ["rd_skeleton.kicad_pcb"] },
+  "unconnected": {
+    "ran": true,
+    "passed": false,
+    "pads": [{ "reference": "J1", "pad": "3", "type": "thru_hole" }]
+  },
+  "erc": { "ran": true, "passed": false, "errors": 13 },
+  "drc":  { "ran": true, "passed": false, "unconnectedItems": 96 }
+}
+```
+
+Every failure points at designators and pins, not file internals — the same vocabulary the agent writes code with.
+
+### The board as a database: `typecad-pcb query`
+
+After a build, the compiled board is a queryable dataset. Agents should ask the board, not grep the source:
+
+```bash
+$ typecad-pcb query unconnected
+  Pads with no net (7):
+    J1.3  thru_hole
+    J1.4  thru_hole
+
+$ typecad-pcb query net GND
+  pins      2
+    J1.1
+    J2.1
+  vias      94
+  zones     F.Cu+B.Cu
+  copper    fully routed — pour-assisted
+```
+
+Components come back with their source variable names (J1 → `j1`), so the answer maps directly onto the code. Routing gets first-class treatment too: `query routes` reports which nets have real copper — pins connected out of total, segment counts, routed length, layers — and understands zone pours as connectivity. A ground plane pouring around an isolated pad counts as routed; a pin with no path is called out by name:
+
+```bash
+$ typecad-pcb query routes
+  ✓ GND     3/3 pins, 94 vias, pour-assisted
+  ✖ net4    1/2 pins
+      no copper path to: J1.4
+```
+
+`query zones` separates copper pours from keepout regions, with layers, fill mode, and extents. Everything has a `--json` form, and errors return their option space — ask for a net that doesn't exist and the response lists every net that does.
+
+### Checked edits: `typecad-pcb edit`
+
+The mutation side works the same way. `edit` rewrites the source through declarative, validated operations — every pin, pad, and net is checked against the compiled board *before* the file is touched, and a wrong guess fails with suggestions instead of a broken file:
+
+```bash
+$ typecad-pcb edit connect J1.3 J2.3
+✓ connected J1.3 ↔ J2.3
+  src/rd_skeleton.ts:27  typecad.net(j1.pin(3), j2.pin(3));
+
+$ typecad-pcb edit route J1.3 J2.3 --width 0.25
+✓ routed J1.3 ↔ J2.3
+  src/rd_skeleton.ts:50  typecad.route({ from: j1.pin(3), to: j2.pin(3), width: 0.25 });
+
+$ typecad-pcb edit move U1 --right-of=C3 --gap 2.54 --dry-run
+Dry run — would write at src/board.ts:34
++ u1.pcb = { x: typecad.board.rightOf(c3).by(2.54), y: typecad.board.sameAs(c3), rotation: 90 };
+```
+
+`connect` joins pins onto nets, `route` emits a real `pcb.route()` call (anchored before `create()`, where it belongs — more on that below), and `move` writes relative or absolute placement. `--dry-run` shows the exact line first.
+
+### Deterministic builds
+
+This is the quiet change that makes the loop honest. Board files used to embed random UUIDs, so every build produced different bytes even for identical designs — diffs were noise, and "did my change work?" was unanswerable by comparing files. Every UUID is now derived from design content, and identical designs build to **byte-identical** `.kicad_pcb` and `.kicad_sch` files. A diff of `build/` now shows real changes and nothing else.
+
+### Order matters — and the compiler says so
+
+Routing has one rule: `route()` must run before `create()`, because `create()` writes the board. Call it after and the routes could never reach the file — previously a silent `0/1` in a log line. Now it's a loud, self-explanatory error:
+
+```
+TypeCadError: route() was called after create(). The board is already written,
+so routes staged now can never reach it. Reorder the program: put the pins on
+a net, call route() BEFORE create(), then call create().
+```
+
+`typecad-pcb edit route` anchors its output before the first `create()` automatically, so the codemod can't produce the bad ordering in the first place.
+
+### Teaching agents what exists
+
+The `skills` knowledge base grew with the features: `typecad-pcb skills search ` fuzzy-finds patterns across everything — placement, routing, validation, the agent loop itself — and `typecad-pcb skills export` writes every skill as a SKILL.md file for `.claude/skills`-style tooling. Newly scaffolded projects get an `AGENTS.md` generated from the live skill registry documenting the loop, and `typecad-pcb create --name=my_board --yes` builds a complete project non-interactively.
+
+### A complete session
+
+The whole point, end to end — no GUI, no guessing:
+
+```bash
+$ typecad-pcb check --json | jq '.unconnected.pads'     # 1. find what's missing
+$ typecad-pcb query component J1 --json                  # 2. understand the part
+$ typecad-pcb edit connect GND J1.3                      # 3. make it right
+$ typecad-pcb edit route J1.3 J2.3 --width 0.25          # 4. give it copper
+$ typecad-pcb check --json | jq '.ok'                    # 5. prove it
+true
+```
+
+Verify, query, edit, verify again. The `@typecad/pcb-mcp` server exposes the same surfaces over MCP, so agents wired through either transport get identical, checkable behavior.
+
+All of this is in `@typecad/pcb` starting from the next release. If you run agents against your hardware projects — or you're curious what that would look like — `typecad-pcb create --name=hello_agent --yes` is the fastest way to find out.
+
+---
+
 ## V0.3 Release
 
 *typeCAD 0.3*
@@ -5591,17 +5740,17 @@ Version 0.3 is a breaking change release that consolidates the typeCAD ecosystem
 
 ## One package, one install
 
-`@typecad/typecad-docgen` and `@typecad/typecad-gitdiff` have been merged into the main `@typecad/typecad` package. What previously required three separate installs now takes one:
+`@typecad/pcb-docgen` and `@typecad/pcb-gitdiff` have been merged into the main `@typecad/pcb` package. What previously required three separate installs now takes one:
 
 ```bash
-npm install @typecad/typecad
+npm install @typecad/pcb
 ```
 
 Both tools remain available programmatically via subpath exports:
 
 ```ts
-import { generateDocumentation } from '@typecad/typecad/docgen';
-import { generateDiffs } from '@typecad/typecad/diff';
+import { generateDocumentation } from '@typecad/pcb/docgen';
+import { generateDiffs } from '@typecad/pcb/diff';
 ```
 
 ## The `typecad` binary
@@ -5610,18 +5759,18 @@ A new unified CLI replaces the previous collection of separate commands. Running
 
 | Command | Description |
 |---------|-------------|
-| `typecad create` | Create a new typeCAD project |
-| `typecad add component` | Add a component to the current project |
-| `typecad add package` | Create a reusable component package |
-| `typecad build` | Build KiCad output from typeCAD source |
-| `typecad search` | Search KiCad schematic symbols |
-| `typecad import` | Convert a KiCad PCB file to typeCAD code |
-| `typecad diff` | Compare two KiCad PCB files visually |
-| `typecad doc` | Generate PCB documentation from Markdown |
-| `typecad doctor` | Check your environment for common issues |
-| `typecad validate` | Validate project source without a full build |
-| `typecad drc` | Run Design Rule Check on a KiCad PCB file |
-| `typecad erc` | Run Electrical Rules Check on a KiCad schematic |
+| `typecad-pcb create` | Create a new typeCAD project |
+| `typecad-pcb add component` | Add a component to the current project |
+| `typecad-pcb add package` | Create a reusable component package |
+| `typecad-pcb build` | Build KiCad output from typeCAD source |
+| `typecad-pcb search` | Search KiCad schematic symbols |
+| `typecad-pcb import` | Convert a KiCad PCB file to typeCAD code |
+| `typecad-pcb diff` | Compare two KiCad PCB files visually |
+| `typecad-pcb doc` | Generate PCB documentation from Markdown |
+| `typecad-pcb doctor` | Check your environment for common issues |
+| `typecad-pcb validate` | Validate project source without a full build |
+| `typecad-pcb drc` | Run Design Rule Check on a KiCad PCB file |
+| `typecad-pcb erc` | Run Electrical Rules Check on a KiCad schematic |
 
 The `diff` and `doc` commands are the same tools that were previously separate packages, now accessible without an additional install.
 
@@ -5659,7 +5808,7 @@ The `Package` base class was also rewritten. Components assigned to `this` insid
 
 ## Breaking changes
 
-- `@typecad/typecad-docgen` and `@typecad/typecad-gitdiff` are no longer published separately. Use the `typecad doc` and `typecad diff` commands, or import from `@typecad/typecad/docgen` and `@typecad/typecad/diff`.
+- `@typecad/pcb-docgen` and `@typecad/pcb-gitdiff` are no longer published separately. Use the `typecad-pcb doc` and `typecad-pcb diff` commands, or import from `@typecad/pcb/docgen` and `@typecad/pcb/diff`.
 - The `IComponent` type alias is deprecated in favor of `ComponentInit`.
 - The CLI entry points from previous separate packages have been replaced by the `typecad` binary.
 
@@ -5678,8 +5827,7 @@ Traditional hardware design forces you to rebuild the same circuits over and ove
 ### 📦 **Install Hardware Like Software**
 
 ```bash
-# Install common passive components
-npm install @typecad/passives
+# Common passive components (resistors, capacitors, etc.) are built into @typecad/pcb
 
 # Add specialized sensor packages  
 npm install @mycompany/environmental-sensors
@@ -5695,7 +5843,7 @@ No more hunting through component libraries or rebuilding basic circuits. Instal
 
 ```typescript
 // Import exactly what you need
-import { Resistor, Capacitor, LED } from '@typecad/passives/0603';
+import { Resistor, Capacitor, LED } from '@typecad/pcb';
 import { UsbCConnector } from '@acme/connectors';
 import { BuckConverter5V } from '@acme/power-supplies';
 
@@ -5735,8 +5883,7 @@ Compose complex IoT devices from well-tested, modular packages. Each package han
   "name": "weather-station-v2",
   "version": "1.2.0",
   "dependencies": {
-    "@typecad/typecad": "^2.1.0",
-    "@typecad/passives": "^1.5.0",
+    "@typecad/pcb": "^2.1.0",
     "@acme/sensors": "^3.2.1",
     "@community/displays": "^2.0.0"
   },
@@ -5846,19 +5993,19 @@ This is a typeCAD package that includes simple access to many passive components
 
 | Component Type | Package | Import Example |
 |----------------|---------|----------------|
-| Resistors, Capacitors, LEDs, Diodes | `@typecad/passives/0603` | `import { Resistor, Capacitor } from '@typecad/passives/0603'` |
-| Same components, different sizes | `@typecad/passives/0805` | `import { Resistor, Capacitor } from '@typecad/passives/0805'` |
-| Connectors | `@typecad/passives/connector` | `import { Connector } from '@typecad/passives/connector'` |
-| Test Points | `@typecad/passives/testpoint` | `import { Testpoint } from '@typecad/passives/testpoint'` |
-| Core typeCAD classes | `@typecad/typecad` | `import { PCB, Power, Component } from '@typecad/typecad'` | 
+| Resistors, Capacitors, LEDs, Diodes | `@typecad/pcb` | `import { Resistor, Capacitor } from '@typecad/pcb'` |
+| Same components, different sizes | `@typecad/pcb` | `import { Resistor, Capacitor } from '@typecad/pcb'` |
+| Connectors | `@typecad/pcb` | `import { Connector } from '@typecad/pcb'` |
+| Test Points | `@typecad/pcb` | `import { Testpoint } from '@typecad/pcb'` |
+| Core typeCAD classes | `@typecad/pcb` | `import { PCB, Power, Component } from '@typecad/pcb'` | 
 
 ## Resistors, capacitors, LEDs, diodes, fuses, and inductors
 This package uses an options interface. Any parameter can be included or left out. They can be accessed and modified later in code. 
 
 ```ts
-import { Schematic } from '@typecad/typecad'
-import { Resistor, LED, Capacitor, Diode, Inductor, Fuse } from '@typecad/passives/0805'
-import  *  as _0603 from '@typecad/passives/0603'
+import { Schematic } from '@typecad/pcb'
+import { Resistor, LED, Capacitor, Diode, Inductor, Fuse } from '@typecad/pcb'
+import  *  as _0603 from '@typecad/pcb'
 
 let typecad = new Schematic('passives');
 
@@ -5872,12 +6019,12 @@ let led = new _0603.LED();      // a 0603 instead of 0805
 typecad.create(resistor, led, capacitor, inductor, diode, fuse);
 ```
 All of the sizes are:
-- `@typecad/passives/1210`
-- `@typecad/passives/1206`
-- `@typecad/passives/0805`
-- `@typecad/passives/0603`
-- `@typecad/passives/0402`
-- `@typecad/passives/0201` **no fuses*
+- `@typecad/pcb`
+- `@typecad/pcb`
+- `@typecad/pcb`
+- `@typecad/pcb`
+- `@typecad/pcb`
+- `@typecad/pcb` **no fuses*
 
 ### Auto designation
 If `{ reference }` is not included, the component will be auto-numbered. If there are any name collisions, the new name will be suffixed with a `_1`, ie `R1_1`. 
@@ -5898,7 +6045,7 @@ let j2 = new Connector({ number: 5 });
 Testpoints can be created:
 
 ```ts
-import { Testpoint } from '@typecad/passives/testpoint';
+import { Testpoint } from '@typecad/pcb';
 let tp = new Testpoint();
 ```
 Will create a testpoint with a default footprint of `TestPoint:TestPoint_Pad_D1.0mm`.
@@ -5915,9 +6062,9 @@ Connect a testpoint using `tp.pin(1)` in the `::net()` method.
 
 ## Globals
 
-*@typecad/typecad*
+*@typecad/pcb*
 
-[**@typecad/typecad**](README.md)
+[**@typecad/pcb**](README.md)
 
 ***
 
@@ -5975,11 +6122,11 @@ Connect a testpoint using `tp.pin(1)` in the `::net()` method.
 
 *Class: PCB*
 
-[**@typecad/typecad**](README.md)
+[**@typecad/pcb**](README.md)
 
 ***
 
-[@typecad/typecad](globals.md) / PCB
+[@typecad/pcb](globals.md) / PCB
 
 Defined in: [pcb/pcb.ts:103](https://github.com/typecad/typecad/blob/6bbcc8ae1b7d95ad4656019e0545a2a6bf8c25eb/pcb/pcb.ts#L103)
 
@@ -8377,11 +8524,11 @@ pcb.zone({
 
 *Class: Schematic*
 
-[**@typecad/typecad**](README.md)
+[**@typecad/pcb**](README.md)
 
 ***
 
-[@typecad/typecad](globals.md) / Schematic
+[@typecad/pcb](globals.md) / Schematic
 
 Defined in: [schematic.ts:133](https://github.com/typecad/typecad/blob/6bbcc8ae1b7d95ad4656019e0545a2a6bf8c25eb/schematic.ts#L133)
 
@@ -8749,11 +8896,11 @@ The warning message to log.
 
 *Class: Component*
 
-[**@typecad/typecad**](README.md)
+[**@typecad/pcb**](README.md)
 
 ***
 
-[@typecad/typecad](globals.md) / Component
+[@typecad/pcb](globals.md) / Component
 
 Defined in: [component.ts:63](https://github.com/typecad/typecad/blob/6bbcc8ae1b7d95ad4656019e0545a2a6bf8c25eb/component.ts#L63)
 
@@ -9312,11 +9459,11 @@ The pin object.
 
 *Class: Pin*
 
-[**@typecad/typecad**](README.md)
+[**@typecad/pcb**](README.md)
 
 ***
 
-[@typecad/typecad](globals.md) / Pin
+[@typecad/pcb](globals.md) / Pin
 
 Defined in: [pin.ts:16](https://github.com/typecad/typecad/blob/6bbcc8ae1b7d95ad4656019e0545a2a6bf8c25eb/pin.ts#L16)
 
@@ -9423,11 +9570,11 @@ Defined in: [pin.ts:19](https://github.com/typecad/typecad/blob/6bbcc8ae1b7d95ad
 
 *Class: Power*
 
-[**@typecad/typecad**](README.md)
+[**@typecad/pcb**](README.md)
 
 ***
 
-[@typecad/typecad](globals.md) / Power
+[@typecad/pcb](globals.md) / Power
 
 Defined in: [buses.ts:68](https://github.com/typecad/typecad/blob/6bbcc8ae1b7d95ad4656019e0545a2a6bf8c25eb/buses.ts#L68)
 
@@ -9487,11 +9634,11 @@ Defined in: [buses.ts:71](https://github.com/typecad/typecad/blob/6bbcc8ae1b7d95
 
 *Class: TrackBuilder*
 
-[**@typecad/typecad**](README.md)
+[**@typecad/pcb**](README.md)
 
 ***
 
-[@typecad/typecad](globals.md) / TrackBuilder
+[@typecad/pcb](globals.md) / TrackBuilder
 
 Defined in: [pcb/pcb\_track\_builder.ts:6](https://github.com/typecad/typecad/blob/6bbcc8ae1b7d95ad4656019e0545a2a6bf8c25eb/pcb/pcb_track_builder.ts#L6)
 
@@ -9667,11 +9814,11 @@ Defined in: [pcb/pcb\_track\_builder.ts:269](https://github.com/typecad/typecad/
 
 *Class: KiCAD*
 
-[**@typecad/typecad**](README.md)
+[**@typecad/pcb**](README.md)
 
 ***
 
-[@typecad/typecad](globals.md) / KiCAD
+[@typecad/pcb](globals.md) / KiCAD
 
 Defined in: [kicad.ts:12](https://github.com/typecad/typecad/blob/6bbcc8ae1b7d95ad4656019e0545a2a6bf8c25eb/kicad.ts#L12)
 
@@ -9743,11 +9890,11 @@ Check if current installation is flatpak
 
 *Class: I2C*
 
-[**@typecad/typecad**](README.md)
+[**@typecad/pcb**](README.md)
 
 ***
 
-[@typecad/typecad](globals.md) / I2C
+[@typecad/pcb](globals.md) / I2C
 
 Defined in: [buses.ts:4](https://github.com/typecad/typecad/blob/6bbcc8ae1b7d95ad4656019e0545a2a6bf8c25eb/buses.ts#L4)
 
@@ -9795,11 +9942,11 @@ Defined in: [buses.ts:5](https://github.com/typecad/typecad/blob/6bbcc8ae1b7d95a
 
 *Class: UART*
 
-[**@typecad/typecad**](README.md)
+[**@typecad/pcb**](README.md)
 
 ***
 
-[@typecad/typecad](globals.md) / UART
+[@typecad/pcb](globals.md) / UART
 
 Defined in: [buses.ts:13](https://github.com/typecad/typecad/blob/6bbcc8ae1b7d95ad4656019e0545a2a6bf8c25eb/buses.ts#L13)
 
@@ -9871,11 +10018,11 @@ Defined in: [buses.ts:14](https://github.com/typecad/typecad/blob/6bbcc8ae1b7d95
 
 *Class: USB*
 
-[**@typecad/typecad**](README.md)
+[**@typecad/pcb**](README.md)
 
 ***
 
-[@typecad/typecad](globals.md) / USB
+[@typecad/pcb](globals.md) / USB
 
 Defined in: [buses.ts:26](https://github.com/typecad/typecad/blob/6bbcc8ae1b7d95ad4656019e0545a2a6bf8c25eb/buses.ts#L26)
 
@@ -9923,11 +10070,11 @@ Defined in: [buses.ts:27](https://github.com/typecad/typecad/blob/6bbcc8ae1b7d95
 
 *Interface: IComponent*
 
-[**@typecad/typecad**](README.md)
+[**@typecad/pcb**](README.md)
 
 ***
 
-[@typecad/typecad](globals.md) / IComponent
+[@typecad/pcb](globals.md) / IComponent
 
 Defined in: [component.ts:21](https://github.com/typecad/typecad/blob/6bbcc8ae1b7d95ad4656019e0545a2a6bf8c25eb/component.ts#L21)
 
@@ -10209,11 +10356,11 @@ Defined in: [component.ts:28](https://github.com/typecad/typecad/blob/6bbcc8ae1b
 
 *Interface: IPinPowerInfo*
 
-[**@typecad/typecad**](README.md)
+[**@typecad/pcb**](README.md)
 
 ***
 
-[@typecad/typecad](globals.md) / IPinPowerInfo
+[@typecad/pcb](globals.md) / IPinPowerInfo
 
 Defined in: [pcb/pcb\_interfaces.ts:134](https://github.com/typecad/typecad/blob/6bbcc8ae1b7d95ad4656019e0545a2a6bf8c25eb/pcb/pcb_interfaces.ts#L134)
 
@@ -10247,11 +10394,11 @@ Defined in: [pcb/pcb\_interfaces.ts:135](https://github.com/typecad/typecad/blob
 
 *Variable: kicad\_path*
 
-[**@typecad/typecad**](README.md)
+[**@typecad/pcb**](README.md)
 
 ***
 
-[@typecad/typecad](globals.md) / kicad\_path
+[@typecad/pcb](globals.md) / kicad\_path
 
 > **kicad\_path**: `string` \| `undefined`
 
@@ -10263,11 +10410,11 @@ Defined in: [kicad.ts:8](https://github.com/typecad/typecad/blob/6bbcc8ae1b7d95a
 
 *Variable: kicad\_cli\_path*
 
-[**@typecad/typecad**](README.md)
+[**@typecad/pcb**](README.md)
 
 ***
 
-[@typecad/typecad](globals.md) / kicad\_cli\_path
+[@typecad/pcb](globals.md) / kicad\_cli\_path
 
 > **kicad\_cli\_path**: `string` \| `undefined`
 
@@ -10279,11 +10426,11 @@ Defined in: [kicad.ts:9](https://github.com/typecad/typecad/blob/6bbcc8ae1b7d95a
 
 *Class: DebugVisualizer*
 
-[**@typecad/typecad**](README.md)
+[**@typecad/pcb**](README.md)
 
 ***
 
-[@typecad/typecad](globals.md) / DebugVisualizer
+[@typecad/pcb](globals.md) / DebugVisualizer
 
 Defined in: [routing/utils/debug\_visualizer.ts:26](https://github.com/typecad/typecad/blob/6bbcc8ae1b7d95ad4656019e0545a2a6bf8c25eb/routing/utils/debug_visualizer.ts#L26)
 
@@ -10428,11 +10575,11 @@ DebugVisualizer.visualizeRouting(grid, obstacles, [path], 'debug_route', 'F.Cu',
 
 *Class: ObstacleBuilder*
 
-[**@typecad/typecad**](README.md)
+[**@typecad/pcb**](README.md)
 
 ***
 
-[@typecad/typecad](globals.md) / ObstacleBuilder
+[@typecad/pcb](globals.md) / ObstacleBuilder
 
 Defined in: [routing/shared/obstacle\_builder.ts:16](https://github.com/typecad/typecad/blob/6bbcc8ae1b7d95ad4656019e0545a2a6bf8c25eb/routing/shared/obstacle_builder.ts#L16)
 
@@ -10697,11 +10844,11 @@ Zone obstacle, or null if invalid
 
 *Class: PadResolver*
 
-[**@typecad/typecad**](README.md)
+[**@typecad/pcb**](README.md)
 
 ***
 
-[@typecad/typecad](globals.md) / PadResolver
+[@typecad/pcb](globals.md) / PadResolver
 
 Defined in: [routing/shared/pad\_resolver.ts:47](https://github.com/typecad/typecad/blob/6bbcc8ae1b7d95ad4656019e0545a2a6bf8c25eb/routing/shared/pad_resolver.ts#L47)
 
@@ -10821,11 +10968,11 @@ if (padGeom) {
 
 *Class: RoutingGrid*
 
-[**@typecad/typecad**](README.md)
+[**@typecad/pcb**](README.md)
 
 ***
 
-[@typecad/typecad](globals.md) / RoutingGrid
+[@typecad/pcb](globals.md) / RoutingGrid
 
 Defined in: [routing/shared/routing\_grid.ts:132](https://github.com/typecad/typecad/blob/6bbcc8ae1b7d95ad4656019e0545a2a6bf8c25eb/routing/shared/routing_grid.ts#L132)
 
@@ -11529,11 +11676,11 @@ Grid coordinates
 
 *Enumeration: RoutingAlgorithm*
 
-[**@typecad/typecad**](README.md)
+[**@typecad/pcb**](README.md)
 
 ***
 
-[@typecad/typecad](globals.md) / RoutingAlgorithm
+[@typecad/pcb](globals.md) / RoutingAlgorithm
 
 Defined in: [routing/router\_registry.ts:59](https://github.com/typecad/typecad/blob/6bbcc8ae1b7d95ad4656019e0545a2a6bf8c25eb/routing/router_registry.ts#L59)
 
@@ -11556,11 +11703,11 @@ Default plugin-provided autorouter (e.g., @typecad-astar).
 
 *Function: executeKiCADCommand()*
 
-[**@typecad/typecad**](README.md)
+[**@typecad/pcb**](README.md)
 
 ***
 
-[@typecad/typecad](globals.md) / executeKiCADCommand
+[@typecad/pcb](globals.md) / executeKiCADCommand
 
 > **executeKiCADCommand**(`command`, `args`, `options`): `Promise`\
 
@@ -11592,11 +11739,11 @@ Execute a KiCAD command with automatic flatpak wrapper detection
 
 *Function: executeKiCADCommandSync()*
 
-[**@typecad/typecad**](README.md)
+[**@typecad/pcb**](README.md)
 
 ***
 
-[@typecad/typecad](globals.md) / executeKiCADCommandSync
+[@typecad/pcb](globals.md) / executeKiCADCommandSync
 
 > **executeKiCADCommandSync**(`command`, `args`, `options`): `string`
 
@@ -11628,11 +11775,11 @@ Execute a KiCAD command synchronously
 
 *Function: exportPCB()*
 
-[**@typecad/typecad**](README.md)
+[**@typecad/pcb**](README.md)
 
 ***
 
-[@typecad/typecad](globals.md) / exportPCB
+[@typecad/pcb](globals.md) / exportPCB
 
 > **exportPCB**(`pcbPath`, `outputPath`, `format`, `options`): `Promise`\
 
@@ -11668,11 +11815,11 @@ Export PCB to various formats
 
 *Function: exportSchematic()*
 
-[**@typecad/typecad**](README.md)
+[**@typecad/pcb**](README.md)
 
 ***
 
-[@typecad/typecad](globals.md) / exportSchematic
+[@typecad/pcb](globals.md) / exportSchematic
 
 > **exportSchematic**(`schPath`, `outputPath`, `format`, `options`): `Promise`\
 
@@ -11708,11 +11855,11 @@ Export schematic to various formats
 
 *Function: runDRC()*
 
-[**@typecad/typecad**](README.md)
+[**@typecad/pcb**](README.md)
 
 ***
 
-[@typecad/typecad](globals.md) / runDRC
+[@typecad/pcb](globals.md) / runDRC
 
 > **runDRC**(`pcbPath`, `options`): `Promise`\
 
@@ -11740,11 +11887,11 @@ Run Design Rule Check on a PCB file
 
 *Function: runERC()*
 
-[**@typecad/typecad**](README.md)
+[**@typecad/pcb**](README.md)
 
 ***
 
-[@typecad/typecad](globals.md) / runERC
+[@typecad/pcb](globals.md) / runERC
 
 > **runERC**(`schPath`, `options`): `Promise`\
 
@@ -11772,11 +11919,11 @@ Run Electrical Rule Check on a schematic file
 
 *Function: upgradeFootprint()*
 
-[**@typecad/typecad**](README.md)
+[**@typecad/pcb**](README.md)
 
 ***
 
-[@typecad/typecad](globals.md) / upgradeFootprint
+[@typecad/pcb](globals.md) / upgradeFootprint
 
 > **upgradeFootprint**(`footprintPath`, `options`): `Promise`\
 
@@ -11804,11 +11951,11 @@ Upgrade a footprint file to the latest format
 
 *Interface: IConnectionIdentifier*
 
-[**@typecad/typecad**](README.md)
+[**@typecad/pcb**](README.md)
 
 ***
 
-[@typecad/typecad](globals.md) / IConnectionIdentifier
+[@typecad/pcb](globals.md) / IConnectionIdentifier
 
 Defined in: [pcb/pcb\_interfaces.ts:315](https://github.com/typecad/typecad/blob/6bbcc8ae1b7d95ad4656019e0545a2a6bf8c25eb/pcb/pcb_interfaces.ts#L315)
 
@@ -11841,11 +11988,11 @@ Destination pin
 
 *Interface: IGridCell*
 
-[**@typecad/typecad**](README.md)
+[**@typecad/pcb**](README.md)
 
 ***
 
-[@typecad/typecad](globals.md) / IGridCell
+[@typecad/pcb](globals.md) / IGridCell
 
 Defined in: [routing/shared/routing\_grid.ts:40](https://github.com/typecad/typecad/blob/6bbcc8ae1b7d95ad4656019e0545a2a6bf8c25eb/routing/shared/routing_grid.ts#L40)
 
@@ -11979,11 +12126,11 @@ Grid row index
 
 *Interface: IManualRoute*
 
-[**@typecad/typecad**](README.md)
+[**@typecad/pcb**](README.md)
 
 ***
 
-[@typecad/typecad](globals.md) / IManualRoute
+[@typecad/pcb](globals.md) / IManualRoute
 
 Defined in: [pcb/pcb\_interfaces.ts:326](https://github.com/typecad/typecad/blob/6bbcc8ae1b7d95ad4656019e0545a2a6bf8c25eb/pcb/pcb_interfaces.ts#L326)
 
@@ -12032,11 +12179,11 @@ If not provided, will attempt to match route end position to a pin in the net
 
 *Interface: IPadGeometry*
 
-[**@typecad/typecad**](README.md)
+[**@typecad/pcb**](README.md)
 
 ***
 
-[@typecad/typecad](globals.md) / IPadGeometry
+[@typecad/pcb](globals.md) / IPadGeometry
 
 Defined in: [routing/shared/pad\_resolver.ts:11](https://github.com/typecad/typecad/blob/6bbcc8ae1b7d95ad4656019e0545a2a6bf8c25eb/routing/shared/pad_resolver.ts#L11)
 
@@ -12164,11 +12311,11 @@ Pad type (SMD or through-hole)
 
 *Interface: IRoutingEngine*
 
-[**@typecad/typecad**](README.md)
+[**@typecad/pcb**](README.md)
 
 ***
 
-[@typecad/typecad](globals.md) / IRoutingEngine
+[@typecad/pcb](globals.md) / IRoutingEngine
 
 Defined in: [routing/router\_registry.ts:12](https://github.com/typecad/typecad/blob/6bbcc8ae1b7d95ad4656019e0545a2a6bf8c25eb/routing/router_registry.ts#L12)
 
@@ -12230,11 +12377,11 @@ Coordinates are in world space (mm), with an explicit layer at each point.
 
 *Interface: IRoutingObstacle*
 
-[**@typecad/typecad**](README.md)
+[**@typecad/pcb**](README.md)
 
 ***
 
-[@typecad/typecad](globals.md) / IRoutingObstacle
+[@typecad/pcb](globals.md) / IRoutingObstacle
 
 Defined in: [routing/shared/routing\_grid.ts:85](https://github.com/typecad/typecad/blob/6bbcc8ae1b7d95ad4656019e0545a2a6bf8c25eb/routing/shared/routing_grid.ts#L85)
 
@@ -12414,11 +12561,11 @@ Type of obstacle for debugging/visualization
 
 *Interface: KiCADCommandOptions*
 
-[**@typecad/typecad**](README.md)
+[**@typecad/pcb**](README.md)
 
 ***
 
-[@typecad/typecad](globals.md) / KiCADCommandOptions
+[@typecad/pcb](globals.md) / KiCADCommandOptions
 
 Defined in: [kicad\_commands.ts:7](https://github.com/typecad/typecad/blob/6bbcc8ae1b7d95ad4656019e0545a2a6bf8c25eb/kicad_commands.ts#L7)
 
@@ -12452,11 +12599,11 @@ Defined in: [kicad\_commands.ts:10](https://github.com/typecad/typecad/blob/6bbc
 
 *Variable: is\_flatpak*
 
-[**@typecad/typecad**](README.md)
+[**@typecad/pcb**](README.md)
 
 ***
 
-[@typecad/typecad](globals.md) / is\_flatpak
+[@typecad/pcb](globals.md) / is\_flatpak
 
 > **is\_flatpak**: `boolean` = `false`
 

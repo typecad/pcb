@@ -16,7 +16,7 @@
 <ScrollArea orientation="both">
 
 ```ts
-import { Component, PCB, Power } from '@typecad/typecad';
+import { Component, PCB, Power } from '@typecad/pcb';
 let typecad = new PCB('bom');
 
 // add components

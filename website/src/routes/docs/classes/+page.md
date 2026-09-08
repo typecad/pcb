@@ -12,7 +12,7 @@ The main class that represents the entire circuit.
 <ScrollArea orientation="both">
 
 ```ts
-import { PCB } from '@typecad/typecad';
+import { PCB } from '@typecad/pcb';
 let typecad = new PCB('typecad_concepts', {thickness: 1.6, copper_thickness: 35 });
 ```
 </ScrollArea>
@@ -41,7 +41,7 @@ The `Component` class represents individual parts like resistors, capacitors, IC
 <ScrollArea orientation="both">
 
 ```ts
-import { Component } from '@typecad/typecad';
+import { Component } from '@typecad/pcb';
 
 let R1 = new Component({ value: '1kohm' });
 ```
@@ -73,7 +73,7 @@ All three layout properties accept an `ITextPositioning` object and can be set a
 <ScrollArea orientation="both">
 
 ```ts
-import { Component } from '@typecad/typecad';
+import { Component } from '@typecad/pcb';
 
 let r1 = new Component({
   footprint: 'Resistor_SMD:R_0603_1608Metric',
@@ -119,7 +119,7 @@ Represents a power source like a battery or voltage regulator.
 <ScrollArea orientation="both">
 
 ```ts
-import { Power } from '@typecad/typecad';
+import { Power } from '@typecad/pcb';
 
 let coin_cell = new Power({ power: holder.pin(1), gnd: holder.pin(2), voltage: 3.7 });
 ```
@@ -139,7 +139,7 @@ Abstract base class for creating reusable, importable hardware modules. Extend t
 <ScrollArea orientation="both">
 
 ```ts
-import { Package, Component } from '@typecad/typecad';
+import { Package, Component } from '@typecad/pcb';
 
 export class MyResistor extends Package {
   declare resistor: Component;
@@ -161,7 +161,7 @@ Fluent API for creating tracks on the PCB:
 <ScrollArea orientation="both">
 
 ```ts
-import { PCB, TrackBuilder } from '@typecad/typecad';
+import { PCB, TrackBuilder } from '@typecad/pcb';
 
 let pcb = new PCB('tracks');
 

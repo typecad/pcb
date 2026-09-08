@@ -7,18 +7,18 @@ A component is anything that has a KiCAD symbol or footprint, ie. resistors, MCU
 The `Component` class is the base class for all components in **type**CAD.  In KiCAD, it would be anything that has a footprint file associated with it.
 
 ```ts
-import { Component } from '@typecad/typecad';
+import { Component } from '@typecad/pcb';
 
 let u1 = new Component({ footprint: 'Package_SO:SOIC-8_5.3x5.3mm_P1.27mm' });
 ```
 
 The above creates a SOIC-8 component. `footprint` is the KiCAD footprint path and split into two strings.
 
-That method works well for simple components, but there is a better way using the `typecad add component` tool.
+That method works well for simple components, but there is a better way using the `typecad-pcb add component` tool.
 
-## `typecad add component`
+## `typecad-pcb add component`
 
-**type**CAD has a command line tool that can be used to create a component. Run `typecad add component` from the `./hw` directory, or click the `add_component` button in the VSCode GUI under `NPM Scripts`.
+**type**CAD has a command line tool that can be used to create a component. Run `typecad-pcb add component` from the `./hw` directory, or click the `add_component` button in the VSCode GUI under `NPM Scripts`.
 
 The script will ask where the component is coming from, either the KiCAD library, a local file, or an EasyEDA/JLCPCB component.
 
@@ -30,12 +30,12 @@ If it's an [EasyEDA/JLCPCB component](https://jlcpcb.com/parts), you'll be asked
 
 ### KiCAD Library Components
 
-To find the symbol and footprint for a KiCAD library component, use `typecad search`:
+To find the symbol and footprint for a KiCAD library component, use `typecad-pcb search`:
 
 ```bash
-typecad search "voltage regulator"
-typecad search LM358
-typecad search "op amp" --format=json --limit=10
+typecad-pcb search "voltage regulator"
+typecad-pcb search LM358
+typecad-pcb search "op amp" --format=json --limit=10
 ```
 
 It fuzzy-matches against the KiCAD symbol libraries and returns the symbol name, footprint, and description. The symbol name is in `LibraryName:SymbolName` format (e.g. `MCU_Microchip_ATtiny:ATtiny85-20S`).
@@ -74,7 +74,7 @@ Let's look at what's in the `ATtiny85_20S.ts` file that was created to get a bet
 ### `ATtiny85_20S.ts`
 
 ```ts
-import { Component } from '@typecad/typecad';
+import { Component } from '@typecad/pcb';
 /**
  | Pin # | Name         | Type              |
  | --:   | :--          | :--               |
@@ -116,7 +116,7 @@ The file `extends` the `Component` by adding some extras to it. In particular, i
 After a `Component` has been created and modified, call `create` to include it in the PCB, schematic and netlist.
 
 ```ts
-import { PCB } from '@typecad/typecad';
+import { PCB } from '@typecad/pcb';
 import { ATtiny85_20S } from './ATtiny85_20S';
 
 let typecad = new PCB('typecad_docs');

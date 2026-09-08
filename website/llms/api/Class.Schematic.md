@@ -1,8 +1,8 @@
-[**@typecad/typecad**](README.md)
+[**@typecad/pcb**](README.md)
 
 ***
 
-[@typecad/typecad](globals.md) / Schematic
+[@typecad/pcb](globals.md) / Schematic
 
 # Class: Schematic
 

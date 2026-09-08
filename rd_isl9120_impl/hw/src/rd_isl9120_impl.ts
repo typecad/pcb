@@ -1,4 +1,4 @@
-import { PCB } from '@typecad/typecad';
+import { PCB } from '@typecad/pcb';
 import { rd_isl9120ir } from './rd_ISL9120IR';
 
 const typecad = new PCB('rd_isl9120_impl');

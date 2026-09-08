@@ -1,5 +1,5 @@
 ---
-'@typecad/typecad': minor
+'@typecad/pcb': minor
 ---
 
 Rectangle-geometry APIs accept a `bounds` object — `pcb.board` passes straight through.

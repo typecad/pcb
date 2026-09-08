@@ -9,25 +9,25 @@ Common errors and their solutions when working with typeCAD.
 
 ## Import and Module Errors
 
-### "Cannot find module '@typecad/typecad'"
-**Cause**: Component created in wrong directory or `@typecad/typecad` not installed.
+### "Cannot find module '@typecad/pcb'"
+**Cause**: Component created in wrong directory or `@typecad/pcb` not installed.
 
 **Solution**: 
 1. Ensure you're working in the `hw/` directory
-2. Check that `hw/package.json` includes `@typecad/typecad` dependency
+2. Check that `hw/package.json` includes `@typecad/pcb` dependency
 3. Run `npm install` in the `hw/` directory
 
 ### "Module has no exported member 'Connector'"
-**Cause**: Importing from wrong package path.
+**Cause**: Importing from a subpath instead of the package root.
 
 <ScrollArea orientation="both">
 
 ```ts
 // ❌ Wrong
-import { Connector } from '@typecad/passives/0603';
+import { Connector } from '@typecad/pcb/passives';
 
 // ✅ Correct
-import { Connector } from '@typecad/passives/connector';
+import { Connector } from '@typecad/pcb';
 ```
 </ScrollArea>
 
@@ -67,7 +67,7 @@ esp32.VDD         // or esp32.pin(8) if VDD is pin 8
 **Cause**: Component file not imported or created in wrong location.
 
 **Solution**:
-1. Ensure component was created with `typecad add component`
+1. Ensure component was created with `typecad-pcb add component`
 2. Check the import statement matches the generated file
 3. Verify component file is in `hw/src/` directory
 

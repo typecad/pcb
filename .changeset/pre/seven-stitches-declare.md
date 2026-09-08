@@ -1,5 +1,5 @@
 ---
-'@typecad/typecad': minor
+'@typecad/pcb': minor
 ---
 
 `pcb.stitch()` is now declarative — no `pcb.add()` or ordering knowledge needed.

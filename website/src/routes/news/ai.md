@@ -31,7 +31,7 @@ cover: https://unsplash.com/photos/XJuogr6jhv8/download?ixid=M3wxMjA3fDB8MXxzZWF
 Install **typeCAD-prompt** globally using the following command:  
 
 ```bash
-npm i -g @typecad/typecad-prompt
+npm i -g @typecad/pcb-prompt
 ```
 
-Read more about using it [here](https://www.npmjs.com/package/@typecad/typecad-prompt). 
+Read more about using it [here](https://www.npmjs.com/package/@typecad/pcb-prompt). 

@@ -1,8 +1,8 @@
-[**@typecad/typecad**](README.md)
+[**@typecad/pcb**](README.md)
 
 ***
 
-[@typecad/typecad](globals.md) / is\_flatpak
+[@typecad/pcb](globals.md) / is\_flatpak
 
 # Variable: is\_flatpak
 

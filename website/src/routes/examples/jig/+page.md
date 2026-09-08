@@ -24,7 +24,7 @@ From a terminal, run:
 <ScrollArea orientation="both">
 
 ```bash
-typecad create
+typecad-pcb create
 ```
 </ScrollArea>
 
@@ -39,10 +39,7 @@ Add some code which will:
 <ScrollArea orientation="both">
 
 ```ts
-import { PCB } from "@typecad/typecad"
-import { Resistor } from '@typecad/passives/0603';
-import { MountingHole } from '@typecad/passives/mounting_hole';
-import { Testpoint } from '@typecad/passives/testpoint';
+import { PCB, Resistor, MountingHole, TestPoint } from "@typecad/pcb"
 import { P70_5000045R } from './P70_5000045R';
 
 let typecad = new PCB('main');
@@ -51,8 +48,8 @@ let r1 = new Resistor({ value: '1kohm', pcb: {x: 166.815, y: 86.36, rotation: 0}
 let mh1 = new MountingHole({ size: 'M2.5', pcb: {x: 152.4, y: 76.2, rotation: 0} });
 let mh2 = new MountingHole({ size: 'M2.5',  pcb: {x: 177.8, y: 101.6, rotation: 0} });
 
-let tp1 = new Testpoint({  pcb: {x: 165.1, y: 81.28, rotation: 0} });
-let tp2 = new Testpoint({  pcb: {x: 168.04, y: 93.98, rotation: 0} });
+let tp1 = new TestPoint({  pcb: {x: 165.1, y: 81.28, rotation: 0} });
+let tp2 = new TestPoint({  pcb: {x: 168.04, y: 93.98, rotation: 0} });
 
 typecad.create(r1, mh1, mh2, tp1, tp2);
 
@@ -70,15 +67,12 @@ jig.create(mh1, mh2, pogo1, pogo2);
 <ScrollArea orientation="both">
 
 ```ts
-import { PCB } from "@typecad/typecad"
-import { Resistor } from '@typecad/passives/0603';
-import { MountingHole } from '@typecad/passives/mounting_hole';
-import { Testpoint } from '@typecad/passives/testpoint';
+import { PCB, Resistor, MountingHole, TestPoint } from "@typecad/pcb"
 import { P70_5000045R } from './P70_5000045R';
 ```
 </ScrollArea>
 
-We import the usual classes, plus a pogo pin from a custom package (_there's a downlink link at the bottom for this whole project_). `MountingHole`, `Testpoint` and `Resistor` are all from the `@typecad/passives` package which should already be installed.
+We import the usual classes, plus a pogo pin from a custom package (_there's a downlink link at the bottom for this whole project_). `MountingHole`, `TestPoint` and `Resistor` are all built into `@typecad/pcb`, which is already installed.
 
 ### `PCB`
 Now create the two PCBs.

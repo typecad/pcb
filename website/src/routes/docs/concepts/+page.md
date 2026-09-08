@@ -32,7 +32,7 @@ This is how a PCB is created.
 <ScrollArea orientation="both">
 
 ```ts 
-import { PCB } from '@typecad/typecad';
+import { PCB } from '@typecad/pcb';
 let typecad = new PCB('typecad');
 typecad.create();
 ```
@@ -41,7 +41,7 @@ typecad.create();
 That code will create a KiCAD board file, schematic file, netlist and BOM in `./build/typecad.kicad_pcb`, `./build/typecad.kicad_sch`, `./build/typecad.net`, and `./build/typecad.csv`.
 
 ### Build
-Run `typecad build` from your project's `hw/` directory to build. You can configure the build using a `typecad.conf.ts` file in the `hw/` directory. 
+Run `typecad-pcb build` from your project's `hw/` directory to build. You can configure the build using a `typecad.conf.ts` file in the `hw/` directory. 
 
 ### Workflow
 The new layout becomes:

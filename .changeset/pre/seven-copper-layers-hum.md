@@ -1,5 +1,5 @@
 ---
-'@typecad/typecad': minor
+'@typecad/pcb': minor
 ---
 
 N-layer boards, phase 3: stackup physics — material overrides, controlled-impedance routing, span-weighted via costs.

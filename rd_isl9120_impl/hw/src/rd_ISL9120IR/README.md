@@ -23,7 +23,7 @@ npm i @typecad/rd_isl9120ir
 1. Import the package
 
 ```ts
-import { Schematic, Power, PCB } from '@typecad/typecad';
+import { Schematic, Power, PCB } from '@typecad/pcb';
 import { rd_isl9120ir } from "@typecad/rd_isl9120ir";
 ```
 
@@ -45,9 +45,8 @@ This package contains a default layout for all the components.
 
 ### Passives
 
-The default size for the passive components is 0603, but it can be changed by passing a different set of passives.
+The default size for the passive components is 0603; shift the whole package with `passiveSize`.
 
 ```ts
-import * as _0805 from '@typecad/passives/0805';
-let isl9120 = new rd_isl9120ir({ pcb: typecad, passives: _0805});
+let isl9120 = new rd_isl9120ir({ pcb: typecad, passiveSize: '0805' });
 ```

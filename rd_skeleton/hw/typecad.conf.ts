@@ -1,5 +1,4 @@
-import { defineConfig } from '@typecad/typecad';
-
+import { defineConfig } from '@typecad/pcb';
 export default defineConfig({
   entry: './src/rd_skeleton.ts',
 });

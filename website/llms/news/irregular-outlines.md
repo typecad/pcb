@@ -5,7 +5,7 @@
 ## Polygons and circles
 
 ```ts
-import { PCB } from '@typecad/typecad';
+import { PCB } from '@typecad/pcb';
 
 let pcb = new PCB('board');
 

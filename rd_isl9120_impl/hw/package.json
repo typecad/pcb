@@ -13,9 +13,8 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@typecad/passives": "^0.2.2",
     "@typecad/schematic": "^1.1.4",
-    "@typecad/typecad": "file:../../@typecad/typecad",
+    "@typecad/pcb": "file:../../@typecad/pcb",
     "tsx": "^4.19.2"
   }
 }

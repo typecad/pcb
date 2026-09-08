@@ -14,8 +14,7 @@
     "tsx": "^4.19.1"
   },
   "peerDependencies": {
-    "@typecad/passives": "~0.1.0",
-    "@typecad/typecad": "~0.1.0"
+    "@typecad/pcb": "~0.1.0"
   },
   "scripts": {}
 }

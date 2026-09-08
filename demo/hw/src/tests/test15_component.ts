@@ -1,5 +1,4 @@
-import { PCB, Component } from '@typecad/typecad';
-
+import { PCB, Component } from '@typecad/pcb';
 export function runTest15(typecad: PCB): Component[] {
   const U1 = new Component({
     reference: 'U1',

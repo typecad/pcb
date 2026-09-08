@@ -21,7 +21,7 @@ The `Schematic` and `PCB` classes have been merged into a single `PCB` class. Th
 Now the bare minimum code to create a board is:
 
 ```ts
-import { PCB } from '@typecad/typecad';
+import { PCB } from '@typecad/pcb';
 let typecad = new PCB('typecad');
 typecad.create();
 ```

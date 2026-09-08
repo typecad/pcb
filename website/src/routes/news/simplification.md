@@ -28,7 +28,7 @@ Now the bare minimum code to create a board is:
 <ScrollArea orientation="both">
 
 ```ts
-import { PCB } from '@typecad/typecad';
+import { PCB } from '@typecad/pcb';
 let typecad = new PCB('typecad');
 typecad.create();
 ```

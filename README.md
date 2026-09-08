@@ -8,8 +8,7 @@ This repository contains the published `@typecad/` packages, example hardware pr
 
 | Package                                              | What it does                                                                                                                                              |
 | ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [`@typecad/typecad`](./@typecad/typecad)             | Core library: schematics, PCBs, placement, autorouting, zones, stitching, simulation, diffing, the `typecad` / `kicad-symbols` / `kicad2typecad` CLIs, and the built-in `gerber-viewer` board viewer |
-| [`@typecad/passives`](./@typecad/passives)           | Ready-made resistors, capacitors, inductors, diodes, LEDs, connectors, and more per footprint size                                                        |
+| [`@typecad/pcb`](./@typecad/pcb)                     | Core library: schematics, PCBs, placement, autorouting, zones, stitching, simulation, diffing, built-in passives factories, the `typecad-pcb` / `kicad-symbols` / `kicad2typecad` CLIs, and the built-in `gerber-viewer` board viewer (renamed from `@typecad/typecad`; absorbs `@typecad/passives`) |
 | [`@typecad/wiring`](./@typecad/wiring)               | Wiring-harness diagrams (WireViz-style) from code                                                                                                         |
 | [`@typecad/graphviz`](./@typecad/graphviz)           | Graphviz visualizations of schematics (connectivity, power hierarchy)                                                                                     |
 | [`@typecad/jlcpcb-parts`](./@typecad/jlcpcb-parts)   | `jlcpcb-search` CLI for fuzzy-searching the JLCPCB parts catalog                                                                                          |

@@ -28,7 +28,7 @@ The `TrackBuilder` object lets you create tracks with a fluent API.
 <ScrollArea orientation="both">
 
 ```ts
-import { PCB, TrackBuilder } from '@typecad/typecad';
+import { PCB, TrackBuilder } from '@typecad/pcb';
 
 let pcb = new PCB('typecad_docs');
 
@@ -51,7 +51,7 @@ This method fits in nicely with the rest of the **type**CAD API.
 `TrackBuilder` objects don't take any connection information. This is because KiCAD will connect any track that touches an element with a net, ie. a track that touches a pad connected to the 'gnd' net will make the entire track also connected to the 'gnd' net. Since there's no use for an unconnected track, this simplifies to process.
 
 ## kicad2typecad
-`kicad2typecad` (bundled with [@typecad/typecad](https://www.npmjs.com/package/@typecad/typecad)) is a tool to simplify making tracks. This is particularly useful for making packages. You can lay out the entire package in KiCAD; components placed, tracks drawn, and vias added. Then use `kicad2typecad` to generate the code snippets to create them programmatically in the package.
+`kicad2typecad` (bundled with [@typecad/pcb](https://www.npmjs.com/package/@typecad/pcb)) is a tool to simplify making tracks. This is particularly useful for making packages. You can lay out the entire package in KiCAD; components placed, tracks drawn, and vias added. Then use `kicad2typecad` to generate the code snippets to create them programmatically in the package.
 
 ### Making a package
 The workflow for creating a reusable package is:

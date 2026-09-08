@@ -28,14 +28,13 @@ For complex nets with multiple points, the router constructs a Minimum Spanning 
 Using the auto router is straightforward. Once you have defined your components and created a net, simply call `route()` on your PCB instance.
 
 ```ts
-import { PCB } from '@typecad/typecad';
-import { Resistor } from '@typecad/passives/0805';
+import { PCB, Resistor } from '@typecad/pcb';
 
 let typecad = new PCB('autoroute_example');
 
 // Define and place components
-let r1 = new Resistor({ value: '1kohm', reference: 'R1' });
-let r2 = new Resistor({ value: '1kohm', reference: 'R2' });
+let r1 = new Resistor({ value: '1kohm', reference: 'R1', size: '0805' });
+let r2 = new Resistor({ value: '1kohm', reference: 'R2', size: '0805' });
 r1.pcb = { x: 10, y: 10, rotation: 0 };
 r2.pcb = { x: 20, y: 10, rotation: 0 };
 

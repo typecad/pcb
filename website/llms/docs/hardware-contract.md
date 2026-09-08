@@ -12,7 +12,7 @@ A hardware contract is a JSON file that describes:
 ## Usage
 
 ```ts
-import { PCB, Component } from '@typecad/typecad';
+import { PCB, Component } from '@typecad/pcb';
 
 let pcb = new PCB('my_board');
 

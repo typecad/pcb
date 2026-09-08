@@ -1,8 +1,8 @@
-[**@typecad/typecad**](README.md)
+[**@typecad/pcb**](README.md)
 
 ***
 
-[@typecad/typecad](globals.md) / Pin
+[@typecad/pcb](globals.md) / Pin
 
 # Class: Pin
 

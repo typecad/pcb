@@ -115,10 +115,10 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/typecad/typecad.git"
+    "url": "git+https://github.com/typecad/pcb.git"
   },
   "bugs": {
-    "url": "https://github.com/typecad/typecad/issues"
+    "url": "https://github.com/typecad/pcb/issues"
   },
   "directories": {
     "doc": "docs",

@@ -1,6 +1,15 @@
 # Releasing Packages with Changesets
 
-This monorepo uses [changesets](https://github.com/changesets/changesets) to manage versioning and publishing across all `@typecad/` packages.
+This workspace uses [changesets](https://github.com/changesets/changesets) to manage versioning and publishing across all `@typecad/` packages.
+
+## Repository layout
+
+The `@typecad/` packages sit side by side here, but not all of them are tracked by this (umbrella) repo:
+
+- `@typecad/graphviz` and `@typecad/jlcpcb-export` — tracked here, and also carry their own git repos (`github.com/typecad/graphviz`, `github.com/typecad/jlcpcb-export`).
+- `@typecad/pcb`, `@typecad/wiring`, and `@typecad/jlcpcb-parts` — gitignored here; they are independent repositories (`github.com/typecad/pcb`, `github.com/typecad/wiring`, `github.com/typecad/jlcpcb-parts`).
+
+Releases are cut from this workspace root, so **all five package directories must be present on disk** for `changeset version` / `changeset publish` to work. A fresh clone of only the umbrella repo is missing the three gitignored packages — clone or restore them first. After `npm run version`, remember to commit the version bumps inside each package's own repository as well (the umbrella only tracks graphviz and jlcpcb-export).
 
 ## Setup (one-time)
 
@@ -77,14 +86,14 @@ npm run changeset
 # Message: "Fixed pin numbering for reversed connectors"
 ```
 
-Running `npm run version` will also bump `@typecad/pcb` in the `dependencies` of packages that depend on it (docgen, gitdiff, schematic), because `updateInternalDependencies` is set to `"patch"` in `.changeset/config.json`.
+Running `npm run version` will also bump `@typecad/pcb` in the `dependencies` of workspaces that depend on it (e.g. `demo/hw`, `rd_skeleton/hw`), because `updateInternalDependencies` is set to `"patch"` in `.changeset/config.json`.
 
 ### Multiple packages changed
 
 ```
 npm run changeset
-# Select: @typecad/pcb, @typecad/mast
-# Bump: @typecad/pcb → minor, @typecad/mast → patch
+# Select: @typecad/pcb, @typecad/wiring
+# Bump: @typecad/pcb → minor, @typecad/wiring → patch
 # Message: "Added differential pair routing support"
 ```
 
@@ -105,7 +114,7 @@ The config lives in `.changeset/config.json`:
 | `access` | `"public"` | All packages publish as public (required for scoped `@typecad/` packages) |
 | `baseBranch` | `"master"` | The branch changesets compares against |
 | `updateInternalDependencies` | `"patch"` | When a dep changes, auto-bump packages that depend on it |
-| `changelog` | `"@changesets/changelog-github"` | Generates GitHub-linked changelogs |
+| `changelog` | `["@changesets/changelog-github", { "repo": "typecad/pcb" }]` | Generates GitHub-linked changelogs (commit/PR links resolve against `github.com/typecad/pcb`) |
 | `commit` | `false` | Don't auto-commit (you commit manually) |
 
 ## Pre-release mode

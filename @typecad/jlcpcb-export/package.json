@@ -16,6 +16,13 @@
   "license": "Apache-2.0",
   "homepage": "https://typecad.net",
   "funding": "https://www.buymeacoffee.com/typecad",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/typecad/jlcpcb-export.git"
+  },
+  "bugs": {
+    "url": "https://github.com/typecad/jlcpcb-export/issues"
+  },
   "bin": {
     "jlcpcb-export": "dist/index.js"
   },

@@ -13,8 +13,7 @@ export interface ErcViolation {
 
 export interface ProjectAnswers {
   name: string;
-  pio: boolean;
-  board: string;
+  hal: boolean;
   git: boolean;
 }
 

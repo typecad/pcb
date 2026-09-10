@@ -21,19 +21,29 @@ function sanitizeProjectName(name: string): string {
 const IS_WIN = process.platform === 'win32';
 const IS_CMD_EXT = /\.(?:cmd|bat)$/i;
 
-function runSync(command: string, args: string[], cwd?: string): void {
+interface RunOptions {
+  stdio?: 'pipe' | 'inherit';
+  timeout?: number;
+}
+
+function runSync(command: string, args: string[], cwd?: string, options: RunOptions = {}): void {
   const resolved = findExecutable(command);
+  const execOptions = {
+    cwd,
+    stdio: options.stdio ?? 'pipe',
+    timeout: options.timeout ?? 120_000,
+  };
   if (IS_WIN && (!resolved || IS_CMD_EXT.test(resolved))) {
     // .cmd/.bat shims (npm, npx) need cmd.exe; pass bare name to avoid path-with-spaces issues
-    execFileSync('cmd.exe', ['/d', '/s', '/c', command, ...args], { cwd, stdio: 'pipe', timeout: 120_000 });
+    execFileSync('cmd.exe', ['/d', '/s', '/c', command, ...args], execOptions);
   } else {
-    execFileSync(resolved ?? command, args, { cwd, stdio: 'pipe', timeout: 120_000 });
+    execFileSync(resolved ?? command, args, execOptions);
   }
 }
 
-const runCommand = (command: string, args: string[], cwd?: string) => {
+const runCommand = (command: string, args: string[], cwd?: string, options: RunOptions = {}) => {
   try {
-    runSync(command, args, cwd);
+    runSync(command, args, cwd, options);
   } catch (e: unknown) {
     const err = e as { stderr?: { toString(): string } };
     const detail = err.stderr?.toString().trim() || (e instanceof Error ? e.message : String(e));
@@ -190,7 +200,7 @@ export default defineConfig({
     }
 
     // Dev-only: tsconfig.json's consumer is `typecad-pcb validate`'s tsc --noEmit.
-    // Soft-fails (like pio/git) so a missing typescript never aborts creation —
+    // Soft-fails (like hal/git) so a missing typescript never aborts creation —
     // not in CORE_DEPENDENCIES on purpose: doctor must not demand it from
     // projects that predate generated tsconfigs.
     const installedTS = runCommandQuiet('npm', ['i', '-D', 'typescript'], path.join(process.cwd(), answers.name, 'hw'));
@@ -282,28 +292,27 @@ ${skillSections}
       throw new Error(`ERROR writing ./${answers.name}/hw/package.json ${error}`);
     }
 
-    if (answers.pio) {
-      dir = `./${answers.name}/fw`;
-      if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-      }
-      logger.log(chalk.green('+'), 'Creating pio project in ./fw');
-      const installedPIO = runCommand(
-        'pio',
-        ['project', 'init', '--project-dir', './fw/', '-b', answers.board],
+    if (answers.hal) {
+      logger.log(chalk.green('+'), 'Creating typeCAD HAL firmware project in ./fw');
+      // The HAL setup picks its board via its own wizard (interactive on a
+      // TTY), so the child inherits stdio; the generous timeout covers the
+      // HAL project's npm install. The project name is positional: the CLI
+      // has no --projectName flag.
+      const createdHAL = runCommand(
+        'npx',
+        ['-y', '@typecad/hal@latest', 'create', answers.name, '--outDir', 'fw'],
         path.join(process.cwd(), answers.name),
+        { stdio: 'inherit', timeout: 600_000 },
       );
-      if (!installedPIO) {
-        logger.error(`Error creating PlatformIO project`);
+      if (!createdHAL) {
+        logger.error(
+          `Error creating the HAL project — run 'npx @typecad/hal create ${answers.name} --outDir fw' inside the project to retry`,
+        );
       }
     }
 
     if (answers.git) {
-      dir = `./${answers.name}/fw`;
-      if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-      }
-      logger.log(chalk.green('+'), 'Initializing git repo ./fw');
+      logger.log(chalk.green('+'), 'Initializing git repo');
       const installedGit = runCommand('git', ['init'], path.join(process.cwd(), answers.name));
       if (!installedGit) {
         logger.error(`Error initializing git repo`);
@@ -366,10 +375,11 @@ _flipped_
 
     const code_workspace: Record<string, unknown> = {};
 
-    if (answers.pio) {
-      code_workspace.folders = [{ path: 'hw' }, { path: 'fw' }];
-    } else {
-      code_workspace.folders = [{ path: 'hw' }];
+    // fw/ joins the workspace whenever it exists — created by the HAL setup
+    // above or by the user ahead of `create`.
+    code_workspace.folders = [{ path: 'hw' }];
+    if (fs.existsSync(`./${answers.name}/fw`)) {
+      (code_workspace.folders as { path: string }[]).push({ path: 'fw' });
     }
     code_workspace.settings = {};
 

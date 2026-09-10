@@ -38,9 +38,9 @@ export function showCreateHelp(): void {
   console.log('Usage: typecad-pcb create [options]\n');
   console.log('Options:');
   console.log('  --name=<name>         Project name (required for non-interactive mode)');
-  console.log('  --pio=<true|false>    Create a PlatformIO firmware project (default: false)');
-  console.log('  --git=<true|false>    Initialize a git repository (default: false)');
-  console.log('  --board=<board>       PlatformIO board (required when --pio=true, default: esp32dev)\n');
+  console.log('  --hal=<true|false>    Add a typeCAD HAL firmware project in ./fw (default: false)');
+  console.log('  --git=<true|false>    Initialize a git repository (default: false)\n');
+  console.log('The HAL setup asks for its board interactively.');
   console.log('Without options, runs interactively with prompts.');
 }
 

@@ -27,7 +27,7 @@ function parseArguments() {
       // Handle flags without values (like --help)
       if (key === 'help' && value === undefined) {
         parsedArgs[key] = true;
-      } else if (key === 'pio' || key === 'git') {
+      } else if (key === 'hal' || key === 'git') {
         parsedArgs[key] = value === 'true';
       } else {
         // Valueless flags become true so they can never read as "undefined"
@@ -41,21 +41,14 @@ function parseArguments() {
 
 // Check if all required arguments are provided for non-interactive mode
 function hasAllRequiredArgs(args: Record<string, string | boolean | string[] | undefined>) {
-  // --yes fills sensible defaults (pio=false, git=true) so agents only need --name
+  // --yes fills sensible defaults (hal=false, git=true) so agents only need --name
   if (args.yes === true && typeof args.name === 'string') {
-    args.pio = args.pio === true;
+    args.hal = args.hal === true;
     args.git = args.git !== false;
     return true;
   }
 
-  const hasBasicArgs = typeof args.name === 'string' && typeof args.pio === 'boolean' && typeof args.git === 'boolean';
-
-  // If pio is true, board is also required
-  if (args.pio === true) {
-    return hasBasicArgs && typeof args.board === 'string';
-  }
-
-  return hasBasicArgs;
+  return typeof args.name === 'string' && typeof args.hal === 'boolean' && typeof args.git === 'boolean';
 }
 
 // Display help information
@@ -64,14 +57,13 @@ function showHelp() {
   logger.log('Usage: npx @typecad/pcb create [options]\n');
   logger.log('Options:');
   logger.log('  --name=<project_name>     Project name (required for non-interactive mode)');
-  logger.log('  --yes                     Non-interactive with defaults (pio=false, git=true)');
-  logger.log('  --pio=<true|false>        Create PlatformIO project (required for non-interactive mode)');
+  logger.log('  --yes                     Non-interactive with defaults (hal=false, git=true)');
+  logger.log('  --hal=<true|false>        Add a typeCAD HAL firmware project in ./fw (its board setup runs interactively)');
   logger.log('  --git=<true|false>        Initialize git repository (required for non-interactive mode)');
-  logger.log('  --board=<board_name>      PlatformIO board (required when --pio=true, default: esp32dev)');
   logger.log('  --help                    Show this help message\n');
   logger.log('Examples:');
-  logger.log('  npx @typecad/pcb create --name=my_project --pio=false --git=true');
-  logger.log('  npx @typecad/pcb create --name=my_project --pio=true --git=true --board=esp32dev');
+  logger.log('  npx @typecad/pcb create --name=my_project --hal=false --git=true');
+  logger.log('  npx @typecad/pcb create --name=my_project --hal=true --git=true');
 }
 
 // argv bag: keys are parsed dynamically (see parseArguments), so values are intentionally untyped
@@ -112,17 +104,13 @@ async function main(preparsedArgs?: Record<string, any>) {
 
     // Use command line arguments
     answers.name = cmdArgs.name;
-    answers.pio = cmdArgs.pio;
+    answers.hal = cmdArgs.hal;
     answers.git = cmdArgs.git;
-    answers.board = cmdArgs.board || 'esp32dev';
 
     logger.log(chalk.green('Creating project with the following settings:'));
     logger.log(`  Name: ${answers.name}`);
-    logger.log(`  PlatformIO: ${answers.pio}`);
+    logger.log(`  typeCAD HAL firmware: ${answers.hal}`);
     logger.log(`  Git: ${answers.git}`);
-    if (answers.pio) {
-      logger.log(`  Board: ${answers.board}`);
-    }
   } else {
     // Interactive mode - ask questions as before
     const { input, confirm } = await import('@inquirer/prompts');
@@ -133,27 +121,20 @@ async function main(preparsedArgs?: Record<string, any>) {
       validate: validateProjectName,
     });
 
-    answers.pio = cmdArgs.hasOwnProperty('pio')
-      ? cmdArgs.pio
-      : await confirm({
-          message: 'Create a PlatformIO project for firmware?',
-          default: false,
-        });
+    answers.hal =
+      typeof cmdArgs.hal === 'boolean'
+        ? cmdArgs.hal
+        : await confirm({
+            message: 'Add a typeCAD HAL firmware project in ./fw?',
+            default: false,
+          });
 
-    if (answers.pio) {
-      answers.board =
-        cmdArgs.board ||
-        (await input({
-          message: 'PlatformIO board?',
-          default: 'esp32dev',
-        }));
-    }
-
-    answers.git = cmdArgs.hasOwnProperty('git')
-      ? cmdArgs.git
-      : await confirm({
-          message: 'Initialize a git repo?',
-        });
+    answers.git =
+      typeof cmdArgs.git === 'boolean'
+        ? cmdArgs.git
+        : await confirm({
+            message: 'Initialize a git repo?',
+          });
   }
 
   await create_project(answers as ProjectAnswers);

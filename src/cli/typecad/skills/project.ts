@@ -12,17 +12,16 @@ export const projectSkills: Skill[] = [
       },
       {
         title: 'Non-interactive project creation',
-        code: `typecad-pcb create --name=my-board --pio=true --board=esp32dev`,
+        code: `typecad-pcb create --name=my-board --hal=true --git=true`,
       },
       {
         title: 'Programmatic equivalent',
-        code: `npx @typecad/pcb create --name=my-board --pio=false --git=true`,
+        code: `npx @typecad/pcb create --name=my-board --hal=false --git=true`,
       },
     ],
     notes: [
       'Creates: package.json, tsconfig.json, typecad.conf.ts, src/ directory, KiCad project files',
-      '--pio=true creates a PlatformIO firmware project inside the typeCAD project',
-      '--board specifies the PlatformIO board (default: esp32dev)',
+      '--hal=true adds a typeCAD HAL firmware project in ./fw (its board setup runs interactively)',
       'Use `typecad-pcb package` to browse and install optional typeCAD packages after creation',
     ],
     related: ['build', 'add-component', 'add-package', 'config'],

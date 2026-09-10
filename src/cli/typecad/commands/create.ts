@@ -10,8 +10,12 @@ function toBool(val: string | boolean | undefined): boolean | undefined {
 export async function run(parsed: ParsedArgs): Promise<void> {
   const args: Record<string, string | boolean | undefined> = { ...parsed.args };
 
-  args.pio = toBool(args.pio);
-  args.git = toBool(args.git);
+  // Leave absent flags absent: assigning `undefined` still creates the key,
+  // which main() reads as an explicitly answered prompt and skips it.
+  const hal = toBool(args.hal);
+  if (hal !== undefined) args.hal = hal;
+  const git = toBool(args.git);
+  if (git !== undefined) args.git = git;
 
   await main(args);
 }

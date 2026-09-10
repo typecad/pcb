@@ -1,9 +1,9 @@
 import fs from 'node:fs';
-import { parseAsList, serialize, Sym } from './sexpr/index.js';
-import type { SExpr } from './sexpr/types.js';
+import { serialize, Sym } from './sexpr/index.js';
 import { KiCAD } from './kicad.js';
 import { LIBRARY_SEPARATOR } from './utils/constants.js';
 import type { SExprNode } from './types/sexpr_types.js';
+import { extractPins, findSymbolNode, parseSymbolLibrary, resolveExtends } from './symbol_core.js';
 import {
   type SymbolDefinition,
   type PinLocation,
@@ -48,7 +48,7 @@ export class SymbolLibraryManager {
         }
       }
 
-      const parsedLibrary = parseAsList(symbolFileContents);
+      const parsedLibrary = parseSymbolLibrary(symbolFileContents);
       this.libraryCache.set(libraryName, parsedLibrary);
       return parsedLibrary;
     } catch (err) {
@@ -74,45 +74,34 @@ export class SymbolLibraryManager {
       return this.symbolCache.get(symbolFqn)!;
     }
 
-    for (const item of libraryContent) {
-      if (Array.isArray(item) && item.length > 1 && Sym.isSym(item[0]) && item[0].name === 'symbol') {
-        const currentSymbolName = String(item[1]);
-
-        if (currentSymbolName === symbolName) {
-          const rawSexpr = [...item];
-
-          rawSexpr[1] = symbolFqn;
-
-          const extendsIndex = rawSexpr.findIndex(
-            (el) => Array.isArray(el) && el.length > 0 && Sym.isSym(el[0]) && el[0].name === 'extends',
-          );
-          if (extendsIndex !== -1 && Array.isArray(rawSexpr[extendsIndex]) && rawSexpr[extendsIndex].length > 1) {
-            const baseSymbolName = String(rawSexpr[extendsIndex][1]);
-            rawSexpr[extendsIndex][1] = `${libraryName}:${baseSymbolName}`;
-            const nextVisited = new Set(visited);
-            nextVisited.add(symbolFqn);
-            const baseSymbolDef = this.getSymbolDefinition(`${libraryName}:${baseSymbolName}`, nextVisited);
-            if (baseSymbolDef) {
-              this.symbolCache.set(symbolFqn, baseSymbolDef);
-              return baseSymbolDef;
-            } else {
-              logError(`Base symbol ${libraryName}:${baseSymbolName} for ${symbolFqn} not found.`);
-              return null;
-            }
-          }
-
-          const serializedLibEntry = serialize(rawSexpr);
-
-          const definition: SymbolDefinition = {
-            rawSexpr: rawSexpr,
-            serializedLibEntry: serializedLibEntry,
-          };
-          this.symbolCache.set(symbolFqn, definition);
-          return definition;
-        }
-      }
+    if (!findSymbolNode(libraryContent, symbolName)) {
+      return null;
     }
-    return null;
+
+    // resolveExtends returns the symbol itself when it has no (extends ...) parent,
+    // and otherwise flattens the chain (including cross-library parents) via the loader.
+    const resolved = resolveExtends(
+      libraryName,
+      symbolName,
+      (lib) => (lib === libraryName ? libraryContent : this.getLibraryContent(lib)),
+      new Set(visited),
+    );
+    if (!resolved) {
+      logError(`Base symbol of the extends chain for ${symbolFqn} not found.`);
+      return null;
+    }
+
+    const resolvedFqn = `${resolved.libraryName}:${resolved.symbolName}`;
+    const rawSexpr = [...resolved.node] as SExprNode;
+    rawSexpr[1] = resolvedFqn;
+
+    const definition: SymbolDefinition = {
+      rawSexpr: rawSexpr,
+      serializedLibEntry: serialize(rawSexpr),
+    };
+
+    this.symbolCache.set(symbolFqn, definition);
+    return definition;
   }
 
   public getSymbolDefinition(symbolFqn: string, visited?: Set<string>): SymbolDefinition | null {
@@ -151,61 +140,11 @@ export class SymbolLibraryManager {
     }
 
     try {
-      for (const element of symbolDef.rawSexpr) {
-        if (!Array.isArray(element)) continue;
-
-        if (Sym.isSym(element[0]) && element[0].name === 'pin') {
-          let currentPinNumber: string | null = null;
-          let atData: number[] | null = null;
-
-          for (const prop of element) {
-            if (!Array.isArray(prop)) continue;
-            if (Sym.isSym(prop[0]) && prop[0].name === 'number' && prop.length > 1) {
-              currentPinNumber = String(prop[1]);
-            } else if (Sym.isSym(prop[0]) && prop[0].name === 'at' && prop.length > 3) {
-              atData = [parseFloat(String(prop[1])), parseFloat(String(prop[2])), parseFloat(String(prop[3]))];
-            }
-          }
-
-          if (currentPinNumber === String(pinNumber) && atData) {
-            const location: PinLocation = { x: atData[0], y: atData[1], angle: atData[2] };
-            this.pinLocationCache.set(cacheKey, location);
-            return location;
-          }
-        } else if (
-          Array.isArray(element) &&
-          element.length > 1 &&
-          Sym.isSym(element[0]) &&
-          element[0].name === 'symbol' &&
-          typeof element[1] === 'string'
-        ) {
-          for (const subElement of element.slice(2)) {
-            if (
-              !Array.isArray(subElement) ||
-              subElement.length === 0 ||
-              !(Sym.isSym(subElement[0]) && subElement[0].name === 'pin')
-            )
-              continue;
-
-            let currentPinNumber: string | null = null;
-            let atData: number[] | null = null;
-
-            for (const prop of subElement) {
-              if (!Array.isArray(prop)) continue;
-              if (Sym.isSym(prop[0]) && prop[0].name === 'number' && prop.length > 1) {
-                currentPinNumber = String(prop[1]);
-              } else if (Sym.isSym(prop[0]) && prop[0].name === 'at' && prop.length > 3) {
-                atData = [parseFloat(String(prop[1])), parseFloat(String(prop[2])), parseFloat(String(prop[3]))];
-              }
-            }
-
-            if (currentPinNumber === String(pinNumber) && atData) {
-              const location: PinLocation = { x: atData[0], y: atData[1], angle: atData[2] };
-              this.pinLocationCache.set(cacheKey, location);
-              return location;
-            }
-          }
-        }
+      const match = extractPins(symbolDef.rawSexpr).find((pin) => pin.number === String(pinNumber) && pin.at);
+      if (match?.at) {
+        const location: PinLocation = { x: match.at.x, y: match.at.y, angle: match.at.angle };
+        this.pinLocationCache.set(cacheKey, location);
+        return location;
       }
     } catch (e) {
       logError(`Error parsing pin data for ${symbolFqn} pin ${pinNumber}:`, e);
@@ -216,7 +155,7 @@ export class SymbolLibraryManager {
     return null;
   }
 
-  private calculateSymbolBoundingBoxRecursive(element: SExpr, currentBox: BoundingBox): void {
+  private calculateSymbolBoundingBoxRecursive(element: unknown, currentBox: BoundingBox): void {
     if (!Array.isArray(element)) {
       return;
     }
@@ -225,9 +164,9 @@ export class SymbolLibraryManager {
 
     if (tag === 'rectangle' && element.length >= 3) {
       const start = element.find(
-        (el): el is SExpr[] => Array.isArray(el) && Sym.isSym(el[0]) && el[0].name === 'start',
+        (el): el is SExprNode => Array.isArray(el) && Sym.isSym(el[0]) && el[0].name === 'start',
       );
-      const end = element.find((el): el is SExpr[] => Array.isArray(el) && Sym.isSym(el[0]) && el[0].name === 'end');
+      const end = element.find((el): el is SExprNode => Array.isArray(el) && Sym.isSym(el[0]) && el[0].name === 'end');
       if (start && end && start.length >= 3 && end.length >= 3) {
         const x1 = parseFloat(String(start[1]));
         const y1 = parseFloat(String(start[2]));
@@ -239,7 +178,7 @@ export class SymbolLibraryManager {
         currentBox.maxY = Math.max(currentBox.maxY, y1, y2);
       }
     } else if (tag === 'pin') {
-      const at = element.find((el): el is SExpr[] => Array.isArray(el) && Sym.isSym(el[0]) && el[0].name === 'at');
+      const at = element.find((el): el is SExprNode => Array.isArray(el) && Sym.isSym(el[0]) && el[0].name === 'at');
       if (at && at.length >= 3) {
         const x = parseFloat(String(at[1]));
         const y = parseFloat(String(at[2]));
@@ -250,10 +189,10 @@ export class SymbolLibraryManager {
       }
     } else if (tag === 'circle' && element.length >= 3) {
       const center = element.find(
-        (el): el is SExpr[] => Array.isArray(el) && Sym.isSym(el[0]) && el[0].name === 'center',
+        (el): el is SExprNode => Array.isArray(el) && Sym.isSym(el[0]) && el[0].name === 'center',
       );
       const radiusEl = element.find(
-        (el): el is SExpr[] => Array.isArray(el) && Sym.isSym(el[0]) && el[0].name === 'radius',
+        (el): el is SExprNode => Array.isArray(el) && Sym.isSym(el[0]) && el[0].name === 'radius',
       );
       if (center && radiusEl && center.length >= 3 && radiusEl.length >= 2) {
         const cx = parseFloat(String(center[1]));
@@ -287,7 +226,9 @@ export class SymbolLibraryManager {
     }
 
     const pinMap = new Map<string, PinInfo>();
-    this.extractPinInfo(symbolDef.rawSexpr, pinMap);
+    for (const pin of extractPins(symbolDef.rawSexpr)) {
+      pinMap.set(pin.number, { name: pin.name, type: pin.type });
+    }
 
     if (pinMap.size === 0) {
       logError(`No pins found in symbol ${symbolFqn}`);
@@ -296,41 +237,6 @@ export class SymbolLibraryManager {
 
     this.pinInfoCache.set(symbolFqn, pinMap);
     return pinMap;
-  }
-
-  /**
-   * Recursively walk a symbol definition extracting (pin ...) nodes.
-   * Handles both top-level pins and pins nested inside (symbol NAME_1_1 ...) units.
-   */
-  private extractPinInfo(element: SExpr[], pinMap: Map<string, PinInfo>): void {
-    for (const item of element) {
-      if (!Array.isArray(item)) continue;
-
-      const itemTag = Sym.isSym(item[0]) ? item[0].name : '';
-      if (itemTag === 'pin') {
-        const pinType = Sym.isSym(item[1]) ? item[1].name : typeof item[1] === 'string' ? item[1] : '';
-        let pinName = '';
-        let pinNumber = '';
-
-        for (const child of item) {
-          if (!Array.isArray(child)) continue;
-          const childTag = Sym.isSym(child[0]) ? child[0].name : '';
-          if (childTag === 'name' && typeof child[1] === 'string') {
-            pinName = child[1];
-          }
-          if (childTag === 'number' && typeof child[1] === 'string') {
-            pinNumber = child[1];
-          }
-        }
-
-        if (pinNumber && pinName) {
-          pinMap.set(pinNumber, { name: pinName, type: pinType });
-        }
-      } else if (Array.isArray(item)) {
-        // Recurse into nested lists (e.g. (symbol NAME_1_1 (pin ...)))
-        this.extractPinInfo(item, pinMap);
-      }
-    }
   }
 
   public getSymbolBoundingBox(symbolFqn: string): BoundingBox | null {

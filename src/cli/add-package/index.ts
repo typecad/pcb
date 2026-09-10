@@ -1,14 +1,8 @@
 #!/usr/bin/env node
 import type { CliArgs } from '../types.js';
-import { sanitize_name } from '../shared/kicad_sym_utils.js';
+import { sanitize_name, readSymbol, readSymbolFile, return_list_of_symbols } from '../shared/kicad_sym_utils.js';
 import { create_package } from './package/typecad.js';
 import { create_component } from './component/typecad.js';
-import {
-  kicad_symbol,
-  kicad_pins,
-  return_list_of_symbols,
-  local_symbol_to_footprint,
-} from '../shared/kicad_sym_utils.js';
 import chalk from 'chalk';
 import { basename } from 'node:path';
 import fs from 'node:fs';
@@ -339,11 +333,12 @@ async function main(preparsedArgs?: CliArgs) {
           return;
         }
 
-        footprint_recommendation = kicad_symbol(entered_symbol, '')!;
-        if (!footprint_recommendation) {
+        const symbolLookup = readSymbol(entered_symbol, '');
+        if (!symbolLookup?.footprint) {
           logger.error(chalk.red(`Error: Invalid KiCAD library symbol '${entered_symbol}'`));
           return;
         }
+        footprint_recommendation = symbolLookup.footprint;
       } else {
         // Interactive mode: show prompts with argument defaults
         entered_symbol = await (
@@ -355,7 +350,7 @@ async function main(preparsedArgs?: CliArgs) {
             if (!entered_symbol.includes(':')) {
               return `Not a valid symbol. It needs to be in this format 'symbol_library:symbol_name'`;
             }
-            footprint_recommendation = kicad_symbol(entered_symbol, '')!;
+            footprint_recommendation = readSymbol(entered_symbol, '')?.footprint ?? '';
             if (!footprint_recommendation) {
               return `Provide a valid KiCAD library symbol ('symbol_library:symbol_name')`;
             }
@@ -377,7 +372,7 @@ async function main(preparsedArgs?: CliArgs) {
         });
       }
 
-      pins = kicad_pins(entered_symbol);
+      pins = readSymbol(entered_symbol, '')?.pins ?? [];
 
       const data = {
         package_name: sanitize_name(entered_package_name),
@@ -414,7 +409,13 @@ async function main(preparsedArgs?: CliArgs) {
         }
 
         // For local mode, we need to get pins from the symbol
-        pins = kicad_pins(entered_symbol);
+        const symbolLookup = readSymbol(entered_symbol, folderPath);
+        if (symbolLookup === null) {
+          logger.log(
+            chalk.yellow(`Warning: could not resolve '${entered_symbol}' in KiCAD libraries or ${folderPath}/build/lib`),
+          );
+        }
+        pins = symbolLookup?.pins ?? [];
 
         const data = {
           package_name: sanitize_name(entered_package_name),
@@ -453,7 +454,8 @@ async function main(preparsedArgs?: CliArgs) {
         _chosen_symbol = _found_symbols[0].value;
       }
 
-      const _footprint = local_symbol_to_footprint(symbolPath);
+      const symbolLookup = readSymbolFile(symbolPath, _chosen_symbol);
+      const _footprint = symbolLookup?.footprint ?? '';
       const footprintPath = (
         await (
           await getFileSelector()
@@ -464,7 +466,7 @@ async function main(preparsedArgs?: CliArgs) {
         })
       ).path;
 
-      pins = kicad_pins(entered_symbol);
+      pins = symbolLookup?.pins ?? [];
 
       const data = {
         package_name: sanitize_name(entered_package_name),
@@ -567,10 +569,10 @@ async function main(preparsedArgs?: CliArgs) {
       }
 
       // gets pin names from symbol
-      local_symbol_to_footprint(
+      pins = readSymbolFile(
         `./${convertedComponent.symbol.name}.pretty/${convertedComponent.symbol.name}.kicad_sym`,
-      );
-      pins = kicad_pins();
+        convertedComponent.symbol.name,
+      )?.pins ?? [];
 
       const data = {
         package_name: sanitize_name(entered_package_name),
@@ -629,7 +631,7 @@ async function main(preparsedArgs?: CliArgs) {
   }
 }
 
-export { main, showHelp };
+export { main };
 
 if (process.argv[1]?.endsWith('add-package/index.js') || process.argv[1]?.endsWith('add-package\\index.js')) {
   main();

@@ -159,6 +159,25 @@ describe('SymbolLibraryManager', () => {
       expect(result).not.toBeNull();
     });
 
+    it('should resolve cross-library extends parents written as Lib:Name', () => {
+      mockExistsSync.mockReturnValue(true);
+      // First call loads MyLib (derived symbol), second call loads Device (base symbol)
+      const myLib = [
+        makeSym('kicad_symbol_lib'),
+        [makeSym('symbol'), 'R_local', [makeSym('extends'), 'Device:R']],
+      ];
+      const deviceLib = [
+        makeSym('kicad_symbol_lib'),
+        [makeSym('symbol'), 'R', [makeSym('pin'), [makeSym('number'), '1']]],
+      ];
+      mockParseAsList.mockReturnValueOnce(myLib).mockReturnValueOnce(deviceLib);
+
+      const result = manager.getSymbolDefinition('MyLib:R_local');
+      expect(result).not.toBeNull();
+      // The resolved definition carries the base symbol's identity
+      expect(result!.rawSexpr[1]).toBe('Device:R');
+    });
+
     it('should detect circular extends', () => {
       mockExistsSync.mockReturnValue(true);
       mockReadFileSync.mockReturnValue('(kicad_symbol_lib (symbol "R" (extends "R")))');

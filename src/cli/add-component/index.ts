@@ -1,10 +1,9 @@
 #!/usr/bin/env node
 import {
-  kicad_symbol,
-  kicad_pins,
+  readSymbol,
+  readSymbolFile,
   return_list_of_symbols,
   return_list_of_footprints,
-  local_symbol_to_footprint,
   sanitize_name,
 } from '../shared/kicad_sym_utils.js';
 import { KiCAD } from '../../kicad.js';
@@ -376,15 +375,14 @@ async function handleKicadSymbol(cmdArgs: CliArgs, isNonInteractive: boolean) {
         );
       }
 
-      local_symbol_to_footprint(entered_symbol);
-      const pins = kicad_pins();
+      const lookup = readSymbolFile(entered_symbol, _chosen_symbol);
 
       return {
         symbol: basename(entered_symbol).replace(/\.[^/\\.]+$/, '') + ':' + _chosen_symbol,
         name: sanitize_name(_chosen_symbol),
-        pins,
+        pins: lookup?.pins ?? [],
         symbol_path: entered_symbol,
-        footprint_recommendation: local_symbol_to_footprint(entered_symbol),
+        footprint_recommendation: lookup?.footprint ?? '',
       };
     } else {
       // Handle library:symbol format (existing logic)
@@ -405,11 +403,7 @@ async function handleKicadSymbol(cmdArgs: CliArgs, isNonInteractive: boolean) {
         if (!entered_symbol.includes(':')) {
           return `Not a valid symbol. It needs to be in this format 'symbol_library:symbol_name'`;
         }
-        const footprint_recommendation: string | undefined = kicad_symbol(
-          entered_symbol,
-          (cmdArgs.folder || '.') as string,
-        );
-        if (footprint_recommendation === undefined) {
+        if (readSymbol(entered_symbol, (cmdArgs.folder || '.') as string) === null) {
           return `Provide a valid KiCAD library symbol ('symbol_library:symbol_name')`;
         }
         return true;
@@ -417,19 +411,17 @@ async function handleKicadSymbol(cmdArgs: CliArgs, isNonInteractive: boolean) {
     });
   }
 
-  const footprint_recommendation: string | undefined = kicad_symbol(entered_symbol, (cmdArgs.folder || '.') as string);
-  if (footprint_recommendation === undefined) {
+  const symbolLookup = readSymbol(entered_symbol, (cmdArgs.folder || '.') as string);
+  if (symbolLookup === null) {
     logger.log(chalk.red(`Error: Invalid KiCAD library symbol '${entered_symbol}'`));
     return null;
   }
 
-  const pins = kicad_pins(entered_symbol);
-
   return {
     symbol: entered_symbol,
     name: sanitize_name(entered_symbol.split(':')[1]),
-    pins,
-    footprint_recommendation,
+    pins: symbolLookup.pins,
+    footprint_recommendation: symbolLookup.footprint,
   };
 }
 
@@ -470,15 +462,14 @@ async function handleLocalSymbol(cmdArgs: CliArgs, isNonInteractive: boolean) {
         );
       }
 
-      local_symbol_to_footprint(symbolPath);
-      const pins = kicad_pins();
+      const lookup = readSymbolFile(symbolPath, _chosen_symbol);
 
       return {
         symbol: basename(symbolPath).replace(/\.[^/\\.]+$/, '') + ':' + _chosen_symbol,
         name: sanitize_name(_chosen_symbol),
-        pins,
+        pins: lookup?.pins ?? [],
         symbol_path: symbolPath,
-        footprint_recommendation: local_symbol_to_footprint(symbolPath),
+        footprint_recommendation: lookup?.footprint ?? '',
       };
     } else {
       // Handle library:symbol format (existing logic)
@@ -490,13 +481,12 @@ async function handleLocalSymbol(cmdArgs: CliArgs, isNonInteractive: boolean) {
       }
 
       _chosen_symbol = entered_symbol.split(':')[1];
-      kicad_symbol(entered_symbol, (cmdArgs.folder || './src') as string);
-      const pins = kicad_pins();
+      const lookup = readSymbol(entered_symbol, (cmdArgs.folder || './src') as string);
 
       return {
         symbol: entered_symbol,
         name: sanitize_name(_chosen_symbol),
-        pins,
+        pins: lookup?.pins ?? [],
       };
     }
   } else {
@@ -527,15 +517,14 @@ async function handleLocalSymbol(cmdArgs: CliArgs, isNonInteractive: boolean) {
       _chosen_symbol = _found_symbols[0].value;
     }
 
-    local_symbol_to_footprint(symbolPath);
-    const pins = kicad_pins();
+    const lookup = readSymbolFile(symbolPath, _chosen_symbol);
 
     return {
       symbol: basename(symbolPath).replace(/\.[^/\\.]+$/, '') + ':' + _chosen_symbol,
       name: sanitize_name(_chosen_symbol),
-      pins,
+      pins: lookup?.pins ?? [],
       symbol_path: symbolPath,
-      footprint_recommendation: local_symbol_to_footprint(symbolPath),
+      footprint_recommendation: lookup?.footprint ?? '',
     };
   }
 }
@@ -604,13 +593,12 @@ async function handleEasyedaSymbol(cmdArgs: CliArgs, isNonInteractive: boolean) 
     logger.error(`Failed executing kicad-cli sym upgrade`, e);
   }
 
-  local_symbol_to_footprint(symbolFilePath);
-  const pins = kicad_pins();
+  const lookup = readSymbolFile(symbolFilePath, convertedComponent.symbol.name);
 
   return {
     symbol: basename(symbolFilePath).replace(/\.[^/\\.]+$/, '') + ':' + convertedComponent.symbol.name,
     name: sanitize_name(convertedComponent.symbol.name),
-    pins,
+    pins: lookup?.pins ?? [],
     symbol_path: symbolFilePath,
     convertedComponent,
     c_component,
@@ -889,7 +877,7 @@ process.on('uncaughtException', (error) => {
   }
 });
 
-export { main, showHelp };
+export { main };
 
 if (process.argv[1]?.endsWith('add-component/index.js') || process.argv[1]?.endsWith('add-component\\index.js')) {
   main();

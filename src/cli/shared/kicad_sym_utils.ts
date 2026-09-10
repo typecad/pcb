@@ -1,203 +1,123 @@
 import fs from 'node:fs';
 import { join } from 'node:path';
-import { parse, parseAsList, serialize, nameOf, type SExpr } from '../../sexpr/index.js';
+import { parse, nameOf } from '../../sexpr/index.js';
 import { KiCAD } from '../../kicad.js';
 import type { CliPinInfo } from '../types.js';
 import logger from '../../utils/logging.js';
 import { sanitize_name as sharedSanitizeName, sanitize_number as sharedSanitizeNumber } from './cli_utils.js';
+import {
+  extractPins,
+  findSymbolNode,
+  footprintOf,
+  listSymbolNames,
+  normalizeFootprintRef,
+  parseSymbolLibrary,
+  resolveExtends,
+} from '../../symbol_core.js';
+import type { SList } from '../../sexpr/types.js';
 
 export const sanitize_name = sharedSanitizeName;
-export const sanitize_number = sharedSanitizeNumber;
 
-const MAX_EXTENDS_DEPTH = 10;
-
-let symbol_file_contents = '';
-let _parsed: SExpr | null = null;
-let _pins: CliPinInfo[] = [];
-
-export function resetState(): void {
-  symbol_file_contents = '';
-  _parsed = null;
-  _pins = [];
+/** Result of resolving a symbol: its footprint (raw or "lib:"-normalized) and its pins. */
+export interface SymbolLookup {
+  footprint: string;
+  pins: CliPinInfo[];
 }
 
-export function kicad_symbol(symbol: string, folder = './', depth = 0): string | undefined {
-  if (depth >= MAX_EXTENDS_DEPTH) {
-    logger.error(`Max extends depth (${MAX_EXTENDS_DEPTH}) reached for symbol: ${symbol}`);
-    return undefined;
+/** Shape raw core pins into CLI form: sanitized names/numbers, duplicate names suffixed with their number. */
+function toCliPins(symbolNode: SList): CliPinInfo[] {
+  const pins: CliPinInfo[] = extractPins(symbolNode).map((pin) => ({
+    type: pin.type,
+    name: sanitize_name(pin.name),
+    number: sharedSanitizeNumber(pin.number),
+  }));
+
+  for (let i = 0; i <= pins.length - 1; i++) {
+    let cnt = 0;
+    for (let ii = 0; ii <= pins.length - 1; ii++) {
+      if (pins[i].name === pins[ii].name) {
+        cnt++;
+        if (cnt > 1) {
+          pins[ii].name = pins[ii].name + '_' + pins[ii].number;
+        }
+      }
+    }
   }
+  return pins;
+}
 
-  const symbol_file_name = symbol.split(':');
+/** Library loader for "lib:symbol" lookups: global KiCAD symbols dir first, then <folder>/build/lib. */
+function libraryLoader(folder: string) {
+  const kicadSymbolsPath = KiCAD.instance.getSymbolsPath();
+  return (libraryName: string): SList | null => {
+    try {
+      const globalPath = `${kicadSymbolsPath}/${libraryName}.kicad_sym`;
+      if (fs.existsSync(globalPath)) {
+        return parseSymbolLibrary(fs.readFileSync(globalPath, 'utf8'));
+      }
+      return parseSymbolLibrary(fs.readFileSync(join(folder, 'build', 'lib', `${libraryName}.kicad_sym`), 'utf8'));
+    } catch {
+      return null;
+    }
+  };
+}
 
-  const kicad = KiCAD.instance;
-  const _kicad_symbol = kicad.getSymbolsPath();
+/**
+ * Resolve a "library:symbol" reference. Returns null when the symbol (or its
+ * extends chain) cannot be resolved in the global KiCAD libraries or under
+ * <folder>/build/lib. The footprint is the raw property value (e.g.
+ * "Resistor_SMD:R_0603_1608Metric"), '' when the symbol has none.
+ */
+export function readSymbol(symbol: string, folder = './'): SymbolLookup | null {
+  const parts = symbol.split(':');
+  if (parts.length !== 2) return null;
 
   try {
-    const globalPath = `${_kicad_symbol}/${symbol_file_name[0]}.kicad_sym`;
-    const localPath = join(folder, 'build', 'lib', `${symbol_file_name[0]}.kicad_sym`);
-
-    if (fs.existsSync(globalPath)) {
-      symbol_file_contents = fs.readFileSync(globalPath, 'utf8');
-    } else {
-      symbol_file_contents = fs.readFileSync(localPath, 'utf8');
-    }
-
-    const l = parseAsList(symbol_file_contents);
-
-    for (const i in l) {
-      if (!Array.isArray(l[i])) continue;
-      if (l[i][1] === symbol_file_name[1]) {
-        for (const ii in l[i]) {
-          if (!Array.isArray(l[i][ii])) continue;
-
-          if (nameOf(l[i][ii][0]) === 'extends') {
-            const extends_name = String(l[i][ii][1]);
-            l[i][ii][1] = `${symbol_file_name[0]}:${extends_name}`;
-            return kicad_symbol(`${symbol_file_name[0]}:${extends_name}`, folder, depth + 1);
-          }
-
-          symbol_file_contents = serialize(l[i]);
-          _parsed = l[i];
-
-          if (l[i][ii][1] === 'Footprint') {
-            const fp = String(l[i][ii][2] || '');
-            return fp || undefined;
-          }
-        }
-        return '';
-      }
-    }
+    const resolved = resolveExtends(parts[0], parts[1], libraryLoader(folder));
+    if (!resolved) return null;
+    const footprintProperty = footprintOf(resolved.node);
+    return {
+      footprint: footprintProperty || '',
+      pins: toCliPins(resolved.node),
+    };
   } catch (err) {
     logger.error(err);
+    return null;
   }
 }
 
-export function kicad_pins(_symbol?: string): CliPinInfo[] {
-  _pins = [];
-  let _type = '';
-  let _name = '';
-  let _number: string | number = -1;
-
-  const l = (_parsed || parseAsList(symbol_file_contents)) as SExpr[];
-  for (const i in l) {
-    if (!Array.isArray(l[i])) continue;
-    for (const ii in l[i]) {
-      if (!Array.isArray(l[i][ii])) continue;
-      if (nameOf(l[i][ii][0]) === 'pin') {
-        _type = String(l[i][ii][1]);
-        for (const iii in l[i][ii]) {
-          if (!Array.isArray(l[i][ii][iii])) continue;
-          if (nameOf(l[i][ii][iii][0]) === 'name') {
-            _name = String(l[i][ii][iii][1]);
-          }
-          if (nameOf(l[i][ii][iii][0]) === 'number') {
-            _number = String(l[i][ii][iii][1]);
-          }
-        }
-
-        if (typeof _number === 'string' && _number.trim() !== '') {
-          _pins.push({
-            type: _type,
-            name: sanitize_name(_name),
-            number: sanitize_number(_number),
-          });
-        }
-      }
-    }
+/**
+ * Read a symbol from a .kicad_sym file path. When symbolName is omitted the
+ * first symbol in the file is used. The footprint is normalized to the
+ * "lib:Name" form used by the add flows; '' when the symbol has none.
+ * Returns null when the file is unreadable or the symbol is absent.
+ */
+export function readSymbolFile(symbolPath: string, symbolName?: string): SymbolLookup | null {
+  try {
+    const nodes = parseSymbolLibrary(fs.readFileSync(symbolPath, 'utf8'));
+    const name = symbolName !== undefined ? symbolName : listSymbolNames(nodes)[0];
+    if (name === undefined) return null;
+    const target = findSymbolNode(nodes, name);
+    if (!target) return null;
+    const footprintProperty = footprintOf(target);
+    return {
+      footprint: footprintProperty !== undefined ? normalizeFootprintRef(footprintProperty) : '',
+      pins: toCliPins(target),
+    };
+  } catch (err) {
+    logger.error(err);
+    return null;
   }
-
-  if (_pins.length === 0) {
-    for (const i in l) {
-      if (!Array.isArray(l[i])) continue;
-      for (const ii in l[i]) {
-        if (!Array.isArray(l[i][ii])) continue;
-        if (nameOf(l[i][ii][0]) === 'symbol') {
-          for (const iii in l[i][ii]) {
-            if (!Array.isArray(l[i][ii][iii])) continue;
-            if (nameOf(l[i][ii][iii][0]) === 'pin') {
-              for (const iiii in l[i][ii][iii]) {
-                if (!Array.isArray(l[i][ii][iii][iiii])) continue;
-                _type = String(l[i][ii][iii][1]);
-                if (nameOf(l[i][ii][iii][iiii][0]) === 'name') {
-                  _name = String(l[i][ii][iii][iiii][1]);
-                }
-                if (nameOf(l[i][ii][iii][iiii][0]) === 'number') {
-                  _number = String(l[i][ii][iii][iiii][1]);
-                }
-              }
-
-              if (typeof _number === 'string' && _number.trim() !== '') {
-                _pins.push({
-                  type: _type,
-                  name: sanitize_name(_name),
-                  number: sanitize_number(_number),
-                });
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-
-  for (let i = 0; i <= _pins.length - 1; i++) {
-    let _cnt = 0;
-    for (let ii = 0; ii <= _pins.length - 1; ii++) {
-      if (_pins[i].name === _pins[ii].name) {
-        _cnt++;
-        if (_cnt > 1) {
-          _pins[ii].name = _pins[ii].name + '_' + _pins[ii].number;
-        }
-      }
-    }
-  }
-  return _pins;
 }
 
 export function return_list_of_symbols(symbol_path: string): { value: string }[] {
-  const found_symbols: { value: string }[] = [];
-
   try {
-    symbol_file_contents = fs.readFileSync(symbol_path, 'utf8');
-    const l = parseAsList(symbol_file_contents);
-
-    for (const i in l) {
-      if (!Array.isArray(l[i])) continue;
-      if (nameOf(l[i][0]) === 'symbol') {
-        found_symbols.push({ value: String(l[i][1]) });
-      }
-    }
+    const nodes = parseSymbolLibrary(fs.readFileSync(symbol_path, 'utf8'));
+    return listSymbolNames(nodes).map((value) => ({ value }));
   } catch (err) {
     logger.error(err);
+    return [];
   }
-
-  return found_symbols;
-}
-
-export function local_symbol_to_footprint(symbol_path: string): string {
-  try {
-    symbol_file_contents = fs.readFileSync(symbol_path, 'utf8');
-    const l = parseAsList(symbol_file_contents);
-
-    for (const i in l) {
-      if (!Array.isArray(l[i])) continue;
-      for (const ii in l[i]) {
-        if (!Array.isArray(l[i][ii])) continue;
-        if (l[i][ii][1] === 'Footprint') {
-          const fp = String(l[i][ii][2] || '');
-          if (fp.split(':')[1]) {
-            return 'lib:' + fp.split(':')[1];
-          } else {
-            return 'lib:' + fp;
-          }
-        }
-      }
-    }
-  } catch (err) {
-    logger.error(err);
-  }
-
-  return '';
 }
 
 export function return_list_of_footprints(footprint_path: string): { value: string }[] {

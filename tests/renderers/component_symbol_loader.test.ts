@@ -108,6 +108,25 @@ describe('loadSymbolLib', () => {
     expect(mockParseAsList).toHaveBeenCalled();
   });
 
+  it('should resolve extends symbols to their base symbol', () => {
+    mockExistsSync.mockImplementation((path: string) => path.includes('Device.kicad_sym'));
+    mockReadFileSync.mockReturnValue('(kicad_symbol_lib (symbol "R_sm" (extends "R")) (symbol "R" (pin (number 1))))');
+    const baseSymbol = [makeSym('symbol'), 'R', [makeSym('pin'), [makeSym('number'), '1']]];
+    mockParseAsList.mockReturnValue([
+      makeSym('kicad_symbol_lib'),
+      [makeSym('symbol'), 'R_sm', [makeSym('extends'), 'R']],
+      baseSymbol,
+    ]);
+    mockIsSym.mockImplementation((x: any) => x && x.name);
+    mockSerialize.mockReturnValue('(symbol "R" base)');
+
+    const result = loadSymbolLib('Device:R_sm', 'R1', '10k', undefined);
+
+    expect(result).toBe('(symbol "R" base)');
+    // the serialized content is the resolved base symbol, not the derived stub
+    expect(mockSerialize).toHaveBeenCalledWith(baseSymbol);
+  });
+
   it('should fall back to build/lib/symbols/ when not in kicad library', () => {
     mockExistsSync.mockImplementation((path: string) => path.includes('build/lib/symbols'));
     mockReadFileSync.mockReturnValue('(symbol from build version)');

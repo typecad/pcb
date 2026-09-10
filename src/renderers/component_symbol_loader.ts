@@ -1,11 +1,10 @@
 import fs from 'node:fs';
-import { parseAsList, serialize, Sym } from '../sexpr/index.js';
-import type { SExpr } from '../sexpr/types.js';
 import { KiCAD } from '../kicad.js';
 import { ComponentError } from '../utils/errors.js';
 import { LIBRARY_SEPARATOR } from '../utils/constants.js';
 import { getCallSite } from '../utils/stack_trace.js';
 import { formatSourceError } from '../utils/error_reporter.js';
+import { parseSymbolLibrary, resolveExtends } from '../symbol_core.js';
 
 export function loadSymbolLib(
   symbol: string,
@@ -37,14 +36,15 @@ export function loadSymbolLib(
 
   try {
     if (kicad_symbols && fs.existsSync(`${kicad_symbols}/${library}.kicad_sym`)) {
-      const library_content = fs.readFileSync(`${kicad_symbols}/${library}.kicad_sym`, 'utf8');
+      const loadLibrary = (lib: string) => {
+        const libPath = `${kicad_symbols}/${lib}.kicad_sym`;
+        if (!fs.existsSync(libPath)) return null;
+        return parseSymbolLibrary(fs.readFileSync(libPath, 'utf8'));
+      };
 
-      const parsed = parseAsList(library_content);
-      for (const item of parsed) {
-        if (Array.isArray(item) && Sym.isSym(item[0]) && item[0].name === 'symbol' && item[1] === symbol_name) {
-          symbol_file_contents = serialize(item);
-          break;
-        }
+      const resolved = resolveExtends(library, symbol_name, loadLibrary);
+      if (resolved) {
+        symbol_file_contents = resolved.serialized;
       }
     }
 

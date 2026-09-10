@@ -22,6 +22,7 @@ rd_isl9120_impl/hw/circuit_visualization.svg
 # AI tool directories
 .opencode/
 .typecode/
+.zcode/
 
 # Editor local history (contains its own .git)
 .history/

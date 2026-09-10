@@ -1,8 +1,9 @@
 import fs from 'node:fs';
 import chalk from 'chalk';
-import { basename, join as pathJoin } from 'node:path';
+import { basename, isAbsolute, join as pathJoin } from 'node:path';
 import type { ComponentRenderData, CliPinInfo } from '../types.js';
 import logger from '../../utils/logging.js';
+import { getBuildDir } from '../../utils/constants.js';
 
 function renderComponent(data: ComponentRenderData) {
   const pinsTableRows = data.pins
@@ -37,9 +38,15 @@ export async function create_component(data: ComponentRenderData) {
   //   fs.mkdirSync(dir, { recursive: true });
   // }
 
-  // if a symbol file was passed, copy into ./build/lib/
+  // The project's build dir honors --outDir/TYPECAD_BUILD_DIR like the rest
+  // of the toolchain (an absolute override wins over the folder-relative default).
+  const folder = data.folder ?? '.';
+  const buildDir = getBuildDir();
+  const projectBuildDir = isAbsolute(buildDir) ? buildDir : pathJoin(folder, buildDir);
+
+  // if a symbol file was passed, copy into the project's build lib dir
   if (data.symbol_path) {
-    const buildLibPath = pathJoin(data.folder ?? '.', 'build', 'lib');
+    const buildLibPath = pathJoin(projectBuildDir, 'lib');
     if (!fs.existsSync(buildLibPath)) {
       fs.mkdirSync(buildLibPath, { recursive: true });
     }
@@ -47,9 +54,9 @@ export async function create_component(data: ComponentRenderData) {
     fs.copyFileSync(data.symbol_path, pathJoin(buildLibPath, basename(data.symbol_path)));
   }
 
-  // if a footprint file was passed, copy into ./build/lib/footprints/
+  // if a footprint file was passed, copy into the project's build lib footprints dir
   if (data.footprint_path) {
-    const buildFootprintsPath = pathJoin(data.folder ?? '.', 'build', 'lib', 'footprints');
+    const buildFootprintsPath = pathJoin(projectBuildDir, 'lib', 'footprints');
     if (!fs.existsSync(buildFootprintsPath)) {
       fs.mkdirSync(buildFootprintsPath, { recursive: true });
     }

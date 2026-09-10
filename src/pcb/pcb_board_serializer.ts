@@ -19,6 +19,7 @@ import {
 } from './pcb_interfaces.js';
 import { normalizeNetName, formatCallSite, getErrorMessage } from './pcb_utils.js';
 import { setPendingBoardFilePath } from '../cli/pending_summary.js';
+import { getBuildDir } from '../utils/constants.js';
 import logger from '../utils/logging.js';
 import { getCallSite } from '../utils/stack_trace.js';
 
@@ -522,7 +523,7 @@ export function serializeAndWriteBoard(pcb: PCB, boardContents: SExpr[], default
 
     try {
       if (process.env.TYPECAD_DEBUG_BOARD_WRITE === '1') {
-        const debugPath = `./build/${pcb.boardName}.debug.kicad_pcb`;
+        const debugPath = `${getBuildDir()}/${pcb.boardName}.debug.kicad_pcb`;
         fs.writeFileSync(debugPath, state.pcb, { encoding: 'utf8' });
         const debugContents = fs.readFileSync(debugPath, { encoding: 'utf8' });
         logger.debug(`[BoardCreation][DIAG] debug file written: ${debugPath}, length=${debugContents.length}`);
@@ -538,7 +539,7 @@ export function serializeAndWriteBoard(pcb: PCB, boardContents: SExpr[], default
     return;
   }
 
-  const boardFilePath = `./build/${pcb.boardName}.kicad_pcb`;
+  const boardFilePath = `${getBuildDir()}/${pcb.boardName}.kicad_pcb`;
   const state = getPcbState(pcb);
 
   try {

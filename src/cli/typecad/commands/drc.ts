@@ -5,6 +5,7 @@ import { executeKiCADCommand } from '../../../kicad_commands.js';
 import type { ParsedArgs } from '../parser.js';
 import type { ErcViolation } from '../../types.js';
 import logger from '../../../utils/logging.js';
+import { buildDirPath } from '../pipeline.js';
 
 function findPcbFile(argPath?: string): string | null {
   if (argPath) {
@@ -13,7 +14,7 @@ function findPcbFile(argPath?: string): string | null {
     return null;
   }
 
-  const buildDir = path.join(process.cwd(), 'build');
+  const buildDir = buildDirPath();
   if (!fs.existsSync(buildDir)) return null;
 
   const pcbFiles = fs.readdirSync(buildDir).filter((f) => f.endsWith('.kicad_pcb'));
@@ -47,7 +48,7 @@ export async function run(parsed: ParsedArgs): Promise<void> {
       throw new Error(`PCB file not found: ${pcbArg}`);
     }
     throw new Error(
-      'No .kicad_pcb file found in ./build/.\n' +
+      `No .kicad_pcb file found in ${buildDirPath()}.\n` +
         'Run `typecad-pcb build` first, or specify a path: typecad-pcb drc <path/to/board.kicad_pcb>',
     );
   }

@@ -3,6 +3,7 @@ import path from 'node:path';
 import chalk from 'chalk';
 import type { ParsedArgs } from '../parser.js';
 import logger from '../../../utils/logging.js';
+import { buildDirPath } from '../pipeline.js';
 import {
   buildBoardModel,
   findComponent,
@@ -20,7 +21,7 @@ function findPcbFile(argPath?: string): string | null {
     const resolved = path.resolve(argPath);
     return fs.existsSync(resolved) ? resolved : null;
   }
-  const buildDir = path.join(process.cwd(), 'build');
+  const buildDir = buildDirPath();
   if (!fs.existsSync(buildDir)) return null;
   const pcbFiles = fs.readdirSync(buildDir).filter((f) => f.endsWith('.kicad_pcb'));
   if (pcbFiles.length === 1) return path.join(buildDir, pcbFiles[0]);
@@ -153,7 +154,7 @@ export async function run(parsed: ParsedArgs): Promise<void> {
     throw new Error(
       explicitPath
         ? `PCB file not found: ${explicitPath}`
-        : "No .kicad_pcb found in ./build/. Run 'typecad-pcb build' first or pass a path.",
+        : `No .kicad_pcb found in ${buildDirPath()}. Run 'typecad-pcb build' first or pass a path.`,
     );
   }
 

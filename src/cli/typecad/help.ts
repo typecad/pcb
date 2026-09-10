@@ -9,7 +9,9 @@ export function showTopLevelHelp(): void {
   console.log('  add component       Add a component to the current project');
   console.log('  add package         Create a reusable component package');
   console.log('  build               Build KiCAD output from typeCAD source');
+  console.log('  clean               Remove the generated build directory');
   console.log('  check               Build + ERC + DRC in one pass, one report');
+  console.log('  diagnostics         Full design report: BOM, nets, graphs, ERC/DRC (markdown)');
   console.log('  query               Inspect the compiled board (nets, pins, placement)');
   console.log('  edit                Checked semantic edits (connect, move)');
   console.log('  search              Search KiCad schematic symbols');
@@ -91,9 +93,36 @@ export function showBuildHelp(): void {
   console.log('  <entry>                   Path to .ts entry file (default: auto-detected');
   console.log('                            from typecad.conf.ts, package.json, or ./src/*.ts)\n');
   console.log('Options:');
-  console.log('  --verbose                 Enable verbose logging output\n');
+  console.log('  --watch, -w             Watch the entry and its imports; rebuild on change');
+  console.log('  --outDir, --out-dir <dir>');
+  console.log('                          Output directory for generated files (default: ./build/)');
+  console.log('  --diagnostics           Generate diagnostics.md and diagnostics.json reports');
+  console.log('                          BOM, nets, pin map, mermaid graphs, ERC/DRC, routing');
+  console.log('  --skip-erc              With --diagnostics: skip the ERC step');
+  console.log('  --skip-drc              With --diagnostics: skip the DRC step');
+  console.log('  --out=<file.md>         With --diagnostics: markdown destination (JSON follows)');
+  console.log('  --verbose               Enable verbose logging output\n');
+  console.log('A TypeScript file can also be given bare, without the subcommand:');
+  console.log('typecad-pcb main.ts --watch is shorthand for build main.ts --watch.\n');
   console.log('The build command executes your typeCAD TypeScript source, which generates');
-  console.log('KiCAD .kicad_pcb, .kicad_pro, .net, and related files in ./build/.');
+  console.log('KiCAD .kicad_pcb, .kicad_pro, .net, and related files in the output directory.');
+}
+
+export function showCleanHelp(): void {
+  console.log(chalk.white.bold('typecad-pcb clean') + ' - Remove the generated build directory\n');
+  console.log('Escape hatch for a wedged build directory or stale boards left by');
+  console.log('renamed sheets — the next build regenerates everything.\n');
+  console.log('Usage: typecad-pcb clean [options]\n');
+  console.log('Options:');
+  console.log('  --force                Remove even if the directory has no KiCAD');
+  console.log('                        build artifacts (the safety check)');
+  console.log('  --outDir, --out-dir <dir>');
+  console.log('                        Clean a custom output directory');
+  console.log('  --json                 Output results as JSON\n');
+  console.log('Examples:');
+  console.log('  typecad-pcb clean');
+  console.log('  typecad-pcb clean --force');
+  console.log('  typecad-pcb clean --outDir ./out');
 }
 
 export function showSearchHelp(): void {
@@ -410,6 +439,29 @@ export function showCheckHelp(): void {
   console.log('  typecad-pcb check');
   console.log('  typecad-pcb check --json');
   console.log('  typecad-pcb check ./src/board.ts --skip-drc');
+}
+
+export function showDiagnosticsHelp(): void {
+  console.log(chalk.white.bold('typecad-pcb diagnostics') + ' - Full design diagnostics report\n');
+  console.log('Builds (unless --skip-build), then writes a markdown + JSON report with:');
+  console.log('  - BOM-style component listing');
+  console.log('  - every net and every pin-to-net connection (incl. unconnected + DNC)');
+  console.log('  - mermaid graphs: net connectivity, clusters, power distribution');
+  console.log('  - electrical checks from pin types, plus kicad-cli ERC and DRC');
+  console.log('  - per-net routing status, zones, and board stats\n');
+  console.log('The markdown renders in VSCode preview (mermaid included).');
+  console.log('Informational: violations land in the report, not the exit code.\n');
+  console.log('Usage: typecad-pcb diagnostics [entry.ts | board.kicad_pcb] [options]\n');
+  console.log('Options:');
+  console.log('  --out=<file.md>     Write the markdown elsewhere (JSON lands next to it)');
+  console.log('  --skip-build        Reuse existing ./build artifacts');
+  console.log('  --skip-erc          Skip the ERC step');
+  console.log('  --skip-drc          Skip the DRC step');
+  console.log('  --json              Also print the full report JSON to stdout\n');
+  console.log('Examples:');
+  console.log('  typecad-pcb diagnostics');
+  console.log('  typecad-pcb diagnostics --skip-build --skip-drc');
+  console.log('  typecad-pcb diagnostics ./src/board.ts --out=report.md');
 }
 
 export function showEditHelp(): void {

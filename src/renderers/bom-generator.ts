@@ -2,7 +2,7 @@ import { Component } from '../component.js';
 import fs from 'node:fs';
 import logger from '../utils/logging.js';
 import type { BomField } from '../schematic.js';
-import { DEFAULT_BUILD_DIR } from '../utils/constants.js';
+import { getBuildDir } from '../utils/constants.js';
 
 export function generateBom(
   components: Component[],
@@ -11,7 +11,7 @@ export function generateBom(
   outputFolder?: string,
 ): boolean {
   let bom = '';
-  const _output_folder = outputFolder || DEFAULT_BUILD_DIR;
+  const _output_folder = outputFolder || getBuildDir();
 
   bom += options.bom_fields.join(options.bom_separator) + '\n';
 

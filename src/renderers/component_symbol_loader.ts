@@ -5,6 +5,7 @@ import { LIBRARY_SEPARATOR } from '../utils/constants.js';
 import { getCallSite } from '../utils/stack_trace.js';
 import { formatSourceError } from '../utils/error_reporter.js';
 import { parseSymbolLibrary, resolveExtends } from '../symbol_core.js';
+import { getBuildDir } from '../utils/constants.js';
 
 export function loadSymbolLib(
   symbol: string,
@@ -49,7 +50,7 @@ export function loadSymbolLib(
     }
 
     if (symbol_file_contents === '') {
-      const buildSymbolPath = `./build/lib/symbols/${symbol_name}.kicad_sym`;
+      const buildSymbolPath = `${getBuildDir()}/lib/symbols/${symbol_name}.kicad_sym`;
       if (fs.existsSync(buildSymbolPath)) {
         symbol_file_contents = fs.readFileSync(buildSymbolPath, 'utf8');
       }

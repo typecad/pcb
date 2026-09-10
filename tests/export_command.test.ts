@@ -122,11 +122,11 @@ describe('export command', () => {
       );
     });
 
-    it('should throw if no PCB in ./build/ and no path given', async () => {
+    it('should throw if no PCB in the build dir and no path given', async () => {
       const { run } = await import('../src/cli/typecad/commands/export.js');
       mockFs.existsSync.mockReturnValue(false);
 
-      await expect(run(makeParsed({ subcommand: 'gerbers' }))).rejects.toThrow('No .kicad_pcb file found in ./build/');
+      await expect(run(makeParsed({ subcommand: 'gerbers' }))).rejects.toThrow(/No \.kicad_pcb file found in .*build/);
     });
 
     it('should call executeKiCADCommand with gerbers args', async () => {

@@ -14,13 +14,14 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import logger from './utils/logging.js';
+import { getBuildDir } from './utils/constants.js';
 
 /**
  * Project build directory that the runtime loaders and KiCad read from.
  * Resolved relative to the current working directory (the project root when
  * `typecad-pcb build` runs).
  */
-const DEFAULT_PROJECT_BUILD_LIB = './build/lib';
+const DEFAULT_PROJECT_BUILD_LIB = () => `${getBuildDir()}/lib`;
 
 /**
  * Recursively walk a directory and yield the path of every regular file,
@@ -133,7 +134,7 @@ export function syncThisPackageBuildLib(): void {
  * @param destLibDir - Destination `lib/` directory. Defaults to the project's
  *   `./build/lib`. Exposed for testing.
  */
-export function syncPackageBuildLib(pkgSourceDir: string, destLibDir: string = DEFAULT_PROJECT_BUILD_LIB): void {
+export function syncPackageBuildLib(pkgSourceDir: string, destLibDir: string = DEFAULT_PROJECT_BUILD_LIB()): void {
   const srcLib = path.join(pkgSourceDir, 'build', 'lib');
   if (!fs.existsSync(srcLib)) return;
 

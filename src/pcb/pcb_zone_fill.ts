@@ -5,6 +5,7 @@ import { KiCadCommandError, KiCadNotFoundError } from '../utils/errors.js';
 import logger from '../utils/logging.js';
 import type { PCB } from './pcb.js';
 import type { PcbInternalState } from './pcb_state.js';
+import { getBuildDir } from '../utils/constants.js';
 
 /**
  * Zone fills are declarations in typeCAD (`pcb.zone({ fill: ... })` writes
@@ -25,7 +26,7 @@ function zoneFillRequested(state: PcbInternalState): boolean {
 }
 
 function boardFilePath(pcb: PCB): string {
-  return path.resolve('./build', `${pcb.boardName}.kicad_pcb`);
+  return path.resolve(getBuildDir(), `${pcb.boardName}.kicad_pcb`);
 }
 
 function boardHasFilledPolygons(boardPath: string): boolean {
@@ -64,7 +65,7 @@ export function materializeZoneFills(pcb: PCB, state: PcbInternalState): void {
     return;
   }
 
-  const reportPath = path.resolve('./build', `${pcb.boardName}_drc.json`);
+  const reportPath = path.resolve(getBuildDir(), `${pcb.boardName}_drc.json`);
   try {
     executeKiCADCommandSync(
       'pcb',

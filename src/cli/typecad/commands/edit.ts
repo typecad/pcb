@@ -5,6 +5,7 @@ import type { ParsedArgs } from '../parser.js';
 import logger from '../../../utils/logging.js';
 import { buildBoardModel, findComponent, findNet, type BoardComponent, type BoardModel } from '../board_model.js';
 import { loadConfig } from '../../../config.js';
+import { buildDirPath } from '../pipeline.js';
 
 interface EditError {
   code: string;
@@ -44,7 +45,7 @@ function detectEntryFile(): string | null {
 }
 
 function findBuildDir(): string | null {
-  const buildDir = path.join(process.cwd(), 'build');
+  const buildDir = buildDirPath();
   if (!fs.existsSync(buildDir)) return null;
   const pcbFiles = fs.readdirSync(buildDir).filter((f) => f.endsWith('.kicad_pcb'));
   return pcbFiles.length === 1 ? buildDir : null;
@@ -189,7 +190,7 @@ export async function run(parsed: ParsedArgs): Promise<void> {
       {
         code: 'NO_BUILD',
         message:
-          "No .kicad_pcb found in ./build/. Run 'typecad-pcb build' or 'typecad-pcb check' first so edits can be validated.",
+          `No .kicad_pcb found in ${buildDirPath()}. Run 'typecad-pcb build' or 'typecad-pcb check' first so edits can be validated.`,
       },
       json,
     );

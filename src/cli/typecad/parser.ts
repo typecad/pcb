@@ -16,6 +16,8 @@ export interface ParsedArgs {
  */
 const VALUE_FLAGS = new Set([
   'out',
+  'outDir',
+  'out-dir',
   'file',
   'category',
   'to',
@@ -131,4 +133,16 @@ export function parseArgv(argv: string[]): ParsedArgs {
   result.passthrough = passthroughTokens;
 
   return result;
+}
+
+/**
+ * Bare-file default invocation, HAL-style: `typecad-pcb main.ts --watch`
+ * behaves like `typecad-pcb build main.ts --watch`. When the command token
+ * is itself a TypeScript path, it is really the build entry.
+ */
+export function normalizeBareFileInvocation(parsed: ParsedArgs): ParsedArgs {
+  if (parsed.command && /\.(ts|tsx|mts|cts)$/.test(parsed.command)) {
+    return { ...parsed, command: 'build', positional: [parsed.command, ...parsed.positional] };
+  }
+  return parsed;
 }

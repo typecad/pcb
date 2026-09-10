@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import { serialize, Sym } from './sexpr/index.js';
 import { KiCAD } from './kicad.js';
-import { LIBRARY_SEPARATOR } from './utils/constants.js';
+import { LIBRARY_SEPARATOR, getBuildDir } from './utils/constants.js';
 import type { SExprNode } from './types/sexpr_types.js';
 import { extractPins, findSymbolNode, parseSymbolLibrary, resolveExtends } from './symbol_core.js';
 import {
@@ -39,7 +39,7 @@ export class SymbolLibraryManager {
       if (fs.existsSync(symbolFilePath)) {
         symbolFileContents = fs.readFileSync(symbolFilePath, 'utf8');
       } else {
-        symbolFilePath = `./build/lib/${libraryName}.kicad_sym`;
+        symbolFilePath = `${getBuildDir()}/lib/${libraryName}.kicad_sym`;
         if (fs.existsSync(symbolFilePath)) {
           symbolFileContents = fs.readFileSync(symbolFilePath, 'utf8');
         } else {

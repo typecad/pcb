@@ -8,6 +8,7 @@ import { executeKiCADCommandSync } from '../kicad_commands.js';
 import { LIBRARY_SEPARATOR } from '../utils/constants.js';
 import { getCallSite } from '../utils/stack_trace.js';
 import { formatSourceError } from '../utils/error_reporter.js';
+import { getBuildDir } from '../utils/constants.js';
 
 export function loadFootprintLib(
   footprint: string,
@@ -65,7 +66,7 @@ export function loadFootprintLib(
     }
   }
 
-  const buildFootprintPath = `./build/lib/footprints/${footprint_file_name[1]}.kicad_mod`;
+  const buildFootprintPath = `${getBuildDir()}/lib/footprints/${footprint_file_name[1]}.kicad_mod`;
   if (fs.existsSync(buildFootprintPath)) {
     try {
       const footprint_file_contents = fs.readFileSync(buildFootprintPath, 'utf8');

@@ -1,9 +1,10 @@
 import fs from 'node:fs';
 import { parse, Sym } from '../sexpr/index.js';
 import type { SExpr } from '../sexpr/types.js';
+import { getBuildDir } from '../utils/constants.js';
 
 export function loadExistingBoardElements(boardname: string): SExpr[] {
-  const boardFilePath = `./build/${boardname}.kicad_pcb`;
+  const boardFilePath = `${getBuildDir()}/${boardname}.kicad_pcb`;
 
   if (fs.existsSync(boardFilePath)) {
     try {

@@ -249,3 +249,69 @@ describe('buildBoardModel on kicad-cli resaved boards', () => {
     expect(gnd.route).toMatchObject({ routed: true, pinsConnected: 2, pourAssisted: true });
   });
 });
+
+// typeCAD's own serializer output: fp_text-style references (no property
+// nodes), unquoted numeric pad names, multi-line nodes — before any
+// kicad-cli resave normalizes the file.
+const FRESH_TYPECAD_PCB = `(kicad_pcb
+  (version 20241229)
+  (footprint "lib:QFN" (layer "F.Cu")
+    (at 10 10)
+    (fp_text reference "U9" (at 0 0) (layer F.SilkS))
+    (fp_text value "MCU" (at 0 0) (layer F.SilkS))
+    (pad 1 smd rect (at -1 0) (size 0.5 0.5) (layers F.Cu) (net 1 "GND") (pintype passive))
+    (pad 2 smd rect (at 1 0) (size 0.5 0.5) (layers F.Cu) (net 2 "VCC") (pintype passive))
+  )
+)`;
+
+describe('buildBoardModel on fresh typeCAD output', () => {
+  const model = buildBoardModel(writeTempPcb(FRESH_TYPECAD_PCB));
+
+  it('reads references and values from fp_text when property nodes are absent', () => {
+    const u9 = findComponent(model, 'U9')!;
+    expect(u9.value).toBe('MCU');
+    expect(u9.pads.map((p) => p.pad)).toEqual(['1', '2']);
+  });
+});
+
+// kicad-cli 10 resaves drop the global net table entirely: pads and tracks
+// carry inline (net "NAME") forms with no code to merge by.
+const UNTABLED_PCB = `(kicad_pcb
+  (version 20260206)
+  (footprint "lib:QFN" (layer "F.Cu")
+    (at 10 10)
+    (property "Reference" "U9" (at 0 0 0))
+    (property "Value" "MCU" (at 0 0 0))
+    (pad "1" smd rect (at -1 0) (size 0.5 0.5) (layers "F.Cu") (net "GND"))
+    (pad "2" smd rect (at 1 0) (size 0.5 0.5) (layers "F.Cu") (net "VCC"))
+  )
+  (footprint "Capacitor_SMD:C_0603" (layer "F.Cu")
+    (at 10 12)
+    (property "Reference" "C9" (at 0 0 0))
+    (property "Value" "1uF" (at 0 0 0))
+    (pad "1" smd rect (at -0.75 0) (size 0.5 0.5) (layers "F.Cu") (net "GND"))
+    (pad "2" smd rect (at 0.75 0) (size 0.5 0.5) (layers "F.Cu") (net "VCC"))
+  )
+  (via (at 12 10) (size 0.6) (drill 0.3) (layers "F.Cu" "B.Cu") (free yes) (net ""))
+  (segment (start 9 10) (end 9.5 10) (width 0.2) (layer "F.Cu") (net "GND"))
+)`;
+
+describe('buildBoardModel on boards without a global net table', () => {
+  const model = buildBoardModel(writeTempPcb(UNTABLED_PCB));
+
+  it('aggregates inline-named nets by name, keeping them separate', () => {
+    expect(model.nets.map((n) => n.name).sort()).toEqual(['GND', 'VCC']);
+    expect(findNet(model, 'GND')!.pins).toEqual(['U9.1', 'C9.1']);
+    expect(findNet(model, 'VCC')!.pins).toEqual(['U9.2', 'C9.2']);
+  });
+
+  it('keeps track segments with their named nets', () => {
+    expect(findNet(model, 'GND')!.segments).toHaveLength(1);
+    expect(findNet(model, 'VCC')!.segments).toHaveLength(0);
+  });
+
+  it('drops the free-via no-net pseudo-net', () => {
+    expect(model.nets.some((n) => n.name === '')).toBe(false);
+    expect(model.summary.vias).toBe(1);
+  });
+});

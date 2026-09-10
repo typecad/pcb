@@ -39,6 +39,7 @@ vi.mock('../../src/kicad.js', () => ({
 
 vi.mock('../../src/utils/constants.js', () => ({
   LIBRARY_SEPARATOR: ':',
+  getBuildDir: () => './build',
 }));
 
 const { MockComponentError } = vi.hoisted(() => ({

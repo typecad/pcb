@@ -5,6 +5,7 @@ import { executeKiCADCommand } from '../../../kicad_commands.js';
 import type { ParsedArgs } from '../parser.js';
 import type { ErcViolation } from '../../types.js';
 import logger from '../../../utils/logging.js';
+import { buildDirPath } from '../pipeline.js';
 
 function findSchFile(argPath?: string): string | null {
   if (argPath) {
@@ -13,7 +14,7 @@ function findSchFile(argPath?: string): string | null {
     return null;
   }
 
-  const buildDir = path.join(process.cwd(), 'build');
+  const buildDir = buildDirPath();
   if (!fs.existsSync(buildDir)) return null;
 
   const schFiles = fs.readdirSync(buildDir).filter((f) => f.endsWith('.kicad_sch'));
@@ -47,7 +48,7 @@ export async function run(parsed: ParsedArgs): Promise<void> {
       throw new Error(`Schematic file not found: ${schArg}`);
     }
     throw new Error(
-      'No .kicad_sch file found in ./build/.\n' +
+      `No .kicad_sch file found in ${buildDirPath()}.\n` +
         'Run `typecad-pcb build` first, or specify a path: typecad-pcb erc <path/to/schematic.kicad_sch>',
     );
   }

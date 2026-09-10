@@ -4,6 +4,7 @@ import chalk from 'chalk';
 import { executeKiCADCommand } from '../../../kicad_commands.js';
 import type { ParsedArgs } from '../parser.js';
 import logger from '../../../utils/logging.js';
+import { buildDirPath } from '../pipeline.js';
 
 function findPcbFile(argPath?: string): string | null {
   if (argPath) {
@@ -12,7 +13,7 @@ function findPcbFile(argPath?: string): string | null {
     return null;
   }
 
-  const buildDir = path.join(process.cwd(), 'build');
+  const buildDir = buildDirPath();
   if (!fs.existsSync(buildDir)) return null;
 
   const pcbFiles = fs.readdirSync(buildDir).filter((f) => f.endsWith('.kicad_pcb'));
@@ -42,12 +43,12 @@ async function runGerbers(parsed: ParsedArgs): Promise<void> {
       throw new Error(`PCB file not found: ${pcbArg}`);
     }
     throw new Error(
-      'No .kicad_pcb file found in ./build/.\n' +
+      `No .kicad_pcb file found in ${buildDirPath()}.\n` +
         'Run `typecad-pcb build` first, or specify a path: typecad-pcb export gerbers <path/to/board.kicad_pcb>',
     );
   }
 
-  const buildDir = path.join(process.cwd(), 'build');
+  const buildDir = buildDirPath();
   const outputDir = getOutputDir(parsed, path.join(buildDir, 'gerbers'));
   fs.mkdirSync(outputDir, { recursive: true });
 
@@ -104,12 +105,12 @@ async function runDrill(parsed: ParsedArgs): Promise<void> {
       throw new Error(`PCB file not found: ${pcbArg}`);
     }
     throw new Error(
-      'No .kicad_pcb file found in ./build/.\n' +
+      `No .kicad_pcb file found in ${buildDirPath()}.\n` +
         'Run `typecad-pcb build` first, or specify a path: typecad-pcb export drill <path/to/board.kicad_pcb>',
     );
   }
 
-  const buildDir = path.join(process.cwd(), 'build');
+  const buildDir = buildDirPath();
   const outputDir = getOutputDir(parsed, path.join(buildDir, 'gerbers'));
   fs.mkdirSync(outputDir, { recursive: true });
 

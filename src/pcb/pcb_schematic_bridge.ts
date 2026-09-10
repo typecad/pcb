@@ -5,6 +5,7 @@ import { Pin } from '../pin.js';
 import { exportContract } from '../contract.js';
 import type { ContractOptions } from '../contract.js';
 import type { PCB } from './pcb.js';
+import { getBuildDir } from '../utils/constants.js';
 
 export function pcbNet(schematic: Schematic, ...pins: Pin[]): ISchematicNetDefinition {
   return schematic.net(...pins);
@@ -21,7 +22,7 @@ export function pcbBom(schematic: Schematic | undefined, output_folder?: string)
 }
 
 export function pcbContract(pcb: PCB, options: ContractOptions): void {
-  const outputPath = options.outputPath ?? `./build/${pcb.boardName}.contract.json`;
+  const outputPath = options.outputPath ?? `${getBuildDir()}/${pcb.boardName}.contract.json`;
   exportContract(pcb, { ...options, outputPath });
 }
 

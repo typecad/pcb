@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
 import { buildViewerFromFiles } from './build.js';
+import { getBuildDir } from '../utils/constants.js';
 
 export interface ServeOptions {
   /** Project root containing build/ (defaults to cwd). */
@@ -60,7 +61,7 @@ function waitingPage(): string {
  */
 export function startGerberViewerServer(options: ServeOptions = {}): ServeHandle {
   const projectDir = path.resolve(options.projectDir ?? process.cwd());
-  const buildDir = path.join(projectDir, 'build');
+  const buildDir = path.resolve(projectDir, getBuildDir());
   const gerbersDir = path.join(buildDir, 'gerbers');
   const serveDir = path.join(buildDir, 'serve');
   const viewerPath = path.join(serveDir, 'viewer.html');

@@ -38,6 +38,7 @@ vi.mock('../src/utils/logging.js', () => ({
 
 vi.mock('../src/utils/constants.js', () => ({
   LIBRARY_SEPARATOR: ':',
+  getBuildDir: () => './build',
 }));
 
 import { loadFootprintLib } from '../src/pcb/component_footprint_loader.js';

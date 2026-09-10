@@ -9,6 +9,7 @@ import { KiCAD } from '../../../kicad.js';
 import type { ParsedArgs } from '../parser.js';
 import logger from '../../../utils/logging.js';
 import { coreDepsFix } from '../../create-typecad/core-deps.js';
+import { buildDirPath } from '../pipeline.js';
 
 interface CheckResult {
   name: string;
@@ -499,7 +500,7 @@ function checkGit(): CheckResult {
 }
 
 function checkBuildDir(): CheckResult {
-  const buildPath = path.join(process.cwd(), 'build');
+  const buildPath = buildDirPath();
   if (!fs.existsSync(buildPath)) {
     return {
       name: 'build/ directory',

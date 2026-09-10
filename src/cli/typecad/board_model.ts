@@ -1,7 +1,20 @@
 import fs from 'node:fs';
 import { parse } from '../../sexpr/index.js';
-import { SNode } from '../../sexpr/query.js';
+import { SNode, isSym } from '../../sexpr/query.js';
 import { decodeCodeMetadata } from '../../kicad2typecad/codec.js';
+
+/**
+ * An atom in string position: quoted strings parse as strings, unquoted
+ * words as symbols, and unquoted numbers (pad names like `(pad 1 ...)`)
+ * as numbers — all must render as text.
+ */
+function atomString(node: SNode, index: number): string {
+  const val = node.rawAt(index);
+  if (typeof val === 'string') return val;
+  if (typeof val === 'number') return String(val);
+  if (isSym(val)) return val.name;
+  return '';
+}
 
 interface BoardPad {
   pad: string;
@@ -126,7 +139,7 @@ function netNameOf(parent: SNode, netCodesByName: Map<string, number>): { code: 
   return { code: -1, name: null };
 }
 
-function isPowerNetName(name: string): boolean {
+export function isPowerNetName(name: string): boolean {
   return /^(gnd|ground|gn\d+|vcc|vdd|vss|vbat(t)?|vin|vout|avcc|avdd|avss|\+?-?\d+(\.\d+)?v\d*(_|$|[0-9a-z]))/i.test(
     name.trim(),
   );
@@ -259,6 +272,15 @@ export function buildBoardModel(pcbPath: string): BoardModel {
       else if (key === 'Value' && typeof val === 'string') value = val;
       else if (key === 'Code' && typeof val === 'string') codeProp = val;
     }
+    // typeCAD's own serializer and older footprint libraries write KiCad-5
+    // style (fp_text reference "...") instead of (property "Reference" ...).
+    if (!reference || !value) {
+      for (const text of fp.children('fp_text')) {
+        const kind = text.getString(1);
+        if (kind === 'reference' && !reference) reference = text.getString(2) ?? '';
+        else if (kind === 'value' && !value) value = text.getString(2) ?? '';
+      }
+    }
 
     const atNode = fp.child('at');
     const layerNode = fp.child('layer');
@@ -290,8 +312,8 @@ export function buildBoardModel(pcbPath: string): BoardModel {
         }
       }
       pads.push({
-        pad: pad.getString(1) ?? '',
-        type: pad.getString(2) ?? '',
+        pad: atomString(pad, 1),
+        type: atomString(pad, 2),
         net: net ? nameFor(net.code, net.name) : null,
         pinType: pintypeNode ? (pintypeNode.getString(1) ?? undefined) : undefined,
         at: { x: padAt?.getNumber(1, 0) ?? 0, y: padAt?.getNumber(2, 0) ?? 0 },
@@ -316,13 +338,16 @@ export function buildBoardModel(pcbPath: string): BoardModel {
     });
   }
 
-  // Nets: aggregate pins, vias, zones, tracks
-  const nets = new Map<number, BoardNet>();
+  // Nets: aggregate pins, vias, zones, tracks. Boards with a global net
+  // table aggregate by code; kicad-cli --save-board output carries inline
+  // net names with no table, so those aggregate by name instead.
+  const nets = new Map<string, BoardNet>();
   const netByCode = (code: number, name: string | null): BoardNet => {
-    let n = nets.get(code);
+    const key = code >= 0 ? `c${code}` : `n${name ?? ''}`;
+    let n = nets.get(key);
     if (!n) {
       n = { code, name: name ?? netNames.get(code) ?? '', pins: [], vias: [], zones: [], segments: [], route: null };
-      nets.set(code, n);
+      nets.set(key, n);
     }
     if (!n.name && name) n.name = name;
     return n;
@@ -331,8 +356,8 @@ export function buildBoardModel(pcbPath: string): BoardModel {
   for (const comp of components) {
     for (const pad of comp.pads) {
       if (pad.net === null) continue;
-      // Resaved boards carry inline net names without a global code table,
-      // so aggregate by name; the code (when present) only merges entries.
+      // Prefer the code table so resaved inline names still merge with any
+      // coded entries; nameless pads already resolved via netNames.
       const code = netCodesByName.get(pad.net) ?? -1;
       netByCode(code, pad.net).pins.push(`${comp.reference}.${pad.pad}`);
     }
@@ -454,10 +479,12 @@ export function buildBoardModel(pcbPath: string): BoardModel {
     };
   }
 
-  // Drop only the unnamed no-net pseudo-net (code 0, ""); named nets from
-  // resaved boards legitimately carry code 0 or -1 with inline names.
-  const allNets = [...nets.values()].filter((n) => !(n.code === 0 && n.name === ''));
-  const viaTotal = allNets.reduce((acc, n) => acc + n.vias.length, 0);
+  // Drop the unnamed no-net pseudo-nets (code 0 "" and via-only "(net "")");
+  // named nets from resaved boards legitimately carry code 0 or -1.
+  const allNets = [...nets.values()].filter((n) => n.name !== '' || n.pins.length > 0);
+  // Count vias from the source: free (net-less) vias sit in a dropped
+  // pseudo-net but still belong in the board totals.
+  const viaTotal = root.findAll('via').length;
   const unconnectedPads = components.reduce(
     (acc, c) => acc + c.pads.filter((p) => p.net === null && p.type !== 'np_thru_hole').length,
     0,

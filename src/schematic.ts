@@ -17,7 +17,7 @@ import { setActiveSummaryHost, setupPendingSummary } from './cli/pending_summary
 import type { IPendingSummaryHost, PendingTypecadSummary } from './cli/pending_summary.js';
 import type { Power } from './buses.js';
 import { SimulationContext } from './simulation/ngspice.js';
-import { DEFAULT_BUILD_DIR } from './utils/constants.js';
+import { getBuildDir } from './utils/constants.js';
 
 export type BomField =
   'Reference' | 'Value' | 'Datasheet' | 'Footprint' | 'MPN' | 'Description' | 'Voltage' | 'Wattage';
@@ -179,8 +179,8 @@ export class Schematic {
     const _schematic = renderNetlist({ components: this.sexpr_components, nets: [_nets] });
 
     try {
-      const netPath = `${DEFAULT_BUILD_DIR}/${this.sheetName}.net`;
-      fs.mkdirSync(DEFAULT_BUILD_DIR, { recursive: true });
+      const netPath = `${getBuildDir()}/${this.sheetName}.net`;
+      fs.mkdirSync(getBuildDir(), { recursive: true });
       fs.writeFileSync(netPath, _schematic);
       const adapter: IPendingSummaryHost = {
         pendingSummaryData: () => this.pendingSummaryData(),

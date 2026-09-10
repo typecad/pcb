@@ -3,8 +3,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import chalk from 'chalk';
-import { parseArgv } from './parser.js';
+import { normalizeBareFileInvocation, parseArgv } from './parser.js';
 import logger from '../../utils/logging.js';
+import { applyOutDirFlag } from './pipeline.js';
 
 function outputJson(data: unknown): void {
   logger.log(JSON.stringify(data));
@@ -88,6 +89,14 @@ async function showCommandHelp(command: string, subcommand: string): Promise<boo
     help.showCheckHelp();
     return true;
   }
+  if (command === 'diagnostics') {
+    help.showDiagnosticsHelp();
+    return true;
+  }
+  if (command === 'clean') {
+    help.showCleanHelp();
+    return true;
+  }
   if (command === 'package') {
     help.showPackageHelp();
     return true;
@@ -106,7 +115,10 @@ async function showCommandHelp(command: string, subcommand: string): Promise<boo
 }
 
 async function main(): Promise<void> {
-  const parsed = parseArgv(process.argv);
+  const parsed = normalizeBareFileInvocation(parseArgv(process.argv));
+  // --outDir applies to every command: it redirects both the CLI's artifact
+  // discovery and the library's writes (via TYPECAD_BUILD_DIR).
+  applyOutDirFlag(parsed.args);
 
   if (parsed.version) {
     if (parsed.json) {
@@ -203,6 +215,14 @@ async function main(): Promise<void> {
 
       case 'check':
         await (await import('./commands/check.js')).run(parsed);
+        break;
+
+      case 'diagnostics':
+        await (await import('./commands/diagnostics.js')).run(parsed);
+        break;
+
+      case 'clean':
+        await (await import('./commands/clean.js')).run(parsed);
         break;
 
       case 'package':

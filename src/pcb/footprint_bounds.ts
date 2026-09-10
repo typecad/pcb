@@ -5,6 +5,7 @@ import { SNode } from '../sexpr/query.js';
 import type { SExpr } from '../sexpr/types.js';
 import { LIBRARY_SEPARATOR } from '../utils/constants.js';
 import logger from '../utils/logging.js';
+import { getBuildDir } from '../utils/constants.js';
 
 /** Footprints already warned about for unresolved bounds — warn once each. */
 const unresolvedFootprintWarnings = new Set<string>();
@@ -71,7 +72,7 @@ function resolveFootprintPath(footprintName: string): string | null {
     if (fs.existsSync(path)) return path;
   }
 
-  const buildPath = `./build/lib/footprints/${parts[1]}.kicad_mod`;
+  const buildPath = `${getBuildDir()}/lib/footprints/${parts[1]}.kicad_mod`;
   if (fs.existsSync(buildPath)) return buildPath;
 
   return null;

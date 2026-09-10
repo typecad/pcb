@@ -7,7 +7,7 @@ import type { Component } from '../component.js';
 import type { Power } from '../buses.js';
 import type { NgspiceResult, Variable } from './types.js';
 import logger from '../utils/logging.js';
-import { DEFAULT_BUILD_DIR } from '../utils/constants.js';
+import { getBuildDir } from '../utils/constants.js';
 import { findExecutable } from '../kicad.js';
 
 class NgspiceResultImpl implements NgspiceResult {
@@ -151,14 +151,14 @@ write ${this.schematic.sheetName}.out all
 
     netlist += controlSection(mode);
 
-    fs.mkdirSync(DEFAULT_BUILD_DIR, { recursive: true });
+    fs.mkdirSync(getBuildDir(), { recursive: true });
     const safeName = this.schematic.sheetName.replace(/[^a-zA-Z0-9_\-\.]/g, '_');
-    fs.writeFileSync(`${DEFAULT_BUILD_DIR}/${safeName}.cir`, netlist);
+    fs.writeFileSync(`${getBuildDir()}/${safeName}.cir`, netlist);
 
     const ngspicePath = this.findNgspiceExecutable(mode);
     if (!ngspicePath) return null;
 
-    const args = mode ? ['-i', `${DEFAULT_BUILD_DIR}/${safeName}.cir`] : ['-b', `${DEFAULT_BUILD_DIR}/${safeName}.cir`];
+    const args = mode ? ['-i', `${getBuildDir()}/${safeName}.cir`] : ['-b', `${getBuildDir()}/${safeName}.cir`];
     logger.log(`${ngspicePath} ${args.join(' ')}`);
     try {
       execFileSync(ngspicePath, args);

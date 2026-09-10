@@ -1,5 +1,6 @@
 import chalk from 'chalk';
 import logger from '../utils/logging.js';
+import { getBuildDir } from '../utils/constants.js';
 
 export type PendingTypecadSummary = {
   sheetName: string;
@@ -64,7 +65,7 @@ class PendingSummaryManager {
     if (data.schPath) {
       logger.log('    └── ' + chalk.green(data.schPath));
     }
-    const bomPath = `./build/${data.sheetName}.csv`;
+    const bomPath = `${getBuildDir()}/${data.sheetName}.csv`;
     if (bomPath) {
       logger.log('    └── ' + chalk.green(bomPath));
     }

@@ -17,6 +17,7 @@ import fs from 'node:fs';
 import { validatePositive } from '../utils/numeric_validation.js';
 import type { ITeardropPolicy } from './pcb_teardrops.js';
 import { teardropOptionsJson, teardropParametersJson } from './pcb_teardrops.js';
+import { getBuildDir } from '../utils/constants.js';
 
 /**
  * Board-wide design rules, all values in millimeters.
@@ -369,7 +370,7 @@ export function writeRulesToProject(
   assignments?: ReadonlyArray<{ netName: string; className: string }>,
   teardrops?: ITeardropPolicy,
 ): void {
-  const projectPath = `./build/${boardName}.kicad_pro`;
+  const projectPath = `${getBuildDir()}/${boardName}.kicad_pro`;
   let existing = '';
   try {
     existing = fs.existsSync(projectPath) ? fs.readFileSync(projectPath, 'utf8') : '';

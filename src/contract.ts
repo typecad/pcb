@@ -7,7 +7,7 @@ import logger from './utils/logging.js';
 import { getSymbolLibraryManager } from './symbol_library_manager.js';
 import type { PinInfo } from './renderers/schematic_visualizer_types.js';
 import { TypeCadError } from './utils/errors.js';
-import { DEFAULT_BUILD_DIR } from './utils/constants.js';
+import { getBuildDir } from './utils/constants.js';
 import { addOutputPath } from './cli/pending_summary.js';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -294,7 +294,7 @@ export function exportContract(pcb: PCB, options: ContractOptions): void {
     availablePeripherals,
   };
 
-  const rawOutputPath = options.outputPath ?? `${DEFAULT_BUILD_DIR}/${pcb.boardName}.contract.json`;
+  const rawOutputPath = options.outputPath ?? `${getBuildDir()}/${pcb.boardName}.contract.json`;
   const outputPath = resolveOutputPath(rawOutputPath, pcb.boardName);
 
   try {

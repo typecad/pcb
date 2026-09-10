@@ -1,4 +1,5 @@
 import { Schematic } from '../schematic.js';
+import { getBuildDir } from '../utils/constants.js';
 import { setPendingSchematicPath } from '../cli/pending_summary.js';
 import { KiCAD } from '../kicad.js';
 import fs from 'node:fs';
@@ -71,8 +72,8 @@ export function schematic(schematicData: Schematic): boolean {
   });
 
   try {
-    fs.writeFileSync(`./build/${schematicData.sheetName}.kicad_sch`, _schematic);
-    setPendingSchematicPath(`./build/${schematicData.sheetName}.kicad_sch`);
+    fs.writeFileSync(`${getBuildDir()}/${schematicData.sheetName}.kicad_sch`, _schematic);
+    setPendingSchematicPath(`${getBuildDir()}/${schematicData.sheetName}.kicad_sch`);
   } catch (err) {
     logError(`Failed to write schematic file:`, err);
     throw err;

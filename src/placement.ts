@@ -105,7 +105,7 @@ function targetEdges(
  * against the footprint's bounds (rotation-aware) at call time.
  * @internal
  */
-export function resolvePlacement(value: PlacementNumber, footprint: string, rotationDeg: number = 0): number {
+function resolvePlacement(value: PlacementNumber, footprint: string, rotationDeg: number = 0): number {
   return isPlacementValue(value) ? value.resolveWithFootprint(footprint, rotationDeg) : value;
 }
 

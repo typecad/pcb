@@ -1,6 +1,6 @@
 import type { ITextPositioning } from './pcb_interfaces.js';
 
-export type TextString = string;
+type TextString = string;
 export type TextPositioning = ITextPositioning;
 export type TextWithPositioning = [string | undefined | null, ITextPositioning];
 export type TextOrPositioning = TextString | TextPositioning | TextWithPositioning;
@@ -26,7 +26,7 @@ export function parseTextOrPositioning(input: TextOrPositioning | undefined): {
  * Names of footprint text properties. The conventional KiCad set is listed for
  * autocomplete; any other footprint-specific name is still accepted.
  */
-export type FootprintPropertyName =
+type FootprintPropertyName =
   'Reference' | 'Value' | 'Footprint' | 'Datasheet' | 'Description' | 'MPN' | (string & {});
 
 export type TextEntry = {

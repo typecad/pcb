@@ -1,14 +1,14 @@
-export interface IGridCoordinate {
+interface IGridCoordinate {
   x: number;
   y: number;
 }
 
-export interface IRoutingCell {
+interface IRoutingCell {
   occupied?: boolean;
   net?: string;
 }
 
-export interface IRoutingCellFull extends IRoutingCell {
+interface IRoutingCellFull extends IRoutingCell {
   x: number;
   y: number;
   layer: string;
@@ -25,7 +25,7 @@ export interface IRoutingCellFull extends IRoutingCell {
  * Minimal routing grid contract shared between host and plugins.
  * Concrete grid implementations should satisfy this interface.
  */
-export interface IRoutingGrid {
+interface IRoutingGrid {
   worldToGrid(x: number, y: number): IGridCoordinate;
   gridToWorld(gridX: number, gridY: number): { x: number; y: number };
   getCell(x: number, y: number, layer: string): IRoutingCell | undefined;

@@ -5,7 +5,7 @@ import { heuristicDistance } from './grid_search.js';
 /**
  * Utility function to convert a RouteEndpoint to RouteEndpointWithGrid.
  */
-export function enrichEndpointWithGrid(endpoint: RouteEndpoint, grid: RoutingGrid): RouteEndpointWithGrid {
+function enrichEndpointWithGrid(endpoint: RouteEndpoint, grid: RoutingGrid): RouteEndpointWithGrid {
   const gridPos = grid.worldToGrid(endpoint.x, endpoint.y);
   return {
     x: endpoint.x,

@@ -16,7 +16,7 @@ function today(): string {
   return new Date().toISOString().split('T')[0];
 }
 
-export function getDefaultMetadata(): IMetadata {
+function getDefaultMetadata(): IMetadata {
   return {
     highlight: 'github-light',
     stylesheet: '',

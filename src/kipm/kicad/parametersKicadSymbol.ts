@@ -75,7 +75,7 @@ export const KiBoxFill = {
   background: 'background',
 } as const;
 
-export const KiExportConfigV5 = {
+const KiExportConfigV5 = {
   PIN_LENGTH: 100,
   PIN_SPACING: 100,
   PIN_NUM_SIZE: 50,
@@ -87,7 +87,7 @@ export const KiExportConfigV5 = {
   FIELD_OFFSET_INCREMENT: 100,
 } as const;
 
-export const ki_pin_type_v5_format: Record<string, string> = {
+const ki_pin_type_v5_format: Record<string, string> = {
   [KiPinType._input]: 'I',
   [KiPinType.output]: 'O',
   [KiPinType.bidirectional]: 'B',
@@ -102,7 +102,7 @@ export const ki_pin_type_v5_format: Record<string, string> = {
   [KiPinType.no_connect]: 'N',
 };
 
-export const ki_pin_style_v5_format: Record<string, string> = {
+const ki_pin_style_v5_format: Record<string, string> = {
   [KiPinStyle.line]: '',
   [KiPinStyle.inverted]: 'I',
   [KiPinStyle.clock]: 'C',
@@ -114,20 +114,20 @@ export const ki_pin_style_v5_format: Record<string, string> = {
   [KiPinStyle.non_logic]: 'X',
 };
 
-export const ki_pin_orientation_v5_format: Record<string, string> = {
+const ki_pin_orientation_v5_format: Record<string, string> = {
   '0': 'L',
   '90': 'D',
   '180': 'R',
   '270': 'U',
 };
 
-export const ki_box_fill_v5_format: Record<string, string> = {
+const ki_box_fill_v5_format: Record<string, string> = {
   [KiBoxFill.none]: 'N',
   [KiBoxFill.outline]: 'F',
   [KiBoxFill.background]: 'f',
 };
 
-export const KiExportConfigV6 = {
+const KiExportConfigV6 = {
   PIN_LENGTH: 2.54,
   PIN_SPACING: 2.54,
   PIN_NUM_SIZE: 1.27,

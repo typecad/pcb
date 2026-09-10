@@ -10,8 +10,6 @@ import { buildKiCADArgs } from '../../../kicad_commands.js';
 
 const execFileAsync = promisify(execFile);
 
-export { cropSvg };
-
 export async function writeStringToFile(content: string, outputPath: string): Promise<string> {
   const outputDir = path.dirname(outputPath);
   const dirExists = await pathExists(outputDir);
@@ -22,7 +20,7 @@ export async function writeStringToFile(content: string, outputPath: string): Pr
   return outputPath;
 }
 
-export async function executeKicadSvgExport(pcbFilePath: string, layer: string, theme: string): Promise<string> {
+async function executeKicadSvgExport(pcbFilePath: string, layer: string, theme: string): Promise<string> {
   const tempSvgPath = tempManager.createTempFilePath('.svg');
   let bMirror = false;
   if (layer.includes('B.')) {

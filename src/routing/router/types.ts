@@ -32,7 +32,7 @@ export interface IRouteNode {
 }
 
 /** One entry in a path's via chain (see {@link IRouteNode.viaChain}). */
-export interface IViaChainEntry {
+interface IViaChainEntry {
   gridX: number;
   gridY: number;
   next?: IViaChainEntry;
@@ -186,7 +186,7 @@ export interface IWaypointPlan {
   skipLastSegment: boolean;
 }
 
-export interface IWaypointPlanner {
+interface IWaypointPlanner {
   estimateEdgeCost(p1: RouteEndpoint, p2: RouteEndpoint): number;
   planWaypoints(p1: RouteEndpoint, p2: RouteEndpoint): IWaypointPlan;
 }

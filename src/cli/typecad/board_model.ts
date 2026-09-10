@@ -3,7 +3,7 @@ import { parse } from '../../sexpr/index.js';
 import { SNode } from '../../sexpr/query.js';
 import { decodeCodeMetadata } from '../../kicad2typecad/codec.js';
 
-export interface BoardPad {
+interface BoardPad {
   pad: string;
   net: string | null;
   type: string;
@@ -45,7 +45,7 @@ export interface BoardNet {
   route: NetRoute | null;
 }
 
-export interface BoardSegment {
+interface BoardSegment {
   layer: string;
   width: number;
   length: number;
@@ -54,7 +54,7 @@ export interface BoardSegment {
 }
 
 /** Copper pours and keepout regions parsed from zone nodes. */
-export interface BoardZone {
+interface BoardZone {
   netCode: number;
   netName: string | null;
   layers: string[];
@@ -72,7 +72,7 @@ export interface BoardZone {
  * Per-net copper connectivity: which pins are joined by tracks, vias, and
  * pours, and which are still waiting for copper.
  */
-export interface NetRoute {
+interface NetRoute {
   segments: number;
   /** Total routed track length in mm. */
   length: number;
@@ -88,7 +88,7 @@ export interface NetRoute {
   pourAssisted: boolean;
 }
 
-export interface BoardSummary {
+interface BoardSummary {
   file: string;
   components: number;
   namedNets: number;

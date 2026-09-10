@@ -340,7 +340,6 @@ export {
   convertEeRectangles,
   convertEeCircles,
   convertEeEllipses,
-  convertEeArcs,
   convertEePolylines,
   convertEePolygons,
   convertEePaths,

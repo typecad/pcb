@@ -7,7 +7,7 @@ import { TypeCadError } from './utils/errors.js';
 import { getCallSite } from './utils/stack_trace.js';
 import { formatSourceError } from './utils/error_reporter.js';
 
-export interface INetConnectionInfo {
+interface INetConnectionInfo {
   reference: string;
   pin: number | string;
   type: string;

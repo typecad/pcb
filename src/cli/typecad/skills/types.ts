@@ -1,4 +1,4 @@
-export interface SkillParameter {
+interface SkillParameter {
   name: string;
   type: string;
   required: boolean;
@@ -6,7 +6,7 @@ export interface SkillParameter {
   default?: string;
 }
 
-export interface SkillExample {
+interface SkillExample {
   title: string;
   code: string;
 }

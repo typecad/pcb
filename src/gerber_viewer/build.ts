@@ -88,7 +88,7 @@ export function collectGerberFiles(inputPaths: string[]): { files: string[]; war
  * ("board-F_Cu.gtl" -> "F_Cu.gtl"). Returns the prefix that was stripped
  * ("" when there is none).
  */
-export function stripCommonPrefix(names: string[]): { stripped: string[]; prefix: string } {
+function stripCommonPrefix(names: string[]): { stripped: string[]; prefix: string } {
   if (names.length < 2) return { stripped: names, prefix: '' };
   let prefix = names[0]!;
   for (const name of names) {

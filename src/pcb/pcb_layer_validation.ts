@@ -41,7 +41,7 @@ interface LayerViolation {
  * The set of layer names valid for typeCAD-generated elements on a board
  * with the given copper-layer count.
  */
-export function allowedLayerNames(layerCount: number): Set<string> {
+function allowedLayerNames(layerCount: number): Set<string> {
   return new Set([...copperLayerNames(layerCount), ...technicalLayerNames(), ...WILDCARD_LAYERS]);
 }
 

@@ -1,6 +1,6 @@
 import { parse, SNode, isList, type SExpr } from '../../sexpr/index.js';
 
-export interface ChangeDescription {
+interface ChangeDescription {
   type: 'added' | 'removed' | 'modified';
   category: 'component' | 'track' | 'via' | 'zone' | 'text' | 'graphic' | 'setup';
   description: string;
@@ -435,14 +435,14 @@ function compareVias(orig: Map<string, ViaData>, mod: Map<string, ViaData>, chan
   }
 }
 
-export interface NetInfo {
+interface NetInfo {
   name: string;
   segments: SegmentData[];
   vias: ViaData[];
   refs: string[];
 }
 
-export interface NetDiffEntry {
+interface NetDiffEntry {
   name: string;
   type: 'added' | 'removed' | 'modified';
   origSegments: number;
@@ -693,7 +693,7 @@ export function computeNetlistDiff(originalContent: string, modifiedContent: str
   return { nets: entries, summary };
 }
 
-export interface BomEntry {
+interface BomEntry {
   ref: string;
   value: string;
   footprint: string;
@@ -703,7 +703,7 @@ export interface BomEntry {
   rotation: number;
 }
 
-export interface BomDiffEntry {
+interface BomDiffEntry {
   ref: string;
   value: string;
   footprint: string;

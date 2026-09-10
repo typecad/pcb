@@ -12,7 +12,7 @@ import { SymbolFileInfo } from './KiCadSymbolFileScanner.js';
 /**
  * Represents a parsed KiCad symbol property
  */
-export interface SymbolProperty {
+interface SymbolProperty {
   name: string;
   value: string;
 }
@@ -71,7 +71,7 @@ export interface ExtractionStatistics {
 /**
  * Error information for failed extractions
  */
-export interface ExtractionError {
+interface ExtractionError {
   /** File that caused the error */
   file: string;
   /** Error message */

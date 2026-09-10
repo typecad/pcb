@@ -6,7 +6,6 @@ import { TestPoint, MountingHole, type MountingHoleInit } from './mechanical.js'
 import { NetTie, type NetTieInit } from './net_tie.js';
 
 export type { PassiveSize, FuseSize, ConnectorSeries } from './configs.js';
-export { PASSIVE_DEFAULT_SIZE } from './configs.js';
 export type { PassiveInit, FuseInit } from './chip.js';
 export type { ConnectorInit } from './connector.js';
 export type { MountingHoleInit } from './mechanical.js';

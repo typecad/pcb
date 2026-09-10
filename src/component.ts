@@ -13,7 +13,6 @@ import { validateFinite } from './utils/numeric_validation.js';
 import { LIBRARY_SEPARATOR } from './utils/constants.js';
 import { parseTextOrPositioning, parseFab } from './pcb/component_text.js';
 import type {
-  TextOrPositioning,
   TextPositioning,
   TextWithPositioning,
   TextEntry,
@@ -28,8 +27,7 @@ import { isPlacementValue, coercePlacementInput, type PlacementNumber, type Plac
 
 const defaultCounter = new ReferenceCounter();
 
-export type { TextOrPositioning, TextPositioning, TextWithPositioning, TextEntry, FabEntry, FabLayout };
-export { parseTextOrPositioning };
+export type { TextEntry, FabEntry, FabLayout };
 
 /**
  * Maps KiCAD symbol pin names to board framework pin names.

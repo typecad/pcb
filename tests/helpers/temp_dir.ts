@@ -21,7 +21,7 @@ export function cleanupTempDir(dir: string): void {
   if (idx >= 0) activeTempDirs.splice(idx, 1);
 }
 
-export function cleanupAllTempDirs(): void {
+function cleanupAllTempDirs(): void {
   for (const dir of activeTempDirs) {
     try {
       fs.rmSync(dir, { recursive: true, force: true });
@@ -42,6 +42,6 @@ export function readTempFile(dir: string, name: string): string {
   return fs.readFileSync(path.join(dir, name), 'utf8');
 }
 
-export function tempFileExists(dir: string, name: string): boolean {
+function tempFileExists(dir: string, name: string): boolean {
   return fs.existsSync(path.join(dir, name));
 }

@@ -401,6 +401,3 @@ export interface JsonErrorResponse {
   /** Optional error code for programmatic handling */
   code?: string;
 }
-
-// Export KiCad-specific types
-export { LibraryInfo, SymbolInfo, KiCadCacheMetadata } from './kicad.js';

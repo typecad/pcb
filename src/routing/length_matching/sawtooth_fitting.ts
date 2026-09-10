@@ -23,7 +23,7 @@ import logger from '../../utils/logging.js';
  * @param margin Margin at both ends to keep away from bends
  * @param side   Normal side (+1 or -1) for the zigzag direction
  */
-export function buildSawtoothPolyline(
+function buildSawtoothPolyline(
   seg: IStraightSegment,
   n: number,
   pitch: number,
@@ -163,7 +163,7 @@ export function validatePolylineDRC(ctx: ILengthMatchContext, pts: { x: number; 
  * Adjusts amplitude and pitch to achieve the required `deltaL` length
  * extension within the given `tolerance`.
  */
-export function fitSawtooth(
+function fitSawtooth(
   ctx: ILengthMatchContext,
   seg: IStraightSegment,
   deltaL: number,
@@ -543,7 +543,7 @@ export function fitSawtoothBidirectional(
  * Try to find the longest contiguous sub-span of `seg` that has free
  * clearance and attempt to fit a sawtooth pattern on that sub-span.
  */
-export function attemptSubSpanFit(
+function attemptSubSpanFit(
   ctx: ILengthMatchContext,
   seg: IStraightSegment,
   deltaL: number,
@@ -676,7 +676,7 @@ export function attemptSubSpanFit(
  * and fit sawtooth patterns on each. Returns a combined fitted pattern if
  * all sub-fits succeed.
  */
-export function attemptMultiFitOnSubSeg(
+function attemptMultiFitOnSubSeg(
   ctx: ILengthMatchContext,
   subSeg: IStraightSegment,
   deltaL: number,

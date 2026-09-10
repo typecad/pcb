@@ -278,7 +278,7 @@ export class KiCAD {
 
 let _flatpakTempDir: string | undefined;
 
-export function resetFlatpakTempDir(): void {
+function resetFlatpakTempDir(): void {
   _flatpakTempDir = undefined;
 }
 

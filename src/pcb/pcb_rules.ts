@@ -379,5 +379,3 @@ export function writeRulesToProject(
   const updated = mergeRulesIntoProject(existing, rules, netClasses, assignments, teardrops);
   fs.writeFileSync(projectPath, updated, 'utf8');
 }
-
-export { RULE_KEYS };

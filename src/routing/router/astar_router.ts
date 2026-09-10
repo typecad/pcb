@@ -19,7 +19,7 @@ import { ClearanceProfile } from './clearance_profile.js';
 import { profiler } from '../shared/profiler.js';
 import { calculateMinTraceWidth, calculateMinViaSize } from '../../pcb/pcb_routing_calculations.js';
 
-export type { IRouteNode, IRoutePath, IRoutingOptions } from './types.js';
+export type { IRoutePath, IRoutingOptions } from './types.js';
 
 /**
  * A* pathfinding algorithm for PCB routing.

@@ -117,7 +117,7 @@ export function tryOffsetCorridorAndPattern(
  * Search for a parallel offset corridor where a sawtooth can be placed.
  * Returns the offset segment, jog paths, and side if found.
  */
-export function findOffsetCorridor(
+function findOffsetCorridor(
   ctx: ILengthMatchContext,
   seg: IStraightSegment,
   requiredAmp: number,

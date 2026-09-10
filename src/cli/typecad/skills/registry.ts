@@ -44,7 +44,7 @@ export function getSkill(name: string): Skill | undefined {
   return skillMap.get(name);
 }
 
-export function getSkillNames(): string[] {
+function getSkillNames(): string[] {
   return allSkills.map((s) => s.name);
 }
 

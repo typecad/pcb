@@ -20,7 +20,7 @@ import type { PcbInternalState } from './pcb_state.js';
  */
 
 /** True when at least one copper pour requests filling. */
-export function zoneFillRequested(state: PcbInternalState): boolean {
+function zoneFillRequested(state: PcbInternalState): boolean {
   return state.zones.some((z) => (z as { filled?: boolean }).filled === true);
 }
 

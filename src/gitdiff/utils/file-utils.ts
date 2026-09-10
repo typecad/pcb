@@ -27,7 +27,7 @@ function evictIfNeeded(cache: Map<string, unknown>): void {
   }
 }
 
-export function getFileHash(filePath: string): string {
+function getFileHash(filePath: string): string {
   if (!fileHashCache.has(filePath)) {
     const content = fs.readFileSync(filePath);
     evictIfNeeded(fileHashCache);
@@ -40,7 +40,7 @@ function getCacheKey(pcbFile: string, layer: string, theme?: string): string {
   return `${getFileHash(pcbFile)}:${layer}:${theme || ''}`;
 }
 
-export function clearCache(): void {
+function clearCache(): void {
   svgCache.clear();
   for (const key of fileHashCache.keys()) {
     if (!key.startsWith('__')) {
@@ -212,7 +212,7 @@ function applyViewBox(svgContent: string, viewBox: string): string {
   return result;
 }
 
-export async function executeKicadSvgExport(layer: string, pcbFile: string, theme?: string): Promise<string> {
+async function executeKicadSvgExport(layer: string, pcbFile: string, theme?: string): Promise<string> {
   const pcbBasename = path.basename(pcbFile, '.kicad_pcb');
   const tempSvgPath = createTempFilePath(`gitdiff_${pcbBasename}_`, `${layer}.svg`);
 
@@ -246,7 +246,7 @@ export async function executeKicadSvgExport(layer: string, pcbFile: string, them
   }
 }
 
-export function createTempFilePath(prefix: string, suffix: string): string {
+function createTempFilePath(prefix: string, suffix: string): string {
   const uniqueId = crypto.randomUUID();
   return path.join(getFlatpakSafeTempDir(), `${prefix}${uniqueId}_${suffix}`);
 }
@@ -282,7 +282,7 @@ export async function executeKicadSvgExportCached(layer: string, pcbFile: string
   return svg;
 }
 
-export function cleanupTempFiles(filePaths: string[]): number {
+function cleanupTempFiles(filePaths: string[]): number {
   let cleanedCount = 0;
   for (const filePath of filePaths) {
     try {

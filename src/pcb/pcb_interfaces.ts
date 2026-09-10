@@ -139,7 +139,7 @@ export interface IVia {
 /**
  * Base interface for all graphical primitives on the PCB.
  */
-export interface IGraphicPrimitive {
+interface IGraphicPrimitive {
   /** Unique identifier for tracking and updating. */
   uuid: string;
   /** KiCad layer name (e.g., "F.Cu", "B.SilkS", "Edge.Cuts"). */
@@ -346,7 +346,7 @@ export interface IGrTextOptions {
   uuid?: string;
 }
 
-export interface IZone {
+interface IZone {
   uuid: string;
   layers: string[];
   x: number;

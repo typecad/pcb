@@ -11,8 +11,6 @@ export function logWarning(message: string, ...args: unknown[]): void {
   logger.warn(`[Schematic] Warning: ${message}`, ...args);
 }
 
-export type { SExprNode };
-
 export interface SymbolDefinition {
   rawSexpr: SExprNode;
   serializedLibEntry: string;

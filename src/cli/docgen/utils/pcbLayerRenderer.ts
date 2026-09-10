@@ -381,7 +381,7 @@ export async function generateStackupSvgString(pcbFilePath: string): Promise<str
   return generateStackupSVG(stackup.data);
 }
 
-export async function generateStackupSvgFromFile(pcbFilePath: string): Promise<string> {
+async function generateStackupSvgFromFile(pcbFilePath: string): Promise<string> {
   const stackup = await extractStackup(pcbFilePath);
   if (!stackup.success || !stackup.data) {
     throw stackup.error || new Error('No stackup data found in PCB file');

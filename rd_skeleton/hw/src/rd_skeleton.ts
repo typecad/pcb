@@ -1,7 +1,7 @@
 import { PCB, Resistor, MountingHole, Connector } from '@typecad/pcb';
+import { ATtiny3227_M } from './ATtiny3227_M.js';
 
 const typecad = new PCB('rd_skeleton');
-// let r1 = new Resistor({ value: '1kohm' });
 const mh1 = new MountingHole({ size: 'M2.5', reference: '' });
 const mh2 = new MountingHole({ size: 'M2.5', footprint: 'MountingHole:MountingHole_2.5mm_Pad' });
 const mh3 = new MountingHole({ size: 'M2.5' });
@@ -14,8 +14,11 @@ const j2 = new Connector({
   number: 4,
   footprint: 'TerminalBlock_TE-Connectivity:TerminalBlock_TE_282834-4_1x04_P2.54mm_Horizontal',
 });
+const r1 = new Resistor({ value: '1kohm' });
+r1.pcb = { x: 137.4, y: 90.9 };
 
-// r1.pcb = {x: 137.4, y: 90.9};
+const u1 = new ATtiny3227_M();
+u1.pcb = { x: 150, y: 100 };
 // r1.referenceLayout = { x: 0, y: -2.5, font: 'OCR A Std', height: 1.2, width: 1.2 };
 typecad.named('GND').net(j1.pin(1), j1.pin(1));
 // typecad.named('GND').net(r1.pin(1))
@@ -50,4 +53,4 @@ typecad.zone({
 typecad.text({ text: 'rd-skeleton', x: 150, y: 112, layer: 'F.SilkS', font: 'OCR A Std', width: 1.5, height: 1.5 });
 typecad.stitch('GND', { pitch: 2.5, margin: 5 });
 // typecad.plane('GND', 'F.Cu');
-typecad.create(mh1, mh2, mh3, mh4, j1, j2);
+typecad.create(mh1, mh2, mh3, mh4, j1, j2, r1, u1);

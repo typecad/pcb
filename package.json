@@ -17,6 +17,7 @@
   },
   "workspaces": [
     "@typecad/*",
+    "packages/*",
     "demo/hw",
     "rd_skeleton/hw"
   ],

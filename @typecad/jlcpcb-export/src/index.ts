@@ -176,6 +176,17 @@ export function runKiCADCommand(kicadCli: string, commandArgs: string[]): boolea
   return true;
 }
 
+/** KiCad major version from `kicad-cli --version`; 0 when undeterminable. */
+export function kicadMajorVersion(kicadCli: string): number {
+  try {
+    const out = execFileSync(kicadCli, ['--version'], { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
+    // output is a bare semver ("10.0.0") on current KiCad
+    return Number.parseInt(/(\d+)/.exec(out)?.[1] ?? '0', 10);
+  } catch {
+    return 0;
+  }
+}
+
 export function runGitCommand(args: string[]): string | null {
   const gitCmd = IS_WIN ? 'git.exe' : 'git';
   try {
@@ -313,7 +324,15 @@ async function run(): Promise<void> {
   // gerbers
   const gerbersDir = path.join(outputPath, 'gerbers');
   fs.mkdirSync(gerbersDir, { recursive: true });
-  const gerbersOk = runKiCADCommand(kicadCli, ['pcb', 'export', 'gerbers', '--output', gerbersDir, pcbFile]);
+  // Fab gerbers without pours get rejected at assembly: a fresh typeCAD
+  // build writes zone declarations without fill geometry (pcbnew normally
+  // fills them on save). --check-zones refills required zones on export
+  // (KiCad ≥ 9); on KiCad 8 the export runs as-is and the board should be
+  // saved from pcbnew once so fills exist in the file.
+  const gerberArgs = ['pcb', 'export', 'gerbers', '--output', gerbersDir];
+  if (kicadMajorVersion(kicadCli) >= 9) gerberArgs.push('--check-zones');
+  gerberArgs.push(pcbFile);
+  const gerbersOk = runKiCADCommand(kicadCli, gerberArgs);
   if (gerbersOk) {
     process.stdout.write(chalk.blue.bold(gerbersDir + '/') + ' Gerber files written\n');
   } else {

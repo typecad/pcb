@@ -49,6 +49,22 @@
         (fields
                   (field (name "Footprint") "TerminalBlock_TE-Connectivity:TerminalBlock_TE_282834-4_1x04_P2.54mm_Horizontal")
         )
+     )
+    (comp
+      (ref "R1")
+        (value "1kohm")
+        (footprint "Resistor_SMD:R_0603_1608Metric")
+        (fields
+                  (field (name "Footprint") "Resistor_SMD:R_0603_1608Metric")
+        )
+     )
+    (comp
+      (ref "U1")
+        (value "ATtiny3227-M")
+        (footprint "Package_DFN_QFN:QFN-24-1EP_4x4mm_P0.5mm_EP2.6x2.6mm")
+        (fields
+                  (field (name "Footprint") "Package_DFN_QFN:QFN-24-1EP_4x4mm_P0.5mm_EP2.6x2.6mm")
+        )
      ))
   (nets
     (net (code "1") (name "GND")

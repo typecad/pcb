@@ -7,6 +7,7 @@ import type { ProjectAnswers } from '../types.js';
 import logger from '../../utils/logging.js';
 import { getCategories, getSkillsByCategory } from '../typecad/skills/registry.js';
 import { CORE_DEPENDENCIES } from './core-deps.js';
+import { writeEditorIntegration } from './editor_integration.js';
 
 function sanitizeProjectName(name: string): string {
   if (/[;&|$`\\!#(){}[\]<>]/.test(name)) {
@@ -390,6 +391,15 @@ _flipped_
       );
     } catch (error) {
       throw new Error(`ERROR writing ./${answers.name}.code-workspace ${error}`);
+    }
+
+    try {
+      const written = writeEditorIntegration(path.join(process.cwd(), answers.name, 'hw'));
+      if (written.length > 0) {
+        logger.log(chalk.green('+'), 'VS Code extension bundled — hover a component in src/ for pin info');
+      }
+    } catch (error) {
+      logger.log(chalk.yellow('!'), `Editor integration skipped: ${(error as Error).message}`);
     }
 
     logger.log(chalk.green('+'), 'Finished');

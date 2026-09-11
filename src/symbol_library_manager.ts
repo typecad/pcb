@@ -91,9 +91,14 @@ export class SymbolLibraryManager {
       return null;
     }
 
-    const resolvedFqn = `${resolved.libraryName}:${resolved.symbolName}`;
+    // The embedded lib_symbols entry must carry the REQUESTED symbol's name
+    // to match the placed symbol's lib_id — KiCad silently drops components
+    // whose lib_id has no matching embedded definition (netlist export and
+    // ERC omit them entirely). resolveExtends already flattens extends
+    // chains and names the node this way; the explicit assignment keeps that
+    // contract local and obvious.
     const rawSexpr = [...resolved.node] as SExprNode;
-    rawSexpr[1] = resolvedFqn;
+    rawSexpr[1] = symbolFqn;
 
     const definition: SymbolDefinition = {
       rawSexpr: rawSexpr,

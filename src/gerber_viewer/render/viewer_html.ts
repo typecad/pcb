@@ -83,6 +83,30 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     panzoom.setAttribute('transform', 'translate(' + tx + ' ' + ty + ') scale(' + k + ')');
     renderMeasure();
     renderDrc();
+    scheduleSaveView();
+  }
+  // The viewport survives reloads (the dev server and the vscode panel both
+  // reload on every build) — stored under a reserved key next to the layer
+  // settings. Throttled: wheel zoom fires apply() far faster than a save
+  // needs to happen.
+  var saveViewTimer = null;
+  function scheduleSaveView() {
+    if (saveViewTimer) return;
+    saveViewTimer = setTimeout(function () {
+      saveViewTimer = null;
+      try {
+        var state = {};
+        try {
+          state = JSON.parse(localStorage.getItem(storeKey) || '{}') || {};
+        } catch (e) {
+          state = {};
+        }
+        state.__view = { k: k, tx: tx, ty: ty };
+        localStorage.setItem(storeKey, JSON.stringify(state));
+      } catch (e) {
+        /* private mode etc. — the view just won't persist */
+      }
+    }, 200);
   }
   function clientToView(pt) {
     var ctm = svg.getScreenCTM();
@@ -132,7 +156,11 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       }
       var v = clientToView({ x: ev.clientX, y: ev.clientY });
       var bx = (v.x - tx) / k;
-      var by = -((v.y - ty) / k);
+      // Board (KiCad/typeCAD) coordinates, y-down — the same numbers a
+      // component's pcb placement uses. Gerber space is y-up, so the viewBox
+      // y (post-yflip) reads directly; negating here would report the
+      // pre-flip gerber value and show every position mirrored.
+      var by = (v.y - ty) / k;
       statusEl.textContent =
         (probe ? probe + '   ' : '') +
         bx.toFixed(3) + ', ' + by.toFixed(3) + ' ' + units + '   zoom ' + k.toFixed(2) + 'x';
@@ -315,11 +343,11 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   });
 
   // ---- component search: locate, zoom, flash ----
-  document.getElementById('comp-search').addEventListener('keydown', function (ev) {
-    if (ev.key !== 'Enter') return;
-    ev.preventDefault();
-    var q = ev.target.value.trim().toUpperCase();
-    if (!q) return;
+  // Also driven programmatically by window.typecadViewer.searchRefs (the
+  // cross-probe API the vscode extension's injected client calls).
+  function searchRefs(rawQuery) {
+    var q = rawQuery.trim().toUpperCase();
+    if (!q) return false;
     var all = svg.querySelectorAll('[data-ref]');
     var hits = [];
     for (var i = 0; i < all.length; i++) {
@@ -328,7 +356,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     }
     if (!hits.length) {
       statusEl.textContent = '"' + q + '" not found';
-      return;
+      return false;
     }
     // union of local bboxes (getBBox: rendering-independent, unlike client
     // rects which can be 0x0 for <use> flashes) -> fit the view to it.
@@ -370,6 +398,12 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       setTimeout((function (el) { return function () { el.classList.remove('search-flash'); }; })(hits[f]), 2700);
     }
     statusEl.textContent = hits.length + ' pad(s) of ' + hits[0].getAttribute('data-ref');
+    return true;
+  }
+  document.getElementById('comp-search').addEventListener('keydown', function (ev) {
+    if (ev.key !== 'Enter') return;
+    ev.preventDefault();
+    searchRefs(ev.target.value);
   });
 
   // ---- DRC markers (injected by the serve pipeline) ----
@@ -512,13 +546,21 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     saved = {};
   }
   function persist() {
+    // read-merge-write: the viewport lives in this store too (__view) and
+    // must survive a layer-settings save
     var state = {};
+    try {
+      state = JSON.parse(localStorage.getItem(storeKey) || '{}') || {};
+    } catch (e) {
+      state = {};
+    }
     document.querySelectorAll('.layer-row').forEach(function (row) {
       state[row.getAttribute('data-layer-id')] = {
         visible: row.querySelector('.layer-vis').checked,
         opacity: parseFloat(row.querySelector('.layer-opacity').value),
       };
     });
+    state.__view = { k: k, tx: tx, ty: ty };
     try {
       localStorage.setItem(storeKey, JSON.stringify(state));
     } catch (e) {
@@ -541,6 +583,17 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   document.querySelectorAll('.layer-opacity').forEach(function (slider) {
     slider.addEventListener('input', function () { syncOpacity(slider); persist(); });
   });
+
+  // restore the saved viewport (k/tx/ty) after the layer settings — apply()
+  // then puts the reload back exactly where the last session was zoomed
+  (function () {
+    var view = saved.__view;
+    if (!view || !Number.isFinite(view.k) || !Number.isFinite(view.tx) || !Number.isFinite(view.ty)) return;
+    k = Math.min(5000, Math.max(0.02, view.k));
+    tx = view.tx;
+    ty = view.ty;
+    apply();
+  })();
 
   window.addEventListener('keydown', function (ev) {
     if (ev.key === '0' || ev.key === 'f') fit();
@@ -573,6 +626,15 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   themeBtn.addEventListener('click', function () {
     applyTheme(document.body.classList.contains('light') ? 'dark' : 'light');
   });
+
+  // Embedding surface (the vscode extension's webview client calls these to
+  // cross-probe: select a component from the editor, click a pad to jump
+  // back). Absent in a plain browser tab; callers must feature-check.
+  window.typecadViewer = {
+    searchRefs: searchRefs,
+    highlightNet: highlightNet,
+    clearNetHighlight: clearNetHighlight,
+  };
 })();
 `;
 
@@ -712,7 +774,7 @@ ${rows}
   </div>
 </div>
 <div id="board-area">
-  ${svg.replace('<svg ', '<svg id="board" ').replace('</g></g></svg>', '</g><g id="measure"></g><g id="drc"></g></g></svg>')}
+  ${svg.replace('<svg ', '<svg id="board" ').replace('</g></g></svg>', '</g><g id="measure"></g><g id="drc"></g><g id="typecad-probe"></g></g></svg>')}
   <div id="status"></div>
   <script id="drc-data" type="application/json">${JSON.stringify(options.drcMarkers ?? []).replace(/</g, '\\u003c')}</script>
 </div>

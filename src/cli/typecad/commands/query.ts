@@ -3,7 +3,7 @@ import path from 'node:path';
 import chalk from 'chalk';
 import type { ParsedArgs } from '../parser.js';
 import logger from '../../../utils/logging.js';
-import { buildDirPath } from '../pipeline.js';
+import { buildDirPath, findBoardFile } from '../pipeline.js';
 import {
   buildBoardModel,
   findComponent,
@@ -21,11 +21,7 @@ function findPcbFile(argPath?: string): string | null {
     const resolved = path.resolve(argPath);
     return fs.existsSync(resolved) ? resolved : null;
   }
-  const buildDir = buildDirPath();
-  if (!fs.existsSync(buildDir)) return null;
-  const pcbFiles = fs.readdirSync(buildDir).filter((f) => f.endsWith('.kicad_pcb'));
-  if (pcbFiles.length === 1) return path.join(buildDir, pcbFiles[0]);
-  return null;
+  return findBoardFile();
 }
 
 function netSummaryJson(net: BoardNet) {

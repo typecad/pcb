@@ -11,6 +11,8 @@ interface CliArgs {
   inputs: string[];
   out: string;
   svgOut: string | null;
+  netlistPath: string | null;
+  drcReportPath: string | null;
   open: boolean;
   help: boolean;
   version: boolean;
@@ -30,6 +32,9 @@ serve options:
 Options:
   -o, --out <file>    output HTML path (default: gerber-viewer.html)
   --svg <file>        also write a standalone SVG of the board
+  --netlist <file>    KiCad .net netlist: fills pad→net so clicking a pad
+                      highlights its whole net (like the serve mode)
+  --drc <file>        typecad DRC report JSON: renders violation markers
   --open              open the viewer in the default browser
   -h, --help          show this help
   -v, --version       print version
@@ -59,6 +64,8 @@ function parseArgs(argv: string[]): CliArgs {
     inputs: [],
     out: 'gerber-viewer.html',
     svgOut: null,
+    netlistPath: null,
+    drcReportPath: null,
     open: false,
     help: false,
     version: false,
@@ -69,6 +76,8 @@ function parseArgs(argv: string[]): CliArgs {
     else if (arg === '-v' || arg === '--version') args.version = true;
     else if (arg === '-o' || arg === '--out') args.out = argv[++i] ?? '';
     else if (arg === '--svg') args.svgOut = argv[++i] ?? '';
+    else if (arg === '--netlist') args.netlistPath = argv[++i] ?? '';
+    else if (arg === '--drc') args.drcReportPath = argv[++i] ?? '';
     else if (arg === '--open') args.open = true;
     else if (arg.startsWith('-')) throw new Error(`unknown option "${arg}"`);
     else args.inputs.push(arg);
@@ -149,13 +158,17 @@ export function run(argv: string[]): number {
 
   let result;
   try {
-    result = buildViewerFromFiles(args.inputs);
+    result = buildViewerFromFiles(args.inputs, {
+      netlistPath: args.netlistPath ?? undefined,
+      drcReportPath: args.drcReportPath ?? undefined,
+    });
   } catch (error) {
     process.stderr.write(`error: ${(error as Error).message}\n`);
     return 1;
   }
 
   try {
+    fs.mkdirSync(path.dirname(path.resolve(args.out)), { recursive: true });
     fs.writeFileSync(args.out, result.html);
   } catch (error) {
     process.stderr.write(`error: could not write ${args.out}: ${(error as Error).message}\n`);

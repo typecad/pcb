@@ -5,7 +5,7 @@ import { executeKiCADCommand } from '../../../kicad_commands.js';
 import type { ParsedArgs } from '../parser.js';
 import type { ErcViolation } from '../../types.js';
 import logger from '../../../utils/logging.js';
-import { buildDirPath } from '../pipeline.js';
+import { buildDirPath, findBoardFile } from '../pipeline.js';
 
 function findPcbFile(argPath?: string): string | null {
   if (argPath) {
@@ -14,14 +14,7 @@ function findPcbFile(argPath?: string): string | null {
     return null;
   }
 
-  const buildDir = buildDirPath();
-  if (!fs.existsSync(buildDir)) return null;
-
-  const pcbFiles = fs.readdirSync(buildDir).filter((f) => f.endsWith('.kicad_pcb'));
-  if (pcbFiles.length === 1) return path.join(buildDir, pcbFiles[0]);
-  if (pcbFiles.length > 1) return null;
-
-  return null;
+  return findBoardFile();
 }
 
 function formatViolation(v: ErcViolation): string {

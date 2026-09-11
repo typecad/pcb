@@ -23,9 +23,18 @@ export type LibraryLoader = (libraryName: string) => SList | null | undefined;
 
 /** A symbol resolved against its library, with `extends` ancestry flattened. */
 export interface ResolvedSymbol {
+  /** Library of the symbol that was requested. */
   libraryName: string;
+  /** Name of the symbol that was requested — not its extends base. */
   symbolName: string;
-  /** The resolved symbol node (the base symbol when `extends` was involved). */
+  /**
+   * The flattened symbol node: graphics and pins come from the base of the
+   * extends chain, properties from each derived level override the base's,
+   * and the node is named after the requested `library:symbol`. A
+   * schematic's `lib_symbols` entry must carry exactly that name to match
+   * the placed symbol's `lib_id` — otherwise KiCad drops the component
+   * silently (netlists and ERC omit it entirely).
+   */
   node: SList;
   serialized: string;
 }
@@ -72,6 +81,16 @@ export function getSymbolProperty(symbol: SList, propertyName: string): string |
 /** Footprint property value as written (e.g. "Resistor_SMD:R_0603_1608Metric"), or undefined. */
 export function footprintOf(symbol: SList): string | undefined {
   return getSymbolProperty(symbol, 'Footprint');
+}
+
+/**
+ * Reference-designator prefix carried by the symbol's `(property "Reference" ...)`
+ * (e.g. "U" for ICs, "RV" for pots), uppercased; undefined when absent.
+ */
+export function referencePrefixOf(symbol: SList): string | undefined {
+  const reference = getSymbolProperty(symbol, 'Reference');
+  const match = reference?.match(/^[A-Za-z]+/);
+  return match ? match[0].toUpperCase() : undefined;
 }
 
 /** "lib:FootprintName" form used by the add flows: strips any library prefix and re-prefixes "lib:". */
@@ -142,10 +161,78 @@ function extendsParentOf(symbol: SList): string | undefined {
 }
 
 /**
+ * Flatten one extends level onto an already-flattened parent node: the
+ * derived symbol's top-level properties replace the parent's same-named
+ * properties (or are appended when the parent lacks them); graphics, pins,
+ * and units stay inherited from the parent. Non-property children such as
+ * `(extends ...)` are dropped, keeping the result self-contained. Returns a
+ * new list — inputs are never mutated, so cached library nodes stay pristine.
+ */
+function mergePropertiesOver(parent: SList, derived: SList): SList {
+  const overrides = new Map<string, SList>();
+  for (const el of derived) {
+    if (Array.isArray(el) && Sym.isSym(el[0]) && el[0].name === 'property' && el.length > 2) {
+      overrides.set(String(el[1]), el);
+    }
+  }
+
+  const merged: SExpr[] = [];
+  const applied = new Set<string>();
+  for (const el of parent) {
+    if (Array.isArray(el) && Sym.isSym(el[0]) && el[0].name === 'property' && el.length > 2) {
+      const name = String(el[1]);
+      const override = overrides.get(name);
+      if (override) {
+        merged.push(override);
+        applied.add(name);
+        continue;
+      }
+    }
+    merged.push(el);
+  }
+  for (const [name, override] of overrides) {
+    if (!applied.has(name)) merged.push(override);
+  }
+  return merged;
+}
+
+/**
+ * Copy of a symbol node with its direct unit sub-symbols (`(symbol
+ * "Name_0_1")` …) renamed from the parent's previous bare name to the new
+ * one. Embedded lib_symbols unit sub-symbols carry the parent's BARE name
+ * (no library prefix) as a `Name_unit_body` prefix, and KiCad associates
+ * units with their parent by that prefix — a renamed parent must rename its
+ * units to match or the schematic fails to load.
+ */
+function renameUnitChildren(node: SList, fromBareName: string, toBareName: string): SList {
+  const out = [...node] as SList;
+  if (fromBareName === toBareName) return out;
+  const prefix = `${fromBareName}_`;
+  for (let i = 0; i < out.length; i++) {
+    const el = out[i];
+    if (
+      Array.isArray(el) &&
+      Sym.isSym(el[0]) &&
+      el[0].name === 'symbol' &&
+      typeof el[1] === 'string' &&
+      el[1].startsWith(prefix)
+    ) {
+      const renamed = [...el] as SList;
+      renamed[1] = `${toBareName}_${el[1].slice(prefix.length)}`;
+      out[i] = renamed;
+    }
+  }
+  return out;
+}
+
+/**
  * Resolve a symbol in a library, following `(extends "Parent")` ancestry to
- * the ultimate base symbol. Parent references may be a bare name (same
- * library) or `Lib:Name` (cross-library, resolved via the loader). Circular
- * chains and chains deeper than {@link MAX_EXTENDS_DEPTH} resolve to null.
+ * the ultimate base symbol and flattening the chain: the base contributes
+ * graphics and pins, each derived level contributes its property overrides,
+ * and the result is named after the requested `library:symbol` (never the
+ * base). Parent references may be a bare name (same library) or `Lib:Name`
+ * (cross-library, resolved via the loader). Circular chains and chains
+ * deeper than {@link MAX_EXTENDS_DEPTH} resolve to null.
  */
 export function resolveExtends(
   libraryName: string,
@@ -167,7 +254,9 @@ export function resolveExtends(
 
   const parentRef = extendsParentOf(node);
   if (parentRef === undefined) {
-    return { libraryName, symbolName, node, serialized: serialize(node) };
+    const flattened = renameUnitChildren(node, String(node[1]), symbolName);
+    flattened[1] = fqn;
+    return { libraryName, symbolName, node: flattened, serialized: serialize(flattened) };
   }
 
   const nextVisited = new Set(visited);
@@ -176,5 +265,11 @@ export function resolveExtends(
   const separator = parentRef.indexOf(':');
   const parentLibrary = separator === -1 ? libraryName : parentRef.slice(0, separator);
   const parentName = separator === -1 ? parentRef : parentRef.slice(separator + 1);
-  return resolveExtends(parentLibrary, parentName, loadLibrary, nextVisited, depth + 1);
+  const parent = resolveExtends(parentLibrary, parentName, loadLibrary, nextVisited, depth + 1);
+  if (!parent) return null;
+
+  const merged = mergePropertiesOver(parent.node, node);
+  const flattened = renameUnitChildren(merged, parent.symbolName, symbolName);
+  flattened[1] = fqn;
+  return { libraryName, symbolName, node: flattened, serialized: serialize(flattened) };
 }

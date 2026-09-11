@@ -85,7 +85,7 @@ describe('buildViewerHtml', () => {
     expect(html).toContain('id="btn-measure"');
     // overlay group rides inside panzoom (injected after the y-flip group)
     expect(html).toContain('id="yflip"');
-    expect(html).toMatch(/<\/g><g id="measure"><\/g><g id="drc"><\/g><\/g><\/svg>/);
+    expect(html).toMatch(/<\/g><g id="measure"><\/g><g id="drc"><\/g><g id="typecad-probe"><\/g><\/g><\/svg>/);
     // click-to-start / click-to-stick state machine + Escape clears all
     expect(html).toContain('measureStart = p;');
     expect(html).toContain('rulers.push(');
@@ -98,6 +98,16 @@ describe('buildViewerHtml', () => {
     expect(html).toContain('function snapToAngles');
     expect(html).toMatch(/if \(ev\.shiftKey\) mouseBoard = snapToAngles\(measureStart, mouseBoard\)/);
     expect(html).toMatch(/if \(ev\.shiftKey\) p = snapToAngles\(measureStart, p\)/);
+  });
+
+  it('exposes the cross-probe API for embedded surfaces (vscode webview)', () => {
+    // the vscode extension's injected client calls these to select components
+    // from the editor and highlight nets — must feature-check, browser tabs
+    // also load this page
+    expect(html).toContain('window.typecadViewer');
+    expect(html).toMatch(
+      /window\.typecadViewer = \{[^}]*searchRefs: searchRefs[^}]*highlightNet: highlightNet[^}]*clearNetHighlight: clearNetHighlight[^}]*\}/,
+    );
   });
 });
 
@@ -187,5 +197,21 @@ describe('viewer tooling (probing, search, report, DRC, export)', () => {
     expect(out).toContain('data-net="GND"');
     expect(out).toContain('data-ref="U1"');
     expect(out).toContain('data-pin="3"');
+  });
+
+  it('reports mouse position in board coordinates (y-down), not gerber (y-up)', () => {
+    // the viewBox is post-yflip, so viewBox y already equals board y —
+    // negating it mirrors every readout vs a component's pcb placement
+    expect(html).toContain('var by = (v.y - ty) / k;');
+    expect(html).not.toContain('var by = -((v.y - ty) / k);');
+  });
+
+  it('persists the viewport across reloads, merged with layer settings', () => {
+    // the dev server and the vscode panel reload on every build — the view
+    // must come back where it was, under a reserved key in the same store
+    expect(html).toContain('state.__view = { k: k, tx: tx, ty: ty }');
+    expect(html).toContain('saved.__view');
+    // a layer-settings save must not wipe the stored view
+    expect(html).toMatch(/function persist\(\)[\s\S]*?JSON\.parse\(localStorage\.getItem\(storeKey/);
   });
 });

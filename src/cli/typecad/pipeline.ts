@@ -80,6 +80,18 @@ export function findBuildFile(extension: string): string | null {
   return files.length === 1 ? files[0]! : null;
 }
 
+/**
+ * The project's compiled board — the newest .kicad_pcb in the build dir.
+ * build/ picks up stray boards (fp upgrade tests, imports) that would make
+ * a single-file check refuse forever; the board a build wrote last is the
+ * project's, so newest wins.
+ */
+export function findBoardFile(): string | null {
+  const files = findBuildFiles('.kicad_pcb');
+  if (files.length === 0) return null;
+  return files.map((f) => ({ f, m: fs.statSync(f).mtimeMs })).sort((a, b) => b.m - a.m)[0]!.f;
+}
+
 export function parseKiCadReport(reportPath: string): { violations: KiCadViolation[]; unconnectedItems: number } {
   if (!fs.existsSync(reportPath)) return { violations: [], unconnectedItems: 0 };
   try {
@@ -112,7 +124,10 @@ export interface BuildStepResult {
 }
 
 /** Runs the project entry via tsx; in JSON mode child output is piped so stdout stays parseable. */
-export async function runBuildStep(entry: string, opts: { json: boolean; verbose?: boolean }): Promise<BuildStepResult> {
+export async function runBuildStep(
+  entry: string,
+  opts: { json: boolean; verbose?: boolean },
+): Promise<BuildStepResult> {
   try {
     const env: Record<string, string> = { ...(process.env as Record<string, string>) };
     if (opts.verbose) env.TYPECAD_DEBUG = '1';

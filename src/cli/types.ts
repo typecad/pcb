@@ -23,6 +23,7 @@ export interface SymbolData {
   pins: CliPinInfo[];
   symbol_path?: string;
   footprint_recommendation?: string;
+  prefix?: string;
   convertedComponent?: unknown;
   c_component?: unknown;
   prettyFolder?: string;
@@ -40,6 +41,7 @@ export interface ComponentRenderData {
   pins: CliPinInfo[];
   footprint: string;
   symbol: string;
+  prefix?: string;
   symbol_path?: string;
   footprint_path?: string;
   folder?: string;

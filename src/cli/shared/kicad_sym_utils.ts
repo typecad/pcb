@@ -12,15 +12,18 @@ import {
   listSymbolNames,
   normalizeFootprintRef,
   parseSymbolLibrary,
+  referencePrefixOf,
   resolveExtends,
 } from '../../symbol_core.js';
 import type { SList } from '../../sexpr/types.js';
 
 export const sanitize_name = sharedSanitizeName;
 
-/** Result of resolving a symbol: its footprint (raw or "lib:"-normalized) and its pins. */
+/** Result of resolving a symbol: its footprint (raw or "lib:"-normalized), reference prefix, and pins. */
 export interface SymbolLookup {
   footprint: string;
+  /** Reference-designator prefix from the symbol's Reference property (e.g. "U"), if present. */
+  prefix?: string;
   pins: CliPinInfo[];
 }
 
@@ -78,6 +81,7 @@ export function readSymbol(symbol: string, folder = './'): SymbolLookup | null {
     const footprintProperty = footprintOf(resolved.node);
     return {
       footprint: footprintProperty || '',
+      prefix: referencePrefixOf(resolved.node),
       pins: toCliPins(resolved.node),
     };
   } catch (err) {
@@ -102,6 +106,7 @@ export function readSymbolFile(symbolPath: string, symbolName?: string): SymbolL
     const footprintProperty = footprintOf(target);
     return {
       footprint: footprintProperty !== undefined ? normalizeFootprintRef(footprintProperty) : '',
+      prefix: referencePrefixOf(target),
       pins: toCliPins(target),
     };
   } catch (err) {

@@ -6,6 +6,7 @@ import { buildBoardModel, singlePinNets, unconnectedPads } from '../board_model.
 import {
   buildDirPath,
   detectEntryFile,
+  findBoardFile,
   findBuildFile,
   runBuildStep,
   runDrcStep,
@@ -92,7 +93,7 @@ export async function run(parsed: ParsedArgs): Promise<void> {
   }
 
   // ── Step 2: unconnected analysis (needs built pcb) ───────────────────────
-  const pcbPath = findBuildFile('.kicad_pcb');
+  const pcbPath = findBoardFile();
   const schPath = findBuildFile('.kicad_sch');
 
   if (report.build.passed && pcbPath) {

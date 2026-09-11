@@ -1,0 +1,60 @@
+{
+  "name": "vscode-typecad-pcb",
+  "displayName": "typeCAD PCB",
+  "description": "Pin-level board intelligence for typeCAD projects — hover a component to see its pads, nets, and unconnected pins",
+  "version": "0.11.0",
+  "private": true,
+  "publisher": "typecad",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/typecad/pcb",
+    "directory": "packages/vscode-typecad-pcb"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onLanguage:typescript",
+    "workspaceContains:**/typecad.conf.ts"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "typecad-pcb.refreshBoardData",
+        "title": "Refresh Board Data",
+        "category": "typeCAD"
+      },
+      {
+        "command": "typecad-pcb.viewBoard",
+        "title": "View Board",
+        "category": "typeCAD"
+      },
+      {
+        "command": "typecad-pcb.viewComponent",
+        "title": "View Component on Board",
+        "category": "typeCAD"
+      }
+    ]
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "typecheck": "tsc -p ./ --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "bundle": "npm run compile && node scripts/bundle.mjs",
+    "vscode:prepublish": "npm run compile"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.7",
+    "@types/vscode": "^1.85.0",
+    "jsdom": "^30.0.1",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.11"
+  }
+}

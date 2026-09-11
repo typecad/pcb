@@ -123,6 +123,7 @@ describe('readSymbol', () => {
     const lookup = readSymbol('Device:R', './nonexistent-folder');
     expect(lookup).not.toBeNull();
     expect(lookup!.footprint).toBe('Resistor_SMD:R_0603_1608Metric');
+    expect(lookup!.prefix).toBe('R');
     // sanitize_name("~") === "_" and the dedup suffix concatenates the raw name: "_" + "_" + "2"
     expect(lookup!.pins).toEqual([
       { type: 'passive', name: '_', number: '1' },
@@ -174,6 +175,7 @@ describe('readSymbol', () => {
   it('resolves same-library extends to the base symbol', () => {
     const lookup = readSymbol('Connector:Conn_sm', './nonexistent-folder');
     expect(lookup!.footprint).toBe('Connector:PinHeader_1x02');
+    expect(lookup!.prefix).toBe('J');
     expect(lookup!.pins).toEqual([
       { type: 'power_in', name: 'VIN', number: '1' },
       { type: 'power_out', name: 'GND', number: '2' },
@@ -207,6 +209,7 @@ describe('readSymbolFile', () => {
   it('uses the first symbol when no name is given', () => {
     const lookup = readSymbolFile(join(tmpRoot, 'plain.kicad_sym'));
     expect(lookup!.footprint).toBe('lib:PinHeader_1x02');
+    expect(lookup!.prefix).toBe('J');
     expect(lookup!.pins).toEqual([
       { type: 'power_in', name: 'VIN', number: '1' },
       { type: 'power_out', name: 'GND', number: '2' },

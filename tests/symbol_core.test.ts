@@ -30,7 +30,13 @@ const LIB = `(kicad_symbol_lib
       (pin input line (at 5.08 0 0) (length 2.54) (name "GND") (number "9") hide)
     )
   )
-  (symbol "R_sm" (extends "R"))
+  (symbol "R_sm" (extends "R")
+    (property "Reference" "RN" (at 0 0 0))
+    (property "Value" "R_sm" (at 0 0 0))
+  )
+  (symbol "R_sm_sm" (extends "R_sm")
+    (property "Footprint" "Resistor_SMD:R_0805_2012Metric" (at 0 0 0))
+  )
   (symbol "Nested"
     (symbol "Nested_1_1"
       (symbol "deep"
@@ -44,7 +50,7 @@ const nodes = parseSymbolLibrary(LIB);
 
 describe('listSymbolNames / findSymbolNode', () => {
   it('lists top-level symbol names in document order', () => {
-    expect(listSymbolNames(nodes)).toEqual(['R', 'U', 'R_sm', 'Nested']);
+    expect(listSymbolNames(nodes)).toEqual(['R', 'U', 'R_sm', 'R_sm_sm', 'Nested']);
   });
 
   it('finds a symbol node by name', () => {
@@ -119,33 +125,61 @@ describe('extractPins', () => {
 describe('resolveExtends', () => {
   const loader = (libraryName: string) => (libraryName === 'Device' ? nodes : null);
 
-  it('resolves a plain symbol', () => {
+  it('resolves a plain symbol under its fully qualified name', () => {
     const result = resolveExtends('Device', 'R', loader);
     expect(result).not.toBeNull();
     expect(result!.symbolName).toBe('R');
-    expect(result!.serialized).toContain('(symbol "R"');
+    expect(result!.serialized).toContain('(symbol "Device:R"');
   });
 
-  it('resolves same-library extends to the base symbol', () => {
+  it('flattens extends under the requested name, not the base name', () => {
     const result = resolveExtends('Device', 'R_sm', loader);
     expect(result).not.toBeNull();
-    expect(result!.symbolName).toBe('R');
+    expect(result!.symbolName).toBe('R_sm');
+    // embedded entry name must match the placed symbol's lib_id
+    expect(result!.serialized).toContain('(symbol "Device:R_sm"');
+    expect(result!.serialized).not.toContain('(extends');
+    // unit sub-symbols follow the parent's (bare) name or KiCad can't load it
+    expect(result!.serialized).toContain('(symbol "R_sm_1_1"');
+    expect(result!.serialized).not.toContain('(symbol "R_1_1"');
+    // graphics/pins inherit from the base
     expect(footprintOf(result!.node)).toBe('Resistor_SMD:R_0603_1608Metric');
+    expect(extractPins(result!.node)).toHaveLength(2);
+  });
+
+  it('merges derived properties over inherited ones', () => {
+    const result = resolveExtends('Device', 'R_sm', loader)!;
+    expect(getSymbolProperty(result!.node, 'Reference')).toBe('RN');
+    expect(getSymbolProperty(result!.node, 'Value')).toBe('R_sm');
+    // properties the derived symbol does not override fall through
+    expect(footprintOf(result!.node)).toBe('Resistor_SMD:R_0603_1608Metric');
+  });
+
+  it('flattens multi-level chains with each level overriding in turn', () => {
+    const result = resolveExtends('Device', 'R_sm_sm', loader)!;
+    expect(result!.symbolName).toBe('R_sm_sm');
+    expect(result!.serialized).toContain('(symbol "Device:R_sm_sm"');
+    expect(result!.serialized).toContain('(symbol "R_sm_sm_1_1"');
+    expect(footprintOf(result!.node)).toBe('Resistor_SMD:R_0805_2012Metric');
+    expect(getSymbolProperty(result!.node, 'Reference')).toBe('RN');
+    expect(getSymbolProperty(result!.node, 'Value')).toBe('R_sm');
   });
 
   it('resolves cross-library parents written as Lib:Name', () => {
     const localLib = parseSymbolLibrary(`(kicad_symbol_lib (symbol "R_local" (extends "Device:R")))`);
-    const crossLoader = (libraryName: string) => (libraryName === 'Device' ? nodes : libraryName === 'MyLib' ? localLib : null);
+    const crossLoader = (libraryName: string) =>
+      libraryName === 'Device' ? nodes : libraryName === 'MyLib' ? localLib : null;
     const result = resolveExtends('MyLib', 'R_local', crossLoader);
     expect(result).not.toBeNull();
-    expect(result!.libraryName).toBe('Device');
-    expect(result!.symbolName).toBe('R');
+    // identity stays the requested symbol's, content flattens across libraries
+    expect(result!.libraryName).toBe('MyLib');
+    expect(result!.symbolName).toBe('R_local');
+    expect(result!.serialized).toContain('(symbol "MyLib:R_local"');
+    expect(footprintOf(result!.node)).toBe('Resistor_SMD:R_0603_1608Metric');
   });
 
   it('returns null on circular extends', () => {
-    const circular = parseSymbolLibrary(
-      `(kicad_symbol_lib (symbol "A" (extends "B")) (symbol "B" (extends "A")))`,
-    );
+    const circular = parseSymbolLibrary(`(kicad_symbol_lib (symbol "A" (extends "B")) (symbol "B" (extends "A")))`);
     const result = resolveExtends('Loop', 'A', (lib) => (lib === 'Loop' ? circular : null));
     expect(result).toBeNull();
   });

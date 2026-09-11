@@ -48,7 +48,7 @@ describe('export command', () => {
     vi.clearAllMocks();
     const kicadCmd = await import('../src/kicad_commands.js');
     executeKiCADCommand = kicadCmd.executeKiCADCommand as vi.Mock;
-    executeKiCADCommand.mockResolvedValue('');
+    executeKiCADCommand.mockImplementation(async (command: string) => (command === '--version' ? '10.0.0' : ''));
   });
 
   afterEach(() => {
@@ -144,8 +144,19 @@ describe('export command', () => {
         stdio: 'inherit',
       });
 
-      const callArgs = executeKiCADCommand.mock.calls[0][1] as string[];
+      const callArgs = (executeKiCADCommand.mock.calls.find((c) => c[0] === 'pcb')?.[1] ?? []) as string[];
       expect(callArgs.find((a) => a.endsWith('board.kicad_pcb'))).toBeDefined();
+    });
+
+    it('refills zones on gerber export (KiCad ≥ 9): a fresh build has no fill geometry', async () => {
+      setupFsMock('/project/build/board.kicad_pcb', ['board-F_Cu.gbr']);
+
+      const { run } = await import('../src/cli/typecad/commands/export.js');
+      await run(makeParsed({ subcommand: 'gerbers', positional: ['/project/build/board.kicad_pcb'] }));
+
+      const callArgs = (executeKiCADCommand.mock.calls.find((c) => c[0] === 'pcb')?.[1] ?? []) as string[];
+      // the mocked --version returns 10.0.0 → the flag must be present
+      expect(callArgs).toContain('--check-zones');
     });
 
     it('should pass passthrough args to kicad-cli', async () => {
@@ -160,7 +171,7 @@ describe('export command', () => {
         }),
       );
 
-      const callArgs = executeKiCADCommand.mock.calls[0][1] as string[];
+      const callArgs = (executeKiCADCommand.mock.calls.find((c) => c[0] === 'pcb')?.[1] ?? []) as string[];
       expect(callArgs).toContain('--exclude-drawing-sheet');
     });
 
@@ -176,7 +187,7 @@ describe('export command', () => {
         }),
       );
 
-      const callArgs = executeKiCADCommand.mock.calls[0][1] as string[];
+      const callArgs = (executeKiCADCommand.mock.calls.find((c) => c[0] === 'pcb')?.[1] ?? []) as string[];
       expect(callArgs).toContain(path.resolve('./fab'));
     });
 
@@ -192,7 +203,7 @@ describe('export command', () => {
         }),
       );
 
-      const callArgs = executeKiCADCommand.mock.calls[0][1] as string[];
+      const callArgs = (executeKiCADCommand.mock.calls.find((c) => c[0] === 'pcb')?.[1] ?? []) as string[];
       expect(callArgs).toContain(path.resolve('./fab'));
     });
 
@@ -207,7 +218,7 @@ describe('export command', () => {
         }),
       );
 
-      const callArgs = executeKiCADCommand.mock.calls[0][1] as string[];
+      const callArgs = (executeKiCADCommand.mock.calls.find((c) => c[0] === 'pcb')?.[1] ?? []) as string[];
       const outputIdx = callArgs.indexOf('--output');
       expect(outputIdx).toBeGreaterThan(-1);
       expect(callArgs[outputIdx + 1]).toMatch(/[\\/]build[\\/]gerbers$/);
@@ -276,7 +287,7 @@ describe('export command', () => {
         }),
       );
 
-      const callArgs = executeKiCADCommand.mock.calls[0][1] as string[];
+      const callArgs = (executeKiCADCommand.mock.calls.find((c) => c[0] === 'pcb')?.[1] ?? []) as string[];
       expect(callArgs).toContain('--use-drill-file-origin');
     });
 
@@ -316,7 +327,7 @@ describe('export command', () => {
       );
 
       expect(executeKiCADCommand).toHaveBeenCalledTimes(1);
-      const callArgs = executeKiCADCommand.mock.calls[0][1] as string[];
+      const callArgs = (executeKiCADCommand.mock.calls.find((c) => c[0] === 'pcb')?.[1] ?? []) as string[];
       expect(callArgs).not.toContain('gerbers');
       expect(callArgs).toContain('drill');
     });

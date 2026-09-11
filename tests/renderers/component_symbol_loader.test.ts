@@ -109,23 +109,29 @@ describe('loadSymbolLib', () => {
     expect(mockParseAsList).toHaveBeenCalled();
   });
 
-  it('should resolve extends symbols to their base symbol', () => {
+  it('should flatten extends symbols under the requested name', () => {
     mockExistsSync.mockImplementation((path: string) => path.includes('Device.kicad_sym'));
     mockReadFileSync.mockReturnValue('(kicad_symbol_lib (symbol "R_sm" (extends "R")) (symbol "R" (pin (number 1))))');
-    const baseSymbol = [makeSym('symbol'), 'R', [makeSym('pin'), [makeSym('number'), '1']]];
     mockParseAsList.mockReturnValue([
       makeSym('kicad_symbol_lib'),
       [makeSym('symbol'), 'R_sm', [makeSym('extends'), 'R']],
-      baseSymbol,
+      [makeSym('symbol'), 'R', [makeSym('pin'), [makeSym('number'), '1']]],
     ]);
     mockIsSym.mockImplementation((x: any) => x && x.name);
-    mockSerialize.mockReturnValue('(symbol "R" base)');
+    mockSerialize.mockReturnValue('(symbol flattened)');
 
     const result = loadSymbolLib('Device:R_sm', 'R1', '10k', undefined);
 
-    expect(result).toBe('(symbol "R" base)');
-    // the serialized content is the resolved base symbol, not the derived stub
-    expect(mockSerialize).toHaveBeenCalledWith(baseSymbol);
+    expect(result).toBe('(symbol flattened)');
+    // the serialized content is flattened from the base (pins/graphics) but
+    // named after the REQUESTED symbol — an embedded lib_symbols entry that
+    // carries the base's name never matches the placed symbol's lib_id and
+    // KiCad silently drops the component. resolveExtends serializes each
+    // chain level, so the embedded result is the LAST serialize call.
+    const calls = mockSerialize.mock.calls as unknown[][][];
+    const node = calls[calls.length - 1][0];
+    expect(node[0]).toEqual(makeSym('symbol'));
+    expect(node[1]).toBe('Device:R_sm');
   });
 
   it('should fall back to build/lib/symbols/ when not in kicad library', () => {

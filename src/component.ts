@@ -21,7 +21,7 @@ import type {
 } from './pcb/component_text.js';
 import type { ITextPositioning } from './pcb/pcb_interfaces.js';
 import { loadFootprintLib } from './pcb/component_footprint_loader.js';
-import { loadSymbolLib } from './renderers/component_symbol_loader.js';
+import { loadSymbolLib, getSymbolReferencePrefix } from './renderers/component_symbol_loader.js';
 import { getFootprintBounds } from './pcb/footprint_bounds.js';
 import { isPlacementValue, coercePlacementInput, type PlacementNumber, type PlacementInput } from './placement.js';
 
@@ -554,6 +554,15 @@ export class Component {
   }
 
   #inferPrefix(): string {
+    // The symbol's Reference property is authoritative (KiCad editors derive
+    // designators the same way); the footprint-name heuristic only serves
+    // components without a resolvable symbol.
+    if (this.#symbol) {
+      const fromSymbol = getSymbolReferencePrefix(this.#symbol);
+      if (fromSymbol) {
+        return fromSymbol;
+      }
+    }
     const fp = this.#footprint;
     if (!fp) return 'U';
     const parts = fp.split(LIBRARY_SEPARATOR);
@@ -634,9 +643,6 @@ export class Component {
     if (existingPin) {
       if (config?.type) existingPin.type = config.type;
       if (config?.powerInfo) existingPin.powerInfo = config.powerInfo;
-      if (!existingPin.uuid) {
-        existingPin.uuid = this.uuid;
-      }
       const site = getCallSite();
       if (site) {
         existingPin.sourceFile = site.file;
@@ -646,9 +652,11 @@ export class Component {
       return existingPin;
     }
 
-    const newPin = new Pin(this.reference, pinNumberStr, config?.type);
+    // Reference/uuid stay lazy (Pin reads them through its owner) so that
+    // class-field pins never force designator inference before the
+    // constructor body has set the symbol or prefix.
+    const newPin = new Pin('', pinNumberStr, config?.type);
     newPin.owner = this;
-    newPin.uuid = this.uuid;
     if (config?.powerInfo) newPin.powerInfo = config.powerInfo;
     const site = getCallSite();
     if (site) {

@@ -297,6 +297,7 @@ async function handleMixedSources(
     symbol: symbolData.symbol,
     footprint: footprintData.footprint,
     pins,
+    prefix: symbolData.prefix,
     symbol_path: symbolData.symbol_path,
     footprint_path: footprintData.footprint_path,
     folder: (cmdArgs.folder || '.') as string,
@@ -383,6 +384,7 @@ async function handleKicadSymbol(cmdArgs: CliArgs, isNonInteractive: boolean) {
         pins: lookup?.pins ?? [],
         symbol_path: entered_symbol,
         footprint_recommendation: lookup?.footprint ?? '',
+        prefix: lookup?.prefix,
       };
     } else {
       // Handle library:symbol format (existing logic)
@@ -422,6 +424,7 @@ async function handleKicadSymbol(cmdArgs: CliArgs, isNonInteractive: boolean) {
     name: sanitize_name(entered_symbol.split(':')[1]),
     pins: symbolLookup.pins,
     footprint_recommendation: symbolLookup.footprint,
+    prefix: symbolLookup.prefix,
   };
 }
 
@@ -470,6 +473,7 @@ async function handleLocalSymbol(cmdArgs: CliArgs, isNonInteractive: boolean) {
         pins: lookup?.pins ?? [],
         symbol_path: symbolPath,
         footprint_recommendation: lookup?.footprint ?? '',
+        prefix: lookup?.prefix,
       };
     } else {
       // Handle library:symbol format (existing logic)
@@ -487,6 +491,7 @@ async function handleLocalSymbol(cmdArgs: CliArgs, isNonInteractive: boolean) {
         symbol: entered_symbol,
         name: sanitize_name(_chosen_symbol),
         pins: lookup?.pins ?? [],
+        prefix: lookup?.prefix,
       };
     }
   } else {
@@ -525,6 +530,7 @@ async function handleLocalSymbol(cmdArgs: CliArgs, isNonInteractive: boolean) {
       pins: lookup?.pins ?? [],
       symbol_path: symbolPath,
       footprint_recommendation: lookup?.footprint ?? '',
+      prefix: lookup?.prefix,
     };
   }
 }
@@ -599,6 +605,7 @@ async function handleEasyedaSymbol(cmdArgs: CliArgs, isNonInteractive: boolean) 
     symbol: basename(symbolFilePath).replace(/\.[^/\\.]+$/, '') + ':' + convertedComponent.symbol.name,
     name: sanitize_name(convertedComponent.symbol.name),
     pins: lookup?.pins ?? [],
+    prefix: lookup?.prefix,
     symbol_path: symbolFilePath,
     convertedComponent,
     c_component,

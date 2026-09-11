@@ -4,7 +4,7 @@ import chalk from 'chalk';
 import { executeKiCADCommand } from '../../../kicad_commands.js';
 import type { ParsedArgs } from '../parser.js';
 import logger from '../../../utils/logging.js';
-import { buildDirPath } from '../pipeline.js';
+import { buildDirPath, findBoardFile } from '../pipeline.js';
 
 function findPcbFile(argPath?: string): string | null {
   if (argPath) {
@@ -13,14 +13,7 @@ function findPcbFile(argPath?: string): string | null {
     return null;
   }
 
-  const buildDir = buildDirPath();
-  if (!fs.existsSync(buildDir)) return null;
-
-  const pcbFiles = fs.readdirSync(buildDir).filter((f) => f.endsWith('.kicad_pcb'));
-  if (pcbFiles.length === 1) return path.join(buildDir, pcbFiles[0]);
-  if (pcbFiles.length > 1) return null;
-
-  return null;
+  return findBoardFile();
 }
 
 function getOutputDir(parsed: ParsedArgs, defaultDir: string): string {
@@ -32,6 +25,27 @@ function getOutputDir(parsed: ParsedArgs, defaultDir: string): string {
 }
 
 const VALID_SUBCOMMANDS = ['gerbers', 'drill'];
+
+let cachedKicadMajor = Number.NaN;
+
+/**
+ * KiCad major version from `kicad-cli --version`, cached. 0 when the CLI
+ * can't be reached or the output isn't understood — callers then skip
+ * version-gated flags. KiCad 9 added zone refilling to headless exports;
+ * KiCad 8 lacks it.
+ */
+export async function kicadMajorVersion(): Promise<number> {
+  if (!Number.isNaN(cachedKicadMajor)) return cachedKicadMajor;
+  try {
+    const out = await executeKiCADCommand('--version', [], { stdio: 'pipe' });
+    // output is a bare semver ("10.0.0") on current KiCad; older builds
+    // prefixed it — match the first number either way
+    cachedKicadMajor = Number.parseInt(/(\d+)/.exec(out)?.[1] ?? '0', 10);
+  } catch {
+    cachedKicadMajor = 0;
+  }
+  return cachedKicadMajor;
+}
 
 async function runGerbers(parsed: ParsedArgs): Promise<void> {
   const json = parsed.json;
@@ -58,7 +72,24 @@ async function runGerbers(parsed: ParsedArgs): Promise<void> {
     logger.log(`  Output: ${outputDir}\n`);
   }
 
-  const args = ['export', 'gerbers', '--output', outputDir, ...parsed.passthrough, pcbPath];
+  // A fresh typeCAD build writes zone declarations without fill geometry —
+  // pcbnew normally computes the pour on save, which never happens in a
+  // headless pipeline, so gerbers would plot bare copper with no pours.
+  // --check-zones (KiCad ≥ 9) refills required zones during the export.
+  const refillZones = (await kicadMajorVersion()) >= 9;
+  if (refillZones && !json) {
+    logger.log(chalk.gray('  Zones:  refilled on export (--check-zones)'));
+  }
+
+  const args = [
+    'export',
+    'gerbers',
+    '--output',
+    outputDir,
+    ...(refillZones ? ['--check-zones'] : []),
+    ...parsed.passthrough,
+    pcbPath,
+  ];
 
   await executeKiCADCommand('pcb', args, { stdio: 'inherit' });
 

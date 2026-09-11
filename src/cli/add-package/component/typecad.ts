@@ -11,6 +11,7 @@ function renderComponent(data: PackageComponentRenderData) {
   const pinProperties = data.pins
     .map((p: CliPinInfo) => `    ${p.name} = this.pin(${p.number}, { type: '${p.type}' });`)
     .join('\n');
+  const prefixLine = data.prefix ? `\n        prefix: "${data.prefix}",` : '';
   return `import { Component } from "@typecad/pcb";
 /**
  | Pin # | Name | Type          |
@@ -19,10 +20,12 @@ ${pinsTableRows}
  */
 export class ${data.component_name} extends Component {
 ${pinProperties}
-    
+
     constructor(reference?: string | undefined) {
-        super("${data.footprint}");
-        this.symbol = "${data.symbol}";
+        super({
+            footprint: "${data.footprint}",
+            symbol: "${data.symbol}",${prefixLine}
+        });
         if (reference) this.reference = reference;
     }
 }`;

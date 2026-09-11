@@ -49,8 +49,11 @@ describe('add component (local symbol + footprint files)', () => {
     expect(generated).toContain('export class Conn extends Component');
     expect(generated).toContain(`VIN = this.pin(1, { type: 'power_in' });`);
     expect(generated).toContain(`GND = this.pin(2, { type: 'power_out' });`);
-    expect(generated).toContain('super("pinheader:PinHeader_1x02")');
-    expect(generated).toContain('this.symbol = "conn:Conn"');
+    // symbol and reference prefix are passed through the Component init so
+    // pin field initializers can never resolve the designator too early
+    expect(generated).toContain('footprint: "pinheader:PinHeader_1x02"');
+    expect(generated).toContain('symbol: "conn:Conn"');
+    expect(generated).toContain('prefix: "J",');
 
     expect(existsSync(join(tmpRoot, 'project', 'build', 'lib', 'conn.kicad_sym'))).toBe(true);
     expect(existsSync(join(tmpRoot, 'project', 'build', 'lib', 'footprints', 'pinheader.kicad_mod'))).toBe(true);

@@ -372,7 +372,8 @@ async function main(preparsedArgs?: CliArgs) {
         });
       }
 
-      pins = readSymbol(entered_symbol, '')?.pins ?? [];
+      const kicadLookup = readSymbol(entered_symbol, '');
+      pins = kicadLookup?.pins ?? [];
 
       const data = {
         package_name: sanitize_name(entered_package_name),
@@ -382,6 +383,7 @@ async function main(preparsedArgs?: CliArgs) {
         symbol: entered_symbol,
         footprint: entered_footprint,
         pins,
+        prefix: kicadLookup?.prefix,
       };
 
       create_component(data);
@@ -422,6 +424,7 @@ async function main(preparsedArgs?: CliArgs) {
           component_name: sanitize_name(entered_symbol.split(':')[1]),
           footprint: entered_footprint,
           pins,
+          prefix: symbolLookup?.prefix,
           symbol: entered_symbol,
           folder: folderPath,
         };
@@ -473,6 +476,7 @@ async function main(preparsedArgs?: CliArgs) {
         component_name: sanitize_name(_chosen_symbol),
         footprint: _footprint,
         pins,
+        prefix: symbolLookup?.prefix,
         symbol_path: symbolPath,
         symbol: `${_chosen_symbol}:${_chosen_symbol}`,
         footprint_path: footprintPath,
@@ -569,10 +573,11 @@ async function main(preparsedArgs?: CliArgs) {
       }
 
       // gets pin names from symbol
-      pins = readSymbolFile(
+      const easyedaLookup = readSymbolFile(
         `./${convertedComponent.symbol.name}.pretty/${convertedComponent.symbol.name}.kicad_sym`,
         convertedComponent.symbol.name,
-      )?.pins ?? [];
+      );
+      pins = easyedaLookup?.pins ?? [];
 
       const data = {
         package_name: sanitize_name(entered_package_name),
@@ -587,6 +592,7 @@ async function main(preparsedArgs?: CliArgs) {
           `${convertedComponent.symbol.name}`,
         footprint: `lib:${convertedComponent.footprint.name}`,
         pins,
+        prefix: easyedaLookup?.prefix,
         symbol_path: `./${convertedComponent.symbol.name}.pretty/${convertedComponent.symbol.name}.kicad_sym`,
         footprint_path: `./${convertedComponent.symbol.name}.pretty/${convertedComponent.footprint.name}.kicad_mod`,
         folder: folderPath,

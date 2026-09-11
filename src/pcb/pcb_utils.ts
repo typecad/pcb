@@ -1,3 +1,4 @@
+import path from 'node:path';
 import { ISourceInfo } from './pcb_interfaces.js';
 import { encodeCodeMetadata, decodeCodeMetadata } from '../kicad2typecad/codec.js';
 import type { CodeMetadata, LegacyCodeMetadata } from '../kicad2typecad/types.js';
@@ -6,6 +7,32 @@ import { designUUID } from '../utils/deterministic_id.js';
 /**
  * Utility functions for PCB operations
  */
+
+/**
+ * Normalize a call-site path for the Code metadata: strip file:// URLs and
+ * store a POSIX project-relative path when the source sits under the build's
+ * cwd. Committed boards stay machine-independent (no absolute paths, no
+ * drive letters) and the CLI's query/extension resolve it against the hw
+ * folder. Paths outside cwd (monorepo-internal sources) keep their full
+ * normalized form.
+ */
+function sourceFileForMetadata(file: string | undefined): string | undefined {
+  if (!file) return undefined;
+  const windowsDrive = /^\/([A-Za-z]:)/;
+  const p = path
+    .normalize(file.replace(/^file:\/\//, '').replace(windowsDrive, '$1'))
+    .split(path.sep)
+    .join('/');
+  try {
+    const rel = path.relative(process.cwd(), p);
+    if (rel && !rel.startsWith('..') && !path.isAbsolute(rel)) {
+      return rel.split(path.sep).join('/');
+    }
+  } catch {
+    /* keep the normalized path */
+  }
+  return p;
+}
 
 /**
  * Formats source information for property inclusion in KiCad files.
@@ -29,13 +56,12 @@ export function formatSourceInfoForProperty(
     n: info.variable || undefined,
     t: info.isThis || undefined,
     h: footprintFingerprint || undefined,
+    // File/line always rides along — named components need it too: the
+    // board's reverse cross-probe (click a footprint → jump to the declaring
+    // source line) and the hover's source row read it back from here.
+    f: sourceFileForMetadata(info.file),
+    l: info.line,
   };
-
-  // Include file/line only as fallback (when no variable name — anonymous components)
-  if (!info.variable) {
-    metadata.f = info.file;
-    metadata.l = info.line;
-  }
 
   try {
     return encodeCodeMetadata(metadata);

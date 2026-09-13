@@ -1,6 +1,6 @@
 {
   "name": "@typecad/jlcpcb-export",
-  "version": "2.0.1-alpha.0",
+  "version": "2.0.1-alpha.1",
   "description": "CLI tool to generate all files needed for JLCPCB assembly from a typeCAD project",
   "keywords": [
     "typecad-package",

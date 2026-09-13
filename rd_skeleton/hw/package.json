@@ -19,7 +19,7 @@
   "license": "ISC",
   "type": "module",
   "dependencies": {
-    "@typecad/pcb": "1.0.0-alpha.4",
+    "@typecad/pcb": "1.0.0-alpha.5",
     "tsx": "^4.23.13"
   }
 }

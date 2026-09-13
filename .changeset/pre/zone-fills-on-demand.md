@@ -1,3 +1,4 @@
+---
 '@typecad/pcb': minor
 ---
 

@@ -1,7 +1,8 @@
-# [**type**CAD](https://typecad.net)
+# [typeCAD/pcb](https://github.com/typeCAD/pcb)
 
-##  KiCAD + TypeScript + npm = **type**CAD
-> typeCAD is a way to programmatically create hardware designs.
+🤖 programmatically 💥 create 🛰️ hardware
+
+**typeCAD** is a way to programmatically create hardware designs — KiCAD + TypeScript + npm. `@typecad/pcb` is the core package: schematics, PCB layout, placement, autorouting, zones, stitching, simulation, and a built-in gerber board viewer, with passives built in.
 
 It's done with TypeScript and all the awesomeness of the npm/Node.js ecosystem.
 
@@ -151,9 +152,3 @@ view. The PCBA view hides the layer controls — there is only one layer stack t
 per board.
 
 Inside VS Code, the bundled typeCAD/pcb extension renders this viewer (gerbers + netlist + DRC) in a Board panel that refreshes on every `npm run build` and cross-probes both ways with the source — see the package docs. Layer visibility and opacity settings persist across rebuilds — they're stored in your browser (localStorage, keyed per board) and re-applied when the page reloads. A dark/light theme toggle sits in the sidebar header; the theme (including the board canvas) is saved per browser and follows your OS preference on first visit. On the dark canvas, near-black layer colors (silkscreen, paste, drill) are automatically recolored so they stay visible, and clear-polarity cutouts follow the canvas color.
-
----
-## Support
-<a href="https://www.buymeacoffee.com/typecad" target="_blank" title="buymeacoffee">
-  <img src="https://iili.io/JoQl86x.md.png"  alt="buymeacoffee-green-badge" style="width: 204px;">
-</a>

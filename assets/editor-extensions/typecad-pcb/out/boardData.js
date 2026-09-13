@@ -18,6 +18,8 @@ class BoardDataService {
         this.cwd = null;
         this.indexCache = null;
         this.indexInFlight = null;
+        this.netsCache = null;
+        this.netsInFlight = null;
         this.detailCache = new Map();
         this.detailInFlight = new Map();
     }
@@ -31,6 +33,8 @@ class BoardDataService {
     invalidate() {
         this.indexCache = null;
         this.indexInFlight = null;
+        this.netsCache = null;
+        this.netsInFlight = null;
         this.detailCache.clear();
         this.detailInFlight.clear();
     }
@@ -55,6 +59,25 @@ class BoardDataService {
             });
         }
         return this.indexInFlight;
+    }
+    /** Net source provenance (query nets), cached with the component index. */
+    async netSources() {
+        if (this.netsCache)
+            return this.netsCache;
+        if (!this.netsInFlight) {
+            const inFlight = this.query((0, query_js_1.netsCommand)()).then(query_js_1.parseNetIndex);
+            this.netsInFlight = inFlight;
+            inFlight.then((nets) => {
+                if (this.netsInFlight === inFlight) {
+                    this.netsCache = nets;
+                    this.netsInFlight = null;
+                }
+            }, () => {
+                if (this.netsInFlight === inFlight)
+                    this.netsInFlight = null;
+            });
+        }
+        return this.netsInFlight;
     }
     /**
      * Resolve a hovered identifier to its pad-level detail, or null when the

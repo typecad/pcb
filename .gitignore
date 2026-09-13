@@ -51,3 +51,4 @@ packages/*/package-lock.json
 
 # @typecad/jlcpcb-parts is its own git repository (github.com/typecad/jlcpcb-parts) — not tracked here
 @typecad/jlcpcb-parts/
+*.vsix

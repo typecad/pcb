@@ -29,7 +29,7 @@ const viewerHtml = '<!DOCTYPE html><html><head><title>t</title></head><body><svg
 describe('outlineData', () => {
   it('keeps components with measurable dimensions, drops the rest', () => {
     const data = outlineData(components);
-    expect(data).toEqual([{ ref: 'R1', x: 137.4, y: 90.9, w: 1, h: 0.5, rot: 90 }]);
+    expect(data).toEqual([{ ref: 'R1', var: 'r1', x: 137.4, y: 90.9, w: 1, h: 0.5, rot: 90 }]);
   });
 });
 
@@ -42,6 +42,15 @@ describe('injectProbeClient', () => {
     expect(html).toContain('acquireVsCodeApi');
     expect(html).toContain("typecadViewer.highlightNet('data-ref', m.ref)");
     expect(html.lastIndexOf('typecad-probe-data')).toBeLessThan(html.lastIndexOf('</body>'));
+  });
+
+  it('embeds net source provenance in the data island', () => {
+    const { html } = injectProbeClient(viewerHtml, components, [
+      { name: 'net2', source: 'src/board.ts:82', routeSource: 'src/board.ts:83' },
+    ]);
+    expect(html).toContain('"nets":');
+    expect(html).toContain('"name":"net2"');
+    expect(html).toContain('"routeSource":"src/board.ts:83"');
   });
 
   it('locks the page down with a nonce CSP and nonces every script', () => {

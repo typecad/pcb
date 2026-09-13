@@ -6,9 +6,17 @@
 // when build/*.kicad_pcb changes.
 // ---------------------------------------------------------------------------
 
-import { indexCommand, detailCommand, parseComponentIndex, parseComponentDetail, QueryError } from './query.js';
+import {
+  indexCommand,
+  detailCommand,
+  netsCommand,
+  parseComponentIndex,
+  parseComponentDetail,
+  parseNetIndex,
+  QueryError,
+} from './query.js';
 import { matchComponent } from './match.js';
-import type { ComponentDetail, ComponentSummary } from './types.js';
+import type { ComponentDetail, ComponentSummary, NetSourceSummary } from './types.js';
 
 /** Resolves with stdout; rejects with an Error carrying stderr/output tails. */
 export type QueryRunner = (cwd: string, command: string, timeoutMs: number) => Promise<string>;
@@ -19,6 +27,8 @@ export class BoardDataService {
   private cwd: string | null = null;
   private indexCache: ComponentSummary[] | null = null;
   private indexInFlight: Promise<ComponentSummary[]> | null = null;
+  private netsCache: NetSourceSummary[] | null = null;
+  private netsInFlight: Promise<NetSourceSummary[]> | null = null;
   private detailCache = new Map<string, ComponentDetail>();
   private detailInFlight = new Map<string, Promise<ComponentDetail>>();
 
@@ -38,6 +48,8 @@ export class BoardDataService {
   invalidate(): void {
     this.indexCache = null;
     this.indexInFlight = null;
+    this.netsCache = null;
+    this.netsInFlight = null;
     this.detailCache.clear();
     this.detailInFlight.clear();
   }
@@ -64,6 +76,27 @@ export class BoardDataService {
       );
     }
     return this.indexInFlight;
+  }
+
+  /** Net source provenance (query nets), cached with the component index. */
+  async netSources(): Promise<NetSourceSummary[]> {
+    if (this.netsCache) return this.netsCache;
+    if (!this.netsInFlight) {
+      const inFlight = this.query(netsCommand()).then(parseNetIndex);
+      this.netsInFlight = inFlight;
+      inFlight.then(
+        (nets) => {
+          if (this.netsInFlight === inFlight) {
+            this.netsCache = nets;
+            this.netsInFlight = null;
+          }
+        },
+        () => {
+          if (this.netsInFlight === inFlight) this.netsInFlight = null;
+        },
+      );
+    }
+    return this.netsInFlight;
   }
 
   /**

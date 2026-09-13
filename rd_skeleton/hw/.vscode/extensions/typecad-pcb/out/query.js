@@ -11,9 +11,11 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.QueryError = void 0;
 exports.indexCommand = indexCommand;
+exports.netsCommand = netsCommand;
 exports.detailCommand = detailCommand;
 exports.extractJson = extractJson;
 exports.parseComponentIndex = parseComponentIndex;
+exports.parseNetIndex = parseNetIndex;
 exports.parseComponentDetail = parseComponentDetail;
 /** Characters safe to interpolate into a shell command line. */
 const SAFE_ARG = /^[A-Za-z0-9_+\-.]+$/;
@@ -30,6 +32,10 @@ exports.QueryError = QueryError;
 /** `query components --json` — the index every hover resolution starts from. */
 function indexCommand() {
     return 'npx typecad-pcb query components --json';
+}
+/** `query nets --json` — every net with its source provenance. */
+function netsCommand() {
+    return 'npx typecad-pcb query nets --json';
 }
 /** `query component <ref> --json` — pad-by-pad connectivity for one component. */
 function detailCommand(ref) {
@@ -131,6 +137,25 @@ function parseComponentIndex(output) {
         const summary = parseSummary(raw);
         if (summary)
             out.push(summary);
+    }
+    return out;
+}
+/** Parse `query nets --json` into net-name -> source entries (sources optional). */
+function parseNetIndex(output) {
+    const parsed = extractJson(output);
+    throwIfCliError(parsed);
+    if (!Array.isArray(parsed)) {
+        throw new QueryError('query nets --json did not return an array');
+    }
+    const out = [];
+    for (const raw of parsed) {
+        if (!raw || typeof raw !== 'object')
+            continue;
+        const net = raw;
+        const name = asString(net.name);
+        if (!name)
+            continue;
+        out.push({ name, source: asString(net.source) || undefined, routeSource: asString(net.routeSource) || undefined });
     }
     return out;
 }

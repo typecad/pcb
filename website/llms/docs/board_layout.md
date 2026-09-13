@@ -57,7 +57,7 @@ u1.pcb = { x: b.center.x, y: b.center.y }; // center of the board
 Place a component a fixed distance from a board edge, accounting for the component's own footprint size:
 
 ```ts
-import { PCB, Component, board } from '@typecad/pcb';
+import { PCB, Component } from '@typecad/pcb';
 
 let pcb = new PCB('typecad_docs');
 pcb.outline(0, 0, 60, 45);
@@ -317,7 +317,7 @@ pcb.outlinePath(0, 0)            // start point
   .close();                      // auto-closes back to the start
 ```
 
-The `board()` bounds and edge-relative placement helpers (`fromLeft`,
+The `pcb.board` bounds and edge-relative placement helpers (`fromLeft`,
 `fromRight`, etc.) work off the outline's bounding box, so they remain correct
 for any shape. KiCad treats nested closed contours on Edge.Cuts as cutouts —
 there is no separate cutout layer.

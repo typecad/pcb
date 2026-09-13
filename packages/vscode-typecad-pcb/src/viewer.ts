@@ -2,8 +2,7 @@
 // BoardViewerPanel — the gerber-viewer running in a vscode webview, with
 // cross-probing in both directions.
 //
-// Generation pipeline (same steps the `gerber-viewer serve` mode runs, one
-// shot instead of a dev server):
+// Generation pipeline (one shot per board change):
 //   typecad-pcb export gerbers → typecad-pcb export drill →
 //   gerber-viewer build/gerbers -o build/serve/viewer.html
 //       [--netlist build/<board>.net] [--drc build/<board>_drc.json]
@@ -56,9 +55,16 @@ export class BoardViewerPanel {
   private pendingToken: number | undefined;
   /** Bumped on every html assignment; acks carry it so stale acks are ignored. */
   private loadToken = 0;
+  /** The html string last assigned to the webview (undefined = never). */
+  private assignedHtml: string | undefined;
   private readySeen = false;
   private refreshTimer: NodeJS.Timeout | undefined;
-  private generating: Promise<void> | null = null;
+  /** Re-check after a skipped/failed refresh — the board's final write can
+   *  coalesce into an in-flight generate and never fire the watcher again. */
+  private retryTimer: NodeJS.Timeout | undefined;
+  /** One delayed re-run of show() while the board settles (first open only). */
+  private showRetryTimer: NodeJS.Timeout | undefined;
+  private generating: Promise<boolean> | null = null;
 
   constructor(
     private readonly hwFolder: () => string | null,
@@ -71,21 +77,39 @@ export class BoardViewerPanel {
   async show(): Promise<void> {
     const folder = this.hwFolder();
     if (!folder) {
-      vscode.window.showInformationMessage('typeCAD: no typeCAD project (typecad.conf.ts) in this workspace.');
+      vscode.window.showInformationMessage('typeCAD/pcb: no typeCAD project (typecad.conf.ts) in this workspace.');
       return;
     }
     if (!this.generated || this.generated.boardMtimeMs !== this.boardMtime(folder)) {
+      let generated = false;
       try {
-        await vscode.window.withProgress(
-          { location: vscode.ProgressLocation.Notification, title: 'typeCAD: rendering board viewer' },
+        generated = await vscode.window.withProgress(
+          { location: vscode.ProgressLocation.Notification, title: 'typeCAD/pcb: rendering board viewer' },
           () => this.generate(folder),
         );
       } catch (err) {
         this.output.appendLine(`viewer generation failed: ${err instanceof Error ? err.message : String(err)}`);
         vscode.window.showErrorMessage(
-          `typeCAD: could not render the board viewer — see the 'typeCAD PCB' output channel.`,
+          `typeCAD: could not render the board viewer — see the 'typeCAD/pcb' output channel.`,
         );
         return;
+      }
+      if (!generated) {
+        // the board was written <3s ago — the build (or a concurrent
+        // kicad-cli) may still be writing. An already-open panel hears about
+        // the settled board from the watcher; a first open needs this retry,
+        // because refreshIfVisible no-ops without a panel
+        if (!this.showRetryTimer) {
+          vscode.window.showInformationMessage(
+            'typeCAD/pcb: board is still being written — the viewer opens when it settles.',
+          );
+        }
+        this.armShowRetry(4_000);
+        return;
+      }
+      if (this.showRetryTimer) {
+        clearTimeout(this.showRetryTimer);
+        this.showRetryTimer = undefined;
       }
     }
 
@@ -94,28 +118,78 @@ export class BoardViewerPanel {
         viewColumn: vscode.ViewColumn.Beside,
         preserveFocus: true,
       });
-      webviewPanels.webview.options = { enableScripts: true };
-      webviewPanels.webview.onDidReceiveMessage((m) => this.onMessage(m));
-      webviewPanels.onDidDispose(() => {
-        this.panel = undefined;
-        this.pendingRef = null;
-      });
-      this.panel = webviewPanels;
+      this.bindPanel(webviewPanels);
       this.loadToken++;
       this.assignHtml();
-    } else if (this.panel.webview.html !== this.generated!.html) {
+    } else if (this.assignedHtml !== this.generated!.html) {
       // Only reassign when the board actually regenerated — html assignment
       // reloads the page.
       this.loadToken++;
       this.assignHtml();
     }
-    this.panel.reveal(undefined, true);
+    this.panel?.reveal(undefined, true);
+  }
+
+  /** Wire a fresh-or-restored panel into this viewer instance. */
+  private bindPanel(panel: vscode.WebviewPanel): void {
+    panel.webview.options = { enableScripts: true };
+    panel.webview.onDidReceiveMessage((m) => this.onMessage(m));
+    panel.onDidDispose(() => {
+      this.panel = undefined;
+      this.pendingRef = null;
+    });
+    this.panel = panel;
+  }
+
+  /**
+   * VS Code window reload: without a serializer, an open Board panel comes
+   * back as a dead empty editor. restorePanel rebinds it and restores the
+   * view — instantly when the last generated viewer on disk still matches
+   * the board (page-localStorage puts the viewport/highlight back), else a
+   * placeholder page while the full export pipeline reruns.
+   */
+  async restorePanel(panel: vscode.WebviewPanel): Promise<void> {
+    this.bindPanel(panel);
+    const folder = this.hwFolder();
+    if (!folder) {
+      panel.dispose();
+      return;
+    }
+    const board = this.findBoard(folder);
+    const htmlPath = path.join(folder, 'build', 'serve', 'viewer.html');
+    // fast path: the on-disk viewer was generated from this exact board
+    // revision (the file is newer than the board) — reuse it as-is
+    if (board && fs.existsSync(htmlPath) && mtimeOf(htmlPath) > mtimeOf(board)) {
+      try {
+        const raw = fs.readFileSync(htmlPath, 'utf8');
+        const [components, nets] = await Promise.all([this.service.components(), this.service.netSources().catch(() => [])]);
+        const { html } = injectProbeClient(raw, components, nets);
+        this.generated = { html, boardMtimeMs: mtimeOf(board) };
+        this.loadToken++;
+        this.assignHtml();
+        this.output.appendLine('viewer restored from the last generated board view');
+        return;
+      } catch (err) {
+        this.output.appendLine(
+          `viewer restore fell back to a full render: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
+    // stale or missing: show something immediately, then let the regular
+    // refresh pipeline (settle gate, retries, status notices) swap in the
+    // freshly exported board
+    panel.webview.html =
+      '<html><body style="font:14px system-ui;display:grid;place-items:center;height:100vh;margin:0;color:var(--vscode-foreground,#333)">reopening the board viewer…</body></html>';
+    void this.doRefresh();
   }
 
   /** Assign the generated page and watch for the client announcing itself. */
   private assignHtml(): void {
     this.readySeen = false;
-    this.panel!.webview.html = this.generated!.html;
+    // track the assigned string ourselves: reading webview.html back is not
+    // guaranteed to round-trip, and show()'s "needs reassign" check keys on it
+    this.assignedHtml = this.generated!.html;
+    this.panel!.webview.html = this.assignedHtml;
     setTimeout(() => {
       if (!this.readySeen && this.panel) {
         this.output.appendLine(
@@ -130,7 +204,7 @@ export class BoardViewerPanel {
     const folder = this.hwFolder();
     if (!folder) {
       // A dead hover command-link must say so, not return silently.
-      vscode.window.showInformationMessage('typeCAD: no typeCAD project (typecad.conf.ts) in this workspace.');
+      vscode.window.showInformationMessage('typeCAD/pcb: no typeCAD project (typecad.conf.ts) in this workspace.');
       return;
     }
     this.output.appendLine(`select ${ref}: opening/revealing viewer`);
@@ -189,25 +263,103 @@ export class BoardViewerPanel {
   async refreshIfVisible(): Promise<void> {
     if (!this.panel) return;
     if (this.refreshTimer) clearTimeout(this.refreshTimer);
+    // 1.5s debounce: kicad-cli writes the board truncate-then-write and VS
+    // Code watchers fire loosely on Windows (anything touching the
+    // workspace) — wait for the writes and events to settle
     this.refreshTimer = setTimeout(() => {
       void this.doRefresh();
-    }, 500);
+    }, 1_500);
+  }
+
+  /** One delayed re-run of show() — the board was too fresh to render. */
+  private armShowRetry(delayMs: number): void {
+    if (this.showRetryTimer) clearTimeout(this.showRetryTimer);
+    this.showRetryTimer = setTimeout(() => {
+      this.showRetryTimer = undefined;
+      void this.show();
+    }, delayMs);
+  }
+
+  /** Re-check after a skipped/failed/stale refresh; default 10s, overridable. */
+  private armRetry(delayMs = 10_000): void {
+    if (this.retryTimer) clearTimeout(this.retryTimer);
+    this.retryTimer = setTimeout(() => {
+      this.retryTimer = undefined;
+      void this.doRefresh();
+    }, delayMs);
+  }
+
+  /** Show a notice in the viewer's lower-left status text (no-op w/o panel). */
+  private postStatus(text: string): void {
+    if (!this.panel) return;
+    void this.panel.webview.postMessage({ type: 'typecad/status', text } satisfies ProbeHostMessage);
   }
 
   private async doRefresh(): Promise<void> {
     if (!this.panel) return;
     const folder = this.hwFolder();
     if (!folder) return;
+    // watcher events are cheap and sometimes spurious (Windows fires
+    // onChange loosely); the board's mtime against the last render decides
+    // whether any work is warranted at all
+    const board = this.findBoard(folder);
+    if (board && this.generated && mtimeOf(board) === this.generated.boardMtimeMs) return;
+    // The re-render takes ~20s (gerber export incl. the zone refill); the
+    // page keeps showing the old board meanwhile, so say so in its status
+    // text — the reload when the new HTML lands resets the element
+    this.postStatus('board changed — generating new render…');
+    let generated = false;
     try {
-      await this.generate(folder);
+      generated = await this.generate(folder);
     } catch (err) {
       this.output.appendLine(`viewer refresh failed: ${err instanceof Error ? err.message : String(err)}`);
+      this.postStatus('render failed — see the typeCAD/pcb output channel');
+    }
+    if (!generated) {
+      this.postStatus('board is mid-build — waiting for it to settle…');
+      // mid-build skip or failure: the board's final write may coalesce into
+      // the in-flight generate (or never fire) — re-check soon (the board
+      // might just need 3s to settle)
+      this.armRetry(4_000);
       return;
     }
-    if (this.panel && this.generated && this.panel.webview.html !== this.generated.html) {
+    // the export takes ~25-30s; the board may have been written again while
+    // it ran. BUT kicad-cli itself creates/removes a project .lck file and
+    // touches the build directory during the export — the resulting watcher
+    // event is self-inflicted, not a real board change. Only re-render when
+    // the mtime genuinely moved AND stays moved on a re-check 5s later
+    // (rides out kicad-cli's cleanup churn).
+    const boardNow = this.findBoard(folder);
+    if (boardNow && mtimeOf(boardNow) !== this.generated!.boardMtimeMs) {
+      const staleMtime = mtimeOf(boardNow);
+      if (this.retryTimer) clearTimeout(this.retryTimer);
+      this.retryTimer = setTimeout(() => {
+        this.retryTimer = undefined;
+        const settled = this.findBoard(folder);
+        if (!settled || mtimeOf(settled) === staleMtime) {
+          // board quiet at the new mtime — render the new revision
+          void this.doRefresh();
+        }
+        // if the mtime moved again, the new watcher event's debounce plus
+        // doRefresh's own gates handle it
+      }, 5_000);
+      this.output.appendLine(
+        `board mtime moved during export (${this.generated!.boardMtimeMs} → ${mtimeOf(boardNow)}) — re-checking in 5s`,
+      );
+      return;
+    }
+    if (this.retryTimer) {
+      clearTimeout(this.retryTimer);
+      this.retryTimer = undefined;
+    }
+    if (this.panel && this.generated && this.assignedHtml !== this.generated.html) {
       this.output.appendLine('board changed — refreshing viewer');
       this.loadToken++;
       this.assignHtml();
+    } else {
+      // regenerated to identical HTML: no reload happens, so the generating
+      // notice must be cleared by hand
+      this.postStatus('');
     }
   }
 
@@ -230,11 +382,23 @@ export class BoardViewerPanel {
     return boards.map((f) => path.join(buildDir, f)).sort((a, b) => mtimeOf(b) - mtimeOf(a))[0] ?? null;
   }
 
-  private async generate(folder: string): Promise<void> {
+  /** Generate viewer HTML; resolves false when skipped (board mid-build). */
+  private async generate(folder: string): Promise<boolean> {
     if (this.generating) return this.generating;
     this.generating = (async () => {
       const board = this.findBoard(folder);
       if (!board) throw new Error('no .kicad_pcb in build/ — run npm run build first');
+
+      // The build writes zone declarations without fill geometry; fills are
+      // materialized by `export gerbers` (--check-zones) and `check`. The
+      // board is "settled" when its mtime has been stable for 3s — before
+      // that, the build (or a concurrent kicad-cli run) may still be
+      // writing, and an export would race a rewrite.
+      const stableFor = Date.now() - fs.statSync(board).mtimeMs;
+      if (stableFor < 3_000) {
+        this.output.appendLine(`board written ${stableFor}ms ago — waiting for it to settle`);
+        return false;
+      }
 
       this.output.appendLine('exporting gerbers…');
       // explicit board path: build/ can hold stray .kicad_pcb files (fp
@@ -245,10 +409,10 @@ export class BoardViewerPanel {
       const boardName = path.basename(board, '.kicad_pcb');
       const gerbersDir = path.join('build', 'gerbers');
       const outPath = path.join('build', 'serve', 'viewer.html');
-      // netlist/DRC mirror what `gerber-viewer serve` passes: the netlist
-      // fills pad→net so clicking a pad highlights its whole net; DRC markers
-      // only exist after a `typecad-pcb drc` run. boardName derives from the
-      // board file name, so it is quoted like every other interpolated path.
+      // the netlist fills pad→net so clicking a pad highlights its whole
+      // net; DRC markers only exist after a `typecad-pcb drc` run. boardName
+      // derives from the board file name, so it is quoted like every other
+      // interpolated path.
       const flags = [`--netlist`, shellQuote(path.join('build', `${boardName}.net`))];
       const drcReport = path.join(folder, 'build', `${boardName}_drc.json`);
       if (fs.existsSync(drcReport)) flags.push('--drc', shellQuote(path.join('build', `${boardName}_drc.json`)));
@@ -261,15 +425,21 @@ export class BoardViewerPanel {
       );
 
       const raw = fs.readFileSync(path.join(folder, outPath), 'utf8');
-      const components = await this.service.components();
-      const { html, injected } = injectProbeClient(raw, components);
+      const [components, nets] = await Promise.all([
+        this.service.components(),
+        // net sources are decorative metadata — a failed query must not
+        // take the viewer down with it
+        this.service.netSources().catch(() => []),
+      ]);
+      const { html, injected } = injectProbeClient(raw, components, nets);
       if (!injected) {
         this.output.appendLine('warning: viewer HTML had no <head>/</body> anchors — cross-probe disabled');
       }
       this.generated = { html, boardMtimeMs: mtimeOf(board) };
       this.output.appendLine(
-        `viewer ready: ${components.length} component outline(s) embedded, cross-probe ${injected ? 'on' : 'off'}`,
+        `viewer ready: ${components.length} component outline(s), board mtime ${this.generated.boardMtimeMs}, cross-probe ${injected ? 'on' : 'off'}`,
       );
+      return true;
     })().finally(() => {
       this.generating = null;
     });
@@ -307,6 +477,27 @@ export class BoardViewerPanel {
       }
       return;
     }
+    if (message.type === 'typecad/probe-net') {
+      // double-clicked a trace: the client resolved the net's declaring
+      // file:line (route call preferred) — reveal it, or say why not
+      this.output.appendLine(`probe: net ${message.net} → source`);
+      const folder = this.hwFolder();
+      if (!folder) return;
+      if (!message.source) {
+        vscode.window.setStatusBarMessage(
+          `net ${message.net}: no recorded source — rebuild with a current typeCAD`,
+          5000,
+        );
+        return;
+      }
+      const loc = parseSourceLocation(folder, message.source);
+      if (!loc) {
+        vscode.window.setStatusBarMessage(`net ${message.net}: source location "${message.source}" did not resolve`, 5000);
+        return;
+      }
+      await this.revealLocation(loc);
+      return;
+    }
     // after the checks above, the message can only be a probe
     if (message.ref) {
       this.output.appendLine(`probe: ${message.ref}${message.pin ? ' ' + message.pin : ''} → source`);
@@ -326,13 +517,18 @@ export class BoardViewerPanel {
         vscode.window.setStatusBarMessage(`${ref}: no source location on the compiled board`, 4000);
         return;
       }
-      const document = await vscode.workspace.openTextDocument(vscode.Uri.file(loc.fsPath));
-      const line = Math.max(0, loc.line - 1);
-      const range = new vscode.Range(line, 0, line, 0);
-      await vscode.window.showTextDocument(document, { selection: range, preserveFocus: false });
+      await this.revealLocation(loc);
     } catch (err) {
       this.output.appendLine(`reveal ${ref} failed: ${err instanceof Error ? err.message : String(err)}`);
     }
+  }
+
+  /** Open a resolved source location (shared by component and net probes). */
+  private async revealLocation(loc: { fsPath: string; line: number }): Promise<void> {
+    const document = await vscode.workspace.openTextDocument(vscode.Uri.file(loc.fsPath));
+    const line = Math.max(0, loc.line - 1);
+    const range = new vscode.Range(line, 0, line, 0);
+    await vscode.window.showTextDocument(document, { selection: range, preserveFocus: false });
   }
 }
 

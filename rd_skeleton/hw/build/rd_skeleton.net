@@ -3,75 +3,238 @@
     (tool "typeCAD"))
   (components
     (comp
-      (ref "MH1")
-        (value "")
-        (footprint "MountingHole:MountingHole_2.7mm_M2.5")
-        (fields
-                  (field (name "Footprint") "MountingHole:MountingHole_2.7mm_M2.5")
-        )
-     )
-    (comp
-      (ref "MH2")
-        (value "")
-        (footprint "MountingHole:MountingHole_2.5mm_Pad")
-        (fields
-                  (field (name "Footprint") "MountingHole:MountingHole_2.5mm_Pad")
-        )
-     )
-    (comp
-      (ref "MH3")
-        (value "")
-        (footprint "MountingHole:MountingHole_2.7mm_M2.5")
-        (fields
-                  (field (name "Footprint") "MountingHole:MountingHole_2.7mm_M2.5")
-        )
-     )
-    (comp
-      (ref "MH4")
-        (value "")
-        (footprint "MountingHole:MountingHole_2.7mm_M2.5")
-        (fields
-                  (field (name "Footprint") "MountingHole:MountingHole_2.7mm_M2.5")
-        )
-     )
-    (comp
-      (ref "J1")
-        (value "")
-        (footprint "TerminalBlock_TE-Connectivity:TerminalBlock_TE_282834-4_1x04_P2.54mm_Horizontal")
-        (fields
-                  (field (name "Footprint") "TerminalBlock_TE-Connectivity:TerminalBlock_TE_282834-4_1x04_P2.54mm_Horizontal")
-        )
-     )
-    (comp
-      (ref "J2")
-        (value "")
-        (footprint "TerminalBlock_TE-Connectivity:TerminalBlock_TE_282834-4_1x04_P2.54mm_Horizontal")
-        (fields
-                  (field (name "Footprint") "TerminalBlock_TE-Connectivity:TerminalBlock_TE_282834-4_1x04_P2.54mm_Horizontal")
-        )
-     )
-    (comp
       (ref "R1")
-        (value "1kohm")
+        (value "1k")
         (footprint "Resistor_SMD:R_0603_1608Metric")
         (fields
                   (field (name "Footprint") "Resistor_SMD:R_0603_1608Metric")
         )
      )
     (comp
-      (ref "U1")
-        (value "ATtiny3227-M")
-        (footprint "Package_DFN_QFN:QFN-24-1EP_4x4mm_P0.5mm_EP2.6x2.6mm")
+      (ref "C1")
+        (value "1uF")
+        (footprint "Capacitor_SMD:C_0805_2012Metric")
         (fields
-                  (field (name "Footprint") "Package_DFN_QFN:QFN-24-1EP_4x4mm_P0.5mm_EP2.6x2.6mm")
+                  (field (name "Footprint") "Capacitor_SMD:C_0805_2012Metric")
+        )
+     )
+    (comp
+      (ref "L1")
+        (value "10uH")
+        (footprint "Inductor_SMD:L_0805_2012Metric")
+        (fields
+                  (field (name "Footprint") "Inductor_SMD:L_0805_2012Metric")
+        )
+     )
+    (comp
+      (ref "D1")
+        (value "1N4148W")
+        (footprint "Diode_SMD:D_0805_2012Metric")
+        (fields
+                  (field (name "Footprint") "Diode_SMD:D_0805_2012Metric")
+        )
+     )
+    (comp
+      (ref "LED1")
+        (value "red")
+        (footprint "LED_SMD:LED_0805_2012Metric")
+        (fields
+                  (field (name "Footprint") "LED_SMD:LED_0805_2012Metric")
+        )
+     )
+    (comp
+      (ref "F1")
+        (value "500mA")
+        (footprint "Fuse:Fuse_0603_1608Metric")
+        (fields
+                  (field (name "Footprint") "Fuse:Fuse_0603_1608Metric")
+        )
+     )
+    (comp
+      (ref "Y1")
+        (value "8MHz")
+        (footprint "Crystal:Crystal_SMD_3215-2Pin_3.2x1.5mm")
+        (fields
+                  (field (name "Footprint") "Crystal:Crystal_SMD_3215-2Pin_3.2x1.5mm")
+        )
+     )
+    (comp
+      (ref "R2")
+        (value "10k")
+        (footprint "Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal")
+        (fields
+                  (field (name "Footprint") "Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal")
+        )
+     )
+    (comp
+      (ref "D2")
+        (value "1N4007")
+        (footprint "Diode_THT:D_DO-41_SOD81_P7.62mm_Horizontal")
+        (fields
+                  (field (name "Footprint") "Diode_THT:D_DO-41_SOD81_P7.62mm_Horizontal")
+        )
+     )
+    (comp
+      (ref "C2")
+        (value "10uF")
+        (footprint "Capacitor_THT:CP_Radial_D5.0mm_P2.50mm")
+        (fields
+                  (field (name "Footprint") "Capacitor_THT:CP_Radial_D5.0mm_P2.50mm")
+        )
+     )
+    (comp
+      (ref "LED2")
+        (value "green")
+        (footprint "LED_THT:LED_D3.0mm")
+        (fields
+                  (field (name "Footprint") "LED_THT:LED_D3.0mm")
+        )
+     )
+    (comp
+      (ref "Q1")
+        (value "BC847")
+        (footprint "Package_TO_SOT_SMD:SOT-23")
+        (fields
+                  (field (name "Footprint") "Package_TO_SOT_SMD:SOT-23")
+        )
+     )
+    (comp
+      (ref "Q2")
+        (value "regulator")
+        (footprint "Package_TO_SOT_SMD:SOT-223-3_TabPin2")
+        (fields
+                  (field (name "Footprint") "Package_TO_SOT_SMD:SOT-223-3_TabPin2")
+        )
+     )
+    (comp
+      (ref "SW1")
+        (value "reset")
+        (footprint "Button_Switch_THT:SW_PUSH_6mm")
+        (fields
+                  (field (name "Footprint") "Button_Switch_THT:SW_PUSH_6mm")
+        )
+     )
+    (comp
+      (ref "U3")
+        (value "opamp")
+        (footprint "Package_SO:SOIC-8_3.9x4.9mm_P1.27mm")
+        (fields
+                  (field (name "Footprint") "Package_SO:SOIC-8_3.9x4.9mm_P1.27mm")
+        )
+     )
+    (comp
+      (ref "U4")
+        (value "555")
+        (footprint "Package_DIP:DIP-8_W7.62mm")
+        (fields
+                  (field (name "Footprint") "Package_DIP:DIP-8_W7.62mm")
+        )
+     )
+    (comp
+      (ref "U7")
+        (value "qfn")
+        (footprint "Package_DFN_QFN:QFN-32-1EP_5x5mm_P0.5mm_EP3.1x3.1mm")
+        (fields
+                  (field (name "Footprint") "Package_DFN_QFN:QFN-32-1EP_5x5mm_P0.5mm_EP3.1x3.1mm")
+        )
+     )
+    (comp
+      (ref "U5")
+        (value "mcu")
+        (footprint "Package_QFP:LQFP-32_7x7mm_P0.8mm")
+        (fields
+                  (field (name "Footprint") "Package_QFP:LQFP-32_7x7mm_P0.8mm")
+        )
+     )
+    (comp
+      (ref "U6")
+        (value "mcu")
+        (footprint "Package_BGA:BGA-144_7.0x7.0mm_Layout13x13_P0.5mm_Ball0.3mm_Pad0.25mm_NSMD")
+        (fields
+                  (field (name "Footprint") "Package_BGA:BGA-144_7.0x7.0mm_Layout13x13_P0.5mm_Ball0.3mm_Pad0.25mm_NSMD")
+        )
+     )
+    (comp
+      (ref "X1")
+        (value "16MHz")
+        (footprint "Oscillator:Oscillator_SMD_EuroQuartz_XO91-4Pin_7.0x5.0mm")
+        (fields
+                  (field (name "Footprint") "Oscillator:Oscillator_SMD_EuroQuartz_XO91-4Pin_7.0x5.0mm")
+        )
+     )
+    (comp
+      (ref "RV1")
+        (value "10k")
+        (footprint "Potentiometer_THT:Potentiometer_Bourns_3296W_Vertical")
+        (fields
+                  (field (name "Footprint") "Potentiometer_THT:Potentiometer_Bourns_3296W_Vertical")
+        )
+     )
+    (comp
+      (ref "J6")
+        (value "battery")
+        (footprint "Connector_JST:JST_PH_B2B-PH-K_1x02_P2.00mm_Vertical")
+        (fields
+                  (field (name "Footprint") "Connector_JST:JST_PH_B2B-PH-K_1x02_P2.00mm_Vertical")
+        )
+     )
+    (comp
+      (ref "J7")
+        (value "power")
+        (footprint "TerminalBlock_TE-Connectivity:TerminalBlock_TE_282834-2_1x02_P2.54mm_Horizontal")
+        (fields
+                  (field (name "Footprint") "TerminalBlock_TE-Connectivity:TerminalBlock_TE_282834-2_1x02_P2.54mm_Horizontal")
+        )
+     )
+    (comp
+      (ref "J3")
+        (value "header")
+        (footprint "Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Vertical")
+        (fields
+                  (field (name "Footprint") "Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Vertical")
+        )
+     )
+    (comp
+      (ref "J4")
+        (value "usb")
+        (footprint "Connector_USB:USB_Micro-B_Amphenol_10118193-0001LF_Horizontal")
+        (fields
+                  (field (name "Footprint") "Connector_USB:USB_Micro-B_Amphenol_10118193-0001LF_Horizontal")
+        )
+     )
+    (comp
+      (ref "J5")
+        (value "9V")
+        (footprint "Connector_BarrelJack:BarrelJack_CUI_PJ-063AH_Horizontal")
+        (fields
+                  (field (name "Footprint") "Connector_BarrelJack:BarrelJack_CUI_PJ-063AH_Horizontal")
+        )
+     )
+    (comp
+      (ref "SW3")
+        (value "power")
+        (footprint "Button_Switch_THT:SW_DIP_SPSTx01_Slide_6.7x4.1mm_W7.62mm_P2.54mm_LowProfile")
+        (fields
+                  (field (name "Footprint") "Button_Switch_THT:SW_DIP_SPSTx01_Slide_6.7x4.1mm_W7.62mm_P2.54mm_LowProfile")
+        )
+     )
+    (comp
+      (ref "SW2")
+        (value "encoder")
+        (footprint "Rotary_Encoder:RotaryEncoder_Alps_EC11E-Switch_Vertical_H20mm")
+        (fields
+                  (field (name "Footprint") "Rotary_Encoder:RotaryEncoder_Alps_EC11E-Switch_Vertical_H20mm")
         )
      ))
   (nets
     (net (code "1") (name "GND")
-        (node (ref "J1") (pin "1") (pintype "passive"))
+        (property "Code" "src/rd_skeleton.ts:71")
+        (node (ref "C2") (pin "2") (pintype "passive"))
 )
-(net (code "2") (name "VCC")
-        (node (ref "J2") (pin "1") (pintype "passive"))
-        (node (ref "J2") (pin "2") (pintype "passive"))
+(net (code "2") (name "net2")
+        (property "Code" "src/rd_skeleton.ts:82")
+        (property "Route" "src/rd_skeleton.ts:83")
+        (node (ref "R1") (pin "2") (pintype "passive"))
+        (node (ref "C1") (pin "1") (pintype "passive"))
 )
 ))

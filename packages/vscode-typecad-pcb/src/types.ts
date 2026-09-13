@@ -27,6 +27,15 @@ export interface ComponentSummary {
   padCount: number;
 }
 
+/** `query nets --json` entry — source provenance per net (when the netlist carries it). */
+export interface NetSourceSummary {
+  name: string;
+  /** "file:line" of the declaring pcb.net(...) call. */
+  source?: string;
+  /** "file:line" of the declaring pcb.route(<net>) call — where traces come from. */
+  routeSource?: string;
+}
+
 /** `query component <ref> --json` — the summary plus pad-by-pad connectivity. */
 export interface ComponentDetail extends ComponentSummary {
   /** Source file:line recovered from the "Code" property, when present. */

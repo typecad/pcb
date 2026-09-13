@@ -17,6 +17,7 @@
 import * as vscode from 'vscode';
 import { exec } from 'node:child_process';
 import { existsSync } from 'node:fs';
+import { basename } from 'node:path';
 import { BoardDataService } from './boardData.js';
 import { findHwFolder } from './hwFolder.js';
 import { renderComponentHover } from './hover.js';
@@ -28,7 +29,7 @@ import { BoardViewerPanel, wordUnderCursor } from './viewer.js';
 const WORD_LIKE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 export function activate(context: vscode.ExtensionContext) {
-  const output = vscode.window.createOutputChannel('typeCAD PCB');
+  const output = vscode.window.createOutputChannel('typeCAD/pcb');
   const service = new BoardDataService(runQuery);
 
   // typeCAD projects are plain folders (no virtual filesystems), so a sync
@@ -41,11 +42,21 @@ export function activate(context: vscode.ExtensionContext) {
 
   const viewer = new BoardViewerPanel(resolveHwFolder, service, runQuery, output);
 
+  // Reload/window-reopen restores a previously open Board panel instead of
+  // leaving a dead empty webview behind; must be registered at activation
+  // for VS Code to restore the panel at all.
+  context.subscriptions.push(
+    vscode.window.registerWebviewPanelSerializer('typecadBoardViewer', {
+      deserializeWebviewPanel: (panel) => viewer.restorePanel(panel),
+    }),
+  );
+
   let watcher: vscode.FileSystemWatcher | undefined;
   const watchBuild = (folder: string) => {
     watcher?.dispose();
     watcher = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(folder, 'build/**/*.kicad_pcb'));
-    const boardChanged = () => {
+    const boardChanged = (uri: vscode.Uri) => {
+      output.appendLine(`board file event: ${basename(uri.fsPath)}`);
       service.invalidate();
       viewer.invalidate();
       void viewer.refreshIfVisible();
@@ -80,18 +91,26 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     vscode.commands.registerCommand('typecad-pcb.viewBoard', () => viewer.show()),
     vscode.commands.registerCommand('typecad-pcb.viewComponent', async (ref?: unknown) => {
-      // Command-link args arrive spread as JSON; anything unexpected falls
-      // back to the word under the cursor. Every branch is logged so a dead
-      // link is distinguishable from a dead delivery.
-      output.appendLine(`viewComponent: arg=${JSON.stringify(ref) ?? 'undefined'} (${typeof ref})`);
-      const target =
-        typeof ref === 'string' && ref.trim() !== '' ? ref.trim() : wordUnderCursor(vscode.window.activeTextEditor);
-      if (!target) {
-        output.appendLine('viewComponent: no ref argument and no word under cursor');
-        vscode.window.showInformationMessage('typeCAD: place the cursor on a component (or select a reference).');
+      // Command-link args arrive spread as JSON (the hover's "view on
+      // board" link): go straight to that component, no prompt.
+      if (typeof ref === 'string' && ref.trim() !== '') {
+        output.appendLine(`viewComponent: arg=${JSON.stringify(ref)}`);
+        await viewer.select(ref.trim());
         return;
       }
-      await viewer.select(target);
+      // Palette invocation: prompt for the designator, seeded with the word
+      // under the cursor when the editor has one — typed designators land
+      // in the open-or-opening viewer via the same delivery path
+      const seed = wordUnderCursor(vscode.window.activeTextEditor);
+      const typed = await vscode.window.showInputBox({
+        prompt: 'component designator to show on the board',
+        placeHolder: 'e.g. R1, U3',
+        value: seed ?? '',
+        ignoreFocusOut: false,
+      });
+      if (!typed || typed.trim() === '') return; // dismissed — nothing to do
+      output.appendLine(`viewComponent: typed=${JSON.stringify(typed)}`);
+      await viewer.select(typed.trim());
     }),
   );
 
@@ -132,7 +151,7 @@ export function activate(context: vscode.ExtensionContext) {
             // flag — anything else is a real failure worth logging.
             if (err instanceof QueryError && err.boardMissing) {
               const hint = new vscode.MarkdownString(
-                '$(circuit-board) typeCAD: no compiled board yet — run `npm run build` in the hw folder.',
+                '$(circuit-board) typeCAD/pcb: no compiled board yet — run `npm run build` in the hw folder.',
               );
               hint.supportThemeIcons = true;
               return new vscode.Hover(hint, range);
@@ -148,7 +167,7 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     vscode.commands.registerCommand('typecad-pcb.refreshBoardData', () => {
       service.invalidate();
-      vscode.window.setStatusBarMessage('typeCAD: board data refreshed', 3000);
+      vscode.window.setStatusBarMessage('typeCAD/pcb: board data refreshed', 3000);
     }),
   );
 
@@ -161,7 +180,7 @@ export function activate(context: vscode.ExtensionContext) {
     }),
   );
 
-  output.appendLine('typeCAD PCB extension activated');
+  output.appendLine('typeCAD/pcb extension activated');
 }
 
 /** Real query runner: `exec` with cwd pinned to the hw folder. */

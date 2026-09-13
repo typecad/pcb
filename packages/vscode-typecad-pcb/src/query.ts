@@ -8,7 +8,7 @@
 // can prepend noise, so parsing extracts the JSON document defensively.
 // ---------------------------------------------------------------------------
 
-import type { ComponentDetail, ComponentSummary } from './types.js';
+import type { ComponentDetail, ComponentSummary, NetSourceSummary } from './types.js';
 
 /** Characters safe to interpolate into a shell command line. */
 const SAFE_ARG = /^[A-Za-z0-9_+\-.]+$/;
@@ -27,6 +27,11 @@ export class QueryError extends Error {
 /** `query components --json` — the index every hover resolution starts from. */
 export function indexCommand(): string {
   return 'npx typecad-pcb query components --json';
+}
+
+/** `query nets --json` — every net with its source provenance. */
+export function netsCommand(): string {
+  return 'npx typecad-pcb query nets --json';
 }
 
 /** `query component <ref> --json` — pad-by-pad connectivity for one component. */
@@ -132,6 +137,24 @@ export function parseComponentIndex(output: string): ComponentSummary[] {
   for (const raw of parsed) {
     const summary = parseSummary(raw);
     if (summary) out.push(summary);
+  }
+  return out;
+}
+
+/** Parse `query nets --json` into net-name -> source entries (sources optional). */
+export function parseNetIndex(output: string): NetSourceSummary[] {
+  const parsed = extractJson(output);
+  throwIfCliError(parsed);
+  if (!Array.isArray(parsed)) {
+    throw new QueryError('query nets --json did not return an array');
+  }
+  const out: NetSourceSummary[] = [];
+  for (const raw of parsed) {
+    if (!raw || typeof raw !== 'object') continue;
+    const net = raw as Record<string, unknown>;
+    const name = asString(net.name);
+    if (!name) continue;
+    out.push({ name, source: asString(net.source) || undefined, routeSource: asString(net.routeSource) || undefined });
   }
   return out;
 }

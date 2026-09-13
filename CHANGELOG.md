@@ -1,5 +1,122 @@
 # @typecad/pcb
 
+## 1.0.0-alpha.5
+
+### Minor Changes
+
+- PCBA image renderer for the gerber viewer: `gerber-viewer <dir> --render pcba` renders the fab output as a flat, themed 2D "assembled board" SVG — the PcbDraw look computed from gerbers alone, with no board file, KiCad install, lighting or perspective involved.
+  
+  - The board surface is painted bottom-up by SVG compositing: substrate from the Edge.Cuts outline (traces are chained into closed contours, regions close implicitly), copper, pad flashes in the finish color, then the soldermask film with the mask gerber's openings punched through an SVG `<mask>` so pads/copper/substrate show exactly where the real openings are — followed by silkscreen and drilled holes.
+  - Components are Fritzing-inspired stylized glyphs drawn from the X2 `%TO.P` pad attributes — no part library. Grouping pad flashes by reference recovers each part's layout; the package family (two-pad, dual-row IC, QFN/perimeter, generic) is inferred from the pad pattern, and each glyph gets metal leads at its pads, a rounded body, a pin-1 dot and a DIP notch for through-hole ICs. Mounting holes and single-pad test points are skipped.
+  - Copper ghosting through the mask: real soldermask is translucent, so traces and pours under it render in a darker mask tone — a new `maskCopper` theme color painted over the film (still masked off at the openings, so pads keep their finish color). Every builtin theme ships a matching value. Raw copper is never painted under the film: mask-opening rings around pads reveal substrate only, so no copper-colored halo leaks around components (the `copper` color appears solely in the no-mask bare-board fallback), and the default `pads` finish is a copper tone (`#cf8a4d`) to match.
+  - Netlist metadata is now auto-discovered: when no `--netlist` is passed, the pcba render looks for a sibling `*.net` beside the input directory (the typeCAD build layout: `build/gerbers` + `build/<board>.net`), so the plain command gets exact package dims, values and name-based classification. `--no-netlist` opts out. Without any netlist the pad-topology fallbacks still improved: a Y/X reference on a two-pad part renders the crystal metal can, and a perimeter pad ring classifies as QFP (long protruding gull-wing pads) versus QFN (short flush pads) by pad length, checked before the ball-array grid test so a QFP's pad lattice can't read as a BGA.
+  - Chip resistors/caps draw a true top view: a sharp-cornered body with silver termination caps on its ends — `[copper pad [silver | black | silver] copper pad]` — with the board's own exposed pads visible past the part, instead of silver pads under a capsule.
+  - Exact body outlines from the Fab layer: each component claims the fab ink nearest its pads (reaching 4mm past the land pattern, since bodies like terminal blocks overhang their pins), the group is stitched into closed contours with junction-aware walking (smallest-turn preference with backtracking, so tee connections such as terminal-block dividers don't break the loop), and the largest contour's bounding box becomes the body rectangle — exact package dimensions where the land pattern extends past the package (the QFN's pads peek out on all four sides). Orientation cuts in the fab drawing, like QFN pin-1 chamfered corners, are squared off rather than rendered verbatim; the pin-1 dot marks orientation. Value-text strokes and pin marks lose the area contest; footprint-name dims and pad heuristics remain the fallbacks when no Fab layer is present.
+  - A package grammar now covers the common archetypes, each drawn as a procedural top-view glyph: two-terminal chips (resistor/capacitor/inductor with winding stripes/diode/LED/ferrite), axial through-hole parts, radial electrolytic cans (dark circle, centered polarity stripe), through-hole LED domes (tinted, die dot), SOT small transistors, SOIC/TSSOP gull-wing ICs, DIPs (notch), QFN/DFN and BGA, QFP, pin headers, terminal blocks (gold screw dots), shrouded connectors (USB/barrel/JST — body extended past the pad row, shield pads as tabs), crystals, metal-can modules (oscillators/RF shields — metal lid, inset detail, no legs), TO/SOT-223 power packages (tab), trimmer potentiometers (light-blue body `bodyTrimmer`, silver screw in the bottom-right corner), slide switches (rounded internal track the actuator rides in), rotary encoders (shaft filling most of the body), pushbuttons, generic fallback. New names classify to the new families (CP_Radial→radial, USB|BarrelJack|JST→connector, Oscillator|TCXO|RF_Module→can, Potentiometer→trimmer, RotaryEncoder→rotary, SW_DIP|SW_Slide→slide, LED_D→dome) and the nameless topology fallback infers them from reference prefixes (C on two TH pads → radial, LED → dome, RV → trimmer, SW on three pads → slide; the exposed-pad exclusion now skips zero-span collinear rows).
+  - Semantic appearance from the reference prefix plus the netlist value: through-hole resistors get the classic tan body (`bodyResistor` theme color) with real color bands parsed from their value ("10k" → brown black orange + gold) — SMD chips carry none, like real parts — MLCCs render beige, inductors/ferrites charcoal, diodes carry a cathode stripe at the pin-2 end, LEDs render as a tinted translucent package with a die square — all overridable through new theme keys (`bodyMlcc`, `bodyResistor`, `bodyInductor`, `stripe`, `ledTint`, `crystal`). `Resistor_THT`/axial footprint names classify as axial parts, and the SOT-223/DPAK tab starts at the body edge and reaches ~2/3 over its pad instead of covering it.
+  - Component bodies size from the package when a netlist is passed (`--netlist build/board.net`, the same flag the viewer uses): footprint names like `R_0603_1608Metric` and `QFN-24-1EP_4x4mm_P0.5mm_EP2.6x2.6mm` carry the real body dimensions (1.6×0.8mm, 4×4mm), which override the pad-geometry heuristics. Through-hole parts render as DIPs, headers, terminal blocks or axial parts instead of being skipped; only mounting holes, test points and unclassifiable through-hole patterns draw nothing. Pad geometry from KiCad's RoundRect aperture macros reads its real extent instead of a 0.3mm fallback.
+  - Synthetic refdes labels use the theme's `labelFont` (`'OCR A Std', 'Courier New', monospace` by default) to match typeCAD boards; the board's own silkscreen text (including fonts like `OCR A Std`, vectorized by KiCad's plotter) renders faithfully from the gerber outlines.
+  - Themes are a small PcbDraw-style JSON palette with builtins `green-enig` (default), `purple-enig`, `black-hasl` and `blue-enig`; `--theme <name|file.json>` accepts any subset override. `--side front|back` flips the render (back views mirror x, labels stay readable), and refdes labels are auto: suppressed when the silkscreen layer already carries them so they don't double the silk text (`--labels`/`--no-labels` force either way).
+  - The viewer's PNG export rasterizes at ~1600px on the long edge instead of 2x viewBox units: the export clone carries explicit pixel dimensions, so the vector decodes at full target resolution — previously a ~113mm board exported as a ~230px thumbnail, and the canvas upscaled the blur.
+  
+  - Rendering internals are now shared: `renderLayerInk`/`renderDrillInk` (exported) factor the per-layer SVG emission out of `renderSvg` unchanged, and aperture-macro comment lines (primitive code 0) are skipped silently per the Gerber spec instead of warning — KiCad's `RoundRect` macro pads no longer produce spurious warnings.
+  
+  - The interactive board viewer gains a view switcher: a combo box under the project title toggles between the classic Gerber view (layer stack, visibility/opacity controls) and the new PCBA view. Both render into one SVG sharing a single coordinate frame, so pan/zoom, the measurement ruler, DRC markers, component search and the vscode cross-probing (double-click→source, source→component highlight) work in either view; the PCBA view hides the layer controls, and the selected view persists per board.
+  
+  - Render-cycle cost: zone fills were the hidden giant (~20s of every kicad-cli gerber export). The build no longer fills at all — see the zone-fills-on-demand changeset — so `npm run build` is refill-free, and the vscode panel gates on board mtime stability (never rendering kicad-cli's truncate-then-write intermediate states), cutting one full export chain per build.
+  
+  - The vscode panel's refresh is now gated, fixing the flaky "only refreshes once" behavior: the board's mtime is compared against the last render — spurious FileSystemWatcher events (Windows fires onChange loosely; anything that touches the workspace) no longer trigger a pointless export when the board didn't change — and a skipped or failed refresh self-retries, because the build's final board write can coalesce into the in-flight generate call and never fire the watcher again. A board written moments ago is given 3s to settle before its export runs, so an export never races the writer.
+- `gerber-viewer serve` is removed, along with the `gerber_viewer` npm script it was wired into by `typecad-pcb create` — the VS Code extension's Board viewer now covers that loop (re-export + rerender on every `npm run build`) with cross-probing on top. The one-shot CLI (`gerber-viewer <dir> -o board.html [--netlist] [--drc] [--render pcba]`) is unchanged; the programmatic gerber-viewer exports lose `startGerberViewerServer`, `findBoardFile` (the gerber-viewer one) and `RELOAD_CLIENT`. Existing projects can delete the `gerber_viewer` script from `hw/package.json` — nothing else references it.
+- Port the typeCAD HAL CLI ergonomics to `typecad-pcb` (same invocation shapes as `typecad-hal`):
+  
+  - **Watch mode** — `typecad-pcb build --watch` (or `-w`): tracks the entry file plus its local import graph (parsed with acorn, `.js` → `.ts` resolution included) and rebuilds on change, debounced. A failed rebuild prints the error and keeps watching; editors that save atomically are handled by re-arming watchers after every event.
+  - **Output directory** — `--outDir=<dir>` (also `--out-dir`), accepted on every command: redirects both the library's writes (netlist, board, BOM, contract, SPICE, package `build/lib` sync) and the CLI's artifact discovery (query, drc, erc, export, edit, check, diagnostics, doctor) via the `TYPECAD_BUILD_DIR` override. Default remains `./build/`.
+  - **`typecad-pcb clean`** — removes the generated build directory; refuses directories without KiCAD build artifacts unless `--force` is given, and always refuses the working directory itself. `--json` and `--outDir` supported.
+  - **Bare-file invocation** — `typecad-pcb main.ts --watch` now behaves like `typecad-pcb build main.ts --watch`.
+  - **`build --diagnostics` is now best-effort** like HAL's: a report-generation failure logs a warning instead of failing the build.
+  
+  Also included from the earlier diagnostics work: the `typecad-pcb diagnostics` command and `build --diagnostics` flag (markdown + JSON report with BOM, nets, pin map, mermaid graphs, ERC-lite electrical checks, kicad-cli ERC/DRC, and routing status), plus three `board_model` parsing fixes for fresh typeCAD output (fp_text references, numeric pad names) and kicad-cli-resaved boards without a global net table.
+- `typecad-pcb create` now bundles the typeCAD/pcb VS Code extension into every new project (`hw/.vscode/extensions/typecad-pcb/`), zero-install like the HAL addon:
+  
+  - **Pin hovers** — hover a component variable in `src/` to see its reference, footprint, placement, and a pad-by-pad table with connected/unconnected status (net-less `np_thru_hole` pads read as mechanical). A declared component missing from the compiled board explains itself instead of hovering silent.
+  - **Cross-probe board viewer** — *typeCAD/pcb: View Board* renders the compiled board (gerbers + netlist, zones refilled) in a webview beside the editor; the hover's *view on board* link zooms to the component (and *View Component on Board* from the palette prompts for a designator, seeded with the word under the cursor), and double-clicking any pad or outline in the viewer jumps back to the declaring source line — traces too: `pcb.net`/`pcb.route` callsites are now stamped into the netlist (Code/Route properties) and surface through `query nets`, so a trace hover reads "net2 { source board.ts:83 }" and double-clicking a trace reveals that line (single clicks — measurement ruler points included — always stay inside the viewer). Viewport, layer settings, and highlight survive board-change reloads, and an open Board panel is restored across VS Code window reloads too — instantly from the last generated view when the board hasn't changed, or with a brief placeholder while the export reruns. While a rebuild's new render is being generated, the viewer's lower-left status text announces it — and locks the readout so the mouse-coordinate display cannot overwrite the notice — unlocking when the new view lands. The hover readout names the source variable beside the designator ("R1 { source r1 }"), and the PNG export rasterizes at ~1600 px.
+  - **Editor integration** — `.vscode/extensions.json` force-installs the extension workspace-scoped; `.vscode/settings.json` hides its manifest from the NPM Scripts pane and the Explorer (ported from the HAL addon's npm-hiding settings).
+  
+  Also in this change:
+  
+  - The footprint `Code` property now always embeds the declaring `file:line` (previously only anonymous components carried it), normalized to a POSIX project-relative path so committed boards stay machine-independent. This is what the reverse cross-probe and the hover's source row read.
+  - `gerber-viewer` one-shot mode gained `--netlist`/`--drc` flags, a `#typecad-probe` SVG group and a `window.typecadViewer` embedding API, board-coordinate (y-down) mouse readout, and viewport persistence across reloads.
+  - `typecad-pcb export gerbers` (and `jlcpcb-export`) pass `--check-zones` on KiCad ≥ 9 — builds write zone declarations without fill geometry, so the export computes the pour copper at plot time.
+  - Board lookup (`query`, `export`, `drc`, `check`) picks the newest `.kicad_pcb` in `build/` instead of refusing when stray boards share the directory.
+  - A new workspace package `packages/vscode-typecad-pcb` develops the extension; `npm run bundle` ships the compiled copy into `assets/editor-extensions/` (now included in the npm `files`).
+- Zone fills are no longer typeCAD's job at build time — each operation that needs fill geometry now computes it itself, so `npm run build` writes zone declarations only and skips the ~20s kicad-cli refill round-trip entirely (the rd_skeleton demo board builds in ~3.5s where it took ~30s).
+  
+  - `pcb.create()` no longer calls `materializeZoneFills` after writing the board. The board file carries zone declarations without `(filled_polygon)` geometry — valid as far as KiCad is concerned; KiCad fills zones on demand.
+  - `typecad-pcb export gerbers` always passes `--check-zones` (KiCad ≥ 9), so plotted gerbers include the pour copper even though the `.kicad_pcb` never materialized it.
+  - `typecad-pcb check` refills as part of its DRC pass, as before.
+  - `materializeZoneFills(pcb, state)` remains exported for callers that want to force a fill-and-save on the board file itself (e.g. before handing it to a tool that can't refill).
+  - The zone-fill sidecar files (`.zonefill`) are gone — with the build no longer filling, there was nothing left to record. The board viewer detects completed builds by file mtime stability instead.
+
+### Patch Changes
+
+- Consolidated KiCad symbol parsing into a single shared core (`src/symbol_core.ts`). The CLI add flows, the schematic renderer (`SymbolLibraryManager`), and symbol embedding (`loadSymbolLib`) now share one extends resolver and one pin walker instead of four parallel `.kicad_sym` readers. `kicad_sym_utils` is now a stateless facade (`readSymbol` / `readSymbolFile`), which removes the hidden call-order coupling between `kicad_symbol()` and `kicad_pins()`.
+  
+  Behavior improvements that come with the unified semantics:
+  - Pin extraction is now fully recursive: pins hanging directly on the symbol node and deeply nested unit symbols are found (previously only one level of unit nesting was scanned).
+  - `extends` parents written as `Lib:Name` now resolve across libraries (previously mangled and silently unresolved), with circular-chain detection.
+  - Local `.kicad_sym` files with multiple symbols now yield the pins of the chosen symbol only — previously every symbol's pins in the file were merged into the component.
+  - `typecad-pcb add package` local non-interactive mode no longer reads pins from stale internal state; the symbol is resolved properly (with a warning when it can't be found).
+  - Symbols whose `Footprint` property has an empty value are now usable in the add flows (previously treated as invalid).
+  
+  No public API was removed; the changes are internal to the CLI flows and renderer.
+- - `create` no longer offers a PlatformIO firmware project; the optional `./fw` is now a typeCAD HAL project (`--hal=<true|false>`, interactive question after the project name). When chosen, it runs `npx @typecad/hal create <name> --outDir fw` in the project root so HAL's own wizard picks the board, and `fw/` joins the generated `.code-workspace` whenever it exists. `--pio`/`--board` are gone from the CLI, help, and skill docs.
+  - Fixed the interactive `create` flow silently skipping the firmware and git questions: the command shim assigned `undefined` to absent `--hal`/`--git` flags, which the prompt flow read as explicitly answered. All three questions (name, HAL firmware, git) now always appear when the flags aren't passed.
+- - Dead code cleanup (~750 lines): removed the unused routing worker modules (`worker_pool`, `segment_worker`, `simple_routing_grid`), `pcb_board_context`, `pcb_kicad_window`, the unused `kicad-symbols` barrels and `GlobalErrorHandler`, two unused test helpers, and two orphaned ambient type declarations (`@typecad/pcb-astar`, `which`). No public API was removed.
+  - `pcbRegisterRouter` is now exported from the package root. The custom-router registration point was implemented, tested, and referenced by the `layout` skill docs, but was unreachable because it was never re-exported from `index.ts`.
+  - Tightened module boundaries: ~60 symbols that were only used inside their own module are no longer exported, including a dead type re-export block in `pcb.ts` and a redundant `LibraryInfo`/`SymbolInfo`/`KiCadCacheMetadata` re-export in `kicad-symbols/types`.
+  - Removed unused devDependencies: `tsx`, `typedoc`, `typedoc-plugin-markdown`.
+- Relative-placement fixes from a full end-to-end API exercise: footprint-string
+  targets now resolve, and outline-less board reads explain themselves in the
+  console instead of silently returning zeros.
+  
+  - `below()/above()/rightOf()/leftOf()` — `.by(gap, "Lib:Footprint")` now
+    measures the gap against the named footprint's bounds at rotation 0.
+    Previously the string was silently ignored and the new component's own
+    footprint was used, contradicting the documented signature (verified
+    end-to-end: `.by(2, 'Capacitor_SMD:C_0805_1608Metric' ...)` on a resistor
+    now lands at the capacitor-derived coordinate).
+  - Plain-number board geometry reads (`pcb.board.center.x`, `left/right/top/
+    bottom`, `width/height`, corners) before `pcb.outline()` now log a console
+    warning — they snapshot zeros and never re-resolve, unlike `from*()` /
+    `centered()` placement values which safely follow the final outline at
+    `create()`. Several reads on one `pcb.board` object dedupe to a single
+    warning. Unknown footprint strings passed to `.by()` already warned via
+    `getFootprintBounds`; that is unchanged.
+  - JSDoc corrected: `.by(gap, target)` never returned "a plain number
+    immediately" — it always returns a deferred placement value; the docs now
+    describe actual Component/string target semantics.
+  - Docs (`board_layout` page, llms mirror, llms-full bundle): removed the
+    stale `import { board } from '@typecad/pcb'` — placement lives on
+    `pcb.board`, which is the only supported entry point.
+- `typecad-pcb create` now scaffolds the project `tsconfig.json` with `module: "ESNext"` / `moduleResolution: "Bundler"` instead of `NodeNext`. The extensionless relative import that `add component` prints for its generated class (`import { LD3985G25R_TSOT23 } from './LD3985G25R_TSOT23';`) is now valid as-is in editors and in `typecad validate` — under NodeNext it was flagged with "Relative import paths need explicit file extensions", forcing a manual `.js` suffix even though the build (tsx) never needed one. Bundler resolution matches the actual runtime: projects are always executed through tsx's esbuild resolver and tsc only ever type-checks (`noEmit`), so nothing is ever loaded as raw Node ESM.
+- Fixed `pcb.stitch()` placing body keep-out boxes at the footprint bounds center instead of the footprint origin.
+  
+  - Many footprints' origin is pin 1 or a corner (DIPs, pin headers, most THT connectors), not the body center. The stitch grid treated the origin-relative bounds box as centered on the component position, so it shadowed open board up-and-left of the part — refusing vias that would fit, e.g. the row above and the column left of a `DIP-8_W7.62mm` — while leaving the real body open down-and-right, where stitch vias could punch straight through the part.
+  - Blockers are now built from the box's rotated corners anchored at the component position (mirrored about the X axis for back-side parts), matching the placement code's `rotatedBox` semantics.
+- Reference-designator prefixes are now read from the symbol's `(property "Reference" ...)` — the same property KiCad editors use — instead of being guessed from the first letter of the footprint name. An ATtiny3227 in a QFN footprint now correctly becomes `U1` instead of `Q1`, with no code changes needed in existing projects.
+  
+  Precedence, highest first:
+  1. an explicit `reference` (`new ATtiny3227_M('U1')` or `init.reference`)
+  2. an explicit `prefix` (`u1.prefix = 'U'` or `init.prefix`)
+  3. the symbol's Reference property, resolved through the global KiCad libraries or `<buildDir>/lib` (extends chains inherit the base symbol's prefix; results are cached per symbol)
+  4. the previous footprint-name heuristic, now only a fallback for components without a resolvable symbol
+  
+  `typecad-pcb add component` / `add package` also pass the resolved symbol and prefix into the generated class through the `Component` init object (`super({ footprint, symbol, prefix })`), so correct designators survive even when the symbol library isn't installed at build time (e.g. CI).
+  
+  Also fixes the designator being resolved too early: pin declarations as class fields (`PA0 = this.pin(1)`) used to read the reference before the constructor body could set the symbol, which forced the footprint-name fallback and produced wrong prefixes (Q1 for a QFN-packed MCU). `Pin.reference` and `Pin.uuid` are now resolved lazily through the owning component, so inference always happens after construction completes.
+  
+  `resolveExtends` now returns a genuinely flattened symbol: graphics and pins from the extends-chain base, properties overridden by each derived level, and the node named after the requested `library:symbol` (with unit sub-symbols renamed to match). Previously the embedded `lib_symbols` entry carried the BASE symbol's name (an ATtiny3227 embedded as `ATtiny807-M`), so the placed symbol's `lib_id` had no matching definition and KiCad silently dropped the component from netlist export and ERC.
+
 ## 1.0.0-alpha.4
 
 ### Major Changes

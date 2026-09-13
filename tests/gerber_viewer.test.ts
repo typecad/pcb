@@ -109,6 +109,27 @@ describe('buildViewerHtml', () => {
       /window\.typecadViewer = \{[^}]*searchRefs: searchRefs[^}]*highlightNet: highlightNet[^}]*clearNetHighlight: clearNetHighlight[^}]*\}/,
     );
   });
+
+  it('appends the source variable to the hover readout when the host provides it', () => {
+    // the vscode extension's injected client installs window.typecadVarFor;
+    // the readout reads "R1 { source r1 }" instead of the bare designator
+    expect(html).toContain('window.typecadVarFor');
+    expect(html).toContain("' { source ' + vn + ' }'");
+  });
+
+  it('gates its own status readouts behind a host-notice lock', () => {
+    // a render notice ("generating new render…") sets data-locked on #status
+    // and owns the line; every viewer-internal write stands down until the
+    // lock clears (or the page reloads) so a moved mouse cannot overwrite it
+    expect(html).toContain('function statusLocked()');
+    expect(html).toMatch(/statusEl\.hasAttribute\('data-locked'\)/);
+    // mouse-move coordinate readout
+    expect(html).toMatch(/if \(!statusLocked\(\)\) \{\s*statusEl\.textContent =/);
+    // click-probe hint, search miss, search hit count
+    expect(html).toMatch(/if \(!statusLocked\(\)\) statusEl\.textContent = 'net ' \+ net/);
+    expect(html).toMatch(/if \(!statusLocked\(\)\) statusEl\.textContent = '"'\s*\+ q \+ '" not found'/);
+    expect(html).toMatch(/if \(!statusLocked\(\)\) statusEl\.textContent = hits\.length/);
+  });
 });
 
 describe('buildViewerFromFiles', () => {
@@ -133,6 +154,54 @@ describe('buildViewerFromFiles', () => {
     fs.writeFileSync(path.join(dir, 'noise.gbr'), 'this is not a gerber\n');
     expect(() => buildViewerFromFiles([dir])).toThrow(/could be parsed/);
     fs.rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+describe('view switcher (gerber / pcba)', () => {
+  const image = parseGerber(read('traces.gbr'));
+  const info = detectLayer('demo-F_Cu.gbr', image);
+  const svg = renderSvg([{ info, image }]);
+  // a plausible pcba render for the same layer (any inner content works)
+  const pcbaSvg =
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -7 10 8"><defs><mask id="pcba-open"/></defs><g id="board"><g clip-path="url(#pcba-clip)"><rect width="8" height="6" fill="#1a7a44"/></g><g id="components"><g data-ref="U1"><rect width="2" height="2" fill="#2b2f33"/></g></g></g></svg>';
+  const html = buildViewerHtml(svg, [info], { title: 'demo board', pcbaSvg });
+
+  it('embeds both views in one svg with the pcba hidden', () => {
+    expect((html.match(/<svg id="board"/g) ?? []).length).toBe(1); // one root
+    expect(html).toContain('<g id="view-gerber"><g id="yflip"');
+    expect(html).toContain('<g id="view-pcba" style="display:none">');
+    expect(html).toContain('data-ref="U1"'); // pcba glyphs present
+    expect(html).toContain('id="pcba-open"'); // pcba defs merged
+    // overlays stay siblings of both views
+    expect(html).toContain('<g id="measure"></g><g id="drc"></g><g id="typecad-probe"></g>');
+  });
+
+  it('unions the two viewBoxes so neither view clips', () => {
+    // gerber viewBox bottoms out near y=-0.6; pcba fixture reaches y=-7
+    const root = /<svg id="board"([^>]*)>/.exec(html)![1]!;
+    const viewBox = /viewBox="([^"]+)"/.exec(root)![1]!;
+    const [, y, , h] = viewBox.split(' ').map(Number);
+    expect(y).toBeLessThanOrEqual(-7); // pcba top
+    expect(y + h).toBeGreaterThanOrEqual(1); // gerber bottom
+  });
+
+  it('offers the combo box and view-switching machinery', () => {
+    expect(html).toContain('id="view-mode"');
+    expect(html).toContain('<option value="gerber">Gerber view</option>');
+    expect(html).toContain('<option value="pcba">PCBA view</option>');
+    expect(html).toContain('function setView(mode)');
+    expect(html).toContain("viewGroups.pcba.style.display");
+    expect(html).toContain("__viewMode"); // persisted selection
+    // cross-probe dimming covers the pcba view too
+    expect(html).toContain("svg.querySelector('#view-pcba > #pcba-board')");
+  });
+
+  it('omits the switcher when no pcba svg is given', () => {
+    const plain = buildViewerHtml(svg, [info], { title: 'demo board' });
+    expect(plain).not.toContain('id="view-mode"');
+    expect(plain).not.toContain('id="view-pcba"');
+    expect(plain).toContain('id="view-gerber"'); // gerber still wrapped
+    expect(plain).toContain('data-layer-id="demo-f_cu-gbr"'); // gerber intact
   });
 });
 

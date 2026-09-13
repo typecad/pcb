@@ -160,8 +160,8 @@ export default defineConfig({
           {
             compilerOptions: {
               target: 'ES2021',
-              module: 'NodeNext',
-              moduleResolution: 'NodeNext',
+              module: 'ESNext',
+              moduleResolution: 'Bundler',
               strict: true,
               esModuleInterop: true,
               skipLibCheck: true,
@@ -250,7 +250,6 @@ ${skillSections}
 ## npm Scripts
 
 - \`npm run build\` — generate KiCad files from typeCAD source
-- \`npm run gerber_viewer\` — board viewer dev server (gerber-viewer serve, http://localhost:4273) that re-exports gerbers and refreshes the page on every \`npm run build\`
 - \`npm run add_component\` — add a component interactively
 - \`npm run add_package\` — create a reusable component package
 - \`npm run kicad-search\` — search KiCad symbol libraries
@@ -271,7 +270,6 @@ ${skillSections}
     package_json.type = 'module';
 
     package_json.scripts['build'] = `typecad-pcb build`;
-    package_json.scripts['gerber_viewer'] = `gerber-viewer serve`;
     package_json.scripts['add_component'] = `typecad-pcb add component`;
     package_json.scripts['add_package'] = `typecad-pcb add package`;
     package_json.scripts['kicad-search'] = `typecad-pcb search`;

@@ -7,7 +7,11 @@ import { parseExcellon } from './gerber/parse_excellon.js';
 import { parseGerber } from './gerber/parse_gerber.js';
 import type { DrillImage, GerberImage } from './gerber/types.js';
 import { computeDrcMarkers, computeFabReport, type DrcMarker, type FabReport } from './report.js';
+import { DEFAULT_PCBA_THEME } from './render/theme.js';
+import { discoverNetlist, parseNetlistComponents } from './netlist.js';
 import { computeLayerBounds, renderSvg, type RenderLayer } from './render/svg.js';
+import { renderPcbaSvg } from './render/pcba.js';
+import type { NetlistComponent } from './render/components.js';
 import { buildViewerHtml } from './render/viewer_html.js';
 
 export interface ViewerBuildResult {
@@ -213,7 +217,7 @@ export function buildViewerFromFiles(paths: string[], options: ViewerBuildOption
     fullName: stripped[i] === l.info.name ? undefined : l.info.name,
   }));
 
-  // netlist (serve mode): pads carry %TO.P ref/pin but no net in gerbers;
+  // netlist: pads carry %TO.P ref/pin but no net in gerbers;
   // the netlist fills that in so clicking a pad highlights its net
   let padNets: Record<string, string> = {};
   if (options.netlistPath && fs.existsSync(options.netlistPath)) {
@@ -237,7 +241,7 @@ export function buildViewerFromFiles(paths: string[], options: ViewerBuildOption
 
   const report = computeFabReport(ordered);
 
-  // DRC markers (serve mode): positions arrive in board coordinates; map them
+  // DRC markers: positions arrive in board coordinates; map them
   // into gerber space via the edge layer vs the board file's outline bbox
   let drcMarkers: DrcMarker[] = [];
   if (options.drcReportPath && fs.existsSync(options.drcReportPath)) {
@@ -257,10 +261,27 @@ export function buildViewerFromFiles(paths: string[], options: ViewerBuildOption
   }
 
   const svg = renderSvg(ordered, { background: options.background });
+  // the pcba view shares the pipeline's netlist (explicit or auto-discovered
+  // sibling *.net) so footprint names drive package classification there.
+  // Designators come from the silkscreen gerber, positioned by KiCad — the
+  // knockout in the renderer is sized to keep that text whole.
+  const pcbaNetlistSource = options.netlistPath ?? discoverNetlist(paths);
+  let pcbaNetlist: Record<string, NetlistComponent> = {};
+  if (pcbaNetlistSource) {
+    try {
+      pcbaNetlist = parseNetlistComponents(fs.readFileSync(pcbaNetlistSource, 'utf8'));
+    } catch (error) {
+      // a netlist mid-rewrite (a render racing a build) must not
+      // take the whole viewer down with it
+      warnings.push(`could not parse netlist: ${(error as Error).message}`);
+    }
+  }
+  const pcbaSvg = renderPcbaSvg(ordered, { theme: DEFAULT_PCBA_THEME, netlist: pcbaNetlist }).svg;
   const html = buildViewerHtml(svg, layers, {
     title: options.title ?? (prefix.replace(/[-_. ]+$/, '') || path.basename(paths[0]!)),
     report,
     drcMarkers,
+    pcbaSvg,
   });
   return { svg, html, layers, warnings, report };
 }

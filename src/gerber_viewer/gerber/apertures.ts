@@ -154,6 +154,7 @@ export function evaluateMacro(
       warnings.push(`macro "${macro.name}": skipped malformed primitive "${trimmed}"`);
       continue;
     }
+    if (code === 0) continue; // comment line (primitive code 0 per the spec)
     const mods = parts.slice(1).map((p) => evalExpression(p, vars, warnings, macro.name));
     if (mods.some((m) => m === null)) continue;
     const m = mods as number[];

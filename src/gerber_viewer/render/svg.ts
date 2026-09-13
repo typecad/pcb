@@ -138,7 +138,7 @@ function arcCommand(from: Point, seg: Extract<PathSegment, { kind: 'arc' }>): st
   return `A ${fmt(r)} ${fmt(r)} 0 ${largeArc} ${sweep} ${fmt(seg.to.x)} ${fmt(seg.to.y)}`;
 }
 
-function pathData(start: Point, segments: PathSegment[], close: boolean): string {
+export function pathData(start: Point, segments: PathSegment[], close: boolean): string {
   if (segments.length === 0) return '';
   let d = `M ${fmt(start.x)} ${fmt(start.y)}`;
   let prev = start;
@@ -169,6 +169,115 @@ function contourBounds(contour: RegionContour, bounds: Bounds): void {
     }
     prev = seg.to;
   }
+}
+
+export interface InkOptions {
+  /** ink color for dark-polarity shapes */
+  color: string;
+  /** unique prefix for aperture symbol ids (must not collide across inks) */
+  idPrefix: string;
+  /** render clear-polarity shapes in this color instead of the .cut class (mask contexts, where the CSS var has no meaning) */
+  clearColor?: string;
+  /** emit pad flashes only (no traces/regions) */
+  flashesOnly?: boolean;
+}
+
+export interface LayerInk {
+  defs: string[];
+  body: string[];
+  warnings: Set<string>;
+}
+
+/**
+ * Render one gerber layer's ops as SVG ink: aperture symbols into `defs`
+ * (flashes reference them via <use>) and colored traces/flashes/regions into
+ * `body`. Shared by the interactive renderer and the PCBA image renderer.
+ */
+export function renderLayerInk(layer: RenderLayer, options: InkOptions): LayerInk {
+  const img = layer.image;
+  if (!('ops' in img)) return renderDrillInk(layer, { color: options.color });
+
+  const defs: string[] = [];
+  const body: string[] = [];
+  const warnings = new Set<string>();
+  const evaluated = new Map<number, EvaluatedAperture>();
+  const evalAp = (code: number): EvaluatedAperture => {
+    if (!evaluated.has(code)) {
+      evaluated.set(
+        code,
+        img.apertures.has(code)
+          ? evaluateAperture(img.apertures.get(code)!, img.macros)
+          : {
+              template: null,
+              primitives: [],
+              extent: { rx: 0, ry: 0 },
+              warnings: [`aperture D${code} used but not defined`],
+            },
+      );
+      for (const w of evaluated.get(code)!.warnings) warnings.add(w);
+    }
+    return evaluated.get(code)!;
+  };
+
+  // aperture symbols for flashes
+  const flashed = new Set<number>();
+  for (const op of img.ops) if (op.type === 'flash') flashed.add(op.aperture);
+  for (const code of flashed) {
+    const ap = evalAp(code);
+    defs.push(`<g id="${options.idPrefix}_${code}">${apertureDefsShapes(ap)}</g>`);
+  }
+
+  const cutAttrs = () =>
+    options.clearColor ? ` fill="${options.clearColor}" stroke="${options.clearColor}"` : ' class="cut"';
+
+  for (const op of img.ops) {
+    if (op.type === 'flash') {
+      const attrs = op.polarity === 'clear' ? cutAttrs() : '';
+      // X2 object attributes ride along for hover probing / highlighting
+      const probe =
+        (op.net ? ` data-net="${escapeXml(op.net)}"` : '') +
+        (op.ref ? ` data-ref="${escapeXml(op.ref)}"` : '') +
+        (op.pin ? ` data-pin="${escapeXml(op.pin)}"` : '');
+      body.push(`<use${attrs}${probe} href="#${options.idPrefix}_${op.aperture}" x="${fmt(op.at.x)}" y="${fmt(op.at.y)}"/>`);
+    } else if (op.type === 'trace') {
+      if (options.flashesOnly) continue;
+      const ap = evalAp(op.aperture);
+      const stroke = strokeFor(ap, warnings);
+      const d = pathData(op.from, op.segments, false);
+      if (!d) continue;
+      const attrs = op.polarity === 'clear' ? cutAttrs() : ` stroke="${options.color}"`;
+      const net = op.net ? ` data-net="${escapeXml(op.net)}"` : '';
+      body.push(
+        `<path${attrs}${net} d="${d}" fill="none" stroke-width="${fmt(stroke.width)}" stroke-linecap="${stroke.cap}" stroke-linejoin="${stroke.cap === 'round' ? 'round' : 'miter'}"/>`,
+      );
+    } else {
+      if (options.flashesOnly) continue;
+      const d = op.contours.map((c) => pathData(c.start, c.segments, true)).join(' ');
+      if (!d) continue;
+      const attrs = op.polarity === 'clear' ? cutAttrs() : ` fill="${options.color}"`;
+      const net = op.net ? ` data-net="${escapeXml(op.net)}"` : '';
+      body.push(`<path${attrs}${net} d="${d}" fill-rule="evenodd" stroke="none"/>`);
+    }
+  }
+  return { defs, body, warnings };
+}
+
+/** Drill holes as filled circles and slots as round-capped strokes. */
+export function renderDrillInk(layer: RenderLayer, options: { color: string }): LayerInk {
+  const img = layer.image;
+  if (!('holes' in img)) return { defs: [], body: [], warnings: new Set() };
+  const body: string[] = [];
+  for (const hole of img.holes) {
+    const dia = img.tools.get(hole.tool)?.diameter ?? 0;
+    body.push(`<circle cx="${fmt(hole.at.x)}" cy="${fmt(hole.at.y)}" r="${fmt(dia / 2)}"/>`);
+  }
+  for (const slot of img.slots) {
+    const dia = img.tools.get(slot.tool)?.diameter ?? 0;
+    body.push(
+      `<path d="M ${fmt(slot.from.x)} ${fmt(slot.from.y)} L ${fmt(slot.to.x)} ${fmt(slot.to.y)}" fill="none" stroke="${options.color}" stroke-width="${fmt(dia)}" stroke-linecap="round"/>`,
+    );
+  }
+  return { defs: [], body, warnings: new Set() };
 }
 
 export function computeLayerBounds(layer: RenderLayer): Bounds | null {
@@ -258,77 +367,16 @@ export function renderSvg(layers: RenderLayer[], options: RenderOptions = {}): s
 
   layers.forEach((layer, li) => {
     const info = layer.info;
-    const img = layer.image;
     const body: string[] = [];
     const warnings = new Set<string>();
 
-    if ('ops' in img) {
-      const evaluated = new Map<number, EvaluatedAperture>();
-      const evalAp = (code: number): EvaluatedAperture => {
-        if (!evaluated.has(code)) {
-          evaluated.set(
-            code,
-            img.apertures.has(code)
-              ? evaluateAperture(img.apertures.get(code)!, img.macros)
-              : {
-                  template: null,
-                  primitives: [],
-                  extent: { rx: 0, ry: 0 },
-                  warnings: [`aperture D${code} used but not defined`],
-                },
-          );
-          for (const w of evaluated.get(code)!.warnings) warnings.add(w);
-        }
-        return evaluated.get(code)!;
-      };
-
-      // aperture symbols for flashes
-      const flashed = new Set<number>();
-      for (const op of img.ops) if (op.type === 'flash') flashed.add(op.aperture);
-      for (const code of flashed) {
-        const ap = evalAp(code);
-        defs.push(`<g id="ap${li}_${code}">${apertureDefsShapes(ap)}</g>`);
-      }
-
-      for (const op of img.ops) {
-        if (op.type === 'flash') {
-          const attrs = op.polarity === 'clear' ? ' class="cut"' : '';
-          // X2 object attributes ride along for hover probing / highlighting
-          const probe =
-            (op.net ? ` data-net="${escapeXml(op.net)}"` : '') +
-            (op.ref ? ` data-ref="${escapeXml(op.ref)}"` : '') +
-            (op.pin ? ` data-pin="${escapeXml(op.pin)}"` : '');
-          body.push(`<use${attrs}${probe} href="#ap${li}_${op.aperture}" x="${fmt(op.at.x)}" y="${fmt(op.at.y)}"/>`);
-        } else if (op.type === 'trace') {
-          const ap = evalAp(op.aperture);
-          const stroke = strokeFor(ap, warnings);
-          const d = pathData(op.from, op.segments, false);
-          if (!d) continue;
-          const attrs = op.polarity === 'clear' ? ' class="cut"' : ` stroke="${info.color}"`;
-          const net = op.net ? ` data-net="${escapeXml(op.net)}"` : '';
-          body.push(
-            `<path${attrs}${net} d="${d}" fill="none" stroke-width="${fmt(stroke.width)}" stroke-linecap="${stroke.cap}" stroke-linejoin="${stroke.cap === 'round' ? 'round' : 'miter'}"/>`,
-          );
-        } else {
-          const d = op.contours.map((c) => pathData(c.start, c.segments, true)).join(' ');
-          if (!d) continue;
-          const attrs = op.polarity === 'clear' ? ' class="cut"' : ` fill="${info.color}"`;
-          const net = op.net ? ` data-net="${escapeXml(op.net)}"` : '';
-          body.push(`<path${attrs}${net} d="${d}" fill-rule="evenodd" stroke="none"/>`);
-        }
-      }
-    } else {
-      for (const hole of img.holes) {
-        const dia = img.tools.get(hole.tool)?.diameter ?? 0;
-        body.push(`<circle cx="${fmt(hole.at.x)}" cy="${fmt(hole.at.y)}" r="${fmt(dia / 2)}"/>`);
-      }
-      for (const slot of img.slots) {
-        const dia = img.tools.get(slot.tool)?.diameter ?? 0;
-        body.push(
-          `<path d="M ${fmt(slot.from.x)} ${fmt(slot.from.y)} L ${fmt(slot.to.x)} ${fmt(slot.to.y)}" fill="none" stroke="${info.color}" stroke-width="${fmt(dia)}" stroke-linecap="round"/>`,
-        );
-      }
-    }
+    const ink: LayerInk =
+      'ops' in layer.image
+        ? renderLayerInk(layer, { color: info.color, idPrefix: `ap${li}` })
+        : renderDrillInk(layer, { color: info.color });
+    defs.push(...ink.defs);
+    body.push(...ink.body);
+    for (const w of ink.warnings) warnings.add(w);
 
     if (warnings.size > 0) {
       defs.push(

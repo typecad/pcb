@@ -5,12 +5,37 @@ export interface ViewerOptions {
   title?: string;
   /** fab report data for the sidebar panel (computed by the build pipeline) */
   report?: FabReport;
-  /** DRC violation markers, already in gerber coordinates (serve mode) */
+  /** DRC violation markers, already in gerber coordinates */
   drcMarkers?: DrcMarker[];
+  /** optional second view: the flat PCBA render of the same layers */
+  pcbaSvg?: string;
 }
 
 function escapeHtml(value: string): string {
   return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+/** Strip a rendered `<svg …>…</svg>` down to its inner content + viewBox. */
+function splitSvg(svg: string): { inner: string; viewBox: string } {
+  const open = svg.indexOf('>');
+  const close = svg.lastIndexOf('</svg>');
+  const viewBox = /viewBox="([^"]+)"/.exec(svg)?.[1] ?? '0 0 1 1';
+  return { inner: svg.slice(open + 1, close), viewBox };
+}
+
+/** Union of two "minX minY w h" viewBox strings (min 2, max 4 numbers). */
+function unionViewBox(a: string, b: string): string {
+  const nums = (v: string): number[] => v.split(/\s+/).map(Number);
+  const [ax, ay, aw, ah] = nums(a);
+  const [bx, by, bw, bh] = nums(b);
+  const x = Math.min(ax!, bx!);
+  const y = Math.min(ay!, by!);
+  const x2 = Math.max(ax! + aw!, bx! + bw!);
+  const y2 = Math.max(ay! + ah!, by! + bh!);
+  return `${fmtNum(x)} ${fmtNum(y)} ${fmtNum(x2 - x)} ${fmtNum(y2 - y)}`;
+}
+function fmtNum(n: number): string {
+  return String(Number(n.toFixed(6)));
 }
 
 function reportPanel(report: FabReport | undefined): string {
@@ -77,7 +102,47 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   if (!svg || !panzoom) return;
   var k = 1, tx = 0, ty = 0;
   var statusEl = document.getElementById('status');
+  // A host render notice (the vscode extension's "generating new render…")
+  // sets data-locked and owns the line until it is cleared or the page
+  // reloads; the viewer's own readouts stand down so a moved mouse cannot
+  // overwrite it.
+  function statusLocked() {
+    return !!statusEl && statusEl.hasAttribute('data-locked');
+  }
   var units = svg.getAttribute('data-units') || 'mm';
+
+  // ---- view switching (gerber / pcba share one coordinate frame) ----
+  var viewMode = 'gerber';
+  var viewGroups = {
+    gerber: document.getElementById('view-gerber'),
+    pcba: document.getElementById('view-pcba'),
+  };
+  var layersBox = document.getElementById('layers');
+  var btnAllOn = document.getElementById('btn-all-on');
+  var btnAllOff = document.getElementById('btn-all-off');
+  function setView(mode) {
+    if (!viewGroups.gerber || !viewGroups.pcba) return;
+    viewMode = mode === 'pcba' ? 'pcba' : 'gerber';
+    viewGroups.gerber.style.display = viewMode === 'gerber' ? '' : 'none';
+    viewGroups.pcba.style.display = viewMode === 'pcba' ? '' : 'none';
+    // layer visibility/opacity controls belong to the gerber stack only —
+    // the ruler stays (both views share one coordinate frame)
+    if (layersBox) layersBox.style.display = viewMode === 'gerber' ? '' : 'none';
+    if (btnAllOn) btnAllOn.style.display = viewMode === 'gerber' ? '' : 'none';
+    if (btnAllOff) btnAllOff.style.display = viewMode === 'gerber' ? '' : 'none';
+    var sel = document.getElementById('view-mode');
+    if (sel) sel.value = viewMode;
+    clearNetHighlight();
+    renderMeasure();
+    // remember the choice per board (same store as layer settings/viewport)
+    try {
+      var state = JSON.parse(localStorage.getItem(storeKey) || '{}') || {};
+      state.__viewMode = viewMode;
+      localStorage.setItem(storeKey, JSON.stringify(state));
+    } catch (e) {}
+  }
+  var modeSelect = document.getElementById('view-mode');
+  if (modeSelect) modeSelect.addEventListener('change', function () { setView(modeSelect.value); });
 
   function apply() {
     panzoom.setAttribute('transform', 'translate(' + tx + ' ' + ty + ') scale(' + k + ')');
@@ -85,8 +150,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     renderDrc();
     scheduleSaveView();
   }
-  // The viewport survives reloads (the dev server and the vscode panel both
-  // reload on every build) — stored under a reserved key next to the layer
+  // The viewport survives reloads (the vscode panel reloads on every build) — stored under a reserved key next to the layer
   // settings. Throttled: wheel zoom fires apply() far faster than a save
   // needs to happen.
   var saveViewTimer = null;
@@ -161,9 +225,11 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       // y (post-yflip) reads directly; negating here would report the
       // pre-flip gerber value and show every position mirrored.
       var by = (v.y - ty) / k;
-      statusEl.textContent =
-        (probe ? probe + '   ' : '') +
-        bx.toFixed(3) + ', ' + by.toFixed(3) + ' ' + units + '   zoom ' + k.toFixed(2) + 'x';
+      if (!statusLocked()) {
+        statusEl.textContent =
+          (probe ? probe + '   ' : '') +
+          bx.toFixed(3) + ', ' + by.toFixed(3) + ' ' + units + '   zoom ' + k.toFixed(2) + 'x';
+      }
     }
   });
   window.addEventListener('mouseup', function (ev) {
@@ -188,9 +254,9 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         var net = el.getAttribute('data-net');
         var ref = el.getAttribute('data-ref');
         if (net && highlightNet('data-net', net)) {
-          statusEl.textContent = 'net ' + net + ' — Esc or click empty space to clear';
+          if (!statusLocked()) statusEl.textContent = 'net ' + net + ' — Esc or click empty space to clear';
         } else if (ref && highlightNet('data-ref', ref)) {
-          statusEl.textContent = ref + ' — Esc or click empty space to clear';
+          if (!statusLocked()) statusEl.textContent = ref + ' — Esc or click empty space to clear';
         }
       } else if (netDimmed.length) {
         clearNetHighlight();
@@ -311,12 +377,26 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       var kind = groups[g].getAttribute('data-kind');
       if (kind === 'copper' && !groups[g].querySelector('[' + attr + '="' + value + '"]')) {
         var kids = groups[g].children;
-        for (var k = 0; k < kids.length; k++) {
-          if (!kids[k].hasAttribute(attr)) {
-            kids[k].setAttribute('opacity', '0.12');
-            netDimmed.push(kids[k]);
+        // NB: loop var must not be k — that is the zoom factor above
+        for (var ki = 0; ki < kids.length; ki++) {
+          if (!kids[ki].hasAttribute(attr)) {
+            kids[ki].setAttribute('opacity', '0.12');
+            netDimmed.push(kids[ki]);
           }
         }
+      }
+    }
+    // the PCBA view dims as a whole (its composite layers carry no net
+    // attributes; the component glyphs are data-ref-attributed and handled
+    // by the loop above) — dimming the hidden gerber/pcba group is harmless
+    var pcbaBoard = svg.querySelector('#view-pcba > #pcba-board');
+    if (pcbaBoard) {
+      var pcbaKids = pcbaBoard.children;
+      for (var p = 0; p < pcbaKids.length; p++) {
+        var pg = pcbaKids[p];
+        if (pg.id === 'components') continue;
+        pg.setAttribute('opacity', '0.25');
+        netDimmed.push(pg);
       }
     }
     return true;
@@ -325,11 +405,24 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   svg.addEventListener('mousemove', function (ev) {
     var el = ev.target.closest ? ev.target.closest('[data-net],[data-ref],[data-pin]') : null;
     var next = '';
+    var ref = '';
     if (el) {
       var net = el.getAttribute('data-net');
-      var ref = el.getAttribute('data-ref');
+      ref = el.getAttribute('data-ref') || '';
       var pin = el.getAttribute('data-pin');
       next = (net || '') + (ref ? (net ? ' · ' : '') + ref + (pin || '') : '');
+    }
+    // embedded surfaces (the vscode webview) install window.typecadVarFor:
+    // ref -> the source variable that created the component, shown beside
+    // the designator so the readout reads "R1 { source r1 }"
+    if (ref && typeof window.typecadVarFor === 'function') {
+      var vn = window.typecadVarFor(ref);
+      if (vn) next += ' { source ' + vn + ' }';
+    } else if (!ref && net && typeof window.typecadNetSource === 'function') {
+      // a pure trace hover (net, no component): show where its net/route
+      // was declared — "net2 { source board.ts:83 }"
+      var nsrc = window.typecadNetSource(net);
+      if (nsrc) next += ' { source ' + nsrc + ' }';
     }
     if (next !== probe) {
       probe = next;
@@ -348,19 +441,26 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   function searchRefs(rawQuery) {
     var q = rawQuery.trim().toUpperCase();
     if (!q) return false;
-    var all = svg.querySelectorAll('[data-ref]');
+    // scope to the active view: browsers return garbage geometry for
+    // elements inside display:none subtrees, so a hidden pcba glyph would
+    // otherwise blow the zoom-to-component bbox up to absurd extents
+    var scope = viewMode === 'pcba' && viewGroups.pcba ? viewGroups.pcba : (viewGroups.gerber || svg);
+    var all = scope.querySelectorAll('[data-ref]');
     var hits = [];
     for (var i = 0; i < all.length; i++) {
       var ref = (all[i].getAttribute('data-ref') || '').toUpperCase();
       if (ref === q || ref.indexOf(q) === 0) hits.push(all[i]);
     }
     if (!hits.length) {
-      statusEl.textContent = '"' + q + '" not found';
+      if (!statusLocked()) statusEl.textContent = '"' + q + '" not found';
       return false;
     }
     // union of local bboxes (getBBox: rendering-independent, unlike client
     // rects which can be 0x0 for <use> flashes) -> fit the view to it.
-    // local coords are yflip space: view = t + k * (x, -y)
+    // local coords are yflip space: view = t + k * (x, -y). Boxes are
+    // sanity-checked against the viewBox: anything larger than the whole
+    // board (browser artifacts for hidden/unrendered content) is discarded.
+    var vbSpan = Math.max(svg.viewBox.baseVal.width, svg.viewBox.baseVal.height);
     var bb = null;
     for (var j = 0; j < hits.length; j++) {
       var b;
@@ -370,6 +470,8 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         continue;
       }
       if (!b.width && !b.height) continue;
+      if (!Number.isFinite(b.x) || !Number.isFinite(b.y)) continue;
+      if (b.width > vbSpan * 2 || b.height > vbSpan * 2) continue;
       if (!bb) bb = { x1: b.x, y1: b.y, x2: b.x + b.width, y2: b.y + b.height };
       else {
         bb.x1 = Math.min(bb.x1, b.x);
@@ -397,7 +499,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       hits[f].classList.add('search-flash');
       setTimeout((function (el) { return function () { el.classList.remove('search-flash'); }; })(hits[f]), 2700);
     }
-    statusEl.textContent = hits.length + ' pad(s) of ' + hits[0].getAttribute('data-ref');
+    if (!statusLocked()) statusEl.textContent = hits.length + ' pad(s) of ' + hits[0].getAttribute('data-ref');
     return true;
   }
   document.getElementById('comp-search').addEventListener('keydown', function (ev) {
@@ -406,7 +508,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     searchRefs(ev.target.value);
   });
 
-  // ---- DRC markers (injected by the serve pipeline) ----
+  // ---- DRC markers (injected by the build pipeline) ----
   var drcGroup = document.getElementById('drc');
   var drcBtn = document.getElementById('btn-drc');
   var drcData = [];
@@ -440,12 +542,15 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   }
 
   // ---- export the current view as SVG / PNG ----
-  function exportSvgString() {
+  // pixelScale (png export) stamps explicit pixel dimensions at the target
+  // raster size — a unit-less viewBox-sized svg would decode at that tiny
+  // intrinsic resolution and the canvas would just upscale the blur
+  function exportSvgString(pixelScale) {
     var clone = svg.cloneNode(true);
     clone.removeAttribute('id');
     var vb = svg.viewBox.baseVal;
-    clone.setAttribute('width', vb.width);
-    clone.setAttribute('height', vb.height);
+    clone.setAttribute('width', vb.width * (pixelScale || 1));
+    clone.setAttribute('height', vb.height * (pixelScale || 1));
     // theme: resolve the canvas/cut color and copy dark-mode recolors
     var canvas = getComputedStyle(document.getElementById('board-area')).backgroundColor;
     clone.setAttribute('style', '--bg:' + canvas);
@@ -480,8 +585,16 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   });
   document.getElementById('btn-png').addEventListener('click', function () {
     var vb = svg.viewBox.baseVal;
-    var scale = 2;
+    // target ~1600px on the long edge (never below 2x viewBox units): a
+    // percentage-sized svg decodes at a tiny default intrinsic size, so the
+    // export clone below carries EXPLICIT pixel dims — the vector is
+    // rasterized at full export resolution instead of upscaled
+    var scale = Math.max(2, Math.round(1600 / Math.max(vb.width, vb.height, 1)));
     var img = new Image();
+    img.onerror = function () {
+      // silent failure is the worst outcome for an export button
+      if (statusEl && !statusLocked()) statusEl.textContent = 'png export failed — the board image could not be rasterized';
+    };
     img.onload = function () {
       var canvas = document.createElement('canvas');
       canvas.width = vb.width * scale;
@@ -494,7 +607,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         if (blob) download((document.title || 'board') + '.png', blob);
       }, 'image/png');
     };
-    img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(exportSvgString());
+    img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(exportSvgString(scale));
   });
 
   document.getElementById('btn-fit').addEventListener('click', fit);
@@ -534,8 +647,8 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     }
   }
 
-  // Layer settings survive rebuilds: the dev server reloads the page on every
-  // build, so visibility/opacity are kept in localStorage keyed per board and
+  // Layer settings survive rebuilds: the vscode panel reloads the page on
+  // every build, so visibility/opacity are kept in localStorage keyed per board and
   // re-applied here. Unknown/new layers fall back to their defaults; stale
   // saved entries are overwritten on the next persist.
   var storeKey = 'gerber-viewer:v1:' + document.title;
@@ -594,6 +707,9 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     ty = view.ty;
     apply();
   })();
+
+  // restore the last selected view (after the viewport, so fit state holds)
+  if (saved.__viewMode === 'pcba') setView('pcba');
 
   window.addEventListener('keydown', function (ev) {
     if (ev.key === '0' || ev.key === 'f') fit();
@@ -726,6 +842,8 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   #search-box { padding: 8px 14px 0; }
   #comp-search { width: 100%; background: var(--btn-bg); color: var(--chrome-fg); border: 1px solid var(--btn-border); border-radius: 4px; padding: 5px 8px; font: inherit; }
   #comp-search::placeholder { color: var(--muted); }
+  #view-switch { padding: 8px 14px 0; }
+  #view-mode { width: 100%; background: var(--btn-bg); color: var(--chrome-fg); border: 1px solid var(--btn-border); border-radius: 4px; padding: 5px 8px; font: inherit; cursor: pointer; }
   #fab-report { padding: 8px 14px 0; font-weight: 400; }
   #fab-report summary { cursor: pointer; color: var(--muted); }
   #fab-report table { border-collapse: collapse; width: 100%; font-size: 11px; margin: 6px 0; }
@@ -754,6 +872,16 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     <div class="title">${escapeHtml(title)}<small>${layers.length} layers - wheel zoom, drag pan</small></div>
     <button id="btn-theme" class="icon-btn" title="toggle dark/light theme"></button>
   </header>
+  ${
+    options.pcbaSvg
+      ? `<div id="view-switch">
+  <select id="view-mode" title="board view">
+    <option value="gerber">Gerber view</option>
+    <option value="pcba">PCBA view</option>
+  </select>
+</div>`
+      : ''
+  }
   ${reportPanel(options.report)}
   <div id="search-box">
     <input id="comp-search" type="text" placeholder="find component (e.g. U1)" autocomplete="off" spellcheck="false">
@@ -774,7 +902,34 @@ ${rows}
   </div>
 </div>
 <div id="board-area">
-  ${svg.replace('<svg ', '<svg id="board" ').replace('</g></g></svg>', '</g><g id="measure"></g><g id="drc"></g><g id="typecad-probe"></g></g></svg>')}
+  ${
+    /* both views share one svg + coordinate frame: switching toggles group
+       display, so panzoom/measure/drc/probe never re-bind */
+    (() => {
+      const withGerber = svg
+        .replace('<svg ', '<svg id="board" ')
+        .replace(
+          '<g id="panzoom"><g id="yflip" transform="scale(1,-1)">',
+          '<g id="panzoom"><g id="view-gerber"><g id="yflip" transform="scale(1,-1)">',
+        );
+      const overlays = '<g id="measure"></g><g id="drc"></g><g id="typecad-probe"></g>';
+      if (!options.pcbaSvg) {
+        // gerber only: close yflip + view-gerber, overlays in panzoom
+        return withGerber.replace('</g></g></svg>', `</g></g>${overlays}</g></svg>`);
+      }
+      const pcba = splitSvg(options.pcbaSvg);
+      // the pcba inner carries its own id="board" group — rename it so the
+      // root svg stays the only #board (getElementById/CSS target it)
+      const inner = pcba.inner.replace('<g id="board"', '<g id="pcba-board"');
+      const union = unionViewBox(splitSvg(svg).viewBox, pcba.viewBox);
+      return withGerber
+        .replace(/viewBox="[^"]*"/, `viewBox="${escapeHtml(union)}"`)
+        .replace(
+          '</g></g></svg>',
+          `</g></g><g id="view-pcba" style="display:none">${inner}</g>${overlays}</g></svg>`,
+        );
+    })()
+  }
   <div id="status"></div>
   <script id="drc-data" type="application/json">${JSON.stringify(options.drcMarkers ?? []).replace(/</g, '\\u003c')}</script>
 </div>

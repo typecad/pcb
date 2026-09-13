@@ -64,7 +64,7 @@ describe('create_project scaffolds the complete project', () => {
 
     // -- npm scripts wired to the CLIs ----------------------------------------
     const pkg = JSON.parse(fs.readFileSync(path.join(hw, 'package.json'), 'utf8'));
-    for (const script of ['build', 'gerber_viewer', 'add_component', 'add_package', 'kicad-search', 'import']) {
+    for (const script of ['build', 'add_component', 'add_package', 'kicad-search', 'import']) {
       expect(pkg.scripts[script], `npm script '${script}'`).toBeDefined();
     }
 

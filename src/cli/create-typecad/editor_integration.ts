@@ -104,7 +104,7 @@ const BUNDLED_EXTENSION_GLOB = '**/.vscode/extensions/**';
 
 /**
  * Settings that keep the NPM Scripts pane on the PROJECT's scripts (build,
- * gerber_viewer, …) while hiding the workspace-bundled extension's manifest:
+ * add_component, …) while hiding the workspace-bundled extension's manifest:
  * its folder is excluded from npm detection (no second package appears) and
  * hidden from the Explorer and search — it is internal scaffolding, not user
  * code. `npm.autoDetect` is set to 'on' EXPLICITLY: writing 'off' blanks the

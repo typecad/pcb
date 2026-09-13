@@ -6,4 +6,8 @@ export interface ISchematicNode {
   code: number;
   nodes: Pin[];
   owner: Component | null;
+  /** declaring `pcb.net(...)` call, "file:line" — serialized into the netlist */
+  source?: string;
+  /** declaring `pcb.route(<net>)` call, "file:line" — where traces come from */
+  routeSource?: string;
 }

@@ -561,3 +561,68 @@ describe('stitch avoids mounting holes (rd_skeleton regression)', () => {
     }
   });
 });
+
+describe('stitch body blockers anchor at the footprint origin (rd_skeleton U4 regression)', () => {
+  const boardName = 'stitch_origin';
+
+  beforeEach(() => {
+    try {
+      fs.mkdirSync(buildDir);
+    } catch {
+      /* ignore */
+    }
+  });
+  afterEach(() => {
+    for (const ext of ['kicad_pcb', 'kicad_sch', 'kicad_pro', 'net', 'csv']) {
+      try {
+        fs.rmSync(`${buildDir}/${boardName}.${ext}`);
+      } catch {
+        /* ignore */
+      }
+    }
+  });
+
+  it('blocks the real body of a pin-1-origin part, not a centered box around it', () => {
+    // Exact rd_skeleton U4 setup: DIP-8_W7.62mm at (31, 50) on the same
+    // outline/margin/pitch. The DIP's origin is pin 1 (a corner): courtyard
+    // spans board x [29.94, 39.67], y [48.48, 59.14]. A centered-extents box
+    // used to shadow the open board up-left of the part while leaving the
+    // real body open down-right of it.
+    class Dip8 extends Component {
+      constructor() {
+        super('Package_DIP:DIP-8_W7.62mm');
+      }
+    }
+
+    const pcb = new PCB(boardName);
+    pcb.outline(10, 10, 104, 74);
+    pcb.zone({ net: 'GND', x: 10, y: 10, width: 104, height: 74, layers: ['F.Cu', 'B.Cu'] });
+
+    const gndSrc = new Resistor();
+    gndSrc.pcb = { x: 17, y: 18 } as any; // far from the DIP
+    pcb.named('GND').net(gndSrc.pin(1));
+
+    const u4 = new Dip8();
+    u4.pcb = { x: 31, y: 50 } as any; // netless: pads stay foreign copper
+    pcb.add(u4);
+
+    pcb.stitch('GND', { pitch: 2.5, margin: 5 });
+    pcb.create(gndSrc, u4);
+
+    const board = fs.readFileSync(`${buildDir}/${boardName}.kicad_pcb`, 'utf8');
+    const vias = [...board.matchAll(/\(via\s+\(at\s+([\d.]+)\s+([\d.]+)\)/g)].map((m) => ({
+      x: parseFloat(m[1]),
+      y: parseFloat(m[2]),
+    }));
+    const has = (x: number, y: number) => vias.some((v) => Math.abs(v.x - x) < 1e-6 && Math.abs(v.y - y) < 1e-6);
+
+    // the row above and the column left of the body fit and must be placed
+    expect(has(27.5, 50)).toBe(true);
+    expect(has(30, 45)).toBe(true);
+
+    // the actual body (+0.5mm ring/clearance halo) stays clear — including
+    // (35, 57.5) and (37.5, 57.5), which the centered box used to leave open
+    const onBody = vias.filter((v) => v.x > 29.4 && v.x < 40.2 && v.y > 47.9 && v.y < 59.7);
+    expect(onBody).toEqual([]);
+  });
+});

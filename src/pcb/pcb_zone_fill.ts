@@ -8,12 +8,12 @@ import type { PcbInternalState } from './pcb_state.js';
 import { getBuildDir } from '../utils/constants.js';
 
 /**
- * Zone fills are declarations in typeCAD (`pcb.zone({ fill: ... })` writes
- * the fill configuration), but the fill geometry itself is computed by
- * KiCad — there is no in-process filler. After create() writes the board,
- * this materializes the declared fills by round-tripping the file through
- * `kicad-cli pcb drc --refill-zones --save-board`, which is KiCad's
- * supported way to fill zones headlessly (KiCad ≥ 9; typeCAD supports 10).
+ * Materialize declared zone fills on a written board by round-tripping it
+ * through `kicad-cli pcb drc --refill-zones --save-board` (KiCad's supported
+ * way to fill zones headlessly, KiCad ≥ 9). NOT called by create() anymore —
+ * zone fills are the consumer's responsibility: `export gerbers` refills in
+ * memory (--check-zones), `check` refills during DRC. This remains exported
+ * for the public API and for callers that want to force a fill-and-save.
  *
  * Because KiCad computes both this fill and the DRC that validates it, the
  * written geometry and the checker can never disagree. The refill is

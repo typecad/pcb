@@ -5,6 +5,8 @@ import { Pin } from '../pin.js';
 import type { Power } from '../buses.js';
 import { SimulationContext } from '../simulation/ngspice.js';
 import { TrackBuilder } from './pcb_track_builder.js';
+import { getCallSite } from '../utils/stack_trace.js';
+import { sourceFileForMetadata } from './pcb_utils.js';
 import type {
   IPcbOptions,
   INetResolution,
@@ -546,6 +548,15 @@ export class PCB {
     arg1: ISchematicNetDefinition | IAutorouteOptions,
     options?: import('./pcb_interfaces.js').IAutorouteRouteOptions,
   ): IAutorouteResult {
+    // record where the route was declared — traces carry the net in gerbers
+    // (X2 %TO.N), and the viewer resolves hovering one back to this line
+    if (arg1 && typeof arg1 === 'object' && typeof (arg1 as ISchematicNetDefinition).name === 'string') {
+      const site = getCallSite();
+      if (site?.file) {
+        const file = sourceFileForMetadata(site.file);
+        this._schematic.setRouteSource((arg1 as ISchematicNetDefinition).name, file ? `${file}:${site.line}` : undefined);
+      }
+    }
     return pcbRoute(this, this._state, arg1, options);
   }
 
@@ -610,8 +621,11 @@ export class PCB {
    * The board's placement namespace: live physical bounds derived from the
    * outline (`center`, edges, corners, `from*` edge-relative values) plus
    * the component-relative verbs (`below`, `above`, `rightOf`, `leftOf`,
-   * `sameAs`). Readable at any time — before or after `pcb.outline()` —
-   * values follow the final outline.
+   * `sameAs`). Placement values (`from*()`, `centered()`, the verbs) can be
+   * assigned before or after `pcb.outline()` — they re-resolve against the
+   * final outline at `create()`. Plain-number reads (`center.x`, `left`,
+   * corners, ...) are snapshots: before `outline()` they return `0` and log
+   * a console warning, so read them after the outline exists.
    *
    * @example
    * ```ts

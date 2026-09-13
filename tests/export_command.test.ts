@@ -148,14 +148,14 @@ describe('export command', () => {
       expect(callArgs.find((a) => a.endsWith('board.kicad_pcb'))).toBeDefined();
     });
 
-    it('refills zones on gerber export (KiCad ≥ 9): a fresh build has no fill geometry', async () => {
+    it('refills zones on gerber export (KiCad ≥ 9): fills are the consumer responsibility', async () => {
       setupFsMock('/project/build/board.kicad_pcb', ['board-F_Cu.gbr']);
 
       const { run } = await import('../src/cli/typecad/commands/export.js');
       await run(makeParsed({ subcommand: 'gerbers', positional: ['/project/build/board.kicad_pcb'] }));
 
       const callArgs = (executeKiCADCommand.mock.calls.find((c) => c[0] === 'pcb')?.[1] ?? []) as string[];
-      // the mocked --version returns 10.0.0 → the flag must be present
+      // the mocked --version returns 10.0.0 → the flag must always be present
       expect(callArgs).toContain('--check-zones');
     });
 

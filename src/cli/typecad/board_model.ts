@@ -56,6 +56,10 @@ export interface BoardNet {
   segments: BoardSegment[];
   /** Copper connectivity analysis; null when the net has no pins. */
   route: NetRoute | null;
+  /** "file:line" of the declaring `pcb.net(...)` (from the netlist's Code property) */
+  source?: string;
+  /** "file:line" of the declaring `pcb.route(<net>)` (from the netlist's Route property) */
+  routeSource?: string;
 }
 
 interface BoardSegment {
@@ -232,6 +236,47 @@ export function isPowerNet(net: BoardNet): boolean {
   if (net.name && isPowerNetName(net.name)) return true;
   // Stitched ground planes: many vias or a zone with no distinctive name.
   return net.vias.length >= 4 || net.zones.length > 0;
+}
+
+/**
+ * Attach source provenance to nets from the netlist beside the board: the
+ * typeCAD serializer stamps `(property "Code" "file:line")` (the declaring
+ * pcb.net call) and `(property "Route" "file:line")` (the declaring
+ * pcb.route call) on each net. The .kicad_pcb can't carry this — kicad-cli's
+ * --save-board resave would strip it — but the netlist is typeCAD's own
+ * artifact and never round-tripped. Optional metadata: a missing or stale
+ * netlist leaves the sources unset.
+ */
+function attachNetSources(nets: BoardNet[], pcbPath: string): void {
+  const netlistPath = pcbPath.replace(/\.kicad_pcb$/i, '.net');
+  let text: string;
+  try {
+    text = fs.readFileSync(netlistPath, 'utf-8');
+  } catch {
+    return;
+  }
+  let root: SNode;
+  try {
+    root = SNode.from(parse(text) as unknown as never[]);
+  } catch {
+    return;
+  }
+  const byName = new Map(nets.map((n) => [n.name, n]));
+  // netlist nets nest inside an (nets ...) container under (export ...)
+  const container = root.child('nets') ?? root;
+  for (const net of container.children('net')) {
+    const nameNode = net.child('name');
+    const name = nameNode ? atomString(nameNode, 1) : '';
+    const target = byName.get(name);
+    if (!target) continue;
+    for (const prop of net.children('property')) {
+      const key = atomString(prop, 1);
+      const value = prop.rawAt(2);
+      if (typeof value !== 'string') continue;
+      if (key === 'Code') target.source = value;
+      else if (key === 'Route') target.routeSource = value;
+    }
+  }
 }
 
 /** Parse a .kicad_pcb file into a plain, JSON-ready board model. */
@@ -501,6 +546,8 @@ export function buildBoardModel(pcbPath: string): BoardModel {
   for (const net of allNets) {
     net.route = analyzeNetRouting(net, components, zones, copperLayers);
   }
+
+  attachNetSources(allNets, pcbPath);
 
   return {
     file: pcbPath,

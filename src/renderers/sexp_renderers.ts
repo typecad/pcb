@@ -29,8 +29,20 @@ export function renderNets(nets: ISchematicNode[]): string {
             `        (node (ref "${escapeSexprString(node.reference)}") (pin "${escapeSexprString(node.number)}") (pintype "${escapeSexprString(node.type)}"))`,
         )
         .join('\n');
+      // source provenance mirrors the footprint Code property: "file:line"
+      // of the declaring pcb.net() (Code) / pcb.route() (Route) calls, read
+      // back by `typecad-pcb query` for the viewer's trace-hover source.
+      // Non-standard children KiCad's netlist parser skips harmlessly.
+      const props = [
+        net.source ? `(property "Code" "${escapeSexprString(net.source)}")` : '',
+        net.routeSource ? `(property "Route" "${escapeSexprString(net.routeSource)}")` : '',
+      ]
+        .filter(Boolean)
+        .map((p) => `        ${p}`)
+        .join('\n');
+      const propsStr = props ? `${props}\n` : '';
       return `(net (code "${net.code}") (name "${escapeSexprString(net.name)}")
-${nodesStr}
+${propsStr}${nodesStr}
 )`;
     })
     .join('\n');

@@ -34,6 +34,10 @@ function netSummaryJson(net: BoardNet) {
     power: isPowerNet(net),
     pins: net.pins,
     route: net.route,
+    // source provenance from the netlist's Code/Route properties, when the
+    // netlist beside the board carries them (typeCAD-built boards do)
+    source: net.source,
+    routeSource: net.routeSource,
   };
 }
 

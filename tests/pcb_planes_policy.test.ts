@@ -63,10 +63,16 @@ describe('pcb.plane()', () => {
     const board = fs.readFileSync(`${buildDir}/${boardName}.kicad_pcb`, 'utf8');
     // count plane zones by looking for the layer ref inside each zone head
     // (KiCad 9 resaves write `(layers "In1.Cu")`, KiCad 10 `(layer "In1.Cu")`;
-    // segments also use the singular form, so anchor on the zone block)
+    // segments also use the singular form, so anchor on the zone block. The
+    // regex tolerates typeCAD's pretty-printed zones where `(` and `zone`
+    // land on separate lines.
     const planeZoneCount = (b: string) =>
-      (b.match(/\(zone[\s\S]*?\(polygon/g) ?? []).filter((head) => /\(layers? "In1\.Cu"\)/.test(head)).length;
+      (b.match(/\(\s*zone[\s\S]*?\(\s*polygon/g) ?? []).filter((head) => /\(\s*layers?\s+"In1\.Cu"\s*\)/.test(head)).length;
     expect(planeZoneCount(board)).toBeGreaterThan(0);
+    // create() declares zones but no longer materializes their fills —
+    // fill geometry is computed by the consumer (export gerbers --check-zones,
+    // check, or materializeZoneFills()).
+    expect(board).not.toContain('filled_polygon');
     // exactly one plane zone even after a second create()
     pcb.create(c1, c2);
     const board2 = fs.readFileSync(`${buildDir}/${boardName}.kicad_pcb`, 'utf8');

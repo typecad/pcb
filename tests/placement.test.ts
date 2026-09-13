@@ -50,6 +50,24 @@ describe('placement', () => {
       expect(result.resolveWithFootprint('Test:FP')).toBe(20 + 3 + 3 + 2);
     });
 
+    it('with footprint string target: resolves against that footprint\'s bounds', () => {
+      const src = makeComponentAt(10, 20, { width: 4, height: 6 });
+      const tb = getFootprintBounds('Resistor_SMD:R_0603_1608Metric')!;
+      expect(tb).not.toBeNull();
+      const result = below(src).by(3, 'Resistor_SMD:R_0603_1608Metric') as PlacementValue;
+      // src bottom edge 20+3, gap 3, target top edge tb.minY (negative)
+      expect(result.resolveWithFootprint('Test:FP')).toBe(20 + 3 + 3 - tb.minY);
+    });
+
+    it('footprint string target differs from own-footprint resolution', () => {
+      const src = makeComponentAt(10, 20, { width: 4, height: 6 });
+      const viaString = below(src).by(3, 'Resistor_SMD:R_0603_1608Metric') as PlacementValue;
+      const viaOwn = below(src).by(3) as PlacementValue;
+      const tb = getFootprintBounds('Resistor_SMD:R_0603_1608Metric')!;
+      expect(viaString.resolveWithFootprint('Test:FP')).not.toBe(viaOwn.resolveWithFootprint('Test:FP'));
+      expect(viaString.resolveWithFootprint('Test:FP')).toBeCloseTo(20 + 3 + 3 - tb.minY, 9);
+    });
+
     it('uses default gap of 2mm', () => {
       const c = makeComponentAt(10, 20, { width: 4, height: 6 });
       const result = (below(c).by() as PlacementValue).resolveWithFootprint('Test:FP');
@@ -75,6 +93,14 @@ describe('placement', () => {
       const tgt = makeComponentAt(0, 0, { width: 2, height: 4 });
       const result = above(src).by(3, tgt) as PlacementValue;
       expect(result.resolveWithFootprint('Test:FP')).toBe(20 - 3 - 3 - 2);
+    });
+
+    it('with footprint string target: resolves against that footprint\'s bounds', () => {
+      const src = makeComponentAt(10, 20, { width: 4, height: 6 });
+      const tb = getFootprintBounds('Resistor_SMD:R_0603_1608Metric')!;
+      const result = above(src).by(3, 'Resistor_SMD:R_0603_1608Metric') as PlacementValue;
+      // src top edge 20-3, gap 3, target bottom edge tb.maxY (positive)
+      expect(result.resolveWithFootprint('Test:FP')).toBe(20 - 3 - 3 - tb.maxY);
     });
 
     it('resolves PlacementValue edge-to-edge', () => {
@@ -110,6 +136,14 @@ describe('placement', () => {
       expect(result.resolveWithFootprint('Test:FP')).toBe(10 + 2 + 3 + 4);
     });
 
+    it('with footprint string target: resolves against that footprint\'s bounds', () => {
+      const src = makeComponentAt(10, 20, { width: 4, height: 6 });
+      const tb = getFootprintBounds('Resistor_SMD:R_0603_1608Metric')!;
+      const result = rightOf(src).by(3, 'Resistor_SMD:R_0603_1608Metric') as PlacementValue;
+      // src right edge 10+2, gap 3, target left edge tb.minX (negative)
+      expect(result.resolveWithFootprint('Test:FP')).toBe(10 + 2 + 3 - tb.minX);
+    });
+
     it('resolves PlacementValue edge-to-edge', () => {
       const c = makeComponentAt(10, 20, { width: 4, height: 6 });
       const result = (rightOf(c).by(3) as PlacementValue).resolveWithFootprint('Test:FP');
@@ -135,6 +169,23 @@ describe('placement', () => {
       const tgt = makeComponentAt(0, 0, { width: 8, height: 2 });
       const result = leftOf(src).by(3, tgt) as PlacementValue;
       expect(result.resolveWithFootprint('Test:FP')).toBe(10 - 2 - 3 - 4);
+    });
+
+    it('with footprint string target: resolves against that footprint\'s bounds', () => {
+      const src = makeComponentAt(10, 20, { width: 4, height: 6 });
+      const tb = getFootprintBounds('Resistor_SMD:R_0603_1608Metric')!;
+      const result = leftOf(src).by(3, 'Resistor_SMD:R_0603_1608Metric') as PlacementValue;
+      // src left edge 10-2, gap 3, target right edge tb.maxX (positive)
+      expect(result.resolveWithFootprint('Test:FP')).toBe(10 - 2 - 3 - tb.maxX);
+    });
+
+    it('unknown footprint string target: warns and treats target as zero-size', () => {
+      const src = makeComponentAt(10, 20, { width: 4, height: 6 });
+      const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => {});
+      const result = leftOf(src).by(3, 'Nope:DefinitelyMissing') as PlacementValue;
+      expect(result.resolveWithFootprint('Test:FP')).toBe(10 - 2 - 3 - 0);
+      expect(warnSpy).toHaveBeenCalled();
+      warnSpy.mockRestore();
     });
 
     it('resolves PlacementValue edge-to-edge', () => {
@@ -167,12 +218,41 @@ describe('placement', () => {
   });
 
   describe('board()', () => {
-    it('returns zero bounds when no outlines defined', () => {
+    it('returns zero bounds when no outlines defined, with a console warning', () => {
       const pcb = new PCB('test', { schematic: new Schematic('test') });
+      const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => {});
       const b = board(pcb);
       expect(b.width).toBe(0);
       expect(b.height).toBe(0);
       expect(b.center).toEqual({ x: 0, y: 0 });
+      // plain-number reads before outline() warn instead of silently zeroing
+      expect(warnSpy).toHaveBeenCalled();
+      expect(String(warnSpy.mock.calls[0][0])).toContain('outline()');
+      warnSpy.mockRestore();
+    });
+
+    it('does not warn for geometry reads after outline()', () => {
+      const pcb = new PCB('test', { schematic: new Schematic('test') });
+      pcb.outline(10, 20, 30, 40);
+      const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => {});
+      const b = board(pcb);
+      expect(b.center).toEqual({ x: 25, y: 40 });
+      expect(b.topLeft).toEqual({ x: 10, y: 20 });
+      expect(warnSpy).not.toHaveBeenCalled();
+      warnSpy.mockRestore();
+    });
+
+    it('from*() placement values do not warn before outline() (they re-resolve at create())', () => {
+      const pcb = new PCB('test', { schematic: new Schematic('test') });
+      const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => {});
+      const pv = board(pcb).fromLeft(5);
+      expect(pv.resolveWithFootprint('Nonexistent:FP')).toBe(5);
+      const centered = board(pcb).centered();
+      expect(centered.x.resolveWithFootprint('Nonexistent:FP')).toBe(0);
+      // the nonexistent test footprint may warn on its own; no outline warning should
+      const outlineWarnings = warnSpy.mock.calls.filter((args) => String(args[0]).includes('outline()'));
+      expect(outlineWarnings).toHaveLength(0);
+      warnSpy.mockRestore();
     });
 
     it('computes bounds from outlines', () => {

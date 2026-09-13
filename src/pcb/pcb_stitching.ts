@@ -186,13 +186,30 @@ function placeStitchVias(pcb: PCB, net: string, options: IStitchOptions, placedU
     const cy = c.pcb?.y ?? 0;
     const fpBounds = getFootprintBounds(c.footprint);
     if (fpBounds) {
-      const hw = fpBounds.width / 2;
-      const hh = fpBounds.height / 2;
-      const rad = ((c.pcb?.rotation ?? 0) * Math.PI) / 180;
-      // AABB of the rotated rectangle
-      const ex = Math.abs(hw * Math.cos(rad)) + Math.abs(hh * Math.sin(rad));
-      const ey = Math.abs(hw * Math.sin(rad)) + Math.abs(hh * Math.cos(rad));
-      bodyBlockers.push({ minX: cx - ex, minY: cy - ey, maxX: cx + ex, maxY: cy + ey });
+      // The box is origin-relative, and many footprints' origin is pin 1 or
+      // a corner — the component position anchors the ORIGIN, not the box
+      // center. Transform the full box so the blocker lands where the part
+      // actually sits (a centered extents box would shadow open board on one
+      // side and leave the real body open on the other).
+      const back = c.pcb?.side === 'back';
+      const rad = (-(c.pcb?.rotation ?? 0) * Math.PI) / 180; // KiCad rotates clockwise
+      const cos = Math.cos(rad);
+      const sin = Math.sin(rad);
+      const corners = [
+        [fpBounds.minX, fpBounds.minY],
+        [fpBounds.maxX, fpBounds.minY],
+        [fpBounds.maxX, fpBounds.maxY],
+        [fpBounds.minX, fpBounds.maxY],
+      ].map(([bx, by]) => {
+        const y = back ? -by : by; // back-side footprints mirror about the X axis
+        return { x: cx + bx * cos - y * sin, y: cy + bx * sin + y * cos };
+      });
+      bodyBlockers.push({
+        minX: Math.min(...corners.map((p) => p.x)),
+        minY: Math.min(...corners.map((p) => p.y)),
+        maxX: Math.max(...corners.map((p) => p.x)),
+        maxY: Math.max(...corners.map((p) => p.y)),
+      });
       return;
     }
     const body = ObstacleBuilder.buildFromComponent(c, rules.min_clearance);

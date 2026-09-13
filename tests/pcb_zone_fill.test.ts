@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import fs from 'node:fs';
-import { PCB } from '../src/pcb/pcb.js';
+import { PCB, getPcbState } from '../src/pcb/pcb.js';
 import { Component } from '../src/component.js';
+import { materializeZoneFills } from '../src/pcb/pcb_zone_fill.js';
 
 const { mockRefill } = vi.hoisted(() => ({ mockRefill: vi.fn() }));
 
@@ -75,9 +76,16 @@ describe('materializeZoneFills', () => {
     else delete process.env.KICAD_NOT_AVAILABLE;
   });
 
-  it('refills after create() when a zone requests filling', () => {
+  it('does not refill from create() — fills are the consumer\'s responsibility', () => {
     const { pcb, c1 } = boardWithZone({ net: 'GND', layers: ['F.Cu'], x: 0, y: 0, width: 10, height: 10 });
     pcb.create(c1);
+    expect(mockRefill).not.toHaveBeenCalled();
+  });
+
+  it('refills when materializeZoneFills() is called on a board with zones', () => {
+    const { pcb, c1 } = boardWithZone({ net: 'GND', layers: ['F.Cu'], x: 0, y: 0, width: 10, height: 10 });
+    pcb.create(c1);
+    materializeZoneFills(pcb, getPcbState(pcb));
     expect(mockRefill).toHaveBeenCalledTimes(1);
     const [command, args] = mockRefill.mock.calls[0];
     expect(command).toBe('pcb');
@@ -97,12 +105,14 @@ describe('materializeZoneFills', () => {
       fill: false,
     });
     pcb.create(c1);
+    materializeZoneFills(pcb, getPcbState(pcb));
     expect(mockRefill).not.toHaveBeenCalled();
   });
 
   it('does not refill when the board has no zones at all', () => {
     const { pcb, c1 } = boardWithZone(null);
     pcb.create(c1);
+    materializeZoneFills(pcb, getPcbState(pcb));
     expect(mockRefill).not.toHaveBeenCalled();
   });
 
@@ -112,6 +122,7 @@ describe('materializeZoneFills', () => {
       { fill_zones: false },
     );
     pcb.create(c1);
+    materializeZoneFills(pcb, getPcbState(pcb));
     expect(mockRefill).not.toHaveBeenCalled();
   });
 
@@ -120,7 +131,8 @@ describe('materializeZoneFills', () => {
       throw new Error('kicad-cli failed');
     });
     const { pcb, c1 } = boardWithZone({ net: 'GND', layers: ['F.Cu'], x: 0, y: 0, width: 10, height: 10 });
-    expect(() => pcb.create(c1)).not.toThrow();
+    pcb.create(c1);
+    expect(() => materializeZoneFills(pcb, getPcbState(pcb))).not.toThrow();
     expect(mockRefill).toHaveBeenCalled();
   });
 });

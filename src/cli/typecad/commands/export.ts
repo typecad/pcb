@@ -72,10 +72,9 @@ async function runGerbers(parsed: ParsedArgs): Promise<void> {
     logger.log(`  Output: ${outputDir}\n`);
   }
 
-  // A fresh typeCAD build writes zone declarations without fill geometry —
-  // pcbnew normally computes the pour on save, which never happens in a
-  // headless pipeline, so gerbers would plot bare copper with no pours.
-  // --check-zones (KiCad ≥ 9) refills required zones during the export.
+  // Zone fills are the consumer's responsibility now — the build writes
+  // declarations only, so gerber plotting always refills in memory
+  // (--check-zones, KiCad ≥ 9) to include pour copper in the output.
   const refillZones = (await kicadMajorVersion()) >= 9;
   if (refillZones && !json) {
     logger.log(chalk.gray('  Zones:  refilled on export (--check-zones)'));

@@ -9,7 +9,6 @@ import { createFootprintNode } from './pcb_footprint.js';
 import { mergeNets } from './pcb_net_merger.js';
 import { materializePlanes } from './pcb_zones.js';
 import { materializeStitches } from './pcb_stitching.js';
-import { materializeZoneFills } from './pcb_zone_fill.js';
 import { parseExistingBoard, insertNetsIntoBoardContents, processExistingFootprints } from './pcb_existing_board.js';
 import { getCallSite } from '../utils/stack_trace.js';
 import {
@@ -286,7 +285,10 @@ export function createBoard(pcb: PCB, ...items: Array<Component | TrackBuilder>)
   // board file, so the routing API throws on it instead of failing quietly.
   state.boardWritten = true;
 
-  // Materialize declared zone fills on the written board (KiCad computes
-  // the fill geometry; skipped gracefully without kicad-cli).
-  materializeZoneFills(pcb, state);
+  // Zone fills are NOT materialized here — the build stays fast (~10s not
+  // ~40s). Operations that need actual fill geometry ensure it themselves:
+  // `export gerbers` passes --check-zones (refills in memory for plotting),
+  // `check` refills during its DRC, and `query` reports pours as declared
+  // vs materialized. `pcb.zone({ fill: true })` writes the configuration;
+  // geometry is always KiCad's to compute.
 }

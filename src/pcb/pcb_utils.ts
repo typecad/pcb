@@ -16,7 +16,7 @@ import { designUUID } from '../utils/deterministic_id.js';
  * folder. Paths outside cwd (monorepo-internal sources) keep their full
  * normalized form.
  */
-function sourceFileForMetadata(file: string | undefined): string | undefined {
+export function sourceFileForMetadata(file: string | undefined): string | undefined {
   if (!file) return undefined;
   const windowsDrive = /^\/([A-Za-z]:)/;
   const p = path

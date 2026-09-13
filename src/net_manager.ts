@@ -6,6 +6,27 @@ import type { Component } from './component.js';
 import { TypeCadError } from './utils/errors.js';
 import { getCallSite } from './utils/stack_trace.js';
 import { formatSourceError } from './utils/error_reporter.js';
+import { sourceFileForMetadata } from './pcb/pcb_utils.js';
+
+/**
+ * "file:line" of a user call into the net API (pcb.net / pcb.route). The
+ * skip list covers this module's own frames so source-runs (tsx/vitest from
+ * src/, not dist/) still resolve to the user's file — same contract as the
+ * footprint Code property for components.
+ */
+function netCallSite(): string | undefined {
+  const site = getCallSite([
+    '/net_manager.ts',
+    '\\net_manager.ts',
+    '/schematic.ts',
+    '\\schematic.ts',
+    '/pcb_schematic_bridge.ts',
+    '\\pcb_schematic_bridge.ts',
+  ]);
+  if (!site || !site.file) return undefined;
+  const file = sourceFileForMetadata(site.file);
+  return file ? `${file}:${site.line}` : undefined;
+}
 
 interface INetConnectionInfo {
   reference: string;
@@ -50,7 +71,7 @@ export class NetManager {
     let node_name = this._chained_name ? this._chained_name : `${this.net_prefix}${this.code_counter}`;
     node_name = this.resolveNetName(node_name, pins, this.code_counter);
 
-    this.storeNetParams(node_name, this.code_counter, ...pins);
+    this.storeNetParams(node_name, this.code_counter, netCallSite(), ...pins);
     const mergedIntoIdx = this.mergeAndDeduplicateNodes();
     this.rebuildPinIndex(mergedIntoIdx);
 
@@ -65,8 +86,18 @@ export class NetManager {
     return _nets;
   }
 
-  private storeNetParams(name: string, code: number, ...nodes: Pin[]): void {
-    this.nodes.push({ name, code, nodes, owner: null });
+  /**
+   * Record where `pcb.route(<net>)` was declared — traces come from the
+   * route call, so the viewer's trace-hover source prefers this over the
+   * net's own declaration site. No-op for unknown nets (merged/renamed).
+   */
+  setRouteSource(name: string, source: string | undefined): void {
+    const node = this.nodes.find((n) => n.name === name);
+    if (node && source) node.routeSource = source;
+  }
+
+  private storeNetParams(name: string, code: number, source: string | undefined, ...nodes: Pin[]): void {
+    this.nodes.push({ name, code, nodes, owner: null, source });
   }
 
   private buildNetDefinition(name: string, fallbackPins: Pin[]): ISchematicNetDefinition {

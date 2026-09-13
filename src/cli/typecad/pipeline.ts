@@ -187,7 +187,8 @@ export async function runDrcStep(pcbPath: string): Promise<KiCadCheckResult> {
       { stdio: 'pipe' },
     );
   } catch {
-    // non-zero exit is expected when violations exist
+    // non-zero exit is expected when violations exist — the board is still
+    // refilled and saved by kicad-cli
   }
   if (fs.existsSync(reportPath)) {
     const { violations, unconnectedItems } = parseKiCadReport(reportPath);

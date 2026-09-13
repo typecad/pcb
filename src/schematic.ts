@@ -168,6 +168,11 @@ export class Schematic {
     return this.netManager.addNet(pins);
   }
 
+  /** @internal — records where `pcb.route(<net>)` was declared. */
+  setRouteSource(name: string, source: string | undefined): void {
+    this.netManager.setRouteSource(name, source);
+  }
+
   create(...component: Component[]) {
     component.forEach((comp) => {
       this.add(comp);

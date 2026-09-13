@@ -100,6 +100,27 @@ function targetEdges(
 }
 
 /**
+ * Edges for the explicit `target` of a `.by(gap, target)` call: a Component
+ * contributes its live bounds and rotation; a footprint string contributes
+ * that footprint's bounds at rotation 0. With no target, the box the
+ * expression resolves against (the new component's own footprint at its
+ * rotation) supplies the edges.
+ */
+function explicitTargetEdges(
+  target: Component | string | undefined,
+  targetBox: FootprintBox | null,
+  rotationDeg: number,
+): { left: number; right: number; top: number; bottom: number } {
+  if (typeof target === 'string') {
+    return targetEdges(getFootprintBounds(target), 0);
+  }
+  if (target) {
+    return targetEdges(target.bounds as FootprintBox | null, target.pcb?.rotation ?? 0);
+  }
+  return targetEdges(targetBox, rotationDeg);
+}
+
+/**
  * Resolve a {@link PlacementNumber} to a concrete number against a footprint.
  * Plain numbers pass through; placement values evaluate their expression
  * against the footprint's bounds (rotation-aware) at call time.
@@ -178,20 +199,21 @@ export function coercePlacementInput(value: PlacementInput, axis: 'x' | 'y'): Pl
 export interface PlacementBuilder {
   /**
    * Specify the gap in millimeters from the source component's edge to the
-   * target component's edge (edge-to-edge). Returns a number or a
-   * {@link PlacementValue} that the Component constructor resolves
-   * automatically.
+   * target component's edge (edge-to-edge). Returns a {@link PlacementValue}
+   * that the Component constructor resolves automatically.
    *
-   * When no `target` is provided, a {@link PlacementValue} is returned that
-   * resolves using the new component's own footprint — so the gap is
-   * edge-to-edge with no extra work.
+   * When no `target` is provided, the value resolves using the new
+   * component's own footprint — so the gap is edge-to-edge with no extra
+   * work.
    *
-   * When a `target` is provided (a {@link Component} or footprint string
-   * like `"Capacitor_SMD:C_0603_1608Metric"`), a plain number is returned
-   * immediately.
+   * When a `target` is provided, the gap is measured against that target's
+   * bounding box instead of the new component's own: a {@link Component}
+   * contributes its live bounds and rotation; a footprint string like
+   * `"Capacitor_SMD:C_0603_1608Metric"` contributes that footprint's bounds
+   * at rotation 0.
    *
    * @param gap - Edge-to-edge gap in mm. Defaults to `2`.
-   * @param target - Optional target component or footprint string for explicit bounds lookup.
+   * @param target - Optional target component or footprint string the gap is measured against.
    *
    * @example
    * ```ts
@@ -200,6 +222,9 @@ export interface PlacementBuilder {
    *
    * // Explicit target component
    * new Capacitor({ pcb: { y: below(r1).by(3, someOtherCap) } });
+   *
+   * // Explicit target footprint (bounds of the named footprint)
+   * new Resistor({ pcb: { y: below(r1).by(3, 'Capacitor_SMD:C_0603_1608Metric') } });
    *
    * // Default 2mm gap
    * new Capacitor({ pcb: { y: below(r1).by() } });
@@ -362,10 +387,7 @@ export function below(component: Component): PlacementBuilder {
         // Source position is read at resolve time so the value
         // follows a target that moves later.
         const srcBottom = srcEdges(component).bottom;
-        const tgtTop =
-          typeof target !== 'string' && target
-            ? targetEdges(target.bounds as FootprintBox | null, target.pcb?.rotation ?? 0).top
-            : targetEdges(targetBox, rotationDeg).top;
+        const tgtTop = explicitTargetEdges(target, targetBox, rotationDeg).top;
         return srcBottom + gap - tgtTop;
       });
     },
@@ -396,10 +418,7 @@ export function above(component: Component): PlacementBuilder {
     by(gap: number = DEFAULT_PLACEMENT_GAP, target?: Component | string): PlacementNumber {
       return new PlacementValue((targetBox, rotationDeg) => {
         const srcTop = srcEdges(component).top;
-        const tgtBottom =
-          typeof target !== 'string' && target
-            ? targetEdges(target.bounds as FootprintBox | null, target.pcb?.rotation ?? 0).bottom
-            : targetEdges(targetBox, rotationDeg).bottom;
+        const tgtBottom = explicitTargetEdges(target, targetBox, rotationDeg).bottom;
         return srcTop - gap - tgtBottom;
       });
     },
@@ -430,10 +449,7 @@ export function rightOf(component: Component): PlacementBuilder {
     by(gap: number = DEFAULT_PLACEMENT_GAP, target?: Component | string): PlacementNumber {
       return new PlacementValue((targetBox, rotationDeg) => {
         const srcRight = srcEdges(component).right;
-        const tgtLeft =
-          typeof target !== 'string' && target
-            ? targetEdges(target.bounds as FootprintBox | null, target.pcb?.rotation ?? 0).left
-            : targetEdges(targetBox, rotationDeg).left;
+        const tgtLeft = explicitTargetEdges(target, targetBox, rotationDeg).left;
         return srcRight + gap - tgtLeft;
       });
     },
@@ -464,10 +480,7 @@ export function leftOf(component: Component): PlacementBuilder {
     by(gap: number = DEFAULT_PLACEMENT_GAP, target?: Component | string): PlacementNumber {
       return new PlacementValue((targetBox, rotationDeg) => {
         const srcLeft = srcEdges(component).left;
-        const tgtRight =
-          typeof target !== 'string' && target
-            ? targetEdges(target.bounds as FootprintBox | null, target.pcb?.rotation ?? 0).right
-            : targetEdges(targetBox, rotationDeg).right;
+        const tgtRight = explicitTargetEdges(target, targetBox, rotationDeg).right;
         return srcLeft - gap - tgtRight;
       });
     },
@@ -510,45 +523,63 @@ function makeBoardBounds(
   readBounds: () => { left: number; right: number; top: number; bottom: number } | null,
 ): BoardBounds {
   const b = () => readBounds() ?? { left: 0, right: 0, top: 0, bottom: 0 };
+  // Plain-number reads (center, edges, corners) snapshot whatever is
+  // returned — zeros before an outline exists — and, unlike from*/centered()
+  // placement values, they never re-resolve at create(). Say so instead of
+  // handing back silent zeros. Once per bounds object: one
+  // `const b = pcb.board` read several times warns once.
+  let warnedNoOutline = false;
+  const plain = () => {
+    const bounds = readBounds();
+    if (!bounds && !warnedNoOutline) {
+      warnedNoOutline = true;
+      logger.warn(
+        '[Board] board geometry read before pcb.outline() was defined — returning zeros. ' +
+          'Read center/edges/corners after outline(), or use placement values ' +
+          '(fromLeft(), fromTop(), centered(), ...) which follow the final outline.',
+      );
+    }
+    return bounds ?? { left: 0, right: 0, top: 0, bottom: 0 };
+  };
   return {
     get center() {
-      const { left, right, top, bottom } = b();
+      const { left, right, top, bottom } = plain();
       return { x: left + (right - left) / 2, y: top + (bottom - top) / 2 };
     },
     get top() {
-      return b().top;
+      return plain().top;
     },
     get bottom() {
-      return b().bottom;
+      return plain().bottom;
     },
     get left() {
-      return b().left;
+      return plain().left;
     },
     get right() {
-      return b().right;
+      return plain().right;
     },
     get width() {
-      const { left, right } = b();
+      const { left, right } = plain();
       return right - left;
     },
     get height() {
-      const { top, bottom } = b();
+      const { top, bottom } = plain();
       return bottom - top;
     },
     get topLeft() {
-      const { left, top } = b();
+      const { left, top } = plain();
       return { x: left, y: top };
     },
     get topRight() {
-      const { right, top } = b();
+      const { right, top } = plain();
       return { x: right, y: top };
     },
     get bottomLeft() {
-      const { left, bottom } = b();
+      const { left, bottom } = plain();
       return { x: left, y: bottom };
     },
     get bottomRight() {
-      const { right, bottom } = b();
+      const { right, bottom } = plain();
       return { x: right, y: bottom };
     },
     fromLeft(margin: number = 2): PlacementValue {
@@ -594,7 +625,11 @@ function makeBoardBounds(
  * Returns the board boundary dimensions derived from the PCB's outline
  * (Edge.Cuts layer). Use this to place components relative to the board edges.
  *
- * If no outline has been defined, all properties return `0`.
+ * If no outline has been defined, the plain geometry properties (`center`,
+ * edges, corners, `width`/`height`) return `0` and log a console warning —
+ * they are snapshots and never re-resolve. The `from*()` and `centered()`
+ * placement values are safe to assign before `outline()`: they re-resolve
+ * against the final outline at `create()`.
  *
  * @param pcb - The PCB instance (must have had `pcb.outline()` called).
  * @returns A {@link BoardBounds} object with center, edges, corners, and `from*` methods.

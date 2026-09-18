@@ -419,6 +419,8 @@ export class BoardViewerPanel {
       const flags = [`--netlist`, shellQuote(path.join('build', `${boardName}.net`))];
       const drcReport = path.join(folder, 'build', `${boardName}_drc.json`);
       if (fs.existsSync(drcReport)) flags.push('--drc', shellQuote(path.join('build', `${boardName}_drc.json`)));
+      const stackupReport = path.join(folder, 'build', `${boardName}_stackup.json`);
+      if (fs.existsSync(stackupReport)) flags.push('--stackup', shellQuote(path.join('build', `${boardName}_stackup.json`)));
 
       this.output.appendLine('building viewer HTML…');
       await this.run(

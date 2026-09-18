@@ -6,7 +6,7 @@
 // mounting holes are legitimately net-less).
 // ---------------------------------------------------------------------------
 
-import type { BoardPad, ComponentDetail } from './types.js';
+import type { BoardPad, ComponentDetail, NetSourceSummary } from './types.js';
 
 /** Make a string safe inside a markdown table cell (pipes break the table). */
 function cell(text: string): string {
@@ -97,4 +97,43 @@ export function renderComponentHover(detail: ComponentDetail): string {
   lines.push(`[$(symbol-module) view on board](command:typecad-pcb.viewComponent?${args})`);
 
   return lines.join('\n');
+}
+
+/**
+ * The net hover card: declared/routed provenance, a single-pin warning, and
+ * the editor→board half of net cross-probing (highlight the net's traces).
+ */
+export function renderNetHover(net: Pick<NetSourceSummary, 'name' | 'source' | 'routeSource'>, singlePin: boolean): string {
+  const lines: string[] = [];
+  lines.push(`$(circuit-board) net **${bold(net.name)}**`);
+  lines.push('');
+  if (singlePin) {
+    lines.push('$(warning) only one pin on this net — see Problems');
+    lines.push('');
+  }
+  const origin: string[] = [];
+  if (net.source) origin.push(`declared ${code(net.source)}`);
+  if (net.routeSource) origin.push(`routed ${code(net.routeSource)}`);
+  if (origin.length > 0) {
+    lines.push(`_${cell(origin.join(' · '))}_`);
+    lines.push('');
+  }
+  const args = encodeURIComponent(JSON.stringify([net.name]));
+  lines.push(`[$(symbol-parameter) show on board](command:typecad-pcb.viewNet?${args})`);
+  return lines.join('\n');
+}
+
+/**
+ * Full text of the string literal containing the column, or null. Net names
+ * carry characters the word tokenizer splits on ("Net-(R1-Pad2)", names with
+ * spaces), so the net hover needs the whole quoted span, not the word under
+ * the cursor.
+ */
+export function quotedTextAt(line: string, character: number): string | null {
+  for (const match of line.matchAll(/'([^']*)'|"([^"]*)"/g)) {
+    const text = match[1] ?? match[2] ?? '';
+    const start = (match.index ?? 0) + 1;
+    if (character >= start && character <= start + text.length) return text;
+  }
+  return null;
 }

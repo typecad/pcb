@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { renderComponentHover } from '../hover.js';
+import { quotedTextAt, renderComponentHover, renderNetHover } from '../hover.js';
 import type { ComponentDetail } from '../types.js';
 
 const fullyConnected: ComponentDetail = {
@@ -90,5 +90,34 @@ describe('renderComponentHover', () => {
 
   it('omits the value when empty', () => {
     expect(renderComponentHover(partlyUnconnected)).toContain('**U1**');
+  });
+});
+
+describe('renderNetHover', () => {
+  it('shows provenance (route preferred line listed), single-pin warning, and the board link', () => {
+    const md = renderNetHover({ name: 'VCC', source: 'src/board.ts:12', routeSource: 'src/board.ts:40' }, false);
+    expect(md).toContain('net **VCC**');
+    expect(md).toContain('declared `src/board.ts:12` · routed `src/board.ts:40`');
+    expect(md).not.toContain('only one pin');
+    const args = encodeURIComponent(JSON.stringify(['VCC']));
+    expect(md).toContain(`[$(symbol-parameter) show on board](command:typecad-pcb.viewNet?${args})`);
+  });
+
+  it('warns on single-pin nets and survives missing provenance', () => {
+    const md = renderNetHover({ name: 'Net-(R1-Pad2)' }, true);
+    expect(md).toContain('only one pin on this net');
+    expect(md).toContain('Net-(R1-Pad2)');
+  });
+});
+
+describe('quotedTextAt', () => {
+  const line = "pcb.net('VCC 3V3', r1.pin1) /* \"Net-(R1-Pad2)\" note */";
+  it('returns the full quoted span — spaces and tokenizer-breaking characters included', () => {
+    expect(quotedTextAt(line, line.indexOf('VCC') + 1)).toBe('VCC 3V3');
+    expect(quotedTextAt(line, line.indexOf('Net-') + 3)).toBe('Net-(R1-Pad2)');
+  });
+  it('null outside any literal', () => {
+    expect(quotedTextAt(line, 0)).toBeNull();
+    expect(quotedTextAt("pcb.net('a')", 14)).toBeNull();
   });
 });

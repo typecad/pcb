@@ -23,14 +23,14 @@ import { isBoardSourceFile } from './boardSource.js';
 import { statusContent } from './boardStatus.js';
 import { browseItems } from './browse.js';
 import { findHwFolder } from './hwFolder.js';
-import { renderComponentHover } from './hover.js';
+import { quotedTextAt, renderComponentHover, renderNetHover } from './hover.js';
 import { findDeclaration, renderMissingHint } from './missing.js';
 import { drcProblems, parseDrcReport, refSourceMap, unconnectedProblems } from './problems.js';
 import { applyNoncePolicy } from './probeClient.js';
 import { QueryError } from './query.js';
 import { parseSourceLocation } from './sourceRef.js';
 import type { ComponentSummary, NetSourceSummary } from './types.js';
-import { BoardViewerPanel, newestBoardFile, shellQuote, wordUnderCursor } from './viewer.js';
+import { BoardViewerPanel, mtimeOf, newestBoardFile, shellQuote, wordUnderCursor } from './viewer.js';
 
 /** Identifiers only — skips numbers, operators, and property dots. */
 const WORD_LIKE = /^[A-Za-z_][A-Za-z0-9_]*$/;
@@ -159,14 +159,64 @@ export function activate(context: vscode.ExtensionContext) {
       output.appendLine(`viewComponent: typed=${JSON.stringify(typed)}`);
       await viewer.select(typed.trim());
     }),
+    vscode.commands.registerCommand('typecad-pcb.viewNet', async (net?: unknown) => {
+      // Command-link args arrive spread as JSON (the net hover's "show on
+      // board" link): go straight to that net. Palette: prompt for a name.
+      if (typeof net === 'string' && net.trim() !== '') {
+        output.appendLine(`viewNet: arg=${JSON.stringify(net)}`);
+        await viewer.selectNet(net.trim());
+        return;
+      }
+      // Palette invocation: prompt for the net name, seeded with the quoted
+      // string under the cursor when the editor has one
+      const active = vscode.window.activeTextEditor;
+      const seed = active
+        ? quotedTextAt(
+            active.document.lineAt(active.selection.active.line).text,
+            active.selection.active.character,
+          )
+        : null;
+      const typed = await vscode.window.showInputBox({
+        prompt: 'net name to highlight on the board',
+        placeHolder: 'e.g. VCC, GND',
+        value: seed ?? '',
+      });
+      if (!typed || typed.trim() === '') return; // dismissed — nothing to do
+      output.appendLine(`viewNet: typed=${JSON.stringify(typed)}`);
+      await viewer.selectNet(typed.trim());
+    }),
   );
 
   // -- ambient board state: status bar, Problems, declaration-line warnings --
   // Priority 101 parks the pcb chip just left of typeCAD/hal's (99) — stable
   // ordering, board state before firmware state.
   const statusItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 101);
-  statusItem.command = 'typecad-pcb.viewBoard';
+  statusItem.command = 'typecad-pcb.statusClick';
   context.subscriptions.push(statusItem);
+
+  // The chip's click is state-aware: no board → build; stale → ask; fresh →
+  // view. An internal command (not palette-contributed) keeps the chip's
+  // command static while the behavior follows the board's state.
+  context.subscriptions.push(
+    vscode.commands.registerCommand('typecad-pcb.statusClick', () => {
+      const folder = resolveHwFolder();
+      const board = folder ? newestBoardFile(folder) : null;
+      if (!folder || !board) {
+        void vscode.commands.executeCommand('typecad-pcb.buildBoard');
+        return;
+      }
+      if (boardIsStale(folder, mtimeOf(board))) {
+        void vscode.window
+          .showInformationMessage('typeCAD/pcb: the built board is older than your sources.', 'Build Board', 'View Board')
+          .then((pick) => {
+            if (pick === 'Build Board') void vscode.commands.executeCommand('typecad-pcb.buildBoard');
+            else if (pick === 'View Board') void viewer.show();
+          });
+        return;
+      }
+      void viewer.show();
+    }),
+  );
 
   const problems = vscode.languages.createDiagnosticCollection('typecad-pcb');
   context.subscriptions.push(problems);
@@ -263,6 +313,22 @@ export function activate(context: vscode.ExtensionContext) {
     for (const editor of vscode.window.visibleTextEditors) editor.setDecorations(warnChip, []);
   }
 
+  /** "No compiled board yet" with a one-click build — every entry point shares it. */
+  const noBoardYet = (): void => {
+    void vscode.window
+      .showInformationMessage('typeCAD/pcb: no compiled board yet.', 'Build Board')
+      .then((pick) => {
+        if (pick === 'Build Board') void vscode.commands.executeCommand('typecad-pcb.buildBoard');
+      });
+  };
+
+  /** Status tooltips carry command links — wrapped in narrowly-trusted markdown. */
+  const statusTooltip = (markdown: string): vscode.MarkdownString => {
+    const hover = new vscode.MarkdownString(markdown);
+    hover.isTrusted = { enabledCommands: ['typecad-pcb.buildBoard', 'typecad-pcb.runDrc'] };
+    return hover;
+  };
+
   /** Pull fresh board data and re-render every ambient surface. */
   const refreshAmbient = (): void => {
     void (async () => {
@@ -287,7 +353,7 @@ export function activate(context: vscode.ExtensionContext) {
           stale: false,
         });
         statusItem.text = content.text;
-        statusItem.tooltip = content.tooltip;
+        statusItem.tooltip = statusTooltip(content.tooltip);
         statusItem.show();
         // the previous board's Problems/chips must not outlive build/ being
         // cleaned (the watcher's onDidDelete lands here)
@@ -311,7 +377,7 @@ export function activate(context: vscode.ExtensionContext) {
           stale: boardIsStale(folder, fs.statSync(board).mtimeMs),
         });
         statusItem.text = content.text;
-        statusItem.tooltip = content.tooltip;
+        statusItem.tooltip = statusTooltip(content.tooltip);
         statusItem.show();
         setProblemDiagnostics(unconnectedProblems(unconnectedReport, refs, nets, path.relative(folder, board)), folder);
         refreshWarnChips(unconnectedReport.unconnectedPads, refs, folder);
@@ -355,7 +421,7 @@ export function activate(context: vscode.ExtensionContext) {
       }
       const board = newestBoardFile(folder);
       if (!board) {
-        vscode.window.showInformationMessage('typeCAD/pcb: no compiled board yet — run ▶ Build Board first.');
+        noBoardYet();
         return;
       }
       output.appendLine('running DRC…');
@@ -411,7 +477,7 @@ export function activate(context: vscode.ExtensionContext) {
       try {
         components = await service.components();
       } catch {
-        vscode.window.showInformationMessage('typeCAD/pcb: no compiled board yet — run ▶ Build Board first.');
+        noBoardYet();
         return;
       }
       const picked = await vscode.window.showQuickPick(
@@ -438,7 +504,7 @@ export function activate(context: vscode.ExtensionContext) {
       }
       const board = newestBoardFile(folder);
       if (!board) {
-        vscode.window.showInformationMessage('typeCAD/pcb: no compiled board yet — run ▶ Build Board first.');
+        noBoardYet();
         return;
       }
       const out = path.join('build', 'serve', 'board-diff.html');
@@ -454,7 +520,11 @@ export function activate(context: vscode.ExtensionContext) {
             ),
         );
       } catch (err) {
-        vscode.window.showErrorMessage(`typeCAD/pcb: diff failed — see the typeCAD/pcb output channel.`);
+        void vscode.window
+          .showErrorMessage('typeCAD/pcb: diff failed — see the typeCAD/pcb output channel.', 'Open Output')
+          .then((pick) => {
+            if (pick === 'Open Output') output.show();
+          });
         output.appendLine(`diff: ${err instanceof Error ? err.message : String(err)}`);
         return;
       }
@@ -508,6 +578,25 @@ export function activate(context: vscode.ExtensionContext) {
           try {
             const detail = await service.resolve(word);
             if (!detail) {
+              // Not a component: hovering a quoted string that names a net
+              // gets the net's card — the editor→board half of net
+              // cross-probing. Full quoted span, not the word: net names
+              // can carry spaces and tokenizer-breaking characters.
+              const quoted = quotedTextAt(document.lineAt(position.line).text, position.character);
+              if (quoted) {
+                const nets = await service.netSources().catch(() => [] as NetSourceSummary[]);
+                const net = nets.find((n) => n.name === quoted);
+                if (net) {
+                  const report = await service.unconnected().catch(() => null);
+                  const markdown = new vscode.MarkdownString(
+                    renderNetHover(net, report?.singlePinNets.includes(net.name) ?? false),
+                    true,
+                  );
+                  markdown.supportThemeIcons = true;
+                  markdown.isTrusted = { enabledCommands: ['typecad-pcb.viewNet'] };
+                  return new vscode.Hover(markdown, range);
+                }
+              }
               // Declared as `new <Component>(...)` in this file but absent
               // from the compiled board — say so instead of staying silent.
               const declaration = findDeclaration(document.getText(), word);

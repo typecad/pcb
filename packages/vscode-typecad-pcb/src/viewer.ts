@@ -63,6 +63,13 @@ export function shellQuote(value: string): string {
   return `"${value.replace(/"/g, '\\"')}"`;
 }
 
+/** The host message for a pending selection id — "net:<name>" selects a net. */
+function selectionMessage(ref: string, token: number | undefined): ProbeHostMessage {
+  return ref.startsWith('net:')
+    ? { type: 'typecad/select-net', net: ref.slice('net:'.length), token }
+    : { type: 'typecad/select', ref, token };
+}
+
 export class BoardViewerPanel {
   private panel: vscode.WebviewPanel | undefined;
   private generated: GeneratedViewer | null = null;
@@ -104,9 +111,14 @@ export class BoardViewerPanel {
         );
       } catch (err) {
         this.output.appendLine(`viewer generation failed: ${err instanceof Error ? err.message : String(err)}`);
-        vscode.window.showErrorMessage(
-          `typeCAD: could not render the board viewer — see the 'typeCAD/pcb' output channel.`,
-        );
+        void vscode.window
+          .showErrorMessage(
+            `typeCAD: could not render the board viewer — see the 'typeCAD/pcb' output channel.`,
+            'Open Output',
+          )
+          .then((pick) => {
+            if (pick === 'Open Output') this.output.show();
+          });
         return;
       }
       if (!generated) {
@@ -229,6 +241,20 @@ export class BoardViewerPanel {
     this.deliverSelection();
   }
 
+  /** Reveal the viewer with a net's traces highlighted. */
+  async selectNet(net: string): Promise<void> {
+    const folder = this.hwFolder();
+    if (!folder) {
+      vscode.window.showInformationMessage('typeCAD/pcb: no typeCAD project (typecad.conf.ts) in this workspace.');
+      return;
+    }
+    this.output.appendLine(`select net ${net}: opening/revealing viewer`);
+    this.pendingRef = `net:${net}`;
+    this.pendingToken = this.loadToken;
+    await this.show();
+    this.deliverSelection();
+  }
+
   /**
    * Post the pending selection until the viewer page acks it. The first post
    * after an html assignment races the page load — VS Code drops messages
@@ -244,20 +270,21 @@ export class BoardViewerPanel {
     const attempt = (): void => {
       if (this.pendingRef !== ref || this.pendingToken !== token) return; // delivered or superseded
       if (!this.panel) return; // closed
-      void this.panel.webview
-        .postMessage({ type: 'typecad/select', ref, token } satisfies ProbeHostMessage)
-        .then((delivered) => {
-          // false = the page hasn't loaded yet; the retry covers it, and the
-          // log makes a persistently-unloaded page visible in the output channel
-          if (!delivered && !loggedDrop) {
-            loggedDrop = true;
-            this.output.appendLine(`select ${ref}: page not loaded yet, retrying…`);
-          }
-        });
+      void this.panel.webview.postMessage(selectionMessage(ref, token)).then((delivered) => {
+        // false = the page hasn't loaded yet; the retry covers it, and the
+        // log makes a persistently-unloaded page visible in the output channel
+        if (!delivered && !loggedDrop) {
+          loggedDrop = true;
+          this.output.appendLine(`select ${ref}: page not loaded yet, retrying…`);
+        }
+      });
       if (Date.now() < deadline) {
         setTimeout(attempt, DELIVERY_INTERVAL_MS);
       } else {
         this.output.appendLine(`select ${ref}: no ack — the viewer page may be missing the probe client`);
+        // a click that does nothing is indistinguishable from a broken
+        // command — say so in the window, not just the channel
+        vscode.window.setStatusBarMessage('typeCAD/pcb: the Board viewer page did not respond — try reopening it', 5000);
       }
     };
     attempt();
@@ -463,15 +490,15 @@ export class BoardViewerPanel {
       // saved viewport puts the view back too) — only an explicit pending
       // selection needs delivering.
       if (this.pendingRef && this.panel) {
-        await this.panel.webview.postMessage({
-          type: 'typecad/select',
-          ref: this.pendingRef,
-          token: this.pendingToken ?? this.loadToken,
-        } satisfies ProbeHostMessage);
+        await this.panel.webview.postMessage(
+          selectionMessage(this.pendingRef, this.pendingToken ?? this.loadToken),
+        );
       }
       return;
     }
     if (message.type === 'typecad/ack') {
+      const isNet = message.ref.startsWith('net:');
+      const label = isNet ? `net ${message.ref.slice('net:'.length)}` : message.ref;
       this.output.appendLine(
         `select ${message.ref}: ack (found=${String(message.found)}, token=${String(message.token)})`,
       );
@@ -479,7 +506,7 @@ export class BoardViewerPanel {
         this.pendingRef = null;
         if (message.found === false) {
           vscode.window.setStatusBarMessage(
-            `${message.ref}: no pads for it on the rendered board — is the build current?`,
+            `${label}: no ${isNet ? 'traces' : 'pads'} for it on the rendered board — is the build current?`,
             5000,
           );
         }
@@ -529,6 +556,7 @@ export class BoardViewerPanel {
       await this.revealLocation(loc);
     } catch (err) {
       this.output.appendLine(`reveal ${ref} failed: ${err instanceof Error ? err.message : String(err)}`);
+      vscode.window.setStatusBarMessage(`typeCAD/pcb: could not resolve ${ref} — see the typeCAD/pcb output channel`, 4000);
     }
   }
 

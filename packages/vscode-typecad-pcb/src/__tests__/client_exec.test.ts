@@ -126,6 +126,40 @@ describe('injected client executes', () => {
     expect(text()).toContain('R1');
   });
 
+  it('highlights a net from a host selection and acks the delivery', async () => {
+    const sent: unknown[] = [];
+    const { html } = injectProbeClient(viewerPage, components);
+    const dom = new JSDOM(html, {
+      runScripts: 'dangerously',
+      url: 'https://webview.local/viewer.html',
+      beforeParse(window) {
+        window.acquireVsCodeApi = () => ({
+          postMessage: (m: unknown) => sent.push(m),
+          getState: () => ({}),
+          setState: () => {},
+        });
+      },
+    });
+    const w = dom.window;
+    await new Promise((r) => setTimeout(r, 50));
+
+    // spy on the viewer seam the net selection rides on
+    const calls: Array<[string, string]> = [];
+    (w as unknown as { typecadViewer: { highlightNet: (attr: string, val: string) => boolean } }).typecadViewer.highlightNet = function (
+      attr: string,
+      val: string,
+    ) {
+      calls.push([attr, val]);
+      return true;
+    };
+
+    w.dispatchEvent(new w.MessageEvent('message', { data: { type: 'typecad/select-net', net: 'net2', token: 7 } }));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(calls).toContainEqual(['data-net', 'net2']);
+    expect(sent).toContainEqual({ type: 'typecad/ack', ref: 'net:net2', token: 7, found: true });
+    expect(w.document.getElementById('status')!.textContent).toContain('net2');
+  });
+
   it('resolves trace hovers and double-clicks to the declaring net source', async () => {
     const sent: unknown[] = [];
     const { html } = injectProbeClient(viewerPage, components, [

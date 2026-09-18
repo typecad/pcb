@@ -22,10 +22,14 @@ and an open Board viewer refreshes itself when the build lands.
 
 ## Ambient board state
 
-- A **status bar entry** (right side, click to open the Board viewer) shows
-  the build target: `rd_skeleton · 28 parts · 3 unconnected · 2E 5W` — plus a
-  `stale` flag when source files are newer than the built board, and DRC
-  counts after a check.
+- A **status bar entry** (right side, click follows the board's state: build
+  when there is no board, ask when stale, open the Board viewer when fresh)
+  shows the build target: `rd_skeleton · 28 parts · 3 unconnected · 2E 5W` —
+  plus a `stale` flag when source files are newer than the built board, and
+  DRC counts after a check. The tooltip carries clickable actions
+  (Build Board / Run DRC) and says when DRC has not run for the current
+  revision — counts reset on every rebuild, so a fresh chip never reads as
+  a clean one by accident.
 - **Unconnected pads and single-pin nets** land in the Problems pane as
   warnings aimed at the declaring source lines (via the Code/net
   provenance), with an italic "R1 · 2 unconnected pads" chip after the
@@ -50,6 +54,11 @@ Hover (or place the cursor on) a component variable in `src/`:
 - A *view on board* link that zooms the Board viewer to the component.
 - A declared component missing from the compiled board explains itself instead
   of hovering silent.
+
+Hover the quoted net name in a `pcb.net(…)` / `pcb.route(…)` call for the
+**net card**: declared/routed source lines, a single-pin warning when the net
+has only one pin, and a *show on board* link that highlights the net's traces
+in the viewer.
 
 ## Board viewer
 
@@ -85,7 +94,9 @@ In either view:
 
 - **Editor → board:** the hover's *view on board* link, or
   **typeCAD/pcb: View Component on Board** from the palette (it prompts for a
-  designator, pre-filled with the word under the cursor).
+  designator, pre-filled with the word under the cursor). Net names work the
+  same way — the net hover's *show on board* link, or
+  **typeCAD/pcb: View Net on Board**, highlights the net's traces.
 - **Board → editor:** **double-click** any pad or component outline to jump to
   the source line that declares it. Single clicks — ruler points included —
   always stay inside the viewer.
@@ -136,6 +147,7 @@ workspace without talking over each other.
 | `typecad-pcb.diffBoard` | typeCAD/pcb: Diff Board vs HEAD | Visual board diff in a panel |
 | `typecad-pcb.viewBoard` | typeCAD/pcb: View Board | Open (or refresh) the Board viewer |
 | `typecad-pcb.viewComponent` | typeCAD/pcb: View Component on Board | Prompt for a designator (seeded from the cursor) and zoom to it |
+| `typecad-pcb.viewNet` | typeCAD/pcb: View Net on Board | Prompt for a net name (seeded from a quoted string under the cursor) and highlight its traces |
 
 The hover's *view on board* link invokes the last command directly with the
 reference, skipping the prompt.

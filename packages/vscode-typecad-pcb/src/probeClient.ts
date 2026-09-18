@@ -3,9 +3,10 @@
 // a vscode webview.
 //
 // Two directions:
-//  - editor → board: the extension posts {type:'typecad/select', ref}; the
-//    client calls the viewer's own window.typecadViewer API (highlight +
-//    zoom/flash) so selection looks identical to in-viewer search.
+//  - editor → board: the extension posts {type:'typecad/select', ref} (or
+//    {type:'typecad/select-net', net}); the client calls the viewer's own
+//    window.typecadViewer API (highlight + zoom/flash) so selection looks
+//    identical to in-viewer search.
 //  - board → editor: DOUBLE clicks on anything carrying data-ref (gerber X2
 //    pad attributes AND the injected component outlines) postMessage back.
 //    Double rather than single: every single click (measurement ruler points
@@ -58,6 +59,7 @@ export type ProbeWebviewMessage =
   | { type: 'typecad/probe-net'; net: string; source?: string };
 export type ProbeHostMessage =
   | { type: 'typecad/select'; ref: string; token?: number }
+  | { type: 'typecad/select-net'; net: string; token?: number }
   | { type: 'typecad/status'; text: string };
 
 const PROBE_CLIENT = `<script>
@@ -154,6 +156,20 @@ const PROBE_CLIENT = `<script>
     // lands, which reloads and resets this element)
     if (m.type === 'typecad/status') {
       notice(m.text || '');
+      return;
+    }
+    // editor → board, net flavor: highlight the net's traces through the
+    // same highlightNet seam ref selection uses; acks key on "net:<name>"
+    // so the host's delivery loop treats it like any other selection
+    if (m.type === 'typecad/select-net') {
+      if (!m.net) return;
+      if (!window.typecadViewer) {
+        status(m.net + ' — received, waiting for viewer…');
+        return;
+      }
+      var netFound = window.typecadViewer.highlightNet('data-net', m.net);
+      status(m.net + ' — from editor (click empty space to clear)');
+      send({ type: 'typecad/ack', ref: 'net:' + m.net, token: m.token, found: netFound });
       return;
     }
     if (m.type !== 'typecad/select' || !m.ref) return;

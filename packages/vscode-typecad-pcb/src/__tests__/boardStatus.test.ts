@@ -42,6 +42,12 @@ describe('statusContent', () => {
     const s = statusContent({ boardName: 'b', parts: 4, unconnected: 0, drcErrors: 0, drcWarnings: 2, stale: false });
     expect(s.text).toBe('$(circuit-board) b · 4 parts · 2W');
   });
+
+  it('links tooltip actions (markdown) and says when DRC has not run for this revision', () => {
+    const s = statusContent({ boardName: 'b', parts: 1, unconnected: 0, drcErrors: null, drcWarnings: null, stale: true });
+    expect(s.tooltip).toContain('[Run DRC](command:typecad-pcb.runDrc)');
+    expect(s.tooltip).toContain('[Build Board](command:typecad-pcb.buildBoard)');
+  });
 });
 
 describe('browseItems', () => {

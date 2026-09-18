@@ -44,6 +44,11 @@
         "category": "typeCAD/pcb"
       },
       {
+        "command": "typecad-pcb.viewNet",
+        "title": "View Net on Board",
+        "category": "typeCAD/pcb"
+      },
+      {
         "command": "typecad-pcb.runDrc",
         "title": "Run DRC",
         "category": "typeCAD/pcb"

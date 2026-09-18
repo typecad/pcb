@@ -1,6 +1,10 @@
 // ---------------------------------------------------------------------------
 // Pure builder for the status bar entry (HAL's board-target line, pcb
 // flavored). vscode-free so the formatting stays unit-testable.
+//
+// The tooltip is MARKDOWN: lines carry command links ([Build Board](command:…))
+// the extension wraps in a trusted MarkdownString — plain lines render as
+// paragraphs, so join with blank lines.
 // ---------------------------------------------------------------------------
 
 export interface BoardStatusInput {
@@ -26,7 +30,7 @@ export function statusContent(s: BoardStatusInput): BoardStatusContent {
   if (!s.boardName) {
     return {
       text: '$(circuit-board) typeCAD/pcb — no board',
-      tooltip: 'typeCAD/pcb — no compiled board yet.\nClick to open the Board viewer, or run the ▶ Build Board lens.',
+      tooltip: 'typeCAD/pcb — no compiled board yet.\n\nClick to run the build, or use the ▶ Build Board lens on any hw source.',
     };
   }
   const tooltip: string[] = [`typeCAD/pcb — ${s.boardName}`];
@@ -50,10 +54,13 @@ export function statusContent(s: BoardStatusInput): BoardStatusContent {
     ];
     if (counts.length > 0) text += ` · ${counts.join(' ')}`;
     tooltip.push(`DRC: ${errors} error${errors === 1 ? '' : 's'}, ${warnings} warning${warnings === 1 ? '' : 's'} — click to view`);
+  } else {
+    // counts reset on every rebuild — say so, or a fresh chip reads as clean
+    tooltip.push('DRC: not run for this revision — [Run DRC](command:typecad-pcb.runDrc)');
   }
   if (s.stale) {
     text += ' · stale';
-    tooltip.push('Source files changed since the last build — run ▶ Build Board.');
+    tooltip.push('Source files changed since the last build — [Build Board](command:typecad-pcb.buildBoard).');
   }
-  return { text, tooltip: tooltip.join('\n') };
+  return { text, tooltip: tooltip.join('\n\n') };
 }

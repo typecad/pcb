@@ -9,6 +9,28 @@ export interface ViewerOptions {
   drcMarkers?: DrcMarker[];
   /** optional second view: the flat PCBA render of the same layers */
   pcbaSvg?: string;
+  /** optional third view: the engineering-drawing render of the same layers */
+  blueprintSvg?: string;
+  /** optional fourth view: the routing-focused render (white paper, black traces) */
+  schematicSvg?: string;
+  /**
+   * ngspice operating point (build/<board>_op.json, written by
+   * `typecad-pcb simulate`): per-net voltages and per-device current/power,
+   * shown when the mouse hovers a trace. Null/absent = no readout.
+   */
+  netOp?: {
+    solved?: boolean;
+    nets?: Record<string, number>;
+    devices?: Record<string, { current?: number; power?: number }>;
+    /** signed current injected into each net at a component pad — flow animation */
+    branches?: Record<string, Array<{ ref: string; pin: string; i: number }>>;
+  } | null;
+  /**
+   * theme picker entries for the pcba view: surface colors per builtin. The
+   * switcher remaps the embedded render's flat colors client-side — one
+   * render serves every theme, no re-render needed
+   */
+  pcbaThemes?: Array<{ id: string; label: string; colors: Record<string, string> }>;
 }
 
 function escapeHtml(value: string): string {
@@ -111,25 +133,84 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   }
   var units = svg.getAttribute('data-units') || 'mm';
 
-  // ---- view switching (gerber / pcba share one coordinate frame) ----
+  // ngspice operating point island (build/<board>_op.json via
+  // \`typecad-pcb simulate\`): per-net volts + per-device amps/watts, shown
+  // when a trace is hovered. Empty island = no simulation ran. ngspice
+  // lowercases every name while the gerber X2 attributes keep the
+  // schematic's case — normalize the island keys at parse so VCC finds vcc.
+  var netOp = null;
+  try {
+    var rawOp = JSON.parse(document.getElementById('net-op').textContent);
+    if (rawOp && rawOp.nets) {
+      var lcNets = {};
+      for (var nk in rawOp.nets) lcNets[nk.toLowerCase()] = rawOp.nets[nk];
+      rawOp.nets = lcNets;
+    }
+    if (rawOp && rawOp.devices) {
+      var lcDev = {};
+      for (var dk in rawOp.devices) lcDev[dk.toLowerCase()] = rawOp.devices[dk];
+      rawOp.devices = lcDev;
+    }
+    if (rawOp && rawOp.branches) {
+      var lcBr = {};
+      for (var bk in rawOp.branches) lcBr[bk.toLowerCase()] = rawOp.branches[bk];
+      rawOp.branches = lcBr;
+    }
+    netOp = rawOp;
+  } catch (e) {}
+  // engineering notation for the readout: 0.0012 -> "1.2m", 5e-6 -> "5u"
+  function fmtEng(v) {
+    if (v === undefined || v === null || isNaN(v)) return '?';
+    if (v === 0) return '0';
+    var a = Math.abs(v);
+    if (a >= 1) return String(Math.round(v * 100) / 100);
+    if (a >= 0.001) return String(parseFloat((v * 1e3).toFixed(2))) + 'm';
+    return String(parseFloat((v * 1e6).toFixed(2))) + 'u';
+  }
+
+  // ---- view switching (gerber / pcba / blueprint / schematic share one coordinate frame) ----
   var viewMode = 'gerber';
   var viewGroups = {
     gerber: document.getElementById('view-gerber'),
     pcba: document.getElementById('view-pcba'),
+    blueprint: document.getElementById('view-blueprint'),
+    schematic: document.getElementById('view-schematic'),
   };
   var layersBox = document.getElementById('layers');
   var btnAllOn = document.getElementById('btn-all-on');
   var btnAllOff = document.getElementById('btn-all-off');
   function setView(mode) {
-    if (!viewGroups.gerber || !viewGroups.pcba) return;
-    viewMode = mode === 'pcba' ? 'pcba' : 'gerber';
-    viewGroups.gerber.style.display = viewMode === 'gerber' ? '' : 'none';
-    viewGroups.pcba.style.display = viewMode === 'pcba' ? '' : 'none';
+    if (!viewGroups.gerber) return;
+    // only modes whose group exists; anything unknown is the gerber stack
+    viewMode = viewGroups[mode] && mode !== 'gerber' ? mode : 'gerber';
+    for (var name in viewGroups) {
+      if (viewGroups[name]) viewGroups[name].style.display = name === viewMode ? '' : 'none';
+    }
     // layer visibility/opacity controls belong to the gerber stack only —
-    // the ruler stays (both views share one coordinate frame)
+    // the ruler stays (all views share one coordinate frame)
     if (layersBox) layersBox.style.display = viewMode === 'gerber' ? '' : 'none';
     if (btnAllOn) btnAllOn.style.display = viewMode === 'gerber' ? '' : 'none';
     if (btnAllOff) btnAllOff.style.display = viewMode === 'gerber' ? '' : 'none';
+    // the theme picker belongs to the pcba view alone
+    var themeBox = document.getElementById('pcba-theme-box');
+    if (themeBox) themeBox.style.display = viewMode === 'pcba' ? '' : 'none';
+    // the voltage/power legends belong to the schematic view alone, and only
+    // once the heat maps actually have solved data
+    var voltLegend = document.getElementById('volt-legend-box');
+    if (voltLegend) voltLegend.style.display = viewMode === 'schematic' && voltRange ? '' : 'none';
+    var powerLegend = document.getElementById('power-legend-box');
+    if (powerLegend) powerLegend.style.display = viewMode === 'schematic' && powerRange ? '' : 'none';
+    // the power overlay and the current-flow particles need rendered
+    // geometry — build them the first time the schematic view is shown
+    if (viewMode === 'schematic') {
+      buildPowerOverlay();
+      buildFlow();
+      flowStart();
+    } else {
+      flowStop();
+    }
+    var flowBox = document.getElementById('flow-box');
+    if (flowBox) flowBox.style.display = viewMode === 'schematic' && flowReady ? '' : 'none';
     var sel = document.getElementById('view-mode');
     if (sel) sel.value = viewMode;
     clearNetHighlight();
@@ -143,6 +224,516 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   }
   var modeSelect = document.getElementById('view-mode');
   if (modeSelect) modeSelect.addEventListener('change', function () { setView(modeSelect.value); });
+
+  // ---- schematic heat maps (traces by voltage, components by power): each
+  // value is interpolated continuously across the board's own solved range
+  // (no fixed buckets) — every value gets its own gradation. Both ramps
+  // share the same anchors so the scales read alike: black (coldest/ground)
+  // through blue, green, yellow and orange to red, with purple marking the
+  // single hottest value. Nets/parts outside the solve read gray or get no
+  // overlay, so "unsolved" never masquerades as a value.
+  var VOLT_STOPS = ['#000000', '#2060ff', '#00b400', '#ffdd00', '#ff8c00', '#ff0000', '#a020f0'];
+  var POWER_STOPS = ['#000000', '#2060ff', '#00b400', '#ffdd00', '#ff8c00', '#ff0000', '#a020f0'];
+  var voltRange = null;
+  var powerRange = null;
+  var powerOverlayDone = false;
+  function voltMix(a, b, f) {
+    var pa = parseInt(a.slice(1), 16), pb = parseInt(b.slice(1), 16);
+    var r = Math.round(((pa >> 16) & 255) + f * (((pb >> 16) & 255) - ((pa >> 16) & 255)));
+    var g = Math.round(((pa >> 8) & 255) + f * (((pb >> 8) & 255) - ((pa >> 8) & 255)));
+    var bl = Math.round((pa & 255) + f * ((pb & 255) - (pa & 255)));
+    return '#' + ((1 << 24) + (r << 16) + (g << 8) + bl).toString(16).slice(1);
+  }
+  function interpColor(stops, lo, hi, v) {
+    if (!(hi > lo)) return stops[Math.floor(stops.length / 2)];
+    var t = (v - lo) / (hi - lo);
+    if (t < 0) t = 0;
+    if (t > 1) t = 1;
+    // position along the stop list; the fractional part blends the two
+    // neighboring anchors
+    var s = t * (stops.length - 1);
+    var i = Math.min(Math.floor(s), stops.length - 2);
+    return voltMix(stops[i], stops[i + 1], s - i);
+  }
+  function voltColor(v) {
+    if (!voltRange) return VOLT_STOPS[Math.floor(VOLT_STOPS.length / 2)];
+    return interpColor(VOLT_STOPS, voltRange[0], voltRange[1], v);
+  }
+  function powerColor(p) {
+    if (!powerRange) return POWER_STOPS[Math.floor(POWER_STOPS.length / 2)];
+    return interpColor(POWER_STOPS, powerRange[0], powerRange[1], p);
+  }
+  // the legend bars mirror their ramps exactly: equally spaced CSS stops are
+  // the same piecewise-linear interpolation the traces/overlays use
+  function fillLegend(prefix, stops, lo, hi, unit) {
+    var bar = document.getElementById(prefix + '-legend-bar');
+    if (!bar) return;
+    var css = [];
+    for (var si = 0; si < stops.length; si++) {
+      css.push(stops[si] + ' ' + Math.round((si * 100) / (stops.length - 1)) + '%');
+    }
+    bar.style.background = 'linear-gradient(to right, ' + css.join(', ') + ')';
+    var mn = document.getElementById(prefix + '-legend-min');
+    var mx = document.getElementById(prefix + '-legend-max');
+    if (mn) mn.textContent = fmtEng(lo) + unit;
+    if (mx) mx.textContent = fmtEng(hi) + unit;
+  }
+  function applyVoltageColors() {
+    if (!viewGroups.schematic || !netOp || !netOp.solved || !netOp.nets) return;
+    var vals = [];
+    for (var vk in netOp.nets) if (isFinite(netOp.nets[vk])) vals.push(netOp.nets[vk]);
+    if (!vals.length) return;
+    voltRange = [Math.min.apply(null, vals), Math.max.apply(null, vals)];
+    var traces = viewGroups.schematic.querySelectorAll('#sch-copper [data-net]');
+    for (var ti = 0; ti < traces.length; ti++) {
+      var v = netOp.nets[traces[ti].getAttribute('data-net').toLowerCase()];
+      traces[ti].setAttribute('stroke', v === undefined ? '#9aa0a6' : voltColor(v));
+    }
+    fillLegend('volt', VOLT_STOPS, voltRange[0], voltRange[1], 'V');
+    var legend = document.getElementById('volt-legend-box');
+    if (legend && viewMode === 'schematic') legend.style.display = '';
+  }
+  applyVoltageColors();
+
+  // ---- component power overlay: a translucent heat-map rectangle over each
+  // solved component's glyph, drawn on top of the component layer (inside
+  // the board group, so it shares the schematic frame and dims with the
+  // board). pointer-events none — hover/click still reach the glyph pads.
+  function applyPowerLegend() {
+    if (!netOp || !netOp.solved || !netOp.devices) return;
+    var vals = [];
+    for (var dk in netOp.devices) {
+      var p = netOp.devices[dk].power;
+      if (p !== undefined && isFinite(p)) vals.push(p);
+    }
+    if (!vals.length) return;
+    powerRange = [Math.min.apply(null, vals), Math.max.apply(null, vals)];
+    fillLegend('power', POWER_STOPS, powerRange[0], powerRange[1], 'W');
+    var legend = document.getElementById('power-legend-box');
+    if (legend && viewMode === 'schematic') legend.style.display = '';
+  }
+  applyPowerLegend();
+
+  // getBBox is rendering-independent but IGNORES the element's own transform
+  // — a pcba glyph group sits at translate(centroid) rotate(angle), so its
+  // local bbox would stretch any fit from the origin to the part. Fold the
+  // element's own transform in; the result is a box in the parent (board)
+  // frame. Shared by component search/zoom and the power overlay.
+  function boxInParent(el) {
+    var b = el.getBBox();
+    var t = el.transform && el.transform.baseVal ? el.transform.baseVal.consolidate() : null;
+    if (!t) return b;
+    var m = t.matrix;
+    var xs = [], ys = [];
+    var corners = [
+      [b.x, b.y],
+      [b.x + b.width, b.y],
+      [b.x + b.width, b.y + b.height],
+      [b.x, b.y + b.height],
+    ];
+    for (var c = 0; c < 4; c++) {
+      xs.push(m.a * corners[c][0] + m.c * corners[c][1] + m.e);
+      ys.push(m.b * corners[c][0] + m.d * corners[c][1] + m.f);
+    }
+    var x1 = Math.min.apply(null, xs), x2 = Math.max.apply(null, xs);
+    var y1 = Math.min.apply(null, ys), y2 = Math.max.apply(null, ys);
+    return { x: x1, y: y1, width: x2 - x1, height: y2 - y1 };
+  }
+
+  function buildPowerOverlay() {
+    if (powerOverlayDone || !powerRange || !viewGroups.schematic) return;
+    powerOverlayDone = true;
+    var comps = viewGroups.schematic.querySelector('#sch-board > #sch-components');
+    if (!comps) return;
+    var overlay = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    overlay.setAttribute('id', 'sch-power-overlay');
+    overlay.setAttribute('pointer-events', 'none');
+    overlay.setAttribute('opacity', '0.5');
+    var glyphs = comps.querySelectorAll('g[data-ref]');
+    for (var gi = 0; gi < glyphs.length; gi++) {
+      var ref = glyphs[gi].getAttribute('data-ref');
+      var dev = netOp.devices && netOp.devices[ref.toLowerCase()];
+      if (!dev || dev.power === undefined || !isFinite(dev.power)) continue;
+      // the overlay hugs the component BODY — the glyph's largest filled
+      // shape. Lead wires, end caps and markings are all smaller: a group
+      // bbox would stretch the overlay across the leads (a THT resistor
+      // reads as its full pitch) and box a round can as its bounding square
+      var body = null, bodyArea = 0;
+      for (var ci = 0; ci < glyphs[gi].children.length; ci++) {
+        var ch = glyphs[gi].children[ci];
+        if (ch.tagName.toLowerCase() === 'clippath') continue;
+        if (typeof ch.getBBox !== 'function') continue;
+        var f = ch.getAttribute('fill');
+        if (!f || f === 'none') continue;
+        var cb;
+        try { cb = ch.getBBox(); } catch (e) { continue; }
+        if (!cb.width || !cb.height) continue;
+        var area = cb.width * cb.height;
+        if (area > bodyArea) { bodyArea = area; body = ch; }
+      }
+      var shape = null;
+      try {
+        shape = body ? bodyOverlayShape(glyphs[gi], body) : rectOverlayShape(boxInParent(glyphs[gi]));
+      } catch (e) {
+        continue;
+      }
+      if (!shape) continue;
+      shape.setAttribute('fill', powerColor(dev.power));
+      overlay.appendChild(shape);
+    }
+    if (overlay.childNodes.length) comps.parentNode.appendChild(overlay);
+  }
+
+  // overlay geometry for a glyph's body shape, mapped into the glyph's
+  // parent (board) frame: compose the glyph's placement transform with the
+  // shape's own. Placements are rigid translate/rotate, so a circle body
+  // stays a circle at exactly the body radius.
+  function bodyOverlayShape(glyph, body) {
+    var mg = elMatrix(glyph), mb = elMatrix(body);
+    var m = mg ? (mb ? matMul(mg, mb) : mg) : mb;
+    if (body.tagName.toLowerCase() === 'circle') {
+      var cx = body.cx.baseVal.value, cy = body.cy.baseVal.value, r = body.r.baseVal.value;
+      var scale = m ? Math.sqrt(Math.abs(m.a * m.d - m.b * m.c)) : 1;
+      var circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      circle.setAttribute('cx', m ? m.a * cx + m.c * cy + m.e : cx);
+      circle.setAttribute('cy', m ? m.b * cx + m.d * cy + m.f : cy);
+      circle.setAttribute('r', r * scale);
+      return circle;
+    }
+    return rectOverlayShape(shapeBoxInFrame(body, m));
+  }
+  function rectOverlayShape(b) {
+    if (!b || (!b.width && !b.height)) return null;
+    if (!Number.isFinite(b.x) || !Number.isFinite(b.y)) return null;
+    var rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    rect.setAttribute('x', b.x);
+    rect.setAttribute('y', b.y);
+    rect.setAttribute('width', b.width);
+    rect.setAttribute('height', b.height);
+    rect.setAttribute('rx', Math.min(b.width, b.height) * 0.15);
+    return rect;
+  }
+  function elMatrix(el) {
+    if (!el.transform || !el.transform.baseVal) return null;
+    var t = el.transform.baseVal.consolidate();
+    return t ? t.matrix : null;
+  }
+  function matMul(m1, m0) {
+    return {
+      a: m1.a * m0.a + m1.c * m0.b,
+      b: m1.b * m0.a + m1.d * m0.b,
+      c: m1.a * m0.c + m1.c * m0.d,
+      d: m1.b * m0.c + m1.d * m0.d,
+      e: m1.a * m0.e + m1.c * m0.f + m1.e,
+      f: m1.b * m0.e + m1.d * m0.f + m1.f,
+    };
+  }
+  function shapeBoxInFrame(el, m) {
+    var b = el.getBBox();
+    if (!m) return b;
+    var xs = [], ys = [];
+    var corners = [
+      [b.x, b.y],
+      [b.x + b.width, b.y],
+      [b.x + b.width, b.y + b.height],
+      [b.x, b.y + b.height],
+    ];
+    for (var c = 0; c < 4; c++) {
+      xs.push(m.a * corners[c][0] + m.c * corners[c][1] + m.e);
+      ys.push(m.b * corners[c][0] + m.d * corners[c][1] + m.f);
+    }
+    var x1 = Math.min.apply(null, xs), x2 = Math.max.apply(null, xs);
+    var y1 = Math.min.apply(null, ys), y2 = Math.max.apply(null, ys);
+    return { x: x1, y: y1, width: x2 - x1, height: y2 - y1 };
+  }
+
+  // ---- current flow: particles gliding along the schematic traces in the
+  // conventional-current direction (the EE convention, not electron flow).
+  // Each pad's signed injection (the island's branches) anchors direction —
+  // particles leave the pads a net's current enters and head for the pads it
+  // leaves. Speed and particle size encode the net's total current on a log
+  // scale (boards span decades); zero-current nets stay still.
+  var flowGroup = null;
+  var flowParticles = [];
+  var flowReady = false;
+  var flowBuilt = false;
+  var flowRaf = 0;
+  var flowLast = 0;
+  var flowToggle = document.getElementById('flow-toggle');
+  // animation rate multiplier from the speed slider (0 pauses the loop)
+  var flowRate = 1;
+  var flowSpeedInput = document.getElementById('flow-speed');
+  var flowSpeedVal = document.getElementById('flow-speed-val');
+  function flowNetData(copper, net) {
+    var entries = netOp.branches[net.toLowerCase()];
+    if (!entries || !entries.length) return null;
+    // net the injections per pad first — one pad can both feed and draw (a
+    // rail pad hosting the source's + terminal behind a pulling resistor)
+    var padSum = {};
+    for (var i = 0; i < entries.length; i++) {
+      var e = entries[i];
+      var k = e.ref + '|' + e.pin;
+      padSum[k] = (padSum[k] || 0) + e.i;
+    }
+    var pads = [];
+    for (var kk in padSum) {
+      if (!padSum[kk]) continue;
+      var pp = kk.split('|');
+      var padEl = copper.querySelector('[data-net="' + net + '"][data-ref="' + pp[0] + '"][data-pin="' + pp[1] + '"]');
+      if (!padEl) continue;
+      var b = padEl.getBBox();
+      pads.push({ x: b.x + b.width / 2, y: b.y + b.height / 2, q: padSum[kk] });
+    }
+    return pads.length ? pads : null;
+  }
+  function buildFlow() {
+    if (flowBuilt || !viewGroups.schematic) return;
+    flowBuilt = true;
+    if (!netOp || !netOp.solved || !netOp.branches) return;
+    var copper = viewGroups.schematic.querySelector('#sch-copper');
+    if (!copper) return;
+    var SVGNS = 'http://www.w3.org/2000/svg';
+    var byNet = {};
+    var els = copper.querySelectorAll('[data-net]');
+    for (var i = 0; i < els.length; i++) {
+      // open wires only: pads carry data-net too (closed shapes would orbit
+      // the pad perimeter), and closed contours (d containing Z) are pads
+      // and pour regions — the GND pour outline alone runs tens of
+      // thousands of units and would bury the board in particles
+      var tg = els[i].tagName.toLowerCase();
+      if (tg !== 'path' && tg !== 'polyline' && tg !== 'line') continue;
+      var dd = els[i].getAttribute('d');
+      if (dd && dd.indexOf('Z') !== -1) continue;
+      var n = els[i].getAttribute('data-net');
+      if (!byNet[n]) byNet[n] = [];
+      byNet[n].push(els[i]);
+    }
+    // Per-BRANCH flow on the route graph, not per-net guesses: each wire is
+    // an edge between coincident endpoints, pads attach to the nearest node,
+    // and every current-leaving pad draws its own solved current along its
+    // path toward the nearest current-entering pad. A wire that carries
+    // nothing (a rail stretch ending at a DC-open cap) gets no particles,
+    // and direction is the actual current path, never endpoint heuristics.
+    var edges = [];
+    var lo = Infinity, hi = 0;
+    for (var net in byNet) {
+      var pads = flowNetData(copper, net);
+      if (!pads) continue;
+      var hasSrc = false, hasSnk = false;
+      for (var pj = 0; pj < pads.length; pj++) {
+        if (pads[pj].q > 0) hasSrc = true;
+        else if (pads[pj].q < 0) hasSnk = true;
+      }
+      if (!hasSrc || !hasSnk) continue;
+      var nodes = {};
+      var nodeAt = function (x, y) {
+        var key = Math.round(x * 10) / 10 + ',' + Math.round(y * 10) / 10;
+        if (!nodes[key]) nodes[key] = { key: key, x: x, y: y, adj: [], depth: -1, parentEdge: -1, isSnk: 0 };
+        return nodes[key];
+      };
+      var netEdges = [];
+      for (var wi = 0; wi < byNet[net].length; wi++) {
+        var el = byNet[net][wi];
+        if (!el.getTotalLength) continue;
+        var L = el.getTotalLength();
+        if (!L) continue;
+        var s0 = el.getPointAtLength(0);
+        var s1 = el.getPointAtLength(L);
+        var na = nodeAt(s0.x, s0.y);
+        var nb = nodeAt(s1.x, s1.y);
+        if (na === nb) continue;
+        var eidx = netEdges.length;
+        netEdges.push({ el: el, len: L, a: na, b: nb, cur: 0 });
+        na.adj.push(eidx);
+        nb.adj.push(eidx);
+      }
+      // attach pads to the route graph: every route node within reach of a
+      // pad is electrically the SAME node (a pad is one piece of copper), so
+      // merge them — this also bridges route fragments that meet inside a
+      // pad, which the endpoint-coincidence graph alone can't see
+      var padNodes = [];
+      for (var pk = 0; pk < pads.length; pk++) {
+        var near = [];
+        for (var nk in nodes) {
+          var nd = nodes[nk];
+          var ddx = nd.x - pads[pk].x, ddy = nd.y - pads[pk].y;
+          if (ddx * ddx + ddy * ddy < 12.25) near.push(nd);
+        }
+        if (!near.length) {
+          padNodes.push({ pad: pads[pk], node: null });
+          continue;
+        }
+        var canon = near[0];
+        for (var mi = 1; mi < near.length; mi++) {
+          var other = near[mi];
+          for (var ei3 = 0; ei3 < netEdges.length; ei3++) {
+            if (netEdges[ei3].a === other) netEdges[ei3].a = canon;
+            if (netEdges[ei3].b === other) netEdges[ei3].b = canon;
+          }
+          canon.adj = canon.adj.concat(other.adj);
+          other.depth = -2; // retired into canon
+        }
+        if (pads[pk].q < 0) canon.isSnk = 1;
+        padNodes.push({ pad: pads[pk], node: canon });
+      }
+      // depth from the current-leaving pads: parent chains lead each
+      // entering pad's current to its nearest exit
+      var queue = [];
+      for (var nk2 in nodes) {
+        if (nodes[nk2].isSnk) {
+          nodes[nk2].depth = 0;
+          queue.push(nodes[nk2]);
+        }
+      }
+      var qi = 0;
+      while (qi < queue.length) {
+        var u = queue[qi++];
+        for (var ai = 0; ai < u.adj.length; ai++) {
+          var eg = netEdges[u.adj[ai]];
+          var v = eg.a === u ? eg.b : eg.a;
+          if (v.depth !== -1) continue;
+          v.depth = u.depth + 1;
+          v.parentEdge = u.adj[ai];
+          queue.push(v);
+        }
+      }
+      // each entering pad walks its q down the parent chain, accumulating
+      // signed flow per edge (positive = along the wire's own a->b order)
+      for (var pk2 = 0; pk2 < padNodes.length; pk2++) {
+        var pn = padNodes[pk2];
+        if (!pn.node || pn.pad.q <= 0 || pn.node.depth === -1) continue;
+        var v2 = pn.node;
+        var guard = 0;
+        while (v2.parentEdge !== -1 && guard++ < 500) {
+          var edge = netEdges[v2.parentEdge];
+          var parent = edge.a === v2 ? edge.b : edge.a;
+          // current moves v2 -> parent (toward the sink); positive = a->b
+          edge.cur += pn.pad.q * (edge.a === v2 ? 1 : -1);
+          v2 = parent;
+        }
+      }
+      for (var ei = 0; ei < netEdges.length; ei++) {
+        var ed = netEdges[ei];
+        if (!ed.cur) continue;
+        edges.push(ed);
+        var mag = Math.abs(ed.cur);
+        if (mag < lo) lo = mag;
+        if (mag > hi) hi = mag;
+      }
+    }
+    if (!edges.length) return;
+    flowGroup = document.createElementNS(SVGNS, 'g');
+    flowGroup.setAttribute('id', 'sch-flow');
+    flowGroup.setAttribute('pointer-events', 'none');
+    // particles per edge: count by wire length, size and speed by the log of
+    // the edge's own current within the board's range — plus a global budget
+    // so even a pathological trace count can never wedge the frame loop
+    for (var ei2 = 0; ei2 < edges.length && flowParticles.length < 400; ei2++) {
+      var ed2 = edges[ei2];
+      var mag2 = Math.abs(ed2.cur);
+      var t = hi > lo ? (Math.log(mag2) - Math.log(lo)) / (Math.log(hi) - Math.log(lo)) : 0.5;
+      var dir = ed2.cur > 0 ? 1 : -1;
+      var count = Math.min(32, Math.max(1, Math.round(ed2.len / 2.5)));
+      for (var ci = 0; ci < count && flowParticles.length < 400; ci++) {
+        var dot = document.createElementNS(SVGNS, 'circle');
+        dot.setAttribute('r', (0.16 + 0.2 * t).toFixed(3));
+        dot.setAttribute('fill', '#ffffff');
+        dot.setAttribute('stroke', 'rgba(0,0,0,0.45)');
+        dot.setAttribute('stroke-width', '0.05');
+        flowGroup.appendChild(dot);
+        flowParticles.push({ path: ed2.el, len: ed2.len, dir: dir, off: (ed2.len * ci) / count, speed: 2.5 + 10 * t, dot: dot });
+      }
+    }
+    if (flowParticles.length) copper.parentNode.insertBefore(flowGroup, copper.nextSibling);
+    flowReady = true;
+  }
+  function flowFrame(ts) {
+    flowRaf = 0;
+    if (!flowToggle || !flowToggle.checked || viewMode !== 'schematic') {
+      flowLast = 0;
+      return;
+    }
+    var dt = flowLast ? Math.min(0.05, (ts - flowLast) / 1000) : 0;
+    flowLast = ts;
+    for (var i = 0; i < flowParticles.length; i++) {
+      var p = flowParticles[i];
+      p.off += p.dir * p.speed * flowRate * dt;
+      if (p.off > p.len) p.off -= p.len;
+      if (p.off < 0) p.off += p.len;
+      var pt = p.path.getPointAtLength(p.off);
+      p.dot.setAttribute('cx', pt.x);
+      p.dot.setAttribute('cy', pt.y);
+    }
+    flowRaf = requestAnimationFrame(flowFrame);
+  }
+  function flowStart() {
+    if (!flowReady || flowRaf) return;
+    if (!flowToggle || !flowToggle.checked) return;
+    flowRaf = requestAnimationFrame(flowFrame);
+  }
+  function flowStop() {
+    if (flowRaf) cancelAnimationFrame(flowRaf);
+    flowRaf = 0;
+    flowLast = 0;
+  }
+  function saveFlowState() {
+    try {
+      var state = JSON.parse(localStorage.getItem(storeKey) || '{}') || {};
+      state.__flowRate = flowRate;
+      state.__flowOn = flowToggle ? flowToggle.checked : true;
+      localStorage.setItem(storeKey, JSON.stringify(state));
+    } catch (e) {}
+  }
+  if (flowToggle)
+    flowToggle.addEventListener('change', function () {
+      if (flowToggle.checked) flowStart();
+      else flowStop();
+      saveFlowState();
+    });
+  if (flowSpeedInput)
+    flowSpeedInput.addEventListener('input', function () {
+      flowRate = parseFloat(flowSpeedInput.value) || 0;
+      if (flowSpeedVal) flowSpeedVal.textContent = flowRate.toFixed(1) + 'x';
+      // 0x parks the loop; any movement restarts it (if the checkbox allows)
+      if (flowRate > 0) flowStart();
+      else flowStop();
+      saveFlowState();
+    });
+
+  // ---- pcba theme picker: remap the embedded render's flat colors ----
+  // one render serves every theme — the surface colors are plain attribute
+  // values, so switching walks the pcba group once and rewrites fill/stroke
+  // through a from->to map. Mask-luminance ink (inside <mask>) is skipped:
+  // it must stay black/white regardless of theme.
+  var pcbaThemeSel = document.getElementById('pcba-theme');
+  var pcbaThemeData = null;
+  try { pcbaThemeData = JSON.parse(document.getElementById('pcba-themes').textContent); } catch (e) {}
+  var pcbaColorsNow = pcbaThemeData ? pcbaThemeData.default : null;
+  function applyPcbaTheme(id) {
+    if (!pcbaThemeData || !pcbaThemeData.themes[id] || !pcbaColorsNow || !viewGroups.pcba) return;
+    var to = pcbaThemeData.themes[id];
+    var map = {};
+    for (var key in pcbaColorsNow) {
+      if (pcbaColorsNow[key] && to[key] && pcbaColorsNow[key] !== to[key]) map[pcbaColorsNow[key]] = to[key];
+    }
+    clearNetHighlight();
+    var els = viewGroups.pcba.querySelectorAll('[fill],[stroke]');
+    for (var i = 0; i < els.length; i++) {
+      if (els[i].closest && els[i].closest('mask')) continue;
+      var f = els[i].getAttribute('fill');
+      if (f && map[f]) els[i].setAttribute('fill', map[f]);
+      var st = els[i].getAttribute('stroke');
+      if (st && map[st]) els[i].setAttribute('stroke', map[st]);
+    }
+    pcbaColorsNow = to;
+    if (pcbaThemeSel) pcbaThemeSel.value = id;
+    try {
+      var state = JSON.parse(localStorage.getItem(storeKey) || '{}') || {};
+      state.__pcbaTheme = id;
+      localStorage.setItem(storeKey, JSON.stringify(state));
+    } catch (e) {}
+  }
+  if (pcbaThemeSel) pcbaThemeSel.addEventListener('change', function () { applyPcbaTheme(pcbaThemeSel.value); });
 
   function apply() {
     panzoom.setAttribute('transform', 'translate(' + tx + ' ' + ty + ') scale(' + k + ')');
@@ -351,9 +942,19 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
 
   // ---- net highlighting + hover probing (X2 object attributes) ----
   var netDimmed = []; // elements dimmed by an active highlight, restored on clear
+  var netWhitened = []; // matched elements painted pure white, restored on clear
   function clearNetHighlight() {
     for (var i = 0; i < netDimmed.length; i++) netDimmed[i].removeAttribute('opacity');
     netDimmed = [];
+    for (var w = 0; w < netWhitened.length; w++) {
+      var item = netWhitened[w];
+      if (item.fill === null) item.el.removeAttribute('fill');
+      else item.el.setAttribute('fill', item.fill);
+      if (item.stroke === null) item.el.removeAttribute('stroke');
+      else item.el.setAttribute('stroke', item.stroke);
+      item.el.removeAttribute('opacity');
+    }
+    netWhitened = [];
   }
   function highlightNet(attr, value) {
     clearNetHighlight();
@@ -361,7 +962,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     var any = false;
     for (var i = 0; i < hits.length; i++) {
       if (hits[i].getAttribute(attr) !== value) {
-        hits[i].setAttribute('opacity', '0.12');
+        hits[i].setAttribute('opacity', '0.06');
         netDimmed.push(hits[i]);
       } else {
         any = true;
@@ -380,24 +981,61 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         // NB: loop var must not be k — that is the zoom factor above
         for (var ki = 0; ki < kids.length; ki++) {
           if (!kids[ki].hasAttribute(attr)) {
-            kids[ki].setAttribute('opacity', '0.12');
+            kids[ki].setAttribute('opacity', '0.06');
             netDimmed.push(kids[ki]);
           }
         }
       }
     }
-    // the PCBA view dims as a whole (its composite layers carry no net
-    // attributes; the component glyphs are data-ref-attributed and handled
-    // by the loop above) — dimming the hidden gerber/pcba group is harmless
-    var pcbaBoard = svg.querySelector('#view-pcba > #pcba-board');
-    if (pcbaBoard) {
-      var pcbaKids = pcbaBoard.children;
-      for (var p = 0; p < pcbaKids.length; p++) {
-        var pg = pcbaKids[p];
-        if (pg.id === 'components') continue;
-        pg.setAttribute('opacity', '0.25');
-        netDimmed.push(pg);
+    // the composite views dim per element, NOT whole groups: a dimmed group
+    // composites its opacity over the matched elements inside it, which
+    // made the clicked net FADE instead of pop. dimBelow walks past groups
+    // that contain the match and dims only the unmatched leaves
+    var dimBelow = function (el) {
+      if (el.getAttribute && el.getAttribute(attr) === value) return; // the match stays bright
+      if (el.querySelector('[' + attr + '="' + value + '"]')) {
+        var sub = el.children;
+        for (var s = 0; s < sub.length; s++) dimBelow(sub[s]);
+        return;
       }
+      el.setAttribute('opacity', '0.25');
+      netDimmed.push(el);
+    };
+    var dimWhole = ['#view-pcba > #pcba-board', '#view-blueprint > #bp-board', '#view-schematic > #sch-board'];
+    for (var d = 0; d < dimWhole.length; d++) {
+      var boardGroup = svg.querySelector(dimWhole[d]);
+      if (!boardGroup) continue;
+      var kids = boardGroup.children;
+      for (var p = 0; p < kids.length; p++) {
+        if (kids[p].id === 'components') continue;
+        dimBelow(kids[p]);
+      }
+    }
+    // the matched copper reads BRIGHT against the dimmed board: pure white
+    // on the blueprint paper; elsewhere the color copper already uses there
+    // — resolved PER ELEMENT from its nearest filled ancestor group (the
+    // gerber layer group, the pcba pads / copper-ghost wrappers), never a
+    // global querySelector guess (document order finds the mask def's black
+    // <g> first). Pads recolor, traces restroke; zone fills (region paths,
+    // fill-rule evenodd) keep their color — a filled pour is just a board
+    var hlScope = viewGroups[viewMode] || viewGroups.gerber || svg;
+    var matched = hlScope.querySelectorAll('[' + attr + '="' + value + '"]');
+    for (var m = 0; m < matched.length; m++) {
+      var me = matched[m];
+      if (me.tagName === 'path' && me.getAttribute('fill-rule') === 'evenodd') continue;
+      var hlColor = '#ffffff';
+      if (viewMode !== 'blueprint') {
+        var anc = me.parentElement;
+        while (anc && anc.tagName !== 'svg') {
+          var af = anc.getAttribute('fill');
+          if (af && af !== 'none') { hlColor = af; break; }
+          anc = anc.parentElement;
+        }
+      }
+      netWhitened.push({ el: me, fill: me.getAttribute('fill'), stroke: me.getAttribute('stroke') });
+      if (me.tagName === 'use') me.setAttribute('fill', hlColor);
+      else if (me.tagName === 'path') me.setAttribute('stroke', hlColor);
+      me.setAttribute('opacity', '1');
     }
     return true;
   }
@@ -424,6 +1062,38 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       var nsrc = window.typecadNetSource(net);
       if (nsrc) next += ' { source ' + nsrc + ' }';
     }
+    // ngspice operating point (the #net-op island, written by the
+    // "typecad-pcb simulate" command): hovering a trace shows the net's DC
+    // voltage and the connected devices' current/power —
+    // "net2 · 3.3V · R1 1.2mA 3.9mW"
+    if (net && netOp && netOp.solved && netOp.nets) {
+      var vnet = netOp.nets[net.toLowerCase()];
+      if (vnet !== undefined) {
+        next += ' · ' + fmtEng(vnet) + 'V';
+        if (netOp.devices) {
+          var refs = {};
+          var pads = svg.querySelectorAll('[data-net="' + net + '"][data-ref]');
+          for (var pi = 0; pi < pads.length; pi++) refs[pads[pi].getAttribute('data-ref')] = true;
+          var shown = 0;
+          for (var pr in refs) {
+            var d = netOp.devices[pr.toLowerCase()];
+            if (!d || shown >= 2) continue;
+            shown++;
+            next += ' · ' + pr + ' ' + fmtEng(d.current) + 'A ' + fmtEng(d.power) + 'W';
+          }
+        }
+      }
+    }
+    // hovering a component BODY (a ref with no net — the glyph shapes carry
+    // only data-ref): show the device's own operating point, its solved
+    // current and dissipated power
+    if (!net && ref && netOp && netOp.solved && netOp.devices) {
+      var dev = netOp.devices[ref.toLowerCase()];
+      if (dev && (dev.current !== undefined || dev.power !== undefined)) {
+        next += ' · ' + (dev.current !== undefined ? fmtEng(dev.current) + 'A' : '?');
+        if (dev.power !== undefined) next += ' ' + fmtEng(dev.power) + 'W';
+      }
+    }
     if (next !== probe) {
       probe = next;
       // refresh the readout immediately so the probe appears without moving
@@ -442,9 +1112,9 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     var q = rawQuery.trim().toUpperCase();
     if (!q) return false;
     // scope to the active view: browsers return garbage geometry for
-    // elements inside display:none subtrees, so a hidden pcba glyph would
-    // otherwise blow the zoom-to-component bbox up to absurd extents
-    var scope = viewMode === 'pcba' && viewGroups.pcba ? viewGroups.pcba : (viewGroups.gerber || svg);
+    // elements inside display:none subtrees, so a hidden pcba/blueprint
+    // glyph would otherwise blow the zoom-to-component bbox up
+    var scope = viewMode !== 'gerber' && viewGroups[viewMode] ? viewGroups[viewMode] : (viewGroups.gerber || svg);
     var all = scope.querySelectorAll('[data-ref]');
     var hits = [];
     for (var i = 0; i < all.length; i++) {
@@ -455,17 +1125,22 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       if (!statusLocked()) statusEl.textContent = '"' + q + '" not found';
       return false;
     }
-    // union of local bboxes (getBBox: rendering-independent, unlike client
-    // rects which can be 0x0 for <use> flashes) -> fit the view to it.
-    // local coords are yflip space: view = t + k * (x, -y). Boxes are
-    // sanity-checked against the viewBox: anything larger than the whole
-    // board (browser artifacts for hidden/unrendered content) is discarded.
+    // getBBox is rendering-independent (unlike client rects, which can be
+    // 0x0 for <use> flashes) but IGNORES the element's own transform — a
+    // pcba glyph group sits at translate(centroid) rotate(angle), so its
+    // local bbox would union with the pads' board-frame boxes and stretch
+    // the fit from the origin to the part (the whole board reads as
+    // "zoomed out very far"). boxInParent (hoisted above the search code)
+    // folds each hit's own transform in first.
+    // union in the parent (board) frame; boxes are sanity-checked against
+    // the viewBox: anything larger than the whole board (browser artifacts
+    // for hidden/unrendered content) is discarded.
     var vbSpan = Math.max(svg.viewBox.baseVal.width, svg.viewBox.baseVal.height);
     var bb = null;
     for (var j = 0; j < hits.length; j++) {
       var b;
       try {
-        b = hits[j].getBBox();
+        b = boxInParent(hits[j]);
       } catch (e) {
         continue;
       }
@@ -568,6 +1243,22 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     var live = svg.querySelectorAll('[opacity]');
     var copy = clone.querySelectorAll('[opacity]');
     for (var i = 0; i < live.length && i < copy.length; i++) copy[i].setAttribute('opacity', live[i].getAttribute('opacity'));
+    // bake the page-CSS-styled elements into explicit attributes: the
+    // exported file has no page stylesheet, so class-only styling would
+    // fall back to SVG defaults (black fills) — clear-polarity shapes must
+    // keep showing the canvas color and DRC markers must keep their red
+    var cuts = clone.querySelectorAll('.cut');
+    for (var ci = 0; ci < cuts.length; ci++) {
+      cuts[ci].setAttribute('fill', canvas);
+      cuts[ci].setAttribute('stroke', canvas);
+    }
+    var outers = clone.querySelectorAll('.drc-mark circle.outer');
+    for (var oi = 0; oi < outers.length; oi++) {
+      outers[oi].setAttribute('fill', 'rgba(229, 72, 77, 0.22)');
+      outers[oi].setAttribute('stroke', '#e5484d');
+    }
+    var inners = clone.querySelectorAll('.drc-mark circle.inner');
+    for (var ii = 0; ii < inners.length; ii++) inners[ii].setAttribute('fill', '#e5484d');
     var bg = document.createElementNS('http://www.w3.org/2000/svg', 'style');
     bg.textContent = 'svg{background:' + canvas + ';}' + extra;
     clone.insertBefore(bg, clone.firstChild);
@@ -708,8 +1399,19 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     apply();
   })();
 
+  // restore the flow animation settings first — the view restore below runs
+  // setView/flowStart, and a paused or re-scaled animation should load that
+  // way from the first frame
+  if (saved.__flowRate !== undefined && isFinite(saved.__flowRate)) {
+    flowRate = saved.__flowRate;
+    if (flowSpeedInput) flowSpeedInput.value = String(flowRate);
+    if (flowSpeedVal) flowSpeedVal.textContent = flowRate.toFixed(1) + 'x';
+  }
+  if (flowToggle && saved.__flowOn === false) flowToggle.checked = false;
   // restore the last selected view (after the viewport, so fit state holds)
-  if (saved.__viewMode === 'pcba') setView('pcba');
+  if (saved.__viewMode && saved.__viewMode !== 'gerber') setView(saved.__viewMode);
+  // and the last pcba theme (the embedded render starts on the default)
+  if (saved.__pcbaTheme && saved.__pcbaTheme !== 'green-enig') applyPcbaTheme(saved.__pcbaTheme);
 
   window.addEventListener('keydown', function (ev) {
     if (ev.key === '0' || ev.key === 'f') fit();
@@ -844,6 +1546,18 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   #comp-search::placeholder { color: var(--muted); }
   #view-switch { padding: 8px 14px 0; }
   #view-mode { width: 100%; background: var(--btn-bg); color: var(--chrome-fg); border: 1px solid var(--btn-border); border-radius: 4px; padding: 5px 8px; font: inherit; cursor: pointer; }
+  #pcba-theme-box { padding: 8px 14px 0; }
+  #pcba-theme-label { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; margin: 0 0 4px; }
+  #pcba-theme { width: 100%; background: var(--btn-bg); color: var(--chrome-fg); border: 1px solid var(--btn-border); border-radius: 4px; padding: 5px 8px; font: inherit; cursor: pointer; }
+  #volt-legend-box, #power-legend-box { padding: 8px 14px 0; }
+  #volt-legend-label, #power-legend-label { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; margin: 0 0 4px; }
+  #volt-legend-bar, #power-legend-bar { height: 8px; border-radius: 4px; border: 1px solid var(--btn-border); }
+  #volt-legend-range, #power-legend-range { display: flex; justify-content: space-between; color: var(--muted); font-size: 10px; margin-top: 2px; }
+  #flow-box { padding: 8px 14px 0; }
+  #flow-label { display: flex; align-items: center; gap: 6px; color: var(--chrome-fg); font-size: 11px; cursor: pointer; user-select: none; }
+  #flow-speed-row { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
+  #flow-speed { flex: 1; accent-color: var(--chrome-fg); }
+  #flow-speed-val { color: var(--muted); font-size: 10px; min-width: 28px; text-align: right; }
   #fab-report { padding: 8px 14px 0; font-weight: 400; }
   #fab-report summary { cursor: pointer; color: var(--muted); }
   #fab-report table { border-collapse: collapse; width: 100%; font-size: 11px; margin: 6px 0; }
@@ -873,12 +1587,43 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     <button id="btn-theme" class="icon-btn" title="toggle dark/light theme"></button>
   </header>
   ${
-    options.pcbaSvg
+    options.pcbaSvg || options.blueprintSvg
       ? `<div id="view-switch">
   <select id="view-mode" title="board view">
     <option value="gerber">Gerber view</option>
-    <option value="pcba">PCBA view</option>
+    <option value="pcba">PCBA view</option>${options.blueprintSvg ? '\n    <option value="blueprint">Blueprint view</option>' : ''}${options.schematicSvg ? '\n    <option value="schematic">ngspice view</option>' : ''}
   </select>
+</div>`
+      : ''
+  }
+  ${
+    options.pcbaSvg && options.pcbaThemes && options.pcbaThemes.length > 0
+      ? `<div id="pcba-theme-box" style="display:none">
+  <div id="pcba-theme-label">Theme</div>
+  <select id="pcba-theme" title="pcba theme">${options.pcbaThemes
+        .map((t) => `<option value="${escapeHtml(t.id)}">${escapeHtml(t.label)}</option>`)
+        .join('')}</select>
+</div>`
+      : ''
+  }
+  ${
+    options.schematicSvg && options.netOp
+      ? `<div id="volt-legend-box" style="display:none">
+  <div id="volt-legend-label">Trace voltage</div>
+  <div id="volt-legend-bar"></div>
+  <div id="volt-legend-range"><span id="volt-legend-min"></span><span id="volt-legend-max"></span></div>
+</div>
+<div id="power-legend-box" style="display:none">
+  <div id="power-legend-label">Component power</div>
+  <div id="power-legend-bar"></div>
+  <div id="power-legend-range"><span id="power-legend-min"></span><span id="power-legend-max"></span></div>
+</div>
+<div id="flow-box" style="display:none">
+  <label id="flow-label"><input type="checkbox" id="flow-toggle" checked> animate current flow</label>
+  <div id="flow-speed-row">
+    <input type="range" id="flow-speed" min="0" max="4" step="0.1" value="1" title="flow animation speed">
+    <span id="flow-speed-val">1.0x</span>
+  </div>
 </div>`
       : ''
   }
@@ -903,7 +1648,7 @@ ${rows}
 </div>
 <div id="board-area">
   ${
-    /* both views share one svg + coordinate frame: switching toggles group
+    /* all views share one svg + coordinate frame: switching toggles group
        display, so panzoom/measure/drc/probe never re-bind */
     (() => {
       const withGerber = svg
@@ -913,25 +1658,60 @@ ${rows}
           '<g id="panzoom"><g id="view-gerber"><g id="yflip" transform="scale(1,-1)">',
         );
       const overlays = '<g id="measure"></g><g id="drc"></g><g id="typecad-probe"></g>';
-      if (!options.pcbaSvg) {
+      if (!options.pcbaSvg && !options.blueprintSvg && !options.schematicSvg) {
         // gerber only: close yflip + view-gerber, overlays in panzoom
         return withGerber.replace('</g></g></svg>', `</g></g>${overlays}</g></svg>`);
       }
-      const pcba = splitSvg(options.pcbaSvg);
-      // the pcba inner carries its own id="board" group — rename it so the
-      // root svg stays the only #board (getElementById/CSS target it)
-      const inner = pcba.inner.replace('<g id="board"', '<g id="pcba-board"');
-      const union = unionViewBox(splitSvg(svg).viewBox, pcba.viewBox);
+      // each extra view's inner carries its own id="board" group — rename
+      // them so the root svg stays the only #board, and its labels group so
+      // ids stay unique too
+      const views: string[] = [];
+      let union = splitSvg(svg).viewBox;
+      if (options.pcbaSvg) {
+        const pcba = splitSvg(options.pcbaSvg);
+        union = unionViewBox(union, pcba.viewBox);
+        views.push(
+          `<g id="view-pcba" style="display:none">${pcba.inner
+            .replace('<g id="board"', '<g id="pcba-board"')
+            .replace('<g id="labels"', '<g id="pcba-labels"')}</g>`,
+        );
+      }
+      if (options.blueprintSvg) {
+        const bp = splitSvg(options.blueprintSvg);
+        union = unionViewBox(union, bp.viewBox);
+        views.push(
+          `<g id="view-blueprint" style="display:none">${bp.inner
+            .replace('<g id="board"', '<g id="bp-board"')
+            .replace('<g id="labels"', '<g id="bp-labels"')}</g>`,
+        );
+      }
+      if (options.schematicSvg) {
+        const sch = splitSvg(options.schematicSvg);
+        union = unionViewBox(union, sch.viewBox);
+        views.push(
+          `<g id="view-schematic" style="display:none">${sch.inner
+            .replace('<g id="board"', '<g id="sch-board"')
+            .replace('<g id="labels"', '<g id="sch-labels"')}</g>`,
+        );
+      }
       return withGerber
         .replace(/viewBox="[^"]*"/, `viewBox="${escapeHtml(union)}"`)
-        .replace(
-          '</g></g></svg>',
-          `</g></g><g id="view-pcba" style="display:none">${inner}</g>${overlays}</g></svg>`,
-        );
+        .replace('</g></g></svg>', `</g></g>${views.join('')}${overlays}</g></svg>`);
     })()
   }
   <div id="status"></div>
   <script id="drc-data" type="application/json">${JSON.stringify(options.drcMarkers ?? []).replace(/</g, '\\u003c')}</script>
+  <script id="net-op" type="application/json">${
+    options.netOp ? JSON.stringify(options.netOp).replace(/</g, '\\u003c') : ''
+  }</script>
+  <script id="pcba-themes" type="application/json">${
+    options.pcbaThemes && options.pcbaThemes.length > 0
+      ? JSON.stringify({
+          default: options.pcbaThemes[0]!.colors,
+          themes: Object.fromEntries(options.pcbaThemes.map((t) => [t.id, t.colors])),
+        }).replace(/</g, '\\u003c')
+      : ''
+  }</script>
 </div>
 <script>
 ${js}

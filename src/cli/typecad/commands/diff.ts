@@ -64,6 +64,8 @@ function cleanupGitTempFiles(): void {
 export async function run(parsed: ParsedArgs): Promise<void> {
   const positional = parsed.positional;
   const fullMode = parsed.args['full'] === true;
+  // embedded callers (the vscode extension) render the report themselves
+  const noOpen = parsed.args['no-open'] === true;
   let theme: string | undefined;
   let outputHtmlPath: string | undefined;
 
@@ -178,13 +180,13 @@ export async function run(parsed: ParsedArgs): Promise<void> {
       outputHtmlPath,
     });
 
-    await openInBrowser(htmlFilePath);
+    if (!noOpen) await openInBrowser(htmlFilePath);
 
     spinner.success('Processing complete!');
     logger.log('');
     logger.log('Success! Visual diff report generated');
     logger.log(`Report location: ${htmlFilePath}`);
-    logger.log('Opening in your default browser...');
+    if (!noOpen) logger.log('Opening in your default browser...');
   } catch (error) {
     spinner.error('Processing failed');
     logger.log('');

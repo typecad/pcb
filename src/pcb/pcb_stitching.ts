@@ -20,6 +20,7 @@ import { ObstacleBuilder } from '../routing/shared/obstacle_builder.js';
 import { parseAsList, Sym } from '../sexpr/index.js';
 import { getFootprintBounds } from './footprint_bounds.js';
 import type { SExpr } from '../sexpr/types.js';
+import { pointToSegmentDistance } from '../routing/shared/routing_grid.js';
 import type { IRoutingObstacle } from '../routing/shared/routing_grid.js';
 import type { PcbInternalState } from './pcb_state.js';
 
@@ -269,7 +270,14 @@ function placeStitchVias(pcb: PCB, net: string, options: IStitchOptions, placedU
         // Required center-to-copper distance
         const required =
           viaRadius + (sameNet ? rules.min_hole_to_hole : Math.max(rules.min_clearance, obs.clearance ?? 0));
-        const d = distToBox(x, y, obs.bounds.minX, obs.bounds.minY, obs.bounds.maxX, obs.bounds.maxY);
+        // Track obstacles carry their exact segment: an angled track's AABB
+        // is the whole square containing it, which would void that square of
+        // stitches. Measure the real point-to-centerline (capsule) distance
+        // instead — same math the routing grid's precise check uses.
+        const d = obs.segment
+          ? pointToSegmentDistance(x, y, obs.segment.x1, obs.segment.y1, obs.segment.x2, obs.segment.y2) -
+            obs.segment.width / 2
+          : distToBox(x, y, obs.bounds.minX, obs.bounds.minY, obs.bounds.maxX, obs.bounds.maxY);
         if (d < required) {
           blocked = true;
           break;

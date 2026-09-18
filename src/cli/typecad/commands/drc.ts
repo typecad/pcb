@@ -6,6 +6,7 @@ import type { ParsedArgs } from '../parser.js';
 import type { ErcViolation } from '../../types.js';
 import logger from '../../../utils/logging.js';
 import { buildDirPath, findBoardFile } from '../pipeline.js';
+import { kicadMajorVersion } from './export.js';
 
 function findPcbFile(argPath?: string): string | null {
   if (argPath) {
@@ -54,7 +55,24 @@ export async function run(parsed: ParsedArgs): Promise<void> {
   const reportName = path.basename(pcbPath, '.kicad_pcb') + '_drc.json';
   const reportPath = path.join(path.dirname(pcbPath), reportName);
 
-  const args = ['drc', '--format', 'json', '--output', reportPath, ...parsed.passthrough, pcbPath];
+  // Refill zones in memory before checking (KiCad >= 9): typeCAD builds ship
+  // zone DECLARATIONS without fill geometry — fills are computed by the
+  // consumer — so a plain check validates a board that will never be
+  // fabricated. Without the refill every via tying into a pour reads
+  // dangling and the report fills with phantom violations; KiCad's GUI DRC
+  // refills by default, and this matches it. Power users can append their
+  // own kicad-cli flags after `--` (parsed.passthrough).
+  const refillZones = (await kicadMajorVersion()) >= 9;
+  const args = [
+    'drc',
+    ...(refillZones ? ['--refill-zones'] : []),
+    '--format',
+    'json',
+    '--output',
+    reportPath,
+    ...parsed.passthrough,
+    pcbPath,
+  ];
 
   try {
     await executeKiCADCommand('pcb', args, { stdio: 'pipe' });

@@ -46,17 +46,17 @@ export const advancedSkills: Skill[] = [
     name: 'simulation',
     category: 'advanced',
     description:
-      'Run ngspice SPICE simulations directly from your typeCAD code. Use the fluent simulate() method on PCB to run DC operating point (.op) or transient (.tran) analysis and get programmatic access to results for testing',
+      'Run ngspice SPICE simulations directly from your typeCAD code. Use the fluent simulate() method on PCB to run operating point (.op), transient (.tran), DC sweep (.dc) and AC (.ac) analyses and get programmatic access to results for testing',
     package: '@typecad/pcb',
     import: "import { PCB, Power } from '@typecad/pcb';",
     usage: {
-      signature: 'pcb.simulate(...powers: Power[]): SimulationContext',
+      signature: 'pcb.simulate(...powers?: Power[]): SimulationContext',
       parameters: [
         {
           name: 'powers',
           type: 'Power[]',
-          required: true,
-          description: 'One or more Power objects defining voltage sources for the simulation',
+          required: false,
+          description: 'Optional Power objects defining voltage sources. Omitted, power rails are discovered from Power objects already attached to the circuit',
         },
       ],
     },
@@ -66,8 +66,8 @@ export const advancedSkills: Skill[] = [
         code: `import { PCB, Power, Resistor } from '@typecad/pcb';
 
 let pcb = new PCB('vdiv');
-let r1 = new Resistor({ value: '10k', simulation: { include: true } });
-let r2 = new Resistor({ value: '10k', simulation: { include: true } });
+let r1 = new Resistor({ value: '10k' });
+let r2 = new Resistor({ value: '10k' });
 
 pcb.named('in').net(r1.pin(1));
 pcb.named('vdiv').net(r1.pin(2), r2.pin(1));
@@ -115,15 +115,17 @@ it('should split 5V across equal resistors', () => {
         code: `let d1 = new Component('Diode_SMD:D_0603_1608Metric');
 d1.value = '1N4148';
 d1.simulation = {
-  include: true,
   model: 'D 1N4148',
 };`,
       },
     ],
     notes: [
-      'Components need simulation: { include: true } to participate in simulation',
+      'Passives (R/C/L/D references) participate automatically; other components need simulation: { include: true } or a model, and simulation: { exclude: true } opts out',
       'op() returns NgspiceResult | null — null if ngspice is not installed',
-      'tran() returns void — opens interactive ngspice plot windows',
+      'tran() runs headless in batch mode and returns NgspiceResult | null; pass openPlots=true for interactive plot windows',
+      "dc(source, start, stop, incr) sweeps a named Power source (Power({ name: 'VS' })); ac(dec|oct|lin, points, fstart, fstop) runs a small-signal sweep needing Power({ ac: 1 })",
+      'simulation.subckt + simulation.library instantiate .subckt parts from .lib files; simulation.pinOrder maps pins onto terminals; simulation.params appends instance parameters — use named forms (area=2, m=2); ngspice 44+ rejects positional tokens on device cards',
+      'Waveform access: getWaveform(name), getAt(name, i); AC results are complex — use getMagnitude/getDb/getPhaseDeg',
       'Only named nets are included in the simulation (gnd maps to ngspice node 0)',
       'Netlist and output files are written to ./build/',
       'NgspiceResult helpers: getVoltage(net), getCurrent(ref), getPower(ref), get(rawName)',

@@ -180,6 +180,20 @@ export interface InkOptions {
   clearColor?: string;
   /** emit pad flashes only (no traces/regions) */
   flashesOnly?: boolean;
+  /**
+   * fill for regions (zone pours) instead of the flat color — the blueprint
+   * style passes a hatch pattern url so pours read as drawings, not blobs
+   */
+  regionFill?: string;
+  /** optional stroke for region boundaries (e.g. a faint pour outline) */
+  regionStroke?: { color: string; width: number };
+  /**
+   * when set, each region also emits a faint SOLID twin beneath its
+   * regionFill twin: renderers without pattern support (some viewers,
+   * office suites) fall back on it instead of an arbitrary blob color, so
+   * the pour still reads as a marked copper area
+   */
+  regionUnderlay?: { color: string; opacity: number };
 }
 
 export interface LayerInk {
@@ -254,9 +268,17 @@ export function renderLayerInk(layer: RenderLayer, options: InkOptions): LayerIn
       if (options.flashesOnly) continue;
       const d = op.contours.map((c) => pathData(c.start, c.segments, true)).join(' ');
       if (!d) continue;
-      const attrs = op.polarity === 'clear' ? cutAttrs() : ` fill="${options.color}"`;
+      const attrs = op.polarity === 'clear' ? cutAttrs() : ` fill="${options.regionFill ?? options.color}"`;
       const net = op.net ? ` data-net="${escapeXml(op.net)}"` : '';
-      body.push(`<path${attrs}${net} d="${d}" fill-rule="evenodd" stroke="none"/>`);
+      const strokeAttrs = options.regionStroke
+        ? ` stroke="${options.regionStroke.color}" stroke-width="${fmt(options.regionStroke.width)}"`
+        : ' stroke="none"';
+      if (op.polarity !== 'clear' && options.regionUnderlay) {
+        body.push(
+          `<path fill="${options.regionUnderlay.color}" fill-opacity="${fmt(options.regionUnderlay.opacity)}"${net} d="${d}" fill-rule="evenodd" stroke="none"/>`,
+        );
+      }
+      body.push(`<path${attrs}${net} d="${d}" fill-rule="evenodd"${strokeAttrs}/>`);
     }
   }
   return { defs, body, warnings };

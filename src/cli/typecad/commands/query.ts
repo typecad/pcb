@@ -278,6 +278,7 @@ export async function run(parsed: ParsedArgs): Promise<void> {
               value: c.value,
               footprint: c.footprint,
               variable: c.variable,
+              source: c.source,
               side: c.side,
               at: c.at,
               dimensions: c.dimensions,

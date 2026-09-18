@@ -1070,10 +1070,185 @@ describe('renderPcbaSvg', () => {
   });
 });
 
+describe('render styles and branding', () => {
+  it('draws the engineering title block with the wordmark, and omits it on request', () => {
+    const withBlock = renderPcbaSvg(FRONT_LAYERS, { titleBlock: { title: 'demo board' } }).svg;
+    expect(withBlock).toContain('id="titleblock"');
+    expect(withBlock).toContain('>demo board</text>');
+    expect(withBlock).toContain('made with typeCAD');
+    expect(withBlock).toMatch(/\d{4}-\d{2}-\d{2} · [\d.]+ × [\d.]+ mm/);
+    const clean = renderPcbaSvg(FRONT_LAYERS, {}).svg;
+    expect(clean).not.toContain('id="titleblock"');
+  });
+
+  it('blueprint style draws paper and ink outlines — no grid, mask film, or glyphs', () => {
+    const svg = renderPcbaSvg(FRONT_LAYERS, { style: 'blueprint' }).svg;
+    expect(svg).toContain('fill="#1c3a5e"');
+    expect(svg).toContain('stroke="#d9e7f6"');
+    // plain paper — no millimeter graph grid
+    expect(svg).not.toContain('id="pcba-grid"');
+    // it is a drawing: no soldermask film, no component bodies
+    expect(svg).not.toContain('pcba-open');
+    expect(svg).not.toContain('id="components"');
+    // no fab layer in this fixture -> the renderer's own labels fill in
+    expect(svg).toContain('id="labels');
+  });
+
+  it('blueprint draws dimension lines and corner extents ticks against the outline', () => {
+    // the FRONT_LAYERS fixture board is 20 x 15 mm
+    const svg = renderPcbaSvg(FRONT_LAYERS, { style: 'blueprint' }).svg;
+    expect(svg).toContain('id="drawing-dims"');
+    expect(svg).toContain('id="drawing-dims-arrows"');
+    expect(svg).toContain('id="drawing-dims-ticks"');
+    // width and height measured off the outline, not the padded bounds
+    expect(svg).toContain('>20.0</text>');
+    expect(svg).toContain('>15.0</text>');
+    // four corners x two crop marks each
+    const ticks = svg.slice(svg.indexOf('drawing-dims-ticks'));
+    expect((ticks.match(/<line/g) ?? []).length).toBe(8);
+    // assembled style carries no drawing annotations
+    expect(renderPcbaSvg(FRONT_LAYERS, {}).svg).not.toContain('drawing-dims');
+  });
+
+  it('blueprint paper covers the annotations, and an info block lists layers and warnings', () => {
+    const result = renderPcbaSvg(FRONT_LAYERS, {
+      style: 'blueprint',
+      titleBlock: { title: 'demo board' },
+      generator: 'test-generator',
+    });
+    const svg = result.svg;
+    // the paper rect spans the widened viewBox (annotation room included):
+    // locate the paper fill, walk back to its '<rect', parse x/width
+    const fillAt = svg.indexOf('fill="#1c3a5e"');
+    const rectStart = svg.lastIndexOf('<rect', fillAt);
+    const paper = svg.slice(rectStart, fillAt + 'fill="#1c3a5e"'.length);
+    const attr = (name: string): number => {
+      const at = paper.indexOf(` ${name}="`);
+      return Number(paper.slice(at + name.length + 3, paper.indexOf('"', at + name.length + 3)));
+    };
+    const vb = svg.match(/viewBox="([^"]+)"/)![1].split(' ').map(Number);
+    expect(attr('x')).toBeCloseTo(vb[0], 1);
+    expect(attr('y')).toBeCloseTo(vb[1], 1);
+    expect(attr('width')).toBeCloseTo(vb[2], 1);
+    expect(attr('height')).toBeCloseTo(vb[3], 1);
+    // info block: layers used, units/side, generator — and it appears only
+    // in the blueprint style
+    expect(svg).toContain('id="info-block"');
+    expect(svg).toContain('>layers  ');
+    expect(svg).toContain('demo-F_Cu.gbr');
+    expect(svg).toContain('units mm · front side');
+    expect(svg).toContain('test-generator');
+    expect(renderPcbaSvg(FRONT_LAYERS, {}).svg).not.toContain('id="info-block"');
+  });
+
+  it('schematic style: white paper, near-black traces, semi-transparent components', () => {
+    const svg = renderPcbaSvg(FRONT_LAYERS, { style: 'schematic' }).svg;
+    expect(svg).toContain('fill="#ffffff"'); // white paper
+    expect(svg).toContain('stroke="#101010"'); // trace ink
+    // components ride at reduced opacity over the traces (distinct id: the
+    // power heat-map overlay targets this group in the combined viewer)
+    expect(svg).toContain('<g id="sch-components" opacity="0.55">');
+    // designators always on in schematic view
+    expect(svg).toContain('id="labels"');
+    // never the pcba mask film
+    expect(svg).not.toContain('pcba-open');
+    // a pour layer gets the subdued gray hatch (this fixture has none —
+    // verify with the pour gerber from the hatch test)
+    const pour = `%FSLAX36Y36*%
+%MOMM*%
+%ADD10C,0.2*%
+D10*
+G36*
+X1000000Y1000000D02*
+G01*
+X15000000Y1000000D01*
+X15000000Y10000000D01*
+X1000000Y10000000D01*
+X1000000Y1000000D01*
+G37*
+M02*
+`;
+    const poured = renderPcbaSvg([layer('demo-F_Cu.gbr', pour)], { style: 'schematic' }).svg;
+    expect(poured).toContain('id="pcba-sch-pourclip"');
+    expect(poured).toContain('stroke="#b6bcc4"');
+    // the copper group carries the id the viewer's voltage heat map targets
+    const withTraces = renderPcbaSvg(FRONT_LAYERS, { style: 'schematic' }).svg;
+    expect(withTraces).toContain('id="sch-copper"');
+  });
+
+  it('blueprint defers to the fab layer designators when it has them', () => {
+    // a fab layer carries the refdes (KiCad places it out of the way); the
+    // synthetic labels would double every designator and overlap footprints
+    const fabGerber = `%FSLAX36Y36*%
+%MOMM*%
+%ADD10C,0.15*%
+D10*
+X1000000Y1000000D02*
+X9000000Y1000000D01*
+M02*
+`;
+    const withFab = renderPcbaSvg([...FRONT_LAYERS, layer('demo-F_Fab.gbr', fabGerber)], { style: 'blueprint' }).svg;
+    expect(withFab).toContain('<g fill="none" stroke="#a8bfd9"'); // the fab ink renders
+    expect(withFab).not.toContain('id="labels"'); // no synthetic doubling
+    // explicit --labels still forces them
+    const forced = renderPcbaSvg([...FRONT_LAYERS, layer('demo-F_Fab.gbr', fabGerber)], { style: 'blueprint', labels: true }).svg;
+    expect(forced).toContain('id="labels"');
+  });
+
+  it('blueprint distinguishes element classes: hatched pours, thin pad outlines', () => {
+    const svg = renderPcbaSvg(FRONT_LAYERS, { style: 'blueprint' }).svg;
+    // pad flashes inherit a thin outline from the copper wrapper — not the
+    // 1-unit default that outlined pads as thick as themselves
+    expect(svg).toMatch(/<g fill="none" stroke="#d9e7f6" stroke-width="0.15">/);
+    // traces keep their own real widths
+    expect(svg).toMatch(/stroke="#d9e7f6"[^>]*d="M [\d.]+ [\d.]+ L/);
+    // zone pours fill with the hatch pattern (a solid ink fill would erase
+    // the copper under the zone) and carry a faint boundary stroke — this
+    // fixture needs its own pour, the shared FRONT_LAYERS has none
+    const pour = `%FSLAX36Y36*%
+%MOMM*%
+%ADD10C,0.2*%
+D10*
+G36*
+X1000000Y1000000D02*
+G01*
+X15000000Y1000000D01*
+X15000000Y10000000D01*
+X1000000Y10000000D01*
+X1000000Y1000000D01*
+G37*
+M02*
+`;
+    const poured = renderPcbaSvg([layer('demo-F_Cu.gbr', pour)], { style: 'blueprint' }).svg;
+    // hatch is explicit geometry: diagonal lines clipped to the pour outline
+    // (SVG <pattern> rendered as a solid wash in exported files and as
+    // arbitrary colors in third-party viewers — plain lines render the same
+    // everywhere)
+    expect(poured).toContain('id="pcba-bp-pourclip"');
+    expect(poured).toContain('clip-path="url(#pcba-bp-pourclip)"');
+    expect(poured).toMatch(/stroke-opacity="0\.35"/);
+    // multiple hatch strokes at 0.9mm pitch across the 14x9mm pour
+    expect((poured.match(/M -?[\d.]+ -?[\d.]+ L /g) ?? []).length).toBeGreaterThan(10);
+    expect(poured).not.toContain('<pattern');
+    expect(poured).toMatch(/stroke="#a8bfd9" stroke-width="0.12"/);
+    // faint solid twin under the hatch
+    expect(poured).toMatch(/fill="#d9e7f6" fill-opacity="0.12"/);
+  });
+});
+
 describe('themes', () => {
-  it('resolves builtin themes by name', () => {
+  it('resolves builtin themes by name; the classic green is the default', () => {
     expect(loadPcbaTheme('purple-enig').theme.clad).toBe('#5e3d99');
+    expect(loadPcbaTheme('typecad').theme.clad).toBe('#115257');
     expect(loadPcbaTheme().name).toBe('green-enig');
+    expect(loadPcbaTheme().theme.clad).toBe(DEFAULT_PCBA_THEME.clad);
+    expect(DEFAULT_PCBA_THEME.clad).toBe('#1a7a44');
+    // the picker's common colorways resolve, including black-silk variants
+    // and the OSH Park After Dark look
+    expect(loadPcbaTheme('red-enig').theme.clad).toBe('#8a2c28');
+    expect(loadPcbaTheme('white-hasl').theme.silk).toBe('#1c1c1c');
+    expect(loadPcbaTheme('yellow-hasl').theme.silk).toBe('#1c1c1c');
+    expect(loadPcbaTheme('oshpark-after-dark').theme).toMatchObject({ clad: '#0b0b0e', pads: '#d4af5a' });
   });
 
   it('merges a theme JSON file over the defaults', () => {

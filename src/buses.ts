@@ -40,13 +40,22 @@ export interface IPower {
   voltage?: number;
   current?: number;
   direction?: 'input' | 'output';
+  /** source designator for the ngspice card (must start with V/v; auto-prefixed otherwise) */
+  name?: string;
+  /** AC magnitude for small-signal (ac) analysis, e.g. `ac: 1` emits `AC 1` */
+  ac?: number;
+  /** raw ngspice source waveform appended to the card, e.g. `waveform: 'PULSE(0 5 1m 1u 1u 5m 20m)'` */
+  waveform?: string;
 }
 export class Power {
   power: Pin;
   gnd: Pin;
   voltage?: number;
   current?: number;
-  constructor({ power, gnd, voltage, current, direction = 'output' }: IPower = {}) {
+  name?: string;
+  ac?: number;
+  waveform?: string;
+  constructor({ power, gnd, voltage, current, direction = 'output', name, ac, waveform }: IPower = {}) {
     if (power) {
       this.power = power;
       this.power.type = direction === 'input' ? 'power_in' : 'power_out';
@@ -65,6 +74,9 @@ export class Power {
       err.stack = err.message;
       throw err;
     }
+    this.name = name;
+    this.ac = ac;
+    this.waveform = waveform;
     if (gnd) {
       this.gnd = gnd;
       this.gnd.type = 'power_in';

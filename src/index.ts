@@ -51,6 +51,7 @@ export { runDRC, runERC, upgradeFootprint, exportPCB, exportSchematic } from './
 
 export type { HwContract, ContractPin, ContractComponent, ContractOptions } from './contract.js';
 export type { NgspiceResult } from './simulation/types.js';
+export type { ISimulationOptions } from './component.js';
 export type { SimulationContext } from './simulation/ngspice.js';
 export type { ISchematicNetDefinition } from './net_manager.js';
 export { clearSourceCache } from './utils/source_inspector.js';

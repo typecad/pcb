@@ -69,6 +69,27 @@ export interface SourceInfo {
   isThis?: boolean;
 }
 
+/**
+ * ngspice simulation options for a component. Two-terminal passives
+ * (R/C/L/D references) are simulated automatically with none of these set.
+ */
+export interface ISimulationOptions {
+  /** include a component that is not auto-simulated (ICs, subcircuits, multi-pin devices) */
+  include?: boolean;
+  /** opt a component out of the automatically simulated set */
+  exclude?: boolean;
+  /** ngspice .model card body — model name first, then type and params: `'DLED D (IS=1a RS=3.3 N=1.8)'` */
+  model?: string;
+  /** ngspice .subckt name to instantiate: emits an `X` card referencing the subcircuit */
+  subckt?: string;
+  /** path to a library file containing models/subcircuits; emitted as `.include` (deduplicated) */
+  library?: string;
+  /** instance parameters appended to the device card, e.g. `'m=2'` or an area factor `'2'` */
+  params?: string;
+  /** KiCad pin numbers in ngspice terminal order — maps component pins onto the model/subckt ports (default: numeric pin order) */
+  pinOrder?: Array<number | string>;
+}
+
 export interface ComponentInit {
   footprint?: string;
   reference?: string;
@@ -79,7 +100,7 @@ export interface ComponentInit {
   uuid?: string;
   pcb?: { x: number | PlacementNumber; y: number | PlacementNumber; rotation?: number; side?: 'front' | 'back' };
   sch?: { x: number; y: number; rotation?: number };
-  simulation?: { include: boolean; model?: string };
+  simulation?: ISimulationOptions;
   symbol?: string;
   sourceInfo?: SourceInfo;
   typehal?: Record<string, string>;
@@ -193,7 +214,7 @@ export class Component {
   dnp: boolean = false;
   via: boolean = false;
   viaData: IVia | undefined = undefined;
-  simulation: { include: boolean; model?: string } = { include: false };
+  simulation: ISimulationOptions = {};
   sch: { x: number; y: number; rotation?: number } = { x: 0, y: 0, rotation: 0 };
   /** @internal */
   groups: string[] = [];
@@ -468,7 +489,7 @@ export class Component {
     if (init.sch) this.sch = init.sch;
     if (init.via) this.via = init.via;
     if (init.viaData) this.viaData = init.viaData;
-    if (init.simulation) this.simulation = { include: init.simulation.include, model: init.simulation.model ?? '' };
+    if (init.simulation) this.simulation = { ...init.simulation };
     if (init.uuid) this.#uuid = init.uuid;
     if (init.fab) this.fab = parseFab(init.fab);
     if (init.text) this.text = init.text;

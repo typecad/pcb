@@ -626,3 +626,62 @@ describe('stitch body blockers anchor at the footprint origin (rd_skeleton U4 re
     expect(onBody).toEqual([]);
   });
 });
+
+describe('stitch vs angled tracks (rd_skeleton j71_u51 regression)', () => {
+  const boardName = 'stitch_diag';
+
+  beforeEach(() => {
+    try {
+      fs.mkdirSync(buildDir);
+    } catch {
+      /* ignore */
+    }
+  });
+  afterEach(() => {
+    for (const ext of ['kicad_pcb', 'kicad_sch', 'kicad_pro', 'net', 'csv']) {
+      try {
+        fs.rmSync(`${buildDir}/${boardName}.${ext}`);
+      } catch {
+        /* ignore */
+      }
+    }
+  });
+
+  it('an angled track voids only a thin band, not its bounding square', () => {
+    // Exact j71_u51 geometry: the autorouter's 45° segment from U5 to J7,
+    // centerline x + y = 102.075 spanning (54.075, 48) → (37.2375, 64.8375).
+    // Its AABB covers x [37.14, 54.18] × y [47.83, 64.91]; blocking that
+    // whole square used to void ~8x8 stitch cells above and below the route.
+    const pcb = new PCB(boardName);
+    pcb.outline(10, 10, 104, 74);
+    pcb.zone({ net: 'GND', x: 10, y: 10, width: 104, height: 74, layers: ['F.Cu', 'B.Cu'] });
+
+    const gndSrc = new Resistor();
+    gndSrc.pcb = { x: 17, y: 18 } as any; // far from the diagonal
+    pcb.named('GND').net(gndSrc.pin(1));
+
+    // foreign-net copper drawn diagonally, like the routed signal
+    pcb.line({ start: { x: 54.075, y: 48 }, end: { x: 37.2375, y: 64.8375 }, layer: 'F.Cu', width: 0.2 });
+
+    pcb.stitch('GND', { pitch: 2.5, margin: 5 });
+    pcb.create(gndSrc);
+
+    const board = fs.readFileSync(`${buildDir}/${boardName}.kicad_pcb`, 'utf8');
+    const vias = [...board.matchAll(/\(via\s+\(at\s+([\d.]+)\s+([\d.]+)\)/g)].map((m) => ({
+      x: parseFloat(m[1]),
+      y: parseFloat(m[2]),
+    }));
+    const has = (x: number, y: number) => vias.some((v) => Math.abs(v.x - x) < 1e-6 && Math.abs(v.y - y) < 1e-6);
+
+    // cells inside the track's bounding square but ~10mm off its centerline
+    // must be stitched (the AABB check used to void them)
+    expect(has(40, 47.5)).toBe(true);
+    expect(has(37.5, 62.5)).toBe(true);
+    expect(has(52.5, 65)).toBe(true);
+
+    // cells on the centerline stay clear: (47.5, 55) is |0.425|/√2 ≈ 0.3mm
+    // from it — inside the 0.5mm via-radius + clearance halo
+    expect(has(47.5, 55)).toBe(false);
+    expect(has(42.5, 60)).toBe(false);
+  });
+});

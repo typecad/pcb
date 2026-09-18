@@ -20,6 +20,8 @@ interface CliArgs {
   side: 'auto' | 'front' | 'back';
   /** null = auto (labels off when silkscreen carries the refdes) */
   labels: boolean | null;
+  style: 'assembled' | 'blueprint' | 'schematic';
+  titleBlock: boolean;
   open: boolean;
   help: boolean;
   version: boolean;
@@ -37,6 +39,8 @@ Options:
                       image: themed substrate/mask/pads/silk + stylized
                       components from X2 attributes (no lighting/perspective)
   --theme <name>      pcba theme: ${pcbaThemeNames().join(', ')} or a .json path
+  --style <style>     pcba style: assembled (default) or blueprint — an
+                      engineering-drawing look (paper, grid, ink outlines)
   --side <side>       pcba side: auto (default), front or back
   --labels            pcba: force component refdes labels on/off (default:
   --no-labels         auto — off when the silkscreen already has them)
@@ -47,6 +51,8 @@ Options:
                       (0603_1608, 4x4mm, ...). pcba auto-discovers a sibling
                       *.net next to the input dir (build/<board>.net)
   --no-netlist        pcba: skip netlist discovery
+  --no-title-block    pcba: omit the engineering title block (board name,
+                      date, dimensions, wordmark) below the board
   --drc <file>        typecad DRC report JSON: renders violation markers
   --open              open the viewer in the default browser
   -h, --help          show this help
@@ -54,7 +60,7 @@ Options:
 
 Examples:
   gerber-viewer gerbers/ -o board-view.html --open
-  gerber-viewer gerbers/ --render pcba --theme purple-enig -o board.svg
+  gerber-viewer gerbers/ --render pcba --style blueprint -o drawing.svg
 `;
 
 function parseArgs(argv: string[]): CliArgs {
@@ -70,6 +76,8 @@ function parseArgs(argv: string[]): CliArgs {
     theme: null,
     side: 'auto',
     labels: null,
+    style: 'assembled',
+    titleBlock: true,
     open: false,
     help: false,
     version: false,
@@ -98,6 +106,12 @@ function parseArgs(argv: string[]): CliArgs {
       args.side = side;
     } else if (arg === '--labels') args.labels = true;
     else if (arg === '--no-labels') args.labels = false;
+    else if (arg === '--style') {
+      const style = argv[++i];
+      if (style !== 'assembled' && style !== 'blueprint' && style !== 'schematic')
+        throw new Error(`unknown --style "${style}" (assembled, blueprint or schematic)`);
+      args.style = style;
+    } else if (arg === '--no-title-block') args.titleBlock = false;
     else if (arg === '--open') args.open = true;
     else if (arg.startsWith('-')) throw new Error(`unknown option "${arg}"`);
     else args.inputs.push(arg);
@@ -177,6 +191,8 @@ export function run(argv: string[]): number {
         theme: args.theme ?? undefined,
         side: args.side,
         labels: args.labels ?? undefined,
+        style: args.style,
+        titleBlock: args.titleBlock,
         netlistPath: args.netlistPath ?? undefined,
         discoverNetlist: !args.noNetlist,
       });

@@ -48,6 +48,11 @@ export interface PcbaTheme {
   labels?: boolean;
 }
 
+/**
+ * The default palette — the physical-realism classic: green soldermask,
+ * copper-tone ENIG pads, white silk. The house look lives on as the named
+ * `typecad` builtin (`--theme typecad`).
+ */
 export const DEFAULT_PCBA_THEME: PcbaTheme = {
   board: '#285e3a',
   clad: '#1a7a44',
@@ -73,6 +78,18 @@ export const DEFAULT_PCBA_THEME: PcbaTheme = {
 /** Builtin themes, keyed by the `--theme` name. */
 export const PCBA_THEMES: Record<string, PcbaTheme> = {
   'green-enig': DEFAULT_PCBA_THEME,
+  typecad: {
+    ...DEFAULT_PCBA_THEME,
+    board: '#20565a',
+    clad: '#115257',
+    maskCopper: '#0b3d42',
+    pads: '#d5ad62',
+    silk: '#eef4ef',
+    outline: '#0b2224',
+    hole: '#091a1c',
+    body: '#33383d',
+    pin1: '#dfe2e6',
+  },
   'purple-enig': {
     ...DEFAULT_PCBA_THEME,
     board: '#3a2a5c',
@@ -102,6 +119,58 @@ export const PCBA_THEMES: Record<string, PcbaTheme> = {
     silk: '#eef2f8',
     outline: '#0d1522',
   },
+  'red-enig': {
+    ...DEFAULT_PCBA_THEME,
+    board: '#5e2320',
+    clad: '#8a2c28',
+    maskCopper: '#5c1d1a',
+    pads: '#d0a94f',
+    outline: '#1c0b0a',
+    hole: '#200d0c',
+  },
+  'white-hasl': {
+    ...DEFAULT_PCBA_THEME,
+    board: '#d8d8d0',
+    clad: '#e9e9e2',
+    maskCopper: '#c6c6bc',
+    pads: '#c9ced4',
+    silk: '#1c1c1c',
+    outline: '#8a8a80',
+    hole: '#9c9c92',
+  },
+  'yellow-hasl': {
+    ...DEFAULT_PCBA_THEME,
+    board: '#a38b20',
+    clad: '#c7a92c',
+    maskCopper: '#8a741c',
+    pads: '#c9ced4',
+    silk: '#1c1c1c',
+    outline: '#4a3e10',
+    hole: '#544612',
+  },
+  'oshpark-after-dark': {
+    ...DEFAULT_PCBA_THEME,
+    board: '#131318',
+    clad: '#0b0b0e',
+    maskCopper: '#33291a',
+    pads: '#d4af5a',
+    silk: '#e6e6e6',
+    outline: '#000000',
+    hole: '#000000',
+  },
+};
+
+/** Friendly names for the theme picker, keyed like PCBA_THEMES. */
+export const PCBA_THEME_LABELS: Record<string, string> = {
+  'green-enig': 'Green ENIG',
+  'red-enig': 'Red ENIG',
+  'blue-enig': 'Blue ENIG',
+  'purple-enig': 'Purple ENIG',
+  'black-hasl': 'Black HASL',
+  'white-hasl': 'White · black silk',
+  'yellow-hasl': 'Yellow · black silk',
+  'oshpark-after-dark': 'OSH Park After Dark',
+  typecad: 'typeCAD house',
 };
 
 /** XML-escape a string that is about to land inside an SVG attribute. */

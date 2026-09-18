@@ -106,7 +106,7 @@ DIP notch) inferred from the X2 `%TO.P` pad attributes — no part library neede
 
 ```bash
 npx gerber-viewer gerbers/ --render pcba -o board-pcba.svg
-npx gerber-viewer gerbers/ --render pcba --theme purple-enig --side back
+npx gerber-viewer gerbers/ --render pcba --style blueprint -o board-drawing.svg
 ```
 
 A sibling netlist is picked up automatically when it sits next to the gerber
@@ -135,17 +135,25 @@ carry a cathode stripe, LEDs a translucent tint. Without a netlist everything
 still renders from pad geometry alone, just without exact body dims and
 decorations.
 
-Themes are a small PcbDraw-style palette (`green-enig`, `purple-enig`, `black-hasl`,
-`blue-enig`) or your own JSON (`--theme my-theme.json` overrides any subset of the
+Themes are a small PcbDraw-style palette (`green-enig` — the classic green
+default, plus `typecad` — the house look: deep teal mask, champagne-gold
+pads — `purple-enig`, `black-hasl`, `blue-enig`) or your own JSON (`--theme my-theme.json` overrides any subset of the
 colors, including `maskCopper`). Refdes labels default to auto: off when the
 silkscreen layer already carries them (a synthetic label would double the silk
 text — and the board's own text renders faithfully since KiCad vectorizes fonts
 like `OCR A Std` into the gerber), on when there is none — `--labels`/`--no-labels`
 forces either way. Synthetic labels use the theme's `labelFont`
 (`'OCR A Std', 'Courier New', monospace` by default) to match typeCAD boards.
+Every render carries an engineering title block below the board — name, date,
+dimensions, and a "made with typeCAD" wordmark; `--no-title-block` renders a
+clean image. `--style blueprint` draws the board as an engineering drawing
+instead of an assembled render: blueprint paper, board
+and component outlines in ink, outlined pads, drill marks, and the title block in
+drawing ink; designators come from the fab layer (synthetic labels only without one).
 
 A combo box under the board title switches between **Gerber view** (the classic per-layer stack with
-visibility/opacity controls) and **PCBA view** (the flat assembled render described above). Both views share one
+visibility/opacity controls), **PCBA view** (the flat assembled render described above), and **Blueprint
+view** (the engineering drawing). All views share one
 coordinate frame, so pan/zoom, the measurement ruler, DRC markers, component search and the vscode cross-probing
 (double-click a component to jump to its source line; select one in the editor to highlight it here) all work in either
 view. The PCBA view hides the layer controls — there is only one layer stack to show — and the choice is remembered

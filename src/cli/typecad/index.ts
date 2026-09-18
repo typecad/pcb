@@ -197,6 +197,10 @@ async function main(): Promise<void> {
         await (await import('./commands/drc.js')).run(parsed);
         break;
 
+      case 'simulate':
+        await (await import('./commands/simulate.js')).run(parsed);
+        break;
+
       case 'erc':
         await (await import('./commands/erc.js')).run(parsed);
         break;

@@ -30,10 +30,17 @@ function pkgVersion(): string {
 }
 
 export interface PcbaBuildOptions {
-  /** builtin theme name (`green-enig`, ...) or a path to a theme .json */
+  /** builtin theme name (`typecad`, `green-enig`, ...) or a path to a theme .json */
   theme?: string;
   side?: 'auto' | 'front' | 'back';
   labels?: boolean;
+  /** render style: 'assembled' (default) or the engineering-drawing 'blueprint' */
+  style?: 'assembled' | 'blueprint' | 'schematic';
+  /**
+   * engineering title block (board name, date, dimensions, wordmark) below
+   * the board — on by default; false renders a clean image.
+   */
+  titleBlock?: boolean;
   /** KiCad netlist (.net) path — ref→footprint/value metadata. When omitted,
    *  a sibling `*.net` next to the input directory is discovered (the
    *  typeCAD build layout: `build/gerbers` + `build/<board>.net`) */
@@ -51,7 +58,8 @@ export interface PcbaBuildResult extends PcbaRenderResult {
 
 /** Resolve `--theme`: a builtin name, or a JSON file merged over the defaults. */
 export function loadPcbaTheme(name?: string): { theme: PcbaTheme; name: string } {
-  if (!name || name === 'green-enig') return { theme: DEFAULT_PCBA_THEME, name: 'green-enig' };
+  // no --theme means the default palette; every builtin resolves by name
+  if (!name) return { theme: DEFAULT_PCBA_THEME, name: 'green-enig' };
   // hasOwnProperty, not plain [] indexing: "constructor" & co. would walk
   // the prototype chain and come back as a "builtin theme"
   const builtin = Object.prototype.hasOwnProperty.call(PCBA_THEMES, name) ? PCBA_THEMES[name] : undefined;
@@ -126,6 +134,19 @@ export function renderPcbaFromFiles(inputPaths: string[], options: PcbaBuildOpti
     theme,
     side: options.side,
     labels: options.labels,
+    style: options.style,
+    // the block titles itself after the board: the netlist basename, else
+    // the gerber set's directory, else "board"
+    titleBlock:
+      options.titleBlock === false
+        ? undefined
+        : {
+            title: netlistPath
+              ? path.basename(netlistPath, '.net')
+              : files.length > 0
+                ? path.basename(path.dirname(files[0]!))
+                : 'board',
+          },
     netlist,
     generator: options.generator ?? `gerber-viewer ${pkgVersion()} pcba`,
   });

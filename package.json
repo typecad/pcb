@@ -60,6 +60,7 @@
     "node": ">=18.0.0"
   },
   "bin": {
+    "pcb": "dist/cli/typecad/index.js",
     "typecad-pcb": "dist/cli/typecad/index.js",
     "gerber-viewer": "dist/gerber_viewer/cli.js",
     "kicad-symbols": "dist/kicad-symbols/cli/bin.js",

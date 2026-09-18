@@ -7,12 +7,12 @@ import { parseExcellon } from './gerber/parse_excellon.js';
 import { parseGerber } from './gerber/parse_gerber.js';
 import type { DrillImage, GerberImage } from './gerber/types.js';
 import { computeDrcMarkers, computeFabReport, type DrcMarker, type FabReport } from './report.js';
-import { DEFAULT_PCBA_THEME } from './render/theme.js';
+import { DEFAULT_PCBA_THEME, PCBA_THEME_LABELS, PCBA_THEMES, type PcbaTheme } from './render/theme.js';
 import { discoverNetlist, parseNetlistComponents } from './netlist.js';
 import { computeLayerBounds, renderSvg, type RenderLayer } from './render/svg.js';
 import { renderPcbaSvg } from './render/pcba.js';
 import type { NetlistComponent } from './render/components.js';
-import { buildViewerHtml } from './render/viewer_html.js';
+import { buildViewerHtml, type ViewerOptions } from './render/viewer_html.js';
 
 export interface ViewerBuildResult {
   svg: string;
@@ -277,11 +277,62 @@ export function buildViewerFromFiles(paths: string[], options: ViewerBuildOption
     }
   }
   const pcbaSvg = renderPcbaSvg(ordered, { theme: DEFAULT_PCBA_THEME, netlist: pcbaNetlist }).svg;
+  // the blueprint view: same layers, drawing style — a third entry in the
+  // switcher riding the same coordinate frame
+  const blueprintSvg = renderPcbaSvg(ordered, { theme: DEFAULT_PCBA_THEME, netlist: pcbaNetlist, style: 'blueprint' }).svg;
+  // the schematic view: white paper, near-black traces, semi-transparent
+  // components — the routing-focused fourth view, whose trace hover shows
+  // the ngspice operating point
+  const schematicSvg = renderPcbaSvg(ordered, { theme: DEFAULT_PCBA_THEME, netlist: pcbaNetlist, style: 'schematic' }).svg;
+  // `typecad-pcb simulate` leaves build/<board>_op.json beside the netlist
+  // (like the DRC report); absent file = no electrical readout on hover
+  let netOp: ViewerOptions['netOp'] = null;
+  if (pcbaNetlistSource) {
+    const opPath = pcbaNetlistSource.replace(/\.net$/i, '_op.json');
+    if (fs.existsSync(opPath)) {
+      try {
+        netOp = JSON.parse(fs.readFileSync(opPath, 'utf8')) as NonNullable<ViewerOptions['netOp']>;
+      } catch {
+        warnings.push(`could not parse ${path.basename(opPath)} — trace hover will show no electrical data`);
+      }
+    }
+  }
+  // the pcba view's theme picker: surface colors per builtin, ordered as the
+  // combo shows them. The switcher remaps these flat colors client-side, so
+  // one embedded render serves every theme.
+  const surface = (t: PcbaTheme) => ({
+    board: t.board,
+    clad: t.clad,
+    maskCopper: t.maskCopper,
+    copper: t.copper,
+    pads: t.pads,
+    silk: t.silk,
+    outline: t.outline,
+    hole: t.hole,
+  });
+  const themeOrder = [
+    'green-enig',
+    'red-enig',
+    'blue-enig',
+    'purple-enig',
+    'black-hasl',
+    'white-hasl',
+    'yellow-hasl',
+    'oshpark-after-dark',
+    'typecad',
+  ];
+  const pcbaThemes = themeOrder
+    .filter((id) => PCBA_THEMES[id])
+    .map((id) => ({ id, label: PCBA_THEME_LABELS[id] ?? id, colors: surface(PCBA_THEMES[id]!) }));
   const html = buildViewerHtml(svg, layers, {
     title: options.title ?? (prefix.replace(/[-_. ]+$/, '') || path.basename(paths[0]!)),
     report,
     drcMarkers,
     pcbaSvg,
+    blueprintSvg,
+    schematicSvg,
+    netOp,
+    pcbaThemes,
   });
   return { svg, html, layers, warnings, report };
 }

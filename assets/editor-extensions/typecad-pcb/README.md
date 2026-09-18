@@ -16,6 +16,30 @@ same way: `typecad-pcb create` copies the compiled extension into the new
 project's `hw/.vscode/extensions/` folder, where VS Code 1.89+ installs it
 workspace-scoped with no marketplace and no global state.
 
+Every TypeScript source in the `hw/` folder carries a **▶ Build Board** lens
+above its first line — one click runs `npm run build` in a reused terminal,
+and an open Board viewer refreshes itself when the build lands.
+
+## Ambient board state
+
+- A **status bar entry** (right side, click to open the Board viewer) shows
+  the build target: `rd_skeleton · 28 parts · 3 unconnected · 2E 5W` — plus a
+  `stale` flag when source files are newer than the built board, and DRC
+  counts after a check.
+- **Unconnected pads and single-pin nets** land in the Problems pane as
+  warnings aimed at the declaring source lines (via the Code/net
+  provenance), with an italic "R1 · 2 unconnected pads" chip after the
+  declaration line in the editor.
+- **typeCAD/pcb: Run DRC** runs the design rule check and maps violations
+  into Problems the same way — a clearance hit on `net2` points at the
+  `pcb.route` line that created it; unmatched violations attach to the
+  board file. The Board viewer renders the same report's markers.
+- **typeCAD/pcb: Browse Components** is a QuickPick over the compiled board
+  (ref — value · footprint · source variable); Enter zooms the Board viewer
+  to the pick.
+- **typeCAD/pcb: Diff Board vs HEAD** renders the generated board's visual
+  diff against git HEAD in a panel.
+
 ## Pin hovers
 
 Hover (or place the cursor on) a component variable in `src/`:
@@ -95,11 +119,21 @@ Hover resolution: exact source variable (`r1`), then reference designator
 case-insensitively (`R1`, `u3`). Everything invalidates when
 `build/**/*.kicad_pcb` changes on disk.
 
+Activation, chip, and hovers share one scope: the extension wakes only in
+workspaces containing `typecad.conf.ts`, hides its status chip when the project
+leaves, and hovers only inside hw sources — fw/ files are the typeCAD/hal
+extension's domain, and the two extensions are built to sit in one multi-root
+workspace without talking over each other.
+
 ## Commands
 
 | Command | Title | What it does |
 |---|---|---|
 | `typecad-pcb.refreshBoardData` | typeCAD/pcb: Refresh Board Data | Re-query the compiled board |
+| `typecad-pcb.buildBoard` | typeCAD/pcb: Build Board | `npm run build` in the hw folder (the ▶ Build Board lens) |
+| `typecad-pcb.runDrc` | typeCAD/pcb: Run DRC | Design rule check → Problems (aimed at source) |
+| `typecad-pcb.browseComponents` | typeCAD/pcb: Browse Components | QuickPick a component → zoom the viewer |
+| `typecad-pcb.diffBoard` | typeCAD/pcb: Diff Board vs HEAD | Visual board diff in a panel |
 | `typecad-pcb.viewBoard` | typeCAD/pcb: View Board | Open (or refresh) the Board viewer |
 | `typecad-pcb.viewComponent` | typeCAD/pcb: View Component on Board | Prompt for a designator (seeded from the cursor) and zoom to it |
 

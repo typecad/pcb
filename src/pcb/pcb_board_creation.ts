@@ -5,6 +5,7 @@ import type { SExpr } from '../sexpr/types.js';
 import logger from '../utils/logging.js';
 import { BoardCreationError } from '../utils/errors.js';
 import { IVia, IGrLine, IOutline, OutlineElement } from './pcb_interfaces.js';
+import { maybeWriteOpSolve } from './pcb_op_solve.js';
 import { createFootprintNode } from './pcb_footprint.js';
 import { mergeNets } from './pcb_net_merger.js';
 import { materializePlanes } from './pcb_zones.js';
@@ -291,4 +292,9 @@ export function createBoard(pcb: PCB, ...items: Array<Component | TrackBuilder>)
   // `check` refills during its DRC, and `query` reports pours as declared
   // vs materialized. `pcb.zone({ fill: true })` writes the configuration;
   // geometry is always KiCad's to compute.
+
+  // `typecad-pcb simulate` re-runs the entry with TYPECAD_SIMULATE=op:
+  // solve the DC operating point now and leave build/<board>_op.json for
+  // the viewer's trace hover. No-op on a plain build.
+  maybeWriteOpSolve(pcb);
 }

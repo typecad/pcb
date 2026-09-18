@@ -565,6 +565,12 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         var na = nodeAt(s0.x, s0.y);
         var nb = nodeAt(s1.x, s1.y);
         if (na === nb) continue;
+        // layer membership drives via-barrel pairing (data-sub = secondary)
+        var eSub = el.hasAttribute('data-sub');
+        na.subLayer = na.subLayer || eSub;
+        nb.subLayer = nb.subLayer || eSub;
+        na.topLayer = na.topLayer || !eSub;
+        nb.topLayer = nb.topLayer || !eSub;
         var eidx = netEdges.length;
         netEdges.push({ el: el, len: L, a: na, b: nb, cur: 0 });
         na.adj.push(eidx);
@@ -604,6 +610,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       // sharing the SVG path with offset bases), so a mid-segment drop
       // genuinely branches into the via
       var viaPads1 = [];
+      var seenVia = {};
       for (var vp = 0; vp < els.length; vp++) {
         var vpe = els[vp];
         if (vpe.getAttribute('data-ref') || !vpe.getAttribute('data-net')) continue;
@@ -612,25 +619,40 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         if (vptg === 'path' || vptg === 'polyline' || vptg === 'line') continue;
         var vpb = vpe.getBBox();
         if (vpb.width > 1.2 || vpb.height > 1.2) continue;
-        viaPads1.push({ x: vpb.x + vpb.width / 2, y: vpb.y + vpb.height / 2 });
+        // one via flashes on every layer it spans — dedupe by position
+        var vkey = Math.round(vpb.x * 20) / 20 + ',' + Math.round(vpb.y * 20) / 20;
+        if (seenVia[vkey]) continue;
+        seenVia[vkey] = 1;
+        viaPads1.push({ x: vpb.x + vpb.width / 2, y: vpb.y + vpb.height / 2, el: vpe, dia: Math.max(vpb.width, vpb.height) });
       }
       for (var vp2 = 0; vp2 < viaPads1.length; vp2++) {
         var cV = viaPads1[vp2];
-        var T = null, bestD = 4;
+        // via barrel: the pad ties two layer-groups of route nodes through
+        // a real resistor (R = ρ·boardT/(π·d·t_plating)) so the solve
+        // yields the ACTUAL current through each via — no equal-split guess
+        var Fcanon = null, Bcanon = null, bestF = 4, bestB = 4;
         for (var nk5 in nodes) {
           if (nodes[nk5].depth === -2) continue;
           var nvx = nodes[nk5].x - cV.x, nvy = nodes[nk5].y - cV.y;
           var nd5 = nvx * nvx + nvy * nvy;
-          if (nd5 < bestD) {
-            bestD = nd5;
-            T = nodes[nk5];
+          if (nd5 >= 4) continue;
+          if (nodes[nk5].subLayer && !nodes[nk5].topLayer) {
+            if (nd5 < bestB) { bestB = nd5; Bcanon = nodes[nk5]; }
+          } else if (nodes[nk5].topLayer && !nodes[nk5].subLayer) {
+            if (nd5 < bestF) { bestF = nd5; Fcanon = nodes[nk5]; }
           }
         }
-        if (!T) T = nodeAt(cV.x, cV.y);
-        // split crossing edges at the via center (0.35 mm capture radius)
+        if (!Fcanon && !Bcanon) Fcanon = nodeAt(cV.x, cV.y);
+        if (!Fcanon) Fcanon = Bcanon;
+        if (!Bcanon) Bcanon = Fcanon;
+        // split crossing edges at the via center, attaching the halves to
+        // THEIR layer's canonical node (0.35 mm capture radius) — and
+        // rewire the far endpoints' adjacency to the halves (the old edge
+        // is dead; leaving the far adjacency on it orphans the network)
         for (var ev = netEdges.length - 1; ev >= 0; ev--) {
           var eS = netEdges[ev];
-          if (eS.dead || eS.a === T || eS.b === T || !eS.len) continue;
+          var host = eS.el && eS.el.hasAttribute('data-sub') ? Bcanon : Fcanon;
+          if (eS.dead || !eS.len || eS.a === host || eS.b === host) continue;
           var ebS = eS.el.getBBox();
           if (cV.x < ebS.x - 1 || cV.x > ebS.x + ebS.width + 1 || cV.y < ebS.y - 1 || cV.y > ebS.y + ebS.height + 1) continue;
           var hitS = -1;
@@ -643,10 +665,21 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
           }
           if (hitS < 0.5 || hitS > eS.len - 0.5) continue;
           eS.dead = 1; // retired into its two halves
-          var h1 = { el: eS.el, len: hitS, a: eS.a, b: T, cur: 0, base: eS.base || 0 };
-          var h2 = { el: eS.el, len: eS.len - hitS, a: T, b: eS.b, cur: 0, base: (eS.base || 0) + hitS };
+          var h1 = { el: eS.el, len: hitS, a: eS.a, b: host, cur: 0, base: eS.base || 0 };
+          var h2 = { el: eS.el, len: eS.len - hitS, a: host, b: eS.b, cur: 0, base: (eS.base || 0) + hitS };
           netEdges.push(h1, h2);
-          T.adj.push(netEdges.length - 2, netEdges.length - 1);
+          var i1 = netEdges.length - 2, i2 = netEdges.length - 1;
+          host.adj.push(i1, i2);
+          eS.a.adj.push(i1);
+          eS.b.adj.push(i2);
+        }
+        // the barrel itself as an edge (only meaningful when the layers differ)
+        if (Fcanon !== Bcanon) {
+          // drill ≈ 45% of the annulus diameter (annular ring ~27% each side)
+          var barrel = { barrel: 1, el: null, viaEl: viaPads1[vp2].el, len: 1, a: Fcanon, b: Bcanon, cur: 0, drill: 0.45 * viaPads1[vp2].dia };
+          netEdges.push(barrel);
+          Fcanon.adj.push(netEdges.length - 1);
+          Bcanon.adj.push(netEdges.length - 1);
         }
       }
       // resistor-network solve: every wire is R = Rs·L/w (35 µm sheet
@@ -678,8 +711,14 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       for (var ei4 = 0; ei4 < netEdges.length; ei4++) {
         var e4 = netEdges[ei4];
         if (e4.dead) continue;
-        var wE = parseFloat(e4.el.getAttribute('data-w') || e4.el.getAttribute('stroke-width')) || 0.2;
-        edgeG[ei4] = wE / (DT_RS * e4.len || 1e-9); // S = w/(Rs·L)
+        if (e4.barrel) {
+          // barrel conductance G = π·d·t/(ρ·boardT) in siemens:
+          // π × d[mm]×1e-3 × 35e-6 / (1.724e-8 × 1.6e-3)
+          edgeG[ei4] = (Math.PI * e4.drill * 3.5e-8) / 2.7584e-11;
+        } else {
+          var wE = parseFloat(e4.el.getAttribute('data-w') || e4.el.getAttribute('stroke-width')) || 0.2;
+          edgeG[ei4] = wE / (DT_RS * e4.len || 1e-9); // S = w/(Rs·L)
+        }
         gsum[e4.a.idx] += edgeG[ei4];
         gsum[e4.b.idx] += edgeG[ei4];
       }
@@ -703,15 +742,17 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         }
         if (md4 < 1e-12) break;
       }
-      // edge currents: positive = along the wire's own a->b order
+      // edge currents: positive = along the wire's own a->b order; barrels
+      // publish their solved current on the via pad for the thermal view
       for (var ei5 = 0; ei5 < netEdges.length; ei5++) {
         var e5 = netEdges[ei5];
         if (e5.dead) continue;
         e5.cur = (Vv[e5.a.idx] - Vv[e5.b.idx]) * edgeG[ei5];
+        if (e5.barrel && e5.viaEl) e5.viaEl.__viaCur = e5.cur;
       }
       for (var ei = 0; ei < netEdges.length; ei++) {
         var ed = netEdges[ei];
-        if (ed.dead) continue;
+        if (ed.dead || ed.barrel) continue; // barrels have no element
         // the thermal view reuses the solved per-wire currents; split edges
         // share an element — keep the larger reading
         if (ed.el.__edgeCur === undefined || Math.abs(ed.cur) > Math.abs(ed.el.__edgeCur)) {
@@ -733,6 +774,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     // so even a pathological trace count can never wedge the frame loop
     for (var ei2 = 0; ei2 < edges.length && flowParticles.length < 400; ei2++) {
       var ed2 = edges[ei2];
+      if (!ed2.el) continue; // barrel edges have no drawable path
       var mag2 = Math.abs(ed2.cur);
       var t = hi > lo ? (Math.log(mag2) - Math.log(lo)) / (Math.log(hi) - Math.log(lo)) : 0.5;
       var dir = ed2.cur > 0 ? 1 : -1;
@@ -1121,8 +1163,16 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       for (var vk2 in vsum) if (vsum[vk2] > 0) vtot += vsum[vk2];
       if (!(vtot > 0)) continue;
       var share = vtot / viaNets[vn2].length;
+      // preferred: the SOLVED barrel current from the flow network; the
+      // equal-split share is only the fallback for vias it couldn't stitch
+      var anySolved = false;
+      for (var v2 = 0; v2 < viaNets[vn2].length; v2++) {
+        if (viaNets[vn2][v2].__viaCur !== undefined) anySolved = true;
+      }
       viaNote += viaNote ? ' · ' : ' · ';
-      viaNote += viaNets[vn2].length + ' ' + vn2 + ' via' + (viaNets[vn2].length > 1 ? 's' : '') + ' share ' + fmtEng(vtot) + 'A equally';
+      viaNote += anySolved
+        ? viaNets[vn2].length + ' ' + vn2 + ' via' + (viaNets[vn2].length > 1 ? 's' : '') + ' carry solved currents'
+        : viaNets[vn2].length + ' ' + vn2 + ' via' + (viaNets[vn2].length > 1 ? 's' : '') + ' share ' + fmtEng(vtot) + 'A equally';
       for (var v2 = 0; v2 < viaNets[vn2].length; v2++) {
         var vel = viaNets[vn2][v2];
         var vb = vel.getBBox();
@@ -1137,7 +1187,10 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
           }
         }
         if (!drill) drill = Math.max(0.1, Math.max(vb.width, vb.height) - 0.3);
-        vias.push({ el: vel, dt: dtViaFromI(share, drill) });
+        // solved barrel current when the network stitched this via
+        var act = vel.__viaCur;
+        var iVia = act !== undefined ? Math.abs(act) : share;
+        vias.push({ el: vel, dt: dtViaFromI(iVia, drill) });
       }
     }
     var maxDT = 0;

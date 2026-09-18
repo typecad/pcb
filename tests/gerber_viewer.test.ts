@@ -253,11 +253,13 @@ describe('buildViewerHtml', () => {
     expect(withSch).toContain('el.__edgeCur');
     expect(withSch).toContain('id="dt-legend-box"');
     expect(withSch).toContain('color by margin');
-    // via thermal model: equal-split the net current among netted pads
-    // without refs, invert the IPC-2152 barrel formula on the drill
-    expect(withSch).toContain('dtViaFromI(share, drill)');
+    // via thermal model: barrels are resistive edges in the network — the
+    // SOLVED current drives each via's ΔT (equal-split only as fallback)
+    expect(withSch).toContain('dtViaFromI(iVia, drill)');
+    expect(withSch).toContain('e5.viaEl.__viaCur = e5.cur');
+    expect(withSch).toContain('(Math.PI * e4.drill * 3.5e-8) / 2.7584e-11');
+    expect(withSch).toContain('carry solved currents');
     expect(withSch).toContain('Math.PI * (dMil + tkMil) * tkMil');
-    expect(withSch).toContain("fmtEng(vtot) + 'A equally'");
     // no island content when no simulation ran
     const plain = buildViewerHtml(svg, [info], { title: 'demo board' });
     expect(plain).not.toContain('id="view-schematic"');

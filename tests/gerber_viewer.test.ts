@@ -221,6 +221,8 @@ describe('buildViewerHtml', () => {
     expect(withSch).toContain('flowNetData');
     expect(withSch).toContain("setAttribute('id', 'sch-flow')");
     expect(withSch).toContain('requestAnimationFrame(flowFrame)');
+    // particles only show in the ngspice view — not over the thermal board
+    expect(withSch).toContain("flowLayer.style.display = viewMode === 'schematic'");
     // open wires only — the GND pour outline is one giant closed contour
     expect(withSch).toContain("indexOf('Z') !== -1");
     expect(withSch).toContain('flowParticles.length < 400');

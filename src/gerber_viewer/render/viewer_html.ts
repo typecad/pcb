@@ -214,6 +214,10 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     } else {
       flowStop();
     }
+    // thermal shares the schematic render — without this the (frozen)
+    // particles linger over the thermal board
+    var flowLayer = document.getElementById('sch-flow');
+    if (flowLayer) flowLayer.style.display = viewMode === 'schematic' ? '' : 'none';
     // thermal builds on the flow graph's per-wire currents
     if (viewMode === 'thermal') {
       buildFlow();

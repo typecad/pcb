@@ -899,7 +899,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         data.data[o] = rgb[0];
         data.data[o + 1] = rgb[1];
         data.data[o + 2] = rgb[2];
-        data.data[o + 3] = Math.round(255 * (0.4 + 0.6 * t));
+        data.data[o + 3] = Math.round(255 * (0.55 + 0.45 * t));
       }
     }
     ctx.putImageData(data, 0, 0);
@@ -986,6 +986,9 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   function enterThermal() {
     var paper = document.getElementById('sch-paper');
     if (paper) paper.setAttribute('fill', '#26292d');
+    // the substrate too — a light board washes out the pour heat image
+    var fill = document.getElementById('sch-board-fill');
+    if (fill) fill.setAttribute('fill', '#31363b');
     var comps = viewGroups.schematic.querySelector('#sch-components');
     if (comps) comps.style.display = 'none';
     var ov = document.getElementById('sch-power-overlay');
@@ -1000,6 +1003,8 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   function exitThermal() {
     var paper = document.getElementById('sch-paper');
     if (paper) paper.setAttribute('fill', '#ffffff');
+    var fill = document.getElementById('sch-board-fill');
+    if (fill) fill.setAttribute('fill', '#f3f4f6');
     var comps = viewGroups.schematic.querySelector('#sch-components');
     if (comps) comps.style.display = '';
     var ov = document.getElementById('sch-power-overlay');

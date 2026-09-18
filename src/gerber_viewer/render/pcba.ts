@@ -388,8 +388,9 @@ export function renderPcbaSvg(layers: RenderLayer[], options: PcbaRenderOptions 
     // white paper, subdued pours, near-black traces: the routing is the
     // subject. Components paint AFTER (semi-transparent, in the svg
     // assembly below) so their bodies read over the traces without
-    // hiding them.
-    if (outlinePath) board.push(`<path d="${outlinePath}" fill="${SCH_BOARD}" fill-rule="evenodd"/>`);
+    // hiding them. id: the thermal view darkens the substrate — a light
+    // board washes out the pour heat image layered over it.
+    if (outlinePath) board.push(`<path id="sch-board-fill" d="${outlinePath}" fill="${SCH_BOARD}" fill-rule="evenodd"/>`);
     if (schPourHatch) board.push(schPourHatch);
     if (schCopperBody)
       // id="sch-copper" is the heat-map target: the viewer recolors these

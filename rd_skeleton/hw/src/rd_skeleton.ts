@@ -136,7 +136,7 @@ typecad.route(led_gnd);
 const j71_u51 = typecad.net(u5.pin(2), j7.pin(2));
 typecad.route(j71_u51);
 typecad.text({ text: 'rd-skeleton', x: 62, y: 80, layer: 'F.SilkS', font: 'OCR A Std', width: 1.5, height: 1.5 });
-typecad.stitch('GND', { pitch: 2.5, margin: 5 });
+// typecad.stitch('GND', { pitch: 2.5, margin: 5 });
 typecad.create(
   r1, c1, l1, d1, d3, rf1, y1,
   r2, d2, c2, led2, q1, q2, sw1, r3,

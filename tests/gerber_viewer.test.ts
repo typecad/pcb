@@ -241,6 +241,16 @@ describe('buildViewerHtml', () => {
     expect(withSch).toContain('state.__flowRate = flowRate');
     expect(withSch).toContain('state.__flowOn = flowToggle ? flowToggle.checked : true');
     expect(withSch).toContain('saved.__flowRate');
+    // copper ΔT view: inverted IPC-2221 on per-wire solved currents, a 2D
+    // sheet solve over the pour fill polygon, graphite board + incandescent
+    // ramp, ambient/allowed/margin controls
+    expect(withSch).toContain('<option value="thermal">Copper ΔT</option>');
+    expect(withSch).toContain('dtFromI(Math.abs(cur), w)');
+    expect(withSch).toContain('i / (0.048 * Math.pow(area, 0.725))');
+    expect(withSch).toContain('isPointInFill(new DOMPoint(px, py))');
+    expect(withSch).toContain('el.__edgeCur');
+    expect(withSch).toContain('id="dt-legend-box"');
+    expect(withSch).toContain('color by margin');
     // no island content when no simulation ran
     const plain = buildViewerHtml(svg, [info], { title: 'demo board' });
     expect(plain).not.toContain('id="view-schematic"');
@@ -248,6 +258,7 @@ describe('buildViewerHtml', () => {
     expect(plain).not.toContain('id="volt-legend-box"');
     expect(plain).not.toContain('id="power-legend-box"');
     expect(plain).not.toContain('id="flow-box"');
+    expect(plain).not.toContain('id="dt-legend-box"');
   });
 
   it('ships a pcba theme picker: combo, color table, client-side remap', () => {
@@ -367,7 +378,7 @@ describe('view switcher (gerber / pcba)', () => {
     expect(html).toContain('id="bp-board"');
     expect(html).toContain('id="bp-labels"');
     // search/zoom scopes to whichever non-gerber view is active
-    expect(html).toContain("viewMode !== 'gerber' && viewGroups[viewMode]");
+    expect(html).toContain("viewMode !== 'gerber' && activeGroup");
   });
 
   it('omits the switcher when no pcba svg is given', () => {

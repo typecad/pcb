@@ -170,6 +170,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
 
   // ---- view switching (gerber / pcba / blueprint / schematic share one coordinate frame) ----
   var viewMode = 'gerber';
+  var lastViewMode = 'gerber';
   var viewGroups = {
     gerber: document.getElementById('view-gerber'),
     pcba: document.getElementById('view-pcba'),
@@ -181,11 +182,15 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   var btnAllOff = document.getElementById('btn-all-off');
   function setView(mode) {
     if (!viewGroups.gerber) return;
-    // only modes whose group exists; anything unknown is the gerber stack
-    viewMode = viewGroups[mode] && mode !== 'gerber' ? mode : 'gerber';
+    // only modes whose group exists (thermal shares the schematic group);
+    // anything unknown is the gerber stack
+    viewMode = (mode === 'thermal' || (viewGroups[mode] && mode !== 'gerber')) ? mode : 'gerber';
     for (var name in viewGroups) {
       if (viewGroups[name]) viewGroups[name].style.display = name === viewMode ? '' : 'none';
     }
+    // thermal reuses the schematic render with its own copper coloring
+    if (viewGroups.schematic)
+      viewGroups.schematic.style.display = viewMode === 'schematic' || viewMode === 'thermal' ? '' : 'none';
     // layer visibility/opacity controls belong to the gerber stack only —
     // the ruler stays (all views share one coordinate frame)
     if (layersBox) layersBox.style.display = viewMode === 'gerber' ? '' : 'none';
@@ -209,6 +214,17 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     } else {
       flowStop();
     }
+    // thermal builds on the flow graph's per-wire currents
+    if (viewMode === 'thermal') {
+      buildFlow();
+      buildThermal();
+      enterThermal();
+    } else if (lastViewMode === 'thermal') {
+      exitThermal();
+    }
+    var dtBox = document.getElementById('dt-legend-box');
+    if (dtBox) dtBox.style.display = viewMode === 'thermal' && dtReady ? '' : 'none';
+    lastViewMode = viewMode;
     var flowBox = document.getElementById('flow-box');
     if (flowBox) flowBox.style.display = viewMode === 'schematic' && flowReady ? '' : 'none';
     var sel = document.getElementById('view-mode');
@@ -614,6 +630,8 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       }
       for (var ei = 0; ei < netEdges.length; ei++) {
         var ed = netEdges[ei];
+        // the thermal view reuses the solved per-wire currents
+        ed.el.__edgeCur = ed.cur;
         if (!ed.cur) continue;
         edges.push(ed);
         var mag = Math.abs(ed.cur);
@@ -699,6 +717,308 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       else flowStop();
       saveFlowState();
     });
+
+  // ---- copper ΔT (thermal view): where is the layout thermally stressed?
+  // Wires take the inverted IPC-2221 formula — the same constants the
+  // library's powerInfo width sizer uses — from each wire's solved current
+  // (the flow graph's per-edge value) and its real gerber width. Pours get
+  // a 2D sheet-resistance solve over the actual fill polygon driven by the
+  // per-pad current injections, so heating appears where the copper truly
+  // funnels. Copper-loss estimate only: external-layer constants, no
+  // component self-heating, no enclosure.
+  var DT_STOPS = ['#3a3f45', '#6b4a33', '#9c5b2a', '#cc7a2e', '#f0993c', '#ffc46b', '#fff3d6'];
+  var DT_RS = 0.000493; // ohms per square: 1.724e-8 Ω·m / 35 µm
+  var DT_CELL = 0.6; // raster pitch, board mm
+  var dtBuilt = false;
+  var dtReady = false;
+  var dtItems = null; // {wires:[{el,dt}], pours:[pour], maxDT}
+  function dtFromI(i, widthMm) {
+    if (!(i > 0) || !(widthMm > 0)) return 0;
+    // cross-section in mil² (w·t) at 1 oz = 35 µm — matching the sizer
+    var area = widthMm * 39.3701 * 1.378;
+    var r = i / (0.048 * Math.pow(area, 0.725));
+    return r > 0 ? Math.pow(r, 1 / 0.44) : 0;
+  }
+  function dtColor(dt, hi) {
+    var t = hi > 0 ? dt / hi : 0;
+    if (t > 1) t = 1;
+    var s = t * (DT_STOPS.length - 1);
+    var i = Math.min(Math.floor(s), DT_STOPS.length - 2);
+    return voltMix(DT_STOPS[i], DT_STOPS[i + 1], s - i);
+  }
+  function dtHexRGB(hex) {
+    var p = parseInt(hex.slice(1), 16);
+    return [(p >> 16) & 255, (p >> 8) & 255, p & 255];
+  }
+  // one pour: raster → solve → cell ΔT array + a paintable heat image
+  function solvePourDT(copper, net, clipPolys) {
+    var pads = flowNetData(copper, net);
+    if (!pads) return null;
+    var hasSrc = false, hasSnk = false;
+    for (var i = 0; i < pads.length; i++) {
+      if (pads[i].q > 0) hasSrc = true;
+      else if (pads[i].q < 0) hasSnk = true;
+    }
+    if (!hasSrc || !hasSnk) return null;
+    var bb = null;
+    for (var p = 0; p < clipPolys.length; p++) {
+      var pb = clipPolys[p].getBBox();
+      bb = bb
+        ? {
+            x: Math.min(bb.x, pb.x),
+            y: Math.min(bb.y, pb.y),
+            x2: Math.max(bb.x2, pb.x + pb.width),
+            y2: Math.max(bb.y2, pb.y + pb.height),
+          }
+        : { x: pb.x, y: pb.y, x2: pb.x + pb.width, y2: pb.y + pb.height };
+    }
+    if (!bb) return null;
+    var nx = Math.max(2, Math.min(420, Math.ceil((bb.x2 - bb.x) / DT_CELL)));
+    var ny = Math.max(2, Math.min(420, Math.ceil((bb.y2 - bb.y) / DT_CELL)));
+    var cellX = (bb.x2 - bb.x) / nx;
+    var cellY = (bb.y2 - bb.y) / ny;
+    var mask = new Uint8Array(nx * ny);
+    var inj = new Float64Array(nx * ny);
+    for (var j = 0; j < ny; j++) {
+      for (var i2 = 0; i2 < nx; i2++) {
+        var px = bb.x + (i2 + 0.5) * cellX;
+        var py = bb.y + (j + 0.5) * cellY;
+        for (var p2 = 0; p2 < clipPolys.length; p2++) {
+          if (clipPolys[p2].isPointInFill(new DOMPoint(px, py))) {
+            mask[j * nx + i2] = 1;
+            break;
+          }
+        }
+      }
+    }
+    var cellAt = function (x, y) {
+      // nearest masked cell within a small radius of (x, y)
+      var ci = Math.floor((x - bb.x) / cellX);
+      var cj = Math.floor((y - bb.y) / cellY);
+      for (var r = 0; r <= 2; r++) {
+        for (var dj = -r; dj <= r; dj++) {
+          for (var di = -r; di <= r; di++) {
+            var ii = ci + di, jj = cj + dj;
+            if (ii < 0 || jj < 0 || ii >= nx || jj >= ny) continue;
+            if (mask[jj * nx + ii]) return jj * nx + ii;
+          }
+        }
+      }
+      return -1;
+    };
+    var refIdx = -1, refQ = 0;
+    for (var k = 0; k < pads.length; k++) {
+      var idx = cellAt(pads[k].x, pads[k].y);
+      if (idx < 0) continue;
+      inj[idx] += pads[k].q;
+      if (pads[k].q < 0 && pads[k].q < refQ) {
+        refQ = pads[k].q;
+        refIdx = idx;
+      }
+    }
+    if (refIdx < 0) return null;
+    // SOR over the sheet network: Σ(Vn − Vc)/Rs = Ic → Vc = (ΣVn − Ic·Rs)/n
+    var V = new Float64Array(nx * ny);
+    var omega = 1.8;
+    for (var iter = 0; iter < 3000; iter++) {
+      var maxDelta = 0;
+      for (var pass = 0; pass < 2; pass++) {
+        for (var j2 = 0; j2 < ny; j2++) {
+          for (var i3 = 0; i3 < nx; i3++) {
+            var c = j2 * nx + i3;
+            if (!mask[c] || c === refIdx || ((i3 + j2) & 1) !== pass) continue;
+            var s = 0, n = 0;
+            if (i3 > 0 && mask[c - 1]) { s += V[c - 1]; n++; }
+            if (i3 < nx - 1 && mask[c + 1]) { s += V[c + 1]; n++; }
+            if (j2 > 0 && mask[c - nx]) { s += V[c - nx]; n++; }
+            if (j2 < ny - 1 && mask[c + nx]) { s += V[c + nx]; n++; }
+            if (!n) continue;
+            var nv = (s - inj[c] * DT_RS) / n;
+            var d = nv - V[c];
+            V[c] += omega * d;
+            if (d > maxDelta) maxDelta = d;
+            else if (-d > maxDelta) maxDelta = -d;
+          }
+        }
+      }
+      if (maxDelta < 1e-10) break;
+    }
+    // per-cell current density J = |∇V|/Rs (A per mm of width) and the
+    // equivalent-conductor ΔT for a strip one cell wide
+    var cells = new Float32Array(nx * ny);
+    for (var j3 = 0; j3 < ny; j3++) {
+      for (var i4 = 0; i4 < nx; i4++) {
+        var c2 = j3 * nx + i4;
+        if (!mask[c2]) continue;
+        var vl = i4 > 0 && mask[c2 - 1] ? V[c2 - 1] : V[c2];
+        var vr = i4 < nx - 1 && mask[c2 + 1] ? V[c2 + 1] : V[c2];
+        var vu = j3 > 0 && mask[c2 - nx] ? V[c2 - nx] : V[c2];
+        var vd = j3 < ny - 1 && mask[c2 + nx] ? V[c2 + nx] : V[c2];
+        var jx = (vr - vl) / (2 * DT_RS * cellX);
+        var jy = (vd - vu) / (2 * DT_RS * cellY);
+        var mag = Math.hypot(jx, jy);
+        cells[c2] = dtFromI(mag * cellX, cellX);
+      }
+    }
+    // heat image, hidden until the thermal view opens (the board group's
+    // scale(1,-1) flips y — paint raster rows bottom-up to compensate)
+    var canvas = document.createElement('canvas');
+    canvas.width = nx;
+    canvas.height = ny;
+    var img = document.createElementNS('http://www.w3.org/2000/svg', 'image');
+    img.setAttribute('x', bb.x);
+    img.setAttribute('y', bb.y);
+    img.setAttribute('width', bb.x2 - bb.x);
+    img.setAttribute('height', bb.y2 - bb.y);
+    img.setAttribute('preserveAspectRatio', 'none');
+    img.setAttribute('clip-path', 'url(#pcba-sch-pourclip)');
+    img.setAttribute('pointer-events', 'none');
+    img.style.display = 'none';
+    var boardG = viewGroups.schematic.querySelector('#sch-board');
+    if (boardG) boardG.insertBefore(img, boardG.firstChild);
+    return {
+      img: img,
+      canvas: canvas,
+      nx: nx,
+      ny: ny,
+      mask: mask,
+      cells: cells,
+    };
+  }
+  function paintPour(pour, hi) {
+    var ctx = pour.canvas.getContext('2d');
+    var data = ctx.createImageData(pour.nx, pour.ny);
+    for (var j = 0; j < pour.ny; j++) {
+      for (var i = 0; i < pour.nx; i++) {
+        var c = j * pour.nx + i;
+        var o = ((pour.ny - 1 - j) * pour.nx + i) * 4; // y-flip
+        var dt = pour.cells[c];
+        if (!pour.mask[c] || !(dt > 0)) continue;
+        var t = hi > 0 ? Math.min(dt / hi, 1) : 0;
+        var rgb = dtHexRGB(dtColor(dt, hi));
+        data.data[o] = rgb[0];
+        data.data[o + 1] = rgb[1];
+        data.data[o + 2] = rgb[2];
+        data.data[o + 3] = Math.round(255 * (0.4 + 0.6 * t));
+      }
+    }
+    ctx.putImageData(data, 0, 0);
+    pour.img.setAttribute('href', pour.canvas.toDataURL());
+  }
+  function applyThermalColors() {
+    if (!dtItems) return;
+    var marginBox = document.getElementById('dt-margin');
+    var allowBox = document.getElementById('dt-allowed');
+    var margin = marginBox && marginBox.checked;
+    var allowed = allowBox ? parseFloat(allowBox.value) || 20 : 20;
+    var hi = margin && allowed > 0 ? allowed : dtItems.maxDT;
+    // monochrome copper first: everything not carrying solved current reads
+    // as inert graphite-copper (pads/regions included — their electrical
+    // heat-map colors don't belong on the thermal board)
+    var copper = viewGroups.schematic.querySelector('#sch-copper');
+    var neutral = copper ? copper.querySelectorAll('[data-net]') : [];
+    for (var n = 0; n < neutral.length; n++) {
+      var f = neutral[n].getAttribute('fill');
+      if (f && f !== 'none') neutral[n].setAttribute('fill', '#3f444a');
+      var st = neutral[n].getAttribute('stroke');
+      if (st && st !== 'none') neutral[n].setAttribute('stroke', '#3f444a');
+    }
+    for (var i = 0; i < dtItems.wires.length; i++) {
+      var wr = dtItems.wires[i];
+      // zero-current wires read as cold copper, not as "cool"
+      wr.el.setAttribute('stroke', wr.dt > 0 ? dtColor(wr.dt, hi) : '#454b52');
+    }
+    for (var p = 0; p < dtItems.pours.length; p++) paintPour(dtItems.pours[p], hi);
+    fillLegend('dt', DT_STOPS, 0, hi, '°C');
+    var ambBox = document.getElementById('dt-ambient');
+    var amb = ambBox ? parseFloat(ambBox.value) || 25 : 25;
+    var abs = document.getElementById('dt-abs');
+    if (abs) abs.textContent = 'hottest copper \u2248 ' + (amb + dtItems.maxDT).toFixed(1) + '\u00B0C at ' + amb + '\u00B0C ambient';
+  }
+  function buildThermal() {
+    if (dtBuilt || !viewGroups.schematic || !netOp || !netOp.solved || !netOp.branches) return;
+    dtBuilt = true;
+    var copper = viewGroups.schematic.querySelector('#sch-copper');
+    if (!copper) return;
+    var wires = [];
+    var els = copper.querySelectorAll('[data-net]');
+    for (var i = 0; i < els.length; i++) {
+      var el = els[i];
+      var tg = el.tagName.toLowerCase();
+      if (tg !== 'path' && tg !== 'polyline' && tg !== 'line') continue;
+      var dd = el.getAttribute('d');
+      if (dd && dd.indexOf('Z') !== -1) continue;
+      var cur = el.__edgeCur;
+      if (cur === undefined) continue; // not part of the solved route graph
+      var w = parseFloat(el.getAttribute('stroke-width')) || 0.2;
+      wires.push({ el: el, dt: dtFromI(Math.abs(cur), w) });
+    }
+    // pours: the hatch clip holds the fill polygons; its stroked lines and
+    // the closed region outlines carry the zone's net
+    var clip = viewGroups.schematic.querySelector('#pcba-sch-pourclip');
+    var clipPolys = clip ? Array.prototype.slice.call(clip.querySelectorAll('path')) : [];
+    var pourNets = {};
+    var hatchLines = viewGroups.schematic.querySelectorAll('g[clip-path="url(#pcba-sch-pourclip)"] [data-net]');
+    for (var h = 0; h < hatchLines.length; h++) pourNets[hatchLines[h].getAttribute('data-net')] = true;
+    for (var el2 = 0; el2 < els.length; el2++) {
+      var e2 = els[el2];
+      if (e2.tagName.toLowerCase() !== 'path') continue;
+      var d2 = e2.getAttribute('d') || '';
+      if (d2.indexOf('Z') === -1) continue;
+      pourNets[e2.getAttribute('data-net')] = true;
+    }
+    var pours = [];
+    if (clipPolys.length) {
+      for (var pnet in pourNets) {
+        var pour = solvePourDT(copper, pnet, clipPolys);
+        if (pour) pours.push(pour);
+      }
+    }
+    var maxDT = 0;
+    for (var w2 = 0; w2 < wires.length; w2++) if (wires[w2].dt > maxDT) maxDT = wires[w2].dt;
+    for (var p2 = 0; p2 < pours.length; p2++) {
+      var pc = pours[p2].cells;
+      for (var c = 0; c < pc.length; c++) if (pc[c] > maxDT) maxDT = pc[c];
+    }
+    dtItems = { wires: wires, pours: pours, maxDT: maxDT };
+    dtReady = wires.length > 0 || pours.length > 0;
+  }
+  function enterThermal() {
+    var paper = document.getElementById('sch-paper');
+    if (paper) paper.setAttribute('fill', '#26292d');
+    var comps = viewGroups.schematic.querySelector('#sch-components');
+    if (comps) comps.style.display = 'none';
+    var ov = document.getElementById('sch-power-overlay');
+    if (ov) ov.style.display = 'none';
+    var hatch = viewGroups.schematic.querySelector('g[clip-path="url(#pcba-sch-pourclip)"]');
+    if (hatch) hatch.style.display = 'none';
+    if (dtItems) {
+      for (var p = 0; p < dtItems.pours.length; p++) dtItems.pours[p].img.style.display = '';
+      applyThermalColors();
+    }
+  }
+  function exitThermal() {
+    var paper = document.getElementById('sch-paper');
+    if (paper) paper.setAttribute('fill', '#ffffff');
+    var comps = viewGroups.schematic.querySelector('#sch-components');
+    if (comps) comps.style.display = '';
+    var ov = document.getElementById('sch-power-overlay');
+    if (ov) ov.style.display = '';
+    var hatch = viewGroups.schematic.querySelector('g[clip-path="url(#pcba-sch-pourclip)"]');
+    if (hatch) hatch.style.display = '';
+    if (dtItems) {
+      for (var p = 0; p < dtItems.pours.length; p++) dtItems.pours[p].img.style.display = 'none';
+    }
+    // back to the electrical trace colors
+    applyVoltageColors();
+  }
+  ['dt-margin', 'dt-allowed'].forEach(function (id) {
+    var el = document.getElementById(id);
+    if (el) el.addEventListener('input', applyThermalColors);
+    if (el) el.addEventListener('change', applyThermalColors);
+  });
+  var dtAmbient = document.getElementById('dt-ambient');
+  if (dtAmbient) dtAmbient.addEventListener('input', applyThermalColors);
 
   // ---- pcba theme picker: remap the embedded render's flat colors ----
   // one render serves every theme — the surface colors are plain attribute
@@ -1113,8 +1433,10 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     if (!q) return false;
     // scope to the active view: browsers return garbage geometry for
     // elements inside display:none subtrees, so a hidden pcba/blueprint
-    // glyph would otherwise blow the zoom-to-component bbox up
-    var scope = viewMode !== 'gerber' && viewGroups[viewMode] ? viewGroups[viewMode] : (viewGroups.gerber || svg);
+    // glyph would otherwise blow the zoom-to-component bbox up (thermal
+    // shares the schematic group)
+    var activeGroup = viewMode === 'thermal' ? viewGroups.schematic : viewGroups[viewMode];
+    var scope = viewMode !== 'gerber' && activeGroup ? activeGroup : (viewGroups.gerber || svg);
     var all = scope.querySelectorAll('[data-ref]');
     var hits = [];
     for (var i = 0; i < all.length; i++) {
@@ -1558,6 +1880,14 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   #flow-speed-row { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
   #flow-speed { flex: 1; accent-color: var(--chrome-fg); }
   #flow-speed-val { color: var(--muted); font-size: 10px; min-width: 28px; text-align: right; }
+  #dt-legend-box { padding: 8px 14px 0; }
+  #dt-legend-label { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; margin: 0 0 4px; }
+  #dt-legend-bar { height: 8px; border-radius: 4px; border: 1px solid var(--btn-border); }
+  #dt-legend-range { display: flex; justify-content: space-between; color: var(--muted); font-size: 10px; margin-top: 2px; }
+  #dt-controls { display: flex; flex-wrap: wrap; gap: 6px 10px; margin-top: 6px; color: var(--chrome-fg); font-size: 11px; }
+  #dt-controls label { display: flex; align-items: center; gap: 4px; cursor: pointer; }
+  #dt-controls input[type="number"] { width: 46px; background: var(--btn-bg); color: var(--chrome-fg); border: 1px solid var(--btn-border); border-radius: 4px; padding: 2px 4px; font: inherit; }
+  #dt-abs { color: var(--muted); font-size: 10px; margin-top: 4px; }
   #fab-report { padding: 8px 14px 0; font-weight: 400; }
   #fab-report summary { cursor: pointer; color: var(--muted); }
   #fab-report table { border-collapse: collapse; width: 100%; font-size: 11px; margin: 6px 0; }
@@ -1591,7 +1921,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       ? `<div id="view-switch">
   <select id="view-mode" title="board view">
     <option value="gerber">Gerber view</option>
-    <option value="pcba">PCBA view</option>${options.blueprintSvg ? '\n    <option value="blueprint">Blueprint view</option>' : ''}${options.schematicSvg ? '\n    <option value="schematic">ngspice view</option>' : ''}
+    <option value="pcba">PCBA view</option>${options.blueprintSvg ? '\n    <option value="blueprint">Blueprint view</option>' : ''}${options.schematicSvg ? `\n    <option value="schematic">ngspice view</option>\n    <option value="thermal">Copper ΔT</option>` : ''}
   </select>
 </div>`
       : ''
@@ -1624,6 +1954,17 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     <input type="range" id="flow-speed" min="0" max="4" step="0.1" value="1" title="flow animation speed">
     <span id="flow-speed-val">1.0x</span>
   </div>
+</div>
+<div id="dt-legend-box" style="display:none">
+  <div id="dt-legend-label">Copper rise (est.)</div>
+  <div id="dt-legend-bar"></div>
+  <div id="dt-legend-range"><span id="dt-legend-min">0°C</span><span id="dt-legend-max"></span></div>
+  <div id="dt-controls">
+    <label>ambient <input id="dt-ambient" type="number" value="25" min="-40" max="150">°C</label>
+    <label>allowed <input id="dt-allowed" type="number" value="20" min="1" max="100">°C</label>
+    <label><input id="dt-margin" type="checkbox"> color by margin</label>
+  </div>
+  <div id="dt-abs"></div>
 </div>`
       : ''
   }

@@ -1144,6 +1144,7 @@ describe('render styles and branding', () => {
   it('schematic style: white paper, near-black traces, semi-transparent components', () => {
     const svg = renderPcbaSvg(FRONT_LAYERS, { style: 'schematic' }).svg;
     expect(svg).toContain('fill="#ffffff"'); // white paper
+    expect(svg).toContain('id="sch-paper"'); // thermal view darkens it
     expect(svg).toContain('stroke="#101010"'); // trace ink
     // components ride at reduced opacity over the traces (distinct id: the
     // power heat-map overlay targets this group in the combined viewer)

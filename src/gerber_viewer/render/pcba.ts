@@ -589,7 +589,8 @@ export function renderPcbaSvg(layers: RenderLayer[], options: PcbaRenderOptions 
   const bgRect = blueprint
     ? `<rect x="${fmt(viewBoxX)}" y="${fmt(-all.maxY - margin)}" width="${fmt(width)}" height="${fmt(height)}" fill="${BP_PAPER}"/>`
     : schematic
-      ? `<rect x="${fmt(viewBoxX)}" y="${fmt(-all.maxY - margin)}" width="${fmt(width)}" height="${fmt(height)}" fill="${SCH_PAPER}"/>`
+      ? // id="sch-paper": the thermal view darkens the paper for its graphite look
+        `<rect id="sch-paper" x="${fmt(viewBoxX)}" y="${fmt(-all.maxY - margin)}" width="${fmt(width)}" height="${fmt(height)}" fill="${SCH_PAPER}"/>`
       : '';
 
   const svg = [

@@ -253,6 +253,11 @@ describe('buildViewerHtml', () => {
     expect(withSch).toContain('el.__edgeCur');
     expect(withSch).toContain('id="dt-legend-box"');
     expect(withSch).toContain('color by margin');
+    // board (FR4) temperature: stacked steady-state solve, copper cells
+    // left clear so traces keep a pixel gap over the board coloring
+    expect(withSch).toContain('sch-board-temp');
+    expect(withSch).toContain('buildBoardTemp');
+    expect(withSch).toContain("if (cu[0][c5] || cu[1][c5]) continue");
     // via thermal model: barrels are resistive edges in the network — the
     // SOLVED current drives each via's ΔT (equal-split only as fallback)
     expect(withSch).toContain('dtViaFromI(iVia, drill)');

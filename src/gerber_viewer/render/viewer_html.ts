@@ -983,6 +983,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     // per-cell current density J = |∇V|/Rs (A per mm of width) and the
     // equivalent-conductor ΔT for a strip one cell wide
     var cells = new Float32Array(nx * ny);
+    var cellQ = new Float32Array(nx * ny); // W per cell — board-solve source
     for (var j3 = 0; j3 < ny; j3++) {
       for (var i4 = 0; i4 < nx; i4++) {
         var c2 = j3 * nx + i4;
@@ -995,6 +996,8 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         var jy = (vd - vu) / (2 * DT_RS * cellY);
         var mag = Math.hypot(jx, jy);
         cells[c2] = dtFromI(mag * cellX, cellX);
+        // copper loss per area J²·Rs, per cell (mm² → m² for W)
+        cellQ[c2] = (mag * mag * DT_RS) * (cellX * cellY * 1e-6);
       }
     }
     // heat image, hidden until the thermal view opens (the board group's
@@ -1018,8 +1021,12 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       canvas: canvas,
       nx: nx,
       ny: ny,
+      bb: bb,
+      cellX: cellX,
+      cellY: cellY,
       mask: mask,
       cells: cells,
+      q: cellQ,
     };
   }
   function paintPour(pour, hi) {
@@ -1083,7 +1090,15 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     var ambBox = document.getElementById('dt-ambient');
     var amb = ambBox ? parseFloat(ambBox.value) || 25 : 25;
     var abs = document.getElementById('dt-abs');
-    if (abs) abs.textContent = 'hottest copper \u2248 ' + (amb + dtItems.maxDT).toFixed(1) + '\u00B0C at ' + amb + '\u00B0C ambient' + dtItems.viaNote;
+    if (abs)
+      abs.textContent =
+        'hottest copper \u2248 ' +
+        (amb + dtItems.maxDT).toFixed(1) +
+        '\u00B0C at ' +
+        amb +
+        '\u00B0C ambient' +
+        dtItems.viaNote +
+        (boardTemp ? ' \u00B7 board \u2248 +' + boardTemp.max.toFixed(1) + '\u00B0C (FR4)' : '');
   }
   function buildThermal() {
     if (dtBuilt || !viewGroups.schematic || !netOp || !netOp.solved || !netOp.branches) return;
@@ -1219,6 +1234,9 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       for (var p = 0; p < dtItems.pours.length; p++) dtItems.pours[p].img.style.display = '';
       applyThermalColors();
     }
+    // the board (FR4) temperature field under everything
+    buildBoardTemp();
+    if (boardTemp) boardTemp.img.style.display = '';
   }
   function exitThermal() {
     var paper = document.getElementById('sch-paper');
@@ -1234,6 +1252,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     if (dtItems) {
       for (var p = 0; p < dtItems.pours.length; p++) dtItems.pours[p].img.style.display = 'none';
     }
+    if (boardTemp) boardTemp.img.style.display = 'none';
     // back to the electrical trace colors
     applyVoltageColors();
     // and the secondary layers back to their indication gray (the voltage
@@ -1251,6 +1270,211 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   });
   var dtAmbient = document.getElementById('dt-ambient');
   if (dtAmbient) dtAmbient.addEventListener('input', applyThermalColors);
+
+  // ---- board (FR4) temperature: the copper-loss map heats the laminate —
+  // a stacked two-layer steady-state solve, degrees ABOVE ambient. Sources
+  // are the solved wire/via/pour losses; conduction is copper in-plane
+  // (k·t ≈ 0.014 W/K per square), FR4 in-plane and through-plane, and via
+  // barrels between layers; both faces convect+radiate to ambient
+  // (h ≈ 12 W/m²·K, still air, both faces exposed). Copper cells are left
+  // unpainted — a raster-pixel gap keeps the traces readable over the
+  // board coloring. Idealized: no enclosure, mounting, airflow, or
+  // component self-heating (a copper-loss floor, not a full thermal model).
+  var boardTemp = null; // {img, max}
+  var BD = {
+    cell: 1.2, // mm raster — thermal gradients are smooth
+    cuSheet: 400 * 35e-6, // W/K per square, copper layer
+    fr4In: 0.8 * 1.6e-3, // in-plane W/K per square, full thickness
+    fr4Z: 0.3 * 1e-6 / 1.53e-3, // through-plane W/K per mm²
+    h: 12 * 1e-6, // W/K per mm², both faces
+    viaG: (400 * Math.PI * 0.153 * 35e-6) / 1.6e-3, // barrel, W/K
+  };
+  function buildBoardTemp() {
+    if (boardTemp || !dtItems || !viewGroups.schematic) return;
+    var fill = document.getElementById('sch-board-fill');
+    if (!fill) return;
+    var bb = fill.getBBox();
+    var nx = Math.max(2, Math.min(160, Math.ceil(bb.width / BD.cell)));
+    var ny = Math.max(2, Math.min(160, Math.ceil(bb.height / BD.cell)));
+    var cx = bb.width / nx, cy = bb.height / ny;
+    var inBoard = new Uint8Array(nx * ny);
+    for (var j = 0; j < ny; j++) {
+      for (var i = 0; i < nx; i++) {
+        inBoard[j * nx + i] = fill.isPointInFill(
+          new DOMPoint(bb.x + (i + 0.5) * cx, bb.y + (j + 0.5) * cy),
+        )
+          ? 1
+          : 0;
+      }
+    }
+    // copper marks + heat sources per layer (top / bottom by data-sub)
+    var cu = [new Uint8Array(nx * ny), new Uint8Array(nx * ny)];
+    var S = [new Float64Array(nx * ny), new Float64Array(nx * ny)];
+    var cellAt = function (x, y) {
+      var ci = Math.floor((x - bb.x) / cx);
+      var cj = Math.floor((y - bb.y) / cy);
+      if (ci < 0 || cj < 0 || ci >= nx || cj >= ny) return -1;
+      var c = cj * nx + ci;
+      return inBoard[c] ? c : -1;
+    };
+    var copper = viewGroups.schematic.querySelector('#sch-copper');
+    if (copper) {
+      for (var w = 0; w < dtItems.wires.length; w++) {
+        var el = dtItems.wires[w].el;
+        var cur = el.__edgeCur || 0;
+        var lw = parseFloat(el.getAttribute('data-w') || el.getAttribute('stroke-width')) || 0.2;
+        var len = el.getTotalLength ? el.getTotalLength() : 0;
+        if (!len) continue;
+        var P = cur * cur * DT_RS * (len / lw); // I²R in W
+        var li = el.hasAttribute('data-sub') ? 1 : 0;
+        for (var s = 0; s <= len; s += Math.max(0.4, len / 24)) {
+          var pt = el.getPointAtLength(Math.min(s, len));
+          var c = cellAt(pt.x, pt.y);
+          if (c < 0) continue;
+          var steps = Math.max(1, Math.round(len / Math.max(0.4, len / 24)));
+          S[li][c] += P / steps;
+          cu[li][c] = 1;
+          // gap: mark neighbors of the wire cell
+          if (c % nx > 0) cu[li][c - 1] = cu[li][c - 1] || inBoard[c - 1];
+          if (c % nx < nx - 1) cu[li][c + 1] = cu[li][c + 1] || inBoard[c + 1];
+          if (c >= nx) cu[li][c - nx] = cu[li][c - nx] || inBoard[c - nx];
+          if (c < nx * (ny - 1)) cu[li][c + nx] = cu[li][c + nx] || inBoard[c + nx];
+        }
+      }
+      // vias: source + barrel coupling mark on both layers
+      var vSeen = {};
+      for (var v = 0, vEls = copper.querySelectorAll('[data-net]'); v < vEls.length; v++) {
+        var vel = vEls[v];
+        if (vel.getAttribute('data-ref') || vel.tagName.toLowerCase() === 'path') continue;
+        var vb = vel.getBBox();
+        if (vb.width > 1.2 || vb.height > 1.2) continue;
+        var vk = Math.round(vb.x * 2) + ',' + Math.round(vb.y * 2);
+        if (vSeen[vk]) continue;
+        vSeen[vk] = 1;
+        var vc2 = cellAt(vb.x + vb.width / 2, vb.y + vb.height / 2);
+        if (vc2 < 0) continue;
+        var vI = vel.__viaCur;
+        var drill = 0.45 * Math.max(vb.width, vb.height);
+        var Gb = (400 * Math.PI * drill * 35e-6) / 1.6e-3;
+        var Pv = vI !== undefined ? vI * vI / Gb : 0;
+        S[0][vc2] += Pv / 2;
+        S[1][vc2] += Pv / 2;
+        cu[0][vc2] = 1;
+        cu[1][vc2] = 1;
+      }
+    }
+    // pour losses (split half to each layer — the zone spans both)
+    for (var p = 0; p < dtItems.pours.length; p++) {
+      var po = dtItems.pours[p];
+      for (var pc = 0; pc < po.q.length; pc++) {
+        if (!po.mask[pc] || !po.q[pc]) continue;
+        // map pour cell center into board grid
+        var pj = Math.floor(pc / po.nx);
+        var pi = pc % po.nx;
+        var px = po.bb.x + (pi + 0.5) * po.cellX;
+        var py = po.bb.y + (pj + 0.5) * po.cellY;
+        var bc = cellAt(px, py);
+        if (bc < 0) continue;
+        S[0][bc] += po.q[pc] / 2;
+        S[1][bc] += po.q[pc] / 2;
+        cu[0][bc] = cu[0][bc] || po.mask[pc];
+        cu[1][bc] = cu[1][bc] || po.mask[pc];
+      }
+    }
+    // steady-state SOR over T[2][n], ambient = 0
+    var T = [new Float64Array(nx * ny), new Float64Array(nx * ny)];
+    var gCuXY = BD.cuSheet; // per edge (cell edge length/size cancels)
+    var gFr4XY = BD.fr4In;
+    var gZ = BD.fr4Z * cx * cy * 1e6 * 1e-6; // W/K per cell: k_z·A/t with mm²→m²
+    gZ = (0.3 * (cx * cy * 1e-6)) / 1.53e-3;
+    var gFace = BD.h * cx * cy; // h·A (mm²·1e-6 folded into h)
+    gFace = 12 * (cx * cy * 1e-6);
+    for (var it = 0; it < 2500; it++) {
+      var md = 0;
+      for (var L = 0; L < 2; L++) {
+        for (var c3 = 0; c3 < nx * ny; c3++) {
+          if (!inBoard[c3]) continue;
+          var sum = S[L][c3];
+          var gsum = 2 * gFace; // two faces convect
+          var i5 = c3 % nx;
+          var nb;
+          nb = i5 > 0 ? c3 - 1 : -1;
+          if (nb >= 0 && inBoard[nb]) {
+            var g1 = cu[L][c3] && cu[L][nb] ? gCuXY : gFr4XY;
+            sum += g1 * T[L][nb];
+            gsum += g1;
+          }
+          nb = i5 < nx - 1 ? c3 + 1 : -1;
+          if (nb >= 0 && inBoard[nb]) {
+            var g2 = cu[L][c3] && cu[L][nb] ? gCuXY : gFr4XY;
+            sum += g2 * T[L][nb];
+            gsum += g2;
+          }
+          nb = c3 >= nx ? c3 - nx : -1;
+          if (nb >= 0 && inBoard[nb]) {
+            var g3 = cu[L][c3] && cu[L][nb] ? gCuXY : gFr4XY;
+            sum += g3 * T[L][nb];
+            gsum += g3;
+          }
+          nb = c3 < nx * (ny - 1) ? c3 + nx : -1;
+          if (nb >= 0 && inBoard[nb]) {
+            var g4 = cu[L][c3] && cu[L][nb] ? gCuXY : gFr4XY;
+            sum += g4 * T[L][nb];
+            gsum += g4;
+          }
+          sum += gZ * T[1 - L][c3];
+          gsum += gZ;
+          var nv = sum / gsum;
+          var dd = nv - T[L][c3];
+          T[L][c3] += 1.7 * dd;
+          if (dd > md) md = dd;
+          else if (-dd > md) md = -dd;
+        }
+      }
+      if (md < 1e-4) break;
+    }
+    // paint: max across layers, copper cells left clear (the pixel gap)
+    var maxT = 0;
+    for (var c4 = 0; c4 < nx * ny; c4++) {
+      if (!inBoard[c4]) continue;
+      var tv = Math.max(T[0][c4], T[1][c4]);
+      if (tv > maxT) maxT = tv;
+    }
+    var cv = document.createElement('canvas');
+    cv.width = nx;
+    cv.height = ny;
+    var ctx = cv.getContext('2d');
+    var data = ctx.createImageData(nx, ny);
+    for (var j2 = 0; j2 < ny; j2++) {
+      for (var i6 = 0; i6 < nx; i6++) {
+        var c5 = j2 * nx + i6;
+        var o = ((ny - 1 - j2) * nx + i6) * 4; // y-flip for the board group
+        if (!inBoard[c5]) continue;
+        if (cu[0][c5] || cu[1][c5]) continue; // the gap
+        var tv2 = Math.max(T[0][c5], T[1][c5]);
+        if (tv2 <= 0.01) continue;
+        var rgb = dtHexRGB(dtColor(tv2, Math.max(maxT, 0.5)));
+        data.data[o] = rgb[0];
+        data.data[o + 1] = rgb[1];
+        data.data[o + 2] = rgb[2];
+        data.data[o + 3] = Math.round(255 * 0.5);
+      }
+    }
+    ctx.putImageData(data, 0, 0);
+    var img = document.createElementNS('http://www.w3.org/2000/svg', 'image');
+    img.setAttribute('id', 'sch-board-temp');
+    img.setAttribute('x', bb.x);
+    img.setAttribute('y', bb.y);
+    img.setAttribute('width', bb.width);
+    img.setAttribute('height', bb.height);
+    img.setAttribute('preserveAspectRatio', 'none');
+    img.setAttribute('pointer-events', 'none');
+    img.setAttribute('href', cv.toDataURL());
+    img.style.display = 'none';
+    var bf = document.getElementById('sch-board-fill');
+    if (bf && bf.parentNode) bf.parentNode.insertBefore(img, bf.nextSibling);
+    boardTemp = { img: img, max: maxT };
+  }
 
   // ---- pcba theme picker: remap the embedded render's flat colors ----
   // one render serves every theme — the surface colors are plain attribute

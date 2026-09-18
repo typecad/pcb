@@ -269,6 +269,13 @@ describe('buildViewerHtml', () => {
     expect(withSch).toContain('parts.push({ c: hc2 - 1, f: 0.125 })');
     expect(withSch).toContain('gz[vc2] += (BD.viaG * drill) / 0.153;');
     expect(withSch).toContain('var gzT = gZ + gz[c3]; // FR4 core + via barrels');
+    // thermal hover: the status bar reports the temperature under the cursor
+    // — the trace/via's own rise over copper, the bilinear FR4 field elsewhere
+    expect(withSch).toContain('el.__wireDT = wdt;');
+    expect(withSch).toContain('vel.__viaDT = vdt;');
+    expect(withSch).toContain("if (el.__wireDT !== undefined) dtHover = { v: el.__wireDT, what: 'trace' };");
+    expect(withSch).toContain('boardTemp.inB[cAH] || boardTemp.inB[cBH] ||');
+    expect(withSch).toContain("dtHover = { v: Math.max(tv0, tv1), what: 'board' };");
     // via thermal model: barrels are resistive edges in the network — the
     // SOLVED current drives each via's ΔT (equal-split only as fallback)
     expect(withSch).toContain('dtViaFromI(iVia, drill)');

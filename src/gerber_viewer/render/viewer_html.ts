@@ -1118,7 +1118,9 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       // data-w carries the real width — centerline-rendered deeper layers
       // thin their visible stroke
       var w = parseFloat(el.getAttribute('data-w') || el.getAttribute('stroke-width')) || 0.2;
-      wires.push({ el: el, dt: dtFromI(Math.abs(cur), w) });
+      var wdt = dtFromI(Math.abs(cur), w);
+      el.__wireDT = wdt; // hover readout: the trace's own rise under the cursor
+      wires.push({ el: el, dt: wdt });
     }
     // pours: the hatch clip holds the fill polygons; its stroked lines and
     // the closed region outlines carry the zone's net
@@ -1149,6 +1151,8 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     var vias = [];
     var viaNets = {};
     var seenViaKeys = {};
+    var viaFlashes = []; // every flash, deduped or not (hover hits any of them)
+    var viaDts = {}; // viaKey -> solved barrel rise
     for (var v = 0; v < els.length; v++) {
       var ve = els[v];
       if (ve.getAttribute('data-ref')) continue;
@@ -1160,6 +1164,8 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       if (vbb.width > 1.2 || vbb.height > 1.2) continue;
       // one via flashes on every layer it spans — dedupe by position
       var vkey = Math.round(vbb.x * 20) / 20 + ',' + Math.round(vbb.y * 20) / 20;
+      ve.__viaKey = vkey;
+      viaFlashes.push(ve);
       if (seenViaKeys[vkey]) continue;
       seenViaKeys[vkey] = 1;
       if (!viaNets[vn]) viaNets[vn] = [];
@@ -1205,7 +1211,17 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         // solved barrel current when the network stitched this via
         var act = vel.__viaCur;
         var iVia = act !== undefined ? Math.abs(act) : share;
-        vias.push({ el: vel, dt: dtViaFromI(iVia, drill) });
+        var vdt = dtViaFromI(iVia, drill);
+        vel.__viaDT = vdt; // hover readout: the barrel's own rise
+        vias.push({ el: vel, dt: vdt });
+        viaDts[vel.__viaKey] = vdt;
+      }
+    }
+    // the deduped twin flash (the other layer's annular ring — often the one
+    // a hover actually hits, since it paints on top) reports the same barrel
+    for (var vd = 0; vd < viaFlashes.length; vd++) {
+      if (viaFlashes[vd].__viaDT === undefined && viaDts[viaFlashes[vd].__viaKey] !== undefined) {
+        viaFlashes[vd].__viaDT = viaDts[viaFlashes[vd].__viaKey];
       }
     }
     var maxDT = 0;
@@ -1563,7 +1579,19 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     img.style.display = 'none';
     var bf = document.getElementById('sch-board-fill');
     if (bf && bf.parentNode) bf.parentNode.insertBefore(img, bf.nextSibling);
-    boardTemp = { img: img, max: maxT };
+    // the solved field stays behind for the hover readout (bilinear sample)
+    boardTemp = {
+      img: img,
+      max: maxT,
+      T: T,
+      nx: nx,
+      ny: ny,
+      bx: bb.x,
+      by: bb.y,
+      bw: bb.width,
+      bh: bb.height,
+      inB: inBoard,
+    };
   }
 
   // ---- pcba theme picker: remap the embedded render's flat colors ----
@@ -1958,6 +1986,44 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       if (dev && (dev.current !== undefined || dev.power !== undefined)) {
         next += ' · ' + (dev.current !== undefined ? fmtEng(dev.current) + 'A' : '?');
         if (dev.power !== undefined) next += ' ' + fmtEng(dev.power) + 'W';
+      }
+    }
+    // thermal view: the status bar reports the temperature under the cursor —
+    // the trace's or via's own IPC rise when over copper, otherwise the
+    // solved FR4 field bilinearly sampled at that point
+    if (viewMode === 'thermal') {
+      var dtHover = null;
+      if (el) {
+        if (el.__wireDT !== undefined) dtHover = { v: el.__wireDT, what: 'trace' };
+        else if (el.__viaDT !== undefined) dtHover = { v: el.__viaDT, what: 'via' };
+      }
+      if (dtHover === null && boardTemp) {
+        var bc2 = boardCoords(ev); // board coords, y-down
+        var sx2 = bc2.x, sy2 = -bc2.y; // the sch group authors y-up
+        var gxH = Math.max(0, Math.min(boardTemp.nx - 1.001, ((sx2 - boardTemp.bx) / (boardTemp.bw / boardTemp.nx)) - 0.5));
+        var gyH = Math.max(0, Math.min(boardTemp.ny - 1.001, ((sy2 - boardTemp.by) / (boardTemp.bh / boardTemp.ny)) - 0.5));
+        var qaH = Math.floor(gxH), qbH = Math.floor(gyH);
+        var fxH = gxH - qaH, fyH = gyH - qbH;
+        var cAH = qbH * boardTemp.nx + qaH, cBH = cAH + 1;
+        var cCH = cAH + boardTemp.nx, cDH = cBH + boardTemp.nx;
+        if (
+          boardTemp.inB[cAH] || boardTemp.inB[cBH] ||
+          boardTemp.inB[cCH] || boardTemp.inB[cDH]
+        ) {
+          var wAH = (1 - fxH) * (1 - fyH), wBH = fxH * (1 - fyH);
+          var wCH = (1 - fxH) * fyH, wDH = fxH * fyH;
+          var T0H = boardTemp.T[0], T1H = boardTemp.T[1];
+          var tv0 = T0H[cAH] * wAH + T0H[cBH] * wBH + T0H[cCH] * wCH + T0H[cDH] * wDH;
+          var tv1 = T1H[cAH] * wAH + T1H[cBH] * wBH + T1H[cCH] * wCH + T1H[cDH] * wDH;
+          dtHover = { v: Math.max(tv0, tv1), what: 'board' };
+        }
+      }
+      if (dtHover !== null) {
+        var ambEl3 = document.getElementById('dt-ambient');
+        var ambH = ambEl3 ? parseFloat(ambEl3.value) || 25 : 25;
+        next +=
+          ' \u00B7 ' + dtHover.what + ' +' + dtHover.v.toFixed(1) + '\u00B0C' +
+          ' \u2248 ' + (ambH + dtHover.v).toFixed(1) + '\u00B0C';
       }
     }
     if (next !== probe) {

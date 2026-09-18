@@ -943,7 +943,9 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     }
     for (var i = 0; i < dtItems.wires.length; i++) {
       var wr = dtItems.wires[i];
-      if (wr.el.getAttribute('data-sub')) continue; // keep the stripes' canvas
+      // secondary-layer wires carry solved current too — they take the
+      // thermal ramp like any wire (their black stripes read over warm
+      // colors; exitThermal restores the layer-indication gray)
       // zero-current wires read as cold copper, not as "cool"
       wr.el.setAttribute('stroke', wr.dt > 0 ? dtColor(wr.dt, hi) : '#454b52');
     }
@@ -1103,6 +1105,13 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     }
     // back to the electrical trace colors
     applyVoltageColors();
+    // and the secondary layers back to their indication gray (the voltage
+    // map skips them, so their thermal ramp color would otherwise linger)
+    var copper2 = viewGroups.schematic.querySelector('#sch-copper');
+    if (copper2) {
+      var subs = copper2.querySelectorAll('[data-sub]');
+      for (var s2 = 0; s2 < subs.length; s2++) subs[s2].setAttribute('stroke', '#b6bcc4');
+    }
   }
   ['dt-margin', 'dt-allowed'].forEach(function (id) {
     var el = document.getElementById(id);

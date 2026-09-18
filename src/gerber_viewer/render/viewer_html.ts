@@ -1035,7 +1035,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     for (var j = 0; j < pour.ny; j++) {
       for (var i = 0; i < pour.nx; i++) {
         var c = j * pour.nx + i;
-        var o = ((pour.ny - 1 - j) * pour.nx + i) * 4; // y-flip
+        var o = ((pour.ny - 1 - j) * pour.nx + i) * 4; // y-flip (empirically verified against source positions)
         var dt = pour.cells[c];
         if (!pour.mask[c] || !(dt > 0)) continue;
         var t = hi > 0 ? Math.min(dt / hi, 1) : 0;
@@ -1448,7 +1448,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     for (var j2 = 0; j2 < ny; j2++) {
       for (var i6 = 0; i6 < nx; i6++) {
         var c5 = j2 * nx + i6;
-        var o = ((ny - 1 - j2) * nx + i6) * 4; // y-flip for the board group
+        var o = ((ny - 1 - j2) * nx + i6) * 4; // y-flip — verified empirically
         if (!inBoard[c5]) continue;
         if (cu[0][c5] || cu[1][c5]) continue; // the gap
         var tv2 = Math.max(T[0][c5], T[1][c5]);

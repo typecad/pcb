@@ -27,6 +27,12 @@ rf1.pcb = { x: 87, y: 18 };
 const y1 = new Component({ symbol: 'Device:Crystal', footprint: 'Crystal:Crystal_SMD_3215-2Pin_3.2x1.5mm', reference: 'Y1', value: '8MHz', simulation: { exclude: true } });
 y1.pcb = { x: 101, y: 18 };
 
+// a 1.5 A load across the rail (2.2R from 3.3V) so the copper ΔT view has
+// real current to work with — powerInfo sizes its traces per IPC, and the
+// thermal view checks the solved current against that geometry
+const r3 = new Component({ symbol: 'Device:R_Small', footprint: 'Resistor_SMD:R_1206_3216Metric', reference: 'R3', value: '2.2' });
+r3.pcb = { x: 59, y: 26 };
+
 // row 2: through-hole passives + transistors
 const r2 = new Component({ symbol: 'Device:R_Small', footprint: 'Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal', reference: 'R2', value: '10k' });
 r2.pcb = { x: 17, y: 34 };
@@ -79,13 +85,28 @@ sw2.pcb = { x: 101, y: 66 };
 // hover shows real operating-point numbers (VCC at 3.3 V, R2's 10k divider
 // current, C2 the rail's bulk cap). The nets are routed too — the OP solve
 // reads the netlist, but the copper is what the board actually ships
-const vcc = typecad.named('VCC').net(r1.pin(1), r2.pin(1), c2.pin(1));
-typecad.route(vcc);
-typecad.named('GND').net(r2.pin(2), c2.pin(2));
+const vcc = typecad.named('VCC').net(r1.pin(1), r2.pin(1), c2.pin(1), r3.pin(1));
+// rated for the 1.5 A load below — powerInfo sizes the whole rail per
+// IPC-2221 (re-routing an already-routed net does NOT re-widen it, so the
+// rating belongs here, on the first route)
+typecad.route(vcc, { powerInfo: { current: 1.5, maxTempRise: 10 } });
+typecad.assign(vcc, 'power');
+// ONE ground route for the whole net — every pad routed again lays another
+// parallel tree, and duplicate ground paths confound the flow/thermal
+// solvers' early development. Rated like the rail (1.5 A return).
+typecad.named('GND').net(r2.pin(2), c2.pin(2), c1.pin(2));
+const gnd = typecad.named('GND').net(rf1.pin(2), y1.pin(2), r3.pin(2));
 const v1 = new Power({ power: r1.pin(1), gnd: c2.pin(2), voltage: 3.3, name: 'V3V3' });
 void v1;
+typecad.route(gnd, { powerInfo: { current: 1.5, maxTempRise: 10 } });
+typecad.assign(gnd, 'power');
 
 typecad.outline(10, 10, 104, 74, 0.1);
+
+// rails carry the 1.5 A load: a net class sizes the WHOLE net (multi-pin
+// route() powerInfo sizing is unreliable — star routes lose the rating),
+// 0.55 mm ≈ IPC-2221 for 1.5 A / 10°C rise on 1 oz outer copper
+typecad.netClass('power', { track_width: 0.55 });
 
 typecad.zone({
   net: 'GND',
@@ -111,15 +132,14 @@ const d1_led = typecad.net(d1.pin(1), d3.pin(2));
 typecad.route(d1_led);
 const led_gnd = typecad.net(d3.pin(1), rf1.pin(1), y1.pin(1));
 typecad.route(led_gnd);
-const chain_gnd = typecad.named('GND').net(rf1.pin(2), y1.pin(2));
-typecad.route(chain_gnd);
+// rf1.2 / y1.2 / r3.2 join GND through the single consolidated route above
 const j71_u51 = typecad.net(u5.pin(2), j7.pin(2));
 typecad.route(j71_u51);
 typecad.text({ text: 'rd-skeleton', x: 62, y: 80, layer: 'F.SilkS', font: 'OCR A Std', width: 1.5, height: 1.5 });
 typecad.stitch('GND', { pitch: 2.5, margin: 5 });
 typecad.create(
   r1, c1, l1, d1, d3, rf1, y1,
-  r2, d2, c2, led2, q1, q2, sw1,
+  r2, d2, c2, led2, q1, q2, sw1, r3,
   u3, u4, u7, u5, u6, x1, rv1,
   j6, j7, j3, j4, j5, sw3, sw2,
 );

@@ -56,6 +56,18 @@
 		)
 
 	
+		(label "VCC"
+			(at 43.18 116.84 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left bottom)
+			)
+			(uuid "942954c8-24f7-59ef-bb0d-8a59499cefa5")
+		)
+
+	
 		(label "GND"
 			(at 223.52 38.1 270)
 			(effects
@@ -64,7 +76,7 @@
 				)
 				(justify right bottom)
 			)
-			(uuid "1ae71ec1-98e3-5775-8ced-caeb5f16dee0")
+			(uuid "80931592-daf0-59b8-a478-e7d0f73883a1")
 		)
 
 	
@@ -76,7 +88,7 @@
 				)
 				(justify right bottom)
 			)
-			(uuid "8d358b52-65b5-5e0c-a508-264ecfddea0c")
+			(uuid "1af310fd-835c-53bd-a56b-2aeb62fdbf63")
 		)
 
 	
@@ -88,7 +100,7 @@
 				)
 				(justify left bottom)
 			)
-			(uuid "794a6e6b-6ade-562b-91df-890b6987c797")
+			(uuid "c4c169f5-62dd-5dab-a72d-287971ca4108")
 		)
 
 	
@@ -100,11 +112,23 @@
 				)
 				(justify left bottom)
 			)
-			(uuid "210c5953-c3f4-58ed-bb66-9646946582f4")
+			(uuid "5b4ddeeb-9e0b-5fcb-880c-af8d71c0235d")
 		)
 
 	
-		(label "net3"
+		(label "GND"
+			(at 43.18 121.92 270)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify right bottom)
+			)
+			(uuid "a9da3697-c0c8-5b37-80fd-f677b8c9d56c")
+		)
+
+	
+		(label "net4"
 			(at 96.52 53.34 270)
 			(effects
 				(font
@@ -112,11 +136,11 @@
 				)
 				(justify right bottom)
 			)
-			(uuid "8b9bba77-c93c-544c-ae73-f3aaad2c940a")
+			(uuid "8bfb9b5e-5d21-5c25-a0e6-11afc884b7cf")
 		)
 
 	
-		(label "net3"
+		(label "net4"
 			(at 279.4 48.26 90)
 			(effects
 				(font
@@ -124,11 +148,11 @@
 				)
 				(justify left bottom)
 			)
-			(uuid "53800ca6-e51f-5383-8e66-826f5d5a6f68")
+			(uuid "70a9be4c-e04a-51a1-9be3-3f86af206bb7")
 		)
 
 	
-		(label "net3"
+		(label "net4"
 			(at 119.38 96.52 90)
 			(effects
 				(font
@@ -136,11 +160,11 @@
 				)
 				(justify left bottom)
 			)
-			(uuid "9bda3c83-70e0-5012-9fff-d93c58e0f2fe")
+			(uuid "5dca5998-f262-586d-b82e-265c59f8f245")
 		)
 
 	
-		(label "net5"
+		(label "net6"
 			(at 119.38 101.6 270)
 			(effects
 				(font
@@ -148,11 +172,11 @@
 				)
 				(justify right bottom)
 			)
-			(uuid "2433ceaf-4917-575e-8633-ba33b160e375")
+			(uuid "7218206a-3f9b-5c26-ac10-88dc3392fee6")
 		)
 
 	
-		(label "net5"
+		(label "net6"
 			(at 101.6 93.98 0)
 			(effects
 				(font
@@ -160,11 +184,11 @@
 				)
 				(justify left bottom)
 			)
-			(uuid "375b2c43-3986-59cb-b4f4-8f3bc297081c")
+			(uuid "022a8ce6-59e5-5920-8e71-797763071cc8")
 		)
 
 	
-		(label "net6"
+		(label "net7"
 			(at 96.52 93.98 180)
 			(effects
 				(font
@@ -172,11 +196,11 @@
 				)
 				(justify right bottom)
 			)
-			(uuid "184bb4f2-957a-5969-b321-fd006a438696")
+			(uuid "b8cc3d6f-e4d1-5e15-926e-46c90bfd5e15")
 		)
 
 	
-		(label "net6"
+		(label "net7"
 			(at 132.08 116.84 0)
 			(effects
 				(font
@@ -184,11 +208,11 @@
 				)
 				(justify left bottom)
 			)
-			(uuid "7efd79b7-f24b-5f84-8c3e-4c2d1efbd344")
+			(uuid "29aa5c5f-0407-5bc7-bf77-8fcff89726dd")
 		)
 
 	
-		(label "net7"
+		(label "net8"
 			(at 124.46000000000001 116.84 180)
 			(effects
 				(font
@@ -196,11 +220,11 @@
 				)
 				(justify right bottom)
 			)
-			(uuid "a45e55c8-e100-51bc-a881-f0703e97c8d7")
+			(uuid "d940bc19-a452-5dee-b21f-dcaaa2080248")
 		)
 
 	
-		(label "net7"
+		(label "net8"
 			(at 7.62 50.8 180)
 			(effects
 				(font
@@ -208,11 +232,11 @@
 				)
 				(justify right bottom)
 			)
-			(uuid "30930e7c-ae64-577b-9e1f-b74ce59033ca")
+			(uuid "ae8d68ac-87d9-5478-956c-465cd8d69244")
 		)
 
 	
-		(label "net7"
+		(label "net8"
 			(at 12.7 129.54 180)
 			(effects
 				(font
@@ -220,7 +244,7 @@
 				)
 				(justify right bottom)
 			)
-			(uuid "b1d613cf-34d8-59cb-be2d-96cea224036d")
+			(uuid "c98e791f-7778-5025-924d-6d619ba07ffb")
 		)
 
 	
@@ -232,7 +256,7 @@
 				)
 				(justify left bottom)
 			)
-			(uuid "17758001-80f9-5ef2-92ba-9a9f39d65435")
+			(uuid "d3d572dd-6cc1-571e-bbef-bd947e217552")
 		)
 
 	
@@ -244,7 +268,7 @@
 				)
 				(justify right bottom)
 			)
-			(uuid "b043ef2c-2aa2-5c0f-9034-bf632b56f20e")
+			(uuid "584eac5e-e0b0-5f24-9382-d0f4db7badf5")
 		)
 
 	
@@ -256,7 +280,7 @@
 				)
 				(justify right bottom)
 			)
-			(uuid "de623f2a-a3f9-510c-b643-2c61864c906f")
+			(uuid "bcc43c4f-9124-5873-8dae-d06466cd49e8")
 		)
 
 	
@@ -268,7 +292,7 @@
 				)
 				(justify left bottom)
 			)
-			(uuid "dfb92e26-89d8-5d00-ad25-f687da3d3b38")
+			(uuid "9fdf77b7-c5d2-552c-a6f9-7774e2da84f0")
 		)
 
 
@@ -283,6 +307,7 @@
     (symbol (lib_id "Device:D_Small") (at 198.12 66.04 0) (property "Reference" "D2" (at 198.12 71.12 0) (effects (font (size 1.27 1.27)) (hide no))) (property "Value" "1N4007" (at 198.12 71.12 0) (effects (font (size 1.27 1.27)) (hide yes))) (property "Footprint" "Diode_THT:D_DO-41_SOD81_P7.62mm_Horizontal" (at 198.12 71.12 0) (effects (font (size 1.27 1.27)) (hide yes))) (instances (project "rd_skeleton" (path "/de2f94c1-7c8e-55f0-87d3-a29d4b429f2f" (reference "D2") (unit 1)))))
     (symbol (lib_id "Device:C_Polarized") (at 210.82 66.04 0) (property "Reference" "C2" (at 210.82 71.12 0) (effects (font (size 1.27 1.27)) (hide no))) (property "Value" "10uF" (at 210.82 71.12 0) (effects (font (size 1.27 1.27)) (hide yes))) (property "Footprint" "Capacitor_THT:CP_Radial_D5.0mm_P2.50mm" (at 210.82 71.12 0) (effects (font (size 1.27 1.27)) (hide yes))) (instances (project "rd_skeleton" (path "/de2f94c1-7c8e-55f0-87d3-a29d4b429f2f" (reference "C2") (unit 1)))))
     (symbol (lib_id "Device:LED") (at 22.86 5.08 0) (property "Reference" "LED2" (at 22.86 10.16 0) (effects (font (size 1.27 1.27)) (hide no))) (property "Value" "green" (at 22.86 10.16 0) (effects (font (size 1.27 1.27)) (hide yes))) (property "Footprint" "LED_THT:LED_D3.0mm" (at 22.86 10.16 0) (effects (font (size 1.27 1.27)) (hide yes))) (instances (project "rd_skeleton" (path "/de2f94c1-7c8e-55f0-87d3-a29d4b429f2f" (reference "LED2") (unit 1)))))
+    (symbol (lib_id "Device:R_Small") (at 43.18 119.38 0) (property "Reference" "R3" (at 43.18 124.46 0) (effects (font (size 1.27 1.27)) (hide no))) (property "Value" "2.2" (at 43.18 124.46 0) (effects (font (size 1.27 1.27)) (hide yes))) (property "Footprint" "Resistor_SMD:R_1206_3216Metric" (at 43.18 124.46 0) (effects (font (size 1.27 1.27)) (hide yes))) (instances (project "rd_skeleton" (path "/de2f94c1-7c8e-55f0-87d3-a29d4b429f2f" (reference "R3") (unit 1)))))
     (symbol (lib_id "Amplifier_Operational:LM358") (at 7.62 81.28 0) (property "Reference" "U3" (at 7.62 86.36 0) (effects (font (size 1.27 1.27)) (hide no))) (property "Value" "opamp" (at 7.62 86.36 0) (effects (font (size 1.27 1.27)) (hide yes))) (property "Footprint" "Package_SO:SOIC-8_3.9x4.9mm_P1.27mm" (at 7.62 86.36 0) (effects (font (size 1.27 1.27)) (hide yes))) (instances (project "rd_skeleton" (path "/de2f94c1-7c8e-55f0-87d3-a29d4b429f2f" (reference "U3") (unit 1)))))
     (symbol (lib_id "Connector_Generic:Conn_01x33") (at 238.76 12.7 0) (property "Reference" "U7" (at 238.76 17.78 0) (effects (font (size 1.27 1.27)) (hide no))) (property "Value" "qfn" (at 238.76 17.78 0) (effects (font (size 1.27 1.27)) (hide yes))) (property "Footprint" "Package_DFN_QFN:QFN-32-1EP_5x5mm_P0.5mm_EP3.1x3.1mm" (at 238.76 17.78 0) (effects (font (size 1.27 1.27)) (hide yes))) (instances (project "rd_skeleton" (path "/de2f94c1-7c8e-55f0-87d3-a29d4b429f2f" (reference "U7") (unit 1)))))
     (symbol (lib_id "Connector_Generic:Conn_02x16_Odd_Even") (at 142.24 2.54 0) (property "Reference" "U5" (at 142.24 7.62 0) (effects (font (size 1.27 1.27)) (hide no))) (property "Value" "mcu" (at 142.24 7.62 0) (effects (font (size 1.27 1.27)) (hide yes))) (property "Footprint" "Package_QFP:LQFP-32_7x7mm_P0.8mm" (at 142.24 7.62 0) (effects (font (size 1.27 1.27)) (hide yes))) (instances (project "rd_skeleton" (path "/de2f94c1-7c8e-55f0-87d3-a29d4b429f2f" (reference "U5") (unit 1)))))

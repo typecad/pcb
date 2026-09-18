@@ -262,6 +262,13 @@ describe('buildViewerHtml', () => {
     expect(withSch).toContain('var FX = 3;');
     expect(withSch).toContain('if (!fIn[fc2]) continue');
     expect(withSch).toContain('T[0][cA] * wA + T[0][cB] * wB + T[0][cC] * wC + T[0][cD] * wD');
+    // component self-heating: each device's solved watts injected at its
+    // pads (deduped per pin), and via barrels conduct between the layers
+    expect(withSch).toContain('if (Pd && Pd > 1e-6) devP[dk2] = Pd;');
+    expect(withSch).toContain("pr.toLowerCase() + '|' + (pel.getAttribute('data-pin') || '')");
+    expect(withSch).toContain('parts.push({ c: hc2 - 1, f: 0.125 })');
+    expect(withSch).toContain('gz[vc2] += (BD.viaG * drill) / 0.153;');
+    expect(withSch).toContain('var gzT = gZ + gz[c3]; // FR4 core + via barrels');
     // via thermal model: barrels are resistive edges in the network — the
     // SOLVED current drives each via's ΔT (equal-split only as fallback)
     expect(withSch).toContain('dtViaFromI(iVia, drill)');

@@ -1098,7 +1098,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         amb +
         '\u00B0C ambient' +
         dtItems.viaNote +
-        (boardTemp ? ' \u00B7 board \u2248 +' + boardTemp.max.toFixed(1) + '\u00B0C (FR4)' : '');
+        (boardTemp ? ' \u00B7 board \u2248 +' + boardTemp.max.toFixed(1) + '\u00B0C (FR4 + parts)' : '');
   }
   function buildThermal() {
     if (dtBuilt || !viewGroups.schematic || !netOp || !netOp.solved || !netOp.branches) return;
@@ -1271,15 +1271,17 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   var dtAmbient = document.getElementById('dt-ambient');
   if (dtAmbient) dtAmbient.addEventListener('input', applyThermalColors);
 
-  // ---- board (FR4) temperature: the copper-loss map heats the laminate —
-  // a stacked two-layer steady-state solve, degrees ABOVE ambient. Sources
-  // are the solved wire/via/pour losses; conduction is copper in-plane
-  // (k·t ≈ 0.014 W/K per square), FR4 in-plane and through-plane, and via
-  // barrels between layers; both faces convect+radiate to ambient
-  // (h ≈ 12 W/m²·K, still air, both faces exposed). Copper cells are left
-  // unpainted — a raster-pixel gap keeps the traces readable over the
-  // board coloring. Idealized: no enclosure, mounting, airflow, or
-  // component self-heating (a copper-loss floor, not a full thermal model).
+  // ---- board (FR4) temperature: the solved losses heat the laminate — a
+  // stacked two-layer steady-state solve, degrees ABOVE ambient. Sources are
+  // the wire/via/pour copper losses PLUS each component's solved watts,
+  // injected at its pads (the model ignores component-surface convection,
+  // so a part's whole dissipation conducts in through its leads — an upper
+  // bound). Conduction is copper in-plane (k·t ≈ 0.014 W/K per square),
+  // FR4 in-plane and through-plane, and via barrels between the layers;
+  // both faces shed heat to ambient at an effective h ≈ 12 W/m²·K (still
+  // air — convection plus radiation). The field paints the entire board;
+  // only the outline bounds it. Idealized: no enclosure, mounting, or
+  // airflow.
   var boardTemp = null; // {img, max}
   var BD = {
     cell: 1.2, // mm raster — thermal gradients are smooth
@@ -1287,7 +1289,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     fr4In: 0.8 * 1.6e-3, // in-plane W/K per square, full thickness
     fr4Z: 0.3 * 1e-6 / 1.53e-3, // through-plane W/K per mm²
     h: 12 * 1e-6, // W/K per mm², both faces
-    viaG: (400 * Math.PI * 0.153 * 35e-6) / 1.6e-3, // barrel, W/K
+    viaG: (400 * Math.PI * 0.153e-3 * 35e-6) / 1.6e-3, // barrel z, W/K (k·π·d·t/L)
   };
   function buildBoardTemp() {
     if (boardTemp || !dtItems || !viewGroups.schematic) return;
@@ -1310,6 +1312,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     // copper marks + heat sources per layer (top / bottom by data-sub)
     var cu = [new Uint8Array(nx * ny), new Uint8Array(nx * ny)];
     var S = [new Float64Array(nx * ny), new Float64Array(nx * ny)];
+    var gz = new Float64Array(nx * ny); // via barrels add copper z-conductance
     var cellAt = function (x, y) {
       var ci = Math.floor((x - bb.x) / cx);
       var cj = Math.floor((y - bb.y) / cy);
@@ -1372,12 +1375,66 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         if (vc2 < 0) continue;
         var vI = vel.__viaCur;
         var drill = 0.45 * Math.max(vb.width, vb.height);
-        var Gb = (400 * Math.PI * drill * 35e-6) / 1.6e-3;
-        var Pv = vI !== undefined ? vI * vI / Gb : 0;
+        // electrical barrel conductance σ·π·d·t/L (~600 S at a 0.15 mm
+        // drill) sets the via's copper loss; the same barrel thermally
+        // couples the layers (~15x one cell of FR4 z-conductance)
+        var Gb = (5.8e7 * Math.PI * drill * 1e-3 * 35e-6) / 1.6e-3;
+        var Pv = vI !== undefined ? (vI * vI) / Gb : 0;
         S[0][vc2] += Pv / 2;
         S[1][vc2] += Pv / 2;
+        gz[vc2] += (BD.viaG * drill) / 0.153;
         cu[0][vc2] = 1;
         cu[1][vc2] = 1;
+      }
+      // component self-heating: each device's solved watts enter the board
+      // through its pads, split evenly across its pins (per-layer pad
+      // flashes dedupe by ref|pin). Pads are copper — mark them conducting.
+      var devP = {};
+      if (netOp && netOp.devices) {
+        for (var dk2 in netOp.devices) {
+          var Pd = netOp.devices[dk2].power;
+          if (Pd && Pd > 1e-6) devP[dk2] = Pd;
+        }
+      }
+      var padCells = {}; // ref|pin -> cell
+      var padEls = copper.querySelectorAll('[data-ref]');
+      for (var pe = 0; pe < padEls.length; pe++) {
+        var pel = padEls[pe];
+        if (pel.tagName.toLowerCase() === 'path') continue;
+        var pb2 = pel.getBBox();
+        if (pb2.width > 2.5 || pb2.height > 2.5) continue; // pad-sized marks only
+        var pc3 = cellAt(pb2.x + pb2.width / 2, pb2.y + pb2.height / 2);
+        if (pc3 < 0) continue;
+        cu[0][pc3] = 1;
+        cu[1][pc3] = 1;
+        var pr = pel.getAttribute('data-ref');
+        if (!pr || devP[pr.toLowerCase()] === undefined) continue;
+        var pk2 = pr.toLowerCase() + '|' + (pel.getAttribute('data-pin') || '');
+        if (padCells[pk2] === undefined) padCells[pk2] = pc3;
+      }
+      var byRefPads = {};
+      for (var pk3 in padCells) {
+        var rf = pk3.split('|')[0];
+        if (!byRefPads[rf]) byRefPads[rf] = [];
+        byRefPads[rf].push(padCells[pk3]);
+      }
+      for (var rf2 in byRefPads) {
+        // spread a pad's share over its footprint: half in the pad cell,
+        // an eighth in each orthogonal neighbor (a pad is ~1.7 mm of
+        // copper — concentrating it in one cell grid-sharpens the peak)
+        var perPad2 = devP[rf2] / byRefPads[rf2].length;
+        for (var pci = 0; pci < byRefPads[rf2].length; pci++) {
+          var hc2 = byRefPads[rf2][pci];
+          var parts = [{ c: hc2, f: 0.5 }];
+          if (hc2 % nx > 0 && inBoard[hc2 - 1]) parts.push({ c: hc2 - 1, f: 0.125 });
+          if (hc2 % nx < nx - 1 && inBoard[hc2 + 1]) parts.push({ c: hc2 + 1, f: 0.125 });
+          if (hc2 >= nx && inBoard[hc2 - nx]) parts.push({ c: hc2 - nx, f: 0.125 });
+          if (hc2 < nx * (ny - 1) && inBoard[hc2 + nx]) parts.push({ c: hc2 + nx, f: 0.125 });
+          for (var qi = 0; qi < parts.length; qi++) {
+            S[0][parts[qi].c] += (perPad2 * parts[qi].f) / 2;
+            S[1][parts[qi].c] += (perPad2 * parts[qi].f) / 2;
+          }
+        }
       }
     }
     // pour losses (split half to each layer — the zone spans both)
@@ -1439,8 +1496,9 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
             sum += g4 * T[L][nb];
             gsum += g4;
           }
-          sum += gZ * T[1 - L][c3];
-          gsum += gZ;
+          var gzT = gZ + gz[c3]; // FR4 core + via barrels
+          sum += gzT * T[1 - L][c3];
+          gsum += gzT;
           var nv = sum / gsum;
           var dd = nv - T[L][c3];
           T[L][c3] += 1.7 * dd;

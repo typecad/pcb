@@ -33,18 +33,6 @@
 
 	
 		(label "VCC"
-			(at 223.52 33.02 90)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(justify left bottom)
-			)
-			(uuid "9e212664-fc65-52fd-8aa0-86cc6e106df5")
-		)
-
-	
-		(label "VCC"
 			(at 210.82 63.5 90)
 			(effects
 				(font
@@ -52,7 +40,7 @@
 				)
 				(justify left bottom)
 			)
-			(uuid "3abd4ea5-3c15-51e3-aaa9-dab21a066a9d")
+			(uuid "1bcfb447-6ca7-5dc4-b503-61f43c9af6a8")
 		)
 
 	
@@ -64,7 +52,19 @@
 				)
 				(justify left bottom)
 			)
-			(uuid "942954c8-24f7-59ef-bb0d-8a59499cefa5")
+			(uuid "c67eb98f-ef89-56d1-990c-5688f481403d")
+		)
+
+	
+		(label "VCC"
+			(at 223.52 33.02 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left bottom)
+			)
+			(uuid "167c74a7-6625-56c8-9fbe-7d8796586bd8")
 		)
 
 	
@@ -128,7 +128,7 @@
 		)
 
 	
-		(label "net4"
+		(label "net5"
 			(at 96.52 53.34 270)
 			(effects
 				(font
@@ -136,11 +136,11 @@
 				)
 				(justify right bottom)
 			)
-			(uuid "8bfb9b5e-5d21-5c25-a0e6-11afc884b7cf")
+			(uuid "8f332719-21db-5caa-bece-33fc4d6623ad")
 		)
 
 	
-		(label "net4"
+		(label "net5"
 			(at 279.4 48.26 90)
 			(effects
 				(font
@@ -148,11 +148,11 @@
 				)
 				(justify left bottom)
 			)
-			(uuid "70a9be4c-e04a-51a1-9be3-3f86af206bb7")
+			(uuid "a666c333-f1fb-5b44-afb1-db80dcdc1a28")
 		)
 
 	
-		(label "net4"
+		(label "net5"
 			(at 119.38 96.52 90)
 			(effects
 				(font
@@ -160,11 +160,11 @@
 				)
 				(justify left bottom)
 			)
-			(uuid "5dca5998-f262-586d-b82e-265c59f8f245")
+			(uuid "91229504-986a-54d7-a56a-37e106e19f1e")
 		)
 
 	
-		(label "net6"
+		(label "net7"
 			(at 119.38 101.6 270)
 			(effects
 				(font
@@ -172,11 +172,11 @@
 				)
 				(justify right bottom)
 			)
-			(uuid "7218206a-3f9b-5c26-ac10-88dc3392fee6")
+			(uuid "5e8b020b-9a1d-5499-b792-4140c7308179")
 		)
 
 	
-		(label "net6"
+		(label "net7"
 			(at 101.6 93.98 0)
 			(effects
 				(font
@@ -184,11 +184,11 @@
 				)
 				(justify left bottom)
 			)
-			(uuid "022a8ce6-59e5-5920-8e71-797763071cc8")
+			(uuid "8e2b59f5-e6c9-5790-a87c-d4a43e0f0816")
 		)
 
 	
-		(label "net7"
+		(label "net8"
 			(at 96.52 93.98 180)
 			(effects
 				(font
@@ -196,11 +196,11 @@
 				)
 				(justify right bottom)
 			)
-			(uuid "b8cc3d6f-e4d1-5e15-926e-46c90bfd5e15")
+			(uuid "83a0aa4e-d898-5d5f-a88c-d291df263e6d")
 		)
 
 	
-		(label "net7"
+		(label "net8"
 			(at 132.08 116.84 0)
 			(effects
 				(font
@@ -208,11 +208,11 @@
 				)
 				(justify left bottom)
 			)
-			(uuid "29aa5c5f-0407-5bc7-bf77-8fcff89726dd")
+			(uuid "d78e8c9b-cebf-52bb-af29-8143e2265173")
 		)
 
 	
-		(label "net8"
+		(label "net9"
 			(at 124.46000000000001 116.84 180)
 			(effects
 				(font
@@ -220,11 +220,11 @@
 				)
 				(justify right bottom)
 			)
-			(uuid "d940bc19-a452-5dee-b21f-dcaaa2080248")
+			(uuid "4384df51-79fd-5a6c-b61b-36c62ab59ae7")
 		)
 
 	
-		(label "net8"
+		(label "net9"
 			(at 7.62 50.8 180)
 			(effects
 				(font
@@ -232,11 +232,11 @@
 				)
 				(justify right bottom)
 			)
-			(uuid "ae8d68ac-87d9-5478-956c-465cd8d69244")
+			(uuid "84bc7871-48f4-5f39-bcd0-ae41308b7b91")
 		)
 
 	
-		(label "net8"
+		(label "net9"
 			(at 12.7 129.54 180)
 			(effects
 				(font
@@ -244,11 +244,11 @@
 				)
 				(justify right bottom)
 			)
-			(uuid "c98e791f-7778-5025-924d-6d619ba07ffb")
+			(uuid "f903a3b5-3c9a-5d79-92fc-ed8dac7aca28")
 		)
 
 	
-		(label "net9"
+		(label "net10"
 			(at 149.86 -15.24 0)
 			(effects
 				(font
@@ -256,11 +256,11 @@
 				)
 				(justify left bottom)
 			)
-			(uuid "d3d572dd-6cc1-571e-bbef-bd947e217552")
+			(uuid "d5cbcdc1-3b59-5343-90b7-45017c80facb")
 		)
 
 	
-		(label "net9"
+		(label "net10"
 			(at 210.82 53.34 180)
 			(effects
 				(font
@@ -268,7 +268,7 @@
 				)
 				(justify right bottom)
 			)
-			(uuid "584eac5e-e0b0-5f24-9382-d0f4db7badf5")
+			(uuid "f4e6d53e-7a97-519f-bdba-0d2dcdc213a8")
 		)
 
 	

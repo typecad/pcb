@@ -1,6 +1,8 @@
 import { PCB, Component, Power, TrackBuilder } from '@typecad/pcb';
 
-const typecad = new PCB('rd_skeleton');
+const typecad = new PCB('rd_skeleton', {
+  rules: { min_through_hole_diameter: 0.15, min_via_diameter: 0.35 },
+});
 
 // ---- component family gallery: every supported glyph archetype, one per
 // grid cell (7 columns x 4 rows on a 104 x 74 mm board) ----
@@ -85,12 +87,24 @@ sw2.pcb = { x: 101, y: 66 };
 // hover shows real operating-point numbers (VCC at 3.3 V, R2's 10k divider
 // current, C2 the rail's bulk cap). The nets are routed too — the OP solve
 // reads the netlist, but the copper is what the board actually ships
-const vcc = typecad.named('VCC').net(r1.pin(1), r2.pin(1), c2.pin(1), r3.pin(1));
-// rated for the 1.5 A load below — powerInfo sizes the whole rail per
-// IPC-2221 (re-routing an already-routed net does NOT re-widen it, so the
-// rating belongs here, on the first route)
-typecad.route(vcc, { powerInfo: { current: 1.5, maxTempRise: 10 } });
+const vcc = typecad.named('VCC').net(r1.pin(1), c2.pin(1), r3.pin(1));
+// R2 joins the net WITHOUT joining the autorouted tree — its only copper
+// path is the deliberate via drop below
+typecad.named('VCC').net(r2.pin(1));
 typecad.assign(vcc, 'power');
+// VCC distribution is hand-routed so R2's pad (17,34) connects ONLY
+// through the via drop: trunk east through the row-1/2 gap to R3, branch
+// down to C2 — no autorouted path runs down the front layer into R2
+const VCCW = 0.525473;
+const vccTrunk = new TrackBuilder(typecad, { net: 'VCC' })
+  .from({ x: 16.175, y: 18, layer: 'F.Cu', width: VCCW })
+  .to({ x: 16.8375, y: 19.7375, layer: 'F.Cu', width: VCCW })
+  .to({ x: 16.8375, y: 26, layer: 'F.Cu', width: VCCW })
+  .to({ x: 41, y: 26, layer: 'F.Cu', width: VCCW })
+  .to({ x: 57.5375, y: 26, layer: 'F.Cu', width: VCCW }); // R3 pin 1
+const vccToC2 = new TrackBuilder(typecad, { net: 'VCC' })
+  .from({ x: 41, y: 26, layer: 'F.Cu', width: VCCW })
+  .to({ x: 45, y: 34, layer: 'F.Cu', width: VCCW }); // C2 pin 1 (through-hole)
 // ONE ground route for the whole net — every pad routed again lays another
 // parallel tree, and duplicate ground paths confound the flow/thermal
 // solvers' early development. Rated like the rail (1.5 A return).
@@ -147,11 +161,26 @@ const viaTie = (x: number, y: number) =>
     .to({ x: x + 0.4, y }, 'B.Cu');
 const gndVias = [viaTie(50, 38), viaTie(55, 40)];
 
+// R2's feed: the trunk's descent (x≈16.84) passes through the via point, so
+// the via annulus ties into it; through the via, then bottom layer down to
+// R2 pin-1's through-hole pad (the DIN0207 footprint anchors pad 1 at its
+// origin, so that pad is exactly (17, 34)). Rail-width bottom route; the
+// small 0.153 mm drill makes the via's own barrel heating read in the
+// thermal view. Coordinates translated from a hand edit of the board.
+const vccVia = new TrackBuilder(typecad, { net: 'VCC' })
+  .from({ x: 16.795, y: 25.418, layer: 'F.Cu' })
+  .via({ size: 0.35, drill: 0.15, powerInfo: { current: 1.5, maxTempRise: 10 } })
+  .to({ x: 17, y: 25.623, layer: 'B.Cu', width: VCCW })
+  .to({ x: 17, y: 34, layer: 'B.Cu', width: VCCW });
+
 typecad.create(
   r1, c1, l1, d1, d3, rf1, y1,
   r2, d2, c2, led2, q1, q2, sw1, r3,
   u3, u4, u7, u5, u6, x1, rv1,
   j6, j7, j3, j4, j5, sw3, sw2,
   ...gndVias,
+  vccTrunk,
+  vccToC2,
+  vccVia,
 );
  

@@ -1,4 +1,4 @@
-import { PCB, Component, Power } from '@typecad/pcb';
+import { PCB, Component, Power, TrackBuilder } from '@typecad/pcb';
 
 const typecad = new PCB('rd_skeleton');
 
@@ -137,10 +137,21 @@ const j71_u51 = typecad.net(u5.pin(2), j7.pin(2));
 typecad.route(j71_u51);
 typecad.text({ text: 'rd-skeleton', x: 62, y: 80, layer: 'F.SilkS', font: 'OCR A Std', width: 1.5, height: 1.5 });
 // typecad.stitch('GND', { pitch: 2.5, margin: 5 });
+// two explicit GND layer-tie vias (F.Cu↔B.Cu, the pour spans both layers),
+// standard 0.6/0.3 geometry each rated for the full 1.5 A return — the pair
+// shares it equally in the thermal view's via model (0.75 A each)
+const viaTie = (x: number, y: number) =>
+  new TrackBuilder(typecad, { net: 'GND' })
+    .from({ x, y }, 'F.Cu')
+    .via({ size: 0.6, drill: 0.3, powerInfo: { current: 1.5, maxTempRise: 10 } })
+    .to({ x: x + 0.4, y }, 'B.Cu');
+const gndVias = [viaTie(50, 38), viaTie(55, 40)];
+
 typecad.create(
   r1, c1, l1, d1, d3, rf1, y1,
   r2, d2, c2, led2, q1, q2, sw1, r3,
   u3, u4, u7, u5, u6, x1, rv1,
   j6, j7, j3, j4, j5, sw3, sw2,
+  ...gndVias,
 );
  

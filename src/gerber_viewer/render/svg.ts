@@ -138,8 +138,31 @@ function arcCommand(from: Point, seg: Extract<PathSegment, { kind: 'arc' }>): st
   return `A ${fmt(r)} ${fmt(r)} 0 ${largeArc} ${sweep} ${fmt(seg.to.x)} ${fmt(seg.to.y)}`;
 }
 
-export function pathData(start: Point, segments: PathSegment[], close: boolean): string {
-  if (segments.length === 0) return '';
+/**
+ * One-sided edge line for the centerline layer styles: each segment offset
+ * perpendicular by `off` (positive = left of travel). Segments are emitted
+ * independently — corner joins split, which reads fine as a construction
+ * line. Arc segments contribute their chord.
+ */
+function offsetTrace(start: Point, segments: PathSegment[], off: number): string {
+  if (!off || segments.length === 0) return '';
+  let d = '';
+  let prev = start;
+  for (const seg of segments) {
+    const dx = seg.to.x - prev.x;
+    const dy = seg.to.y - prev.y;
+    const len = Math.hypot(dx, dy);
+    if (len > 1e-9) {
+      const nx = (-dy / len) * off;
+      const ny = (dx / len) * off;
+      d += ` M ${fmt(prev.x + nx)} ${fmt(prev.y + ny)} L ${fmt(seg.to.x + nx)} ${fmt(seg.to.y + ny)}`;
+    }
+    prev = seg.to;
+  }
+  return d ? d.slice(1) : '';
+}
+
+export function pathData(start: Point, segments: PathSegment[], close: boolean): string {  if (segments.length === 0) return '';
   let d = `M ${fmt(start.x)} ${fmt(start.y)}`;
   let prev = start;
   for (const seg of segments) {
@@ -194,6 +217,13 @@ export interface InkOptions {
    * the pour still reads as a marked copper area
    */
   regionUnderlay?: { color: string; opacity: number };
+  /**
+   * layer indication for stacked copper rendered into one view: the top
+   * layer draws solid as-is; deeper layers draw as construction lines —
+   * a thin centerline through the trace (with one edge line per further
+   * layer). The real trace width rides in a data-w attribute either way.
+   */
+  traceStyle?: 'solid' | 'center' | 'centerEdgeA' | 'centerEdgeB';
 }
 
 export interface LayerInk {
@@ -261,9 +291,24 @@ export function renderLayerInk(layer: RenderLayer, options: InkOptions): LayerIn
       if (!d) continue;
       const attrs = op.polarity === 'clear' ? cutAttrs() : ` stroke="${options.color}"`;
       const net = op.net ? ` data-net="${escapeXml(op.net)}"` : '';
-      body.push(
-        `<path${attrs}${net} d="${d}" fill="none" stroke-width="${fmt(stroke.width)}" stroke-linecap="${stroke.cap}" stroke-linejoin="${stroke.cap === 'round' ? 'round' : 'miter'}"/>`,
-      );
+      const caps = `stroke-linecap="${stroke.cap}" stroke-linejoin="${stroke.cap === 'round' ? 'round' : 'miter'}"`;
+      // the real trace width always rides along — centerline styles thin
+      // the visible stroke, and the thermal estimator needs the true value
+      const wAttr = ` data-w="${fmt(stroke.width)}"`;
+      if (options.traceStyle && options.traceStyle !== 'solid') {
+        // layer indication: secondary copper as construction lines — a
+        // thin centerline through the trace, plus one trace edge for each
+        // further layer down the stack
+        const thin = Math.min(stroke.width, 0.1);
+        body.push(`<path${attrs}${net} d="${d}" fill="none" stroke-width="${fmt(thin)}"${wAttr} ${caps}/>`);
+        const side = options.traceStyle === 'centerEdgeA' ? 1 : options.traceStyle === 'centerEdgeB' ? -1 : 0;
+        if (side !== 0) {
+          const edge = offsetTrace(op.from, op.segments, (stroke.width / 2) * side);
+          if (edge) body.push(`<path${attrs} d="${edge}" fill="none" stroke-width="${fmt(thin)}" stroke-linecap="butt" stroke-linejoin="miter"/>`);
+        }
+      } else {
+        body.push(`<path${attrs}${net} d="${d}" fill="none" stroke-width="${fmt(stroke.width)}"${wAttr} ${caps}/>`);
+      }
     } else {
       if (options.flashesOnly) continue;
       const d = op.contours.map((c) => pathData(c.start, c.segments, true)).join(' ');

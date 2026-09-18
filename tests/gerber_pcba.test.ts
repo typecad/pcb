@@ -1178,6 +1178,28 @@ M02*
     expect(withTraces).toContain('id="sch-copper"');
   });
 
+  it('schematic style renders every copper layer: top solid, deeper as construction lines', () => {
+    const trace = (x1: number, x2: number, y: number) =>
+      `%FSLAX36Y36*%
+%MOMM*%
+%ADD10C,0.25*%
+D10*
+X${x1}00000Y${y}00000D02*
+X${x2}00000Y${y}00000D01*
+M02*
+`;
+    const stack = [
+      layer('demo-Edge_Cuts.gbr', EDGE),
+      layer('demo-F_Cu.gbr', F_CU),
+      layer('demo-B_Cu.gbl', trace(1000000, 2000000, 3000000)),
+    ];
+    const svg = renderPcbaSvg(stack, { style: 'schematic' }).svg;
+    // back layer: faint thin centerline, real width preserved in data-w
+    expect(svg).toMatch(/stroke="#b6bcc4"[^>]*d="M [^"]*" fill="none" stroke-width="0.1" data-w="0.25"/);
+    // top layer: solid trace at its real width, width also in data-w
+    expect(svg).toMatch(/stroke="#101010"[^>]*d="M [^"]*" fill="none" stroke-width="0.8" data-w="0.8"/);
+  });
+
   it('blueprint defers to the fab layer designators when it has them', () => {
     // a fab layer carries the refdes (KiCad places it out of the way); the
     // synthetic labels would double every designator and overlap footprints

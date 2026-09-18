@@ -286,24 +286,42 @@ export function renderPcbaSvg(layers: RenderLayer[], options: PcbaRenderOptions 
 
   // schematic view: white paper, subdued pours, near-black traces — the
   // routing is the subject. Copper carries data-net/data-ref so the viewer
-  // can hover a trace for its operating point.
+  // can hover a trace for its operating point. EVERY copper layer renders
+  // into this one view, stack-ordered: the top layer draws solid, deeper
+  // layers as construction lines (centerline, then one edge line per
+  // further layer) so inner/back routing is visible without simulating a
+  // second board view.
   let schCopperBody = '';
   let schPourHatch = '';
   if (schematic) {
-    const schCopper = copper
-      ? renderLayerInk(copper, {
-          color: SCH_TRACE,
-          idPrefix: 'pcba-sch-cu',
-          clearColor: SCH_PAPER,
-          regionFill: 'none',
-          regionStroke: { color: SCH_INK_FAINT, width: 0.1 * S },
-        })
-      : null;
-    if (schCopper) {
-      for (const w of schCopper.warnings) warnings.push(`copper: ${w}`);
-      defs.push(...schCopper.defs);
-      schCopperBody = schCopper.body.join('');
+    const styleForDepth = (i: number): 'solid' | 'center' | 'centerEdgeA' | 'centerEdgeB' =>
+      i === 0 ? 'solid' : i === 1 ? 'center' : i === 2 ? 'centerEdgeA' : i === 3 ? 'centerEdgeB' : 'center';
+    const stack = layers
+      .filter((l) => l.info.kind === 'copper')
+      .sort(
+        (a, b) =>
+          (b.info.copperIndex ?? (b.info.side === 'front' ? 999 : -1)) -
+          (a.info.copperIndex ?? (a.info.side === 'front' ? 999 : -1)),
+      );
+    const inks: string[] = [];
+    for (let i = stack.length - 1; i >= 0; i--) {
+      // top layer last so it paints over the construction lines
+      const cu = stack[i];
+      const ink = renderLayerInk(cu, {
+        color: i === 0 ? SCH_TRACE : SCH_INK_FAINT,
+        idPrefix: 'pcba-sch-cu' + (i === 0 ? '' : i),
+        clearColor: SCH_PAPER,
+        regionFill: 'none',
+        regionStroke: i === 0 ? { color: SCH_INK_FAINT, width: 0.1 * S } : undefined,
+        traceStyle: styleForDepth(i),
+      });
+      for (const w of ink.warnings) warnings.push(`copper: ${w}`);
+      defs.push(...ink.defs);
+      // deeper layers skip regions — their pours duplicate the top layer's
+      // outline and bury the construction lines
+      inks.push(i === 0 ? ink.body.join('') : ink.body.join('').replace(/<path[^>]*fill-rule="evenodd"[^>]*\/>/g, ''));
     }
+    schCopperBody = inks.join('');
     const pour = buildPourHatch(copper, 'pcba-sch-pourclip', SCH_INK_FAINT, 0.4);
     defs.push(pour.clip);
     schPourHatch = pour.hatch;

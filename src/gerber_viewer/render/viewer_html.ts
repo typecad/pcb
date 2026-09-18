@@ -969,7 +969,9 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       if (dd && dd.indexOf('Z') !== -1) continue;
       var cur = el.__edgeCur;
       if (cur === undefined) continue; // not part of the solved route graph
-      var w = parseFloat(el.getAttribute('stroke-width')) || 0.2;
+      // data-w carries the real width — centerline-rendered deeper layers
+      // thin their visible stroke
+      var w = parseFloat(el.getAttribute('data-w') || el.getAttribute('stroke-width')) || 0.2;
       wires.push({ el: el, dt: dtFromI(Math.abs(cur), w) });
     }
     // pours: the hatch clip holds the fill polygons; its stroked lines and
@@ -1000,6 +1002,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     // the pad, else estimated from the annulus.
     var vias = [];
     var viaNets = {};
+    var seenViaKeys = {};
     for (var v = 0; v < els.length; v++) {
       var ve = els[v];
       if (ve.getAttribute('data-ref')) continue;
@@ -1009,6 +1012,10 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       if (!vn) continue;
       var vbb = ve.getBBox();
       if (vbb.width > 1.2 || vbb.height > 1.2) continue;
+      // one via flashes on every layer it spans — dedupe by position
+      var vkey = Math.round(vbb.x * 20) / 20 + ',' + Math.round(vbb.y * 20) / 20;
+      if (seenViaKeys[vkey]) continue;
+      seenViaKeys[vkey] = 1;
       if (!viaNets[vn]) viaNets[vn] = [];
       viaNets[vn].push(ve);
     }

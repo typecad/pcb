@@ -95,7 +95,9 @@ typecad.assign(vcc, 'power');
 // VCC distribution is hand-routed so R2's pad (17,34) connects ONLY
 // through the via drop: trunk east through the row-1/2 gap to R3, branch
 // down to C2 — no autorouted path runs down the front layer into R2
-const VCCW = 0.525473;
+// narrowed from the IPC-rated 0.525 mm to 0.3 mm so the 1.5 A rail shows
+// visible heating in the thermal view (~21 °C rise vs the rated 10 °C)
+const VCCW = 0.3;
 const vccTrunk = new TrackBuilder(typecad, { net: 'VCC' })
   .from({ x: 16.175, y: 18, layer: 'F.Cu', width: VCCW })
   .to({ x: 16.8375, y: 19.7375, layer: 'F.Cu', width: VCCW })

@@ -1,0 +1,13 @@
+* demo subcircuits for the typeCAD/pcb spice simulation demo
+* two 1k resistors in parallel = 500 ohm between A and B
+.subckt RPAR A B
+R1 A B 1k
+R2 A B 1k
+.ends RPAR
+
+* asymmetric ladder: A -1k- B -2k- C
+* (used to show simulation.pinOrder mapping component pins onto subckt ports)
+.subckt RLAG A B C
+R1 A B 1k
+R2 B C 2k
+.ends RLAG

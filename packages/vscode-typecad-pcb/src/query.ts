@@ -113,6 +113,7 @@ function parseSummary(raw: unknown): ComponentSummary | null {
     value: asString(doc.value),
     footprint: asString(doc.footprint),
     variable: typeof doc.variable === 'string' ? doc.variable : undefined,
+    source: asString(doc.source) || undefined,
     side: doc.side === 'back' ? 'back' : 'front',
     at: {
       ...asPoint(doc.at),
@@ -157,6 +158,32 @@ export function parseNetIndex(output: string): NetSourceSummary[] {
     out.push({ name, source: asString(net.source) || undefined, routeSource: asString(net.routeSource) || undefined });
   }
   return out;
+}
+
+/** `query unconnected --json` — pads with no net plus single-pin nets. */
+export function unconnectedCommand(): string {
+  return 'npx typecad-pcb query unconnected --json';
+}
+
+export interface UnconnectedReport {
+  unconnectedPads: Array<{ reference: string; pad: string; type?: string }>;
+  singlePinNets: string[];
+}
+
+export function parseUnconnected(output: string): UnconnectedReport {
+  const parsed = extractJson(output);
+  throwIfCliError(parsed);
+  const doc = (parsed && typeof parsed === 'object' ? parsed : {}) as Record<string, unknown>;
+  const pads: UnconnectedReport['unconnectedPads'] = [];
+  if (Array.isArray(doc.unconnectedPads)) {
+    for (const raw of doc.unconnectedPads) {
+      if (!raw || typeof raw !== 'object') continue;
+      const pad = raw as Record<string, unknown>;
+      pads.push({ reference: asString(pad.reference), pad: asString(pad.pad), type: asString(pad.type) || undefined });
+    }
+  }
+  const single = Array.isArray(doc.singlePinNets) ? doc.singlePinNets.filter((n): n is string => typeof n === 'string') : [];
+  return { unconnectedPads: pads, singlePinNets: single };
 }
 
 /** Parse `query component <ref> --json` into a hover-ready detail. */

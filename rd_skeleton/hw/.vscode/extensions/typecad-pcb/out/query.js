@@ -16,6 +16,8 @@ exports.detailCommand = detailCommand;
 exports.extractJson = extractJson;
 exports.parseComponentIndex = parseComponentIndex;
 exports.parseNetIndex = parseNetIndex;
+exports.unconnectedCommand = unconnectedCommand;
+exports.parseUnconnected = parseUnconnected;
 exports.parseComponentDetail = parseComponentDetail;
 /** Characters safe to interpolate into a shell command line. */
 const SAFE_ARG = /^[A-Za-z0-9_+\-.]+$/;
@@ -114,6 +116,7 @@ function parseSummary(raw) {
         value: asString(doc.value),
         footprint: asString(doc.footprint),
         variable: typeof doc.variable === 'string' ? doc.variable : undefined,
+        source: asString(doc.source) || undefined,
         side: doc.side === 'back' ? 'back' : 'front',
         at: {
             ...asPoint(doc.at),
@@ -158,6 +161,26 @@ function parseNetIndex(output) {
         out.push({ name, source: asString(net.source) || undefined, routeSource: asString(net.routeSource) || undefined });
     }
     return out;
+}
+/** `query unconnected --json` — pads with no net plus single-pin nets. */
+function unconnectedCommand() {
+    return 'npx typecad-pcb query unconnected --json';
+}
+function parseUnconnected(output) {
+    const parsed = extractJson(output);
+    throwIfCliError(parsed);
+    const doc = (parsed && typeof parsed === 'object' ? parsed : {});
+    const pads = [];
+    if (Array.isArray(doc.unconnectedPads)) {
+        for (const raw of doc.unconnectedPads) {
+            if (!raw || typeof raw !== 'object')
+                continue;
+            const pad = raw;
+            pads.push({ reference: asString(pad.reference), pad: asString(pad.pad), type: asString(pad.type) || undefined });
+        }
+    }
+    const single = Array.isArray(doc.singlePinNets) ? doc.singlePinNets.filter((n) => typeof n === 'string') : [];
+    return { unconnectedPads: pads, singlePinNets: single };
 }
 /** Parse `query component <ref> --json` into a hover-ready detail. */
 function parseComponentDetail(output) {

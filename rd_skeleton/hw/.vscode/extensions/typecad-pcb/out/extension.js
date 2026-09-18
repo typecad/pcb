@@ -47,19 +47,31 @@ var __importStar = (this && this.__importStar) || (function () {
         return result;
     };
 })();
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.activate = activate;
 exports.deactivate = deactivate;
 const vscode = __importStar(require("vscode"));
 const node_child_process_1 = require("node:child_process");
-const node_fs_1 = require("node:fs");
-const node_path_1 = require("node:path");
+const node_fs_1 = __importDefault(require("node:fs"));
+const node_path_1 = __importDefault(require("node:path"));
 const boardData_js_1 = require("./boardData.js");
+const boardSource_js_1 = require("./boardSource.js");
+const boardStatus_js_1 = require("./boardStatus.js");
+const browse_js_1 = require("./browse.js");
 const hwFolder_js_1 = require("./hwFolder.js");
 const hover_js_1 = require("./hover.js");
 const missing_js_1 = require("./missing.js");
+const problems_js_1 = require("./problems.js");
 const query_js_1 = require("./query.js");
+const sourceRef_js_1 = require("./sourceRef.js");
 const viewer_js_1 = require("./viewer.js");
+/** Double-quote a path for an `exec` shell line; embedded quotes escaped. */
+function shellQuotePath(value) {
+    return `"${value.replace(/"/g, '\\"')}"`;
+}
 /** Identifiers only — skips numbers, operators, and property dots. */
 const WORD_LIKE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 function activate(context) {
@@ -67,7 +79,7 @@ function activate(context) {
     const service = new boardData_js_1.BoardDataService(runQuery);
     // typeCAD projects are plain folders (no virtual filesystems), so a sync
     // node check is enough to locate typecad.conf.ts.
-    const resolveHwFolder = () => (0, hwFolder_js_1.findHwFolder)((vscode.workspace.workspaceFolders ?? []).map((f) => f.uri.fsPath), node_fs_1.existsSync);
+    const resolveHwFolder = () => (0, hwFolder_js_1.findHwFolder)((vscode.workspace.workspaceFolders ?? []).map((f) => f.uri.fsPath), (p) => node_fs_1.default.existsSync(p));
     const viewer = new viewer_js_1.BoardViewerPanel(resolveHwFolder, service, runQuery, output);
     // Reload/window-reopen restores a previously open Board panel instead of
     // leaving a dead empty webview behind; must be registered at activation
@@ -80,9 +92,11 @@ function activate(context) {
         watcher?.dispose();
         watcher = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(folder, 'build/**/*.kicad_pcb'));
         const boardChanged = (uri) => {
-            output.appendLine(`board file event: ${(0, node_path_1.basename)(uri.fsPath)}`);
+            output.appendLine(`board file event: ${node_path_1.default.basename(uri.fsPath)}`);
             service.invalidate();
             viewer.invalidate();
+            drcCounts = null; // the DRC report describes the previous board revision
+            refreshAmbient();
             void viewer.refreshIfVisible();
         };
         watcher.onDidChange(boardChanged);
@@ -107,6 +121,38 @@ function activate(context) {
             watchBuild(folder);
         }
     }));
+    // -- "▶ Build Board" lens on hw TypeScript sources (HAL's Flash & Monitor
+    //    pattern): runs npm run build in a reused terminal; the board watcher
+    //    picks the new board up and refreshes an open viewer on its own --
+    let buildTerminal;
+    let buildTerminalFolder;
+    context.subscriptions.push(vscode.commands.registerCommand('typecad-pcb.buildBoard', () => {
+        const folder = resolveHwFolder();
+        if (!folder) {
+            vscode.window.showInformationMessage('typeCAD/pcb: no typeCAD project (typecad.conf.ts) in this workspace.');
+            return;
+        }
+        // one terminal per hw folder, recreated when it closed or the project
+        // moved — the cwd is only settable at creation
+        if (!buildTerminal || buildTerminal.exitStatus !== undefined || buildTerminalFolder !== folder) {
+            buildTerminal = vscode.window.createTerminal({ name: 'typeCAD/pcb', cwd: folder });
+            buildTerminalFolder = folder;
+        }
+        buildTerminal.show(true);
+        buildTerminal.sendText('npm run build', true);
+    }), vscode.languages.registerCodeLensProvider({ language: 'typescript', scheme: 'file' }, {
+        provideCodeLenses(document) {
+            if (!(0, boardSource_js_1.isBoardSourceFile)(document.uri.fsPath, resolveHwFolder()))
+                return [];
+            return [
+                new vscode.CodeLens(new vscode.Range(0, 0, 0, 0), {
+                    title: '▶ Build Board',
+                    command: 'typecad-pcb.buildBoard',
+                    arguments: [document.uri],
+                }),
+            ];
+        },
+    }));
     context.subscriptions.push(vscode.commands.registerCommand('typecad-pcb.viewBoard', () => viewer.show()), vscode.commands.registerCommand('typecad-pcb.viewComponent', async (ref) => {
         // Command-link args arrive spread as JSON (the hover's "view on
         // board" link): go straight to that component, no prompt.
@@ -130,6 +176,289 @@ function activate(context) {
         output.appendLine(`viewComponent: typed=${JSON.stringify(typed)}`);
         await viewer.select(typed.trim());
     }));
+    // -- ambient board state: status bar, Problems, declaration-line warnings --
+    // Priority 101 parks the pcb chip just left of typeCAD/hal's (99) — stable
+    // ordering, board state before firmware state.
+    const statusItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 101);
+    statusItem.command = 'typecad-pcb.viewBoard';
+    context.subscriptions.push(statusItem);
+    const problems = vscode.languages.createDiagnosticCollection('typecad-pcb');
+    context.subscriptions.push(problems);
+    const warnChip = vscode.window.createTextEditorDecorationType({
+        after: {
+            color: new vscode.ThemeColor('editorWarning.foreground'),
+            fontStyle: 'italic',
+            margin: '0 0 0 1.5em',
+        },
+    });
+    context.subscriptions.push(warnChip);
+    /** DRC counts from this session's last run, null before the first run. */
+    let drcCounts = null;
+    /** ProblemEntry[] -> vscode diagnostics grouped by file. */
+    function setProblemDiagnostics(entries, folder) {
+        const byFile = new Map();
+        for (const entry of entries) {
+            const loc = (0, sourceRef_js_1.parseSourceLocation)(folder, entry.location);
+            if (!loc)
+                continue;
+            const line = Math.max(0, loc.line - 1);
+            const diagnostic = new vscode.Diagnostic(new vscode.Range(line, 0, line, 0), entry.message, entry.severity === 'error' ? vscode.DiagnosticSeverity.Error : vscode.DiagnosticSeverity.Warning);
+            diagnostic.source = 'typeCAD/pcb';
+            diagnostic.code = entry.code;
+            const list = byFile.get(loc.fsPath) ?? [];
+            list.push(diagnostic);
+            byFile.set(loc.fsPath, list);
+        }
+        problems.clear();
+        for (const [file, list] of byFile) {
+            problems.set(vscode.Uri.file(file), list);
+        }
+    }
+    /** "R1 · 2 unconnected pads" warning chips on the declaring lines. */
+    function refreshWarnChips(pads, refs, folder) {
+        const counts = new Map();
+        for (const pad of pads)
+            counts.set(pad.reference, (counts.get(pad.reference) ?? 0) + 1);
+        for (const editor of vscode.window.visibleTextEditors) {
+            const options = [];
+            for (const [ref, count] of counts) {
+                const loc = (0, sourceRef_js_1.parseSourceLocation)(folder, refs.get(ref) ?? '');
+                if (!loc || loc.fsPath !== editor.document.uri.fsPath)
+                    continue;
+                const line = Math.min(Math.max(0, loc.line - 1), editor.document.lineCount - 1);
+                const range = editor.document.lineAt(line).range;
+                options.push({
+                    range,
+                    renderOptions: { after: { contentText: ` ${ref} · ${count} unconnected pad${count === 1 ? '' : 's'}` } },
+                });
+            }
+            editor.setDecorations(warnChip, options);
+        }
+    }
+    /** True when a hw .ts source is newer than the built board. */
+    function boardIsStale(folder, boardMtime) {
+        if (!boardMtime)
+            return false;
+        const check = (dir) => {
+            let entries;
+            try {
+                entries = node_fs_1.default.readdirSync(dir, { withFileTypes: true });
+            }
+            catch {
+                return false;
+            }
+            for (const entry of entries) {
+                const full = node_path_1.default.join(dir, entry.name);
+                if (entry.isDirectory()) {
+                    if (entry.name === 'node_modules' || entry.name === 'build' || entry.name.startsWith('.'))
+                        continue;
+                    if (check(full))
+                        return true;
+                }
+                else if (entry.name.endsWith('.ts')) {
+                    try {
+                        if (node_fs_1.default.statSync(full).mtimeMs > boardMtime)
+                            return true;
+                    }
+                    catch {
+                        /* raced a delete */
+                    }
+                }
+            }
+            return false;
+        };
+        return check(folder);
+    }
+    /** Pull fresh board data and re-render every ambient surface. */
+    const refreshAmbient = () => {
+        void (async () => {
+            const folder = resolveHwFolder();
+            if (!folder) {
+                // No typeCAD project, no chip — activation is workspaceContains-gated,
+                // so this only happens after a command invocation or the project
+                // folder leaving the workspace.
+                statusItem.hide();
+                return;
+            }
+            const board = (0, viewer_js_1.newestBoardFile)(folder);
+            if (!board) {
+                statusItem.text = (0, boardStatus_js_1.statusContent)({
+                    boardName: null,
+                    parts: null,
+                    unconnected: null,
+                    drcErrors: null,
+                    drcWarnings: null,
+                    stale: false,
+                }).text;
+                statusItem.tooltip = (0, boardStatus_js_1.statusContent)({
+                    boardName: null,
+                    parts: null,
+                    unconnected: null,
+                    drcErrors: null,
+                    drcWarnings: null,
+                    stale: false,
+                }).tooltip;
+                statusItem.show();
+                return;
+            }
+            try {
+                const [components, nets, unconnectedReport] = await Promise.all([
+                    service.components(),
+                    service.netSources().catch(() => []),
+                    service.unconnected().catch(() => ({ unconnectedPads: [], singlePinNets: [] })),
+                ]);
+                const refs = (0, problems_js_1.refSourceMap)(components);
+                const unconnectedTotal = unconnectedReport.unconnectedPads.length + unconnectedReport.singlePinNets.length;
+                const content = (0, boardStatus_js_1.statusContent)({
+                    boardName: node_path_1.default.basename(board, '.kicad_pcb'),
+                    parts: components.length,
+                    unconnected: unconnectedTotal,
+                    drcErrors: drcCounts?.errors ?? null,
+                    drcWarnings: drcCounts?.warnings ?? null,
+                    stale: boardIsStale(folder, node_fs_1.default.statSync(board).mtimeMs),
+                });
+                statusItem.text = content.text;
+                statusItem.tooltip = content.tooltip;
+                statusItem.show();
+                setProblemDiagnostics((0, problems_js_1.unconnectedProblems)(unconnectedReport, refs, nets, node_path_1.default.relative(folder, board)), folder);
+                refreshWarnChips(unconnectedReport.unconnectedPads, refs, folder);
+            }
+            catch (err) {
+                output.appendLine(`status refresh failed: ${err instanceof Error ? err.message : String(err)}`);
+            }
+        })();
+    };
+    refreshAmbient();
+    context.subscriptions.push(vscode.window.onDidChangeActiveTextEditor(() => {
+        // chips live per-editor — reapply for the newly focused one
+        void (async () => {
+            const folder = resolveHwFolder();
+            if (!folder)
+                return;
+            try {
+                const [components, report] = await Promise.all([service.components(), service.unconnected()]);
+                refreshWarnChips(report.unconnectedPads, (0, problems_js_1.refSourceMap)(components), folder);
+            }
+            catch {
+                /* no board yet */
+            }
+        })();
+    }), vscode.workspace.onDidSaveTextDocument((doc) => {
+        // a source save can only flip the stale flag
+        if (doc.languageId === 'typescript' && (0, boardSource_js_1.isBoardSourceFile)(doc.uri.fsPath, resolveHwFolder()))
+            refreshAmbient();
+    }));
+    // -- DRC: run the check, land violations in Problems aimed at their source --
+    context.subscriptions.push(vscode.commands.registerCommand('typecad-pcb.runDrc', async () => {
+        const folder = resolveHwFolder();
+        if (!folder) {
+            vscode.window.showInformationMessage('typeCAD/pcb: no typeCAD project (typecad.conf.ts) in this workspace.');
+            return;
+        }
+        const board = (0, viewer_js_1.newestBoardFile)(folder);
+        if (!board) {
+            vscode.window.showInformationMessage('typeCAD/pcb: no compiled board yet — run ▶ Build Board first.');
+            return;
+        }
+        output.appendLine('running DRC…');
+        await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: 'typeCAD/pcb: running DRC' }, async () => {
+            try {
+                await runQuery(folder, `npx typecad-pcb drc ${shellQuotePath(node_path_1.default.relative(folder, board))}`, 180_000);
+            }
+            catch (err) {
+                // kicad-cli exits non-zero on violations; only real failures land here
+                output.appendLine(`drc: ${err.message.split('\n')[0]}`);
+            }
+        });
+        const reportPath = board.replace(/\.kicad_pcb$/i, '_drc.json');
+        try {
+            const violations = (0, problems_js_1.parseDrcReport)(JSON.parse(node_fs_1.default.readFileSync(reportPath, 'utf8')));
+            const entries = (0, problems_js_1.drcProblems)(violations, (0, problems_js_1.refSourceMap)(await service.components()), await service.netSources().catch(() => []), node_path_1.default.relative(folder, board));
+            // keep unconnected entries too — Problems shows the union
+            const unconnectedReport = await service.unconnected().catch(() => ({ unconnectedPads: [], singlePinNets: [] }));
+            const refs = (0, problems_js_1.refSourceMap)(await service.components());
+            const nets = await service.netSources().catch(() => []);
+            setProblemDiagnostics([...(0, problems_js_1.unconnectedProblems)(unconnectedReport, refs, nets, node_path_1.default.relative(folder, board)), ...entries], folder);
+            drcCounts = {
+                errors: entries.filter((e) => e.severity === 'error').length,
+                warnings: entries.filter((e) => e.severity === 'warning').length,
+            };
+            vscode.window.setStatusBarMessage(drcCounts.errors + drcCounts.warnings === 0
+                ? 'typeCAD/pcb: DRC clean'
+                : `typeCAD/pcb: DRC found ${drcCounts.errors} error(s), ${drcCounts.warnings} warning(s) — see Problems`, 6000);
+        }
+        catch (err) {
+            vscode.window.setStatusBarMessage(`typeCAD/pcb: DRC report unreadable — see the typeCAD/pcb output channel`, 6000);
+            output.appendLine(`drc report: ${err instanceof Error ? err.message : String(err)}`);
+        }
+        refreshAmbient();
+    }));
+    // -- component browser: QuickPick over the compiled board --
+    context.subscriptions.push(vscode.commands.registerCommand('typecad-pcb.browseComponents', async () => {
+        let components;
+        try {
+            components = await service.components();
+        }
+        catch {
+            vscode.window.showInformationMessage('typeCAD/pcb: no compiled board yet — run ▶ Build Board first.');
+            return;
+        }
+        const picked = await vscode.window.showQuickPick((0, browse_js_1.browseItems)(components).map((item) => ({
+            label: item.label,
+            description: item.description,
+            detail: item.detail,
+            ref: item.ref,
+        })), { placeHolder: 'components on the compiled board — Enter zooms the Board viewer to it' });
+        if (picked)
+            await viewer.select(picked.ref);
+    }));
+    // -- board diff vs HEAD, in a webview panel --
+    let diffPanel;
+    context.subscriptions.push(vscode.commands.registerCommand('typecad-pcb.diffBoard', async () => {
+        const folder = resolveHwFolder();
+        if (!folder) {
+            vscode.window.showInformationMessage('typeCAD/pcb: no typeCAD project (typecad.conf.ts) in this workspace.');
+            return;
+        }
+        const board = (0, viewer_js_1.newestBoardFile)(folder);
+        if (!board) {
+            vscode.window.showInformationMessage('typeCAD/pcb: no compiled board yet — run ▶ Build Board first.');
+            return;
+        }
+        const out = node_path_1.default.join('build', 'serve', 'board-diff.html');
+        output.appendLine('generating board diff vs HEAD…');
+        try {
+            await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: 'typeCAD/pcb: diffing board against HEAD' }, () => runQuery(folder, `npx typecad-pcb diff --no-open --output=${out.replace(/"/g, '')} HEAD ${shellQuotePath(node_path_1.default.relative(folder, board))}`, 240_000));
+        }
+        catch (err) {
+            vscode.window.showErrorMessage(`typeCAD/pcb: diff failed — see the typeCAD/pcb output channel.`);
+            output.appendLine(`diff: ${err instanceof Error ? err.message : String(err)}`);
+            return;
+        }
+        let html;
+        try {
+            html = node_fs_1.default.readFileSync(node_path_1.default.join(folder, out), 'utf8');
+        }
+        catch {
+            vscode.window.showErrorMessage('typeCAD/pcb: diff produced no report.');
+            return;
+        }
+        const page = html.replace('<head>', "<head><meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:;\">");
+        if (diffPanel) {
+            diffPanel.webview.html = page;
+            diffPanel.reveal(undefined, true);
+            return;
+        }
+        diffPanel = vscode.window.createWebviewPanel('typecadBoardDiff', 'Board diff', {
+            viewColumn: vscode.ViewColumn.Beside,
+            preserveFocus: true,
+        });
+        diffPanel.webview.options = { enableScripts: true };
+        diffPanel.webview.html = page;
+        diffPanel.onDidDispose(() => {
+            diffPanel = undefined;
+        });
+    }));
     context.subscriptions.push(vscode.languages.registerHoverProvider({ language: 'typescript', scheme: 'file' }, {
         async provideHover(document, position) {
             const range = document.getWordRangeAtPosition(position);
@@ -140,6 +469,11 @@ function activate(context) {
                 return;
             const folder = resolveHwFolder();
             if (!folder)
+                return;
+            // Board hovers belong to hw sources only — fw/ files are the
+            // typeCAD/hal extension's hover domain, and the two stack
+            // confusingly when both fire on one identifier.
+            if (!(0, boardSource_js_1.isBoardSourceFile)(document.uri.fsPath, folder))
                 return;
             service.setFolder(folder);
             if (!watcher)

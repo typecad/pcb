@@ -21,6 +21,8 @@ export interface ComponentSummary {
   footprint: string;
   /** Source variable name recovered from the footprint's "Code" property. */
   variable?: string;
+  /** Source file:line from the "Code" property, when present. */
+  source?: string;
   side: 'front' | 'back';
   at: { x: number; y: number; rotation: number };
   dimensions: { width: number; height: number } | null;

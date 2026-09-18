@@ -20,6 +20,8 @@ class BoardDataService {
         this.indexInFlight = null;
         this.netsCache = null;
         this.netsInFlight = null;
+        this.unconnectedCache = null;
+        this.unconnectedInFlight = null;
         this.detailCache = new Map();
         this.detailInFlight = new Map();
     }
@@ -35,6 +37,8 @@ class BoardDataService {
         this.indexInFlight = null;
         this.netsCache = null;
         this.netsInFlight = null;
+        this.unconnectedCache = null;
+        this.unconnectedInFlight = null;
         this.detailCache.clear();
         this.detailInFlight.clear();
     }
@@ -59,6 +63,25 @@ class BoardDataService {
             });
         }
         return this.indexInFlight;
+    }
+    /** Unconnected pads + single-pin nets (query unconnected), cached likewise. */
+    async unconnected() {
+        if (this.unconnectedCache)
+            return this.unconnectedCache;
+        if (!this.unconnectedInFlight) {
+            const inFlight = this.query((0, query_js_1.unconnectedCommand)()).then(query_js_1.parseUnconnected);
+            this.unconnectedInFlight = inFlight;
+            inFlight.then((report) => {
+                if (this.unconnectedInFlight === inFlight) {
+                    this.unconnectedCache = report;
+                    this.unconnectedInFlight = null;
+                }
+            }, () => {
+                if (this.unconnectedInFlight === inFlight)
+                    this.unconnectedInFlight = null;
+            });
+        }
+        return this.unconnectedInFlight;
     }
     /** Net source provenance (query nets), cached with the component index. */
     async netSources() {

@@ -10,10 +10,13 @@ import {
   indexCommand,
   detailCommand,
   netsCommand,
+  unconnectedCommand,
   parseComponentIndex,
   parseComponentDetail,
   parseNetIndex,
+  parseUnconnected,
   QueryError,
+  type UnconnectedReport,
 } from './query.js';
 import { matchComponent } from './match.js';
 import type { ComponentDetail, ComponentSummary, NetSourceSummary } from './types.js';
@@ -29,6 +32,8 @@ export class BoardDataService {
   private indexInFlight: Promise<ComponentSummary[]> | null = null;
   private netsCache: NetSourceSummary[] | null = null;
   private netsInFlight: Promise<NetSourceSummary[]> | null = null;
+  private unconnectedCache: UnconnectedReport | null = null;
+  private unconnectedInFlight: Promise<UnconnectedReport> | null = null;
   private detailCache = new Map<string, ComponentDetail>();
   private detailInFlight = new Map<string, Promise<ComponentDetail>>();
 
@@ -50,6 +55,8 @@ export class BoardDataService {
     this.indexInFlight = null;
     this.netsCache = null;
     this.netsInFlight = null;
+    this.unconnectedCache = null;
+    this.unconnectedInFlight = null;
     this.detailCache.clear();
     this.detailInFlight.clear();
   }
@@ -76,6 +83,27 @@ export class BoardDataService {
       );
     }
     return this.indexInFlight;
+  }
+
+  /** Unconnected pads + single-pin nets (query unconnected), cached likewise. */
+  async unconnected(): Promise<UnconnectedReport> {
+    if (this.unconnectedCache) return this.unconnectedCache;
+    if (!this.unconnectedInFlight) {
+      const inFlight = this.query(unconnectedCommand()).then(parseUnconnected);
+      this.unconnectedInFlight = inFlight;
+      inFlight.then(
+        (report) => {
+          if (this.unconnectedInFlight === inFlight) {
+            this.unconnectedCache = report;
+            this.unconnectedInFlight = null;
+          }
+        },
+        () => {
+          if (this.unconnectedInFlight === inFlight) this.unconnectedInFlight = null;
+        },
+      );
+    }
+    return this.unconnectedInFlight;
   }
 
   /** Net source provenance (query nets), cached with the component index. */

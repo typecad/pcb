@@ -35,12 +35,26 @@ const DELIVERY_TIMEOUT_MS = 5_000;
 const DELIVERY_INTERVAL_MS = 200;
 
 /** mtime in ms, or 0 when the file vanished — enough for freshness checks. */
-function mtimeOf(file: string): number {
+export function mtimeOf(file: string): number {
   try {
     return fs.statSync(file).mtimeMs;
   } catch {
     return 0;
   }
+}
+
+/**
+ * The project's board: whichever build/ touched last (stray boards from fp
+ * upgrade tests can share build/ — the newest .kicad_pcb is the one just
+ * written). statSync guarded: a board rewritten between readdir and stat
+ * must not crash the caller.
+ */
+export function newestBoardFile(folder: string): string | null {
+  const buildDir = path.join(folder, 'build');
+  if (!fs.existsSync(buildDir)) return null;
+  const boards = fs.readdirSync(buildDir).filter((f) => f.endsWith('.kicad_pcb'));
+  if (boards.length === 0) return null;
+  return boards.map((f) => path.join(buildDir, f)).sort((a, b) => mtimeOf(b) - mtimeOf(a))[0] ?? null;
 }
 
 /** Double-quote a path for an `exec` shell line; embedded quotes are escaped. */
@@ -155,7 +169,7 @@ export class BoardViewerPanel {
       panel.dispose();
       return;
     }
-    const board = this.findBoard(folder);
+    const board = newestBoardFile(folder);
     const htmlPath = path.join(folder, 'build', 'serve', 'viewer.html');
     // fast path: the on-disk viewer was generated from this exact board
     // revision (the file is newer than the board) — reuse it as-is
@@ -302,7 +316,7 @@ export class BoardViewerPanel {
     // watcher events are cheap and sometimes spurious (Windows fires
     // onChange loosely); the board's mtime against the last render decides
     // whether any work is warranted at all
-    const board = this.findBoard(folder);
+    const board = newestBoardFile(folder);
     if (board && this.generated && mtimeOf(board) === this.generated.boardMtimeMs) return;
     // The re-render takes ~20s (gerber export incl. the zone refill); the
     // page keeps showing the old board meanwhile, so say so in its status
@@ -329,13 +343,13 @@ export class BoardViewerPanel {
     // event is self-inflicted, not a real board change. Only re-render when
     // the mtime genuinely moved AND stays moved on a re-check 5s later
     // (rides out kicad-cli's cleanup churn).
-    const boardNow = this.findBoard(folder);
+    const boardNow = newestBoardFile(folder);
     if (boardNow && mtimeOf(boardNow) !== this.generated!.boardMtimeMs) {
       const staleMtime = mtimeOf(boardNow);
       if (this.retryTimer) clearTimeout(this.retryTimer);
       this.retryTimer = setTimeout(() => {
         this.retryTimer = undefined;
-        const settled = this.findBoard(folder);
+        const settled = newestBoardFile(folder);
         if (!settled || mtimeOf(settled) === staleMtime) {
           // board quiet at the new mtime — render the new revision
           void this.doRefresh();
@@ -364,29 +378,18 @@ export class BoardViewerPanel {
   }
 
   private boardMtime(folder: string): number {
-    const board = this.findBoard(folder);
+    const board = newestBoardFile(folder);
     if (!board) return 0;
     return mtimeOf(board);
   }
 
-  private findBoard(folder: string): string | null {
-    const buildDir = path.join(folder, 'build');
-    if (!fs.existsSync(buildDir)) return null;
-    const boards = fs.readdirSync(buildDir).filter((f) => f.endsWith('.kicad_pcb'));
-    if (boards.length === 0) return null;
-    // The project's board is whichever build touched last: stray boards (fp
-    // upgrade tests, imports) can share build/, and picking by name is
-    // unreliable — the newest .kicad_pcb is always the one just written.
-    // statSync is guarded: a board rewritten/deleted between readdir and
-    // stat (a build cleaning build/) must not crash the command.
-    return boards.map((f) => path.join(buildDir, f)).sort((a, b) => mtimeOf(b) - mtimeOf(a))[0] ?? null;
-  }
+
 
   /** Generate viewer HTML; resolves false when skipped (board mid-build). */
   private async generate(folder: string): Promise<boolean> {
     if (this.generating) return this.generating;
     this.generating = (async () => {
-      const board = this.findBoard(folder);
+      const board = newestBoardFile(folder);
       if (!board) throw new Error('no .kicad_pcb in build/ — run npm run build first');
 
       // The build writes zone declarations without fill geometry; fills are

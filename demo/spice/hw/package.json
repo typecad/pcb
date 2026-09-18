@@ -1,0 +1,18 @@
+{
+  "name": "spice-demo-hw",
+  "version": "1.0.0",
+  "description": "typeCAD/pcb ngspice simulation demo — exercises the full simulate() API",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "tsx src/spice_demo.ts",
+    "build": "typecad-pcb build"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@typecad/pcb": "1.0.0-alpha.5",
+    "tsx": "^4.23.13"
+  }
+}

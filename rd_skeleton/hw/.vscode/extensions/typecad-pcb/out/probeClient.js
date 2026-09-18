@@ -211,9 +211,12 @@ const PROBE_CLIENT = `<script>
  * cross-probes nothing.
  *
  * The artifact is self-contained local content (inline SVG/CSS/JS, no
- * network, no images), so `default-src 'none'` plus `'unsafe-inline'` styles
- * and a per-page nonce for scripts is the whole policy. A nonce (rather than
- * script-src 'unsafe-inline') keeps any script that ever lands in the
+ * network), so `default-src 'none'` plus `'unsafe-inline'` styles, a
+ * per-page nonce for scripts, and `img-src data: blob:` for the PNG export's
+ * rasterization step (it loads the serialized SVG through a data: URL —
+ * without the directive, default-src 'none' blocks the image and the export
+ * dies with "could not be rasterized") is the whole policy. A nonce (rather
+ * than script-src 'unsafe-inline') keeps any script that ever lands in the
  * generated output from running inside the trusted webview, while
  * acquireVsCodeApi and the message transport are unaffected — they are
  * provided by VS Code's bootstrap outside the document's script-src.
@@ -235,7 +238,7 @@ function injectProbeClient(html, components, nets = []) {
     // `</script>` is never touched.)
     const nonced = body.replace(/<script(?=[\s>])/gi, () => `<script nonce="${nonce}"`);
     const csp = '<head>' +
-        `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';">` +
+        `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: blob:; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';">` +
         nonced;
     return { html: html.slice(0, headOpen) + csp, injected: true };
 }

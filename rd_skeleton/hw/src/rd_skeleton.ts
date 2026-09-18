@@ -1,4 +1,4 @@
-import { PCB, Component } from '@typecad/pcb';
+import { PCB, Component, Power } from '@typecad/pcb';
 
 const typecad = new PCB('rd_skeleton');
 
@@ -11,13 +11,20 @@ const c1 = new Component({ symbol: 'Device:C_Small', footprint: 'Capacitor_SMD:C
 c1.pcb = { x: 31, y: 18 };
 const l1 = new Component({ symbol: 'Device:L_Small', footprint: 'Inductor_SMD:L_0805_2012Metric', reference: 'L1', value: '10uH' });
 l1.pcb = { x: 45, y: 18 };
-const d1 = new Component({ symbol: 'Device:D_Small', footprint: 'Diode_SMD:D_0805_2012Metric', reference: 'D1', value: '1N4148W' });
+const d1 = new Component({ symbol: 'Device:D_Small', footprint: 'Diode_SMD:D_0805_2012Metric', reference: 'D1', value: '1N4148W', simulation: { model: 'D1N4148W D (IS=4.35n RS=0.6456 N=1.9061 BV=110 CJO=4p M=0.33 VJ=0.75 TT=4n)' } });
 d1.pcb = { x: 59, y: 18 };
-const led1 = new Component({ symbol: 'Device:LED', footprint: 'LED_SMD:LED_0805_2012Metric', reference: 'LED1', value: 'red' });
-led1.pcb = { x: 73, y: 18 };
-const f1 = new Component({ symbol: 'Device:Fuse_Small', footprint: 'Fuse:Fuse_0603_1608Metric', reference: 'F1', value: '500mA' });
-f1.pcb = { x: 87, y: 18 };
-const y1 = new Component({ symbol: 'Device:Crystal', footprint: 'Crystal:Crystal_SMD_3215-2Pin_3.2x1.5mm', reference: 'Y1', value: '8MHz' });
+// "LED1"/"F1" can't be the SPICE designators — ngspice reads the card type
+// from the first letter of the reference (L = inductor, F = current-controlled
+// source), so the LED rides the netlist as D3 with a generic red diode model
+// (~1.8 V forward at 1 mA) and the fuse as RF1, whose "500mA" rating ngspice
+// reads as 0.5 Ω — a plausible fuse resistance that keeps the BOM honest
+const d3 = new Component({ symbol: 'Device:LED', footprint: 'LED_SMD:LED_0805_2012Metric', reference: 'D3', value: 'red', simulation: { model: 'DRED D (IS=1f N=2.5 RS=0.3)' } });
+d3.pcb = { x: 73, y: 18 };
+const rf1 = new Component({ symbol: 'Device:Fuse_Small', footprint: 'Fuse:Fuse_0603_1608Metric', reference: 'RF1', value: '500mA' });
+rf1.pcb = { x: 87, y: 18 };
+// a crystal is DC-open by physics and "8MHz" has no honest spice card —
+// it stays out of the solve but still carries the trace
+const y1 = new Component({ symbol: 'Device:Crystal', footprint: 'Crystal:Crystal_SMD_3215-2Pin_3.2x1.5mm', reference: 'Y1', value: '8MHz', simulation: { exclude: true } });
 y1.pcb = { x: 101, y: 18 };
 
 // row 2: through-hole passives + transistors
@@ -68,7 +75,16 @@ sw3.pcb = { x: 87, y: 66 };
 const sw2 = new Component({ symbol: 'Device:RotaryEncoder_Switch', footprint: 'Rotary_Encoder:RotaryEncoder_Alps_EC11E-Switch_Vertical_H20mm', reference: 'SW2', value: 'encoder' });
 sw2.pcb = { x: 101, y: 66 };
 
-typecad.named('GND').net(c2.pin(2));
+// a 3.3 V rail feeding the gallery parts so the schematic view's trace
+// hover shows real operating-point numbers (VCC at 3.3 V, R2's 10k divider
+// current, C2 the rail's bulk cap). The nets are routed too — the OP solve
+// reads the netlist, but the copper is what the board actually ships
+const vcc = typecad.named('VCC').net(r1.pin(1), r2.pin(1), c2.pin(1));
+typecad.route(vcc);
+typecad.named('GND').net(r2.pin(2), c2.pin(2));
+const v1 = new Power({ power: r1.pin(1), gnd: c2.pin(2), voltage: 3.3, name: 'V3V3' });
+void v1;
+
 typecad.outline(10, 10, 104, 74, 0.1);
 
 typecad.zone({
@@ -79,13 +95,30 @@ typecad.zone({
   hatchGap: 0.5,
   hatchThickness: 0.25,
 });
-const r12_c11 = typecad.net(r1.pin(2), c1.pin(1));
-typecad.route(r12_c11);
-
+// one trace threading the entire top row, wired so DC actually flows from
+// the rail to ground: VCC → R1 → [C1 shunts that node to GND — a series cap
+// would DC-block the chain] → L1 → D1 → D3 (LED) → RF1 → GND, with Y1 tapped
+// from the LED-cathode node to GND (DC-open, it rides the trace without
+// blocking the return). KiCad diode symbols number the cathode 1 and the
+// anode 2, so the chain enters each diode at pin 2 and leaves at pin 1 to
+// keep them forward-biased
+const r1_out = typecad.net(r1.pin(2), c1.pin(1), l1.pin(1));
+typecad.route(r1_out);
+typecad.named('GND').net(c1.pin(2));
+const l1_d1 = typecad.net(l1.pin(2), d1.pin(2));
+typecad.route(l1_d1);
+const d1_led = typecad.net(d1.pin(1), d3.pin(2));
+typecad.route(d1_led);
+const led_gnd = typecad.net(d3.pin(1), rf1.pin(1), y1.pin(1));
+typecad.route(led_gnd);
+const chain_gnd = typecad.named('GND').net(rf1.pin(2), y1.pin(2));
+typecad.route(chain_gnd);
+const j71_u51 = typecad.net(u5.pin(2), j7.pin(2));
+typecad.route(j71_u51);
 typecad.text({ text: 'rd-skeleton', x: 62, y: 80, layer: 'F.SilkS', font: 'OCR A Std', width: 1.5, height: 1.5 });
 typecad.stitch('GND', { pitch: 2.5, margin: 5 });
 typecad.create(
-  r1, c1, l1, d1, led1, f1, y1,
+  r1, c1, l1, d1, d3, rf1, y1,
   r2, d2, c2, led2, q1, q2, sw1,
   u3, u4, u7, u5, u6, x1, rv1,
   j6, j7, j3, j4, j5, sw3, sw2,

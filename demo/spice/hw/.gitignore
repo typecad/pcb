@@ -1,0 +1,2 @@
+# ngspice raw output lands next to the entry file
+*.out

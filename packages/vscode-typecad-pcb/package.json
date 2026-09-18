@@ -2,7 +2,7 @@
   "name": "vscode-typecad-pcb",
   "displayName": "typeCAD/pcb",
   "description": "Pin-level board intelligence for typeCAD projects — hover a component to see its pads, nets, and unconnected pins",
-  "version": "0.11.9",
+  "version": "0.11.11",
   "private": true,
   "publisher": "typecad",
   "license": "Apache-2.0",
@@ -18,7 +18,6 @@
     "Other"
   ],
   "activationEvents": [
-    "onLanguage:typescript",
     "workspaceContains:**/typecad.conf.ts"
   ],
   "main": "./out/extension.js",
@@ -30,6 +29,11 @@
         "category": "typeCAD/pcb"
       },
       {
+        "command": "typecad-pcb.buildBoard",
+        "title": "Build Board",
+        "category": "typeCAD/pcb"
+      },
+      {
         "command": "typecad-pcb.viewBoard",
         "title": "View Board",
         "category": "typeCAD/pcb"
@@ -37,6 +41,21 @@
       {
         "command": "typecad-pcb.viewComponent",
         "title": "View Component on Board",
+        "category": "typeCAD/pcb"
+      },
+      {
+        "command": "typecad-pcb.runDrc",
+        "title": "Run DRC",
+        "category": "typeCAD/pcb"
+      },
+      {
+        "command": "typecad-pcb.browseComponents",
+        "title": "Browse Components",
+        "category": "typeCAD/pcb"
+      },
+      {
+        "command": "typecad-pcb.diffBoard",
+        "title": "Diff Board vs HEAD",
         "category": "typeCAD/pcb"
       }
     ]

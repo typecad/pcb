@@ -19,6 +19,7 @@
     "@typecad/*",
     "packages/*",
     "demo/hw",
+    "demo/spice/hw",
     "rd_skeleton/hw"
   ],
   "devDependencies": {

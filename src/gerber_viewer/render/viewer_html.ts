@@ -1171,7 +1171,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       }
       viaNote += viaNote ? ' · ' : ' · ';
       viaNote += anySolved
-        ? viaNets[vn2].length + ' ' + vn2 + ' via' + (viaNets[vn2].length > 1 ? 's' : '') + ' carry solved currents'
+        ? viaNets[vn2].length + ' ' + vn2 + ' via' + (viaNets[vn2].length > 1 ? 's carry solved currents' : ' carries solved current')
         : viaNets[vn2].length + ' ' + vn2 + ' via' + (viaNets[vn2].length > 1 ? 's' : '') + ' share ' + fmtEng(vtot) + 'A equally';
       for (var v2 = 0; v2 < viaNets[vn2].length; v2++) {
         var vel = viaNets[vn2][v2];

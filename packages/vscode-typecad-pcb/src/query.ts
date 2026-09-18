@@ -8,7 +8,12 @@
 // can prepend noise, so parsing extracts the JSON document defensively.
 // ---------------------------------------------------------------------------
 
-import type { ComponentDetail, ComponentSummary, NetSourceSummary } from './types.js';
+import type {
+  ComponentDetail,
+  ComponentSummary,
+  NetSourceSummary,
+  UnconnectedReport,
+} from './types.js';
 
 /** Characters safe to interpolate into a shell command line. */
 const SAFE_ARG = /^[A-Za-z0-9_+\-.]+$/;
@@ -163,11 +168,6 @@ export function parseNetIndex(output: string): NetSourceSummary[] {
 /** `query unconnected --json` — pads with no net plus single-pin nets. */
 export function unconnectedCommand(): string {
   return 'npx typecad-pcb query unconnected --json';
-}
-
-export interface UnconnectedReport {
-  unconnectedPads: Array<{ reference: string; pad: string; type?: string }>;
-  singlePinNets: string[];
 }
 
 export function parseUnconnected(output: string): UnconnectedReport {

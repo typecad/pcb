@@ -16,10 +16,9 @@ import {
   parseNetIndex,
   parseUnconnected,
   QueryError,
-  type UnconnectedReport,
 } from './query.js';
 import { matchComponent } from './match.js';
-import type { ComponentDetail, ComponentSummary, NetSourceSummary } from './types.js';
+import type { ComponentDetail, ComponentSummary, NetSourceSummary, UnconnectedReport } from './types.js';
 
 /** Resolves with stdout; rejects with an Error carrying stderr/output tails. */
 export type QueryRunner = (cwd: string, command: string, timeoutMs: number) => Promise<string>;

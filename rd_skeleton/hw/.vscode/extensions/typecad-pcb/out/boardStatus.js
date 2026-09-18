@@ -22,12 +22,18 @@ function statusContent(s) {
         text += ` · ${s.unconnected} unconnected`;
         tooltip.push(`${s.unconnected} unconnected pad${s.unconnected === 1 ? '' : 's'} / single-pin net${s.unconnected === 1 ? '' : 's'} (see Problems)`);
     }
-    if (s.drcErrors !== null) {
-        if (s.drcErrors > 0)
-            text += ` · ${s.drcErrors}E`;
-        if (s.drcWarnings !== null && s.drcWarnings > 0)
-            text += ` ${s.drcWarnings}W`;
-        tooltip.push(`DRC: ${s.drcErrors} error${s.drcErrors === 1 ? '' : 's'}, ${s.drcWarnings ?? 0} warning${s.drcWarnings === 1 ? '' : 's'} — click to view`);
+    if (s.drcErrors !== null || s.drcWarnings !== null) {
+        const errors = s.drcErrors ?? 0;
+        const warnings = s.drcWarnings ?? 0;
+        // one "·"-separated segment so a warnings-only count ("· 2W") doesn't
+        // glue onto the parts count
+        const counts = [
+            ...(errors > 0 ? [`${errors}E`] : []),
+            ...(warnings > 0 ? [`${warnings}W`] : []),
+        ];
+        if (counts.length > 0)
+            text += ` · ${counts.join(' ')}`;
+        tooltip.push(`DRC: ${errors} error${errors === 1 ? '' : 's'}, ${warnings} warning${warnings === 1 ? '' : 's'} — click to view`);
     }
     if (s.stale) {
         text += ' · stale';

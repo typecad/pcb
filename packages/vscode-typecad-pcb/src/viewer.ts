@@ -6,6 +6,7 @@
 //   typecad-pcb export gerbers → typecad-pcb export drill →
 //   gerber-viewer build/gerbers -o build/serve/viewer.html
 //       [--netlist build/<board>.net] [--drc build/<board>_drc.json]
+//       [--stackup build/<board>_stackup.json]
 // The generated HTML is then post-processed: CSP for the webview, embedded
 // component outlines, and the probe client script.
 //
@@ -58,7 +59,7 @@ export function newestBoardFile(folder: string): string | null {
 }
 
 /** Double-quote a path for an `exec` shell line; embedded quotes are escaped. */
-function shellQuote(value: string): string {
+export function shellQuote(value: string): string {
   return `"${value.replace(/"/g, '\\"')}"`;
 }
 
@@ -383,8 +384,6 @@ export class BoardViewerPanel {
     return mtimeOf(board);
   }
 
-
-
   /** Generate viewer HTML; resolves false when skipped (board mid-build). */
   private async generate(folder: string): Promise<boolean> {
     if (this.generating) return this.generating;
@@ -412,15 +411,20 @@ export class BoardViewerPanel {
       const boardName = path.basename(board, '.kicad_pcb');
       const gerbersDir = path.join('build', 'gerbers');
       const outPath = path.join('build', 'serve', 'viewer.html');
-      // the netlist fills pad→net so clicking a pad highlights its whole
-      // net; DRC markers only exist after a `typecad-pcb drc` run. boardName
-      // derives from the board file name, so it is quoted like every other
-      // interpolated path.
-      const flags = [`--netlist`, shellQuote(path.join('build', `${boardName}.net`))];
-      const drcReport = path.join(folder, 'build', `${boardName}_drc.json`);
-      if (fs.existsSync(drcReport)) flags.push('--drc', shellQuote(path.join('build', `${boardName}_drc.json`)));
-      const stackupReport = path.join(folder, 'build', `${boardName}_stackup.json`);
-      if (fs.existsSync(stackupReport)) flags.push('--stackup', shellQuote(path.join('build', `${boardName}_stackup.json`)));
+      // Optional data overlays, each shipped only when the build actually
+      // produced it: the netlist fills pad→net (click a pad, its whole net
+      // highlights); DRC markers exist after a `typecad-pcb drc` run; the
+      // stackup drives the Copper ΔT view's per-layer copper weight. A
+      // missing artifact must not sink the render — the viewer opens
+      // without that overlay.
+      const flags: string[] = [];
+      const overlay = (flag: string, name: string): void => {
+        const rel = path.join('build', name);
+        if (fs.existsSync(path.join(folder, rel))) flags.push(flag, shellQuote(rel));
+      };
+      overlay('--netlist', `${boardName}.net`);
+      overlay('--drc', `${boardName}_drc.json`);
+      overlay('--stackup', `${boardName}_stackup.json`);
 
       this.output.appendLine('building viewer HTML…');
       await this.run(

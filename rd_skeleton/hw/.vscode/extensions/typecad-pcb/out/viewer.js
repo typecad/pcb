@@ -7,6 +7,7 @@
 //   typecad-pcb export gerbers → typecad-pcb export drill →
 //   gerber-viewer build/gerbers -o build/serve/viewer.html
 //       [--netlist build/<board>.net] [--drc build/<board>_drc.json]
+//       [--stackup build/<board>_stackup.json]
 // The generated HTML is then post-processed: CSP for the webview, embedded
 // component outlines, and the probe client script.
 //
@@ -54,6 +55,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.BoardViewerPanel = void 0;
 exports.mtimeOf = mtimeOf;
 exports.newestBoardFile = newestBoardFile;
+exports.shellQuote = shellQuote;
 exports.wordUnderCursor = wordUnderCursor;
 const vscode = __importStar(require("vscode"));
 const node_fs_1 = __importDefault(require("node:fs"));
@@ -419,14 +421,21 @@ class BoardViewerPanel {
             const boardName = node_path_1.default.basename(board, '.kicad_pcb');
             const gerbersDir = node_path_1.default.join('build', 'gerbers');
             const outPath = node_path_1.default.join('build', 'serve', 'viewer.html');
-            // the netlist fills pad→net so clicking a pad highlights its whole
-            // net; DRC markers only exist after a `typecad-pcb drc` run. boardName
-            // derives from the board file name, so it is quoted like every other
-            // interpolated path.
-            const flags = [`--netlist`, shellQuote(node_path_1.default.join('build', `${boardName}.net`))];
-            const drcReport = node_path_1.default.join(folder, 'build', `${boardName}_drc.json`);
-            if (node_fs_1.default.existsSync(drcReport))
-                flags.push('--drc', shellQuote(node_path_1.default.join('build', `${boardName}_drc.json`)));
+            // Optional data overlays, each shipped only when the build actually
+            // produced it: the netlist fills pad→net (click a pad, its whole net
+            // highlights); DRC markers exist after a `typecad-pcb drc` run; the
+            // stackup drives the Copper ΔT view's per-layer copper weight. A
+            // missing artifact must not sink the render — the viewer opens
+            // without that overlay.
+            const flags = [];
+            const overlay = (flag, name) => {
+                const rel = node_path_1.default.join('build', name);
+                if (node_fs_1.default.existsSync(node_path_1.default.join(folder, rel)))
+                    flags.push(flag, shellQuote(rel));
+            };
+            overlay('--netlist', `${boardName}.net`);
+            overlay('--drc', `${boardName}_drc.json`);
+            overlay('--stackup', `${boardName}_stackup.json`);
             this.output.appendLine('building viewer HTML…');
             await this.run(folder, `npx gerber-viewer ${shellQuote(gerbersDir)} -o ${shellQuote(outPath)} ${flags.join(' ')}`, GENERATE_TIMEOUT_MS);
             const raw = node_fs_1.default.readFileSync(node_path_1.default.join(folder, outPath), 'utf8');

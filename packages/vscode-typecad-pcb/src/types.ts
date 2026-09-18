@@ -38,6 +38,12 @@ export interface NetSourceSummary {
   routeSource?: string;
 }
 
+/** `query unconnected --json` report — pads with no net plus single-pin nets. */
+export interface UnconnectedReport {
+  unconnectedPads: Array<{ reference: string; pad: string; type?: string }>;
+  singlePinNets: string[];
+}
+
 /** `query component <ref> --json` — the summary plus pad-by-pad connectivity. */
 export interface ComponentDetail extends ComponentSummary {
   /** Source file:line recovered from the "Code" property, when present. */

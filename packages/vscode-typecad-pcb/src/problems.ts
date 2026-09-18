@@ -5,7 +5,7 @@
 // vscode-free — the extension turns ProblemEntry into vscode.Diagnostic.
 // ---------------------------------------------------------------------------
 
-import type { ComponentSummary, NetSourceSummary } from './types.js';
+import type { ComponentSummary, NetSourceSummary, UnconnectedReport } from './types.js';
 
 export interface ProblemEntry {
   /** Project-relative "file:line" as the query surface reports it. */
@@ -14,11 +14,6 @@ export interface ProblemEntry {
   severity: 'error' | 'warning';
   /** DRC violation type / source tag shown in the Problems list. */
   code: string;
-}
-
-export interface UnconnectedReport {
-  unconnectedPads: Array<{ reference: string; pad: string; type?: string }>;
-  singlePinNets: string[];
 }
 
 /** ref -> "file:line" from the component index's source field. */
@@ -132,12 +127,12 @@ export function drcProblems(
       if (location) break;
     }
     if (!location) {
-      for (const n of nets) {
-        if (descriptions.includes(n.name)) {
-          location = n.routeSource ?? n.source ?? `${boardFile}:1`;
-          aimed = `net ${n.name}`;
-          break;
-        }
+      // longest name first: the fallback substring-matches, so "VCC_3V3"
+      // must win over "VCC" when both appear in the descriptions
+      const hit = [...nets].sort((a, b) => b.name.length - a.name.length).find((n) => descriptions.includes(n.name));
+      if (hit) {
+        location = hit.routeSource ?? hit.source ?? `${boardFile}:1`;
+        aimed = `net ${hit.name}`;
       }
     }
     const where = aimed ? ` (${aimed})` : '';

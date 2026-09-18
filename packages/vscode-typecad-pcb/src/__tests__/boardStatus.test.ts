@@ -37,6 +37,11 @@ describe('statusContent', () => {
     const s = statusContent({ boardName: 'b', parts: 4, unconnected: 0, drcErrors: 0, drcWarnings: 0, stale: false });
     expect(s.text).toBe('$(circuit-board) b · 4 parts');
   });
+
+  it('separates a warnings-only DRC count instead of gluing it to the parts', () => {
+    const s = statusContent({ boardName: 'b', parts: 4, unconnected: 0, drcErrors: 0, drcWarnings: 2, stale: false });
+    expect(s.text).toBe('$(circuit-board) b · 4 parts · 2W');
+  });
 });
 
 describe('browseItems', () => {
@@ -97,6 +102,21 @@ describe('problems', () => {
     expect(entries[1]).toMatchObject({ location: 'src/board.ts:83', severity: 'warning' });
     // exclusions never reach the Problems pane
     expect(entries).toHaveLength(2);
+  });
+
+  it('aims the net fallback at the longest matching name (VCC_3V3 beats VCC)', () => {
+    const both: NetSourceSummary[] = [
+      { name: 'VCC', source: 'src/board.ts:10' },
+      { name: 'VCC_3V3', source: 'src/board.ts:20', routeSource: 'src/board.ts:21' },
+    ];
+    const entries = drcProblems(
+      [{ severity: 'warning', type: 'clearance', description: 'Clearance violation on net VCC_3V3', items: [] }],
+      refs,
+      both,
+      'build/board.kicad_pcb',
+    );
+    expect(entries[0]).toMatchObject({ location: 'src/board.ts:21' });
+    expect(entries[0]!.message).toContain('(net VCC_3V3)');
   });
 });
 

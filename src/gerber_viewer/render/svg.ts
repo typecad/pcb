@@ -297,9 +297,11 @@ export function renderLayerInk(layer: RenderLayer, options: InkOptions): LayerIn
       const wAttr = ` data-w="${fmt(stroke.width)}"`;
       if (options.traceStyle && options.traceStyle !== 'solid') {
         // layer indication: secondary copper as construction lines — a
-        // thin centerline through the trace, plus one trace edge for each
-        // further layer down the stack
-        const thin = Math.min(stroke.width, 0.1);
+        // centerline through the trace, plus one trace edge for each
+        // further layer down the stack. The centerline scales with the
+        // real width (35%, 0.1–0.3 mm) so a thick power route still reads
+        // thick instead of a hairline
+        const thin = Math.min(Math.max(stroke.width * 0.35, 0.1), 0.3);
         body.push(`<path${attrs}${net} d="${d}" fill="none" stroke-width="${fmt(thin)}"${wAttr} ${caps}/>`);
         const side = options.traceStyle === 'centerEdgeA' ? 1 : options.traceStyle === 'centerEdgeB' ? -1 : 0;
         if (side !== 0) {

@@ -82,8 +82,8 @@ describe('problems', () => {
       'build/board.kicad_pcb',
     );
     expect(entries).toEqual([
-      { location: 'src/board.ts:12', message: 'R1 pad 2 is unconnected', severity: 'warning', code: 'unconnected-pad' },
-      { location: 'src/board.ts:82', message: 'net net2 has only one pin', severity: 'warning', code: 'single-pin-net' },
+      { location: 'src/board.ts:12', message: 'R1 pad 2 is unconnected', severity: 'warning', code: 'unconnected-pad', ref: 'R1' },
+      { location: 'src/board.ts:82', message: 'net net2 has only one pin', severity: 'warning', code: 'single-pin-net', net: 'net2' },
     ]);
   });
 
@@ -102,10 +102,10 @@ describe('problems', () => {
     });
     expect(violations).toHaveLength(3);
     const entries = drcProblems(violations, refs, nets, 'build/board.kicad_pcb');
-    expect(entries[0]).toMatchObject({ location: 'src/board.ts:12', severity: 'error' });
+    expect(entries[0]).toMatchObject({ location: 'src/board.ts:12', severity: 'error', ref: 'R1' });
     expect(entries[0]!.message).toContain('(R1)');
     // no ref matches; the description names net2 -> its route line
-    expect(entries[1]).toMatchObject({ location: 'src/board.ts:83', severity: 'warning' });
+    expect(entries[1]).toMatchObject({ location: 'src/board.ts:83', severity: 'warning', net: 'net2' });
     // exclusions never reach the Problems pane
     expect(entries).toHaveLength(2);
   });
@@ -121,7 +121,7 @@ describe('problems', () => {
       both,
       'build/board.kicad_pcb',
     );
-    expect(entries[0]).toMatchObject({ location: 'src/board.ts:21' });
+    expect(entries[0]).toMatchObject({ location: 'src/board.ts:21', net: 'VCC_3V3' });
     expect(entries[0]!.message).toContain('(net VCC_3V3)');
   });
 });

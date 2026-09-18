@@ -14,6 +14,10 @@ export interface ProblemEntry {
   severity: 'error' | 'warning';
   /** DRC violation type / source tag shown in the Problems list. */
   code: string;
+  /** The component the entry is about, when known — powers code actions. */
+  ref?: string;
+  /** The net the entry is about, when known — powers code actions. */
+  net?: string;
 }
 
 /** ref -> "file:line" from the component index's source field. */
@@ -44,6 +48,7 @@ export function unconnectedProblems(
       message: `${pad.reference} pad ${pad.pad} is unconnected`,
       severity: 'warning',
       code: 'unconnected-pad',
+      ref: pad.reference,
     });
   }
   const netByName = new Map(nets.map((n) => [n.name, n]));
@@ -54,6 +59,7 @@ export function unconnectedProblems(
       message: `net ${name} has only one pin`,
       severity: 'warning',
       code: 'single-pin-net',
+      net: name,
     });
   }
   return out;
@@ -110,7 +116,8 @@ export function drcProblems(
   for (const v of violations) {
     if (v.severity !== 'error' && v.severity !== 'warning') continue;
     let location: string | undefined;
-    let aimed = '';
+    let ref: string | undefined;
+    let net: string | undefined;
     const descriptions = [v.description, ...v.items.map((i) => i.description ?? '')].join(' ; ');
     for (const token of descriptions.split(/[^A-Za-z0-9_.]+/)) {
       // item descriptions name pads as "R1.2" — try the token, then its
@@ -120,7 +127,7 @@ export function drcProblems(
       for (const candidate of candidates) {
         if (candidate && refs.has(candidate)) {
           location = refs.get(candidate)!;
-          aimed = candidate;
+          ref = candidate;
           break;
         }
       }
@@ -132,15 +139,17 @@ export function drcProblems(
       const hit = [...nets].sort((a, b) => b.name.length - a.name.length).find((n) => descriptions.includes(n.name));
       if (hit) {
         location = hit.routeSource ?? hit.source ?? `${boardFile}:1`;
-        aimed = `net ${hit.name}`;
+        net = hit.name;
       }
     }
-    const where = aimed ? ` (${aimed})` : '';
+    const where = ref ? ` (${ref})` : net ? ` (net ${net})` : '';
     out.push({
       location: location ?? `${boardFile}:1`,
       message: `${v.description}${where}`,
       severity: v.severity,
       code: v.type,
+      ref,
+      net,
     });
   }
   return out;

@@ -59,6 +59,26 @@ export function activate(context: vscode.ExtensionContext) {
   );
 
   let watcher: vscode.FileSystemWatcher | undefined;
+  /** Opt-in (typecad-pcb.drcOnBuild): run the check once the board settles. */
+  let autoDrcTimer: NodeJS.Timeout | undefined;
+  const autoDrcIfWanted = (boardFile: string): void => {
+    if (!vscode.workspace.getConfiguration('typecad-pcb').get<boolean>('drcOnBuild')) return;
+    if (autoDrcTimer) clearTimeout(autoDrcTimer);
+    const boardAtEvent = mtimeOf(boardFile);
+    // builds (and kicad-cli's churn) touch the board several times — wait
+    // for quiet, then only act when this exact revision settled and no
+    // source is already newer than it
+    autoDrcTimer = setTimeout(() => {
+      autoDrcTimer = undefined;
+      const folder = resolveHwFolder();
+      const board = folder ? newestBoardFile(folder) : null;
+      if (!folder || !board) return;
+      if (mtimeOf(board) !== boardAtEvent) return;
+      if (boardIsStale(folder, boardAtEvent)) return;
+      output.appendLine('drcOnBuild: board settled — running DRC');
+      void vscode.commands.executeCommand('typecad-pcb.runDrc');
+    }, 10_000);
+  };
   const watchBuild = (folder: string) => {
     watcher?.dispose();
     watcher = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(folder, 'build/**/*.kicad_pcb'));
@@ -69,6 +89,7 @@ export function activate(context: vscode.ExtensionContext) {
       drcCounts = null; // the DRC report describes the previous board revision
       refreshAmbient();
       void viewer.refreshIfVisible();
+      autoDrcIfWanted(uri.fsPath);
     };
     watcher.onDidChange(boardChanged);
     watcher.onDidCreate(boardChanged);
@@ -145,19 +166,41 @@ export function activate(context: vscode.ExtensionContext) {
         await viewer.select(ref.trim());
         return;
       }
-      // Palette invocation: prompt for the designator, seeded with the word
-      // under the cursor when the editor has one — typed designators land
-      // in the open-or-opening viewer via the same delivery path
-      const seed = wordUnderCursor(vscode.window.activeTextEditor);
-      const typed = await vscode.window.showInputBox({
-        prompt: 'component designator to show on the board',
-        placeHolder: 'e.g. R1, U3',
-        value: seed ?? '',
-        ignoreFocusOut: false,
+      // Palette invocation: one picker for browsing AND typing — items are
+      // the compiled board's components, the filter seeds from the cursor
+      // word, and a typed designator matching no item is still attempted
+      // (the viewer reports it when the board doesn't carry it). This
+      // subsumes the old Browse Components entry.
+      let components: import('./types.js').ComponentSummary[];
+      try {
+        components = await service.components();
+      } catch {
+        noBoardYet();
+        return;
+      }
+      const picker = vscode.window.createQuickPick<vscode.QuickPickItem & { ref: string }>();
+      picker.placeholder = 'components on the compiled board — Enter zooms the Board viewer (a typed designator works too)';
+      picker.matchOnDescription = true;
+      picker.matchOnDetail = true;
+      picker.items = browseItems(components).map((item) => ({
+        label: item.label,
+        description: item.description,
+        detail: item.detail,
+        ref: item.ref,
+      }));
+      picker.value = wordUnderCursor(vscode.window.activeTextEditor) ?? '';
+      picker.onDidAccept(() => {
+        const picked = picker.selectedItems[0];
+        const typed = picker.value.trim();
+        picker.hide();
+        const target = picked?.ref ?? (typed === '' ? undefined : typed);
+        if (target) {
+          output.appendLine(`viewComponent: picked=${JSON.stringify(target)}`);
+          void viewer.select(target);
+        }
       });
-      if (!typed || typed.trim() === '') return; // dismissed — nothing to do
-      output.appendLine(`viewComponent: typed=${JSON.stringify(typed)}`);
-      await viewer.select(typed.trim());
+      picker.onDidHide(() => picker.dispose());
+      picker.show();
     }),
     vscode.commands.registerCommand('typecad-pcb.viewNet', async (net?: unknown) => {
       // Command-link args arrive spread as JSON (the net hover's "show on
@@ -233,6 +276,9 @@ export function activate(context: vscode.ExtensionContext) {
   /** DRC counts from this session's last run, null before the first run. */
   let drcCounts: { errors: number; warnings: number } | null = null;
 
+  /** Per-diagnostic probe target (ref and/or net) — powers code actions. */
+  const diagnosticInfo = new WeakMap<vscode.Diagnostic, { ref?: string; net?: string }>();
+
   /** ProblemEntry[] -> vscode diagnostics grouped by file. */
   function setProblemDiagnostics(entries: import('./problems.js').ProblemEntry[], folder: string): void {
     const byFile = new Map<string, vscode.Diagnostic[]>();
@@ -247,6 +293,7 @@ export function activate(context: vscode.ExtensionContext) {
       );
       diagnostic.source = 'typeCAD/pcb';
       diagnostic.code = entry.code;
+      if (entry.ref || entry.net) diagnosticInfo.set(diagnostic, { ref: entry.ref, net: entry.net });
       const list = byFile.get(loc.fsPath) ?? [];
       list.push(diagnostic);
       byFile.set(loc.fsPath, list);
@@ -388,6 +435,45 @@ export function activate(context: vscode.ExtensionContext) {
   };
   refreshAmbient();
 
+  // -- quick fixes on diagnostics: jump into the Board viewer --
+  /** A quick-fix action that runs a command from a diagnostic's line. */
+  const probeAction = (title: string, command: string, args: string[], diagnostic: vscode.Diagnostic): vscode.CodeAction => {
+    const action = new vscode.CodeAction(title, vscode.CodeActionKind.QuickFix);
+    action.command = { command, title, arguments: args };
+    action.diagnostics = [diagnostic];
+    return action;
+  };
+  context.subscriptions.push(
+    vscode.languages.registerCodeActionsProvider(
+      [
+        { language: 'typescript', scheme: 'file' },
+        // catch-all violations attach to the generated board file — clicking
+        // the diagnostic opens a huge generated text file; the action escapes
+        { scheme: 'file', pattern: '**/build/**/*.kicad_pcb' },
+      ],
+      {
+        provideCodeActions(document: vscode.TextDocument, range: vscode.Range): vscode.CodeAction[] {
+          // diagnostics are whole-line (zero-width at column 0) — match by line
+          const hits = (problems.get(document.uri) ?? []).filter((d) => d.range.start.line === range.start.line);
+          const actions: vscode.CodeAction[] = [];
+          for (const diagnostic of hits) {
+            const info = diagnosticInfo.get(diagnostic);
+            if (info?.ref) {
+              actions.push(probeAction(`Show ${info.ref} on board`, 'typecad-pcb.viewComponent', [info.ref], diagnostic));
+            }
+            if (info?.net) {
+              actions.push(probeAction(`Show net ${info.net} on board`, 'typecad-pcb.viewNet', [info.net], diagnostic));
+            }
+            if (!info?.ref && !info?.net) {
+              actions.push(probeAction('Open Board viewer', 'typecad-pcb.viewBoard', [], diagnostic));
+            }
+          }
+          return actions;
+        },
+      },
+    ),
+  );
+
   context.subscriptions.push(
     vscode.window.onDidChangeActiveTextEditor(() => {
       // Re-point the service when the editor moves between hw/ and fw/ so a
@@ -470,31 +556,61 @@ export function activate(context: vscode.ExtensionContext) {
     }),
   );
 
-  // -- component browser: QuickPick over the compiled board --
-  context.subscriptions.push(
-    vscode.commands.registerCommand('typecad-pcb.browseComponents', async () => {
-      let components: import('./types.js').ComponentSummary[];
-      try {
-        components = await service.components();
-      } catch {
-        noBoardYet();
-        return;
-      }
-      const picked = await vscode.window.showQuickPick(
-        browseItems(components).map((item) => ({
-          label: item.label,
-          description: item.description,
-          detail: item.detail,
-          ref: item.ref,
-        })),
-        { placeHolder: 'components on the compiled board — Enter zooms the Board viewer to it' },
-      );
-      if (picked) await viewer.select(picked.ref);
-    }),
-  );
-
-  // -- board diff vs HEAD, in a webview panel --
+  // -- board diff vs HEAD, in a webview panel that survives reloads --
   let diffPanel: vscode.WebviewPanel | undefined;
+
+  /** Create-or-reuse the diff panel and load a generated report into it. */
+  const presentDiff = (html: string): void => {
+    // same lockdown as the Board viewer: per-page nonce, never
+    // script-src 'unsafe-inline'. A page without a <head> anchor
+    // (none produced today) degrades to the unmodified HTML.
+    const page = applyNoncePolicy(html) ?? html;
+    if (diffPanel) {
+      diffPanel.webview.html = page;
+      diffPanel.reveal(undefined, true);
+      return;
+    }
+    diffPanel = vscode.window.createWebviewPanel('typecadBoardDiff', 'Board diff', {
+      viewColumn: vscode.ViewColumn.Beside,
+      preserveFocus: true,
+    });
+    diffPanel.webview.options = { enableScripts: true };
+    diffPanel.webview.html = page;
+    diffPanel.onDidDispose(() => {
+      diffPanel = undefined;
+    });
+  };
+
+  /** Run `typecad-pcb diff` vs HEAD and present the report. */
+  const runBoardDiff = async (folder: string, board: string): Promise<void> => {
+    const out = path.join('build', 'serve', 'board-diff.html');
+    output.appendLine('generating board diff vs HEAD…');
+    try {
+      await vscode.window.withProgress(
+        { location: vscode.ProgressLocation.Notification, title: 'typeCAD/pcb: diffing board against HEAD' },
+        () =>
+          runQuery(
+            folder,
+            `npx typecad-pcb diff --no-open --output=${shellQuote(out)} HEAD ${shellQuote(path.relative(folder, board))}`,
+            240_000,
+          ),
+      );
+    } catch (err) {
+      void vscode.window
+        .showErrorMessage('typeCAD/pcb: diff failed — see the typeCAD/pcb output channel.', 'Open Output')
+        .then((pick) => {
+          if (pick === 'Open Output') output.show();
+        });
+      output.appendLine(`diff: ${err instanceof Error ? err.message : String(err)}`);
+      return;
+    }
+    try {
+      presentDiff(fs.readFileSync(path.join(folder, out), 'utf8'));
+    } catch {
+      vscode.window.showErrorMessage('typeCAD/pcb: diff produced no report.');
+    }
+  };
+
   context.subscriptions.push(
     vscode.commands.registerCommand('typecad-pcb.diffBoard', async () => {
       const folder = resolveHwFolder();
@@ -507,52 +623,31 @@ export function activate(context: vscode.ExtensionContext) {
         noBoardYet();
         return;
       }
-      const out = path.join('build', 'serve', 'board-diff.html');
-      output.appendLine('generating board diff vs HEAD…');
-      try {
-        await vscode.window.withProgress(
-          { location: vscode.ProgressLocation.Notification, title: 'typeCAD/pcb: diffing board against HEAD' },
-          () =>
-            runQuery(
-              folder,
-              `npx typecad-pcb diff --no-open --output=${shellQuote(out)} HEAD ${shellQuote(path.relative(folder, board))}`,
-              240_000,
-            ),
-        );
-      } catch (err) {
-        void vscode.window
-          .showErrorMessage('typeCAD/pcb: diff failed — see the typeCAD/pcb output channel.', 'Open Output')
-          .then((pick) => {
-            if (pick === 'Open Output') output.show();
-          });
-        output.appendLine(`diff: ${err instanceof Error ? err.message : String(err)}`);
-        return;
-      }
-      let html: string;
-      try {
-        html = fs.readFileSync(path.join(folder, out), 'utf8');
-      } catch {
-        vscode.window.showErrorMessage('typeCAD/pcb: diff produced no report.');
-        return;
-      }
-      // same lockdown as the Board viewer: per-page nonce, never
-      // script-src 'unsafe-inline'. A page without a <head> anchor
-      // (none produced today) degrades to the unmodified HTML.
-      const page = applyNoncePolicy(html) ?? html;
-      if (diffPanel) {
-        diffPanel.webview.html = page;
-        diffPanel.reveal(undefined, true);
-        return;
-      }
-      diffPanel = vscode.window.createWebviewPanel('typecadBoardDiff', 'Board diff', {
-        viewColumn: vscode.ViewColumn.Beside,
-        preserveFocus: true,
-      });
-      diffPanel.webview.options = { enableScripts: true };
-      diffPanel.webview.html = page;
-      diffPanel.onDidDispose(() => {
-        diffPanel = undefined;
-      });
+      await runBoardDiff(folder, board);
+    }),
+    // window reload: restore the diff panel like the Board viewer —
+    // instantly from the on-disk report when it still exists, else a
+    // fresh diff run (the board may have changed since)
+    vscode.window.registerWebviewPanelSerializer('typecadBoardDiff', {
+      deserializeWebviewPanel: (panel): Promise<void> => {
+        diffPanel = panel;
+        panel.webview.options = { enableScripts: true };
+        panel.onDidDispose(() => {
+          diffPanel = undefined;
+        });
+        const folder = resolveHwFolder();
+        const board = folder ? newestBoardFile(folder) : null;
+        if (!folder || !board) {
+          panel.dispose();
+          return Promise.resolve();
+        }
+        try {
+          presentDiff(fs.readFileSync(path.join(folder, 'build', 'serve', 'board-diff.html'), 'utf8'));
+          return Promise.resolve();
+        } catch {
+          return runBoardDiff(folder, board);
+        }
+      },
     }),
   );
 

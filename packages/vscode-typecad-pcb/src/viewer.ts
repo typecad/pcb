@@ -537,18 +537,33 @@ export class BoardViewerPanel {
     // after the checks above, the message can only be a probe
     if (message.ref) {
       this.output.appendLine(`probe: ${message.ref}${message.pin ? ' ' + message.pin : ''} → source`);
-      await this.revealInEditor(message.ref);
+      await this.revealInEditor(message.ref, message.pin);
     }
   }
 
-  /** The board→editor direction: open the declaring file at its line. */
-  private async revealInEditor(ref: string): Promise<void> {
+  /**
+   * The board→editor direction: open the declaring file at its line. A
+   * double-click on a SPECIFIC pad asks about that pad's net — land on the
+   * line that declared or routed it (same preference as the trace
+   * double-click), falling back to the component's own declaration when the
+   * pad carries no net or the net has no recorded provenance.
+   */
+  private async revealInEditor(ref: string, pin?: string): Promise<void> {
     const folder = this.hwFolder();
     if (!folder) return;
     try {
       const detail = await this.service.resolve(ref);
       if (!detail) return;
-      const loc = parseSourceLocation(folder, detail.source);
+      let source = detail.source;
+      if (pin) {
+        const padNet = detail.pads.find((p) => p.pad === pin)?.net ?? null;
+        if (padNet !== null) {
+          const nets = await this.service.netSources().catch(() => []);
+          const net = nets.find((n) => n.name === padNet);
+          source = net?.routeSource ?? net?.source ?? source;
+        }
+      }
+      const loc = parseSourceLocation(folder, source);
       if (!loc) {
         vscode.window.setStatusBarMessage(`${ref}: no source location on the compiled board`, 4000);
         return;

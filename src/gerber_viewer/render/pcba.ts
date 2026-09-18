@@ -314,6 +314,7 @@ export function renderPcbaSvg(layers: RenderLayer[], options: PcbaRenderOptions 
         regionFill: 'none',
         regionStroke: i === 0 ? { color: SCH_INK_FAINT, width: 0.1 * S } : undefined,
         traceStyle: styleForDepth(i),
+        innerLayer: cu.info.side === 'inner',
       });
       for (const w of ink.warnings) warnings.push(`copper: ${w}`);
       defs.push(...ink.defs);

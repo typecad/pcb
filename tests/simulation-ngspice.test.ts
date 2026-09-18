@@ -19,6 +19,7 @@ const outputFiles = [
   'pulse_tran.out',
   'diode_area.out',
   'value_ws.out',
+  'q1_branches.out',
 ];
 
 const outputDirs = ['models'];
@@ -536,5 +537,54 @@ describe('Full-featured simulation API', () => {
     expect(at(3e-3)).toBeCloseTo(5, 2);
     // per-device vectors are probed in transient mode too
     expect(result.getWaveform(`i(${r1.reference.toLowerCase()})`).length).toBe(result.numPoints);
+  });
+
+  it('should emit per-terminal currents for a transistor into the flow-graph branches', () => {
+    let typecad = new Schematic('q1_branches');
+    let rc = new Resistor({ value: '1000' });
+    let rb = new Resistor({ value: '100000' });
+    let re = new Resistor({ value: '100' });
+    let q1 = new Component({
+      footprint: 'Package_TO_SOT_SMD:SOT-23',
+      reference: 'Q1',
+      simulation: { model: 'QNPN NPN (BF=200)' },
+    });
+    q1.pin(1); // collector
+    q1.pin(2); // base
+    q1.pin(3); // emitter
+
+    // numeric pin order maps onto the ngspice card C B E: pin1=C, pin2=B, pin3=E
+    typecad.named('vcc').net(rc.pin(1), rb.pin(1));
+    typecad.named('c').net(rc.pin(2), q1.pin(1));
+    typecad.named('b').net(rb.pin(2), q1.pin(2));
+    typecad.named('e').net(q1.pin(3), re.pin(1));
+    typecad.named('gnd').net(re.pin(2));
+    typecad.add(q1, rc, rb, re);
+
+    let src = new Power({ power: rc.pin(1), gnd: re.pin(2), voltage: 5 });
+    const result = typecad.simulate(src).op();
+
+    const netlist = fs.readFileSync('./build/q1_branches.cir', 'utf-8');
+    expect(netlist).toContain('.probe i(Q1:c) i(Q1:b) i(Q1:e)');
+    expect(netlist).toMatch(/^Q1 c b e QNPN$/m);
+    expect(netlist).toContain('.model QNPN NPN (BF=200)');
+
+    if (result === null) {
+      console.log('ngspice not installed — skipping simulation assertions');
+      return;
+    }
+
+    const padInj = (net: string, ref: string, pin: string) =>
+      (result.branches?.[net] ?? []).filter((b) => b.ref === ref && b.pin === pin).reduce((s, b) => s + b.i, 0);
+    // conventional current enters the collector and base, leaves the emitter
+    expect(padInj('c', q1.reference, '1')).toBeLessThan(0);
+    expect(padInj('b', q1.reference, '2')).toBeLessThan(0);
+    expect(padInj('e', q1.reference, '3')).toBeGreaterThan(0);
+    // KCL across the three terminals holds (collector + base + emitter ≈ 0)
+    const total =
+      padInj('c', q1.reference, '1') + padInj('b', q1.reference, '2') + padInj('e', q1.reference, '3');
+    expect(Math.abs(total)).toBeLessThan(1e-6);
+    // and the transistor current is a real value (probed terminal currents)
+    expect(Math.abs(padInj('c', q1.reference, '1'))).toBeGreaterThan(1e-5);
   });
 });

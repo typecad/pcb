@@ -26,11 +26,29 @@ export interface ViewerOptions {
     branches?: Record<string, Array<{ ref: string; pin: string; i: number }>>;
   } | null;
   /**
+   * resolved board stackup (build/<board>_stackup.json): per-layer copper
+   * weight and dielectric thicknesses. Feeds the thermal model's real
+   * geometry (copper loss, FR4 conduction, board thickness). Absent = the
+   * old 2-layer / 35 µm / 1.6 mm defaults.
+   */
+  stackup?: StackupInfo | null;
+  /**
    * theme picker entries for the pcba view: surface colors per builtin. The
    * switcher remaps the embedded render's flat colors client-side — one
    * render serves every theme, no re-render needed
    */
   pcbaThemes?: Array<{ id: string; label: string; colors: Record<string, string> }>;
+}
+
+/** Board stackup geometry (see `pcb_stackup_writer.ts` for the writer side). */
+export interface StackupInfo {
+  layerCount: number;
+  copperLayers?: string[];
+  boardThicknessMm: number;
+  /** Copper thickness per layer, top → bottom, in mm (matches `copperLayers`). */
+  copperThicknessMm: number[];
+  /** Dielectric `i` sits between copper `i` and copper `i+1`, top → bottom. */
+  dielectrics: Array<{ name: string; type: 'prepreg' | 'core'; thicknessMm: number; material: string }>;
 }
 
 function escapeHtml(value: string): string {
@@ -158,6 +176,14 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     }
     netOp = rawOp;
   } catch (e) {}
+  // resolved board stackup island (build/<board>_stackup.json): per-layer
+  // copper weight + dielectric thicknesses. Absent = legacy 2-layer / 35 µm /
+  // 1.6 mm defaults.
+  var stackup = null;
+  try {
+    var rawStk = JSON.parse(document.getElementById('stackup').textContent);
+    if (rawStk && rawStk.copperThicknessMm && rawStk.copperThicknessMm.length) stackup = rawStk;
+  } catch (e) {}
   // engineering notation for the readout: 0.0012 -> "1.2m", 5e-6 -> "5u"
   function fmtEng(v) {
     if (v === undefined || v === null || isNaN(v)) return '?';
@@ -264,33 +290,52 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     var bl = Math.round((pa & 255) + f * ((pb & 255) - (pa & 255)));
     return '#' + ((1 << 24) + (r << 16) + (g << 8) + bl).toString(16).slice(1);
   }
-  function interpColor(stops, lo, hi, v) {
-    if (!(hi > lo)) return stops[Math.floor(stops.length / 2)];
-    var t = (v - lo) / (hi - lo);
-    if (t < 0) t = 0;
-    if (t > 1) t = 1;
-    // position along the stop list; the fractional part blends the two
-    // neighboring anchors
+  // normalize v into [0,1] over [lo,hi]; logScale spreads decades linearly
+  // (power) instead of the raw watts, so a board's milliwatt passives don't
+  // all read black next to one hot regulator.
+  function rampT(lo, hi, v, logScale) {
+    if (logScale) {
+      var rlo = Math.log(Math.max(lo, 1e-12));
+      var rhi = Math.log(Math.max(hi, 1e-12));
+      var rv = Math.log(Math.max(v, 1e-12));
+      if (!(rhi > rlo)) return 0.5;
+      var t = (rv - rlo) / (rhi - rlo);
+      return t < 0 ? 0 : t > 1 ? 1 : t;
+    }
+    if (!(hi > lo)) return 0.5;
+    var tl = (v - lo) / (hi - lo);
+    return tl < 0 ? 0 : tl > 1 ? 1 : tl;
+  }
+  // piecewise-linear blend along the stop list; the legend samples the same
+  // function so the bar always mirrors the actual trace/overlay coloring.
+  function rampColor(stops, lo, hi, v, logScale) {
+    var t = rampT(lo, hi, v, logScale);
     var s = t * (stops.length - 1);
     var i = Math.min(Math.floor(s), stops.length - 2);
     return voltMix(stops[i], stops[i + 1], s - i);
   }
   function voltColor(v) {
     if (!voltRange) return VOLT_STOPS[Math.floor(VOLT_STOPS.length / 2)];
-    return interpColor(VOLT_STOPS, voltRange[0], voltRange[1], v);
+    return rampColor(VOLT_STOPS, voltRange[0], voltRange[1], v, false);
   }
   function powerColor(p) {
     if (!powerRange) return POWER_STOPS[Math.floor(POWER_STOPS.length / 2)];
-    return interpColor(POWER_STOPS, powerRange[0], powerRange[1], p);
+    return rampColor(POWER_STOPS, powerRange[0], powerRange[1], p, true);
   }
-  // the legend bars mirror their ramps exactly: equally spaced CSS stops are
-  // the same piecewise-linear interpolation the traces/overlays use
-  function fillLegend(prefix, stops, lo, hi, unit) {
+  // legend bars sample the ramp at N positions so the gradient matches the
+  // interpolation exactly — equally-spaced CSS stops only mirror a LINEAR
+  // ramp, and the power scale is logarithmic.
+  function fillLegend(prefix, stops, lo, hi, unit, logScale) {
     var bar = document.getElementById(prefix + '-legend-bar');
     if (!bar) return;
+    var N = 48;
     var css = [];
-    for (var si = 0; si < stops.length; si++) {
-      css.push(stops[si] + ' ' + Math.round((si * 100) / (stops.length - 1)) + '%');
+    for (var si = 0; si <= N; si++) {
+      var t = si / N;
+      var v = logScale
+        ? Math.exp(Math.log(Math.max(lo, 1e-12)) + t * (Math.log(Math.max(hi, 1e-12)) - Math.log(Math.max(lo, 1e-12))))
+        : lo + t * (hi - lo);
+      css.push(rampColor(stops, lo, hi, v, logScale) + ' ' + Math.round(t * 100) + '%');
     }
     bar.style.background = 'linear-gradient(to right, ' + css.join(', ') + ')';
     var mn = document.getElementById(prefix + '-legend-min');
@@ -312,7 +357,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       var v = netOp.nets[traces[ti].getAttribute('data-net').toLowerCase()];
       traces[ti].setAttribute('stroke', v === undefined ? '#9aa0a6' : voltColor(v));
     }
-    fillLegend('volt', VOLT_STOPS, voltRange[0], voltRange[1], 'V');
+    fillLegend('volt', VOLT_STOPS, voltRange[0], voltRange[1], 'V', false);
     var legend = document.getElementById('volt-legend-box');
     if (legend && viewMode === 'schematic') legend.style.display = '';
   }
@@ -331,7 +376,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     }
     if (!vals.length) return;
     powerRange = [Math.min.apply(null, vals), Math.max.apply(null, vals)];
-    fillLegend('power', POWER_STOPS, powerRange[0], powerRange[1], 'W');
+    fillLegend('power', POWER_STOPS, powerRange[0], powerRange[1], 'W', true);
     var legend = document.getElementById('power-legend-box');
     if (legend && viewMode === 'schematic') legend.style.display = '';
   }
@@ -854,17 +899,90 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   // funnels. Copper-loss estimate only: external-layer constants, no
   // component self-heating, no enclosure.
   var DT_STOPS = ['#3a3f45', '#6b4a33', '#9c5b2a', '#cc7a2e', '#f0993c', '#ffc46b', '#fff3d6'];
-  var DT_RS = 0.000493; // ohms per square: 1.724e-8 Ω·m / 35 µm
+  // sheet resistance of the TOP copper layer (Ω/square): the stackup island
+  // supplies the real copper weight, else the legacy 35 µm default. Heavier
+  // copper (2 oz) halves Rs and so halves the I²R loss for a given current.
+  var DT_RS = cuSheetResist(stackup && stackup.copperThicknessMm && stackup.copperThicknessMm[0] ? stackup.copperThicknessMm[0] : 0.035, 20);
   var DT_CELL = 0.6; // raster pitch, board mm
   var dtBuilt = false;
   var dtReady = false;
   var dtItems = null; // {wires:[{el,dt}], pours:[pour], maxDT}
-  function dtFromI(i, widthMm) {
+  // ---- pure thermal math (self-contained so a unit test can eval it) ----
+  // IPC-2221 current-carrying constants, in mils: external layers k=0.048,
+  // internal (buried) layers k=0.024 — the same split the library's
+  // powerInfo width sizer uses. Copper weight is 1 oz (35 µm, 1.378 mils)
+  // throughout; inner-layer copper thickness is not knowable from gerbers.
+  function dtFromI(i, widthMm, inner, tUm) {
     if (!(i > 0) || !(widthMm > 0)) return 0;
-    // cross-section in mil² (w·t) at 1 oz = 35 µm — matching the sizer
-    var area = widthMm * 39.3701 * 1.378;
-    var r = i / (0.048 * Math.pow(area, 0.725));
+    // cross-section in mil² (w·t); tUm scales the 1 oz = 1.378 mils reference
+    // so the default matches the library sizer exactly and heavier copper
+    // (2 oz = 70 µm) roughly halves the rise.
+    var tMil = (tUm || 35) * (1.378 / 35);
+    var area = widthMm * 39.3701 * tMil;
+    var k = inner ? 0.024 : 0.048;
+    var r = i / (k * Math.pow(area, 0.725));
     return r > 0 ? Math.pow(r, 1 / 0.44) : 0;
+  }
+  // ohmic loss of one sheet cell carrying surface current density mag
+  // (A/mm): P = K²·Rs·A_cell. K = mag·1e3 A/m, A_cell = cellX·cellY·1e-6 m²,
+  // so P = mag²·Rs·cellX·cellY (W) — the mm²/m² factors cancel exactly.
+  function sheetCellLossW(mag, rs, cellX, cellY) {
+    return mag * mag * rs * cellX * cellY;
+  }
+  // I²R of a wire of width and length (both mm) at sheet resistance rs:
+  // R = Rs·len/width.
+  function wireLossW(cur, rs, len, width) {
+    return cur * cur * rs * (len / width);
+  }
+  // electrical conductance of a via barrel wall, siemens: σ·π·d·t/L.
+  function viaBarrelCondS(drillMm, um, boardMm) {
+    return (5.8e7 * Math.PI * drillMm * 1e-3 * um * 1e-6) / (boardMm * 1e-3);
+  }
+  // I²R loss of a via barrel given its electrical conductance (siemens).
+  function viaBarrelLossW(cur, condS) {
+    return (cur * cur) / condS;
+  }
+  // copper resistivity vs temperature: ρ = ρ0·(1 + α·ΔT), α ≈ 0.0039/K.
+  function cuResistivityOhmM(tempC) {
+    return 1.724e-8 * (1 + 0.00393 * (tempC - 20));
+  }
+  // sheet resistance (Ω/square) of a copper layer of thickness tMm at tempC.
+  function cuSheetResist(tMm, tempC) {
+    return cuResistivityOhmM(tempC) / (tMm * 1e-3);
+  }
+  // linearized radiation heat-transfer coefficient (W/m²·K) for a surface at
+  // tempC radiating to ambientC, emissivity eps (≈0.9 for soldermask/FR4).
+  function radH(tempC, ambientC, eps) {
+    var SIGMA = 5.6704e-8;
+    var Tk = tempC + 273.15, Ta = ambientC + 273.15;
+    return SIGMA * (eps || 0.9) * (Tk * Tk + Ta * Ta) * (Tk + Ta);
+  }
+  // natural-convection h (W/m²·K) for a flat plate of characteristic length
+  // L (mm) with temperature excess dT (°C). orientation: 'v' vertical,
+  // 'hUp' horizontal (heated face up), 'hDn' horizontal (heated face down).
+  function naturalConvectionH(dT, Lmm, orientation) {
+    if (!(dT > 0)) return 0;
+    var L = Lmm * 1e-3;
+    var g = 9.81, beta = 1 / 293, nu = 1.6e-5, alpha = 2.2e-5;
+    var Ra = (g * beta * dT * L * L * L) / (nu * alpha);
+    if (Ra < 1e4) Ra = 1e4; // floor below the correlation's validity
+    var Nu =
+      orientation === 'hDn' ? 0.27 * Math.pow(Ra, 0.25) : orientation === 'hUp' ? 0.54 * Math.pow(Ra, 0.25) : 0.59 * Math.pow(Ra, 0.25);
+    return (Nu * 0.026) / L; // k_air ≈ 0.026 W/m·K
+  }
+  // copper thickness (µm) for a trace element: front/back/inner from the
+  // stackup, else the legacy 35 µm. Inner layers average their copper weight.
+  function cuThicknessUm(el) {
+    if (!stackup || !stackup.copperThicknessMm || !stackup.copperThicknessMm.length) return 35;
+    var layers = stackup.copperThicknessMm;
+    var n = layers.length;
+    if (el && el.hasAttribute('data-inner')) {
+      var sum = 0, cnt = 0;
+      for (var l = 1; l < n - 1; l++) { sum += layers[l]; cnt++; }
+      return cnt ? (sum / cnt) * 1000 : 35;
+    }
+    if (el && el.hasAttribute('data-sub')) return layers[n - 1] * 1000;
+    return layers[0] * 1000;
   }
   function dtColor(dt, hi) {
     var t = hi > 0 ? dt / hi : 0;
@@ -954,9 +1072,14 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       }
     }
     if (refIdx < 0) return null;
-    // SOR over the sheet network: Σ(Vn − Vc)/Rs = Ic → Vc = (ΣVn − Ic·Rs)/n
+    // SOR over the sheet network. Cells may be non-square (an elongated pour
+    // bbox), so edge conductance is anisotropic: Gx = cellY/(Rs·cellX),
+    // Gy = cellX/(Rs·cellY). Update Vc = (Σ G·Vn − Ic) / Σ G.
     var V = new Float64Array(nx * ny);
+    var gx = cellY / (DT_RS * cellX);
+    var gy = cellX / (DT_RS * cellY);
     var omega = 1.8;
+    var converged = true;
     for (var iter = 0; iter < 3000; iter++) {
       var maxDelta = 0;
       for (var pass = 0; pass < 2; pass++) {
@@ -964,13 +1087,13 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
           for (var i3 = 0; i3 < nx; i3++) {
             var c = j2 * nx + i3;
             if (!mask[c] || c === refIdx || ((i3 + j2) & 1) !== pass) continue;
-            var s = 0, n = 0;
-            if (i3 > 0 && mask[c - 1]) { s += V[c - 1]; n++; }
-            if (i3 < nx - 1 && mask[c + 1]) { s += V[c + 1]; n++; }
-            if (j2 > 0 && mask[c - nx]) { s += V[c - nx]; n++; }
-            if (j2 < ny - 1 && mask[c + nx]) { s += V[c + nx]; n++; }
-            if (!n) continue;
-            var nv = (s - inj[c] * DT_RS) / n;
+            var s = 0, gsum = 0;
+            if (i3 > 0 && mask[c - 1]) { s += gx * V[c - 1]; gsum += gx; }
+            if (i3 < nx - 1 && mask[c + 1]) { s += gx * V[c + 1]; gsum += gx; }
+            if (j2 > 0 && mask[c - nx]) { s += gy * V[c - nx]; gsum += gy; }
+            if (j2 < ny - 1 && mask[c + nx]) { s += gy * V[c + nx]; gsum += gy; }
+            if (!gsum) continue;
+            var nv = (s - inj[c]) / gsum;
             var d = nv - V[c];
             V[c] += omega * d;
             if (d > maxDelta) maxDelta = d;
@@ -978,12 +1101,17 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
           }
         }
       }
-      if (maxDelta < 1e-10) break;
+      // 1 µV residual on a volts-scale field is far beyond meaningful for the
+      // current-density estimate — tighter (1e-10) stalls the iteration cap on
+      // the anisotropic-cell network and flags every solve "approximate"
+      if (maxDelta < 1e-6) break;
+      if (iter === 2999) converged = false;
     }
-    // per-cell current density J = |∇V|/Rs (A per mm of width) and the
-    // equivalent-conductor ΔT for a strip one cell wide
+    // per-cell current density K = |∇V|/Rs (A per mm of width) and the
+    // equivalent-conductor ΔT for a strip one equivalent cell wide
     var cells = new Float32Array(nx * ny);
     var cellQ = new Float32Array(nx * ny); // W per cell — board-solve source
+    var ce = Math.sqrt(cellX * cellY); // equivalent square side for the strip model
     for (var j3 = 0; j3 < ny; j3++) {
       for (var i4 = 0; i4 < nx; i4++) {
         var c2 = j3 * nx + i4;
@@ -995,9 +1123,10 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         var jx = (vr - vl) / (2 * DT_RS * cellX);
         var jy = (vd - vu) / (2 * DT_RS * cellY);
         var mag = Math.hypot(jx, jy);
-        cells[c2] = dtFromI(mag * cellX, cellX);
-        // copper loss per area J²·Rs, per cell (mm² → m² for W)
-        cellQ[c2] = (mag * mag * DT_RS) * (cellX * cellY * 1e-6);
+        // current density |K| (A/mm) → strip current mag·ce through an
+        // equivalent ce×ce conductor (pour sits on the front copper)
+        cells[c2] = dtFromI(mag * ce, ce, false, cuThicknessUm(null));
+        cellQ[c2] = sheetCellLossW(mag, DT_RS, cellX, cellY);
       }
     }
     // heat image, hidden until the thermal view opens (the board group's
@@ -1027,6 +1156,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       mask: mask,
       cells: cells,
       q: cellQ,
+      converged: converged,
     };
   }
   function paintPour(pour, hi) {
@@ -1086,19 +1216,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       var vs = vv.el.getAttribute('stroke');
       if (vs && vs !== 'none') vv.el.setAttribute('stroke', vc);
     }
-    fillLegend('dt', DT_STOPS, 0, hi, '°C');
-    var ambBox = document.getElementById('dt-ambient');
-    var amb = ambBox ? parseFloat(ambBox.value) || 25 : 25;
-    var abs = document.getElementById('dt-abs');
-    if (abs)
-      abs.textContent =
-        'hottest copper \u2248 ' +
-        (amb + dtItems.maxDT).toFixed(1) +
-        '\u00B0C at ' +
-        amb +
-        '\u00B0C ambient' +
-        dtItems.viaNote +
-        (boardTemp ? ' \u00B7 board \u2248 +' + boardTemp.max.toFixed(1) + '\u00B0C (FR4 + parts)' : '');
+    fillLegend('dt', DT_STOPS, 0, hi, '°C', false);
   }
   function buildThermal() {
     if (dtBuilt || !viewGroups.schematic || !netOp || !netOp.solved || !netOp.branches) return;
@@ -1118,7 +1236,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       // data-w carries the real width — centerline-rendered deeper layers
       // thin their visible stroke
       var w = parseFloat(el.getAttribute('data-w') || el.getAttribute('stroke-width')) || 0.2;
-      var wdt = dtFromI(Math.abs(cur), w);
+      var wdt = dtFromI(Math.abs(cur), w, el.hasAttribute('data-inner'), cuThicknessUm(el));
       el.__wireDT = wdt; // hover readout: the trace's own rise under the cursor
       wires.push({ el: el, dt: wdt });
     }
@@ -1137,10 +1255,14 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       pourNets[e2.getAttribute('data-net')] = true;
     }
     var pours = [];
+    var anyPourApprox = false;
     if (clipPolys.length) {
       for (var pnet in pourNets) {
         var pour = solvePourDT(copper, pnet, clipPolys);
-        if (pour) pours.push(pour);
+        if (pour) {
+          pours.push(pour);
+          if (!pour.converged) anyPourApprox = true;
+        }
       }
     }
     // vias: netted copper pads with no component ref (small, closed — not
@@ -1231,7 +1353,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       for (var c = 0; c < pc.length; c++) if (pc[c] > maxDT) maxDT = pc[c];
     }
     for (var v3 = 0; v3 < vias.length; v3++) if (vias[v3].dt > maxDT) maxDT = vias[v3].dt;
-    dtItems = { wires: wires, pours: pours, vias: vias, viaNote: viaNote, maxDT: maxDT };
+    dtItems = { wires: wires, pours: pours, vias: vias, viaNote: viaNote, maxDT: maxDT, approx: anyPourApprox };
     dtReady = wires.length > 0 || pours.length > 0 || vias.length > 0;
   }
   function enterThermal() {
@@ -1288,24 +1410,24 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   if (dtAmbient) dtAmbient.addEventListener('input', applyThermalColors);
 
   // ---- board (FR4) temperature: the solved losses heat the laminate — a
-  // stacked two-layer steady-state solve, degrees ABOVE ambient. Sources are
-  // the wire/via/pour copper losses PLUS each component's solved watts,
-  // injected at its pads (the model ignores component-surface convection,
-  // so a part's whole dissipation conducts in through its leads — an upper
-  // bound). Conduction is copper in-plane (k·t ≈ 0.014 W/K per square),
-  // FR4 in-plane and through-plane, and via barrels between the layers;
-  // both faces shed heat to ambient at an effective h ≈ 12 W/m²·K (still
-  // air — convection plus radiation). The field paints the entire board;
-  // only the outline bounds it. Idealized: no enclosure, mounting, or
-  // airflow.
+  // stacked two-layer steady-state solve (front + back copper, one FR4 core),
+  // degrees ABOVE ambient. Sources are the wire/via/pour copper losses PLUS
+  // each component's solved watts injected at its pads (component-surface
+  // convection is ignored — an upper bound). Conduction: copper in-plane
+  // (k·t, real per-layer weight from the stackup), FR4 in-plane and
+  // through-plane (real dielectric/core thickness), via barrels coupling the
+  // two layers. The outer faces shed heat via natural convection (an
+  // orientation correlation) plus radiation; copper I²R self-heats through
+  // the resistivity's temperature coefficient. Idealized: no enclosure,
+  // mounting, or forced airflow.
   var boardTemp = null; // {img, max}
   var BD = {
     cell: 1.2, // mm raster — thermal gradients are smooth
-    cuSheet: 400 * 35e-6, // W/K per square, copper layer
-    fr4In: 0.8 * 1.6e-3, // in-plane W/K per square, full thickness
-    fr4Z: 0.3 * 1e-6 / 1.53e-3, // through-plane W/K per mm²
-    h: 12 * 1e-6, // W/K per mm², both faces
-    viaG: (400 * Math.PI * 0.153e-3 * 35e-6) / 1.6e-3, // barrel z, W/K (k·π·d·t/L)
+    kCu: 400, // W/m·K, copper
+    kFr4: 0.3, // W/m·K, FR4 (in-plane and through-plane)
+    alphaCu: 0.00393, // 1/K, copper resistivity temperature coefficient
+    emissivity: 0.9, // soldermask/FR4
+    orientation: 'v', // natural-convection correlation: 'v' | 'hUp' | 'hDn'
   };
   function buildBoardTemp() {
     if (boardTemp || !dtItems || !viewGroups.schematic) return;
@@ -1325,10 +1447,18 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
           : 0;
       }
     }
-    // copper marks + heat sources per layer (top / bottom by data-sub)
+    // copper marks + heat sources per layer (top / bottom by data-sub);
+    // Scu tracks the COPPER-only loss (I²R) so the resistivity's temperature
+    // coefficient can feed heat back into the solve (component watts do not).
     var cu = [new Uint8Array(nx * ny), new Uint8Array(nx * ny)];
     var S = [new Float64Array(nx * ny), new Float64Array(nx * ny)];
+    var Scu = [new Float64Array(nx * ny), new Float64Array(nx * ny)];
     var gz = new Float64Array(nx * ny); // via barrels add copper z-conductance
+    var ambBox2 = document.getElementById('dt-ambient');
+    var ambientC = ambBox2 ? parseFloat(ambBox2.value) || 25 : 25;
+    // characteristic length for the convection correlation: the board's
+    // diagonal, clamped so the Rayleigh number stays in the correlation range
+    var charLenMm = Math.min(200, Math.max(10, Math.hypot(bb.width, bb.height)));
     var cellAt = function (x, y) {
       var ci = Math.floor((x - bb.x) / cx);
       var cj = Math.floor((y - bb.y) / cy);
@@ -1336,6 +1466,21 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       var c = cj * nx + ci;
       return inBoard[c] ? c : -1;
     };
+    // real geometry from the stackup island (else legacy 35 µm / 1.6 mm):
+    // two copper layers (front = layers[0], back = layers[n-1]) around the
+    // full dielectric core. Multi-layer boards collapse to this two-slab
+    // model with the correct total copper and dielectric thickness.
+    var cuTopMm = stackup && stackup.copperThicknessMm && stackup.copperThicknessMm.length ? stackup.copperThicknessMm[0] || 0.035 : 0.035;
+    var cuBotMm = stackup && stackup.copperThicknessMm && stackup.copperThicknessMm.length ? stackup.copperThicknessMm[stackup.copperThicknessMm.length - 1] || 0.035 : 0.035;
+    var boardMm = stackup && stackup.boardThicknessMm ? stackup.boardThicknessMm : 1.6;
+    var dielMm = boardMm - cuTopMm - cuBotMm;
+    if (stackup && stackup.dielectrics && stackup.dielectrics.length) {
+      dielMm = 0;
+      for (var dI = 0; dI < stackup.dielectrics.length; dI++) dielMm += stackup.dielectrics[dI].thicknessMm;
+    }
+    if (!(dielMm > 0.01)) dielMm = 1.53;
+    // via barrel z-conductance for the thermal coupling (k_cu·π·d·t/L)
+    var viaG = (BD.kCu * Math.PI * 0.153e-3 * 35e-6) / (boardMm * 1e-3);
     // fine paint grid, 3x the solve raster: the field is solved at BD.cell,
     // but the image is painted at a third of it with bilinear sampling —
     // a full-solve-cell paint would look blocky at 1.2 mm. The field covers
@@ -1361,7 +1506,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         var lw = parseFloat(el.getAttribute('data-w') || el.getAttribute('stroke-width')) || 0.2;
         var len = el.getTotalLength ? el.getTotalLength() : 0;
         if (!len) continue;
-        var P = cur * cur * DT_RS * (len / lw); // I²R in W
+        var P = wireLossW(cur, DT_RS, len, lw); // I²R in W
         var li = el.hasAttribute('data-sub') ? 1 : 0;
         for (var s = 0; s <= len; s += Math.max(0.4, len / 24)) {
           var pt = el.getPointAtLength(Math.min(s, len));
@@ -1369,6 +1514,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
           if (c < 0) continue;
           var steps = Math.max(1, Math.round(len / Math.max(0.4, len / 24)));
           S[li][c] += P / steps;
+          Scu[li][c] += P / steps;
           cu[li][c] = 1;
           // solver spread: heat conducts from the neighboring cells too
           if (c % nx > 0) cu[li][c - 1] = cu[li][c - 1] || inBoard[c - 1];
@@ -1394,11 +1540,13 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         // electrical barrel conductance σ·π·d·t/L (~600 S at a 0.15 mm
         // drill) sets the via's copper loss; the same barrel thermally
         // couples the layers (~15x one cell of FR4 z-conductance)
-        var Gb = (5.8e7 * Math.PI * drill * 1e-3 * 35e-6) / 1.6e-3;
-        var Pv = vI !== undefined ? (vI * vI) / Gb : 0;
+        var Gb = viaBarrelCondS(drill, 35, boardMm);
+        var Pv = vI !== undefined ? viaBarrelLossW(vI, Gb) : 0;
         S[0][vc2] += Pv / 2;
         S[1][vc2] += Pv / 2;
-        gz[vc2] += (BD.viaG * drill) / 0.153;
+        Scu[0][vc2] += Pv / 2;
+        Scu[1][vc2] += Pv / 2;
+        gz[vc2] += (viaG * drill) / 0.153;
         cu[0][vc2] = 1;
         cu[1][vc2] = 1;
       }
@@ -1412,7 +1560,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
           if (Pd && Pd > 1e-6) devP[dk2] = Pd;
         }
       }
-      var padCells = {}; // ref|pin -> cell
+      var padCells = {}; // ref|pin -> { cell, area }
       var padEls = copper.querySelectorAll('[data-ref]');
       for (var pe = 0; pe < padEls.length; pe++) {
         var pel = padEls[pe];
@@ -1426,7 +1574,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         var pr = pel.getAttribute('data-ref');
         if (!pr || devP[pr.toLowerCase()] === undefined) continue;
         var pk2 = pr.toLowerCase() + '|' + (pel.getAttribute('data-pin') || '');
-        if (padCells[pk2] === undefined) padCells[pk2] = pc3;
+        if (padCells[pk2] === undefined) padCells[pk2] = { cell: pc3, area: pb2.width * pb2.height };
       }
       var byRefPads = {};
       for (var pk3 in padCells) {
@@ -1435,12 +1583,20 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         byRefPads[rf].push(padCells[pk3]);
       }
       for (var rf2 in byRefPads) {
-        // spread a pad's share over its footprint: half in the pad cell,
-        // an eighth in each orthogonal neighbor (a pad is ~1.7 mm of
-        // copper — concentrating it in one cell grid-sharpens the peak)
-        var perPad2 = devP[rf2] / byRefPads[rf2].length;
+        // weight each pin's share of the device's watts by its pad AREA —
+        // a thermal tab or fat ground pad conducts most of the heat out, so
+        // an even per-pin split would mis-place it. Area is the pad bbox
+        // product (per-layer flashes dedupe by ref|pin above).
+        var totalArea = 0;
+        for (var ar = 0; ar < byRefPads[rf2].length; ar++) totalArea += byRefPads[rf2][ar].area;
+        if (!(totalArea > 0)) totalArea = 1;
         for (var pci = 0; pci < byRefPads[rf2].length; pci++) {
-          var hc2 = byRefPads[rf2][pci];
+          var padRec = byRefPads[rf2][pci];
+          var hc2 = padRec.cell;
+          var perPad2 = (devP[rf2] * padRec.area) / totalArea;
+          // spread the pad's share over its footprint: half in the pad cell,
+          // an eighth in each orthogonal neighbor (a pad is ~1.7 mm of
+          // copper — concentrating it in one cell grid-sharpens the peak)
           var parts = [{ c: hc2, f: 0.5 }];
           if (hc2 % nx > 0 && inBoard[hc2 - 1]) parts.push({ c: hc2 - 1, f: 0.125 });
           if (hc2 % nx < nx - 1 && inBoard[hc2 + 1]) parts.push({ c: hc2 + 1, f: 0.125 });
@@ -1467,48 +1623,72 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         if (bc < 0) continue;
         S[0][bc] += po.q[pc] / 2;
         S[1][bc] += po.q[pc] / 2;
+        Scu[0][bc] += po.q[pc] / 2;
+        Scu[1][bc] += po.q[pc] / 2;
         cu[0][bc] = cu[0][bc] || po.mask[pc];
         cu[1][bc] = cu[1][bc] || po.mask[pc];
       }
     }
-    // steady-state SOR over T[2][n], ambient = 0
+    // steady-state SOR over T[2][n] (degrees ABOVE ambient). Copper loss
+    // self-heats through the resistivity temperature coefficient; the two
+    // outer faces convect (orientation correlation) and radiate.
     var T = [new Float64Array(nx * ny), new Float64Array(nx * ny)];
-    var gCuXY = BD.cuSheet; // per edge (cell edge length/size cancels)
-    var gFr4XY = BD.fr4In;
-    var gZ = BD.fr4Z * cx * cy * 1e6 * 1e-6; // W/K per cell: k_z·A/t with mm²→m²
-    gZ = (0.3 * (cx * cy * 1e-6)) / 1.53e-3;
-    var gFace = BD.h * cx * cy; // h·A (mm²·1e-6 folded into h)
-    gFace = 12 * (cx * cy * 1e-6);
-    for (var it = 0; it < 2500; it++) {
+    var gCuXY = [BD.kCu * cuTopMm * 1e-3, BD.kCu * cuBotMm * 1e-3]; // per edge, per layer
+    var gFr4XY = BD.kFr4 * boardMm * 1e-3; // in-plane FR4, full board thickness
+    var gZ = (BD.kFr4 * (cx * cy * 1e-6)) / (dielMm * 1e-3); // W/K per cell, through the core
+    var ori0 = BD.orientation === 'h' ? 'hUp' : 'v';
+    var ori1 = BD.orientation === 'h' ? 'hDn' : 'v';
+    // face conductance (convection + radiation) is temperature-dependent, and
+    // recomputing it every sweep stalls the SOR before the iteration cap —
+    // the T→h coupling is weak (h varies ~2x over the range), so freeze the
+    // coefficients in 50-iteration stretches and refresh between them
+    var gFaceT = [new Float64Array(nx * ny), new Float64Array(nx * ny)];
+    var refreshFaces = function () {
+      for (var Lf = 0; Lf < 2; Lf++) {
+        var oriF = Lf === 0 ? ori0 : ori1;
+        for (var cf = 0; cf < nx * ny; cf++) {
+          if (!inBoard[cf]) continue;
+          gFaceT[Lf][cf] =
+            (naturalConvectionH(T[Lf][cf], charLenMm, oriF) + radH(ambientC + T[Lf][cf], ambientC, BD.emissivity)) *
+            (cx * cy * 1e-6);
+        }
+      }
+    };
+    refreshFaces();
+    var btConverged = true;
+    for (var it = 0; it < 8000; it++) {
+      if (it && it % 50 === 0) refreshFaces();
       var md = 0;
       for (var L = 0; L < 2; L++) {
         for (var c3 = 0; c3 < nx * ny; c3++) {
           if (!inBoard[c3]) continue;
-          var sum = S[L][c3];
-          var gsum = 2 * gFace; // two faces convect
+          var Tabs = ambientC + T[L][c3];
+          var gFace = gFaceT[L][c3];
+          var sum = S[L][c3] + Scu[L][c3] * BD.alphaCu * (Tabs - 20);
+          var gsum = gFace; // one outer face per copper layer
           var i5 = c3 % nx;
           var nb;
           nb = i5 > 0 ? c3 - 1 : -1;
           if (nb >= 0 && inBoard[nb]) {
-            var g1 = cu[L][c3] && cu[L][nb] ? gCuXY : gFr4XY;
+            var g1 = cu[L][c3] && cu[L][nb] ? gCuXY[L] : gFr4XY;
             sum += g1 * T[L][nb];
             gsum += g1;
           }
           nb = i5 < nx - 1 ? c3 + 1 : -1;
           if (nb >= 0 && inBoard[nb]) {
-            var g2 = cu[L][c3] && cu[L][nb] ? gCuXY : gFr4XY;
+            var g2 = cu[L][c3] && cu[L][nb] ? gCuXY[L] : gFr4XY;
             sum += g2 * T[L][nb];
             gsum += g2;
           }
           nb = c3 >= nx ? c3 - nx : -1;
           if (nb >= 0 && inBoard[nb]) {
-            var g3 = cu[L][c3] && cu[L][nb] ? gCuXY : gFr4XY;
+            var g3 = cu[L][c3] && cu[L][nb] ? gCuXY[L] : gFr4XY;
             sum += g3 * T[L][nb];
             gsum += g3;
           }
           nb = c3 < nx * (ny - 1) ? c3 + nx : -1;
           if (nb >= 0 && inBoard[nb]) {
-            var g4 = cu[L][c3] && cu[L][nb] ? gCuXY : gFr4XY;
+            var g4 = cu[L][c3] && cu[L][nb] ? gCuXY[L] : gFr4XY;
             sum += g4 * T[L][nb];
             gsum += g4;
           }
@@ -1522,7 +1702,10 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
           else if (-dd > md) md = -dd;
         }
       }
-      if (md < 1e-4) break;
+      // 2e-3 °C residual is ~500x finer than the readout's 0.1 °C precision —
+      // tighter than that and slow FR4 corners stall the cap on stiff boards
+      if (md < 2e-3) break;
+      if (it === 7999) btConverged = false;
     }
     // paint: max across layers, bilinear on the fine grid — the field covers
     // the whole board (copper included); only the outline and the near-zero
@@ -1591,6 +1774,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       bw: bb.width,
       bh: bb.height,
       inB: inBoard,
+      converged: btConverged,
     };
   }
 
@@ -2476,7 +2660,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   #toolbar button:hover { background: var(--btn-hover); }
   #toolbar button.armed { box-shadow: inset 0 0 0 1px var(--chrome-fg); background: var(--btn-hover); }
   #search-box { padding: 8px 14px 0; }
-  #comp-search { width: 100%; background: var(--btn-bg); color: var(--chrome-fg); border: 1px solid var(--btn-border); border-radius: 4px; padding: 5px 8px; font: inherit; }
+  #comp-search { width: 100%; background: var(--btn-bg); color: var(--chrome-fg); border: 1px solid var(--btn-border); border-radius: 4px; padding: 5px 8px; font: inherit; margin-bottom: 10px; }
   #comp-search::placeholder { color: var(--muted); }
   #view-switch { padding: 8px 14px 0; }
   #view-mode { width: 100%; background: var(--btn-bg); color: var(--chrome-fg); border: 1px solid var(--btn-border); border-radius: 4px; padding: 5px 8px; font: inherit; cursor: pointer; }
@@ -2499,7 +2683,6 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   #dt-controls { display: flex; flex-wrap: wrap; gap: 6px 10px; margin-top: 6px; color: var(--chrome-fg); font-size: 11px; }
   #dt-controls label { display: flex; align-items: center; gap: 4px; cursor: pointer; }
   #dt-controls input[type="number"] { width: 46px; background: var(--btn-bg); color: var(--chrome-fg); border: 1px solid var(--btn-border); border-radius: 4px; padding: 2px 4px; font: inherit; }
-  #dt-abs { color: var(--muted); font-size: 10px; margin-top: 4px; }
   #fab-report { padding: 8px 14px 0; font-weight: 400; }
   #fab-report summary { cursor: pointer; color: var(--muted); }
   #fab-report table { border-collapse: collapse; width: 100%; font-size: 11px; margin: 6px 0; }
@@ -2576,7 +2759,6 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     <label>allowed <input id="dt-allowed" type="number" value="20" min="1" max="100">°C</label>
     <label><input id="dt-margin" type="checkbox"> color by margin</label>
   </div>
-  <div id="dt-abs"></div>
 </div>`
       : ''
   }
@@ -2656,6 +2838,9 @@ ${rows}
   <script id="drc-data" type="application/json">${JSON.stringify(options.drcMarkers ?? []).replace(/</g, '\\u003c')}</script>
   <script id="net-op" type="application/json">${
     options.netOp ? JSON.stringify(options.netOp).replace(/</g, '\\u003c') : ''
+  }</script>
+  <script id="stackup" type="application/json">${
+    options.stackup ? JSON.stringify(options.stackup).replace(/</g, '\\u003c') : ''
   }</script>
   <script id="pcba-themes" type="application/json">${
     options.pcbaThemes && options.pcbaThemes.length > 0

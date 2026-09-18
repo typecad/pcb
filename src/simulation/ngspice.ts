@@ -15,6 +15,19 @@ import { findExecutable } from '../kicad.js';
 /** Reference prefixes whose ngspice card type is implied (R/C/L/D = two-terminal passives). */
 const SPICE_DEVICE_PREFIX = /^[RCLD]/i;
 
+/**
+ * Terminal names (in ngspice card order) for the multi-terminal discrete
+ * devices whose per-pin currents feed the flow graph. The 4th terminal
+ * (BJT substrate `s`, MOSFET bulk `b`) carries negligible current and is
+ * deliberately dropped. Subcircuits (`X`) are not listed — ngspice does not
+ * expose their port currents via `i(x:port)`.
+ */
+const MULTI_TERMINAL_TERMINALS: Record<string, string[]> = {
+  Q: ['c', 'b', 'e'], // BJT: collector, base, emitter
+  M: ['d', 'g', 's'], // MOSFET: drain, gate, source
+  J: ['d', 'g', 's'], // JFET: drain, gate, source
+};
+
 class NgspiceResultImpl implements NgspiceResult {
   title = '';
   date = '';
@@ -167,6 +180,9 @@ export class SimulationContext {
     // two-terminal card sits on which node, in card order (ngspice positive
     // current enters a card at its first node)
     const branchEntries: Array<{ net: string; ref: string; pin: string; pos: 1 | 2 }> = [];
+    // multi-terminal devices (transistors) contribute per-terminal currents —
+    // probed as i(ref:terminal) and mapped back to their nets below.
+    const multiTerminalEntries: Array<{ ref: string; nets: string[]; pins: string[]; terminals: string[] }> = [];
 
     for (const component of components) {
       const { reference, value, pins, simulation } = component;
@@ -235,6 +251,20 @@ export class SimulationContext {
       if (nets.length === 2) {
         branchEntries.push({ net: nets[0]!, ref: reference, pin: pinNumbers[0]!, pos: 1 });
         branchEntries.push({ net: nets[1]!, ref: reference, pin: pinNumbers[1]!, pos: 2 });
+      } else if (nets.length >= 3) {
+        // transistor: record the first three terminals (collector/base/emitter
+        // or drain/gate/source) so their solved currents feed the flow graph.
+        // The optional 4th terminal (substrate/bulk) carries ~no current.
+        const terms = MULTI_TERMINAL_TERMINALS[reference[0]!.toUpperCase()];
+        if (terms) {
+          const count = Math.min(terms.length, nets.length);
+          multiTerminalEntries.push({
+            ref: reference,
+            nets: nets.slice(0, count),
+            pins: pinNumbers.slice(0, count),
+            terminals: terms.slice(0, count),
+          });
+        }
       }
 
       const tail = [deviceName ?? value, simulation?.params].filter(Boolean).join(' ');
@@ -328,7 +358,7 @@ export class SimulationContext {
     fs.mkdirSync(getBuildDir(), { recursive: true });
     const safeName = this.schematic.sheetName.replace(/[^a-zA-Z0-9_\-\.]/g, '_');
 
-    netlist += this.controlSection(safeName, connectedComponents, mode, openPlots);
+    netlist += this.controlSection(safeName, connectedComponents, multiTerminalEntries, mode, openPlots);
     fs.writeFileSync(`${getBuildDir()}/${safeName}.cir`, netlist);
 
     const ngspicePath = this.findNgspiceExecutable(Boolean(mode) && openPlots);
@@ -339,7 +369,7 @@ export class SimulationContext {
     try {
       execFileSync(ngspicePath, args);
       const ngspiceData = this.parseNgspiceAscii(`${safeName}.out`);
-      ngspiceData.branches = this.buildBranches(branchEntries, sources, ngspiceData);
+      ngspiceData.branches = this.buildBranches(branchEntries, multiTerminalEntries, sources, ngspiceData);
       if (mode) {
         this.displaySummary(ngspiceData);
       } else {
@@ -358,11 +388,14 @@ export class SimulationContext {
    * ngspice's card convention (positive current enters at the first node and
    * exits at the second); a source conducts node1→node2 internally when its
    * current is positive, so externally it injects at node1 and draws at
-   * node2. Explicit Power objects carry their terminal pad identity; nets
-   * only reachable through pad-less (discovered) sources get no anchor.
+   * node2. Transistors contribute their per-terminal currents (i(ref:terminal),
+   * positive into the terminal, hence negated into the net). Explicit Power
+   * objects carry their terminal pad identity; nets only reachable through
+   * pad-less (discovered) sources get no anchor.
    */
   private buildBranches(
     entries: Array<{ net: string; ref: string; pin: string; pos: 1 | 2 }>,
+    multiTerminal: Array<{ ref: string; nets: string[]; pins: string[]; terminals: string[] }>,
     sources: Array<{ name: string; powerNet: string; gndNet: string; powerPad?: { ref: string; pin: string }; gndPad?: { ref: string; pin: string } }>,
     data: NgspiceResult,
   ): Record<string, Array<{ ref: string; pin: string; i: number }>> {
@@ -375,6 +408,12 @@ export class SimulationContext {
       const iv = data.values[`i(${e.ref.toLowerCase()})`]?.[0] ?? 0;
       add(e.net, e.ref, e.pin, e.pos === 2 ? iv : -iv);
     }
+    for (const mt of multiTerminal) {
+      for (let t = 0; t < mt.terminals.length; t++) {
+        const iv = data.values[`i(${mt.ref.toLowerCase()}:${mt.terminals[t]})`]?.[0] ?? 0;
+        add(mt.nets[t]!, mt.ref, mt.pins[t]!, -iv);
+      }
+    }
     for (const s of sources) {
       const iv = data.values[`i(${s.name.toLowerCase()})`]?.[0] ?? 0;
       if (s.powerPad) add(s.powerNet, s.powerPad.ref, s.powerPad.pin, -iv);
@@ -383,8 +422,18 @@ export class SimulationContext {
     return branches;
   }
 
-  private controlSection(safeName: string, connectedComponents: Component[], mode?: string, openPlots = false): string {
-    const probes = connectedComponents.map((c) => `.probe p(${c.reference}) i(${c.reference})`).join('\n');
+  private controlSection(
+    safeName: string,
+    connectedComponents: Component[],
+    multiTerminal: Array<{ ref: string; terminals: string[] }>,
+    mode?: string,
+    openPlots = false,
+  ): string {
+    const probeLines = connectedComponents.map((c) => `.probe p(${c.reference}) i(${c.reference})`);
+    for (const mt of multiTerminal) {
+      probeLines.push(`.probe ${mt.terminals.map((t) => `i(${mt.ref}:${t})`).join(' ')}`);
+    }
+    const probes = probeLines.join('\n');
     const plots = openPlots
       ? `${connectedComponents.map((c) => `plot @${c.reference}[p] @${c.reference}[i]`).join('\n')}\nplot all`
       : '';

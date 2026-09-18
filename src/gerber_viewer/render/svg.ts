@@ -227,6 +227,12 @@ export interface InkOptions {
   traceStyle?: 'solid' | 'center' | 'centerEdgeA' | 'centerEdgeB';
   /** stripe color for traceStyle indications (default black) */
   stripeColor?: string;
+  /**
+   * marks traces as an inner (buried) copper layer via data-inner="1", so
+   * the viewer's thermal view applies the internal-layer IPC constant
+   * (k=0.024) instead of the external-layer one (k=0.048).
+   */
+  innerLayer?: boolean;
 }
 
 export interface LayerInk {
@@ -298,6 +304,7 @@ export function renderLayerInk(layer: RenderLayer, options: InkOptions): LayerIn
       // the real trace width always rides along — centerline styles thin
       // the visible stroke, and the thermal estimator needs the true value
       const wAttr = ` data-w="${fmt(stroke.width)}"`;
+      const innerAttr = options.innerLayer ? ' data-inner="1"' : '';
       if (options.traceStyle && options.traceStyle !== 'solid') {
         // layer indication: the trace body draws exactly as the gerber
         // specifies — full real width, like the top layer. The ONLY
@@ -306,7 +313,7 @@ export function renderLayerInk(layer: RenderLayer, options: InkOptions): LayerIn
         // marks it as a secondary layer so the viewer's mode recoloring
         // (electrical/thermal) leaves the indication intact.
         body.push(
-          `<path${attrs}${net} d="${d}" fill="none" stroke-width="${fmt(stroke.width)}"${wAttr} data-sub="1" ${caps}/>`,
+          `<path${attrs}${net} d="${d}" fill="none" stroke-width="${fmt(stroke.width)}"${wAttr} data-sub="1"${innerAttr} ${caps}/>`,
         );
         const stripe = Math.min(0.1, stroke.width / 2);
         const sc = options.stripeColor ?? '#000000';

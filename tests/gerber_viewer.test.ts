@@ -8,6 +8,7 @@ import { buildViewerHtml } from '../src/gerber_viewer/render/viewer_html.js';
 import { renderSvg } from '../src/gerber_viewer/render/svg.js';
 import { detectLayer } from '../src/gerber_viewer/detect_layer.js';
 import { parseGerber } from '../src/gerber_viewer/gerber/parse_gerber.js';
+import { calculateMinTraceWidth, calculateViaCurrentCapacity } from '../src/pcb/pcb_routing_calculations.js';
 
 const fixtures = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures', 'gerber');
 const read = (name: string) => fs.readFileSync(path.join(fixtures, name), 'utf8');
@@ -247,8 +248,11 @@ describe('buildViewerHtml', () => {
     // sheet solve over the pour fill polygon, graphite board + incandescent
     // ramp, ambient/allowed/margin controls
     expect(withSch).toContain('<option value="thermal">Copper ΔT</option>');
-    expect(withSch).toContain('dtFromI(Math.abs(cur), w)');
-    expect(withSch).toContain('i / (0.048 * Math.pow(area, 0.725))');
+    expect(withSch).toContain('dtFromI(Math.abs(cur), w');
+    // stackup-aware: internal (buried) layers use the IPC internal constant
+    // (k=0.024) instead of the external-layer one (k=0.048)
+    expect(withSch).toContain('inner ? 0.024 : 0.048');
+    expect(withSch).toContain("el.hasAttribute('data-inner')");
     expect(withSch).toContain('isPointInFill(new DOMPoint(px, py))');
     expect(withSch).toContain('el.__edgeCur');
     expect(withSch).toContain('id="dt-legend-box"');
@@ -267,7 +271,7 @@ describe('buildViewerHtml', () => {
     expect(withSch).toContain('if (Pd && Pd > 1e-6) devP[dk2] = Pd;');
     expect(withSch).toContain("pr.toLowerCase() + '|' + (pel.getAttribute('data-pin') || '')");
     expect(withSch).toContain('parts.push({ c: hc2 - 1, f: 0.125 })');
-    expect(withSch).toContain('gz[vc2] += (BD.viaG * drill) / 0.153;');
+    expect(withSch).toContain('gz[vc2] += (viaG * drill) / 0.153;');
     expect(withSch).toContain('var gzT = gZ + gz[c3]; // FR4 core + via barrels');
     // thermal hover: the status bar reports the temperature under the cursor
     // — the trace/via's own rise over copper, the bilinear FR4 field elsewhere
@@ -499,5 +503,147 @@ describe('viewer tooling (probing, search, report, DRC, export)', () => {
     expect(html).toContain('saved.__view');
     // a layer-settings save must not wipe the stored view
     expect(html).toMatch(/function persist\(\)[\s\S]*?JSON\.parse\(localStorage\.getItem\(storeKey/);
+  });
+});
+
+/**
+ * Pull a pure helper function out of the generated viewer's script block and
+ * evaluate it. The thermal loss/rise kernels are self-contained (no DOM), so
+ * this exercises the exact expression the browser runs — not a reimplementation.
+ */
+function extractFunction(source: string, name: string): string {
+  const start = source.indexOf(`function ${name}(`);
+  if (start === -1) throw new Error(`function ${name} not found in generated viewer`);
+  let depth = 0;
+  let i = source.indexOf('{', start);
+  for (; i < source.length; i++) {
+    if (source[i] === '{') depth++;
+    else if (source[i] === '}') {
+      depth--;
+      if (depth === 0) break;
+    }
+  }
+  return source.slice(start, i + 1);
+}
+
+describe('thermal math (evaluated from the generated viewer)', () => {
+  const image = parseGerber(read('traces.gbr'));
+  const info = detectLayer('demo-F_Cu.gbr', image);
+  const svg = renderSvg([{ info, image }]);
+  const html = buildViewerHtml(svg, [info], { title: 'demo board' });
+  const fn = <T extends (...args: any[]) => number>(name: string): T =>
+    new Function(`return (${extractFunction(html, name)});`)() as T;
+
+  it('computes sheet-cell copper loss in watts (the 1e6 unit fix)', () => {
+    const loss = fn('sheetCellLossW');
+    // 1 A/mm through a 1×1 mm cell of a 1-oz sheet (Rs = 0.493 mΩ/□) is
+    // 0.493 mW — the previous code multiplied by an extra 1e-6.
+    expect(loss(1, 0.000493, 1, 1)).toBeCloseTo(0.000493, 12);
+    expect(loss(2, 0.000493, 1, 1)).toBeCloseTo(4 * 0.000493, 12); // I²
+    expect(loss(1, 0.000493, 0.6, 0.6)).toBeCloseTo(0.000493 * 0.36, 12); // area
+  });
+
+  it('computes wire I²R loss in watts', () => {
+    const loss = fn('wireLossW');
+    expect(loss(1, 0.000493, 1, 1)).toBeCloseTo(0.000493, 12);
+    expect(loss(1, 0.000493, 10, 1)).toBeCloseTo(0.00493, 12); // length
+    expect(loss(2, 0.000493, 1, 1)).toBeCloseTo(0.001972, 12); // I²
+  });
+
+  it('computes via barrel electrical conductance near the ~600 S reference', () => {
+    const cond = fn('viaBarrelCondS');
+    // σ·π·d·t/L at 0.15 mm drill, 35 µm plating, 1.6 mm board ≈ 598 S
+    expect(cond(0.15, 35, 1.6)).toBeGreaterThan(590);
+    expect(cond(0.15, 35, 1.6)).toBeLessThan(610);
+  });
+
+  it('applies the internal-layer IPC constant (halved k → 2^(1/0.44) × rise)', () => {
+    const dt = fn('dtFromI');
+    const ratio = Math.pow(2, 1 / 0.44);
+    expect(dt(1, 0.5, true) / dt(1, 0.5, false)).toBeCloseTo(ratio, 9);
+  });
+
+  it('inverts the library trace-width sizer (round-trip)', () => {
+    const dt = fn('dtFromI');
+    for (const width of [0.2, 0.5, 1.0, 2.5]) {
+      const rise = dt(1, width, false);
+      expect(calculateMinTraceWidth(1, 'F.Cu', rise, 35)).toBeCloseTo(width, 5);
+    }
+  });
+
+  it('inverts the library via sizer (round-trip)', () => {
+    const dtVia = fn('dtViaFromI');
+    for (const drill of [0.3, 0.5, 1.0]) {
+      const rise = dtVia(1, drill);
+      expect(calculateViaCurrentCapacity(0.6, drill, 35, 1.6, rise)).toBeCloseTo(1, 4);
+    }
+  });
+
+  it('scales trace rise by copper weight (2 oz reduces the rise)', () => {
+    const dt = fn('dtFromI');
+    // 70 µm (2 oz) has 2× the cross-section; ΔT ∝ A^(−0.725/0.44), so the
+    // rise falls by 2^(0.725/0.44)
+    const ratio = Math.pow(2, 0.725 / 0.44);
+    expect(dt(1, 0.5, false, 35) / dt(1, 0.5, false, 70)).toBeCloseTo(ratio, 9);
+  });
+
+  it('models copper resistivity temperature coefficient', () => {
+    const rho = fn('cuResistivityOhmM');
+    // cuSheetResist delegates to cuResistivityOhmM — evaluate it with the
+    // dependency in scope
+    const rs = new Function('cuResistivityOhmM', `return (${extractFunction(html, 'cuSheetResist')});`)(
+      rho,
+    ) as (tMm: number, tempC: number) => number;
+    expect(rho(20)).toBeCloseTo(1.724e-8, 14);
+    // +0.393%/°C: a 45 °C rise is ~17.7% more resistance
+    expect(rho(65) / rho(20)).toBeCloseTo(1 + 0.00393 * 45, 12);
+    // sheet resistance halves when the copper thickness doubles
+    expect(rs(0.035, 20) / rs(0.07, 20)).toBeCloseTo(2, 12);
+  });
+
+  it('computes physically-grounded convection and radiation coefficients', () => {
+    const hConv = fn('naturalConvectionH');
+    const hRad = fn('radH');
+    // natural convection on a vertical plate, 50 mm, 30 °C rise → ~6-8 W/m²·K
+    expect(hConv(30, 50, 'v')).toBeGreaterThan(4);
+    expect(hConv(30, 50, 'v')).toBeLessThan(15);
+    // heated-face-up convects better than heated-face-down
+    expect(hConv(30, 50, 'hUp')).toBeGreaterThan(hConv(30, 50, 'hDn'));
+    // radiation near room temp is ~5-6 W/m²·K (linearized)
+    expect(hRad(50, 25, 0.9)).toBeGreaterThan(5);
+    expect(hRad(50, 25, 0.9)).toBeLessThan(7);
+    // no convection without a temperature excess
+    expect(hConv(0, 50, 'v')).toBe(0);
+  });
+});
+
+describe('stackup island', () => {
+  const image = parseGerber(read('traces.gbr'));
+  const info = detectLayer('demo-F_Cu.gbr', image);
+  const svg = renderSvg([{ info, image }]);
+  const stackup = {
+    layerCount: 4,
+    copperLayers: ['F.Cu', 'In1.Cu', 'In2.Cu', 'B.Cu'],
+    boardThicknessMm: 1.6,
+    copperThicknessMm: [0.035, 0.0175, 0.0175, 0.035],
+    dielectrics: [
+      { name: 'dielectric 1', type: 'prepreg', thicknessMm: 0.21, material: 'FR4' },
+      { name: 'dielectric 2', type: 'core', thicknessMm: 1.11, material: 'FR4' },
+      { name: 'dielectric 3', type: 'prepreg', thicknessMm: 0.21, material: 'FR4' },
+    ],
+  };
+
+  it('embeds the stackup as a JSON island when provided', () => {
+    const html = buildViewerHtml(svg, [info], { title: 'demo board', stackup });
+    expect(html).toContain('id="stackup"');
+    expect(html).toContain('"copperThicknessMm":[0.035,0.0175,0.0175,0.035]');
+    // the thermal model reads the island and falls back without it
+    expect(html).toContain("getElementById('stackup')");
+    expect(html).toContain('var stackup = null;');
+  });
+
+  it('omits the island (and keeps legacy defaults) without a stackup', () => {
+    const plain = buildViewerHtml(svg, [info], { title: 'demo board' });
+    expect(plain).not.toContain('"copperThicknessMm"');
   });
 });

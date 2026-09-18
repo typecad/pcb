@@ -122,6 +122,8 @@ export interface ViewerBuildOptions {
   netlistPath?: string;
   /** kicad-cli DRC report (<board>_drc.json) path — renders violation markers. */
   drcReportPath?: string;
+  /** board stackup (<board>_stackup.json) path — feeds the thermal model's geometry. */
+  stackupPath?: string;
 }
 
 /** Parse a KiCad netlist into a "REF.pin" -> net map (N/C pads excluded). */
@@ -297,6 +299,19 @@ export function buildViewerFromFiles(paths: string[], options: ViewerBuildOption
       }
     }
   }
+  // the board writer leaves build/<board>_stackup.json beside the board; the
+  // viewer's thermal model uses it for per-layer copper weight + dielectric
+  // thickness. Explicit --stackup wins, else auto-discover next to the netlist.
+  let stackup: ViewerOptions['stackup'] = null;
+  const stackupSource =
+    options.stackupPath ?? (pcbaNetlistSource ? pcbaNetlistSource.replace(/\.net$/i, '_stackup.json') : undefined);
+  if (stackupSource && fs.existsSync(stackupSource)) {
+    try {
+      stackup = JSON.parse(fs.readFileSync(stackupSource, 'utf8')) as NonNullable<ViewerOptions['stackup']>;
+    } catch {
+      warnings.push(`could not parse ${path.basename(stackupSource)} — the thermal view falls back to 35 µm/1.6 mm defaults`);
+    }
+  }
   // the pcba view's theme picker: surface colors per builtin, ordered as the
   // combo shows them. The switcher remaps these flat colors client-side, so
   // one embedded render serves every theme.
@@ -332,6 +347,7 @@ export function buildViewerFromFiles(paths: string[], options: ViewerBuildOption
     blueprintSvg,
     schematicSvg,
     netOp,
+    stackup,
     pcbaThemes,
   });
   return { svg, html, layers, warnings, report };

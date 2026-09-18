@@ -44,7 +44,9 @@ export function maybeWriteOpSolve(pcb: PCB): boolean {
       out.devices = {};
       for (const variable of result.variables) {
         const net = /^v\((.+)\)$/.exec(variable.name);
-        const dev = /^i\((.+)\)$/.exec(variable.name);
+        // device current: i(ref) only — terminal currents (i(q1:c)) are the
+        // flow-graph branches and must not register as a device's current
+        const dev = /^i\(([^:()]+)\)$/.exec(variable.name);
         // ngspice names probed power "r1:power" in its raw output (the
         // .probe card says p(R1)) — match both spellings
         const pwr = /^(?:p\((.+)\)|(.+):power)$/.exec(variable.name);

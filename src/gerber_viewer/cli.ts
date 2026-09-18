@@ -15,6 +15,7 @@ interface CliArgs {
   netlistPath: string | null;
   noNetlist: boolean;
   drcReportPath: string | null;
+  stackupPath: string | null;
   render: 'viewer' | 'pcba';
   theme: string | null;
   side: 'auto' | 'front' | 'back';
@@ -54,6 +55,9 @@ Options:
   --no-title-block    pcba: omit the engineering title block (board name,
                       date, dimensions, wordmark) below the board
   --drc <file>        typecad DRC report JSON: renders violation markers
+  --stackup <file>    board stackup JSON (build/<board>_stackup.json): copper
+                      weight per layer + dielectric thicknesses for the
+                      thermal model (auto-discovered next to --netlist)
   --open              open the viewer in the default browser
   -h, --help          show this help
   -v, --version       print version
@@ -72,6 +76,7 @@ function parseArgs(argv: string[]): CliArgs {
     netlistPath: null,
     noNetlist: false,
     drcReportPath: null,
+    stackupPath: null,
     render: 'viewer',
     theme: null,
     side: 'auto',
@@ -93,6 +98,7 @@ function parseArgs(argv: string[]): CliArgs {
     else if (arg === '--netlist') args.netlistPath = argv[++i] ?? '';
     else if (arg === '--no-netlist') args.noNetlist = true;
     else if (arg === '--drc') args.drcReportPath = argv[++i] ?? '';
+    else if (arg === '--stackup') args.stackupPath = argv[++i] ?? '';
     else if (arg === '--render') {
       const mode = argv[++i];
       if (mode !== 'viewer' && mode !== 'pcba') throw new Error(`unknown --render mode "${mode}" (viewer or pcba)`);
@@ -221,6 +227,7 @@ export function run(argv: string[]): number {
     result = buildViewerFromFiles(args.inputs, {
       netlistPath: args.netlistPath ?? undefined,
       drcReportPath: args.drcReportPath ?? undefined,
+      stackupPath: args.stackupPath ?? undefined,
     });
   } catch (error) {
     process.stderr.write(`error: ${(error as Error).message}\n`);

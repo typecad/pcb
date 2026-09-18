@@ -1317,6 +1317,23 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       var c = cj * nx + ci;
       return inBoard[c] ? c : -1;
     };
+    // fine paint grid, 3x the solve raster: the field is solved at BD.cell,
+    // but the image is painted at a third of it with bilinear sampling —
+    // a full-solve-cell paint would look blocky at 1.2 mm. The field covers
+    // the whole board (no trace gap); only the outline confines it.
+    var FX = 3;
+    var pnx = nx * FX, pny = ny * FX;
+    var fcx = cx / FX, fcy = cy / FX;
+    var fIn = new Uint8Array(pnx * pny);
+    for (var fj = 0; fj < pny; fj++) {
+      for (var fi = 0; fi < pnx; fi++) {
+        fIn[fj * pnx + fi] = fill.isPointInFill(
+          new DOMPoint(bb.x + (fi + 0.5) * fcx, bb.y + (fj + 0.5) * fcy),
+        )
+          ? 1
+          : 0;
+      }
+    }
     var copper = viewGroups.schematic.querySelector('#sch-copper');
     if (copper) {
       for (var w = 0; w < dtItems.wires.length; w++) {
@@ -1334,7 +1351,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
           var steps = Math.max(1, Math.round(len / Math.max(0.4, len / 24)));
           S[li][c] += P / steps;
           cu[li][c] = 1;
-          // gap: mark neighbors of the wire cell
+          // solver spread: heat conducts from the neighboring cells too
           if (c % nx > 0) cu[li][c - 1] = cu[li][c - 1] || inBoard[c - 1];
           if (c % nx < nx - 1) cu[li][c + 1] = cu[li][c + 1] || inBoard[c + 1];
           if (c >= nx) cu[li][c - nx] = cu[li][c - nx] || inBoard[c - nx];
@@ -1433,7 +1450,9 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       }
       if (md < 1e-4) break;
     }
-    // paint: max across layers, copper cells left clear (the pixel gap)
+    // paint: max across layers, bilinear on the fine grid — the field covers
+    // the whole board (copper included); only the outline and the near-zero
+    // threshold hold paint back
     var maxT = 0;
     for (var c4 = 0; c4 < nx * ny; c4++) {
       if (!inBoard[c4]) continue;
@@ -1441,17 +1460,30 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       if (tv > maxT) maxT = tv;
     }
     var cv = document.createElement('canvas');
-    cv.width = nx;
-    cv.height = ny;
+    cv.width = pnx;
+    cv.height = pny;
     var ctx = cv.getContext('2d');
-    var data = ctx.createImageData(nx, ny);
-    for (var j2 = 0; j2 < ny; j2++) {
-      for (var i6 = 0; i6 < nx; i6++) {
-        var c5 = j2 * nx + i6;
-        var o = (j2 * nx + i6) * 4; // no flip: the board group flips the image on screen (verified by pixel probe)
-        if (!inBoard[c5]) continue;
-        if (cu[0][c5] || cu[1][c5]) continue; // the gap
-        var tv2 = Math.max(T[0][c5], T[1][c5]);
+    var data = ctx.createImageData(pnx, pny);
+    for (var j2 = 0; j2 < pny; j2++) {
+      for (var i6 = 0; i6 < pnx; i6++) {
+        var fc2 = j2 * pnx + i6;
+        var o = fc2 * 4; // no flip: the board group flips the image on screen (verified by pixel probe)
+        if (!fIn[fc2]) continue;
+        // bilinear sample of the solved field, max of both layers
+        var px2 = bb.x + (i6 + 0.5) * fcx;
+        var py2 = bb.y + (j2 + 0.5) * fcy;
+        var gx = Math.max(0, Math.min(nx - 1.001, (px2 - bb.x) / cx - 0.5));
+        var gy = Math.max(0, Math.min(ny - 1.001, (py2 - bb.y) / cy - 0.5));
+        var qa = Math.floor(gx), qb = Math.floor(gy);
+        var fx3 = gx - qa, fy3 = gy - qb;
+        var cA = qb * nx + qa, cB = qb * nx + qa + 1;
+        var cC = cA + nx, cD = cB + nx;
+        var wA = (1 - fx3) * (1 - fy3), wB = fx3 * (1 - fy3);
+        var wC = (1 - fx3) * fy3, wD = fx3 * fy3;
+        var tv2 = Math.max(
+          T[0][cA] * wA + T[0][cB] * wB + T[0][cC] * wC + T[0][cD] * wD,
+          T[1][cA] * wA + T[1][cB] * wB + T[1][cC] * wC + T[1][cD] * wD,
+        );
         if (tv2 <= 0.01) continue;
         var rgb = dtHexRGB(dtColor(tv2, Math.max(maxT, 0.5)));
         data.data[o] = rgb[0];

@@ -599,46 +599,124 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         if (pads[pk].q < 0) canon.isSnk = 1;
         padNodes.push({ pad: pads[pk], node: canon });
       }
-      // depth from the current-leaving pads: parent chains lead each
-      // entering pad's current to its nearest exit
-      var queue = [];
-      for (var nk2 in nodes) {
-        if (nodes[nk2].isSnk) {
-          nodes[nk2].depth = 0;
-          queue.push(nodes[nk2]);
+      // via pads tie the layers AND stitch into routes that merely cross
+      // them: the crossed edge splits at the via center (two half-edges
+      // sharing the SVG path with offset bases), so a mid-segment drop
+      // genuinely branches into the via
+      var viaPads1 = [];
+      for (var vp = 0; vp < els.length; vp++) {
+        var vpe = els[vp];
+        if (vpe.getAttribute('data-ref') || !vpe.getAttribute('data-net')) continue;
+        if (vpe.getAttribute('data-net') !== net) continue;
+        var vptg = vpe.tagName.toLowerCase();
+        if (vptg === 'path' || vptg === 'polyline' || vptg === 'line') continue;
+        var vpb = vpe.getBBox();
+        if (vpb.width > 1.2 || vpb.height > 1.2) continue;
+        viaPads1.push({ x: vpb.x + vpb.width / 2, y: vpb.y + vpb.height / 2 });
+      }
+      for (var vp2 = 0; vp2 < viaPads1.length; vp2++) {
+        var cV = viaPads1[vp2];
+        var T = null, bestD = 4;
+        for (var nk5 in nodes) {
+          if (nodes[nk5].depth === -2) continue;
+          var nvx = nodes[nk5].x - cV.x, nvy = nodes[nk5].y - cV.y;
+          var nd5 = nvx * nvx + nvy * nvy;
+          if (nd5 < bestD) {
+            bestD = nd5;
+            T = nodes[nk5];
+          }
+        }
+        if (!T) T = nodeAt(cV.x, cV.y);
+        // split crossing edges at the via center (0.35 mm capture radius)
+        for (var ev = netEdges.length - 1; ev >= 0; ev--) {
+          var eS = netEdges[ev];
+          if (eS.dead || eS.a === T || eS.b === T || !eS.len) continue;
+          var ebS = eS.el.getBBox();
+          if (cV.x < ebS.x - 1 || cV.x > ebS.x + ebS.width + 1 || cV.y < ebS.y - 1 || cV.y > ebS.y + ebS.height + 1) continue;
+          var hitS = -1;
+          for (var sl = 0.3; sl < eS.len; sl += 0.25) {
+            var spS = eS.el.getPointAtLength(sl);
+            if (Math.abs(spS.x - cV.x) < 0.35 && Math.abs(spS.y - cV.y) < 0.35) {
+              hitS = sl;
+              break;
+            }
+          }
+          if (hitS < 0.5 || hitS > eS.len - 0.5) continue;
+          eS.dead = 1; // retired into its two halves
+          var h1 = { el: eS.el, len: hitS, a: eS.a, b: T, cur: 0, base: eS.base || 0 };
+          var h2 = { el: eS.el, len: eS.len - hitS, a: T, b: eS.b, cur: 0, base: (eS.base || 0) + hitS };
+          netEdges.push(h1, h2);
+          T.adj.push(netEdges.length - 2, netEdges.length - 1);
         }
       }
-      var qi = 0;
-      while (qi < queue.length) {
-        var u = queue[qi++];
-        for (var ai = 0; ai < u.adj.length; ai++) {
-          var eg = netEdges[u.adj[ai]];
-          var v = eg.a === u ? eg.b : eg.a;
-          if (v.depth !== -1) continue;
-          v.depth = u.depth + 1;
-          v.parentEdge = u.adj[ai];
-          queue.push(v);
-        }
+      // resistor-network solve: every wire is R = Rs·L/w (35 µm sheet
+      // copper; Rs = 0.493 mΩ/□), pads inject their solved current, and a
+      // SOR pass over the node voltages gives each edge its true current —
+      // parallel paths (a mid-trace via dropping to a twin route on another
+      // layer) share by conductance instead of one path taking everything
+      var nodeArr = [];
+      for (var nk4 in nodes) {
+        if (nodes[nk4].depth === -2) continue; // retired into a pad canon
+        nodes[nk4].idx = nodeArr.length;
+        nodeArr.push(nodes[nk4]);
       }
-      // each entering pad walks its q down the parent chain, accumulating
-      // signed flow per edge (positive = along the wire's own a->b order)
-      for (var pk2 = 0; pk2 < padNodes.length; pk2++) {
-        var pn = padNodes[pk2];
-        if (!pn.node || pn.pad.q <= 0 || pn.node.depth === -1) continue;
-        var v2 = pn.node;
-        var guard = 0;
-        while (v2.parentEdge !== -1 && guard++ < 500) {
-          var edge = netEdges[v2.parentEdge];
-          var parent = edge.a === v2 ? edge.b : edge.a;
-          // current moves v2 -> parent (toward the sink); positive = a->b
-          edge.cur += pn.pad.q * (edge.a === v2 ? 1 : -1);
-          v2 = parent;
+      var nN = nodeArr.length;
+      var inject = new Float64Array(nN);
+      var refIdx2 = -1;
+      for (var pk4 = 0; pk4 < padNodes.length; pk4++) {
+        var pn4 = padNodes[pk4];
+        if (!pn4.node) continue;
+        inject[pn4.node.idx] += pn4.pad.q;
+      }
+      for (var ri = 0; ri < nN; ri++) {
+        if (refIdx2 < 0 || inject[ri] < inject[refIdx2]) refIdx2 = ri;
+      }
+      if (refIdx2 < 0 || inject[refIdx2] >= 0) continue; // no sink to anchor
+      var Vv = new Float64Array(nN);
+      var gsum = new Float64Array(nN);
+      var edgeG = new Float64Array(netEdges.length);
+      for (var ei4 = 0; ei4 < netEdges.length; ei4++) {
+        var e4 = netEdges[ei4];
+        if (e4.dead) continue;
+        var wE = parseFloat(e4.el.getAttribute('data-w') || e4.el.getAttribute('stroke-width')) || 0.2;
+        edgeG[ei4] = wE / (DT_RS * e4.len || 1e-9); // S = w/(Rs·L)
+        gsum[e4.a.idx] += edgeG[ei4];
+        gsum[e4.b.idx] += edgeG[ei4];
+      }
+      for (var it4 = 0; it4 < 4000; it4++) {
+        var md4 = 0;
+        for (var ni4 = 0; ni4 < nN; ni4++) {
+          if (ni4 === refIdx2 || !gsum[ni4]) continue;
+          var u4 = nodeArr[ni4];
+          var s4 = inject[ni4];
+          for (var ai4 = 0; ai4 < u4.adj.length; ai4++) {
+            var gi = u4.adj[ai4];
+            if (netEdges[gi].dead) continue;
+            var other4 = netEdges[gi].a === u4 ? netEdges[gi].b : netEdges[gi].a;
+            s4 += edgeG[gi] * Vv[other4.idx];
+          }
+          var nv4 = s4 / gsum[ni4];
+          var dd4 = nv4 - Vv[ni4];
+          Vv[ni4] += 1.5 * dd4;
+          if (dd4 > md4) md4 = dd4;
+          else if (-dd4 > md4) md4 = -dd4;
         }
+        if (md4 < 1e-12) break;
+      }
+      // edge currents: positive = along the wire's own a->b order
+      for (var ei5 = 0; ei5 < netEdges.length; ei5++) {
+        var e5 = netEdges[ei5];
+        if (e5.dead) continue;
+        e5.cur = (Vv[e5.a.idx] - Vv[e5.b.idx]) * edgeG[ei5];
       }
       for (var ei = 0; ei < netEdges.length; ei++) {
         var ed = netEdges[ei];
-        // the thermal view reuses the solved per-wire currents
-        ed.el.__edgeCur = ed.cur;
+        if (ed.dead) continue;
+        // the thermal view reuses the solved per-wire currents; split edges
+        // share an element — keep the larger reading
+        if (ed.el.__edgeCur === undefined || Math.abs(ed.cur) > Math.abs(ed.el.__edgeCur)) {
+          ed.el.__edgeCur = ed.cur;
+        }
         if (!ed.cur) continue;
         edges.push(ed);
         var mag = Math.abs(ed.cur);
@@ -666,7 +744,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         dot.setAttribute('stroke', 'rgba(0,0,0,0.45)');
         dot.setAttribute('stroke-width', '0.05');
         flowGroup.appendChild(dot);
-        flowParticles.push({ path: ed2.el, len: ed2.len, dir: dir, off: (ed2.len * ci) / count, speed: 2.5 + 10 * t, dot: dot });
+        flowParticles.push({ path: ed2.el, len: ed2.len, base: ed2.base || 0, dir: dir, off: (ed2.len * ci) / count, speed: 2.5 + 10 * t, dot: dot });
       }
     }
     if (flowParticles.length) copper.parentNode.insertBefore(flowGroup, copper.nextSibling);
@@ -685,7 +763,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       p.off += p.dir * p.speed * flowRate * dt;
       if (p.off > p.len) p.off -= p.len;
       if (p.off < 0) p.off += p.len;
-      var pt = p.path.getPointAtLength(p.off);
+      var pt = p.path.getPointAtLength((p.base || 0) + p.off);
       p.dot.setAttribute('cx', pt.x);
       p.dot.setAttribute('cy', pt.y);
     }

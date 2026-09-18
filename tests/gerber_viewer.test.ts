@@ -226,11 +226,11 @@ describe('buildViewerHtml', () => {
     // open wires only — the GND pour outline is one giant closed contour
     expect(withSch).toContain("indexOf('Z') !== -1");
     expect(withSch).toContain('flowParticles.length < 400');
-    // per-branch flow on the route graph: each entering pad's current walks
-    // its own path to the nearest exit, so direction is the real current
-    // path and zero-current wires get no particles
-    expect(withSch).toContain('parentEdge');
-    expect(withSch).toContain('edge.cur += pn.pad.q');
+    // per-branch flow on the route graph: wires are resistors (R = Rs·L/w)
+    // and a node-voltage solve shares parallel paths by conductance —
+    // zero-current wires get no particles
+    expect(withSch).toContain('DT_RS * e4.len');
+    expect(withSch).toContain('e5.cur = (Vv[e5.a.idx] - Vv[e5.b.idx]) * edgeG[ei5]');
     expect(withSch).toContain('if (!ed.cur) continue;');
     expect(withSch).toContain('(Math.log(mag2) - Math.log(lo))');
     expect(withSch).toContain('id="flow-toggle"');

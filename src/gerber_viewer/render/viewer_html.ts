@@ -746,6 +746,16 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     var i = Math.min(Math.floor(s), DT_STOPS.length - 2);
     return voltMix(DT_STOPS[i], DT_STOPS[i + 1], s - i);
   }
+  function dtViaFromI(i, drillMm) {
+    if (!(i > 0) || !(drillMm > 0)) return 0;
+    // barrel cross-section A = π·(D+Tk)·Tk in mil², plating 35 µm — the
+    // same constants as the library's via sizer (IPC-2152 form)
+    var dMil = drillMm * 39.3701;
+    var tkMil = 1.378;
+    var area = Math.PI * (dMil + tkMil) * tkMil;
+    var r = i / (0.048 * Math.pow(area, 0.75));
+    return r > 0 ? Math.pow(r, 1 / 0.44) : 0;
+  }
   function dtHexRGB(hex) {
     var p = parseInt(hex.slice(1), 16);
     return [(p >> 16) & 255, (p >> 8) & 255, p & 255];
@@ -929,11 +939,20 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       wr.el.setAttribute('stroke', wr.dt > 0 ? dtColor(wr.dt, hi) : '#454b52');
     }
     for (var p = 0; p < dtItems.pours.length; p++) paintPour(dtItems.pours[p], hi);
+    // via pads color like wires — their ring IS the hotspot indicator
+    for (var v = 0; v < dtItems.vias.length; v++) {
+      var vv = dtItems.vias[v];
+      var vc = vv.dt > 0 ? dtColor(vv.dt, hi) : '#454b52';
+      var vf = vv.el.getAttribute('fill');
+      if (vf && vf !== 'none') vv.el.setAttribute('fill', vc);
+      var vs = vv.el.getAttribute('stroke');
+      if (vs && vs !== 'none') vv.el.setAttribute('stroke', vc);
+    }
     fillLegend('dt', DT_STOPS, 0, hi, '°C');
     var ambBox = document.getElementById('dt-ambient');
     var amb = ambBox ? parseFloat(ambBox.value) || 25 : 25;
     var abs = document.getElementById('dt-abs');
-    if (abs) abs.textContent = 'hottest copper \u2248 ' + (amb + dtItems.maxDT).toFixed(1) + '\u00B0C at ' + amb + '\u00B0C ambient';
+    if (abs) abs.textContent = 'hottest copper \u2248 ' + (amb + dtItems.maxDT).toFixed(1) + '\u00B0C at ' + amb + '\u00B0C ambient' + dtItems.viaNote;
   }
   function buildThermal() {
     if (dtBuilt || !viewGroups.schematic || !netOp || !netOp.solved || !netOp.branches) return;
@@ -974,14 +993,66 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         if (pour) pours.push(pour);
       }
     }
+    // vias: netted copper pads with no component ref (small, closed — not
+    // wires). Actual current is an equal share of the net's total injection
+    // (documented assumption — a coupled two-layer pour solve would compute
+    // the true split). Drill from the smallest rendered drill mark inside
+    // the pad, else estimated from the annulus.
+    var vias = [];
+    var viaNets = {};
+    for (var v = 0; v < els.length; v++) {
+      var ve = els[v];
+      if (ve.getAttribute('data-ref')) continue;
+      var vtg = ve.tagName.toLowerCase();
+      if (vtg === 'path' || vtg === 'polyline' || vtg === 'line') continue;
+      var vn = ve.getAttribute('data-net');
+      if (!vn) continue;
+      var vbb = ve.getBBox();
+      if (vbb.width > 1.2 || vbb.height > 1.2) continue;
+      if (!viaNets[vn]) viaNets[vn] = [];
+      viaNets[vn].push(ve);
+    }
+    var drillMarks = viewGroups.schematic.querySelectorAll('circle');
+    var viaNote = '';
+    for (var vn2 in viaNets) {
+      var ventries = netOp.branches[vn2.toLowerCase()];
+      if (!ventries) continue;
+      var vsum = {}, vtot = 0;
+      for (var q = 0; q < ventries.length; q++) {
+        var vk = ventries[q].ref + '|' + ventries[q].pin;
+        vsum[vk] = (vsum[vk] || 0) + ventries[q].i;
+      }
+      for (var vk2 in vsum) if (vsum[vk2] > 0) vtot += vsum[vk2];
+      if (!(vtot > 0)) continue;
+      var share = vtot / viaNets[vn2].length;
+      viaNote += viaNote ? ' · ' : ' · ';
+      viaNote += viaNets[vn2].length + ' ' + vn2 + ' via' + (viaNets[vn2].length > 1 ? 's' : '') + ' share ' + fmtEng(vtot) + 'A equally';
+      for (var v2 = 0; v2 < viaNets[vn2].length; v2++) {
+        var vel = viaNets[vn2][v2];
+        var vb = vel.getBBox();
+        var vc = { x: vb.x + vb.width / 2, y: vb.y + vb.height / 2 };
+        var drill = 0;
+        for (var d = 0; d < drillMarks.length; d++) {
+          var dm = drillMarks[d];
+          var ddx = +dm.getAttribute('cx') - vc.x, ddy = +dm.getAttribute('cy') - vc.y;
+          if (ddx * ddx + ddy * ddy < 0.09) {
+            var dr = (+dm.getAttribute('r') || 0) * 2;
+            if (dr > 0.05 && (drill === 0 || dr < drill)) drill = dr;
+          }
+        }
+        if (!drill) drill = Math.max(0.1, Math.max(vb.width, vb.height) - 0.3);
+        vias.push({ el: vel, dt: dtViaFromI(share, drill) });
+      }
+    }
     var maxDT = 0;
     for (var w2 = 0; w2 < wires.length; w2++) if (wires[w2].dt > maxDT) maxDT = wires[w2].dt;
     for (var p2 = 0; p2 < pours.length; p2++) {
       var pc = pours[p2].cells;
       for (var c = 0; c < pc.length; c++) if (pc[c] > maxDT) maxDT = pc[c];
     }
-    dtItems = { wires: wires, pours: pours, maxDT: maxDT };
-    dtReady = wires.length > 0 || pours.length > 0;
+    for (var v3 = 0; v3 < vias.length; v3++) if (vias[v3].dt > maxDT) maxDT = vias[v3].dt;
+    dtItems = { wires: wires, pours: pours, vias: vias, viaNote: viaNote, maxDT: maxDT };
+    dtReady = wires.length > 0 || pours.length > 0 || vias.length > 0;
   }
   function enterThermal() {
     var paper = document.getElementById('sch-paper');

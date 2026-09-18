@@ -251,6 +251,11 @@ describe('buildViewerHtml', () => {
     expect(withSch).toContain('el.__edgeCur');
     expect(withSch).toContain('id="dt-legend-box"');
     expect(withSch).toContain('color by margin');
+    // via thermal model: equal-split the net current among netted pads
+    // without refs, invert the IPC-2152 barrel formula on the drill
+    expect(withSch).toContain('dtViaFromI(share, drill)');
+    expect(withSch).toContain('Math.PI * (dMil + tkMil) * tkMil');
+    expect(withSch).toContain("fmtEng(vtot) + 'A equally'");
     // no island content when no simulation ran
     const plain = buildViewerHtml(svg, [info], { title: 'demo board' });
     expect(plain).not.toContain('id="view-schematic"');

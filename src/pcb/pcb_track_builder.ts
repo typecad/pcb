@@ -197,6 +197,9 @@ export class TrackBuilder {
       throw err;
     }
 
+    // the builder's net option flows to the via unless overridden per-via
+    params.net = params.net ?? this._net;
+
     // If power info exists, calculate minimum via size
     if (params.powerInfo) {
       const minViaSize = this.calculateMinViaSize(
@@ -215,6 +218,17 @@ export class TrackBuilder {
       if (!params.drill || params.drill < roundedDrill) {
         params.drill = roundedDrill;
       }
+    }
+
+    // Fabrication floors: the IPC-2152 solve can demand a drill below any
+    // fab's capability (a modest current at 35 µm plating needs ~0 mm of
+    // barrel). Raise whatever is set to the board rules — never lower an
+    // explicit larger choice.
+    if (params.size !== undefined || params.drill !== undefined) {
+      const floorDrill = this.pcb.rules.min_through_hole_diameter;
+      const floorSize = Math.max(this.pcb.rules.min_via_diameter, floorDrill + 0.2);
+      if (!params.drill || params.drill < floorDrill) params.drill = floorDrill;
+      if (!params.size || params.size < floorSize) params.size = floorSize;
     }
 
     const viaComponent = this.pcb.via({

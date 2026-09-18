@@ -1194,10 +1194,14 @@ M02*
       layer('demo-B_Cu.gbl', trace(1000000, 2000000, 3000000)),
     ];
     const svg = renderPcbaSvg(stack, { style: 'schematic' }).svg;
-    // back layer: faint thin centerline, real width preserved in data-w
-    expect(svg).toMatch(/stroke="#b6bcc4"[^>]*d="M [^"]*" fill="none" stroke-width="0.1" data-w="0.25"/);
-    // top layer: solid trace at its real width, width also in data-w
-    expect(svg).toMatch(/stroke="#101010"[^>]*d="M [^"]*" fill="none" stroke-width="0.8" data-w="0.8"/);
+    // back layer: trace body at FULL gerber width, marked data-sub…
+    expect(svg).toMatch(
+      /stroke="#b6bcc4"[^>]*d="M [^"]*" fill="none" stroke-width="0.25" data-w="0.25" data-sub="1"/,
+    );
+    // …with a thin black centerline stripe drawn overtop, pointer-transparent
+    expect(svg).toMatch(/stroke="#000000"[^>]*d="M [^"]*" fill="none" stroke-width="0.1" pointer-events="none"/);
+    // top layer: solid trace at its real width, no stripes, no data-sub
+    expect(svg).toMatch(/stroke="#101010"[^>]*d="M [^"]*" fill="none" stroke-width="0.8" data-w="0.8" stroke-linecap/);
   });
 
   it('blueprint defers to the fab layer designators when it has them', () => {

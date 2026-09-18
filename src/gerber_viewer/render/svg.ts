@@ -218,12 +218,15 @@ export interface InkOptions {
    */
   regionUnderlay?: { color: string; opacity: number };
   /**
-   * layer indication for stacked copper rendered into one view: the top
-   * layer draws solid as-is; deeper layers draw as construction lines —
-   * a thin centerline through the trace (with one edge line per further
-   * layer). The real trace width rides in a data-w attribute either way.
+   * layer indication for stacked copper rendered into one view: the trace
+   * body always draws exactly as the gerber specifies (full real width,
+   * same as the top layer); deeper layers additionally carry thin stripe
+   * lines overtop — a centerline, plus one trace edge per further layer
+   * down the stack. The real width also rides in a data-w attribute.
    */
   traceStyle?: 'solid' | 'center' | 'centerEdgeA' | 'centerEdgeB';
+  /** stripe color for traceStyle indications (default black) */
+  stripeColor?: string;
 }
 
 export interface LayerInk {
@@ -296,17 +299,27 @@ export function renderLayerInk(layer: RenderLayer, options: InkOptions): LayerIn
       // the visible stroke, and the thermal estimator needs the true value
       const wAttr = ` data-w="${fmt(stroke.width)}"`;
       if (options.traceStyle && options.traceStyle !== 'solid') {
-        // layer indication: secondary copper as construction lines — a
-        // centerline through the trace, plus one trace edge for each
-        // further layer down the stack. The centerline scales with the
-        // real width (35%, 0.1–0.3 mm) so a thick power route still reads
-        // thick instead of a hairline
-        const thin = Math.min(Math.max(stroke.width * 0.35, 0.1), 0.3);
-        body.push(`<path${attrs}${net} d="${d}" fill="none" stroke-width="${fmt(thin)}"${wAttr} ${caps}/>`);
+        // layer indication: the trace body draws exactly as the gerber
+        // specifies — full real width, like the top layer. The ONLY
+        // difference is thin black indicator stripes drawn overtop: a
+        // centerline, plus one trace edge per further layer down. data-sub
+        // marks it as a secondary layer so the viewer's mode recoloring
+        // (electrical/thermal) leaves the indication intact.
+        body.push(
+          `<path${attrs}${net} d="${d}" fill="none" stroke-width="${fmt(stroke.width)}"${wAttr} data-sub="1" ${caps}/>`,
+        );
+        const stripe = Math.min(0.1, stroke.width / 2);
+        const sc = options.stripeColor ?? '#000000';
+        body.push(
+          `<path stroke="${sc}" d="${d}" fill="none" stroke-width="${fmt(stripe)}" pointer-events="none" stroke-linecap="${stroke.cap}" stroke-linejoin="round"/>`,
+        );
         const side = options.traceStyle === 'centerEdgeA' ? 1 : options.traceStyle === 'centerEdgeB' ? -1 : 0;
         if (side !== 0) {
           const edge = offsetTrace(op.from, op.segments, (stroke.width / 2) * side);
-          if (edge) body.push(`<path${attrs} d="${edge}" fill="none" stroke-width="${fmt(thin)}" stroke-linecap="butt" stroke-linejoin="miter"/>`);
+          if (edge)
+            body.push(
+              `<path stroke="${sc}" d="${edge}" fill="none" stroke-width="${fmt(stripe)}" pointer-events="none" stroke-linecap="butt" stroke-linejoin="miter"/>`,
+            );
         }
       } else {
         body.push(`<path${attrs}${net} d="${d}" fill="none" stroke-width="${fmt(stroke.width)}"${wAttr} ${caps}/>`);

@@ -302,6 +302,9 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     voltRange = [Math.min.apply(null, vals), Math.max.apply(null, vals)];
     var traces = viewGroups.schematic.querySelectorAll('#sch-copper [data-net]');
     for (var ti = 0; ti < traces.length; ti++) {
+      // secondary-layer traces keep their construction indication — the
+      // electrical colors belong to the top layer
+      if (traces[ti].getAttribute('data-sub')) continue;
       var v = netOp.nets[traces[ti].getAttribute('data-net').toLowerCase()];
       traces[ti].setAttribute('stroke', v === undefined ? '#9aa0a6' : voltColor(v));
     }
@@ -928,6 +931,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     var copper = viewGroups.schematic.querySelector('#sch-copper');
     var neutral = copper ? copper.querySelectorAll('[data-net]') : [];
     for (var n = 0; n < neutral.length; n++) {
+      if (neutral[n].getAttribute('data-sub')) continue; // layer indication stays
       var f = neutral[n].getAttribute('fill');
       if (f && f !== 'none') neutral[n].setAttribute('fill', '#3f444a');
       var st = neutral[n].getAttribute('stroke');
@@ -935,6 +939,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     }
     for (var i = 0; i < dtItems.wires.length; i++) {
       var wr = dtItems.wires[i];
+      if (wr.el.getAttribute('data-sub')) continue; // keep the stripes' canvas
       // zero-current wires read as cold copper, not as "cool"
       wr.el.setAttribute('stroke', wr.dt > 0 ? dtColor(wr.dt, hi) : '#454b52');
     }

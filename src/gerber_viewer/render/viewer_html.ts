@@ -1994,6 +1994,47 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     }
     layoutOverlay.appendChild(rats);
   }
+  // the pending layout is a LAYOUT-view rendering: the ghost transforms and
+  // ripped greys live in the gerber stack the other views share, so leaving
+  // the layout view puts that stack back to the authored board — gerber,
+  // thermal, every other view shows the real gerbers — and re-entering
+  // re-applies the pending moves from layoutMoves
+  function clearLayoutGhost() {
+    if (layoutOverlay) {
+      for (var cl = 0; cl < layoutComps.length; cl++) {
+        var gc = layoutOverlay.querySelector('[data-ref="' + cssEsc(layoutComps[cl].ref) + '"]');
+        if (!gc || !gc.__ghostEls) continue;
+        for (var gi = 0; gi < gc.__ghostEls.length; gi++) {
+          var gel = gc.__ghostEls[gi];
+          if (gel.__layoutTr0 === null || gel.__layoutTr0 === undefined) gel.removeAttribute('transform');
+          else gel.setAttribute('transform', gel.__layoutTr0);
+        }
+      }
+    }
+    for (var r2 = 0; r2 < layoutRipped.length; r2++) {
+      var rel = layoutRipped[r2];
+      if (rel.__layoutOp === '') rel.removeAttribute('opacity');
+      else rel.setAttribute('opacity', rel.__layoutOp);
+      rel.__layoutOp = undefined;
+    }
+    layoutRipped = [];
+  }
+  function restoreLayoutGhost() {
+    for (var mr3 in layoutMoves) {
+      var gr3 = layoutOverlay ? layoutOverlay.querySelector('[data-ref="' + cssEsc(mr3) + '"]') : null;
+      if (gr3) applyCompGhost(gr3);
+      var c3 = null;
+      for (var lc6 = 0; lc6 < layoutComps.length && !c3; lc6++) if (layoutComps[lc6].ref === mr3) c3 = layoutComps[lc6];
+      if (!c3) continue;
+      for (var rn3 = 0; rn3 < c3.nets.length; rn3++) {
+        var netEls3 = viewGroups.gerber.querySelectorAll('[data-net="' + cssEsc(c3.nets[rn3]) + '"]');
+        for (var re3 = 0; re3 < netEls3.length; re3++) {
+          if (netEls3[re3].getAttribute('data-ref')) continue;
+          ripUpEl(netEls3[re3]);
+        }
+      }
+    }
+  }
   function enterLayout() {
     buildLayoutOverlay();
     if (layoutOverlay) layoutOverlay.style.display = '';
@@ -2015,11 +2056,15 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         if (pr && pr.provenance !== 'auto') traces[t2].setAttribute('stroke-dasharray', '4 2.2');
       }
     }
+    // pending moves re-apply AFTER the zone subduing above, so a ripped
+    // pour zone reads as ripped (grey) exactly like it did live
+    restoreLayoutGhost();
     renderLayoutMoves();
     refreshLayoutWarnings();
     refreshRatsnest();
   }
   function exitLayout() {
+    clearLayoutGhost();
     if (layoutOverlay) layoutOverlay.style.display = 'none';
     var regions = viewGroups.gerber ? viewGroups.gerber.querySelectorAll('path[fill-rule="evenodd"]') : [];
     for (var z2 = 0; z2 < regions.length; z2++) {

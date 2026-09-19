@@ -415,7 +415,7 @@ describe('view switcher (gerber / pcba)', () => {
     expect(html).toContain('function commitLayoutMove(g)');
     expect(html).toContain("el.setAttribute('opacity', '0.22')");
     expect(html).toContain("traces[t2].setAttribute('stroke-dasharray', '4 2.2')");
-    expect(html).toContain('window.typecadLayoutApply(moves, function (err)');
+    expect(html).toContain('window.typecadLayoutApply(moves, texts, function (err)');
     expect(html).toContain('moves.push({');
     expect(html).toContain('rot: (m2.rot || 0) * 90,');
     expect(html).toContain('pads: padsByRef[mr2] || [],');
@@ -735,6 +735,23 @@ describe('layout view (component overlay from the gerbers)', () => {
     expect(html).toContain("if (netEls[re].getAttribute('data-ref')) continue;");
   });
 
+  it('offers silk/fab text dragging and in-place editing when texts ride along', () => {
+    const html = buildViewerHtml(svg, [info], {
+      title: 'demo board',
+      pcbaSvg: '<svg/>',
+      layoutComponents,
+      layoutTexts: [{ text: 'hello', x: 10, y: -20, rot: 0, side: 'front', h: 1.5 }],
+    });
+    expect(html).toContain('id="layout-texts"');
+    expect(html).toContain('"text":"hello"');
+    expect(html).toContain('function buildTextOverlay()');
+    expect(html).toContain('function beginTextEdit(i)');
+    expect(html).toContain("addEventListener('dblclick'");
+    expect(html).toContain('layout-text-edit');
+    // apply carries text edits alongside component moves
+    expect(html).toContain('window.typecadLayoutApply(moves, texts, function (err)');
+  });
+
   it('derives handles from the fab contour (chamfers kept) and the pad-land hull', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gelayout-'));
     // R1: two 1.2x0.8 pads at (3,3)/(5.2,3); U2: same, far right; U3: same
@@ -798,6 +815,14 @@ M02*
     fs.writeFileSync(path.join(dir, 'demo-F_Fab.gbr'), fab);
     fs.writeFileSync(path.join(dir, 'demo-Edge_Cuts.gbr'), read('edge.gbr'));
     fs.writeFileSync(path.join(dir, 'demo.net'), netlist);
+    fs.writeFileSync(
+      path.join(dir, 'demo.kicad_pcb'),
+      `(kicad_pcb (version 20221018)
+  (gr_text "hello silk" (at 6.5 7.5 0) (layer "F.SilkS") (uuid "x1") (effects (font (size 1.5 1.5)) (justify)))
+  (gr_text "hidden" (at 9 9) (layer "B.Fab") (uuid "x2") (effects (font (size 1 1)) (hide)))
+)
+`,
+    );
 
     const result = buildViewerFromFiles([dir], { title: 'demo', netlistPath: path.join(dir, 'demo.net') });
     fs.rmSync(dir, { recursive: true, force: true });
@@ -845,5 +870,12 @@ M02*
     // %TO.C rides the Fab outline strokes too — the whole footprint (not
     // just pad flashes) is addressable, so a move can carry every layer
     expect(result.html).toMatch(/<path[^>]*data-ref="R1"[^>]*fill="none"/);
+
+    // board texts: gr_texts from the .kicad_pcb ride as the layout-texts
+    // island (gerber y-up frame), hidden ones excluded
+    const ltMatch = /<script id="layout-texts" type="application\/json">([\s\S]*?)<\/script>/.exec(result.html)![1]!;
+    const layoutTexts = JSON.parse(ltMatch) as Array<{ text: string; x: number; y: number }>;
+    expect(layoutTexts).toHaveLength(1);
+    expect(layoutTexts[0]).toMatchObject({ text: 'hello silk', x: 6.5, y: -7.5 });
   });
 });

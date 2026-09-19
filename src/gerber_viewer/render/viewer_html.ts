@@ -63,6 +63,13 @@ export interface ViewerOptions {
     pads?: Array<{ x: number; y: number; net?: string }>;
   }>;
   /**
+   * silk/fab board texts (gr_text — the `pcb.text()` API), parsed from the
+   * board file in the gerber (y-up) frame. The layout view claims their
+   * stroke paths: drag to reposition, double-click to edit the value in
+   * place; apply rewrites the source `.text({ ... })` literals.
+   */
+  layoutTexts?: Array<{ text: string; x: number; y: number; rot: number; side: 'front' | 'back'; h: number }>;
+  /**
    * theme picker entries for the pcba view: surface colors per builtin. The
    * switcher remaps the embedded render's flat colors client-side — one
    * render serves every theme, no re-render needed
@@ -227,6 +234,11 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   try {
     var rawLc = JSON.parse(document.getElementById('layout-comps').textContent);
     if (rawLc && rawLc.length) layoutComps = rawLc;
+  } catch (e) {}
+  var layoutTexts = [];
+  try {
+    var rawLt = JSON.parse(document.getElementById('layout-texts').textContent);
+    if (rawLt && rawLt.length) layoutTexts = rawLt;
   } catch (e) {}
   // engineering notation for the readout: 0.0012 -> "1.2m", 5e-6 -> "5u"
   function fmtEng(v) {
@@ -1525,11 +1537,14 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     // plain graphics with NO %TO.C attribute — claim the unattributed ones
     // whose center sits within the footprint's reach (half the body plus a
     // text offset). Copper is deliberately absent: unattributed copper is
-    // routing and must never travel with a part.
+    // routing and must never travel with a part. Side-scoped so a back-side
+    // part never steals front-side ink.
     if (c && viewGroups.gerber) {
       var rClaim = Math.max(c.w, c.h) / 2 + 2;
+      var sideSeg = c.side === 'back' ? '-B_' : '-F_';
       var loose = viewGroups.gerber.querySelectorAll(
-        'g[data-kind="fab"] path:not([data-ref]), g[data-kind="silkscreen"] path:not([data-ref])',
+        'g[data-layer-name*="' + sideSeg + '"][data-kind="fab"] path:not([data-ref]):not([data-text]),' +
+          'g[data-layer-name*="' + sideSeg + '"][data-kind="silkscreen"] path:not([data-ref]):not([data-text])',
       );
       for (var te = 0; te < loose.length; te++) {
         var tel = loose[te];
@@ -1567,6 +1582,241 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       else if (el2.__layoutTr0 === null || el2.__layoutTr0 === undefined) el2.removeAttribute('transform');
       else el2.setAttribute('transform', el2.__layoutTr0);
     }
+  }
+  // ---- board texts (gr_text — the pcb.text() API): clicking the actual
+  // strokes grabs the whole text, dragging repositions it like a component,
+  // double-click edits the value in place; apply rewrites the source
+  // .text({ ... }) literals ----
+  var layoutTextMoves = {}; // idx -> { x, y, x0, y0, rot, text, text0 }
+  var layoutTextEls = []; // idx -> { paths, hidden, preview }
+  var layoutTextSel = -1;
+  function textPaths(i) {
+    if (layoutTextEls[i]) return layoutTextEls[i].paths;
+    var t = layoutTexts[i];
+    var pfx = t.side === 'back' ? '-B_' : '-F_';
+    var radius = 0.65 * t.h * (t.text.length + 2);
+    var cands = viewGroups.gerber.querySelectorAll(
+      'g[data-layer-name*="' + pfx + '"][data-kind="fab"] path:not([data-ref]):not([data-text]),' +
+        'g[data-layer-name*="' + pfx + '"][data-kind="silkscreen"] path:not([data-ref]):not([data-text])',
+    );
+    var paths = [];
+    for (var cp = 0; cp < cands.length; cp++) {
+      var p = cands[cp];
+      var bb = null;
+      try {
+        bb = p.getBBox();
+      } catch (e) {
+        continue;
+      }
+      if (!bb || (!bb.width && !bb.height)) continue;
+      if (Math.hypot(bb.x + bb.width / 2 - t.x, bb.y + bb.height / 2 - t.y) <= radius) {
+        p.setAttribute('data-text', String(i));
+        if (p.__layoutTr0 === undefined) p.__layoutTr0 = p.getAttribute('transform');
+        paths.push(p);
+      }
+    }
+    layoutTextEls[i] = { paths, hidden: false, preview: null };
+    return paths;
+  }
+  function textState(i) {
+    // live position of text i: pending move if any, else the authored anchor
+    var t = layoutTexts[i];
+    var m = layoutTextMoves[i];
+    return m ? { x: m.x, y: m.y, rot: m.rot } : { x: t.x, y: t.y, rot: 0 };
+  }
+  function applyTextGhost(i) {
+    var t = layoutTexts[i];
+    var m = layoutTextMoves[i];
+    var paths = textPaths(i);
+    var tr = '';
+    if (m) {
+      var dx = +(m.x - t.x).toFixed(4);
+      var dy = +(m.y - t.y).toFixed(4);
+      // pivot at the moved ANCHOR: kicad rotates gr_text about its anchor,
+      // so the preview matches the rebuilt board exactly
+      if (dx || dy || m.rot) tr = 'rotate(' + m.rot * 90 + ',' + m.x + ',' + m.y + ') translate(' + dx + ',' + dy + ')';
+    }
+    for (var tp = 0; tp < paths.length; tp++) {
+      if (tr) paths[tp].setAttribute('transform', tr);
+      else if (paths[tp].__layoutTr0 === null || paths[tp].__layoutTr0 === undefined) paths[tp].removeAttribute('transform');
+      else paths[tp].setAttribute('transform', paths[tp].__layoutTr0);
+    }
+  }
+  // full visual sync for text i: ghost transform + edited-value preview
+  // (strokes hidden, SVG text standing in) — safe to call in any state, so
+  // enter/exit/revert all funnel through it
+  function syncTextVisual(i) {
+    var t = layoutTexts[i];
+    var st = layoutTextEls[i];
+    if (!st) st = layoutTextEls[i] = { paths: textPaths(i), hidden: false, preview: null };
+    applyTextGhost(i);
+    var edited = layoutTextMoves[i] && layoutTextMoves[i].text !== undefined && layoutTextMoves[i].text !== t.text;
+    if (edited) {
+      if (!st.hidden) {
+        for (var hp = 0; hp < st.paths.length; hp++) st.paths[hp].setAttribute('display', 'none');
+        st.hidden = true;
+      }
+      if (!st.preview) {
+        var pfx = t.side === 'back' ? '-B_' : '-F_';
+        var grp = viewGroups.gerber.querySelector(
+          'g[data-layer-name^="' + pfx + '"][data-kind="silkscreen"], g[data-layer-name^="' + pfx + '"][data-kind="fab"]',
+        );
+        st.preview = document.createElementNS(SVGNSL, 'text');
+        st.preview.setAttribute('class', 'layout-text-preview');
+        st.preview.setAttribute('pointer-events', 'none');
+        (grp || layoutOverlay).appendChild(st.preview);
+      }
+      positionTextPreview(i);
+    } else {
+      if (st.hidden) {
+        for (var up = 0; up < st.paths.length; up++) st.paths[up].removeAttribute('display');
+        st.hidden = false;
+      }
+      if (st.preview) {
+        st.preview.remove();
+        st.preview = null;
+      }
+    }
+  }
+  function positionTextPreview(i) {
+    // the edited-value preview: an SVG <text> standing in for the stroke
+    // font until the rebuild plots the real glyphs. Counter-flipped to read
+    // upright inside the y-flip group, centered on the anchor (mirrored on
+    // the back side, matching how back-layer glyphs plot).
+    var st = layoutTextEls[i];
+    var t = layoutTexts[i];
+    var m = layoutTextMoves[i];
+    st.preview.setAttribute('font-size', t.h.toFixed(2));
+    st.preview.setAttribute('text-anchor', 'middle');
+    st.preview.setAttribute('dominant-baseline', 'central');
+    st.preview.textContent = m && m.text !== undefined ? m.text : t.text;
+    var x = m ? m.x : t.x;
+    var y = m ? m.y : t.y;
+    var flip = t.side === 'back' ? -1 : 1;
+    var tr = 'translate(' + x + ',' + y + ') scale(' + flip + ',' + -flip + ')';
+    if (m && m.rot) tr += ' rotate(' + m.rot * 90 * flip + ')';
+    st.preview.setAttribute('transform', tr);
+  }
+  function commitTextMove(i, x, y) {
+    var t = layoutTexts[i];
+    var prev = layoutTextMoves[i];
+    layoutTextMoves[i] = {
+      x,
+      y,
+      x0: t.x,
+      y0: t.y,
+      rot: prev ? prev.rot : 0,
+      text: prev && prev.text !== undefined ? prev.text : undefined,
+      text0: t.text,
+    };
+    syncTextVisual(i);
+    renderLayoutMoves();
+    refreshLayoutWarnings();
+  }
+  function beginTextEdit(i) {
+    var st = layoutTextEls[i];
+    if (!st) st = layoutTextEls[i] = { paths: textPaths(i), hidden: false, preview: null };
+    if (st.editor) return;
+    var t = layoutTexts[i];
+    var cur = layoutTextMoves[i] && layoutTextMoves[i].text !== undefined ? layoutTextMoves[i].text : t.text;
+    // frame the editor over the text's current screen bbox
+    var paths = textPaths(i);
+    var x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (var pe = 0; pe < paths.length; pe++) {
+      if (paths[pe].getAttribute('display') === 'none') continue;
+      var b = paths[pe].getBoundingClientRect();
+      x0 = Math.min(x0, b.x); y0 = Math.min(y0, b.y);
+      x1 = Math.max(x1, b.x + b.width); y1 = Math.max(y1, b.y + b.height);
+    }
+    if (!isFinite(x0)) return;
+    var svg = document.getElementById('board');
+    var sr = svg.getBoundingClientRect();
+    var inp = document.createElement('input');
+    inp.type = 'text';
+    inp.className = 'layout-text-edit';
+    inp.value = cur;
+    inp.style.left = Math.max(sr.x, x0 - 30) + 'px';
+    inp.style.top = (y0 + y1) / 2 - 13 + 'px';
+    inp.style.width = Math.min(Math.max(x1 - x0 + 60, 90), sr.right - x0) + 'px';
+    document.body.appendChild(inp);
+    st.editor = inp;
+    var closed = false;
+    var close = function (save) {
+      if (closed) return;
+      closed = true;
+      inp.remove();
+      st.editor = null;
+      if (save) {
+        var v = inp.value;
+        var m = layoutTextMoves[i];
+        layoutTextMoves[i] = {
+          x: m ? m.x : t.x,
+          y: m ? m.y : t.y,
+          x0: t.x,
+          y0: t.y,
+          rot: m ? m.rot : 0,
+          text: v,
+          text0: t.text,
+        };
+        syncTextVisual(i);
+        renderLayoutMoves();
+      }
+    };
+    inp.addEventListener('keydown', function (kev) {
+      kev.stopPropagation();
+      if (kev.key === 'Enter') close(true);
+      else if (kev.key === 'Escape') close(false);
+    });
+    inp.addEventListener('blur', function () {
+      close(true);
+    });
+    inp.focus();
+    inp.select();
+  }
+  function attachTextDrag(i) {
+    var paths = textPaths(i);
+    for (var pd = 0; pd < paths.length; pd++) {
+      paths[pd].addEventListener('pointerdown', function (ev) {
+        if (viewMode !== 'layout') return;
+        ev.stopPropagation();
+        ev.preventDefault();
+        layoutTextSel = i;
+        layoutSel = [];
+        markLayoutSel();
+        var t = layoutTexts[i];
+        var st = textState(i);
+        var startG = gerberAt(ev.clientX, ev.clientY);
+        var orig = { x: st.x, y: st.y };
+        function onMove(e2) {
+          var pg = gerberAt(e2.clientX, e2.clientY);
+          var nx = orig.x + (pg.x - startG.x);
+          var ny = orig.y + (pg.y - startG.y);
+          if (!layoutSnapBox || layoutSnapBox.checked) {
+            nx = Math.round(nx * 2) / 2;
+            ny = Math.round(ny * 2) / 2;
+          }
+          commitTextMove(i, nx, ny);
+          if (statusEl && !statusLocked())
+            statusEl.textContent = t.text.slice(0, 18) + ' \u2192 ' + nx.toFixed(2) + ', ' + (-ny).toFixed(2) + ' mm';
+          e2.preventDefault();
+        }
+        function onUp() {
+          window.removeEventListener('pointermove', onMove);
+          window.removeEventListener('pointerup', onUp);
+        }
+        window.addEventListener('pointermove', onMove);
+        window.addEventListener('pointerup', onUp);
+      });
+      paths[pd].addEventListener('dblclick', function (ev) {
+        if (viewMode !== 'layout') return;
+        ev.stopPropagation();
+        ev.preventDefault();
+        beginTextEdit(i);
+      });
+    }
+  }
+  function buildTextOverlay() {
+    for (var i = 0; i < layoutTexts.length; i++) attachTextDrag(i);
   }
   function markLayoutSel() {
     if (!layoutOverlay) return;
@@ -1640,6 +1890,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     g.addEventListener('pointerdown', function (ev) {
       ev.stopPropagation();
       ev.preventDefault();
+      layoutTextSel = -1; // a part grab replaces any text grab
       if (ev.shiftKey && layoutSel.indexOf(g.__lc.ref) === -1) layoutSel.push(g.__lc.ref);
       else if (!ev.shiftKey) layoutSel = [g.__lc.ref];
       markLayoutSel();
@@ -1700,8 +1951,9 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   }
   function renderLayoutMoves() {
     // no changelog line — the on-canvas handles already show what moved;
-    // this only gates the apply button
-    if (layoutApplyBtn) layoutApplyBtn.disabled = !Object.keys(layoutMoves).length;
+    // this only gates the apply button (component moves + text moves/edits)
+    if (layoutApplyBtn)
+      layoutApplyBtn.disabled = !Object.keys(layoutMoves).length && !Object.keys(layoutTextMoves).length;
   }
   function layoutRevert() {
     for (var r = 0; r < layoutRipped.length; r++) {
@@ -1713,6 +1965,11 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     layoutRipped = [];
     layoutMoves = {};
     layoutRot = {};
+    layoutTextMoves = {};
+    layoutTextSel = -1;
+    for (var tv = 0; tv < layoutTexts.length; tv++) {
+      if (layoutTextEls[tv]) syncTextVisual(tv);
+    }
     refreshLayoutWarnings();
     refreshRatsnest();
     if (layoutOverlay) {
@@ -1767,9 +2024,26 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
           pads: padsByRef[mr2] || [],
         });
       }
+      // text edits: originals travel along so the host can match the source
+      // .text({ ... }) literal by its authored x/y + value; finals are in
+      // the board frame with rotation as accumulated 90-degree presses
+      var texts = [];
+      for (var ti in layoutTextMoves) {
+        var ti2 = parseInt(ti, 10);
+        var tm = layoutTextMoves[ti];
+        texts.push({
+          text0: tm.text0,
+          x0: tm.x0,
+          y0: -tm.y0,
+          text: tm.text !== undefined ? tm.text : tm.text0,
+          x: tm.x,
+          y: -tm.y,
+          rot: (tm.rot || 0) * 90,
+        });
+      }
       layoutApplyBtn.disabled = true;
       layoutApplyBtn.textContent = 'rebuilding\u2026';
-      window.typecadLayoutApply(moves, function (err) {
+      window.typecadLayoutApply(moves, texts, function (err) {
         layoutApplyBtn.disabled = false;
         layoutApplyBtn.textContent = 'apply & rebuild';
         if (err && statusEl) statusEl.textContent = 'layout apply failed: ' + err;
@@ -1783,7 +2057,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   window.addEventListener('keydown', function (ev) {
     if (viewMode !== 'layout' || !layoutOverlay) return;
     if (ev.key === 'r' || ev.key === 'R') {
-      if (!layoutSel.length) {
+      if (!layoutSel.length && layoutTextSel < 0) {
         if (statusEl && !statusLocked()) statusEl.textContent = 'click a component first — R rotates the selection';
         return;
       }
@@ -1794,6 +2068,23 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         layoutRot[layoutSel[rs]] = ((layoutRot[layoutSel[rs]] || 0) + 1) % 4;
         setCompPos(gRot, gRot.__lx, gRot.__ly);
         commitLayoutMove(gRot);
+      }
+      // a grabbed text rotates about its (moved) anchor
+      if (layoutTextSel >= 0 && layoutTexts[layoutTextSel]) {
+        var tRot = layoutTexts[layoutTextSel];
+        var tm2 = layoutTextMoves[layoutTextSel] || {
+          x: tRot.x,
+          y: tRot.y,
+          x0: tRot.x,
+          y0: tRot.y,
+          rot: 0,
+          text: undefined,
+          text0: tRot.text,
+        };
+        tm2.rot = ((tm2.rot || 0) + 1) % 4;
+        layoutTextMoves[layoutTextSel] = tm2;
+        syncTextVisual(layoutTextSel);
+        renderLayoutMoves();
       }
       return;
     }
@@ -2018,6 +2309,14 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       rel.__layoutOp = undefined;
     }
     layoutRipped = [];
+    // texts too: strokes back to authored ink, edit previews gone (the
+    // pending edits survive in layoutTextMoves and re-apply on re-entry)
+    var savedTextMoves = layoutTextMoves;
+    layoutTextMoves = {};
+    for (var tcl = 0; tcl < layoutTexts.length; tcl++) {
+      if (layoutTextEls[tcl]) syncTextVisual(tcl);
+    }
+    layoutTextMoves = savedTextMoves;
   }
   function restoreLayoutGhost() {
     for (var mr3 in layoutMoves) {
@@ -2034,9 +2333,14 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         }
       }
     }
+    for (var tr3 in layoutTextMoves) {
+      var tri = parseInt(tr3, 10);
+      if (layoutTexts[tri]) syncTextVisual(tri);
+    }
   }
   function enterLayout() {
     buildLayoutOverlay();
+    buildTextOverlay();
     if (layoutOverlay) layoutOverlay.style.display = '';
     // zones subdued, blueprint-faint: filled contours step back so the
     // copper being arranged reads clearly
@@ -3363,6 +3667,13 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   #layout-keys .chip-solid::before { border-top: 2px solid currentColor; }
   #layout-keys .chip-grey::before { border-top: 2px solid rgba(128,128,128,0.35); }
   #layout-hint { color: var(--muted); font-size: 10px; line-height: 1.5; margin: 8px 0; }
+  .layout-text-edit {
+    position: fixed; z-index: 40; height: 26px; padding: 2px 8px;
+    background: var(--chrome-bg); color: var(--chrome-fg);
+    border: 1px solid #3884ff; border-radius: 4px; font: 13px ui-monospace, monospace;
+  }
+  .layout-text-edit:focus { outline: none; border-color: #6db3f2; }
+  .layout-text-preview { fill: #d6d6d6; font-family: ui-monospace, monospace; }
   #layout-buttons { display: flex; gap: 6px; }
   #layout-buttons button, #layout-tools button { flex: 1; background: var(--btn-bg); color: var(--chrome-fg); border: 1px solid var(--btn-border); border-radius: 4px; padding: 4px 6px; cursor: pointer; font: inherit; }
   #layout-buttons button:disabled, #layout-tools button:disabled { opacity: 0.5; cursor: default; }
@@ -3485,7 +3796,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   <div class="side-label">Layout</div>
   <div id="layout-keys"><span class="chip chip-dashed">TrackBuilder</span><span class="chip chip-solid">autorouted</span><span class="chip chip-grey">ripped up</span></div>
   <label><input type="checkbox" id="layout-snap" checked> snap 0.5 mm</label>
-  <div id="layout-hint">drag \u00b7 arrows nudge (Alt = 0.1 mm) \u00b7 R rotates \u00b7 shift-click selects several \u00b7 greyed copper rebuilds on apply</div>
+  <div id="layout-hint">drag \u00b7 arrows nudge (Alt = 0.1 mm) \u00b7 R rotates \u00b7 shift-click selects several \u00b7 greyed copper rebuilds on apply \u00b7 texts: drag strokes to move, double-click to edit</div>
   <div id="layout-tools">
     <button id="layout-align" type="button" disabled>align row</button>
     <button id="layout-dist" type="button" disabled>distribute X</button>
@@ -3585,6 +3896,9 @@ ${rows}
     options.layoutComponents && options.layoutComponents.length
       ? JSON.stringify(options.layoutComponents).replace(/</g, '<')
       : ''
+  }</script>
+  <script id="layout-texts" type="application/json">${
+    options.layoutTexts && options.layoutTexts.length ? JSON.stringify(options.layoutTexts).replace(/</g, '\\u003c') : ''
   }</script>
   <script id="pcba-themes" type="application/json">${
     options.pcbaThemes && options.pcbaThemes.length > 0

@@ -328,6 +328,28 @@ export function buildViewerFromFiles(paths: string[], options: ViewerBuildOption
       }
     }
   }
+  // Layout-view texts: silk/fab gr_texts (the `pcb.text()` API) parsed from
+  // the board file beside the netlist — their gerber stroke paths get
+  // claimed by the viewer for drag + in-place value editing, and apply
+  // rewrites the source `.text({ ... })` literals
+  let layoutTexts: ViewerOptions['layoutTexts'] = [];
+  if (pcbaNetlistSource) {
+    const pcbPath = pcbaNetlistSource.replace(/\.net$/i, '.kicad_pcb');
+    if (fs.existsSync(pcbPath)) {
+      try {
+        layoutTexts = parseBoardTexts(fs.readFileSync(pcbPath, 'utf8')).map((t) => ({
+          text: t.text,
+          x: +t.x.toFixed(3),
+          y: +t.y.toFixed(3),
+          rot: +t.rot.toFixed(1),
+          side: t.side,
+          h: +t.h.toFixed(2),
+        }));
+      } catch {
+        warnings.push(`could not parse ${path.basename(pcbPath)} texts — silk/fab text editing stays disabled`);
+      }
+    }
+  }
   // Layout-view component overlay: the pcba glyph extractor derives each
   // component's position (pad centroid), orientation (PCA of the pads) and
   // body size (footprint name via the netlist) from the gerbers themselves —
@@ -482,6 +504,7 @@ export function buildViewerFromFiles(paths: string[], options: ViewerBuildOption
     stackup,
     routes,
     layoutComponents,
+    layoutTexts,
     pcbaThemes,
   });
   return { svg, html, layers, warnings, report };
@@ -491,6 +514,68 @@ export function buildViewerFromFiles(paths: string[], options: ViewerBuildOption
 function getPcbName(drcPath: string): string {
   const base = path.basename(drcPath).replace(/_drc\.json$/, '');
   return `${base}.kicad_pcb`;
+}
+
+/**
+ * Silk/fab board texts (gr_text — the `pcb.text()` API) from the
+ * .kicad_pcb, mapped into the gerber (y-up) frame so the layout view can
+ * claim their stroke paths and offer drag / in-place editing. The anchor
+ * semantics don't matter here: claiming is radius-based around the anchor.
+ */
+function parseBoardTexts(
+  content: string,
+): Array<{ text: string; x: number; y: number; rot: number; side: 'front' | 'back'; h: number }> {
+  let tree: SExpr;
+  try {
+    tree = parse(content);
+  } catch {
+    return [];
+  }
+  const out: Array<{ text: string; x: number; y: number; rot: number; side: 'front' | 'back'; h: number }> = [];
+  const walk = (expr: SExpr): void => {
+    if (!isList(expr)) return;
+    if (nameOf(expr[0]) === 'gr_text') {
+      const text = typeof expr[1] === 'string' ? expr[1] : '';
+      let x: number | null = null;
+      let y: number | null = null;
+      let rot = 0;
+      let side: 'front' | 'back' | null = null;
+      let h = 1.27;
+      let hidden = false;
+      for (const child of expr) {
+        if (!isList(child)) continue;
+        const head = nameOf(child[0]);
+        if (head === 'at') {
+          if (typeof child[1] === 'number') x = child[1];
+          if (typeof child[2] === 'number') y = child[2];
+          if (typeof child[3] === 'number') rot = child[3];
+        } else if (head === 'layer') {
+          const name = String(child[1] ?? '').toLowerCase();
+          if (name === 'f.silks' || name === 'f.fab') side = 'front';
+          else if (name === 'b.silks' || name === 'b.fab') side = 'back';
+        } else if (head === 'effects') {
+          for (const eff of child) {
+            if (!isList(eff)) continue;
+            if (nameOf(eff[0]) === 'font') {
+              // (size w h) among the font's children (a face spec may come
+              // first) — h drives the claim radius and the edit preview
+              for (const fchild of eff) {
+                if (isList(fchild) && nameOf(fchild[0]) === 'size' && typeof fchild[2] === 'number')
+                  h = Math.abs(fchild[2]);
+              }
+            } else if (nameOf(eff[0]) === 'hide') {
+              hidden = true;
+            }
+          }
+        }
+      }
+      if (!hidden && text && x !== null && y !== null && side)
+        out.push({ text, x, y: -y, rot, side, h });
+    }
+    for (const child of expr) walk(child);
+  };
+  walk(tree);
+  return out;
 }
 
 /** Edge.Cuts bbox in board coordinates from the .kicad_pcb s-expression. */

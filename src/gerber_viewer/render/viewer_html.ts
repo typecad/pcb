@@ -53,7 +53,7 @@ export interface ViewerOptions {
     side: 'front' | 'back';
     nets: string[];
     /** pad centers in the gerber frame — sticky route endpoints on apply */
-    pads?: Array<{ x: number; y: number }>;
+    pads?: Array<{ x: number; y: number; net?: string }>;
   }>;
   /**
    * theme picker entries for the pcba view: surface colors per builtin. The
@@ -1585,6 +1585,8 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       if (!padEls[rp].closest || !padEls[rp].closest('#layout-overlay')) ripUpEl(padEls[rp]);
     }
     renderLayoutMoves();
+    refreshLayoutWarnings();
+    refreshRatsnest();
   }
   function renderLayoutMoves() {
     if (!layoutMovesEl) return;
@@ -1612,6 +1614,8 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     layoutRipped = [];
     layoutMoves = {};
     layoutRot = {};
+    refreshLayoutWarnings();
+    refreshRatsnest();
     if (layoutOverlay) {
       for (var lc2 = 0; lc2 < layoutComps.length; lc2++) {
         var gEl = layoutOverlay.querySelector('[data-ref="' + cssEsc(layoutComps[lc2].ref) + '"]');
@@ -1728,6 +1732,139 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   if (layoutAlignBtn) layoutAlignBtn.addEventListener('click', layoutAlignRow);
   var layoutDistBtn = document.getElementById('layout-dist');
   if (layoutDistBtn) layoutDistBtn.addEventListener('click', layoutDistributeX);
+  // ---- phase 3 guardrails: overlap/outline warnings + stranded ratsnest ----
+  function compAABB(c, x, y, rotDeg) {
+    var a = ((rotDeg || 0) * Math.PI) / 180;
+    var cos = Math.abs(Math.cos(a));
+    var sin = Math.abs(Math.sin(a));
+    var w = c.w * cos + c.h * sin;
+    var h = c.w * sin + c.h * cos;
+    return { x0: x - w / 2, y0: y - h / 2, x1: x + w / 2, y1: y + h / 2 };
+  }
+  function layoutBoardRect() {
+    var edge = viewGroups.gerber ? viewGroups.gerber.querySelector('g[data-kind="edge"]') : null;
+    if (!edge) return null;
+    try {
+      var b = edge.getBBox();
+      return { x0: b.x, y0: b.y, x1: b.x + b.width, y1: b.y + b.height };
+    } catch (e) {
+      return null;
+    }
+  }
+  function compStateAt(ref) {
+    for (var i = 0; i < layoutComps.length; i++) {
+      if (layoutComps[i].ref !== ref) continue;
+      var c = layoutComps[i];
+      var g = layoutOverlay ? layoutOverlay.querySelector('[data-ref="' + cssEsc(ref) + '"]') : null;
+      if (g)
+        return {
+          c: c,
+          x: g.__lx,
+          y: g.__ly,
+          rot: c.rot + (layoutRot[ref] || 0) * 90,
+        };
+      return { c: c, x: c.x, y: c.y, rot: c.rot };
+    }
+    return null;
+  }
+  function refreshLayoutWarnings() {
+    var box = document.getElementById('layout-warn');
+    if (!box) return;
+    var warns = [];
+    var warnRefs = {};
+    var boardR = layoutBoardRect();
+    var moved = [];
+    for (var mr in layoutMoves) moved.push(mr);
+    for (var r = 0; r < moved.length; r++) {
+      var st = compStateAt(moved[r]);
+      if (!st) continue;
+      var a = compAABB(st.c, st.x, st.y, st.rot);
+      if (
+        boardR &&
+        (a.x0 < boardR.x0 - 0.01 || a.y0 < boardR.y0 - 0.01 || a.x1 > boardR.x1 + 0.01 || a.y1 > boardR.y1 + 0.01)
+      ) {
+        var wmsg = moved[r] + ' leaves the board outline';
+        if (warns.indexOf(wmsg) === -1) warns.push(wmsg);
+        warnRefs[moved[r]] = 1;
+      }
+      for (var oi = 0; oi < layoutComps.length; oi++) {
+        var oref = layoutComps[oi].ref;
+        if (oref === moved[r]) continue;
+        var ost = compStateAt(oref);
+        if (!ost) continue;
+        var b = compAABB(ost.c, ost.x, ost.y, ost.rot);
+        var ox = Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0);
+        var oy = Math.min(a.y1, b.y1) - Math.max(a.y0, b.y0);
+        if (ox > 0.05 && oy > 0.05) {
+          var omsg = moved[r] + ' overlaps ' + oref;
+          if (warns.indexOf(omsg) === -1) warns.push(omsg);
+          warnRefs[moved[r]] = 1;
+          warnRefs[oref] = 1;
+        }
+      }
+    }
+    box.textContent = warns.join(' \u00b7 ');
+    box.style.display = warns.length ? '' : 'none';
+    if (layoutOverlay) {
+      var boxes = layoutOverlay.querySelectorAll('.layout-comp');
+      for (var wb = 0; wb < boxes.length; wb++) {
+        var bref = boxes[wb].getAttribute('data-ref');
+        if (warnRefs[bref]) boxes[wb].classList.add('layout-warn');
+        else boxes[wb].classList.remove('layout-warn');
+      }
+    }
+  }
+  function refreshRatsnest() {
+    var old = document.getElementById('layout-ratsnest');
+    if (old && old.parentNode) old.parentNode.removeChild(old);
+    if (!layoutOverlay) return;
+    var rats = document.createElementNS(SVGNSL, 'g');
+    rats.setAttribute('id', 'layout-ratsnest');
+    rats.setAttribute('pointer-events', 'none');
+    for (var mr in layoutMoves) {
+      var m = layoutMoves[mr];
+      var c = null;
+      for (var fi = 0; fi < layoutComps.length; fi++) {
+        if (layoutComps[fi].ref === mr) c = layoutComps[fi];
+      }
+      if (!c || !c.pads || !c.pads.length) continue;
+      var dx = m.x - m.x0;
+      var dy = m.y - m.y0;
+      for (var pn = 0; pn < c.pads.length; pn++) {
+        var pad = c.pads[pn];
+        if (!pad.net) continue;
+        // anchors: OTHER components' pads on the same net — their copper
+        // survives the rip-up, so the stranded pad ties back to them
+        var anchors = [];
+        for (var oc = 0; oc < layoutComps.length; oc++) {
+          var o = layoutComps[oc];
+          if (o.ref === mr || o.nets.indexOf(pad.net) === -1) continue;
+          for (var op = 0; op < (o.pads || []).length; op++) anchors.push(o.pads[op]);
+        }
+        if (!anchors.length) continue;
+        var px = pad.x + dx;
+        var py = pad.y + dy;
+        var best = null;
+        var bestD = Infinity;
+        for (var an = 0; an < anchors.length; an++) {
+          var ddx = anchors[an].x - px;
+          var ddy = anchors[an].y - py;
+          var dd = ddx * ddx + ddy * ddy;
+          if (dd < bestD) {
+            bestD = dd;
+            best = anchors[an];
+          }
+        }
+        var ln = document.createElementNS(SVGNSL, 'line');
+        ln.setAttribute('x1', px.toFixed(3));
+        ln.setAttribute('y1', py.toFixed(3));
+        ln.setAttribute('x2', best.x.toFixed(3));
+        ln.setAttribute('y2', best.y.toFixed(3));
+        rats.appendChild(ln);
+      }
+    }
+    layoutOverlay.appendChild(rats);
+  }
   function enterLayout() {
     buildLayoutOverlay();
     if (layoutOverlay) layoutOverlay.style.display = '';
@@ -1750,6 +1887,8 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       }
     }
     renderLayoutMoves();
+    refreshLayoutWarnings();
+    refreshRatsnest();
   }
   function exitLayout() {
     if (layoutOverlay) layoutOverlay.style.display = 'none';
@@ -3050,6 +3189,9 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   #layout-buttons button, #layout-tools button { flex: 1; background: var(--btn-bg); color: var(--chrome-fg); border: 1px solid var(--btn-border); border-radius: 4px; padding: 4px 6px; cursor: pointer; font: inherit; }
   #layout-buttons button:disabled, #layout-tools button:disabled { opacity: 0.5; cursor: default; }
   #layout-tools { display: flex; gap: 6px; margin-bottom: 6px; }
+  #layout-warn { color: #d29922; font-size: 11px; line-height: 1.5; margin-bottom: 6px; word-break: break-word; }
+  #layout-overlay .layout-comp.layout-warn rect { stroke: #d29922; }
+  #layout-ratsnest line { stroke: #d29922; stroke-width: 0.15; stroke-dasharray: 0.8 0.5; opacity: 0.85; }
   #layout-overlay .layout-comp rect { fill: rgba(56,132,255,0.10); stroke: #3884ff; stroke-width: 0.15; }
   #layout-overlay .layout-comp.layout-back rect { stroke: #b06bd6; fill: rgba(176,107,214,0.10); }
   #layout-overlay .layout-comp:hover rect { fill: rgba(56,132,214,0.28); }
@@ -3161,6 +3303,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     <button id="layout-align" type="button" disabled>align row</button>
     <button id="layout-dist" type="button" disabled>distribute X</button>
   </div>
+  <div id="layout-warn" style="display:none"></div>
   <div id="layout-moves"></div>
   <div id="layout-buttons">
     <button id="layout-revert" type="button">revert</button>

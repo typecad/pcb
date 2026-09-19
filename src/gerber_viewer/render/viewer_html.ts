@@ -1468,7 +1468,6 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   var layoutSel = []; // refs — shift-click extends, click replaces
   var layoutRot = {}; // ref -> accumulated 90-degree presses (R key)
   var layoutSnapBox = document.getElementById('layout-snap');
-  var layoutMovesEl = document.getElementById('layout-moves');
   var layoutApplyBtn = document.getElementById('layout-apply');
   var SVGNSL = 'http://www.w3.org/2000/svg';
   var cssEsc = function (v) {
@@ -1700,20 +1699,9 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     refreshRatsnest();
   }
   function renderLayoutMoves() {
-    if (!layoutMovesEl) return;
-    var n = 0;
-    var lines = [];
-    for (var mr in layoutMoves) {
-      n++;
-      var m = layoutMoves[mr];
-      lines.push(
-        mr + ' \u2192 ' + m.x.toFixed(1) + ', ' + (-m.y).toFixed(1) +
-        ' (' + (m.x - m.x0 >= 0 ? '+' : '') + (m.x - m.x0).toFixed(1) + ', ' +
-        (-(m.y - m.y0) >= 0 ? '+' : '') + (-(m.y - m.y0)).toFixed(1) + ')',
-      );
-    }
-    layoutMovesEl.textContent = lines.join(' \u00B7 ');
-    if (layoutApplyBtn) layoutApplyBtn.disabled = n === 0;
+    // no changelog line — the on-canvas handles already show what moved;
+    // this only gates the apply button
+    if (layoutApplyBtn) layoutApplyBtn.disabled = !Object.keys(layoutMoves).length;
   }
   function layoutRevert() {
     for (var r = 0; r < layoutRipped.length; r++) {
@@ -3330,7 +3318,6 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   #layout-keys .chip-solid::before { border-top: 2px solid currentColor; }
   #layout-keys .chip-grey::before { border-top: 2px solid rgba(128,128,128,0.35); }
   #layout-hint { color: var(--muted); font-size: 10px; line-height: 1.5; margin: 8px 0; }
-  #layout-moves { font: 11px/1.5 ui-monospace, monospace; color: var(--chrome-fg); margin-bottom: 6px; word-break: break-word; }
   #layout-buttons { display: flex; gap: 6px; }
   #layout-buttons button, #layout-tools button { flex: 1; background: var(--btn-bg); color: var(--chrome-fg); border: 1px solid var(--btn-border); border-radius: 4px; padding: 4px 6px; cursor: pointer; font: inherit; }
   #layout-buttons button:disabled, #layout-tools button:disabled { opacity: 0.5; cursor: default; }
@@ -3455,7 +3442,6 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     <button id="layout-dist" type="button" disabled>distribute X</button>
   </div>
   <div id="layout-warn" style="display:none"></div>
-  <div id="layout-moves"></div>
   <div id="layout-buttons">
     <button id="layout-revert" type="button">revert</button>
     <button id="layout-apply" type="button">apply &amp; rebuild</button>

@@ -1616,7 +1616,9 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       // the viewer runs inside VS Code; without its host bridge (a stale tab
       // served outside the extension) there is nothing to apply with
       if (typeof window.typecadLayoutApply !== 'function') {
-        if (statusEl) statusEl.textContent = 'apply needs the typeCAD viewer panel inside VS Code';
+        if (statusEl)
+          statusEl.textContent =
+            'apply needs the typeCAD viewer inside VS Code — reload the window and reopen the viewer if the panel predates this update';
         return;
       }
       var moves = [];

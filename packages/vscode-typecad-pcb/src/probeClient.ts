@@ -52,6 +52,16 @@ export function outlineData(components: ComponentSummary[]): OutlineComponent[] 
 }
 
 /** Webview↔extension message types. */
+/** one component label reposition (Reference/Value fp_text), board frame */
+export interface LabelEdit {
+  ref: string;
+  kind: 'reference' | 'value';
+  /** final world position + absolute rotation (degrees) */
+  x: number;
+  y: number;
+  rot: number;
+}
+
 /** one silk/fab gr_text edit from the layout view (all values board frame) */
 export interface LayoutTextEdit {
   /** authored text + anchor the source .text({...}) literal is matched by */
@@ -75,6 +85,7 @@ export type ProbeWebviewMessage =
       moves: Array<{ ref: string; dx: number; dy: number; rot?: number; pads?: Array<{ x: number; y: number }> }>;
       texts?: LayoutTextEdit[];
       values?: Array<{ ref: string; value: string }>;
+      labels?: LabelEdit[];
     };
 export type ProbeHostMessage =
   | { type: 'typecad/select'; ref: string; token?: number }
@@ -170,9 +181,15 @@ const PROBE_CLIENT = `<script>
   // Layout view: the page hands moved-component deltas to the host, which
   // edits the placement literals, rebuilds, and regenerates this viewer
   var layoutCb = null;
-  window.typecadLayoutApply = function (moves, texts, values, cb) {
+  window.typecadLayoutApply = function (moves, texts, values, labels, cb) {
     layoutCb = cb || null;
-    send({ type: 'typecad/layout-rebuild', moves: moves, texts: texts || [], values: values || [] });
+    send({
+      type: 'typecad/layout-rebuild',
+      moves: moves,
+      texts: texts || [],
+      values: values || [],
+      labels: labels || [],
+    });
   };
 
   window.addEventListener('message', function (ev) {

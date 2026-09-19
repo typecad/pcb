@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyPlacementEdits, planEndpointEdits, planPlacementEdits, planTextEdits, planValueEdits } from '../layoutEdits.js';
+import { applyPlacementEdits, planEndpointEdits, planLabelEdits, parsePlacementLiteral, planPlacementEdits, planTextEdits, planValueEdits } from '../layoutEdits.js';
 
 const source = `import { PCB } from '@typecad/pcb';
 const typecad = new PCB('demo');
@@ -213,6 +213,51 @@ describe('planValueEdits', () => {
 
   it('skips refs with no constructor literal', () => {
     const { edits, skipped } = planValueEdits(src, [{ ref: 'ZZ', value: 'x' }]);
+    expect(edits).toHaveLength(0);
+    expect(skipped).toHaveLength(1);
+  });
+});
+
+describe('planLabelEdits', () => {
+  const src =
+    "const r1 = new Component({ symbol: 'Device:R_Small', reference: 'R1', value: '1k' });\n" +
+    "r1.pcb = { x: 16, y: 15, rotation: 180 };\n";
+  const varOf = (ref: string) => (ref === 'R1' ? 'r1' : undefined);
+  const placementOf = (ref: string) =>
+    ref === 'R1' ? parsePlacementLiteral(src, 'r1') : null;
+
+  it('converts a dragged world position to footprint-local and inserts the layout', () => {
+    // text dragged to world (16, 20) with the part at (16,15) rot 180:
+    // local = R(-180)·(0, 5) = (0, -5)
+    const { edits, skipped } = planLabelEdits(
+      src,
+      [{ ref: 'R1', kind: 'reference', x: 16, y: 20, rot: 180 }],
+      varOf,
+      placementOf,
+    );
+    expect(skipped).toHaveLength(0);
+    const out = applyPlacementEdits(src, edits);
+    expect(out).toContain("reference: 'R1', referenceLayout: { x: 0, y: -5, rotation: 0 }");
+  });
+
+  it('updates an existing layout literal in place', () => {
+    const s2 = src.replace(
+      "reference: 'R1',",
+      "reference: 'R1', referenceLayout: { x: 0, y: -1.43, rotation: 0 },",
+    );
+    const { edits } = planLabelEdits(s2, [{ ref: 'R1', kind: 'value', x: 16, y: 20, rot: 90 }], varOf, placementOf);
+    const out = applyPlacementEdits(s2, edits);
+    expect(out).toContain('valueLayout: { x: 0, y: -5, rotation: -90 }');
+    expect(out).toContain('referenceLayout: { x: 0, y: -1.43, rotation: 0 }');
+  });
+
+  it('skips when the placement literal cannot be resolved', () => {
+    const { edits, skipped } = planLabelEdits(
+      src,
+      [{ ref: 'R1', kind: 'reference', x: 1, y: 1, rot: 0 }],
+      varOf,
+      () => null,
+    );
     expect(edits).toHaveLength(0);
     expect(skipped).toHaveLength(1);
   });

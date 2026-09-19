@@ -303,3 +303,95 @@ export function planValueEdits(text: string, edits: ValueEditInput[]): LayoutEdi
   }
   return { edits: planned, skipped };
 }
+
+// ---------------------------------------------------------------------------
+// Component LABEL repositioning: a Reference/Value fp_text dragged in the
+// layout view. The final world position arrives in board (y-down) mm; it is
+// converted to FOOTPRINT-LOCAL coordinates against the part's final
+// placement (literal + the same apply's move delta) and written into the
+// Component constructor's referenceLayout / valueLayout options — exactly
+// what the board writer's applyLayoutToFpText consumes on rebuild.
+// ---------------------------------------------------------------------------
+
+export interface LabelEditInput {
+  ref: string;
+  kind: 'reference' | 'value';
+  x: number;
+  y: number;
+  rot: number;
+}
+
+/** Parse a `<var>.pcb = { x, y, rotation? }` literal (null when computed). */
+export function parsePlacementLiteral(
+  text: string,
+  variable: string,
+): { x: number; y: number; rot: number } | null {
+  const match = new RegExp(`^([ \\t]*)${escapeRegExp(variable)}\\.pcb\\s*=\\s*\\{([^}]*)\\}`, 'm').exec(text);
+  if (!match) return null;
+  const xNum = /\bx\s*:\s*(-?[\d.]+)/.exec(match[2]);
+  const yNum = /\by\s*:\s*(-?[\d.]+)/.exec(match[2]);
+  if (!xNum || !yNum) return null;
+  const rNum = /\brotation\s*:\s*(-?[\d.]+)/.exec(match[2]);
+  return { x: parseFloat(xNum[1]), y: parseFloat(yNum[1]), rot: rNum ? parseFloat(rNum[1]) : 0 };
+}
+
+export function planLabelEdits(
+  text: string,
+  edits: LabelEditInput[],
+  variableOf: (ref: string) => string | undefined,
+  placementOf: (ref: string) => { x: number; y: number; rot: number } | null,
+): LayoutEditResult {
+  const planned: PlacementEdit[] = [];
+  const skipped: Array<{ ref: string; reason: string }> = [];
+  const used = new Set<number>();
+  const callRe = /new\s+Component\s*\(/g;
+  let match: RegExpExecArray | null;
+  while ((match = callRe.exec(text)) !== null) {
+    const range = objectLiteralRange(text, match.index);
+    if (!range) continue;
+    const inner = text.slice(range.open + 1, range.close);
+    const rNum = /\breference\s*:\s*(['"])((?:\.|(?!\1).)*)\1/.exec(inner);
+    if (!rNum) continue;
+    const ref = rNum[2];
+    // one label edit per constructor per kind
+    for (const kind of ['reference', 'value'] as const) {
+      const edit = edits.find((e, i) => !used.has(i) && e.ref === ref && e.kind === kind);
+      if (!edit) continue;
+      used.add(edits.indexOf(edit));
+      // world -> footprint-local against the part's FINAL placement
+      const part = placementOf(ref);
+      if (!part) {
+        skipped.push({ ref: `${ref} ${kind} label`, reason: 'no .pcb placement literal found' });
+        continue;
+      }
+      const rad = (-part.rot * Math.PI) / 180;
+      const c = Math.cos(rad);
+      const s = Math.sin(rad);
+      const dx = edit.x - part.x;
+      const dy = edit.y - part.y;
+      const local = { x: dx * c - dy * s, y: dx * s + dy * c, rot: edit.rot - part.rot };
+      const prop = `${kind}Layout`;
+      const layoutRe = new RegExp(`\\b${prop}\\s*:\\s*\\{[^}]*\\}`);
+      const existing = layoutRe.exec(inner);
+      let newInner: string;
+      const body = `{ x: ${fmt(local.x)}, y: ${fmt(local.y)}, rotation: ${fmt(local.rot)} }`;
+      if (existing) {
+        newInner = inner.replace(existing[0], () => `${prop}: ${body}`);
+      } else {
+        const at = rNum.index + rNum[0].length;
+        newInner = `${inner.slice(0, at)}, ${prop}: ${body}${inner.slice(at)}`;
+      }
+      planned.push({
+        ref: `${ref} ${kind} label`,
+        line: `${text.slice(match.index, range.open + 1)}${newInner}}`,
+        start: match.index,
+        end: range.close + 1,
+      });
+    }
+  }
+  for (let i = 0; i < edits.length; i++) {
+    if (!used.has(i))
+      skipped.push({ ref: `${edits[i]!.ref} ${edits[i]!.kind} label`, reason: 'no Component constructor literal found' });
+  }
+  return { edits: planned, skipped };
+}

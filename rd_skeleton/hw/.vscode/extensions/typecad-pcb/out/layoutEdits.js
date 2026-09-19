@@ -15,6 +15,8 @@ exports.planEndpointEdits = planEndpointEdits;
 exports.applyPlacementEdits = applyPlacementEdits;
 exports.planTextEdits = planTextEdits;
 exports.planValueEdits = planValueEdits;
+exports.parsePlacementLiteral = parsePlacementLiteral;
+exports.planLabelEdits = planLabelEdits;
 /** Matches `  var.pcb = { … }` (leading indent captured, literal body only). */
 function placementMatcher(variable) {
     return new RegExp(`^([ \\t]*)${escapeRegExp(variable)}\\.pcb\\s*=\\s*\\{([^}]*)\\}`, 'm');
@@ -252,6 +254,77 @@ function planValueEdits(text, edits) {
     for (let i = 0; i < edits.length; i++) {
         if (!used.has(i))
             skipped.push({ ref: `${edits[i].ref} value`, reason: 'no Component constructor literal found' });
+    }
+    return { edits: planned, skipped };
+}
+/** Parse a `<var>.pcb = { x, y, rotation? }` literal (null when computed). */
+function parsePlacementLiteral(text, variable) {
+    const match = new RegExp(`^([ \\t]*)${escapeRegExp(variable)}\\.pcb\\s*=\\s*\\{([^}]*)\\}`, 'm').exec(text);
+    if (!match)
+        return null;
+    const xNum = /\bx\s*:\s*(-?[\d.]+)/.exec(match[2]);
+    const yNum = /\by\s*:\s*(-?[\d.]+)/.exec(match[2]);
+    if (!xNum || !yNum)
+        return null;
+    const rNum = /\brotation\s*:\s*(-?[\d.]+)/.exec(match[2]);
+    return { x: parseFloat(xNum[1]), y: parseFloat(yNum[1]), rot: rNum ? parseFloat(rNum[1]) : 0 };
+}
+function planLabelEdits(text, edits, variableOf, placementOf) {
+    const planned = [];
+    const skipped = [];
+    const used = new Set();
+    const callRe = /new\s+Component\s*\(/g;
+    let match;
+    while ((match = callRe.exec(text)) !== null) {
+        const range = objectLiteralRange(text, match.index);
+        if (!range)
+            continue;
+        const inner = text.slice(range.open + 1, range.close);
+        const rNum = /\breference\s*:\s*(['"])((?:\.|(?!\1).)*)\1/.exec(inner);
+        if (!rNum)
+            continue;
+        const ref = rNum[2];
+        // one label edit per constructor per kind
+        for (const kind of ['reference', 'value']) {
+            const edit = edits.find((e, i) => !used.has(i) && e.ref === ref && e.kind === kind);
+            if (!edit)
+                continue;
+            used.add(edits.indexOf(edit));
+            // world -> footprint-local against the part's FINAL placement
+            const part = placementOf(ref);
+            if (!part) {
+                skipped.push({ ref: `${ref} ${kind} label`, reason: 'no .pcb placement literal found' });
+                continue;
+            }
+            const rad = (-part.rot * Math.PI) / 180;
+            const c = Math.cos(rad);
+            const s = Math.sin(rad);
+            const dx = edit.x - part.x;
+            const dy = edit.y - part.y;
+            const local = { x: dx * c - dy * s, y: dx * s + dy * c, rot: edit.rot - part.rot };
+            const prop = `${kind}Layout`;
+            const layoutRe = new RegExp(`\\b${prop}\\s*:\\s*\\{[^}]*\\}`);
+            const existing = layoutRe.exec(inner);
+            let newInner;
+            const body = `{ x: ${fmt(local.x)}, y: ${fmt(local.y)}, rotation: ${fmt(local.rot)} }`;
+            if (existing) {
+                newInner = inner.replace(existing[0], () => `${prop}: ${body}`);
+            }
+            else {
+                const at = rNum.index + rNum[0].length;
+                newInner = `${inner.slice(0, at)}, ${prop}: ${body}${inner.slice(at)}`;
+            }
+            planned.push({
+                ref: `${ref} ${kind} label`,
+                line: `${text.slice(match.index, range.open + 1)}${newInner}}`,
+                start: match.index,
+                end: range.close + 1,
+            });
+        }
+    }
+    for (let i = 0; i < edits.length; i++) {
+        if (!used.has(i))
+            skipped.push({ ref: `${edits[i].ref} ${edits[i].kind} label`, reason: 'no Component constructor literal found' });
     }
     return { edits: planned, skipped };
 }

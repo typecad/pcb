@@ -19,6 +19,7 @@ import * as vscode from 'vscode';
 import fs from 'node:fs';
 import path from 'node:path';
 import { injectProbeClient, type ProbeHostMessage, type ProbeWebviewMessage } from './probeClient.js';
+import { planPlacementEdits } from './layoutEdits.js';
 import { parseSourceLocation } from './sourceRef.js';
 import type { BoardDataService } from './boardData.js';
 
@@ -507,42 +508,38 @@ export class BoardViewerPanel {
       const edits = new vscode.WorkspaceEdit();
       const touched = new Set<string>();
       const skipped: string[] = [];
-      let applied = 0;
+      const appliedRefs = new Set<string>();
+      // per document: plan edits for every not-yet-resolved move, then commit
+      // the ones that matched here (a ref resolves in its first matching file)
+      for (const uri of srcFiles) {
+        const pending = moves.filter((m) => !appliedRefs.has(m.ref) && !skipped.some((sk) => sk.startsWith(m.ref + ' ')));
+        if (pending.length === 0) continue;
+        const doc = await vscode.workspace.openTextDocument(uri);
+        const text = doc.getText();
+        const planned = planPlacementEdits(text, pending, (ref) => variableOf.get(ref));
+        for (const sk of planned.skipped) {
+          // "no literal found" is only final once every src file has been
+          // tried — the other reasons are
+          if (sk.reason.startsWith('no `') && srcFiles.length > 1) continue;
+          skipped.push(`${sk.ref} (${sk.reason})`);
+        }
+        if (planned.edits.length === 0) continue;
+        for (const edit of planned.edits) {
+          edits.replace(
+            uri,
+            new vscode.Range(doc.positionAt(edit.start), doc.positionAt(edit.end)),
+            edit.line,
+          );
+          appliedRefs.add(edit.ref);
+        }
+        touched.add(uri.toString());
+      }
       for (const move of moves) {
-        const variable = variableOf.get(move.ref);
-        if (!variable) {
-          skipped.push(`${move.ref} (no source variable)`);
-          continue;
-        }
-        const decl = new RegExp(`^([ \t]*)${variable}\.pcb\s*=\s*\{([^}]*)\}`, 'm');
-        let done = false;
-        for (const uri of srcFiles) {
-          const doc = await vscode.workspace.openTextDocument(uri);
-          const match = decl.exec(doc.getText());
-          if (!match) continue;
-          const inner = match[2];
-          const xNum = /\bx\s*:\s*(-?[\d.]+)/.exec(inner);
-          const yNum = /\by\s*:\s*(-?[\d.]+)/.exec(inner);
-          if (!xNum || !yNum) {
-            skipped.push(`${move.ref} (placement is computed, not a literal)`);
-            done = true;
-            break;
-          }
-          const nx = (parseFloat(xNum[1]) + move.dx).toFixed(3);
-          const ny = (parseFloat(yNum[1]) + move.dy).toFixed(3);
-          const newInner = inner.replace(/\bx\s*:\s*-?[\d.]+/, `x: ${nx}`).replace(/\by\s*:\s*-?[\d.]+/, `y: ${ny}`);
-          const start = doc.positionAt(match.index);
-          const end = doc.positionAt(match.index + match[0].length);
-          edits.replace(uri, new vscode.Range(start, end), `${match[1]}${variable}.pcb = { ${newInner.trim()} }`);
-          touched.add(uri.toString());
-          applied++;
-          done = true;
-          break;
-        }
-        if (!done && !skipped.some((sk) => sk.startsWith(move.ref))) {
-          skipped.push(`${move.ref} (no \`${variable}.pcb = {\u2026}\` literal found)`);
+        if (!appliedRefs.has(move.ref) && !skipped.some((sk) => sk.startsWith(move.ref + ' '))) {
+          skipped.push(`${move.ref} (no \`${variableOf.get(move.ref) ?? move.ref}\`.pcb literal found)`);
         }
       }
+      const applied = appliedRefs.size;
       if (applied > 0) {
         await vscode.workspace.applyEdit(edits);
         for (const key of touched) {
@@ -562,6 +559,15 @@ export class BoardViewerPanel {
       }
       this.postStatus('rebuilding board…');
       await this.run(folder, 'npx typecad-pcb build', GENERATE_TIMEOUT_MS);
+      // generate() refuses a board written <3s ago (the build may still be
+      // writing); wait for it to settle so the viewer regenerates NOW, not
+      // only whenever the file watcher next fires
+      const boardFile = newestBoardFile(folder);
+      if (boardFile) {
+        for (let i = 0; i < 10 && Date.now() - mtimeOf(boardFile) < 3_500; i++) {
+          await new Promise((resolve) => setTimeout(resolve, 1_000));
+        }
+      }
       await this.generate(folder);
       void this.panel?.webview.postMessage({ type: 'typecad/layout-status', error: undefined });
     } catch (error) {

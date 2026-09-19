@@ -1620,10 +1620,15 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     var t = layoutTexts[i];
     var pfx = t.side === 'back' ? '-B_' : '-F_';
     var radius = 0.65 * t.h * (t.text.length + 2);
-    var cands = viewGroups.gerber.querySelectorAll(
-      'g[data-layer-name*="' + pfx + '"][data-kind="fab"] path:not([data-ref]):not([data-text]),' +
-        'g[data-layer-name*="' + pfx + '"][data-kind="silkscreen"] path:not([data-ref]):not([data-text])',
-    );
+    // a text claims strokes on ITS OWN layer only — a silk refdes must not
+    // swallow the fab strokes that merely sit nearby
+    var kinds = t.layerKind ? [t.layerKind] : ['fab', 'silkscreen'];
+    var sel = '';
+    for (var ks = 0; ks < kinds.length; ks++)
+      sel +=
+        (sel ? ',' : '') +
+        'g[data-layer-name*="' + pfx + '"][data-kind="' + kinds[ks] + '"] path:not([data-ref]):not([data-text])';
+    var cands = viewGroups.gerber.querySelectorAll(sel);
     var paths = [];
     for (var cp = 0; cp < cands.length; cp++) {
       var p = cands[cp];
@@ -1634,11 +1639,12 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       var myD = Math.hypot(pcx - t.x, pcy - t.y);
       if (myD > radius) continue;
       // a stroke between two texts (a part's refdes and value sit close)
-      // belongs to the nearer anchor
+      // belongs to the nearer anchor — comparing only same-layer anchors
       var nearer = false;
       for (var nt = 0; nt < layoutTexts.length; nt++) {
         var ot = layoutTexts[nt];
         if (ot === t || ot.side !== t.side || ot.x === undefined) continue;
+        if (t.layerKind && ot.layerKind && ot.layerKind !== t.layerKind) continue;
         if (Math.hypot(pcx - ot.x, pcy - ot.y) < myD) {
           nearer = true;
           break;
@@ -1656,20 +1662,48 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     // live position of text i: pending move if any, else the authored anchor
     var t = layoutTexts[i];
     var m = layoutTextMoves[i];
-    return m ? { x: m.x, y: m.y, rot: m.rot } : { x: t.x, y: t.y, rot: 0 };
+    return m ? { x: m.x, y: m.y, rot: m.rot } : labelBase(i);
+  }
+  // a component's pending move as an affine string (same math the footprint
+  // ghost uses) — labels ride it until they get a move of their own
+  function compTrStr(ref) {
+    var cm = layoutMoves[ref];
+    if (!cm) return '';
+    var dx = +(cm.x - cm.x0).toFixed(4);
+    var dy = +(cm.y - cm.y0).toFixed(4);
+    var a = ((cm.rot || 0) * 90) % 360;
+    if (!dx && !dy && !a) return '';
+    return 'rotate(' + a + ',' + cm.x + ',' + cm.y + ') translate(' + dx + ',' + dy + ')';
+  }
+  // a label's anchor through its component's pending move (drag start point)
+  function labelBase(i) {
+    var t = layoutTexts[i];
+    var cm = t.ref ? layoutMoves[t.ref] : null;
+    if (!cm) return { x: t.x, y: t.y, rot: 0 };
+    var a = (((cm.rot || 0) * 90) * Math.PI) / 180;
+    var px = t.x + (cm.x - cm.x0);
+    var py = t.y + (cm.y - cm.y0);
+    var rx = cm.x + Math.cos(a) * (px - cm.x) - Math.sin(a) * (py - cm.y);
+    var ry = cm.y + Math.sin(a) * (px - cm.x) + Math.cos(a) * (py - cm.y);
+    return { x: +rx.toFixed(4), y: +ry.toFixed(4), rot: cm.rot || 0 };
   }
   function applyTextGhost(i) {
     var t = layoutTexts[i];
     var m = layoutTextMoves[i];
     var paths = textPaths(i);
-    var tr = '';
+    // labels compose: their component's move first, then their own (an
+    // independently dragged label pins at its absolute spot instead)
+    var compTr = t.ref ? compTrStr(t.ref) : '';
+    var ownTr = '';
     if (m) {
-      var dx = +(m.x - t.x).toFixed(4);
-      var dy = +(m.y - t.y).toFixed(4);
-      // pivot at the moved ANCHOR: kicad rotates gr_text about its anchor,
-      // so the preview matches the rebuilt board exactly
-      if (dx || dy || m.rot) tr = 'rotate(' + m.rot * 90 + ',' + m.x + ',' + m.y + ') translate(' + dx + ',' + dy + ')';
+      var base = labelBase(i);
+      var dx = +(m.x - base.x).toFixed(4);
+      var dy = +(m.y - base.y).toFixed(4);
+      // pivot at the moved ANCHOR: kicad rotates fp_text/gr_text about its
+      // anchor, so the preview matches the rebuilt board exactly
+      if (dx || dy || m.rot) ownTr = 'rotate(' + m.rot * 90 + ',' + m.x + ',' + m.y + ') translate(' + dx + ',' + dy + ')';
     }
+    var tr = ownTr && compTr ? ownTr + ' ' + compTr : ownTr || compTr;
     for (var tp = 0; tp < paths.length; tp++) {
       if (tr) paths[tp].setAttribute('transform', tr);
       else if (paths[tp].__layoutTr0 === null || paths[tp].__layoutTr0 === undefined) paths[tp].removeAttribute('transform');
@@ -1851,9 +1885,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
           return;
         }
         if (t3.kind === 'reference') {
-          if (statusEl && !statusLocked())
-            statusEl.textContent =
-              'reference names stay fixed — drag to reposition; double-click a VALUE text to edit it';
+          beginCompTextEdit(t3.ref, 'reference', ev);
           return;
         }
         beginTextEdit(i);
@@ -1928,16 +1960,71 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       })(loose[lp]);
     }
   }
-  // in-place VALUE edit for a component (the netlist value rides with the
-  // overlay data) — apply rewrites the Component constructor's value literal
+  // in-place text edit for a component's VALUE or REFERENCE (the netlist
+  // value rides with the overlay data; renaming rewrites the reference
+  // literal) — the part's own label strokes hide and a plain preview stands
+  // in at the label's anchor until the rebuild re-plots real glyphs
   var layoutValueEdits = {}; // ref -> new value
-  var layoutValuePreviews = []; // SVG texts living in the overlay until rebuild/revert
-  function beginCompValueEdit(ref, ev) {
-    if (layoutValueEdits.__editing) return;
+  var layoutRefEdits = {}; // ref -> new reference name
+  var layoutValuePreviews = {}; // 'ref|kind' -> SVG text in the overlay
+  function labelIndexOf(ref, kind) {
+    for (var ii = 0; ii < layoutTexts.length; ii++)
+      if (layoutTexts[ii].ref === ref && layoutTexts[ii].kind === kind) return ii;
+    return -1;
+  }
+  function syncCompTextVisuals(on) {
+    // on: edited labels hide their strokes + show previews; off: restore
+    var edits = [
+      ['value', layoutValueEdits],
+      ['reference', layoutRefEdits],
+    ];
+    for (var ek = 0; ek < edits.length; ek++) {
+      var kind = edits[ek][0];
+      var map = edits[ek][1];
+      for (var ref in map) {
+        if (ref === '__editing') continue;
+        var li = labelIndexOf(ref, kind);
+        var key = ref + '|' + kind;
+        var paths = li >= 0 ? textPaths(li) : [];
+        if (layoutValuePreviews[key]) {
+          layoutValuePreviews[key].remove();
+          delete layoutValuePreviews[key];
+        }
+        if (on) {
+          for (var hp2 = 0; hp2 < paths.length; hp2++) paths[hp2].setAttribute('display', 'none');
+          var t2 = li >= 0 ? layoutTexts[li] : null;
+          var st = li >= 0 ? textState(li) : null;
+          var cP = null;
+          for (var cp2 = 0; cp2 < layoutComps.length && !cP; cp2++) if (layoutComps[cp2].ref === ref) cP = layoutComps[cp2];
+          var pv = document.createElementNS(SVGNSL, 'text');
+          pv.setAttribute('class', 'layout-text-preview');
+          pv.setAttribute('font-size', (t2 ? t2.h : 1).toFixed(2));
+          pv.setAttribute('text-anchor', 'middle');
+          pv.setAttribute('dominant-baseline', 'central');
+          pv.setAttribute('pointer-events', 'none');
+          pv.textContent = map[ref];
+          var flip = !t2 || t2.side === 'front' ? 1 : -1;
+          var rot = st && st.rot ? st.rot * 90 * flip : 0;
+          pv.setAttribute(
+            'transform',
+            'translate(' + (st ? st.x : cP ? cP.x : 0) + ',' + (st ? st.y : cP ? cP.y : 0) + ') scale(' + flip + ',' + -flip + ')' +
+              (rot ? ' rotate(' + rot + ')' : ''),
+          );
+          if (layoutOverlay) layoutOverlay.appendChild(pv);
+          layoutValuePreviews[key] = pv;
+        } else {
+          for (var up2 = 0; up2 < paths.length; up2++) paths[up2].removeAttribute('display');
+        }
+      }
+    }
+  }
+  function beginCompTextEdit(ref, kind, ev) {
+    var edits = kind === 'reference' ? layoutRefEdits : layoutValueEdits;
+    if (edits.__editing) return;
     var c = null;
     for (var vc = 0; vc < layoutComps.length && !c; vc++) if (layoutComps[vc].ref === ref) c = layoutComps[vc];
     if (!c) return;
-    var cur = layoutValueEdits[ref] !== undefined ? layoutValueEdits[ref] : c.value || '';
+    var cur = edits[ref] !== undefined ? edits[ref] : kind === 'reference' ? c.ref : c.value || '';
     var svg = document.getElementById('board');
     var sr = svg.getBoundingClientRect();
     var inp = document.createElement('input');
@@ -1948,28 +2035,16 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     inp.style.top = ev.clientY - 13 + 'px';
     inp.style.width = '110px';
     document.body.appendChild(inp);
-    layoutValueEdits.__editing = true;
+    edits.__editing = true;
     var closed = false;
     var close = function (save) {
       if (closed) return;
       closed = true;
       inp.remove();
-      layoutValueEdits.__editing = false;
-      if (save && inp.value && inp.value !== (c.value || '')) {
-        layoutValueEdits[ref] = inp.value;
-        // a preview rides the overlay (so other views stay untouched) at
-        // the edit point until the rebuild re-plots the real value strokes
-        var gp = gerberAt(ev.clientX, ev.clientY);
-        var pv = document.createElementNS(SVGNSL, 'text');
-        pv.setAttribute('class', 'layout-text-preview');
-        pv.setAttribute('font-size', '1.2');
-        pv.setAttribute('text-anchor', 'middle');
-        pv.setAttribute('dominant-baseline', 'central');
-        pv.setAttribute('pointer-events', 'none');
-        pv.textContent = inp.value + ' (' + ref + ')';
-        pv.setAttribute('transform', 'translate(' + gp.x + ',' + gp.y + ') scale(1,-1)');
-        if (layoutOverlay) layoutOverlay.appendChild(pv);
-        layoutValuePreviews.push(pv);
+      edits.__editing = false;
+      if (save && inp.value && inp.value !== cur) {
+        edits[ref] = inp.value;
+        syncCompTextVisuals(true);
         renderLayoutMoves();
       }
     };
@@ -1983,6 +2058,9 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     });
     inp.focus();
     inp.select();
+  }
+  function beginCompValueEdit(ref, ev) {
+    beginCompTextEdit(ref, 'value', ev);
   }
   function markLayoutSel() {
     if (!layoutOverlay) return;
@@ -2109,12 +2187,18 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     renderLayoutMoves();
     refreshLayoutWarnings();
     refreshRatsnest();
+    // the part's labels ride the move (an independently dragged label
+    // stays pinned at its absolute spot instead)
+    for (var lr3 = 0; lr3 < layoutTexts.length; lr3++) {
+      if (layoutTexts[lr3].ref === c.ref) applyTextGhost(lr3);
+    }
   }
   function renderLayoutMoves() {
     // no changelog line — the on-canvas handles already show what moved;
-    // this only gates the apply button (moves + text/value edits)
+    // this only gates the apply button (moves + text/label/value edits)
     var nVal = 0;
     for (var vk in layoutValueEdits) if (vk !== '__editing') nVal++;
+    for (var rk in layoutRefEdits) if (rk !== '__editing') nVal++;
     if (layoutApplyBtn)
       layoutApplyBtn.disabled =
         !Object.keys(layoutMoves).length && !Object.keys(layoutTextMoves).length && !nVal;
@@ -2135,8 +2219,8 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       if (layoutTextEls[tv]) syncTextVisual(tv);
     }
     layoutValueEdits = {};
-    for (var pv2 = 0; pv2 < layoutValuePreviews.length; pv2++) layoutValuePreviews[pv2].remove();
-    layoutValuePreviews = [];
+    layoutRefEdits = {};
+    syncCompTextVisuals(false);
     refreshLayoutWarnings();
     refreshRatsnest();
     if (layoutOverlay) {
@@ -2214,6 +2298,12 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         if (vk2 === '__editing') continue;
         values.push({ ref: vk2, value: layoutValueEdits[vk2] });
       }
+      // reference renames
+      var renames = [];
+      for (var rn4 in layoutRefEdits) {
+        if (rn4 === '__editing') continue;
+        renames.push({ ref: rn4, newRef: layoutRefEdits[rn4] });
+      }
       // label repositioning: final world position + absolute rotation; the
       // host converts to footprint-local against the part's final placement
       var labels = [];
@@ -2232,7 +2322,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       }
       layoutApplyBtn.disabled = true;
       layoutApplyBtn.textContent = 'rebuilding\u2026';
-      window.typecadLayoutApply(moves, texts, values, labels, function (err) {
+      window.typecadLayoutApply(moves, texts, values, labels, renames, function (err) {
         layoutApplyBtn.disabled = false;
         layoutApplyBtn.textContent = 'apply & rebuild';
         if (err && statusEl) statusEl.textContent = 'layout apply failed: ' + err;
@@ -2499,13 +2589,18 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     }
     layoutRipped = [];
     // texts too: strokes back to authored ink, edit previews gone (the
-    // pending edits survive in layoutTextMoves and re-apply on re-entry)
+    // pending edits survive in layoutTextMoves and re-apply on re-entry).
+    // comp moves must ALSO clear first — label ghosts compose them
     var savedTextMoves = layoutTextMoves;
+    var savedMoves = layoutMoves;
     layoutTextMoves = {};
+    layoutMoves = {};
     for (var tcl = 0; tcl < layoutTexts.length; tcl++) {
       if (layoutTextEls[tcl]) syncTextVisual(tcl);
     }
     layoutTextMoves = savedTextMoves;
+    layoutMoves = savedMoves;
+    syncCompTextVisuals(false);
   }
   function restoreLayoutGhost() {
     for (var mr3 in layoutMoves) {
@@ -2526,6 +2621,13 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       var tri = parseInt(tr3, 10);
       if (layoutTexts[tri]) syncTextVisual(tri);
     }
+    // labels of moved parts re-ride their comp transform even without a
+    // move of their own
+    for (var lr4 = 0; lr4 < layoutTexts.length; lr4++) {
+      var lt4 = layoutTexts[lr4];
+      if (lt4.ref && layoutMoves[lt4.ref] && !layoutTextMoves[lr4] && layoutTextEls[lr4]) syncTextVisual(lr4);
+    }
+    syncCompTextVisuals(true);
   }
   function enterLayout() {
     buildLayoutOverlay();

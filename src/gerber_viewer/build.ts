@@ -347,6 +347,7 @@ export function buildViewerFromFiles(paths: string[], options: ViewerBuildOption
           rot: +t.rot.toFixed(1),
           side: t.side,
           h: +t.h.toFixed(2),
+          layerKind: t.layerKind,
         }));
         boardLabels = parseBoardLabels(fs.readFileSync(pcbPath, 'utf8'));
       } catch {
@@ -457,6 +458,7 @@ export function buildViewerFromFiles(paths: string[], options: ViewerBuildOption
             rot: lb.rot,
             side: lb.side,
             h: lb.h,
+            layerKind: lb.layerKind,
           })),
           // the exact footprint outline in the group's local frame — the
           // drag handle draws this polygon instead of a generic rounded box
@@ -533,6 +535,14 @@ function getPcbName(drcPath: string): string {
   return `${base}.kicad_pcb`;
 }
 
+/** 'F.SilkS' -> silkscreen, 'F.Fab' -> fab, anything else claims both. */
+function layerKindOf(layer: string): 'silkscreen' | 'fab' | undefined {
+  const l = layer.toLowerCase();
+  if (l.includes('silk')) return 'silkscreen';
+  if (l.includes('fab')) return 'fab';
+  return undefined;
+}
+
 /**
  * Silk/fab board texts (gr_text — the `pcb.text()` API) from the
  * .kicad_pcb, mapped into the gerber (y-up) frame so the layout view can
@@ -541,14 +551,14 @@ function getPcbName(drcPath: string): string {
  */
 function parseBoardTexts(
   content: string,
-): Array<{ text: string; x: number; y: number; rot: number; side: 'front' | 'back'; h: number }> {
+): Array<{ text: string; x: number; y: number; rot: number; side: 'front' | 'back'; h: number; layerKind?: 'silkscreen' | 'fab' }> {
   let tree: SExpr;
   try {
     tree = parse(content);
   } catch {
     return [];
   }
-  const out: Array<{ text: string; x: number; y: number; rot: number; side: 'front' | 'back'; h: number }> = [];
+  const out: Array<{ text: string; x: number; y: number; rot: number; side: 'front' | 'back'; h: number; layerKind?: 'silkscreen' | 'fab' }> = [];
   const walk = (expr: SExpr): void => {
     if (!isList(expr)) return;
     if (nameOf(expr[0]) === 'gr_text') {
@@ -559,6 +569,7 @@ function parseBoardTexts(
       let side: 'front' | 'back' | null = null;
       let h = 1.27;
       let hidden = false;
+      let rawLayer = '';
       for (const child of expr) {
         if (!isList(child)) continue;
         const head = nameOf(child[0]);
@@ -570,6 +581,7 @@ function parseBoardTexts(
           const name = String(child[1] ?? '').toLowerCase();
           if (name === 'f.silks' || name === 'f.fab') side = 'front';
           else if (name === 'b.silks' || name === 'b.fab') side = 'back';
+          rawLayer = String(child[1] ?? '');
         } else if (head === 'effects') {
           for (const eff of child) {
             if (!isList(eff)) continue;
@@ -587,7 +599,7 @@ function parseBoardTexts(
         }
       }
       if (!hidden && text && x !== null && y !== null && side)
-        out.push({ text, x, y: -y, rot, side, h });
+        out.push({ text, x, y: -y, rot, side, h, layerKind: layerKindOf(rawLayer) });
     }
     for (const child of expr) walk(child);
   };
@@ -604,14 +616,14 @@ function parseBoardTexts(
  */
 export function parseBoardLabels(
   content: string,
-): Record<string, Array<{ kind: 'reference' | 'value'; text: string; x: number; y: number; rot: number; side: 'front' | 'back'; h: number }>> {
+): Record<string, Array<{ kind: 'reference' | 'value'; text: string; x: number; y: number; rot: number; side: 'front' | 'back'; h: number; layerKind?: 'silkscreen' | 'fab' }>> {
   let tree: SExpr;
   try {
     tree = parse(content);
   } catch {
     return {};
   }
-  const byRef: Record<string, Array<{ kind: 'reference' | 'value'; text: string; x: number; y: number; rot: number; side: 'front' | 'back'; h: number }>> = {};
+  const byRef: Record<string, Array<{ kind: 'reference' | 'value'; text: string; x: number; y: number; rot: number; side: 'front' | 'back'; h: number; layerKind?: 'silkscreen' | 'fab' }>> = {};
   const walk = (expr: SExpr): void => {
     if (!isList(expr)) return;
     if (nameOf(expr[0]) === 'footprint') {
@@ -648,6 +660,7 @@ export function parseBoardLabels(
         let side: 'front' | 'back' | null = null;
         let h = 1;
         let hidden = false;
+        let rawLayer = '';
         for (const gc of child) {
           if (!isList(gc)) continue;
           const head = nameOf(gc[0]);
@@ -659,6 +672,7 @@ export function parseBoardLabels(
             const lname = String(gc[1] ?? '').toLowerCase();
             if (lname.startsWith('f.')) side = 'front';
             else if (lname.startsWith('b.')) side = 'back';
+            rawLayer = String(gc[1] ?? '');
           } else if (head === 'effects') {
             for (const eff of gc) {
               if (isList(eff) && nameOf(eff[0]) === 'font') {
@@ -683,6 +697,7 @@ export function parseBoardLabels(
           rot: +(((lrot + prot) % 360 + 360) % 360).toFixed(1),
           side,
           h,
+          layerKind: layerKindOf(rawLayer),
         });
         }
       }

@@ -44,6 +44,13 @@ describe('injectProbeClient', () => {
     expect(html.lastIndexOf('typecad-probe-data')).toBeLessThan(html.lastIndexOf('</body>'));
   });
 
+  it('installs the layout-apply bridge the viewer buttons into', () => {
+    const { html } = injectProbeClient(viewerHtml, components);
+    expect(html).toContain('window.typecadLayoutApply = function (moves, cb)');
+    expect(html).toContain("send({ type: 'typecad/layout-rebuild', moves: moves });");
+    expect(html).toContain("m.type === 'typecad/layout-status'");
+  });
+
   it('embeds net source provenance in the data island', () => {
     const { html } = injectProbeClient(viewerHtml, components, [
       { name: 'net2', source: 'src/board.ts:82', routeSource: 'src/board.ts:83' },

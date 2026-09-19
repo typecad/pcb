@@ -61,6 +61,7 @@ const vscode = __importStar(require("vscode"));
 const node_fs_1 = __importDefault(require("node:fs"));
 const node_path_1 = __importDefault(require("node:path"));
 const probeClient_js_1 = require("./probeClient.js");
+const layoutEdits_js_1 = require("./layoutEdits.js");
 const sourceRef_js_1 = require("./sourceRef.js");
 const GENERATE_TIMEOUT_MS = 120_000;
 /** A selection is re-posted until the viewer page acks it (or this times out). */
@@ -482,7 +483,100 @@ class BoardViewerPanel {
         });
         return this.generating;
     }
+    /**
+     * Layout view "apply & rebuild": move deltas arrive in the board (y-down)
+     * frame. Each moved ref resolves to its source variable (the board's
+     * "Code" property), its `<var>.pcb = { x, y, ... }` literal is rewritten
+     * by the delta, then the project rebuilds and the viewer regenerates.
+     * Computed (non-literal) placements are skipped and reported, never
+     * silently mangled.
+     */
+    async onLayoutRebuild(moves) {
+        const folder = this.hwFolder();
+        const fail = (error) => {
+            this.output.appendLine(`layout apply failed: ${error}`);
+            void this.panel?.webview.postMessage({ type: 'typecad/layout-status', error });
+        };
+        if (!folder || this.panel === null) {
+            fail('no typeCAD project found');
+            return;
+        }
+        try {
+            const comps = await this.service.components();
+            const variableOf = new Map(comps.map((c) => [c.reference, c.variable ?? '']));
+            const srcFiles = await vscode.workspace.findFiles(new vscode.RelativePattern(folder, 'src/**/*.ts'));
+            const edits = new vscode.WorkspaceEdit();
+            const touched = new Set();
+            const skipped = [];
+            const appliedRefs = new Set();
+            // per document: plan edits for every not-yet-resolved move, then commit
+            // the ones that matched here (a ref resolves in its first matching file)
+            for (const uri of srcFiles) {
+                const pending = moves.filter((m) => !appliedRefs.has(m.ref) && !skipped.some((sk) => sk.startsWith(m.ref + ' ')));
+                if (pending.length === 0)
+                    continue;
+                const doc = await vscode.workspace.openTextDocument(uri);
+                const text = doc.getText();
+                const planned = (0, layoutEdits_js_1.planPlacementEdits)(text, pending, (ref) => variableOf.get(ref));
+                for (const sk of planned.skipped) {
+                    // "no literal found" is only final once every src file has been
+                    // tried — the other reasons are
+                    if (sk.reason.startsWith('no `') && srcFiles.length > 1)
+                        continue;
+                    skipped.push(`${sk.ref} (${sk.reason})`);
+                }
+                if (planned.edits.length === 0)
+                    continue;
+                for (const edit of planned.edits) {
+                    edits.replace(uri, new vscode.Range(doc.positionAt(edit.start), doc.positionAt(edit.end)), edit.line);
+                    appliedRefs.add(edit.ref);
+                }
+                touched.add(uri.toString());
+            }
+            for (const move of moves) {
+                if (!appliedRefs.has(move.ref) && !skipped.some((sk) => sk.startsWith(move.ref + ' '))) {
+                    skipped.push(`${move.ref} (no \`${variableOf.get(move.ref) ?? move.ref}\`.pcb literal found)`);
+                }
+            }
+            const applied = appliedRefs.size;
+            if (applied > 0) {
+                await vscode.workspace.applyEdit(edits);
+                for (const key of touched) {
+                    const doc = await vscode.workspace.openTextDocument(vscode.Uri.parse(key));
+                    await doc.save();
+                }
+            }
+            this.output.appendLine(`layout apply: ${applied} placement(s) moved${skipped.length ? `, skipped ${skipped.join('; ')}` : ''} — rebuilding`);
+            if (skipped.length) {
+                vscode.window.setStatusBarMessage(`layout: skipped ${skipped.join('; ')}`, 8000);
+            }
+            if (applied === 0) {
+                void this.panel?.webview.postMessage({ type: 'typecad/layout-status', error: undefined });
+                return;
+            }
+            this.postStatus('rebuilding board…');
+            await this.run(folder, 'npx typecad-pcb build', GENERATE_TIMEOUT_MS);
+            // generate() refuses a board written <3s ago (the build may still be
+            // writing); wait for it to settle so the viewer regenerates NOW, not
+            // only whenever the file watcher next fires
+            const boardFile = newestBoardFile(folder);
+            if (boardFile) {
+                for (let i = 0; i < 10 && Date.now() - mtimeOf(boardFile) < 3_500; i++) {
+                    await new Promise((resolve) => setTimeout(resolve, 1_000));
+                }
+            }
+            await this.generate(folder);
+            void this.panel?.webview.postMessage({ type: 'typecad/layout-status', error: undefined });
+        }
+        catch (error) {
+            fail(error instanceof Error ? error.message : String(error));
+        }
+    }
     async onMessage(message) {
+        if (message.type === 'typecad/layout-rebuild') {
+            await this.onLayoutRebuild(message.moves);
+            return;
+        }
         if (message.type === 'typecad/ready') {
             this.readySeen = true;
             this.output.appendLine('viewer page ready');

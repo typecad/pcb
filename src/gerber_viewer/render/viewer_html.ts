@@ -1590,7 +1590,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       );
     }
     layoutMovesEl.textContent = lines.join(' \u00B7 ');
-    if (layoutApplyBtn) layoutApplyBtn.disabled = n === 0 || layoutApplyBtn.dataset.noHost === '1';
+    if (layoutApplyBtn) layoutApplyBtn.disabled = n === 0;
   }
   function layoutRevert() {
     for (var r = 0; r < layoutRipped.length; r++) {
@@ -1612,15 +1612,17 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   var layoutRevertBtn = document.getElementById('layout-revert');
   if (layoutRevertBtn) layoutRevertBtn.addEventListener('click', layoutRevert);
   if (layoutApplyBtn) {
-    if (typeof window.typecadLayoutApply === 'function') {
-      layoutApplyBtn.addEventListener('click', function () {
-        var moves = [];
-        for (var mr2 in layoutMoves) {
-          var m2 = layoutMoves[mr2];
-          // deltas convert to the board (y-down) frame here — the host never
-          // sees the gerber flip
-          moves.push({ ref: mr2, dx: m2.x - m2.x0, dy: -(m2.y - m2.y0) });
-        }
+    layoutApplyBtn.addEventListener('click', function () {
+      var moves = [];
+      for (var mr2 in layoutMoves) {
+        var m2 = layoutMoves[mr2];
+        // deltas convert to the board (y-down) frame here — the host never
+        // sees the gerber flip
+        moves.push({ ref: mr2, dx: m2.x - m2.x0, dy: -(m2.y - m2.y0) });
+      }
+      // host presence is decided at click time: the probe client's bridge
+      // may register after this script parsed
+      if (typeof window.typecadLayoutApply === 'function') {
         layoutApplyBtn.disabled = true;
         layoutApplyBtn.textContent = 'rebuilding\u2026';
         window.typecadLayoutApply(moves, function (err) {
@@ -1628,12 +1630,28 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
           layoutApplyBtn.textContent = 'apply & rebuild';
           if (err && statusEl) statusEl.textContent = 'layout apply failed: ' + err;
         });
+        return;
+      }
+      // plain browser tab — no host to rebuild with: degrade to a copyable
+      // moves note (the deltas to add to each component's .pcb x/y)
+      var lines = moves.map(function (mv) {
+        return (
+          mv.ref + ': +' + mv.dx.toFixed(2) + ', ' + (mv.dy >= 0 ? '+' : '') + mv.dy.toFixed(2) +
+          ' mm — add to its .pcb = { x, y }'
+        );
       });
-    } else {
-      layoutApplyBtn.disabled = true;
-      layoutApplyBtn.dataset.noHost = '1';
-      layoutApplyBtn.title = 'applying edits needs the VS Code host';
-    }
+      var note = lines.join('\n');
+      var done = function () {
+        if (statusEl)
+          statusEl.textContent = 'layout moves copied — apply them to the board source (the VS Code host rebuilds automatically)';
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(note).then(done, done);
+      } else {
+        done();
+      }
+      if (window.console) console.log('layout moves:\n' + note);
+    });
   }
   // arrow keys nudge the selected component (0.5 mm, or 0.1 with Alt)
   window.addEventListener('keydown', function (ev) {

@@ -1550,13 +1550,8 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       );
       for (var te = 0; te < loose.length; te++) {
         var tel = loose[te];
-        var bb = null;
-        try {
-          bb = tel.getBBox();
-        } catch (e) {
-          continue;
-        }
-        if (!bb || (!bb.width && !bb.height)) continue; // hidden layer
+        var bb = pathBBox(tel);
+        if (!bb || (!bb.width && !bb.height)) continue;
         if (Math.hypot(bb.x + bb.width / 2 - c.x, bb.y + bb.height / 2 - c.y) > rClaim) continue;
         tel.setAttribute('data-ref', ref);
         if (tel.__layoutTr0 === undefined) tel.__layoutTr0 = tel.getAttribute('transform');
@@ -1604,12 +1599,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     var paths = [];
     for (var cp = 0; cp < cands.length; cp++) {
       var p = cands[cp];
-      var bb = null;
-      try {
-        bb = p.getBBox();
-      } catch (e) {
-        continue;
-      }
+      var bb = pathBBox(p);
       if (!bb || (!bb.width && !bb.height)) continue;
       if (Math.hypot(bb.x + bb.width / 2 - t.x, bb.y + bb.height / 2 - t.y) <= radius) {
         p.setAttribute('data-text', String(i));
@@ -1817,30 +1807,72 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       });
     }
   }
+  // geometry of a stroke even when its layer group is toggled off —
+  // getBBox() zeroes for non-rendered elements, so un-hide for the measure
+  function pathBBox(el) {
+    var grp = el.closest ? el.closest('#yflip > g') : null;
+    var hidden = !!(grp && grp.style.display === 'none');
+    if (hidden) grp.style.display = '';
+    var bb = null;
+    try {
+      bb = el.getBBox();
+    } catch (e) {
+      bb = null;
+    }
+    if (hidden) grp.style.display = 'none';
+    return bb;
+  }
+  var layoutInkBound = false; // listeners bind once; enterLayout runs often
+  function bindCompInk(el, ref) {
+    // this stroke is part of the component's footprint, exactly like KiCad:
+    // grabbing it drags the PART, double-click edits the part's VALUE
+    el.addEventListener('pointerdown', function (ev) {
+      if (viewMode !== 'layout' || !layoutOverlay) return;
+      var g = layoutOverlay.querySelector('[data-ref="' + cssEsc(ref) + '"]');
+      if (g) startCompDrag(g, ev);
+    });
+    el.addEventListener('dblclick', function (ev) {
+      if (viewMode !== 'layout' || !layoutOverlay) return;
+      ev.stopPropagation();
+      ev.preventDefault();
+      beginCompValueEdit(ref, ev);
+    });
+  }
   function buildTextOverlay() {
+    if (layoutInkBound) return;
+    layoutInkBound = true;
     for (var i = 0; i < layoutTexts.length; i++) attachTextDrag(i);
-    // component-owned ink (refdes/value strokes, outlines, courtyard) is
-    // part of the footprint, exactly like KiCad: grabbing it drags the PART,
-    // double-click edits the part's VALUE in place
     if (!viewGroups.gerber) return;
+    // attributed comp ink (outlines, marks — %TO.C carries the ref)
     var inked = viewGroups.gerber.querySelectorAll(
       'g[data-kind="silkscreen"] [data-ref], g[data-kind="fab"] [data-ref], g[data-kind="other"] [data-ref]',
     );
-    for (var ik = 0; ik < inked.length; ik++) {
+    for (var ik = 0; ik < inked.length; ik++) bindCompInk(inked[ik], inked[ik].getAttribute('data-ref'));
+    // UNattributed comp texts — KiCad plots most refdes/value fp_texts with
+    // no %TO.C at all — bind to their nearest component within its reach
+    // (the same radius the whole-footprint move claims with)
+    var loose = viewGroups.gerber.querySelectorAll(
+      'g[data-kind="fab"] path:not([data-ref]):not([data-text]),' +
+        'g[data-kind="silkscreen"] path:not([data-ref]):not([data-text])',
+    );
+    for (var lp = 0; lp < loose.length; lp++) {
       (function (el) {
-        var ref = el.getAttribute('data-ref');
-        el.addEventListener('pointerdown', function (ev) {
-          if (viewMode !== 'layout' || !layoutOverlay) return;
-          var g = layoutOverlay.querySelector('[data-ref="' + cssEsc(ref) + '"]');
-          if (g) startCompDrag(g, ev);
-        });
-        el.addEventListener('dblclick', function (ev) {
-          if (viewMode !== 'layout' || !layoutOverlay) return;
-          ev.stopPropagation();
-          ev.preventDefault();
-          beginCompValueEdit(ref, ev);
-        });
-      })(inked[ik]);
+        var bb = pathBBox(el);
+        if (!bb || (!bb.width && !bb.height)) return;
+        var lx = bb.x + bb.width / 2;
+        var ly = bb.y + bb.height / 2;
+        var best = null;
+        var bestD = Infinity;
+        for (var lc = 0; lc < layoutComps.length; lc++) {
+          var cc = layoutComps[lc];
+          var d = Math.hypot(lx - cc.x, ly - cc.y);
+          if (d <= Math.max(cc.w, cc.h) / 2 + 2 && d < bestD) {
+            bestD = d;
+            best = cc;
+          }
+        }
+        if (best) bindCompInk(el, best.ref);
+      })(loose[lp]);
     }
   }
   // in-place VALUE edit for a component (the netlist value rides with the

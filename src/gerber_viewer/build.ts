@@ -331,8 +331,11 @@ export function buildViewerFromFiles(paths: string[], options: ViewerBuildOption
   // Layout-view texts: silk/fab gr_texts (the `pcb.text()` API) parsed from
   // the board file beside the netlist — their gerber stroke paths get
   // claimed by the viewer for drag + in-place value editing, and apply
-  // rewrites the source `.text({ ... })` literals
+  // rewrites the source `.text({ ... })` literals. The same file yields
+  // each footprint's Reference/Value label anchors for independent
+  // label positioning (Component referenceLayout/valueLayout on apply)
   let layoutTexts: ViewerOptions['layoutTexts'] = [];
+  let boardLabels: ReturnType<typeof parseBoardLabels> = {};
   if (pcbaNetlistSource) {
     const pcbPath = pcbaNetlistSource.replace(/\.net$/i, '.kicad_pcb');
     if (fs.existsSync(pcbPath)) {
@@ -345,6 +348,7 @@ export function buildViewerFromFiles(paths: string[], options: ViewerBuildOption
           side: t.side,
           h: +t.h.toFixed(2),
         }));
+        boardLabels = parseBoardLabels(fs.readFileSync(pcbPath, 'utf8'));
       } catch {
         warnings.push(`could not parse ${path.basename(pcbPath)} texts — silk/fab text editing stays disabled`);
       }
@@ -443,6 +447,17 @@ export function buildViewerFromFiles(paths: string[], options: ViewerBuildOption
           h: +Math.max(oh, 0.6).toFixed(2),
           side,
           nets,
+          // per-part label anchors (Reference on silk, Value on fab) —
+          // independently draggable texts in the layout view
+          labels: (boardLabels[c.ref] ?? []).map((lb) => ({
+            kind: lb.kind,
+            text: lb.text,
+            x: lb.x,
+            y: lb.y,
+            rot: lb.rot,
+            side: lb.side,
+            h: lb.h,
+          })),
           // the exact footprint outline in the group's local frame — the
           // drag handle draws this polygon instead of a generic rounded box
           outline: outline && outline.length >= 3
@@ -578,6 +593,105 @@ function parseBoardTexts(
   };
   walk(tree);
   return out;
+}
+
+/**
+ * Per-footprint Reference/Value label texts from the board file, mapped to
+ * WORLD gerber coordinates: footprint at (px py prot) + R(prot)·(local).
+ * The layout view drags these as independent texts; apply converts the
+ * final world position back to footprint-local and writes the Component's
+ * referenceLayout / valueLayout options.
+ */
+export function parseBoardLabels(
+  content: string,
+): Record<string, Array<{ kind: 'reference' | 'value'; text: string; x: number; y: number; rot: number; side: 'front' | 'back'; h: number }>> {
+  let tree: SExpr;
+  try {
+    tree = parse(content);
+  } catch {
+    return {};
+  }
+  const byRef: Record<string, Array<{ kind: 'reference' | 'value'; text: string; x: number; y: number; rot: number; side: 'front' | 'back'; h: number }>> = {};
+  const walk = (expr: SExpr): void => {
+    if (!isList(expr)) return;
+    if (nameOf(expr[0]) === 'footprint') {
+      let px = 0;
+      let py = 0;
+      let prot = 0;
+      for (const child of expr) {
+        if (isList(child) && nameOf(child[0]) === 'at') {
+          if (typeof child[1] === 'number') px = child[1];
+          if (typeof child[2] === 'number') py = child[2];
+          if (typeof child[3] === 'number') prot = child[3];
+          break;
+        }
+      }
+      const rad = (prot * Math.PI) / 180;
+      const c = Math.cos(rad);
+      const s = Math.sin(rad);
+      // the Reference property names the footprint — resolve it first so
+      // both labels file under the right ref
+      let refText: string | null = null;
+      for (const child of expr) {
+        if (!isList(child) || nameOf(child[0]) !== 'property') continue;
+        if (String(child[1] ?? '') === 'Reference' && typeof child[2] === 'string') refText = child[2];
+      }
+      if (refText) {
+        for (const child of expr) {
+          if (!isList(child) || nameOf(child[0]) !== 'property') continue;
+          const name = String(child[1] ?? '');
+          if (name !== 'Reference' && name !== 'Value') continue;
+          const text = typeof child[2] === 'string' ? child[2] : '';
+        let lx = 0;
+        let ly = 0;
+        let lrot = 0;
+        let side: 'front' | 'back' | null = null;
+        let h = 1;
+        let hidden = false;
+        for (const gc of child) {
+          if (!isList(gc)) continue;
+          const head = nameOf(gc[0]);
+          if (head === 'at') {
+            if (typeof gc[1] === 'number') lx = gc[1];
+            if (typeof gc[2] === 'number') ly = gc[2];
+            if (typeof gc[3] === 'number') lrot = gc[3];
+          } else if (head === 'layer') {
+            const lname = String(gc[1] ?? '').toLowerCase();
+            if (lname.startsWith('f.')) side = 'front';
+            else if (lname.startsWith('b.')) side = 'back';
+          } else if (head === 'effects') {
+            for (const eff of gc) {
+              if (isList(eff) && nameOf(eff[0]) === 'font') {
+                for (const fc of eff) {
+                  if (isList(fc) && nameOf(fc[0]) === 'size' && typeof fc[2] === 'number') h = Math.abs(fc[2]);
+                }
+              } else if (isList(eff) && nameOf(eff[0]) === 'hide') {
+                hidden = true;
+              }
+            }
+          }
+        }
+        if (hidden || !text || !side) continue;
+        const kind: 'reference' | 'value' = name === 'Reference' ? 'reference' : 'value';
+        const wx = px + lx * c - ly * s;
+        const wy = py + lx * s + ly * c;
+        (byRef[refText] = byRef[refText] ?? []).push({
+          kind,
+          text,
+          x: +wx.toFixed(3),
+          y: -wy,
+          rot: +(((lrot + prot) % 360 + 360) % 360).toFixed(1),
+          side,
+          h,
+        });
+        }
+      }
+      // footprints nest nothing labelable; still recurse for embedded groups
+    }
+    for (const child of expr) walk(child);
+  };
+  walk(tree);
+  return byRef;
 }
 
 /** Edge.Cuts bbox in board coordinates from the .kicad_pcb s-expression. */

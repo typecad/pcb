@@ -63,6 +63,21 @@ export interface ViewerOptions {
     pads?: Array<{ x: number; y: number; net?: string }>;
     /** netlist value ("1k") — drives the layout view's in-place value editor */
     value?: string;
+    /**
+     * the part's Reference/Value label anchors (world gerber frame) —
+     * independently draggable/rotatable texts; apply writes the final
+     * footprint-local position into the Component's referenceLayout /
+     * valueLayout constructor options
+     */
+    labels?: Array<{
+      kind: 'reference' | 'value';
+      text: string;
+      x: number;
+      y: number;
+      rot: number;
+      side: 'front' | 'back';
+      h: number;
+    }>;
   }>;
   /**
    * silk/fab board texts (gr_text — the `pcb.text()` API), parsed from the
@@ -240,8 +255,21 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   var layoutTexts = [];
   try {
     var rawLt = JSON.parse(document.getElementById('layout-texts').textContent);
-    if (rawLt && rawLt.length) layoutTexts = rawLt;
+    if (rawLt && rawLt.length)
+      layoutTexts = rawLt.map(function (t) {
+        t.kind = 'board';
+        return t;
+      });
   } catch (e) {}
+  // every part's Reference/Value labels join the same text-object model —
+  // each moves and rotates independently of its component
+  for (var lcL = 0; lcL < layoutComps.length; lcL++) {
+    var lbls = layoutComps[lcL].labels || [];
+    for (var lb = 0; lb < lbls.length; lb++) {
+      lbls[lb].ref = layoutComps[lcL].ref;
+      layoutTexts.push(lbls[lb]);
+    }
+  }
   // engineering notation for the readout: 0.0012 -> "1.2m", 5e-6 -> "5u"
   function fmtEng(v) {
     if (v === undefined || v === null || isNaN(v)) return '?';
@@ -1601,11 +1629,25 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       var p = cands[cp];
       var bb = pathBBox(p);
       if (!bb || (!bb.width && !bb.height)) continue;
-      if (Math.hypot(bb.x + bb.width / 2 - t.x, bb.y + bb.height / 2 - t.y) <= radius) {
-        p.setAttribute('data-text', String(i));
-        if (p.__layoutTr0 === undefined) p.__layoutTr0 = p.getAttribute('transform');
-        paths.push(p);
+      var pcx = bb.x + bb.width / 2;
+      var pcy = bb.y + bb.height / 2;
+      var myD = Math.hypot(pcx - t.x, pcy - t.y);
+      if (myD > radius) continue;
+      // a stroke between two texts (a part's refdes and value sit close)
+      // belongs to the nearer anchor
+      var nearer = false;
+      for (var nt = 0; nt < layoutTexts.length; nt++) {
+        var ot = layoutTexts[nt];
+        if (ot === t || ot.side !== t.side || ot.x === undefined) continue;
+        if (Math.hypot(pcx - ot.x, pcy - ot.y) < myD) {
+          nearer = true;
+          break;
+        }
       }
+      if (nearer) continue;
+      p.setAttribute('data-text', String(i));
+      if (p.__layoutTr0 === undefined) p.__layoutTr0 = p.getAttribute('transform');
+      paths.push(p);
     }
     layoutTextEls[i] = { paths, hidden: false, preview: null };
     return paths;
@@ -1803,6 +1845,17 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         if (viewMode !== 'layout') return;
         ev.stopPropagation();
         ev.preventDefault();
+        var t3 = layoutTexts[i];
+        if (t3.kind === 'value') {
+          beginCompValueEdit(t3.ref, ev);
+          return;
+        }
+        if (t3.kind === 'reference') {
+          if (statusEl && !statusLocked())
+            statusEl.textContent =
+              'reference names stay fixed — drag to reposition; double-click a VALUE text to edit it';
+          return;
+        }
         beginTextEdit(i);
       });
     }
@@ -2161,9 +2214,25 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         if (vk2 === '__editing') continue;
         values.push({ ref: vk2, value: layoutValueEdits[vk2] });
       }
+      // label repositioning: final world position + absolute rotation; the
+      // host converts to footprint-local against the part's final placement
+      var labels = [];
+      for (var li in layoutTextMoves) {
+        var lix = parseInt(li, 10);
+        var lt = layoutTexts[lix];
+        if (!lt || !lt.kind || lt.kind === 'board') continue;
+        var lm = layoutTextMoves[li];
+        labels.push({
+          ref: lt.ref,
+          kind: lt.kind,
+          x: lm.x,
+          y: -lm.y,
+          rot: ((lm.rot || 0) * 90 + (lt.rot || 0)) % 360,
+        });
+      }
       layoutApplyBtn.disabled = true;
       layoutApplyBtn.textContent = 'rebuilding\u2026';
-      window.typecadLayoutApply(moves, texts, values, function (err) {
+      window.typecadLayoutApply(moves, texts, values, labels, function (err) {
         layoutApplyBtn.disabled = false;
         layoutApplyBtn.textContent = 'apply & rebuild';
         if (err && statusEl) statusEl.textContent = 'layout apply failed: ' + err;

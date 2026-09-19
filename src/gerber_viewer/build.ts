@@ -356,6 +356,9 @@ export function buildViewerFromFiles(paths: string[], options: ViewerBuildOption
           h: +(c.bodyDims && c.bodyDims.h > 0.05 ? c.bodyDims.h : bh).toFixed(2),
           side,
           nets,
+          // pad centers ride along (gerber frame) — sticky route endpoints on
+          // apply translate any .from/.to literal that sits on one of these
+          pads: c.pads.map((pad) => ({ x: +pad.at.x.toFixed(3), y: +pad.at.y.toFixed(3) })),
         });
       }
     }

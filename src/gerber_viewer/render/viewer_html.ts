@@ -52,6 +52,8 @@ export interface ViewerOptions {
     h: number;
     side: 'front' | 'back';
     nets: string[];
+    /** pad centers in the gerber frame — sticky route endpoints on apply */
+    pads?: Array<{ x: number; y: number }>;
   }>;
   /**
    * theme picker entries for the pcba view: surface colors per builtin. The
@@ -1456,7 +1458,8 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   var layoutBuilt = false;
   var layoutMoves = {}; // ref -> { x, y, x0, y0 } in the gerber (y-up) frame
   var layoutRipped = []; // copper greyed until rebuild
-  var layoutSelRef = null;
+  var layoutSel = []; // refs — shift-click extends, click replaces
+  var layoutRot = {}; // ref -> accumulated 90-degree presses (R key)
   var layoutSnapBox = document.getElementById('layout-snap');
   var layoutMovesEl = document.getElementById('layout-moves');
   var layoutApplyBtn = document.getElementById('layout-apply');
@@ -1470,7 +1473,8 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     return { x: (v.x - tx) / k, y: -(v.y - ty) / k };
   }
   function setCompPos(g, x, y) {
-    g.setAttribute('transform', 'translate(' + x + ',' + y + ') rotate(' + g.__lc.rot + ')');
+    var rot = (g.__lc.rot + (layoutRot[g.__lc.ref] || 0) * 90) % 360;
+    g.setAttribute('transform', 'translate(' + x + ',' + y + ') rotate(' + rot + ')');
     g.__lx = x;
     g.__ly = y;
   }
@@ -1478,9 +1482,14 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     if (!layoutOverlay) return;
     var all = layoutOverlay.querySelectorAll('.layout-comp');
     for (var ms = 0; ms < all.length; ms++) {
-      if (all[ms].getAttribute('data-ref') === layoutSelRef) all[ms].classList.add('layout-sel');
+      var ref = all[ms].getAttribute('data-ref');
+      if (layoutSel.indexOf(ref) !== -1) all[ms].classList.add('layout-sel');
       else all[ms].classList.remove('layout-sel');
     }
+    var ab = document.getElementById('layout-align');
+    var db = document.getElementById('layout-dist');
+    if (ab) ab.disabled = layoutSel.length < 2;
+    if (db) db.disabled = layoutSel.length < 3;
   }
   function buildLayoutOverlay() {
     if (layoutBuilt || !viewGroups.gerber) return;
@@ -1526,7 +1535,8 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     g.addEventListener('pointerdown', function (ev) {
       ev.stopPropagation();
       ev.preventDefault();
-      layoutSelRef = g.__lc.ref;
+      if (ev.shiftKey && layoutSel.indexOf(g.__lc.ref) === -1) layoutSel.push(g.__lc.ref);
+      else if (!ev.shiftKey) layoutSel = [g.__lc.ref];
       markLayoutSel();
       var startG = gerberAt(ev.clientX, ev.clientY);
       var orig = { x: g.__lx, y: g.__ly };
@@ -1562,7 +1572,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   }
   function commitLayoutMove(g) {
     var c = g.__lc;
-    layoutMoves[c.ref] = { x: g.__lx, y: g.__ly, x0: c.x, y0: c.y };
+    layoutMoves[c.ref] = { x: g.__lx, y: g.__ly, x0: c.x, y0: c.y, rot: layoutRot[c.ref] || 0 };
     // rip up: every trace/via on the component's nets, and its own pads,
     // grey out until a rebuild regenerates them at the new position
     for (var rn = 0; rn < c.nets.length; rn++) {
@@ -1601,6 +1611,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     }
     layoutRipped = [];
     layoutMoves = {};
+    layoutRot = {};
     if (layoutOverlay) {
       for (var lc2 = 0; lc2 < layoutComps.length; lc2++) {
         var gEl = layoutOverlay.querySelector('[data-ref="' + cssEsc(layoutComps[lc2].ref) + '"]');
@@ -1622,11 +1633,26 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         return;
       }
       var moves = [];
+      var padsByRef = {};
+      for (var pc2 = 0; pc2 < layoutComps.length; pc2++) {
+        var lc3 = layoutComps[pc2];
+        if (layoutMoves[lc3.ref] && lc3.pads) {
+          padsByRef[lc3.ref] = lc3.pads.map(function (pp) { return { x: pp.x, y: -pp.y }; });
+        }
+      }
       for (var mr2 in layoutMoves) {
         var m2 = layoutMoves[mr2];
         // deltas convert to the board (y-down) frame here — the host never
-        // sees the gerber flip
-        moves.push({ ref: mr2, dx: m2.x - m2.x0, dy: -(m2.y - m2.y0) });
+        // sees the gerber flip; rotation rides as accumulated 90-degree
+        // presses, and the component's ORIGINAL pads travel along so route
+        // endpoints sitting on them can translate with it
+        moves.push({
+          ref: mr2,
+          dx: m2.x - m2.x0,
+          dy: -(m2.y - m2.y0),
+          rot: (m2.rot || 0) * 90,
+          pads: padsByRef[mr2] || [],
+        });
       }
       layoutApplyBtn.disabled = true;
       layoutApplyBtn.textContent = 'rebuilding\u2026';
@@ -1637,19 +1663,71 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       });
     });
   }
-  // arrow keys nudge the selected component (0.5 mm, or 0.1 with Alt)
+  // keys over the layout view: R rotates the selection 90 degrees (the
+  // presses ride the move into apply as a rotation delta), arrows nudge
+  // every selected component (0.5 mm, or 0.1 with Alt)
   window.addEventListener('keydown', function (ev) {
-    if (viewMode !== 'layout' || !layoutSelRef || !layoutOverlay) return;
+    if (viewMode !== 'layout' || !layoutSel.length || !layoutOverlay) return;
+    if (ev.key === 'r' || ev.key === 'R') {
+      ev.preventDefault();
+      for (var rs = 0; rs < layoutSel.length; rs++) {
+        var gRot = layoutOverlay.querySelector('[data-ref="' + cssEsc(layoutSel[rs]) + '"]');
+        if (!gRot) continue;
+        layoutRot[layoutSel[rs]] = ((layoutRot[layoutSel[rs]] || 0) + 1) % 4;
+        setCompPos(gRot, gRot.__lx, gRot.__ly);
+        commitLayoutMove(gRot);
+      }
+      return;
+    }
     var step = ev.altKey ? 0.1 : 0.5;
     var nudges = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, step], ArrowDown: [0, -step] };
     var d = nudges[ev.key];
     if (!d) return;
-    var gNudge = layoutOverlay.querySelector('[data-ref="' + cssEsc(layoutSelRef) + '"]');
-    if (!gNudge) return;
     ev.preventDefault();
-    setCompPos(gNudge, gNudge.__lx + d[0], gNudge.__ly + d[1]);
-    commitLayoutMove(gNudge);
+    for (var ns = 0; ns < layoutSel.length; ns++) {
+      var gNudge = layoutOverlay.querySelector('[data-ref="' + cssEsc(layoutSel[ns]) + '"]');
+      if (!gNudge) continue;
+      setCompPos(gNudge, gNudge.__lx + d[0], gNudge.__ly + d[1]);
+      commitLayoutMove(gNudge);
+    }
   });
+  // alignment tools: same row (shared Y, the selection's mean) and even X
+  // spacing (first and last pinned, the middle distributed)
+  function layoutSelGroups() {
+    var out = [];
+    for (var ls = 0; ls < layoutSel.length; ls++) {
+      var g = layoutOverlay.querySelector('[data-ref="' + cssEsc(layoutSel[ls]) + '"]');
+      if (g) out.push(g);
+    }
+    return out;
+  }
+  function layoutAlignRow() {
+    var gs = layoutSelGroups();
+    if (gs.length < 2) return;
+    var mean = 0;
+    for (var a = 0; a < gs.length; a++) mean += gs[a].__ly;
+    mean = Math.round((mean / gs.length) * 2) / 2; // snapped to the grid
+    for (var a2 = 0; a2 < gs.length; a2++) {
+      setCompPos(gs[a2], gs[a2].__lx, mean);
+      commitLayoutMove(gs[a2]);
+    }
+  }
+  function layoutDistributeX() {
+    var gs = layoutSelGroups().sort(function (p, q) { return p.__lx - q.__lx; });
+    if (gs.length < 3) return;
+    var x0 = gs[0].__lx;
+    var x1 = gs[gs.length - 1].__lx;
+    var gap = (x1 - x0) / (gs.length - 1);
+    for (var d3 = 1; d3 < gs.length - 1; d3++) {
+      var nx = Math.round((x0 + gap * d3) * 2) / 2;
+      setCompPos(gs[d3], nx, gs[d3].__ly);
+      commitLayoutMove(gs[d3]);
+    }
+  }
+  var layoutAlignBtn = document.getElementById('layout-align');
+  if (layoutAlignBtn) layoutAlignBtn.addEventListener('click', layoutAlignRow);
+  var layoutDistBtn = document.getElementById('layout-dist');
+  if (layoutDistBtn) layoutDistBtn.addEventListener('click', layoutDistributeX);
   function enterLayout() {
     buildLayoutOverlay();
     if (layoutOverlay) layoutOverlay.style.display = '';
@@ -2969,8 +3047,9 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   #layout-hint { color: var(--muted); font-size: 10px; margin: 6px 0; }
   #layout-moves { font: 11px/1.5 ui-monospace, monospace; color: var(--chrome-fg); margin-bottom: 6px; word-break: break-word; }
   #layout-buttons { display: flex; gap: 6px; }
-  #layout-buttons button { flex: 1; background: var(--btn-bg); color: var(--chrome-fg); border: 1px solid var(--btn-border); border-radius: 4px; padding: 4px 6px; cursor: pointer; font: inherit; }
-  #layout-buttons button:disabled { opacity: 0.5; cursor: default; }
+  #layout-buttons button, #layout-tools button { flex: 1; background: var(--btn-bg); color: var(--chrome-fg); border: 1px solid var(--btn-border); border-radius: 4px; padding: 4px 6px; cursor: pointer; font: inherit; }
+  #layout-buttons button:disabled, #layout-tools button:disabled { opacity: 0.5; cursor: default; }
+  #layout-tools { display: flex; gap: 6px; margin-bottom: 6px; }
   #layout-overlay .layout-comp rect { fill: rgba(56,132,255,0.10); stroke: #3884ff; stroke-width: 0.15; }
   #layout-overlay .layout-comp.layout-back rect { stroke: #b06bd6; fill: rgba(176,107,214,0.10); }
   #layout-overlay .layout-comp:hover rect { fill: rgba(56,132,214,0.28); }
@@ -3077,7 +3156,11 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   <div class="side-label">Layout</div>
   <div id="layout-keys"><span class="chip chip-dashed">TrackBuilder</span><span class="chip chip-solid">autorouted</span><span class="chip chip-grey">ripped up</span></div>
   <label><input type="checkbox" id="layout-snap" checked> snap 0.5 mm</label>
-  <div id="layout-hint">drag a component \u00b7 arrows nudge (Alt = 0.1 mm) \u00b7 greyed copper rebuilds on apply</div>
+  <div id="layout-hint">drag \u00b7 arrows nudge (Alt = 0.1 mm) \u00b7 R rotates \u00b7 shift-click selects several \u00b7 greyed copper rebuilds on apply</div>
+  <div id="layout-tools">
+    <button id="layout-align" type="button" disabled>align row</button>
+    <button id="layout-dist" type="button" disabled>distribute X</button>
+  </div>
   <div id="layout-moves"></div>
   <div id="layout-buttons">
     <button id="layout-revert" type="button">revert</button>

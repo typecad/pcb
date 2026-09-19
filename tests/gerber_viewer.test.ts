@@ -412,7 +412,9 @@ describe('view switcher (gerber / pcba)', () => {
     expect(html).toContain("el.setAttribute('opacity', '0.22')");
     expect(html).toContain("traces[t2].setAttribute('stroke-dasharray', '4 2.2')");
     expect(html).toContain('window.typecadLayoutApply(moves, function (err)');
-    expect(html).toContain('moves.push({ ref: mr2, dx: m2.x - m2.x0, dy: -(m2.y - m2.y0) });');
+    expect(html).toContain('moves.push({');
+    expect(html).toContain('rot: (m2.rot || 0) * 90,');
+    expect(html).toContain('pads: padsByRef[mr2] || [],');
     expect(html).toContain('__viewMode'); // persisted selection
     // cross-probe dimming covers the non-gerber views
     expect(html).toContain("'#view-pcba > #pcba-board'");

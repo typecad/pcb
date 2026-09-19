@@ -1613,6 +1613,12 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   if (layoutRevertBtn) layoutRevertBtn.addEventListener('click', layoutRevert);
   if (layoutApplyBtn) {
     layoutApplyBtn.addEventListener('click', function () {
+      // the viewer runs inside VS Code; without its host bridge (a stale tab
+      // served outside the extension) there is nothing to apply with
+      if (typeof window.typecadLayoutApply !== 'function') {
+        if (statusEl) statusEl.textContent = 'apply needs the typeCAD viewer panel inside VS Code';
+        return;
+      }
       var moves = [];
       for (var mr2 in layoutMoves) {
         var m2 = layoutMoves[mr2];
@@ -1620,37 +1626,13 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         // sees the gerber flip
         moves.push({ ref: mr2, dx: m2.x - m2.x0, dy: -(m2.y - m2.y0) });
       }
-      // host presence is decided at click time: the probe client's bridge
-      // may register after this script parsed
-      if (typeof window.typecadLayoutApply === 'function') {
-        layoutApplyBtn.disabled = true;
-        layoutApplyBtn.textContent = 'rebuilding\u2026';
-        window.typecadLayoutApply(moves, function (err) {
-          layoutApplyBtn.disabled = false;
-          layoutApplyBtn.textContent = 'apply & rebuild';
-          if (err && statusEl) statusEl.textContent = 'layout apply failed: ' + err;
-        });
-        return;
-      }
-      // plain browser tab — no host to rebuild with: degrade to a copyable
-      // moves note (the deltas to add to each component's .pcb x/y)
-      var lines = moves.map(function (mv) {
-        return (
-          mv.ref + ': +' + mv.dx.toFixed(2) + ', ' + (mv.dy >= 0 ? '+' : '') + mv.dy.toFixed(2) +
-          ' mm — add to its .pcb = { x, y }'
-        );
+      layoutApplyBtn.disabled = true;
+      layoutApplyBtn.textContent = 'rebuilding\u2026';
+      window.typecadLayoutApply(moves, function (err) {
+        layoutApplyBtn.disabled = false;
+        layoutApplyBtn.textContent = 'apply & rebuild';
+        if (err && statusEl) statusEl.textContent = 'layout apply failed: ' + err;
       });
-      var note = lines.join('\n');
-      var done = function () {
-        if (statusEl)
-          statusEl.textContent = 'layout moves copied — apply them to the board source (the VS Code host rebuilds automatically)';
-      };
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(note).then(done, done);
-      } else {
-        done();
-      }
-      if (window.console) console.log('layout moves:\n' + note);
     });
   }
   // arrow keys nudge the selected component (0.5 mm, or 0.1 with Alt)

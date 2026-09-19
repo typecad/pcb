@@ -1821,43 +1821,58 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     var rats = document.createElementNS(SVGNSL, 'g');
     rats.setAttribute('id', 'layout-ratsnest');
     rats.setAttribute('pointer-events', 'none');
+    // a component's pad AT ITS CURRENT pose: translate to the moved center,
+    // then rotate the island pad offset by the accumulated 90-degree presses
+    // — in the gerber (y-up) frame each +90 of code rotation turns offsets
+    // clockwise, (ox, oy) -> (oy, -ox), as the rebuilt gerbers confirm
+    var padPos = function (comp, pad) {
+      var mv = layoutMoves[comp.ref];
+      var ox = pad.x - comp.x;
+      var oy = pad.y - comp.y;
+      var presses = mv ? layoutRot[comp.ref] || 0 : 0;
+      for (var t = 0; t < presses; t++) {
+        var nxo = oy;
+        var nyo = -ox;
+        ox = nxo;
+        oy = nyo;
+      }
+      return {
+        x: (mv ? mv.x : comp.x) + ox,
+        y: (mv ? mv.y : comp.y) + oy,
+      };
+    };
     for (var mr in layoutMoves) {
-      var m = layoutMoves[mr];
       var c = null;
       for (var fi = 0; fi < layoutComps.length; fi++) {
         if (layoutComps[fi].ref === mr) c = layoutComps[fi];
       }
       if (!c || !c.pads || !c.pads.length) continue;
-      var dx = m.x - m.x0;
-      var dy = m.y - m.y0;
       for (var pn = 0; pn < c.pads.length; pn++) {
         var pad = c.pads[pn];
         if (!pad.net) continue;
         // anchors: OTHER components' pads on the same net — their copper
-        // survives the rip-up, so the stranded pad ties back to them
+        // survives the rip-up, so the stranded pad ties back to them (their
+        // own moves/rotations apply too)
         var anchors = [];
         for (var oc = 0; oc < layoutComps.length; oc++) {
           var o = layoutComps[oc];
           if (o.ref === mr || o.nets.indexOf(pad.net) === -1) continue;
-          for (var op = 0; op < (o.pads || []).length; op++) anchors.push(o.pads[op]);
+          for (var op = 0; op < (o.pads || []).length; op++) anchors.push(padPos(o, o.pads[op]));
         }
         if (!anchors.length) continue;
-        var px = pad.x + dx;
-        var py = pad.y + dy;
+        var pp = padPos(c, pad);
         var best = null;
         var bestD = Infinity;
         for (var an = 0; an < anchors.length; an++) {
-          var ddx = anchors[an].x - px;
-          var ddy = anchors[an].y - py;
-          var dd = ddx * ddx + ddy * ddy;
+          var dd = (anchors[an].x - pp.x) * (anchors[an].x - pp.x) + (anchors[an].y - pp.y) * (anchors[an].y - pp.y);
           if (dd < bestD) {
             bestD = dd;
             best = anchors[an];
           }
         }
         var ln = document.createElementNS(SVGNSL, 'line');
-        ln.setAttribute('x1', px.toFixed(3));
-        ln.setAttribute('y1', py.toFixed(3));
+        ln.setAttribute('x1', pp.x.toFixed(3));
+        ln.setAttribute('y1', pp.y.toFixed(3));
         ln.setAttribute('x2', best.x.toFixed(3));
         ln.setAttribute('y2', best.y.toFixed(3));
         rats.appendChild(ln);
@@ -3191,7 +3206,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   #layout-tools { display: flex; gap: 6px; margin-bottom: 6px; }
   #layout-warn { color: #d29922; font-size: 11px; line-height: 1.5; margin-bottom: 6px; word-break: break-word; }
   #layout-overlay .layout-comp.layout-warn rect { stroke: #d29922; }
-  #layout-ratsnest line { stroke: #d29922; stroke-width: 0.15; stroke-dasharray: 0.8 0.5; opacity: 0.85; }
+  #layout-ratsnest line { stroke: #d29922; stroke-width: 0.08; stroke-dasharray: 0.8 0.5; opacity: 0.85; }
   #layout-overlay .layout-comp rect { fill: rgba(56,132,255,0.10); stroke: #3884ff; stroke-width: 0.15; }
   #layout-overlay .layout-comp.layout-back rect { stroke: #b06bd6; fill: rgba(176,107,214,0.10); }
   #layout-overlay .layout-comp:hover rect { fill: rgba(56,132,214,0.28); }

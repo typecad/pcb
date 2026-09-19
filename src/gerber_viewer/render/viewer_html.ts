@@ -3326,14 +3326,18 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   #layout-overlay .layout-comp.layout-warn rect,
   #layout-overlay .layout-comp.layout-warn polygon { stroke: #d29922; }
   #layout-ratsnest line { stroke: #d29922; stroke-width: 0.08; stroke-dasharray: 0.8 0.5; opacity: 0.85; }
+  /* the handle itself paints nothing — the footprint's own ink (pads, silk,
+     fab outline) already shows the part, KiCad-style. It stays the pointer
+     target via inherited pointer-events:all and only strokes on feedback:
+     hover ghost, white selection, amber overlap/out-of-board warning */
   #layout-overlay .layout-comp rect,
-  #layout-overlay .layout-comp polygon { fill: rgba(56,132,255,0.10); stroke: #3884ff; stroke-width: 0.15; stroke-linejoin: round; }
+  #layout-overlay .layout-comp polygon { fill: transparent; stroke: none; stroke-linejoin: round; }
   #layout-overlay .layout-comp.layout-back rect,
-  #layout-overlay .layout-comp.layout-back polygon { stroke: #b06bd6; fill: rgba(176,107,214,0.10); }
+  #layout-overlay .layout-comp.layout-back polygon { stroke: none; fill: transparent; }
   #layout-overlay .layout-comp:hover rect,
-  #layout-overlay .layout-comp:hover polygon { fill: rgba(56,132,214,0.28); }
+  #layout-overlay .layout-comp:hover polygon { stroke: rgba(255,255,255,0.45); stroke-width: 0.12; fill: transparent; }
   #layout-overlay .layout-comp.layout-sel rect,
-  #layout-overlay .layout-comp.layout-sel polygon { stroke: #ffffff; }
+  #layout-overlay .layout-comp.layout-sel polygon { stroke: #ffffff; stroke-width: 0.15; }
   #layout-overlay .layout-ref { fill: #9fc4ff; font-size: 1.6px; font-family: ui-monospace, monospace; }
   #flow-label { display: flex; align-items: center; gap: 6px; color: var(--chrome-fg); font-size: 11px; cursor: pointer; user-select: none; }
   #flow-speed-row { display: flex; align-items: center; gap: 6px; margin-top: 4px; }

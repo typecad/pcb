@@ -7,6 +7,7 @@
 //   typecad-pcb export gerbers → typecad-pcb export drill →
 //   gerber-viewer build/gerbers -o build/serve/viewer.html
 //       [--netlist build/<board>.net] [--drc build/<board>_drc.json]
+//       [--stackup build/<board>_stackup.json]
 // The generated HTML is then post-processed: CSP for the webview, embedded
 // component outlines, and the probe client script.
 //
@@ -54,6 +55,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.BoardViewerPanel = void 0;
 exports.mtimeOf = mtimeOf;
 exports.newestBoardFile = newestBoardFile;
+exports.shellQuote = shellQuote;
 exports.wordUnderCursor = wordUnderCursor;
 const vscode = __importStar(require("vscode"));
 const node_fs_1 = __importDefault(require("node:fs"));
@@ -92,6 +94,12 @@ function newestBoardFile(folder) {
 function shellQuote(value) {
     return `"${value.replace(/"/g, '\\"')}"`;
 }
+/** The host message for a pending selection id — "net:<name>" selects a net. */
+function selectionMessage(ref, token) {
+    return ref.startsWith('net:')
+        ? { type: 'typecad/select-net', net: ref.slice('net:'.length), token }
+        : { type: 'typecad/select', ref, token };
+}
 class BoardViewerPanel {
     constructor(hwFolder, service, run, output) {
         this.hwFolder = hwFolder;
@@ -119,7 +127,12 @@ class BoardViewerPanel {
             }
             catch (err) {
                 this.output.appendLine(`viewer generation failed: ${err instanceof Error ? err.message : String(err)}`);
-                vscode.window.showErrorMessage(`typeCAD: could not render the board viewer — see the 'typeCAD/pcb' output channel.`);
+                void vscode.window
+                    .showErrorMessage(`typeCAD: could not render the board viewer — see the 'typeCAD/pcb' output channel.`, 'Open Output')
+                    .then((pick) => {
+                    if (pick === 'Open Output')
+                        this.output.show();
+                });
                 return;
             }
             if (!generated) {
@@ -232,6 +245,19 @@ class BoardViewerPanel {
         await this.show();
         this.deliverSelection();
     }
+    /** Reveal the viewer with a net's traces highlighted. */
+    async selectNet(net) {
+        const folder = this.hwFolder();
+        if (!folder) {
+            vscode.window.showInformationMessage('typeCAD/pcb: no typeCAD project (typecad.conf.ts) in this workspace.');
+            return;
+        }
+        this.output.appendLine(`select net ${net}: opening/revealing viewer`);
+        this.pendingRef = `net:${net}`;
+        this.pendingToken = this.loadToken;
+        await this.show();
+        this.deliverSelection();
+    }
     /**
      * Post the pending selection until the viewer page acks it. The first post
      * after an html assignment races the page load — VS Code drops messages
@@ -250,9 +276,7 @@ class BoardViewerPanel {
                 return; // delivered or superseded
             if (!this.panel)
                 return; // closed
-            void this.panel.webview
-                .postMessage({ type: 'typecad/select', ref, token })
-                .then((delivered) => {
+            void this.panel.webview.postMessage(selectionMessage(ref, token)).then((delivered) => {
                 // false = the page hasn't loaded yet; the retry covers it, and the
                 // log makes a persistently-unloaded page visible in the output channel
                 if (!delivered && !loggedDrop) {
@@ -265,6 +289,9 @@ class BoardViewerPanel {
             }
             else {
                 this.output.appendLine(`select ${ref}: no ack — the viewer page may be missing the probe client`);
+                // a click that does nothing is indistinguishable from a broken
+                // command — say so in the window, not just the channel
+                vscode.window.setStatusBarMessage('typeCAD/pcb: the Board viewer page did not respond — try reopening it', 5000);
             }
         };
         attempt();
@@ -419,14 +446,21 @@ class BoardViewerPanel {
             const boardName = node_path_1.default.basename(board, '.kicad_pcb');
             const gerbersDir = node_path_1.default.join('build', 'gerbers');
             const outPath = node_path_1.default.join('build', 'serve', 'viewer.html');
-            // the netlist fills pad→net so clicking a pad highlights its whole
-            // net; DRC markers only exist after a `typecad-pcb drc` run. boardName
-            // derives from the board file name, so it is quoted like every other
-            // interpolated path.
-            const flags = [`--netlist`, shellQuote(node_path_1.default.join('build', `${boardName}.net`))];
-            const drcReport = node_path_1.default.join(folder, 'build', `${boardName}_drc.json`);
-            if (node_fs_1.default.existsSync(drcReport))
-                flags.push('--drc', shellQuote(node_path_1.default.join('build', `${boardName}_drc.json`)));
+            // Optional data overlays, each shipped only when the build actually
+            // produced it: the netlist fills pad→net (click a pad, its whole net
+            // highlights); DRC markers exist after a `typecad-pcb drc` run; the
+            // stackup drives the Copper ΔT view's per-layer copper weight. A
+            // missing artifact must not sink the render — the viewer opens
+            // without that overlay.
+            const flags = [];
+            const overlay = (flag, name) => {
+                const rel = node_path_1.default.join('build', name);
+                if (node_fs_1.default.existsSync(node_path_1.default.join(folder, rel)))
+                    flags.push(flag, shellQuote(rel));
+            };
+            overlay('--netlist', `${boardName}.net`);
+            overlay('--drc', `${boardName}_drc.json`);
+            overlay('--stackup', `${boardName}_stackup.json`);
             this.output.appendLine('building viewer HTML…');
             await this.run(folder, `npx gerber-viewer ${shellQuote(gerbersDir)} -o ${shellQuote(outPath)} ${flags.join(' ')}`, GENERATE_TIMEOUT_MS);
             const raw = node_fs_1.default.readFileSync(node_path_1.default.join(folder, outPath), 'utf8');
@@ -456,20 +490,18 @@ class BoardViewerPanel {
             // saved viewport puts the view back too) — only an explicit pending
             // selection needs delivering.
             if (this.pendingRef && this.panel) {
-                await this.panel.webview.postMessage({
-                    type: 'typecad/select',
-                    ref: this.pendingRef,
-                    token: this.pendingToken ?? this.loadToken,
-                });
+                await this.panel.webview.postMessage(selectionMessage(this.pendingRef, this.pendingToken ?? this.loadToken));
             }
             return;
         }
         if (message.type === 'typecad/ack') {
+            const isNet = message.ref.startsWith('net:');
+            const label = isNet ? `net ${message.ref.slice('net:'.length)}` : message.ref;
             this.output.appendLine(`select ${message.ref}: ack (found=${String(message.found)}, token=${String(message.token)})`);
             if (this.pendingRef === message.ref && (message.token === undefined || message.token === this.pendingToken)) {
                 this.pendingRef = null;
                 if (message.found === false) {
-                    vscode.window.setStatusBarMessage(`${message.ref}: no pads for it on the rendered board — is the build current?`, 5000);
+                    vscode.window.setStatusBarMessage(`${label}: no ${isNet ? 'traces' : 'pads'} for it on the rendered board — is the build current?`, 5000);
                 }
             }
             return;
@@ -496,11 +528,17 @@ class BoardViewerPanel {
         // after the checks above, the message can only be a probe
         if (message.ref) {
             this.output.appendLine(`probe: ${message.ref}${message.pin ? ' ' + message.pin : ''} → source`);
-            await this.revealInEditor(message.ref);
+            await this.revealInEditor(message.ref, message.pin);
         }
     }
-    /** The board→editor direction: open the declaring file at its line. */
-    async revealInEditor(ref) {
+    /**
+     * The board→editor direction: open the declaring file at its line. A
+     * double-click on a SPECIFIC pad asks about that pad's net — land on the
+     * line that declared or routed it (same preference as the trace
+     * double-click), falling back to the component's own declaration when the
+     * pad carries no net or the net has no recorded provenance.
+     */
+    async revealInEditor(ref, pin) {
         const folder = this.hwFolder();
         if (!folder)
             return;
@@ -508,7 +546,16 @@ class BoardViewerPanel {
             const detail = await this.service.resolve(ref);
             if (!detail)
                 return;
-            const loc = (0, sourceRef_js_1.parseSourceLocation)(folder, detail.source);
+            let source = detail.source;
+            if (pin) {
+                const padNet = detail.pads.find((p) => p.pad === pin)?.net ?? null;
+                if (padNet !== null) {
+                    const nets = await this.service.netSources().catch(() => []);
+                    const net = nets.find((n) => n.name === padNet);
+                    source = net?.routeSource ?? net?.source ?? source;
+                }
+            }
+            const loc = (0, sourceRef_js_1.parseSourceLocation)(folder, source);
             if (!loc) {
                 vscode.window.setStatusBarMessage(`${ref}: no source location on the compiled board`, 4000);
                 return;
@@ -517,6 +564,7 @@ class BoardViewerPanel {
         }
         catch (err) {
             this.output.appendLine(`reveal ${ref} failed: ${err instanceof Error ? err.message : String(err)}`);
+            vscode.window.setStatusBarMessage(`typeCAD/pcb: could not resolve ${ref} — see the typeCAD/pcb output channel`, 4000);
         }
     }
     /** Open a resolved source location (shared by component and net probes). */

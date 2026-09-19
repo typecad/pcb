@@ -33,6 +33,27 @@ export interface ViewerOptions {
    */
   stackup?: StackupInfo | null;
   /**
+   * per-net route provenance (build/<board>_routes.json): which nets a
+   * TrackBuilder hand-built vs the autorouter routed — the Layout view's
+   * trace indication. Absent = every trace reads as autorouted.
+   */
+  routes?: { nets: Record<string, { provenance: 'manual' | 'auto' | 'mixed' }> } | null;
+  /**
+   * Layout view overlay components, derived from the gerbers (pad centroid
+   * = position, PCA of pads = orientation, footprint name = body size) —
+   * draggable, with each component's pad nets for rip-up.
+   */
+  layoutComponents?: Array<{
+    ref: string;
+    x: number;
+    y: number;
+    rot: number;
+    w: number;
+    h: number;
+    side: 'front' | 'back';
+    nets: string[];
+  }>;
+  /**
    * theme picker entries for the pcba view: surface colors per builtin. The
    * switcher remaps the embedded render's flat colors client-side — one
    * render serves every theme, no re-render needed
@@ -184,6 +205,20 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     var rawStk = JSON.parse(document.getElementById('stackup').textContent);
     if (rawStk && rawStk.copperThicknessMm && rawStk.copperThicknessMm.length) stackup = rawStk;
   } catch (e) {}
+  // route provenance + layout overlay components (both optional islands)
+  var routesProv = null;
+  try {
+    var rawRt = JSON.parse(document.getElementById('routes').textContent);
+    if (rawRt && rawRt.nets) {
+      routesProv = {};
+      for (var rpk in rawRt.nets) routesProv[rpk.toLowerCase()] = rawRt.nets[rpk];
+    }
+  } catch (e) {}
+  var layoutComps = [];
+  try {
+    var rawLc = JSON.parse(document.getElementById('layout-comps').textContent);
+    if (rawLc && rawLc.length) layoutComps = rawLc;
+  } catch (e) {}
   // engineering notation for the readout: 0.0012 -> "1.2m", 5e-6 -> "5u"
   function fmtEng(v) {
     if (v === undefined || v === null || isNaN(v)) return '?';
@@ -210,16 +245,20 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     if (!viewGroups.gerber) return;
     // only modes whose group exists (thermal shares the schematic group);
     // anything unknown is the gerber stack
-    viewMode = (mode === 'thermal' || (viewGroups[mode] && mode !== 'gerber')) ? mode : 'gerber';
+    viewMode =
+      mode === 'thermal' || mode === 'layout' || (viewGroups[mode] && mode !== 'gerber') ? mode : 'gerber';
     for (var name in viewGroups) {
-      if (viewGroups[name]) viewGroups[name].style.display = name === viewMode ? '' : 'none';
+      if (!viewGroups[name]) continue;
+      // the layout view arranges the gerber stack itself
+      viewGroups[name].style.display =
+        name === viewMode || (viewMode === 'layout' && name === 'gerber') ? '' : 'none';
     }
     // thermal reuses the schematic render with its own copper coloring
     if (viewGroups.schematic)
       viewGroups.schematic.style.display = viewMode === 'schematic' || viewMode === 'thermal' ? '' : 'none';
     // layer visibility/opacity controls belong to the gerber stack only —
     // the ruler stays (all views share one coordinate frame)
-    if (layersBox) layersBox.style.display = viewMode === 'gerber' ? '' : 'none';
+    if (layersBox) layersBox.style.display = viewMode === 'gerber' || viewMode === 'layout' ? '' : 'none';
     if (btnAllOn) btnAllOn.style.display = viewMode === 'gerber' ? '' : 'none';
     if (btnAllOff) btnAllOff.style.display = viewMode === 'gerber' ? '' : 'none';
     // the theme picker belongs to the pcba view alone
@@ -252,6 +291,15 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     } else if (lastViewMode === 'thermal') {
       exitThermal();
     }
+    // the layout view arranges the gerber stack (subdued zones, provenance
+    // dashes, draggable component overlay) — code stays the source of truth
+    if (viewMode === 'layout') {
+      enterLayout();
+    } else if (lastViewMode === 'layout') {
+      exitLayout();
+    }
+    var layoutBox2 = document.getElementById('layout-box');
+    if (layoutBox2) layoutBox2.style.display = viewMode === 'layout' ? 'block' : 'none';
     var dtBox = document.getElementById('dt-legend-box');
     if (dtBox) dtBox.style.display = viewMode === 'thermal' && dtReady ? '' : 'none';
     lastViewMode = viewMode;
@@ -1401,6 +1449,243 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       for (var s2 = 0; s2 < subs.length; s2++) subs[s2].setAttribute('stroke', '#b6bcc4');
     }
   }
+  // ---- layout view: drag components over the gerber stack; connected
+  // copper rips up (greys) until a rebuild lands; positions apply back to
+  // the code that placed them via the host bridge ----
+  var layoutOverlay = null;
+  var layoutBuilt = false;
+  var layoutMoves = {}; // ref -> { x, y, x0, y0 } in the gerber (y-up) frame
+  var layoutRipped = []; // copper greyed until rebuild
+  var layoutSelRef = null;
+  var layoutSnapBox = document.getElementById('layout-snap');
+  var layoutMovesEl = document.getElementById('layout-moves');
+  var layoutApplyBtn = document.getElementById('layout-apply');
+  var SVGNSL = 'http://www.w3.org/2000/svg';
+  var cssEsc = function (v) {
+    return window.CSS && CSS.escape ? CSS.escape(v) : String(v).replace(/[^a-zA-Z0-9_-]/g, '\\$&');
+  };
+  function gerberAt(cx2, cy2) {
+    // screen -> gerber frame: the gerber group carries the y-flip
+    var v = clientToView({ x: cx2, y: cy2 });
+    return { x: (v.x - tx) / k, y: -(v.y - ty) / k };
+  }
+  function setCompPos(g, x, y) {
+    g.setAttribute('transform', 'translate(' + x + ',' + y + ') rotate(' + g.__lc.rot + ')');
+    g.__lx = x;
+    g.__ly = y;
+  }
+  function markLayoutSel() {
+    if (!layoutOverlay) return;
+    var all = layoutOverlay.querySelectorAll('.layout-comp');
+    for (var ms = 0; ms < all.length; ms++) {
+      if (all[ms].getAttribute('data-ref') === layoutSelRef) all[ms].classList.add('layout-sel');
+      else all[ms].classList.remove('layout-sel');
+    }
+  }
+  function buildLayoutOverlay() {
+    if (layoutBuilt || !viewGroups.gerber) return;
+    layoutBuilt = true;
+    layoutOverlay = document.createElementNS(SVGNSL, 'g');
+    layoutOverlay.setAttribute('id', 'layout-overlay');
+    layoutOverlay.setAttribute('pointer-events', 'none');
+    // inside the y-flip group with the copper, so overlay coordinates are
+    // the gerbers' own; the refdes label counter-flips to read upright
+    var flipHost = viewGroups.gerber.querySelector('#yflip') || viewGroups.gerber;
+    flipHost.appendChild(layoutOverlay);
+    for (var lc = 0; lc < layoutComps.length; lc++) {
+      var c = layoutComps[lc];
+      var g = document.createElementNS(SVGNSL, 'g');
+      g.setAttribute('class', 'layout-comp' + (c.side === 'back' ? ' layout-back' : ''));
+      g.setAttribute('data-ref', c.ref);
+      g.setAttribute('pointer-events', 'all');
+      g.setAttribute('cursor', 'move');
+      g.__lc = c;
+      var rect = document.createElementNS(SVGNSL, 'rect');
+      rect.setAttribute('x', (-c.w / 2).toFixed(3));
+      rect.setAttribute('y', (-c.h / 2).toFixed(3));
+      rect.setAttribute('width', c.w.toFixed(3));
+      rect.setAttribute('height', c.h.toFixed(3));
+      rect.setAttribute('rx', '0.3');
+      var label = document.createElementNS(SVGNSL, 'text');
+      label.setAttribute('class', 'layout-ref');
+      label.setAttribute('y', '0');
+      label.setAttribute('text-anchor', 'middle');
+      label.setAttribute(
+        'transform',
+        'translate(0,' + (-c.h / 2 - 0.55).toFixed(3) + ') scale(1,-1)',
+      );
+      label.textContent = c.ref;
+      g.appendChild(rect);
+      g.appendChild(label);
+      setCompPos(g, c.x, c.y);
+      layoutOverlay.appendChild(g);
+      attachLayoutDrag(g);
+    }
+  }
+  function attachLayoutDrag(g) {
+    g.addEventListener('pointerdown', function (ev) {
+      ev.stopPropagation();
+      ev.preventDefault();
+      layoutSelRef = g.__lc.ref;
+      markLayoutSel();
+      var startG = gerberAt(ev.clientX, ev.clientY);
+      var orig = { x: g.__lx, y: g.__ly };
+      var moved = false;
+      function onMove(e2) {
+        var pg = gerberAt(e2.clientX, e2.clientY);
+        var nx = orig.x + (pg.x - startG.x);
+        var ny = orig.y + (pg.y - startG.y);
+        if (!layoutSnapBox || layoutSnapBox.checked) {
+          nx = Math.round(nx * 2) / 2;
+          ny = Math.round(ny * 2) / 2;
+        }
+        setCompPos(g, nx, ny);
+        moved = true;
+        if (statusEl && !statusLocked())
+          statusEl.textContent = g.__lc.ref + ' \u2192 ' + nx.toFixed(2) + ', ' + (-ny).toFixed(2) + ' mm';
+        e2.preventDefault();
+      }
+      function onUp() {
+        window.removeEventListener('pointermove', onMove);
+        window.removeEventListener('pointerup', onUp);
+        if (moved) commitLayoutMove(g);
+      }
+      window.addEventListener('pointermove', onMove);
+      window.addEventListener('pointerup', onUp);
+    });
+  }
+  function ripUpEl(el) {
+    if (el.__layoutOp !== undefined) return;
+    el.__layoutOp = el.getAttribute('opacity') || '';
+    el.setAttribute('opacity', '0.22');
+    layoutRipped.push(el);
+  }
+  function commitLayoutMove(g) {
+    var c = g.__lc;
+    layoutMoves[c.ref] = { x: g.__lx, y: g.__ly, x0: c.x, y0: c.y };
+    // rip up: every trace/via on the component's nets, and its own pads,
+    // grey out until a rebuild regenerates them at the new position
+    for (var rn = 0; rn < c.nets.length; rn++) {
+      var netEls = viewGroups.gerber.querySelectorAll('[data-net="' + cssEsc(c.nets[rn]) + '"]');
+      for (var re = 0; re < netEls.length; re++) ripUpEl(netEls[re]);
+    }
+    var padEls = viewGroups.gerber.querySelectorAll('[data-ref="' + cssEsc(c.ref) + '"]');
+    for (var rp = 0; rp < padEls.length; rp++) {
+      // the overlay's own boxes carry data-ref too — they must stay bright
+      if (!padEls[rp].closest || !padEls[rp].closest('#layout-overlay')) ripUpEl(padEls[rp]);
+    }
+    renderLayoutMoves();
+  }
+  function renderLayoutMoves() {
+    if (!layoutMovesEl) return;
+    var n = 0;
+    var lines = [];
+    for (var mr in layoutMoves) {
+      n++;
+      var m = layoutMoves[mr];
+      lines.push(
+        mr + ' \u2192 ' + m.x.toFixed(1) + ', ' + (-m.y).toFixed(1) +
+        ' (' + (m.x - m.x0 >= 0 ? '+' : '') + (m.x - m.x0).toFixed(1) + ', ' +
+        (-(m.y - m.y0) >= 0 ? '+' : '') + (-(m.y - m.y0)).toFixed(1) + ')',
+      );
+    }
+    layoutMovesEl.textContent = lines.join(' \u00B7 ');
+    if (layoutApplyBtn) layoutApplyBtn.disabled = n === 0 || layoutApplyBtn.dataset.noHost === '1';
+  }
+  function layoutRevert() {
+    for (var r = 0; r < layoutRipped.length; r++) {
+      var el = layoutRipped[r];
+      if (el.__layoutOp === '') el.removeAttribute('opacity');
+      else el.setAttribute('opacity', el.__layoutOp);
+      el.__layoutOp = undefined;
+    }
+    layoutRipped = [];
+    layoutMoves = {};
+    if (layoutOverlay) {
+      for (var lc2 = 0; lc2 < layoutComps.length; lc2++) {
+        var gEl = layoutOverlay.querySelector('[data-ref="' + cssEsc(layoutComps[lc2].ref) + '"]');
+        if (gEl) setCompPos(gEl, layoutComps[lc2].x, layoutComps[lc2].y);
+      }
+    }
+    renderLayoutMoves();
+  }
+  var layoutRevertBtn = document.getElementById('layout-revert');
+  if (layoutRevertBtn) layoutRevertBtn.addEventListener('click', layoutRevert);
+  if (layoutApplyBtn) {
+    if (typeof window.typecadLayoutApply === 'function') {
+      layoutApplyBtn.addEventListener('click', function () {
+        var moves = [];
+        for (var mr2 in layoutMoves) {
+          var m2 = layoutMoves[mr2];
+          // deltas convert to the board (y-down) frame here — the host never
+          // sees the gerber flip
+          moves.push({ ref: mr2, dx: m2.x - m2.x0, dy: -(m2.y - m2.y0) });
+        }
+        layoutApplyBtn.disabled = true;
+        layoutApplyBtn.textContent = 'rebuilding\u2026';
+        window.typecadLayoutApply(moves, function (err) {
+          layoutApplyBtn.disabled = false;
+          layoutApplyBtn.textContent = 'apply & rebuild';
+          if (err && statusEl) statusEl.textContent = 'layout apply failed: ' + err;
+        });
+      });
+    } else {
+      layoutApplyBtn.disabled = true;
+      layoutApplyBtn.dataset.noHost = '1';
+      layoutApplyBtn.title = 'applying edits needs the VS Code host';
+    }
+  }
+  // arrow keys nudge the selected component (0.5 mm, or 0.1 with Alt)
+  window.addEventListener('keydown', function (ev) {
+    if (viewMode !== 'layout' || !layoutSelRef || !layoutOverlay) return;
+    var step = ev.altKey ? 0.1 : 0.5;
+    var nudges = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, step], ArrowDown: [0, -step] };
+    var d = nudges[ev.key];
+    if (!d) return;
+    var gNudge = layoutOverlay.querySelector('[data-ref="' + cssEsc(layoutSelRef) + '"]');
+    if (!gNudge) return;
+    ev.preventDefault();
+    setCompPos(gNudge, gNudge.__lx + d[0], gNudge.__ly + d[1]);
+    commitLayoutMove(gNudge);
+  });
+  function enterLayout() {
+    buildLayoutOverlay();
+    if (layoutOverlay) layoutOverlay.style.display = '';
+    // zones subdued, blueprint-faint: filled contours step back so the
+    // copper being arranged reads clearly
+    var regions = viewGroups.gerber ? viewGroups.gerber.querySelectorAll('path[fill-rule="evenodd"]') : [];
+    for (var z = 0; z < regions.length; z++) {
+      if (regions[z].__zoneOp !== undefined) continue;
+      regions[z].__zoneOp = regions[z].getAttribute('opacity') || '';
+      regions[z].setAttribute('opacity', '0.18');
+    }
+    // provenance: TrackBuilder-built traces (manual or mixed) go dashed —
+    // solid copper means the autorouter drew it
+    if (routesProv && viewGroups.gerber) {
+      var traces = viewGroups.gerber.querySelectorAll('path[data-net]');
+      for (var t2 = 0; t2 < traces.length; t2++) {
+        if (traces[t2].getAttribute('fill-rule')) continue; // regions above
+        var pr = routesProv[(traces[t2].getAttribute('data-net') || '').toLowerCase()];
+        if (pr && pr.provenance !== 'auto') traces[t2].setAttribute('stroke-dasharray', '4 2.2');
+      }
+    }
+    renderLayoutMoves();
+  }
+  function exitLayout() {
+    if (layoutOverlay) layoutOverlay.style.display = 'none';
+    var regions = viewGroups.gerber ? viewGroups.gerber.querySelectorAll('path[fill-rule="evenodd"]') : [];
+    for (var z2 = 0; z2 < regions.length; z2++) {
+      if (regions[z2].__zoneOp === undefined) continue;
+      if (regions[z2].__zoneOp === '') regions[z2].removeAttribute('opacity');
+      else regions[z2].setAttribute('opacity', regions[z2].__zoneOp);
+      regions[z2].__zoneOp = undefined;
+    }
+    if (viewGroups.gerber) {
+      var dashed = viewGroups.gerber.querySelectorAll('path[stroke-dasharray]');
+      for (var d2 = 0; d2 < dashed.length; d2++) dashed[d2].removeAttribute('stroke-dasharray');
+    }
+  }
+
   ['dt-margin', 'dt-allowed'].forEach(function (id) {
     var el = document.getElementById(id);
     if (el) el.addEventListener('input', applyThermalColors);
@@ -2672,6 +2957,23 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   #volt-legend-bar, #power-legend-bar { height: 8px; border-radius: 4px; border: 1px solid var(--btn-border); }
   #volt-legend-range, #power-legend-range { display: flex; justify-content: space-between; color: var(--muted); font-size: 10px; margin-top: 2px; }
   #flow-box { padding: 8px 14px 0; }
+  #layout-box { padding: 8px 14px 0; display: none; }
+  #layout-box .side-label { color: var(--muted); font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 6px; }
+  #layout-keys { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
+  #layout-keys .chip { font-size: 10px; color: var(--muted); }
+  #layout-keys .chip-dashed::before { content: ''; display: inline-block; width: 18px; height: 0; border-top: 2px dashed currentColor; margin-right: 4px; vertical-align: middle; }
+  #layout-keys .chip-solid::before { content: ''; display: inline-block; width: 18px; height: 0; border-top: 2px solid currentColor; margin-right: 4px; vertical-align: middle; }
+  #layout-keys .chip-grey::before { content: ''; display: inline-block; width: 18px; height: 0; border-top: 2px solid rgba(128,128,128,0.35); margin-right: 4px; vertical-align: middle; }
+  #layout-hint { color: var(--muted); font-size: 10px; margin: 6px 0; }
+  #layout-moves { font: 11px/1.5 ui-monospace, monospace; color: var(--chrome-fg); margin-bottom: 6px; word-break: break-word; }
+  #layout-buttons { display: flex; gap: 6px; }
+  #layout-buttons button { flex: 1; background: var(--btn-bg); color: var(--chrome-fg); border: 1px solid var(--btn-border); border-radius: 4px; padding: 4px 6px; cursor: pointer; font: inherit; }
+  #layout-buttons button:disabled { opacity: 0.5; cursor: default; }
+  #layout-overlay .layout-comp rect { fill: rgba(56,132,255,0.10); stroke: #3884ff; stroke-width: 0.15; }
+  #layout-overlay .layout-comp.layout-back rect { stroke: #b06bd6; fill: rgba(176,107,214,0.10); }
+  #layout-overlay .layout-comp:hover rect { fill: rgba(56,132,214,0.28); }
+  #layout-overlay .layout-comp.layout-sel rect { stroke: #ffffff; }
+  #layout-overlay .layout-ref { fill: #9fc4ff; font-size: 1.6px; font-family: ui-monospace, monospace; }
   #flow-label { display: flex; align-items: center; gap: 6px; color: var(--chrome-fg); font-size: 11px; cursor: pointer; user-select: none; }
   #flow-speed-row { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
   #flow-speed { flex: 1; accent-color: var(--chrome-fg); }
@@ -2716,7 +3018,12 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       ? `<div id="view-switch">
   <select id="view-mode" title="board view">
     <option value="gerber">Gerber view</option>
-    <option value="pcba">PCBA view</option>${options.blueprintSvg ? '\n    <option value="blueprint">Blueprint view</option>' : ''}${options.schematicSvg ? `\n    <option value="schematic">ngspice view</option>\n    <option value="thermal">Copper ΔT</option>` : ''}
+    <option value="pcba">PCBA view</option>${options.blueprintSvg ? '\n    <option value="blueprint">Blueprint view</option>' : ''}${options.schematicSvg ? `\n    <option value="schematic">ngspice view</option>\n    <option value="thermal">Copper ΔT</option>` : ''}${
+    options.layoutComponents && options.layoutComponents.length
+      ? `
+    <option value="layout">Layout</option>`
+      : ''
+  }
   </select>
 </div>`
       : ''
@@ -2758,6 +3065,21 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     <label>ambient <input id="dt-ambient" type="number" value="25" min="-40" max="150">°C</label>
     <label>allowed <input id="dt-allowed" type="number" value="20" min="1" max="100">°C</label>
     <label><input id="dt-margin" type="checkbox"> color by margin</label>
+  </div>
+</div>`
+      : ''
+  }${
+    options.layoutComponents && options.layoutComponents.length
+      ? `
+<div id="layout-box" style="display:none">
+  <div class="side-label">Layout</div>
+  <div id="layout-keys"><span class="chip chip-dashed">TrackBuilder</span><span class="chip chip-solid">autorouted</span><span class="chip chip-grey">ripped up</span></div>
+  <label><input type="checkbox" id="layout-snap" checked> snap 0.5 mm</label>
+  <div id="layout-hint">drag a component \u00b7 arrows nudge (Alt = 0.1 mm) \u00b7 greyed copper rebuilds on apply</div>
+  <div id="layout-moves"></div>
+  <div id="layout-buttons">
+    <button id="layout-revert" type="button">revert</button>
+    <button id="layout-apply" type="button">apply &amp; rebuild</button>
   </div>
 </div>`
       : ''
@@ -2841,6 +3163,14 @@ ${rows}
   }</script>
   <script id="stackup" type="application/json">${
     options.stackup ? JSON.stringify(options.stackup).replace(/</g, '\\u003c') : ''
+  }</script>
+  <script id="routes" type="application/json">${
+    options.routes ? JSON.stringify(options.routes).replace(/</g, '<') : ''
+  }</script>
+  <script id="layout-comps" type="application/json">${
+    options.layoutComponents && options.layoutComponents.length
+      ? JSON.stringify(options.layoutComponents).replace(/</g, '<')
+      : ''
   }</script>
   <script id="pcba-themes" type="application/json">${
     options.pcbaThemes && options.pcbaThemes.length > 0

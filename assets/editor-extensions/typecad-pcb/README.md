@@ -22,10 +22,14 @@ and an open Board viewer refreshes itself when the build lands.
 
 ## Ambient board state
 
-- A **status bar entry** (right side, click to open the Board viewer) shows
-  the build target: `rd_skeleton · 28 parts · 3 unconnected · 2E 5W` — plus a
-  `stale` flag when source files are newer than the built board, and DRC
-  counts after a check.
+- A **status bar entry** (right side, click follows the board's state: build
+  when there is no board, ask when stale, open the Board viewer when fresh)
+  shows the build target: `rd_skeleton · 28 parts · 3 unconnected · 2E 5W` —
+  plus a `stale` flag when source files are newer than the built board, and
+  DRC counts after a check. The tooltip carries clickable actions
+  (Build Board / Run DRC) and says when DRC has not run for the current
+  revision — counts reset on every rebuild, so a fresh chip never reads as
+  a clean one by accident.
 - **Unconnected pads and single-pin nets** land in the Problems pane as
   warnings aimed at the declaring source lines (via the Code/net
   provenance), with an italic "R1 · 2 unconnected pads" chip after the
@@ -34,11 +38,14 @@ and an open Board viewer refreshes itself when the build lands.
   into Problems the same way — a clearance hit on `net2` points at the
   `pcb.route` line that created it; unmatched violations attach to the
   board file. The Board viewer renders the same report's markers.
-- **typeCAD/pcb: Browse Components** is a QuickPick over the compiled board
-  (ref — value · footprint · source variable); Enter zooms the Board viewer
-  to the pick.
 - **typeCAD/pcb: Diff Board vs HEAD** renders the generated board's visual
-  diff against git HEAD in a panel.
+  diff against git HEAD in a panel — restored across window reloads like
+  the Board viewer (instantly from the on-disk report when it still
+  exists, else re-diffed).
+- Every Problems entry carries a **quick fix**: *Show R1 on board* /
+  *Show net VCC on board* jumps into the Board viewer; entries with no
+  component or net (the board-file catch-alls) offer *Open Board viewer*
+  instead of the generated file.
 
 ## Pin hovers
 
@@ -50,6 +57,11 @@ Hover (or place the cursor on) a component variable in `src/`:
 - A *view on board* link that zooms the Board viewer to the component.
 - A declared component missing from the compiled board explains itself instead
   of hovering silent.
+
+Hover the quoted net name in a `pcb.net(…)` / `pcb.route(…)` call for the
+**net card**: declared/routed source lines, a single-pin warning when the net
+has only one pin, and a *show on board* link that highlights the net's traces
+in the viewer.
 
 ## Board viewer
 
@@ -84,10 +96,16 @@ In either view:
 ### Cross-probing, both directions
 
 - **Editor → board:** the hover's *view on board* link, or
-  **typeCAD/pcb: View Component on Board** from the palette (it prompts for a
-  designator, pre-filled with the word under the cursor).
-- **Board → editor:** **double-click** any pad or component outline to jump to
-  the source line that declares it. Single clicks — ruler points included —
+  **typeCAD/pcb: View Component on Board** from the palette — a picker over
+  the compiled board (ref — value · footprint · source variable), its filter
+  seeded with the word under the cursor; a typed designator that matches no
+  item is still attempted. Net names work the same way — the net hover's
+  *show on board* link, or **typeCAD/pcb: View Net on Board**, highlights
+  the net's traces.
+- **Board → editor:** **double-click** any pad or component outline to jump
+  to its source — a specific pad lands on the line that declared or routed
+  its net (what the pad is really asking about), an outline on the
+  component's own declaration. Single clicks — ruler points included —
   always stay inside the viewer.
 
 ### It stays current
@@ -132,13 +150,19 @@ workspace without talking over each other.
 | `typecad-pcb.refreshBoardData` | typeCAD/pcb: Refresh Board Data | Re-query the compiled board |
 | `typecad-pcb.buildBoard` | typeCAD/pcb: Build Board | `npm run build` in the hw folder (the ▶ Build Board lens) |
 | `typecad-pcb.runDrc` | typeCAD/pcb: Run DRC | Design rule check → Problems (aimed at source) |
-| `typecad-pcb.browseComponents` | typeCAD/pcb: Browse Components | QuickPick a component → zoom the viewer |
 | `typecad-pcb.diffBoard` | typeCAD/pcb: Diff Board vs HEAD | Visual board diff in a panel |
 | `typecad-pcb.viewBoard` | typeCAD/pcb: View Board | Open (or refresh) the Board viewer |
-| `typecad-pcb.viewComponent` | typeCAD/pcb: View Component on Board | Prompt for a designator (seeded from the cursor) and zoom to it |
+| `typecad-pcb.viewComponent` | typeCAD/pcb: View Component on Board | Picker over the compiled board (filter seeded from the cursor); Enter or a typed designator zooms the viewer |
+| `typecad-pcb.viewNet` | typeCAD/pcb: View Net on Board | Prompt for a net name (seeded from a quoted string under the cursor) and highlight its traces |
 
-The hover's *view on board* link invokes the last command directly with the
+The hover's *view on board* link invokes `viewComponent` directly with the
 reference, skipping the prompt.
+
+## Settings
+
+| Setting | Default | What it does |
+|---|---|---|
+| `typecad-pcb.drcOnBuild` | `false` | Run the design rule check automatically after every board build, once the board file settles — violations land in Problems and the status chip counts. |
 
 ## Development
 

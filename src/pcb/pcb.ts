@@ -104,6 +104,13 @@ export class PCB {
   private _stackup?: { layerCount: number; options: IStackupOptions };
   private _viaPolicy: IViaPolicy = DEFAULT_VIA_POLICY;
   private _teardrops: ITeardropPolicy = DEFAULT_TEARDROPS;
+  /** nets handed to route() — the autorouter's coverage, for route provenance */
+  private _routedNetNames = new Set<string>();
+
+  /** Net names the autorouter has been asked to route (`pcb.route(net)`). */
+  get routedNetNames(): ReadonlySet<string> {
+    return this._routedNetNames;
+  }
 
   /**
    * Initializes a new PCB.
@@ -551,10 +558,12 @@ export class PCB {
     // record where the route was declared — traces carry the net in gerbers
     // (X2 %TO.N), and the viewer resolves hovering one back to this line
     if (arg1 && typeof arg1 === 'object' && typeof (arg1 as ISchematicNetDefinition).name === 'string') {
+      const netName = (arg1 as ISchematicNetDefinition).name;
+      this._routedNetNames.add(netName);
       const site = getCallSite();
       if (site?.file) {
         const file = sourceFileForMetadata(site.file);
-        this._schematic.setRouteSource((arg1 as ISchematicNetDefinition).name, file ? `${file}:${site.line}` : undefined);
+        this._schematic.setRouteSource(netName, file ? `${file}:${site.line}` : undefined);
       }
     }
     return pcbRoute(this, this._state, arg1, options);

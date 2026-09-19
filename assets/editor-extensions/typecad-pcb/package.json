@@ -44,13 +44,13 @@
         "category": "typeCAD/pcb"
       },
       {
-        "command": "typecad-pcb.runDrc",
-        "title": "Run DRC",
+        "command": "typecad-pcb.viewNet",
+        "title": "View Net on Board",
         "category": "typeCAD/pcb"
       },
       {
-        "command": "typecad-pcb.browseComponents",
-        "title": "Browse Components",
+        "command": "typecad-pcb.runDrc",
+        "title": "Run DRC",
         "category": "typeCAD/pcb"
       },
       {
@@ -58,7 +58,17 @@
         "title": "Diff Board vs HEAD",
         "category": "typeCAD/pcb"
       }
-    ]
+    ],
+    "configuration": {
+      "title": "typeCAD/pcb",
+      "properties": {
+        "typecad-pcb.drcOnBuild": {
+          "type": "boolean",
+          "default": false,
+          "description": "Run the design rule check automatically after every board build — violations land in Problems and the status chip counts."
+        }
+      }
+    }
   },
   "scripts": {
     "compile": "tsc -p ./",

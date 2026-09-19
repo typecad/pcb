@@ -11,6 +11,7 @@ import { DEFAULT_PCBA_THEME, PCBA_THEME_LABELS, PCBA_THEMES, type PcbaTheme } fr
 import { discoverNetlist, parseNetlistComponents } from './netlist.js';
 import { computeLayerBounds, renderSvg, type RenderLayer } from './render/svg.js';
 import { renderPcbaSvg } from './render/pcba.js';
+import { extractComponents } from './render/components.js';
 import type { NetlistComponent } from './render/components.js';
 import { buildViewerHtml, type ViewerOptions } from './render/viewer_html.js';
 
@@ -312,6 +313,61 @@ export function buildViewerFromFiles(paths: string[], options: ViewerBuildOption
       warnings.push(`could not parse ${path.basename(stackupSource)} — the thermal view falls back to 35 µm/1.6 mm defaults`);
     }
   }
+  // route provenance rides the same way (build/<board>_routes.json): which
+  // nets a TrackBuilder hand-built vs the autorouter — the Layout view's
+  // trace indication. Absent file = every trace reads as autorouted.
+  let routes: ViewerOptions['routes'] = null;
+  if (pcbaNetlistSource) {
+    const routesPath = pcbaNetlistSource.replace(/\.net$/i, '_routes.json');
+    if (fs.existsSync(routesPath)) {
+      try {
+        routes = JSON.parse(fs.readFileSync(routesPath, 'utf8')) as NonNullable<ViewerOptions['routes']>;
+      } catch {
+        warnings.push(`could not parse ${path.basename(routesPath)} — the layout view cannot tell manual from autorouted traces`);
+      }
+    }
+  }
+  // Layout-view component overlay: the pcba glyph extractor derives each
+  // component's position (pad centroid), orientation (PCA of the pads) and
+  // body size (footprint name via the netlist) from the gerbers themselves —
+  // so the overlay works in plain browser tabs, no host needed. Pads' nets
+  // (for rip-up) come from the pad→net map the netlist already filled in.
+  let layoutComponents: ViewerOptions['layoutComponents'] = [];
+  if (Object.keys(padNets).length > 0) {
+    for (const side of ['front', 'back'] as const) {
+      const extracted = extractComponents(ordered, side, pcbaNetlist);
+      warnings.push(...extracted.warnings);
+      for (const c of extracted.components) {
+        const nets: string[] = [];
+        for (const pad of c.pads) {
+          const net = padNets[`${c.ref}.${pad.pin}`];
+          if (net && !nets.includes(net)) nets.push(net);
+        }
+        const bw = c.bbox.maxX - c.bbox.minX;
+        const bh = c.bbox.maxY - c.bbox.minY;
+        layoutComponents.push({
+          ref: c.ref,
+          x: +(c.bbox.minX + bw / 2).toFixed(3),
+          y: +(c.bbox.minY + bh / 2).toFixed(3),
+          rot: +c.angle.toFixed(1),
+          // footprint-name dims can be partial (a pitch without height) —
+          // fall back to the pad bbox per axis rather than render a flat box
+          w: +(c.bodyDims && c.bodyDims.w > 0.05 ? c.bodyDims.w : bw).toFixed(2),
+          h: +(c.bodyDims && c.bodyDims.h > 0.05 ? c.bodyDims.h : bh).toFixed(2),
+          side,
+          nets,
+        });
+      }
+    }
+    // through-hole pads flash on both copper layers — the same ref extracts
+    // once per side; keep the front entry so each component drags once
+    const byRef = new Map<string, (typeof layoutComponents)[number]>();
+    for (const comp of layoutComponents) {
+      const prev = byRef.get(comp.ref);
+      if (!prev || (prev.side === 'back' && comp.side === 'front')) byRef.set(comp.ref, comp);
+    }
+    layoutComponents = [...byRef.values()];
+  }
   // the pcba view's theme picker: surface colors per builtin, ordered as the
   // combo shows them. The switcher remaps these flat colors client-side, so
   // one embedded render serves every theme.
@@ -348,6 +404,8 @@ export function buildViewerFromFiles(paths: string[], options: ViewerBuildOption
     schematicSvg,
     netOp,
     stackup,
+    routes,
+    layoutComponents,
     pcbaThemes,
   });
   return { svg, html, layers, warnings, report };

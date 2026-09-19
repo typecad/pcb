@@ -33,6 +33,7 @@ function unconnectedProblems(report, refs, nets, boardFile) {
             message: `${pad.reference} pad ${pad.pad} is unconnected`,
             severity: 'warning',
             code: 'unconnected-pad',
+            ref: pad.reference,
         });
     }
     const netByName = new Map(nets.map((n) => [n.name, n]));
@@ -43,6 +44,7 @@ function unconnectedProblems(report, refs, nets, boardFile) {
             message: `net ${name} has only one pin`,
             severity: 'warning',
             code: 'single-pin-net',
+            net: name,
         });
     }
     return out;
@@ -89,7 +91,8 @@ function drcProblems(violations, refs, nets, boardFile) {
         if (v.severity !== 'error' && v.severity !== 'warning')
             continue;
         let location;
-        let aimed = '';
+        let ref;
+        let net;
         const descriptions = [v.description, ...v.items.map((i) => i.description ?? '')].join(' ; ');
         for (const token of descriptions.split(/[^A-Za-z0-9_.]+/)) {
             // item descriptions name pads as "R1.2" — try the token, then its
@@ -99,7 +102,7 @@ function drcProblems(violations, refs, nets, boardFile) {
             for (const candidate of candidates) {
                 if (candidate && refs.has(candidate)) {
                     location = refs.get(candidate);
-                    aimed = candidate;
+                    ref = candidate;
                     break;
                 }
             }
@@ -107,20 +110,22 @@ function drcProblems(violations, refs, nets, boardFile) {
                 break;
         }
         if (!location) {
-            for (const n of nets) {
-                if (descriptions.includes(n.name)) {
-                    location = n.routeSource ?? n.source ?? `${boardFile}:1`;
-                    aimed = `net ${n.name}`;
-                    break;
-                }
+            // longest name first: the fallback substring-matches, so "VCC_3V3"
+            // must win over "VCC" when both appear in the descriptions
+            const hit = [...nets].sort((a, b) => b.name.length - a.name.length).find((n) => descriptions.includes(n.name));
+            if (hit) {
+                location = hit.routeSource ?? hit.source ?? `${boardFile}:1`;
+                net = hit.name;
             }
         }
-        const where = aimed ? ` (${aimed})` : '';
+        const where = ref ? ` (${ref})` : net ? ` (net ${net})` : '';
         out.push({
             location: location ?? `${boardFile}:1`,
             message: `${v.description}${where}`,
             severity: v.severity,
             code: v.type,
+            ref,
+            net,
         });
     }
     return out;

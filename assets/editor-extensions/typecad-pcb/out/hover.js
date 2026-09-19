@@ -8,6 +8,8 @@
 // ---------------------------------------------------------------------------
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.renderComponentHover = renderComponentHover;
+exports.renderNetHover = renderNetHover;
+exports.quotedTextAt = quotedTextAt;
 /** Make a string safe inside a markdown table cell (pipes break the table). */
 function cell(text) {
     return text.replace(/\|/g, '\\|').trim();
@@ -92,5 +94,45 @@ function renderComponentHover(detail) {
     lines.push('');
     lines.push(`[$(symbol-module) view on board](command:typecad-pcb.viewComponent?${args})`);
     return lines.join('\n');
+}
+/**
+ * The net hover card: declared/routed provenance, a single-pin warning, and
+ * the editor→board half of net cross-probing (highlight the net's traces).
+ */
+function renderNetHover(net, singlePin) {
+    const lines = [];
+    lines.push(`$(circuit-board) net **${bold(net.name)}**`);
+    lines.push('');
+    if (singlePin) {
+        lines.push('$(warning) only one pin on this net — see Problems');
+        lines.push('');
+    }
+    const origin = [];
+    if (net.source)
+        origin.push(`declared ${code(net.source)}`);
+    if (net.routeSource)
+        origin.push(`routed ${code(net.routeSource)}`);
+    if (origin.length > 0) {
+        lines.push(`_${cell(origin.join(' · '))}_`);
+        lines.push('');
+    }
+    const args = encodeURIComponent(JSON.stringify([net.name]));
+    lines.push(`[$(symbol-parameter) show on board](command:typecad-pcb.viewNet?${args})`);
+    return lines.join('\n');
+}
+/**
+ * Full text of the string literal containing the column, or null. Net names
+ * carry characters the word tokenizer splits on ("Net-(R1-Pad2)", names with
+ * spaces), so the net hover needs the whole quoted span, not the word under
+ * the cursor.
+ */
+function quotedTextAt(line, character) {
+    for (const match of line.matchAll(/'([^']*)'|"([^"]*)"/g)) {
+        const text = match[1] ?? match[2] ?? '';
+        const start = (match.index ?? 0) + 1;
+        if (character >= start && character <= start + text.length)
+            return text;
+    }
+    return null;
 }
 //# sourceMappingURL=hover.js.map

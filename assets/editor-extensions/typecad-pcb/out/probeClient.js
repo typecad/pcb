@@ -4,9 +4,10 @@
 // a vscode webview.
 //
 // Two directions:
-//  - editor → board: the extension posts {type:'typecad/select', ref}; the
-//    client calls the viewer's own window.typecadViewer API (highlight +
-//    zoom/flash) so selection looks identical to in-viewer search.
+//  - editor → board: the extension posts {type:'typecad/select', ref} (or
+//    {type:'typecad/select-net', net}); the client calls the viewer's own
+//    window.typecadViewer API (highlight + zoom/flash) so selection looks
+//    identical to in-viewer search.
 //  - board → editor: DOUBLE clicks on anything carrying data-ref (gerber X2
 //    pad attributes AND the injected component outlines) postMessage back.
 //    Double rather than single: every single click (measurement ruler points
@@ -23,6 +24,7 @@
 // ---------------------------------------------------------------------------
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.outlineData = outlineData;
+exports.applyNoncePolicy = applyNoncePolicy;
 exports.injectProbeClient = injectProbeClient;
 const node_crypto_1 = require("node:crypto");
 /** Components with a measurable footprint; the rest have no outline to draw. */
@@ -135,6 +137,20 @@ const PROBE_CLIENT = `<script>
       notice(m.text || '');
       return;
     }
+    // editor → board, net flavor: highlight the net's traces through the
+    // same highlightNet seam ref selection uses; acks key on "net:<name>"
+    // so the host's delivery loop treats it like any other selection
+    if (m.type === 'typecad/select-net') {
+      if (!m.net) return;
+      if (!window.typecadViewer) {
+        status(m.net + ' — received, waiting for viewer…');
+        return;
+      }
+      var netFound = window.typecadViewer.highlightNet('data-net', m.net);
+      status(m.net + ' — from editor (click empty space to clear)');
+      send({ type: 'typecad/ack', ref: 'net:' + m.net, token: m.token, found: netFound });
+      return;
+    }
     if (m.type !== 'typecad/select' || !m.ref) return;
     if (!window.typecadViewer) {
       // host retries until this succeeds — say so instead of staying silent
@@ -205,12 +221,12 @@ const PROBE_CLIENT = `<script>
 })();
 </script>`;
 /**
- * Embed component outlines + the client script into a generated viewer HTML,
- * locked down with a nonce Content-Security-Policy. Missing anchors leave the
- * HTML untouched (injected: false) — the viewer still works, it just
- * cross-probes nothing.
+ * Nonce every script tag and prepend the matching Content-Security-Policy
+ * meta to a generated page (null when it has no <head> anchor — the caller
+ * degrades to the unmodified page). Shared by the Board viewer and diff
+ * panel injections so neither webview ever needs script-src 'unsafe-inline'.
  *
- * The artifact is self-contained local content (inline SVG/CSS/JS, no
+ * The artifacts are self-contained local content (inline SVG/CSS/JS, no
  * network), so `default-src 'none'` plus `'unsafe-inline'` styles, a
  * per-page nonce for scripts, and `img-src data: blob:` for the PNG export's
  * rasterization step (it loads the serialized SVG through a data: URL —
@@ -221,25 +237,39 @@ const PROBE_CLIENT = `<script>
  * acquireVsCodeApi and the message transport are unaffected — they are
  * provided by VS Code's bootstrap outside the document's script-src.
  */
-function injectProbeClient(html, components, nets = []) {
+function applyNoncePolicy(html) {
     const headOpen = html.indexOf('<head>');
-    const bodyClose = html.lastIndexOf('</body>');
-    if (headOpen === -1 || bodyClose === -1)
-        return { html, injected: false };
+    if (headOpen === -1)
+        return null;
     const nonce = (0, node_crypto_1.randomUUID)().replace(/-/g, '');
+    // Nonce every script opening tag — inline page scripts and injected
+    // clients alike (a non-executing type="application/json" data island
+    // picking up a nonce too is harmless). (?= looks past the tag name so
+    // `</script>` is never touched.)
+    const nonced = html
+        .slice(headOpen + '<head>'.length)
+        .replace(/<script(?=[\s>])/gi, () => `<script nonce="${nonce}"`);
+    return (html.slice(0, headOpen) +
+        '<head>' +
+        `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: blob:; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';">` +
+        nonced);
+}
+/**
+ * Embed component outlines + the client script into a generated viewer HTML,
+ * locked down with applyNoncePolicy's CSP. Missing anchors leave the HTML
+ * untouched (injected: false) — the viewer still works, it just cross-probes
+ * nothing.
+ */
+function injectProbeClient(html, components, nets = []) {
+    const bodyClose = html.lastIndexOf('</body>');
+    if (html.indexOf('<head>') === -1 || bodyClose === -1)
+        return { html, injected: false };
     const dataTag = `<script id="typecad-probe-data" type="application/json">${JSON.stringify({
         components: outlineData(components),
         nets,
     }).replace(/</g, '\\u003c')}</script>`;
-    const body = html.slice(headOpen + '<head>'.length, bodyClose) + dataTag + PROBE_CLIENT + html.slice(bodyClose);
-    // Nonce every script opening tag — the viewer's own inline scripts and the
-    // probe client alike (the non-executing type="application/json" data island
-    // picking up a nonce too is harmless). (?= looks past the tag name so
-    // `</script>` is never touched.)
-    const nonced = body.replace(/<script(?=[\s>])/gi, () => `<script nonce="${nonce}"`);
-    const csp = '<head>' +
-        `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: blob:; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';">` +
-        nonced;
-    return { html: html.slice(0, headOpen) + csp, injected: true };
+    const withClient = html.slice(0, bodyClose) + dataTag + PROBE_CLIENT + html.slice(bodyClose);
+    // <head> was just verified — the policy always applies here
+    return { html: applyNoncePolicy(withClient), injected: true };
 }
 //# sourceMappingURL=probeClient.js.map

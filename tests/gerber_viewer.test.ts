@@ -401,8 +401,18 @@ describe('view switcher (gerber / pcba)', () => {
     expect(html).toContain('<option value="pcba">PCBA view</option>');
     expect(html).toContain('<option value="blueprint">Blueprint view</option>');
     expect(html).toContain('function setView(mode)');
-    // one display-toggle loop covers every view group
-    expect(html).toContain("viewGroups[name].style.display = name === viewMode ? '' : 'none'");
+    // one display-toggle loop covers every view group; the layout view
+    // shares the gerber stack
+    expect(html).toContain("(viewMode === 'layout' && name === 'gerber') ? '' : 'none';");
+    // the layout view: overlay from gerber-derived components, rip-up on
+    // move, TrackBuilder-vs-autorouter trace indication, apply via the host
+    expect(html).toContain("document.getElementById('layout-comps')");
+    expect(html).toContain('function buildLayoutOverlay()');
+    expect(html).toContain('function commitLayoutMove(g)');
+    expect(html).toContain("el.setAttribute('opacity', '0.22')");
+    expect(html).toContain("traces[t2].setAttribute('stroke-dasharray', '4 2.2')");
+    expect(html).toContain('window.typecadLayoutApply(moves, function (err)');
+    expect(html).toContain('moves.push({ ref: mr2, dx: m2.x - m2.x0, dy: -(m2.y - m2.y0) });');
     expect(html).toContain('__viewMode'); // persisted selection
     // cross-probe dimming covers the non-gerber views
     expect(html).toContain("'#view-pcba > #pcba-board'");
@@ -645,5 +655,43 @@ describe('stackup island', () => {
   it('omits the island (and keeps legacy defaults) without a stackup', () => {
     const plain = buildViewerHtml(svg, [info], { title: 'demo board' });
     expect(plain).not.toContain('"copperThicknessMm"');
+  });
+});
+
+
+describe('layout view (component overlay from the gerbers)', () => {
+  const image = parseGerber(read('traces.gbr'));
+  const info = detectLayer('demo-F_Cu.gbr', image);
+  const svg = renderSvg([{ info, image }]);
+  const layoutComponents = [
+    { ref: 'R1', x: 10, y: -20, rot: 0, w: 1.6, h: 0.8, side: 'front' as const, nets: ['VCC', 'GND'] },
+    { ref: 'U1', x: 30, y: -40, rot: 90, w: 4, h: 4, side: 'back' as const, nets: ['net5'] },
+  ];
+
+  it('offers the Layout option and embeds the overlay island when components exist', () => {
+    const html = buildViewerHtml(svg, [info], { title: 'demo board', pcbaSvg: '<svg/>', layoutComponents });
+    expect(html).toContain('<option value="layout">Layout</option>');
+    expect(html).toContain('id="layout-comps"');
+    expect(html).toContain('"ref":"R1"');
+    // the panel rides with the data — no components, no panel
+    expect(html).toContain('id="layout-apply"');
+  });
+
+  it('omits the option and panel without components', () => {
+    const plain = buildViewerHtml(svg, [info], { title: 'demo board' });
+    expect(plain).not.toContain('<option value="layout">Layout</option>');
+    expect(plain).not.toContain('id="layout-apply"');
+  });
+
+  it('marks TrackBuilder-built traces dashed from the routes island (manual + mixed, never auto)', () => {
+    const html = buildViewerHtml(svg, [info], {
+      title: 'demo board',
+      pcbaSvg: '<svg/>',
+      layoutComponents,
+      routes: { nets: { VCC: { provenance: 'manual' }, GND: { provenance: 'mixed' }, net5: { provenance: 'auto' } } },
+    });
+    expect(html).toContain('id="routes"');
+    expect(html).toContain("routesProv[rpk.toLowerCase()] = rawRt.nets[rpk];");
+    expect(html).toContain("if (pr && pr.provenance !== 'auto') traces[t2].setAttribute('stroke-dasharray', '4 2.2');");
   });
 });

@@ -7,6 +7,7 @@ import { BoardCreationError } from '../utils/errors.js';
 import { IVia, IGrLine, IOutline, OutlineElement } from './pcb_interfaces.js';
 import { maybeWriteOpSolve } from './pcb_op_solve.js';
 import { writeStackup } from './pcb_stackup_writer.js';
+import { writeRoutes } from './pcb_routes_writer.js';
 import { createFootprintNode } from './pcb_footprint.js';
 import { mergeNets } from './pcb_net_merger.js';
 import { materializePlanes } from './pcb_zones.js';
@@ -302,4 +303,11 @@ export function createBoard(pcb: PCB, ...items: Array<Component | TrackBuilder>)
   // The board viewer's thermal model needs the resolved stackup (copper
   // weight per layer, dielectric thicknesses); write it beside the board.
   writeStackup(pcb);
+
+  // The Layout view distinguishes TrackBuilder-built nets from autorouted
+  // ones — the builders collected above are the manual side of that split.
+  writeRoutes(
+    pcb,
+    trackBuilders.map((b) => b.net).filter((n): n is string => !!n),
+  );
 }

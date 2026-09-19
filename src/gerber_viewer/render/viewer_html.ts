@@ -3227,6 +3227,9 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
 <title>${escapeHtml(title)}</title>
 <style>
   * { box-sizing: border-box; }
+  /* board canvas is a diagram, not a document: no text selection highlights
+     (silk/fab stroke text, refdes labels) while dragging or double-clicking */
+  #board, #board text { -webkit-user-select: none; user-select: none; }
   html, body { height: 100%; margin: 0; font: 13px/1.4 system-ui, sans-serif; }
   body {
     display: flex;

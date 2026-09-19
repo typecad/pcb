@@ -26,6 +26,10 @@ describe('buildViewerHtml', () => {
     expect(html).toContain('#board');
   });
 
+  it('makes board text unselectable (silk/fab/refdes labels never highlight)', () => {
+    expect(html).toContain('#board, #board text { -webkit-user-select: none; user-select: none; }');
+  });
+
   it('persists layer settings to localStorage keyed per board', () => {
     expect(html).toContain("gerber-viewer:v1:' + document.title");
     expect(html).toContain('localStorage.getItem');

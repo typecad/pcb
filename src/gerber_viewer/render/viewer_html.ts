@@ -1522,6 +1522,31 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         }
       }
     }
+    // the value ("1k") and reference texts on fab/silkscreen often plot as
+    // plain graphics with NO %TO.C attribute — claim the unattributed ones
+    // whose center sits within the footprint's reach (half the body plus a
+    // text offset). Copper is deliberately absent: unattributed copper is
+    // routing and must never travel with a part.
+    if (c && viewGroups.gerber) {
+      var rClaim = Math.max(c.w, c.h) / 2 + 2;
+      var loose = viewGroups.gerber.querySelectorAll(
+        'g[data-kind="fab"] path:not([data-ref]), g[data-kind="silkscreen"] path:not([data-ref])',
+      );
+      for (var te = 0; te < loose.length; te++) {
+        var tel = loose[te];
+        var bb = null;
+        try {
+          bb = tel.getBBox();
+        } catch (e) {
+          continue;
+        }
+        if (!bb || (!bb.width && !bb.height)) continue; // hidden layer
+        if (Math.hypot(bb.x + bb.width / 2 - c.x, bb.y + bb.height / 2 - c.y) > rClaim) continue;
+        tel.setAttribute('data-ref', ref);
+        if (tel.__layoutTr0 === undefined) tel.__layoutTr0 = tel.getAttribute('transform');
+        els.push(tel);
+      }
+    }
     return els;
   }
   // transform every footprint element from its ORIGINAL position to the

@@ -130,9 +130,9 @@ const PROBE_CLIENT = `<script>
   // Layout view: the page hands moved-component deltas to the host, which
   // edits the placement literals, rebuilds, and regenerates this viewer
   var layoutCb = null;
-  window.typecadLayoutApply = function (moves, texts, cb) {
+  window.typecadLayoutApply = function (moves, texts, values, cb) {
     layoutCb = cb || null;
-    send({ type: 'typecad/layout-rebuild', moves: moves, texts: texts || [] });
+    send({ type: 'typecad/layout-rebuild', moves: moves, texts: texts || [], values: values || [] });
   };
 
   window.addEventListener('message', function (ev) {
@@ -188,6 +188,9 @@ const PROBE_CLIENT = `<script>
       if (!el) remember(null); // empty-space click cleared the highlight
     }, true);
     svg.addEventListener('dblclick', function (ev) {
+      // the layout view owns double-clicks (in-place editing); the source
+      // jump would steal focus out of the editor
+      if (document.body.classList.contains('typecad-layout')) return;
       var el = ev.target.closest ? ev.target.closest('[data-ref]') : null;
       if (el) {
         send({ type: 'typecad/probe', ref: el.getAttribute('data-ref'), pin: el.getAttribute('data-pin') });

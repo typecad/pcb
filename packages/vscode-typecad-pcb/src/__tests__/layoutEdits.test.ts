@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyPlacementEdits, planEndpointEdits, planPlacementEdits, planTextEdits } from '../layoutEdits.js';
+import { applyPlacementEdits, planEndpointEdits, planPlacementEdits, planTextEdits, planValueEdits } from '../layoutEdits.js';
 
 const source = `import { PCB } from '@typecad/pcb';
 const typecad = new PCB('demo');
@@ -188,5 +188,32 @@ describe('planTextEdits', () => {
     const out = applyPlacementEdits(s, edits);
     expect((out.match(/const after/g) ?? []).length).toBe(1);
     expect(out).toContain("typecad.text({ text: 'z', x: 6, y: 6 });\nconst after = 1;\n");
+  });
+});
+
+describe('planValueEdits', () => {
+  const src =
+    "const r1 = new Component({ symbol: 'Device:R_Small', footprint: 'Resistor_SMD:R_0603_1608Metric', reference: 'R1', value: '1k' });\n" +
+    "const d1 = new Component({ symbol: 'Device:D_Small', reference: 'D1', simulation: { model: 'D (IS=1f)' } });\n";
+
+  it("rewrites the value literal, keeping every other constructor option", () => {
+    const { edits, skipped } = planValueEdits(src, [{ ref: 'R1', value: '2.2k' }]);
+    expect(skipped).toHaveLength(0);
+    const out = applyPlacementEdits(src, edits);
+    expect(out).toContain("reference: 'R1', value: '2.2k'");
+    expect(out).toContain("footprint: 'Resistor_SMD:R_0603_1608Metric'");
+  });
+
+  it('inserts the value after reference when the literal has none', () => {
+    const { edits } = planValueEdits(src, [{ ref: 'D1', value: '1N4148' }]);
+    const out = applyPlacementEdits(src, edits);
+    expect(out).toMatch(/reference: 'D1', value: '1N4148'/);
+    expect(out).toContain("simulation: { model: 'D (IS=1f)' }");
+  });
+
+  it('skips refs with no constructor literal', () => {
+    const { edits, skipped } = planValueEdits(src, [{ ref: 'ZZ', value: 'x' }]);
+    expect(edits).toHaveLength(0);
+    expect(skipped).toHaveLength(1);
   });
 });

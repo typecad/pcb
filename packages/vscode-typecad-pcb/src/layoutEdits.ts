@@ -251,3 +251,55 @@ export function planTextEdits(text: string, edits: TextEditInput[]): LayoutEditR
   }
   return { edits: planned, skipped };
 }
+
+// ---------------------------------------------------------------------------
+// Component VALUE edits: the layout view's in-place editor on a part's own
+// fab/silk text. The `new Component({ … reference: 'R1', value: '1k' … })`
+// constructor literal is matched by its reference, then the value literal is
+// rewritten (inserted after reference when absent).
+// ---------------------------------------------------------------------------
+
+export interface ValueEditInput {
+  ref: string;
+  value: string;
+}
+
+export function planValueEdits(text: string, edits: ValueEditInput[]): LayoutEditResult {
+  const planned: PlacementEdit[] = [];
+  const skipped: Array<{ ref: string; reason: string }> = [];
+  const used = new Set<number>();
+  const callRe = /new\s+Component\s*\(/g;
+  let match: RegExpExecArray | null;
+  while ((match = callRe.exec(text)) !== null) {
+    const range = objectLiteralRange(text, match.index);
+    if (!range) continue;
+    const inner = text.slice(range.open + 1, range.close);
+    const rNum = /\breference\s*:\s*(['"])((?:\.|(?!\1).)*)\1/.exec(inner);
+    if (!rNum) continue;
+    const ref = rNum[2];
+    const edit = edits.find((e, i) => !used.has(i) && e.ref === ref);
+    if (!edit) continue;
+    used.add(edits.indexOf(edit));
+    const vNum = /\bvalue\s*:\s*(['"])((?:\\.|(?!\1).)*)\1/.exec(inner);
+    let newInner: string;
+    if (vNum) {
+      const esc = edit.value.replace(/\\/g, '\\\\').replace(/\n/g, '\\n');
+      newInner = inner.replace(vNum[0], () => `value: ${vNum[1]}${esc}${vNum[1]}`);
+    } else {
+      // no value yet: insert right after the reference it belongs to
+      const at = rNum.index + rNum[0].length;
+      const esc = edit.value.replace(/\\/g, '\\\\').replace(/\n/g, '\\n').replace(/'/g, "\\'");
+      newInner = `${inner.slice(0, at)}, value: '${esc}'${inner.slice(at)}`;
+    }
+    planned.push({
+      ref: `${ref} value`,
+      line: `${text.slice(match.index, range.open + 1)}${newInner}}`,
+      start: match.index,
+      end: range.close + 1,
+    });
+  }
+  for (let i = 0; i < edits.length; i++) {
+    if (!used.has(i)) skipped.push({ ref: `${edits[i]!.ref} value`, reason: 'no Component constructor literal found' });
+  }
+  return { edits: planned, skipped };
+}

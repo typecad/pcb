@@ -127,9 +127,22 @@ const PROBE_CLIENT = `<script>
   announce();
   window.addEventListener('load', announce);
 
+  // Layout view: the page hands moved-component deltas to the host, which
+  // edits the placement literals, rebuilds, and regenerates this viewer
+  var layoutCb = null;
+  window.typecadLayoutApply = function (moves, cb) {
+    layoutCb = cb || null;
+    send({ type: 'typecad/layout-rebuild', moves: moves });
+  };
+
   window.addEventListener('message', function (ev) {
     var m = ev.data;
     if (!m) return;
+    if (m.type === 'typecad/layout-status') {
+      if (layoutCb) layoutCb(m.error);
+      layoutCb = null;
+      return;
+    }
     // host-side status notices: the extension posts these while it re-renders
     // after a build (the page keeps showing the old board until the new HTML
     // lands, which reloads and resets this element)

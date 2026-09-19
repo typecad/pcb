@@ -61,6 +61,8 @@ export interface ViewerOptions {
     outline?: Array<{ x: number; y: number }>;
     /** pad centers in the gerber frame — sticky route endpoints on apply */
     pads?: Array<{ x: number; y: number; net?: string }>;
+    /** netlist value ("1k") — drives the layout view's in-place value editor */
+    value?: string;
   }>;
   /**
    * silk/fab board texts (gr_text — the `pcb.text()` API), parsed from the
@@ -1817,6 +1819,85 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   }
   function buildTextOverlay() {
     for (var i = 0; i < layoutTexts.length; i++) attachTextDrag(i);
+    // component-owned ink (refdes/value strokes, outlines, courtyard) is
+    // part of the footprint, exactly like KiCad: grabbing it drags the PART,
+    // double-click edits the part's VALUE in place
+    if (!viewGroups.gerber) return;
+    var inked = viewGroups.gerber.querySelectorAll(
+      'g[data-kind="silkscreen"] [data-ref], g[data-kind="fab"] [data-ref], g[data-kind="other"] [data-ref]',
+    );
+    for (var ik = 0; ik < inked.length; ik++) {
+      (function (el) {
+        var ref = el.getAttribute('data-ref');
+        el.addEventListener('pointerdown', function (ev) {
+          if (viewMode !== 'layout' || !layoutOverlay) return;
+          var g = layoutOverlay.querySelector('[data-ref="' + cssEsc(ref) + '"]');
+          if (g) startCompDrag(g, ev);
+        });
+        el.addEventListener('dblclick', function (ev) {
+          if (viewMode !== 'layout' || !layoutOverlay) return;
+          ev.stopPropagation();
+          ev.preventDefault();
+          beginCompValueEdit(ref, ev);
+        });
+      })(inked[ik]);
+    }
+  }
+  // in-place VALUE edit for a component (the netlist value rides with the
+  // overlay data) — apply rewrites the Component constructor's value literal
+  var layoutValueEdits = {}; // ref -> new value
+  var layoutValuePreviews = []; // SVG texts living in the overlay until rebuild/revert
+  function beginCompValueEdit(ref, ev) {
+    if (layoutValueEdits.__editing) return;
+    var c = null;
+    for (var vc = 0; vc < layoutComps.length && !c; vc++) if (layoutComps[vc].ref === ref) c = layoutComps[vc];
+    if (!c) return;
+    var cur = layoutValueEdits[ref] !== undefined ? layoutValueEdits[ref] : c.value || '';
+    var svg = document.getElementById('board');
+    var sr = svg.getBoundingClientRect();
+    var inp = document.createElement('input');
+    inp.type = 'text';
+    inp.className = 'layout-text-edit';
+    inp.value = cur;
+    inp.style.left = Math.max(sr.x + 4, ev.clientX - 30) + 'px';
+    inp.style.top = ev.clientY - 13 + 'px';
+    inp.style.width = '110px';
+    document.body.appendChild(inp);
+    layoutValueEdits.__editing = true;
+    var closed = false;
+    var close = function (save) {
+      if (closed) return;
+      closed = true;
+      inp.remove();
+      layoutValueEdits.__editing = false;
+      if (save && inp.value && inp.value !== (c.value || '')) {
+        layoutValueEdits[ref] = inp.value;
+        // a preview rides the overlay (so other views stay untouched) at
+        // the edit point until the rebuild re-plots the real value strokes
+        var gp = gerberAt(ev.clientX, ev.clientY);
+        var pv = document.createElementNS(SVGNSL, 'text');
+        pv.setAttribute('class', 'layout-text-preview');
+        pv.setAttribute('font-size', '1.2');
+        pv.setAttribute('text-anchor', 'middle');
+        pv.setAttribute('dominant-baseline', 'central');
+        pv.setAttribute('pointer-events', 'none');
+        pv.textContent = inp.value + ' (' + ref + ')';
+        pv.setAttribute('transform', 'translate(' + gp.x + ',' + gp.y + ') scale(1,-1)');
+        if (layoutOverlay) layoutOverlay.appendChild(pv);
+        layoutValuePreviews.push(pv);
+        renderLayoutMoves();
+      }
+    };
+    inp.addEventListener('keydown', function (kev) {
+      kev.stopPropagation();
+      if (kev.key === 'Enter') close(true);
+      else if (kev.key === 'Escape') close(false);
+    });
+    inp.addEventListener('blur', function () {
+      close(true);
+    });
+    inp.focus();
+    inp.select();
   }
   function markLayoutSel() {
     if (!layoutOverlay) return;
@@ -1849,7 +1930,6 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       g.setAttribute('pointer-events', 'all');
       g.setAttribute('cursor', 'move');
       g.__lc = c;
-      var labelY = -c.h / 2 - 0.55;
       if (c.outline && c.outline.length >= 3) {
         // the exact footprint outline — fab contour (chamfers preserved) or
         // the pad-land hull, authored in this group's local frame
@@ -1858,7 +1938,6 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         for (var oi = 0; oi < c.outline.length; oi++) {
           var op = c.outline[oi];
           pts.push(op.x.toFixed(3) + ',' + op.y.toFixed(3));
-          if (op.y - 0.55 < labelY) labelY = op.y - 0.55;
         }
         poly.setAttribute('points', pts.join(' '));
         g.appendChild(poly);
@@ -1871,16 +1950,6 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         rect.setAttribute('rx', '0.3');
         g.appendChild(rect);
       }
-      var label = document.createElementNS(SVGNSL, 'text');
-      label.setAttribute('class', 'layout-ref');
-      label.setAttribute('y', '0');
-      label.setAttribute('text-anchor', 'middle');
-      label.setAttribute(
-        'transform',
-        'translate(0,' + labelY.toFixed(3) + ') scale(1,-1)',
-      );
-      label.textContent = c.ref;
-      g.appendChild(label);
       setCompPos(g, c.x, c.y);
       layoutOverlay.appendChild(g);
       attachLayoutDrag(g);
@@ -1888,6 +1957,13 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   }
   function attachLayoutDrag(g) {
     g.addEventListener('pointerdown', function (ev) {
+      startCompDrag(g, ev);
+    });
+  }
+  // one drag handler, two entry points: the invisible handle polygon and
+  // any of the part's own attributed ink (refdes/value strokes, courtyard)
+  function startCompDrag(g, ev) {
+    {
       ev.stopPropagation();
       ev.preventDefault();
       layoutTextSel = -1; // a part grab replaces any text grab
@@ -1919,7 +1995,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       }
       window.addEventListener('pointermove', onMove);
       window.addEventListener('pointerup', onUp);
-    });
+    }
   }
   function ripUpEl(el) {
     if (el.__layoutOp !== undefined) return;
@@ -1951,9 +2027,12 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   }
   function renderLayoutMoves() {
     // no changelog line — the on-canvas handles already show what moved;
-    // this only gates the apply button (component moves + text moves/edits)
+    // this only gates the apply button (moves + text/value edits)
+    var nVal = 0;
+    for (var vk in layoutValueEdits) if (vk !== '__editing') nVal++;
     if (layoutApplyBtn)
-      layoutApplyBtn.disabled = !Object.keys(layoutMoves).length && !Object.keys(layoutTextMoves).length;
+      layoutApplyBtn.disabled =
+        !Object.keys(layoutMoves).length && !Object.keys(layoutTextMoves).length && !nVal;
   }
   function layoutRevert() {
     for (var r = 0; r < layoutRipped.length; r++) {
@@ -1970,6 +2049,9 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     for (var tv = 0; tv < layoutTexts.length; tv++) {
       if (layoutTextEls[tv]) syncTextVisual(tv);
     }
+    layoutValueEdits = {};
+    for (var pv2 = 0; pv2 < layoutValuePreviews.length; pv2++) layoutValuePreviews[pv2].remove();
+    layoutValuePreviews = [];
     refreshLayoutWarnings();
     refreshRatsnest();
     if (layoutOverlay) {
@@ -2041,9 +2123,15 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
           rot: (tm.rot || 0) * 90,
         });
       }
+      // component value edits (in-place editor on the part's own text)
+      var values = [];
+      for (var vk2 in layoutValueEdits) {
+        if (vk2 === '__editing') continue;
+        values.push({ ref: vk2, value: layoutValueEdits[vk2] });
+      }
       layoutApplyBtn.disabled = true;
       layoutApplyBtn.textContent = 'rebuilding\u2026';
-      window.typecadLayoutApply(moves, texts, function (err) {
+      window.typecadLayoutApply(moves, texts, values, function (err) {
         layoutApplyBtn.disabled = false;
         layoutApplyBtn.textContent = 'apply & rebuild';
         if (err && statusEl) statusEl.textContent = 'layout apply failed: ' + err;
@@ -2341,6 +2429,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   function enterLayout() {
     buildLayoutOverlay();
     buildTextOverlay();
+    document.body.classList.add('typecad-layout');
     if (layoutOverlay) layoutOverlay.style.display = '';
     // zones subdued, blueprint-faint: filled contours step back so the
     // copper being arranged reads clearly
@@ -2369,6 +2458,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   }
   function exitLayout() {
     clearLayoutGhost();
+    document.body.classList.remove('typecad-layout');
     if (layoutOverlay) layoutOverlay.style.display = 'none';
     var regions = viewGroups.gerber ? viewGroups.gerber.querySelectorAll('path[fill-rule="evenodd"]') : [];
     for (var z2 = 0; z2 < regions.length; z2++) {
@@ -3694,7 +3784,6 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   #layout-overlay .layout-comp:hover polygon { stroke: rgba(255,255,255,0.45); stroke-width: 0.12; fill: transparent; }
   #layout-overlay .layout-comp.layout-sel rect,
   #layout-overlay .layout-comp.layout-sel polygon { stroke: #ffffff; stroke-width: 0.15; }
-  #layout-overlay .layout-ref { fill: #9fc4ff; font-size: 1.6px; font-family: ui-monospace, monospace; }
   #flow-label { display: flex; align-items: center; gap: 6px; color: var(--chrome-fg); font-size: 11px; cursor: pointer; user-select: none; }
   #flow-speed-row { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
   #flow-speed { flex: 1; accent-color: var(--chrome-fg); }

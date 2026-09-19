@@ -435,6 +435,8 @@ export function buildViewerFromFiles(paths: string[], options: ViewerBuildOption
           x: +cx.toFixed(3),
           y: +cy.toFixed(3),
           rot: +c.angle.toFixed(1),
+          // netlist value ("1k") — the layout view's in-place value editor
+          value: pcbaNetlist[c.ref]?.value,
           // floor per axis so the box is never degenerate (a zero-height
           // handle makes rotation invisible)
           w: +Math.max(ow, 0.6).toFixed(2),

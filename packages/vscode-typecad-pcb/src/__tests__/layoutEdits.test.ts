@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyPlacementEdits, planEndpointEdits, planPlacementEdits } from '../layoutEdits.js';
+import { applyPlacementEdits, planEndpointEdits, planPlacementEdits, planTextEdits } from '../layoutEdits.js';
 
 const source = `import { PCB } from '@typecad/pcb';
 const typecad = new PCB('demo');
@@ -130,5 +130,63 @@ describe('planEndpointEdits replacement bounds', () => {
     expect((out.match(/const after/g) ?? []).length).toBe(1);
     expect(out).toContain(".to({ x: 58.5375, y: 27 }, 'F.Cu', W);");
     expect(out.endsWith('const after = 1;\n')).toBe(true);
+  });
+});
+
+describe('planTextEdits', () => {
+  const src =
+    "typecad.text({ text: 'rd-skeleton', x: 62, y: 80, layer: 'F.SilkS', font: 'OCR A Std', width: 1.5, height: 1.5 });\n" +
+    "typecad.text({ text: 'vcc', x: 10, y: 4, layer: 'F.Fab' });\n";
+
+  it('moves a text literal, keeping every other property', () => {
+    const { edits, skipped } = planTextEdits(src, [
+      { text0: 'rd-skeleton', x0: 62, y0: 80, text: 'rd-skeleton', x: 63.5, y: 78, rot: 0 },
+    ]);
+    expect(skipped).toHaveLength(0);
+    const out = applyPlacementEdits(src, edits);
+    expect(out).toContain("text: 'rd-skeleton', x: 63.5, y: 78, layer: 'F.SilkS'");
+    expect(out).toContain("typecad.text({ text: 'vcc', x: 10, y: 4, layer: 'F.Fab' })");
+  });
+
+  it('edits the value in place (quote style preserved)', () => {
+    const { edits } = planTextEdits(src, [
+      { text0: 'vcc', x0: 10, y0: 4, text: 'VCC 3V3', x: 10, y: 4, rot: 0 },
+    ]);
+    const out = applyPlacementEdits(src, edits);
+    expect(out).toContain("{ text: 'VCC 3V3', x: 10, y: 4, layer: 'F.Fab' }");
+  });
+
+  it('accumulates rotation, inserting the property when absent', () => {
+    const { edits } = planTextEdits(src, [
+      { text0: 'rd-skeleton', x0: 62, y0: 80, text: 'rd-skeleton', x: 62, y: 80, rot: 90 },
+    ]);
+    const out = applyPlacementEdits(src, edits);
+    expect(out).toMatch(/rotation: 90[,}\s]/);
+  });
+
+  it('skips edits whose authored anchor/value matches nothing', () => {
+    const { edits, skipped } = planTextEdits(src, [
+      { text0: 'nope', x0: 1, y0: 1, text: 'nope', x: 2, y: 2, rot: 0 },
+    ]);
+    expect(edits).toHaveLength(0);
+    expect(skipped).toHaveLength(1);
+  });
+
+  it('matches anchors within 0.05 mm and skips nested justify objects', () => {
+    const s =
+      "typecad.text({ text: 'a', x: 5, y: 5, justify: { horizontal: 'left' } });\n" +
+      "typecad.text({ text: 'b', x: 5.03, y: 4.99, layer: 'F.Fab' });\n";
+    const { edits } = planTextEdits(s, [{ text0: 'b', x0: 5, y0: 5, text: 'B!', x: 5, y: 5, rot: 0 }]);
+    const out = applyPlacementEdits(s, edits);
+    expect(out).toContain("{ text: 'B!', x: 5, y: 5, layer: 'F.Fab' }");
+    expect(out).toContain("justify: { horizontal: 'left' }");
+  });
+
+  it('replaces exactly the call literal — no tail duplication', () => {
+    const s = "typecad.text({ text: 'a', x: 5, y: 5 });\nconst after = 1;\n";
+    const { edits } = planTextEdits(s, [{ text0: 'a', x0: 5, y0: 5, text: 'z', x: 6, y: 6, rot: 0 }]);
+    const out = applyPlacementEdits(s, edits);
+    expect((out.match(/const after/g) ?? []).length).toBe(1);
+    expect(out).toContain("typecad.text({ text: 'z', x: 6, y: 6 });\nconst after = 1;\n");
   });
 });

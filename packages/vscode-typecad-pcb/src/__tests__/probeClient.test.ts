@@ -46,8 +46,8 @@ describe('injectProbeClient', () => {
 
   it('installs the layout-apply bridge the viewer buttons into', () => {
     const { html } = injectProbeClient(viewerHtml, components);
-    expect(html).toContain('window.typecadLayoutApply = function (moves, cb)');
-    expect(html).toContain("send({ type: 'typecad/layout-rebuild', moves: moves });");
+    expect(html).toContain('window.typecadLayoutApply = function (moves, texts, cb)');
+    expect(html).toContain("send({ type: 'typecad/layout-rebuild', moves: moves, texts: texts || [] });");
     expect(html).toContain("m.type === 'typecad/layout-status'");
   });
 

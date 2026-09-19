@@ -19,7 +19,7 @@ import * as vscode from 'vscode';
 import fs from 'node:fs';
 import path from 'node:path';
 import { injectProbeClient, type ProbeHostMessage, type ProbeWebviewMessage } from './probeClient.js';
-import { planEndpointEdits, planPlacementEdits } from './layoutEdits.js';
+import { planEndpointEdits, planPlacementEdits, planTextEdits } from './layoutEdits.js';
 import { parseSourceLocation } from './sourceRef.js';
 import type { BoardDataService } from './boardData.js';
 
@@ -493,6 +493,7 @@ export class BoardViewerPanel {
    */
   private async onLayoutRebuild(
     moves: Array<{ ref: string; dx: number; dy: number; rot?: number; pads?: Array<{ x: number; y: number }> }>,
+    texts?: Array<{ text0: string; x0: number; y0: number; text: string; x: number; y: number; rot: number }>,
   ): Promise<void> {
     const folder = this.hwFolder();
     const fail = (error: string): void => {
@@ -568,8 +569,38 @@ export class BoardViewerPanel {
           skipped.push(`${move.ref} (no \`${variableOf.get(move.ref) ?? move.ref}\`.pcb literal found)`);
         }
       }
+      // silk/fab text edits: .text({ … }) literals matched by authored
+      // value + anchor, rewritten with the new value/position/rotation
+      let textsEdited = 0;
+      const textsDone = new Set<string>();
+      for (const uri of srcFiles) {
+        const pendingTexts = (texts ?? []).filter((t) => !textsDone.has(`${t.text0}@${t.x0},${t.y0}`));
+        if (pendingTexts.length === 0) continue;
+        const doc = await vscode.workspace.openTextDocument(uri);
+        const text = doc.getText();
+        const plannedTexts = planTextEdits(text, pendingTexts);
+        for (const sk of plannedTexts.skipped) {
+          if (srcFiles.length > 1) continue; // final once every file is tried
+          skipped.push(`${sk.ref} (${sk.reason})`);
+        }
+        if (plannedTexts.edits.length === 0) continue;
+        for (const edit of plannedTexts.edits) {
+          edits.replace(
+            uri,
+            new vscode.Range(doc.positionAt(edit.start), doc.positionAt(edit.end)),
+            edit.line,
+          );
+          textsEdited++;
+        }
+        for (const t of pendingTexts) textsDone.add(`${t.text0}@${t.x0},${t.y0}`);
+        touched.add(uri.toString());
+      }
+      for (const t of texts ?? []) {
+        if (!textsDone.has(`${t.text0}@${t.x0},${t.y0}`) && srcFiles.length <= 1)
+          skipped.push(`text "${t.text0}" (no .text({…}) literal matches its authored value/anchor)`);
+      }
       const applied = appliedRefs.size;
-      if (applied > 0 || endpointsMoved > 0) {
+      if (applied > 0 || endpointsMoved > 0 || textsEdited > 0) {
         await vscode.workspace.applyEdit(edits);
         for (const key of touched) {
           const doc = await vscode.workspace.openTextDocument(vscode.Uri.parse(key));
@@ -577,12 +608,12 @@ export class BoardViewerPanel {
         }
       }
       this.output.appendLine(
-        `layout apply: ${applied} placement(s) moved${endpointsMoved ? `, ${endpointsMoved} route endpoint(s) translated` : ''}${skipped.length ? `, skipped ${skipped.join('; ')}` : ''} — rebuilding`,
+        `layout apply: ${applied} placement(s) moved${endpointsMoved ? `, ${endpointsMoved} route endpoint(s) translated` : ''}${textsEdited ? `, ${textsEdited} text(s) edited` : ''}${skipped.length ? `, skipped ${skipped.join('; ')}` : ''} — rebuilding`,
       );
       if (skipped.length) {
         vscode.window.setStatusBarMessage(`layout: skipped ${skipped.join('; ')}`, 8000);
       }
-      if (applied === 0) {
+      if (applied === 0 && textsEdited === 0) {
         void this.panel?.webview.postMessage({ type: 'typecad/layout-status', error: undefined });
         return;
       }
@@ -606,7 +637,7 @@ export class BoardViewerPanel {
 
   private async onMessage(message: ProbeWebviewMessage): Promise<void> {
     if (message.type === 'typecad/layout-rebuild') {
-      await this.onLayoutRebuild(message.moves);
+      await this.onLayoutRebuild(message.moves, message.texts);
       return;
     }
     if (message.type === 'typecad/ready') {

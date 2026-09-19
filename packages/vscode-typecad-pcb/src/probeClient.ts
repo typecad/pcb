@@ -52,12 +52,29 @@ export function outlineData(components: ComponentSummary[]): OutlineComponent[] 
 }
 
 /** Webview↔extension message types. */
+/** one silk/fab gr_text edit from the layout view (all values board frame) */
+export interface LayoutTextEdit {
+  /** authored text + anchor the source .text({...}) literal is matched by */
+  text0: string;
+  x0: number;
+  y0: number;
+  /** final value + anchor (unedited fields carry the authored value) */
+  text: string;
+  x: number;
+  y: number;
+  rot: number;
+}
+
 export type ProbeWebviewMessage =
   | { type: 'typecad/ready' }
   | { type: 'typecad/ack'; ref: string; token?: number; found?: boolean }
   | { type: 'typecad/probe'; ref: string; pin?: string }
   | { type: 'typecad/probe-net'; net: string; source?: string }
-  | { type: 'typecad/layout-rebuild'; moves: Array<{ ref: string; dx: number; dy: number; rot?: number; pads?: Array<{ x: number; y: number }> }> };
+  | {
+      type: 'typecad/layout-rebuild';
+      moves: Array<{ ref: string; dx: number; dy: number; rot?: number; pads?: Array<{ x: number; y: number }> }>;
+      texts?: LayoutTextEdit[];
+    };
 export type ProbeHostMessage =
   | { type: 'typecad/select'; ref: string; token?: number }
   | { type: 'typecad/select-net'; net: string; token?: number }
@@ -152,9 +169,9 @@ const PROBE_CLIENT = `<script>
   // Layout view: the page hands moved-component deltas to the host, which
   // edits the placement literals, rebuilds, and regenerates this viewer
   var layoutCb = null;
-  window.typecadLayoutApply = function (moves, cb) {
+  window.typecadLayoutApply = function (moves, texts, cb) {
     layoutCb = cb || null;
-    send({ type: 'typecad/layout-rebuild', moves: moves });
+    send({ type: 'typecad/layout-rebuild', moves: moves, texts: texts || [] });
   };
 
   window.addEventListener('message', function (ev) {

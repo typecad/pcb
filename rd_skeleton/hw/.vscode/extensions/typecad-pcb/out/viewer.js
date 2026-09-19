@@ -491,7 +491,7 @@ class BoardViewerPanel {
      * Computed (non-literal) placements are skipped and reported, never
      * silently mangled.
      */
-    async onLayoutRebuild(moves) {
+    async onLayoutRebuild(moves, texts) {
         const folder = this.hwFolder();
         const fail = (error) => {
             this.output.appendLine(`layout apply failed: ${error}`);
@@ -564,19 +564,49 @@ class BoardViewerPanel {
                     skipped.push(`${move.ref} (no \`${variableOf.get(move.ref) ?? move.ref}\`.pcb literal found)`);
                 }
             }
+            // silk/fab text edits: .text({ … }) literals matched by authored
+            // value + anchor, rewritten with the new value/position/rotation
+            let textsEdited = 0;
+            const textsDone = new Set();
+            for (const uri of srcFiles) {
+                const pendingTexts = (texts ?? []).filter((t) => !textsDone.has(`${t.text0}@${t.x0},${t.y0}`));
+                if (pendingTexts.length === 0)
+                    continue;
+                const doc = await vscode.workspace.openTextDocument(uri);
+                const text = doc.getText();
+                const plannedTexts = (0, layoutEdits_js_1.planTextEdits)(text, pendingTexts);
+                for (const sk of plannedTexts.skipped) {
+                    if (srcFiles.length > 1)
+                        continue; // final once every file is tried
+                    skipped.push(`${sk.ref} (${sk.reason})`);
+                }
+                if (plannedTexts.edits.length === 0)
+                    continue;
+                for (const edit of plannedTexts.edits) {
+                    edits.replace(uri, new vscode.Range(doc.positionAt(edit.start), doc.positionAt(edit.end)), edit.line);
+                    textsEdited++;
+                }
+                for (const t of pendingTexts)
+                    textsDone.add(`${t.text0}@${t.x0},${t.y0}`);
+                touched.add(uri.toString());
+            }
+            for (const t of texts ?? []) {
+                if (!textsDone.has(`${t.text0}@${t.x0},${t.y0}`) && srcFiles.length <= 1)
+                    skipped.push(`text "${t.text0}" (no .text({…}) literal matches its authored value/anchor)`);
+            }
             const applied = appliedRefs.size;
-            if (applied > 0 || endpointsMoved > 0) {
+            if (applied > 0 || endpointsMoved > 0 || textsEdited > 0) {
                 await vscode.workspace.applyEdit(edits);
                 for (const key of touched) {
                     const doc = await vscode.workspace.openTextDocument(vscode.Uri.parse(key));
                     await doc.save();
                 }
             }
-            this.output.appendLine(`layout apply: ${applied} placement(s) moved${endpointsMoved ? `, ${endpointsMoved} route endpoint(s) translated` : ''}${skipped.length ? `, skipped ${skipped.join('; ')}` : ''} — rebuilding`);
+            this.output.appendLine(`layout apply: ${applied} placement(s) moved${endpointsMoved ? `, ${endpointsMoved} route endpoint(s) translated` : ''}${textsEdited ? `, ${textsEdited} text(s) edited` : ''}${skipped.length ? `, skipped ${skipped.join('; ')}` : ''} — rebuilding`);
             if (skipped.length) {
                 vscode.window.setStatusBarMessage(`layout: skipped ${skipped.join('; ')}`, 8000);
             }
-            if (applied === 0) {
+            if (applied === 0 && textsEdited === 0) {
                 void this.panel?.webview.postMessage({ type: 'typecad/layout-status', error: undefined });
                 return;
             }
@@ -600,7 +630,7 @@ class BoardViewerPanel {
     }
     async onMessage(message) {
         if (message.type === 'typecad/layout-rebuild') {
-            await this.onLayoutRebuild(message.moves);
+            await this.onLayoutRebuild(message.moves, message.texts);
             return;
         }
         if (message.type === 'typecad/ready') {

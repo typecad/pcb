@@ -156,3 +156,98 @@ export function applyPlacementEdits(text: string, edits: PlacementEdit[]): strin
   for (const edit of sorted) out = out.slice(0, edit.start) + edit.line + out.slice(edit.end);
   return out;
 }
+
+// ---------------------------------------------------------------------------
+// Silk/fab text edits (gr_text — the pcb.text() API): a `.text({ … })` call
+// literal is matched by its authored value + x/y anchor, then rewritten with
+// the new value/anchor/rotation. Literals only; nested-object props (justify)
+// are skipped over, not parsed.
+// ---------------------------------------------------------------------------
+
+export interface TextEditInput {
+  /** authored text + anchor (board frame) the source literal is matched by */
+  text0: string;
+  x0: number;
+  y0: number;
+  /** final value + anchor (board frame); rot = accumulated 90° presses */
+  text: string;
+  x: number;
+  y: number;
+  rot: number;
+}
+
+/** Find the balanced `{ … }` object literal starting at/after the call head. */
+function objectLiteralRange(text: string, head: number): { head: number; open: number; close: number } | null {
+  const open = text.indexOf('{', head);
+  if (open === -1) return null;
+  let depth = 0;
+  for (let i = open; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === '{') depth++;
+    else if (ch === '}') {
+      depth--;
+      if (depth === 0) return { head, open, close: i };
+    }
+  }
+  return null;
+}
+
+/**
+ * Compute the `.text({ … })` literal rewrites for `edits` against one source
+ * document. A call matches an edit when its x/y literals sit within 0.05 mm
+ * of the authored anchor and its text literal equals the authored value.
+ */
+export function planTextEdits(text: string, edits: TextEditInput[]): LayoutEditResult {
+  const planned: PlacementEdit[] = [];
+  const skipped: Array<{ ref: string; reason: string }> = [];
+  const used = new Set<number>();
+  const callRe = /\.text\s*\(/g;
+  let match: RegExpExecArray | null;
+  while ((match = callRe.exec(text)) !== null) {
+    const range = objectLiteralRange(text, match.index);
+    if (!range) continue;
+    const inner = text.slice(range.open + 1, range.close);
+    const xNum = /\bx\s*:\s*(-?[\d.]+)/.exec(inner);
+    const yNum = /\by\s*:\s*(-?[\d.]+)/.exec(inner);
+    const tNum = /\btext\s*:\s*(['"])((?:\\.|(?!\1).)*)\1/.exec(inner);
+    if (!xNum || !yNum || !tNum) continue;
+    const cx = parseFloat(xNum[1]);
+    const cy = parseFloat(yNum[1]);
+    const ctext = tNum[2];
+    const edit = edits.find(
+      (e, i) =>
+        !used.has(i) &&
+        e.text0 === ctext &&
+        Math.abs(e.x0 - cx) < 0.05 &&
+        Math.abs(e.y0 - cy) < 0.05,
+    );
+    if (!edit) continue;
+    used.add(edits.indexOf(edit));
+    let newInner = inner;
+    if (edit.text !== ctext) {
+      const esc = edit.text.replace(/\\/g, '\\\\').replace(/\n/g, '\\n');
+      newInner = newInner.replace(tNum[0], () => `text: ${tNum[1]}${esc}${tNum[1]}`);
+    }
+    if (edit.x !== cx) newInner = newInner.replace(/\bx\s*:\s*-?[\d.]+/, `x: ${fmt(edit.x)}`);
+    if (edit.y !== cy) newInner = newInner.replace(/\by\s*:\s*-?[\d.]+/, `y: ${fmt(edit.y)}`);
+    // rotation accumulates onto the literal like placements (absent = 0)
+    if (edit.rot) {
+      const rotNum = /\brotation\s*:\s*(-?[\d.]+)/.exec(inner);
+      const newRot = (rotNum ? parseFloat(rotNum[1]) : 0) + edit.rot;
+      if (rotNum) newInner = newInner.replace(/\brotation\s*:\s*-?[\d.]+/, `rotation: ${fmt(newRot)}`);
+      else newInner = `${newInner.trimEnd()}, rotation: ${fmt(newRot)} `;
+    }
+    planned.push({
+      ref: `text "${edit.text0}"`,
+      // exactly the call's object literal, nothing beyond
+      line: `${text.slice(match.index, range.open + 1)}${newInner}}`,
+      start: match.index,
+      end: range.close + 1,
+    });
+  }
+  for (let i = 0; i < edits.length; i++) {
+    if (!used.has(i))
+      skipped.push({ ref: `text "${edits[i]!.text0}"`, reason: 'no .text({…}) literal matches its authored value/anchor' });
+  }
+  return { edits: planned, skipped };
+}

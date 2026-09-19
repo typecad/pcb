@@ -114,6 +114,7 @@ export function parseGerber(source: string, options: ParseGerberOptions = {}): G
   // until %TD clears them; they ride on the ops for net/component tooling.
   let objAttrs: { net?: string; ref?: string; pin?: string } = {};
   let regionNet: string | undefined;
+  let regionRef: string | undefined;
 
   const finishTrace = () => {
     if (trace && trace.segments.length > 0) image.ops.push(trace);
@@ -126,7 +127,7 @@ export function parseGerber(source: string, options: ParseGerberOptions = {}): G
   const finishRegion = () => {
     finishContour();
     if (contours.length > 0) {
-      image.ops.push({ type: 'region', polarity, contours, net: regionNet });
+      image.ops.push({ type: 'region', polarity, contours, net: regionNet, ref: regionRef });
     }
     contours = [];
   };
@@ -299,6 +300,7 @@ export function parseGerber(source: string, options: ParseGerberOptions = {}): G
             contours = [];
             contour = null;
             regionNet = objAttrs.net;
+            regionRef = objAttrs.ref;
             break;
           case 37:
             if (inRegion) {
@@ -357,7 +359,7 @@ export function parseGerber(source: string, options: ParseGerberOptions = {}): G
                   next = {};
                   continue;
                 }
-                trace = { type: 'trace', polarity, aperture, from: point, segments: [], net: objAttrs.net };
+                trace = { type: 'trace', polarity, aperture, from: point, segments: [], net: objAttrs.net, ref: objAttrs.ref };
               }
             }
             const segment = buildSegment(point, target, next);

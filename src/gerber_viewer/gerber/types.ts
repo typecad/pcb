@@ -95,6 +95,8 @@ export type DrawOp =
       segments: PathSegment[];
       /** X2 object attribute %TO.N, when the plotter stated it. */
       net?: string;
+      /** X2 object attribute %TO.C (footprint outlines on fab/courtyard/silk). */
+      ref?: string;
     }
   | {
       type: 'flash';
@@ -106,7 +108,7 @@ export type DrawOp =
       ref?: string;
       pin?: string;
     }
-  | { type: 'region'; polarity: Polarity; contours: RegionContour[]; net?: string };
+  | { type: 'region'; polarity: Polarity; contours: RegionContour[]; net?: string; ref?: string };
 
 export interface RegionContour {
   start: Point;

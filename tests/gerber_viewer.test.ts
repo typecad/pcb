@@ -696,4 +696,150 @@ describe('layout view (component overlay from the gerbers)', () => {
     expect(html).toContain("routesProv[rpk.toLowerCase()] = rawRt.nets[rpk];");
     expect(html).toContain("if (pr && pr.provenance !== 'auto') traces[t2].setAttribute('stroke-dasharray', '4 2.2');");
   });
+
+  it('draws the drag handle as the exact footprint outline when one is carried', () => {
+    const html = buildViewerHtml(svg, [info], {
+      title: 'demo board',
+      pcbaSvg: '<svg/>',
+      layoutComponents: [
+        {
+          ...layoutComponents[0]!,
+          outline: [
+            { x: -1.3, y: -0.55 },
+            { x: 1.3, y: -0.55 },
+            { x: 1.3, y: 0.55 },
+            { x: -1.3, y: 0.55 },
+          ],
+        },
+      ],
+    });
+    expect(html).toContain("createElementNS(SVGNSL, 'polygon')");
+    expect(html).toContain("poly.setAttribute('points', pts.join(' '))");
+    expect(html).toContain('"outline":[{"x":-1.3,"y":-0.55}');
+    // the generic rounded box stays as the fallback for outline-less data
+    expect(html).toContain("createElementNS(SVGNSL, 'rect')");
+    expect(html).toContain('#layout-overlay .layout-comp polygon');
+  });
+
+  it('moves the whole footprint with the handle (ghost) and never greys pads', () => {
+    const html = buildViewerHtml(svg, [info], { title: 'demo board', pcbaSvg: '<svg/>', layoutComponents });
+    expect(html).toContain('function applyCompGhost(g)');
+    expect(html).toContain('function compEls(ref)');
+    // drills carry no X2 attributes — they are claimed by matching pad centers
+    expect(html).toContain('g[data-kind="drill"] circle');
+    // footprints travel bright; only un-attributed routing greys out
+    expect(html).toContain("if (netEls[re].getAttribute('data-ref')) continue;");
+  });
+
+  it('derives handles from the fab contour (chamfers kept) and the pad-land hull', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gelayout-'));
+    // R1: two 1.2x0.8 pads at (3,3)/(5.2,3); U2: same, far right; U3: same
+    // pads stacked vertically -> PCA angle 90 (frame-rotation coverage)
+    const copper = `%FSLAX36Y36*%
+%MOMM*%
+%ADD10R,1.2X0.8*%
+%ADD12R,0.6X1.4*%
+D10*
+%TO.P,R1,1*%
+X3000000Y3000000D03*
+%TD*%
+%TO.P,R1,2*%
+X5200000Y3000000D03*
+%TD*%
+%TO.P,U2,1*%
+X10000000Y3000000D03*
+%TD*%
+%TO.P,U2,2*%
+X12200000Y3000000D03*
+%TD*%
+D12*
+%TO.P,U3,1*%
+X20000000Y3000000D03*
+%TD*%
+%TO.P,U3,2*%
+X20000000Y5200000D03*
+%TD*%
+M02*
+`;
+    // R1's body outline on Fab: 2.6 x 1.1 with a chamfer at the pin-1 corner
+    // (the exact-quirk case the rounded box could never show) — %TO.C makes
+    // every outline stroke addressable as R1's own ink
+    const fab = `%FSLAX36Y36*%
+%MOMM*%
+%ADD10C,0.12*%
+D10*
+%TO.C,R1*%
+X5400000Y3550000D02*
+X3300000Y3550000D01*
+X2800000Y3050000D01*
+X2800000Y2450000D01*
+X5400000Y2450000D01*
+X5400000Y3550000D01*
+%TD*%
+M02*
+`;
+    const netlist = `(export (version "E")
+  (components
+    (comp (ref "R1") (footprint "Resistor_SMD:R_0603_1608Metric"))
+    (comp (ref "U2") (footprint "Resistor_SMD:R_0603_1608Metric"))
+    (comp (ref "U3") (footprint "Resistor_SMD:R_0603_1608Metric"))
+  )
+  (nets
+    (net (code "1") (name "VCC") (node (ref "R1") (pin "1")) (node (ref "U2") (pin "1")) (node (ref "U3") (pin "1")))
+    (net (code "2") (name "GND") (node (ref "R1") (pin "2")) (node (ref "U2") (pin "2")) (node (ref "U3") (pin "2")))
+  )
+)
+`;
+    fs.writeFileSync(path.join(dir, 'demo-F_Cu.gbr'), copper);
+    fs.writeFileSync(path.join(dir, 'demo-F_Fab.gbr'), fab);
+    fs.writeFileSync(path.join(dir, 'demo-Edge_Cuts.gbr'), read('edge.gbr'));
+    fs.writeFileSync(path.join(dir, 'demo.net'), netlist);
+
+    const result = buildViewerFromFiles([dir], { title: 'demo', netlistPath: path.join(dir, 'demo.net') });
+    fs.rmSync(dir, { recursive: true, force: true });
+    const json = /<script id="layout-comps" type="application\/json">([\s\S]*?)<\/script>/.exec(result.html)![1]!;
+    const comps = JSON.parse(json) as Array<{
+      ref: string;
+      x: number;
+      y: number;
+      rot: number;
+      w: number;
+      h: number;
+      outline?: Array<{ x: number; y: number }>;
+    }>;
+    const r1 = comps.find((c) => c.ref === 'R1')!;
+    const u2 = comps.find((c) => c.ref === 'U2')!;
+    const u3 = comps.find((c) => c.ref === 'U3')!;
+    expect(r1).toBeDefined();
+    expect(u2).toBeDefined();
+    expect(u3).toBeDefined();
+
+    // R1 rides the fab contour: 5 corners (the chamfer survives), sized to
+    // the body, centered on the pads-bbox center (4.1, 3) in its local frame
+    expect(r1.outline).toBeDefined();
+    expect(r1.outline!.length).toBeGreaterThanOrEqual(5);
+    expect(r1.w).toBeCloseTo(2.6, 1);
+    expect(r1.h).toBeCloseTo(1.1, 1);
+    for (const p of r1.outline!) {
+      expect(Math.abs(p.x)).toBeLessThanOrEqual(1.35);
+      expect(Math.abs(p.y)).toBeLessThanOrEqual(0.6);
+    }
+
+    // U2 (no fab content assigned) falls back to the land-pattern hull:
+    // exactly 4 corners spanning pads + pad sizes (2.2 pitch + 1.2 x 0.8)
+    expect(u2.outline).toHaveLength(4);
+    expect(u2.w).toBeCloseTo(3.4, 2);
+    expect(u2.h).toBeCloseTo(0.8, 2);
+
+    // U3 sits at PCA angle 90: the hull must be long along the group's LOCAL
+    // x (the gerber y-span rotates into it) — pad extents transpose too
+    expect(u3.rot).toBeCloseTo(90, 0);
+    expect(u3.outline).toHaveLength(4);
+    expect(u3.w).toBeCloseTo(3.6, 2); // 2.2 pitch + 1.4 pad long side
+    expect(u3.h).toBeCloseTo(0.6, 2);
+
+    // %TO.C rides the Fab outline strokes too — the whole footprint (not
+    // just pad flashes) is addressable, so a move can carry every layer
+    expect(result.html).toMatch(/<path[^>]*data-ref="R1"[^>]*fill="none"/);
+  });
 });

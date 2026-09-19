@@ -52,6 +52,13 @@ export interface ViewerOptions {
     h: number;
     side: 'front' | 'back';
     nets: string[];
+    /**
+     * exact footprint outline in the component's local frame (origin x/y,
+     * rotated by `rot`): the Fab-layer contour when the gerbers carry one,
+     * else the convex hull of the pad land pattern. The drag handle draws
+     * this polygon instead of a generic rounded box.
+     */
+    outline?: Array<{ x: number; y: number }>;
     /** pad centers in the gerber frame — sticky route endpoints on apply */
     pads?: Array<{ x: number; y: number; net?: string }>;
   }>;
@@ -1478,6 +1485,65 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     g.__lx = x;
     g.__ly = y;
   }
+  // the moved component's whole footprint ink — pads, mask/paste openings,
+  // fab/courtyard/silkscreen outlines (all carry data-ref from the X2
+  // attributes) plus its drill hits, which carry no attributes of their own
+  // and are matched to the component's pad centers (KiCad centers drills
+  // on pads)
+  function compEls(ref) {
+    if (!viewGroups.gerber) return [];
+    var els = [];
+    var all = viewGroups.gerber.querySelectorAll('[data-ref="' + cssEsc(ref) + '"]');
+    for (var ce = 0; ce < all.length; ce++) {
+      var el = all[ce];
+      // the overlay's own handles carry data-ref too — they must not move
+      if (el.closest && el.closest('#layout-overlay')) continue;
+      if (el.__layoutTr0 === undefined) el.__layoutTr0 = el.getAttribute('transform');
+      els.push(el);
+    }
+    var c = null;
+    for (var lc4 = 0; lc4 < layoutComps.length && !c; lc4++)
+      if (layoutComps[lc4].ref === ref) c = layoutComps[lc4];
+    if (c && c.pads) {
+      var drills = viewGroups.gerber.querySelectorAll('g[data-kind="drill"] circle');
+      for (var dr = 0; dr < drills.length; dr++) {
+        var dc = drills[dr];
+        if (dc.getAttribute('data-ref')) continue; // claimed by a component
+        var dcx = parseFloat(dc.getAttribute('cx'));
+        var dcy = parseFloat(dc.getAttribute('cy'));
+        if (!isFinite(dcx) || !isFinite(dcy)) continue;
+        for (var dp = 0; dp < c.pads.length; dp++) {
+          if (Math.hypot(dcx - c.pads[dp].x, dcy - c.pads[dp].y) <= 0.35) {
+            dc.setAttribute('data-ref', ref);
+            if (dc.__layoutTr0 === undefined) dc.__layoutTr0 = dc.getAttribute('transform');
+            els.push(dc);
+            break;
+          }
+        }
+      }
+    }
+    return els;
+  }
+  // transform every footprint element from its ORIGINAL position to the
+  // handle's current one — move + rotate about the new center, the same
+  // math the handle group itself uses, so ink and outline never diverge
+  function applyCompGhost(g) {
+    if (!g.__ghostEls) g.__ghostEls = compEls(g.__lc.ref);
+    var c = g.__lc;
+    var dx = +(g.__lx - c.x).toFixed(4);
+    var dy = +(g.__ly - c.y).toFixed(4);
+    var a = ((layoutRot[c.ref] || 0) * 90) % 360;
+    var tr =
+      dx || dy || a
+        ? 'rotate(' + a + ',' + +g.__lx.toFixed(4) + ',' + +g.__ly.toFixed(4) + ') translate(' + dx + ',' + dy + ')'
+        : '';
+    for (var ge = 0; ge < g.__ghostEls.length; ge++) {
+      var el2 = g.__ghostEls[ge];
+      if (tr) el2.setAttribute('transform', tr);
+      else if (el2.__layoutTr0 === null || el2.__layoutTr0 === undefined) el2.removeAttribute('transform');
+      else el2.setAttribute('transform', el2.__layoutTr0);
+    }
+  }
   function markLayoutSel() {
     if (!layoutOverlay) return;
     var all = layoutOverlay.querySelectorAll('.layout-comp');
@@ -1509,22 +1575,37 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       g.setAttribute('pointer-events', 'all');
       g.setAttribute('cursor', 'move');
       g.__lc = c;
-      var rect = document.createElementNS(SVGNSL, 'rect');
-      rect.setAttribute('x', (-c.w / 2).toFixed(3));
-      rect.setAttribute('y', (-c.h / 2).toFixed(3));
-      rect.setAttribute('width', c.w.toFixed(3));
-      rect.setAttribute('height', c.h.toFixed(3));
-      rect.setAttribute('rx', '0.3');
+      var labelY = -c.h / 2 - 0.55;
+      if (c.outline && c.outline.length >= 3) {
+        // the exact footprint outline — fab contour (chamfers preserved) or
+        // the pad-land hull, authored in this group's local frame
+        var poly = document.createElementNS(SVGNSL, 'polygon');
+        var pts = [];
+        for (var oi = 0; oi < c.outline.length; oi++) {
+          var op = c.outline[oi];
+          pts.push(op.x.toFixed(3) + ',' + op.y.toFixed(3));
+          if (op.y - 0.55 < labelY) labelY = op.y - 0.55;
+        }
+        poly.setAttribute('points', pts.join(' '));
+        g.appendChild(poly);
+      } else {
+        var rect = document.createElementNS(SVGNSL, 'rect');
+        rect.setAttribute('x', (-c.w / 2).toFixed(3));
+        rect.setAttribute('y', (-c.h / 2).toFixed(3));
+        rect.setAttribute('width', c.w.toFixed(3));
+        rect.setAttribute('height', c.h.toFixed(3));
+        rect.setAttribute('rx', '0.3');
+        g.appendChild(rect);
+      }
       var label = document.createElementNS(SVGNSL, 'text');
       label.setAttribute('class', 'layout-ref');
       label.setAttribute('y', '0');
       label.setAttribute('text-anchor', 'middle');
       label.setAttribute(
         'transform',
-        'translate(0,' + (-c.h / 2 - 0.55).toFixed(3) + ') scale(1,-1)',
+        'translate(0,' + labelY.toFixed(3) + ') scale(1,-1)',
       );
       label.textContent = c.ref;
-      g.appendChild(rect);
       g.appendChild(label);
       setCompPos(g, c.x, c.y);
       layoutOverlay.appendChild(g);
@@ -1550,6 +1631,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
           ny = Math.round(ny * 2) / 2;
         }
         setCompPos(g, nx, ny);
+        applyCompGhost(g); // the whole footprint drags along, like KiCad
         moved = true;
         if (statusEl && !statusLocked())
           statusEl.textContent = g.__lc.ref + ' \u2192 ' + nx.toFixed(2) + ', ' + (-ny).toFixed(2) + ' mm';
@@ -1573,16 +1655,20 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   function commitLayoutMove(g) {
     var c = g.__lc;
     layoutMoves[c.ref] = { x: g.__lx, y: g.__ly, x0: c.x, y0: c.y, rot: layoutRot[c.ref] || 0 };
-    // rip up: every trace/via on the component's nets, and its own pads,
-    // grey out until a rebuild regenerates them at the new position
+    // the whole footprint travels with the move — pads, mask/paste, fab,
+    // courtyard, silkscreen and drills land at the new position, bright,
+    // exactly like KiCad; nothing of the part lingers at the old spot
+    applyCompGhost(g);
+    // rip up: the net's ROUTING greys out until a rebuild regenerates it —
+    // traces and vias only. Footprints never grey: each part's pads belong
+    // to its own (possibly moving) footprint, so data-ref elements are left
+    // alone whether they just moved or belong to a neighbor
     for (var rn = 0; rn < c.nets.length; rn++) {
       var netEls = viewGroups.gerber.querySelectorAll('[data-net="' + cssEsc(c.nets[rn]) + '"]');
-      for (var re = 0; re < netEls.length; re++) ripUpEl(netEls[re]);
-    }
-    var padEls = viewGroups.gerber.querySelectorAll('[data-ref="' + cssEsc(c.ref) + '"]');
-    for (var rp = 0; rp < padEls.length; rp++) {
-      // the overlay's own boxes carry data-ref too — they must stay bright
-      if (!padEls[rp].closest || !padEls[rp].closest('#layout-overlay')) ripUpEl(padEls[rp]);
+      for (var re = 0; re < netEls.length; re++) {
+        if (netEls[re].getAttribute('data-ref')) continue;
+        ripUpEl(netEls[re]);
+      }
     }
     renderLayoutMoves();
     refreshLayoutWarnings();
@@ -1619,7 +1705,17 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     if (layoutOverlay) {
       for (var lc2 = 0; lc2 < layoutComps.length; lc2++) {
         var gEl = layoutOverlay.querySelector('[data-ref="' + cssEsc(layoutComps[lc2].ref) + '"]');
-        if (gEl) setCompPos(gEl, layoutComps[lc2].x, layoutComps[lc2].y);
+        if (!gEl) continue;
+        // footprints return to their authored positions
+        if (gEl.__ghostEls) {
+          for (var gr2 = 0; gr2 < gEl.__ghostEls.length; gr2++) {
+            var gel = gEl.__ghostEls[gr2];
+            if (gel.__layoutTr0 === null || gel.__layoutTr0 === undefined) gel.removeAttribute('transform');
+            else gel.setAttribute('transform', gel.__layoutTr0);
+          }
+          gEl.__ghostEls = null;
+        }
+        setCompPos(gEl, layoutComps[lc2].x, layoutComps[lc2].y);
       }
     }
     renderLayoutMoves();
@@ -3212,12 +3308,17 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   #layout-buttons button:disabled, #layout-tools button:disabled { opacity: 0.5; cursor: default; }
   #layout-tools { display: flex; gap: 6px; margin-bottom: 6px; }
   #layout-warn { color: #d29922; font-size: 11px; line-height: 1.5; margin-bottom: 6px; word-break: break-word; }
-  #layout-overlay .layout-comp.layout-warn rect { stroke: #d29922; }
+  #layout-overlay .layout-comp.layout-warn rect,
+  #layout-overlay .layout-comp.layout-warn polygon { stroke: #d29922; }
   #layout-ratsnest line { stroke: #d29922; stroke-width: 0.08; stroke-dasharray: 0.8 0.5; opacity: 0.85; }
-  #layout-overlay .layout-comp rect { fill: rgba(56,132,255,0.10); stroke: #3884ff; stroke-width: 0.15; }
-  #layout-overlay .layout-comp.layout-back rect { stroke: #b06bd6; fill: rgba(176,107,214,0.10); }
-  #layout-overlay .layout-comp:hover rect { fill: rgba(56,132,214,0.28); }
-  #layout-overlay .layout-comp.layout-sel rect { stroke: #ffffff; }
+  #layout-overlay .layout-comp rect,
+  #layout-overlay .layout-comp polygon { fill: rgba(56,132,255,0.10); stroke: #3884ff; stroke-width: 0.15; stroke-linejoin: round; }
+  #layout-overlay .layout-comp.layout-back rect,
+  #layout-overlay .layout-comp.layout-back polygon { stroke: #b06bd6; fill: rgba(176,107,214,0.10); }
+  #layout-overlay .layout-comp:hover rect,
+  #layout-overlay .layout-comp:hover polygon { fill: rgba(56,132,214,0.28); }
+  #layout-overlay .layout-comp.layout-sel rect,
+  #layout-overlay .layout-comp.layout-sel polygon { stroke: #ffffff; }
   #layout-overlay .layout-ref { fill: #9fc4ff; font-size: 1.6px; font-family: ui-monospace, monospace; }
   #flow-label { display: flex; align-items: center; gap: 6px; color: var(--chrome-fg); font-size: 11px; cursor: pointer; user-select: none; }
   #flow-speed-row { display: flex; align-items: center; gap: 6px; margin-top: 4px; }

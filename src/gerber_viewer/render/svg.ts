@@ -300,6 +300,9 @@ export function renderLayerInk(layer: RenderLayer, options: InkOptions): LayerIn
       if (!d) continue;
       const attrs = op.polarity === 'clear' ? cutAttrs() : ` stroke="${options.color}"`;
       const net = op.net ? ` data-net="${escapeXml(op.net)}"` : '';
+      // %TO.C component attributes ride on fab/courtyard/silk outline paths
+      // too — the layout view moves the whole footprint, not just its pads
+      const ref = op.ref ? ` data-ref="${escapeXml(op.ref)}"` : '';
       const caps = `stroke-linecap="${stroke.cap}" stroke-linejoin="${stroke.cap === 'round' ? 'round' : 'miter'}"`;
       // the real trace width always rides along — centerline styles thin
       // the visible stroke, and the thermal estimator needs the true value
@@ -313,7 +316,7 @@ export function renderLayerInk(layer: RenderLayer, options: InkOptions): LayerIn
         // marks it as a secondary layer so the viewer's mode recoloring
         // (electrical/thermal) leaves the indication intact.
         body.push(
-          `<path${attrs}${net} d="${d}" fill="none" stroke-width="${fmt(stroke.width)}"${wAttr} data-sub="1"${innerAttr} ${caps}/>`,
+          `<path${attrs}${net}${ref} d="${d}" fill="none" stroke-width="${fmt(stroke.width)}"${wAttr} data-sub="1"${innerAttr} ${caps}/>`,
         );
         const stripe = Math.min(0.1, stroke.width / 2);
         const sc = options.stripeColor ?? '#000000';
@@ -329,7 +332,7 @@ export function renderLayerInk(layer: RenderLayer, options: InkOptions): LayerIn
             );
         }
       } else {
-        body.push(`<path${attrs}${net} d="${d}" fill="none" stroke-width="${fmt(stroke.width)}"${wAttr} ${caps}/>`);
+        body.push(`<path${attrs}${net}${ref} d="${d}" fill="none" stroke-width="${fmt(stroke.width)}"${wAttr} ${caps}/>`);
       }
     } else {
       if (options.flashesOnly) continue;
@@ -337,15 +340,16 @@ export function renderLayerInk(layer: RenderLayer, options: InkOptions): LayerIn
       if (!d) continue;
       const attrs = op.polarity === 'clear' ? cutAttrs() : ` fill="${options.regionFill ?? options.color}"`;
       const net = op.net ? ` data-net="${escapeXml(op.net)}"` : '';
+      const ref = op.ref ? ` data-ref="${escapeXml(op.ref)}"` : '';
       const strokeAttrs = options.regionStroke
         ? ` stroke="${options.regionStroke.color}" stroke-width="${fmt(options.regionStroke.width)}"`
         : ' stroke="none"';
       if (op.polarity !== 'clear' && options.regionUnderlay) {
         body.push(
-          `<path fill="${options.regionUnderlay.color}" fill-opacity="${fmt(options.regionUnderlay.opacity)}"${net} d="${d}" fill-rule="evenodd" stroke="none"/>`,
+          `<path fill="${options.regionUnderlay.color}" fill-opacity="${fmt(options.regionUnderlay.opacity)}"${net}${ref} d="${d}" fill-rule="evenodd" stroke="none"/>`,
         );
       }
-      body.push(`<path${attrs}${net} d="${d}" fill-rule="evenodd"${strokeAttrs}/>`);
+      body.push(`<path${attrs}${net}${ref} d="${d}" fill-rule="evenodd"${strokeAttrs}/>`);
     }
   }
   return { defs, body, warnings };

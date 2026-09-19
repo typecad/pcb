@@ -3,9 +3,10 @@ import path from 'node:path';
 import { isList, nameOf, parse } from '../sexpr/index.js';
 import type { SExpr } from '../sexpr/types.js';
 import { detectLayer, finalizeAndSortLayers, type LayerInfo } from './detect_layer.js';
+import { rotatePoint } from './gerber/geometry.js';
 import { parseExcellon } from './gerber/parse_excellon.js';
 import { parseGerber } from './gerber/parse_gerber.js';
-import type { DrillImage, GerberImage } from './gerber/types.js';
+import type { DrillImage, GerberImage, Point } from './gerber/types.js';
 import { computeDrcMarkers, computeFabReport, type DrcMarker, type FabReport } from './report.js';
 import { DEFAULT_PCBA_THEME, PCBA_THEME_LABELS, PCBA_THEMES, type PcbaTheme } from './render/theme.js';
 import { discoverNetlist, parseNetlistComponents } from './netlist.js';
@@ -345,18 +346,84 @@ export function buildViewerFromFiles(paths: string[], options: ViewerBuildOption
         }
         const bw = c.bbox.maxX - c.bbox.minX;
         const bh = c.bbox.maxY - c.bbox.minY;
+        const cx = c.bbox.minX + bw / 2;
+        const cy = c.bbox.minY + bh / 2;
+        // the overlay group hangs off the pads-bbox center and carries the
+        // PCA angle as its base rotation, so outline points must ride in that
+        // same local frame (relative to the center, axes un-rotated) — then
+        // the drawn shape moves/rotates with the handle for free
+        const toGroup = (p: Point): Point => {
+          const r = rotatePoint(p, -c.angle, { x: cx, y: cy });
+          return { x: r.x - cx, y: r.y - cy };
+        };
+        let outline: Array<{ x: number; y: number }> | null = null;
+        if (c.fabContour && c.fabContour.length >= 3) {
+          // exact footprint outline: the fab contour is centered on the pad
+          // centroid in the part's own frame — unrotate to the gerber frame,
+          // then into the group frame (chamfers and all)
+          const centroid = {
+            x: c.pads.reduce((s, p) => s + p.at.x, 0) / c.pads.length,
+            y: c.pads.reduce((s, p) => s + p.at.y, 0) / c.pads.length,
+          };
+          outline = c.fabContour.map((p) =>
+            toGroup(rotatePoint({ x: p.x + centroid.x, y: p.y + centroid.y }, c.angle, centroid)),
+          );
+        } else if (c.pads.length >= 2) {
+          // no fab layer: the land pattern IS the footprint — convex hull of
+          // the pad rectangles (pad w/h are gerber-frame extents, so they
+          // transpose into the rotated frame like every other local shape)
+          const rot = (-c.angle * Math.PI) / 180;
+          const ca = Math.abs(Math.cos(rot));
+          const sa = Math.abs(Math.sin(rot));
+          const corners: Point[] = [];
+          for (const pad of c.pads) {
+            const at = toGroup(pad.at);
+            const ex = (ca * pad.w + sa * pad.h) / 2;
+            const ey = (sa * pad.w + ca * pad.h) / 2;
+            for (const [sx, sy] of [
+              [-1, -1],
+              [1, -1],
+              [1, 1],
+              [-1, 1],
+            ] as const)
+              corners.push({ x: at.x + sx * ex, y: at.y + sy * ey });
+          }
+          outline = convexHull(corners);
+        }
+        // the handle's extent follows the drawn outline (falls back to the
+        // footprint-name dims / pad bbox when neither outline exists)
+        let ow = c.bodyDims && c.bodyDims.w > 0.05 ? c.bodyDims.w : bw;
+        let oh = c.bodyDims && c.bodyDims.h > 0.05 ? c.bodyDims.h : bh;
+        if (outline && outline.length >= 3) {
+          let minX = Infinity;
+          let minY = Infinity;
+          let maxX = -Infinity;
+          let maxY = -Infinity;
+          for (const p of outline) {
+            minX = Math.min(minX, p.x);
+            minY = Math.min(minY, p.y);
+            maxX = Math.max(maxX, p.x);
+            maxY = Math.max(maxY, p.y);
+          }
+          ow = maxX - minX;
+          oh = maxY - minY;
+        }
         layoutComponents.push({
           ref: c.ref,
-          x: +(c.bbox.minX + bw / 2).toFixed(3),
-          y: +(c.bbox.minY + bh / 2).toFixed(3),
+          x: +cx.toFixed(3),
+          y: +cy.toFixed(3),
           rot: +c.angle.toFixed(1),
-          // footprint-name dims can be partial (a pitch without height) —
-          // fall back to the pad bbox per axis, with a floor so the box is
-          // never degenerate (a zero-height box makes rotation invisible)
-          w: +Math.max(c.bodyDims && c.bodyDims.w > 0.05 ? c.bodyDims.w : bw, 0.6).toFixed(2),
-          h: +Math.max(c.bodyDims && c.bodyDims.h > 0.05 ? c.bodyDims.h : bh, 0.6).toFixed(2),
+          // floor per axis so the box is never degenerate (a zero-height
+          // handle makes rotation invisible)
+          w: +Math.max(ow, 0.6).toFixed(2),
+          h: +Math.max(oh, 0.6).toFixed(2),
           side,
           nets,
+          // the exact footprint outline in the group's local frame — the
+          // drag handle draws this polygon instead of a generic rounded box
+          outline: outline && outline.length >= 3
+            ? outline.map((p) => ({ x: +p.x.toFixed(3), y: +p.y.toFixed(3) }))
+            : undefined,
           // pad centers ride along (gerber frame) — sticky route endpoints on
           // apply translate any .from/.to literal that sits on one of these,
           // and the ratsnest connects each pad's net to the surviving copper
@@ -472,4 +539,28 @@ function parseBoardOutline(content: string): { minX: number; minY: number; maxX:
   walk(tree);
   if (!Number.isFinite(minX)) return null;
   return { minX, minY, maxX, maxY };
+}
+
+/**
+ * Convex hull (Andrew monotone chain), collinear points dropped — the
+ * land-pattern outline fallback for layout-view drag handles.
+ */
+function convexHull(points: Point[]): Point[] {
+  const pts = [...points].sort((a, b) => a.x - b.x || a.y - b.y);
+  if (pts.length < 3) return pts;
+  const cross = (o: Point, a: Point, b: Point): number => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+  const lower: Point[] = [];
+  for (const p of pts) {
+    while (lower.length >= 2 && cross(lower[lower.length - 2]!, lower[lower.length - 1]!, p) <= 0) lower.pop();
+    lower.push(p);
+  }
+  const upper: Point[] = [];
+  for (let i = pts.length - 1; i >= 0; i--) {
+    const p = pts[i]!;
+    while (upper.length >= 2 && cross(upper[upper.length - 2]!, upper[upper.length - 1]!, p) <= 0) upper.pop();
+    upper.push(p);
+  }
+  upper.pop();
+  lower.pop();
+  return lower.concat(upper);
 }

@@ -5650,8 +5650,8 @@
   (segment (start 33.54 65.435) (end 33.54 66) (width 0.2) (locked no) (layer "F.Cu") (net 10) (uuid "c5f6c5d6-fb97-548c-9cb8-62652dcd120b"))
   (segment (start 50 38) (end 50.4 38) (width 0.2) (locked no) (layer "B.Cu") (net 3) (uuid "11b99010-0453-5ff4-8606-8b8a479ae7ca"))
   (segment (start 55 40) (end 55.4 40) (width 0.2) (locked no) (layer "B.Cu") (net 3) (uuid "1a1e67d6-175b-528b-a31c-487deb912d6d"))
-  (segment (start 16.795 25.418) (end 17 25.623) (width 0.3) (locked no) (layer "B.Cu") (net 1) (uuid "374b19a7-6222-539b-8f36-e10dea918519"))
-  (segment (start 17 25.623) (end 17 34) (width 0.3) (locked no) (layer "B.Cu") (net 1) (uuid "37754522-cc5f-5242-b55a-9ca61c844c82"))
+  (segment (start 16.795 25.418) (end 17 25.623) (width 0.2) (locked no) (layer "B.Cu") (net 1) (uuid "735f77e0-7f2f-5f03-a8db-c5ed0f97c4fc"))
+  (segment (start 17 25.623) (end 17 34) (width 0.2) (locked no) (layer "B.Cu") (net 1) (uuid "af554a6b-c7d4-550e-9270-f1ace907cd8e"))
   (gr_text "rd-skeleton" (at 62 80 0) (layer "F.SilkS") (uuid "3fe2d4ae-deb1-5817-9fda-cd138e2394cd") (effects (font (face "OCR A Std") (size 1.5 1.5)) (justify)))
   (
     zone

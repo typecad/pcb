@@ -99,14 +99,14 @@ typecad.assign(vcc, 'power');
 // visible heating in the thermal view (~21 °C rise vs the rated 10 °C)
 const VCCW = 0.3;
 const vccTrunk = new TrackBuilder(typecad, { net: 'VCC' })
-  .from({ x: 16.175, y: 18, layer: 'F.Cu', width: VCCW })
-  .to({ x: 16.8375, y: 19.7375, layer: 'F.Cu', width: VCCW })
-  .to({ x: 16.8375, y: 26, layer: 'F.Cu', width: VCCW })
-  .to({ x: 41, y: 26, layer: 'F.Cu', width: VCCW })
-  .to({ x: 57.5375, y: 26, layer: 'F.Cu', width: VCCW }); // R3 pin 1
+  .from({ x: 16.175, y: 18 }, 'F.Cu', VCCW)
+  .to({ x: 16.8375, y: 19.7375 }, 'F.Cu', VCCW)
+  .to({ x: 16.8375, y: 26 }, 'F.Cu', VCCW)
+  .to({ x: 41, y: 26 }, 'F.Cu', VCCW)
+  .to({ x: 57.5375, y: 26 }, 'F.Cu', VCCW); // R3 pin 1
 const vccToC2 = new TrackBuilder(typecad, { net: 'VCC' })
-  .from({ x: 41, y: 26, layer: 'F.Cu', width: VCCW })
-  .to({ x: 45, y: 34, layer: 'F.Cu', width: VCCW }); // C2 pin 1 (through-hole)
+  .from({ x: 41, y: 26 }, 'F.Cu', VCCW)
+  .to({ x: 45, y: 34 }, 'F.Cu', VCCW); // C2 pin 1 (through-hole)
 // ONE ground route for the whole net — every pad routed again lays another
 // parallel tree, and duplicate ground paths confound the flow/thermal
 // solvers' early development. Rated like the rail (1.5 A return).
@@ -172,8 +172,8 @@ const gndVias = [viaTie(50, 38), viaTie(55, 40)];
 const vccVia = new TrackBuilder(typecad, { net: 'VCC' })
   .from({ x: 16.795, y: 25.418, layer: 'F.Cu' })
   .via({ size: 0.35, drill: 0.15, powerInfo: { current: 1.5, maxTempRise: 10 } })
-  .to({ x: 17, y: 25.623, layer: 'B.Cu', width: VCCW })
-  .to({ x: 17, y: 34, layer: 'B.Cu', width: VCCW });
+  .to({ x: 17, y: 25.623 }, 'B.Cu', VCCW)
+  .to({ x: 17, y: 34 }, 'B.Cu', VCCW);
 
 typecad.create(
   r1, c1, l1, d1, d3, rf1, y1,
@@ -185,4 +185,3 @@ typecad.create(
   vccToC2,
   vccVia,
 );
- 

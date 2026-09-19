@@ -482,7 +482,98 @@ export class BoardViewerPanel {
     return this.generating;
   }
 
+  /**
+   * Layout view "apply & rebuild": move deltas arrive in the board (y-down)
+   * frame. Each moved ref resolves to its source variable (the board's
+   * "Code" property), its `<var>.pcb = { x, y, ... }` literal is rewritten
+   * by the delta, then the project rebuilds and the viewer regenerates.
+   * Computed (non-literal) placements are skipped and reported, never
+   * silently mangled.
+   */
+  private async onLayoutRebuild(moves: Array<{ ref: string; dx: number; dy: number }>): Promise<void> {
+    const folder = this.hwFolder();
+    const fail = (error: string): void => {
+      this.output.appendLine(`layout apply failed: ${error}`);
+      void this.panel?.webview.postMessage({ type: 'typecad/layout-status', error });
+    };
+    if (!folder || this.panel === null) {
+      fail('no typeCAD project found');
+      return;
+    }
+    try {
+      const comps = await this.service.components();
+      const variableOf = new Map(comps.map((c) => [c.reference, c.variable ?? '']));
+      const srcFiles = await vscode.workspace.findFiles(new vscode.RelativePattern(folder, 'src/**/*.ts'));
+      const edits = new vscode.WorkspaceEdit();
+      const touched = new Set<string>();
+      const skipped: string[] = [];
+      let applied = 0;
+      for (const move of moves) {
+        const variable = variableOf.get(move.ref);
+        if (!variable) {
+          skipped.push(`${move.ref} (no source variable)`);
+          continue;
+        }
+        const decl = new RegExp(`^([ \t]*)${variable}\.pcb\s*=\s*\{([^}]*)\}`, 'm');
+        let done = false;
+        for (const uri of srcFiles) {
+          const doc = await vscode.workspace.openTextDocument(uri);
+          const match = decl.exec(doc.getText());
+          if (!match) continue;
+          const inner = match[2];
+          const xNum = /\bx\s*:\s*(-?[\d.]+)/.exec(inner);
+          const yNum = /\by\s*:\s*(-?[\d.]+)/.exec(inner);
+          if (!xNum || !yNum) {
+            skipped.push(`${move.ref} (placement is computed, not a literal)`);
+            done = true;
+            break;
+          }
+          const nx = (parseFloat(xNum[1]) + move.dx).toFixed(3);
+          const ny = (parseFloat(yNum[1]) + move.dy).toFixed(3);
+          const newInner = inner.replace(/\bx\s*:\s*-?[\d.]+/, `x: ${nx}`).replace(/\by\s*:\s*-?[\d.]+/, `y: ${ny}`);
+          const start = doc.positionAt(match.index);
+          const end = doc.positionAt(match.index + match[0].length);
+          edits.replace(uri, new vscode.Range(start, end), `${match[1]}${variable}.pcb = { ${newInner.trim()} }`);
+          touched.add(uri.toString());
+          applied++;
+          done = true;
+          break;
+        }
+        if (!done && !skipped.some((sk) => sk.startsWith(move.ref))) {
+          skipped.push(`${move.ref} (no \`${variable}.pcb = {\u2026}\` literal found)`);
+        }
+      }
+      if (applied > 0) {
+        await vscode.workspace.applyEdit(edits);
+        for (const key of touched) {
+          const doc = await vscode.workspace.openTextDocument(vscode.Uri.parse(key));
+          await doc.save();
+        }
+      }
+      this.output.appendLine(
+        `layout apply: ${applied} placement(s) moved${skipped.length ? `, skipped ${skipped.join('; ')}` : ''} — rebuilding`,
+      );
+      if (skipped.length) {
+        vscode.window.setStatusBarMessage(`layout: skipped ${skipped.join('; ')}`, 8000);
+      }
+      if (applied === 0) {
+        void this.panel?.webview.postMessage({ type: 'typecad/layout-status', error: undefined });
+        return;
+      }
+      this.postStatus('rebuilding board…');
+      await this.run(folder, 'npx typecad-pcb build', GENERATE_TIMEOUT_MS);
+      await this.generate(folder);
+      void this.panel?.webview.postMessage({ type: 'typecad/layout-status', error: undefined });
+    } catch (error) {
+      fail(error instanceof Error ? error.message : String(error));
+    }
+  }
+
   private async onMessage(message: ProbeWebviewMessage): Promise<void> {
+    if (message.type === 'typecad/layout-rebuild') {
+      await this.onLayoutRebuild(message.moves);
+      return;
+    }
     if (message.type === 'typecad/ready') {
       this.readySeen = true;
       this.output.appendLine('viewer page ready');

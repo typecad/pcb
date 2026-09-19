@@ -395,3 +395,139 @@ export function planLabelEdits(
   }
   return { edits: planned, skipped };
 }
+
+// ---------------------------------------------------------------------------
+// Reference RENAMES: the in-place editor on a part's refdes text. Rewrites
+// the `reference: '…'` literal in the Component constructor; skipped when
+// the new name collides with another component's reference.
+// ---------------------------------------------------------------------------
+
+export interface RenameEditInput {
+  ref: string;
+  newRef: string;
+}
+
+export function planRenameEdits(
+  text: string,
+  edits: RenameEditInput[],
+  allRefs: Set<string>,
+): LayoutEditResult {
+  const planned: PlacementEdit[] = [];
+  const skipped: Array<{ ref: string; reason: string }> = [];
+  const used = new Set<number>();
+  const callRe = /new\s+Component\s*\(/g;
+  let match: RegExpExecArray | null;
+  while ((match = callRe.exec(text)) !== null) {
+    const range = objectLiteralRange(text, match.index);
+    if (!range) continue;
+    const inner = text.slice(range.open + 1, range.close);
+    const rNum = /\breference\s*:\s*(['"])((?:\.|(?!\1).)*)\1/.exec(inner);
+    if (!rNum) continue;
+    const ref = rNum[2];
+    const edit = edits.find((e, i) => !used.has(i) && e.ref === ref);
+    if (!edit) continue;
+    used.add(edits.indexOf(edit));
+    if (allRefs.has(edit.newRef) && edit.newRef !== ref) {
+      skipped.push({ ref: `${ref} rename`, reason: `\`${edit.newRef}\` is already a component reference` });
+      continue;
+    }
+    const esc = edit.newRef.replace(/\\/g, '\\\\').replace(/\n/g, '\\n');
+    const newInner = inner.replace(rNum[0], () => `reference: ${rNum[1]}${esc}${rNum[1]}`);
+    planned.push({
+      ref: `${ref} rename`,
+      line: `${text.slice(match.index, range.open + 1)}${newInner}}`,
+      start: match.index,
+      end: range.close + 1,
+    });
+  }
+  for (let i = 0; i < edits.length; i++) {
+    if (!used.has(i)) skipped.push({ ref: `${edits[i]!.ref} rename`, reason: 'no Component constructor literal found' });
+  }
+  return { edits: planned, skipped };
+}
+
+// ---------------------------------------------------------------------------
+// Combined constructor pass: value, rename, and label-layout edits for one
+// component target the SAME `new Component({ … })` literal — applied as one
+// replacement so the ranges never collide in a single WorkspaceEdit.
+// ---------------------------------------------------------------------------
+
+export interface ComponentEditSpec {
+  ref: string;
+  value?: string;
+  newRef?: string;
+  label?: { kind: 'reference' | 'value'; x: number; y: number; rot: number };
+}
+
+export function planComponentEdits(
+  text: string,
+  specs: ComponentEditSpec[],
+  placementOf: (ref: string) => { x: number; y: number; rot: number } | null,
+  allRefs: Set<string>,
+): LayoutEditResult {
+  const planned: PlacementEdit[] = [];
+  const skipped: Array<{ ref: string; reason: string }> = [];
+  const used = new Set<number>();
+  const callRe = /new\s+Component\s*\(/g;
+  let match: RegExpExecArray | null;
+  while ((match = callRe.exec(text)) !== null) {
+    const range = objectLiteralRange(text, match.index);
+    if (!range) continue;
+    const inner = text.slice(range.open + 1, range.close);
+    const rNum = /\breference\s*:\s*(['"])((?:\.|(?!\1).)*)\1/.exec(inner);
+    if (!rNum) continue;
+    const ref = rNum[2];
+    const spec = specs.find((sp, i) => !used.has(i) && sp.ref === ref);
+    if (!spec) continue;
+    used.add(specs.indexOf(spec));
+    let skip: string | null = null;
+    if (spec.newRef && allRefs.has(spec.newRef) && spec.newRef !== ref)
+      skip = `\`${spec.newRef}\` is already a component reference`;
+    let newInner = inner;
+    const insertAt = rNum.index + rNum[0].length;
+    const after: string[] = [];
+    if (!skip && spec.newRef) {
+      const esc = spec.newRef.replace(/\\/g, '\\\\').replace(/\n/g, '\\n');
+      newInner = newInner.replace(rNum[0], () => `reference: ${rNum[1]}${esc}${rNum[1]}`);
+    }
+    if (!skip && spec.value !== undefined) {
+      const vNum = /\bvalue\s*:\s*(['"])((?:\\.|(?!\1).)*)\1/.exec(inner);
+      const esc = spec.value.replace(/\\/g, '\\\\').replace(/\n/g, '\\n');
+      if (vNum) newInner = newInner.replace(vNum[0], () => `value: ${vNum[1]}${esc}${vNum[1]}`);
+      else after.push(`value: ${rNum[1]}${esc}${rNum[1]}`);
+    }
+    if (!skip && spec.label) {
+      const part = placementOf(ref);
+      if (!part) {
+        skip = 'no .pcb placement literal found';
+      } else {
+        const rad = (-part.rot * Math.PI) / 180;
+        const c = Math.cos(rad);
+        const s2 = Math.sin(rad);
+        const dx = spec.label.x - part.x;
+        const dy = spec.label.y - part.y;
+        const body = `{ x: ${fmt(dx * c - dy * s2)}, y: ${fmt(dx * s2 + dy * c)}, rotation: ${fmt(spec.label.rot - part.rot)} }`;
+        const prop = `${spec.label.kind}Layout`;
+        const layoutRe = new RegExp(`\b${prop}\s*:\s*\{[^}]*\}`);
+        const existing = layoutRe.exec(inner);
+        if (existing) newInner = newInner.replace(existing[0], () => `${prop}: ${body}`);
+        else after.push(`${prop}: ${body}`);
+      }
+    }
+    if (skip) {
+      skipped.push({ ref: `${ref} (${spec.label ? spec.label.kind + ' label' : spec.newRef ? 'rename' : 'value'})`, reason: skip });
+      continue;
+    }
+    if (after.length) newInner = newInner.slice(0, insertAt) + ', ' + after.join(', ') + newInner.slice(insertAt);
+    planned.push({
+      ref: `${ref} edits`,
+      line: `${text.slice(match.index, range.open + 1)}${newInner}}`,
+      start: match.index,
+      end: range.close + 1,
+    });
+  }
+  for (let i = 0; i < specs.length; i++) {
+    if (!used.has(i)) skipped.push({ ref: `${specs[i]!.ref} edits`, reason: 'no Component constructor literal found' });
+  }
+  return { edits: planned, skipped };
+}

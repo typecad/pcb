@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyPlacementEdits, planEndpointEdits, planLabelEdits, parsePlacementLiteral, planPlacementEdits, planTextEdits, planValueEdits } from '../layoutEdits.js';
+import { applyPlacementEdits, planComponentEdits, planEndpointEdits, parsePlacementLiteral, planPlacementEdits, planTextEdits } from '../layoutEdits.js';
 
 const source = `import { PCB } from '@typecad/pcb';
 const typecad = new PCB('demo');
@@ -191,72 +191,37 @@ describe('planTextEdits', () => {
   });
 });
 
-describe('planValueEdits', () => {
-  const src =
-    "const r1 = new Component({ symbol: 'Device:R_Small', footprint: 'Resistor_SMD:R_0603_1608Metric', reference: 'R1', value: '1k' });\n" +
-    "const d1 = new Component({ symbol: 'Device:D_Small', reference: 'D1', simulation: { model: 'D (IS=1f)' } });\n";
 
-  it("rewrites the value literal, keeping every other constructor option", () => {
-    const { edits, skipped } = planValueEdits(src, [{ ref: 'R1', value: '2.2k' }]);
-    expect(skipped).toHaveLength(0);
-    const out = applyPlacementEdits(src, edits);
-    expect(out).toContain("reference: 'R1', value: '2.2k'");
-    expect(out).toContain("footprint: 'Resistor_SMD:R_0603_1608Metric'");
-  });
 
-  it('inserts the value after reference when the literal has none', () => {
-    const { edits } = planValueEdits(src, [{ ref: 'D1', value: '1N4148' }]);
-    const out = applyPlacementEdits(src, edits);
-    expect(out).toMatch(/reference: 'D1', value: '1N4148'/);
-    expect(out).toContain("simulation: { model: 'D (IS=1f)' }");
-  });
 
-  it('skips refs with no constructor literal', () => {
-    const { edits, skipped } = planValueEdits(src, [{ ref: 'ZZ', value: 'x' }]);
-    expect(edits).toHaveLength(0);
-    expect(skipped).toHaveLength(1);
-  });
-});
-
-describe('planLabelEdits', () => {
+describe('planComponentEdits (combined constructor pass)', () => {
   const src =
     "const r1 = new Component({ symbol: 'Device:R_Small', reference: 'R1', value: '1k' });\n" +
     "r1.pcb = { x: 16, y: 15, rotation: 180 };\n";
-  const varOf = (ref: string) => (ref === 'R1' ? 'r1' : undefined);
-  const placementOf = (ref: string) =>
-    ref === 'R1' ? parsePlacementLiteral(src, 'r1') : null;
+  const placementOf = (ref: string) => (ref === 'R1' ? parsePlacementLiteral(src, 'r1') : null);
 
-  it('converts a dragged world position to footprint-local and inserts the layout', () => {
-    // text dragged to world (16, 20) with the part at (16,15) rot 180:
-    // local = R(-180)·(0, 5) = (0, -5)
-    const { edits, skipped } = planLabelEdits(
+  it('applies rename + value + label layout as ONE replacement', () => {
+    const { edits, skipped } = planComponentEdits(
       src,
-      [{ ref: 'R1', kind: 'reference', x: 16, y: 20, rot: 180 }],
-      varOf,
+      [{ ref: 'R1', newRef: 'R9', value: '2d', label: { kind: 'reference', x: 20, y: 14.5, rot: 270 } }],
       placementOf,
+      new Set(['R1', 'R2']),
     );
     expect(skipped).toHaveLength(0);
+    expect(edits).toHaveLength(1);
     const out = applyPlacementEdits(src, edits);
-    expect(out).toContain("reference: 'R1', referenceLayout: { x: 0, y: -5, rotation: 0 }");
+    const line = out.split('\n').find((l) => l.includes('reference:'));
+    expect(line).toContain("reference: 'R9'");
+    expect(line).toContain("value: '2d'");
+    expect(line).toContain('referenceLayout: { x: -4, y: 0.5, rotation: 90 }');
   });
 
-  it('updates an existing layout literal in place', () => {
-    const s2 = src.replace(
-      "reference: 'R1',",
-      "reference: 'R1', referenceLayout: { x: 0, y: -1.43, rotation: 0 },",
-    );
-    const { edits } = planLabelEdits(s2, [{ ref: 'R1', kind: 'value', x: 16, y: 20, rot: 90 }], varOf, placementOf);
-    const out = applyPlacementEdits(s2, edits);
-    expect(out).toContain('valueLayout: { x: 0, y: -5, rotation: -90 }');
-    expect(out).toContain('referenceLayout: { x: 0, y: -1.43, rotation: 0 }');
-  });
-
-  it('skips when the placement literal cannot be resolved', () => {
-    const { edits, skipped } = planLabelEdits(
+  it('guards rename collisions while still applying the value edit', () => {
+    const { edits, skipped } = planComponentEdits(
       src,
-      [{ ref: 'R1', kind: 'reference', x: 1, y: 1, rot: 0 }],
-      varOf,
-      () => null,
+      [{ ref: 'R1', newRef: 'R2', value: '5k' }],
+      placementOf,
+      new Set(['R1', 'R2']),
     );
     expect(edits).toHaveLength(0);
     expect(skipped).toHaveLength(1);

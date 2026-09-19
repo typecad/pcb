@@ -491,7 +491,7 @@ class BoardViewerPanel {
      * Computed (non-literal) placements are skipped and reported, never
      * silently mangled.
      */
-    async onLayoutRebuild(moves, texts, values, labels) {
+    async onLayoutRebuild(moves, texts, values, labels, renames) {
         const folder = this.hwFolder();
         const fail = (error) => {
             this.output.appendLine(`layout apply failed: ${error}`);
@@ -594,82 +594,87 @@ class BoardViewerPanel {
                 if (!textsDone.has(`${t.text0}@${t.x0},${t.y0}`) && srcFiles.length <= 1)
                     skipped.push(`text "${t.text0}" (no .text({…}) literal matches its authored value/anchor)`);
             }
-            // component value edits: the Component constructor literal matched by
-            // its reference, value rewritten (inserted when absent)
+            // component edits — value, rename, label layout — target the SAME
+            // constructor literal, so they run as ONE pass producing one
+            // replacement per constructor (ranges never collide in the edit)
             let valuesEdited = 0;
-            const valuesDone = new Set();
-            for (const uri of srcFiles) {
-                const pendingVals = (values ?? []).filter((v) => !valuesDone.has(v.ref));
-                if (pendingVals.length === 0)
-                    continue;
-                const doc = await vscode.workspace.openTextDocument(uri);
-                const text = doc.getText();
-                const plannedVals = (0, layoutEdits_js_1.planValueEdits)(text, pendingVals);
-                for (const sk of plannedVals.skipped) {
-                    if (srcFiles.length > 1)
-                        continue;
-                    skipped.push(`${sk.ref} (${sk.reason})`);
-                }
-                if (plannedVals.edits.length === 0)
-                    continue;
-                for (const edit of plannedVals.edits) {
-                    edits.replace(uri, new vscode.Range(doc.positionAt(edit.start), doc.positionAt(edit.end)), edit.line);
-                    valuesEdited++;
-                }
-                for (const v of pendingVals)
-                    valuesDone.add(v.ref);
-                touched.add(uri.toString());
-            }
-            // label repositioning: Reference/Value texts dragged independently —
-            // world finals convert to footprint-local against the part's final
-            // placement (literal + this apply's move delta), then the constructor
-            // gains/updates referenceLayout / valueLayout
             let labelsEdited = 0;
-            const placementMap = new Map();
-            const labelsDone = new Set();
-            for (const uri of srcFiles) {
-                const pendingLabels = (labels ?? []).filter((l) => !labelsDone.has(`${l.ref}:${l.kind}`));
-                if (pendingLabels.length === 0)
-                    continue;
-                const doc = await vscode.workspace.openTextDocument(uri);
-                const text = doc.getText();
-                for (const l of pendingLabels) {
-                    if (placementMap.has(l.ref))
-                        continue;
-                    const pl = (0, layoutEdits_js_1.parsePlacementLiteral)(text, variableOf.get(l.ref) ?? '');
-                    if (pl) {
-                        const mv = moves.find((m) => m.ref === l.ref);
-                        placementMap.set(l.ref, {
-                            x: pl.x + (mv?.dx ?? 0),
-                            y: pl.y + (mv?.dy ?? 0),
-                            rot: pl.rot + (mv?.rot ?? 0),
-                        });
+            let renamesEdited = 0;
+            const specByRef = new Map();
+            for (const v of values ?? [])
+                specByRef.set(v.ref, { ref: v.ref, value: v.value });
+            for (const r of renames ?? []) {
+                const spec = specByRef.get(r.ref) ?? { ref: r.ref };
+                spec.newRef = r.newRef;
+                specByRef.set(r.ref, spec);
+            }
+            for (const l of labels ?? []) {
+                const spec = specByRef.get(l.ref) ?? { ref: l.ref };
+                spec.label = { kind: l.kind, x: l.x, y: l.y, rot: l.rot };
+                specByRef.set(l.ref, spec);
+            }
+            const specs = [...specByRef.values()];
+            if (specs.length > 0) {
+                // placements first: each label converts against the part's FINAL
+                // placement (literal + this apply's move delta)
+                const placementMap = new Map();
+                for (const uri of srcFiles) {
+                    const doc = await vscode.workspace.openTextDocument(uri);
+                    const text = doc.getText();
+                    for (const spec of specs) {
+                        if (placementMap.has(spec.ref) || !spec.label)
+                            continue;
+                        const pl = (0, layoutEdits_js_1.parsePlacementLiteral)(text, variableOf.get(spec.ref) ?? '');
+                        if (pl) {
+                            const mv = moves.find((m) => m.ref === spec.ref);
+                            placementMap.set(spec.ref, {
+                                x: pl.x + (mv?.dx ?? 0),
+                                y: pl.y + (mv?.dy ?? 0),
+                                rot: pl.rot + (mv?.rot ?? 0),
+                            });
+                        }
                     }
                 }
-                const plannedLabels = (0, layoutEdits_js_1.planLabelEdits)(text, pendingLabels, (ref) => variableOf.get(ref), (ref) => placementMap.get(ref) ?? null);
-                if (plannedLabels.edits.length === 0)
-                    continue;
-                for (const edit of plannedLabels.edits) {
-                    edits.replace(uri, new vscode.Range(doc.positionAt(edit.start), doc.positionAt(edit.end)), edit.line);
-                    labelsEdited++;
+                const allRefs = new Set(comps.map((c) => c.reference).filter(Boolean));
+                const doneRefs = new Set();
+                for (const uri of srcFiles) {
+                    const pending = specs.filter((sp) => !doneRefs.has(sp.ref));
+                    if (pending.length === 0)
+                        continue;
+                    const doc = await vscode.workspace.openTextDocument(uri);
+                    const text = doc.getText();
+                    const planned = (0, layoutEdits_js_1.planComponentEdits)(text, pending, (ref) => placementMap.get(ref) ?? null, allRefs);
+                    for (const sk of planned.skipped)
+                        skipped.push(`${sk.ref} (${sk.reason})`);
+                    for (const edit of planned.edits) {
+                        edits.replace(uri, new vscode.Range(doc.positionAt(edit.start), doc.positionAt(edit.end)), edit.line);
+                        const spec = pending.find((sp) => edit.ref.startsWith(sp.ref));
+                        if (spec?.value !== undefined)
+                            valuesEdited++;
+                        if (spec?.newRef)
+                            renamesEdited++;
+                        if (spec?.label)
+                            labelsEdited++;
+                        if (spec)
+                            doneRefs.add(spec.ref);
+                    }
+                    if (planned.edits.length > 0)
+                        touched.add(uri.toString());
                 }
-                for (const l of pendingLabels)
-                    labelsDone.add(`${l.ref}:${l.kind}`);
-                touched.add(uri.toString());
             }
             const applied = appliedRefs.size;
-            if (applied > 0 || endpointsMoved > 0 || textsEdited > 0 || valuesEdited > 0 || labelsEdited > 0) {
+            if (applied > 0 || endpointsMoved > 0 || textsEdited > 0 || valuesEdited > 0 || labelsEdited > 0 || renamesEdited > 0) {
                 await vscode.workspace.applyEdit(edits);
                 for (const key of touched) {
                     const doc = await vscode.workspace.openTextDocument(vscode.Uri.parse(key));
                     await doc.save();
                 }
             }
-            this.output.appendLine(`layout apply: ${applied} placement(s) moved${endpointsMoved ? `, ${endpointsMoved} route endpoint(s) translated` : ''}${textsEdited ? `, ${textsEdited} text(s) edited` : ''}${valuesEdited ? `, ${valuesEdited} value(s) edited` : ''}${labelsEdited ? `, ${labelsEdited} label(s) repositioned` : ''}${skipped.length ? `, skipped ${skipped.join('; ')}` : ''} — rebuilding`);
+            this.output.appendLine(`layout apply: ${applied} placement(s) moved${endpointsMoved ? `, ${endpointsMoved} route endpoint(s) translated` : ''}${textsEdited ? `, ${textsEdited} text(s) edited` : ''}${valuesEdited ? `, ${valuesEdited} value(s) edited` : ''}${labelsEdited ? `, ${labelsEdited} label(s) repositioned` : ''}${renamesEdited ? `, ${renamesEdited} reference(s) renamed` : ''}${skipped.length ? `, skipped ${skipped.join('; ')}` : ''} — rebuilding`);
             if (skipped.length) {
                 vscode.window.setStatusBarMessage(`layout: skipped ${skipped.join('; ')}`, 8000);
             }
-            if (applied === 0 && textsEdited === 0 && valuesEdited === 0 && labelsEdited === 0) {
+            if (applied === 0 && textsEdited === 0 && valuesEdited === 0 && labelsEdited === 0 && renamesEdited === 0) {
                 void this.panel?.webview.postMessage({ type: 'typecad/layout-status', error: undefined });
                 return;
             }
@@ -693,7 +698,7 @@ class BoardViewerPanel {
     }
     async onMessage(message) {
         if (message.type === 'typecad/layout-rebuild') {
-            await this.onLayoutRebuild(message.moves, message.texts, message.values, message.labels);
+            await this.onLayoutRebuild(message.moves, message.texts, message.values, message.labels, message.renames);
             return;
         }
         if (message.type === 'typecad/ready') {

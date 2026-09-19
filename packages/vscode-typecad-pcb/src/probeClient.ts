@@ -86,6 +86,7 @@ export type ProbeWebviewMessage =
       texts?: LayoutTextEdit[];
       values?: Array<{ ref: string; value: string }>;
       labels?: LabelEdit[];
+      renames?: Array<{ ref: string; newRef: string }>;
     };
 export type ProbeHostMessage =
   | { type: 'typecad/select'; ref: string; token?: number }
@@ -181,7 +182,7 @@ const PROBE_CLIENT = `<script>
   // Layout view: the page hands moved-component deltas to the host, which
   // edits the placement literals, rebuilds, and regenerates this viewer
   var layoutCb = null;
-  window.typecadLayoutApply = function (moves, texts, values, labels, cb) {
+  window.typecadLayoutApply = function (moves, texts, values, labels, renames, cb) {
     layoutCb = cb || null;
     send({
       type: 'typecad/layout-rebuild',
@@ -189,6 +190,7 @@ const PROBE_CLIENT = `<script>
       texts: texts || [],
       values: values || [],
       labels: labels || [],
+      renames: renames || [],
     });
   };
 

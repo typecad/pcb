@@ -46,7 +46,7 @@ describe('injectProbeClient', () => {
 
   it('installs the layout-apply bridge the viewer buttons into', () => {
     const { html } = injectProbeClient(viewerHtml, components);
-    expect(html).toContain('window.typecadLayoutApply = function (moves, texts, values, labels, cb)');
+    expect(html).toContain('window.typecadLayoutApply = function (moves, texts, values, labels, renames, cb)');
     expect(html).toContain('labels: labels || [],');
     expect(html).toContain("m.type === 'typecad/layout-status'");
   });

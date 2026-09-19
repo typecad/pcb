@@ -351,9 +351,10 @@ export function buildViewerFromFiles(paths: string[], options: ViewerBuildOption
           y: +(c.bbox.minY + bh / 2).toFixed(3),
           rot: +c.angle.toFixed(1),
           // footprint-name dims can be partial (a pitch without height) —
-          // fall back to the pad bbox per axis rather than render a flat box
-          w: +(c.bodyDims && c.bodyDims.w > 0.05 ? c.bodyDims.w : bw).toFixed(2),
-          h: +(c.bodyDims && c.bodyDims.h > 0.05 ? c.bodyDims.h : bh).toFixed(2),
+          // fall back to the pad bbox per axis, with a floor so the box is
+          // never degenerate (a zero-height box makes rotation invisible)
+          w: +Math.max(c.bodyDims && c.bodyDims.w > 0.05 ? c.bodyDims.w : bw, 0.6).toFixed(2),
+          h: +Math.max(c.bodyDims && c.bodyDims.h > 0.05 ? c.bodyDims.h : bh, 0.6).toFixed(2),
           side,
           nets,
           // pad centers ride along (gerber frame) — sticky route endpoints on

@@ -1669,10 +1669,15 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   }
   // keys over the layout view: R rotates the selection 90 degrees (the
   // presses ride the move into apply as a rotation delta), arrows nudge
-  // every selected component (0.5 mm, or 0.1 with Alt)
+  // every selected component (0.5 mm, or 0.1 with Alt). An R with nothing
+  // selected says so — silence reads as broken.
   window.addEventListener('keydown', function (ev) {
-    if (viewMode !== 'layout' || !layoutSel.length || !layoutOverlay) return;
+    if (viewMode !== 'layout' || !layoutOverlay) return;
     if (ev.key === 'r' || ev.key === 'R') {
+      if (!layoutSel.length) {
+        if (statusEl && !statusLocked()) statusEl.textContent = 'click a component first — R rotates the selection';
+        return;
+      }
       ev.preventDefault();
       for (var rs = 0; rs < layoutSel.length; rs++) {
         var gRot = layoutOverlay.querySelector('[data-ref="' + cssEsc(layoutSel[rs]) + '"]');

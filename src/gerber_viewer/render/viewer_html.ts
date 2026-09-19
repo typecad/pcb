@@ -3197,13 +3197,15 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   #volt-legend-range, #power-legend-range { display: flex; justify-content: space-between; color: var(--muted); font-size: 10px; margin-top: 2px; }
   #flow-box { padding: 8px 14px 0; }
   #layout-box { padding: 8px 14px 0; display: none; }
-  #layout-box .side-label { color: var(--muted); font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 6px; }
-  #layout-keys { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
-  #layout-keys .chip { font-size: 10px; color: var(--muted); }
-  #layout-keys .chip-dashed::before { content: ''; display: inline-block; width: 18px; height: 0; border-top: 2px dashed currentColor; margin-right: 4px; vertical-align: middle; }
-  #layout-keys .chip-solid::before { content: ''; display: inline-block; width: 18px; height: 0; border-top: 2px solid currentColor; margin-right: 4px; vertical-align: middle; }
-  #layout-keys .chip-grey::before { content: ''; display: inline-block; width: 18px; height: 0; border-top: 2px solid rgba(128,128,128,0.35); margin-right: 4px; vertical-align: middle; }
-  #layout-hint { color: var(--muted); font-size: 10px; margin: 6px 0; }
+  #layout-box .side-label { color: var(--muted); font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 8px; }
+  #layout-keys { display: flex; gap: 6px 10px; flex-wrap: wrap; row-gap: 6px; margin: 2px 0 8px; max-width: 100%; }
+  #layout-keys .chip { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; line-height: 1.4; color: var(--muted); white-space: nowrap;
+    width: auto; height: auto; border: 0; border-radius: 0; flex: none; }
+  #layout-keys .chip::before { content: ''; display: inline-block; width: 16px; height: 0; flex: none; }
+  #layout-keys .chip-dashed::before { border-top: 2px dashed currentColor; }
+  #layout-keys .chip-solid::before { border-top: 2px solid currentColor; }
+  #layout-keys .chip-grey::before { border-top: 2px solid rgba(128,128,128,0.35); }
+  #layout-hint { color: var(--muted); font-size: 10px; line-height: 1.5; margin: 8px 0; }
   #layout-moves { font: 11px/1.5 ui-monospace, monospace; color: var(--chrome-fg); margin-bottom: 6px; word-break: break-word; }
   #layout-buttons { display: flex; gap: 6px; }
   #layout-buttons button, #layout-tools button { flex: 1; background: var(--btn-bg); color: var(--chrome-fg); border: 1px solid var(--btn-border); border-radius: 4px; padding: 4px 6px; cursor: pointer; font: inherit; }

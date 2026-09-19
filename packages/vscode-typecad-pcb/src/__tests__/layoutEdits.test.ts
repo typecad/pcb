@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyPlacementEdits, planPlacementEdits } from '../layoutEdits.js';
+import { applyPlacementEdits, planEndpointEdits, planPlacementEdits } from '../layoutEdits.js';
 
 const source = `import { PCB } from '@typecad/pcb';
 const typecad = new PCB('demo');
@@ -65,5 +65,70 @@ describe('planPlacementEdits', () => {
     const { edits } = planPlacementEdits(source, [{ ref: 'R3', dx: 1, dy: 1 }], () => 'r3');
     const updated = applyPlacementEdits(source, edits);
     expect(updated).toMatch(/r3\.pcb = \{ x: 60(\.0+)?, y: 27(\.0+)? \};/);
+  });
+});
+
+describe('planPlacementEdits rotation', () => {
+  it('adds a rotation field when the literal has none', () => {
+    const src = 'r3.pcb = { x: 59, y: 26 };\n';
+    const { edits } = planPlacementEdits(src, [{ ref: 'R3', dx: 0, dy: 0, rot: 90 }], () => 'r3');
+    expect(applyPlacementEdits(src, edits)).toContain('r3.pcb = { x: 59, y: 26, rotation: 90 }');
+  });
+
+  it('accumulates onto an existing rotation', () => {
+    const src = 'u2.pcb = { x: 17, y: 34, rotation: 90 };\n';
+    const { edits } = planPlacementEdits(src, [{ ref: 'U2', dx: 1, dy: 0, rot: 90 }], () => 'u2');
+    expect(applyPlacementEdits(src, edits)).toContain('u2.pcb = { x: 18, y: 34, rotation: 180 }');
+  });
+
+  it('leaves rotation untouched when the move carries none', () => {
+    const src = 'u2.pcb = { x: 17, y: 34, rotation: 90 };\n';
+    const { edits } = planPlacementEdits(src, [{ ref: 'U2', dx: 2, dy: 0 }], () => 'u2');
+    expect(applyPlacementEdits(src, edits)).toContain('rotation: 90');
+  });
+});
+
+describe('planEndpointEdits (sticky TrackBuilder endpoints)', () => {
+  const src = `const vcc = new TrackBuilder(typecad, { net: 'VCC' })
+  .from({ x: 57.5375, y: 26 })
+  .to({ x: 41, y: 26, width: 0.3 });
+const other = new TrackBuilder(typecad, { net: 'GND' })
+  .from({ x: 17, y: 25.418 });
+`;
+
+  it('translates the from/to literals that sit on the moved pads', () => {
+    const pads = [
+      { x: 57.5375, y: 26 },
+      { x: 60.5375, y: 26 },
+    ];
+    const edits = planEndpointEdits(src, { ref: 'R3', dx: 12.5, dy: -5, pads });
+    const updated = applyPlacementEdits(src, edits);
+    expect(updated).toContain('.from({ x: 70.0375, y: 21 })');
+    expect(updated).toContain('.to({ x: 41, y: 26, width: 0.3 })'); // untouched
+    expect(edits).toHaveLength(1);
+  });
+
+  it('keeps extra fields in a matched .to literal', () => {
+    const s = '.to({ x: 60.5375, y: 26, layer: \'B.Cu\', width: 0.3 });\n';
+    const edits = planEndpointEdits(s, { ref: 'R3', dx: 1, dy: 1, pads: [{ x: 60.5375, y: 26 }] });
+    expect(applyPlacementEdits(s, edits)).toContain(".to({ x: 61.5375, y: 27, layer: 'B.Cu', width: 0.3 })");
+  });
+
+  it('matches within 0.05 mm and ignores everything else', () => {
+    const edits = planEndpointEdits(src, { ref: 'R3', dx: 1, dy: 1, pads: [{ x: 57.55, y: 26.02 }] });
+    expect(edits).toHaveLength(1);
+    const none = planEndpointEdits(src, { ref: 'R3', dx: 1, dy: 1, pads: [{ x: 10, y: 10 }] });
+    expect(none).toHaveLength(0);
+  });
+});
+
+describe('planEndpointEdits replacement bounds', () => {
+  it('replaces exactly the literal — no document tail duplication', () => {
+    const src = "const t = new TrackBuilder(p, { net: 'A' })\n  .to({ x: 57.5375, y: 26 }, 'F.Cu', W);\nconst after = 1;\n";
+    const edits = planEndpointEdits(src, { ref: 'R3', dx: 1, dy: 1, pads: [{ x: 57.5375, y: 26 }] });
+    const out = applyPlacementEdits(src, edits);
+    expect((out.match(/const after/g) ?? []).length).toBe(1);
+    expect(out).toContain(".to({ x: 58.5375, y: 27 }, 'F.Cu', W);");
+    expect(out.endsWith('const after = 1;\n')).toBe(true);
   });
 });

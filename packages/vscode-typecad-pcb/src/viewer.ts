@@ -19,7 +19,7 @@ import * as vscode from 'vscode';
 import fs from 'node:fs';
 import path from 'node:path';
 import { injectProbeClient, type ProbeHostMessage, type ProbeWebviewMessage } from './probeClient.js';
-import { planPlacementEdits } from './layoutEdits.js';
+import { planEndpointEdits, planPlacementEdits } from './layoutEdits.js';
 import { parseSourceLocation } from './sourceRef.js';
 import type { BoardDataService } from './boardData.js';
 
@@ -491,7 +491,9 @@ export class BoardViewerPanel {
    * Computed (non-literal) placements are skipped and reported, never
    * silently mangled.
    */
-  private async onLayoutRebuild(moves: Array<{ ref: string; dx: number; dy: number }>): Promise<void> {
+  private async onLayoutRebuild(
+    moves: Array<{ ref: string; dx: number; dy: number; rot?: number; pads?: Array<{ x: number; y: number }> }>,
+  ): Promise<void> {
     const folder = this.hwFolder();
     const fail = (error: string): void => {
       this.output.appendLine(`layout apply failed: ${error}`);
@@ -534,13 +536,40 @@ export class BoardViewerPanel {
         }
         touched.add(uri.toString());
       }
+      // sticky TrackBuilder endpoints: hand-built routes whose .from/.to
+      // literals sit on a moved component's ORIGINAL pads follow the part
+      let endpointsMoved = 0;
+      for (const uri of srcFiles) {
+        const pending = moves.filter((m) => appliedRefs.has(m.ref) && (m.pads?.length ?? 0) > 0);
+        if (pending.length === 0) continue;
+        const doc = await vscode.workspace.openTextDocument(uri);
+        const text = doc.getText();
+        let plannedEndpoints = pending.flatMap((m) => planEndpointEdits(text, m));
+        if (plannedEndpoints.length === 0) continue;
+        // one literal can be a sticky endpoint of at most one move
+        const seen = new Set<number>();
+        plannedEndpoints = plannedEndpoints.filter((e) => {
+          if (seen.has(e.start)) return false;
+          seen.add(e.start);
+          return true;
+        });
+        for (const edit of plannedEndpoints) {
+          edits.replace(
+            uri,
+            new vscode.Range(doc.positionAt(edit.start), doc.positionAt(edit.end)),
+            edit.line,
+          );
+        }
+        endpointsMoved += plannedEndpoints.length;
+        touched.add(uri.toString());
+      }
       for (const move of moves) {
         if (!appliedRefs.has(move.ref) && !skipped.some((sk) => sk.startsWith(move.ref + ' '))) {
           skipped.push(`${move.ref} (no \`${variableOf.get(move.ref) ?? move.ref}\`.pcb literal found)`);
         }
       }
       const applied = appliedRefs.size;
-      if (applied > 0) {
+      if (applied > 0 || endpointsMoved > 0) {
         await vscode.workspace.applyEdit(edits);
         for (const key of touched) {
           const doc = await vscode.workspace.openTextDocument(vscode.Uri.parse(key));
@@ -548,7 +577,7 @@ export class BoardViewerPanel {
         }
       }
       this.output.appendLine(
-        `layout apply: ${applied} placement(s) moved${skipped.length ? `, skipped ${skipped.join('; ')}` : ''} — rebuilding`,
+        `layout apply: ${applied} placement(s) moved${endpointsMoved ? `, ${endpointsMoved} route endpoint(s) translated` : ''}${skipped.length ? `, skipped ${skipped.join('; ')}` : ''} — rebuilding`,
       );
       if (skipped.length) {
         vscode.window.setStatusBarMessage(`layout: skipped ${skipped.join('; ')}`, 8000);

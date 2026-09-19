@@ -57,7 +57,7 @@ export type ProbeWebviewMessage =
   | { type: 'typecad/ack'; ref: string; token?: number; found?: boolean }
   | { type: 'typecad/probe'; ref: string; pin?: string }
   | { type: 'typecad/probe-net'; net: string; source?: string }
-  | { type: 'typecad/layout-rebuild'; moves: Array<{ ref: string; dx: number; dy: number }> };
+  | { type: 'typecad/layout-rebuild'; moves: Array<{ ref: string; dx: number; dy: number; rot?: number; pads?: Array<{ x: number; y: number }> }> };
 export type ProbeHostMessage =
   | { type: 'typecad/select'; ref: string; token?: number }
   | { type: 'typecad/select-net'; net: string; token?: number }

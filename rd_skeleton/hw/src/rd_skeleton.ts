@@ -8,7 +8,7 @@ const typecad = new PCB('rd_skeleton', {
 // grid cell (7 columns x 4 rows on a 104 x 74 mm board) ----
 // row 1: two-terminal SMD chips
 const r1 = new Component({ symbol: 'Device:R_Small', footprint: 'Resistor_SMD:R_0603_1608Metric', reference: 'R1', value: '1k' });
-r1.pcb = { x: 17, y: 18 };
+r1.pcb = { x: 16, y: 15, rotation: 180 };
 const c1 = new Component({ symbol: 'Device:C_Small', footprint: 'Capacitor_SMD:C_0805_2012Metric', reference: 'C1', value: '1uF' });
 c1.pcb = { x: 31, y: 18 };
 const l1 = new Component({ symbol: 'Device:L_Small', footprint: 'Inductor_SMD:L_0805_2012Metric', reference: 'L1', value: '10uH' });
@@ -99,7 +99,7 @@ typecad.assign(vcc, 'power');
 // visible heating in the thermal view (~21 °C rise vs the rated 10 °C)
 const VCCW = 0.3;
 const vccTrunk = new TrackBuilder(typecad, { net: 'VCC' })
-  .from({ x: 16.175, y: 18 }, 'F.Cu', VCCW)
+  .from({ x: 15.175, y: 15 }, 'F.Cu', VCCW)
   .to({ x: 16.8375, y: 19.7375 }, 'F.Cu', VCCW)
   .to({ x: 16.8375, y: 26 }, 'F.Cu', VCCW)
   .to({ x: 41, y: 26 }, 'F.Cu', VCCW)

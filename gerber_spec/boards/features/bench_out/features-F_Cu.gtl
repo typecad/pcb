@@ -1,0 +1,164 @@
+%TF.GenerationSoftware,typeCAD,gerber_export,0.1.0*%
+%TF.CreationDate,2026-09-20T04:24:46.403Z*%
+%TF.ProjectId,features,66656174-7572-4573-ae6b-696361645f70,rev?*%
+%TF.SameCoordinates,Original*%
+%TF.FileFunction,Copper,L1,Top*%
+%TF.FilePolarity,Positive*%
+%FSLAX46Y46*%
+G04 Gerber Fmt 4.6, Leading zero omitted, Abs format (unit mm)*
+G04 Created by typeCAD gerber_export date 2026-09-20T04:24:46*
+%MOMM*%
+%LPD*%
+G01*
+G04 APERTURE LIST*
+G04 Aperture macros list*
+%AMRoundRect*
+0 Rectangle with rounded corners*
+0 $1 Rounding radius*
+0 $2 $3 $4 $5 $6 $7 $8 $9 X,Y pos of 4 corners*
+0 Add a 4 corners polygon primitive as box body*
+4,1,4,$2,$3,$4,$5,$6,$7,$8,$9,$2,$3,0*
+0 Add four circle primitives for the rounded corners*
+1,1,$1+$1,$2,$3*
+1,1,$1+$1,$4,$5*
+1,1,$1+$1,$6,$7*
+1,1,$1+$1,$8,$9*
+0 Add four rect primitives between the rounded corners*
+20,1,$1+$1,$2,$3,$4,$5,0*
+20,1,$1+$1,$4,$5,$6,$7,0*
+20,1,$1+$1,$6,$7,$8,$9,0*
+20,1,$1+$1,$8,$9,$2,$3,0*%
+%AMHorizOval*
+0 Thick line with rounded ends*
+0 $1 width*
+0 $2 $3 position (X,Y) of the first rounded end (center of the circle)*
+0 $4 $5 position (X,Y) of the second rounded end (center of the circle)*
+0 Add line between two ends*
+20,1,$1,$2,$3,$4,$5,0*
+0 Add two circle primitives to create the rounded ends*
+1,1,$1,$2,$3*
+1,1,$1,$4,$5*%
+%AMRotRect*
+0 Rectangle, with rotation*
+0 The origin of the aperture is its center*
+0 $1 length*
+0 $2 width*
+0 $3 Rotation angle, in degrees counterclockwise*
+0 Add horizontal line*
+21,1,$1,$2,0,0,$3*%
+%AMOutline4P*
+0 Free polygon, 4 corners , with rotation*
+0 The origin of the aperture is its center*
+0 number of corners: always 4*
+0 $1 to $8 corner X, Y*
+0 $9 Rotation angle, in degrees counterclockwise*
+0 create outline with 4 corners*
+4,1,4,$1,$2,$3,$4,$5,$6,$7,$8,$1,$2,$9*%
+%AMFreePoly0*
+4,1,3,-1.000000,-1.000000,1.000000,-1.000000,0.000000,1.000000,-1.000000,-1.000000,$1*%
+%AMFreePoly1*
+4,1,21,2.000000,0.000000,1.977786,0.147378,1.913119,0.281660,1.811745,0.390916,1.682671,0.465437,1.537365,0.498602,1.388740,0.487464,1.250000,0.433013,1.133474,0.340086,1.049516,0.216942,1.005585,0.074521,1.005585,-0.074521,1.049516,-0.216942,1.133474,-0.340086,1.250000,-0.433013,1.388740,-0.487464,1.537365,-0.498602,1.682671,-0.465437,1.811745,-0.390916,1.913119,-0.281660,1.977786,-0.147378,2.000000,0.000000,$1*%
+%AMFreePoly2*
+4,1,33,-2.500000,1.500000,-2.532477,1.438305,-2.560610,1.374511,-2.584265,1.308925,-2.603329,1.241861,-2.617710,1.173639,-2.627340,1.104586,-2.632173,1.035032,-2.632185,0.965311,-2.627376,0.895755,-2.617769,0.826699,-2.603411,0.758472,-2.584370,0.691401,-2.560737,0.625807,-2.532626,0.562004,-2.500170,0.500298,-2.463525,0.440983,-2.422867,0.384344,-2.378390,0.330652,-2.330308,0.280163,-2.278849,0.233119,-2.224261,0.189747,-2.166805,0.150252,-2.106755,0.114824,-2.044400,0.083633,-1.980037,0.056828,-1.913975,0.034537,-1.846530,0.016868,-1.778024,0.003903,-1.708786,-0.004293,-1.639147,-0.007683,-1.569441,-0.006250,-1.500000,0.000000,-2.500000,1.500000,$1*%
+%AMFreePoly3*
+4,1,4,-0.500000,-2.500000,0.500000,-2.500000,0.500000,-1.500000,-0.500000,-1.500000,-0.500000,-2.500000,$1*%
+%AMFreePoly4*
+4,1,4,1.000000,2.100000,2.000000,2.100000,2.000000,1.900000,1.000000,1.900000,1.000000,2.100000,$1*%
+G04 Aperture macros list end*
+%TA.AperFunction,SMDPad,CuDef*%
+%ADD10HorizOval,1.000000X-0.601815X0.798636X0.601815X-0.798636X0*%
+%TD*%
+%TA.AperFunction,SMDPad,CuDef*%
+%ADD11RotRect,2.000000X1.000000X67.000000*%
+%TD*%
+%TA.AperFunction,SMDPad,CuDef*%
+%ADD12RoundRect,0.200000X-0.318887X-0.490725X0.559613X0.171271X0.318887X0.490725X-0.559613X-0.171271X0*%
+%TD*%
+%TA.AperFunction,SMDPad,CuDef*%
+%ADD13Outline4P,-0.750000X-1.250000X0.750000X-0.750000X0.750000X0.750000X-0.750000X1.250000X37.000000*%
+%TD*%
+%TA.AperFunction,SMDPad,CuDef*%
+%ADD14FreePoly0,37.000000*%
+%TD*%
+%TA.AperFunction,SMDPad,CuDef*%
+%ADD15FreePoly1,37.000000*%
+%TD*%
+%TA.AperFunction,SMDPad,CuDef*%
+%ADD16FreePoly2,37.000000*%
+%TD*%
+%TA.AperFunction,SMDPad,CuDef*%
+%ADD17FreePoly3,37.000000*%
+%TD*%
+%TA.AperFunction,SMDPad,CuDef*%
+%ADD18FreePoly4,37.000000*%
+%TD*%
+%TA.AperFunction,ComponentPad*%
+%ADD19HorizOval,1.200000X-0.361089X0.479181X0.361089X-0.479181X0*%
+%TD*%
+%TA.AperFunction,ViaPad*%
+%ADD20C,0.600000*%
+%TD*%
+%TA.AperFunction,ViaPad*%
+%ADD21C,0.500000*%
+%TD*%
+%TA.AperFunction,ViaPad*%
+%ADD22C,0.400000*%
+%TD*%
+%TA.AperFunction,Conductor*%
+%ADD23C,0.300000*%
+%TD*%
+G04 APERTURE END LIST*
+D10*
+%TO.P,XP1,1*%
+%TO.N,SIG1*%
+X59604093Y-64805445D03*
+D11*
+%TO.P,XP1,2*%
+X61201364Y-63601815D03*
+D12*
+%TO.P,XP1,3*%
+%TO.N,SIG2*%
+X62798636Y-62398185D03*
+D13*
+%TO.P,XP1,4*%
+X64795224Y-60893647D03*
+D14*
+%TO.P,XP1,5*%
+%TO.N,GND*%
+X64407260Y-66194542D03*
+D15*
+X64407260Y-66194542D03*
+D16*
+X64407260Y-66194542D03*
+D17*
+X64407260Y-66194542D03*
+D18*
+X64407260Y-66194542D03*
+D19*
+%TO.P,XP1,6*%
+X59592740Y-59805458D03*
+%TD*%
+D20*
+%TO.N,SIG1*%
+X58000000Y-82000000D03*
+D21*
+%TO.N,SIG2*%
+X62000000Y-82000000D03*
+D22*
+X70000000Y-82000000D03*
+D21*
+X66000000Y-82000000D03*
+%TD*%
+%TO.N,GND*%
+D23*
+X58000000Y-62000000D02*
+X55000000Y-62000000D01*
+X62000000Y-62000000D02*
+X62000000Y-58000000D01*
+X58000000Y-62000000D02*
+G75*
+G02*
+X62000000Y-62000000I2000000J0D01*
+G01*
+%TD*%
+M02*

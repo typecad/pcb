@@ -1,0 +1,25 @@
+{
+  "name": "rd-skeleton-hw",
+  "version": "1.0.0",
+  "description": "",
+  "private": true,
+  "main": "index.js",
+  "scripts": {
+    "build": "typecad-pcb build",
+    "add_component": "typecad-pcb add component",
+    "add_package": "typecad-pcb add package",
+    "kicad-search": "typecad-pcb search",
+    "import": "typecad-pcb import build\\rd_skeleton.kicad_pcb --apply",
+    "open_board": "npx open-cli ./build/rd_skeleton.kicad_pcb",
+    "diff": "typecad-pcb diff HEAD ./build/rd_skeleton.kicad_pcb",
+    "docs": "typecad-pcb doc docs\\rd_skeleton.md build\\rd_skeleton.kicad_pcb"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "dependencies": {
+    "@typecad/pcb": "1.0.0-alpha.5",
+    "tsx": "^4.23.13"
+  }
+}

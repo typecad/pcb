@@ -1928,11 +1928,14 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     layoutInkBound = true;
     for (var i = 0; i < layoutTexts.length; i++) attachTextDrag(i);
     if (!viewGroups.gerber) return;
-    // attributed comp ink (outlines, marks — %TO.C carries the ref)
-    var inked = viewGroups.gerber.querySelectorAll(
-      'g[data-kind="silkscreen"] [data-ref], g[data-kind="fab"] [data-ref], g[data-kind="other"] [data-ref]',
-    );
-    for (var ik = 0; ik < inked.length; ik++) bindCompInk(inked[ik], inked[ik].getAttribute('data-ref'));
+    // EVERY attributed element — pads, mask/paste openings, outlines, marks
+    // — is footprint property: grabbing any of it drags the whole component
+    // as one unit (pads routinely protrude past the invisible handle)
+    var inked = viewGroups.gerber.querySelectorAll('#yflip [data-ref]');
+    for (var ik = 0; ik < inked.length; ik++) {
+      if (inked[ik].closest && inked[ik].closest('#layout-overlay')) continue;
+      bindCompInk(inked[ik], inked[ik].getAttribute('data-ref'));
+    }
     // UNattributed comp texts — KiCad plots most refdes/value fp_texts with
     // no %TO.C at all — bind to their nearest component within its reach
     // (the same radius the whole-footprint move claims with)

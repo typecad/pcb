@@ -505,14 +505,14 @@ Clipper (clipper-lib, Boost license — Apache-compatible):
   span every copper layer; typed blind/buried restrict to their span).
 - **Clearance**: foreign copper inflated by the zone's
   `connect_pads clearance`; same-net copper connects via thermal relief.
-- **Thermals**: four analytic annular sectors whose angular span excludes
-  the spoke half-angle (spoke width = the zone's
-  `thermal_bridge_width`, gap = `thermal_gap`). The annulus runs from the
-  PAD EDGE (`item.r`) to pad edge + gap — KiCad's convention (an inner
-  radius near zero leaves a phantom copper disk under the pad and places
-  the gap ring at the wrong radius). Built directly as clip
-  polygons — no boolean spoke-union (that approach produced incorrect
-  winding with clipper-lib).
+- **Thermals**: the void is the pad outline INFLATED by the zone's
+  `thermal_gap`, minus four orthogonal spoke corridors (width =
+  `thermal_bridge_width`) that rotate with the pad — KiCad's per-shape
+  geometry. A circle of radius max(size)/2 (an earlier model) floats the
+  ring off a rectangular pad's long edges and reads as a stray ring.
+  Built with clipper (obstacleToPath inflation + rect spokes) — no
+  boolean spoke-union (that approach produced incorrect winding with
+  clipper-lib).
 - **Edge pullback**: Edge.Cuts lines+arcs are chained into a closed
   outline (open chains skip pullback), inflated by 0.3mm, intersected
   with the zone.

@@ -1664,10 +1664,11 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     return paths;
   }
   function textState(i) {
-    // live position of text i: pending move if any, else the authored anchor
-    var t = layoutTexts[i];
+    // live position of text i: comp-transported base plus its own offset
     var m = layoutTextMoves[i];
-    return m ? { x: m.x, y: m.y, rot: m.rot } : labelBase(i);
+    var base = labelBase(i);
+    if (!m) return base;
+    return { x: base.x + (m.ox || 0), y: base.y + (m.oy || 0), rot: m.rot || 0 };
   }
   // a component's pending move as an affine string (same math the footprint
   // ghost uses) — labels ride it until they get a move of their own
@@ -1696,17 +1697,18 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     var t = layoutTexts[i];
     var m = layoutTextMoves[i];
     var paths = textPaths(i);
-    // labels compose: their component's move first, then their own (an
-    // independently dragged label pins at its absolute spot instead)
+    // a text's pending move is an OFFSET from its comp-transported base, so
+    // a part drag carries its labels (custom offsets and all) as one unit —
+    // exactly like KiCad, where fp_texts are footprint children
     var compTr = t.ref ? compTrStr(t.ref) : '';
     var ownTr = '';
-    if (m) {
+    if (m && (m.ox || m.oy || m.rot)) {
       var base = labelBase(i);
-      var dx = +(m.x - base.x).toFixed(4);
-      var dy = +(m.y - base.y).toFixed(4);
-      // pivot at the moved ANCHOR: kicad rotates fp_text/gr_text about its
-      // anchor, so the preview matches the rebuilt board exactly
-      if (dx || dy || m.rot) ownTr = 'rotate(' + m.rot * 90 + ',' + m.x + ',' + m.y + ') translate(' + dx + ',' + dy + ')';
+      // pivot at the effective anchor: kicad rotates fp_text/gr_text about
+      // its anchor, so the preview matches the rebuilt board exactly
+      var ex = base.x + m.ox;
+      var ey = base.y + m.oy;
+      ownTr = 'rotate(' + m.rot * 90 + ',' + ex + ',' + ey + ') translate(' + m.ox + ',' + m.oy + ')';
     }
     var tr = ownTr && compTr ? ownTr + ' ' + compTr : ownTr || compTr;
     for (var tp = 0; tp < paths.length; tp++) {
@@ -1763,8 +1765,9 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     st.preview.setAttribute('text-anchor', 'middle');
     st.preview.setAttribute('dominant-baseline', 'central');
     st.preview.textContent = m && m.text !== undefined ? m.text : t.text;
-    var x = m ? m.x : t.x;
-    var y = m ? m.y : t.y;
+    var eff = textState(i);
+    var x = eff.x;
+    var y = eff.y;
     var flip = t.side === 'back' ? -1 : 1;
     var tr = 'translate(' + x + ',' + y + ') scale(' + flip + ',' + -flip + ')';
     if (m && m.rot) tr += ' rotate(' + m.rot * 90 * flip + ')';
@@ -1773,11 +1776,12 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   function commitTextMove(i, x, y) {
     var t = layoutTexts[i];
     var prev = layoutTextMoves[i];
+    // store the drag as an OFFSET from the comp-transported base, so a later
+    // part drag carries the text (offset and all) instead of leaving it
+    var base = labelBase(i);
     layoutTextMoves[i] = {
-      x,
-      y,
-      x0: t.x,
-      y0: t.y,
+      ox: +(x - base.x).toFixed(4),
+      oy: +(y - base.y).toFixed(4),
       rot: prev ? prev.rot : 0,
       text: prev && prev.text !== undefined ? prev.text : undefined,
       text0: t.text,
@@ -1823,10 +1827,8 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         var v = inp.value;
         var m = layoutTextMoves[i];
         layoutTextMoves[i] = {
-          x: m ? m.x : t.x,
-          y: m ? m.y : t.y,
-          x0: t.x,
-          y0: t.y,
+          ox: m ? m.ox || 0 : 0,
+          oy: m ? m.oy || 0 : 0,
           rot: m ? m.rot : 0,
           text: v,
           text0: t.text,
@@ -2294,14 +2296,16 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       var texts = [];
       for (var ti in layoutTextMoves) {
         var ti2 = parseInt(ti, 10);
+        var tbt = layoutTexts[ti2];
+        if (tbt && tbt.kind && tbt.kind !== 'board') continue; // labels ride their own array
         var tm = layoutTextMoves[ti];
         texts.push({
           text0: tm.text0,
-          x0: tm.x0,
-          y0: -tm.y0,
+          x0: tbt ? tbt.x : tm.x0,
+          y0: tbt ? -tbt.y : -tm.y0,
           text: tm.text !== undefined ? tm.text : tm.text0,
-          x: tm.x,
-          y: -tm.y,
+          x: +((tbt ? tbt.x : tm.x0) + (tm.ox || 0)).toFixed(4),
+          y: -+((tbt ? tbt.y : tm.y0) + (tm.oy || 0)).toFixed(4),
           rot: (tm.rot || 0) * 90,
         });
       }
@@ -2325,11 +2329,12 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         var lt = layoutTexts[lix];
         if (!lt || !lt.kind || lt.kind === 'board') continue;
         var lm = layoutTextMoves[li];
+        var leff = labelBase(lix);
         labels.push({
           ref: lt.ref,
           kind: lt.kind,
-          x: lm.x,
-          y: -lm.y,
+          x: +(leff.x + (lm.ox || 0)).toFixed(4),
+          y: -(+(leff.y + (lm.oy || 0)).toFixed(4)),
           rot: ((lm.rot || 0) * 90 + (lt.rot || 0)) % 360,
         });
       }
@@ -2361,17 +2366,14 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         setCompPos(gRot, gRot.__lx, gRot.__ly);
         commitLayoutMove(gRot);
       }
-      // a grabbed text rotates about its (moved) anchor
+      // a grabbed text rotates about its (effective) anchor
       if (layoutTextSel >= 0 && layoutTexts[layoutTextSel]) {
-        var tRot = layoutTexts[layoutTextSel];
         var tm2 = layoutTextMoves[layoutTextSel] || {
-          x: tRot.x,
-          y: tRot.y,
-          x0: tRot.x,
-          y0: tRot.y,
+          ox: 0,
+          oy: 0,
           rot: 0,
           text: undefined,
-          text0: tRot.text,
+          text0: layoutTexts[layoutTextSel].text,
         };
         tm2.rot = ((tm2.rot || 0) + 1) % 4;
         layoutTextMoves[layoutTextSel] = tm2;

@@ -60,8 +60,10 @@ describe('refillZoneFills (export gerbers --check-zones path)', () => {
     const fills = zones[0]!.children('filled_polygon');
     expect(fills.length).toBeGreaterThan(0);
     // stale saved fill was replaced, and the fresh one covers the zone body
+    // (separate-contour injection: fills[0] is the island's outer contour —
+    // 4 corners on this plain fixture)
     const pts = fills[0]!.child('pts')!.children('xy');
-    expect(pts.length).toBeGreaterThan(4);
+    expect(pts.length).toBeGreaterThanOrEqual(4);
   });
 
   it('strips stale saved fills before injecting', () => {

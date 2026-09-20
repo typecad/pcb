@@ -282,11 +282,17 @@ export function refillZoneFills(source: string): string | null {
     for (const layer of layers) {
       const res = fillZone(root, zone, layer);
       if (!res) continue;
+      // inject SEPARATE contours (outer + holes), not the keyholed ring:
+      // gerber regions punch holes via even-odd between sub-contours, while
+      // the keyhole ring's channel crossings trip polygon tessellators in
+      // viewers. The filled board here is a plot source only (os.tmpdir) —
+      // KiCad never reads it back.
+      const toPts = (ring: number[]) =>
+        ring.reduce((s, v, i) => (i % 2 === 0 ? s + `(xy ${v.toFixed(6)} ` : s + `${v.toFixed(6)}) `), '').trim();
       for (const isl of res.islands) {
-        const pts = isl.ring
-          .reduce((s, v, i) => (i % 2 === 0 ? s + `(xy ${v.toFixed(6)} ` : s + `${v.toFixed(6)}) `), '')
-          .trim();
-        blocks.push(`(filled_polygon (layer "${layer}") (pts ${pts}))`);
+        for (const contour of isl.contours) {
+          blocks.push(`(filled_polygon (layer "${layer}") (pts ${toPts(contour)}))`);
+        }
       }
     }
     if (blocks.length === 0) continue;

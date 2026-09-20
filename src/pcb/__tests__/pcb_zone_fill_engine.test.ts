@@ -155,7 +155,7 @@ describe('zone fill engine', () => {
     expect(res.totalAreaMm2).toBeLessThan(40); // one 6×6 island, not two
   });
 
-  it('emits hatch output: border + 45° lines, less copper than solid', () => {
+  it('emits hatch output: cross-hatch grid, less copper than solid', () => {
     const root = board(`
       (zone (net 1) (net_name "GND") (layer "In1.Cu") (connect_pads (clearance 0.5))
         (fill yes (mode hatch) (thermal_gap 0.5) (thermal_bridge_width 0.5)
@@ -168,21 +168,22 @@ describe('zone fill engine', () => {
     const res = fillZone(root, z, 'In1.Cu')!;
     const solid = fillZone(solidRoot, solidRoot.children('zone')[0]!, 'In1.Cu')!;
     expect(res.totalAreaMm2).toBeGreaterThan(30); // border alone ≈ perimeter × thickness
-    expect(res.totalAreaMm2).toBeLessThan(solid.totalAreaMm2 * 0.85); // thick border + dense lines
+    // cross-hatch grid (orientation 0 = 0°+90° families, per the KiCad 10
+    // golden) stays well under solid; border is clipped into the region so
+    // the total can never exceed the zone area
+    expect(res.totalAreaMm2).toBeLessThan(solid.totalAreaMm2 * 0.85);
+    expect(res.totalAreaMm2).toBeLessThan(400); // 20×20 zone
     const ring = res.islands[0]!.ring;
     // border: a point 0.1mm inside the region edge is copper
     expect(filled(ring, 20, 10.1)).toBe(true);
-    // mid-region: on a 45° hatch line copper, between lines empty —
-    // lines pass through (20,20) at 45°; check along the perpendicular
-    const on = filled(ring, 20, 20);
-    const perpOff = 0.45; // pitch 0.9, so 0.45 lands mid-gap on the perpendicular
-    const offX = 20 - perpOff * Math.SQRT1_2;
-    const offY = 20 + perpOff * Math.SQRT1_2;
-    const between = filled(ring, offX, offY);
-    // at least one of on/between must differ (hatch pattern present) and
-    // both cannot be empty (lines run every 0.9mm)
-    expect(on || filled(ring, offX + 0.3, offY - 0.3)).toBe(true);
+    // nothing outside the zone (border clip)
+    expect(filled(ring, 20, 9.9)).toBe(false);
+    // mid-region: the 0/90° grid passes through points where x or y ≡
+    // pitch offset; (20,20) sits on lines of both families
+    expect(filled(ring, 20, 20)).toBe(true);
     expect(ring.length / 2).toBeGreaterThan(solid.islands[0]!.ring.length / 2);
+    // separate-contour form: outer + inter-line hole diamonds
+    expect(res.islands[0]!.contours.length).toBeGreaterThan(1);
   });
 
   it('respects blind-via layer spans', () => {

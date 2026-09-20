@@ -17,14 +17,22 @@ const NM = 1e6; // integer-nm grid for Clipper
 type Path = ClipperLib.Path;
 
 export interface ZoneFillIsland {
-  /** keyhole ring in board mm, flat [x0,y0,x1,y1,…] */
+  /** keyhole ring in board mm, flat [x0,y0,x1,y1,…] (KiCad filled_polygon form) */
   ring: number[];
+  /**
+   * Same island as SEPARATE contours — [outer, …holes] in board mm. Gerber
+   * regions punch holes via even-odd between sub-contours, so plotters
+   * should prefer these: the keyhole ring is geometrically self-intersecting
+   * (channel crossings) and polygon tessellators render artifacts on it.
+   */
+  contours: number[][];
   areaMm2: number;
 }
 
 export interface ZoneFillResult {
   layer: string;
   islands: ZoneFillIsland[];
+  /** net copper area in mm² (outer rings minus their holes) */
   totalAreaMm2: number;
 }
 
@@ -624,22 +632,31 @@ export interface HatchParams {
  * thickness and unioned. Holes below hatch_min_hole_area fill solid.
  */
 function hatchRegion(region: Path[], hp: HatchParams): Path[] {
-  const border: Path[] = [];
+  // border: stroke the region outlines, then clip back into the region —
+  // an open-path stroke extends half its width OUTSIDE the zone edge
+  const borderRaw: Path[] = [];
   for (const path of region) {
     const co = new ClipperLib.ClipperOffset(2, 0.02 * NM);
     co.AddPath(path, ClipperLib.JoinType.jtRound, ClipperLib.EndType.etOpenRound);
     const out: ClipperLib.Path[] = [];
     co.Execute(out, Math.round((hp.thickness / 2) * NM));
-    out.forEach((o) => border.push(o));
+    out.forEach((o) => borderRaw.push(o));
   }
+  const borderClip = new ClipperLib.Clipper();
+  region.forEach((p) => borderClip.AddPath(p, ClipperLib.PolyType.ptClip, true));
+  borderRaw.forEach((p) => borderClip.AddPath(p, ClipperLib.PolyType.ptSubject, true));
+  const border: Path[] = [];
+  borderClip.Execute(
+    ClipperLib.ClipType.ctIntersection,
+    border,
+    ClipperLib.PolyFillType.pftNonZero,
+    ClipperLib.PolyFillType.pftNonZero,
+  );
 
-  // parallel lines at the hatch angle across the region bbox
-  const angle = hp.orientation === 0 ? 45 : hp.orientation;
-  const rad = (angle * Math.PI) / 180;
-  const dx = Math.cos(rad);
-  const dy = Math.sin(rad);
-  const nx = -dy;
-  const ny = dx;
+  // cross-hatch: KiCad's hatch draws lines at hatch_orientation AND at
+  // orientation + 90° (rd_skeleton golden: orientation 0 → 0° and 90° line
+  // families in equal measure) — not a single diagonal direction
+  const rad0 = (hp.orientation * Math.PI) / 180;
   let minX = Infinity;
   let minY = Infinity;
   let maxX = -Infinity;
@@ -659,17 +676,23 @@ function hatchRegion(region: Path[], hp: HatchParams): Path[] {
   const halfL = Math.hypot(maxX - minX, maxY - minY) / 2 + hp.thickness;
   const pitch = hp.thickness + hp.gap;
   const capsules: Path[] = [];
-  for (let off = -halfL; off <= halfL; off += pitch) {
-    capsules.push(
-      capsuleToPoly(
-        cx + nx * off - dx * halfL,
-        cy + ny * off - dy * halfL,
-        cx + nx * off + dx * halfL,
-        cy + ny * off + dy * halfL,
-        0,
-        hp.thickness / 2,
-      ),
-    );
+  for (const rad of [rad0, rad0 + Math.PI / 2]) {
+    const dx = Math.cos(rad);
+    const dy = Math.sin(rad);
+    const nx = -dy;
+    const ny = dx;
+    for (let off = -halfL; off <= halfL; off += pitch) {
+      capsules.push(
+        capsuleToPoly(
+          cx + nx * off - dx * halfL,
+          cy + ny * off - dy * halfL,
+          cx + nx * off + dx * halfL,
+          cy + ny * off + dy * halfL,
+          0,
+          hp.thickness / 2,
+        ),
+      );
+    }
   }
 
   const cpr = new ClipperLib.Clipper();
@@ -819,7 +842,18 @@ function finish(
       if (!connected) return;
     }
     total += area;
-    islands.push({ ring: mergeWithHoles(outer, holesByOuter.get(i) ?? []), areaMm2: area });
+    const holes = holesByOuter.get(i) ?? [];
+    for (const hole of holes) total -= areaOf(hole); // net copper, not gross
+    const pathToMm = (p: Path): number[] => {
+      const out: number[] = [];
+      for (const v of p) out.push(v.X / NM, v.Y / NM);
+      return out;
+    };
+    islands.push({
+      ring: mergeWithHoles(outer, holes),
+      contours: [pathToMm(outer), ...holes.map(pathToMm)],
+      areaMm2: area,
+    });
   });
 
   if (islands.length === 0) return { layer, islands: [], totalAreaMm2: 0 };

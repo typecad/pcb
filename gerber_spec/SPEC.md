@@ -492,13 +492,26 @@ Clipper (clipper-lib, Boost license — Apache-compatible):
   classified by Clipper's negative-area convention.
 - **Net resolution**: both kicad-cli name-only `(net "GND")` and raw
   typeCAD coded `(net 3)` forms (code→name map from the net table).
-- **Export integration**: `export gerbers` refills declared-but-unfilled
-  zones in memory and plots from the temp filled board — pour copper is
-  never silently missing. Boards with saved fills plot them as-is (same
-  as kicad-cli without --check-zones).
-- **Known gaps**: no island removal by area yet, no keepout-zone
-  subtraction, hatch fills not emitted (solid only), pad-shape obstacle
-  for custom pads is the anchor bbox.
+- **Export integration**: `export gerbers` REFILLS all zones on export
+  (--check-zones semantics — saved fills go stale after board edits);
+  `--saved-fills` opts out. Stale fills are stripped (balanced-paren
+  removal) before fresh ones are injected into the temp filled board.
+- **Island removal**: reads `island_removal_mode` / `island_area_min`;
+  default mode drops islands with no same-net connection point inside
+  (pad/via centers), mode 1 keeps all, mode 2 also drops below the area
+  minimum.
+- **Keepouts**: zones carrying `(keepout …)` never fill and their
+  polygons punch holes in fills on the same layer.
+- **Custom pads**: obstacle built from the pad's `primitives`
+  (poly/rect/circle, rotated by the pad's absolute angle); polygon
+  obstacles inflate via ClipperOffset (closed-polygon round join), not a
+  centroid approximation.
+- **Stress**: rd_skeleton's pour (65 footprints, 4k tracks) fills in
+  ~0.11 s vs kicad-cli's ~6 s refill; kicad's saved fill there is
+  hatch-mode (net 8250 mm² gross) vs our solid 7696 mm² — hatch output
+  remains a gap.
+- **Remaining gaps**: hatch fills not emitted (solid only); multi-poly
+  custom pads use only the first primitive.
 
 ## Performance (bench.py, Win11, i7, KiCad 10.0.0)
 

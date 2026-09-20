@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import chalk from 'chalk';
 import { executeKiCADCommand } from '../../../kicad_commands.js';
@@ -306,8 +307,10 @@ export function refillZoneFills(source: string): string | null {
   return filledAny ? out : null;
 }
 
-// `(zone` but not `(zone_defaults`/`(zone_connect` — the token must end here
-const ZONE_OPEN = /\(zone(?![\w-])/g;
+// `(zone` but not `(zone_defaults`/`(zone_connect` — the token must end here.
+// typeCAD's serializer puts the node name on its own line (`(\n  zone`), so
+// whitespace between the paren and the name is allowed.
+const ZONE_OPEN = /\(\s*zone(?![\w-])/g;
 
 function nthZoneStart(source: string, ordinal: number): number {
   ZONE_OPEN.lastIndex = 0;
@@ -337,7 +340,7 @@ function stripFilledPolygons(source: string): string {
 }
 
 function countZones(source: string): number {
-  return [...source.matchAll(/\(zone(?![\w-])/g)].length;
+  return [...source.matchAll(/\(\s*zone(?![\w-])/g)].length;
 }
 
 function balancedClose(source: string, openIdx: number): number {
@@ -358,7 +361,7 @@ interface UnfilledZone {
 }
 
 function findUnfilledZones(source: string): UnfilledZone[] {
-  const zones = [...source.matchAll(/\(zone(?![\w-])[\s\S]{0,600}?\(layers?\s+"[^)]*"\)/g)];
+  const zones = [...source.matchAll(/\(\s*zone(?![\w-])[\s\S]{0,600}?\(layers?\s+"[^)]*"\)/g)];
   const out: UnfilledZone[] = [];
   for (const z of zones) {
     const seg = z[0]! + source.slice(z.index!, z.index! + 4000);
@@ -402,7 +405,9 @@ async function runNativeGerbers(parsed: ParsedArgs): Promise<void> {
     const filledSource = refillZoneFills(source);
     if (filledSource !== null) {
       source = filledSource;
-      const filledBoard = path.join(outputDir, path.basename(pcbPath));
+      // the filled board is only the plot source — keep it out of the fab
+      // dir (its basename still drives the output file naming)
+      const filledBoard = path.join(os.tmpdir(), path.basename(pcbPath));
       fs.writeFileSync(filledBoard, source);
       boardPathForPlot = filledBoard;
       if (!json) {

@@ -17,7 +17,8 @@ const BOARD = `(kicad_pcb
   (gr_line (start 20 0) (end 20 15) (layer "Edge.Cuts"))
   (gr_line (start 20 15) (end 0 15) (layer "Edge.Cuts"))
   (gr_line (start 0 15) (end 0 0) (layer "Edge.Cuts"))
-  (zone
+  (
+    zone
     (net 1)
     (net_name "GND")
     (layer "F.Cu")
@@ -26,7 +27,8 @@ const BOARD = `(kicad_pcb
       (thermal_gap 0.3)
       (thermal_bridge_width 0.4)
     )
-    (polygon
+    (
+      polygon
       (pts
         (xy 2 2)
         (xy 18 2)

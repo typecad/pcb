@@ -93,6 +93,7 @@
     "acorn": "^8.16.0",
     "acorn-walk": "^8.3.5",
     "chalk": "^6.0.0",
+    "clipper-lib": "^6.4.2",
     "inquirer-file-selector": "^1.0.1"
   },
   "optionalDependencies": {
@@ -107,6 +108,7 @@
     "temml": "^0.13.4"
   },
   "devDependencies": {
+    "@types/clipper-lib": "^6.4.0",
     "@types/node": "^22.13.0",
     "@vitest/coverage-v8": "^4.1.11",
     "typescript": "^5.9.3",

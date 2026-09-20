@@ -264,7 +264,7 @@ function reportDrill(
  * source as `filled_polygon` children (keyhole rings, KiCad-readable).
  * Returns the new source, or null when no zone could be filled.
  */
-function refillZoneFills(source: string): string | null {
+export function refillZoneFills(source: string): string | null {
   const root = SNode.from(parse(source) as SExpr[]);
   const zones = root.children('zone'); // one array: SNode wrappers are not
   // reference-stable across children() calls, so the ordinal is the handle
@@ -306,13 +306,18 @@ function refillZoneFills(source: string): string | null {
   return filledAny ? out : null;
 }
 
+// `(zone` but not `(zone_defaults`/`(zone_connect` — the token must end here
+const ZONE_OPEN = /\(zone(?![\w-])/g;
+
 function nthZoneStart(source: string, ordinal: number): number {
-  let at = -1;
-  for (let i = 0; i <= ordinal; i++) {
-    at = source.indexOf('(zone', at + 1);
-    if (at < 0) return -1;
+  ZONE_OPEN.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  let n = 0;
+  while ((m = ZONE_OPEN.exec(source))) {
+    if (n === ordinal) return m.index;
+    n++;
   }
-  return at;
+  return -1;
 }
 
 /** Remove every (filled_polygon …) block so a refill replaces stale fills. */
@@ -332,13 +337,7 @@ function stripFilledPolygons(source: string): string {
 }
 
 function countZones(source: string): number {
-  let n = 0;
-  let at = -1;
-  for (;;) {
-    at = source.indexOf('(zone', at + 1);
-    if (at < 0) return n;
-    n++;
-  }
+  return [...source.matchAll(/\(zone(?![\w-])/g)].length;
 }
 
 function balancedClose(source: string, openIdx: number): number {
@@ -359,7 +358,7 @@ interface UnfilledZone {
 }
 
 function findUnfilledZones(source: string): UnfilledZone[] {
-  const zones = [...source.matchAll(/\(zone[\s\S]{0,600}?\(layer[s]?\s+"[^)]*"\)/g)];
+  const zones = [...source.matchAll(/\(zone(?![\w-])[\s\S]{0,600}?\(layers?\s+"[^)]*"\)/g)];
   const out: UnfilledZone[] = [];
   for (const z of zones) {
     const seg = z[0]! + source.slice(z.index!, z.index! + 4000);

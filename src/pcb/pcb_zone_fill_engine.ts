@@ -243,7 +243,7 @@ function arcPolyline(
   const cx = (a2 * (m.y - e.y) + b2 * (e.y - s.y) + c2 * (s.y - m.y)) / d;
   const cy = (a2 * (e.x - m.x) + b2 * (s.x - e.x) + c2 * (m.x - s.x)) / d;
   const ang = (p: { x: number; y: number }) => Math.atan2(p.y - cy, p.x - cx);
-  let a0 = ang(s);
+  const a0 = ang(s);
   let a1 = ang(m);
   let a2n = ang(e);
   // sweep direction via cross product
@@ -434,9 +434,28 @@ export function fillZone(
   const islandMode = fillNode?.child('island_removal_mode')
     ? scalar(fillNode!.child('island_removal_mode')!, 1, 0)
     : 0;
-  const zoneMinIsland = fillNode?.child('min_island_area')
-    ? scalar(fillNode!.child('min_island_area')!, 1, 0)
+  const zoneMinIsland = fillNode?.child('island_area_min')
+    ? scalar(fillNode!.child('island_area_min')!, 1, 0)
     : 0;
+  const modeTok = fillNode?.child('mode')?.raw[1];
+  const hatchMode = String((modeTok as { name?: string })?.name ?? modeTok) === 'hatch';
+  const hatchParams: HatchParams | null = hatchMode
+    ? {
+        thickness:
+          fillNode?.child('hatch_thickness') ? scalar(fillNode!.child('hatch_thickness')!, 1, 0.25) : 0.25,
+        gap: fillNode?.child('hatch_gap') ? scalar(fillNode!.child('hatch_gap')!, 1, 0.5) : 0.5,
+        orientation: fillNode?.child('hatch_orientation')
+          ? scalar(fillNode!.child('hatch_orientation')!, 1, 0)
+          : 0,
+        minHoleArea: fillNode?.child('hatch_min_hole_area')
+          ? scalar(fillNode!.child('hatch_min_hole_area')!, 1, 0)
+          : 0,
+      }
+    : null;
+  if (hatchParams) {
+    const mt = zone.child('min_thickness') ? scalar(zone.child('min_thickness')!, 1, 0) : 0;
+    hatchParams.thickness = Math.max(hatchParams.thickness, mt);
+  }
   const edgeClearanceMm = opts.edgeClearance ?? 0.3;
   const minIsland = opts.minIslandArea ?? 0;
 
@@ -551,11 +570,111 @@ export function fillZone(
     const inner: ClipperLib.Path[] = [];
     cpr.Execute(ClipperLib.ClipType.ctIntersection, inner, ClipperLib.PolyFillType.pftNonZero, ClipperLib.PolyFillType.pftNonZero);
     if (inner.length > 0) {
-      return finish(inner, clips, sameNet, thermalGapMm, spokeWidthMm, minIsland, layer, islandMode, zoneMinIsland);
+      return finish(inner, clips, sameNet, thermalGapMm, spokeWidthMm, minIsland, layer, islandMode, zoneMinIsland, hatchParams);
     }
   }
 
-  return finish([zonePoly], clips, sameNet, thermalGapMm, spokeWidthMm, minIsland, layer, islandMode, zoneMinIsland);
+  return finish([zonePoly], clips, sameNet, thermalGapMm, spokeWidthMm, minIsland, layer, islandMode, zoneMinIsland, hatchParams);
+}
+
+export interface HatchParams {
+  /** stroke width of border and hatch lines (mm) */
+  thickness: number;
+  /** clear gap between hatch lines (mm) */
+  gap: number;
+  /** KiCad degrees; 0 = the 45° default */
+  orientation: number;
+  /** holes below this area (mm²) fill solid (hatch_min_hole_area) */
+  minHoleArea: number;
+}
+
+/**
+ * Convert a solid fill region into KiCad-style hatch output: a border ring
+ * (region outline stroked at the hatch thickness) plus parallel hatch lines
+ * at the hatch angle, clipped to the region, all stroked at the same
+ * thickness and unioned. Holes below hatch_min_hole_area fill solid.
+ */
+function hatchRegion(region: Path[], hp: HatchParams): Path[] {
+  const border: Path[] = [];
+  for (const path of region) {
+    const co = new ClipperLib.ClipperOffset(2, 0.02 * NM);
+    co.AddPath(path, ClipperLib.JoinType.jtRound, ClipperLib.EndType.etOpenRound);
+    const out: ClipperLib.Path[] = [];
+    co.Execute(out, Math.round((hp.thickness / 2) * NM));
+    out.forEach((o) => border.push(o));
+  }
+
+  // parallel lines at the hatch angle across the region bbox
+  const angle = hp.orientation === 0 ? 45 : hp.orientation;
+  const rad = (angle * Math.PI) / 180;
+  const dx = Math.cos(rad);
+  const dy = Math.sin(rad);
+  const nx = -dy;
+  const ny = dx;
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const path of region) {
+    for (const v of path) {
+      const x = v.X / NM;
+      const y = v.Y / NM;
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
+    }
+  }
+  const cx = (minX + maxX) / 2;
+  const cy = (minY + maxY) / 2;
+  const halfL = Math.hypot(maxX - minX, maxY - minY) / 2 + hp.thickness;
+  const pitch = hp.thickness + hp.gap;
+  const capsules: Path[] = [];
+  for (let off = -halfL; off <= halfL; off += pitch) {
+    capsules.push(
+      capsuleToPoly(
+        cx + nx * off - dx * halfL,
+        cy + ny * off - dy * halfL,
+        cx + nx * off + dx * halfL,
+        cy + ny * off + dy * halfL,
+        0,
+        hp.thickness / 2,
+      ),
+    );
+  }
+
+  const cpr = new ClipperLib.Clipper();
+  region.forEach((p) => cpr.AddPath(p, ClipperLib.PolyType.ptSubject, true));
+  capsules.forEach((p) => cpr.AddPath(p, ClipperLib.PolyType.ptClip, true));
+  const hatch: ClipperLib.Path[] = [];
+  cpr.Execute(
+    ClipperLib.ClipType.ctIntersection,
+    hatch,
+    ClipperLib.PolyFillType.pftNonZero,
+    ClipperLib.PolyFillType.pftNonZero,
+  );
+
+  // union border + hatch; the solution carries holes as negative paths
+  const unionAll = (paths: Path[]): Path[] => {
+    const c = new ClipperLib.Clipper();
+    paths.forEach((p) => c.AddPath(p, ClipperLib.PolyType.ptSubject, true));
+    const sol: ClipperLib.Path[] = [];
+    c.Execute(
+      ClipperLib.ClipType.ctUnion,
+      sol,
+      ClipperLib.PolyFillType.pftNonZero,
+      ClipperLib.PolyFillType.pftNonZero,
+    );
+    return sol;
+  };
+  const unioned = unionAll([...border, ...hatch]);
+  if (hp.minHoleArea <= 0) return unioned;
+  // fill holes below hatch_min_hole_area: re-union keeping only large holes
+  const outersL = unioned.filter((p) => ClipperLib.Clipper.Area(p) >= 0);
+  const bigHoles = unioned.filter(
+    (p) => ClipperLib.Clipper.Area(p) < 0 && Math.abs(ClipperLib.Clipper.Area(p)) / (NM * NM) >= hp.minHoleArea,
+  );
+  return unionAll([...outersL, ...bigHoles]);
 }
 
 function finish(
@@ -568,6 +687,7 @@ function finish(
   layer: string,
   islandMode = 0,
   zoneMinIsland = 0,
+  hatchParams: HatchParams | null = null,
 ): ZoneFillResult | null {
   // thermal relief: same-net items keep an annular gap with four spoke
   // corridors left open. Built analytically as four annular sectors whose
@@ -610,6 +730,10 @@ function finish(
     const merged: ClipperLib.Path[] = [];
     cpr.Execute(ClipperLib.ClipType.ctUnion, merged, ClipperLib.PolyFillType.pftNonZero, ClipperLib.PolyFillType.pftNonZero);
     flatResult = merged;
+  }
+
+  if (hatchParams) {
+    flatResult = hatchRegion(flatResult, hatchParams);
   }
 
   // classify outers/holes by orientation: Clipper's boolean output marks

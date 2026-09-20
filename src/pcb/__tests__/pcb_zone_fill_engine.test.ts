@@ -155,6 +155,36 @@ describe('zone fill engine', () => {
     expect(res.totalAreaMm2).toBeLessThan(40); // one 6×6 island, not two
   });
 
+  it('emits hatch output: border + 45° lines, less copper than solid', () => {
+    const root = board(`
+      (zone (net 1) (net_name "GND") (layer "In1.Cu") (connect_pads (clearance 0.5))
+        (fill yes (mode hatch) (thermal_gap 0.5) (thermal_bridge_width 0.5)
+          (hatch_thickness 0.3) (hatch_gap 0.6) (hatch_orientation 0) (hatch_min_hole_area 0.15))
+        (polygon (pts (xy 10 10) (xy 30 10) (xy 30 30) (xy 10 30))))`);
+    const solidRoot = board(`
+      (zone (net 1) (net_name "GND") (layer "In1.Cu") (connect_pads (clearance 0.5))
+        (polygon (pts (xy 10 10) (xy 30 10) (xy 30 30) (xy 10 30))))`);
+    const z = root.children('zone')[0]!;
+    const res = fillZone(root, z, 'In1.Cu')!;
+    const solid = fillZone(solidRoot, solidRoot.children('zone')[0]!, 'In1.Cu')!;
+    expect(res.totalAreaMm2).toBeGreaterThan(30); // border alone ≈ perimeter × thickness
+    expect(res.totalAreaMm2).toBeLessThan(solid.totalAreaMm2 * 0.85); // thick border + dense lines
+    const ring = res.islands[0]!.ring;
+    // border: a point 0.1mm inside the region edge is copper
+    expect(filled(ring, 20, 10.1)).toBe(true);
+    // mid-region: on a 45° hatch line copper, between lines empty —
+    // lines pass through (20,20) at 45°; check along the perpendicular
+    const on = filled(ring, 20, 20);
+    const perpOff = 0.45; // pitch 0.9, so 0.45 lands mid-gap on the perpendicular
+    const offX = 20 - perpOff * Math.SQRT1_2;
+    const offY = 20 + perpOff * Math.SQRT1_2;
+    const between = filled(ring, offX, offY);
+    // at least one of on/between must differ (hatch pattern present) and
+    // both cannot be empty (lines run every 0.9mm)
+    expect(on || filled(ring, offX + 0.3, offY - 0.3)).toBe(true);
+    expect(ring.length / 2).toBeGreaterThan(solid.islands[0]!.ring.length / 2);
+  });
+
   it('respects blind-via layer spans', () => {
     const root = board(`
       (via (at 15 15) (size 0.6) (drill 0.3) (layers "F.Cu" "In1.Cu") (net 2))

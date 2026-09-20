@@ -405,19 +405,45 @@ All verified byte-exact against goldens:
   escapes backslashes — extraction must unescape `\` → `\` (a corrupted
   pair alignment shifts every coordinate after any `\`).
   U+0020–U+00FF are embedded in `stroke_font_data.json` (6.4 KB).
-- **Glyph frame**: decoded y is used directly in the y-up file frame —
-  baseline ≈ −0.95, cap top ≈ +0.05 (the FONT_OFFSET −8 convention).
+- **Glyph frame**: glyph y is UP-positive (baseline ≈ −0.95, cap top
+  ≈ +0.05), but the board frame is y-down and the gerber file frame is
+  y-up — the glyph y must be FLIPPED into board space (`boardY = cursorY −
+  py`) before the board→gerber negation puts it back. Skipping the board
+  flip (a pre-fix bug) yields text that reads correctly-placed but
+  vertically mirrored — bbox parity can't see it, only per-glyph probes
+  can (the J-hook probe: `tools/text_hook.ts`).
+- **Regression probes** (`gerber_spec/tools/`): `make_text_probe_board.ts`
+  + `text_probe_compare.ts` plot an isolated-text board through kicad-cli
+  AND the native exporter and compare per-case ink boxes (18 cases: 4
+  angles × italic × 4 justify × mirror × two-line × calibration sweeps).
+  Golden committed so the compare runs without KiCad.
 - **File `(size H W)`**: the FIRST value scales y (height), the SECOND
   scales x (width). Square sizes look symmetric so this is easy to miss.
 - **Vertical placement** (probe-verified, KiCad 10):
-  `offsetY = sy − 0.052·th + max(0, 0.013·(0.8·sy − w))`, then
-  center: `− height/2`, top: `−0`, bottom: `− height`, with
-  `height = KiROUND(sy × 1.17)` in integer nm. The condensed-width term
-  (0.013 × shortfall below the font's natural 0.8 aspect) was invisible in
-  KiCad's published source — found by sweeping w at fixed sy.
-- **Horizontal**: left: `+th/1.52`; center: `−ext/2`; right:
-  `−(ext + th/1.52)`; `ext` = Σ KiROUND(glyphWidth × sx) per char
-  (space = KiROUND(spaceWidth × sx)).
+  `offsetY = sy − 0.052·th + max(0, 0.013·(0.8·sy − w))`, then the flip
+  compensation `−0.9·sy` (glyph em-span), then center: `− blockH/2`,
+  top: `−0`, bottom: `− blockH`, where
+  `height = KiROUND(sy × 1.17)`, `interline = trunc(sy × 1.7 × 0.9583)`,
+  `blockH = height + (lines−1)·interline` in integer nm. The
+  condensed-width term (0.013 × shortfall below the font's natural 0.8
+  aspect) was invisible in KiCad's published source — found by sweeping w
+  at fixed sy.
+- **Horizontal**: left: `0.4333·sy + 0.16·th + pen/2` (probe-fitted vs
+  kicad-cli 10 goldens — extents-INDEPENDENT, unlike center/right);
+  center: `−ext/2`; right: `−(ext + th/1.52)`; `ext` = Σ
+  KiROUND(glyphWidth × sx) per char (space = KiROUND(spaceWidth × sx)).
+- **Hershey advances**: glyph x normalizes to the INK left and advance =
+  ink width + 0.19 em gap — NOT hersheytextjs's `o` offset, which can sit
+  right of the path's leftmost point ('m' by 11 grid units), squeezing
+  letters onto their neighbors.
+- **String escapes**: KiCad's tokenizer unescapes `\n` `\t` `\r` `\\` `\"`
+  inside quoted strings; the sexpr parser and `escapeSexprString` now
+  round-trip all five (a literal `\n` in a gr_text is a NEWLINE to KiCad,
+  i.e. multi-line text).
+- **Justify tokens are Syms**: `(justify left top mirror)` parses each
+  token as a Sym object, not a string — a `typeof tok === 'string'` filter
+  silently drops ALL justification (pre-fix bug: left/right/top/bottom/
+  mirror all rendered as center).
 - **Rotation**: text angles are ABSOLUTE in the file (properties carry the
   total incl. footprint rotation), but rotate in KiCad's y-down internal
   frame — in a y-up file-frame renderer the rotation angle must be NEGATED,

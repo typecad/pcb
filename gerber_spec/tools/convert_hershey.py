@@ -59,11 +59,13 @@ for i, ch in enumerate(chars):
     code = 33 + i
     if code > 126:
         break
-    left = float(ch["o"])
     contours = parse_path(ch["d"])
     if not contours:
         continue
     xs = [p for c in contours for p in c[0::2]]
+    left = min(xs)  # ink left — ch["o"] is NOT the ink edge (it can sit
+    # right of the path's leftmost point, e.g. 'm'), so normalizing by it
+    # produced negative overhangs the advance width never accounted for
     right = max(xs)
     # advance: glyph extent + a 4-unit (≈0.19 em) inter-letter gap
     width = round((max(right - left, 3.0) + 4.0) / CAP, 4)

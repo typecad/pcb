@@ -507,7 +507,10 @@ Clipper (clipper-lib, Boost license — Apache-compatible):
   `connect_pads clearance`; same-net copper connects via thermal relief.
 - **Thermals**: four analytic annular sectors whose angular span excludes
   the spoke half-angle (spoke width = the zone's
-  `thermal_bridge_width`, gap = `thermal_gap`). Built directly as clip
+  `thermal_bridge_width`, gap = `thermal_gap`). The annulus runs from the
+  PAD EDGE (`item.r`) to pad edge + gap — KiCad's convention (an inner
+  radius near zero leaves a phantom copper disk under the pad and places
+  the gap ring at the wrong radius). Built directly as clip
   polygons — no boolean spoke-union (that approach produced incorrect
   winding with clipper-lib).
 - **Edge pullback**: Edge.Cuts lines+arcs are chained into a closed
@@ -515,7 +518,15 @@ Clipper (clipper-lib, Boost license — Apache-compatible):
   with the zone.
 - **Output**: keyhole-merged single rings per island (KiCad's
   `filled_polygon` encoding — KiCad re-reads our refilled boards), holes
-  classified by Clipper's negative-area convention.
+  classified by Clipper's negative-area convention. The keyhole must SPLICE
+  each hole into the outer ring through a zero-width channel (in and back
+  out at the nearest outer vertex) with every channel anchored to the outer
+  ring itself — concatenating rings draws chords across the pour (viewers
+  render them as wedge-shaped voids) and channels chained hole-to-hole nest
+  excursions, which breaks even-odd fill (gerber regions are XOR/even-odd,
+  not nonzero). Probe: `tools/pour_wedge_probe.ts` samples winding numbers
+  through the thermal slots/spokes and the shoelace area sanity (a pour
+  area LARGER than the board proves a self-intersecting ring).
 - **Net resolution**: both kicad-cli name-only `(net "GND")` and raw
   typeCAD coded `(net 3)` forms (code→name map from the net table).
 - **Export integration**: `export gerbers` REFILLS all zones on export

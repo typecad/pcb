@@ -616,14 +616,14 @@ function parseBoardTexts(
  */
 export function parseBoardLabels(
   content: string,
-): Record<string, Array<{ kind: 'reference' | 'value'; text: string; x: number; y: number; rot: number; side: 'front' | 'back'; h: number; layerKind?: 'silkscreen' | 'fab' }>> {
+): Record<string, Array<{ kind: 'reference' | 'value' | 'fab'; text: string; x: number; y: number; rot: number; side: 'front' | 'back'; h: number; layerKind?: 'silkscreen' | 'fab' }>> {
   let tree: SExpr;
   try {
     tree = parse(content);
   } catch {
     return {};
   }
-  const byRef: Record<string, Array<{ kind: 'reference' | 'value'; text: string; x: number; y: number; rot: number; side: 'front' | 'back'; h: number; layerKind?: 'silkscreen' | 'fab' }>> = {};
+  const byRef: Record<string, Array<{ kind: 'reference' | 'value' | 'fab'; text: string; x: number; y: number; rot: number; side: 'front' | 'back'; h: number; layerKind?: 'silkscreen' | 'fab' }>> = {};
   const walk = (expr: SExpr): void => {
     if (!isList(expr)) return;
     if (nameOf(expr[0]) === 'footprint') {
@@ -686,7 +686,7 @@ export function parseBoardLabels(
           }
         }
         if (hidden || !text || !side) continue;
-        const kind: 'reference' | 'value' = name === 'Reference' ? 'reference' : 'value';
+        const kind: 'reference' | 'value' | 'fab' = name === 'Reference' ? 'reference' : 'value';
         const wx = px + lx * c - ly * s;
         const wy = py + lx * s + ly * c;
         (byRef[refText] = byRef[refText] ?? []).push({
@@ -700,6 +700,52 @@ export function parseBoardLabels(
           layerKind: layerKindOf(rawLayer),
         });
         }
+      }
+      // the ${REFERENCE} user text (small refdes on fab) is its own object —
+      // the Component 'fab' option positions it, so it claims independently
+      for (const child of expr) {
+        if (!isList(child) || nameOf(child[0]) !== 'fp_text') continue;
+        if (String(child[1] ?? '').toLowerCase() !== 'user') continue;
+        if (String(child[2] ?? '') !== '${REFERENCE}') continue;
+        let ulx = 0;
+        let uly = 0;
+        let ulrot = 0;
+        let uside: 'front' | 'back' | null = null;
+        let uh = 1;
+        for (const gc of child) {
+          if (!isList(gc)) continue;
+          const head = nameOf(gc[0]);
+          if (head === 'at') {
+            if (typeof gc[1] === 'number') ulx = gc[1];
+            if (typeof gc[2] === 'number') uly = gc[2];
+            if (typeof gc[3] === 'number') ulrot = gc[3];
+          } else if (head === 'layer') {
+            const lname = String(gc[1] ?? '').toLowerCase();
+            if (lname.startsWith('f.')) uside = 'front';
+            else if (lname.startsWith('b.')) uside = 'back';
+          } else if (head === 'effects') {
+            for (const eff of gc) {
+              if (isList(eff) && nameOf(eff[0]) === 'font') {
+                for (const fc of eff) {
+                  if (isList(fc) && nameOf(fc[0]) === 'size' && typeof fc[2] === 'number') uh = Math.abs(fc[2]);
+                }
+              }
+            }
+          }
+        }
+        if (!uside || !refText) continue;
+        const uwx = px + ulx * c - uly * s;
+        const uwy = py + ulx * s + uly * c;
+        (byRef[refText] = byRef[refText] ?? []).push({
+          kind: 'fab',
+          text: refText,
+          x: +uwx.toFixed(3),
+          y: -uwy,
+          rot: +(((ulrot + prot) % 360 + 360) % 360).toFixed(1),
+          side: uside,
+          h: uh,
+          layerKind: 'fab',
+        });
       }
       // footprints nest nothing labelable; still recurse for embedded groups
     }

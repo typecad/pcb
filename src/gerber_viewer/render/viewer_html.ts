@@ -70,7 +70,7 @@ export interface ViewerOptions {
      * valueLayout constructor options
      */
     labels?: Array<{
-      kind: 'reference' | 'value';
+      kind: 'reference' | 'value' | 'fab';
       text: string;
       x: number;
       y: number;
@@ -1638,14 +1638,19 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       var pcy = bb.y + bb.height / 2;
       var myD = Math.hypot(pcx - t.x, pcy - t.y);
       if (myD > radius) continue;
-      // a stroke between two texts (a part's refdes and value sit close)
-      // belongs to the nearer anchor — comparing only same-layer anchors
+      // a stroke between close texts (a part's small fab refdes sits between
+      // its value glyphs) belongs to the anchor it is LEAST OUTLIER for:
+      // distance normalized by each text's own reach, same-layer anchors only
+      var myN = myD / radius;
       var nearer = false;
       for (var nt = 0; nt < layoutTexts.length; nt++) {
         var ot = layoutTexts[nt];
         if (ot === t || ot.side !== t.side || ot.x === undefined) continue;
         if (t.layerKind && ot.layerKind && ot.layerKind !== t.layerKind) continue;
-        if (Math.hypot(pcx - ot.x, pcy - ot.y) < myD) {
+        if (ot.text === undefined) continue;
+        var oR = 0.65 * ot.h * (ot.text.length + 2);
+        var oD = Math.hypot(pcx - ot.x, pcy - ot.y);
+        if (oD / oR < myN) {
           nearer = true;
           break;
         }
@@ -1886,6 +1891,11 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         }
         if (t3.kind === 'reference') {
           beginCompTextEdit(t3.ref, 'reference', ev);
+          return;
+        }
+        if (t3.kind === 'fab') {
+          if (statusEl && !statusLocked())
+            statusEl.textContent = 'fab refdes text: drag to reposition, R to rotate';
           return;
         }
         beginTextEdit(i);

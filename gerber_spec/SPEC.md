@@ -516,17 +516,18 @@ Clipper (clipper-lib, Boost license — Apache-compatible):
 - **Edge pullback**: Edge.Cuts lines+arcs are chained into a closed
   outline (open chains skip pullback), inflated by 0.3mm, intersected
   with the zone.
-- **Output**: keyhole-merged single rings per island (KiCad's
-  `filled_polygon` encoding — KiCad re-reads our refilled boards), holes
-  classified by Clipper's negative-area convention. The keyhole must SPLICE
-  each hole into the outer ring through a zero-width channel (in and back
-  out at the nearest outer vertex) with every channel anchored to the outer
-  ring itself — concatenating rings draws chords across the pour (viewers
-  render them as wedge-shaped voids) and channels chained hole-to-hole nest
-  excursions, which breaks even-odd fill (gerber regions are XOR/even-odd,
-  not nonzero). Probe: `tools/pour_wedge_probe.ts` samples winding numbers
-  through the thermal slots/spokes and the shoelace area sanity (a pour
-  area LARGER than the board proves a self-intersecting ring).
+- **Output**: islands come in two forms. `ring` is the keyhole-merged
+  single ring (KiCad `filled_polygon` form — channel crossings make it
+  geometrically self-intersecting, fine for board files, but polygon
+  tessellators in GERBER viewers render artifacts on it: stray triangles).
+  `contours` is the same island as [outer, …holes] separate contours —
+  gerber regions punch holes via even-odd between sub-contours, so the
+  export injects contours into the plot-source board (which lives in
+  os.tmpdir and is never read back by KiCad). Holes classified by
+  Clipper's negative-area convention. Probe:
+  `tools/pour_wedge_probe.ts` samples winding numbers through the thermal
+  slots/spokes and the shoelace area sanity (a pour area LARGER than the
+  board proves a self-intersecting ring).
 - **Net resolution**: both kicad-cli name-only `(net "GND")` and raw
   typeCAD coded `(net 3)` forms (code→name map from the net table).
 - **Export integration**: `export gerbers` REFILLS all zones on export
@@ -537,15 +538,20 @@ Clipper (clipper-lib, Boost license — Apache-compatible):
   default mode drops islands with no same-net connection point inside
   (pad/via centers), mode 1 keeps all, mode 2 also drops below the area
   minimum.
-- **Hatch fills**: `(mode hatch)` zones fill as border + lines, matching
-  KiCad's construction — every region outline stroked as a closed ring
-  (`hatch_thickness` wide, round joins) plus parallel 45°/135° hatch lines
-  (`hatch_orientation` 0 = 45°) at pitch `thickness + hatch_gap`, each line
-  an end-rounded capsule; both intersected with the region and unioned.
-  `hatch_min_hole_area` (mm²) fills stray holes below the threshold;
-  effective line width is `max(hatch_thickness, min_thickness)`. The mode
-  token is a Sym (`(mode hatch)` parses as `Sym { name: 'hatch' }`, not a
-  string) and the island key is `island_area_min` (not `min_island_area`).
+- **Hatch fills**: `(mode hatch)` zones fill as border + cross-hatch —
+  KiCad draws lines at `hatch_orientation` AND at orientation + 90° (the
+  rd_skeleton golden at orientation 0 has 0° and 90° line families in equal
+  measure; a "0 = 45°, single direction" reading is wrong on both counts).
+  Lines are end-rounded capsules at pitch `thickness + hatch_gap` per
+  family; the border is the region outline stroked at
+  `hatch_thickness`/2 and CLIPPED back into the region (an open-path
+  stroke extends half its width outside the zone). Both intersected with
+  the region and unioned; `hatch_min_hole_area` (mm²) fills stray holes
+  below the threshold; effective line width is
+  `max(hatch_thickness, min_thickness)`. The mode token is a Sym
+  (`(mode hatch)` parses as `Sym { name: 'hatch' }`, not a string) and the
+  island key is `island_area_min` (not `min_island_area`).
+    `totalAreaMm2` is NET copper (outer rings minus holes).
 - **Keepouts**: zones carrying `(keepout …)` never fill and their
   polygons punch holes in fills on the same layer.
 - **Custom pads**: obstacle built from the pad's `primitives`

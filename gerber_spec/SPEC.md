@@ -500,6 +500,15 @@ Clipper (clipper-lib, Boost license — Apache-compatible):
   default mode drops islands with no same-net connection point inside
   (pad/via centers), mode 1 keeps all, mode 2 also drops below the area
   minimum.
+- **Hatch fills**: `(mode hatch)` zones fill as border + lines, matching
+  KiCad's construction — every region outline stroked as a closed ring
+  (`hatch_thickness` wide, round joins) plus parallel 45°/135° hatch lines
+  (`hatch_orientation` 0 = 45°) at pitch `thickness + hatch_gap`, each line
+  an end-rounded capsule; both intersected with the region and unioned.
+  `hatch_min_hole_area` (mm²) fills stray holes below the threshold;
+  effective line width is `max(hatch_thickness, min_thickness)`. The mode
+  token is a Sym (`(mode hatch)` parses as `Sym { name: 'hatch' }`, not a
+  string) and the island key is `island_area_min` (not `min_island_area`).
 - **Keepouts**: zones carrying `(keepout …)` never fill and their
   polygons punch holes in fills on the same layer.
 - **Custom pads**: obstacle built from the pad's `primitives`
@@ -507,11 +516,19 @@ Clipper (clipper-lib, Boost license — Apache-compatible):
   obstacles inflate via ClipperOffset (closed-polygon round join), not a
   centroid approximation.
 - **Stress**: rd_skeleton's pour (65 footprints, 4k tracks) fills in
-  ~0.11 s vs kicad-cli's ~6 s refill; kicad's saved fill there is
-  hatch-mode (net 8250 mm² gross) vs our solid 7696 mm² — hatch output
-  remains a gap.
-- **Remaining gaps**: hatch fills not emitted (solid only); multi-poly
-  custom pads use only the first primitive.
+  ~0.11 s solid / ~0.66 s hatch vs kicad-cli's ~6 s refill. Hatch parity
+  on rd (shoelace copper area, same method both sides): F.Cu 4785.8 mm²
+  ours vs 4064.4 kicad (+18%, denser hatch lines near obstacles), B.Cu
+  2891.2 vs 4185.6 (−31%, region fragmentation differs); pour geometry
+  falls in the parity harness's tolerance class by design.
+- **Pitfall**: source-splice helpers must not match `(zone` as a bare
+  substring — `(zone_defaults` and pad `(zone_connect` also contain it,
+  which silently injected fills into the setup block (fills vanished from
+  the gerbers). The matchers use `/\(zone(?![\w-])/` and a regression test
+  (`export-refill.test.ts`) locks injection into the real zone.
+- **Remaining gaps**: multi-poly custom pads use only the first primitive;
+  hatch border always uses the `hatch_thickness` algorithm (KiCad's
+  Smoothing-Level border variant is not modeled).
 
 ## Performance (bench.py, Win11, i7, KiCad 10.0.0)
 

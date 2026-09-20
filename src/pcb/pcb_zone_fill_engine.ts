@@ -121,14 +121,40 @@ function mergeWithHoles(outer: Path, holes: Path[]): number[] {
   // across the pour — viewers render those as wedge-shaped voids. Every
   // channel anchors to the outer ring itself (never to another hole's
   // excursion): nested excursions break even-odd fill classification.
-  const anchors = holes.map((hole) => {
+  //
+  // The outer's straight edges are resampled first: hatch pours have a
+  // rectangular outer with only corner vertices, so nearest-vertex anchoring
+  // would otherwise pull thousands of channels to one corner (viewer
+  // tessellation stalls). Holes below ~0.01 mm² are dropped — their
+  // excursions are invisible ink but cost tessellation time.
+  const MAX_STEP_NM = 2 * NM;
+  const resampled: Path = [];
+  for (let i = 0; i < outer.length; i++) {
+    const a = outer[i]!;
+    const b = outer[(i + 1) % outer.length]!;
+    resampled.push(a);
+    const len = Math.hypot(b.X - a.X, b.Y - a.Y);
+    const steps = Math.floor(len / MAX_STEP_NM);
+    for (let s = 1; s <= steps; s++) {
+      resampled.push({
+        X: Math.round(a.X + ((b.X - a.X) * s) / (steps + 1)),
+        Y: Math.round(a.Y + ((b.Y - a.Y) * s) / (steps + 1)),
+      });
+    }
+  }
+  const kept: Path[] = [];
+  for (const hole of holes) {
+    if (Math.abs(ClipperLib.Clipper.Area(hole)) < 0.01 * NM * NM) continue;
+    kept.push(hole);
+  }
+  const anchors = kept.map((hole) => {
     let bestA = 0;
     let bestB = 0;
     let bestD = Infinity;
-    for (let i = 0; i < outer.length; i++) {
+    for (let i = 0; i < resampled.length; i++) {
       for (let j = 0; j < hole.length; j++) {
-        const dx = outer[i]!.X - hole[j]!.X;
-        const dy = outer[i]!.Y - hole[j]!.Y;
+        const dx = resampled[i]!.X - hole[j]!.X;
+        const dy = resampled[i]!.Y - hole[j]!.Y;
         const d = dx * dx + dy * dy;
         if (d < bestD) {
           bestD = d;
@@ -141,7 +167,7 @@ function mergeWithHoles(outer: Path, holes: Path[]): number[] {
   });
   // splice at descending outer indices so earlier insertions stay valid
   anchors.sort((a, b) => b.bestA - a.bestA);
-  let ring: Path = outer.slice();
+  let ring: Path = resampled;
   for (const { hole, bestA, bestB } of anchors) {
     const next: Path = [];
     for (let i = 0; i <= bestA; i++) next.push(ring[i]!); // outer up to channel
@@ -152,11 +178,16 @@ function mergeWithHoles(outer: Path, holes: Path[]): number[] {
     ring = next;
   }
   const out: number[] = [];
-  for (const v of ring) out.push(v.X / NM, v.Y / NM);
+  for (let i = 0; i < ring.length; i++) {
+    const v = ring[i]!;
+    const prev = ring[(i + ring.length - 1) % ring.length]!;
+    if (v.X === prev.X && v.Y === prev.Y) continue; // collapse duplicates
+    out.push(v.X / NM, v.Y / NM);
+  }
   if (ring.length > 0) {
     const first = ring[0]!;
-    const last = ring[ring.length - 1]!;
-    if (first.X !== last.X || first.Y !== last.Y) out.push(first.X / NM, first.Y / NM);
+    const last = out.length >= 2 ? { X: out[out.length - 2]! * NM, Y: out[out.length - 1]! * NM } : null;
+    if (!last || last.X !== first.X || last.Y !== first.Y) out.push(first.X / NM, first.Y / NM);
   }
   return out;
 }

@@ -107,21 +107,50 @@ function areaOf(path: Path): number {
 
 /** Keyhole-merge an outer ring and its hole rings into one flat mm ring. */
 function mergeWithHoles(outer: Path, holes: Path[]): number[] {
-  const ring: number[] = [];
-  const pushPath = (p: Path, close: boolean) => {
-    for (const v of p) ring.push(v.X / NM, v.Y / NM);
-    if (close) {
-      ring.push(p[0]!.X / NM, p[0]!.Y / NM);
+  // True keyhole encoding: each hole is SPLICED into the OUTER ring through
+  // a zero-width channel between the nearest vertex pair (traversed in and
+  // back out). Concatenating whole rings instead draws straight chords
+  // across the pour — viewers render those as wedge-shaped voids. Every
+  // channel anchors to the outer ring itself (never to another hole's
+  // excursion): nested excursions break even-odd fill classification.
+  const anchors = holes.map((hole) => {
+    let bestA = 0;
+    let bestB = 0;
+    let bestD = Infinity;
+    for (let i = 0; i < outer.length; i++) {
+      for (let j = 0; j < hole.length; j++) {
+        const dx = outer[i]!.X - hole[j]!.X;
+        const dy = outer[i]!.Y - hole[j]!.Y;
+        const d = dx * dx + dy * dy;
+        if (d < bestD) {
+          bestD = d;
+          bestA = i;
+          bestB = j;
+        }
+      }
     }
-  };
-  // start ring at the vertex nearest a hole to minimize channel length:
-  // simplicity over optimality — channel is zero-width anyway
-  pushPath(outer, true);
-  for (const hole of holes) {
-    // bridge: ...outerEnd, hole..., holeStart(=channel), outerStart...
-    pushPath(hole, true);
+    return { hole, bestA, bestB };
+  });
+  // splice at descending outer indices so earlier insertions stay valid
+  anchors.sort((a, b) => b.bestA - a.bestA);
+  let ring: Path = outer.slice();
+  for (const { hole, bestA, bestB } of anchors) {
+    const next: Path = [];
+    for (let i = 0; i <= bestA; i++) next.push(ring[i]!); // outer up to channel
+    for (let j = bestB; j < hole.length; j++) next.push(hole[j]!); // channel in
+    for (let j = 0; j <= bestB; j++) next.push(hole[j]!); // around the hole
+    next.push(hole[bestB]!); // channel back out (overlays the entry)
+    for (let i = bestA; i < ring.length; i++) next.push(ring[i]!); // outer on
+    ring = next;
   }
-  return ring;
+  const out: number[] = [];
+  for (const v of ring) out.push(v.X / NM, v.Y / NM);
+  if (ring.length > 0) {
+    const first = ring[0]!;
+    const last = ring[ring.length - 1]!;
+    if (first.X !== last.X || first.Y !== last.Y) out.push(first.X / NM, first.Y / NM);
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------------------
@@ -692,12 +721,14 @@ function finish(
   // thermal relief: same-net items keep an annular gap with four spoke
   // corridors left open. Built analytically as four annular sectors whose
   // angular span excludes the spoke half-angles — no boolean union needed.
+  // The annulus runs from the PAD EDGE (item.r) to pad edge + thermal_gap,
+  // matching KiCad — not from the pad center.
   const thermalClips: Path[] = [];
   const spokes: Path[] = [];
   const spokeHalfAngle = (x: number): number => Math.asin(Math.min(1, spokeWidthMm / 2 / x));
-  for (const { x, y } of sameNet) {
-    const r1 = 0.05; // from just outside the pad center
-    const r2 = r1 + thermalGapMm + 0.05;
+  for (const { x, y, r: padR } of sameNet) {
+    const r1 = padR;
+    const r2 = padR + thermalGapMm;
     for (let q = 0; q < 4; q++) {
       const a0 = (q * Math.PI) / 2 + spokeHalfAngle(r2);
       const a1 = ((q + 1) * Math.PI) / 2 - spokeHalfAngle(r2);

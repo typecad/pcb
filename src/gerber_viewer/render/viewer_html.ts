@@ -2350,50 +2350,70 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   // keys over the layout view: R rotates the selection 90 degrees (the
   // presses ride the move into apply as a rotation delta), arrows nudge
   // every selected component (0.5 mm, or 0.1 with Alt). An R with nothing
-  // selected says so — silence reads as broken.
-  window.addEventListener('keydown', function (ev) {
-    if (viewMode !== 'layout' || !layoutOverlay) return;
-    if (ev.key === 'r' || ev.key === 'R') {
-      if (!layoutSel.length && layoutTextSel < 0) {
-        if (statusEl && !statusLocked()) statusEl.textContent = 'click a component first — R rotates the selection';
-        return;
-      }
-      ev.preventDefault();
-      for (var rs = 0; rs < layoutSel.length; rs++) {
-        var gRot = layoutOverlay.querySelector('[data-ref="' + cssEsc(layoutSel[rs]) + '"]');
-        if (!gRot) continue;
-        layoutRot[layoutSel[rs]] = ((layoutRot[layoutSel[rs]] || 0) + 1) % 4;
-        setCompPos(gRot, gRot.__lx, gRot.__ly);
-        commitLayoutMove(gRot);
-      }
-      // a grabbed text rotates about its (effective) anchor
-      if (layoutTextSel >= 0 && layoutTexts[layoutTextSel]) {
-        var tm2 = layoutTextMoves[layoutTextSel] || {
-          ox: 0,
-          oy: 0,
-          rot: 0,
-          text: undefined,
-          text0: layoutTexts[layoutTextSel].text,
-        };
-        tm2.rot = ((tm2.rot || 0) + 1) % 4;
-        layoutTextMoves[layoutTextSel] = tm2;
-        syncTextVisual(layoutTextSel);
-        renderLayoutMoves();
-      }
+  // selected says so — silence reads as broken. CAPTURE on document: hosts
+  // (and stray open editors) can stopPropagation before a bubble-phase
+  // window listener ever sees the key.
+  function layoutRotateSelection() {
+    if (!layoutSel.length && layoutTextSel < 0) {
+      if (statusEl && !statusLocked()) statusEl.textContent = 'click a component first — R rotates the selection';
       return;
     }
-    var step = ev.altKey ? 0.1 : 0.5;
-    var nudges = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, step], ArrowDown: [0, -step] };
-    var d = nudges[ev.key];
-    if (!d) return;
-    ev.preventDefault();
-    for (var ns = 0; ns < layoutSel.length; ns++) {
-      var gNudge = layoutOverlay.querySelector('[data-ref="' + cssEsc(layoutSel[ns]) + '"]');
-      if (!gNudge) continue;
-      setCompPos(gNudge, gNudge.__lx + d[0], gNudge.__ly + d[1]);
-      commitLayoutMove(gNudge);
+    for (var rs = 0; rs < layoutSel.length; rs++) {
+      var gRot = layoutOverlay.querySelector('[data-ref="' + cssEsc(layoutSel[rs]) + '"]');
+      if (!gRot) continue;
+      layoutRot[layoutSel[rs]] = ((layoutRot[layoutSel[rs]] || 0) + 1) % 4;
+      setCompPos(gRot, gRot.__lx, gRot.__ly);
+      commitLayoutMove(gRot);
     }
-  });
+    // a grabbed text rotates about its (effective) anchor
+    if (layoutTextSel >= 0 && layoutTexts[layoutTextSel]) {
+      var tm2 = layoutTextMoves[layoutTextSel] || {
+        ox: 0,
+        oy: 0,
+        rot: 0,
+        text: undefined,
+        text0: layoutTexts[layoutTextSel].text,
+      };
+      tm2.rot = ((tm2.rot || 0) + 1) % 4;
+      layoutTextMoves[layoutTextSel] = tm2;
+      syncTextVisual(layoutTextSel);
+      renderLayoutMoves();
+    }
+  }
+  document.addEventListener(
+    'keydown',
+    function (ev) {
+      if (viewMode !== 'layout' || !layoutOverlay) return;
+      // typing belongs to an open editor, never to the canvas
+      if (ev.target && (ev.target.tagName === 'INPUT' || ev.target.tagName === 'TEXTAREA' || ev.target.isContentEditable))
+        return;
+      if (ev.key === 'r' || ev.key === 'R') {
+        ev.preventDefault();
+        layoutRotateSelection();
+        return;
+      }
+      var step = ev.altKey ? 0.1 : 0.5;
+      var nudges = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, step], ArrowDown: [0, -step] };
+      var d = nudges[ev.key];
+      if (!d) return;
+      ev.preventDefault();
+      for (var ns = 0; ns < layoutSel.length; ns++) {
+        var gNudge = layoutOverlay.querySelector('[data-ref="' + cssEsc(layoutSel[ns]) + '"]');
+        if (!gNudge) continue;
+        setCompPos(gNudge, gNudge.__lx + d[0], gNudge.__ly + d[1]);
+        commitLayoutMove(gNudge);
+      }
+    },
+    true,
+  );
+  // a visible rotate control too — rotation must never depend on the host
+  // delivering keystrokes to the page
+  var layoutRotBtn = document.getElementById('layout-rotate');
+  if (layoutRotBtn)
+    layoutRotBtn.addEventListener('click', function () {
+      if (viewMode !== 'layout') return;
+      layoutRotateSelection();
+    });
   // alignment tools: same row (shared Y, the selection's mean) and even X
   // spacing (first and last pinned, the middle distributed)
   function layoutSelGroups() {
@@ -4107,6 +4127,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   <div id="layout-tools">
     <button id="layout-align" type="button" disabled>align row</button>
     <button id="layout-dist" type="button" disabled>distribute X</button>
+    <button id="layout-rotate" type="button">rotate 90&deg;</button>
   </div>
   <div id="layout-warn" style="display:none"></div>
   <div id="layout-buttons">

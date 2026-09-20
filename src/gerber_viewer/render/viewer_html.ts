@@ -2314,11 +2314,11 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         var tm = layoutTextMoves[ti];
         texts.push({
           text0: tm.text0,
-          x0: tbt ? tbt.x : tm.x0,
-          y0: tbt ? -tbt.y : -tm.y0,
+          x0: tbt.x,
+          y0: -tbt.y,
           text: tm.text !== undefined ? tm.text : tm.text0,
-          x: +((tbt ? tbt.x : tm.x0) + (tm.ox || 0)).toFixed(4),
-          y: -+((tbt ? tbt.y : tm.y0) + (tm.oy || 0)).toFixed(4),
+          x: +(tbt.x + (tm.ox || 0)).toFixed(4),
+          y: -(+(tbt.y + (tm.oy || 0)).toFixed(4)),
           rot: (tm.rot || 0) * 90,
         });
       }

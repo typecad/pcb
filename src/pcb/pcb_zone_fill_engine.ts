@@ -657,14 +657,47 @@ export interface HatchParams {
 }
 
 /**
- * Convert a solid fill region into KiCad-style hatch output: a border ring
- * (region outline stroked at the hatch thickness) plus parallel hatch lines
- * at the hatch angle, clipped to the region, all stroked at the same
- * thickness and unioned. Holes below hatch_min_hole_area fill solid.
+ * Convert a solid fill region into KiCad-style hatch output pieces: a border
+ * band (region outline stroked at the hatch thickness) plus individual hatch
+ * line pieces (cross-hatch at the hatch angle and angle + 90°), each clipped
+ * to the region. Returns one KEYHOLED RING per piece.
+ *
+ * Pieces are emitted as SEPARATE gerber regions rather than unioned into one
+ * hole-riddled region: a hatched pour's complement (the voids between lines)
+ * intersects obstacle clearances into large connected networks, and keyholing
+ * those into a single zone-rectangular outer draws thousands of long
+ * channels that cross the entire hatch (gerbview's fracturing stalls for
+ * seconds; ours — separate single-contour regions — tessellate trivially).
+ * Overlapping line pieces double-draw copper, which is harmless on film.
  */
-function hatchRegion(region: Path[], hp: HatchParams): Path[] {
-  // border: stroke the region outlines, then clip back into the region —
-  // an open-path stroke extends half its width OUTSIDE the zone edge
+function hatchPieceRings(region: Path[], hp: HatchParams): number[][] {
+  const rings: number[][] = [];
+
+  /** keyhole a PolyTree node's holes into its contour; returns rings */
+  const nodeRings = (node: ClipperLib.PolyNode): number[] => {
+    const outer = node.Contour() as unknown as Path;
+    const holes = node.Childs().map((ch) => ch.Contour() as unknown as Path);
+    const ring = mergeWithHoles(outer, holes);
+    rings.push(ring);
+    return ring;
+  };
+
+  const intersectRegion = (subjects: Path[], clipRegion: boolean): ClipperLib.PolyTree => {
+    const cpr = new ClipperLib.Clipper();
+    subjects.forEach((p) => cpr.AddPath(p, ClipperLib.PolyType.ptSubject, true));
+    region.forEach((p) => cpr.AddPath(p, ClipperLib.PolyType.ptClip, true));
+    const tree = new ClipperLib.PolyTree();
+    cpr.Execute(
+      ClipperLib.ClipType.ctIntersection,
+      tree,
+      ClipperLib.PolyFillType.pftNonZero,
+      ClipperLib.PolyFillType.pftNonZero,
+    );
+    return tree;
+  };
+
+  // ---- border band: stroke the region outlines, clip back into the region
+  // (an open-path stroke extends half its width OUTSIDE the zone edge)
   const borderRaw: Path[] = [];
   for (const path of region) {
     const co = new ClipperLib.ClipperOffset(2, 0.02 * NM);
@@ -673,20 +706,14 @@ function hatchRegion(region: Path[], hp: HatchParams): Path[] {
     co.Execute(out, Math.round((hp.thickness / 2) * NM));
     out.forEach((o) => borderRaw.push(o));
   }
-  const borderClip = new ClipperLib.Clipper();
-  region.forEach((p) => borderClip.AddPath(p, ClipperLib.PolyType.ptClip, true));
-  borderRaw.forEach((p) => borderClip.AddPath(p, ClipperLib.PolyType.ptSubject, true));
-  const border: Path[] = [];
-  borderClip.Execute(
-    ClipperLib.ClipType.ctIntersection,
-    border,
-    ClipperLib.PolyFillType.pftNonZero,
-    ClipperLib.PolyFillType.pftNonZero,
-  );
+  for (const node of intersectRegion(borderRaw, true).Childs()) nodeRings(node);
 
-  // cross-hatch: KiCad's hatch draws lines at hatch_orientation AND at
+  // ---- cross-hatch lines: KiCad draws lines at hatch_orientation AND at
   // orientation + 90° (rd_skeleton golden: orientation 0 → 0° and 90° line
-  // families in equal measure) — not a single diagonal direction
+  // families in equal measure). Each line is intersected with the region
+  // SEPARATELY so its pieces stay hole-free simple rings — unioning the
+  // whole line field would make the voids between lines holes of one giant
+  // region and reintroduce the keyhole blowup.
   const rad0 = (hp.orientation * Math.PI) / 180;
   let minX = Infinity;
   let minY = Infinity;
@@ -706,58 +733,34 @@ function hatchRegion(region: Path[], hp: HatchParams): Path[] {
   const cy = (minY + maxY) / 2;
   const halfL = Math.hypot(maxX - minX, maxY - minY) / 2 + hp.thickness;
   const pitch = hp.thickness + hp.gap;
-  const capsules: Path[] = [];
   for (const rad of [rad0, rad0 + Math.PI / 2]) {
     const dx = Math.cos(rad);
     const dy = Math.sin(rad);
     const nx = -dy;
     const ny = dx;
     for (let off = -halfL; off <= halfL; off += pitch) {
-      capsules.push(
-        capsuleToPoly(
-          cx + nx * off - dx * halfL,
-          cy + ny * off - dy * halfL,
-          cx + nx * off + dx * halfL,
-          cy + ny * off + dy * halfL,
-          0,
-          hp.thickness / 2,
-        ),
+      const capsule = capsuleToPoly(
+        cx + nx * off - dx * halfL,
+        cy + ny * off - dy * halfL,
+        cx + nx * off + dx * halfL,
+        cy + ny * off + dy * halfL,
+        0,
+        hp.thickness / 2,
       );
+      for (const node of intersectRegion([capsule], true).Childs()) nodeRings(node);
     }
   }
 
-  const cpr = new ClipperLib.Clipper();
-  region.forEach((p) => cpr.AddPath(p, ClipperLib.PolyType.ptSubject, true));
-  capsules.forEach((p) => cpr.AddPath(p, ClipperLib.PolyType.ptClip, true));
-  const hatch: ClipperLib.Path[] = [];
-  cpr.Execute(
-    ClipperLib.ClipType.ctIntersection,
-    hatch,
-    ClipperLib.PolyFillType.pftNonZero,
-    ClipperLib.PolyFillType.pftNonZero,
-  );
-
-  // union border + hatch; the solution carries holes as negative paths
-  const unionAll = (paths: Path[]): Path[] => {
-    const c = new ClipperLib.Clipper();
-    paths.forEach((p) => c.AddPath(p, ClipperLib.PolyType.ptSubject, true));
-    const sol: ClipperLib.Path[] = [];
-    c.Execute(
-      ClipperLib.ClipType.ctUnion,
-      sol,
-      ClipperLib.PolyFillType.pftNonZero,
-      ClipperLib.PolyFillType.pftNonZero,
-    );
-    return sol;
-  };
-  const unioned = unionAll([...border, ...hatch]);
-  if (hp.minHoleArea <= 0) return unioned;
-  // fill holes below hatch_min_hole_area: re-union keeping only large holes
-  const outersL = unioned.filter((p) => ClipperLib.Clipper.Area(p) >= 0);
-  const bigHoles = unioned.filter(
-    (p) => ClipperLib.Clipper.Area(p) < 0 && Math.abs(ClipperLib.Clipper.Area(p)) / (NM * NM) >= hp.minHoleArea,
-  );
-  return unionAll([...outersL, ...bigHoles]);
+  // ---- drop degenerate slivers (< 0.01 mm²): invisible ink that only
+  // costs tessellation
+  return rings.filter((r) => {
+    let a = 0;
+    for (let i = 0; i < r.length / 2; i++) {
+      const j = (i + 1) % (r.length / 2);
+      a += r[i * 2]! * r[j * 2 + 1]! - r[j * 2]! * r[i * 2 + 1]!;
+    }
+    return Math.abs(a / 2) >= 0.01;
+  });
 }
 
 function finish(
@@ -816,8 +819,24 @@ function finish(
   // spoke corridors), so a single subtraction builds the fill
   let flatResult = subtract(subject, [...clips, ...thermalClips]);
 
+  // Hatch output: independent border/line PIECES, each its own island with a
+  // single (rarely-keyholed) contour — see hatchPieceRings. Skipping the
+  // outer/hole classification entirely: the pieces' voids are simply not
+  // emitted, which is what makes the gerber cheap to tessellate.
   if (hatchParams) {
-    flatResult = hatchRegion(flatResult, hatchParams);
+    let total = 0;
+    for (const ring of hatchPieceRings(flatResult, hatchParams)) {
+      const pts = ring.length / 2;
+      const nmRing: Path = [];
+      for (let i = 0; i < pts; i++) {
+        nmRing.push({ X: Math.round(ring[i * 2]! * NM), Y: Math.round(ring[i * 2 + 1]! * NM) });
+      }
+      const area = areaOf(nmRing);
+      total += area;
+      islands.push({ ring, contours: [ring], areaMm2: area });
+    }
+    if (islands.length === 0) return { layer, islands: [], totalAreaMm2: 0 };
+    return { layer, islands, totalAreaMm2: total };
   }
 
   // classify outers/holes by orientation: Clipper's boolean output marks

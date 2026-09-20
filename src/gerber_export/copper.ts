@@ -550,7 +550,10 @@ function plotOneCopperLayer(
     w.objectAperFunction('Conductor');
     const nn = zone.child('net_name');
     w.netAttr(nn ? String(nn.raw[1] ?? '') || netOf(zone, nets) : netOf(zone, nets));
-    w.beginRegion();
+    // one G36 region per filled_polygon: hatch fills arrive as many
+    // independent pieces (border band + line pieces), each a simple contour
+    // — separate regions keep every region single-contour, which every
+    // viewer tessellates trivially
     for (const fill of fills) {
       const pts = fill.child('pts');
       if (!pts) continue;
@@ -558,11 +561,12 @@ function plotOneCopperLayer(
       if (xy.length === 0) continue;
       // KiCad closes each contour with an explicit repeat of the first vertex
       const firstPt = g({ x: scalar(xy[0]!, 1), y: scalar(xy[0]!, 2) });
+      w.beginRegion();
       w.moveTo(firstPt);
       for (const p of xy.slice(1)) w.regionPoint(g({ x: scalar(p, 1), y: scalar(p, 2) }));
       w.regionPoint(firstPt);
+      w.endRegion();
     }
-    w.endRegion();
     w.clearAperFunction();
   }
   w.clearAttrs();

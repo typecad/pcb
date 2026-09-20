@@ -1,0 +1,18 @@
+{
+  "name": "gerber-demo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Manual test project for the native gerber/drill/zone-fill export path",
+  "type": "module",
+  "scripts": {
+    "build": "typecad-pcb build",
+    "gerbers": "typecad-pcb export gerbers --out build/gerbers",
+    "gerbers:saved": "typecad-pcb export gerbers --saved-fills --out build/gerbers-saved",
+    "gerbers:kicad": "typecad-pcb export gerbers --kicad --out build/gerbers-kicad",
+    "check": "node scripts/check-gerbers.mjs",
+    "all": "npm run build && npm run gerbers && npm run check",
+    "view": "gerber-viewer build/gerbers -o build/viewer.html --open",
+    "view:svg": "gerber-viewer build/gerbers --render pcba -o build/gerber_demo.svg",
+    "clean": "node -e \"require('fs').rmSync('build',{recursive:true,force:true})\""
+  }
+}

@@ -524,8 +524,11 @@ Clipper (clipper-lib, Boost license — Apache-compatible):
 - **Pitfall**: source-splice helpers must not match `(zone` as a bare
   substring — `(zone_defaults` and pad `(zone_connect` also contain it,
   which silently injected fills into the setup block (fills vanished from
-  the gerbers). The matchers use `/\(zone(?![\w-])/` and a regression test
-  (`export-refill.test.ts`) locks injection into the real zone.
+  the gerbers). typeCAD's own serializer additionally puts the node name on
+  its own line (`(\n  zone`), which the substring misses entirely (the
+  refill then never runs). The matchers use `/\(\s*zone(?![\w-])/` and a
+  regression test (`export-refill.test.ts`, serializer-style fixture)
+  locks injection into the real zone.
 - **Remaining gaps**: multi-poly custom pads use only the first primitive;
   hatch border always uses the `hatch_thickness` algorithm (KiCad's
   Smoothing-Level border variant is not modeled).

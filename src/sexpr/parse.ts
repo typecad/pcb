@@ -51,7 +51,13 @@ export function parse(input: string): SExpr {
         }
         pos++;
         if (pos < len) {
-          parts.push(input[pos]);
+          // KiCad's tokenizer escapes: \n \t \r \\ \" — anything else keeps
+          // the escaped character itself
+          const esc = input[pos];
+          if (esc === 'n') parts.push('\n');
+          else if (esc === 't') parts.push('\t');
+          else if (esc === 'r') parts.push('\r');
+          else parts.push(esc);
         }
         pos++;
         segStart = pos;

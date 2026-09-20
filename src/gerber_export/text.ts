@@ -58,9 +58,9 @@ export function renderStrokeText(w: GerberWriter, o: TextOpts): boolean {
   // int division (VECTOR2I operator/) truncates toward zero.
   const idiv = (a: number, b: number): number => Math.trunc(a / b);
   const thNm = kiRound(o.thickness * NM);
+  const penNm = kiRound((o.pen ?? o.thickness) * NM);
   const syNm = kiRound(sy * NM);
   const height = Math.trunc(syNm * 1.17); // int += double truncates in C++
-  const interline = Math.trunc(syNm * 1.7 * 0.9583);
 
   // per-char advance: cursor.x += KiROUND(bboxEnd.x * size.x)
   const extents: number[] = lines.map((line) => {
@@ -76,15 +76,25 @@ export function renderStrokeText(w: GerberWriter, o: TextOpts): boolean {
   });
 
   // probe-verified base: cap height minus stroke adjustments plus the
-  // condensed-width correction below the font's natural 0.8 aspect
+  // condensed-width correction below the font's natural 0.8 aspect.
+  // Vertical justification centers/justifies the WHOLE line block: the
+  // block height is (lines−1)·interline + line height (probe-verified vs
+  // kicad-cli 10 two-line goldens).
   const kNm = Math.max(0, kiRound(0.013 * (0.8 * sy - sx) * NM));
   let offsetY = syNm - kiRound(o.thickness * 0.052 * NM) + kNm;
+  const interline = Math.trunc(syNm * 1.7 * 0.9583);
+  const blockH = height + (lines.length - 1) * interline;
+  // Glyph y is up-positive but the board frame is y-down (KiCad's glyph
+  // transform negates y). Flipping about the cursor mirrors the ink box, so
+  // shift the cursor by the glyph em-span (baseline −0.95 … cap +0.05) to
+  // keep the probe-verified vertical placement.
+  offsetY -= Math.round((0.95 - 0.05) * syNm);
   switch (o.vJustify) {
     case 'bottom':
-      offsetY -= height;
+      offsetY -= blockH;
       break;
     case 'center':
-      offsetY -= idiv(height, 2);
+      offsetY -= idiv(blockH, 2);
       break;
     default:
       break;
@@ -103,7 +113,11 @@ export function renderStrokeText(w: GerberWriter, o: TextOpts): boolean {
     let lineOffsetX: number;
     switch (o.hJustify) {
       case 'left':
-        lineOffsetX = idiv(thNm, 1.52);
+        // probe-fitted against kicad-cli 10 goldens (see gerber_spec
+        // tools/text_probe_*): extents-independent, scales with size and
+        // the clamped plot pen
+        lineOffsetX =
+          kiRound(0.4333 * sy * NM) + kiRound(0.16 * o.thickness * NM) + idiv(penNm, 2);
         break;
       case 'right':
         lineOffsetX = -(extents[li]! + idiv(thNm, 1.52));
@@ -126,14 +140,14 @@ export function renderStrokeText(w: GerberWriter, o: TextOpts): boolean {
       for (const contour of g.contours) {
         let prev: Point | null = null;
         for (let i = 0; i < contour.length; i += 2) {
-          // glyph x right-positive; decoded y used directly in the y-up
-          // file frame (baseline ≈ -0.95, cap top ≈ +0.05)
+          // glyph frame: x right-positive, y up-positive (baseline ≈ −0.95,
+          // cap top ≈ +0.05) — flipped into the y-down board frame below
           let px = contour[i]! * sx;
           const py = contour[i + 1]! * sy;
-          if (tilt) px -= py * tilt;
+          if (tilt) px += py * tilt;
           // VECTOR2D -> VECTOR2I is static_cast: truncation toward zero
           let bxnm = Math.trunc(cursorX + px * NM);
-          let bynm = Math.trunc(cursorY + py * NM);
+          let bynm = Math.trunc(cursorY - py * NM); // glyph up → board down
           if (mirrored) bxnm = anchorX - (bxnm - anchorX);
           if (o.angle !== 0) {
             const bx = (bxnm - anchorX) / NM;
@@ -144,7 +158,7 @@ export function renderStrokeText(w: GerberWriter, o: TextOpts): boolean {
           const p = { x: bxnm / NM, y: bynm / NM };
           if (prev) {
             w.selectAperture(w.aperture({ kind: 'C', dia: o.pen ?? o.thickness }));
-            w.moveTo({ x: prev.x, y: -prev.y }); // board y-up → gerber y-down
+            w.moveTo({ x: prev.x, y: -prev.y }); // board y-down → gerber y-up
             w.lineTo({ x: p.x, y: -p.y });
           }
           prev = p;
@@ -195,10 +209,12 @@ export function parseEffects(item: SNode): ParsedEffects {
   const just = fx.child('justify');
   if (just) {
     for (const tok of just.raw.slice(1)) {
-      if (typeof tok !== 'string') continue;
-      if (tok === 'left' || tok === 'right' || tok === 'center') out.hJustify = tok;
-      if (tok === 'top' || tok === 'bottom') out.vJustify = tok;
-      if (tok === 'mirror') out.mirror = true;
+      // unquoted atoms parse as Sym objects, not strings
+      const s = typeof tok === 'string' ? tok : (tok as { name?: string }).name;
+      if (!s) continue;
+      if (s === 'left' || s === 'right' || s === 'center') out.hJustify = s;
+      if (s === 'top' || s === 'bottom') out.vJustify = s;
+      if (s === 'mirror') out.mirror = true;
     }
   }
   return out;

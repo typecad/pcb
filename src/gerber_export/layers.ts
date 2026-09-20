@@ -407,13 +407,12 @@ function drawTextItem(
   const hidden = hideTok !== undefined && String((hideTok as { name?: string }).name ?? hideTok) === 'yes';
   if (hidden) return;
   const fx = parseEffects(item);
-  if (fx.face) {
+  const cache = fx.face ? item.children('render_cache')[0] : undefined;
+  if (fx.face && cache) {
     // TTF text: boards carry KiCad's pre-rendered polygon cache (absolute
     // board coords) — render each polygon as stroke + filled region
-    const cache = item.children('render_cache')[0];
     const size = fx.size ?? { x: 1, y: 1 };
     const pen = Math.min(fx.thickness ?? size.y / 8, size.y / 4);
-    if (!cache) return;
     // regions only — KiCad selects the pen aperture but never strokes
     w.selectAperture(w.aperture({ kind: 'C', dia: pen }));
     for (const poly of cache.children('polygon')) {

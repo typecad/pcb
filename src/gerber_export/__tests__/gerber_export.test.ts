@@ -307,7 +307,9 @@ describe('stroke text (Phase 4)', () => {
     });
     const text = w.render({ fileFunction: 'Legend,Top', polarity: 'Positive', projectName: 't', projectGuid: 'g', projectRevision: 'r', generationSoftware: 'x,x,x', creationDate: '2026-01-01' });
     // first stroke of 'S' + total segment count pinned to the Hershey data
-    expect(text).toContain('X50933360Y-48472750D02*');
+    // (X = 52 − extents('STROKE')/2 with ink-based advances; Y per the
+    // un-flipped glyph frame — verified against kicad-cli 10 probe goldens)
+    expect(text).toContain('X50457240Y-47401450D02*');
     const segs = text.match(/D02\*/g) ?? [];
     expect(segs).toHaveLength(59);
   });

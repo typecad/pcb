@@ -517,14 +517,13 @@ Clipper (clipper-lib, Boost license — Apache-compatible):
   outline (open chains skip pullback), inflated by 0.3mm, intersected
   with the zone.
 - **Output**: islands come in two forms. `ring` is the keyhole-merged
-  single ring (KiCad `filled_polygon` form — channel crossings make it
-  geometrically self-intersecting, fine for board files, but polygon
-  tessellators in GERBER viewers render artifacts on it: stray triangles).
-  `contours` is the same island as [outer, …holes] separate contours —
-  gerber regions punch holes via even-odd between sub-contours, so the
-  export injects contours into the plot-source board (which lives in
-  os.tmpdir and is never read back by KiCad). Holes classified by
-  Clipper's negative-area convention. Probe:
+  single ring (KiCad `filled_polygon` form) and `contours` is the same
+  island as [outer, …holes] separate contours. GERBERS must carry the
+  keyholed ring: KiCad's own gerbers are single-contour-per-island (the
+  rd golden: 1 D02, 93,829 draws, ~13k keyhole channel crossings — gerbview
+  tessellates that correctly), while a multi-contour region makes gerbview
+  fill it WITHOUT even-odd subtraction → a solid slab. Board files
+  likewise require the keyholed form. Probe:
   `tools/pour_wedge_probe.ts` samples winding numbers through the thermal
   slots/spokes and the shoelace area sanity (a pour area LARGER than the
   board proves a self-intersecting ring).

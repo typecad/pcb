@@ -29,8 +29,9 @@ describe('help - export functions', () => {
       .mock.calls.map((c) => c[0])
       .join('\n');
     expect(output).toContain('typecad-pcb export gerbers');
-    expect(output).toContain('kicad-cli pcb export gerbers');
-    expect(output).toContain('--exclude-drawing-sheet');
+    expect(output).toContain("typeCAD's own gerber writer");
+    expect(output).toContain('--kicad');
+    expect(output).toContain('Hershey stroke font');
   });
 
   it('showExportDrillHelp should print drill-specific help', async () => {

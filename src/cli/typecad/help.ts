@@ -341,40 +341,43 @@ export function showPackageHelp(): void {
 }
 
 export function showExportHelp(): void {
-  console.log(chalk.white.bold('typecad-pcb export') + ' - Export KiCad PCB fabrication files\n');
+  console.log(chalk.white.bold('typecad-pcb export') + ' - Export PCB fabrication files\n');
   console.log('Usage:');
-  console.log('  typecad-pcb export <subcommand> [path] [options] [-- kicad-cli flags]\n');
+  console.log('  typecad-pcb export <subcommand> [path] [options]\n');
   console.log('Subcommands:');
-  console.log('  gerbers             Export Gerber files');
+  console.log('  gerbers             Export the full fab set (gerbers + drill + job) natively');
   console.log('  drill               Export drill files\n');
   console.log('Options:');
-  console.log('  -o, --output=<dir>  Output directory (default: ./build/gerbers/)');
+  console.log('  -o, --out=<dir>     Output directory (default: ./build/gerbers/)');
   console.log('  --json              Output results as JSON');
+  console.log('  --kicad             gerbers: use the legacy kicad-cli plotter');
   console.log('  --help              Show help for a subcommand\n');
   console.log("Run 'typecad-pcb export <subcommand> --help' for details.");
 }
 
 export function showExportGerbersHelp(): void {
-  console.log(chalk.white.bold('typecad-pcb export gerbers') + ' - Export Gerber files from a KiCad PCB\n');
+  console.log(chalk.white.bold('typecad-pcb export gerbers') + ' - Export the full fabrication set from a PCB\n');
   console.log(
-    'Runs kicad-cli pcb export gerbers on a .kicad_pcb file,\n' + 'generating fabrication-ready Gerber output.\n',
+    "Plots copper, graphics, drill and job files from a .kicad_pcb with\n" +
+      "typeCAD's own gerber writer — no kicad-cli required.\n",
   );
   console.log('Usage:');
-  console.log('  typecad-pcb export gerbers [path] [typecad-options] [-- kicad-cli flags]\n');
+  console.log('  typecad-pcb export gerbers [path] [options]\n');
   console.log('Arguments:');
   console.log('  <path>             Path to .kicad_pcb file (default: auto-detected from ./build/)\n');
-  console.log('typecad Options:');
-  console.log('  -o, --output=<dir> Output directory (default: ./build/gerbers/)');
+  console.log('Options:');
+  console.log('  -o, --out=<dir>    Output directory (default: ./build/gerbers/)');
   console.log('  --json             Output results as JSON');
+  console.log('  --kicad            Use the legacy kicad-cli plotter (needs KiCad installed)');
   console.log('  --help             Show this help\n');
-  console.log('Passthrough:');
-  console.log('  All flags after -- are forwarded directly to kicad-cli pcb export gerbers.');
-  console.log('  See `kicad-cli pcb export gerbers --help` for the full list of flags.\n');
+  console.log('Notes:');
+  console.log('  Text renders with the public-domain Hershey stroke font; TTF texts');
+  console.log('  plot from the board render_cache. Zones plot their SAVED fills —');
+  console.log('  run `typecad-pcb check` first on boards with zones.');
   console.log('Examples:');
   console.log('  typecad-pcb export gerbers');
-  console.log('  typecad-pcb export gerbers --output ./fab');
+  console.log('  typecad-pcb export gerbers --out ./fab');
   console.log('  typecad-pcb export gerbers ./build/board.kicad_pcb');
-  console.log('  typecad-pcb export gerbers -- --exclude-drawing-sheet');
 }
 
 export function showExportDrillHelp(): void {

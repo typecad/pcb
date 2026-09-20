@@ -7,6 +7,7 @@ const mockFs = {
   readdirSync: vi.fn(),
   mkdirSync: vi.fn(),
   readFileSync: vi.fn(),
+  writeFileSync: vi.fn(),
 };
 
 vi.mock('node:fs', () => {
@@ -137,6 +138,7 @@ describe('export command', () => {
         makeParsed({
           subcommand: 'gerbers',
           positional: ['/project/build/board.kicad_pcb'],
+          args: { kicad: true },
         }),
       );
 
@@ -152,7 +154,7 @@ describe('export command', () => {
       setupFsMock('/project/build/board.kicad_pcb', ['board-F_Cu.gbr']);
 
       const { run } = await import('../src/cli/typecad/commands/export.js');
-      await run(makeParsed({ subcommand: 'gerbers', positional: ['/project/build/board.kicad_pcb'] }));
+      await run(makeParsed({ args: { kicad: true },  subcommand: 'gerbers', positional: ['/project/build/board.kicad_pcb'] }));
 
       const callArgs = (executeKiCADCommand.mock.calls.find((c) => c[0] === 'pcb')?.[1] ?? []) as string[];
       // the mocked --version returns 10.0.0 → the flag must always be present
@@ -167,6 +169,7 @@ describe('export command', () => {
         makeParsed({
           subcommand: 'gerbers',
           positional: ['/project/build/board.kicad_pcb'],
+          args: { kicad: true },
           passthrough: ['--exclude-drawing-sheet'],
         }),
       );
@@ -183,7 +186,7 @@ describe('export command', () => {
         makeParsed({
           subcommand: 'gerbers',
           positional: ['/project/build/board.kicad_pcb'],
-          args: { output: './fab' },
+          args: { kicad: true, output: './fab' },
         }),
       );
 
@@ -199,7 +202,7 @@ describe('export command', () => {
         makeParsed({
           subcommand: 'gerbers',
           positional: ['/project/build/board.kicad_pcb'],
-          args: { o: './fab' },
+          args: { kicad: true, o: './fab' },
         }),
       );
 
@@ -215,6 +218,7 @@ describe('export command', () => {
         makeParsed({
           subcommand: 'gerbers',
           positional: ['/project/build/board.kicad_pcb'],
+          args: { kicad: true },
         }),
       );
 
@@ -234,6 +238,7 @@ describe('export command', () => {
         makeParsed({
           subcommand: 'gerbers',
           positional: ['/project/build/board.kicad_pcb'],
+          args: { kicad: true },
           json: true,
         }),
       );
@@ -249,7 +254,43 @@ describe('export command', () => {
     });
   });
 
-  describe('export drill', () => {
+      it('defaults to the native plotter (no kicad-cli call)', async () => {
+      setupFsMock('/project/build/board.kicad_pcb', ['board-F_Cu.gtl', 'board-B_Cu.gbl']);
+      mockFs.readFileSync.mockReturnValue(
+        '(kicad_pcb (version 20241229) (layers (0 "F.Cu" signal) (31 "B.Cu" signal)) (net 1 "N") (footprint "T:A" (layer "F.Cu") (property "Reference" "A1" (at 0 0 0) (layer "F.SilkS")) (at 5 5) (pad "1" smd rect (at 0 0) (size 1 1) (layers "F.Cu" "F.Mask" "F.Paste") (net 1 "N"))))',
+      );
+
+      const { run } = await import('../src/cli/typecad/commands/export.js');
+      await run(
+        makeParsed({
+          subcommand: 'gerbers',
+          positional: ['/project/build/board.kicad_pcb'],
+          args: { out: './fab' },
+          json: true,
+        }),
+      );
+
+      expect(executeKiCADCommand).not.toHaveBeenCalled();
+      const logger = (await import('../src/utils/logging.js')).default;
+      const jsonCall = (logger.log as vi.Mock).mock.calls.find(
+        (c) => typeof c[0] === 'string' && c[0].includes('"native": true'),
+      );
+      expect(jsonCall).toBeDefined();
+      const payload = JSON.parse(jsonCall![0] as string);
+      // fabrication set = copper + graphics + drill + job
+      expect(payload.files.some((f: string) => f.endsWith('.drl'))).toBe(true);
+      expect(payload.files.some((f: string) => f.endsWith('.gbrjob'))).toBe(true);
+      expect(payload.files.length).toBeGreaterThan(20);
+    });
+
+    it('rejects --native without a PCB file', async () => {
+      mockFs.existsSync.mockReturnValue(false);
+      const { run } = await import('../src/cli/typecad/commands/export.js');
+      await expect(run(makeParsed({ subcommand: 'gerbers' }))).rejects.toThrow(/No \.kicad_pcb file found in .*build/);
+    });
+
+
+describe('export drill', () => {
     it('should throw if PCB file not found', async () => {
       const { run } = await import('../src/cli/typecad/commands/export.js');
       mockFs.existsSync.mockReturnValue(false);
@@ -264,7 +305,7 @@ describe('export command', () => {
 
       const { run } = await import('../src/cli/typecad/commands/export.js');
       await run(
-        makeParsed({
+        makeParsed({ args: { kicad: true }, 
           subcommand: 'drill',
           positional: ['/project/build/board.kicad_pcb'],
         }),
@@ -280,7 +321,7 @@ describe('export command', () => {
 
       const { run } = await import('../src/cli/typecad/commands/export.js');
       await run(
-        makeParsed({
+        makeParsed({ args: { kicad: true }, 
           subcommand: 'drill',
           positional: ['/project/build/board.kicad_pcb'],
           passthrough: ['--use-drill-file-origin'],
@@ -298,7 +339,7 @@ describe('export command', () => {
       const { run } = await import('../src/cli/typecad/commands/export.js');
 
       await run(
-        makeParsed({
+        makeParsed({ args: { kicad: true }, 
           subcommand: 'drill',
           positional: ['/project/build/board.kicad_pcb'],
           json: true,
@@ -320,7 +361,7 @@ describe('export command', () => {
 
       const { run } = await import('../src/cli/typecad/commands/export.js');
       await run(
-        makeParsed({
+        makeParsed({ args: { kicad: true }, 
           subcommand: 'drill',
           positional: ['/project/build/board.kicad_pcb'],
         }),

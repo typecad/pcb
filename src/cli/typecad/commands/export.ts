@@ -282,17 +282,15 @@ export function refillZoneFills(source: string): string | null {
     for (const layer of layers) {
       const res = fillZone(root, zone, layer);
       if (!res) continue;
-      // inject SEPARATE contours (outer + holes), not the keyholed ring:
-      // gerber regions punch holes via even-odd between sub-contours, while
-      // the keyhole ring's channel crossings trip polygon tessellators in
-      // viewers. The filled board here is a plot source only (os.tmpdir) —
-      // KiCad never reads it back.
+      // inject the KEYHOLED ring — KiCad's own gerbers carry exactly this
+      // form (single contour per island, zero-width channels), which every
+      // viewer including gerbview renders correctly. Separate outer+hole
+      // sub-contours in one region are the spec-tolerated alternative but
+      // gerbview fills them WITHOUT even-odd subtraction → solid slabs.
       const toPts = (ring: number[]) =>
         ring.reduce((s, v, i) => (i % 2 === 0 ? s + `(xy ${v.toFixed(6)} ` : s + `${v.toFixed(6)}) `), '').trim();
       for (const isl of res.islands) {
-        for (const contour of isl.contours) {
-          blocks.push(`(filled_polygon (layer "${layer}") (pts ${toPts(contour)}))`);
-        }
+        blocks.push(`(filled_polygon (layer "${layer}") (pts ${toPts(isl.ring)}))`);
       }
     }
     if (blocks.length === 0) continue;

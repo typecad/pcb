@@ -495,7 +495,7 @@ export class BoardViewerPanel {
     moves: Array<{ ref: string; dx: number; dy: number; rot?: number; pads?: Array<{ x: number; y: number }> }>,
     texts?: Array<{ text0: string; x0: number; y0: number; text: string; x: number; y: number; rot: number }>,
     values?: Array<{ ref: string; value: string }>,
-    labels?: Array<{ ref: string; kind: 'reference' | 'value'; x: number; y: number; rot: number }>,
+    labels?: Array<{ ref: string; kind: 'reference' | 'value' | 'fab'; x: number; y: number; rot: number }>,
     renames?: Array<{ ref: string; newRef: string }>,
   ): Promise<void> {
     const folder = this.hwFolder();

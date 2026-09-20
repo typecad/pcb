@@ -55,7 +55,7 @@ export function outlineData(components: ComponentSummary[]): OutlineComponent[] 
 /** one component label reposition (Reference/Value fp_text), board frame */
 export interface LabelEdit {
   ref: string;
-  kind: 'reference' | 'value';
+  kind: 'reference' | 'value' | 'fab';
   /** final world position + absolute rotation (degrees) */
   x: number;
   y: number;

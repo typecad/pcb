@@ -456,7 +456,7 @@ export interface ComponentEditSpec {
   ref: string;
   value?: string;
   newRef?: string;
-  label?: { kind: 'reference' | 'value'; x: number; y: number; rot: number };
+  label?: { kind: 'reference' | 'value' | 'fab'; x: number; y: number; rot: number };
 }
 
 export function planComponentEdits(
@@ -507,7 +507,9 @@ export function planComponentEdits(
         const dx = spec.label.x - part.x;
         const dy = spec.label.y - part.y;
         const body = `{ x: ${fmt(dx * c - dy * s2)}, y: ${fmt(dx * s2 + dy * c)}, rotation: ${fmt(spec.label.rot - part.rot)} }`;
-        const prop = `${spec.label.kind}Layout`;
+        // reference/value carry their own Layout option names; the small
+        // fab refdes text is positioned by the plain 'fab' option
+        const prop = spec.label.kind === 'fab' ? 'fab' : `${spec.label.kind}Layout`;
         const layoutRe = new RegExp(`\b${prop}\s*:\s*\{[^}]*\}`);
         const existing = layoutRe.exec(inner);
         if (existing) newInner = newInner.replace(existing[0], () => `${prop}: ${body}`);

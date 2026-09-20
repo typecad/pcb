@@ -227,3 +227,21 @@ describe('planComponentEdits (combined constructor pass)', () => {
     expect(skipped).toHaveLength(1);
   });
 });
+
+describe('planComponentEdits fab label', () => {
+  const src =
+    "const r1 = new Component({ symbol: 'Device:R_Small', reference: 'R1', value: '1k' });\n" +
+    "r1.pcb = { x: 16, y: 15, rotation: 180 };\n";
+  it("writes the plain 'fab' option for the small fab refdes text", () => {
+    const { edits, skipped } = planComponentEdits(
+      src,
+      [{ ref: 'R1', label: { kind: 'fab', x: 18, y: 15, rot: 180 } }],
+      (ref) => (ref === 'R1' ? parsePlacementLiteral(src, 'r1') : null),
+      new Set(['R1']),
+    );
+    expect(skipped).toHaveLength(0);
+    const out = applyPlacementEdits(src, edits);
+    expect(out).toContain('fab: { x: -2, y: 0, rotation: 0 }');
+    expect(out).not.toContain('fabLayout');
+  });
+});

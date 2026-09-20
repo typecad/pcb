@@ -268,11 +268,10 @@ function refillZoneFills(source: string): string | null {
   const root = SNode.from(parse(source) as SExpr[]);
   const zones = root.children('zone'); // one array: SNode wrappers are not
   // reference-stable across children() calls, so the ordinal is the handle
-  let out = source;
+  let out = stripFilledPolygons(source);
   let filledAny = false;
   for (let z = 0; z < zones.length; z++) {
     const zone = zones[z]!;
-    if (zone.children('filled_polygon').length > 0) continue;
     const layerNode = zone.child('layer') ?? zone.child('layers');
     const layerNames = layerNode
       ? layerNode.raw.slice(1).filter((v): v is string => typeof v === 'string')
@@ -314,6 +313,32 @@ function nthZoneStart(source: string, ordinal: number): number {
     if (at < 0) return -1;
   }
   return at;
+}
+
+/** Remove every (filled_polygon …) block so a refill replaces stale fills. */
+function stripFilledPolygons(source: string): string {
+  let out = '';
+  let i = 0;
+  for (;;) {
+    const j = source.indexOf('(filled_polygon', i);
+    if (j < 0) break;
+    const close = balancedClose(source, j);
+    if (close < 0) break;
+    out += source.slice(i, j);
+    i = close + 1;
+  }
+  if (out === '') return source;
+  return out + source.slice(i);
+}
+
+function countZones(source: string): number {
+  let n = 0;
+  let at = -1;
+  for (;;) {
+    at = source.indexOf('(zone', at + 1);
+    if (at < 0) return n;
+    n++;
+  }
 }
 
 function balancedClose(source: string, openIdx: number): number {
@@ -368,12 +393,13 @@ async function runNativeGerbers(parsed: ParsedArgs): Promise<void> {
   let source = fs.readFileSync(pcbPath, 'utf8');
   let boardPathForPlot = pcbPath;
 
-  // Zones plot their SAVED fills — refill declared-but-unfilled zones with
-  // the native engine (the kicad-cli path's --check-zones equivalent) so
-  // pour copper is never silently missing. A temp board with the fills
-  // injected is written beside the output for the plotters to read.
+  // Zones are REFILLED on export (the kicad-cli path's --check-zones
+  // semantics): saved fills go stale whenever board geometry changes after
+  // the last check, so plotting them as-is risks stale pours. --saved-fills
+  // opts out to plot exactly what the board carries.
   const unfilledZones = findUnfilledZones(source);
-  if (unfilledZones.length > 0) {
+  const zoneCount = countZones(source);
+  if (zoneCount > 0 && parsed.args['saved-fills'] !== true) {
     const filledSource = refillZoneFills(source);
     if (filledSource !== null) {
       source = filledSource;
@@ -382,13 +408,15 @@ async function runNativeGerbers(parsed: ParsedArgs): Promise<void> {
       boardPathForPlot = filledBoard;
       if (!json) {
         logger.log(
-          chalk.gray(`  Zones:  ${unfilledZones.length} refilled natively (no saved fills were present)`),
+          chalk.gray(
+            `  Zones:  ${zoneCount} refilled natively${unfilledZones.length ? ` (${unfilledZones.length} had no saved fills)` : ''}`,
+          ),
         );
       }
     } else if (!json) {
       logger.error(
         chalk.yellow.bold('Warning:') +
-          ` ${unfilledZones.length} zone(s) could not be filled — pour copper WILL BE MISSING.\n` +
+          ` ${zoneCount} zone(s) could not be filled — pour copper WILL BE MISSING.\n` +
           `  Run \`typecad-pcb check\` to materialize fills, then re-export.\n`,
       );
     }

@@ -81,21 +81,14 @@ function capsuleToPoly(x1: number, y1: number, x2: number, y2: number, r: number
   return out[0] ?? [];
 }
 
-function polyToPath(pts: Array<[number, number]>, inflate: number, centroid: [number, number]): Path {
-  if (inflate === 0) {
-    return pts.map(([x, y]) => ({ X: Math.round(x * NM), Y: Math.round(y * NM) }));
-  }
-  // approximate uniform inflation by pushing each vertex outward from the
-  // centroid along its bisector — exact for convex polys, fine for pours
-  return pts.map(([x, y]) => {
-    const dx = x - centroid[0];
-    const dy = y - centroid[1];
-    const len = Math.hypot(dx, dy) || 1e-9;
-    return {
-      X: Math.round((x + (dx / len) * inflate) * NM),
-      Y: Math.round((y + (dy / len) * inflate) * NM),
-    };
-  });
+function polyToPath(pts: Array<[number, number]>, inflate: number): Path {
+  const path: Path = pts.map(([x, y]) => ({ X: Math.round(x * NM), Y: Math.round(y * NM) }));
+  if (inflate === 0) return path;
+  const co = new ClipperLib.ClipperOffset(2, 0.02 * NM);
+  co.AddPath(path, ClipperLib.JoinType.jtRound, ClipperLib.EndType.etClosedPolygon);
+  const out: ClipperLib.Path[] = [];
+  co.Execute(out, Math.round(inflate * NM));
+  return out[0] ?? path;
 }
 
 
@@ -188,6 +181,48 @@ function padShapeObstacle(pad: SNode, worldX: number, worldY: number, angle: num
         },
       };
     }
+    case 'custom': {
+      // obstacle from the pad's primitives (poly/rect/circle/line),
+      // footprint-rotation applied by the caller's world transform of the
+      // anchor; primitive-local coords rotate by the pad's absolute angle
+      const prims = pad.child('primitives');
+      if (!prims) return null;
+      const polys: Array<[number, number][]> = [];
+      const circles: Circle[] = [];
+      for (const prim of prims.children()) {
+        const rot = (angle * Math.PI) / 180;
+        const cos = Math.cos(rot);
+        const sin = Math.sin(rot);
+        const rotP = (x: number, y: number): [number, number] => [
+          worldX + x * cos - y * sin,
+          worldY + x * sin + y * cos,
+        ];
+        if (prim.name === 'gr_poly') {
+          const pts = prim.child('pts')?.children('xy') ?? [];
+          const out: Array<[number, number]> = pts.map((p) =>
+            rotP(scalar(p, 1, 0), scalar(p, 2, 0)),
+          );
+          if (out.length >= 3) polys.push(out);
+        } else if (prim.name === 'gr_rect') {
+          const s = atPoint(prim.child('start'));
+          const e = atPoint(prim.child('end'));
+          polys.push([
+            rotP(s.x, s.y),
+            rotP(e.x, s.y),
+            rotP(e.x, e.y),
+            rotP(s.x, e.y),
+          ]);
+        } else if (prim.name === 'gr_circle') {
+          const c = atPoint(prim.child('center'));
+          const e2 = atPoint(prim.child('end'));
+          const r = Math.hypot(e2.x - c.x, e2.y - c.y);
+          circles.push({ x: worldX + c.x, y: worldY + c.y, r });
+        }
+      }
+      if (polys.length > 0) return { kind: 'poly', poly: { pts: polys[0]! } };
+      if (circles.length > 0) return { kind: 'circle', circle: circles[0]! };
+      return null;
+    }
     default:
       return null;
   }
@@ -235,10 +270,7 @@ function obstacleToPath(o: Obstacle, inflate: number): Path | null {
     const c = o.capsule!;
     return capsuleToPoly(c.x1, c.y1, c.x2, c.y2, c.r, inflate);
   }
-  const pts = o.poly!.pts;
-  const cx = pts.reduce((s, p) => s + p[0], 0) / pts.length;
-  const cy = pts.reduce((s, p) => s + p[1], 0) / pts.length;
-  return polyToPath(pts, inflate, [cx, cy]);
+  return polyToPath(o.poly!.pts, inflate);
 }
 
 // ---------------------------------------------------------------------------
@@ -370,6 +402,22 @@ export function fillZone(
   // zone net (name-only or coded form)
   const zoneNet = netNameOf(zone, netCodeToName);
 
+  const clips: Path[] = [];
+  // keepout zones on this layer punch holes in the fill (they never fill)
+  for (const other of root.children('zone')) {
+    if (other === zone || !other.child('keepout')) continue;
+    const otherLayersNode = other.child('layer') ?? other.child('layers');
+    const otherLayers = otherLayersNode
+      ? otherLayersNode.raw.slice(1).filter((v): v is string => typeof v === 'string')
+      : [];
+    if (!otherLayers.includes(layer)) continue;
+    const kPts = other.child('polygon')?.child('pts')?.children('xy') ?? [];
+    if (kPts.length < 3) continue;
+    clips.push(
+      kPts.map((p) => ({ X: Math.round(scalar(p, 1) * NM), Y: Math.round(scalar(p, 2) * NM) })),
+    );
+  }
+
   const clearanceMm =
     opts.clearance ??
     (zone.child('connect_pads')?.child('clearance')
@@ -381,6 +429,14 @@ export function fillZone(
   const thermalGapMm = opts.thermalGap ?? (zoneThermalGap ? scalar(zoneThermalGap, 1, 0.5) : 0.5);
   const spokeWidthMm =
     opts.spokeWidth ?? (zoneBridge ? scalar(zoneBridge, 1, 0.5) : Math.max(2 * clearanceMm, 0.5));
+  // island removal: mode 0 = remove unconnected islands (KiCad default),
+  // 1 = keep all, 2 = also remove below min_island_area
+  const islandMode = fillNode?.child('island_removal_mode')
+    ? scalar(fillNode!.child('island_removal_mode')!, 1, 0)
+    : 0;
+  const zoneMinIsland = fillNode?.child('min_island_area')
+    ? scalar(fillNode!.child('min_island_area')!, 1, 0)
+    : 0;
   const edgeClearanceMm = opts.edgeClearance ?? 0.3;
   const minIsland = opts.minIslandArea ?? 0;
 
@@ -478,7 +534,7 @@ export function fillZone(
 
   // board edge pullback: chain Edge.Cuts lines+arcs into a closed outline
   const edge = chainEdgeOutline(root);
-  const clips: Path[] = [...foreign];
+  clips.push(...foreign);
   if (edgeClearanceMm > 0 && edge.length >= 3) {
     // inflate the edge outline and subtract its complement: simpler —
     // shrink the zone polygon by edgeClearance via offsetting the zone
@@ -495,11 +551,11 @@ export function fillZone(
     const inner: ClipperLib.Path[] = [];
     cpr.Execute(ClipperLib.ClipType.ctIntersection, inner, ClipperLib.PolyFillType.pftNonZero, ClipperLib.PolyFillType.pftNonZero);
     if (inner.length > 0) {
-      return finish(inner, clips, sameNet, thermalGapMm, spokeWidthMm, minIsland, layer);
+      return finish(inner, clips, sameNet, thermalGapMm, spokeWidthMm, minIsland, layer, islandMode, zoneMinIsland);
     }
   }
 
-  return finish([zonePoly], clips, sameNet, thermalGapMm, spokeWidthMm, minIsland, layer);
+  return finish([zonePoly], clips, sameNet, thermalGapMm, spokeWidthMm, minIsland, layer, islandMode, zoneMinIsland);
 }
 
 function finish(
@@ -510,6 +566,8 @@ function finish(
   spokeWidthMm: number,
   minIsland: number,
   layer: string,
+  islandMode = 0,
+  zoneMinIsland = 0,
 ): ZoneFillResult | null {
   // thermal relief: same-net items keep an annular gap with four spoke
   // corridors left open. Built analytically as four annular sectors whose
@@ -582,10 +640,30 @@ function finish(
     if (idx >= 0) holesByOuter.get(idx)!.push(hole);
   }
 
+  const pointInPathLocal = (path: Path, x: number, y: number): boolean => {
+    const pt = { X: Math.round(x * NM), Y: Math.round(y * NM) };
+    let inside = false;
+    for (let i = 0, j = path.length - 1; i < path.length; j = i++) {
+      const a = path[i]!;
+      const b = path[j]!;
+      if (
+        a.Y > pt.Y !== b.Y > pt.Y &&
+        pt.X < ((b.X - a.X) * (pt.Y - a.Y)) / (b.Y - a.Y) + a.X
+      )
+        inside = !inside;
+    }
+    return inside;
+  };
   let total = 0;
   outerPaths.forEach((outer, i) => {
     const area = areaOf(outer);
     if (area < minIsland) return;
+    if (islandMode === 2 && area < zoneMinIsland) return;
+    if (islandMode !== 1 && sameNet.length > 0) {
+      // KiCad default: drop islands with no connection to the zone's net
+      const connected = sameNet.some((s) => pointInPathLocal(outer, s.x, s.y));
+      if (!connected) return;
+    }
     total += area;
     islands.push({ ring: mergeWithHoles(outer, holesByOuter.get(i) ?? []), areaMm2: area });
   });

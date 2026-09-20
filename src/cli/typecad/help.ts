@@ -381,24 +381,21 @@ export function showExportGerbersHelp(): void {
 }
 
 export function showExportDrillHelp(): void {
-  console.log(chalk.white.bold('typecad-pcb export drill') + ' - Export drill files from a KiCad PCB\n');
-  console.log('Runs kicad-cli pcb export drill on a .kicad_pcb file,\n' + 'generating Excellon drill output.\n');
+  console.log(chalk.white.bold('typecad-pcb export drill') + ' - Export drill files from a PCB\n');
+  console.log("Writes an Excellon drill file with typeCAD's own writer — no\n" + 'kicad-cli required.\n');
   console.log('Usage:');
-  console.log('  typecad-pcb export drill [path] [typecad-options] [-- kicad-cli flags]\n');
+  console.log('  typecad-pcb export drill [path] [options]\n');
   console.log('Arguments:');
   console.log('  <path>             Path to .kicad_pcb file (default: auto-detected from ./build/)\n');
-  console.log('typecad Options:');
-  console.log('  -o, --output=<dir> Output directory (default: ./build/gerbers/)');
+  console.log('Options:');
+  console.log('  -o, --out=<dir>    Output directory (default: ./build/gerbers/)');
   console.log('  --json             Output results as JSON');
+  console.log('  --kicad            Use the legacy kicad-cli plotter (needs KiCad installed)');
   console.log('  --help             Show this help\n');
-  console.log('Passthrough:');
-  console.log('  All flags after -- are forwarded directly to kicad-cli pcb export drill.');
-  console.log('  See `kicad-cli pcb export drill --help` for the full list of flags.\n');
   console.log('Examples:');
   console.log('  typecad-pcb export drill');
-  console.log('  typecad-pcb export drill --output ./fab');
+  console.log('  typecad-pcb export drill --out ./fab');
   console.log('  typecad-pcb export drill ./build/board.kicad_pcb');
-  console.log('  typecad-pcb export drill -- --use-drill-file-origin');
 }
 
 export function showQueryHelp(): void {

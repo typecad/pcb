@@ -42,8 +42,9 @@ describe('help - export functions', () => {
       .mock.calls.map((c) => c[0])
       .join('\n');
     expect(output).toContain('typecad-pcb export drill');
-    expect(output).toContain('kicad-cli pcb export drill');
-    expect(output).toContain('--use-drill-file-origin');
+    expect(output).toContain("typeCAD's own writer");
+    expect(output).toContain('--kicad');
+    expect(output).toContain('--out=<dir>')
   });
 
   it('showTopLevelHelp should list export gerbers and export drill', async () => {

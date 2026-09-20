@@ -106,6 +106,55 @@ describe('zone fill engine', () => {
     expect(ring.every((v) => Number.isFinite(v))).toBe(true);
   });
 
+  it('cuts keepout-zone polygons out of the fill', () => {
+    const root = board(`
+      (zone (net 0) (net_name "") (layers "In1.Cu") (keepout (tracks not_allowed) (vias not_allowed) (pads allowed) (footprints allowed))
+        (polygon (pts (xy 18 18) (xy 22 18) (xy 22 22) (xy 18 22))))
+      (zone (net 1) (net_name "GND") (layer "In1.Cu") (connect_pads (clearance 0.5))
+        (polygon (pts (xy 10 10) (xy 30 10) (xy 30 30) (xy 10 30))))`);
+    const fillZone1 = root
+      .children('zone')
+      .find((z) => z.child('keepout') === null)!;
+    const res = fillZone(root, fillZone1, 'In1.Cu')!;
+    const rings = res.islands.map((i) => i.ring);
+    expect(rings.length).toBeGreaterThan(0);
+    expect(anyFilled(rings, 20, 20)).toBe(false); // inside the keepout
+    expect(anyFilled(rings, 15, 20)).toBe(true); // outside it
+  });
+
+  it('uses custom-pad primitive geometry as the obstacle', () => {
+    const root = board(`
+      (footprint "T:C" (layer "F.Cu") (at 20 20)
+        (pad "1" smd custom (at 0 0 0) (size 0.5 0.5) (layers "F.Cu" "In1.Cu" "*.Mask") (net 2)
+          (primitives (gr_poly (pts (xy -1 -1) (xy 1 -1) (xy 1 1) (xy -1 1)) (width 0)))))
+      (zone (net 1) (net_name "GND") (layer "In1.Cu") (connect_pads (clearance 0.5))
+        (polygon (pts (xy 10 10) (xy 30 10) (xy 30 30) (xy 10 30))))`);
+    const z = root.children('zone')[0]!;
+    const res = fillZone(root, z, 'In1.Cu')!;
+    const rings = res.islands.map((i) => i.ring);
+    // the 2×2 custom poly + 0.5 clearance → empty at 1.5mm, filled past 2.2
+    expect(anyFilled(rings, 20, 20)).toBe(false);
+    expect(anyFilled(rings, 20, 18.6)).toBe(false); // 1.4mm: within poly edge (1.0) + clearance (0.5)
+    expect(anyFilled(rings, 20, 18.2)).toBe(true); // 1.8mm: past the inflated poly edge
+  });
+
+  it('removes unconnected islands (KiCad default mode)', () => {
+    const root = board(`
+      (via (at 13 13) (size 0.6) (drill 0.3) (layers "F.Cu" "B.Cu") (net 1))
+      (segment (start 24 24) (end 25 25) (width 0.25) (layer "In1.Cu") (net 1))
+      (segment (start 26 26) (end 27 27) (width 0.25) (layer "In1.Cu") (net 2))
+      (zone (net 1) (net_name "GND") (layer "In1.Cu") (connect_pads (clearance 0.5))
+        (polygon (pts (xy 10 10) (xy 16 10) (xy 16 16) (xy 10 16)))
+        (polygon (pts (xy 22 22) (xy 28 22) (xy 28 28) (xy 22 28))))`);
+    const z = root.children('zone')[0]!;
+    const res = fillZone(root, z, 'In1.Cu')!;
+    // only the island containing the same-net via/track is kept
+    expect(res.islands).toHaveLength(1);
+    const ring = res.islands[0]!.ring;
+    expect(filled(ring, 13, 13) || filled(ring, 25, 25)).toBe(true);
+    expect(res.totalAreaMm2).toBeLessThan(40); // one 6×6 island, not two
+  });
+
   it('respects blind-via layer spans', () => {
     const root = board(`
       (via (at 15 15) (size 0.6) (drill 0.3) (layers "F.Cu" "In1.Cu") (net 2))

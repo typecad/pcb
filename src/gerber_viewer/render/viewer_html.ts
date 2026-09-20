@@ -1848,6 +1848,16 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     inp.focus();
     inp.select();
   }
+  function markTextSel() {
+    for (var ts = 0; ts < layoutTexts.length; ts++) {
+      var st = layoutTextEls[ts];
+      if (!st) continue;
+      for (var sp = 0; sp < st.paths.length; sp++) {
+        if (ts === layoutTextSel) st.paths[sp].classList.add('layout-text-sel');
+        else st.paths[sp].classList.remove('layout-text-sel');
+      }
+    }
+  }
   function attachTextDrag(i) {
     var paths = textPaths(i);
     for (var pd = 0; pd < paths.length; pd++) {
@@ -1858,6 +1868,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         layoutTextSel = i;
         layoutSel = [];
         markLayoutSel();
+        markTextSel();
         var t = layoutTexts[i];
         var st = textState(i);
         var startG = gerberAt(ev.clientX, ev.clientY);
@@ -2145,6 +2156,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       ev.stopPropagation();
       ev.preventDefault();
       layoutTextSel = -1; // a part grab replaces any text grab
+      markTextSel();
       if (ev.shiftKey && layoutSel.indexOf(g.__lc.ref) === -1) layoutSel.push(g.__lc.ref);
       else if (!ev.shiftKey) layoutSel = [g.__lc.ref];
       markLayoutSel();
@@ -2230,6 +2242,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     layoutRot = {};
     layoutTextMoves = {};
     layoutTextSel = -1;
+    markTextSel();
     for (var tv = 0; tv < layoutTexts.length; tv++) {
       if (layoutTextEls[tv]) syncTextVisual(tv);
     }
@@ -2406,14 +2419,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     },
     true,
   );
-  // a visible rotate control too — rotation must never depend on the host
-  // delivering keystrokes to the page
-  var layoutRotBtn = document.getElementById('layout-rotate');
-  if (layoutRotBtn)
-    layoutRotBtn.addEventListener('click', function () {
-      if (viewMode !== 'layout') return;
-      layoutRotateSelection();
-    });
+
   // alignment tools: same row (shared Y, the selection's mean) and even X
   // spacing (first and last pinned, the middle distributed)
   function layoutSelGroups() {
@@ -4010,6 +4016,9 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   #layout-overlay .layout-comp.layout-warn rect,
   #layout-overlay .layout-comp.layout-warn polygon { stroke: #d29922; }
   #layout-ratsnest line { stroke: #d29922; stroke-width: 0.08; stroke-dasharray: 0.8 0.5; opacity: 0.85; }
+  /* movable texts read as grabbable, and a grabbed one is highlighted */
+  body.typecad-layout #yflip path[data-text] { cursor: move; }
+  #yflip path.layout-text-sel { stroke: #6db3f2 !important; }
   /* the handle itself paints nothing — the footprint's own ink (pads, silk,
      fab outline) already shows the part, KiCad-style. It stays the pointer
      target via inherited pointer-events:all and only strokes on feedback:
@@ -4127,7 +4136,6 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   <div id="layout-tools">
     <button id="layout-align" type="button" disabled>align row</button>
     <button id="layout-dist" type="button" disabled>distribute X</button>
-    <button id="layout-rotate" type="button">rotate 90&deg;</button>
   </div>
   <div id="layout-warn" style="display:none"></div>
   <div id="layout-buttons">

@@ -661,7 +661,7 @@ export class BoardViewerPanel {
               new vscode.Range(doc.positionAt(edit.start), doc.positionAt(edit.end)),
               edit.line,
             );
-            const spec = pending.find((sp) => edit.ref.startsWith(sp.ref));
+            const spec = pending.find((sp) => edit.ref === sp.ref + ' edits');
             if (spec?.value !== undefined) valuesEdited++;
             if (spec?.newRef) renamesEdited++;
             if (spec?.label) labelsEdited++;

@@ -157,13 +157,6 @@ export function applyPlacementEdits(text: string, edits: PlacementEdit[]): strin
   return out;
 }
 
-// ---------------------------------------------------------------------------
-// Silk/fab text edits (gr_text — the pcb.text() API): a `.text({ … })` call
-// literal is matched by its authored value + x/y anchor, then rewritten with
-// the new value/anchor/rotation. Literals only; nested-object props (justify)
-// are skipped over, not parsed.
-// ---------------------------------------------------------------------------
-
 export interface TextEditInput {
   /** authored text + anchor (board frame) the source literal is matched by */
   text0: string;
@@ -252,57 +245,7 @@ export function planTextEdits(text: string, edits: TextEditInput[]): LayoutEditR
   return { edits: planned, skipped };
 }
 
-// ---------------------------------------------------------------------------
-// Component VALUE edits: the layout view's in-place editor on a part's own
-// fab/silk text. The `new Component({ … reference: 'R1', value: '1k' … })`
-// constructor literal is matched by its reference, then the value literal is
-// rewritten (inserted after reference when absent).
-// ---------------------------------------------------------------------------
 
-export interface ValueEditInput {
-  ref: string;
-  value: string;
-}
-
-export function planValueEdits(text: string, edits: ValueEditInput[]): LayoutEditResult {
-  const planned: PlacementEdit[] = [];
-  const skipped: Array<{ ref: string; reason: string }> = [];
-  const used = new Set<number>();
-  const callRe = /new\s+Component\s*\(/g;
-  let match: RegExpExecArray | null;
-  while ((match = callRe.exec(text)) !== null) {
-    const range = objectLiteralRange(text, match.index);
-    if (!range) continue;
-    const inner = text.slice(range.open + 1, range.close);
-    const rNum = /\breference\s*:\s*(['"])((?:\.|(?!\1).)*)\1/.exec(inner);
-    if (!rNum) continue;
-    const ref = rNum[2];
-    const edit = edits.find((e, i) => !used.has(i) && e.ref === ref);
-    if (!edit) continue;
-    used.add(edits.indexOf(edit));
-    const vNum = /\bvalue\s*:\s*(['"])((?:\\.|(?!\1).)*)\1/.exec(inner);
-    let newInner: string;
-    if (vNum) {
-      const esc = edit.value.replace(/\\/g, '\\\\').replace(/\n/g, '\\n');
-      newInner = inner.replace(vNum[0], () => `value: ${vNum[1]}${esc}${vNum[1]}`);
-    } else {
-      // no value yet: insert right after the reference it belongs to
-      const at = rNum.index + rNum[0].length;
-      const esc = edit.value.replace(/\\/g, '\\\\').replace(/\n/g, '\\n').replace(/'/g, "\\'");
-      newInner = `${inner.slice(0, at)}, value: '${esc}'${inner.slice(at)}`;
-    }
-    planned.push({
-      ref: `${ref} value`,
-      line: `${text.slice(match.index, range.open + 1)}${newInner}}`,
-      start: match.index,
-      end: range.close + 1,
-    });
-  }
-  for (let i = 0; i < edits.length; i++) {
-    if (!used.has(i)) skipped.push({ ref: `${edits[i]!.ref} value`, reason: 'no Component constructor literal found' });
-  }
-  return { edits: planned, skipped };
-}
 
 // ---------------------------------------------------------------------------
 // Component LABEL repositioning: a Reference/Value fp_text dragged in the
@@ -313,13 +256,6 @@ export function planValueEdits(text: string, edits: ValueEditInput[]): LayoutEdi
 // what the board writer's applyLayoutToFpText consumes on rebuild.
 // ---------------------------------------------------------------------------
 
-export interface LabelEditInput {
-  ref: string;
-  kind: 'reference' | 'value';
-  x: number;
-  y: number;
-  rot: number;
-}
 
 /** Parse a `<var>.pcb = { x, y, rotation? }` literal (null when computed). */
 export function parsePlacementLiteral(
@@ -335,66 +271,6 @@ export function parsePlacementLiteral(
   return { x: parseFloat(xNum[1]), y: parseFloat(yNum[1]), rot: rNum ? parseFloat(rNum[1]) : 0 };
 }
 
-export function planLabelEdits(
-  text: string,
-  edits: LabelEditInput[],
-  variableOf: (ref: string) => string | undefined,
-  placementOf: (ref: string) => { x: number; y: number; rot: number } | null,
-): LayoutEditResult {
-  const planned: PlacementEdit[] = [];
-  const skipped: Array<{ ref: string; reason: string }> = [];
-  const used = new Set<number>();
-  const callRe = /new\s+Component\s*\(/g;
-  let match: RegExpExecArray | null;
-  while ((match = callRe.exec(text)) !== null) {
-    const range = objectLiteralRange(text, match.index);
-    if (!range) continue;
-    const inner = text.slice(range.open + 1, range.close);
-    const rNum = /\breference\s*:\s*(['"])((?:\.|(?!\1).)*)\1/.exec(inner);
-    if (!rNum) continue;
-    const ref = rNum[2];
-    // one label edit per constructor per kind
-    for (const kind of ['reference', 'value'] as const) {
-      const edit = edits.find((e, i) => !used.has(i) && e.ref === ref && e.kind === kind);
-      if (!edit) continue;
-      used.add(edits.indexOf(edit));
-      // world -> footprint-local against the part's FINAL placement
-      const part = placementOf(ref);
-      if (!part) {
-        skipped.push({ ref: `${ref} ${kind} label`, reason: 'no .pcb placement literal found' });
-        continue;
-      }
-      const rad = (-part.rot * Math.PI) / 180;
-      const c = Math.cos(rad);
-      const s = Math.sin(rad);
-      const dx = edit.x - part.x;
-      const dy = edit.y - part.y;
-      const local = { x: dx * c - dy * s, y: dx * s + dy * c, rot: edit.rot - part.rot };
-      const prop = `${kind}Layout`;
-      const layoutRe = new RegExp(`\\b${prop}\\s*:\\s*\\{[^}]*\\}`);
-      const existing = layoutRe.exec(inner);
-      let newInner: string;
-      const body = `{ x: ${fmt(local.x)}, y: ${fmt(local.y)}, rotation: ${fmt(local.rot)} }`;
-      if (existing) {
-        newInner = inner.replace(existing[0], () => `${prop}: ${body}`);
-      } else {
-        const at = rNum.index + rNum[0].length;
-        newInner = `${inner.slice(0, at)}, ${prop}: ${body}${inner.slice(at)}`;
-      }
-      planned.push({
-        ref: `${ref} ${kind} label`,
-        line: `${text.slice(match.index, range.open + 1)}${newInner}}`,
-        start: match.index,
-        end: range.close + 1,
-      });
-    }
-  }
-  for (let i = 0; i < edits.length; i++) {
-    if (!used.has(i))
-      skipped.push({ ref: `${edits[i]!.ref} ${edits[i]!.kind} label`, reason: 'no Component constructor literal found' });
-  }
-  return { edits: planned, skipped };
-}
 
 // ---------------------------------------------------------------------------
 // Reference RENAMES: the in-place editor on a part's refdes text. Rewrites
@@ -402,49 +278,7 @@ export function planLabelEdits(
 // the new name collides with another component's reference.
 // ---------------------------------------------------------------------------
 
-export interface RenameEditInput {
-  ref: string;
-  newRef: string;
-}
 
-export function planRenameEdits(
-  text: string,
-  edits: RenameEditInput[],
-  allRefs: Set<string>,
-): LayoutEditResult {
-  const planned: PlacementEdit[] = [];
-  const skipped: Array<{ ref: string; reason: string }> = [];
-  const used = new Set<number>();
-  const callRe = /new\s+Component\s*\(/g;
-  let match: RegExpExecArray | null;
-  while ((match = callRe.exec(text)) !== null) {
-    const range = objectLiteralRange(text, match.index);
-    if (!range) continue;
-    const inner = text.slice(range.open + 1, range.close);
-    const rNum = /\breference\s*:\s*(['"])((?:\.|(?!\1).)*)\1/.exec(inner);
-    if (!rNum) continue;
-    const ref = rNum[2];
-    const edit = edits.find((e, i) => !used.has(i) && e.ref === ref);
-    if (!edit) continue;
-    used.add(edits.indexOf(edit));
-    if (allRefs.has(edit.newRef) && edit.newRef !== ref) {
-      skipped.push({ ref: `${ref} rename`, reason: `\`${edit.newRef}\` is already a component reference` });
-      continue;
-    }
-    const esc = edit.newRef.replace(/\\/g, '\\\\').replace(/\n/g, '\\n');
-    const newInner = inner.replace(rNum[0], () => `reference: ${rNum[1]}${esc}${rNum[1]}`);
-    planned.push({
-      ref: `${ref} rename`,
-      line: `${text.slice(match.index, range.open + 1)}${newInner}}`,
-      start: match.index,
-      end: range.close + 1,
-    });
-  }
-  for (let i = 0; i < edits.length; i++) {
-    if (!used.has(i)) skipped.push({ ref: `${edits[i]!.ref} rename`, reason: 'no Component constructor literal found' });
-  }
-  return { edits: planned, skipped };
-}
 
 // ---------------------------------------------------------------------------
 // Combined constructor pass: value, rename, and label-layout edits for one

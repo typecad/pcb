@@ -516,17 +516,27 @@ Clipper (clipper-lib, Boost license — Apache-compatible):
 - **Edge pullback**: Edge.Cuts lines+arcs are chained into a closed
   outline (open chains skip pullback), inflated by 0.3mm, intersected
   with the zone.
-- **Output**: islands come in two forms. `ring` is the keyhole-merged
-  single ring (KiCad `filled_polygon` form) and `contours` is the same
-  island as [outer, …holes] separate contours. GERBERS must carry the
-  keyholed ring: KiCad's own gerbers are single-contour-per-island (the
-  rd golden: 1 D02, 93,829 draws, ~13k keyhole channel crossings — gerbview
-  tessellates that correctly), while a multi-contour region makes gerbview
-  fill it WITHOUT even-odd subtraction → a solid slab. Board files
-  likewise require the keyholed form. Probe:
-  `tools/pour_wedge_probe.ts` samples winding numbers through the thermal
-  slots/spokes and the shoelace area sanity (a pour area LARGER than the
-  board proves a self-intersecting ring).
+- **Output, solid pours**: islands keyhole-merged into single rings (KiCad
+  `filled_polygon` form — KiCad's own gerbers are single-contour-per-island,
+  and gerbview fills multi-contour regions WITHOUT even-odd subtraction →
+  solid slabs). Solid pours have few holes, so the keyhole channels stay
+  local; the outer's straight edges are resampled to 2 mm so nearest-vertex
+  anchors don't converge thousands of channels onto the zone corners (2.4M
+  segment crossings once; gerbview's fracturing stalled on that for tens of
+  seconds). Probe: `tools/pour_wedge_probe.ts` samples winding numbers
+  through the thermal slots/spokes plus a shoelace sanity (pour area larger
+  than the board proves a self-intersecting ring).
+- **Output, hatch pours**: NEVER union into one region. Obstacle clearances
+  slice the line field, the voids between lines interconnect into large
+  networks, and keyholing those networks into a zone-rectangular outer
+  draws whole-board channels (gerbview stall). Instead the hatch is emitted
+  as INDEPENDENT PIECES — the border band plus each hatch line clipped to
+  the fill region, each piece its own gerber region with at most a couple
+  of locally-keyholed holes (hatchPieceRings, per-line PolyTree
+  intersection). Overlapping line pieces double-draw copper, which is
+  harmless on film. Result: every region is a small simple contour
+  (≤ ~400 pts), gerbview opens the layers in ~1 s, and the plotter emits
+  one G36 region per filled_polygon block.
 - **Net resolution**: both kicad-cli name-only `(net "GND")` and raw
   typeCAD coded `(net 3)` forms (code→name map from the net table).
 - **Export integration**: `export gerbers` REFILLS all zones on export

@@ -718,50 +718,49 @@ function finish(
   zoneMinIsland = 0,
   hatchParams: HatchParams | null = null,
 ): ZoneFillResult | null {
-  // thermal relief: same-net items keep an annular gap with four spoke
-  // corridors left open. Built analytically as four annular sectors whose
-  // angular span excludes the spoke half-angles — no boolean union needed.
-  // The annulus runs from the PAD EDGE (item.r) to pad edge + thermal_gap,
-  // matching KiCad — not from the pad center.
+  // thermal relief: same-net items keep a gap ring around the pad with four
+  // spoke corridors left open. The void is the pad outline INFLATED by the
+  // thermal gap (KiCad's per-shape geometry — a circle radius for a rect
+  // pad floats the ring off its long edges), with four orthogonal spoke
+  // corridors (rotating with the pad) cut through it.
   const thermalClips: Path[] = [];
-  const spokes: Path[] = [];
-  const spokeHalfAngle = (x: number): number => Math.asin(Math.min(1, spokeWidthMm / 2 / x));
-  for (const { x, y, r: padR } of sameNet) {
-    const r1 = padR;
-    const r2 = padR + thermalGapMm;
-    for (let q = 0; q < 4; q++) {
-      const a0 = (q * Math.PI) / 2 + spokeHalfAngle(r2);
-      const a1 = ((q + 1) * Math.PI) / 2 - spokeHalfAngle(r2);
-      if (a1 <= a0) continue;
-      const sector: Path = [];
-      const steps = 8;
-      for (let i = 0; i <= steps; i++) {
-        const a = a0 + ((a1 - a0) * i) / steps;
-        sector.push({ X: Math.round((x + r1 * Math.cos(a)) * NM), Y: Math.round((y + r1 * Math.sin(a)) * NM) });
-      }
-      for (let i = steps; i >= 0; i--) {
-        const a = a0 + ((a1 - a0) * i) / steps;
-        sector.push({ X: Math.round((x + r2 * Math.cos(a)) * NM), Y: Math.round((y + r2 * Math.sin(a)) * NM) });
-      }
-      thermalClips.push(sector);
+  for (const { pad, x, y, angle } of sameNet) {
+    const voidPoly = obstacleToPath(pad, thermalGapMm);
+    if (!voidPoly || voidPoly.length < 3) continue;
+    // spoke reach: cover the void from the pad center
+    let reach = 0;
+    for (const v of voidPoly) {
+      reach = Math.max(reach, Math.hypot(v.X - x * NM, v.Y - y * NM));
     }
+    reach = reach / NM + 1;
+    const rad = (angle * Math.PI) / 180;
+    const spokePaths: Path[] = [];
+    for (let q = 0; q < 4; q++) {
+      const a = rad + (q * Math.PI) / 2;
+      const dx = Math.cos(a);
+      const dy = Math.sin(a);
+      const hw = spokeWidthMm / 2;
+      // rectangle from the pad center outward along the spoke direction
+      const nx = -dy * hw;
+      const ny = dx * hw;
+      spokePaths.push([
+        { X: Math.round(x * NM + nx * NM), Y: Math.round(y * NM + ny * NM) },
+        { X: Math.round((x + dx * reach) * NM + nx * NM), Y: Math.round((y + dy * reach) * NM + ny * NM) },
+        { X: Math.round((x + dx * reach) * NM - nx * NM), Y: Math.round((y + dy * reach) * NM - ny * NM) },
+        { X: Math.round(x * NM - nx * NM), Y: Math.round(y * NM - ny * NM) },
+      ]);
+    }
+    // void minus spokes = the gap pieces actually subtracted from the pour
+    thermalClips.push(...subtract([voidPoly], spokePaths));
   }
 
   const islands: ZoneFillIsland[] = [];
   const outerPaths: Path[] = [];
   const holesByOuter = new Map<number, Path[]>();
 
-  // union spokes back into the fill per island: simplest is to union spokes
-  // with the clipped result as flat paths
+  // spokes are already excluded from the thermal gap pieces (void minus
+  // spoke corridors), so a single subtraction builds the fill
   let flatResult = subtract(subject, [...clips, ...thermalClips]);
-  if (spokes.length > 0) {
-    const cpr = new ClipperLib.Clipper();
-    flatResult.forEach((p) => cpr.AddPath(p, ClipperLib.PolyType.ptSubject, true));
-    spokes.forEach((p) => cpr.AddPath(p, ClipperLib.PolyType.ptClip, true));
-    const merged: ClipperLib.Path[] = [];
-    cpr.Execute(ClipperLib.ClipType.ctUnion, merged, ClipperLib.PolyFillType.pftNonZero, ClipperLib.PolyFillType.pftNonZero);
-    flatResult = merged;
-  }
 
   if (hatchParams) {
     flatResult = hatchRegion(flatResult, hatchParams);

@@ -1,0 +1,320 @@
+{
+    "$schema": "https://schemas.kicad.org/drc.v1.json",
+    "coordinate_units": "mm",
+    "date": "2026-09-20T18:29:04",
+    "ignored_checks": [
+        {
+            "description": "Footprint has no courtyard defined",
+            "key": "missing_courtyard"
+        },
+        {
+            "description": "Track endpoint not centered on via",
+            "key": "track_not_centered_on_via"
+        },
+        {
+            "description": "Tuning profile track geometries",
+            "key": "tuning_profile_track_geometries"
+        },
+        {
+            "description": "Footprint doesn't match symbol's footprint filters",
+            "key": "footprint_filters_mismatch"
+        },
+        {
+            "description": "Footprint component type doesn't match footprint pads",
+            "key": "footprint_type_mismatch"
+        }
+    ],
+    "included_severities": [
+        "error",
+        "warning"
+    ],
+    "kicad_version": "10.0.0",
+    "schematic_parity": [],
+    "source": "rd_skeleton.kicad_pcb",
+    "unconnected_items": [
+        {
+            "description": "Missing connection between items",
+            "items": [
+                {
+                    "description": "Pad 1 [VCC] of R1 on F.Cu",
+                    "pos": {
+                        "x": 16.825,
+                        "y": 15.0
+                    },
+                    "uuid": "54e0b137-ddfe-5615-8a5e-8878ae9082fd"
+                },
+                {
+                    "description": "Track [VCC] on F.Cu, length 5.0207 mm",
+                    "pos": {
+                        "x": 15.175,
+                        "y": 15.0
+                    },
+                    "uuid": "fb697bbc-463c-5f77-8025-0f648fea5a01"
+                }
+            ],
+            "severity": "error",
+            "type": "unconnected_items"
+        }
+    ],
+    "violations": [
+        {
+            "description": "Annular width (board setup constraints min annular width 0.1500 mm; actual 0.1000 mm)",
+            "items": [
+                {
+                    "description": "Via [VCC] on F.Cu - B.Cu",
+                    "pos": {
+                        "x": 16.795,
+                        "y": 25.418
+                    },
+                    "uuid": "32acb897-3c58-5ce8-a739-c5fc0f0de353"
+                }
+            ],
+            "severity": "error",
+            "type": "annular_width"
+        },
+        {
+            "description": "Annular width (board setup constraints min annular width 0.1500 mm; actual 0.1000 mm)",
+            "items": [
+                {
+                    "description": "Via [GND] on F.Cu - B.Cu",
+                    "pos": {
+                        "x": 31.0375,
+                        "y": 24.0375
+                    },
+                    "uuid": "1cd50f73-9c0e-5dba-b358-e306f6dd48e5"
+                }
+            ],
+            "severity": "error",
+            "type": "annular_width"
+        },
+        {
+            "description": "Annular width (board setup constraints min annular width 0.1500 mm; actual 0.1000 mm)",
+            "items": [
+                {
+                    "description": "Via [GND] on F.Cu - B.Cu",
+                    "pos": {
+                        "x": 31.9375,
+                        "y": 24.8375
+                    },
+                    "uuid": "d87a87fa-c150-5bfa-aa17-b8e9961331aa"
+                }
+            ],
+            "severity": "error",
+            "type": "annular_width"
+        },
+        {
+            "description": "Tracks crossing",
+            "items": [
+                {
+                    "description": "Track [net5] on F.Cu, length 0.1000 mm",
+                    "pos": {
+                        "x": 15.175,
+                        "y": 15.0
+                    },
+                    "uuid": "4d89d72e-ac2f-5d10-a3d1-7bbea071421d"
+                },
+                {
+                    "description": "Track [VCC] on F.Cu, length 5.0207 mm",
+                    "pos": {
+                        "x": 15.175,
+                        "y": 15.0
+                    },
+                    "uuid": "fb697bbc-463c-5f77-8025-0f648fea5a01"
+                }
+            ],
+            "severity": "error",
+            "type": "tracks_crossing"
+        },
+        {
+            "description": "Items shorting two nets (nets net5 and VCC)",
+            "items": [
+                {
+                    "description": "Track [net5] on F.Cu, length 1.3612 mm",
+                    "pos": {
+                        "x": 15.275,
+                        "y": 15.0
+                    },
+                    "uuid": "4a3e4590-3709-576a-b876-32c4379e8cfa"
+                },
+                {
+                    "description": "Track [VCC] on F.Cu, length 5.0207 mm",
+                    "pos": {
+                        "x": 15.175,
+                        "y": 15.0
+                    },
+                    "uuid": "fb697bbc-463c-5f77-8025-0f648fea5a01"
+                }
+            ],
+            "severity": "error",
+            "type": "shorting_items"
+        },
+        {
+            "description": "Items shorting two nets (nets GND and )",
+            "items": [
+                {
+                    "description": "Track [GND] on F.Cu, length 12.8376 mm",
+                    "pos": {
+                        "x": 28.8,
+                        "y": 34.0
+                    },
+                    "uuid": "1e78400e-6a3c-5c07-b679-d583ec140b11"
+                },
+                {
+                    "description": "PTH pad 1 [<no net>] of D2",
+                    "pos": {
+                        "x": 31.0,
+                        "y": 34.0
+                    },
+                    "uuid": "d86c29ab-c24c-598c-81d9-8b154c19e915"
+                }
+            ],
+            "severity": "error",
+            "type": "shorting_items"
+        },
+        {
+            "description": "Front solder mask aperture bridges items with different nets",
+            "items": [
+                {
+                    "description": "Track [VCC] on F.Cu, length 5.0207 mm",
+                    "pos": {
+                        "x": 15.175,
+                        "y": 15.0
+                    },
+                    "uuid": "fb697bbc-463c-5f77-8025-0f648fea5a01"
+                },
+                {
+                    "description": "Pad 2 [net5] of R1 on F.Cu",
+                    "pos": {
+                        "x": 15.175,
+                        "y": 15.0
+                    },
+                    "uuid": "a1f704cb-c556-5715-a59d-ecdde5c9cfe6"
+                }
+            ],
+            "severity": "error",
+            "type": "solder_mask_bridge"
+        },
+        {
+            "description": "Front solder mask aperture bridges items with different nets",
+            "items": [
+                {
+                    "description": "Track [GND] on F.Cu, length 12.8376 mm",
+                    "pos": {
+                        "x": 28.8,
+                        "y": 34.0
+                    },
+                    "uuid": "1e78400e-6a3c-5c07-b679-d583ec140b11"
+                },
+                {
+                    "description": "PTH pad 1 [<no net>] of D2",
+                    "pos": {
+                        "x": 31.0,
+                        "y": 34.0
+                    },
+                    "uuid": "d86c29ab-c24c-598c-81d9-8b154c19e915"
+                }
+            ],
+            "severity": "error",
+            "type": "solder_mask_bridge"
+        },
+        {
+            "description": "Front solder mask aperture bridges items with different nets",
+            "items": [
+                {
+                    "description": "Track [GND] on F.Cu, length 12.8376 mm",
+                    "pos": {
+                        "x": 28.8,
+                        "y": 34.0
+                    },
+                    "uuid": "1e78400e-6a3c-5c07-b679-d583ec140b11"
+                },
+                {
+                    "description": "PTH pad 2 [<no net>] of D2",
+                    "pos": {
+                        "x": 38.62,
+                        "y": 34.0
+                    },
+                    "uuid": "3526fc21-a6ee-582b-8a06-cc9ce36d3581"
+                }
+            ],
+            "severity": "error",
+            "type": "solder_mask_bridge"
+        },
+        {
+            "description": "Silkscreen clipped by board edge",
+            "items": [
+                {
+                    "description": "Segment on Edge.Cuts",
+                    "pos": {
+                        "x": 114.0,
+                        "y": 10.1
+                    },
+                    "uuid": "cec6aa53-545a-565a-b7d6-b856e2f8aeca"
+                },
+                {
+                    "description": "Segment of SW2 on F.Silkscreen",
+                    "pos": {
+                        "x": 110.5,
+                        "y": 62.6
+                    },
+                    "uuid": "3738bbc6-3dec-447d-b9f6-51dce9398a40"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_edge_clearance"
+        },
+        {
+            "description": "Silkscreen clipped by board edge",
+            "items": [
+                {
+                    "description": "Segment on Edge.Cuts",
+                    "pos": {
+                        "x": 114.0,
+                        "y": 10.1
+                    },
+                    "uuid": "cec6aa53-545a-565a-b7d6-b856e2f8aeca"
+                },
+                {
+                    "description": "Segment of SW2 on F.Silkscreen",
+                    "pos": {
+                        "x": 114.6,
+                        "y": 74.4
+                    },
+                    "uuid": "0aa32db9-eaba-443c-a81e-37086835483c"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_edge_clearance"
+        },
+        {
+            "description": "Footprint 'SW_PUSH_6mm' does not match copy in library 'Button_Switch_THT'",
+            "items": [
+                {
+                    "description": "Footprint SW1",
+                    "pos": {
+                        "x": 101.0,
+                        "y": 34.0
+                    },
+                    "uuid": "188c36a7-78b3-54c2-ad5a-6b7451fc52b6"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_mismatch"
+        },
+        {
+            "description": "Footprint 'USB_Micro-B_Amphenol_10118193-0001LF_Horizontal' does not match copy in library 'Connector_USB'",
+            "items": [
+                {
+                    "description": "Footprint J4",
+                    "pos": {
+                        "x": 59.0,
+                        "y": 66.0
+                    },
+                    "uuid": "d936df49-c16a-5f26-9596-635a0954a8a3"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_mismatch"
+        }
+    ]
+}

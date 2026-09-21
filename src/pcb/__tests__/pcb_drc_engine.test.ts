@@ -14,8 +14,27 @@ function board(body: string): string {
   )`;
 }
 
-function drc(body: string, constraints = {}): DrcViolation[] {
-  return runDrc(board(body), constraints).violations;
+/** advisory DFM checks are silenced by default so DRC-focused assertions
+ *  stay focused; DFM tests opt in via runDrc directly */
+const DFM_QUIET = {
+  track_dangling: 'ignore',
+  hole_edge_clearance: 'ignore',
+  drill_aspect_ratio: 'ignore',
+  acid_trap: 'ignore',
+  text_height: 'ignore',
+  text_thickness: 'ignore',
+  silk_over_mask: 'ignore',
+  via_in_pad: 'ignore',
+  edge_not_closed: 'ignore',
+  edge_self_intersection: 'ignore',
+} as const;
+
+function drc(body: string, constraints: Record<string, unknown> = {}): DrcViolation[] {
+  const merged = {
+    ...constraints,
+    severities: { ...DFM_QUIET, ...((constraints.severities as object) ?? {}) },
+  };
+  return runDrc(board(body), merged).violations;
 }
 
 const types = (vs: DrcViolation[]): string[] => vs.map((v) => v.type);
@@ -134,7 +153,7 @@ describe('native DRC (phase 1 copper core)', () => {
     const vs = runDrc(board(`
       (segment (start 10 10) (end 20 10) (width 0.3) (layer "F.Cu") (net 1) (uuid "a"))
       (segment (start 12 10) (end 18 10) (width 0.3) (layer "F.Cu") (net 2) (uuid "b"))`), {
-      severities: { shorting_items: 'ignore' },
+      severities: { shorting_items: 'ignore', ...DFM_QUIET },
     }).violations;
     expect(vs).toHaveLength(0);
   });

@@ -34,6 +34,7 @@ import {
   arcPolyline,
   buildNetCodeMap,
   capsuleToPoly,
+  chainEdgeOutline,
   circleToPoly,
   fillZone,
   netNameOf,
@@ -84,6 +85,19 @@ export interface DrcConstraints {
   min_hole_to_copper: number;
   /** silkscreen-to-board-edge minimum (KiCad silk_edge_clearance) */
   min_silk_edge_clearance: number;
+  /** ---- DFM (advisory; warnings by default) ---- */
+  /** hole edge to board edge minimum (mm) */
+  min_hole_edge_clearance: number;
+  /** max board-thickness ÷ drill-diameter ratio (plating limit) */
+  max_drill_aspect_ratio: number;
+  /** interior copper angle below this (deg) is an acid trap */
+  min_copper_angle_deg: number;
+  /** minimum silkscreen text height (mm) */
+  min_silk_text_height: number;
+  /** minimum silkscreen text stroke thickness (mm) */
+  min_silk_text_thickness: number;
+  /** clearance between hole edge and copper on an SMD pad (via-in-pad exempt radius) */
+  via_in_pad_exempt_radius: number;
   /** check id → severity override (conf constraints file) */
   severities: Record<string, 'error' | 'warning' | 'ignore'>;
   /** net class name → clearance override (mm) */
@@ -102,6 +116,12 @@ export const DEFAULT_DRC_CONSTRAINTS: DrcConstraints = {
   min_hole_to_hole: 0.25,
   min_hole_to_copper: 0.25,
   min_silk_edge_clearance: 0.1,
+  min_hole_edge_clearance: 0.5,
+  max_drill_aspect_ratio: 10,
+  min_copper_angle_deg: 30,
+  min_silk_text_height: 0.8,
+  min_silk_text_thickness: 0.08,
+  via_in_pad_exempt_radius: 0.25,
   severities: {},
   netClassClearance: {},
   netClassPatterns: [],
@@ -178,6 +198,8 @@ interface SilkText {
   ref: string | null;
   text: string;
   pos: { x: number; y: number };
+  height: number;
+  thickness: number;
   bboxNm: { minX: number; minY: number; maxX: number; maxY: number };
 }
 
@@ -273,6 +295,7 @@ export function collectSilkItems(root: SNode, silkLayer: string, netCodeToName: 
     const y = xf ? xf.y - lx * xf.s + ly * xf.c : ly;
     const font = node.child('effects')?.child('font');
     const sizeY = font?.child('size') ? scalar(font.child('size')!, 2, 1) : 1;
+    const thickness = font?.child('thickness') ? scalar(font.child('thickness')!, 1, 0.15) : 0.15;
     // rough ink width: glyph advance ≈ 0.72 × height per char (newstroke-ish)
     const w = Math.max(text.length * 0.72 * sizeY, sizeY);
     const rad = (angle * Math.PI) / 180;
@@ -288,6 +311,8 @@ export function collectSilkItems(root: SNode, silkLayer: string, netCodeToName: 
       ref,
       text,
       pos: { x, y },
+      height: sizeY,
+      thickness,
       bboxNm: {
         minX: Math.round(Math.min(...corners.map((c) => c[0])) * NM),
         minY: Math.round(Math.min(...corners.map((c) => c[1])) * NM),
@@ -408,6 +433,80 @@ function segIntersectsBboxNm(seg: SilkSeg, bbox: { minX: number; minY: number; m
     maxY: Math.round(Math.max(...seg.pts.map((p) => p[1])) * NM),
   };
   return !(segBbox.maxX < bbox.minX || segBbox.minX > bbox.maxX || segBbox.maxY < bbox.minY || segBbox.minY > bbox.maxY);
+}
+
+/** min distance (nm) from a silk polyline (mm pts, with half-width applied
+ *  by the caller) to a clipper region's edges */
+function polylineToPathGapNm(seg: SilkSeg, paths: Path[]): number {
+  let best = Infinity;
+  for (let i = 0; i + 1 < seg.pts.length; i++) {
+    const ax = seg.pts[i]![0] * NM, ay = seg.pts[i]![1] * NM;
+    const bx = seg.pts[i + 1]![0] * NM, by = seg.pts[i + 1]![1] * NM;
+    for (const poly of paths) {
+      for (let k = 0, m = poly.length - 1; k < poly.length; m = k++) {
+        // a silk segment passing THROUGH a region crosses its edges with no
+        // vertex inside — endpoint distances alone miss that
+        if (segmentsCrossNm(ax, ay, bx, by, poly[m]!.X, poly[m]!.Y, poly[k]!.X, poly[k]!.Y)) return 0;
+        best = Math.min(best, pointSegDistNm(ax, ay, poly[m]!.X, poly[m]!.Y, poly[k]!.X, poly[k]!.Y));
+        best = Math.min(best, pointSegDistNm(poly[m]!.X, poly[m]!.Y, ax, ay, bx, by));
+      }
+    }
+  }
+  return best;
+}
+
+/** open-segment crossing test (nm coords) */
+function segmentsCrossNm(
+  ax: number, ay: number, bx: number, by: number,
+  cx: number, cy: number, dx: number, dy: number,
+): boolean {
+  const d1x = bx - ax, d1y = by - ay, d2x = dx - cx, d2y = dy - cy;
+  const denom = d1x * d2y - d1y * d2x;
+  if (Math.abs(denom) < 1e-12) return false;
+  const t = ((cx - ax) * d2y - (cy - ay) * d2x) / denom;
+  const u = ((cx - ax) * d1y - (cy - ay) * d1x) / denom;
+  return t >= 0 && t <= 1 && u >= 0 && u <= 1;
+}
+
+/** min distance (nm) from a point to a region's edges */
+function pointPathsGapNm(px: number, py: number, paths: Path[]): number {
+  let best = Infinity;
+  for (const poly of paths) {
+    for (let k = 0, m = poly.length - 1; k < poly.length; m = k++) {
+      best = Math.min(best, pointSegDistNm(px, py, poly[m]!.X, poly[m]!.Y, poly[k]!.X, poly[k]!.Y));
+    }
+  }
+  return best;
+}
+
+/** ray-cast point-in-polygon (nm coords) */
+function pointInPathNm(poly: Path, px: number, py: number): boolean {
+  let inside = false;
+  for (let k = 0, m = poly.length - 1; k < poly.length; m = k++) {
+    const a = poly[m]!;
+    const b = poly[k]!;
+    if (a.Y > py !== b.Y > py && px < ((b.X - a.X) * (py - a.Y)) / (b.Y - a.Y) + a.X) inside = !inside;
+  }
+  return inside;
+}
+
+/** true when a closed path's non-adjacent edges cross */
+function pathSelfIntersectsNm(poly: Path): boolean {
+  const n = poly.length;
+  const cross = (a1: Path[0], a2: Path[0], b1: Path[0], b2: Path[0]): boolean => {
+    const d = (a2.X - a1.X) * (b2.Y - b1.Y) - (a2.Y - a1.Y) * (b2.X - b1.X);
+    if (Math.abs(d) < 1e-12) return false;
+    const t = ((b1.X - a1.X) * (b2.Y - b1.Y) - (b1.Y - a1.Y) * (b2.X - b1.X)) / d;
+    const u = ((b1.X - a1.X) * (a2.Y - a1.Y) - (b1.Y - a1.Y) * (a2.X - a1.X)) / d;
+    return t > 1e-9 && t < 1 - 1e-9 && u > 1e-9 && u < 1 - 1e-9;
+  };
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 2; j < n; j++) {
+      if (i === 0 && j === n - 1) continue;
+      if (cross(poly[i]!, poly[(i + 1) % n]!, poly[j]!, poly[(j + 1) % n]!)) return true;
+    }
+  }
+  return false;
 }
 
 function nearBboxes(
@@ -758,6 +857,18 @@ export function runDrc(source: string, constraints: Partial<DrcConstraints> = {}
   const DEFAULT_SEVERITIES: Record<string, 'error' | 'warning'> = {
     silk_overlap: 'warning',
     silk_edge_clearance: 'warning',
+    // DFM checks are advisory by design — the conf constraints file can
+    // promote any of them to error or silence them per check id
+    track_dangling: 'warning',
+    hole_edge_clearance: 'warning',
+    drill_aspect_ratio: 'warning',
+    acid_trap: 'warning',
+    text_height: 'warning',
+    text_thickness: 'warning',
+    silk_over_mask: 'warning',
+    via_in_pad: 'warning',
+    edge_not_closed: 'error',
+    edge_self_intersection: 'error',
   };
   const sev = (type: string): 'error' | 'warning' | 'ignore' =>
     c.severities[type] ?? DEFAULT_SEVERITIES[type] ?? 'error';
@@ -802,6 +913,10 @@ export function runDrc(source: string, constraints: Partial<DrcConstraints> = {}
   );
   const holeClearanceNm = Math.round(c.min_hole_to_copper * NM);
   const holeHoleNm = Math.round(c.min_hole_to_hole * NM);
+  const thickness = (() => {
+    const g = root.child('general');
+    return g ? scalar(g, 1, 1.6) : 1.6;
+  })();
 
   // Edge.Cuts as clipper paths (open segments) + their bbox, for the
   // copper-to-edge check; gapNm's closed-edge traversal double-counts open
@@ -1220,6 +1335,221 @@ export function runDrc(source: string, constraints: Partial<DrcConstraints> = {}
             `${sideWord} solder mask aperture bridges items with different nets`,
             [item(cop), { description: ap.desc, pos: ap.pos }],
           );
+        }
+      }
+    }
+
+    // silk text manufacturability (height/thickness) + silk over mask
+    // openings (clipped by exposed copper at fab)
+    const silkName = side === 'F' ? 'F.SilkS' : 'B.SilkS';
+    for (const t of silk.texts) {
+      if (t.height > 0 && t.height < c.min_silk_text_height - 1e-9) {
+        report(
+          'text_height',
+          `Text height (${t.height.toFixed(4)} mm; min is ${c.min_silk_text_height.toFixed(4)} mm)`,
+          [{ description: `${t.ref ? `Text of ${t.ref}` : `Text "${t.text}"`} on ${silkName}`, pos: t.pos }],
+        );
+      }
+      if (t.thickness > 0 && t.thickness < c.min_silk_text_thickness - 1e-9) {
+        report(
+          'text_thickness',
+          `Text thickness (${t.thickness.toFixed(4)} mm; min is ${c.min_silk_text_thickness.toFixed(4)} mm)`,
+          [{ description: `${t.ref ? `Text of ${t.ref}` : `Text "${t.text}"`} on ${silkName}`, pos: t.pos }],
+        );
+      }
+    }
+    for (const seg of silk.segments) {
+      for (const ap of apertures) {
+        if (!nearBboxes(
+          { minX: Math.round(Math.min(...seg.pts.map((p) => p[0])) * NM), maxX: Math.round(Math.max(...seg.pts.map((p) => p[0])) * NM), minY: Math.round(Math.min(...seg.pts.map((p) => p[1])) * NM), maxY: Math.round(Math.max(...seg.pts.map((p) => p[1])) * NM) },
+          bboxOfPaths(ap.paths),
+          Math.ceil((seg.width / 2) * NM),
+        )) continue;
+        if (polylineToPathGapNm(seg, ap.paths) < (seg.width / 2) * NM - GEOM_TOL_NM) {
+          report(
+            'silk_over_mask',
+            'Silkscreen overlaps a solder mask opening (will be clipped)',
+            [
+              { description: `Segment of ${seg.ref ?? 'silkscreen'} on ${silkName}`, pos: seg.pos },
+              { description: ap.desc, pos: ap.pos },
+            ],
+          );
+        }
+      }
+    }
+  }
+
+  // ------------------------------------------------------------------
+  // DFM: board outline integrity (closure + self-intersection) — the fill
+  // engine silently skips edge pullback when the chain fails, so surface it
+  // ------------------------------------------------------------------
+  {
+    const hasEdgeItems = root.children().some(
+      (n) => n.name.startsWith('gr_') && String(n.child('layer')?.raw[1] ?? '') === 'Edge.Cuts',
+    );
+    if (hasEdgeItems) {
+      const outline = chainEdgeOutline(root);
+      if (outline.length < 3) {
+        report(
+          'edge_not_closed',
+          'Board outline (Edge.Cuts) does not form a closed loop',
+          [{ description: 'Edge.Cuts outline', pos: { x: 0, y: 0 } }],
+        );
+      } else if (pathSelfIntersectsNm(outline)) {
+        report(
+          'edge_self_intersection',
+          'Board outline (Edge.Cuts) self-intersects',
+          [{ description: 'Edge.Cuts outline', pos: { x: outline[0]!.X / NM, y: outline[0]!.Y / NM } }],
+        );
+      }
+    }
+  }
+
+  // ------------------------------------------------------------------
+  // DFM: dangling tracks, hole-to-edge, drill aspect ratio, acid traps,
+  // via-in-pad (advisory warnings; substrate = per-layer collectors)
+  // ------------------------------------------------------------------
+  for (const layer of copperLayers) {
+    const items = [
+      ...collectLayerItems(root, layer, netCodeToName),
+      ...collectZoneItems(root, layer, netCodeToName),
+    ];
+
+    // dangling track ends: an endpoint touching no same-net copper other
+    // than its own segment
+    for (const it of items) {
+      if (it.kind !== 'track' || !it.centerline) continue;
+      const ends = [it.centerline[0]!, it.centerline[it.centerline.length - 1]!];
+      for (const end of ends) {
+        let connected = false;
+        for (const other of items) {
+          if (other === it) continue;
+          if (other.net !== it.net) continue;
+          if (!other.layers.includes(layer) && other.kind !== 'via' && other.kind !== 'pad') continue;
+          if (!nearBboxes(
+            { minX: Math.round((end[0] * NM) - 2000), maxX: Math.round(end[0] * NM + 2000), minY: Math.round(end[1] * NM - 2000), maxY: Math.round(end[1] * NM + 2000) },
+            other.bbox,
+            0,
+          )) continue;
+          const ex = end[0] * NM;
+          const ey = end[1] * NM;
+          if (
+            pointPathsGapNm(ex, ey, other.paths) <= 2000 ||
+            (other.paths[0] !== undefined && pointInPathNm(other.paths[0], ex, ey))
+          ) {
+            connected = true;
+            break;
+          }
+        }
+        if (!connected) {
+          report(
+            'track_dangling',
+            'Track has an unconnected end',
+            [{ description: it.description, pos: { x: end[0], y: end[1] } }],
+          );
+          break; // one report per track (KiCad reports per segment)
+        }
+      }
+    }
+
+    // hole-to-edge + drill aspect ratio (once per hole position)
+    for (const it of items) {
+      if (!it.hole) continue;
+      const key = `hedge:${it.hole.x.toFixed(4)}:${it.hole.y.toFixed(4)}`;
+      if (reportedOnce.has(key)) continue;
+      reportedOnce.add(key);
+      if (edgePaths.length > 0 && c.min_hole_edge_clearance > 0) {
+        if (circleGapNm(Math.round(it.hole.x * NM), Math.round(it.hole.y * NM), Math.round(it.hole.r * NM), edgePaths) < c.min_hole_edge_clearance * NM - GEOM_TOL_NM) {
+          report(
+            'hole_edge_clearance',
+            `Hole to board edge clearance (min is ${c.min_hole_edge_clearance.toFixed(4)} mm)`,
+            [item(it)],
+          );
+        }
+      }
+      if (thickness > 0 && c.max_drill_aspect_ratio > 0) {
+        const dia = it.hole.r * 2;
+        if (dia > 0 && thickness / dia > c.max_drill_aspect_ratio + 1e-9) {
+          report(
+            'drill_aspect_ratio',
+            `Drill aspect ratio (${(thickness / dia).toFixed(2)}; max is ${c.max_drill_aspect_ratio.toFixed(2)})`,
+            [item(it)],
+          );
+        }
+      }
+    }
+
+    // acid traps: acute interior angles in UNIONED per-net copper — the
+    // wedge forms where two touching items meet, never inside one capsule
+    if (c.min_copper_angle_deg > 0) {
+      const minCos = Math.cos((c.min_copper_angle_deg * Math.PI) / 180);
+      const byNet = new Map<string, Path[]>();
+      for (const it of items) {
+        if (it.kind === 'via' || it.net === null) continue;
+        const list = byNet.get(it.net) ?? [];
+        // zone holes are voids, not copper wedges: outer contour only
+        const polys = it.kind === 'zone' ? it.paths.slice(0, 1) : it.paths;
+        list.push(...polys);
+        byNet.set(it.net, list);
+      }
+      for (const [net, netPaths] of byNet) {
+        if (netPaths.length === 0) continue;
+        const cpr = new ClipperLib.Clipper();
+        netPaths.forEach((p) => cpr.AddPath(p, ClipperLib.PolyType.ptSubject, true));
+        const unioned: Path[] = [];
+        cpr.Execute(ClipperLib.ClipType.ctUnion, unioned, ClipperLib.PolyFillType.pftNonZero, ClipperLib.PolyFillType.pftNonZero);
+        for (const poly of unioned) {
+          const n = poly.length;
+          if (n < 3) continue;
+          for (let k = 0; k < n; k++) {
+            const prev = poly[(k + n - 1) % n]!;
+            const v = poly[k]!;
+            const next = poly[(k + 1) % n]!;
+            const e1 = Math.hypot(v.X - prev.X, v.Y - prev.Y);
+            const e2 = Math.hypot(next.X - v.X, next.Y - v.Y);
+            // skip degenerate/tessellation vertices
+            if (e1 < 50000 || e2 < 50000) continue;
+            const ux = (v.X - prev.X) / e1, uy = (v.Y - prev.Y) / e1;
+            const wx = (next.X - v.X) / e2, wy = (next.Y - v.Y) / e2;
+            const dot = ux * wx + uy * wy;
+            // interior(v) = 180° − angle(u, w): straight run dot=+1 → 180°,
+            // acute wedge dot→−1 → ~0°. Skip the wide side (interior ≥ 90°).
+            if (dot >= 0) continue;
+            const cosInt = -dot;
+            if (cosInt > minCos) {
+              report(
+                'acid_trap',
+                `Acid trap (copper angle ≈ ${(Math.acos(Math.min(1, Math.max(-1, cosInt))) * 180 / Math.PI).toFixed(0)}° < ${c.min_copper_angle_deg}°)`,
+                [{ description: `Copper of net ${net} on ${layer}`, pos: { x: v.X / NM, y: v.Y / NM } }],
+              );
+              break; // one report per polygon
+            }
+          }
+        }
+      }
+    }
+
+    // via-in-pad: same-net via centered inside an SMD pad (assembly wicking)
+    if (c.via_in_pad_exempt_radius > 0) {
+      const smdPads = items.filter((it) => it.kind === 'pad');
+      for (const via of items) {
+        if (via.kind !== 'via') continue;
+        if (via.hole && via.hole.r * 2 <= c.via_in_pad_exempt_radius) continue; // micro/fillable
+        const vx = Math.round(via.pos.x * NM);
+        const vy = Math.round(via.pos.y * NM);
+        for (const pad of smdPads) {
+          if (pad.net === null || pad.net !== via.net) continue;
+          if (!nearBboxes(via.bbox, pad.bbox, 0)) continue;
+          const outer = pad.paths[0];
+          if (!outer) continue;
+          if (pointInPathNm(outer, vx, vy)) {
+            report(
+              'via_in_pad',
+              'Via placed inside an SMD pad (wicking risk; tent or relocate)',
+              [item(via), item(pad)],
+            );
+            break;
+          }
         }
       }
     }

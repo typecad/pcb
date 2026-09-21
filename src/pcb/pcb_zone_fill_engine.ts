@@ -450,7 +450,7 @@ export function obstacleToPaths(o: Obstacle, inflate: number): Path[] {
  * end connects to the next start). Returns [] when the pieces don't form
  * a closed loop — edge pullback is then skipped rather than guessed.
  */
-function chainEdgeOutline(root: SNode): Path {
+export function chainEdgeOutline(root: SNode): Path {
   interface Seg {
     a: [number, number];
     b: [number, number];

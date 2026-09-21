@@ -66,16 +66,26 @@ export async function run(parsed: ParsedArgs): Promise<void> {
  * are computed in-memory by the native fill engine, and the report uses
  * KiCad's JSON schema so consumers don't care which engine produced it.
  */
-async function runNativeDrc(pcbPath: string, json: boolean): Promise<void> {
+export async function runNativeDrc(pcbPath: string, json: boolean): Promise<void> {
+  const { report, reportPath } = await computeNativeDrc(pcbPath);
+  reportViolations(report, reportPath, json);
+}
+
+/**
+ * Native DRC core: refill zones in-memory, run the engine with constraints
+ * from the board's .kicad_pro, and persist the KiCad-schema report JSON.
+ * Shared by the `drc` command and `check`'s DRC step.
+ */
+export async function computeNativeDrc(
+  pcbPath: string,
+): Promise<{ report: ReturnType<typeof runDrc>; reportPath: string }> {
   const reportName = path.basename(pcbPath, '.kicad_pcb') + '_drc.json';
   const reportPath = path.join(path.dirname(pcbPath), reportName);
 
   const source = fs.readFileSync(pcbPath, 'utf8');
   const constraints = constraintsFromProject(pcbPath);
   const filled = refillZoneFills(source);
-  const t0 = Date.now();
   const report = runDrc(filled ?? source, constraints);
-  const elapsed = Date.now() - t0;
 
   const doc = {
     coordinate_units: 'mm',
@@ -86,8 +96,7 @@ async function runNativeDrc(pcbPath: string, json: boolean): Promise<void> {
     unconnected_items: report.unconnected_items,
   };
   fs.writeFileSync(reportPath, JSON.stringify(doc, null, 2));
-
-  reportViolations(report, reportPath, json, elapsed);
+  return { report, reportPath };
 }
 
 /** Read design rules + DRC severities from the board's .kicad_pro. */

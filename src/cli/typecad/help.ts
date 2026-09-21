@@ -434,7 +434,8 @@ export function showCheckHelp(): void {
   console.log('Options:');
   console.log('  --json              Output the full report as JSON');
   console.log('  --skip-erc          Skip the ERC step');
-  console.log('  --skip-drc          Skip the DRC step\n');
+  console.log('  --skip-drc          Skip the DRC step');
+  console.log("  --kicad-drc         DRC through kicad-cli (native engine is the default)\n");
   console.log('Examples:');
   console.log('  typecad-pcb check');
   console.log('  typecad-pcb check --json');

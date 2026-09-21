@@ -14,6 +14,7 @@ import {
   type KiCadCheckResult,
   type KiCadViolation,
 } from '../pipeline.js';
+import { computeNativeDrc } from './drc.js';
 
 interface StepResult {
   ran: boolean;
@@ -61,6 +62,38 @@ function printViolations(violations: KiCadViolation[]): void {
     }
   }
   if (violations.length > 25) logger.log(chalk.gray(`  ... and ${violations.length - 25} more`));
+}
+
+/** Native DRC as a check step — the KiCadCheckResult shape over the
+ *  engine's report (errors/warnings/violations + unconnected count). */
+async function nativeDrcStep(pcbPath: string): Promise<StepResult & { unconnectedItems?: number; reportPath?: string }> {
+  try {
+    const { report, reportPath } = await computeNativeDrc(pcbPath);
+    let errors = 0;
+    let warnings = 0;
+    const violations = report.violations.map((v) => ({
+      type: v.type,
+      severity: v.severity,
+      description: v.description,
+      items: v.items,
+    }));
+    for (const v of report.violations) {
+      if (v.severity === 'error') errors++;
+      else if (v.severity === 'warning') warnings++;
+    }
+    const unconnectedItems = report.unconnected_items.length;
+    return {
+      ran: true,
+      passed: errors === 0 && warnings === 0 && unconnectedItems === 0,
+      errors,
+      warnings,
+      violations,
+      unconnectedItems,
+      reportPath,
+    };
+  } catch (e) {
+    return { ran: false, passed: false, reason: e instanceof Error ? e.message : String(e), errors: 0, warnings: 0, violations: [] };
+  }
 }
 
 export async function run(parsed: ParsedArgs): Promise<void> {
@@ -115,9 +148,13 @@ export async function run(parsed: ParsedArgs): Promise<void> {
     report.erc = { ran: false, passed: true, reason: 'skipped' };
   }
 
-  // ── Step 4: DRC ──────────────────────────────────────────────────────────
+  // ── Step 4: DRC (native engine by default; --kicad-drc for kicad-cli) ──
   if (!skipDrc && report.build.passed && pcbPath) {
-    report.drc = stepFromKiCadResult(await runDrcStep(pcbPath));
+    if (parsed.args['kicad-drc'] === true) {
+      report.drc = stepFromKiCadResult(await runDrcStep(pcbPath));
+    } else {
+      report.drc = await nativeDrcStep(pcbPath);
+    }
   } else if (!skipDrc && report.build.passed) {
     report.drc = { ran: false, passed: false, reason: `No .kicad_pcb found in ${buildDirPath()}` };
   } else if (skipDrc) {

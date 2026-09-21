@@ -589,6 +589,43 @@ Clipper (clipper-lib, Boost license — Apache-compatible):
   hatch border always uses the `hatch_thickness` algorithm (KiCad's
   Smoothing-Level border variant is not modeled).
 
+## Native DRC (phase 1–2, copper + silkscreen + mask)
+
+`@typecad/pcb/src/pcb/pcb_drc_engine.ts` — `typecad-pcb drc` runs the native
+engine by default (`--kicad` escapes to kicad-cli). Constraints come from the
+board's `.kicad_pro` (the merged defaults ← conf constraints file ←
+constructor chain — see typecad.conf `rules`), and zone fills are computed
+in-memory by the native fill engine.
+
+- **Checks**: shorting_items (per net-pair cluster), tracks_crossing
+  (centerline crossings), clearance (per-pair, net-class-aware),
+  hole_clearance, hole_to_hole, annular_width (vias, once per via),
+  track_width, silk_edge_clearance, silk_overlap (silk/text/silk between
+  different footprints), solder_mask_bridge (mask aperture of a pad
+  overlapping different-net copper).
+- **KiCad conventions pinned to the goldens**: exact-min gaps PASS; no-net
+  vs no-net pairs are unchecked; a short swallows hole/clearance concerns
+  for that pair; through vias report dimension violations once (not per
+  layer); violation descriptions match kicad-cli strings.
+- **Geometry**: clearance is the ACTUAL edge-to-edge gap (vertex-to-edge
+  minimum over polygon pairs) — inflate-and-intersect compounds
+  arc-tessellation error. Zone fills feed the DRC as separate contours
+  ([outer, ...holes]) from the fill engine, never keyholed rings whose
+  channels cross cleared voids. Copper polygons carry a 10 µm geometric
+  tolerance for arc tessellation (fill engine arc tolerance: 2 µm).
+- **Hatched-zone caveat**: hatch line PHASE differs between fill engines, so
+  connectivity across a hatched pour is engine-dependent (a track running
+  parallel inside a void channel connects in one engine and floats in the
+  other). unconnected_items are therefore NOT reported on hatched boards —
+  use `typecad-pcb drc --kicad` for authoritative connectivity there. Solid
+  pours are authoritative (rd-scale solid pours: ~430 interior crossings,
+  trivial).
+- **Parity**: `tools/drc_native.ts <board> [golden.json]` compares violation
+  sets (order-insensitive keys; lib_footprint_mismatch excluded — library
+  comparison stays with kicad-cli). rd_skeleton: 11/11 non-library
+  violations matched (2+1 shorting/crossing, 3 annular, 3 mask bridge,
+  2 silk edge); hatched unconnected deferred as above. Untracked: ERC.
+
 ## Performance (bench.py, Win11, i7, KiCad 10.0.0)
 
 Full fabrication set (gerbers + drill + job), median of 3 (kicad) / 7 (native):

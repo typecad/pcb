@@ -21,7 +21,7 @@
 import ClipperLib from 'clipper-lib';
 import { parse, SNode } from '../sexpr/index.js';
 import type { SExpr } from '../sexpr/index.js';
-import { atPoint, scalar } from '../gerber_export/copper.js';
+import { atPoint, scalar, copperLayers as copperLayersOf } from '../gerber_export/copper.js';
 import {
   arcPolyline,
   buildNetCodeMap,
@@ -111,6 +111,8 @@ interface CopperItem {
    * reach the DRC.
    */
   paths: Path[];
+  /** copper layers this item exists on (drives connectivity unions) */
+  layers: string[];
   /** track centerline for crossing checks (tracks/arcs only) */
   centerline?: Array<[number, number]>;
   hole?: { x: number; y: number; r: number };
@@ -317,11 +319,14 @@ export function collectSilkItems(root: SNode, silkLayer: string, netCodeToName: 
         if (!text || kind === 'Sheetfile' || kind === 'Sheetname') continue;
         if (item.name === 'property' && !['Reference', 'Value'].includes(kind)) continue;
         if (item.name === 'fp_text' && !['reference', 'value', 'user'].includes(kind)) continue;
-        // ${REFERENCE}/${VALUE} substitution for position-relevant fields
+        // ${REFERENCE} → footprint ref; ${VALUE} → the footprint's Value
+        // property (reading the sibling property, as layers.ts does)
+        const valProp = fp.children('property').find((pr) => String(pr.raw[1]) === 'Value');
+        const valValue = String(valProp?.raw[2] ?? '');
         const shown = text
           .replace(/\$\{REFERENCE\}/gi, ref)
-          .replace(/\$\{VALUE\}/gi, text);
-        textItem(item, ref, shown === text ? text : shown, xf);
+          .replace(/\$\{VALUE\}/gi, valValue);
+        textItem(item, ref, shown, xf);
       }
     }
   }
@@ -426,6 +431,7 @@ function collectLayerItems(root: SNode, layer: string, netCodeToName: Map<number
         kind: 'track',
         net,
         paths: [capsuleToPoly(s.x, s.y, e.x, e.y, width / 2, 0)],
+        layers: [layer],
         centerline: [[s.x, s.y], [e.x, e.y]],
         description: `Track [${fmtNet(net)}] on ${layer}, length ${len.toFixed(4)} mm`,
         pos: { x: s.x, y: s.y },
@@ -456,6 +462,7 @@ function collectLayerItems(root: SNode, layer: string, netCodeToName: Map<number
           kind: 'arc',
           net,
           paths: [path],
+          layers: [layer],
           centerline: cl,
           description: `Track [${fmtNet(net)}] on ${layer}, length ${len.toFixed(4)} mm`,
           pos: { x: s.x, y: s.y },
@@ -479,6 +486,7 @@ function collectLayerItems(root: SNode, layer: string, netCodeToName: Map<number
       kind: 'via',
       net,
       paths: [circleToPoly(at.x, at.y, size / 2, 0)],
+      layers: through ? ['F.Cu', 'B.Cu'] : layers.slice(),
       hole: { x: at.x, y: at.y, r: drill / 2 },
       description: `Via [${fmtNet(net)}] on ${layers.length ? `${layers[0]} - ${layers[layers.length - 1]}` : layer}`,
       pos: at,
@@ -531,6 +539,7 @@ function collectLayerItems(root: SNode, layer: string, netCodeToName: Map<number
             kind: 'pad',
             net,
             paths: [path],
+            layers: [layer],
             hole,
             description: descs ?? (thru
               ? `PTH pad ${padNum} [${fmtNet(net)}] of ${ref}`
@@ -586,6 +595,7 @@ function collectZoneItems(root: SNode, layer: string, netCodeToName: Map<number,
         kind: 'zone',
         net,
         paths,
+        layers: [layer],
         bbox: bboxOfPaths(paths),
         description: `Filled zone [${fmtNet(net)}] on ${layer}`,
         pos: { x: paths[0]![0]!.X / NM, y: paths[0]![0]!.Y / NM },
@@ -708,12 +718,9 @@ export function runDrc(source: string, constraints: Partial<DrcConstraints> = {}
   const root = SNode.from(parse(source) as SExpr[]);
   const netCodeToName = buildNetCodeMap(root);
 
-  const copperLayers: string[] = [];
-  for (const l of root.children('layers')) {
-    const name = String(l.raw[2] ?? '');
-    if (String(l.raw[3] ?? '') === 'signal' && /\.Cu$|^[FB]\.Cu$/.test(name)) copperLayers.push(name);
-  }
-  if (copperLayers.length === 0) copperLayers.push('F.Cu', 'B.Cu');
+  // copper layer discovery via the shared helper (a previous inline copy
+  // read the layers block wrong and silently never checked inner layers)
+  const copperLayers = copperLayersOf(root).map((l) => l.name);
 
   const violations: DrcViolation[] = [];
   const unconnected_items: DrcReport['unconnected_items'] = [];
@@ -812,7 +819,7 @@ export function runDrc(source: string, constraints: Partial<DrcConstraints> = {}
         if (gapNm(A.paths, B.paths) < minNm - GEOM_TOL_NM) {
           report(
             'clearance',
-            `Clearance violation (net ${fmtNet(A.net)} clears net ${fmtNet(B.net)} by less than ${c.min_clearance.toFixed(4)} mm)`,
+            `Clearance violation (net ${fmtNet(A.net)} clears net ${fmtNet(B.net)} by less than ${(minNm / NM).toFixed(4)} mm)`,
             [item(A), item(B)],
           );
         }
@@ -861,12 +868,13 @@ export function runDrc(source: string, constraints: Partial<DrcConstraints> = {}
     // for non-round PTH pads with more nuance than we model)
     for (const it of items) {
       if (it.kind !== 'via' || !it.hole) continue;
-      if (it.uuid && reportedOnce.has(it.uuid)) continue;
+      const posKey = `via:${it.pos.x.toFixed(4)}:${it.pos.y.toFixed(4)}`;
+      if (reportedOnce.has(posKey)) continue;
       let copperR = 0;
       for (const poly of it.paths)
         for (const v of poly) copperR = Math.max(copperR, Math.hypot(v.X - it.pos.x * NM, v.Y - it.pos.y * NM));
       const ring = copperR / NM - it.hole.r;
-      if (it.uuid) reportedOnce.add(it.uuid);
+      reportedOnce.add(posKey);
       if (ring < c.min_via_annular_width - 0.0002) {
         report(
           'annular_width',
@@ -911,7 +919,7 @@ export function runDrc(source: string, constraints: Partial<DrcConstraints> = {}
   // ------------------------------------------------------------------
   if (!hasHatchedZones) {
     const allItems: CopperItem[] = [];
-    const seenUuid = new Set<string>();
+    const seenUuid = new Map<string, number>();
     for (const layer of copperLayers) {
       const layerItems = [
         ...collectLayerItems(root, layer, netCodeToName),
@@ -919,8 +927,15 @@ export function runDrc(source: string, constraints: Partial<DrcConstraints> = {}
       ];
       for (const it of layerItems) {
         if (it.uuid) {
-          if (seenUuid.has(it.uuid)) continue; // through via/pad seen on a sibling layer
-          seenUuid.add(it.uuid);
+          const prev = seenUuid.get(it.uuid);
+          if (prev !== undefined) {
+            // same physical via/pad seen on a sibling layer: keep one item
+            // (same shape) and record BOTH layers so it bridges them
+            const kept = allItems[prev]!;
+            for (const l of it.layers) if (!kept.layers.includes(l)) kept.layers.push(l);
+            continue;
+          }
+          seenUuid.set(it.uuid, allItems.length);
         }
         allItems.push(it);
       }
@@ -946,7 +961,9 @@ export function runDrc(source: string, constraints: Partial<DrcConstraints> = {}
         const A = allItems[i]!;
         const B = allItems[j]!;
         if (A.net !== B.net) continue;
-        // only same-net pairs may merge
+        // layer-aware: items on disjoint layers can never connect in XY —
+        // only a bridging via/pad (which carries both layers) unions them
+        if (!A.layers.some((l) => B.layers.includes(l))) continue;
         if (!near(A, B, CONNECT_TOL_NM)) continue;
         if (pathsIntersect(A.paths, B.paths) || gapNm(A.paths, B.paths) <= CONNECT_TOL_NM) {
           union(i, j);
@@ -973,11 +990,10 @@ export function runDrc(source: string, constraints: Partial<DrcConstraints> = {}
       // one entry per disconnected minor component, listing the two items
       // KiCad-style: [major component's first item, minor's first item]
       for (const minor of rest) {
-        report(
-          'unconnected_items',
-          'Missing connection between items',
-          [item(allItems[biggest[0]]!), item(allItems[minor[0]]!)],
-        );
+        unconnected_items.push({
+          description: 'Missing connection between items',
+          items: [item(allItems[biggest[0]]!), item(allItems[minor[0]]!)],
+        });
       }
     }
   }
@@ -999,11 +1015,11 @@ export function runDrc(source: string, constraints: Partial<DrcConstraints> = {}
       console.log('[drc-debug]', side, 'silk segs =', silk.segments.length, 'texts =', silk.texts.length);
     }
 
-    // silk vs board edge
+    // silk vs board edge: ink edge to edge-line centerline
     const edgeSegs = collectEdgeSegments(root);
     for (const seg of silk.segments) {
       for (const e of edgeSegs) {
-        const d = segSegMinDistNm(seg, e);
+        const d = segSegMinDistNm(seg, e) - (seg.width / 2) * NM;
         if (d < c.min_silk_edge_clearance * NM - GEOM_TOL_NM) {
           report(
             'silk_edge_clearance',
@@ -1035,7 +1051,8 @@ export function runDrc(source: string, constraints: Partial<DrcConstraints> = {}
       for (let j = i + 1; j < silk.segments.length; j++) {
         const B = silk.segments[j]!;
         if (A.ref && A.ref === B.ref) continue; // same footprint: allowed
-        if (segSegMinDistNm(A, B) < 0.1 * NM) {
+        const inkGap = segSegMinDistNm(A, B) - ((A.width + B.width) / 2) * NM;
+        if (inkGap < 0.1 * NM) {
           report(
             'silk_overlap',
             'Silkscreen clearance',
@@ -1078,12 +1095,18 @@ export function runDrc(source: string, constraints: Partial<DrcConstraints> = {}
         const wy = fy - lx * s + ly * c;
         const net = netNameOf(pad, netCodeToName);
         const padNum = String(pad.raw[1] ?? '');
+        const thru = String(pad.raw[2] ?? '').startsWith('thru');
+        // the item description names the pad's COPPER layer (kicad-cli does
+        // not rebrand mask apertures to the mask layer name)
+        const desc = thru
+          ? `PTH pad ${padNum} [${fmtNet(net)}] of ${ref}`
+          : `Pad ${padNum} [${fmtNet(net)}] of ${ref} on ${side}.Cu`;
         for (const part of padShapeObstacles(pad, wx, wy, angle)) {
           for (const p of obstaclePaths(part)) {
             apertures.push({
               paths: [p],
               net,
-              desc: `Pad ${padNum} [${fmtNet(net)}] of ${ref} on ${maskLayer}`,
+              desc,
               pos: { x: wx, y: wy },
             });
           }

@@ -250,6 +250,38 @@ export function padShapeObstacles(pad: SNode, worldX: number, worldY: number, an
             },
           });
         }
+      } else if (prim.name === 'gr_arc') {
+        // flatten the arc's centerline, stroke as chained capsules
+        const s = atPoint(prim.child('start'));
+        const midNode = prim.child('mid');
+        const e = atPoint(prim.child('end'));
+        const wNode = prim.child('width');
+        const w = wNode ? scalar(wNode, 1, 0) : 0;
+        if (w > 0) {
+          const pts = midNode
+            ? arcPolyline(s, atPoint(midNode), e, 0)
+            : (() => {
+                // legacy angle form: sweep from start around (at)
+                const at = prim.child('at')!;
+                const cx = worldX + scalar(at, 1, 0);
+                const cy = worldY + scalar(at, 2, 0);
+                const r = Math.hypot(s.x - cx, s.y - cy);
+                const a0 = Math.atan2(s.y - cy, s.x - cx);
+                let sweep = scalar(at.child('angle') ?? at, 1, 360) * (Math.PI / 180);
+                if (sweep < 0) sweep += 2 * Math.PI;
+                const out: Array<[number, number]> = [];
+                for (let i = 0; i <= 24; i++) {
+                  const a = a0 + (sweep * i) / 24;
+                  out.push([cx + r * Math.cos(a), cy + r * Math.sin(a)]);
+                }
+                return out;
+              })();
+          for (let i = 0; i + 1 < pts.length; i++) {
+            const [x1, y1] = pts[i]!;
+            const [x2, y2] = pts[i + 1]!;
+            parts.push({ kind: 'capsule', capsule: { x1, y1, x2, y2, r: w / 2 } });
+          }
+        }
       }
     }
     return parts;
@@ -268,9 +300,51 @@ export function padShapeObstacles(pad: SNode, worldX: number, worldY: number, an
   switch (shape) {
     case 'circle':
       return [{ kind: 'circle', circle: { x: worldX, y: worldY, r: w / 2 } }];
-    case 'rect':
-    case 'roundrect':
+    case 'roundrect': {
+      // rounded corners: radius = rratio × min(w, h), quarter arcs per corner
+      const hw = w / 2;
+      const hh = h / 2;
+      const rrNode = pad.child('roundrect_rratio');
+      const rratio = rrNode ? scalar(rrNode, 1, 0.25) : 0.25;
+      const r = Math.min(rratio * Math.min(w, h), Math.min(hw, hh));
+      const pts: Array<[number, number]> = [];
+      const seg = 6;
+      const corners: Array<[number, number, number, number]> = [
+        // [cx, cy, startAngle, endAngle] (file frame, angles in rad)
+        [hw - r, -(hh - r), -Math.PI / 2, 0],
+        [hw - r, hh - r, 0, Math.PI / 2],
+        [-(hw - r), hh - r, Math.PI / 2, Math.PI],
+        [-(hw - r), -(hh - r), Math.PI, 1.5 * Math.PI],
+      ];
+      for (const [cx, cy, a0, a1] of corners) {
+        for (let i = 0; i <= seg; i++) {
+          const a = a0 + ((a1 - a0) * i) / seg;
+          pts.push(rot(cx + r * Math.cos(a), cy + r * Math.sin(a)));
+        }
+      }
+      return [{ kind: 'poly', poly: { pts } }];
+    }
     case 'trapezoid': {
+      // KiCad BuildPadPolygon: delta.y slants the left/right edges, delta.x
+      // the top/bottom (shift = delta/2); rectangle when both are zero
+      const hw = w / 2;
+      const hh = h / 2;
+      const dNode = pad.child('rect_delta');
+      const ddx = dNode ? scalar(dNode, 1, 0) / 2 : 0;
+      const ddy = dNode ? scalar(dNode, 2, 0) / 2 : 0;
+      return [{
+        kind: 'poly',
+        poly: {
+          pts: [
+            rot(-hw - ddy, -hh - ddx),
+            rot(hw + ddy, -hh - ddx),
+            rot(hw - ddy, hh + ddx),
+            rot(-hw + ddy, hh + ddx),
+          ],
+        },
+      }];
+    }
+    case 'rect': {
       const hw = w / 2;
       const hh = h / 2;
       return [{

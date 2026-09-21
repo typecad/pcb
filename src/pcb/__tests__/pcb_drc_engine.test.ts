@@ -173,6 +173,22 @@ describe('native DRC (phase 1 copper core)', () => {
     expect(types(v25raised)).toContain('clearance');
   });
 
+  it('checks INNER layers on a 4-layer board (copper-layer discovery)', () => {
+    // regression: the inline layer discovery read the layers block wrong,
+    // so In1.Cu/In2.Cu were silently never checked
+    const src = `(kicad_pcb (version 20241229)
+      (layers
+        (0 "F.Cu" signal)
+        (1 "In1.Cu" signal)
+        (2 "In2.Cu" signal)
+        (31 "B.Cu" signal))
+      (net 0 "") (net 1 "GND") (net 2 "SIG")
+      (segment (start 10 10) (end 20 10) (width 0.3) (layer "In1.Cu") (net 1) (uuid "a"))
+      (segment (start 12 10) (end 22 10) (width 0.3) (layer "In1.Cu") (net 2) (uuid "b")))`;
+    const vs = runDrc(src).violations;
+    expect(types(vs)).toContain('shorting_items');
+  });
+
   it('emits KiCad-schema descriptions for report parity', () => {
     const vs = drc(`
       (footprint "Resistor_SMD:R_0603" (layer "F.Cu") (at 15 15)

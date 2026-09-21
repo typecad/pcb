@@ -40,6 +40,7 @@ import {
   netNameOf,
   padShapeObstacles,
   type Obstacle,
+  type ZoneFillResult,
 } from './pcb_zone_fill_engine.js';
 
 type Path = ClipperLib.Path;
@@ -157,6 +158,9 @@ interface CopperItem {
   description: string;
   pos: { x: number; y: number };
   uuid?: string;
+  /** zone items only: the zone's fill mode is hatch — narrow copper by
+   *  design, excluded from the copper_sliver union */
+  hatched?: boolean;
 }
 
 function bboxOfPaths(paths: Path[]): CopperItem['bbox'] {
@@ -810,7 +814,12 @@ function hasHatchedZone(root: SNode): boolean {
  * whose zero-width channels cross cleared voids and would phantom-violate
  * every clearance around them.
  */
-function collectZoneItems(root: SNode, layer: string, netCodeToName: Map<number, string>): CopperItem[] {
+function collectZoneItems(
+  root: SNode,
+  layer: string,
+  netCodeToName: Map<number, string>,
+  fillCache?: Map<string, ZoneFillResult | null>,
+): CopperItem[] {
   const items: CopperItem[] = [];
   for (const zone of root.children('zone')) {
     const layersNode = zone.child('layers') ?? zone.child('layer');
@@ -819,8 +828,10 @@ function collectZoneItems(root: SNode, layer: string, netCodeToName: Map<number,
       : [];
     if (!zLayers.includes(layer)) continue;
     const net = netNameOf(zone, netCodeToName);
-    const res = fillZone(root, zone, layer);
+    const res = fillZone(root, zone, layer, fillCache ? { cache: fillCache } : {});
     if (!res) continue;
+    const modeTok = zone.child('fill')?.child('mode')?.raw[1];
+    const hatched = String((modeTok as { name?: string })?.name ?? modeTok) === 'hatch';
     const zoneUuid = String(zone.child('uuid')?.raw[1] ?? 'z');
     let islandIdx = 0;
     for (const isl of res.islands) {
@@ -844,6 +855,7 @@ function collectZoneItems(root: SNode, layer: string, netCodeToName: Map<number,
         // unique per island: each island (and each layer's fill of the same
         // zone) is separate copper — the zone's own uuid must not dedup them
         uuid: `${zoneUuid}:${layer}#${islandIdx++}`,
+        hatched,
       });
     }
   }
@@ -1058,10 +1070,15 @@ export function runDrc(source: string, constraints: Partial<DrcConstraints> = {}
   ): boolean =>
     !(a.maxX + padNm < b.minX || b.maxX + padNm < a.minX || a.maxY + padNm < b.minY || b.maxY + padNm < a.minY);
 
+  // one fill per (zone, layer) for the whole run: the copper loop,
+  // connectivity pass, mask-aperture section, and DFM section each collect
+  // zone items for the same layers — without the cache each re-fills
+  const fillCache = new Map<string, ZoneFillResult | null>();
+
   for (const layer of copperLayers) {
     const items = [
       ...collectLayerItems(root, layer, netCodeToName),
-      ...collectZoneItems(root, layer, netCodeToName),
+      ...collectZoneItems(root, layer, netCodeToName, fillCache),
     ];
     // one shorting report per net pair per layer (KiCad reports the cluster
     // once); crossings report per pair
@@ -1260,7 +1277,7 @@ export function runDrc(source: string, constraints: Partial<DrcConstraints> = {}
     for (const layer of copperLayers) {
       const layerItems = [
         ...collectLayerItems(root, layer, netCodeToName),
-        ...collectZoneItems(root, layer, netCodeToName),
+        ...collectZoneItems(root, layer, netCodeToName, fillCache),
       ];
       for (const it of layerItems) {
         if (it.uuid) {
@@ -1405,7 +1422,7 @@ export function runDrc(source: string, constraints: Partial<DrcConstraints> = {}
     const sideWord = side === 'F' ? 'Front' : 'Back';
     const copperItems = [
       ...collectLayerItems(root, `${side}.Cu`, netCodeToName),
-      ...collectZoneItems(root, `${side}.Cu`, netCodeToName),
+      ...collectZoneItems(root, `${side}.Cu`, netCodeToName, fillCache),
     ];
     const apertures: Array<{ paths: Path[]; net: string | null; desc: string; pos: { x: number; y: number } }> = [];
     for (const fp of root.children('footprint')) {
@@ -1600,7 +1617,7 @@ export function runDrc(source: string, constraints: Partial<DrcConstraints> = {}
   for (const layer of copperLayers) {
     const items = [
       ...collectLayerItems(root, layer, netCodeToName),
-      ...collectZoneItems(root, layer, netCodeToName),
+      ...collectZoneItems(root, layer, netCodeToName, fillCache),
     ];
 
     // dangling track ends: an endpoint touching no same-net copper other
@@ -1730,13 +1747,18 @@ export function runDrc(source: string, constraints: Partial<DrcConstraints> = {}
 
     // copper slivers: same-net unioned copper narrower than the fab can
     // hold. Thermal spoke roots are intentionally narrow — exempt
-    // fragments centered near a same-net pad.
+    // fragments centered near a same-net pad. Hatched pour strokes are
+    // excluded from the union entirely: their narrowness is the design
+    // intent (morphological opening over ~1k hatch islands per layer is
+    // also what made DRC take minutes), so only tracks/pads/vias and
+    // SOLID pour copper are sliver candidates.
     if (c.min_copper_sliver_width > 0) {
       const padCenters = items
         .filter((it) => it.kind === 'pad' && it.net !== null)
         .map((it) => ({ x: Math.round(it.pos.x * NM), y: Math.round(it.pos.y * NM), net: it.net! }));
-      for (const [net, unioned] of unionedCopperByNet(items)) {
-        // 0.01 mm² floor: hatched pours clip line ends into sub-thickness
+      const sliverCandidates = items.filter((it) => !(it.kind === 'zone' && it.hatched));
+      for (const [net, unioned] of unionedCopperByNet(sliverCandidates)) {
+        // 0.01 mm² floor: pours clip line ends into sub-thickness
         // TIPS (triangular, ares ≪ width×length) — inherent to the format,
         // reported only when substantial; silence via conf if unwanted
         for (const frag of narrowRegions(unioned, Math.round(c.min_copper_sliver_width * NM), 1e10)) {

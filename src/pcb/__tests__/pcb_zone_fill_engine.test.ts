@@ -198,8 +198,28 @@ describe('zone fill engine', () => {
     expect(res.totalAreaMm2).toBeLessThan(40); // one 6×6 island, not two
   });
 
-  it('emits hatch output: cross-hatch pieces, less copper than solid', () => {
+  it('memoizes repeated fills through a caller-provided cache', () => {
     const root = board(`
+      (zone (net 1) (net_name "GND") (layers "F.Cu" "B.Cu") (uuid "z1") (connect_pads (clearance 0.5))
+        (fill yes (thermal_gap 0.5) (thermal_bridge_width 0.5))
+        (polygon (pts (xy 10 10) (xy 30 10) (xy 30 30) (xy 10 30))))`);
+    // wrappers are not reference-stable across children() calls — the cache
+    // must key by zone CONTENT so a fresh wrapper still hits
+    const cache = new Map<string, ReturnType<typeof fillZone>>();
+    const first = fillZone(root, root.children('zone')[0]!, 'F.Cu', { cache })!;
+    const second = fillZone(root, root.children('zone')[0]!, 'F.Cu', { cache })!;
+    expect(second).toBe(first); // same object, not a recompute
+    // without a cache every call recomputes (fresh result objects)
+    const uncached = fillZone(root, root.children('zone')[0]!, 'F.Cu')!;
+    expect(uncached).not.toBe(first);
+    expect(uncached.islands.length).toBe(first.islands.length);
+    // a different layer under the same cache is a different entry
+    const otherLayer = fillZone(root, root.children('zone')[0]!, 'B.Cu', { cache })!;
+    expect(otherLayer).not.toBe(first);
+    expect(cache.size).toBe(2);
+  });
+
+  it('emits hatch output: cross-hatch pieces, less copper than solid', () => {    const root = board(`
       (zone (net 1) (net_name "GND") (layer "In1.Cu") (connect_pads (clearance 0.5))
         (fill yes (mode hatch) (thermal_gap 0.5) (thermal_bridge_width 0.5)
           (hatch_thickness 0.3) (hatch_gap 0.6) (hatch_orientation 0) (hatch_min_hole_area 0.15))

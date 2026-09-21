@@ -529,6 +529,13 @@ export interface ZoneFillOptions {
   edgeClearance?: number;
   /** drop islands below this area (mm²); 0 keeps all */
   minIslandArea?: number;
+  /**
+   * Memo table for repeated fills of the same zone within one run. The DRC
+   * threads one Map through its per-layer passes (copper loop + mask
+   * section) instead of re-filling the identical zone 2×+ per layer; a
+   * stored `null` (zone yields no fill) is cached too.
+   */
+  cache?: Map<string, ZoneFillResult | null>;
 }
 
 /** Resolve an item's net child to a net NAME (name-only or coded form). */
@@ -551,6 +558,47 @@ export function buildNetCodeMap(root: SNode): Map<number, string> {
 }
 
 export function fillZone(
+  root: SNode,
+  zone: SNode,
+  layer: string,
+  opts: ZoneFillOptions = {},
+): ZoneFillResult | null {
+  if (!opts.cache) return computeZoneFill(root, zone, layer, opts);
+  const key = zoneFillCacheKey(zone, layer, opts);
+  const hit = opts.cache.get(key);
+  if (hit !== undefined) return hit;
+  const res = computeZoneFill(root, zone, layer, opts);
+  opts.cache.set(key, res);
+  return res;
+}
+
+/**
+ * Cache key: zone identity by CONTENT — SNode wrappers are not
+ * reference-stable across children() calls, so uuid + net token + each
+ * polygon's anchor point + layer (+ option overrides) stand in for the
+ * node itself. Two zones sharing all of those are the same zone.
+ */
+function zoneFillCacheKey(zone: SNode, layer: string, opts: ZoneFillOptions): string {
+  const anchors = zone
+    .children('polygon')
+    .map((p) => {
+      const xy = p.child('pts')?.children('xy')[0];
+      return xy ? `${scalar(xy, 1)},${scalar(xy, 2)}` : '';
+    })
+    .join(';');
+  const net = String(zone.child('net')?.raw[1] ?? '');
+  const uuid = String(zone.child('uuid')?.raw[1] ?? '');
+  const overrides = [
+    opts.clearance ?? '',
+    opts.thermalGap ?? '',
+    opts.spokeWidth ?? '',
+    opts.edgeClearance ?? '',
+    opts.minIslandArea ?? '',
+  ].join(',');
+  return `${uuid}|${net}|${anchors}|${layer}|${overrides}`;
+}
+
+function computeZoneFill(
   root: SNode,
   zone: SNode,
   layer: string,

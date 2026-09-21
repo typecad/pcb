@@ -207,6 +207,31 @@ describe('DFM tier 2', () => {
     expect(ok.filter((v) => v.type === 'copper_sliver')).toHaveLength(0);
   });
 
+  it('does not flag hatched pour strokes as slivers (narrow by design)', () => {
+    // hatch strokes at 0.08mm are BELOW the 0.1mm sliver minimum — they are
+    // the intended pattern, not fab-hostile fragments
+    const hatch = `
+      (zone (net 1) (net_name "GND") (layer "F.Cu") (connect_pads (clearance 0.3))
+        (fill yes (mode hatch) (thermal_gap 0.3) (thermal_bridge_width 0.4)
+          (hatch_thickness 0.08) (hatch_gap 0.4) (hatch_orientation 0))
+        (polygon (pts (xy 2 2) (xy 28 2) (xy 28 18) (xy 2 18))))`;
+    const vs = dfm(`
+      ${EDGES}
+      ${hatch}`);
+    expect(vs.filter((v) => v.type === 'copper_sliver')).toHaveLength(0);
+    // a REAL sliver on the same board is still flagged — the check runs,
+    // it just ignores hatch copper
+    const withSliver = dfm(`
+      ${EDGES}
+      ${hatch}
+      (footprint "T:A" (layer "F.Cu") (at 15 10)
+        (pad "1" smd custom (at 0 0 0) (size 0.5 0.5) (layers "F.Cu") (net 2) (uuid "p1")
+          (primitives (gr_poly (pts (xy 0 -0.04) (xy 4 -0.04) (xy 4 0.04) (xy 0 0.04)) (width 0)))))`);
+    const sliver = withSliver.filter((v) => v.type === 'copper_sliver');
+    expect(sliver.length).toBeGreaterThanOrEqual(1);
+    expect(sliver.every((v) => v.items[0]!.description.includes('SIG'))).toBe(true);
+  });
+
   it('flags solder mask web below the fab minimum between nearby pads', () => {
     // two SMD pads 0.05mm apart: web < 0.1
     const vs = dfm(`

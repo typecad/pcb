@@ -262,3 +262,28 @@ describe('native DRC (phase 1 copper core)', () => {
     for (const i of v.items) expect(Number.isFinite(i.pos.x)).toBe(true);
   });
 });
+
+describe('fill handling', () => {
+  it('produces identical reports for unfilled and pre-filled sources (saved fills are never read)', async () => {
+    const src = board(`
+      (gr_line (start 0 0) (end 30 0) (layer "Edge.Cuts") (stroke (width 0.05) (type solid)) (uuid "e1"))
+      (gr_line (start 30 0) (end 30 20) (layer "Edge.Cuts") (stroke (width 0.05) (type solid)) (uuid "e2"))
+      (gr_line (start 30 20) (end 0 20) (layer "Edge.Cuts") (stroke (width 0.05) (type solid)) (uuid "e3"))
+      (gr_line (start 0 20) (end 0 0) (layer "Edge.Cuts") (stroke (width 0.05) (type solid)) (uuid "e4"))
+      (via (at 10 5) (size 0.6) (drill 0.3) (layers "F.Cu" "B.Cu") (net 2) (uuid "v1"))
+      (segment (start 5 15) (end 25 15) (width 0.3) (layer "F.Cu") (net 3) (uuid "t1"))
+      (zone (net 1) (net_name "GND") (layer "F.Cu") (uuid "z1") (connect_pads (clearance 0.3))
+        (fill yes (thermal_gap 0.3) (thermal_bridge_width 0.4))
+        (polygon (pts (xy 2 2) (xy 28 2) (xy 28 18) (xy 2 18))))`);
+    // refactoring guard: runDrc computes fills itself via collectZoneItems,
+    // so callers must not need to materialize filled_polygon blocks first
+    const { refillZoneFills } = await import('../../cli/typecad/commands/export.js');
+    const filled = refillZoneFills(src);
+    expect(filled).not.toBeNull();
+    expect(filled).toContain('filled_polygon');
+    const plain = runDrc(src);
+    const pre = runDrc(filled!);
+    expect(pre.violations).toEqual(plain.violations);
+    expect(pre.unconnected_items).toEqual(plain.unconnected_items);
+  });
+});

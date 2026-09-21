@@ -6,7 +6,7 @@ import type { ParsedArgs } from '../parser.js';
 import type { ErcViolation } from '../../types.js';
 import logger from '../../../utils/logging.js';
 import { buildDirPath, findBoardFile } from '../pipeline.js';
-import { kicadMajorVersion, refillZoneFills } from './export.js';
+import { kicadMajorVersion } from './export.js';
 import { runDrc } from '../../../pcb/pcb_drc_engine.js';
 
 function findPcbFile(argPath?: string): string | null {
@@ -72,9 +72,12 @@ export async function runNativeDrc(pcbPath: string, json: boolean): Promise<void
 }
 
 /**
- * Native DRC core: refill zones in-memory, run the engine with constraints
- * from the board's .kicad_pro, and persist the KiCad-schema report JSON.
- * Shared by the `drc` command and `check`'s DRC step.
+ * Native DRC core: run the engine with constraints from the board's
+ * .kicad_pro and persist the KiCad-schema report JSON. Zone fills are
+ * computed inside runDrc (one fill per zone/layer via its shared cache) —
+ * saved filled_polygon blocks are never read, so materializing them first
+ * would be pure overhead. Shared by the `drc` command and `check`'s DRC
+ * step.
  */
 export async function computeNativeDrc(
   pcbPath: string,
@@ -84,8 +87,7 @@ export async function computeNativeDrc(
 
   const source = fs.readFileSync(pcbPath, 'utf8');
   const constraints = constraintsFromProject(pcbPath);
-  const filled = refillZoneFills(source);
-  const report = runDrc(filled ?? source, constraints);
+  const report = runDrc(source, constraints);
 
   const doc = {
     coordinate_units: 'mm',

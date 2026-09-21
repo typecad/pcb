@@ -55,7 +55,8 @@ interface RectPoly {
 
 interface Obstacle {
   /** thermal/solid only applies to same-net */
-  kind: 'circle' | 'capsule' | 'poly';
+  kind: 'circle' | 'capsule' | 'poly' | 'group';
+  parts?: Obstacle[];
   circle?: Circle;
   capsule?: Capsule;
   poly?: RectPoly;
@@ -196,10 +197,64 @@ function mergeWithHoles(outer: Path, holes: Path[]): number[] {
 // obstacle collection
 // ---------------------------------------------------------------------------
 
-function padShapeObstacle(pad: SNode, worldX: number, worldY: number, angle: number): Obstacle | null {
+/** All copper shapes of one pad, in board mm (empty = no obstacle). */
+function padShapeObstacles(pad: SNode, worldX: number, worldY: number, angle: number): Obstacle[] {
   const shape = String(pad.raw[3] ?? 'circle');
+  if (shape === 'custom') {
+    // EVERY primitive contributes copper (poly/rect/circle/line) — taking
+    // only the first silently under-blocks multi-shape pads
+    const prims = pad.child('primitives');
+    if (!prims) return [];
+    const parts: Obstacle[] = [];
+    for (const prim of prims.children()) {
+      const rad = (angle * Math.PI) / 180;
+      const cos = Math.cos(rad);
+      const sin = Math.sin(rad);
+      const rotP = (x: number, y: number): [number, number] => [
+        worldX + x * cos - y * sin,
+        worldY + x * sin + y * cos,
+      ];
+      if (prim.name === 'gr_poly') {
+        const pts = prim.child('pts')?.children('xy') ?? [];
+        const out: Array<[number, number]> = pts.map((p) =>
+          rotP(scalar(p, 1, 0), scalar(p, 2, 0)),
+        );
+        if (out.length >= 3) parts.push({ kind: 'poly', poly: { pts: out } });
+      } else if (prim.name === 'gr_rect') {
+        const s = atPoint(prim.child('start'));
+        const e = atPoint(prim.child('end'));
+        parts.push({
+          kind: 'poly',
+          poly: { pts: [rotP(s.x, s.y), rotP(e.x, s.y), rotP(e.x, e.y), rotP(s.x, e.y)] },
+        });
+      } else if (prim.name === 'gr_circle') {
+        const c = atPoint(prim.child('center'));
+        const e2 = atPoint(prim.child('end'));
+        const r = Math.hypot(e2.x - c.x, e2.y - c.y);
+        if (r > 0) parts.push({ kind: 'circle', circle: { x: worldX + c.x, y: worldY + c.y, r } });
+      } else if (prim.name === 'gr_line') {
+        const s = atPoint(prim.child('start'));
+        const e = atPoint(prim.child('end'));
+        const wNode = prim.child('width');
+        const w = wNode ? scalar(wNode, 1, 0) : 0;
+        if (w > 0) {
+          parts.push({
+            kind: 'capsule',
+            capsule: {
+              x1: worldX + s.x * cos - s.y * sin,
+              y1: worldY + s.x * sin + s.y * cos,
+              x2: worldX + e.x * cos - e.y * sin,
+              y2: worldY + e.x * sin + e.y * cos,
+              r: w / 2,
+            },
+          });
+        }
+      }
+    }
+    return parts;
+  }
   const sizeNode = pad.child('size');
-  if (!sizeNode) return null;
+  if (!sizeNode) return [];
   const w = scalar(sizeNode, 1, 0);
   const h = scalar(sizeNode, 2, 0);
   const rad = (angle * Math.PI) / 180;
@@ -211,23 +266,23 @@ function padShapeObstacle(pad: SNode, worldX: number, worldY: number, angle: num
   ];
   switch (shape) {
     case 'circle':
-      return { kind: 'circle', circle: { x: worldX, y: worldY, r: w / 2 } };
+      return [{ kind: 'circle', circle: { x: worldX, y: worldY, r: w / 2 } }];
     case 'rect':
     case 'roundrect':
     case 'trapezoid': {
       const hw = w / 2;
       const hh = h / 2;
-      return {
+      return [{
         kind: 'poly',
         poly: { pts: [rot(-hw, -hh), rot(hw, -hh), rot(hw, hh), rot(-hw, hh)] },
-      };
+      }];
     }
     case 'oval': {
       const minor = Math.min(w, h);
       const half = (Math.max(w, h) - minor) / 2;
       if (w >= h) {
         // major along local x
-        return {
+        return [{
           kind: 'capsule',
           capsule: {
             x1: worldX - half * cos,
@@ -236,9 +291,9 @@ function padShapeObstacle(pad: SNode, worldX: number, worldY: number, angle: num
             y2: worldY + half * sin,
             r: minor / 2,
           },
-        };
+        }];
       }
-      return {
+      return [{
         kind: 'capsule',
         capsule: {
           x1: worldX + half * sin,
@@ -247,52 +302,10 @@ function padShapeObstacle(pad: SNode, worldX: number, worldY: number, angle: num
           y2: worldY + half * cos,
           r: minor / 2,
         },
-      };
-    }
-    case 'custom': {
-      // obstacle from the pad's primitives (poly/rect/circle/line),
-      // footprint-rotation applied by the caller's world transform of the
-      // anchor; primitive-local coords rotate by the pad's absolute angle
-      const prims = pad.child('primitives');
-      if (!prims) return null;
-      const polys: Array<[number, number][]> = [];
-      const circles: Circle[] = [];
-      for (const prim of prims.children()) {
-        const rot = (angle * Math.PI) / 180;
-        const cos = Math.cos(rot);
-        const sin = Math.sin(rot);
-        const rotP = (x: number, y: number): [number, number] => [
-          worldX + x * cos - y * sin,
-          worldY + x * sin + y * cos,
-        ];
-        if (prim.name === 'gr_poly') {
-          const pts = prim.child('pts')?.children('xy') ?? [];
-          const out: Array<[number, number]> = pts.map((p) =>
-            rotP(scalar(p, 1, 0), scalar(p, 2, 0)),
-          );
-          if (out.length >= 3) polys.push(out);
-        } else if (prim.name === 'gr_rect') {
-          const s = atPoint(prim.child('start'));
-          const e = atPoint(prim.child('end'));
-          polys.push([
-            rotP(s.x, s.y),
-            rotP(e.x, s.y),
-            rotP(e.x, e.y),
-            rotP(s.x, e.y),
-          ]);
-        } else if (prim.name === 'gr_circle') {
-          const c = atPoint(prim.child('center'));
-          const e2 = atPoint(prim.child('end'));
-          const r = Math.hypot(e2.x - c.x, e2.y - c.y);
-          circles.push({ x: worldX + c.x, y: worldY + c.y, r });
-        }
-      }
-      if (polys.length > 0) return { kind: 'poly', poly: { pts: polys[0]! } };
-      if (circles.length > 0) return { kind: 'circle', circle: circles[0]! };
-      return null;
+      }];
     }
     default:
-      return null;
+      return [];
   }
 }
 
@@ -339,6 +352,17 @@ function obstacleToPath(o: Obstacle, inflate: number): Path | null {
     return capsuleToPoly(c.x1, c.y1, c.x2, c.y2, c.r, inflate);
   }
   return polyToPath(o.poly!.pts, inflate);
+}
+
+/** Inflated pieces of an obstacle — multi-primitive pads yield several. */
+function obstacleToPaths(o: Obstacle, inflate: number): Path[] {
+  if (o.kind === 'group') {
+    // no union needed: subtraction accumulates windings, so overlapping
+    // parts simply subtract twice (same net effect)
+    return o.parts!.flatMap((p) => obstacleToPaths(p, inflate));
+  }
+  const p = obstacleToPath(o, inflate);
+  return p ? [p] : [];
 }
 
 // ---------------------------------------------------------------------------
@@ -518,6 +542,15 @@ export function fillZone(
         minHoleArea: fillNode?.child('hatch_min_hole_area')
           ? scalar(fillNode!.child('hatch_min_hole_area')!, 1, 0)
           : 0,
+        smoothing: (() => {
+          const lvl = fillNode?.child('hatch_smoothing_level')
+            ? scalar(fillNode!.child('hatch_smoothing_level')!, 1, 0)
+            : 0;
+          const val = fillNode?.child('hatch_smoothing_value')
+            ? scalar(fillNode!.child('hatch_smoothing_value')!, 1, 0)
+            : 0;
+          return lvl >= 1 ? val : 0;
+        })(),
       }
     : null;
   if (hatchParams) {
@@ -529,7 +562,7 @@ export function fillZone(
 
   // collect obstacles + same-net pads on this layer
   const foreign: Path[] = [];
-  const sameNet: Array<{ pad: Obstacle; x: number; y: number; angle: number; r: number }> = [];
+  const sameNet: Array<{ pads: Obstacle[]; x: number; y: number; angle: number }> = [];
 
   const scanFootprints = (): void => {
     for (const fp of root.children('footprint')) {
@@ -550,16 +583,16 @@ export function fillZone(
         const angle = scalar(at, 3, 0); // absolute
         const wx = fx + lx * c + ly * s;
         const wy = fy - lx * s + ly * c;
-        const obst = padShapeObstacle(pad, wx, wy, angle);
-        if (!obst) continue;
+        const obst = padShapeObstacles(pad, wx, wy, angle);
+        if (obst.length === 0) continue;
         const padNet = netNameOf(pad, netCodeToName);
-        const sizeNode = pad.child('size');
-        const r = sizeNode ? Math.max(scalar(sizeNode, 1, 0), scalar(sizeNode, 2, 0)) / 2 : 0.5;
         if (zoneNet && padNet === zoneNet) {
-          sameNet.push({ pad: obst, x: wx, y: wy, angle, r });
+          sameNet.push({ pads: obst, x: wx, y: wy, angle });
         } else {
-          const p = obstacleToPath(obst, clearanceMm);
-          if (p) foreign.push(p);
+          for (const o of obst) {
+            const p = obstacleToPaths(o, clearanceMm);
+            foreign.push(...p);
+          }
         }
       }
     }
@@ -612,7 +645,7 @@ export function fillZone(
       const size = scalar(item.child('size')!, 1, 0.6);
       const net = netNameOf(item, netCodeToName);
       if (zoneNet && net === zoneNet) {
-        sameNet.push({ pad: { kind: 'circle', circle: { x: at.x, y: at.y, r: size / 2 } }, x: at.x, y: at.y, angle: 0, r: size / 2 });
+        sameNet.push({ pads: [{ kind: 'circle', circle: { x: at.x, y: at.y, r: size / 2 } }], x: at.x, y: at.y, angle: 0 });
       } else {
         foreign.push(circleToPoly(at.x, at.y, size / 2, clearanceMm));
       }
@@ -654,6 +687,8 @@ export interface HatchParams {
   orientation: number;
   /** holes below this area (mm²) fill solid (hatch_min_hole_area) */
   minHoleArea: number;
+  /** border corner rounding radius (mm); 0 = off (hatch_smoothing_level/value) */
+  smoothing: number;
 }
 
 /**
@@ -697,7 +732,19 @@ function hatchPieceRings(region: Path[], hp: HatchParams): number[][] {
   };
 
   // ---- border band: stroke the region outlines, clip back into the region
-  // (an open-path stroke extends half its width OUTSIDE the zone edge)
+  // (an open-path stroke extends half its width OUTSIDE the zone edge).
+  // hatch_smoothing_level/value rounds the band's corners via a
+  // morphological close (dilate then erode, round joins).
+  const closeRound = (p: Path, radius: number): Path => {
+    const once = (path: Path, d: number): Path => {
+      const co = new ClipperLib.ClipperOffset(2, 0.02 * NM);
+      co.AddPath(path, ClipperLib.JoinType.jtRound, ClipperLib.EndType.etClosedPolygon);
+      const o: ClipperLib.Path[] = [];
+      co.Execute(o, Math.round(d * NM));
+      return o[0] ?? path;
+    };
+    return once(once(p, radius), -radius);
+  };
   const borderRaw: Path[] = [];
   for (const path of region) {
     const co = new ClipperLib.ClipperOffset(2, 0.02 * NM);
@@ -706,7 +753,15 @@ function hatchPieceRings(region: Path[], hp: HatchParams): number[][] {
     co.Execute(out, Math.round((hp.thickness / 2) * NM));
     out.forEach((o) => borderRaw.push(o));
   }
-  for (const node of intersectRegion(borderRaw, true).Childs()) nodeRings(node);
+  for (const node of intersectRegion(borderRaw, true).Childs()) {
+    if (hp.smoothing > 0) {
+      const outer = closeRound(node.Contour() as unknown as Path, hp.smoothing);
+      const holes = node.Childs().map((ch) => closeRound(ch.Contour() as unknown as Path, hp.smoothing));
+      rings.push(mergeWithHoles(outer, holes));
+    } else {
+      nodeRings(node);
+    }
+  }
 
   // ---- cross-hatch lines: KiCad draws lines at hatch_orientation AND at
   // orientation + 90° (rd_skeleton golden: orientation 0 → 0° and 90° line
@@ -766,7 +821,7 @@ function hatchPieceRings(region: Path[], hp: HatchParams): number[][] {
 function finish(
   subject: Path[],
   clips: Path[],
-  sameNet: Array<{ pad: Obstacle; x: number; y: number; angle: number; r: number }>,
+  sameNet: Array<{ pads: Obstacle[]; x: number; y: number; angle: number }>,
   thermalGapMm: number,
   spokeWidthMm: number,
   minIsland: number,
@@ -781,34 +836,37 @@ function finish(
   // pad floats the ring off its long edges), with four orthogonal spoke
   // corridors (rotating with the pad) cut through it.
   const thermalClips: Path[] = [];
-  for (const { pad, x, y, angle } of sameNet) {
-    const voidPoly = obstacleToPath(pad, thermalGapMm);
-    if (!voidPoly || voidPoly.length < 3) continue;
-    // spoke reach: cover the void from the pad center
-    let reach = 0;
-    for (const v of voidPoly) {
-      reach = Math.max(reach, Math.hypot(v.X - x * NM, v.Y - y * NM));
+  for (const { pads, x, y, angle } of sameNet) {
+    for (const part of pads) {
+      for (const voidPoly of obstacleToPaths(part, thermalGapMm)) {
+        if (voidPoly.length < 3) continue;
+        // spoke reach: cover the void from the pad center
+        let reach = 0;
+        for (const v of voidPoly) {
+          reach = Math.max(reach, Math.hypot(v.X - x * NM, v.Y - y * NM));
+        }
+        reach = reach / NM + 1;
+        const rad = (angle * Math.PI) / 180;
+        const spokePaths: Path[] = [];
+        for (let q = 0; q < 4; q++) {
+          const a = rad + (q * Math.PI) / 2;
+          const dx = Math.cos(a);
+          const dy = Math.sin(a);
+          const hw = spokeWidthMm / 2;
+          // rectangle from the pad center outward along the spoke direction
+          const nx = -dy * hw;
+          const ny = dx * hw;
+          spokePaths.push([
+            { X: Math.round(x * NM + nx * NM), Y: Math.round(y * NM + ny * NM) },
+            { X: Math.round((x + dx * reach) * NM + nx * NM), Y: Math.round((y + dy * reach) * NM + ny * NM) },
+            { X: Math.round((x + dx * reach) * NM - nx * NM), Y: Math.round((y + dy * reach) * NM - ny * NM) },
+            { X: Math.round(x * NM - nx * NM), Y: Math.round(y * NM - ny * NM) },
+          ]);
+        }
+        // void minus spokes = the gap pieces actually subtracted from the pour
+        thermalClips.push(...subtract([voidPoly], spokePaths));
+      }
     }
-    reach = reach / NM + 1;
-    const rad = (angle * Math.PI) / 180;
-    const spokePaths: Path[] = [];
-    for (let q = 0; q < 4; q++) {
-      const a = rad + (q * Math.PI) / 2;
-      const dx = Math.cos(a);
-      const dy = Math.sin(a);
-      const hw = spokeWidthMm / 2;
-      // rectangle from the pad center outward along the spoke direction
-      const nx = -dy * hw;
-      const ny = dx * hw;
-      spokePaths.push([
-        { X: Math.round(x * NM + nx * NM), Y: Math.round(y * NM + ny * NM) },
-        { X: Math.round((x + dx * reach) * NM + nx * NM), Y: Math.round((y + dy * reach) * NM + ny * NM) },
-        { X: Math.round((x + dx * reach) * NM - nx * NM), Y: Math.round((y + dy * reach) * NM - ny * NM) },
-        { X: Math.round(x * NM - nx * NM), Y: Math.round(y * NM - ny * NM) },
-      ]);
-    }
-    // void minus spokes = the gap pieces actually subtracted from the pour
-    thermalClips.push(...subtract([voidPoly], spokePaths));
   }
 
   const islands: ZoneFillIsland[] = [];
@@ -825,6 +883,7 @@ function finish(
   // emitted, which is what makes the gerber cheap to tessellate.
   if (hatchParams) {
     let total = 0;
+    const piecePaths: Path[] = [];
     for (const ring of hatchPieceRings(flatResult, hatchParams)) {
       const pts = ring.length / 2;
       const nmRing: Path = [];
@@ -833,7 +892,21 @@ function finish(
       }
       const area = areaOf(nmRing);
       total += area;
+      piecePaths.push(nmRing);
       islands.push({ ring, contours: [ring], areaMm2: area });
+    }
+    // hatch_min_hole_area: voids of the fill region smaller than the
+    // threshold are filled solid — compute the complement of the emitted
+    // pieces and keep the small voids as copper islands
+    if (hatchParams.minHoleArea > 0 && piecePaths.length > 0) {
+      for (const v of subtract(flatResult, piecePaths)) {
+        const a = areaOf(v);
+        if (a >= hatchParams.minHoleArea || a < 0.01) continue;
+        const ring: number[] = [];
+        for (const p of v) ring.push(p.X / NM, p.Y / NM);
+        total += a;
+        islands.push({ ring, contours: [ring], areaMm2: a });
+      }
     }
     if (islands.length === 0) return { layer, islands: [], totalAreaMm2: 0 };
     return { layer, islands, totalAreaMm2: total };

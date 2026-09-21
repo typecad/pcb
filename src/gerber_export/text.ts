@@ -141,10 +141,12 @@ export function renderStrokeText(w: GerberWriter, o: TextOpts): boolean {
         let prev: Point | null = null;
         for (let i = 0; i < contour.length; i += 2) {
           // glyph frame: x right-positive, y up-positive (baseline ≈ −0.95,
-          // cap top ≈ +0.05) — flipped into the y-down board frame below
+          // cap top ≈ +0.05) — flipped into the y-down board frame below.
+          // Italic leans about the BASELINE (KiCad's glyph y=0): descender
+          // hooks shift left, cap tops right.
           let px = contour[i]! * sx;
           const py = contour[i + 1]! * sy;
-          if (tilt) px += py * tilt;
+          if (tilt) px += (py + 0.95) * tilt;
           // VECTOR2D -> VECTOR2I is static_cast: truncation toward zero
           let bxnm = Math.trunc(cursorX + px * NM);
           let bynm = Math.trunc(cursorY - py * NM); // glyph up → board down

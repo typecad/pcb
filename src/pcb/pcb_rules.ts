@@ -100,6 +100,7 @@ interface ProjectFile {
   board?: {
     design_settings?: {
       rules?: ProjectRules;
+      rule_severities?: Record<string, string>;
       teardrop_options?: Array<Record<string, unknown>>;
       teardrop_parameters?: Array<Record<string, unknown>>;
     };
@@ -269,6 +270,7 @@ export function mergeRulesIntoProject(
   netClasses?: ReadonlyMap<string, Required<INetClassOptions>>,
   assignments?: ReadonlyArray<{ netName: string; className: string }>,
   teardrops?: ITeardropPolicy,
+  severities?: Readonly<Record<string, 'error' | 'warning' | 'ignore'>>,
 ): string {
   let doc: ProjectFile;
   if (projectJson.trim().length > 0) {
@@ -285,6 +287,13 @@ export function mergeRulesIntoProject(
   doc.board.design_settings = doc.board.design_settings ?? {};
   const existingRules = doc.board.design_settings.rules as Record<string, unknown> | undefined;
   doc.board.design_settings.rules = buildProjectRules(rules, existingRules);
+
+  // DRC severities from the conf constraints file — KiCad reads these from
+  // rule_severities (check id → error|warning|ignore)
+  if (severities && Object.keys(severities).length > 0) {
+    const existing = { ...((doc.board.design_settings.rule_severities as Record<string, string> | undefined) ?? {}) };
+    doc.board.design_settings.rule_severities = { ...existing, ...severities };
+  }
 
   // Teardrop tool configuration (fixture shape under design_settings); only
   // written when the board opted in via pcb.teardrops().
@@ -362,6 +371,7 @@ export function mergeRulesIntoProject(
  * @param rules - Resolved rules.
  * @param netClasses - Optional map of class name → resolved dimensions.
  * @param assignments - Optional array of `{netName, className}` assignments.
+ * @param severities - Optional DRC severities (check id → error|warning|ignore).
  */
 export function writeRulesToProject(
   boardName: string,
@@ -369,6 +379,7 @@ export function writeRulesToProject(
   netClasses?: ReadonlyMap<string, Required<INetClassOptions>>,
   assignments?: ReadonlyArray<{ netName: string; className: string }>,
   teardrops?: ITeardropPolicy,
+  severities?: Readonly<Record<string, 'error' | 'warning' | 'ignore'>>,
 ): void {
   const projectPath = `${getBuildDir()}/${boardName}.kicad_pro`;
   let existing = '';
@@ -377,6 +388,6 @@ export function writeRulesToProject(
   } catch {
     existing = '';
   }
-  const updated = mergeRulesIntoProject(existing, rules, netClasses, assignments, teardrops);
+  const updated = mergeRulesIntoProject(existing, rules, netClasses, assignments, teardrops, severities);
   fs.writeFileSync(projectPath, updated, 'utf8');
 }

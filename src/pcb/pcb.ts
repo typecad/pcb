@@ -32,6 +32,7 @@ import { createVia } from './pcb_via.js';
 import { loadExistingBoardElements } from './pcb_board_loader.js';
 import { PcbInternalState } from './pcb_state.js';
 import { resolveRules } from './pcb_rules.js';
+import { loadRulesConfig } from '../config.js';
 import type { IPcbRules, INetClass, INetClassOptions } from './pcb_rules.js';
 import { NetClassRegistry } from './pcb_net_class.js';
 import { validateLayerCount, copperLayerNames, resolveStackupGeometry, type IStackupGeometry } from './pcb_stackup.js';
@@ -101,6 +102,8 @@ export class PCB {
   private _outlines: IOutline[] = [];
   private _tracks: IOutline[] = [];
   private _netClasses = new NetClassRegistry();
+  /** DRC severities from the conf constraints file, written to the .kicad_pro */
+  private _confSeverities: Record<string, 'error' | 'warning' | 'ignore'> = {};
   private _stackup?: { layerCount: number; options: IStackupOptions };
   private _viaPolicy: IViaPolicy = DEFAULT_VIA_POLICY;
   private _teardrops: ITeardropPolicy = DEFAULT_TEARDROPS;
@@ -130,8 +133,28 @@ export class PCB {
       schematic: new Schematic(boardName),
       ...options,
     };
+    // constraints from the conf-referenced JSON (typecad.conf "rules"):
+    // project-level defaults that code may override per key
+    const confRules = loadRulesConfig();
+    if (confRules?.rules) {
+      resolvedOptions.rules = { ...confRules.rules, ...resolvedOptions.rules };
+    }
     this._state = new PcbInternalState(resolvedOptions);
     this._schematic = resolvedOptions.schematic ?? new Schematic(boardName);
+    this._confSeverities = confRules?.severities ?? {};
+
+    // conf net classes/assignments register first so code can replace or
+    // extend them; the rules getter is live so the floor is already merged
+    if (confRules?.netClasses) {
+      for (const [name, dims] of Object.entries(confRules.netClasses)) {
+        this._netClasses.define(name, dims, this.rules);
+      }
+    }
+    if (confRules?.assignments) {
+      for (const [netName, className] of Object.entries(confRules.assignments)) {
+        this._netClasses.assign({ name: netName } as ISchematicNetDefinition, className);
+      }
+    }
 
     this._state.existingBoardElements = loadExistingBoardElements(boardName);
   }
@@ -164,6 +187,15 @@ export class PCB {
    */
   get netClasses(): NetClassRegistry {
     return this._netClasses;
+  }
+
+  /**
+   * DRC severities from the conf constraints file (check id → error |
+   * warning | ignore). Written to the `.kicad_pro` `rule_severities` so
+   * KiCad's DRC and the native engine agree on what counts.
+   */
+  get drcSeverities(): Readonly<Record<string, 'error' | 'warning' | 'ignore'>> {
+    return this._confSeverities;
   }
 
   get outlines(): readonly IOutline[] {

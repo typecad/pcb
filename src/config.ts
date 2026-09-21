@@ -19,7 +19,31 @@ export interface TypeCADConfig {
   kicad_path?: string;
   use_flatpak?: boolean;
   verbose?: boolean;
+  /**
+   * Path to a JSON design-constraints file (board rules, net classes, net
+   * assignments, DRC severities), relative to this conf file. See
+   * {@link TypeCADRulesFile}. This is the single constraint source for DRC —
+   * both the native engine and kicad-cli read the values it produces.
+   */
+  rules?: string;
   [key: string]: unknown;
+}
+
+/**
+ * Shape of the constraints JSON referenced by `rules` in the conf. All
+ * lengths in millimeters. Precedence: JLCPCB standard defaults ← this file
+ * ← `new PCB(name, { rules })` / `pcb.netClass()` calls in code (code wins
+ * per key; a code-defined class replaces the file's class of the same name).
+ */
+export interface TypeCADRulesFile {
+  /** Board-wide design rules — `IPcbRules` keys (min_clearance, …). */
+  rules?: Record<string, number>;
+  /** Net classes by name — `INetClassOptions` keys (track_width, …). */
+  netClasses?: Record<string, Record<string, number>>;
+  /** Net name → class name. Nets are matched by name at board creation. */
+  assignments?: Record<string, string>;
+  /** DRC check → severity. Keys are KiCad check ids (e.g. `silk_overlap`). */
+  severities?: Record<string, 'error' | 'warning' | 'ignore'>;
 }
 
 export function defineConfig(config: TypeCADConfig): TypeCADConfig {
@@ -176,6 +200,123 @@ export function clearConfigCache(): void {
   _cachedConfig = null;
   _cachedConfigPath = null;
   _cachedMtimeMs = undefined;
+  _cachedRulesPath = null;
+  _cachedRulesMtimeMs = undefined;
+  _cachedRules = null;
+}
+
+// ---------------------------------------------------------------------------
+// constraints JSON (conf `rules` field)
+// ---------------------------------------------------------------------------
+
+let _cachedRules: TypeCADRulesFile | null = null;
+let _cachedRulesPath: string | null = null;
+let _cachedRulesMtimeMs: number | undefined;
+
+const SEVERITY_VALUES = new Set(['error', 'warning', 'ignore']);
+
+/**
+ * Load and validate the constraints JSON referenced by `rules` in the conf.
+ * Returns null when the conf carries no `rules` path. Malformed files throw
+ * with the offending key named — a constraints file feeds fabrication
+ * checks and must fail the build loudly, not silently.
+ */
+export function loadRulesConfig(): TypeCADRulesFile | null {
+  const conf = loadConfig();
+  const rel = conf.rules;
+  if (rel === undefined || rel === null || rel === '') return null;
+  if (typeof rel !== 'string') {
+    throw new TypeError(`typecad.conf: "rules" must be a path string, got ${typeof rel}`);
+  }
+  const confDir = _cachedConfigPath ? path.dirname(_cachedConfigPath) : process.cwd();
+  const rulesPath = path.isAbsolute(rel) ? rel : path.join(confDir, rel);
+
+  const mtime = getMtimeMs(rulesPath);
+  if (_cachedRules && _cachedRulesPath === rulesPath && mtime === _cachedRulesMtimeMs) {
+    return _cachedRules;
+  }
+
+  if (!fs.existsSync(rulesPath)) {
+    throw new Error(`rules file not found: ${rulesPath} (conf "rules": ${rel})`);
+  }
+  let doc: unknown;
+  try {
+    doc = JSON.parse(fs.readFileSync(rulesPath, 'utf8'));
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new Error(`rules file ${rulesPath} is not valid JSON: ${msg}`);
+  }
+  if (typeof doc !== 'object' || doc === null || Array.isArray(doc)) {
+    throw new Error(`rules file ${rulesPath}: top level must be an object`);
+  }
+  const file = doc as Record<string, unknown>;
+  const out: TypeCADRulesFile = {};
+  for (const key of Object.keys(file)) {
+    const value = file[key];
+    switch (key) {
+      case 'rules':
+      case 'netClasses':
+      case 'assignments':
+      case 'severities':
+        if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+          throw new Error(`rules file ${rulesPath}: "${key}" must be an object`);
+        }
+        break;
+      default:
+        throw new Error(
+          `rules file ${rulesPath}: unknown key "${key}" (expected rules, netClasses, assignments, severities)`,
+        );
+    }
+  }
+  if (file.rules) {
+    out.rules = {};
+    for (const [rk, rv] of Object.entries(file.rules as Record<string, unknown>)) {
+      if (typeof rv !== 'number' || !Number.isFinite(rv) || rv <= 0) {
+        throw new Error(`rules file ${rulesPath}: rules."${rk}" must be a positive number (mm), got ${JSON.stringify(rv)}`);
+      }
+      out.rules[rk] = rv;
+    }
+  }
+  if (file.netClasses) {
+    out.netClasses = {};
+    for (const [cn, cv] of Object.entries(file.netClasses as Record<string, unknown>)) {
+      if (typeof cv !== 'object' || cv === null || Array.isArray(cv)) {
+        throw new Error(`rules file ${rulesPath}: netClasses."${cn}" must be an object`);
+      }
+      const dims: Record<string, number> = {};
+      for (const [dk, dv] of Object.entries(cv as Record<string, unknown>)) {
+        if (typeof dv !== 'number' || !Number.isFinite(dv) || dv <= 0) {
+          throw new Error(`rules file ${rulesPath}: netClasses."${cn}"."${dk}" must be a positive number (mm), got ${JSON.stringify(dv)}`);
+        }
+        dims[dk] = dv;
+      }
+      out.netClasses[cn] = dims;
+    }
+  }
+  if (file.assignments) {
+    out.assignments = {};
+    for (const [net, cls] of Object.entries(file.assignments as Record<string, unknown>)) {
+      if (typeof cls !== 'string' || cls === '') {
+        throw new Error(`rules file ${rulesPath}: assignments."${net}" must be a net-class name string`);
+      }
+      out.assignments[net] = cls;
+    }
+  }
+  if (file.severities) {
+    out.severities = {};
+    for (const [check, sev] of Object.entries(file.severities as Record<string, unknown>)) {
+      if (typeof sev !== 'string' || !SEVERITY_VALUES.has(sev)) {
+        throw new Error(
+          `rules file ${rulesPath}: severities."${check}" must be one of error|warning|ignore, got ${JSON.stringify(sev)}`,
+        );
+      }
+      out.severities[check as keyof typeof out.severities & string] = sev as 'error' | 'warning' | 'ignore';
+    }
+  }
+  _cachedRules = out;
+  _cachedRulesPath = rulesPath;
+  _cachedRulesMtimeMs = mtime;
+  return out;
 }
 
 export class Config {

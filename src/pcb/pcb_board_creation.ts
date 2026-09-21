@@ -282,6 +282,7 @@ export function createBoard(pcb: PCB, ...items: Array<Component | TrackBuilder>)
     pcb.netClasses.definitions,
     pcb.netClasses.assignmentEntries,
     pcb.teardropConfig,
+    pcb.drcSeverities,
   );
 
   // Mark the board as written: autorouting from here on can never reach the

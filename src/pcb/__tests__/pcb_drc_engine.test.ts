@@ -25,6 +25,11 @@ const DFM_QUIET = {
   text_thickness: 'ignore',
   silk_over_mask: 'ignore',
   via_in_pad: 'ignore',
+  copper_sliver: 'ignore',
+  mask_web: 'ignore',
+  min_resolved_spokes: 'ignore',
+  courtyard_overlap: 'ignore',
+  missing_courtyard: 'ignore',
   edge_not_closed: 'ignore',
   edge_self_intersection: 'ignore',
 } as const;

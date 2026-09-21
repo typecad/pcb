@@ -98,6 +98,12 @@ export interface DrcConstraints {
   min_silk_text_thickness: number;
   /** clearance between hole edge and copper on an SMD pad (via-in-pad exempt radius) */
   via_in_pad_exempt_radius: number;
+  /** copper narrower than this is a sliver the fab can't hold (mm) */
+  min_copper_sliver_width: number;
+  /** solder mask web between apertures below this (mm) */
+  min_mask_web: number;
+  /** resolved thermal spokes required per same-net pad */
+  min_resolved_spokes: number;
   /** check id → severity override (conf constraints file) */
   severities: Record<string, 'error' | 'warning' | 'ignore'>;
   /** net class name → clearance override (mm) */
@@ -122,6 +128,9 @@ export const DEFAULT_DRC_CONSTRAINTS: DrcConstraints = {
   min_silk_text_height: 0.8,
   min_silk_text_thickness: 0.08,
   via_in_pad_exempt_radius: 0.25,
+  min_copper_sliver_width: 0.1,
+  min_mask_web: 0.1,
+  min_resolved_spokes: 2,
   severities: {},
   netClassClearance: {},
   netClassPatterns: [],
@@ -165,6 +174,33 @@ function bboxOfPaths(paths: Path[]): CopperItem['bbox'] {
 
 function bboxOf(path: Path): CopperItem['bbox'] {
   return bboxOfPaths([path]);
+}
+
+/**
+ * Union all same-net copper on a layer into one region per net — the
+ * substrate for checks whose geometry only exists between touching items
+ * (acid traps, slivers). Zone holes drop (voids, not copper); vias drop
+ * (isolated circles union nothing).
+ */
+function unionedCopperByNet(items: CopperItem[]): Map<string, Path[]> {
+  const byNet = new Map<string, Path[]>();
+  for (const it of items) {
+    if (it.kind === 'via' || it.net === null) continue;
+    const list = byNet.get(it.net) ?? [];
+    const polys = it.kind === 'zone' ? it.paths.slice(0, 1) : it.paths;
+    list.push(...polys);
+    byNet.set(it.net, list);
+  }
+  const out = new Map<string, Path[]>();
+  for (const [net, paths] of byNet) {
+    if (paths.length === 0) continue;
+    const cpr = new ClipperLib.Clipper();
+    paths.forEach((p) => cpr.AddPath(p, ClipperLib.PolyType.ptSubject, true));
+    const unioned: Path[] = [];
+    cpr.Execute(ClipperLib.ClipType.ctUnion, unioned, ClipperLib.PolyFillType.pftNonZero, ClipperLib.PolyFillType.pftNonZero);
+    if (unioned.length > 0) out.set(net, unioned);
+  }
+  return out;
 }
 
 function obstaclePaths(o: Obstacle): Path[] {
@@ -366,6 +402,39 @@ export function collectSilkItems(root: SNode, silkLayer: string, netCodeToName: 
   return { segments, texts };
 }
 
+/** Courtyard graphics per footprint, unioned into one region each. */
+function collectCourtyards(
+  root: SNode,
+  side: 'F' | 'B',
+  netCodeToName: Map<number, string>,
+): Array<{ ref: string; paths: Path[]; bbox: CopperItem['bbox'] }> {
+  const layerToken = side === 'F' ? 'F.Courtyard' : 'B.Courtyard';
+  const { segments } = collectSilkItems(root, layerToken, netCodeToName);
+  const byRef = new Map<string, Path[]>();
+  for (const seg of segments) {
+    const key = seg.ref ?? '__board__';
+    const list = byRef.get(key) ?? [];
+    // courtyard outlines arrive as open polylines — stroke them (capsule
+    // chains) so the union is a real region, not degenerate zero-area lines
+    for (let i = 0; i + 1 < seg.pts.length; i++) {
+      const [x1, y1] = seg.pts[i]!;
+      const [x2, y2] = seg.pts[i + 1]!;
+      const stroked = capsuleToPoly(x1, y1, x2, y2, Math.max(seg.width, 0.05) / 2, 0);
+      if (stroked.length >= 3) list.push(stroked);
+    }
+    byRef.set(key, list);
+  }
+  const out: Array<{ ref: string; paths: Path[]; bbox: CopperItem['bbox'] }> = [];
+  for (const [ref, segs] of byRef) {
+    const cpr = new ClipperLib.Clipper();
+    segs.forEach((p) => cpr.AddPath(p, ClipperLib.PolyType.ptSubject, true));
+    const unioned: Path[] = [];
+    cpr.Execute(ClipperLib.ClipType.ctUnion, unioned, ClipperLib.PolyFillType.pftNonZero, ClipperLib.PolyFillType.pftNonZero);
+    if (unioned.length > 0) out.push({ ref, paths: unioned, bbox: bboxOfPaths(unioned) });
+  }
+  return out;
+}
+
 /** Edge.Cuts graphics flattened to polylines (board outline). */
 export function collectEdgeSegments(root: SNode): SilkSeg[] {
   const segs: SilkSeg[] = [];
@@ -507,6 +576,54 @@ function pathSelfIntersectsNm(poly: Path): boolean {
     }
   }
   return false;
+}
+
+/**
+ * Regions of `paths` whose local width is below `widthNm` — erode-and-
+ * survive: deflate by width/2; whatever vanishes was too narrow. Returns
+ * each narrow fragment as { path, areaNm2 } (outer contours, holes kept
+ * via PolyTree). Fragments under minAreaNm2 drop as tessellation noise.
+ */
+function narrowRegions(paths: Path[], widthNm: number, minAreaNm2 = 2e9): Array<{ path: Path; areaNm2: number }> {
+  const half = Math.round(widthNm / 2);
+  const erode = new ClipperLib.ClipperOffset(2, 0.002 * NM);
+  paths.forEach((p) => erode.AddPath(p, ClipperLib.JoinType.jtRound, ClipperLib.EndType.etClosedPolygon));
+  const eroded: Path[] = [];
+  erode.Execute(eroded, -half);
+  if (eroded.length === 0) {
+    // everything was narrower than the threshold: report the whole region
+    return paths
+      .filter((p) => Math.abs(ClipperLib.Clipper.Area(p)) >= minAreaNm2)
+      .map((p) => ({ path: p, areaNm2: Math.abs(ClipperLib.Clipper.Area(p)) }));
+  }
+  // dilate the eroded core back: opening(X). X − opening(X) is exactly the
+  // sub-threshold-width material (necks, slivers) — NOT the boundary shell
+  // that X − erode(X) would also include
+  const dilate = new ClipperLib.ClipperOffset(2, 0.002 * NM);
+  eroded.forEach((p) => dilate.AddPath(p, ClipperLib.JoinType.jtRound, ClipperLib.EndType.etClosedPolygon));
+  const opened: Path[] = [];
+  dilate.Execute(opened, half);
+
+  const cpr = new ClipperLib.Clipper();
+  paths.forEach((p) => cpr.AddPath(p, ClipperLib.PolyType.ptSubject, true));
+  opened.forEach((p) => cpr.AddPath(p, ClipperLib.PolyType.ptClip, true));
+  const tree = new ClipperLib.PolyTree();
+  cpr.Execute(ClipperLib.ClipType.ctDifference, tree, ClipperLib.PolyFillType.pftNonZero, ClipperLib.PolyFillType.pftNonZero);
+
+  // flatten PolyTree outers (their holes ride along in the contour set)
+  const out: Array<{ path: Path; areaNm2: number }> = [];
+  const walk = (node: ClipperLib.PolyNode): void => {
+    for (const child of node.Childs()) {
+      const contour = child.Contour() as unknown as Path;
+      const area = Math.abs(ClipperLib.Clipper.Area(contour));
+      if (contour.length >= 3 && area >= minAreaNm2) {
+        out.push({ path: contour, areaNm2: area });
+      }
+      walk(child);
+    }
+  };
+  walk(tree);
+  return out;
 }
 
 function nearBboxes(
@@ -854,7 +971,7 @@ export function runDrc(source: string, constraints: Partial<DrcConstraints> = {}
   // through vias appear on every spanned layer; dimension/hole checks
   // report them once (KiCad reports the via, not the via-per-layer)
   const reportedOnce = new Set<string>();
-  const DEFAULT_SEVERITIES: Record<string, 'error' | 'warning'> = {
+  const DEFAULT_SEVERITIES: Record<string, 'error' | 'warning' | 'ignore'> = {
     silk_overlap: 'warning',
     silk_edge_clearance: 'warning',
     // DFM checks are advisory by design — the conf constraints file can
@@ -867,6 +984,11 @@ export function runDrc(source: string, constraints: Partial<DrcConstraints> = {}
     text_thickness: 'warning',
     silk_over_mask: 'warning',
     via_in_pad: 'warning',
+    copper_sliver: 'warning',
+    mask_web: 'warning',
+    min_resolved_spokes: 'warning',
+    courtyard_overlap: 'warning',
+    missing_courtyard: 'ignore',
     edge_not_closed: 'error',
     edge_self_intersection: 'error',
   };
@@ -1339,6 +1461,53 @@ export function runDrc(source: string, constraints: Partial<DrcConstraints> = {}
       }
     }
 
+    // mask web: the solder mask BETWEEN two apertures below the fab's web
+    // minimum chips away (fabs silently enlarge openings instead). Pairwise
+    // aperture gap — the web is mask material, i.e. OUTSIDE the aperture
+    // union, so a width scan of the union itself would find nothing.
+    if (c.min_mask_web > 0) {
+      for (let i = 0; i < apertures.length; i++) {
+        for (let j = i + 1; j < apertures.length; j++) {
+          const A = apertures[i]!;
+          const B = apertures[j]!;
+          // same physical pad (multi-part customs share the pad position)
+          if (A.pos.x === B.pos.x && A.pos.y === B.pos.y) continue;
+          if (!nearBboxes(bboxOfPaths(A.paths), bboxOfPaths(B.paths), Math.ceil(c.min_mask_web * NM))) continue;
+          if (pathsIntersect(A.paths, B.paths)) continue; // merged openings
+          if (gapNm(A.paths, B.paths) < c.min_mask_web * NM - GEOM_TOL_NM) {
+            report(
+              'mask_web',
+              `${sideWord} solder mask web below ${c.min_mask_web.toFixed(4)} mm between nearby apertures`,
+              [
+                { description: A.desc, pos: A.pos },
+                { description: B.desc, pos: B.pos },
+              ],
+            );
+          }
+        }
+      }
+    }
+
+    // courtyard overlap: placement collisions between footprints
+    const courtyards = collectCourtyards(root, side, netCodeToName);
+    for (let i = 0; i < courtyards.length; i++) {
+      for (let j = i + 1; j < courtyards.length; j++) {
+        const A = courtyards[i]!;
+        const B = courtyards[j]!;
+        if (!nearBboxes(A.bbox, B.bbox, 0)) continue;
+        if (pathsIntersect(A.paths, B.paths)) {
+          report(
+            'courtyard_overlap',
+            `Courtyard overlap (${A.ref} and ${B.ref})`,
+            [
+              { description: `Footprint ${A.ref}`, pos: { x: A.bbox.minX / NM, y: A.bbox.minY / NM } },
+              { description: `Footprint ${B.ref}`, pos: { x: B.bbox.minX / NM, y: B.bbox.minY / NM } },
+            ],
+          );
+        }
+      }
+    }
+
     // silk text manufacturability (height/thickness) + silk over mask
     // openings (clipped by exposed copper at fab)
     const silkName = side === 'F' ? 'F.SilkS' : 'B.SilkS';
@@ -1376,6 +1545,25 @@ export function runDrc(source: string, constraints: Partial<DrcConstraints> = {}
           );
         }
       }
+    }
+  }
+
+  // footprints without any courtyard (ignore-by-default: most typeCAD
+  // footprint sources ship without them — promote when they matter)
+  {
+    const withCourtyard = new Set<string>();
+    for (const side of ['F', 'B'] as const) {
+      for (const cy of collectCourtyards(root, side, netCodeToName)) withCourtyard.add(cy.ref);
+    }
+    for (const fp of root.children('footprint')) {
+      const refProp = fp.children('property').find((pr) => String(pr.raw[1]) === 'Reference');
+      const ref = String(refProp?.raw[2] ?? '?');
+      if (withCourtyard.has(ref)) continue;
+      report(
+        'missing_courtyard',
+        `Footprint ${ref} has no courtyard defined`,
+        [{ description: `Footprint ${ref}`, pos: atPoint(fp.child('at')) }],
+      );
     }
   }
 
@@ -1483,21 +1671,7 @@ export function runDrc(source: string, constraints: Partial<DrcConstraints> = {}
     // wedge forms where two touching items meet, never inside one capsule
     if (c.min_copper_angle_deg > 0) {
       const minCos = Math.cos((c.min_copper_angle_deg * Math.PI) / 180);
-      const byNet = new Map<string, Path[]>();
-      for (const it of items) {
-        if (it.kind === 'via' || it.net === null) continue;
-        const list = byNet.get(it.net) ?? [];
-        // zone holes are voids, not copper wedges: outer contour only
-        const polys = it.kind === 'zone' ? it.paths.slice(0, 1) : it.paths;
-        list.push(...polys);
-        byNet.set(it.net, list);
-      }
-      for (const [net, netPaths] of byNet) {
-        if (netPaths.length === 0) continue;
-        const cpr = new ClipperLib.Clipper();
-        netPaths.forEach((p) => cpr.AddPath(p, ClipperLib.PolyType.ptSubject, true));
-        const unioned: Path[] = [];
-        cpr.Execute(ClipperLib.ClipType.ctUnion, unioned, ClipperLib.PolyFillType.pftNonZero, ClipperLib.PolyFillType.pftNonZero);
+      for (const [net, unioned] of unionedCopperByNet(items)) {
         for (const poly of unioned) {
           const n = poly.length;
           if (n < 3) continue;
@@ -1549,6 +1723,97 @@ export function runDrc(source: string, constraints: Partial<DrcConstraints> = {}
               [item(via), item(pad)],
             );
             break;
+          }
+        }
+      }
+    }
+
+    // copper slivers: same-net unioned copper narrower than the fab can
+    // hold. Thermal spoke roots are intentionally narrow — exempt
+    // fragments centered near a same-net pad.
+    if (c.min_copper_sliver_width > 0) {
+      const padCenters = items
+        .filter((it) => it.kind === 'pad' && it.net !== null)
+        .map((it) => ({ x: Math.round(it.pos.x * NM), y: Math.round(it.pos.y * NM), net: it.net! }));
+      for (const [net, unioned] of unionedCopperByNet(items)) {
+        // 0.01 mm² floor: hatched pours clip line ends into sub-thickness
+        // TIPS (triangular, ares ≪ width×length) — inherent to the format,
+        // reported only when substantial; silence via conf if unwanted
+        for (const frag of narrowRegions(unioned, Math.round(c.min_copper_sliver_width * NM), 1e10)) {
+          let cx = 0;
+          let cy = 0;
+          for (const v of frag.path) {
+            cx += v.X;
+            cy += v.Y;
+          }
+          cx /= frag.path.length;
+          cy /= frag.path.length;
+          const nearSpokeRoot = padCenters.some(
+            (pc) => pc.net === net && Math.hypot(pc.x - cx, pc.y - cy) < 1.2 * NM,
+          );
+          if (nearSpokeRoot) continue;
+          report(
+            'copper_sliver',
+            `Copper sliver (width < ${c.min_copper_sliver_width.toFixed(4)} mm; ${(frag.areaNm2 / (NM * NM)).toFixed(4)} mm² fragment)`,
+            [{ description: `Copper of net ${net} on ${layer}`, pos: { x: cx / NM, y: cy / NM } }],
+          );
+        }
+      }
+    }
+
+    // thermal spoke resolution: count resolved spokes per same-net pad by
+    // ray-sampling the zone fill copper along the four spoke directions
+    // (solid boards only — hatched pours defer like connectivity)
+    if (!hasHatchedZones && c.min_resolved_spokes > 0) {
+      const zoneOuters: Path[] = [];
+      let thermalGapNm = 0.5 * NM; // zone's declared gap (first zone on layer)
+      for (const zone of root.children('zone')) {
+        const layersNode = zone.child('layers') ?? zone.child('layer');
+        const names = layersNode ? layersNode.raw.slice(1).filter((v): v is string => typeof v === 'string') : [];
+        if (!names.includes(layer)) continue;
+        const gapNode = zone.child('fill')?.child('thermal_gap');
+        if (gapNode) thermalGapNm = Math.round(scalar(gapNode, 1, 0.5) * NM);
+        break;
+      }
+      for (const it of items) {
+        if (it.kind !== 'zone' || !it.paths[0]) continue;
+        zoneOuters.push(it.paths[0]!);
+      }
+      if (zoneOuters.length > 0) {
+        for (const it of items) {
+          if (it.kind !== 'pad' || it.net === null) continue;
+          const px = Math.round(it.pos.x * NM);
+          const py = Math.round(it.pos.y * NM);
+          // per-axis pad extent (a rect's axis edge, not its corner reach)
+          let extX = 0;
+          let extY = 0;
+          for (const v of it.paths[0] ?? []) {
+            extX = Math.max(extX, Math.abs(v.X - px));
+            extY = Math.max(extY, Math.abs(v.Y - py));
+          }
+          if (extX === 0 && extY === 0) continue;
+          // a spoke is RESOLVED when pour copper continues past the thermal
+          // void edge — sampling ON the axis inside the void would hit the
+          // spoke stub itself and always read connected
+          let resolved = 0;
+          for (let q = 0; q < 4; q++) {
+            const axisExtent = q % 2 === 0 ? extX : extY; // E/W use X, N/S use Y
+            const voidEdge = axisExtent + thermalGapNm;
+            let inside = 0;
+            for (const off of [0.05, 0.12, 0.2]) {
+              const t = voidEdge + off * NM;
+              const sx = px + Math.round(Math.cos((q * Math.PI) / 2) * t);
+              const sy = py + Math.round(Math.sin((q * Math.PI) / 2) * t);
+              if (zoneOuters.some((zo) => pointInPathNm(zo, sx, sy))) inside++;
+            }
+            if (inside >= 2) resolved++;
+          }
+          if (resolved < c.min_resolved_spokes) {
+            report(
+              'min_resolved_spokes',
+              `Thermal relief resolves ${resolved} spokes (min ${c.min_resolved_spokes}) — pad effectively isolated from the pour`,
+              [item(it)],
+            );
           }
         }
       }

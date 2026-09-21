@@ -182,3 +182,123 @@ describe('DFM tier 1', () => {
     expect(promoted.find((v) => v.type === 'drill_aspect_ratio')!.severity).toBe('error');
   });
 });
+
+describe('DFM tier 2', () => {
+  it('flags copper slivers narrower than the fab minimum', () => {
+    // a 0.08mm-wide custom-pad sliver between two healthy pads
+    const vs = dfm(`
+      ${EDGES}
+      (footprint "T:A" (layer "F.Cu") (at 15 10)
+        (pad "1" smd custom (at 0 0 0) (size 0.5 0.5) (layers "F.Cu") (net 1) (uuid "p1")
+          (primitives (gr_poly (pts (xy 0 -0.04) (xy 4 -0.04) (xy 4 0.04) (xy 0 0.04)) (width 0)))))`, {
+      copper_sliver_quiet: true,
+    });
+    const sliver = vs.filter((v) => v.type === 'copper_sliver');
+    expect(sliver.length).toBeGreaterThanOrEqual(1);
+    expect(sliver[0]!.severity).toBe('warning');
+    // healthy 0.3mm track is not a sliver
+    const ok = dfm(`
+      ${EDGES}
+      (footprint "T:A" (layer "F.Cu") (at 15 10)
+        (pad "1" smd rect (at 0 0) (size 1 1) (layers "F.Cu") (net 1) (uuid "p1")))
+      (segment (start 15 10) (end 20 10) (width 0.3) (layer "F.Cu") (net 1) (uuid "t1"))`, {
+      copper_sliver_quiet: true,
+    });
+    expect(ok.filter((v) => v.type === 'copper_sliver')).toHaveLength(0);
+  });
+
+  it('flags solder mask web below the fab minimum between nearby pads', () => {
+    // two SMD pads 0.05mm apart: web < 0.1
+    const vs = dfm(`
+      ${EDGES}
+      (footprint "T:A" (layer "F.Cu") (at 10 10)
+        (pad "1" smd rect (at 0 0) (size 1 1) (layers "F.Cu" "F.Mask") (net 1) (uuid "p1")))
+      (footprint "T:B" (layer "F.Cu") (at 11.05 10)
+        (pad "1" smd rect (at 0 0) (size 1 1) (layers "F.Cu" "F.Mask") (net 2) (uuid "p2")))`);
+    expect(types(vs)).toContain('mask_web');
+    // 0.5mm apart: healthy web
+    const ok = dfm(`
+      ${EDGES}
+      (footprint "T:A" (layer "F.Cu") (at 10 10)
+        (pad "1" smd rect (at 0 0) (size 1 1) (layers "F.Cu" "F.Mask") (net 1) (uuid "p1")))
+      (footprint "T:B" (layer "F.Cu") (at 11.5 10)
+        (pad "1" smd rect (at 0 0) (size 1 1) (layers "F.Cu" "F.Mask") (net 2) (uuid "p2")))`);
+    expect(ok.filter((v) => v.type === 'mask_web')).toHaveLength(0);
+  });
+
+  it('flags courtyard overlap between footprints', () => {
+    const vs = dfm(`
+      ${EDGES}
+      (footprint "T:A" (layer "F.Cu") (at 15 10)
+        (property "Reference" "A1" (at 0 0 0) (layer "F.SilkS") (effects (font (size 1 1))))
+        (fp_line (start -2 -2) (end 2 -2) (stroke (width 0.05) (type solid)) (layer "F.Courtyard"))
+        (fp_line (start 2 -2) (end 2 2) (stroke (width 0.05) (type solid)) (layer "F.Courtyard"))
+        (fp_line (start 2 2) (end -2 2) (stroke (width 0.05) (type solid)) (layer "F.Courtyard"))
+        (fp_line (start -2 2) (end -2 -2) (stroke (width 0.05) (type solid)) (layer "F.Courtyard"))
+        (pad "1" smd rect (at 0 0) (size 1 1) (layers "F.Cu") (net 1) (uuid "p1")))
+      (footprint "T:B" (layer "F.Cu") (at 16.5 10)
+        (property "Reference" "B1" (at 0 0 0) (layer "F.SilkS") (effects (font (size 1 1))))
+        (fp_line (start -2 -2) (end 2 -2) (stroke (width 0.05) (type solid)) (layer "F.Courtyard"))
+        (fp_line (start 2 -2) (end 2 2) (stroke (width 0.05) (type solid)) (layer "F.Courtyard"))
+        (fp_line (start 2 2) (end -2 2) (stroke (width 0.05) (type solid)) (layer "F.Courtyard"))
+        (fp_line (start -2 2) (end -2 -2) (stroke (width 0.05) (type solid)) (layer "F.Courtyard"))
+        (pad "1" smd rect (at 0 0) (size 1 1) (layers "F.Cu") (net 2) (uuid "p2")))`);
+    expect(types(vs)).toContain('courtyard_overlap');
+    // 6mm apart: courtyards clear
+    const ok = dfm(`
+      ${EDGES}
+      (footprint "T:A" (layer "F.Cu") (at 15 10)
+        (property "Reference" "A1" (at 0 0 0) (layer "F.SilkS") (effects (font (size 1 1))))
+        (fp_line (start -2 -2) (end 2 -2) (stroke (width 0.05) (type solid)) (layer "F.Courtyard"))
+        (fp_line (start 2 -2) (end 2 2) (stroke (width 0.05) (type solid)) (layer "F.Courtyard"))
+        (fp_line (start 2 2) (end -2 2) (stroke (width 0.05) (type solid)) (layer "F.Courtyard"))
+        (fp_line (start -2 2) (end -2 -2) (stroke (width 0.05) (type solid)) (layer "F.Courtyard"))
+        (pad "1" smd rect (at 0 0) (size 1 1) (layers "F.Cu") (net 1) (uuid "p1")))
+      (footprint "T:B" (layer "F.Cu") (at 22 10)
+        (property "Reference" "B1" (at 0 0 0) (layer "F.SilkS") (effects (font (size 1 1))))
+        (fp_line (start -2 -2) (end 2 -2) (stroke (width 0.05) (type solid)) (layer "F.Courtyard"))
+        (fp_line (start 2 -2) (end 2 2) (stroke (width 0.05) (type solid)) (layer "F.Courtyard"))
+        (fp_line (start 2 2) (end -2 2) (stroke (width 0.05) (type solid)) (layer "F.Courtyard"))
+        (fp_line (start -2 2) (end -2 -2) (stroke (width 0.05) (type solid)) (layer "F.Courtyard"))
+        (pad "1" smd rect (at 0 0) (size 1 1) (layers "F.Cu") (net 2) (uuid "p2")))`);
+    expect(ok.filter((v) => v.type === 'courtyard_overlap')).toHaveLength(0);
+  });
+
+  it('flags pads whose thermal relief resolves too few spokes', () => {
+    // zone barely larger than the pad's thermal void: after edge pullback
+    // the spoke stubs don't reach the sample band → 0 resolved
+    const vs = dfm(`
+      ${EDGES}
+      (footprint "T:A" (layer "F.Cu") (at 15 15)
+        (pad "1" smd rect (at 0 0) (size 1 1) (layers "F.Cu") (net 1) (uuid "p1")))
+      (zone (net 1) (net_name "GND") (layer "F.Cu") (connect_pads (clearance 0.2))
+        (fill yes (thermal_gap 0.5) (thermal_bridge_width 0.4))
+        (polygon (pts (xy 14 14) (xy 16 14) (xy 16 16) (xy 14 16))))`);
+    expect(types(vs)).toContain('min_resolved_spokes');
+    // a generous zone resolves all four spokes
+    const ok = dfm(`
+      ${EDGES}
+      (footprint "T:A" (layer "F.Cu") (at 15 15)
+        (pad "1" smd rect (at 0 0) (size 1 1) (layers "F.Cu") (net 1) (uuid "p1")))
+      (zone (net 1) (net_name "GND") (layer "F.Cu") (connect_pads (clearance 0.2))
+        (fill yes (thermal_gap 0.3) (thermal_bridge_width 0.4))
+        (polygon (pts (xy 10 10) (xy 20 10) (xy 20 20) (xy 10 20))))`);
+    expect(ok.filter((v) => v.type === 'min_resolved_spokes')).toHaveLength(0);
+  });
+
+  it('missing_courtyard is ignore-by-default and promotable', () => {
+    const vs = dfm(`
+      ${EDGES}
+      (footprint "T:A" (layer "F.Cu") (at 15 10)
+        (pad "1" smd rect (at 0 0) (size 1 1) (layers "F.Cu") (net 1) (uuid "p1")))`);
+    expect(vs.filter((v) => v.type === 'missing_courtyard')).toHaveLength(0);
+    const promoted = dfm(
+      `
+      ${EDGES}
+      (footprint "T:A" (layer "F.Cu") (at 15 10)
+        (pad "1" smd rect (at 0 0) (size 1 1) (layers "F.Cu") (net 1) (uuid "p1")))`,
+      { severities: { missing_courtyard: 'warning' } },
+    );
+    expect(promoted.filter((v) => v.type === 'missing_courtyard')).toHaveLength(1);
+  });
+});

@@ -96,20 +96,46 @@ function constraintsFromProject(pcbPath: string): Partial<import('../../../pcb/p
   try {
     const pro = JSON.parse(fs.readFileSync(proPath, 'utf8')) as {
       board?: { design_settings?: { rules?: Record<string, unknown>; rule_severities?: Record<string, string> } };
+      net_settings?: {
+        classes?: Array<{ name?: string; clearance?: unknown }>;
+        netclass_patterns?: Array<{ netclass?: string; pattern?: string }>;
+      };
     };
     const rules = pro.board?.design_settings?.rules ?? {};
     const num = (v: unknown): number | undefined => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : undefined);
-    return {
-      min_clearance: num(rules.min_clearance),
-      min_track_width: num(rules.min_track_width),
-      min_via_diameter: num(rules.min_via_diameter),
-      min_through_hole_diameter: num(rules.min_through_hole_diameter),
-      min_via_annular_width: num(rules.min_via_annular_width),
-      min_copper_edge_clearance: num(rules.min_copper_edge_clearance),
-      min_hole_to_hole: num(rules.min_hole_to_hole),
-      min_hole_to_copper: num(rules.min_hole_to_copper),
-      severities: (pro.board?.design_settings?.rule_severities ?? {}) as Record<string, 'error' | 'warning' | 'ignore'>,
-    };
+    // ONLY set keys — explicit undefineds would clobber the engine defaults
+    const out: Partial<import('../../../pcb/pcb_drc_engine.js').DrcConstraints> = {};
+    const numericKeys = [
+      'min_clearance',
+      'min_track_width',
+      'min_via_diameter',
+      'min_through_hole_diameter',
+      'min_via_annular_width',
+      'min_copper_edge_clearance',
+      'min_hole_to_hole',
+      'min_hole_to_copper',
+    ] as const;
+    for (const k of numericKeys) {
+      const v = num(rules[k]);
+      if (v !== undefined) (out as Record<string, unknown>)[k] = v;
+    }
+    const severities = pro.board?.design_settings?.rule_severities;
+    if (severities) out.severities = severities as Record<string, 'error' | 'warning' | 'ignore'>;
+    const classes = pro.net_settings?.classes ?? [];
+    const classClearance: Record<string, number> = {};
+    for (const cls of classes) {
+      const c = cls as { name?: string; clearance?: unknown };
+      const v = num(c.clearance);
+      if (c.name && v !== undefined) classClearance[c.name] = v;
+    }
+    if (Object.keys(classClearance).length > 0) out.netClassClearance = classClearance;
+    const patterns = pro.net_settings?.netclass_patterns ?? [];
+    const netPatterns: Array<{ pattern: string; className: string }> = [];
+    for (const pat of patterns as Array<{ netclass?: string; pattern?: string }>) {
+      if (pat.netclass && pat.pattern) netPatterns.push({ pattern: pat.pattern, className: pat.netclass });
+    }
+    if (netPatterns.length > 0) out.netClassPatterns = netPatterns;
+    return out;
   } catch {
     return {}; // no/invalid project file: engine defaults apply
   }
@@ -117,7 +143,10 @@ function constraintsFromProject(pcbPath: string): Partial<import('../../../pcb/p
 
 /** Shared report rendering + exit code for both engines. */
 function reportViolations(
-  report: { violations: Array<{ severity?: string; type?: string; description?: string; items?: ErcViolation['items'] }>; unconnected_items?: unknown[] },
+  report: {
+    violations: Array<{ severity?: string; type?: string; description?: string; items?: ErcViolation['items'] }>;
+    unconnected_items?: Array<{ description?: string; severity?: string; items?: ErcViolation['items'] }>;
+  },
   reportPath: string,
   json: boolean,
   elapsedMs?: number,
@@ -133,10 +162,15 @@ function reportViolations(
     else if (severity === 'warning') warnings++;
     violationLines.push(formatViolation(v as ErcViolation));
   }
-  const unconnectedItems = (report.unconnected_items ?? []) as Array<{ description?: string }>;
-  unconnected += unconnectedItems.length;
-  for (const item of unconnectedItems) {
-    violationLines.push(`  ✖ [unconnected] ${item.description ?? ''}`);
+  for (const u of report.unconnected_items ?? []) {
+    const severity = u.severity ?? 'error';
+    if (severity === 'error') errors++;
+    else if (severity === 'warning') warnings++;
+    else unconnected++;
+    violationLines.push(`  ✖ [unconnected${severity === 'warning' ? ' (hatch-phase caveat)' : ''}] ${u.description ?? ''}`);
+    for (const item of u.items ?? []) {
+      violationLines.push(`     ${item.description ?? ''} @(${item.pos?.x}, ${item.pos?.y})`);
+    }
   }
 
   const passed = errors === 0 && warnings === 0 && unconnected === 0;

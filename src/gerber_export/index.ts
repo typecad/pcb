@@ -1,4 +1,4 @@
-// Native gerber export (Phase 1: copper layers). Reads a .kicad_pcb and
+// Native gerber export: copper, graphics, drill and job writers. Reads a .kicad_pcb and
 // writes copper gerbers with KiCad-compatible naming, attributes, and
 // conventions — see gerber_spec/SPEC.md for the captured spec.
 export { GerberWriter, type ApertureShape, type AperFunction, type Point } from './gerber_writer.js';

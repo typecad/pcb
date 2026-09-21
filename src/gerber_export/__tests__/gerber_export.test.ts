@@ -35,7 +35,7 @@ describe('GerberWriter primitives', () => {
     const w = new GerberWriter();
     w.aperture({ kind: 'C', dia: 0.6 }, 'ViaPad');
     const text = w.render({ ...KC_INFO, fileFunction: 'Copper,L1,Top' });
-    expect(text).toContain('%TA.AperFunction,ViaPad*%\n%ADD10C,0.600000*%\n%TD*%');
+    expect(text).toContain('%TA.AperFunction,ViaPad*%\r\n%ADD10C,0.600000*%\r\n%TD*%');
   });
 
   it('emits G75 before every arc', () => {
@@ -45,7 +45,7 @@ describe('GerberWriter primitives', () => {
     w.arcTo({ x: 0, y: 0 }, { x: -2, y: 0 }, false);
     const text = w.render({ ...KC_INFO, fileFunction: 'Copper,L1,Top' });
     expect(text.match(/G75\*/g)).toHaveLength(2);
-    expect(text).toContain('G02*\nX4000000Y0I2000000J0D01*\nG01*');
+    expect(text).toContain('G02*\r\nX4000000Y0I2000000J0D01*\r\nG01*');
     expect(text).toContain('G03*');
   });
 });
@@ -171,7 +171,7 @@ describe('graphics layers (Phase 2)', () => {
     const mask = plot().get('b-F_Mask.gts')!;
     expect(mask).toContain('%TF.FileFunction,Soldermask,Top*%');
     expect(mask).toContain('%TF.FilePolarity,Negative*%');
-    expect(mask).toContain('D10*\n%TO.C,R9*%\nX20000000Y-20000000D03*');
+    expect(mask).toContain('D10*\r\n%TO.C,R9*%\r\nX20000000Y-20000000D03*');
   });
 
   it('uses the quirky user-layer FileFunctions', () => {

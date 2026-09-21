@@ -148,6 +148,31 @@ describe('native DRC (phase 1 copper core)', () => {
     expect(types(vs)).not.toContain('clearance');
   });
 
+  it('raises clearance per net class (class on either side applies)', () => {
+    const base = `
+      (segment (start 10 10) (end 20 10) (width 0.3) (layer "F.Cu") (net 1) (uuid "a"))
+      (segment (start 10 10.45) (end 20 10.45) (width 0.3) (layer "F.Cu") (net 2) (uuid "b"))`;
+    // board min 0.2: 0.15 gap → violation
+    expect(types(drc(base))).toContain('clearance');
+    // net 2 in a class demanding 0.3 clearance: the 0.15 gap still violates…
+    const raised = drc(base, {
+      min_clearance: 0.1,
+      netClassClearance: { power: 0.3 },
+      netClassPatterns: [{ pattern: 'SIG', className: 'power' }],
+    });
+    expect(types(raised)).toContain('clearance');
+    // …but a 0.25 gap now passes board min 0.2 yet violates class 0.3
+    const base25 = base.replace('10.45', '10.55');
+    const v25 = drc(base25, { min_clearance: 0.1 });
+    expect(types(v25)).not.toContain('clearance');
+    const v25raised = drc(base25.replace('SIG', 'SIG'), {
+      min_clearance: 0.1,
+      netClassClearance: { power: 0.3 },
+      netClassPatterns: [{ pattern: 'SIG', className: 'power' }],
+    });
+    expect(types(v25raised)).toContain('clearance');
+  });
+
   it('emits KiCad-schema descriptions for report parity', () => {
     const vs = drc(`
       (footprint "Resistor_SMD:R_0603" (layer "F.Cu") (at 15 15)

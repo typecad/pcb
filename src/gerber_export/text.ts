@@ -100,6 +100,8 @@ export function renderStrokeText(w: GerberWriter, o: TextOpts): boolean {
       break;
   }
 
+  // one pen for the whole item — hoisted out of the glyph loops (item 12)
+  w.selectAperture(w.aperture({ kind: 'C', dia: o.pen ?? o.thickness }));
   const anchorX = kiRound(o.at.x * NM);
   const anchorY = kiRound(o.at.y * NM);
   // KiCad rotates text in its y-down internal frame — negate for file frame
@@ -159,7 +161,6 @@ export function renderStrokeText(w: GerberWriter, o: TextOpts): boolean {
           }
           const p = { x: bxnm / NM, y: bynm / NM };
           if (prev) {
-            w.selectAperture(w.aperture({ kind: 'C', dia: o.pen ?? o.thickness }));
             w.moveTo({ x: prev.x, y: -prev.y }); // board y-down → gerber y-up
             w.lineTo({ x: p.x, y: -p.y });
           }

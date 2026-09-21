@@ -99,7 +99,7 @@ typecad.zone({
   net: 'GND',
   bounds: typecad.board,
   layers: ['F.Cu', 'B.Cu'],
-  fillMode: 'solid',
+  fillMode: 'hatched',
   hatchThickness: 0.25,
   hatchGap: 0.5,
   hatchOrientation: 0,

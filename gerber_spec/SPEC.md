@@ -11,6 +11,10 @@ ships, then diffing against the project's own output.
 > non-text graphics layer) and structural parity on rd_skeleton (pours within
 > KiCad's own refill variance). Remaining: silk/fab/user **text strokes**
 > (Phase 4), drill + job files (Phase 3). Run `npx tsx gerber_spec/tools/parity.ts`.
+> The strict file-list comparison was fixed to actually compare golden vs
+> native (it compared the golden to itself, masking by-design divergences):
+> the remaining hard lines are pour-region fingerprints and text stroke
+> counts — both documented tolerance classes (fill engine + Hershey font).
 > The findings below are encoded in that writer; new landmines found during
 > parity work are marked **[parity]**.
 

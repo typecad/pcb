@@ -42,6 +42,8 @@ export interface IPcbRules {
   min_copper_edge_clearance?: number;
   /** Minimum edge-to-edge spacing between holes. Default 0.25mm. */
   min_hole_to_hole?: number;
+  /** Minimum copper-to-hole (drill barrel) clearance. Default 0.25mm. */
+  min_hole_to_copper?: number;
 }
 
 /**
@@ -59,6 +61,7 @@ export const JLCPCB_STANDARD_RULES: Required<IPcbRules> = {
   min_via_annular_width: 0.15,
   min_copper_edge_clearance: 0.2,
   min_hole_to_hole: 0.25,
+  min_hole_to_copper: 0.25,
 };
 
 /**
@@ -196,6 +199,7 @@ const RULE_KEYS: ReadonlyArray<keyof IPcbRules> = [
   'min_via_annular_width',
   'min_copper_edge_clearance',
   'min_hole_to_hole',
+  'min_hole_to_copper',
 ];
 
 /**
@@ -215,6 +219,7 @@ export function buildProjectRules(rules: Required<IPcbRules>, existing?: Record<
     min_via_annular_width: rules.min_via_annular_width,
     min_copper_edge_clearance: rules.min_copper_edge_clearance,
     min_hole_to_hole: rules.min_hole_to_hole,
+    min_hole_to_copper: rules.min_hole_to_copper,
   };
   return out;
 }

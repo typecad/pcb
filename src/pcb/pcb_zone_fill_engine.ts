@@ -53,7 +53,8 @@ interface RectPoly {
   pts: Array<[number, number]>;
 }
 
-interface Obstacle {
+/** A copper shape in board mm — shared with the DRC engine. */
+export interface Obstacle {
   /** thermal/solid only applies to same-net */
   kind: 'circle' | 'capsule' | 'poly' | 'group';
   parts?: Obstacle[];
@@ -62,7 +63,7 @@ interface Obstacle {
   poly?: RectPoly;
 }
 
-function circleToPoly(x: number, y: number, r: number, inflate = 0): Path {
+export function circleToPoly(x: number, y: number, r: number, inflate = 0): Path {
   const rr = r + inflate;
   // 64-gon: chord error < 0.2% of r — plenty for pour clearance
   const path: Path = [];
@@ -73,10 +74,10 @@ function circleToPoly(x: number, y: number, r: number, inflate = 0): Path {
   return path;
 }
 
-function capsuleToPoly(x1: number, y1: number, x2: number, y2: number, r: number, inflate = 0): ClipperLib.Path {
+export function capsuleToPoly(x1: number, y1: number, x2: number, y2: number, r: number, inflate = 0): ClipperLib.Path {
   // stroke a 2-point open path with round joins/caps — Clipper's exact
   // Minkowski sum of the segment and a (r+inflate) disc
-  const co = new ClipperLib.ClipperOffset(2, 0.02 * NM);
+  const co = new ClipperLib.ClipperOffset(2, 0.002 * NM);
   co.AddPath(
     [
       { X: Math.round(x1 * NM), Y: Math.round(y1 * NM) },
@@ -93,7 +94,7 @@ function capsuleToPoly(x1: number, y1: number, x2: number, y2: number, r: number
 function polyToPath(pts: Array<[number, number]>, inflate: number): Path {
   const path: Path = pts.map(([x, y]) => ({ X: Math.round(x * NM), Y: Math.round(y * NM) }));
   if (inflate === 0) return path;
-  const co = new ClipperLib.ClipperOffset(2, 0.02 * NM);
+  const co = new ClipperLib.ClipperOffset(2, 0.002 * NM);
   co.AddPath(path, ClipperLib.JoinType.jtRound, ClipperLib.EndType.etClosedPolygon);
   const out: ClipperLib.Path[] = [];
   co.Execute(out, Math.round(inflate * NM));
@@ -198,7 +199,7 @@ function mergeWithHoles(outer: Path, holes: Path[]): number[] {
 // ---------------------------------------------------------------------------
 
 /** All copper shapes of one pad, in board mm (empty = no obstacle). */
-function padShapeObstacles(pad: SNode, worldX: number, worldY: number, angle: number): Obstacle[] {
+export function padShapeObstacles(pad: SNode, worldX: number, worldY: number, angle: number): Obstacle[] {
   const shape = String(pad.raw[3] ?? 'circle');
   if (shape === 'custom') {
     // EVERY primitive contributes copper (poly/rect/circle/line) — taking
@@ -309,7 +310,7 @@ function padShapeObstacles(pad: SNode, worldX: number, worldY: number, angle: nu
   }
 }
 
-function arcPolyline(
+export function arcPolyline(
   s: { x: number; y: number },
   m: { x: number; y: number },
   e: { x: number; y: number },
@@ -355,7 +356,7 @@ function obstacleToPath(o: Obstacle, inflate: number): Path | null {
 }
 
 /** Inflated pieces of an obstacle — multi-primitive pads yield several. */
-function obstacleToPaths(o: Obstacle, inflate: number): Path[] {
+export function obstacleToPaths(o: Obstacle, inflate: number): Path[] {
   if (o.kind === 'group') {
     // no union needed: subtraction accumulates windings, so overlapping
     // parts simply subtract twice (same net effect)
@@ -457,7 +458,7 @@ export interface ZoneFillOptions {
 }
 
 /** Resolve an item's net child to a net NAME (name-only or coded form). */
-function netNameOf(item: SNode, netCodeToName: Map<number, string>): string | null {
+export function netNameOf(item: SNode, netCodeToName: Map<number, string>): string | null {
   const n = item.child('net');
   if (!n) return null;
   if (typeof n.raw[1] === 'string') return String(n.raw[1]) || null;
@@ -465,7 +466,7 @@ function netNameOf(item: SNode, netCodeToName: Map<number, string>): string | nu
   return null;
 }
 
-function buildNetCodeMap(root: SNode): Map<number, string> {
+export function buildNetCodeMap(root: SNode): Map<number, string> {
   const map = new Map<number, string>();
   for (const net of root.children('net')) {
     const code = net.raw[1];
@@ -589,8 +590,22 @@ export function fillZone(
         if (zoneNet && padNet === zoneNet) {
           sameNet.push({ pads: obst, x: wx, y: wy, angle });
         } else {
+          // Drilled pads also enforce the hole-to-copper minimum: the fill
+          // must sit no closer to the HOLE than min_hole_to_copper (KiCad's
+          // filler enlarges drilled obstacles the same way — NPTH pads have
+          // no ring, so their zone clearance alone would leave the drill
+          // barrel under the rule).
+          const drillNode = pad.child('drill');
+          let inflate = clearanceMm;
+          if (drillNode) {
+            const drill = scalar(drillNode, 1, 0);
+            const sizeNode = pad.child('size');
+            const padR = sizeNode ? Math.max(scalar(sizeNode, 1, 0), scalar(sizeNode, 2, 0)) / 2 : drill / 2;
+            const ring = Math.max(0, padR - drill / 2);
+            inflate = Math.max(clearanceMm, 0.25 - ring);
+          }
           for (const o of obst) {
-            const p = obstacleToPaths(o, clearanceMm);
+            const p = obstacleToPaths(o, inflate);
             foreign.push(...p);
           }
         }
@@ -705,16 +720,26 @@ export interface HatchParams {
  * seconds; ours — separate single-contour regions — tessellate trivially).
  * Overlapping line pieces double-draw copper, which is harmless on film.
  */
-function hatchPieceRings(region: Path[], hp: HatchParams): number[][] {
-  const rings: number[][] = [];
+export interface HatchPiece {
+  /** keyholed single ring (gerber/board-file encoding) */
+  ring: number[];
+  /** TRUE geometry: [outer, ...holes] — what geometry consumers (DRC) use */
+  contours: number[][];
+}
 
-  /** keyhole a PolyTree node's holes into its contour; returns rings */
-  const nodeRings = (node: ClipperLib.PolyNode): number[] => {
+function hatchPieceRings(region: Path[], hp: HatchParams): HatchPiece[] {
+  const pieces: HatchPiece[] = [];
+
+  /** keyhole a PolyTree node's holes into its contour; records the piece */
+  const nodeRings = (node: ClipperLib.PolyNode): void => {
     const outer = node.Contour() as unknown as Path;
     const holes = node.Childs().map((ch) => ch.Contour() as unknown as Path);
-    const ring = mergeWithHoles(outer, holes);
-    rings.push(ring);
-    return ring;
+    const toMm = (p: Path): number[] => {
+      const out: number[] = [];
+      for (const v of p) out.push(v.X / NM, v.Y / NM);
+      return out;
+    };
+    pieces.push({ ring: mergeWithHoles(outer, holes), contours: [toMm(outer), ...holes.map(toMm)] });
   };
 
   const intersectRegion = (subjects: Path[], clipRegion: boolean): ClipperLib.PolyTree => {
@@ -737,7 +762,7 @@ function hatchPieceRings(region: Path[], hp: HatchParams): number[][] {
   // morphological close (dilate then erode, round joins).
   const closeRound = (p: Path, radius: number): Path => {
     const once = (path: Path, d: number): Path => {
-      const co = new ClipperLib.ClipperOffset(2, 0.02 * NM);
+      const co = new ClipperLib.ClipperOffset(2, 0.002 * NM);
       co.AddPath(path, ClipperLib.JoinType.jtRound, ClipperLib.EndType.etClosedPolygon);
       const o: ClipperLib.Path[] = [];
       co.Execute(o, Math.round(d * NM));
@@ -747,7 +772,7 @@ function hatchPieceRings(region: Path[], hp: HatchParams): number[][] {
   };
   const borderRaw: Path[] = [];
   for (const path of region) {
-    const co = new ClipperLib.ClipperOffset(2, 0.02 * NM);
+    const co = new ClipperLib.ClipperOffset(2, 0.002 * NM);
     co.AddPath(path, ClipperLib.JoinType.jtRound, ClipperLib.EndType.etOpenRound);
     const out: ClipperLib.Path[] = [];
     co.Execute(out, Math.round((hp.thickness / 2) * NM));
@@ -757,7 +782,12 @@ function hatchPieceRings(region: Path[], hp: HatchParams): number[][] {
     if (hp.smoothing > 0) {
       const outer = closeRound(node.Contour() as unknown as Path, hp.smoothing);
       const holes = node.Childs().map((ch) => closeRound(ch.Contour() as unknown as Path, hp.smoothing));
-      rings.push(mergeWithHoles(outer, holes));
+      const toMm = (p: Path): number[] => {
+        const out: number[] = [];
+        for (const v of p) out.push(v.X / NM, v.Y / NM);
+        return out;
+      };
+      pieces.push({ ring: mergeWithHoles(outer, holes), contours: [toMm(outer), ...holes.map(toMm)] });
     } else {
       nodeRings(node);
     }
@@ -808,8 +838,9 @@ function hatchPieceRings(region: Path[], hp: HatchParams): number[][] {
 
   // ---- drop degenerate slivers (< 0.01 mm²): invisible ink that only
   // costs tessellation
-  return rings.filter((r) => {
+  return pieces.filter((piece) => {
     let a = 0;
+    const r = piece.ring;
     for (let i = 0; i < r.length / 2; i++) {
       const j = (i + 1) % (r.length / 2);
       a += r[i * 2]! * r[j * 2 + 1]! - r[j * 2]! * r[i * 2 + 1]!;
@@ -884,16 +915,16 @@ function finish(
   if (hatchParams) {
     let total = 0;
     const piecePaths: Path[] = [];
-    for (const ring of hatchPieceRings(flatResult, hatchParams)) {
-      const pts = ring.length / 2;
+    for (const piece of hatchPieceRings(flatResult, hatchParams)) {
+      const pts = piece.ring.length / 2;
       const nmRing: Path = [];
       for (let i = 0; i < pts; i++) {
-        nmRing.push({ X: Math.round(ring[i * 2]! * NM), Y: Math.round(ring[i * 2 + 1]! * NM) });
+        nmRing.push({ X: Math.round(piece.ring[i * 2]! * NM), Y: Math.round(piece.ring[i * 2 + 1]! * NM) });
       }
       const area = areaOf(nmRing);
       total += area;
       piecePaths.push(nmRing);
-      islands.push({ ring, contours: [ring], areaMm2: area });
+      islands.push({ ring: piece.ring, contours: piece.contours, areaMm2: area });
     }
     // hatch_min_hole_area: voids of the fill region smaller than the
     // threshold are filled solid — compute the complement of the emitted

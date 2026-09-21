@@ -6,7 +6,8 @@ import type { ParsedArgs } from '../parser.js';
 import type { ErcViolation } from '../../types.js';
 import logger from '../../../utils/logging.js';
 import { buildDirPath, findBoardFile } from '../pipeline.js';
-import { kicadMajorVersion } from './export.js';
+import { kicadMajorVersion, refillZoneFills } from './export.js';
+import { runDrc } from '../../../pcb/pcb_drc_engine.js';
 
 function findPcbFile(argPath?: string): string | null {
   if (argPath) {
@@ -49,9 +50,125 @@ export async function run(parsed: ParsedArgs): Promise<void> {
 
   if (!json) {
     logger.log(chalk.white.bold('typecad-pcb drc') + ' - Design Rule Check\n');
-    logger.log(`  PCB: ${pcbPath}\n`);
+    logger.log(`  PCB:    ${pcbPath}`);
+    logger.log(chalk.gray('  Engine: native (copper core; --kicad for the legacy kicad-cli check)\n'));
   }
 
+  if (parsed.args['kicad'] === true) {
+    return runKicadDrc(parsed, pcbPath, json);
+  }
+  return runNativeDrc(pcbPath, json);
+}
+
+/**
+ * Native DRC: constraints come from the `.kicad_pro` the build wrote (the
+ * merged defaults ← conf constraints file ← constructor chain), zone fills
+ * are computed in-memory by the native fill engine, and the report uses
+ * KiCad's JSON schema so consumers don't care which engine produced it.
+ */
+async function runNativeDrc(pcbPath: string, json: boolean): Promise<void> {
+  const reportName = path.basename(pcbPath, '.kicad_pcb') + '_drc.json';
+  const reportPath = path.join(path.dirname(pcbPath), reportName);
+
+  const source = fs.readFileSync(pcbPath, 'utf8');
+  const constraints = constraintsFromProject(pcbPath);
+  const filled = refillZoneFills(source);
+  const t0 = Date.now();
+  const report = runDrc(filled ?? source, constraints);
+  const elapsed = Date.now() - t0;
+
+  const doc = {
+    coordinate_units: 'mm',
+    date: new Date().toISOString(),
+    engine: 'typecad-native',
+    source: path.basename(pcbPath),
+    violations: report.violations,
+    unconnected_items: report.unconnected_items,
+  };
+  fs.writeFileSync(reportPath, JSON.stringify(doc, null, 2));
+
+  reportViolations(report, reportPath, json, elapsed);
+}
+
+/** Read design rules + DRC severities from the board's .kicad_pro. */
+function constraintsFromProject(pcbPath: string): Partial<import('../../../pcb/pcb_drc_engine.js').DrcConstraints> {
+  const proPath = pcbPath.replace(/\.kicad_pcb$/, '.kicad_pro');
+  try {
+    const pro = JSON.parse(fs.readFileSync(proPath, 'utf8')) as {
+      board?: { design_settings?: { rules?: Record<string, unknown>; rule_severities?: Record<string, string> } };
+    };
+    const rules = pro.board?.design_settings?.rules ?? {};
+    const num = (v: unknown): number | undefined => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : undefined);
+    return {
+      min_clearance: num(rules.min_clearance),
+      min_track_width: num(rules.min_track_width),
+      min_via_diameter: num(rules.min_via_diameter),
+      min_through_hole_diameter: num(rules.min_through_hole_diameter),
+      min_via_annular_width: num(rules.min_via_annular_width),
+      min_copper_edge_clearance: num(rules.min_copper_edge_clearance),
+      min_hole_to_hole: num(rules.min_hole_to_hole),
+      min_hole_to_copper: num(rules.min_hole_to_copper),
+      severities: (pro.board?.design_settings?.rule_severities ?? {}) as Record<string, 'error' | 'warning' | 'ignore'>,
+    };
+  } catch {
+    return {}; // no/invalid project file: engine defaults apply
+  }
+}
+
+/** Shared report rendering + exit code for both engines. */
+function reportViolations(
+  report: { violations: Array<{ severity?: string; type?: string; description?: string; items?: ErcViolation['items'] }>; unconnected_items?: unknown[] },
+  reportPath: string,
+  json: boolean,
+  elapsedMs?: number,
+): void {
+  let errors = 0;
+  let warnings = 0;
+  let unconnected = 0;
+  const violationLines: string[] = [];
+
+  for (const v of report.violations ?? []) {
+    const severity = v.severity ?? 'error';
+    if (severity === 'error') errors++;
+    else if (severity === 'warning') warnings++;
+    violationLines.push(formatViolation(v as ErcViolation));
+  }
+  const unconnectedItems = (report.unconnected_items ?? []) as Array<{ description?: string }>;
+  unconnected += unconnectedItems.length;
+  for (const item of unconnectedItems) {
+    violationLines.push(`  ✖ [unconnected] ${item.description ?? ''}`);
+  }
+
+  const passed = errors === 0 && warnings === 0 && unconnected === 0;
+
+  if (json) {
+    logger.log(
+      JSON.stringify({ passed, errors, warnings, unconnected, output: JSON.stringify(report) }, null, 2),
+    );
+  } else {
+    if (!passed) {
+      for (const line of violationLines) {
+        const isWarn = line.includes('⚠');
+        logger.log(isWarn ? chalk.yellow(line) : chalk.red(line));
+      }
+      if (violationLines.length > 0) logger.log('');
+      if (errors > 0) logger.log(chalk.red(`DRC found ${errors} error(s).`));
+      if (warnings > 0) logger.log(chalk.yellow(`DRC found ${warnings} warning(s).`));
+      if (unconnected > 0) logger.log(chalk.yellow(`DRC found ${unconnected} unconnected item(s).`));
+      logger.log(chalk.gray(`\nFull report saved to ${reportPath}`));
+    } else {
+      const time = elapsedMs !== undefined ? chalk.gray(` (${(elapsedMs / 1000).toFixed(1)}s)`) : '';
+      logger.log(chalk.green(`DRC passed. No violations or unconnected items.${time}`));
+    }
+  }
+
+  if (!passed) {
+    process.exit(1);
+  }
+}
+
+/** Legacy kicad-cli DRC (--kicad). */
+async function runKicadDrc(parsed: ParsedArgs, pcbPath: string, json: boolean): Promise<void> {
   const reportName = path.basename(pcbPath, '.kicad_pcb') + '_drc.json';
   const reportPath = path.join(path.dirname(pcbPath), reportName);
 

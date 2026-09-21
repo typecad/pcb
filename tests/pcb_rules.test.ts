@@ -31,6 +31,7 @@ describe('JLCPCB_STANDARD_RULES', () => {
       min_via_annular_width: 0.15,
       min_copper_edge_clearance: 0.2,
       min_hole_to_hole: 0.25,
+      min_hole_to_copper: 0.25,
     });
   });
 });

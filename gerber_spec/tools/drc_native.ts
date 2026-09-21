@@ -34,6 +34,12 @@ for (const u of report.unconnected_items) {
 if (goldenPath) {
   const golden = JSON.parse(readFileSync(goldenPath, 'utf8'));
   const SKIP = new Set(['lib_footprint_mismatch']);
+  // native DFM advisories have no kicad-cli counterpart — report count only
+  const DFM_ADVISORY = new Set([
+    'track_dangling', 'hole_edge_clearance', 'drill_aspect_ratio', 'acid_trap',
+    'text_height', 'text_thickness', 'silk_over_mask', 'via_in_pad',
+    'edge_not_closed', 'edge_self_intersection',
+  ]);
   const hatched = /\(fill[^)]*\(mode hatch\)/.test(src);
   if (hatched) {
     console.log('note: hatched board — unconnected_items deferred to kicad-cli (hatch phase dependency); excluded from parity');
@@ -52,13 +58,18 @@ if (goldenPath) {
       .map(key),
   );
   const nSet = new Set(
-    [...report.violations].filter((v) => v.type !== 'unconnected_items').map(key),
+    [...report.violations]
+      .filter((v) => v.type !== 'unconnected_items' && !DFM_ADVISORY.has(v.type))
+      .map(key),
   );
+  const dfmOnly = report.violations.filter((v) => DFM_ADVISORY.has(v.type)).length;
   const missing = [...gSet].filter((k) => !nSet.has(k));
   const extra = [...nSet].filter((k) => !gSet.has(k));
   console.log(`\nparity vs ${path.basename(goldenPath)} (lib_footprint_mismatch excluded):`);
   for (const k of missing) console.log(`  MISSING (kicad-only): ${k}`);
   for (const k of extra) console.log(`  EXTRA (native-only): ${k}`);
-  if (missing.length === 0 && extra.length === 0) console.log('  PARITY: violation sets identical');
+  if (missing.length === 0 && extra.length === 0) {
+    console.log(`  PARITY: violation sets identical${dfmOnly ? ` (+${dfmOnly} native DFM advisories, no kicad-cli counterpart)` : ''}`);
+  }
   else console.log(`  DIVERGENCE: ${missing.length} missing, ${extra.length} extra`);
 }

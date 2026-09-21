@@ -35,6 +35,7 @@ function normalize(text: string, gfile = ''): Normalized {
     .split(/\r?\n/)
     .filter(
       (l) =>
+        l.trim() !== '' && // trailing empty lines are split artifacts, not content
         !/%TF.CreationDate|^G04 Created by|^; DRILL file KiCad|^; #@! TF.CreationDate/.test(l),
     );
   const strict: string[] = [];
@@ -294,12 +295,55 @@ function main(): void {
         console.log(
           `  ${gfile}: ${hard} hard diff lines${region ? `, ${region} pour-tolerance lines` : ''}${tieTolerance ? `, ${tieTolerance} tie-tolerance lines` : ''}`,
         );
-        let shown = 0;
-        for (let i = 0; i < Math.max(a.strict.length, b.strict.length) && shown < 4; i++) {
-          if (a.strict[i] !== b.strict[i]) {
-            console.log(`    -${(b.strict[i] ?? '').slice(0, 90)}\n    +${(a.strict[i] ?? '').slice(0, 90)}`);
-            shown++;
+        const hardPairs: Array<[string | undefined, string | undefined]> = [];
+        {
+          // walk both streams in lockstep; TXT-vs-REGION and TXT-count
+          // drift are font-divergence (accumulate), everything else is hard
+          const runN2 = (s2: string | undefined): number | null => {
+            const m2 = /^##TXT\*(\d+)$/.exec(s2 ?? '');
+            return m2 ? Number(m2[1]) : null;
+          };
+          const isRegion = (s2: string | undefined): boolean => (s2 ?? '').startsWith('<<REGION');
+          const softEq2 = (x: string, y: string): boolean => {
+            if (x === y) return true;
+            const nx = x.match(/-?\d+(?:\.\d+)?/g);
+            const ny = y.match(/-?\d+(?:\.\d+)?/g);
+            if (!nx || !ny || nx.length !== ny.length) return false;
+            if (x.replace(/-?\d+(?:\.\d+)?/g, '#') !== y.replace(/-?\d+(?:\.\d+)?/g, '#')) return false;
+            const tol = x.startsWith('##') ? 2 : 1;
+            return nx.every((v, k) => Math.abs(Number(v) - Number(ny[k])) <= tol);
+          };
+          let ii = 0;
+          let jj = 0;
+          while (ii < a.strict.length || jj < b.strict.length) {
+            const x = a.strict[ii];
+            const y = b.strict[jj];
+            if (x !== undefined && y !== undefined) {
+              const nx = runN2(x);
+              const ny = runN2(y);
+              if (nx !== null && ny !== null && nx / ny > 0.4 && nx / ny < 2.5) {
+                ii++; jj++; continue; // same text, different font stroke counts
+              }
+              if (nx !== null && isRegion(y)) {
+                // TTF-region text (golden) vs stroke text (native)
+                txtMine += nx;
+                ii++; continue;
+              }
+              if (ny !== null && isRegion(x)) {
+                txtGold += ny;
+                jj++; continue;
+              }
+              if (softEq2(x, y)) { ii++; jj++; continue; }
+              hardPairs.push([x, y]);
+              ii++; jj++; continue;
+            }
+            hardPairs.push([x ?? '<none>', y ?? '<none>']);
+            ii++; jj++;
           }
+        }
+        for (const [gLine, nLine] of hardPairs.slice(0, 6)) {
+          console.log('    -' + (gLine ?? '').slice(0, 90));
+          console.log('    +' + (nLine ?? '').slice(0, 90));
         }
       }
     }

@@ -38,7 +38,8 @@ if (goldenPath) {
   const DFM_ADVISORY = new Set([
     'track_dangling', 'hole_edge_clearance', 'drill_aspect_ratio', 'acid_trap',
     'text_height', 'text_thickness', 'silk_over_mask', 'via_in_pad',
-    'edge_not_closed', 'edge_self_intersection',
+    'edge_not_closed', 'edge_self_intersection', 'copper_sliver', 'mask_web',
+    'min_resolved_spokes', 'courtyard_overlap', 'missing_courtyard',
   ]);
   const hatched = /\(fill[^)]*\(mode hatch\)/.test(src);
   if (hatched) {

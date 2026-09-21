@@ -8,6 +8,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { refillZoneFills } from '../../@typecad/pcb/src/cli/typecad/commands/export.js';
 import { runDrc } from '../../@typecad/pcb/src/pcb/pcb_drc_engine.js';
+import { constraintsFromProject } from '../../@typecad/pcb/src/cli/typecad/commands/drc.js';
 
 const board = path.resolve(process.argv[2]!);
 const goldenPath = process.argv[3] ? path.resolve(process.argv[3]) : null;
@@ -17,7 +18,7 @@ const filled = refillZoneFills(src);
 src = filled ?? src;
 
 const t0 = Date.now();
-const report = runDrc(src);
+const report = runDrc(src, constraintsFromProject(board));
 const elapsed = Date.now() - t0;
 
 console.log(`native DRC: ${report.violations.length} violation(s), ${report.unconnected_items.length} unconnected (${elapsed}ms)`);

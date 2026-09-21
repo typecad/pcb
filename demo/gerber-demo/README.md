@@ -28,6 +28,10 @@ npm run build          typecad-pcb build              → build/gerber_demo.kica
 npm run gerbers        native export (always refills zones) → build/gerbers/
 npm run gerbers:saved  same but plots the board's SAVED fills (--saved-fills)
 npm run gerbers:kicad  legacy kicad-cli export for A/B comparison (--kicad)
+npm run ab             native vs kicad-cli A/B: same filled board plotted
+                       through both, rasterized and diffed pixel-by-pixel
+                       (text layers informational; artifacts + report in
+                       gerber_spec/analysis/ab_compare/)
 npm run check          file set + pour regions + drill tools + job
 npm run view           open the exported gerbers in the gerber viewer
 ```

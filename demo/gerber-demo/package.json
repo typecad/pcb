@@ -13,6 +13,7 @@
     "all": "npm run build && npm run gerbers && npm run check",
     "view": "gerber-viewer build/gerbers -o build/viewer.html --open",
     "view:svg": "gerber-viewer build/gerbers --render pcba -o build/gerber_demo.svg",
+    "ab": "npx tsx ../../gerber_spec/tools/compare_kicad_native.ts build/gerber_demo.kicad_pcb ../../gerber_spec/analysis/ab_compare",
     "clean": "node -e \"require('fs').rmSync('build',{recursive:true,force:true})\""
   }
 }

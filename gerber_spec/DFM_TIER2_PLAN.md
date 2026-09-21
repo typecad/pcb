@@ -1,4 +1,11 @@
-# DFM Tier 2 — implementation plan
+# DFM Tier 2 — implementation plan (SHIPPED)
+
+> Status: steps 0–4 complete (paste_sliver deferred as planned). Key
+> deviations from this plan, found during implementation: mask_web is a
+> pairwise aperture GAP (the web is outside the aperture union — a width
+> scan of the union finds nothing); narrowRegions is opening-based
+> (X − erode includes boundary shells); spoke sampling must sit past the
+> thermal void edge, not past the pad edge.
 
 Tier 1 (shipped): track_dangling, hole_edge_clearance, drill_aspect_ratio,
 acid_trap, edge_not_closed / edge_self_intersection, text_height /

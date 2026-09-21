@@ -5,18 +5,26 @@
 // arcs, vias, zone fills) as clipper polygons with net attribution — the
 // same geometry substrate the zone-fill engine uses — and checks:
 //
-//   shorting_items   different-net items whose copper overlaps (collinear
-//                    track overlap or polygon intersection)
-//   tracks_crossing  different-net track centerlines crossing at a point
-//   clearance        different-net items closer than the net-class/board
-//                    minimum clearance (inflate-and-intersect)
-//   annular_width    via/PTH-pad ring width below the minimum
-//   hole_to_hole     drilled holes closer (edge-to-edge) than the minimum
-//   hole_clearance   hole-to-other-net-copper below the minimum
+//   shorting_items       different-net items whose copper overlaps
+//   tracks_crossing      different-net track centerlines crossing at a point
+//   clearance            different-net items whose ACTUAL edge-to-edge gap
+//                        is under the effective minimum (board rule vs the
+//                        involved nets' classes, whichever is larger)
+//   annular_width        via ring width below the minimum (vias only —
+//                        KiCad's non-round PTH nuance is not modeled)
+//   via_diameter         via copper diameter below the minimum
+//   hole_size            PTH pad drill below the minimum
+//   hole_to_hole         drilled holes closer (edge-to-edge) than the minimum
+//   hole_clearance       hole-to-other-net-copper below the minimum
+//   copper_edge_clearance copper items closer to Edge.Cuts than the minimum
+//   track_width          segments thinner than the minimum
+//   silk_edge_clearance / silk_overlap / solder_mask_bridge (non-copper)
+//   unconnected_items    per-net connectivity (solid-pour boards only —
+//                        hatched pours' line phase is engine-dependent)
 //
 // Violations carry KiCad's report schema (type, severity, description,
 // items[{description, pos, uuid}]) with description strings matched to the
-// kicad-cli 10 goldens (gerber_spec/boards/*/build/drc_golden.json).
+// kicad-cli 10 goldens (gerber_spec/golden/*/drc/).
 // ---------------------------------------------------------------------------
 import ClipperLib from 'clipper-lib';
 import { parse, SNode } from '../sexpr/index.js';
@@ -330,7 +338,6 @@ export function collectSilkItems(root: SNode, silkLayer: string, netCodeToName: 
       }
     }
   }
-  void netCodeToName;
   return { segments, texts };
 }
 
@@ -457,6 +464,8 @@ function collectLayerItems(root: SNode, layer: string, netCodeToName: Map<number
       const unioned: Path[] = [];
       cpr.Execute(ClipperLib.ClipType.ctUnion, unioned, ClipperLib.PolyFillType.pftNonZero, ClipperLib.PolyFillType.pftNonZero);
       const len = cl.reduce((acc, p, i) => (i === 0 ? 0 : acc + Math.hypot(p[0] - cl[i - 1]![0], p[1] - cl[i - 1]![1])), 0);
+      const arcUuid = String(item.child('uuid')?.raw[1] ?? '');
+      let arcPart = 0;
       for (const path of unioned.length ? unioned : segs) {
         push({
           kind: 'arc',
@@ -466,7 +475,8 @@ function collectLayerItems(root: SNode, layer: string, netCodeToName: Map<number
           centerline: cl,
           description: `Track [${fmtNet(net)}] on ${layer}, length ${len.toFixed(4)} mm`,
           pos: { x: s.x, y: s.y },
-          uuid: String(item.child('uuid')?.raw[1] ?? ''),
+          // unique per path: uuid-keyed cross-layer dedup would drop the rest
+          uuid: `${arcUuid}#arc${arcPart++}`,
         });
       }
     }
@@ -521,18 +531,32 @@ function collectLayerItems(root: SNode, layer: string, netCodeToName: Map<number
       const drillNode = pad.child('drill');
       let hole: CopperItem['hole'] | undefined;
       if (drillNode) {
-        const drill = scalar(drillNode, 1, 0);
+        // (drill D) | (drill oval W H) — raw[1] is a Sym for oval slots.
+        // The MIN axis governs both the size rule (KiCad checks a slot's
+        // smallest dimension) and the circle model: a minor-axis circle
+        // stays inside the slot, where a major-axis circle would poke past
+        // the pad copper and phantom-violate hole_clearance.
+        const isOval = typeof drillNode.raw[1] !== 'number';
+        const drill = isOval
+          ? Math.min(scalar(drillNode, 2, 0), scalar(drillNode, 3, 0))
+          : scalar(drillNode, 1, 0);
         const off = pad.child('drill')?.child('offset');
         const ox = off ? scalar(off, 1, 0) : 0;
         const oy = off ? scalar(off, 2, 0) : 0;
-        hole = { x: wx + ox, y: wy + oy, r: drill / 2 };
+        // drill offsets are PAD-LOCAL: they rotate with the pad's angle
+        const aRad = (angle * Math.PI) / 180;
+        hole = {
+          x: wx + ox * Math.cos(aRad) - oy * Math.sin(aRad),
+          y: wy + ox * Math.sin(aRad) + oy * Math.cos(aRad),
+          r: drill / 2,
+        };
       }
       const obstacles = padShapeObstacles(pad, wx, wy, angle);
-      const descs = obstacles.length > 1
-        ? undefined // multi-part pads describe per-part below
-        : thru
-          ? `PTH pad ${padNum} [${fmtNet(net)}] of ${ref}`
-          : `Pad ${padNum} [${fmtNet(net)}] of ${ref} on ${layer}`;
+      const desc = thru
+        ? `PTH pad ${padNum} [${fmtNet(net)}] of ${ref}`
+        : `Pad ${padNum} [${fmtNet(net)}] of ${ref} on ${layer}`;
+      const padUuid = String(pad.child('uuid')?.raw[1] ?? '');
+      let padPart = 0;
       for (const part of obstacles) {
         for (const path of obstaclePaths(part)) {
           push({
@@ -541,11 +565,11 @@ function collectLayerItems(root: SNode, layer: string, netCodeToName: Map<number
             paths: [path],
             layers: [layer],
             hole,
-            description: descs ?? (thru
-              ? `PTH pad ${padNum} [${fmtNet(net)}] of ${ref}`
-              : `Pad ${padNum} [${fmtNet(net)}] of ${ref} on ${layer}`),
+            description: desc,
             pos: { x: wx, y: wy },
-            uuid: String(pad.child('uuid')?.raw[1] ?? ''),
+            // unique per part (stable across layers): uuid-keyed cross-layer
+            // dedup must not drop multi-part pads' later parts
+            uuid: `${padUuid}#${padPart++}`,
           });
         }
       }
@@ -581,6 +605,8 @@ function collectZoneItems(root: SNode, layer: string, netCodeToName: Map<number,
     const net = netNameOf(zone, netCodeToName);
     const res = fillZone(root, zone, layer);
     if (!res) continue;
+    const zoneUuid = String(zone.child('uuid')?.raw[1] ?? 'z');
+    let islandIdx = 0;
     for (const isl of res.islands) {
       const paths: Path[] = [];
       for (const contour of isl.contours) {
@@ -599,7 +625,9 @@ function collectZoneItems(root: SNode, layer: string, netCodeToName: Map<number,
         bbox: bboxOfPaths(paths),
         description: `Filled zone [${fmtNet(net)}] on ${layer}`,
         pos: { x: paths[0]![0]!.X / NM, y: paths[0]![0]!.Y / NM },
-        uuid: String(zone.child('uuid')?.raw[1] ?? ''),
+        // unique per island: each island (and each layer's fill of the same
+        // zone) is separate copper — the zone's own uuid must not dedup them
+        uuid: `${zoneUuid}:${layer}#${islandIdx++}`,
       });
     }
   }
@@ -775,6 +803,24 @@ export function runDrc(source: string, constraints: Partial<DrcConstraints> = {}
   const holeClearanceNm = Math.round(c.min_hole_to_copper * NM);
   const holeHoleNm = Math.round(c.min_hole_to_hole * NM);
 
+  // Edge.Cuts as clipper paths (open segments) + their bbox, for the
+  // copper-to-edge check; gapNm's closed-edge traversal double-counts open
+  // segments harmlessly (same min distance)
+  const edgePaths: Path[] = [];
+  for (const seg of collectEdgeSegments(root)) {
+    const path: Path = seg.pts.map(([x, y]) => ({ X: Math.round(x * NM), Y: Math.round(y * NM) }));
+    if (path.length >= 2) edgePaths.push(path);
+  }
+  const edgeBbox = edgePaths.length
+    ? bboxOfPaths(edgePaths)
+    : { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity };
+  const nearPaths = (
+    a: { minX: number; minY: number; maxX: number; maxY: number },
+    b: { minX: number; minY: number; maxX: number; maxY: number },
+    padNm: number,
+  ): boolean =>
+    !(a.maxX + padNm < b.minX || b.maxX + padNm < a.minX || a.maxY + padNm < b.minY || b.maxY + padNm < a.minY);
+
   for (const layer of copperLayers) {
     const items = [
       ...collectLayerItems(root, layer, netCodeToName),
@@ -835,7 +881,7 @@ export function runDrc(source: string, constraints: Partial<DrcConstraints> = {}
         const A = holed[i]!;
         const B = holed[j]!;
         const d = Math.hypot(A.hole!.x - B.hole!.x, A.hole!.y - B.hole!.y) - A.hole!.r - B.hole!.r;
-        if (d < c.min_hole_to_hole - 1e-9) {
+        if (d * NM < holeHoleNm - GEOM_TOL_NM) {
           report(
             'hole_to_hole',
             `Hole-to-hole clearance (edges ${d.toFixed(4)} mm; min is ${c.min_hole_to_hole.toFixed(4)} mm)`,
@@ -881,6 +927,60 @@ export function runDrc(source: string, constraints: Partial<DrcConstraints> = {}
           `Annular width (board setup constraints min annular width ${c.min_via_annular_width.toFixed(4)} mm; actual ${ring.toFixed(4)} mm)`,
           [item(it)],
         );
+      }
+    }
+
+    // 5) via diameter (dimension check, once per via)
+    for (const it of items) {
+      if (it.kind !== 'via') continue;
+      const sizeKey = `viasize:${it.pos.x.toFixed(4)}:${it.pos.y.toFixed(4)}`;
+      if (reportedOnce.has(sizeKey)) continue;
+      reportedOnce.add(sizeKey);
+      let diaNm = 0;
+      for (const poly of it.paths)
+        for (const v of poly) diaNm = Math.max(diaNm, Math.hypot(v.X - it.pos.x * NM, v.Y - it.pos.y * NM));
+      const dia = (2 * diaNm) / NM;
+      if (dia < c.min_via_diameter - 0.0002) {
+        report(
+          'via_diameter',
+          `Via diameter (${dia.toFixed(4)} mm; min is ${c.min_via_diameter.toFixed(4)} mm)`,
+          [item(it)],
+        );
+      }
+    }
+
+    // 6) through-hole drill size (PTH pads, once per pad position)
+    for (const it of items) {
+      if (it.kind !== 'pad' || !it.hole) continue;
+      const sizeKey = `holesize:${it.pos.x.toFixed(4)}:${it.pos.y.toFixed(4)}`;
+      if (reportedOnce.has(sizeKey)) continue;
+      reportedOnce.add(sizeKey);
+      const dia = it.hole.r * 2;
+      if (dia < c.min_through_hole_diameter - 0.0002) {
+        report(
+          'hole_size',
+          `Through-hole size (${dia.toFixed(4)} mm; min is ${c.min_through_hole_diameter.toFixed(4)} mm)`,
+          [item(it)],
+        );
+      }
+    }
+
+    // 7) copper to board edge (edge-to-edge gap). Zone fills are EXEMPT:
+    // KiCad's own pours sit at the zone's setback from the edge and its DRC
+    // does not flag them (verified on the rd golden — its pour sits 0.1 mm
+    // from the edge line against a 0.2 rule with no violation); the fill
+    // engine's edge pullback governs zone copper, not this rule.
+    if (edgePaths.length > 0 && c.min_copper_edge_clearance > 0) {
+      for (const it of items) {
+        if (it.kind === 'zone') continue;
+        if (!nearPaths(it.bbox, edgeBbox, Math.ceil(c.min_copper_edge_clearance * NM))) continue;
+        if (gapNm(it.paths, edgePaths) < c.min_copper_edge_clearance * NM - GEOM_TOL_NM) {
+          report(
+            'copper_edge_clearance',
+            `Copper to board edge clearance (min is ${c.min_copper_edge_clearance.toFixed(4)} mm)`,
+            [item(it)],
+          );
+        }
       }
     }
   }
@@ -1011,9 +1111,6 @@ export function runDrc(source: string, constraints: Partial<DrcConstraints> = {}
       texts: [...silkLegacy.texts, ...silkModern.texts],
     };
     const maskLayer = `${side}.Mask`;
-    if (process.env.DRC_DEBUG) {
-      console.log('[drc-debug]', side, 'silk segs =', silk.segments.length, 'texts =', silk.texts.length);
-    }
 
     // silk vs board edge: ink edge to edge-line centerline
     const edgeSegs = collectEdgeSegments(root);
@@ -1079,8 +1176,8 @@ export function runDrc(source: string, constraints: Partial<DrcConstraints> = {}
       const fx = scalar(fpAt!, 1, 0);
       const fy = scalar(fpAt!, 2, 0);
       const frot = scalar(fpAt!, 3, 0);
-      const c = Math.cos((frot * Math.PI) / 180);
-      const s = Math.sin((frot * Math.PI) / 180);
+      const cosR = Math.cos((frot * Math.PI) / 180);
+      const sinR = Math.sin((frot * Math.PI) / 180);
       const refProp = fp.children('property').find((pr) => String(pr.raw[1]) === 'Reference');
       const ref = String(refProp?.raw[2] ?? '?');
       for (const pad of fp.children('pad')) {
@@ -1091,8 +1188,8 @@ export function runDrc(source: string, constraints: Partial<DrcConstraints> = {}
         const lx = scalar(at, 1, 0);
         const ly = scalar(at, 2, 0);
         const angle = scalar(at, 3, 0);
-        const wx = fx + lx * c + ly * s;
-        const wy = fy - lx * s + ly * c;
+        const wx = fx + lx * cosR + ly * sinR;
+        const wy = fy - lx * sinR + ly * cosR;
         const net = netNameOf(pad, netCodeToName);
         const padNum = String(pad.raw[1] ?? '');
         const thru = String(pad.raw[2] ?? '').startsWith('thru');

@@ -165,6 +165,22 @@ describe('zone fill engine', () => {
     expect(anyFilled(rings, 15.5, 20)).toBe(true);
   });
 
+  it('fills EVERY polygon of a multi-polygon zone', () => {
+    // regression: fillZone read only the first (polygon) block — the second
+    // region's pour copper was silently dropped
+    const root = board(`
+      (via (at 13 13) (size 0.6) (drill 0.3) (layers "F.Cu" "B.Cu") (net 1))
+      (via (at 25 25) (size 0.6) (drill 0.3) (layers "F.Cu" "B.Cu") (net 1))
+      (zone (net 1) (net_name "GND") (layer "In1.Cu") (connect_pads (clearance 0.5))
+        (polygon (pts (xy 10 10) (xy 16 10) (xy 16 16) (xy 10 16)))
+        (polygon (pts (xy 22 22) (xy 28 22) (xy 28 28) (xy 22 28))))`);
+    const z = root.children('zone')[0]!;
+    const res = fillZone(root, z, 'In1.Cu')!;
+    // two polygons, each anchored by a same-net via → two islands survive
+    expect(res.islands.length).toBe(2);
+    expect(res.totalAreaMm2).toBeGreaterThan(70); // 2 × 36mm² gross
+  });
+
   it('removes unconnected islands (KiCad default mode)', () => {
     const root = board(`
       (via (at 13 13) (size 0.6) (drill 0.3) (layers "F.Cu" "B.Cu") (net 1))

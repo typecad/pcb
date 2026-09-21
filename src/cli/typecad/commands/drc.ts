@@ -91,7 +91,7 @@ async function runNativeDrc(pcbPath: string, json: boolean): Promise<void> {
 }
 
 /** Read design rules + DRC severities from the board's .kicad_pro. */
-function constraintsFromProject(pcbPath: string): Partial<import('../../../pcb/pcb_drc_engine.js').DrcConstraints> {
+export function constraintsFromProject(pcbPath: string): Partial<import('../../../pcb/pcb_drc_engine.js').DrcConstraints> {
   const proPath = pcbPath.replace(/\.kicad_pcb$/, '.kicad_pro');
   try {
     const pro = JSON.parse(fs.readFileSync(proPath, 'utf8')) as {

@@ -189,6 +189,41 @@ describe('native DRC (phase 1 copper core)', () => {
     expect(types(vs)).toContain('shorting_items');
   });
 
+  it('flags undersized via diameter and PTH drill independently', () => {
+    const vs = drc(`
+      (via (at 15 15) (size 0.45) (drill 0.2) (layers "F.Cu" "B.Cu") (net 1) (uuid "v1"))
+      (footprint "T:X" (layer "F.Cu") (at 25 15)
+        (pad "1" thru_hole circle (at 0 0) (size 1.2 1.2) (drill 0.25) (layers "*.Cu") (net 1) (uuid "p1")))`);
+    expect(types(vs)).toContain('via_diameter'); // 0.45 < 0.6
+    expect(types(vs)).toContain('hole_size'); // 0.25 < 0.3
+    // compliant geometry reports neither
+    const ok = drc(`
+      (via (at 15 15) (size 0.6) (drill 0.3) (layers "F.Cu" "B.Cu") (net 1) (uuid "v1"))
+      (footprint "T:X" (layer "F.Cu") (at 25 15)
+        (pad "1" thru_hole circle (at 0 0) (size 1.2 1.2) (drill 0.3) (layers "*.Cu") (net 1) (uuid "p1")))`);
+    expect(types(ok)).not.toContain('via_diameter');
+    expect(types(ok)).not.toContain('hole_size');
+  });
+
+  it('flags copper closer to the board edge than the minimum', () => {
+    // track 0.15mm from the edge line (track half-width 0.15 → edge gap 0.0)
+    const vs = drc(`
+      (gr_line (start 0 0) (end 30 0) (layer "Edge.Cuts") (stroke (width 0.05) (type solid)) (uuid "e1"))
+      (gr_line (start 30 0) (end 30 20) (layer "Edge.Cuts") (stroke (width 0.05) (type solid)) (uuid "e2"))
+      (gr_line (start 30 20) (end 0 20) (layer "Edge.Cuts") (stroke (width 0.05) (type solid)) (uuid "e3"))
+      (gr_line (start 0 20) (end 0 0) (layer "Edge.Cuts") (stroke (width 0.05) (type solid)) (uuid "e4"))
+      (segment (start 5 0.3) (end 25 0.3) (width 0.3) (layer "F.Cu") (net 1) (uuid "t1"))`);
+    expect(types(vs)).toContain('copper_edge_clearance');
+    // comfortably inside: clean
+    const ok = drc(`
+      (gr_line (start 0 0) (end 30 0) (layer "Edge.Cuts") (stroke (width 0.05) (type solid)) (uuid "e1"))
+      (gr_line (start 30 0) (end 30 20) (layer "Edge.Cuts") (stroke (width 0.05) (type solid)) (uuid "e2"))
+      (gr_line (start 30 20) (end 0 20) (layer "Edge.Cuts") (stroke (width 0.05) (type solid)) (uuid "e3"))
+      (gr_line (start 0 20) (end 0 0) (layer "Edge.Cuts") (stroke (width 0.05) (type solid)) (uuid "e4"))
+      (segment (start 5 1) (end 25 1) (width 0.3) (layer "F.Cu") (net 1) (uuid "t1"))`);
+    expect(ok.filter((v) => v.type === 'copper_edge_clearance')).toHaveLength(0);
+  });
+
   it('emits KiCad-schema descriptions for report parity', () => {
     const vs = drc(`
       (footprint "Resistor_SMD:R_0603" (layer "F.Cu") (at 15 15)

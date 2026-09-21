@@ -557,14 +557,22 @@ export function fillZone(
   opts: ZoneFillOptions = {},
 ): ZoneFillResult | null {
   const netCodeToName = buildNetCodeMap(root);
-  const polyNode = zone.child('polygon');
-  if (!polyNode) return null;
-  const zonePts = polyNode.child('pts')?.children('xy') ?? [];
-  if (zonePts.length < 3) return null;
-  const zonePoly: Path = zonePts.map((p) => ({
-    X: Math.round(scalar(p, 1) * NM),
-    Y: Math.round(scalar(p, 2) * NM),
-  }));
+  // a zone may carry MULTIPLE (polygon …) blocks — all of them are subject
+  // copper (reading only the first silently drops the others' pour)
+  const polyNodes = zone.children('polygon');
+  if (polyNodes.length === 0) return null;
+  const zonePolys: Path[] = [];
+  for (const polyNode of polyNodes) {
+    const zonePts = polyNode.child('pts')?.children('xy') ?? [];
+    if (zonePts.length < 3) continue;
+    zonePolys.push(
+      zonePts.map((p) => ({
+        X: Math.round(scalar(p, 1) * NM),
+        Y: Math.round(scalar(p, 2) * NM),
+      })),
+    );
+  }
+  if (zonePolys.length === 0) return null;
 
   // zone net (name-only or coded form)
   const zoneNet = netNameOf(zone, netCodeToName);
@@ -672,7 +680,10 @@ export function fillZone(
           const drillNode = pad.child('drill');
           let inflate = clearanceMm;
           if (drillNode) {
-            const drill = scalar(drillNode, 1, 0);
+            // oval slots: (drill oval W H) — raw[1] is a Sym; minor axis rules
+            const drill = typeof drillNode.raw[1] !== 'number'
+              ? Math.min(scalar(drillNode, 2, 0), scalar(drillNode, 3, 0))
+              : scalar(drillNode, 1, 0);
             const sizeNode = pad.child('size');
             const padR = sizeNode ? Math.max(scalar(sizeNode, 1, 0), scalar(sizeNode, 2, 0)) / 2 : drill / 2;
             const ring = Math.max(0, padR - drill / 2);
@@ -755,7 +766,7 @@ export function fillZone(
     const inflated: ClipperLib.Path[] = [];
     co.Execute(inflated, edgeClearanceMm * NM);
     const cpr = new ClipperLib.Clipper();
-    cpr.AddPath(zonePoly, ClipperLib.PolyType.ptSubject, true);
+    zonePolys.forEach((zp) => cpr.AddPath(zp, ClipperLib.PolyType.ptSubject, true));
     inflated.forEach((p: Path) => cpr.AddPath(p, ClipperLib.PolyType.ptClip, true));
     const inner: ClipperLib.Path[] = [];
     cpr.Execute(ClipperLib.ClipType.ctIntersection, inner, ClipperLib.PolyFillType.pftNonZero, ClipperLib.PolyFillType.pftNonZero);
@@ -764,7 +775,7 @@ export function fillZone(
     }
   }
 
-  return finish([zonePoly], clips, sameNet, thermalGapMm, spokeWidthMm, minIsland, layer, islandMode, zoneMinIsland, hatchParams);
+  return finish(zonePolys, clips, sameNet, thermalGapMm, spokeWidthMm, minIsland, layer, islandMode, zoneMinIsland, hatchParams);
 }
 
 export interface HatchParams {

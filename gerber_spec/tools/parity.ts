@@ -253,32 +253,63 @@ function main(): void {
         const tol = x.startsWith('##') ? 2 : 1;
         return nx.every((v, i) => Math.abs(Number(v) - Number(ny[i])) <= tol);
       };
-      let hard = 0;
       let tieTolerance = 0;
       let txtMine = 0;
       let txtGold = 0;
-      const runN = (s: string | undefined): number | null => {
-        const m = /^##TXT\*(\d+)$/.exec(s ?? '');
-        return m ? Number(m[1]) : null;
-      };
-      for (let i = 0; i < Math.max(a.strict.length, b.strict.length); i++) {
-        const x = a.strict[i];
-        const y = b.strict[i];
-        if (x === y && runN(x) === null) continue;
-        const nx = runN(x);
-        const ny = runN(y);
-        if (nx !== null && ny !== null) {
-          txtMine += nx;
-          txtGold += ny;
-          const r = nx / ny;
-          if (r > 0.4 && r < 2.5) continue; // same text, different font
+      // single aligned walk: counts AND preview come from the same pass, so
+      // the per-file number always equals the listed pairs (the old
+      // index-aligned counter over-counted when token streams shifted)
+      const hardPairs: Array<[string | undefined, string | undefined]> = [];
+      {
+        const runN2 = (s2: string | undefined): number | null => {
+          const m2 = /^##TXT\*(\d+)$/.exec(s2 ?? '');
+          return m2 ? Number(m2[1]) : null;
+        };
+        const isRegion = (s2: string | undefined): boolean => (s2 ?? '').startsWith('<<REGION');
+        const softEq2 = (x: string, y: string): boolean => {
+          if (x === y) return true;
+          const nx = x.match(/-?\d+(?:\.\d+)?/g);
+          const ny = y.match(/-?\d+(?:\.\d+)?/g);
+          if (!nx || !ny || nx.length !== ny.length) return false;
+          if (x.replace(/-?\d+(?:\.\d+)?/g, '#') !== y.replace(/-?\d+(?:\.\d+)?/g, '#')) return false;
+          const tol = x.startsWith('##') ? 2 : 1;
+          return nx.every((v, k) => Math.abs(Number(v) - Number(ny[k])) <= tol);
+        };
+        let ii = 0;
+        let jj = 0;
+        while (ii < a.strict.length || jj < b.strict.length) {
+          const x = a.strict[ii];
+          const y = b.strict[jj];
+          if (x !== undefined && y !== undefined) {
+            const nx = runN2(x);
+            const ny = runN2(y);
+            if (nx !== null && ny !== null && nx / ny > 0.4 && nx / ny < 2.5) {
+              txtMine += nx;
+              txtGold += ny;
+              ii++; jj++; continue; // same text, different font stroke counts
+            }
+            if (nx !== null && isRegion(y)) {
+              // TTF-region text (golden) vs stroke text (native)
+              txtMine += nx;
+              ii++; continue;
+            }
+            if (ny !== null && isRegion(x)) {
+              txtGold += ny;
+              jj++; continue;
+            }
+            if (softEq2(x, y)) { tieTolerance++; ii++; jj++; continue; }
+            hardPairs.push([x, y]);
+            ii++; jj++; continue;
+          }
+          hardPairs.push([x ?? '<none>', y ?? '<none>']);
+          ii++; jj++;
         }
-        if (x !== undefined && y !== undefined && softEqual(x!, y!)) tieTolerance++;
-        else hard++;
       }
+      const hard = hardPairs.length;
       const region = regionDiffCount(a.regions, b.regions);
       const fontDiverged = [...FONT_DIVERGED].some((t) => gfile.includes(t));
       const txtRatio = txtGold === 0 ? 1 : txtMine / txtGold;
+      void txtRatio;
       if (hard === 0 && region === 0) {
         console.log(
           fontDiverged
@@ -295,52 +326,6 @@ function main(): void {
         console.log(
           `  ${gfile}: ${hard} hard diff lines${region ? `, ${region} pour-tolerance lines` : ''}${tieTolerance ? `, ${tieTolerance} tie-tolerance lines` : ''}`,
         );
-        const hardPairs: Array<[string | undefined, string | undefined]> = [];
-        {
-          // walk both streams in lockstep; TXT-vs-REGION and TXT-count
-          // drift are font-divergence (accumulate), everything else is hard
-          const runN2 = (s2: string | undefined): number | null => {
-            const m2 = /^##TXT\*(\d+)$/.exec(s2 ?? '');
-            return m2 ? Number(m2[1]) : null;
-          };
-          const isRegion = (s2: string | undefined): boolean => (s2 ?? '').startsWith('<<REGION');
-          const softEq2 = (x: string, y: string): boolean => {
-            if (x === y) return true;
-            const nx = x.match(/-?\d+(?:\.\d+)?/g);
-            const ny = y.match(/-?\d+(?:\.\d+)?/g);
-            if (!nx || !ny || nx.length !== ny.length) return false;
-            if (x.replace(/-?\d+(?:\.\d+)?/g, '#') !== y.replace(/-?\d+(?:\.\d+)?/g, '#')) return false;
-            const tol = x.startsWith('##') ? 2 : 1;
-            return nx.every((v, k) => Math.abs(Number(v) - Number(ny[k])) <= tol);
-          };
-          let ii = 0;
-          let jj = 0;
-          while (ii < a.strict.length || jj < b.strict.length) {
-            const x = a.strict[ii];
-            const y = b.strict[jj];
-            if (x !== undefined && y !== undefined) {
-              const nx = runN2(x);
-              const ny = runN2(y);
-              if (nx !== null && ny !== null && nx / ny > 0.4 && nx / ny < 2.5) {
-                ii++; jj++; continue; // same text, different font stroke counts
-              }
-              if (nx !== null && isRegion(y)) {
-                // TTF-region text (golden) vs stroke text (native)
-                txtMine += nx;
-                ii++; continue;
-              }
-              if (ny !== null && isRegion(x)) {
-                txtGold += ny;
-                jj++; continue;
-              }
-              if (softEq2(x, y)) { ii++; jj++; continue; }
-              hardPairs.push([x, y]);
-              ii++; jj++; continue;
-            }
-            hardPairs.push([x ?? '<none>', y ?? '<none>']);
-            ii++; jj++;
-          }
-        }
         for (const [gLine, nLine] of hardPairs.slice(0, 6)) {
           console.log('    -' + (gLine ?? '').slice(0, 90));
           console.log('    +' + (nLine ?? '').slice(0, 90));

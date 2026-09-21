@@ -15,6 +15,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { parse, SNode } from '../sexpr/index.js';
+import { projectGuid, TYPECAD_SOFTWARE } from './writer_utils.js';
 import type { SExpr } from '../sexpr/index.js';
 import { GerberWriter, type AperFunction, type ApertureShape, type Point } from './gerber_writer.js';
 
@@ -352,19 +353,6 @@ function boardStem(boardPath: string): string {
   return path.basename(boardPath).replace(/\.kicad_pcb$/, '');
 }
 
-function projectGuid(stem: string): string {
-  // KiCad derives the ProjectId GUID from the board filename with uuid-v4
-  // version/variant nibbles overlaid (not derivable); this matches the
-  // observed shape without pretending to match KiCad's random tail.
-  const bytes: number[] = [];
-  for (const ch of `${stem}.kicad_pcb`) bytes.push(ch.charCodeAt(0) & 0xff);
-  while (bytes.length < 16) bytes.push(0);
-  bytes[6] = 0x40 | (bytes[6]! & 0x0f);
-  bytes[8] = 0x80 | (bytes[8]! & 0x3f);
-  const hex = bytes.map((b) => b.toString(16).padStart(2, '0')).join('');
-  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
-}
-
 export function plotCopperLayers(boardPath: string, opts: CopperPlotOptions): string[] {
   return plotCopperLayersFromSource(fs.readFileSync(boardPath, 'utf8'), boardPath, opts);
 }
@@ -392,7 +380,7 @@ export function plotCopperLayersFromSource(
       projectName: stem,
       projectGuid: projectGuid(stem),
       projectRevision: 'rev?',
-      generationSoftware: opts.generationSoftware ?? 'typeCAD,gerber_export,0.1.0',
+      generationSoftware: opts.generationSoftware ?? TYPECAD_SOFTWARE,
       creationDate: opts.creationDate ?? new Date().toISOString(),
     });
     const out = path.join(opts.outDir, `${stem}-${fileStem}.${layer.extension}`);
@@ -418,20 +406,27 @@ function plotOneCopperLayer(
     const refProp = fp.children('property').find((pr) => String(pr.raw[1]) === 'Reference');
     const ref = refProp ? String(refProp.raw[2] ?? '') : '';
     for (const pad of fp.children('pad')) {
-      const padLayers = strings(pad.child('layers') ?? fp.child('layers')!);
+      const layersNode = pad.child('layers') ?? fp.child('layers');
+      const padLayers = layersNode ? strings(layersNode) : [];
       if (!padTouchesLayer(padLayers, layer.name)) continue;
-      // NPTH pads whose size equals the drill are mechanical holes only —
-      // KiCad does not flash them on copper (observed on J5's empty pad)
+      // NPTH pads whose copper size equals the drill are mechanical holes
+      // only — KiCad does not flash them on copper (observed on J5's empty
+      // pad). Oval drills: (drill oval W H) — both dimensions must match the
+      // pad size for the hole to swallow the copper entirely.
       const kindEarly = String(pad.raw[2]);
       if (kindEarly === 'np_thru_hole') {
         const sz = pad.child('size');
         const dr = pad.child('drill');
         if (sz && dr) {
           const dw = scalar(dr, 1, Number.NaN);
-          const dh = dr && typeof dr.raw[2] === 'number' ? scalar(dr, 2, dw) : dw;
+          const drOval = dr.raw[1] === 'oval';
+          const dh = drOval && typeof dr.raw[2] === 'number' ? scalar(dr, 2, dw) : dw;
+          const sw = scalar(sz, 1, Number.NaN);
+          const sh = scalar(sz, 2, Number.NaN);
           if (
-            Math.abs(scalar(sz, 1) - dw) < 1e-9 &&
-            Math.abs(scalar(sz, 2) - (Number.isNaN(dh) ? dw : dh)) < 1e-9
+            Number.isFinite(sw) && Number.isFinite(sh) &&
+            Math.abs(sw - dw) < 1e-9 &&
+            Math.abs(sh - dh) < 1e-9
           )
             continue;
         }
@@ -481,7 +476,8 @@ function plotOneCopperLayer(
   const curIdx = layers.findIndex((l) => l.name === layer.name);
   for (const via of root.children('via')) {
     const vtype = via.child('type') ? String(via.child('type')!.raw[1]) : 'through';
-    if (vtype === 'blind' || vtype === 'micro') {
+    if (vtype !== 'through') {
+      // blind/buried/micro flash only within their declared layer span
       const span = strings(via.child('layers')!);
       const spanIdx = layers.filter((l) => span.includes(l.name)).map((l) => l.index);
       if (spanIdx.length === 0 || curIdx < 0) continue;
@@ -505,13 +501,11 @@ function plotOneCopperLayer(
     const width = scalar(item.child('width')!, 1);
     w.netAttr(netOf(item, nets));
     const d = w.aperture({ kind: 'C', dia: width }, 'Conductor');
-    if (item.name === 'segment') {
-      const s = atPoint(item.child('start'));
-      const e = atPoint(item.child('end'));
-      w.selectAperture(d);
-      w.moveTo(g(s));
-      w.lineTo(g(e));
-    }
+    const s = atPoint(item.child('start'));
+    const e = atPoint(item.child('end'));
+    w.selectAperture(d);
+    w.moveTo(g(s));
+    w.lineTo(g(e));
   }
   for (const item of root.children()) {
     if (item.name !== 'arc') continue;

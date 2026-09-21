@@ -15,6 +15,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { boardStem, projectGuid, TYPECAD_SOFTWARE } from './writer_utils.js';
 import { parse, SNode } from '../sexpr/index.js';
 import type { SExpr } from '../sexpr/index.js';
 import { GerberWriter, type Point } from './gerber_writer.js';
@@ -79,16 +80,6 @@ export interface GraphicsPlotOptions {
   projectGuid?: string;
 }
 
-function projectGuidFor(stem: string): string {
-  const bytes: number[] = [];
-  for (const ch of `${stem}.kicad_pcb`) bytes.push(ch.charCodeAt(0) & 0xff);
-  while (bytes.length < 16) bytes.push(0);
-  bytes[6] = 0x40 | (bytes[6]! & 0x0f);
-  bytes[8] = 0x80 | (bytes[8]! & 0x3f);
-  const hex = bytes.map((b) => b.toString(16).padStart(2, '0')).join('');
-  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
-}
-
 function itemLayer(item: SNode): string {
   const ln = item.child('layer');
   return ln ? String(ln.raw[1] ?? '') : '';
@@ -112,7 +103,7 @@ export function plotGraphicsLayersFromSource(
 ): string[] {
   const root = SNode.from(parse(source) as SExpr[]);
   const stem = path.basename(boardPath).replace(/\.kicad_pcb$/, '');
-  const guid = opts.projectGuid ?? projectGuidFor(stem);
+  const guid = opts.projectGuid ?? projectGuid(stem);
   fs.mkdirSync(opts.outDir, { recursive: true });
   const written: string[] = [];
   for (const layer of GRAPHIC_LAYERS) {
@@ -124,7 +115,7 @@ export function plotGraphicsLayersFromSource(
       projectName: stem,
       projectGuid: guid,
       projectRevision: 'rev?',
-      generationSoftware: opts.generationSoftware ?? 'typeCAD,gerber_export,0.1.0',
+      generationSoftware: opts.generationSoftware ?? TYPECAD_SOFTWARE,
       creationDate: opts.creationDate ?? new Date().toISOString(),
     });
     const out = path.join(opts.outDir, `${stem}-${layer.stem}.${layer.extension}`);
@@ -143,7 +134,7 @@ function plotGraphicsLayer(w: GerberWriter, root: SNode, layer: LayerSpec): void
     if (!item.name.startsWith('gr_')) continue;
     if (itemLayer(item) !== layer.short) continue;
     if (item.name === 'gr_text') {
-      drawTextItem(w, item, layer.short.startsWith('B.'), { x: 0, y: 0 }, 0, (p) => p);
+      drawTextItem(w, item, layer.short.startsWith('B.'), (p) => p);
       continue;
     }
     drawGraphicItem(w, item, { isProfile, map: (p) => p });
@@ -176,7 +167,7 @@ function plotGraphicsLayer(w: GerberWriter, root: SNode, layer: LayerSpec): void
       const shown = raw
         .replace(/\$\{REFERENCE\}/gi, refValue)
         .replace(/\$\{VALUE\}/gi, valValue);
-      drawTextItem(w, item, layer.short.startsWith('B.'), fpPos, fpRot, (p) => ({
+      drawTextItem(w, item, layer.short.startsWith('B.'), (p) => ({
         x: fpPos.x + p.x * c + p.y * s,
         y: fpPos.y - p.x * s + p.y * c,
       }), shown !== raw ? shown : undefined);
@@ -396,13 +387,9 @@ function drawTextItem(
   w: GerberWriter,
   item: SNode,
   isBack: boolean,
-  _fpPos: Point,
-  _fpRot: number,
   map: (p: Point) => Point,
   textOverride?: string,
 ): void {
-  void _fpPos;
-  void _fpRot;
   const hideTok = item.child('hide')?.raw[1];
   const hidden = hideTok !== undefined && String((hideTok as { name?: string }).name ?? hideTok) === 'yes';
   if (hidden) return;

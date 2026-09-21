@@ -35,6 +35,7 @@ export type ApertureShape =
   /** arbitrary polygon: unrotated vertices + rotation param */
   | { kind: 'FreePoly'; verts: Point[]; rot: number };
 
+import { PKG_VERSION } from './writer_utils.js';
 /** Number formatting for aperture parameters: always 6 decimals. */
 function p(n: number): string {
   return n.toFixed(6);
@@ -168,7 +169,6 @@ export class GerberWriter {
   private currentNet: string | null = null;
   private currentPad: string | null = null;
   private inRegion = false;
-  private arcModeSet = false;
   private currentComponent: string | null = null;
 
   /** Component attribute (graphics-layer footprint groups, mask/paste pads). */
@@ -311,7 +311,6 @@ export class GerberWriter {
       `X${coord(end.x)}Y${coord(end.y)}I${coord(centerOffset.x)}J${coord(centerOffset.y)}D01*`,
     );
     this.lines.push('G01*');
-    this.arcModeSet = false;
   }
 
   /** Multi-contour region: each contour starts with a moveTo. */
@@ -344,7 +343,7 @@ export class GerberWriter {
       ...(info.polarity ? [`%TF.FilePolarity,${info.polarity}*%`] : []),
       `%FSLAX46Y46*%`,
       'G04 Gerber Fmt 4.6, Leading zero omitted, Abs format (unit mm)*',
-      `G04 Created by ${info.generationSoftware.split(',').slice(0, 2).join(' ')} date ${info.creationDate.slice(0, 19)}*`,
+      `G04 Created by typeCAD/pcb ${PKG_VERSION} date ${info.creationDate.slice(0, 19).replace('T', ' ')}*`,
       '%MOMM*%',
       '%LPD*%',
       'G01*',
@@ -378,6 +377,7 @@ export class GerberWriter {
       if (a.aperFunction) head.push('%TD*%');
     }
     head.push('G04 APERTURE END LIST*');
-    return [...head, ...this.lines, 'M02*', ''].join('\n');
+    // goldens use CRLF terminators throughout (kicad-cli output)
+    return [...head, ...this.lines, 'M02*', ''].join('\r\n') + '\r\n';
   }
 }

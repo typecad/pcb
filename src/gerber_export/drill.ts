@@ -13,6 +13,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { parse, SNode } from '../sexpr/index.js';
+import { boardStem, TYPECAD_SOFTWARE } from './writer_utils.js';
 import type { SExpr } from '../sexpr/index.js';
 import { scalar } from './copper.js';
 
@@ -69,7 +70,7 @@ function diaKey(d: number): number {
 
 function padDrill(
   pad: SNode,
-): { dia: number; major: number | null; majorIsX: boolean; angle: number } | null {
+): { dia: number; major: number | null; majorIsX: boolean } | null {
   const dr = pad.child('drill');
   if (!dr) return null;
   // forms: (drill 1.6), (drill 0.6 1.8), (drill oval 0.6 1.8)
@@ -87,7 +88,6 @@ function padDrill(
     dia: Math.min(a, b),
     major: b !== a ? Math.max(a, b) : null,
     majorIsX: a >= b,
-    angle: 0,
   };
 }
 
@@ -109,7 +109,7 @@ export function plotDrillFromSource(
   opts: DrillOptions,
 ): string {
   const root = SNode.from(parse(source) as SExpr[]);
-  const stem = path.basename(boardPath).replace(/\.kicad_pcb$/, '');
+  const stem = boardStem(boardPath);
   const tools = new Map<string, Tool>();
 
   const toolFor = (dia: number, klass: Tool['klass']): Tool => {
@@ -183,7 +183,7 @@ export function plotDrillFromSource(
     (a, b) => CLASS_ORDER[a.klass] - CLASS_ORDER[b.klass] || a.dia - b.dia,
   );
 
-  const gen = opts.generationSoftware ?? 'Kicad,Pcbnew,10.0.0';
+  const gen = opts.generationSoftware ?? TYPECAD_SOFTWARE;
   const now = opts.creationDate ?? new Date();
   const iso = now instanceof Date ? now.toISOString() : now;
   const lines: string[] = [];

@@ -19,6 +19,9 @@ import path from 'node:path';
 import { parse, SNode } from '../sexpr/index.js';
 import type { SExpr } from '../sexpr/index.js';
 import { copperLayers, scalar } from './copper.js';
+import { boardStem, projectGuid, PKG_VERSION } from './writer_utils.js';
+import { atPoint } from './copper.js';
+import { arcPolyline } from '../pcb/pcb_zone_fill_engine.js';
 
 export interface JobFileInfo {
   Path: string;
@@ -52,14 +55,47 @@ function edgeSize(root: SNode): { X: number; Y: number } {
     if (!item.name.startsWith('gr_')) continue;
     const w = item.child('stroke')?.child('width') ?? item.child('width');
     const half = w ? scalar(w, 1, 0.1) / 2 : 0.05;
+    const grow = (x: number, y: number): void => {
+      minX = Math.min(minX, x - half);
+      maxX = Math.max(maxX, x + half);
+      minY = Math.min(minY, y - half);
+      maxY = Math.max(maxY, y + half);
+    };
+    // arcs: sample the swept path — endpoints alone understate the extent
+    if (item.name === 'gr_arc') {
+      const s = atPoint(item.child('start'));
+      const midNode = item.child('mid');
+      const e = atPoint(item.child('end'));
+      const pts = midNode
+        ? arcPolyline(s, atPoint(midNode), e, 0)
+        : (() => {
+            // legacy angle form: sweep from start around (at)
+            const at = item.child('at')!;
+            const cx = scalar(at, 1, 0);
+            const cy = scalar(at, 2, 0);
+            const r = Math.hypot(s.x - cx, s.y - cy);
+            const a0 = Math.atan2(s.y - cy, s.x - cx);
+            let sweep = scalar(at, 3, 0) * (Math.PI / 180);
+            if (sweep < 0) sweep += 2 * Math.PI;
+            const out: Array<[number, number]> = [];
+            for (let i = 0; i <= 24; i++) {
+              const a = a0 + (sweep * i) / 24;
+              out.push([cx + r * Math.cos(a), cy + r * Math.sin(a)]);
+            }
+            return out;
+          })();
+      for (const [gx, gy] of pts) grow(gx, gy);
+      continue;
+    }
+    // polygons: every vertex
+    if (item.name === 'gr_poly') {
+      const pts = item.child('pts')?.children('xy') ?? [];
+      for (const p of pts) grow(scalar(p, 1), scalar(p, 2));
+      continue;
+    }
     for (const key of ['start', 'end', 'mid', 'center']) {
       const n = item.child(key);
-      if (n) {
-        minX = Math.min(minX, scalar(n, 1) - half);
-        maxX = Math.max(maxX, scalar(n, 1) + half);
-        minY = Math.min(minY, scalar(n, 2) - half);
-        maxY = Math.max(maxY, scalar(n, 2) + half);
-      }
+      if (n) grow(scalar(n, 1), scalar(n, 2));
     }
   }
   if (!Number.isFinite(minX)) return { X: 0, Y: 0 };
@@ -67,7 +103,7 @@ function edgeSize(root: SNode): { X: number; Y: number } {
   return { X: r(maxX - minX), Y: r(maxY - minY) };
 }
 
-function designRules(root: SNode, hasInner: boolean): unknown[] {
+function designRules(root: SNode, hasInner: boolean, boardPath: string): unknown[] {
   const minTrack = (inner: boolean): number | null => {
     let min = Infinity;
     for (const item of root.children()) {
@@ -98,13 +134,26 @@ function designRules(root: SNode, hasInner: boolean): unknown[] {
     return Number.isFinite(min) ? min : null;
   };
   const rules: unknown[] = [];
+  // default net class clearance from the project file (matches KiCad, which
+  // reads its own net classes); 0.2 = JLC default fallback
+  const proPath = boardPath.replace(/\.kicad_pcb$/, '.kicad_pro');
+  let defaultClearance = 0.2;
+  try {
+    const pro = JSON.parse(fs.readFileSync(proPath, 'utf8')) as {
+      net_settings?: { classes?: Array<{ name?: string; clearance?: number }> };
+    };
+    const def = (pro.net_settings?.classes ?? []).find((c) => c.name === 'Default');
+    if (def && typeof def.clearance === 'number' && def.clearance > 0) defaultClearance = def.clearance;
+  } catch {
+    // no/invalid project file: keep the JLC default
+  }
   const entry = (name: string, inner: boolean): unknown => {
     const zc = zoneClearance(inner);
     return {
       Layers: name,
-      PadToPad: 0.2,
-      PadToTrack: 0.2,
-      TrackToTrack: 0.2,
+      PadToPad: defaultClearance,
+      PadToTrack: defaultClearance,
+      TrackToTrack: defaultClearance,
       MinLineWidth: minTrack(inner) ?? 0.2,
       ...(zc !== null ? { TrackToRegion: zc, RegionToRegion: zc } : {}),
     };
@@ -285,8 +334,8 @@ export function plotJobFromSource(
   opts: JobOptions,
 ): string {
   const root = SNode.from(parse(source) as SExpr[]);
-  const stem = path.basename(boardPath).replace(/\.kicad_pcb$/, '');
-  const gen = opts.generationSoftware ?? { vendor: 'KiCad', application: 'Pcbnew', version: '10.0.0' };
+  const stem = boardStem(boardPath);
+  const gen = opts.generationSoftware ?? { vendor: 'typeCAD', application: 'pcb', version: PKG_VERSION };
   const now = opts.creationDate ?? new Date();
   const general = root.child('general');
   const thickness = general ? scalar(general, 1, 1.6) : 1.6;
@@ -312,8 +361,8 @@ export function plotJobFromSource(
     GeneralSpecs: {
       ProjectId: {
         Name: stem,
-        // real KiCad GUIDs aren't derivable (random tail); consumers ignore it
-        GUID: '',
+        // same derived GUID the gerber headers carry (writers must agree)
+        GUID: projectGuid(stem),
         Revision: 'rev?',
       },
       Size: edgeSize(root),
@@ -321,7 +370,7 @@ export function plotJobFromSource(
       BoardThickness: thickness,
       ...(finish !== undefined ? { Finish: finish } : { Finish: 'None' }),
     },
-    DesignRules: designRules(root, innerNames.length > 0),
+    DesignRules: designRules(root, innerNames.length > 0, boardPath),
     FilesAttributes: filesAttributes(stem, innerNames, fileFor),
     MaterialStackup: materialStackup(root, thickness),
   };
@@ -329,6 +378,7 @@ export function plotJobFromSource(
   fs.mkdirSync(opts.outDir, { recursive: true });
   // thickness sentinels → bare numbers with the decimal KiCad keeps ("1.0")
   const text = JSON.stringify(job, null, 2).replace(/"@@([\d.]+)@@"/g, '$1');
-  fs.writeFileSync(out, text + '\n');
+  // goldens use CRLF terminators (kicad-cli output)
+  fs.writeFileSync(out, text.replace(/\n/g, '\r\n'));
   return out;
 }

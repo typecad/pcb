@@ -262,7 +262,7 @@ function main(): void {
       };
       for (let i = 0; i < Math.max(a.strict.length, b.strict.length); i++) {
         const x = a.strict[i];
-        const y = a.strict[i];
+        const y = b.strict[i];
         if (x === y && runN(x) === null) continue;
         const nx = runN(x);
         const ny = runN(y);

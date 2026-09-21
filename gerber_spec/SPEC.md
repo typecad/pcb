@@ -412,11 +412,15 @@ All verified byte-exact against goldens:
   flip (a pre-fix bug) yields text that reads correctly-placed but
   vertically mirrored — bbox parity can't see it, only per-glyph probes
   can (the J-hook probe: `tools/text_hook.ts`).
-- **Regression probes** (`gerber_spec/tools/`): `make_text_probe_board.ts`
-  + `text_probe_compare.ts` plot an isolated-text board through kicad-cli
-  AND the native exporter and compare per-case ink boxes (18 cases: 4
-  angles × italic × 4 justify × mirror × two-line × calibration sweeps).
-  Golden committed so the compare runs without KiCad.
+- **Regression coverage**: the text/fill invariants live in the vitest
+  suite now — `stroke_text_orientation.test.ts` plots 18 isolated-text
+  cases (angles × italic × justify × mirror × two-line × calibration) and
+  compares per-case ink boxes against the committed kicad-cli golden
+  (`tools/text_probe_golden/`), and the zone-fill engine tests assert
+  winding samples through thermal slots/spokes plus an interior-crossing
+  bound (the gerbview-stall signature). The interactive variants remain in
+  `tools/` for ad-hoc investigation (`make_text_probe_board.ts`,
+  `text_probe_compare.ts`, `text_orient.ts`, `text_hook.ts`).
 - **File `(size H W)`**: the FIRST value scales y (height), the SECOND
   scales x (width). Square sizes look symmetric so this is easy to miss.
 - **Vertical placement** (probe-verified, KiCad 10):

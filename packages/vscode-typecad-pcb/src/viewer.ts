@@ -69,6 +69,9 @@ export class BoardViewerPanel {
   /** One delayed re-run of show() while the board settles (first open only). */
   private showRetryTimer: NodeJS.Timeout | undefined;
   private generating: Promise<boolean> | null = null;
+  /** Set by generate() when the DRC report predates the board — the next
+   *  generated page carries a visible "markers hidden" notice. */
+  private staleDrcNotice = false;
 
   constructor(
     private readonly hwFolder: () => string | null,
@@ -439,7 +442,10 @@ export class BoardViewerPanel {
       if (fs.existsSync(path.join(folder, drcRel)) && mtimeOf(path.join(folder, drcRel)) >= mtimeOf(board)) {
         flags.push('--drc', shellQuote(drcRel));
       } else if (fs.existsSync(path.join(folder, drcRel))) {
+        // Stale report describes the previous revision — say so where the
+        // user looks (the view's own status line), not just the output log
         this.output.appendLine('drc report predates the board — skipping markers until DRC re-runs');
+        this.staleDrcNotice = true;
       }
       overlay('--stackup', `${boardName}_stackup.json`);
 
@@ -461,7 +467,15 @@ export class BoardViewerPanel {
       if (!injected) {
         this.output.appendLine('warning: viewer HTML had no <head>/</body> anchors — cross-probe disabled');
       }
-      this.generated = { html, boardMtimeMs: mtimeOf(board) };
+      let finalHtml = html;
+      if (this.staleDrcNotice) {
+        this.staleDrcNotice = false;
+        // A postStatus would be wiped by the reload that lands this HTML —
+        // bake the notice into the page's own status line instead
+        const notice = `<script>(function(){function n(){var el=document.getElementById('status');if(el){el.textContent='DRC markers hidden — the report predates the board (run typeCAD: DRC)';el.setAttribute('data-locked','');}}if(document.readyState==='complete')n();else window.addEventListener('load',n);})();</script>`;
+        finalHtml = html.includes('</body>') ? html.replace('</body>', notice + '</body>') : html;
+      }
+      this.generated = { html: finalHtml, boardMtimeMs: mtimeOf(board) };
       this.output.appendLine(
         `viewer ready: ${components.length} component outline(s), board mtime ${this.generated.boardMtimeMs}, cross-probe ${injected ? 'on' : 'off'}`,
       );
@@ -679,6 +693,17 @@ export class BoardViewerPanel {
       }
       this.postStatus('rebuilding board…');
       await this.run(folder, 'npx typecad-pcb build', GENERATE_TIMEOUT_MS);
+      // A move invalidates every DRC marker — re-run DRC so the regenerated
+      // view carries fresh ones instead of none (the report predates the
+      // new board, and markers are the move's feedback loop). Non-zero
+      // exit just means violations exist; the report is still written.
+      this.postStatus('checking rules…');
+      try {
+        await this.run(folder, 'npx typecad-pcb drc', GENERATE_TIMEOUT_MS);
+      } catch {
+        // violations exit non-zero — only a real failure (missing board,
+        // engine crash) skips the markers, same as before
+      }
       // generate() refuses a board written <3s ago (the build may still be
       // writing); wait for it to settle so the viewer regenerates NOW, not
       // only whenever the file watcher next fires

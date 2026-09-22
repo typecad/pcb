@@ -3133,6 +3133,16 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     path.setAttribute('stroke-linecap', 'round');
     path.setAttribute('d', 'M ' + c.x.toFixed(3) + ' ' + c.y.toFixed(3) + ' L ' + c.x.toFixed(3) + ' ' + c.y.toFixed(3));
     routeUiGroup().appendChild(path);
+    // the frozen polyline behind the preview: grows by one segment per click
+    var anchored = document.createElementNS(SVGNSL, 'path');
+    anchored.setAttribute('class', 'route-anchored');
+    anchored.setAttribute('stroke', inkColor);
+    anchored.setAttribute('stroke-width', String(ROUTE_W));
+    anchored.setAttribute('fill', 'none');
+    anchored.setAttribute('stroke-linecap', 'round');
+    anchored.setAttribute('stroke-linejoin', 'round');
+    anchored.setAttribute('d', 'M ' + c.x.toFixed(3) + ' ' + c.y.toFixed(3));
+    routeUiGroup().appendChild(anchored);
     routeState = {
       sx: c.x,
       sy: c.y,
@@ -3143,6 +3153,11 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       startPad: padHi,
       targetPad: null,
       targetRing: null,
+      // multi-segment: start + every clicked anchor; sx/sy track the LAST
+      // point so angle snap is measured from the current segment's origin
+      points: [{ x: c.x, y: c.y }],
+      anchored: anchored, // one path whose d grows with every anchor
+      segs: 0,
     };
     raisePadLabels();
     refreshRatsnest();
@@ -3153,7 +3168,10 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   }
   function routeCancel() {
     if (!routeState) return;
+    // Escape kills the WHOLE route: the preview, every anchored segment,
+    // and the rings — nothing of the in-progress track survives
     routeState.path.remove();
+    routeState.anchored.remove();
     if (routeState.targetRing) routeState.targetRing.remove();
     routeState = null;
     refreshRatsnest();
@@ -3192,6 +3210,9 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   function routeFollow(mx, my) {
     if (!routeState) return;
     var end = routeEndpoint(mx, my);
+    routeState.lastEnd = end;
+    // the rubber-band always draws the CURRENT segment: last anchor ->
+    // snapped endpoint (the anchored polyline behind it is routeState.anchored)
     routeState.path.setAttribute(
       'd',
       'M ' + routeState.sx.toFixed(3) + ' ' + routeState.sy.toFixed(3) + ' L ' + end.x.toFixed(3) + ' ' + end.y.toFixed(3),
@@ -3205,9 +3226,32 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       refreshRatsnest(); // the live chain drops the newly-covered pad
     }
   }
+  function routeAnchor(end) {
+    // an unmovable waypoint: the displayed segment freezes into the
+    // anchored polyline and the route continues from this point
+    routeState.points.push({ x: end.x, y: end.y });
+    routeState.segs++;
+    var d = 'M ' + routeState.points[0].x.toFixed(3) + ' ' + routeState.points[0].y.toFixed(3);
+    for (var ai = 1; ai < routeState.points.length; ai++)
+      d += ' L ' + routeState.points[ai].x.toFixed(3) + ' ' + routeState.points[ai].y.toFixed(3);
+    routeState.anchored.setAttribute('d', d);
+    routeState.sx = end.x;
+    routeState.sy = end.y;
+    if (statusEl && !statusLocked())
+      statusEl.textContent =
+        'routing ' + (routeState.net ? routeState.net : 'no net') + ' \u2014 ' + routeState.segs + ' segment' + (routeState.segs > 1 ? 's' : '') + ' anchored \u2014 snap a pad to finish, Esc cancels';
+  }
   function routeCommit() {
     if (!routeState) return;
-    var d = routeState.path.getAttribute('d');
+    // finalize the WHOLE polyline: start pad -> anchors -> final pad. The
+    // endpoint is the last FOLLOWED one (routeEndpoint of the live mouse),
+    // not a re-projection of the segment origin — that would zero out
+    var pts = routeState.points.slice();
+    var end = routeState.lastEnd || routeEndpoint(routeState.sx, routeState.sy);
+    pts.push({ x: end.x, y: end.y });
+    var d = 'M ' + pts[0].x.toFixed(3) + ' ' + pts[0].y.toFixed(3);
+    for (var fi = 1; fi < pts.length; fi++)
+      d += ' L ' + pts[fi].x.toFixed(3) + ' ' + pts[fi].y.toFixed(3);
     var lg = routeState.layerGroup;
     var track = document.createElementNS(SVGNSL, 'path');
     track.setAttribute('d', d);
@@ -3224,7 +3268,8 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       routeState.startPad.ref +
       '.' +
       routeState.startPad.pin +
-      (routeState.targetPad ? ' \u2192 ' + routeState.targetPad.ref + '.' + routeState.targetPad.pin : '');
+      (routeState.targetPad ? ' \u2192 ' + routeState.targetPad.ref + '.' + routeState.targetPad.pin : '') +
+      ' (' + pts.length + ' points)';
     routeCancel();
     if (statusEl && !statusLocked()) statusEl.textContent = msg;
   }
@@ -3237,7 +3282,10 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       ev.preventDefault();
       var g = gerberAt(ev.clientX, ev.clientY);
       routeFollow(g.x, g.y);
-      routeCommit();
+      // snapped onto a pad -> the route ends here and commits; anywhere
+      // else -> the displayed point becomes an anchor and routing continues
+      if (routeState.targetPad) routeCommit();
+      else routeAnchor(routeEndpoint(g.x, g.y));
     },
     true,
   );
@@ -3246,6 +3294,8 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     var g = gerberAt(ev.clientX, ev.clientY);
     routeFollow(g.x, g.y);
   });
+  // an anchored segment is drawn slightly translucent until the route
+  // finalizes — reads as committed-but-pending vs the live rubber-band
 
   // the PCB model's pad manifest (build/<board>_pads.json): pin numbers and
   // net names straight from the board the PCB object wrote. Board y-down
@@ -4769,6 +4819,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       stroke-dashoffset: -13;
     }
   }
+  #route-ui .route-anchored { opacity: 0.9; }
   .route-pad-hi { fill: rgba(79, 193, 255, 0.15); stroke: #4fc1ff; stroke-width: 2px; }
   .route-pad-target { fill: rgba(63, 185, 80, 0.15); stroke: #3fb950; stroke-width: 2px; }
   #layout-sel-box { fill: rgba(79, 193, 255, 0.07); stroke: #4fc1ff; stroke-width: 1.5px; }

@@ -1,5 +1,6 @@
 import type { LayerInfo } from '../detect_layer.js';
 import type { DrcMarker, FabReport } from '../report.js';
+import { LAYER_THEME_LIST, type LayerTheme } from '../themes.js';
 
 export interface ViewerOptions {
   title?: string;
@@ -92,6 +93,13 @@ export interface ViewerOptions {
    * render serves every theme, no re-render needed
    */
   pcbaThemes?: Array<{ id: string; label: string; colors: Record<string, string> }>;
+  /**
+   * layer themes for the gerber/layout views (KiCad color-theme board
+   * sections). Defaults to the vendored set; each layer's ink flows through
+   * a CSS variable so the switch is a client-side restyle. Pass [] to omit
+   * the picker entirely.
+   */
+  layerThemes?: import('../themes.js').LayerTheme[];
 }
 
 /** Board stackup geometry (see `pcb_stackup_writer.ts` for the writer side). */
@@ -3708,7 +3716,10 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     var canvas = getComputedStyle(document.getElementById('board-area')).backgroundColor;
     clone.setAttribute('style', '--bg:' + canvas);
     var extra = '';
-    if (!document.body.classList.contains('light')) {
+    // a layer theme carries its own silk/paste/drill colors on the group
+    // style vars (they ride along in the clone) — only the default palette
+    // needs the dark-canvas recolors baked into the export
+    if (!document.body.classList.contains('light') && !document.body.classList.contains('layer-themed')) {
       extra +=
         '[data-kind="silkscreen"],[data-kind="paste"]{fill:#d6d6d6;}' +
         '[data-kind="silkscreen"] [stroke]:not([stroke="none"]),[data-kind="paste"] [stroke]:not([stroke="none"]){stroke:#d6d6d6 !important;}' +
@@ -3923,6 +3934,80 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     applyTheme(document.body.classList.contains('light') ? 'dark' : 'light');
   });
 
+  // ---- Layer themes (gerber & layout views) ----
+  // KiCad color-theme board sections; every layer's ink flows through a
+  // per-group CSS variable (--ink-<layerId>), so switching is a restyle of
+  // group + chip + canvas — no path is touched. Saved per browser like the
+  // dark/light preference, shared across boards and sessions.
+  var LAYER_THEME_KEY = 'gerber-viewer:layer-theme:v1';
+  var layerThemesIsland = [];
+  try {
+    layerThemesIsland = JSON.parse(document.getElementById('layer-themes').textContent) || [];
+  } catch (e) {}
+  var layerThemeSel = document.getElementById('layer-theme');
+  // copper side from the filename stem: f_cu / b_cu / in<N>_cu
+  function themeColorFor(theme, g) {
+    var name = (g.getAttribute('data-layer-name') || '').toLowerCase();
+    var kind = g.getAttribute('data-kind');
+    var key = null;
+    if (kind === 'copper') {
+      if (/(^|[-_.])f_cu(?=$|[-_.])/.test(name)) key = 'f';
+      else if (/(^|[-_.])b_cu(?=$|[-_.])/.test(name)) key = 'b';
+      else {
+        var inm = /(^|[-_.])in(\d+)_cu(?=$|[-_.])/.exec(name);
+        key = inm ? inm[2] : 'f';
+      }
+      var cop = theme.board.copper;
+      return cop ? cop[key] || null : null;
+    }
+    var side = /(^|[-_.])b_(mask|paste|silks|adhes|fab|crtyd)/.exec(name);
+    var suffix = kind === 'silkscreen' ? 'silks' : kind === 'courtyard' ? 'crtyd' : kind;
+    var tokens = { mask: 1, paste: 1, silks: 1, adhes: 1, fab: 1, crtyd: 1 };
+    if (tokens[suffix]) key = (side ? 'b_' : 'f_') + suffix;
+    else if (kind === 'edge') key = 'edge_cuts';
+    else if (kind === 'drill') key = 'via_through';
+    return key ? theme.board[key] || null : null;
+  }
+  function applyLayerTheme(id) {
+    var theme = null;
+    for (var lt = 0; lt < layerThemesIsland.length; lt++)
+      if (layerThemesIsland[lt].id === id) theme = layerThemesIsland[lt];
+    document.body.classList.toggle('layer-themed', !!theme);
+    var lgs = document.querySelectorAll('#yflip > g[data-layer-id]');
+    for (var lg = 0; lg < lgs.length; lg++) {
+      var g2 = lgs[lg];
+      var lid = g2.getAttribute('data-layer-id');
+      if (g2.__inkDefault === undefined) g2.__inkDefault = g2.style.getPropertyValue('--ink-' + lid);
+      var color = theme ? themeColorFor(theme, g2) : null;
+      if (color) g2.style.setProperty('--ink-' + lid, color);
+      else g2.style.setProperty('--ink-' + lid, g2.__inkDefault);
+      var chip = document.querySelector('.layer-row[data-layer-id="' + lid + '"] .chip');
+      if (chip) {
+        if (chip.__bgDefault === undefined) chip.__bgDefault = chip.style.background;
+        chip.style.background = color || chip.__bgDefault;
+      }
+    }
+    if (theme && theme.background) boardArea.style.backgroundColor = theme.background;
+    else boardArea.style.removeProperty('background-color');
+    // cutouts key off the canvas color — keep the var synced either way
+    svg.style.setProperty('--bg', getComputedStyle(boardArea).backgroundColor);
+    try { localStorage.setItem(LAYER_THEME_KEY, theme ? id : 'typecad'); } catch (e) {}
+  }
+  if (layerThemeSel) {
+    layerThemeSel.addEventListener('change', function () {
+      applyLayerTheme(layerThemeSel.value);
+    });
+    var savedLayerTheme = null;
+    try { savedLayerTheme = localStorage.getItem(LAYER_THEME_KEY); } catch (e) {}
+    var known = savedLayerTheme === 'typecad';
+    for (var st = 0; st < layerThemesIsland.length; st++)
+      if (layerThemesIsland[st].id === savedLayerTheme) known = true;
+    if (known && savedLayerTheme !== 'typecad') {
+      layerThemeSel.value = savedLayerTheme;
+      applyLayerTheme(savedLayerTheme);
+    }
+  }
+
   // Embedding surface (the vscode extension's webview client calls these to
   // cross-probe: select a component from the editor, click a pad to jump
   // back). Absent in a plain browser tab; callers must feature-check.
@@ -3976,25 +4061,25 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
      and non-none fills carry explicit attributes, so override those too.
      stroke="none" must be excluded: region paths (TrueType text glyphs, pour
      outlines) carry it and would gain a 1-unit outline — ballooned glyphs */
-  body:not(.light) #board [data-kind="silkscreen"],
-  body:not(.light) #board [data-kind="paste"] {
+  body:not(.light):not(.layer-themed) #board [data-kind="silkscreen"],
+  body:not(.light):not(.layer-themed) #board [data-kind="paste"] {
     fill: #d6d6d6;
   }
-  body:not(.light) #board [data-kind="silkscreen"] [stroke]:not([stroke='none']),
-  body:not(.light) #board [data-kind='paste'] [stroke]:not([stroke='none']) {
+  body:not(.light):not(.layer-themed) #board [data-kind="silkscreen"] [stroke]:not([stroke='none']),
+  body:not(.light):not(.layer-themed) #board [data-kind='paste'] [stroke]:not([stroke='none']) {
     stroke: #d6d6d6 !important;
   }
-  body:not(.light) #board [data-kind='silkscreen'] [fill]:not([fill='none']),
-  body:not(.light) #board [data-kind='paste'] [fill]:not([fill='none']) {
+  body:not(.light):not(.layer-themed) #board [data-kind='silkscreen'] [fill]:not([fill='none']),
+  body:not(.light):not(.layer-themed) #board [data-kind='paste'] [fill]:not([fill='none']) {
     fill: #d6d6d6 !important;
   }
-  body:not(.light) #board [data-kind='drill'] {
+  body:not(.light):not(.layer-themed) #board [data-kind='drill'] {
     fill: #2fbfae;
   }
-  body:not(.light) #board [data-kind='drill'] [stroke]:not([stroke='none']) {
+  body:not(.light):not(.layer-themed) #board [data-kind='drill'] [stroke]:not([stroke='none']) {
     stroke: #2fbfae !important;
   }
-  body:not(.light) #board [data-kind='drill'] [fill]:not([fill='none']) {
+  body:not(.light):not(.layer-themed) #board [data-kind='drill'] [fill]:not([fill='none']) {
     fill: #2fbfae !important;
   }
   /* clear-polarity shapes must always paint the canvas color, not the override */
@@ -4003,9 +4088,9 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
      stroking those outlines balloons the letters. The .cut rule above is more
      specific, so clear-polarity regions keep their canvas-color stroke. */
   #board path[fill-rule] { stroke: none !important; }
-  body:not(.light) .layer-row[data-kind="silkscreen"] .chip,
-  body:not(.light) .layer-row[data-kind="paste"] .chip { background: #d6d6d6 !important; }
-  body:not(.light) .layer-row[data-kind="drill"] .chip { background: #2fbfae !important; }
+  body:not(.light):not(.layer-themed) .layer-row[data-kind="silkscreen"] .chip,
+  body:not(.light):not(.layer-themed) .layer-row[data-kind="paste"] .chip { background: #d6d6d6 !important; }
+  body:not(.light):not(.layer-themed) .layer-row[data-kind="drill"] .chip { background: #2fbfae !important; }
   #sidebar { width: 260px; min-width: 260px; background: var(--chrome-bg); color: var(--chrome-fg); display: flex; flex-direction: column; border-right: 1px solid var(--chrome-border); }
   #sidebar header { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 12px 14px; font-weight: 600; border-bottom: 1px solid var(--chrome-border); }
   #sidebar header .title { min-width: 0; }
@@ -4021,6 +4106,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   #toolbar { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 14px; border-top: 1px solid var(--chrome-border); }
   #toolbar button { flex: 1 1 auto; min-width: 34px; background: var(--btn-bg); color: var(--chrome-fg); border: 1px solid var(--btn-border); border-radius: 4px; padding: 4px 6px; cursor: pointer; font: inherit; }
   #toolbar button:hover { background: var(--btn-hover); }
+  #toolbar select { flex: 0 1 auto; max-width: 120px; background: var(--btn-bg); color: var(--chrome-fg); border: 1px solid var(--btn-border); border-radius: 4px; padding: 4px 4px; cursor: pointer; font: inherit; }
   #toolbar button.armed { box-shadow: inset 0 0 0 1px var(--chrome-fg); background: var(--btn-hover); }
   #search-box { padding: 8px 14px 0; }
   #comp-search { width: 100%; background: var(--btn-bg); color: var(--chrome-fg); border: 1px solid var(--btn-border); border-radius: 4px; padding: 5px 8px; font: inherit; margin-bottom: 10px; }
@@ -4201,7 +4287,19 @@ ${rows}
     <button id="btn-in">+</button>
     <button id="btn-out">&#8722;</button>
     <button id="btn-all-on" title="show all layers">All</button>
-    <button id="btn-all-off" title="hide all layers">None</button>
+    <button id="btn-all-off" title="hide all layers">None</button>${
+      /* layer colors for the gerber & layout views; KiCad color themes */
+      (options.layerThemes ?? LAYER_THEME_LIST).length
+        ? `
+    <select id="layer-theme" title="layer colors (KiCad color themes)">${[
+        `<option value="typecad">typeCAD</option>`,
+        ...(options.layerThemes ?? LAYER_THEME_LIST).map(
+          (t) =>
+            `<option value="${escapeHtml(t.id)}" title="${escapeHtml(t.credit + ' — ' + t.license)}">${escapeHtml(t.label)}</option>`,
+        ),
+      ].join('')}</select>`
+        : ''
+    }
     <button id="btn-measure" title="measure: click start, click end — rulers stick; Esc clears all">&#x1F4CF;</button>
     <button id="btn-drc" class="has-drc-hidden" title="toggle DRC violation markers" hidden>DRC</button>
     <button id="btn-svg" title="download the current view as SVG">SVG</button>
@@ -4286,6 +4384,11 @@ ${rows}
           default: options.pcbaThemes[0]!.colors,
           themes: Object.fromEntries(options.pcbaThemes.map((t) => [t.id, t.colors])),
         }).replace(/</g, '\\u003c')
+      : ''
+  }</script>
+  <script id="layer-themes" type="application/json">${
+    (options.layerThemes ?? LAYER_THEME_LIST).length
+      ? JSON.stringify(options.layerThemes ?? LAYER_THEME_LIST).replace(/</g, '\\u003c')
       : ''
   }</script>
 </div>

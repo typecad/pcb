@@ -463,10 +463,16 @@ export function renderSvg(layers: RenderLayer[], options: RenderOptions = {}): s
     const body: string[] = [];
     const warnings = new Set<string>();
 
+    // Ink flows through a per-layer CSS variable so the interactive viewer
+    // can restyle layers client-side (theme switch) without touching a
+    // single path; the literal default rides on the group's style. The PCBA
+    // image renderer calls renderLayerInk with flat colors of its own.
+    const inkVar = `--ink-${info.id}`;
+    const inkColor = `var(${inkVar})`;
     const ink: LayerInk =
       'ops' in layer.image
-        ? renderLayerInk(layer, { color: info.color, idPrefix: `ap${li}` })
-        : renderDrillInk(layer, { color: info.color });
+        ? renderLayerInk(layer, { color: inkColor, idPrefix: `ap${li}` })
+        : renderDrillInk(layer, { color: inkColor });
     defs.push(...ink.defs);
     body.push(...ink.body);
     for (const w of ink.warnings) warnings.add(w);
@@ -477,7 +483,7 @@ export function renderSvg(layers: RenderLayer[], options: RenderOptions = {}): s
       );
     }
     groups.push(
-      `<g data-layer-id="${escapeXml(info.id)}" data-layer-name="${escapeXml(info.name)}" data-kind="${info.kind}" fill="${info.color}"${
+      `<g data-layer-id="${escapeXml(info.id)}" data-layer-name="${escapeXml(info.name)}" data-kind="${info.kind}" fill="${inkColor}" style="${inkVar}:${info.color}"${
         info.defaultVisible ? '' : ' display="none"'
       }>${body.join('')}</g>`,
     );

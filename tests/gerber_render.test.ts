@@ -45,7 +45,10 @@ describe('renderSvg', () => {
   });
 
   it('renders traces with strokes and arc commands', () => {
-    expect(svg).toContain('stroke="#c87533"'); // front copper color
+    // ink flows through a per-layer CSS variable (client-side themes); the
+    // literal default rides on the layer group's style
+    expect(svg).toMatch(/stroke="var\(--ink-demo-f_cu-gbr\)"/);
+    expect(svg).toMatch(/style="--ink-demo-f_cu-gbr:#c87533"/);
     expect(svg).toContain('stroke-linecap="round"');
     expect(svg).toMatch(/ A [\d.]+ [\d.]+ 0 [01] [01] /);
     expect(svg).toContain('M 1 1 L 3 1 L 3 2');

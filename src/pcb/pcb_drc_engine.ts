@@ -1619,6 +1619,10 @@ export function runDrc(source: string, constraints: Partial<DrcConstraints> = {}
       ...collectLayerItems(root, layer, netCodeToName),
       ...collectZoneItems(root, layer, netCodeToName, fillCache),
     ];
+    // DFM substrate: structural copper only — a hatched pour's strokes are
+    // intentionally narrow, angled geometry whose junctions are sub-process
+    // features, not fab-hostile defects (acid_trap and copper_sliver)
+    const structuralItems = items.filter((it) => !(it.kind === 'zone' && it.hatched));
 
     // dangling track ends: an endpoint touching no same-net copper other
     // than its own segment
@@ -1685,10 +1689,13 @@ export function runDrc(source: string, constraints: Partial<DrcConstraints> = {}
     }
 
     // acid traps: acute interior angles in UNIONED per-net copper — the
-    // wedge forms where two touching items meet, never inside one capsule
+    // wedge forms where two touching items meet, never inside one capsule.
+    // Hatch strokes are excluded (structural copper only): their clipped
+    // line ends and spoke/pad junctions are sub-process-feature wedges by
+    // design and would otherwise swamp the check on every hatched pour
     if (c.min_copper_angle_deg > 0) {
       const minCos = Math.cos((c.min_copper_angle_deg * Math.PI) / 180);
-      for (const [net, unioned] of unionedCopperByNet(items)) {
+      for (const [net, unioned] of unionedCopperByNet(structuralItems)) {
         for (const poly of unioned) {
           const n = poly.length;
           if (n < 3) continue;
@@ -1748,16 +1755,14 @@ export function runDrc(source: string, constraints: Partial<DrcConstraints> = {}
     // copper slivers: same-net unioned copper narrower than the fab can
     // hold. Thermal spoke roots are intentionally narrow — exempt
     // fragments centered near a same-net pad. Hatched pour strokes are
-    // excluded from the union entirely: their narrowness is the design
-    // intent (morphological opening over ~1k hatch islands per layer is
-    // also what made DRC take minutes), so only tracks/pads/vias and
-    // SOLID pour copper are sliver candidates.
+    // excluded from the union (see structuralItems): their narrowness is
+    // the design intent, and the opening over ~1k hatch islands per layer
+    // is what made DRC take minutes.
     if (c.min_copper_sliver_width > 0) {
       const padCenters = items
         .filter((it) => it.kind === 'pad' && it.net !== null)
         .map((it) => ({ x: Math.round(it.pos.x * NM), y: Math.round(it.pos.y * NM), net: it.net! }));
-      const sliverCandidates = items.filter((it) => !(it.kind === 'zone' && it.hatched));
-      for (const [net, unioned] of unionedCopperByNet(sliverCandidates)) {
+      for (const [net, unioned] of unionedCopperByNet(structuralItems)) {
         // 0.01 mm² floor: pours clip line ends into sub-thickness
         // TIPS (triangular, ares ≪ width×length) — inherent to the format,
         // reported only when substantial; silence via conf if unwanted

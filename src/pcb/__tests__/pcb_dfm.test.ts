@@ -111,6 +111,33 @@ describe('DFM tier 1', () => {
     expect(capsTrap!.description).toContain('28°');
   });
 
+  it('does not flag hatched pour junctions as acid traps (structural copper only)', () => {
+    // a hatched GND pour over a same-net pad: the clipped stroke ends and
+    // spoke/pad junctions are sub-process wedges by design, not etch traps
+    const hatch = `
+      (footprint "T:X" (layer "F.Cu") (at 15 10)
+        (pad "1" smd rect (at 0 0) (size 1 1) (layers "F.Cu" "F.Mask") (net 1) (uuid "p1")))
+      (zone (net 1) (net_name "GND") (layer "F.Cu") (connect_pads (clearance 0.3))
+        (fill yes (mode hatch) (thermal_gap 0.3) (thermal_bridge_width 0.4)
+          (hatch_thickness 0.25) (hatch_gap 0.5) (hatch_orientation 0))
+        (polygon (pts (xy 2 2) (xy 28 2) (xy 28 18) (xy 2 18))))`;
+    const vs = dfm(`
+      ${EDGES}
+      ${hatch}`);
+    expect(vs.filter((v) => v.type === 'acid_trap')).toHaveLength(0);
+    // a REAL acute wedge on the same board still reports — the check runs,
+    // it just ignores hatch copper (the wedge pad sits over the pour)
+    const withTrap = dfm(`
+      ${EDGES}
+      ${hatch}
+      (footprint "T:A" (layer "F.Cu") (at 15 10)
+        (pad "9" smd custom (at 3 0 0) (size 0.5 0.5) (layers "F.Cu") (net 2) (uuid "p9")
+          (primitives (gr_poly (pts (xy 0 0) (xy 5 0.3) (xy 5 -0.3)) (width 0)))))`);
+    const trap = withTrap.find((v) => v.type === 'acid_trap');
+    expect(trap).toBeDefined();
+    expect(trap!.items[0]!.description).toContain('net SIG');
+  });
+
   it('flags silkscreen text below manufacturable height/thickness', () => {
     const vs = dfm(`
       ${EDGES}

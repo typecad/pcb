@@ -2236,15 +2236,27 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       layoutTextSel = -1; // a part grab replaces any text grab
       markTextSel();
       var alreadySel = layoutSel.indexOf(g.__lc.ref) !== -1;
-      if (ev.shiftKey && !alreadySel) layoutSel.push(g.__lc.ref);
-      else if (!ev.shiftKey && !alreadySel) layoutSel = [g.__lc.ref];
-      markLayoutSel();
-      if (!alreadySel) {
-        // selection-first: this press selects; the part moves on the NEXT
-        // press-drag of the now-selected part — never a grab-by-surprise
+      if (ev.shiftKey && !alreadySel) {
+        layoutSel.push(g.__lc.ref);
+        markLayoutSel();
         if (statusEl && !statusLocked())
           statusEl.textContent = g.__lc.ref + ' selected — drag to move, R to rotate';
         return;
+      }
+      if (!ev.shiftKey && !alreadySel) {
+        // selection-first: this press selects; the part moves on the NEXT
+        // press-drag of the now-selected part — never a grab-by-surprise
+        layoutSel = [g.__lc.ref];
+        markLayoutSel();
+        if (statusEl && !statusLocked())
+          statusEl.textContent = g.__lc.ref + ' selected — drag to move, R to rotate';
+        return;
+      }
+      if (!ev.shiftKey && alreadySel && layoutSel.length > 1) {
+        // plain press on one of several selected parts: it becomes THE
+        // selection (the rest unselect), then the press-drag proceeds
+        layoutSel = [g.__lc.ref];
+        markLayoutSel();
       }
       var startG = gerberAt(ev.clientX, ev.clientY);
       var orig = { x: g.__lx, y: g.__ly };
@@ -2609,7 +2621,19 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       boxRect.remove();
       boxRect = null;
     }
-    if (!b.active || !layoutOverlay) return;
+    // a plain click on empty space (no drag) unselects everything — the
+    // click-clears-selection convention. Shift keeps the selection so a
+    // stray click can't wipe a careful multi-select.
+    if (!b.active) {
+      if (ev.button === 0 && !ev.shiftKey && (layoutSel.length || layoutTextSel >= 0)) {
+        layoutSel = [];
+        layoutTextSel = -1;
+        markTextSel();
+        markLayoutSel();
+      }
+      return;
+    }
+    if (!layoutOverlay) return;
     var g1 = gerberAt(ev.clientX, ev.clientY);
     var bx0 = Math.min(b.g0.x, g1.x);
     var bx1 = Math.max(b.g0.x, g1.x);

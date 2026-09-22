@@ -2282,6 +2282,12 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         window.removeEventListener('pointermove', onMove);
         window.removeEventListener('pointerup', onUp);
         if (moved) commitLayoutMove(g);
+        else if (ev.shiftKey && alreadySel) {
+          // shift-click on a selected part toggles it back out of the
+          // selection (a shift-DRAG still moves it — moved covers that)
+          layoutSel.splice(layoutSel.indexOf(g.__lc.ref), 1);
+          markLayoutSel();
+        }
       }
       window.addEventListener('pointermove', onMove);
       window.addEventListener('pointerup', onUp);
@@ -2557,6 +2563,83 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   if (layoutAlignBtn) layoutAlignBtn.addEventListener('click', layoutAlignRow);
   var layoutDistBtn = document.getElementById('layout-dist');
   if (layoutDistBtn) layoutDistBtn.addEventListener('click', layoutDistributeX);
+
+  // ---- box (marquee) selection: left-drag on EMPTY board space ----
+  // The CAD convention: dragging left→right ENCLOSES (only parts fully
+  // inside the box select); dragging right→left CROSSES (any part the box
+  // touches selects). The box styles itself per direction — solid blue for
+  // enclosure, dashed green for crossing. Shift at release extends the
+  // current selection instead of replacing it.
+  var boxSel = null;
+  var boxRect = null;
+  svg.addEventListener('pointerdown', function (ev) {
+    if (ev.button !== 0 || !document.body.classList.contains('typecad-layout')) return;
+    if (!layoutOverlay) return;
+    var t = ev.target;
+    // part presses are consumed by their own handlers; the probe outlines
+    // carry data-ref too — anything part-ish is not empty space
+    if (t && t.closest && (t.closest('.layout-comp') || t.closest('[data-ref]'))) return;
+    boxSel = { g0: gerberAt(ev.clientX, ev.clientY), x0: ev.clientX, y0: ev.clientY, active: false };
+  });
+  window.addEventListener('pointermove', function (ev) {
+    if (!boxSel) return;
+    if (!boxSel.active && Math.hypot(ev.clientX - boxSel.x0, ev.clientY - boxSel.y0) < 4) return;
+    boxSel.active = true;
+    if (!boxRect) {
+      boxRect = document.createElementNS(SVGNSL, 'rect');
+      boxRect.setAttribute('id', 'layout-sel-box');
+      boxRect.setAttribute('vector-effect', 'non-scaling-stroke');
+      document.getElementById('panzoom').appendChild(boxRect);
+    }
+    var g1 = gerberAt(ev.clientX, ev.clientY);
+    boxRect.setAttribute('x', Math.min(boxSel.g0.x, g1.x).toFixed(3));
+    boxRect.setAttribute('y', Math.min(boxSel.g0.y, g1.y).toFixed(3));
+    boxRect.setAttribute('width', Math.abs(g1.x - boxSel.g0.x).toFixed(3));
+    boxRect.setAttribute('height', Math.abs(g1.y - boxSel.g0.y).toFixed(3));
+    boxRect.setAttribute('class', g1.x >= boxSel.g0.x ? 'enclose' : 'cross');
+  });
+  window.addEventListener('pointerup', function (ev) {
+    if (!boxSel) return;
+    var b = boxSel;
+    boxSel = null;
+    if (boxRect) {
+      boxRect.remove();
+      boxRect = null;
+    }
+    if (!b.active || !layoutOverlay) return;
+    var g1 = gerberAt(ev.clientX, ev.clientY);
+    var bx0 = Math.min(b.g0.x, g1.x);
+    var bx1 = Math.max(b.g0.x, g1.x);
+    var by0 = Math.min(b.g0.y, g1.y);
+    var by1 = Math.max(b.g0.y, g1.y);
+    var ltr = g1.x >= b.g0.x;
+    var matched = [];
+    for (var bc = 0; bc < layoutComps.length; bc++) {
+      var refB = layoutComps[bc].ref;
+      var stB = compStateAt(refB);
+      if (!stB) continue;
+      var aB = compAABB(stB.c, stB.x, stB.y, stB.rot);
+      if (ltr) {
+        // enclosure: the part's whole AABB inside the box (0.01mm slack)
+        if (aB.x0 >= bx0 - 0.01 && aB.x1 <= bx1 + 0.01 && aB.y0 >= by0 - 0.01 && aB.y1 <= by1 + 0.01)
+          matched.push(refB);
+      } else if (aB.x0 <= bx1 && aB.x1 >= bx0 && aB.y0 <= by1 && aB.y1 >= by0) {
+        matched.push(refB);
+      }
+    }
+    if (ev.shiftKey) {
+      for (var mb = 0; mb < matched.length; mb++)
+        if (layoutSel.indexOf(matched[mb]) === -1) layoutSel.push(matched[mb]);
+    } else {
+      layoutSel = matched;
+    }
+    layoutTextSel = -1;
+    markTextSel();
+    markLayoutSel();
+    if (statusEl && !statusLocked())
+      statusEl.textContent =
+        layoutSel.length + ' selected (' + (ltr ? 'enclosed' : 'crossing') + ') — Esc clears';
+  });
   // ---- phase 3 guardrails: overlap/outline warnings + stranded ratsnest ----
   function compAABB(c, x, y, rotDeg) {
     var a = ((rotDeg || 0) * Math.PI) / 180;
@@ -4350,6 +4433,12 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       stroke-dashoffset: -13;
     }
   }
+  #layout-sel-box { fill: rgba(79, 193, 255, 0.07); stroke: #4fc1ff; stroke-width: 1.5px; }
+  #layout-sel-box.cross {
+    stroke: #3fb950;
+    fill: rgba(63, 185, 80, 0.07);
+    stroke-dasharray: 6 4;
+  }
   #flow-label { display: flex; align-items: center; gap: 6px; color: var(--chrome-fg); font-size: 11px; cursor: pointer; user-select: none; }
   #flow-speed-row { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
   #flow-speed { flex: 1; accent-color: var(--chrome-fg); }
@@ -4451,7 +4540,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   <div class="side-label">Layout</div>
   <div id="layout-keys"><span class="chip chip-dashed">TrackBuilder</span><span class="chip chip-solid">autorouted</span><span class="chip chip-grey">ripped up</span></div>
   <label><input type="checkbox" id="layout-snap" checked> snap 0.5 mm</label>
-  <div id="layout-hint">unrouted nets show as thin solid wires \u00b7 drag \u00b7 arrows nudge (Alt = 0.1 mm) \u00b7 R rotates \u00b7 shift-click selects several \u00b7 greyed copper rebuilds on apply \u00b7 texts: drag strokes to move, double-click to edit</div>
+  <div id="layout-hint">unrouted nets show as thin solid wires \u00b7 drag \u00b7 arrows nudge (Alt = 0.1 mm) \u00b7 R rotates \u00b7 shift-click toggles \u00b7 drag empty space: box select (left\u2192right encloses, right\u2192left crosses) \u00b7 greyed copper rebuilds on apply \u00b7 texts: drag strokes to move, double-click to edit</div>
   <div id="layout-tools">
     <button id="layout-align" type="button" disabled>align row</button>
     <button id="layout-dist" type="button" disabled>distribute X</button>

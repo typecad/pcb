@@ -3403,7 +3403,10 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       for (var ci = 0; ci < cands.length; ci++) {
         var m = clearanceMargin(piece.obstacles, [{ x: routeState.sx, y: routeState.sy }].concat(cands[ci]), routeState.w);
         var nearer = Math.hypot(cands[ci][0].x - mx, cands[ci][0].y - my);
-        var score = m + (ci === 0 ? 0.001 : 0) - nearer * 0.001; // clear dominates
+        // clear dominates; among clear orders the ORTHOGONAL-first (index 1)
+        // wins ties — 0/90 leads and the 45 transitions — then the mouse
+        var orthoFirst = ci === 1 ? 0.05 : 0;
+        var score = m + orthoFirst - nearer * 0.01;
         if (score > bestMargin) {
           bestMargin = score;
           bestPts = cands[ci];
@@ -3506,6 +3509,12 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       [1, 0, 1], [-1, 0, 1], [0, 1, 1], [0, -1, 1],
       [1, 1, 1.4142], [1, -1, 1.4142], [-1, 1, 1.4142], [-1, -1, 1.4142],
     ];
+    // 0/90 prioritized: diagonals carry a premium (a 45 serves only the
+    // lateral shift orthogonal routing can't make), and every direction
+    // change costs — long straight runs beat staircases
+    var DIAG_PREF = 1.5;
+    var BEND_COST = 0.9;
+    var dirFrom = new Int8Array(W * H).fill(-1);
     var goal = g.cy * W + g.cx;
     var found = false;
     while (open.length) {
@@ -3527,11 +3536,15 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         if (blocked[ni]) continue;
         // no corner cutting between two diagonal blockers
         if (DIRS[di][2] > 1 && (blocked[ccy * W + nx] || blocked[ny * W + ccx])) continue;
-        var nc = cost[cur] + DIRS[di][2];
+        var moveCost = DIRS[di][2] > 1 ? DIRS[di][2] * DIAG_PREF : DIRS[di][2];
+        var prevDir = dirFrom[cur];
+        if (prevDir !== -1 && prevDir !== di) moveCost += BEND_COST;
+        var nc = cost[cur] + moveCost;
         if (nc < cost[ni]) {
           cost[ni] = nc;
           fScore[ni] = nc + Math.hypot(g.cx - nx, g.cy - ny);
           came[ni] = cur;
+          dirFrom[ni] = di;
           if (open.indexOf(ni) === -1) open.push(ni);
         }
       }

@@ -2182,6 +2182,38 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         rect.setAttribute('rx', '0.3');
         g.appendChild(rect);
       }
+      // selection brackets: four L-shaped corner marks just outside the
+      // outline bbox, in the group's LOCAL frame so selection visuals ride
+      // the part's own translate/rotate for free. Shown only while selected.
+      var bx0 = -c.w / 2, by0 = -c.h / 2, bx1 = c.w / 2, by1 = c.h / 2;
+      if (c.outline && c.outline.length >= 3) {
+        bx0 = by0 = Infinity;
+        bx1 = by1 = -Infinity;
+        for (var ob = 0; ob < c.outline.length; ob++) {
+          bx0 = Math.min(bx0, c.outline[ob].x);
+          by0 = Math.min(by0, c.outline[ob].y);
+          bx1 = Math.max(bx1, c.outline[ob].x);
+          by1 = Math.max(by1, c.outline[ob].y);
+        }
+      }
+      var bm = 0.12;
+      var arm = Math.min(Math.max(Math.min(bx1 - bx0, by1 - by0) * 0.35, 0.3), 0.8);
+      var cx0 = bx0 - bm, cy0 = by0 - bm, cx1 = bx1 + bm, cy1 = by1 + bm;
+      var brk = document.createElementNS(SVGNSL, 'path');
+      brk.setAttribute('class', 'layout-sel-handles');
+      brk.setAttribute('vector-effect', 'non-scaling-stroke');
+      brk.setAttribute(
+        'd',
+        'M ' + (cx0 + arm).toFixed(3) + ' ' + cy0.toFixed(3) + ' L ' + cx0.toFixed(3) + ' ' + cy0.toFixed(3) +
+          ' L ' + cx0.toFixed(3) + ' ' + (cy0 + arm).toFixed(3) +
+          ' M ' + (cx1 - arm).toFixed(3) + ' ' + cy0.toFixed(3) + ' L ' + cx1.toFixed(3) + ' ' + cy0.toFixed(3) +
+          ' L ' + cx1.toFixed(3) + ' ' + (cy0 + arm).toFixed(3) +
+          ' M ' + (cx1 - arm).toFixed(3) + ' ' + cy1.toFixed(3) + ' L ' + cx1.toFixed(3) + ' ' + cy1.toFixed(3) +
+          ' L ' + cx1.toFixed(3) + ' ' + (cy1 - arm).toFixed(3) +
+          ' M ' + (cx0 + arm).toFixed(3) + ' ' + cy1.toFixed(3) + ' L ' + cx0.toFixed(3) + ' ' + cy1.toFixed(3) +
+          ' L ' + cx0.toFixed(3) + ' ' + (cy1 - arm).toFixed(3),
+      );
+      g.appendChild(brk);
       setCompPos(g, c.x, c.y);
       layoutOverlay.appendChild(g);
       attachLayoutDrag(g);
@@ -4286,8 +4318,27 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   #layout-overlay .layout-comp.layout-back polygon { stroke: none; fill: transparent; }
   #layout-overlay .layout-comp:hover rect,
   #layout-overlay .layout-comp:hover polygon { stroke: rgba(255,255,255,0.45); stroke-width: 0.12; fill: transparent; }
+  #layout-overlay .layout-comp .layout-sel-handles { display: none; fill: none; }
+  #layout-overlay .layout-comp.layout-sel .layout-sel-handles {
+    display: block;
+    stroke: #4fc1ff;
+    stroke-width: 2.5px;
+    stroke-linecap: square;
+  }
   #layout-overlay .layout-comp.layout-sel rect,
-  #layout-overlay .layout-comp.layout-sel polygon { stroke: #ffffff; stroke-width: 0.15; }
+  #layout-overlay .layout-comp.layout-sel polygon {
+    stroke: #4fc1ff;
+    stroke-width: 2px;
+    vector-effect: non-scaling-stroke;
+    stroke-dasharray: 8 5;
+    animation: layoutSelAnts 0.45s linear infinite;
+    fill: rgba(79, 193, 255, 0.12);
+  }
+  @keyframes layoutSelAnts {
+    to {
+      stroke-dashoffset: -13;
+    }
+  }
   #flow-label { display: flex; align-items: center; gap: 6px; color: var(--chrome-fg); font-size: 11px; cursor: pointer; user-select: none; }
   #flow-speed-row { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
   #flow-speed { flex: 1; accent-color: var(--chrome-fg); }

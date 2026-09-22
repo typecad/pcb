@@ -81,15 +81,24 @@ export function findBuildFile(extension: string): string | null {
 }
 
 /**
- * The project's compiled board — the newest .kicad_pcb in the build dir.
- * build/ picks up stray boards (fp upgrade tests, imports) that would make
- * a single-file check refuse forever; the board a build wrote last is the
- * project's, so newest wins.
+ * The project's compiled board. build/ picks up stray boards (fp upgrade
+ * tests, imports, scratch files); the project's own board matches the hw
+ * package name (rd-skeleton-hw → rd_skeleton) and wins over whatever stray
+ * was touched last — newest is the fallback when no name matches.
  */
 export function findBoardFile(): string | null {
   const files = findBuildFiles('.kicad_pcb');
   if (files.length === 0) return null;
-  return files.map((f) => ({ f, m: fs.statSync(f).mtimeMs })).sort((a, b) => b.m - a.m)[0]!.f;
+  const byNewest = files.map((f) => ({ f, m: fs.statSync(f).mtimeMs })).sort((a, b) => b.m - a.m);
+  try {
+    const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8')) as { name?: string };
+    const stem = String(pkg.name ?? '').replace(/-hw$/, '').replace(/[.-]/g, '_').toLowerCase();
+    const own = byNewest.find((e) => path.basename(e.f, '.kicad_pcb').toLowerCase() === stem);
+    if (own) return own.f;
+  } catch {
+    // no/read-failed package.json: newest-wins stands
+  }
+  return byNewest[0]!.f;
 }
 
 export function parseKiCadReport(reportPath: string): { violations: KiCadViolation[]; unconnectedItems: number } {

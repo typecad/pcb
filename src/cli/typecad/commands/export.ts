@@ -36,6 +36,36 @@ function getOutputDir(parsed: ParsedArgs, defaultDir: string): string {
   return defaultDir;
 }
 
+/** Fabric-artifact extensions this command family owns in the output dir. */
+const FAB_ARTIFACT_RE = /\.(gbr|gtl|gbl|gts|gbs|gto|gbo|gtp|gbp|gta|gba|gm1|gko|gbrjob|drl|xln)$/i;
+
+/**
+ * The fab dir is single-board: a leftover export under a DIFFERENT board stem
+ * (fp upgrade tests, imports, temp boards) rides along otherwise —
+ * gerber-viewer embeds every file in the dir, so one stray stem renders the
+ * board twice (stale + fresh copies of every footprint and trace, moving
+ * together). After exporting `boardPath`, remove other stems' artifacts.
+ */
+export function pruneForeignStemArtifacts(outputDir: string, boardPath: string): string[] {
+  const stem = path.basename(boardPath, '.kicad_pcb').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const ownRe = new RegExp(`^${stem}(-|\\.|$)`);
+  const removed: string[] = [];
+  for (const f of fs.readdirSync(outputDir)) {
+    if (!FAB_ARTIFACT_RE.test(f) || ownRe.test(f)) continue;
+    fs.rmSync(path.join(outputDir, f));
+    removed.push(f);
+  }
+  return removed;
+}
+
+/** Prune + report: one log line, only when something was actually removed. */
+function pruneAndReport(outputDir: string, boardPath: string, json: boolean): void {
+  const removed = pruneForeignStemArtifacts(outputDir, boardPath);
+  if (removed.length && !json) {
+    logger.log(chalk.gray(`  Pruned ${removed.length} foreign-board artifact(s) from ${outputDir}`));
+  }
+}
+
 const VALID_SUBCOMMANDS = ['gerbers', 'drill'];
 
 let cachedKicadMajor = Number.NaN;
@@ -104,6 +134,8 @@ async function runGerbers(parsed: ParsedArgs): Promise<void> {
 
   await executeKiCADCommand('pcb', args, { stdio: 'inherit' });
 
+  pruneAndReport(outputDir, pcbPath, json);
+
   const gerberFiles = fs
     .readdirSync(outputDir)
     .filter(
@@ -170,6 +202,7 @@ async function runDrill(parsed: ParsedArgs): Promise<void> {
       outDir: outputDir,
       copperLayerCount: copperCount,
     });
+    pruneAndReport(outputDir, pcbPath, json);
     reportDrill(parsed, pcbPath, outputDir, [path.basename(written)], true);
     return;
   }
@@ -177,6 +210,8 @@ async function runDrill(parsed: ParsedArgs): Promise<void> {
   const args = ['export', 'drill', '--output', outputDir, ...parsed.passthrough, pcbPath];
 
   await executeKiCADCommand('pcb', args, { stdio: 'inherit' });
+
+  pruneAndReport(outputDir, pcbPath, json);
 
   const drillFiles = fs.readdirSync(outputDir).filter((f) => f.endsWith('.drl') || f.endsWith('.xln'));
 
@@ -451,6 +486,8 @@ async function runNativeGerbers(parsed: ParsedArgs): Promise<void> {
     return spec ? { fileFunction: spec.fileFunction, filePolarity: spec.polarity } : null;
   };
   written.push(plotJobFromSource(source, pcbPath, fileFor, { outDir: outputDir }));
+
+  pruneAndReport(outputDir, pcbPath, json);
 
   const files = written.map((f) => path.basename(f)).sort();
     if (json) {

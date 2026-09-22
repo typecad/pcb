@@ -3588,7 +3588,18 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     if (!routeState || !routeState.hint) return;
     var pts = routeState.hint.slice(1); // everything after the anchor
     var end = { x: pts[pts.length - 1].x, y: pts[pts.length - 1].y, pad: routeState.targetPad };
+    // the hint is consumed: leaving it on screen would keep describing a
+    // path from the OLD anchor after this one is placed
+    if (routeState.hintEl) {
+      routeState.hintEl.remove();
+      routeState.hintEl = null;
+    }
+    routeState.hint = null;
     routeAnchor(end, pts);
+    // the hint walk IS the final geometry: finalize must not append the
+    // stale preview walk on top of it
+    routeState.lastPts = null;
+    routeState.lastEnd = end;
     if (routeState.targetPad) routeCommit();
   }
   function routeAnchor(end, pts) {
@@ -3605,6 +3616,9 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     piece.anchoredEl.setAttribute('d', d);
     routeState.sx = pts[pts.length - 1].x;
     routeState.sy = pts[pts.length - 1].y;
+    // the anchor moved the route origin: a hint computed from the old one
+    // now describes a path between unrelated pads — recompute immediately
+    updateRouteHint();
     if (statusEl && !statusLocked())
       statusEl.textContent = 'anchored \u2014 ' + (routeState.net ? routeState.net : 'no net') + ' continues; V via, Backspace undo, snap a pad or double-click to finish';
   }
@@ -3641,6 +3655,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     routeState.pieces.push(np);
     routeState.sx = vx;
     routeState.sy = vy;
+    updateRouteHint(); // origin moved: the old hint no longer applies
     routeState.path.setAttribute('stroke', np.inkColor);
     if (statusEl && !statusLocked()) statusEl.textContent = 'via placed \u2014 continuing on ' + nextCanon;
   }
@@ -3678,9 +3693,12 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   function routeCommit() {
     if (!routeState) return;
     var end = routeState.lastEnd || routeEndpoint(routeState.sx, routeState.sy);
-    var walk = routeState.lastPts || [{ x: end.x, y: end.y }];
-    var piece = curPiece();
-    for (var wi = 0; wi < walk.length; wi++) piece.points.push(walk[wi]);
+    // append the pending preview walk — unless the finalize came through the
+    // hint path, which routeAnchor already folded into the piece geometry
+    if (routeState.lastPts) {
+      var piece = curPiece();
+      for (var wi = 0; wi < routeState.lastPts.length; wi++) piece.points.push(routeState.lastPts[wi]);
+    }
     // commit every piece with actual geometry into ITS layer group
     for (var pi = 0; pi < routeState.pieces.length; pi++) {
       var pc = routeState.pieces[pi];
@@ -3769,6 +3787,11 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     if (!routeState) return;
     ev.stopPropagation();
     ev.preventDefault();
+    if (routeState.hintEl) {
+      routeState.hintEl.remove();
+      routeState.hintEl = null;
+    }
+    routeState.hint = null;
     routeCommit();
   });
   window.addEventListener('mousemove', function (ev) {

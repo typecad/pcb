@@ -9,7 +9,7 @@
  */
 
 import chalk from 'chalk';
-import { Component } from '../component.js';
+import { Component, getPlacedComponents } from '../component.js';
 import { RoutingError } from '../utils/errors.js';
 import {
   IAutorouteOptions,
@@ -289,6 +289,16 @@ export function autoroute(pcb: PCB, callerOptions: IAutorouteOptions): IAutorout
       if (comp && !componentsFromPins.includes(comp)) {
         componentsFromPins.push(comp);
       }
+    }
+  }
+
+  // Netless placed components: nothing else surfaces them before create()
+  // stages the board, and a mid-corridor part the router cannot see gets
+  // routed straight through (shorting its pads). The .pcb placement registry
+  // covers every assigned component regardless of net membership.
+  for (const comp of getPlacedComponents()) {
+    if (!componentsFromPins.includes(comp) && !comp.dnp) {
+      componentsFromPins.push(comp);
     }
   }
 

@@ -27,6 +27,30 @@ import { isPlacementValue, coercePlacementInput, type PlacementNumber, type Plac
 
 const defaultCounter = new ReferenceCounter();
 
+// ---------------------------------------------------------------------------
+// Placement registry: components are invisible to the router until create()
+// stages them, and a pre-create `route()` only harvests the routed net's own
+// pin components — a netless part sitting mid-corridor (its nets declared
+// after the route call, or commented out) would be routed STRAIGHT THROUGH.
+// The .pcb setter registers every placed component here so autorouting can
+// treat all of them as obstacles; createBoard consumes and clears the set.
+// ---------------------------------------------------------------------------
+const placedComponents = new Set<Component>();
+
+function registerPlacedComponent(component: Component): void {
+  placedComponents.add(component);
+}
+
+/** Every component whose `.pcb` was assigned and not yet consumed by a build. */
+export function getPlacedComponents(): Component[] {
+  return [...placedComponents];
+}
+
+/** The board build owns the components now — drop the pre-build registry. */
+export function clearPlacedComponents(): void {
+  placedComponents.clear();
+}
+
 export type { TextEntry, FabEntry, FabLayout };
 
 /**
@@ -170,6 +194,7 @@ export class Component {
     this.#pcb = { ...value, x, y };
     this.#pcbSource = isPlacementValue(rawX) || isPlacementValue(rawY) ? { x: rawX, y: rawY } : undefined;
     this.#pcbSnapshot = { x, y };
+    registerPlacedComponent(this);
   }
   /**
    * Re-resolve deferred placement expressions (e.g. `below(r1).by(3)`)

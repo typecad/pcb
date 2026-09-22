@@ -1,4 +1,4 @@
-import { Component } from '../component.js';
+import { Component, clearPlacedComponents } from '../component.js';
 import { TrackBuilder } from './pcb_track_builder.js';
 import { parse, parseAsList, nameOf, s, no } from '../sexpr/index.js';
 import type { SExpr } from '../sexpr/types.js';
@@ -311,4 +311,8 @@ export function createBoard(pcb: PCB, ...items: Array<Component | TrackBuilder>)
     pcb,
     trackBuilders.map((b) => b.net).filter((n): n is string => !!n),
   );
+
+  // The board owns every placed component now — drop the pre-build placement
+  // registry so a later PCB in the same process starts clean.
+  clearPlacedComponents();
 }

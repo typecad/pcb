@@ -2598,11 +2598,15 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     return p;
   }
   function refreshRatsnest() {
-    var old = document.getElementById('layout-ratsnest');
+    var old = document.getElementById('ratsnest');
     if (old && old.parentNode) old.parentNode.removeChild(old);
-    if (!layoutOverlay) return;
+    // the group lives in the GERBER stack (not the layout overlay) so the
+    // unrouted-net wires show in every view that renders the gerbers —
+    // including the viewer's very first open in gerber mode
+    var gerberStack = viewGroups.gerber ? viewGroups.gerber.querySelector('#yflip') || viewGroups.gerber : null;
+    if (!gerberStack) return;
     var rats = document.createElementNS(SVGNSL, 'g');
-    rats.setAttribute('id', 'layout-ratsnest');
+    rats.setAttribute('id', 'ratsnest');
     rats.setAttribute('pointer-events', 'none');
     // a component's pad AT ITS CURRENT pose: translate to the moved center,
     // then rotate the island pad offset by the accumulated 90-degree presses
@@ -2665,7 +2669,12 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         cur = nxt;
       }
     }
+    // stranded wires are a LAYOUT-mode affordance: they describe pending
+    // moves, which the other views don't render (they show the authored
+    // board — the ghost transforms clear on exit)
+    var inLayout = document.body.classList.contains('typecad-layout');
     for (var mr in layoutMoves) {
+      if (!inLayout) break;
       var c = null;
       for (var fi = 0; fi < layoutComps.length; fi++) {
         if (layoutComps[fi].ref === mr) c = layoutComps[fi];
@@ -2699,7 +2708,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         rats.appendChild(ratsWire(pp, best, wireIdx++));
       }
     }
-    layoutOverlay.appendChild(rats);
+    gerberStack.appendChild(rats);
   }
   // the pending layout is a LAYOUT-view rendering: the ghost transforms and
   // ripped greys live in the gerber stack the other views share, so leaving
@@ -2811,7 +2820,15 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       var dashed = viewGroups.gerber.querySelectorAll('path[stroke-dasharray]');
       for (var d2 = 0; d2 < dashed.length; d2++) dashed[d2].removeAttribute('stroke-dasharray');
     }
+    // the gerber view shows the authored board: rebuild the ratsnest without
+    // the pending moves' stranded wires (unrouted-net chains stay — those
+    // describe the board, not a move)
+    refreshRatsnest();
   }
+
+  // first open: unrouted nets show their wires immediately — gerber view,
+  // layout view, wherever the gerber stack renders
+  refreshRatsnest();
 
   ['dt-margin', 'dt-allowed'].forEach(function (id) {
     var el = document.getElementById(id);
@@ -4214,7 +4231,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   #layout-warn { color: #d29922; font-size: 11px; line-height: 1.5; margin-bottom: 6px; word-break: break-word; }
   #layout-overlay .layout-comp.layout-warn rect,
   #layout-overlay .layout-comp.layout-warn polygon { stroke: #d29922; }
-  #layout-ratsnest path { stroke: #d29922; stroke-width: 0.05; fill: none; opacity: 0.85; }
+  #ratsnest path { stroke: #d29922; stroke-width: 0.05; fill: none; opacity: 0.85; }
   /* movable texts read as grabbable, and a grabbed one is highlighted */
   body.typecad-layout #yflip path[data-text] { cursor: move; }
   #yflip path.layout-text-sel { stroke: #6db3f2 !important; }

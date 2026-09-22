@@ -459,6 +459,27 @@ export function updateFootprintNode(
   component.pcb.rotation = component.pcb.rotation ?? 0;
   const sn = SNode.from(node);
 
+  // KiCad stores fp_text/property angles ABSOLUTE (composed with the
+  // footprint rotation). When the component's rotation changes, recompose:
+  // strip the node's STORED rotation out of each text angle, add the new
+  // one. Exact for freshly parsed library footprints (stored rot 0), our
+  // own previous builds, and KiCad-authored boards alike; a later
+  // applyLayoutToFpText still overrides with the label's authored angle.
+  const storedAt = sn.child('at');
+  const storedRot = storedAt && typeof storedAt.raw[3] === 'number' ? storedAt.raw[3] : 0;
+  if ((component.pcb.rotation - storedRot) % 360 !== 0) {
+    for (const child of sn.children()) {
+      if (child.name !== 'fp_text' && child.name !== 'property') continue;
+      const atChild = child.child('at');
+      if (!atChild) continue;
+      const base =
+        (typeof atChild.raw[3] === 'number' ? atChild.raw[3] : 0) - storedRot;
+      const composed = (base + component.pcb.rotation) % 360;
+      if (atChild.raw.length > 3) atChild.raw[3] = composed;
+      else atChild.raw.push(composed);
+    }
+  }
+
   for (let i = 0; i < node.length; i++) {
     if (Array.isArray(node[i])) {
       node[i] = transformSexprLayers(node[i], component.pcb?.side);
@@ -608,6 +629,26 @@ export function createFootprintNode(
   }
 
   component.pcb.rotation = component.pcb.rotation ?? 0;
+
+  // KiCad stores fp_text/property text angles ABSOLUTE — rotating a
+  // footprint composes into the saved text angle. Compose the component
+  // rotation into the library labels here (create path only: boards parsed
+  // back from files already carry absolute angles); a referenceLayout/
+  // valueLayout override replaces it afterwards with the authored angle.
+  if (component.pcb.rotation % 360 !== 0) {
+    for (const child of l) {
+      if (!Array.isArray(child) || child.length === 0) continue;
+      const kind = nameOf(child[0]);
+      if (kind !== 'fp_text' && kind !== 'property') continue;
+      for (const grand of child) {
+        if (Array.isArray(grand) && grand.length > 0 && nameOf(grand[0]) === 'at') {
+          const base = typeof grand[3] === 'number' ? grand[3] : 0;
+          if (grand.length === 3) grand.push((base + component.pcb.rotation) % 360);
+          else grand[3] = (base + component.pcb.rotation) % 360;
+        }
+      }
+    }
+  }
 
   for (let i = 0; i < l.length; i++) {
     if (Array.isArray(l[i])) {

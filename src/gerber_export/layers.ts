@@ -170,7 +170,7 @@ function plotGraphicsLayer(w: GerberWriter, root: SNode, layer: LayerSpec): void
       drawTextItem(w, item, layer.short.startsWith('B.'), (p) => ({
         x: fpPos.x + p.x * c + p.y * s,
         y: fpPos.y - p.x * s + p.y * c,
-      }), shown !== raw ? shown : undefined);
+      }), shown !== raw ? shown : undefined, true);
     }
   }
   for (const fp of root.children('footprint')) {
@@ -389,6 +389,7 @@ function drawTextItem(
   isBack: boolean,
   map: (p: Point) => Point,
   textOverride?: string,
+  keepUpright = false,
 ): void {
   const hideTok = item.child('hide')?.raw[1];
   const hidden = hideTok !== undefined && String((hideTok as { name?: string }).name ?? hideTok) === 'yes';
@@ -426,7 +427,15 @@ function drawTextItem(
   const at = item.child('at');
   if (!at || !text) return;
   const world = map({ x: scalar(at, 1, 0), y: scalar(at, 2, 0) });
-  const angle = scalar(at, 3, 0); // saved text angles are absolute
+  let angle = scalar(at, 3, 0); // saved text angles are absolute
+  // KiCad's default keep-upright for footprint texts: an angle landing in
+  // the upside-down half flips 180°, so a part's refdes always reads
+  // left→right when horizontal and bottom→top when vertical. Board-level
+  // gr_text keeps its authored angle untouched.
+  if (keepUpright) {
+    const t = ((angle % 360) + 360) % 360;
+    if (t > 90 && t <= 270) angle -= 180;
+  }
   const size = fx.size ?? { x: 1, y: 1 };
   // positions use the raw thickness; the plotted pen is clamped to width/4
   // (KiCad ClampTextPenSize — probe-verified: th 0.3 at W 0.8 plots 0.2)

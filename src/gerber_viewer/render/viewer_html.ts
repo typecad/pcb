@@ -1719,6 +1719,24 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       ownTr = 'rotate(' + m.rot * 90 + ',' + ex + ',' + ey + ') translate(' + m.ox + ',' + m.oy + ')';
     }
     var tr = ownTr && compTr ? ownTr + ' ' + compTr : ownTr || compTr;
+    // keep-upright (KiCad's default for fp_texts): a total angle in the
+    // upside-down half flips 180° about the label's transported anchor, so
+    // a part's labels always read left→right when horizontal and
+    // bottom→top when vertical — same rule the gerber plotter applies, so
+    // the preview and the rebuilt board agree
+    var flipTr = '';
+    if (t.ref) {
+      var compRot = layoutRot[t.ref] || (layoutMoves[t.ref] ? layoutMoves[t.ref].rot || 0 : 0);
+      var total = (t.rot || 0) + compRot * 90 + (m && m.rot ? m.rot * 90 : 0);
+      var tn = ((total % 360) + 360) % 360;
+      if (tn > 90 && tn <= 270) {
+        var fa = labelBase(i);
+        var fx = fa.x + (m ? m.ox || 0 : 0);
+        var fy = fa.y + (m ? m.oy || 0 : 0);
+        flipTr = 'rotate(180,' + fx + ',' + fy + ')';
+      }
+    }
+    if (flipTr) tr = tr ? flipTr + ' ' + tr : flipTr;
     for (var tp = 0; tp < paths.length; tp++) {
       if (tr) paths[tp].setAttribute('transform', tr);
       else if (paths[tp].__layoutTr0 === null || paths[tp].__layoutTr0 === undefined) paths[tp].removeAttribute('transform');
@@ -1779,6 +1797,15 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     var flip = t.side === 'back' ? -1 : 1;
     var tr = 'translate(' + x + ',' + y + ') scale(' + flip + ',' + -flip + ')';
     if (m && m.rot) tr += ' rotate(' + m.rot * 90 * flip + ')';
+    // keep-upright, same rule as the stroke ghost and the plotter: the
+    // composed angle's upside-down half flips 180°, so an edited label
+    // previews readable on rotated parts too
+    if (t.ref) {
+      var cpr = layoutRot[t.ref] || (layoutMoves[t.ref] ? layoutMoves[t.ref].rot || 0 : 0);
+      var tt = ((t.rot || 0) + cpr * 90 + (m && m.rot ? m.rot * 90 : 0)) % 360;
+      if (tt < 0) tt += 360;
+      if (tt > 90 && tt <= 270) tr += ' rotate(180)';
+    }
     st.preview.setAttribute('transform', tr);
   }
   function commitTextMove(i, x, y) {

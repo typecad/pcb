@@ -432,7 +432,15 @@ export class BoardViewerPanel {
         if (fs.existsSync(path.join(folder, rel))) flags.push(flag, shellQuote(rel));
       };
       overlay('--netlist', `${boardName}.net`);
-      overlay('--drc', `${boardName}_drc.json`);
+      // A DRC report OLDER than the board describes the previous revision —
+      // embedding it paints stale violation markers on the new board (seen
+      // as ghost "unconnected/shorting" dots on a route the move fixed).
+      const drcRel = path.join('build', `${boardName}_drc.json`);
+      if (fs.existsSync(path.join(folder, drcRel)) && mtimeOf(path.join(folder, drcRel)) >= mtimeOf(board)) {
+        flags.push('--drc', shellQuote(drcRel));
+      } else if (fs.existsSync(path.join(folder, drcRel))) {
+        this.output.appendLine('drc report predates the board — skipping markers until DRC re-runs');
+      }
       overlay('--stackup', `${boardName}_stackup.json`);
 
       this.output.appendLine('building viewer HTML…');

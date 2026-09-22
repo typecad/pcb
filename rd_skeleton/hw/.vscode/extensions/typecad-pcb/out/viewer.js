@@ -440,7 +440,16 @@ class BoardViewerPanel {
                     flags.push(flag, shellQuote(rel));
             };
             overlay('--netlist', `${boardName}.net`);
-            overlay('--drc', `${boardName}_drc.json`);
+            // A DRC report OLDER than the board describes the previous revision —
+            // embedding it paints stale violation markers on the new board (seen
+            // as ghost "unconnected/shorting" dots on a route the move fixed).
+            const drcRel = node_path_1.default.join('build', `${boardName}_drc.json`);
+            if (node_fs_1.default.existsSync(node_path_1.default.join(folder, drcRel)) && (0, boardFile_js_2.mtimeOf)(node_path_1.default.join(folder, drcRel)) >= (0, boardFile_js_2.mtimeOf)(board)) {
+                flags.push('--drc', shellQuote(drcRel));
+            }
+            else if (node_fs_1.default.existsSync(node_path_1.default.join(folder, drcRel))) {
+                this.output.appendLine('drc report predates the board — skipping markers until DRC re-runs');
+            }
             overlay('--stackup', `${boardName}_stackup.json`);
             this.output.appendLine('building viewer HTML…');
             await this.run(folder, `npx gerber-viewer ${shellQuote(gerbersDir)} -o ${shellQuote(outPath)} ${flags.join(' ')}`, GENERATE_TIMEOUT_MS);

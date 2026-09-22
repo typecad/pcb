@@ -3648,6 +3648,17 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       drcGroup.classList.toggle('hidden');
       drcBtn.classList.toggle('armed');
     });
+  } else {
+    // Keep the affordance stable: with no report the button stays visible in
+    // a muted state and explains itself on click — a button that blinks out
+    // of existence reads as breakage, not as "nothing to show"
+    drcBtn.hidden = false;
+    drcBtn.disabled = true;
+    drcBtn.style.opacity = '0.4';
+    drcBtn.title = 'no DRC report — run typeCAD: DRC (typecad-pcb drc)';
+    drcBtn.addEventListener('click', function () {
+      if (!statusLocked()) statusEl.textContent = 'no DRC report — run typeCAD: DRC';
+    });
   }
 
   // ---- export the current view as SVG / PNG ----

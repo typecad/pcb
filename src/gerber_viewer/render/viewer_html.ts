@@ -2566,6 +2566,37 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       }
     }
   }
+  // a ratsnest wire: a gentle bezier — perpendicular bulge, alternating side
+  // so bundled wires fan apart, deterministic so re-renders don't dance
+  function ratsWire(a, b, idx) {
+    var dx = b.x - a.x;
+    var dy = b.y - a.y;
+    var len = Math.hypot(dx, dy) || 1;
+    var s = (idx % 2 ? 1 : -1) * Math.min(len * 0.18, 4);
+    var px = (-dy / len) * s;
+    var py = (dx / len) * s;
+    var p = document.createElementNS(SVGNSL, 'path');
+    p.setAttribute(
+      'd',
+      'M ' +
+        a.x.toFixed(3) +
+        ' ' +
+        a.y.toFixed(3) +
+        ' C ' +
+        (a.x + dx / 3 + px).toFixed(3) +
+        ' ' +
+        (a.y + dy / 3 + py).toFixed(3) +
+        ' ' +
+        (b.x - dx / 3 + px).toFixed(3) +
+        ' ' +
+        (b.y - dy / 3 + py).toFixed(3) +
+        ' ' +
+        b.x.toFixed(3) +
+        ' ' +
+        b.y.toFixed(3),
+    );
+    return p;
+  }
   function refreshRatsnest() {
     var old = document.getElementById('layout-ratsnest');
     if (old && old.parentNode) old.parentNode.removeChild(old);
@@ -2593,6 +2624,47 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         y: (mv ? mv.y : comp.y) + oy,
       };
     };
+    var wireIdx = 0;
+    // unrouted nets: two or more pads share a net that no ROUTING copper
+    // carries (a data-net element without data-ref is trace/via ink; pads
+    // carry both attrs). Those pads get a nearest-neighbor wire chain — the
+    // layout view's "this net has no copper yet" indication.
+    var wiredNets = {};
+    if (viewGroups.gerber) {
+      var wels = viewGroups.gerber.querySelectorAll('[data-net]:not([data-ref])');
+      for (var we = 0; we < wels.length; we++) wiredNets[wels[we].getAttribute('data-net')] = 1;
+    }
+    var padsByNet = {};
+    for (var uc = 0; uc < layoutComps.length; uc++) {
+      var ucomp = layoutComps[uc];
+      for (var up = 0; up < (ucomp.pads || []).length; up++) {
+        var unet = ucomp.pads[up].net;
+        if (!unet || wiredNets[unet]) continue;
+        (padsByNet[unet] = padsByNet[unet] || []).push(padPos(ucomp, ucomp.pads[up]));
+      }
+    }
+    for (var un in padsByNet) {
+      var pts = padsByNet[un];
+      if (pts.length < 2) continue;
+      var remaining = pts.slice(1);
+      var cur = pts[0];
+      while (remaining.length) {
+        var bi = 0;
+        var bd = Infinity;
+        for (var ci = 0; ci < remaining.length; ci++) {
+          var dcur =
+            (remaining[ci].x - cur.x) * (remaining[ci].x - cur.x) +
+            (remaining[ci].y - cur.y) * (remaining[ci].y - cur.y);
+          if (dcur < bd) {
+            bd = dcur;
+            bi = ci;
+          }
+        }
+        var nxt = remaining.splice(bi, 1)[0];
+        rats.appendChild(ratsWire(cur, nxt, wireIdx++));
+        cur = nxt;
+      }
+    }
     for (var mr in layoutMoves) {
       var c = null;
       for (var fi = 0; fi < layoutComps.length; fi++) {
@@ -2602,6 +2674,8 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       for (var pn = 0; pn < c.pads.length; pn++) {
         var pad = c.pads[pn];
         if (!pad.net) continue;
+        // an unrouted net's wires already span every pad — don't double them
+        if (padsByNet[pad.net]) continue;
         // anchors: OTHER components' pads on the same net — their copper
         // survives the rip-up, so the stranded pad ties back to them (their
         // own moves/rotations apply too)
@@ -2622,12 +2696,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
             best = anchors[an];
           }
         }
-        var ln = document.createElementNS(SVGNSL, 'line');
-        ln.setAttribute('x1', pp.x.toFixed(3));
-        ln.setAttribute('y1', pp.y.toFixed(3));
-        ln.setAttribute('x2', best.x.toFixed(3));
-        ln.setAttribute('y2', best.y.toFixed(3));
-        rats.appendChild(ln);
+        rats.appendChild(ratsWire(pp, best, wireIdx++));
       }
     }
     layoutOverlay.appendChild(rats);
@@ -4145,7 +4214,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   #layout-warn { color: #d29922; font-size: 11px; line-height: 1.5; margin-bottom: 6px; word-break: break-word; }
   #layout-overlay .layout-comp.layout-warn rect,
   #layout-overlay .layout-comp.layout-warn polygon { stroke: #d29922; }
-  #layout-ratsnest line { stroke: #d29922; stroke-width: 0.08; stroke-dasharray: 0.8 0.5; opacity: 0.85; }
+  #layout-ratsnest path { stroke: #d29922; stroke-width: 0.05; fill: none; opacity: 0.85; }
   /* movable texts read as grabbable, and a grabbed one is highlighted */
   body.typecad-layout #yflip path[data-text] { cursor: move; }
   #yflip path.layout-text-sel { stroke: #6db3f2 !important; }
@@ -4262,7 +4331,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   <div class="side-label">Layout</div>
   <div id="layout-keys"><span class="chip chip-dashed">TrackBuilder</span><span class="chip chip-solid">autorouted</span><span class="chip chip-grey">ripped up</span></div>
   <label><input type="checkbox" id="layout-snap" checked> snap 0.5 mm</label>
-  <div id="layout-hint">drag \u00b7 arrows nudge (Alt = 0.1 mm) \u00b7 R rotates \u00b7 shift-click selects several \u00b7 greyed copper rebuilds on apply \u00b7 texts: drag strokes to move, double-click to edit</div>
+  <div id="layout-hint">unrouted nets show as thin solid wires \u00b7 drag \u00b7 arrows nudge (Alt = 0.1 mm) \u00b7 R rotates \u00b7 shift-click selects several \u00b7 greyed copper rebuilds on apply \u00b7 texts: drag strokes to move, double-click to edit</div>
   <div id="layout-tools">
     <button id="layout-align" type="button" disabled>align row</button>
     <button id="layout-dist" type="button" disabled>distribute X</button>

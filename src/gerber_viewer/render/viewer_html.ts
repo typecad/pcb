@@ -1863,12 +1863,20 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     for (var pd = 0; pd < paths.length; pd++) {
       paths[pd].addEventListener('pointerdown', function (ev) {
         if (viewMode !== 'layout') return;
+        if (ev.button !== 0) return; // right/middle → board pan (fall through)
         ev.stopPropagation();
         ev.preventDefault();
+        var wasSel = layoutTextSel === i;
         layoutTextSel = i;
         layoutSel = [];
         markLayoutSel();
         markTextSel();
+        if (!wasSel) {
+          // selection-first like components: this press selects only
+          if (statusEl && !statusLocked())
+            statusEl.textContent = 'text "' + layoutTexts[i].text.slice(0, 18) + '" selected — drag to move';
+          return;
+        }
         var t = layoutTexts[i];
         var st = textState(i);
         var startG = gerberAt(ev.clientX, ev.clientY);
@@ -2153,13 +2161,24 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   // any of the part's own attributed ink (refdes/value strokes, courtyard)
   function startCompDrag(g, ev) {
     {
+      // left only: right/middle are board panning and fall through to the
+      // svg handler untouched (no stopPropagation on this path)
+      if (ev.button !== 0) return;
       ev.stopPropagation();
       ev.preventDefault();
       layoutTextSel = -1; // a part grab replaces any text grab
       markTextSel();
-      if (ev.shiftKey && layoutSel.indexOf(g.__lc.ref) === -1) layoutSel.push(g.__lc.ref);
-      else if (!ev.shiftKey) layoutSel = [g.__lc.ref];
+      var alreadySel = layoutSel.indexOf(g.__lc.ref) !== -1;
+      if (ev.shiftKey && !alreadySel) layoutSel.push(g.__lc.ref);
+      else if (!ev.shiftKey && !alreadySel) layoutSel = [g.__lc.ref];
       markLayoutSel();
+      if (!alreadySel) {
+        // selection-first: this press selects; the part moves on the NEXT
+        // press-drag of the now-selected part — never a grab-by-surprise
+        if (statusEl && !statusLocked())
+          statusEl.textContent = g.__lc.ref + ' selected — drag to move, R to rotate';
+        return;
+      }
       var startG = gerberAt(ev.clientX, ev.clientY);
       var orig = { x: g.__lx, y: g.__ly };
       var moved = false;
@@ -3186,17 +3205,30 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   }, { passive: false });
 
   var drag = null;
+  // right-hold pans the board; the browser menu would fight the drag
+  svg.addEventListener('contextmenu', function (ev) {
+    ev.preventDefault();
+  });
   svg.addEventListener('mousedown', function (ev) {
-    drag = { x: ev.clientX, y: ev.clientY, tx: tx, ty: ty, moved: false };
+    // button 2 = pan the board; button 0 = click semantics only (probe,
+    // ruler, selection) — a left-drag never pans, it is not a grab
+    drag =
+      ev.button === 2
+        ? { x: ev.clientX, y: ev.clientY, tx: tx, ty: ty, moved: false, pan: true }
+        : ev.button === 0
+          ? { x: ev.clientX, y: ev.clientY, tx: tx, ty: ty, moved: false, pan: false }
+          : null;
   });
   window.addEventListener('mousemove', function (ev) {
     if (drag) {
       if (Math.hypot(ev.clientX - drag.x, ev.clientY - drag.y) > 3) drag.moved = true;
-      var a = clientToView({ x: drag.x, y: drag.y });
-      var b = clientToView({ x: ev.clientX, y: ev.clientY });
-      tx = drag.tx + (b.x - a.x);
-      ty = drag.ty + (b.y - a.y);
-      apply();
+      if (drag.pan) {
+        var a = clientToView({ x: drag.x, y: drag.y });
+        var b = clientToView({ x: ev.clientX, y: ev.clientY });
+        tx = drag.tx + (b.x - a.x);
+        ty = drag.ty + (b.y - a.y);
+        apply();
+      }
     } else if (ev.target && svg.contains(ev.target)) {
       mouseBoard = boardCoords(ev);
       if (measuring && measureStart) {
@@ -3218,8 +3250,9 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     }
   });
   window.addEventListener('mouseup', function (ev) {
-    if (drag && !drag.moved && measuring) {
+    if (drag && ev.button === 0 && !drag.moved && measuring) {
       // undo the sub-threshold pan so the ruler point lands where clicked
+      // (left never pans, but the restore is harmless and keeps one shape)
       tx = drag.tx;
       ty = drag.ty;
       apply();
@@ -3232,7 +3265,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         measureStart = null; // second click: stick the ruler, next click starts anew
       }
       renderMeasure();
-    } else if (drag && !drag.moved && ev.target && svg.contains(ev.target)) {
+    } else if (drag && ev.button === 0 && !drag.moved && ev.target && svg.contains(ev.target)) {
       // plain click (ruler not armed): probe for net/component highlighting
       var el = ev.target.closest ? ev.target.closest('[data-net],[data-ref]') : null;
       if (el) {

@@ -3531,6 +3531,17 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         renderMeasure();
       }
       if (netDimmed.length) clearNetHighlight();
+      // layout mode: unselect everything (parts and any grabbed text)
+      if (
+        document.body.classList.contains('typecad-layout') &&
+        (layoutSel.length || layoutTextSel >= 0)
+      ) {
+        layoutSel = [];
+        layoutTextSel = -1;
+        markLayoutSel();
+        markTextSel();
+        if (statusEl && !statusLocked()) statusEl.textContent = '';
+      }
     }
   });
 

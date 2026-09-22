@@ -3734,7 +3734,11 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       ev.preventDefault();
       var g = gerberAt(ev.clientX, ev.clientY);
       routeFollow(g.x, g.y);
-      if (routeState.targetPad) routeCommit();
+      // a click while snapped to a pad finalizes — along the CORRIDOR HINT
+      // when one exists (the blue dashed line the user sees is the promise;
+      // the committed trace must be that path), else the displayed walk
+      if (routeState.targetPad && routeState.hint) routeHintAccept();
+      else if (routeState.targetPad) routeCommit();
       else {
         var end2 = routeEndpoint(g.x, g.y);
         end2.mx = g.x;

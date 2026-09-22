@@ -3509,10 +3509,12 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       [1, 0, 1], [-1, 0, 1], [0, 1, 1], [0, -1, 1],
       [1, 1, 1.4142], [1, -1, 1.4142], [-1, 1, 1.4142], [-1, -1, 1.4142],
     ];
-    // 0/90 prioritized: diagonals carry a premium (a 45 serves only the
-    // lateral shift orthogonal routing can't make), and every direction
-    // change costs — long straight runs beat staircases
-    var DIAG_PREF = 1.5;
+    // 0/90 prioritized, 45s kept: the diagonal premium sits just ABOVE the
+    // √2 break-even, so equal-bend paths route orthogonally (an L beats a
+    // Z), while a diagonal that SAVES bends (a true 45-degree hop, an
+    // obstacle shortcut) still wins — long orthogonal runs with 45-degree
+    // transitions, never staircases
+    var DIAG_PREF = 1.42;
     var BEND_COST = 0.9;
     var dirFrom = new Int8Array(W * H).fill(-1);
     var goal = g.cy * W + g.cx;

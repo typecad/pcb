@@ -2589,7 +2589,10 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       boxRect = document.createElementNS(SVGNSL, 'rect');
       boxRect.setAttribute('id', 'layout-sel-box');
       boxRect.setAttribute('vector-effect', 'non-scaling-stroke');
-      document.getElementById('panzoom').appendChild(boxRect);
+      // inside the y-flip group: gerberAt coords are that frame's own, and
+      // the box rides the gerber stack's pan/zoom with everything else
+      var flipHost = viewGroups.gerber.querySelector('#yflip') || document.getElementById('panzoom');
+      flipHost.appendChild(boxRect);
     }
     var g1 = gerberAt(ev.clientX, ev.clientY);
     boxRect.setAttribute('x', Math.min(boxSel.g0.x, g1.x).toFixed(3));

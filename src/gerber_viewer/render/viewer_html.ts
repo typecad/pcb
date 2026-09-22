@@ -140,39 +140,6 @@ function fmtNum(n: number): string {
   return String(Number(n.toFixed(6)));
 }
 
-function reportPanel(report: FabReport | undefined): string {
-  if (!report) return '';
-  const dims = report.board
-    ? `${report.board.width.toFixed(2)} × ${report.board.height.toFixed(2)} ${report.units}`
-    : '—';
-  const copper = report.copper
-    .map(
-      (c) =>
-        `<tr><td>${escapeHtml(c.layer)}</td><td>${c.traceLength.toFixed(1)}</td>` +
-        `<td>${c.minWidth ?? '—'}</td><td>${c.maxWidth ?? '—'}</td><td>${c.flashes}</td></tr>`,
-    )
-    .join('');
-  const drills = report.drills
-    .map(
-      (d) =>
-        `<tr><td>⌀ ${d.diameter.toFixed(2)}</td><td>${d.count}</td>` +
-        `<td>${d.plated === null ? '—' : d.plated ? 'plated' : 'NPTH'}</td></tr>`,
-    )
-    .join('');
-  return [
-    '<details id="fab-report">',
-    '<summary>fab report</summary>',
-    '<div class="report-body">',
-    `<div class="report-dim">board ${dims}</div>`,
-    '<table><tr><th>cu</th><th>mm</th><th>min</th><th>max</th><th>pads</th></tr>',
-    copper,
-    '</table>',
-    `<div class="report-dim">${report.holes} holes, ${report.slots} slots</div>`,
-    drills ? '<table><tr><th>drill</th><th>#</th><th>type</th></tr>' + drills + '</table>' : '',
-    '</div>',
-    '</details>',
-  ].join('');
-}
 
 /**
  * Wrap a rendered board SVG in a self-contained HTML page: layer toggles with
@@ -4040,43 +4007,8 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     a.click();
     setTimeout(function () { URL.revokeObjectURL(a.href); }, 5000);
   }
-  document.getElementById('btn-svg').addEventListener('click', function () {
-    download((document.title || 'board') + '.svg', new Blob([exportSvgString()], { type: 'image/svg+xml' }));
-  });
-  document.getElementById('btn-png').addEventListener('click', function () {
-    var vb = svg.viewBox.baseVal;
-    // target ~1600px on the long edge (never below 2x viewBox units): a
-    // percentage-sized svg decodes at a tiny default intrinsic size, so the
-    // export clone below carries EXPLICIT pixel dims — the vector is
-    // rasterized at full export resolution instead of upscaled
-    var scale = Math.max(2, Math.round(1600 / Math.max(vb.width, vb.height, 1)));
-    var img = new Image();
-    img.onerror = function () {
-      // silent failure is the worst outcome for an export button
-      if (statusEl && !statusLocked()) statusEl.textContent = 'png export failed — the board image could not be rasterized';
-    };
-    img.onload = function () {
-      var canvas = document.createElement('canvas');
-      canvas.width = vb.width * scale;
-      canvas.height = vb.height * scale;
-      var ctx = canvas.getContext('2d');
-      ctx.fillStyle = getComputedStyle(document.getElementById('board-area')).backgroundColor;
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-      canvas.toBlob(function (blob) {
-        if (blob) download((document.title || 'board') + '.png', blob);
-      }, 'image/png');
-    };
-    img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(exportSvgString(scale));
-  });
 
   document.getElementById('btn-fit').addEventListener('click', fit);
-  document.getElementById('btn-in').addEventListener('click', function () {
-    zoomAt(viewCenter(), 1.3);
-  });
-  document.getElementById('btn-out').addEventListener('click', function () {
-    zoomAt(viewCenter(), 1 / 1.3);
-  });
   function setAll(on) {
     document.querySelectorAll('.layer-vis').forEach(function (cb) { cb.checked = on; syncLayer(cb); });
     persist();
@@ -4410,7 +4342,6 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   #layout-keys .chip-dashed::before { border-top: 2px dashed currentColor; }
   #layout-keys .chip-solid::before { border-top: 2px solid currentColor; }
   #layout-keys .chip-grey::before { border-top: 2px solid rgba(128,128,128,0.35); }
-  #layout-hint { color: var(--muted); font-size: 10px; line-height: 1.5; margin: 8px 0; }
   .layout-text-edit {
     position: fixed; z-index: 40; height: 26px; padding: 2px 8px;
     background: var(--chrome-bg); color: var(--chrome-fg);
@@ -4477,12 +4408,6 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   #dt-controls { display: flex; flex-wrap: wrap; gap: 6px 10px; margin-top: 6px; color: var(--chrome-fg); font-size: 11px; }
   #dt-controls label { display: flex; align-items: center; gap: 4px; cursor: pointer; }
   #dt-controls input[type="number"] { width: 46px; background: var(--btn-bg); color: var(--chrome-fg); border: 1px solid var(--btn-border); border-radius: 4px; padding: 2px 4px; font: inherit; }
-  #fab-report { padding: 8px 14px 0; font-weight: 400; }
-  #fab-report summary { cursor: pointer; color: var(--muted); }
-  #fab-report table { border-collapse: collapse; width: 100%; font-size: 11px; margin: 6px 0; }
-  #fab-report th { text-align: left; color: var(--muted); font-weight: 400; padding: 1px 6px 1px 0; }
-  #fab-report td { padding: 1px 6px 1px 0; }
-  #fab-report .report-dim { color: var(--muted); margin-top: 4px; }
   /* DRC markers: pinned above geometry, theme-independent red */
   #drc .drc-mark circle.outer { fill: rgba(229, 72, 77, 0.22); stroke: #e5484d; cursor: pointer; }
   #drc .drc-mark circle.inner { fill: #e5484d; }
@@ -4567,7 +4492,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   <div class="side-label">Layout</div>
   <div id="layout-keys"><span class="chip chip-dashed">TrackBuilder</span><span class="chip chip-solid">autorouted</span><span class="chip chip-grey">ripped up</span></div>
   <label><input type="checkbox" id="layout-snap" checked> snap 0.5 mm</label>
-  <div id="layout-hint">unrouted nets show as thin solid wires \u00b7 drag \u00b7 arrows nudge (Alt = 0.1 mm) \u00b7 R rotates \u00b7 shift-click toggles \u00b7 drag empty space: box select (left\u2192right encloses, right\u2192left crosses) \u00b7 greyed copper rebuilds on apply \u00b7 texts: drag strokes to move, double-click to edit</div>
+
   <div id="layout-tools">
     <button id="layout-align" type="button" disabled>align row</button>
     <button id="layout-dist" type="button" disabled>distribute X</button>
@@ -4580,7 +4505,6 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
 </div>`
       : ''
   }
-  ${reportPanel(options.report)}
   <div id="search-box">
     <input id="comp-search" type="text" placeholder="find component (e.g. U1)" autocomplete="off" spellcheck="false">
   </div>
@@ -4589,8 +4513,6 @@ ${rows}
   </div>
   <div id="toolbar">
     <button id="btn-fit" title="fit to board (0)">Fit</button>
-    <button id="btn-in">+</button>
-    <button id="btn-out">&#8722;</button>
     <button id="btn-all-on" title="show all layers">All</button>
     <button id="btn-all-off" title="hide all layers">None</button>${
       /* layer colors for the gerber & layout views; KiCad color themes */
@@ -4607,8 +4529,6 @@ ${rows}
     }
     <button id="btn-measure" title="measure: click start, click end — rulers stick; Esc clears all">&#x1F4CF;</button>
     <button id="btn-drc" class="has-drc-hidden" title="toggle DRC violation markers" hidden>DRC</button>
-    <button id="btn-svg" title="download the current view as SVG">SVG</button>
-    <button id="btn-png" title="download the current view as PNG">PNG</button>
   </div>
 </div>
 <div id="board-area">

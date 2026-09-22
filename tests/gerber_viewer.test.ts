@@ -459,14 +459,14 @@ describe('viewer tooling (probing, search, report, DRC, export)', () => {
     drcMarkers: [{ x: 10, y: 20, description: 'clearance — pad of J1' }],
   });
 
-  it('renders the fab report panel from the computed stats', () => {
-    expect(html).toContain('id="fab-report"');
-    expect(html).toContain('29.17 × 23.17 mm');
-    expect(html).toContain('F_Cu.gtl');
-    expect(html).toContain('⌀ 0.60');
-    expect(html).toContain('3 holes, 1 slots');
+  it('does not render the fab report panel (removed from the sidebar)', () => {
+    // The stats still flow through options.report; the sidebar panel itself
+    // was removed by request — nothing of it may reach the page.
+    expect(html).not.toContain('id="fab-report"');
+    expect(html).not.toContain('29.17 × 23.17 mm');
   });
 
+  
   it('embeds DRC markers as JSON and renders them client-side with a toggle', () => {
     expect(html).toContain('id="drc-data"');
     expect(html).toContain('clearance — pad of J1');
@@ -478,9 +478,12 @@ describe('viewer tooling (probing, search, report, DRC, export)', () => {
     expect(html).toContain('id="comp-search"');
     expect(html).toMatch(/highlightNet\('data-net', net\)/);
     expect(html).toMatch(/closest\('\[data-net\],\[data-ref\],\[data-pin\]'\)/);
-    expect(html).toContain('id="btn-svg"');
-    expect(html).toContain('id="btn-png"');
-    expect(html).toMatch(/exportSvgString/);
+    // export/zoom buttons were removed from the toolbar by request; wheel
+    // zoom and keyboard +/− remain the zoom path
+    expect(html).not.toContain('id="btn-svg"');
+    expect(html).not.toContain('id="btn-png"');
+    expect(html).not.toContain('id="btn-in"');
+    expect(html).not.toContain('id="btn-out"');
   });
 
   it('emits data-net/ref/pin attributes on attributed geometry', () => {

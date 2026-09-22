@@ -129,6 +129,14 @@ export class BoardViewerPanel {
       const webviewPanels = vscode.window.createWebviewPanel('typecadBoardViewer', 'Board', {
         viewColumn: vscode.ViewColumn.Beside,
         preserveFocus: true,
+      }, {
+        enableScripts: true,
+        // The viewer page is heavy (every gerber layer inlined as SVG); a
+        // default webview is torn down when its tab hides, and re-showing
+        // reloads and re-renders the whole document — a multi-second blank
+        // tab on every switch back. Retaining the context makes the tab
+        // switch instant at the cost of keeping the DOM alive while hidden.
+        retainContextWhenHidden: true,
       });
       this.bindPanel(webviewPanels);
       this.loadToken++;

@@ -100,6 +100,21 @@ export interface ViewerOptions {
    * the picker entirely.
    */
   layerThemes?: import('../themes.js').LayerTheme[];
+  /**
+   * pad labels from the PCB model (build/<board>_pads.json): pin number +
+   * net name per pad with world position/extent. The page renders them on
+   * every copper layer the pad touches.
+   */
+  padLabels?: Array<{
+    ref: string;
+    pin: string;
+    net: string | null;
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+    layers: string[];
+  }> | null;
 }
 
 /** Board stackup geometry (see `pcb_stackup_writer.ts` for the writer side). */
@@ -2748,6 +2763,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     return p;
   }
   function refreshRatsnest() {
+    syncPadLabelVisibility();
     var old = document.getElementById('ratsnest');
     if (old && old.parentNode) old.parentNode.removeChild(old);
     // the group lives in the GERBER stack (not the layout overlay) so the
@@ -2979,6 +2995,87 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   // first open: unrouted nets show their wires immediately — gerber view,
   // layout view, wherever the gerber stack renders
   refreshRatsnest();
+
+  // ---- pad labels: pin number + net name on every copper pad ----
+  // Numbers always; the net name beside it when the pad carries a named
+  // net (PCB::named(...) — N/C pads show the number alone). Sizing per the
+  // pad's own extent from its aperture symbol: the number alone takes ~1/2
+  // the pad's height; with a net name each row takes ~40%, stacked and
+  // evenly spread vertically, shrunk further if the text would overflow the
+  // pad's width. Labels live INSIDE each copper layer group, so layer
+  // visibility and opacity apply for free; pending layout moves hide them
+  // (pads ghost away under moves — stale labels would float).
+  function padLabelSize(text, w, h, frac) {
+    // height rule first, then fit the pad's width (glyph ≈ 0.62em monospace)
+    return Math.max(0.05, Math.min(h * frac, (w / Math.max(1, text.length)) / 0.62));
+  }
+  function addPadText(host, text, px, py, fs, weight) {
+    var t = document.createElementNS(SVGNSL, 'text');
+    t.setAttribute('transform', 'translate(' + px.toFixed(3) + ' ' + py.toFixed(3) + ') scale(1,-1)');
+    t.setAttribute('font-size', fs.toFixed(3));
+    t.setAttribute('text-anchor', 'middle');
+    t.setAttribute('dominant-baseline', 'central');
+    if (weight) t.setAttribute('font-weight', weight);
+    t.textContent = text;
+    host.appendChild(t);
+  }
+  function buildPadLabels() {
+    // the PCB model's pad manifest (build/<board>_pads.json): pin numbers
+    // and net names straight from the board the PCB object wrote. Board
+    // y-down millimetres; the gerber stack is y-up, so y negates here.
+    var data = [];
+    try {
+      data = JSON.parse(document.getElementById('pad-data').textContent) || [];
+    } catch (e) {}
+    if (!viewGroups.gerber || !data.length) return 0;
+    var groups = viewGroups.gerber.querySelectorAll('g[data-kind="copper"]');
+    var count = 0;
+    for (var gi2 = 0; gi2 < groups.length; gi2++) {
+      var lg = groups[gi2];
+      var lname = (lg.getAttribute('data-layer-name') || '').toLowerCase();
+      var canon = /(^|[-_.])f_cu(?=$|[-_.])/.test(lname)
+        ? 'F.Cu'
+        : /(^|[-_.])b_cu(?=$|[-_.])/.test(lname)
+          ? 'B.Cu'
+          : null;
+      var inm = /(^|[-_.])in(\d+)_cu(?=$|[-_.])/.exec(lname);
+      if (inm) canon = 'In' + inm[2] + '.Cu';
+      if (!canon) continue;
+      var host = document.createElementNS(SVGNSL, 'g');
+      host.setAttribute('class', 'pad-labels');
+      host.setAttribute('pointer-events', 'none');
+      for (var pd = 0; pd < data.length; pd++) {
+        var p = data[pd];
+        if (p.layers.indexOf(canon) === -1 && p.layers.indexOf('*.Cu') === -1) continue;
+        var px = p.x;
+        var py = -p.y; // board y-down -> gerber y-up
+        var pin = String(p.pin ?? '');
+        var named = p.net && p.net !== 'N/C';
+        if (named) {
+          // two rows, evenly spread: pin number above, net name below
+          addPadText(host, pin, px, py + p.h * 0.2, padLabelSize(pin, p.w, p.h, 0.4), '600');
+          addPadText(host, String(p.net), px, py - p.h * 0.2, padLabelSize(String(p.net), p.w, p.h, 0.4), null);
+          count += 2;
+        } else {
+          addPadText(host, pin, px, py, padLabelSize(pin, p.w, p.h, 0.5), '600');
+          count++;
+        }
+      }
+      if (host.childNodes.length) lg.appendChild(host);
+    }
+    return count;
+  }
+  function syncPadLabelVisibility() {
+    var anyMoves = false;
+    for (var mk in layoutMoves) {
+      anyMoves = true;
+      break;
+    }
+    var hosts = document.querySelectorAll('.pad-labels');
+    for (var hv = 0; hv < hosts.length; hv++)
+      hosts[hv].style.display = anyMoves ? 'none' : '';
+  }
+  buildPadLabels();
 
   ['dt-margin', 'dt-allowed'].forEach(function (id) {
     var el = document.getElementById(id);
@@ -4128,12 +4225,23 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   var THEME_KEY = 'gerber-viewer:theme:v1';
   var themeBtn = document.getElementById('btn-theme');
   var boardArea = document.getElementById('board-area');
+  function padLabelColor() {
+    // labels key off the ACTIVE canvas (theme background or light/dark
+    // mode): bright canvas -> dark ink, dark canvas -> white — gruvbox and
+    // the default palette both render white, matching KiCad
+    var bg = getComputedStyle(boardArea).backgroundColor;
+    var m = /rgba?\((\d+),\s*(\d+),\s*(\d+)/.exec(bg || '');
+    if (!m) return '#ffffff';
+    var lum = (0.299 * +m[1] + 0.587 * +m[2] + 0.114 * +m[3]) / 255;
+    return lum > 0.55 ? '#1a1a1a' : '#ffffff';
+  }
   function applyTheme(theme) {
     document.body.classList.toggle('light', theme === 'light');
     // the button shows the mode you would switch to
     themeBtn.textContent = theme === 'light' ? '\u263E' : '\u2600';
     themeBtn.title = theme === 'light' ? 'switch to dark theme' : 'switch to light theme';
     svg.style.setProperty('--bg', getComputedStyle(boardArea).backgroundColor);
+    svg.style.setProperty('--pad-label', padLabelColor());
     try { localStorage.setItem(THEME_KEY, theme); } catch (e) {}
   }
   var savedTheme = null;
@@ -4203,6 +4311,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     else boardArea.style.removeProperty('background-color');
     // cutouts key off the canvas color — keep the var synced either way
     svg.style.setProperty('--bg', getComputedStyle(boardArea).backgroundColor);
+    svg.style.setProperty('--pad-label', padLabelColor());
     try { localStorage.setItem(LAYER_THEME_KEY, theme ? id : 'typecad'); } catch (e) {}
   }
   if (layerThemeSel) {
@@ -4357,6 +4466,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   #layout-overlay .layout-comp.layout-warn rect,
   #layout-overlay .layout-comp.layout-warn polygon { stroke: #d29922; }
   #ratsnest path { stroke: #d29922; stroke-width: 0.05; fill: none; opacity: 0.85; }
+  .pad-labels text { fill: var(--pad-label, #ffffff); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
   /* movable texts read as grabbable, and a grabbed one is highlighted */
   body.typecad-layout #yflip path[data-text] { cursor: move; }
   #yflip path.layout-text-sel { stroke: #6db3f2 !important; }
@@ -4614,6 +4724,11 @@ ${rows}
   <script id="layer-themes" type="application/json">${
     (options.layerThemes ?? LAYER_THEME_LIST).length
       ? JSON.stringify(options.layerThemes ?? LAYER_THEME_LIST).replace(/</g, '\\u003c')
+      : ''
+  }</script>
+  <script id="pad-data" type="application/json">${
+    options.padLabels && options.padLabels.length
+      ? JSON.stringify(options.padLabels).replace(/</g, '\\u003c')
       : ''
   }</script>
 </div>

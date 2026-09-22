@@ -314,6 +314,20 @@ export function buildViewerFromFiles(paths: string[], options: ViewerBuildOption
       warnings.push(`could not parse ${path.basename(stackupSource)} — the thermal view falls back to 35 µm/1.6 mm defaults`);
     }
   }
+  // pad labels ride the same way (build/<board>_pads.json): pin numbers +
+  // net names per pad, computed from the PCB object at board-write time.
+  let padLabels: ViewerOptions['padLabels'] = null;
+  if (pcbaNetlistSource) {
+    const padsPath = pcbaNetlistSource.replace(/\.net$/i, '_pads.json');
+    if (fs.existsSync(padsPath)) {
+      try {
+        const manifest = JSON.parse(fs.readFileSync(padsPath, 'utf8')) as { pads?: NonNullable<ViewerOptions['padLabels']> };
+        padLabels = manifest.pads ?? null;
+      } catch {
+        warnings.push(`could not parse ${path.basename(padsPath)} — pads render without pin/net labels`);
+      }
+    }
+  }
   // route provenance rides the same way (build/<board>_routes.json): which
   // nets a TrackBuilder hand-built vs the autorouter — the Layout view's
   // trace indication. Absent file = every trace reads as autorouted.
@@ -522,6 +536,7 @@ export function buildViewerFromFiles(paths: string[], options: ViewerBuildOption
     netOp,
     stackup,
     routes,
+    padLabels,
     layoutComponents,
     layoutTexts,
     pcbaThemes,

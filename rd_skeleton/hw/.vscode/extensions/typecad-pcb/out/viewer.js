@@ -447,14 +447,16 @@ class BoardViewerPanel {
             // embedding it paints stale violation markers on the new board (seen
             // as ghost "unconnected/shorting" dots on a route the move fixed).
             const drcRel = node_path_1.default.join('build', `${boardName}_drc.json`);
-            if (node_fs_1.default.existsSync(node_path_1.default.join(folder, drcRel)) && (0, boardFile_js_2.mtimeOf)(node_path_1.default.join(folder, drcRel)) >= (0, boardFile_js_2.mtimeOf)(board)) {
+            if (node_fs_1.default.existsSync(node_path_1.default.join(folder, drcRel))) {
                 flags.push('--drc', shellQuote(drcRel));
-            }
-            else if (node_fs_1.default.existsSync(node_path_1.default.join(folder, drcRel))) {
-                // Stale report describes the previous revision — say so where the
-                // user looks (the view's own status line), not just the output log
-                this.output.appendLine('drc report predates the board — skipping markers until DRC re-runs');
-                this.staleDrcNotice = true;
+                // A report older than the board describes the previous revision —
+                // still embed it (a muted/absent DRC affordance reads as breakage)
+                // but bake a provenance notice into the page so stale markers are
+                // never mistaken for the new board's truth
+                if ((0, boardFile_js_2.mtimeOf)(node_path_1.default.join(folder, drcRel)) < (0, boardFile_js_2.mtimeOf)(board)) {
+                    this.output.appendLine('drc report predates the board — embedding with a previous-revision notice');
+                    this.staleDrcNotice = true;
+                }
             }
             overlay('--stackup', `${boardName}_stackup.json`);
             this.output.appendLine('building viewer HTML…');
@@ -475,7 +477,7 @@ class BoardViewerPanel {
                 this.staleDrcNotice = false;
                 // A postStatus would be wiped by the reload that lands this HTML —
                 // bake the notice into the page's own status line instead
-                const notice = `<script>(function(){function n(){var el=document.getElementById('status');if(el){el.textContent='DRC markers hidden — the report predates the board (run typeCAD: DRC)';el.setAttribute('data-locked','');}}if(document.readyState==='complete')n();else window.addEventListener('load',n);})();</script>`;
+                const notice = `<script>(function(){function n(){var el=document.getElementById('status');if(el){el.textContent='DRC markers show the PREVIOUS board revision — run typeCAD: DRC to refresh';el.setAttribute('data-locked','');}}if(document.readyState==='complete')n();else window.addEventListener('load',n);})();</script>`;
                 finalHtml = html.includes('</body>') ? html.replace('</body>', notice + '</body>') : html;
             }
             this.generated = { html: finalHtml, boardMtimeMs: (0, boardFile_js_2.mtimeOf)(board) };

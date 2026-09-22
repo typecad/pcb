@@ -2200,6 +2200,20 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         }
         setCompPos(g, nx, ny);
         applyCompGhost(g); // the whole footprint drags along, like KiCad
+        // the pending move goes LIVE mid-drag — everything that rides it
+        // (labels, edited-value previews, compTrStr readers) follows the
+        // body in real time instead of snapping at release. Same shape
+        // commitLayoutMove finalizes.
+        layoutMoves[g.__lc.ref] = {
+          x: g.__lx,
+          y: g.__ly,
+          x0: g.__lc.x,
+          y0: g.__lc.y,
+          rot: layoutRot[g.__lc.ref] || 0,
+        };
+        for (var lr = 0; lr < layoutTexts.length; lr++) {
+          if (layoutTexts[lr].ref === g.__lc.ref) syncTextVisual(lr);
+        }
         moved = true;
         if (statusEl && !statusLocked())
           statusEl.textContent = g.__lc.ref + ' \u2192 ' + nx.toFixed(2) + ', ' + (-ny).toFixed(2) + ' mm';

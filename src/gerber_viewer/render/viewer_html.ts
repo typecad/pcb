@@ -3207,16 +3207,47 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     if (len < 0) len = 0;
     return { x: routeState.sx + Math.cos(snap) * len, y: routeState.sy + Math.sin(snap) * len, pad: null };
   }
+  // the walk from the anchor to a snapped pad: 0/45/90 segments ONLY, so
+  // the trace always connects cleanly — a 45-degree diagonal covers the
+  // minor axis, an orthogonal leg covers the rest. Both elbow orders are
+  // valid (diagonal-first / straight-first); the one nearer the mouse wins,
+  // so the user steers which leg leads
+  function routePoints(end) {
+    if (!end.pad) return [{ x: end.x, y: end.y }];
+    var dx = end.x - routeState.sx;
+    var dy = end.y - routeState.sy;
+    var adx = Math.abs(dx);
+    var ady = Math.abs(dy);
+    var TOL = 0.001;
+    // already aligned (one axis) or already 45: a single segment reaches it
+    if (adx < TOL || ady < TOL || Math.abs(adx - ady) < TOL) return [{ x: end.x, y: end.y }];
+    var sx = dx > 0 ? 1 : -1;
+    var sy = dy > 0 ? 1 : -1;
+    var d = Math.min(adx, ady);
+    var elbowA = { x: routeState.sx + sx * d, y: routeState.sy + sy * d }; // diagonal first
+    var elbowB =
+      adx > ady
+        ? { x: routeState.sx + sx * (adx - d), y: routeState.sy } // horizontal, then diagonal
+        : { x: routeState.sx, y: routeState.sy + sy * (ady - d) }; // vertical, then diagonal
+    var mA = Math.hypot(elbowA.x - end.mx, elbowA.y - end.my);
+    var mB = Math.hypot(elbowB.x - end.mx, elbowB.y - end.my);
+    var elbow = mA <= mB ? elbowA : elbowB;
+    return [elbow, { x: end.x, y: end.y }];
+  }
   function routeFollow(mx, my) {
     if (!routeState) return;
     var end = routeEndpoint(mx, my);
+    end.mx = mx;
+    end.my = my;
+    var pts = routePoints(end);
     routeState.lastEnd = end;
-    // the rubber-band always draws the CURRENT segment: last anchor ->
-    // snapped endpoint (the anchored polyline behind it is routeState.anchored)
-    routeState.path.setAttribute(
-      'd',
-      'M ' + routeState.sx.toFixed(3) + ' ' + routeState.sy.toFixed(3) + ' L ' + end.x.toFixed(3) + ' ' + end.y.toFixed(3),
-    );
+    routeState.lastPts = pts;
+    // the rubber-band draws from the last anchor through the walk points
+    // (the anchored polyline behind it is routeState.anchored)
+    var d = 'M ' + routeState.sx.toFixed(3) + ' ' + routeState.sy.toFixed(3);
+    for (var rp = 0; rp < pts.length; rp++)
+      d += ' L ' + pts[rp].x.toFixed(3) + ' ' + pts[rp].y.toFixed(3);
+    routeState.path.setAttribute('d', d);
     var targetChanged = (routeState.targetPad || null) !== (end.pad || null);
     if (targetChanged) {
       if (routeState.targetRing) routeState.targetRing.remove();
@@ -3226,11 +3257,13 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       refreshRatsnest(); // the live chain drops the newly-covered pad
     }
   }
-  function routeAnchor(end) {
-    // an unmovable waypoint: the displayed segment freezes into the
-    // anchored polyline and the route continues from this point
-    routeState.points.push({ x: end.x, y: end.y });
-    routeState.segs++;
+  function routeAnchor(end, pts) {
+    // an unmovable waypoint: the DISPLAYED walk (elbow + endpoint, or the
+    // single snapped point) freezes into the anchored polyline and the
+    // route continues from the last of those points
+    if (!pts) pts = routeState.lastPts || [{ x: end.x, y: end.y }];
+    for (var pa = 0; pa < pts.length; pa++) routeState.points.push(pts[pa]);
+    routeState.segs += pts.length;
     var d = 'M ' + routeState.points[0].x.toFixed(3) + ' ' + routeState.points[0].y.toFixed(3);
     for (var ai = 1; ai < routeState.points.length; ai++)
       d += ' L ' + routeState.points[ai].x.toFixed(3) + ' ' + routeState.points[ai].y.toFixed(3);
@@ -3248,7 +3281,8 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     // not a re-projection of the segment origin — that would zero out
     var pts = routeState.points.slice();
     var end = routeState.lastEnd || routeEndpoint(routeState.sx, routeState.sy);
-    pts.push({ x: end.x, y: end.y });
+    var walk = routeState.lastPts || [{ x: end.x, y: end.y }];
+    for (var wi = 0; wi < walk.length; wi++) pts.push(walk[wi]);
     var d = 'M ' + pts[0].x.toFixed(3) + ' ' + pts[0].y.toFixed(3);
     for (var fi = 1; fi < pts.length; fi++)
       d += ' L ' + pts[fi].x.toFixed(3) + ' ' + pts[fi].y.toFixed(3);
@@ -3285,7 +3319,12 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       // snapped onto a pad -> the route ends here and commits; anywhere
       // else -> the displayed point becomes an anchor and routing continues
       if (routeState.targetPad) routeCommit();
-      else routeAnchor(routeEndpoint(g.x, g.y));
+      else {
+        var end2 = routeEndpoint(g.x, g.y);
+        end2.mx = g.x;
+        end2.my = g.y;
+        routeAnchor(end2, routePoints(end2));
+      }
     },
     true,
   );

@@ -60,6 +60,7 @@ const node_fs_1 = __importDefault(require("node:fs"));
 const node_path_1 = __importDefault(require("node:path"));
 const probeClient_js_1 = require("./probeClient.js");
 const layoutEdits_js_1 = require("./layoutEdits.js");
+const routeEdits_js_1 = require("./routeEdits.js");
 const sourceRef_js_1 = require("./sourceRef.js");
 // discovery helpers live vscode-free in boardFile.ts for unit testing;
 // re-exported here for the existing import sites
@@ -504,7 +505,7 @@ class BoardViewerPanel {
      * Computed (non-literal) placements are skipped and reported, never
      * silently mangled.
      */
-    async onLayoutRebuild(moves, texts, values, labels, renames) {
+    async onLayoutRebuild(moves, texts, values, labels, renames, routes) {
         const folder = this.hwFolder();
         const fail = (error) => {
             this.output.appendLine(`layout apply failed: ${error}`);
@@ -675,19 +676,46 @@ class BoardViewerPanel {
                         touched.add(uri.toString());
                 }
             }
+            // interactive routes: committed track polylines become TrackBuilder
+            // source — declarations before typecad.create( and variables appended
+            // to its argument list
+            let routesPlanned = 0;
+            if (routes && routes.length > 0) {
+                for (const uri of srcFiles) {
+                    const doc = await vscode.workspace.openTextDocument(uri);
+                    const text = doc.getText();
+                    const plan = (0, routeEdits_js_1.planRouteEdits)(text, routes);
+                    for (const sk of plan.skipped)
+                        skipped.push(`route ${sk}`);
+                    for (const edit of plan.edits) {
+                        edits.replace(uri, new vscode.Range(doc.positionAt(edit.start), doc.positionAt(edit.end)), edit.line);
+                        routesPlanned++;
+                    }
+                    if (plan.edits.length) {
+                        touched.add(uri.toString());
+                        break; // one declaration site: the entry that owns create()
+                    }
+                }
+            }
             const applied = appliedRefs.size;
-            if (applied > 0 || endpointsMoved > 0 || textsEdited > 0 || valuesEdited > 0 || labelsEdited > 0 || renamesEdited > 0) {
+            if (applied > 0 ||
+                endpointsMoved > 0 ||
+                textsEdited > 0 ||
+                valuesEdited > 0 ||
+                labelsEdited > 0 ||
+                renamesEdited > 0 ||
+                routesPlanned > 0) {
                 await vscode.workspace.applyEdit(edits);
                 for (const key of touched) {
                     const doc = await vscode.workspace.openTextDocument(vscode.Uri.parse(key));
                     await doc.save();
                 }
             }
-            this.output.appendLine(`layout apply: ${applied} placement(s) moved${endpointsMoved ? `, ${endpointsMoved} route endpoint(s) translated` : ''}${textsEdited ? `, ${textsEdited} text(s) edited` : ''}${valuesEdited ? `, ${valuesEdited} value(s) edited` : ''}${labelsEdited ? `, ${labelsEdited} label(s) repositioned` : ''}${renamesEdited ? `, ${renamesEdited} reference(s) renamed` : ''}${skipped.length ? `, skipped ${skipped.join('; ')}` : ''} — rebuilding`);
+            this.output.appendLine(`layout apply: ${applied} placement(s) moved${endpointsMoved ? `, ${endpointsMoved} route endpoint(s) translated` : ''}${routesPlanned ? `, ${routes.length} track route(s) added to source` : ''}${textsEdited ? `, ${textsEdited} text(s) edited` : ''}${valuesEdited ? `, ${valuesEdited} value(s) edited` : ''}${labelsEdited ? `, ${labelsEdited} label(s) repositioned` : ''}${renamesEdited ? `, ${renamesEdited} reference(s) renamed` : ''}${skipped.length ? `, skipped ${skipped.join('; ')}` : ''} — rebuilding`);
             if (skipped.length) {
                 vscode.window.setStatusBarMessage(`layout: skipped ${skipped.join('; ')}`, 8000);
             }
-            if (applied === 0 && textsEdited === 0 && valuesEdited === 0 && labelsEdited === 0 && renamesEdited === 0) {
+            if (applied === 0 && textsEdited === 0 && valuesEdited === 0 && labelsEdited === 0 && renamesEdited === 0 && routesPlanned === 0) {
                 void this.panel?.webview.postMessage({ type: 'typecad/layout-status', error: undefined });
                 return;
             }
@@ -723,7 +751,7 @@ class BoardViewerPanel {
     }
     async onMessage(message) {
         if (message.type === 'typecad/layout-rebuild') {
-            await this.onLayoutRebuild(message.moves, message.texts, message.values, message.labels, message.renames);
+            await this.onLayoutRebuild(message.moves, message.texts, message.values, message.labels, message.renames, message.routes);
             return;
         }
         if (message.type === 'typecad/ready') {

@@ -20,6 +20,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { injectProbeClient, type ProbeHostMessage, type ProbeWebviewMessage } from './probeClient.js';
 import { planComponentEdits, planEndpointEdits, parsePlacementLiteral, planPlacementEdits, planTextEdits, type ComponentEditSpec } from './layoutEdits.js';
+import { planRouteEdits } from './routeEdits.js';
 import { parseSourceLocation } from './sourceRef.js';
 import type { BoardDataService } from './boardData.js';
 // discovery helpers live vscode-free in boardFile.ts for unit testing;
@@ -511,6 +512,7 @@ export class BoardViewerPanel {
     values?: Array<{ ref: string; value: string }>,
     labels?: Array<{ ref: string; kind: 'reference' | 'value' | 'fab'; x: number; y: number; rot: number }>,
     renames?: Array<{ ref: string; newRef: string }>,
+    routes?: import('./routeEdits.js').RouteInput[],
   ): Promise<void> {
     const folder = this.hwFolder();
     const fail = (error: string): void => {
@@ -684,8 +686,36 @@ export class BoardViewerPanel {
           if (planned.edits.length > 0) touched.add(uri.toString());
         }
       }
+      // interactive routes: committed track polylines become TrackBuilder
+      // source — declarations before typecad.create( and variables appended
+      // to its argument list
+      let routesPlanned = 0;
+      if (routes && routes.length > 0) {
+        for (const uri of srcFiles) {
+          const doc = await vscode.workspace.openTextDocument(uri);
+          const text = doc.getText();
+          const plan = planRouteEdits(text, routes);
+          for (const sk of plan.skipped) skipped.push(`route ${sk}`);
+          for (const edit of plan.edits) {
+            edits.replace(uri, new vscode.Range(doc.positionAt(edit.start), doc.positionAt(edit.end)), edit.line);
+            routesPlanned++;
+          }
+          if (plan.edits.length) {
+            touched.add(uri.toString());
+            break; // one declaration site: the entry that owns create()
+          }
+        }
+      }
       const applied = appliedRefs.size;
-      if (applied > 0 || endpointsMoved > 0 || textsEdited > 0 || valuesEdited > 0 || labelsEdited > 0 || renamesEdited > 0) {
+      if (
+        applied > 0 ||
+        endpointsMoved > 0 ||
+        textsEdited > 0 ||
+        valuesEdited > 0 ||
+        labelsEdited > 0 ||
+        renamesEdited > 0 ||
+        routesPlanned > 0
+      ) {
         await vscode.workspace.applyEdit(edits);
         for (const key of touched) {
           const doc = await vscode.workspace.openTextDocument(vscode.Uri.parse(key));
@@ -693,12 +723,12 @@ export class BoardViewerPanel {
         }
       }
       this.output.appendLine(
-        `layout apply: ${applied} placement(s) moved${endpointsMoved ? `, ${endpointsMoved} route endpoint(s) translated` : ''}${textsEdited ? `, ${textsEdited} text(s) edited` : ''}${valuesEdited ? `, ${valuesEdited} value(s) edited` : ''}${labelsEdited ? `, ${labelsEdited} label(s) repositioned` : ''}${renamesEdited ? `, ${renamesEdited} reference(s) renamed` : ''}${skipped.length ? `, skipped ${skipped.join('; ')}` : ''} — rebuilding`,
+        `layout apply: ${applied} placement(s) moved${endpointsMoved ? `, ${endpointsMoved} route endpoint(s) translated` : ''}${routesPlanned ? `, ${routes!.length} track route(s) added to source` : ''}${textsEdited ? `, ${textsEdited} text(s) edited` : ''}${valuesEdited ? `, ${valuesEdited} value(s) edited` : ''}${labelsEdited ? `, ${labelsEdited} label(s) repositioned` : ''}${renamesEdited ? `, ${renamesEdited} reference(s) renamed` : ''}${skipped.length ? `, skipped ${skipped.join('; ')}` : ''} — rebuilding`,
       );
       if (skipped.length) {
         vscode.window.setStatusBarMessage(`layout: skipped ${skipped.join('; ')}`, 8000);
       }
-      if (applied === 0 && textsEdited === 0 && valuesEdited === 0 && labelsEdited === 0 && renamesEdited === 0) {
+      if (applied === 0 && textsEdited === 0 && valuesEdited === 0 && labelsEdited === 0 && renamesEdited === 0 && routesPlanned === 0) {
         void this.panel?.webview.postMessage({ type: 'typecad/layout-status', error: undefined });
         return;
       }
@@ -733,7 +763,7 @@ export class BoardViewerPanel {
 
   private async onMessage(message: ProbeWebviewMessage): Promise<void> {
     if (message.type === 'typecad/layout-rebuild') {
-      await this.onLayoutRebuild(message.moves, message.texts, message.values, message.labels, message.renames);
+      await this.onLayoutRebuild(message.moves, message.texts, message.values, message.labels, message.renames, message.routes);
       return;
     }
     if (message.type === 'typecad/ready') {

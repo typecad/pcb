@@ -87,7 +87,19 @@ export type ProbeWebviewMessage =
       values?: Array<{ ref: string; value: string }>;
       labels?: LabelEdit[];
       renames?: Array<{ ref: string; newRef: string }>;
+      /** interactive routes to append as TrackBuilder source */
+      routes?: RouteApply[];
     };
+
+/** one committed interactive route (board frame, y-down mm) */
+export interface RouteApply {
+  net: string | null;
+  w: number;
+  pieces: Array<{ layer: string; pts: Array<{ x: number; y: number }> }>;
+  vias: Array<{ x: number; y: number }>;
+  from: { ref: string; pin: string };
+  to: { ref: string; pin: string } | null;
+}
 export type ProbeHostMessage =
   | { type: 'typecad/select'; ref: string; token?: number }
   | { type: 'typecad/select-net'; net: string; token?: number }
@@ -182,8 +194,8 @@ const PROBE_CLIENT = `<script>
   // Layout view: the page hands moved-component deltas to the host, which
   // edits the placement literals, rebuilds, and regenerates this viewer
   var layoutCb = null;
-  window.typecadLayoutApply = function (moves, texts, values, labels, renames, cb) {
-    layoutCb = cb || null;
+  window.typecadLayoutApply = function (moves, texts, values, labels, renames, routes, cb) {
+    layoutCb = cb || (typeof routes === 'function' ? routes : null);
     send({
       type: 'typecad/layout-rebuild',
       moves: moves,
@@ -191,6 +203,7 @@ const PROBE_CLIENT = `<script>
       values: values || [],
       labels: labels || [],
       renames: renames || [],
+      routes: Array.isArray(routes) ? routes : [],
     });
   };
 

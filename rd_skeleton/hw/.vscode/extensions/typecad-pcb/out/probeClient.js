@@ -130,8 +130,8 @@ const PROBE_CLIENT = `<script>
   // Layout view: the page hands moved-component deltas to the host, which
   // edits the placement literals, rebuilds, and regenerates this viewer
   var layoutCb = null;
-  window.typecadLayoutApply = function (moves, texts, values, labels, renames, cb) {
-    layoutCb = cb || null;
+  window.typecadLayoutApply = function (moves, texts, values, labels, renames, routes, cb) {
+    layoutCb = cb || (typeof routes === 'function' ? routes : null);
     send({
       type: 'typecad/layout-rebuild',
       moves: moves,
@@ -139,6 +139,7 @@ const PROBE_CLIENT = `<script>
       values: values || [],
       labels: labels || [],
       renames: renames || [],
+      routes: Array.isArray(routes) ? routes : [],
     });
   };
 

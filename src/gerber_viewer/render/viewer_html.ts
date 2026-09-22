@@ -2467,10 +2467,11 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       }
       layoutApplyBtn.disabled = true;
       layoutApplyBtn.textContent = 'rebuilding\u2026';
-      window.typecadLayoutApply(moves, texts, values, labels, renames, function (err) {
+      window.typecadLayoutApply(moves, texts, values, labels, renames, routedTracks, function (err) {
         layoutApplyBtn.disabled = false;
         layoutApplyBtn.textContent = 'apply & rebuild';
         if (err && statusEl) statusEl.textContent = 'layout apply failed: ' + err;
+        else routedTracks = []; // now source-owned: the rebuild re-renders them
       });
     });
   }
@@ -2522,6 +2523,27 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       if (ev.key === 'x' || ev.key === 'X') {
         ev.preventDefault();
         routeKey();
+        return;
+      }
+      if (ev.key === 'v' || ev.key === 'V') {
+        if (routeState) {
+          ev.preventDefault();
+          routeVia();
+        }
+        return;
+      }
+      if (ev.key === 'a' || ev.key === 'A') {
+        if (routeState) {
+          ev.preventDefault();
+          routeHintAccept();
+        }
+        return;
+      }
+      if (ev.key === 'Backspace') {
+        if (routeState) {
+          ev.preventDefault();
+          routeUndoAnchor();
+        }
         return;
       }
       var step = ev.altKey ? 0.1 : 0.5;
@@ -2784,8 +2806,39 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     );
     return p;
   }
+  // is a pad an endpoint of any committed interactive track of its net?
+  function routePadCovered(ref, pin, net) {
+    var covered = window.__typecadRouteEnds;
+    if (!covered) {
+      covered = window.__typecadRouteEnds = {};
+      if (viewGroups.gerber) {
+        var tracks = viewGroups.gerber.querySelectorAll('path[data-route="1"][data-w]');
+        for (var ti = 0; ti < tracks.length; ti++) {
+          var tn = tracks[ti].getAttribute('data-net');
+          var tw = parseFloat(tracks[ti].getAttribute('data-w') || '0.3') / 2;
+          var nums = (tracks[ti].getAttribute('d') || '').match(/[-\d.]+/g);
+          if (!nums || nums.length < 4 || !tn) continue;
+          var ends = [
+            [+nums[0], +nums[1]],
+            [+nums[nums.length - 2], +nums[nums.length - 1]],
+          ];
+          for (var pi2 = 0; pi2 < padManifest.length; pi2++) {
+            var pcx = padManifest[pi2];
+            if (pcx.net !== tn) continue;
+            var cc = padCenter(pcx);
+            var rr = Math.max(Math.max(pcx.w, pcx.h) / 2, tw) + 0.25;
+            for (var en = 0; en < ends.length; en++)
+              if (Math.hypot(cc.x - ends[en][0], cc.y - ends[en][1]) < rr)
+                covered[pcx.ref + '|' + String(pcx.pin)] = 1;
+          }
+        }
+      }
+    }
+    return !!covered[ref + '|' + pin];
+  }
   function refreshRatsnest() {
     syncPadLabelVisibility();
+    window.__typecadRouteEnds = null; // committed tracks changed -> rebuild
     var old = document.getElementById('ratsnest');
     if (old && old.parentNode) old.parentNode.removeChild(old);
     // the group lives in the GERBER stack (not the layout overlay) so the
@@ -2836,6 +2889,9 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         // immediately, the target once the rubber-band snaps onto it
         if (routeState && ucomp.ref === routeState.startPad.ref && String(ucomp.pads[up].pin) === String(routeState.startPad.pin)) continue;
         if (routeState && routeState.targetPad && ucomp.ref === routeState.targetPad.ref && String(ucomp.pads[up].pin) === String(routeState.targetPad.pin)) continue;
+        // committed interactive routes cover their endpoint pads: a pad
+        // touched by a placed track's endpoint is connected, not stranded
+        if (!wiredNets[unet] && routePadCovered(ucomp.ref, String(ucomp.pads[up].pin), unet)) continue;
         (padsByNet[unet] = padsByNet[unet] || []).push(padPos(ucomp, ucomp.pads[up]));
       }
     }
@@ -3047,16 +3103,23 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     host.appendChild(t);
   }
   // ---- manual track routing ('x' from a highlighted pad) ----
-  // Click a pad (its flash) to highlight it; press X to start a track from
-  // that pad's CENTER. The rubber-band follows the mouse snapped to
-  // 0/45/90-degree rays from the start, or to another pad's center when the
-  // cursor is near one (same-net pads win ties). The ratsnest re-renders
-  // live — the routed pads drop out of their net's chain. Left-click commits
-  // the displayed track as real (themed, layer-owning) copper; Escape cancels.
-  var ROUTE_W = 0.3;
+  // Click a pad flash to highlight it; press X to start a track from that
+  // pad's CENTER. The rubber-band follows the mouse snapped to 0/45/90 rays,
+  // or walks onto a snapped pad using only 0/45/90 segments (elbow steered
+  // by the mouse). Everything is clearance-checked live against the layer's
+  // existing copper (same-net connects, foreign nets are obstacles): the
+  // preview stays the layer ink color while clear, turns amber near the
+  // limit and red on a violation — and red refuses to anchor. V drops a via
+  // and continues on the other copper layer; Backspace undoes the last
+  // anchor; double-click finishes anywhere; a faint corridor hint from an
+  // in-page grid A* appears when hovering a target pad, and A accepts it.
+  // The ratsnest re-renders live. Committed routes are recorded for the
+  // apply bridge (source TrackBuilder generation in the host).
   var padHi = null; // highlighted manifest pad
-  var routeState = null; // { sx, sy, net, layerGroup, inkVar, path, startPad, targetPad }
-  var routeUi = null; // topmost group: preview + highlight rings
+  var routeState = null;
+  var routeUi = null;
+  var routedTracks = []; // committed this session: {net, w, pieces, vias} (board frame)
+  var CLEARANCE = 0.2; // mm, trace-to-foreign-copper
   function routeUiGroup() {
     if (routeUi) return routeUi;
     routeUi = document.createElementNS(SVGNSL, 'g');
@@ -3073,14 +3136,98 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     var inm = /(^|[-_.])in(\d+)_cu(?=$|[-_.])/.exec(l);
     return inm ? 'In' + inm[2] + '.Cu' : null;
   }
+  function copperGroups() {
+    return viewGroups.gerber ? viewGroups.gerber.querySelectorAll('g[data-kind="copper"]') : [];
+  }
+  function layerGroupByCanon(canon) {
+    var gs = copperGroups();
+    for (var i = 0; i < gs.length; i++)
+      if (copperCanon(gs[i].getAttribute('data-layer-name')) === canon) return gs[i];
+    return gs[0] || null;
+  }
   function layerGroupForPad(p) {
-    // a copper group the pad touches; front first, then back, then inners
     var want = p.layers.indexOf('*.Cu') !== -1 ? ['F.Cu', 'B.Cu'] : p.layers.slice();
-    var groups = viewGroups.gerber.querySelectorAll('g[data-kind="copper"]');
-    for (var w = 0; w < want.length; w++)
-      for (var gi = 0; gi < groups.length; gi++)
-        if (copperCanon(groups[gi].getAttribute('data-layer-name')) === want[w]) return groups[gi];
-    return groups[0] || null;
+    for (var w = 0; w < want.length; w++) {
+      var g = layerGroupByCanon(want[w]);
+      if (g) return g;
+    }
+    return copperGroups()[0] || null;
+  }
+  function otherLayerCanon(canon) {
+    if (copperCanon(canon) === 'F.Cu') return 'B.Cu';
+    return 'F.Cu';
+  }
+  // ---- obstacle index: the layer's copper as inflated boxes ----
+  // (stroke width rides on the element; use-flash bboxes come from their
+  // rendered geometry. Same-net copper connects, so it never blocks.)
+  function buildObstacles(layerGroup, net) {
+    var obs = [];
+    if (!layerGroup) return obs;
+    var kids = layerGroup.children;
+    for (var i = 0; i < kids.length; i++) {
+      var el = kids[i];
+      if (!el.getBBox) continue;
+      if (el.classList && (el.classList.contains('pad-labels') || el.id === 'route-ui')) continue;
+      var enet = el.getAttribute('data-net');
+      if (enet && net && enet === net) continue;
+      // zone-fill regions (fills) are pours: their clearance is the fill
+      // engine's job, and same-net pours blanket the whole board area —
+      // blocking them here would make every corridor unreachable
+      if (el.getAttribute('fill-rule')) continue;
+      var bb;
+      try {
+        bb = el.getBBox();
+      } catch (e) {
+        continue;
+      }
+      if (!bb || (!bb.width && !bb.height)) continue;
+      var sw = parseFloat(el.getAttribute('stroke-width') || '0') || 0;
+      obs.push({ x0: bb.x - sw / 2, y0: bb.y - sw / 2, x1: bb.x + bb.width + sw / 2, y1: bb.y + bb.height + sw / 2 });
+    }
+    return obs;
+  }
+  // worst clearance margin (mm) of a point sequence against the obstacles
+  function clearanceMargin(obs, pts, w) {
+    var need = w / 2 + CLEARANCE;
+    var worst = Infinity;
+    for (var s = 1; s < pts.length; s++) {
+      var ax = pts[s - 1].x, ay = pts[s - 1].y, bx = pts[s].x, by = pts[s].y;
+      var len = Math.hypot(bx - ax, by - ay);
+      var steps = Math.max(1, Math.ceil(len / 0.2));
+      for (var t = 0; t <= steps; t++) {
+        var px = ax + ((bx - ax) * t) / steps;
+        var py = ay + ((by - ay) * t) / steps;
+        for (var oi = 0; oi < obs.length; oi++) {
+          var o = obs[oi];
+          if (px < o.x0 - 3 && px > o.x1 + 3) continue;
+          if (py < o.y0 - 3 && py > o.y1 + 3) continue;
+          var dx = Math.max(o.x0 - px, 0, px - o.x1);
+          var dy = Math.max(o.y0 - py, 0, py - o.y1);
+          var dist = dx || dy ? Math.hypot(dx, dy) : -0.5; // inside = violation
+          var margin = dist - need;
+          if (margin < worst) worst = margin;
+        }
+      }
+    }
+    return worst;
+  }
+  // ---- width from the net's own copper, falling back to a power heuristic
+  function routeWidth(net, layerGroup) {
+    if (net && layerGroup) {
+      var ws = [];
+      var els = layerGroup.querySelectorAll('path[data-w][data-net]');
+      for (var i = 0; i < els.length; i++) {
+        if (els[i].getAttribute('data-net') !== net) continue;
+        var v = parseFloat(els[i].getAttribute('data-w'));
+        if (v > 0.05) ws.push(v);
+      }
+      if (ws.length) {
+        ws.sort(function (a, b) { return a - b; });
+        return +ws[Math.floor(ws.length / 2)].toFixed(3);
+      }
+    }
+    if (net && /^(vcc|gnd|power|\+\d)/i.test(net)) return 0.55;
+    return 0.3;
   }
   function padRing(p, cls) {
     var c = padCenter(p);
@@ -3110,8 +3257,28 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       padHiRing = null;
     }
   }
+  function newPiece(layerGroup) {
+    var inkVar = '--ink-' + layerGroup.getAttribute('data-layer-id');
+    var anchored = document.createElementNS(SVGNSL, 'path');
+    anchored.setAttribute('class', 'route-anchored');
+    anchored.setAttribute('stroke', getComputedStyle(layerGroup).fill || '#c87533');
+    anchored.setAttribute('stroke-width', String(routeState.w));
+    anchored.setAttribute('fill', 'none');
+    anchored.setAttribute('stroke-linecap', 'round');
+    anchored.setAttribute('stroke-linejoin', 'round');
+    routeUiGroup().appendChild(anchored);
+    return {
+      canon: copperCanon(layerGroup.getAttribute('data-layer-name')),
+      layerGroup: layerGroup,
+      inkVar: inkVar,
+      inkColor: getComputedStyle(layerGroup).fill || '#c87533',
+      anchoredEl: anchored,
+      obstacles: buildObstacles(layerGroup, routeState.net),
+      points: [],
+    };
+  }
   function routeKey() {
-    if (routeState) return; // already routing \u2014 click commits, Escape cancels
+    if (routeState) return;
     if (!padHi) {
       if (statusEl && !statusLocked()) statusEl.textContent = 'click a pad first \u2014 X routes a track from it';
       return;
@@ -3119,60 +3286,47 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     var lg = layerGroupForPad(padHi);
     if (!lg) return;
     var c = padCenter(padHi);
-    var inkVar = '--ink-' + lg.getAttribute('data-layer-id');
-    // the preview lives OUTSIDE the layer group (topmost), where the layer's
-    // --ink var is not in scope — resolve it to a literal color here so the
-    // rubber-band actually renders; the committed track inside the group
-    // keeps the var and re-themes live
-    var inkColor = getComputedStyle(lg).fill || '#c87533';
-    var path = document.createElementNS(SVGNSL, 'path');
-    path.setAttribute('class', 'route-preview');
-    path.setAttribute('stroke', inkColor);
-    path.setAttribute('stroke-width', String(ROUTE_W));
-    path.setAttribute('fill', 'none');
-    path.setAttribute('stroke-linecap', 'round');
-    path.setAttribute('d', 'M ' + c.x.toFixed(3) + ' ' + c.y.toFixed(3) + ' L ' + c.x.toFixed(3) + ' ' + c.y.toFixed(3));
-    routeUiGroup().appendChild(path);
-    // the frozen polyline behind the preview: grows by one segment per click
-    var anchored = document.createElementNS(SVGNSL, 'path');
-    anchored.setAttribute('class', 'route-anchored');
-    anchored.setAttribute('stroke', inkColor);
-    anchored.setAttribute('stroke-width', String(ROUTE_W));
-    anchored.setAttribute('fill', 'none');
-    anchored.setAttribute('stroke-linecap', 'round');
-    anchored.setAttribute('stroke-linejoin', 'round');
-    anchored.setAttribute('d', 'M ' + c.x.toFixed(3) + ' ' + c.y.toFixed(3));
-    routeUiGroup().appendChild(anchored);
     routeState = {
       sx: c.x,
       sy: c.y,
       net: padHi.net || null,
-      layerGroup: lg,
-      inkVar: inkVar,
-      path: path,
+      w: routeWidth(padHi.net, lg),
       startPad: padHi,
       targetPad: null,
       targetRing: null,
-      // multi-segment: start + every clicked anchor; sx/sy track the LAST
-      // point so angle snap is measured from the current segment's origin
-      points: [{ x: c.x, y: c.y }],
-      anchored: anchored, // one path whose d grows with every anchor
-      segs: 0,
+      pieces: [],
+      vias: [], // {x, y} gerber, where a layer switch happened
+      lastPts: [],
+      clearState: 'ok',
+      hint: null,
+      hintEl: null,
     };
+    var piece = newPiece(lg);
+    piece.points.push({ x: c.x, y: c.y });
+    routeState.pieces.push(piece);
+    routeState.path = document.createElementNS(SVGNSL, 'path');
+    routeState.path.setAttribute('class', 'route-preview');
+    routeState.path.setAttribute('stroke-width', String(routeState.w));
+    routeState.path.setAttribute('fill', 'none');
+    routeState.path.setAttribute('stroke-linecap', 'round');
+    routeUiGroup().appendChild(routeState.path);
     raisePadLabels();
     refreshRatsnest();
     if (statusEl && !statusLocked())
       statusEl.textContent =
-        'routing ' + (padHi.net ? padHi.net : 'no net') + ' from ' + padHi.ref + '.' + padHi.pin + ' \u2014 click to place, Esc cancels';
+        'routing ' + (padHi.net ? padHi.net : 'no net') + ' (' + routeState.w + 'mm) from ' + padHi.ref + '.' + padHi.pin +
+        ' \u2014 click anchors, V via, A takes the hint, Esc cancels';
     clearPadHighlight();
+  }
+  function curPiece() {
+    return routeState.pieces[routeState.pieces.length - 1];
   }
   function routeCancel() {
     if (!routeState) return;
-    // Escape kills the WHOLE route: the preview, every anchored segment,
-    // and the rings — nothing of the in-progress track survives
     routeState.path.remove();
-    routeState.anchored.remove();
+    for (var pi = 0; pi < routeState.pieces.length; pi++) routeState.pieces[pi].anchoredEl.remove();
     if (routeState.targetRing) routeState.targetRing.remove();
+    if (routeState.hintEl) routeState.hintEl.remove();
     routeState = null;
     refreshRatsnest();
     if (statusEl && !statusLocked()) statusEl.textContent = 'routing cancelled';
@@ -3207,107 +3361,371 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     if (len < 0) len = 0;
     return { x: routeState.sx + Math.cos(snap) * len, y: routeState.sy + Math.sin(snap) * len, pad: null };
   }
-  // the walk from the anchor to a snapped pad: 0/45/90 segments ONLY, so
-  // the trace always connects cleanly — a 45-degree diagonal covers the
-  // minor axis, an orthogonal leg covers the rest. Both elbow orders are
-  // valid (diagonal-first / straight-first); the one nearer the mouse wins,
-  // so the user steers which leg leads
-  function routePoints(end) {
-    if (!end.pad) return [{ x: end.x, y: end.y }];
+  // the walk from the anchor to a snapped pad: 0/45/90 segments only. Both
+  // elbow orders are candidates; the CLEAR one wins, tie broken by the mouse
+  function routeWalkCandidates(end) {
     var dx = end.x - routeState.sx;
     var dy = end.y - routeState.sy;
     var adx = Math.abs(dx);
     var ady = Math.abs(dy);
     var TOL = 0.001;
-    // already aligned (one axis) or already 45: a single segment reaches it
-    if (adx < TOL || ady < TOL || Math.abs(adx - ady) < TOL) return [{ x: end.x, y: end.y }];
+    if (adx < TOL || ady < TOL || Math.abs(adx - ady) < TOL) return [[{ x: end.x, y: end.y }]];
     var sx = dx > 0 ? 1 : -1;
     var sy = dy > 0 ? 1 : -1;
     var d = Math.min(adx, ady);
-    var elbowA = { x: routeState.sx + sx * d, y: routeState.sy + sy * d }; // diagonal first
+    var elbowA = { x: routeState.sx + sx * d, y: routeState.sy + sy * d };
     var elbowB =
       adx > ady
-        ? { x: routeState.sx + sx * (adx - d), y: routeState.sy } // horizontal, then diagonal
-        : { x: routeState.sx, y: routeState.sy + sy * (ady - d) }; // vertical, then diagonal
-    var mA = Math.hypot(elbowA.x - end.mx, elbowA.y - end.my);
-    var mB = Math.hypot(elbowB.x - end.mx, elbowB.y - end.my);
-    var elbow = mA <= mB ? elbowA : elbowB;
-    return [elbow, { x: end.x, y: end.y }];
+        ? { x: routeState.sx + sx * (adx - d), y: routeState.sy }
+        : { x: routeState.sx, y: routeState.sy + sy * (ady - d) };
+    return [
+      [elbowA, { x: end.x, y: end.y }],
+      [elbowB, { x: end.x, y: end.y }],
+    ];
+  }
+  function previewPathD(pts) {
+    var d = 'M ' + routeState.sx.toFixed(3) + ' ' + routeState.sy.toFixed(3);
+    for (var i = 0; i < pts.length; i++) d += ' L ' + pts[i].x.toFixed(3) + ' ' + pts[i].y.toFixed(3);
+    return d;
   }
   function routeFollow(mx, my) {
     if (!routeState) return;
     var end = routeEndpoint(mx, my);
     end.mx = mx;
     end.my = my;
-    var pts = routePoints(end);
+    var piece = curPiece();
+    var pts;
+    if (end.pad) {
+      // walk: prefer the CLEAR elbow, tie broken by the mouse
+      var cands = routeWalkCandidates(end);
+      var bestPts = cands[0];
+      var bestMargin = -Infinity;
+      for (var ci = 0; ci < cands.length; ci++) {
+        var m = clearanceMargin(piece.obstacles, [{ x: routeState.sx, y: routeState.sy }].concat(cands[ci]), routeState.w);
+        var nearer = Math.hypot(cands[ci][0].x - mx, cands[ci][0].y - my);
+        var score = m + (ci === 0 ? 0.001 : 0) - nearer * 0.001; // clear dominates
+        if (score > bestMargin) {
+          bestMargin = score;
+          bestPts = cands[ci];
+        }
+      }
+      pts = bestPts;
+    } else {
+      // free space: the snapped ray; if it violates clearance, try the
+      // neighboring 45-degree rays (shove-lite) and take the first clear one
+      pts = [{ x: end.x, y: end.y }];
+      var seq = [{ x: routeState.sx, y: routeState.sy }, pts[0]];
+      if (clearanceMargin(piece.obstacles, seq, routeState.w) < 0) {
+        var base = Math.atan2(end.y - routeState.sy, end.x - routeState.sx);
+        var len0 = Math.hypot(end.x - routeState.sx, end.y - routeState.sy);
+        var tried = [base + Math.PI / 4, base - Math.PI / 4, base + Math.PI / 2, base - Math.PI / 2];
+        for (var ai = 0; ai < tried.length; ai++) {
+          var cand = [
+            { x: routeState.sx, y: routeState.sy },
+            { x: routeState.sx + Math.cos(tried[ai]) * len0, y: routeState.sy + Math.sin(tried[ai]) * len0 },
+          ];
+          if (clearanceMargin(piece.obstacles, cand, routeState.w) >= 0) {
+            pts = [cand[1]];
+            break;
+          }
+        }
+      }
+    }
     routeState.lastEnd = end;
     routeState.lastPts = pts;
-    // the rubber-band draws from the last anchor through the walk points
-    // (the anchored polyline behind it is routeState.anchored)
-    var d = 'M ' + routeState.sx.toFixed(3) + ' ' + routeState.sy.toFixed(3);
-    for (var rp = 0; rp < pts.length; rp++)
-      d += ' L ' + pts[rp].x.toFixed(3) + ' ' + pts[rp].y.toFixed(3);
-    routeState.path.setAttribute('d', d);
+    routeState.path.setAttribute('d', previewPathD(pts));
+    // clearance tint: ink while clear, amber near the limit, red on violation
+    var margin = clearanceMargin(piece.obstacles, [{ x: routeState.sx, y: routeState.sy }].concat(pts), routeState.w);
+    routeState.clearState = margin > 0.1 ? 'ok' : margin >= 0 ? 'warn' : 'bad';
+    routeState.path.setAttribute(
+      'stroke',
+      routeState.clearState === 'ok' ? piece.inkColor : routeState.clearState === 'warn' ? '#d29922' : '#f14c4c',
+    );
     var targetChanged = (routeState.targetPad || null) !== (end.pad || null);
     if (targetChanged) {
       if (routeState.targetRing) routeState.targetRing.remove();
       routeState.targetRing = end.pad ? padRing(end.pad, 'route-pad-target') : null;
       if (routeState.targetRing) routeUiGroup().appendChild(routeState.targetRing);
       routeState.targetPad = end.pad || null;
-      refreshRatsnest(); // the live chain drops the newly-covered pad
+      updateRouteHint();
+      refreshRatsnest();
     }
   }
+  // ---- corridor hint: grid A* over the obstacle index (0.25mm cells) ----
+  function updateRouteHint() {
+    if (routeState.hintEl) {
+      routeState.hintEl.remove();
+      routeState.hintEl = null;
+      routeState.hint = null;
+    }
+    if (!routeState.targetPad) return;
+    var piece = curPiece();
+    var t = padCenter(routeState.targetPad);
+    var res = 0.25;
+    var padM = 2;
+    var gx0 = Math.min(routeState.sx, t.x) - padM;
+    var gy0 = Math.min(routeState.sy, t.y) - padM;
+    var gx1 = Math.max(routeState.sx, t.x) + padM;
+    var gy1 = Math.max(routeState.sy, t.y) + padM;
+    var W = Math.ceil((gx1 - gx0) / res) + 1;
+    var H = Math.ceil((gy1 - gy0) / res) + 1;
+    if (W * H > 400000) return;
+    var blocked = new Uint8Array(W * H);
+    var need = routeState.w / 2 + CLEARANCE;
+    var toCell = function (x, y) {
+      return { cx: Math.round((x - gx0) / res), cy: Math.round((y - gy0) / res) };
+    };
+    for (var oi = 0; oi < piece.obstacles.length; oi++) {
+      var o = piece.obstacles[oi];
+      var a = toCell(o.x0 - need, o.y0 - need);
+      var b = toCell(o.x1 + need, o.y1 + need);
+      for (var cx = Math.max(0, a.cx); cx <= Math.min(W - 1, b.cx); cx++)
+        for (var cy = Math.max(0, a.cy); cy <= Math.min(H - 1, b.cy); cy++) blocked[cy * W + cx] = 1;
+    }
+    var s = toCell(routeState.sx, routeState.sy);
+    var g = toCell(t.x, t.y);
+    // both endpoint pads' own obstacle boxes blanket their center cells'
+    // neighbors — free an approach disc around each so A* can enter/leave
+    var unblockR = Math.ceil(1.0 / res);
+    for (var sx2 = s.cx - unblockR; sx2 <= s.cx + unblockR; sx2++)
+      for (var sy2 = s.cy - unblockR; sy2 <= s.cy + unblockR; sy2++)
+        if (sx2 >= 0 && sy2 >= 0 && sx2 < W && sy2 < H && Math.hypot(sx2 - s.cx, sy2 - s.cy) <= unblockR)
+          blocked[sy2 * W + sx2] = 0;
+    for (var ux = g.cx - unblockR; ux <= g.cx + unblockR; ux++)
+      for (var uy = g.cy - unblockR; uy <= g.cy + unblockR; uy++)
+        if (ux >= 0 && uy >= 0 && ux < W && uy < H && Math.hypot(ux - g.cx, uy - g.cy) <= unblockR)
+          blocked[uy * W + ux] = 0;
+    // A* 8-directional (movement is exactly 0/45/90)
+    var open = [s.cy * W + s.cx];
+    var came = new Int32Array(W * H).fill(-1);
+    var cost = new Float64Array(W * H).fill(Infinity);
+    cost[s.cy * W + s.cx] = 0;
+    var fScore = new Float64Array(W * H).fill(Infinity);
+    fScore[s.cy * W + s.cx] = Math.hypot(g.cx - s.cx, g.cy - s.cy);
+    var DIRS = [
+      [1, 0, 1], [-1, 0, 1], [0, 1, 1], [0, -1, 1],
+      [1, 1, 1.4142], [1, -1, 1.4142], [-1, 1, 1.4142], [-1, -1, 1.4142],
+    ];
+    var goal = g.cy * W + g.cx;
+    var found = false;
+    while (open.length) {
+      // small grids: linear min-scan is fine
+      var bi = 0;
+      for (var qi = 1; qi < open.length; qi++) if (fScore[open[qi]] < fScore[open[bi]]) bi = qi;
+      var cur = open.splice(bi, 1)[0];
+      if (cur === goal) {
+        found = true;
+        break;
+      }
+      var ccx = cur % W;
+      var ccy = (cur - ccx) / W;
+      for (var di = 0; di < 8; di++) {
+        var nx = ccx + DIRS[di][0];
+        var ny = ccy + DIRS[di][1];
+        if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+        var ni = ny * W + nx;
+        if (blocked[ni]) continue;
+        // no corner cutting between two diagonal blockers
+        if (DIRS[di][2] > 1 && (blocked[ccy * W + nx] || blocked[ny * W + ccx])) continue;
+        var nc = cost[cur] + DIRS[di][2];
+        if (nc < cost[ni]) {
+          cost[ni] = nc;
+          fScore[ni] = nc + Math.hypot(g.cx - nx, g.cy - ny);
+          came[ni] = cur;
+          if (open.indexOf(ni) === -1) open.push(ni);
+        }
+      }
+    }
+    if (!found) return;
+    // reconstruct + collapse collinear runs (keeps pure 0/45/90 corners)
+    var path = [];
+    var node = goal;
+    while (node !== -1) {
+      var pxx = node % W;
+      var pyy = (node - pxx) / W;
+      path.push({ x: gx0 + pxx * res, y: gy0 + pyy * res });
+      node = came[node];
+    }
+    path.reverse();
+    path[0] = { x: routeState.sx, y: routeState.sy };
+    path[path.length - 1] = { x: t.x, y: t.y };
+    var simp = [path[0]];
+    for (var si = 1; si < path.length - 1; si++) {
+      var p0 = simp[simp.length - 1];
+      var p1 = path[si];
+      var p2 = path[si + 1];
+      var d1x = p1.x - p0.x, d1y = p1.y - p0.y, d2x = p2.x - p1.x, d2y = p2.y - p1.y;
+      var cross = d1x * d2y - d1y * d2x;
+      var dot = d1x * d2x + d1y * d2y;
+      if (Math.abs(cross) > 1e-9 || dot < 0) simp.push(p1);
+    }
+    simp.push(path[path.length - 1]);
+    routeState.hint = simp;
+    var dAttr = 'M ' + simp[0].x.toFixed(3) + ' ' + simp[0].y.toFixed(3);
+    for (var hi = 1; hi < simp.length; hi++) dAttr += ' L ' + simp[hi].x.toFixed(3) + ' ' + simp[hi].y.toFixed(3);
+    var hintEl = document.createElementNS(SVGNSL, 'path');
+    hintEl.setAttribute('class', 'route-hint');
+    hintEl.setAttribute('d', dAttr);
+    routeUiGroup().appendChild(hintEl);
+    routeState.hintEl = hintEl;
+  }
+  function routeHintAccept() {
+    if (!routeState || !routeState.hint) return;
+    var pts = routeState.hint.slice(1); // everything after the anchor
+    var end = { x: pts[pts.length - 1].x, y: pts[pts.length - 1].y, pad: routeState.targetPad };
+    routeAnchor(end, pts);
+    if (routeState.targetPad) routeCommit();
+  }
   function routeAnchor(end, pts) {
-    // an unmovable waypoint: the DISPLAYED walk (elbow + endpoint, or the
-    // single snapped point) freezes into the anchored polyline and the
-    // route continues from the last of those points
     if (!pts) pts = routeState.lastPts || [{ x: end.x, y: end.y }];
-    for (var pa = 0; pa < pts.length; pa++) routeState.points.push(pts[pa]);
-    routeState.segs += pts.length;
-    var d = 'M ' + routeState.points[0].x.toFixed(3) + ' ' + routeState.points[0].y.toFixed(3);
-    for (var ai = 1; ai < routeState.points.length; ai++)
-      d += ' L ' + routeState.points[ai].x.toFixed(3) + ' ' + routeState.points[ai].y.toFixed(3);
-    routeState.anchored.setAttribute('d', d);
-    routeState.sx = end.x;
-    routeState.sy = end.y;
+    if (routeState.clearState === 'bad' && !end.pad) {
+      if (statusEl && !statusLocked()) statusEl.textContent = 'clearance violation \u2014 move the trace before anchoring';
+      return;
+    }
+    var piece = curPiece();
+    for (var pa = 0; pa < pts.length; pa++) piece.points.push(pts[pa]);
+    var d = 'M ' + piece.points[0].x.toFixed(3) + ' ' + piece.points[0].y.toFixed(3);
+    for (var ai = 1; ai < piece.points.length; ai++)
+      d += ' L ' + piece.points[ai].x.toFixed(3) + ' ' + piece.points[ai].y.toFixed(3);
+    piece.anchoredEl.setAttribute('d', d);
+    routeState.sx = pts[pts.length - 1].x;
+    routeState.sy = pts[pts.length - 1].y;
     if (statusEl && !statusLocked())
-      statusEl.textContent =
-        'routing ' + (routeState.net ? routeState.net : 'no net') + ' \u2014 ' + routeState.segs + ' segment' + (routeState.segs > 1 ? 's' : '') + ' anchored \u2014 snap a pad to finish, Esc cancels';
+      statusEl.textContent = 'anchored \u2014 ' + (routeState.net ? routeState.net : 'no net') + ' continues; V via, Backspace undo, snap a pad or double-click to finish';
+  }
+  function routeVia() {
+    if (!routeState) return;
+    // freeze the current walk at its endpoint, drop a via, continue on the
+    // other copper layer from the same point
+    var end = routeState.lastEnd || routeEndpoint(routeState.sx, routeState.sy);
+    var pts = routeState.lastPts || [{ x: end.x, y: end.y }];
+    var piece = curPiece();
+    for (var pa = 0; pa < pts.length; pa++) piece.points.push(pts[pa]);
+    var d = 'M ' + piece.points[0].x.toFixed(3) + ' ' + piece.points[0].y.toFixed(3);
+    for (var ai = 1; ai < piece.points.length; ai++)
+      d += ' L ' + piece.points[ai].x.toFixed(3) + ' ' + piece.points[ai].y.toFixed(3);
+    piece.anchoredEl.setAttribute('d', d);
+    var vx = pts[pts.length - 1].x;
+    var vy = pts[pts.length - 1].y;
+    routeState.vias.push({ x: vx, y: vy });
+    var viaEl = document.createElementNS(SVGNSL, 'circle');
+    viaEl.setAttribute('class', 'route-via');
+    viaEl.setAttribute('cx', vx.toFixed(3));
+    viaEl.setAttribute('cy', vy.toFixed(3));
+    viaEl.setAttribute('r', '0.3');
+    routeUiGroup().appendChild(viaEl);
+    var nextCanon = otherLayerCanon(piece.canon);
+    var lg = layerGroupByCanon(nextCanon);
+    if (!lg) {
+      if (statusEl && !statusLocked()) statusEl.textContent = 'no other copper layer to via to';
+      return;
+    }
+    var np = newPiece(lg);
+    np.points.push({ x: vx, y: vy });
+    np.anchoredEl.setAttribute('d', 'M ' + vx.toFixed(3) + ' ' + vy.toFixed(3));
+    routeState.pieces.push(np);
+    routeState.sx = vx;
+    routeState.sy = vy;
+    routeState.path.setAttribute('stroke', np.inkColor);
+    if (statusEl && !statusLocked()) statusEl.textContent = 'via placed \u2014 continuing on ' + nextCanon;
+  }
+  function routeUndoAnchor() {
+    if (!routeState) return;
+    var piece = curPiece();
+    if (piece.points.length <= 1) {
+      // the piece is empty: pop back through the via to the previous layer
+      if (routeState.pieces.length <= 1) {
+        if (statusEl && !statusLocked()) statusEl.textContent = 'nothing to undo';
+        return;
+      }
+      routeState.pieces.pop();
+      piece.anchoredEl.remove();
+      var vp = routeState.vias.pop();
+      if (vp) {
+        var vias = routeUi.querySelectorAll('.route-via');
+        if (vias.length) vias[vias.length - 1].remove();
+      }
+      piece = curPiece();
+      piece.points.pop(); // the via point
+    } else {
+      piece.points.pop();
+    }
+    if (piece.points.length === 0) return;
+    var last = piece.points[piece.points.length - 1];
+    routeState.sx = last.x;
+    routeState.sy = last.y;
+    var d = 'M ' + piece.points[0].x.toFixed(3) + ' ' + piece.points[0].y.toFixed(3);
+    for (var ai = 1; ai < piece.points.length; ai++)
+      d += ' L ' + piece.points[ai].x.toFixed(3) + ' ' + piece.points[ai].y.toFixed(3);
+    piece.anchoredEl.setAttribute('d', d);
+    if (statusEl && !statusLocked()) statusEl.textContent = 'anchor undone';
   }
   function routeCommit() {
     if (!routeState) return;
-    // finalize the WHOLE polyline: start pad -> anchors -> final pad. The
-    // endpoint is the last FOLLOWED one (routeEndpoint of the live mouse),
-    // not a re-projection of the segment origin — that would zero out
-    var pts = routeState.points.slice();
     var end = routeState.lastEnd || routeEndpoint(routeState.sx, routeState.sy);
     var walk = routeState.lastPts || [{ x: end.x, y: end.y }];
-    for (var wi = 0; wi < walk.length; wi++) pts.push(walk[wi]);
-    var d = 'M ' + pts[0].x.toFixed(3) + ' ' + pts[0].y.toFixed(3);
-    for (var fi = 1; fi < pts.length; fi++)
-      d += ' L ' + pts[fi].x.toFixed(3) + ' ' + pts[fi].y.toFixed(3);
-    var lg = routeState.layerGroup;
-    var track = document.createElementNS(SVGNSL, 'path');
-    track.setAttribute('d', d);
-    track.setAttribute('stroke', 'var(' + routeState.inkVar + ')');
-    track.setAttribute('stroke-width', String(ROUTE_W));
-    track.setAttribute('fill', 'none');
-    track.setAttribute('stroke-linecap', 'round');
-    if (routeState.net) track.setAttribute('data-net', routeState.net);
-    lg.appendChild(track); // real copper: themes with the layer, counts as wiring
+    var piece = curPiece();
+    for (var wi = 0; wi < walk.length; wi++) piece.points.push(walk[wi]);
+    // commit every piece with actual geometry into ITS layer group
+    for (var pi = 0; pi < routeState.pieces.length; pi++) {
+      var pc = routeState.pieces[pi];
+      if (pc.points.length < 2) continue;
+      var d = 'M ' + pc.points[0].x.toFixed(3) + ' ' + pc.points[0].y.toFixed(3);
+      for (var ai = 1; ai < pc.points.length; ai++)
+        d += ' L ' + pc.points[ai].x.toFixed(3) + ' ' + pc.points[ai].y.toFixed(3);
+      var track = document.createElementNS(SVGNSL, 'path');
+      track.setAttribute('d', d);
+      track.setAttribute('stroke', 'var(' + pc.inkVar + ')');
+      track.setAttribute('stroke-width', String(routeState.w));
+      track.setAttribute('fill', 'none');
+      track.setAttribute('stroke-linecap', 'round');
+      track.setAttribute('stroke-linejoin', 'round');
+      track.setAttribute('data-w', String(routeState.w));
+      track.setAttribute('data-route', '1');
+      if (routeState.net) track.setAttribute('data-net', routeState.net);
+      pc.layerGroup.appendChild(track);
+    }
+    for (var vi = 0; vi < routeState.vias.length; vi++) {
+      var v = routeState.vias[vi];
+      for (var gi = 0; gi < routeState.pieces.length; gi++) {
+        var vc = document.createElementNS(SVGNSL, 'circle');
+        vc.setAttribute('cx', v.x.toFixed(3));
+        vc.setAttribute('cy', v.y.toFixed(3));
+        vc.setAttribute('r', '0.3');
+        vc.setAttribute('fill', 'var(' + routeState.pieces[gi].inkVar + ')');
+        vc.setAttribute('data-route', '1');
+        if (routeState.net) vc.setAttribute('data-net', routeState.net);
+        routeState.pieces[gi].layerGroup.appendChild(vc);
+      }
+    }
+    // record for the apply-to-source bridge (board y-down frame)
+    routedTracks.push({
+      net: routeState.net,
+      w: routeState.w,
+      pieces: routeState.pieces.map(function (pc2) {
+        return {
+          layer: pc2.canon,
+          pts: pc2.points.map(function (pt) {
+            return { x: +pt.x.toFixed(3), y: +(-pt.y).toFixed(3) };
+          }),
+        };
+      }),
+      vias: routeState.vias.map(function (vv) {
+        return { x: +vv.x.toFixed(3), y: +(-vv.y).toFixed(3) };
+      }),
+      from: { ref: routeState.startPad.ref, pin: String(routeState.startPad.pin) },
+      to: routeState.targetPad ? { ref: routeState.targetPad.ref, pin: String(routeState.targetPad.pin) } : null,
+    });
     var msg =
-      'track placed: ' +
-      (routeState.net ? routeState.net : 'no net') +
-      ' ' +
-      routeState.startPad.ref +
-      '.' +
-      routeState.startPad.pin +
+      'track placed: ' + (routeState.net ? routeState.net : 'no net') + ' ' + routeState.startPad.ref + '.' + routeState.startPad.pin +
       (routeState.targetPad ? ' \u2192 ' + routeState.targetPad.ref + '.' + routeState.targetPad.pin : '') +
-      ' (' + pts.length + ' points)';
+      ' (' + routeState.pieces.reduce(function (n, p3) { return n + Math.max(0, p3.points.length - 1); }, 0) + ' segments' +
+      (routeState.vias.length ? ', ' + routeState.vias.length + ' via' + (routeState.vias.length > 1 ? 's' : '') : '') + ')';
     routeCancel();
     if (statusEl && !statusLocked()) statusEl.textContent = msg;
   }
-  // commit on left press anywhere (capture phase beats select/box handlers)
+  // commit on left press (capture beats select/box handlers): a snapped pad
+  // finalizes; anywhere else anchors the displayed walk
   svg.addEventListener(
     'pointerdown',
     function (ev) {
@@ -3316,25 +3734,31 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       ev.preventDefault();
       var g = gerberAt(ev.clientX, ev.clientY);
       routeFollow(g.x, g.y);
-      // snapped onto a pad -> the route ends here and commits; anywhere
-      // else -> the displayed point becomes an anchor and routing continues
       if (routeState.targetPad) routeCommit();
       else {
         var end2 = routeEndpoint(g.x, g.y);
         end2.mx = g.x;
         end2.my = g.y;
-        routeAnchor(end2, routePoints(end2));
+        routeAnchor(end2, routeState.lastPts);
       }
     },
     true,
   );
+  // double-click finishes anywhere (the second click of the pair lands here
+  // because the first already anchored)
+  svg.addEventListener('dblclick', function (ev) {
+    if (!routeState) return;
+    ev.stopPropagation();
+    ev.preventDefault();
+    routeCommit();
+  });
   window.addEventListener('mousemove', function (ev) {
     if (!routeState) return;
     var g = gerberAt(ev.clientX, ev.clientY);
     routeFollow(g.x, g.y);
   });
-  // an anchored segment is drawn slightly translucent until the route
-  // finalizes — reads as committed-but-pending vs the live rubber-band
+  // routing keys live in the layout keydown (X start, V via, A hint,
+  // Backspace undo) — see the handler below
 
   // the PCB model's pad manifest (build/<board>_pads.json): pin numbers and
   // net names straight from the board the PCB object wrote. Board y-down
@@ -4859,6 +5283,8 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     }
   }
   #route-ui .route-anchored { opacity: 0.9; }
+  #route-ui .route-hint { stroke: #4fc1ff; stroke-width: 0.12; fill: none; stroke-dasharray: 0.6 0.4; opacity: 0.6; }
+  #route-ui .route-via { fill: #4fc1ff; fill-opacity: 0.35; stroke: #4fc1ff; stroke-width: 0.1; }
   .route-pad-hi { fill: rgba(79, 193, 255, 0.15); stroke: #4fc1ff; stroke-width: 2px; }
   .route-pad-target { fill: rgba(63, 185, 80, 0.15); stroke: #3fb950; stroke-width: 2px; }
   #layout-sel-box { fill: rgba(79, 193, 255, 0.07); stroke: #4fc1ff; stroke-width: 1.5px; }

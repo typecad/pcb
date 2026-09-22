@@ -3120,9 +3120,14 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     if (!lg) return;
     var c = padCenter(padHi);
     var inkVar = '--ink-' + lg.getAttribute('data-layer-id');
+    // the preview lives OUTSIDE the layer group (topmost), where the layer's
+    // --ink var is not in scope — resolve it to a literal color here so the
+    // rubber-band actually renders; the committed track inside the group
+    // keeps the var and re-themes live
+    var inkColor = getComputedStyle(lg).fill || '#c87533';
     var path = document.createElementNS(SVGNSL, 'path');
     path.setAttribute('class', 'route-preview');
-    path.setAttribute('stroke', 'var(' + inkVar + ')');
+    path.setAttribute('stroke', inkColor);
     path.setAttribute('stroke-width', String(ROUTE_W));
     path.setAttribute('fill', 'none');
     path.setAttribute('stroke-linecap', 'round');

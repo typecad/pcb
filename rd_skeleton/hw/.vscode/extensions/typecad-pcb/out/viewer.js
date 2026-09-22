@@ -52,9 +52,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.BoardViewerPanel = void 0;
-exports.mtimeOf = mtimeOf;
-exports.newestBoardFile = newestBoardFile;
+exports.BoardViewerPanel = exports.newestBoardFile = exports.mtimeOf = void 0;
 exports.shellQuote = shellQuote;
 exports.wordUnderCursor = wordUnderCursor;
 const vscode = __importStar(require("vscode"));
@@ -63,34 +61,16 @@ const node_path_1 = __importDefault(require("node:path"));
 const probeClient_js_1 = require("./probeClient.js");
 const layoutEdits_js_1 = require("./layoutEdits.js");
 const sourceRef_js_1 = require("./sourceRef.js");
+// discovery helpers live vscode-free in boardFile.ts for unit testing;
+// re-exported here for the existing import sites
+var boardFile_js_1 = require("./boardFile.js");
+Object.defineProperty(exports, "mtimeOf", { enumerable: true, get: function () { return boardFile_js_1.mtimeOf; } });
+Object.defineProperty(exports, "newestBoardFile", { enumerable: true, get: function () { return boardFile_js_1.newestBoardFile; } });
+const boardFile_js_2 = require("./boardFile.js");
 const GENERATE_TIMEOUT_MS = 120_000;
 /** A selection is re-posted until the viewer page acks it (or this times out). */
 const DELIVERY_TIMEOUT_MS = 5_000;
 const DELIVERY_INTERVAL_MS = 200;
-/** mtime in ms, or 0 when the file vanished — enough for freshness checks. */
-function mtimeOf(file) {
-    try {
-        return node_fs_1.default.statSync(file).mtimeMs;
-    }
-    catch {
-        return 0;
-    }
-}
-/**
- * The project's board: whichever build/ touched last (stray boards from fp
- * upgrade tests can share build/ — the newest .kicad_pcb is the one just
- * written). statSync guarded: a board rewritten between readdir and stat
- * must not crash the caller.
- */
-function newestBoardFile(folder) {
-    const buildDir = node_path_1.default.join(folder, 'build');
-    if (!node_fs_1.default.existsSync(buildDir))
-        return null;
-    const boards = node_fs_1.default.readdirSync(buildDir).filter((f) => f.endsWith('.kicad_pcb'));
-    if (boards.length === 0)
-        return null;
-    return boards.map((f) => node_path_1.default.join(buildDir, f)).sort((a, b) => mtimeOf(b) - mtimeOf(a))[0] ?? null;
-}
 /** Double-quote a path for an `exec` shell line; embedded quotes are escaped. */
 function shellQuote(value) {
     return `"${value.replace(/"/g, '\\"')}"`;
@@ -193,16 +173,16 @@ class BoardViewerPanel {
             panel.dispose();
             return;
         }
-        const board = newestBoardFile(folder);
+        const board = (0, boardFile_js_2.newestBoardFile)(folder);
         const htmlPath = node_path_1.default.join(folder, 'build', 'serve', 'viewer.html');
         // fast path: the on-disk viewer was generated from this exact board
         // revision (the file is newer than the board) — reuse it as-is
-        if (board && node_fs_1.default.existsSync(htmlPath) && mtimeOf(htmlPath) > mtimeOf(board)) {
+        if (board && node_fs_1.default.existsSync(htmlPath) && (0, boardFile_js_2.mtimeOf)(htmlPath) > (0, boardFile_js_2.mtimeOf)(board)) {
             try {
                 const raw = node_fs_1.default.readFileSync(htmlPath, 'utf8');
                 const [components, nets] = await Promise.all([this.service.components(), this.service.netSources().catch(() => [])]);
                 const { html } = (0, probeClient_js_1.injectProbeClient)(raw, components, nets);
-                this.generated = { html, boardMtimeMs: mtimeOf(board) };
+                this.generated = { html, boardMtimeMs: (0, boardFile_js_2.mtimeOf)(board) };
                 this.loadToken++;
                 this.assignHtml();
                 this.output.appendLine('viewer restored from the last generated board view');
@@ -353,8 +333,8 @@ class BoardViewerPanel {
         // watcher events are cheap and sometimes spurious (Windows fires
         // onChange loosely); the board's mtime against the last render decides
         // whether any work is warranted at all
-        const board = newestBoardFile(folder);
-        if (board && this.generated && mtimeOf(board) === this.generated.boardMtimeMs)
+        const board = (0, boardFile_js_2.newestBoardFile)(folder);
+        if (board && this.generated && (0, boardFile_js_2.mtimeOf)(board) === this.generated.boardMtimeMs)
             return;
         // The re-render takes ~20s (gerber export incl. the zone refill); the
         // page keeps showing the old board meanwhile, so say so in its status
@@ -382,22 +362,22 @@ class BoardViewerPanel {
         // event is self-inflicted, not a real board change. Only re-render when
         // the mtime genuinely moved AND stays moved on a re-check 5s later
         // (rides out kicad-cli's cleanup churn).
-        const boardNow = newestBoardFile(folder);
-        if (boardNow && mtimeOf(boardNow) !== this.generated.boardMtimeMs) {
-            const staleMtime = mtimeOf(boardNow);
+        const boardNow = (0, boardFile_js_2.newestBoardFile)(folder);
+        if (boardNow && (0, boardFile_js_2.mtimeOf)(boardNow) !== this.generated.boardMtimeMs) {
+            const staleMtime = (0, boardFile_js_2.mtimeOf)(boardNow);
             if (this.retryTimer)
                 clearTimeout(this.retryTimer);
             this.retryTimer = setTimeout(() => {
                 this.retryTimer = undefined;
-                const settled = newestBoardFile(folder);
-                if (!settled || mtimeOf(settled) === staleMtime) {
+                const settled = (0, boardFile_js_2.newestBoardFile)(folder);
+                if (!settled || (0, boardFile_js_2.mtimeOf)(settled) === staleMtime) {
                     // board quiet at the new mtime — render the new revision
                     void this.doRefresh();
                 }
                 // if the mtime moved again, the new watcher event's debounce plus
                 // doRefresh's own gates handle it
             }, 5_000);
-            this.output.appendLine(`board mtime moved during export (${this.generated.boardMtimeMs} → ${mtimeOf(boardNow)}) — re-checking in 5s`);
+            this.output.appendLine(`board mtime moved during export (${this.generated.boardMtimeMs} → ${(0, boardFile_js_2.mtimeOf)(boardNow)}) — re-checking in 5s`);
             return;
         }
         if (this.retryTimer) {
@@ -416,17 +396,17 @@ class BoardViewerPanel {
         }
     }
     boardMtime(folder) {
-        const board = newestBoardFile(folder);
+        const board = (0, boardFile_js_2.newestBoardFile)(folder);
         if (!board)
             return 0;
-        return mtimeOf(board);
+        return (0, boardFile_js_2.mtimeOf)(board);
     }
     /** Generate viewer HTML; resolves false when skipped (board mid-build). */
     async generate(folder) {
         if (this.generating)
             return this.generating;
         this.generating = (async () => {
-            const board = newestBoardFile(folder);
+            const board = (0, boardFile_js_2.newestBoardFile)(folder);
             if (!board)
                 throw new Error('no .kicad_pcb in build/ — run npm run build first');
             // The build writes zone declarations without fill geometry; fills are
@@ -475,7 +455,7 @@ class BoardViewerPanel {
             if (!injected) {
                 this.output.appendLine('warning: viewer HTML had no <head>/</body> anchors — cross-probe disabled');
             }
-            this.generated = { html, boardMtimeMs: mtimeOf(board) };
+            this.generated = { html, boardMtimeMs: (0, boardFile_js_2.mtimeOf)(board) };
             this.output.appendLine(`viewer ready: ${components.length} component outline(s), board mtime ${this.generated.boardMtimeMs}, cross-probe ${injected ? 'on' : 'off'}`);
             return true;
         })().finally(() => {
@@ -683,9 +663,9 @@ class BoardViewerPanel {
             // generate() refuses a board written <3s ago (the build may still be
             // writing); wait for it to settle so the viewer regenerates NOW, not
             // only whenever the file watcher next fires
-            const boardFile = newestBoardFile(folder);
+            const boardFile = (0, boardFile_js_2.newestBoardFile)(folder);
             if (boardFile) {
-                for (let i = 0; i < 10 && Date.now() - mtimeOf(boardFile) < 3_500; i++) {
+                for (let i = 0; i < 10 && Date.now() - (0, boardFile_js_2.mtimeOf)(boardFile) < 3_500; i++) {
                     await new Promise((resolve) => setTimeout(resolve, 1_000));
                 }
             }

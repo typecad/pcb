@@ -22,6 +22,10 @@ import { injectProbeClient, type ProbeHostMessage, type ProbeWebviewMessage } fr
 import { planComponentEdits, planEndpointEdits, parsePlacementLiteral, planPlacementEdits, planTextEdits, type ComponentEditSpec } from './layoutEdits.js';
 import { parseSourceLocation } from './sourceRef.js';
 import type { BoardDataService } from './boardData.js';
+// discovery helpers live vscode-free in boardFile.ts for unit testing;
+// re-exported here for the existing import sites
+export { mtimeOf, newestBoardFile } from './boardFile.js';
+import { mtimeOf, newestBoardFile } from './boardFile.js';
 
 export type CommandRunner = (cwd: string, command: string, timeoutMs: number) => Promise<string>;
 
@@ -35,29 +39,6 @@ const GENERATE_TIMEOUT_MS = 120_000;
 /** A selection is re-posted until the viewer page acks it (or this times out). */
 const DELIVERY_TIMEOUT_MS = 5_000;
 const DELIVERY_INTERVAL_MS = 200;
-
-/** mtime in ms, or 0 when the file vanished — enough for freshness checks. */
-export function mtimeOf(file: string): number {
-  try {
-    return fs.statSync(file).mtimeMs;
-  } catch {
-    return 0;
-  }
-}
-
-/**
- * The project's board: whichever build/ touched last (stray boards from fp
- * upgrade tests can share build/ — the newest .kicad_pcb is the one just
- * written). statSync guarded: a board rewritten between readdir and stat
- * must not crash the caller.
- */
-export function newestBoardFile(folder: string): string | null {
-  const buildDir = path.join(folder, 'build');
-  if (!fs.existsSync(buildDir)) return null;
-  const boards = fs.readdirSync(buildDir).filter((f) => f.endsWith('.kicad_pcb'));
-  if (boards.length === 0) return null;
-  return boards.map((f) => path.join(buildDir, f)).sort((a, b) => mtimeOf(b) - mtimeOf(a))[0] ?? null;
-}
 
 /** Double-quote a path for an `exec` shell line; embedded quotes are escaped. */
 export function shellQuote(value: string): string {

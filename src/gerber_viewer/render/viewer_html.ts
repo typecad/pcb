@@ -2875,6 +2875,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       }
     }
     gerberStack.appendChild(rats);
+    raisePadLabels();
   }
   // the pending layout is a LAYOUT-view rendering: the ghost transforms and
   // ripped greys live in the gerber stack the other views share, so leaving
@@ -3032,6 +3033,8 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     var count = 0;
     for (var gi2 = 0; gi2 < groups.length; gi2++) {
       var lg = groups[gi2];
+      var stale = document.querySelector('.pad-labels[data-layer-id="' + (lg.getAttribute('data-layer-id') || '') + '"]');
+      if (stale) stale.parentNode.removeChild(stale);
       var lname = (lg.getAttribute('data-layer-name') || '').toLowerCase();
       var canon = /(^|[-_.])f_cu(?=$|[-_.])/.test(lname)
         ? 'F.Cu'
@@ -3044,6 +3047,14 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       var host = document.createElementNS(SVGNSL, 'g');
       host.setAttribute('class', 'pad-labels');
       host.setAttribute('pointer-events', 'none');
+      host.setAttribute('data-layer-id', lg.getAttribute('data-layer-id'));
+      // TOPMOST: appended at the end of the gerber stack, above every layer,
+      // the ratsnest, and the layout overlay — pin numbers and net names
+      // must never be buried under copper, silk, or selection ink. Layer
+      // visibility is driven by the host's display (syncLayer keeps it in
+      // lockstep with its copper group).
+      var stack = viewGroups.gerber.querySelector('#yflip') || viewGroups.gerber;
+      stack.appendChild(host);
       for (var pd = 0; pd < data.length; pd++) {
         var p = data[pd];
         if (p.layers.indexOf(canon) === -1 && p.layers.indexOf('*.Cu') === -1) continue;
@@ -3061,9 +3072,19 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
           count++;
         }
       }
-      if (host.childNodes.length) lg.appendChild(host);
+      if (!host.childNodes.length) host.parentNode.removeChild(host);
     }
     return count;
+  }
+  function raisePadLabels() {
+    // appended-later siblings paint later: the layout overlay and ratsnest
+    // rebuild at their own times and would land above the labels. Re-append
+    // the hosts whenever the stack reshuffles so pin numbers and net names
+    // stay the TOPMOST rendered items.
+    var stack = viewGroups.gerber ? viewGroups.gerber.querySelector('#yflip') : null;
+    if (!stack) return;
+    var hosts = document.querySelectorAll('.pad-labels');
+    for (var ri = 0; ri < hosts.length; ri++) stack.appendChild(hosts[ri]);
   }
   function syncPadLabelVisibility() {
     var anyMoves = false;
@@ -4120,6 +4141,13 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     if (!group) return;
     if (cb.checked) group.removeAttribute('display');
     else group.setAttribute('display', 'none');
+    // the layer's pad labels live at the TOP of the stack (never buried) —
+    // they follow their layer's visibility
+    var padHost = svg.querySelector('.pad-labels[data-layer-id="' + id + '"]');
+    if (padHost) {
+      if (cb.checked) padHost.style.display = '';
+      else padHost.style.display = 'none';
+    }
   }
   function syncOpacity(slider) {
     var row = slider.closest('.layer-row');

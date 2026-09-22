@@ -2215,6 +2215,20 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       if (ev.button !== 0) return;
       ev.stopPropagation();
       ev.preventDefault();
+      // a press on a pad flash highlights that pad for routing (X) — the
+      // component select/drag flow continues unchanged underneath
+      var pe = ev.target;
+      if (pe && pe.getAttribute && pe.getAttribute('data-pin')) {
+        var pref = pe.getAttribute('data-ref');
+        var ppin = pe.getAttribute('data-pin');
+        for (var ph = 0; ph < padManifest.length; ph++) {
+          var pc = padManifest[ph];
+          if (pc.ref === pref && String(pc.pin) === ppin) {
+            setPadHighlight(pc);
+            break;
+          }
+        }
+      }
       layoutTextSel = -1; // a part grab replaces any text grab
       markTextSel();
       var alreadySel = layoutSel.indexOf(g.__lc.ref) !== -1;
@@ -2505,6 +2519,11 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         layoutRotateSelection();
         return;
       }
+      if (ev.key === 'x' || ev.key === 'X') {
+        ev.preventDefault();
+        routeKey();
+        return;
+      }
       var step = ev.altKey ? 0.1 : 0.5;
       var nudges = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, step], ArrowDown: [0, -step] };
       var d = nudges[ev.key];
@@ -2607,11 +2626,14 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     // click-clears-selection convention. Shift keeps the selection so a
     // stray click can't wipe a careful multi-select.
     if (!b.active) {
-      if (ev.button === 0 && !ev.shiftKey && (layoutSel.length || layoutTextSel >= 0)) {
+      if (ev.button === 0 && !ev.shiftKey) {
+        if (padHi) clearPadHighlight();
+        if (layoutSel.length || layoutTextSel >= 0) {
         layoutSel = [];
-        layoutTextSel = -1;
-        markTextSel();
-        markLayoutSel();
+          layoutTextSel = -1;
+          markTextSel();
+          markLayoutSel();
+        }
       }
       return;
     }
@@ -2810,6 +2832,10 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       for (var up = 0; up < (ucomp.pads || []).length; up++) {
         var unet = ucomp.pads[up].net;
         if (!unet || wiredNets[unet]) continue;
+        // a live route covers its pads: the start pad drops out of the chain
+        // immediately, the target once the rubber-band snaps onto it
+        if (routeState && ucomp.ref === routeState.startPad.ref && String(ucomp.pads[up].pin) === String(routeState.startPad.pin)) continue;
+        if (routeState && routeState.targetPad && ucomp.ref === routeState.targetPad.ref && String(ucomp.pads[up].pin) === String(routeState.targetPad.pin)) continue;
         (padsByNet[unet] = padsByNet[unet] || []).push(padPos(ucomp, ucomp.pads[up]));
       }
     }
@@ -3020,14 +3046,215 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     t.textContent = text;
     host.appendChild(t);
   }
+  // ---- manual track routing ('x' from a highlighted pad) ----
+  // Click a pad (its flash) to highlight it; press X to start a track from
+  // that pad's CENTER. The rubber-band follows the mouse snapped to
+  // 0/45/90-degree rays from the start, or to another pad's center when the
+  // cursor is near one (same-net pads win ties). The ratsnest re-renders
+  // live — the routed pads drop out of their net's chain. Left-click commits
+  // the displayed track as real (themed, layer-owning) copper; Escape cancels.
+  var ROUTE_W = 0.3;
+  var padHi = null; // highlighted manifest pad
+  var routeState = null; // { sx, sy, net, layerGroup, inkVar, path, startPad, targetPad }
+  var routeUi = null; // topmost group: preview + highlight rings
+  function routeUiGroup() {
+    if (routeUi) return routeUi;
+    routeUi = document.createElementNS(SVGNSL, 'g');
+    routeUi.setAttribute('id', 'route-ui');
+    routeUi.setAttribute('pointer-events', 'none');
+    var stack = viewGroups.gerber.querySelector('#yflip') || viewGroups.gerber;
+    stack.appendChild(routeUi);
+    return routeUi;
+  }
+  function copperCanon(name) {
+    var l = (name || '').toLowerCase();
+    if (/(^|[-_.])f_cu(?=$|[-_.])/.test(l)) return 'F.Cu';
+    if (/(^|[-_.])b_cu(?=$|[-_.])/.test(l)) return 'B.Cu';
+    var inm = /(^|[-_.])in(\d+)_cu(?=$|[-_.])/.exec(l);
+    return inm ? 'In' + inm[2] + '.Cu' : null;
+  }
+  function layerGroupForPad(p) {
+    // a copper group the pad touches; front first, then back, then inners
+    var want = p.layers.indexOf('*.Cu') !== -1 ? ['F.Cu', 'B.Cu'] : p.layers.slice();
+    var groups = viewGroups.gerber.querySelectorAll('g[data-kind="copper"]');
+    for (var w = 0; w < want.length; w++)
+      for (var gi = 0; gi < groups.length; gi++)
+        if (copperCanon(groups[gi].getAttribute('data-layer-name')) === want[w]) return groups[gi];
+    return groups[0] || null;
+  }
+  function padRing(p, cls) {
+    var c = padCenter(p);
+    var ring = document.createElementNS(SVGNSL, 'circle');
+    ring.setAttribute('class', cls);
+    ring.setAttribute('cx', c.x.toFixed(3));
+    ring.setAttribute('cy', c.y.toFixed(3));
+    ring.setAttribute('r', (Math.max(p.w, p.h) / 2 + 0.18).toFixed(3));
+    ring.setAttribute('vector-effect', 'non-scaling-stroke');
+    return ring;
+  }
+  var padHiRing = null;
+  function setPadHighlight(p) {
+    clearPadHighlight();
+    if (!p) return;
+    padHi = p;
+    padHiRing = padRing(p, 'route-pad-hi');
+    routeUiGroup().appendChild(padHiRing);
+    raisePadLabels();
+    if (statusEl && !statusLocked())
+      statusEl.textContent = p.ref + '.' + p.pin + (p.net ? ' [' + p.net + ']' : ' [no net]') + ' \u2014 X to route a track';
+  }
+  function clearPadHighlight() {
+    padHi = null;
+    if (padHiRing) {
+      padHiRing.remove();
+      padHiRing = null;
+    }
+  }
+  function routeKey() {
+    if (routeState) return; // already routing \u2014 click commits, Escape cancels
+    if (!padHi) {
+      if (statusEl && !statusLocked()) statusEl.textContent = 'click a pad first \u2014 X routes a track from it';
+      return;
+    }
+    var lg = layerGroupForPad(padHi);
+    if (!lg) return;
+    var c = padCenter(padHi);
+    var inkVar = '--ink-' + lg.getAttribute('data-layer-id');
+    var path = document.createElementNS(SVGNSL, 'path');
+    path.setAttribute('class', 'route-preview');
+    path.setAttribute('stroke', 'var(' + inkVar + ')');
+    path.setAttribute('stroke-width', String(ROUTE_W));
+    path.setAttribute('fill', 'none');
+    path.setAttribute('stroke-linecap', 'round');
+    path.setAttribute('d', 'M ' + c.x.toFixed(3) + ' ' + c.y.toFixed(3) + ' L ' + c.x.toFixed(3) + ' ' + c.y.toFixed(3));
+    routeUiGroup().appendChild(path);
+    routeState = {
+      sx: c.x,
+      sy: c.y,
+      net: padHi.net || null,
+      layerGroup: lg,
+      inkVar: inkVar,
+      path: path,
+      startPad: padHi,
+      targetPad: null,
+      targetRing: null,
+    };
+    raisePadLabels();
+    refreshRatsnest();
+    if (statusEl && !statusLocked())
+      statusEl.textContent =
+        'routing ' + (padHi.net ? padHi.net : 'no net') + ' from ' + padHi.ref + '.' + padHi.pin + ' \u2014 click to place, Esc cancels';
+    clearPadHighlight();
+  }
+  function routeCancel() {
+    if (!routeState) return;
+    routeState.path.remove();
+    if (routeState.targetRing) routeState.targetRing.remove();
+    routeState = null;
+    refreshRatsnest();
+    if (statusEl && !statusLocked()) statusEl.textContent = 'routing cancelled';
+  }
+  // snapped endpoint for the mouse position (gerber frame): a pad center
+  // within 1.2mm wins (same-net preferred), else the 0/45/90 ray projection
+  function routeEndpoint(mx, my) {
+    var best = null;
+    var bestScore = 1.2;
+    for (var pi = 0; pi < padManifest.length; pi++) {
+      var p = padManifest[pi];
+      if (p === routeState.startPad) continue;
+      var c = padCenter(p);
+      var d = Math.hypot(c.x - mx, c.y - my);
+      if (d > 1.2) continue;
+      var score = routeState.net && p.net === routeState.net ? d : d + 0.8;
+      if (score < bestScore) {
+        bestScore = score;
+        best = p;
+      }
+    }
+    if (best) {
+      var bc = padCenter(best);
+      return { x: bc.x, y: bc.y, pad: best };
+    }
+    var dx = mx - routeState.sx;
+    var dy = my - routeState.sy;
+    var ang = Math.atan2(dy, dx);
+    var step = Math.PI / 4;
+    var snap = Math.round(ang / step) * step;
+    var len = Math.hypot(dx, dy) * Math.cos(ang - snap);
+    if (len < 0) len = 0;
+    return { x: routeState.sx + Math.cos(snap) * len, y: routeState.sy + Math.sin(snap) * len, pad: null };
+  }
+  function routeFollow(mx, my) {
+    if (!routeState) return;
+    var end = routeEndpoint(mx, my);
+    routeState.path.setAttribute(
+      'd',
+      'M ' + routeState.sx.toFixed(3) + ' ' + routeState.sy.toFixed(3) + ' L ' + end.x.toFixed(3) + ' ' + end.y.toFixed(3),
+    );
+    var targetChanged = (routeState.targetPad || null) !== (end.pad || null);
+    if (targetChanged) {
+      if (routeState.targetRing) routeState.targetRing.remove();
+      routeState.targetRing = end.pad ? padRing(end.pad, 'route-pad-target') : null;
+      if (routeState.targetRing) routeUiGroup().appendChild(routeState.targetRing);
+      routeState.targetPad = end.pad || null;
+      refreshRatsnest(); // the live chain drops the newly-covered pad
+    }
+  }
+  function routeCommit() {
+    if (!routeState) return;
+    var d = routeState.path.getAttribute('d');
+    var lg = routeState.layerGroup;
+    var track = document.createElementNS(SVGNSL, 'path');
+    track.setAttribute('d', d);
+    track.setAttribute('stroke', 'var(' + routeState.inkVar + ')');
+    track.setAttribute('stroke-width', String(ROUTE_W));
+    track.setAttribute('fill', 'none');
+    track.setAttribute('stroke-linecap', 'round');
+    if (routeState.net) track.setAttribute('data-net', routeState.net);
+    lg.appendChild(track); // real copper: themes with the layer, counts as wiring
+    var msg =
+      'track placed: ' +
+      (routeState.net ? routeState.net : 'no net') +
+      ' ' +
+      routeState.startPad.ref +
+      '.' +
+      routeState.startPad.pin +
+      (routeState.targetPad ? ' \u2192 ' + routeState.targetPad.ref + '.' + routeState.targetPad.pin : '');
+    routeCancel();
+    if (statusEl && !statusLocked()) statusEl.textContent = msg;
+  }
+  // commit on left press anywhere (capture phase beats select/box handlers)
+  svg.addEventListener(
+    'pointerdown',
+    function (ev) {
+      if (!routeState || ev.button !== 0) return;
+      ev.stopPropagation();
+      ev.preventDefault();
+      var g = gerberAt(ev.clientX, ev.clientY);
+      routeFollow(g.x, g.y);
+      routeCommit();
+    },
+    true,
+  );
+  window.addEventListener('mousemove', function (ev) {
+    if (!routeState) return;
+    var g = gerberAt(ev.clientX, ev.clientY);
+    routeFollow(g.x, g.y);
+  });
+
+  // the PCB model's pad manifest (build/<board>_pads.json): pin numbers and
+  // net names straight from the board the PCB object wrote. Board y-down
+  // millimetres; the gerber stack is y-up, so y negates where used.
+  var padManifest = [];
+  try {
+    padManifest = JSON.parse(document.getElementById('pad-data').textContent) || [];
+  } catch (e) {}
+  // gerber-frame center of a manifest pad (board y-down -> y-up)
+  function padCenter(p) {
+    return { x: p.x, y: -p.y };
+  }
   function buildPadLabels() {
-    // the PCB model's pad manifest (build/<board>_pads.json): pin numbers
-    // and net names straight from the board the PCB object wrote. Board
-    // y-down millimetres; the gerber stack is y-up, so y negates here.
-    var data = [];
-    try {
-      data = JSON.parse(document.getElementById('pad-data').textContent) || [];
-    } catch (e) {}
+    var data = padManifest;
     if (!viewGroups.gerber || !data.length) return 0;
     var groups = viewGroups.gerber.querySelectorAll('g[data-kind="copper"]');
     var count = 0;
@@ -3085,6 +3312,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     if (!stack) return;
     var hosts = document.querySelectorAll('.pad-labels');
     for (var ri = 0; ri < hosts.length; ri++) stack.appendChild(hosts[ri]);
+    if (routeUi) stack.appendChild(routeUi);
   }
   function syncPadLabelVisibility() {
     var anyMoves = false;
@@ -3726,6 +3954,13 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         renderMeasure();
       }
       if (netDimmed.length) clearNetHighlight();
+      // routing first: Escape cancels an in-progress track and any pad
+      // highlight before touching the selection
+      if (routeState) {
+        routeCancel();
+        return;
+      }
+      if (padHi) clearPadHighlight();
       // layout mode: unselect everything (parts and any grabbed text)
       if (
         document.body.classList.contains('typecad-layout') &&
@@ -4529,6 +4764,8 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       stroke-dashoffset: -13;
     }
   }
+  .route-pad-hi { fill: rgba(79, 193, 255, 0.15); stroke: #4fc1ff; stroke-width: 2px; }
+  .route-pad-target { fill: rgba(63, 185, 80, 0.15); stroke: #3fb950; stroke-width: 2px; }
   #layout-sel-box { fill: rgba(79, 193, 255, 0.07); stroke: #4fc1ff; stroke-width: 1.5px; }
   #layout-sel-box.cross {
     stroke: #3fb950;

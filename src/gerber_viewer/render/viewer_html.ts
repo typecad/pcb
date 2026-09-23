@@ -2222,17 +2222,27 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       // a press on a pad flash highlights that pad for routing (X) — the
       // component select/drag flow continues unchanged underneath
       var pe = ev.target;
+      var hitPad = null;
       if (pe && pe.getAttribute && pe.getAttribute('data-pin')) {
         var pref = pe.getAttribute('data-ref');
         var ppin = pe.getAttribute('data-pin');
         for (var ph = 0; ph < padManifest.length; ph++) {
           var pc = padManifest[ph];
           if (pc.ref === pref && String(pc.pin) === ppin) {
-            setPadHighlight(pc);
+            hitPad = pc;
             break;
           }
         }
       }
+      if (!hitPad) {
+        // the part's own outline polygon intercepts every hit over the
+        // body, so a pad hiding under it (every BGA ball) never surfaces as
+        // ev.target — resolve the pressed part's pads from the manifest
+        // instead (nearest center wins at fine BGA pitch)
+        var bp = padBoardPoint(ev);
+        hitPad = padAtBoard(bp.x, bp.y, g.__lc.ref);
+      }
+      if (hitPad) setPadHighlight(hitPad);
       layoutTextSel = -1; // a part grab replaces any text grab
       markTextSel();
       var alreadySel = layoutSel.indexOf(g.__lc.ref) !== -1;
@@ -2629,7 +2639,21 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     var t = ev.target;
     // part presses are consumed by their own handlers; the probe outlines
     // carry data-ref too — anything part-ish is not empty space
-    if (t && t.closest && (t.closest('.layout-comp') || t.closest('[data-ref]'))) return;
+    if (t && t.closest && (t.closest('.layout-comp') || t.closest('[data-ref]'))) {
+      // a probe-outline press over a part body never reaches the part's own
+      // handlers — the pad hiding under it still selects through the
+      // manifest (a BGA ball owns no DOM hit of its own here)
+      var lcHit = t.closest('.layout-comp');
+      if (!lcHit) {
+        var or = t.closest('[data-ref]');
+        if (or && !t.closest('[data-pin]')) {
+          var ob = padBoardPoint(ev);
+          var opad = padAtBoard(ob.x, ob.y, or.getAttribute('data-ref'));
+          if (opad) setPadHighlight(opad);
+        }
+      }
+      return;
+    }
     boxSel = { g0: gerberAt(ev.clientX, ev.clientY), x0: ev.clientX, y0: ev.clientY, active: false };
   });
   window.addEventListener('pointermove', function (ev) {
@@ -3281,22 +3305,63 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     ring.setAttribute('vector-effect', 'non-scaling-stroke');
     return ring;
   }
-  var padHiRing = null;
+  // a picked pad gets the SAME selection visuals a clicked component gets —
+  // marching-ants box over the pad bbox plus corner brackets and a tint —
+  // not a blob that hides the pad's own shape (BGA balls especially)
+  function padSelMark(p) {
+    var c = padCenter(p);
+    var g = document.createElementNS(SVGNSL, 'g');
+    g.setAttribute('class', 'route-pad-hi');
+    var m = 0.08; // breathing room around the pad bbox
+    var pw = Math.max(p.w, 0.15), ph = Math.max(p.h, 0.15);
+    var x0 = c.x - pw / 2 - m, x1 = c.x + pw / 2 + m;
+    var y0 = c.y - ph / 2 - m, y1 = c.y + ph / 2 + m;
+    var box = document.createElementNS(SVGNSL, 'rect');
+    box.setAttribute('class', 'pad-hi-box');
+    box.setAttribute('x', x0.toFixed(3));
+    box.setAttribute('y', y0.toFixed(3));
+    box.setAttribute('width', (x1 - x0).toFixed(3));
+    box.setAttribute('height', (y1 - y0).toFixed(3));
+    box.setAttribute('vector-effect', 'non-scaling-stroke');
+    g.appendChild(box);
+    // four L-shaped corner marks just outside the box, sized to the pad
+    // (clamped so a 0.2mm ball still shows bracket arms at every zoom)
+    var o = 0.1;
+    var arm = Math.min(Math.max(Math.min(x1 - x0, y1 - y0) * 0.4, 0.22), 0.6);
+    var bx0 = x0 - o, by0 = y0 - o, bx1 = x1 + o, by1 = y1 + o;
+    var brk = document.createElementNS(SVGNSL, 'path');
+    brk.setAttribute('class', 'pad-hi-brackets');
+    brk.setAttribute('vector-effect', 'non-scaling-stroke');
+    brk.setAttribute(
+      'd',
+      'M ' + (bx0 + arm).toFixed(3) + ' ' + by0.toFixed(3) + ' L ' + bx0.toFixed(3) + ' ' + by0.toFixed(3) +
+        ' L ' + bx0.toFixed(3) + ' ' + (by0 + arm).toFixed(3) +
+        ' M ' + (bx1 - arm).toFixed(3) + ' ' + by0.toFixed(3) + ' L ' + bx1.toFixed(3) + ' ' + by0.toFixed(3) +
+        ' L ' + bx1.toFixed(3) + ' ' + (by0 + arm).toFixed(3) +
+        ' M ' + (bx0 + arm).toFixed(3) + ' ' + by1.toFixed(3) + ' L ' + bx0.toFixed(3) + ' ' + by1.toFixed(3) +
+        ' L ' + bx0.toFixed(3) + ' ' + (by1 - arm).toFixed(3) +
+        ' M ' + (bx1 - arm).toFixed(3) + ' ' + by1.toFixed(3) + ' L ' + bx1.toFixed(3) + ' ' + by1.toFixed(3) +
+        ' L ' + bx1.toFixed(3) + ' ' + (by1 - arm).toFixed(3),
+    );
+    g.appendChild(brk);
+    return g;
+  }
+  var padHiMark = null;
   function setPadHighlight(p) {
     clearPadHighlight();
     if (!p) return;
     padHi = p;
-    padHiRing = padRing(p, 'route-pad-hi');
-    routeUiGroup().appendChild(padHiRing);
+    padHiMark = padSelMark(p);
+    routeUiGroup().appendChild(padHiMark);
     raisePadLabels();
     if (statusEl && !statusLocked())
       statusEl.textContent = p.ref + '.' + p.pin + (p.net ? ' [' + p.net + ']' : ' [no net]') + ' \u2014 X to route a track';
   }
   function clearPadHighlight() {
     padHi = null;
-    if (padHiRing) {
-      padHiRing.remove();
-      padHiRing = null;
+    if (padHiMark) {
+      padHiMark.remove();
+      padHiMark = null;
     }
   }
   function newPiece(layerGroup) {
@@ -3951,6 +4016,31 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   // gerber-frame center of a manifest pad (board y-down -> y-up)
   function padCenter(p) {
     return { x: p.x, y: -p.y };
+  }
+  // manifest (board y-down) point under a pointer event — boardCoords
+  // reports the ink's y-up frame, so y negates (padCenter's inverse)
+  function padBoardPoint(ev) {
+    var g = boardCoords(ev);
+    return { x: g.x, y: -g.y };
+  }
+  // nearest manifest pad containing a board-frame point (small grab
+  // margin) — the DOM hit test can't see pads under part bodies or probe
+  // outlines, the manifest can. Optional ref limits to one part's pads.
+  function padAtBoard(bx, by, ref) {
+    var best = null, bestD = 1e9;
+    for (var i = 0; i < padManifest.length; i++) {
+      var p = padManifest[i];
+      if (ref && p.ref !== ref) continue;
+      var dx = Math.max(Math.abs(bx - p.x) - p.w / 2, 0);
+      var dy = Math.max(Math.abs(by - p.y) - p.h / 2, 0);
+      if (dx > 0.06 || dy > 0.06) continue;
+      var d = dx + dy;
+      if (d < bestD) {
+        bestD = d;
+        best = p;
+      }
+    }
+    return best;
   }
   function buildPadLabels() {
     var data = padManifest;
@@ -4612,7 +4702,11 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       renderMeasure();
     } else if (drag && ev.button === 0 && !drag.moved && ev.target && svg.contains(ev.target)) {
       // plain click (ruler not armed): probe for net/component highlighting
-      var el = ev.target.closest ? ev.target.closest('[data-net],[data-ref]') : null;
+      var el = probeHitTarget(ev);
+      el = el && el.closest ? el.closest('[data-net],[data-ref]') : null;
+      // peek may surface bare geometry (fill raster, background): the
+      // outline that received the click still names the component
+      if (!el && ev.target && ev.target.closest) el = ev.target.closest('[data-net],[data-ref]');
       if (el) {
         var net = el.getAttribute('data-net');
         var ref = el.getAttribute('data-ref');
@@ -4641,6 +4735,24 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   function boardCoords(ev) {
     var v = clientToView({ x: ev.clientX, y: ev.clientY });
     return { x: (v.x - tx) / k, y: -((v.y - ty) / k) };
+  }
+  // the vscode webview's probe client fills #typecad-probe with component
+  // outline rects that sit ABOVE the stack and swallow every hit inside a
+  // part's body — peek underneath them so a body-hidden pad (every BGA
+  // ball) reads as the pad, not the part. display:none (not
+  // pointer-events:none — the rects re-enable that per-element) removes the
+  // subtree from hit testing outright; no frame renders between the toggles
+  function probeHitTarget(ev) {
+    var t = ev.target;
+    if (!t || !t.closest || !t.closest('#typecad-probe')) return t;
+    var pg = document.getElementById('typecad-probe');
+    if (!pg) return t;
+    pg.style.display = 'none';
+    try {
+      t = document.elementFromPoint(ev.clientX, ev.clientY) || t;
+    } catch (e) {}
+    pg.style.display = '';
+    return t;
   }
   // shift-snap: constrain the measured endpoint to 45-degree increments from
   // the start point (0/45/90/...), keeping the radial distance
@@ -4836,13 +4948,23 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   }
   var probe = '';
   svg.addEventListener('mousemove', function (ev) {
-    var el = ev.target.closest ? ev.target.closest('[data-net],[data-ref],[data-pin]') : null;
+    var hitEl = probeHitTarget(ev);
+    var el = hitEl && hitEl.closest ? hitEl.closest('[data-net],[data-ref],[data-pin]') : null;
+    // hovering bare geometry under an outline: the outline still names the part
+    if (!el && ev.target && ev.target.closest) el = ev.target.closest('[data-net],[data-ref],[data-pin]');
     var next = '';
     var ref = '';
     if (el) {
       var net = el.getAttribute('data-net');
       ref = el.getAttribute('data-ref') || '';
       var pin = el.getAttribute('data-pin');
+      // hovering a part BODY (probe outline, layout overlay, bare silk) —
+      // the pad hiding under it still names itself through the manifest
+      if (ref && !pin) {
+        var mp = padBoardPoint(ev);
+        var mpad = padAtBoard(mp.x, mp.y);
+        if (mpad && mpad.ref === ref) pin = String(mpad.pin);
+      }
       next = (net || '') + (ref ? (net ? ' · ' : '') + ref + (pin || '') : '');
     }
     // embedded surfaces (the vscode webview) install window.typecadVarFor:
@@ -5400,6 +5522,32 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     }
     return '';
   };
+  // cross-probe seam: the injected client's double-click asks "which pad is
+  // under this point?" — overlays (the probe outlines, the layout view's
+  // part bodies) shadow body-hidden pads from DOM hit testing, so resolve
+  // through the pad manifest in board space: point-in-pad with a small
+  // grab margin, nearest pad wins. Gerber pad ink (data-pin) is tried
+  // first so an exposed flash keeps its exact shape, not its bbox.
+  window.typecadPadProbe = function (clientX, clientY) {
+    var pg = document.getElementById('typecad-probe');
+    var lo = document.getElementById('layout-overlay');
+    var hid1 = false, hid2 = false;
+    if (pg && pg.style.display !== 'none') { pg.style.display = 'none'; hid1 = true; }
+    if (lo && lo.style.display !== 'none') { lo.style.display = 'none'; hid2 = true; }
+    var t = null;
+    try {
+      t = document.elementFromPoint(clientX, clientY);
+    } catch (e) {}
+    if (hid1) pg.style.display = '';
+    if (hid2) lo.style.display = '';
+    if (t && t.closest) {
+      var pe = t.closest('[data-pin]');
+      if (pe) return { ref: pe.getAttribute('data-ref'), pin: pe.getAttribute('data-pin') };
+    }
+    var bp = padBoardPoint({ clientX: clientX, clientY: clientY });
+    var best = padAtBoard(bp.x, bp.y);
+    return best ? { ref: best.ref, pin: String(best.pin) } : null;
+  };
   window.typecadViewer = {
     searchRefs: searchRefs,
     highlightNet: highlightNet,
@@ -5572,7 +5720,21 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   #route-ui .route-anchored { opacity: 0.9; }
   #route-ui .route-via { fill: #4fc1ff; fill-opacity: 0.35; stroke: #4fc1ff; stroke-width: 0.1; }
   .route-sel line { stroke: #4fc1ff; stroke-width: 2px; vector-effect: non-scaling-stroke; stroke-linecap: round; }
-  .route-pad-hi { fill: rgba(79, 193, 255, 0.15); stroke: #4fc1ff; stroke-width: 2px; }
+  .route-pad-hi { pointer-events: none; }
+  .route-pad-hi .pad-hi-box {
+    fill: rgba(79, 193, 255, 0.12);
+    stroke: #4fc1ff;
+    stroke-width: 2px;
+    vector-effect: non-scaling-stroke;
+    stroke-dasharray: 8 5;
+    animation: layoutSelAnts 0.45s linear infinite;
+  }
+  .route-pad-hi .pad-hi-brackets {
+    fill: none;
+    stroke: #4fc1ff;
+    stroke-width: 2.5px;
+    stroke-linecap: square;
+  }
   .route-pad-target { fill: rgba(63, 185, 80, 0.15); stroke: #3fb950; stroke-width: 2px; }
   #layout-sel-box { fill: rgba(79, 193, 255, 0.07); stroke: #4fc1ff; stroke-width: 1.5px; }
   #layout-sel-box.cross {

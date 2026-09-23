@@ -1,5 +1,5 @@
 import { PCB, pcbTrackSegment, pcbGetTrackData } from './pcb.js';
-import { generateUuid, formatCallSite } from './pcb_utils.js';
+import { generateUuid, formatCallSite, sourceFileForMetadata } from './pcb_utils.js';
 import { IVia, IGeneratedElement, IPowerInfo, ITrackDetails, IViaPowerInfo, IGrLine } from './pcb_interfaces.js';
 import logger from '../utils/logging.js';
 import { RoutingError } from '../utils/errors.js';
@@ -20,6 +20,9 @@ export class TrackBuilder {
   private _net?: string;
   private _deferStaging: boolean = false;
   private _debug: boolean = false;
+  /** 'src/board.ts:42' of the `new TrackBuilder(...)` call — the probe
+   * target for netless routes (netted ones resolve via their net instead) */
+  private _sourceSite?: string;
 
   constructor(pcb: PCB, options?: { locked?: boolean; net?: string; deferStaging?: boolean; debug?: boolean }) {
     this.pcb = pcb;
@@ -27,6 +30,28 @@ export class TrackBuilder {
     this._debug = options?.debug ?? false;
     this._net = options?.net;
     this._deferStaging = options?.deferStaging ?? false;
+    const site = getCallSite();
+    if (site?.file) {
+      const file = sourceFileForMetadata(site.file);
+      if (file) this._sourceSite = `${file}:${site.line}`;
+    }
+  }
+
+  /** declaration site of this builder ('file:line'), for trace probing */
+  get sourceSite(): string | undefined {
+    return this._sourceSite;
+  }
+
+  /** this route's polyline in board mm (y-down): start + every .to point */
+  get points(): Array<{ x: number; y: number }> {
+    const pts: Array<{ x: number; y: number }> = [];
+    for (const el of this.elements) {
+      if (el.type !== 'track') continue;
+      const d = el.details as ITrackDetails;
+      if (pts.length === 0) pts.push({ x: d.start.x, y: d.start.y });
+      pts.push({ x: d.end.x, y: d.end.y });
+    }
+    return pts;
   }
 
   from(startPos: { x: number; y: number }, layer?: string, width?: number): this {

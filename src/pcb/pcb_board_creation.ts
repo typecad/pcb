@@ -315,6 +315,7 @@ export function createBoard(pcb: PCB, ...items: Array<Component | TrackBuilder>)
   writeRoutes(
     pcb,
     trackBuilders.map((b) => b.net).filter((n): n is string => !!n),
+    trackBuilders.filter((b) => !b.net).map((b) => ({ sourceSite: b.sourceSite, points: b.points })),
   );
 
   // The board owns every placed component now — drop the pre-build placement

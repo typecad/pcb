@@ -38,7 +38,11 @@ export interface ViewerOptions {
    * TrackBuilder hand-built vs the autorouter routed — the Layout view's
    * trace indication. Absent = every trace reads as autorouted.
    */
-  routes?: { nets: Record<string, { provenance: 'manual' | 'auto' | 'mixed' }> } | null;
+  routes?: {
+    nets: Record<string, { provenance: 'manual' | 'auto' | 'mixed' }>;
+    /** netless hand routes: declaration site + polyline (board mm, y-down) */
+    unnamed?: Array<{ source: string; pts: Array<{ x: number; y: number }> }>;
+  } | null;
   /**
    * Layout view overlay components, derived from the gerbers (pad centroid
    * = position, PCA of pads = orientation, footprint name = body size) —
@@ -5355,6 +5359,39 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   // layout view: routing FINISH owns the gesture only while a route is live
   window.typecadRoutingActive = function () {
     return !!routeState;
+  };
+  // double-click source resolution for NETLESS hand routes: their gerber ink
+  // carries no data-net, so the closest('[data-net]') probe chain finds
+  // nothing. The routes island's unnamed list (declaration site + board-mm
+  // polyline) resolves the clicked point back to the TrackBuilder
+  // declaration line; coordinates arrive as CLIENT pixels like every probe.
+  var unnamedRoutes = [];
+  try {
+    var rt = JSON.parse(document.getElementById('routes').textContent);
+    unnamedRoutes = (rt && rt.unnamed) || [];
+  } catch (e) {}
+  window.typecadTraceSource = function (clientX, clientY) {
+    if (!unnamedRoutes.length) return '';
+    var g = gerberAt(clientX, clientY);
+    var bx = g.x;
+    var by = -g.y; // gerber y-up -> board y-down (the island's frame)
+    for (var ri = 0; ri < unnamedRoutes.length; ri++) {
+      var pts = unnamedRoutes[ri].pts;
+      for (var pi = 1; pi < pts.length; pi++) {
+        var ax = pts[pi - 1].x, ay = pts[pi - 1].y, cx2 = pts[pi].x, cy2 = pts[pi].y;
+        var dx = cx2 - ax, dy = cy2 - ay;
+        var len2 = dx * dx + dy * dy;
+        if (len2 < 1e-9) {
+          if (Math.hypot(bx - ax, by - ay) < 0.4) return unnamedRoutes[ri].source;
+          continue;
+        }
+        var t = ((bx - ax) * dx + (by - ay) * dy) / len2;
+        if (t < 0 || t > 1) continue;
+        var px = ax + t * dx, py = ay + t * dy;
+        if (Math.hypot(bx - px, by - py) < 0.4) return unnamedRoutes[ri].source;
+      }
+    }
+    return '';
   };
   window.typecadViewer = {
     searchRefs: searchRefs,

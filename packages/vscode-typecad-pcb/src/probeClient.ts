@@ -315,12 +315,17 @@ const PROBE_CLIENT = `<script>
       }
       // no component under the cursor: a double-click on a trace reveals the
       // line that declared its net/route — the location resolves HERE (the
-      // client owns the net->source map), the host only reveals it
+      // client owns the net->source map), the host only reveals it. N/C is
+      // the plotter's no-connect label, not a net: netless routes carry it
+      // in their gerber attributes, and honoring it here would shadow the
+      // unnamed-route source fallback below
       var netEl = tgt && tgt.closest ? tgt.closest('[data-net]') : null;
       if (netEl) {
         var net = netEl.getAttribute('data-net');
-        send({ type: 'typecad/probe-net', net: net, source: window.typecadNetSource(net) || undefined });
-        return;
+        if (net && net !== 'N/C') {
+          send({ type: 'typecad/probe-net', net: net, source: window.typecadNetSource(net) || undefined });
+          return;
+        }
       }
       // netless hand route: no data-net to resolve — the viewer maps the
       // clicked point onto the unnamed-route polylines and returns the

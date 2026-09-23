@@ -35,7 +35,7 @@ function routeSource(name: string, r: RouteInput): string {
   if (segments.length === 0) return '';
   const first = segments[0]!;
   const f0 = first.pts[0]!;
-  chain.push(`  .from({ x: ${fmt(f0.x)}, y: ${fmt(f0.y)}, layer: '${first.layer}' }, ${fmt(r.w)})`);
+  chain.push(`  .from({ x: ${fmt(f0.x)}, y: ${fmt(f0.y)} }, '${first.layer}', ${fmt(r.w)})`);
   for (let si = 0; si < segments.length; si++) {
     const seg = segments[si]!;
     for (let pi = si === 0 ? 1 : 1; pi < seg.pts.length; pi++) {
@@ -43,10 +43,10 @@ function routeSource(name: string, r: RouteInput): string {
       const isTail = pi === seg.pts.length - 1 && si < segments.length - 1;
       if (isTail) {
         // end this layer's run at the via, drop the via, continue on the next piece
-        chain.push(`  .to({ x: ${fmt(pt.x)}, y: ${fmt(pt.y)} }, '${seg.layer}', ${fmt(r.w)})`);
+        chain.push(`  .to({ x: ${fmt(pt.x)}, y: ${fmt(pt.y)}, layer: '${seg.layer}', width: ${fmt(r.w)} })`);
         chain.push(`  .via({ size: 0.6, drill: 0.3 })`);
       } else {
-        chain.push(`  .to({ x: ${fmt(pt.x)}, y: ${fmt(pt.y)} }, '${seg.layer}', ${fmt(r.w)})`);
+        chain.push(`  .to({ x: ${fmt(pt.x)}, y: ${fmt(pt.y)}, layer: '${seg.layer}', width: ${fmt(r.w)} })`);
       }
     }
   }

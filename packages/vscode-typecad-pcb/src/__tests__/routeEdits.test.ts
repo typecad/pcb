@@ -30,9 +30,9 @@ describe('planRouteEdits', () => {
       text = text.slice(0, e.start) + e.line + text.slice(e.end);
     }
     expect(text).toContain("const route1 = new TrackBuilder(typecad, { net: 'VCC',  })");
-    expect(text).toContain('.from({ x: 1, y: 2, layer: \'F.Cu\' }, 0.3)');
-    expect(text).toContain(".to({ x: 3, y: 2 }, 'F.Cu', 0.3)");
-    expect(text).toContain(".to({ x: 3, y: 5 }, 'F.Cu', 0.3);");
+    expect(text).toContain(".from({ x: 1, y: 2 }, 'F.Cu', 0.3)");
+    expect(text).toContain(".to({ x: 3, y: 2, layer: 'F.Cu', width: 0.3 })");
+    expect(text).toContain(".to({ x: 3, y: 5, layer: 'F.Cu', width: 0.3 });");
     // the variable rides into create()
     expect(text).toMatch(/typecad\.create\(\s*r1,\s*route1,?\s*\);/);
     expect(text.indexOf('const route1')).toBeLessThan(text.indexOf('typecad.create('));
@@ -56,9 +56,9 @@ describe('planRouteEdits', () => {
     for (const e of [...edits].sort((a, b) => b.start - a.start)) {
       text = text.slice(0, e.start) + e.line + text.slice(e.end);
     }
-    expect(text).toContain(".to({ x: 2, y: 1 }, 'F.Cu', 0.3)");
+    expect(text).toContain(".to({ x: 2, y: 1, layer: 'F.Cu', width: 0.3 })");
     expect(text).toContain('.via({ size: 0.6, drill: 0.3 })');
-    expect(text).toContain(".to({ x: 2, y: 4 }, 'B.Cu', 0.3);");
+    expect(text).toContain(".to({ x: 2, y: 4, layer: 'B.Cu', width: 0.3 });");
   });
 
   it('numbers new routes past existing ones and skips empty geometry', () => {

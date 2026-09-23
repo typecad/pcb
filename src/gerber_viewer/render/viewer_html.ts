@@ -3657,24 +3657,8 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       // path stays one polyline for theming and apply)
       var segPts = pc.points;
       for (var sp = 1; sp < segPts.length; sp++) {
-        var hit = document.createElementNS(SVGNSL, 'line');
-        hit.setAttribute('x1', segPts[sp - 1].x.toFixed(3));
-        hit.setAttribute('y1', segPts[sp - 1].y.toFixed(3));
-        hit.setAttribute('x2', segPts[sp].x.toFixed(3));
-        hit.setAttribute('y2', segPts[sp].y.toFixed(3));
-        hit.setAttribute('class', 'route-hit');
-        hit.setAttribute('stroke', 'transparent');
-        // transparent strokes are NOT hit-testable under the default
-        // visiblePainted policy — pointer-events:stroke makes the line
-        // clickable regardless of paint
-        hit.setAttribute('pointer-events', 'stroke');
-        hit.setAttribute('stroke-width', String(Math.max(routeState.w, 0.5)));
+        var hit = makeSegHit(track, segPts[sp - 1].x, segPts[sp - 1].y, segPts[sp].x, segPts[sp].y, routeState.w, routeState.net);
         hit.setAttribute('data-route', '1');
-        hit.setAttribute('data-seg', '1');
-        if (routeState.net) hit.setAttribute('data-net', routeState.net);
-        hit.__track = track;
-        track.__hits = track.__hits || [];
-        track.__hits.push(hit);
         pc.layerGroup.appendChild(hit);
       }
       pc.layerGroup.appendChild(track);
@@ -4000,6 +3984,62 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     for (var hv = 0; hv < hosts.length; hv++)
       hosts[hv].style.display = anyMoves ? 'none' : '';
   }
+  // hit lines for EVERY trace: source-built boards carry their tracks as
+  // ordinary attributed gerber ink (data-net + data-w, no data-route) —
+  // interactive routes get hits in routeCommit, but after a rebuild-from-
+  // source there are none, and segment selection would find nothing. This
+  // walks the copper groups and gives every trace path a clickable twin.
+  function parsePathEnds(d) {
+    var n = (d || '').match(/[-\d.]+/g);
+    if (!n || n.length < 4) return null;
+    return [
+      [+n[0], +n[1]],
+      [+n[n.length - 2], +n[n.length - 1]],
+    ];
+  }
+  function makeSegHit(track, x1, y1, x2, y2, w, net) {
+    var hit = document.createElementNS(SVGNSL, 'line');
+    hit.setAttribute('x1', x1.toFixed(3));
+    hit.setAttribute('y1', y1.toFixed(3));
+    hit.setAttribute('x2', x2.toFixed(3));
+    hit.setAttribute('y2', y2.toFixed(3));
+    hit.setAttribute('class', 'route-hit');
+    hit.setAttribute('stroke', 'transparent');
+    // transparent strokes are NOT hit-testable under the default
+    // visiblePainted policy — pointer-events:stroke makes the line
+    // clickable regardless of paint
+    hit.setAttribute('pointer-events', 'stroke');
+    hit.setAttribute('stroke-width', String(Math.max(w, 0.5)));
+    hit.setAttribute('data-seg', '1');
+    if (net) hit.setAttribute('data-net', net);
+    hit.__track = track;
+    track.__hits = track.__hits || [];
+    track.__hits.push(hit);
+    return hit;
+  }
+  function attachTraceHits() {
+    if (!viewGroups.gerber) return 0;
+    var groups = viewGroups.gerber.querySelectorAll('g[data-kind=' + JSON.stringify('copper') + ']');
+    var made = 0;
+    for (var gi = 0; gi < groups.length; gi++) {
+      var lg = groups[gi];
+      var paths = lg.querySelectorAll('path[data-w]:not([data-ref]):not([data-seg])');
+      for (var pi = 0; pi < paths.length; pi++) {
+        var tr = paths[pi];
+        if (tr.getAttribute('fill-rule')) continue; // pour regions
+        if (tr.__hits) continue; // already armed
+        var ends = parsePathEnds(tr.getAttribute('d'));
+        if (!ends) continue;
+        var w = parseFloat(tr.getAttribute('data-w') || '0.3');
+        lg.appendChild(
+          makeSegHit(tr, ends[0][0], ends[0][1], ends[1][0], ends[1][1], w, tr.getAttribute('data-net')),
+        );
+        made++;
+      }
+    }
+    return made;
+  }
+  attachTraceHits();
   buildPadLabels();
 
   ['dt-margin', 'dt-allowed'].forEach(function (id) {

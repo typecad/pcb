@@ -1507,7 +1507,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   var layoutOverlay = null;
   var layoutBuilt = false;
   var layoutMoves = {}; // ref -> { x, y, x0, y0 } in the gerber (y-up) frame
-  var layoutRipped = []; // copper greyed until rebuild
+  var layoutRipped = []; // autorouter copper ripped (hidden) until rebuild
   var layoutSel = []; // refs — shift-click extends, click replaces
   var layoutRot = {}; // ref -> accumulated 90-degree presses (R key)
   var layoutSnapBox = document.getElementById('layout-snap');
@@ -2324,9 +2324,15 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   }
   function ripUpEl(el) {
     if (el.__layoutOp !== undefined) return;
-    el.__layoutOp = el.getAttribute('opacity') || '';
-    el.setAttribute('opacity', '0.22');
+    // the ink LEAVES (display:none, not a grey-out): a hidden track stops
+    // counting as the net's copper, so the ratsnest wires come back for it
+    // until the rebuild re-runs the autorouter
+    el.__layoutOp = el.getAttribute('display') || '';
+    el.setAttribute('display', 'none');
+    el.__ripped = 1;
     layoutRipped.push(el);
+    // the candy-cane overlay of an autorouter track rides its trace
+    if (el.__stripe) ripUpEl(el.__stripe);
   }
   function commitLayoutMove(g) {
     var c = g.__lc;
@@ -2335,11 +2341,15 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     // courtyard, silkscreen and drills land at the new position, bright,
     // exactly like KiCad; nothing of the part lingers at the old spot
     applyCompGhost(g);
-    // rip up: the net's ROUTING greys out until a rebuild regenerates it —
-    // traces and vias only. Footprints never grey: each part's pads belong
-    // to its own (possibly moving) footprint, so data-ref elements are left
+    // rip up: the net's ROUTING leaves until a rebuild regenerates it —
+    // traces and vias only, and only AUTOROUTER nets: a manual or mixed
+    // net's copper is a TrackBuilder polyline authored in source, it stays
+    // exactly as drawn. Footprints never rip: each part's pads belong to
+    // its own (possibly moving) footprint, so data-ref elements are left
     // alone whether they just moved or belong to a neighbor
     for (var rn = 0; rn < c.nets.length; rn++) {
+      var rprov = routeProvenance[c.nets[rn]];
+      if (rprov === 'manual' || rprov === 'mixed') continue;
       var netEls = viewGroups.gerber.querySelectorAll('[data-net="' + cssEsc(c.nets[rn]) + '"]');
       for (var re = 0; re < netEls.length; re++) {
         if (netEls[re].getAttribute('data-ref')) continue;
@@ -2368,9 +2378,10 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   function layoutRevert() {
     for (var r = 0; r < layoutRipped.length; r++) {
       var el = layoutRipped[r];
-      if (el.__layoutOp === '') el.removeAttribute('opacity');
-      else el.setAttribute('opacity', el.__layoutOp);
+      if (el.__layoutOp === '') el.removeAttribute('display');
+      else el.setAttribute('display', el.__layoutOp);
       el.__layoutOp = undefined;
+      el.__ripped = 0;
     }
     layoutRipped = [];
     layoutMoves = {};
@@ -2924,7 +2935,12 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     var wiredNets = {};
     if (viewGroups.gerber) {
       var wels = viewGroups.gerber.querySelectorAll('[data-net]:not([data-ref])');
-      for (var we = 0; we < wels.length; we++) wiredNets[wels[we].getAttribute('data-net')] = 1;
+      for (var we = 0; we < wels.length; we++) {
+        // ripped-up autorouter ink is GONE for connectivity purposes — its
+        // net is stranded again and the wires come back until the rebuild
+        if (wels[we].__ripped) continue;
+        wiredNets[wels[we].getAttribute('data-net')] = 1;
+      }
     }
     var padsByNet = {};
     for (var uc = 0; uc < layoutComps.length; uc++) {
@@ -3025,9 +3041,10 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     }
     for (var r2 = 0; r2 < layoutRipped.length; r2++) {
       var rel = layoutRipped[r2];
-      if (rel.__layoutOp === '') rel.removeAttribute('opacity');
-      else rel.setAttribute('opacity', rel.__layoutOp);
+      if (rel.__layoutOp === '') rel.removeAttribute('display');
+      else rel.setAttribute('display', rel.__layoutOp);
       rel.__layoutOp = undefined;
+      rel.__ripped = 0;
     }
     layoutRipped = [];
     // texts too: strokes back to authored ink, edit previews gone (the
@@ -3215,7 +3232,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     for (var i = 0; i < kids.length; i++) {
       var el = kids[i];
       if (!el.getBBox) continue;
-      if (el.classList && (el.classList.contains('pad-labels') || el.id === 'route-ui')) continue;
+      if (el.classList && (el.classList.contains('pad-labels') || el.classList.contains('route-auto-stripe') || el.id === 'route-ui')) continue;
       var enet = el.getAttribute('data-net');
       if (enet && net && enet === net) continue;
       // zone-fill regions (fills) are pours: their clearance is the fill
@@ -4045,6 +4062,16 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   try {
     padManifest = JSON.parse(document.getElementById('pad-data').textContent) || [];
   } catch (e) {}
+  // route provenance (build/<board>_routes.json): which nets the autorouter
+  // built vs which a TrackBuilder authored in source. Auto nets candy-cane
+  // and rip up when their parts move (the rebuild re-plans them); manual
+  // and mixed nets are source-authored polylines and stay exactly as drawn
+  var routeProvenance = {};
+  try {
+    var rprovData = JSON.parse(document.getElementById('routes').textContent);
+    if (rprovData && rprovData.nets)
+      for (var rpk in rprovData.nets) routeProvenance[rpk] = rprovData.nets[rpk].provenance || '';
+  } catch (e) {}
   // gerber-frame center of a manifest pad (board y-down -> y-up)
   function padCenter(p) {
     return { x: p.x, y: -p.y };
@@ -4196,6 +4223,22 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
           makeSegHit(tr, ends[0][0], ends[0][1], ends[1][0], ends[1][1], w, tr.getAttribute('data-net')),
         );
         made++;
+        // autorouter-built track: candy-cane it — a same-ink dashed overlay
+        // over the solid stroke reads as lighter/darker bands and separates
+        // machine routing from authored polylines at a glance
+        var tnet = tr.getAttribute('data-net');
+        if (tnet && routeProvenance[tnet] === 'auto') {
+          var stripe = document.createElementNS(SVGNSL, 'path');
+          stripe.setAttribute('class', 'route-auto-stripe');
+          stripe.setAttribute('d', tr.getAttribute('d'));
+          stripe.setAttribute('stroke', tr.getAttribute('stroke') || '');
+          stripe.setAttribute('stroke-width', tr.getAttribute('stroke-width') || String(w));
+          stripe.setAttribute('fill', 'none');
+          stripe.setAttribute('stroke-linecap', 'butt');
+          stripe.setAttribute('pointer-events', 'none');
+          lg.appendChild(stripe);
+          tr.__stripe = stripe;
+        }
       }
     }
     return made;
@@ -5733,6 +5776,9 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   #layout-overlay .layout-comp.layout-warn rect,
   #layout-overlay .layout-comp.layout-warn polygon { stroke: #d29922; }
   #ratsnest path { stroke: #d29922; stroke-width: 0.05; fill: none; opacity: 0.85; }
+  /* autorouter tracks: same-ink dashed overlay over the solid stroke —
+     alternating light/dark candy-cane bands, scales with the board */
+  .route-auto-stripe { opacity: 0.55; stroke-dasharray: 1.4 1.4; }
   .pad-labels text { fill: var(--pad-label, #ffffff); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
   /* movable texts read as grabbable, and a grabbed one is highlighted */
   body.typecad-layout #yflip path[data-text] { cursor: move; }

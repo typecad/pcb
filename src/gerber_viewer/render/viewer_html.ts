@@ -3181,15 +3181,35 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         continue;
       }
       if (!bb || (!bb.width && !bb.height)) continue;
+      // POUR INK (hatched fills): the fill engine emits one stroked PATH per
+      // hatch stroke WITHOUT fill-rule; hatch strokes DO carry data-w but no
+      // data-net/data-ref. On copper layers those are pour geometry — the
+      // fill engine owns its clearance, and listing thousands of them would
+      // blanket the board and flag every route as a violation. Only
+      // ATTRIBUTED ink (data-net traces, data-ref pads, committed routes)
+      // is a routing obstacle.
+      var eref = el.getAttribute('data-ref');
+      var eroute = el.getAttribute('data-route');
+      if (!enet && !eref && !eroute) continue;
       var sw = parseFloat(el.getAttribute('stroke-width') || '0') || 0;
-      obs.push({ x0: bb.x - sw / 2, y0: bb.y - sw / 2, x1: bb.x + bb.width + sw / 2, y1: bb.y + bb.height + sw / 2 });
+      obs.push({
+        x0: bb.x - sw / 2,
+        y0: bb.y - sw / 2,
+        x1: bb.x + bb.width + sw / 2,
+        y1: bb.y + bb.height + sw / 2,
+        net: enet,
+      });
     }
     return obs;
   }
-  // worst clearance margin (mm) of a point sequence against the obstacles
+  // worst clearance margin (mm) of a point sequence against the obstacles.
+  // The ROUTE ORIGIN sits inside the start pad's own copper — samples within
+  // the start pad's extent are the pad we are leaving, not a violation, so
+  // they are measured only past the pad's edge.
   function clearanceMargin(obs, pts, w) {
     var need = w / 2 + CLEARANCE;
     var worst = Infinity;
+    var skipR = routeState && routeState.startPad ? Math.max(routeState.startPad.w, routeState.startPad.h) / 2 : 0;
     for (var s = 1; s < pts.length; s++) {
       var ax = pts[s - 1].x, ay = pts[s - 1].y, bx = pts[s].x, by = pts[s].y;
       var len = Math.hypot(bx - ax, by - ay);
@@ -3197,6 +3217,11 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       for (var t = 0; t <= steps; t++) {
         var px = ax + ((bx - ax) * t) / steps;
         var py = ay + ((by - ay) * t) / steps;
+        // leaving the start pad: its own extent is not an obstacle crossing
+        if (routeState && routeState.startPad) {
+          var sc = padCenter(routeState.startPad);
+          if (Math.hypot(px - sc.x, py - sc.y) < skipR) continue;
+        }
         for (var oi = 0; oi < obs.length; oi++) {
           var o = obs[oi];
           if (px < o.x0 - 3 && px > o.x1 + 3) continue;
@@ -3602,11 +3627,45 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     routeState.lastEnd = end;
     if (routeState.targetPad) routeCommit();
   }
+  // does the displayed walk actually touch NETTED foreign copper? (N/C pads
+  // and unattributed ink are advisory — DRC's call, not the router's)
+  function routeHitsNettedCopper(pts) {
+    var piece = curPiece();
+    var need = routeState.w / 2 + CLEARANCE;
+    var skipR = routeState.startPad ? Math.max(routeState.startPad.w, routeState.startPad.h) / 2 : 0;
+    var sc = routeState.startPad ? padCenter(routeState.startPad) : null;
+    var seg = [{ x: routeState.sx, y: routeState.sy }].concat(pts || []);
+    for (var sb = 1; sb < seg.length; sb++) {
+      var ax = seg[sb - 1].x, ay = seg[sb - 1].y, bx = seg[sb].x, by = seg[sb].y;
+      var steps = Math.max(1, Math.ceil(Math.hypot(bx - ax, by - ay) / 0.2));
+      for (var t = 0; t <= steps; t++) {
+        var px = ax + ((bx - ax) * t) / steps;
+        var py = ay + ((by - ay) * t) / steps;
+        if (sc && Math.hypot(px - sc.x, py - sc.y) < skipR) continue;
+        for (var oi = 0; oi < piece.obstacles.length; oi++) {
+          var o = piece.obstacles[oi];
+          if (!o.net || o.net === 'N/C') continue;
+          var dx = Math.max(o.x0 - px, 0, px - o.x1);
+          var dy = Math.max(o.y0 - py, 0, py - o.y1);
+          var dist = dx || dy ? Math.hypot(dx, dy) : -0.5;
+          if (dist - need < 0) return true;
+        }
+      }
+    }
+    return false;
+  }
   function routeAnchor(end, pts) {
     if (!pts) pts = routeState.lastPts || [{ x: end.x, y: end.y }];
     if (routeState.clearState === 'bad' && !end.pad) {
-      if (statusEl && !statusLocked()) statusEl.textContent = 'clearance violation \u2014 move the trace before anchoring';
-      return;
+      // hard refusal only when the walk touches NETTED foreign copper (a
+      // real short risk); crossing N/C pads anchors with a warning (DRC
+      // adjudicates) — previously ANY red tint blocked the anchor, which
+      // made plain clicks read as dead on netless routes
+      if (routeHitsNettedCopper(pts)) {
+        if (statusEl && !statusLocked()) statusEl.textContent = 'clearance violation — move the trace before anchoring';
+        return;
+      }
+      if (statusEl && !statusLocked()) statusEl.textContent = 'anchored (crosses unconnected copper — DRC will report)';
     }
     var piece = curPiece();
     for (var pa = 0; pa < pts.length; pa++) piece.points.push(pts[pa]);

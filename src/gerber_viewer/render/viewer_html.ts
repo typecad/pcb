@@ -5316,10 +5316,17 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     for (var lt = 0; lt < layerThemesIsland.length; lt++)
       if (layerThemesIsland[lt].id === id) theme = layerThemesIsland[lt];
     document.body.classList.toggle('layer-themed', !!theme);
-    var lgs = document.querySelectorAll('#yflip > g[data-layer-id]');
+    // GERBER stack only: the pcba/blueprint views embed their own #yflip
+    // copies carrying the same data-layer-ids; their pass had no theme
+    // mapping and reset the shared sidebar chips to the default palette
+    var lgs = (viewGroups.gerber || document).querySelectorAll('#yflip > g[data-layer-id]');
     for (var lg = 0; lg < lgs.length; lg++) {
       var g2 = lgs[lg];
       var lid = g2.getAttribute('data-layer-id');
+      // only GERBER layer groups: the pcba/blueprint views inject their own
+      // copper copies into the same #yflip WITHOUT data-kind/data-layer-name
+      // — theme-mapped to nothing, their pass reset the shared chips
+      if (!g2.getAttribute('data-kind') || !g2.getAttribute('data-layer-name')) continue;
       if (g2.__inkDefault === undefined) g2.__inkDefault = g2.style.getPropertyValue('--ink-' + lid);
       var color = theme ? themeColorFor(theme, g2) : null;
       if (color) g2.style.setProperty('--ink-' + lid, color);

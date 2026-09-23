@@ -4005,8 +4005,23 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         segSel.add(t);
       }
       segHiSync();
-      if (statusEl && !statusLocked())
-        statusEl.textContent = segSel.size + ' segment' + (segSel.size > 1 ? 's' : '') + ' selected — U grows, Del removes, Esc clears';
+      if (statusEl && !statusLocked()) {
+        // single-segment picks name the declaring line: the net's source
+        // (the injected client's map) or, for netless hand routes, the
+        // unnamed-route provenance resolved from the click point
+        var segSrc = '';
+        if (segSel.size === 1) {
+          var sn = t.getAttribute('data-net');
+          if (sn && sn !== 'N/C' && typeof window.typecadNetSource === 'function')
+            segSrc = window.typecadNetSource(sn) || '';
+          if (!segSrc && typeof window.typecadTraceSource === 'function')
+            segSrc = window.typecadTraceSource(ev.clientX, ev.clientY) || '';
+        }
+        statusEl.textContent =
+          segSel.size + ' segment' + (segSel.size > 1 ? 's' : '') + ' selected' +
+          (segSrc ? ' \u2014 ' + segSrc : '') +
+          ' \u2014 U grows, Del removes, Esc clears';
+      }
     },
     true,
   );

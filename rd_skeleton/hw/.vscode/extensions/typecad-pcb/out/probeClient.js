@@ -206,7 +206,33 @@ const PROBE_CLIENT = `<script>
         window.typecadRoutingActive()
       )
         return;
-      var el = ev.target.closest ? ev.target.closest('[data-ref]') : null;
+      // a pad wins over the part: overlays shadow body-hidden pads (every
+      // BGA ball) from DOM hit testing, so the viewer resolves the point
+      // through the pad manifest itself — exposed or hidden alike
+      if (window.typecadPadProbe) {
+        var padHit = window.typecadPadProbe(ev.clientX, ev.clientY);
+        if (padHit) {
+          send({ type: 'typecad/probe', ref: padHit.ref, pin: padHit.pin });
+          return;
+        }
+      }
+      // an outline rect swallows every hit inside a component body — peek
+      // underneath it so exposed pad ink reads as the pad, not the part.
+      // display:none (not pointer-events:none) unhooks the whole subtree
+      // from hit testing; no frame renders between the toggles
+      var tgt = ev.target;
+      if (tgt && tgt.closest && tgt.closest('#typecad-probe')) {
+        var pg = document.getElementById('typecad-probe');
+        if (pg) {
+          pg.style.display = 'none';
+          try { tgt = document.elementFromPoint(ev.clientX, ev.clientY) || tgt; } catch (e) {}
+          pg.style.display = '';
+        }
+      }
+      var el = tgt && tgt.closest ? tgt.closest('[data-ref]') : null;
+      // peek may surface bare geometry (fill raster, background): the
+      // outline that received the click still names the component
+      if (!el && ev.target && ev.target.closest) el = ev.target.closest('[data-ref]');
       if (el) {
         send({ type: 'typecad/probe', ref: el.getAttribute('data-ref'), pin: el.getAttribute('data-pin') });
         return;
@@ -214,7 +240,7 @@ const PROBE_CLIENT = `<script>
       // no component under the cursor: a double-click on a trace reveals the
       // line that declared its net/route — the location resolves HERE (the
       // client owns the net->source map), the host only reveals it
-      var netEl = ev.target.closest ? ev.target.closest('[data-net]') : null;
+      var netEl = tgt && tgt.closest ? tgt.closest('[data-net]') : null;
       if (netEl) {
         var net = netEl.getAttribute('data-net');
         send({ type: 'typecad/probe-net', net: net, source: window.typecadNetSource(net) || undefined });

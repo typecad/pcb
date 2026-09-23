@@ -3734,14 +3734,17 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       if (routeState.net) track.setAttribute('data-net', routeState.net);
       // per-SEGMENT hit paths ride invisibly on top of the drawn track:
       // clicking highlights the exact segment under the cursor (the drawn
-      // path stays one polyline for theming and apply)
+      // path stays one polyline for theming and apply). The track is
+      // appended FIRST — a painted stroke would otherwise sit above its own
+      // hit lines and swallow every click (attachTraceHits arms page-load
+      // traces the same way: hits last, above the ink)
       var segPts = pc.points;
+      pc.layerGroup.appendChild(track);
       for (var sp = 1; sp < segPts.length; sp++) {
         var hit = makeSegHit(track, segPts[sp - 1].x, segPts[sp - 1].y, segPts[sp].x, segPts[sp].y, routeState.w, routeState.net);
         hit.setAttribute('data-route', '1');
         pc.layerGroup.appendChild(hit);
       }
-      pc.layerGroup.appendChild(track);
     }
     for (var vi = 0; vi < routeState.vias.length; vi++) {
       var v = routeState.vias[vi];
@@ -3994,7 +3997,14 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     function (ev) {
       if (routeState || ev.button !== 0) return;
       var t = ev.target;
-      if (!t || !t.getAttribute || t.getAttribute('data-seg') !== '1') return;
+      if (!t || !t.getAttribute || t.getAttribute('data-seg') !== '1') {
+        // part bodies and probe outlines shadow trace ink from DOM hits —
+        // a route crossing a body (fresh routes leave from pads) would be
+        // unclickable without peeking under them
+        var pk = probeHitTarget(ev, true);
+        if (!pk || !pk.getAttribute || pk.getAttribute('data-seg') !== '1') return;
+        t = pk;
+      }
       ev.stopPropagation();
       ev.preventDefault();
       if (ev.shiftKey) {
@@ -4774,17 +4784,24 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   // part's body — peek underneath them so a body-hidden pad (every BGA
   // ball) reads as the pad, not the part. display:none (not
   // pointer-events:none — the rects re-enable that per-element) removes the
-  // subtree from hit testing outright; no frame renders between the toggles
-  function probeHitTarget(ev) {
+  // subtree from hit testing outright; no frame renders between the toggles.
+  // alsoLayout: the layout view's part bodies shadow the same way — segment
+  // selection peeks under BOTH so a trace crossing a body stays clickable
+  // (pads under bodies resolve through the manifest instead).
+  function probeHitTarget(ev, alsoLayout) {
     var t = ev.target;
-    if (!t || !t.closest || !t.closest('#typecad-probe')) return t;
-    var pg = document.getElementById('typecad-probe');
-    if (!pg) return t;
-    pg.style.display = 'none';
+    if (!t || !t.closest) return t;
+    var pg = null, lo = null;
+    if (t.closest('#typecad-probe')) pg = document.getElementById('typecad-probe');
+    if (alsoLayout && t.closest('#layout-overlay')) lo = document.getElementById('layout-overlay');
+    if (!pg && !lo) return t;
+    if (pg) pg.style.display = 'none';
+    if (lo) lo.style.display = 'none';
     try {
       t = document.elementFromPoint(ev.clientX, ev.clientY) || t;
     } catch (e) {}
-    pg.style.display = '';
+    if (pg) pg.style.display = '';
+    if (lo) lo.style.display = '';
     return t;
   }
   // shift-snap: constrain the measured endpoint to 45-degree increments from

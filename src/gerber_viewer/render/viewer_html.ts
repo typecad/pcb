@@ -2532,13 +2532,6 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         }
         return;
       }
-      if (ev.key === 'a' || ev.key === 'A') {
-        if (routeState) {
-          ev.preventDefault();
-          routeHintAccept();
-        }
-        return;
-      }
       if (ev.key === 'Backspace') {
         if (routeState) {
           ev.preventDefault();
@@ -3323,8 +3316,6 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       vias: [], // {x, y} gerber, where a layer switch happened
       lastPts: [],
       clearState: 'ok',
-      hint: null,
-      hintEl: null,
     };
     var piece = newPiece(lg);
     piece.points.push({ x: c.x, y: c.y });
@@ -3340,7 +3331,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     if (statusEl && !statusLocked())
       statusEl.textContent =
         'routing ' + (padHi.net ? padHi.net : 'no net') + ' (' + routeState.w + 'mm) from ' + padHi.ref + '.' + padHi.pin +
-        ' \u2014 click anchors, V via, A takes the hint, Esc cancels';
+        ' \u2014 click to anchor, V via, Esc cancels';
     clearPadHighlight();
   }
   function curPiece() {
@@ -3351,7 +3342,6 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     routeState.path.remove();
     for (var pi = 0; pi < routeState.pieces.length; pi++) routeState.pieces[pi].anchoredEl.remove();
     if (routeState.targetRing) routeState.targetRing.remove();
-    if (routeState.hintEl) routeState.hintEl.remove();
     routeState = null;
     refreshRatsnest();
     if (statusEl && !statusLocked()) statusEl.textContent = 'routing cancelled';
@@ -3413,6 +3403,39 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     for (var i = 0; i < pts.length; i++) d += ' L ' + pts[i].x.toFixed(3) + ' ' + pts[i].y.toFixed(3);
     return d;
   }
+  // the drag trail: orthogonal spine from the anchor, then a 45-degree
+  // crook whose far end is EXACTLY the cursor (or pad center). Aligned moves
+  // draw a single straight segment; pure-diagonal moves a single 45.
+  function routeTrail(mx, my) {
+    var dx = mx - routeState.sx;
+    var dy = my - routeState.sy;
+    var adx = Math.abs(dx);
+    var ady = Math.abs(dy);
+    var mn = Math.min(adx, ady);
+    if (mn < 0.001 || Math.abs(adx - ady) < 0.001) return [{ x: mx, y: my }];
+    var sx = dx > 0 ? 1 : -1;
+    var sy = dy > 0 ? 1 : -1;
+    return [
+      { x: mx - sx * mn, y: my - sy * mn },
+      { x: mx, y: my },
+    ];
+  }
+  // the alternate order: crook at the ANCHOR, orthogonal run into the cursor
+  // (used when the default trail violates clearance)
+  function routeTrailFlipped(mx, my) {
+    var dx = mx - routeState.sx;
+    var dy = my - routeState.sy;
+    var adx = Math.abs(dx);
+    var ady = Math.abs(dy);
+    var mn = Math.min(adx, ady);
+    if (mn < 0.001 || Math.abs(adx - ady) < 0.001) return [{ x: mx, y: my }];
+    var sx = dx > 0 ? 1 : -1;
+    var sy = dy > 0 ? 1 : -1;
+    return [
+      { x: routeState.sx + sx * mn, y: routeState.sy + sy * mn },
+      { x: mx, y: my },
+    ];
+  }
   function routeFollow(mx, my) {
     if (!routeState) return;
     var end = routeEndpoint(mx, my);
@@ -3421,15 +3444,13 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     var piece = curPiece();
     var pts;
     if (end.pad) {
-      // walk: prefer the CLEAR elbow, tie broken by the mouse
+      // pad snap: the walk candidates, clear-first (mouse steers ties)
       var cands = routeWalkCandidates(end);
       var bestPts = cands[0];
       var bestMargin = -Infinity;
       for (var ci = 0; ci < cands.length; ci++) {
         var m = clearanceMargin(piece.obstacles, [{ x: routeState.sx, y: routeState.sy }].concat(cands[ci]), routeState.w);
         var nearer = Math.hypot(cands[ci][0].x - mx, cands[ci][0].y - my);
-        // clear dominates; among clear orders the ORTHOGONAL-first (index 1)
-        // wins ties — 0/90 leads and the 45 transitions — then the mouse
         var orthoFirst = ci === 1 ? 0.05 : 0;
         var score = m + orthoFirst - nearer * 0.01;
         if (score > bestMargin) {
@@ -3439,24 +3460,17 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       }
       pts = bestPts;
     } else {
-      // free space: the snapped ray; if it violates clearance, try the
-      // neighboring 45-degree rays (shove-lite) and take the first clear one
-      pts = [{ x: end.x, y: end.y }];
-      var seq = [{ x: routeState.sx, y: routeState.sy }, pts[0]];
-      if (clearanceMargin(piece.obstacles, seq, routeState.w) < 0) {
-        var base = Math.atan2(end.y - routeState.sy, end.x - routeState.sx);
-        var len0 = Math.hypot(end.x - routeState.sx, end.y - routeState.sy);
-        var tried = [base + Math.PI / 4, base - Math.PI / 4, base + Math.PI / 2, base - Math.PI / 2];
-        for (var ai = 0; ai < tried.length; ai++) {
-          var cand = [
-            { x: routeState.sx, y: routeState.sy },
-            { x: routeState.sx + Math.cos(tried[ai]) * len0, y: routeState.sy + Math.sin(tried[ai]) * len0 },
-          ];
-          if (clearanceMargin(piece.obstacles, cand, routeState.w) >= 0) {
-            pts = [cand[1]];
-            break;
-          }
-        }
+      // free space: the DRAG TRAIL — the trace end is ALWAYS the cursor.
+      // An orthogonal spine runs from the anchor and a 45-degree crook
+      // adjacent to the cursor closes the gap: move straight up and the
+      // trace is vertical; drift right and a 45 bend grows near the cursor,
+      // sliding along as needed. The FLIPPED order (crook at the anchor) is
+      // the fallback when the default violates clearance.
+      pts = routeTrail(mx, my);
+      var trailAlt = routeTrailFlipped(mx, my);
+      if (clearanceMargin(piece.obstacles, [{ x: routeState.sx, y: routeState.sy }].concat(pts), routeState.w) < 0) {
+        var altM = clearanceMargin(piece.obstacles, [{ x: routeState.sx, y: routeState.sy }].concat(trailAlt), routeState.w);
+        if (altM >= 0) pts = trailAlt;
       }
     }
     routeState.lastEnd = end;
@@ -3475,157 +3489,8 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       routeState.targetRing = end.pad ? padRing(end.pad, 'route-pad-target') : null;
       if (routeState.targetRing) routeUiGroup().appendChild(routeState.targetRing);
       routeState.targetPad = end.pad || null;
-      updateRouteHint();
       refreshRatsnest();
     }
-  }
-  // ---- corridor hint: grid A* over the obstacle index (0.25mm cells) ----
-  function updateRouteHint() {
-    if (routeState.hintEl) {
-      routeState.hintEl.remove();
-      routeState.hintEl = null;
-      routeState.hint = null;
-    }
-    if (!routeState.targetPad) return;
-    var piece = curPiece();
-    var t = padCenter(routeState.targetPad);
-    var res = 0.25;
-    var padM = 2;
-    var gx0 = Math.min(routeState.sx, t.x) - padM;
-    var gy0 = Math.min(routeState.sy, t.y) - padM;
-    var gx1 = Math.max(routeState.sx, t.x) + padM;
-    var gy1 = Math.max(routeState.sy, t.y) + padM;
-    var W = Math.ceil((gx1 - gx0) / res) + 1;
-    var H = Math.ceil((gy1 - gy0) / res) + 1;
-    if (W * H > 400000) return;
-    var blocked = new Uint8Array(W * H);
-    var need = routeState.w / 2 + CLEARANCE;
-    var toCell = function (x, y) {
-      return { cx: Math.round((x - gx0) / res), cy: Math.round((y - gy0) / res) };
-    };
-    for (var oi = 0; oi < piece.obstacles.length; oi++) {
-      var o = piece.obstacles[oi];
-      var a = toCell(o.x0 - need, o.y0 - need);
-      var b = toCell(o.x1 + need, o.y1 + need);
-      for (var cx = Math.max(0, a.cx); cx <= Math.min(W - 1, b.cx); cx++)
-        for (var cy = Math.max(0, a.cy); cy <= Math.min(H - 1, b.cy); cy++) blocked[cy * W + cx] = 1;
-    }
-    var s = toCell(routeState.sx, routeState.sy);
-    var g = toCell(t.x, t.y);
-    // both endpoint pads' own obstacle boxes blanket their center cells'
-    // neighbors — free an approach disc around each so A* can enter/leave
-    var unblockR = Math.ceil(1.0 / res);
-    for (var sx2 = s.cx - unblockR; sx2 <= s.cx + unblockR; sx2++)
-      for (var sy2 = s.cy - unblockR; sy2 <= s.cy + unblockR; sy2++)
-        if (sx2 >= 0 && sy2 >= 0 && sx2 < W && sy2 < H && Math.hypot(sx2 - s.cx, sy2 - s.cy) <= unblockR)
-          blocked[sy2 * W + sx2] = 0;
-    for (var ux = g.cx - unblockR; ux <= g.cx + unblockR; ux++)
-      for (var uy = g.cy - unblockR; uy <= g.cy + unblockR; uy++)
-        if (ux >= 0 && uy >= 0 && ux < W && uy < H && Math.hypot(ux - g.cx, uy - g.cy) <= unblockR)
-          blocked[uy * W + ux] = 0;
-    // A* 8-directional (movement is exactly 0/45/90)
-    var open = [s.cy * W + s.cx];
-    var came = new Int32Array(W * H).fill(-1);
-    var cost = new Float64Array(W * H).fill(Infinity);
-    cost[s.cy * W + s.cx] = 0;
-    var fScore = new Float64Array(W * H).fill(Infinity);
-    fScore[s.cy * W + s.cx] = Math.hypot(g.cx - s.cx, g.cy - s.cy);
-    var DIRS = [
-      [1, 0, 1], [-1, 0, 1], [0, 1, 1], [0, -1, 1],
-      [1, 1, 1.4142], [1, -1, 1.4142], [-1, 1, 1.4142], [-1, -1, 1.4142],
-    ];
-    // 0/90 prioritized, 45s kept: the diagonal premium sits just ABOVE the
-    // √2 break-even, so equal-bend paths route orthogonally (an L beats a
-    // Z), while a diagonal that SAVES bends (a true 45-degree hop, an
-    // obstacle shortcut) still wins — long orthogonal runs with 45-degree
-    // transitions, never staircases
-    var DIAG_PREF = 1.42;
-    var BEND_COST = 0.9;
-    var dirFrom = new Int8Array(W * H).fill(-1);
-    var goal = g.cy * W + g.cx;
-    var found = false;
-    while (open.length) {
-      // small grids: linear min-scan is fine
-      var bi = 0;
-      for (var qi = 1; qi < open.length; qi++) if (fScore[open[qi]] < fScore[open[bi]]) bi = qi;
-      var cur = open.splice(bi, 1)[0];
-      if (cur === goal) {
-        found = true;
-        break;
-      }
-      var ccx = cur % W;
-      var ccy = (cur - ccx) / W;
-      for (var di = 0; di < 8; di++) {
-        var nx = ccx + DIRS[di][0];
-        var ny = ccy + DIRS[di][1];
-        if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
-        var ni = ny * W + nx;
-        if (blocked[ni]) continue;
-        // no corner cutting between two diagonal blockers
-        if (DIRS[di][2] > 1 && (blocked[ccy * W + nx] || blocked[ny * W + ccx])) continue;
-        var moveCost = DIRS[di][2] > 1 ? DIRS[di][2] * DIAG_PREF : DIRS[di][2];
-        var prevDir = dirFrom[cur];
-        if (prevDir !== -1 && prevDir !== di) moveCost += BEND_COST;
-        var nc = cost[cur] + moveCost;
-        if (nc < cost[ni]) {
-          cost[ni] = nc;
-          fScore[ni] = nc + Math.hypot(g.cx - nx, g.cy - ny);
-          came[ni] = cur;
-          dirFrom[ni] = di;
-          if (open.indexOf(ni) === -1) open.push(ni);
-        }
-      }
-    }
-    if (!found) return;
-    // reconstruct + collapse collinear runs (keeps pure 0/45/90 corners)
-    var path = [];
-    var node = goal;
-    while (node !== -1) {
-      var pxx = node % W;
-      var pyy = (node - pxx) / W;
-      path.push({ x: gx0 + pxx * res, y: gy0 + pyy * res });
-      node = came[node];
-    }
-    path.reverse();
-    path[0] = { x: routeState.sx, y: routeState.sy };
-    path[path.length - 1] = { x: t.x, y: t.y };
-    var simp = [path[0]];
-    for (var si = 1; si < path.length - 1; si++) {
-      var p0 = simp[simp.length - 1];
-      var p1 = path[si];
-      var p2 = path[si + 1];
-      var d1x = p1.x - p0.x, d1y = p1.y - p0.y, d2x = p2.x - p1.x, d2y = p2.y - p1.y;
-      var cross = d1x * d2y - d1y * d2x;
-      var dot = d1x * d2x + d1y * d2y;
-      if (Math.abs(cross) > 1e-9 || dot < 0) simp.push(p1);
-    }
-    simp.push(path[path.length - 1]);
-    routeState.hint = simp;
-    var dAttr = 'M ' + simp[0].x.toFixed(3) + ' ' + simp[0].y.toFixed(3);
-    for (var hi = 1; hi < simp.length; hi++) dAttr += ' L ' + simp[hi].x.toFixed(3) + ' ' + simp[hi].y.toFixed(3);
-    var hintEl = document.createElementNS(SVGNSL, 'path');
-    hintEl.setAttribute('class', 'route-hint');
-    hintEl.setAttribute('d', dAttr);
-    routeUiGroup().appendChild(hintEl);
-    routeState.hintEl = hintEl;
-  }
-  function routeHintAccept() {
-    if (!routeState || !routeState.hint) return;
-    var pts = routeState.hint.slice(1); // everything after the anchor
-    var end = { x: pts[pts.length - 1].x, y: pts[pts.length - 1].y, pad: routeState.targetPad };
-    // the hint is consumed: leaving it on screen would keep describing a
-    // path from the OLD anchor after this one is placed
-    if (routeState.hintEl) {
-      routeState.hintEl.remove();
-      routeState.hintEl = null;
-    }
-    routeState.hint = null;
-    routeAnchor(end, pts);
-    // the hint walk IS the final geometry: finalize must not append the
-    // stale preview walk on top of it
-    routeState.lastPts = null;
-    routeState.lastEnd = end;
-    if (routeState.targetPad) routeCommit();
   }
   // does the displayed walk actually touch NETTED foreign copper? (N/C pads
   // and unattributed ink are advisory — DRC's call, not the router's)
@@ -3675,9 +3540,6 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     piece.anchoredEl.setAttribute('d', d);
     routeState.sx = pts[pts.length - 1].x;
     routeState.sy = pts[pts.length - 1].y;
-    // the anchor moved the route origin: a hint computed from the old one
-    // now describes a path between unrelated pads — recompute immediately
-    updateRouteHint();
     if (statusEl && !statusLocked())
       statusEl.textContent = 'anchored \u2014 ' + (routeState.net ? routeState.net : 'no net') + ' continues; V via, Backspace undo, snap a pad or double-click to finish';
   }
@@ -3714,7 +3576,6 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     routeState.pieces.push(np);
     routeState.sx = vx;
     routeState.sy = vy;
-    updateRouteHint(); // origin moved: the old hint no longer applies
     routeState.path.setAttribute('stroke', np.inkColor);
     if (statusEl && !statusLocked()) statusEl.textContent = 'via placed \u2014 continuing on ' + nextCanon;
   }
@@ -3826,11 +3687,8 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       ev.preventDefault();
       var g = gerberAt(ev.clientX, ev.clientY);
       routeFollow(g.x, g.y);
-      // a click while snapped to a pad finalizes — along the CORRIDOR HINT
-      // when one exists (the blue dashed line the user sees is the promise;
-      // the committed trace must be that path), else the displayed walk
-      if (routeState.targetPad && routeState.hint) routeHintAccept();
-      else if (routeState.targetPad) routeCommit();
+      // a click while snapped to a pad finalizes the displayed trail
+      if (routeState.targetPad) routeCommit();
       else {
         var end2 = routeEndpoint(g.x, g.y);
         end2.mx = g.x;
@@ -3846,11 +3704,6 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     if (!routeState) return;
     ev.stopPropagation();
     ev.preventDefault();
-    if (routeState.hintEl) {
-      routeState.hintEl.remove();
-      routeState.hintEl = null;
-    }
-    routeState.hint = null;
     routeCommit();
   });
   window.addEventListener('mousemove', function (ev) {
@@ -3858,8 +3711,8 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     var g = gerberAt(ev.clientX, ev.clientY);
     routeFollow(g.x, g.y);
   });
-  // routing keys live in the layout keydown (X start, V via, A hint,
-  // Backspace undo) — see the handler below
+  // routing keys live in the layout keydown (X start, V via, Backspace
+  // undo) — see the handler below
 
   // the PCB model's pad manifest (build/<board>_pads.json): pin numbers and
   // net names straight from the board the PCB object wrote. Board y-down
@@ -5384,7 +5237,6 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     }
   }
   #route-ui .route-anchored { opacity: 0.9; }
-  #route-ui .route-hint { stroke: #4fc1ff; stroke-width: 0.12; fill: none; stroke-dasharray: 0.6 0.4; opacity: 0.6; }
   #route-ui .route-via { fill: #4fc1ff; fill-opacity: 0.35; stroke: #4fc1ff; stroke-width: 0.1; }
   .route-pad-hi { fill: rgba(79, 193, 255, 0.15); stroke: #4fc1ff; stroke-width: 2px; }
   .route-pad-target { fill: rgba(63, 185, 80, 0.15); stroke: #3fb950; stroke-width: 2px; }

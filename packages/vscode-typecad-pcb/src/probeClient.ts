@@ -89,7 +89,19 @@ export type ProbeWebviewMessage =
       renames?: Array<{ ref: string; newRef: string }>;
       /** interactive routes to append as TrackBuilder source */
       routes?: RouteApply[];
+      /** deleted trace segments to remove from source TrackBuilder chains */
+      deletes?: RouteDelete[];
     };
+
+/** one deleted trace segment (board frame, y-down mm) */
+export interface RouteDelete {
+  net: string | null;
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  layer: string | null;
+}
 
 /** one committed interactive route (board frame, y-down mm) */
 export interface RouteApply {
@@ -194,8 +206,8 @@ const PROBE_CLIENT = `<script>
   // Layout view: the page hands moved-component deltas to the host, which
   // edits the placement literals, rebuilds, and regenerates this viewer
   var layoutCb = null;
-  window.typecadLayoutApply = function (moves, texts, values, labels, renames, routes, cb) {
-    layoutCb = cb || (typeof routes === 'function' ? routes : null);
+  window.typecadLayoutApply = function (moves, texts, values, labels, renames, routes, deletes, cb) {
+    layoutCb = cb || (typeof deletes === 'function' ? deletes : typeof routes === 'function' ? routes : null);
     send({
       type: 'typecad/layout-rebuild',
       moves: moves,
@@ -204,6 +216,7 @@ const PROBE_CLIENT = `<script>
       labels: labels || [],
       renames: renames || [],
       routes: Array.isArray(routes) ? routes : [],
+      deletes: Array.isArray(deletes) ? deletes : [],
     });
   };
 

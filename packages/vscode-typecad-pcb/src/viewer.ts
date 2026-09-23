@@ -20,7 +20,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { injectProbeClient, type ProbeHostMessage, type ProbeWebviewMessage } from './probeClient.js';
 import { planComponentEdits, planEndpointEdits, parsePlacementLiteral, planPlacementEdits, planTextEdits, type ComponentEditSpec } from './layoutEdits.js';
-import { planRouteEdits } from './routeEdits.js';
+import { planRouteDeletes, planRouteEdits } from './routeEdits.js';
 import { parseSourceLocation } from './sourceRef.js';
 import type { BoardDataService } from './boardData.js';
 // discovery helpers live vscode-free in boardFile.ts for unit testing;
@@ -513,6 +513,7 @@ export class BoardViewerPanel {
     labels?: Array<{ ref: string; kind: 'reference' | 'value' | 'fab'; x: number; y: number; rot: number }>,
     renames?: Array<{ ref: string; newRef: string }>,
     routes?: import('./routeEdits.js').RouteInput[],
+    deletes?: import('./routeEdits.js').RouteDeleteInput[],
   ): Promise<void> {
     const folder = this.hwFolder();
     const fail = (error: string): void => {
@@ -686,6 +687,26 @@ export class BoardViewerPanel {
           if (planned.edits.length > 0) touched.add(uri.toString());
         }
       }
+      // deleted trace segments: matched .to() runs drop from the source's
+      // TrackBuilder chains (a middle break SPLITS the route so a real gap
+      // replaces the copper; emptied routes and their create() args vanish)
+      let deletesPlanned = 0;
+      if (deletes && deletes.length > 0) {
+        for (const uri of srcFiles) {
+          const doc = await vscode.workspace.openTextDocument(uri);
+          const text = doc.getText();
+          const plan = planRouteDeletes(text, deletes);
+          for (const sk of plan.skipped) skipped.push(`delete: ${sk}`);
+          if (plan.edits.length) {
+            for (const edit of plan.edits) {
+              edits.replace(uri, new vscode.Range(doc.positionAt(edit.start), doc.positionAt(edit.end)), edit.line);
+            }
+            deletesPlanned = plan.applied;
+            touched.add(uri.toString());
+            break;
+          }
+        }
+      }
       // interactive routes: committed track polylines become TrackBuilder
       // source — declarations before typecad.create( and variables appended
       // to its argument list
@@ -714,7 +735,8 @@ export class BoardViewerPanel {
         valuesEdited > 0 ||
         labelsEdited > 0 ||
         renamesEdited > 0 ||
-        routesPlanned > 0
+        routesPlanned > 0 ||
+        deletesPlanned > 0
       ) {
         await vscode.workspace.applyEdit(edits);
         for (const key of touched) {
@@ -723,12 +745,12 @@ export class BoardViewerPanel {
         }
       }
       this.output.appendLine(
-        `layout apply: ${applied} placement(s) moved${endpointsMoved ? `, ${endpointsMoved} route endpoint(s) translated` : ''}${routesPlanned ? `, ${routes!.length} track route(s) added to source` : ''}${textsEdited ? `, ${textsEdited} text(s) edited` : ''}${valuesEdited ? `, ${valuesEdited} value(s) edited` : ''}${labelsEdited ? `, ${labelsEdited} label(s) repositioned` : ''}${renamesEdited ? `, ${renamesEdited} reference(s) renamed` : ''}${skipped.length ? `, skipped ${skipped.join('; ')}` : ''} — rebuilding`,
+        `layout apply: ${applied} placement(s) moved${endpointsMoved ? `, ${endpointsMoved} route endpoint(s) translated` : ''}${routesPlanned ? `, ${routes!.length} track route(s) added to source` : ''}${deletesPlanned ? `, ${deletesPlanned} segment(s) deleted from source` : ''}${textsEdited ? `, ${textsEdited} text(s) edited` : ''}${valuesEdited ? `, ${valuesEdited} value(s) edited` : ''}${labelsEdited ? `, ${labelsEdited} label(s) repositioned` : ''}${renamesEdited ? `, ${renamesEdited} reference(s) renamed` : ''}${skipped.length ? `, skipped ${skipped.join('; ')}` : ''} — rebuilding`,
       );
       if (skipped.length) {
         vscode.window.setStatusBarMessage(`layout: skipped ${skipped.join('; ')}`, 8000);
       }
-      if (applied === 0 && textsEdited === 0 && valuesEdited === 0 && labelsEdited === 0 && renamesEdited === 0 && routesPlanned === 0) {
+      if (applied === 0 && textsEdited === 0 && valuesEdited === 0 && labelsEdited === 0 && renamesEdited === 0 && routesPlanned === 0 && deletesPlanned === 0) {
         void this.panel?.webview.postMessage({ type: 'typecad/layout-status', error: undefined });
         return;
       }
@@ -763,7 +785,7 @@ export class BoardViewerPanel {
 
   private async onMessage(message: ProbeWebviewMessage): Promise<void> {
     if (message.type === 'typecad/layout-rebuild') {
-      await this.onLayoutRebuild(message.moves, message.texts, message.values, message.labels, message.renames, message.routes);
+      await this.onLayoutRebuild(message.moves, message.texts, message.values, message.labels, message.renames, message.routes, message.deletes);
       return;
     }
     if (message.type === 'typecad/ready') {

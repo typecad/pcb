@@ -11,6 +11,7 @@
 // ---------------------------------------------------------------------------
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.planRouteEdits = planRouteEdits;
+exports.planRouteDeletes = planRouteDeletes;
 const fmt = (n) => String(parseFloat(n.toFixed(3)));
 /** Generate the TrackBuilder source for one route (multi-line, 2-space indents). */
 function routeSource(name, r) {
@@ -116,5 +117,223 @@ function planRouteEdits(text, routes) {
         line: `${sep}${names.join(', ')})`,
     });
     return { edits, skipped };
+}
+/** Do two points match within tolerance (board frame, mm)? */
+const ptEq = (a, b, tol = 0.02) => Math.abs(a.x - b.x) < tol && Math.abs(a.y - b.y) < tol;
+/** Does a deleted segment match the a->b run (either orientation)? */
+const segMatch = (d, a, b) => (ptEq({ x: d.x1, y: d.y1 }, a) && ptEq({ x: d.x2, y: d.y2 }, b)) ||
+    (ptEq({ x: d.x1, y: d.y1 }, b) && ptEq({ x: d.x2, y: d.y2 }, a));
+/** Parse every `const routeN = new TrackBuilder...` block in the text. */
+function parseRoutes(text) {
+    const out = [];
+    const re = /^([ \t]*)const (route\d+) = new TrackBuilder\(typecad, \{ ([^}]*)\}\)[ \t]*$/;
+    const lines = text.split('\n');
+    for (let i = 0; i < lines.length; i++) {
+        const m = re.exec(lines[i]);
+        if (!m)
+            continue;
+        const [, indent, name, opts] = m;
+        const points = [];
+        let layer = '';
+        let width = 0.3;
+        let j = i + 1;
+        for (; j < lines.length; j++) {
+            const l = lines[j].trim();
+            if (l.startsWith('.from(')) {
+                const fm = /\.from\(\{ x: (-?[\d.]+), y: (-?[\d.]+) \}(?:, '([^']+)')?(?:, ([\d.]+))?\)/.exec(l);
+                if (fm) {
+                    points.push({ x: +fm[1], y: +fm[2] });
+                    if (fm[3])
+                        layer = fm[3];
+                    if (fm[4])
+                        width = +fm[4];
+                }
+            }
+            else if (l.startsWith('.to(')) {
+                const tm = /\.to\(\{ x: (-?[\d.]+), y: (-?[\d.]+)(?:, layer: '([^']+)')?(?:, width: ([\d.]+))? \}\)/.exec(l);
+                if (tm) {
+                    points.push({ x: +tm[1], y: +tm[2] });
+                    if (tm[3])
+                        layer = tm[3];
+                    if (tm[4])
+                        width = +tm[4];
+                }
+            }
+            else if (l.startsWith('.via(')) {
+                // via: the next piece continues from the same point — kept as-is
+                continue;
+            }
+            else if (l.endsWith(';')) {
+                break;
+            }
+            // the FINAL chain line carries the terminating ';' — stop there so the
+            // block ends at the route, not at create()'s closer
+            if ((l.startsWith('.from(') || l.startsWith('.to(')) && l.endsWith(';'))
+                break;
+        }
+        out.push({
+            name: name,
+            head: lines[i],
+            indent: indent,
+            points,
+            layer,
+            width,
+            start: i,
+            end: j + 1, // include the ');' line
+        });
+        i = j;
+    }
+    return out;
+}
+/** Serialize points back into a builder chain. */
+function routeSourceFor(head, indent, pts, layer, width) {
+    const chain = [];
+    const f0 = pts[0];
+    chain.push(`.from({ x: ${fmt(f0.x)}, y: ${fmt(f0.y)} }, '${layer}', ${fmt(width)})`);
+    for (let i = 1; i < pts.length; i++) {
+        chain.push(`.to({ x: ${fmt(pts[i].x)}, y: ${fmt(pts[i].y)}, layer: '${layer}', width: ${fmt(width)} })`);
+    }
+    return `${head}\n${chain.map((c) => indent + c).join('\n')};`;
+}
+/**
+ * Plan the removal of deleted segments from the source's TrackBuilder
+ * chains: matched segments drop, and a route that breaks in the middle
+ * splits into two builders (routeN + routeNb) so a real GAP replaces the
+ * deleted copper instead of a bridge. Fully emptied routes disappear along
+ * with their create() argument.
+ */
+function planRouteDeletes(text, deletes) {
+    const edits = [];
+    const skipped = [];
+    let applied = 0;
+    if (deletes.length === 0)
+        return { edits, applied, skipped };
+    const routes = parseRoutes(text);
+    // line-index -> char-offset mapping for block edits (create() edits are
+    // computed in char offsets directly and stay untouched by this)
+    const lineStarts = [];
+    {
+        let acc = 0;
+        for (const ln of text.split('\n')) {
+            lineStarts.push(acc);
+            acc += ln.length + 1;
+        }
+    }
+    if (routes.length === 0) {
+        return { edits, applied, skipped: deletes.map((d) => `segment ${d.x1},${d.y1}->${d.x2},${d.y2} (no TrackBuilder routes in source)`) };
+    }
+    // track create() argument names per route for additions/removals
+    const createIdx = text.indexOf('typecad.create(');
+    if (createIdx === -1) {
+        return { edits, applied, skipped: deletes.map((d) => 'segment (no typecad.create( call found)') };
+    }
+    let depth = 0;
+    let closeIdx = -1;
+    for (let i = createIdx + 'typecad.create('.length - 1; i < text.length; i++) {
+        if (text[i] === '(')
+            depth++;
+        else if (text[i] === ')') {
+            depth--;
+            if (depth === 0) {
+                closeIdx = i;
+                break;
+            }
+        }
+    }
+    let maxNum = 0;
+    for (const r of routes)
+        maxNum = Math.max(maxNum, Number(r.name.slice(5)));
+    const namesToAdd = [];
+    const namesToRemove = [];
+    for (const r of routes) {
+        // remaining segment flags: segment i is (pts[i], pts[i+1])
+        const keep = [];
+        for (let i = 0; i + 1 < r.points.length; i++) {
+            const hit = deletes.some((d) => segMatch(d, r.points[i], r.points[i + 1]));
+            keep.push(!hit);
+            if (hit)
+                applied++;
+        }
+        if (keep.every((k) => k))
+            continue; // untouched
+        // split into contiguous runs
+        const runs = [];
+        let cur = [];
+        for (let i = 0; i < keep.length; i++) {
+            if (keep[i]) {
+                if (cur.length === 0)
+                    cur.push(r.points[i]);
+                cur.push(r.points[i + 1]);
+            }
+            else if (cur.length) {
+                runs.push(cur);
+                cur = [];
+            }
+        }
+        if (cur.length)
+            runs.push(cur);
+        const blockLines = r.end - r.start;
+        const indent = r.indent;
+        if (runs.length === 0) {
+            // emptied: remove the declaration (and blank line after if doubled)
+            edits.push({ uri: '', start: lineStarts[r.start] ?? 0, end: lineStarts[r.start + blockLines] ?? text.length, line: '' });
+            namesToRemove.push(r.name);
+            continue;
+        }
+        const headCore = `const ${r.name} = new TrackBuilder(typecad, {  })`;
+        const built = [];
+        built.push(routeSourceFor(headCore, indent, runs[0], r.layer, r.width));
+        for (let ri = 1; ri < runs.length; ri++) {
+            const nm = `${r.name}${'abcdefgh'[ri - 1] ?? 'z'}`;
+            // ensure uniqueness beyond existing names
+            let candidate = nm;
+            let bump = 1;
+            while (text.includes(`const ${candidate} =`) || built.some((b) => b.includes(`const ${candidate} =`))) {
+                candidate = `${nm}${++bump}`;
+            }
+            maxNum = Math.max(maxNum, 0);
+            built.push(routeSourceFor(`const ${candidate} = new TrackBuilder(typecad, {  })`, indent, runs[ri], r.layer, r.width));
+            namesToAdd.push(candidate);
+        }
+        edits.push({ uri: '', start: lineStarts[r.start] ?? 0, end: lineStarts[r.start + blockLines] ?? text.length, line: built.join('\n\n') + '\n' });
+    }
+    if (namesToRemove.length && closeIdx !== -1) {
+        // remove those names from create(...): scan the arg list text
+        const argsText = text.slice(createIdx, closeIdx + 1);
+        let nextArgs = argsText;
+        for (const nm of namesToRemove) {
+            nextArgs = nextArgs
+                .replace(new RegExp(`,\s*${nm}\b`), '')
+                .replace(new RegExp(`\b${nm}\s*,\s*`), '')
+                .replace(new RegExp(`\(\s*${nm}\s*\)`), '()');
+        }
+        edits.push({ uri: '', start: createIdx, end: closeIdx + 1, line: nextArgs });
+    }
+    if (namesToAdd.length && closeIdx !== -1 && !edits.some((e) => e.start === createIdx)) {
+        // additions ride the same rewrite: recompute against the pending args
+        // (simplest: append into the create() edit already planned)
+        const argsEdit = edits.find((e) => e.start === createIdx);
+        if (argsEdit) {
+            argsEdit.line = argsEdit.line.replace(/\)\s*$/, `, ${namesToAdd.join(', ')})`);
+        }
+        else {
+            const lastMeaning = (() => {
+                let k = closeIdx - 1;
+                while (k > createIdx && /\s/.test(text[k] ?? ''))
+                    k--;
+                return text[k];
+            })();
+            edits.push({
+                uri: '',
+                start: closeIdx,
+                end: closeIdx + 1,
+                line: `${lastMeaning === '(' ? '' : ', '}${namesToAdd.join(', ')})`,
+            });
+        }
+    }
+    const unmatched = deletes.length - applied;
+    if (unmatched > 0)
+        skipped.push(`${unmatched} deleted segment(s) matched no source route`);
+    return { edits, applied, skipped };
 }
 //# sourceMappingURL=routeEdits.js.map

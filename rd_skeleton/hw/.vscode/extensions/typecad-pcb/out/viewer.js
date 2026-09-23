@@ -505,7 +505,7 @@ class BoardViewerPanel {
      * Computed (non-literal) placements are skipped and reported, never
      * silently mangled.
      */
-    async onLayoutRebuild(moves, texts, values, labels, renames, routes) {
+    async onLayoutRebuild(moves, texts, values, labels, renames, routes, deletes) {
         const folder = this.hwFolder();
         const fail = (error) => {
             this.output.appendLine(`layout apply failed: ${error}`);
@@ -676,6 +676,27 @@ class BoardViewerPanel {
                         touched.add(uri.toString());
                 }
             }
+            // deleted trace segments: matched .to() runs drop from the source's
+            // TrackBuilder chains (a middle break SPLITS the route so a real gap
+            // replaces the copper; emptied routes and their create() args vanish)
+            let deletesPlanned = 0;
+            if (deletes && deletes.length > 0) {
+                for (const uri of srcFiles) {
+                    const doc = await vscode.workspace.openTextDocument(uri);
+                    const text = doc.getText();
+                    const plan = (0, routeEdits_js_1.planRouteDeletes)(text, deletes);
+                    for (const sk of plan.skipped)
+                        skipped.push(`delete: ${sk}`);
+                    if (plan.edits.length) {
+                        for (const edit of plan.edits) {
+                            edits.replace(uri, new vscode.Range(doc.positionAt(edit.start), doc.positionAt(edit.end)), edit.line);
+                        }
+                        deletesPlanned = plan.applied;
+                        touched.add(uri.toString());
+                        break;
+                    }
+                }
+            }
             // interactive routes: committed track polylines become TrackBuilder
             // source — declarations before typecad.create( and variables appended
             // to its argument list
@@ -704,18 +725,19 @@ class BoardViewerPanel {
                 valuesEdited > 0 ||
                 labelsEdited > 0 ||
                 renamesEdited > 0 ||
-                routesPlanned > 0) {
+                routesPlanned > 0 ||
+                deletesPlanned > 0) {
                 await vscode.workspace.applyEdit(edits);
                 for (const key of touched) {
                     const doc = await vscode.workspace.openTextDocument(vscode.Uri.parse(key));
                     await doc.save();
                 }
             }
-            this.output.appendLine(`layout apply: ${applied} placement(s) moved${endpointsMoved ? `, ${endpointsMoved} route endpoint(s) translated` : ''}${routesPlanned ? `, ${routes.length} track route(s) added to source` : ''}${textsEdited ? `, ${textsEdited} text(s) edited` : ''}${valuesEdited ? `, ${valuesEdited} value(s) edited` : ''}${labelsEdited ? `, ${labelsEdited} label(s) repositioned` : ''}${renamesEdited ? `, ${renamesEdited} reference(s) renamed` : ''}${skipped.length ? `, skipped ${skipped.join('; ')}` : ''} — rebuilding`);
+            this.output.appendLine(`layout apply: ${applied} placement(s) moved${endpointsMoved ? `, ${endpointsMoved} route endpoint(s) translated` : ''}${routesPlanned ? `, ${routes.length} track route(s) added to source` : ''}${deletesPlanned ? `, ${deletesPlanned} segment(s) deleted from source` : ''}${textsEdited ? `, ${textsEdited} text(s) edited` : ''}${valuesEdited ? `, ${valuesEdited} value(s) edited` : ''}${labelsEdited ? `, ${labelsEdited} label(s) repositioned` : ''}${renamesEdited ? `, ${renamesEdited} reference(s) renamed` : ''}${skipped.length ? `, skipped ${skipped.join('; ')}` : ''} — rebuilding`);
             if (skipped.length) {
                 vscode.window.setStatusBarMessage(`layout: skipped ${skipped.join('; ')}`, 8000);
             }
-            if (applied === 0 && textsEdited === 0 && valuesEdited === 0 && labelsEdited === 0 && renamesEdited === 0 && routesPlanned === 0) {
+            if (applied === 0 && textsEdited === 0 && valuesEdited === 0 && labelsEdited === 0 && renamesEdited === 0 && routesPlanned === 0 && deletesPlanned === 0) {
                 void this.panel?.webview.postMessage({ type: 'typecad/layout-status', error: undefined });
                 return;
             }
@@ -751,7 +773,7 @@ class BoardViewerPanel {
     }
     async onMessage(message) {
         if (message.type === 'typecad/layout-rebuild') {
-            await this.onLayoutRebuild(message.moves, message.texts, message.values, message.labels, message.renames, message.routes);
+            await this.onLayoutRebuild(message.moves, message.texts, message.values, message.labels, message.renames, message.routes, message.deletes);
             return;
         }
         if (message.type === 'typecad/ready') {

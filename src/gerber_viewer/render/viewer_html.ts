@@ -2342,7 +2342,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     for (var rk in layoutRefEdits) if (rk !== '__editing') nVal++;
     if (layoutApplyBtn)
       layoutApplyBtn.disabled =
-        !Object.keys(layoutMoves).length && !Object.keys(layoutTextMoves).length && !nVal;
+        !Object.keys(layoutMoves).length && !Object.keys(layoutTextMoves).length && !nVal && !routedTracks.length && !routedDeletes.length;
   }
   function layoutRevert() {
     for (var r = 0; r < layoutRipped.length; r++) {
@@ -2467,11 +2467,14 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       }
       layoutApplyBtn.disabled = true;
       layoutApplyBtn.textContent = 'rebuilding\u2026';
-      window.typecadLayoutApply(moves, texts, values, labels, renames, routedTracks, function (err) {
+      window.typecadLayoutApply(moves, texts, values, labels, renames, routedTracks, routedDeletes, function (err) {
         layoutApplyBtn.disabled = false;
         layoutApplyBtn.textContent = 'apply & rebuild';
         if (err && statusEl) statusEl.textContent = 'layout apply failed: ' + err;
-        else routedTracks = []; // now source-owned: the rebuild re-renders them
+        else {
+          routedTracks = []; // now source-owned: the rebuild re-renders them
+          routedDeletes = [];
+        }
       });
     });
   }
@@ -3128,6 +3131,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   var routeState = null;
   var routeUi = null;
   var routedTracks = []; // committed this session: {net, w, pieces, vias} (board frame)
+  var routedDeletes = []; // deleted segments pending apply: {net, x1, y1, x2, y2} (board frame)
   var CLEARANCE = 0.2; // mm, trace-to-foreign-copper
   function routeUiGroup() {
     if (routeUi) return routeUi;
@@ -3813,6 +3817,18 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   function segDelete() {
     if (!segSel.size) return;
     var removedSegs = segSel.size;
+    // record each deleted segment for the apply bridge (board y-down),
+    // tagged with its layer so source deletion can target the right chain
+    segSel.forEach(function (h) {
+      routedDeletes.push({
+        net: h.getAttribute('data-net') || null,
+        x1: +parseFloat(h.getAttribute('x1')).toFixed(3),
+        y1: +(-parseFloat(h.getAttribute('y1'))).toFixed(3), // gerber y-up -> board y-down
+        x2: +parseFloat(h.getAttribute('x2')).toFixed(3),
+        y2: +(-parseFloat(h.getAttribute('y2'))).toFixed(3),
+        layer: copperCanon((h.closest('g[data-kind=copper]') || {}).getAttribute ? h.closest('g[data-kind=copper]').getAttribute('data-layer-name') : ''),
+      });
+    });
     segSel.forEach(function (h) {
       h.remove();
     });
@@ -3873,8 +3889,27 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       tr.__hits = chain;
     });
     segHiSync();
+    // interactive routes recorded this session: drop deleted segments from
+    // their pieces so a subsequent apply doesn't re-add them; emptied
+    // routes leave the bridge entirely
+    for (var ri = routedTracks.length - 1; ri >= 0; ri--) {
+      var rt = routedTracks[ri];
+      for (var pj = rt.pieces.length - 1; pj >= 0; pj--) {
+        var pts = rt.pieces[pj].pts;
+        for (var pj2 = pts.length - 1; pj2 > 0; pj2--) {
+          var a = pts[pj2 - 1], b2 = pts[pj2];
+          var hit2 = routedDeletes.some(function (dd) {
+            return (Math.abs(dd.x1 - a.x) < 0.01 && Math.abs(dd.y1 - a.y) < 0.01 && Math.abs(dd.x2 - b2.x) < 0.01 && Math.abs(dd.y2 - b2.y) < 0.01) || (Math.abs(dd.x1 - b2.x) < 0.01 && Math.abs(dd.y1 - b2.y) < 0.01 && Math.abs(dd.x2 - a.x) < 0.01 && Math.abs(dd.y2 - a.y) < 0.01);
+          });
+          if (hit2) pts.splice(pj2 - 1, 1); // drop the shared point -> gap
+        }
+        if (pts.length < 2) rt.pieces.splice(pj, 1);
+      }
+      if (!rt.pieces.length) routedTracks.splice(ri, 1);
+    }
     window.__typecadRouteEnds = null;
     refreshRatsnest();
+    renderLayoutMoves();
     if (statusEl && !statusLocked()) statusEl.textContent = removedSegs + ' segment' + (removedSegs > 1 ? 's' : '') + ' deleted';
   }
   // click a segment hit line: select exactly that segment (shift adds)

@@ -415,7 +415,7 @@ describe('view switcher (gerber / pcba)', () => {
     expect(html).toContain('function commitLayoutMove(g)');
     expect(html).toContain("el.setAttribute('opacity', '0.22')");
     expect(html).toContain("traces[t2].setAttribute('stroke-dasharray', '4 2.2')");
-    expect(html).toContain('window.typecadLayoutApply(moves, texts, values, labels, renames, routedTracks, function (err)');
+    expect(html).toContain('window.typecadLayoutApply(moves, texts, values, labels, renames, routedTracks, routedDeletes, function (err)');
     expect(html).toContain('moves.push({');
     expect(html).toContain('rot: (m2.rot || 0) * 90,');
     expect(html).toContain('pads: padsByRef[mr2] || [],');
@@ -752,7 +752,7 @@ describe('layout view (component overlay from the gerbers)', () => {
     expect(html).toContain("addEventListener('dblclick'");
     expect(html).toContain('layout-text-edit');
     // apply carries text edits alongside component moves
-    expect(html).toContain('window.typecadLayoutApply(moves, texts, values, labels, renames, routedTracks, function (err)');
+    expect(html).toContain('window.typecadLayoutApply(moves, texts, values, labels, renames, routedTracks, routedDeletes, function (err)');
   });
 
   it('derives handles from the fab contour (chamfers kept) and the pad-land hull', () => {

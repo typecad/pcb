@@ -197,9 +197,15 @@ const PROBE_CLIENT = `<script>
       if (!el) remember(null); // empty-space click cleared the highlight
     }, true);
     svg.addEventListener('dblclick', function (ev) {
-      // the layout view owns double-clicks (in-place editing); the source
-      // jump would steal focus out of the editor
-      if (document.body.classList.contains('typecad-layout')) return;
+      // an ACTIVE route owns the double-click (it finishes the track);
+      // otherwise the layout view probes like every other view — components
+      // jump to their source line, traces to the net's declaring line
+      if (
+        document.body.classList.contains('typecad-layout') &&
+        window.typecadRoutingActive &&
+        window.typecadRoutingActive()
+      )
+        return;
       var el = ev.target.closest ? ev.target.closest('[data-ref]') : null;
       if (el) {
         send({ type: 'typecad/probe', ref: el.getAttribute('data-ref'), pin: el.getAttribute('data-pin') });

@@ -3353,8 +3353,10 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     return copperGroups()[0] || null;
   }
   function otherLayerCanon(canon) {
-    if (copperCanon(canon) === 'F.Cu') return 'B.Cu';
-    return 'F.Cu';
+    // canon is ALREADY canonical ("F.Cu"/"B.Cu"/"In1.Cu") — don't re-run it
+    // through copperCanon (that parses FILE layer names like f_cu and would
+    // never match, silently pinning every via flip to F.Cu)
+    return canon === 'B.Cu' ? 'F.Cu' : 'B.Cu';
   }
   // ---- obstacle index: the layer's copper as inflated boxes ----
   // (stroke width rides on the element; use-flash bboxes come from their
@@ -3946,6 +3948,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       ' (' + routeState.pieces.reduce(function (n, p3) { return n + Math.max(0, p3.points.length - 1); }, 0) + ' segments' +
       (routeState.vias.length ? ', ' + routeState.vias.length + ' via' + (routeState.vias.length > 1 ? 's' : '') : '') + ')';
     routeCancel();
+    renderLayoutMoves(); // a committed track arms Apply on its own
     if (statusEl && !statusLocked()) statusEl.textContent = msg;
   }
   // commit on left press (capture beats select/box handlers): a snapped pad

@@ -2539,6 +2539,22 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         }
         return;
       }
+      if (ev.key === 'u' || ev.key === 'U') {
+        if (segSel.size) {
+          ev.preventDefault();
+          var grew = segExpand();
+          if (statusEl && !statusLocked())
+            statusEl.textContent = segSel.size + ' segment' + (segSel.size > 1 ? 's' : '') + ' selected' + (grew ? ' (+' + grew + ')' : '') + ' — U grows, Del removes';
+        }
+        return;
+      }
+      if (ev.key === 'Delete') {
+        if (segSel.size) {
+          ev.preventDefault();
+          segDelete();
+        }
+        return;
+      }
       var step = ev.altKey ? 0.1 : 0.5;
       var nudges = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, step], ArrowDown: [0, -step] };
       var d = nudges[ev.key];
@@ -3636,6 +3652,27 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       track.setAttribute('data-w', String(routeState.w));
       track.setAttribute('data-route', '1');
       if (routeState.net) track.setAttribute('data-net', routeState.net);
+      // per-SEGMENT hit paths ride invisibly on top of the drawn track:
+      // clicking highlights the exact segment under the cursor (the drawn
+      // path stays one polyline for theming and apply)
+      var segPts = pc.points;
+      for (var sp = 1; sp < segPts.length; sp++) {
+        var hit = document.createElementNS(SVGNSL, 'line');
+        hit.setAttribute('x1', segPts[sp - 1].x.toFixed(3));
+        hit.setAttribute('y1', segPts[sp - 1].y.toFixed(3));
+        hit.setAttribute('x2', segPts[sp].x.toFixed(3));
+        hit.setAttribute('y2', segPts[sp].y.toFixed(3));
+        hit.setAttribute('class', 'route-hit');
+        hit.setAttribute('stroke', 'transparent');
+        hit.setAttribute('stroke-width', String(Math.max(routeState.w, 0.5)));
+        hit.setAttribute('data-route', '1');
+        hit.setAttribute('data-seg', '1');
+        if (routeState.net) hit.setAttribute('data-net', routeState.net);
+        hit.__track = track;
+        track.__hits = track.__hits || [];
+        track.__hits.push(hit);
+        pc.layerGroup.appendChild(hit);
+      }
       pc.layerGroup.appendChild(track);
     }
     for (var vi = 0; vi < routeState.vias.length; vi++) {
@@ -3711,6 +3748,169 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     var g = gerberAt(ev.clientX, ev.clientY);
     routeFollow(g.x, g.y);
   });
+  // ---- track segment selection: click highlights, Delete removes, U grows ----
+  // A committed interactive route renders as ONE polyline per layer; the
+  // invisible per-segment hit lines carry the interaction. Selection is a
+  // SET of hit lines; Delete drops them and redraws the parent polylines
+  // around the survivors. U expands from every selected segment along the
+  // track's own geometry — both directions and through junctions (any
+  // segment of the same net sharing an endpoint).
+  var segSel = new Set(); // hit line elements
+  var segHi = null; // overlay that marks the selection
+  function segHiSync() {
+    if (segHi) {
+      segHi.remove();
+      segHi = null;
+    }
+    if (!segSel.size) return;
+    segHi = document.createElementNS(SVGNSL, 'g');
+    segHi.setAttribute('class', 'route-sel');
+    segHi.setAttribute('pointer-events', 'none');
+    segSel.forEach(function (h) {
+      var m = document.createElementNS(SVGNSL, 'line');
+      for (var a of ['x1', 'y1', 'x2', 'y2']) m.setAttribute(a, h.getAttribute(a));
+      segHi.appendChild(m);
+    });
+    var stack = viewGroups.gerber.querySelector('#yflip') || viewGroups.gerber;
+    stack.appendChild(segHi);
+    raisePadLabels();
+  }
+  function segEnds(h) {
+    return [
+      [parseFloat(h.getAttribute('x1')), parseFloat(h.getAttribute('y1'))],
+      [parseFloat(h.getAttribute('x2')), parseFloat(h.getAttribute('y2'))],
+    ];
+  }
+  function segShareEnd(a, b, tol) {
+    if (tol === undefined) tol = 0.01;
+    var ea = segEnds(a);
+    var eb = segEnds(b);
+    for (var i = 0; i < 2; i++)
+      for (var j = 0; j < 2; j++)
+        if (Math.hypot(ea[i][0] - eb[j][0], ea[i][1] - eb[j][1]) < tol) return true;
+    return false;
+  }
+  function allSegHits() {
+    return document.querySelectorAll('#view-gerber line[data-seg="1"]');
+  }
+  function segExpand() {
+    if (!segSel.size) return 0;
+    var added = 0;
+    // grow from the current frontier: any unselected segment of the same net
+    // sharing an endpoint with ANY selected segment joins
+    var changed = true;
+    while (changed) {
+      changed = false;
+      var hits = allSegHits();
+      for (var i = 0; i < hits.length; i++) {
+        var cand = hits[i];
+        if (segSel.has(cand)) continue;
+        var candNet = cand.getAttribute('data-net');
+        var touch = false;
+        segSel.forEach(function (h) {
+          if (touch) return;
+          if (h.getAttribute('data-net') !== candNet) return;
+          if (segShareEnd(h, cand)) touch = true;
+        });
+        if (touch) {
+          segSel.add(cand);
+          added++;
+          changed = true;
+        }
+      }
+    }
+    segHiSync();
+    return added;
+  }
+  function segDelete() {
+    if (!segSel.size) return;
+    var removedSegs = segSel.size;
+    segSel.forEach(function (h) {
+      h.remove();
+    });
+    // redraw every affected parent polyline from its surviving hit lines
+    var parents = new Set();
+    segSel.forEach(function (h) {
+      if (h.__track) parents.add(h.__track);
+    });
+    segSel.clear();
+    parents.forEach(function (tr) {
+      var hits = (tr.__hits || []).filter(function (h) {
+        return h.parentNode;
+      });
+      if (hits.length === 0) {
+        tr.remove();
+        return;
+      }
+      // order the survivors into a chain by endpoint continuity
+      var rest = hits.slice();
+      var chain = [rest.shift()];
+      while (rest.length) {
+        var grew = false;
+        for (var i = 0; i < rest.length; i++) {
+          var e = rest[i];
+          var cEnds = segEnds(chain[chain.length - 1]);
+          var eEnds = segEnds(e);
+          if (Math.hypot(cEnds[1][0] - eEnds[0][0], cEnds[1][1] - eEnds[0][1]) < 0.01) {
+            chain.push(e);
+            rest.splice(i, 1);
+            grew = true;
+            break;
+          }
+          if (Math.hypot(cEnds[1][0] - eEnds[1][0], cEnds[1][1] - eEnds[1][1]) < 0.01) {
+            // reversed fit
+            var tmp = e.getAttribute('x1');
+            e.setAttribute('x1', e.getAttribute('x2'));
+            e.setAttribute('x2', tmp);
+            tmp = e.getAttribute('y1');
+            e.setAttribute('y1', e.getAttribute('y2'));
+            e.setAttribute('y2', tmp);
+            chain.push(e);
+            rest.splice(i, 1);
+            grew = true;
+            break;
+          }
+        }
+        if (!grew) {
+          // disjoint survivor: start a new visual run appended in the same path
+          chain.push(rest.shift());
+        }
+      }
+      var d = 'M ' + segEnds(chain[0])[0][0].toFixed(3) + ' ' + segEnds(chain[0])[0][1].toFixed(3);
+      for (var c = 0; c < chain.length; c++) {
+        var ce = segEnds(chain[c])[1];
+        d += ' L ' + ce[0].toFixed(3) + ' ' + ce[1].toFixed(3);
+      }
+      tr.setAttribute('d', d);
+      tr.__hits = chain;
+    });
+    segHiSync();
+    window.__typecadRouteEnds = null;
+    refreshRatsnest();
+    if (statusEl && !statusLocked()) statusEl.textContent = removedSegs + ' segment' + (removedSegs > 1 ? 's' : '') + ' deleted';
+  }
+  // click a segment hit line: select exactly that segment (shift adds)
+  svg.addEventListener(
+    'pointerdown',
+    function (ev) {
+      if (routeState || ev.button !== 0) return;
+      var t = ev.target;
+      if (!t || !t.getAttribute || t.getAttribute('data-seg') !== '1') return;
+      ev.stopPropagation();
+      ev.preventDefault();
+      if (ev.shiftKey) {
+        if (segSel.has(t)) segSel.delete(t);
+        else segSel.add(t);
+      } else {
+        segSel.clear();
+        segSel.add(t);
+      }
+      segHiSync();
+      if (statusEl && !statusLocked())
+        statusEl.textContent = segSel.size + ' segment' + (segSel.size > 1 ? 's' : '') + ' selected — U grows, Del removes, Esc clears';
+    },
+    true,
+  );
   // routing keys live in the layout keydown (X start, V via, Backspace
   // undo) — see the handler below
 
@@ -4430,6 +4630,11 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       // highlight before touching the selection
       if (routeState) {
         routeCancel();
+        return;
+      }
+      if (segSel.size) {
+        segSel.clear();
+        segHiSync();
         return;
       }
       if (padHi) clearPadHighlight();
@@ -5238,6 +5443,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   }
   #route-ui .route-anchored { opacity: 0.9; }
   #route-ui .route-via { fill: #4fc1ff; fill-opacity: 0.35; stroke: #4fc1ff; stroke-width: 0.1; }
+  .route-sel line { stroke: #4fc1ff; stroke-width: 2px; vector-effect: non-scaling-stroke; stroke-linecap: round; }
   .route-pad-hi { fill: rgba(79, 193, 255, 0.15); stroke: #4fc1ff; stroke-width: 2px; }
   .route-pad-target { fill: rgba(63, 185, 80, 0.15); stroke: #3fb950; stroke-width: 2px; }
   #layout-sel-box { fill: rgba(79, 193, 255, 0.07); stroke: #4fc1ff; stroke-width: 1.5px; }

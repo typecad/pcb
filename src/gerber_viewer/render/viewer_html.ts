@@ -1508,6 +1508,55 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   var layoutBuilt = false;
   var layoutMoves = {}; // ref -> { x, y, x0, y0 } in the gerber (y-up) frame
   var layoutRipped = []; // autorouter copper ripped (hidden) until rebuild
+  // unnamed routes ripped by a part move: {idx, a, b} where each endpoint
+  // is either {ref,pin} (bound to a pad, follows the part live) or {fixed}
+  var rippedUnnamed = [];
+  var rippedUnnamedIdx = {};
+  // does an ISLAND-frame point sit on one of this part's pads? (ripup
+  // binding — the manifest owns pad identity + extents, the island owns
+  // the part's current pose)
+  function manifestPadPos(comp, pm) {
+    var mv = layoutMoves[comp.ref];
+    var ox = pm.x - comp.x;
+    var oy = -pm.y - comp.y; // manifest board pad -> island offset
+    var presses = mv ? layoutRot[comp.ref] || 0 : 0;
+    for (var t = 0; t < presses; t++) {
+      var nxo = oy;
+      var nyo = -ox;
+      ox = nxo;
+      oy = nyo;
+    }
+    return {
+      x: (mv ? mv.x : comp.x) + ox,
+      y: (mv ? mv.y : comp.y) + oy,
+    };
+  }
+  function compPadAtPoint(comp, gx, gy) {
+    // tests the AUTHORED pose (manifest position, y negated to island): the
+    // route endpoints were built against it, and by commit time the part
+    // has already moved away from them
+    for (var bp = 0; bp < padManifest.length; bp++) {
+      var pm = padManifest[bp];
+      if (pm.ref !== comp.ref) continue;
+      if (Math.abs(gx - pm.x) <= pm.w / 2 + 0.2 && Math.abs(gy + pm.y) <= pm.h / 2 + 0.2)
+        return { ref: comp.ref, pin: String(pm.pin) };
+    }
+    return null;
+  }
+  function compByRef(ref) {
+    for (var cb = 0; cb < layoutComps.length; cb++) if (layoutComps[cb].ref === ref) return layoutComps[cb];
+    return null;
+  }
+  function manifestPad(ref, pin) {
+    for (var mp = 0; mp < padManifest.length; mp++)
+      if (padManifest[mp].ref === ref && String(padManifest[mp].pin) === String(pin)) return padManifest[mp];
+    return null;
+  }
+  function unnamedEndPos(bind) {
+    var comp = compByRef(bind.ref);
+    var pm = manifestPad(bind.ref, bind.pin);
+    return comp && pm ? manifestPadPos(comp, pm) : null;
+  }
   var layoutSel = []; // refs — shift-click extends, click replaces
   var layoutRot = {}; // ref -> accumulated 90-degree presses (R key)
   var layoutSnapBox = document.getElementById('layout-snap');
@@ -2356,6 +2405,22 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         ripUpEl(netEls[re]);
       }
     }
+    // applied interactive (unnamed) routes are the machine class too: rip
+    // one when either endpoint binds to a pad of the moving part — the
+    // ratsnest re-wires its endpoints until the rebuild re-routes it
+    for (var ur = 0; ur < unnamedRoutes.length; ur++) {
+      if (rippedUnnamedIdx[ur]) continue;
+      var upts = unnamedRoutes[ur].pts;
+      var ga = { x: upts[0].x, y: -upts[0].y }; // board y-down -> island
+      var gb2 = { x: upts[upts.length - 1].x, y: -upts[upts.length - 1].y };
+      var bindA = compPadAtPoint(c, ga.x, ga.y);
+      var bindB = compPadAtPoint(c, gb2.x, gb2.y);
+      if (!bindA && !bindB) continue;
+      rippedUnnamedIdx[ur] = 1;
+      rippedUnnamed.push({ idx: ur, a: bindA || { fixed: ga }, b: bindB || { fixed: gb2 } });
+      var uink = unnamedInk[ur] || [];
+      for (var ik = 0; ik < uink.length; ik++) ripUpEl(uink[ik]);
+    }
     renderLayoutMoves();
     refreshLayoutWarnings();
     refreshRatsnest();
@@ -2383,6 +2448,8 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       el.__layoutOp = undefined;
       el.__ripped = 0;
     }
+    rippedUnnamed = [];
+    rippedUnnamedIdx = {};
     layoutRipped = [];
     layoutMoves = {};
     layoutRot = {};
@@ -3019,6 +3086,14 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         rats.appendChild(ratsWire(pp, best, wireIdx++));
       }
     }
+    // ripped applied routes re-wire their endpoints at the parts' CURRENT
+    // poses (a bound endpoint follows its pad; a free one stays put)
+    for (var rw2 = 0; rw2 < rippedUnnamed.length; rw2++) {
+      var rr2 = rippedUnnamed[rw2];
+      var eA2 = rr2.a.ref ? unnamedEndPos(rr2.a) : rr2.a.fixed;
+      var eB2 = rr2.b.ref ? unnamedEndPos(rr2.b) : rr2.b.fixed;
+      if (eA2 && eB2) rats.appendChild(ratsWire(eA2, eB2, wireIdx++));
+    }
     gerberStack.appendChild(rats);
     raisePadLabels();
   }
@@ -3046,6 +3121,8 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       rel.__layoutOp = undefined;
       rel.__ripped = 0;
     }
+    rippedUnnamed = [];
+    rippedUnnamedIdx = {};
     layoutRipped = [];
     // texts too: strokes back to authored ink, edit previews gone (the
     // pending edits survive in layoutTextMoves and re-apply on re-entry).
@@ -3762,6 +3839,18 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         hit.setAttribute('data-route', '1');
         pc.layerGroup.appendChild(hit);
       }
+      // interactive routes are the machine class: candy-cane from the moment
+      // they commit (after apply+rebuild the unnamed-island match does it)
+      var cstripe = document.createElementNS(SVGNSL, 'path');
+      cstripe.setAttribute('class', 'route-auto-stripe');
+      cstripe.setAttribute('d', d);
+      cstripe.setAttribute('stroke', 'var(' + pc.inkVar + ')');
+      cstripe.setAttribute('stroke-width', String(routeState.w));
+      cstripe.setAttribute('fill', 'none');
+      cstripe.setAttribute('stroke-linecap', 'butt');
+      cstripe.setAttribute('pointer-events', 'none');
+      pc.layerGroup.appendChild(cstripe);
+      track.__stripe = cstripe;
     }
     for (var vi = 0; vi < routeState.vias.length; vi++) {
       var v = routeState.vias[vi];
@@ -3940,6 +4029,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       });
       if (hits.length === 0) {
         tr.remove();
+        if (tr.__stripe) tr.__stripe.remove();
         return;
       }
       // order the survivors into a chain by endpoint continuity
@@ -3983,6 +4073,8 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       }
       tr.setAttribute('d', d);
       tr.__hits = chain;
+      // the candy-cane overlay rides the redrawn polyline
+      if (tr.__stripe) tr.__stripe.setAttribute('d', d);
     });
     segHiSync();
     // interactive routes recorded this session: drop deleted segments from
@@ -4015,10 +4107,12 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       if (routeState || ev.button !== 0) return;
       var t = ev.target;
       if (!t || !t.getAttribute || t.getAttribute('data-seg') !== '1') {
-        // part bodies and probe outlines shadow trace ink from DOM hits —
-        // a route crossing a body (fresh routes leave from pads) would be
-        // unclickable without peeking under them
-        var pk = probeHitTarget(ev, true);
+        // a probe OUTLINE swallows hits across the whole part body — peek
+        // under it so exposed trace ink still selects. Part bodies
+        // (layout-comp) are deliberately NOT peeked under: traces run
+        // under parts everywhere, and the part grab must win there
+        if (t && t.closest && t.closest('.layout-comp')) return;
+        var pk = probeHitTarget(ev, false);
         if (!pk || !pk.getAttribute || pk.getAttribute('data-seg') !== '1') return;
         t = pk;
       }
@@ -4072,6 +4166,33 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     if (rprovData && rprovData.nets)
       for (var rpk in rprovData.nets) routeProvenance[rpk] = rprovData.nets[rpk].provenance || '';
   } catch (e) {}
+  // netless hand routes (the island's unnamed list) are the machine class
+  // too: the interactive router's apply bridge is how they come to exist.
+  // Their gerber ink is N/C-attributed (all of it indistinguishable by
+  // net), so each trace segment is bound to its route by ENDPOINT
+  // GEOMETRY against the polylines — that binding also drives ripup-on-
+  // move and the ratsnest re-wire (board y-down here; ink is y-up)
+  var unnamedRoutes = [];
+  var unnamedInk = []; // idx -> [elements] (trace, stripe, hit lines)
+  try {
+    var urtData = JSON.parse(document.getElementById('routes').textContent);
+    unnamedRoutes = (urtData && urtData.unnamed) || [];
+  } catch (e) {}
+  function unnamedSegMatch(x1, y1, x2, y2) {
+    for (var i = 0; i < unnamedRoutes.length; i++) {
+      var pts = unnamedRoutes[i].pts;
+      for (var s = 1; s < pts.length; s++) {
+        var ax = pts[s - 1].x, ay = -pts[s - 1].y;
+        var bx = pts[s].x, by = -pts[s].y;
+        if (
+          (Math.abs(ax - x1) < 0.05 && Math.abs(ay - y1) < 0.05 && Math.abs(bx - x2) < 0.05 && Math.abs(by - y2) < 0.05) ||
+          (Math.abs(bx - x1) < 0.05 && Math.abs(by - y1) < 0.05 && Math.abs(ax - x2) < 0.05 && Math.abs(ay - y2) < 0.05)
+        )
+          return i;
+      }
+    }
+    return -1;
+  }
   // gerber-frame center of a manifest pad (board y-down -> y-up)
   function padCenter(p) {
     return { x: p.x, y: -p.y };
@@ -4219,15 +4340,22 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         var ends = parsePathEnds(tr.getAttribute('d'));
         if (!ends) continue;
         var w = parseFloat(tr.getAttribute('data-w') || '0.3');
-        lg.appendChild(
-          makeSegHit(tr, ends[0][0], ends[0][1], ends[1][0], ends[1][1], w, tr.getAttribute('data-net')),
-        );
-        made++;
-        // autorouter-built track: candy-cane it — a same-ink dashed overlay
-        // over the solid stroke reads as lighter/darker bands and separates
-        // machine routing from authored polylines at a glance
         var tnet = tr.getAttribute('data-net');
-        if (tnet && routeProvenance[tnet] === 'auto') {
+        // netless ink (N/C) binds to its unnamed route by segment geometry
+        var uIdx = !tnet || tnet === 'N/C' ? unnamedSegMatch(ends[0][0], ends[0][1], ends[1][0], ends[1][1]) : -1;
+        var hitLine = makeSegHit(tr, ends[0][0], ends[0][1], ends[1][0], ends[1][1], w, tnet);
+        lg.appendChild(hitLine);
+        made++;
+        if (uIdx >= 0) {
+          (unnamedInk[uIdx] = unnamedInk[uIdx] || []).push(tr, hitLine);
+          tr.__unnamedIdx = uIdx;
+          hitLine.__unnamedIdx = uIdx;
+        }
+        // machine routing candy-canes — autorouter nets AND applied
+        // interactive (unnamed) routes; a same-ink dashed overlay over the
+        // solid stroke reads as lighter/darker bands and separates machine
+        // routing from authored polylines at a glance
+        if ((tnet && routeProvenance[tnet] === 'auto') || uIdx >= 0) {
           var stripe = document.createElementNS(SVGNSL, 'path');
           stripe.setAttribute('class', 'route-auto-stripe');
           stripe.setAttribute('d', tr.getAttribute('d'));
@@ -4238,6 +4366,10 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
           stripe.setAttribute('pointer-events', 'none');
           lg.appendChild(stripe);
           tr.__stripe = stripe;
+          if (uIdx >= 0) {
+            unnamedInk[uIdx].push(stripe);
+            stripe.__unnamedIdx = uIdx;
+          }
         }
       }
     }
@@ -4828,9 +4960,8 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   // ball) reads as the pad, not the part. display:none (not
   // pointer-events:none — the rects re-enable that per-element) removes the
   // subtree from hit testing outright; no frame renders between the toggles.
-  // alsoLayout: the layout view's part bodies shadow the same way — segment
-  // selection peeks under BOTH so a trace crossing a body stays clickable
-  // (pads under bodies resolve through the manifest instead).
+  // alsoLayout hides the layout view's part bodies TOO; only padProbe uses
+  // that — part grabs must win over traces crossing a body everywhere else.
   function probeHitTarget(ev, alsoLayout) {
     var t = ev.target;
     if (!t || !t.closest) return t;

@@ -218,6 +218,14 @@ const PROBE_CLIENT = `<script>
       if (netEl) {
         var net = netEl.getAttribute('data-net');
         send({ type: 'typecad/probe-net', net: net, source: window.typecadNetSource(net) || undefined });
+        return;
+      }
+      // netless hand route: no data-net to resolve — the viewer maps the
+      // clicked point onto the unnamed-route polylines and returns the
+      // declaring source line directly
+      if (window.typecadTraceSource) {
+        var rsrc = window.typecadTraceSource(ev.clientX, ev.clientY);
+        if (rsrc) send({ type: 'typecad/probe-net', net: '(route)', source: rsrc });
       }
     }, true);
   }

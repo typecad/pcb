@@ -2995,41 +2995,98 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       };
     };
     var wireIdx = 0;
-    // unrouted nets: two or more pads share a net that no ROUTING copper
-    // carries (a data-net element without data-ref is trace/via ink; pads
-    // carry both attrs). Those pads get a nearest-neighbor wire chain — the
-    // layout view's "this net has no copper yet" indication.
-    var wiredNets = {};
+    // per-PAD connectivity (a net-granular "has any copper" test hid
+    // half-routed nets: their unrouted pads got no wires at all). Ink is
+    // scanned once per net: pour-covered nets count as wired everywhere;
+    // otherwise a pad is wired when a same-net trace endpoint or via sits
+    // on it (its own extent plus half the trace width), or the pad is an
+    // endpoint of a committed interactive track. Ripped ink never counts.
+    var pourNets = {};
+    var netInk = {}; // net -> [{x, y, w}] gerber-frame contact points
     if (viewGroups.gerber) {
       var wels = viewGroups.gerber.querySelectorAll('[data-net]:not([data-ref])');
       for (var we = 0; we < wels.length; we++) {
-        // ripped-up autorouter ink is GONE for connectivity purposes — its
-        // net is stranded again and the wires come back until the rebuild
-        if (wels[we].__ripped) continue;
-        wiredNets[wels[we].getAttribute('data-net')] = 1;
+        var wel = wels[we];
+        if (wel.__ripped) continue;
+        var wnet = wel.getAttribute('data-net');
+        if (!wnet) continue;
+        if (wel.getAttribute('fill-rule')) {
+          // pour ink: the fill engine ties the whole net to the plane
+          pourNets[wnet] = 1;
+          continue;
+        }
+        var wHalf = parseFloat(wel.getAttribute('data-w') || '0') / 2;
+        var wPts = [];
+        if (wel.tagName === 'circle') {
+          wPts.push({ x: parseFloat(wel.getAttribute('cx')), y: parseFloat(wel.getAttribute('cy')), w: wHalf * 2 });
+        } else {
+          var wNums = (wel.getAttribute('d') || '').match(/[-\d.]+/g);
+          if (!wNums || wNums.length < 4) continue;
+          wPts.push({ x: +wNums[0], y: +wNums[1], w: wHalf * 2 });
+          wPts.push({ x: +wNums[wNums.length - 2], y: +wNums[wNums.length - 1], w: wHalf * 2 });
+        }
+        (netInk[wnet] = netInk[wnet] || []).push.apply(netInk[wnet], wPts);
       }
     }
+    // is a manifest pad connected to its net's copper? (positions island-
+    // frame; the ink points are gerber-frame — the same frame padPos emits)
+    var padWired = function (comp, pad) {
+      var unet = pad.net;
+      if (pourNets[unet]) return true;
+      var pts = netInk[unet];
+      if (!pts) return false;
+      var ppos = padPos(comp, pad);
+      var pr = Math.max(pad.w || 0.3, pad.h || 0.3) / 2;
+      for (var pw = 0; pw < pts.length; pw++) {
+        var need = pr + pts[pw].w / 2 + 0.15;
+        if (Math.hypot(pts[pw].x - ppos.x, pts[pw].y - ppos.y) <= need) return true;
+      }
+      return false;
+    };
     var padsByNet = {};
+    var wiredByNet = {};
     for (var uc = 0; uc < layoutComps.length; uc++) {
       var ucomp = layoutComps[uc];
       for (var up = 0; up < (ucomp.pads || []).length; up++) {
         var unet = ucomp.pads[up].net;
-        if (!unet || wiredNets[unet]) continue;
+        if (!unet) continue;
         // a live route covers its pads: the start pad drops out of the chain
         // immediately, the target once the rubber-band snaps onto it
         if (routeState && ucomp.ref === routeState.startPad.ref && String(ucomp.pads[up].pin) === String(routeState.startPad.pin)) continue;
         if (routeState && routeState.targetPad && ucomp.ref === routeState.targetPad.ref && String(ucomp.pads[up].pin) === String(routeState.targetPad.pin)) continue;
-        // committed interactive routes cover their endpoint pads: a pad
-        // touched by a placed track's endpoint is connected, not stranded
-        if (!wiredNets[unet] && routePadCovered(ucomp.ref, String(ucomp.pads[up].pin), unet)) continue;
-        (padsByNet[unet] = padsByNet[unet] || []).push(padPos(ucomp, ucomp.pads[up]));
+        var uIslandPad = ucomp.pads[up];
+        var uWired =
+          routePadCovered(ucomp.ref, String(uIslandPad.pin || ''), unet) || padWired(ucomp, uIslandPad);
+        if (uWired) (wiredByNet[unet] = wiredByNet[unet] || []).push(padPos(ucomp, uIslandPad));
+        else (padsByNet[unet] = padsByNet[unet] || []).push(padPos(ucomp, uIslandPad));
       }
     }
     for (var un in padsByNet) {
       var pts = padsByNet[un];
-      if (pts.length < 2) continue;
-      var remaining = pts.slice(1);
-      var cur = pts[0];
+      // every pad of the net already sits on copper: nothing to draw. A
+      // HALF-routed net gets wires among its stranded pads PLUS one wire
+      // tying the nearest stranded pad to the nearest connected pad
+      if (!pts.length) continue;
+      if (wiredByNet[un] && wiredByNet[un].length) {
+        var sCur = pts[0];
+        var sBest = null;
+        var sBestD = Infinity;
+        for (var sw = 0; sw < pts.length; sw++) {
+          for (var wv = 0; wv < wiredByNet[un].length; wv++) {
+            var dw2 =
+              (pts[sw].x - wiredByNet[un][wv].x) * (pts[sw].x - wiredByNet[un][wv].x) +
+              (pts[sw].y - wiredByNet[un][wv].y) * (pts[sw].y - wiredByNet[un][wv].y);
+            if (dw2 < sBestD) {
+              sBestD = dw2;
+              sCur = pts[sw];
+              sBest = wiredByNet[un][wv];
+            }
+          }
+        }
+        rats.appendChild(ratsWire(sCur, sBest, wireIdx++));
+      }
+      var remaining = pts.slice();
+      var cur = remaining.shift();
       while (remaining.length) {
         var bi = 0;
         var bd = Infinity;
@@ -3844,7 +3901,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       var cstripe = document.createElementNS(SVGNSL, 'path');
       cstripe.setAttribute('class', 'route-auto-stripe');
       cstripe.setAttribute('d', d);
-      cstripe.setAttribute('stroke', 'var(' + pc.inkVar + ')');
+      cstripe.setAttribute('stroke', '#ffffff');
       cstripe.setAttribute('stroke-width', String(routeState.w));
       cstripe.setAttribute('fill', 'none');
       cstripe.setAttribute('stroke-linecap', 'butt');
@@ -4359,7 +4416,8 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
           var stripe = document.createElementNS(SVGNSL, 'path');
           stripe.setAttribute('class', 'route-auto-stripe');
           stripe.setAttribute('d', tr.getAttribute('d'));
-          stripe.setAttribute('stroke', tr.getAttribute('stroke') || '');
+          // white dashes over the solid ink: lightens alternate bands
+          stripe.setAttribute('stroke', '#ffffff');
           stripe.setAttribute('stroke-width', tr.getAttribute('stroke-width') || String(w));
           stripe.setAttribute('fill', 'none');
           stripe.setAttribute('stroke-linecap', 'butt');
@@ -5907,9 +5965,11 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   #layout-overlay .layout-comp.layout-warn rect,
   #layout-overlay .layout-comp.layout-warn polygon { stroke: #d29922; }
   #ratsnest path { stroke: #d29922; stroke-width: 0.05; fill: none; opacity: 0.85; }
-  /* autorouter tracks: same-ink dashed overlay over the solid stroke —
-     alternating light/dark candy-cane bands, scales with the board */
-  .route-auto-stripe { opacity: 0.55; stroke-dasharray: 1.4 1.4; }
+  /* autorouter tracks: a WHITE dashed overlay over the solid ink stroke —
+     the dashes lighten the copper underneath, so the trace reads as
+     alternating lighter/darker candy-cane bands in any theme (same-ink
+     overlays are invisible over their own stroke) */
+  .route-auto-stripe { opacity: 0.45; stroke-dasharray: 1.2 1.2; }
   .pad-labels text { fill: var(--pad-label, #ffffff); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
   /* movable texts read as grabbable, and a grabbed one is highlighted */
   body.typecad-layout #yflip path[data-text] { cursor: move; }

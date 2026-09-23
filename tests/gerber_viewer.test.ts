@@ -417,9 +417,15 @@ describe('view switcher (gerber / pcba)', () => {
     // the rebuild re-routes it); manual/mixed nets stay exactly as drawn
     expect(html).toContain("el.setAttribute('display', 'none')");
     expect(html).toContain("if (rprov === 'manual' || rprov === 'mixed') continue;");
-    // autorouter tracks candy-cane: same-ink dashed overlay, lighter bands
+    // autorouter tracks candy-cane: WHITE dashed overlay lightens alternate
+    // bands (a same-ink overlay would be invisible over its own stroke)
     expect(html).toContain("stripe.setAttribute('class', 'route-auto-stripe')");
-    expect(html).toContain('.route-auto-stripe { opacity: 0.55; stroke-dasharray: 1.4 1.4; }');
+    expect(html).toContain("stripe.setAttribute('stroke', '#ffffff')");
+    expect(html).toContain('.route-auto-stripe { opacity: 0.45; stroke-dasharray: 1.2 1.2; }');
+    // the ratsnest is PER-PAD: a half-routed net wires its stranded pads to
+    // the nearest connected pad instead of vanishing (net-granular test)
+    expect(html).toContain('var padWired = function (comp, pad) {');
+    expect(html).toContain('rats.appendChild(ratsWire(sCur, sBest, wireIdx++));');
     expect(html).toContain('window.typecadLayoutApply(moves, texts, values, labels, renames, routedTracks, routedDeletes, function (err)');
     expect(html).toContain('moves.push({');
     expect(html).toContain('rot: (m2.rot || 0) * 90,');

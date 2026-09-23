@@ -5351,6 +5351,11 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   // Embedding surface (the vscode extension's webview client calls these to
   // cross-probe: select a component from the editor, click a pad to jump
   // back). Absent in a plain browser tab; callers must feature-check.
+  // the probe client checks this before swallowing a double-click in the
+  // layout view: routing FINISH owns the gesture only while a route is live
+  window.typecadRoutingActive = function () {
+    return !!routeState;
+  };
   window.typecadViewer = {
     searchRefs: searchRefs,
     highlightNet: highlightNet,

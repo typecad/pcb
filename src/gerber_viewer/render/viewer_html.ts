@@ -3664,6 +3664,10 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         hit.setAttribute('y2', segPts[sp].y.toFixed(3));
         hit.setAttribute('class', 'route-hit');
         hit.setAttribute('stroke', 'transparent');
+        // transparent strokes are NOT hit-testable under the default
+        // visiblePainted policy — pointer-events:stroke makes the line
+        // clickable regardless of paint
+        hit.setAttribute('pointer-events', 'stroke');
         hit.setAttribute('stroke-width', String(Math.max(routeState.w, 0.5)));
         hit.setAttribute('data-route', '1');
         hit.setAttribute('data-seg', '1');

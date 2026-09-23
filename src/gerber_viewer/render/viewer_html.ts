@@ -188,6 +188,13 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   var svg = document.getElementById('board');
   var panzoom = document.getElementById('panzoom');
   if (!svg || !panzoom) return;
+  // keyboard focus target: board presses cancel their pointerdown default
+  // (drag grabs, route anchors, segment picks), which ALSO cancels the
+  // default focus handoff — inside the vscode webview the keyboard then
+  // stays with the editor and X/U/Delete do nothing until some other click
+  // happens to focus the page. Make the svg focusable so those presses can
+  // hand focus over explicitly (below, with the other svg listeners).
+  svg.setAttribute('tabindex', '-1');
   var k = 1, tx = 0, ty = 0;
   var statusEl = document.getElementById('status');
   // A host render notice (the vscode extension's "generating new render…")
@@ -4639,6 +4646,17 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     zoomAt(clientToView({ x: ev.clientX, y: ev.clientY }), factor);
   }, { passive: false });
 
+  // explicit focus handoff for board presses — see the tabindex note at the
+  // svg setup. Capture phase, so it runs before whichever interaction
+  // handler is about to cancel the default (and with it the focus).
+  window.addEventListener('pointerdown', function (ev) {
+    if (ev.target && svg.contains(ev.target)) {
+      try {
+        svg.focus();
+      } catch (e) {}
+    }
+  }, true);
+
   var drag = null;
   // right-hold pans the board; the browser menu would fight the drag
   svg.addEventListener('contextmenu', function (ev) {
@@ -5567,6 +5585,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   /* board canvas is a diagram, not a document: no text selection highlights
      (silk/fab stroke text, refdes labels) while dragging or double-clicking */
   #board, #board text { -webkit-user-select: none; user-select: none; }
+  #board:focus { outline: none; }
   html, body { height: 100%; margin: 0; font: 13px/1.4 system-ui, sans-serif; }
   body {
     display: flex;

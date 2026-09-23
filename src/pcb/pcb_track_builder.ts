@@ -54,12 +54,14 @@ export class TrackBuilder {
     return pts;
   }
 
-  from(startPos: { x: number; y: number }, layer?: string, width?: number): this {
+  // positional OR object form (mirrors to()): from({x, y, layer, width})
+  // and from({x, y}, layer, width) are both accepted
+  from(startPos: { x: number; y: number; layer?: string; width?: number }, layer?: string, width?: number): this {
     if (!this.lastOperationSuccessful) return this;
 
     this.currentPosition = { x: startPos.x, y: startPos.y };
-    this.currentLayer = layer ?? this.currentLayer;
-    this.currentWidth = width ?? this.currentWidth;
+    this.currentLayer = startPos.layer ?? layer ?? this.currentLayer;
+    this.currentWidth = startPos.width ?? width ?? this.currentWidth;
 
     return this;
   }
@@ -77,7 +79,10 @@ export class TrackBuilder {
     return calculateMinTraceWidth(current, layer, maxTempRise, thickness ?? this.pcb.copper_thickness);
   }
 
-  to(endPos: { x: number; y: number; layer?: string; width?: number }): this {
+  // two call styles: to({x, y, layer, width}) — the object form — or the
+  // positional to({x, y}, layer, width) matching from(); the positional
+  // form kept hand-written chains like .to({x,y}, 'F.Cu', W) valid
+  to(endPos: { x: number; y: number; layer?: string; width?: number }, layer?: string, width?: number): this {
     if (!this.lastOperationSuccessful) {
       const err = new RoutingError(formatSourceError(`Previous track operation failed`, this.getCallSite()));
       err.stack = err.message;
@@ -93,8 +98,8 @@ export class TrackBuilder {
     validateFinite(endPos.y, 'endPos.y');
     if (endPos.width !== undefined) validateNonNegative(endPos.width, 'endPos.width');
 
-    const targetLayer = endPos.layer ?? this.currentLayer;
-    const targetWidth = endPos.width ?? this.currentWidth;
+    const targetLayer = endPos.layer ?? layer ?? this.currentLayer;
+    const targetWidth = endPos.width ?? width ?? this.currentWidth;
 
     // Calculate track length
     const dx = endPos.x - this.currentPosition.x;

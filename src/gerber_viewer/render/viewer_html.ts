@@ -2655,9 +2655,8 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
           ev.preventDefault();
           var nVia = 0;
           viaSel.forEach(function (vc) {
-            var bx = parseFloat(vc.getAttribute('cx'));
-            var by = -parseFloat(vc.getAttribute('cy')); // gerber -> board
-            nVia += removeViasAt(bx, by);
+            var vp = viaInkPos(vc);
+            nVia += removeViasAt(vp.x, -vp.y, true); // gerber -> board
           });
           viaSel.clear();
           viaHiSync();
@@ -4019,7 +4018,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   // track's own geometry — both directions and through junctions (any
   // segment of the same net sharing an endpoint).
   var segSel = new Set(); // hit line elements
-  var viaSel = new Set(); // committed via circles (data-route)
+  var viaSel = new Set(); // committed via circles + gerber via flashes
   var segHi = null; // overlay that marks the selection
   function segHiSync() {
     if (segHi) {
@@ -4045,9 +4044,10 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       [parseFloat(h.getAttribute('x2')), parseFloat(h.getAttribute('y2'))],
     ];
   }
-  // viaSel visual sync: the selected via circles get a selection ring
+  // viaSel visual sync: selected vias get a selection ring (works for both
+  // committed session circles and gerber aperture flashes)
   function viaHiSync() {
-    viewGroups.gerber.querySelectorAll('circle[data-route].route-via-sel').forEach(function (c) {
+    viewGroups.gerber.querySelectorAll('.route-via-sel').forEach(function (c) {
       c.classList.remove('route-via-sel');
     });
     viaSel.forEach(function (c) {
@@ -4057,17 +4057,32 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     if (statusEl && !statusLocked() && viaSel.size)
       statusEl.textContent = viaSel.size + ' via' + (viaSel.size > 1 ? 's' : '') + ' selected — Del removes, Esc clears';
   }
-  // remove every interactive via at a board-frame point: its committed
-  // circles on all copper layers, the owning routedTrack's via entry (so a
-  // subsequent apply regenerates the route without it), and any selection
-  function removeViasAt(bx, by) {
+  // via ink: committed session circles AND gerder aperture flashes (a
+  // source-authored TrackBuilder via renders as a ref-less use[data-net])
+  function viaInk() {
+    return viewGroups.gerber.querySelectorAll('circle[data-route], use[data-net]:not([data-ref])');
+  }
+  function viaInkPos(el) {
+    return el.tagName === 'circle'
+      ? { x: parseFloat(el.getAttribute('cx')), y: parseFloat(el.getAttribute('cy')) }
+      : { x: parseFloat(el.getAttribute('x')), y: parseFloat(el.getAttribute('y')) };
+  }
+  // remove every via at a board-frame point: its committed circles on all
+  // copper layers, the owning routedTrack's via entry (so a subsequent
+  // apply regenerates the route without it), and any selection. Gerber
+  // flashes go too; "record" pushes a bridge delete so the source chain
+  // truncates at the via on apply (session vias need no record — their own
+  // route entry regenerates)
+  function removeViasAt(bx, by, record) {
     var removed = 0;
+    var sessionHit = false;
     for (var ri = routedTracks.length - 1; ri >= 0; ri--) {
       var rt = routedTracks[ri];
       for (var vi = rt.vias.length - 1; vi >= 0; vi--) {
         var vv = rt.vias[vi];
         if (Math.hypot(vv.x - bx, vv.y - by) > 0.02) continue;
         rt.vias.splice(vi, 1);
+        sessionHit = true;
         removed++;
       }
       // drop the committed ink circles at that point (gerber frame)
@@ -4080,6 +4095,21 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       }
       if (!rt.pieces.length && !rt.vias.length) routedTracks.splice(ri, 1);
     }
+    // gerber via flashes: every copper layer's copy of this barrel
+    var flashed = viaInk();
+    var vnet = null;
+    for (var fi = 0; fi < flashed.length; fi++) {
+      var fe = flashed[fi];
+      if (fe.tagName !== 'use') continue;
+      var fp = viaInkPos(fe);
+      if (Math.hypot(fp.x - bx, fp.y + by) > 0.02) continue;
+      viaSel.delete(fe);
+      vnet = vnet || fe.getAttribute('data-net') || null;
+      fe.remove();
+      removed++;
+    }
+    if (record && !sessionHit && removed)
+      routedDeletes.push({ kind: 'via', net: vnet, x1: +bx.toFixed(3), y1: +by.toFixed(3), x2: +bx.toFixed(3), y2: +by.toFixed(3), layer: null });
     return removed;
   }
   function segShareEnd(a, b, tol) {
@@ -4247,15 +4277,17 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       var hitLine = null;
       var pk = probeHitTarget(ev, false);
       var scan = pk || t;
-      if (scan && scan.tagName === 'circle' && scan.getAttribute('data-route') === '1') {
+      if (scan && (scan.tagName === 'circle' || scan.tagName === 'use') && scan.getAttribute && scan.getAttribute('data-route') === '1') {
+        via = scan;
+      } else if (scan && scan.tagName === 'use' && scan.getAttribute && scan.getAttribute('data-net') && !scan.getAttribute('data-ref') && scan.closest && scan.closest("g[data-kind='copper']")) {
+        // a gerber via flash IS a via
         via = scan;
       } else if (scan && scan.getAttribute && scan.getAttribute('data-seg') === '1') {
         var gp2 = gerberAt(ev.clientX, ev.clientY);
-        var cand = viewGroups.gerber.querySelectorAll('circle[data-route]');
+        var cand = viaInk();
         for (var cv = 0; cv < cand.length; cv++) {
-          if (
-            Math.hypot(parseFloat(cand[cv].getAttribute('cx')) - gp2.x, parseFloat(cand[cv].getAttribute('cy')) - gp2.y) < 0.34
-          ) {
+          var cp = viaInkPos(cand[cv]);
+          if (Math.hypot(cp.x - gp2.x, cp.y - gp2.y) < 0.34) {
             via = cand[cv];
             break;
           }
@@ -6118,10 +6150,15 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   }
   #route-ui .route-anchored { opacity: 0.9; }
   #route-ui .route-via { fill: #4fc1ff; fill-opacity: 0.35; stroke: #4fc1ff; stroke-width: 0.1; }
-  /* committed interactive vias: selectable like any element — the
-     transparent stroke widens the hit area without changing the look */
-  circle[data-route] { cursor: pointer; stroke: transparent; stroke-width: 0.26; pointer-events: all; }
-  circle[data-route].route-via-sel {
+  /* committed vias (session circles + gerber flashes): selectable like any
+     element — the transparent stroke widens the hit area without changing
+     the look */
+  circle[data-route],
+  g[data-kind='copper'] use[data-net]:not([data-ref]) {
+    cursor: pointer;
+  }
+  circle[data-route].route-via-sel,
+  use.route-via-sel {
     stroke: #4fc1ff;
     stroke-width: 2px;
     vector-effect: non-scaling-stroke;

@@ -5290,7 +5290,14 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       }
       renderMeasure();
     } else if (drag && ev.button === 0 && !drag.moved && ev.target && svg.contains(ev.target)) {
-      // plain click (ruler not armed): probe for net/component highlighting
+      // plain click (ruler not armed): probe for net/component highlighting.
+      // A click that went to a selection (segment or via, capture-handled
+      // at pointerdown) must not ALSO dim the whole board with a net
+      // highlight on top of the selection
+      if (segSel.size || viaSel.size) {
+        drag = null;
+        return;
+      }
       var el = probeHitTarget(ev);
       el = el && el.closest ? el.closest('[data-net],[data-ref]') : null;
       // peek may surface bare geometry (fill raster, background): the
@@ -5459,7 +5466,16 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   var netDimmed = []; // elements dimmed by an active highlight, restored on clear
   var netWhitened = []; // matched elements painted pure white, restored on clear
   function clearNetHighlight() {
-    for (var i = 0; i < netDimmed.length; i++) netDimmed[i].removeAttribute('opacity');
+    // restore the PRIOR opacity, not removeAttribute: layout-view pours
+    // carry a legitimate 0.18 (zone subduing) that a dim/whiten must not
+    // erase — clearing a highlight used to strip it and flash the zones
+    // to full strength
+    for (var i = 0; i < netDimmed.length; i++) {
+      var de = netDimmed[i];
+      if (de.__netOp0 === '' || de.__netOp0 === null || de.__netOp0 === undefined) de.removeAttribute('opacity');
+      else de.setAttribute('opacity', de.__netOp0);
+      de.__netOp0 = null;
+    }
     netDimmed = [];
     for (var w = 0; w < netWhitened.length; w++) {
       var item = netWhitened[w];
@@ -5467,7 +5483,8 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       else item.el.setAttribute('fill', item.fill);
       if (item.stroke === null) item.el.removeAttribute('stroke');
       else item.el.setAttribute('stroke', item.stroke);
-      item.el.removeAttribute('opacity');
+      if (item.op === '' || item.op === null || item.op === undefined) item.el.removeAttribute('opacity');
+      else item.el.setAttribute('opacity', item.op);
     }
     netWhitened = [];
   }
@@ -5477,6 +5494,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     var any = false;
     for (var i = 0; i < hits.length; i++) {
       if (hits[i].getAttribute(attr) !== value) {
+        hits[i].__netOp0 = hits[i].getAttribute('opacity') || '';
         hits[i].setAttribute('opacity', '0.06');
         netDimmed.push(hits[i]);
       } else {
@@ -5496,6 +5514,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         // NB: loop var must not be k — that is the zoom factor above
         for (var ki = 0; ki < kids.length; ki++) {
           if (!kids[ki].hasAttribute(attr)) {
+            kids[ki].__netOp0 = kids[ki].getAttribute('opacity') || '';
             kids[ki].setAttribute('opacity', '0.06');
             netDimmed.push(kids[ki]);
           }
@@ -5513,6 +5532,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         for (var s = 0; s < sub.length; s++) dimBelow(sub[s]);
         return;
       }
+      el.__netOp0 = el.getAttribute('opacity') || '';
       el.setAttribute('opacity', '0.25');
       netDimmed.push(el);
     };
@@ -5547,7 +5567,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
           anc = anc.parentElement;
         }
       }
-      netWhitened.push({ el: me, fill: me.getAttribute('fill'), stroke: me.getAttribute('stroke') });
+      netWhitened.push({ el: me, fill: me.getAttribute('fill'), stroke: me.getAttribute('stroke'), op: me.getAttribute('opacity') || '' });
       if (me.tagName === 'use') me.setAttribute('fill', hlColor);
       else if (me.tagName === 'path') me.setAttribute('stroke', hlColor);
       me.setAttribute('opacity', '1');

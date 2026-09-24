@@ -3277,16 +3277,10 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       regions[z].__zoneOp = regions[z].getAttribute('opacity') || '';
       regions[z].setAttribute('opacity', '0.18');
     }
-    // provenance: TrackBuilder-built traces (manual or mixed) go dashed —
-    // solid copper means the autorouter drew it
-    if (routesProv && viewGroups.gerber) {
-      var traces = viewGroups.gerber.querySelectorAll('path[data-net]');
-      for (var t2 = 0; t2 < traces.length; t2++) {
-        if (traces[t2].getAttribute('fill-rule')) continue; // regions above
-        var pr = routesProv[(traces[t2].getAttribute('data-net') || '').toLowerCase()];
-        if (pr && pr.provenance !== 'auto') traces[t2].setAttribute('stroke-dasharray', '4 2.2');
-      }
-    }
+    // provenance indication is the candy-cane STRIPE on autorouter nets
+    // (attachTraceHits); manual TrackBuilder traces stay solid. The old
+    // layout-phase styling dashed manual traces — the exact opposite — and
+    // is gone
     // pending moves re-apply AFTER the zone subduing above, so a ripped
     // pour zone reads as ripped (grey) exactly like it did live
     restoreLayoutGhost();

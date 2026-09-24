@@ -703,7 +703,7 @@ describe('layout view (component overlay from the gerbers)', () => {
     expect(plain).not.toContain('id="layout-apply"');
   });
 
-  it('marks TrackBuilder-built traces dashed from the routes island (manual + mixed, never auto)', () => {
+  it('candy-canes AUTOROUTER nets from the routes island; manual/mixed stay solid', () => {
     const html = buildViewerHtml(svg, [info], {
       title: 'demo board',
       pcbaSvg: '<svg/>',
@@ -712,7 +712,11 @@ describe('layout view (component overlay from the gerbers)', () => {
     });
     expect(html).toContain('id="routes"');
     expect(html).toContain("routesProv[rpk.toLowerCase()] = rawRt.nets[rpk];");
-    expect(html).toContain("if (pr && pr.provenance !== 'auto') traces[t2].setAttribute('stroke-dasharray', '4 2.2');");
+    // the stripe is the ONLY provenance indication, and it marks auto alone;
+    // the old layout-phase styling dashed manual traces — the exact
+    // opposite — and must stay gone
+    expect(html).toContain("if (tnet && routeProvenance[tnet] === 'auto')");
+    expect(html).not.toContain("'4 2.2'");
   });
 
   it('draws the drag handle as the exact footprint outline when one is carried', () => {

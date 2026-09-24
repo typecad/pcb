@@ -3667,18 +3667,22 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     routeState.path.setAttribute('stroke', piece.inkColor);
     routeState.path.setAttribute('d', 'M ' + c.x.toFixed(3) + ' ' + c.y.toFixed(3) + ' L ' + c.x.toFixed(3) + ' ' + c.y.toFixed(3));
     routeUiGroup().appendChild(routeState.path);
-    raisePadLabels();
-    refreshRatsnest();
+    } catch (e) {
+      // the route itself failed to build: unwind so the router never wedges
+      try { console.error('routeKey build failed', e); window.__rkErr = String((e && e.stack) || e); } catch (e2) {}
+      routeCancel();
+      if (statusEl && !statusLocked()) statusEl.textContent = 'route start failed: ' + String((e && e.message) || e).slice(0, 60);
+      return;
+    }
+    // peripherals: a failure here must NOT tear down a built route — the
+    // route is live and visible; log and carry on
+    try { raisePadLabels(); } catch (e3) {}
+    try { refreshRatsnest(); } catch (e4) { try { console.error('refreshRatsnest at route start', e4); window.__rrErr = String((e4 && e4.stack) || e4); } catch (e5) {} }
     if (statusEl && !statusLocked())
       statusEl.textContent =
         'routing ' + (startNet ? startNet : 'no net') + ' (' + routeState.w + 'mm) from ' + startLbl +
         ' \u2014 click to anchor, V via, Esc cancels';
     clearPadHighlight();
-    } catch (e) {
-      // a half-built route is worse than none — tear it down and report
-      routeCancel();
-      if (statusEl && !statusLocked()) statusEl.textContent = 'route start failed — click again';
-    }
   }
   function curPiece() {
     return routeState.pieces[routeState.pieces.length - 1];

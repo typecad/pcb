@@ -4552,7 +4552,9 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         var armEnd = nearestTraceEnd(gs);
         var lx1 = parseFloat(t.getAttribute('x1')), ly1 = parseFloat(t.getAttribute('y1'));
         var lx2 = parseFloat(t.getAttribute('x2')), ly2 = parseFloat(t.getAttribute('y2'));
-        var ls = armEnd || snapOnSegment(gs.x, gs.y, lx1, ly1, lx2, ly2);
+        // armEnd carries gx/gy (nearestTraceEnd's shape), snapOnSegment x/y —
+        // normalize so the arming below always reads x/y
+        var ls = armEnd ? { x: armEnd.gx, y: armEnd.gy } : snapOnSegment(gs.x, gs.y, lx1, ly1, lx2, ly2);
         setTraceHighlight({
           gx: ls.x,
           gy: ls.y,

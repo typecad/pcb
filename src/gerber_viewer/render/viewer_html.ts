@@ -3965,18 +3965,6 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         hit.setAttribute('data-route', '1');
         pc.layerGroup.appendChild(hit);
       }
-      // interactive routes are the machine class: candy-cane from the moment
-      // they commit (after apply+rebuild the unnamed-island match does it)
-      var cstripe = document.createElementNS(SVGNSL, 'path');
-      cstripe.setAttribute('class', 'route-auto-stripe');
-      cstripe.setAttribute('d', d);
-      cstripe.setAttribute('stroke', '#ffffff');
-      cstripe.setAttribute('stroke-width', String(routeState.w));
-      cstripe.setAttribute('fill', 'none');
-      cstripe.setAttribute('stroke-linecap', 'butt');
-      cstripe.setAttribute('pointer-events', 'none');
-      pc.layerGroup.appendChild(cstripe);
-      track.__stripe = cstripe;
     }
     for (var vi = 0; vi < routeState.vias.length; vi++) {
       var v = routeState.vias[vi];
@@ -4611,11 +4599,10 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
           tr.__unnamedIdx = uIdx;
           hitLine.__unnamedIdx = uIdx;
         }
-        // machine routing candy-canes — autorouter nets AND applied
-        // interactive (unnamed) routes; a same-ink dashed overlay over the
-        // solid stroke reads as lighter/darker bands and separates machine
-        // routing from authored polylines at a glance
-        if ((tnet && routeProvenance[tnet] === 'auto') || uIdx >= 0) {
+        // machine routing candy-canes — AUTOROUTER-built nets only
+        // (provenance 'auto'); every TrackBuilder-authored track, netted or
+        // netless, is a manual route and stays a solid trace
+        if (tnet && routeProvenance[tnet] === 'auto') {
           var stripe = document.createElementNS(SVGNSL, 'path');
           stripe.setAttribute('class', 'route-auto-stripe');
           stripe.setAttribute('d', tr.getAttribute('d'));
@@ -4627,10 +4614,6 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
           stripe.setAttribute('pointer-events', 'none');
           lg.appendChild(stripe);
           tr.__stripe = stripe;
-          if (uIdx >= 0) {
-            unnamedInk[uIdx].push(stripe);
-            stripe.__unnamedIdx = uIdx;
-          }
         }
       }
     }

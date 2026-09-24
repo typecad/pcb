@@ -2777,6 +2777,14 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       }
       return;
     }
+    // a press NEAR a dangling trace end arms the route start there — the
+    // same magnetic snap finishing uses (this is where non-selection,
+    // non-part presses land)
+    var nearEnd = nearestTraceEnd(gerberAt(ev.clientX, ev.clientY));
+    if (nearEnd) {
+      setTraceHighlight(nearEnd);
+      return;
+    }
     boxSel = { g0: gerberAt(ev.clientX, ev.clientY), x0: ev.clientX, y0: ev.clientY, active: false };
   });
   window.addEventListener('pointermove', function (ev) {
@@ -3565,23 +3573,18 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   // a tie-in start point ON existing copper (pressed trace/via): the X
   // route starts here, inheriting the copper's net — the selection mark is
   // the same ants box a pad gets, sized to the tie point
-  var traceHiMark = null;
+  // NO canvas mark: a trace press arms the route start silently — the
+  // status line alone says where X will start from
   function setTraceHighlight(t) {
     clearPadHighlight();
     if (!t) return;
     traceHi = t;
-    traceHiMark = padSelMark({ x: t.gx, y: -t.gy, w: 0.4, h: 0.4, ref: '', pin: '', net: null });
-    routeUiGroup().appendChild(traceHiMark);
     var tn = t.net && t.net !== 'N/C' ? t.net : null;
     if (statusEl && !statusLocked())
       statusEl.textContent = (t.kind === 'via' ? 'via' : 'trace') + (tn ? ' [' + tn + ']' : ' [no net]') + ' \u2014 X to route a track';
   }
   function clearTraceHighlight() {
     traceHi = null;
-    if (traceHiMark) {
-      traceHiMark.remove();
-      traceHiMark = null;
-    }
   }
   function newPiece(layerGroup) {
     var inkVar = '--ink-' + layerGroup.getAttribute('data-layer-id');
@@ -3684,6 +3687,29 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   // the nearest point on a segment, with the ENDS preferred when close: a
   // stub free end is exactly where a continuing trace wants to start or
   // tie — snapping a hair short of it leaves a visible nub of copper
+  // the nearest SEGMENT ENDPOINT within the pad-snap radius: starting at a
+  // dangling trace end needs the same magnetic snap finishing has —
+  // finding the exact pixel at the tip of a 0.3mm stub is otherwise a
+  // needle-threading exercise. Null when nothing is close.
+  function nearestTraceEnd(g) {
+    var segs = allSegHits();
+    var best = null;
+    var bestD = 1.2;
+    for (var i = 0; i < segs.length; i++) {
+      var ends = [
+      [parseFloat(segs[i].getAttribute('x1')), parseFloat(segs[i].getAttribute('y1'))],
+      [parseFloat(segs[i].getAttribute('x2')), parseFloat(segs[i].getAttribute('y2'))],
+      ];
+      for (var e = 0; e < 2; e++) {
+        var d = Math.hypot(ends[e][0] - g.x, ends[e][1] - g.y);
+        if (d < bestD) {
+          bestD = d;
+          best = { gx: ends[e][0], gy: ends[e][1], net: segs[i].getAttribute('data-net'), kind: 'trace', layerGroup: segs[i].closest("g[data-kind='copper']") };
+        }
+      }
+    }
+    return best;
+  }
   function snapOnSegment(px, py, x1, y1, x2, y2) {
     var ex = x2 - x1, ey = y2 - y1;
     var l2 = ex * ex + ey * ey;
@@ -4486,12 +4512,14 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       } else {
         segSel.clear();
         segSel.add(t);
-        // a trace press arms the route start at the projected point ON the
-        // segment — a branch leaves the copper perfectly centered
+        // a trace press arms the route start ON the segment: within the
+        // pad-snap radius of a segment END, that end wins (the same
+        // magnetic snap finishing uses); otherwise the projected point
         var gs = gerberAt(ev.clientX, ev.clientY);
+        var armEnd = nearestTraceEnd(gs);
         var lx1 = parseFloat(t.getAttribute('x1')), ly1 = parseFloat(t.getAttribute('y1'));
         var lx2 = parseFloat(t.getAttribute('x2')), ly2 = parseFloat(t.getAttribute('y2'));
-        var ls = snapOnSegment(gs.x, gs.y, lx1, ly1, lx2, ly2);
+        var ls = armEnd || snapOnSegment(gs.x, gs.y, lx1, ly1, lx2, ly2);
         setTraceHighlight({
           gx: ls.x,
           gy: ls.y,

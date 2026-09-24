@@ -2646,12 +2646,32 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
           ev.preventDefault();
           var grew = segExpand();
           if (statusEl && !statusLocked())
-            statusEl.textContent = segSel.size + ' segment' + (segSel.size > 1 ? 's' : '') + ' selected' + (grew ? ' (+' + grew + ')' : '') + ' — U grows, Del removes';
+            statusEl.textContent =
+              segSel.size + ' segment' + (segSel.size > 1 ? 's' : '') + ' selected' +
+              (grew ? ' (+' + grew + ')' : '') +
+              (viaSel.size ? ', ' + viaSel.size + ' via' + (viaSel.size > 1 ? 's' : '') : '') +
+              ' — U grows, Del removes';
         }
         return;
       }
       if (ev.key === 'Delete') {
-        if (viaSel.size) {
+        if (segSel.size) {
+          ev.preventDefault();
+          segDelete(); // vias at deleted endpoints ride along
+          // vias U pulled into the selection beyond those endpoints go too
+          if (viaSel.size) {
+            var extraV = 0;
+            Array.from(viaSel).forEach(function (vc) {
+              if (!vc.parentNode) return;
+              var vp = viaInkPos(vc);
+              extraV += removeViasAt(vp.x, -vp.y, true);
+            });
+            viaSel.clear();
+            viaHiSync();
+            if (extraV && statusEl && !statusLocked())
+              statusEl.textContent = statusEl.textContent.replace(/$/, ' + ' + extraV + ' via' + (extraV === 1 ? '' : 's'));
+          }
+        } else if (viaSel.size) {
           ev.preventDefault();
           var nVia = 0;
           viaSel.forEach(function (vc) {
@@ -2664,9 +2684,6 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
           renderLayoutMoves();
           if (statusEl && !statusLocked())
             statusEl.textContent = nVia + ' via' + (nVia === 1 ? '' : 's') + ' deleted';
-        } else if (segSel.size) {
-          ev.preventDefault();
-          segDelete();
         }
         return;
       }
@@ -4142,31 +4159,43 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   }
   function segExpand() {
     if (!segSel.size) return 0;
+    // ONE hop per press: candidates touching the CURRENT selection snapshot
+    // join (the old frontier loop flooded the whole connected net at once)
+    var frontier = [];
+    segSel.forEach(function (h) {
+      frontier.push(h);
+    });
+    var hits = allSegHits();
     var added = 0;
-    // grow from the current frontier: any unselected segment of the same net
-    // sharing an endpoint with ANY selected segment joins
-    var changed = true;
-    while (changed) {
-      changed = false;
-      var hits = allSegHits();
-      for (var i = 0; i < hits.length; i++) {
-        var cand = hits[i];
-        if (segSel.has(cand)) continue;
-        var candNet = cand.getAttribute('data-net');
-        var touch = false;
-        segSel.forEach(function (h) {
-          if (touch) return;
-          if (h.getAttribute('data-net') !== candNet) return;
-          if (segShareEnd(h, cand)) touch = true;
-        });
-        if (touch) {
-          segSel.add(cand);
-          added++;
-          changed = true;
-        }
+    for (var i = 0; i < hits.length; i++) {
+      var cand = hits[i];
+      if (segSel.has(cand)) continue;
+      var candNet = cand.getAttribute('data-net');
+      var touch = false;
+      for (var f = 0; f < frontier.length && !touch; f++) {
+        if (frontier[f].getAttribute('data-net') !== candNet) continue;
+        if (segShareEnd(frontier[f], cand)) touch = true;
+      }
+      if (touch) {
+        segSel.add(cand);
+        added++;
       }
     }
+    // expansion encompasses vias: a barrel sitting at any selected
+    // segment's endpoint rides the selection (ring + Delete)
+    var vi = viaInk();
+    segSel.forEach(function (h) {
+      for (var e = 0; e < 2; e++) {
+        var ex = parseFloat(h.getAttribute(e ? 'x2' : 'x1'));
+        var ey = parseFloat(h.getAttribute(e ? 'y2' : 'y1'));
+        for (var c = 0; c < vi.length; c++) {
+          var vp = viaInkPos(vi[c]);
+          if (Math.hypot(vp.x - ex, vp.y - ey) < 0.06) viaSel.add(vi[c]);
+        }
+      }
+    });
     segHiSync();
+    viaHiSync();
     return added;
   }
   function segDelete() {

@@ -3616,6 +3616,11 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     routeState.path.remove();
     for (var pi = 0; pi < routeState.pieces.length; pi++) routeState.pieces[pi].anchoredEl.remove();
     if (routeState.targetRing) routeState.targetRing.remove();
+    // the blue in-route via markers must go too — committed copies carry
+    // the real ink; leaving these read as a stuck highlight on every via
+    routeUiGroup().querySelectorAll('.route-via').forEach(function (v) {
+      v.remove();
+    });
     routeState = null;
     refreshRatsnest();
     if (statusEl && !statusLocked()) statusEl.textContent = 'routing cancelled';
@@ -4054,8 +4059,12 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       if (!c.parentNode) viaSel.delete(c);
       else c.classList.add('route-via-sel');
     });
-    if (statusEl && !statusLocked() && viaSel.size)
-      statusEl.textContent = viaSel.size + ' via' + (viaSel.size > 1 ? 's' : '') + ' selected — Del removes, Esc clears';
+    if (statusEl && !statusLocked()) {
+      if (viaSel.size)
+        statusEl.textContent = viaSel.size + ' via' + (viaSel.size > 1 ? 's' : '') + ' selected — Del removes, Esc clears';
+      else if (/via[^(]*selected/.test(statusEl.textContent))
+        statusEl.textContent = ''; // don't leave a stale "via selected" claim
+    }
   }
   // via ink: committed session circles AND gerder aperture flashes (a
   // source-authored TrackBuilder via renders as a ref-less use[data-net])
@@ -4095,6 +4104,13 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       }
       if (!rt.pieces.length && !rt.vias.length) routedTracks.splice(ri, 1);
     }
+    // stale in-route preview markers at this point (routeCancel sweeps its
+    // own; this covers any that predate the cleanup)
+    routeUiGroup().querySelectorAll('.route-via').forEach(function (pv) {
+      if (Math.hypot(parseFloat(pv.getAttribute('cx')) - bx, parseFloat(pv.getAttribute('cy')) + by) > 0.02) return;
+      pv.remove();
+      removed++;
+    });
     // gerber via flashes: every copper layer's copy of this barrel
     var flashed = viaInk();
     var vnet = null;

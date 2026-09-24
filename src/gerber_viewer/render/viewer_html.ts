@@ -3578,6 +3578,14 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   function setTraceHighlight(t) {
     clearPadHighlight();
     if (!t) return;
+    // the armed point must be real board coordinates: garbage here used
+    // to surface later as a toFixed crash inside routeKey (route start
+    // failed). Reject it loudly at the source — a re-press re-arms.
+    if (typeof t.gx !== 'number' || typeof t.gy !== 'number' || !isFinite(t.gx) || !isFinite(t.gy)) {
+      try { console.error('bad tie-in arming', t, new Error().stack); window.__badArm = JSON.stringify(t); } catch (e2) {}
+      if (statusEl && !statusLocked()) statusEl.textContent = 'bad tie-in point — press the trace again';
+      return;
+    }
     traceHi = t;
     var tn = t.net && t.net !== 'N/C' ? t.net : null;
     if (statusEl && !statusLocked())

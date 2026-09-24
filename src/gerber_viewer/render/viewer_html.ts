@@ -6220,7 +6220,8 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
      the look */
   circle[data-route],
   g[data-kind='copper'] use[data-net]:not([data-ref]) {
-    cursor: pointer;
+    /* the board cursor stays the crosshair over vias too — hit-area only,
+       no pointer affordance (nothing on the canvas is a "link") */
   }
   circle[data-route].route-via-sel,
   use.route-via-sel {

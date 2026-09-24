@@ -72,4 +72,29 @@ describe('planRouteDeletes', () => {
     expect(edits).toHaveLength(0);
     expect(skipped.join(' ')).toContain('matched no source route');
   });
+
+  it('truncates the chain after a via when kind:via deletes its point', () => {
+    // via sits at the piece boundary (2,1): the segment LEAVING it is cut.
+    // The regenerated runs carry no vias, so the barrel is gone from
+    // source; the far side survives as its own dangling route
+    const { edits, applied } = planRouteDeletes(src(), [
+      { kind: 'via', net: null, x1: 2, y1: 1, x2: 2, y2: 1, layer: null },
+    ]);
+    expect(applied).toBe(1);
+    const out = apply(src(), edits);
+    expect(out).toContain('.to({ x: 2, y: 1, layer: \'F.Cu\', width: 0.3 });');
+    expect(out).toContain('const route1a = new TrackBuilder');
+    expect(out).toContain('.from({ x: 3, y: 1 }, \'F.Cu\', 0.3)');
+    expect(out).toContain('.to({ x: 4, y: 1, layer: \'F.Cu\', width: 0.3 });');
+  });
+
+  it('drops the last segment when the via is the chain tail', () => {
+    const { edits, applied } = planRouteDeletes(src(), [
+      { kind: 'via', net: null, x1: 4, y1: 1, x2: 4, y2: 1, layer: null },
+    ]);
+    expect(applied).toBe(1);
+    const out = apply(src(), edits);
+    expect(out).toContain('.to({ x: 3, y: 1, layer: \'F.Cu\', width: 0.3 });');
+    expect(out).not.toContain('{ x: 4, y: 1');
+  });
 });

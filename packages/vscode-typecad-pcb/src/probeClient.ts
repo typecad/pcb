@@ -93,8 +93,9 @@ export type ProbeWebviewMessage =
       deletes?: RouteDelete[];
     };
 
-/** one deleted trace segment (board frame, y-down mm) */
+/** one deleted trace segment — or via, when `kind` is 'via' (board frame, y-down mm) */
 export interface RouteDelete {
+  kind?: 'segment' | 'via';
   net: string | null;
   x1: number;
   y1: number;

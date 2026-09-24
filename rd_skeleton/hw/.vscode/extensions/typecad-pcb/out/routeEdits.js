@@ -249,7 +249,21 @@ function planRouteDeletes(text, deletes) {
         // remaining segment flags: segment i is (pts[i], pts[i+1])
         const keep = [];
         for (let i = 0; i + 1 < r.points.length; i++) {
-            const hit = deletes.some((d) => segMatch(d, r.points[i], r.points[i + 1]));
+            const hit = deletes.some((d) => {
+                if (d.kind === 'via') {
+                    // a via sits between two pieces: deleting it truncates the chain
+                    // there — the segment leaving the via point goes with it (the
+                    // regenerated runs carry no vias, so the barrel is gone too). A
+                    // via on the chain's tail drops the segment leading into it
+                    const via = { x: d.x1, y: d.y1 };
+                    if (ptEq(via, r.points[i]))
+                        return true;
+                    if (i + 1 === r.points.length - 1 && ptEq(via, r.points[i + 1]))
+                        return true;
+                    return false;
+                }
+                return segMatch(d, r.points[i], r.points[i + 1]);
+            });
             keep.push(!hit);
             if (hit)
                 applied++;

@@ -3829,13 +3829,20 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       if (statusEl && !statusLocked()) statusEl.textContent = 'anchored (crosses unconnected copper — DRC will report)';
     }
     var piece = curPiece();
-    for (var pa = 0; pa < pts.length; pa++) piece.points.push(pts[pa]);
+    for (var pa = 0; pa < pts.length; pa++) {
+      // skip a point equal to the piece's tail — a double-fire (the second
+      // pointerdown of a double-click) must not fold the walk onto itself
+      var tailP = piece.points[piece.points.length - 1];
+      if (tailP && Math.hypot(pts[pa].x - tailP.x, pts[pa].y - tailP.y) < 0.005) continue;
+      piece.points.push(pts[pa]);
+    }
     var d = 'M ' + piece.points[0].x.toFixed(3) + ' ' + piece.points[0].y.toFixed(3);
     for (var ai = 1; ai < piece.points.length; ai++)
       d += ' L ' + piece.points[ai].x.toFixed(3) + ' ' + piece.points[ai].y.toFixed(3);
     piece.anchoredEl.setAttribute('d', d);
-    routeState.sx = pts[pts.length - 1].x;
-    routeState.sy = pts[pts.length - 1].y;
+    routeState.sx = piece.points[piece.points.length - 1].x;
+    routeState.sy = piece.points[piece.points.length - 1].y;
+    routeState.lastPts = []; // consumed — a stale trail must not re-fold at commit
     if (statusEl && !statusLocked())
       statusEl.textContent = 'anchored \u2014 ' + (routeState.net ? routeState.net : 'no net') + ' continues; V via, Backspace undo, snap a pad or double-click to finish';
   }
@@ -3846,7 +3853,11 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     var end = routeState.lastEnd || routeEndpoint(routeState.sx, routeState.sy);
     var pts = routeState.lastPts || [{ x: end.x, y: end.y }];
     var piece = curPiece();
-    for (var pa = 0; pa < pts.length; pa++) piece.points.push(pts[pa]);
+    for (var pa = 0; pa < pts.length; pa++) {
+      var tailV = piece.points[piece.points.length - 1];
+      if (tailV && Math.hypot(pts[pa].x - tailV.x, pts[pa].y - tailV.y) < 0.005) continue;
+      piece.points.push(pts[pa]);
+    }
     var d = 'M ' + piece.points[0].x.toFixed(3) + ' ' + piece.points[0].y.toFixed(3);
     for (var ai = 1; ai < piece.points.length; ai++)
       d += ' L ' + piece.points[ai].x.toFixed(3) + ' ' + piece.points[ai].y.toFixed(3);
@@ -3871,6 +3882,8 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     np.anchoredEl.setAttribute('d', 'M ' + vx.toFixed(3) + ' ' + vy.toFixed(3));
     routeState.pieces.push(np);
     routeState.sx = vx;
+    routeState.sy = vy;
+    routeState.lastPts = []; // consumed with the via
     routeState.sy = vy;
     routeState.path.setAttribute('stroke', np.inkColor);
     if (statusEl && !statusLocked()) statusEl.textContent = 'via placed \u2014 continuing on ' + nextCanon;
@@ -3910,10 +3923,17 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     if (!routeState) return;
     var end = routeState.lastEnd || routeEndpoint(routeState.sx, routeState.sy);
     // append the pending preview walk — unless the finalize came through the
-    // hint path, which routeAnchor already folded into the piece geometry
+    // hint path, which routeAnchor already folded into the piece geometry.
+    // Points equal to the piece's tail are skipped: a double-fire (the
+    // second pointerdown of a double-click) must not fold the walk
     if (routeState.lastPts) {
       var piece = curPiece();
-      for (var wi = 0; wi < routeState.lastPts.length; wi++) piece.points.push(routeState.lastPts[wi]);
+      for (var wi = 0; wi < routeState.lastPts.length; wi++) {
+        var tailC = piece.points[piece.points.length - 1];
+        var wp = routeState.lastPts[wi];
+        if (tailC && Math.hypot(wp.x - tailC.x, wp.y - tailC.y) < 0.005) continue;
+        piece.points.push(wp);
+      }
     }
     // commit every piece with actual geometry into ITS layer group
     for (var pi = 0; pi < routeState.pieces.length; pi++) {

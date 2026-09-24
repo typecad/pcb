@@ -3681,6 +3681,20 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   }
   // snapped endpoint for the mouse position (gerber frame): a pad center
   // within 1.2mm wins (same-net preferred), else the 0/45/90 ray projection
+  // the nearest point on a segment, with the ENDS preferred when close: a
+  // stub free end is exactly where a continuing trace wants to start or
+  // tie — snapping a hair short of it leaves a visible nub of copper
+  function snapOnSegment(px, py, x1, y1, x2, y2) {
+    var ex = x2 - x1, ey = y2 - y1;
+    var l2 = ex * ex + ey * ey;
+    var t = l2 < 1e-9 ? 0 : ((px - x1) * ex + (py - y1) * ey) / l2;
+    if (t < 0) t = 0;
+    if (t > 1) t = 1;
+    var END = 0.3; // endpoint wins within this radius (covers the cap)
+    if (Math.hypot(px - x1, py - y1) < END) return { x: x1, y: y1 };
+    if (Math.hypot(px - x2, py - y2) < END) return { x: x2, y: y2 };
+    return { x: x1 + ex * t, y: y1 + ey * t };
+  }
   function routeEndpoint(mx, my) {
     var best = null;
     var tie = null; // {x, y, net, kind} — a trace/via tie-in point
@@ -3718,12 +3732,8 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     for (var si2 = 0; si2 < segs.length; si2++) {
       var x1 = parseFloat(segs[si2].getAttribute('x1')), y1 = parseFloat(segs[si2].getAttribute('y1'));
       var x2 = parseFloat(segs[si2].getAttribute('x2')), y2 = parseFloat(segs[si2].getAttribute('y2'));
-      var ex = x2 - x1, ey = y2 - y1;
-      var l2 = ex * ex + ey * ey;
-      var t = l2 < 1e-9 ? 0 : ((mx - x1) * ex + (my - y1) * ey) / l2;
-      if (t < 0) t = 0;
-      if (t > 1) t = 1;
-      var px = x1 + ex * t, py = y1 + ey * t;
+      var qp = snapOnSegment(mx, my, x1, y1, x2, y2);
+      var px = qp.x, py = qp.y;
       var td = Math.hypot(px - mx, py - my);
       if (td > 0.8) continue;
       var tnet = segs[si2].getAttribute('data-net');
@@ -3865,17 +3875,9 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     var targetChanged = (routeState.targetPad || null) !== (end.pad || null) || tieKey !== curTieKey;
     if (targetChanged) {
       if (routeState.targetRing) routeState.targetRing.remove();
-      routeState.targetRing = end.pad ? padRing(end.pad, 'route-pad-target') : null;
-      if (!routeState.targetRing && end.tie) {
-        // a small green mark on the tie-in point itself
-        var tieRing = document.createElementNS(SVGNSL, 'circle');
-        tieRing.setAttribute('class', 'route-pad-target');
-        tieRing.setAttribute('cx', end.tie.x.toFixed(3));
-        tieRing.setAttribute('cy', end.tie.y.toFixed(3));
-        tieRing.setAttribute('r', '0.32');
-        routeState.targetRing = tieRing;
-      }
-      if (routeState.targetRing) routeUiGroup().appendChild(routeState.targetRing);
+      // no target ring at all: the walk visibly ending ON the pad/via/trace
+      // IS the snap indication — a circle on top adds nothing
+      routeState.targetRing = null;
       routeState.targetPad = end.pad || null;
       routeState.targetTie = end.tie || null;
       refreshRatsnest();
@@ -4489,14 +4491,10 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         var gs = gerberAt(ev.clientX, ev.clientY);
         var lx1 = parseFloat(t.getAttribute('x1')), ly1 = parseFloat(t.getAttribute('y1'));
         var lx2 = parseFloat(t.getAttribute('x2')), ly2 = parseFloat(t.getAttribute('y2'));
-        var lex = lx2 - lx1, ley = ly2 - ly1;
-        var ll2 = lex * lex + ley * ley;
-        var lt = ll2 < 1e-9 ? 0 : ((gs.x - lx1) * lex + (gs.y - ly1) * ley) / ll2;
-        if (lt < 0) lt = 0;
-        if (lt > 1) lt = 1;
+        var ls = snapOnSegment(gs.x, gs.y, lx1, ly1, lx2, ly2);
         setTraceHighlight({
-          gx: lx1 + lex * lt,
-          gy: ly1 + ley * lt,
+          gx: ls.x,
+          gy: ls.y,
           net: t.getAttribute('data-net'),
           kind: 'trace',
           layerGroup: t.closest("g[data-kind='copper']"),

@@ -2812,7 +2812,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     // stray click can't wipe a careful multi-select.
     if (!b.active) {
       if (ev.button === 0 && !ev.shiftKey) {
-        if (padHi) clearPadHighlight();
+        clearPadHighlight(); // clears the pad OR trace tie-in highlight
         if (viaSel.size) {
           viaSel.clear();
           viaHiSync();
@@ -3094,7 +3094,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         if (!unet) continue;
         // a live route covers its pads: the start pad drops out of the chain
         // immediately, the target once the rubber-band snaps onto it
-        if (routeState && ucomp.ref === routeState.startPad.ref && String(ucomp.pads[up].pin) === String(routeState.startPad.pin)) continue;
+        if (routeState && routeState.startPad && ucomp.ref === routeState.startPad.ref && String(ucomp.pads[up].pin) === String(routeState.startPad.pin)) continue;
         if (routeState && routeState.targetPad && ucomp.ref === routeState.targetPad.ref && String(ucomp.pads[up].pin) === String(routeState.targetPad.pin)) continue;
         var uIslandPad = ucomp.pads[up];
         var uWired =
@@ -3350,6 +3350,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   // The ratsnest re-renders live. Committed routes are recorded for the
   // apply bridge (source TrackBuilder generation in the host).
   var padHi = null; // highlighted manifest pad
+  var traceHi = null; // highlighted tie-in start point on a trace/via: {gx, gy, net, kind, layerGroup}
   var routeState = null;
   var routeUi = null;
   var routedTracks = []; // committed this session: {net, w, pieces, vias} (board frame)
@@ -3559,6 +3560,28 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       padHiMark.remove();
       padHiMark = null;
     }
+    clearTraceHighlight();
+  }
+  // a tie-in start point ON existing copper (pressed trace/via): the X
+  // route starts here, inheriting the copper's net — the selection mark is
+  // the same ants box a pad gets, sized to the tie point
+  var traceHiMark = null;
+  function setTraceHighlight(t) {
+    clearPadHighlight();
+    if (!t) return;
+    traceHi = t;
+    traceHiMark = padSelMark({ x: t.gx, y: -t.gy, w: 0.4, h: 0.4, ref: '', pin: '', net: null });
+    routeUiGroup().appendChild(traceHiMark);
+    var tn = t.net && t.net !== 'N/C' ? t.net : null;
+    if (statusEl && !statusLocked())
+      statusEl.textContent = (t.kind === 'via' ? 'via' : 'trace') + (tn ? ' [' + tn + ']' : ' [no net]') + ' \u2014 X to route a track';
+  }
+  function clearTraceHighlight() {
+    traceHi = null;
+    if (traceHiMark) {
+      traceHiMark.remove();
+      traceHiMark = null;
+    }
   }
   function newPiece(layerGroup) {
     var inkVar = '--ink-' + layerGroup.getAttribute('data-layer-id');
@@ -3582,20 +3605,40 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   }
   function routeKey() {
     if (routeState) return;
-    if (!padHi) {
-      if (statusEl && !statusLocked()) statusEl.textContent = 'click a pad first \u2014 X routes a track from it';
+    if (!padHi && !traceHi) {
+      if (statusEl && !statusLocked()) statusEl.textContent = 'click a pad or trace first \u2014 X routes a track from it';
       return;
     }
-    var lg = layerGroupForPad(padHi);
-    if (!lg) return;
-    var c = padCenter(padHi);
+    // start FROM a pad, or from a pressed point ON a trace/via (the route
+    // inherits the copper's net and layer — a branch leaves it centered)
+    var lg, c, startNet, startPad = null, startLbl;
+    if (padHi) {
+      lg = layerGroupForPad(padHi);
+      if (!lg) return;
+      c = padCenter(padHi);
+      startNet = padHi.net || null;
+      startPad = padHi;
+      startLbl = padHi.ref + '.' + padHi.pin;
+    } else {
+      lg = traceHi.layerGroup || copperGroups()[0];
+      if (!lg) return;
+      c = { x: traceHi.gx, y: traceHi.gy };
+      startNet = traceHi.net && traceHi.net !== 'N/C' ? traceHi.net : null;
+      startLbl = traceHi.kind === 'via' ? 'via' : 'trace' + (startNet ? ' [' + startNet + ']' : '');
+      segSel.clear();
+      segHiSync();
+      viaSel.clear();
+      viaHiSync();
+    }
     routeState = {
       sx: c.x,
       sy: c.y,
-      net: padHi.net || null,
-      w: routeWidth(padHi.net, lg),
-      startPad: padHi,
+      net: startNet,
+      w: routeWidth(startNet, lg),
+      startPad: startPad,
+      startLbl: startLbl,
       targetPad: null,
+      targetTie: null,
       targetRing: null,
       pieces: [],
       vias: [], // {x, y} gerber, where a layer switch happened
@@ -3615,7 +3658,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     refreshRatsnest();
     if (statusEl && !statusLocked())
       statusEl.textContent =
-        'routing ' + (padHi.net ? padHi.net : 'no net') + ' (' + routeState.w + 'mm) from ' + padHi.ref + '.' + padHi.pin +
+        'routing ' + (startNet ? startNet : 'no net') + ' (' + routeState.w + 'mm) from ' + startLbl +
         ' \u2014 click to anchor, V via, Esc cancels';
     clearPadHighlight();
   }
@@ -3640,6 +3683,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   // within 1.2mm wins (same-net preferred), else the 0/45/90 ray projection
   function routeEndpoint(mx, my) {
     var best = null;
+    var tie = null; // {x, y, net, kind} — a trace/via tie-in point
     var bestScore = 1.2;
     for (var pi = 0; pi < padManifest.length; pi++) {
       var p = padManifest[pi];
@@ -3651,12 +3695,50 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       if (score < bestScore) {
         bestScore = score;
         best = p;
+        tie = null;
+      }
+    }
+    // vias and traces are tie-in targets like pads: the barrel center, or
+    // the nearest point ON a trace segment (same-net preferred, exactly how
+    // pads snap) — a branch leaves the host copper perfectly centered
+    var vink = viaInk();
+    for (var vi2 = 0; vi2 < vink.length; vi2++) {
+      var vpos = viaInkPos(vink[vi2]);
+      var vd = Math.hypot(vpos.x - mx, vpos.y - my);
+      if (vd > 0.8) continue;
+      var vnet = vink[vi2].getAttribute('data-net');
+      var vscore = routeState.net && vnet === routeState.net ? vd : vd + 0.8;
+      if (vscore < bestScore) {
+        bestScore = vscore;
+        tie = { x: vpos.x, y: vpos.y, net: vnet, kind: 'via' };
+        best = null;
+      }
+    }
+    var segs = allSegHits();
+    for (var si2 = 0; si2 < segs.length; si2++) {
+      var x1 = parseFloat(segs[si2].getAttribute('x1')), y1 = parseFloat(segs[si2].getAttribute('y1'));
+      var x2 = parseFloat(segs[si2].getAttribute('x2')), y2 = parseFloat(segs[si2].getAttribute('y2'));
+      var ex = x2 - x1, ey = y2 - y1;
+      var l2 = ex * ex + ey * ey;
+      var t = l2 < 1e-9 ? 0 : ((mx - x1) * ex + (my - y1) * ey) / l2;
+      if (t < 0) t = 0;
+      if (t > 1) t = 1;
+      var px = x1 + ex * t, py = y1 + ey * t;
+      var td = Math.hypot(px - mx, py - my);
+      if (td > 0.8) continue;
+      var tnet = segs[si2].getAttribute('data-net');
+      var tscore = routeState.net && tnet === routeState.net ? td : td + 0.8;
+      if (tscore < bestScore) {
+        bestScore = tscore;
+        tie = { x: px, y: py, net: tnet, kind: 'trace' };
+        best = null;
       }
     }
     if (best) {
       var bc = padCenter(best);
       return { x: bc.x, y: bc.y, pad: best };
     }
+    if (tie) return { x: tie.x, y: tie.y, pad: null, tie: tie };
     var dx = mx - routeState.sx;
     var dy = my - routeState.sy;
     var ang = Math.atan2(dy, dx);
@@ -3750,14 +3832,17 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       }
       pts = bestPts;
     } else {
-      // free space: the DRAG TRAIL — the trace end is ALWAYS the cursor.
-      // An orthogonal spine runs from the anchor and a 45-degree crook
-      // adjacent to the cursor closes the gap: move straight up and the
-      // trace is vertical; drift right and a 45 bend grows near the cursor,
-      // sliding along as needed. The FLIPPED order (crook at the anchor) is
-      // the fallback when the default violates clearance.
-      pts = routeTrail(mx, my);
-      var trailAlt = routeTrailFlipped(mx, my);
+      // free space: the DRAG TRAIL — the trace end is ALWAYS the cursor
+      // (or the snapped tie-in point on a trace/via). An orthogonal spine
+      // runs from the anchor and a 45-degree crook adjacent to the cursor
+      // closes the gap: move straight up and the trace is vertical; drift
+      // right and a 45 bend grows near the cursor, sliding along as needed.
+      // The FLIPPED order (crook at the anchor) is the fallback when the
+      // default violates clearance.
+      var tx = end.tie ? end.tie.x : mx;
+      var ty = end.tie ? end.tie.y : my;
+      pts = routeTrail(tx, ty);
+      var trailAlt = routeTrailFlipped(tx, ty);
       if (clearanceMargin(piece.obstacles, [{ x: routeState.sx, y: routeState.sy }].concat(pts), routeState.w) < 0) {
         var altM = clearanceMargin(piece.obstacles, [{ x: routeState.sx, y: routeState.sy }].concat(trailAlt), routeState.w);
         if (altM >= 0) pts = trailAlt;
@@ -3773,12 +3858,26 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       'stroke',
       routeState.clearState === 'ok' ? piece.inkColor : routeState.clearState === 'warn' ? '#d29922' : '#f14c4c',
     );
-    var targetChanged = (routeState.targetPad || null) !== (end.pad || null);
+    var tieKey = end.tie ? end.tie.x.toFixed(3) + ',' + end.tie.y.toFixed(3) + ',' + end.tie.kind : null;
+    var curTieKey = routeState.targetTie
+      ? routeState.targetTie.x.toFixed(3) + ',' + routeState.targetTie.y.toFixed(3) + ',' + routeState.targetTie.kind
+      : null;
+    var targetChanged = (routeState.targetPad || null) !== (end.pad || null) || tieKey !== curTieKey;
     if (targetChanged) {
       if (routeState.targetRing) routeState.targetRing.remove();
       routeState.targetRing = end.pad ? padRing(end.pad, 'route-pad-target') : null;
+      if (!routeState.targetRing && end.tie) {
+        // a small green mark on the tie-in point itself
+        var tieRing = document.createElementNS(SVGNSL, 'circle');
+        tieRing.setAttribute('class', 'route-pad-target');
+        tieRing.setAttribute('cx', end.tie.x.toFixed(3));
+        tieRing.setAttribute('cy', end.tie.y.toFixed(3));
+        tieRing.setAttribute('r', '0.32');
+        routeState.targetRing = tieRing;
+      }
       if (routeState.targetRing) routeUiGroup().appendChild(routeState.targetRing);
       routeState.targetPad = end.pad || null;
+      routeState.targetTie = end.tie || null;
       refreshRatsnest();
     }
   }
@@ -3988,11 +4087,17 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       vias: routeState.vias.map(function (vv) {
         return { x: +vv.x.toFixed(3), y: +(-vv.y).toFixed(3) };
       }),
-      from: { ref: routeState.startPad.ref, pin: String(routeState.startPad.pin) },
+      // a trace/via start has no manifest pad — the point itself is the source
+      from: routeState.startPad
+        ? { ref: routeState.startPad.ref, pin: String(routeState.startPad.pin) }
+        : { ref: '(trace)', pin: '' },
       to: routeState.targetPad ? { ref: routeState.targetPad.ref, pin: String(routeState.targetPad.pin) } : null,
     });
+    var startName = routeState.startPad
+      ? routeState.startPad.ref + '.' + routeState.startPad.pin
+      : routeState.startLbl || '(trace)';
     var msg =
-      'track placed: ' + (routeState.net ? routeState.net : 'no net') + ' ' + routeState.startPad.ref + '.' + routeState.startPad.pin +
+      'track placed: ' + (routeState.net ? routeState.net : 'no net') + ' ' + startName +
       (routeState.targetPad ? ' \u2192 ' + routeState.targetPad.ref + '.' + routeState.targetPad.pin : '') +
       ' (' + routeState.pieces.reduce(function (n, p3) { return n + Math.max(0, p3.points.length - 1); }, 0) + ' segments' +
       (routeState.vias.length ? ', ' + routeState.vias.length + ' via' + (routeState.vias.length > 1 ? 's' : '') : '') + ')';
@@ -4006,12 +4111,16 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     'pointerdown',
     function (ev) {
       if (!routeState || ev.button !== 0) return;
-      ev.stopPropagation();
+      // IMMEDIATE: the segment/via selector is also a capture listener on
+      // this same svg — plain stopPropagation leaves same-node listeners
+      // running, and by then routeState is null so it would select the
+      // trace under the commit click
+      ev.stopImmediatePropagation();
       ev.preventDefault();
       var g = gerberAt(ev.clientX, ev.clientY);
       routeFollow(g.x, g.y);
       // a click while snapped to a pad finalizes the displayed trail
-      if (routeState.targetPad) routeCommit();
+      if (routeState.targetPad || routeState.targetTie) routeCommit();
       else {
         var end2 = routeEndpoint(g.x, g.y);
         end2.mx = g.x;
@@ -4354,6 +4463,15 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
           segHiSync();
           viaSel.clear();
           viaSel.add(via);
+          // a via press also arms the route start at the barrel center
+          var vstart = viaInkPos(via);
+          setTraceHighlight({
+            gx: vstart.x,
+            gy: vstart.y,
+            net: via.getAttribute('data-net'),
+            kind: 'via',
+            layerGroup: via.closest("g[data-kind='copper']"),
+          });
         }
         viaHiSync();
         return;
@@ -4366,6 +4484,23 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       } else {
         segSel.clear();
         segSel.add(t);
+        // a trace press arms the route start at the projected point ON the
+        // segment — a branch leaves the copper perfectly centered
+        var gs = gerberAt(ev.clientX, ev.clientY);
+        var lx1 = parseFloat(t.getAttribute('x1')), ly1 = parseFloat(t.getAttribute('y1'));
+        var lx2 = parseFloat(t.getAttribute('x2')), ly2 = parseFloat(t.getAttribute('y2'));
+        var lex = lx2 - lx1, ley = ly2 - ly1;
+        var ll2 = lex * lex + ley * ley;
+        var lt = ll2 < 1e-9 ? 0 : ((gs.x - lx1) * lex + (gs.y - ly1) * ley) / ll2;
+        if (lt < 0) lt = 0;
+        if (lt > 1) lt = 1;
+        setTraceHighlight({
+          gx: lx1 + lex * lt,
+          gy: ly1 + ley * lt,
+          net: t.getAttribute('data-net'),
+          kind: 'trace',
+          layerGroup: t.closest("g[data-kind='copper']"),
+        });
       }
       segHiSync();
       if (statusEl && !statusLocked()) {
@@ -5299,7 +5434,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         viaHiSync();
         return;
       }
-      if (padHi) clearPadHighlight();
+      clearPadHighlight(); // clears the pad OR trace tie-in highlight
       // layout mode: unselect everything (parts and any grabbed text)
       if (
         document.body.classList.contains('typecad-layout') &&

@@ -3644,10 +3644,14 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       targetTie: null,
       targetRing: null,
       pieces: [],
+      path: null, // created below — null until then (routeCancel guards)
       vias: [], // {x, y} gerber, where a layer switch happened
       lastPts: [],
       clearState: 'ok',
     };
+    // anything below throwing must not wedge the router (a stuck
+    // routeState kills every trace click and X): unwind on throw
+    try {
     var piece = newPiece(lg);
     piece.points.push({ x: c.x, y: c.y });
     routeState.pieces.push(piece);
@@ -3664,15 +3668,26 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         'routing ' + (startNet ? startNet : 'no net') + ' (' + routeState.w + 'mm) from ' + startLbl +
         ' \u2014 click to anchor, V via, Esc cancels';
     clearPadHighlight();
+    } catch (e) {
+      // a half-built route is worse than none — tear it down and report
+      routeCancel();
+      if (statusEl && !statusLocked()) statusEl.textContent = 'route start failed — click again';
+    }
   }
   function curPiece() {
     return routeState.pieces[routeState.pieces.length - 1];
   }
   function routeCancel() {
     if (!routeState) return;
-    routeState.path.remove();
-    for (var pi = 0; pi < routeState.pieces.length; pi++) routeState.pieces[pi].anchoredEl.remove();
-    if (routeState.targetRing) routeState.targetRing.remove();
+    var rs = routeState;
+    // cleared FIRST: any throw in the cleanup below must never wedge the
+    // router (a stuck routeState kills every trace click AND X — the
+    // segment handler's first guard — and a throwing routeCancel made
+    // Escape unable to recover it)
+    routeState = null;
+    if (rs.path) rs.path.remove();
+    for (var pi = 0; pi < rs.pieces.length; pi++) if (rs.pieces[pi].anchoredEl) rs.pieces[pi].anchoredEl.remove();
+    if (rs.targetRing) rs.targetRing.remove();
     // the blue in-route via markers must go too — committed copies carry
     // the real ink; leaving these read as a stuck highlight on every via
     routeUiGroup().querySelectorAll('.route-via').forEach(function (v) {

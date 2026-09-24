@@ -6134,6 +6134,17 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   #layout-keys .chip::before { content: ''; display: inline-block; width: 16px; height: 0; flex: none; }
   #layout-keys .chip-dashed::before { border-top: 2px dashed currentColor; }
   #layout-keys .chip-solid::before { border-top: 2px solid currentColor; }
+  /* the candy-cane mark: a base stroke with white band breaks, like the
+     autorouter stripe overlay renders on the board */
+  #layout-keys .chip-striped {
+    position: relative;
+  }
+  #layout-keys .chip-striped::before { border-top: 2px solid currentColor; }
+  #layout-keys .chip-striped::after {
+    content: ''; position: absolute; left: 0; top: 50%; width: 16px; height: 2px;
+    transform: translateY(-50%);
+    background: repeating-linear-gradient(90deg, var(--page, #fff) 0 3px, transparent 3px 6px);
+  }
   #layout-keys .chip-grey::before { border-top: 2px solid rgba(128,128,128,0.35); }
   .layout-text-edit {
     position: fixed; z-index: 40; height: 26px; padding: 2px 8px;
@@ -6323,7 +6334,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       ? `
 <div id="layout-box" style="display:none">
   <div class="side-label">Layout</div>
-  <div id="layout-keys"><span class="chip chip-dashed">TrackBuilder</span><span class="chip chip-solid">autorouted</span><span class="chip chip-grey">ripped up</span></div>
+  <div id="layout-keys"><span class="chip chip-striped">autorouted</span><span class="chip chip-solid">TrackBuilder</span><span class="chip chip-grey">ripped up</span></div>
   <label><input type="checkbox" id="layout-snap" checked> snap 0.5 mm</label>
 
   <div id="layout-tools">

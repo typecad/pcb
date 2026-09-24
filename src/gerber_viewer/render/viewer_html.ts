@@ -2651,7 +2651,21 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         return;
       }
       if (ev.key === 'Delete') {
-        if (segSel.size) {
+        if (viaSel.size) {
+          ev.preventDefault();
+          var nVia = 0;
+          viaSel.forEach(function (vc) {
+            var bx = parseFloat(vc.getAttribute('cx'));
+            var by = -parseFloat(vc.getAttribute('cy')); // gerber -> board
+            nVia += removeViasAt(bx, by);
+          });
+          viaSel.clear();
+          viaHiSync();
+          refreshRatsnest();
+          renderLayoutMoves();
+          if (statusEl && !statusLocked())
+            statusEl.textContent = nVia + ' via' + (nVia === 1 ? '' : 's') + ' deleted';
+        } else if (segSel.size) {
           ev.preventDefault();
           segDelete();
         }
@@ -2723,8 +2737,16 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     if (!layoutOverlay) return;
     var t = ev.target;
     // part presses are consumed by their own handlers; the probe outlines
-    // carry data-ref too — anything part-ish is not empty space
-    if (t && t.closest && (t.closest('.layout-comp') || t.closest('[data-ref]'))) {
+    // carry data-ref too — anything part-ish is not empty space. Committed
+    // vias are elements as well: a press on one starts no rubber band (the
+    // click-clear would otherwise wipe the via selection it just made)
+    if (
+      t &&
+      t.closest &&
+      (t.closest('.layout-comp') ||
+        t.closest('[data-ref]') ||
+        (t.tagName === 'circle' && t.getAttribute('data-route') === '1'))
+    ) {
       // a probe-outline press over a part body never reaches the part's own
       // handlers — the pad hiding under it still selects through the
       // manifest (a BGA ball owns no DOM hit of its own here)
@@ -2775,6 +2797,10 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     if (!b.active) {
       if (ev.button === 0 && !ev.shiftKey) {
         if (padHi) clearPadHighlight();
+        if (viaSel.size) {
+          viaSel.clear();
+          viaHiSync();
+        }
         if (layoutSel.length || layoutTextSel >= 0) {
         layoutSel = [];
           layoutTextSel = -1;
@@ -3993,6 +4019,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   // track's own geometry — both directions and through junctions (any
   // segment of the same net sharing an endpoint).
   var segSel = new Set(); // hit line elements
+  var viaSel = new Set(); // committed via circles (data-route)
   var segHi = null; // overlay that marks the selection
   function segHiSync() {
     if (segHi) {
@@ -4017,6 +4044,43 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       [parseFloat(h.getAttribute('x1')), parseFloat(h.getAttribute('y1'))],
       [parseFloat(h.getAttribute('x2')), parseFloat(h.getAttribute('y2'))],
     ];
+  }
+  // viaSel visual sync: the selected via circles get a selection ring
+  function viaHiSync() {
+    viewGroups.gerber.querySelectorAll('circle[data-route].route-via-sel').forEach(function (c) {
+      c.classList.remove('route-via-sel');
+    });
+    viaSel.forEach(function (c) {
+      if (!c.parentNode) viaSel.delete(c);
+      else c.classList.add('route-via-sel');
+    });
+    if (statusEl && !statusLocked() && viaSel.size)
+      statusEl.textContent = viaSel.size + ' via' + (viaSel.size > 1 ? 's' : '') + ' selected — Del removes, Esc clears';
+  }
+  // remove every interactive via at a board-frame point: its committed
+  // circles on all copper layers, the owning routedTrack's via entry (so a
+  // subsequent apply regenerates the route without it), and any selection
+  function removeViasAt(bx, by) {
+    var removed = 0;
+    for (var ri = routedTracks.length - 1; ri >= 0; ri--) {
+      var rt = routedTracks[ri];
+      for (var vi = rt.vias.length - 1; vi >= 0; vi--) {
+        var vv = rt.vias[vi];
+        if (Math.hypot(vv.x - bx, vv.y - by) > 0.02) continue;
+        rt.vias.splice(vi, 1);
+        removed++;
+      }
+      // drop the committed ink circles at that point (gerber frame)
+      var stacks = viewGroups.gerber.querySelectorAll('circle[data-route]');
+      for (var si = 0; si < stacks.length; si++) {
+        var sc = stacks[si];
+        if (Math.hypot(parseFloat(sc.getAttribute('cx')) - bx, parseFloat(sc.getAttribute('cy')) + by) > 0.02) continue;
+        viaSel.delete(sc);
+        sc.remove();
+      }
+      if (!rt.pieces.length && !rt.vias.length) routedTracks.splice(ri, 1);
+    }
+    return removed;
   }
   function segShareEnd(a, b, tol) {
     if (tol === undefined) tol = 0.01;
@@ -4065,14 +4129,22 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     // record each deleted segment for the apply bridge (board y-down),
     // tagged with its layer so source deletion can target the right chain
     segSel.forEach(function (h) {
+      var d1x = +parseFloat(h.getAttribute('x1')).toFixed(3),
+        d1y = +(-parseFloat(h.getAttribute('y1'))).toFixed(3), // gerber y-up -> board y-down
+        d2x = +parseFloat(h.getAttribute('x2')).toFixed(3),
+        d2y = +(-parseFloat(h.getAttribute('y2'))).toFixed(3);
       routedDeletes.push({
         net: h.getAttribute('data-net') || null,
-        x1: +parseFloat(h.getAttribute('x1')).toFixed(3),
-        y1: +(-parseFloat(h.getAttribute('y1'))).toFixed(3), // gerber y-up -> board y-down
-        x2: +parseFloat(h.getAttribute('x2')).toFixed(3),
-        y2: +(-parseFloat(h.getAttribute('y2'))).toFixed(3),
+        x1: d1x,
+        y1: d1y,
+        x2: d2x,
+        y2: d2y,
         layer: copperCanon((h.closest('g[data-kind=copper]') || {}).getAttribute ? h.closest('g[data-kind=copper]').getAttribute('data-layer-name') : ''),
       });
+      // a via at EITHER end of a removed segment has lost its trace there —
+      // it goes with the segment
+      removeViasAt(d1x, d1y);
+      removeViasAt(d2x, d2y);
     });
     segSel.forEach(function (h) {
       h.remove();
@@ -4160,24 +4232,55 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     renderLayoutMoves();
     if (statusEl && !statusLocked()) statusEl.textContent = removedSegs + ' segment' + (removedSegs > 1 ? 's' : '') + ' deleted';
   }
-  // click a segment hit line: select exactly that segment (shift adds)
+  // click a segment hit line: select exactly that segment (shift adds);
+  // click a committed via: select it the same way — the via owns its own
+  // point even where a hit line crosses it
   svg.addEventListener(
     'pointerdown',
     function (ev) {
       if (routeState || ev.button !== 0) return;
       var t = ev.target;
-      if (!t || !t.getAttribute || t.getAttribute('data-seg') !== '1') {
-        // a probe OUTLINE swallows hits across the whole part body — peek
-        // under it so exposed trace ink still selects. Part bodies
-        // (layout-comp) are deliberately NOT peeked under: traces run
-        // under parts everywhere, and the part grab must win there
-        if (t && t.closest && t.closest('.layout-comp')) return;
-        var pk = probeHitTarget(ev, false);
-        if (!pk || !pk.getAttribute || pk.getAttribute('data-seg') !== '1') return;
-        t = pk;
+      // part bodies are deliberately NOT peeked under: traces run under
+      // parts everywhere, and the part grab must win there
+      if (t && t.closest && t.closest('.layout-comp')) return;
+      var via = null;
+      var hitLine = null;
+      var pk = probeHitTarget(ev, false);
+      var scan = pk || t;
+      if (scan && scan.tagName === 'circle' && scan.getAttribute('data-route') === '1') {
+        via = scan;
+      } else if (scan && scan.getAttribute && scan.getAttribute('data-seg') === '1') {
+        var gp2 = gerberAt(ev.clientX, ev.clientY);
+        var cand = viewGroups.gerber.querySelectorAll('circle[data-route]');
+        for (var cv = 0; cv < cand.length; cv++) {
+          if (
+            Math.hypot(parseFloat(cand[cv].getAttribute('cx')) - gp2.x, parseFloat(cand[cv].getAttribute('cy')) - gp2.y) < 0.34
+          ) {
+            via = cand[cv];
+            break;
+          }
+        }
+        if (!via) hitLine = scan;
       }
+      if (!via && !hitLine) return;
       ev.stopPropagation();
       ev.preventDefault();
+      if (hitLine) t = hitLine; // the fallthrough segment logic reads t
+      if (via) {
+        if (ev.shiftKey) {
+          if (viaSel.has(via)) viaSel.delete(via);
+          else viaSel.add(via);
+        } else {
+          segSel.clear();
+          segHiSync();
+          viaSel.clear();
+          viaSel.add(via);
+        }
+        viaHiSync();
+        return;
+      }
+      viaSel.clear();
+      viaHiSync();
       if (ev.shiftKey) {
         if (segSel.has(t)) segSel.delete(t);
         else segSel.add(t);
@@ -5117,6 +5220,11 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         segHiSync();
         return;
       }
+      if (viaSel.size) {
+        viaSel.clear();
+        viaHiSync();
+        return;
+      }
       if (padHi) clearPadHighlight();
       // layout mode: unselect everything (parts and any grabbed text)
       if (
@@ -6010,6 +6118,15 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   }
   #route-ui .route-anchored { opacity: 0.9; }
   #route-ui .route-via { fill: #4fc1ff; fill-opacity: 0.35; stroke: #4fc1ff; stroke-width: 0.1; }
+  /* committed interactive vias: selectable like any element — the
+     transparent stroke widens the hit area without changing the look */
+  circle[data-route] { cursor: pointer; stroke: transparent; stroke-width: 0.26; pointer-events: all; }
+  circle[data-route].route-via-sel {
+    stroke: #4fc1ff;
+    stroke-width: 2px;
+    vector-effect: non-scaling-stroke;
+    fill-opacity: 0.55;
+  }
   .route-sel line { stroke: #4fc1ff; stroke-width: 2px; vector-effect: non-scaling-stroke; stroke-linecap: round; }
   .route-pad-hi { pointer-events: none; }
   .route-pad-hi .pad-hi-box {

@@ -4549,12 +4549,14 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         // pad-snap radius of a segment END, that end wins (the same
         // magnetic snap finishing uses); otherwise the projected point
         var gs = gerberAt(ev.clientX, ev.clientY);
-        var armEnd = nearestTraceEnd(gs);
         var lx1 = parseFloat(t.getAttribute('x1')), ly1 = parseFloat(t.getAttribute('y1'));
         var lx2 = parseFloat(t.getAttribute('x2')), ly2 = parseFloat(t.getAttribute('y2'));
-        // armEnd carries gx/gy (nearestTraceEnd's shape), snapOnSegment x/y —
-        // normalize so the arming below always reads x/y
-        var ls = armEnd ? { x: armEnd.gx, y: armEnd.gy } : snapOnSegment(gs.x, gs.y, lx1, ly1, lx2, ly2);
+        // ON-trace presses are already precise — only the cap radius (0.3mm
+        // inside snapOnSegment) prefers an endpoint, so mid-trace intent wins.
+        // The big 1.2mm magnetic radius lives in the EMPTY-SPACE branch
+        // (box-select), where finding a dangling tip without the line to
+        // aim at is the actual problem it solves
+        var ls = snapOnSegment(gs.x, gs.y, lx1, ly1, lx2, ly2);
         setTraceHighlight({
           gx: ls.x,
           gy: ls.y,

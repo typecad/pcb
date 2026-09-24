@@ -3660,6 +3660,12 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     routeState.path.setAttribute('stroke-width', String(routeState.w));
     routeState.path.setAttribute('fill', 'none');
     routeState.path.setAttribute('stroke-linecap', 'round');
+    // visible FROM THE START: the stroke normally arrives with the first
+    // routeFollow, and until the mouse moves the path has no geometry — an
+    // armed-but-invisible route silently swallowed every click (each one
+    // anchored nothing) and X correctly refused to start another
+    routeState.path.setAttribute('stroke', piece.inkColor);
+    routeState.path.setAttribute('d', 'M ' + c.x.toFixed(3) + ' ' + c.y.toFixed(3) + ' L ' + c.x.toFixed(3) + ' ' + c.y.toFixed(3));
     routeUiGroup().appendChild(routeState.path);
     raisePadLabels();
     refreshRatsnest();

@@ -5296,10 +5296,18 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       // peek may surface bare geometry (fill raster, background): the
       // outline that received the click still names the component
       if (!el && ev.target && ev.target.closest) el = ev.target.closest('[data-net],[data-ref]');
+      // pour regions are BACKGROUND copper: most of the board is pour, so a
+      // click there starting a full net dim reads as the whole board stuck
+      // subdued (and it dims fresh netless traces). Treat a pour click as
+      // empty space — it clears any highlight instead of starting one
+      if (el && el.getAttribute('fill-rule')) el = null;
+      // netless ink (N/C) carries no net to highlight either — clicking it
+      // should clear, not silently keep an old dim alive
+      if (el && !el.getAttribute('data-ref') && (!el.getAttribute('data-net') || el.getAttribute('data-net') === 'N/C')) el = null;
       if (el) {
         var net = el.getAttribute('data-net');
         var ref = el.getAttribute('data-ref');
-        if (net && highlightNet('data-net', net)) {
+        if (net && net !== 'N/C' && highlightNet('data-net', net)) {
           if (!statusLocked()) statusEl.textContent = 'net ' + net + ' — Esc or click empty space to clear';
         } else if (ref && highlightNet('data-ref', ref)) {
           if (!statusLocked()) statusEl.textContent = ref + ' — Esc or click empty space to clear';

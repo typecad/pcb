@@ -1,0 +1,8 @@
+G04 aperture macro fixture: thermal-like donut pad*
+%FSLAX36Y36*%
+%MOMM*%
+%AMDONUTVAR*$1=$1+$2*1,1,$1,0,0*1,0,$2,0,0*%
+%ADD14DONUTVAR,2.4X1.0*%
+D14*
+X1000000Y1000000D03*
+M02*

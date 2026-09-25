@@ -1,0 +1,19 @@
+# JLCPCB cache files
+.jlcpcb-cache-timestamp
+jlcpcb-components-basic-preferred.csv
+
+# Log files
+.logs/
+*.log
+
+# Test files
+**/*.test.ts
+**/*.test.js
+**/__tests__/
+
+# Development files
+.kiro/
+tsconfig.json
+jest.config.js
+.eslintrc.js
+.prettierrc

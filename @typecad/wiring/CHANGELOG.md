@@ -1,0 +1,25 @@
+# @typecad/wiring
+
+## 0.2.0-alpha.1
+
+### Minor Changes
+
+- **@typecad/wiring is now a built package with a CLI.** The source moved from the package root to `src/` and now compiles to `dist/` with `tsc`; `main`/`types`/`exports` point at `dist`, matching the other compiled `@typecad` packages. Importing `@typecad/wiring` inside a typeCAD project (via `typecad-pcb build`) continues to work unchanged.
+  
+  New `typecad-wiring` binary: load a TypeScript or JavaScript entry file that default-exports a `Wiring` instance and generate the Graphviz DOT diagram — plus an optional BOM — without a typeCAD project. TypeScript entries are loaded through the bundled `tsx` dependency, so no extra tooling is needed. Supports `--out`, `--bom [<file>]`, `--json`, `--help`, `--version`.
+  
+  Dead and redundant code removed: the no-op `color` option on `Cable`/`Connector` constructors, the write-only `Connector.striped` option, the ignored `image.height` option, and the unused `Pin.setSide()` method. Diagram edges are no longer emitted twice per connection, and the Graphviz generator's error handling was consolidated into its two public entry points. Diagram layout is now deterministic: the DOT output uses a digraph with `dir=none` and placement-driven edge direction, forcing the left-connectors / cables / right-connectors column layout and anchoring each wire to the cable port matching its connector's side (previously the layout could mirror, with wires wrapping around cable blocks, and pins shared between cables could attach to the wrong port). File-generation no longer prints per-file log lines — the CLI's summary is the single output.
+  
+  New capabilities: connector pin rows show WireViz-style cross-reference labels naming the far-end pins each pin connects to; `net()` accepts pin arrays on either side to create multi-endpoint taps/splices rendered as one fanning wire; wire and striped colors are validated against X11 color names (hex also accepted) with a clear error on typos; BOM CSV fields are properly quoted/escaped (commas and quotes no longer corrupt rows) and `bom(file, { grouped: true })` (or `--bom=grouped`) aggregates line items by MPN with summed quantities and combined designators. New CLI commands and flags: `typecad-wiring init [path]` scaffolds a starter entry file, `typecad-wiring validate [entry]` checks the harness without generating files, `--strict` validates before generating, and `--watch` regenerates on entry-file changes.
+  
+  Further additions: a wire cut list generator (`cutlist(file)` / `--cutlist`) producing a manufacturing-ready CSV of every wire run with name, color, gauge, length and from/to pins; `--format svg|png|pdf` renders the diagram through the Graphviz `dot` executable; design-rule checks via `Wiring.drc()` reporting unused pins, duplicate wires and shorts (shown by `validate` and enforced by `--strict`); nets can be named (`net({ name: 'SDA', ... })`) and the name is shown in the diagram's wire center cell and the cut list; multi-page diagrams via a `page` option on connectors and cables, writing one DOT file per page with suffixes and rejecting cross-page references; `typecad-wiring bom [entry]` regenerates just the BOM; and an injectable logger (`setLogger`) plus `--quiet` / the `TYPECAD_WIRING_QUIET` environment variable silence the library's progress output. Added a vitest test suite covering diagram generation, shield deduplication, BOM and cut list output, CLI argument parsing, color validation, multi-pin nets, strict mode, DRC, pages and logging.
+
+### Patch Changes
+
+- Relicensed from CC BY-NC-ND to Apache-2.0 (matching the rest of the @typecad packages). Applies from this release forward; previously published versions remain under the terms they were released under.
+
+## 0.1.2-alpha.0
+
+### Patch Changes
+
+- Updated chalk dependency to 6.

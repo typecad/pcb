@@ -1,0 +1,22 @@
+M48
+FMAT,2
+METRIC,TZ
+; typeCAD gerber-viewer fixture: holes + one routed slot
+T1C0.600000
+T2C1.000000
+%
+G90
+G05
+T1
+X10.0Y10.0
+X20.0Y10.0
+T2
+X30.0Y20.0
+T1
+G00X5.0Y5.0
+M15
+G01X5.0Y8.0
+M16
+G05
+T0
+M30

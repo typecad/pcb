@@ -126,6 +126,8 @@ export interface ViewerBuildOptions {
   drcReportPath?: string;
   /** board stackup (<board>_stackup.json) path — feeds the thermal model's geometry. */
   stackupPath?: string;
+  /** board rules (<board>_rules.json) path — the layout view's trace-width floor. */
+  rulesPath?: string;
 }
 
 /** Parse a KiCad netlist into a "REF.pin" -> net map (N/C pads excluded). */
@@ -312,6 +314,17 @@ export function buildViewerFromFiles(paths: string[], options: ViewerBuildOption
       stackup = JSON.parse(fs.readFileSync(stackupSource, 'utf8')) as NonNullable<ViewerOptions['stackup']>;
     } catch {
       warnings.push(`could not parse ${path.basename(stackupSource)} — the thermal view falls back to 35 µm/1.6 mm defaults`);
+    }
+  }
+  // board rules (build/<board>_rules.json): the min trace width the layout
+  // view's width control floors at. Optional — no file, no floor.
+  let rules: ViewerOptions['rules'] = null;
+  if (options.rulesPath && fs.existsSync(options.rulesPath)) {
+    try {
+      const parsed = JSON.parse(fs.readFileSync(options.rulesPath, 'utf8')) as NonNullable<ViewerOptions['rules']>;
+      if (parsed && typeof parsed === 'object' && ((parsed.minTrackWidthMm ?? 0) > 0 || parsed.netClasses)) rules = parsed;
+    } catch {
+      warnings.push(`could not parse ${path.basename(options.rulesPath)} — the width control runs without a floor`);
     }
   }
   // pad labels ride the same way (build/<board>_pads.json): pin numbers +
@@ -535,6 +548,7 @@ export function buildViewerFromFiles(paths: string[], options: ViewerBuildOption
     schematicSvg,
     netOp,
     stackup,
+    rules,
     routes,
     padLabels,
     layoutComponents,

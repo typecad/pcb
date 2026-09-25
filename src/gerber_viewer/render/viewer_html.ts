@@ -34,6 +34,19 @@ export interface ViewerOptions {
    */
   stackup?: StackupInfo | null;
   /**
+   * board design rules (build/<board>_rules.json, from the .kicad_pro):
+   * the layout view's trace-width floor — width stepping refuses to go
+   * below it and the readout warns. Absent = no floor check.
+   */
+  rules?: {
+    minTrackWidthMm?: number;
+    minViaDiameterMm?: number;
+    minClearanceMm?: number;
+    minCopperEdgeClearanceMm?: number;
+    netClasses?: Record<string, { width?: number; viaSize?: number; viaDrill?: number }>;
+    netClassPatterns?: Array<{ pattern: string; class: string }>;
+  } | null;
+  /**
    * per-net route provenance (build/<board>_routes.json): which nets a
    * TrackBuilder hand-built vs the autorouter routed — the Layout view's
    * trace indication. Absent = every trace reads as autorouted.
@@ -239,6 +252,27 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     var rawStk = JSON.parse(document.getElementById('stackup').textContent);
     if (rawStk && rawStk.copperThicknessMm && rawStk.copperThicknessMm.length) stackup = rawStk;
   } catch (e) {}
+  // board design rules island (build/<board>_rules.json): the trace-width
+  // floor for the layout view's width control. Absent in plain renders
+  var rules = null;
+  try {
+    var rawRules = JSON.parse(document.getElementById('rules').textContent);
+    if (rawRules && (rawRules.minTrackWidthMm > 0 || rawRules.netClasses)) rules = rawRules;
+  } catch (e) {}
+  // the net's class (first regex pattern that matches its name) — the class
+  // carries width/via defaults that outrank the copper heuristics
+  function netClassFor(net) {
+    if (!rules || !net || !rules.netClasses || !rules.netClassPatterns) return null;
+    for (var i = 0; i < rules.netClassPatterns.length; i++) {
+      var p = rules.netClassPatterns[i];
+      var def = rules.netClasses[p.class];
+      if (!def) continue;
+      try {
+        if (new RegExp(p.pattern, 'i').test(net)) return def;
+      } catch (e) {}
+    }
+    return null;
+  }
   // route provenance + layout overlay components (both optional islands)
   var routesProv = null;
   try {
@@ -2617,6 +2651,11 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       // typing belongs to an open editor, never to the canvas
       if (ev.target && (ev.target.tagName === 'INPUT' || ev.target.tagName === 'TEXTAREA' || ev.target.isContentEditable))
         return;
+      if (ev.key === 'Escape' && widthPop.classList.contains('open')) {
+        ev.preventDefault();
+        widthPop.classList.remove('open');
+        return;
+      }
       if (ev.key === 'r' || ev.key === 'R') {
         ev.preventDefault();
         layoutRotateSelection();
@@ -2628,10 +2667,75 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         return;
       }
       if (ev.key === 'v' || ev.key === 'V') {
-        if (routeState) {
-          ev.preventDefault();
-          routeVia();
+        ev.preventDefault();
+        // Shift (the shifted key cap) cycles the via's far layer; plain V places
+        if (ev.shiftKey) cycleViaTarget();
+        else if (routeState) routeVia();
+        return;
+      }
+      if (ev.key === '[' || ev.key === ']' || ev.key === '{' || ev.key === '}') {
+        ev.preventDefault();
+        // Shift (the unshifted key cap with Shift: '{' '}') sizes the VIA;
+        // the plain key sizes the trace
+        if (ev.shiftKey) stepViaSize(ev.key === '}' || ev.key === ']' ? 1 : -1, ev.altKey);
+        else stepWidth(ev.key === ']' ? 1 : -1, ev.altKey);
+        return;
+      }
+      if (ev.key === '\\' || ev.key === '|') {
+        ev.preventDefault();
+        // back to the net default: the pending override clears; a live route
+        // re-derives from memory/heuristics. Shift (the '|' key cap) does the
+        // via — which re-couples it to the trace width
+        if (ev.shiftKey) {
+          if (routeState) {
+            routeState.via = viaForWidth(routeState.w);
+            routeState.viaCoupled = true;
+            var rvr = (routeState.via.size / 2).toFixed(3);
+            routeUiGroup().querySelectorAll('.route-via').forEach(function (v) {
+              v.setAttribute('r', rvr);
+            });
+            viaStatus();
+          } else {
+            pendingViaOverride = 0;
+            if (statusEl && !statusLocked())
+              statusEl.textContent = 'via \u2014 the next route tracks the trace width';
+          }
+          widthChipSync();
+          widthControlSync();
+        } else if (routeState) {
+          setRouteWidth(routeWidth(routeState.net, curPiece() ? curPiece().layerGroup : null), false);
+        } else {
+          pendingWidthOverride = 0;
+          if (statusEl && !statusLocked())
+            statusEl.textContent = 'width \u2014 the next route uses its net\u2019s default';
+          widthChipSync();
+          widthControlSync();
         }
+        return;
+      }
+      if (ev.key === 'w' || ev.key === 'W') {
+        ev.preventDefault();
+        widthPopToggle();
+        return;
+      }
+      if (ev.key === 'p' || ev.key === 'P') {
+        ev.preventDefault();
+        powerWidth();
+        return;
+      }
+      if (ev.key === 'i' || ev.key === 'I') {
+        ev.preventDefault();
+        eyedropWidth();
+        return;
+      }
+      if (ev.key === 'z' || ev.key === 'Z') {
+        ev.preventDefault();
+        impedanceWidth();
+        return;
+      }
+      if (ev.key === '?') {
+        ev.preventDefault();
+        helpToggle();
         return;
       }
       if (ev.key === 'Backspace') {
@@ -2952,7 +3056,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   }
   // a ratsnest wire: a gentle bezier — perpendicular bulge, alternating side
   // so bundled wires fan apart, deterministic so re-renders don't dance
-  function ratsWire(a, b, idx) {
+  function ratsWire(a, b, idx, net) {
     var dx = b.x - a.x;
     var dy = b.y - a.y;
     var len = Math.hypot(dx, dy) || 1;
@@ -2979,6 +3083,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         ' ' +
         b.y.toFixed(3),
     );
+    if (net) p.setAttribute('data-net', net);
     return p;
   }
   // is a pad an endpoint of any committed interactive track of its net?
@@ -3133,7 +3238,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
             }
           }
         }
-        rats.appendChild(ratsWire(sCur, sBest, wireIdx++));
+        rats.appendChild(ratsWire(sCur, sBest, wireIdx++, un));
       }
       var remaining = pts.slice();
       var cur = remaining.shift();
@@ -3150,7 +3255,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
           }
         }
         var nxt = remaining.splice(bi, 1)[0];
-        rats.appendChild(ratsWire(cur, nxt, wireIdx++));
+        rats.appendChild(ratsWire(cur, nxt, wireIdx++, un));
         cur = nxt;
       }
     }
@@ -3190,7 +3295,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
             best = anchors[an];
           }
         }
-        rats.appendChild(ratsWire(pp, best, wireIdx++));
+        rats.appendChild(ratsWire(pp, best, wireIdx++, un));
       }
     }
     // ripped applied routes re-wire their endpoints at the parts' CURRENT
@@ -3295,6 +3400,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     renderLayoutMoves();
     refreshLayoutWarnings();
     refreshRatsnest();
+    widthControlSync();
   }
   function exitLayout() {
     clearLayoutGhost();
@@ -3315,6 +3421,8 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     // the pending moves' stranded wires (unrouted-net chains stay — those
     // describe the board, not a move)
     refreshRatsnest();
+    widthControlSync();
+    widthPop.classList.remove('open');
   }
 
   // first open: unrouted nets show their wires immediately — gerber view,
@@ -3363,7 +3471,38 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   var routeUi = null;
   var routedTracks = []; // committed this session: {net, w, pieces, vias} (board frame)
   var routedDeletes = []; // deleted segments pending apply: {net, x1, y1, x2, y2} (board frame)
-  var CLEARANCE = 0.2; // mm, trace-to-foreign-copper
+  var CLEARANCE = 0.2; // mm, trace-to-foreign-copper when the rules island carries none
+  // the live check and the keep-out halo share ONE clearance number: the
+  // board's rule when the island carried it, this default otherwise
+  function clearanceRule() {
+    return rules && rules.minClearanceMm > 0 ? rules.minClearanceMm : CLEARANCE;
+  }
+  // ---- board-edge keep-out: the Edge_Cuts layer's extent is the board.
+  // Inside it, a sample owes the copper-to-edge clearance to the nearest
+  // bbox wall (rectangular boards: exact); outside it, red immediately.
+  var edgeBoxCache = null;
+  function boardEdgeBox() {
+    if (edgeBoxCache !== null) return edgeBoxCache;
+    edgeBoxCache = false; // no outline layer / degenerate: no edge check
+    var g = viewGroups.gerber ? viewGroups.gerber.querySelector('g[data-kind="edge"]') : null;
+    if (!g || !g.getBBox) return edgeBoxCache;
+    try {
+      var bb = g.getBBox();
+      if (bb && bb.width > 1 && bb.height > 1) edgeBoxCache = { x0: bb.x, y0: bb.y, x1: bb.x + bb.width, y1: bb.y + bb.height };
+    } catch (e) {}
+    return edgeBoxCache;
+  }
+  function edgeClearanceRule() {
+    return rules && rules.minCopperEdgeClearanceMm > 0 ? rules.minCopperEdgeClearanceMm : 0.3;
+  }
+  /** edge-keepout margin at a point (Infinity when there is no outline) */
+  function edgeMarginAt(px, py) {
+    var b = boardEdgeBox();
+    if (!b) return Infinity;
+    var c = edgeClearanceRule();
+    if (px < b.x0 || px > b.x1 || py < b.y0 || py > b.y1) return -1; // off the board
+    return Math.min(px - b.x0, b.x1 - px, py - b.y0, b.y1 - py) - c;
+  }
   function routeUiGroup() {
     if (routeUi) return routeUi;
     routeUi = document.createElementNS(SVGNSL, 'g');
@@ -3372,6 +3511,46 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     var stack = viewGroups.gerber.querySelector('#yflip') || viewGroups.gerber;
     stack.appendChild(routeUi);
     return routeUi;
+  }
+  // ---- keep-out halo: the DRC clearance envelope around the whole live
+  // route — a translucent band of trace width + 2x clearance under every
+  // pending stroke. Gray while clear, grayish red the moment the clearance
+  // check trips (amber-gray when it is only near the limit) ----
+  function haloWidth(w) {
+    return +(w + 2 * clearanceRule()).toFixed(3);
+  }
+  function makeHalo(w) {
+    var h = document.createElementNS(SVGNSL, 'path');
+    h.setAttribute('class', 'route-halo');
+    h.setAttribute('fill', 'none');
+    h.setAttribute('stroke-width', String(haloWidth(w)));
+    h.setAttribute('stroke-linecap', 'round');
+    h.setAttribute('stroke-linejoin', 'round');
+    return h;
+  }
+  /** set a route path's geometry, keeping its keep-out halo in lockstep */
+  function setRouteD(el, d) {
+    el.setAttribute('d', d);
+    if (el.__halo) el.__halo.setAttribute('d', d);
+  }
+  function haloTint(state) {
+    if (!routeState) return;
+    var cls = 'route-halo' + (state === 'bad' ? ' bad' : '');
+    if (routeState.halo) routeState.halo.setAttribute('class', cls);
+    for (var i = 0; i < routeState.pieces.length; i++)
+      if (routeState.pieces[i].haloEl) routeState.pieces[i].haloEl.setAttribute('class', cls);
+    var vcls = 'route-via-halo' + (state === 'bad' ? ' bad' : '');
+    routeUiGroup().querySelectorAll('.route-via-halo').forEach(function (v) {
+      v.setAttribute('class', vcls);
+    });
+  }
+  /** resize every pending via keep-out ring to the route's current via */
+  function viaHaloSync() {
+    if (!routeState) return;
+    var r = (routeState.via.size / 2 + clearanceRule()).toFixed(3);
+    routeUiGroup().querySelectorAll('.route-via-halo').forEach(function (v) {
+      v.setAttribute('r', r);
+    });
   }
   function copperCanon(name) {
     var l = (name || '').toLowerCase();
@@ -3416,6 +3595,12 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       if (el.classList && (el.classList.contains('pad-labels') || el.classList.contains('route-auto-stripe') || el.id === 'route-ui')) continue;
       var enet = el.getAttribute('data-net');
       if (enet && net && enet === net) continue;
+      // N/C is the plotter's no-connect label, not a net: unconnected pads
+      // and netless route ink are not a foreign NET. The anchor refusal
+      // already treats them that way (crossing warns, DRC adjudicates) —
+      // counting them here blanketed dense boards in permanent red, since
+      // no route can ever be same-net with an N/C pad
+      if (enet === 'N/C') continue;
       // zone-fill regions (fills) are pours: their clearance is the fill
       // engine's job, and same-net pours blanket the whole board area —
       // blocking them here would make every corridor unreachable
@@ -3453,7 +3638,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   // the start pad's extent are the pad we are leaving, not a violation, so
   // they are measured only past the pad's edge.
   function clearanceMargin(obs, pts, w) {
-    var need = w / 2 + CLEARANCE;
+    var need = w / 2 + clearanceRule();
     var worst = Infinity;
     var skipR = routeState && routeState.startPad ? Math.max(routeState.startPad.w, routeState.startPad.h) / 2 : 0;
     for (var s = 1; s < pts.length; s++) {
@@ -3468,6 +3653,9 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
           var sc = padCenter(routeState.startPad);
           if (Math.hypot(px - sc.x, py - sc.y) < skipR) continue;
         }
+        // the board edge keeps its own clearance (off the board = instant red)
+        var em = edgeMarginAt(px, py);
+        if (em < worst) worst = em;
         for (var oi = 0; oi < obs.length; oi++) {
           var o = obs[oi];
           if (px < o.x0 - 3 && px > o.x1 + 3) continue;
@@ -3482,8 +3670,594 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     }
     return worst;
   }
+  // ---- user trace width: stepped with [ and ], remembered per net AND as
+  // the last width used, floored by the board's minimum when the rules
+  // island carried one. Default for a new route: one-shot override (stepped
+  // before pressing X) > this net's last committed width > the last width
+  // committed anywhere > the net's existing copper (median) > power-net
+  // heuristic. One route carries ONE width — changing it mid-route restyles
+  // the whole pending route, matching what the generated source will say ----
+  var WIDTH_LADDER = [0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.5, 0.6, 0.8, 1, 1.5, 2];
+  var widthMemory = { net: {}, last: 0 };
+  try {
+    var savedWidths = JSON.parse(localStorage.getItem(storeKey + ':route-width') || 'null');
+    if (savedWidths && savedWidths.net) {
+      widthMemory = savedWidths;
+      if (typeof widthMemory.last !== 'number') widthMemory.last = 0;
+    }
+  } catch (e) {}
+  function rememberNetWidth(net, w) {
+    widthMemory.net[net || ''] = +w.toFixed(3);
+    widthMemory.last = +w.toFixed(3);
+    try {
+      localStorage.setItem(storeKey + ':route-width', JSON.stringify(widthMemory));
+    } catch (e) {}
+  }
+  function netWidthMemory(net) {
+    var w = widthMemory.net[net || ''];
+    return typeof w === 'number' && w > 0.05 ? w : 0;
+  }
+  function widthFloor() {
+    return rules && rules.minTrackWidthMm > 0 ? rules.minTrackWidthMm : 0;
+  }
+  // via barrel sized off the trace: 0.15 mm annulus per side, never below
+  // the classic 0.6/0.3 default
+  function viaForWidth(w) {
+    var size = Math.max(0.6, +(w + 0.3).toFixed(2));
+    return { size: size, drill: +Math.max(0.3, size - 0.3).toFixed(2) };
+  }
+  // ---- via sizing mirrors trace sizing exactly: its own ladder stepped
+  // with Shift+[ / Shift+] (Alt fine), per-net AND last-used memory, and
+  // the rules island's via-diameter floor. Until a via is ever sized
+  // explicitly, barrels track the trace width — the coupling IS the
+  // default, and Shift+\ goes back to it ----
+  var VIA_LADDER = [0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1, 1.2, 1.5, 2];
+  if (!widthMemory.viaNet) widthMemory.viaNet = {};
+  if (typeof widthMemory.viaLast !== 'number') widthMemory.viaLast = 0;
+  function viaDrillFor(size) {
+    return +Math.max(0.3, +(size - 0.3).toFixed(2)).toFixed(2);
+  }
+  function viaFloor() {
+    return rules && rules.minViaDiameterMm > 0 ? rules.minViaDiameterMm : 0;
+  }
+  function rememberNetVia(net, size) {
+    widthMemory.viaNet[net || ''] = +size.toFixed(2);
+    widthMemory.viaLast = +size.toFixed(2);
+    try {
+      localStorage.setItem(storeKey + ':route-width', JSON.stringify(widthMemory));
+    } catch (e) {}
+  }
+  function viaMemory(net) {
+    var v = widthMemory.viaNet[net || ''];
+    return typeof v === 'number' && v > 0.2 ? v : 0;
+  }
+  var pendingViaOverride = 0; // stepped before a route: owns the next one
+  // ---- Z: controlled-impedance width. The page ports the library's solver
+  // (pcb_impedance.ts) verbatim — Hammerstad microstrip for outer layers,
+  // Cohn symmetric stripline for inner — over the stackup island's real
+  // dielectric heights. Same constants as the build-time answer ----
+  var Z0_TARGET = 50; // ohms, single-ended
+  var FR4_ER = 4.2;
+  function impedanceGeometryFor(canon) {
+    if (!stackup || !stackup.copperThicknessMm || !stackup.copperThicknessMm.length) return null;
+    var coppers = stackup.copperThicknessMm;
+    var n = coppers.length;
+    var names = ['F.Cu'];
+    for (var ni = 1; ni <= n - 2; ni++) names.push('In' + ni + '.Cu');
+    if (n > 1) names.push('B.Cu');
+    var idx = names.indexOf(canon);
+    if (idx === -1) return null;
+    var diels = stackup.dielectrics || [];
+    var t = coppers[idx];
+    if (idx === 0 || idx === n - 1) {
+      var d = diels[idx === 0 ? 0 : diels.length - 1];
+      if (!d || !(d.thicknessMm > 0)) return null;
+      return { model: 'microstrip', t: t, er: FR4_ER, h: d.thicknessMm };
+    }
+    var above = diels[idx - 1], below = diels[idx];
+    if (!above || !below || !(above.thicknessMm > 0) || !(below.thicknessMm > 0)) return null;
+    return { model: 'stripline', t: t, er: FR4_ER, b: above.thicknessMm + t + below.thicknessMm };
+  }
+  function zOfWidth(w, g) {
+    if (g.model === 'microstrip') {
+      var u = Math.max(w, 1e-4) / g.h;
+      var eEff = (g.er + 1) / 2 + (g.er - 1) / 2 / Math.sqrt(1 + 12 / u);
+      return u <= 1
+        ? (60 / Math.sqrt(eEff)) * Math.log(8 / u + u / 4)
+        : (120 * Math.PI) / (Math.sqrt(eEff) * (u + 1.393 + 0.667 * Math.log(u + 1.444)));
+    }
+    var tEff = Math.min(Math.max(g.t, 0), g.b / 4);
+    var wEff = Math.max(w, 1e-4) + (tEff / Math.PI) * (1 + Math.log((2 * g.b) / (Math.PI * tEff)));
+    var u2 = wEff / g.b;
+    return u2 < 0.35 ? (60 / Math.sqrt(g.er)) * Math.log(4 / (Math.PI * u2)) : 94.15 / (Math.sqrt(g.er) * (u2 + 0.441));
+  }
+  function zWidth(target, g) {
+    var lo = 0.02, hi = 10;
+    if (target > zOfWidth(lo, g) || target < zOfWidth(hi, g)) return 0; // unreachable
+    for (var i = 0; i < 60; i++) {
+      var mid = (lo + hi) / 2;
+      if (zOfWidth(mid, g) > target) lo = mid;
+      else hi = mid;
+    }
+    return Math.round(((lo + hi) / 2) * 1000) / 1000;
+  }
+  function impedanceWidth() {
+    if (!routeState) {
+      if (statusEl && !statusLocked())
+        statusEl.textContent = 'press X on a pad first \u2014 Z sizes for ' + Z0_TARGET + ' \u03a9 on that layer';
+      return;
+    }
+    var piece = curPiece();
+    var canon = piece ? piece.canon : 'F.Cu';
+    var g = impedanceGeometryFor(canon);
+    if (!g) {
+      if (statusEl && !statusLocked())
+        statusEl.textContent = 'no stackup heights for ' + canon + ' \u2014 Z needs the stackup island (--stackup)';
+      return;
+    }
+    var w = zWidth(Z0_TARGET, g);
+    if (!w) {
+      if (statusEl && !statusLocked())
+        statusEl.textContent = Z0_TARGET + ' \u03a9 is unreachable on ' + canon + ' with this stackup';
+      return;
+    }
+    w = Math.ceil(w * 20) / 20;
+    var clamped = Math.min(3, w);
+    routeState.impedance = { z0: Z0_TARGET };
+    setRouteWidth(clamped, true);
+    if (statusEl && !statusLocked())
+      statusEl.textContent =
+        Z0_TARGET + ' \u03a9 \u2192 ' + fmtW(clamped) + ' mm on ' + canon +
+        (clamped < w ? ' (clamped from ' + fmtW(w) + ' \u2014 the 3 mm cap)' : '') +
+        (g.model === 'microstrip'
+          ? ' over ' + fmtW(g.h) + ' mm dielectric'
+          : ' between planes ' + fmtW(g.b) + ' mm apart') +
+        ' (Hammerstad/Cohn, Er ' + g.er + ') \u2014 noted in the source';
+  }
+  // ---- P: power-aware width — the IPC-2221 INVERSE of the ΔT view's
+  // math (same constants as the library's powerInfo sizer), driven by the
+  // net's solved current from the operating point island ----
+  var POWER_DT = 10; // °C rise target — the library powerInfo default
+  function layerCuUm(canon) {
+    if (!stackup || !stackup.copperThicknessMm || !stackup.copperThicknessMm.length) return 35;
+    var l = stackup.copperThicknessMm, n = l.length;
+    if (canon && canon.indexOf('In') === 0) {
+      var s = 0, c = 0;
+      for (var li = 1; li < n - 1; li++) {
+        s += l[li];
+        c++;
+      }
+      return c ? (s / c) * 1000 : 35;
+    }
+    if (canon === 'B.Cu') return l[n - 1] * 1000;
+    return l[0] * 1000;
+  }
+  function netCurrent(net) {
+    if (!netOp || !netOp.solved || !netOp.branches || !net) return 0;
+    var entries = netOp.branches[String(net).toLowerCase()];
+    if (!entries || !entries.length) return 0;
+    var m = 0;
+    for (var bi = 0; bi < entries.length; bi++)
+      if (Math.abs(entries[bi].i) > m) m = Math.abs(entries[bi].i);
+    return m;
+  }
+  /** width (mm) carrying current i at ΔT target on the layer — the exact
+   *  inverse of dtFromI (IPC-2221, mils, k=0.048 external / 0.024 inner) */
+  function widthForCurrent(i, canon) {
+    if (!(i > 0)) return 0;
+    var tMil = layerCuUm(canon) * (1.378 / 35);
+    var k = canon && canon.indexOf('In') === 0 ? 0.024 : 0.048;
+    var area = Math.pow(i / (k * Math.pow(POWER_DT, 0.44)), 1 / 0.725); // mil²
+    return area / tMil / 39.3701;
+  }
+  function powerWidth() {
+    if (!routeState) {
+      if (statusEl && !statusLocked())
+        statusEl.textContent = 'press X on a pad first \u2014 P sizes for that net\u2019s current';
+      return;
+    }
+    var cur = netCurrent(routeState.net);
+    if (!cur) {
+      if (statusEl && !statusLocked())
+        statusEl.textContent =
+          (routeState.net || 'this net') + ' has no solved current \u2014 run typecad-pcb simulate for power sizing';
+      return;
+    }
+    var piece = curPiece();
+    var w = widthForCurrent(cur, piece ? piece.canon : 'F.Cu');
+    // round UP to 0.05mm so the built trace always clears the solve
+    w = Math.ceil(w * 20) / 20;
+    routeState.power = { current: +cur.toFixed(4), maxTempRise: POWER_DT };
+    setRouteWidth(Math.min(3, w), true);
+    if (statusEl && !statusLocked())
+      statusEl.textContent =
+        (routeState.net || 'no net') + ' ' + cur.toFixed(2) + ' A \u2192 ' + fmtW(w) + ' mm (IPC-2221, \u0394T ' + POWER_DT + '\u00b0C) \u2014 carried into the source as powerInfo';
+  }
+  // ---- I: eyedropper — adopt the width of the trace under the cursor.
+  // The last mouse position (gerber frame) is tracked by the hover below.
+  var lastMouseG = { x: 0, y: 0 };
+  window.addEventListener('mousemove', function (ev) {
+    var g = gerberAt(ev.clientX, ev.clientY);
+    lastMouseG.x = g.x;
+    lastMouseG.y = g.y;
+  });
+  function eyedropWidth() {
+    var segs = allSegHits();
+    var bestD = 0.5; // grab radius, board mm
+    var bestTrack = null;
+    for (var i = 0; i < segs.length; i++) {
+      var x1 = parseFloat(segs[i].getAttribute('x1')), y1 = parseFloat(segs[i].getAttribute('y1'));
+      var x2 = parseFloat(segs[i].getAttribute('x2')), y2 = parseFloat(segs[i].getAttribute('y2'));
+      var qp = snapOnSegment(lastMouseG.x, lastMouseG.y, x1, y1, x2, y2);
+      var d = Math.hypot(qp.x - lastMouseG.x, qp.y - lastMouseG.y);
+      if (d < bestD && segs[i].__track) {
+        bestD = d;
+        bestTrack = segs[i].__track;
+      }
+    }
+    if (!bestTrack) {
+      if (statusEl && !statusLocked()) statusEl.textContent = 'hover a trace first \u2014 I adopts its width';
+      return;
+    }
+    var w = parseFloat(bestTrack.getAttribute('data-w') || '0');
+    if (!(w > 0.05)) {
+      if (statusEl && !statusLocked()) statusEl.textContent = 'that trace carries no width attribute';
+      return;
+    }
+    setRouteWidth(w, true);
+    if (statusEl && !statusLocked())
+      statusEl.textContent = 'width adopted: ' + fmtW(w) + ' mm' + (routeState ? ' \u2014 continues from the next anchor' : ' \u2014 owns the next route');
+  }
+  // ---- ?: the keys cheat-sheet. One overlay, layout/routing grammar ----
+  var helpEl = document.createElement('div');
+  helpEl.id = 'keys-help';
+  helpEl.style.display = 'none';
+  helpEl.innerHTML =
+    '<b>layout</b><br>' +
+    'X \u2014 route from the highlighted pad/trace<br>' +
+    'drag / arrows \u2014 move parts (Alt = 0.1mm) \u00b7 R \u2014 rotate<br>' +
+    'double-click \u2014 jump to source \u00b7 U / Del \u2014 grow / delete segment selection<br>' +
+    '<b>while routing</b><br>' +
+    'click \u2014 anchor \u00b7 double-click / pad \u2014 finish \u00b7 Esc \u2014 cancel \u00b7 Backspace \u2014 undo anchor<br>' +
+    'V \u2014 via (layer switch) \u00b7 Shift+V \u2014 cycle the via\u2019s far layer (blind/buried) \u00b7 [ ] \u2014 trace width (Alt \u00b10.01) \u00b7 \\ \u2014 net default<br>' +
+    'Shift+[ ] \u2014 via size \u00b7 Shift+\\ \u2014 via tracks trace \u00b7 W \u2014 width picker<br>' +
+    'P \u2014 width for the net\u2019s current (IPC-2222) \u00b7 I \u2014 adopt a trace\u2019s width \u00b7 Z \u2014 width for 50 \u03a9 (stackup solve)<br>' +
+    'gray band = keep-out (clearance rule) \u00b7 red = violation';
+  document.body.appendChild(helpEl);
+  function helpToggle() {
+    helpEl.style.display = helpEl.style.display === 'none' ? 'block' : 'none';
+  }
+  helpEl.addEventListener('click', function () {
+    helpEl.style.display = 'none';
+  });
+  /** the via a NEW route on this net carries: override > this net's memory >
+   *  last via used anywhere > track the trace width. 'coupled' false = an
+   *  explicit choice owns it (trace-width changes leave it alone). */
+  function startViaFor(net, traceW) {
+    if (pendingViaOverride) return { size: pendingViaOverride, drill: viaDrillFor(pendingViaOverride), coupled: false };
+    var mem = viaMemory(net);
+    if (mem) return { size: mem, drill: viaDrillFor(mem), coupled: false };
+    // the class's own via (with its drill) is an explicit board setting —
+    // independent, so trace-width changes leave it alone
+    var cls = netClassFor(net);
+    if (cls && cls.viaSize > 0.2) return { size: cls.viaSize, drill: cls.viaDrill > 0.2 ? cls.viaDrill : viaDrillFor(cls.viaSize), coupled: false };
+    if (widthMemory.viaLast > 0.2) return { size: widthMemory.viaLast, drill: viaDrillFor(widthMemory.viaLast), coupled: false };
+    var c = viaForWidth(traceW);
+    return { size: c.size, drill: c.drill, coupled: true };
+  }
+  function stepViaSize(dir, fine) {
+    var cur = routeState
+      ? routeState.via.size
+      : pendingViaOverride || startViaFor(null, pendingWidthOverride || routeWidth(null, null)).size;
+    var next;
+    if (fine) {
+      next = +(cur + dir * 0.01).toFixed(3);
+    } else if (dir > 0) {
+      next = 3;
+      for (var i = 0; i < VIA_LADDER.length; i++)
+        if (VIA_LADDER[i] > cur + 1e-9) {
+          next = VIA_LADDER[i];
+          break;
+        }
+    } else {
+      next = 0.3;
+      for (var j = VIA_LADDER.length - 1; j >= 0; j--)
+        if (VIA_LADDER[j] < cur - 1e-9) {
+          next = VIA_LADDER[j];
+          break;
+        }
+    }
+    if (!fine) {
+      var vf = viaFloor();
+      if (vf && next < vf) next = +vf.toFixed(3); // ladder stepping stops at the via minimum
+    }
+    setViaSize(Math.min(3, Math.max(0.3, +next.toFixed(3))), true);
+  }
+  function setViaSize(size, user) {
+    size = Math.min(3, Math.max(0.3, +size.toFixed(2)));
+    if (routeState) {
+      routeState.via = { size: size, drill: viaDrillFor(size) };
+      routeState.viaCoupled = false;
+      var r2 = (size / 2).toFixed(3);
+      routeUiGroup().querySelectorAll('.route-via').forEach(function (v) {
+        v.setAttribute('r', r2);
+      });
+      viaHaloSync();
+    } else {
+      pendingViaOverride = user ? size : 0;
+    }
+    widthChipSync();
+    viaStatus();
+    widthControlSync();
+  }
+  function viaStatus() {
+    if (!statusEl || statusLocked()) return;
+    var vs = routeState ? routeState.via.size : pendingViaOverride;
+    if (!vs) return;
+    var label = (routeState ? 'via ' : 'next via ') + '\u2300' + fmtW(vs) + ' / drill ' + fmtW(viaDrillFor(vs));
+    var vf = viaFloor();
+    if (vf && vs < vf - 1e-9) label += ' \u2014 below board min \u2300' + fmtW(vf);
+    label += ' \u00b7 Shift+[ ] via size (Alt fine) \u00b7 Shift+\\ tracks trace';
+    statusEl.textContent = label;
+  }
+  var pendingWidthOverride = 0; // stepped before a route: owns the next one
+  function fmtW(w) {
+    return String(+(+w).toFixed(2));
+  }
+  function stepWidth(dir, fine) {
+    var cur = routeState ? routeState.w : pendingWidthOverride || 0.3;
+    var next;
+    if (fine) {
+      // Alt-fine trims by 0.01mm and MAY cross the board minimum — an
+      // explicit trim is intent, the readout warns below it
+      next = +(cur + dir * 0.01).toFixed(3);
+    } else if (dir > 0) {
+      next = 3;
+      for (var i = 0; i < WIDTH_LADDER.length; i++)
+        if (WIDTH_LADDER[i] > cur + 1e-9) {
+          next = WIDTH_LADDER[i];
+          break;
+        }
+    } else {
+      next = 0.05;
+      for (var j = WIDTH_LADDER.length - 1; j >= 0; j--)
+        if (WIDTH_LADDER[j] < cur - 1e-9) {
+          next = WIDTH_LADDER[j];
+          break;
+        }
+    }
+    if (!fine) {
+      // ladder stepping stops AT the board minimum — casual stepping must
+      // not silently violate the project's own rules
+      var floor = widthFloor();
+      if (floor && next < floor) next = +floor.toFixed(3);
+    }
+    setRouteWidth(Math.min(3, Math.max(0.05, +next.toFixed(3))), true);
+  }
+  function setRouteWidth(w, user) {
+    w = Math.min(3, Math.max(0.05, +w.toFixed(3)));
+    if (routeState) {
+      var piece = curPiece();
+      if (piece.points.length >= 2) {
+        // PER-SEGMENT WIDTH: sever here. The pending walk folds into the
+        // current piece at its OLD width (exactly the ink on screen), and a
+        // fresh piece on the SAME layer continues from that point at the
+        // new width — the same boundary shape a via press makes, minus the via
+        routeState.w = w;
+        var end = routeState.lastEnd || routeEndpoint(routeState.sx, routeState.sy);
+        var pts = routeState.lastPts || [{ x: end.x, y: end.y }];
+        for (var pa = 0; pa < pts.length; pa++) {
+          var tailW = piece.points[piece.points.length - 1];
+          if (tailW && Math.hypot(pts[pa].x - tailW.x, pts[pa].y - tailW.y) < 0.005) continue;
+          piece.points.push(pts[pa]);
+        }
+        var dw = 'M ' + piece.points[0].x.toFixed(3) + ' ' + piece.points[0].y.toFixed(3);
+        for (var ai = 1; ai < piece.points.length; ai++)
+          dw += ' L ' + piece.points[ai].x.toFixed(3) + ' ' + piece.points[ai].y.toFixed(3);
+        setRouteD(piece.anchoredEl, dw);
+        var last = piece.points[piece.points.length - 1];
+        var np = newPiece(piece.layerGroup);
+        np.points.push({ x: last.x, y: last.y });
+        setRouteD(np.anchoredEl, 'M ' + last.x.toFixed(3) + ' ' + last.y.toFixed(3));
+        routeState.pieces.push(np);
+        routeState.sx = last.x;
+        routeState.sy = last.y;
+        routeState.lastPts = []; // consumed by the sever
+      } else {
+        // nothing anchored in this piece yet: it restyles in place — a
+        // width adjusted right after starting X owns the whole first run
+        routeState.w = w;
+        piece.w = w;
+        piece.anchoredEl.setAttribute('stroke-width', String(w));
+        if (piece.haloEl) piece.haloEl.setAttribute('stroke-width', String(haloWidth(w)));
+      }
+      routeState.path.setAttribute('stroke-width', String(w));
+      if (routeState.halo) routeState.halo.setAttribute('stroke-width', String(haloWidth(w)));
+      // coupled barrels follow the trace; an explicitly-sized via is
+      // independent and does NOT move with width changes
+      if (routeState.viaCoupled !== false) {
+        routeState.via = viaForWidth(w);
+        routeState.viaCoupled = true;
+        var vr = (routeState.via.size / 2).toFixed(3);
+        routeUiGroup().querySelectorAll('.route-via').forEach(function (v) {
+          v.setAttribute('r', vr);
+        });
+        viaHaloSync();
+      }
+      if (routeState.lastEnd && routeState.lastEnd.mx !== undefined)
+        routeFollow(routeState.lastEnd.mx, routeState.lastEnd.my);
+    } else {
+      pendingWidthOverride = user ? w : 0;
+    }
+    widthChipSync();
+    widthStatus();
+    widthControlSync();
+  }
+  function widthStatus() {
+    if (!statusEl || statusLocked()) return;
+    var w = routeState ? routeState.w : pendingWidthOverride;
+    if (!w) return;
+    var floor = widthFloor();
+    var label = routeState
+      ? 'routing ' + (routeState.net || 'no net') + ' \u2014 ' + fmtW(w) + ' mm'
+      : 'next route \u2014 ' + fmtW(w) + ' mm';
+    if (floor && w < floor - 1e-9) label += ' \u2014 below board min ' + fmtW(floor);
+    label += routeState
+      ? ' \u00b7 [ ] trace \u00b7 Shift+[ ] via \u2300' + fmtW(routeState.via.size) + ' \u00b7 P power \u00b7 \\ defaults (Alt fine)'
+      : ' \u00b7 [ ] trace \u00b7 Shift+[ ] via \u00b7 P power (Alt fine) \u00b7 \\ net default';
+    statusEl.textContent = label;
+  }
+  // width chip riding the cursor while a route is live (HTML, not SVG: it
+  // must neither mirror under the y flip nor scale with zoom)
+  var widthChip = document.createElement('div');
+  widthChip.id = 'route-width-chip';
+  widthChip.style.display = 'none';
+  document.body.appendChild(widthChip);
+  function widthChipSync() {
+    if (!routeState) {
+      widthChip.style.display = 'none';
+      return;
+    }
+    var floor = widthFloor();
+    var below = floor && routeState.w < floor - 1e-9;
+    var vf = viaFloor();
+    var vBelow = vf && routeState.via && routeState.via.size < vf - 1e-9;
+    widthChip.textContent =
+      fmtW(routeState.w) + ' mm' +
+      (routeState.viaCoupled === false ? ' \u00b7 \u2300' + fmtW(routeState.via.size) : '') +
+      (below ? ' \u26a0 min ' + fmtW(floor) : '') +
+      (vBelow ? ' \u26a0 via min ' + fmtW(vf) : '');
+    widthChip.className = below || vBelow ? 'below-min' : '';
+  }
+  // width picker popover: the ladder + exact entry (W or the toolbar button)
+  var widthPop = document.createElement('div');
+  widthPop.id = 'width-pop';
+  var widthLadder = document.createElement('div');
+  widthLadder.className = 'wladder';
+  WIDTH_LADDER.forEach(function (v) {
+    var b = document.createElement('button');
+    b.textContent = fmtW(v);
+    b.addEventListener('click', function () {
+      setRouteWidth(v, true);
+    });
+    widthLadder.appendChild(b);
+  });
+  var widthRow = document.createElement('div');
+  widthRow.className = 'wrow';
+  var widthInp = document.createElement('input');
+  widthInp.type = 'number';
+  widthInp.step = '0.01';
+  widthInp.min = '0.05';
+  widthInp.max = '3';
+  widthInp.title = 'exact width (mm) \u2014 Enter applies';
+  widthInp.setAttribute('aria-label', 'trace width in mm');
+  var widthVia = document.createElement('span');
+  widthRow.appendChild(widthInp);
+  widthRow.appendChild(widthVia);
+  // the via section mirrors it: ladder + exact entry, drill follows the size
+  var viaLadder = document.createElement('div');
+  viaLadder.className = 'wladder';
+  VIA_LADDER.forEach(function (v) {
+    var b = document.createElement('button');
+    b.textContent = fmtW(v);
+    b.addEventListener('click', function () {
+      setViaSize(v, true);
+    });
+    viaLadder.appendChild(b);
+  });
+  var viaRow = document.createElement('div');
+  viaRow.className = 'wrow';
+  var viaInp = document.createElement('input');
+  viaInp.type = 'number';
+  viaInp.step = '0.01';
+  viaInp.min = '0.3';
+  viaInp.max = '3';
+  viaInp.title = 'exact via diameter (mm) \u2014 Enter applies; drill follows';
+  viaInp.setAttribute('aria-label', 'via diameter in mm');
+  var viaDrillLbl = document.createElement('span');
+  viaRow.appendChild(viaInp);
+  viaRow.appendChild(viaDrillLbl);
+  var widthHint = document.createElement('span');
+  widthHint.className = 'whint';
+  widthPop.appendChild(widthLadder);
+  widthPop.appendChild(widthRow);
+  widthPop.appendChild(viaLadder);
+  widthPop.appendChild(viaRow);
+  widthPop.appendChild(widthHint);
+  document.body.appendChild(widthPop);
+  widthInp.addEventListener('keydown', function (e) {
+    e.stopPropagation();
+    if (e.key === 'Enter') {
+      var v = parseFloat(widthInp.value);
+      if (v > 0.05) {
+        setRouteWidth(Math.min(3, v), true);
+        widthInp.blur();
+      }
+    } else if (e.key === 'Escape') {
+      widthPop.classList.remove('open');
+    }
+  });
+  viaInp.addEventListener('keydown', function (e) {
+    e.stopPropagation();
+    if (e.key === 'Enter') {
+      var vv = parseFloat(viaInp.value);
+      if (vv > 0.3) {
+        setViaSize(Math.min(3, vv), true);
+        viaInp.blur();
+      }
+    } else if (e.key === 'Escape') {
+      widthPop.classList.remove('open');
+    }
+  });
+  function widthPopToggle() {
+    widthPop.classList.toggle('open');
+    widthControlSync();
+    if (widthPop.classList.contains('open')) widthInp.focus();
+  }
+  function widthControlSync() {
+    // the width the NEXT route would start at (per-net memory, else the
+    // last width used anywhere, else the heuristic) — the toolbar button
+    // shows it, the popover marks its rung
+    var curW = routeState ? routeState.w : pendingWidthOverride || routeWidth(null, null);
+    var btn = document.getElementById('btn-width');
+    if (btn) {
+      btn.hidden = !document.body.classList.contains('typecad-layout');
+      btn.textContent = fmtW(curW) + ' mm';
+      btn.classList.toggle('armed', !!routeState);
+    }
+    var rungs = widthLadder.querySelectorAll('button');
+    for (var i = 0; i < rungs.length; i++)
+      rungs[i].classList.toggle('cur', Math.abs(parseFloat(rungs[i].textContent) - curW) < 0.005);
+    var curV = routeState ? routeState.via.size : pendingViaOverride || startViaFor(null, curW).size;
+    var vrungs = viaLadder.querySelectorAll('button');
+    for (var r = 0; r < vrungs.length; r++)
+      vrungs[r].classList.toggle('cur', Math.abs(parseFloat(vrungs[r].textContent) - curV) < 0.005);
+    widthVia.textContent = 'trace mm';
+    viaDrillLbl.textContent = 'via \u2300 \u00b7 drill ' + fmtW(viaDrillFor(curV));
+    widthHint.textContent = routeState
+      ? (routeState.net || 'no net') + ' \u00b7 [ ] trace \u00b7 Shift+[ ] via \u00b7 P power \u00b7 Alt\u00b10.01 \u00b7 \\ net default'
+      : 'next route \u00b7 [ ] trace \u00b7 Shift+[ ] via \u00b7 P power sizes for the net\u2019s current \u00b7 Alt\u00b10.01 \u00b7 \\ net default';
+    var floor = widthFloor();
+    if (floor) widthHint.textContent += ' \u00b7 board min ' + fmtW(floor) + ' mm';
+    var vfloor = viaFloor();
+    if (vfloor) widthHint.textContent += ' \u00b7 via min \u2300' + fmtW(vfloor);
+    widthHint.textContent += ' \u00b7 keep-out ' + fmtW(clearanceRule()) + ' mm (halo)';
+    if (widthPop.classList.contains('open')) {
+      if (document.activeElement !== widthInp) widthInp.value = curW;
+      if (document.activeElement !== viaInp) viaInp.value = curV;
+    }
+  }
   // ---- width from the net's own copper, falling back to a power heuristic
   function routeWidth(net, layerGroup) {
+    var mem = netWidthMemory(net);
+    if (mem) return mem;
+    // the net's CLASS default outranks both the last width used anywhere
+    // and the copper heuristics — the board's own intent for this net
+    var cls = netClassFor(net);
+    if (cls && cls.width > 0.05) return cls.width;
+    // no memory for THIS net: the last width committed anywhere carries —
+    // the fan-out session's chosen size follows to the next signal
+    if (widthMemory.last > 0.05) return widthMemory.last;
     if (net && layerGroup) {
       var ws = [];
       var els = layerGroup.querySelectorAll('path[data-w][data-net]');
@@ -3596,6 +4370,8 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   }
   function newPiece(layerGroup) {
     var inkVar = '--ink-' + layerGroup.getAttribute('data-layer-id');
+    var haloEl = makeHalo(routeState.w);
+    routeUiGroup().appendChild(haloEl);
     var anchored = document.createElementNS(SVGNSL, 'path');
     anchored.setAttribute('class', 'route-anchored');
     anchored.setAttribute('stroke', getComputedStyle(layerGroup).fill || '#c87533');
@@ -3603,6 +4379,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     anchored.setAttribute('fill', 'none');
     anchored.setAttribute('stroke-linecap', 'round');
     anchored.setAttribute('stroke-linejoin', 'round');
+    anchored.__halo = haloEl;
     routeUiGroup().appendChild(anchored);
     return {
       canon: copperCanon(layerGroup.getAttribute('data-layer-name')),
@@ -3610,9 +4387,22 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       inkVar: inkVar,
       inkColor: getComputedStyle(layerGroup).fill || '#c87533',
       anchoredEl: anchored,
+      haloEl: haloEl,
+      // the piece's OWN width: a width change mid-route severs the piece,
+      // so every piece carries one width end-to-end
+      w: routeState.w,
       obstacles: buildObstacles(layerGroup, routeState.net),
       points: [],
     };
+  }
+  // brighten the routed net's ratsnest wires so the target reads while
+  // routing (cleared with the route)
+  function ratsHighlight(net) {
+    var prev = document.querySelectorAll('#ratsnest path.rat-hi');
+    for (var i = 0; i < prev.length; i++) prev[i].classList.remove('rat-hi');
+    if (!net) return;
+    var hits = document.querySelectorAll('#ratsnest path[data-net="' + cssEsc(net) + '"]');
+    for (var j = 0; j < hits.length; j++) hits[j].classList.add('rat-hi');
   }
   function routeKey() {
     if (routeState) return;
@@ -3641,11 +4431,19 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       viaSel.clear();
       viaHiSync();
     }
+    // a width/via stepped before X owns this route; the route's commit then
+    // remembers them per net
+    var startW = pendingWidthOverride || routeWidth(startNet, lg);
+    pendingWidthOverride = 0;
+    var startVia = startViaFor(startNet, startW);
+    pendingViaOverride = 0;
     routeState = {
       sx: c.x,
       sy: c.y,
       net: startNet,
-      w: routeWidth(startNet, lg),
+      w: startW,
+      via: startVia,
+      viaCoupled: startVia.coupled,
       startPad: startPad,
       startLbl: startLbl,
       targetPad: null,
@@ -3663,17 +4461,20 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     var piece = newPiece(lg);
     piece.points.push({ x: c.x, y: c.y });
     routeState.pieces.push(piece);
+    routeState.halo = makeHalo(routeState.w);
+    routeUiGroup().appendChild(routeState.halo);
     routeState.path = document.createElementNS(SVGNSL, 'path');
     routeState.path.setAttribute('class', 'route-preview');
     routeState.path.setAttribute('stroke-width', String(routeState.w));
     routeState.path.setAttribute('fill', 'none');
     routeState.path.setAttribute('stroke-linecap', 'round');
+    routeState.path.__halo = routeState.halo;
     // visible FROM THE START: the stroke normally arrives with the first
     // routeFollow, and until the mouse moves the path has no geometry — an
     // armed-but-invisible route silently swallowed every click (each one
     // anchored nothing) and X correctly refused to start another
     routeState.path.setAttribute('stroke', piece.inkColor);
-    routeState.path.setAttribute('d', 'M ' + c.x.toFixed(3) + ' ' + c.y.toFixed(3) + ' L ' + c.x.toFixed(3) + ' ' + c.y.toFixed(3));
+    setRouteD(routeState.path, 'M ' + c.x.toFixed(3) + ' ' + c.y.toFixed(3) + ' L ' + c.x.toFixed(3) + ' ' + c.y.toFixed(3));
     routeUiGroup().appendChild(routeState.path);
     } catch (e) {
       // the route itself failed to build: unwind so the router never wedges
@@ -3686,10 +4487,13 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     // route is live and visible; log and carry on
     try { raisePadLabels(); } catch (e3) {}
     try { refreshRatsnest(); } catch (e4) { try { console.error('refreshRatsnest at route start', e4); window.__rrErr = String((e4 && e4.stack) || e4); } catch (e5) {} }
+    widthChipSync();
+    widthControlSync();
+    ratsHighlight(startNet);
     if (statusEl && !statusLocked())
       statusEl.textContent =
-        'routing ' + (startNet ? startNet : 'no net') + ' (' + routeState.w + 'mm) from ' + startLbl +
-        ' \u2014 click to anchor, V via, Esc cancels';
+        'routing ' + (startNet ? startNet : 'no net') + ' (' + fmtW(routeState.w) + 'mm, via \u2300' + fmtW(routeState.via.size) + ') from ' + startLbl +
+        ' \u2014 click to anchor, [ ] width, Shift+[ ] via, V via, Esc cancels';
     clearPadHighlight();
   }
   function curPiece() {
@@ -3704,22 +4508,45 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     // Escape unable to recover it)
     routeState = null;
     if (rs.path) rs.path.remove();
-    for (var pi = 0; pi < rs.pieces.length; pi++) if (rs.pieces[pi].anchoredEl) rs.pieces[pi].anchoredEl.remove();
+    if (rs.halo) rs.halo.remove();
+    for (var pi = 0; pi < rs.pieces.length; pi++) {
+      if (rs.pieces[pi].anchoredEl) rs.pieces[pi].anchoredEl.remove();
+      if (rs.pieces[pi].haloEl) rs.pieces[pi].haloEl.remove();
+    }
     if (rs.targetRing) rs.targetRing.remove();
     // the blue in-route via markers must go too — committed copies carry
     // the real ink; leaving these read as a stuck highlight on every via
     routeUiGroup().querySelectorAll('.route-via').forEach(function (v) {
       v.remove();
     });
+    routeUiGroup().querySelectorAll('.route-via-halo').forEach(function (v) {
+      v.remove();
+    });
     routeState = null;
     refreshRatsnest();
+    ratsHighlight(null);
+    widthChipSync();
+    widthControlSync();
     if (statusEl && !statusLocked()) statusEl.textContent = 'routing cancelled';
   }
+  // snap reach measured in SCREEN pixels, converted to board mm through the
+  // live zoom (k = px per gerber mm). Zoomed out it clamps to the classic
+  // magnetic feel; zoomed INTO a fine-pitch part the reach shrinks with the
+  // pixels, so the gap between pads becomes aimable — a fixed 1.2mm ball
+  // covered 2-3 pads of a 0.4mm-pitch part in every direction and swallowed
+  // every between-pad target no matter the trace width
+  function padSnapRadius() {
+    return Math.min(1.2, Math.max(0.15, 14 / k));
+  }
+  function tieSnapRadius() {
+    return Math.min(0.8, Math.max(0.1, 10 / k));
+  }
   // snapped endpoint for the mouse position (gerber frame): a pad center
-  // within 1.2mm wins (same-net preferred), else the 0/45/90 ray projection
-  // the nearest point on a segment, with the ENDS preferred when close: a
-  // stub free end is exactly where a continuing trace wants to start or
-  // tie — snapping a hair short of it leaves a visible nub of copper
+  // within the pad-snap radius wins (same-net preferred), else the 0/45/90
+  // ray projection the nearest point on a segment, with the ENDS preferred
+  // when close: a stub free end is exactly where a continuing trace wants
+  // to start or tie — snapping a hair short of it leaves a visible nub of
+  // copper
   // the nearest SEGMENT ENDPOINT within the pad-snap radius: starting at a
   // dangling trace end needs the same magnetic snap finishing has —
   // finding the exact pixel at the tip of a 0.3mm stub is otherwise a
@@ -3727,7 +4554,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   function nearestTraceEnd(g) {
     var segs = allSegHits();
     var best = null;
-    var bestD = 1.2;
+    var bestD = padSnapRadius();
     for (var i = 0; i < segs.length; i++) {
       var ends = [
       [parseFloat(segs[i].getAttribute('x1')), parseFloat(segs[i].getAttribute('y1'))],
@@ -3757,13 +4584,19 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   function routeEndpoint(mx, my) {
     var best = null;
     var tie = null; // {x, y, net, kind} — a trace/via tie-in point
-    var bestScore = 1.2;
+    var padReach = padSnapRadius();
+    var tieReach = tieSnapRadius();
+    // candidates compete on distance; same-net ones get the -0.8 preference.
+    // The reach is a per-kind GATE, not the score floor — with a zoomed-in
+    // reach of, say, 0.3mm, a +0.8 penalty measured against the radius would
+    // disqualify every pad, including the one being finished on
+    var bestScore = Infinity;
     for (var pi = 0; pi < padManifest.length; pi++) {
       var p = padManifest[pi];
       if (p === routeState.startPad) continue;
       var c = padCenter(p);
       var d = Math.hypot(c.x - mx, c.y - my);
-      if (d > 1.2) continue;
+      if (d > padReach) continue;
       var score = routeState.net && p.net === routeState.net ? d : d + 0.8;
       if (score < bestScore) {
         bestScore = score;
@@ -3778,7 +4611,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     for (var vi2 = 0; vi2 < vink.length; vi2++) {
       var vpos = viaInkPos(vink[vi2]);
       var vd = Math.hypot(vpos.x - mx, vpos.y - my);
-      if (vd > 0.8) continue;
+      if (vd > tieReach) continue;
       var vnet = vink[vi2].getAttribute('data-net');
       var vscore = routeState.net && vnet === routeState.net ? vd : vd + 0.8;
       if (vscore < bestScore) {
@@ -3794,7 +4627,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       var qp = snapOnSegment(mx, my, x1, y1, x2, y2);
       var px = qp.x, py = qp.y;
       var td = Math.hypot(px - mx, py - my);
-      if (td > 0.8) continue;
+      if (td > tieReach) continue;
       var tnet = segs[si2].getAttribute('data-net');
       var tscore = routeState.net && tnet === routeState.net ? td : td + 0.8;
       if (tscore < bestScore) {
@@ -3919,14 +4752,13 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     }
     routeState.lastEnd = end;
     routeState.lastPts = pts;
-    routeState.path.setAttribute('d', previewPathD(pts));
-    // clearance tint: ink while clear, amber near the limit, red on violation
+    setRouteD(routeState.path, previewPathD(pts));
+    // clearance tint: ink while clear, red on violation — binary, the whole
+    // route's keep-out halo follows the same state
     var margin = clearanceMargin(piece.obstacles, [{ x: routeState.sx, y: routeState.sy }].concat(pts), routeState.w);
-    routeState.clearState = margin > 0.1 ? 'ok' : margin >= 0 ? 'warn' : 'bad';
-    routeState.path.setAttribute(
-      'stroke',
-      routeState.clearState === 'ok' ? piece.inkColor : routeState.clearState === 'warn' ? '#d29922' : '#f14c4c',
-    );
+    routeState.clearState = margin >= 0 ? 'ok' : 'bad';
+    haloTint(routeState.clearState);
+    routeState.path.setAttribute('stroke', routeState.clearState === 'ok' ? piece.inkColor : '#f14c4c');
     var tieKey = end.tie ? end.tie.x.toFixed(3) + ',' + end.tie.y.toFixed(3) + ',' + end.tie.kind : null;
     var curTieKey = routeState.targetTie
       ? routeState.targetTie.x.toFixed(3) + ',' + routeState.targetTie.y.toFixed(3) + ',' + routeState.targetTie.kind
@@ -3946,7 +4778,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   // and unattributed ink are advisory — DRC's call, not the router's)
   function routeHitsNettedCopper(pts) {
     var piece = curPiece();
-    var need = routeState.w / 2 + CLEARANCE;
+    var need = routeState.w / 2 + clearanceRule();
     var skipR = routeState.startPad ? Math.max(routeState.startPad.w, routeState.startPad.h) / 2 : 0;
     var sc = routeState.startPad ? padCenter(routeState.startPad) : null;
     var seg = [{ x: routeState.sx, y: routeState.sy }].concat(pts || []);
@@ -3993,17 +4825,58 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     var d = 'M ' + piece.points[0].x.toFixed(3) + ' ' + piece.points[0].y.toFixed(3);
     for (var ai = 1; ai < piece.points.length; ai++)
       d += ' L ' + piece.points[ai].x.toFixed(3) + ' ' + piece.points[ai].y.toFixed(3);
-    piece.anchoredEl.setAttribute('d', d);
+    setRouteD(piece.anchoredEl, d);
     routeState.sx = piece.points[piece.points.length - 1].x;
     routeState.sy = piece.points[piece.points.length - 1].y;
     routeState.lastPts = []; // consumed — a stale trail must not re-fold at commit
     if (statusEl && !statusLocked())
       statusEl.textContent = 'anchored \u2014 ' + (routeState.net ? routeState.net : 'no net') + ' continues; V via, Backspace undo, snap a pad or double-click to finish';
   }
+  // ---- via layer cycling: Shift+V advances the far layer through the
+  // stack (blind/buried spans), V places to it. Default stays the classic
+  // F<->B flip until the first Shift+V ----
+  function copperCanonList() {
+    // ordered top→bottom; the stackup island's copperLayers is the truth,
+    // the rendered copper groups the fallback
+    if (stackup && stackup.copperLayers && stackup.copperLayers.length) return stackup.copperLayers;
+    var out = [];
+    var gs = copperGroups();
+    for (var i = 0; i < gs.length; i++) {
+      var c = copperCanon(gs[i].getAttribute('data-layer-name'));
+      if (c) out.push(c);
+    }
+    return out;
+  }
+  function cycleViaTarget() {
+    if (!routeState) {
+      if (statusEl && !statusLocked()) statusEl.textContent = 'routing only \u2014 Shift+V cycles the via\u2019s far layer while a route is live';
+      return;
+    }
+    var piece = curPiece();
+    var layers = copperCanonList();
+    if (layers.length < 3) {
+      if (statusEl && !statusLocked()) statusEl.textContent = 'only ' + layers.length + ' copper layers \u2014 no blind/buried spans to cycle';
+      return;
+    }
+    var cur = piece ? piece.canon : 'F.Cu';
+    var startIdx = Math.max(0, layers.indexOf(routeState.viaTarget || cur));
+    var next = null;
+    for (var s = 1; s <= layers.length; s++) {
+      var cand = layers[(startIdx + s) % layers.length];
+      if (cand !== cur) {
+        next = cand;
+        break;
+      }
+    }
+    if (!next) return;
+    routeState.viaTarget = next;
+    if (statusEl && !statusLocked())
+      statusEl.textContent = 'next via \u2192 ' + next + (next === otherLayerCanon(cur) ? ' (through)' : ' (blind/buried from ' + cur + ')') + ' \u2014 Shift+V cycles, V places';
+  }
   function routeVia() {
     if (!routeState) return;
     // freeze the current walk at its endpoint, drop a via, continue on the
-    // other copper layer from the same point
+    // far layer (cycled target or the classic F<->B flip) from the same point
     var end = routeState.lastEnd || routeEndpoint(routeState.sx, routeState.sy);
     var pts = routeState.lastPts || [{ x: end.x, y: end.y }];
     var piece = curPiece();
@@ -4015,51 +4888,82 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     var d = 'M ' + piece.points[0].x.toFixed(3) + ' ' + piece.points[0].y.toFixed(3);
     for (var ai = 1; ai < piece.points.length; ai++)
       d += ' L ' + piece.points[ai].x.toFixed(3) + ' ' + piece.points[ai].y.toFixed(3);
-    piece.anchoredEl.setAttribute('d', d);
+    setRouteD(piece.anchoredEl, d);
     var vx = pts[pts.length - 1].x;
     var vy = pts[pts.length - 1].y;
-    routeState.vias.push({ x: vx, y: vy });
+    var nextCanon = routeState.viaTarget && routeState.viaTarget !== piece.canon ? routeState.viaTarget : otherLayerCanon(piece.canon);
+    routeState.vias.push({ x: vx, y: vy, from: piece.canon, to: nextCanon });
+    // the barrel's own keep-out ring: via radius + clearance, tinted with
+    // the route's clearance state like the trace halo
+    var vh = document.createElementNS(SVGNSL, 'circle');
+    vh.setAttribute('class', 'route-via-halo');
+    vh.setAttribute('cx', vx.toFixed(3));
+    vh.setAttribute('cy', vy.toFixed(3));
+    vh.setAttribute('r', (routeState.via.size / 2 + clearanceRule()).toFixed(3));
+    routeUiGroup().appendChild(vh);
     var viaEl = document.createElementNS(SVGNSL, 'circle');
     viaEl.setAttribute('class', 'route-via');
     viaEl.setAttribute('cx', vx.toFixed(3));
     viaEl.setAttribute('cy', vy.toFixed(3));
-    viaEl.setAttribute('r', '0.3');
+    viaEl.setAttribute('r', (routeState.via.size / 2).toFixed(3));
     routeUiGroup().appendChild(viaEl);
-    var nextCanon = otherLayerCanon(piece.canon);
     var lg = layerGroupByCanon(nextCanon);
     if (!lg) {
-      if (statusEl && !statusLocked()) statusEl.textContent = 'no other copper layer to via to';
+      if (statusEl && !statusLocked()) statusEl.textContent = 'no copper layer group for ' + nextCanon + ' \u2014 via placed, continuing on ' + piece.canon;
       return;
     }
     var np = newPiece(lg);
     np.points.push({ x: vx, y: vy });
-    np.anchoredEl.setAttribute('d', 'M ' + vx.toFixed(3) + ' ' + vy.toFixed(3));
+    setRouteD(np.anchoredEl, 'M ' + vx.toFixed(3) + ' ' + vy.toFixed(3));
     routeState.pieces.push(np);
     routeState.sx = vx;
     routeState.sy = vy;
     routeState.lastPts = []; // consumed with the via
     routeState.sy = vy;
     routeState.path.setAttribute('stroke', np.inkColor);
-    if (statusEl && !statusLocked()) statusEl.textContent = 'via placed \u2014 continuing on ' + nextCanon;
+    if (statusEl && !statusLocked())
+      statusEl.textContent =
+        'via placed ' + piece.canon + ' \u2192 ' + nextCanon + ' \u2014 continuing on ' + nextCanon + ' (Shift+V cycles the next span)';
   }
   function routeUndoAnchor() {
     if (!routeState) return;
     var piece = curPiece();
     if (piece.points.length <= 1) {
-      // the piece is empty: pop back through the via to the previous layer
+      // the piece is empty: pop back through the boundary — a via (layer
+      // switch) or a width sever (same layer) — to the previous piece
       if (routeState.pieces.length <= 1) {
         if (statusEl && !statusLocked()) statusEl.textContent = 'nothing to undo';
         return;
       }
       routeState.pieces.pop();
       piece.anchoredEl.remove();
+      if (piece.haloEl) piece.haloEl.remove();
       var vp = routeState.vias.pop();
       if (vp) {
         var vias = routeUi.querySelectorAll('.route-via');
         if (vias.length) vias[vias.length - 1].remove();
+        var vhs = routeUi.querySelectorAll('.route-via-halo');
+        if (vhs.length) vhs[vhs.length - 1].remove();
       }
       piece = curPiece();
-      piece.points.pop(); // the via point
+      piece.points.pop(); // the shared boundary point
+      // re-entering a width-severed piece: continuation picks ITS width
+      // back up (preview, halo, and a coupled via all re-derive)
+      if (piece.w && piece.w !== routeState.w) {
+        routeState.w = piece.w;
+        routeState.path.setAttribute('stroke-width', String(piece.w));
+        if (routeState.halo) routeState.halo.setAttribute('stroke-width', String(haloWidth(piece.w)));
+        if (routeState.viaCoupled !== false) {
+          routeState.via = viaForWidth(piece.w);
+          var vr = (routeState.via.size / 2).toFixed(3);
+          routeUiGroup().querySelectorAll('.route-via').forEach(function (v) {
+            v.setAttribute('r', vr);
+          });
+          viaHaloSync();
+        }
+        widthChipSync();
+        widthControlSync();
+      }
     } else {
       piece.points.pop();
     }
@@ -4070,7 +4974,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     var d = 'M ' + piece.points[0].x.toFixed(3) + ' ' + piece.points[0].y.toFixed(3);
     for (var ai = 1; ai < piece.points.length; ai++)
       d += ' L ' + piece.points[ai].x.toFixed(3) + ' ' + piece.points[ai].y.toFixed(3);
-    piece.anchoredEl.setAttribute('d', d);
+    setRouteD(piece.anchoredEl, d);
     if (statusEl && !statusLocked()) statusEl.textContent = 'anchor undone';
   }
   function routeCommit() {
@@ -4099,11 +5003,11 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       var track = document.createElementNS(SVGNSL, 'path');
       track.setAttribute('d', d);
       track.setAttribute('stroke', 'var(' + pc.inkVar + ')');
-      track.setAttribute('stroke-width', String(routeState.w));
+      track.setAttribute('stroke-width', String(pc.w));
       track.setAttribute('fill', 'none');
       track.setAttribute('stroke-linecap', 'round');
       track.setAttribute('stroke-linejoin', 'round');
-      track.setAttribute('data-w', String(routeState.w));
+      track.setAttribute('data-w', String(pc.w));
       track.setAttribute('data-route', '1');
       if (routeState.net) track.setAttribute('data-net', routeState.net);
       // per-SEGMENT hit paths ride invisibly on top of the drawn track:
@@ -4115,38 +5019,62 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       var segPts = pc.points;
       pc.layerGroup.appendChild(track);
       for (var sp = 1; sp < segPts.length; sp++) {
-        var hit = makeSegHit(track, segPts[sp - 1].x, segPts[sp - 1].y, segPts[sp].x, segPts[sp].y, routeState.w, routeState.net);
+        var hit = makeSegHit(track, segPts[sp - 1].x, segPts[sp - 1].y, segPts[sp].x, segPts[sp].y, pc.w, routeState.net);
         hit.setAttribute('data-route', '1');
         pc.layerGroup.appendChild(hit);
       }
     }
+    var commitVia = routeState.via;
     for (var vi = 0; vi < routeState.vias.length; vi++) {
       var v = routeState.vias[vi];
-      for (var gi = 0; gi < routeState.pieces.length; gi++) {
+      // the barrel's ink lands only on the layers it SPANS — a blind via
+      // must not paint on unrelated copper. No span recorded: every routed
+      // layer (the legacy through-via shape)
+      var spanGroups = [];
+      if (v.to) {
+        var gf = layerGroupByCanon(v.from);
+        var gt = layerGroupByCanon(v.to);
+        if (gf) spanGroups.push(gf);
+        if (gt && gt !== gf) spanGroups.push(gt);
+      } else {
+        spanGroups = routeState.pieces.map(function (p4) {
+          return p4.layerGroup;
+        });
+      }
+      for (var gi = 0; gi < spanGroups.length; gi++) {
         var vc = document.createElementNS(SVGNSL, 'circle');
         vc.setAttribute('cx', v.x.toFixed(3));
         vc.setAttribute('cy', v.y.toFixed(3));
-        vc.setAttribute('r', '0.3');
-        vc.setAttribute('fill', 'var(' + routeState.pieces[gi].inkVar + ')');
+        vc.setAttribute('r', (commitVia.size / 2).toFixed(3));
+        vc.setAttribute('fill', 'var(' + '--ink-' + spanGroups[gi].getAttribute('data-layer-id') + ')');
         vc.setAttribute('data-route', '1');
         if (routeState.net) vc.setAttribute('data-net', routeState.net);
-        routeState.pieces[gi].layerGroup.appendChild(vc);
+        spanGroups[gi].appendChild(vc);
       }
     }
     // record for the apply-to-source bridge (board y-down frame)
     routedTracks.push({
       net: routeState.net,
       w: routeState.w,
+      power: routeState.power || null,
+      impedance: routeState.impedance || null,
       pieces: routeState.pieces.map(function (pc2) {
         return {
           layer: pc2.canon,
+          w: pc2.w,
           pts: pc2.points.map(function (pt) {
             return { x: +pt.x.toFixed(3), y: +(-pt.y).toFixed(3) };
           }),
         };
       }),
       vias: routeState.vias.map(function (vv) {
-        return { x: +vv.x.toFixed(3), y: +(-vv.y).toFixed(3) };
+        return {
+          x: +vv.x.toFixed(3),
+          y: +(-vv.y).toFixed(3),
+          size: commitVia.size,
+          drill: commitVia.drill,
+          layers: vv.from && vv.to ? [vv.from, vv.to] : undefined,
+        };
       }),
       // a trace/via start has no manifest pad — the point itself is the source
       from: routeState.startPad
@@ -4157,13 +5085,37 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     var startName = routeState.startPad
       ? routeState.startPad.ref + '.' + routeState.startPad.pin
       : routeState.startLbl || '(trace)';
+    // the committed width becomes this net's default for the next route; an
+    // explicitly-sized via is remembered the same way (a coupled one isn't —
+    // it was never a choice)
+    rememberNetWidth(routeState.net, routeState.w);
+    if (routeState.viaCoupled === false) rememberNetVia(routeState.net, routeState.via.size);
+    // per-segment widths: show the span when the route tapered
+    var widths = [];
+    for (var wpi = 0; wpi < routeState.pieces.length; wpi++)
+      if (routeState.pieces[wpi].points.length >= 2 && widths.indexOf(routeState.pieces[wpi].w) === -1)
+        widths.push(routeState.pieces[wpi].w);
+    var wSpan = widths.length > 1 ? fmtW(Math.min.apply(null, widths)) + '\u2013' + fmtW(Math.max.apply(null, widths)) : fmtW(routeState.w);
     var msg =
       'track placed: ' + (routeState.net ? routeState.net : 'no net') + ' ' + startName +
       (routeState.targetPad ? ' \u2192 ' + routeState.targetPad.ref + '.' + routeState.targetPad.pin : '') +
+      ' \u00b7 ' + wSpan + ' mm' +
+      (routeState.vias.length
+        ? ' \u00b7 via ' + (function () {
+            var spans = [];
+            for (var vsi = 0; vsi < routeState.vias.length; vsi++) {
+              var vv2 = routeState.vias[vsi];
+              var plain = (vv2.from === 'F.Cu' && vv2.to === 'B.Cu') || (vv2.from === 'B.Cu' && vv2.to === 'F.Cu');
+              if (!plain && vv2.to && spans.indexOf(vv2.from + '\u2192' + vv2.to) === -1) spans.push(vv2.from + '\u2192' + vv2.to);
+            }
+            return (spans.length ? spans.join(', ') + ' ' : '') + '\u2300' + fmtW(commitVia.size) + '/' + fmtW(commitVia.drill);
+          })()
+        : '') +
       ' (' + routeState.pieces.reduce(function (n, p3) { return n + Math.max(0, p3.points.length - 1); }, 0) + ' segments' +
       (routeState.vias.length ? ', ' + routeState.vias.length + ' via' + (routeState.vias.length > 1 ? 's' : '') : '') + ')';
     routeCancel();
     renderLayoutMoves(); // a committed track arms Apply on its own
+    widthControlSync();
     if (statusEl && !statusLocked()) statusEl.textContent = msg;
   }
   // commit on left press (capture beats select/box handlers): a snapped pad
@@ -4203,6 +5155,9 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     if (!routeState) return;
     var g = gerberAt(ev.clientX, ev.clientY);
     routeFollow(g.x, g.y);
+    widthChip.style.left = ev.clientX + 14 + 'px';
+    widthChip.style.top = ev.clientY - 28 + 'px';
+    widthChip.style.display = '';
   });
   // ---- track segment selection: click highlights, Delete removes, U grows ----
   // A committed interactive route renders as ONE polyline per layer; the
@@ -4458,22 +5413,37 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     segHiSync();
     // interactive routes recorded this session: drop deleted segments from
     // their pieces so a subsequent apply doesn't re-add them; emptied
-    // routes leave the bridge entirely
+    // routes leave the bridge entirely. A delete that only described a
+    // session-track segment is fully reflected in the trimmed pieces — it
+    // must NOT ride routedDeletes too, or the host reports it unmatched
+    // against source routes that never carried it
+    var absorbedDeleteIdx = [];
     for (var ri = routedTracks.length - 1; ri >= 0; ri--) {
       var rt = routedTracks[ri];
       for (var pj = rt.pieces.length - 1; pj >= 0; pj--) {
         var pts = rt.pieces[pj].pts;
         for (var pj2 = pts.length - 1; pj2 > 0; pj2--) {
           var a = pts[pj2 - 1], b2 = pts[pj2];
-          var hit2 = routedDeletes.some(function (dd) {
-            return (Math.abs(dd.x1 - a.x) < 0.01 && Math.abs(dd.y1 - a.y) < 0.01 && Math.abs(dd.x2 - b2.x) < 0.01 && Math.abs(dd.y2 - b2.y) < 0.01) || (Math.abs(dd.x1 - b2.x) < 0.01 && Math.abs(dd.y1 - b2.y) < 0.01 && Math.abs(dd.x2 - a.x) < 0.01 && Math.abs(dd.y2 - a.y) < 0.01);
-          });
-          if (hit2) pts.splice(pj2 - 1, 1); // drop the shared point -> gap
+          var hitIdx = -1;
+          for (var di = 0; di < routedDeletes.length; di++) {
+            var dd = routedDeletes[di];
+            if ((Math.abs(dd.x1 - a.x) < 0.01 && Math.abs(dd.y1 - a.y) < 0.01 && Math.abs(dd.x2 - b2.x) < 0.01 && Math.abs(dd.y2 - b2.y) < 0.01) || (Math.abs(dd.x1 - b2.x) < 0.01 && Math.abs(dd.y1 - b2.y) < 0.01 && Math.abs(dd.x2 - a.x) < 0.01 && Math.abs(dd.y2 - a.y) < 0.01)) {
+              hitIdx = di;
+              break;
+            }
+          }
+          if (hitIdx >= 0) {
+            pts.splice(pj2 - 1, 1); // drop the shared point -> gap
+            absorbedDeleteIdx.push(hitIdx);
+          }
         }
         if (pts.length < 2) rt.pieces.splice(pj, 1);
       }
       if (!rt.pieces.length) routedTracks.splice(ri, 1);
     }
+    absorbedDeleteIdx.sort(function (x, y) { return y - x; }).forEach(function (di2) {
+      routedDeletes.splice(di2, 1);
+    });
     window.__typecadRouteEnds = null;
     refreshRatsnest();
     renderLayoutMoves();
@@ -5488,6 +6458,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   window.addEventListener('resize', renderMeasure);
   window.addEventListener('keydown', function (ev) {
     if (ev.key === 'Escape') {
+      if (helpEl.style.display !== 'none') helpEl.style.display = 'none';
       if (measuring || measureStart || rulers.length) {
         measuring = false;
         measureStart = null;
@@ -5836,6 +6807,9 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   // ---- DRC markers (injected by the build pipeline) ----
   var drcGroup = document.getElementById('drc');
   var drcBtn = document.getElementById('btn-drc');
+  // the width button mirrors the popover (same toggle, mouse-reachable)
+  var widthBtn = document.getElementById('btn-width');
+  if (widthBtn) widthBtn.addEventListener('click', widthPopToggle);
   var drcData = [];
   try {
     drcData = JSON.parse(document.getElementById('drc-data').textContent) || [];
@@ -6387,6 +7361,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   #layout-overlay .layout-comp.layout-warn rect,
   #layout-overlay .layout-comp.layout-warn polygon { stroke: #d29922; }
   #ratsnest path { stroke: #d29922; stroke-width: 0.05; fill: none; opacity: 0.85; }
+  #ratsnest path.rat-hi { stroke: #4fc1ff; stroke-width: 0.12; opacity: 1; }
   /* autorouter tracks: a WHITE dashed overlay over the solid ink stroke —
      the dashes lighten the copper underneath, so the trace reads as
      alternating lighter/darker candy-cane bands in any theme (same-ink
@@ -6415,11 +7390,9 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   }
   #layout-overlay .layout-comp.layout-sel rect,
   #layout-overlay .layout-comp.layout-sel polygon {
-    stroke: #4fc1ff;
-    stroke-width: 2px;
-    vector-effect: non-scaling-stroke;
-    stroke-dasharray: 8 5;
-    animation: layoutSelAnts 0.45s linear infinite;
+    /* no marching-ants outline: selection reads from the tint fill and the
+       corner brackets (.layout-sel-handles) alone */
+    stroke: none;
     fill: rgba(79, 193, 255, 0.12);
   }
   @keyframes layoutSelAnts {
@@ -6428,6 +7401,23 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     }
   }
   #route-ui .route-anchored { opacity: 0.9; }
+  /* keep-out halo: the DRC clearance envelope under the live route. Gray
+     while clear, grayish red on violation — alphas tuned to read as a zone
+     over any copper while the trace ink stays legible on top */
+  .route-halo { fill: none; stroke: rgba(148, 148, 148, 0.34); stroke-linecap: round; stroke-linejoin: round; }
+  .route-halo.bad { stroke: rgba(205, 92, 92, 0.5); }
+  /* via keep-out rings: the barrel's own clearance envelope */
+  .route-via-halo { fill: none; stroke: rgba(148, 148, 148, 0.34); }
+  .route-via-halo.bad { stroke: rgba(205, 92, 92, 0.5); }
+  /* the ? keys cheat-sheet */
+  #keys-help {
+    position: fixed; right: 16px; bottom: 96px; z-index: 45; display: none;
+    max-width: 340px; background: var(--chrome-bg); color: var(--chrome-fg);
+    border: 1px solid var(--chrome-border); border-radius: 6px; padding: 10px 14px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4); font: 12px/1.6 system-ui, sans-serif;
+    cursor: pointer;
+  }
+  #keys-help b { color: #4fc1ff; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; }
   #route-ui .route-via { fill: #4fc1ff; fill-opacity: 0.35; stroke: #4fc1ff; stroke-width: 0.1; }
   /* committed vias (session circles + gerber flashes): selectable like any
      element — the transparent stroke widens the hit area without changing
@@ -6445,6 +7435,32 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     fill-opacity: 0.55;
   }
   .route-sel line { stroke: #4fc1ff; stroke-width: 2px; vector-effect: non-scaling-stroke; stroke-linecap: round; }
+  /* trace-width readout riding the cursor while a route is live, and the
+     W/toolbar width picker popover */
+  #route-width-chip {
+    position: fixed; z-index: 30; pointer-events: none; display: none;
+    font: 11px system-ui, sans-serif; color: var(--chrome-fg);
+    background: rgba(22, 24, 29, 0.85); border: 1px solid var(--btn-border);
+    border-radius: 4px; padding: 1px 6px;
+  }
+  #route-width-chip.below-min { color: #d29922; border-color: #d29922; }
+  #width-pop {
+    position: fixed; right: 12px; bottom: 96px; z-index: 40; display: none;
+    flex-direction: column; gap: 6px; background: var(--chrome-bg);
+    border: 1px solid var(--chrome-border); border-radius: 6px; padding: 8px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4); font: 12px system-ui, sans-serif;
+  }
+  #width-pop.open { display: flex; }
+  #width-pop .wladder { display: flex; flex-wrap: wrap; gap: 4px; max-width: 250px; }
+  #width-pop .wladder button, #width-pop .wrow input {
+    background: var(--btn-bg); color: var(--chrome-fg); border: 1px solid var(--btn-border);
+    border-radius: 4px; padding: 3px 7px; cursor: pointer; font: inherit;
+  }
+  #width-pop .wladder button.cur { box-shadow: inset 0 0 0 1px var(--chrome-fg); }
+  #width-pop .wrow { display: flex; align-items: center; gap: 8px; color: var(--muted); }
+  #width-pop .wrow input { width: 76px; cursor: text; }
+  #width-pop .whint { color: var(--muted); font-size: 11px; }
+  #btn-width { min-width: 56px; }
   .route-pad-hi { pointer-events: none; }
   .route-pad-hi .pad-hi-box {
     fill: rgba(79, 193, 255, 0.12);
@@ -6598,6 +7614,7 @@ ${rows}
         : ''
     }
     <button id="btn-measure" title="measure: click start, click end — rulers stick; Esc clears all">&#x1F4CF;</button>
+    <button id="btn-width" title="trace [ ] / via Shift+[ ] sizing (Alt ±0.01, may cross the board min) · P sizes for the net’s current · Z sizes for 50 Ω · \ and Shift+\ reset · W opens the picker" hidden>auto</button>
     <button id="btn-drc" class="has-drc-hidden" title="toggle DRC violation markers" hidden>DRC</button>
   </div>
 </div>
@@ -6661,6 +7678,9 @@ ${rows}
   }</script>
   <script id="stackup" type="application/json">${
     options.stackup ? JSON.stringify(options.stackup).replace(/</g, '\\u003c') : ''
+  }</script>
+  <script id="rules" type="application/json">${
+    options.rules ? JSON.stringify(options.rules).replace(/</g, '\\u003c') : ''
   }</script>
   <script id="routes" type="application/json">${
     options.routes ? JSON.stringify(options.routes).replace(/</g, '<') : ''

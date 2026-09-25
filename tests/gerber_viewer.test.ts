@@ -425,7 +425,9 @@ describe('view switcher (gerber / pcba)', () => {
     // the ratsnest is PER-PAD: a half-routed net wires its stranded pads to
     // the nearest connected pad instead of vanishing (net-granular test)
     expect(html).toContain('var padWired = function (comp, pad) {');
-    expect(html).toContain('rats.appendChild(ratsWire(sCur, sBest, wireIdx++));');
+    // wires carry their net (data-net) so the routed net's wires can highlight
+    expect(html).toContain('rats.appendChild(ratsWire(sCur, sBest, wireIdx++, un));');
+    expect(html).toContain("if (net) p.setAttribute('data-net', net);");
     expect(html).toContain('window.typecadLayoutApply(moves, texts, values, labels, renames, routedTracks, routedDeletes, function (err)');
     expect(html).toContain('moves.push({');
     expect(html).toContain('rot: (m2.rot || 0) * 90,');

@@ -2,7 +2,7 @@
   "name": "vscode-typecad-pcb",
   "displayName": "typeCAD/pcb",
   "description": "Pin-level board intelligence for typeCAD projects — hover a component to see its pads, nets, and unconnected pins",
-  "version": "0.11.11",
+  "version": "0.12.0-alpha.0",
   "private": true,
   "publisher": "typecad",
   "license": "Apache-2.0",

@@ -1,7 +1,9 @@
 // Source deletion planning: deleted segments remove .to() runs, middle
-// breaks split the route, emptied routes vanish with their create() arg.
+// breaks split the route, emptied routes vanish with their create() arg —
+// and the source that comes out still parses (see expectValidTs).
 import { describe, expect, it } from 'vitest';
 import { planRouteDeletes } from '../routeEdits.js';
+import { expectValidTs } from './helpers/valid_source.js';
 
 const src = () => `
 import { PCB, Component, TrackBuilder } from '@typecad/pcb';
@@ -13,6 +15,28 @@ const route1 = new TrackBuilder(typecad, {  })
   .to({ x: 4, y: 1, layer: 'F.Cu', width: 0.3 });
 typecad.create(
   r1,
+  route1,
+);`;
+
+const nettedSrc = () => `
+const route1 = new TrackBuilder(typecad, { net: 'VCC', })
+  .from({ x: 1, y: 1 }, 'F.Cu', 0.3)
+  .to({ x: 2, y: 1, layer: 'F.Cu', width: 0.3 })
+  .to({ x: 3, y: 1, layer: 'F.Cu', width: 0.3 })
+  .to({ x: 4, y: 1, layer: 'F.Cu', width: 0.3 });
+typecad.create(
+  r1,
+  route1,
+);`;
+
+const viaSrc = () => `
+const route1 = new TrackBuilder(typecad, { net: 'GND', })
+  .from({ x: 1, y: 1 }, 'F.Cu', 0.3)
+  .to({ x: 2, y: 1, layer: 'F.Cu', width: 0.3 })
+  .via({ size: 0.6, drill: 0.3 })
+  .to({ x: 2, y: 4, layer: 'B.Cu', width: 0.3 })
+  .to({ x: 3, y: 4, layer: 'B.Cu', width: 0.3 });
+typecad.create(
   route1,
 );`;
 
@@ -31,7 +55,8 @@ describe('planRouteDeletes', () => {
     ]);
     expect(applied).toBe(1);
     const out = apply(src(), edits);
-    expect(out).toContain('.to({ x: 3, y: 1, layer: \'F.Cu\', width: 0.3 });');
+    expectValidTs(out);
+    expect(out).toContain(".to({ x: 3, y: 1, layer: 'F.Cu', width: 0.3 });");
     expect(out).not.toContain('{ x: 4, y: 1');
     expect(out).toContain('route1,');
   });
@@ -42,14 +67,17 @@ describe('planRouteDeletes', () => {
     ]);
     expect(applied).toBe(1);
     const out = apply(src(), edits);
+    expectValidTs(out);
     expect(out).toContain('const route1 = new TrackBuilder');
     expect(out).toContain('const route1a = new TrackBuilder');
-    expect(out).toMatch(/route1,\s*,\s*route1a/);
+    // the split variable rides into create() — with ONE comma, not a double
+    expect(out).toMatch(/route1,\s*route1a/);
+    expect(out).not.toMatch(/,\s*,/);
     // first run: 1,1 -> 2,1; second: 3,1 -> 4,1
-    expect(out).toContain('.from({ x: 1, y: 1 }, \'F.Cu\', 0.3)');
-    expect(out).toContain('.to({ x: 2, y: 1, layer: \'F.Cu\', width: 0.3 });');
-    expect(out).toContain('.from({ x: 3, y: 1 }, \'F.Cu\', 0.3)');
-    expect(out).toContain('.to({ x: 4, y: 1, layer: \'F.Cu\', width: 0.3 });');
+    expect(out).toContain(".from({ x: 1, y: 1 }, 'F.Cu', 0.3)");
+    expect(out).toContain(".to({ x: 2, y: 1, layer: 'F.Cu', width: 0.3 });");
+    expect(out).toContain(".from({ x: 3, y: 1 }, 'F.Cu', 0.3)");
+    expect(out).toContain(".to({ x: 4, y: 1, layer: 'F.Cu', width: 0.3 });");
   });
 
   it('removes the route and its create() argument when everything is deleted', () => {
@@ -60,8 +88,11 @@ describe('planRouteDeletes', () => {
     ]);
     expect(applied).toBe(3);
     const out = apply(src(), edits);
+    expectValidTs(out);
     expect(out).not.toContain('const route1');
     expect(out).not.toMatch(/route1/);
+    // the argument slot is gone entirely — no emptied `()` expression left behind
+    expect(out).not.toContain('()');
   });
 
   it('reports unmatched segments instead of mangling the source', () => {
@@ -82,10 +113,27 @@ describe('planRouteDeletes', () => {
     ]);
     expect(applied).toBe(1);
     const out = apply(src(), edits);
-    expect(out).toContain('.to({ x: 2, y: 1, layer: \'F.Cu\', width: 0.3 });');
+    expectValidTs(out);
+    expect(out).toContain(".to({ x: 2, y: 1, layer: 'F.Cu', width: 0.3 });");
     expect(out).toContain('const route1a = new TrackBuilder');
-    expect(out).toContain('.from({ x: 3, y: 1 }, \'F.Cu\', 0.3)');
-    expect(out).toContain('.to({ x: 4, y: 1, layer: \'F.Cu\', width: 0.3 });');
+    expect(out).toContain(".from({ x: 3, y: 1 }, 'F.Cu', 0.3)");
+    expect(out).toContain(".to({ x: 4, y: 1, layer: 'F.Cu', width: 0.3 });");
+  });
+
+  it('keeps a .powerInfo contract through a delete-regenerated chain', () => {
+    const src = () =>
+      "const pwr = new TrackBuilder(typecad, { net: 'VCC', })\n" +
+      '  .powerInfo({ current: 1.5, maxTempRise: 10 })\n' +
+      "  .from({ x: 0, y: 0 }, 'F.Cu', 0.55)\n" +
+      "  .to({ x: 4, y: 0, layer: 'F.Cu', width: 0.55 })\n" +
+      "  .to({ x: 8, y: 0, layer: 'F.Cu', width: 0.55 });\n" +
+      'typecad.create(pwr);\n';
+    const del = { net: 'VCC', x1: 4, y1: 0, x2: 8, y2: 0, layer: 'F.Cu' }; // end delete
+    const { applied } = planRouteDeletes(src(), [del]);
+    expect(applied).toBe(1); // the powerInfo line must not have truncated the chain
+    const out = apply(src(), planRouteDeletes(src(), [del]).edits);
+    expectValidTs(out);
+    expect(out).toContain('.powerInfo({ current: 1.5, maxTempRise: 10 })');
   });
 
   it('drops the last segment when the via is the chain tail', () => {
@@ -94,7 +142,110 @@ describe('planRouteDeletes', () => {
     ]);
     expect(applied).toBe(1);
     const out = apply(src(), edits);
-    expect(out).toContain('.to({ x: 3, y: 1, layer: \'F.Cu\', width: 0.3 });');
+    expectValidTs(out);
+    expect(out).toContain(".to({ x: 3, y: 1, layer: 'F.Cu', width: 0.3 });");
     expect(out).not.toContain('{ x: 4, y: 1');
+  });
+
+  it('preserves the route net when a segment delete splits it', () => {
+    const { edits } = planRouteDeletes(nettedSrc(), [
+      { net: 'VCC', x1: 2, y1: 1, x2: 3, y2: 1, layer: 'F.Cu' },
+    ]);
+    const out = apply(nettedSrc(), edits);
+    expectValidTs(out);
+    // BOTH surviving halves keep the net — netless copper would disconnect
+    // the route on rebuild
+    expect(out.match(/new TrackBuilder\(typecad, \{ net: 'VCC', \}\)/g)).toHaveLength(2);
+  });
+
+  it('preserves an untouched via and its per-point layer when another segment is deleted', () => {
+    // delete the LAST segment (2,4)->(3,4): the via at (2,1) and the B.Cu
+    // run leading to it survive intact
+    const { edits } = planRouteDeletes(viaSrc(), [
+      { net: 'GND', x1: 2, y1: 4, x2: 3, y2: 4, layer: 'B.Cu' },
+    ]);
+    const out = apply(viaSrc(), edits);
+    expectValidTs(out);
+    expect(out).toContain('.via({ size: 0.6, drill: 0.3 })');
+    expect(out).toContain(".to({ x: 2, y: 1, layer: 'F.Cu', width: 0.3 })");
+    expect(out).toContain(".to({ x: 2, y: 4, layer: 'B.Cu', width: 0.3 });");
+    expect(out).toContain("{ net: 'GND', }");
+  });
+
+  it('keeps the far side of a split on its own layer', () => {
+    // cut the B.Cu segment past the via: the far run (route1a) rebuilds as
+    // its own B.Cu chain — not flattened onto whichever layer was parsed last
+    const { edits } = planRouteDeletes(viaSrc(), [
+      { net: 'GND', x1: 2, y1: 1, x2: 2, y2: 4, layer: 'B.Cu' },
+    ]);
+    const out = apply(viaSrc(), edits);
+    expectValidTs(out);
+    expect(out).toMatch(/const route1a = new TrackBuilder[\s\S]*?\.from\(\{ x: 2, y: 4 \}, 'B\.Cu'/);
+    expect(out).toContain(".to({ x: 3, y: 4, layer: 'B.Cu', width: 0.3 });");
+  });
+
+  it('rides split names into create() even when another route was emptied in the same apply', () => {
+    const both = () => `
+const route1 = new TrackBuilder(typecad, { net: 'VCC', })
+  .from({ x: 1, y: 1 }, 'F.Cu', 0.3)
+  .to({ x: 2, y: 1, layer: 'F.Cu', width: 0.3 });
+const route2 = new TrackBuilder(typecad, {  })
+  .from({ x: 10, y: 1 }, 'F.Cu', 0.3)
+  .to({ x: 11, y: 1, layer: 'F.Cu', width: 0.3 })
+  .to({ x: 12, y: 1, layer: 'F.Cu', width: 0.3 })
+  .to({ x: 13, y: 1, layer: 'F.Cu', width: 0.3 });
+typecad.create(
+  route1,
+  route2,
+);`;
+    const { edits } = planRouteDeletes(both(), [
+      { net: 'VCC', x1: 1, y1: 1, x2: 2, y2: 1, layer: 'F.Cu' }, // empties route1
+      { net: null, x1: 11, y1: 1, x2: 12, y2: 1, layer: 'F.Cu' }, // splits route2
+    ]);
+    const out = apply(both(), edits);
+    expectValidTs(out);
+    expect(out).toContain('const route2a = new TrackBuilder');
+    expect(out).toMatch(/create\(\s*route2,\s*route2a/);
+    expect(out).not.toContain('()');
+    expect(out).not.toContain('route1');
+  });
+
+  it('emits a width-only run head in the object form (width must not land in the layer slot)', () => {
+    // (5,0) carries a width but no layer: cutting the segment BEFORE it
+    // makes that point the surviving run's .from — .from()'s second
+    // parameter is the layer STRING, so a positional 0.5 would not compile
+    const widthed = () => `
+const route1 = new TrackBuilder(typecad, { net: 'VCC', })
+  .from({ x: 0, y: 0 }, 'F.Cu', 0.3)
+  .to({ x: 5, y: 0, width: 0.5 })
+  .to({ x: 10, y: 0 })
+  .to({ x: 15, y: 0 });
+typecad.create(route1);`;
+    const { edits } = planRouteDeletes(widthed(), [
+      { net: 'VCC', x1: 0, y1: 0, x2: 5, y2: 0, layer: 'F.Cu' },
+    ]);
+    const out = apply(widthed(), edits);
+    expectValidTs(out);
+    expect(out).toContain('.from({ x: 5, y: 0, width: 0.5 })');
+    expect(out).not.toContain('}, 0.5)');
+  });
+
+  it('keeps an indented route declaration indented through regeneration', () => {
+    const indented = () => `
+function build() {
+  const route1 = new TrackBuilder(typecad, { net: 'VCC', })
+    .from({ x: 1, y: 1 }, 'F.Cu', 0.3)
+    .to({ x: 2, y: 1, layer: 'F.Cu', width: 0.3 })
+    .to({ x: 3, y: 1, layer: 'F.Cu', width: 0.3 });
+  typecad.create(route1);
+}`;
+    const { edits } = planRouteDeletes(indented(), [
+      { net: 'VCC', x1: 1, y1: 1, x2: 2, y2: 1, layer: 'F.Cu' },
+    ]);
+    const out = apply(indented(), edits);
+    expectValidTs(out);
+    // the head line keeps the declaration's own indent (a column-0 rewrite
+    // would still compile but silently reformat the user's code)
+    expect(out).toContain('  const route1 = new TrackBuilder');
   });
 });

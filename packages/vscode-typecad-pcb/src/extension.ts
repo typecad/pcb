@@ -29,7 +29,7 @@ import { drcProblems, parseDrcReport, refSourceMap, unconnectedProblems } from '
 import { applyNoncePolicy } from './probeClient.js';
 import { QueryError } from './query.js';
 import { parseSourceLocation } from './sourceRef.js';
-import type { ComponentSummary, NetSourceSummary } from './types.js';
+import type { NetSourceSummary } from './types.js';
 import { BoardViewerPanel, mtimeOf, newestBoardFile, shellQuote, wordUnderCursor } from './viewer.js';
 
 /** Identifiers only — skips numbers, operators, and property dots. */
@@ -59,6 +59,9 @@ export function activate(context: vscode.ExtensionContext) {
   );
 
   let watcher: vscode.FileSystemWatcher | undefined;
+  // one teardown hook owns whatever watcher is current — re-watching swaps
+  // the field without growing the subscriptions array
+  context.subscriptions.push(new vscode.Disposable(() => watcher?.dispose()));
   /** Opt-in (typecad-pcb.drcOnBuild): run the check once the board settles. */
   let autoDrcTimer: NodeJS.Timeout | undefined;
   const autoDrcIfWanted = (boardFile: string): void => {
@@ -94,7 +97,6 @@ export function activate(context: vscode.ExtensionContext) {
     watcher.onDidChange(boardChanged);
     watcher.onDidCreate(boardChanged);
     watcher.onDidDelete(boardChanged);
-    context.subscriptions.push(watcher);
   };
 
   const initial = resolveHwFolder();

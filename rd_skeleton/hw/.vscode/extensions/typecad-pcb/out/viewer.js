@@ -59,8 +59,8 @@ const vscode = __importStar(require("vscode"));
 const node_fs_1 = __importDefault(require("node:fs"));
 const node_path_1 = __importDefault(require("node:path"));
 const probeClient_js_1 = require("./probeClient.js");
-const layoutEdits_js_1 = require("./layoutEdits.js");
-const routeEdits_js_1 = require("./routeEdits.js");
+const layoutApply_js_1 = require("./layoutApply.js");
+const boardRules_js_1 = require("./boardRules.js");
 const sourceRef_js_1 = require("./sourceRef.js");
 // discovery helpers live vscode-free in boardFile.ts for unit testing;
 // re-exported here for the existing import sites
@@ -455,6 +455,9 @@ class BoardViewerPanel {
             // A DRC report OLDER than the board describes the previous revision —
             // embedding it paints stale violation markers on the new board (seen
             // as ghost "unconnected/shorting" dots on a route the move fixed).
+            // Re-evaluated on every generate: a flag left over from an attempt
+            // that later failed must not leak a bogus notice into this one.
+            this.staleDrcNotice = false;
             const drcRel = node_path_1.default.join('build', `${boardName}_drc.json`);
             if (node_fs_1.default.existsSync(node_path_1.default.join(folder, drcRel))) {
                 flags.push('--drc', shellQuote(drcRel));
@@ -468,9 +471,33 @@ class BoardViewerPanel {
                 }
             }
             overlay('--stackup', `${boardName}_stackup.json`);
+            // the layout view's rule floors + net-class defaults. The project's
+            // optional typecad.rules.json is the primary source (hand-authored,
+            // beside typecad.conf.ts); the board's .kicad_pro fills the gaps.
+            const boardRules = (0, boardRules_js_1.resolveBoardRules)(folder, board);
+            if (boardRules) {
+                const rulesRel = node_path_1.default.join('build', `${boardName}_rules.json`);
+                try {
+                    node_fs_1.default.writeFileSync(node_path_1.default.join(folder, rulesRel), JSON.stringify(boardRules));
+                    flags.push('--rules', shellQuote(rulesRel));
+                    this.output.appendLine(`board rules: ${(0, boardRules_js_1.userRulesFromFolder)(folder) ? 'typecad.rules.json' : 'board .kicad_pro'}` +
+                        (boardRules.netClasses ? ` (+${Object.keys(boardRules.netClasses).length} net class(es))` : ''));
+                }
+                catch {
+                    this.output.appendLine('warning: could not write the rules island — the width control runs without a floor');
+                }
+            }
             this.output.appendLine('building viewer HTML…');
             await this.run(folder, `npx gerber-viewer ${shellQuote(gerbersDir)} -o ${shellQuote(outPath)} ${flags.join(' ')}`, GENERATE_TIMEOUT_MS);
-            const raw = node_fs_1.default.readFileSync(node_path_1.default.join(folder, outPath), 'utf8');
+            let raw = node_fs_1.default.readFileSync(node_path_1.default.join(folder, outPath), 'utf8');
+            if (this.staleDrcNotice) {
+                // A postStatus would be wiped by the reload that lands this HTML —
+                // bake the notice into the page's own status line instead. Spliced
+                // in BEFORE injectProbeClient: the probe client's nonce policy must
+                // cover this script too, or the CSP silently blocks it.
+                const notice = `<script>(function(){function n(){var el=document.getElementById('status');if(el){el.textContent='DRC markers show the PREVIOUS board revision — run typeCAD: DRC to refresh';el.setAttribute('data-locked','');}}if(document.readyState==='complete')n();else window.addEventListener('load',n);})();</script>`;
+                raw = raw.includes('</body>') ? raw.replace('</body>', notice + '</body>') : raw;
+            }
             const [components, nets] = await Promise.all([
                 this.service.components(),
                 // net sources are decorative metadata — a failed query must not
@@ -481,15 +508,7 @@ class BoardViewerPanel {
             if (!injected) {
                 this.output.appendLine('warning: viewer HTML had no <head>/</body> anchors — cross-probe disabled');
             }
-            let finalHtml = html;
-            if (this.staleDrcNotice) {
-                this.staleDrcNotice = false;
-                // A postStatus would be wiped by the reload that lands this HTML —
-                // bake the notice into the page's own status line instead
-                const notice = `<script>(function(){function n(){var el=document.getElementById('status');if(el){el.textContent='DRC markers show the PREVIOUS board revision — run typeCAD: DRC to refresh';el.setAttribute('data-locked','');}}if(document.readyState==='complete')n();else window.addEventListener('load',n);})();</script>`;
-                finalHtml = html.includes('</body>') ? html.replace('</body>', notice + '</body>') : html;
-            }
-            this.generated = { html: finalHtml, boardMtimeMs: (0, boardFile_js_2.mtimeOf)(board) };
+            this.generated = { html, boardMtimeMs: (0, boardFile_js_2.mtimeOf)(board) };
             this.output.appendLine(`viewer ready: ${components.length} component outline(s), board mtime ${this.generated.boardMtimeMs}, cross-probe ${injected ? 'on' : 'off'}`);
             return true;
         })().finally(() => {
@@ -499,11 +518,12 @@ class BoardViewerPanel {
     }
     /**
      * Layout view "apply & rebuild": move deltas arrive in the board (y-down)
-     * frame. Each moved ref resolves to its source variable (the board's
-     * "Code" property), its `<var>.pcb = { x, y, ... }` literal is rewritten
-     * by the delta, then the project rebuilds and the viewer regenerates.
-     * Computed (non-literal) placements are skipped and reported, never
-     * silently mangled.
+     * frame. planLayoutApply turns the whole gesture (moves, text/value/label/
+     * rename edits, new routes, segment deletes) into sequential edit stages
+     * over the project's sources — each stage planned against the text the
+     * previous stage produced, so no two edits ever overlap — then the project
+     * rebuilds and the viewer regenerates. Computed (non-literal) placements
+     * are skipped and reported, never silently mangled.
      */
     async onLayoutRebuild(moves, texts, values, labels, renames, routes, deletes) {
         const folder = this.hwFolder();
@@ -511,233 +531,55 @@ class BoardViewerPanel {
             this.output.appendLine(`layout apply failed: ${error}`);
             void this.panel?.webview.postMessage({ type: 'typecad/layout-status', error });
         };
-        if (!folder || this.panel === null) {
+        if (!folder) {
             fail('no typeCAD project found');
             return;
         }
         try {
             const comps = await this.service.components();
             const variableOf = new Map(comps.map((c) => [c.reference, c.variable ?? '']));
-            const srcFiles = await vscode.workspace.findFiles(new vscode.RelativePattern(folder, 'src/**/*.ts'));
-            const edits = new vscode.WorkspaceEdit();
-            const touched = new Set();
-            const skipped = [];
-            const appliedRefs = new Set();
-            // per document: plan edits for every not-yet-resolved move, then commit
-            // the ones that matched here (a ref resolves in its first matching file)
-            for (const uri of srcFiles) {
-                const pending = moves.filter((m) => !appliedRefs.has(m.ref) && !skipped.some((sk) => sk.startsWith(m.ref + ' ')));
-                if (pending.length === 0)
-                    continue;
-                const doc = await vscode.workspace.openTextDocument(uri);
-                const text = doc.getText();
-                const planned = (0, layoutEdits_js_1.planPlacementEdits)(text, pending, (ref) => variableOf.get(ref));
-                for (const sk of planned.skipped) {
-                    // "no literal found" is only final once every src file has been
-                    // tried — the other reasons are
-                    if (sk.reason.startsWith('no `') && srcFiles.length > 1)
-                        continue;
-                    skipped.push(`${sk.ref} (${sk.reason})`);
-                }
-                if (planned.edits.length === 0)
-                    continue;
-                for (const edit of planned.edits) {
-                    edits.replace(uri, new vscode.Range(doc.positionAt(edit.start), doc.positionAt(edit.end)), edit.line);
-                    appliedRefs.add(edit.ref);
-                }
-                touched.add(uri.toString());
+            const srcUris = await vscode.workspace.findFiles(new vscode.RelativePattern(folder, 'src/**/*.ts'));
+            const files = [];
+            for (const uri of srcUris) {
+                files.push({ uri: uri.toString(), text: (await vscode.workspace.openTextDocument(uri)).getText() });
             }
-            // sticky TrackBuilder endpoints: hand-built routes whose .from/.to
-            // literals sit on a moved component's ORIGINAL pads follow the part
-            let endpointsMoved = 0;
-            for (const uri of srcFiles) {
-                const pending = moves.filter((m) => appliedRefs.has(m.ref) && (m.pads?.length ?? 0) > 0);
-                if (pending.length === 0)
-                    continue;
-                const doc = await vscode.workspace.openTextDocument(uri);
-                const text = doc.getText();
-                let plannedEndpoints = pending.flatMap((m) => (0, layoutEdits_js_1.planEndpointEdits)(text, m));
-                if (plannedEndpoints.length === 0)
-                    continue;
-                // one literal can be a sticky endpoint of at most one move
-                const seen = new Set();
-                plannedEndpoints = plannedEndpoints.filter((e) => {
-                    if (seen.has(e.start))
-                        return false;
-                    seen.add(e.start);
-                    return true;
-                });
-                for (const edit of plannedEndpoints) {
-                    edits.replace(uri, new vscode.Range(doc.positionAt(edit.start), doc.positionAt(edit.end)), edit.line);
-                }
-                endpointsMoved += plannedEndpoints.length;
-                touched.add(uri.toString());
-            }
-            for (const move of moves) {
-                if (!appliedRefs.has(move.ref) && !skipped.some((sk) => sk.startsWith(move.ref + ' '))) {
-                    skipped.push(`${move.ref} (no \`${variableOf.get(move.ref) ?? move.ref}\`.pcb literal found)`);
-                }
-            }
-            // silk/fab text edits: .text({ … }) literals matched by authored
-            // value + anchor, rewritten with the new value/position/rotation
-            let textsEdited = 0;
-            const textsDone = new Set();
-            for (const uri of srcFiles) {
-                const pendingTexts = (texts ?? []).filter((t) => !textsDone.has(`${t.text0}@${t.x0},${t.y0}`));
-                if (pendingTexts.length === 0)
-                    continue;
-                const doc = await vscode.workspace.openTextDocument(uri);
-                const text = doc.getText();
-                const plannedTexts = (0, layoutEdits_js_1.planTextEdits)(text, pendingTexts);
-                for (const sk of plannedTexts.skipped) {
-                    if (srcFiles.length > 1)
-                        continue; // final once every file is tried
-                    skipped.push(`${sk.ref} (${sk.reason})`);
-                }
-                if (plannedTexts.edits.length === 0)
-                    continue;
-                for (const edit of plannedTexts.edits) {
-                    edits.replace(uri, new vscode.Range(doc.positionAt(edit.start), doc.positionAt(edit.end)), edit.line);
-                    textsEdited++;
-                }
-                for (const t of pendingTexts)
-                    textsDone.add(`${t.text0}@${t.x0},${t.y0}`);
-                touched.add(uri.toString());
-            }
-            for (const t of texts ?? []) {
-                if (!textsDone.has(`${t.text0}@${t.x0},${t.y0}`) && srcFiles.length <= 1)
-                    skipped.push(`text "${t.text0}" (no .text({…}) literal matches its authored value/anchor)`);
-            }
-            // component edits — value, rename, label layout — target the SAME
-            // constructor literal, so they run as ONE pass producing one
-            // replacement per constructor (ranges never collide in the edit)
-            let valuesEdited = 0;
-            let labelsEdited = 0;
-            let renamesEdited = 0;
-            const specByRef = new Map();
-            for (const v of values ?? [])
-                specByRef.set(v.ref, { ref: v.ref, value: v.value });
-            for (const r of renames ?? []) {
-                const spec = specByRef.get(r.ref) ?? { ref: r.ref };
-                spec.newRef = r.newRef;
-                specByRef.set(r.ref, spec);
-            }
-            for (const l of labels ?? []) {
-                const spec = specByRef.get(l.ref) ?? { ref: l.ref };
-                spec.label = { kind: l.kind, x: l.x, y: l.y, rot: l.rot };
-                specByRef.set(l.ref, spec);
-            }
-            const specs = [...specByRef.values()];
-            if (specs.length > 0) {
-                // placements first: each label converts against the part's FINAL
-                // placement (literal + this apply's move delta)
-                const placementMap = new Map();
-                for (const uri of srcFiles) {
-                    const doc = await vscode.workspace.openTextDocument(uri);
-                    const text = doc.getText();
-                    for (const spec of specs) {
-                        if (placementMap.has(spec.ref) || !spec.label)
-                            continue;
-                        const pl = (0, layoutEdits_js_1.parsePlacementLiteral)(text, variableOf.get(spec.ref) ?? '');
-                        if (pl) {
-                            const mv = moves.find((m) => m.ref === spec.ref);
-                            placementMap.set(spec.ref, {
-                                x: pl.x + (mv?.dx ?? 0),
-                                y: pl.y + (mv?.dy ?? 0),
-                                rot: pl.rot + (mv?.rot ?? 0),
-                            });
-                        }
+            const plan = (0, layoutApply_js_1.planLayoutApply)(files, {
+                moves,
+                texts,
+                values,
+                labels,
+                renames,
+                routes,
+                deletes,
+                variableOf: (ref) => variableOf.get(ref),
+                allRefs: new Set(comps.map((c) => c.reference).filter(Boolean)),
+            });
+            // stage by stage: positions come from the live document, which by now
+            // reflects every earlier stage — exactly the text each stage planned
+            // against. One WorkspaceEdit per stage keeps every applied range
+            // unambiguous.
+            for (const stage of plan.stages) {
+                const edits = new vscode.WorkspaceEdit();
+                for (const batch of stage) {
+                    const doc = await vscode.workspace.openTextDocument(vscode.Uri.parse(batch.uri));
+                    for (const edit of batch.edits) {
+                        edits.replace(doc.uri, new vscode.Range(doc.positionAt(edit.start), doc.positionAt(edit.end)), edit.line);
                     }
                 }
-                const allRefs = new Set(comps.map((c) => c.reference).filter(Boolean));
-                const doneRefs = new Set();
-                for (const uri of srcFiles) {
-                    const pending = specs.filter((sp) => !doneRefs.has(sp.ref));
-                    if (pending.length === 0)
-                        continue;
-                    const doc = await vscode.workspace.openTextDocument(uri);
-                    const text = doc.getText();
-                    const planned = (0, layoutEdits_js_1.planComponentEdits)(text, pending, (ref) => placementMap.get(ref) ?? null, allRefs);
-                    for (const sk of planned.skipped)
-                        skipped.push(`${sk.ref} (${sk.reason})`);
-                    for (const edit of planned.edits) {
-                        edits.replace(uri, new vscode.Range(doc.positionAt(edit.start), doc.positionAt(edit.end)), edit.line);
-                        const spec = pending.find((sp) => edit.ref === sp.ref + ' edits');
-                        if (spec?.value !== undefined)
-                            valuesEdited++;
-                        if (spec?.newRef)
-                            renamesEdited++;
-                        if (spec?.label)
-                            labelsEdited++;
-                        if (spec)
-                            doneRefs.add(spec.ref);
-                    }
-                    if (planned.edits.length > 0)
-                        touched.add(uri.toString());
-                }
+                if (edits.size > 0)
+                    await vscode.workspace.applyEdit(edits);
             }
-            // deleted trace segments: matched .to() runs drop from the source's
-            // TrackBuilder chains (a middle break SPLITS the route so a real gap
-            // replaces the copper; emptied routes and their create() args vanish)
-            let deletesPlanned = 0;
-            if (deletes && deletes.length > 0) {
-                for (const uri of srcFiles) {
-                    const doc = await vscode.workspace.openTextDocument(uri);
-                    const text = doc.getText();
-                    const plan = (0, routeEdits_js_1.planRouteDeletes)(text, deletes);
-                    for (const sk of plan.skipped)
-                        skipped.push(`delete: ${sk}`);
-                    if (plan.edits.length) {
-                        for (const edit of plan.edits) {
-                            edits.replace(uri, new vscode.Range(doc.positionAt(edit.start), doc.positionAt(edit.end)), edit.line);
-                        }
-                        deletesPlanned = plan.applied;
-                        touched.add(uri.toString());
-                        break;
-                    }
-                }
+            for (const key of plan.touched) {
+                const doc = await vscode.workspace.openTextDocument(vscode.Uri.parse(key));
+                await doc.save();
             }
-            // interactive routes: committed track polylines become TrackBuilder
-            // source — declarations before typecad.create( and variables appended
-            // to its argument list
-            let routesPlanned = 0;
-            if (routes && routes.length > 0) {
-                for (const uri of srcFiles) {
-                    const doc = await vscode.workspace.openTextDocument(uri);
-                    const text = doc.getText();
-                    const plan = (0, routeEdits_js_1.planRouteEdits)(text, routes);
-                    for (const sk of plan.skipped)
-                        skipped.push(`route ${sk}`);
-                    for (const edit of plan.edits) {
-                        edits.replace(uri, new vscode.Range(doc.positionAt(edit.start), doc.positionAt(edit.end)), edit.line);
-                        routesPlanned++;
-                    }
-                    if (plan.edits.length) {
-                        touched.add(uri.toString());
-                        break; // one declaration site: the entry that owns create()
-                    }
-                }
+            const c = plan.counts;
+            const anyApplied = c.moves > 0 || c.endpoints > 0 || c.texts > 0 || c.values > 0 || c.labels > 0 || c.renames > 0 || c.routes > 0 || c.deletes > 0;
+            this.output.appendLine(`layout apply: ${c.moves} placement(s) moved${c.endpoints ? `, ${c.endpoints} route endpoint(s) translated` : ''}${c.routes ? `, ${c.routes} track route(s) added to source` : ''}${c.deletes ? `, ${c.deletes} segment(s) deleted from source` : ''}${c.texts ? `, ${c.texts} text(s) edited` : ''}${c.values ? `, ${c.values} value(s) edited` : ''}${c.labels ? `, ${c.labels} label(s) repositioned` : ''}${c.renames ? `, ${c.renames} reference(s) renamed` : ''}${plan.skipped.length ? `, skipped ${plan.skipped.join('; ')}` : ''} — rebuilding`);
+            if (plan.skipped.length) {
+                vscode.window.setStatusBarMessage(`layout: skipped ${plan.skipped.join('; ')}`, 8000);
             }
-            const applied = appliedRefs.size;
-            if (applied > 0 ||
-                endpointsMoved > 0 ||
-                textsEdited > 0 ||
-                valuesEdited > 0 ||
-                labelsEdited > 0 ||
-                renamesEdited > 0 ||
-                routesPlanned > 0 ||
-                deletesPlanned > 0) {
-                await vscode.workspace.applyEdit(edits);
-                for (const key of touched) {
-                    const doc = await vscode.workspace.openTextDocument(vscode.Uri.parse(key));
-                    await doc.save();
-                }
-            }
-            this.output.appendLine(`layout apply: ${applied} placement(s) moved${endpointsMoved ? `, ${endpointsMoved} route endpoint(s) translated` : ''}${routesPlanned ? `, ${routes.length} track route(s) added to source` : ''}${deletesPlanned ? `, ${deletesPlanned} segment(s) deleted from source` : ''}${textsEdited ? `, ${textsEdited} text(s) edited` : ''}${valuesEdited ? `, ${valuesEdited} value(s) edited` : ''}${labelsEdited ? `, ${labelsEdited} label(s) repositioned` : ''}${renamesEdited ? `, ${renamesEdited} reference(s) renamed` : ''}${skipped.length ? `, skipped ${skipped.join('; ')}` : ''} — rebuilding`);
-            if (skipped.length) {
-                vscode.window.setStatusBarMessage(`layout: skipped ${skipped.join('; ')}`, 8000);
-            }
-            if (applied === 0 && textsEdited === 0 && valuesEdited === 0 && labelsEdited === 0 && renamesEdited === 0 && routesPlanned === 0 && deletesPlanned === 0) {
+            if (!anyApplied) {
                 void this.panel?.webview.postMessage({ type: 'typecad/layout-status', error: undefined });
                 return;
             }

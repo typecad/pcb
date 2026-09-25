@@ -27,7 +27,12 @@ class BoardDataService {
     }
     /** Point the service at a hw folder; switching folders drops the cache. */
     setFolder(cwd) {
-        if (this.cwd !== cwd) {
+        // Windows resolves the same folder under different casings (drive letter,
+        // junctions); a case-only change is not a folder change and must not
+        // needlessly drop the cache
+        const same = this.cwd === cwd ||
+            (process.platform === 'win32' && this.cwd !== null && this.cwd.toLowerCase() === cwd.toLowerCase());
+        if (!same) {
             this.invalidate();
             this.cwd = cwd;
         }

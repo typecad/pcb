@@ -85,6 +85,9 @@ function activate(context) {
         deserializeWebviewPanel: (panel) => viewer.restorePanel(panel),
     }));
     let watcher;
+    // one teardown hook owns whatever watcher is current — re-watching swaps
+    // the field without growing the subscriptions array
+    context.subscriptions.push(new vscode.Disposable(() => watcher?.dispose()));
     /** Opt-in (typecad-pcb.drcOnBuild): run the check once the board settles. */
     let autoDrcTimer;
     const autoDrcIfWanted = (boardFile) => {
@@ -125,7 +128,6 @@ function activate(context) {
         watcher.onDidChange(boardChanged);
         watcher.onDidCreate(boardChanged);
         watcher.onDidDelete(boardChanged);
-        context.subscriptions.push(watcher);
     };
     const initial = resolveHwFolder();
     if (initial) {

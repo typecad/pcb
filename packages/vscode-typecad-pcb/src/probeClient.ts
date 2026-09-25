@@ -23,7 +23,12 @@
 // ---------------------------------------------------------------------------
 
 import { randomUUID } from 'node:crypto';
+import type { RouteDeleteInput, RouteInput } from './routeEdits.js';
 import type { ComponentSummary, NetSourceSummary } from './types.js';
+
+// route/delete payloads share their shapes with the edit planners — one
+// definition, no drift between what the page sends and what they plan
+export type { RouteDeleteInput, RouteInput };
 
 interface OutlineComponent {
   ref: string;
@@ -88,31 +93,11 @@ export type ProbeWebviewMessage =
       labels?: LabelEdit[];
       renames?: Array<{ ref: string; newRef: string }>;
       /** interactive routes to append as TrackBuilder source */
-      routes?: RouteApply[];
+      routes?: RouteInput[];
       /** deleted trace segments to remove from source TrackBuilder chains */
-      deletes?: RouteDelete[];
+      deletes?: RouteDeleteInput[];
     };
 
-/** one deleted trace segment — or via, when `kind` is 'via' (board frame, y-down mm) */
-export interface RouteDelete {
-  kind?: 'segment' | 'via';
-  net: string | null;
-  x1: number;
-  y1: number;
-  x2: number;
-  y2: number;
-  layer: string | null;
-}
-
-/** one committed interactive route (board frame, y-down mm) */
-export interface RouteApply {
-  net: string | null;
-  w: number;
-  pieces: Array<{ layer: string; pts: Array<{ x: number; y: number }> }>;
-  vias: Array<{ x: number; y: number }>;
-  from: { ref: string; pin: string };
-  to: { ref: string; pin: string } | null;
-}
 export type ProbeHostMessage =
   | { type: 'typecad/select'; ref: string; token?: number }
   | { type: 'typecad/select-net'; net: string; token?: number }

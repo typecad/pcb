@@ -164,114 +164,6 @@
 		)
 
 	
-		(label "net7"
-			(at 119.38 101.6 270)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(justify right bottom)
-			)
-			(uuid "5e8b020b-9a1d-5499-b792-4140c7308179")
-		)
-
-	
-		(label "net7"
-			(at 101.6 93.98 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(justify left bottom)
-			)
-			(uuid "8e2b59f5-e6c9-5790-a87c-d4a43e0f0816")
-		)
-
-	
-		(label "net8"
-			(at 96.52 93.98 180)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(justify right bottom)
-			)
-			(uuid "83a0aa4e-d898-5d5f-a88c-d291df263e6d")
-		)
-
-	
-		(label "net8"
-			(at 132.08 116.84 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(justify left bottom)
-			)
-			(uuid "d78e8c9b-cebf-52bb-af29-8143e2265173")
-		)
-
-	
-		(label "net9"
-			(at 124.46000000000001 116.84 180)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(justify right bottom)
-			)
-			(uuid "4384df51-79fd-5a6c-b61b-36c62ab59ae7")
-		)
-
-	
-		(label "net9"
-			(at 7.62 50.8 180)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(justify right bottom)
-			)
-			(uuid "84bc7871-48f4-5f39-bcd0-ae41308b7b91")
-		)
-
-	
-		(label "net9"
-			(at 12.7 129.54 180)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(justify right bottom)
-			)
-			(uuid "f903a3b5-3c9a-5d79-92fc-ed8dac7aca28")
-		)
-
-	
-		(label "net10"
-			(at 149.86 -15.24 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(justify left bottom)
-			)
-			(uuid "d5cbcdc1-3b59-5343-90b7-45017c80facb")
-		)
-
-	
-		(label "net10"
-			(at 210.82 53.34 180)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(justify right bottom)
-			)
-			(uuid "f4e6d53e-7a97-519f-bdba-0d2dcdc213a8")
-		)
-
-	
 		(label "VCC"
 			(at 106.68 48.26 270)
 			(effects
@@ -280,7 +172,7 @@
 				)
 				(justify right bottom)
 			)
-			(uuid "bcc43c4f-9124-5873-8dae-d06466cd49e8")
+			(uuid "9f3b67f8-d749-5aa0-a6cb-daad1838ba10")
 		)
 
 	
@@ -292,7 +184,7 @@
 				)
 				(justify left bottom)
 			)
-			(uuid "9fdf77b7-c5d2-552c-a6f9-7774e2da84f0")
+			(uuid "cd32e09a-b842-5ef9-916c-0c503a0136e9")
 		)
 
 

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { applyPlacementEdits, planComponentEdits, planEndpointEdits, parsePlacementLiteral, planPlacementEdits, planTextEdits } from '../layoutEdits.js';
+import { expectValidTs } from './helpers/valid_source.js';
 
 const source = `import { PCB } from '@typecad/pcb';
 const typecad = new PCB('demo');
@@ -241,7 +242,95 @@ describe('planComponentEdits fab label', () => {
     );
     expect(skipped).toHaveLength(0);
     const out = applyPlacementEdits(src, edits);
+    expectValidTs(out);
     expect(out).toContain('fab: { x: -2, y: 0, rotation: 0 }');
     expect(out).not.toContain('fabLayout');
+  });
+});
+
+describe('planComponentEdits regression guards', () => {
+  const src =
+    "const r1 = new Component({ symbol: 'Device:R_Small', reference: 'R1', value: '1k' });\n" +
+    "r1.pcb = { x: 16, y: 15, rotation: 180 };\n";
+  const placementOf = (text: string) => (ref: string) => (ref === 'R1' ? parsePlacementLiteral(text, 'r1') : null);
+
+  it('REPLACES an existing layout option on a second label move (no duplicate keys)', () => {
+    const moved = applyPlacementEdits(src, planComponentEdits(
+      src,
+      [{ ref: 'R1', label: { kind: 'reference', x: 20, y: 14.5, rot: 270 } }],
+      placementOf(src),
+      new Set(['R1']),
+    ).edits);
+    // moving the SAME label again must rewrite the option, not append a twin
+    const second = planComponentEdits(
+      moved,
+      [{ ref: 'R1', label: { kind: 'reference', x: 21, y: 15, rot: 0 } }],
+      (ref) => (ref === 'R1' ? parsePlacementLiteral(moved, 'r1') : null),
+      new Set(['R1']),
+    );
+    expect(second.skipped).toHaveLength(0);
+    const out = applyPlacementEdits(moved, second.edits);
+    expectValidTs(out);
+    expect(out.match(/referenceLayout:/g)).toHaveLength(1);
+    expect(out).toContain('referenceLayout: { x: -5, y: 0, rotation: -180 }');
+  });
+
+  it('keeps the literal intact when a length-changing rename precedes an insert', () => {
+    const { edits, skipped } = planComponentEdits(
+      src,
+      [{ ref: 'R1', newRef: 'USB1', value: '10k' }],
+      placementOf(src),
+      new Set(['R1']),
+    );
+    expect(skipped).toHaveLength(0);
+    const out = applyPlacementEdits(src, edits);
+    expectValidTs(out);
+    expect(out).toContain("reference: 'USB1'");
+    expect(out).toContain("value: '10k'");
+    expect(out).toContain("symbol: 'Device:R_Small'");
+  });
+
+  it('inserts after the reference even when value precedes it in the literal', () => {
+    const reordered = "const r1 = new Component({ value: '1k', reference: 'R1' });\n";
+    const { edits, skipped } = planComponentEdits(
+      reordered,
+      [{ ref: 'R1', newRef: 'USB1', value: '2k' }],
+      placementOf(reordered),
+      new Set(['R1']),
+    );
+    expect(skipped).toHaveLength(0);
+    const out = applyPlacementEdits(reordered, edits);
+    expectValidTs(out);
+    expect(out).toContain("value: '2k'");
+    expect(out).toContain("reference: 'USB1'");
+  });
+
+  it("escapes a quote in a typed value instead of breaking the string literal", () => {
+    const { edits, skipped } = planComponentEdits(
+      src,
+      [{ ref: 'R1', value: "1k (don't)" }],
+      placementOf(src),
+      new Set(['R1']),
+    );
+    expect(skipped).toHaveLength(0);
+    const out = applyPlacementEdits(src, edits);
+    expectValidTs(out);
+    expect(out).toContain("value: '1k (don\\'t)'");
+  });
+
+  it('escapes a value rewrite against the existing value literal’s own quote', () => {
+    // the constructor quotes reference and value differently: the rewrite
+    // must escape for the value's double quotes, not the reference's singles
+    const mixed = "const r1 = new Component({ reference: 'R1', value: \"1k\" });\nr1.pcb = { x: 16, y: 15 };\n";
+    const { edits, skipped } = planComponentEdits(
+      mixed,
+      [{ ref: 'R1', value: '2" x 1/4 W' }],
+      (ref) => (ref === 'R1' ? parsePlacementLiteral(mixed, 'r1') : null),
+      new Set(['R1']),
+    );
+    expect(skipped).toHaveLength(0);
+    const out = applyPlacementEdits(mixed, edits);
+    expectValidTs(out);
+    expect(out).toContain('value: "2\\" x 1/4 W"');
   });
 });

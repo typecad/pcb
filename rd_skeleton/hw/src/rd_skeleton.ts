@@ -8,9 +8,9 @@ const typecad = new PCB('rd_skeleton', {
 // grid cell (7 columns x 4 rows on a 104 x 74 mm board) ----
 // row 1: two-terminal SMD chips
 const r1 = new Component({ symbol: 'Device:R_Small', footprint: 'Resistor_SMD:R_0603_1608Metric', reference: 'R1', referenceLayout: { x: 1.5, y: -1.5, rotation: 0 }, value: '1k' });
-r1.pcb = { x: 19, y: 16, rotation: 180 };
+r1.pcb = { x: 13, y: 14, rotation: 360 };
 const c1 = new Component({ symbol: 'Device:C_Small', footprint: 'Capacitor_SMD:C_0805_2012Metric', reference: 'C1', value: '1uF' });
-c1.pcb = { x: 31, y: 18 };
+c1.pcb = { x: 31.5, y: 15 };
 const l1 = new Component({ symbol: 'Device:L_Small', footprint: 'Inductor_SMD:L_0805_2012Metric', reference: 'L1', value: '10uH' });
 l1.pcb = { x: 45, y: 18 };
 const d1 = new Component({ symbol: 'Device:D_Small', footprint: 'Diode_SMD:D_0805_2012Metric', reference: 'D1', value: '1N4148W', simulation: { model: 'D1N4148W D (IS=4.35n RS=0.6456 N=1.9061 BV=110 CJO=4p M=0.33 VJ=0.75 TT=4n)' } });
@@ -81,7 +81,7 @@ j5.pcb = { x: 73, y: 66 };
 const sw3 = new Component({ symbol: 'Device:SW_SPDT', footprint: 'Button_Switch_THT:SW_DIP_SPSTx01_Slide_6.7x4.1mm_W7.62mm_P2.54mm_LowProfile', reference: 'SW3', value: 'power' });
 sw3.pcb = { x: 87, y: 66 };
 const sw2 = new Component({ symbol: 'Device:RotaryEncoder_Switch', footprint: 'Rotary_Encoder:RotaryEncoder_Alps_EC11E-Switch_Vertical_H20mm', reference: 'SW2', value: 'encoder' });
-sw2.pcb = { x: 101, y: 66 };
+sw2.pcb = { x: 95.75, y: 71.5 };
 
 // a 3.3 V rail feeding the gallery parts so the schematic view's trace
 // hover shows real operating-point numbers (VCC at 3.3 V, R2's 10k divider
@@ -99,7 +99,7 @@ typecad.assign(vcc, 'power');
 // visible heating in the thermal view (~21 °C rise vs the rated 10 °C)
 const VCCW = 0.3;
 const vccTrunk = new TrackBuilder(typecad, { net: 'VCC' })
-  .from({ x: 18.175, y: 16 }, 'F.Cu', VCCW)
+  .from({ x: 20.675, y: 17.5 }, 'F.Cu', VCCW)
   .to({ x: 16.8375, y: 19.7375 }, 'F.Cu', VCCW)
   .to({ x: 16.8375, y: 26 }, 'F.Cu', VCCW)
   .to({ x: 41, y: 26 }, 'F.Cu', VCCW)
@@ -114,7 +114,7 @@ typecad.named('GND').net(r2.pin(2), c2.pin(2), c1.pin(2));
 const gnd = typecad.named('GND').net(rf1.pin(2), y1.pin(2), r3.pin(2));
 const v1 = new Power({ power: r1.pin(1), gnd: c2.pin(2), voltage: 3.3, name: 'V3V3' });
 void v1;
-typecad.route(gnd, { powerInfo: { current: 1.5, maxTempRise: 10 } });
+// typecad.route(gnd, { powerInfo: { current: 1.5, maxTempRise: 10 } });
 typecad.assign(gnd, 'power');
 
 typecad.outline(10, 10, 104, 74, 0.1);
@@ -141,16 +141,16 @@ typecad.zone({
 // keep them forward-biased
 const r1_out = typecad.net(r1.pin(2), c1.pin(1), l1.pin(1));
 typecad.route(r1_out);
-typecad.named('GND').net(c1.pin(2));
-const l1_d1 = typecad.net(l1.pin(2), d1.pin(2));
-typecad.route(l1_d1);
-const d1_led = typecad.net(d1.pin(1), d3.pin(2));
-typecad.route(d1_led);
-const led_gnd = typecad.net(d3.pin(1), rf1.pin(1), y1.pin(1));
-typecad.route(led_gnd);
-// rf1.2 / y1.2 / r3.2 join GND through the single consolidated route above
-const j71_u51 = typecad.net(u5.pin(2), j7.pin(2));
-typecad.route(j71_u51);
+// typecad.named('GND').net(c1.pin(2));
+// const l1_d1 = typecad.net(l1.pin(2), d1.pin(2));
+// typecad.route(l1_d1);
+// const d1_led = typecad.net(d1.pin(1), d3.pin(2));
+// typecad.route(d1_led);
+// const led_gnd = typecad.net(d3.pin(1), rf1.pin(1), y1.pin(1));
+// typecad.route(led_gnd);
+// // rf1.2 / y1.2 / r3.2 join GND through the single consolidated route above
+// const j71_u51 = typecad.net(u5.pin(2), j7.pin(2));
+// typecad.route(j71_u51);
 typecad.text({ text: 'rd-skeleton', x: 62, y: 80, layer: 'F.SilkS', font: 'OCR A Std', width: 1.5, height: 1.5 });
 // typecad.stitch('GND', { pitch: 2.5, margin: 5 });
 // two explicit GND layer-tie vias (F.Cu↔B.Cu, the pour spans both layers),
@@ -175,6 +175,48 @@ const vccVia = new TrackBuilder(typecad, { net: 'VCC' })
   .to({ x: 17, y: 25.623 }, 'B.Cu', VCCW)
   .to({ x: 17, y: 34 }, 'B.Cu', VCCW);
 
+const route1 = new TrackBuilder(typecad, {  })
+  .from({ x: 19.475, y: 48.095 }, 'F.Cu', 0.3)
+  .to({ x: 29.095, y: 48.095, layer: 'F.Cu', width: 0.3 })
+  .to({ x: 31, y: 50, layer: 'F.Cu', width: 0.3 });
+
+const route2 = new TrackBuilder(typecad, {  })
+  .from({ x: 19.475, y: 49.365 }, 'F.Cu', 0.3)
+  .to({ x: 21.443, y: 49.365, layer: 'F.Cu', width: 0.3 })
+  .to({ x: 24.794, y: 52.716, layer: 'F.Cu', width: 0.3 })
+  .to({ x: 30.824, y: 52.716, layer: 'F.Cu', width: 0.3 })
+  .to({ x: 31, y: 52.54, layer: 'F.Cu', width: 0.3 });
+
+const route3 = new TrackBuilder(typecad, {  })
+  .from({ x: 19.475, y: 50.635 }, 'F.Cu', 0.3)
+  .to({ x: 21.726, y: 50.635, layer: 'F.Cu', width: 0.3 })
+  .to({ x: 25.104, y: 54.013, layer: 'F.Cu', width: 0.3 })
+  .to({ x: 29.933, y: 54.013, layer: 'F.Cu', width: 0.3 })
+  .to({ x: 31, y: 55.08, layer: 'F.Cu', width: 0.3 });
+
+const route4 = new TrackBuilder(typecad, {  })
+  .from({ x: 19.475, y: 51.905 }, 'F.Cu', 0.3)
+  .to({ x: 20.458, y: 51.905, layer: 'F.Cu', width: 0.3 })
+  .to({ x: 26.542, y: 57.989, layer: 'F.Cu', width: 0.3 })
+  .to({ x: 30.631, y: 57.989, layer: 'F.Cu', width: 0.3 })
+  .to({ x: 31, y: 57.62, layer: 'F.Cu', width: 0.3 });
+
+const route5 = new TrackBuilder(typecad, {  })
+  .from({ x: 44.25, y: 52.438 }, 'F.Cu', 0.3)
+  .to({ x: 44.25, y: 53.506, layer: 'F.Cu', width: 0.3 })
+  .to({ x: 43.923, y: 53.833, layer: 'F.Cu', width: 0.3 })
+  .to({ x: 42.737, y: 53.833, layer: 'F.Cu', width: 0.3 })
+  .to({ x: 41.497, y: 55.073, layer: 'F.Cu', width: 0.3 })
+  .to({ x: 38.627, y: 55.073, layer: 'F.Cu', width: 0.3 })
+  .to({ x: 38.62, y: 55.08, layer: 'F.Cu', width: 0.3 });
+
+const route6 = new TrackBuilder(typecad, {  })
+  .from({ x: 43.75, y: 52.438 }, 'F.Cu', 0.3)
+  .to({ x: 43.75, y: 53.167, layer: 'F.Cu', width: 0.3 })
+  .to({ x: 43.59, y: 53.327, layer: 'F.Cu', width: 0.3 })
+  .to({ x: 39.407, y: 53.327, layer: 'F.Cu', width: 0.3 })
+  .to({ x: 38.62, y: 52.54, layer: 'F.Cu', width: 0.3 });
+
 typecad.create(
   r1, c1, l1, d1, d3, rf1, y1,
   r2, d2, c2, led2, q1, q2, sw1, r3,
@@ -184,4 +226,4 @@ typecad.create(
   vccTrunk,
   vccToC2,
   vccVia,
-);
+ route1, route2, route3, route4, route5, route6);

@@ -1,0 +1,5 @@
+---
+'@typecad/pcb': minor
+---
+
+DRC goes native: `typecad-pcb check` runs the in-process engine by default (`--kicad-drc` keeps kicad-cli). The copper core is built for KiCad-report parity — multi-polygon zones, oval drills, layer-aware unions, arcs/roundrect/trapezoids, annular-ring dedup, VALUE substitution, uuid collision and missing-dimension checks — and constraints come from the board's own `.kicad_pro` design settings (previously engine defaults ran, mislabeling compliant vias as undersized), with a conf-referenced JSON rules file for overrides. DFM advisories report as their own bucket — no kicad-cli counterpart, excluded from parity divergence. Tier 1: dangling tracks, hole-to-edge, aspect ratio, acid traps (structural copper only — hatched pour junctions no longer false-positive), outline integrity, silk/mask text checks, via-in-pad. Tier 2 unlocks copper slivers and mask webs through an erode-and-survive width primitive, plus courtyard overlap, thermal spoke resolution, and paste slivers. Hatched boards drop from >10 minutes under kicad-cli to ~18 s.

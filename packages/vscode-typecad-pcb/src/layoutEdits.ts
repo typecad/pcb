@@ -44,6 +44,15 @@ function escapeRegExp(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+/** Escape a value for splicing into an existing quoted string literal. */
+function escapeQuoted(value: string, quote: string): string {
+  return value
+    .replace(/\\/g, '\\\\')
+    .replace(/\r/g, '\\r')
+    .replace(/\n/g, '\\n')
+    .replace(new RegExp(escapeRegExp(quote), 'g'), `\\${quote}`);
+}
+
 /** mm with up to 3 decimals, trailing zeros stripped — reads like hand-written code */
 function fmt(n: number): string {
   return String(parseFloat(n.toFixed(3)));
@@ -150,7 +159,7 @@ export function planEndpointEdits(
 }
 
 /** Apply planned edits to a document's text (latest edit first, ranges stay valid). */
-export function applyPlacementEdits(text: string, edits: PlacementEdit[]): string {
+export function applyPlacementEdits(text: string, edits: Array<{ start: number; end: number; line: string }>): string {
   const sorted = [...edits].sort((a, b) => b.start - a.start);
   let out = text;
   for (const edit of sorted) out = out.slice(0, edit.start) + edit.line + out.slice(edit.end);
@@ -183,6 +192,11 @@ function objectLiteralRange(text: string, head: number): { head: number; open: n
     }
   }
   return null;
+}
+
+/** The identity a planned .text edit reports — one authored value+anchor. */
+export function textEditRef(t: TextEditInput): string {
+  return `text "${t.text0}"@${t.x0},${t.y0}`;
 }
 
 /**
@@ -218,7 +232,7 @@ export function planTextEdits(text: string, edits: TextEditInput[]): LayoutEditR
     used.add(edits.indexOf(edit));
     let newInner = inner;
     if (edit.text !== ctext) {
-      const esc = edit.text.replace(/\\/g, '\\\\').replace(/\n/g, '\\n');
+      const esc = escapeQuoted(edit.text, tNum[1]!);
       newInner = newInner.replace(tNum[0], () => `text: ${tNum[1]}${esc}${tNum[1]}`);
     }
     if (edit.x !== cx) newInner = newInner.replace(/\bx\s*:\s*-?[\d.]+/, `x: ${fmt(edit.x)}`);
@@ -231,7 +245,7 @@ export function planTextEdits(text: string, edits: TextEditInput[]): LayoutEditR
       else newInner = `${newInner.trimEnd()}, rotation: ${fmt(newRot)} `;
     }
     planned.push({
-      ref: `text "${edit.text0}"`,
+      ref: textEditRef(edit),
       // exactly the call's object literal, nothing beyond
       line: `${text.slice(match.index, range.open + 1)}${newInner}}`,
       start: match.index,
@@ -240,7 +254,7 @@ export function planTextEdits(text: string, edits: TextEditInput[]): LayoutEditR
   }
   for (let i = 0; i < edits.length; i++) {
     if (!used.has(i))
-      skipped.push({ ref: `text "${edits[i]!.text0}"`, reason: 'no .text({…}) literal matches its authored value/anchor' });
+      skipped.push({ ref: textEditRef(edits[i]!), reason: 'no .text({…}) literal matches its authored value/anchor' });
   }
   return { edits: planned, skipped };
 }
@@ -308,7 +322,7 @@ export function planComponentEdits(
     const range = objectLiteralRange(text, match.index);
     if (!range) continue;
     const inner = text.slice(range.open + 1, range.close);
-    const rNum = /\breference\s*:\s*(['"])((?:\.|(?!\1).)*)\1/.exec(inner);
+    const rNum = /\breference\s*:\s*(['"])((?:\\.|(?!\1).)*)\1/.exec(inner);
     if (!rNum) continue;
     const ref = rNum[2];
     const spec = specs.find((sp, i) => !used.has(i) && sp.ref === ref);
@@ -318,15 +332,16 @@ export function planComponentEdits(
     if (spec.newRef && allRefs.has(spec.newRef) && spec.newRef !== ref)
       skip = `\`${spec.newRef}\` is already a component reference`;
     let newInner = inner;
-    const insertAt = rNum.index + rNum[0].length;
     const after: string[] = [];
     if (!skip && spec.newRef) {
-      const esc = spec.newRef.replace(/\\/g, '\\\\').replace(/\n/g, '\\n');
+      const esc = escapeQuoted(spec.newRef, rNum[1]!);
       newInner = newInner.replace(rNum[0], () => `reference: ${rNum[1]}${esc}${rNum[1]}`);
     }
     if (!skip && spec.value !== undefined) {
       const vNum = /\bvalue\s*:\s*(['"])((?:\\.|(?!\1).)*)\1/.exec(inner);
-      const esc = spec.value.replace(/\\/g, '\\\\').replace(/\n/g, '\\n');
+      // escape against the literal being written into: an existing value
+      // literal may quote differently than the reference beside it
+      const esc = escapeQuoted(spec.value, vNum ? vNum[1]! : rNum[1]!);
       if (vNum) newInner = newInner.replace(vNum[0], () => `value: ${vNum[1]}${esc}${vNum[1]}`);
       else after.push(`value: ${rNum[1]}${esc}${rNum[1]}`);
     }
@@ -344,26 +359,33 @@ export function planComponentEdits(
         // reference/value carry their own Layout option names; the small
         // fab refdes text is positioned by the plain 'fab' option
         const prop = spec.label.kind === 'fab' ? 'fab' : `${spec.label.kind}Layout`;
-        const layoutRe = new RegExp(`\b${prop}\s*:\s*\{[^}]*\}`);
+        // NOTE: RegExp source string — backslashes are doubled
+        const layoutRe = new RegExp(`\\b${prop}\\s*:\\s*\\{[^}]*\\}`);
         const existing = layoutRe.exec(inner);
         if (existing) newInner = newInner.replace(existing[0], () => `${prop}: ${body}`);
         else after.push(`${prop}: ${body}`);
       }
     }
     if (skip) {
-      skipped.push({ ref: `${ref} (${spec.label ? spec.label.kind + ' label' : spec.newRef ? 'rename' : 'value'})`, reason: skip });
+      skipped.push({ ref, reason: skip });
       continue;
     }
-    if (after.length) newInner = newInner.slice(0, insertAt) + ', ' + after.join(', ') + newInner.slice(insertAt);
+    if (after.length) {
+      // re-locate the anchor on the REPLACED text: the rename/value edits
+      // above may have shifted it, and a stale offset splices mid-token
+      const anchor = /\breference\s*:\s*(['"])((?:\\.|(?!\1).)*)\1/.exec(newInner);
+      const at = anchor ? anchor.index + anchor[0].length : newInner.trimEnd().length;
+      newInner = newInner.slice(0, at) + ', ' + after.join(', ') + newInner.slice(at);
+    }
     planned.push({
-      ref: `${ref} edits`,
+      ref,
       line: `${text.slice(match.index, range.open + 1)}${newInner}}`,
       start: match.index,
       end: range.close + 1,
     });
   }
   for (let i = 0; i < specs.length; i++) {
-    if (!used.has(i)) skipped.push({ ref: `${specs[i]!.ref} edits`, reason: 'no Component constructor literal found' });
+    if (!used.has(i)) skipped.push({ ref: specs[i]!.ref, reason: 'no Component constructor literal found' });
   }
   return { edits: planned, skipped };
 }

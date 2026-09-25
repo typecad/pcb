@@ -130,8 +130,8 @@ const PROBE_CLIENT = `<script>
   // Layout view: the page hands moved-component deltas to the host, which
   // edits the placement literals, rebuilds, and regenerates this viewer
   var layoutCb = null;
-  window.typecadLayoutApply = function (moves, texts, values, labels, renames, cb) {
-    layoutCb = cb || null;
+  window.typecadLayoutApply = function (moves, texts, values, labels, renames, routes, deletes, cb) {
+    layoutCb = cb || (typeof deletes === 'function' ? deletes : typeof routes === 'function' ? routes : null);
     send({
       type: 'typecad/layout-rebuild',
       moves: moves,
@@ -139,6 +139,8 @@ const PROBE_CLIENT = `<script>
       values: values || [],
       labels: labels || [],
       renames: renames || [],
+      routes: Array.isArray(routes) ? routes : [],
+      deletes: Array.isArray(deletes) ? deletes : [],
     });
   };
 
@@ -195,21 +197,66 @@ const PROBE_CLIENT = `<script>
       if (!el) remember(null); // empty-space click cleared the highlight
     }, true);
     svg.addEventListener('dblclick', function (ev) {
-      // the layout view owns double-clicks (in-place editing); the source
-      // jump would steal focus out of the editor
-      if (document.body.classList.contains('typecad-layout')) return;
-      var el = ev.target.closest ? ev.target.closest('[data-ref]') : null;
+      // an ACTIVE route owns the double-click (it finishes the track);
+      // otherwise the layout view probes like every other view — components
+      // jump to their source line, traces to the net's declaring line
+      if (
+        document.body.classList.contains('typecad-layout') &&
+        window.typecadRoutingActive &&
+        window.typecadRoutingActive()
+      )
+        return;
+      // a pad wins over the part: overlays shadow body-hidden pads (every
+      // BGA ball) from DOM hit testing, so the viewer resolves the point
+      // through the pad manifest itself — exposed or hidden alike
+      if (window.typecadPadProbe) {
+        var padHit = window.typecadPadProbe(ev.clientX, ev.clientY);
+        if (padHit) {
+          send({ type: 'typecad/probe', ref: padHit.ref, pin: padHit.pin });
+          return;
+        }
+      }
+      // an outline rect swallows every hit inside a component body — peek
+      // underneath it so exposed pad ink reads as the pad, not the part.
+      // display:none (not pointer-events:none) unhooks the whole subtree
+      // from hit testing; no frame renders between the toggles
+      var tgt = ev.target;
+      if (tgt && tgt.closest && tgt.closest('#typecad-probe')) {
+        var pg = document.getElementById('typecad-probe');
+        if (pg) {
+          pg.style.display = 'none';
+          try { tgt = document.elementFromPoint(ev.clientX, ev.clientY) || tgt; } catch (e) {}
+          pg.style.display = '';
+        }
+      }
+      var el = tgt && tgt.closest ? tgt.closest('[data-ref]') : null;
+      // peek may surface bare geometry (fill raster, background): the
+      // outline that received the click still names the component
+      if (!el && ev.target && ev.target.closest) el = ev.target.closest('[data-ref]');
       if (el) {
         send({ type: 'typecad/probe', ref: el.getAttribute('data-ref'), pin: el.getAttribute('data-pin') });
         return;
       }
       // no component under the cursor: a double-click on a trace reveals the
       // line that declared its net/route — the location resolves HERE (the
-      // client owns the net->source map), the host only reveals it
-      var netEl = ev.target.closest ? ev.target.closest('[data-net]') : null;
+      // client owns the net->source map), the host only reveals it. N/C is
+      // the plotter's no-connect label, not a net: netless routes carry it
+      // in their gerber attributes, and honoring it here would shadow the
+      // unnamed-route source fallback below
+      var netEl = tgt && tgt.closest ? tgt.closest('[data-net]') : null;
       if (netEl) {
         var net = netEl.getAttribute('data-net');
-        send({ type: 'typecad/probe-net', net: net, source: window.typecadNetSource(net) || undefined });
+        if (net && net !== 'N/C') {
+          send({ type: 'typecad/probe-net', net: net, source: window.typecadNetSource(net) || undefined });
+          return;
+        }
+      }
+      // netless hand route: no data-net to resolve — the viewer maps the
+      // clicked point onto the unnamed-route polylines and returns the
+      // declaring source line directly
+      if (window.typecadTraceSource) {
+        var rsrc = window.typecadTraceSource(ev.clientX, ev.clientY);
+        if (rsrc) send({ type: 'typecad/probe-net', net: '(route)', source: rsrc });
       }
     }, true);
   }

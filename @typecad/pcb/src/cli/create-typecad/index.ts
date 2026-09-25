@@ -112,29 +112,56 @@ async function main(preparsedArgs?: Record<string, any>) {
     logger.log(`  typeCAD HAL firmware: ${answers.hal}`);
     logger.log(`  Git: ${answers.git}`);
   } else {
-    // Interactive mode - ask questions as before
-    const { input, confirm } = await import('@inquirer/prompts');
+    // Interactive mode. Plain readline, NOT @inquirer: on Windows an
+    // @inquirer raw-mode console reader cannot be fully stopped after the
+    // prompts finish, and it silently swallows every keystroke meant for the
+    // interactive HAL wizard spawned later with inherited stdio (the board
+    // picker accepts no input). readline's close() actually stops reading,
+    // so the child gets the console.
+    const { createInterface } = await import('node:readline/promises');
+    const rl = createInterface({ input: process.stdin, output: process.stdout });
 
-    answers.name = await input({
-      message: 'Project name?',
-      default: cmdArgs.name || 'typecad_project',
-      validate: validateProjectName,
+    // Line queue instead of sequential question() calls: lines that arrive
+    // while no question is pending (piped stdin delivers the whole answer
+    // sheet in one chunk) would otherwise be dropped by readline.
+    const pendingLines: string[] = [];
+    const lineWaiters: Array<(line: string) => void> = [];
+    rl.on('line', (l: string) => {
+      if (lineWaiters.length > 0) lineWaiters.shift()!(l);
+      else pendingLines.push(l);
     });
+    const nextLine = (): Promise<string> =>
+      new Promise((resolve) => {
+        if (pendingLines.length > 0) resolve(pendingLines.shift()!);
+        else lineWaiters.push(resolve);
+      });
+    const ask = async (q: string, def?: string): Promise<string> => {
+      const suffix = def ? ` (${def})` : '';
+      process.stdout.write(`${q}${suffix}: `);
+      const a = await nextLine();
+      return a.trim() || (def ?? '');
+    };
+
+    let name = await ask('Project name?', cmdArgs.name || 'typecad_project');
+    let nameValidation = validateProjectName(name);
+    while (nameValidation !== true) {
+      logger.error(chalk.red('Error:'), nameValidation);
+      name = await ask('Project name?', 'typecad_project');
+      nameValidation = validateProjectName(name);
+    }
+    answers.name = name;
 
     answers.hal =
       typeof cmdArgs.hal === 'boolean'
         ? cmdArgs.hal
-        : await confirm({
-            message: 'Add a typeCAD HAL firmware project in ./fw?',
-            default: false,
-          });
+        : (await ask('Add a typeCAD HAL firmware project in ./fw? [y/N]', '')).toLowerCase().startsWith('y');
 
     answers.git =
       typeof cmdArgs.git === 'boolean'
         ? cmdArgs.git
-        : await confirm({
-            message: 'Initialize a git repo?',
-          });
+        : (await ask('Initialize a git repo? [y/N]', '')).toLowerCase().startsWith('y');
+
+    rl.close();
   }
 
   await create_project(answers as ProjectAnswers);

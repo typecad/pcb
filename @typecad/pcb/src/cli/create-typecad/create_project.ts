@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import chalk from 'chalk';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { findExecutable } from '../../kicad.js';
 import type { ProjectAnswers } from '../types.js';
 import logger from '../../utils/logging.js';
@@ -69,7 +69,37 @@ const runCommandQuiet = (command: string, args: string[], cwd?: string) => {
   return true;
 };
 
-export function create_project(answers: ProjectAnswers) {
+// Async counterpart of runSync. REQUIRED for the interactive HAL step: a
+// synchronous execFileSync blocks the event loop, which keeps libuv's Windows
+// console-input reader draining every keystroke away from the child — the
+// board wizard then accepts no input. An async spawn keeps the loop alive so
+// the parent's (closed) stdin truly stops reading.
+function runAsync(command: string, args: string[], cwd?: string, options: RunOptions = {}): Promise<boolean> {
+  return new Promise((resolve) => {
+    const resolved = findExecutable(command);
+    const useCmd = IS_WIN && (!resolved || IS_CMD_EXT.test(resolved));
+    const child = useCmd
+      ? spawn('cmd.exe', ['/d', '/s', '/c', command, ...args], { cwd, stdio: options.stdio ?? 'pipe' })
+      : spawn(resolved ?? command, args, { cwd, stdio: options.stdio ?? 'pipe' });
+    const timer = setTimeout(() => {
+      try {
+        child.kill();
+      } catch {
+        /* already gone */
+      }
+    }, options.timeout ?? 120_000);
+    child.on('error', () => {
+      clearTimeout(timer);
+      resolve(false);
+    });
+    child.on('exit', (code) => {
+      clearTimeout(timer);
+      resolve(code === 0);
+    });
+  });
+}
+
+export async function create_project(answers: ProjectAnswers) {
   answers.name = sanitizeProjectName(answers.name);
   const projectRoot = path.resolve(answers.name);
   let createdDirs = false;
@@ -296,8 +326,10 @@ ${skillSections}
       // The HAL setup picks its board via its own wizard (interactive on a
       // TTY), so the child inherits stdio; the generous timeout covers the
       // HAL project's npm install. The project name is positional: the CLI
-      // has no --projectName flag.
-      const createdHAL = runCommand(
+      // has no --projectName flag. Runs via runAsync (async spawn): a sync
+      // execFileSync blocks the event loop and the parent's Windows console
+      // reader then starves the child of input.
+      const createdHAL = await runAsync(
         'npx',
         ['-y', '@typecad/hal@latest', 'create', answers.name, '--outDir', 'fw'],
         path.join(process.cwd(), answers.name),

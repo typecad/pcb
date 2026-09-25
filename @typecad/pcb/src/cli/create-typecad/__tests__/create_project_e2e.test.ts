@@ -47,7 +47,7 @@ describe('create_project scaffolds the complete project', () => {
 
   it('writes every artifact including the bundled VS Code extension', async () => {
     const { create_project } = await import('../create_project.js');
-    create_project({ name: 'probe', hal: false, git: false });
+    await create_project({ name: 'probe', hal: false, git: false });
 
     const root = path.join(tmp, 'probe');
     const hw = path.join(root, 'hw');
@@ -99,7 +99,7 @@ describe('create_project scaffolds the complete project', () => {
       return '';
     });
     const { create_project } = await import('../create_project.js');
-    create_project({ name: 'doomed', hal: false, git: false });
+    await create_project({ name: 'doomed', hal: false, git: false });
     expect(fs.existsSync(path.join(tmp, 'doomed'))).toBe(false);
   });
 });

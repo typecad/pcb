@@ -14,8 +14,6 @@
     "version": "changeset version",
     "publish": "changeset publish",
     "release": "node scripts/release.mjs",
-    "ci:version": "node scripts/ci-version.mjs",
-    "ci:publish": "node scripts/ci-publish.mjs",
     "publish:private": "npm publish -ws --tag private --registry http://192.168.2.207:4873/"
   },
   "workspaces": [

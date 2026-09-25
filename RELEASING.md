@@ -45,23 +45,21 @@ Example changeset file:
 Fixed via annular ring calculation for high-current tracks
 ```
 
-### 3. Release
+### 3. Release in one command
 
-**The default path is push-to-publish (CI):** push your changesets to `master` and the Release workflow opens a **Version Packages PR** carrying the bumps, changelogs, refreshed lockfile, and the re-bundled extension asset. Merging that PR publishes to npm — authenticated by **trusted publishing** (OIDC), no stored npm token — pushes the release tags, and commits the bump. That merge is the entire release.
-
-**The local equivalent** (for cutting a release by hand) is:
+When ready to release, run:
 
 ```
 npm run release
 ```
 
-which runs the same ordering with the same guarantees:
+This wraps `changeset version` / `changeset publish` with the ordering this repo needs:
 
 1. **Preflight** — package dirs present, warns on a non-master branch.
 2. **Tests** — every workspace (`--no-test` skips).
 3. **`changeset version`** — consumes the changesets, bumps versions/changelogs, then refreshes `package-lock.json`.
-4. **Extension bundle** — compiles `vscode-typecad-pcb` and bundles it into `@typecad/pcb/assets/editor-extensions/`; hard-aborts if the bundled manifest's version doesn't match the package.
-5. **`changeset publish`** — publishes changed packages to npm in dependency order (needs `npm login` locally; CI uses trusted publishing instead).
+4. **Extension bundle** — compiles `vscode-typecad-pcb` and bundles it into `@typecad/pcb/assets/editor-extensions/`. This must happen **after** the version bump (the asset's manifest carries the new version) and **before** publish (the tarball packs `assets/`); the script hard-aborts if the bundled manifest's version doesn't match the package.
+5. **`changeset publish`** — publishes changed packages to npm in dependency order (needs `npm login` locally).
 6. **Commit report** — prints the commit/push commands for the version bump.
 
 `npm run release -- --dry-run` lists the pending changesets and their bumps without changing anything.
@@ -117,7 +115,7 @@ npm run changeset
 
 ### Release everything at once (emergency)
 
-Create a changeset selecting all packages with the desired bump type, then release (merge the Version Packages PR, or `npm run release` locally).
+Create a changeset selecting all packages with the desired bump type, then run `npm run release`.
 
 ### Skip a package from being published
 
@@ -142,7 +140,7 @@ The repo is currently **in changeset pre-release mode** (see `.changeset/pre.jso
 - `npm run version` only bumps the **prerelease counter** (e.g., `1.0.0-alpha.1` → `1.0.0-alpha.2`); the accumulated major/minor changesets are consumed but do **not** produce a stable release until pre mode is exited.
 - `npm run publish` publishes under the `alpha` dist-tag.
 
-To cut the next alpha: push your changesets and merge the Version Packages PR (or `npm run release` locally, then commit the bump it prints — the bundle step is built into both paths).
+To cut the next alpha: `npm run release`, then commit the bump it prints (the bundle step is built in).
 
 To ship a **stable** release, exit pre-release mode first so accumulated version bumps land in one go:
 
@@ -153,11 +151,3 @@ npm run publish
 ```
 
 (Re-enter anytime with `npx changeset pre enter alpha`.) Don't leave pre mode open unintentionally — pending changesets accumulate silently while it is on.
-
-## CI publishing (trusted publishing, no npm token)
-
-Releases run in `.github/workflows/release.yml`: push with pending changesets opens the Version Packages PR; merging it publishes. Authentication is npm **trusted publishing** — the workflow's OIDC identity is the credential, so there is no `NPM_TOKEN` secret to create, leak, or rotate.
-
-One-time setup, per published package (all five), on npmjs.com: open the package → **Settings → Trusted Publisher** and register THIS repository, the workflow file `release.yml`, and optionally a GitHub environment (leave empty to match any). The registration must match exactly — repo, workflow filename, environment — or the publish fails with an OIDC error.
-
-The publish command (`npm run ci:publish`) re-bundles the extension asset and fails the release on any drift, so a stale or bypassed asset can never ship. The version command (`npm run ci:version`) makes the Version Packages PR itself carry the lockfile refresh and the fresh bundle.

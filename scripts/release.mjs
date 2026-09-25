@@ -17,6 +17,11 @@
 //   npm run release              # full sequence (needs `npm login` for publish)
 //   npm run release -- --no-test # skip the test gate
 //   npm run release -- --dry-run # show pending changesets, change nothing
+//   npm run release -- --publish-only
+//                                # after a manual `changeset version`: skips
+//                                # tests/versioning, still bundles the asset,
+//                                # gates, publishes, and prints the report
+//                                # (this is what `npm run publish` runs)
 // ---------------------------------------------------------------------------
 
 import { spawnSync } from 'node:child_process';
@@ -28,6 +33,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const flags = new Set(process.argv.slice(2));
 const dryRun = flags.has('--dry-run') || flags.has('-n');
 const noTest = flags.has('--no-test');
+const publishOnly = flags.has('--publish-only');
 
 const EXTENSION_DIR = path.join(root, 'packages', 'vscode-typecad-pcb');
 // the shipping asset inside @typecad/pcb — `npm run bundle` lands it there
@@ -86,7 +92,12 @@ for (const dir of NESTED_REPOS) {
     log(`  warning: ${dir} has uncommitted changes — they ride into its release commit`);
 }
 const pending = pendingChangesets();
-if (pending.length === 0) {
+if (publishOnly) {
+  // The version step is skipped in this mode, so pending changesets are
+  // expected to be already consumed — warn loudly if they are not.
+  if (pending.length > 0)
+    log(`  warning: ${pending.length} pending changeset(s) will NOT be consumed by --publish-only`);
+} else if (pending.length === 0) {
   log('\nno pending changesets — nothing to release');
   process.exit(0);
 }
@@ -108,7 +119,9 @@ if (dryRun) {
 
 // -- 2. tests ----------------------------------------------------------------
 
-if (noTest) {
+if (publishOnly) {
+  step('tests (skipped — publish-only)');
+} else if (noTest) {
   step('tests (skipped)');
 } else {
   step('tests');
@@ -119,9 +132,13 @@ if (noTest) {
 // Consume the changesets, then refresh package-lock.json so the bumped
 // workspace versions are recorded — CI's `npm ci` fails on a stale lock.
 
-step('changeset version (consume changesets, bump versions + changelogs)');
-run('npx changeset version');
-run('npm install --package-lock-only');
+if (publishOnly) {
+  step('changeset version (skipped — publish-only, run after a manual version)');
+} else {
+  step('changeset version (consume changesets, bump versions + changelogs)');
+  run('npx changeset version');
+  run('npm install --package-lock-only');
+}
 
 // -- 4. extension asset -------------------------------------------------------
 // AFTER the bump (the asset manifest must carry the new version), BEFORE

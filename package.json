@@ -12,7 +12,7 @@
     "lint": "eslint \"**/*/src/**/*.ts\" \"**/*/*.ts\" --ignore-pattern \"**/*/node_modules/**\" --ignore-pattern \"**/*/dist/**\" --ignore-pattern \"**/*/examples/**\"",
     "changeset": "changeset",
     "version": "changeset version",
-    "publish": "changeset publish",
+    "publish": "node scripts/release.mjs --publish-only",
     "release": "node scripts/release.mjs",
     "publish:private": "npm publish -ws --tag private --registry http://192.168.2.207:4873/"
   },

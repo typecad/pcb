@@ -87,7 +87,7 @@ This:
 npm run publish
 ```
 
-This publishes every changed package to npm in dependency order. Packages that haven't changed version are skipped.
+Publish-only mode of the release script (`release.mjs --publish-only`): it skips tests and versioning but still re-bundles the VS Code extension into `@typecad/pcb/assets/editor-extensions/`, hard-aborts if the bundled manifest's version doesn't match the package, publishes every changed package to npm in dependency order, and prints the commit report. Packages that haven't changed version are skipped.
 
 If this is your first time publishing from this machine, run `npm login` first.
 

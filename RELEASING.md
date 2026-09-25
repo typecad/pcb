@@ -4,12 +4,9 @@ This workspace uses [changesets](https://github.com/changesets/changesets) to ma
 
 ## Repository layout
 
-The `@typecad/` packages sit side by side here, but not all of them are tracked by this (umbrella) repo:
+This is a **single repository** containing the whole workspace: the five published packages (`@typecad/pcb`, `@typecad/wiring`, `@typecad/jlcpcb-parts`, `@typecad/graphviz`, `@typecad/jlcpcb-export`), the `vscode-typecad-pcb` extension source, and the demo/template board projects. (Previously each package carried its own nested git repo — those histories are archived as bundles + bare repos in `pcb-repo-archives/` beside the workspace and on their old origin remotes.)
 
-- `@typecad/graphviz` and `@typecad/jlcpcb-export` — tracked here, and also carry their own git repos (`github.com/typecad/graphviz`, `github.com/typecad/jlcpcb-export`).
-- `@typecad/pcb`, `@typecad/wiring`, and `@typecad/jlcpcb-parts` — gitignored here; they are independent repositories (`github.com/typecad/pcb`, `github.com/typecad/wiring`, `github.com/typecad/jlcpcb-parts`).
-
-Releases are cut from this workspace root, so **all five package directories must be present on disk** for `changeset version` / `changeset publish` to work. A fresh clone of only the umbrella repo is missing the three gitignored packages — clone or restore them first. After `npm run version`, remember to commit the version bumps inside each package's own repository as well (the umbrella only tracks graphviz and jlcpcb-export).
+One consequence worth knowing: the built VS Code extension ships inside the published `@typecad/pcb` package under `assets/editor-extensions/`. It is rebuilt from `packages/vscode-typecad-pcb` by `npm run bundle` and must be re-bundled **after** version bumps (the asset manifest carries the version) and **before** publish (the tarball packs it). Both release paths below enforce this ordering.
 
 ## Setup (one-time)
 
@@ -48,22 +45,24 @@ Example changeset file:
 Fixed via annular ring calculation for high-current tracks
 ```
 
-### 3. Release in one command
+### 3. Release
 
-When ready to release, run:
+**The default path is push-to-publish (CI):** push your changesets to `master` and the Release workflow opens a **Version Packages PR** carrying the bumps, changelogs, refreshed lockfile, and the re-bundled extension asset. Merging that PR publishes to npm — authenticated by **trusted publishing** (OIDC), no stored npm token — pushes the release tags, and commits the bump. That merge is the entire release.
+
+**The local equivalent** (for cutting a release by hand) is:
 
 ```
 npm run release
 ```
 
-This wraps `changeset version` / `changeset publish` with the ordering this repo needs:
+which runs the same ordering with the same guarantees:
 
-1. **Preflight** — all five package dirs present (a fresh clone of only the umbrella repo is missing the three gitignored ones), warns on a non-master branch and on dirty nested repos.
+1. **Preflight** — package dirs present, warns on a non-master branch.
 2. **Tests** — every workspace (`--no-test` skips).
-3. **`changeset version`** — consumes the changesets, bumps versions/changelogs, then refreshes `package-lock.json` so CI's `npm ci` doesn't break.
-4. **Extension bundle** — compiles `vscode-typecad-pcb` and bundles it into `@typecad/pcb/assets/editor-extensions/`. This must happen **after** the version bump (the asset's manifest carries the new version) and **before** publish (the tarball packs `assets/`); the script hard-aborts if the bundled manifest's version doesn't match the package.
-5. **`changeset publish`** — publishes changed packages to npm in dependency order.
-6. **Commit report** — prints the per-repo commit commands for the version bumps: the umbrella repo (consumed changesets, changelogs, lockfile) and each dirty nested repo (including the bundled-asset refresh for `@typecad/pcb`).
+3. **`changeset version`** — consumes the changesets, bumps versions/changelogs, then refreshes `package-lock.json`.
+4. **Extension bundle** — compiles `vscode-typecad-pcb` and bundles it into `@typecad/pcb/assets/editor-extensions/`; hard-aborts if the bundled manifest's version doesn't match the package.
+5. **`changeset publish`** — publishes changed packages to npm in dependency order (needs `npm login` locally; CI uses trusted publishing instead).
+6. **Commit report** — prints the commit/push commands for the version bump.
 
 `npm run release -- --dry-run` lists the pending changesets and their bumps without changing anything.
 
@@ -118,7 +117,7 @@ npm run changeset
 
 ### Release everything at once (emergency)
 
-Create a changeset selecting all packages with the desired bump type, then run `npm run version && npm run publish`.
+Create a changeset selecting all packages with the desired bump type, then release (merge the Version Packages PR, or `npm run release` locally).
 
 ### Skip a package from being published
 
@@ -143,7 +142,7 @@ The repo is currently **in changeset pre-release mode** (see `.changeset/pre.jso
 - `npm run version` only bumps the **prerelease counter** (e.g., `1.0.0-alpha.1` → `1.0.0-alpha.2`); the accumulated major/minor changesets are consumed but do **not** produce a stable release until pre mode is exited.
 - `npm run publish` publishes under the `alpha` dist-tag.
 
-To cut the next alpha: `npm run release`, then make the per-repo commits it prints (the manual equivalent is `npm run version && npm run publish`, but remember to `npm run bundle` in `packages/vscode-typecad-pcb` between them — see step 3 above).
+To cut the next alpha: push your changesets and merge the Version Packages PR (or `npm run release` locally, then commit the bump it prints — the bundle step is built into both paths).
 
 To ship a **stable** release, exit pre-release mode first so accumulated version bumps land in one go:
 
@@ -155,6 +154,10 @@ npm run publish
 
 (Re-enter anytime with `npx changeset pre enter alpha`.) Don't leave pre mode open unintentionally — pending changesets accumulate silently while it is on.
 
-## CI integration (optional)
+## CI publishing (trusted publishing, no npm token)
 
-For automated releases via GitHub Actions, see the [changesets GitHub Action](https://github.com/changesets/action). It can automatically open a "Version Packages" PR that applies pending changesets, and publish to npm on merge.
+Releases run in `.github/workflows/release.yml`: push with pending changesets opens the Version Packages PR; merging it publishes. Authentication is npm **trusted publishing** — the workflow's OIDC identity is the credential, so there is no `NPM_TOKEN` secret to create, leak, or rotate.
+
+One-time setup, per published package (all five), on npmjs.com: open the package → **Settings → Trusted Publisher** and register THIS repository, the workflow file `release.yml`, and optionally a GitHub environment (leave empty to match any). The registration must match exactly — repo, workflow filename, environment — or the publish fails with an OIDC error.
+
+The publish command (`npm run ci:publish`) re-bundles the extension asset and fails the release on any drift, so a stale or bypassed asset can never ship. The version command (`npm run ci:version`) makes the Version Packages PR itself carry the lockfile refresh and the fresh bundle.

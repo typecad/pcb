@@ -48,9 +48,28 @@ Example changeset file:
 Fixed via annular ring calculation for high-current tracks
 ```
 
-### 3. Bump versions
+### 3. Release in one command
 
-When ready to release, consume all pending changesets:
+When ready to release, run:
+
+```
+npm run release
+```
+
+This wraps `changeset version` / `changeset publish` with the ordering this repo needs:
+
+1. **Preflight** — all five package dirs present (a fresh clone of only the umbrella repo is missing the three gitignored ones), warns on a non-master branch and on dirty nested repos.
+2. **Tests** — every workspace (`--no-test` skips).
+3. **`changeset version`** — consumes the changesets, bumps versions/changelogs, then refreshes `package-lock.json` so CI's `npm ci` doesn't break.
+4. **Extension bundle** — compiles `vscode-typecad-pcb` and bundles it into `@typecad/pcb/assets/editor-extensions/`. This must happen **after** the version bump (the asset's manifest carries the new version) and **before** publish (the tarball packs `assets/`); the script hard-aborts if the bundled manifest's version doesn't match the package.
+5. **`changeset publish`** — publishes changed packages to npm in dependency order.
+6. **Commit report** — prints the per-repo commit commands for the version bumps: the umbrella repo (consumed changesets, changelogs, lockfile) and each dirty nested repo (including the bundled-asset refresh for `@typecad/pcb`).
+
+`npm run release -- --dry-run` lists the pending changesets and their bumps without changing anything.
+
+### 4. Bump versions (manual)
+
+The raw command, for when you need to step through by hand:
 
 ```
 npm run version
@@ -65,7 +84,7 @@ This:
 
 **Commit the version bumps.**
 
-### 4. Publish
+### 5. Publish (manual)
 
 ```
 npm run publish
@@ -124,7 +143,7 @@ The repo is currently **in changeset pre-release mode** (see `.changeset/pre.jso
 - `npm run version` only bumps the **prerelease counter** (e.g., `1.0.0-alpha.1` → `1.0.0-alpha.2`); the accumulated major/minor changesets are consumed but do **not** produce a stable release until pre mode is exited.
 - `npm run publish` publishes under the `alpha` dist-tag.
 
-To cut the next alpha: `npm run version && npm run publish`, then commit the version bumps.
+To cut the next alpha: `npm run release`, then make the per-repo commits it prints (the manual equivalent is `npm run version && npm run publish`, but remember to `npm run bundle` in `packages/vscode-typecad-pcb` between them — see step 3 above).
 
 To ship a **stable** release, exit pre-release mode first so accumulated version bumps land in one go:
 

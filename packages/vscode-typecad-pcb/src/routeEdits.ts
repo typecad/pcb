@@ -12,7 +12,7 @@
 // a middle break SPLITS the route so a real gap replaces the copper, and
 // emptied routes vanish with their create() argument. Regenerated chains
 // preserve the route's options (net), every surviving via (with its own
-// args), and each point's layer.
+// args), each point's layer — and the comments riding the kept lines.
 // ---------------------------------------------------------------------------
 
 export interface RouteInput {
@@ -106,6 +106,32 @@ export function createArgInsertion(text: string, createIdx: number, closeIdx: nu
 }
 
 /**
+ * Route names declared in the text (`const <name> = new TrackBuilder(`),
+ * in declaration order. TrackBuilder-only by design — the create() guard
+ * maintains the router's own invariant, not every const in the file.
+ */
+export function declaredRouteNames(text: string): string[] {
+  const names: string[] = [];
+  for (const m of text.matchAll(/\bconst\s+([A-Za-z_$][\w$]*)\s*=\s*new TrackBuilder\b/g)) {
+    names.push(m[1]!);
+  }
+  return names;
+}
+
+/**
+ * Declared route names that create() does not receive — a route left out of
+ * the argument list builds nothing and its copper silently vanishes from
+ * the board (nothing errors; the traces are just gone). Null when the text
+ * has no create() call to check against.
+ */
+export function uncreatedRouteNames(text: string): string[] | null {
+  const call = findCreateCall(text);
+  if (!call) return null;
+  const args = text.slice(call.createIdx, call.closeIdx + 1);
+  return declaredRouteNames(text).filter((nm) => !new RegExp(`\\b${nm}\\b`).test(args));
+}
+
+/**
  * One edit rewriting create()'s argument list: `add` names splice in with a
  * correct separator (before any trailing comment), `remove` names drop out
  * for every argument position. Null when there is nothing to do or no
@@ -143,6 +169,18 @@ function routeSource(name: string, r: RouteInput): string {
   if (segments.length === 0) return '';
   const first = segments[0]!;
   const f0 = first.pts[0]!;
+  // one barrel line, sized and spanned from its own record — shared by
+  // head, interior, and tail vias alike
+  const viaLine = (v: RouteInput['vias'][number]): string => {
+    const size = v.size !== undefined ? fmt(v.size) : '0.6';
+    const drill = v.drill !== undefined ? fmt(v.drill) : '0.3';
+    const plainThrough =
+      !v.layers ||
+      (v.layers[0] === 'F.Cu' && v.layers[1] === 'B.Cu') ||
+      (v.layers[0] === 'B.Cu' && v.layers[1] === 'F.Cu');
+    const layers = plainThrough ? '' : `, layers: ['${v.layers![0]}', '${v.layers![1]}']`;
+    return `  .via({ size: ${size}, drill: ${drill}${layers} })`;
+  };
   if (r.power && r.power.current > 0) {
     const dt = r.power.maxTempRise ?? 10;
     // 4 decimals: currents can be sub-milliamp and fmt's 3 would flatten them
@@ -150,33 +188,55 @@ function routeSource(name: string, r: RouteInput): string {
     chain.push(`  .powerInfo({ current: ${cur}, maxTempRise: ${fmt(dt)} })`);
   }
   chain.push(`  .from({ x: ${fmt(f0.x)}, y: ${fmt(f0.y)} }, '${first.layer}', ${fmt(first.w ?? r.w)})`);
+  // a via at the chain's HEAD — a resized source route's far half re-added
+  // as its own chain: the barrel rides right after .from() at that point
+  const headVia = r.vias.find((vi) => ptEq(vi, f0));
+  if (headVia) chain.push(viaLine(headVia));
   for (let si = 0; si < segments.length; si++) {
     const seg = segments[si]!;
     // every piece after the first starts at the boundary point shared with
     // the previous piece's tail — already emitted — so it walks from pts[1]
     for (let pi = 1; pi < seg.pts.length; pi++) {
       const pt = seg.pts[pi]!;
-      const isLastPoint = si === segments.length - 1 && pi === seg.pts.length - 1;
       chain.push(`  .to({ x: ${fmt(pt.x)}, y: ${fmt(pt.y)}, layer: '${seg.layer}', width: ${fmt(seg.w ?? r.w)} })`);
-      // any recorded via at an emitted non-final point lands its barrel —
-      // piece boundaries AND mid-piece stitches alike, with its own sizing
-      // and layer span (plain F<->B pairs stay default through vias)
-      if (!isLastPoint) {
-        const v = r.vias.find((vi) => ptEq(vi, pt));
-        if (v) {
-          const size = v.size !== undefined ? fmt(v.size) : '0.6';
-          const drill = v.drill !== undefined ? fmt(v.drill) : '0.3';
-          const plainThrough =
-            !v.layers ||
-            (v.layers[0] === 'F.Cu' && v.layers[1] === 'B.Cu') ||
-            (v.layers[0] === 'B.Cu' && v.layers[1] === 'F.Cu');
-          const layers = plainThrough ? '' : `, layers: ['${v.layers![0]}', '${v.layers![1]}']`;
-          chain.push(`  .via({ size: ${size}, drill: ${drill}${layers} })`);
-        }
-      }
+      // any recorded via at an emitted point lands its barrel — piece
+      // boundaries, mid-piece stitches, AND the chain's tail alike, with
+      // its own sizing and layer span (plain F<->B pairs stay default)
+      const v = r.vias.find((vi) => ptEq(vi, pt));
+      if (v && v !== headVia) chain.push(viaLine(v));
     }
   }
-  return `${head}\n${chain.join('\n')};`;
+  // the terminating ';' lands on whichever line ended the chain — a .to()
+  // or a tail .via()
+  chain[chain.length - 1] += ';';
+  return `${head}\n${chain.join('\n')}`;
+}
+
+/**
+ * Make TrackBuilder resolvable where create() lives: join the file's
+ * `@typecad/pcb` import, or start one ahead of the first import. Called
+ * only when the identifier is absent — every fresh `typecad-pcb create`
+ * project's first drawn route would otherwise die on a skip that amounts
+ * to "add the import yourself".
+ */
+function planTrackBuilderImport(text: string): PlannedEdit {
+  // the match stops at the quote or its semicolon — never at trailing
+  // whitespace, which would swallow the line break after an import that
+  // carries no `;` (the fresh-project template's style)
+  const m = /import\s*\{([^}]+)\}\s*from\s*['"]@typecad\/pcb['"];?/.exec(text);
+  if (m) {
+    const names = m[1]!.split(',').map((s) => s.trim()).filter(Boolean);
+    return {
+      start: m.index,
+      end: m.index + m[0].length,
+      line: `import { ${[...names, 'TrackBuilder'].join(', ')} } from '@typecad/pcb';`,
+    };
+  }
+  // nothing to join: a standalone import line of its own (line-anchored, so
+  // a comment that merely mentions "import" cannot steal the insert point)
+  const firstImport = /^import\b/m.exec(text);
+  const at = firstImport ? firstImport.index : 0;
+  return { start: at, end: at, line: `import { TrackBuilder } from '@typecad/pcb';\n` };
 }
 
 /**
@@ -216,6 +276,15 @@ export function planRouteEdits(text: string, routes: RouteInput[]): RoutePlan {
       maxExisting--;
       continue;
     }
+    // idempotency: a chain with these exact coordinates already in the file
+    // is a re-apply of the same session route (a failed build leaves the
+    // page's routes pending; the retry must not duplicate them)
+    const chain = src.slice(src.indexOf('.from('));
+    if (text.includes(chain)) {
+      skipped.push(`${r.from.ref}.${r.from.pin} (identical route already in source)`);
+      maxExisting--;
+      continue;
+    }
     decls.push(
       indent +
         (r.impedance && r.impedance.z0 > 0
@@ -227,15 +296,12 @@ export function planRouteEdits(text: string, routes: RouteInput[]): RoutePlan {
   }
   if (names.length === 0) return { edits, applied: 0, skipped };
 
-  // declarations land next to create() — they need TrackBuilder in scope
-  // there. A create-owning file that never mentions it (routes live in a
-  // dedicated module) gets a reported skip, not a broken import.
+  // declarations need TrackBuilder in scope where create() lives. A file
+  // that never mentions it doesn't skip — the import is planned alongside:
+  // joining the @typecad/pcb import that's almost surely there, or
+  // starting one
   if (!/\bTrackBuilder\b/.test(text)) {
-    return {
-      edits,
-      applied: 0,
-      skipped: routes.map((r) => `${r.from.ref}.${r.from.pin}${r.to ? `→${r.to.ref}.${r.to.pin}` : ''} (TrackBuilder is not in scope where typecad.create( lives — add the route in the routes module instead)`),
-    };
+    edits.push(planTrackBuilderImport(text));
   }
 
   // one edit: declarations + a blank line inserted before the create line
@@ -276,8 +342,14 @@ interface ParsedPoint {
   y: number;
   /** layer literal on this point's own call, when it carried one */
   layer?: string;
-  /** width literal on this point's own call, when it carried one */
-  width?: number;
+  /** width token on this point's own call, verbatim — a number OR the
+   *  identifier of a width constant (`VCCW`), re-emitted unchanged */
+  width?: string;
+  /** trailing `// …` from this point's own line, re-emitted beside it */
+  comment?: string;
+  /** blank/comment lines that followed this point inside the chain —
+   *  regeneration puts them back after its line (they die with the point) */
+  after?: string[];
 }
 
 interface ParsedVia {
@@ -285,6 +357,8 @@ interface ParsedVia {
   at: number;
   /** verbatim argument list, e.g. `{ size: 0.6, drill: 0.3 }` */
   args: string;
+  /** trailing `// …` from the via's own line, re-emitted beside it */
+  comment?: string;
 }
 
 interface ParsedRoute {
@@ -297,6 +371,10 @@ interface ParsedRoute {
   /** a `.powerInfo({ … })` call's verbatim args — the power contract rides
    *  through regeneration untouched */
   powerArgs: string | null;
+  /** trailing `// …` from the .powerInfo line, when it carried one */
+  powerComment?: string;
+  /** comment lines between the head and the first chain line */
+  headAfter?: string[];
   indent: string;
   points: ParsedPoint[];
   vias: ParsedVia[];
@@ -308,11 +386,22 @@ interface ParsedRoute {
 // and bare declarations alike, any name (hand-written routes read like
 // `const vcc = …`). `\s*$` tolerates CRLF line endings and trailing blanks.
 // Chains accept the object form `.to({ x, y, layer, width })` and the
-// positional form `.from({ x, y }, 'F.Cu', 0.3)` alike.
+// positional form `.from({ x, y }, 'F.Cu', 0.3)` alike; widths may be a
+// width-constant identifier (`VCCW`), not just a number.
 const HEAD_RE = /^([ \t]*)(export[ \t]+)?const ([A-Za-z_$][A-Za-z0-9_$]*) = new TrackBuilder\(typecad,\s*\{([^}]*)\}\s*\)\s*$/;
-const FROM_RE = /^\.from\(\{\s*x\s*:\s*(-?[\d.]+)\s*,\s*y\s*:\s*(-?[\d.]+)\s*\}(?:\s*,\s*'([^']*)')?(?:\s*,\s*([\d.]+))?\s*\)/;
-const TO_RE =
-  /^\.to\(\{\s*x\s*:\s*(-?[\d.]+)\s*,\s*y\s*:\s*(-?[\d.]+)\s*(?:,\s*layer\s*:\s*'([^']*)')?(?:,\s*width\s*:\s*([\d.]+))?\s*\}(?:\s*,\s*'([^']*)')?(?:\s*,\s*([\d.]+))?\s*\)/;
+const WIDTH_TOK = String.raw`[A-Za-z_$][A-Za-z0-9_$]*|[\d.]+`;
+const FROM_RE = new RegExp(String.raw`^\.from\(\{\s*x\s*:\s*(-?[\d.]+)\s*,\s*y\s*:\s*(-?[\d.]+)\s*\}(?:\s*,\s*'([^']*)')?(?:\s*,\s*(${WIDTH_TOK}))?\s*\)`);
+const TO_RE = new RegExp(
+  String.raw`^\.to\(\{\s*x\s*:\s*(-?[\d.]+)\s*,\s*y\s*:\s*(-?[\d.]+)\s*(?:,\s*layer\s*:\s*'([^']*)')?(?:,\s*width\s*:\s*(${WIDTH_TOK}))?\s*\}(?:\s*,\s*'([^']*)')?(?:\s*,\s*(${WIDTH_TOK}))?\s*\)`,
+);
+
+/** trailing `// …` text after a chain call on its own line (verbatim). The
+ *  call text itself contains no `//` — layers/widths are quoted or bare
+ *  tokens — so scanning from the call's end is exact. */
+const tailComment = (line: string, consumed: number): string | undefined => {
+  const at = line.indexOf('//', consumed);
+  return at === -1 ? undefined : line.slice(at).trim();
+};
 
 /** Parse every `[export ]const NAME = new TrackBuilder...` block in the text. */
 function parseRoutes(text: string): ParsedRoute[] {
@@ -325,6 +414,8 @@ function parseRoutes(text: string): ParsedRoute[] {
     const points: ParsedPoint[] = [];
     const vias: ParsedVia[] = [];
     let powerArgs: string | null = null;
+    let powerComment: string | undefined;
+    let headAfter: string[] | undefined;
     let end = lines.length; // unterminated chain: block runs to EOF
     for (let j = i + 1; j < lines.length; j++) {
       const l = lines[j]!.trim();
@@ -333,7 +424,9 @@ function parseRoutes(text: string): ParsedRoute[] {
         if (fm) {
           const p: ParsedPoint = { x: +fm[1]!, y: +fm[2]! };
           if (fm[3]) p.layer = fm[3];
-          if (fm[4]) p.width = +fm[4];
+          if (fm[4]) p.width = fm[4];
+          const fc = tailComment(l, fm[0].length);
+          if (fc) p.comment = fc;
           points.push(p);
         }
       } else if (l.startsWith('.to(')) {
@@ -343,7 +436,9 @@ function parseRoutes(text: string): ParsedRoute[] {
           const layer = tm[3] ?? tm[5];
           const width = tm[4] ?? tm[6];
           if (layer) p.layer = layer;
-          if (width) p.width = +width;
+          if (width) p.width = width;
+          const tc = tailComment(l, tm[0].length);
+          if (tc) p.comment = tc;
           points.push(p);
         }
       } else if (l.startsWith('.via(')) {
@@ -352,7 +447,10 @@ function parseRoutes(text: string): ParsedRoute[] {
         const open = l.indexOf('(');
         const close = l.lastIndexOf(')');
         if (points.length > 0 && open !== -1 && close > open) {
-          vias.push({ at: points.length - 1, args: l.slice(open + 1, close) });
+          const via: ParsedVia = { at: points.length - 1, args: l.slice(open + 1, close) };
+          const vc = tailComment(l, close + 1);
+          if (vc) via.comment = vc;
+          vias.push(via);
         }
       } else if (l.startsWith('.powerInfo(')) {
         // the power contract is chain-builder config, not geometry: capture
@@ -360,10 +458,19 @@ function parseRoutes(text: string): ParsedRoute[] {
         // would treat it as a foreign statement and truncate the route
         const open = l.indexOf('(');
         const close = l.lastIndexOf(')');
-        if (close > open) powerArgs = l.slice(open + 1, close);
+        if (close > open) {
+          powerArgs = l.slice(open + 1, close);
+          const pc = tailComment(l, close + 1);
+          if (pc) powerComment = pc;
+        }
       } else if (l === '' || l.startsWith('//') || l.startsWith('/*')) {
         // blank/comment lines INSIDE a chain are tolerated — a comment
-        // carrying a ';' must not truncate the route
+        // carrying a ';' must not truncate the route — and they ride the
+        // point they follow so regeneration puts them back instead of
+        // silently eating them (before the first point: head comments)
+        const prev = points[points.length - 1];
+        if (prev) (prev.after ??= []).push(l);
+        else if (l !== '') (headAfter ??= []).push(l);
         continue;
       } else {
         // any other statement ends the block without being consumed by it
@@ -382,6 +489,8 @@ function parseRoutes(text: string): ParsedRoute[] {
       exportPrefix: exportPrefix ?? '',
       opts: (opts ?? '').trim(),
       powerArgs,
+      powerComment,
+      headAfter,
       indent: indent!,
       points,
       vias,
@@ -468,31 +577,42 @@ export function planRouteDeletes(text: string, deletes: RouteDeleteInput[]): Rou
     /** serialize one surviving run (a contiguous span of point indexes) */
     const emitRun = (name: string, idxs: number[]): string => {
       const lines: string[] = [];
+      const pushAfter = (p: ParsedPoint): void => {
+        for (const a of p.after ?? []) lines.push(a === '' ? '' : r.indent + a);
+      };
       const p0 = r.points[idxs[0]!]!;
       // width may ride positionally only BEHIND a layer — .from()'s second
       // parameter is the layer string, so a width without a layer goes in
-      // the object form instead
+      // the object form instead. The token re-emits verbatim, so a width
+      // constant (`VCCW`) stays a constant
       lines.push(
-        p0.layer !== undefined
-          ? `.from({ x: ${fmt(p0.x)}, y: ${fmt(p0.y)} }, '${p0.layer}'${p0.width !== undefined ? `, ${fmt(p0.width)}` : ''})`
-          : `.from({ x: ${fmt(p0.x)}, y: ${fmt(p0.y)}${p0.width !== undefined ? `, width: ${fmt(p0.width)}` : ''} })`,
+        r.indent +
+          (p0.layer !== undefined
+            ? `.from({ x: ${fmt(p0.x)}, y: ${fmt(p0.y)} }, '${p0.layer}'${p0.width !== undefined ? `, ${p0.width}` : ''})`
+            : `.from({ x: ${fmt(p0.x)}, y: ${fmt(p0.y)}${p0.width !== undefined ? `, width: ${p0.width}` : ''} })`) +
+          (p0.comment ? ` ${p0.comment}` : ''),
       );
+      pushAfter(p0);
       for (let k = 1; k < idxs.length; k++) {
         const p = r.points[idxs[k]!]!;
         const fields = [`x: ${fmt(p.x)}`, `y: ${fmt(p.y)}`];
         if (p.layer) fields.push(`layer: '${p.layer}'`);
-        if (p.width !== undefined) fields.push(`width: ${fmt(p.width)}`);
-        lines.push(`.to({ ${fields.join(', ')} })`);
+        if (p.width !== undefined) fields.push(`width: ${p.width}`);
+        const last = k === idxs.length - 1;
+        // the terminating ';' lands on the final chain line BEFORE its
+        // comment — after the comment it would comment out the ';'
+        lines.push(`${r.indent}.to({ ${fields.join(', ')} })${last ? ';' : ''}${p.comment ? ` ${p.comment}` : ''}`);
         // a via BETWEEN two kept segments survives with its own args; one at
         // a cut boundary dies with the deleted segment (no barrel on a gap)
-        if (k < idxs.length - 1) {
+        if (!last) {
           const v = r.vias.find((vv) => vv.at === idxs[k]!);
-          if (v) lines.push(`.via(${v.args})`);
+          if (v) lines.push(`${r.indent}.via(${v.args})${v.comment ? ` ${v.comment}` : ''}`);
         }
+        pushAfter(p);
       }
-      return `${r.indent}${r.exportPrefix}const ${name} = new TrackBuilder(typecad, { ${r.opts} })${
-        r.powerArgs ? `\n${r.indent}.powerInfo(${r.powerArgs})` : ''
-      }\n${lines.map((s) => r.indent + s).join('\n')};`;
+      const headComments = (r.headAfter ?? []).map((c) => `\n${r.indent}${c}`).join('');
+      const power = r.powerArgs ? `\n${r.indent}.powerInfo(${r.powerArgs})${r.powerComment ? ` ${r.powerComment}` : ''}` : '';
+      return `${r.indent}${r.exportPrefix}const ${name} = new TrackBuilder(typecad, { ${r.opts} })${headComments}${power}\n${lines.join('\n')}`;
     };
 
     // split into contiguous runs of point indexes
@@ -513,8 +633,14 @@ export function planRouteDeletes(text: string, deletes: RouteDeleteInput[]): Rou
     const blockStart = lineStarts[r.start] ?? 0;
     const blockEnd = lineStarts[r.start + blockLines] ?? text.length;
     if (runs.length === 0) {
-      // emptied: remove the declaration (and blank line after if doubled)
-      edits.push({ start: blockStart, end: blockEnd, line: '' });
+      // emptied: remove the declaration AND the blank line that follows
+      // it — repeated rewrites would otherwise pile up empty lines where
+      // route blocks used to be
+      let emptyEnd = blockEnd;
+      const after = text.slice(emptyEnd);
+      const blankLine = /^\r?\n/.exec(after);
+      if (blankLine) emptyEnd += blankLine[0]!.length;
+      edits.push({ start: blockStart, end: emptyEnd, line: '' });
       namesToRemove.push(r.name);
       continue;
     }

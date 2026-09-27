@@ -69,9 +69,11 @@ const PROBE_CLIENT = `<script>
 
   var style = document.createElement('style');
   style.textContent =
-    '#typecad-probe .typecad-outline{fill:#4fc1ff;fill-opacity:0;stroke:#4fc1ff;stroke-opacity:0;' +
-    'stroke-width:1.5;vector-effect:non-scaling-stroke;pointer-events:all;cursor:crosshair}' +
-    '#typecad-probe .typecad-outline:hover{stroke-opacity:0.9;fill-opacity:0.12}';
+    // the outline is the clickable body only — it paints NOTHING, not even
+    // on hover (the crosshair cursor is the affordance; selection and
+    // highlighting are the only visible feedback)
+    '#typecad-probe .typecad-outline{fill:var(--sel, #ffffff);fill-opacity:0;stroke:var(--sel, #ffffff);stroke-opacity:0;' +
+    'stroke-width:1.5;vector-effect:non-scaling-stroke;pointer-events:all;cursor:crosshair}';
   document.head.appendChild(style);
 
   var group = document.getElementById('typecad-probe');

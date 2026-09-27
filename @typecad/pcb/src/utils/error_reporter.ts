@@ -94,10 +94,20 @@ export function formatPinResolutionError(fromFailures: IPinFailureDetail[], toFa
     const footprint = comp.footprint || '(none)';
     const availableStr = failure.availablePads.length > 0 ? failure.availablePads.join(', ') : '(unknown)';
 
-    parts.push(
-      `Pin ${chalk.bold(pin.number)} on ${chalk.cyan(compDisplay)} (footprint: ${chalk.gray(footprint)}) does not exist.` +
-        `\n  Available pin(s): ${chalk.green(availableStr)}`,
-    );
+    if (failure.availablePads.length === 0) {
+      // No pads at all means the footprint itself could not be loaded
+      // (misspelled library:name, missing lib) — not a wrong pad number.
+      parts.push(
+        `Could not load footprint ${chalk.gray(footprint)} for ${chalk.cyan(compDisplay)},` +
+          ` so pin ${chalk.bold(pin.number)} cannot be resolved.` +
+          `\n  Check the footprint name (library:footprint) and that the library is installed.`
+      );
+    } else {
+      parts.push(
+        `Pin ${chalk.bold(pin.number)} on ${chalk.cyan(compDisplay)} (footprint: ${chalk.gray(footprint)}) does not exist.` +
+          `\n  Available pin(s): ${chalk.green(availableStr)}`
+      );
+    }
 
     const pinSourceFile = pin.sourceFile;
     const pinSourceLine = pin.sourceLine;
@@ -216,9 +226,14 @@ function buildSuggestion(failures: Array<{ pin: import('../pin.js').Pin; failure
     const comp = failure.component;
     const variable = comp.sourceInfo?.variable;
     const compName = variable ? `${variable}` : comp.reference;
-    const availableStr =
-      failure.availablePads.length > 0 ? failure.availablePads.join(', ') : 'check the footprint definition';
-    suggestions.push(`${compName}.pin(${chalk.bold(pin.number)}) does not exist — use one of: ${availableStr}`);
+    if (failure.availablePads.length === 0) {
+      suggestions.push(
+        `the footprint "${comp.footprint}" on ${compName} could not be loaded — fix the footprint name (library:footprint)`,
+      );
+    } else {
+      const availableStr = failure.availablePads.join(', ');
+      suggestions.push(`${compName}.pin(${chalk.bold(pin.number)}) does not exist — use one of: ${availableStr}`);
+    }
   }
   return suggestions.join('\n  ');
 }

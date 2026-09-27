@@ -3,6 +3,13 @@ import type { DrcMarker, FabReport } from '../report.js';
 import { LAYER_THEME_LIST, type LayerTheme } from '../themes.js';
 
 export interface ViewerOptions {
+  /**
+   * build/generation stamp embedded as <meta name="tc-viewer-build">.
+   * Defaults to the generation timestamp. The vscode extension logs it on
+   * every page assignment, making "which page build is this webview
+   * running" answerable from its output channel.
+   */
+  buildTag?: string;
   title?: string;
   /** fab report data for the sidebar panel (computed by the build pipeline) */
   report?: FabReport;
@@ -181,6 +188,10 @@ function fmtNum(n: number): string {
  */
 export function buildViewerHtml(svg: string, layers: LayerInfo[], options: ViewerOptions = {}): string {
   const title = options.title ?? 'gerber-viewer';
+  // stamped into <meta name="tc-viewer-build"> — the vscode extension logs
+  // it every time it assigns a page, so "which generation is this webview
+  // running" is answerable from the output channel instead of guessed
+  const buildTag = options.buildTag ?? new Date().toISOString();
 
   const rows = layers
     .map((layer) => {
@@ -1033,6 +1044,13 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   // funnels. Copper-loss estimate only: external-layer constants, no
   // component self-heating, no enclosure.
   var DT_STOPS = ['#3a3f45', '#6b4a33', '#9c5b2a', '#cc7a2e', '#f0993c', '#ffc46b', '#fff3d6'];
+  // Auto-scale floor, °C: a board whose every rise is millidegrees is
+  // thermally quiet, but a ramp normalized to that max still painted the
+  // relatively-hottest trace full-scale WHITE (the hot end of the stops)
+  // while the hover readout rounded the same rise to +0.0°C — color and text
+  // contradicted each other. Boards flatter than this render all-cold; the
+  // legend carries the true range.
+  var DT_AUTO_FLOOR = 1;
   // sheet resistance of the TOP copper layer (Ω/square): the stackup island
   // supplies the real copper weight, else the legacy 35 µm default. Heavier
   // copper (2 oz) halves Rs and so halves the I²R loss for a given current.
@@ -1319,7 +1337,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     var allowBox = document.getElementById('dt-allowed');
     var margin = marginBox && marginBox.checked;
     var allowed = allowBox ? parseFloat(allowBox.value) || 20 : 20;
-    var hi = margin && allowed > 0 ? allowed : dtItems.maxDT;
+    var hi = margin && allowed > 0 ? allowed : Math.max(dtItems.maxDT, DT_AUTO_FLOOR);
     // monochrome copper first: everything not carrying solved current reads
     // as inert graphite-copper (pads/regions included — their electrical
     // heat-map colors don't belong on the thermal board)
@@ -1595,6 +1613,24 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   var layoutRot = {}; // ref -> accumulated 90-degree presses (R key)
   var layoutSnapBox = document.getElementById('layout-snap');
   var layoutApplyBtn = document.getElementById('layout-apply');
+  // grid / units controls: the snap ladder, visible grid, and mil readouts
+  var layoutGridSel = document.getElementById('layout-grid');
+  if (layoutGridSel)
+    layoutGridSel.addEventListener('change', function () {
+      layoutGridSize = parseFloat(layoutGridSel.value) || 0.5;
+      rebuildLayoutGrid();
+    });
+  var layoutGridShowBox = document.getElementById('layout-grid-show');
+  if (layoutGridShowBox)
+    layoutGridShowBox.addEventListener('change', function () {
+      layoutGridShow = layoutGridShowBox.checked;
+      rebuildLayoutGrid();
+    });
+  var layoutMilBox = document.getElementById('layout-mil');
+  if (layoutMilBox)
+    layoutMilBox.addEventListener('change', function () {
+      layoutMil = layoutMilBox.checked;
+    });
   var SVGNSL = 'http://www.w3.org/2000/svg';
   var cssEsc = function (v) {
     return window.CSS && CSS.escape ? CSS.escape(v) : String(v).replace(/[^a-zA-Z0-9_-]/g, '\\$&');
@@ -1687,7 +1723,12 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         : '';
     for (var ge = 0; ge < g.__ghostEls.length; ge++) {
       var el2 = g.__ghostEls[ge];
-      if (tr) el2.setAttribute('transform', tr);
+      if (el2.__bakedTr0) {
+        // a fast apply froze the ink's cumulative offset as this element's
+        // base; new deltas PREPEND (world-frame translation — appending
+        // after a rotated base would send the ink off at the wrong angle)
+        el2.setAttribute('transform', tr ? tr + ' ' + el2.__bakedTr0 : el2.__bakedTr0);
+      } else if (tr) el2.setAttribute('transform', tr);
       else if (el2.__layoutTr0 === null || el2.__layoutTr0 === undefined) el2.removeAttribute('transform');
       else el2.setAttribute('transform', el2.__layoutTr0);
     }
@@ -1997,12 +2038,12 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
           var nx = orig.x + (pg.x - startG.x);
           var ny = orig.y + (pg.y - startG.y);
           if (!layoutSnapBox || layoutSnapBox.checked) {
-            nx = Math.round(nx * 2) / 2;
-            ny = Math.round(ny * 2) / 2;
+            nx = Math.round(nx / layoutGridSize) * layoutGridSize;
+            ny = Math.round(ny / layoutGridSize) * layoutGridSize;
           }
           commitTextMove(i, nx, ny);
           if (statusEl && !statusLocked())
-            statusEl.textContent = t.text.slice(0, 18) + ' \u2192 ' + nx.toFixed(2) + ', ' + (-ny).toFixed(2) + ' mm';
+            statusEl.textContent = t.text.slice(0, 18) + ' \u2192 ' + fmtPos(nx) + ', ' + fmtPos(-ny);
           e2.preventDefault();
         }
         function onUp() {
@@ -2188,9 +2229,25 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       inp.remove();
       edits.__editing = false;
       if (save && inp.value && inp.value !== cur) {
+        var editsBefore = edits[ref] !== undefined ? edits[ref] : null;
+        var editsAfter = inp.value;
         edits[ref] = inp.value;
         syncCompTextVisuals(true);
         renderLayoutMoves();
+        pushUndo(
+          (kind === 'reference' ? 'rename ' : 'value ') + ref,
+          function () {
+            if (editsBefore === null) delete edits[ref];
+            else edits[ref] = editsBefore;
+            syncCompTextVisuals(true);
+            renderLayoutMoves();
+          },
+          function () {
+            edits[ref] = editsAfter;
+            syncCompTextVisuals(true);
+            renderLayoutMoves();
+          },
+        );
       }
     };
     inp.addEventListener('keydown', function (kev) {
@@ -2236,7 +2293,6 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       g.setAttribute('class', 'layout-comp' + (c.side === 'back' ? ' layout-back' : ''));
       g.setAttribute('data-ref', c.ref);
       g.setAttribute('pointer-events', 'all');
-      g.setAttribute('cursor', 'move');
       g.__lc = c;
       if (c.outline && c.outline.length >= 3) {
         // the exact footprint outline — fab contour (chamfers preserved) or
@@ -2258,41 +2314,140 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         rect.setAttribute('rx', '0.3');
         g.appendChild(rect);
       }
-      // selection brackets: four L-shaped corner marks just outside the
-      // outline bbox, in the group's LOCAL frame so selection visuals ride
-      // the part's own translate/rotate for free. Shown only while selected.
-      var bx0 = -c.w / 2, by0 = -c.h / 2, bx1 = c.w / 2, by1 = c.h / 2;
-      if (c.outline && c.outline.length >= 3) {
-        bx0 = by0 = Infinity;
-        bx1 = by1 = -Infinity;
-        for (var ob = 0; ob < c.outline.length; ob++) {
-          bx0 = Math.min(bx0, c.outline[ob].x);
-          by0 = Math.min(by0, c.outline[ob].y);
-          bx1 = Math.max(bx1, c.outline[ob].x);
-          by1 = Math.max(by1, c.outline[ob].y);
-        }
-      }
-      var bm = 0.12;
-      var arm = Math.min(Math.max(Math.min(bx1 - bx0, by1 - by0) * 0.35, 0.3), 0.8);
-      var cx0 = bx0 - bm, cy0 = by0 - bm, cx1 = bx1 + bm, cy1 = by1 + bm;
-      var brk = document.createElementNS(SVGNSL, 'path');
-      brk.setAttribute('class', 'layout-sel-handles');
-      brk.setAttribute('vector-effect', 'non-scaling-stroke');
-      brk.setAttribute(
-        'd',
-        'M ' + (cx0 + arm).toFixed(3) + ' ' + cy0.toFixed(3) + ' L ' + cx0.toFixed(3) + ' ' + cy0.toFixed(3) +
-          ' L ' + cx0.toFixed(3) + ' ' + (cy0 + arm).toFixed(3) +
-          ' M ' + (cx1 - arm).toFixed(3) + ' ' + cy0.toFixed(3) + ' L ' + cx1.toFixed(3) + ' ' + cy0.toFixed(3) +
-          ' L ' + cx1.toFixed(3) + ' ' + (cy0 + arm).toFixed(3) +
-          ' M ' + (cx1 - arm).toFixed(3) + ' ' + cy1.toFixed(3) + ' L ' + cx1.toFixed(3) + ' ' + cy1.toFixed(3) +
-          ' L ' + cx1.toFixed(3) + ' ' + (cy1 - arm).toFixed(3) +
-          ' M ' + (cx0 + arm).toFixed(3) + ' ' + cy1.toFixed(3) + ' L ' + cx0.toFixed(3) + ' ' + cy1.toFixed(3) +
-          ' L ' + cx0.toFixed(3) + ' ' + (cy1 - arm).toFixed(3),
-      );
-      g.appendChild(brk);
       setCompPos(g, c.x, c.y);
       layoutOverlay.appendChild(g);
       attachLayoutDrag(g);
+    }
+  }
+  // ---- session undo/redo: a command-pattern stack over the live editing
+  // state (moves, rotations, routes, deletes, ref/value edits). Each action
+  // closes over its own before/after; Ctrl+Z / Ctrl+Y walk the stacks. The
+  // apply bridge stays the source-of-truth commit — this is board-editor
+  // feel for everything between applies ----
+  var undoStack = [];
+  var redoStack = [];
+  function pushUndo(label, undo, redo) {
+    undoStack.push({ label: label, undo: undo, redo: redo });
+    if (undoStack.length > 100) undoStack.shift();
+    redoStack.length = 0;
+  }
+  function historyResync(msg) {
+    renderLayoutMoves();
+    refreshLayoutWarnings();
+    refreshRatsnest();
+    if (statusEl && !statusLocked()) statusEl.textContent = msg;
+  }
+  function runUndo() {
+    var a = undoStack.pop();
+    if (!a) {
+      if (statusEl && !statusLocked()) statusEl.textContent = 'nothing to undo';
+      return;
+    }
+    a.undo();
+    redoStack.push(a);
+    historyResync('undid: ' + a.label);
+  }
+  function runRedo() {
+    var a = redoStack.pop();
+    if (!a) {
+      if (statusEl && !statusLocked()) statusEl.textContent = 'nothing to redo';
+      return;
+    }
+    a.redo();
+    undoStack.push(a);
+    historyResync('redid: ' + a.label);
+  }
+  // generic DOM add/remove capture for one action (segment ink, committed
+  // tracks, barrels) — transient groups (#route-ui, #ratsnest) are filtered
+  // out: they rebuild themselves and resurrecting stale ones is worse
+  function domCapSkip(node) {
+    if (!node) return true;
+    var p = node.parentNode && node.parentNode.closest ? node.parentNode : node;
+    return !!(p && p.closest && p.closest('#route-ui, #ratsnest, #drc'));
+  }
+  function domCaptureStart() {
+    var added = [];
+    var removed = [];
+    var push = function (rs) {
+      for (var i = 0; i < rs.length; i++) {
+        var r = rs[i];
+        for (var j = 0; j < r.addedNodes.length; j++)
+          if (!domCapSkip(r.addedNodes[j])) added.push({ n: r.addedNodes[j], parent: r.target });
+        for (var k = 0; k < r.removedNodes.length; k++)
+          if (!domCapSkip(r.removedNodes[k])) removed.push({ n: r.removedNodes[k], parent: r.target, prev: r.previousSibling });
+      }
+    };
+    var obs = new MutationObserver(push);
+    obs.observe(document.getElementById('panzoom'), { childList: true, subtree: true });
+    domCap = { obs: obs, added: added, removed: removed, push: push };
+  }
+  function domCaptureEnd() {
+    if (!domCap) return null;
+    // MutationObserver delivers asynchronously — drain what hasn't reached
+    // the callback yet, or disconnect() would silently discard it
+    domCap.push(domCap.obs.takeRecords());
+    domCap.obs.disconnect();
+    var cap = { added: domCap.added, removed: domCap.removed };
+    domCap = null;
+    return cap;
+  }
+  /** dir -1 reverts the captured mutations, +1 reapplies them */
+  function domApply(cap, dir) {
+    if (!cap) return;
+    var i;
+    if (dir < 0) {
+      for (i = cap.added.length - 1; i >= 0; i--) if (cap.added[i].n.parentNode) cap.added[i].n.remove();
+      for (i = cap.removed.length - 1; i >= 0; i--) {
+        var r = cap.removed[i];
+        if (!r.n.parentNode) {
+          if (r.prev && r.prev.parentNode === r.parent) r.parent.insertBefore(r.n, r.prev);
+          else r.parent.appendChild(r.n);
+        }
+      }
+    } else {
+      for (i = 0; i < cap.removed.length; i++) if (cap.removed[i].n.parentNode) cap.removed[i].n.remove();
+      for (i = 0; i < cap.added.length; i++) if (!cap.added[i].n.parentNode) cap.added[i].parent.appendChild(cap.added[i].n);
+    }
+  }
+  var domCap = null;
+  // moves/rotations snapshot per ref
+  function snapMoves(refs) {
+    var s = {};
+    for (var i = 0; i < refs.length; i++) {
+      var r = refs[i];
+      s[r] = {
+        move: layoutMoves[r] ? JSON.parse(JSON.stringify(layoutMoves[r])) : null,
+        rot: layoutRot[r] || 0,
+      };
+    }
+    return s;
+  }
+  function restoreMoves(s) {
+    for (var r in s) {
+      if (s[r].move) layoutMoves[r] = s[r].move;
+      else delete layoutMoves[r];
+      if (s[r].rot) layoutRot[r] = s[r].rot;
+      else delete layoutRot[r];
+      var g = layoutOverlay ? layoutOverlay.querySelector('[data-ref="' + cssEsc(r) + '"]') : null;
+      if (g) {
+        // position from the RESTORED state — compStateAt would just echo
+        // the group's current (post-action) position
+        var c = g.__lc;
+        var m = layoutMoves[r];
+        setCompPos(g, m ? m.x : c.x, m ? m.y : c.y);
+        applyCompGhost(g);
+      }
+      for (var ti = 0; ti < layoutTexts.length; ti++) if (layoutTexts[ti].ref === r) syncTextVisual(ti);
+    }
+  }
+  /** un-rip ink ripped since index n (LIFO), restoring each element's display */
+  function restoreRippedTo(n) {
+    while (layoutRipped.length > n) {
+      var el = layoutRipped.pop();
+      if (el.__layoutOp === '') el.removeAttribute('display');
+      else el.setAttribute('display', el.__layoutOp);
+      el.__layoutOp = undefined;
+      el.__ripped = 0;
     }
   }
   function attachLayoutDrag(g) {
@@ -2309,6 +2464,21 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       if (ev.button !== 0) return;
       ev.stopPropagation();
       ev.preventDefault();
+      // a fresh part press replaces the ink selection too — a trace left
+      // selected (and its net dimming the board) under a part grab would
+      // keep owning the sizing keys. Cleared BEFORE the pad resolution
+      // below so a pressed pad's own net dim re-applies over it
+      if (!ev.shiftKey) {
+        if (segSel.size) {
+          segSel.clear();
+          segHiSync();
+        }
+        if (viaSel.size) {
+          viaSel.clear();
+          viaHiSync();
+        }
+        if (netDimmed.length) clearNetHighlight();
+      }
       // a press on a pad flash highlights that pad for routing (X) — the
       // component select/drag flow continues unchanged underneath
       var pe = ev.target;
@@ -2332,9 +2502,16 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         var bp = padBoardPoint(ev);
         hitPad = padAtBoard(bp.x, bp.y, g.__lc.ref);
       }
-      if (hitPad) setPadHighlight(hitPad);
+      if (hitPad) {
+        setPadHighlight(hitPad);
+        // KiCad parity: pressing a pad lights its whole net (dims the rest)
+        if (hitPad.net) highlightNet('data-net', hitPad.net);
+      }
       layoutTextSel = -1; // a part grab replaces any text grab
       markTextSel();
+      // captured BEFORE any selection collapse: a DRAG moves the whole
+      // pre-press selection (KiCad), while a plain click narrows it below
+      var dragRefs = layoutSel.indexOf(g.__lc.ref) !== -1 && layoutSel.length > 1 ? layoutSel.slice() : [g.__lc.ref];
       var alreadySel = layoutSel.indexOf(g.__lc.ref) !== -1;
       if (ev.shiftKey && !alreadySel) {
         layoutSel.push(g.__lc.ref);
@@ -2352,52 +2529,104 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
           statusEl.textContent = g.__lc.ref + ' selected — drag to move, R to rotate';
         return;
       }
-      if (!ev.shiftKey && alreadySel && layoutSel.length > 1) {
-        // plain press on one of several selected parts: it becomes THE
-        // selection (the rest unselect), then the press-drag proceeds
-        layoutSel = [g.__lc.ref];
-        markLayoutSel();
+      if (!ev.shiftKey && alreadySel && layoutSel.length > 1 && false) {
+        // (superseded: the pre-press selection is captured above, so a
+        // drag moves all of it; a plain click still narrows via onUp's
+        // !moved branch below)
       }
       var startG = gerberAt(ev.clientX, ev.clientY);
-      var orig = { x: g.__lx, y: g.__ly };
       var moved = false;
+      var origs = {};
+      var groups = [];
+      for (var dr = 0; dr < dragRefs.length; dr++) {
+        var dg = layoutOverlay.querySelector('[data-ref="' + cssEsc(dragRefs[dr]) + '"]');
+        if (!dg) continue;
+        origs[dragRefs[dr]] = { x: dg.__lx, y: dg.__ly };
+        groups.push(dg);
+      }
+      var mvBefore = snapMoves(dragRefs);
+      var ripBefore = layoutRipped.length;
+      // the ratsnest redraws DURING the drag (throttled — a full
+      // connectivity rebuild per mousemove jitters on big boards), so the
+      // stranded wires follow the part in real time instead of snapping at
+      // release; onUp's commitLayoutMove does the unthrottled final pass
+      var lastRats = 0;
       function onMove(e2) {
         var pg = gerberAt(e2.clientX, e2.clientY);
-        var nx = orig.x + (pg.x - startG.x);
-        var ny = orig.y + (pg.y - startG.y);
-        if (!layoutSnapBox || layoutSnapBox.checked) {
-          nx = Math.round(nx * 2) / 2;
-          ny = Math.round(ny * 2) / 2;
+        var dx = pg.x - startG.x;
+        var dy = pg.y - startG.y;
+        if (!moved) {
+          moved = true;
+          // the press may have resolved a pad (its blue selection box sits
+          // at the PRE-move position) — once the part actually moves, that
+          // ghost box must go, or it lingers where the part used to be
+          clearPadHighlight();
         }
-        setCompPos(g, nx, ny);
-        applyCompGhost(g); // the whole footprint drags along, like KiCad
-        // the pending move goes LIVE mid-drag — everything that rides it
-        // (labels, edited-value previews, compTrStr readers) follows the
-        // body in real time instead of snapping at release. Same shape
-        // commitLayoutMove finalizes.
-        layoutMoves[g.__lc.ref] = {
-          x: g.__lx,
-          y: g.__ly,
-          x0: g.__lc.x,
-          y0: g.__lc.y,
-          rot: layoutRot[g.__lc.ref] || 0,
-        };
-        for (var lr = 0; lr < layoutTexts.length; lr++) {
-          if (layoutTexts[lr].ref === g.__lc.ref) syncTextVisual(lr);
+        for (var mi = 0; mi < groups.length; mi++) {
+          var mg = groups[mi];
+          var mr = mg.__lc.ref;
+          var nx = origs[mr].x + dx;
+          var ny = origs[mr].y + dy;
+          if (!layoutSnapBox || layoutSnapBox.checked) {
+            nx = Math.round(nx / layoutGridSize) * layoutGridSize;
+            ny = Math.round(ny / layoutGridSize) * layoutGridSize;
+          }
+          setCompPos(mg, nx, ny);
+          applyCompGhost(mg); // the whole footprint drags along, like KiCad
+          // the pending move goes LIVE mid-drag — everything that rides it
+          // (labels, edited-value previews, compTrStr readers) follows the
+          // body in real time instead of snapping at release. Same shape
+          // commitLayoutMove finalizes.
+          layoutMoves[mr] = {
+            x: mg.__lx,
+            y: mg.__ly,
+            x0: mg.__lc.x,
+            y0: mg.__lc.y,
+            rot: layoutRot[mr] || 0,
+          };
+          for (var lr = 0; lr < layoutTexts.length; lr++) {
+            if (layoutTexts[lr].ref === mr) syncTextVisual(lr);
+          }
+        }
+        var now = Date.now();
+        if (now - lastRats > 50) {
+          lastRats = now;
+          refreshRatsnest();
         }
         moved = true;
         if (statusEl && !statusLocked())
-          statusEl.textContent = g.__lc.ref + ' \u2192 ' + nx.toFixed(2) + ', ' + (-ny).toFixed(2) + ' mm';
+          statusEl.textContent =
+            g.__lc.ref + (dragRefs.length > 1 ? ' (+' + (dragRefs.length - 1) + ')' : '') +
+            ' \u2192 ' + fmtPos(nx) + ', ' + fmtPos(-ny);
         e2.preventDefault();
       }
       function onUp() {
         window.removeEventListener('pointermove', onMove);
         window.removeEventListener('pointerup', onUp);
-        if (moved) commitLayoutMove(g);
-        else if (ev.shiftKey && alreadySel) {
+        if (moved) {
+          for (var ci = 0; ci < groups.length; ci++) commitLayoutMove(groups[ci]);
+          var mvAfter = snapMoves(dragRefs);
+          var rippedNow = layoutRipped.slice(ripBefore);
+          pushUndo(
+            'move ' + dragRefs.join(', '),
+            function () {
+              restoreMoves(mvBefore);
+              restoreRippedTo(ripBefore);
+            },
+            function () {
+              restoreMoves(mvAfter);
+              for (var ri = 0; ri < rippedNow.length; ri++) ripUpEl(rippedNow[ri]);
+            },
+          );
+        } else if (ev.shiftKey && alreadySel) {
           // shift-click on a selected part toggles it back out of the
           // selection (a shift-DRAG still moves it — moved covers that)
           layoutSel.splice(layoutSel.indexOf(g.__lc.ref), 1);
+          markLayoutSel();
+        } else if (dragRefs.length > 1) {
+          // plain CLICK (no drag) on one of several selected parts narrows
+          // the selection to it — the drag path above moved the whole set
+          layoutSel = [g.__lc.ref];
           markLayoutSel();
         }
       }
@@ -2473,8 +2702,29 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     if (layoutApplyBtn)
       layoutApplyBtn.disabled =
         !Object.keys(layoutMoves).length && !Object.keys(layoutTextMoves).length && !nVal && !routedTracks.length && !routedDeletes.length;
+    // every state-changing op funnels through here — the pending-apply
+    // snapshot rides along (undo/redo included, via historyResync)
+    persistPending();
   }
   function layoutRevert() {
+    // nothing pending (e.g. right after a fast apply wrote source) —
+    // reverting would show authored visuals while the source holds the
+    // moved positions
+    if (
+      !Object.keys(layoutMoves).length &&
+      !Object.keys(layoutTextMoves).length &&
+      !Object.keys(layoutValueEdits).length &&
+      !Object.keys(layoutRefEdits).length &&
+      !routedTracks.length &&
+      !routedDeletes.length
+    ) {
+      if (statusEl && !statusLocked()) statusEl.textContent = 'nothing to revert \u2014 no pending edits (the last apply already wrote source)';
+      return;
+    }
+    // the session resets wholesale: stale undo/redo entries would resurrect
+    // moves the user just reverted
+    undoStack = [];
+    redoStack = [];
     for (var r = 0; r < layoutRipped.length; r++) {
       var el = layoutRipped[r];
       if (el.__layoutOp === '') el.removeAttribute('display');
@@ -2600,13 +2850,19 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       }
       layoutApplyBtn.disabled = true;
       layoutApplyBtn.textContent = 'rebuilding\u2026';
-      window.typecadLayoutApply(moves, texts, values, labels, renames, routedTracks, routedDeletes, function (err) {
+      window.typecadLayoutApply(moves, texts, values, labels, renames, routedTracks, routedDeletes, function (err, fast) {
         layoutApplyBtn.disabled = false;
         layoutApplyBtn.textContent = 'apply & rebuild';
         if (err && statusEl) statusEl.textContent = 'layout apply failed: ' + err;
-        else {
+        else if (fast && window.__typecadSessionApplied) {
+          // fast path: source written, rebuild deferred — keep the visual
+          // state (ghosts already match the source), drop the session's
+          // pending edits so nothing double-applies
+          window.__typecadSessionApplied();
+        } else {
           routedTracks = []; // now source-owned: the rebuild re-renders them
           routedDeletes = [];
+          persistPending();
         }
       });
     });
@@ -2619,15 +2875,33 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   // window listener ever sees the key.
   function layoutRotateSelection() {
     if (!layoutSel.length && layoutTextSel < 0) {
-      if (statusEl && !statusLocked()) statusEl.textContent = 'click a component first — R rotates the selection';
+      if (statusEl && !statusLocked()) statusEl.textContent = 'click a component first \u2014 R rotates the selection';
       return;
     }
-    for (var rs = 0; rs < layoutSel.length; rs++) {
-      var gRot = layoutOverlay.querySelector('[data-ref="' + cssEsc(layoutSel[rs]) + '"]');
-      if (!gRot) continue;
-      layoutRot[layoutSel[rs]] = ((layoutRot[layoutSel[rs]] || 0) + 1) % 4;
-      setCompPos(gRot, gRot.__lx, gRot.__ly);
-      commitLayoutMove(gRot);
+    if (layoutSel.length) {
+      var rotRefs = layoutSel.slice();
+      var rotBefore = snapMoves(rotRefs);
+      var rotRipBefore = layoutRipped.length;
+      for (var rs = 0; rs < rotRefs.length; rs++) {
+        var gRot = layoutOverlay.querySelector('[data-ref="' + cssEsc(rotRefs[rs]) + '"]');
+        if (!gRot) continue;
+        layoutRot[rotRefs[rs]] = ((layoutRot[rotRefs[rs]] || 0) + 1) % 4;
+        setCompPos(gRot, gRot.__lx, gRot.__ly);
+        commitLayoutMove(gRot);
+      }
+      var rotAfter = snapMoves(rotRefs);
+      var rotRipped = layoutRipped.slice(rotRipBefore);
+      pushUndo(
+        'rotate ' + rotRefs.join(', '),
+        function () {
+          restoreMoves(rotBefore);
+          restoreRippedTo(rotRipBefore);
+        },
+        function () {
+          restoreMoves(rotAfter);
+          for (var ri = 0; ri < rotRipped.length; ri++) ripUpEl(rotRipped[ri]);
+        },
+      );
     }
     // a grabbed text rotates about its (effective) anchor
     if (layoutTextSel >= 0 && layoutTexts[layoutTextSel]) {
@@ -2644,6 +2918,201 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       renderLayoutMoves();
     }
   }
+  // ---- grid, units, disperse, hit cycling (KiCad parity pack) ----
+  var layoutGridSize = 0.5; // mm; the snap ladder and the visible grid share it
+  var layoutGridShow = false;
+  var layoutMil = false;
+  /** layout status positions: mm, or mil when the toggle is on */
+  function fmtPos(n) {
+    if (layoutMil) return (n / 0.0254).toFixed(1) + ' mil';
+    return n.toFixed(2) + ' mm';
+  }
+  function rebuildLayoutGrid() {
+    var old = document.getElementById('layout-grid-g');
+    if (old) old.remove();
+    if (!layoutGridShow || !viewGroups.gerber) return;
+    var flip = viewGroups.gerber.querySelector('#yflip');
+    if (!flip) return;
+    var boardR = layoutBoardRect();
+    if (!boardR) return;
+    var g = layoutGridSize;
+    var pad = 10;
+    var x0 = Math.floor((boardR.x0 - pad) / g) * g;
+    var y0 = Math.floor((boardR.y0 - pad) / g) * g;
+    var x1 = Math.ceil((boardR.x1 + pad) / g) * g;
+    var y1 = Math.ceil((boardR.y1 + pad) / g) * g;
+    var NS = 'http://www.w3.org/2000/svg';
+    var host = document.createElementNS(NS, 'g');
+    host.setAttribute('id', 'layout-grid-g');
+    host.setAttribute('pointer-events', 'none');
+    var d = '';
+    // minor divisions as one path (skipped when they'd be dust: 0.1mm over
+    // a 100mm board is 1000 lines — the major grid still shows)
+    if ((x1 - x0) / g < 400) {
+      for (var x = x0; x <= x1 + 0.001; x += g) d += 'M ' + x.toFixed(3) + ' ' + y0.toFixed(3) + ' L ' + x.toFixed(3) + ' ' + y1.toFixed(3) + ' ';
+      for (var y = y0; y <= y1 + 0.001; y += g) d += 'M ' + x0.toFixed(3) + ' ' + y.toFixed(3) + ' L ' + x1.toFixed(3) + ' ' + y.toFixed(3) + ' ';
+      var minor = document.createElementNS(NS, 'path');
+      minor.setAttribute('d', d);
+      minor.setAttribute('stroke', 'rgba(255,255,255,0.05)');
+      minor.setAttribute('stroke-width', '0.04');
+      minor.setAttribute('fill', 'none');
+      host.appendChild(minor);
+    }
+    var dm = '';
+    var g5 = g * 5;
+    for (var xm = Math.ceil(x0 / g5) * g5; xm <= x1 + 0.001; xm += g5) dm += 'M ' + xm.toFixed(3) + ' ' + y0.toFixed(3) + ' L ' + xm.toFixed(3) + ' ' + y1.toFixed(3) + ' ';
+    for (var ym = Math.ceil(y0 / g5) * g5; ym <= y1 + 0.001; ym += g5) dm += 'M ' + x0.toFixed(3) + ' ' + ym.toFixed(3) + ' L ' + x1.toFixed(3) + ' ' + ym.toFixed(3) + ' ';
+    var major = document.createElementNS(NS, 'path');
+    major.setAttribute('d', dm);
+    major.setAttribute('stroke', 'rgba(255,255,255,0.12)');
+    major.setAttribute('stroke-width', '0.06');
+    major.setAttribute('fill', 'none');
+    host.appendChild(major);
+    flip.insertBefore(host, flip.firstChild); // behind every layer
+  }
+  // disperse (KiCad's Tools > Disperse Footprints): parts still stacked on
+  // others grid-spread into rows below the board, as pending moves
+  function disperseFootprints() {
+    var refs = [];
+    for (var i = 0; i < layoutComps.length; i++) {
+      var ref = layoutComps[i].ref;
+      var a = compStateAt(ref);
+      if (!a) continue;
+      var box = compAABB(a.c, a.x, a.y, a.rot);
+      for (var j = 0; j < layoutComps.length; j++) {
+        if (layoutComps[j].ref === ref) continue;
+        var b = compStateAt(layoutComps[j].ref);
+        if (!b) continue;
+        var bb = compAABB(b.c, b.x, b.y, b.rot);
+        if (Math.min(box.x1, bb.x1) - Math.max(box.x0, bb.x0) > 0.05 && Math.min(box.y1, bb.y1) - Math.max(box.y0, bb.y0) > 0.05) {
+          refs.push(ref);
+          break;
+        }
+      }
+    }
+    if (!refs.length) {
+      if (statusEl && !statusLocked()) statusEl.textContent = 'nothing stacked to disperse';
+      return;
+    }
+    var boardR = layoutBoardRect() || { x0: 0, y0: -40, x1: 60, y1: 0 };
+    var g = layoutGridSize;
+    var before = snapMoves(refs);
+    var ripBefore = layoutRipped.length;
+    // placement stays ON-SCREEN: rows sweep the board interior top-down
+    // (where the parts will be arranged anyway); only a part too wide for
+    // the board drops to a row below the ink
+    var margin = 2;
+    var inW = boardR.x1 - boardR.x0 - margin * 2;
+    var cursorX = boardR.x0 + margin;
+    var rowY = boardR.y1 - margin; // gerber y-up: the board's visual top
+    var rowH = 0;
+    var belowY = boardR.y0 - 6;
+    var belowH = 0;
+    for (var k = 0; k < refs.length; k++) {
+      var c2 = compStateAt(refs[k]);
+      var w = c2 ? Math.max(c2.c.w, c2.c.h) : 2; // rotation-safe footprint extent
+      var h = c2 ? Math.min(c2.c.w, c2.c.h) : 2;
+      var px, py;
+      if (w <= inW) {
+        if (cursorX + w > boardR.x1 - margin) {
+          cursorX = boardR.x0 + margin;
+          rowY -= rowH + margin;
+          rowH = 0;
+        }
+        px = cursorX + w / 2;
+        py = rowY - h / 2;
+        cursorX += w + margin;
+        rowH = Math.max(rowH, h);
+      } else {
+        px = (boardR.x0 + boardR.x1) / 2;
+        py = belowY - h / 2;
+        belowY -= h + margin;
+        belowH = Math.max(belowH, h);
+      }
+      px = Math.round(px / g) * g;
+      py = Math.round(py / g) * g;
+      var gd = layoutOverlay.querySelector('[data-ref="' + cssEsc(refs[k]) + '"]');
+      if (gd) {
+        setCompPos(gd, px, py);
+        applyCompGhost(gd);
+        commitLayoutMove(gd);
+      }
+    }
+    var after = snapMoves(refs);
+    var ripped = layoutRipped.slice(ripBefore);
+    pushUndo(
+      'disperse ' + refs.length + ' part(s)',
+      function () {
+        restoreMoves(before);
+        restoreRippedTo(ripBefore);
+      },
+      function () {
+        restoreMoves(after);
+        for (var ri = 0; ri < ripped.length; ri++) ripUpEl(ripped[ri]);
+      },
+    );
+    refreshRatsnest();
+    refreshLayoutWarnings();
+    if (statusEl && !statusLocked())
+      statusEl.textContent = 'dispersed ' + refs.length + ' part(s) below the board \u2014 drag to arrange, apply writes them into source';
+  }
+  // Tab cycles the hover target through everything under the cursor (pad,
+  // segment, part body) the way KiCad's tab-cycling does
+  var cycleIdx = -1;
+  var cycleAt = null;
+  function cycleHits() {
+    var cands = [];
+    var bp = { x: lastMouseG.x, y: -lastMouseG.y };
+    var pad = padAtBoard(bp.x, bp.y);
+    if (pad) cands.push({ kind: 'pad', pad: pad });
+    var segs = allSegHits();
+    var bestSeg = null;
+    var bestD = 0.4;
+    for (var i = 0; i < segs.length; i++) {
+      var x1 = parseFloat(segs[i].getAttribute('x1')), y1 = parseFloat(segs[i].getAttribute('y1'));
+      var x2 = parseFloat(segs[i].getAttribute('x2')), y2 = parseFloat(segs[i].getAttribute('y2'));
+      var qp = snapOnSegment(lastMouseG.x, lastMouseG.y, x1, y1, x2, y2);
+      var dd = Math.hypot(qp.x - lastMouseG.x, qp.y - lastMouseG.y);
+      if (dd < bestD) {
+        bestD = dd;
+        bestSeg = segs[i];
+      }
+    }
+    if (bestSeg) cands.push({ kind: 'seg', el: bestSeg });
+    var compEl = document.elementFromPoint(lastMouseC.x, lastMouseC.y);
+    var compG = compEl && compEl.closest ? compEl.closest('.layout-comp') : null;
+    if (compG) cands.push({ kind: 'comp', g: compG });
+    if (!cands.length) {
+      if (statusEl && !statusLocked()) statusEl.textContent = 'nothing under the cursor to cycle';
+      return;
+    }
+    var movedAway = !cycleAt || Math.hypot(lastMouseC.x - cycleAt.x, lastMouseC.y - cycleAt.y) > 8;
+    cycleIdx = movedAway ? 0 : (cycleIdx + 1) % cands.length;
+    cycleAt = { x: lastMouseC.x, y: lastMouseC.y };
+    var c = cands[cycleIdx];
+    segSel.clear();
+    viaSel.clear();
+    segHiSync();
+    viaHiSync();
+    if (c.kind === 'pad') {
+      clearTraceHighlight();
+      setPadHighlight(c.pad);
+      if (c.pad.net) highlightNet('data-net', c.pad.net);
+    } else if (c.kind === 'seg') {
+      clearPadHighlight();
+      segSel.add(c.el);
+      segHiSync();
+      var n = c.el.getAttribute('data-net');
+      if (n && n !== 'N/C') highlightNet('data-net', n);
+      if (statusEl && !statusLocked())
+        statusEl.textContent = 'segment' + (n && n !== 'N/C' ? ' [' + n + ']' : '') + ' \u2014 Del removes, Tab cycles';
+    } else {
+      clearPadHighlight();
+      layoutSel = [c.g.__lc.ref];
+      markLayoutSel();
+      if (statusEl && !statusLocked()) statusEl.textContent = c.g.__lc.ref + ' \u2014 Tab cycles';
+    }
+  }
   document.addEventListener(
     'keydown',
     function (ev) {
@@ -2654,6 +3123,31 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       if (ev.key === 'Escape' && widthPop.classList.contains('open')) {
         ev.preventDefault();
         widthPop.classList.remove('open');
+        return;
+      }
+      // session undo/redo (inputs keep the browser's own text undo — the
+      // guard above already returned for them)
+      if ((ev.ctrlKey || ev.metaKey) && (ev.key === 'z' || ev.key === 'Z')) {
+        ev.preventDefault();
+        if (ev.shiftKey) runRedo();
+        else runUndo();
+        return;
+      }
+      if ((ev.ctrlKey || ev.metaKey) && (ev.key === 'y' || ev.key === 'Y')) {
+        ev.preventDefault();
+        runRedo();
+        return;
+      }
+      // Tab cycles the hover target under the cursor (pad / segment / part)
+      if (ev.key === 'Tab') {
+        ev.preventDefault();
+        cycleHits();
+        return;
+      }
+      // Shift+D disperses stacked footprints below the board
+      if (ev.key === 'D') {
+        ev.preventDefault();
+        disperseFootprints();
         return;
       }
       if (ev.key === 'r' || ev.key === 'R') {
@@ -2675,10 +3169,20 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       }
       if (ev.key === '[' || ev.key === ']' || ev.key === '{' || ev.key === '}') {
         ev.preventDefault();
+        var kdir = ev.key === '}' || ev.key === ']' ? 1 : -1;
         // Shift (the unshifted key cap with Shift: '{' '}') sizes the VIA;
-        // the plain key sizes the trace
-        if (ev.shiftKey) stepViaSize(ev.key === '}' || ev.key === ']' ? 1 : -1, ev.altKey);
-        else stepWidth(ev.key === ']' ? 1 : -1, ev.altKey);
+        // the plain key sizes the trace. A HIGHLIGHTED trace or via takes
+        // the keys instead — the committed ink resizes exactly like the
+        // live router's would
+        if (ev.shiftKey) {
+          if (!routeState && (segSel.size || viaSel.size) && selectionResize(null, selectionViaCompute(kdir, ev.altKey)))
+            return;
+          stepViaSize(kdir, ev.altKey);
+        } else {
+          if (!routeState && (segSel.size || viaSel.size) && selectionResize(selectionWidthCompute(kdir, ev.altKey), null))
+            return;
+          stepWidth(kdir, ev.altKey);
+        }
         return;
       }
       if (ev.key === '\\' || ev.key === '|') {
@@ -2687,6 +3191,13 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         // re-derives from memory/heuristics. Shift (the '|' key cap) does the
         // via — which re-couples it to the trace width
         if (ev.shiftKey) {
+          if (!routeState && (segSel.size || viaSel.size)) {
+            var recouple = function (info) {
+              var vs = viaForWidth(info.w).size;
+              return { size: vs, msg: 'via \u2300' + fmtW(vs) + ' \u2014 recoupled to the highlighted trace\u2019s width' };
+            };
+            if (selectionResize(null, recouple)) return;
+          }
           if (routeState) {
             routeState.via = viaForWidth(routeState.w);
             routeState.viaCoupled = true;
@@ -2705,6 +3216,14 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         } else if (routeState) {
           setRouteWidth(routeWidth(routeState.net, curPiece() ? curPiece().layerGroup : null), false);
         } else {
+          if (
+            (segSel.size || viaSel.size) &&
+            selectionResize(function (info) {
+              var dw = routeWidth(info.net, info.lg);
+              return { w: dw, msg: 'width \u2014 ' + fmtW(dw) + ' mm, the net\u2019s default' };
+            }, null)
+          )
+            return;
           pendingWidthOverride = 0;
           if (statusEl && !statusLocked())
             statusEl.textContent = 'width \u2014 the next route uses its net\u2019s default';
@@ -2720,7 +3239,20 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       }
       if (ev.key === 'p' || ev.key === 'P') {
         ev.preventDefault();
+        if (!routeState && (segSel.size || viaSel.size) && selectionPower()) return;
         powerWidth();
+        return;
+      }
+      if (ev.key === 'd' || ev.key === 'D') {
+        // D = drag (slide) the hovered/selected trace segment; Escape mid-drag reverts
+        ev.preventDefault();
+        if (segDrag) segDragEnd(false);
+        else segDragStart();
+        return;
+      }
+      if (ev.key === 'e' || ev.key === 'E') {
+        ev.preventDefault();
+        propsToggle();
         return;
       }
       if (ev.key === 'i' || ev.key === 'I') {
@@ -2730,6 +3262,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       }
       if (ev.key === 'z' || ev.key === 'Z') {
         ev.preventDefault();
+        if (!routeState && (segSel.size || viaSel.size) && selectionImpedance()) return;
         impedanceWidth();
         return;
       }
@@ -2791,16 +3324,34 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         }
         return;
       }
-      var step = ev.altKey ? 0.1 : 0.5;
+      var step = ev.altKey ? Math.min(0.1, layoutGridSize / 5) : layoutGridSize;
       var nudges = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, step], ArrowDown: [0, -step] };
       var d = nudges[ev.key];
       if (!d) return;
       ev.preventDefault();
-      for (var ns = 0; ns < layoutSel.length; ns++) {
-        var gNudge = layoutOverlay.querySelector('[data-ref="' + cssEsc(layoutSel[ns]) + '"]');
-        if (!gNudge) continue;
-        setCompPos(gNudge, gNudge.__lx + d[0], gNudge.__ly + d[1]);
-        commitLayoutMove(gNudge);
+      if (layoutSel.length) {
+        var nudgeRefs = layoutSel.slice();
+        var nudgeBefore = snapMoves(nudgeRefs);
+        var nudgeRipBefore = layoutRipped.length;
+        for (var ns = 0; ns < nudgeRefs.length; ns++) {
+          var gNudge = layoutOverlay.querySelector('[data-ref="' + cssEsc(nudgeRefs[ns]) + '"]');
+          if (!gNudge) continue;
+          setCompPos(gNudge, gNudge.__lx + d[0], gNudge.__ly + d[1]);
+          commitLayoutMove(gNudge);
+        }
+        var nudgeAfter = snapMoves(nudgeRefs);
+        var nudgeRipped = layoutRipped.slice(nudgeRipBefore);
+        pushUndo(
+          'nudge ' + nudgeRefs.join(', '),
+          function () {
+            restoreMoves(nudgeBefore);
+            restoreRippedTo(nudgeRipBefore);
+          },
+          function () {
+            restoreMoves(nudgeAfter);
+            for (var nr = 0; nr < nudgeRipped.length; nr++) ripUpEl(nudgeRipped[nr]);
+          },
+        );
       }
     },
     true,
@@ -2925,20 +3476,41 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     if (!b.active) {
       if (ev.button === 0 && !ev.shiftKey) {
         clearPadHighlight(); // clears the pad OR trace tie-in highlight
+        var clearedInk = segSel.size || viaSel.size || netDimmed.length;
+        if (segSel.size) {
+          segSel.clear();
+          segHiSync();
+        }
         if (viaSel.size) {
           viaSel.clear();
           viaHiSync();
         }
+        if (netDimmed.length) clearNetHighlight(); // the dim dies with the selection
         if (layoutSel.length || layoutTextSel >= 0) {
         layoutSel = [];
           layoutTextSel = -1;
           markTextSel();
           markLayoutSel();
         }
+        // a deselection must not leave a stale "N segments selected" claim
+        if (clearedInk && statusEl && !statusLocked()) statusEl.textContent = '';
       }
       return;
     }
     if (!layoutOverlay) return;
+    // a box drag is a fresh selection: any ink selection and its net dim
+    // go (shift-drag ADDS to the selection instead)
+    if (!ev.shiftKey) {
+      if (segSel.size) {
+        segSel.clear();
+        segHiSync();
+      }
+      if (viaSel.size) {
+        viaSel.clear();
+        viaHiSync();
+      }
+      if (netDimmed.length) clearNetHighlight();
+    }
     var g1 = gerberAt(ev.clientX, ev.clientY);
     var bx0 = Math.min(b.g0.x, g1.x);
     var bx1 = Math.max(b.g0.x, g1.x);
@@ -2981,15 +3553,49 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     var h = c.w * sin + c.h * cos;
     return { x0: x - w / 2, y0: y - h / 2, x1: x + w / 2, y1: y + h / 2 };
   }
+  var boardAreaCache = null;
   function layoutBoardRect() {
-    var edge = viewGroups.gerber ? viewGroups.gerber.querySelector('g[data-kind="edge"]') : null;
-    if (!edge) return null;
-    try {
-      var b = edge.getBBox();
-      return { x0: b.x, y0: b.y, x1: b.x + b.width, y1: b.y + b.height };
-    } catch (e) {
-      return null;
+    if (boardAreaCache !== null) return boardAreaCache;
+    boardAreaCache = null; // null = no board area at all
+    var g = viewGroups.gerber;
+    if (!g) return null;
+    // an authored Edge_Cuts with real geometry is the truth
+    var edge = g.querySelector('g[data-kind="edge"]');
+    if (edge) {
+      try {
+        var b = edge.getBBox();
+        if (b.width > 0.1 && b.height > 0.1) {
+          boardAreaCache = { x0: b.x, y0: b.y, x1: b.x + b.width, y1: b.y + b.height };
+          return boardAreaCache;
+        }
+      } catch (e) {}
     }
+    // no outline authored (an empty Edge_Cuts still classifies): derive the
+    // board area from the fabrication ink itself — every layer group's bbox
+    // unioned. Cached on FIRST use (the layout view's opening warn check,
+    // before any drag) so later moves of the ink can't move the board.
+    try {
+      var x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity, any = false;
+      var layers = g.querySelectorAll('g[data-kind]');
+      for (var li = 0; li < layers.length; li++) {
+        var lb;
+        try {
+          lb = layers[li].getBBox();
+        } catch (e2) {
+          continue;
+        }
+        if (!lb || (!lb.width && !lb.height)) continue;
+        any = true;
+        x0 = Math.min(x0, lb.x);
+        y0 = Math.min(y0, lb.y);
+        x1 = Math.max(x1, lb.x + lb.width);
+        y1 = Math.max(y1, lb.y + lb.height);
+      }
+      if (any && x1 - x0 > 0.5 && y1 - y0 > 0.5) {
+        boardAreaCache = { x0: x0, y0: y0, x1: x1, y1: y1, derived: true };
+      }
+    } catch (e) {}
+    return boardAreaCache;
   }
   function compStateAt(ref) {
     for (var i = 0; i < layoutComps.length; i++) {
@@ -3019,11 +3625,20 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       var st = compStateAt(moved[r]);
       if (!st) continue;
       var a = compAABB(st.c, st.x, st.y, st.rot);
-      if (
-        boardR &&
-        (a.x0 < boardR.x0 - 0.01 || a.y0 < boardR.y0 - 0.01 || a.x1 > boardR.x1 + 0.01 || a.y1 > boardR.y1 + 0.01)
-      ) {
-        var wmsg = moved[r] + ' leaves the board outline';
+      var offBoard = false;
+      if (boardR) {
+        if (boardR.derived) {
+          // a derived area hugs the fabrication ink (the biggest part can BE
+          // the board) — warn only when the part is fully off it, not for
+          // poking past any edge
+          offBoard = a.x0 > boardR.x1 || a.x1 < boardR.x0 || a.y0 > boardR.y1 || a.y1 < boardR.y0;
+        } else {
+          offBoard = a.x0 < boardR.x0 - 0.01 || a.y0 < boardR.y0 - 0.01 || a.x1 > boardR.x1 + 0.01 || a.y1 > boardR.y1 + 0.01;
+        }
+      }
+      if (offBoard) {
+        var wmsg =
+          moved[r] + (boardR.derived ? ' leaves the board area (no outline authored)' : ' leaves the board outline');
         if (warns.indexOf(wmsg) === -1) warns.push(wmsg);
         warnRefs[moved[r]] = 1;
       }
@@ -3046,11 +3661,37 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     box.textContent = warns.join(' \u00b7 ');
     box.style.display = warns.length ? '' : 'none';
     if (layoutOverlay) {
+      // per-ref reasons: the yellow outline is opaque without them — a part
+      // moved clear of every other part still glows when it sits off the
+      // board outline, and the toolbar text is easy to miss. The reason
+      // rides as a <title> tooltip on the part itself.
+      var reasonByRef = {};
+      for (var wi = 0; wi < warns.length; wi++) {
+        var m = /^(\S+) (leaves the board (?:outline|area \(no outline authored\))|overlaps \S+)$/.exec(warns[wi]);
+        if (!m) continue;
+        reasonByRef[m[1]] = (reasonByRef[m[1]] ? reasonByRef[m[1]] + ' · ' : '') + warns[wi];
+        if (m[2].indexOf('overlaps') === 0) {
+          var other = m[2].slice('overlaps '.length);
+          reasonByRef[other] = (reasonByRef[other] ? reasonByRef[other] + ' · ' : '') + warns[wi];
+        }
+      }
       var boxes = layoutOverlay.querySelectorAll('.layout-comp');
       for (var wb = 0; wb < boxes.length; wb++) {
         var bref = boxes[wb].getAttribute('data-ref');
-        if (warnRefs[bref]) boxes[wb].classList.add('layout-warn');
-        else boxes[wb].classList.remove('layout-warn');
+        var existingTitle = boxes[wb].querySelector('title');
+        if (warnRefs[bref]) {
+          boxes[wb].classList.add('layout-warn');
+          var reason = reasonByRef[bref] || 'layout warning';
+          if (existingTitle) existingTitle.textContent = reason;
+          else {
+            existingTitle = document.createElementNS(SVGNSL, 'title');
+            existingTitle.textContent = reason;
+            boxes[wb].insertBefore(existingTitle, boxes[wb].firstChild);
+          }
+        } else {
+          boxes[wb].classList.remove('layout-warn');
+          if (existingTitle) existingTitle.remove();
+        }
       }
     }
   }
@@ -3121,14 +3762,15 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     window.__typecadRouteEnds = null; // committed tracks changed -> rebuild
     var old = document.getElementById('ratsnest');
     if (old && old.parentNode) old.parentNode.removeChild(old);
-    // the group lives in the GERBER stack (not the layout overlay) so the
-    // unrouted-net wires show in every view that renders the gerbers —
-    // including the viewer's very first open in gerber mode
+    // the group lives in the GERBER stack (not the layout overlay) so it
+    // pans and zooms with the board ink — but only the layout view shows
+    // it: every other view renders the fabricated board alone
     var gerberStack = viewGroups.gerber ? viewGroups.gerber.querySelector('#yflip') || viewGroups.gerber : null;
     if (!gerberStack) return;
     var rats = document.createElementNS(SVGNSL, 'g');
     rats.setAttribute('id', 'ratsnest');
     rats.setAttribute('pointer-events', 'none');
+    rats.style.display = viewMode === 'layout' ? '' : 'none';
     // a component's pad AT ITS CURRENT pose: translate to the moved center,
     // then rotate the island pad offset by the accumulated 90-degree presses
     // — in the gerber (y-up) frame each +90 of code rotation turns offsets
@@ -3200,6 +3842,12 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     };
     var padsByNet = {};
     var wiredByNet = {};
+    // per-island-pad wired verdict (ref#index): the rip-up block below must
+    // NOT re-wire a pad that already sits on copper — completing a net
+    // leaves it with NO stranded pads, and its old "don't double" guard
+    // (stranded pads exist) then fails and EVERY moved part's pad on that
+    // net sprouts a phantom wire again
+    var wiredPad = {};
     for (var uc = 0; uc < layoutComps.length; uc++) {
       var ucomp = layoutComps[uc];
       for (var up = 0; up < (ucomp.pads || []).length; up++) {
@@ -3212,6 +3860,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         var uIslandPad = ucomp.pads[up];
         var uWired =
           routePadCovered(ucomp.ref, String(uIslandPad.pin || ''), unet) || padWired(ucomp, uIslandPad);
+        wiredPad[ucomp.ref + '#' + up] = uWired;
         if (uWired) (wiredByNet[unet] = wiredByNet[unet] || []).push(padPos(ucomp, uIslandPad));
         else (padsByNet[unet] = padsByNet[unet] || []).push(padPos(ucomp, uIslandPad));
       }
@@ -3273,16 +3922,21 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       for (var pn = 0; pn < c.pads.length; pn++) {
         var pad = c.pads[pn];
         if (!pad.net) continue;
+        // on copper already (session route or surviving ink): the main pass
+        // handles it, and a phantom rip-up wire here would reappear the
+        // moment a net's LAST stranded pad gets connected
+        if (wiredPad[mr + '#' + pn]) continue;
         // an unrouted net's wires already span every pad — don't double them
         if (padsByNet[pad.net]) continue;
-        // anchors: OTHER components' pads on the same net — their copper
+        // anchors: OTHER components' pads on the SAME net — their copper
         // survives the rip-up, so the stranded pad ties back to them (their
         // own moves/rotations apply too)
         var anchors = [];
         for (var oc = 0; oc < layoutComps.length; oc++) {
           var o = layoutComps[oc];
           if (o.ref === mr || o.nets.indexOf(pad.net) === -1) continue;
-          for (var op = 0; op < (o.pads || []).length; op++) anchors.push(padPos(o, o.pads[op]));
+          for (var op = 0; op < (o.pads || []).length; op++)
+            if (o.pads[op].net === pad.net) anchors.push(padPos(o, o.pads[op]));
         }
         if (!anchors.length) continue;
         var pp = padPos(c, pad);
@@ -3382,6 +4036,17 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     buildTextOverlay();
     document.body.classList.add('typecad-layout');
     if (layoutOverlay) layoutOverlay.style.display = '';
+    rebuildLayoutGrid();
+    // the injected probe outlines stand DOWN in the layout view: they sit
+    // ABOVE the layout overlay with pointer-events:all, so they steal body
+    // presses from small parts (R1 unselectable while its pads work) and,
+    // never moving with a drag, they linger as stale blue hover boxes where
+    // the part used to be. The layout overlay owns part interaction here.
+    var probeG = document.getElementById('typecad-probe');
+    if (probeG) {
+      if (probeG.__disp === undefined) probeG.__disp = probeG.style.display || '';
+      probeG.style.display = 'none';
+    }
     // zones subdued, blueprint-faint: filled contours step back so the
     // copper being arranged reads clearly
     var regions = viewGroups.gerber ? viewGroups.gerber.querySelectorAll('path[fill-rule="evenodd"]') : [];
@@ -3389,6 +4054,21 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       if (regions[z].__zoneOp !== undefined) continue;
       regions[z].__zoneOp = regions[z].getAttribute('opacity') || '';
       regions[z].setAttribute('opacity', '0.18');
+    }
+    // KiCad-style depth: every copper layer but the BOTTOM paints
+    // translucent, so back-layer ink shows THROUGH front copper — a trace
+    // re-layered onto B.Cu must not vanish under an opaque pad or pour
+    // (it physically sits beneath it in the stack). Copper groups sit in
+    // DOM/z order bottom-first, so the first group stays solid. Layer
+    // COLORS stay exactly the theme's own per-layer inks — an earlier
+    // iteration hue-rotated back groups for contrast, which painted
+    // off-theme colors (Nord's blue back copper rendered orange, gruvbox's
+    // green purple) and broke the layer-edit preview's promise that the
+    // live recolor shows the rebuilt board's colors
+    var cgroups = copperGroups();
+    for (var cg = 1; cg < cgroups.length; cg++) {
+      if (cgroups[cg].__layoutOp === undefined) cgroups[cg].__layoutOp = cgroups[cg].getAttribute('opacity') || '';
+      cgroups[cg].setAttribute('opacity', '0.75');
     }
     // provenance indication is the candy-cane STRIPE on autorouter nets
     // (attachTraceHits); manual TrackBuilder traces stay solid. The old
@@ -3413,20 +4093,37 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       else regions[z2].setAttribute('opacity', regions[z2].__zoneOp);
       regions[z2].__zoneOp = undefined;
     }
+    // the translucent copper stack returns to solid ink outside the layout view
+    var cgroups2 = copperGroups();
+    for (var cg2 = 1; cg2 < cgroups2.length; cg2++) {
+      if (cgroups2[cg2].__layoutOp === undefined) continue;
+      if (cgroups2[cg2].__layoutOp === '') cgroups2[cg2].removeAttribute('opacity');
+      else cgroups2[cg2].setAttribute('opacity', cgroups2[cg2].__layoutOp);
+      cgroups2[cg2].__layoutOp = undefined;
+    }
+    // belt-and-suspenders: a page saved mid-layout by an older build may
+    // still carry hue-rotate filters on the copper groups
+    for (var ch2 = 0; ch2 < cgroups2.length; ch2++) cgroups2[ch2].style.filter = '';
     if (viewGroups.gerber) {
       var dashed = viewGroups.gerber.querySelectorAll('path[stroke-dasharray]');
       for (var d2 = 0; d2 < dashed.length; d2++) dashed[d2].removeAttribute('stroke-dasharray');
     }
-    // the gerber view shows the authored board: rebuild the ratsnest without
-    // the pending moves' stranded wires (unrouted-net chains stay — those
-    // describe the board, not a move)
+    // the probe outlines come back with the gerber view (see enterLayout)
+    var probeG2 = document.getElementById('typecad-probe');
+    if (probeG2 && probeG2.__disp !== undefined) probeG2.style.display = probeG2.__disp;
+    var gridG = document.getElementById('layout-grid-g');
+    if (gridG) gridG.remove();
+    // the gerber view shows the authored board alone: rebuild the ratsnest
+    // without the pending moves' stranded wires — the group hides outside
+    // the layout view, but a later re-entry must start from the authored
+    // board's wires, not the move's
     refreshRatsnest();
     widthControlSync();
     widthPop.classList.remove('open');
   }
 
-  // first open: unrouted nets show their wires immediately — gerber view,
-  // layout view, wherever the gerber stack renders
+  // first open: build the ratsnest once so entering the layout view shows
+  // the unrouted-net wires immediately (every other view keeps it hidden)
   refreshRatsnest();
 
   // ---- pad labels: pin number + net name on every copper pad ----
@@ -3471,6 +4168,38 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   var routeUi = null;
   var routedTracks = []; // committed this session: {net, w, pieces, vias} (board frame)
   var routedDeletes = []; // deleted segments pending apply: {net, x1, y1, x2, y2} (board frame)
+  // pending apply state must survive the webview RELOADING mid-session — a
+  // restore-time generate() swaps the page out from under edits made in the
+  // panel's first seconds, and closures don't travel. The arrays snapshot
+  // to localStorage (keyed by board + page) and come back on load; a
+  // successful apply clears the key with them
+  var PENDING_KEY =
+    // title + file only: a webview's URI query can change between HTML
+    // assignments, and the restore only ever needs to match the same panel
+    'typecadPending:' + (document.title || '') + ':' + (location.pathname.split('/').pop() || '');
+  function persistPending() {
+    try {
+      if (!routedTracks.length && !routedDeletes.length) localStorage.removeItem(PENDING_KEY);
+      else localStorage.setItem(PENDING_KEY, JSON.stringify({ routes: routedTracks, deletes: routedDeletes }));
+    } catch (e) {}
+  }
+  function restorePending() {
+    try {
+      var raw = localStorage.getItem(PENDING_KEY);
+      if (!raw) return 0;
+      var st = JSON.parse(raw);
+      var n = (st.routes ? st.routes.length : 0) + (st.deletes ? st.deletes.length : 0);
+      if (!n) {
+        localStorage.removeItem(PENDING_KEY);
+        return 0;
+      }
+      for (var i = 0; i < (st.routes || []).length; i++) routedTracks.push(st.routes[i]);
+      for (var d = 0; d < (st.deletes || []).length; d++) routedDeletes.push(st.deletes[d]);
+      return n;
+    } catch (e) {
+      return 0;
+    }
+  }
   var CLEARANCE = 0.2; // mm, trace-to-foreign-copper when the rules island carries none
   // the live check and the keep-out halo share ONE clearance number: the
   // board's rule when the island carried it, this default otherwise
@@ -3623,12 +4352,16 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       var eroute = el.getAttribute('data-route');
       if (!enet && !eref && !eroute) continue;
       var sw = parseFloat(el.getAttribute('stroke-width') || '0') || 0;
+      // the obstacle's net class clearance rides along — the live check
+      // judges each pair by the LARGER class clearance (KiCad semantics)
+      var ocls = netClassFor(enet);
       obs.push({
         x0: bb.x - sw / 2,
         y0: bb.y - sw / 2,
         x1: bb.x + bb.width + sw / 2,
         y1: bb.y + bb.height + sw / 2,
         net: enet,
+        clr: ocls && ocls.clearance > 0 ? ocls.clearance : 0,
       });
     }
     return obs;
@@ -3663,7 +4396,8 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
           var dx = Math.max(o.x0 - px, 0, px - o.x1);
           var dy = Math.max(o.y0 - py, 0, py - o.y1);
           var dist = dx || dy ? Math.hypot(dx, dy) : -0.5; // inside = violation
-          var margin = dist - need;
+          // a class clearance on the OBstacle's net widens this pair's need
+          var margin = dist - (o.clr > clearanceRule() ? w / 2 + o.clr : need);
           if (margin < worst) worst = margin;
         }
       }
@@ -3873,13 +4607,866 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       statusEl.textContent =
         (routeState.net || 'no net') + ' ' + cur.toFixed(2) + ' A \u2192 ' + fmtW(w) + ' mm (IPC-2221, \u0394T ' + POWER_DT + '\u00b0C) \u2014 carried into the source as powerInfo';
   }
+  // ---- selection sizing: the width keys retarget a HIGHLIGHTED trace or
+  // via — the same ladders and solves the live router uses, landing on
+  // committed ink. A session-owned run edits its own route entry in place
+  // (apply regenerates it anyway); a source-built run serializes exactly
+  // like a segment drag: the original chain rides routedDeletes and a
+  // fresh session route re-adds the whole connected route — every layer
+  // run AND its junction barrels, so a resize never drops a via ----
+  function trackW(tr) {
+    return parseFloat(tr.getAttribute('data-w') || '0') || 0.3;
+  }
+  function trackCanon(tr) {
+    // a re-layered run carries its chosen layer on the element (its group
+    // membership already moved too, but the override keeps undo honest)
+    if (tr.__layerCanon) return tr.__layerCanon;
+    var lg = tr.closest ? tr.closest("g[data-kind='copper']") : null;
+    return copperCanon(lg ? lg.getAttribute('data-layer-name') : '');
+  }
+  // an active net highlight snapshots every matched element's paint and
+  // restores the snapshot on clear — a re-layer (or its undo) must keep
+  // that snapshot in sync, or the next click repaints the trace back to
+  // its PRE-EDIT layer color over the corrected ink
+  function netSnapshotOf(el) {
+    for (var i = 0; i < netWhitened.length; i++) if (netWhitened[i].el === el) return netWhitened[i];
+    return null;
+  }
+  function syncNetSnapshot(el, strokeVal) {
+    var snap = netSnapshotOf(el);
+    if (snap) snap.stroke = strokeVal;
+  }
+  // re-layer a run's ink: the path and its hit lines BECOME native members
+  // of the target layer's copper group, stroked with that group's own
+  // var(--ink-…) exactly like every trace built there — so theme switches,
+  // the layer visibility checkbox, the per-layer opacity slider, and the
+  // layout view's translucency all apply to the edited trace precisely as
+  // they do to the layer's other ink, live and after rebuild alike. (An
+  // earlier iteration recolored the path in its ORIGINAL group with a
+  // CONCRETE hex — that color ignored theme switches and rode the wrong
+  // group's opacity; and the "reparented ink renders invisible in some
+  // webviews" note that drove it was a misdiagnosis — the reported trace
+  // was a 0.05 mm hairline on a stale page.) The apply bridge is
+  // unaffected: deletes match authored geometry, and the chosen layer
+  // rides the rewrite's layerMap
+  function moveTrackLayer(tr, canon) {
+    var lg = layerGroupByCanon(canon);
+    if (!lg || !tr.parentNode) return false;
+    if (tr.__layerCanon === null || tr.__layerCanon === undefined) {
+      // the "original" stroke must be the trace's own ink, never the
+      // highlight paint sitting on it while a net highlight is active
+      var snap0 = netSnapshotOf(tr);
+      tr.__origStroke0 = snap0 ? snap0.stroke : tr.getAttribute('stroke');
+      tr.__origLayerParent = tr.parentNode;
+      tr.__origStripeVis = tr.__stripe ? tr.__stripe.style.display : null;
+    }
+    lg.appendChild(tr);
+    var hits = tr.__hits || [];
+    for (var i = 0; i < hits.length; i++) lg.appendChild(hits[i]);
+    var inkVar = 'var(--ink-' + lg.getAttribute('data-layer-id') + ')';
+    tr.setAttribute('stroke', inkVar);
+    syncNetSnapshot(tr, inkVar);
+    tr.style.stroke = '';
+    tr.style.filter = '';
+    // the auto-provenance candy-cane stripe was drawn for the ORIGINAL
+    // layer's ink — hide it until undo or apply regenerates the trace where
+    // it belongs
+    if (tr.__stripe) tr.__stripe.style.display = 'none';
+    tr.__layerCanon = canon;
+    return true;
+  }
+  // undo for a re-layer: the ink returns to its original group with its
+  // original stroke
+  function restoreLayerInk(tr) {
+    if (!tr || tr.__layerCanon === null || tr.__layerCanon === undefined) return;
+    if (tr.__origLayerParent) {
+      tr.__origLayerParent.appendChild(tr);
+      var hits = tr.__hits || [];
+      for (var i = 0; i < hits.length; i++) tr.__origLayerParent.appendChild(hits[i]);
+    }
+    var back;
+    if (tr.__origStroke0 === null || tr.__origStroke0 === undefined) {
+      tr.removeAttribute('stroke');
+      back = null;
+    } else {
+      tr.setAttribute('stroke', tr.__origStroke0);
+      back = tr.__origStroke0;
+    }
+    syncNetSnapshot(tr, back);
+    tr.style.stroke = '';
+    tr.style.filter = '';
+    if (tr.__stripe && tr.__origStripeVis !== null && tr.__origStripeVis !== undefined)
+      tr.__stripe.style.display = tr.__origStripeVis;
+    tr.__layerCanon = null;
+    tr.__origLayerParent = null;
+    tr.__origStroke0 = undefined;
+    tr.__origStripeVis = null;
+  }
+  function trackEnds(tr) {
+    var hits = tr.__hits || [];
+    if (!hits.length) return [];
+    var last = hits[hits.length - 1];
+    return [
+      { x: parseFloat(hits[0].getAttribute('x1')), y: parseFloat(hits[0].getAttribute('y1')) },
+      { x: parseFloat(last.getAttribute('x2')), y: parseFloat(last.getAttribute('y2')) },
+    ];
+  }
+  function trackPtsG(tr) {
+    // gerber-frame polyline of the run's hit chain, in hit order
+    var hits = tr.__hits || [];
+    var pts = [];
+    for (var i = 0; i < hits.length; i++) {
+      var a = { x: +parseFloat(hits[i].getAttribute('x1')).toFixed(3), y: +parseFloat(hits[i].getAttribute('y1')).toFixed(3) };
+      var b = { x: +parseFloat(hits[i].getAttribute('x2')).toFixed(3), y: +parseFloat(hits[i].getAttribute('y2')).toFixed(3) };
+      if (!pts.length) pts.push(a);
+      var tp = pts[pts.length - 1];
+      if (Math.hypot(tp.x - a.x, tp.y - a.y) < 0.01) pts.push(b);
+      else pts.push(a, b); // disjoint survivor inside one path: straight jump
+    }
+    return pts;
+  }
+  function resizeTrackInk(tr, w) {
+    tr.setAttribute('stroke-width', String(w));
+    tr.setAttribute('data-w', String(w));
+    var hits = tr.__hits || [];
+    for (var i = 0; i < hits.length; i++) hits[i].setAttribute('stroke-width', String(Math.max(w, 0.5)));
+    // the selection overlay must resize WITH the ink — it derives its line
+    // widths from data-w, so a rebuild here keeps it glued through every
+    // [ ] \ p z press (and undo/redo)
+    segHiSync();
+  }
+  function sessionPieceFor(tr) {
+    // the routedTracks piece backing a committed SESSION run, if any
+    if (!tr.__hits || !tr.__hits.length || tr.getAttribute('data-route') !== '1') return null;
+    var e = trackEnds(tr);
+    if (e.length < 2) return null;
+    var head = { x: +e[0].x.toFixed(3), y: +(-e[0].y).toFixed(3) };
+    var tail = { x: +e[1].x.toFixed(3), y: +(-e[1].y).toFixed(3) };
+    for (var i = 0; i < routedTracks.length; i++) {
+      var pcs = routedTracks[i].pieces;
+      for (var p = 0; p < pcs.length; p++) {
+        var pts = pcs[p].pts;
+        if (!pts || pts.length < 2) continue;
+        var a = pts[0], b = pts[pts.length - 1];
+        if (
+          (Math.abs(a.x - head.x) < 0.02 && Math.abs(a.y - head.y) < 0.02 && Math.abs(b.x - tail.x) < 0.02 && Math.abs(b.y - tail.y) < 0.02) ||
+          (Math.abs(a.x - tail.x) < 0.02 && Math.abs(a.y - tail.y) < 0.02 && Math.abs(b.x - head.x) < 0.02 && Math.abs(b.y - head.y) < 0.02)
+        )
+          return { entry: routedTracks[i], piece: p };
+      }
+    }
+    return null;
+  }
+  function viaInkSize(el) {
+    if (el.tagName === 'circle') return (parseFloat(el.getAttribute('r')) || 0.3) * 2;
+    try {
+      // a gerber flash measures its aperture symbol (the bbox includes
+      // the use's x/y translate); implausible reads fall through
+      var bb = el.getBBox();
+      if (bb.width > 0.2 && bb.width <= 3) return bb.width;
+    } catch (er) {}
+    return 0;
+  }
+  function viaInkLayers(el) {
+    // the copper layers carrying this barrel's ink, stackup-ordered
+    var out = [];
+    var p = viaInkPos(el);
+    var ink = viaInk();
+    for (var i = 0; i < ink.length; i++) {
+      var q = viaInkPos(ink[i]);
+      if (Math.hypot(q.x - p.x, q.y - p.y) > 0.02) continue;
+      var lg = ink[i].closest ? ink[i].closest("g[data-kind='copper']") : null;
+      var c = lg ? copperCanon(lg.getAttribute('data-layer-name')) : '';
+      if (c && out.indexOf(c) === -1) out.push(c);
+    }
+    var order = copperCanonList();
+    out.sort(function (a, b) { return order.indexOf(a) - order.indexOf(b); });
+    return out;
+  }
+  // a barrel resizes in the INK directly: session circles restyle in
+  // place, a gerber flash (fixed aperture symbol) hides behind a
+  // same-layer circle that carries the new size until apply rebuilds
+  function viaInkResize(el, size) {
+    var ops = [];
+    var r2 = (size / 2).toFixed(3);
+    var p = viaInkPos(el);
+    var ink = viaInk();
+    for (var i = 0; i < ink.length; i++) {
+      var c = ink[i];
+      var q = viaInkPos(c);
+      if (Math.hypot(q.x - p.x, q.y - p.y) > 0.02) continue;
+      if (c.tagName === 'circle') {
+        ops.push({ el: c, oldR: c.getAttribute('r'), newR: r2 });
+        c.setAttribute('r', r2);
+      } else if (c.tagName === 'use') {
+        if (c.__resizeCircle) {
+          ops.push({ el: c.__resizeCircle, oldR: c.__resizeCircle.getAttribute('r'), newR: r2 });
+          c.__resizeCircle.setAttribute('r', r2);
+        } else {
+          var lg = c.closest("g[data-kind='copper']");
+          var ov = document.createElementNS(SVGNSL, 'circle');
+          ov.setAttribute('cx', q.x.toFixed(3));
+          ov.setAttribute('cy', q.y.toFixed(3));
+          ov.setAttribute('r', r2);
+          if (lg) ov.setAttribute('fill', 'var(--ink-' + lg.getAttribute('data-layer-id') + ')');
+          ov.setAttribute('data-route', '1');
+          if (c.getAttribute('data-net')) ov.setAttribute('data-net', c.getAttribute('data-net'));
+          // a selected flash's stand-in carries the selection ring too —
+          // the hidden original would else keep it invisibly
+          if (c.classList.contains('route-via-sel')) ov.classList.add('route-via-sel');
+          (lg || c.parentNode).appendChild(ov);
+          c.style.display = 'none';
+          c.__resizeCircle = ov;
+          ov.__overFlash = c;
+          ops.push({ el: c, hidden: true, overlay: ov, newR: r2 });
+        }
+      }
+    }
+    return ops;
+  }
+  function viaInkUndo(ops) {
+    for (var i = 0; i < ops.length; i++) {
+      if (ops[i].oldR !== undefined) ops[i].el.setAttribute('r', ops[i].oldR);
+      if (ops[i].hidden) {
+        ops[i].el.style.display = '';
+        ops[i].overlay.remove();
+        ops[i].el.__resizeCircle = null;
+      }
+    }
+  }
+  function viaInkRedo(ops) {
+    for (var i = 0; i < ops.length; i++) {
+      if (ops[i].hidden) {
+        ops[i].el.style.display = 'none';
+        (ops[i].el.closest("g[data-kind='copper']") || ops[i].el.parentNode).appendChild(ops[i].overlay);
+        ops[i].el.__resizeCircle = ops[i].overlay;
+      } else ops[i].el.setAttribute('r', ops[i].newR);
+    }
+  }
+  // the connected route through its via barrels: every layer run,
+  // chain-ordered and oriented away from the start run, plus barrels that sit
+  // on the chain's ends (a tail/head stitch must ride the rewrite or
+  // apply would silently drop it)
+  function collectRoute(start) {
+    var ink = viaInk();
+    function barrelAt(p) {
+      for (var i = 0; i < ink.length; i++) {
+        var vp = viaInkPos(ink[i]);
+        if (Math.hypot(vp.x - p.x, vp.y - p.y) < 0.35) return ink[i];
+      }
+      return null;
+    }
+    var used = new Set([start]);
+    function runOverBarrel(vp) {
+      var hits = allSegHits();
+      for (var i = 0; i < hits.length; i++) {
+        var tk = hits[i].__track;
+        if (!tk || used.has(tk) || !(tk.__hits || []).length) continue;
+        var te = trackEnds(tk);
+        for (var e = 0; e < 2; e++)
+          if (Math.hypot(te[e].x - vp.x, te[e].y - vp.y) < 0.35) return { tk: tk, endIdx: e };
+      }
+      return null;
+    }
+    var seq = [{ run: start, flip: false, viaEl: null }];
+    var cur = start, curEnd = 1;
+    for (;;) {
+      var ends = trackEnds(cur);
+      var vEl = ends[curEnd] ? barrelAt(ends[curEnd]) : null;
+      if (!vEl) break;
+      var nxt = runOverBarrel(viaInkPos(vEl));
+      if (!nxt) break;
+      used.add(nxt.tk);
+      seq.push({ run: nxt.tk, flip: nxt.endIdx === 1, viaEl: vEl });
+      cur = nxt.tk;
+      curEnd = 1 - nxt.endIdx;
+    }
+    cur = start;
+    curEnd = 0;
+    for (;;) {
+      var ends2 = trackEnds(cur);
+      var vEl2 = ends2[curEnd] ? barrelAt(ends2[curEnd]) : null;
+      if (!vEl2) break;
+      var prv = runOverBarrel(viaInkPos(vEl2));
+      if (!prv) break;
+      used.add(prv.tk);
+      seq.unshift({ run: prv.tk, flip: prv.endIdx === 1, viaEl: vEl2 });
+      cur = prv.tk;
+      curEnd = 1 - prv.endIdx;
+    }
+    var endVias = [];
+    var junctions = new Set();
+    for (var s = 1; s < seq.length; s++) if (seq[s].viaEl) junctions.add(seq[s].viaEl);
+    var chainEnds = trackEnds(seq[0].run)[0] ? [trackEnds(seq[0].run)[0], trackEnds(seq[seq.length - 1].run)[1]] : [];
+    for (var vi = 0; vi < ink.length; vi++) {
+      if (junctions.has(ink[vi])) continue;
+      var ip = viaInkPos(ink[vi]);
+      for (var ce = 0; ce < chainEnds.length; ce++)
+        if (chainEnds[ce] && Math.hypot(chainEnds[ce].x - ip.x, chainEnds[ce].y - ip.y) < 0.35) endVias.push(ink[vi]);
+    }
+    return { seq: seq, endVias: endVias };
+  }
+  // serialize one connected source route at new sizes: deletes for every
+  // original segment (board y-down) + a single re-add carrying per-run
+  // widths and every barrel (junctions AND end stitches, resized or not)
+  function sourceRewrite(coll, widths, viaOverride, layerMap) {
+    var seq = coll.seq;
+    var net = seq[0].run.getAttribute('data-net') || null;
+    if (net === 'N/C') net = null; // the plotter's no-connect label, not a net
+    var dels = [];
+    var pieces = [];
+    var vias = [];
+    function pushVia(el, w) {
+      var vp = viaInkPos(el);
+      var ov =
+        viaOverride && Math.hypot(vp.x - viaOverride.x, vp.y + viaOverride.y) < 0.02 ? viaOverride : null;
+      var sz = ov ? ov.size : viaInkSize(el) || viaForWidth(w).size;
+      sz = +Math.min(3, Math.max(0.3, sz)).toFixed(3);
+      var dr = ov && ov.drill !== undefined && isFinite(ov.drill) ? Math.min(+ov.drill.toFixed(3), +(sz - 0.1).toFixed(3)) : viaDrillFor(sz);
+      var ly = viaInkLayers(el);
+      vias.push({
+        x: +vp.x.toFixed(3),
+        y: +(-vp.y).toFixed(3),
+        size: sz,
+        drill: dr,
+        layers: ly.length >= 2 ? ly : undefined,
+      });
+    }
+    for (var s = 0; s < seq.length; s++) {
+      var run = seq[s].run;
+      var canon = trackCanon(run);
+      // the re-add piece takes the OVERRIDE layer; the deletes keep the
+      // ORIGINAL — they match the chain exactly as authored in source
+      var pieceCanon = layerMap && layerMap.has(run) ? layerMap.get(run) : canon;
+      var pts = trackPtsG(run);
+      if (seq[s].flip) pts = pts.slice().reverse();
+      var w = widths.has(run) ? widths.get(run) : trackW(run);
+      var hits = run.__hits || [];
+      for (var h = 0; h < hits.length; h++)
+        dels.push({
+          net: net,
+          x1: +parseFloat(hits[h].getAttribute('x1')).toFixed(3),
+          y1: +(-parseFloat(hits[h].getAttribute('y1'))).toFixed(3),
+          x2: +parseFloat(hits[h].getAttribute('x2')).toFixed(3),
+          y2: +(-parseFloat(hits[h].getAttribute('y2'))).toFixed(3),
+          layer: canon,
+        });
+      pieces.push({ layer: pieceCanon, w: w, pts: pts.map(function (pt) { return { x: pt.x, y: -pt.y }; }) });
+      if (s > 0 && seq[s].viaEl) pushVia(seq[s].viaEl, w);
+    }
+    for (var ev = 0; ev < coll.endVias.length; ev++) pushVia(coll.endVias[ev], trackW(seq[0].run));
+    return {
+      dels: dels,
+      rt: {
+        net: net,
+        w: pieces[0] ? pieces[0].w : 0.3,
+        pieces: pieces,
+        vias: vias,
+        power: null,
+        impedance: null,
+        from: { ref: '(resize)', pin: '' },
+        to: null,
+      },
+    };
+  }
+  function installRewrite(state) {
+    for (var d = 0; d < state.dels.length; d++) routedDeletes.push(state.dels[d]);
+    routedTracks.push(state.rt);
+    state.dropIdxs = [];
+    for (var e = 0; e < state.dropEntries.length; e++) {
+      var idx = routedTracks.indexOf(state.dropEntries[e].entry);
+      state.dropIdxs.push(idx);
+      if (idx >= 0) routedTracks.splice(idx, 1);
+    }
+  }
+  // a rewrite restored across a page reload carries no __rewrite markers
+  // (fresh DOM) — detect the superseded state by DELETE COORDINATES instead:
+  // pull the stale dels and every rt whose pieces cover them out of the
+  // arrays, shaped like an installed state so undo/redo treat it normally.
+  // Without this, resize → reload → resize again STACKS two re-adds of the
+  // same chain and apply writes both (overlapping double routes)
+  function staleRewriteFor(dels) {
+    if (!dels || !dels.length) return null;
+    var st = { dels: [], rt: null, dropEntries: [], dropIdxs: [] };
+    for (var i = 0; i < dels.length; i++) {
+      for (var j = routedDeletes.length - 1; j >= 0; j--) {
+        var d = routedDeletes[j];
+        if (
+          Math.abs(d.x1 - dels[i].x1) < 0.011 &&
+          Math.abs(d.y1 - dels[i].y1) < 0.011 &&
+          Math.abs(d.x2 - dels[i].x2) < 0.011 &&
+          Math.abs(d.y2 - dels[i].y2) < 0.011
+        ) {
+          st.dels.push(d);
+          routedDeletes.splice(j, 1);
+        }
+      }
+    }
+    if (!st.dels.length) return null;
+    for (var k = routedTracks.length - 1; k >= 0; k--) {
+      var rt = routedTracks[k];
+      var covers = false;
+      for (var pi = 0; pi < rt.pieces.length && !covers; pi++) {
+        var pts = rt.pieces[pi].pts;
+        for (var si = 0; si + 1 < pts.length && !covers; si++) {
+          for (var di = 0; di < st.dels.length; di++) {
+            var dd = st.dels[di];
+            if (
+              Math.abs(pts[si].x - dd.x1) < 0.011 &&
+              Math.abs(pts[si].y - dd.y1) < 0.011 &&
+              Math.abs(pts[si + 1].x - dd.x2) < 0.011 &&
+              Math.abs(pts[si + 1].y - dd.y2) < 0.011
+            )
+              covers = true;
+          }
+        }
+      }
+      if (covers) {
+        st.rt = rt; // last match wins; overlapping re-adds of one chain are one state
+        routedTracks.splice(k, 1);
+      }
+    }
+    return st;
+  }
+  function uninstallRewrite(state) {
+    var ri = routedTracks.indexOf(state.rt);
+    if (ri >= 0) routedTracks.splice(ri, 1);
+    for (var d = state.dels.length - 1; d >= 0; d--) {
+      var di = routedDeletes.indexOf(state.dels[d]);
+      if (di >= 0) routedDeletes.splice(di, 1);
+    }
+    var ins = [];
+    for (var k = 0; k < state.dropIdxs.length; k++)
+      if (state.dropIdxs[k] >= 0) ins.push({ ix: state.dropIdxs[k], e: state.dropEntries[k].entry });
+    ins.sort(function (a, b) { return b.ix - a.ix; });
+    for (var q = 0; q < ins.length; q++) routedTracks.splice(ins[q].ix, 0, ins[q].e);
+  }
+  // THE entry point for the sizing keys with a highlighted trace/via:
+  // compute maps a run's {w, net, canon, lg} to {w, power?, impedance?,
+  // msg?} (null = solve failed — it set its own status); viaCompute maps
+  // a barrel's {size, w, net} to {size, msg?}
+  function selectionResize(compute, viaCompute) {
+    if (routeState) return false; // a live route owns the keys
+    var primaries = [];
+    var seenP = new Set();
+    function addRun(tr) {
+      if (!tr || !(tr.__hits || []).length || seenP.has(tr)) return;
+      seenP.add(tr);
+      primaries.push(tr);
+    }
+    segSel.forEach(function (h) { addRun(h.__track); });
+    var viaTargets = [];
+    viaSel.forEach(function (v) { viaTargets.push(v); });
+    if (!primaries.length) {
+      // a highlighted VIA aims the width keys at the traces it joins
+      viaTargets.forEach(function (v) {
+        var vp = viaInkPos(v);
+        var reach = Math.max((v.tagName === 'circle' ? parseFloat(v.getAttribute('r')) || 0.3 : 0.3) + 0.35, 0.5);
+        var hits = allSegHits();
+        for (var i = 0; i < hits.length; i++) {
+          var near =
+            Math.hypot(parseFloat(hits[i].getAttribute('x1')) - vp.x, parseFloat(hits[i].getAttribute('y1')) - vp.y) < reach ||
+            Math.hypot(parseFloat(hits[i].getAttribute('x2')) - vp.x, parseFloat(hits[i].getAttribute('y2')) - vp.y) < reach;
+          if (near) addRun(hits[i].__track);
+        }
+      });
+    }
+    if (!viaTargets.length && viaCompute && primaries.length) {
+      // no barrel highlighted: the via keys act on the selected runs' own
+      // barrels — the same barrels a live route's via would size
+      var ink0 = viaInk();
+      primaries.forEach(function (tr) {
+        trackEnds(tr).forEach(function (e) {
+          for (var i = 0; i < ink0.length; i++) {
+            var vp0 = viaInkPos(ink0[i]);
+            if (Math.hypot(vp0.x - e.x, vp0.y - e.y) < 0.35) viaTargets.push(ink0[i]);
+          }
+        });
+      });
+    }
+    if (!primaries.length && !viaTargets.length) return false;
+
+    var inkOps = []; // {tr, oldW, newW}
+    var layerOps = []; // {tr, fromCanon, toCanon} — ink reparenting for a layer edit
+    var entryOps = []; // session piece width/layer edits {entry, piece, oldW, newW, oldLayer, newLayer, oldPower, newPower, oldImp, newImp}
+    var viaEntryOps = []; // session barrel resizes {entry, idx, oldSize, oldDrill, newSize, newDrill}
+    var viaInkOps = [];
+    var rewrites = []; // {coll, rw, dropEntries}
+    var lastMsg = null;
+    var touched = false;
+
+    if (compute && primaries.length) {
+      // group primaries into connected routes — one rewrite covers each
+      var groups = [];
+      function groupFor(tr) {
+        for (var g = 0; g < groups.length; g++)
+          for (var s = 0; s < groups[g].coll.seq.length; s++)
+            if (groups[g].coll.seq[s].run === tr) return groups[g];
+        var ng = { coll: collectRoute(tr), widths: new Map(), layerMap: new Map() };
+        groups.push(ng);
+        return ng;
+      }
+      for (var pi = 0; pi < primaries.length; pi++) {
+        var tr = primaries[pi];
+        var res = compute({
+          w: trackW(tr),
+          net: tr.getAttribute('data-net') || null,
+          canon: trackCanon(tr),
+          lg: tr.closest ? tr.closest("g[data-kind='copper']") : null,
+        });
+        if (res === null) continue;
+        if (res.msg) lastMsg = res.msg;
+        if (res.skip) continue;
+        // the board's own rules floor — never write a hairline the fab (or
+        // DRC) will reject; the width keys already stop here
+        var nw = Math.min(3, Math.max(widthFloor() || 0.05, +res.w.toFixed(3)));
+        var layerCh = res.layer && res.layer !== trackCanon(tr) ? res.layer : null;
+        var wCh = Math.abs(nw - trackW(tr)) >= 1e-9;
+        if (!wCh && !layerCh) continue;
+        var grp = groupFor(tr);
+        if (wCh) {
+          grp.widths.set(tr, nw);
+          inkOps.push({ tr: tr, oldW: trackW(tr), newW: nw });
+        }
+        if (layerCh) {
+          grp.layerMap.set(tr, layerCh);
+          layerOps.push({ tr: tr, fromCanon: trackCanon(tr), toCanon: layerCh });
+        }
+        grp.power = res.power || null;
+        grp.impedance = res.impedance || null;
+        touched = true;
+      }
+      for (var gi = 0; gi < groups.length; gi++) {
+        if (!groups[gi].widths.size && !groups[gi].layerMap.size) continue;
+        var coll = groups[gi].coll;
+        var widths = groups[gi].widths;
+        var layerMap = groups[gi].layerMap;
+        var anySource = false;
+        var dropEntries = [];
+        coll.seq.forEach(function (sE) {
+          if (sE.run.getAttribute('data-route') !== '1') {
+            anySource = true;
+            return;
+          }
+          var sess = sessionPieceFor(sE.run);
+          if (sess && dropEntries.indexOf(sess.entry) === -1) dropEntries.push(sess.entry);
+        });
+        if (!anySource) {
+          // pure session route: the entry's own pieces carry the new widths
+          // and layers — apply regenerates it from them
+          coll.seq.forEach(function (sE2) {
+            var nw2 = widths.get(sE2.run);
+            var nl2 = layerMap.get(sE2.run);
+            if (nw2 === undefined && !nl2) return;
+            var sess2 = sessionPieceFor(sE2.run);
+            if (!sess2) return;
+            var pc2 = sess2.entry.pieces[sess2.piece];
+            entryOps.push({
+              entry: sess2.entry,
+              piece: sess2.piece,
+              tr: sE2.run,
+              oldW: pc2.w,
+              newW: nw2 !== undefined ? nw2 : pc2.w,
+              oldLayer: pc2.layer,
+              newLayer: nl2 || pc2.layer,
+              oldPower: sess2.entry.power || null,
+              newPower: groups[gi].power,
+              oldImp: sess2.entry.impedance || null,
+              newImp: groups[gi].impedance,
+            });
+            if (nw2 !== undefined) pc2.w = nw2;
+            if (nl2) {
+              pc2.layer = nl2;
+              moveTrackLayer(sE2.run, nl2);
+            }
+          });
+          continue;
+        }
+        // source halves (or a mix): one bridge rewrite for the whole
+        // connected route; the session halves leave their entries — the
+        // re-add covers their geometry
+        var rw = sourceRewrite(coll, widths, null, layerMap.size ? layerMap : null);
+        rw.rt.power = groups[gi].power;
+        rw.rt.impedance = groups[gi].impedance;
+        rewrites.push({ coll: coll, rw: rw, dropEntries: dropEntries, widths: widths, layerMap: layerMap, power: groups[gi].power, impedance: groups[gi].impedance });
+      }
+    }
+
+    if (viaCompute && viaTargets.length) {
+      viaTargets.forEach(function (v) {
+        var vp = viaInkPos(v);
+        var bx = +vp.x.toFixed(3), by = +(-vp.y).toFixed(3);
+        var w = 0.3;
+        var hits2 = allSegHits();
+        for (var i = 0; i < hits2.length; i++) {
+          var near2 =
+            Math.hypot(parseFloat(hits2[i].getAttribute('x1')) - vp.x, parseFloat(hits2[i].getAttribute('y1')) - vp.y) < 0.65 ||
+            Math.hypot(parseFloat(hits2[i].getAttribute('x2')) - vp.x, parseFloat(hits2[i].getAttribute('y2')) - vp.y) < 0.65;
+          if (near2 && hits2[i].__track) w = Math.max(w, trackW(hits2[i].__track));
+        }
+        var res2 = viaCompute({ size: viaInkSize(v) || viaForWidth(w).size, w: w, net: v.getAttribute('data-net') || null });
+        if (res2 === null) return;
+        if (res2.msg) lastMsg = res2.msg;
+        if (res2.skip) return;
+        var nsz = Math.min(3, Math.max(0.3, +res2.size.toFixed(3)));
+        // an explicit drill (the E panel) rides along; anything else derives
+        // from the size like every other sizing path
+        var ndr =
+          res2.drill !== undefined && isFinite(res2.drill)
+            ? Math.min(+res2.drill.toFixed(3), +(nsz - 0.1).toFixed(3))
+            : viaDrillFor(nsz);
+        var owned = false;
+        for (var ri = 0; ri < routedTracks.length; ri++) {
+          for (var vi = 0; vi < routedTracks[ri].vias.length; vi++) {
+            var vv = routedTracks[ri].vias[vi];
+            if (Math.hypot(vv.x - bx, vv.y - by) > 0.02) continue;
+            viaEntryOps.push({ entry: routedTracks[ri], idx: vi, oldSize: vv.size, oldDrill: vv.drill, newSize: nsz, newDrill: ndr });
+            vv.size = nsz;
+            vv.drill = ndr;
+            owned = true;
+          }
+        }
+        viaInkOps.push(viaInkResize(v, nsz));
+        touched = true;
+        if (owned) return;
+        // a SOURCE barrel: the resize must ride the connected route's
+        // rewrite (the .via() args only change when the chain is re-added)
+        var host = null;
+        for (var hi = 0; hi < rewrites.length && !host; hi++)
+          for (var hj = 0; hj < rewrites[hi].coll.seq.length && !host; hj++) {
+            var he = trackEnds(rewrites[hi].coll.seq[hj].run);
+            for (var hk = 0; hk < he.length; hk++)
+              if (Math.hypot(he[hk].x - vp.x, he[hk].y - vp.y) < 0.35) host = rewrites[hi];
+          }
+        if (host) {
+          // the connected route already rides a pending rewrite (a width
+          // key ran first): rebuild it carrying the via resize too
+          host.rw = sourceRewrite(host.coll, host.widths, { x: vp.x, y: -vp.y, size: nsz, drill: ndr }, host.layerMap.size ? host.layerMap : null);
+          host.rw.rt.power = host.power;
+          host.rw.rt.impedance = host.impedance;
+          return;
+        }
+        var seed = runNear(vp);
+        if (!seed) return; // a barrel with no touching trace ink: nothing to rewrite
+        var collV = collectRoute(seed);
+        var dropV = [];
+        collV.seq.forEach(function (sE3) {
+          if (sE3.run.getAttribute('data-route') !== '1') return;
+          var sess3 = sessionPieceFor(sE3.run);
+          if (sess3 && dropV.indexOf(sess3.entry) === -1) dropV.push(sess3.entry);
+        });
+        rewrites.push({ coll: collV, rw: sourceRewrite(collV, new Map(), { x: vp.x, y: -vp.y, size: nsz, drill: ndr }), dropEntries: dropV, widths: new Map(), power: null, impedance: null });
+      });
+    }
+
+    if (!touched && !rewrites.length) {
+      // nothing resized: a solver message still owns the keypress; a
+      // silent no-op falls through to the live/pending behavior
+      if (lastMsg && statusEl && !statusLocked()) statusEl.textContent = lastMsg;
+      return !!lastMsg;
+    }
+    // install: any run already carrying a pending rewrite from an earlier
+    // keypress swaps out first — stacking re-adds would double the route
+    var prevs = [];
+    rewrites.forEach(function (rwi) {
+      var state = { dels: rwi.rw.dels, rt: rwi.rw.rt, dropEntries: rwi.dropEntries, dropIdxs: [] };
+      var prev = null;
+      rwi.coll.seq.forEach(function (sE) {
+        if (sE.run.__rewrite && sE.run.__rewrite !== state) prev = prev || sE.run.__rewrite;
+      });
+      if (prev) uninstallRewrite(prev);
+      else prev = staleRewriteFor(state.dels); // a pre-reload leftover, already pulled
+      installRewrite(state);
+      rwi.coll.seq.forEach(function (sE2) { sE2.run.__rewrite = state; });
+      prevs.push({ state: state, prev: prev, coll: rwi.coll });
+    });
+    inkOps.forEach(function (o) { resizeTrackInk(o.tr, o.newW); });
+    layerOps.forEach(function (o) { moveTrackLayer(o.tr, o.toCanon); });
+    entryOps.forEach(function (o) {
+      o.entry.power = o.newPower;
+      o.entry.impedance = o.newImp;
+    });
+    pushUndo(
+      'resize trace',
+      function () {
+        for (var i = prevs.length - 1; i >= 0; i--) {
+          uninstallRewrite(prevs[i].state);
+          if (prevs[i].prev) installRewrite(prevs[i].prev);
+          prevs[i].coll.seq.forEach(function (sE) { sE.run.__rewrite = prevs[i].prev || null; });
+        }
+        inkOps.forEach(function (o) { resizeTrackInk(o.tr, o.oldW); });
+        layerOps.forEach(function (o) { restoreLayerInk(o.tr); });
+        entryOps.forEach(function (o) {
+          o.entry.pieces[o.piece].w = o.oldW;
+          o.entry.pieces[o.piece].layer = o.oldLayer;
+          if (o.tr) restoreLayerInk(o.tr);
+          o.entry.power = o.oldPower;
+          o.entry.impedance = o.oldImp;
+        });
+        viaEntryOps.forEach(function (o) {
+          o.entry.vias[o.idx].size = o.oldSize;
+          o.entry.vias[o.idx].drill = o.oldDrill;
+        });
+        viaInkOps.forEach(viaInkUndo);
+      },
+      function () {
+        prevs.forEach(function (pv) {
+          if (pv.prev) uninstallRewrite(pv.prev);
+          installRewrite(pv.state);
+          pv.coll.seq.forEach(function (sE) { sE.run.__rewrite = pv.state; });
+        });
+        inkOps.forEach(function (o) { resizeTrackInk(o.tr, o.newW); });
+        layerOps.forEach(function (o) { moveTrackLayer(o.tr, o.toCanon); });
+        entryOps.forEach(function (o) {
+          o.entry.pieces[o.piece].w = o.newW;
+          o.entry.pieces[o.piece].layer = o.newLayer;
+          if (o.tr) moveTrackLayer(o.tr, o.newLayer);
+          o.entry.power = o.newPower;
+          o.entry.impedance = o.newImp;
+        });
+        viaEntryOps.forEach(function (o) {
+          o.entry.vias[o.idx].size = o.newSize;
+          o.entry.vias[o.idx].drill = o.newDrill;
+        });
+        viaInkOps.forEach(viaInkRedo);
+      },
+    );
+    renderLayoutMoves(); // a resized track arms Apply on its own
+    if (statusEl && !statusLocked())
+      statusEl.textContent =
+        lastMsg ||
+        'resized ' +
+          (inkOps.length || layerOps.length ? inkOps.length + layerOps.length + ' trace' + (inkOps.length + layerOps.length > 1 ? 's' : '') : '') +
+          (viaInkOps.length ? (inkOps.length || layerOps.length ? ' + ' : '') + viaInkOps.length + ' via' + (viaInkOps.length > 1 ? 's' : '') : '') +
+          (layerOps.length ? ' \u2014 apply rewrites the layer in source' : ' \u2014 apply writes the new size into source');
+    return true;
+  }
+  function runNear(p) {
+    var hits = allSegHits();
+    var best = null, bd = 0.65;
+    for (var i = 0; i < hits.length; i++) {
+      var q1 = { x: parseFloat(hits[i].getAttribute('x1')), y: parseFloat(hits[i].getAttribute('y1')) };
+      var q2 = { x: parseFloat(hits[i].getAttribute('x2')), y: parseFloat(hits[i].getAttribute('y2')) };
+      var d = Math.min(Math.hypot(q1.x - p.x, q1.y - p.y), Math.hypot(q2.x - p.x, q2.y - p.y));
+      if (d < bd && hits[i].__track) {
+        bd = d;
+        best = hits[i].__track;
+      }
+    }
+    return best;
+  }
+  // ladder stepping over a highlighted trace — the same rungs and floors
+  // stepWidth walks
+  function selectionWidthCompute(dir, fine) {
+    return function (info) {
+      var next;
+      if (fine) next = +(info.w + dir * 0.01).toFixed(3);
+      else if (dir > 0) {
+        next = 3;
+        for (var i = 0; i < WIDTH_LADDER.length; i++)
+          if (WIDTH_LADDER[i] > info.w + 1e-9) {
+            next = WIDTH_LADDER[i];
+            break;
+          }
+      } else {
+        next = 0.05;
+        for (var j = WIDTH_LADDER.length - 1; j >= 0; j--)
+          if (WIDTH_LADDER[j] < info.w - 1e-9) {
+            next = WIDTH_LADDER[j];
+            break;
+          }
+      }
+      if (!fine) {
+        var floor = widthFloor();
+        if (floor && next < floor) next = +floor.toFixed(3);
+      }
+      return { w: next };
+    };
+  }
+  function selectionViaCompute(dir, fine) {
+    return function (info) {
+      var next;
+      if (fine) next = +(info.size + dir * 0.01).toFixed(3);
+      else if (dir > 0) {
+        next = 3;
+        for (var i = 0; i < VIA_LADDER.length; i++)
+          if (VIA_LADDER[i] > info.size + 1e-9) {
+            next = VIA_LADDER[i];
+            break;
+          }
+      } else {
+        next = 0.3;
+        for (var j = VIA_LADDER.length - 1; j >= 0; j--)
+          if (VIA_LADDER[j] < info.size - 1e-9) {
+            next = VIA_LADDER[j];
+            break;
+          }
+      }
+      if (!fine) {
+        var vf = viaFloor();
+        if (vf && next < vf) next = +vf.toFixed(3);
+      }
+      return { size: next };
+    };
+  }
+  function selectionPower() {
+    return selectionResize(
+      function (info) {
+        var cur = netCurrent(info.net);
+        if (!cur)
+          return {
+            w: 0,
+            skip: true,
+            msg: (info.net || 'this net') + ' has no solved current \u2014 run typecad-pcb simulate for power sizing',
+          };
+        var w = Math.ceil(widthForCurrent(cur, info.canon) * 20) / 20;
+        w = Math.min(3, w);
+        return {
+          w: w,
+          power: { current: +cur.toFixed(4), maxTempRise: POWER_DT },
+          msg:
+            (info.net || 'no net') + ' ' + cur.toFixed(2) + ' A \u2192 ' + fmtW(w) + ' mm (IPC-2221, \u0394T ' + POWER_DT + '\u00b0C) \u2014 carried into the source as powerInfo',
+        };
+      },
+      null,
+    );
+  }
+  function selectionImpedance() {
+    return selectionResize(
+      function (info) {
+        var g = impedanceGeometryFor(info.canon);
+        if (!g)
+          return { w: 0, skip: true, msg: 'no stackup heights for ' + info.canon + ' \u2014 Z needs the stackup island (--stackup)' };
+        var w = zWidth(Z0_TARGET, g);
+        if (!w)
+          return { w: 0, skip: true, msg: Z0_TARGET + ' \u03a9 is unreachable on ' + info.canon + ' with this stackup' };
+        w = Math.ceil(w * 20) / 20;
+        var clamped = Math.min(3, w);
+        return {
+          w: clamped,
+          impedance: { z0: Z0_TARGET },
+          msg:
+            Z0_TARGET + ' \u03a9 \u2192 ' + fmtW(clamped) + ' mm on ' + info.canon +
+            (clamped < w ? ' (clamped from ' + fmtW(w) + ' \u2014 the 3 mm cap)' : '') +
+            (g.model === 'microstrip'
+              ? ' over ' + fmtW(g.h) + ' mm dielectric'
+              : ' between planes ' + fmtW(g.b) + ' mm apart') +
+            ' (Hammerstad/Cohn, Er ' + g.er + ') \u2014 noted in the source',
+        };
+      },
+      null,
+    );
+  }
   // ---- I: eyedropper — adopt the width of the trace under the cursor.
   // The last mouse position (gerber frame) is tracked by the hover below.
   var lastMouseG = { x: 0, y: 0 };
+  var lastMouseC = { x: 0, y: 0 }; // client pixels — Tab cycling hit-tests with these
   window.addEventListener('mousemove', function (ev) {
     var g = gerberAt(ev.clientX, ev.clientY);
     lastMouseG.x = g.x;
     lastMouseG.y = g.y;
+    lastMouseC.x = ev.clientX;
+    lastMouseC.y = ev.clientY;
   });
   function eyedropWidth() {
     var segs = allSegHits();
@@ -3917,6 +5504,8 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     'X \u2014 route from the highlighted pad/trace<br>' +
     'drag / arrows \u2014 move parts (Alt = 0.1mm) \u00b7 R \u2014 rotate<br>' +
     'double-click \u2014 jump to source \u00b7 U / Del \u2014 grow / delete segment selection<br>' +
+    'E \u2014 properties: part placement/value \u00b7 trace width \u00b7 via \u2300 + drill<br>' +
+    'highlight a trace/via, then the sizing keys resize THAT ink (apply writes it out)<br>' +
     '<b>while routing</b><br>' +
     'click \u2014 anchor \u00b7 double-click / pad \u2014 finish \u00b7 Esc \u2014 cancel \u00b7 Backspace \u2014 undo anchor<br>' +
     'V \u2014 via (layer switch) \u00b7 Shift+V \u2014 cycle the via\u2019s far layer (blind/buried) \u00b7 [ ] \u2014 trace width (Alt \u00b10.01) \u00b7 \\ \u2014 net default<br>' +
@@ -4124,6 +5713,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     var vBelow = vf && routeState.via && routeState.via.size < vf - 1e-9;
     widthChip.textContent =
       fmtW(routeState.w) + ' mm' +
+      (routeState.walkLen > 0.05 ? ' \u00b7 ' + fmtW(routeState.walkLen) + ' mm' : '') +
       (routeState.viaCoupled === false ? ' \u00b7 \u2300' + fmtW(routeState.via.size) : '') +
       (below ? ' \u26a0 min ' + fmtW(floor) : '') +
       (vBelow ? ' \u26a0 via min ' + fmtW(vf) : '');
@@ -4209,6 +5799,313 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       widthPop.classList.remove('open');
     }
   });
+  // ---- properties panel (E): KiCad's E dialog, minimal — the selection's
+  // reference/value (renames ride the apply bridge), placement x/y/rotation
+  // written through the same move machinery a drag uses, and net-class
+  // info read-only ----
+  var propsEl = document.createElement('div');
+  propsEl.id = 'props-pop';
+  propsEl.style.display = 'none';
+  document.body.appendChild(propsEl);
+  function propsRef() {
+    return layoutSel.length ? layoutSel[0] : null;
+  }
+  function propsEsc(s) {
+    return String(s === undefined || s === null ? '' : s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+  // ---- E on a TRACE: width + layer editing through the same
+  // resize/bridge/undo machinery the [ ] \ p z keys use ----
+  function propsTraceBuild() {
+    var first = segSel.values().next().value;
+    var net = first ? first.getAttribute('data-net') : null;
+    if (net === 'N/C') net = null;
+    var w = first && first.__track ? trackW(first.__track) : 0.3;
+    var canon0 = first && first.__track ? trackCanon(first.__track) : '';
+    var len = 0;
+    segSel.forEach(function (h) {
+      len += Math.hypot(
+        +h.getAttribute('x2') - +h.getAttribute('x1'),
+        +h.getAttribute('y2') - +h.getAttribute('y1'),
+      );
+    });
+    var layerOpts = '';
+    copperCanonList().forEach(function (cl) {
+      layerOpts += '<option value="' + propsEsc(cl) + '"' + (cl === canon0 ? ' selected' : '') + '>' + propsEsc(cl) + '</option>';
+    });
+    propsEl.innerHTML =
+      '<b>trace' + (net ? ' [' + propsEsc(net) + ']' : ' (no net)') + (segSel.size > 1 ? ' \u00b7 ' + segSel.size + ' segments' : '') + '</b>' +
+      '<div class="wrow"><label>width <input id="tp-w" type="number" step="0.05" value="' + w + '"></label>' +
+      '<label>layer <select id="tp-layer">' + layerOpts + '</select></label></div>' +
+      '<div class="whint">' + len.toFixed(2) + ' mm selected \u00b7 [ ] steps \u00b7 \\ net default \u00b7 P power \u00b7 Z 50 \u03a9' + (widthFloor() ? ' \u00b7 min ' + widthFloor() + ' mm' : '') + '</div>' +
+      '<div class="wrow"><button id="tp-apply">apply</button></div>';
+    document.getElementById('tp-apply').addEventListener('click', propsTraceApply);
+    var inp = document.getElementById('tp-w');
+    inp.addEventListener('keydown', function (kev) {
+      kev.stopPropagation();
+      if (kev.key === 'Enter') propsTraceApply();
+      if (kev.key === 'Escape') propsToggle();
+    });
+    document.getElementById('tp-layer').addEventListener('keydown', function (kev) {
+      kev.stopPropagation();
+      if (kev.key === 'Enter') propsTraceApply();
+      if (kev.key === 'Escape') propsToggle();
+    });
+    return inp;
+  }
+  function propsTraceApply() {
+    var wv = parseFloat(document.getElementById('tp-w').value);
+    var lv = (document.getElementById('tp-layer') || {}).value || null;
+    if (!(wv > 0) && !lv) return;
+    // the board's own rules floor — the dialog is the one width door the
+    // [ ] keys' floor didn't cover, and an unguarded one wrote 0.05 mm
+    // hairlines into source (sub-pixel in the viewer: "my trace vanished")
+    wv = wv > 0 ? Math.min(3, Math.max(widthFloor() || 0.05, +wv.toFixed(3))) : 0;
+    var applied = selectionResize(
+      function (info) {
+        return { w: wv > 0 ? wv : info.w, layer: lv };
+      },
+      null,
+    );
+    if (applied) {
+      // the selection overlay is a SOLID white line at the trace's own
+      // width — left up, it masks the very stroke this edit just repainted
+      // (reported twice as "the layer change does nothing until rebuild").
+      // Drop it — and the net highlight with it — so the new width/layer
+      // color shows the moment apply lands and no later highlight-clear
+      // restores a stale pre-edit paint
+      segSel.clear();
+      viaSel.clear();
+      segHiSync();
+      viaHiSync();
+      clearNetHighlight();
+    }
+    propsToggle();
+  }
+  // ---- E on a VIA: barrel size + drill through the via resize machinery ----
+  function propsViaBuild() {
+    var v = viaSel.values().next().value;
+    var net = v.getAttribute('data-net');
+    if (net === 'N/C') net = null;
+    var size = viaInkSize(v) || 0.6;
+    var vp = viaInkPos(v);
+    var drill = viaDrillFor(size);
+    var ly = viaInkLayers(v);
+    for (var ri = 0; ri < routedTracks.length; ri++)
+      for (var vi = 0; vi < routedTracks[ri].vias.length; vi++) {
+        var vv = routedTracks[ri].vias[vi];
+        if (Math.hypot(vv.x - +vp.x.toFixed(3), vv.y + +vp.y.toFixed(3)) < 0.02) {
+          if (vv.size) size = vv.size;
+          if (vv.drill) drill = vv.drill;
+        }
+      }
+    propsEl.innerHTML =
+      '<b>via' + (net ? ' [' + propsEsc(net) + ']' : ' (no net)') + (viaSel.size > 1 ? ' \u00b7 ' + viaSel.size + ' barrels' : '') + '</b>' +
+      '<div class="wrow"><label>\u2300 <input id="vp-size" type="number" step="0.05" value="' + size + '"></label>' +
+      '<label>drill <input id="vp-drill" type="number" step="0.05" value="' + drill + '"></label></div>' +
+      '<div class="whint">' + (ly.length >= 2 ? propsEsc(ly.join(' \u2192 ')) : 'through') + ' \u00b7 ' + fmtPos(vp.x) + ', ' + fmtPos(-vp.y) + '</div>' +
+      '<div class="wrow"><button id="vp-apply">apply</button></div>';
+    document.getElementById('vp-apply').addEventListener('click', propsViaApply);
+    var focus = null;
+    for (var id3 of ['vp-size', 'vp-drill']) {
+      var el3 = document.getElementById(id3);
+      el3.addEventListener('keydown', function (kev) {
+        kev.stopPropagation();
+        if (kev.key === 'Enter') propsViaApply();
+        if (kev.key === 'Escape') propsToggle();
+      });
+      if (!focus) focus = el3;
+    }
+    return focus;
+  }
+  function propsViaApply() {
+    var sv = parseFloat(document.getElementById('vp-size').value);
+    if (!(sv > 0)) return;
+    sv = Math.min(3, Math.max(0.3, +sv.toFixed(3)));
+    var dv = parseFloat(document.getElementById('vp-drill').value);
+    var res = { size: sv };
+    if (dv > 0) res.drill = dv;
+    selectionResize(null, function () {
+      return res;
+    });
+    propsToggle();
+  }
+  function propsBuild() {
+    // selection decides what E edits: a part, a via, or trace segments
+    if (!layoutSel.length && viaSel.size) {
+      propsViaBuild();
+      return;
+    }
+    if (!layoutSel.length && segSel.size) {
+      propsTraceBuild();
+      return;
+    }
+    var ref = propsRef();
+    if (!ref) {
+      propsEl.innerHTML = '<div class="whint">select a part, trace, or via first \u2014 E edits its properties</div>';
+      return;
+    }
+    var c = null;
+    for (var i = 0; i < layoutComps.length && !c; i++) if (layoutComps[i].ref === ref) c = layoutComps[i];
+    if (!c) {
+      propsEl.innerHTML = '<div class="whint">no data for ' + ref + '</div>';
+      return;
+    }
+    var st = compStateAt(ref);
+    propsEl.innerHTML =
+      '<b>' + ref + (layoutSel.length > 1 ? ' (+' + (layoutSel.length - 1) + ')' : '') + '</b>' +
+      '<div class="wrow"><label>ref <input id="pp-ref" value="' + (layoutRefEdits[ref] !== undefined ? layoutRefEdits[ref] : ref) + '"></label>' +
+      '<label>value <input id="pp-val" value="' + (layoutValueEdits[ref] !== undefined ? layoutValueEdits[ref] : c.value || '') + '"></label></div>' +
+      '<div class="wrow"><label>x <input id="pp-x" type="number" step="0.5" value="' + st.x.toFixed(2) + '"></label>' +
+      '<label>y <input id="pp-y" type="number" step="0.5" value="' + (-st.y).toFixed(2) + '"></label>' +
+      '<label>rot <select id="pp-rot"><option' + (((layoutRot[ref] || 0) * 90) === 0 ? ' selected' : '') + '>0</option><option' + (((layoutRot[ref] || 0) * 90) === 90 ? ' selected' : '') + '>90</option><option' + (((layoutRot[ref] || 0) * 90) === 180 ? ' selected' : '') + '>180</option><option' + (((layoutRot[ref] || 0) * 90) === 270 ? ' selected' : '') + '>270</option></select></label></div>' +
+      '<div class="whint">' + (c.w.toFixed(1) + ' \u00d7 ' + c.h.toFixed(1) + ' mm' + (c.nets && c.nets.length ? ' \u00b7 nets: ' + c.nets.join(', ') : '')) + '</div>' +
+      '<div class="wrow"><button id="pp-apply">apply</button></div>';
+    document.getElementById('pp-apply').addEventListener('click', propsApply);
+    // Enter applies anywhere in the panel
+    for (var id2 of ['pp-ref', 'pp-val', 'pp-x', 'pp-y']) {
+      var el = document.getElementById(id2);
+      if (el)
+        el.addEventListener('keydown', function (kev) {
+          kev.stopPropagation();
+          if (kev.key === 'Enter') propsApply();
+          if (kev.key === 'Escape') propsToggle();
+        });
+    }
+  }
+  function propsApply() {
+    var ref = propsRef();
+    if (!ref) return;
+    // ref/value edits ride the existing rename/value-edit machinery
+    var nr = document.getElementById('pp-ref').value.trim();
+    var vl = document.getElementById('pp-val').value;
+    if (nr && nr !== ref) {
+      layoutRefEdits[ref] = nr;
+      syncCompTextVisuals(true);
+    }
+    if (vl !== undefined && vl !== '' && vl !== (layoutValueEdits[ref] !== undefined ? layoutValueEdits[ref] : '')) {
+      layoutValueEdits[ref] = vl;
+      syncCompTextVisuals(true);
+    }
+    // placement: board x / y (y-down), through the move machinery + undo.
+    // x/y apply to the PRIMARY part only — stacking the whole selection on
+    // one point is never what's wanted; rotation applies to each in place.
+    var nx = parseFloat(document.getElementById('pp-x').value);
+    var nyG = -parseFloat(document.getElementById('pp-y').value);
+    var nrot = parseInt(document.getElementById('pp-rot').value, 10) / 90;
+    var refs = layoutSel.slice();
+    var before = snapMoves(refs);
+    var ripBefore = layoutRipped.length;
+    for (var i = 0; i < refs.length; i++) {
+      var g = layoutOverlay.querySelector('[data-ref="' + cssEsc(refs[i]) + '"]');
+      if (!g) continue;
+      layoutRot[refs[i]] = ((nrot % 4) + 4) % 4;
+      var tx = refs[i] === ref ? nx : g.__lx;
+      var ty = refs[i] === ref ? nyG : g.__ly;
+      setCompPos(g, Math.round(tx / layoutGridSize) * layoutGridSize, Math.round(ty / layoutGridSize) * layoutGridSize);
+      applyCompGhost(g);
+      commitLayoutMove(g);
+    }
+    var after = snapMoves(refs);
+    var ripped = layoutRipped.slice(ripBefore);
+    pushUndo(
+      'properties ' + ref,
+      function () {
+        restoreMoves(before);
+        restoreRippedTo(ripBefore);
+      },
+      function () {
+        restoreMoves(after);
+        for (var r2 = 0; r2 < ripped.length; r2++) ripUpEl(ripped[r2]);
+      },
+    );
+    refreshRatsnest();
+    refreshLayoutWarnings();
+    renderLayoutMoves();
+    propsToggle();
+    if (statusEl && !statusLocked()) statusEl.textContent = 'properties applied \u2014 apply & rebuild writes source';
+  }
+  function propsToggle() {
+    var open = propsEl.style.display === 'none';
+    propsEl.style.display = open ? 'block' : 'none';
+    if (open) {
+      propsBuild();
+      // whichever panel was built, its first editable field takes focus
+      var first =
+        document.getElementById('pp-ref') || document.getElementById('tp-w') || document.getElementById('vp-size');
+      if (first) first.focus();
+    }
+  }
+  propsEl.addEventListener('click', function (ev) {
+    if (ev.target === propsEl) propsToggle();
+  });
+  // fast-apply hook: the host wrote move-only edits to source WITHOUT the
+  // ~25s rebuild pipeline — visuals already match, so bake the pending
+  // moves into the island data (parts, pads, texts) and retire the session
+  // state. Without the bake, cleared layoutMoves would strand the manifest
+  // back at authored positions and a SECOND apply would double-apply the
+  // delta against a stale x0.
+  window.__typecadSessionApplied = function () {
+    undoStack = [];
+    redoStack = [];
+    for (var ci = 0; ci < layoutComps.length; ci++) {
+      var c = layoutComps[ci];
+      var mv = layoutMoves[c.ref];
+      if (mv) {
+        c.x = mv.x;
+        c.y = mv.y;
+        // rotation bakes into the island degrees so setCompPos/compStateAt
+        // (which read island rot + presses) stay consistent with the visual
+        c.rot = (c.rot + (layoutRot[c.ref] || 0) * 90) % 360;
+      }
+    }
+    for (var pi = 0; pi < padManifest.length; pi++) {
+      var e = padEffBoard(padManifest[pi]);
+      padManifest[pi].x = e.x;
+      padManifest[pi].y = e.y;
+    }
+    for (var ti = 0; ti < layoutTexts.length; ti++) {
+      if (layoutTextMoves[ti]) {
+        layoutTexts[ti].x += layoutTextMoves[ti].ox || 0;
+        layoutTexts[ti].y += layoutTextMoves[ti].oy || 0;
+      }
+    }
+    // ghost-ink baselines: applyCompGhost computes transforms as a delta
+    // from the island position, which is now the MOVED one — freeze each
+    // ghost element's current cumulative transform as its baked base so a
+    // later drag PREPENDS the new delta instead of replacing the transform
+    // (which would snap the ink back to the authored position)
+    if (layoutOverlay) {
+      for (var gi = 0; gi < layoutComps.length; gi++) {
+        var gg = layoutOverlay.querySelector('[data-ref="' + cssEsc(layoutComps[gi].ref) + '"]');
+        if (!gg || !gg.__ghostEls) continue;
+        for (var ge = 0; ge < gg.__ghostEls.length; ge++) {
+          var gel = gg.__ghostEls[ge];
+          var cur = gel.getAttribute('transform');
+          gel.__bakedTr0 = cur || ''; // '' = authored position, no base
+        }
+        // zero-delta re-sync keeps the visuals exactly where they are
+        applyCompGhost(gg);
+      }
+    }
+    layoutMoves = {};
+    layoutRot = {};
+    layoutTextMoves = {};
+    layoutValueEdits = {}; // written to source by the fast apply — disarm
+    layoutRefEdits = {};
+    routedTracks = [];
+    routedDeletes = [];
+    persistPending();
+    syncCompTextVisuals(false);
+    renderLayoutMoves();
+    refreshRatsnest();
+    refreshLayoutWarnings();
+    if (statusEl && !statusLocked())
+      statusEl.textContent = 'applied to source \u2014 view refreshes on the next board build';
+  };
   function widthPopToggle() {
     widthPop.classList.toggle('open');
     widthControlSync();
@@ -4274,74 +6171,41 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     if (net && /^(vcc|gnd|power|\+\d)/i.test(net)) return 0.55;
     return 0.3;
   }
-  function padRing(p, cls) {
-    var c = padCenter(p);
-    var ring = document.createElementNS(SVGNSL, 'circle');
-    ring.setAttribute('class', cls);
-    ring.setAttribute('cx', c.x.toFixed(3));
-    ring.setAttribute('cy', c.y.toFixed(3));
-    ring.setAttribute('r', (Math.max(p.w, p.h) / 2 + 0.18).toFixed(3));
-    ring.setAttribute('vector-effect', 'non-scaling-stroke');
-    return ring;
-  }
-  // a picked pad gets the SAME selection visuals a clicked component gets —
-  // marching-ants box over the pad bbox plus corner brackets and a tint —
-  // not a blob that hides the pad's own shape (BGA balls especially)
+  // a picked pad highlights THE PAD — white clones of its own copper
+  // flashes, inserted right after the originals so the exact aperture
+  // shape, position, and any live move transform carry over (BGA balls,
+  // oblong pads, everything). Aperture symbols carry no fill of their own,
+  // so the clone's fill paints the whole shape; .cut holes keep the
+  // background (the drill stays a hole)
+  var padHiClones = [];
   function padSelMark(p) {
-    var c = padCenter(p);
-    var g = document.createElementNS(SVGNSL, 'g');
-    g.setAttribute('class', 'route-pad-hi');
-    var m = 0.08; // breathing room around the pad bbox
-    var pw = Math.max(p.w, 0.15), ph = Math.max(p.h, 0.15);
-    var x0 = c.x - pw / 2 - m, x1 = c.x + pw / 2 + m;
-    var y0 = c.y - ph / 2 - m, y1 = c.y + ph / 2 + m;
-    var box = document.createElementNS(SVGNSL, 'rect');
-    box.setAttribute('class', 'pad-hi-box');
-    box.setAttribute('x', x0.toFixed(3));
-    box.setAttribute('y', y0.toFixed(3));
-    box.setAttribute('width', (x1 - x0).toFixed(3));
-    box.setAttribute('height', (y1 - y0).toFixed(3));
-    box.setAttribute('vector-effect', 'non-scaling-stroke');
-    g.appendChild(box);
-    // four L-shaped corner marks just outside the box, sized to the pad
-    // (clamped so a 0.2mm ball still shows bracket arms at every zoom)
-    var o = 0.1;
-    var arm = Math.min(Math.max(Math.min(x1 - x0, y1 - y0) * 0.4, 0.22), 0.6);
-    var bx0 = x0 - o, by0 = y0 - o, bx1 = x1 + o, by1 = y1 + o;
-    var brk = document.createElementNS(SVGNSL, 'path');
-    brk.setAttribute('class', 'pad-hi-brackets');
-    brk.setAttribute('vector-effect', 'non-scaling-stroke');
-    brk.setAttribute(
-      'd',
-      'M ' + (bx0 + arm).toFixed(3) + ' ' + by0.toFixed(3) + ' L ' + bx0.toFixed(3) + ' ' + by0.toFixed(3) +
-        ' L ' + bx0.toFixed(3) + ' ' + (by0 + arm).toFixed(3) +
-        ' M ' + (bx1 - arm).toFixed(3) + ' ' + by0.toFixed(3) + ' L ' + bx1.toFixed(3) + ' ' + by0.toFixed(3) +
-        ' L ' + bx1.toFixed(3) + ' ' + (by0 + arm).toFixed(3) +
-        ' M ' + (bx0 + arm).toFixed(3) + ' ' + by1.toFixed(3) + ' L ' + bx0.toFixed(3) + ' ' + by1.toFixed(3) +
-        ' L ' + bx0.toFixed(3) + ' ' + (by1 - arm).toFixed(3) +
-        ' M ' + (bx1 - arm).toFixed(3) + ' ' + by1.toFixed(3) + ' L ' + bx1.toFixed(3) + ' ' + by1.toFixed(3) +
-        ' L ' + bx1.toFixed(3) + ' ' + (by1 - arm).toFixed(3),
-    );
-    g.appendChild(brk);
-    return g;
+    for (var i = 0; i < padHiClones.length; i++) padHiClones[i].remove();
+    padHiClones = [];
+    var flashes = viewGroups.gerber.querySelectorAll("g[data-kind='copper'] use[data-ref][data-pin]");
+    for (var f = 0; f < flashes.length; f++) {
+      var orig = flashes[f];
+      if (orig.getAttribute('data-ref') !== p.ref || orig.getAttribute('data-pin') !== String(p.pin)) continue;
+      var cl = orig.cloneNode(false);
+      cl.setAttribute('class', 'pad-hi-ink');
+      cl.setAttribute('pointer-events', 'none');
+      orig.parentNode.insertBefore(cl, orig.nextSibling);
+      padHiClones.push(cl);
+    }
+    return padHiClones.length;
   }
-  var padHiMark = null;
   function setPadHighlight(p) {
     clearPadHighlight();
     if (!p) return;
     padHi = p;
-    padHiMark = padSelMark(p);
-    routeUiGroup().appendChild(padHiMark);
+    padSelMark(p);
     raisePadLabels();
     if (statusEl && !statusLocked())
       statusEl.textContent = p.ref + '.' + p.pin + (p.net ? ' [' + p.net + ']' : ' [no net]') + ' \u2014 X to route a track';
   }
   function clearPadHighlight() {
     padHi = null;
-    if (padHiMark) {
-      padHiMark.remove();
-      padHiMark = null;
-    }
+    for (var i = 0; i < padHiClones.length; i++) padHiClones[i].remove();
+    padHiClones = [];
     clearTraceHighlight();
   }
   // a tie-in start point ON existing copper (pressed trace/via): the X
@@ -4753,6 +6617,12 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     routeState.lastEnd = end;
     routeState.lastPts = pts;
     setRouteD(routeState.path, previewPathD(pts));
+    // live length readout: the walk so far (anchor chain + pending walk)
+    var walkPts = [{ x: routeState.sx, y: routeState.sy }].concat(pts);
+    var wl = 0;
+    for (var wi = 1; wi < walkPts.length; wi++) wl += Math.hypot(walkPts[wi].x - walkPts[wi - 1].x, walkPts[wi].y - walkPts[wi - 1].y);
+    routeState.walkLen = wl;
+    widthChipSync();
     // clearance tint: ink while clear, red on violation — binary, the whole
     // route's keep-out halo follows the same state
     var margin = clearanceMargin(piece.obstacles, [{ x: routeState.sx, y: routeState.sy }].concat(pts), routeState.w);
@@ -4979,6 +6849,8 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   }
   function routeCommit() {
     if (!routeState) return;
+    domCaptureStart();
+    var rtIdxBefore = routedTracks.length;
     var end = routeState.lastEnd || routeEndpoint(routeState.sx, routeState.sy);
     // append the pending preview walk — unless the finalize came through the
     // hint path, which routeAnchor already folded into the piece geometry.
@@ -5099,7 +6971,15 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     var msg =
       'track placed: ' + (routeState.net ? routeState.net : 'no net') + ' ' + startName +
       (routeState.targetPad ? ' \u2192 ' + routeState.targetPad.ref + '.' + routeState.targetPad.pin : '') +
-      ' \u00b7 ' + wSpan + ' mm' +
+      ' \u00b7 ' + wSpan + ' mm \u00b7 ' +
+      (function () {
+        var tl = 0;
+        for (var pl = 0; pl < routeState.pieces.length; pl++) {
+          var pp = routeState.pieces[pl].points;
+          for (var pi2 = 1; pi2 < pp.length; pi2++) tl += Math.hypot(pp[pi2].x - pp[pi2 - 1].x, pp[pi2].y - pp[pi2 - 1].y);
+        }
+        return fmtW(tl) + ' mm';
+      })() +
       (routeState.vias.length
         ? ' \u00b7 via ' + (function () {
             var spans = [];
@@ -5116,6 +6996,21 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     routeCancel();
     renderLayoutMoves(); // a committed track arms Apply on its own
     widthControlSync();
+    // session undo: the committed entry + its ink come back off/on as one
+    var rtEntry = routedTracks[routedTracks.length - 1];
+    var rtCap = domCaptureEnd();
+    if (rtEntry)
+      pushUndo(
+        'route',
+        function () {
+          routedTracks.splice(routedTracks.indexOf(rtEntry), 1);
+          domApply(rtCap, -1);
+        },
+        function () {
+          routedTracks.push(rtEntry);
+          domApply(rtCap, 1);
+        },
+      );
     if (statusEl && !statusLocked()) statusEl.textContent = msg;
   }
   // commit on left press (capture beats select/box handlers): a snapped pad
@@ -5169,6 +7064,287 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   var segSel = new Set(); // hit line elements
   var viaSel = new Set(); // committed via circles + gerber via flashes
   var segHi = null; // overlay that marks the selection
+  // ---- segment drag (D): KiCad's slide — grab a trace segment, pull it
+  // perpendicular; neighbors stretch to stay connected, the live clearance
+  // engine grades the result, and the whole affected track serializes as
+  // "delete the original chain + add the new polyline" through the same
+  // apply bridge a drawn route uses ----
+  var segDrag = null;
+  function segDragStart() {
+    if (routeState) return;
+    var seg = null;
+    if (segSel.size) {
+      seg = segSel.values().next().value;
+    } else {
+      // nearest hit under the cursor (0.5mm grab radius, same as the
+      // eyedropper — covers the hit line's own stroke width)
+      var segs = allSegHits();
+      var bd = 0.5;
+      for (var i = 0; i < segs.length; i++) {
+        var x1 = parseFloat(segs[i].getAttribute('x1')), y1 = parseFloat(segs[i].getAttribute('y1'));
+        var x2 = parseFloat(segs[i].getAttribute('x2')), y2 = parseFloat(segs[i].getAttribute('y2'));
+        var qp = snapOnSegment(lastMouseG.x, lastMouseG.y, x1, y1, x2, y2);
+        var dd = Math.hypot(qp.x - lastMouseG.x, qp.y - lastMouseG.y);
+        if (dd < bd) {
+          bd = dd;
+          seg = segs[i];
+        }
+      }
+    }
+    if (!seg || !seg.__track) {
+      if (statusEl && !statusLocked()) statusEl.textContent = 'hover a trace segment first \u2014 D slides it';
+      return;
+    }
+    var x1 = parseFloat(seg.getAttribute('x1')), y1 = parseFloat(seg.getAttribute('y1'));
+    var x2 = parseFloat(seg.getAttribute('x2')), y2 = parseFloat(seg.getAttribute('y2'));
+    var dx = x2 - x1;
+    var dy = y2 - y1;
+    // slide axis: perpendicular to the segment (axis-aligned slides stay
+    // axis-aligned; a 45\u00b0 segment slides along its 45\u00b0 perpendicular)
+    var axis;
+    if (Math.abs(dy) < 0.01) axis = 'y';
+    else if (Math.abs(dx) < 0.01) axis = 'x';
+    else axis = (dx > 0) === (dy > 0) ? 'neg' : 'pos'; // 45\u00b0: (d,-d) or (-d,d) / (d,d)
+    var lg = seg.closest("g[data-kind='copper']");
+    var net = seg.getAttribute('data-net');
+    var w = parseFloat(seg.__track.getAttribute('data-w') || '0') || 0.3;
+    // every hit sharing either dragged endpoint stretches with the drag
+    // (same layer only — a via junction crosses layers, those ride out)
+    var linked = [];
+    var all = allSegHits();
+    for (var a = 0; a < all.length; a++) {
+      if (all[a] === seg) continue;
+      var ax1 = parseFloat(all[a].getAttribute('x1')), ay1 = parseFloat(all[a].getAttribute('y1'));
+      var ax2 = parseFloat(all[a].getAttribute('x2')), ay2 = parseFloat(all[a].getAttribute('y2'));
+      var ends = [];
+      if (Math.hypot(ax1 - x1, ay1 - y1) < 0.01) ends.push([x1, y1, 'x1', 'y1']);
+      if (Math.hypot(ax1 - x2, ay1 - y2) < 0.01) ends.push([x2, y2, 'x1', 'y1']);
+      if (Math.hypot(ax2 - x1, ay2 - y1) < 0.01) ends.push([x1, y1, 'x2', 'y2']);
+      if (Math.hypot(ax2 - x2, ay2 - y2) < 0.01) ends.push([x2, y2, 'x2', 'y2']);
+      if (ends.length) linked.push({ hit: all[a], ends: ends });
+    }
+    // snapshot for revert/undo + serialization: the whole parent chain
+    var chain = seg.__track.__hits || [seg];
+    var originals = chain.map(function (h) {
+      return {
+        hit: h,
+        x1: parseFloat(h.getAttribute('x1')),
+        y1: parseFloat(h.getAttribute('y1')),
+        x2: parseFloat(h.getAttribute('x2')),
+        y2: parseFloat(h.getAttribute('y2')),
+      };
+    });
+    var linkedOriginals = linked.map(function (L) {
+      return { hit: L.hit, x1: parseFloat(L.hit.getAttribute('x1')), y1: parseFloat(L.hit.getAttribute('y1')), x2: parseFloat(L.hit.getAttribute('x2')), y2: parseFloat(L.hit.getAttribute('y2')) };
+    });
+    segDrag = {
+      seg: seg,
+      track: seg.__track,
+      axis: axis,
+      lg: lg,
+      net: net,
+      w: w,
+      linked: linked,
+      originals: originals,
+      linkedOriginals: linkedOriginals,
+      startG: { x: lastMouseG.x, y: lastMouseG.y },
+      bad: false,
+    };
+    segSel.clear();
+    viaSel.clear();
+    segHiSync();
+    viaHiSync();
+    clearPadHighlight();
+    if (statusEl && !statusLocked()) statusEl.textContent = 'dragging segment \u2014 release to drop, Esc reverts';
+  }
+  function segDragMove(e2) {
+    if (!segDrag) return;
+    var pg = gerberAt(e2.clientX, e2.clientY);
+    var d;
+    if (segDrag.axis === 'y') d = pg.y - segDrag.startG.y;
+    else if (segDrag.axis === 'x') d = pg.x - segDrag.startG.x;
+    else d = ((pg.x - segDrag.startG.x) - (pg.y - segDrag.startG.y)) / 2; // pos diag
+    if (segDrag.axis === 'neg') d = ((pg.x - segDrag.startG.x) + (pg.y - segDrag.startG.y)) / 2;
+    if (!layoutSnapBox || layoutSnapBox.checked) d = Math.round(d / layoutGridSize) * layoutGridSize;
+    var apply = d !== segDrag.lastD;
+    segDrag.lastD = d;
+    if (!apply) return;
+    // move the dragged segment
+    function shift(segEl, dxs, dys) {
+      segEl.setAttribute('x1', String(parseFloat(segEl.getAttribute('x1')) + dxs));
+      segEl.setAttribute('y1', String(parseFloat(segEl.getAttribute('y1')) + dys));
+      segEl.setAttribute('x2', String(parseFloat(segEl.getAttribute('x2')) + dxs));
+      segEl.setAttribute('y2', String(parseFloat(segEl.getAttribute('y2')) + dys));
+    }
+    var dxs, dys;
+    if (segDrag.axis === 'y') {
+      dxs = 0;
+      dys = d;
+    } else if (segDrag.axis === 'x') {
+      dxs = d;
+      dys = 0;
+    } else if (segDrag.axis === 'pos') {
+      dxs = d;
+      dys = -d;
+    } else {
+      dxs = d;
+      dys = d;
+    }
+    // restore-to-original then apply (cheap idempotence)
+    segDragRestore(segDrag.originals);
+    segDragRestore(segDrag.linkedOriginals);
+    shift(segDrag.seg, dxs, dys);
+    // linked hits: their shared endpoint(s) follow; the shared endpoint is
+    // wherever they touched the ORIGINAL dragged endpoints (which just moved)
+    for (var li = 0; li < segDrag.linked.length; li++) {
+      var L = segDrag.linked[li];
+      for (var ei = 0; ei < L.ends.length; ei++) {
+        var end = L.ends[ei];
+        L.hit.setAttribute(end[2], String(end[0] + dxs));
+        L.hit.setAttribute(end[3], String(end[1] + dys));
+      }
+    }
+    segDragRedraw(segDrag.track);
+    for (var lj = 0; lj < segDrag.linked.length; lj++) segDragRedraw(segDrag.linked[lj].hit.__track);
+    // live clearance on the moved segment
+    var sx1 = parseFloat(segDrag.seg.getAttribute('x1')), sy1 = parseFloat(segDrag.seg.getAttribute('y1'));
+    var sx2 = parseFloat(segDrag.seg.getAttribute('x2')), sy2 = parseFloat(segDrag.seg.getAttribute('y2'));
+    var obs = buildObstacles(segDrag.lg, segDrag.net);
+    var m = clearanceMargin(obs, [{ x: sx1, y: sy1 }, { x: sx2, y: sy2 }], segDrag.w);
+    segDrag.bad = m < 0;
+    segDrag.seg.setAttribute('stroke', segDrag.bad ? '#f14c4c' : 'var(--sel)');
+    segDrag.seg.setAttribute('stroke-opacity', '0.95');
+    segDrag.seg.setAttribute('stroke-width', String(Math.max(segDrag.w, 0.5)));
+    if (statusEl && !statusLocked())
+      statusEl.textContent = segDrag.bad ? 'segment drag \u2014 CLEARANCE VIOLATION, release reverts' : 'segment drag \u2014 ' + fmtPos(d) + ' \u00b7 release to drop';
+  }
+  function segDragRestore(list) {
+    for (var i = 0; i < list.length; i++) {
+      var o = list[i];
+      o.hit.setAttribute('x1', String(o.x1));
+      o.hit.setAttribute('y1', String(o.y1));
+      o.hit.setAttribute('x2', String(o.x2));
+      o.hit.setAttribute('y2', String(o.y2));
+    }
+  }
+  function segDragRedraw(tr) {
+    if (!tr || !tr.__hits) return;
+    var hits = tr.__hits;
+    var d = 'M ' + parseFloat(hits[0].getAttribute('x1')).toFixed(3) + ' ' + parseFloat(hits[0].getAttribute('y1')).toFixed(3);
+    d += ' L ' + parseFloat(hits[0].getAttribute('x2')).toFixed(3) + ' ' + parseFloat(hits[0].getAttribute('y2')).toFixed(3);
+    for (var i = 1; i < hits.length; i++) d += ' L ' + parseFloat(hits[i].getAttribute('x2')).toFixed(3) + ' ' + parseFloat(hits[i].getAttribute('y2')).toFixed(3);
+    tr.setAttribute('d', d);
+    if (tr.__stripe) tr.__stripe.setAttribute('d', d);
+  }
+  function segDragEnd(commit) {
+    if (!segDrag) return;
+    var sd = segDrag;
+    segDrag = null;
+    sd.seg.removeAttribute('stroke');
+    sd.seg.removeAttribute('stroke-opacity');
+    sd.seg.removeAttribute('stroke-width');
+    if (!commit || sd.bad) {
+      segDragRestore(sd.originals);
+      segDragRestore(sd.linkedOriginals);
+      segDragRedraw(sd.track);
+      for (var i = 0; i < sd.linked.length; i++) segDragRedraw(sd.linked[i].hit.__track);
+      if (statusEl && !statusLocked())
+        statusEl.textContent = sd.bad ? 'segment drag reverted \u2014 clearance violation' : 'segment drag cancelled';
+      return;
+    }
+    // serialize: the ORIGINAL chain's segments ride as deletes (board
+    // y-down), the NEW full polyline as a session route — the apply bridge
+    // truncates the old TrackBuilder chain and adds the reshaped one
+    var canon = copperCanon(sd.lg.getAttribute('data-layer-name'));
+    var delCount = routedDeletes.length;
+    for (var d0 = 0; d0 < sd.originals.length; d0++) {
+      var o = sd.originals[d0];
+      routedDeletes.push({
+        net: sd.net,
+        x1: +o.x1.toFixed(3),
+        y1: +(-o.y1).toFixed(3),
+        x2: +o.x2.toFixed(3),
+        y2: +(-o.y2).toFixed(3),
+        layer: canon,
+      });
+    }
+    var pts = [];
+    var h0 = sd.originals[0].hit;
+    var cur = { x: parseFloat(h0.getAttribute('x1')), y: -parseFloat(h0.getAttribute('y1')) };
+    pts.push(cur);
+    for (var p0 = 0; p0 < sd.originals.length; p0++) {
+      var hp = sd.originals[p0].hit;
+      pts.push({ x: parseFloat(hp.getAttribute('x2')), y: -parseFloat(hp.getAttribute('y2')) });
+    }
+    var rtIdx = routedTracks.length;
+    var rt = {
+      net: sd.net,
+      w: sd.w,
+      pieces: [{ layer: canon, w: sd.w, pts: pts.map(function (pt) { return { x: +pt.x.toFixed(3), y: +pt.y.toFixed(3) }; }) }],
+      vias: [],
+      power: null,
+      impedance: null,
+      from: { ref: '(drag)', pin: '' },
+      to: null,
+    };
+    routedTracks.push(rt);
+    var dels = routedDeletes.slice(delCount);
+    pushUndo(
+      'drag segment',
+      function () {
+        segDragRestore(sd.originals);
+        segDragRestore(sd.linkedOriginals);
+        segDragRedraw(sd.track);
+        for (var u = 0; u < sd.linked.length; u++) segDragRedraw(sd.linked[u].hit.__track);
+        routedDeletes.length = delCount;
+        routedTracks.splice(rtIdx, 1);
+      },
+      function () {
+        // re-apply the final delta by replaying from originals + lastD
+        var dxs, dys, d = sd.lastD || 0;
+        if (sd.axis === 'y') {
+          dxs = 0;
+          dys = d;
+        } else if (sd.axis === 'x') {
+          dxs = d;
+          dys = 0;
+        } else if (sd.axis === 'pos') {
+          dxs = d;
+          dys = -d;
+        } else {
+          dxs = d;
+          dys = d;
+        }
+        segDragRestore(sd.originals);
+        segDragRestore(sd.linkedOriginals);
+        sd.seg.setAttribute('x1', String(parseFloat(sd.seg.getAttribute('x1')) + dxs));
+        sd.seg.setAttribute('y1', String(parseFloat(sd.seg.getAttribute('y1')) + dys));
+        sd.seg.setAttribute('x2', String(parseFloat(sd.seg.getAttribute('x2')) + dxs));
+        sd.seg.setAttribute('y2', String(parseFloat(sd.seg.getAttribute('y2')) + dys));
+        for (var r2 = 0; r2 < sd.linked.length; r2++) {
+          var L = sd.linked[r2];
+          for (var e2 = 0; e2 < L.ends.length; e2++) {
+            L.hit.setAttribute(L.ends[e2][2], String(L.ends[e2][0] + dxs));
+            L.hit.setAttribute(L.ends[e2][3], String(L.ends[e2][1] + dys));
+          }
+        }
+        segDragRedraw(sd.track);
+        for (var r3 = 0; r3 < sd.linked.length; r3++) segDragRedraw(sd.linked[r3].hit.__track);
+        for (var d2 = 0; d2 < dels.length; d2++) routedDeletes.push(dels[d2]);
+        routedTracks.splice(rtIdx, 0, rt);
+      },
+    );
+    window.__typecadRouteEnds = null;
+    refreshRatsnest();
+    renderLayoutMoves();
+    if (statusEl && !statusLocked()) statusEl.textContent = 'segment dragged \u2014 apply writes the reshaped track into source';
+  }
+  window.addEventListener('pointermove', function (ev) {
+    if (segDrag) segDragMove(ev);
+  });
+  window.addEventListener('pointerup', function () {
+    if (segDrag) segDragEnd(true);
+  });
   function segHiSync() {
     if (segHi) {
       segHi.remove();
@@ -5181,6 +7357,11 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     segSel.forEach(function (h) {
       var m = document.createElementNS(SVGNSL, 'line');
       for (var a of ['x1', 'y1', 'x2', 'y2']) m.setAttribute(a, h.getAttribute(a));
+      // the highlight covers the segment's FULL shape — a white overlay at
+      // the trace's own width (plus a hair so it reads over the ink edge),
+      // not a thin centerline stroke
+      var sw = parseFloat((h.__track || h).getAttribute('data-w') || '0') || 0.3;
+      m.setAttribute('stroke-width', (sw + 0.06).toFixed(3));
       segHi.appendChild(m);
     });
     var stack = viewGroups.gerber.querySelector('#yflip') || viewGroups.gerber;
@@ -5243,6 +7424,12 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       for (var si = 0; si < stacks.length; si++) {
         var sc = stacks[si];
         if (Math.hypot(parseFloat(sc.getAttribute('cx')) - bx, parseFloat(sc.getAttribute('cy')) + by) > 0.02) continue;
+        // a resize overlay stood in for a hidden gerber flash — the flash
+        // itself comes back visible when its overlay goes
+        if (sc.__overFlash) {
+          sc.__overFlash.style.display = '';
+          sc.__overFlash.__resizeCircle = null;
+        }
         viaSel.delete(sc);
         sc.remove();
       }
@@ -5328,6 +7515,23 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   function segDelete() {
     if (!segSel.size) return;
     var removedSegs = segSel.size;
+    // session undo bookkeeping: DOM removals via the capture, the session
+    // track list as a deep copy, and the affected parents' redrawn chains
+    domCaptureStart();
+    var rtBefore = JSON.parse(JSON.stringify(routedTracks));
+    var delBefore = routedDeletes.length;
+    var parentsBefore = {};
+    segSel.forEach(function (h0) {
+      var tr0 = h0.__track;
+      if (!tr0 || parentsBefore[tr0.__trId]) return;
+      tr0.__trId = tr0.__trId || 'tr' + Math.random().toString(36).slice(2);
+      parentsBefore[tr0.__trId] = {
+        tr: tr0,
+        d: tr0.getAttribute('d'),
+        hits: (tr0.__hits || []).slice(),
+        stripe: tr0.__stripe ? tr0.__stripe.getAttribute('d') : null,
+      };
+    });
     // record each deleted segment for the apply bridge (board y-down),
     // tagged with its layer so source deletion can target the right chain
     segSel.forEach(function (h) {
@@ -5447,7 +7651,67 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     window.__typecadRouteEnds = null;
     refreshRatsnest();
     renderLayoutMoves();
+    // session undo: restores the removed ink (DOM), the session track
+    // state, the pending deletes, and each parent's redrawn polyline
+    var delCap = domCaptureEnd();
+    var rtAfter = JSON.parse(JSON.stringify(routedTracks));
+    var delsAdded = routedDeletes.slice(delBefore);
+    var parentsAfter = {};
+    for (var pid in parentsBefore) {
+      var tr1 = parentsBefore[pid].tr;
+      if (!tr1.parentNode) continue; // the whole track went with its last hit
+      parentsAfter[pid] = {
+        d: tr1.getAttribute('d'),
+        hits: (tr1.__hits || []).slice(),
+        stripe: tr1.__stripe ? tr1.__stripe.getAttribute('d') : null,
+      };
+    }
+    var restoreParents = function (snap) {
+      for (var p2 in snap) {
+        var s2 = snap[p2];
+        if (!s2.tr.parentNode && snap === parentsAfter) continue;
+        s2.tr.setAttribute('d', s2.d);
+        s2.tr.__hits = s2.hits.slice();
+        if (s2.tr.__stripe && s2.stripe !== null) s2.tr.__stripe.setAttribute('d', s2.stripe);
+      }
+    };
+    pushUndo(
+      'delete ' + removedSegs + ' segment(s)',
+      function () {
+        routedTracks = JSON.parse(JSON.stringify(rtBefore));
+        routedDeletes.length = delBefore;
+        domApply(delCap, -1);
+        restoreParents(parentsBefore);
+      },
+      function () {
+        routedTracks = JSON.parse(JSON.stringify(rtAfter));
+        for (var d3 = 0; d3 < delsAdded.length; d3++) routedDeletes.push(delsAdded[d3]);
+        domApply(delCap, 1);
+        restoreParents(parentsAfter);
+      },
+    );
     if (statusEl && !statusLocked()) statusEl.textContent = removedSegs + ' segment' + (removedSegs > 1 ? 's' : '') + ' deleted';
+  }
+  // the nearest segment hit line under a press point, within its own stroke
+  // — a trace running under a part (through pad land or the body) stays
+  // clickable: its invisible hit line is the truth of where copper runs,
+  // and the part/pad keeps presses everywhere off the line
+  function segAt(g) {
+    var segs = allSegHits();
+    var best = null;
+    var bd = Infinity;
+    for (var i = 0; i < segs.length; i++) {
+      var x1 = +segs[i].getAttribute('x1'), y1 = +segs[i].getAttribute('y1');
+      var x2 = +segs[i].getAttribute('x2'), y2 = +segs[i].getAttribute('y2');
+      var q = snapOnSegment(g.x, g.y, x1, y1, x2, y2);
+      var d = Math.hypot(q.x - g.x, q.y - g.y);
+      var sw = Math.max(+segs[i].getAttribute('stroke-width') || 0.5, 0.5) / 2 + 0.1;
+      if (d < sw && d < bd) {
+        bd = d;
+        best = segs[i];
+      }
+    }
+    return best;
   }
   // click a segment hit line: select exactly that segment (shift adds);
   // click a committed via: select it the same way — the via owns its own
@@ -5457,11 +7721,16 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     function (ev) {
       if (routeState || ev.button !== 0) return;
       var t = ev.target;
-      // part bodies are deliberately NOT peeked under: traces run under
-      // parts everywhere, and the part grab must win there
-      if (t && t.closest && t.closest('.layout-comp')) return;
+      // a press on a part still reaches a trace RUNNING UNDER the point —
+      // through pad land or under the body, the trace's hit line is where
+      // copper runs and the segment wins so it stays selectable/deletable.
+      // The part and its pads keep every press off the line
       var via = null;
       var hitLine = null;
+      if (t && t.closest && t.closest('.layout-comp')) {
+        hitLine = segAt(gerberAt(ev.clientX, ev.clientY));
+        if (!hitLine) return;
+      }
       var pk = probeHitTarget(ev, false);
       var scan = pk || t;
       if (scan && (scan.tagName === 'circle' || scan.tagName === 'use') && scan.getAttribute && scan.getAttribute('data-route') === '1') {
@@ -5481,10 +7750,55 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         }
         if (!via) hitLine = scan;
       }
-      if (!via && !hitLine) return;
+      if (!via && !hitLine) {
+        // generous capture: a press that landed on nothing interactive —
+        // empty board, the air around a tiny leftover fragment, or the
+        // butt-end of a corridor — still selects the nearest segment within
+        // a ~9px radius. Pixel-perfect aim at a 0.2 mm cleanup stub (or the
+        // very tip of a dangling end) is not a reasonable ask. Elements
+        // that own their presses (parts, pads, probe outlines) and presses
+        // near a dangling end (the route-start arm owns those) pass through
+        // untouched.
+        if (
+          !t ||
+          !t.closest ||
+          t.closest('.layout-comp') ||
+          t.closest('[data-ref]') ||
+          t.closest('[data-pin]') ||
+          t.closest('.pad-labels') ||
+          t.tagName === 'circle' ||
+          (t.tagName === 'use' && t.getAttribute('data-route') === '1')
+        )
+          return;
+        var fgp = gerberAt(ev.clientX, ev.clientY);
+        if (nearestTraceEnd(fgp)) return;
+        // screen px -> gerber mm, measured live (viewBox units, not css px)
+        var g10 = gerberAt(ev.clientX + 10, ev.clientY);
+        var pxMm = Math.abs(g10.x - fgp.x) > 1e-9 ? 10 / Math.abs(g10.x - fgp.x) : 1;
+        var reach = 9 / pxMm;
+        var fhits = allSegHits();
+        var fBest = null;
+        var fBestD = Math.max(0.5, reach);
+        for (var fi = 0; fi < fhits.length; fi++) {
+          var fx1 = parseFloat(fhits[fi].getAttribute('x1')), fy1 = parseFloat(fhits[fi].getAttribute('y1'));
+          var fx2 = parseFloat(fhits[fi].getAttribute('x2')), fy2 = parseFloat(fhits[fi].getAttribute('y2'));
+          var fq = snapOnSegment(fgp.x, fgp.y, fx1, fy1, fx2, fy2);
+          var fd = Math.hypot(fq.x - fgp.x, fq.y - fgp.y);
+          if (fd < fBestD) {
+            fBestD = fd;
+            fBest = fhits[fi];
+          }
+        }
+        if (fBest) hitLine = fBest;
+        else return;
+      }
       ev.stopPropagation();
       ev.preventDefault();
       if (hitLine) t = hitLine; // the fallthrough segment logic reads t
+      // KiCad parity: pressing copper lights its net (dims everything
+      // else); Escape or an empty-space press clears
+      var hlNet = (via || t).getAttribute && (via || t).getAttribute('data-net');
+      if (hlNet && hlNet !== 'N/C') highlightNet('data-net', hlNet);
       if (via) {
         if (ev.shiftKey) {
           if (viaSel.has(via)) viaSel.delete(via);
@@ -5605,7 +7919,31 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   }
   // gerber-frame center of a manifest pad (board y-down -> y-up)
   function padCenter(p) {
-    return { x: p.x, y: -p.y };
+    var e = padEffBoard(p);
+    return { x: e.x, y: -e.y };
+  }
+  /** a manifest pad's CURRENT board-frame position: the part's pending move
+   *  (layoutMoves) and R-press rotations applied — the manifest itself
+   *  stores AUTHORED positions, so without this every moved part's pads
+   *  stop resolving for presses, routing, and probing */
+  function padEffBoard(p) {
+    if (!layoutMoves[p.ref]) return p;
+    var c = null;
+    for (var ci = 0; ci < layoutComps.length && !c; ci++) if (layoutComps[ci].ref === p.ref) c = layoutComps[ci];
+    if (!c) return p;
+    var mv = layoutMoves[p.ref];
+    // offset from the part's authored center in BOARD axes (manifest y is
+    // board-down; the island's c.y is gerber-up)
+    var obx = p.x - c.x;
+    var oby = p.y + c.y;
+    var presses = layoutRot[p.ref] || 0;
+    for (var t = 0; t < presses; t++) {
+      var nx = -oby;
+      var ny = obx;
+      obx = nx;
+      oby = ny;
+    }
+    return { x: mv.x + obx, y: -mv.y + oby };
   }
   // manifest (board y-down) point under a pointer event — boardCoords
   // reports the ink's y-up frame, so y negates (padCenter's inverse)
@@ -5621,8 +7959,9 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     for (var i = 0; i < padManifest.length; i++) {
       var p = padManifest[i];
       if (ref && p.ref !== ref) continue;
-      var dx = Math.max(Math.abs(bx - p.x) - p.w / 2, 0);
-      var dy = Math.max(Math.abs(by - p.y) - p.h / 2, 0);
+      var e = padEffBoard(p);
+      var dx = Math.max(Math.abs(bx - e.x) - p.w / 2, 0);
+      var dy = Math.max(Math.abs(by - e.y) - p.h / 2, 0);
       if (dx > 0.06 || dy > 0.06) continue;
       var d = dx + dy;
       if (d < bestD) {
@@ -5634,7 +7973,11 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   }
   function buildPadLabels() {
     var data = padManifest;
-    if (!viewGroups.gerber || !data.length) return 0;
+    // padManifest parses late in the page script (line ~6725) while
+    // refreshRatsnest — which now rebuilds labels — runs during init
+    // (~4037): until the manifest exists there is nothing to render, and
+    // touching it would kill the whole script
+    if (!viewGroups.gerber || !data || !data.length) return 0;
     var groups = viewGroups.gerber.querySelectorAll('g[data-kind="copper"]');
     var count = 0;
     for (var gi2 = 0; gi2 < groups.length; gi2++) {
@@ -5664,8 +8007,11 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       for (var pd = 0; pd < data.length; pd++) {
         var p = data[pd];
         if (p.layers.indexOf(canon) === -1 && p.layers.indexOf('*.Cu') === -1) continue;
-        var px = p.x;
-        var py = -p.y; // board y-down -> gerber y-up
+        // effective position: pending moves and rotations applied, so the
+        // label rides the ghost like the pad ink does
+        var eff = padEffBoard(p);
+        var px = eff.x;
+        var py = -eff.y; // board y-down -> gerber y-up
         var pin = String(p.pin ?? '');
         var named = p.net && p.net !== 'N/C';
         if (named) {
@@ -5693,28 +8039,36 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     for (var ri = 0; ri < hosts.length; ri++) stack.appendChild(hosts[ri]);
     if (routeUi) stack.appendChild(routeUi);
   }
+  var padLabelSig = null;
   function syncPadLabelVisibility() {
-    var anyMoves = false;
-    for (var mk in layoutMoves) {
-      anyMoves = true;
-      break;
-    }
-    var hosts = document.querySelectorAll('.pad-labels');
-    for (var hv = 0; hv < hosts.length; hv++)
-      hosts[hv].style.display = anyMoves ? 'none' : '';
+    // labels FOLLOW the parts: a pending move re-renders every label at the
+    // pad's effective (moved + rotated) position — hiding them (the old
+    // behavior) made pin numbers vanish for the whole board the moment any
+    // part moved. Rebuilds skip when the move signature is unchanged (this
+    // rides the 50ms ratsnest refresh during drags; recreating hundreds of
+    // texts per mousemove would jank big boards)
+    var sig = '';
+    for (var mk in layoutMoves) sig += mk + ':' + layoutMoves[mk].x + ',' + layoutMoves[mk].y + ',' + (layoutRot[mk] || 0) + ';';
+    if (sig === padLabelSig) return;
+    padLabelSig = sig;
+    buildPadLabels();
+    raisePadLabels();
   }
   // hit lines for EVERY trace: source-built boards carry their tracks as
   // ordinary attributed gerber ink (data-net + data-w, no data-route) —
   // interactive routes get hits in routeCommit, but after a rebuild-from-
   // source there are none, and segment selection would find nothing. This
   // walks the copper groups and gives every trace path a clickable twin.
-  function parsePathEnds(d) {
-    var n = (d || '').match(/[-\d.]+/g);
-    if (!n || n.length < 4) return null;
-    return [
-      [+n[0], +n[1]],
-      [+n[n.length - 2], +n[n.length - 1]],
-    ];
+  function parsePathVerts(d) {
+    // every vertex of a pure M/L polyline (tracks only — arcs bail). One
+    // hit per SEGMENT keeps selection, deletion, and the apply bridge's
+    // segment matching 1:1 with the source's .to() calls
+    if (!d) return null;
+    var re = /(M|L)\s*(-?[\d.]+)[,\s]+(-?[\d.]+)/g;
+    var m;
+    var verts = [];
+    while ((m = re.exec(d))) verts.push([+m[2], +m[3]]);
+    return verts.length >= 2 ? verts : null;
   }
   function makeSegHit(track, x1, y1, x2, y2, w, net) {
     var hit = document.createElementNS(SVGNSL, 'line');
@@ -5729,6 +8083,10 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     // clickable regardless of paint
     hit.setAttribute('pointer-events', 'stroke');
     hit.setAttribute('stroke-width', String(Math.max(w, 0.5)));
+    // ROUND caps: the visible ink carries round linecaps, so its ends bulge
+    // a half-width past the geometry — a butt-capped corridor leaves the
+    // dangling end tips (round and all) unclickable
+    hit.setAttribute('stroke-linecap', 'round');
     hit.setAttribute('data-seg', '1');
     if (net) hit.setAttribute('data-net', net);
     hit.__track = track;
@@ -5747,19 +8105,22 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         var tr = paths[pi];
         if (tr.getAttribute('fill-rule')) continue; // pour regions
         if (tr.__hits) continue; // already armed
-        var ends = parsePathEnds(tr.getAttribute('d'));
-        if (!ends) continue;
+        var verts = parsePathVerts(tr.getAttribute('d'));
+        if (!verts) continue;
         var w = parseFloat(tr.getAttribute('data-w') || '0.3');
         var tnet = tr.getAttribute('data-net');
-        // netless ink (N/C) binds to its unnamed route by segment geometry
-        var uIdx = !tnet || tnet === 'N/C' ? unnamedSegMatch(ends[0][0], ends[0][1], ends[1][0], ends[1][1]) : -1;
-        var hitLine = makeSegHit(tr, ends[0][0], ends[0][1], ends[1][0], ends[1][1], w, tnet);
-        lg.appendChild(hitLine);
-        made++;
-        if (uIdx >= 0) {
-          (unnamedInk[uIdx] = unnamedInk[uIdx] || []).push(tr, hitLine);
-          tr.__unnamedIdx = uIdx;
-          hitLine.__unnamedIdx = uIdx;
+        for (var sv = 1; sv < verts.length; sv++) {
+          var a1 = verts[sv - 1], b1 = verts[sv];
+          // netless ink (N/C) binds to its unnamed route by segment geometry
+          var uIdx = !tnet || tnet === 'N/C' ? unnamedSegMatch(a1[0], a1[1], b1[0], b1[1]) : -1;
+          var hitLine = makeSegHit(tr, a1[0], a1[1], b1[0], b1[1], w, tnet);
+          lg.appendChild(hitLine);
+          made++;
+          if (uIdx >= 0) {
+            (unnamedInk[uIdx] = unnamedInk[uIdx] || []).push(tr, hitLine);
+            tr.__unnamedIdx = uIdx;
+            hitLine.__unnamedIdx = uIdx;
+          }
         }
         // machine routing candy-canes — AUTOROUTER-built nets only
         // (provenance 'auto'); every TrackBuilder-authored track, netted or
@@ -5783,6 +8144,18 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   }
   attachTraceHits();
   buildPadLabels();
+  // pending apply edits made before an unexpected reload come back here —
+  // the ink re-renders at its source state, but the payload survives and
+  // the next apply still writes it
+  (function () {
+    var n = restorePending();
+    if (n) {
+      renderLayoutMoves(); // arms the apply button for the restored edits
+      if (statusEl && !statusLocked())
+        statusEl.textContent =
+          n + ' pending edit' + (n > 1 ? 's' : '') + ' restored after the refresh \u2014 apply writes them into source';
+    }
+  })();
 
   ['dt-margin', 'dt-allowed'].forEach(function (id) {
     var el = document.getElementById(id);
@@ -6458,6 +8831,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   window.addEventListener('resize', renderMeasure);
   window.addEventListener('keydown', function (ev) {
     if (ev.key === 'Escape') {
+      if (segDrag) segDragEnd(false);
       if (helpEl.style.display !== 'none') helpEl.style.display = 'none';
       if (measuring || measureStart || rulers.length) {
         measuring = false;
@@ -6473,14 +8847,19 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         routeCancel();
         return;
       }
+      // one Escape drops the WHOLE selection — U grows vias into it beside
+      // the segments, and a surviving half-selection would keep owning keys
+      var hadInkSel = segSel.size || viaSel.size;
       if (segSel.size) {
         segSel.clear();
         segHiSync();
-        return;
       }
       if (viaSel.size) {
         viaSel.clear();
         viaHiSync();
+      }
+      if (hadInkSel) {
+        if (netDimmed.length) clearNetHighlight();
         return;
       }
       clearPadHighlight(); // clears the pad OR trace tie-in highlight
@@ -6708,8 +9087,10 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       if (dtHover !== null) {
         var ambEl3 = document.getElementById('dt-ambient');
         var ambH = ambEl3 ? parseFloat(ambEl3.value) || 25 : 25;
+        // rise in engineering notation ("+3.71m°C"): a toFixed(1) here read
+        // "+0.0°C" on a millidegree hotspot while its color sat at ramp max
         next +=
-          ' \u00B7 ' + dtHover.what + ' +' + dtHover.v.toFixed(1) + '\u00B0C' +
+          ' \u00B7 ' + dtHover.what + ' +' + fmtEng(dtHover.v) + '\u00B0C' +
           ' \u2248 ' + (ambH + dtHover.v).toFixed(1) + '\u00B0C';
       }
     }
@@ -7228,6 +9609,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="tc-viewer-build" content="${escapeHtml(buildTag)}">
 <title>${escapeHtml(title)}</title>
 <style>
   * { box-sizing: border-box; }
@@ -7248,6 +9630,11 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     --btn-hover: #444;
     --page: #16181d;
     --measure: #6db3f2;
+    /* selection/highlight ink — KiCad-style WHITE over the copper on the
+       dark canvas; tints wash the selected body instead of outlining it */
+    --sel: #ffffff;
+    --sel-tint: rgba(255, 255, 255, 0.12);
+    --sel-box: rgba(255, 255, 255, 0.08);
   }
   body.light {
     --chrome-bg: #f7f7f7;
@@ -7260,6 +9647,11 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     --btn-hover: #eee;
     --page: #ffffff;
     --measure: #0b62c4;
+    /* pure white would vanish on the white page — the light theme's
+       selection stays a readable neutral gray */
+    --sel: #6e7681;
+    --sel-tint: rgba(110, 118, 129, 0.16);
+    --sel-box: rgba(110, 118, 129, 0.09);
   }
   /* layers whose palette colors are near-black would vanish on the dark
      canvas — recolor them (and their sidebar chips) in dark theme; strokes
@@ -7361,7 +9753,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   #layout-overlay .layout-comp.layout-warn rect,
   #layout-overlay .layout-comp.layout-warn polygon { stroke: #d29922; }
   #ratsnest path { stroke: #d29922; stroke-width: 0.05; fill: none; opacity: 0.85; }
-  #ratsnest path.rat-hi { stroke: #4fc1ff; stroke-width: 0.12; opacity: 1; }
+  #ratsnest path.rat-hi { stroke: var(--sel); stroke-width: 0.12; opacity: 1; }
   /* autorouter tracks: a WHITE dashed overlay over the solid ink stroke —
      the dashes lighten the copper underneath, so the trace reads as
      alternating lighter/darker candy-cane bands in any theme (same-ink
@@ -7370,35 +9762,24 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   .pad-labels text { fill: var(--pad-label, #ffffff); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
   /* movable texts read as grabbable, and a grabbed one is highlighted */
   body.typecad-layout #yflip path[data-text] { cursor: move; }
-  #yflip path.layout-text-sel { stroke: #6db3f2 !important; }
+  #yflip path.layout-text-sel { stroke: var(--sel) !important; }
   /* the handle itself paints nothing — the footprint's own ink (pads, silk,
      fab outline) already shows the part, KiCad-style. It stays the pointer
-     target via inherited pointer-events:all and only strokes on feedback:
-     hover ghost, white selection, amber overlap/out-of-board warning */
+     target via inherited pointer-events:all, with NO hover ghost: hovering
+     draws nothing (selection and warnings are the only part feedback) */
   #layout-overlay .layout-comp rect,
   #layout-overlay .layout-comp polygon { fill: transparent; stroke: none; stroke-linejoin: round; }
   #layout-overlay .layout-comp.layout-back rect,
   #layout-overlay .layout-comp.layout-back polygon { stroke: none; fill: transparent; }
-  #layout-overlay .layout-comp:hover rect,
-  #layout-overlay .layout-comp:hover polygon { stroke: rgba(255,255,255,0.45); stroke-width: 0.12; fill: transparent; }
-  #layout-overlay .layout-comp .layout-sel-handles { display: none; fill: none; }
-  #layout-overlay .layout-comp.layout-sel .layout-sel-handles {
-    display: block;
-    stroke: #4fc1ff;
-    stroke-width: 2.5px;
-    stroke-linecap: square;
-  }
+  /* a part is only movable once selected — the cursor says exactly that:
+     the board crosshair stays over an unselected part (nothing grabbable),
+     move arrows over a selected one */
+  #layout-overlay .layout-comp.layout-sel { cursor: move; }
   #layout-overlay .layout-comp.layout-sel rect,
   #layout-overlay .layout-comp.layout-sel polygon {
-    /* no marching-ants outline: selection reads from the tint fill and the
-       corner brackets (.layout-sel-handles) alone */
+    /* selection reads from the tint fill alone — no outline, no brackets */
     stroke: none;
-    fill: rgba(79, 193, 255, 0.12);
-  }
-  @keyframes layoutSelAnts {
-    to {
-      stroke-dashoffset: -13;
-    }
+    fill: var(--sel-tint);
   }
   #route-ui .route-anchored { opacity: 0.9; }
   /* keep-out halo: the DRC clearance envelope under the live route. Gray
@@ -7429,12 +9810,15 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   }
   circle[data-route].route-via-sel,
   use.route-via-sel {
-    stroke: #4fc1ff;
+    stroke: var(--sel);
     stroke-width: 2px;
     vector-effect: non-scaling-stroke;
     fill-opacity: 0.55;
   }
-  .route-sel line { stroke: #4fc1ff; stroke-width: 2px; vector-effect: non-scaling-stroke; stroke-linecap: round; }
+  /* selected trace segments: a white overlay at the segment's OWN width
+     (set per line by segHiSync from the track's data-w) — the highlight
+     covers the whole trace shape, not a thin centerline */
+  .route-sel line { stroke: var(--sel); stroke-opacity: 0.85; stroke-linecap: round; fill: none; }
   /* trace-width readout riding the cursor while a route is live, and the
      W/toolbar width picker popover */
   #route-width-chip {
@@ -7460,24 +9844,35 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   #width-pop .wrow { display: flex; align-items: center; gap: 8px; color: var(--muted); }
   #width-pop .wrow input { width: 76px; cursor: text; }
   #width-pop .whint { color: var(--muted); font-size: 11px; }
+  /* properties panel (E) — same chrome as the width picker */
+  #props-pop {
+    position: fixed; right: 12px; bottom: 96px; z-index: 42; display: none;
+    flex-direction: column; gap: 6px; background: var(--chrome-bg);
+    border: 1px solid var(--chrome-border); border-radius: 6px; padding: 10px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4); font: 12px system-ui, sans-serif;
+    min-width: 240px;
+  }
+  #props-pop b { color: #4fc1ff; }
+  #props-pop .wrow { display: flex; align-items: center; gap: 8px; color: var(--muted); }
+  #props-pop .wrow label { display: flex; align-items: center; gap: 4px; }
+  #props-pop input, #props-pop select {
+    background: var(--btn-bg); color: var(--chrome-fg); border: 1px solid var(--btn-border);
+    border-radius: 4px; padding: 3px 6px; font: inherit; width: 76px; cursor: text;
+  }
+  #props-pop select { cursor: pointer; width: 56px; }
+  #props-pop button {
+    background: var(--btn-bg); color: var(--chrome-fg); border: 1px solid var(--btn-border);
+    border-radius: 4px; padding: 3px 12px; cursor: pointer; font: inherit;
+  }
+  #props-pop .whint { color: var(--muted); font-size: 11px; }
   #btn-width { min-width: 56px; }
-  .route-pad-hi { pointer-events: none; }
-  .route-pad-hi .pad-hi-box {
-    fill: rgba(79, 193, 255, 0.12);
-    stroke: #4fc1ff;
-    stroke-width: 2px;
-    vector-effect: non-scaling-stroke;
-    stroke-dasharray: 8 5;
-    animation: layoutSelAnts 0.45s linear infinite;
-  }
-  .route-pad-hi .pad-hi-brackets {
-    fill: none;
-    stroke: #4fc1ff;
-    stroke-width: 2.5px;
-    stroke-linecap: square;
-  }
+  /* the picked pad's white clones: aperture symbols carry no fill of
+     their own, so the clone's inherited fill paints the exact pad shape;
+     .cut holes keep var(--bg) (their own !important rule) so a drilled
+     pad still reads with its hole */
+  .pad-hi-ink { fill: var(--sel); fill-opacity: 0.8; stroke: none; }
   .route-pad-target { fill: rgba(63, 185, 80, 0.15); stroke: #3fb950; stroke-width: 2px; }
-  #layout-sel-box { fill: rgba(79, 193, 255, 0.07); stroke: #4fc1ff; stroke-width: 1.5px; }
+  #layout-sel-box { fill: var(--sel-box); stroke: var(--sel); stroke-width: 1.5px; }
   #layout-sel-box.cross {
     stroke: #3fb950;
     fill: rgba(63, 185, 80, 0.07);
@@ -7577,7 +9972,9 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
 <div id="layout-box" style="display:none">
   <div class="side-label">Layout</div>
   <div id="layout-keys"><span class="chip chip-striped">autorouted</span><span class="chip chip-solid">TrackBuilder</span><span class="chip chip-grey">ripped up</span></div>
-  <label><input type="checkbox" id="layout-snap" checked> snap 0.5 mm</label>
+  <label><input type="checkbox" id="layout-snap" checked> snap <select id="layout-grid"><option>0.1</option><option>0.25</option><option selected>0.5</option><option>1</option></select> mm</label>
+  <label><input type="checkbox" id="layout-grid-show"> grid</label>
+  <label><input type="checkbox" id="layout-mil"> mil</label>
 
   <div id="layout-tools">
     <button id="layout-align" type="button" disabled>align row</button>

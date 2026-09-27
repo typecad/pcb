@@ -263,4 +263,45 @@ describe('planRouteEdits', () => {
     expect(edits).toHaveLength(0);
     expect(skipped[0]).toContain('no typecad.create(');
   });
+
+  it('emits a via at the chain head — the resized far half starting at the barrel', () => {
+    const route: RouteInput = {
+      net: 'GND',
+      w: 0.5,
+      pieces: [{ layer: 'B.Cu', w: 0.5, pts: [{ x: 5, y: 5 }, { x: 8, y: 5 }] }],
+      vias: [{ x: 5, y: 5, size: 0.9, drill: 0.5 }],
+      from: { ref: '(resize)', pin: '' },
+      to: null,
+    };
+    const { edits } = planRouteEdits(src(), [route]);
+    let text = src();
+    for (const e of [...edits].sort((a, b) => b.start - a.start)) {
+      text = text.slice(0, e.start) + e.line + text.slice(e.end);
+    }
+    expectValidTs(text);
+    const fAt = text.indexOf('.from(');
+    const vAt = text.indexOf('.via(');
+    const tAt = text.indexOf('.to(');
+    expect(vAt).toBeGreaterThan(fAt);
+    expect(vAt).toBeLessThan(tAt);
+    expect(text).toContain('.via({ size: 0.9, drill: 0.5 })');
+  });
+
+  it('emits a tail via and lands the terminating semicolon on it', () => {
+    const route: RouteInput = {
+      net: null,
+      w: 0.3,
+      pieces: [{ layer: 'F.Cu', pts: [{ x: 1, y: 1 }, { x: 4, y: 1 }] }],
+      vias: [{ x: 4, y: 1, size: 0.6, drill: 0.3 }],
+      from: { ref: '(resize)', pin: '' },
+      to: null,
+    };
+    const { edits } = planRouteEdits(src(), [route]);
+    let text = src();
+    for (const e of [...edits].sort((a, b) => b.start - a.start)) {
+      text = text.slice(0, e.start) + e.line + text.slice(e.end);
+    }
+    expectValidTs(text);
+    expect(text).toContain('.to({ x: 4, y: 1, layer: \'F.Cu\', width: 0.3 })\n  .via({ size: 0.6, drill: 0.3 });');
+  });
 });

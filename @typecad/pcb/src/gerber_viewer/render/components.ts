@@ -169,6 +169,8 @@ export function extractComponents(
   }
 
   if (byRef.size === 0) {
+    // per-side callers (the pcba view renders ONE side) want to know; the
+    // layout overlay walks BOTH sides and reports only when both are empty
     warnings.push('no X2 component attributes (%TO.P) found on the copper layers — component overlay skipped');
     return { components: [], warnings };
   }

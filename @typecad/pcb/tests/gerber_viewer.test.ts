@@ -261,6 +261,14 @@ describe('buildViewerHtml', () => {
     expect(withSch).toContain('el.__edgeCur');
     expect(withSch).toContain('id="dt-legend-box"');
     expect(withSch).toContain('color by margin');
+    // a thermally quiet board (every rise in millidegrees) must not paint its
+    // relatively-hottest trace full-scale white: the auto ramp is floored (the
+    // margin path stays user-specified), and the hover rise prints in
+    // engineering notation so a millidegree hotspot reads "+3.71m°C", never
+    // "+0.0°C" while its color says ramp max
+    expect(withSch).toContain('var DT_AUTO_FLOOR = 1;');
+    expect(withSch).toContain('Math.max(dtItems.maxDT, DT_AUTO_FLOOR)');
+    expect(withSch).toContain("fmtEng(dtHover.v) + '\\u00B0C'");
     // board (FR4) temperature: stacked steady-state solve; the image paints
     // the ENTIRE board (no trace gap) on a 3x-fine grid with bilinear
     // sampling of the solved field — only the outline and the near-zero
@@ -428,7 +436,7 @@ describe('view switcher (gerber / pcba)', () => {
     // wires carry their net (data-net) so the routed net's wires can highlight
     expect(html).toContain('rats.appendChild(ratsWire(sCur, sBest, wireIdx++, un));');
     expect(html).toContain("if (net) p.setAttribute('data-net', net);");
-    expect(html).toContain('window.typecadLayoutApply(moves, texts, values, labels, renames, routedTracks, routedDeletes, function (err)');
+    expect(html).toContain('window.typecadLayoutApply(moves, texts, values, labels, renames, routedTracks, routedDeletes, function (err, fast)');
     expect(html).toContain('moves.push({');
     expect(html).toContain('rot: (m2.rot || 0) * 90,');
     expect(html).toContain('pads: padsByRef[mr2] || [],');
@@ -769,7 +777,7 @@ describe('layout view (component overlay from the gerbers)', () => {
     expect(html).toContain("addEventListener('dblclick'");
     expect(html).toContain('layout-text-edit');
     // apply carries text edits alongside component moves
-    expect(html).toContain('window.typecadLayoutApply(moves, texts, values, labels, renames, routedTracks, routedDeletes, function (err)');
+    expect(html).toContain('window.typecadLayoutApply(moves, texts, values, labels, renames, routedTracks, routedDeletes, function (err, fast)');
   });
 
   it('derives handles from the fab contour (chamfers kept) and the pad-land hull', () => {
@@ -897,5 +905,60 @@ M02*
     const layoutTexts = JSON.parse(ltMatch) as Array<{ text: string; x: number; y: number }>;
     expect(layoutTexts).toHaveLength(1);
     expect(layoutTexts[0]).toMatchObject({ text: 'hello silk', x: 6.5, y: -7.5 });
+  });
+
+  it('derives the layout overlay without nets — a fresh board still gets the layout view', () => {
+    // the scaffolded first board: one resistor, nothing connected — no
+    // netlist file at all, or one whose (nets) section is empty. The overlay
+    // comes from the gerbers' X2 pad attributes alone; nets are enrichment
+    const copper = `%FSLAX36Y36*%
+%MOMM*%
+%ADD10R,1.2X0.8*%
+D10*
+%TO.P,R1,1*%
+X3000000Y3000000D03*
+%TD*%
+%TO.P,R1,2*%
+X5200000Y3000000D03*
+%TD*%
+M02*
+`;
+    const emptyNets = `(export (version "E")
+  (components
+    (comp (ref "R1") (footprint "Resistor_SMD:R_0603_1608Metric"))
+  )
+  (nets
+
+))
+`;
+    const cases: Array<{ label: string; netlistPath?: string }> = [
+      { label: 'no netlist' },
+      { label: 'empty-nets netlist' },
+    ];
+    for (const first of cases) {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'genonets-'));
+      fs.writeFileSync(path.join(dir, 'demo-F_Cu.gbr'), copper);
+      fs.writeFileSync(path.join(dir, 'demo-Edge_Cuts.gbr'), read('edge.gbr'));
+      if (first.label === 'empty-nets netlist') {
+        fs.writeFileSync(path.join(dir, 'demo.net'), emptyNets);
+        first.netlistPath = path.join(dir, 'demo.net');
+      }
+      const result = buildViewerFromFiles([dir], {
+        title: 'demo',
+        netlistPath: first.netlistPath,
+        pcbaSvg: '<svg/>', // the view dropdown needs a second render
+      });
+      fs.rmSync(dir, { recursive: true, force: true });
+      const json = /<script id="layout-comps" type="application\/json">([\s\S]*?)<\/script>/.exec(result.html)![1]!;
+      const comps = JSON.parse(json) as Array<{ ref: string; nets: string[] }>;
+      expect(comps, first.label).toHaveLength(1);
+      expect(comps[0]!.ref, first.label).toBe('R1');
+      expect(comps[0]!.nets, first.label).toEqual([]);
+      // the dropdown carries the layout entry — no nets required anymore
+      expect(result.html, first.label).toContain('<option value="layout">Layout</option>');
+      // and the ratsnest wires are the layout view's alone: every other
+      // view renders the fabricated board without them
+      expect(result.html, first.label).toContain("rats.style.display = viewMode === 'layout' ? '' : 'none';");
+    }
   });
 });

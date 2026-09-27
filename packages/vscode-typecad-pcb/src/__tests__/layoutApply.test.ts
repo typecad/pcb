@@ -89,7 +89,7 @@ describe('planLayoutApply', () => {
     expect(plan.skipped).toEqual([]);
   });
 
-  it('defers literal searches across files and reports each skip once', () => {
+  it('defers literal searches across files; unplaced parts get literals inserted, undeclared ones skip once', () => {
     const fileA = "const a = new Component({ reference: 'C9' });\n";
     const fileB = "const b = new Component({ reference: 'U2' });\nu2.pcb = { x: 3, y: 4 };\n";
     const { plan, texts } = run(
@@ -99,15 +99,17 @@ describe('planLayoutApply', () => {
       ],
       baseInput({
         moves: [
-          { ref: 'U2', dx: 1, dy: 1 }, // literal lives in file B
-          { ref: 'C9', dx: 1, dy: 1 }, // never found anywhere
+          { ref: 'U2', dx: 1, dy: 1 }, // literal lives in file B (rewrite)
+          { ref: 'C9', dx: 1, dy: 1 }, // declared in file A, never placed (INSERT)
+          { ref: 'ZZ', dx: 1, dy: 1 }, // no variable declared anywhere (skip)
         ],
-        variableOf: (ref) => ({ U2: 'u2', C9: 'a' })[ref],
+        variableOf: (ref) => ({ U2: 'u2', C9: 'a', ZZ: 'zz' })[ref],
       }),
     );
-    expect(plan.counts.moves).toBe(1);
+    expect(plan.counts.moves).toBe(2);
     expect(texts.get('file:///src/b.ts')).toContain('u2.pcb = { x: 4, y: 5 }');
-    expect(plan.skipped).toEqual(['C9 (no `a.pcb = {…}` literal found)']);
+    expect(texts.get('file:///src/a.ts')).toContain('a.pcb = { x: 1, y: 1 };');
+    expect(plan.skipped).toEqual(['ZZ (no `zz.pcb = {…}` literal found)']);
   });
 
   it('matches texts per file and reports unmatched ones even with several files', () => {
@@ -169,5 +171,35 @@ describe('planLayoutApply', () => {
     expect(plan.stages).toEqual([]);
     expect(plan.touched).toEqual([]);
     expect(plan.counts).toMatchObject({ moves: 0, endpoints: 0, texts: 0, values: 0, labels: 0, renames: 0, routes: 0, deletes: 0 });
+  });
+
+  it('re-creates a declared route the argument rewrite dropped', () => {
+    // regression: a multi-route rewrite once dropped an UNTOUCHED route's
+    // name from create() while its declaration survived — the route built
+    // nothing and its copper silently vanished from the board. Any
+    // route/delete apply must heal that drift.
+    const src = `import { PCB, Component, TrackBuilder } from '@typecad/pcb';
+const typecad = new PCB('demo', {});
+const vcc = new TrackBuilder(typecad, { net: 'VCC', })
+  .from({ x: 10.5, y: 10 }, 'F.Cu', 0.3)
+  .to({ x: 20, y: 10, layer: 'F.Cu', width: 0.3 });
+const gnd = new TrackBuilder(typecad, { net: 'GND', })
+  .from({ x: 30, y: 10 }, 'F.Cu', 0.3)
+  .to({ x: 35, y: 10, layer: 'F.Cu', width: 0.3 });
+typecad.create(vcc);
+`;
+    const { plan, texts } = run(
+      [{ uri: 'file:///src/board.ts', text: src }],
+      baseInput({
+        deletes: [{ net: 'VCC', x1: 10.5, y1: 10, x2: 20, y2: 10, layer: 'F.Cu' }],
+      }),
+    );
+    const out = texts.get('file:///src/board.ts')!;
+    expectValidTs(out);
+    // vcc emptied out of the delete — but gnd, untouched, must end up (or
+    // stay) in create(): the guard re-adds what the rewrite dropped
+    expect(out).toMatch(/typecad\.create\((?:[^)]*\b)?gnd\b/);
+    expect(out).not.toMatch(/typecad\.create\([^)]*\bvcc\b/);
+    expect(plan.counts.deletes).toBe(1);
   });
 });

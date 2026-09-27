@@ -1,0 +1,11 @@
+{
+  "npm.autoDetect": "on",
+  "npm.exclude": "**/.vscode/extensions/**",
+  "debug.javascript.codelens.npmScripts": "never",
+  "files.exclude": {
+    ".vscode/extensions": true
+  },
+  "search.exclude": {
+    "**/.vscode/extensions": true
+  }
+}

@@ -74,6 +74,9 @@ describe('layout→code sync stress', () => {
     const out = apply(noisy, planRouteDeletes(noisy, [{ net: 'D0', x1: 1, y1: 0, x2: 2, y2: 0, layer: 'F.Cu' }]).edits);
     expectValidTs(out);
     expect(out).toContain(".to({ x: 1, y: 0, layer: 'F.Cu', width: 0.2 });");
+    // regeneration puts the tolerated lines back instead of eating them
+    expect(out).toContain('// data lines; keep tight');
+    expect(out).toContain('/* clock stretch */');
   });
 
   it('emits a via recorded mid-piece (not only at piece boundaries)', () => {
@@ -202,14 +205,38 @@ describe('layout→code sync stress', () => {
     expect(out).toContain(".to({ x: 1, y: 3, layer: 'B.Cu', width: 0.3 });");
   });
 
-  it('skips (and says why) when the create()-owning file has no TrackBuilder in scope', () => {
-    const src = "const r1 = new Component({ reference: 'R1' });\ntypecad.create(r1);\n";
+  it('plans the TrackBuilder import when the create()-owning file never mentions it', () => {
+    // every fresh `typecad-pcb create` project looks like this: one file,
+    // a @typecad/pcb import without TrackBuilder — the first drawn route
+    // must not die on a skip
+    const src =
+      "import { PCB, Resistor } from '@typecad/pcb'\n\nlet typecad = new PCB('demo');\nlet r1 = new Resistor({ value: '1k' });\ntypecad.create(r1);\n";
+    const { edits, skipped } = planRouteEdits(src, [
+      { net: 'GND', w: 0.3, pieces: [{ layer: 'F.Cu', pts: [{ x: 0, y: 0 }, { x: 1, y: 0 }] }], vias: [], from: { ref: 'R1', pin: '1' }, to: null },
+    ]);
+    expect(skipped).toEqual([]);
+    const out = apply(src, edits);
+    expectValidTs(out);
+    // the rewritten import stays a line of its own — the template's
+    // missing `;` must not cost the file its line breaks
+    expect(out.split('\n')[0]).toBe("import { PCB, Resistor, TrackBuilder } from '@typecad/pcb';");
+    expect(out.split('\n')[1]).toBe('');
+    expect(out).toContain('const route1 = new TrackBuilder');
+    expect(out).toMatch(/create\(r1, route1\)/);
+  });
+
+  it('starts a standalone TrackBuilder import when no @typecad/pcb import exists', () => {
+    // the create-owning file receives the PCB instance from elsewhere:
+    // nothing to join, so the import line starts on its own
+    const src = "import { typecad } from './board.js';\ntypecad.create(r1);\n";
     const { edits, skipped } = planRouteEdits(src, [
       { net: null, w: 0.3, pieces: [{ layer: 'F.Cu', pts: [{ x: 0, y: 0 }, { x: 1, y: 0 }] }], vias: [], from: { ref: 'R1', pin: '1' }, to: null },
     ]);
-    expect(edits).toHaveLength(0);
-    expect(skipped.join(' ')).toContain('TrackBuilder is not in scope');
-    expect(src).toBe("const r1 = new Component({ reference: 'R1' });\ntypecad.create(r1);\n");
+    expect(skipped).toEqual([]);
+    const out = apply(src, edits);
+    expectValidTs(out);
+    expect(out).toContain("import { TrackBuilder } from '@typecad/pcb';\nimport { typecad } from './board.js';");
+    expect(out).toMatch(/create\(r1, route1\)/);
   });
 
   it('round-trips: a route added by apply is deletable by the next apply', () => {

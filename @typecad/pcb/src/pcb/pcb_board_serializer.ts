@@ -544,6 +544,18 @@ export function serializeAndWriteBoard(pcb: PCB, boardContents: SExpr[], default
 
   try {
     fs.writeFileSync(boardFilePath, state.pcb);
+    // record the board THIS build produced: downstream discovery (the vscode
+    // viewer, `query`) reads it instead of guessing by package-name/mtime —
+    // a renamed board is found immediately and a same-named leftover from
+    // the previous name can never shadow it. Informational only.
+    try {
+      fs.writeFileSync(
+        `${getBuildDir()}/.typecad-board.json`,
+        JSON.stringify({ board: `${pcb.boardName}.kicad_pcb` }),
+      );
+    } catch {
+      /* the manifest is an optimization — its absence just falls back to heuristics */
+    }
 
     try {
       const fileContents = fs.readFileSync(boardFilePath, { encoding: 'utf8' });

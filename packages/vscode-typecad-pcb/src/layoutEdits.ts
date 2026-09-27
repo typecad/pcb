@@ -60,9 +60,15 @@ function fmt(n: number): string {
 
 /**
  * Compute the literal rewrites for `moves` against one source document.
- * `variableOf` maps a board reference to its source variable (empty/absent
- * when unknown). Only the first matching document wins per ref — pass each
- * src file in turn and stop when a ref resolves.
+ * A move whose `<var>.pcb = {…}` literal already exists is rewritten in
+ * place; one with NO literal yet gets the assignment INSERTED after the
+ * variable's constructor statement — an unplaced component (stacked at the
+ * origin) is the layout view's whole reason to exist, and silently skipping
+ * its move strands every trace drawn between the moved pads. Computed
+ * (non-literal) placements stay skipped, never mangled. `variableOf` maps a
+ * board reference to its source variable (empty/absent when unknown). Only
+ * the first matching document wins per ref — pass each src file in turn and
+ * stop when a ref resolves.
  */
 export function planPlacementEdits(
   text: string,
@@ -78,35 +84,71 @@ export function planPlacementEdits(
       continue;
     }
     const match = placementMatcher(variable).exec(text);
-    if (!match) {
-      skipped.push({ ref: move.ref, reason: `no \`${variable}.pcb = {…}\` literal found` });
-      continue;
+    let newInner: string;
+    let start: number;
+    let end: number;
+    let lead: string;
+    let inserted = false;
+    if (match) {
+      const inner = match[2];
+      const xNum = /\bx\s*:\s*(-?[\d.]+)/.exec(inner);
+      const yNum = /\by\s*:\s*(-?[\d.]+)/.exec(inner);
+      if (!xNum || !yNum) {
+        skipped.push({ ref: move.ref, reason: 'placement is computed, not a literal' });
+        continue;
+      }
+      const nx = parseFloat(xNum[1]) + move.dx;
+      const ny = parseFloat(yNum[1]) + move.dy;
+      newInner = inner.replace(/\bx\s*:\s*-?[\d.]+/, `x: ${fmt(nx)}`).replace(/\by\s*:\s*-?[\d.]+/, `y: ${fmt(ny)}`);
+      start = match.index;
+      end = match.index + match[0].length;
+      lead = match[1] ?? '';
+    } else {
+      const ins = insertionAfterConstructor(text, variable);
+      if (!ins) {
+        skipped.push({ ref: move.ref, reason: `no \`${variable}.pcb = {…}\` literal found` });
+        continue;
+      }
+      newInner = ` x: ${fmt(move.dx)}, y: ${fmt(move.dy)}`;
+      start = ins.at;
+      end = ins.at;
+      lead = `\n${ins.indent}`;
+      inserted = true;
     }
-    const inner = match[2];
-    const xNum = /\bx\s*:\s*(-?[\d.]+)/.exec(inner);
-    const yNum = /\by\s*:\s*(-?[\d.]+)/.exec(inner);
-    if (!xNum || !yNum) {
-      skipped.push({ ref: move.ref, reason: 'placement is computed, not a literal' });
-      continue;
-    }
-    const nx = parseFloat(xNum[1]) + move.dx;
-    const ny = parseFloat(yNum[1]) + move.dy;
-    let newInner = inner.replace(/\bx\s*:\s*-?[\d.]+/, `x: ${fmt(nx)}`).replace(/\by\s*:\s*-?[\d.]+/, `y: ${fmt(ny)}`);
     // rotation rides as a delta onto the literal's field (0 or absent = 0)
     if (move.rot) {
-      const rotNum = /\brotation\s*:\s*(-?[\d.]+)/.exec(inner);
+      const rotNum = /\brotation\s*:\s*(-?[\d.]+)/.exec(newInner);
       const newRot = (rotNum ? parseFloat(rotNum[1]) : 0) + move.rot;
       if (rotNum) newInner = newInner.replace(/\brotation\s*:\s*-?[\d.]+/, `rotation: ${fmt(newRot)}`);
       else newInner = `${newInner.trimEnd()}, rotation: ${fmt(newRot)} `;
     }
     edits.push({
       ref: move.ref,
-      line: `${match[1]}${variable}.pcb = { ${newInner.trim()} }`,
-      start: match.index,
-      end: match.index + match[0].length,
+      // an inserted assignment is a whole new statement: it carries its own
+      // terminating semicolon; a rewrite swaps only the literal (the
+      // existing `;` sits outside the matched range and survives)
+      line: `${lead}${variable}.pcb = { ${newInner.trim()} }${inserted ? ';' : ''}`,
+      start,
+      end,
     });
   }
   return { edits, skipped };
+}
+
+/** Find the end of `<var> = …;` (the constructor statement) — insertion goes right after it. */
+function insertionAfterConstructor(text: string, variable: string): { at: number; indent: string } | null {
+  const decl = new RegExp(`^([ \\t]*)(?:const|let|var) ${escapeRegExp(variable)} =`, 'm').exec(text);
+  if (!decl) return null;
+  // scan to the statement's terminating semicolon, paren/brace balanced —
+  // object literals and nested calls must not fool it
+  let depth = 0;
+  for (let i = decl.index; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === '(' || ch === '{') depth++;
+    else if (ch === ')' || ch === '}') depth--;
+    else if (ch === ';' && depth <= 0) return { at: i + 1, indent: decl[1] ?? '' };
+  }
+  return null;
 }
 
 /**

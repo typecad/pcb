@@ -623,6 +623,8 @@ export function autoroute(pcb: PCB, callerOptions: IAutorouteOptions): IAutorout
     ...(pcb.viaPolicyConfig.type === 'blind-buried' ? { layerOrder: [...boardCopperLayers] } : {}),
     bendCost: options.bendCost,
     maxIterations: options.maxIterations,
+    timeBudgetMs: options.timeBudgetMs,
+    netTimeBudgetMs: options.netTimeBudgetMs,
     allowVias: options.allowVias,
     impedance: options.impedance,
     freeViaLocations,

@@ -321,6 +321,28 @@ function planLayoutApply(files, input) {
         }
         commit(batch);
     }
+    // -- stage 5c: create() consistency guard — every declared TrackBuilder
+    // route must be passed to create(). The stages above maintain that
+    // invariant one edit at a time; a name that slips through (seen once: an
+    // UNTOUCHED route's argument dropped while its declaration survived a
+    // multi-route rewrite) silently removes the route from the board — its
+    // traces vanish from the viewer, unclickable, with nothing in the log.
+    // Re-add every declared-but-uncreated name, on the text as it stands
+    // after every prior stage. Only route/delete applies run it: it heals
+    // this pipeline's own drift, not hand-edits outside it.
+    if ((input.routes?.length ?? 0) > 0 || (input.deletes?.length ?? 0) > 0) {
+        for (const file of files) {
+            const text = textOf.get(file.uri);
+            const missing = (0, routeEdits_js_1.uncreatedRouteNames)(text);
+            if (!missing || missing.length === 0)
+                continue;
+            const argsEdit = (0, routeEdits_js_1.planCreateArgsEdit)(text, missing, []);
+            if (!argsEdit)
+                continue;
+            commit([{ uri: file.uri, edits: [argsEdit] }]);
+            break;
+        }
+    }
     // -- stage 6: sticky TrackBuilder endpoints — LAST, against the final
     // route blocks (regenerated or freshly added alike): literals sitting on
     // a moved component's ORIGINAL pads translate by the same delta --

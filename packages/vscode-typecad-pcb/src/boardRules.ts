@@ -21,6 +21,9 @@ export interface NetClassDef {
   viaSize?: number;
   /** default via drill for the class, mm */
   viaDrill?: number;
+  /** minimum clearance for the class, mm — the live check judges pairs by
+   *  the larger class clearance of the two nets involved */
+  clearance?: number;
 }
 
 export interface BoardRules {
@@ -76,6 +79,8 @@ export function userRulesFromFolder(hwFolder: string): Partial<BoardRules> | nul
       if (vs !== undefined) c.viaSize = vs;
       const vd = num(d.viaDrill);
       if (vd !== undefined) c.viaDrill = vd;
+      const cl = num(d.clearance);
+      if (cl !== undefined) c.clearance = cl;
       if (Object.keys(c).length > 0) classes[name] = c;
     }
     if (Object.keys(classes).length > 0) out.netClasses = classes;
@@ -126,6 +131,8 @@ export function rulesFromProject(boardPath: string): Partial<BoardRules> {
     if (vs !== undefined) c.viaSize = vs;
     const vd = num(cls.via_drill);
     if (vd !== undefined) c.viaDrill = vd;
+    const cl = num(cls.clearance);
+    if (cl !== undefined) c.clearance = cl;
     if (Object.keys(c).length > 0) classes[name] = c;
   }
   if (Object.keys(classes).length > 0) out.netClasses = classes;

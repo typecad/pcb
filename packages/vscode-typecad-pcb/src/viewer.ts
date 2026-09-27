@@ -3,6 +3,7 @@
 // cross-probing in both directions.
 //
 // Generation pipeline (one shot per board change):
+//   typecad-pcb simulate (best-effort: ngspice op data, stale-only) →
 //   typecad-pcb export gerbers → typecad-pcb export drill →
 //   gerber-viewer build/gerbers -o build/serve/viewer.html
 //       [--netlist build/<board>.net] [--drc build/<board>_drc.json]
@@ -26,8 +27,8 @@ import { parseSourceLocation } from './sourceRef.js';
 import type { BoardDataService } from './boardData.js';
 // discovery helpers live vscode-free in boardFile.ts for unit testing;
 // re-exported here for the existing import sites
-export { mtimeOf, newestBoardFile } from './boardFile.js';
-import { mtimeOf, newestBoardFile } from './boardFile.js';
+export { mtimeOf, newestBoardFile, entrySourceFile } from './boardFile.js';
+import { mtimeOf, newestBoardFile, entrySourceFile } from './boardFile.js';
 
 export type CommandRunner = (cwd: string, command: string, timeoutMs: number) => Promise<string>;
 
@@ -35,6 +36,13 @@ interface GeneratedViewer {
   html: string;
   /** .kicad_pcb mtime the HTML was generated from — stale when it changes. */
   boardMtimeMs: number;
+  /**
+   * mtime of build/serve/viewer.html this html came from. A NEWER on-disk
+   * page (viewer-tooling update, out-of-band `gerber-viewer` run) rewrites
+   * the file without touching the board, so the board-mtime cache key alone
+   * would keep serving the pre-update page; adoption compares against this.
+   */
+  diskMtimeMs: number;
 }
 
 const GENERATE_TIMEOUT_MS = 120_000;
@@ -125,6 +133,11 @@ export class BoardViewerPanel {
         clearTimeout(this.showRetryTimer);
         this.showRetryTimer = undefined;
       }
+    } else if (this.generated) {
+      // the cache matches the board, but a newer on-disk page (viewer
+      // update, out-of-band regen) supersedes it without a board change to
+      // key on — swap it in so the panel never serves a pre-update page
+      await this.adoptNewerDiskViewer(folder);
     }
 
     if (!this.panel) {
@@ -178,24 +191,15 @@ export class BoardViewerPanel {
       return;
     }
     const board = newestBoardFile(folder);
-    const htmlPath = path.join(folder, 'build', 'serve', 'viewer.html');
     // fast path: the on-disk viewer was generated from this exact board
     // revision (the file is newer than the board) — reuse it as-is
-    if (board && fs.existsSync(htmlPath) && mtimeOf(htmlPath) > mtimeOf(board)) {
-      try {
-        const raw = fs.readFileSync(htmlPath, 'utf8');
-        const [components, nets] = await Promise.all([this.service.components(), this.service.netSources().catch(() => [])]);
-        const { html } = injectProbeClient(raw, components, nets);
-        this.generated = { html, boardMtimeMs: mtimeOf(board) };
-        this.loadToken++;
-        this.assignHtml();
-        this.output.appendLine('viewer restored from the last generated board view');
-        return;
-      } catch (err) {
-        this.output.appendLine(
-          `viewer restore fell back to a full render: ${err instanceof Error ? err.message : String(err)}`,
-        );
-      }
+    const page = board ? await this.readDiskViewer(folder) : null;
+    if (board && page && page.diskMtimeMs > mtimeOf(board)) {
+      this.generated = { html: page.html, boardMtimeMs: mtimeOf(board), diskMtimeMs: page.diskMtimeMs };
+      this.loadToken++;
+      this.assignHtml();
+      this.output.appendLine('viewer restored from the last generated board view');
+      return;
     }
     // stale or missing: show something immediately, then let the regular
     // refresh pipeline (settle gate, retries, status notices) swap in the
@@ -205,12 +209,68 @@ export class BoardViewerPanel {
     void this.doRefresh();
   }
 
+  /**
+   * Read build/serve/viewer.html and probe-inject it, with its mtime.
+   * Null when the file is missing or unreadable (logged, never thrown).
+   */
+  private async readDiskViewer(folder: string): Promise<{ html: string; diskMtimeMs: number } | null> {
+    const htmlPath = path.join(folder, 'build', 'serve', 'viewer.html');
+    if (!fs.existsSync(htmlPath)) return null;
+    try {
+      const raw = fs.readFileSync(htmlPath, 'utf8');
+      const [components, nets] = await Promise.all([
+        this.service.components(),
+        this.service.netSources().catch(() => []),
+      ]);
+      const { html } = injectProbeClient(raw, components, nets);
+      return { html, diskMtimeMs: mtimeOf(htmlPath) };
+    } catch (err) {
+      this.output.appendLine(
+        `viewer page read failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return null;
+    }
+  }
+
+  /**
+   * Adopt a newer on-disk viewer page into the in-memory cache. The cached
+   * page outlives the toolchain that generated it: a viewer update (or an
+   * out-of-band `gerber-viewer` run) rewrites build/serve/viewer.html
+   * without touching the board, and a live panel keyed on the board's mtime
+   * would keep serving the pre-update page until the board next changes.
+   * Same freshness rule as restorePanel's fast path (page newer than the
+   * board = current revision), plus newer than what this panel already
+   * serves. No export pipeline — read + probe-inject only.
+   */
+  private async adoptNewerDiskViewer(folder: string): Promise<boolean> {
+    // mid-pipeline the page on disk can be half-written — only adopt pages
+    // that finished landing
+    if (this.generating) return false;
+    if (!this.generated) return false;
+    const board = newestBoardFile(folder);
+    if (!board) return false;
+    const page = await this.readDiskViewer(folder);
+    if (!page) return false;
+    // a page older than the board describes the previous revision
+    if (page.diskMtimeMs <= mtimeOf(board)) return false;
+    if (page.diskMtimeMs <= this.generated.diskMtimeMs) return false;
+    this.generated = { html: page.html, boardMtimeMs: mtimeOf(board), diskMtimeMs: page.diskMtimeMs };
+    this.output.appendLine('viewer page on disk is newer than the served one — adopted it');
+    return true;
+  }
+
   /** Assign the generated page and watch for the client announcing itself. */
   private assignHtml(): void {
     this.readySeen = false;
     // track the assigned string ourselves: reading webview.html back is not
     // guaranteed to round-trip, and show()'s "needs reassign" check keys on it
     this.assignedHtml = this.generated!.html;
+    // the page's generation stamp — with three caches (VS Code's installed
+    // workspace-extension copy, this panel's in-memory html, the retained
+    // webview page) between a rebuild and what renders, the output channel
+    // must be able to say WHICH build actually loaded
+    const build = /<meta name="tc-viewer-build" content="([^"]*)"/.exec(this.assignedHtml);
+    this.output.appendLine(`viewer page assigned (build ${build ? build[1] : 'unknown — pre-stamp page'})`);
     this.panel!.webview.html = this.assignedHtml;
     setTimeout(() => {
       if (!this.readySeen && this.panel) {
@@ -340,7 +400,18 @@ export class BoardViewerPanel {
     // onChange loosely); the board's mtime against the last render decides
     // whether any work is warranted at all
     const board = newestBoardFile(folder);
-    if (board && this.generated && mtimeOf(board) === this.generated.boardMtimeMs) return;
+    if (board && this.generated && mtimeOf(board) === this.generated.boardMtimeMs) {
+      // board unchanged — still pick up a newer on-disk viewer page (a
+      // viewer-tooling update regenerated it without touching the board);
+      // otherwise this watcher path has nothing to do
+      if (!(await this.adoptNewerDiskViewer(folder))) return;
+      if (this.panel && this.assignedHtml !== this.generated.html) {
+        this.output.appendLine('viewer page updated — reloading');
+        this.loadToken++;
+        this.assignHtml();
+      }
+      return;
+    }
     // The re-render takes ~20s (gerber export incl. the zone refill); the
     // page keeps showing the old board meanwhile, so say so in its status
     // text — the reload when the new HTML lands resets the element
@@ -424,13 +495,32 @@ export class BoardViewerPanel {
         return false;
       }
 
+      const boardName = path.basename(board, '.kicad_pcb');
+
+      // The ngspice view's electrical data (build/<board>_op.json) is only
+      // written by `typecad-pcb simulate` — nothing in the plain build or
+      // the export pipeline produces it, so without this a fresh project
+      // opens with an ngspice view that has nothing to hover. Best-effort:
+      // run it when the op file is missing or older than the netlist, and a
+      // failure (no ngspice installed, entry error) only costs the hover
+      // data — the viewer still generates.
+      const netlistFile = path.join(folder, 'build', `${boardName}.net`);
+      const opFile = path.join(folder, 'build', `${boardName}_op.json`);
+      if (fs.existsSync(netlistFile) && (!fs.existsSync(opFile) || mtimeOf(opFile) < mtimeOf(netlistFile))) {
+        this.output.appendLine('solving ngspice operating point…');
+        try {
+          await this.run(folder, 'npx typecad-pcb simulate', GENERATE_TIMEOUT_MS);
+        } catch (error) {
+          this.output.appendLine(`op solve skipped: ${error instanceof Error ? error.message : String(error)}`);
+        }
+      }
+
       this.output.appendLine('exporting gerbers…');
       // explicit board path: build/ can hold stray .kicad_pcb files (fp
       // upgrade tests, imports) and the CLI refuses an ambiguous export
       await this.run(folder, `npx typecad-pcb export gerbers "${board}"`, GENERATE_TIMEOUT_MS);
       await this.run(folder, `npx typecad-pcb export drill "${board}"`, GENERATE_TIMEOUT_MS);
 
-      const boardName = path.basename(board, '.kicad_pcb');
       const gerbersDir = path.join('build', 'gerbers');
       const outPath = path.join('build', 'serve', 'viewer.html');
       // Optional data overlays, each shipped only when the build actually
@@ -508,7 +598,7 @@ export class BoardViewerPanel {
       if (!injected) {
         this.output.appendLine('warning: viewer HTML had no <head>/</body> anchors — cross-probe disabled');
       }
-      this.generated = { html, boardMtimeMs: mtimeOf(board) };
+      this.generated = { html, boardMtimeMs: mtimeOf(board), diskMtimeMs: mtimeOf(path.join(folder, outPath)) };
       this.output.appendLine(
         `viewer ready: ${components.length} component outline(s), board mtime ${this.generated.boardMtimeMs}, cross-probe ${injected ? 'on' : 'off'}`,
       );
@@ -550,8 +640,18 @@ export class BoardViewerPanel {
       const comps = await this.service.components();
       const variableOf = new Map(comps.map((c) => [c.reference, c.variable ?? '']));
       const srcUris = await vscode.workspace.findFiles(new vscode.RelativePattern(folder, 'src/**/*.ts'));
+      // the build's ENTRY file plans first: the route stages take the first
+      // file that carries typecad.create(), and a stray copy in src/ (with
+      // its own create()) otherwise captures every rewrite — edits land in
+      // a file nothing builds, and drawn traces silently miss the board
+      const entry = entrySourceFile(folder);
+      let ordered = srcUris;
+      if (entry) {
+        const hit = srcUris.find((u) => u.fsPath.toLowerCase() === entry.toLowerCase());
+        if (hit) ordered = [hit, ...srcUris.filter((u) => u !== hit)];
+      }
       const files = [];
-      for (const uri of srcUris) {
+      for (const uri of ordered) {
         files.push({ uri: uri.toString(), text: (await vscode.workspace.openTextDocument(uri)).getText() });
       }
       const plan = planLayoutApply(files, {
@@ -589,7 +689,7 @@ export class BoardViewerPanel {
       const anyApplied =
         c.moves > 0 || c.endpoints > 0 || c.texts > 0 || c.values > 0 || c.labels > 0 || c.renames > 0 || c.routes > 0 || c.deletes > 0;
       this.output.appendLine(
-        `layout apply: ${c.moves} placement(s) moved${c.endpoints ? `, ${c.endpoints} route endpoint(s) translated` : ''}${c.routes ? `, ${c.routes} track route(s) added to source` : ''}${c.deletes ? `, ${c.deletes} segment(s) deleted from source` : ''}${c.texts ? `, ${c.texts} text(s) edited` : ''}${c.values ? `, ${c.values} value(s) edited` : ''}${c.labels ? `, ${c.labels} label(s) repositioned` : ''}${c.renames ? `, ${c.renames} reference(s) renamed` : ''}${plan.skipped.length ? `, skipped ${plan.skipped.join('; ')}` : ''} — rebuilding`,
+        `layout apply: ${c.moves} placement(s) moved${c.endpoints ? `, ${c.endpoints} route endpoint(s) translated` : ''}${c.routes ? `, ${c.routes} track route(s) added to source` : ''}${c.deletes ? `, ${c.deletes} segment(s) deleted from source` : ''}${c.texts ? `, ${c.texts} text(s) edited` : ''}${c.values ? `, ${c.values} value(s) edited` : ''}${c.labels ? `, ${c.labels} label(s) repositioned` : ''}${c.renames ? `, ${c.renames} reference(s) renamed` : ''}${plan.skipped.length ? `, skipped ${plan.skipped.join('; ')}` : ''}`,
       );
       if (plan.skipped.length) {
         vscode.window.setStatusBarMessage(`layout: skipped ${plan.skipped.join('; ')}`, 8000);
@@ -598,6 +698,10 @@ export class BoardViewerPanel {
         void this.panel?.webview.postMessage({ type: 'typecad/layout-status', error: undefined });
         return;
       }
+      // the button says "apply & rebuild" — every apply rebuilds. (A former
+      // fast path deferred moves-only applies to the next manual build; the
+      // page's ghosts already showed the answer, but a button that names the
+      // rebuild must run it.)
       this.postStatus('rebuilding board…');
       await this.run(folder, 'npx typecad-pcb build', GENERATE_TIMEOUT_MS);
       // A move invalidates every DRC marker — re-run DRC so the regenerated

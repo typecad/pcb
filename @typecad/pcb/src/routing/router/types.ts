@@ -79,6 +79,19 @@ export interface IRoutingOptions {
   powerInfo?: IPowerInfo;
   /** Maximum search iterations before giving up. Example: 500_000 */
   maxIterations?: number;
+  /**
+   * Wall-clock budget for a single A* search in milliseconds. A search that
+   * exceeds it fails fast with a time-budget error instead of grinding
+   * through hundreds of thousands of iterations on an unreachable target.
+   * Default: 15000. Use 0 to disable.
+   */
+  timeBudgetMs?: number;
+  /**
+   * Wall-clock budget for routing one net (all of its MST edges) in
+   * milliseconds. When the budget is exhausted the remaining edges are
+   * skipped and reported as failed. Default: 60000. Use 0 to disable.
+   */
+  netTimeBudgetMs?: number;
   /** Whether the router may change layers. Default: true */
   allowVias?: boolean;
   /** Allow 45° runs instead of strictly orthogonal moves. Default: true */
@@ -137,6 +150,8 @@ export type NormalizedRoutingOptions = Required<
     | 'disableResumeGrid'
     | 'powerInfo'
     | 'lengthMatch'
+    | 'timeBudgetMs'
+    | 'netTimeBudgetMs'
   >
 > &
   Pick<
@@ -158,6 +173,8 @@ export type NormalizedRoutingOptions = Required<
     | 'disableResumeGrid'
     | 'powerInfo'
     | 'lengthMatch'
+    | 'timeBudgetMs'
+    | 'netTimeBudgetMs'
   > & {
     preferredLayers: string[];
     useAdaptiveStride: boolean;

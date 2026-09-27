@@ -150,14 +150,37 @@ export async function create_project(answers: ProjectAnswers) {
     try {
       fs.writeFileSync(
         `./${answers.name}/hw/src/${answers.name}.ts`,
-        `import { PCB, Resistor } from '@typecad/pcb'
+        `import { PCB, Component, Power, Resistor, LED } from '@typecad/pcb'
 
 let typecad = new PCB('${answers.name}');
-let r1 = new Resistor({ value: '1kohm' });
 
-typecad.create(r1);
+// a 3 V coin cell lights an LED through a current-limiting resistor — a
+// complete circuit: nets to route in the layout view, and a power source
+// for the ngspice view
+let battery = new Component({
+  footprint: 'Battery:BatteryHolder_Keystone_3008_1x2450',
+  symbol: 'Device:Battery_Cell',
+  prefix: 'BT',
+  value: 'CR2450',
+});
+let r1 = new Resistor({ value: '150' });
+let led = new LED({
+  value: 'red',
+  simulation: { model: 'Dled D (IS=1a RS=3.3 N=1.8)' },
+});
+
+typecad.named('+BATT').net(battery.pin(1), r1.pin(1));
+// KiCad diode symbols number the cathode 1 / anode 2
+typecad.named('led_a').net(r1.pin(2), led.pin(2));
+typecad.named('GND').net(led.pin(1), battery.pin(2));
+
+// the rail ngspice drives: solve it with \`npm run simulate\`
+new Power({ power: battery.pin(1), gnd: battery.pin(2), voltage: 3, direction: 'output' });
+
+typecad.create(battery, r1, led);
 // 1. run the npm script 'build'
-// 2. run the npm script 'open_board' to edit the board in KiCAD
+// 2. run the npm script 'simulate' for the board viewer's ngspice view
+// 3. run the npm script 'open_board' to edit the board in KiCAD
  `,
       );
     } catch (error) {
@@ -280,6 +303,7 @@ ${skillSections}
 ## npm Scripts
 
 - \`npm run build\` — generate KiCad files from typeCAD source
+- \`npm run simulate\` — ngspice operating point for the board viewer's ngspice view
 - \`npm run add_component\` — add a component interactively
 - \`npm run add_package\` — create a reusable component package
 - \`npm run kicad-search\` — search KiCad symbol libraries
@@ -300,6 +324,7 @@ ${skillSections}
     package_json.type = 'module';
 
     package_json.scripts['build'] = `typecad-pcb build`;
+    package_json.scripts['simulate'] = `typecad-pcb simulate`;
     package_json.scripts['add_component'] = `typecad-pcb add component`;
     package_json.scripts['add_package'] = `typecad-pcb add package`;
     package_json.scripts['kicad-search'] = `typecad-pcb search`;
@@ -339,6 +364,19 @@ ${skillSections}
         logger.error(
           `Error creating the HAL project — run 'npx @typecad/hal create ${answers.name} --outDir fw' inside the project to retry`,
         );
+      }
+
+      // Safety net for hal releases whose own install step failed (≤1.0.0-
+      // alpha.20 cannot spawn npm on Windows): a scaffolded fw/ without
+      // node_modules makes VS Code's Vitest extension flag the scaffolded
+      // vitest config as soon as the workspace opens.
+      const fwDir = path.join(process.cwd(), answers.name, 'fw');
+      if (fs.existsSync(path.join(fwDir, 'package.json')) && !fs.existsSync(path.join(fwDir, 'node_modules'))) {
+        logger.log(chalk.green('+'), 'Installing firmware dependencies in ./fw');
+        const installedFw = await runAsync('npm', ['install'], fwDir, { stdio: 'inherit', timeout: 600_000 });
+        if (!installedFw) {
+          logger.error(`Error installing ./fw dependencies — run 'npm install' inside fw/ and reopen the workspace`);
+        }
       }
     }
 

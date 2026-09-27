@@ -385,132 +385,134 @@ export function buildViewerFromFiles(paths: string[], options: ViewerBuildOption
   // Layout-view component overlay: the pcba glyph extractor derives each
   // component's position (pad centroid), orientation (PCA of the pads) and
   // body size (footprint name via the netlist) from the gerbers themselves —
-  // so the overlay works in plain browser tabs, no host needed. Pads' nets
-  // (for rip-up) come from the pad→net map the netlist already filled in.
+  // so the overlay works in plain browser tabs, no host needed and no nets
+  // required: a fresh board with nothing connected still gets the layout
+  // view. Pads' nets (for rip-up) stay optional and come from the pad→net
+  // map the netlist already filled in.
   let layoutComponents: ViewerOptions['layoutComponents'] = [];
-  if (Object.keys(padNets).length > 0) {
-    for (const side of ['front', 'back'] as const) {
-      const extracted = extractComponents(ordered, side, pcbaNetlist);
-      warnings.push(...extracted.warnings);
-      for (const c of extracted.components) {
-        const nets: string[] = [];
-        for (const pad of c.pads) {
-          const net = padNets[`${c.ref}.${pad.pin}`];
-          if (net && !nets.includes(net)) nets.push(net);
-        }
-        const bw = c.bbox.maxX - c.bbox.minX;
-        const bh = c.bbox.maxY - c.bbox.minY;
-        const cx = c.bbox.minX + bw / 2;
-        const cy = c.bbox.minY + bh / 2;
-        // the overlay group hangs off the pads-bbox center and carries the
-        // PCA angle as its base rotation, so outline points must ride in that
-        // same local frame (relative to the center, axes un-rotated) — then
-        // the drawn shape moves/rotates with the handle for free
-        const toGroup = (p: Point): Point => {
-          const r = rotatePoint(p, -c.angle, { x: cx, y: cy });
-          return { x: r.x - cx, y: r.y - cy };
-        };
-        let outline: Array<{ x: number; y: number }> | null = null;
-        if (c.fabContour && c.fabContour.length >= 3) {
-          // exact footprint outline: the fab contour is centered on the pad
-          // centroid in the part's own frame — unrotate to the gerber frame,
-          // then into the group frame (chamfers and all)
-          const centroid = {
-            x: c.pads.reduce((s, p) => s + p.at.x, 0) / c.pads.length,
-            y: c.pads.reduce((s, p) => s + p.at.y, 0) / c.pads.length,
-          };
-          outline = c.fabContour.map((p) =>
-            toGroup(rotatePoint({ x: p.x + centroid.x, y: p.y + centroid.y }, c.angle, centroid)),
-          );
-        } else if (c.pads.length >= 2) {
-          // no fab layer: the land pattern IS the footprint — convex hull of
-          // the pad rectangles (pad w/h are gerber-frame extents, so they
-          // transpose into the rotated frame like every other local shape)
-          const rot = (-c.angle * Math.PI) / 180;
-          const ca = Math.abs(Math.cos(rot));
-          const sa = Math.abs(Math.sin(rot));
-          const corners: Point[] = [];
-          for (const pad of c.pads) {
-            const at = toGroup(pad.at);
-            const ex = (ca * pad.w + sa * pad.h) / 2;
-            const ey = (sa * pad.w + ca * pad.h) / 2;
-            for (const [sx, sy] of [
-              [-1, -1],
-              [1, -1],
-              [1, 1],
-              [-1, 1],
-            ] as const)
-              corners.push({ x: at.x + sx * ex, y: at.y + sy * ey });
-          }
-          outline = convexHull(corners);
-        }
-        // the handle's extent follows the drawn outline (falls back to the
-        // footprint-name dims / pad bbox when neither outline exists)
-        let ow = c.bodyDims && c.bodyDims.w > 0.05 ? c.bodyDims.w : bw;
-        let oh = c.bodyDims && c.bodyDims.h > 0.05 ? c.bodyDims.h : bh;
-        if (outline && outline.length >= 3) {
-          let minX = Infinity;
-          let minY = Infinity;
-          let maxX = -Infinity;
-          let maxY = -Infinity;
-          for (const p of outline) {
-            minX = Math.min(minX, p.x);
-            minY = Math.min(minY, p.y);
-            maxX = Math.max(maxX, p.x);
-            maxY = Math.max(maxY, p.y);
-          }
-          ow = maxX - minX;
-          oh = maxY - minY;
-        }
-        layoutComponents.push({
-          ref: c.ref,
-          x: +cx.toFixed(3),
-          y: +cy.toFixed(3),
-          rot: +c.angle.toFixed(1),
-          // netlist value ("1k") — the layout view's in-place value editor
-          value: pcbaNetlist[c.ref]?.value,
-          // floor per axis so the box is never degenerate (a zero-height
-          // handle makes rotation invisible)
-          w: +Math.max(ow, 0.6).toFixed(2),
-          h: +Math.max(oh, 0.6).toFixed(2),
-          side,
-          nets,
-          // per-part label anchors (Reference on silk, Value on fab) —
-          // independently draggable texts in the layout view
-          labels: (boardLabels[c.ref] ?? []).map((lb) => ({
-            kind: lb.kind,
-            text: lb.text,
-            x: lb.x,
-            y: lb.y,
-            rot: lb.rot,
-            side: lb.side,
-            h: lb.h,
-            layerKind: lb.layerKind,
-          })),
-          // the exact footprint outline in the group's local frame — the
-          // drag handle draws this polygon instead of a generic rounded box
-          outline: outline && outline.length >= 3
-            ? outline.map((p) => ({ x: +p.x.toFixed(3), y: +p.y.toFixed(3) }))
-            : undefined,
-          // pad centers ride along (gerber frame) — sticky route endpoints on
-          // apply translate any .from/.to literal that sits on one of these,
-          // and the ratsnest connects each pad's net to the surviving copper
-          pads: c.pads.map((pad) => ({
-            x: +pad.at.x.toFixed(3),
-            y: +pad.at.y.toFixed(3),
-            net: padNets[`${c.ref}.${pad.pin}`],
-          })),
-        });
+  for (const side of ['front', 'back'] as const) {
+    const extracted = extractComponents(ordered, side, pcbaNetlist);
+    for (const c of extracted.components) {
+      const nets: string[] = [];
+      for (const pad of c.pads) {
+        const net = padNets[`${c.ref}.${pad.pin}`];
+        if (net && !nets.includes(net)) nets.push(net);
       }
+      const bw = c.bbox.maxX - c.bbox.minX;
+      const bh = c.bbox.maxY - c.bbox.minY;
+      const cx = c.bbox.minX + bw / 2;
+      const cy = c.bbox.minY + bh / 2;
+      // the overlay group hangs off the pads-bbox center and carries the
+      // PCA angle as its base rotation, so outline points must ride in that
+      // same local frame (relative to the center, axes un-rotated) — then
+      // the drawn shape moves/rotates with the handle for free
+      const toGroup = (p: Point): Point => {
+        const r = rotatePoint(p, -c.angle, { x: cx, y: cy });
+        return { x: r.x - cx, y: r.y - cy };
+      };
+      let outline: Array<{ x: number; y: number }> | null = null;
+      if (c.fabContour && c.fabContour.length >= 3) {
+        // exact footprint outline: the fab contour is centered on the pad
+        // centroid in the part's own frame — unrotate to the gerber frame,
+        // then into the group frame (chamfers and all)
+        const centroid = {
+          x: c.pads.reduce((s, p) => s + p.at.x, 0) / c.pads.length,
+          y: c.pads.reduce((s, p) => s + p.at.y, 0) / c.pads.length,
+        };
+        outline = c.fabContour.map((p) =>
+          toGroup(rotatePoint({ x: p.x + centroid.x, y: p.y + centroid.y }, c.angle, centroid)),
+        );
+      } else if (c.pads.length >= 2) {
+        // no fab layer: the land pattern IS the footprint — convex hull of
+        // the pad rectangles (pad w/h are gerber-frame extents, so they
+        // transpose into the rotated frame like every other local shape)
+        const rot = (-c.angle * Math.PI) / 180;
+        const ca = Math.abs(Math.cos(rot));
+        const sa = Math.abs(Math.sin(rot));
+        const corners: Point[] = [];
+        for (const pad of c.pads) {
+          const at = toGroup(pad.at);
+          const ex = (ca * pad.w + sa * pad.h) / 2;
+          const ey = (sa * pad.w + ca * pad.h) / 2;
+          for (const [sx, sy] of [
+            [-1, -1],
+            [1, -1],
+            [1, 1],
+            [-1, 1],
+          ] as const)
+            corners.push({ x: at.x + sx * ex, y: at.y + sy * ey });
+        }
+        outline = convexHull(corners);
+      }
+      // the handle's extent follows the drawn outline (falls back to the
+      // footprint-name dims / pad bbox when neither outline exists)
+      let ow = c.bodyDims && c.bodyDims.w > 0.05 ? c.bodyDims.w : bw;
+      let oh = c.bodyDims && c.bodyDims.h > 0.05 ? c.bodyDims.h : bh;
+      if (outline && outline.length >= 3) {
+        let minX = Infinity;
+        let minY = Infinity;
+        let maxX = -Infinity;
+        let maxY = -Infinity;
+        for (const p of outline) {
+          minX = Math.min(minX, p.x);
+          minY = Math.min(minY, p.y);
+          maxX = Math.max(maxX, p.x);
+          maxY = Math.max(maxY, p.y);
+        }
+        ow = maxX - minX;
+        oh = maxY - minY;
+      }
+      layoutComponents.push({
+        ref: c.ref,
+        x: +cx.toFixed(3),
+        y: +cy.toFixed(3),
+        rot: +c.angle.toFixed(1),
+        // netlist value ("1k") — the layout view's in-place value editor
+        value: pcbaNetlist[c.ref]?.value,
+        // floor per axis so the box is never degenerate (a zero-height
+        // handle makes rotation invisible)
+        w: +Math.max(ow, 0.6).toFixed(2),
+        h: +Math.max(oh, 0.6).toFixed(2),
+        side,
+        nets,
+        // per-part label anchors (Reference on silk, Value on fab) —
+        // independently draggable texts in the layout view
+        labels: (boardLabels[c.ref] ?? []).map((lb) => ({
+          kind: lb.kind,
+          text: lb.text,
+          x: lb.x,
+          y: lb.y,
+          rot: lb.rot,
+          side: lb.side,
+          h: lb.h,
+          layerKind: lb.layerKind,
+        })),
+        // the exact footprint outline in the group's local frame — the
+        // drag handle draws this polygon instead of a generic rounded box
+        outline: outline && outline.length >= 3
+          ? outline.map((p) => ({ x: +p.x.toFixed(3), y: +p.y.toFixed(3) }))
+          : undefined,
+        // pad centers ride along (gerber frame) — sticky route endpoints on
+        // apply translate any .from/.to literal that sits on one of these,
+        // and the ratsnest connects each pad's net to the surviving copper
+        pads: c.pads.map((pad) => ({
+          x: +pad.at.x.toFixed(3),
+          y: +pad.at.y.toFixed(3),
+          net: padNets[`${c.ref}.${pad.pin}`],
+        })),
+      });
     }
-    // through-hole pads flash on both copper layers — the same ref extracts
-    // once per side; keep the front entry so each component drags once
-    const byRef = new Map<string, (typeof layoutComponents)[number]>();
-    for (const comp of layoutComponents) {
-      const prev = byRef.get(comp.ref);
-      if (!prev || (prev.side === 'back' && comp.side === 'front')) byRef.set(comp.ref, comp);
-    }
-    layoutComponents = [...byRef.values()];
+  }
+  // through-hole pads flash on both copper layers — the same ref extracts
+  // once per side; keep the front entry so each component drags once
+  const byRef = new Map<string, (typeof layoutComponents)[number]>();
+  for (const comp of layoutComponents) {
+    const prev = byRef.get(comp.ref);
+    if (!prev || (prev.side === 'back' && comp.side === 'front')) byRef.set(comp.ref, comp);
+  }
+  layoutComponents = [...byRef.values()];
+  if (layoutComponents.length === 0) {
+    warnings.push('no X2 component attributes (%TO.P) on any copper layer — component overlay skipped');
   }
   // the pcba view's theme picker: surface colors per builtin, ordered as the
   // combo shows them. The switcher remaps these flat colors client-side, so

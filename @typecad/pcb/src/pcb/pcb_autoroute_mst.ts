@@ -246,6 +246,21 @@ export function routeMstNet(
           path: segment,
         });
       }
+
+      // A partial MST result (success=false with some routed segments) must
+      // surface its shortfall: failed edges are absent from `segments`, so
+      // without this marker completedCount/routeCount would read as, e.g.,
+      // 2/2 "complete" while pads on this net are left unconnected.
+      if (!path.success) {
+        out.routeDetails.push({
+          length: 0,
+          viaCount: 0,
+          layers: [],
+          success: false,
+          error: path.error ?? 'Partial net routing: some connections could not be completed',
+          path,
+        });
+      }
     } else {
       // Fallback: convert the merged path (old behavior, will have issues)
       debugLog(

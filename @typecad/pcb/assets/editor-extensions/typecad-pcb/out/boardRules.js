@@ -66,6 +66,9 @@ function userRulesFromFolder(hwFolder) {
             const vd = num(d.viaDrill);
             if (vd !== undefined)
                 c.viaDrill = vd;
+            const cl = num(d.clearance);
+            if (cl !== undefined)
+                c.clearance = cl;
             if (Object.keys(c).length > 0)
                 classes[name] = c;
         }
@@ -124,6 +127,9 @@ function rulesFromProject(boardPath) {
         const vd = num(cls.via_drill);
         if (vd !== undefined)
             c.viaDrill = vd;
+        const cl = num(cls.clearance);
+        if (cl !== undefined)
+            c.clearance = cl;
         if (Object.keys(c).length > 0)
             classes[name] = c;
     }

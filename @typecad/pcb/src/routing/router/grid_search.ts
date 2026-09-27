@@ -439,6 +439,8 @@ export class GridSearch {
     forceSingleLayer: boolean;
     windowData: CachedWindow;
     seedVias?: { x: number; y: number }[];
+    /** Absolute performance.now() timestamp after which the search gives up. */
+    deadline?: number;
   }): ISearchRunResult {
     profiler.start('GridSearch.runSearchWithWindow');
     try {
@@ -752,9 +754,25 @@ export class GridSearch {
 
       let iterations = 0;
       const maxIterations = this.options.maxIterations ?? 500000;
+      // Wall-clock guard: an unreachable target (e.g. a wide trace that
+      // cannot escape a fine-pitch pad row) otherwise burns the full
+      // iteration budget in a fruitless sweep of the whole grid. Checked
+      // every 1024 pops — cheap relative to neighbor expansion. The
+      // deadline spans window expansions so re-running with a larger
+      // window cannot reset the clock.
+      const deadline = config.deadline;
 
       while (openPQ.size() > 0 && iterations < maxIterations) {
         iterations++;
+
+        if (deadline !== undefined && (iterations & 1023) === 0 && performance.now() > deadline) {
+          return {
+            status: 'failure',
+            iterations,
+            error: `Search exceeded its ${this.options.timeBudgetMs}ms time budget`,
+            blockedBy: this.currentBlockers && this.currentBlockers.size > 0 ? Array.from(this.currentBlockers) : undefined,
+          };
+        }
 
         const current = openPQ.pop()!;
         const currentKey = encodeKey(current.layer, current.gridX, current.gridY, current.layerIndex);
@@ -925,6 +943,10 @@ export class GridSearch {
       // expansion re-runs with a fresh open set, but the rip-up intelligence
       // gathered along the way must survive to the final failure result.
       this.currentBlockers = new Set<string>();
+      // One wall-clock budget per findPath call, shared across window
+      // expansions (see runSearchWithWindow).
+      const timeBudgetMs = this.options.timeBudgetMs ?? 0;
+      const searchDeadline = timeBudgetMs > 0 ? performance.now() + timeBudgetMs : undefined;
       while (true) {
         const result = this.runSearchWithWindow({
           adjustedStart,
@@ -936,6 +958,7 @@ export class GridSearch {
           forceSingleLayer,
           windowData,
           seedVias,
+          deadline: searchDeadline,
         });
 
         if (result.status === 'expand') {

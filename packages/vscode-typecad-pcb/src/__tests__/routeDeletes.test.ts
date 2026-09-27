@@ -248,4 +248,73 @@ function build() {
     // would still compile but silently reformat the user's code)
     expect(out).toContain('  const route1 = new TrackBuilder');
   });
+
+  it('sees and regenerates chains authored with a width constant', () => {
+    // the demo project's own style: .to({ x, y }, 'F.Cu', VCCW) — an
+    // identifier width. Those chains must be deletable, and the constant
+    // must survive regeneration instead of being flattened to its value
+    const widthed = () => `
+const VCCW = 0.3;
+const trunk = new TrackBuilder(typecad, { net: 'VCC', })
+  .from({ x: 1, y: 1 }, 'F.Cu', VCCW)
+  .to({ x: 2, y: 1 }, 'F.Cu', VCCW)
+  .to({ x: 3, y: 1 }, 'F.Cu', VCCW); // tail comment rides outside the chain
+typecad.create(trunk);`;
+    const { edits, applied } = planRouteDeletes(widthed(), [
+      { net: 'VCC', x1: 1, y1: 1, x2: 2, y2: 1, layer: 'F.Cu' },
+    ]);
+    expect(applied).toBe(1);
+    const out = apply(widthed(), edits);
+    expectValidTs(out);
+    expect(out).toContain(".from({ x: 2, y: 1 }, 'F.Cu', VCCW)");
+    // .to points regenerate in the object form — the constant rides along
+    expect(out).toContain(".to({ x: 3, y: 1, layer: 'F.Cu', width: VCCW })");
+  });
+
+  it('keeps end-of-line and in-chain comments through regeneration', () => {
+    // the demo project's style: a `// R3 pin 1` note on the chain's final
+    // line. Deleting an EARLIER segment must not eat it; the ';' rides
+    // before the comment, not after it
+    const noted = () => `
+const trunk = new TrackBuilder(typecad, { net: 'VCC', })
+  .from({ x: 1, y: 1 }, 'F.Cu', 0.3) // from the reg
+  .to({ x: 2, y: 1 }, 'F.Cu', 0.3)
+  // mid-chain note; even one with a ; inside
+  .to({ x: 3, y: 1 }, 'F.Cu', 0.3); // R3 pin 1
+typecad.create(trunk);`;
+    const { edits } = planRouteDeletes(noted(), [
+      { net: 'VCC', x1: 1, y1: 1, x2: 2, y2: 1, layer: 'F.Cu' },
+    ]);
+    const out = apply(noted(), edits);
+    expectValidTs(out);
+    // the deleted from-point's comment died with it; the run starts clean
+    expect(out).toContain(".from({ x: 2, y: 1 }, 'F.Cu', 0.3)\n");
+    expect(out).not.toContain('from the reg');
+    expect(out).toContain('// mid-chain note; even one with a ; inside');
+    // the terminator sits BEFORE the tail comment — after it, the ';' would
+    // be swallowed into the comment
+    expect(out).toMatch(/\.to\(\{ x: 3, y: 1[^)]*\}\); \/\/ R3 pin 1/);
+  });
+
+  it('drops a comment with the point it described (deleted copper)', () => {
+    // both segments past point 3 die, so point 3 itself vanishes — its
+    // comment describes copper that no longer exists and goes with it
+    const noted = () => `
+const trunk = new TrackBuilder(typecad, { net: 'VCC', })
+  .from({ x: 1, y: 1 }, 'F.Cu', 0.3)
+  .to({ x: 2, y: 1 }, 'F.Cu', 0.3)
+  .to({ x: 3, y: 1 }, 'F.Cu', 0.3) // this run goes away
+  .to({ x: 4, y: 1 }, 'F.Cu', 0.3);
+typecad.create(trunk);`;
+    const { edits } = planRouteDeletes(noted(), [
+      { net: 'VCC', x1: 2, y1: 1, x2: 3, y2: 1, layer: 'F.Cu' },
+      { net: 'VCC', x1: 3, y1: 1, x2: 4, y2: 1, layer: 'F.Cu' },
+    ]);
+    const out = apply(noted(), edits);
+    expectValidTs(out);
+    expect(out).toContain(".to({ x: 2, y: 1, layer: 'F.Cu', width: 0.3 });");
+    expect(out).not.toContain('this run goes away');
+    expect(out).not.toContain('x: 3');
+    expect(out).not.toContain('x: 4');
+  });
 });

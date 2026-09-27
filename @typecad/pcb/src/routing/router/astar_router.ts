@@ -167,6 +167,8 @@ export class AStarRouter {
       net: options.net,
       impedance: options.impedance,
       maxIterations: options.maxIterations ?? 500000,
+      timeBudgetMs: options.timeBudgetMs ?? 15000,
+      netTimeBudgetMs: options.netTimeBudgetMs ?? 60000,
       allowVias: options.allowVias ?? true,
       allow45DegreeRuns: options.allow45DegreeRuns ?? true,
       freeViaLocations: options.freeViaLocations,
@@ -578,7 +580,24 @@ export class AStarRouter {
       // the next edge routes — later edges can then branch into the existing
       // trunk (routeMSTEdge) instead of strictly routing pad-to-pad.
       const router = this.getMstRouter();
+      // Net-level wall-clock budget: bound the whole edge loop, not just each
+      // individual search, so a net whose edges all fail fast-but-slowly
+      // cannot run for minutes. 0 disables.
+      const netBudgetMs = this.options.netTimeBudgetMs ?? 0;
+      const netDeadline = netBudgetMs > 0 ? startTime + netBudgetMs : undefined;
+      let budgetExhausted = false;
       for (let i = 0; i < mstEdges.length; i++) {
+        if (netDeadline !== undefined && performance.now() > netDeadline) {
+          budgetExhausted = true;
+          if (this.options.debug)
+            logger.warn(
+              chalk.yellow(
+                `[AStarRouter] Net time budget of ${netBudgetMs}ms exhausted after ${i}/${mstEdges.length} edges`,
+              ),
+            );
+          break;
+        }
+
         const edge = mstEdges[i];
         const { from, to } = edge;
         const segmentResult = router.routeMSTEdge(points[from], points[to], points, routedPoints, allNodes);
@@ -626,7 +645,9 @@ export class AStarRouter {
           length: 0,
           viaCount: 0,
           success: false,
-          error: 'Failed to route any connections in the net',
+          error: budgetExhausted
+            ? `Failed to route any connections in the net (time budget of ${netBudgetMs}ms exhausted)`
+            : 'Failed to route any connections in the net',
         };
         this.logNetResult(errorResult, points, endTime - startTime);
         return errorResult;
@@ -646,7 +667,11 @@ export class AStarRouter {
         length: totalLength,
         viaCount: totalVias,
         success: allPointsRouted,
-        error: allPointsRouted ? undefined : `Partial routing: ${successCount}/${mstEdges.length} edges completed`,
+        error: allPointsRouted
+          ? undefined
+          : budgetExhausted
+            ? `Partial routing: ${successCount}/${mstEdges.length} edges completed (time budget of ${netBudgetMs}ms exhausted)`
+            : `Partial routing: ${successCount}/${mstEdges.length} edges completed`,
       };
 
       // Apply Steiner optimization if requested

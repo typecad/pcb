@@ -81,12 +81,26 @@ export function findBuildFile(extension: string): string | null {
 }
 
 /**
- * The project's compiled board. build/ picks up stray boards (fp upgrade
- * tests, imports, scratch files); the project's own board matches the hw
- * package name (rd-skeleton-hw → rd_skeleton) and wins over whatever stray
- * was touched last — newest is the fallback when no name matches.
+ * The project's compiled board. The build's own manifest (.typecad-board.json,
+ * written beside the board) is the truth — a renamed board is found at once
+ * and a leftover under the previous name can never shadow it. Without a
+ * manifest, build/ picks up stray boards (fp upgrade tests, imports, scratch
+ * files); the project's own board matches the hw package name
+ * (rd-skeleton-hw → rd_skeleton) and wins over whatever stray was touched
+ * last — newest is the fallback when no name matches.
  */
 export function findBoardFile(): string | null {
+  try {
+    const manifest = JSON.parse(
+      fs.readFileSync(path.join(buildDirPath(), '.typecad-board.json'), 'utf8'),
+    ) as { board?: unknown };
+    if (typeof manifest.board === 'string' && manifest.board.endsWith('.kicad_pcb')) {
+      const manifestBoard = path.join(buildDirPath(), manifest.board);
+      if (fs.existsSync(manifestBoard)) return manifestBoard;
+    }
+  } catch {
+    /* no/invalid manifest: the heuristics below */
+  }
   const files = findBuildFiles('.kicad_pcb');
   if (files.length === 0) return null;
   const byNewest = files.map((f) => ({ f, m: fs.statSync(f).mtimeMs })).sort((a, b) => b.m - a.m);

@@ -542,6 +542,21 @@ export interface IAutorouteOptions {
   maxIterations?: number;
 
   /**
+   * Wall-clock budget for a single A* search in ms (default: 15000, 0 disables).
+   * A search that cannot find a path fails fast with a time-budget error
+   * instead of sweeping the whole grid — the typical case is a trace too wide
+   * to escape a fine-pitch pad row.
+   */
+  timeBudgetMs?: number;
+
+  /**
+   * Wall-clock budget for routing one whole net (all its connections) in ms
+   * (default: 60000, 0 disables). When exhausted, remaining connections are
+   * skipped and reported as failures.
+   */
+  netTimeBudgetMs?: number;
+
+  /**
    * Cost penalty applied when using a via.
    * Higher values discourage vias; set allowVias=false to prohibit them.
    */

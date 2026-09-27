@@ -24,6 +24,36 @@ describe('planPlacementEdits', () => {
     expect(updated).toContain('r3.pcb = { x: 59, y: 26 };');
   });
 
+  it('INSERTS the literal after the constructor for an UNPLACED component (the layout view\'s whole point)', () => {
+    // a project whose parts were never placed: no `var.pcb = {…}` anywhere
+    const unplaced = `import { PCB, Component } from '@typecad/pcb';
+const typecad = new PCB('demo', {});
+const battery = new Component({
+  footprint: 'Battery:Keystone_3008',
+  prefix: 'BT',
+});
+const led = new LED({ value: 'red' });
+typecad.create(battery, led);
+`;
+    const { edits, skipped } = planPlacementEdits(
+      unplaced,
+      [
+        { ref: 'BT1', dx: 12.5, dy: -5 },
+        { ref: 'D1', dx: 1, dy: 1, rot: 90 },
+      ],
+      (ref) => ({ BT1: 'battery', D1: 'led' })[ref],
+    );
+    expect(skipped).toEqual([]);
+    expect(edits).toHaveLength(2);
+    const out = applyPlacementEdits(unplaced, edits);
+    // insertion lands right after the constructor statement, on its own line
+    expect(out).toContain("prefix: 'BT',\n});\nbattery.pcb = { x: 12.5, y: -5 };\nconst led");
+    expect(out).toContain('led.pcb = { x: 1, y: 1, rotation: 90 };');
+    // a follow-up apply now REWRITES the inserted literal (delta math)
+    const again = planPlacementEdits(out, [{ ref: 'BT1', dx: 1, dy: 0 }], () => 'battery');
+    expect(applyPlacementEdits(out, again.edits)).toContain('battery.pcb = { x: 13.5, y: -5 };');
+  });
+
   it('handles negative coordinates and formatting', () => {
     const neg = 'const a = new Component();\na.pcb = { x: -10.25, y: 3 };\n';
     const { edits } = planPlacementEdits(neg, [{ ref: 'A1', dx: -0.5, dy: 0.25 }], () => 'a');

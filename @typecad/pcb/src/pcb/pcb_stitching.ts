@@ -143,7 +143,11 @@ function placeStitchVias(pcb: PCB, net: string, options: IStitchOptions, placedU
     if (!bounds) {
       throw new RangeError('stitch() needs a board region: pass an `area` or call pcb.outline() first');
     }
-    const margin = options.margin ?? 0.5;
+    // Default margin keeps the drill barrel ≥ 0.5 mm from the board edge
+    // (KiCad's default hole-to-edge constraint): the via center sits at
+    // `margin` and its hole edge at margin − drill/2, so the inset must
+    // cover both. A flat 0.5 leaves holes at 0.35 mm — a DRC violation.
+    const margin = options.margin ?? Math.max(0.5, 0.5 + drill / 2);
     region = {
       x: bounds.minX + margin,
       y: bounds.minY + margin,

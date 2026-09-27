@@ -51,6 +51,20 @@ export function resolveNet(
         });
 
         if (pinInSchematic) {
+          // A net whose only member is a do-not-connect pin (schematic.dnc())
+          // is a schematic-side marker, not copper: the pad must stay
+          // unconnected on the board, or any copper near it reads as a
+          // two-net short in DRC.
+          const dncMarkerNet =
+            schematicNode.nodes.length === 1 && schematicNode.nodes.every((p) => p.type === 'no_connect');
+          if (dncMarkerNet) {
+            return {
+              found: false,
+              netCode: 0,
+              netName: '',
+            };
+          }
+
           schematicNetName = schematicNode.name;
           schematicNetCode = schematicNode.code;
           foundInSchematic = true;

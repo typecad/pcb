@@ -13,6 +13,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import logger from '../utils/logging.js';
 import { getBuildDir } from '../utils/constants.js';
+import { addOutputPath } from '../cli/pending_summary.js';
 import type { PCB } from './pcb.js';
 import { sym, SNode } from '../sexpr/index.js';
 import type { SExpr } from '../sexpr/types.js';
@@ -99,7 +100,12 @@ export function writePadsManifest(boardContents: SExpr[], pcb: PCB): void {
     const outPath = path.join(getBuildDir(), `${pcb.boardName}_pads.json`);
     fs.mkdirSync(getBuildDir(), { recursive: true });
     fs.writeFileSync(outPath, JSON.stringify(manifest));
-    logger.debug(`pads manifest written: ${outPath} (${manifest.pads.length} pads)`);
+    // Loud on purpose: measured pad geometry is placement-grade data — the
+    // summary line is what makes agents reach for it instead of datasheets.
+    addOutputPath(outPath);
+    logger.info(
+      `pads manifest: ${manifest.pads.length} pads (measured position, extents, copper layers, nets) -> ${outPath}`,
+    );
   } catch (error) {
     logger.warn(
       `could not write pads manifest: ${error instanceof Error ? error.message : String(error)}`,

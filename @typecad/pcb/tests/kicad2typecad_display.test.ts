@@ -1,7 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { SExprNode } from '../src/kicad2typecad/sexpr_tree.js';
 import { KicadIRBuilder } from '../src/kicad2typecad/ir_builder.js';
-import { generateOutlineCode, generateStackupCode, type ChalkHelpers } from '../src/kicad2typecad/display.js';
+import {
+  generateOutlineCode,
+  generateStackupCode,
+  generateTrackCode,
+  type ChalkHelpers,
+} from '../src/kicad2typecad/display.js';
 import logger from '../src/utils/logging.js';
 import type { KicadIR } from '../src/kicad2typecad/types.js';
 
@@ -33,6 +38,48 @@ function captureLogs(fn: () => void): string {
   spy.mockRestore();
   return calls.join('\n');
 }
+
+describe('generateTrackCode round-trip', () => {
+  /** Minimal PCB stand-in: only track() is exercised by generateTrackCode. */
+  function trackPcbStub() {
+    const builder = {
+      from: vi.fn().mockReturnThis(),
+      to: vi.fn().mockReturnThis(),
+      via: vi.fn().mockReturnThis(),
+    };
+    const track = vi.fn(() => builder);
+    return { pcb: { track } as never, track };
+  }
+
+  it('binds named nets with pcb.track({ net }) so imported chains keep electrical identity', () => {
+    const ir = buildIr(`(kicad_pcb (version 20241229)
+  (net 0 "")
+  (net 1 "GND")
+  (net 2 "SDA")
+  (segment (start 0 0) (end 10 0) (width 0.25) (layer "F.Cu") (net 1))
+  (segment (start 10 0) (end 10 20) (width 0.25) (layer "F.Cu") (net 1))
+  (segment (start 0 5) (end 20 5) (width 0.5) (layer "B.Cu") (net 2))
+)`);
+    const { pcb, track } = trackPcbStub();
+    const out = captureLogs(() => generateTrackCode(ir, pcb, 'test', PLAIN_CH));
+    expect(out).toContain("typecad.track({ net: 'GND' }).from(");
+    expect(out).toContain("typecad.track({ net: 'SDA' }).from(");
+    expect(track).toHaveBeenCalledWith({ net: 'GND' });
+    expect(track).toHaveBeenCalledWith({ net: 'SDA' });
+  });
+
+  it('leaves unnamed nets netless', () => {
+    const ir = buildIr(`(kicad_pcb (version 20241229)
+  (net 0 "")
+  (segment (start 0 0) (end 10 0) (width 0.25) (layer "F.Cu") (net 0))
+)`);
+    const { pcb, track } = trackPcbStub();
+    const out = captureLogs(() => generateTrackCode(ir, pcb, 'test', PLAIN_CH));
+    expect(out).toContain('typecad.track().from(');
+    expect(out).not.toContain('net:');
+    expect(track).toHaveBeenCalledWith(undefined);
+  });
+});
 
 describe('generateOutlineCode round-trip', () => {
   it('emits typecad.outline for a single gr_rect', () => {

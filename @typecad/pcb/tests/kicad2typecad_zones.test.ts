@@ -112,7 +112,7 @@ describe('generateZoneCode', () => {
     const out = captureLogs(() => generateZoneCode(ir, 'test', PLAIN_CH));
     expect(out).toContain("typecad.zone({ net: 'GND'");
     expect(out).toContain("layers: ['F.Cu', 'B.Cu']");
-    expect(out).toContain('points: [{ x: 10, y: 10 }');
+    expect(out).toContain('x: 10, y: 10, width: 30, height: 20');
     expect(out).toContain("fill: { mode: 'hatched'");
     expect(out).toContain('thermalGap: 0.3');
     expect(out).toContain("connectPads: 'thru_hole_only'");
@@ -147,9 +147,61 @@ describe('round-trip: imported zone code builds the same zone', () => {
     // Here we verify the emitted polygon matches the source board vertices.
     const ir = buildIr(zoneBoard);
     const out = captureLogs(() => generateZoneCode(ir, 'test', PLAIN_CH));
-    for (const pt of ['x: 40, y: 30', 'x: 55, y: 20', 'x: 0, y: 8']) {
+    for (const pt of ['width: 30, height: 20', 'x: 55, y: 20', 'x: 0, y: 8']) {
       expect(out).toContain(pt);
     }
+  });
+});
+
+describe('zone geometry form (rect vs points)', () => {
+  it('collapses axis-aligned rect pours and never emits points for them', () => {
+    const ir = buildIr(zoneBoard);
+    const out = captureLogs(() => generateZoneCode(ir, 'test', PLAIN_CH));
+    const pourLine = out
+      .split('\n')
+      .find((l) => l.includes("net: 'GND'") && l.includes("layers: ['F.Cu', 'B.Cu']")) ?? '';
+    expect(pourLine).toContain('x: 10, y: 10, width: 30, height: 20');
+    expect(pourLine).not.toContain('points:');
+  });
+
+  it('collapses rect keepouts to x/y/width/height', () => {
+    const ir = buildIr(`(kicad_pcb
+  (zone (net 0) (layers "F.Cu")
+    (keepout (tracks not_allowed) (vias not_allowed) (pads not_allowed) (copperpour not_allowed) (footprints not_allowed))
+    (polygon (pts (xy 5 5) (xy 15 5) (xy 15 12) (xy 5 12)))
+  )
+)`);
+    const out = captureLogs(() => generateZoneCode(ir, 'test', PLAIN_CH));
+    expect(out).toContain('x: 5, y: 5, width: 10, height: 7');
+  });
+
+  it('collapses closed polygons that repeat the first vertex', () => {
+    const ir = buildIr(`(kicad_pcb
+  (zone (net 0) (layers "F.Cu")
+    (polygon (pts (xy 1 1) (xy 11 1) (xy 11 21) (xy 1 21) (xy 1 1)))
+  )
+)`);
+    const out = captureLogs(() => generateZoneCode(ir, 'test', PLAIN_CH));
+    expect(out).toContain('x: 1, y: 1, width: 10, height: 20');
+  });
+
+  it('keeps explicit points for triangles and skewed quadrilaterals', () => {
+    const triangle = buildIr(`(kicad_pcb
+  (zone (net 0) (layers "F.Cu")
+    (polygon (pts (xy 0 0) (xy 8 0) (xy 0 8)))
+  )
+)`);
+    const triangleOut = captureLogs(() => generateZoneCode(triangle, 'test', PLAIN_CH));
+    expect(triangleOut).toContain('points: [{ x: 0, y: 0 }, { x: 8, y: 0 }, { x: 0, y: 8 }]');
+
+    const skewed = buildIr(`(kicad_pcb
+  (zone (net 0) (layers "F.Cu")
+    (polygon (pts (xy 0 0) (xy 10 5) (xy 10 15) (xy 0 10)))
+  )
+)`);
+    const skewedOut = captureLogs(() => generateZoneCode(skewed, 'test', PLAIN_CH));
+    expect(skewedOut).toContain('points:');
+    expect(skewedOut).not.toContain('width:');
   });
 });
 

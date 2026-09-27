@@ -113,8 +113,13 @@ export function generateTrackCode(
           if (currentTrackBuilder && currentChainLog) {
             allNetTrackLogs.push(currentChainLog + chPunc(')') + chPunc(';'));
           }
-          currentTrackBuilder = pcb.track().from(segment.start, segment.layer, segment.width);
-          currentChainLog = `${chVar(variableName)}${chPunc('.')}${chKey('push')}${chPunc('(')}${chVar('typecad')}${chPunc('.')}${chKey('track')}${chPunc('()')}${chKey('.from')}${chPunc('(')}{ ${chProp('x')}${chPunc(':')} ${chNum(segment.start.x)}${chPunc(',')} ${chProp('y')}${chPunc(':')} ${chNum(segment.start.y)} }${chPunc(',')} ${chStr('"' + segment.layer + '"')}${chPunc(',')} ${chNum(segment.width)}${chPunc(')')}`;
+          // Named nets keep their electrical identity through import: the
+          // net rides on the TrackBuilder itself (vias inherit it), not
+          // just in the comment above the chain.
+          const trackOptions = isUnnamedNet ? undefined : { net: netName };
+          const optionsLog = isUnnamedNet ? '' : `{ ${chProp('net')}${chPunc(':')} ${chStr(`'${netName}'`)} }`;
+          currentTrackBuilder = pcb.track(trackOptions).from(segment.start, segment.layer, segment.width);
+          currentChainLog = `${chVar(variableName)}${chPunc('.')}${chKey('push')}${chPunc('(')}${chVar('typecad')}${chPunc('.')}${chKey('track')}${chPunc('(')}${optionsLog}${chPunc(')')}${chKey('.from')}${chPunc('(')}{ ${chProp('x')}${chPunc(':')} ${chNum(segment.start.x)}${chPunc(',')} ${chProp('y')}${chPunc(':')} ${chNum(segment.start.y)} }${chPunc(',')} ${chStr('"' + segment.layer + '"')}${chPunc(',')} ${chNum(segment.width)}${chPunc(')')}`;
           currentTrackBuilder.to({ x: segment.end.x, y: segment.end.y, layer: segment.layer, width: segment.width });
           currentChainLog += `${chKey('.to')}${chPunc('(')}{ ${chProp('x')}${chPunc(':')} ${chNum(segment.end.x)}${chPunc(',')} ${chProp('y')}${chPunc(':')} ${chNum(segment.end.y)}${chPunc(',')} ${chProp('layer')}${chPunc(':')} ${chStr('"' + segment.layer + '"')}${chPunc(',')} ${chProp('width')}${chPunc(':')} ${chNum(segment.width)} }${chPunc(')')}`;
         } else {
@@ -570,7 +575,7 @@ export function generateZoneCode(ir: KicadIR, sourceDescription: string, ch: Cha
       props.push(
         `${chProp('layers')}${chPunc(':')} ${chPunc('[')}${zone.layers.map((l) => chStr(`'${l}'`)).join(`${chPunc(',')} `)}${chPunc(']')}`,
       );
-      props.push(`${chProp('points')}${chPunc(':')} ${pointsExpr(zone, ch)}`);
+      props.push(geometryProps(zone, ch));
       const r = zone.keepout;
       if (r.tracks || r.vias || r.pads || r.copperpour || r.footprints) {
         const restrictions: string[] = [];
@@ -604,7 +609,7 @@ export function generateZoneCode(ir: KicadIR, sourceDescription: string, ch: Cha
       props.push(
         `${chProp('layers')}${chPunc(':')} ${chPunc('[')}${zone.layers.map((l) => chStr(`'${l}'`)).join(`${chPunc(',')} `)}${chPunc(']')}`,
       );
-      props.push(`${chProp('points')}${chPunc(':')} ${pointsExpr(zone, ch)}`);
+      props.push(geometryProps(zone, ch));
       if (zone.name) props.push(`${chProp('name')}${chPunc(':')} ${chStr(`'${zone.name}'`)}`);
       if (zone.priority) props.push(`${chProp('priority')}${chPunc(':')} ${chNum(zone.priority)}`);
       if (zone.locked) props.push(`${chProp('locked')}${chPunc(':')} ${chVar('true')}`);
@@ -639,6 +644,48 @@ function pointsExpr(zone: KicadZoneIR, ch: ChalkHelpers): string {
     )
     .join(`${chPunc(',')} `);
   return `${chPunc('[')}${pts}${chPunc(']')}`;
+}
+
+/**
+ * Geometry props for a zone: axis-aligned quadrilateral polygons collapse to
+ * the rect form (x/y/width/height, the shape the docs' examples teach);
+ * every other polygon keeps its explicit points.
+ */
+function geometryProps(zone: KicadZoneIR, ch: ChalkHelpers): string {
+  const { chProp, chNum, chPunc } = ch;
+  const rect = rectFromPolygon(zone.polygon);
+  if (rect) {
+    return [
+      `${chProp('x')}${chPunc(':')} ${chNum(rect.x)}`,
+      `${chProp('y')}${chPunc(':')} ${chNum(rect.y)}`,
+      `${chProp('width')}${chPunc(':')} ${chNum(rect.width)}`,
+      `${chProp('height')}${chPunc(':')} ${chNum(rect.height)}`,
+    ].join(`${chPunc(',')} `);
+  }
+  return `${chProp('points')}${chPunc(':')} ${pointsExpr(zone, ch)}`;
+}
+
+/** Rect equivalent of an axis-aligned (closed or open) quadrilateral, else null. */
+function rectFromPolygon(
+  points: Array<{ x: number; y: number }>,
+): { x: number; y: number; width: number; height: number } | null {
+  const pts =
+    points.length >= 5 && points[0].x === points[points.length - 1].x && points[0].y === points[points.length - 1].y
+      ? points.slice(0, -1)
+      : points;
+  if (pts.length !== 4) return null;
+  const xs = new Set(pts.map((p) => p.x));
+  const ys = new Set(pts.map((p) => p.y));
+  if (xs.size !== 2 || ys.size !== 2) return null;
+  if (new Set(pts.map((p) => `${p.x},${p.y}`)).size !== 4) return null;
+  const [x0, x1] = [...xs];
+  const [y0, y1] = [...ys];
+  return {
+    x: round3(Math.min(x0, x1)),
+    y: round3(Math.min(y0, y1)),
+    width: round3(Math.abs(x1 - x0)),
+    height: round3(Math.abs(y1 - y0)),
+  };
 }
 
 /**

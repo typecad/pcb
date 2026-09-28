@@ -1,6 +1,6 @@
 {
   "name": "rd-skeleton-hw",
-  "version": "1.0.1-alpha.0",
+  "version": "1.0.1-alpha.1",
   "description": "",
   "private": true,
   "main": "index.js",
@@ -19,7 +19,7 @@
   "license": "ISC",
   "type": "module",
   "dependencies": {
-    "@typecad/pcb": "1.0.0-alpha.7",
+    "@typecad/pcb": "1.0.0-alpha.8",
     "tsx": "^4.23.13"
   }
 }

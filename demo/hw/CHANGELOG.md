@@ -1,5 +1,34 @@
 # hw
 
+## 1.0.1-alpha.2
+
+### Patch Changes
+
+- Updated dependencies [2ce39f0]
+- Updated dependencies [21e9d51]
+- Updated dependencies [2ce39f0]
+- Updated dependencies [2bf1a7c]
+- Updated dependencies [2ce39f0]
+- Updated dependencies [2bf1a7c]
+- Updated dependencies [2bf1a7c]
+- Updated dependencies [2ce39f0]
+- Updated dependencies [2bf1a7c]
+- Updated dependencies [2ce39f0]
+- Updated dependencies [2d86f24]
+- Updated dependencies [2bf1a7c]
+- Updated dependencies [2bf1a7c]
+- Updated dependencies [2ce39f0]
+- Updated dependencies [2ce39f0]
+- Updated dependencies [2bf1a7c]
+- Updated dependencies [2ce39f0]
+- Updated dependencies [21e9d51]
+- Updated dependencies [2bf1a7c]
+- Updated dependencies [2bf1a7c]
+- Updated dependencies [2bf1a7c]
+- Updated dependencies [2ce39f0]
+- Updated dependencies [21e9d51]
+  - @typecad/pcb@1.0.0-alpha.8
+
 ## 1.0.1-alpha.1
 
 ### Patch Changes

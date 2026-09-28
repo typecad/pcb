@@ -1,5 +1,213 @@
 # @typecad/pcb
 
+## 1.0.0-alpha.8
+
+### Minor Changes
+
+- 2ce39f0: `typecad-pcb search <query> --footprint` searches installed KiCad footprint
+  libraries instead of symbol libraries — symbols alone can't answer "what
+  pads does this part have". Results list `library:footprint` ids with their
+  pad numbers (and the description when the library carries one), ready to
+  paste into `new Component({ footprint: '...' })`. `--limit` caps the list
+  (default 10 for footprint searches), and `--json` returns the same results
+  as data for scripts and agents.
+- 2ce39f0: The autorouter screens every routed pin for escape-channel feasibility
+  before any search work starts. A pad flanked by neighbours on both sides
+  (a QFP/SOIC/SOT row) must escape through the corridor between them, and a
+  trace of width W at clearance C needs W + 2×C of corridor to do it. When
+  the corridor can't fit that, each pad gets one line with the actual
+  numbers — `U3.7 must escape through a 0.31mm corridor between its
+neighbouring pads, but a 0.25mm trace at 0.2mm clearance needs 0.65mm` —
+  plus the fix (a narrower net class for that net, or necking the trace near
+  the part), instead of a wall of DRC clearance violations after the build.
+  Pads open on one side (chip passives, row ends) are never flagged, and
+  same-net flanks don't count.
+- 2d86f24: The gerber/layout views have a house layer theme. `typecad` is built from the
+  typecad.dev design system — near-black canvas, typeCAD green front copper,
+  darker green back copper, white silk and board edge, zinc grays for secondary
+  layers, and a five-color rotation for inner copper. It leads the layer-theme
+  picker and is the default on first open (and for anyone whose saved pick was
+  the old `typeCAD` no-theme placeholder). The raw palette the placeholder used
+  to show is still there, as the `Default` option. Vendored KiCad themes are
+  unchanged and keep winning over the default once picked.
+
+  The pcba view's old `typeCAD house` colorway is gone — it was a teal stub
+  that never matched the brand, and the name now belongs to the layer theme.
+  `--theme typecad` on the pcba image renderer no longer resolves to a builtin;
+  use a JSON theme file for custom pcba palettes.
+
+- 2bf1a7c: The scaffolded starter is now a complete circuit instead of a lone resistor: a 3 V CR2450 coin cell (Keystone 3008 holder, `Device:Battery_Cell` symbol, `BT` prefix) lights a red 0603 LED through a 150 Ω resistor, wired over named nets `+BATT`/`led_a`/`GND` with a `Power` source for simulation. A fresh project therefore exercises every board-view view on first open — real nets to drag and route in the layout view, and an ngspice deck that solves (3 V rail, ~8.4 mA). The starter's footer comments and the scaffolded `AGENTS.md` document the new `simulate` script, and `create` adds it to `hw/package.json`.
+
+  The bundled VS Code extension now runs `typecad-pcb simulate` itself during viewer generation — best-effort, only when `build/<board>_op.json` is missing or older than the netlist — so the ngspice view has hover voltages/currents without a manual simulate step (previously nothing in the build or export pipeline produced the op file). A failure (ngspice not installed, entry error) only logs and skips; the viewer still generates. Net names matter for the auto power symbols: nets named like KiCad's power library entries (`GND`, `+BATT`) get schematic power glyphs, so the starter uses those.
+
+### Patch Changes
+
+- 21e9d51: The pads manifest (`build/<board>_pads.json` — per-pad world position,
+  extents, copper layers, pin numbers, and net names measured from the final
+  board) is now announced at info level and listed in the build output
+  summary instead of being written silently at debug level. The pcb-placement
+  skill doc now points placement work at it so measured pad geometry is used
+  over datasheet estimates.
+- 2ce39f0: `typecad-pcb create --name=agent-demo` no longer refuses to run: hyphens,
+  spaces and other punctuation fold to underscores ("agent-demo" becomes
+  `agent_demo`), with a yellow note when the name changed. The interactive
+  prompt normalizes the same way, so pasting a name with spaces no longer
+  bounces. A name is only rejected when nothing identifier-like remains.
+- 2bf1a7c: `typecad-pcb create` now installs the firmware dependencies itself when the
+  HAL scaffold's own install step didn't take (`fw/package.json` present but
+  no `node_modules`). hal ≤ 1.0.0-alpha.20 cannot spawn npm on Windows, so a
+  fresh project opened with a `fw/` that VS Code's Vitest extension
+  immediately flagged ("vitest not found in fw folder") until `npm install`
+  was run there by hand.
+- 2ce39f0: The board viewer now renders inner copper layers. KiCad plots them as
+  `.g1`–`.g30`, which the gerber extension allowlist didn't carry, so any
+  4+-layer board silently lost every layer between front and back copper.
+  Inner layers now join the stack in the viewer and pick up theme colors
+  like the outer ones.
+- 2bf1a7c: The layout view's apply bridge now heals a create() argument drift instead
+  of letting it silently delete traces. The route rewrite stages maintain
+  "every declared TrackBuilder is passed to typecad.create()" one edit at a
+  time; a name that slipped through (seen once: an untouched route's
+  argument dropped while its declaration survived a multi-route rewrite)
+  made the route build nothing — its copper vanished from the board and the
+  viewer with nothing in the log. Any route/delete apply now re-adds every
+  declared-but-uncreated route name to create() as a final pass.
+- 2bf1a7c: The layout view's apply bridge now writes route edits to the file the
+  build actually runs. It previously planned against the first src file
+  carrying a `typecad.create(` call — with a stray copy in src/ (an old
+  duplicate with its own create()), every drawn route landed in the dead
+  copy: the source looked edited, the board rebuilt without the new traces,
+  and nothing reported the mismatch (one board lost three drawn routes this
+  way; the copy also accumulated syntactic damage from rewrites aimed at
+  its odd formatting). The planner now resolves the entry file from
+  typecad.conf.ts and orders it first, so rewrites go where the build
+  reads; the stale-copy capture is gone.
+- 2bf1a7c: The layout view's layer-edit preview now paints the target layer's own
+  theme color, and the layout view no longer hue-rotates back copper. Two
+  invented color transforms made layer edits unreadable: the live preview
+  shifted the re-layered trace's hue by a fixed 150°, and entering the
+  layout view applied the same rotation to every back copper group — so in
+  Nord a trace sent to B.Cu painted orange (the rotated blue ≈ Nord's own
+  front-copper rust, i.e. "nothing changed"), and the rebuilt board showed
+  the same off-theme orange that exists nowhere in the theme (gruvbox's
+  green back copper rendered purple). Both transforms are gone: a re-
+  layered trace repaints instantly in the resolved theme ink of its target
+  layer — verbatim what the rebuilt board will paint there — and the
+  layout stack keeps each copper layer in its theme's own color, with the
+  existing 75% translucency providing the front-over-back depth cue.
+  The properties dialog's apply also drops the segment selection now: the
+  selection highlight is a solid white line at the trace's own width, and
+  left standing it covered the very stroke the layer edit just repainted —
+  the recolor was there all along but invisible until the selection
+  cleared (reported as "the layer change does nothing until rebuild").
+  The net highlight's paint snapshot no longer reverts a re-layer either:
+  clearing a highlight restores every matched element's saved stroke, and
+  that snapshot is now kept in sync when a layer edit (or its undo)
+  repaints a trace — plus the dialog's apply clears the highlight — so
+  clicking elsewhere after an edit leaves the new layer color standing
+  instead of repainting the pre-edit color over it. The edited trace is now
+  a NATIVE member of its target layer: the path and its hit lines move
+  into the target copper group and carry that group's own `var(--ink-…)`
+  stroke, so theme switches, the layer visibility checkbox, the per-layer
+  opacity slider, and the layout view's translucency apply to it exactly as
+  they do to the layer's built ink — undo returns it to its original group
+  with its original stroke.
+- 2ce39f0: Vias placed by one edge of a multi-pin net are now visible to the router
+  when it places the rest of the net: they're appended to a shared
+  hole-to-hole list (drill edges need clearance even between same-net vias)
+  and rasterized into the routing grid as net-aware pads, so later edges
+  connect through their own vias instead of stacking a second via a fraction
+  of a millimetre away or routing tracks blind through the first one. Vias
+  already staged on the board before routing starts are included, and rip-up
+  rollbacks re-snapshot the list for the next attempt.
+- 2bf1a7c: The VS Code Board viewer no longer keeps serving a page built by an older
+  viewer after the viewer tooling itself updates. The panel cached its
+  generated HTML keyed on the board's mtime alone, so a `gerber-viewer`
+  rebuild (or any out-of-band regeneration of `build/serve/viewer.html`)
+  that didn't touch the board left every already-open workspace serving the
+  pre-update page — with `retainContextWhenHidden` keeping that stale page
+  alive across tab switches, a rendering fix could land and the user would
+  still see the old behavior until the board next changed or the window
+  reloaded. `show()` and the watcher refresh now adopt an on-disk viewer
+  page that is newer than the served one and still describes the current
+  board revision (the same freshness rule the panel-restore fast path
+  already used), swapping it in without rerunning the export pipeline, and
+  never while a generation is mid-write. Every generated page now carries a
+  `tc-viewer-build` stamp, and the extension logs it on each page
+  assignment, so the output channel always answers "which page build is
+  this webview running" — including "pre-stamp page" for pages older than
+  the stamp itself.
+- 2bf1a7c: the thermal (Copper ΔT) view no longer paints its relatively-hottest trace
+  full-scale white on a thermally quiet board: the auto ramp is now floored at
+  1 °C, so a board whose every rise is millidegrees renders all-cold instead of
+  clamping a 3.7 m°C hairline to the white end of the stops while the hover
+  readout says "+0.0°C". The hover rise itself now prints in engineering
+  notation ("trace +3.71m°C ≈ 25.0°C"), so the color scale and the status text
+  can never disagree about the same trace. The "color by margin" path is
+  unchanged — a user-specified allowed rise still sets the scale exactly.
+- 2ce39f0: Schematic export is quieter about the code-only workflow. Components
+  created without `sch` coordinates (which the renderer places
+  deterministically) are now reported as one summary line naming them all,
+  instead of a warning per component that trained you to ignore the log. And
+  when a power net has no matching KiCad power symbol, the warning says what
+  that means — the net still connects via labels, but the schematic shows no
+  rail glyph and ERC cannot verify it — and suggests real rails the power
+  library carries (`+3V3` | `+5V` | `GND` | …) instead of a bare "not
+  found".
+- 2ce39f0: The measure tool owns its clicks. Ruler points now land on parts, pads and
+  copper — the viewer's grab handlers used to swallow the pointer press, so
+  a ruler couldn't start there; the tool now captures the press at the
+  window before any of them see it. Two quick points on one spot are a
+  double-click to the browser: while measuring, that no longer opens the
+  part value editor, and in VS Code it no longer jumps the editor to the
+  component's source or clears the saved highlight — the probe client stands
+  down while the ruler is armed. Also in VS Code, `Build Board` leaves the
+  command palette: the viewer builds the board on open, so an explicit
+  rebuild lives where the intent is — the ▶ Build Board lens, the status
+  chip, and the stale-board prompts.
+- 2ce39f0: `typecad-pcb add-component --folder=./src` now writes the component into
+  that directory instead of nesting `src/src/` beneath it, and the "use it
+  with" hint prints the import path relative to where the command ran
+  (`./src/AP2112K_3_3`, not a hardcoded `./AP2112K_3_3` that only works from
+  inside src).
+- 21e9d51: kicad2typecad: axis-aligned rectangular zones and keepouts now import as
+  `x/y/width/height` instead of a 4-point polygon, matching the rect form the
+  zone/keepout docs teach (same collapse the outline importer already did for
+  `gr_rect`). Non-rectangular polygons still import as explicit `points`.
+  The zone skill doc gained a points-form example and a geometry note.
+- 2bf1a7c: The layout view's trace-properties dialog (E) can no longer write a width
+  below the board's own minimum. The `[`/`]` width keys already stopped at
+  the rules island's `minTrackWidthMm`, but the dialog clamped at a
+  hardcoded 0.05 mm floor — an under-minimum value typed there rode the
+  apply bridge into source verbatim (seen as a 0.05 mm trace that rendered
+  sub-pixel in the viewer: "my trace vanished after the layer change").
+  Both the dialog and the shared resize path now floor at the rules
+  minimum, and the dialog's hint shows it (`min 0.2 mm` when the board
+  carries one).
+- 2bf1a7c: Board viewer: the layout view now derives from the gerbers' X2 pad attributes alone, so a fresh board with nothing connected still gets it — previously the overlay (and the Layout dropdown entry) only appeared when the netlist carried at least one pad→net mapping, which meant the very project `create` scaffolds opened without a layout view. Ratsnest wires are now the layout view's alone: the plain gerber stack renders the fabricated board without them (they had been drawn into every view that renders the gerbers, including the viewer's first open in gerber mode). Routing keys and drags were already layout-gated, so no interaction lost them.
+- 2bf1a7c: Selecting traces in the layout view no longer needs pixel-perfect aim.
+  The clickable corridor of each segment now carries round linecaps — the
+  visible ink bulges a half-width past each endpoint in round caps, and a
+  butt-capped corridor left the dangling end tips unclickable. And a press
+  that lands on nothing interactive now captures the nearest segment within
+  ~9 px: tiny cleanup fragments (a 0.2 mm leftover stub's whole clickable
+  area was a few pixels) and the air beside a thin trace both select the
+  trace instead of falling through to deselect. Presses on parts, pads, or
+  near a dangling end (the route-start arm owns those) are untouched, and a
+  click in genuinely empty board space still clears the selection.
+- 2ce39f0: `typecad-pcb doctor` checks dependencies by resolving them the way an
+  `import` would, instead of looking for a nested `node_modules/<dep>`
+  directory. npm workspaces and parent-folder installs — where the project
+  itself has no `node_modules` — no longer fail the node_modules and
+  core-deps checks on setups that work perfectly.
+- 21e9d51: kicad2typecad: imported TrackBuilder chains now carry their net names.
+  Named nets used to survive only as `// Net:` comments and variable names —
+  the generated `typecad.track().from(...)` calls were electrically
+  anonymous, forcing re-annotation of every imported chain by coordinate
+  matching. The importer now emits `typecad.track({ net: 'GND' }).from(...)`
+  for named nets (vias inherit the net from the builder), so copper imports
+  round-trip with their connectivity intact.
+
 ## 1.0.0-alpha.7
 
 ### Patch Changes

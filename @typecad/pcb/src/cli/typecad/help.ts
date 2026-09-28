@@ -14,7 +14,7 @@ export function showTopLevelHelp(): void {
   console.log('  diagnostics         Full design report: BOM, nets, graphs, ERC/DRC (markdown)');
   console.log('  query               Inspect the compiled board (nets, pins, placement)');
   console.log('  edit                Checked semantic edits (connect, move)');
-  console.log('  search              Search KiCad schematic symbols');
+  console.log('  search              Search KiCad symbols and footprints');
   console.log('  import              Convert a KiCad PCB file to typeCAD code');
   console.log('  diff                Compare two KiCad PCB files visually');
   console.log('  doc                 Generate PCB documentation from Markdown');
@@ -39,7 +39,7 @@ export function showCreateHelp(): void {
   console.log('and optional firmware.\n');
   console.log('Usage: typecad-pcb create [options]\n');
   console.log('Options:');
-  console.log('  --name=<name>         Project name (required for non-interactive mode)');
+  console.log('  --name=<name>         Project name (hyphens/spaces normalized to underscores)');
   console.log('  --hal=<true|false>    Add a typeCAD HAL firmware project in ./fw (default: false)');
   console.log('  --git=<true|false>    Initialize a git repository (default: false)\n');
   console.log('The HAL setup asks for its board interactively.');
@@ -126,18 +126,24 @@ export function showCleanHelp(): void {
 }
 
 export function showSearchHelp(): void {
-  console.log(chalk.white.bold('typecad-pcb search') + ' - Search KiCad schematic symbols\n');
-  console.log('Search for KiCad schematic symbols using fuzzy matching.\n');
+  console.log(chalk.white.bold('typecad-pcb search') + ' - Search KiCad schematic symbols and footprints\n');
+  console.log('Search for KiCad schematic symbols using fuzzy matching.');
+  console.log('With --footprint, search installed footprint libraries instead — results include the pad numbers.\n');
   console.log('Usage: typecad-pcb search [options] <query>\n');
   console.log('Arguments:');
   console.log('  <query>                   Search terms (e.g. "op amp", "LM358")\n');
   console.log('Options:');
+  console.log('  --footprint               Search footprint libraries instead of symbols');
+  console.log('                            (results show library:footprint + pad numbers)');
   console.log('  --format=<fmt>            Output format: detailed, compact, table, json');
   console.log('                            (default: detailed)');
   console.log('  --sort=<field>            Sort by: score, id, manufacturer, package');
   console.log('                            (default: score)');
-  console.log('  --limit=<n>               Maximum results (default: 5)\n');
-  console.log('Without a query, prompts for search terms interactively.');
+  console.log('  --limit=<n>               Maximum results (default: 5, footprints: 10)\n');
+  console.log('Examples:');
+  console.log('  typecad-pcb search LM358');
+  console.log('  typecad-pcb search "SOIC-8" --footprint --json');
+  console.log('\nWithout a query, prompts for search terms interactively.');
 }
 
 export function showImportHelp(): void {

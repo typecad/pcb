@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import chalk from 'chalk';
-import { basename, isAbsolute, join as pathJoin } from 'node:path';
+import { basename, isAbsolute, join as pathJoin, relative, resolve } from 'node:path';
 import type { ComponentRenderData, CliPinInfo } from '../types.js';
 import logger from '../../utils/logging.js';
 import { getBuildDir } from '../../utils/constants.js';
@@ -12,7 +12,7 @@ function renderComponent(data: ComponentRenderData) {
   const pinProperties = data.pins
     .map((p: CliPinInfo) => `    ${p.name} = this.pin(${p.number}, { type: '${p.type}' });`)
     .join('\n');
-  const prefixLine = data.prefix ? `\n        prefix: "${data.prefix}",` : '';
+  const prefixLine = data.prefix ? `\n            prefix: "${data.prefix}",` : '';
   return `import { Component } from "@typecad/pcb";
 /**
  | Pin # | Name | Type          |
@@ -68,16 +68,25 @@ export async function create_component(data: ComponentRenderData) {
   }
 
   try {
-    // Create src directory if it doesn't exist
-    const srcPath = pathJoin(data.folder ?? '.', 'src');
+    // The component lands in <folder>/src — unless the caller already
+    // pointed --folder at a src directory (`--folder=./src` must not
+    // produce src/src/, which is what the skill docs recommend passing).
+    const folder = data.folder ?? '.';
+    const srcPath = basename(resolve(folder)).toLowerCase() === 'src' ? folder : pathJoin(folder, 'src');
     if (!fs.existsSync(srcPath)) {
       fs.mkdirSync(srcPath, { recursive: true });
     }
 
     fs.writeFileSync(pathJoin(srcPath, `${data.name}.ts`), result);
 
+    // Report the import path the user actually needs: relative to their
+    // working directory, not a hardcoded './${data.name}'.
+    const outFile = pathJoin(srcPath, `${data.name}.ts`);
+    let importSpecifier = relative(process.cwd(), outFile).replace(/\\/g, '/').replace(/\.ts$/, '');
+    if (!importSpecifier.startsWith('.')) importSpecifier = `./${importSpecifier}`;
+
     logger.log(`Finished component creation, use it with:`);
-    logger.log(chalk.whiteBright.bold(` import { ${data.name} } from './${data.name}';`));
+    logger.log(chalk.whiteBright.bold(` import { ${data.name} } from '${importSpecifier}';`));
     logger.log(chalk.whiteBright.bold(` let u1 = new ${data.name}();`));
     logger.log();
     logger.log('Report any component creation issues: https://www.reddit.com/r/typecad/');

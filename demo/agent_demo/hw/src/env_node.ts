@@ -203,11 +203,7 @@ typecad.netClass('logic-power', { track_width: 0.3, via_diameter: 0.6, via_drill
 typecad.assign(v3v3, 'logic-power');
 
 // ---- routing ----------------------------------------------------------------
-// GND is deliberately NOT routed: both-layer pours + stitching carry it
-// (thermal reliefs connect the pads), which keeps the signal layers clear.
-// Routing it as a star as well works, but adds traffic the router has to
-// dodge — on this board it measurably degrades the signal routes.
-for (const n of [vin, v3v3, sda, scl, uartRx, uartTx, ledDrv, ledA, reset, xtal1, xtal2, aref, miso, mosi, sck]) {
+for (const n of [vin, v3v3, gnd, sda, scl, uartRx, uartTx, ledDrv, ledA, reset, xtal1, xtal2, aref, miso, mosi, sck]) {
   typecad.route(n);
 }
 

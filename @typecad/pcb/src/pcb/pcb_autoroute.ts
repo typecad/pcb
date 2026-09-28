@@ -21,12 +21,13 @@ import {
   OutlineElement,
 } from './pcb_interfaces.js';
 import type { ITrackBuilder } from '../routing/types/length_match.js';
+import type { Pin } from '../pin.js';
 import { TrackBuilder } from './pcb_track_builder.js';
 import { PCB_CONSTANTS } from './pcb_routing_calculations.js';
 import { PCB, getPcbState, pcbTrackSegment } from './pcb.js';
 import type { ISchematicNode } from '../types/schematic_types.js';
 import { IRoutingObstacle, RoutingGrid } from '../routing/shared/routing_grid.js';
-import { PadResolver } from '../routing/shared/pad_resolver.js';
+import { PadResolver, type IPadGeometry } from '../routing/shared/pad_resolver.js';
 import { ObstacleBuilder } from '../routing/shared/obstacle_builder.js';
 import { DebugVisualizer } from '../routing/utils/debug_visualizer.js';
 import logger from '../utils/logging.js';
@@ -58,6 +59,83 @@ import { processManualRoutes } from './pcb_autoroute_manual_routes.js';
 import { routeMstNet } from './pcb_autoroute_mst.js';
 import { routePairwise } from './pcb_autoroute_pairwise.js';
 import { impedanceOfWidth, stackupImpedanceGeometry } from './pcb_impedance.js';
+
+/** World-axis-aligned half extents of a pad (its footprint-local size
+ *  rotated by the pad's absolute rotation; magnitudes only, so rotation
+ *  sign conventions cannot flip the answer). */
+function padWorldHalfExtents(pad: IPadGeometry): { ex: number; ey: number } {
+  const rot = ((pad.rotation ?? 0) * Math.PI) / 180;
+  const cos = Math.abs(Math.cos(rot));
+  const sin = Math.abs(Math.sin(rot));
+  const w = pad.size.width / 2;
+  const h = pad.size.height / 2;
+  return { ex: w * cos + h * sin, ey: w * sin + h * cos };
+}
+
+/**
+ * Warn when a routed pin sits in a pad row whose escape channel cannot
+ * physically fit the requested trace. A pad flanked by other pads on BOTH
+ * sides (a QFP/SOIC/SOT row) must escape through the corridor between the
+ * flanking pads: a trace of width W needs W + 2×clearance there, whatever
+ * the router does. Pads with a neighbour on one side only (chip passives,
+ * row-end pins) can escape the other way and are not flagged. The route is
+ * still attempted — this turns a later wall of DRC clearance violations
+ * into one actionable line with the numbers.
+ */
+function warnNarrowEscapeChannels(pins: Pin[], width: number, clearance: number, pinNetMap: Map<string, string>): void {
+  const need = width + 2 * clearance;
+  const warned = new Set<string>();
+  for (const pin of pins) {
+    if (!pin.owner) continue;
+    const pad = PadResolver.getPadGeometry(pin.owner, pin.number);
+    if (!pad || pad.type !== 'smd') continue;
+    const key = `${pin.owner.reference}:${pin.number}`;
+    if (warned.has(key)) continue;
+
+    const { ex, ey } = padWorldHalfExtents(pad);
+    // Escape runs along the pad's longer world axis; flanks sit beside it.
+    const escapeAxisX = ex >= ey;
+    const longAxis = escapeAxisX ? { x: 1, y: 0 } : { x: 0, y: 1 };
+    const flankAxis = escapeAxisX ? { x: 0, y: 1 } : { x: 1, y: 0 };
+
+    const myNet = pinNetMap.get(key);
+    let plus: { dist: number; extent: number } | null = null;
+    let minus: { dist: number; extent: number } | null = null;
+    for (const sib of PadResolver.getAllPadGeometries(pin.owner)) {
+      if (String(sib.number) === String(pad.number)) continue;
+      const dx = sib.center.x - pad.center.x;
+      const dy = sib.center.y - pad.center.y;
+      const dist = Math.hypot(dx, dy);
+      if (dist === 0 || dist > 3) continue;
+      const ux = dx / dist;
+      const uy = dy / dist;
+      // Flank = displaced mostly along the row (perpendicular to escape).
+      if (Math.abs(ux * longAxis.x + uy * longAxis.y) > 0.5) continue;
+      const sibNet = pinNetMap.get(`${pin.owner.reference}:${String(sib.number)}`);
+      if (myNet && sibNet && myNet === sibNet) continue; // own net: route-over is fine
+      const sibExtents = padWorldHalfExtents(sib);
+      const sibExtentAlongRow = Math.abs(flankAxis.x) > 0 ? sibExtents.ex : sibExtents.ey;
+      const side = ux * flankAxis.x + uy * flankAxis.y >= 0 ? 'plus' : 'minus';
+      const entry = { dist, extent: sibExtentAlongRow };
+      if (side === 'plus' ? !plus || dist < plus.dist : !minus || dist < minus.dist) {
+        if (side === 'plus') plus = entry;
+        else minus = entry;
+      }
+    }
+    if (!plus || !minus) continue; // open on at least one side: escape exists
+
+    const gap = plus.dist + minus.dist - plus.extent - minus.extent;
+    if (gap >= need) continue;
+    warned.add(key);
+    logger.warn(
+      `[PCB] Escape channel warning: ${pin.owner.reference}.${pin.number} must escape through a ` +
+        `${gap.toFixed(2)}mm corridor between its neighbouring pads, but a ${width}mm trace at ` +
+        `${clearance}mm clearance needs ${need.toFixed(2)}mm — routes escaping this pad will violate ` +
+        `clearance. Use a narrower net class for this net (netClass track_width/clearance) or neck the ` +
+        `trace down near the part.`,
+    );
+  }
+}
 
 // pcb parameter is typed as PCB.
 export function autoroute(pcb: PCB, callerOptions: IAutorouteOptions): IAutorouteResult {
@@ -497,6 +575,11 @@ export function autoroute(pcb: PCB, callerOptions: IAutorouteOptions): IAutorout
     chalk.blue(`[PCB] Board bounds: (${bounds.minX}, ${bounds.minY}) to (${bounds.maxX}, ${bounds.maxY})`),
   );
 
+  // Physical feasibility screen before any search work: pads whose escape
+  // channel cannot fit the trace tell the user NOW, with numbers, instead
+  // of surfacing as a wall of DRC clearance violations after the build.
+  warnNarrowEscapeChannels([...fromPins, ...toPins], traceWidth, clearance, pinNetMap);
+
   // ── 11. Build routing grid ───────────────────────────────────────────
   let gridResolution = requestedGridResolution;
 
@@ -610,11 +693,27 @@ export function autoroute(pcb: PCB, callerOptions: IAutorouteOptions): IAutorout
     return coarseGrid;
   };
 
+  // Every via already staged on the board (any net): via placement keeps
+  // hole-to-hole spacing against all of them — drill edges need clearance
+  // even between same-net vias. Snapshotted per call, so rip-up rollbacks
+  // (which un-stage vias) are reflected on the next call.
+  const existingVias: Array<{ x: number; y: number; drill: number }> = [];
+  for (const comp of getPcbState(pcb).stagedComponents) {
+    if (comp.via === true && comp.viaData?.at && typeof comp.viaData.at.x === 'number') {
+      existingVias.push({
+        x: comp.viaData.at.x,
+        y: comp.viaData.at.y,
+        drill: comp.viaData.drill ?? 0.3,
+      });
+    }
+  }
+
   const baseRouterOptions = {
     traceWidth,
     clearance,
     viaClearance: options.viaClearance,
     viaSize: options.viaSize,
+    existingVias,
     allowedLayers: routingLayers,
     preferredLayers: options.layers ?? (netClassLayers.length > 0 ? netClassLayers : undefined),
     viaCost: options.viaCost,

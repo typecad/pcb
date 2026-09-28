@@ -98,6 +98,14 @@ export interface IRoutingOptions {
   allow45DegreeRuns?: boolean;
   /** World-space via positions the router may use without extra cost. */
   freeViaLocations?: { x: number; y: number }[];
+  /**
+   * Every via already on the board (any net), world mm. Via placement
+   * enforces hole-to-hole spacing against these regardless of net — drill
+   * edges must keep clearance even between same-net vias. The list is
+   * mutated by multi-edge net routing (each completed edge appends its
+   * vias) so later edges in the same call see them.
+   */
+  existingVias?: Array<{ x: number; y: number; drill: number }>;
   /** Layers to favor when multiple layers are allowed. Example: ['F.Cu'] */
   preferredLayers?: string[];
   /** Emit verbose debug logging and profiling info. */
@@ -152,6 +160,7 @@ export type NormalizedRoutingOptions = Required<
     | 'lengthMatch'
     | 'timeBudgetMs'
     | 'netTimeBudgetMs'
+    | 'existingVias'
   >
 > &
   Pick<
@@ -175,6 +184,7 @@ export type NormalizedRoutingOptions = Required<
     | 'lengthMatch'
     | 'timeBudgetMs'
     | 'netTimeBudgetMs'
+    | 'existingVias'
   > & {
     preferredLayers: string[];
     useAdaptiveStride: boolean;

@@ -11,7 +11,8 @@ export function sanitize_name(string: string): string {
     _string = _string.substring(0, _string.length - 1);
   }
   if (_string === '') {
-    return '_component';
+    // Historical fallback: symbol pin dedup names unnamed pins "_", "__2", ...
+    return '_';
   }
   if (!isNaN(Number(_string.charAt(0)))) {
     _string = '_' + _string;

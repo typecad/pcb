@@ -59,6 +59,7 @@ export {
   buildViewerFromFiles,
   collectGerberFiles,
   sniffKind,
+  isGerberExtension,
   DRILL_EXTENSIONS,
   GERBER_EXTENSIONS,
   type ViewerBuildResult,

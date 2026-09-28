@@ -190,15 +190,26 @@ const PROBE_CLIENT = `<script>
 
   var svg = document.getElementById('board');
   if (svg) {
+    // the measure tool's click-points are board work, not probes: while its
+    // button is armed (the viewer toggles #btn-measure's class), board
+    // clicks must neither clear the saved highlight nor — as a fast pair on
+    // one spot, which the browser reports as a double-click — jump the
+    // editor to source under the just-stuck ruler
+    function measureArmed() {
+      var b = document.getElementById('btn-measure');
+      return !!(b && b.classList.contains('armed'));
+    }
     // a plain click on empty space clears the saved highlight (matching the
     // viewer's own affordance) — but never probes: the source jump is a
     // DOUBLE click, so single clicks (including every ruler point of the
     // measure tool) stay inside the viewer and cannot steal editor focus
     svg.addEventListener('click', function (ev) {
+      if (measureArmed()) return;
       var el = ev.target.closest ? ev.target.closest('[data-ref]') : null;
       if (!el) remember(null); // empty-space click cleared the highlight
     }, true);
     svg.addEventListener('dblclick', function (ev) {
+      if (measureArmed()) return;
       // an ACTIVE route owns the double-click (it finishes the track);
       // otherwise the layout view probes like every other view — components
       // jump to their source line, traces to the net's declaring line

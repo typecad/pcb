@@ -1,6 +1,6 @@
 import { PCB, Component, Power, Resistor, LED, TrackBuilder } from '@typecad/pcb';
 
-const typecad = new PCB('typecad_project');
+const typecad = new PCB('typecad_project', { layers: 4 });
 
 // a 3 V coin cell lights an LED through a current-limiting resistor — a
 // complete circuit: nets to route in the layout view, and a power source
@@ -52,12 +52,6 @@ const route9 = new TrackBuilder(typecad, { net: '+BATT', })
 .from({ x: -7.8, y: -20 }, 'F.Cu', 0.3)
 .to({ x: -7.8, y: -6.975, layer: 'F.Cu', width: 0.3 });
 
-const route10 = new TrackBuilder(typecad, { net: 'led_a', })
-.from({ x: 11.222, y: 0 }, 'F.Cu', 0.55)
-.to({ x: 13.691, y: -2.469, layer: 'F.Cu', width: 0.55 })
-.to({ x: 17.889, y: -2.469, layer: 'F.Cu', width: 0.55 })
-.to({ x: 18.288, y: -2.868, layer: 'F.Cu', width: 0.55 });
-
 
 const route13 = new TrackBuilder(typecad, { net: '+BATT',  })
   .from({ x: -7.8, y: -6.975 }, 'F.Cu', 0.3)
@@ -65,9 +59,11 @@ const route13 = new TrackBuilder(typecad, { net: '+BATT',  })
 
 
 const route14 = new TrackBuilder(typecad, { net: 'led_a',  })
-  .from({ x: 0.825, y: 0 }, 'B.Cu', 0.55)
-  .to({ x: 11.222, y: 0, layer: 'B.Cu', width: 0.55 });
+  .from({ x: 18.288, y: -2.868 }, 'F.Cu', 0.55)
+  .to({ x: 15.429, y: -0.009, layer: 'F.Cu', width: 0.55 })
+  .to({ x: 0.834, y: -0.009, layer: 'F.Cu', width: 0.55 })
+  .to({ x: 0.825, y: 0, layer: 'F.Cu', width: 0.55 });
 
-typecad.create(battery, r1, led, route2, route3, route4, route9, route10, route13, route14);
+typecad.create(battery, r1, led, route2, route3, route4, route9, route13, route14);
 // 1. run the npm script 'build'
 // 2. run the npm script 'open_board' to edit the board in KiCAD

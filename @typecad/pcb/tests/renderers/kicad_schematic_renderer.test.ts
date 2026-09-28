@@ -16,15 +16,17 @@ vi.mock('../../src/sexpr/index.js', () => ({
   Sym: { isSym: mockIsSym },
 }));
 
-const { mockGetSymbolDefinition, mockGetPinLocation } = vi.hoisted(() => ({
+const { mockGetSymbolDefinition, mockGetPinLocation, mockHasSymbol } = vi.hoisted(() => ({
   mockGetSymbolDefinition: vi.fn(),
   mockGetPinLocation: vi.fn(),
+  mockHasSymbol: vi.fn(),
 }));
 
 vi.mock('../../src/symbol_library_manager.js', () => ({
   SymbolLibraryManager: vi.fn(() => ({
     getSymbolDefinition: mockGetSymbolDefinition,
     getPinLocation: mockGetPinLocation,
+    hasSymbol: mockHasSymbol,
   })),
 }));
 
@@ -94,7 +96,11 @@ describe('KiCADSchematic', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    const mockManager = { getSymbolDefinition: mockGetSymbolDefinition, getPinLocation: mockGetPinLocation };
+    const mockManager = {
+      getSymbolDefinition: mockGetSymbolDefinition,
+      getPinLocation: mockGetPinLocation,
+      hasSymbol: mockHasSymbol,
+    };
     schematic = new KiCADSchematic(mockManager as any);
   });
 
@@ -176,15 +182,25 @@ describe('KiCADSchematic', () => {
       expect(mockLogWarning).toHaveBeenCalledWith(expect.stringContaining('missing sch.rotation'));
     });
 
-    it('should warn when component is at (0,0) and place randomly', () => {
-      Math.random = vi.fn(() => 0.5);
-      const comp = makeComp({ sch: { x: 0, y: 0, rotation: 0 } });
+    it('should auto-place a component at (0,0) deterministically and record it', () => {
+      const comp = makeComp({ sch: { x: 0, y: 0, rotation: 0 }, reference: 'R9', value: '10k' });
       mockGetSymbolDefinition.mockReturnValue({
         serializedLibEntry: '(lib_symbols ...)',
         rawSexpr: [],
       });
       schematic.update(comp);
-      expect(mockLogWarning).toHaveBeenCalledWith(expect.stringContaining('coordinates'));
+      // Moved off the origin onto a grid cell…
+      expect(comp.sch.x).not.toBe(0);
+      expect(comp.sch.y).not.toBe(0);
+      // …stably for the same identity (deterministic, no Math.random).
+      const again = makeComp({ sch: { x: 0, y: 0, rotation: 0 }, reference: 'R9', value: '10k' });
+      schematic.update(again);
+      expect(again.sch.x).toBe(comp.sch.x);
+      expect(again.sch.y).toBe(comp.sch.y);
+      // No per-component warning — the caller emits ONE summary line from
+      // autoPlacedComponents instead (see schematic_visualizer).
+      expect(mockLogWarning).not.toHaveBeenCalledWith(expect.stringContaining('(0,0)'));
+      expect([...schematic.autoPlacedComponents]).toContain('R9');
     });
 
     it('should warn when component has no reference', () => {
@@ -287,6 +303,7 @@ describe('KiCADSchematic', () => {
         }
         return null;
       });
+      mockHasSymbol.mockImplementation((fqn: string) => fqn === 'power:VCC' || fqn === 'power:PWR_FLAG');
 
       schematic.addPowerSymbols();
       expect(schematic.symbols.length).toBeGreaterThan(0);
@@ -310,9 +327,14 @@ describe('KiCADSchematic', () => {
         if (fqn === 'power:PWR_FLAG') return { serializedLibEntry: '...', rawSexpr: [] };
         return null;
       });
+      mockHasSymbol.mockReturnValue(false);
 
       schematic.addPowerSymbols();
-      expect(mockLogWarning).toHaveBeenCalledWith(expect.stringContaining('not found'));
+      // The suggestion-style message names the net and its missing symbol,
+      // and says what to do (rename to a library rail).
+      expect(mockLogWarning).toHaveBeenCalledWith(expect.stringContaining('No power symbol for net "VCC"'));
+      expect(mockLogWarning).toHaveBeenCalledWith(expect.stringContaining('power:VCC'));
+      expect(mockLogWarning).toHaveBeenCalledWith(expect.stringContaining('typecad.named('));
     });
 
     it('should warn when PWR_FLAG symbol not found', () => {

@@ -110,6 +110,17 @@ describe('injectProbeClient', () => {
     expect(html).toContain('from editor (click empty space to clear)');
   });
 
+  it('stands down while the measure tool is armed: ruler clicks neither clear the highlight nor probe to source', () => {
+    const { html } = injectProbeClient(viewerHtml, components);
+    // the viewer toggles #btn-measure's armed class with the tool; both the
+    // click-clear and the double-click source jump bail on it, so every
+    // ruler point stays pure board interaction
+    expect(html).toContain('function measureArmed()');
+    expect(html).toContain("b.classList.contains('armed')");
+    expect(html).toMatch(/svg\.addEventListener\('click', function \(ev\) \{[\s\S]*?if \(measureArmed\(\)\) return;[\s\S]*?remember\(null\)/);
+    expect(html).toMatch(/svg\.addEventListener\('dblclick', function \(ev\) \{[\s\S]*?if \(measureArmed\(\)\) return;/);
+  });
+
   it('keeps highlight memory in the page: set on select, cleared on clear, re-applied on reload', () => {
     const { html } = injectProbeClient(viewerHtml, components);
     // selected → remembered; empty-space click / Escape → forgotten; a

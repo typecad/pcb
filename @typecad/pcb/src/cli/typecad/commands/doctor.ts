@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { platform } from 'node:os';
 import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
 import chalk from 'chalk';
 import { findExecutable } from '../../../kicad.js';
 import { KiCAD } from '../../../kicad.js';
@@ -166,7 +167,9 @@ function checkPackageJson(): CheckResult {
 
 function checkNodeModules(fix: boolean): CheckResult {
   const nmPath = path.join(process.cwd(), 'node_modules');
-  if (fs.existsSync(nmPath)) {
+  // A workspace member may have no node_modules of its own while its
+  // dependencies resolve from the workspace root — that's healthy.
+  if (fs.existsSync(nmPath) || isPkgAvailable('@typecad/pcb')) {
     return { name: 'node_modules', passed: true, message: 'present' };
   }
   if (fix) {
@@ -185,14 +188,21 @@ function checkNodeModules(fix: boolean): CheckResult {
 }
 
 function isPkgAvailable(dep: string): boolean {
-  const nmDir = path.join(process.cwd(), 'node_modules');
-  const parts = dep.split('/');
-  const checkDir = parts[0].startsWith('@') ? path.join(nmDir, parts[0], parts[1]) : path.join(nmDir, parts[0]);
-  if (!fs.existsSync(checkDir)) return false;
-  const pkgJson = path.join(checkDir, 'package.json');
-  if (!fs.existsSync(pkgJson)) return false;
-  const pkg = JSON.parse(fs.readFileSync(pkgJson, 'utf8'));
-  return !!pkg.name;
+  // Resolution, not directory presence: npm workspaces and parent-level
+  // installs resolve fine without a nested copy inside this project, so
+  // checking cwd/node_modules/<dep> false-negatives exactly the setups
+  // that work. Create a resolver anchored at the project and let Node
+  // walk up exactly the way `import` would.
+  try {
+    const projectRequire = createRequire(path.join(process.cwd(), 'package.json'));
+    // Resolve the bare specifier (the package's exported entry): probing
+    // `<dep>/package.json` throws ERR_PACKAGE_PATH_NOT_EXPORTED for packages
+    // with an exports map that doesn't expose it — @typecad/pcb included.
+    const resolved = projectRequire.resolve(dep);
+    return typeof resolved === 'string' && resolved.length > 0;
+  } catch {
+    return false;
+  }
 }
 
 function checkCoreDeps(fix: boolean): CheckResult {

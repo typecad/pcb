@@ -154,7 +154,7 @@ function showHelp() {
   logger.log('  --local=<value>           Use local component (symbol and footprint names)');
   logger.log('  --jlcpcb=<value>          Use EasyEDA/JLCPCB component\n');
   logger.log('Other Options:');
-  logger.log('  --folder=<path>           Output folder (default: current directory)');
+  logger.log('  --folder=<path>           Project folder — the component file is written to <folder>/src');
   logger.log('  --help                    Show this help message\n');
   logger.log('Examples:');
   logger.log('Mixed sources:');

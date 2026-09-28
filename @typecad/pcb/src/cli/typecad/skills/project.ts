@@ -61,7 +61,7 @@ export const projectSkills: Skill[] = [
       'Use --folder to specify output directory (default: current directory)',
       'Run typecad-pcb search to find KiCad symbol names',
       'SYMBOL/FOOTPRINT MISMATCH: Some symbols found by search may fail in add-component with "Invalid KiCAD library symbol". This happens when the symbol has no default footprint association. Try specifying the footprint explicitly from a different library, or create the component manually.',
-      'CLASS NAMING: If the generated class name contains dots or special characters (e.g. AP2112K_3.3), rename the class and file to use underscores (AP2112K_3_3) to produce valid TypeScript identifiers.',
+      'CLASS NAMING: Part-number punctuation is sanitized automatically — AP2112K-3.3 generates class AP2112K_3_3 in a matching file, ready to import.',
       'FOLDER OUTPUT: When using --folder=./src, the file is created inside that directory. Verify the output path to avoid nested src/src/ structures.',
       'MANUAL FALLBACK: If add-component fails, create the component file manually following the custom-component skill pattern. You will need the footprint string (library:footprint format) and pin assignments.',
     ],
@@ -128,7 +128,7 @@ export const projectSkills: Skill[] = [
     name: 'search',
     category: 'project',
     description:
-      'Search KiCad schematic symbol libraries to find component symbols. Note: search finds symbols only — a matching KiCad footprint may not exist for every symbol',
+      'Search KiCad libraries for parts: schematic symbols by default, footprint libraries with --footprint (results include pad numbers)',
     examples: [
       {
         title: 'Interactive search',
@@ -140,13 +140,19 @@ export const projectSkills: Skill[] = [
 typecad-pcb search LM358
 typecad-pcb search "voltage regulator" --format=json --limit=10`,
       },
+      {
+        title: 'Search footprints (with pad numbers)',
+        code: `typecad-pcb search "SOIC-8" --footprint
+typecad-pcb search crystal 3225 --footprint --json`,
+      },
     ],
     notes: [
       'Searches the KiCad symbol library installed on your system',
       'Output formats: detailed (default), compact, table, json',
       'Sort by: score (default), id, manufacturer, package',
       'Returns the library:symbol format needed for add-component',
-      'IMPORTANT: Search finds schematic symbols only. Not all symbols have associated KiCad footprints. When add-component fails after a successful search, it usually means the symbol lacks a default footprint. In this case, ask the user for the correct footprint or try specifying --footprint explicitly.',
+      '--footprint switches to footprint libraries: results are library:footprint ids with the pad numbers read from the module file — use them for Component({ footprint }) and to check pin(n) numbering before wiring.',
+      'IMPORTANT: Not all symbols have associated KiCad footprints. When add-component fails after a successful symbol search, it usually means the symbol lacks a default footprint. In this case, search footprints or ask the user for the correct one.',
       'When searching for specific ICs (e.g. "AMS1117-3.3"), exact model numbers may not appear in results. Try searching for the base part number (e.g. "1117") or the manufacturer prefix.',
       'When multiple results match, ask the user which variant to use — different packages (SOIC, SOT-23, TO-220, etc.) have different footprints and thermal characteristics.',
     ],

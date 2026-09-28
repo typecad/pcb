@@ -1267,7 +1267,6 @@ M02*
 describe('themes', () => {
   it('resolves builtin themes by name; the classic green is the default', () => {
     expect(loadPcbaTheme('purple-enig').theme.clad).toBe('#5e3d99');
-    expect(loadPcbaTheme('typecad').theme.clad).toBe('#115257');
     expect(loadPcbaTheme().name).toBe('green-enig');
     expect(loadPcbaTheme().theme.clad).toBe(DEFAULT_PCBA_THEME.clad);
     expect(DEFAULT_PCBA_THEME.clad).toBe('#1a7a44');

@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { buildViewerFromFiles } from '../src/gerber_viewer/build.js';
+import { buildViewerFromFiles, collectGerberFiles } from '../src/gerber_viewer/build.js';
 import { buildViewerHtml } from '../src/gerber_viewer/render/viewer_html.js';
 import { renderSvg } from '../src/gerber_viewer/render/svg.js';
 import { detectLayer } from '../src/gerber_viewer/detect_layer.js';
@@ -73,6 +73,33 @@ describe('buildViewerHtml', () => {
     expect(html).toContain('data-layer-id="demo-f_cu-gbr"');
   });
 
+  it('collects KiCad inner-copper .g1…g30 plots and lists them as inner copper layers', () => {
+    // a 4-layer fabrication set shape: numbered inner plots ride .g1/.g2 —
+    // the static extension allowlist used to skip them silently, leaving a
+    // 4-layer board rendered (and layer-listed) as if it were 2-layer
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'typecad-inner-'));
+    try {
+      const trace = read('traces.gbr');
+      for (const name of ['demo-F_Cu.gtl', 'demo-In1_Cu.g1', 'demo-In2_Cu.g2', 'demo-B_Cu.gbl']) {
+        fs.writeFileSync(path.join(dir, name), trace);
+      }
+      const collected = collectGerberFiles([dir]);
+      expect(collected.files).toHaveLength(4);
+      const result = buildViewerFromFiles([dir], { title: 'inner demo' });
+      const inners = result.layers.filter((l) => l.side === 'inner');
+      // display names drop the shared board prefix; ids keep the full basename
+      expect(inners.map((l) => l.name).sort()).toEqual(['In1_Cu.g1', 'In2_Cu.g2']);
+      expect(inners.every((l) => l.kind === 'copper')).toBe(true);
+      expect(result.html).toContain('data-layer-id="demo-in1_cu-g1"');
+      expect(result.html).toContain('data-layer-id="demo-in2_cu-g2"');
+      // painter's order keeps the stack readable: B_Cu, In1, In2, F_Cu
+      const copperOrder = result.layers.filter((l) => l.kind === 'copper').map((l) => l.name);
+      expect(copperOrder).toEqual(['B_Cu.gbl', 'In1_Cu.g1', 'In2_Cu.g2', 'F_Cu.gtl']);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it('embeds the svg with a board id and panzoom group', () => {
     expect(html).toContain('id="board"');
     expect(html).toContain('id="panzoom"');
@@ -103,6 +130,16 @@ describe('buildViewerHtml', () => {
     expect(html).toContain('function snapToAngles');
     expect(html).toMatch(/if \(ev\.shiftKey\) mouseBoard = snapToAngles\(measureStart, mouseBoard\)/);
     expect(html).toMatch(/if \(ev\.shiftKey\) p = snapToAngles\(measureStart, p\)/);
+    // an armed ruler takes click precedence over everything on the board:
+    // the capture guard outruns the part/pad/text/segment/marquee
+    // pointerdown handlers (whose preventDefault suppresses the mousedown
+    // this tool clicks ride on), so a ruler starts on a trace or a part
+    // body as readily as on empty space — and a fast click pair never
+    // opens the part value editor over the stuck ruler
+    expect(html).toMatch(
+      /window\.addEventListener\('pointerdown', function \(ev\) \{[\s\S]*?if \(!measuring \|\| ev\.button !== 0\) return;[\s\S]*?svg\.contains\(ev\.target\)\) return;[\s\S]*?ev\.stopPropagation\(\);[\s\S]*?\}, true\);/,
+    );
+    expect(html).toMatch(/window\.addEventListener\('dblclick', function \(ev\) \{[\s\S]*?if \(!measuring\) return;[\s\S]*?ev\.stopPropagation\(\);[\s\S]*?\}, true\);/);
   });
 
   it('exposes the cross-probe API for embedded surfaces (vscode webview)', () => {

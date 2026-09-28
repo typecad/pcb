@@ -50,8 +50,7 @@ export interface PcbaTheme {
 
 /**
  * The default palette — the physical-realism classic: green soldermask,
- * copper-tone ENIG pads, white silk. The house look lives on as the named
- * `typecad` builtin (`--theme typecad`).
+ * copper-tone ENIG pads, white silk.
  */
 export const DEFAULT_PCBA_THEME: PcbaTheme = {
   board: '#285e3a',
@@ -78,18 +77,6 @@ export const DEFAULT_PCBA_THEME: PcbaTheme = {
 /** Builtin themes, keyed by the `--theme` name. */
 export const PCBA_THEMES: Record<string, PcbaTheme> = {
   'green-enig': DEFAULT_PCBA_THEME,
-  typecad: {
-    ...DEFAULT_PCBA_THEME,
-    board: '#20565a',
-    clad: '#115257',
-    maskCopper: '#0b3d42',
-    pads: '#d5ad62',
-    silk: '#eef4ef',
-    outline: '#0b2224',
-    hole: '#091a1c',
-    body: '#33383d',
-    pin1: '#dfe2e6',
-  },
   'purple-enig': {
     ...DEFAULT_PCBA_THEME,
     board: '#3a2a5c',
@@ -170,7 +157,6 @@ export const PCBA_THEME_LABELS: Record<string, string> = {
   'white-hasl': 'White · black silk',
   'yellow-hasl': 'Yellow · black silk',
   'oshpark-after-dark': 'OSH Park After Dark',
-  typecad: 'typeCAD house',
 };
 
 /** XML-escape a string that is about to land inside an SVG attribute. */

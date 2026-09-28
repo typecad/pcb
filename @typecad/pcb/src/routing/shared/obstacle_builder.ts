@@ -618,6 +618,9 @@ export class ObstacleBuilder {
         maxY: center.y + half,
       },
       layers,
+      // Net-aware like pad obstacles: a net's own tracks may connect
+      // through its own vias, while every other net keeps clearance.
+      net: vd.net,
       clearance,
       priority: 1,
       padShape: {

@@ -770,7 +770,8 @@ export class GridSearch {
             status: 'failure',
             iterations,
             error: `Search exceeded its ${this.options.timeBudgetMs}ms time budget`,
-            blockedBy: this.currentBlockers && this.currentBlockers.size > 0 ? Array.from(this.currentBlockers) : undefined,
+            blockedBy:
+              this.currentBlockers && this.currentBlockers.size > 0 ? Array.from(this.currentBlockers) : undefined,
           };
         }
 
@@ -1163,6 +1164,25 @@ export class GridSearch {
           if (Math.hypot(nx - seed.gridX, ny - seed.gridY) < spacingCells) {
             tooCloseToVia = true;
             break;
+          }
+        }
+        // Hole-to-hole against every via already on the board — any net.
+        // The viaChain above only covers THIS path; a second route of the
+        // same net (another MST edge, a rip-up re-route, an earlier route()
+        // call) otherwise happily stacks a via 0.3 mm from an existing one.
+        if (!tooCloseToVia && this.options.existingVias && this.options.existingVias.length > 0) {
+          const mmPerCell = this.grid.getResolution();
+          for (const via of this.options.existingVias) {
+            const g = this.grid.worldToGrid(via.x, via.y);
+            // Drill-edge spacing: half drills summed plus the hole-to-hole
+            // minimum. The router's own drill is not in its options; the
+            // annulus (viaSize) overestimates it, which is safe.
+            const ownHalfHole = (this.options.viaSize ?? GridSearchConstants.DEFAULT_VIA_SIZE) / 2;
+            const minDist = ownHalfHole + via.drill / 2 + GridSearchConstants.MIN_HOLE_TO_HOLE_MM;
+            if (Math.hypot(nx - g.x, ny - g.y) < minDist / mmPerCell) {
+              tooCloseToVia = true;
+              break;
+            }
           }
         }
         if (tooCloseToVia) {

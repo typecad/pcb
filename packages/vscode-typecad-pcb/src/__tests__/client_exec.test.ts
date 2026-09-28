@@ -220,7 +220,14 @@ describe('injected client executes', () => {
     fire('click');
     expect(probes()).toHaveLength(0);
 
-    // double click on a component = probe → source jump
+    // an armed ruler owns the double-click too: two click-points dropped on
+    // one spot are board work, and the source jump must not steal editor
+    // focus over the just-stuck ruler
+    fire('dblclick');
+    expect(probes()).toHaveLength(0);
+
+    // disarmed, a double click on a component = probe → source jump
+    w.document.getElementById('btn-measure')!.classList.remove('armed');
     fire('dblclick');
     expect(probes()).toEqual([{ type: 'typecad/probe', ref: 'R1', pin: '1' }]);
   });

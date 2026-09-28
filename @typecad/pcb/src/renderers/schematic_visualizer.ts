@@ -63,6 +63,17 @@ export function schematic(schematicData: Schematic): boolean {
 
   kicad.addPowerSymbols();
 
+  // One summary line for everything the renderer auto-placed (components
+  // created without `sch` coordinates — the common code-only style), rather
+  // than a warning per component.
+  const autoPlaced = kicad.autoPlacedComponents;
+  if (autoPlaced.length > 0) {
+    logWarning(
+      `${autoPlaced.length} component(s) had no schematic placement (sch) — placed deterministically: ` +
+        `${autoPlaced.join(', ')}. Set comp.sch = { x, y } to control schematic layout.`,
+    );
+  }
+
   const _schematic = renderSchematic({
     lib_symbols: kicad.lib_symbols,
     symbols: kicad.symbols,

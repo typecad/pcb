@@ -29,11 +29,6 @@
         "category": "typeCAD/pcb"
       },
       {
-        "command": "typecad-pcb.buildBoard",
-        "title": "Build Board",
-        "category": "typeCAD/pcb"
-      },
-      {
         "command": "typecad-pcb.viewBoard",
         "title": "View Board",
         "category": "typeCAD/pcb"

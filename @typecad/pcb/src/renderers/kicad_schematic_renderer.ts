@@ -36,6 +36,15 @@ export class KiCADSchematic {
   #pwrCounter = 0;
   #flgCounter = 0;
   #powerNetEntries: Map<string, { firstPinX: number; firstPinY: number }> = new Map();
+  /** Components auto-placed because they carried no `sch` coordinates. */
+  #autoPlaced: string[] = [];
+
+  /** Display names of components the renderer placed deterministically
+   *  (no `sch` given) — surfaced as one summary line by the caller instead
+   *  of a warning per component, which trained users to ignore the log. */
+  get autoPlacedComponents(): readonly string[] {
+    return this.#autoPlaced;
+  }
 
   constructor(symbolManager: SymbolLibraryManager) {
     this.symbolManager = symbolManager;
@@ -84,7 +93,7 @@ export class KiCADSchematic {
     }
 
     if (component.sch.x === 0 && component.sch.y === 0) {
-      logWarning(`Component ${displayName(component)} has coordinates (0,0). Placing deterministically.`);
+      this.#autoPlaced.push(displayName(component));
       const maxX = Math.max(0, Math.ceil(PAGE_WIDTH_MM / GRID_UNIT_MM) - 1);
       const maxY = Math.max(0, Math.ceil(PAGE_HEIGHT_MM / GRID_UNIT_MM) - 1);
       // Stable per component identity: the same unplaced component lands on
@@ -306,6 +315,12 @@ export class KiCADSchematic {
 
     const PWR_FLAG_OFFSET_X = 8.89;
 
+    // Rail names the KiCad power library actually carries — probed silently
+    // so a missing power symbol can suggest real alternatives instead of
+    // failing with a bare "not found".
+    const COMMON_RAILS = ['+3V3', '+5V', '+12V', '-5V', 'VCC', 'VDD', 'VEE', 'VSS', 'VBUS', '+BATT', 'GND'];
+    const availableRails = COMMON_RAILS.filter((rail) => this.symbolManager.hasSymbol(`power:${rail}`));
+
     for (const [netName, { firstPinX, firstPinY }] of this.#powerNetEntries) {
       // Auto-generated net names (net1, net2, ...) have no matching
       // power library symbol by construction — don't probe for one.
@@ -313,7 +328,12 @@ export class KiCADSchematic {
       const isAutoNamedNet = new RegExp(`^${DEFAULT_NET_PREFIX}\\d+$`).test(netName);
       const powerSymbolFqn = `power:${netName}`;
       let isGndType = false;
-      const powerSymbolDef = isAutoNamedNet ? null : this.symbolManager.getSymbolDefinition(powerSymbolFqn);
+      // Probe silently first — a missing power symbol is an expected
+      // fallback case here, not an error worth a stack of red lines.
+      const powerSymbolDef =
+        isAutoNamedNet || !this.symbolManager.hasSymbol(powerSymbolFqn)
+          ? null
+          : this.symbolManager.getSymbolDefinition(powerSymbolFqn);
 
       if (powerSymbolDef) {
         const pinLocation = this.symbolManager.getPinLocation(powerSymbolFqn, '1');
@@ -321,7 +341,9 @@ export class KiCADSchematic {
       } else {
         if (!isAutoNamedNet) {
           logWarning(
-            `Power symbol ${powerSymbolFqn} not found in library. Skipping power symbol for net "${netName}".`,
+            `No power symbol for net "${netName}" (power:${netName} is not in the KiCad power library). ` +
+              `The net still connects correctly via labels, but the schematic shows no rail glyph and ERC cannot verify it. ` +
+              `Name the rail after a library symbol to fix it — e.g. typecad.named('${availableRails.slice(0, 4).join("' | '")}'${availableRails.length > 4 ? ' | ...' : ''}).`,
           );
         }
         isGndType = /^(gnd|ground|gn\d+)$/i.test(netName);

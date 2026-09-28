@@ -5,8 +5,15 @@ upstream JSON (provenance) and license beside a trimmed `.ts` build of the
 `board` section (copper layers + per-layer colors + background) that the
 viewer embeds.
 
+`typecad` is the exception: it is the house theme, built from the typecad.dev
+design system (`.theme-pcb` tokens — near-black canvas, typeCAD green copper,
+white silk and edges). No upstream, nothing vendored, hand-written `.ts`, and
+it licenses with the package. It leads `LAYER_THEME_LIST`, which makes it the
+viewer's default look.
+
 | Theme            | Upstream                                                       | License    | Redistribution                                        |
 | ---------------- | -------------------------------------------------------------- | ---------- | ----------------------------------------------------- |
+| typecad          | house theme — the typecad.dev design system                    | Apache-2.0 | Ours — lives in this package                          |
 | gruvbox          | https://github.com/AlexanderBrevig/kicad-gruvbox-theme         | MIT        | Allowed — keep `gruvbox-LICENSE-MIT` with it          |
 | dragonmux        | https://github.com/dragonmux/kicad-dragonmux-theme             | CC0 1.0    | Public domain — no conditions                         |
 | kicadmax         | https://github.com/maximekahn/KiCadMaxColors                   | MIT        | Allowed — keep `kicadmax-LICENSE-MIT` with it         |

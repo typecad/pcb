@@ -107,6 +107,34 @@ export class AStarRouter {
   }
 
   /**
+   * Vias placed by a completed MST edge become board state for the edges
+   * that follow: appended to the shared existingVias list (hole-to-hole is
+   * net-agnostic) and rasterized into the grid as a net-aware pad obstacle,
+   * so later edges of the same net connect through their own vias while
+   * keeping clearance from anything else — instead of stacking a second
+   * via a fraction of a millimeter away or routing tracks through them.
+   */
+  #registerEdgeVias(segment: IRoutePath): void {
+    const nodes = segment.nodes ?? [];
+    for (let i = 1; i < nodes.length; i++) {
+      if (nodes[i]!.layer === nodes[i - 1]!.layer) continue;
+      const at = nodes[i]!;
+      const size = this.options.viaSize ?? 0.6;
+      const half = size / 2;
+      this.options.existingVias?.push({ x: at.x, y: at.y, drill: half });
+      this.grid.addObstacle({
+        type: 'pad',
+        bounds: { minX: at.x - half, maxX: at.x + half, minY: at.y - half, maxY: at.y + half },
+        layers: [...(this.options.allowedLayers ?? [nodes[i - 1]!.layer, at.layer])],
+        clearance: this.options.viaClearance ?? this.options.clearance,
+        net: this.options.net,
+        priority: 1,
+        padShape: { shape: 'circle', center: { x: at.x, y: at.y }, width: size, height: size, rotation: 0 },
+      });
+    }
+  }
+
+  /**
    * Create a new A* router.
    *
    * @param grid - The routing grid to search on
@@ -169,6 +197,10 @@ export class AStarRouter {
       maxIterations: options.maxIterations ?? 500000,
       timeBudgetMs: options.timeBudgetMs ?? 15000,
       netTimeBudgetMs: options.netTimeBudgetMs ?? 60000,
+      // Shared by reference: multi-edge net routing appends each completed
+      // edge's vias so later edges (and nested searches) keep hole-to-hole
+      // spacing against them.
+      existingVias: options.existingVias,
       allowVias: options.allowVias ?? true,
       allow45DegreeRuns: options.allow45DegreeRuns ?? true,
       freeViaLocations: options.freeViaLocations,
@@ -191,6 +223,13 @@ export class AStarRouter {
     this.disableResumeGrid = options.disableResumeGrid ?? false;
     this.requestedGridResolution = requestedGridResolution;
     this.resumeGridResolution = resumeGridResolution;
+
+    // Sub-routers (MST edge loop, via-free clones) are built from
+    // rawOptions spreads; make sure they all share ONE existingVias list
+    // with this router so mid-route appends are visible everywhere.
+    if (!this.rawOptions.existingVias) {
+      this.rawOptions.existingVias = [];
+    }
 
     // Convert free via locations from world to grid coordinates
     this.freeViaGridLocations = new Set<string>();
@@ -610,6 +649,13 @@ export class AStarRouter {
         successCount++;
         segments.push(segmentResult); // Store the individual segment
 
+        // Vias this edge placed must be visible to the NEXT edges of the
+        // same net: the grid was built before this call began, so without
+        // this, edge k+1 can stack a via millimeters... or fractions of a
+        // millimeter from edge k's via (hole-to-hole is net-agnostic) or
+        // run its tracks through it blind.
+        this.#registerEdgeVias(segmentResult);
+
         // Merge nodes into the combined path (for visualization only)
         if (allNodes.length === 0) {
           // First successful segment - add all nodes
@@ -735,6 +781,9 @@ export class AStarRouter {
       resumeGridResolution: targetResolution,
       coarseGridFactory: undefined,
       disableResumeGrid: true,
+      // Share the net's via list so coarse-edge placements register for the
+      // refine pass and later edges exactly as fine-grid ones do.
+      existingVias: this.options.existingVias,
     });
 
     // Route the entire net on the coarse grid to get a rough route

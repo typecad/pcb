@@ -21,7 +21,7 @@ export class TMP100 extends Component {
         super({
             footprint: "Package_TO_SOT_SMD:SOT-23-6",
             symbol: "Sensor_Temperature:TMP100",
-        prefix: "U",
+            prefix: "U",
         });
         if (reference) this.reference = reference;
     }

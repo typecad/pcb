@@ -1,9 +1,12 @@
 /**
  * Layer themes for the gerber/layout views — KiCad color-theme `board`
- * sections, vendored under `themes/` with their licenses. The viewer embeds
- * these as a JSON island and remaps each rendered layer group's ink through
- * a CSS variable, so switching themes is a client-side restyle.
+ * sections. The typecad house theme (the typecad.dev design system as a
+ * board) is hand-written; the rest are vendored under `themes/` with their
+ * licenses. The viewer embeds these as a JSON island and remaps each rendered
+ * layer group's ink through a CSS variable, so switching themes is a
+ * client-side restyle.
  */
+import { TYPECAD } from './themes/typecad.js';
 import { GRUVBOX } from './themes/gruvbox.js';
 import { DRAGONMUX } from './themes/dragonmux.js';
 import { KICADMAX } from './themes/kicadmax.js';
@@ -20,7 +23,8 @@ export interface LayerTheme {
   label: string;
   /** provenance line shown in the select's tooltip */
   credit: string;
-  /** SPDX id of the upstream license (the text lives in themes/) */
+  /** SPDX id of the theme's license — vendored themes carry the text in
+   *  themes/, the house theme rides on the package LICENSE */
   license: string;
   /** board background the canvas takes on */
   background: string;
@@ -28,8 +32,10 @@ export interface LayerTheme {
   board: Record<string, unknown>;
 }
 
-/** Registered themes — the select box and the embedding iterate this. */
+/** Registered themes — the select box and the embedding iterate this. The
+ *  house theme leads: the select's first option is its default selection. */
 export const LAYER_THEME_LIST: LayerTheme[] = [
+  TYPECAD,
   GRUVBOX,
   DRAGONMUX,
   KICADMAX,

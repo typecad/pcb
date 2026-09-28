@@ -8827,6 +8827,27 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     measureStart = null;
     renderMeasure();
   });
+  // an armed ruler owns every left press on the board, wherever it lands.
+  // The part/pad/text grabs, the segment/via selector and the marquee all
+  // preventDefault() their pointerdown — which suppresses the mousedown
+  // this tool's mouseup branch needs — so a press on copper or a part body
+  // never started a ruler. Capture on window outruns them ALL (window
+  // capture is the first phase anywhere), and stopPropagation stands them
+  // down without touching the default: mousedown still fires, drag still
+  // sets, and the ruler point lands exactly where clicked
+  window.addEventListener('pointerdown', function (ev) {
+    if (!measuring || ev.button !== 0) return;
+    if (!ev.target || !svg.contains(ev.target)) return;
+    ev.stopPropagation();
+  }, true);
+  // two quick ruler points on one spot are a double-click to the browser —
+  // the part value editor must not open over the just-stuck ruler
+  window.addEventListener('dblclick', function (ev) {
+    if (!measuring) return;
+    if (!ev.target || !svg.contains(ev.target)) return;
+    ev.stopPropagation();
+    ev.preventDefault();
+  }, true);
   // the px->unit conversion changes when the window resizes
   window.addEventListener('resize', renderMeasure);
   window.addEventListener('keydown', function (ev) {
@@ -9512,7 +9533,8 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     // cutouts key off the canvas color — keep the var synced either way
     svg.style.setProperty('--bg', getComputedStyle(boardArea).backgroundColor);
     svg.style.setProperty('--pad-label', padLabelColor());
-    try { localStorage.setItem(LAYER_THEME_KEY, theme ? id : 'typecad'); } catch (e) {}
+    // '' = the Default option (raw palette, no restyle)
+    try { localStorage.setItem(LAYER_THEME_KEY, theme ? id : ''); } catch (e) {}
   }
   if (layerThemeSel) {
     layerThemeSel.addEventListener('change', function () {
@@ -9520,12 +9542,22 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     });
     var savedLayerTheme = null;
     try { savedLayerTheme = localStorage.getItem(LAYER_THEME_KEY); } catch (e) {}
-    var known = savedLayerTheme === 'typecad';
+    var known = false;
     for (var st = 0; st < layerThemesIsland.length; st++)
       if (layerThemesIsland[st].id === savedLayerTheme) known = true;
-    if (known && savedLayerTheme !== 'typecad') {
+    if (savedLayerTheme === '') {
+      // the raw palette — no restyle, the fallback recolors own dark mode
+      layerThemeSel.value = '';
+    } else if (known) {
       layerThemeSel.value = savedLayerTheme;
       applyLayerTheme(savedLayerTheme);
+    } else {
+      // first visit, or a theme that is no longer registered: the house look.
+      // ('typecad' USED to be the no-theme sentinel — those saved picks
+      // migrate to the real house theme, which is what picking it always
+      // meant.)
+      layerThemeSel.value = 'typecad';
+      applyLayerTheme('typecad');
     }
   }
 
@@ -10002,11 +10034,11 @@ ${rows}
       (options.layerThemes ?? LAYER_THEME_LIST).length
         ? `
     <select id="layer-theme" title="layer colors (KiCad color themes)">${[
-        `<option value="typecad">typeCAD</option>`,
         ...(options.layerThemes ?? LAYER_THEME_LIST).map(
           (t) =>
             `<option value="${escapeHtml(t.id)}" title="${escapeHtml(t.credit + ' — ' + t.license)}">${escapeHtml(t.label)}</option>`,
         ),
+        `<option value="" title="the built-in viewer palette">Default</option>`,
       ].join('')}</select>`
         : ''
     }

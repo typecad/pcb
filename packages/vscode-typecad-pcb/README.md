@@ -148,12 +148,16 @@ workspace without talking over each other.
 | Command | Title | What it does |
 |---|---|---|
 | `typecad-pcb.refreshBoardData` | typeCAD/pcb: Refresh Board Data | Re-query the compiled board |
-| `typecad-pcb.buildBoard` | typeCAD/pcb: Build Board | `npm run build` in the hw folder (the ▶ Build Board lens) |
 | `typecad-pcb.runDrc` | typeCAD/pcb: Run DRC | Design rule check → Problems (aimed at source) |
 | `typecad-pcb.diffBoard` | typeCAD/pcb: Diff Board vs HEAD | Visual board diff in a panel |
-| `typecad-pcb.viewBoard` | typeCAD/pcb: View Board | Open (or refresh) the Board viewer |
+| `typecad-pcb.viewBoard` | typeCAD/pcb: View Board | Open (or refresh) the Board viewer (rebuilds the board when stale) |
 | `typecad-pcb.viewComponent` | typeCAD/pcb: View Component on Board | Picker over the compiled board (filter seeded from the cursor); Enter or a typed designator zooms the viewer |
 | `typecad-pcb.viewNet` | typeCAD/pcb: View Net on Board | Prompt for a net name (seeded from a quoted string under the cursor) and highlight its traces |
+
+`typecad-pcb.buildBoard` (`npm run build` in the hw folder) is not in the
+palette — the viewer builds the board on open, so the build lives where a
+rebuild is the explicit intent: the ▶ Build Board lens on hw sources, the
+status chip, and the stale-board prompts.
 
 The hover's *view on board* link invokes `viewComponent` directly with the
 reference, skipping the prompt.

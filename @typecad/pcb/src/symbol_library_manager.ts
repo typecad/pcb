@@ -133,6 +133,22 @@ export class SymbolLibraryManager {
     return definition;
   }
 
+  /**
+   * Silent existence probe for a fully qualified symbol — like
+   * {@link getSymbolDefinition} but without the not-found error logging, for
+   * callers that legitimately probe (power-symbol fallbacks, did-you-mean
+   * suggestions). Negative lookups are an answer, not an error.
+   */
+  public hasSymbol(symbolFqn: string): boolean {
+    if (this.symbolCache.has(symbolFqn)) return true;
+    const parts = symbolFqn.split(LIBRARY_SEPARATOR);
+    if (parts.length !== 2) return false;
+    const [libraryName, symbolName] = parts;
+    const libraryContent = this.getLibraryContent(libraryName);
+    if (!libraryContent) return false;
+    return this.findSymbolInLibrary(libraryContent, libraryName, symbolName) !== null;
+  }
+
   public getPinLocation(symbolFqn: string, pinNumber: string | number): PinLocation | null {
     const cacheKey = `${symbolFqn}_${pinNumber}`;
     if (this.pinLocationCache.has(cacheKey)) {

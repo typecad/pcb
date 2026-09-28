@@ -4,6 +4,7 @@ import { create_project } from './create_project.js';
 
 import type { ProjectAnswers } from '../types.js';
 import logger from '../../utils/logging.js';
+import { sanitize_name } from '../shared/cli_utils.js';
 
 const answers: Partial<ProjectAnswers> = {};
 process.on('uncaughtException', (error) => {
@@ -56,9 +57,11 @@ function showHelp() {
   logger.log(chalk.white.bold('🤖 typeCAD Project Creator - Command Line Usage\n'));
   logger.log('Usage: npx @typecad/pcb create [options]\n');
   logger.log('Options:');
-  logger.log('  --name=<project_name>     Project name (required for non-interactive mode)');
+  logger.log('  --name=<project_name>     Project name (hyphens/spaces are normalized to underscores)');
   logger.log('  --yes                     Non-interactive with defaults (hal=false, git=true)');
-  logger.log('  --hal=<true|false>        Add a typeCAD HAL firmware project in ./fw (its board setup runs interactively)');
+  logger.log(
+    '  --hal=<true|false>        Add a typeCAD HAL firmware project in ./fw (its board setup runs interactively)',
+  );
   logger.log('  --git=<true|false>        Initialize git repository (required for non-interactive mode)');
   logger.log('  --help                    Show this help message\n');
   logger.log('Examples:');
@@ -76,12 +79,17 @@ async function main(preparsedArgs?: Record<string, any>) {
     return;
   }
 
-  // Validate project name if provided
-  function validateProjectName(name: string) {
-    if (name.includes('-') || name.includes(' ') || name.match(/^\d/)) {
-      return `That's not a valid function name in TypeScript`;
-    }
-    return true;
+  // Normalize a project name into a valid TypeScript identifier (the name
+  // becomes the entry file and is imported by users): hyphens/spaces/
+  // punctuation fold to underscores rather than failing — "agent-demo" and
+  // "my project" are perfectly good project names.
+  function normalizeProjectName(name: string): { name: string; changed: boolean } {
+    const sanitized = sanitize_name(name);
+    return { name: sanitized, changed: sanitized !== name };
+  }
+
+  function isValidProjectName(name: string): boolean {
+    return /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name);
   }
 
   process.stdout.write(chalk.white.bold('🤖 type'));
@@ -95,15 +103,24 @@ async function main(preparsedArgs?: Record<string, any>) {
   const project_type = 'project';
 
   if (isNonInteractive) {
-    // Validate provided name
-    const nameValidation = validateProjectName(cmdArgs.name);
-    if (nameValidation !== true) {
-      logger.error(chalk.red('Error:'), nameValidation);
+    // Normalize the provided name (hyphens/spaces fold to underscores) —
+    // only give up when nothing identifier-like remains.
+    const rawName = cmdArgs.name as string;
+    const { name, changed } = normalizeProjectName(rawName);
+    if (!isValidProjectName(name) || name === '_') {
+      logger.error(chalk.red('Error:'), `"${rawName}" is not a usable project name — try letters, digits, - and _`);
       process.exit(1);
+    }
+    if (changed) {
+      logger.log(
+        chalk.yellow(
+          `Name "${rawName}" normalized to "${name}" (hyphens/spaces are not valid in TypeScript identifiers)`,
+        ),
+      );
     }
 
     // Use command line arguments
-    answers.name = cmdArgs.name;
+    answers.name = name;
     answers.hal = cmdArgs.hal;
     answers.git = cmdArgs.git;
 
@@ -142,12 +159,21 @@ async function main(preparsedArgs?: Record<string, any>) {
       return a.trim() || (def ?? '');
     };
 
-    let name = await ask('Project name?', cmdArgs.name || 'typecad_project');
-    let nameValidation = validateProjectName(name);
-    while (nameValidation !== true) {
-      logger.error(chalk.red('Error:'), nameValidation);
-      name = await ask('Project name?', 'typecad_project');
-      nameValidation = validateProjectName(name);
+    let rawName = await ask('Project name?', cmdArgs.name || 'typecad_project');
+    let { name, changed } = normalizeProjectName(rawName);
+    // sanitize_name's empty fallback is '_' — an identifier, but almost
+    // certainly not what the user meant, so keep asking.
+    while (!isValidProjectName(name) || name === '_') {
+      logger.error(chalk.red('Error:'), `"${rawName}" is not a usable project name — try letters, digits, - and _`);
+      rawName = await ask('Project name?', 'typecad_project');
+      ({ name, changed } = normalizeProjectName(rawName));
+    }
+    if (changed) {
+      logger.log(
+        chalk.yellow(
+          `Name "${rawName}" normalized to "${name}" (hyphens/spaces are not valid in TypeScript identifiers)`,
+        ),
+      );
     }
     answers.name = name;
 

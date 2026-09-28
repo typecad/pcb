@@ -47,6 +47,16 @@ export const GERBER_EXTENSIONS = [
 /** File kinds that may contain drill data. */
 export const DRILL_EXTENSIONS = ['.drl', '.drd', '.xln'];
 
+// KiCad's inner-copper plot extensions: In1_Cu.g1 … In30_Cu.g30 — numbered,
+// so they cannot sit in the static list. Anything .g1–.30 IS a gerber
+// (fabrication sets don't use numeric extensions for anything else).
+const INNER_COPPER_EXT = /^\.g(?:3[0]|[12][0-9]|[1-9])$/;
+
+/** Does this extension name a gerber file (allowlist or inner copper)? */
+export function isGerberExtension(ext: string): boolean {
+  return GERBER_EXTENSIONS.includes(ext) || INNER_COPPER_EXT.test(ext);
+}
+
 /** Sniff file content: gerber, drill, or unknown (e.g. reports, zips). */
 export function sniffKind(content: string): 'gerber' | 'drill' | 'unknown' {
   if (/(^|\n)\s*M48/.test(content.slice(0, 4096))) return 'drill';
@@ -68,7 +78,7 @@ export function collectGerberFiles(inputPaths: string[]): { files: string[]; war
         .filter((p) => fs.statSync(p).isFile());
       for (const entry of entries) {
         const ext = path.extname(entry).toLowerCase();
-        if (GERBER_EXTENSIONS.includes(ext) || DRILL_EXTENSIONS.includes(ext)) {
+        if (isGerberExtension(ext) || DRILL_EXTENSIONS.includes(ext)) {
           files.push(entry);
         } else if (ext === '.txt') {
           // .txt drill maps are common; keep them only if they smell like Excellon
@@ -536,7 +546,6 @@ export function buildViewerFromFiles(paths: string[], options: ViewerBuildOption
     'white-hasl',
     'yellow-hasl',
     'oshpark-after-dark',
-    'typecad',
   ];
   const pcbaThemes = themeOrder
     .filter((id) => PCBA_THEMES[id])

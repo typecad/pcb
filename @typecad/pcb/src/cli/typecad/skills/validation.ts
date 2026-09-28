@@ -6,7 +6,7 @@ export const validationSkills: Skill[] = [
     name: 'erc',
     category: 'validation',
     description:
-      'Electrical Rules Check runs via kicad-cli sch erc to validate pin type compatibility, power connections, floating pins, and short circuits',
+      'Electrical Rules Check runs natively over the typeCAD object model to validate electrical correctness: unconnected pins and incompatible pin connections (e.g. two outputs on one net)',
     package: '@typecad/pcb',
     import: "import { Power } from '@typecad/pcb';",
     examples: [
@@ -27,28 +27,29 @@ let vin = new Power({
   direction: 'input',   // sets pin to "power_in"
 });
 
-// KiCad ERC checks (via kicad-cli sch erc):
-// - power_out → power_in: OK
-// - power_out → power_out: ERROR (conflict)
-// - input → output: OK
-// - output → output: WARNING`,
+// Native ERC checks (build runs the engine over the netlist):
+// - unconnected pins: any library pin no net() or dnc() ever touched
+// - output → output: ERROR (two drivers fight)
+// - output + tri-state/open-collector: ERROR
+// - power pins: never conflict (no driver analysis)`,
       },
       {
         title: 'CLI ERC',
-        code: `# Run ERC on the built schematic
+        code: `# Read the native ERC report the build wrote
 typecad-pcb erc
 
-# With KiCad flags
-typecad-pcb erc -- --severity-all
+# Full KiCad check set via kicad-cli (also for external schematics)
+typecad-pcb erc --kicad -- --severity-all
 
 # Specific file
-typecad-pcb erc ./build/board.kicad_sch -- --exit-code-violations`,
+typecad-pcb erc ./build/board.kicad_sch --kicad -- --exit-code-violations`,
       },
     ],
     notes: [
-      'ERC is run via CLI: typecad-pcb erc (uses kicad-cli sch erc)',
-      'Use Power objects to automatically set correct pin types',
-      'For shared pins (e.g. ground in regulators), set type to "passive" to avoid conflicts',
+      'ERC runs at build time over the object model; typecad-pcb erc reads the report',
+      'dnc(pin) marks a pin as intentionally unconnected (excluded from both checks)',
+      'Use Power objects or component.pin(n, { type }) to set pin electrical types',
+      'Use --kicad for the kicad-cli sch erc check set on the rendered .kicad_sch',
     ],
     related: ['drc', 'validation', 'power', 'pin', 'build'],
   },

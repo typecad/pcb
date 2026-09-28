@@ -46,6 +46,7 @@ import type { IStitchOptions } from './pcb_stitching.js';
 import type { IStackupOptions } from './pcb_stackup.js';
 
 import { createBoard } from './pcb_board_creation.js';
+import { runErc, type ErcReport } from '../sch/erc_engine.js';
 import { placeComponent, stageComponent, groupComponents } from './pcb_component_lifecycle.js';
 import { registerRouter } from './pcb_router_registry.js';
 import type { RouterFactory, RouterGridConfigurator } from './pcb_router_registry.js';
@@ -196,6 +197,18 @@ export class PCB {
    */
   get drcSeverities(): Readonly<Record<string, 'error' | 'warning' | 'ignore'>> {
     return this._confSeverities;
+  }
+
+  /**
+   * Electrical rules check over the board's own netlist (native ERC — no
+   * files, no kicad-cli): symbol-library roster pins no net ever touched
+   * (`pin_not_connected`) and electrically incompatible pin pairs on one
+   * net (`pin_to_pin`, e.g. two outputs). Severities come from the conf
+   * constraints severities map keyed by check id; anything else about the
+   * schematic-as-document is out of scope.
+   */
+  erc(): ErcReport {
+    return runErc(this._schematic, { severities: this._confSeverities });
   }
 
   get outlines(): readonly IOutline[] {

@@ -1,5 +1,7 @@
+import fs from 'node:fs';
 import { Component, clearPlacedComponents } from '../component.js';
 import { TrackBuilder } from './pcb_track_builder.js';
+import { getBuildDir } from '../utils/constants.js';
 import { parse, parseAsList, nameOf, s, no } from '../sexpr/index.js';
 import type { SExpr } from '../sexpr/types.js';
 import logger from '../utils/logging.js';
@@ -142,6 +144,42 @@ function separateOutlinesAndTracks(pcb: PCB): void {
   );
 }
 
+/**
+ * Compute the native ERC over the completed object model and persist the
+ * KiCad-schema report next to the .kicad_sch this build writes — the same
+ * convention as the DRC report, so `typecad-pcb erc`/`check` can read either
+ * engine's output. Deliberately deterministic (no timestamp): identical
+ * designs produce byte-identical artifacts.
+ */
+function writeErcReport(pcb: PCB): void {
+  try {
+    const report = pcb.erc();
+    const reportPath = `${getBuildDir()}/${pcb.schematic.sheetName}_erc.json`;
+    fs.writeFileSync(
+      reportPath,
+      JSON.stringify(
+        {
+          coordinate_units: 'mm',
+          engine: 'typecad-native',
+          source: `${pcb.schematic.sheetName}.kicad_sch`,
+          sheets: [{ path: '/', violations: report.violations }],
+        },
+        null,
+        2,
+      ),
+    );
+    const unconnected = report.violations.filter((v) => v.type === 'pin_not_connected').length;
+    const conflicts = report.violations.filter((v) => v.type === 'pin_to_pin').length;
+    if (unconnected + conflicts > 0) {
+      logger.warn(
+        `ERC: ${unconnected} unconnected pin(s), ${conflicts} pin conflict(s) — full report: ${reportPath}`,
+      );
+    }
+  } catch (err) {
+    logger.warn(`ERC report not written: ${getErrorMessage(err)}`);
+  }
+}
+
 export function createBoard(pcb: PCB, ...items: Array<Component | TrackBuilder>) {
   const state = getPcbState(pcb);
   const components: Component[] = [];
@@ -166,6 +204,7 @@ export function createBoard(pcb: PCB, ...items: Array<Component | TrackBuilder>)
 
   pcb.schematic.create(...components);
   schematic(pcb.schematic);
+  writeErcReport(pcb);
   collectBoardComponents(pcb, items, components);
   separateOutlinesAndTracks(pcb);
 

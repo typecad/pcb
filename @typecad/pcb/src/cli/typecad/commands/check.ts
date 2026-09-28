@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import path from 'node:path';
 import chalk from 'chalk';
 import type { ParsedArgs } from '../parser.js';
 import logger from '../../../utils/logging.js';
@@ -96,6 +97,58 @@ async function nativeDrcStep(pcbPath: string): Promise<StepResult & { unconnecte
   }
 }
 
+/** Native ERC as a check step — reads the report the build step just wrote
+ *  (the build runs the engine over the typeCAD object model and persists
+ *  <name>_erc.json next to the schematic). */
+function nativeErcStep(schPath: string): StepResult & { reportPath?: string } {
+  const reportPath = path.join(
+    path.dirname(schPath),
+    path.basename(schPath, '.kicad_sch') + '_erc.json',
+  );
+  try {
+    if (!fs.existsSync(reportPath)) {
+      return {
+        ran: false,
+        passed: false,
+        reason: 'No native ERC report from the build',
+        errors: 0,
+        warnings: 0,
+        violations: [],
+      };
+    }
+    const report = JSON.parse(fs.readFileSync(reportPath, 'utf8')) as {
+      sheets?: Array<{ violations?: KiCadViolation[] }>;
+    };
+    const violations: KiCadViolation[] = [];
+    for (const sheet of report.sheets ?? []) {
+      violations.push(...(sheet.violations ?? []));
+    }
+    let errors = 0;
+    let warnings = 0;
+    for (const v of violations) {
+      if (v.severity === 'error') errors++;
+      else if (v.severity === 'warning') warnings++;
+    }
+    return {
+      ran: true,
+      passed: errors === 0 && warnings === 0,
+      errors,
+      warnings,
+      violations,
+      reportPath,
+    };
+  } catch (e) {
+    return {
+      ran: false,
+      passed: false,
+      reason: e instanceof Error ? e.message : String(e),
+      errors: 0,
+      warnings: 0,
+      violations: [],
+    };
+  }
+}
+
 export async function run(parsed: ParsedArgs): Promise<void> {
   const json = parsed.json;
   const skipErc = parsed.args['skip-erc'] === true;
@@ -139,9 +192,13 @@ export async function run(parsed: ParsedArgs): Promise<void> {
     report.unconnected.reason = `No .kicad_pcb found in ${buildDirPath()}`;
   }
 
-  // ── Step 3: ERC ──────────────────────────────────────────────────────────
+  // ── Step 3: ERC (native engine report from the build; --kicad-erc for kicad-cli) ──
   if (!skipErc && report.build.passed && schPath) {
-    report.erc = stepFromKiCadResult(await runErcStep(schPath));
+    if (parsed.args['kicad-erc'] === true) {
+      report.erc = stepFromKiCadResult(await runErcStep(schPath));
+    } else {
+      report.erc = nativeErcStep(schPath);
+    }
   } else if (!skipErc && report.build.passed) {
     report.erc = { ran: false, passed: false, reason: `No .kicad_sch found in ${buildDirPath()}` };
   } else if (skipErc) {

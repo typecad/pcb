@@ -188,6 +188,8 @@ export function showDiffHelp(): void {
 export function showDocHelp(): void {
   console.log(chalk.white.bold('typecad-pcb doc') + ' - Generate PCB documentation from Markdown\n');
   console.log('Generate a self-contained HTML document from a Markdown file and KiCad PCB file.');
+  console.log('Layer, drill-map and stackup images are rendered natively (no KiCad install');
+  console.log('needed); only {Render/...} 3D images use kicad-cli.');
   console.log('\nUsage: typecad-pcb doc <markdown_file> <pcb_file> [options]\n');
   console.log('Arguments:');
   console.log('  <markdown_file>       Input Markdown file (.md)');
@@ -206,19 +208,25 @@ export function showDocHelp(): void {
 }
 
 export function showErcHelp(): void {
-  console.log(chalk.white.bold('typecad-pcb erc') + ' - Run Electrical Rules Check on a KiCad schematic\n');
+  console.log(chalk.white.bold('typecad-pcb erc') + ' - Run Electrical Rules Check on a typeCAD schematic\n');
   console.log(
-    'Runs kicad-cli sch erc on a .kicad_sch file, parses the JSON report,\n' +
-      'and displays a summary of errors and warnings.\n',
+    'Runs the native ERC engine: the build already checked the typeCAD object\n' +
+      'model (components, nets, pin electrical types — no file parsing) for\n' +
+      'unconnected pins and electrically incompatible pin connections.\n' +
+      'This command reads and summarizes that report.\n' +
+      'Use --kicad to run kicad-cli sch erc on the .kicad_sch instead (full\n' +
+      'KiCad check set; the only route for arbitrary external schematics).\n',
   );
   console.log('Usage:');
-  console.log('  typecad-pcb erc [path] [typecad-options] -- [kicad-cli flags]\n');
+  console.log('  typecad-pcb erc [path] [typecad-options] [--kicad --] [kicad-cli flags]\n');
   console.log('Arguments:');
-  console.log('  <path>             Path to .kicad_sch file (default: auto-detected from ./build/)\n');
+  console.log('  <path>             Path to .kicad_sch file (default: auto-detected from ./build/);\n' +
+    '                     the native report <name>_erc.json must sit beside it\n');
   console.log('typecad Options:');
   console.log('  --json             Output typecad results as JSON');
+  console.log('  --kicad            Run kicad-cli sch erc instead of the native engine');
   console.log('  --help             Show this help\n');
-  console.log('Passthrough:');
+  console.log('Passthrough (with --kicad):');
   console.log('  All flags after -- are forwarded directly to kicad-cli sch erc.');
   console.log('  See `kicad-cli sch erc --help` for the full list of available flags.\n');
   console.log('  Common kicad-cli flags:');
@@ -235,18 +243,19 @@ export function showErcHelp(): void {
   console.log('Examples:');
   console.log('  typecad-pcb erc');
   console.log('  typecad-pcb erc --json');
-  console.log('  typecad-pcb erc -- --severity-all');
-  console.log('  typecad-pcb erc ./build/board.kicad_sch -- --exit-code-violations');
+  console.log('  typecad-pcb erc --kicad -- --severity-all');
+  console.log('  typecad-pcb erc ./build/board.kicad_sch --kicad -- --exit-code-violations');
 }
 
 export function showDrcHelp(): void {
   console.log(chalk.white.bold('typecad-pcb drc') + ' - Run Design Rule Check on a KiCad PCB file\n');
   console.log(
-    'Runs kicad-cli pcb drc on a .kicad_pcb file, parses the JSON report,\n' +
-      'and displays a summary of errors, warnings, and unconnected items.\n',
+    'Runs the native DRC engine (copper core + DFM checks) on a .kicad_pcb file\n' +
+      'and displays a summary of errors, warnings, and unconnected items.\n' +
+      'Use --kicad to run kicad-cli pcb drc instead (full KiCad check set).\n',
   );
   console.log('Usage:');
-  console.log('  typecad-pcb drc [path] [typecad-options] -- [kicad-cli flags]\n');
+  console.log('  typecad-pcb drc [path] [typecad-options] [--kicad --] [kicad-cli flags]\n');
   console.log('Arguments:');
   console.log('  <path>             Path to .kicad_pcb file (default: auto-detected from ./build/)\n');
   console.log('typecad Options:');
@@ -432,8 +441,8 @@ export function showCheckHelp(): void {
   console.log('Runs the full gauntlet and emits a single report:');
   console.log('  1. build   - compile typeCAD source to KiCad files');
   console.log('  2. unconnected - pads with no net, single-pin nets');
-  console.log('  3. erc     - electrical rules check (needs kicad-cli)');
-  console.log('  4. drc     - design rules check (needs kicad-cli)\n');
+  console.log('  3. erc     - electrical rules check (native engine report from the build)');
+  console.log('  4. drc     - design rules check (native engine by default)\n');
   console.log('Every violation maps back to designators and nets so an agent');
   console.log('can act on it directly. Exits non-zero when anything fails.\n');
   console.log('Usage: typecad-pcb check [entry.ts] [options]\n');
@@ -441,6 +450,7 @@ export function showCheckHelp(): void {
   console.log('  --json              Output the full report as JSON');
   console.log('  --skip-erc          Skip the ERC step');
   console.log('  --skip-drc          Skip the DRC step');
+  console.log('  --kicad-erc         ERC through kicad-cli (native engine is the default)');
   console.log("  --kicad-drc         DRC through kicad-cli (native engine is the default)\n");
   console.log('Examples:');
   console.log('  typecad-pcb check');

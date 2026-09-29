@@ -97,3 +97,11 @@ day), copies the newer asset over itself, and offers a window reload — the
 bundled copy can no longer rot at its scaffold-time version. A
 `sync:extension` script in @typecad/pcb refreshes the shipped asset from a
 built extension for maintainers.
+
+Apply application is now a single atomic write: each touched file's final
+composed text (the exact strings the parse gate validated) lands in ONE
+whole-document WorkspaceEdit, after verifying the live document still
+matches the text the plan was built against — a keystroke landing between
+planning and writing previously shifted every offset and spliced tokens,
+caught by the post-write check's auto-restore but leaving the apply to
+retry; now the race refuses cleanly before anything is written.

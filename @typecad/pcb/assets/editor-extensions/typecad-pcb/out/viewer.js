@@ -724,22 +724,39 @@ class BoardViewerPanel {
             // landed early, splicing tokens (seen as `width: 0.3const route15`).
             // Whole-document replacement makes application byte-identical to what
             // the parse gate validated.
-            for (const stage of plan.stages) {
-                const edits = new vscode.WorkspaceEdit();
-                const seen = new Set();
-                for (const batch of stage) {
-                    if (seen.has(batch.uri))
-                        continue; // one replacement per file per stage
-                    seen.add(batch.uri);
-                    const doc = await vscode.workspace.openTextDocument(vscode.Uri.parse(batch.uri));
-                    let out = doc.getText();
-                    for (const e of [...batch.edits].sort((a, b) => b.start - a.start || b.end - a.end))
-                        out = out.slice(0, e.start) + e.line + out.slice(e.end);
-                    edits.replace(doc.uri, new vscode.Range(doc.positionAt(0), doc.positionAt(doc.getText().length)), out);
+            // Application writes each touched file's FINAL composed text (the dry
+            // map — exactly what the gate validated) as one whole-document
+            // replacement, all files in ONE applyEdit. Two hazards this kills:
+            // multi-range WorkspaceEdits resolve sequentially and silently drop
+            // overlapping entries (a dropped delete desynced the live document and
+            // later ranges spliced mid-token), and per-stage application left
+            // awaits between stages — a keystroke landing mid-apply changed the
+            // document under every remaining offset. Writing the final text
+            // atomically leaves no inter-stage window at all.
+            // One guard first: if the live document no longer matches the text
+            // the plan was built against (the user typed while the apply was
+            // planning), every offset is stale — refuse and let them re-apply.
+            const touchedSet = new Set(plan.touched);
+            const applyDocs = new Map();
+            for (const f of files) {
+                if (!touchedSet.has(f.uri))
+                    continue;
+                const doc = await vscode.workspace.openTextDocument(vscode.Uri.parse(f.uri));
+                if (doc.getText() !== f.text) {
+                    fail(`${vscode.workspace.asRelativePath(vscode.Uri.parse(f.uri))} changed while the apply was planning — nothing was written, press apply again`);
+                    return;
                 }
-                if (edits.size > 0)
-                    await vscode.workspace.applyEdit(edits);
+                applyDocs.set(f.uri, doc);
             }
+            const finalEdits = new vscode.WorkspaceEdit();
+            for (const [uri, text] of dry) {
+                if (!touchedSet.has(uri))
+                    continue;
+                const doc = applyDocs.get(uri);
+                finalEdits.replace(doc.uri, new vscode.Range(doc.positionAt(0), doc.positionAt(doc.getText().length)), text);
+            }
+            if (finalEdits.size > 0)
+                await vscode.workspace.applyEdit(finalEdits);
             for (const key of plan.touched) {
                 const doc = await vscode.workspace.openTextDocument(vscode.Uri.parse(key));
                 await doc.save();

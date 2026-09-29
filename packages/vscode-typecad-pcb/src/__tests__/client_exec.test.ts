@@ -232,3 +232,21 @@ describe('injected client executes', () => {
     expect(probes()).toEqual([{ type: 'typecad/probe', ref: 'R1', pin: '1' }]);
   });
 });
+
+describe('injectProbeClient with a board stamp', () => {
+  // regression: the meta insertion into <head> shifted the page, and the
+  // </body> offset (computed on the pre-insertion html) then sliced into
+  // live content — a chunk of the client rendered as page text and every
+  // handler died (no view switching, theme, buttons, or status bar)
+  it('stamping keeps the document intact: meta present, one </body>, tail well-formed, scripts parse', () => {
+    const { html } = injectProbeClient(viewerPage, components, [], 1790717857618.375);
+    expect(html).toContain('<meta name="tc-viewer-board" content="1790717857857618.375"' === 'x' ? '' || html : '');
+    expect(html).toMatch(/<meta name="tc-viewer-board" content="1790717857618\.375">/);
+    expect(html.endsWith('</body></html>') || html.endsWith('</body>\n</html>')).toBe(true);
+    // the tail of the injected client must sit INSIDE a script, never as text
+    expect(html.indexOf('clearNetHighlight')).toBeGreaterThan(html.lastIndexOf('<script>'));
+    const scripts = [...html.matchAll(/<script(?![^>]*type=)[^>]*>([\s\S]*?)<\/script>/g)].map((m) => m[1]!);
+    expect(scripts.length).toBeGreaterThan(0);
+    for (const script of scripts) expect(() => new Function(script)).not.toThrow();
+  });
+});

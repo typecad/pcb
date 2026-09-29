@@ -350,14 +350,18 @@ function applyNoncePolicy(html) {
  * nothing.
  */
 function injectProbeClient(html, components, nets = [], boardMtimeMs) {
-    const bodyClose = html.lastIndexOf('</body>');
-    if (html.indexOf('<head>') === -1 || bodyClose === -1)
+    if (html.indexOf('<head>') === -1 || html.lastIndexOf('</body>') === -1)
         return { html, injected: false };
     // the board identity this page renders — the apply bridge reports it
     // back so the host can refuse edits made against a superseded board
     const boardTag = boardMtimeMs !== undefined ? `<meta name="tc-viewer-board" content="${boardMtimeMs}">` : '';
     const headClose = html.indexOf('</head>');
     const stamped = boardTag && headClose !== -1 ? html.slice(0, headClose) + boardTag + html.slice(headClose) : html;
+    // offsets MUST be recomputed on `stamped` — the meta insertion shifts
+    // everything after </head>, and slicing at the pre-insertion offset cuts
+    // into live content (seen as a chunk of this client rendered as page
+    // text with every handler dead)
+    const bodyClose = stamped.lastIndexOf('</body>');
     const dataTag = `<script id="typecad-probe-data" type="application/json">${JSON.stringify({
         components: outlineData(components),
         nets,

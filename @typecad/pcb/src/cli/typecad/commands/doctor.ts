@@ -388,7 +388,8 @@ function checkKiCadCli(): CheckResult {
 
 function checkKiCadSymbols(): CheckResult {
   // Library data, not the CLI: an install is one source, conf paths
-  // another, the project's build/lib a third, and power is bundled.
+  // another, the project's build/lib a third, and power + the chip
+  // passives are bundled — a source always exists, the message says which.
   const roots = libraryRoots();
   const parts: string[] = [];
   if (roots.symbols && fs.existsSync(roots.symbols)) {
@@ -400,17 +401,9 @@ function checkKiCadSymbols(): CheckResult {
     const files = fs.readdirSync(buildLib).filter((f) => f.endsWith('.kicad_sym'));
     if (files.length > 0) parts.push(`${files.length} in build/lib (project)`);
   }
-  parts.push('power bundled');
+  parts.push('power + passives bundled');
 
-  if (parts.length > 1) {
-    return { name: 'KiCad symbol libraries', passed: true, message: parts.join(' | ') };
-  }
-  return {
-    name: 'KiCad symbol libraries',
-    passed: false,
-    message: 'no symbol source (no install, empty build/lib)',
-    fixHint: 'Install KiCad, or fetch just what the project needs: typecad-pcb lib add <library>',
-  };
+  return { name: 'KiCad symbol libraries', passed: true, message: parts.join(' | ') };
 }
 
 function checkKiCadFootprints(): CheckResult {
@@ -425,16 +418,9 @@ function checkKiCadFootprints(): CheckResult {
     const files = fs.readdirSync(buildFp).filter((f) => f.endsWith('.kicad_mod'));
     if (files.length > 0) parts.push(`${files.length} in build/lib/footprints (project)`);
   }
+  parts.push('chip-passive footprints bundled');
 
-  if (parts.length > 0) {
-    return { name: 'KiCad footprint libraries', passed: true, message: parts.join(' | ') };
-  }
-  return {
-    name: 'KiCad footprint libraries',
-    passed: false,
-    message: 'no footprint source (no install, empty build/lib)',
-    fixHint: 'Install KiCad, or fetch just what the project needs: typecad-pcb lib add --footprint Lib:Name',
-  };
+  return { name: 'KiCad footprint libraries', passed: true, message: parts.join(' | ') };
 }
 
 function checkNgspice(): CheckResult {

@@ -271,7 +271,7 @@ function listLibraries(): void {
   logger.log(chalk.white.bold('typecad-pcb lib list') + ' — library sources\n');
   logger.log(`  symbols:    ${roots.symbols ?? chalk.gray('(none)')} (${roots.symbolsSource})`);
   logger.log(`  footprints: ${roots.footprints ?? chalk.gray('(none)')} (${roots.footprintsSource})`);
-  logger.log(`  bundled:    power (inside @typecad/pcb, last resort)\n`);
+  logger.log(`  bundled:    power + chip-passive symbols/footprints (inside @typecad/pcb, last resort)\n`);
 
   const libDir = path.join(getBuildDir(), 'lib');
   const symbols = fs.existsSync(libDir) ? fs.readdirSync(libDir).filter((f) => f.endsWith('.kicad_sym')) : [];

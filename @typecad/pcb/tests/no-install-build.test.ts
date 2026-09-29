@@ -24,7 +24,7 @@ vi.mock('../src/kicad.js', async (importOriginal) => {
   return { ...actual, KiCAD: NoKiCAD };
 });
 
-const { PCB, Component } = await import('../src/index.js');
+const { PCB, Component, ...passives } = await import('../src/index.js');
 
 const SYMBOL_LIB = `(kicad_symbol_lib
   (version 20200101)
@@ -99,5 +99,32 @@ describe('build without a KiCad install', () => {
     const manager = new SymbolLibraryManager(); // must not throw
     const def = manager.getSymbolDefinition('power:PWR_FLAG');
     expect(def).not.toBeNull();
+  });
+
+  it('builds passives out of the box with no install and an EMPTY build/lib', () => {
+    fs.rmSync(path.join(tmpCwd, 'build', 'lib'), { recursive: true, force: true });
+
+    const { Resistor, LED } = passives;
+    const pcb = new PCB('passives_oob');
+    const r1 = new Resistor({ value: '150' });
+    const d1 = new LED({ value: 'red' });
+    r1.pcb = { x: 0, y: 0 };
+    d1.pcb = { x: 5, y: 0 };
+    r1.sch = { x: 10, y: 10 };
+    d1.sch = { x: 15, y: 10 };
+    pcb.net(r1.pin(1), d1.pin(1));
+    pcb.net(r1.pin(2), d1.pin(2));
+
+    expect(() => pcb.create(r1, d1)).not.toThrow();
+
+    const build = path.join(tmpCwd, 'build');
+    const board = fs.readFileSync(path.join(build, 'passives_oob.kicad_pcb'), 'utf8');
+    // both bundled chip footprints embedded (0603 default size presets)
+    expect(board).toContain('R_0603_1608Metric');
+    expect(board).toContain('LED_0603_1608Metric');
+    const sch = fs.readFileSync(path.join(build, 'passives_oob.kicad_sch'), 'utf8');
+    // the bundled Device passives rendered into the schematic
+    expect(sch).toContain('R_Small');
+    expect(sch).toContain('LED_Small');
   });
 });

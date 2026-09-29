@@ -621,9 +621,12 @@ describe('routing rubber band — the ratsnest follows the walk end', () => {
     const html = buildViewerHtml(svg, [info, fabInfo], {
       title: 'demo board',
       pcbaSvg: '<svg/>',
+      // island comps are authored in the GERBER frame (y-up), exactly as
+      // the layout extractor emits them — the ratsnest group renders that
+      // frame directly inside #yflip
       layoutComponents: [
-        { ref: 'R1', x: 10, y: -20, rot: 0, w: 1.6, h: 0.8, side: 'front' as const, nets: ['led_a'], pads: [{ x: 9.5, y: -20, net: 'led_a' }] },
-        { ref: 'U1', x: 30, y: -40, rot: 0, w: 4, h: 4, side: 'front' as const, nets: ['led_a'], pads: [{ x: 30, y: -40, net: 'led_a' }] },
+        { ref: 'R1', x: 10, y: 20, rot: 0, w: 1.6, h: 0.8, side: 'front' as const, nets: ['led_a'], pads: [{ x: 9.5, y: 20, net: 'led_a' }] },
+        { ref: 'U1', x: 30, y: 40, rot: 0, w: 4, h: 4, side: 'front' as const, nets: ['led_a'], pads: [{ x: 30, y: 40, net: 'led_a' }] },
       ],
       padLabels: [
         { ref: 'R1', pin: '1', net: 'led_a', x: 9.5, y: -20, w: 0.8, h: 0.9, layers: ['F.Cu'] },
@@ -674,10 +677,12 @@ describe('routing rubber band — the ratsnest follows the walk end', () => {
     expect(path).not.toBeNull();
     const start = /^M ([\d.-]+) ([\d.-]+)/.exec(path!.getAttribute('d')!)!;
     const end = /([\d.-]+) ([\d.-]+)$/.exec(path!.getAttribute('d')!)!;
-    expect(+start[1]!).toBeCloseTo(18, 2); // walk end follows the cursor
-    expect(+start[2]!).toBeCloseTo(-28, 2);
+    // walk end in the gerber frame the band renders: client (18,-28) is
+    // gerber (18, 28) — drawn AS-IS, never mirrored
+    expect(+start[1]!).toBeCloseTo(18, 2);
+    expect(+start[2]!).toBeCloseTo(28, 2);
     expect(+end[1]!).toBeCloseTo(30, 2); // the far pad, not the start pad
-    expect(+end[2]!).toBeCloseTo(-40, 2);
+    expect(+end[2]!).toBeCloseTo(40, 2);
     // moves with the cursor
     t.mouse(t.board(), 'mousemove', 22, -32);
     expect(t.bandPath()!.getAttribute('d')).not.toBe(path!.getAttribute('d'));
@@ -691,5 +696,72 @@ describe('routing rubber band — the ratsnest follows the walk end', () => {
     t.key('Escape');
     expect(t.band()).toBeNull();
     expect(t.d.querySelectorAll('#ratsnest > path').length).toBe(1);
+  });
+});
+
+describe('ratsnest connectivity — broken routes wire, complete routes do not', () => {
+  // the regression the user hit: a route that exists but broke in the
+  // middle left both pads "wired" (each sat on ink) and drew NOTHING;
+  // deleting every segment was the only way to get a wire back
+  const netBoot = async (routeD: string | null) => {
+    const copperInk = routeD
+      ? `<path d="${routeD}" data-w="0.3" data-net="led_a" fill="none"/>`
+      : '';
+    // the copper group carries layer attrs before data-kind — anchor on
+    // the tag itself, inject right inside it
+    const localSvg = svg.replace(/(<g [^>]*data-kind="copper"[^>]*>)/, `$1${copperInk}`);
+    const html = buildViewerHtml(localSvg, [info], {
+      title: 'demo board',
+      pcbaSvg: '<svg/>',
+      layoutComponents: [
+        { ref: 'R1', x: 1, y: 1, rot: 0, w: 1.6, h: 0.8, side: 'front' as const, nets: ['led_a'], pads: [{ x: 1, y: 1, net: 'led_a' }] },
+        { ref: 'U1', x: 5, y: 1, rot: 0, w: 4, h: 4, side: 'front' as const, nets: ['led_a'], pads: [{ x: 5, y: 1, net: 'led_a' }] },
+      ],
+    });
+    const dom = new JSDOM(html, {
+      runScripts: 'dangerously',
+      url: 'https://localhost/viewer.html',
+      pretendToBeVisual: true,
+      beforeParse(w) {
+        const idCtm = { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0, inverse() { return this; } };
+        type FakePoint = { x: number; y: number; matrixTransform(): { x: number; y: number } };
+        w.SVGSVGElement.prototype.getScreenCTM = () => idCtm;
+        w.SVGSVGElement.prototype.createSVGPoint = (): FakePoint => {
+          const p = { x: 0, y: 0 };
+          return { get x() { return p.x; }, set x(v: number) { p.x = v; }, get y() { return p.y; }, set y(v: number) { p.y = v; }, matrixTransform: () => ({ x: p.x, y: p.y }) };
+        };
+        w.SVGElement.prototype.getBBox = function (this: SVGElement) { return { x: 0, y: 0, width: 0, height: 0 }; };
+      },
+    });
+    const w = dom.window;
+    const d = w.document;
+    await new Promise((r) => setTimeout(r, 100));
+    const viewSelect = d.querySelector('select')!;
+    viewSelect.value = 'layout';
+    viewSelect.dispatchEvent(new w.Event('change', { bubbles: true }));
+    await new Promise((r) => setTimeout(r, 100));
+    return { w, d, wires: () => d.querySelectorAll('#ratsnest > path').length };
+  };
+
+  it('no copper: one wire pad-to-pad', async () => {
+    const t = await netBoot(null);
+    expect(t.wires()).toBe(1);
+  });
+
+  it('complete route: both pads one component, no wire', async () => {
+    const t = await netBoot('M 1 1 L 5 1');
+    expect(t.wires()).toBe(0);
+  });
+
+  it('route BROKEN in the middle: the two sides are separate components — the wire returns', async () => {
+    // two sub-tracks: each reaches a pad, but a gap between x=2 and x=4
+    // leaves the net electrically open
+    const t = await netBoot('M 1 1 L 2 1 M 4 1 L 5 1');
+    expect(t.wires()).toBe(1);
+  });
+
+  it('stub off one pad: the far pad still owes its wire', async () => {
+    const t = await netBoot('M 1 1 L 2 1');
+    expect(t.wires()).toBe(1);
   });
 });

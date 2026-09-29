@@ -3846,36 +3846,6 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     if (net) p.setAttribute('data-net', net);
     return p;
   }
-  // is a pad an endpoint of any committed interactive track of its net?
-  function routePadCovered(ref, pin, net) {
-    var covered = window.__typecadRouteEnds;
-    if (!covered) {
-      covered = window.__typecadRouteEnds = {};
-      if (viewGroups.gerber) {
-        var tracks = viewGroups.gerber.querySelectorAll('path[data-route="1"][data-w]');
-        for (var ti = 0; ti < tracks.length; ti++) {
-          var tn = tracks[ti].getAttribute('data-net');
-          var tw = parseFloat(tracks[ti].getAttribute('data-w') || '0.3') / 2;
-          var nums = (tracks[ti].getAttribute('d') || '').match(/[-\d.]+/g);
-          if (!nums || nums.length < 4 || !tn) continue;
-          var ends = [
-            [+nums[0], +nums[1]],
-            [+nums[nums.length - 2], +nums[nums.length - 1]],
-          ];
-          for (var pi2 = 0; pi2 < padManifest.length; pi2++) {
-            var pcx = padManifest[pi2];
-            if (pcx.net !== tn) continue;
-            var cc = padCenter(pcx);
-            var rr = Math.max(Math.max(pcx.w, pcx.h) / 2, tw) + 0.25;
-            for (var en = 0; en < ends.length; en++)
-              if (Math.hypot(cc.x - ends[en][0], cc.y - ends[en][1]) < rr)
-                covered[pcx.ref + '|' + String(pcx.pin)] = 1;
-          }
-        }
-      }
-    }
-    return !!covered[ref + '|' + pin];
-  }
   // the routing rubber band's container (inside the ratsnest group): the
   // walk's end ties to the nearest still-stranded pad of the routed net —
   // KiCad's routing ratsnest, refreshed per mousemove in routeFollow
@@ -3923,6 +3893,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     // endpoint of a committed interactive track. Ripped ink never counts.
     var pourNets = {};
     var netInk = {}; // net -> [{x, y, w}] gerber-frame contact points
+    var netEls = {}; // net -> [{pts: [{x, y, w}]}] per-ELEMENT endpoints (circles: 1, paths: 2)
     if (viewGroups.gerber) {
       var wels = viewGroups.gerber.querySelectorAll('[data-net]:not([data-ref])');
       for (var we = 0; we < wels.length; we++) {
@@ -3939,37 +3910,27 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         var wPts = [];
         if (wel.tagName === 'circle') {
           wPts.push({ x: parseFloat(wel.getAttribute('cx')), y: parseFloat(wel.getAttribute('cy')), w: wHalf * 2 });
+          (netInk[wnet] = netInk[wnet] || []).push.apply(netInk[wnet], wPts);
+          (netEls[wnet] = netEls[wnet] || []).push({ pts: wPts });
         } else {
-          var wNums = (wel.getAttribute('d') || '').match(/[-\d.]+/g);
-          if (!wNums || wNums.length < 4) continue;
-          wPts.push({ x: +wNums[0], y: +wNums[1], w: wHalf * 2 });
-          wPts.push({ x: +wNums[wNums.length - 2], y: +wNums[wNums.length - 1], w: wHalf * 2 });
+          // each M-subpath is its own conductor — a d with a GAP (M…M) is
+          // two elements, never one bridged run (bridging it called broken
+          // routes complete and hid their ratsnest wire)
+          var wSubs = (wel.getAttribute('d') || '').split(/(?=M)/);
+          for (var ws = 0; ws < wSubs.length; ws++) {
+            var wNums = wSubs[ws].match(/[-\d.]+/g);
+            if (!wNums || wNums.length < 4) continue;
+            var subPts = [
+              { x: +wNums[0], y: +wNums[1], w: wHalf * 2 },
+              { x: +wNums[wNums.length - 2], y: +wNums[wNums.length - 1], w: wHalf * 2 },
+            ];
+            (netInk[wnet] = netInk[wnet] || []).push.apply(netInk[wnet], subPts);
+            (netEls[wnet] = netEls[wnet] || []).push({ pts: subPts });
+          }
         }
-        (netInk[wnet] = netInk[wnet] || []).push.apply(netInk[wnet], wPts);
       }
     }
-    // is a manifest pad connected to its net's copper? (positions island-
-    // frame; the ink points are gerber-frame — the same frame padPos emits)
-    var padWired = function (comp, pad) {
-      var unet = pad.net;
-      if (pourNets[unet]) return true;
-      var pts = netInk[unet];
-      if (!pts) return false;
-      var ppos = padPos(comp, pad);
-      var pr = Math.max(pad.w || 0.3, pad.h || 0.3) / 2;
-      for (var pw = 0; pw < pts.length; pw++) {
-        var need = pr + pts[pw].w / 2 + 0.15;
-        if (Math.hypot(pts[pw].x - ppos.x, pts[pw].y - ppos.y) <= need) return true;
-      }
-      return false;
-    };
-    var padsByNet = {};
-    var wiredByNet = {};
-    // per-island-pad wired verdict (ref#index): the rip-up block below must
-    // NOT re-wire a pad that already sits on copper — completing a net
-    // leaves it with NO stranded pads, and its old "don't double" guard
-    // (stranded pads exist) then fails and EVERY moved part's pad on that
-    // net sprouts a phantom wire again
+    var padsByNet = {}; // net -> [{x, y, r, key}] every pad, gerber frame
     var wiredPad = {};
     for (var uc = 0; uc < layoutComps.length; uc++) {
       var ucomp = layoutComps[uc];
@@ -3979,78 +3940,123 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         // a live route covers its pads: the start pad drops out of the chain
         // immediately, the target once the rubber-band snaps onto it
         if (routeState && routeState.startPad && ucomp.ref === routeState.startPad.ref && String(ucomp.pads[up].pin) === String(routeState.startPad.pin)) continue;
-        // island pads carry no pin field — the start pad also drops out by
-        // POSITION, or the rubber band would tie back to the pad you left
+        // island pads carry no pin field — the start/target pads also drop
+        // out by POSITION (padPos is gerber frame; manifest pads are board
+        // frame, so negate y), or the rubber band ties back to the pad left
         if (routeState && routeState.startPad && ucomp.ref === routeState.startPad.ref && routeState.startPad.x !== undefined) {
           var spPad = padPos(ucomp, ucomp.pads[up]);
-          if (Math.hypot(spPad.x - routeState.startPad.x, spPad.y - routeState.startPad.y) < 0.3) continue;
+          if (Math.hypot(spPad.x - routeState.startPad.x, spPad.y + routeState.startPad.y) < 0.3) continue;
         }
         if (routeState && routeState.targetPad && ucomp.ref === routeState.targetPad.ref && String(ucomp.pads[up].pin) === String(routeState.targetPad.pin)) continue;
         if (routeState && routeState.targetPad && ucomp.ref === routeState.targetPad.ref && routeState.targetPad.x !== undefined) {
           var tpPad = padPos(ucomp, ucomp.pads[up]);
-          if (Math.hypot(tpPad.x - routeState.targetPad.x, tpPad.y - routeState.targetPad.y) < 0.3) continue;
+          if (Math.hypot(tpPad.x - routeState.targetPad.x, tpPad.y + routeState.targetPad.y) < 0.3) continue;
         }
         var uIslandPad = ucomp.pads[up];
-        var uWired =
-          routePadCovered(ucomp.ref, String(uIslandPad.pin || ''), unet) || padWired(ucomp, uIslandPad);
-        wiredPad[ucomp.ref + '#' + up] = uWired;
-        if (uWired) (wiredByNet[unet] = wiredByNet[unet] || []).push(padPos(ucomp, uIslandPad));
-        else (padsByNet[unet] = padsByNet[unet] || []).push(padPos(ucomp, uIslandPad));
+        var uPos = padPos(ucomp, uIslandPad);
+        (padsByNet[unet] = padsByNet[unet] || []).push({
+          x: uPos.x,
+          y: uPos.y,
+          r: Math.max(uIslandPad.w || 0.3, uIslandPad.h || 0.3) / 2,
+          key: ucomp.ref + '#' + up,
+        });
+      }
+    }
+    // CONNECTIVITY components per net: pads + ink elements, joined when a
+    // pad touches an element endpoint or two elements' endpoints coincide
+    // (half-widths + slack). A wire is only owed BETWEEN components — the
+    // old pad-granular wired/stranded test called a net whose route broke
+    // in the middle fully wired (both pads sat on ink) and drew nothing
+    // until every segment was deleted.
+    var ufFind = function (parent, i) {
+      while (parent[i] !== i) {
+        parent[i] = parent[parent[i]];
+        i = parent[i];
+      }
+      return i;
+    };
+    var repsByNet = {};
+    for (var un in padsByNet) {
+      var pads = padsByNet[un];
+      var els = netEls[un] || [];
+      var parent = [];
+      for (var pn0 = 0; pn0 < pads.length + els.length; pn0++) parent.push(pn0);
+      if (pourNets[un]) {
+        for (var pk0 = 1; pk0 < pads.length; pk0++) parent[ufFind(parent, pk0)] = ufFind(parent, 0);
+        for (var pk1 = 0; pk1 < pads.length; pk1++) wiredPad[pads[pk1].key] = true;
+      } else {
+        // pad <-> element endpoint
+        for (var pa = 0; pa < pads.length; pa++) {
+          var touched = false;
+          for (var eb = 0; eb < els.length; eb++) {
+            var epts = els[eb].pts;
+            for (var ep = 0; ep < epts.length; ep++) {
+              if (Math.hypot(epts[ep].x - pads[pa].x, epts[ep].y - pads[pa].y) <= pads[pa].r + epts[ep].w / 2 + 0.15) {
+                parent[ufFind(parent, pa)] = ufFind(parent, pads.length + eb);
+                touched = true;
+                break;
+              }
+            }
+          }
+          wiredPad[pads[pa].key] = touched;
+        }
+        // element <-> element (endpoints coinciding)
+        for (var e1 = 0; e1 < els.length; e1++)
+          for (var e2 = e1 + 1; e2 < els.length; e2++)
+            for (var q1 = 0; q1 < els[e1].pts.length; q1++)
+              for (var q2 = 0; q2 < els[e2].pts.length; q2++) {
+                var pA = els[e1].pts[q1];
+                var pB = els[e2].pts[q2];
+                if (Math.hypot(pA.x - pB.x, pA.y - pB.y) <= pA.w / 2 + pB.w / 2 + 0.15) {
+                  parent[ufFind(parent, pads.length + e1)] = ufFind(parent, pads.length + e2);
+                  q1 = els[e1].pts.length; // joined — next pair
+                  break;
+                }
+              }
+      }
+      // one wire-node per component that carries a pad; the chain below
+      // wires the nodes (nearest-neighbor), the same shape the stranded
+      // pads chained before
+      var seenComp = {};
+      var reps = [];
+      for (var rp = 0; rp < pads.length; rp++) {
+        var rc = ufFind(parent, rp);
+        if (seenComp[rc]) continue;
+        seenComp[rc] = 1;
+        reps.push({ x: pads[rp].x, y: pads[rp].y });
+      }
+      repsByNet[un] = reps;
+      if (reps.length > 1) {
+        var remaining = reps.slice();
+        var cur = remaining.shift();
+        while (remaining.length) {
+          var bi = 0;
+          var bd = Infinity;
+          for (var ci = 0; ci < remaining.length; ci++) {
+            var dcur =
+              (remaining[ci].x - cur.x) * (remaining[ci].x - cur.x) + (remaining[ci].y - cur.y) * (remaining[ci].y - cur.y);
+            if (dcur < bd) {
+              bd = dcur;
+              bi = ci;
+            }
+          }
+          var nxt = remaining.splice(bi, 1)[0];
+          rats.appendChild(ratsWire(cur, nxt, wireIdx++, un));
+          cur = nxt;
+        }
       }
     }
     // a live route owns a rubber band: mount its container and cache the
-    // net's still-stranded pads (stable while routing — parts don't move);
-    // the wire itself follows the walk end per mousemove in routeFollow
+    // net's still-unreached wire-nodes (stable while routing — parts don't
+    // move); the wire itself follows the walk end per mousemove in
+    // routeFollow
     ratsLiveEl = null;
     if (routeState && routeState.net) {
-      routeState.__ratsPads = (padsByNet[routeState.net] || []).slice();
+      routeState.__ratsPads = (repsByNet[routeState.net] || []).slice();
       var liveG = document.createElementNS(SVGNSL, 'g');
       liveG.setAttribute('id', 'rats-live');
       rats.appendChild(liveG);
       ratsLiveEl = liveG;
-    }
-    for (var un in padsByNet) {
-      var pts = padsByNet[un];
-      // every pad of the net already sits on copper: nothing to draw. A
-      // HALF-routed net gets wires among its stranded pads PLUS one wire
-      // tying the nearest stranded pad to the nearest connected pad
-      if (!pts.length) continue;
-      if (wiredByNet[un] && wiredByNet[un].length) {
-        var sCur = pts[0];
-        var sBest = null;
-        var sBestD = Infinity;
-        for (var sw = 0; sw < pts.length; sw++) {
-          for (var wv = 0; wv < wiredByNet[un].length; wv++) {
-            var dw2 =
-              (pts[sw].x - wiredByNet[un][wv].x) * (pts[sw].x - wiredByNet[un][wv].x) +
-              (pts[sw].y - wiredByNet[un][wv].y) * (pts[sw].y - wiredByNet[un][wv].y);
-            if (dw2 < sBestD) {
-              sBestD = dw2;
-              sCur = pts[sw];
-              sBest = wiredByNet[un][wv];
-            }
-          }
-        }
-        rats.appendChild(ratsWire(sCur, sBest, wireIdx++, un));
-      }
-      var remaining = pts.slice();
-      var cur = remaining.shift();
-      while (remaining.length) {
-        var bi = 0;
-        var bd = Infinity;
-        for (var ci = 0; ci < remaining.length; ci++) {
-          var dcur =
-            (remaining[ci].x - cur.x) * (remaining[ci].x - cur.x) +
-            (remaining[ci].y - cur.y) * (remaining[ci].y - cur.y);
-          if (dcur < bd) {
-            bd = dcur;
-            bi = ci;
-          }
-        }
-        var nxt = remaining.splice(bi, 1)[0];
-        rats.appendChild(ratsWire(cur, nxt, wireIdx++, un));
-        cur = nxt;
-      }
     }
     // stranded wires are a LAYOUT-mode affordance: they describe pending
     // moves, which the other views don't render (they show the authored
@@ -4070,8 +4076,9 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         // handles it, and a phantom rip-up wire here would reappear the
         // moment a net's LAST stranded pad gets connected
         if (wiredPad[mr + '#' + pn]) continue;
-        // an unrouted net's wires already span every pad — don't double them
-        if (padsByNet[pad.net]) continue;
+        // the net still owes wires (more than one connectivity node): the
+        // main pass already draws them — don't double up
+        if ((repsByNet[pad.net] || []).length > 1) continue;
         // anchors: OTHER components' pads on the SAME net — their copper
         // survives the rip-up, so the stranded pad ties back to them (their
         // own moves/rotations apply too)
@@ -7218,7 +7225,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       refreshRatsnest();
     }
     // the routing rubber band: the walk's end ties to the nearest
-    // still-stranded pad of the routed net — the pad-to-route-to follows
+    // still-unreached pad of the routed net — the pad-to-route-to follows
     // the mouse instead of staying behind on the start pad. All pads
     // reached (hovering the last target): the band vanishes, the arrival
     // itself is the signal
@@ -7226,21 +7233,20 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       ratsLiveEl.textContent = '';
       var lp = routeState.__ratsPads || [];
       if (lp.length) {
+        // pts are gerber frame (y-up) — the SAME frame the ratsnest group
+        // renders in (island pads ride it unnegated); draw as-is or the
+        // band mirrors the cursor
         var le = pts[pts.length - 1];
-        // the walk end is gerber-frame (y-up); the ratsnest group renders
-        // island-frame (y-down) coordinates — negate to match
-        var leIsland = { x: le.x, y: -le.y };
         var ln = null;
         var ld = Infinity;
         for (var li = 0; li < lp.length; li++) {
-          var dLive =
-            (lp[li].x - leIsland.x) * (lp[li].x - leIsland.x) + (lp[li].y - leIsland.y) * (lp[li].y - leIsland.y);
+          var dLive = (lp[li].x - le.x) * (lp[li].x - le.x) + (lp[li].y - le.y) * (lp[li].y - le.y);
           if (dLive < ld) {
             ld = dLive;
             ln = lp[li];
           }
         }
-        if (ln) ratsLiveEl.appendChild(ratsWire(leIsland, ln, 0, routeState.net));
+        if (ln) ratsLiveEl.appendChild(ratsWire(le, ln, 0, routeState.net));
       }
     }
   }

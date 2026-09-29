@@ -126,3 +126,14 @@ staying behind pad-to-pad; hovering the target drops the band (the arrival
 is the signal), and cancel or commit restores the ordinary stranded wires.
 The start pad now drops out by position too (island pads carry no pin
 field, so the pin-keyed skip never matched).
+
+The ratsnest is now connectivity-based: per-net union-find over pads and
+ink elements (each M-subpath is its own conductor, endpoints join within
+half-widths) computes connected components, and wires are only owed
+BETWEEN components — a route that exists but broke in the middle no longer
+counts as wired at both pads (the old pad-granular test drew nothing until
+every segment was deleted), while complete routes, pour-covered nets, and
+stubs behave as before. The routing rubber band draws in the gerber frame
+the ratsnest group renders (the earlier y negation mirrored it: moving the
+cursor up moved the band down), and the start/target pad drop-outs compare
+positions across the board/gerber frame boundary.

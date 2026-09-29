@@ -467,11 +467,12 @@ describe('view switcher (gerber / pcba)', () => {
     expect(html).toContain("stripe.setAttribute('class', 'route-auto-stripe')");
     expect(html).toContain("stripe.setAttribute('stroke', '#ffffff')");
     expect(html).toContain('.route-auto-stripe { opacity: 0.45; stroke-dasharray: 1.2 1.2; }');
-    // the ratsnest is PER-PAD: a half-routed net wires its stranded pads to
-    // the nearest connected pad instead of vanishing (net-granular test)
-    expect(html).toContain('var padWired = function (comp, pad) {');
-    // wires carry their net (data-net) so the routed net's wires can highlight
-    expect(html).toContain('rats.appendChild(ratsWire(sCur, sBest, wireIdx++, un));');
+    // the ratsnest is CONNECTIVITY-based: per-net components of pads + ink
+    // (union-find) decide wires — a route broken in the middle no longer
+    // counts as wired at both ends, and each M-subpath is its own conductor
+    expect(html).toContain('CONNECTIVITY components per net');
+    expect(html).toContain('var ufFind = function (parent, i)');
+    expect(html).toContain("var wSubs = (wel.getAttribute('d') || '').split(/(?=M)/);");
     expect(html).toContain("if (net) p.setAttribute('data-net', net);");
     expect(html).toContain('window.typecadLayoutApply(moves, texts, values, labels, renames, routedTracks, routedDeletes, function (err, fast)');
     expect(html).toContain('moves.push({');

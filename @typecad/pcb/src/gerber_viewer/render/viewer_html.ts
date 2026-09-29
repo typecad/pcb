@@ -2958,9 +2958,11 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       }
       layoutApplyBtn.disabled = true;
       layoutApplyBtn.textContent = 'rebuilding\u2026';
-      // one more prune at the door: deletes accumulated across failed
-      // applies must never ride a fresh gesture against a rebuilt board
-      pruneStaleDeletes();
+      // NO prune here: a gesture's own deletes have already removed their
+      // ink from this page — pruning "deletes whose ink is gone" at the
+      // door would drop every real deletion and the source would keep the
+      // copper (the both-traces-after-delete bug). Stale-state pruning
+      // belongs to restorePending only, against a freshly rendered board
       window.typecadLayoutApply(moves, texts, values, labels, renames, routedTracks, routedDeletes, function (err, fast) {
         layoutApplyBtn.disabled = false;
         layoutApplyBtn.textContent = 'apply & rebuild';

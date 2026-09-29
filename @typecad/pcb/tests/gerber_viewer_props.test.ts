@@ -851,3 +851,34 @@ describe('pending deletes prune against the live board', () => {
     expect((sent[0] as { x1: number }).x1).toBeCloseTo(live.x1, 3);
   });
 });
+
+describe('a gesture\'s own deletes ride the apply (no door prune)', () => {
+  // regression: the apply-door prune treated a gesture's deletes — whose
+  // ink the gesture itself had just removed — as dead state and dropped
+  // them; the source kept the copper and both the old and new routes
+  // appeared after apply
+  it('delete a trace, draw a replacement: payload carries BOTH the delete and the route', async () => {
+    const page = await boot();
+    const w = page.window;
+    page.pressBoard(1, 1); // select the trace segment
+    page.key('Delete');
+    const board = w.document.getElementById('board')!;
+    board.dispatchEvent(new w.MouseEvent('pointerdown', { bubbles: true, button: 0, clientX: 4, clientY: 4 }));
+    page.key('x');
+    board.dispatchEvent(new w.MouseEvent('mousemove', { bubbles: true, clientX: 5, clientY: 5 }));
+    board.dispatchEvent(new w.MouseEvent('dblclick', { bubbles: true, clientX: 5, clientY: 5 }));
+    let routes = 0;
+    let deletes = 0;
+    (w as unknown as Record<string, unknown>).typecadLayoutApply = (
+      _m: unknown, _t: unknown, _v: unknown, _l: unknown, _r: unknown,
+      rt: unknown[], de: unknown[], cb: (e: string | null, f: boolean) => void,
+    ) => {
+      routes = rt.length;
+      deletes = de.length;
+      cb(null, false);
+    };
+    w.document.getElementById('layout-apply')!.click();
+    expect(routes).toBe(1);
+    expect(deletes).toBeGreaterThanOrEqual(1);
+  });
+});

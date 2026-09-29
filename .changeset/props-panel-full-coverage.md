@@ -183,3 +183,10 @@ ignored) is that connection — the retry skips instead of adding a
 near-duplicate route beside it. This was the delete/retry loop that piled
 five R1→D1 corridors: each failed apply left its drawn route pending, and
 byte-level idempotency missed the reversed and jittered variants.
+
+A gesture's own deletes ride the apply again: the anti-staleness prune ran
+once more at the apply door, where a gesture's deletes have already had
+their ink removed by the gesture itself — the prune read them as dead
+state and dropped them, so deleting a route and drawing its replacement
+left BOTH in source after apply. Pruning now belongs to restorePending
+only, compared against a freshly rendered board.

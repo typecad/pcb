@@ -4915,6 +4915,10 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       hole.setAttribute('class', 'cut');
       // clicks on the via's center belong to the barrel beneath
       hole.setAttribute('pointer-events', 'none');
+      // the .cut rule paints stroke too (!important) — without an explicit
+      // zero width the hole inherits the SVG default 1mm stroke and reads
+      // as a dark ring around a fresh via
+      hole.setAttribute('stroke-width', '0');
       el.parentNode.insertBefore(hole, el.nextSibling);
       el.__hole = hole;
     }

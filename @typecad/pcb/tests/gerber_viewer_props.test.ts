@@ -525,6 +525,9 @@ describe('via selection ring and drill hole', () => {
     hole.setAttribute('r', '0.15');
     hole.setAttribute('class', 'cut');
     hole.setAttribute('pointer-events', 'none');
+    // zero stroke width: the .cut rule paints stroke !important, and the
+    // inherited 1mm default read as a dark ring around fresh vias
+    hole.setAttribute('stroke-width', '0');
     cu.appendChild(hole);
     barrel.dispatchEvent(new w.MouseEvent('pointerdown', { bubbles: true, button: 0, clientX: 5, clientY: 5 }));
     expect(barrel.classList.contains('route-via-sel')).toBe(true);

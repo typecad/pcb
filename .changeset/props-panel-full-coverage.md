@@ -105,3 +105,9 @@ matches the text the plan was built against — a keystroke landing between
 planning and writing previously shifted every offset and spliced tokens,
 caught by the post-write check's auto-restore but leaving the apply to
 retry; now the race refuses cleanly before anything is written.
+
+A fresh session via no longer wears a dark ring: the drill-hole sibling the
+barrel carries from placement inherits the .cut rule's !important stroke
+with the SVG default 1mm width, painting a background-colored circle around
+the via until the rebuild replaced it with the real drill render — the hole
+now carries an explicit zero stroke-width.

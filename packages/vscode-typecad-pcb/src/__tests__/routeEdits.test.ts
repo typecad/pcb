@@ -344,3 +344,53 @@ typecad.create(`,
     expect(plan.skipped[0]).toContain('identical route already in source');
   });
 });
+
+describe('corridor idempotency — retries never stack parallel routes', () => {
+  // the delete/retry loop piled five near-duplicate R1→D1 corridors: each
+  // failed apply left its route pending, and byte idempotency missed the
+  // reversed/jittered variants. Same endpoints (either direction) on the
+  // same net = already connected = skip
+  const corridorSrc = () => `import { PCB, LED, TrackBuilder } from '@typecad/pcb';
+const typecad = new PCB('demo', {});
+const led = new LED({ value: 'red' });
+led.pcb = { x: 17.5, y: -5.5 };
+const route18 = new TrackBuilder(typecad, { net: 'led_a',  })
+  .from({ x: 18.288, y: -5.5 }, 'F.Cu', 0.3)
+  .to({ x: 1.325, y: 0, layer: 'F.Cu', width: 0.3 });
+typecad.create(led, route18);
+`;
+
+  it('same endpoints, reversed direction → skipped as duplicate', () => {
+    const plan = planRouteEdits(
+      corridorSrc(),
+      [{ net: 'led_a', w: 0.3, from: { ref: 'R1', pin: '1' }, to: null, vias: [], pieces: [{ layer: 'F.Cu', w: 0.3, pts: [{ x: 1.325, y: 0 }, { x: 18.288, y: -5.5 }] }] }],
+    );
+    expect(plan.applied).toBe(0);
+    expect(plan.skipped[0]).toContain('already connects those endpoints');
+  });
+
+  it('same endpoints with mid-route bends → still the same corridor, skipped', () => {
+    const plan = planRouteEdits(
+      corridorSrc(),
+      [{ net: 'led_a', w: 0.3, from: { ref: 'R1', pin: '1' }, to: null, vias: [], pieces: [{ layer: 'F.Cu', w: 0.3, pts: [{ x: 18.288, y: -5.5 }, { x: 15.37, y: 0 }, { x: 1.325, y: 0 }] }] }],
+    );
+    expect(plan.applied).toBe(0);
+    expect(plan.skipped[0]).toContain('already connects those endpoints');
+  });
+
+  it('a different net between the same points is NOT a duplicate', () => {
+    const plan = planRouteEdits(
+      corridorSrc(),
+      [{ net: 'gnd', w: 0.3, from: { ref: 'R1', pin: '1' }, to: null, vias: [], pieces: [{ layer: 'F.Cu', w: 0.3, pts: [{ x: 1.325, y: 0 }, { x: 18.288, y: -5.5 }] }] }],
+    );
+    expect(plan.applied).toBe(1);
+  });
+
+  it('different endpoints on the same net still apply (a branch, not a retry)', () => {
+    const plan = planRouteEdits(
+      corridorSrc(),
+      [{ net: 'led_a', w: 0.3, from: { ref: 'R1', pin: '1' }, to: null, vias: [], pieces: [{ layer: 'F.Cu', w: 0.3, pts: [{ x: 1.325, y: 0 }, { x: 5, y: 5 }] }] }],
+    );
+    expect(plan.applied).toBe(1);
+  });
+});

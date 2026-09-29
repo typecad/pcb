@@ -176,3 +176,10 @@ viewer page embeds the mtime of the board it renders and carries it with
 each apply; when the board has since been rebuilt (auto-build, external
 edit), the apply regenerates the viewer and tells the user to redo the
 edit on the fresh view instead of splicing edits from a superseded board.
+
+Route retries can no longer stack parallel corridors: a same-net chain
+already connecting a new route's endpoints (either direction, bends
+ignored) is that connection — the retry skips instead of adding a
+near-duplicate route beside it. This was the delete/retry loop that piled
+five R1→D1 corridors: each failed apply left its drawn route pending, and
+byte-level idempotency missed the reversed and jittered variants.

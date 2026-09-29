@@ -263,8 +263,11 @@ export function planRouteEdits(text: string, routes: RouteInput[]): RoutePlan {
 
   const call = findCreateCall(text);
   if (!call) {
-    return { edits, applied: 0, skipped: routes.map((r) => `${r.from.ref}.${r.from.pin} (unbalanced typecad.create()`) };
+    return { edits: [], applied: 0, skipped: routes.map((r) => `${r.from.ref}.${r.from.pin} (unbalanced typecad.create()`) };
   }
+  // for corridor idempotency: same-net chains already in the file, by net
+  const parsedRoutes = parseRoutes(text);
+  const routeNetOf = (pr: ParsedRoute): string | null => /net:\s*'([^']*)'/.exec(pr.opts)?.[1] ?? null;
 
   const decls: string[] = [];
   const names: string[] = [];
@@ -287,6 +290,32 @@ export function planRouteEdits(text: string, routes: RouteInput[]): RoutePlan {
       skipped.push(`${r.from.ref}.${r.from.pin} (identical route already in source)`);
       maxExisting--;
       continue;
+    }
+    // corridor idempotency: a same-net chain already connecting the new
+    // route's endpoints (either direction) IS that connection — a retried
+    // gesture must not stack a parallel corridor beside it (the delete/
+    // retry loop piled five near-duplicate R1→D1 routes this way). Byte
+    // comparison misses reversed and jittered variants, so this one is
+    // endpoint-based
+    if (r.net) {
+      const runs = r.pieces.filter((p) => p.pts.length >= 2);
+      if (runs.length > 0) {
+        const first = runs[0]!.pts[0]!;
+        const lastRun = runs[runs.length - 1]!;
+        const end = lastRun.pts[lastRun.pts.length - 1]!;
+        const near = (a: { x: number; y: number }, b: { x: number; y: number }) => Math.hypot(a.x - b.x, a.y - b.y) < 0.1;
+        const dup = parsedRoutes.some((pr) => {
+          if (routeNetOf(pr) !== r.net || pr.points.length < 2) return false;
+          const a2 = pr.points[0]!;
+          const b2 = pr.points[pr.points.length - 1]!;
+          return (near(first, a2) && near(end, b2)) || (near(first, b2) && near(end, a2));
+        });
+        if (dup) {
+          skipped.push(`${r.from.ref}.${r.from.pin} (a route already connects those endpoints on ${r.net})`);
+          maxExisting--;
+          continue;
+        }
+      }
     }
     decls.push(
       indent +

@@ -13,7 +13,7 @@ const battery = new Component({
 });
 battery.pcb = { x: 7.5, y: -20 };
 const r1 = new Resistor({ value: '150' });
-r1.pcb = { x: 0, y: 0 };
+r1.pcb = { x: 0.5, y: 0 };
 const led = new LED({
   value: 'red',
   simulation: { model: 'Dled D (IS=1a RS=3.3 N=1.8)' },
@@ -52,28 +52,9 @@ const route9 = new TrackBuilder(typecad, { net: '+BATT', })
 
 const route13 = new TrackBuilder(typecad, { net: '+BATT',  })
   .from({ x: -7.8, y: -6.975 }, 'F.Cu', 0.3)
-  .to({ x: -0.825, y: 0, layer: 'F.Cu', width: 0.3 });
+  .to({ x: -0.325, y: 0, layer: 'F.Cu', width: 0.3 });
 
 
-const route14a = new TrackBuilder(typecad, { net: 'led_a', })
-.from({ x: 0.9, y: 0.075 }, 'F.Cu', 0.3)
-.to({ x: 0.825, y: 0, layer: 'F.Cu', width: 0.3 });
-
-const route15 = new TrackBuilder(typecad, { net: 'led_a', })
-.from({ x: 0.964, y: 0.011 }, 'F.Cu', 0.3)
-.to({ x: 0.9, y: 0.075, layer: 'F.Cu', width: 0.3 });
-
-const route16 = new TrackBuilder(typecad, { net: 'led_a',  })
-  .from({ x: 0.9, y: 0.075 }, 'F.Cu', 0.3)
-  .to({ x: 9.535, y: 0.075, layer: 'F.Cu', width: 0.3 })
-  .to({ x: 9.558, y: 0.051, layer: 'F.Cu', width: 0.3 })
-  .via({ size: 0.6, drill: 0.3 })
-  .to({ x: 16.66, y: 0.051, layer: 'B.Cu', width: 0.3 })
-  .to({ x: 18.293, y: -1.582, layer: 'B.Cu', width: 0.3 })
-  .via({ size: 0.6, drill: 0.3 })
-  .to({ x: 18.293, y: -5.494, layer: 'F.Cu', width: 0.3 })
-  .to({ x: 18.288, y: -5.5, layer: 'F.Cu', width: 0.3 });
-
-typecad.create(battery, r1, led, route2, route3, route9, route13, route14a, route15, route16);
+typecad.create(battery, r1, led, route2, route3, route9, route13);
 // 1. run the npm script 'build'
 // 2. run the npm script 'open_board' to edit the board in KiCAD

@@ -13,11 +13,11 @@ typecad.named('led_a').net(r1.pin(2), led.pin(2));
 typecad.named('GND').net(led.pin(1), r1.pin(1));
 
 new TrackBuilder(typecad, { net: 'led_a' })
-  .from({ x: 0.825, y: 0 }, 'F.Cu', 0.55)
+  .from({ x: 1.325, y: 0 }, 'F.Cu', 0.55)
   .to({ x: 14.17, y: 0, layer: 'F.Cu', width: 0.55 });
 
 new TrackBuilder(typecad, { net: 'GND' })
-  .from({ x: -0.825, y: 0 }, 'B.Cu', 0.55)
+  .from({ x: -0.325, y: 0 }, 'B.Cu', 0.55)
   .to({ x: -0.825, y: -8, layer: 'B.Cu', width: 0.55 })
   .to({ x: 14.17, y: -8, layer: 'B.Cu', width: 0.55 })
   .to({ x: 14.17, y: 0, layer: 'B.Cu', width: 0.55 });

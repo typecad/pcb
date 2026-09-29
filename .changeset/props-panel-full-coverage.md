@@ -60,3 +60,9 @@ A stale DRC report (older than the board) no longer locks a permanent
 "DRC markers show the PREVIOUS board revision" banner into the viewer's
 status line — the provenance note goes to the typeCAD/pcb output channel
 only, leaving the status line free for normal operation.
+
+Editing session ink no longer re-materializes phantom traces: a rewritten
+chain that belongs to a not-yet-applied route (a D-slide or an arrow nudge)
+reconciles that route's own geometry — the entry carries the new polyline
+and moved barrels their new positions — instead of writing the pre-edit
+trace beside the new one after apply & rebuild.

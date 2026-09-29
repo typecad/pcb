@@ -536,3 +536,76 @@ describe('via selection ring and drill hole', () => {
     expect(w.document.querySelector('.cut')).not.toBeNull();
   });
 });
+
+describe('editing session ink never re-materializes phantom traces', () => {
+  // route a trace from the fixture ink, commit it, then rewrite it and
+  // capture the apply bridge payload — the session entry must carry the
+  // NEW geometry and the old-position twin must not exist
+  const routeAndCommit = (page: BootedPage) => {
+    page.pressBoard(1, 1); // arm from the fixture trace
+    page.key('x');
+    const board = page.window.document.getElementById('board')!;
+    const w = page.window;
+    board.dispatchEvent(new w.MouseEvent('mousemove', { bubbles: true, clientX: 4, clientY: 4 }));
+    board.dispatchEvent(new w.MouseEvent('dblclick', { bubbles: true, clientX: 4, clientY: 4 }));
+    return [...page.window.document.querySelectorAll('line[data-seg="1"][data-route="1"]')];
+  };
+  const captureRoutes = (page: BootedPage) => {
+    const sent: unknown[] = [];
+    (page.window as unknown as Record<string, unknown>).typecadLayoutApply = (
+      _m: unknown, _t: unknown, _v: unknown, _l: unknown, _r: unknown,
+      routes: unknown[], _d: unknown, cb: (e: string | null, f: boolean) => void,
+    ) => {
+      sent.push(...routes);
+      cb(null, false);
+    };
+    page.window.document.getElementById('layout-apply')!.click();
+    return sent as Array<{ pieces: Array<{ pts: Array<{ x: number; y: number }> }> }>;
+  };
+  const flatPts = (r: { pieces: Array<{ pts: Array<{ x: number; y: number }> }> }) =>
+    r.pieces.map((p) => p.pts.map((q) => `${q.x},${q.y}`).join(' ')).join(' | ');
+
+  it('nudging a session route updates its entry — no old-position twin', async () => {
+    const page = await boot();
+    const hits = routeAndCommit(page);
+    expect(hits.length).toBeGreaterThan(0);
+    hits[0]!.dispatchEvent(new page.window.MouseEvent('pointerdown', { bubbles: true, button: 0, clientX: 2, clientY: 2 }));
+    page.key('ArrowRight');
+    const routes = captureRoutes(page);
+    const geoms = routes.map(flatPts);
+    // the session entry moved (+0.5 on x); the pre-nudge geometry is gone
+    expect(geoms.some((g) => g.includes('1.5,-1'))).toBe(true);
+    expect(geoms.some((g) => g.split(' ').some((pt) => pt === '1,-1' || pt === '1,1'))).toBe(false);
+  });
+
+  it('undoing the nudge restores the entry to its authored geometry', async () => {
+    const page = await boot();
+    const hits = routeAndCommit(page);
+    hits[0]!.dispatchEvent(new page.window.MouseEvent('pointerdown', { bubbles: true, button: 0, clientX: 2, clientY: 2 }));
+    page.key('ArrowRight');
+    page.key('z', { ctrlKey: true });
+    const routes = captureRoutes(page);
+    const geoms = routes.map(flatPts);
+    expect(geoms.some((g) => g.split(' ').some((pt) => pt === '1,-1' || pt === '1,1'))).toBe(true);
+    expect(geoms.some((g) => g.includes('1.5,-1'))).toBe(false);
+  });
+
+  it('dragging (D) a session route reconciles the same way', async () => {
+    const page = await boot();
+    const hits = routeAndCommit(page);
+    const w = page.window;
+    // hover on the session ink, slide it (body-level so the hover target resolves)
+    w.document.body.dispatchEvent(new w.MouseEvent('mousemove', { bubbles: true, clientX: 2, clientY: 2 }));
+    page.key('d');
+    w.dispatchEvent(new w.MouseEvent('pointermove', { bubbles: true, clientX: 4, clientY: 6 }));
+    w.dispatchEvent(new w.MouseEvent('pointerup', { bubbles: true, clientX: 4, clientY: 6 }));
+    const routes = captureRoutes(page);
+    const geoms = routes.map(flatPts);
+    // the phantom invariant: the authored geometry appears AT MOST once —
+    // a completed slide reconciles it away, a reverted slide (clearance)
+    // leaves it untouched — never BOTH the old and new shapes
+    expect(geoms.filter((g) => g === '1,-1 1,1 4,4').length).toBeLessThanOrEqual(1);
+    const sessionShaped = geoms.filter((g) => g.startsWith('1,-1'));
+    expect(sessionShaped.length).toBeLessThanOrEqual(1);
+  });
+});

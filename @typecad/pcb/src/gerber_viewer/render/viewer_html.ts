@@ -7802,40 +7802,52 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     }
     // serialize: the ORIGINAL chain's segments ride as deletes (board
     // y-down), the NEW full polyline as a session route — the apply bridge
-    // truncates the old TrackBuilder chain and adds the reshaped one
+    // truncates the old TrackBuilder chain and adds the reshaped one —
+    // unless the dragged chain is SESSION ink, in which case its own entry
+    // reconciles to the new geometry (deletes + a twin route would
+    // re-materialize the pre-drag trace beside the new one)
     var canon = copperCanon(sd.lg.getAttribute('data-layer-name'));
     var delCount = routedDeletes.length;
-    for (var d0 = 0; d0 < sd.originals.length; d0++) {
-      var o = sd.originals[d0];
-      routedDeletes.push({
+    var serializeDrag = function () {
+      var origPts = [];
+      for (var s0 = 0; s0 < sd.originals.length; s0++) {
+        origPts.push({ x: sd.originals[s0].x1, y: -sd.originals[s0].y1 });
+        origPts.push({ x: sd.originals[s0].x2, y: -sd.originals[s0].y2 });
+      }
+      var pts2 = [];
+      var h0 = sd.originals[0].hit;
+      pts2.push({ x: parseFloat(h0.getAttribute('x1')), y: -parseFloat(h0.getAttribute('y1')) });
+      for (var p0 = 0; p0 < sd.originals.length; p0++) {
+        var hp = sd.originals[p0].hit;
+        pts2.push({ x: parseFloat(hp.getAttribute('x2')), y: -parseFloat(hp.getAttribute('y2')) });
+      }
+      pts2 = pts2.map(function (pt) { return { x: +pt.x.toFixed(3), y: +pt.y.toFixed(3) }; });
+      var ops = reconcileSessionRoutes(origPts, { layer: canon, w: sd.w, pts: pts2 }, null);
+      if (ops.length > 0) return;
+      for (var d0 = 0; d0 < sd.originals.length; d0++) {
+        var o = sd.originals[d0];
+        routedDeletes.push({
+          net: sd.net,
+          x1: +o.x1.toFixed(3),
+          y1: +(-o.y1).toFixed(3),
+          x2: +o.x2.toFixed(3),
+          y2: +(-o.y2).toFixed(3),
+          layer: canon,
+        });
+      }
+      routedTracks.push({
         net: sd.net,
-        x1: +o.x1.toFixed(3),
-        y1: +(-o.y1).toFixed(3),
-        x2: +o.x2.toFixed(3),
-        y2: +(-o.y2).toFixed(3),
-        layer: canon,
+        w: sd.w,
+        pieces: [{ layer: canon, w: sd.w, pts: pts2 }],
+        vias: [],
+        power: null,
+        impedance: null,
+        from: { ref: '(drag)', pin: '' },
+        to: null,
       });
-    }
-    var pts = [];
-    var h0 = sd.originals[0].hit;
-    var cur = { x: parseFloat(h0.getAttribute('x1')), y: -parseFloat(h0.getAttribute('y1')) };
-    pts.push(cur);
-    for (var p0 = 0; p0 < sd.originals.length; p0++) {
-      var hp = sd.originals[p0].hit;
-      pts.push({ x: parseFloat(hp.getAttribute('x2')), y: -parseFloat(hp.getAttribute('y2')) });
-    }
-    var rtIdx = routedTracks.length;
-    var rt = {
-      net: sd.net,
-      w: sd.w,
-      pieces: [{ layer: canon, w: sd.w, pts: pts.map(function (pt) { return { x: +pt.x.toFixed(3), y: +pt.y.toFixed(3) }; }) }],
-      vias: [],
-      power: null,
-      impedance: null,
-      from: { ref: '(drag)', pin: '' },
-      to: null,
     };
-    routedTracks.push(rt);
+    var rtBeforeDrag = JSON.parse(JSON.stringify(routedTracks));
+    serializeDrag();
     var dels = routedDeletes.slice(delCount);
     pushUndo(
       'drag segment',
@@ -7845,7 +7857,9 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         segDragRedraw(sd.track);
         for (var u = 0; u < sd.linked.length; u++) segDragRedraw(sd.linked[u].hit.__track);
         routedDeletes.length = delCount;
-        routedTracks.splice(rtIdx, 1);
+        // wholesale snapshot restore: covers the pushed route AND any
+        // session entry a reconciliation rewrote
+        routedTracks = JSON.parse(JSON.stringify(rtBeforeDrag));
       },
       function () {
         // re-apply the final delta by replaying from originals + lastD
@@ -7878,14 +7892,79 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         }
         segDragRedraw(sd.track);
         for (var r3 = 0; r3 < sd.linked.length; r3++) segDragRedraw(sd.linked[r3].hit.__track);
-        for (var d2 = 0; d2 < dels.length; d2++) routedDeletes.push(dels[d2]);
-        routedTracks.splice(rtIdx, 0, rt);
+        serializeDrag();
       },
     );
     window.__typecadRouteEnds = null;
     refreshRatsnest();
     renderLayoutMoves();
     if (statusEl && !statusLocked()) statusEl.textContent = 'segment dragged \u2014 apply writes the reshaped track into source';
+  }
+  // ---- session-route reconciliation for ink rewrites (segment drags and
+  // arrow nudges): a rewritten chain may BE session ink — its routedTracks
+  // entry must carry the NEW geometry (and moved barrels their new
+  // positions), or apply writes the pre-edit trace beside the new one and
+  // the board grows phantom copper nobody drew. Board ink (a source
+  // TrackBuilder chain) is left alone — its rewrite rides deletes + a new
+  // route. Returns undo ops; pieces whose geometry matched are replaced. ----
+  function reconcileSessionRoutes(origBoardPts, newPiece, movedVias) {
+    var ops = [];
+    for (var i = routedTracks.length - 1; i >= 0; i--) {
+      var rt = routedTracks[i];
+      for (var pi = rt.pieces.length - 1; pi >= 0; pi--) {
+        var piece = rt.pieces[pi];
+        var onChain = true;
+        for (var q = 0; q < piece.pts.length && onChain; q++) {
+          var found = false;
+          for (var o = 0; o < origBoardPts.length && !found; o++)
+            if (Math.hypot(piece.pts[q].x - origBoardPts[o].x, piece.pts[q].y - origBoardPts[o].y) < 0.05) found = true;
+          if (!found) onChain = false;
+        }
+        if (!onChain) continue;
+        ops.push({ kind: 'piece', entry: i, piece: pi, oldPts: piece.pts });
+        if (newPiece) {
+          piece.pts = newPiece.pts.map(function (p) {
+            return { x: p.x, y: p.y };
+          });
+          piece.layer = newPiece.layer;
+          if (newPiece.w !== undefined) piece.w = newPiece.w;
+        } else rt.pieces.splice(pi, 1);
+      }
+      // a barrel at a moved via's old spot travels with it — matched entry
+      // or not, the entry OWNS that via position
+      for (var vi2 = 0; vi2 < rt.vias.length; vi2++) {
+        for (var mv = 0; mv < (movedVias || []).length; mv++) {
+          if (Math.hypot(rt.vias[vi2].x - movedVias[mv].ox, rt.vias[vi2].y - movedVias[mv].oy) < 0.05) {
+            ops.push({ kind: 'via', entry: i, vidx: vi2, x: rt.vias[vi2].x, y: rt.vias[vi2].y });
+            rt.vias[vi2].x = movedVias[mv].nx;
+            rt.vias[vi2].y = movedVias[mv].ny;
+            break;
+          }
+        }
+      }
+      if (!rt.pieces.length && !rt.vias.length) {
+        ops.push({ kind: 'removed', at: i, entry: rt });
+        routedTracks.splice(i, 1);
+      }
+    }
+    return ops;
+  }
+  function undoReconcileSession(ops) {
+    for (var k = ops.length - 1; k >= 0; k--) {
+      var op = ops[k];
+      if (op.kind === 'piece') {
+        var e1 = routedTracks[op.entry];
+        if (e1 && e1.pieces[op.piece]) e1.pieces[op.piece].pts = op.oldPts;
+      } else if (op.kind === 'via') {
+        var e2 = routedTracks[op.entry];
+        if (e2 && e2.vias[op.vidx]) {
+          e2.vias[op.vidx].x = op.x;
+          e2.vias[op.vidx].y = op.y;
+        }
+      } else if (op.kind === 'removed') {
+        routedTracks.splice(op.at, 0, op.entry);
+      }
+    }
   }
   // ---- arrow-key nudge for traces and vias: the selected segments
   // translate whole (same-layer neighbors sharing their endpoints stretch),
@@ -7997,11 +8076,29 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     };
     var delCount = routedDeletes.length;
     var rtCount = routedTracks.length;
+    var reconcileOps = [];
     var serialize = function () {
+      // ops describe THIS serialization (redo re-runs serialize and the
+      // list resets — undo always restores exactly one step back)
+      reconcileOps = [];
       // the ORIGINAL geometry leaves as deletes; each affected parent's
       // NEW polyline rides as a session route (any moved barrel attaches
       // to the first chain passing through its new position — one entry
-      // per barrel, never two)
+      // per barrel, never two). A parent that IS session ink reconciles
+      // its own entry instead — deletes + a twin route would re-materialize
+      // the pre-edit trace beside the new one (phantom copper).
+      var movedViaPairs = movedVias.map(function (mv) {
+        return { ox: mv.ox, oy: -mv.oy, nx: mv.nx, ny: -mv.ny };
+      });
+      var boardOriginals = [];
+      parents.forEach(function (tr) {
+        originals.forEach(function (o) {
+          if (o.hit.__track === tr) {
+            boardOriginals.push({ x: o.x1, y: -o.y1 });
+            boardOriginals.push({ x: o.x2, y: -o.y2 });
+          }
+        });
+      });
       originals.forEach(function (o) {
         var lg = o.hit.closest ? o.hit.closest("g[data-kind='copper']") : null;
         routedDeletes.push({
@@ -8024,6 +8121,37 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         var pts = [{ x: +parseFloat(hits[0].getAttribute('x1')).toFixed(3), y: -parseFloat(hits[0].getAttribute('y1')) }];
         for (var p2 = 0; p2 < hits.length; p2++)
           pts.push({ x: +parseFloat(hits[p2].getAttribute('x2')).toFixed(3), y: -parseFloat(hits[p2].getAttribute('y2')) });
+        var origPts = [];
+        originals.forEach(function (o) {
+          if (o.hit.__track === tr) {
+            origPts.push({ x: o.x1, y: -o.y1 });
+            origPts.push({ x: o.x2, y: -o.y2 });
+          }
+        });
+        var newPiece = { layer: canon, w: w, pts: pts };
+        var ops = reconcileSessionRoutes(origPts, newPiece, movedViaPairs);
+        if (ops.length > 0) {
+          // session ink: its entry carries the new geometry now — no
+          // deletes, no twin route (retire the deletes this parent pushed)
+          reconcileOps = reconcileOps.concat(ops);
+          for (var b0 = 0; b0 < originals.length; b0++)
+            if (originals[b0].hit.__track === tr) {
+              var lgB = originals[b0].hit.closest("g[data-kind='copper']");
+              var bx1 = +originals[b0].x1.toFixed(3);
+              var by1 = +(-originals[b0].y1).toFixed(3);
+              var bx2 = +originals[b0].x2.toFixed(3);
+              var by2 = +(-originals[b0].y2).toFixed(3);
+              var bl = lgB ? copperCanon(lgB.getAttribute('data-layer-name')) : null;
+              for (var d5 = routedDeletes.length - 1; d5 >= 0; d5--) {
+                var dd = routedDeletes[d5];
+                if (
+                  dd.x1 === bx1 && dd.y1 === by1 && dd.x2 === bx2 && dd.y2 === by2 && dd.layer === bl
+                )
+                  routedDeletes.splice(d5, 1);
+              }
+            }
+          return;
+        }
         var vias = [];
         movedVias.forEach(function (mv) {
           if (claimed.has(mv.el)) return;
@@ -8069,6 +8197,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
           segDragRedraw(tr);
         });
         segHiSync();
+        undoReconcileSession(reconcileOps);
         routedDeletes.splice(delCount);
         routedTracks.splice(rtCount);
       },

@@ -425,3 +425,55 @@ typecad.create(led, r1, fixture, vcc);
     }
   }
 });
+
+describe('stale-view replacement refuses instead of leaving phantoms', () => {
+  // the real incident: the page's deletes were computed against a board
+  // render that predated the source (the source had rewritten that net);
+  // 5 deletes matched, 2 matched nothing — proceeding left the unmatched
+  // geometry's chain fragment beside the new route (a phantom trace+via)
+  const src = () => `import { PCB, LED, TrackBuilder } from '@typecad/pcb';
+const typecad = new PCB('demo', {});
+const led = new LED({ value: 'red' });
+led.pcb = { x: 17.5, y: -5.5 };
+const route18 = new TrackBuilder(typecad, { net: 'led_a',  })
+  .from({ x: 18.288, y: -5.5 }, 'F.Cu', 0.3)
+  .to({ x: 18.288, y: -2.87, layer: 'F.Cu', width: 0.3 })
+  .to({ x: 15.23, y: 0.188, layer: 'F.Cu', width: 0.3 });
+typecad.create(led, route18);
+`;
+
+  it('unmatched deletes on a net that also gains a route surface for refusal', () => {
+    const { plan } = run(
+      [{ uri: 'file:///src/board.ts', text: src() }],
+      baseInput({
+        // the new corridor the user drew
+        routes: [{ net: 'led_a', w: 0.3, from: { ref: 'D1', pin: '1' }, to: null, vias: [], pieces: [{ layer: 'F.Cu', w: 0.3, pts: [{ x: 18.288, y: -5.5 }, { x: 14.799, y: 0.278 }] }] }],
+        // deletes: one matching a source segment, one from geometry the
+        // source no longer carries (the stale part)
+        deletes: [
+          { net: 'led_a', x1: 18.288, y1: -5.5, x2: 18.288, y2: -2.87, layer: 'F.Cu' },
+          { net: 'led_a', x1: 8.991, y1: 0.188, x2: 9.014, y2: 0.21, layer: 'F.Cu' },
+        ],
+        variableOf: (ref: string) => ({ D1: 'led' })[ref],
+        allRefs: new Set(['D1']),
+      }),
+    );
+    expect(plan.unmatchedDeletes).toEqual([{ net: 'led_a', count: 1 }]);
+    expect(plan.skipped.join(' ')).toContain('matched no source route');
+  });
+
+  it('unmatched deletes on an UNRELATED net do not poison the apply', () => {
+    const { plan } = run(
+      [{ uri: 'file:///src/board.ts', text: src() }],
+      baseInput({
+        routes: [{ net: 'gnd', w: 0.3, from: { ref: 'D1', pin: '1' }, to: null, vias: [], pieces: [{ layer: 'F.Cu', w: 0.3, pts: [{ x: 1, y: 1 }, { x: 2, y: 2 }] }] }],
+        deletes: [{ net: 'other', x1: 8.991, y1: 0.188, x2: 9.014, y2: 0.21, layer: 'F.Cu' }],
+        variableOf: (ref: string) => ({ D1: 'led' })[ref],
+        allRefs: new Set(['D1']),
+      }),
+    );
+    expect(plan.unmatchedDeletes).toEqual([{ net: 'other', count: 1 }]);
+    // unrelated: the host does not refuse — the caller-side check keys on
+    // net overlap with the added routes
+  });
+});

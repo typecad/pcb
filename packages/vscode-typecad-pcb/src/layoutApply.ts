@@ -66,6 +66,10 @@ export interface LayoutApplyResult {
   counts: LayoutApplyCounts;
   /** every uri an edit landed on */
   touched: string[];
+  /** deletes that matched no source segment, net-tagged with counts — the
+   *  source lacks geometry the user deleted (typically a stale view); the
+   *  caller refuses when these coincide with added routes on the same net */
+  unmatchedDeletes: Array<{ net: string | null; count: number }>;
 }
 
 /**
@@ -331,14 +335,22 @@ export function planLayoutApply(files: LayoutApplyFile[], input: LayoutApplyInpu
   // file without create()) carry into stage 5b
   const carryAdd: Array<{ name: string; sibling: string }> = [];
   const carryRemove: string[] = [];
+  /** deletes that matched no source segment, net-tagged — the caller
+   *  refuses the apply when they coincide with an added route on the same
+   *  net (the replaced geometry would survive beside its replacement) */
+  let unmatchedDeletes: Array<{ net: string | null; count: number }> = [];
   if (input.deletes && input.deletes.length > 0) {
     const batch: Array<{ uri: string; edits: PlannedEdit[] }> = [];
     let unmatchedSkips: string[] | null = null;
+    let deferredUnmatched: Array<{ net: string | null; count: number }> = [];
     for (const file of files) {
       const plan = planRouteDeletes(textOf.get(file.uri)!, input.deletes);
       if (plan.edits.length > 0) {
         counts.deletes = plan.applied;
         for (const sk of plan.skipped) skipped.push(`delete: ${sk}`);
+        const byNet = new Map<string | null, number>();
+        for (const d of plan.unmatched) byNet.set(d.net, (byNet.get(d.net) ?? 0) + 1);
+        unmatchedDeletes = [...byNet.entries()].map(([net, count]) => ({ net, count }));
         carryAdd.push(...plan.unhandledAdditions);
         carryRemove.push(...plan.unhandledRemovals);
         batch.push({ uri: file.uri, edits: plan.edits });
@@ -346,10 +358,16 @@ export function planLayoutApply(files: LayoutApplyFile[], input: LayoutApplyInpu
       }
       // files without routes/create only get to speak when nothing matched
       // anywhere — their verdict is the deferred one
-      if (unmatchedSkips === null) unmatchedSkips = plan.skipped;
+      if (unmatchedSkips === null) {
+        unmatchedSkips = plan.skipped;
+        const byNet = new Map<string | null, number>();
+        for (const d of plan.unmatched) byNet.set(d.net, (byNet.get(d.net) ?? 0) + 1);
+        deferredUnmatched = [...byNet.entries()].map(([net, count]) => ({ net, count }));
+      }
     }
     if (batch.length === 0 && unmatchedSkips) {
       for (const sk of unmatchedSkips) skipped.push(`delete: ${sk}`);
+      unmatchedDeletes = deferredUnmatched;
     }
     commit(batch);
   }
@@ -447,5 +465,5 @@ export function planLayoutApply(files: LayoutApplyFile[], input: LayoutApplyInpu
     commit(batch);
   }
 
-  return { stages, skipped, counts, touched: [...touched] };
+  return { stages, skipped, counts, touched: [...touched], unmatchedDeletes };
 }

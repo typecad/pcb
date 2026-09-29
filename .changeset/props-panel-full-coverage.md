@@ -111,3 +111,10 @@ barrel carries from placement inherits the .cut rule's !important stroke
 with the SVG default 1mm width, painting a background-colored circle around
 the via until the rebuild replaced it with the real drill render — the hole
 now carries an explicit zero stroke-width.
+
+A stale view can no longer seed phantom traces: when a replacement gesture
+(deletes + a new route on the same net) has deletes that match no source
+segment — the page computed them against a board render that predates the
+source — the apply refuses with instructions to reopen the Board tab and
+redo, instead of leaving the unmatched geometry's chain fragment beside the
+new route (seen as a phantom trace, via, and nub between two parts).

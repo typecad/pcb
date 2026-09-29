@@ -517,6 +517,11 @@ export interface RouteDeletePlan {
   unhandledAdditions: Array<{ name: string; sibling: string }>;
   /** emptied-route names likewise left in create() elsewhere */
   unhandledRemovals: string[];
+  /** deletes that matched no source segment — the source does not carry
+   *  the geometry the user deleted (typically a stale view); the caller
+   *  refuses the apply when these coincide with added routes on the same
+   *  net, or the surviving source would ride beside the replacement */
+  unmatched: RouteDeleteInput[];
 }
 
 /**
@@ -532,7 +537,7 @@ export function planRouteDeletes(text: string, deletes: RouteDeleteInput[]): Rou
   const skipped: string[] = [];
   const unhandledAdditions: Array<{ name: string; sibling: string }> = [];
   const unhandledRemovals: string[] = [];
-  if (deletes.length === 0) return { edits, applied: 0, skipped, unhandledAdditions, unhandledRemovals };
+  if (deletes.length === 0) return { edits, applied: 0, skipped, unhandledAdditions, unhandledRemovals, unmatched: [] };
 
   const routes = parseRoutes(text);
   // line-index -> char-offset mapping for block edits (create() edits are
@@ -546,7 +551,14 @@ export function planRouteDeletes(text: string, deletes: RouteDeleteInput[]): Rou
     }
   }
   if (routes.length === 0) {
-    return { edits, applied: 0, skipped: deletes.map((d) => `segment ${d.x1},${d.y1}->${d.x2},${d.y2} (no TrackBuilder routes in source)`), unhandledAdditions, unhandledRemovals };
+    return {
+      edits,
+      applied: 0,
+      skipped: deletes.map((d) => `segment ${d.x1},${d.y1}->${d.x2},${d.y2} (no TrackBuilder routes in source)`),
+      unhandledAdditions,
+      unhandledRemovals,
+      unmatched: deletes.slice(),
+    };
   }
   const call = findCreateCall(text);
 
@@ -682,7 +694,17 @@ export function planRouteDeletes(text: string, deletes: RouteDeleteInput[]): Rou
     }
   }
 
-  const unmatched = deletes.length - matched.size;
-  if (unmatched > 0) skipped.push(`${unmatched} deleted segment(s) matched no source route`);
-  return { edits, applied: matched.size, skipped, unhandledAdditions, unhandledRemovals };
+  const unmatchedList = deletes.filter((_, i) => !matched.has(i));
+  if (unmatchedList.length > 0) skipped.push(`${unmatchedList.length} deleted segment(s) matched no source route`);
+  return {
+    edits,
+    applied: matched.size,
+    skipped,
+    unhandledAdditions,
+    unhandledRemovals,
+    /** deletes that matched nothing — the source does not carry the
+     * geometry the user saw (a stale view); proceeding would leave that
+     * geometry beside whatever replaces it */
+    unmatched: unmatchedList,
+  };
 }

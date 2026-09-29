@@ -706,6 +706,19 @@ class BoardViewerPanel {
                     return;
                 }
             }
+            // a replacement gesture whose OLD geometry matched nothing is the
+            // phantom recipe: the page's deletes were computed against a view
+            // that predates the source (the source rewrote that net since), so
+            // the old chain survives beside the new route — refuse and have the
+            // user redo the edit on a fresh view
+            if (plan.unmatchedDeletes.length > 0 && (routes ?? []).length > 0) {
+                const replaced = plan.unmatchedDeletes.filter((u) => u.net !== null && (routes ?? []).some((r) => r.net === u.net));
+                if (replaced.length > 0) {
+                    const detail = replaced.map((u) => `${u.count} segment(s) on net ${u.net}`).join(', ');
+                    fail(`the view was stale — deleted ${detail} no longer exist in source, so applying would leave the old trace beside the new route. Nothing was written — close and reopen the Board tab, then redo the edit`);
+                    return;
+                }
+            }
             // snapshot every touched file before anything is written — the
             // post-write check auto-restores from memory, and the Restore Source
             // from Backup command restores from disk; a user must never unscramble

@@ -435,7 +435,7 @@ function planRouteDeletes(text, deletes) {
     const unhandledAdditions = [];
     const unhandledRemovals = [];
     if (deletes.length === 0)
-        return { edits, applied: 0, skipped, unhandledAdditions, unhandledRemovals };
+        return { edits, applied: 0, skipped, unhandledAdditions, unhandledRemovals, unmatched: [] };
     const routes = parseRoutes(text);
     // line-index -> char-offset mapping for block edits (create() edits are
     // computed in char offsets directly and stay untouched by this)
@@ -448,7 +448,14 @@ function planRouteDeletes(text, deletes) {
         }
     }
     if (routes.length === 0) {
-        return { edits, applied: 0, skipped: deletes.map((d) => `segment ${d.x1},${d.y1}->${d.x2},${d.y2} (no TrackBuilder routes in source)`), unhandledAdditions, unhandledRemovals };
+        return {
+            edits,
+            applied: 0,
+            skipped: deletes.map((d) => `segment ${d.x1},${d.y1}->${d.x2},${d.y2} (no TrackBuilder routes in source)`),
+            unhandledAdditions,
+            unhandledRemovals,
+            unmatched: deletes.slice(),
+        };
     }
     const call = findCreateCall(text);
     const namesToAdd = [];
@@ -584,9 +591,19 @@ function planRouteDeletes(text, deletes) {
             unhandledRemovals.push(...namesToRemove);
         }
     }
-    const unmatched = deletes.length - matched.size;
-    if (unmatched > 0)
-        skipped.push(`${unmatched} deleted segment(s) matched no source route`);
-    return { edits, applied: matched.size, skipped, unhandledAdditions, unhandledRemovals };
+    const unmatchedList = deletes.filter((_, i) => !matched.has(i));
+    if (unmatchedList.length > 0)
+        skipped.push(`${unmatchedList.length} deleted segment(s) matched no source route`);
+    return {
+        edits,
+        applied: matched.size,
+        skipped,
+        unhandledAdditions,
+        unhandledRemovals,
+        /** deletes that matched nothing — the source does not carry the
+         * geometry the user saw (a stale view); proceeding would leave that
+         * geometry beside whatever replaces it */
+        unmatched: unmatchedList,
+    };
 }
 //# sourceMappingURL=routeEdits.js.map

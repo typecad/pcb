@@ -290,15 +290,24 @@ function planLayoutApply(files, input) {
     // file without create()) carry into stage 5b
     const carryAdd = [];
     const carryRemove = [];
+    /** deletes that matched no source segment, net-tagged — the caller
+     *  refuses the apply when they coincide with an added route on the same
+     *  net (the replaced geometry would survive beside its replacement) */
+    let unmatchedDeletes = [];
     if (input.deletes && input.deletes.length > 0) {
         const batch = [];
         let unmatchedSkips = null;
+        let deferredUnmatched = [];
         for (const file of files) {
             const plan = (0, routeEdits_js_1.planRouteDeletes)(textOf.get(file.uri), input.deletes);
             if (plan.edits.length > 0) {
                 counts.deletes = plan.applied;
                 for (const sk of plan.skipped)
                     skipped.push(`delete: ${sk}`);
+                const byNet = new Map();
+                for (const d of plan.unmatched)
+                    byNet.set(d.net, (byNet.get(d.net) ?? 0) + 1);
+                unmatchedDeletes = [...byNet.entries()].map(([net, count]) => ({ net, count }));
                 carryAdd.push(...plan.unhandledAdditions);
                 carryRemove.push(...plan.unhandledRemovals);
                 batch.push({ uri: file.uri, edits: plan.edits });
@@ -306,12 +315,18 @@ function planLayoutApply(files, input) {
             }
             // files without routes/create only get to speak when nothing matched
             // anywhere — their verdict is the deferred one
-            if (unmatchedSkips === null)
+            if (unmatchedSkips === null) {
                 unmatchedSkips = plan.skipped;
+                const byNet = new Map();
+                for (const d of plan.unmatched)
+                    byNet.set(d.net, (byNet.get(d.net) ?? 0) + 1);
+                deferredUnmatched = [...byNet.entries()].map(([net, count]) => ({ net, count }));
+            }
         }
         if (batch.length === 0 && unmatchedSkips) {
             for (const sk of unmatchedSkips)
                 skipped.push(`delete: ${sk}`);
+            unmatchedDeletes = deferredUnmatched;
         }
         commit(batch);
     }
@@ -407,6 +422,6 @@ function planLayoutApply(files, input) {
         }
         commit(batch);
     }
-    return { stages, skipped, counts, touched: [...touched] };
+    return { stages, skipped, counts, touched: [...touched], unmatchedDeletes };
 }
 //# sourceMappingURL=layoutApply.js.map

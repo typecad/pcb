@@ -24,6 +24,7 @@ import { backupRootLabel, writeBackup } from './sourceBackup.js';
 import { planLayoutApply } from './layoutApply.js';
 import { parsePlacementLiteral } from './layoutEdits.js';
 import { verifyBoardSemantics } from './semanticVerify.js';
+import { sync } from './syncState.js';
 import type { RouteDeleteInput, RouteInput } from './routeEdits.js';
 import { resolveBoardRules, userRulesFromFolder } from './boardRules.js';
 import { parseSourceLocation } from './sourceRef.js';
@@ -241,13 +242,19 @@ export class BoardViewerPanel {
   private async readDiskViewer(folder: string): Promise<{ html: string; diskMtimeMs: number } | null> {
     const htmlPath = path.join(folder, 'build', 'serve', 'viewer.html');
     if (!fs.existsSync(htmlPath)) return null;
+    // the disk page renders some board revision — stamp it with the CURRENT
+    // board's identity only when the page is actually newer than the board
+    // (the restore fast path's own freshness rule); a stale page keeps no
+    // stamp and its applies read as unstamped
+    const boardForStamp = newestBoardFile(folder);
+    const stamp = boardForStamp && mtimeOf(htmlPath) > mtimeOf(boardForStamp) ? mtimeOf(boardForStamp) : undefined;
     try {
       const raw = fs.readFileSync(htmlPath, 'utf8');
       const [components, nets] = await Promise.all([
         this.service.components(),
         this.service.netSources().catch(() => []),
       ]);
-      const { html } = injectProbeClient(raw, components, nets);
+      const { html } = injectProbeClient(raw, components, nets, stamp);
       return { html, diskMtimeMs: mtimeOf(htmlPath) };
     } catch (err) {
       this.output.appendLine(
@@ -606,7 +613,7 @@ export class BoardViewerPanel {
         // take the viewer down with it
         this.service.netSources().catch(() => []),
       ]);
-      const { html, injected } = injectProbeClient(raw, components, nets);
+      const { html, injected } = injectProbeClient(raw, components, nets, mtimeOf(board));
       if (!injected) {
         this.output.appendLine('warning: viewer HTML had no <head>/</body> anchors — cross-probe disabled');
       }
@@ -638,6 +645,7 @@ export class BoardViewerPanel {
     renames?: Array<{ ref: string; newRef: string }>,
     routes?: RouteInput[],
     deletes?: RouteDeleteInput[],
+    boardStamp?: string | null,
   ): Promise<void> {
     const folder = this.hwFolder();
     const fail = (error: string): void => {
@@ -648,6 +656,43 @@ export class BoardViewerPanel {
       fail('no typeCAD project found');
       return;
     }
+    // the apply owns the whole build pipeline: its own source writes must
+    // not trigger the auto-build watcher (double build), and the status
+    // indicator should read "building" for its whole run
+    sync.applyBusy = true;
+    try {
+      // board identity: the page carries the mtime of the board it was
+      // generated from. A different board on disk now means a build ran
+      // since the page rendered (auto-build, external edit) — the page's
+      // ink describes a superseded revision and its edits must not splice
+      // into a source that moved on. Unstamped = an old page (pre-stamp
+      // viewer) — allow, the near-source drift guard still backs this up.
+      const boardNow = newestBoardFile(folder);
+      if (boardStamp && boardNow && String(mtimeOf(boardNow)) !== String(boardStamp)) {
+        fail(
+          'the board was rebuilt since this view rendered (a build ran) — reopening the viewer; redo the edit on the fresh view',
+        );
+        this.postStatus('view out of date — regenerating…');
+        await this.doRefresh();
+        return;
+      }
+      await this.onLayoutRebuildInner(folder, fail, moves, texts, values, labels, renames, routes, deletes);
+    } finally {
+      sync.applyBusy = false;
+    }
+  }
+
+  private async onLayoutRebuildInner(
+    folder: string,
+    fail: (error: string) => void,
+    moves: Array<{ ref: string; dx: number; dy: number; rot?: number; pads?: Array<{ x: number; y: number }> }>,
+    texts?: LayoutTextEdit[],
+    values?: Array<{ ref: string; value: string }>,
+    labels?: LabelEdit[],
+    renames?: Array<{ ref: string; newRef: string }>,
+    routes?: RouteInput[],
+    deletes?: RouteDeleteInput[],
+  ): Promise<void> {
     try {
       const comps = await this.service.components();
       const variableOf = new Map(comps.map((c) => [c.reference, c.variable ?? '']));
@@ -914,7 +959,7 @@ export class BoardViewerPanel {
 
   private async onMessage(message: ProbeWebviewMessage): Promise<void> {
     if (message.type === 'typecad/layout-rebuild') {
-      await this.onLayoutRebuild(message.moves, message.texts, message.values, message.labels, message.renames, message.routes, message.deletes);
+      await this.onLayoutRebuild(message.moves, message.texts, message.values, message.labels, message.renames, message.routes, message.deletes, message.board);
       return;
     }
     if (message.type === 'typecad/ready') {

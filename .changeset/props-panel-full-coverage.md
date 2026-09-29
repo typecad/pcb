@@ -165,3 +165,14 @@ delete already removes now absorb as duplicates, unmatched via-kind
 deletes never refuse, and only a SEGMENT delete drifting within 0.3mm of
 its net's source copper trips the stale-view guard (the phantom recipe);
 everything else drops with an output-channel note.
+
+The source↔board↔viewer chain is now self-syncing: source edits under src/
+(or typecad.conf.ts) auto-build after a 2s debounce, opening a workspace
+whose board predates its sources builds once immediately, and a status bar
+item shows the pipeline state (✓ typeCAD synced · "building…" · "build
+failed" with the error) — clicking it opens the Board view. Applies set a
+busy flag so their own source writes never double-build. Every generated
+viewer page embeds the mtime of the board it renders and carries it with
+each apply; when the board has since been rebuilt (auto-build, external
+edit), the apply regenerates the viewer and tells the user to redo the
+edit on the fresh view instead of splicing edits from a superseded board.

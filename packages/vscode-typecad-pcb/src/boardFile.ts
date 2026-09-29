@@ -65,3 +65,45 @@ export function entrySourceFile(folder: string): string | null {
     return null;
   }
 }
+
+/**
+ * The newest mtime among the project's build inputs — every .ts under src/
+ * plus typecad.conf.ts itself. Compared against the board's mtime it answers
+ * "does the board reflect the sources?" without running anything.
+ */
+export function newestSourceMtime(folder: string): number {
+  let newest = 0;
+  const consider = (file: string): void => {
+    try {
+      const m = fs.statSync(file).mtimeMs;
+      if (m > newest) newest = m;
+    } catch {
+      // unreadable entries simply don't count
+    }
+  };
+  consider(path.join(folder, 'typecad.conf.ts'));
+  const srcDir = path.join(folder, 'src');
+  if (fs.existsSync(srcDir)) {
+    const walk = (dir: string): void => {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) walk(full);
+        else if (/\.(ts|tsx)$/.test(entry.name)) consider(full);
+      }
+    };
+    walk(srcDir);
+  }
+  return newest;
+}
+
+/**
+ * Is the compiled board older than any source? True means a build is owed —
+ * the board on disk (and therefore the Board viewer) describes a previous
+ * revision of the sources. Null when there is no board yet (always owed,
+ * but the caller decides whether that is a build or a "run create first").
+ */
+export function boardStale(folder: string): boolean | null {
+  const board = newestBoardFile(folder);
+  if (!board) return null;
+  return newestSourceMtime(folder) > mtimeOf(board);
+}

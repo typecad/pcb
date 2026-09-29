@@ -71,6 +71,8 @@ const probeClient_js_1 = require("./probeClient.js");
 const query_js_1 = require("./query.js");
 const sourceRef_js_1 = require("./sourceRef.js");
 const viewer_js_1 = require("./viewer.js");
+const boardFile_js_1 = require("./boardFile.js");
+const syncState_js_1 = require("./syncState.js");
 /** Identifiers only — skips numbers, operators, and property dots. */
 const WORD_LIKE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 function activate(context) {
@@ -80,16 +82,121 @@ function activate(context) {
     // node check is enough to locate typecad.conf.ts.
     const resolveHwFolder = () => (0, hwFolder_js_1.findHwFolder)((vscode.workspace.workspaceFolders ?? []).map((f) => f.uri.fsPath), (p) => node_fs_1.default.existsSync(p));
     const viewer = new viewer_js_1.BoardViewerPanel(resolveHwFolder, service, runQuery, output);
+    // ---- source→board→viewer sync: the user should never wonder whether a
+    // build is owed or the Board view is current. Source edits auto-build
+    // (debounced; an in-flight apply owns its own build), the board watcher
+    // already regenerates the viewer, and the status bar says which state
+    // the pipeline is in ----
+    const syncBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 90);
+    syncBar.name = 'typeCAD sync';
+    syncBar.command = 'typecad-pcb.viewBoard';
+    syncBar.tooltip = 'typeCAD/pcb source ↔ board sync — click to open the Board view';
+    context.subscriptions.push(syncBar);
+    const syncLabel = () => {
+        const folder = resolveHwFolder();
+        if (!folder) {
+            syncBar.hide();
+            return;
+        }
+        syncBar.show();
+        if (syncState_js_1.sync.building) {
+            syncBar.text = '$(circuit-board) typeCAD: building…';
+            return;
+        }
+        if (syncState_js_1.sync.lastError) {
+            syncBar.text = '$(error) typeCAD: build failed';
+            syncBar.tooltip = `typeCAD/pcb build failed — ${syncState_js_1.sync.lastError} (see the typeCAD/pcb output)`;
+            return;
+        }
+        const stale = (0, boardFile_js_1.boardStale)(folder);
+        syncBar.text = stale ? '$(circuit-board) typeCAD: syncing…' : '$(check) typeCAD';
+        syncBar.tooltip = 'typeCAD/pcb source ↔ board sync — click to open the Board view';
+    };
+    let autoBuildTimer;
+    const scheduleAutoBuild = (delayMs = 2_000) => {
+        if (autoBuildTimer)
+            clearTimeout(autoBuildTimer);
+        autoBuildTimer = setTimeout(() => {
+            autoBuildTimer = undefined;
+            const folder = resolveHwFolder();
+            if (!folder)
+                return;
+            // the apply pipeline builds itself; its own source writes land here
+            // too and must not double-build
+            if ((0, syncState_js_1.pipelineBusy)()) {
+                syncLabel();
+                return;
+            }
+            if (!(0, boardFile_js_1.boardStale)(folder)) {
+                syncLabel();
+                return;
+            }
+            syncState_js_1.sync.building = true;
+            syncLabel();
+            runQuery(folder, 'npm run build', 180_000)
+                .then(() => {
+                syncState_js_1.sync.building = false;
+                syncState_js_1.sync.lastError = null;
+                // the board watcher refreshes the viewer; the label follows the
+                // board catching up on its next event — nudge it once here too
+                setTimeout(syncLabel, 3_000);
+            })
+                .catch((err) => {
+                syncState_js_1.sync.building = false;
+                syncState_js_1.sync.lastError = err instanceof Error ? err.message : String(err);
+                output.appendLine(`auto-build failed: ${syncState_js_1.sync.lastError}`);
+                syncLabel();
+            });
+        }, delayMs);
+    };
+    // source watcher: every .ts under the hw folder (src/ plus the conf) —
+    // one teardown hook owns whatever watcher is current
+    let watcher;
+    context.subscriptions.push(new vscode.Disposable(() => watcher?.dispose()));
+    const rewatchSources = () => {
+        watcher?.dispose();
+        const folder = resolveHwFolder();
+        if (!folder) {
+            syncBar.hide();
+            return;
+        }
+        const pattern = new vscode.RelativePattern(folder, '{src/**/*.ts,typecad.conf.ts}');
+        watcher = vscode.workspace.createFileSystemWatcher(pattern);
+        watcher.onDidChange(() => scheduleAutoBuild());
+        watcher.onDidCreate(() => scheduleAutoBuild());
+        watcher.onDidDelete(() => scheduleAutoBuild());
+        syncLabel();
+        // opening the workspace with sources newer than the board (the failed
+        // apply + manual edit case): build once now, not on the next save
+        if ((0, boardFile_js_1.boardStale)(folder))
+            scheduleAutoBuild(1_000);
+    };
+    context.subscriptions.push(new vscode.Disposable(rewatchSources));
+    rewatchSources();
+    vscode.workspace.onDidChangeWorkspaceFolders(() => rewatchSources(), undefined, context.subscriptions);
+    // an apply finishing (its source writes settled) leaves the board built
+    // by the apply itself — refresh the label when it clears
+    vscode.workspace.onDidChangeTextDocument((e) => {
+        const folder = resolveHwFolder();
+        if (folder && (e.document.uri.fsPath.startsWith(node_path_1.default.join(folder, 'src') + node_path_1.default.sep) || e.document.uri.fsPath === node_path_1.default.join(folder, 'typecad.conf.ts'))) {
+            // typing: the label flips to "syncing" only after the debounce
+            // fires a build; meanwhile just reflect the pending state quietly
+            if (!(0, syncState_js_1.pipelineBusy)())
+                syncLabel();
+        }
+    }, undefined, context.subscriptions);
+    vscode.workspace.onDidSaveTextDocument(() => {
+        const folder = resolveHwFolder();
+        if (!folder)
+            return;
+        syncLabel();
+    }, undefined, context.subscriptions);
     // Reload/window-reopen restores a previously open Board panel instead of
     // leaving a dead empty webview behind; must be registered at activation
     // for VS Code to restore the panel at all.
     context.subscriptions.push(vscode.window.registerWebviewPanelSerializer('typecadBoardViewer', {
         deserializeWebviewPanel: (panel) => viewer.restorePanel(panel),
     }));
-    let watcher;
-    // one teardown hook owns whatever watcher is current — re-watching swaps
-    // the field without growing the subscriptions array
-    context.subscriptions.push(new vscode.Disposable(() => watcher?.dispose()));
     /** Opt-in (typecad-pcb.drcOnBuild): run the check once the board settles. */
     let autoDrcTimer;
     const autoDrcIfWanted = (boardFile) => {

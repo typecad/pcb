@@ -106,6 +106,8 @@ export type ProbeWebviewMessage =
   | { type: 'typecad/probe-net'; net: string; source?: string }
   | {
       type: 'typecad/layout-rebuild';
+      /** the board mtime this page was generated from — null on old pages */
+      board?: string | null;
       moves: Array<{ ref: string; dx: number; dy: number; rot?: number; pads?: Array<{ x: number; y: number }> }>;
       texts?: LayoutTextEdit[];
       values?: Array<{ ref: string; value: string }>;
@@ -211,12 +213,18 @@ const PROBE_CLIENT = `<script>
   window.addEventListener('load', announce);
 
   // Layout view: the page hands moved-component deltas to the host, which
-  // edits the placement literals, rebuilds, and regenerates this viewer
+  // edits the placement literals, rebuilds, and regenerates this viewer.
+  // The board stamp rides along: the host embeds the mtime of the board it
+  // generated this page from, and compares at apply time — a page whose
+  // board has since been rebuilt (auto-build, external edit) is a stale
+  // view, and its edits must not splice into a source that moved on
   var layoutCb = null;
   window.typecadLayoutApply = function (moves, texts, values, labels, renames, routes, deletes, cb) {
     layoutCb = cb || (typeof deletes === 'function' ? deletes : typeof routes === 'function' ? routes : null);
+    var stamp = document.querySelector('meta[name="tc-viewer-board"]');
     send({
       type: 'typecad/layout-rebuild',
+      board: stamp ? stamp.getAttribute('content') : null,
       moves: moves,
       texts: texts || [],
       values: values || [],
@@ -433,16 +441,25 @@ export function injectProbeClient(
   html: string,
   components: ComponentSummary[],
   nets: NetSourceSummary[] = [],
+  boardMtimeMs?: number,
 ): { html: string; injected: boolean } {
   const bodyClose = html.lastIndexOf('</body>');
   if (html.indexOf('<head>') === -1 || bodyClose === -1) return { html, injected: false };
+
+  // the board identity this page renders — the apply bridge reports it
+  // back so the host can refuse edits made against a superseded board
+  const boardTag =
+    boardMtimeMs !== undefined ? `<meta name="tc-viewer-board" content="${boardMtimeMs}">` : '';
+  const headClose = html.indexOf('</head>');
+  const stamped =
+    boardTag && headClose !== -1 ? html.slice(0, headClose) + boardTag + html.slice(headClose) : html;
 
   const dataTag = `<script id="typecad-probe-data" type="application/json">${JSON.stringify({
     components: outlineData(components),
     nets,
   }).replace(/</g, '\\u003c')}</script>`;
 
-  const withClient = html.slice(0, bodyClose) + dataTag + PROBE_CLIENT + html.slice(bodyClose);
+  const withClient = stamped.slice(0, bodyClose) + dataTag + PROBE_CLIENT + stamped.slice(bodyClose);
   // <head> was just verified — the policy always applies here
   return { html: applyNoncePolicy(withClient)!, injected: true };
 }

@@ -6,6 +6,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.mtimeOf = mtimeOf;
 exports.newestBoardFile = newestBoardFile;
 exports.entrySourceFile = entrySourceFile;
+exports.newestSourceMtime = newestSourceMtime;
+exports.boardStale = boardStale;
 // Board-file discovery, kept free of vscode imports so it stays unit-testable.
 const node_fs_1 = __importDefault(require("node:fs"));
 const node_path_1 = __importDefault(require("node:path"));
@@ -76,5 +78,50 @@ function entrySourceFile(folder) {
     catch {
         return null;
     }
+}
+/**
+ * The newest mtime among the project's build inputs — every .ts under src/
+ * plus typecad.conf.ts itself. Compared against the board's mtime it answers
+ * "does the board reflect the sources?" without running anything.
+ */
+function newestSourceMtime(folder) {
+    let newest = 0;
+    const consider = (file) => {
+        try {
+            const m = node_fs_1.default.statSync(file).mtimeMs;
+            if (m > newest)
+                newest = m;
+        }
+        catch {
+            // unreadable entries simply don't count
+        }
+    };
+    consider(node_path_1.default.join(folder, 'typecad.conf.ts'));
+    const srcDir = node_path_1.default.join(folder, 'src');
+    if (node_fs_1.default.existsSync(srcDir)) {
+        const walk = (dir) => {
+            for (const entry of node_fs_1.default.readdirSync(dir, { withFileTypes: true })) {
+                const full = node_path_1.default.join(dir, entry.name);
+                if (entry.isDirectory())
+                    walk(full);
+                else if (/\.(ts|tsx)$/.test(entry.name))
+                    consider(full);
+            }
+        };
+        walk(srcDir);
+    }
+    return newest;
+}
+/**
+ * Is the compiled board older than any source? True means a build is owed —
+ * the board on disk (and therefore the Board viewer) describes a previous
+ * revision of the sources. Null when there is no board yet (always owed,
+ * but the caller decides whether that is a build or a "run create first").
+ */
+function boardStale(folder) {
+    const board = newestBoardFile(folder);
+    if (!board)
+        return null;
+    return newestSourceMtime(folder) > mtimeOf(board);
 }
 //# sourceMappingURL=boardFile.js.map

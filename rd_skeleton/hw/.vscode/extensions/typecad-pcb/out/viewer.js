@@ -64,6 +64,7 @@ const sourceBackup_js_1 = require("./sourceBackup.js");
 const layoutApply_js_1 = require("./layoutApply.js");
 const layoutEdits_js_1 = require("./layoutEdits.js");
 const semanticVerify_js_1 = require("./semanticVerify.js");
+const syncState_js_1 = require("./syncState.js");
 const boardRules_js_1 = require("./boardRules.js");
 const sourceRef_js_1 = require("./sourceRef.js");
 // discovery helpers live vscode-free in boardFile.ts for unit testing;
@@ -245,13 +246,19 @@ class BoardViewerPanel {
         const htmlPath = node_path_1.default.join(folder, 'build', 'serve', 'viewer.html');
         if (!node_fs_1.default.existsSync(htmlPath))
             return null;
+        // the disk page renders some board revision — stamp it with the CURRENT
+        // board's identity only when the page is actually newer than the board
+        // (the restore fast path's own freshness rule); a stale page keeps no
+        // stamp and its applies read as unstamped
+        const boardForStamp = (0, boardFile_js_2.newestBoardFile)(folder);
+        const stamp = boardForStamp && (0, boardFile_js_2.mtimeOf)(htmlPath) > (0, boardFile_js_2.mtimeOf)(boardForStamp) ? (0, boardFile_js_2.mtimeOf)(boardForStamp) : undefined;
         try {
             const raw = node_fs_1.default.readFileSync(htmlPath, 'utf8');
             const [components, nets] = await Promise.all([
                 this.service.components(),
                 this.service.netSources().catch(() => []),
             ]);
-            const { html } = (0, probeClient_js_1.injectProbeClient)(raw, components, nets);
+            const { html } = (0, probeClient_js_1.injectProbeClient)(raw, components, nets, stamp);
             return { html, diskMtimeMs: (0, boardFile_js_2.mtimeOf)(htmlPath) };
         }
         catch (err) {
@@ -606,7 +613,7 @@ class BoardViewerPanel {
                 // take the viewer down with it
                 this.service.netSources().catch(() => []),
             ]);
-            const { html, injected } = (0, probeClient_js_1.injectProbeClient)(raw, components, nets);
+            const { html, injected } = (0, probeClient_js_1.injectProbeClient)(raw, components, nets, (0, boardFile_js_2.mtimeOf)(board));
             if (!injected) {
                 this.output.appendLine('warning: viewer HTML had no <head>/</body> anchors — cross-probe disabled');
             }
@@ -627,7 +634,7 @@ class BoardViewerPanel {
      * rebuilds and the viewer regenerates. Computed (non-literal) placements
      * are skipped and reported, never silently mangled.
      */
-    async onLayoutRebuild(moves, texts, values, labels, renames, routes, deletes) {
+    async onLayoutRebuild(moves, texts, values, labels, renames, routes, deletes, boardStamp) {
         const folder = this.hwFolder();
         const fail = (error) => {
             this.output.appendLine(`layout apply failed: ${error}`);
@@ -637,6 +644,31 @@ class BoardViewerPanel {
             fail('no typeCAD project found');
             return;
         }
+        // the apply owns the whole build pipeline: its own source writes must
+        // not trigger the auto-build watcher (double build), and the status
+        // indicator should read "building" for its whole run
+        syncState_js_1.sync.applyBusy = true;
+        try {
+            // board identity: the page carries the mtime of the board it was
+            // generated from. A different board on disk now means a build ran
+            // since the page rendered (auto-build, external edit) — the page's
+            // ink describes a superseded revision and its edits must not splice
+            // into a source that moved on. Unstamped = an old page (pre-stamp
+            // viewer) — allow, the near-source drift guard still backs this up.
+            const boardNow = (0, boardFile_js_2.newestBoardFile)(folder);
+            if (boardStamp && boardNow && String((0, boardFile_js_2.mtimeOf)(boardNow)) !== String(boardStamp)) {
+                fail('the board was rebuilt since this view rendered (a build ran) — reopening the viewer; redo the edit on the fresh view');
+                this.postStatus('view out of date — regenerating…');
+                await this.doRefresh();
+                return;
+            }
+            await this.onLayoutRebuildInner(folder, fail, moves, texts, values, labels, renames, routes, deletes);
+        }
+        finally {
+            syncState_js_1.sync.applyBusy = false;
+        }
+    }
+    async onLayoutRebuildInner(folder, fail, moves, texts, values, labels, renames, routes, deletes) {
         try {
             const comps = await this.service.components();
             const variableOf = new Map(comps.map((c) => [c.reference, c.variable ?? '']));
@@ -878,7 +910,7 @@ class BoardViewerPanel {
     }
     async onMessage(message) {
         if (message.type === 'typecad/layout-rebuild') {
-            await this.onLayoutRebuild(message.moves, message.texts, message.values, message.labels, message.renames, message.routes, message.deletes);
+            await this.onLayoutRebuild(message.moves, message.texts, message.values, message.labels, message.renames, message.routes, message.deletes, message.board);
             return;
         }
         if (message.type === 'typecad/ready') {

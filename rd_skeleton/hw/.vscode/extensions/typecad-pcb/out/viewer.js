@@ -706,15 +706,21 @@ class BoardViewerPanel {
                     return;
                 }
             }
-            // a replacement gesture whose OLD geometry matched nothing is the
-            // phantom recipe: the page's deletes were computed against a view
-            // that predates the source (the source rewrote that net since), so
-            // the old chain survives beside the new route — refuse and have the
-            // user redo the edit on a fresh view
+            // a replacement gesture whose OLD geometry matched nothing NEAR source
+            // copper is the phantom recipe: the deletes were computed against a
+            // view that predates the source, so the old chain survives beside the
+            // new route — refuse and have the user redo the edit on a fresh view.
+            // Unmatched deletes NOWHERE NEAR source copper are noise (the page
+            // pushes a via-delete at every deleted-segment endpoint; most carry
+            // no via) — they drop and the apply proceeds
             if (plan.unmatchedDeletes.length > 0 && (routes ?? []).length > 0) {
-                const replaced = plan.unmatchedDeletes.filter((u) => u.net !== null && (routes ?? []).some((r) => r.net === u.net));
+                const replaced = plan.unmatchedDeletes.filter((u) => u.near > 0 && (routes ?? []).some((r) => r.net === u.net));
+                const dropped = plan.unmatchedDeletes.filter((u) => u.near === 0);
+                if (dropped.length > 0) {
+                    this.output.appendLine(`dropped ${dropped.map((d) => `${d.count} delete(s) on ${d.net ?? 'N/C'}`).join(', ')} matching no source copper (no via / autorouter ink) — nothing in source to remove`);
+                }
                 if (replaced.length > 0) {
-                    const detail = replaced.map((u) => `${u.count} segment(s) on net ${u.net}`).join(', ');
+                    const detail = replaced.map((u) => `${u.near} segment(s) on net ${u.net}`).join(', ');
                     fail(`the view was stale — deleted ${detail} no longer exist in source, so applying would leave the old trace beside the new route. Nothing was written — close and reopen the Board tab, then redo the edit`);
                     return;
                 }

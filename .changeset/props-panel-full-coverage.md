@@ -155,3 +155,13 @@ orientation, vias by position, board-frame aware) both when the pending
 state restores and again at the apply door: dead deletes drop silently,
 deletes matching existing ink ride, and the stale-view refusal only fires
 for genuine source/board divergence.
+
+Unmatched-delete triage ends the false staleness refusals: the page pushes
+a via-delete at EVERY deleted-segment endpoint (most endpoints carry no
+via), and a via-delete claims its source segment first — leaving the
+segment delete itself apparently unmatched and every apply refusing as
+stale even on a freshly built board. Deletes that match copper another
+delete already removes now absorb as duplicates, unmatched via-kind
+deletes never refuse, and only a SEGMENT delete drifting within 0.3mm of
+its net's source copper trips the stale-view guard (the phantom recipe);
+everything else drops with an output-channel note.

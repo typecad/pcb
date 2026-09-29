@@ -290,11 +290,23 @@ function planLayoutApply(files, input) {
     // file without create()) carry into stage 5b
     const carryAdd = [];
     const carryRemove = [];
-    /** deletes that matched no source segment, net-tagged — the caller
-     *  refuses the apply when they coincide with an added route on the same
-     *  net (the replaced geometry would survive beside its replacement) */
+    /** deletes that matched no source segment, net-tagged with how many sit
+     *  NEAR source copper of their net — the caller refuses only those (the
+     *  far ones are via-bookkeeping noise the page pushes at every deleted
+     *  segment endpoint, most carrying no via) */
     let unmatchedDeletes = [];
     if (input.deletes && input.deletes.length > 0) {
+        const byNetOf = (unmatched) => {
+            const byNet = new Map();
+            for (const d of unmatched) {
+                const e = byNet.get(d.net) ?? { count: 0, near: 0 };
+                e.count++;
+                if (d.nearSource)
+                    e.near++;
+                byNet.set(d.net, e);
+            }
+            return [...byNet.entries()].map(([net, e]) => ({ net, count: e.count, near: e.near }));
+        };
         const batch = [];
         let unmatchedSkips = null;
         let deferredUnmatched = [];
@@ -304,10 +316,7 @@ function planLayoutApply(files, input) {
                 counts.deletes = plan.applied;
                 for (const sk of plan.skipped)
                     skipped.push(`delete: ${sk}`);
-                const byNet = new Map();
-                for (const d of plan.unmatched)
-                    byNet.set(d.net, (byNet.get(d.net) ?? 0) + 1);
-                unmatchedDeletes = [...byNet.entries()].map(([net, count]) => ({ net, count }));
+                unmatchedDeletes = byNetOf(plan.unmatched);
                 carryAdd.push(...plan.unhandledAdditions);
                 carryRemove.push(...plan.unhandledRemovals);
                 batch.push({ uri: file.uri, edits: plan.edits });
@@ -317,10 +326,7 @@ function planLayoutApply(files, input) {
             // anywhere — their verdict is the deferred one
             if (unmatchedSkips === null) {
                 unmatchedSkips = plan.skipped;
-                const byNet = new Map();
-                for (const d of plan.unmatched)
-                    byNet.set(d.net, (byNet.get(d.net) ?? 0) + 1);
-                deferredUnmatched = [...byNet.entries()].map(([net, count]) => ({ net, count }));
+                deferredUnmatched = byNetOf(plan.unmatched);
             }
         }
         if (batch.length === 0 && unmatchedSkips) {

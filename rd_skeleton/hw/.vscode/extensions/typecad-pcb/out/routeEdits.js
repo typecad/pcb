@@ -462,6 +462,12 @@ function planRouteDeletes(text, deletes) {
     const namesToRemove = [];
     /** indexes into `deletes` that matched a source segment somewhere */
     const matched = new Set();
+    /** per-route keep flags — a duplicate delete matching already-dying
+     *  copper is absorbed, not unmatched (the page sends a via-delete at
+     *  every deleted-segment endpoint; the via claims the source segment
+     *  and the segment delete itself would otherwise read as unmatched) */
+    const routeNet = (r) => /net:\s*'([^']*)'/.exec(r.opts)?.[1] ?? null;
+    const keptByRoute = [];
     for (const r of routes) {
         // remaining segment flags: segment i is (points[i], points[i+1])
         const keep = [];
@@ -485,6 +491,7 @@ function planRouteDeletes(text, deletes) {
             if (hit !== -1)
                 matched.add(hit);
         }
+        keptByRoute.push({ route: r, keep });
         if (keep.every((k) => k))
             continue; // untouched
         /** serialize one surviving run (a contiguous span of point indexes) */
@@ -591,9 +598,75 @@ function planRouteDeletes(text, deletes) {
             unhandledRemovals.push(...namesToRemove);
         }
     }
+    // duplicate absorption: a delete whose geometry matches copper another
+    // delete already removed describes the same removal twice — the page's
+    // via-delete at a segment endpoint claims the source segment, leaving
+    // the segment delete itself apparently unmatched
+    deletes.forEach((d, i) => {
+        if (matched.has(i) || d.kind === 'via')
+            return;
+        for (const { route, keep } of keptByRoute) {
+            const rn = routeNet(route);
+            if (rn && d.net && rn !== d.net)
+                continue;
+            for (let s = 0; s + 1 < route.points.length; s++) {
+                if (keep[s])
+                    continue;
+                if (segMatch(d, route.points[s], route.points[s + 1])) {
+                    matched.add(i);
+                    return;
+                }
+            }
+        }
+    });
     const unmatchedList = deletes.filter((_, i) => !matched.has(i));
     if (unmatchedList.length > 0)
         skipped.push(`${unmatchedList.length} deleted segment(s) matched no source route`);
+    // proximity tagging: an unmatched delete NEAR source copper of its net is
+    // drift (the view described source geometry with moved coordinates — the
+    // stale-view phantom). One nowhere near any source copper is noise: the
+    // page pushes a via-delete at EVERY deleted-segment endpoint, and most
+    // endpoints carry no via — those must drop, not refuse the apply
+    const segDist = (px, py, ax, ay, bx, by) => {
+        const dx = bx - ax;
+        const dy = by - ay;
+        const len2 = dx * dx + dy * dy || 1e-9;
+        const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / len2));
+        return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
+    };
+    const allRoutePts = routes.flatMap((r) => r.points.map((p) => ({ x: p.x, y: p.y, net: routeNet(r) })));
+    const nearSource = (d) => {
+        for (const r of routes) {
+            const rn = routeNet(r);
+            if (rn && d.net && rn !== d.net)
+                continue;
+            for (let s = 1; s < r.points.length; s++) {
+                const a = r.points[s - 1];
+                const b = r.points[s];
+                if (segDist(d.x1, d.y1, a.x, a.y, b.x, b.y) < 0.3 || segDist(d.x2, d.y2, a.x, a.y, b.x, b.y) < 0.3)
+                    return true;
+            }
+        }
+        // via-kind: near any parsed route point
+        if (d.kind === 'via') {
+            for (const p of allRoutePts) {
+                if (p.net && d.net && p.net !== d.net)
+                    continue;
+                if (Math.hypot(p.x - d.x1, p.y - d.y1) < 0.3)
+                    return true;
+            }
+        }
+        return false;
+    };
+    for (const d of unmatchedList) {
+        const tagged = d;
+        // via-kind unmatched deletes sit at deleted-segment endpoints — points
+        // that ARE source geometry — so proximity says nothing; they are
+        // endpoint bookkeeping (a via-delete fires at every endpoint, most
+        // carry no via) and never refuse an apply. Only SEGMENT deletes near
+        // source copper signal drift.
+        tagged.nearSource = d.kind === 'via' ? false : nearSource(d);
+    }
     return {
         edits,
         applied: matched.size,

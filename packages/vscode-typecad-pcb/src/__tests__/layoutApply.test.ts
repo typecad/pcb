@@ -458,7 +458,7 @@ typecad.create(led, route18);
         allRefs: new Set(['D1']),
       }),
     );
-    expect(plan.unmatchedDeletes).toEqual([{ net: 'led_a', count: 1 }]);
+    expect(plan.unmatchedDeletes).toEqual([{ net: 'led_a', count: 1, near: 0 }]);
     expect(plan.skipped.join(' ')).toContain('matched no source route');
   });
 
@@ -472,8 +472,60 @@ typecad.create(led, route18);
         allRefs: new Set(['D1']),
       }),
     );
-    expect(plan.unmatchedDeletes).toEqual([{ net: 'other', count: 1 }]);
+    expect(plan.unmatchedDeletes).toEqual([{ net: 'other', count: 1, near: 0 }]);
     // unrelated: the host does not refuse — the caller-side check keys on
     // net overlap with the added routes
+  });
+});
+
+describe('unmatched-delete triage: drift refuses, endpoint noise drops', () => {
+  // the user's loop: deleting a net's whole ink sends a via-delete at EVERY
+  // segment endpoint (most carry no via) — those unmatched entries must
+  // drop; only a segment delete NEAR source copper refuses (real drift)
+  const src = () => `import { PCB, LED, TrackBuilder } from '@typecad/pcb';
+const typecad = new PCB('demo', {});
+const led = new LED({ value: 'red' });
+led.pcb = { x: 17.5, y: -5.5 };
+const route18 = new TrackBuilder(typecad, { net: 'led_a',  })
+  .from({ x: 18.288, y: -5.5 }, 'F.Cu', 0.3)
+  .to({ x: 18.288, y: -2.87, layer: 'F.Cu', width: 0.3 })
+  .to({ x: 15.23, y: 0.188, layer: 'F.Cu', width: 0.3 });
+typecad.create(led, route18);
+`;
+
+  it('endpoint via-deletes and duplicate segment deletes absorb; only near-source drift refuses', () => {
+    const segs: Array<[number, number, number, number]> = [
+      [18.288, -5.5, 18.288, -2.87],
+      [18.288, -2.87, 15.23, 0.188],
+    ];
+    const deletes: Array<{ kind?: string; net: string; x1: number; y1: number; x2: number; y2: number; layer: string | null }> = [];
+    for (const [x1, y1, x2, y2] of segs) {
+      deletes.push({ net: 'led_a', x1, y1, x2, y2, layer: 'F.Cu' });
+      deletes.push({ kind: 'via', net: 'led_a', x1, y1, x2: x1, y2: y1, layer: null });
+      deletes.push({ kind: 'via', net: 'led_a', x1: x2, y1: y2, x2: x2, y2: y2, layer: null });
+    }
+    const routes = [{ net: 'led_a', w: 0.3, from: { ref: 'D1', pin: '1' }, to: null, vias: [], pieces: [{ layer: 'F.Cu', w: 0.3, pts: [{ x: 18.288, y: -5.5 }, { x: 10, y: 0.188 }] }] }];
+    const { plan } = run(
+      [{ uri: 'file:///src/board.ts', text: src() }],
+      baseInput({ routes, deletes, variableOf: (ref: string) => ({ D1: 'led' })[ref], allRefs: new Set(['D1']) }),
+    );
+    // both real segments matched (one may ride the via-delete's claim —
+    // the duplicate segment delete absorbs); every unmatched entry is FAR
+    // from source copper: no refusal
+    expect(plan.counts.deletes).toBeGreaterThanOrEqual(2);
+    expect(plan.unmatchedDeletes.every((u) => u.near === 0)).toBe(true);
+    const out = 'placeholder';
+    expect(out).toBeDefined();
+  });
+
+  it('a segment delete drifting near source copper still refuses', () => {
+    // route18 runs to (15.23, 0.188); a stale delete 0.1mm off its endpoint
+    const stale = [{ net: 'led_a', x1: 15.13, y1: 0.188, x2: 15.23, y2: 0.288, layer: 'F.Cu' }];
+    const routes = [{ net: 'led_a', w: 0.3, from: { ref: 'D1', pin: '1' }, to: null, vias: [], pieces: [{ layer: 'F.Cu', w: 0.3, pts: [{ x: 18.288, y: -5.5 }, { x: 10, y: 0.188 }] }] }];
+    const { plan } = run(
+      [{ uri: 'file:///src/board.ts', text: src() }],
+      baseInput({ routes, deletes: stale, variableOf: (ref: string) => ({ D1: 'led' })[ref], allRefs: new Set(['D1']) }),
+    );
+    expect(plan.unmatchedDeletes.some((u) => u.near > 0)).toBe(true);
   });
 });

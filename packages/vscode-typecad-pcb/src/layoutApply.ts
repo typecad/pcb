@@ -69,7 +69,7 @@ export interface LayoutApplyResult {
   /** deletes that matched no source segment, net-tagged with counts — the
    *  source lacks geometry the user deleted (typically a stale view); the
    *  caller refuses when these coincide with added routes on the same net */
-  unmatchedDeletes: Array<{ net: string | null; count: number }>;
+  unmatchedDeletes: Array<{ net: string | null; count: number; near: number }>;
 }
 
 /**
@@ -335,22 +335,31 @@ export function planLayoutApply(files: LayoutApplyFile[], input: LayoutApplyInpu
   // file without create()) carry into stage 5b
   const carryAdd: Array<{ name: string; sibling: string }> = [];
   const carryRemove: string[] = [];
-  /** deletes that matched no source segment, net-tagged — the caller
-   *  refuses the apply when they coincide with an added route on the same
-   *  net (the replaced geometry would survive beside its replacement) */
-  let unmatchedDeletes: Array<{ net: string | null; count: number }> = [];
+  /** deletes that matched no source segment, net-tagged with how many sit
+   *  NEAR source copper of their net — the caller refuses only those (the
+   *  far ones are via-bookkeeping noise the page pushes at every deleted
+   *  segment endpoint, most carrying no via) */
+  let unmatchedDeletes: Array<{ net: string | null; count: number; near: number }> = [];
   if (input.deletes && input.deletes.length > 0) {
+    const byNetOf = (unmatched: RouteDeleteInput[]): Array<{ net: string | null; count: number; near: number }> => {
+      const byNet = new Map<string | null, { count: number; near: number }>();
+      for (const d of unmatched) {
+        const e = byNet.get(d.net) ?? { count: 0, near: 0 };
+        e.count++;
+        if ((d as RouteDeleteInput & { nearSource?: boolean }).nearSource) e.near++;
+        byNet.set(d.net, e);
+      }
+      return [...byNet.entries()].map(([net, e]) => ({ net, count: e.count, near: e.near }));
+    };
     const batch: Array<{ uri: string; edits: PlannedEdit[] }> = [];
     let unmatchedSkips: string[] | null = null;
-    let deferredUnmatched: Array<{ net: string | null; count: number }> = [];
+    let deferredUnmatched: Array<{ net: string | null; count: number; near: number }> = [];
     for (const file of files) {
       const plan = planRouteDeletes(textOf.get(file.uri)!, input.deletes);
       if (plan.edits.length > 0) {
         counts.deletes = plan.applied;
         for (const sk of plan.skipped) skipped.push(`delete: ${sk}`);
-        const byNet = new Map<string | null, number>();
-        for (const d of plan.unmatched) byNet.set(d.net, (byNet.get(d.net) ?? 0) + 1);
-        unmatchedDeletes = [...byNet.entries()].map(([net, count]) => ({ net, count }));
+        unmatchedDeletes = byNetOf(plan.unmatched);
         carryAdd.push(...plan.unhandledAdditions);
         carryRemove.push(...plan.unhandledRemovals);
         batch.push({ uri: file.uri, edits: plan.edits });
@@ -360,9 +369,7 @@ export function planLayoutApply(files: LayoutApplyFile[], input: LayoutApplyInpu
       // anywhere — their verdict is the deferred one
       if (unmatchedSkips === null) {
         unmatchedSkips = plan.skipped;
-        const byNet = new Map<string | null, number>();
-        for (const d of plan.unmatched) byNet.set(d.net, (byNet.get(d.net) ?? 0) + 1);
-        deferredUnmatched = [...byNet.entries()].map(([net, count]) => ({ net, count }));
+        deferredUnmatched = byNetOf(plan.unmatched);
       }
     }
     if (batch.length === 0 && unmatchedSkips) {

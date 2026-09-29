@@ -137,3 +137,10 @@ stubs behave as before. The routing rubber band draws in the gerber frame
 the ratsnest group renders (the earlier y negation mirrored it: moving the
 cursor up moved the band down), and the start/target pad drop-outs compare
 positions across the board/gerber frame boundary.
+
+Ratsnest wires now land on the CLOSEST pair of contact points between
+connectivity components — a partial trace's dangling end talks directly to
+the far pad instead of pad-center to pad-center — and the routing rubber
+band ties to the nearest point of the unreached components (a dangling
+trace end included), dropping the component the route grows from and the
+hovered target's.

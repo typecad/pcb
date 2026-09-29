@@ -760,8 +760,17 @@ describe('ratsnest connectivity — broken routes wire, complete routes do not',
     expect(t.wires()).toBe(1);
   });
 
-  it('stub off one pad: the far pad still owes its wire', async () => {
+  it('stub off one pad: the far pad still owes its wire — from the DANGLING END', async () => {
+    // closest-point wiring: the wire runs (2,1) -> (5,5), the stub's open
+    // end to the far pad — not pad-center (1,1) to pad-center
     const t = await netBoot('M 1 1 L 2 1');
     expect(t.wires()).toBe(1);
+    const d = t.d.querySelector('#ratsnest > path')!.getAttribute('d')!;
+    const start = /^M ([\d.-]+) ([\d.-]+)/.exec(d)!;
+    const end = /([\d.-]+) ([\d.-]+)$/.exec(d)!;
+    expect(+start[1]!).toBeCloseTo(2, 2);
+    expect(+start[2]!).toBeCloseTo(1, 2);
+    expect(+end[1]!).toBeCloseTo(5, 2); // U1's pad sits at (5,1)
+    expect(+end[2]!).toBeCloseTo(1, 2);
   });
 });

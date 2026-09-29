@@ -4014,45 +4014,98 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
                 }
               }
       }
-      // one wire-node per component that carries a pad; the chain below
-      // wires the nodes (nearest-neighbor), the same shape the stranded
-      // pads chained before
-      var seenComp = {};
-      var reps = [];
+      // component CONTACT POINTS: pads AND ink endpoints — a wire lands on
+      // the CLOSEST pair between two components (a partial trace's dangling
+      // end talks to the far pad, not the far pad's center to this pad's
+      // center)
+      var compPts = {}; // component id -> [{x, y}]
+      for (var cp0 = 0; cp0 < pads.length; cp0++) {
+        var cid0 = ufFind(parent, cp0);
+        (compPts[cid0] = compPts[cid0] || []).push({ x: pads[cp0].x, y: pads[cp0].y });
+      }
+      for (var ce0 = 0; ce0 < els.length; ce0++) {
+        var cidE = ufFind(parent, pads.length + ce0);
+        var ePts0 = els[ce0].pts;
+        for (var cq0 = 0; cq0 < ePts0.length; cq0++)
+          (compPts[cidE] = compPts[cidE] || []).push({ x: ePts0[cq0].x, y: ePts0[cq0].y });
+      }
+      // wire-nodes: components that carry a pad (dead stubs owe nothing)
+      var nodes = [];
+      var seenNode = {};
       for (var rp = 0; rp < pads.length; rp++) {
         var rc = ufFind(parent, rp);
-        if (seenComp[rc]) continue;
-        seenComp[rc] = 1;
-        reps.push({ x: pads[rp].x, y: pads[rp].y });
+        if (seenNode[rc]) continue;
+        seenNode[rc] = 1;
+        nodes.push(compPts[rc] || []);
       }
-      repsByNet[un] = reps;
-      if (reps.length > 1) {
-        var remaining = reps.slice();
+      repsByNet[un] = nodes;
+      // the closest point pair across two components
+      var closestPair = function (A, B) {
+        var best = null;
+        var bd = Infinity;
+        for (var fa = 0; fa < A.length; fa++)
+          for (var fb = 0; fb < B.length; fb++) {
+            var fd = (A[fa].x - B[fb].x) * (A[fa].x - B[fb].x) + (A[fa].y - B[fb].y) * (A[fa].y - B[fb].y);
+            if (fd < bd) {
+              bd = fd;
+              best = { a: A[fa], b: B[fb] };
+            }
+          }
+        return best;
+      };
+      if (nodes.length > 1) {
+        var remaining = nodes.slice();
         var cur = remaining.shift();
         while (remaining.length) {
           var bi = 0;
-          var bd = Infinity;
+          var bd2 = Infinity;
+          var bestPair = null;
           for (var ci = 0; ci < remaining.length; ci++) {
-            var dcur =
-              (remaining[ci].x - cur.x) * (remaining[ci].x - cur.x) + (remaining[ci].y - cur.y) * (remaining[ci].y - cur.y);
-            if (dcur < bd) {
-              bd = dcur;
+            var pair = closestPair(cur, remaining[ci]);
+            if (!pair) continue;
+            var pd2 =
+              (pair.a.x - pair.b.x) * (pair.a.x - pair.b.x) + (pair.a.y - pair.b.y) * (pair.a.y - pair.b.y);
+            if (pd2 < bd2) {
+              bd2 = pd2;
               bi = ci;
+              bestPair = pair;
             }
           }
           var nxt = remaining.splice(bi, 1)[0];
-          rats.appendChild(ratsWire(cur, nxt, wireIdx++, un));
+          if (bestPair) rats.appendChild(ratsWire(bestPair.a, bestPair.b, wireIdx++, un));
           cur = nxt;
         }
       }
     }
     // a live route owns a rubber band: mount its container and cache the
-    // net's still-unreached wire-nodes (stable while routing — parts don't
-    // move); the wire itself follows the walk end per mousemove in
-    // routeFollow
+    // unreached components' CONTACT POINTS (pads + ink endpoints — the
+    // band ties to whatever is nearest, a dangling trace end included).
+    // The component the route grows from (any point near the start) and
+    // the hovered target's component are owed nothing
     ratsLiveEl = null;
     if (routeState && routeState.net) {
-      routeState.__ratsPads = (repsByNet[routeState.net] || []).slice();
+      var bandPts = [];
+      var bandNodes = repsByNet[routeState.net] || [];
+      var bandTgt =
+        routeState.targetPad && routeState.targetPad.x !== undefined
+          ? { x: routeState.targetPad.x, y: -routeState.targetPad.y }
+          : null;
+      for (var bn = 0; bn < bandNodes.length; bn++) {
+        var nodePts = bandNodes[bn];
+        var owed = true;
+        for (var bq = 0; bq < nodePts.length; bq++) {
+          var npt = nodePts[bq];
+          if (
+            Math.hypot(npt.x - routeState.sx, npt.y - routeState.sy) < 0.5 ||
+            (bandTgt && Math.hypot(npt.x - bandTgt.x, npt.y - bandTgt.y) < 0.5)
+          ) {
+            owed = false;
+            break;
+          }
+        }
+        if (owed) for (var bq2 = 0; bq2 < nodePts.length; bq2++) bandPts.push(nodePts[bq2]);
+      }
+      routeState.__ratsPads = bandPts;
       var liveG = document.createElementNS(SVGNSL, 'g');
       liveG.setAttribute('id', 'rats-live');
       rats.appendChild(liveG);

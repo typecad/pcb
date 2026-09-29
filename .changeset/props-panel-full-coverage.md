@@ -118,3 +118,11 @@ segment — the page computed them against a board render that predates the
 source — the apply refuses with instructions to reopen the Board tab and
 redo, instead of leaving the unmatched geometry's chain fragment beside the
 new route (seen as a phantom trace, via, and nub between two parts).
+
+Routing gets a rubber band: the moment a route starts from a pad, the
+ratsnest re-ties — the walk's end connects to the nearest still-stranded
+pad of the net (the pad to route to) and follows every mousemove instead of
+staying behind pad-to-pad; hovering the target drops the band (the arrival
+is the signal), and cancel or commit restores the ordinary stranded wires.
+The start pad now drops out by position too (island pads carry no pin
+field, so the pin-keyed skip never matched).

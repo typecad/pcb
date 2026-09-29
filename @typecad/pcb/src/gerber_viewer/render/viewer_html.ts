@@ -3876,6 +3876,10 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     }
     return !!covered[ref + '|' + pin];
   }
+  // the routing rubber band's container (inside the ratsnest group): the
+  // walk's end ties to the nearest still-stranded pad of the routed net —
+  // KiCad's routing ratsnest, refreshed per mousemove in routeFollow
+  var ratsLiveEl = null;
   function refreshRatsnest() {
     syncPadLabelVisibility();
     window.__typecadRouteEnds = null; // committed tracks changed -> rebuild
@@ -3975,7 +3979,17 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         // a live route covers its pads: the start pad drops out of the chain
         // immediately, the target once the rubber-band snaps onto it
         if (routeState && routeState.startPad && ucomp.ref === routeState.startPad.ref && String(ucomp.pads[up].pin) === String(routeState.startPad.pin)) continue;
+        // island pads carry no pin field — the start pad also drops out by
+        // POSITION, or the rubber band would tie back to the pad you left
+        if (routeState && routeState.startPad && ucomp.ref === routeState.startPad.ref && routeState.startPad.x !== undefined) {
+          var spPad = padPos(ucomp, ucomp.pads[up]);
+          if (Math.hypot(spPad.x - routeState.startPad.x, spPad.y - routeState.startPad.y) < 0.3) continue;
+        }
         if (routeState && routeState.targetPad && ucomp.ref === routeState.targetPad.ref && String(ucomp.pads[up].pin) === String(routeState.targetPad.pin)) continue;
+        if (routeState && routeState.targetPad && ucomp.ref === routeState.targetPad.ref && routeState.targetPad.x !== undefined) {
+          var tpPad = padPos(ucomp, ucomp.pads[up]);
+          if (Math.hypot(tpPad.x - routeState.targetPad.x, tpPad.y - routeState.targetPad.y) < 0.3) continue;
+        }
         var uIslandPad = ucomp.pads[up];
         var uWired =
           routePadCovered(ucomp.ref, String(uIslandPad.pin || ''), unet) || padWired(ucomp, uIslandPad);
@@ -3983,6 +3997,17 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         if (uWired) (wiredByNet[unet] = wiredByNet[unet] || []).push(padPos(ucomp, uIslandPad));
         else (padsByNet[unet] = padsByNet[unet] || []).push(padPos(ucomp, uIslandPad));
       }
+    }
+    // a live route owns a rubber band: mount its container and cache the
+    // net's still-stranded pads (stable while routing — parts don't move);
+    // the wire itself follows the walk end per mousemove in routeFollow
+    ratsLiveEl = null;
+    if (routeState && routeState.net) {
+      routeState.__ratsPads = (padsByNet[routeState.net] || []).slice();
+      var liveG = document.createElementNS(SVGNSL, 'g');
+      liveG.setAttribute('id', 'rats-live');
+      rats.appendChild(liveG);
+      ratsLiveEl = liveG;
     }
     for (var un in padsByNet) {
       var pts = padsByNet[un];
@@ -7191,6 +7216,32 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       routeState.targetPad = end.pad || null;
       routeState.targetTie = end.tie || null;
       refreshRatsnest();
+    }
+    // the routing rubber band: the walk's end ties to the nearest
+    // still-stranded pad of the routed net — the pad-to-route-to follows
+    // the mouse instead of staying behind on the start pad. All pads
+    // reached (hovering the last target): the band vanishes, the arrival
+    // itself is the signal
+    if (ratsLiveEl && routeState) {
+      ratsLiveEl.textContent = '';
+      var lp = routeState.__ratsPads || [];
+      if (lp.length) {
+        var le = pts[pts.length - 1];
+        // the walk end is gerber-frame (y-up); the ratsnest group renders
+        // island-frame (y-down) coordinates — negate to match
+        var leIsland = { x: le.x, y: -le.y };
+        var ln = null;
+        var ld = Infinity;
+        for (var li = 0; li < lp.length; li++) {
+          var dLive =
+            (lp[li].x - leIsland.x) * (lp[li].x - leIsland.x) + (lp[li].y - leIsland.y) * (lp[li].y - leIsland.y);
+          if (dLive < ld) {
+            ld = dLive;
+            ln = lp[li];
+          }
+        }
+        if (ln) ratsLiveEl.appendChild(ratsWire(leIsland, ln, 0, routeState.net));
+      }
     }
   }
   // does the displayed walk actually touch NETTED foreign copper? (N/C pads

@@ -612,3 +612,84 @@ describe('editing session ink never re-materializes phantom traces', () => {
     expect(sessionShaped.length).toBeLessThanOrEqual(1);
   });
 });
+
+describe('routing rubber band — the ratsnest follows the walk end', () => {
+  // a two-pad net: routing from one pad, the band ties the cursor end to
+  // the FAR pad (not the start), follows every mousemove, vanishes on
+  // arrival, and the pad-to-pad wire returns when the route cancels
+  const twoPadBoot = async () => {
+    const html = buildViewerHtml(svg, [info, fabInfo], {
+      title: 'demo board',
+      pcbaSvg: '<svg/>',
+      layoutComponents: [
+        { ref: 'R1', x: 10, y: -20, rot: 0, w: 1.6, h: 0.8, side: 'front' as const, nets: ['led_a'], pads: [{ x: 9.5, y: -20, net: 'led_a' }] },
+        { ref: 'U1', x: 30, y: -40, rot: 0, w: 4, h: 4, side: 'front' as const, nets: ['led_a'], pads: [{ x: 30, y: -40, net: 'led_a' }] },
+      ],
+      padLabels: [
+        { ref: 'R1', pin: '1', net: 'led_a', x: 9.5, y: -20, w: 0.8, h: 0.9, layers: ['F.Cu'] },
+        { ref: 'U1', pin: '1', net: 'led_a', x: 30, y: -40, w: 0.8, h: 0.9, layers: ['F.Cu'] },
+      ],
+    });
+    const errors: string[] = [];
+    const dom = new JSDOM(html, {
+      runScripts: 'dangerously',
+      url: 'https://localhost/viewer.html',
+      pretendToBeVisual: true,
+      beforeParse(w) {
+        w.console.error = (...a: unknown[]) => errors.push(a.join(' '));
+        const idCtm = { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0, inverse() { return this; } };
+        type FakePoint = { x: number; y: number; matrixTransform(): { x: number; y: number } };
+        w.SVGSVGElement.prototype.getScreenCTM = () => idCtm;
+        w.SVGSVGElement.prototype.createSVGPoint = (): FakePoint => {
+          const p = { x: 0, y: 0 };
+          return { get x() { return p.x; }, set x(v: number) { p.x = v; }, get y() { return p.y; }, set y(v: number) { p.y = v; }, matrixTransform: () => ({ x: p.x, y: p.y }) };
+        };
+        w.SVGElement.prototype.getBBox = function (this: SVGElement) { return { x: 0, y: 0, width: 0, height: 0 }; };
+      },
+    });
+    const w = dom.window;
+    const d = w.document;
+    await new Promise((r) => setTimeout(r, 100));
+    const viewSelect = d.querySelector('select')!;
+    viewSelect.value = 'layout';
+    viewSelect.dispatchEvent(new w.Event('change', { bubbles: true }));
+    await new Promise((r) => setTimeout(r, 100));
+    expect(errors).toEqual([]);
+    const mouse = (el: Element, type: string, x: number, y: number) =>
+      el.dispatchEvent(new w.MouseEvent(type, { bubbles: true, clientX: x, clientY: y }));
+    const key = (k: string) => d.dispatchEvent(new w.KeyboardEvent('keydown', { key: k, bubbles: true }));
+    const band = () => d.getElementById('rats-live');
+    const bandPath = () => band()?.querySelector('path') ?? null;
+    return { w, d, mouse, key, band, bandPath, board: () => d.getElementById('board')! };
+  };
+
+  it('ties the walk end to the far pad and follows the cursor', async () => {
+    const t = await twoPadBoot();
+    // gerber y-flip: client (9.5,-20) = the R1 pad at gerber (9.5,20)
+    t.mouse(t.d.querySelector('#layout-overlay [data-ref="R1"]')!, 'pointerdown', 9.5, -20);
+    t.key('x');
+    expect(t.band()).not.toBeNull();
+    t.mouse(t.board(), 'mousemove', 18, -28);
+    const path = t.bandPath();
+    expect(path).not.toBeNull();
+    const start = /^M ([\d.-]+) ([\d.-]+)/.exec(path!.getAttribute('d')!)!;
+    const end = /([\d.-]+) ([\d.-]+)$/.exec(path!.getAttribute('d')!)!;
+    expect(+start[1]!).toBeCloseTo(18, 2); // walk end follows the cursor
+    expect(+start[2]!).toBeCloseTo(-28, 2);
+    expect(+end[1]!).toBeCloseTo(30, 2); // the far pad, not the start pad
+    expect(+end[2]!).toBeCloseTo(-40, 2);
+    // moves with the cursor
+    t.mouse(t.board(), 'mousemove', 22, -32);
+    expect(t.bandPath()!.getAttribute('d')).not.toBe(path!.getAttribute('d'));
+    // arrival: hovering the target pad drops the band
+    t.mouse(t.board(), 'mousemove', 30, -40);
+    expect(t.band()!.children.length).toBe(0);
+    // moving off brings it back
+    t.mouse(t.board(), 'mousemove', 20, -30);
+    expect(t.band()!.children.length).toBe(1);
+    // cancel: the band goes and the pad-to-pad wire returns
+    t.key('Escape');
+    expect(t.band()).toBeNull();
+    expect(t.d.querySelectorAll('#ratsnest > path').length).toBe(1);
+  });
+});

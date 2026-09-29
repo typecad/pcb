@@ -58,6 +58,7 @@ const node_child_process_1 = require("node:child_process");
 const node_fs_1 = __importDefault(require("node:fs"));
 const node_path_1 = __importDefault(require("node:path"));
 const sourceBackup_js_1 = require("./sourceBackup.js");
+const bundledUpdate_js_1 = require("./bundledUpdate.js");
 const boardData_js_1 = require("./boardData.js");
 const boardSource_js_1 = require("./boardSource.js");
 const boardStatus_js_1 = require("./boardStatus.js");
@@ -756,6 +757,37 @@ function activate(context) {
     // stale — dev windows, installed copies and stray snapshots all behave
     // differently, and this line says which one is live
     output.appendLine(`extension code loaded from: ${__dirname}`);
+    // the workspace-bundled copy self-updates from the project's own
+    // @typecad/pcb dependency asset when the dependency is newer — the copy
+    // only exists because the scaffold dropped it there, and it used to rot
+    // at whatever version the project was created with
+    void checkBundledExtensionUpdate(context, output, resolveHwFolder());
+}
+/** Once-a-day staleness check of the running copy against the workspace asset. */
+async function checkBundledExtensionUpdate(context, output, folder) {
+    const THROTTLE_KEY = 'typecad-pcb.bundledUpdateCheck';
+    const today = new Date().toISOString().slice(0, 10);
+    if (context.globalState.get(THROTTLE_KEY) === today)
+        return;
+    void context.globalState.update(THROTTLE_KEY, today);
+    if (!folder)
+        return;
+    const selfRoot = node_path_1.default.dirname(__dirname);
+    // a dev-hosted run (packages/vscode-typecad-pcb) IS the source — the
+    // workspace asset symlinks to it; planExtensionUpdate sees equal versions
+    try {
+        const plan = (0, bundledUpdate_js_1.planExtensionUpdate)(folder, selfRoot);
+        if (!plan)
+            return;
+        (0, bundledUpdate_js_1.applyExtensionUpdate)(plan);
+        output.appendLine(`workspace-bundled extension updated ${plan.fromVersion} → ${plan.toVersion} from the project's @typecad/pcb asset — reload the window to run it`);
+        const pick = await vscode.window.showInformationMessage(`typeCAD/pcb: the bundled extension updated itself ${plan.fromVersion} → ${plan.toVersion}.`, 'Reload Window');
+        if (pick === 'Reload Window')
+            void vscode.commands.executeCommand('workbench.action.reloadWindow');
+    }
+    catch (err) {
+        output.appendLine(`bundled extension update check failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
 }
 /** Real query runner: `exec` with cwd pinned to the hw folder. */
 function runQuery(cwd, command, timeoutMs) {

@@ -62,6 +62,8 @@ const node_path_1 = __importDefault(require("node:path"));
 const probeClient_js_1 = require("./probeClient.js");
 const sourceBackup_js_1 = require("./sourceBackup.js");
 const layoutApply_js_1 = require("./layoutApply.js");
+const layoutEdits_js_1 = require("./layoutEdits.js");
+const semanticVerify_js_1 = require("./semanticVerify.js");
 const boardRules_js_1 = require("./boardRules.js");
 const sourceRef_js_1 = require("./sourceRef.js");
 // discovery helpers live vscode-free in boardFile.ts for unit testing;
@@ -654,6 +656,23 @@ class BoardViewerPanel {
             for (const uri of ordered) {
                 files.push({ uri: uri.toString(), text: (await vscode.workspace.openTextDocument(uri)).getText() });
             }
+            // final placements for the semantic check: the move deltas land on the
+            // placement literals, so the finals are computable from the PRE-apply
+            // text (a moved part's footprint should sit exactly there after the
+            // rebuild)
+            const finalPlacements = [];
+            for (const mv of moves ?? []) {
+                const variable = variableOf.get(mv.ref);
+                if (!variable)
+                    continue;
+                for (const f of files) {
+                    const lit = (0, layoutEdits_js_1.parsePlacementLiteral)(f.text, variable);
+                    if (lit) {
+                        finalPlacements.push({ ref: mv.ref, x: +(lit.x + mv.dx).toFixed(3), y: +(lit.y + mv.dy).toFixed(3) });
+                        break;
+                    }
+                }
+            }
             const plan = (0, layoutApply_js_1.planLayoutApply)(files, {
                 moves,
                 texts,
@@ -761,6 +780,38 @@ class BoardViewerPanel {
             // rebuild must run it.)
             this.postStatus('rebuilding board…');
             await this.run(folder, 'npx typecad-pcb build', GENERATE_TIMEOUT_MS);
+            // semantic verification: the parse gate guaranteed the SOURCE parses;
+            // this checks the BOARD actually carries the geometry the apply
+            // intended (a route the model dropped, a delete that missed, a move
+            // that didn't land all parse fine — this is the layer that sees them)
+            const boardForCheck = (0, boardFile_js_2.newestBoardFile)(folder);
+            if (boardForCheck) {
+                try {
+                    const rebuilt = node_fs_1.default.readFileSync(boardForCheck, 'utf8');
+                    const report = (0, semanticVerify_js_1.verifyBoardSemantics)(rebuilt, {
+                        routes: (routes ?? []).map((r) => ({
+                            net: r.net,
+                            pieces: r.pieces.map((p) => ({ layer: p.layer, pts: p.pts })),
+                            vias: (r.vias ?? []).map((v) => ({ x: v.x, y: v.y })),
+                        })),
+                        deletes: (deletes ?? []).map((d) => ({ net: d.net, x1: d.x1, y1: d.y1, x2: d.x2, y2: d.y2, layer: d.layer })),
+                        placements: finalPlacements,
+                        texts: (texts ?? []).filter((t) => t.text).map((t) => ({ text: t.text, x: t.x, y: t.y })),
+                    });
+                    if (report.checked > 0) {
+                        this.output.appendLine(report.ok
+                            ? `semantic check: ${report.checked} committed edit(s) verified on the rebuilt board`
+                            : `semantic check: ${report.misses.length} of ${report.checked} committed edit(s) MISSING from the rebuilt board —\n    ${report.misses.join('\n    ')}`);
+                    }
+                    if (!report.ok) {
+                        vscode.window.setStatusBarMessage(`typeCAD layout apply: ${report.misses.length} edit(s) missing from the rebuilt board — see the typeCAD/pcb output`, 10_000);
+                        this.postStatus('semantic check failed — edits missing from the rebuilt board (see output)');
+                    }
+                }
+                catch (err) {
+                    this.output.appendLine(`semantic check skipped: ${err instanceof Error ? err.message : String(err)}`);
+                }
+            }
             // A move invalidates every DRC marker — re-run DRC so the regenerated
             // view carries fresh ones instead of none (the report predates the
             // new board, and markers are the move's feedback loop). Non-zero

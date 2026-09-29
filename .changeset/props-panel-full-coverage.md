@@ -83,3 +83,17 @@ command lists snapshots and restores them from a picker. A hardening matrix
 test drives combined gestures (routes + deletes + labels + texts + values)
 over both LF and CRLF projects, asserting the composed source parses, no
 route declaration duplicates, and create() carries every declared route.
+
+Semantic verification closes the loop after every apply & rebuild: the
+rebuilt .kicad_pcb is checked against what the apply intended — added route
+segments and vias present (right layer, either orientation, tolerance for
+rounding), deleted segments actually gone, moved components sitting at
+their computed final positions, edited texts landed — with each miss
+reported to the output channel, the status bar, and the viewer status, so
+"parses but wrong" bugs surface instead of silently shipping. The
+workspace-bundled extension now self-updates: at activation it compares its
+version against the project's own @typecad/pcb dependency asset (once per
+day), copies the newer asset over itself, and offers a window reload — the
+bundled copy can no longer rot at its scaffold-time version. A
+`sync:extension` script in @typecad/pcb refreshes the shipped asset from a
+built extension for maintainers.

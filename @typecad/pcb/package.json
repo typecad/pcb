@@ -85,7 +85,8 @@
     "package_publish": "npm publish --access public",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "sync:extension": "node scripts/sync-editor-extension.mjs"
   },
   "author": "typeCAD",
   "license": "Apache-2.0",

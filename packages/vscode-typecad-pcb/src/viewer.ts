@@ -697,17 +697,30 @@ export class BoardViewerPanel {
         }
       }
 
-      // stage by stage: positions come from the live document, which by now
-      // reflects every earlier stage — exactly the text each stage planned
-      // against. One WorkspaceEdit per stage keeps every applied range
-      // unambiguous.
+      // stage by stage, one whole-document replacement per file: the stage's
+      // edits compose into the final text exactly like the dry run above
+      // (descending offsets, string splices), then swap the document in one
+      // applyEdit. Multi-range WorkspaceEdits resolve sequentially and
+      // silently drop overlapping entries — a dropped delete left the live
+      // document longer than the plan's text and every later stage's ranges
+      // landed early, splicing tokens (seen as `width: 0.3const route15`).
+      // Whole-document replacement makes application byte-identical to what
+      // the parse gate validated.
       for (const stage of plan.stages) {
         const edits = new vscode.WorkspaceEdit();
+        const seen = new Set<string>();
         for (const batch of stage) {
+          if (seen.has(batch.uri)) continue; // one replacement per file per stage
+          seen.add(batch.uri);
           const doc = await vscode.workspace.openTextDocument(vscode.Uri.parse(batch.uri));
-          for (const edit of batch.edits) {
-            edits.replace(doc.uri, new vscode.Range(doc.positionAt(edit.start), doc.positionAt(edit.end)), edit.line);
-          }
+          let out = doc.getText();
+          for (const e of [...batch.edits].sort((a, b) => b.start - a.start || b.end - a.end))
+            out = out.slice(0, e.start) + e.line + out.slice(e.end);
+          edits.replace(
+            doc.uri,
+            new vscode.Range(doc.positionAt(0), doc.positionAt(doc.getText().length)),
+            out,
+          );
         }
         if (edits.size > 0) await vscode.workspace.applyEdit(edits);
       }

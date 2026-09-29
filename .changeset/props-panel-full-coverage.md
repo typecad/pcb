@@ -66,3 +66,11 @@ chain that belongs to a not-yet-applied route (a D-slide or an arrow nudge)
 reconciles that route's own geometry — the entry carries the new polyline
 and moved barrels their new positions — instead of writing the pre-edit
 trace beside the new one after apply & rebuild.
+
+Layout applies now write each stage as ONE whole-document replacement
+composed exactly like the dry-run the parse gate validates — VS Code's
+multi-range WorkspaceEdit resolves entries sequentially and silently drops
+overlapping ones, so a dropped delete left the live document longer than
+the plan's text and later stages' ranges landed early, splicing tokens into
+source (the recurring `width: 0.3const route15` corruption). Application is
+now byte-identical to what the gate checked.

@@ -74,3 +74,12 @@ overlapping ones, so a dropped delete left the live document longer than
 the plan's text and later stages' ranges landed early, splicing tokens into
 source (the recurring `width: 0.3const route15` corruption). Application is
 now byte-identical to what the gate checked.
+
+A source backup system lands under the apply bridge: every apply snapshots
+the files it will touch into build/layout-backups/<timestamp>/ (20 kept), a
+post-write parse check auto-restores the snapshot the instant anything
+unparsable hits disk, and a new "typeCAD: Restore Source from Backup"
+command lists snapshots and restores them from a picker. A hardening matrix
+test drives combined gestures (routes + deletes + labels + texts + values)
+over both LF and CRLF projects, asserting the composed source parses, no
+route declaration duplicates, and create() carries every declared route.

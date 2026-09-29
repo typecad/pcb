@@ -60,6 +60,7 @@ const vscode = __importStar(require("vscode"));
 const node_fs_1 = __importDefault(require("node:fs"));
 const node_path_1 = __importDefault(require("node:path"));
 const probeClient_js_1 = require("./probeClient.js");
+const sourceBackup_js_1 = require("./sourceBackup.js");
 const layoutApply_js_1 = require("./layoutApply.js");
 const boardRules_js_1 = require("./boardRules.js");
 const sourceRef_js_1 = require("./sourceRef.js");
@@ -686,6 +687,15 @@ class BoardViewerPanel {
                     return;
                 }
             }
+            // snapshot every touched file before anything is written — the
+            // post-write check auto-restores from memory, and the Restore Source
+            // from Backup command restores from disk; a user must never unscramble
+            // a corrupted .ts by hand
+            const boardNameForApply = node_path_1.default.basename((0, boardFile_js_2.newestBoardFile)(folder) ?? '');
+            const backup = (0, sourceBackup_js_1.writeBackup)(folder, files.map((f) => ({ uri: f.uri, text: f.text })), 'layout apply', boardNameForApply || undefined);
+            if (backup) {
+                this.output.appendLine(`source snapshot before apply: ${(0, sourceBackup_js_1.backupRootLabel)()}/${backup.id} (${backup.manifest.files.length} file(s))`);
+            }
             // stage by stage, one whole-document replacement per file: the stage's
             // edits compose into the final text exactly like the dry run above
             // (descending offsets, string splices), then swap the document in one
@@ -714,6 +724,26 @@ class BoardViewerPanel {
             for (const key of plan.touched) {
                 const doc = await vscode.workspace.openTextDocument(vscode.Uri.parse(key));
                 await doc.save();
+            }
+            // post-write verification: if anything slipped past the gate (or the
+            // write itself diverged), restore the snapshot IMMEDIATELY — the user
+            // must never be left with an unparsable file, even for a moment
+            for (const key of plan.touched) {
+                const savedDoc = await vscode.workspace.openTextDocument(vscode.Uri.parse(key));
+                const err = plannedTextSyntaxError(savedDoc.getText());
+                if (!err)
+                    continue;
+                this.output.appendLine(`POST-WRITE CHECK FAILED for ${key} (${err}) — restoring the pre-apply snapshot`);
+                const restore = new vscode.WorkspaceEdit();
+                const pre = files.find((f) => f.uri === key);
+                if (pre) {
+                    restore.replace(savedDoc.uri, new vscode.Range(savedDoc.positionAt(0), savedDoc.positionAt(savedDoc.getText().length)), pre.text);
+                    await vscode.workspace.applyEdit(restore);
+                    await savedDoc.save();
+                }
+                vscode.window.showErrorMessage(`typeCAD layout apply wrote unparsable source and restored ${vscode.workspace.asRelativePath(vscode.Uri.parse(key))} from its pre-apply snapshot — please report this (the typeCAD/pcb output has the plan)`);
+                void this.panel?.webview.postMessage({ type: 'typecad/layout-status', error: 'apply wrote invalid source — rolled back to the pre-apply snapshot' });
+                return;
             }
             const c = plan.counts;
             const anyApplied = c.moves > 0 || c.endpoints > 0 || c.texts > 0 || c.values > 0 || c.labels > 0 || c.renames > 0 || c.routes > 0 || c.deletes > 0;

@@ -351,3 +351,77 @@ typecad.create(led, r1);
     expect(out).toContain('r1.pcb = { x: 0, y: 0 };');
   });
 });
+
+describe('hardening matrix: combined gestures stay parsable and duplicate-free (LF + CRLF)', () => {
+  // the incident family this guards: multi-stage plans whose offsets
+  // drifted (route inserts mid-token, create-args spliced) — exercised as
+  // full gestures over both newline conventions
+  const project = () => `import { PCB, Component, LED, Resistor, TrackBuilder } from '@typecad/pcb';
+const typecad = new PCB('demo', {});
+const led = new LED({
+  value: 'red',
+  simulation: { model: 'Dled D (IS=1a RS=3.3 N=1.8)' },
+});
+led.pcb = { x: 17.5, y: -5.5 };
+const r1 = new Resistor({ value: '150' });
+r1.pcb = { x: 0, y: 0 };
+const fixture = new Component({ reference: 'F1', value: 'x' });
+fixture.pcb = { x: 5, y: 5 };
+const vcc = new TrackBuilder(typecad, { net: 'VCC', })
+  .from({ x: 1, y: 1 }, 'F.Cu', 0.3)
+  .to({ x: 4, y: 1, layer: 'F.Cu', width: 0.3 })
+  .to({ x: 4, y: 4, layer: 'F.Cu', width: 0.3 });
+typecad.text({ text: 'hello', x: 5, y: 5, layer: 'F.SilkS' });
+typecad.create(led, r1, fixture, vcc);
+`;
+
+  const gestures = (eol: string) => [
+    {
+      name: 'route + delete + label + text + value',
+      input: {
+        moves: [{ ref: 'F1', dx: 1, dy: 1, pads: [] }],
+        routes: [{ net: 'GND', w: 0.4, from: { ref: 'D1', pin: '1' }, to: null, vias: [], pieces: [{ layer: 'F.Cu', w: 0.4, pts: [{ x: 7, y: 7 }, { x: 9, y: 9 }] }] }],
+        deletes: [{ net: 'VCC', x1: 4, y1: 1, x2: 4, y2: 4, layer: 'F.Cu' }],
+        labels: [
+          { ref: 'D1', kind: 'reference', x: 19, y: -6, rot: 0, style: { h: 2 } },
+          { ref: 'F1', kind: 'value', x: 6, y: 6, rot: 90 },
+        ],
+        texts: [{ text0: 'hello', x0: 5, y0: 5, text: 'world', x: 6, y: 6, rot: 0, style: { thickness: 0.3 } }],
+        values: [{ ref: 'F1', value: 'y' }],
+      },
+    },
+    {
+      name: 'delete tail + idempotent re-route of the same geometry',
+      input: {
+        routes: [{ net: 'VCC', w: 0.3, from: { ref: 'D1', pin: '2' }, to: null, vias: [], pieces: [{ layer: 'F.Cu', w: 0.3, pts: [{ x: 1, y: 1 }, { x: 4, y: 1 }] }] }],
+        deletes: [{ net: 'VCC', x1: 4, y1: 1, x2: 4, y2: 4, layer: 'F.Cu' }],
+      },
+    },
+  ];
+
+  for (const eol of ['\n', '\r\n']) {
+    for (const g of gestures(eol)) {
+      it(`${eol === '\n' ? 'LF' : 'CRLF'} — ${g.name}`, () => {
+        const src = project().replace(/\n/g, eol);
+        const { plan, texts } = run(
+          [{ uri: 'file:///src/board.ts', text: src }],
+          baseInput({
+            ...g.input,
+            variableOf: (ref: string) => ({ D1: 'led', R1: 'r1', F1: 'fixture' })[ref],
+            allRefs: new Set(['D1', 'R1', 'F1']),
+          }),
+        );
+        const out = texts.get('file:///src/board.ts')!;
+        expectValidTs(out);
+        // no route declaration ever duplicates a name
+        const decls = [...out.matchAll(/const (route\w+) =/g)].map((m) => m[1]!);
+        expect(new Set(decls).size).toBe(decls.length);
+        // create() args mention every declared route (no orphan/missing pair)
+        for (const d of decls) expect(out).toMatch(new RegExp(String.raw`\b` + d + String.raw`\b[,)]`));
+        if (g.input.texts) expect(out).toContain(`typecad.text({ text: 'world'`);
+        // plan produced at least the edits it claims
+        expect(plan.counts.moves + plan.counts.routes + plan.counts.deletes + plan.counts.texts + plan.counts.values + plan.counts.labels).toBeGreaterThan(0);
+      });
+    }
+  }
+});

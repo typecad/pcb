@@ -52,6 +52,11 @@
         "command": "typecad-pcb.diffBoard",
         "title": "Diff Board vs HEAD",
         "category": "typeCAD/pcb"
+      },
+      {
+        "command": "typecad-pcb.restoreBackup",
+        "title": "Restore Source from Backup",
+        "category": "typeCAD/pcb"
       }
     ],
     "configuration": {

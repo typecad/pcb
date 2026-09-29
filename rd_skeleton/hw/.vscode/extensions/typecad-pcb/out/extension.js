@@ -57,6 +57,7 @@ const vscode = __importStar(require("vscode"));
 const node_child_process_1 = require("node:child_process");
 const node_fs_1 = __importDefault(require("node:fs"));
 const node_path_1 = __importDefault(require("node:path"));
+const sourceBackup_js_1 = require("./sourceBackup.js");
 const boardData_js_1 = require("./boardData.js");
 const boardSource_js_1 = require("./boardSource.js");
 const boardStatus_js_1 = require("./boardStatus.js");
@@ -612,6 +613,48 @@ function activate(context) {
             return;
         }
         await runBoardDiff(folder, board);
+    }), 
+    // the safety net under the layout apply bridge: list the pre-apply
+    // source snapshots and restore one — a user should never have to
+    // unscramble a corrupted .ts by hand
+    vscode.commands.registerCommand('typecad-pcb.restoreBackup', async () => {
+        const folder = resolveHwFolder();
+        if (!folder) {
+            vscode.window.showInformationMessage('typeCAD/pcb: no typeCAD project (typecad.conf.ts) in this workspace.');
+            return;
+        }
+        const backups = (0, sourceBackup_js_1.listBackups)(folder);
+        if (backups.length === 0) {
+            vscode.window.showInformationMessage(`typeCAD/pcb: no source snapshots in ${(0, sourceBackup_js_1.backupRootLabel)()} yet — one is taken before every layout apply.`);
+            return;
+        }
+        const pick = await vscode.window.showQuickPick(backups.map((b) => ({
+            label: b.id,
+            description: `${b.manifest.files.map((f) => node_path_1.default.basename(f.source)).join(', ')} — ${b.manifest.reason}`,
+            detail: new Date(b.manifest.time).toLocaleString(),
+            id: b.id,
+        })), { placeHolder: 'Restore source files from a pre-apply snapshot (newest first)' });
+        if (!pick)
+            return;
+        let restored = 0;
+        try {
+            const entries = (0, sourceBackup_js_1.readBackup)(folder, pick.id);
+            for (const entry of entries) {
+                const docUri = vscode.Uri.file(entry.source);
+                const doc = await vscode.workspace.openTextDocument(docUri);
+                const edit = new vscode.WorkspaceEdit();
+                edit.replace(docUri, new vscode.Range(doc.positionAt(0), doc.positionAt(doc.getText().length)), entry.text);
+                if (await vscode.workspace.applyEdit(edit)) {
+                    await doc.save();
+                    restored++;
+                }
+            }
+        }
+        catch (err) {
+            vscode.window.showErrorMessage(`typeCAD/pcb: restore failed — ${err instanceof Error ? err.message : String(err)}`);
+            return;
+        }
+        vscode.window.setStatusBarMessage(`typeCAD/pcb: restored ${restored} file(s) from ${pick.id}`, 6000);
     }), 
     // window reload: restore the diff panel like the Board viewer —
     // instantly from the on-disk report when it still exists, else a

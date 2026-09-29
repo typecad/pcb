@@ -65,6 +65,23 @@ export interface LabelEdit {
   x: number;
   y: number;
   rot: number;
+  /** changed style keys only (diff vs the authored label), if any */
+  style?: LayoutTextStyle;
+}
+
+/**
+ * The style fields of a `pcb.text()` edit — a DIFF against the authored
+ * text: only keys the user actually changed travel (a position-only edit
+ * carries no style at all). w/h map to the API's width/height options.
+ */
+export interface LayoutTextStyle {
+  w?: number;
+  h?: number;
+  thickness?: number;
+  font?: string;
+  italic?: boolean;
+  bold?: boolean;
+  justify?: { horizontal?: 'left' | 'right' | 'center'; vertical?: 'top' | 'bottom' | 'middle'; mirror?: boolean };
 }
 
 /** one silk/fab gr_text edit from the layout view (all values board frame) */
@@ -78,6 +95,8 @@ export interface LayoutTextEdit {
   x: number;
   y: number;
   rot: number;
+  /** changed style keys only, when size/font/justification were edited */
+  style?: LayoutTextStyle;
 }
 
 export type ProbeWebviewMessage =

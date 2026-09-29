@@ -11,6 +11,7 @@ import path from 'node:path';
 import logger from '../../utils/logging.js';
 import { KiCAD } from '../../kicad.js';
 import { buildKiCADArgs } from '../../kicad_commands.js';
+import { upgradeFootprintLibrary } from '../../pcb/footprint_upgrade.js';
 
 type InquirerPrompts = typeof import('@inquirer/prompts');
 type FileSelector = typeof import('inquirer-file-selector');
@@ -562,14 +563,15 @@ async function main(preparsedArgs?: CliArgs) {
         },
       );
       try {
-        if (!KiCAD.cliPath) throw new Error('kicad-cli not found');
-        const { executable, execArgs } = buildKiCADArgs('fp', [
-          'upgrade',
-          `./${convertedComponent.symbol.name}.pretty/`,
-        ]);
-        execFileSync(executable, execArgs, { stdio: 'pipe' });
+        const upgraded = upgradeFootprintLibrary(`./${convertedComponent.symbol.name}.pretty/`);
+        if (upgraded.errors > 0) {
+          logger.error(
+            `Footprint upgrade issues for ./${convertedComponent.symbol.name}.pretty/:`,
+            upgraded.files.filter((f) => f.status === 'error'),
+          );
+        }
       } catch (e) {
-        logger.error(`Failed executing kicad-cli fp upgrade ./${convertedComponent.symbol.name}.pretty/`, e);
+        logger.error(`Failed upgrading ./${convertedComponent.symbol.name}.pretty/`, e);
       }
 
       // gets pin names from symbol

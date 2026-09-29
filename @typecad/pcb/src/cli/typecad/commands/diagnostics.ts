@@ -6,6 +6,7 @@ import type { ParsedArgs } from '../parser.js';
 import logger from '../../../utils/logging.js';
 import { buildBoardModel } from '../board_model.js';
 import { buildDirPath, detectEntryFile, findBuildFile, findBuildFiles, runBuildStep, runDrcStep, runErcStep } from '../pipeline.js';
+import { nativeDrcStep, nativeErcStep } from '../native_checks.js';
 import { buildNetlistModel } from '../../diagnostics/netlist_model.js';
 import { buildDiagnosticsReport, type CheckStep, type DiagnosticsReport } from '../../diagnostics/report.js';
 import { renderMarkdown } from '../../diagnostics/markdown.js';
@@ -27,6 +28,8 @@ export interface DiagnosticsGenerateOptions {
   entry?: string;
   skipErc?: boolean;
   skipDrc?: boolean;
+  /** Run ERC/DRC through kicad-cli instead of the native engines. */
+  kicad?: boolean;
   /** Custom markdown destination (--out); JSON lands next to it. */
   out?: string;
   /** Explicit artifact paths (.kicad_pcb/.kicad_sch/.net) overriding ./build discovery. */
@@ -69,18 +72,24 @@ export async function generateDiagnosticsReport(opts: DiagnosticsGenerateOptions
   }
 
   // ── Analyze logical + physical views, run ERC/DRC ────────────────────────
+  // Native engines by default (--kicad for kicad-cli): ERC reads the report
+  // the build wrote, DRC runs the engine on the board.
   const board = pcbPath ? buildBoardModel(pcbPath) : null;
   const netlist = netPath ? buildNetlistModel(netPath) : null;
 
   const erc: CheckStep = opts.skipErc
     ? { ran: false, passed: true, reason: 'skipped' }
     : schPath
-      ? await runErcStep(schPath)
+      ? opts.kicad
+        ? await runErcStep(schPath)
+        : nativeErcStep(schPath)
       : { ran: false, passed: false, reason: `No .kicad_sch found in ${buildDirPath()}` };
   const drc: CheckStep = opts.skipDrc
     ? { ran: false, passed: true, reason: 'skipped' }
     : pcbPath
-      ? await runDrcStep(pcbPath)
+      ? opts.kicad
+        ? await runDrcStep(pcbPath)
+        : await nativeDrcStep(pcbPath)
       : { ran: false, passed: false, reason: `No .kicad_pcb found in ${buildDirPath()}` };
 
   const report = buildDiagnosticsReport({
@@ -138,6 +147,7 @@ export async function run(parsed: ParsedArgs): Promise<void> {
     entry,
     skipErc: parsed.args['skip-erc'] === true,
     skipDrc: parsed.args['skip-drc'] === true,
+    kicad: parsed.args['kicad'] === true,
     out: outArg,
     artifacts,
   });

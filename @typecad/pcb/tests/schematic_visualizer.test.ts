@@ -11,6 +11,7 @@ vi.mock('../src/kicad.js', () => ({
   },
   kicad_cli_path: '',
   getKicadCliPath: () => '',
+  libraryRoots: () => ({ symbols: '', footprints: '', symbolsSource: 'none' as const, footprintsSource: 'none' as const }),
 }));
 
 vi.mock('node:fs', () => ({

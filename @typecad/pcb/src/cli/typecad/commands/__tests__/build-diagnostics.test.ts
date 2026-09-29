@@ -66,6 +66,7 @@ describe('build --diagnostics', () => {
       entry: entryPath,
       skipErc: false,
       skipDrc: false,
+      kicad: false,
       out: undefined,
     });
   });
@@ -75,12 +76,13 @@ describe('build --diagnostics', () => {
     expect(generateMock).not.toHaveBeenCalled();
   });
 
-  it('forwards skip flags and --out to the generator', async () => {
-    await run(parsedWith({ diagnostics: true, 'skip-erc': true, 'skip-drc': true, out: 'report.md' }, [entryPath]));
+  it('forwards skip flags, --kicad and --out to the generator', async () => {
+    await run(parsedWith({ diagnostics: true, 'skip-erc': true, 'skip-drc': true, kicad: true, out: 'report.md' }, [entryPath]));
     expect(generateMock).toHaveBeenCalledWith({
       entry: entryPath,
       skipErc: true,
       skipDrc: true,
+      kicad: true,
       out: 'report.md',
     });
   });

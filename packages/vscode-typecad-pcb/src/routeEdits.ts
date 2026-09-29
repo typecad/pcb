@@ -278,9 +278,12 @@ export function planRouteEdits(text: string, routes: RouteInput[]): RoutePlan {
     }
     // idempotency: a chain with these exact coordinates already in the file
     // is a re-apply of the same session route (a failed build leaves the
-    // page's routes pending; the retry must not duplicate them)
+    // page's routes pending; the retry must not duplicate them). The
+    // generated chain uses \n; a CRLF-authored file carries the same chain
+    // as \r\n — both byte orders must count as present, or every retry
+    // re-inserts the route as a duplicate
     const chain = src.slice(src.indexOf('.from('));
-    if (text.includes(chain)) {
+    if (text.includes(chain) || text.includes(chain.replace(/\n/g, '\r\n'))) {
       skipped.push(`${r.from.ref}.${r.from.pin} (identical route already in source)`);
       maxExisting--;
       continue;

@@ -6,8 +6,13 @@ import type { ParsedArgs } from '../parser.js';
 export async function run(parsed: ParsedArgs): Promise<void> {
   // `search <query> --footprint` scans footprint libraries instead of
   // symbol libraries — symbols alone don't answer "what pads does it have".
-  if (parsed.args['footprint'] === true) {
-    const query = parsed.positional.join(' ').trim();
+  // --footprint is also a value flag (lib add --footprint Lib:Name), so the
+  // query may ride in the value when the flag comes before it.
+  const footprintFlag = parsed.args['footprint'];
+  if (footprintFlag === true || typeof footprintFlag === 'string') {
+    const query = [typeof footprintFlag === 'string' ? footprintFlag : '', ...parsed.positional]
+      .join(' ')
+      .trim();
     if (!query) {
       logger.log('Usage: typecad-pcb search <query> --footprint');
       logger.log('Example: typecad-pcb search "SOIC-8" --footprint');

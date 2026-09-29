@@ -137,7 +137,7 @@ describe('KiCADSchematic', () => {
       expect(schematic.lib_symbols.filter((s) => s === '(lib_symbols (symbol "R" ...))')).toHaveLength(1);
     });
 
-    it('should warn when component has no sch data and initialize to zero', () => {
+    it('should silently initialize to defaults when component has no sch data', () => {
       const comp = makeComp({ sch: undefined });
       mockGetSymbolDefinition.mockReturnValue({
         serializedLibEntry: '(lib_symbols ...)',
@@ -146,10 +146,10 @@ describe('KiCADSchematic', () => {
       schematic.update(comp);
       expect(comp.sch).toBeDefined();
       expect(comp.sch.rotation).toBe(0);
-      expect(mockLogWarning).toHaveBeenCalledWith(expect.stringContaining('missing schematic placement'));
+      expect(mockLogWarning).not.toHaveBeenCalled();
     });
 
-    it('should warn when sch.x is null', () => {
+    it('should silently default sch.x to 0 when null', () => {
       const comp = makeComp({ sch: { x: null, y: 20, rotation: 0 } });
       mockGetSymbolDefinition.mockReturnValue({
         serializedLibEntry: '(lib_symbols ...)',
@@ -157,10 +157,10 @@ describe('KiCADSchematic', () => {
       });
       schematic.update(comp);
       expect(comp.sch.x).toBe(0);
-      expect(mockLogWarning).toHaveBeenCalledWith(expect.stringContaining('missing sch.x'));
+      expect(mockLogWarning).not.toHaveBeenCalled();
     });
 
-    it('should warn when sch.y is null', () => {
+    it('should silently default sch.y to 0 when null', () => {
       const comp = makeComp({ sch: { x: 10, y: null, rotation: 0 } });
       mockGetSymbolDefinition.mockReturnValue({
         serializedLibEntry: '(lib_symbols ...)',
@@ -168,10 +168,10 @@ describe('KiCADSchematic', () => {
       });
       schematic.update(comp);
       expect(comp.sch.y).toBe(0);
-      expect(mockLogWarning).toHaveBeenCalledWith(expect.stringContaining('missing sch.y'));
+      expect(mockLogWarning).not.toHaveBeenCalled();
     });
 
-    it('should warn when sch.rotation is null', () => {
+    it('should silently default sch.rotation to 0 when null', () => {
       const comp = makeComp({ sch: { x: 10, y: 20, rotation: null } });
       mockGetSymbolDefinition.mockReturnValue({
         serializedLibEntry: '(lib_symbols ...)',
@@ -179,10 +179,10 @@ describe('KiCADSchematic', () => {
       });
       schematic.update(comp);
       expect(comp.sch.rotation).toBe(0);
-      expect(mockLogWarning).toHaveBeenCalledWith(expect.stringContaining('missing sch.rotation'));
+      expect(mockLogWarning).not.toHaveBeenCalled();
     });
 
-    it('should auto-place a component at (0,0) deterministically and record it', () => {
+    it('should auto-place a component at (0,0) deterministically', () => {
       const comp = makeComp({ sch: { x: 0, y: 0, rotation: 0 }, reference: 'R9', value: '10k' });
       mockGetSymbolDefinition.mockReturnValue({
         serializedLibEntry: '(lib_symbols ...)',
@@ -197,10 +197,8 @@ describe('KiCADSchematic', () => {
       schematic.update(again);
       expect(again.sch.x).toBe(comp.sch.x);
       expect(again.sch.y).toBe(comp.sch.y);
-      // No per-component warning — the caller emits ONE summary line from
-      // autoPlacedComponents instead (see schematic_visualizer).
-      expect(mockLogWarning).not.toHaveBeenCalledWith(expect.stringContaining('(0,0)'));
-      expect([...schematic.autoPlacedComponents]).toContain('R9');
+      // Unplaced components are silently auto-placed — no warning.
+      expect(mockLogWarning).not.toHaveBeenCalled();
     });
 
     it('should warn when component has no reference', () => {

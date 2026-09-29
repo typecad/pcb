@@ -78,6 +78,32 @@ const DELIVERY_INTERVAL_MS = 200;
 function shellQuote(value) {
     return `"${value.replace(/"/g, '\\"')}"`;
 }
+/**
+ * First syntax error in planned source text, or null. Best-effort: the
+ * TypeScript compiler resolves in workspace installs; a bundled extension
+ * copy without it returns null (no gate) instead of breaking the apply.
+ */
+function plannedTextSyntaxError(text) {
+    let tsModule = null;
+    try {
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        tsModule = require('typescript');
+    }
+    catch {
+        return null;
+    }
+    try {
+        const { diagnostics } = tsModule.transpileModule(text, {
+            reportDiagnostics: true,
+            compilerOptions: { target: tsModule.ScriptTarget.ES2022 },
+        });
+        const first = (diagnostics ?? []).find((d) => d.category === tsModule.DiagnosticCategory.Error);
+        return first ? tsModule.flattenDiagnosticMessageText(first.messageText, ' ') : null;
+    }
+    catch {
+        return null;
+    }
+}
 /** The host message for a pending selection id — "net:<name>" selects a net. */
 function selectionMessage(ref, token) {
     return ref.startsWith('net:')
@@ -96,9 +122,6 @@ class BoardViewerPanel {
         this.loadToken = 0;
         this.readySeen = false;
         this.generating = null;
-        /** Set by generate() when the DRC report predates the board — the next
-         *  generated page carries a visible "markers hidden" notice. */
-        this.staleDrcNotice = false;
     }
     /** Open/reveal the viewer, regenerating the HTML when the board changed. */
     async show() {
@@ -544,19 +567,14 @@ class BoardViewerPanel {
             // A DRC report OLDER than the board describes the previous revision —
             // embedding it paints stale violation markers on the new board (seen
             // as ghost "unconnected/shorting" dots on a route the move fixed).
-            // Re-evaluated on every generate: a flag left over from an attempt
-            // that later failed must not leak a bogus notice into this one.
-            this.staleDrcNotice = false;
+            // Still embed it (a muted/absent DRC affordance reads as breakage);
+            // the provenance call goes to the output channel only — a page status
+            // banner would lock the status line forever.
             const drcRel = node_path_1.default.join('build', `${boardName}_drc.json`);
             if (node_fs_1.default.existsSync(node_path_1.default.join(folder, drcRel))) {
                 flags.push('--drc', shellQuote(drcRel));
-                // A report older than the board describes the previous revision —
-                // still embed it (a muted/absent DRC affordance reads as breakage)
-                // but bake a provenance notice into the page so stale markers are
-                // never mistaken for the new board's truth
                 if ((0, boardFile_js_2.mtimeOf)(node_path_1.default.join(folder, drcRel)) < (0, boardFile_js_2.mtimeOf)(board)) {
-                    this.output.appendLine('drc report predates the board — embedding with a previous-revision notice');
-                    this.staleDrcNotice = true;
+                    this.output.appendLine('drc report predates the board — its markers describe the previous revision (run typeCAD: DRC to refresh)');
                 }
             }
             overlay('--stackup', `${boardName}_stackup.json`);
@@ -579,14 +597,6 @@ class BoardViewerPanel {
             this.output.appendLine('building viewer HTML…');
             await this.run(folder, `npx gerber-viewer ${shellQuote(gerbersDir)} -o ${shellQuote(outPath)} ${flags.join(' ')}`, GENERATE_TIMEOUT_MS);
             let raw = node_fs_1.default.readFileSync(node_path_1.default.join(folder, outPath), 'utf8');
-            if (this.staleDrcNotice) {
-                // A postStatus would be wiped by the reload that lands this HTML —
-                // bake the notice into the page's own status line instead. Spliced
-                // in BEFORE injectProbeClient: the probe client's nonce policy must
-                // cover this script too, or the CSP silently blocks it.
-                const notice = `<script>(function(){function n(){var el=document.getElementById('status');if(el){el.textContent='DRC markers show the PREVIOUS board revision — run typeCAD: DRC to refresh';el.setAttribute('data-locked','');}}if(document.readyState==='complete')n();else window.addEventListener('load',n);})();</script>`;
-                raw = raw.includes('</body>') ? raw.replace('</body>', notice + '</body>') : raw;
-            }
             const [components, nets] = await Promise.all([
                 this.service.components(),
                 // net sources are decorative metadata — a failed query must not
@@ -654,6 +664,28 @@ class BoardViewerPanel {
                 variableOf: (ref) => variableOf.get(ref),
                 allRefs: new Set(comps.map((c) => c.reference).filter(Boolean)),
             });
+            // dry-run the whole plan and parse every touched file's final text —
+            // a planner bug (overlapping ranges, a spliced token) must surface as
+            // a REFUSED apply with a message, never as broken source the build
+            // chokes on. Best-effort: `typescript` resolves in workspace installs;
+            // a standalone bundled copy without it skips the gate rather than
+            // failing the apply.
+            const dry = new Map(files.map((f) => [f.uri, f.text]));
+            for (const stage of plan.stages) {
+                for (const batch of stage) {
+                    let out = dry.get(batch.uri);
+                    for (const e of [...batch.edits].sort((a, b) => b.start - a.start))
+                        out = out.slice(0, e.start) + e.line + out.slice(e.end);
+                    dry.set(batch.uri, out);
+                }
+            }
+            for (const [uri, text] of dry) {
+                const err = plannedTextSyntaxError(text);
+                if (err) {
+                    fail(`planned edits would leave ${vscode.workspace.asRelativePath(vscode.Uri.parse(uri))} unparsable (${err}) — nothing was written`);
+                    return;
+                }
+            }
             // stage by stage: positions come from the live document, which by now
             // reflects every earlier stage — exactly the text each stage planned
             // against. One WorkspaceEdit per stage keeps every applied range

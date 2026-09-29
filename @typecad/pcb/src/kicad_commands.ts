@@ -2,7 +2,8 @@ import { execFile, execFileSync } from 'node:child_process';
 import { promisify } from 'node:util';
 import { resolve } from 'node:path';
 import { KiCAD } from './kicad.js';
-import { KiCadNotFoundError, KiCadCommandError } from './utils/errors.js';
+import { upgradeFootprintLibrary } from './pcb/footprint_upgrade.js';
+import { KiCadCommandError } from './utils/errors.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -113,10 +114,17 @@ export async function runERC(schPath: string, options: KiCADCommandOptions = {})
 }
 
 /**
- * Upgrade a footprint file to the latest format
+ * Upgrade a footprint library (`.pretty` dir) or single `.kicad_mod` file to
+ * the current format — native (no kicad-cli), in place. The old
+ * implementation shelled out with `--output` equal to the input, which
+ * kicad-cli always rejected, so it never upgraded anything.
  */
-export async function upgradeFootprint(footprintPath: string, options: KiCADCommandOptions = {}): Promise<string> {
-  return executeKiCADCommand('fp', ['upgrade', '--output', footprintPath, footprintPath], options);
+export async function upgradeFootprint(
+  footprintPath: string,
+  _options: KiCADCommandOptions = {},
+): Promise<string> {
+  const result = upgradeFootprintLibrary(footprintPath);
+  return `upgraded ${result.upgraded}, skipped ${result.skipped}, errors ${result.errors}`;
 }
 
 /**

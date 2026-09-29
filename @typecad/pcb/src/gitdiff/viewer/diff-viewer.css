@@ -283,25 +283,6 @@ h6 a {
   pointer-events: none;
 }
 
-.image-stack.side-by-side {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 1rem;
-  padding: 0;
-}
-
-.image-stack.side-by-side .image-layer {
-  position: relative;
-  border-radius: 0;
-  overflow: hidden;
-  background: var(--background);
-  border: 1px solid var(--border);
-}
-
-.image-stack.side-by-side .image-caption {
-  display: none;
-}
-
 .image-stack.overlay .image-layer:not(.original-layer) {
   mix-blend-mode: difference;
 }
@@ -417,12 +398,29 @@ h6 a {
 }
 
 .image-stack.diff-only .diff-added {
-  stroke: #22c55e !important;
-  fill: rgba(34, 197, 94, 0.35) !important;
+  stroke: #ef4444 !important;
+  fill: rgba(239, 68, 68, 0.35) !important;
 }
 
-.image-stack.diff-only .diff-hidden {
+/* zone-pour regions are area fills (fill-rule) — a changed pour would paint
+   a translucent slab over the very change that moved it. Show pours as
+   outlines in the diff view instead; the color comes from the rules above. */
+.image-stack.diff-only path.diff-added[fill-rule],
+.image-stack.diff-only path.diff-removed[fill-rule] {
+  fill: none !important;
+  stroke-width: 0.4 !important;
+}
+
+/* diff-only shows the selected layers' current state dimmed behind the
+   highlights: the modified side carries the context, the original side
+   contributes only the removed ghosts (its unchanged geometry would just
+   double-draw the identical shapes) */
+.image-stack.diff-only .image-layer[data-type='original'] :is(path, circle, rect, polygon, polyline, line):not(.diff-removed) {
   visibility: hidden !important;
+}
+
+.image-stack.diff-only .image-layer[data-type='modified'] :is(path, circle, rect, polygon, polyline, line):not(.diff-added):not(.diff-removed) {
+  opacity: 0.35 !important;
 }
 
 .empty-viewer {
@@ -475,38 +473,13 @@ h6 a {
 }
 
 .legend-added {
-  background-color: #22c55e;
+  background-color: #ef4444;
 }
 
 .legend-label {
   font-size: 0.875rem;
   font-weight: 500;
   color: var(--foreground);
-}
-
-.side-by-side-labels {
-  display: flex;
-  justify-content: space-between;
-  gap: 2rem;
-  align-items: center;
-  margin-top: 1rem;
-  padding-top: 1rem;
-  border-top: 1px solid var(--border);
-}
-
-.label-item {
-  flex: 1;
-  text-align: center;
-}
-
-.label-text {
-  font-size: 0.875rem;
-  font-weight: 500;
-  color: var(--foreground);
-  padding: 0.5rem;
-  background: var(--secondary);
-  border-radius: var(--radius);
-  display: inline-block;
 }
 
 .theme-switcher {
@@ -539,11 +512,6 @@ h6 a {
     gap: 1rem;
     margin-bottom: 0;
     padding-bottom: 0.5rem;
-  }
-
-  .image-stack.side-by-side {
-    grid-template-columns: 1fr;
-    gap: 0.5rem;
   }
 
   .zoom-controls {
@@ -653,8 +621,8 @@ h6 a {
 }
 
 .change-item.added {
-  border-left-color: #22c55e;
-  background: rgba(34, 197, 94, 0.06);
+  border-left-color: #ef4444;
+  background: rgba(239, 68, 68, 0.06);
 }
 
 .change-item.removed {
@@ -678,7 +646,7 @@ h6 a {
   vertical-align: middle;
 }
 
-.change-badge.added { background: rgba(34, 197, 94, 0.2); color: #22c55e; }
+.change-badge.added { background: rgba(239, 68, 68, 0.2); color: #ef4444; }
 .change-badge.removed { background: rgba(249, 115, 22, 0.2); color: #f97316; }
 .change-badge.modified { background: rgba(59, 130, 246, 0.2); color: #3b82f6; }
 

@@ -5,10 +5,10 @@ import { platform } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 import chalk from 'chalk';
-import { findExecutable } from '../../../kicad.js';
-import { KiCAD } from '../../../kicad.js';
+import { findExecutable, KiCAD, libraryRoots } from '../../../kicad.js';
 import type { ParsedArgs } from '../parser.js';
 import logger from '../../../utils/logging.js';
+import { getBuildDir } from '../../../utils/constants.js';
 import { coreDepsFix } from '../../create-typecad/core-deps.js';
 import { buildDirPath } from '../pipeline.js';
 
@@ -375,7 +375,9 @@ function checkKiCadCli(): CheckResult {
       passed: false,
       message: 'not found',
       fixHint:
-        'Install KiCad from https://www.kicad.org/download/\n' +
+        'Optional for the native flow (build/check/erc/drc/export run without it —\n' +
+        '  only --kicad legacy paths need the CLI). To use it:\n' +
+        '  Install KiCad from https://www.kicad.org/download/\n' +
         '  Windows: winget install KiCad.KiCad\n' +
         '  macOS:   brew install --cask kicad\n' +
         '  Linux:   sudo apt install kicad  (or equivalent for your distro)\n' +
@@ -385,68 +387,54 @@ function checkKiCadCli(): CheckResult {
 }
 
 function checkKiCadSymbols(): CheckResult {
-  try {
-    const instance = KiCAD.instance;
-    const symbolsPath = instance.getSymbolsPath();
-    if (!symbolsPath || !fs.existsSync(symbolsPath)) {
-      return {
-        name: 'KiCad symbol libraries',
-        passed: false,
-        message: 'symbol library directory not found',
-        fixHint: 'Ensure KiCad is installed with symbol libraries. Reinstall KiCad if needed.',
-      };
-    }
-    const files = fs.readdirSync(symbolsPath).filter((f) => f.endsWith('.kicad_sym'));
-    return {
-      name: 'KiCad symbol libraries',
-      passed: files.length > 0,
-      message:
-        files.length > 0
-          ? `${files.length} .kicad_sym files in ${symbolsPath}`
-          : `no .kicad_sym files found in ${symbolsPath}`,
-      fixHint: files.length > 0 ? undefined : 'KiCad symbol libraries appear empty. Reinstall KiCad.',
-    };
-  } catch {
-    return {
-      name: 'KiCad symbol libraries',
-      passed: false,
-      message: 'could not check (KiCad not detected)',
-      fixHint: 'Fix the kicad-cli issue first',
-    };
+  // Library data, not the CLI: an install is one source, conf paths
+  // another, the project's build/lib a third, and power is bundled.
+  const roots = libraryRoots();
+  const parts: string[] = [];
+  if (roots.symbols && fs.existsSync(roots.symbols)) {
+    const files = fs.readdirSync(roots.symbols).filter((f) => f.endsWith('.kicad_sym'));
+    parts.push(`${files.length} in ${roots.symbols} (${roots.symbolsSource})`);
   }
+  const buildLib = path.join(getBuildDir(), 'lib');
+  if (fs.existsSync(buildLib)) {
+    const files = fs.readdirSync(buildLib).filter((f) => f.endsWith('.kicad_sym'));
+    if (files.length > 0) parts.push(`${files.length} in build/lib (project)`);
+  }
+  parts.push('power bundled');
+
+  if (parts.length > 1) {
+    return { name: 'KiCad symbol libraries', passed: true, message: parts.join(' | ') };
+  }
+  return {
+    name: 'KiCad symbol libraries',
+    passed: false,
+    message: 'no symbol source (no install, empty build/lib)',
+    fixHint: 'Install KiCad, or fetch just what the project needs: typecad-pcb lib add <library>',
+  };
 }
 
 function checkKiCadFootprints(): CheckResult {
-  try {
-    const instance = KiCAD.instance;
-    const libPaths = instance.getLibraryPaths();
-    const footprintsPath = libPaths.footprints;
-    if (!footprintsPath || !fs.existsSync(footprintsPath)) {
-      return {
-        name: 'KiCad footprint libraries',
-        passed: false,
-        message: 'footprint library directory not found',
-        fixHint: 'Ensure KiCad is installed with footprint libraries. Reinstall KiCad if needed.',
-      };
-    }
-    const files = fs.readdirSync(footprintsPath).filter((f) => f.endsWith('.pretty') || f.endsWith('.kicad_mod'));
-    return {
-      name: 'KiCad footprint libraries',
-      passed: files.length > 0,
-      message:
-        files.length > 0
-          ? `${files.length} libraries in ${footprintsPath}`
-          : `no footprint libraries found in ${footprintsPath}`,
-      fixHint: files.length > 0 ? undefined : 'KiCad footprint libraries appear empty. Reinstall KiCad.',
-    };
-  } catch {
-    return {
-      name: 'KiCad footprint libraries',
-      passed: false,
-      message: 'could not check (KiCad not detected)',
-      fixHint: 'Fix the kicad-cli issue first',
-    };
+  const roots = libraryRoots();
+  const parts: string[] = [];
+  if (roots.footprints && fs.existsSync(roots.footprints)) {
+    const files = fs.readdirSync(roots.footprints).filter((f) => f.endsWith('.pretty') || f.endsWith('.kicad_mod'));
+    parts.push(`${files.length} in ${roots.footprints} (${roots.footprintsSource})`);
   }
+  const buildFp = path.join(getBuildDir(), 'lib', 'footprints');
+  if (fs.existsSync(buildFp)) {
+    const files = fs.readdirSync(buildFp).filter((f) => f.endsWith('.kicad_mod'));
+    if (files.length > 0) parts.push(`${files.length} in build/lib/footprints (project)`);
+  }
+
+  if (parts.length > 0) {
+    return { name: 'KiCad footprint libraries', passed: true, message: parts.join(' | ') };
+  }
+  return {
+    name: 'KiCad footprint libraries',
+    passed: false,
+    message: 'no footprint source (no install, empty build/lib)',
+    fixHint: 'Install KiCad, or fetch just what the project needs: typecad-pcb lib add --footprint Lib:Name',
+  };
 }
 
 function checkNgspice(): CheckResult {

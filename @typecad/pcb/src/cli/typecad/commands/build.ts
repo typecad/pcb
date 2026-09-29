@@ -57,6 +57,7 @@ async function buildOnce(entry: string, parsed: ParsedArgs): Promise<void> {
         entry,
         skipErc: parsed.args['skip-erc'] === true,
         skipDrc: parsed.args['skip-drc'] === true,
+        kicad: parsed.args['kicad'] === true,
         out: typeof parsed.args['out'] === 'string' ? parsed.args['out'] : undefined,
       });
       logger.log('');

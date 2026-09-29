@@ -32,6 +32,46 @@ export interface KiCADDetection {
   isFlatpak: boolean;
 }
 
+export interface LibraryRoots {
+  symbols?: string;
+  footprints?: string;
+  /** where each root came from, for doctor/error messages */
+  symbolsSource: 'conf' | 'install' | 'none';
+  footprintsSource: 'conf' | 'install' | 'none';
+}
+
+/**
+ * Library roots WITHOUT the kicad-cli gate. Library data and the CLI are
+ * separate dependencies: a machine with no KiCad install can still build
+ * from a project's `build/lib/` (component packages sync there) and from
+ * the bundled `power` library. `typecad.conf.ts` keys `symbols_path` /
+ * `footprints_path` override the install; a discovered install fills
+ * whatever the conf left unset. Never throws.
+ */
+export function libraryRoots(): LibraryRoots {
+  const confSymbols = getConfig().get('symbols_path') || undefined;
+  const confFootprints = getConfig().get('footprints_path') || undefined;
+
+  let installSymbols: string | undefined;
+  let installFootprints: string | undefined;
+  if (KiCAD.isAvailable()) {
+    try {
+      const paths = KiCAD.instance.getLibraryPaths();
+      installSymbols = paths.symbols || undefined;
+      installFootprints = paths.footprints || undefined;
+    } catch {
+      // isAvailable() said yes but discovery raced/failed — treat as none
+    }
+  }
+
+  return {
+    symbols: confSymbols ?? installSymbols,
+    footprints: confFootprints ?? installFootprints,
+    symbolsSource: confSymbols ? 'conf' : installSymbols ? 'install' : 'none',
+    footprintsSource: confFootprints ? 'conf' : installFootprints ? 'install' : 'none',
+  };
+}
+
 function detectFlatpak(): boolean {
   if (
     fs.existsSync('/var/lib/flatpak/app/org.kicad.KiCad') ||
@@ -196,6 +236,21 @@ export class KiCAD {
     KiCAD._instance = null;
   }
 
+  /**
+   * Non-throwing availability probe. `instance`/`cliPath`/`path` all throw
+   * KiCadNotFoundError when no install is discoverable; features that can
+   * degrade without kicad-cli (e.g. docgen 3D renders) check this first and
+   * skip with a warning instead of failing the whole run.
+   */
+  static isAvailable(): boolean {
+    try {
+      void KiCAD.instance;
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   static get path(): string | undefined {
     return KiCAD.instance.path;
   }
@@ -277,10 +332,6 @@ export class KiCAD {
 }
 
 let _flatpakTempDir: string | undefined;
-
-function resetFlatpakTempDir(): void {
-  _flatpakTempDir = undefined;
-}
 
 export function getFlatpakSafeTempDir(): string {
   if (!KiCAD.isFlatpak) return tmpdir();

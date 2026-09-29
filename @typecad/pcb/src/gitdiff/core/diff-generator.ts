@@ -1,10 +1,9 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'node:crypto';
-import { KiCAD } from '../../kicad.js';
 import { allLayers, standardLayers } from '../constants.js';
 import {
-  executeKicadSvgExportCached,
+  renderLayerSvgCached,
   computeSvgBBox,
   cropSvgToBBox,
   detectInnerCopperLayers,
@@ -69,21 +68,18 @@ export async function generateDiffs(options: DiffOptions): Promise<string> {
 
     const allSvgResults: Array<{ originalSvg: string; modifiedSvg: string } | null> = [];
 
-    if (!KiCAD.cliPath) {
-      throw new Error(
-        'KiCAD CLI not found. Ensure KiCAD is installed and accessible. You may need to run `new KiCAD()` before calling generateDiffs().',
-      );
-    }
+    // per-layer SVGs come from the native plot + render pipeline
+    // (renderLayerSvgCached) — no kicad-cli involved
     for (const layer of layers) {
       let orig = '';
       let mod = '';
       try {
-        orig = await executeKicadSvgExportCached(layer, originalFile, theme);
+        orig = await renderLayerSvgCached(layer, originalFile, theme);
       } catch (e) {
         logger.warn(`Warning: failed to export layer "${layer}" from original file:`, e);
       }
       try {
-        mod = await executeKicadSvgExportCached(layer, modifiedFile, theme);
+        mod = await renderLayerSvgCached(layer, modifiedFile, theme);
       } catch (e) {
         logger.warn(`Warning: failed to export layer "${layer}" from modified file:`, e);
       }
@@ -165,15 +161,16 @@ export async function generateDiffs(options: DiffOptions): Promise<string> {
         }
 
         if (pcbBBox) {
-          // computeSvgBBox adds 2mm padding; undo it for the coordinate offset
+          // computeSvgBBox adds 2mm padding on each side; undo it. The
+          // marker math addresses the viewBox (screen) space, where native
+          // renders put the board upright — screen y is the NEGATED leaf
+          // y of the bbox (the render's scale(1,-1) flip).
           const SVG_BBOX_PADDING = 2;
           svgOffset = {
-            x: sharedBBox.minX - pcbBBox.minX + SVG_BBOX_PADDING,
-            y: sharedBBox.minY - pcbBBox.minY + SVG_BBOX_PADDING,
+            x: sharedBBox.minX + SVG_BBOX_PADDING - pcbBBox.minX,
+            y: -sharedBBox.maxY + SVG_BBOX_PADDING - pcbBBox.minY,
           };
-        } else {
         }
-      } else {
       }
     } catch (e) {
       logger.debug('diff-generator: SVG offset calculation failed', e);

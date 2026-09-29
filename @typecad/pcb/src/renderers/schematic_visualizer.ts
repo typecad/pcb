@@ -1,7 +1,6 @@
 import { Schematic } from '../schematic.js';
 import { getBuildDir } from '../utils/constants.js';
 import { setPendingSchematicPath } from '../cli/pending_summary.js';
-import { KiCAD } from '../kicad.js';
 import fs from 'node:fs';
 import { SymbolLibraryManager } from '../symbol_library_manager.js';
 import { KiCADSchematic } from './kicad_schematic_renderer.js';
@@ -11,8 +10,9 @@ import { reportError } from '../utils/error_reporter.js';
 import type { Component } from '../component.js';
 
 export function schematic(schematicData: Schematic): boolean {
-  // Initializing the singleton throws when the KiCad CLI is unavailable.
-  if (!KiCAD.instance) return false;
+  // No KiCad-install gate: the render needs symbol definitions, and those
+  // resolve from the install, conf paths, build/lib or the bundled power
+  // library — see libraryRoots(). Missing symbols degrade per component.
   const symbolManager = new SymbolLibraryManager();
   const kicad = new KiCADSchematic(symbolManager);
 
@@ -62,17 +62,6 @@ export function schematic(schematicData: Schematic): boolean {
   }
 
   kicad.addPowerSymbols();
-
-  // One summary line for everything the renderer auto-placed (components
-  // created without `sch` coordinates — the common code-only style), rather
-  // than a warning per component.
-  const autoPlaced = kicad.autoPlacedComponents;
-  if (autoPlaced.length > 0) {
-    logWarning(
-      `${autoPlaced.length} component(s) had no schematic placement (sch) — placed deterministically: ` +
-        `${autoPlaced.join(', ')}. Set comp.sch = { x, y } to control schematic layout.`,
-    );
-  }
 
   const _schematic = renderSchematic({
     lib_symbols: kicad.lib_symbols,

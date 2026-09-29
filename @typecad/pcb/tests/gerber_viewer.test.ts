@@ -800,6 +800,42 @@ describe('layout view (component overlay from the gerbers)', () => {
     expect(html).toContain("if (netEls[re].getAttribute('data-ref')) continue;");
   });
 
+  it('keeps an open E properties panel following the clicked element', () => {
+    const html = buildViewerHtml(svg, [info], { title: 'demo board', pcbaSvg: '<svg/>', layoutComponents });
+    // an open panel refreshes on every selection change: the three selection
+    // syncs (part/trace/via gestures) and the move-commit funnel all feed it
+    expect(html).toContain('function propsSync(kind)');
+    expect(html).toContain("propsSync('part');");
+    expect(html).toContain("propsSync('trace');");
+    expect(html).toContain("propsSync('via');");
+    expect(html).toContain('propsSync();');
+    // the refresh rebuilds through propsBuild, gated by a signature so a
+    // no-op sync never clobbers fields mid-edit
+    expect(html).toContain('function propsSig()');
+    expect(html).toContain('if (sig === propsSigLast) return;');
+    // the most recent gesture owns the panel — a trace click switches an
+    // open part panel to the trace editor and back
+    expect(html).toContain("if (propsKind === 'via' && viaSel.size)");
+    expect(html).toContain("if (propsKind === 'trace' && segSel.size)");
+    // auto-refresh must not steal focus from the canvas keys
+    expect(html).toContain('deliberately no focus');
+    // the ? help dialog: one row per binding — bold key column, dash,
+    // explanation — generated from the HELP_ROWS table
+    expect(html).toContain('HELP_ROWS');
+    expect(html).toContain('#keys-help .hrow');
+    expect(html).toContain('grid-template-columns: 128px 1fr');
+    // Esc closes it before anything else claims the key
+    expect(html).toContain("ev.key === 'Escape' && helpEl.style.display !== 'none'");
+    // full property coverage: text/label editing rides the same panel, and
+    // net classes + impedance read-outs come from the rules/stackup islands
+    expect(html).toContain('function propsTextBuild');
+    expect(html).toContain('function netClassLine');
+    expect(html).toContain('annular ring');
+    // a claimed text glyph owns its press — the trace fallthrough must not
+    // eat it (capture-phase stopPropagation would kill the text handler)
+    expect(html).toContain("t.closest('[data-text]')");
+  });
+
   it('offers silk/fab text dragging and in-place editing when texts ride along', () => {
     const html = buildViewerHtml(svg, [info], {
       title: 'demo board',
@@ -883,8 +919,12 @@ M02*
     fs.writeFileSync(
       path.join(dir, 'demo.kicad_pcb'),
       `(kicad_pcb (version 20221018)
-  (gr_text "hello silk" (at 6.5 7.5 0) (layer "F.SilkS") (uuid "x1") (effects (font (size 1.5 1.5)) (justify)))
+  (gr_text "hello silk" (at 6.5 7.5 0) (layer "F.SilkS") (uuid "x1") (effects (font "DejaVu Sans" (size 1.8 1.5) (thickness 0.22) italic) (justify left mirror)))
   (gr_text "hidden" (at 9 9) (layer "B.Fab") (uuid "x2") (effects (font (size 1 1)) (hide)))
+  (footprint "Resistor_SMD:R_0603" (layer "F.Cu") (at 4.1 3 0)
+    (property "Reference" "R1" (at 0 -1.6 0) (layer "F.SilkS") (uuid "p1") (effects (font (size 1.1 1) (thickness 0.16) italic) (justify left)))
+    (property "Value" "1k" (at 0 1.6 0) (layer "F.Fab") (uuid "p2") (effects (font (size 1 1))))
+  )
 )
 `,
     );
@@ -937,11 +977,39 @@ M02*
     expect(result.html).toMatch(/<path[^>]*data-ref="R1"[^>]*fill="none"/);
 
     // board texts: gr_texts from the .kicad_pcb ride as the layout-texts
-    // island (gerber y-up frame), hidden ones excluded
+    // island (gerber y-up frame), hidden ones excluded — the full style
+    // block (face, size, thickness, italic, justification) travels too, it
+    // is what the properties panel edits
     const ltMatch = /<script id="layout-texts" type="application\/json">([\s\S]*?)<\/script>/.exec(result.html)![1]!;
-    const layoutTexts = JSON.parse(ltMatch) as Array<{ text: string; x: number; y: number }>;
+    const layoutTexts = JSON.parse(ltMatch) as Array<{
+      text: string;
+      x: number;
+      y: number;
+      h: number;
+      w?: number;
+      thickness?: number;
+      italic?: boolean;
+      font?: string;
+      justify?: { horizontal?: string; mirror?: boolean };
+    }>;
     expect(layoutTexts).toHaveLength(1);
     expect(layoutTexts[0]).toMatchObject({ text: 'hello silk', x: 6.5, y: -7.5 });
+    expect(layoutTexts[0]!.h).toBeCloseTo(1.5, 5);
+    expect(layoutTexts[0]!.w).toBeCloseTo(1.8, 5);
+    expect(layoutTexts[0]!.thickness).toBeCloseTo(0.22, 5);
+    expect(layoutTexts[0]!.italic).toBe(true);
+    expect(layoutTexts[0]!.font).toBe('DejaVu Sans');
+    expect(layoutTexts[0]!.justify).toEqual({ horizontal: 'left', mirror: true });
+
+    // part labels carry their style block too — the properties panel edits
+    // it through the Component's referenceLayout/valueLayout options
+    const r1Labels = (comps.find((c) => c.ref === 'R1') as { labels?: Array<Record<string, unknown>> }).labels ?? [];
+    const refLabel = r1Labels.find((l) => l.kind === 'reference');
+    expect(refLabel).toBeDefined();
+    expect(refLabel!.w).toBeCloseTo(1.1, 5);
+    expect(refLabel!.thickness).toBeCloseTo(0.16, 5);
+    expect(refLabel!.italic).toBe(true);
+    expect(refLabel!.justify).toEqual({ horizontal: 'left' });
   });
 
   it('derives the layout overlay without nets — a fresh board still gets the layout view', () => {

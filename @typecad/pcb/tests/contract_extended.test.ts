@@ -25,6 +25,7 @@ vi.mock('../src/kicad.js', () => ({
   },
   discoverKiCAD: vi.fn(),
   kicad_cli_path: 'kicad-cli',
+  libraryRoots: () => ({ symbols: '/kicad/symbols', footprints: '/kicad/footprints', symbolsSource: 'install' as const, footprintsSource: 'install' as const }),
 }));
 
 describe('Contract Functionality', () => {

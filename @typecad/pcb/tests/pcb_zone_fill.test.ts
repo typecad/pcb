@@ -1,21 +1,14 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import fs from 'node:fs';
 import { PCB, getPcbState } from '../src/pcb/pcb.js';
 import { Component } from '../src/component.js';
 import { materializeZoneFills } from '../src/pcb/pcb_zone_fill.js';
 
-const { mockRefill } = vi.hoisted(() => ({ mockRefill: vi.fn() }));
-
-// Refill is kicad-cli's job; mock it so the gating logic is testable
-// without KiCad (CI runs with KICAD_NOT_AVAILABLE=1).
-vi.mock('../src/kicad_commands.js', () => ({
-  executeKiCADCommandSync: mockRefill,
-}));
-
+// create() renders a schematic, which resolves symbols through the KiCAD
+// locator; the fake keeps that working on machines (and CI) without an
+// install. The fill itself is native — no kicad-cli anywhere in this path.
 vi.mock('../src/kicad.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../src/kicad.js')>();
-  // The KiCAD locator must not throw here or the sync executor never runs;
-  // everything else in the module stays real.
   const fakeInstance = {
     path: '/fake/kicad',
     cliPath: '/fake/kicad/bin/kicad-cli',
@@ -53,48 +46,34 @@ function boardWithZone(zoneOptions: Record<string, unknown> | null, pcbOptions?:
   return { pcb, c1 };
 }
 
-describe('materializeZoneFills', () => {
-  const previousEnv = process.env.KICAD_NOT_AVAILABLE;
+const boardPath = './build/test_zone_fill.kicad_pcb';
+const hasFills = (): boolean => fs.readFileSync(boardPath, 'utf8').includes('(filled_polygon');
+
+describe('materializeZoneFills (native)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    // CI sets this for the whole suite; these tests assert the refill path,
-    // so they must run with the escape hatch off.
-    delete process.env.KICAD_NOT_AVAILABLE;
-    try {
-      fs.rmSync('./build/test_zone_fill.kicad_pcb');
-    } catch {
-      /* not written yet */
-    }
-    try {
-      fs.mkdirSync('./build');
-    } catch {
-      /* exists */
-    }
-  });
-  afterEach(() => {
-    if (previousEnv !== undefined) process.env.KICAD_NOT_AVAILABLE = previousEnv;
-    else delete process.env.KICAD_NOT_AVAILABLE;
+    fs.rmSync(boardPath, { force: true });
+    fs.mkdirSync('./build', { recursive: true });
   });
 
-  it('does not refill from create() — fills are the consumer\'s responsibility', () => {
+  it("does not fill from create() — fills are the consumer's responsibility", () => {
     const { pcb, c1 } = boardWithZone({ net: 'GND', layers: ['F.Cu'], x: 0, y: 0, width: 10, height: 10 });
     pcb.create(c1);
-    expect(mockRefill).not.toHaveBeenCalled();
+    expect(fs.existsSync(boardPath)).toBe(true);
+    expect(hasFills()).toBe(false);
   });
 
-  it('refills when materializeZoneFills() is called on a board with zones', () => {
+  it('writes filled_polygon blocks natively (no kicad-cli) when called on a board with zones', () => {
     const { pcb, c1 } = boardWithZone({ net: 'GND', layers: ['F.Cu'], x: 0, y: 0, width: 10, height: 10 });
     pcb.create(c1);
     materializeZoneFills(pcb, getPcbState(pcb));
-    expect(mockRefill).toHaveBeenCalledTimes(1);
-    const [command, args] = mockRefill.mock.calls[0];
-    expect(command).toBe('pcb');
-    expect(args).toContain('--refill-zones');
-    expect(args).toContain('--save-board');
-    expect(args.join(' ')).toContain('test_zone_fill.kicad_pcb');
+    expect(hasFills()).toBe(true);
+    // the fill is KiCad-readable: layer-tagged polygon inside the zone
+    const filled = fs.readFileSync(boardPath, 'utf8');
+    expect(filled).toMatch(/\(filled_polygon \(layer "F\.Cu"\) \(pts /);
   });
 
-  it('does not refill when the only zone opts out with fill: false', () => {
+  it('does not fill when the only zone opts out with fill: false', () => {
     const { pcb, c1 } = boardWithZone({
       net: 'GND',
       layers: ['F.Cu'],
@@ -106,33 +85,36 @@ describe('materializeZoneFills', () => {
     });
     pcb.create(c1);
     materializeZoneFills(pcb, getPcbState(pcb));
-    expect(mockRefill).not.toHaveBeenCalled();
+    expect(hasFills()).toBe(false);
   });
 
-  it('does not refill when the board has no zones at all', () => {
+  it('does not fill when the board has no zones at all', () => {
     const { pcb, c1 } = boardWithZone(null);
     pcb.create(c1);
     materializeZoneFills(pcb, getPcbState(pcb));
-    expect(mockRefill).not.toHaveBeenCalled();
+    expect(hasFills()).toBe(false);
   });
 
-  it('does not refill with the global opt-out fill_zones: false', () => {
+  it('does not fill with the global opt-out fill_zones: false', () => {
     const { pcb, c1 } = boardWithZone(
       { net: 'GND', layers: ['F.Cu'], x: 0, y: 0, width: 10, height: 10 },
       { fill_zones: false },
     );
     pcb.create(c1);
     materializeZoneFills(pcb, getPcbState(pcb));
-    expect(mockRefill).not.toHaveBeenCalled();
+    expect(hasFills()).toBe(false);
   });
 
-  it('treats a kicad-cli failure as non-fatal when the fill did not land', () => {
-    mockRefill.mockImplementation(() => {
-      throw new Error('kicad-cli failed');
-    });
+  it('treats a fill failure as non-fatal and leaves the board file alone', () => {
     const { pcb, c1 } = boardWithZone({ net: 'GND', layers: ['F.Cu'], x: 0, y: 0, width: 10, height: 10 });
     pcb.create(c1);
+    const before = fs.readFileSync(boardPath, 'utf8');
+    // a directory at the board path makes the read throw inside the refill —
+    // the catch must warn, not propagate
+    fs.rmSync(boardPath);
+    fs.mkdirSync(boardPath);
     expect(() => materializeZoneFills(pcb, getPcbState(pcb))).not.toThrow();
-    expect(mockRefill).toHaveBeenCalled();
+    fs.rmSync(boardPath, { recursive: true });
+    fs.writeFileSync(boardPath, before, 'utf8');
   });
 });

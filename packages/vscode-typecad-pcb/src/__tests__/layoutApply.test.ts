@@ -203,3 +203,151 @@ typecad.create(vcc);
     expect(plan.counts.deletes).toBe(1);
   });
 });
+
+describe('planLayoutApply label assignment fallback', () => {
+  // rd_skeleton's shape exactly: subclass factories with prefix-derived
+  // references — no `reference: 'D1'` literal anywhere to rewrite
+  const ledProject = () => `import { PCB, Component, LED } from '@typecad/pcb';
+const typecad = new PCB('demo', {});
+const led = new LED({
+  value: 'red',
+  simulation: { model: 'Dled D (IS=1a RS=3.3 N=1.8)' },
+});
+led.pcb = { x: 17.5, y: -5.5 };
+typecad.create(led);
+`;
+
+  it('writes a constructor-less part label as a public-field assignment', () => {
+    const { plan, texts } = run(
+      [{ uri: 'file:///src/board.ts', text: ledProject() }],
+      baseInput({
+        labels: [{ ref: 'D1', kind: 'reference', x: 19.5, y: -5.5, rot: 0, style: { h: 2, justify: { horizontal: 'left', vertical: 'middle', mirror: false } } }],
+        variableOf: (ref: string) => ({ D1: 'led' })[ref],
+        allRefs: new Set(['D1']),
+      }),
+    );
+    expect(plan.skipped).toEqual([]);
+    expect(plan.counts.labels).toBe(1);
+    const out = texts.get('file:///src/board.ts')!;
+    expectValidTs(out);
+    expect(out).toContain('led.referenceLayout = { x: 2, y: 0, rotation: 0, height: 2, justify: { horizontal: \'left\', vertical: \'middle\', mirror: false } };');
+    // the assignment lands right after the constructor, before led.pcb
+    expect(out.indexOf('});')).toBeLessThan(out.indexOf('led.referenceLayout'));
+    expect(out.indexOf('led.referenceLayout')).toBeLessThan(out.indexOf('led.pcb'));
+  });
+
+  it('replaces an existing assignment instead of inserting a twin', () => {
+    const src =
+      ledProject().replace('led.pcb = { x: 17.5, y: -5.5 };', 'led.referenceLayout = { x: 1, y: 2, rotation: 90 };\nled.pcb = { x: 17.5, y: -5.5 };');
+    const { plan, texts } = run(
+      [{ uri: 'file:///src/board.ts', text: src }],
+      baseInput({
+        labels: [{ ref: 'D1', kind: 'value', x: 19.5, y: -5.5, rot: 0, style: { thickness: 0.25 } }],
+        variableOf: (ref: string) => ({ D1: 'led' })[ref],
+        allRefs: new Set(['D1']),
+      }),
+    );
+    expect(plan.skipped).toEqual([]);
+    const out = texts.get('file:///src/board.ts')!;
+    expectValidTs(out);
+    expect(out.match(/led\.valueLayout =/g)).toHaveLength(1);
+    expect(out).toContain('led.valueLayout = { x: 2, y: 0, rotation: 0, thickness: 0.25 };');
+  });
+
+  it('reports an honest skip when no variable maps the ref', () => {
+    const { plan } = run(
+      [{ uri: 'file:///src/board.ts', text: ledProject() }],
+      baseInput({
+        labels: [{ ref: 'ZZ', kind: 'reference', x: 1, y: 1, rot: 0 }],
+        variableOf: () => undefined,
+        allRefs: new Set(['ZZ']),
+      }),
+    );
+    expect(plan.counts.labels).toBe(0);
+    expect(plan.skipped.join(' ')).toContain('ZZ (no source variable)');
+  });
+});
+
+describe('planLayoutApply never plans unparsable output (regression: the CRLF route re-apply)', () => {
+  // the real rd_skeleton shape: CRLF file, a route already in source, the
+  // same route still pending in the session, a stale delete, and a label
+  // edit — the combination that produced `width: 0const route16` and a
+  // stray-`t` corruption in the user's file
+  const crlfProject = () => `import { PCB, Component, LED, TrackBuilder } from '@typecad/pcb';
+const typecad = new PCB('demo', {});
+const led = new LED({
+  value: 'red',
+  simulation: { model: 'Dled D (IS=1a RS=3.3 N=1.8)' },
+});
+led.pcb = { x: 17.5, y: -5.5 };
+const route15a = new TrackBuilder(typecad, { net: 'led_a', })
+.from({ x: 9.48, y: -0.009 }, 'In1.Cu', 0.55)
+.to({ x: 11.651, y: -0.009, layer: 'In2.Cu', width: 0.55 });
+
+const route16 = new TrackBuilder(typecad, { net: 'led_a',  })
+  .from({ x: 7.526, y: -0.009 }, 'In1.Cu', 0.55)
+  .to({ x: 9.48, y: -0.009, layer: 'In1.Cu', width: 0.55 });
+
+typecad.create(battery_placeholder, led, route15a, route16);
+`.replace(/\n/g, '\r\n').replace('battery_placeholder', 'r1');
+
+  it('re-applying the pending route is idempotent and the result parses', () => {
+    const pendingRoute = {
+      net: 'led_a',
+      w: 0.55,
+      from: { ref: 'D1', pin: '1' },
+      to: null,
+      vias: [],
+      pieces: [{ layer: 'In1.Cu', w: 0.55, pts: [{ x: 7.526, y: -0.009 }, { x: 9.48, y: -0.009 }] }],
+    };
+    const { plan, texts } = run(
+      [{ uri: 'file:///src/board.ts', text: crlfProject() }],
+      baseInput({
+        routes: [pendingRoute],
+        deletes: [{ net: 'led_a', x1: 9.48, y1: -0.009, x2: 11.651, y2: -0.009, layer: 'In1.Cu' }],
+        labels: [{ ref: 'D1', kind: 'reference', x: 19.46, y: -10.8, rot: 0 }],
+        variableOf: (ref: string) => ({ D1: 'led' })[ref],
+        allRefs: new Set(['D1']),
+      }),
+    );
+    const out = texts.get('file:///src/board.ts')!;
+    expectValidTs(out);
+    // the pending route matched the source chain — no duplicate declaration
+    expect(plan.counts.routes).toBe(0);
+    expect(out.match(/const route16 =/g)).toHaveLength(1);
+  });
+});
+
+describe('multiple label assignments in one apply (batch coherence)', () => {
+  it('two constructor-less parts in one file: both assignments land intact', () => {
+    const src = `import { PCB, LED, Resistor } from '@typecad/pcb';
+const typecad = new PCB('demo', {});
+const led = new LED({
+  value: 'red',
+  simulation: { model: 'Dled D (IS=1a RS=3.3 N=1.8)' },
+});
+led.pcb = { x: 17.5, y: -5.5 };
+const r1 = new Resistor({ value: '150' });
+r1.pcb = { x: 0, y: 0 };
+typecad.create(led, r1);
+`;
+    const { plan, texts } = run(
+      [{ uri: 'file:///src/board.ts', text: src }],
+      baseInput({
+        labels: [
+          { ref: 'D1', kind: 'reference', x: 19.46, y: -10.8, rot: 0, style: { h: 2 } },
+          { ref: 'R1', kind: 'reference', x: 1.5, y: 1.5, rot: 0, style: { h: 1.5 } },
+        ],
+        variableOf: (ref: string) => ({ D1: 'led', R1: 'r1' })[ref],
+        allRefs: new Set(['D1', 'R1']),
+      }),
+    );
+    expect(plan.skipped).toEqual([]);
+    expect(plan.counts.labels).toBe(2);
+    const out = texts.get('file:///src/board.ts')!;
+    expectValidTs(out);
+    expect(out).toContain('led.referenceLayout = { x: 1.96, y: -5.3, rotation: 0, height: 2 };');
+    expect(out).toContain('r1.referenceLayout = { x: 1.5, y: 1.5, rotation: 0, height: 1.5 };');
+    expect(out).toContain('r1.pcb = { x: 0, y: 0 };');
+  });
+});

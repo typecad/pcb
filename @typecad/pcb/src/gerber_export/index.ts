@@ -10,6 +10,7 @@ export {
 export {
   plotGraphicsLayersFromSource,
   GRAPHIC_LAYERS,
+  canonicalLayerName,
   type GraphicsPlotOptions,
   type LayerSpec,
 } from './layers.js';

@@ -17,6 +17,7 @@ import { EAGLE_DARK } from './themes/eagle-dark.js';
 import { KICAD_2020 } from './themes/kicad-2020.js';
 import { KICAD_CLASSIC } from './themes/kicad-classic.js';
 import { NORD } from './themes/nord.js';
+import type { LayerInfo } from './detect_layer.js';
 
 export interface LayerTheme {
   id: string;
@@ -47,3 +48,65 @@ export const LAYER_THEME_LIST: LayerTheme[] = [
   KICAD_CLASSIC,
   NORD,
 ];
+
+/** Resolve a user-facing theme name (id or label, spacing/punctuation
+ *  insensitive) to a registered theme; KiCad's default maps to the vendored
+ *  KiCad 2020 palette, and -dark/-light name variants resolve to the base
+ *  palette (the board section has no light/dark split). null when nothing
+ *  matches. */
+export function findLayerTheme(name?: string): LayerTheme | null {
+  if (!name) return null;
+  const norm = (s: string): string => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const want = norm(name);
+  if (!want) return null;
+  if (['kicaddefault', 'default', 'kicad', 'pcbnew'].includes(want)) return KICAD_2020;
+  const candidates = [want, want.replace(/(?:dark|light)$/, '')];
+  return (
+    LAYER_THEME_LIST.find((t) => {
+      const id = norm(t.id);
+      const label = norm(t.label);
+      return candidates.some((c) => c === id || c === label);
+    }) ?? null
+  );
+}
+
+/**
+ * Theme ink color for a detected layer — the server-side twin of the
+ * viewer's client-side `themeColorFor` (render/viewer_html.ts); keep the two
+ * in sync. Returns null when the theme carries no entry for the layer.
+ */
+export function layerThemeColor(theme: LayerTheme, info: LayerInfo): string | null {
+  let key: string | null = null;
+  if (info.kind === 'copper') {
+    if (info.side === 'back') key = 'b';
+    else if (info.side === 'inner') key = `in${info.copperIndex ?? 1}`;
+    else key = 'f';
+    const cop = theme.board['copper'] as Record<string, unknown> | undefined;
+    const color = cop?.[key];
+    return typeof color === 'string' ? color : null;
+  }
+  const suffix =
+    info.kind === 'silkscreen'
+      ? 'silks'
+      : info.kind === 'mask'
+        ? 'mask'
+        : info.kind === 'paste'
+          ? 'paste'
+          : info.kind === 'adhes'
+            ? 'adhes'
+            : info.kind === 'fab'
+              ? 'fab'
+              : info.kind === 'other'
+                ? 'cmts_user'
+                : info.kind === 'edge'
+                  ? 'edge_cuts'
+                  : info.kind === 'drill'
+                    ? 'via_through'
+                    : null;
+  if (!suffix) return null;
+  const color =
+    suffix === 'edge_cuts' || suffix === 'via_through' || suffix === 'cmts_user'
+      ? theme.board[suffix]
+      : theme.board[`${info.side === 'back' ? 'b' : 'f'}_${suffix}`];
+  return typeof color === 'string' ? color : null;
+}

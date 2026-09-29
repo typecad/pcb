@@ -2,136 +2,61 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import * as fs from 'fs/promises';
 import * as path from 'path';
-import { pathExists, ensureDir } from './fs.js';
-import logger from '../../../utils/logging.js';
-import { tempManager } from './tempFileManager.js';
-import { cropSvg } from '../../../gitdiff/utils/file-utils.js';
+import { KiCAD } from '../../../kicad.js';
 import { buildKiCADArgs } from '../../../kicad_commands.js';
+import { tempManager } from './tempFileManager.js';
+import { renderNativeDrillSvg, renderNativeLayerSvg } from './nativeRender.js';
 
 const execFileAsync = promisify(execFile);
 
-export async function writeStringToFile(content: string, outputPath: string): Promise<string> {
-  const outputDir = path.dirname(outputPath);
-  const dirExists = await pathExists(outputDir);
-  if (!dirExists) {
-    await ensureDir(outputDir);
-  }
-  await fs.writeFile(outputPath, content, 'utf-8');
-  return outputPath;
+let imageSeq = 0;
+
+/** id prefix unique to one inlined doc image (keeps SVG symbol ids from
+ *  colliding when several images land in the same HTML document — the
+ *  sequence number keeps two images with the same file basename apart). */
+function svgIdPrefix(imagePath: string): string {
+  const slug = path
+    .basename(imagePath, path.extname(imagePath))
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)/g, '');
+  return `img-${++imageSeq}-${slug || 'layer'}`;
 }
 
-async function executeKicadSvgExport(pcbFilePath: string, layer: string, theme: string): Promise<string> {
-  const tempSvgPath = tempManager.createTempFilePath('.svg');
-  let bMirror = false;
-  if (layer.includes('B.')) {
-    bMirror = true;
-  }
-  const { executable, execArgs } = buildKiCADArgs('pcb', [
-    'export',
-    'svg',
-    '--theme',
-    theme,
-    ...(bMirror ? ['--mirror'] : []),
-    '--drill-shape-opt',
-    '0',
-    '--cdnp',
-    '--exclude-drawing-sheet',
-    '--page-size-mode',
-    '2',
-    '--layers',
-    layer,
-    '--mode-single',
-    '--output',
-    tempSvgPath,
-    pcbFilePath,
-  ]);
-  await execFileAsync(executable, execArgs);
-
-  const svgContent = await fs.readFile(tempSvgPath, 'utf-8');
-  await tempManager.cleanupFileAsync(tempSvgPath);
-
-  return cropSvg(svgContent);
+/**
+ * Drill map image for `![{Drill}](…)`: natively plotted Excellon holes over
+ * the board outline — no kicad-cli.
+ */
+export async function renderDrillMap(pcbFilePath: string, imagePath: string): Promise<string> {
+  return renderNativeDrillSvg(pcbFilePath, svgIdPrefix(imagePath));
 }
 
-export async function executeKicadDrillExport(pcbFilePath: string): Promise<string> {
-  const pcbFileName = path.basename(pcbFilePath, path.extname(pcbFilePath));
-  const tempDir = tempManager.createTempDirPath();
-
-  await ensureDir(tempDir);
-
-  const { executable, execArgs } = buildKiCADArgs('pcb', [
-    'export',
-    'drill',
-    '--generate-map',
-    '--map-format',
-    'svg',
-    '--output',
-    tempDir + path.sep,
-    pcbFilePath,
-  ]);
-  await execFileAsync(executable, execArgs);
-
-  const srcPath = path.join(tempDir, `${pcbFileName}-drl_map.svg`);
-  const srcExists = await pathExists(srcPath);
-  if (!srcExists) {
-    throw new Error(`KiCad drill export did not produce expected file: ${srcPath}`);
-  }
-
-  const rawSvg = await fs.readFile(srcPath, 'utf-8');
-
-  const drlPath = path.join(tempDir, `${pcbFileName}.drl`);
-  await fs.unlink(drlPath).catch(() => {
-    logger.debug('svg: failed to delete temp drl file', drlPath);
-  });
-
-  return cropSvg(rawSvg);
+/**
+ * Layer-combination image for `![{F.Cu,F.Mask}](…)` layers: native gerber
+ * plot + native SVG render — no kicad-cli. Back-side combinations mirror
+ * (kicad-cli `--mirror` parity).
+ */
+export async function renderLayerImage(
+  layerNames: string[],
+  pcbFilePath: string,
+  theme: string,
+  imagePath: string,
+): Promise<string> {
+  return renderNativeLayerSvg(pcbFilePath, layerNames, theme, svgIdPrefix(imagePath));
 }
 
-export async function processKicadSvgLayers(layerNames: string[], pcbFilePath: string, theme: string): Promise<string> {
-  if (layerNames.length === 0) {
-    throw new Error('No PCB layers specified for processing');
-  }
-
-  const layers = layerNames.join(',');
-
-  const tempSvgPath = tempManager.createTempFilePath('.svg');
-
-  let bMirror = false;
-  if (layers.includes('B.')) {
-    bMirror = true;
-  }
-
-  const { executable, execArgs } = buildKiCADArgs('pcb', [
-    'export',
-    'svg',
-    '--theme',
-    theme,
-    ...(bMirror ? ['--mirror'] : []),
-    '--drill-shape-opt',
-    '0',
-    '--cdnp',
-    '--exclude-drawing-sheet',
-    '--page-size-mode',
-    '2',
-    '--layers',
-    layers,
-    '--mode-single',
-    '--output',
-    tempSvgPath,
-    pcbFilePath,
-  ]);
-  await execFileAsync(executable, execArgs);
-
-  const svgContent = await fs.readFile(tempSvgPath, 'utf-8');
-  await tempManager.cleanupFileAsync(tempSvgPath);
-
-  return cropSvg(svgContent);
-}
-
+/**
+ * 3D render for `![{Render/side/x/y/z}](…)` — the one doc image that still
+ * needs kicad-cli (no native 3D renderer). Returns null (image skipped,
+ * caller warns) when no KiCad install is discoverable; genuine render
+ * failures still throw.
+ */
 export async function renderKicad3DView(
   renderSpec: { side: string; x: string; y: string; z: string },
   pcbFilePath: string,
-): Promise<Buffer> {
+): Promise<Buffer | null> {
+  if (!KiCAD.isAvailable()) return null;
+
   const tempOutputPath = tempManager.createTempFilePath('.png');
 
   const { executable, execArgs } = buildKiCADArgs('pcb', [

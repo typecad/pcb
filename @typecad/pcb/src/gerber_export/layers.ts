@@ -15,7 +15,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { boardStem, projectGuid, TYPECAD_SOFTWARE } from './writer_utils.js';
+import { projectGuid, TYPECAD_SOFTWARE } from './writer_utils.js';
 import { parse, SNode } from '../sexpr/index.js';
 import type { SExpr } from '../sexpr/index.js';
 import { GerberWriter, type Point } from './gerber_writer.js';
@@ -73,8 +73,35 @@ function padLayerToken(short: string): string | null {
   return null;
 }
 
+/** KiCad GUI/spelled-out layer names → canonical short names the board
+ *  items and this writer use (KiCad's own CLI accepts either spelling). */
+const LAYER_NAME_ALIASES: Record<string, string> = {
+  'F.Silkscreen': 'F.SilkS',
+  'B.Silkscreen': 'B.SilkS',
+  'F.Courtyard': 'F.CrtYd',
+  'B.Courtyard': 'B.CrtYd',
+  'F.Adhesive': 'F.Adhes',
+  'B.Adhesive': 'B.Adhes',
+  'User.Drawings': 'Dwgs.User',
+  'User.Comments': 'Cmts.User',
+  'User.Eco1': 'Eco1.User',
+  'User.Eco2': 'Eco2.User',
+};
+
+/** Canonicalize a user-supplied layer name (alias spelling → short name). */
+export function canonicalLayerName(name: string): string {
+  return LAYER_NAME_ALIASES[name] ?? name;
+}
+
 export interface GraphicsPlotOptions {
   outDir: string;
+  /**
+   * Plot this layer set instead of the KiCad default emission set
+   * (GRAPHIC_LAYERS). Docgen passes an extended list so images may name
+   * user layers KiCad resolves through its built-in table (User.5–9) even
+   * when the board itself carries no items there.
+   */
+  layers?: LayerSpec[];
   generationSoftware?: string;
   creationDate?: string;
   projectGuid?: string;
@@ -106,7 +133,7 @@ export function plotGraphicsLayersFromSource(
   const guid = opts.projectGuid ?? projectGuid(stem);
   fs.mkdirSync(opts.outDir, { recursive: true });
   const written: string[] = [];
-  for (const layer of GRAPHIC_LAYERS) {
+  for (const layer of opts.layers ?? GRAPHIC_LAYERS) {
     const w = new GerberWriter();
     plotGraphicsLayer(w, root, layer);
     const text = w.render({

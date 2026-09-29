@@ -153,16 +153,22 @@ describe('KiCAD Commands', () => {
       expect(result).toBe('ERC success');
     });
 
-    it('should run footprint upgrade command', async () => {
-      vi.spyOn(KiCAD, 'isFlatpak', 'get').mockReturnValue(false);
-      vi.spyOn(KiCAD, 'cliPath', 'get').mockReturnValue('kicad-cli');
-
-      const { execFile } = await import('node:child_process');
-      vi.mocked(execFile).mockImplementation(makeExecFileMock({ stdout: 'Upgrade success' }));
+    it('should run footprint upgrade natively (no kicad-cli process)', async () => {
+      const fs = await import('node:fs');
+      const os = await import('node:os');
+      const path = await import('node:path');
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'fpupgrade-api-'));
+      const file = path.join(dir, 'X.kicad_mod');
+      fs.writeFileSync(
+        file,
+        '(module "old:X" (layer "F.Cu")\n(fp_text reference "R" (at 0 0) (layer "F.SilkS"))\n)\n',
+      );
 
       const { upgradeFootprint } = await import('../src/kicad_commands.js');
-      const result = await upgradeFootprint('test.kicad_mod');
-      expect(result).toBe('Upgrade success');
+      const result = await upgradeFootprint(file);
+      expect(result).toBe('upgraded 1, skipped 0, errors 0');
+      expect(fs.readFileSync(file, 'utf8').replace(/\s+/g, '')).toContain('(footprint"X"');
+      fs.rmSync(dir, { recursive: true, force: true });
     });
 
     it('should export PCB to gerber format', async () => {

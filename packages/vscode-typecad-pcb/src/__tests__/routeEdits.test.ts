@@ -305,3 +305,42 @@ describe('planRouteEdits', () => {
     expect(text).toContain('.to({ x: 4, y: 1, layer: \'F.Cu\', width: 0.3 })\n  .via({ size: 0.6, drill: 0.3 });');
   });
 });
+
+describe('planRouteEdits idempotency across line endings', () => {
+  const route: RouteInput = {
+    net: 'led_a',
+    w: 0.55,
+    from: { ref: 'D1', pin: '1' },
+    to: null,
+    vias: [],
+    pieces: [{ layer: 'In1.Cu', w: 0.55, pts: [{ x: 7.526, y: -0.009 }, { x: 9.48, y: -0.009 }] }],
+  };
+
+  it('recognizes an identical chain in an LF file (no duplicate insert)', () => {
+    const text = src().replace(
+      'typecad.create(',
+      `const route1 = new TrackBuilder(typecad, { net: 'led_a',  })
+  .from({ x: 7.526, y: -0.009 }, 'In1.Cu', 0.55)
+  .to({ x: 9.48, y: -0.009, layer: 'In1.Cu', width: 0.55 });
+
+typecad.create(`,
+    );
+    const plan = planRouteEdits(text, [route]);
+    expect(plan.applied).toBe(0);
+    expect(plan.skipped[0]).toContain('identical route already in source');
+  });
+
+  it('recognizes an identical chain in a CRLF file — the retry must not duplicate it', () => {
+    const text = src().replace(
+      'typecad.create(',
+      `const route1 = new TrackBuilder(typecad, { net: 'led_a',  })
+  .from({ x: 7.526, y: -0.009 }, 'In1.Cu', 0.55)
+  .to({ x: 9.48, y: -0.009, layer: 'In1.Cu', width: 0.55 });
+
+typecad.create(`,
+    ).replace(/\n/g, '\r\n');
+    const plan = planRouteEdits(text, [route]);
+    expect(plan.applied).toBe(0);
+    expect(plan.skipped[0]).toContain('identical route already in source');
+  });
+});

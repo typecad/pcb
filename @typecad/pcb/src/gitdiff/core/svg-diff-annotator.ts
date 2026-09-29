@@ -146,6 +146,14 @@ export function annotateLayerSvgs(originalSvg: string, modifiedSvg: string): SVG
       if (newHtml !== el.outerHtml) {
         modReplacements.push({ index: el.index, oldHtml: el.outerHtml, newHtml });
       }
+    } else {
+      // matched elements dim out of the diff-only view on BOTH sides —
+      // leaving the modified side plain kept the whole board visible
+      // under the added/removed highlights
+      const newHtml = injectClassInElement(el.outerHtml, 'diff-hidden');
+      if (newHtml !== el.outerHtml) {
+        modReplacements.push({ index: el.index, oldHtml: el.outerHtml, newHtml });
+      }
     }
   }
 

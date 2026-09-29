@@ -4,7 +4,7 @@ import { KiCAD } from '../../kicad.js';
 import { IMetadata, defaultMetadata } from './types/metadata.js';
 import { parseMetadata } from './utils/metadata.js';
 import { wrapSectionsInHtml } from './utils/html.js';
-import { processKicadSvgLayers, renderKicad3DView, executeKicadDrillExport } from './utils/svg.js';
+import { renderDrillMap, renderLayerImage, renderKicad3DView } from './utils/svg.js';
 import { customImagePlugin } from './plugins/customImage.js';
 import { generateStackupSvgString } from './utils/pcbLayerRenderer.js';
 import { extractComponents } from './utils/pcbParser.js';
@@ -163,7 +163,7 @@ const docLogger = {
   },
   banner: () => {
     logger.log();
-    logger.log(chalk.bold.cyan('typeCAD Documentation Generator'));
+    logger.log(chalk.bold.cyan('typeCAD/pcb documentation'));
     logger.log(chalk.gray('Generate beautiful PCB documentation'));
     logger.log();
   },
@@ -246,17 +246,6 @@ export async function generateDocumentation(
   await validatePcbFile(pcbFilePath);
   await validateOutputDir(outputFile);
 
-  if (!quiet) docLogger.info('Initializing KiCad environment...');
-  try {
-    if (KiCAD.instance) docLogger.debug('KiCad CLI found and initialized', verbose);
-  } catch (error) {
-    throw new Error(`Failed to initialize KiCad: ${error}`);
-  }
-
-  if (!KiCAD.cliPath) {
-    throw new Error('KiCad CLI path could not be resolved. Please ensure KiCad is installed.');
-  }
-
   const metadata: IMetadata = { ...defaultMetadata };
   const processedImages = new Map<string, Promise<void>>();
   const stackupSvgMap: Map<string, string> = new Map();
@@ -327,6 +316,9 @@ export async function generateDocumentation(
   const shikiPromise = Shiki({ themes: { light: metadata.highlight, dark: metadata.highlight } });
 
   const imageProcessingPromises: Promise<void>[] = [];
+  // 3D renders are the only images that need kicad-cli — warn once per run
+  // when it's missing, then skip those images (everything else is native)
+  let renderUnavailableWarned = false;
 
   if (!quiet) docLogger.info('Configuring image processing...');
   md.use(customImagePlugin, (layers: string[], imagePath: string, width?: number) => {
@@ -350,7 +342,7 @@ export async function generateDocumentation(
 
       if (layers.length === 1 && layers[0] === 'Drill') {
         docLogger.debug('Processing drill layer...', verbose);
-        const svgContent = await executeKicadDrillExport(pcbFilePath);
+        const svgContent = await renderDrillMap(pcbFilePath, imagePath);
         svgContentMap.set(imagePath, svgContent);
         return;
       }
@@ -364,12 +356,21 @@ export async function generateDocumentation(
         );
         if (uniqueLayers.length > 0) {
           docLogger.debug(`Processing PCB layers: [${uniqueLayers.join(', ')}]`, verbose);
-          const svgContent = await processKicadSvgLayers(uniqueLayers, pcbFilePath, metadata.kicad_theme);
+          const svgContent = await renderLayerImage(uniqueLayers, pcbFilePath, metadata.kicad_theme, imagePath);
           svgContentMap.set(imagePath, svgContent);
         }
       }
 
       if (renderLayers.length > 0) {
+        if (!KiCAD.isAvailable()) {
+          if (!renderUnavailableWarned) {
+            renderUnavailableWarned = true;
+            docLogger.warning(
+              'Skipping 3D render image(s): kicad-cli not found. Install KiCad (or set kicad_cli in typecad.conf.ts) to include {Render/…} images; all other images are unaffected.',
+            );
+          }
+          return;
+        }
         docLogger.debug(`Processing 3D render layers: [${renderLayers.join(', ')}]`, verbose);
         const renderResults = await Promise.all(
           renderLayers.map((layer) => {
@@ -499,7 +500,7 @@ export async function generateDocumentation(
     docLogger.log();
     docLogger.log(chalk.italic.gray('This program is part of the typeCAD ecosystem'));
     docLogger.log(
-      chalk.italic.gray('Visit https://typecad.net for more information about schematic-as-code for KiCAD'),
+      chalk.italic.gray('Visit https://www.typecad.dev/pcb for more information'),
     );
   } else if (shouldOpenFile) {
     try {

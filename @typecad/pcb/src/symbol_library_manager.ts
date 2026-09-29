@@ -1,6 +1,7 @@
 import fs from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { serialize, Sym } from './sexpr/index.js';
-import { KiCAD } from './kicad.js';
+import { libraryRoots } from './kicad.js';
 import { LIBRARY_SEPARATOR, getBuildDir } from './utils/constants.js';
 import type { SExprNode } from './types/sexpr_types.js';
 import { extractPins, findSymbolNode, parseSymbolLibrary, resolveExtends } from './symbol_core.js';
@@ -13,6 +14,16 @@ import {
   logWarning,
 } from './renderers/schematic_visualizer_types.js';
 
+/**
+ * Libraries shipped inside @typecad/pcb itself (`bundled/` at the package
+ * root, mirrored for dist/ use). Carries the `power` library — the renderer
+ * needs power:PWR_FLAG for rail generation, so it must resolve on machines
+ * with no KiCad install at all.
+ */
+function bundledLibraryPath(libraryName: string): string {
+  return fileURLToPath(new URL(`../bundled/${libraryName}.kicad_sym`, import.meta.url));
+}
+
 export class SymbolLibraryManager {
   private libraryCache: Map<string, SExprNode> = new Map();
   private symbolCache: Map<string, SymbolDefinition> = new Map();
@@ -22,9 +33,9 @@ export class SymbolLibraryManager {
   private kicadSymbolPath: string;
 
   constructor() {
-    const kicad = KiCAD.instance;
-    const libraryPaths = kicad.getLibraryPaths();
-    this.kicadSymbolPath = libraryPaths.symbols || '';
+    // Library roots, not the CLI: no install is fine when build/lib (or the
+    // bundled power lib) carries what the project references.
+    this.kicadSymbolPath = libraryRoots().symbols ?? '';
   }
 
   private getLibraryContent(libraryName: string): SExprNode | null {
@@ -43,8 +54,16 @@ export class SymbolLibraryManager {
         if (fs.existsSync(symbolFilePath)) {
           symbolFileContents = fs.readFileSync(symbolFilePath, 'utf8');
         } else {
-          logError(`Library file ${libraryName}.kicad_sym not found.`);
-          return null;
+          symbolFilePath = bundledLibraryPath(libraryName);
+          if (fs.existsSync(symbolFilePath)) {
+            symbolFileContents = fs.readFileSync(symbolFilePath, 'utf8');
+          } else {
+            logError(
+              `Library file ${libraryName}.kicad_sym not found (searched install/conf, build/lib, bundled). ` +
+                `Add it to the project with: typecad-pcb lib add ${libraryName}`,
+            );
+            return null;
+          }
         }
       }
 

@@ -1,5 +1,5 @@
 import fs from 'node:fs';
-import { KiCAD } from '../kicad.js';
+import { libraryRoots } from '../kicad.js';
 import { parse } from '../sexpr/index.js';
 import { SNode } from '../sexpr/query.js';
 import type { SExpr } from '../sexpr/types.js';
@@ -64,11 +64,10 @@ export function getFootprintBounds(footprintName: string): FootprintBox | null {
 
 function resolveFootprintPath(footprintName: string): string | null {
   const parts = footprintName.split(LIBRARY_SEPARATOR);
-  const kicad = KiCAD.instance;
-  const libraryPaths = kicad.getLibraryPaths();
+  const roots = libraryRoots();
 
-  if (libraryPaths.footprints) {
-    const path = `${libraryPaths.footprints}/${parts[0]}.pretty/${parts[1]}.kicad_mod`;
+  if (roots.footprints) {
+    const path = `${roots.footprints}/${parts[0]}.pretty/${parts[1]}.kicad_mod`;
     if (fs.existsSync(path)) return path;
   }
 

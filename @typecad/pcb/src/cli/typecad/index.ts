@@ -73,6 +73,10 @@ async function showCommandHelp(command: string, subcommand: string): Promise<boo
     help.showErcHelp();
     return true;
   }
+  if (command === 'lib') {
+    help.showLibHelp();
+    return true;
+  }
   if (command === 'skills') {
     help.showSkillsHelp();
     return true;
@@ -203,6 +207,10 @@ async function main(): Promise<void> {
 
       case 'erc':
         await (await import('./commands/erc.js')).run(parsed);
+        break;
+
+      case 'lib':
+        await (await import('./commands/lib.js')).run(parsed);
         break;
 
       case 'skills':

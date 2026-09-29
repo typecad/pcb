@@ -14,7 +14,7 @@ vi.mock('fs', async () => {
 
 import * as fs from 'fs';
 
-const mockTemplate = `<!DOCTYPE html><html><head><title>PCB Layer Diff Viewer</title></head><body></body></html>`;
+const mockTemplate = `<!DOCTYPE html><html><head><title>PCB Layer Diff Viewer · typeCAD/pcb</title></head><body></body></html>`;
 
 const mockLayers: LayerInfo[] = [
   {

@@ -18,6 +18,30 @@ export interface Bounds {
 export interface RenderOptions {
   /** Page background used by clear-polarity shapes (default white). */
   background?: string;
+  /**
+   * Unique id prefix for this render's aperture symbols and pan/flip groups.
+   * Required when inlining several rendered SVGs into one document — the
+   * default ids (`ap0_…`, `panzoom`, `yflip`) otherwise collide and `<use>`
+   * references resolve into the first SVG in the document.
+   */
+  idPrefix?: string;
+  /** Mirror horizontally (view the board from the bottom, KiCad --mirror). */
+  mirrorX?: boolean;
+  /**
+   * Emit every pad flash as concrete shapes with absolute coordinates
+   * instead of `<defs>` symbols referenced via `<use>`. Self-contained
+   * output (no ids at all) whose leaf elements are position-stable — what
+   * geometry-diffing consumers (gitdiff) need, at the cost of larger SVGs.
+   */
+  inlineFlashes?: boolean;
+  /**
+   * Bake each layer's color into its shapes instead of routing ink through
+   * `fill="var(--ink-…)"` custom properties. The CSS-variable indirection
+   * exists so the interactive viewer can restyle client-side; static embeds
+   * (documentation HTML, rasterizers, office suites) resolve it
+   * inconsistently, so flattened output is the portable form.
+   */
+  flatColors?: boolean;
 }
 
 function escapeXml(value: string): string {
@@ -106,6 +130,78 @@ function apertureDefsShapes(ap: EvaluatedAperture): string {
 interface StrokeProps {
   width: number;
   cap: 'round' | 'butt';
+}
+
+/**
+ * One evaluated aperture flashed at `at`, as concrete leaf shapes carrying
+ * absolute coordinates (the inline-flashes mode). `attrs` rides on every
+ * shape (clear polarity / cut styling).
+ */
+function inlineFlashShapes(ap: EvaluatedAperture, at: Point, attrs: string): string {
+  const out: string[] = [];
+  const off = (p: Point): Point => ({ x: p.x + at.x, y: p.y + at.y });
+  const t = ap.template;
+  if (t) {
+    const hole = t.hole
+      ? `<circle class="cut" cx="${fmt(at.x)}" cy="${fmt(at.y)}" r="${fmt(t.hole.diameter / 2)}"/>`
+      : '';
+    switch (t.kind) {
+      case 'circle':
+        out.push(`<circle${attrs} cx="${fmt(at.x)}" cy="${fmt(at.y)}" r="${fmt(t.diameter / 2)}"/>`);
+        break;
+      case 'rect':
+      case 'obround': {
+        const round =
+          t.kind === 'obround'
+            ? ` rx="${fmt(Math.min(t.width, t.height) / 2)}" ry="${fmt(Math.min(t.width, t.height) / 2)}"`
+            : '';
+        out.push(
+          `<rect${attrs} x="${fmt(at.x - t.width / 2)}" y="${fmt(at.y - t.height / 2)}" width="${fmt(t.width)}" height="${fmt(t.height)}"${round}/>`,
+        );
+        break;
+      }
+      case 'polygon':
+        out.push(`<polygon${attrs} points="${polygonPoints(regularPolygon(t.outerDiameter, t.vertices, t.rotation).map(off))}"/>`);
+        break;
+    }
+    out.push(hole);
+    return out.join('');
+  }
+  for (const p of ap.primitives) {
+    const a = p.exposure === false ? ' class="cut"' : attrs;
+    switch (p.kind) {
+      case 'circle':
+        out.push(`<circle${a} cx="${fmt(p.center.x + at.x)}" cy="${fmt(p.center.y + at.y)}" r="${fmt(p.diameter / 2)}"/>`);
+        break;
+      case 'vectorLine':
+        out.push(`<polygon${a} points="${polygonPoints(vectorLinePolygon(p.from, p.to, p.width, p.rotation).map(off))}"/>`);
+        break;
+      case 'centerLine': {
+        // rect rotated about its own center → absolute polygon corners
+        const hx = p.width / 2;
+        const hy = p.height / 2;
+        const corners: Point[] = [
+          { x: -hx, y: -hy },
+          { x: hx, y: -hy },
+          { x: hx, y: hy },
+          { x: -hx, y: hy },
+        ].map((c) => off(rotatePoint({ x: c.x + p.center.x, y: c.y + p.center.y }, p.rotation)));
+        out.push(`<polygon${a} points="${polygonPoints(corners)}"/>`);
+        break;
+      }
+      case 'outline':
+        out.push(
+          `<polygon${a} points="${polygonPoints(p.points.map((pt) => off(rotatePoint(pt, p.rotation))))}"/>`,
+        );
+        break;
+      case 'polygon':
+        out.push(
+          `<polygon${a} points="${polygonPoints(regularPolygon(p.outerDiameter, p.vertices, p.rotation).map((pt) => off({ x: pt.x + p.center.x, y: pt.y + p.center.y })))}"/>`,
+        );
+        break;
+    }
+  }
+  return out.join('');
 }
 
 function strokeFor(ap: EvaluatedAperture, warnings: Set<string>): StrokeProps {
@@ -233,6 +329,12 @@ export interface InkOptions {
    * (k=0.024) instead of the external-layer one (k=0.048).
    */
   innerLayer?: boolean;
+  /**
+   * flash pads as absolute-coordinate shapes instead of defs symbols +
+   * `<use>` references — self-contained, position-stable output for
+   * geometry diffing (see RenderOptions.inlineFlashes).
+   */
+  inlineFlashes?: boolean;
 }
 
 export interface LayerInk {
@@ -274,10 +376,12 @@ export function renderLayerInk(layer: RenderLayer, options: InkOptions): LayerIn
 
   // aperture symbols for flashes
   const flashed = new Set<number>();
-  for (const op of img.ops) if (op.type === 'flash') flashed.add(op.aperture);
-  for (const code of flashed) {
-    const ap = evalAp(code);
-    defs.push(`<g id="${options.idPrefix}_${code}">${apertureDefsShapes(ap)}</g>`);
+  if (!options.inlineFlashes) {
+    for (const op of img.ops) if (op.type === 'flash') flashed.add(op.aperture);
+    for (const code of flashed) {
+      const ap = evalAp(code);
+      defs.push(`<g id="${options.idPrefix}_${code}">${apertureDefsShapes(ap)}</g>`);
+    }
   }
 
   const cutAttrs = () =>
@@ -291,7 +395,12 @@ export function renderLayerInk(layer: RenderLayer, options: InkOptions): LayerIn
         (op.net ? ` data-net="${escapeXml(op.net)}"` : '') +
         (op.ref ? ` data-ref="${escapeXml(op.ref)}"` : '') +
         (op.pin ? ` data-pin="${escapeXml(op.pin)}"` : '');
-      body.push(`<use${attrs}${probe} href="#${options.idPrefix}_${op.aperture}" x="${fmt(op.at.x)}" y="${fmt(op.at.y)}"/>`);
+      if (options.inlineFlashes) {
+        const shapes = inlineFlashShapes(evalAp(op.aperture), op.at, attrs);
+        if (shapes) body.push(`<g${probe}>${shapes}</g>`);
+      } else {
+        body.push(`<use${attrs}${probe} href="#${options.idPrefix}_${op.aperture}" x="${fmt(op.at.x)}" y="${fmt(op.at.y)}"/>`);
+      }
     } else if (op.type === 'trace') {
       if (options.flashesOnly) continue;
       const ap = evalAp(op.aperture);
@@ -433,6 +542,10 @@ export function computeLayerBounds(layer: RenderLayer): Bounds | null {
  */
 export function renderSvg(layers: RenderLayer[], options: RenderOptions = {}): string {
   const background = options.background ?? '#ffffff';
+  // a caller-supplied prefix keeps ids unique when several renders are
+  // inlined into one document; the bare default preserves the viewer's
+  // historical ids (`panzoom`, `yflip`, `apN_…`)
+  const idPrefix = options.idPrefix ? `${options.idPrefix}-` : '';
   const defs: string[] = [];
   const groups: string[] = [];
   const units = layers[0]?.image.units ?? 'mm';
@@ -465,13 +578,18 @@ export function renderSvg(layers: RenderLayer[], options: RenderOptions = {}): s
 
     // Ink flows through a per-layer CSS variable so the interactive viewer
     // can restyle layers client-side (theme switch) without touching a
-    // single path; the literal default rides on the group's style. The PCBA
-    // image renderer calls renderLayerInk with flat colors of its own.
+    // single path; the literal default rides on the group's style. Static
+    // embeds (docgen) flatten to literal colors — var() in presentation
+    // attributes resolves inconsistently outside browsers.
     const inkVar = `--ink-${info.id}`;
-    const inkColor = `var(${inkVar})`;
+    const inkColor = options.flatColors ? info.color : `var(${inkVar})`;
     const ink: LayerInk =
       'ops' in layer.image
-        ? renderLayerInk(layer, { color: inkColor, idPrefix: `ap${li}` })
+        ? renderLayerInk(layer, {
+            color: inkColor,
+            idPrefix: `${idPrefix}ap${li}`,
+            inlineFlashes: options.inlineFlashes,
+          })
         : renderDrillInk(layer, { color: inkColor });
     defs.push(...ink.defs);
     body.push(...ink.body);
@@ -483,22 +601,33 @@ export function renderSvg(layers: RenderLayer[], options: RenderOptions = {}): s
       );
     }
     groups.push(
-      `<g data-layer-id="${escapeXml(info.id)}" data-layer-name="${escapeXml(info.name)}" data-kind="${info.kind}" fill="${inkColor}" style="${inkVar}:${info.color}"${
-        info.defaultVisible ? '' : ' display="none"'
-      }>${body.join('')}</g>`,
+      `<g data-layer-id="${escapeXml(info.id)}" data-layer-name="${escapeXml(info.name)}" data-kind="${info.kind}" fill="${inkColor}"${
+        options.flatColors ? '' : ` style="${inkVar}:${info.color}"`
+      }${info.defaultVisible ? '' : ' display="none"'}>${body.join('')}</g>`,
     );
   });
 
   const margin = Math.max(all.maxX - all.minX, all.maxY - all.minY) * 0.02;
   const width = all.maxX - all.minX + 2 * margin;
   const height = all.maxY - all.minY + 2 * margin;
-  const viewBox = `${fmt(all.minX - margin)} ${fmt(-all.maxY - margin)} ${fmt(width)} ${fmt(height)}`;
+  // mirrorX flips content with scale(-1,1), so the viewBox tracks the
+  // negated x extent instead of the plain minimum
+  const viewBox = options.mirrorX
+    ? `${fmt(-(all.maxX + margin))} ${fmt(-all.maxY - margin)} ${fmt(width)} ${fmt(height)}`
+    : `${fmt(all.minX - margin)} ${fmt(-all.maxY - margin)} ${fmt(width)} ${fmt(height)}`;
+  const panId = `${idPrefix}panzoom`;
+  const flipId = `${idPrefix}yflip`;
+  const flip = `<g id="${flipId}" transform="scale(1,-1)">${groups.join('')}</g>`;
 
   return [
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewBox}" data-units="${units}" width="100%" height="100%" style="--bg:${background}">`,
-    `<style>.cut{fill:var(--bg);stroke:var(--bg);}</style>`,
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewBox}" data-units="${units}" width="100%" height="100%"${options.flatColors ? '' : ` style="--bg:${background}"`}>`,
+    // clear-polarity shapes fake-erase with the page background in the
+    // interactive viewer; static embeds sit on the host page's background,
+    // so the cut shape just doesn't paint (what shows through reads as the
+    // hole/opening)
+    `<style>${options.flatColors ? '.cut{fill:none;stroke:none}' : '.cut{fill:var(--bg);stroke:var(--bg);}'}</style>`,
     defs.length > 0 ? `<defs>${defs.join('')}</defs>` : '',
-    `<g id="panzoom"><g id="yflip" transform="scale(1,-1)">${groups.join('')}</g></g>`,
+    `<g id="${panId}">${options.mirrorX ? `<g transform="scale(-1,1)">${flip}</g>` : flip}</g>`,
     `</svg>`,
   ]
     .filter(Boolean)

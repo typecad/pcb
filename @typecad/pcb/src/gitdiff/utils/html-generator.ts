@@ -15,11 +15,40 @@ export interface LayerInfo {
 
 function cleanSvgForInlining(svgContent: string): string {
   let svg = sanitizeSvg(svgContent);
-  svg = svg.replace(/<\?xml[^?]*\?>\s*/g, '');
+  svg = svg.replace(/<\?xml[^?]*?\?>\s*/g, '');
   svg = svg.replace(/<!DOCTYPE[^>]*>\s*/g, '');
   svg = svg.replace(/(<svg\b[^>]*?)\bwidth="[^"]*"/, '$1width="100%"');
   svg = svg.replace(/(<svg\b[^>]*?)\bheight="[^"]*"/, '$1height="100%"');
   return svg.trim();
+}
+
+/**
+ * The assembled diff-viewer template. Normally produced by the build
+ * (scripts/assemble-gitdiff-viewer.mjs → dist/gitdiff/diff-viewer.html);
+ * when running from the source tree (tests, tsx) that file doesn't exist,
+ * so assemble the raw viewer template in memory — the viewer JS itself is
+ * always the compiled copy under dist/.
+ */
+function loadViewerTemplate(): string {
+  const currentDir = path.dirname(fileURLToPath(import.meta.url));
+  const assembled = path.join(currentDir, '..', 'diff-viewer.html');
+  if (fs.existsSync(assembled)) return fs.readFileSync(assembled, 'utf8');
+
+  const viewerDir = path.join(currentDir, '..', 'viewer');
+  const htmlPath = path.join(viewerDir, 'diff-viewer.html');
+  const cssPath = path.join(viewerDir, 'diff-viewer.css');
+  const jsPath = path.resolve(currentDir, '..', '..', '..', 'dist', 'gitdiff', 'viewer', 'diff-viewer.js');
+  if (!fs.existsSync(htmlPath) || !fs.existsSync(cssPath) || !fs.existsSync(jsPath)) {
+    throw new Error(`Could not find diff-viewer.html template at: ${assembled}`);
+  }
+  const basecoatPath = path.join(viewerDir, 'basecoat.cdn.min.css');
+  const css =
+    (fs.existsSync(basecoatPath) ? fs.readFileSync(basecoatPath, 'utf8') + '\n' : '') +
+    fs.readFileSync(cssPath, 'utf8');
+  return fs
+    .readFileSync(htmlPath, 'utf8')
+    .replace('<!-- INLINE_CSS -->', `<style>\n${css}\n</style>`)
+    .replace('<!-- INLINE_JS -->', `<script>\n${fs.readFileSync(jsPath, 'utf8')}\n</script>`);
 }
 
 export async function generateHtmlReport(
@@ -30,14 +59,7 @@ export async function generateHtmlReport(
   fileNames?: { original: string; modified: string },
   svgOffset?: { x: number; y: number },
 ): Promise<string> {
-  const currentDir = path.dirname(fileURLToPath(import.meta.url));
-  const templatePath = path.join(currentDir, '..', 'diff-viewer.html');
-
-  if (!fs.existsSync(templatePath)) {
-    throw new Error(`Could not find diff-viewer.html template at: ${templatePath}`);
-  }
-
-  let htmlContent = fs.readFileSync(templatePath, 'utf8');
+  let htmlContent = loadViewerTemplate();
 
   const layerData = htmlLayers.map((layer) => ({
     name: layer.name,
@@ -72,8 +94,8 @@ export async function generateHtmlReport(
     ? `${path.basename(fileNames.original)} vs ${path.basename(fileNames.modified)}`
     : 'PCB Layer Diff Viewer';
   htmlContent = htmlContent.replace(
-    '<title>PCB Layer Diff Viewer</title>',
-    `<title>${titleBase} - ${timestamp}</title>`,
+    '<title>PCB Layer Diff Viewer · typeCAD/pcb</title>',
+    `<title>${titleBase} - ${timestamp} · typeCAD/pcb</title>`,
   );
 
   htmlContent = htmlContent.replace(

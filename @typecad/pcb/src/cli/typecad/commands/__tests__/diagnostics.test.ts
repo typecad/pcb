@@ -15,6 +15,7 @@ vi.mock('../../pipeline.js', () => ({
   runBuildStep: (...args: unknown[]) => runBuildStepMock(...args),
   findBuildFiles: (...args: unknown[]) => findBuildFilesMock(...args),
   findBuildFile: (...args: unknown[]) => findBuildFileMock(...args),
+  findBoardFile: () => null,
   detectEntryFile: (...args: unknown[]) => detectEntryFileMock(...args),
   runErcStep: (...args: unknown[]) => runErcStepMock(...args),
   runDrcStep: (...args: unknown[]) => runDrcStepMock(...args),
@@ -49,6 +50,7 @@ const NETLIST = `(export (version "E")
 let tmpDir: string;
 let netPath: string;
 let entryPath: string;
+let schPath: string;
 
 beforeAll(() => {
   tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'typecad-diag-'));
@@ -56,6 +58,8 @@ beforeAll(() => {
   fs.writeFileSync(netPath, NETLIST, 'utf8');
   entryPath = path.join(tmpDir, 'board.ts');
   fs.writeFileSync(entryPath, '// entry\n', 'utf8');
+  schPath = path.join(tmpDir, 'board.kicad_sch');
+  fs.writeFileSync(schPath, '(kicad_sch)\n', 'utf8');
 });
 
 afterAll(() => {
@@ -65,11 +69,27 @@ afterAll(() => {
 beforeEach(() => {
   runBuildStepMock.mockReset();
   findBuildFilesMock.mockReset().mockReturnValue([]);
-  findBuildFileMock.mockReset().mockImplementation((ext: string) => (ext === '.net' ? netPath : null));
+  findBuildFileMock
+    .mockReset()
+    .mockImplementation((ext: string) => (ext === '.net' || ext === '.kicad_sch' ? (ext === '.net' ? netPath : schPath) : null));
   detectEntryFileMock.mockReset().mockReturnValue(entryPath);
   runErcStepMock.mockReset();
   runDrcStepMock.mockReset();
 });
+
+/** native ERC report fixture next to the schematic, newer than it */
+function writeNativeErcReport(violations: unknown[]): string {
+  const reportPath = path.join(tmpDir, 'board_erc.json');
+  fs.writeFileSync(
+    reportPath,
+    JSON.stringify({ engine: 'typecad-native', source: 'board.kicad_sch', sheets: [{ path: '/', violations }] }),
+    'utf8',
+  );
+  // the schematic must predate the report or it reads as stale
+  const past = new Date(Date.now() - 60_000);
+  fs.utimesSync(schPath, past, past);
+  return reportPath;
+}
 
 describe('diagnostics command', () => {
   it('writes markdown + JSON next to --out without building when --skip-build', async () => {
@@ -118,5 +138,43 @@ describe('diagnostics command', () => {
   it('asks for an explicit board when multiple .kicad_pcb files exist', async () => {
     findBuildFilesMock.mockReturnValue(['a.kicad_pcb', 'b.kicad_pcb']);
     await expect(run(parsedWith({ 'skip-build': true }))).rejects.toThrow(/Multiple \.kicad_pcb/i);
+  });
+
+  it('reads the native ERC report from the build by default (no kicad-cli)', async () => {
+    writeNativeErcReport([
+      { type: 'pin_not_connected', severity: 'error', description: 'Pin not connected', items: [] },
+    ]);
+    const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'typecad-diag-out-'));
+    await run(parsedWith({ 'skip-build': true, 'skip-drc': true, out: path.join(outDir, 'r.md') }));
+
+    expect(runErcStepMock).not.toHaveBeenCalled();
+    const data = JSON.parse(fs.readFileSync(path.join(outDir, 'r.json'), 'utf8'));
+    expect(data.erc.ran).toBe(true);
+    expect(data.erc.errors).toBe(1);
+    expect(data.erc.violations[0].type).toBe('pin_not_connected');
+    fs.rmSync(outDir, { recursive: true, force: true });
+  });
+
+  it('does not trust a native ERC report older than the schematic', async () => {
+    writeNativeErcReport([]);
+    const reportPath = path.join(tmpDir, 'board_erc.json');
+    const past = new Date(Date.now() - 120_000);
+    fs.utimesSync(reportPath, past, past); // now older than the .kicad_sch
+    const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'typecad-diag-out-'));
+    await run(parsedWith({ 'skip-build': true, 'skip-drc': true, out: path.join(outDir, 'r.md') }));
+
+    const data = JSON.parse(fs.readFileSync(path.join(outDir, 'r.json'), 'utf8'));
+    expect(data.erc.ran).toBe(false);
+    expect(data.erc.reason).toMatch(/current build/i);
+    fs.rmSync(outDir, { recursive: true, force: true });
+  });
+
+  it('runs ERC through kicad-cli when --kicad is passed', async () => {
+    runErcStepMock.mockResolvedValue({ ran: true, passed: true, errors: 0, warnings: 0, violations: [] });
+    const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'typecad-diag-out-'));
+    await run(parsedWith({ 'skip-build': true, 'skip-drc': true, kicad: true, out: path.join(outDir, 'r.md') }));
+
+    expect(runErcStepMock).toHaveBeenCalledWith(schPath);
+    fs.rmSync(outDir, { recursive: true, force: true });
   });
 });

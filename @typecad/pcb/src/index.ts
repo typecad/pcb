@@ -47,7 +47,15 @@ export { syncPackageBuildLib, syncThisPackageBuildLib } from './package_files.js
 export type { IPinPowerInfo } from './pcb/pcb_interfaces.js';
 export { KiCAD, discoverKiCAD, kicad_cli_path } from './kicad.js';
 
-export { runDRC, runERC, upgradeFootprint, exportPCB, exportSchematic } from './kicad_commands.js';
+export {
+	runDRC,
+	runERC,
+	upgradeFootprint,
+	exportPCB,
+	exportSchematic,
+	executeKiCADCommand,
+	executeKiCADCommandSync,
+} from './kicad_commands.js';
 
 export type { HwContract, ContractPin, ContractComponent, ContractOptions } from './contract.js';
 export type { NgspiceResult } from './simulation/types.js';

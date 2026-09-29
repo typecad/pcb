@@ -40,6 +40,12 @@ export {
 export { stitchBoardOutline, rectangleContour, type BoardOutline, type OutlineContour } from './render/outline.js';
 export { DEFAULT_PCBA_THEME, PCBA_THEMES, mergeTheme, type PcbaTheme } from './render/theme.js';
 export {
+  findLayerTheme,
+  layerThemeColor,
+  LAYER_THEME_LIST,
+  type LayerTheme,
+} from './themes.js';
+export {
   loadPcbaTheme,
   parseNetlistComponents,
   pcbaThemeNames,

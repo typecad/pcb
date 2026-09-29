@@ -20,6 +20,7 @@ const VALUE_FLAGS = new Set([
   'out-dir',
   'file',
   'category',
+  'footprint',
   'to',
   'gap',
   'rot',
@@ -66,7 +67,8 @@ export function parseArgv(argv: string[]): ParsedArgs {
       result.command === 'skills' ||
       result.command === 'export' ||
       result.command === 'query' ||
-      result.command === 'edit') &&
+      result.command === 'edit' ||
+      result.command === 'lib') &&
     typecadTokens.length > i &&
     !typecadTokens[i].startsWith('-')
   ) {

@@ -1,5 +1,4 @@
 import fs from 'node:fs';
-import path from 'node:path';
 import chalk from 'chalk';
 import type { ParsedArgs } from '../parser.js';
 import logger from '../../../utils/logging.js';
@@ -15,7 +14,7 @@ import {
   type KiCadCheckResult,
   type KiCadViolation,
 } from '../pipeline.js';
-import { computeNativeDrc } from './drc.js';
+import { nativeDrcStep, nativeErcStep } from '../native_checks.js';
 
 interface StepResult {
   ran: boolean;
@@ -63,90 +62,6 @@ function printViolations(violations: KiCadViolation[]): void {
     }
   }
   if (violations.length > 25) logger.log(chalk.gray(`  ... and ${violations.length - 25} more`));
-}
-
-/** Native DRC as a check step — the KiCadCheckResult shape over the
- *  engine's report (errors/warnings/violations + unconnected count). */
-async function nativeDrcStep(pcbPath: string): Promise<StepResult & { unconnectedItems?: number; reportPath?: string }> {
-  try {
-    const { report, reportPath } = await computeNativeDrc(pcbPath);
-    let errors = 0;
-    let warnings = 0;
-    const violations = report.violations.map((v) => ({
-      type: v.type,
-      severity: v.severity,
-      description: v.description,
-      items: v.items,
-    }));
-    for (const v of report.violations) {
-      if (v.severity === 'error') errors++;
-      else if (v.severity === 'warning') warnings++;
-    }
-    const unconnectedItems = report.unconnected_items.length;
-    return {
-      ran: true,
-      passed: errors === 0 && warnings === 0 && unconnectedItems === 0,
-      errors,
-      warnings,
-      violations,
-      unconnectedItems,
-      reportPath,
-    };
-  } catch (e) {
-    return { ran: false, passed: false, reason: e instanceof Error ? e.message : String(e), errors: 0, warnings: 0, violations: [] };
-  }
-}
-
-/** Native ERC as a check step — reads the report the build step just wrote
- *  (the build runs the engine over the typeCAD object model and persists
- *  <name>_erc.json next to the schematic). */
-function nativeErcStep(schPath: string): StepResult & { reportPath?: string } {
-  const reportPath = path.join(
-    path.dirname(schPath),
-    path.basename(schPath, '.kicad_sch') + '_erc.json',
-  );
-  try {
-    if (!fs.existsSync(reportPath)) {
-      return {
-        ran: false,
-        passed: false,
-        reason: 'No native ERC report from the build',
-        errors: 0,
-        warnings: 0,
-        violations: [],
-      };
-    }
-    const report = JSON.parse(fs.readFileSync(reportPath, 'utf8')) as {
-      sheets?: Array<{ violations?: KiCadViolation[] }>;
-    };
-    const violations: KiCadViolation[] = [];
-    for (const sheet of report.sheets ?? []) {
-      violations.push(...(sheet.violations ?? []));
-    }
-    let errors = 0;
-    let warnings = 0;
-    for (const v of violations) {
-      if (v.severity === 'error') errors++;
-      else if (v.severity === 'warning') warnings++;
-    }
-    return {
-      ran: true,
-      passed: errors === 0 && warnings === 0,
-      errors,
-      warnings,
-      violations,
-      reportPath,
-    };
-  } catch (e) {
-    return {
-      ran: false,
-      passed: false,
-      reason: e instanceof Error ? e.message : String(e),
-      errors: 0,
-      warnings: 0,
-      violations: [],
-    };
-  }
 }
 
 export async function run(parsed: ParsedArgs): Promise<void> {

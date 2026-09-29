@@ -1,9 +1,8 @@
 import * as fs from 'fs/promises';
-import { pathExists } from './fs.js';
-import { writeStringToFile } from './svg.js';
 import { PCBConfig, CacheConfig } from './config.js';
-import { Sym, parse, isList } from '../../../sexpr/index.js';
+import { Sym, parse, isList, SNode } from '../../../sexpr/index.js';
 import type { SExpr } from '../../../sexpr/index.js';
+import { copperLayers } from '../../../gerber_export/copper.js';
 
 interface Layer {
   name: string;
@@ -297,7 +296,7 @@ function generateStackupSVG(stackup: Stackup): string {
 
   currentY = yOffset;
 
-  layers.forEach((layer, index) => {
+  layers.forEach((layer) => {
     const layerHeight = getLayerHeight(layer);
     const color = getLayerColor(layer);
     const centerY = currentY + layerHeight / 2;
@@ -373,19 +372,75 @@ function generateStackupSVG(stackup: Stackup): string {
   return svg;
 }
 
+/**
+ * KiCad-default stackup for boards that carry no `(setup (stackup))` node —
+ * typeCAD-written boards typically don't. Same synthesis the gerber job-file
+ * writer applies: silk/paste/mask skins around the board's copper layers,
+ * dielectrics (prepreg, core, prepreg, …) sharing the remaining thickness
+ * from `(general (thickness))`, FR4 throughout. null when the board can't
+ * even be parsed for a copper set.
+ */
+async function synthesizeDefaultStackup(pcbFilePath: string): Promise<Stackup | null> {
+  try {
+    const content = await getPCBContent(pcbFilePath);
+    const parsed = parse(content);
+    if (!isList(parsed)) return null;
+
+    let thickness = 1.6;
+    const general = getChild(parsed, 'general');
+    const thicknessNode = general ? getChild(general, 'thickness') : null;
+    if (thicknessNode) {
+      const parsedThickness = parseFloat(getStringAt(thicknessNode, 1));
+      if (Number.isFinite(parsedThickness) && parsedThickness > 0) {
+        thickness = parsedThickness;
+      }
+    }
+
+    const copperNames = copperLayers(SNode.from(parsed as SExpr[])).map((c) => c.name);
+    if (copperNames.length < 2) return null;
+
+    const CU_T = 0.035;
+    const MASK_T = 0.01;
+    const dieT = Math.round(
+      ((thickness - copperNames.length * CU_T - 2 * MASK_T) / (copperNames.length - 1)) * 1000,
+    ) / 1000;
+
+    const layers: Layer[] = [
+      { name: 'top-silk', type: 'silkscreen' },
+      { name: 'top-paste', type: 'paste' },
+      { name: 'top-mask', type: 'mask', thickness: MASK_T },
+    ];
+    copperNames.forEach((name, i) => {
+      layers.push({ name, type: 'copper', thickness: CU_T });
+      if (i < copperNames.length - 1) {
+        // F.Cu/prepreg/In1.Cu/core/In2.Cu/prepreg/B.Cu — KiCad's ordering
+        layers.push({
+          name: `dielectric-${i}`,
+          type: i % 2 === 0 ? 'prepreg' : 'core',
+          thickness: dieT,
+          material: 'FR4',
+        });
+      }
+    });
+    layers.push(
+      { name: 'bottom-mask', type: 'mask', thickness: MASK_T },
+      { name: 'bottom-paste', type: 'paste' },
+      { name: 'bottom-silk', type: 'silkscreen' },
+    );
+    return { layers, copperFinish: '', dielectricConstraints: false };
+  } catch {
+    return null;
+  }
+}
+
 export async function generateStackupSvgString(pcbFilePath: string): Promise<string | null> {
   const stackup = await extractStackup(pcbFilePath);
   if (!stackup.success || !stackup.data) {
-    return null;
+    // no authored stackup: draw the default for the board's copper count
+    // instead of skipping the image (kicad-cli boards always had one; the
+    // job file synthesizes the same default)
+    const synthesized = await synthesizeDefaultStackup(pcbFilePath);
+    return synthesized ? generateStackupSVG(synthesized) : null;
   }
-  return generateStackupSVG(stackup.data);
-}
-
-async function generateStackupSvgFromFile(pcbFilePath: string): Promise<string> {
-  const stackup = await extractStackup(pcbFilePath);
-  if (!stackup.success || !stackup.data) {
-    throw stackup.error || new Error('No stackup data found in PCB file');
-  }
-
   return generateStackupSVG(stackup.data);
 }

@@ -22,6 +22,7 @@ export function showTopLevelHelp(): void {
   console.log('  validate            Validate project source without full build');
   console.log('  drc                 Run Design Rule Check on a KiCad PCB file');
   console.log('  erc                 Run Electrical Rules Check on a KiCad schematic');
+  console.log('  lib add/list        Fetch/list KiCad libraries into build/lib (no install needed)');
   console.log('  export gerbers      Export Gerber files from a KiCad PCB');
   console.log('  export drill        Export drill files from a KiCad PCB');
   console.log('  skills              List and query typeCAD skills and API patterns');
@@ -189,7 +190,8 @@ export function showDocHelp(): void {
   console.log(chalk.white.bold('typecad-pcb doc') + ' - Generate PCB documentation from Markdown\n');
   console.log('Generate a self-contained HTML document from a Markdown file and KiCad PCB file.');
   console.log('Layer, drill-map and stackup images are rendered natively (no KiCad install');
-  console.log('needed); only {Render/...} 3D images use kicad-cli.');
+  console.log('needed); {Render/...} 3D images use kicad-cli when available and are skipped');
+  console.log('with a warning otherwise.');
   console.log('\nUsage: typecad-pcb doc <markdown_file> <pcb_file> [options]\n');
   console.log('Arguments:');
   console.log('  <markdown_file>       Input Markdown file (.md)');
@@ -205,6 +207,37 @@ export function showDocHelp(): void {
   console.log('  typecad-pcb doc docs/board.md build/board.kicad_pcb --verbose');
   console.log('  typecad-pcb doc docs/board.md build/board.kicad_pcb --quiet');
   console.log('  typecad-pcb doc docs/board.md build/board.kicad_pcb --no-open');
+}
+
+export function showLibHelp(): void {
+  console.log(chalk.white.bold('typecad-pcb lib') + ' - Project-owned KiCad libraries, no install required\n');
+  console.log(
+    'Fetches libraries from the official KiCad library repos into the\n' +
+      "project's build/lib/ (through a user-level cache). What lands in the\n" +
+      'project is committable — the board builds offline on any machine.\n' +
+      'The build itself never fetches: resolution order is install/conf\n' +
+      'paths → build/lib → the power library bundled with @typecad/pcb.\n',
+  );
+  console.log('Usage:');
+  console.log('  typecad-pcb lib add <library>... [--footprint Lib:Name]\n');
+  console.log('Subcommands:');
+  console.log('  add                 Fetch symbol libraries (e.g. Device, Connector_Generic)');
+  console.log('  add Lib:Symbol      Fetch one symbol (e.g. Device:R_Small)');
+  console.log('  add --footprint     Fetch a footprint + its 3D model(s) (references are');
+  console.log('                      rewritten to ${KIPRJMOD}/lib/3dshapes so the KiCad GUI');
+  console.log('                      and kicad-cli find them with no setup)');
+  console.log('  list                Show active library sources and build/lib contents\n');
+  console.log('Options:');
+  console.log('  --footprint <Lib:Name>  A single footprint to fetch\n');
+  console.log('Notes:');
+  console.log('  `lib add power` copies the bundled power library offline (no network).');
+  console.log('  Source: gitlab.com/kicad/libraries (master); successive adds accumulate');
+  console.log('  symbols into the same project library file.');
+  console.log('  Cache: ~/.typecad/cache/kicad-libs (TYPECAD_LIB_CACHE overrides).\n');
+  console.log('Examples:');
+  console.log('  typecad-pcb lib add Device Connector_Generic');
+  console.log('  typecad-pcb lib add --footprint Package_SO:SOIC-8_3.9x4.9mm_P1.27mm');
+  console.log('  typecad-pcb lib list');
 }
 
 export function showErcHelp(): void {
@@ -464,7 +497,7 @@ export function showDiagnosticsHelp(): void {
   console.log('  - BOM-style component listing');
   console.log('  - every net and every pin-to-net connection (incl. unconnected + DNC)');
   console.log('  - mermaid graphs: net connectivity, clusters, power distribution');
-  console.log('  - electrical checks from pin types, plus kicad-cli ERC and DRC');
+  console.log('  - electrical checks from pin types, plus native ERC and DRC');
   console.log('  - per-net routing status, zones, and board stats\n');
   console.log('The markdown renders in VSCode preview (mermaid included).');
   console.log('Informational: violations land in the report, not the exit code.\n');
@@ -474,6 +507,7 @@ export function showDiagnosticsHelp(): void {
   console.log('  --skip-build        Reuse existing ./build artifacts');
   console.log('  --skip-erc          Skip the ERC step');
   console.log('  --skip-drc          Skip the DRC step');
+  console.log('  --kicad             Run ERC/DRC through kicad-cli (native engines are the default)');
   console.log('  --json              Also print the full report JSON to stdout\n');
   console.log('Examples:');
   console.log('  typecad-pcb diagnostics');

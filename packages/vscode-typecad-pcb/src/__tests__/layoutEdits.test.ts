@@ -220,6 +220,62 @@ describe('planTextEdits', () => {
     expect((out.match(/const after/g) ?? []).length).toBe(1);
     expect(out).toContain("typecad.text({ text: 'z', x: 6, y: 6 });\nconst after = 1;\n");
   });
+
+  it('rewrites a style diff onto present keys (width/height/thickness/font/italic)', () => {
+    const { edits, skipped } = planTextEdits(src, [
+      {
+        text0: 'rd-skeleton',
+        x0: 62,
+        y0: 80,
+        text: 'rd-skeleton',
+        x: 62,
+        y: 80,
+        rot: 0,
+        style: { w: 2, h: 2.5, thickness: 0.3, font: 'DejaVu Sans', italic: true },
+      },
+    ]);
+    expect(skipped).toHaveLength(0);
+    const out = applyPlacementEdits(src, edits);
+    expect(out).toContain("font: 'DejaVu Sans'");
+    expect(out).toContain('width: 2');
+    expect(out).toContain('height: 2.5');
+    expect(out).toContain('thickness: 0.3');
+    expect(out).toContain('italic: true');
+    expect(out).toContain("text: 'rd-skeleton', x: 62, y: 80");
+    expect(out).toContain("typecad.text({ text: 'vcc', x: 10, y: 4, layer: 'F.Fab' })");
+  });
+
+  it('appends absent style keys and replaces a nested justify object', () => {
+    const s = "typecad.text({ text: 'vcc', x: 10, y: 4, layer: 'F.Fab', justify: { horizontal: 'left' } });\n";
+    const { edits } = planTextEdits(s, [
+      {
+        text0: 'vcc',
+        x0: 10,
+        y0: 4,
+        text: 'vcc',
+        x: 10,
+        y: 4,
+        rot: 0,
+        style: { h: 2, bold: true, justify: { horizontal: 'right', vertical: 'top', mirror: true } },
+      },
+    ]);
+    const out = applyPlacementEdits(s, edits);
+    expect(out).toContain('height: 2');
+    expect(out).toContain('bold: true');
+    expect(out).toContain("justify: { horizontal: 'right', vertical: 'top', mirror: true }");
+    expect(out).not.toContain("horizontal: 'left'");
+    expectValidTs(out);
+  });
+
+  it('a position-only edit sprays no style keys into the literal', () => {
+    const { edits } = planTextEdits(src, [
+      { text0: 'vcc', x0: 10, y0: 4, text: 'vcc', x: 12, y: 6, rot: 0 },
+    ]);
+    const out = applyPlacementEdits(src, edits);
+    expect(out).toContain("typecad.text({ text: 'vcc', x: 12, y: 6, layer: 'F.Fab' })");
+    expect(out).not.toContain('italic');
+    expect(out).not.toContain('justify');
+  });
 });
 
 
@@ -275,6 +331,73 @@ describe('planComponentEdits fab label', () => {
     expectValidTs(out);
     expect(out).toContain('fab: { x: -2, y: 0, rotation: 0 }');
     expect(out).not.toContain('fabLayout');
+  });
+});
+
+describe('planComponentEdits label style', () => {
+  const placementOf = (text: string) => (ref: string) => (ref === 'R1' ? parsePlacementLiteral(text, 'r1') : null);
+
+  it('merges a style diff into a fresh layout option beside the position', () => {
+    const src =
+      "const r1 = new Component({ symbol: 'Device:R_Small', reference: 'R1', value: '1k' });\n" +
+      "r1.pcb = { x: 16, y: 15, rotation: 0 };\n";
+    const { edits, skipped } = planComponentEdits(
+      src,
+      [
+        {
+          ref: 'R1',
+          label: { kind: 'reference', x: 18, y: 15, rot: 0, style: { h: 2, italic: true, justify: { horizontal: 'left' } } },
+        },
+      ],
+      placementOf(src),
+      new Set(['R1']),
+    );
+    expect(skipped).toHaveLength(0);
+    const out = applyPlacementEdits(src, edits);
+    expectValidTs(out);
+    expect(out).toContain('height: 2');
+    expect(out).toContain('italic: true');
+    expect(out).toContain("justify: { horizontal: 'left' }");
+    expect(out).toMatch(/referenceLayout: \{ x: 2, y: 0, rotation: 0,/);
+  });
+
+  it('preserves unmanaged keys (layer, show) and nested justify in an existing layout literal', () => {
+    const src =
+      "const r1 = new Component({ reference: 'R1', value: '1k', referenceLayout: { x: 1, y: 2, rotation: 90, layer: 'F.SilkS', show: true, justify: { horizontal: 'right' } } });\n" +
+      "r1.pcb = { x: 16, y: 15, rotation: 0 };\n";
+    const { edits, skipped } = planComponentEdits(
+      src,
+      [{ ref: 'R1', label: { kind: 'reference', x: 18, y: 15, rot: 0, style: { thickness: 0.25 } } }],
+      placementOf(src),
+      new Set(['R1']),
+    );
+    expect(skipped).toHaveLength(0);
+    const out = applyPlacementEdits(src, edits);
+    expectValidTs(out);
+    expect(out.match(/referenceLayout:/g)).toHaveLength(1);
+    expect(out).toContain("layer: 'F.SilkS'");
+    expect(out).toContain('show: true');
+    expect(out).toContain('thickness: 0.25');
+    // the position was replaced, the unedited nested justify preserved
+    expect(out).toContain("justify: { horizontal: 'right' }");
+    expect(out).toContain('x: 2, y: 0, rotation: 0');
+    expect(out).not.toContain('x: 1, y: 2');
+  });
+
+  it('a style-only label edit (same position) leaves the literal valid', () => {
+    const src =
+      "const r1 = new Component({ reference: 'R1', referenceLayout: { x: 1, y: 2, rotation: 90 } });\n" +
+      "r1.pcb = { x: 16, y: 15, rotation: 0 };\n";
+    const { edits, skipped } = planComponentEdits(
+      src,
+      [{ ref: 'R1', label: { kind: 'reference', x: 18, y: 15, rot: 0, style: { bold: true } } }],
+      placementOf(src),
+      new Set(['R1']),
+    );
+    expect(skipped).toHaveLength(0);
+    const out = applyPlacementEdits(src, edits);
+    expectValidTs(out);
+    expect(out).toContain('bold: true');
   });
 });
 

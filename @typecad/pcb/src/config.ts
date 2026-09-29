@@ -18,10 +18,14 @@ export interface TypeCADConfig {
   kicad_cli?: string;
   kicad_path?: string;
   use_flatpak?: boolean;
+  /** Directory of `.kicad_sym` libraries overriding the install's symbols. */
+  symbols_path?: string;
+  /** Directory of `.pretty` footprint libraries overriding the install's. */
+  footprints_path?: string;
   verbose?: boolean;
   /**
    * Path to a JSON design-constraints file (board rules, net classes, net
-   * assignments, DRC severities), relative to this conf file. See
+   * assignments, DRC severities), relative to the conf file. See
    * {@link TypeCADRulesFile}. This is the single constraint source for DRC —
    * both the native engine and kicad-cli read the values it produces.
    */

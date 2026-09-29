@@ -17,12 +17,14 @@ import {
   parsePlacementLiteral,
   planComponentEdits,
   planEndpointEdits,
+  planLabelAssignments,
   planPlacementEdits,
   planTextEdits,
   textEditRef,
   type ComponentEditSpec,
   type LayoutMove,
   type TextEditInput,
+  type TextStyleInput,
 } from './layoutEdits.js';
 import { planCreateArgsEdit, planRouteDeletes, planRouteEdits, uncreatedRouteNames, type PlannedEdit, type RouteDeleteInput, type RouteInput } from './routeEdits.js';
 
@@ -30,7 +32,7 @@ export interface LayoutApplyInput {
   moves: LayoutMove[];
   texts?: TextEditInput[];
   values?: Array<{ ref: string; value: string }>;
-  labels?: Array<{ ref: string; kind: 'reference' | 'value' | 'fab'; x: number; y: number; rot: number }>;
+  labels?: Array<{ ref: string; kind: 'reference' | 'value' | 'fab'; x: number; y: number; rot: number; style?: TextStyleInput }>;
   renames?: Array<{ ref: string; newRef: string }>;
   routes?: RouteInput[];
   deletes?: RouteDeleteInput[];
@@ -216,7 +218,7 @@ export function planLayoutApply(files: LayoutApplyFile[], input: LayoutApplyInpu
   }
   for (const l of input.labels ?? []) {
     const spec = specByRef.get(l.ref) ?? { ref: l.ref };
-    spec.label = { kind: l.kind, x: l.x, y: l.y, rot: l.rot };
+    spec.label = { kind: l.kind, x: l.x, y: l.y, rot: l.rot, ...(l.style ? { style: l.style } : {}) };
     specByRef.set(l.ref, spec);
   }
   const specs = [...specByRef.values()];
@@ -232,7 +234,16 @@ export function planLayoutApply(files: LayoutApplyFile[], input: LayoutApplyInpu
       placementCache.set(ref, found);
       return found;
     };
+    // edits accumulate PER FILE and commit as ONE batch: every edit in a
+    // stage is planned against the same pre-stage text, so a second batch
+    // for the same file would apply at offsets the first batch already
+    // shifted (seen as an assignment spliced into the next statement)
     const batch: Array<{ uri: string; edits: PlannedEdit[] }> = [];
+    const editsByUri = new Map<string, PlannedEdit[]>();
+    const pushEdits = (uri: string, edits: PlannedEdit[]): void => {
+      if (edits.length === 0) return;
+      editsByUri.set(uri, [...(editsByUri.get(uri) ?? []), ...edits]);
+    };
     const doneRefs = new Set<string>();
     for (const file of files) {
       const pending = specs.filter((sp) => !doneRefs.has(sp.ref));
@@ -254,11 +265,43 @@ export function planLayoutApply(files: LayoutApplyFile[], input: LayoutApplyInpu
         if (spec.newRef) counts.renames++;
         if (spec.label) counts.labels++;
       }
-      if (plan.edits.length > 0) batch.push({ uri: file.uri, edits: plan.edits });
+      pushEdits(file.uri, plan.edits);
+    }
+    // fallback for label-only specs with no constructor literal to rewrite:
+    // subclass factories (`new LED({…})`) and prefix-derived references
+    // never carry `reference: 'D1'` — their layout lands as a public-field
+    // assignment after the constructor, the same door `var.pcb = {…}` uses
+    const labelPending = specs.filter(
+      (sp): sp is ComponentEditSpec & { label: NonNullable<ComponentEditSpec['label']> } =>
+        !!sp.label && !doneRefs.has(sp.ref),
+    );
+    if (labelPending.length > 0) {
+      for (const file of files) {
+        const pending = labelPending.filter((sp) => !doneRefs.has(sp.ref));
+        if (pending.length === 0) break;
+        const plan = planLabelAssignments(textOf.get(file.uri)!, pending, input.variableOf, placementOf);
+        for (const edit of plan.edits) {
+          const spec = pending.find((sp) => edit.ref === `${sp.ref} ${sp.label!.kind === 'fab' ? 'fab' : `${sp.label!.kind}Layout`}`);
+          if (!spec) continue;
+          doneRefs.add(spec.ref);
+          counts.labels++;
+          pushEdits(file.uri, [edit]);
+        }
+        // skips defer to later files — the file owning the constructor
+        // statement has the final say, collected after the loop
+      }
+      for (const sp of labelPending) {
+        if (!doneRefs.has(sp.ref)) {
+          const variable = input.variableOf(sp.ref);
+          skipped.push(`${sp.ref} (${variable ? `no \`${variable}\` constructor statement found` : 'no source variable'})`);
+        }
+      }
     }
     for (const sp of specs) {
-      if (!doneRefs.has(sp.ref)) skipped.push(`${sp.ref} (no Component constructor literal found)`);
+      if (!doneRefs.has(sp.ref) && !skipped.some((s) => s.startsWith(`${sp.ref} (`)))
+        skipped.push(`${sp.ref} (no Component constructor literal found)`);
     }
+    for (const [uri, edits] of editsByUri) batch.push({ uri, edits });
     commit(batch);
   }
 

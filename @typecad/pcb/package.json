@@ -69,6 +69,7 @@
   "files": [
     "dist/",
     "assets/",
+    "bundled/",
     "LICENSE",
     "README.md"
   ],
@@ -111,6 +112,7 @@
     "@types/clipper-lib": "^6.4.0",
     "@types/node": "^22.13.0",
     "@vitest/coverage-v8": "^4.1.11",
+    "jsdom": "^30.0.1",
     "typescript": "^5.9.3",
     "vitest": "^4.1.11"
   },

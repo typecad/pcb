@@ -385,6 +385,14 @@ export function buildViewerFromFiles(paths: string[], options: ViewerBuildOption
           side: t.side,
           h: +t.h.toFixed(2),
           layerKind: t.layerKind,
+          // the style block the properties panel edits (only present keys
+          // travel — absent stays absent in the island too)
+          ...(t.w !== undefined ? { w: +t.w.toFixed(3) } : {}),
+          ...(t.thickness !== undefined ? { thickness: +t.thickness.toFixed(3) } : {}),
+          ...(t.italic ? { italic: true } : {}),
+          ...(t.bold ? { bold: true } : {}),
+          ...(t.font !== undefined ? { font: t.font } : {}),
+          ...(t.justify ? { justify: t.justify } : {}),
         }));
         boardLabels = parseBoardLabels(fs.readFileSync(pcbPath, 'utf8'));
       } catch {
@@ -486,7 +494,8 @@ export function buildViewerFromFiles(paths: string[], options: ViewerBuildOption
         side,
         nets,
         // per-part label anchors (Reference on silk, Value on fab) —
-        // independently draggable texts in the layout view
+        // independently draggable texts in the layout view; the style
+        // fields ride for the properties panel
         labels: (boardLabels[c.ref] ?? []).map((lb) => ({
           kind: lb.kind,
           text: lb.text,
@@ -496,6 +505,12 @@ export function buildViewerFromFiles(paths: string[], options: ViewerBuildOption
           side: lb.side,
           h: lb.h,
           layerKind: lb.layerKind,
+          ...(lb.w !== undefined ? { w: +lb.w.toFixed(3) } : {}),
+          ...(lb.thickness !== undefined ? { thickness: +lb.thickness.toFixed(3) } : {}),
+          ...(lb.italic ? { italic: true } : {}),
+          ...(lb.bold ? { bold: true } : {}),
+          ...(lb.font !== undefined ? { font: lb.font } : {}),
+          ...(lb.justify ? { justify: lb.justify } : {}),
         })),
         // the exact footprint outline in the group's local frame — the
         // drag handle draws this polygon instead of a generic rounded box
@@ -589,16 +604,74 @@ function layerKindOf(layer: string): 'silkscreen' | 'fab' | undefined {
  * claim their stroke paths and offer drag / in-place editing. The anchor
  * semantics don't matter here: claiming is radius-based around the anchor.
  */
+/** The style block a gr_text/fp_text carries that maps to `pcb.text()` / Component label options. */
+export interface BoardTextStyle {
+  w?: number;
+  thickness?: number;
+  italic?: boolean;
+  bold?: boolean;
+  font?: string;
+  justify?: { horizontal?: 'left' | 'right' | 'center'; vertical?: 'top' | 'bottom' | 'middle'; mirror?: boolean };
+}
+
+/**
+ * One `(effects …)` block: font size/face/thickness/slant, justification,
+ * and hide. Shared by board gr_texts, footprint Reference/Value properties,
+ * and fab texts — everything the properties panel styles.
+ */
+function parseTextEffects(effects: SExpr[]): { h?: number; style: BoardTextStyle; hidden: boolean } {
+  let h: number | undefined;
+  let hidden = false;
+  const style: BoardTextStyle = {};
+  for (const eff of effects) {
+    if (!isList(eff)) continue;
+    const head = nameOf(eff[0]);
+    if (head === 'font') {
+      // a face spec ("KiCad Font" or an installed font) may come first;
+      // (size w h) — h drives the claim radius and the edit preview.
+      // italic/bold are BARE symbols in KiCad's font block — atoms, not
+      // lists — while the face is a quoted string
+      for (const fc of eff) {
+        if (!isList(fc)) {
+          const tok = nameOf(fc);
+          if (tok === 'italic') style.italic = true;
+          else if (tok === 'bold') style.bold = true;
+          else if (typeof fc === 'string' && fc) style.font = fc;
+        }
+        if (isList(fc) && nameOf(fc[0]) === 'size') {
+          if (typeof fc[1] === 'number') style.w = Math.abs(fc[1]);
+          if (typeof fc[2] === 'number') h = Math.abs(fc[2]);
+        } else if (isList(fc) && nameOf(fc[0]) === 'thickness' && typeof fc[1] === 'number') {
+          style.thickness = Math.abs(fc[1]);
+        }
+      }
+    } else if (head === 'hide') {
+      hidden = true;
+    } else if (head === 'justify') {
+      const justify: NonNullable<BoardTextStyle['justify']> = {};
+      for (let ji = 1; ji < eff.length; ji++) {
+        const tok = nameOf(eff[ji]!);
+        if (tok === 'left' || tok === 'right' || tok === 'center') justify.horizontal = tok;
+        else if (tok === 'top' || tok === 'bottom' || tok === 'middle') justify.vertical = tok;
+        else if (tok === 'mirror') justify.mirror = true;
+      }
+      if (justify.horizontal !== undefined || justify.vertical !== undefined || justify.mirror !== undefined)
+        style.justify = justify;
+    }
+  }
+  return { h, style, hidden };
+}
+
 function parseBoardTexts(
   content: string,
-): Array<{ text: string; x: number; y: number; rot: number; side: 'front' | 'back'; h: number; layerKind?: 'silkscreen' | 'fab' }> {
+): Array<{ text: string; x: number; y: number; rot: number; side: 'front' | 'back'; h: number; layerKind?: 'silkscreen' | 'fab' } & BoardTextStyle> {
   let tree: SExpr;
   try {
     tree = parse(content);
   } catch {
     return [];
   }
-  const out: Array<{ text: string; x: number; y: number; rot: number; side: 'front' | 'back'; h: number; layerKind?: 'silkscreen' | 'fab' }> = [];
+  const out: Array<{ text: string; x: number; y: number; rot: number; side: 'front' | 'back'; h: number; layerKind?: 'silkscreen' | 'fab' } & BoardTextStyle> = [];
   const walk = (expr: SExpr): void => {
     if (!isList(expr)) return;
     if (nameOf(expr[0]) === 'gr_text') {
@@ -610,6 +683,7 @@ function parseBoardTexts(
       let h = 1.27;
       let hidden = false;
       let rawLayer = '';
+      let style: BoardTextStyle | null = null;
       for (const child of expr) {
         if (!isList(child)) continue;
         const head = nameOf(child[0]);
@@ -623,23 +697,17 @@ function parseBoardTexts(
           else if (name === 'b.silks' || name === 'b.fab') side = 'back';
           rawLayer = String(child[1] ?? '');
         } else if (head === 'effects') {
-          for (const eff of child) {
-            if (!isList(eff)) continue;
-            if (nameOf(eff[0]) === 'font') {
-              // (size w h) among the font's children (a face spec may come
-              // first) — h drives the claim radius and the edit preview
-              for (const fchild of eff) {
-                if (isList(fchild) && nameOf(fchild[0]) === 'size' && typeof fchild[2] === 'number')
-                  h = Math.abs(fchild[2]);
-              }
-            } else if (nameOf(eff[0]) === 'hide') {
-              hidden = true;
-            }
-          }
+          const parsed = parseTextEffects(child);
+          h = parsed.h ?? h;
+          hidden = hidden || parsed.hidden;
+          style = parsed.style;
         }
       }
-      if (!hidden && text && x !== null && y !== null && side)
-        out.push({ text, x, y: -y, rot, side, h, layerKind: layerKindOf(rawLayer) });
+      if (!hidden && text && x !== null && y !== null && side) {
+        const entry: NonNullable<(typeof out)[number]> = { text, x, y: -y, rot, side, h, layerKind: layerKindOf(rawLayer) };
+        if (style) Object.assign(entry, style);
+        out.push(entry);
+      }
     }
     for (const child of expr) walk(child);
   };
@@ -654,16 +722,26 @@ function parseBoardTexts(
  * final world position back to footprint-local and writes the Component's
  * referenceLayout / valueLayout options.
  */
-export function parseBoardLabels(
-  content: string,
-): Record<string, Array<{ kind: 'reference' | 'value' | 'fab'; text: string; x: number; y: number; rot: number; side: 'front' | 'back'; h: number; layerKind?: 'silkscreen' | 'fab' }>> {
+/** One part label (Reference/Value property or the fab ${REFERENCE} text). */
+type BoardLabel = {
+  kind: 'reference' | 'value' | 'fab';
+  text: string;
+  x: number;
+  y: number;
+  rot: number;
+  side: 'front' | 'back';
+  h: number;
+  layerKind?: 'silkscreen' | 'fab';
+} & BoardTextStyle;
+
+export function parseBoardLabels(content: string): Record<string, BoardLabel[]> {
   let tree: SExpr;
   try {
     tree = parse(content);
   } catch {
     return {};
   }
-  const byRef: Record<string, Array<{ kind: 'reference' | 'value' | 'fab'; text: string; x: number; y: number; rot: number; side: 'front' | 'back'; h: number; layerKind?: 'silkscreen' | 'fab' }>> = {};
+  const byRef: Record<string, BoardLabel[]> = {};
   const walk = (expr: SExpr): void => {
     if (!isList(expr)) return;
     if (nameOf(expr[0]) === 'footprint') {
@@ -701,6 +779,7 @@ export function parseBoardLabels(
         let h = 1;
         let hidden = false;
         let rawLayer = '';
+        let style: BoardTextStyle | null = null;
         for (const gc of child) {
           if (!isList(gc)) continue;
           const head = nameOf(gc[0]);
@@ -714,22 +793,17 @@ export function parseBoardLabels(
             else if (lname.startsWith('b.')) side = 'back';
             rawLayer = String(gc[1] ?? '');
           } else if (head === 'effects') {
-            for (const eff of gc) {
-              if (isList(eff) && nameOf(eff[0]) === 'font') {
-                for (const fc of eff) {
-                  if (isList(fc) && nameOf(fc[0]) === 'size' && typeof fc[2] === 'number') h = Math.abs(fc[2]);
-                }
-              } else if (isList(eff) && nameOf(eff[0]) === 'hide') {
-                hidden = true;
-              }
-            }
+            const parsed = parseTextEffects(gc);
+            h = parsed.h ?? h;
+            hidden = hidden || parsed.hidden;
+            style = parsed.style;
           }
         }
         if (hidden || !text || !side) continue;
         const kind: 'reference' | 'value' | 'fab' = name === 'Reference' ? 'reference' : 'value';
         const wx = px + lx * c - ly * s;
         const wy = py + lx * s + ly * c;
-        (byRef[refText] = byRef[refText] ?? []).push({
+        const entry: BoardLabel = {
           kind,
           text,
           x: +wx.toFixed(3),
@@ -738,7 +812,9 @@ export function parseBoardLabels(
           side,
           h,
           layerKind: layerKindOf(rawLayer),
-        });
+        };
+        if (style) Object.assign(entry, style);
+        (byRef[refText] = byRef[refText] ?? []).push(entry);
         }
       }
       // the ${REFERENCE} user text (small refdes on fab) is its own object —
@@ -752,6 +828,7 @@ export function parseBoardLabels(
         let ulrot = 0;
         let uside: 'front' | 'back' | null = null;
         let uh = 1;
+        let ustyle: BoardTextStyle | null = null;
         for (const gc of child) {
           if (!isList(gc)) continue;
           const head = nameOf(gc[0]);
@@ -764,19 +841,15 @@ export function parseBoardLabels(
             if (lname.startsWith('f.')) uside = 'front';
             else if (lname.startsWith('b.')) uside = 'back';
           } else if (head === 'effects') {
-            for (const eff of gc) {
-              if (isList(eff) && nameOf(eff[0]) === 'font') {
-                for (const fc of eff) {
-                  if (isList(fc) && nameOf(fc[0]) === 'size' && typeof fc[2] === 'number') uh = Math.abs(fc[2]);
-                }
-              }
-            }
+            const parsed = parseTextEffects(gc);
+            uh = parsed.h ?? uh;
+            ustyle = parsed.style;
           }
         }
         if (!uside || !refText) continue;
         const uwx = px + ulx * c - uly * s;
         const uwy = py + ulx * s + uly * c;
-        (byRef[refText] = byRef[refText] ?? []).push({
+        const uentry: BoardLabel = {
           kind: 'fab',
           text: refText,
           x: +uwx.toFixed(3),
@@ -785,7 +858,9 @@ export function parseBoardLabels(
           side: uside,
           h: uh,
           layerKind: 'fab',
-        });
+        };
+        if (ustyle) Object.assign(uentry, ustyle);
+        (byRef[refText] = byRef[refText] ?? []).push(uentry);
       }
       // footprints nest nothing labelable; still recurse for embedded groups
     }

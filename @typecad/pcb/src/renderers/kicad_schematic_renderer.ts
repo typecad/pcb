@@ -36,15 +36,6 @@ export class KiCADSchematic {
   #pwrCounter = 0;
   #flgCounter = 0;
   #powerNetEntries: Map<string, { firstPinX: number; firstPinY: number }> = new Map();
-  /** Components auto-placed because they carried no `sch` coordinates. */
-  #autoPlaced: string[] = [];
-
-  /** Display names of components the renderer placed deterministically
-   *  (no `sch` given) — surfaced as one summary line by the caller instead
-   *  of a warning per component, which trained users to ignore the log. */
-  get autoPlacedComponents(): readonly string[] {
-    return this.#autoPlaced;
-  }
 
   constructor(symbolManager: SymbolLibraryManager) {
     this.symbolManager = symbolManager;
@@ -68,32 +59,23 @@ export class KiCADSchematic {
       return null;
     }
 
+    // Components created without `sch` coordinates are the common code-only
+    // style — default them silently and auto-place deterministically below.
     if (!component.sch) {
       component.sch = { x: 0, y: 0, rotation: 0 };
-      logWarning(
-        `Component ${displayName(component)} missing schematic placement data (sch). Initializing to x=0, y=0 for potential random placement.`,
-      );
     } else {
       if (component.sch.x === null || component.sch.x === undefined) {
-        logWarning(
-          `Component ${displayName(component)} missing sch.x. Initializing to 0 for potential random placement.`,
-        );
         component.sch.x = 0;
       }
       if (component.sch.y === null || component.sch.y === undefined) {
-        logWarning(
-          `Component ${displayName(component)} missing sch.y. Initializing to 0 for potential random placement.`,
-        );
         component.sch.y = 0;
       }
       if (component.sch.rotation === null || component.sch.rotation === undefined) {
-        logWarning(`Component ${displayName(component)} missing sch.rotation. Defaulting to 0.`);
         component.sch.rotation = 0;
       }
     }
 
     if (component.sch.x === 0 && component.sch.y === 0) {
-      this.#autoPlaced.push(displayName(component));
       const maxX = Math.max(0, Math.ceil(PAGE_WIDTH_MM / GRID_UNIT_MM) - 1);
       const maxY = Math.max(0, Math.ceil(PAGE_HEIGHT_MM / GRID_UNIT_MM) - 1);
       // Stable per component identity: the same unplaced component lands on

@@ -1,14 +1,9 @@
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
 import * as crypto from 'node:crypto';
 import * as fs from 'fs';
-import * as path from 'path';
 import { parse, SNode, isList } from '../../sexpr/index.js';
 import logger from '../../utils/logging.js';
-import { buildKiCADArgs } from '../../kicad_commands.js';
-import { getFlatpakSafeTempDir } from '../../kicad.js';
-
-const execFileAsync = promisify(execFile);
+import { canonicalLayerName } from '../../gerber_export/layers.js';
+import { renderBoardLayerSvg } from '../../board_layer_images.js';
 
 const MAX_CACHE_SIZE = 256;
 
@@ -38,15 +33,6 @@ function getFileHash(filePath: string): string {
 
 function getCacheKey(pcbFile: string, layer: string, theme?: string): string {
   return `${getFileHash(pcbFile)}:${layer}:${theme || ''}`;
-}
-
-function clearCache(): void {
-  svgCache.clear();
-  for (const key of fileHashCache.keys()) {
-    if (!key.startsWith('__')) {
-      fileHashCache.delete(key);
-    }
-  }
 }
 
 export function detectInnerCopperLayers(pcbFile: string): string[] {
@@ -161,6 +147,16 @@ export function computeSvgBBox(svgContent: string, padding: number = 2): BBox | 
     if (x2 && y2) allCoords.push({ x: parseFloat(x2[1]), y: parseFloat(y2[1]) });
   }
 
+  // native renders flash pads as polygons with absolute points
+  const polygonRegex = /<(polygon|polyline)\b[^>]*>/gi;
+  while ((match = polygonRegex.exec(svgContent)) !== null) {
+    const pts = match[0].match(/\bpoints="([^"]*)"/)?.[1] ?? '';
+    for (const pair of pts.match(/-?\d+\.?\d*[,\s]+-?\d+\.?\d*/g) ?? []) {
+      const [x, y] = pair.split(/[,\s]+/);
+      allCoords.push({ x: parseFloat(x), y: parseFloat(y) });
+    }
+  }
+
   const textRegex = /<text\b[^>]*>/gi;
   while ((match = textRegex.exec(svgContent)) !== null) {
     const el = match[0];
@@ -188,18 +184,25 @@ export function computeSvgBBox(svgContent: string, padding: number = 2): BBox | 
 export function cropSvg(svgContent: string, padding: number = 2): string {
   const bbox = computeSvgBBox(svgContent, padding);
   if (!bbox) return svgContent;
-
-  const w = bbox.maxX - bbox.minX;
-  const h = bbox.maxY - bbox.minY;
-  const newViewBox = `${bbox.minX.toFixed(4)} ${bbox.minY.toFixed(4)} ${w.toFixed(4)} ${h.toFixed(4)}`;
-
-  return applyViewBox(svgContent, newViewBox);
+  return cropSvgToBBox(svgContent, bbox);
 }
 
 export function cropSvgToBBox(svgContent: string, bbox: BBox): string {
   const w = bbox.maxX - bbox.minX;
   const h = bbox.maxY - bbox.minY;
-  const newViewBox = `${bbox.minX.toFixed(4)} ${bbox.minY.toFixed(4)} ${w.toFixed(4)} ${h.toFixed(4)}`;
+  let x0 = bbox.minX;
+  let y0 = bbox.minY;
+  // native layer renders carry a scale(1,-1) flip group: leaf coordinates
+  // must be negated to address the same content through the viewBox (and
+  // mirrored renders additionally flip x). kicad-cli SVGs have no flip —
+  // leaf space IS screen space there.
+  if (/transform="scale\(1,-1\)"/.test(svgContent)) {
+    y0 = -bbox.maxY;
+    if (/transform="scale\(-1,1\)"/.test(svgContent)) {
+      x0 = -bbox.maxX;
+    }
+  }
+  const newViewBox = `${x0.toFixed(4)} ${y0.toFixed(4)} ${w.toFixed(4)} ${h.toFixed(4)}`;
 
   return applyViewBox(svgContent, newViewBox);
 }
@@ -212,43 +215,25 @@ function applyViewBox(svgContent: string, viewBox: string): string {
   return result;
 }
 
-async function executeKicadSvgExport(layer: string, pcbFile: string, theme?: string): Promise<string> {
-  const pcbBasename = path.basename(pcbFile, '.kicad_pcb');
-  const tempSvgPath = createTempFilePath(`gitdiff_${pcbBasename}_`, `${layer}.svg`);
-
+async function renderLayerSvg(layer: string, pcbFile: string, theme?: string): Promise<string> {
+  // native plot + render (no kicad-cli): inline flashes keep every leaf
+  // shape absolute-coordinate so the geometry annotator can diff pads.
+  // Layer inks default to the typeCAD theme — the same house palette the
+  // VS Code addon's board viewer shows (it leads the theme list there).
   try {
-    const { executable, execArgs } = buildKiCADArgs('pcb', [
-      'export',
-      'svg',
-      ...(theme ? ['--theme', theme] : []),
-      '--drill-shape-opt',
-      '0',
-      '--cdnp',
-      '--exclude-drawing-sheet',
-      '--page-size-mode',
-      '2',
-      '--layers',
-      layer,
-      '--mode-single',
-      '--output',
-      tempSvgPath,
-      pcbFile,
-    ]);
-    await execFileAsync(executable, execArgs);
-
-    if (!fs.existsSync(tempSvgPath)) {
-      return '';
-    }
-
-    return sanitizeSvg(fs.readFileSync(tempSvgPath, 'utf-8'));
-  } finally {
-    cleanupTempFiles([tempSvgPath]);
+    const canonical = canonicalLayerName(layer);
+    const svg = renderBoardLayerSvg(pcbFile, [layer], {
+      themeName: theme ?? 'typecad',
+      mirrorX: canonical.startsWith('B.'),
+      // unique per layer — the report embeds one SVG per layer panel
+      idPrefix: `gd-${canonical.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
+      inlineFlashes: true,
+    });
+    return svg ? sanitizeSvg(svg) : '';
+  } catch (e) {
+    logger.warn(`Warning: native layer render failed for "${layer}":`, e);
+    return '';
   }
-}
-
-function createTempFilePath(prefix: string, suffix: string): string {
-  const uniqueId = crypto.randomUUID();
-  return path.join(getFlatpakSafeTempDir(), `${prefix}${uniqueId}_${suffix}`);
 }
 
 export function parseHexColor(hexColor: string): { r: number; g: number; b: number } {
@@ -272,27 +257,13 @@ export function sanitizeSvg(svgContent: string): string {
   return result;
 }
 
-export async function executeKicadSvgExportCached(layer: string, pcbFile: string, theme?: string): Promise<string> {
+/** Native per-layer render, cached by board file hash + layer + theme. */
+export async function renderLayerSvgCached(layer: string, pcbFile: string, theme?: string): Promise<string> {
   const key = getCacheKey(pcbFile, layer, theme);
   const cached = svgCache.get(key);
   if (cached !== undefined) return cached;
-  const svg = await executeKicadSvgExport(layer, pcbFile, theme);
+  const svg = await renderLayerSvg(layer, pcbFile, theme);
   evictIfNeeded(svgCache);
   svgCache.set(key, svg);
   return svg;
-}
-
-function cleanupTempFiles(filePaths: string[]): number {
-  let cleanedCount = 0;
-  for (const filePath of filePaths) {
-    try {
-      if (filePath.startsWith(getFlatpakSafeTempDir()) && fs.existsSync(filePath)) {
-        fs.unlinkSync(filePath);
-        cleanedCount++;
-      }
-    } catch (cleanupError) {
-      logger.error(`Failed to delete temporary file: ${filePath}`, cleanupError);
-    }
-  }
-  return cleanedCount;
 }

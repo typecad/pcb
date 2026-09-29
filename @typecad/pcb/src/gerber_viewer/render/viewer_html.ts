@@ -102,15 +102,38 @@ export interface ViewerOptions {
       rot: number;
       side: 'front' | 'back';
       h: number;
+      layerKind?: 'silkscreen' | 'fab';
+      w?: number;
+      thickness?: number;
+      italic?: boolean;
+      bold?: boolean;
+      font?: string;
+      justify?: { horizontal?: 'left' | 'right' | 'center'; vertical?: 'top' | 'bottom' | 'middle'; mirror?: boolean };
     }>;
   }>;
   /**
    * silk/fab board texts (gr_text — the `pcb.text()` API), parsed from the
    * board file in the gerber (y-up) frame. The layout view claims their
    * stroke paths: drag to reposition, double-click to edit the value in
-   * place; apply rewrites the source `.text({ ... })` literals.
+   * place; apply rewrites the source `.text({ ... })` literals. The style
+   * fields (w/thickness/italic/bold/font/justify) mirror the pcb.text()
+   * options and feed the properties panel.
    */
-  layoutTexts?: Array<{ text: string; x: number; y: number; rot: number; side: 'front' | 'back'; h: number }>;
+  layoutTexts?: Array<{
+    text: string;
+    x: number;
+    y: number;
+    rot: number;
+    side: 'front' | 'back';
+    h: number;
+    layerKind?: 'silkscreen' | 'fab';
+    w?: number;
+    thickness?: number;
+    italic?: boolean;
+    bold?: boolean;
+    font?: string;
+    justify?: { horizontal?: 'left' | 'right' | 'center'; vertical?: 'top' | 'bottom' | 'middle'; mirror?: boolean };
+  }>;
   /**
    * theme picker entries for the pcba view: surface colors per builtin. The
    * switcher remaps the embedded render's flat colors client-side — one
@@ -283,6 +306,30 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       } catch (e) {}
     }
     return null;
+  }
+  // the class NAME with its def — the properties panel names the class a
+  // net belongs to (netClassFor returns the def alone)
+  function netClassInfo(net) {
+    if (!rules || !net || !rules.netClasses || !rules.netClassPatterns) return null;
+    for (var i = 0; i < rules.netClassPatterns.length; i++) {
+      var p = rules.netClassPatterns[i];
+      var def = rules.netClasses[p.class];
+      if (!def) continue;
+      try {
+        if (new RegExp(p.pattern, 'i').test(net)) return { name: p.class, def: def };
+      } catch (e) {}
+    }
+    return null;
+  }
+  // one compact line describing a class def (width / via / clearance, each
+  // only when the class actually carries it)
+  function netClassLine(info) {
+    var parts = [];
+    if (info.def.width > 0) parts.push('w ' + fmtW(info.def.width) + ' mm');
+    if (info.def.viaSize > 0) parts.push('via \u2300' + fmtW(info.def.viaSize));
+    if (info.def.viaDrill > 0) parts.push('drill ' + fmtW(info.def.viaDrill));
+    if (info.def.clearance > 0) parts.push('clr ' + fmtW(info.def.clearance));
+    return 'net class ' + info.name + ': ' + parts.join(' \u00b7 ');
   }
   // route provenance + layout overlay components (both optional islands)
   var routesProv = null;
@@ -1863,12 +1910,36 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   // full visual sync for text i: ghost transform + edited-value preview
   // (strokes hidden, SVG text standing in) — safe to call in any state, so
   // enter/exit/revert all funnel through it
+  // does a pending style edit actually differ from the authored one? A
+  // move that only repositioned the text keeps its real stroke glyphs —
+  // the plain <text> preview stands in only when content or style changed
+  function textStyleChanged(t, sty) {
+    if (!sty) return false;
+    var hA = t.h || 1.27;
+    var wA = t.w !== undefined ? t.w : hA;
+    var thA = t.thickness !== undefined ? t.thickness : 0.15;
+    var jA = t.justify || {};
+    return (
+      Math.abs((sty.h || 0) - hA) > 1e-4 ||
+      Math.abs((sty.w || 0) - wA) > 1e-4 ||
+      Math.abs((sty.thickness || 0) - thA) > 1e-4 ||
+      !!sty.italic !== !!t.italic ||
+      !!sty.bold !== !!t.bold ||
+      ((sty.font || '') !== '' && sty.font !== (t.font || '')) ||
+      (sty.justify
+        ? (sty.justify.horizontal || 'center') !== (jA.horizontal || 'center') ||
+          (sty.justify.vertical || 'middle') !== (jA.vertical || 'middle') ||
+          !!sty.justify.mirror !== !!jA.mirror
+        : false)
+    );
+  }
   function syncTextVisual(i) {
     var t = layoutTexts[i];
     var st = layoutTextEls[i];
     if (!st) st = layoutTextEls[i] = { paths: textPaths(i), hidden: false, preview: null };
     applyTextGhost(i);
-    var edited = layoutTextMoves[i] && layoutTextMoves[i].text !== undefined && layoutTextMoves[i].text !== t.text;
+    var tm3 = layoutTextMoves[i];
+    var edited = !!tm3 && (tm3.text !== undefined ? tm3.text !== t.text : false) || textStyleChanged(t, tm3 && tm3.style);
     if (edited) {
       if (!st.hidden) {
         for (var hp = 0; hp < st.paths.length; hp++) st.paths[hp].setAttribute('display', 'none');
@@ -1900,13 +1971,24 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     // the edited-value preview: an SVG <text> standing in for the stroke
     // font until the rebuild plots the real glyphs. Counter-flipped to read
     // upright inside the y-flip group, centered on the anchor (mirrored on
-    // the back side, matching how back-layer glyphs plot).
+    // the back side, matching how back-layer glyphs plot). Size, weight,
+    // slant and justification follow the pending style edit so the preview
+    // approximates what the rebuild will plot.
     var st = layoutTextEls[i];
     var t = layoutTexts[i];
     var m = layoutTextMoves[i];
-    st.preview.setAttribute('font-size', t.h.toFixed(2));
-    st.preview.setAttribute('text-anchor', 'middle');
-    st.preview.setAttribute('dominant-baseline', 'central');
+    var sty = (m && m.style) || {};
+    var jf = sty.justify || t.justify || {};
+    st.preview.setAttribute('font-size', (sty.h !== undefined ? sty.h : t.h).toFixed(2));
+    st.preview.setAttribute('font-style', (sty.italic !== undefined ? sty.italic : !!t.italic) ? 'italic' : 'normal');
+    st.preview.setAttribute('font-weight', (sty.bold !== undefined ? sty.bold : !!t.bold) ? '700' : '400');
+    // inside the y-negating scale, local +y renders upward: text-after-edge
+    // glyphs sit above the anchor = KiCad's 'top' justify
+    st.preview.setAttribute(
+      'dominant-baseline',
+      (jf.vertical || 'middle') === 'top' ? 'text-after-edge' : (jf.vertical || 'middle') === 'bottom' ? 'text-before-edge' : 'central',
+    );
+    st.preview.setAttribute('text-anchor', (jf.horizontal || 'center') === 'left' ? 'start' : (jf.horizontal || 'center') === 'right' ? 'end' : 'middle');
     st.preview.textContent = m && m.text !== undefined ? m.text : t.text;
     var eff = textState(i);
     var x = eff.x;
@@ -2009,6 +2091,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         else st.paths[sp].classList.remove('layout-text-sel');
       }
     }
+    propsSync('text');
   }
   function attachTextDrag(i) {
     var paths = textPaths(i);
@@ -2276,6 +2359,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     var db = document.getElementById('layout-dist');
     if (ab) ab.disabled = layoutSel.length < 2;
     if (db) db.disabled = layoutSel.length < 3;
+    propsSync('part');
   }
   function buildLayoutOverlay() {
     if (layoutBuilt || !viewGroups.gerber) return;
@@ -2335,6 +2419,12 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     renderLayoutMoves();
     refreshLayoutWarnings();
     refreshRatsnest();
+    // heal transient selection state: an undone action may have restored
+    // ink carrying stale visuals (a resurrected overlay, via rings from
+    // before the delete) — both syncs rebuild from the LIVE sets, so a real
+    // selection survives and orphaned highlights die
+    segHiSync();
+    viaHiSync();
     if (statusEl && !statusLocked()) statusEl.textContent = msg;
   }
   function runUndo() {
@@ -2363,7 +2453,11 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   function domCapSkip(node) {
     if (!node) return true;
     var p = node.parentNode && node.parentNode.closest ? node.parentNode : node;
-    return !!(p && p.closest && p.closest('#route-ui, #ratsnest, #drc'));
+    // transient VISUALS are skipped too: the selection overlay and the pad
+    // highlight clones are presentation, not board state — capturing their
+    // removal would let an undo resurrect a selection nobody owns (seen as
+    // tracks stuck highlighted after Ctrl+Z of a delete)
+    return !!(p && p.closest && p.closest('#route-ui, #ratsnest, #drc, .route-sel, .pad-hi-ink, .layout-text-preview'));
   }
   function domCaptureStart() {
     var added = [];
@@ -2534,6 +2628,9 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         // drag moves all of it; a plain click still narrows via onUp's
         // !moved branch below)
       }
+      // a press on an already-selected part (drag or plain re-click) also
+      // re-asserts it as the properties target — an open E panel follows
+      markLayoutSel();
       var startG = gerberAt(ev.clientX, ev.clientY);
       var moved = false;
       var origs = {};
@@ -2645,6 +2742,8 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     layoutRipped.push(el);
     // the candy-cane overlay of an autorouter track rides its trace
     if (el.__stripe) ripUpEl(el.__stripe);
+    // the drill hole rides its barrel
+    if (el.__hole) ripUpEl(el.__hole);
   }
   function commitLayoutMove(g) {
     var c = g.__lc;
@@ -2705,6 +2804,9 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     // every state-changing op funnels through here — the pending-apply
     // snapshot rides along (undo/redo included, via historyResync)
     persistPending();
+    // an open properties panel tracks the move/rotate/resize that just
+    // landed — no gesture kind, this refreshes whatever it is showing
+    propsSync();
   }
   function layoutRevert() {
     // nothing pending (e.g. right after a fast apply wrote source) —
@@ -2802,14 +2904,15 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       }
       // text edits: originals travel along so the host can match the source
       // .text({ ... }) literal by its authored x/y + value; finals are in
-      // the board frame with rotation as accumulated 90-degree presses
+      // the board frame with rotation as accumulated 90-degree presses, and
+      // a style block when the size/font/justification was edited
       var texts = [];
       for (var ti in layoutTextMoves) {
         var ti2 = parseInt(ti, 10);
         var tbt = layoutTexts[ti2];
         if (tbt && tbt.kind && tbt.kind !== 'board') continue; // labels ride their own array
         var tm = layoutTextMoves[ti];
-        texts.push({
+        var te = {
           text0: tm.text0,
           x0: tbt.x,
           y0: -tbt.y,
@@ -2817,7 +2920,9 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
           x: +(tbt.x + (tm.ox || 0)).toFixed(4),
           y: -(+(tbt.y + (tm.oy || 0)).toFixed(4)),
           rot: (tm.rot || 0) * 90,
-        });
+        };
+        if (tm.style) te.style = tm.style;
+        texts.push(te);
       }
       // component value edits (in-place editor on the part's own text)
       var values = [];
@@ -2832,7 +2937,8 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         renames.push({ ref: rn4, newRef: layoutRefEdits[rn4] });
       }
       // label repositioning: final world position + absolute rotation; the
-      // host converts to footprint-local against the part's final placement
+      // host converts to footprint-local against the part's final placement.
+      // A style diff rides along when size/font/justification were edited
       var labels = [];
       for (var li in layoutTextMoves) {
         var lix = parseInt(li, 10);
@@ -2840,13 +2946,15 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         if (!lt || !lt.kind || lt.kind === 'board') continue;
         var lm = layoutTextMoves[li];
         var leff = labelBase(lix);
-        labels.push({
+        var le = {
           ref: lt.ref,
           kind: lt.kind,
           x: +(leff.x + (lm.ox || 0)).toFixed(4),
           y: -(+(leff.y + (lm.oy || 0)).toFixed(4)),
           rot: ((lm.rot || 0) * 90 + (lt.rot || 0)) % 360,
-        });
+        };
+        if (lm.style) le.style = lm.style;
+        labels.push(le);
       }
       layoutApplyBtn.disabled = true;
       layoutApplyBtn.textContent = 'rebuilding\u2026';
@@ -3120,6 +3228,11 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       // typing belongs to an open editor, never to the canvas
       if (ev.target && (ev.target.tagName === 'INPUT' || ev.target.tagName === 'TEXTAREA' || ev.target.isContentEditable))
         return;
+      if (ev.key === 'Escape' && helpEl.style.display !== 'none') {
+        ev.preventDefault();
+        helpEl.style.display = 'none';
+        return;
+      }
       if (ev.key === 'Escape' && widthPop.classList.contains('open')) {
         ev.preventDefault();
         widthPop.classList.remove('open');
@@ -3329,6 +3442,12 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       var d = nudges[ev.key];
       if (!d) return;
       ev.preventDefault();
+      // traces/vias selected: the arrows nudge the ink (parts keep the keys
+      // when only parts are selected — a press never moves both at once)
+      if (segSel.size || viaSel.size) {
+        nudgeInkSelection(d[0], d[1]);
+        return;
+      }
       if (layoutSel.length) {
         var nudgeRefs = layoutSel.slice();
         var nudgeBefore = snapMoves(nudgeRefs);
@@ -4783,12 +4902,34 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     out.sort(function (a, b) { return order.indexOf(a) - order.indexOf(b); });
     return out;
   }
+  // a barrel's drill hole: a .cut sibling (var(--bg) fill) riding the
+  // barrel element — session circles and resize overlays both read as solid
+  // blobs without it until the rebuild plots the real drill. Idempotent:
+  // creates on first call, re-positions/re-radii after
+  function viaHoleFor(el, drill) {
+    if (!el.parentNode) return null;
+    var p = viaInkPos(el);
+    var hole = el.__hole;
+    if (!hole || !hole.parentNode) {
+      hole = document.createElementNS(SVGNSL, 'circle');
+      hole.setAttribute('class', 'cut');
+      // clicks on the via's center belong to the barrel beneath
+      hole.setAttribute('pointer-events', 'none');
+      el.parentNode.insertBefore(hole, el.nextSibling);
+      el.__hole = hole;
+    }
+    hole.setAttribute('cx', p.x.toFixed(3));
+    hole.setAttribute('cy', p.y.toFixed(3));
+    hole.setAttribute('r', ((drill || 0.3) / 2).toFixed(3));
+    return hole;
+  }
   // a barrel resizes in the INK directly: session circles restyle in
   // place, a gerber flash (fixed aperture symbol) hides behind a
   // same-layer circle that carries the new size until apply rebuilds
   function viaInkResize(el, size) {
     var ops = [];
     var r2 = (size / 2).toFixed(3);
+    var drill = viaDrillFor(size);
     var p = viaInkPos(el);
     var ink = viaInk();
     for (var i = 0; i < ink.length; i++) {
@@ -4796,12 +4937,15 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       var q = viaInkPos(c);
       if (Math.hypot(q.x - p.x, q.y - p.y) > 0.02) continue;
       if (c.tagName === 'circle') {
-        ops.push({ el: c, oldR: c.getAttribute('r'), newR: r2 });
+        ops.push({ el: c, oldR: c.getAttribute('r'), newR: r2, oldHoleR: c.__hole ? c.__hole.getAttribute('r') : null, newHoleR: (drill / 2).toFixed(3) });
         c.setAttribute('r', r2);
+        viaHoleFor(c, drill);
       } else if (c.tagName === 'use') {
         if (c.__resizeCircle) {
-          ops.push({ el: c.__resizeCircle, oldR: c.__resizeCircle.getAttribute('r'), newR: r2 });
-          c.__resizeCircle.setAttribute('r', r2);
+          var ov0 = c.__resizeCircle;
+          ops.push({ el: ov0, oldR: ov0.getAttribute('r'), newR: r2, oldHoleR: ov0.__hole ? ov0.__hole.getAttribute('r') : null, newHoleR: (drill / 2).toFixed(3) });
+          ov0.setAttribute('r', r2);
+          viaHoleFor(ov0, drill);
         } else {
           var lg = c.closest("g[data-kind='copper']");
           var ov = document.createElementNS(SVGNSL, 'circle');
@@ -4813,8 +4957,14 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
           if (c.getAttribute('data-net')) ov.setAttribute('data-net', c.getAttribute('data-net'));
           // a selected flash's stand-in carries the selection ring too —
           // the hidden original would else keep it invisibly
-          if (c.classList.contains('route-via-sel')) ov.classList.add('route-via-sel');
+          if (c.classList.contains('route-via-sel')) {
+            ov.classList.add('route-via-sel');
+            if (c.getAttribute('stroke-width')) ov.setAttribute('stroke-width', c.getAttribute('stroke-width'));
+          }
           (lg || c.parentNode).appendChild(ov);
+          // the overlay is opaque ink — it would cover the flash's real
+          // drill hole, so it carries its own
+          viaHoleFor(ov, drill);
           c.style.display = 'none';
           c.__resizeCircle = ov;
           ov.__overFlash = c;
@@ -4826,9 +4976,14 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   }
   function viaInkUndo(ops) {
     for (var i = 0; i < ops.length; i++) {
-      if (ops[i].oldR !== undefined) ops[i].el.setAttribute('r', ops[i].oldR);
+      if (ops[i].oldR !== undefined) {
+        ops[i].el.setAttribute('r', ops[i].oldR);
+        if (ops[i].oldHoleR === null && ops[i].el.__hole) ops[i].el.__hole.remove();
+        else if (ops[i].el.__hole) ops[i].el.__hole.setAttribute('r', ops[i].oldHoleR);
+      }
       if (ops[i].hidden) {
         ops[i].el.style.display = '';
+        if (ops[i].overlay.__hole) ops[i].overlay.__hole.remove();
         ops[i].overlay.remove();
         ops[i].el.__resizeCircle = null;
       }
@@ -4840,7 +4995,12 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         ops[i].el.style.display = 'none';
         (ops[i].el.closest("g[data-kind='copper']") || ops[i].el.parentNode).appendChild(ops[i].overlay);
         ops[i].el.__resizeCircle = ops[i].overlay;
-      } else ops[i].el.setAttribute('r', ops[i].newR);
+        if (ops[i].overlay.__hole) ops[i].overlay.__hole.remove();
+        viaHoleFor(ops[i].overlay, parseFloat(ops[i].newR) * 2);
+      } else {
+        ops[i].el.setAttribute('r', ops[i].newR);
+        viaHoleFor(ops[i].el, parseFloat(ops[i].newR) * 2);
+      }
     }
   }
   // the connected route through its via barrels: every layer run,
@@ -5495,23 +5655,64 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     if (statusEl && !statusLocked())
       statusEl.textContent = 'width adopted: ' + fmtW(w) + ' mm' + (routeState ? ' \u2014 continues from the next anchor' : ' \u2014 owns the next route');
   }
-  // ---- ?: the keys cheat-sheet. One overlay, layout/routing grammar ----
+  // ---- ?: the keys cheat-sheet. One overlay, every binding, one row per
+  // key: bold key on the left, a dash, a short explanation with modifiers.
+  // Built from a table so adding a binding means adding a row, not untangling
+  // a multi-line string blob ----
+  var HELP_ROWS = [
+    ['view', null, null],
+    ['0 / F', 'fit the board in the view'],
+    ['+ / \u2212', 'zoom in / out'],
+    ['?', 'toggle this help'],
+    ['select & place', null, null],
+    ['click', 'select a part, trace, via, or text (an open E panel follows it)'],
+    ['drag', 'move the selected part(s)'],
+    ['\u2190 \u2192 \u2191 \u2193', 'nudge the selected part, trace segments, or vias one grid step'],
+    ['Alt + arrows', 'nudge by 0.1 mm (fine, crosses the grid)'],
+    ['R', 'rotate the selection 90\u00b0'],
+    ['Shift+D', 'disperse stacked footprints below the board'],
+    ['Tab', 'cycle pad / trace / part under the cursor'],
+    ['U', 'grow the segment selection along the net'],
+    ['Del', 'delete the selected segments (their vias ride along)'],
+    ['E', 'properties: part ref/value/placement + pin nets \u00b7 trace width/layer \u00b7 via \u2300/drill \u00b7 text content/style'],
+    ['Ctrl+Z', 'undo (Ctrl+Shift+Z or Ctrl+Y redo)'],
+    ['Esc', 'clear the selection / cancel what is running'],
+    ['double-click', 'jump to the declaring source line'],
+    ['routing', null, null],
+    ['X', 'start a route from the highlighted pad or trace'],
+    ['click', 'anchor the next segment'],
+    ['double-click / pad', 'finish the route'],
+    ['V', 'place a via there (switch layer)'],
+    ['Shift+V', 'cycle the via\u2019s far layer (blind / buried)'],
+    ['D', 'slide (drag) the hovered segment'],
+    ['Backspace', 'undo the last anchored segment'],
+    ['width & via', null, null],
+    ['[ / ]', 'trace width down / up the ladder'],
+    ['Alt + [ / ]', 'fine trim \u00b10.01 mm'],
+    ['Shift+[ / ]', 'via size down / up the ladder'],
+    ['\\', 'back to the net\u2019s default width'],
+    ['Shift+\\', 're-couple the via size to the trace width'],
+    ['W', 'open the width picker'],
+    ['P', 'width for the net\u2019s solved current (IPC-2221)'],
+    ['I', 'adopt the width of the trace under the cursor'],
+    ['Z', 'width for 50 \u03a9 on that layer (stackup solve)'],
+  ];
   var helpEl = document.createElement('div');
   helpEl.id = 'keys-help';
   helpEl.style.display = 'none';
-  helpEl.innerHTML =
-    '<b>layout</b><br>' +
-    'X \u2014 route from the highlighted pad/trace<br>' +
-    'drag / arrows \u2014 move parts (Alt = 0.1mm) \u00b7 R \u2014 rotate<br>' +
-    'double-click \u2014 jump to source \u00b7 U / Del \u2014 grow / delete segment selection<br>' +
-    'E \u2014 properties: part placement/value \u00b7 trace width \u00b7 via \u2300 + drill<br>' +
-    'highlight a trace/via, then the sizing keys resize THAT ink (apply writes it out)<br>' +
-    '<b>while routing</b><br>' +
-    'click \u2014 anchor \u00b7 double-click / pad \u2014 finish \u00b7 Esc \u2014 cancel \u00b7 Backspace \u2014 undo anchor<br>' +
-    'V \u2014 via (layer switch) \u00b7 Shift+V \u2014 cycle the via\u2019s far layer (blind/buried) \u00b7 [ ] \u2014 trace width (Alt \u00b10.01) \u00b7 \\ \u2014 net default<br>' +
-    'Shift+[ ] \u2014 via size \u00b7 Shift+\\ \u2014 via tracks trace \u00b7 W \u2014 width picker<br>' +
-    'P \u2014 width for the net\u2019s current (IPC-2222) \u00b7 I \u2014 adopt a trace\u2019s width \u00b7 Z \u2014 width for 50 \u03a9 (stackup solve)<br>' +
-    'gray band = keep-out (clearance rule) \u00b7 red = violation';
+  var helpHtml = '';
+  for (var hr = 0; hr < HELP_ROWS.length; hr++) {
+    if (HELP_ROWS[hr][1] === null) {
+      helpHtml += '<div class="hsec">' + HELP_ROWS[hr][0] + '</div>';
+      continue;
+    }
+    helpHtml +=
+      '<div class="hrow"><span class="hk">' + HELP_ROWS[hr][0] + '</span><span class="hd">\u2014 ' + HELP_ROWS[hr][1] + '</span></div>';
+  }
+  helpHtml +=
+    '<div class="hnote">no live route? highlight a trace or via first \u2014 the sizing keys then resize that ink \u00b7 gray band = keep-out \u00b7 red = violation</div>' +
+    '<div class="hnote">click anywhere to close</div>';
+  helpEl.innerHTML = helpHtml;
   document.body.appendChild(helpEl);
   function helpToggle() {
     helpEl.style.display = helpEl.style.display === 'none' ? 'block' : 'none';
@@ -5817,6 +6018,65 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;');
   }
+  // the most recent selection gesture — 'part', 'trace', or 'via'. An OPEN
+  // panel follows the click: every selection sync (markLayoutSel, segHiSync,
+  // viaHiSync) and every move/resize commit funnels through propsSync, which
+  // rebuilds the panel for whatever the last press landed on. E once, then
+  // click around — no reopening the dialog per element.
+  var propsKind = '';
+  var propsSigLast = '';
+  function propsSig() {
+    // everything the panel renders: the gesture class, the part refs plus
+    // the primary's live placement (drags/rotations refresh in place), each
+    // selected segment (endpoints, net, width) and barrel (position, net,
+    // size) — a change in any of them is a stale panel
+    var s = propsKind + '/' + layoutSel.join(',');
+    if (layoutSel.length) {
+      var st0 = compStateAt(layoutSel[0]);
+      if (st0) s += '@' + st0.x.toFixed(3) + ',' + st0.y.toFixed(3) + ',' + st0.rot;
+      // pending ref/value edits show in the fields — an inline label edit
+      // (or its undo) must refresh them too
+      var pr0 = layoutSel[0];
+      s += ';' + (layoutRefEdits[pr0] !== undefined ? layoutRefEdits[pr0] : '') + ',' + (layoutValueEdits[pr0] !== undefined ? layoutValueEdits[pr0] : '');
+    }
+    segSel.forEach(function (h) {
+      s +=
+        '|s' + h.getAttribute('x1') + ',' + h.getAttribute('y1') + ',' + h.getAttribute('x2') + ',' + h.getAttribute('y2') +
+        ',' + (h.getAttribute('data-net') || '') + ',' + (h.__track ? trackW(h.__track) : 0);
+    });
+    viaSel.forEach(function (v) {
+      var pp = viaInkPos(v);
+      s += '|v' + pp.x + ',' + pp.y + ',' + (v.getAttribute('data-net') || '') + ',' + viaInkSize(v);
+    });
+    if (layoutTextSel >= 0 && layoutTexts[layoutTextSel]) {
+      var tst = textState(layoutTextSel);
+      var tmv = layoutTextMoves[layoutTextSel];
+      var tref = layoutTexts[layoutTextSel].ref;
+      s +=
+        '|t' + layoutTextSel + '@' + tst.x.toFixed(3) + ',' + tst.y.toFixed(3) + ',' + (tst.rot || 0) +
+        ',' + (tmv && tmv.text !== undefined ? tmv.text : '') +
+        ',' + (tmv && tmv.style ? JSON.stringify(tmv.style) : '') +
+        // a label's content lives in the ref/value edit maps (inline edits
+        // and the part panel write there) — the panel must follow those too
+        ',' + (tref ? (layoutRefEdits[tref] !== undefined ? layoutRefEdits[tref] : '') + '/' + (layoutValueEdits[tref] !== undefined ? layoutValueEdits[tref] : '') : '');
+    }
+    return s;
+  }
+  function propsSync(kind) {
+    // the gesture class is recorded even when the panel is closed — E must
+    // open on whatever the LAST press landed on, not a stale class
+    if (kind) propsKind = kind;
+    // selection syncs fire from script start; propsEl does not exist until
+    // the panel markup above runs — the guard keeps those early calls no-ops
+    if (!propsEl || propsEl.style.display === 'none') return;
+    var sig = propsSig();
+    if (sig === propsSigLast) return;
+    propsSigLast = sig;
+    propsBuild();
+    // deliberately no focus: an auto-refresh must not park the caret in a
+    // text field — the canvas keys (R rotate, X route, Del) only fire while
+    // focus stays off the inputs. Focusing belongs to the explicit E open.
+  }
   // ---- E on a TRACE: width + layer editing through the same
   // resize/bridge/undo machinery the [ ] \ p z keys use ----
   function propsTraceBuild() {
@@ -5836,11 +6096,20 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     copperCanonList().forEach(function (cl) {
       layerOpts += '<option value="' + propsEsc(cl) + '"' + (cl === canon0 ? ' selected' : '') + '>' + propsEsc(cl) + '</option>';
     });
+    // read-only context: the net's class defaults, and the impedance the
+    // current width works out to on the current layer (stackup permitting —
+    // the same Hammerstad/Cohn model the Z key sizes with)
+    var clsHint = net ? netClassInfo(net) : null;
+    var zHint = '';
+    var zg = canon0 ? impedanceGeometryFor(canon0) : null;
+    if (zg && w > 0) zHint = '\u2248' + zOfWidth(w, zg).toFixed(0) + ' \u03a9 on ' + propsEsc(canon0) + ' (' + zg.model + ')';
     propsEl.innerHTML =
       '<b>trace' + (net ? ' [' + propsEsc(net) + ']' : ' (no net)') + (segSel.size > 1 ? ' \u00b7 ' + segSel.size + ' segments' : '') + '</b>' +
       '<div class="wrow"><label>width <input id="tp-w" type="number" step="0.05" value="' + w + '"></label>' +
       '<label>layer <select id="tp-layer">' + layerOpts + '</select></label></div>' +
       '<div class="whint">' + len.toFixed(2) + ' mm selected \u00b7 [ ] steps \u00b7 \\ net default \u00b7 P power \u00b7 Z 50 \u03a9' + (widthFloor() ? ' \u00b7 min ' + widthFloor() + ' mm' : '') + '</div>' +
+      (clsHint ? '<div class="whint">' + propsEsc(netClassLine(clsHint)) + '</div>' : '') +
+      (zHint ? '<div class="whint">' + zHint + '</div>' : '') +
       '<div class="wrow"><button id="tp-apply">apply</button></div>';
     document.getElementById('tp-apply').addEventListener('click', propsTraceApply);
     var inp = document.getElementById('tp-w');
@@ -5902,11 +6171,14 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
           if (vv.drill) drill = vv.drill;
         }
       }
+    var clsV = net ? netClassInfo(net) : null;
     propsEl.innerHTML =
       '<b>via' + (net ? ' [' + propsEsc(net) + ']' : ' (no net)') + (viaSel.size > 1 ? ' \u00b7 ' + viaSel.size + ' barrels' : '') + '</b>' +
       '<div class="wrow"><label>\u2300 <input id="vp-size" type="number" step="0.05" value="' + size + '"></label>' +
       '<label>drill <input id="vp-drill" type="number" step="0.05" value="' + drill + '"></label></div>' +
       '<div class="whint">' + (ly.length >= 2 ? propsEsc(ly.join(' \u2192 ')) : 'through') + ' \u00b7 ' + fmtPos(vp.x) + ', ' + fmtPos(-vp.y) + '</div>' +
+      '<div class="whint">annular ring ' + ((size - drill) / 2).toFixed(3) + ' mm' + (rules && rules.minViaDiameterMm ? ' \u00b7 board min \u2300' + fmtW(rules.minViaDiameterMm) : '') + '</div>' +
+      (clsV ? '<div class="whint">' + propsEsc(netClassLine(clsV)) + '</div>' : '') +
       '<div class="wrow"><button id="vp-apply">apply</button></div>';
     document.getElementById('vp-apply').addEventListener('click', propsViaApply);
     var focus = null;
@@ -5933,19 +6205,244 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     });
     propsToggle();
   }
+  // ---- E on a TEXT: board gr_texts edit content + placement + the full
+  // style block the pcb.text() API carries (size, font, thickness, italic,
+  // bold, justification); a part's reference/value/fab label repositions
+  // (its content rides the part's own ref/value fields) — all through the
+  // same layoutTextMoves machinery a drag / inline edit / R press uses ----
+  function propsSelOpts(list, cur) {
+    var s2 = '';
+    for (var so = 0; so < list.length; so++)
+      s2 += '<option value="' + list[so] + '"' + (list[so] === cur ? ' selected' : '') + '>' + list[so] + '</option>';
+    return s2;
+  }
+  function propsTextBuild() {
+    var i = layoutTextSel;
+    var t = layoutTexts[i];
+    if (!t) return;
+    var st = textState(i);
+    var mv = layoutTextMoves[i];
+    var sty = (mv && mv.style) || {};
+    var isLabel = !!(t.kind && t.kind !== 'board');
+    // content is editable for board texts and a part's reference (rename)
+    // and value labels; the fab refdes mirrors the reference
+    var isRef = t.kind === 'reference';
+    var isVal = t.kind === 'value';
+    var hasContent = !isLabel || isRef || isVal;
+    var curText =
+      mv && mv.text !== undefined
+        ? mv.text
+        : isRef
+          ? layoutRefEdits[t.ref] !== undefined
+            ? layoutRefEdits[t.ref]
+            : t.text
+          : isVal
+            ? layoutValueEdits[t.ref] !== undefined
+              ? layoutValueEdits[t.ref]
+              : t.text
+            : t.text;
+    // effective style: pending edit > authored > the API's own default
+    var hEff = sty.h !== undefined ? sty.h : t.h || 1.27;
+    var wEff = sty.w !== undefined ? sty.w : t.w !== undefined ? t.w : hEff;
+    var thEff = sty.thickness !== undefined ? sty.thickness : t.thickness !== undefined ? t.thickness : 0.15;
+    var fEff = sty.font !== undefined ? sty.font : t.font || '';
+    var itEff = sty.italic !== undefined ? sty.italic : !!t.italic;
+    var bdEff = sty.bold !== undefined ? sty.bold : !!t.bold;
+    var jf = (sty && sty.justify) || t.justify || {};
+    var jh = jf.horizontal || 'center';
+    var jv = jf.vertical || 'middle';
+    var rotOpts = '';
+    for (var rd = 0; rd <= 3; rd++)
+      rotOpts += '<option' + ((mv && (mv.rot || 0)) === rd ? ' selected' : '') + '>' + rd * 90 + '</option>';
+    propsEl.innerHTML =
+      '<b>' + (isLabel ? propsEsc(t.kind) + ' label' : 'text') + (t.ref ? ' \u00b7 ' + propsEsc(t.ref) : '') + '</b>' +
+      (hasContent
+        ? '<div class="wrow"><label>text <input id="tx-text" style="width:150px" value="' + propsEsc(curText) + '"></label></div>'
+        : '') +
+      '<div class="wrow"><label>x <input id="tx-x" type="number" step="0.5" value="' + st.x.toFixed(2) + '"></label>' +
+      '<label>y <input id="tx-y" type="number" step="0.5" value="' + (-st.y).toFixed(2) + '"></label>' +
+      '<label>rot <select id="tx-rot">' + rotOpts + '</select></label></div>' +
+      '<div class="wrow"><label>h <input id="tx-h" type="number" step="0.05" value="' + +hEff.toFixed(3) + '"></label>' +
+      '<label>w <input id="tx-w" type="number" step="0.05" value="' + +wEff.toFixed(3) + '"></label>' +
+      '<label>thick <input id="tx-th" type="number" step="0.01" value="' + +thEff.toFixed(3) + '"></label></div>' +
+      '<div class="wrow"><label>font <input id="tx-font" style="width:84px" value="' + propsEsc(fEff) + '"></label>' +
+      '<label><select id="tx-jh">' + propsSelOpts(['left', 'center', 'right'], jh) + '</select></label>' +
+      '<label><select id="tx-jv">' + propsSelOpts(['top', 'middle', 'bottom'], jv) + '</select></label></div>' +
+      '<div class="wrow"><label><input id="tx-it" type="checkbox"' + (itEff ? ' checked' : '') + '> italic</label>' +
+      '<label><input id="tx-bd" type="checkbox"' + (bdEff ? ' checked' : '') + '> bold</label>' +
+      '<label><input id="tx-jm" type="checkbox"' + (jf.mirror ? ' checked' : '') + '> mirror</label></div>' +
+      '<div class="whint">' + (t.side === 'back' ? 'back' : 'front') + ' side' + (t.layerKind ? ' \u00b7 ' + propsEsc(t.layerKind) : '') + ' \u00b7 ' + (t.h || 1).toFixed(2) + ' mm tall' +
+      (isRef ? ' \u00b7 renames the part' : '') +
+      (isVal ? ' \u00b7 edits the part\u2019s value' : '') +
+      (t.kind === 'fab' ? ' \u00b7 mirrors the reference \u2014 reposition/style only' : '') + '</div>' +
+      '<div class="wrow"><button id="tx-apply">apply</button></div>';
+    document.getElementById('tx-apply').addEventListener('click', propsTextApply);
+    for (var id4 of ['tx-text', 'tx-x', 'tx-y', 'tx-h', 'tx-w', 'tx-th', 'tx-font']) {
+      var el4 = document.getElementById(id4);
+      if (el4)
+        el4.addEventListener('keydown', function (kev) {
+          kev.stopPropagation();
+          if (kev.key === 'Enter') propsTextApply();
+          if (kev.key === 'Escape') propsToggle();
+        });
+    }
+    for (var id5 of ['tx-rot', 'tx-jh', 'tx-jv']) {
+      var el5 = document.getElementById(id5);
+      if (el5)
+        el5.addEventListener('keydown', function (kev) {
+          kev.stopPropagation();
+          if (kev.key === 'Enter') propsTextApply();
+          if (kev.key === 'Escape') propsToggle();
+        });
+    }
+  }
+  function propsTextApply() {
+    var i = layoutTextSel;
+    var t = layoutTexts[i];
+    if (!t) return;
+    var isLabel = !!(t.kind && t.kind !== 'board');
+    var isRef = t.kind === 'reference';
+    var isVal = t.kind === 'value';
+    var hasContent = !isLabel || isRef || isVal;
+    // read every field BEFORE the state changes — the rebuilds below
+    // replace the panel DOM they came from
+    var nt = hasContent ? document.getElementById('tx-text').value : undefined;
+    var nx = parseFloat(document.getElementById('tx-x').value);
+    var nyG = -parseFloat(document.getElementById('tx-y').value);
+    var nrot = ((parseInt(document.getElementById('tx-rot').value, 10) / 90 || 0) % 4 + 4) % 4;
+    if (isFinite(nx)) nx = Math.round(nx / layoutGridSize) * layoutGridSize;
+    if (isFinite(nyG)) nyG = Math.round(nyG / layoutGridSize) * layoutGridSize;
+    // the style block: finals for every style option, clamped to sane
+    // ranges (garbage falls back to the authored value)
+    var hv = parseFloat(document.getElementById('tx-h').value);
+    var wv2 = parseFloat(document.getElementById('tx-w').value);
+    var tv2 = parseFloat(document.getElementById('tx-th').value);
+    var fv2 = document.getElementById('tx-font').value.trim();
+    var hA = t.h || 1.27;
+    var wA = t.w !== undefined ? t.w : hA;
+    var thA = t.thickness !== undefined ? t.thickness : 0.15;
+    var jA = t.justify || {};
+    var ns = {
+      h: hv > 0.05 && hv < 30 ? +hv.toFixed(3) : hA,
+      w: wv2 > 0.05 && wv2 < 30 ? +wv2.toFixed(3) : wA,
+      thickness: tv2 >= 0 && tv2 < 5 ? +tv2.toFixed(3) : thA,
+      font: fv2 || undefined,
+      italic: document.getElementById('tx-it').checked,
+      bold: document.getElementById('tx-bd').checked,
+      justify: {
+        horizontal: document.getElementById('tx-jh').value,
+        vertical: document.getElementById('tx-jv').value,
+        mirror: document.getElementById('tx-jm').checked,
+      },
+    };
+    // style travels as a DIFF against the authored text — only fields the
+    // user actually changed, so apply never sprays neutral keys into
+    // source literals (a position-only edit carries no style at all)
+    var diff = {};
+    if (Math.abs(ns.h - hA) > 1e-4) diff.h = ns.h;
+    if (Math.abs(ns.w - wA) > 1e-4) diff.w = ns.w;
+    if (Math.abs(ns.thickness - thA) > 1e-4) diff.thickness = ns.thickness;
+    if (ns.font !== undefined && ns.font !== (t.font || '')) diff.font = ns.font;
+    if (!!ns.italic !== !!t.italic) diff.italic = ns.italic;
+    if (!!ns.bold !== !!t.bold) diff.bold = ns.bold;
+    if (
+      (ns.justify.horizontal || 'center') !== (jA.horizontal || 'center') ||
+      (ns.justify.vertical || 'middle') !== (jA.vertical || 'middle') ||
+      !!ns.justify.mirror !== !!jA.mirror
+    )
+      diff.justify = ns.justify;
+    var nsOut = Object.keys(diff).length ? diff : null;
+    // a reference label's content is the part rename; a value label's is
+    // the value edit — both ride their own apply arrays
+    var refEditBefore = isRef && t.ref ? layoutRefEdits[t.ref] : undefined;
+    var valEditBefore = isVal && t.ref ? layoutValueEdits[t.ref] : undefined;
+    var contentChanged = false;
+    if (isRef && t.ref && nt !== undefined && nt !== '' && nt !== t.text && nt !== refEditBefore) {
+      layoutRefEdits[t.ref] = nt;
+      contentChanged = true;
+    }
+    if (isVal && t.ref && nt !== undefined && nt !== '' && nt !== (t.text || '') && nt !== valEditBefore) {
+      layoutValueEdits[t.ref] = nt;
+      contentChanged = true;
+    }
+    var base = labelBase(i);
+    var before = layoutTextMoves[i] || null;
+    var prev = before || { ox: 0, oy: 0, rot: 0, text: undefined, text0: t.text };
+    var mv = {
+      ox: isFinite(nx) ? +(nx - base.x).toFixed(4) : prev.ox || 0,
+      oy: isFinite(nyG) ? +(nyG - base.y).toFixed(4) : prev.oy || 0,
+      rot: nrot,
+      text: !isLabel && nt !== undefined && nt !== '' && nt !== t.text ? nt : prev.text,
+      text0: t.text,
+      style: nsOut,
+    };
+    layoutTextMoves[i] = mv;
+    if (contentChanged) syncCompTextVisuals(true);
+    syncTextVisual(i);
+    renderLayoutMoves();
+    var refEditAfter = isRef && t.ref ? layoutRefEdits[t.ref] : undefined;
+    var valEditAfter = isVal && t.ref ? layoutValueEdits[t.ref] : undefined;
+    pushUndo(
+      'text properties ' + (t.ref || curTextShorthand(t)),
+      function () {
+        if (isRef && t.ref) {
+          if (refEditBefore === undefined) delete layoutRefEdits[t.ref];
+          else layoutRefEdits[t.ref] = refEditBefore;
+        }
+        if (isVal && t.ref) {
+          if (valEditBefore === undefined) delete layoutValueEdits[t.ref];
+          else layoutValueEdits[t.ref] = valEditBefore;
+        }
+        if (before) layoutTextMoves[i] = before;
+        else delete layoutTextMoves[i];
+        if (contentChanged) syncCompTextVisuals(true);
+        syncTextVisual(i);
+        renderLayoutMoves();
+      },
+      function () {
+        if (isRef && t.ref && refEditAfter !== undefined) layoutRefEdits[t.ref] = refEditAfter;
+        if (isVal && t.ref && valEditAfter !== undefined) layoutValueEdits[t.ref] = valEditAfter;
+        layoutTextMoves[i] = mv;
+        if (contentChanged) syncCompTextVisuals(true);
+        syncTextVisual(i);
+        renderLayoutMoves();
+      },
+    );
+    propsToggle();
+    if (statusEl && !statusLocked())
+      statusEl.textContent = 'text properties applied \u2014 apply & rebuild writes source';
+  }
+  function curTextShorthand(t) {
+    return '"' + String(t.text === undefined ? '' : t.text).slice(0, 18) + '"';
+  }
   function propsBuild() {
-    // selection decides what E edits: a part, a via, or trace segments
-    if (!layoutSel.length && viaSel.size) {
+    // selection decides what E edits — the most recent gesture (part press,
+    // trace press, via press, text grab) owns the panel, so an open one
+    // follows every click; a gesture whose selection has since been cleared
+    // falls back to whatever is still selected (via, then trace, then part)
+    if (propsKind === 'via' && viaSel.size) {
       propsViaBuild();
       return;
     }
-    if (!layoutSel.length && segSel.size) {
+    if (propsKind === 'trace' && segSel.size) {
+      propsTraceBuild();
+      return;
+    }
+    if (propsKind === 'text' && layoutTextSel >= 0 && layoutTexts[layoutTextSel]) {
+      propsTextBuild();
+      return;
+    }
+    if (propsKind !== 'part' && !layoutSel.length && viaSel.size) {
+      propsViaBuild();
+      return;
+    }
+    if (propsKind !== 'part' && !layoutSel.length && segSel.size) {
       propsTraceBuild();
       return;
     }
     var ref = propsRef();
     if (!ref) {
-      propsEl.innerHTML = '<div class="whint">select a part, trace, or via first \u2014 E edits its properties</div>';
+      propsEl.innerHTML = '<div class="whint">select a part, trace, via, or text first \u2014 E edits its properties</div>';
       return;
     }
     var c = null;
@@ -5955,6 +6452,45 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       return;
     }
     var st = compStateAt(ref);
+    // every read-only property the model carries: pin->net straight from
+    // the PCB pad manifest (the island's net list is the fallback), the
+    // body size + board side, and the first non-default net class that
+    // claims one of its nets
+    var padsOf = [];
+    for (var pm = 0; pm < padManifest.length; pm++)
+      if (padManifest[pm].ref === ref) padsOf.push(padManifest[pm]);
+    var padRows = '';
+    if (padsOf.length) {
+      // one row per pin (a pin with several pads shows once — its net is
+      // the same on every land)
+      var seenPins = {};
+      var padList = [];
+      for (var pd2 = 0; pd2 < padsOf.length; pd2++) {
+        var key2 = padsOf[pd2].pin + '|' + (padsOf[pd2].net || '');
+        if (seenPins[key2]) continue;
+        seenPins[key2] = 1;
+        padList.push(padsOf[pd2]);
+      }
+      var shown = padList.length > 10 ? padList.slice(0, 10) : padList;
+      padRows = shown
+        .map(function (p) {
+          return propsEsc(String(p.pin)) + ' ' + propsEsc(p.net || 'N/C');
+        })
+        .join(' \u00b7 ');
+      if (padList.length > 10) padRows += ' \u00b7 +' + (padList.length - 10) + ' more';
+    } else if (c.nets && c.nets.length) {
+      padRows = 'nets: ' + c.nets.map(propsEsc).join(', ');
+    }
+    var clsHintP = null;
+    var clsNetSrc = padsOf.length ? padsOf : (c.nets || []).map(function (n) { return { net: n }; });
+    for (var cn = 0; cn < clsNetSrc.length && !clsHintP; cn++) {
+      var cnn = clsNetSrc[cn] && clsNetSrc[cn].net;
+      if (!cnn) continue;
+      var infoP = netClassInfo(cnn);
+      // the catch-all Default class is the floor every net already has —
+      // only a NAMED class earns the line
+      if (infoP && !/^default$/i.test(infoP.name)) clsHintP = infoP;
+    }
     propsEl.innerHTML =
       '<b>' + ref + (layoutSel.length > 1 ? ' (+' + (layoutSel.length - 1) + ')' : '') + '</b>' +
       '<div class="wrow"><label>ref <input id="pp-ref" value="' + (layoutRefEdits[ref] !== undefined ? layoutRefEdits[ref] : ref) + '"></label>' +
@@ -5962,7 +6498,8 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       '<div class="wrow"><label>x <input id="pp-x" type="number" step="0.5" value="' + st.x.toFixed(2) + '"></label>' +
       '<label>y <input id="pp-y" type="number" step="0.5" value="' + (-st.y).toFixed(2) + '"></label>' +
       '<label>rot <select id="pp-rot"><option' + (((layoutRot[ref] || 0) * 90) === 0 ? ' selected' : '') + '>0</option><option' + (((layoutRot[ref] || 0) * 90) === 90 ? ' selected' : '') + '>90</option><option' + (((layoutRot[ref] || 0) * 90) === 180 ? ' selected' : '') + '>180</option><option' + (((layoutRot[ref] || 0) * 90) === 270 ? ' selected' : '') + '>270</option></select></label></div>' +
-      '<div class="whint">' + (c.w.toFixed(1) + ' \u00d7 ' + c.h.toFixed(1) + ' mm' + (c.nets && c.nets.length ? ' \u00b7 nets: ' + c.nets.join(', ') : '')) + '</div>' +
+      '<div class="whint">' + c.w.toFixed(1) + ' \u00d7 ' + c.h.toFixed(1) + ' mm \u00b7 ' + (c.side === 'back' ? 'back' : 'front') + ' side' + (padRows ? ' \u00b7 ' + padRows : '') + '</div>' +
+      (clsHintP ? '<div class="whint">' + propsEsc(netClassLine(clsHintP)) + '</div>' : '') +
       '<div class="wrow"><button id="pp-apply">apply</button></div>';
     document.getElementById('pp-apply').addEventListener('click', propsApply);
     // Enter applies anywhere in the panel
@@ -6033,9 +6570,17 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     propsEl.style.display = open ? 'block' : 'none';
     if (open) {
       propsBuild();
+      // the open's own build is the baseline propsSync diffs against —
+      // without it the first selection sync after opening would rebuild a
+      // panel that already shows exactly that selection
+      propsSigLast = propsSig();
       // whichever panel was built, its first editable field takes focus
       var first =
-        document.getElementById('pp-ref') || document.getElementById('tp-w') || document.getElementById('vp-size');
+        document.getElementById('pp-ref') ||
+        document.getElementById('tp-w') ||
+        document.getElementById('vp-size') ||
+        document.getElementById('tx-text') ||
+        document.getElementById('tx-x');
       if (first) first.focus();
     }
   }
@@ -6922,6 +7467,9 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         vc.setAttribute('data-route', '1');
         if (routeState.net) vc.setAttribute('data-net', routeState.net);
         spanGroups[gi].appendChild(vc);
+        // the drill hole rides the barrel — without it a pre-apply via reads
+        // as a solid blob until the rebuild plots the real drill
+        vc.__hole = viaHoleFor(vc, commitVia.drill);
       }
     }
     // record for the apply-to-source bridge (board y-down frame)
@@ -7339,6 +7887,205 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     renderLayoutMoves();
     if (statusEl && !statusLocked()) statusEl.textContent = 'segment dragged \u2014 apply writes the reshaped track into source';
   }
+  // ---- arrow-key nudge for traces and vias: the selected segments
+  // translate whole (same-layer neighbors sharing their endpoints stretch),
+  // selected barrels jump and carry every trace end attached to them (a
+  // barrel is the junction — all layers), the parent polylines redraw, and
+  // old → new serializes as delete + session-route pairs — the same apply
+  // contract a segment drag rides ----
+  function nudgeInkSelection(dx, dy) {
+    var movedSegs = [];
+    segSel.forEach(function (h) {
+      movedSegs.push(h);
+    });
+    var movedVias = [];
+    viaSel.forEach(function (v) {
+      var p = viaInkPos(v);
+      movedVias.push({ el: v, ox: p.x, oy: p.y, nx: p.x + dx, ny: p.y + dy });
+    });
+    if (!movedSegs.length && !movedVias.length) return false;
+    // moved endpoints: [oldX, oldY, newX, newY] — selected segments'
+    // corners travel with them, barrels announce their jump
+    var touchPts = [];
+    movedSegs.forEach(function (h) {
+      touchPts.push([+h.getAttribute('x1'), +h.getAttribute('y1'), +h.getAttribute('x1') + dx, +h.getAttribute('y1') + dy]);
+      touchPts.push([+h.getAttribute('x2'), +h.getAttribute('y2'), +h.getAttribute('x2') + dx, +h.getAttribute('y2') + dy]);
+    });
+    movedVias.forEach(function (mv) {
+      touchPts.push([mv.ox, mv.oy, mv.nx, mv.ny]);
+    });
+    // every NON-selected segment with an endpoint on a moved point stretches
+    // that endpoint to the point's new position
+    var selSet = new Set(movedSegs);
+    var stretch = [];
+    var all = allSegHits();
+    for (var i = 0; i < all.length; i++) {
+      var seg = all[i];
+      if (selSet.has(seg)) continue;
+      var ends = [];
+      for (var e = 0; e < touchPts.length; e++) {
+        var t = touchPts[e];
+        if (Math.hypot(+seg.getAttribute('x1') - t[0], +seg.getAttribute('y1') - t[1]) < 0.01) ends.push(['x1', 'y1', t[2], t[3]]);
+        if (Math.hypot(+seg.getAttribute('x2') - t[0], +seg.getAttribute('y2') - t[1]) < 0.01) ends.push(['x2', 'y2', t[2], t[3]]);
+      }
+      if (ends.length) stretch.push({ hit: seg, ends: ends });
+    }
+    // affected parents + originals snapshot (undo AND the delete half of
+    // the serialization read from it)
+    var parents = [];
+    var seenTr = new Set();
+    movedSegs.concat(stretch.map(function (s2) { return s2.hit; })).forEach(function (h) {
+      if (h.__track && !seenTr.has(h.__track)) {
+        seenTr.add(h.__track);
+        parents.push(h.__track);
+      }
+    });
+    var originals = [];
+    parents.forEach(function (tr) {
+      (tr.__hits || []).forEach(function (h) {
+        originals.push({
+          hit: h,
+          x1: +h.getAttribute('x1'),
+          y1: +h.getAttribute('y1'),
+          x2: +h.getAttribute('x2'),
+          y2: +h.getAttribute('y2'),
+        });
+      });
+    });
+    var setViaPos = function (el, x, y) {
+      if (el.tagName === 'circle') {
+        el.setAttribute('cx', +x.toFixed(4));
+        el.setAttribute('cy', +y.toFixed(4));
+      } else {
+        el.setAttribute('x', +x.toFixed(4));
+        el.setAttribute('y', +y.toFixed(4));
+      }
+      // the drill hole and any resize overlay ride the barrel
+      if (el.__hole && el.__hole.parentNode) {
+        el.__hole.setAttribute('cx', +x.toFixed(4));
+        el.__hole.setAttribute('cy', +y.toFixed(4));
+      }
+      if (el.__resizeCircle && el.__resizeCircle.parentNode) {
+        el.__resizeCircle.setAttribute('cx', +x.toFixed(4));
+        el.__resizeCircle.setAttribute('cy', +y.toFixed(4));
+        if (el.__resizeCircle.__hole && el.__resizeCircle.__hole.parentNode) {
+          el.__resizeCircle.__hole.setAttribute('cx', +x.toFixed(4));
+          el.__resizeCircle.__hole.setAttribute('cy', +y.toFixed(4));
+        }
+      }
+    };
+    var applyMutation = function () {
+      movedSegs.forEach(function (h) {
+        h.setAttribute('x1', +(parseFloat(h.getAttribute('x1')) + dx).toFixed(4));
+        h.setAttribute('y1', +(parseFloat(h.getAttribute('y1')) + dy).toFixed(4));
+        h.setAttribute('x2', +(parseFloat(h.getAttribute('x2')) + dx).toFixed(4));
+        h.setAttribute('y2', +(parseFloat(h.getAttribute('y2')) + dy).toFixed(4));
+      });
+      stretch.forEach(function (s2) {
+        s2.ends.forEach(function (e2) {
+          s2.hit.setAttribute(e2[0], +e2[2].toFixed(4));
+          s2.hit.setAttribute(e2[1], +e2[3].toFixed(4));
+        });
+      });
+      movedVias.forEach(function (mv) {
+        setViaPos(mv.el, mv.nx, mv.ny);
+      });
+      parents.forEach(function (tr) {
+        segDragRedraw(tr);
+      });
+      segHiSync();
+    };
+    var delCount = routedDeletes.length;
+    var rtCount = routedTracks.length;
+    var serialize = function () {
+      // the ORIGINAL geometry leaves as deletes; each affected parent's
+      // NEW polyline rides as a session route (any moved barrel attaches
+      // to the first chain passing through its new position — one entry
+      // per barrel, never two)
+      originals.forEach(function (o) {
+        var lg = o.hit.closest ? o.hit.closest("g[data-kind='copper']") : null;
+        routedDeletes.push({
+          net: o.hit.getAttribute('data-net') || null,
+          x1: +o.x1.toFixed(3),
+          y1: +(-o.y1).toFixed(3),
+          x2: +o.x2.toFixed(3),
+          y2: +(-o.y2).toFixed(3),
+          layer: lg ? copperCanon(lg.getAttribute('data-layer-name')) : null,
+        });
+      });
+      var claimed = new Set();
+      parents.forEach(function (tr) {
+        var hits = tr.__hits || [];
+        if (!hits.length || !tr.parentNode) return;
+        var canon = '';
+        var lg = hits[0].closest ? hits[0].closest("g[data-kind='copper']") : null;
+        canon = lg ? copperCanon(lg.getAttribute('data-layer-name')) : 'F.Cu';
+        var w = parseFloat(tr.getAttribute('data-w') || '0') || 0.3;
+        var pts = [{ x: +parseFloat(hits[0].getAttribute('x1')).toFixed(3), y: -parseFloat(hits[0].getAttribute('y1')) }];
+        for (var p2 = 0; p2 < hits.length; p2++)
+          pts.push({ x: +parseFloat(hits[p2].getAttribute('x2')).toFixed(3), y: -parseFloat(hits[p2].getAttribute('y2')) });
+        var vias = [];
+        movedVias.forEach(function (mv) {
+          if (claimed.has(mv.el)) return;
+          for (var q = 0; q < pts.length; q++) {
+            // pts are board frame (y negated), the barrel island frame
+            if (Math.abs(pts[q].x - mv.nx) < 0.02 && Math.abs(pts[q].y + mv.ny) < 0.02) {
+              var size = viaInkSize(mv.el) || 0.6;
+              var ly = viaInkLayers(mv.el);
+              vias.push({
+                x: +mv.nx.toFixed(3),
+                y: +(-mv.ny).toFixed(3),
+                size: size,
+                drill: viaDrillFor(size),
+                layers: ly.length >= 2 ? [ly[0], ly[ly.length - 1]] : undefined,
+              });
+              claimed.add(mv.el);
+              break;
+            }
+          }
+        });
+        routedTracks.push({
+          net: hits[0].getAttribute('data-net') || null,
+          w: w,
+          pieces: [{ layer: canon, w: w, pts: pts }],
+          vias: vias,
+          power: null,
+          impedance: null,
+          from: { ref: '(nudge)', pin: '' },
+          to: null,
+        });
+      });
+    };
+    applyMutation();
+    serialize();
+    pushUndo(
+      'nudge ' + (movedSegs.length ? movedSegs.length + ' segment(s)' : movedVias.length + ' via(s)'),
+      function () {
+        segDragRestore(originals);
+        movedVias.forEach(function (mv) {
+          setViaPos(mv.el, mv.ox, mv.oy);
+        });
+        parents.forEach(function (tr) {
+          segDragRedraw(tr);
+        });
+        segHiSync();
+        routedDeletes.splice(delCount);
+        routedTracks.splice(rtCount);
+      },
+      function () {
+        applyMutation();
+        serialize();
+      },
+    );
+    window.__typecadRouteEnds = null;
+    refreshRatsnest();
+    renderLayoutMoves();
+    if (statusEl && !statusLocked())
+      statusEl.textContent =
+        'nudged ' + (movedSegs.length ? movedSegs.length + ' segment(s)' + (movedVias.length ? ' + ' + movedVias.length + ' via(s)' : '') : movedVias.length + ' via(s)') +
+        ' \u2014 apply writes the moved track into source';
+    return true;
+  }
   window.addEventListener('pointermove', function (ev) {
     if (segDrag) segDragMove(ev);
   });
@@ -7346,6 +8093,12 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     if (segDrag) segDragEnd(true);
   });
   function segHiSync() {
+    propsSync('trace');
+    // detached members (ink an undo/redo removed) leave the set — cloning
+    // them would paint an overlay over copper that no longer exists
+    segSel.forEach(function (h) {
+      if (!h.parentNode) segSel.delete(h);
+    });
     if (segHi) {
       segHi.remove();
       segHi = null;
@@ -7377,12 +8130,27 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   // viaSel visual sync: selected vias get a selection ring (works for both
   // committed session circles and gerber aperture flashes)
   function viaHiSync() {
+    propsSync('via');
     viewGroups.gerber.querySelectorAll('.route-via-sel').forEach(function (c) {
       c.classList.remove('route-via-sel');
+      // restore the element's own stroke-width — the selection ring set it
+      if (c.__swPrev !== undefined) {
+        if (c.__swPrev === null) c.removeAttribute('stroke-width');
+        else c.setAttribute('stroke-width', c.__swPrev);
+        c.__swPrev = undefined;
+      }
     });
     viaSel.forEach(function (c) {
       if (!c.parentNode) viaSel.delete(c);
-      else c.classList.add('route-via-sel');
+      else {
+        c.classList.add('route-via-sel');
+        // the ring hugs the barrel: BOARD units scaled to the via's own
+        // size (a fixed 2px screen stroke blew up to several barrel-widths
+        // through aperture-scaled use symbols)
+        c.__swPrev = c.getAttribute('stroke-width');
+        var vs = viaInkSize(c) || 0.6;
+        c.setAttribute('stroke-width', Math.max(+(vs * 0.18).toFixed(3), 0.05));
+      }
     });
     if (statusEl && !statusLocked()) {
       if (viaSel.size)
@@ -7431,6 +8199,11 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
           sc.__overFlash.__resizeCircle = null;
         }
         viaSel.delete(sc);
+        // the barrel's drill hole goes with it
+        if (sc.__hole) {
+          sc.__hole.remove();
+          sc.__hole = null;
+        }
         sc.remove();
       }
       if (!rt.pieces.length && !rt.vias.length) routedTracks.splice(ri, 1);
@@ -7445,6 +8218,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     // gerber via flashes: every copper layer's copy of this barrel
     var flashed = viaInk();
     var vnet = null;
+    var flashRemoved = false;
     for (var fi = 0; fi < flashed.length; fi++) {
       var fe = flashed[fi];
       if (fe.tagName !== 'use') continue;
@@ -7453,7 +8227,24 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       viaSel.delete(fe);
       vnet = vnet || fe.getAttribute('data-net') || null;
       fe.remove();
+      flashRemoved = true;
       removed++;
+    }
+    // the board-rendered DRILL hole outlives the flash that owned it —
+    // take it too, unless a pad sits on the same spot (that hole is the
+    // pad's, and the pad's land is still there)
+    if (flashRemoved) {
+      var padNear = false;
+      for (var pm = 0; pm < padManifest.length && !padNear; pm++)
+        if (Math.hypot(padManifest[pm].x - bx, padManifest[pm].y - by) < 0.4) padNear = true;
+      if (!padNear) {
+        var drills = viewGroups.gerber.querySelectorAll('g[data-kind="drill"] circle');
+        for (var di = 0; di < drills.length; di++) {
+          var dc = drills[di];
+          if (Math.hypot(parseFloat(dc.getAttribute('cx')) - bx, parseFloat(dc.getAttribute('cy')) + by) > 0.02) continue;
+          dc.remove();
+        }
+      }
     }
     if (record && !sessionHit && removed)
       routedDeletes.push({ kind: 'via', net: vnet, x1: +bx.toFixed(3), y1: +by.toFixed(3), x2: +bx.toFixed(3), y2: +by.toFixed(3), layer: null });
@@ -7661,6 +8452,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       var tr1 = parentsBefore[pid].tr;
       if (!tr1.parentNode) continue; // the whole track went with its last hit
       parentsAfter[pid] = {
+        tr: tr1,
         d: tr1.getAttribute('d'),
         hits: (tr1.__hits || []).slice(),
         stripe: tr1.__stripe ? tr1.__stripe.getAttribute('d') : null,
@@ -7765,6 +8557,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
           t.closest('.layout-comp') ||
           t.closest('[data-ref]') ||
           t.closest('[data-pin]') ||
+          t.closest('[data-text]') || // a claimed text glyph owns its press (E edits it)
           t.closest('.pad-labels') ||
           t.tagName === 'circle' ||
           (t.tagName === 'use' && t.getAttribute('data-route') === '1')
@@ -9489,7 +10282,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       else if (/(^|[-_.])b_cu(?=$|[-_.])/.test(name)) key = 'b';
       else {
         var inm = /(^|[-_.])in(\d+)_cu(?=$|[-_.])/.exec(name);
-        key = inm ? inm[2] : 'f';
+        key = inm ? 'in' + inm[2] : 'f';
       }
       var cop = theme.board.copper;
       return cop ? cop[key] || null : null;
@@ -9825,12 +10618,19 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   /* the ? keys cheat-sheet */
   #keys-help {
     position: fixed; right: 16px; bottom: 96px; z-index: 45; display: none;
-    max-width: 340px; background: var(--chrome-bg); color: var(--chrome-fg);
+    max-width: 440px; background: var(--chrome-bg); color: var(--chrome-fg);
     border: 1px solid var(--chrome-border); border-radius: 6px; padding: 10px 14px;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4); font: 12px/1.6 system-ui, sans-serif;
-    cursor: pointer;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4); font: 12px/1.5 system-ui, sans-serif;
+    cursor: pointer; max-height: calc(100vh - 120px); overflow-y: auto;
   }
-  #keys-help b { color: #4fc1ff; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; }
+  /* one binding per row: bold key column, dash, explanation — the grid keeps
+     every key aligned and no row wraps under its key */
+  #keys-help .hrow { display: grid; grid-template-columns: 128px 1fr; column-gap: 8px; align-items: baseline; }
+  #keys-help .hk { font-weight: 700; white-space: nowrap; }
+  #keys-help .hd { color: var(--chrome-fg); }
+  #keys-help .hsec { color: #4fc1ff; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; margin: 8px 0 2px; }
+  #keys-help .hsec:first-child { margin-top: 0; }
+  #keys-help .hnote { color: var(--muted); font-size: 11px; margin-top: 6px; }
   #route-ui .route-via { fill: #4fc1ff; fill-opacity: 0.35; stroke: #4fc1ff; stroke-width: 0.1; }
   /* committed vias (session circles + gerber flashes): selectable like any
      element — the transparent stroke widens the hit area without changing
@@ -9843,9 +10643,9 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   circle[data-route].route-via-sel,
   use.route-via-sel {
     stroke: var(--sel);
-    stroke-width: 2px;
-    vector-effect: non-scaling-stroke;
     fill-opacity: 0.55;
+    /* no fixed stroke-width here — viaHiSync sets a per-barrel width in
+       board units so the ring hugs the via at every zoom */
   }
   /* selected trace segments: a white overlay at the segment's OWN width
      (set per line by segHiSync from the track's data-w) — the highlight
@@ -9892,6 +10692,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     border-radius: 4px; padding: 3px 6px; font: inherit; width: 76px; cursor: text;
   }
   #props-pop select { cursor: pointer; width: 56px; }
+  #props-pop input[type='checkbox'] { width: auto; margin: 0; }
   #props-pop button {
     background: var(--btn-bg); color: var(--chrome-fg); border: 1px solid var(--btn-border);
     border-radius: 4px; padding: 3px 12px; cursor: pointer; font: inherit;

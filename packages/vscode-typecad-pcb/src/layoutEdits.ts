@@ -208,6 +208,17 @@ export function applyPlacementEdits(text: string, edits: Array<{ start: number; 
   return out;
 }
 
+/** A text style diff: only keys the user actually changed (w/h map to the API's width/height). */
+export interface TextStyleInput {
+  w?: number;
+  h?: number;
+  thickness?: number;
+  font?: string;
+  italic?: boolean;
+  bold?: boolean;
+  justify?: { horizontal?: 'left' | 'right' | 'center'; vertical?: 'top' | 'bottom' | 'middle'; mirror?: boolean };
+}
+
 export interface TextEditInput {
   /** authored text + anchor (board frame) the source literal is matched by */
   text0: string;
@@ -218,6 +229,30 @@ export interface TextEditInput {
   x: number;
   y: number;
   rot: number;
+  /** changed style keys only — a position-only edit carries none */
+  style?: TextStyleInput;
+}
+
+/** Replace `key: <number>` in a literal, or append it when absent. */
+function setNumKey(inner: string, key: string, val: number): string {
+  const re = new RegExp(`\\b${key}\\s*:\\s*-?[\\d.]+`);
+  if (re.test(inner)) return inner.replace(re, `${key}: ${fmt(val)}`);
+  return `${inner.trimEnd().replace(/,\s*$/, '')}, ${key}: ${fmt(val)} `;
+}
+
+/** Replace `key: <bool>` in a literal, or append it when absent. */
+function setBoolKey(inner: string, key: string, val: boolean): string {
+  const re = new RegExp(`\\b${key}\\s*:\\s*(?:true|false)`);
+  if (re.test(inner)) return inner.replace(re, `${key}: ${val}`);
+  return `${inner.trimEnd().replace(/,\s*$/, '')}, ${key}: ${val} `;
+}
+
+/** Replace `key: '<string>'` in a literal, or append it when absent. */
+function setStrKey(inner: string, key: string, val: string): string {
+  const re = new RegExp(`\\b${key}\\s*:\\s*(['"])(?:\\\\.|(?!\\1).)*\\1`);
+  const esc = val.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+  if (re.test(inner)) return inner.replace(re, `${key}: '${esc}'`);
+  return `${inner.trimEnd().replace(/,\s*$/, '')}, ${key}: '${esc}' `;
 }
 
 /** Find the balanced `{ … }` object literal starting at/after the call head. */
@@ -239,6 +274,163 @@ function objectLiteralRange(text: string, head: number): { head: number; open: n
 /** The identity a planned .text edit reports — one authored value+anchor. */
 export function textEditRef(t: TextEditInput): string {
   return `text "${t.text0}"@${t.x0},${t.y0}`;
+}
+
+/** Split an object-literal body on top-level commas (string/brace aware). */
+function splitTopLevel(body: string): string[] {
+  const out: string[] = [];
+  let depth = 0;
+  let start = 0;
+  let str: string | null = null;
+  for (let i = 0; i < body.length; i++) {
+    const ch = body[i]!;
+    if (str) {
+      if (ch === '\\') i++;
+      else if (ch === str) str = null;
+      continue;
+    }
+    if (ch === "'" || ch === '"') str = ch;
+    else if (ch === '{' || ch === '[' || ch === '(') depth++;
+    else if (ch === '}' || ch === ']' || ch === ')') depth--;
+    else if (ch === ',' && depth === 0) {
+      out.push(body.slice(start, i));
+      start = i + 1;
+    }
+  }
+  const tail = body.slice(start);
+  if (tail.trim()) out.push(tail);
+  return out;
+}
+
+/**
+ * The layout-literal body for one label edit: the footprint-local position
+ * plus the style diff, merged into whatever the existing literal carried
+ * (unmanaged keys — layer, show, an unedited justify — stay put).
+ */
+function labelLayoutBody(
+  label: { x: number; y: number; rot: number; style?: TextStyleInput },
+  part: { x: number; y: number; rot: number },
+  existingBody: string,
+): string {
+  const rad = (-part.rot * Math.PI) / 180;
+  const c = Math.cos(rad);
+  const s2 = Math.sin(rad);
+  const dx = label.x - part.x;
+  const dy = label.y - part.y;
+  // only the keys this edit manages are stripped from the existing body:
+  // the position, plus the style keys the diff actually carries
+  const sty = label.style;
+  const manages = new Set(['x', 'y', 'rotation']);
+  if (sty) {
+    if (sty.w !== undefined) manages.add('width');
+    if (sty.h !== undefined) manages.add('height');
+    if (sty.thickness !== undefined) manages.add('thickness');
+    if (sty.font !== undefined) manages.add('font');
+    if (sty.italic !== undefined) manages.add('italic');
+    if (sty.bold !== undefined) manages.add('bold');
+    if (sty.justify) manages.add('justify');
+  }
+  const kept = splitTopLevel(existingBody)
+    .filter((entry) => {
+      const k = /^\s*([A-Za-z_$][\w$]*)\s*:/.exec(entry);
+      return !k || !manages.has(k[1]!);
+    })
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+    .join(', ');
+  let bodyStr = kept ? kept + ', ' : '';
+  bodyStr += `x: ${fmt(dx * c - dy * s2)}, y: ${fmt(dx * s2 + dy * c)}, rotation: ${fmt(label.rot - part.rot)}`;
+  if (sty) {
+    if (sty.w !== undefined) bodyStr = setNumKey(bodyStr, 'width', sty.w);
+    if (sty.h !== undefined) bodyStr = setNumKey(bodyStr, 'height', sty.h);
+    if (sty.thickness !== undefined) bodyStr = setNumKey(bodyStr, 'thickness', sty.thickness);
+    if (sty.font !== undefined) bodyStr = setStrKey(bodyStr, 'font', sty.font);
+    if (sty.italic !== undefined) bodyStr = setBoolKey(bodyStr, 'italic', sty.italic);
+    if (sty.bold !== undefined) bodyStr = setBoolKey(bodyStr, 'bold', sty.bold);
+    if (sty.justify) {
+      const parts: string[] = [];
+      if (sty.justify.horizontal !== undefined) parts.push(`horizontal: '${sty.justify.horizontal}'`);
+      if (sty.justify.vertical !== undefined) parts.push(`vertical: '${sty.justify.vertical}'`);
+      if (sty.justify.mirror !== undefined) parts.push(`mirror: ${sty.justify.mirror}`);
+      if (parts.length > 0) {
+        const obj = `{ ${parts.join(', ')} }`;
+        const jRe = /\bjustify\s*:\s*\{[^}]*\}/;
+        bodyStr = jRe.test(bodyStr) ? bodyStr.replace(jRe, `justify: ${obj}`) : `${bodyStr.trimEnd().replace(/,\s*$/, '')}, justify: ${obj}`;
+      }
+    }
+  }
+  // appended keys carry a trailing space (the setters' append format) —
+  // trim it so the assembled literal has no double spacing before `}`
+  return bodyStr.replace(/\s+$/, '');
+}
+
+/**
+ * Label layout edits for parts WITHOUT a Component constructor literal to
+ * rewrite — subclass factories (`new LED({ … })`) and prefix-derived
+ * references never carry `reference: 'D1'`, so planComponentEdits cannot
+ * match them. The layout lands as a post-construction assignment on the
+ * component's public field (`led.referenceLayout = { … }`), inserted after
+ * the constructor statement or replacing an existing assignment.
+ */
+export function planLabelAssignments(
+  text: string,
+  specs: Array<{ ref: string; label: { kind: 'reference' | 'value' | 'fab'; x: number; y: number; rot: number; style?: TextStyleInput } }>,
+  variableOf: (ref: string) => string | undefined,
+  placementOf: (ref: string) => { x: number; y: number; rot: number } | null,
+): LayoutEditResult {
+  const edits: PlacementEdit[] = [];
+  const skipped: Array<{ ref: string; reason: string }> = [];
+  for (const spec of specs) {
+    const variable = variableOf(spec.ref);
+    if (!variable) {
+      skipped.push({ ref: spec.ref, reason: 'no source variable' });
+      continue;
+    }
+    const part = placementOf(spec.ref);
+    if (!part) {
+      skipped.push({ ref: spec.ref, reason: 'no .pcb placement literal found' });
+      continue;
+    }
+    const prop = spec.label.kind === 'fab' ? 'fab' : `${spec.label.kind}Layout`;
+    const assignRe = new RegExp(`^([ \\t]*)${escapeRegExp(variable)}\\.${prop}\\s*=`, 'm');
+    const match = assignRe.exec(text);
+    let bodyStr: string;
+    let start: number;
+    let end: number;
+    let lead: string;
+    let inserted = false;
+    if (match) {
+      const r = objectLiteralRange(text, match.index + match[0].length - 1);
+      if (!r) {
+        skipped.push({ ref: spec.ref, reason: `${variable}.${prop} assignment is not an object literal` });
+        continue;
+      }
+      bodyStr = labelLayoutBody(spec.label, part, text.slice(r.open + 1, r.close));
+      start = match.index;
+      end = r.close + 1;
+      lead = match[1] ?? '';
+    } else {
+      const ins = insertionAfterConstructor(text, variable);
+      if (!ins) {
+        skipped.push({ ref: spec.ref, reason: `no \`${variable}\` constructor statement found` });
+        continue;
+      }
+      bodyStr = labelLayoutBody(spec.label, part, '');
+      start = ins.at;
+      end = ins.at;
+      lead = `\n${ins.indent}`;
+      inserted = true;
+    }
+    edits.push({
+      ref: `${spec.ref} ${prop}`,
+      // an inserted assignment is a whole new statement (own semicolon); a
+      // rewrite swaps only the object literal — the existing `;` survives
+      line: `${lead}${variable}.${prop} = { ${bodyStr} }${inserted ? ';' : ''}`,
+      start,
+      end,
+    });
+  }
+  return { edits, skipped };
 }
 
 /**
@@ -285,6 +477,29 @@ export function planTextEdits(text: string, edits: TextEditInput[]): LayoutEditR
       const newRot = (rotNum ? parseFloat(rotNum[1]) : 0) + edit.rot;
       if (rotNum) newInner = newInner.replace(/\brotation\s*:\s*-?[\d.]+/, `rotation: ${fmt(newRot)}`);
       else newInner = `${newInner.trimEnd()}, rotation: ${fmt(newRot)} `;
+    }
+    // style keys arrive as a DIFF — every present key replaces its literal
+    // value (or is appended when the source literal omitted it)
+    const sty = edit.style;
+    if (sty) {
+      if (sty.w !== undefined) newInner = setNumKey(newInner, 'width', sty.w);
+      if (sty.h !== undefined) newInner = setNumKey(newInner, 'height', sty.h);
+      if (sty.thickness !== undefined) newInner = setNumKey(newInner, 'thickness', sty.thickness);
+      if (sty.font !== undefined) newInner = setStrKey(newInner, 'font', sty.font);
+      if (sty.italic !== undefined) newInner = setBoolKey(newInner, 'italic', sty.italic);
+      if (sty.bold !== undefined) newInner = setBoolKey(newInner, 'bold', sty.bold);
+      if (sty.justify) {
+        const parts: string[] = [];
+        if (sty.justify.horizontal !== undefined) parts.push(`horizontal: '${sty.justify.horizontal}'`);
+        if (sty.justify.vertical !== undefined) parts.push(`vertical: '${sty.justify.vertical}'`);
+        if (sty.justify.mirror !== undefined) parts.push(`mirror: ${sty.justify.mirror}`);
+        if (parts.length > 0) {
+          const obj = `{ ${parts.join(', ')} }`;
+          const jRe = /\bjustify\s*:\s*\{[^}]*\}/;
+          if (jRe.test(newInner)) newInner = newInner.replace(jRe, `justify: ${obj}`);
+          else newInner = `${newInner.trimEnd().replace(/,\s*$/, '')}, justify: ${obj} `;
+        }
+      }
     }
     planned.push({
       ref: textEditRef(edit),
@@ -346,7 +561,7 @@ export interface ComponentEditSpec {
   ref: string;
   value?: string;
   newRef?: string;
-  label?: { kind: 'reference' | 'value' | 'fab'; x: number; y: number; rot: number };
+  label?: { kind: 'reference' | 'value' | 'fab'; x: number; y: number; rot: number; style?: TextStyleInput };
 }
 
 export function planComponentEdits(
@@ -392,20 +607,29 @@ export function planComponentEdits(
       if (!part) {
         skip = 'no .pcb placement literal found';
       } else {
-        const rad = (-part.rot * Math.PI) / 180;
-        const c = Math.cos(rad);
-        const s2 = Math.sin(rad);
-        const dx = spec.label.x - part.x;
-        const dy = spec.label.y - part.y;
-        const body = `{ x: ${fmt(dx * c - dy * s2)}, y: ${fmt(dx * s2 + dy * c)}, rotation: ${fmt(spec.label.rot - part.rot)} }`;
         // reference/value carry their own Layout option names; the small
         // fab refdes text is positioned by the plain 'fab' option
         const prop = spec.label.kind === 'fab' ? 'fab' : `${spec.label.kind}Layout`;
-        // NOTE: RegExp source string — backslashes are doubled
-        const layoutRe = new RegExp(`\\b${prop}\\s*:\\s*\\{[^}]*\\}`);
-        const existing = layoutRe.exec(inner);
-        if (existing) newInner = newInner.replace(existing[0], () => `${prop}: ${body}`);
-        else after.push(`${prop}: ${body}`);
+        // the layout literal may already carry keys this edit does not
+        // manage (layer, show, styled by hand…) — keep them. Balanced-brace
+        // parsing: a nested justify object must not truncate the literal
+        const keyRe = new RegExp(`\\b${prop}\\s*:`);
+        const km = keyRe.exec(inner);
+        let bodyStr = '';
+        let span: { start: number; end: number } | null = null;
+        if (km) {
+          const r = objectLiteralRange(inner, km.index + km[0].length - 1);
+          if (r) {
+            bodyStr = labelLayoutBody(spec.label, part, inner.slice(r.open + 1, r.close));
+            span = { start: km.index, end: r.close + 1 };
+          }
+        }
+        if (span) {
+          const literal = `${prop}: { ${bodyStr} }`;
+          newInner = newInner.slice(0, span.start) + literal + newInner.slice(span.end);
+        } else {
+          after.push(`${prop}: { ${labelLayoutBody(spec.label, part, '')} }`);
+        }
       }
     }
     if (skip) {

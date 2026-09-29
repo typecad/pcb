@@ -164,9 +164,10 @@ export async function run(parsed: ParsedArgs): Promise<void> {
   }
 
   logger.log('Configuration:');
+  logger.log('   Layer renders: native (no kicad-cli)');
   if (fullMode) logger.log('   Processing mode: Full (all layers including User layers)');
   else logger.log('   Processing mode: Standard');
-  if (theme) logger.log(`   Theme: ${theme}`);
+  logger.log(`   Theme: ${theme ?? 'typeCAD (default)'}`);
   if (outputHtmlPath) logger.log(`   Output: ${outputHtmlPath}`);
   logger.log('');
 
@@ -194,7 +195,6 @@ export async function run(parsed: ParsedArgs): Promise<void> {
     logger.log('');
     logger.log('Troubleshooting tips:');
     logger.log('   - Ensure both PCB files exist and are valid KiCAD files');
-    logger.log('   - Check that KiCAD CLI is properly installed');
     logger.log("   - For git revisions, ensure you're inside a git repository");
     cleanupGitTempFiles();
     throw error;

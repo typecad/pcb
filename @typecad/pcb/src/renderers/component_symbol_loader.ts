@@ -1,5 +1,5 @@
 import fs from 'node:fs';
-import { KiCAD } from '../kicad.js';
+import { libraryRoots } from '../kicad.js';
 import { ComponentError } from '../utils/errors.js';
 import { LIBRARY_SEPARATOR } from '../utils/constants.js';
 import { getCallSite } from '../utils/stack_trace.js';
@@ -27,7 +27,7 @@ export function getSymbolReferencePrefix(symbol: string): string | undefined {
     if (separatorIndex > 0) {
       const libraryName = symbol.slice(0, separatorIndex);
       const symbolName = symbol.slice(separatorIndex + 1);
-      const kicadSymbols = KiCAD.instance.getLibraryPaths().symbols;
+      const kicadSymbols = libraryRoots().symbols;
 
       const loadLibrary = (lib: string): SList | null => {
         const candidates = [
@@ -80,9 +80,7 @@ export function loadSymbolLib(
   const [library, symbol_name] = symbol_parts;
   let symbol_file_contents = '';
 
-  const kicad = KiCAD.instance;
-  const libraryPaths = kicad.getLibraryPaths();
-  const kicad_symbols = libraryPaths.symbols;
+  const kicad_symbols = libraryRoots().symbols;
 
   try {
     if (kicad_symbols && fs.existsSync(`${kicad_symbols}/${library}.kicad_sym`)) {

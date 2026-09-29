@@ -17,6 +17,7 @@ import path from 'node:path';
 import type { CliArgs, CliPinInfo, SymbolData, FootprintData } from '../types.js';
 import logger from '../../utils/logging.js';
 import { buildKiCADArgs } from '../../kicad_commands.js';
+import { upgradeFootprintLibrary } from '../../pcb/footprint_upgrade.js';
 
 type InquirerPrompts = typeof import('@inquirer/prompts');
 type FileSelector = typeof import('inquirer-file-selector');
@@ -839,11 +840,15 @@ async function handleEasyedaFootprint(cmdArgs: CliArgs, isNonInteractive: boolea
   });
 
   try {
-    if (!KiCAD.cliPath) throw new Error('kicad-cli not found');
-    const { executable, execArgs } = buildKiCADArgs('fp', ['upgrade', prettyFolder]);
-    execFileSync(executable, execArgs, { stdio: 'pipe' });
+    const upgraded = upgradeFootprintLibrary(prettyFolder);
+    if (upgraded.errors > 0) {
+      logger.error(
+        `Footprint upgrade issues for ${prettyFolder}:`,
+        upgraded.files.filter((f) => f.status === 'error'),
+      );
+    }
   } catch (e) {
-    logger.error(`Failed executing kicad-cli fp upgrade`, e);
+    logger.error(`Failed upgrading footprints in ${prettyFolder}`, e);
   }
 
   // Handle 3D models

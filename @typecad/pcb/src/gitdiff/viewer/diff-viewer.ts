@@ -226,15 +226,6 @@ var updateLayerVisibility: () => void = function (): void {
         });
         break;
 
-      case 'side-by-side':
-        [originalLayer, modifiedLayer].forEach((layer) => {
-          if (layer) {
-            layer.style.display = 'block';
-            layer.style.opacity = '1';
-          }
-        });
-        break;
-
       case 'overlay':
         if (originalLayer && modifiedLayer) {
           originalLayer.style.display = 'block';
@@ -268,8 +259,7 @@ var updateLayerVisibility: () => void = function (): void {
   if (
     globalOpacitySlider &&
     currentViewMode !== 'overlay' &&
-    currentViewMode !== 'onion-skin' &&
-    currentViewMode !== 'side-by-side'
+    currentViewMode !== 'onion-skin'
   ) {
     updateGlobalOpacity(globalOpacitySlider.value);
   }
@@ -301,30 +291,22 @@ function changeViewMode(mode: string): void {
   const opacityControls = document.getElementById('opacityControls');
   const globalOpacityControls = document.getElementById('globalOpacityControls');
   const cardFooter = document.getElementById('cardFooter');
-  const sideBySideLabels = document.getElementById('sideBySideLabels');
 
-  imageStack.classList.remove('side-by-side', 'overlay', 'onion-skin', 'swipe', 'diff-only');
+  imageStack.classList.remove('overlay', 'onion-skin', 'swipe', 'diff-only');
 
   if (opacityControls) {
     opacityControls.style.display = mode === 'overlay' || mode === 'onion-skin' ? 'flex' : 'none';
   }
   if (globalOpacityControls) {
     globalOpacityControls.style.display =
-      mode === 'side-by-side' || mode === 'overlay' || mode === 'onion-skin' ? 'none' : 'flex';
+      mode === 'overlay' || mode === 'onion-skin' ? 'none' : 'flex';
   }
 
   if (cardFooter) {
-    if (mode === 'diff-only' || mode === 'side-by-side') {
+    if (mode === 'diff-only') {
       cardFooter.style.display = 'block';
     } else {
       cardFooter.style.display = 'none';
-    }
-  }
-  if (sideBySideLabels) {
-    if (mode === 'side-by-side') {
-      sideBySideLabels.style.setProperty('display', 'flex', 'important');
-    } else {
-      sideBySideLabels.style.setProperty('display', 'none', 'important');
     }
   }
 
@@ -378,7 +360,7 @@ function updateGlobalOpacity(value: string): void {
   const globalOpacityValueEl = document.getElementById('globalOpacityValue');
   if (globalOpacityValueEl) globalOpacityValueEl.textContent = `${value}%`;
 
-  if (currentViewMode === 'overlay' || currentViewMode === 'onion-skin' || currentViewMode === 'side-by-side') return;
+  if (currentViewMode === 'overlay' || currentViewMode === 'onion-skin') return;
 
   activeLayers.forEach((layerName) => {
     const originalLayer = document.querySelector(

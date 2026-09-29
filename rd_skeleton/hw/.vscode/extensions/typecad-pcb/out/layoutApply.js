@@ -167,7 +167,7 @@ function planLayoutApply(files, input) {
     }
     for (const l of input.labels ?? []) {
         const spec = specByRef.get(l.ref) ?? { ref: l.ref };
-        spec.label = { kind: l.kind, x: l.x, y: l.y, rot: l.rot };
+        spec.label = { kind: l.kind, x: l.x, y: l.y, rot: l.rot, ...(l.style ? { style: l.style } : {}) };
         specByRef.set(l.ref, spec);
     }
     const specs = [...specByRef.values()];
@@ -185,7 +185,17 @@ function planLayoutApply(files, input) {
             placementCache.set(ref, found);
             return found;
         };
+        // edits accumulate PER FILE and commit as ONE batch: every edit in a
+        // stage is planned against the same pre-stage text, so a second batch
+        // for the same file would apply at offsets the first batch already
+        // shifted (seen as an assignment spliced into the next statement)
         const batch = [];
+        const editsByUri = new Map();
+        const pushEdits = (uri, edits) => {
+            if (edits.length === 0)
+                return;
+            editsByUri.set(uri, [...(editsByUri.get(uri) ?? []), ...edits]);
+        };
         const doneRefs = new Set();
         for (const file of files) {
             const pending = specs.filter((sp) => !doneRefs.has(sp.ref));
@@ -213,13 +223,43 @@ function planLayoutApply(files, input) {
                 if (spec.label)
                     counts.labels++;
             }
-            if (plan.edits.length > 0)
-                batch.push({ uri: file.uri, edits: plan.edits });
+            pushEdits(file.uri, plan.edits);
+        }
+        // fallback for label-only specs with no constructor literal to rewrite:
+        // subclass factories (`new LED({…})`) and prefix-derived references
+        // never carry `reference: 'D1'` — their layout lands as a public-field
+        // assignment after the constructor, the same door `var.pcb = {…}` uses
+        const labelPending = specs.filter((sp) => !!sp.label && !doneRefs.has(sp.ref));
+        if (labelPending.length > 0) {
+            for (const file of files) {
+                const pending = labelPending.filter((sp) => !doneRefs.has(sp.ref));
+                if (pending.length === 0)
+                    break;
+                const plan = (0, layoutEdits_js_1.planLabelAssignments)(textOf.get(file.uri), pending, input.variableOf, placementOf);
+                for (const edit of plan.edits) {
+                    const spec = pending.find((sp) => edit.ref === `${sp.ref} ${sp.label.kind === 'fab' ? 'fab' : `${sp.label.kind}Layout`}`);
+                    if (!spec)
+                        continue;
+                    doneRefs.add(spec.ref);
+                    counts.labels++;
+                    pushEdits(file.uri, [edit]);
+                }
+                // skips defer to later files — the file owning the constructor
+                // statement has the final say, collected after the loop
+            }
+            for (const sp of labelPending) {
+                if (!doneRefs.has(sp.ref)) {
+                    const variable = input.variableOf(sp.ref);
+                    skipped.push(`${sp.ref} (${variable ? `no \`${variable}\` constructor statement found` : 'no source variable'})`);
+                }
+            }
         }
         for (const sp of specs) {
-            if (!doneRefs.has(sp.ref))
+            if (!doneRefs.has(sp.ref) && !skipped.some((s) => s.startsWith(`${sp.ref} (`)))
                 skipped.push(`${sp.ref} (no Component constructor literal found)`);
         }
+        for (const [uri, edits] of editsByUri)
+            batch.push({ uri, edits });
         commit(batch);
     }
     // -- stage 3: silk/fab .text({ … }) literals, matched per file --

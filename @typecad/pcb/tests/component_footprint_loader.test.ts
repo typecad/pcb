@@ -26,6 +26,7 @@ vi.mock('../src/kicad.js', () => ({
       isFlatpak: false,
     },
   },
+  libraryRoots: () => ({ symbols: '', footprints: mockGetLibraryPaths().footprints, symbolsSource: 'none' as const, footprintsSource: 'install' as const }),
 }));
 
 vi.mock('../src/kicad_commands.js', () => ({

@@ -53,6 +53,12 @@ vi.mock('../src/kicad.js', () => ({
       getLibraryPaths: () => ({ symbols: '/usr/share/kicad/symbols', footprints: '/usr/share/kicad/footprints' }),
     },
   },
+  libraryRoots: () => ({
+    symbols: '/usr/share/kicad/symbols',
+    footprints: '/usr/share/kicad/footprints',
+    symbolsSource: 'install' as const,
+    footprintsSource: 'install' as const,
+  }),
 }));
 
 vi.mock('../src/utils/constants.js', () => ({

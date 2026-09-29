@@ -22,7 +22,6 @@
   "license": "ISC",
   "dependencies": {
     "@typecad/pcb": "1.0.0-alpha.8",
-    "express": "^5.1.0",
     "tsx": "^4.20.3"
   },
   "devDependencies": {

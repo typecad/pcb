@@ -1,5 +1,4 @@
 import * as fs from 'fs/promises';
-import levenshtein from "string-comparison";
 import { PinType, Schematic, Component, Node } from './types';
 
 interface ComponentGroup {

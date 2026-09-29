@@ -709,6 +709,10 @@ function activate(context) {
         vscode.window.setStatusBarMessage('typeCAD/pcb: board data refreshed', 3000);
     }));
     output.appendLine('typeCAD/pcb extension activated');
+    // the load path is the first thing to check when host-side behavior looks
+    // stale — dev windows, installed copies and stray snapshots all behave
+    // differently, and this line says which one is live
+    output.appendLine(`extension code loaded from: ${__dirname}`);
 }
 /** Real query runner: `exec` with cwd pinned to the hw folder. */
 function runQuery(cwd, command, timeoutMs) {

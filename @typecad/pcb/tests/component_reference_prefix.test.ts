@@ -11,6 +11,7 @@ vi.mock('../src/kicad.js', () => ({
       getLibraryPaths: () => ({ symbols: mockState.symbolsPath, footprints: '' }),
     },
   },
+  libraryRoots: () => ({ symbols: mockState.symbolsPath, footprints: '', symbolsSource: 'install' as const, footprintsSource: 'none' as const }),
 }));
 
 vi.mock('../src/utils/logging.js', () => ({

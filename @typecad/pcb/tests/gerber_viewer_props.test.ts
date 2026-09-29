@@ -774,3 +774,80 @@ describe('ratsnest connectivity — broken routes wire, complete routes do not',
     expect(+end[2]!).toBeCloseTo(1, 2);
   });
 });
+
+describe('pending deletes prune against the live board', () => {
+  // the user's loop: failed applies leave gesture deletes pending; the
+  // board rebuilds anyway (npm run build); the restored deletes describe
+  // geometry only the OLD board had and every later apply refuses as
+  // "stale". Dead deletes must drop at restore (and again at the apply
+  // door); deletes matching live ink must ride.
+  const bootWithPending = async (deletes: unknown[]) => {
+    const html = buildViewerHtml(svg, [info, fabInfo], {
+      title: 'demo board',
+      pcbaSvg: '<svg/>',
+      layoutComponents,
+      padLabels,
+      rules,
+    });
+    const errors: string[] = [];
+    const dom = new JSDOM(html, {
+      runScripts: 'dangerously',
+      url: 'https://localhost/viewer.html',
+      pretendToBeVisual: true,
+      beforeParse(w) {
+        w.console.error = (...a: unknown[]) => errors.push(a.join(' '));
+        // document.title is empty before parse — the page computes this
+        // key from its real title once parsed
+        w.localStorage.setItem(
+          'typecadPending:demo board:viewer.html',
+          JSON.stringify({ routes: [], deletes }),
+        );
+        const idCtm = { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0, inverse() { return this; } };
+        type FakePoint = { x: number; y: number; matrixTransform(): { x: number; y: number } };
+        w.SVGSVGElement.prototype.getScreenCTM = () => idCtm;
+        w.SVGSVGElement.prototype.createSVGPoint = (): FakePoint => {
+          const p = { x: 0, y: 0 };
+          return { get x() { return p.x; }, set x(v: number) { p.x = v; }, get y() { return p.y; }, set y(v: number) { p.y = v; }, matrixTransform: () => ({ x: p.x, y: p.y }) };
+        };
+        w.SVGElement.prototype.getBBox = function (this: SVGElement) { return { x: 0, y: 0, width: 0, height: 0 }; };
+      },
+    });
+    const w = dom.window;
+    const d = w.document;
+    await new Promise((r) => setTimeout(r, 100));
+    const viewSelect = d.querySelector('select')!;
+    viewSelect.value = 'layout';
+    viewSelect.dispatchEvent(new w.Event('change', { bubbles: true }));
+    await new Promise((r) => setTimeout(r, 100));
+    expect(errors).toEqual([]);
+    return { w, d };
+  };
+
+  it('restores only deletes whose ink still exists', async () => {
+    // read a live segment from a plain boot, then feed it (plus stale
+    // geometry) through a fresh restore
+    const probe = await boot();
+    const hit = probe.window.document.querySelector('line[data-seg="1"]')!;
+    const live = {
+      net: null,
+      x1: parseFloat(hit.getAttribute('x1')!),
+      y1: -parseFloat(hit.getAttribute('y1')!),
+      x2: parseFloat(hit.getAttribute('x2')!),
+      y2: -parseFloat(hit.getAttribute('y2')!),
+      layer: 'F.Cu',
+    };
+    const stale = { net: 'led_a', x1: 8.991, y1: 0.188, x2: 9.014, y2: 0.21, layer: 'F.Cu' };
+    const { w, d } = await bootWithPending([live, stale]);
+    const sent: unknown[] = [];
+    (w as unknown as Record<string, unknown>).typecadLayoutApply = (
+      _m: unknown, _t: unknown, _v: unknown, _l: unknown, _r: unknown,
+      _rt: unknown, deletes: unknown[], cb: (e: string | null, f: boolean) => void,
+    ) => {
+      sent.push(...deletes);
+      cb(null, false);
+    };
+    d.getElementById('layout-apply')!.click();
+    expect(sent).toHaveLength(1);
+    expect((sent[0] as { x1: number }).x1).toBeCloseTo(live.x1, 3);
+  });
+});

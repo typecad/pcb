@@ -144,3 +144,14 @@ the far pad instead of pad-center to pad-center — and the routing rubber
 band ties to the nearest point of the unreached components (a dangling
 trace end included), dropping the component the route grows from and the
 hovered target's.
+
+Pending gesture deletes no longer wedge every later apply: a failed apply
+leaves its deletes in the session's persisted state, the board rebuilds
+anyway (a plain npm run build), and the restored deletes then describe
+geometry only the OLD board had — accumulating across retries until every
+apply refused as "the view was stale" even on a freshly generated viewer.
+Deletes are now pruned against the live board ink (segments either
+orientation, vias by position, board-frame aware) both when the pending
+state restores and again at the apply door: dead deletes drop silently,
+deletes matching existing ink ride, and the stale-view refusal only fires
+for genuine source/board divergence.

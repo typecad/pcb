@@ -2958,6 +2958,9 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       }
       layoutApplyBtn.disabled = true;
       layoutApplyBtn.textContent = 'rebuilding\u2026';
+      // one more prune at the door: deletes accumulated across failed
+      // applies must never ride a fresh gesture against a rebuilt board
+      pruneStaleDeletes();
       window.typecadLayoutApply(moves, texts, values, labels, renames, routedTracks, routedDeletes, function (err, fast) {
         layoutApplyBtn.disabled = false;
         layoutApplyBtn.textContent = 'apply & rebuild';
@@ -4387,6 +4390,51 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       else localStorage.setItem(PENDING_KEY, JSON.stringify({ routes: routedTracks, deletes: routedDeletes }));
     } catch (e) {}
   }
+  // drop pending DELETES whose ink no longer exists on this board — a
+  // failed apply leaves its gesture pending, the board rebuilds anyway
+  // (npm run build), and the restored deletes then describe geometry only
+  // the OLD board had. They accumulate across failed applies and make every
+  // later apply refuse as "stale". A delete that matches no current ink is
+  // dead state, not staleness: the board is the truth of what may be
+  // deleted, and it says that copper is already gone.
+  function inkHasSegment(d) {
+    // deletes carry BOARD-frame coordinates (y negated from the gerber ink)
+    var hits = allSegHits();
+    for (var i = 0; i < hits.length; i++) {
+      var h = hits[i];
+      var hx1 = +h.getAttribute('x1'), hy1 = -h.getAttribute('y1');
+      var hx2 = +h.getAttribute('x2'), hy2 = -h.getAttribute('y2');
+      var fwd =
+        Math.abs(hx1 - d.x1) < 0.02 && Math.abs(hy1 - d.y1) < 0.02 && Math.abs(hx2 - d.x2) < 0.02 && Math.abs(hy2 - d.y2) < 0.02;
+      var rev =
+        Math.abs(hx1 - d.x2) < 0.02 && Math.abs(hy1 - d.y2) < 0.02 && Math.abs(hx2 - d.x1) < 0.02 && Math.abs(hy2 - d.y1) < 0.02;
+      if (!fwd && !rev) continue;
+      var dn = d.net || null;
+      var hn = h.getAttribute('data-net');
+      if (hn === 'N/C') hn = null;
+      // a delete without a net matches by geometry alone (N/C ink carries
+      // none); a netted delete must agree with the ink's net
+      if (dn && hn && dn !== hn) continue;
+      return true;
+    }
+    return false;
+  }
+  function inkHasVia(d) {
+    var ink = viaInk();
+    for (var i = 0; i < ink.length; i++) {
+      var p = viaInkPos(ink[i]);
+      if (Math.hypot(p.x - d.x1, p.y + d.y1) < 0.02) return true;
+    }
+    return false;
+  }
+  function pruneStaleDeletes() {
+    for (var i = routedDeletes.length - 1; i >= 0; i--) {
+      var d = routedDeletes[i];
+      var live = d.kind === 'via' ? inkHasVia(d) : inkHasSegment(d);
+      if (!live) routedDeletes.splice(i, 1);
+    }
+    return routedDeletes.length;
+  }
   function restorePending() {
     try {
       var raw = localStorage.getItem(PENDING_KEY);
@@ -4399,6 +4447,14 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       }
       for (var i = 0; i < (st.routes || []).length; i++) routedTracks.push(st.routes[i]);
       for (var d = 0; d < (st.deletes || []).length; d++) routedDeletes.push(st.deletes[d]);
+      // the persisted deletes described the board the LAST session saw —
+      // this board may have moved on (a failed apply + rebuild); keep only
+      // what still exists here
+      pruneStaleDeletes();
+      if (!routedTracks.length && !routedDeletes.length) {
+        persistPending();
+        return 0;
+      }
       return n;
     } catch (e) {
       return 0;

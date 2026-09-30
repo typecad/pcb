@@ -882,3 +882,33 @@ describe('a gesture\'s own deletes ride the apply (no door prune)', () => {
     expect(deletes).toBeGreaterThanOrEqual(1);
   });
 });
+
+describe('collapsible sidebar with a compact layer rail', () => {
+  it('collapses to the toggle rail, swaps to the compact list, mirrors selection, persists', async () => {
+    const page = await boot();
+    const w = page.window;
+    const d = w.document;
+    const sidebar = d.getElementById('sidebar')!;
+    const toggle = d.getElementById('sidebar-toggle')!;
+    expect(sidebar.classList.contains('collapsed')).toBe(false);
+    toggle.click();
+    expect(sidebar.classList.contains('collapsed')).toBe(true);
+    expect(d.getElementById('layers')!.style.display).toBe('none');
+    expect(d.getElementById('layers-compact')!.style.display).toBe('');
+    // the compact rail inherits the full list's selection and edits BOTH
+    const compactCb = d.querySelector('#layers-compact .layer-vis') as HTMLInputElement;
+    const id = compactCb.closest('.layer-row')!.getAttribute('data-layer-id')!;
+    const fullCb = d.querySelector(`#layers .layer-row[data-layer-id="${id}"] .layer-vis`) as HTMLInputElement;
+    const was = fullCb.checked;
+    compactCb.checked = !was;
+    compactCb.dispatchEvent(new w.Event('change', { bubbles: true }));
+    expect(fullCb.checked).toBe(compactCb.checked);
+    // the svg group followed
+    const group = d.querySelector(`#board [data-layer-id="${id}"]`)!;
+    expect(group.getAttribute('display')).toBe(compactCb.checked ? null : 'none');
+    // re-expand + persistence
+    toggle.click();
+    expect(sidebar.classList.contains('collapsed')).toBe(false);
+    expect(w.localStorage.getItem('gerber-viewer:sidebar:v1')).toBe('open');
+  });
+});

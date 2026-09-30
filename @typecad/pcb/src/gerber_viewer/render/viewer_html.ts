@@ -229,6 +229,21 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       ].join('');
     })
     .join('\n');
+  // compact mode mirrors each row as a swatch+checkbox with no name and no
+  // opacity slider — selection state stays shared (the same layer id, the
+  // same class names drive the existing handlers); it inherits whatever
+  // visibility the full rows had at switch time and keeps syncing after
+  const compactRows = layers
+    .map((layer) => {
+      const checked = layer.defaultVisible ? ' checked' : '';
+      return [
+        `<label class="layer-row layer-compact" data-layer-id="${escapeHtml(layer.id)}" data-kind="${escapeHtml(layer.kind)}" title="${escapeHtml(layer.fullName ?? layer.name)}">`,
+        `<input type="checkbox" class="layer-vis"${checked}>`,
+        `<span class="chip" style="background:${layer.color}"></span>`,
+        `</label>`,
+      ].join('');
+    })
+    .join('\n');
 
   const js = String.raw`
 (function () {
@@ -10465,9 +10480,11 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       state = {};
     }
     document.querySelectorAll('.layer-row').forEach(function (row) {
+      var slider = row.querySelector('.layer-opacity');
       state[row.getAttribute('data-layer-id')] = {
         visible: row.querySelector('.layer-vis').checked,
-        opacity: parseFloat(row.querySelector('.layer-opacity').value),
+        // compact rows carry no slider — the full rows define opacity
+        opacity: slider ? parseFloat(slider.value) : 1,
       };
     });
     state.__view = { k: k, tx: tx, ty: ty };
@@ -10483,12 +10500,21 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     var cb = row.querySelector('.layer-vis');
     var slider = row.querySelector('.layer-opacity');
     if (typeof state.visible === 'boolean') cb.checked = state.visible;
-    if (Number.isFinite(state.opacity)) slider.value = state.opacity;
+    if (slider && Number.isFinite(state.opacity)) slider.value = state.opacity;
     syncLayer(cb);
-    syncOpacity(slider);
+    if (slider) syncOpacity(slider);
   });
   document.querySelectorAll('.layer-vis').forEach(function (cb) {
-    cb.addEventListener('change', function () { syncLayer(cb); persist(); });
+    cb.addEventListener('change', function () {
+      syncLayer(cb);
+      // mirror to the sibling row of the same layer (the full list and the
+      // compact rail render in tandem — one selection state, two views)
+      var id = cb.closest('.layer-row').getAttribute('data-layer-id');
+      document.querySelectorAll('.layer-row[data-layer-id="' + id + '"] .layer-vis').forEach(function (other) {
+        if (other !== cb) other.checked = cb.checked;
+      });
+      persist();
+    });
   });
   document.querySelectorAll('.layer-opacity').forEach(function (slider) {
     slider.addEventListener('input', function () { syncOpacity(slider); persist(); });
@@ -10533,6 +10559,37 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   var THEME_KEY = 'gerber-viewer:theme:v1';
   var themeBtn = document.getElementById('btn-theme');
   var boardArea = document.getElementById('board-area');
+  // ---- collapsible sidebar: the toggle button stays a button's width
+  // when collapsed; the compact layer rail (swatch + checkbox, no names,
+  // no opacity sliders — the full list's selection state carries over)
+  // takes the layer list's place ----
+  var sidebarEl = document.getElementById('sidebar');
+  var sidebarToggle = document.getElementById('sidebar-toggle');
+  var layersFull = document.getElementById('layers');
+  var layersRail = document.getElementById('layers-compact');
+  function sidebarApply(collapsed) {
+    sidebarEl.classList.toggle('collapsed', collapsed);
+    sidebarToggle.textContent = collapsed ? '\u25B6' : '\u25C0';
+    sidebarToggle.title = collapsed ? 'expand the layer sidebar' : 'collapse the layer sidebar';
+    if (layersFull && layersRail) {
+      layersFull.style.display = collapsed ? 'none' : '';
+      layersRail.style.display = collapsed ? '' : 'none';
+    }
+  }
+  if (sidebarToggle) {
+    var sidebarCollapsed = false;
+    try {
+      sidebarCollapsed = localStorage.getItem('gerber-viewer:sidebar:v1') === 'collapsed';
+    } catch (e) {}
+    sidebarApply(sidebarCollapsed);
+    sidebarToggle.addEventListener('click', function () {
+      sidebarCollapsed = !sidebarCollapsed;
+      sidebarApply(sidebarCollapsed);
+      try {
+        localStorage.setItem('gerber-viewer:sidebar:v1', sidebarCollapsed ? 'collapsed' : 'open');
+      } catch (e) {}
+    });
+  }
   function padLabelColor() {
     // labels key off the ACTIVE canvas (theme background or light/dark
     // mode): bright canvas -> dark ink, dark canvas -> white — gruvbox and
@@ -10616,11 +10673,12 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       var color = theme ? themeColorFor(theme, g2) : null;
       if (color) g2.style.setProperty('--ink-' + lid, color);
       else g2.style.setProperty('--ink-' + lid, g2.__inkDefault);
-      var chip = document.querySelector('.layer-row[data-layer-id="' + lid + '"] .chip');
-      if (chip) {
+      // every chip for this layer recolors — the full list AND the compact
+      // rail each render one
+      document.querySelectorAll('.layer-row[data-layer-id="' + lid + '"] .chip').forEach(function (chip) {
         if (chip.__bgDefault === undefined) chip.__bgDefault = chip.style.background;
         chip.style.background = color || chip.__bgDefault;
-      }
+      });
     }
     if (theme && theme.background) boardArea.style.backgroundColor = theme.background;
     else boardArea.style.removeProperty('background-color');
@@ -10814,7 +10872,25 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   body:not(.light):not(.layer-themed) .layer-row[data-kind="silkscreen"] .chip,
   body:not(.light):not(.layer-themed) .layer-row[data-kind="paste"] .chip { background: #d6d6d6 !important; }
   body:not(.light):not(.layer-themed) .layer-row[data-kind="drill"] .chip { background: #2fbfae !important; }
-  #sidebar { width: 260px; min-width: 260px; background: var(--chrome-bg); color: var(--chrome-fg); display: flex; flex-direction: column; border-right: 1px solid var(--chrome-border); }
+  #sidebar { width: 260px; min-width: 260px; background: var(--chrome-bg); color: var(--chrome-fg); display: flex; flex-direction: column; border-right: 1px solid var(--chrome-border); position: relative; }
+  /* the collapse toggle owns a slim rail that survives the collapse */
+  #sidebar-toggle {
+    position: absolute; top: 8px; left: 0; z-index: 5;
+    width: 18px; height: 44px; padding: 0;
+    border: 1px solid var(--chrome-border); border-left: none;
+    border-radius: 0 4px 4px 0; background: var(--chrome-bg); color: var(--chrome-fg);
+    font-size: 10px; line-height: 1; cursor: pointer;
+  }
+  #sidebar-toggle:hover { background: var(--btn-bg); }
+  #sidebar-body { display: flex; flex-direction: column; flex: 1; min-width: 0; padding-left: 18px; }
+  #sidebar.collapsed { width: 18px; min-width: 18px; }
+  #sidebar.collapsed #sidebar-body { display: none; }
+  /* the compact rail: swatch + checkbox per layer, no names, no sliders */
+  #layers-compact { flex: 1; overflow-y: auto; padding: 10px 1px 6px; display: flex; flex-wrap: wrap; align-content: flex-start; gap: 6px 4px; justify-content: center; }
+  #sidebar.collapsed #layers-compact { display: flex; }
+  .layer-row.layer-compact { display: inline-flex; align-items: center; gap: 2px; padding: 1px; margin: 0; border: none; flex-direction: column; }
+  .layer-row.layer-compact .chip { width: 12px; height: 12px; margin: 0; }
+  .layer-row.layer-compact .layer-vis { margin: 0; width: auto; }
   #sidebar header { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 12px 14px; font-weight: 600; border-bottom: 1px solid var(--chrome-border); }
   #sidebar header .title { min-width: 0; }
   #sidebar header small { display: block; font-weight: 400; color: var(--muted); margin-top: 2px; }
@@ -11041,6 +11117,8 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
 </head>
 <body>
 <div id="sidebar">
+  <button id="sidebar-toggle" title="collapse / expand the layer sidebar">&#x25C0;</button>
+  <div id="sidebar-body">
   <header>
     <div class="title">${escapeHtml(title)}<small>${layers.length} layers - wheel zoom, drag pan</small></div>
     <button id="btn-theme" class="icon-btn" title="toggle dark/light theme"></button>
@@ -11128,6 +11206,9 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   <div id="layers">
 ${rows}
   </div>
+  <div id="layers-compact" style="display:none">
+${compactRows}
+  </div>
   <div id="toolbar">
     <button id="btn-fit" title="fit to board (0)">Fit</button>
     <button id="btn-all-on" title="show all layers">All</button>
@@ -11147,6 +11228,7 @@ ${rows}
     <button id="btn-measure" title="measure: click start, click end — rulers stick; Esc clears all">&#x1F4CF;</button>
     <button id="btn-width" title="trace [ ] / via Shift+[ ] sizing (Alt ±0.01, may cross the board min) · P sizes for the net’s current · Z sizes for 50 Ω · \ and Shift+\ reset · W opens the picker" hidden>auto</button>
     <button id="btn-drc" class="has-drc-hidden" title="toggle DRC violation markers" hidden>DRC</button>
+  </div>
   </div>
 </div>
 <div id="board-area">

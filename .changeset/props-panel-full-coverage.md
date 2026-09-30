@@ -190,3 +190,11 @@ their ink removed by the gesture itself — the prune read them as dead
 state and dropped them, so deleting a route and drawing its replacement
 left BOTH in source after apply. Pruning now belongs to restorePending
 only, compared against a freshly rendered board.
+
+The viewer sidebar collapses to a single button's width: the toggle stays
+as a slim rail, and the layer list swaps to a compact selector — minimal
+swatch + checkbox per layer (no names, no opacity sliders) that inherits
+the full list's selection state and keeps editing in tandem (either view
+mirrors to the other and drives the board groups). The collapse state
+persists per browser, and theme recoloring updates the compact swatches
+alongside the full-list chips.

@@ -37,8 +37,20 @@ import {
   DEFAULT_CH,
 } from './display.js';
 import type { ChalkHelpers } from './display.js';
-import { computeOutlineChanges, computeRoutingChanges, computeZoneChanges, applySourceChanges } from './apply_source.js';
-import type { KicadIR, MatchResult, PendingChange, PendingSourceChange, PendingTextChange, PendingLayoutChange } from './types.js';
+import {
+  computeOutlineChanges,
+  computeRoutingChanges,
+  computeZoneChanges,
+  applySourceChanges,
+} from './apply_source.js';
+import type {
+  KicadIR,
+  MatchResult,
+  PendingChange,
+  PendingSourceChange,
+  PendingTextChange,
+  PendingLayoutChange,
+} from './types.js';
 
 // === Main entry point ===
 
@@ -236,10 +248,8 @@ async function applyMode(
     selectedSource.push(...(await interactiveApplySourceChanges('routing', routingResult.changes, declined)));
   }
 
-  let sourceFilesModified = 0;
   if (selectedSource.length > 0) {
     const result = applySourceChanges(selectedSource);
-    sourceFilesModified = result.filesModified;
     if (result.changesApplied > 0) {
       logger.log(
         chalk.green(

@@ -1,16 +1,12 @@
 import chalk from 'chalk';
 import type { PCB } from '../pcb/pcb.js';
-import type { TrackBuilder } from '../pcb/pcb_track_builder.js';
 import { DEFAULT_NET_PREFIX } from '../utils/constants.js';
 import logger from '../utils/logging.js';
 import type {
   KicadIR,
   KicadFootprintIR,
   KicadSegmentIR,
-  KicadTextIR,
   KicadViaIR,
-  KicadNetIR,
-  KicadOutlineIR,
   KicadStackupIR,
   KicadZoneIR,
   TextLayoutIR,
@@ -132,12 +128,17 @@ export function buildTrackChains(ir: KicadIR): TrackNetGroup[] {
 /**
  * Attach chain-ending vias to their chains (greedy, in file order, matching
  * position and net identity) and mutate `chain.via`. Returns the indexes of
- * the consumed vias; every other via is standalone.
+ * the consumed vias; every other via is standalone. Vias carry either an
+ * inline net name or a net-table code — both resolve to the group's key.
  */
 export function attachChainVias(ir: KicadIR, groups: TrackNetGroup[]): Set<number> {
   const used = new Set<number>();
-  const viaKey = (v: KicadViaIR): string =>
-    v.netName && !v.netName.startsWith(DEFAULT_NET_PREFIX) ? v.netName : `unnamed:${v.net ?? 0}`;
+  const netMap = new Map<number, string>();
+  ir.nets.forEach((net) => netMap.set(net.number, net.name));
+  const viaKey = (v: KicadViaIR): string => {
+    const name = v.netName ?? (v.net !== undefined ? netMap.get(v.net) || '' : '');
+    return !name || name.startsWith(DEFAULT_NET_PREFIX) ? `unnamed:${v.net ?? 0}` : name;
+  };
 
   for (const group of groups) {
     for (const chain of group.chains) {
@@ -213,19 +214,28 @@ export function trackBlockSource(ir: KicadIR, ch: ChalkHelpers = PLAIN_CH): { bl
   // must converge even when no standalone vias follow.
   while (lines.length > 0 && lines[lines.length - 1] === '') lines.pop();
 
+  const netMap = new Map<number, string>();
+  ir.nets.forEach((net) => netMap.set(net.number, net.name));
   const vias = standaloneVias(ir, groups);
   if (vias.length > 0 && lines.length > 0) lines.push('');
-  vias.forEach((via) => lines.push(standaloneViaSource(via, ch)));
+  vias.forEach((via) => lines.push(standaloneViaSource(via, ch, netMap)));
 
   return { block: lines.join('\n'), variables };
 }
 
+/** Net name of a via, resolving a net-table code through the board's net list. */
+export function viaNetName(via: KicadViaIR, netMap?: Map<number, string>): string {
+  if (via.netName) return via.netName;
+  if (via.net !== undefined) return netMap?.get(via.net) ?? '';
+  return '';
+}
+
 /** The object-literal argument of a standalone via call (no `typecad.via(` wrapper). */
-export function viaArgSource(via: KicadViaIR, ch: ChalkHelpers = PLAIN_CH): string {
+export function viaArgSource(via: KicadViaIR, ch: ChalkHelpers = PLAIN_CH, netMap?: Map<number, string>): string {
   const { chProp, chNum, chPunc, chStr } = ch;
   // Keep the electrical identity of a via that sits outside any track
   // chain (stitching vias, via-in-pad): the net rides on the via itself.
-  const netName = via.netName ?? '';
+  const netName = viaNetName(via, netMap);
   const namedNet = netName !== '' && !netName.startsWith(DEFAULT_NET_PREFIX);
   let arg = ` ${chProp('at')}${chPunc(': {')} ${chProp('x')}${chPunc(':')} ${chNum(via.at.x)}${chPunc(',')} ${chProp('y')}${chPunc(':')} ${chNum(via.at.y)} ${chPunc('}')}${chPunc(',')}`;
   if (namedNet) {
@@ -237,9 +247,13 @@ export function viaArgSource(via: KicadViaIR, ch: ChalkHelpers = PLAIN_CH): stri
 }
 
 /** Render one standalone `typecad.via({ ... });` statement. */
-export function standaloneViaSource(via: KicadViaIR, ch: ChalkHelpers = PLAIN_CH): string {
+export function standaloneViaSource(
+  via: KicadViaIR,
+  ch: ChalkHelpers = PLAIN_CH,
+  netMap?: Map<number, string>,
+): string {
   const { chKey, chPunc, chVar } = ch;
-  return `${chVar('typecad')}${chPunc('.')}${chKey('via')}${chPunc('(')}${chPunc('{')}${viaArgSource(via, ch)}${chPunc(' }')}${chPunc(')')}${chPunc(';')}`;
+  return `${chVar('typecad')}${chPunc('.')}${chKey('via')}${chPunc('(')}${chPunc('{')}${viaArgSource(via, ch, netMap)}${chPunc(' }')}${chPunc(')')}${chPunc(';')}`;
 }
 
 /**
@@ -445,9 +459,13 @@ function showStandaloneVias(
   if (standalone.length === 0) return;
 
   logger.log(`Found ${standalone.length} standalone via(es). Generating typeCAD code from ${sourceDescription}.`);
-  logger.log(chalk.bold(`
---- Generated typeCAD Via Code from ${sourceDescription} ---`));
-  standalone.forEach((via) => logger.log(standaloneViaSource(via, ch)));
+  logger.log(
+    chalk.bold(`
+--- Generated typeCAD Via Code from ${sourceDescription} ---`),
+  );
+  const netMap = new Map<number, string>();
+  ir.nets.forEach((net) => netMap.set(net.number, net.name));
+  standalone.forEach((via) => logger.log(standaloneViaSource(via, ch, netMap)));
   logger.log(chalk.bold('-----------------------------------------------------'));
 }
 
@@ -769,7 +787,9 @@ export function zonePropsSource(zone: KicadZoneIR, ch: ChalkHelpers): string {
   if (zone.priority) props.push(`${chProp('priority')}${chPunc(':')} ${chNum(zone.priority)}`);
   if (zone.locked) props.push(`${chProp('locked')}${chPunc(':')} ${chVar('true')}`);
   if (zone.filledAreasThickness !== undefined) {
-    props.push(`${chProp('filledAreasThickness')}${chPunc(':')} ${chVar(zone.filledAreasThickness ? 'true' : 'false')}`);
+    props.push(
+      `${chProp('filledAreasThickness')}${chPunc(':')} ${chVar(zone.filledAreasThickness ? 'true' : 'false')}`,
+    );
   }
   if (zone.hatchStyle && zone.hatchStyle !== 'edge') {
     props.push(`${chProp('hatchStyle')}${chPunc(':')} ${chStr(`'${zone.hatchStyle}'`)}`);
@@ -793,8 +813,10 @@ export function generateZoneCode(ir: KicadIR, sourceDescription: string, ch: Cha
 
   logger.log(`Found ${ir.zones.length} zone(s) in ${sourceDescription}. Generating typeCAD code.`);
 
-  logger.log(chalk.bold(`
---- Generated typeCAD Zone Code from ${sourceDescription} ---`));
+  logger.log(
+    chalk.bold(`
+--- Generated typeCAD Zone Code from ${sourceDescription} ---`),
+  );
 
   for (const zone of ir.zones) {
     logger.log(zoneCallSource(zone, ch));

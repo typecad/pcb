@@ -895,6 +895,12 @@ describe('collapsible sidebar with a compact layer rail', () => {
     expect(sidebar.classList.contains('collapsed')).toBe(true);
     expect(d.getElementById('layers')!.style.display).toBe('none');
     expect(d.getElementById('layers-compact')!.style.display).toBe('');
+    // the rail is wide enough for the stacked checkbox+chip column (an
+    // 18px rail clipped the swatches to slivers); padding-top clears the
+    // absolutely-positioned toggle
+    const cssAll = [...d.querySelectorAll('style')].map((st) => st.textContent ?? '').join('\n');
+    expect(cssAll).toMatch(/#sidebar\.collapsed \{ width: 34px/);
+    expect(cssAll).toMatch(/#sidebar\.collapsed #layers-compact \{ display: flex; padding: 56px 2px 6px; \}/);
     // the compact rail inherits the full list's selection and edits BOTH
     const compactCb = d.querySelector('#layers-compact .layer-vis') as HTMLInputElement;
     const id = compactCb.closest('.layer-row')!.getAttribute('data-layer-id')!;

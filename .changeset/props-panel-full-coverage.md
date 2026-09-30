@@ -238,3 +238,8 @@ internally and the toolbar row — fit/all/none, theme selector, measure,
 DRC — always stays inside the viewport; the collapsed compact rail gets
 the same treatment, so theme swatches render at full size instead of a
 crushed sliver when the layer list is tall.
+
+The collapsed rail is wide enough to actually show its swatches: 18px
+clipped the stacked checkbox+chip column to slivers — the rail is now 34px
+with padding clearing the toggle button, so every layer reads as a full
+checkbox over a full color chip.

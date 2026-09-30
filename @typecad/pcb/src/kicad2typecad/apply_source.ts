@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import { analyzeFile, applyReplacements, findMethodCalls, toPlainValue } from './source_analyzer.js';
-import type { MethodCallInfo, PropertyValue, Replacement } from './source_analyzer.js';
+import type { MethodCallInfo, Replacement } from './source_analyzer.js';
 import {
   PLAIN_CH,
   deriveOutlineCalls,
@@ -37,10 +37,6 @@ function num(v: unknown): number | undefined {
 
 function approxEqual(a: number, b: number): boolean {
   return Math.abs(a - b) < 0.0005;
-}
-
-function propValue(props: Record<string, PropertyValue>, key: string): unknown {
-  return props[key]?.value;
 }
 
 /** Props of a call as plain JS values (extractValue leaves nested records). */
@@ -140,7 +136,10 @@ function pseudoZoneFromProps(method: string, props: Record<string, unknown>): Ki
   return zone;
 }
 
-function zoneGeometry(zone: KicadZoneIR): { rect: ReturnType<typeof rectFromPolygon>; points: Array<{ x: number; y: number }> } {
+function zoneGeometry(zone: KicadZoneIR): {
+  rect: ReturnType<typeof rectFromPolygon>;
+  points: Array<{ x: number; y: number }>;
+} {
   return { rect: rectFromPolygon(zone.polygon), points: zone.polygon };
 }
 
@@ -173,14 +172,16 @@ function zoneFieldDiffs(before: KicadZoneIR, after: KicadZoneIR): string[] {
     const { mode, ...rest } = f;
     return mode === 'hatched' ? { mode, ...rest } : rest;
   };
-  if (JSON.stringify(fillNorm(before.fill ?? null)) !== JSON.stringify(fillNorm(after.fill ?? null))) diffs.push('fill');
+  if (JSON.stringify(fillNorm(before.fill ?? null)) !== JSON.stringify(fillNorm(after.fill ?? null)))
+    diffs.push('fill');
   if ((before.name ?? null) !== (after.name ?? null)) diffs.push('name');
   if ((before.priority ?? null) !== (after.priority ?? null)) diffs.push('priority');
   if ((before.locked ?? false) !== (after.locked ?? false)) diffs.push('locked');
   if ((before.minThickness ?? null) !== (after.minThickness ?? null)) diffs.push('minThickness');
   if ((before.connectPads ?? null) !== (after.connectPads ?? null)) diffs.push('connectPads');
   if ((before.clearance ?? null) !== (after.clearance ?? null)) diffs.push('clearance');
-  if ((before.filledAreasThickness ?? null) !== (after.filledAreasThickness ?? null)) diffs.push('filledAreasThickness');
+  if ((before.filledAreasThickness ?? null) !== (after.filledAreasThickness ?? null))
+    diffs.push('filledAreasThickness');
   const hatch = (z: KicadZoneIR) => (z.hatchStyle === 'edge' || z.hatchStyle === undefined ? null : z.hatchStyle);
   if (hatch(before) !== hatch(after)) diffs.push('hatchStyle');
   const pitch = (z: KicadZoneIR) => (z.hatchPitch === 0.508 || z.hatchPitch === undefined ? null : z.hatchPitch);
@@ -309,7 +310,9 @@ export function computeZoneChanges(ir: KicadIR, sourceFiles: string[]): SourceCh
         filePath: last.filePath,
         label: `${unmatchedIr.length} new zone(s) from board appended`,
         changedProps: ['new'],
-        replacements: [{ range: { start: last.call.statementRange.end, end: last.call.statementRange.end }, newValue: insertText }],
+        replacements: [
+          { range: { start: last.call.statementRange.end, end: last.call.statementRange.end }, newValue: insertText },
+        ],
       });
     }
   }
@@ -338,11 +341,7 @@ function srcCenter(props: Record<string, unknown>): { x: number; y: number } {
 
 // === Board outline ===
 
-function outlineArgDiffs(
-  derived: DerivedOutlineCall,
-  call: MethodCallInfo,
-  source: string,
-): Replacement[] {
+function outlineArgDiffs(derived: DerivedOutlineCall, call: MethodCallInfo, source: string): Replacement[] {
   const reps: Replacement[] = [];
   const derivedNums = derived.args.filter((a): a is number => typeof a === 'number');
   const srcArgs = call.args;
@@ -452,16 +451,34 @@ export function computeOutlineChanges(ir: KicadIR, sourceFiles: string[]): Sourc
 
 // === Routing section (tracks + standalone vias + create spreads) ===
 
-function buildCreateArgsSource(create: MethodCallInfo, source: string, variables: string[]): string | null {
+/** Identifiers that refer to TrackBuilder arrays rather than components. */
+function isTrackArrayIdentifier(text: string, trackArrayNames: Set<string>): boolean {
+  return trackArrayNames.has(text) || /^track_[A-Za-z0-9_]+$/.test(text) || /^[A-Za-z0-9_]*_Track$/.test(text);
+}
+
+function buildCreateArgsSource(
+  create: MethodCallInfo,
+  source: string,
+  variables: string[],
+  trackArrayNames: Set<string>,
+): string | null {
   const kept: string[] = [];
   create.argRanges.forEach((r, i) => {
-    if (!create.spread[i]) kept.push(source.slice(r.start, r.end).trim());
+    if (create.spread[i]) return;
+    const text = source.slice(r.start, r.end).trim();
+    // Track arrays were sometimes passed as bare identifiers (create()
+    // accepts arrays, and older generated code did exactly that); they must
+    // never survive as component arguments, or they dangle once the board's
+    // net set changes and the declaration disappears.
+    if (isTrackArrayIdentifier(text, trackArrayNames)) return;
+    kept.push(text);
   });
   const spreads = variables.map((v) => `...${v}`);
   const hasSpreadArgs = create.spread.some(Boolean);
   // Nothing to do when the board has no track variables and the call has no
-  // spreads to remove; otherwise (deletion case) spreads must be dropped.
-  if (variables.length === 0 && !hasSpreadArgs) return null;
+  // spreads (or bare array identifiers) to remove; otherwise (deletion case)
+  // spreads must be dropped.
+  if (spreads.length === 0 && !hasSpreadArgs && kept.length === create.argRanges.length) return null;
   const all = [...kept, ...spreads];
 
   if (create.argRanges.length === 0) {
@@ -473,24 +490,44 @@ function buildCreateArgsSource(create: MethodCallInfo, source: string, variables
   if (multiline) {
     const second = create.argRanges[1] ?? create.argRanges[0];
     const lineStart = source.lastIndexOf('\n', second.start - 1);
-    const indent = lineStart >= 0 ? source.slice(lineStart + 1, second.start).match(/^\s*/)?.[0] ?? '  ' : '  ';
-    return `\n${all.map((a) => indent + a).join(',\n')}\n`;
+    const indent = lineStart >= 0 ? (source.slice(lineStart + 1, second.start).match(/^\s*/)?.[0] ?? '  ') : '  ';
+    // The replacement range spans exactly [first arg, last arg] — no
+    // surrounding newlines — so the generated text must not add any, or
+    // every apply would insert one more.
+    return all.map((a, i) => (i === 0 ? a : indent + a)).join(',\n');
   }
-  return ` ${all.join(', ')} `;
+  return all.join(', ');
 }
 
 export function computeRoutingChanges(ir: KicadIR, sourceFiles: string[]): SourceChangeResult {
   const changes: PendingSourceChange[] = [];
   const notes: string[] = [];
   const hasSegments = ir.segments.length > 0;
-  const hasVias = ir.vias.length > 0;
-  if (!hasSegments && !hasVias) {
-    // Board has no routing; still allow deleting stale source routing below.
-  }
   const { block: desiredBlock, variables } = trackBlockSource(ir);
 
-  for (const filePath of sourceFiles) {
-    const analysis = analyzeFile(filePath);
+  // Routing ownership: whichever file already holds track/via statements owns
+  // the routing section. Only when NO file does may a fresh section be
+  // inserted — and then only into the single file that has a create() call,
+  // so other project files with their own create() are never polluted.
+  const fileAnalyses = sourceFiles.map((filePath) => ({
+    filePath,
+    analysis: analyzeFile(filePath),
+  }));
+  const filesWithRouting = fileAnalyses.filter(
+    ({ filePath, analysis }) =>
+      analysis !== null &&
+      (analysis.trackPushes.length > 0 ||
+        analysis.arrayDeclarations.some((d) => analysis.trackPushes.some((p) => p.variableName === d.name)) ||
+        findMethodCalls(filePath, ['via']).length > 0),
+  );
+  const insertCandidates =
+    filesWithRouting.length === 0
+      ? fileAnalyses.filter(
+          ({ filePath, analysis }) => analysis !== null && findMethodCalls(filePath, ['create']).length === 1,
+        )
+      : [];
+
+  for (const { filePath, analysis } of fileAnalyses) {
     if (!analysis) continue;
     const source = readSource(filePath);
     if (!source) continue;
@@ -508,13 +545,23 @@ export function computeRoutingChanges(ir: KicadIR, sourceFiles: string[]): Sourc
 
     const hasRoutingStatements = members.length > 0;
     if (!hasRoutingStatements) {
+      if (filesWithRouting.some((f) => f.filePath === filePath)) continue;
       // Fresh insertion: place the whole routing block before create().
-      if (hasSegments && creates.length === 1) {
+      const isOwningInsertTarget = insertCandidates.length === 1 && insertCandidates[0].filePath === filePath;
+      if (hasSegments && isOwningInsertTarget) {
         const create = creates[0];
         const changesForFile: Replacement[] = [
-          { range: { start: create.statementRange.start, end: create.statementRange.start }, newValue: `${desiredBlock}\n\n` },
+          {
+            range: { start: create.statementRange.start, end: create.statementRange.start },
+            newValue: `${desiredBlock}\n\n`,
+          },
         ];
-        const argsSource = buildCreateArgsSource(create, source, variables);
+        const argsSource = buildCreateArgsSource(
+          create,
+          source,
+          variables,
+          new Set([...variables, ...analysis.arrayDeclarations.map((d) => d.name)]),
+        );
         if (argsSource !== null) {
           if (create.argRanges.length === 0) {
             changesForFile.push({
@@ -538,8 +585,6 @@ export function computeRoutingChanges(ir: KicadIR, sourceFiles: string[]): Sourc
           changedProps: ['new'],
           replacements: changesForFile,
         });
-      } else if (hasSegments) {
-        notes.push('Board has routed tracks but the source has no track section and no typecad.create() call — code printed for manual insertion.');
       }
       continue;
     }
@@ -557,9 +602,7 @@ export function computeRoutingChanges(ir: KicadIR, sourceFiles: string[]): Sourc
       const gap = source.slice(members[i - 1].end, members[i].start);
       // Blank lines and // comment lines (the generated "// Net: X" headers)
       // are part of the regenerated block; anything else blocks the rewrite.
-      const gapIsComments = gap
-        .split('\n')
-        .every((line) => line.trim() === '' || line.trim().startsWith('//'));
+      const gapIsComments = gap.split('\n').every((line) => line.trim() === '' || line.trim().startsWith('//'));
       if (!gapIsComments) {
         contiguous = false;
         break;
@@ -589,7 +632,33 @@ export function computeRoutingChanges(ir: KicadIR, sourceFiles: string[]): Sourc
       }
     }
     const currentBlock = source.slice(region.start, region.end);
-    if (currentBlock !== desiredBlock) {
+    const regionDiffers = currentBlock !== desiredBlock;
+
+    // Create-args planning is independent of the region diff: stale track
+    // references (bare identifiers from older generated code, or spreads of
+    // variables the board no longer declares) must be fixed even when the
+    // routing statements themselves are already in sync.
+    const trackArrayNames = new Set<string>([...variables, ...analysis.arrayDeclarations.map((d) => d.name)]);
+    let argsRep: Replacement | null = null;
+    if (creates.length === 1) {
+      const create = creates[0];
+      const argsSource = buildCreateArgsSource(create, source, variables, trackArrayNames);
+      if (argsSource !== null) {
+        const argsRange =
+          create.argRanges.length === 0
+            ? { start: create.callRange.end - 1, end: create.callRange.end - 1 }
+            : {
+                start: create.argRanges[0].start,
+                end: create.argRanges[create.argRanges.length - 1].end,
+              };
+        const currentArgs = source.slice(argsRange.start, argsRange.end);
+        if (currentArgs !== argsSource) {
+          argsRep = { range: argsRange, newValue: argsSource };
+        }
+      }
+    }
+
+    if (regionDiffers) {
       if (analysis.trackPushes.length > 0 && creates.length !== 1) {
         notes.push(
           creates.length === 0
@@ -600,32 +669,7 @@ export function computeRoutingChanges(ir: KicadIR, sourceFiles: string[]): Sourc
       }
 
       const reps: Replacement[] = [{ range: region, newValue: desiredBlock }];
-      if (creates.length === 1) {
-        const create = creates[0];
-        const argsSource = buildCreateArgsSource(create, source, variables);
-        if (argsSource !== null) {
-          if (create.argRanges.length === 0) {
-            reps.push({
-              range: { start: create.callRange.end - 1, end: create.callRange.end - 1 },
-              newValue: argsSource,
-            });
-          } else {
-            const currentArgs = source.slice(
-              create.argRanges[0].start,
-              create.argRanges[create.argRanges.length - 1].end,
-            );
-            if (currentArgs !== argsSource) {
-              reps.push({
-                range: {
-                  start: create.argRanges[0].start,
-                  end: create.argRanges[create.argRanges.length - 1].end,
-                },
-                newValue: argsSource,
-              });
-            }
-          }
-        }
-      }
+      if (argsRep) reps.push(argsRep);
       changes.push({
         kind: 'tracks',
         filePath,
@@ -636,6 +680,26 @@ export function computeRoutingChanges(ir: KicadIR, sourceFiles: string[]): Sourc
         changedProps: ['tracks', 'vias'],
         replacements: reps,
       });
+    } else if (argsRep) {
+      changes.push({
+        kind: 'tracks',
+        filePath,
+        label: 'typecad.create() track list updated to the board nets',
+        changedProps: ['create'],
+        replacements: [argsRep],
+      });
+    }
+  }
+
+  if (hasSegments && filesWithRouting.length === 0) {
+    if (insertCandidates.length === 0) {
+      notes.push(
+        'Board has routed tracks but the source has no track section and no typecad.create() call — code printed for manual insertion.',
+      );
+    } else if (insertCandidates.length > 1) {
+      notes.push(
+        'Multiple source files have a typecad.create() call — the routing section was not inserted automatically; code printed for manual insertion.',
+      );
     }
   }
 

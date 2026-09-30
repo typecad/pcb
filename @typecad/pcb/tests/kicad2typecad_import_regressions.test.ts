@@ -648,6 +648,21 @@ describe('apply-back: routing section', () => {
     expect(fs.readFileSync(file, 'utf-8')).toContain('const notARoute = 42;');
   });
 
+  it('never inserts routing into a second file that merely has a create()', () => {
+    const boardFile = path.join(dir, 'board.ts');
+    fs.writeFileSync(boardFile, sourceWithTrack(20));
+    const otherFile = path.join(dir, 'other.ts');
+    const otherSource = "import { PCB } from '@typecad/pcb';\n" + "const pcb = new PCB('other');\n" + 'pcb.create();\n';
+    fs.writeFileSync(otherFile, otherSource);
+    const ir = buildIr(boardWithTrack(25));
+    const { changes } = computeRoutingChanges(ir, [boardFile, otherFile]);
+    applySourceChanges(changes);
+    // the file without routing statements stays untouched
+    expect(fs.readFileSync(otherFile, 'utf-8')).toBe(otherSource);
+    // and the owning file got the update
+    expect(fs.readFileSync(boardFile, 'utf-8')).toContain('x: 25, y: 20');
+  });
+
   it('deletes the routing section when the board has no tracks left', () => {
     const file = path.join(dir, 'board.ts');
     fs.writeFileSync(file, sourceWithTrack(20));
@@ -660,5 +675,99 @@ describe('apply-back: routing section', () => {
     expect(applied).not.toContain('track_VCC.push');
     expect(applied).not.toContain('...track_VCC');
     expect(analyzeFile(file)).not.toBeNull();
+  });
+});
+
+// === create() track list regressions (bare identifiers, convergence) ===
+
+describe('apply-back: create() track list', () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'typecad-create-args-'));
+  });
+  afterEach(() => {
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  /** A board whose VCC routing was deleted in KiCad (net gone from tracks). */
+  const boardWithoutVcc = `(kicad_pcb (version 20260206) (generator pcbnew)
+    (net 0 "")
+    (net 1 "GND")
+    (segment (start 10 20) (end 20 20) (width 0.2) (layer "F.Cu") (net "GND"))
+    (via (at 20 20) (size 0.6) (drill 0.3) (net "GND"))
+  )`;
+
+  /** Older generated code passed track arrays as bare identifiers, not spreads. */
+  const legacyCreateSource = (extraComponent: boolean) =>
+    "import { PCB, TrackBuilder } from '@typecad/pcb';\n" +
+    "const typecad = new PCB('t');\n" +
+    (extraComponent ? "const u1 = new Component({ reference: 'U1' });\n" : '') +
+    '// Net: GND\n' +
+    'let track_GND: TrackBuilder[] = [];\n' +
+    'track_GND.push(typecad.track({ net: \'GND\' }).from({ x: 10, y: 20 }, "F.Cu", 0.2).to({ x: 20, y: 20, layer: "F.Cu", width: 0.2 }).via({ size: 0.6, drill: 0.3 }));\n' +
+    '\n' +
+    'typecad.create(\n' +
+    '  u1,\n' +
+    '  track_VCC,\n' +
+    '  track_GND\n' +
+    ');';
+
+  it('drops bare track-array identifiers the board no longer declares', () => {
+    const file = path.join(dir, 'board.ts');
+    // source declares track_GND but create also references track_VCC —
+    // a declaration that no longer exists anywhere
+    fs.writeFileSync(
+      file,
+      legacyCreateSource(true).replace('let track_GND', 'let track_GND').replace('track_VCC', 'track_VCC'),
+    );
+    const ir = buildIr(boardWithoutVcc);
+    const { changes, notes } = computeRoutingChanges(ir, [file]);
+    expect(notes).toEqual([]);
+    const createChange = changes.find((c) => c.changedProps.includes('create'));
+    expect(createChange).toBeDefined();
+    applySourceChanges(changes);
+    const applied = fs.readFileSync(file, 'utf-8');
+    // the dangling bare identifier is gone, components kept, spread written
+    expect(applied).not.toMatch(/^\s*track_VCC,?$/m);
+    expect(applied).toContain('u1,');
+    expect(applied).toContain('...track_GND');
+    // and it parses
+    expect(analyzeFile(file)).not.toBeNull();
+  });
+
+  it('converges: applying the create-args change twice does not grow newlines', () => {
+    const file = path.join(dir, 'board.ts');
+    fs.writeFileSync(file, legacyCreateSource(false));
+    const ir = buildIr(boardWithoutVcc);
+    const first = computeRoutingChanges(ir, [file]);
+    applySourceChanges(first.changes);
+    const once = fs.readFileSync(file, 'utf-8');
+    const second = computeRoutingChanges(ir, [file]);
+    expect(second.changes).toEqual([]);
+    applySourceChanges(second.changes);
+    expect(fs.readFileSync(file, 'utf-8')).toBe(once);
+  });
+
+  it('fires the create-args fix even when the routing region is already in sync', () => {
+    const file = path.join(dir, 'board.ts');
+    // Write the routing region exactly as the generator would, but keep a
+    // stale bare identifier in create().
+    const ir = buildIr(boardWithoutVcc);
+    const good =
+      "import { PCB, TrackBuilder } from '@typecad/pcb';\n" +
+      "const typecad = new PCB('t');\n" +
+      '// Net: GND\n' +
+      'let track_GND: TrackBuilder[] = [];\n' +
+      'track_GND.push(typecad.track({ net: \'GND\' }).from({ x: 10, y: 20 }, "F.Cu", 0.2).to({ x: 20, y: 20, layer: "F.Cu", width: 0.2 }).via({ size: 0.6, drill: 0.3 }));\n' +
+      '\n' +
+      'typecad.create(\n  track_VCC,\n  ...track_GND\n);';
+    fs.writeFileSync(file, good);
+    const { changes } = computeRoutingChanges(ir, [file]);
+    expect(changes.length).toBe(1);
+    expect(changes[0].changedProps).toEqual(['create']);
+    applySourceChanges(changes);
+    const applied = fs.readFileSync(file, 'utf-8');
+    expect(applied).not.toContain('track_VCC');
+    expect(computeRoutingChanges(ir, [file]).changes).toEqual([]);
   });
 });

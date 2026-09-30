@@ -11066,14 +11066,17 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   }
   #sidebar-toggle:hover { background: var(--btn-bg); }
   #sidebar-body { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; padding-left: 18px; }
-  #sidebar.collapsed { width: 18px; min-width: 18px; }
+  /* collapsed = a narrow rail, wide enough for the stacked checkbox+chip
+     column (18px clipped the swatches to slivers) */
+  #sidebar.collapsed { width: 34px; min-width: 34px; }
   #sidebar.collapsed #sidebar-body { display: none; }
-  /* the compact rail: swatch + checkbox per layer, no names, no sliders */
+  /* the compact rail: swatch + checkbox per layer, no names, no sliders.
+     padding-top clears the absolutely-positioned toggle button */
   #layers-compact { flex: 1; min-height: 0; overflow-y: auto; padding: 10px 1px 6px; display: flex; flex-wrap: wrap; align-content: flex-start; gap: 6px 4px; justify-content: center; }
-  #sidebar.collapsed #layers-compact { display: flex; }
-  .layer-row.layer-compact { display: inline-flex; align-items: center; gap: 2px; padding: 1px; margin: 0; border: none; flex-direction: column; }
+  #sidebar.collapsed #layers-compact { display: flex; padding: 56px 2px 6px; }
+  .layer-row.layer-compact { display: inline-flex; align-items: center; gap: 2px; padding: 1px 0; margin: 0; border: none; flex-direction: column; }
   .layer-row.layer-compact .chip { width: 12px; height: 12px; margin: 0; }
-  .layer-row.layer-compact .layer-vis { margin: 0; width: auto; }
+  .layer-row.layer-compact .layer-vis { margin: 0 0 1px; width: 13px; }
   #sidebar header { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 12px 14px; font-weight: 600; border-bottom: 1px solid var(--chrome-border); }
   #sidebar header .title { min-width: 0; }
   #sidebar header small { display: block; font-weight: 400; color: var(--muted); margin-top: 2px; }

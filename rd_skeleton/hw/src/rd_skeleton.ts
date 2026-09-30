@@ -77,8 +77,9 @@ const u1 = new Component({
 // Keep DAC_OUT/DRIVE and PROBE_1
 // traces separated (coupling between them bypasses the cell).
 const r1 = new Resistor({ reference: 'R1', value: '1k 0.1%', pcb: { x: 134.0, y: 79.5, rotation: 0 } });
-r1.pcb = { x: 136.5, y: 80.5 };
+r1.pcb = { x: 138.25, y: 79 };
 const c2 = new Capacitor({ reference: 'C2', value: '1nF C0G', pcb: { x: 140.6, y: 89.4, rotation: 0 } });
+c2.pcb = { x: -1.35, y: -2.65, rotation: 90 };
 const d1 = new Component({
   reference: 'D1',
   value: 'BAT54S',
@@ -86,10 +87,11 @@ const d1 = new Component({
   footprint: 'Package_TO_SOT_SMD:SOT-323_SC-70',
   pcb: { x: 137.3, y: 80.7, rotation: 0 },
 });
-d1.pcb = { x: 134.5, y: 88 };
+d1.pcb = { x: 135.5, y: 79.75, rotation: 270 };
 
 // reference injection across the cell
 const r3 = new Resistor({ reference: 'R3', value: '10k 0.1%', pcb: { x: 139.0, y: 79.0, rotation: 90 } });
+r3.pcb = { x: 133.5, y: 79.75, rotation: 90 };
 // U3: TS3A24159 dual SPDT (0.3R Ron — 3x better than the single TS5A3160s
 // it replaces, and the selector's Ron sits in series with the 1k sense leg).
 // Ch1 = sense-leg selector: COM1->PROBE_1, NC1->R1 (1k default), NO1->R4
@@ -105,17 +107,21 @@ const u3 = new Component({
   footprint: 'Package_SON:Texas_S-PVSON-N10',
   pcb: { x: 137.5, y: 84.0, rotation: 0 },
 });
-u3.pcb = { x: 137.5, y: 83.5 };
+u3.pcb = { x: 135, y: 83.5 };
 
 // sense-leg selector (SPDT): COM on PROBE_1, NC -> R1 1k (default, optimal
 // for the mid range), NO -> R4 100k (low-conductivity leg — divider SNR
 // optimum wants Rsense ~ R5+Rcell, so weak signals get the LARGE leg)
 const r4 = new Resistor({ reference: 'R4', value: '100k 0.1%', pcb: { x: 137.5, y: 86.4, rotation: 0 } });
+r4.pcb = { x: -3, y: 0.1 };
 
 // decoupling
-const c1 = new Capacitor({ reference: 'C1', value: '100nF', pcb: { x: 143.3, y: 89.2, rotation: 0 } }); // VDDA (pin 15 @ 144.45,87.84)
-const c3 = new Capacitor({ reference: 'C3', value: '100nF', pcb: { x: 147.4, y: 87.9, rotation: 0 } }); // VDD (pin 17 @ 145.64,87.15) (pin 17 @ 145.64,87.15)
-const c6 = new Capacitor({ reference: 'C6', value: '100nF', pcb: { x: 140.8, y: 81.4, rotation: 0 } }); // NRST (pin 4 @ 140.76,85.15)
+const c1 = new Capacitor({ reference: 'C1', value: '100nF', pcb: { x: 143.3, y: 89.2, rotation: 0 } });
+c1.pcb = { x: -0.05, y: 0.05, rotation: 180 }; // VDDA (pin 15 @ 144.45,87.84)
+const c3 = new Capacitor({ reference: 'C3', value: '100nF', pcb: { x: 147.4, y: 87.9, rotation: 0 } });
+c3.pcb = { x: -5.15, y: -6.9 }; // VDD (pin 17 @ 145.64,87.15) (pin 17 @ 145.64,87.15)
+const c6 = new Capacitor({ reference: 'C6', value: '100nF', pcb: { x: 140.8, y: 81.4, rotation: 0 } });
+c6.pcb = { x: -2.3, y: 0.35, rotation: 90 }; // NRST (pin 4 @ 140.76,85.15)
 
 // excitation series resistor: PA4 (DAC1_OUT1) -> R5 -> DRIVE. Keeps the
 // DAC buffer's load >= ~1.1k even at the top of the range (the buffer is
@@ -123,6 +129,7 @@ const c6 = new Capacitor({ reference: 'C6', value: '100nF', pcb: { x: 140.8, y: 
 // the firmware measures the ACTUAL drive on PA4 = ADC1_IN5 and uses the
 // measured magnitude in the solve).
 const r5 = new Resistor({ reference: 'R5', value: '1k 0.1%', pcb: { x: 146.0, y: 89.5, rotation: 0 } });
+r5.pcb = { x: -2.75, y: 1.25 };
 
 // SWDIO series resistor
 const r2 = new Resistor({ reference: 'R2', value: '470', pcb: { x: 133.9, y: 91.9, rotation: 0 } });
@@ -290,6 +297,37 @@ const route12 = new TrackBuilder(typecad, { net: 'GND',  })
   .from({ x: 153.73, y: 79.18 }, 'F.Cu', 0.3)
   .to({ x: 154.93, y: 79.18, layer: 'F.Cu', width: 0.3 });
 
+const route13 = new TrackBuilder(typecad, { net: 'PROBE_1',  })
+  .from({ x: 131.1, y: 79.15 }, 'F.Cu', 0.3)
+  .to({ x: 131.1, y: 79.16, layer: 'F.Cu', width: 0.3 })
+  .to({ x: 132.44, y: 80.5, layer: 'F.Cu', width: 0.3 })
+  .to({ x: 133.425, y: 80.5, layer: 'F.Cu', width: 0.3 })
+  .to({ x: 133.5, y: 80.575, layer: 'F.Cu', width: 0.3 });
+
+const route14 = new TrackBuilder(typecad, { net: 'VCC',  })
+  .from({ x: 133.24, y: 82.5 }, 'F.Cu', 0.2)
+  .to({ x: 133.525, y: 82.5, layer: 'F.Cu', width: 0.2 });
+
+const route15 = new TrackBuilder(typecad, { net: 'net16',  })
+  .from({ x: 133.24, y: 83 }, 'F.Cu', 0.2)
+  .to({ x: 133.525, y: 83, layer: 'F.Cu', width: 0.2 });
+
+const route16 = new TrackBuilder(typecad, { net: 'net15',  })
+  .from({ x: 133.24, y: 83.5 }, 'F.Cu', 0.2)
+  .to({ x: 133.525, y: 83.5, layer: 'F.Cu', width: 0.2 });
+
+const route17 = new TrackBuilder(typecad, { net: 'net14',  })
+  .from({ x: 136.475, y: 82.5 }, 'F.Cu', 0.2)
+  .to({ x: 136.76, y: 82.5, layer: 'F.Cu', width: 0.2 });
+
+const route18 = new TrackBuilder(typecad, { net: 'REF_SW',  })
+  .from({ x: 136.475, y: 83.5 }, 'F.Cu', 0.2)
+  .to({ x: 136.76, y: 83.5, layer: 'F.Cu', width: 0.2 });
+
+const route19 = new TrackBuilder(typecad, { net: 'DRIVE',  })
+  .from({ x: 136.475, y: 84 }, 'F.Cu', 0.2)
+  .to({ x: 136.76, y: 84, layer: 'F.Cu', width: 0.2 });
+
 typecad.create(
   j1,
   j2,
@@ -304,5 +342,5 @@ typecad.create(
   c1,
   c2,
   c3,
-  c6, route1, route2, route3, route4, route5, route6, route7, route8, route9, route10, route11, route12
+  c6, route1, route2, route3, route4, route5, route6, route7, route8, route9, route10, route11, route12, route13, route14, route15, route16, route17, route18, route19
 );

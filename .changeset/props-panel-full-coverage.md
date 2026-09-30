@@ -198,3 +198,10 @@ the full list's selection state and keeps editing in tandem (either view
 mirrors to the other and drives the board groups). The collapse state
 persists per browser, and theme recoloring updates the compact swatches
 alongside the full-list chips.
+
+Pad-manifest rotation is pinned against the gerber plot: 90°/270°/0° unit
+tests assert the three-pin layout lands where KiCad actually draws it (pin
+3 alone on top at 90°, on the bottom at 270°, right at 0°) — the manifest
+drives both the pad labels and trace snapping, and a mismatch mirrors them
+about the part center (seen once after a mid-edit build; verified 111/111
+pads matching ink after a clean rebuild).

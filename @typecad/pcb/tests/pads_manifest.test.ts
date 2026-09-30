@@ -51,3 +51,58 @@ describe('pads manifest', () => {
     expect(pads).toHaveLength(0);
   });
 });
+
+describe('pads manifest vs KiCad rotation (the 90°/270° label-and-snap incident)', () => {
+  // three-pin footprint: pin 3 sits alone on +x locally; pins 1,2 on -x.
+  // The viewer renders labels AND trace-snaps from this manifest, while the
+  // ink comes from the gerbers — the two must agree under every rotation
+  const fp = (ref: string, x: number, y: number, rot: number) => `
+      (footprint "T:${ref}" (layer "F.Cu") (at ${x} ${y} ${rot})
+        (property "Reference" "${ref}" (at 0 0 0) (layer "F.SilkS"))
+        (pad "1" smd rect (at -0.8875 -0.65 0) (size 0.925 0.45) (layers "F.Cu") (net 1 "A"))
+        (pad "2" smd rect (at -0.8875 0.65 0) (size 0.925 0.45) (layers "F.Cu") (net 2 "B"))
+        (pad "3" smd rect (at 0.8875 0 0) (size 0.925 0.45) (layers "F.Cu") (net 3 "C")))`;
+  const at = (contents: never[], ref: string, pin: string) => {
+    const { pads } = computePadsManifest(contents, { boardName: 't' } as never);
+    const p = pads.find((e) => e.ref === ref && e.pin === pin)!;
+    return { x: p.x, y: p.y };
+  };
+
+  it('90°: pin 3 tops the part, pins 1/2 bottom — matching the gerber plot', () => {
+    const contents = board(fp('D90', 10, 10, 90));
+    const p3 = at(contents, 'D90', '3');
+    const p1 = at(contents, 'D90', '1');
+    const p2 = at(contents, 'D90', '2');
+    // board y-down: above center = smaller y. KiCad plots (verified against
+    // exported gerbers): local (lx,ly) -> world (fx + ly, fy - lx) at 90°
+    expect(p3.y).toBeLessThan(10); // pin 3 alone on top
+    expect(p1.y).toBeGreaterThan(10);
+    expect(p2.y).toBeGreaterThan(10);
+    expect(p1.x).toBeCloseTo(9.35);
+    expect(p2.x).toBeCloseTo(10.65);
+    expect(p3.x).toBeCloseTo(10);
+  });
+
+  it('270°: pin 3 bottoms the part, pins 1/2 top — the mirror of 90°', () => {
+    const contents = board(fp('D270', 20, 10, 270));
+    const p3 = at(contents, 'D270', '3');
+    const p1 = at(contents, 'D270', '1');
+    const p2 = at(contents, 'D270', '2');
+    expect(p3.y).toBeGreaterThan(10); // pin 3 alone on the bottom
+    expect(p1.y).toBeLessThan(10);
+    expect(p2.y).toBeLessThan(10);
+    expect(p1.x).toBeCloseTo(20.65);
+    expect(p2.x).toBeCloseTo(19.35);
+    expect(p3.x).toBeCloseTo(20);
+  });
+
+  it('0°: pins 1/2 left of the part, pin 3 right — the authored layout', () => {
+    const contents = board(fp('D0', 30, 10, 0));
+    const p3 = at(contents, 'D0', '3');
+    const p1 = at(contents, 'D0', '1');
+    expect(p1.x).toBeLessThan(30);
+    expect(p3.x).toBeGreaterThan(30);
+    expect(p1.y).toBeCloseTo(9.35);
+    expect(p3.y).toBeCloseTo(10);
+  });
+});

@@ -250,7 +250,6 @@ typecad.zone({ net: 'GND', layers: ['In2.Cu'], x: 130, y: 78, width: 25, height:
 // clean if F.Cu crossings bite. GND: everything lands in the F/B pours.
 // ---------------------------------------------------------------------------
 
-// Net: VCC
 // Net: PROBE_1
 let track_PROBE_1: TrackBuilder[] = [];
 track_PROBE_1.push(typecad.track({ net: 'PROBE_1' }).from({ x: 140.1125, y: 82.8 }, "F.Cu", 0.127).to({ x: 139.875, y: 82.5625, layer: "F.Cu", width: 0.127 }));
@@ -424,6 +423,7 @@ typecad.via({ at: { x: 151.8, y: 81.2 }, net: 'SWDIO', size: 0.6, drill: 0.3 });
 
 typecad.create(
   
+  
   j1,
   j2,
   u1,
@@ -476,5 +476,6 @@ typecad.create(
   ...track_SDA,
   ...track_SCL,
   ...unnamed_Track
+
 
 );

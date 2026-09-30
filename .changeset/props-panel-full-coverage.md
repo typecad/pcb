@@ -231,3 +231,10 @@ route keeps owning both keys. Parts no longer move by drag: a press only
 selects, M grabs the selection (centers snap to the cursor on the first
 move, multi-select offsets preserved), the cursor moves it, click drops,
 Esc reverts — with full undo.
+
+The viewer sidebar keeps its height bounded (height 100%, min-height 0,
+overflow hidden on the sidebar and its body) so the layer list scrolls
+internally and the toolbar row — fit/all/none, theme selector, measure,
+DRC — always stays inside the viewport; the collapsed compact rail gets
+the same treatment, so theme swatches render at full size instead of a
+crushed sliver when the layer list is tall.

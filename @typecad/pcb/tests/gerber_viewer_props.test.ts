@@ -1024,3 +1024,27 @@ describe('KiCad M-to-move (no drag-by-surprise, no dblclick source jump)', () =>
     expect(t.part().getAttribute('transform')).toBe('translate(10,-20) rotate(0)');
   });
 });
+
+describe('sidebar geometry: inner scrolling, toolbar always visible', () => {
+  it('bounds the sidebar so #layers and the toolbar stay inside the viewport', async () => {
+    const page = await boot();
+    const w = page.window;
+    const d = w.document;
+    // the height-bounding rules exist (jsdom does no real layout, so this
+    // pins the CSS contract the browser executes)
+    const css = [...d.querySelectorAll('style')].map((s) => s.textContent ?? '').join('\n');
+    expect(css).toMatch(/#sidebar \{[^}]*min-height: 0; overflow: hidden/);
+    expect(css).toMatch(/#sidebar-body \{[^}]*min-height: 0/);
+    expect(css).toMatch(/#layers-compact \{[^}]*min-height: 0; overflow-y: auto/);
+    expect(css).toMatch(/html, body \{[^}]*overflow: hidden/);
+    // #layers and the toolbar remain direct flex children in the scroll
+    // chain: #layers scrolls, the toolbar is a sibling below it (never
+    // pushed off-viewport by list growth)
+    expect(d.getElementById('layers')).not.toBeNull();
+    expect(d.getElementById('toolbar')).not.toBeNull();
+    // collapse: the compact rail is OUTSIDE #sidebar-body (which hides),
+    // a direct child of #sidebar so it can scroll on its own
+    w.document.getElementById('sidebar-toggle')!.click();
+    expect(w.document.getElementById('layers-compact')!.parentElement!.id).toBe('sidebar');
+  });
+});

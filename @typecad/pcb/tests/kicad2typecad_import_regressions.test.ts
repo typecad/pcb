@@ -12,6 +12,13 @@ import {
   generateZoneCode,
   type ChalkHelpers,
 } from '../src/kicad2typecad/display.js';
+import {
+  applySourceChanges,
+  computeOutlineChanges,
+  computeRoutingChanges,
+  computeZoneChanges,
+} from '../src/kicad2typecad/apply_source.js';
+import { analyzeFile } from '../src/kicad2typecad/source_analyzer.js';
 import logger from '../src/utils/logging.js';
 import type { KicadIR } from '../src/kicad2typecad/types.js';
 import type { PCB } from '../src/pcb/pcb.js';
@@ -423,5 +430,235 @@ describe('rewriter regressions', () => {
     expect(changes.length).toBe(1);
     new SourceRewriter().applyFootprintChanges(changes);
     expect(fs.readFileSync(file, 'utf-8')).toContain('r1.pcb = { x: 10, y: 20, rotation: 180 };');
+  });
+});
+
+// === --apply write-back for outline / zones / routing ===
+
+describe('apply-back: outline', () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'typecad-apply-outline-'));
+  });
+  afterEach(() => {
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  const boardWithOutline = (start: string, end: string) => `(kicad_pcb (version 20241229) (generator typecad)
+    (gr_line (start ${start} 78) (end ${end} 78) (layer "Edge.Cuts"))
+    (gr_line (start ${end} 78) (end ${end} 93) (layer "Edge.Cuts"))
+    (gr_line (start ${end} 93) (end ${start} 93) (layer "Edge.Cuts"))
+    (gr_line (start ${start} 93) (end ${start} 78) (layer "Edge.Cuts"))
+  )`;
+
+  it('updates outline args when the board outline grows', () => {
+    const file = path.join(dir, 'board.ts');
+    fs.writeFileSync(
+      file,
+      "import { PCB } from '@typecad/pcb';\nconst typecad = new PCB('t');\ntypecad.outline(130, 78, 25, 15);\n",
+    );
+    const ir = buildIr(boardWithOutline('130', '157'));
+    const { changes, notes } = computeOutlineChanges(ir, [file]);
+    expect(notes).toEqual([]);
+    expect(changes.length).toBe(1);
+    expect(changes[0].changedProps).toContain('geometry');
+    applySourceChanges(changes);
+    expect(fs.readFileSync(file, 'utf-8')).toContain('typecad.outline(130, 78, 27, 15);');
+  });
+
+  it('reports no change when outline matches', () => {
+    const file = path.join(dir, 'board.ts');
+    fs.writeFileSync(
+      file,
+      "import { PCB } from '@typecad/pcb';\nconst typecad = new PCB('t');\ntypecad.outline(130, 78, 25, 15);\n",
+    );
+    const ir = buildIr(boardWithOutline('130', '155'));
+    const { changes } = computeOutlineChanges(ir, [file]);
+    expect(changes).toEqual([]);
+  });
+});
+
+describe('apply-back: zones', () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'typecad-apply-zone-'));
+  });
+  afterEach(() => {
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  const boardWithZone = (cornerY: number) => `(kicad_pcb (version 20241229) (generator typecad)
+    (zone (net 3) (net_name "GND") (layer "F.Cu") (uuid "u1")
+      (hatch edge 0.508)
+      (min_thickness 0.254)
+      (fill yes (thermal_gap 0.254) (thermal_bridge_width 0.4064))
+      (polygon (pts (xy 130 78) (xy 155 78) (xy 155 ${cornerY}) (xy 130 ${cornerY}))))
+  )`;
+
+  it('rewrites a moved zone and converges (fill mode solid normalized)', () => {
+    const file = path.join(dir, 'board.ts');
+    fs.writeFileSync(
+      file,
+      "import { PCB } from '@typecad/pcb';\n" +
+        "const typecad = new PCB('t');\n" +
+        "typecad.zone({ net: 'GND', layers: ['F.Cu'], x: 130, y: 78, width: 25, height: 15 });\n",
+    );
+    const ir = buildIr(boardWithZone(93));
+    const first = computeZoneChanges(ir, [file]);
+    // fill present on the board but not in source → one change
+    expect(first.changes.length).toBe(1);
+    applySourceChanges(first.changes);
+    const applied = fs.readFileSync(file, 'utf-8');
+    expect(applied).toContain("net: 'GND'");
+    expect(applied).toContain('fill:');
+    // second compute must be clean — no churn
+    const second = computeZoneChanges(ir, [file]);
+    expect(second.changes).toEqual([]);
+  });
+
+  it('detects a moved zone corner as geometry', () => {
+    const file = path.join(dir, 'board.ts');
+    fs.writeFileSync(
+      file,
+      "import { PCB } from '@typecad/pcb';\n" +
+        "const typecad = new PCB('t');\n" +
+        "typecad.zone({ net: 'GND', layers: ['F.Cu'], x: 130, y: 78, width: 25, height: 15, fill: { thermalGap: 0.254, thermalBridgeWidth: 0.4064 } });\n",
+    );
+    const ir = buildIr(boardWithZone(91)); // south edge moved up 2mm
+    const { changes } = computeZoneChanges(ir, [file]);
+    expect(changes.length).toBe(1);
+    expect(changes[0].changedProps).toContain('geometry');
+    applySourceChanges(changes);
+    // (130,78)-(155,91) is still an axis-aligned rect, so the rect form is kept
+    expect(fs.readFileSync(file, 'utf-8')).toContain('height: 13');
+  });
+
+  it('removes zones the board no longer has and appends new ones', () => {
+    const file = path.join(dir, 'board.ts');
+    fs.writeFileSync(
+      file,
+      "import { PCB } from '@typecad/pcb';\n" +
+        "const typecad = new PCB('t');\n" +
+        "typecad.zone({ net: 'OLD', layers: ['F.Cu'], x: 0, y: 0, width: 5, height: 5 });\n",
+    );
+    const ir = buildIr(boardWithZone(93));
+    const { changes } = computeZoneChanges(ir, [file]);
+    const kinds = changes.map((c) => c.changedProps[0]);
+    expect(kinds).toContain('removed');
+    expect(kinds).toContain('new');
+    applySourceChanges(changes);
+    const applied = fs.readFileSync(file, 'utf-8');
+    expect(applied).not.toContain('OLD');
+    expect(applied).toContain("net: 'GND'");
+  });
+});
+
+describe('apply-back: routing section', () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'typecad-apply-route-'));
+  });
+  afterEach(() => {
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  const boardWithTrack = (endX: number) => `(kicad_pcb (version 20260206) (generator pcbnew)
+    (net 0 "")
+    (net 1 "VCC")
+    (segment (start 10 20) (end ${endX} 20) (width 0.2) (layer "F.Cu") (net "VCC"))
+    (segment (start ${endX} 20) (end ${endX} 30) (width 0.2) (layer "F.Cu") (net "VCC"))
+    (via (at ${endX} 30) (size 0.6) (drill 0.3) (net "VCC"))
+  )`;
+
+  const sourceWithTrack = (endX: number) =>
+    "import { PCB, TrackBuilder } from '@typecad/pcb';\n" +
+    "const typecad = new PCB('t');\n" +
+    'typecad.outline(5, 10, 100, 50);\n' +
+    '// Net: VCC\n' +
+    'let track_VCC: TrackBuilder[] = [];\n' +
+    `track_VCC.push(typecad.track({ net: 'VCC' }).from({ x: 10, y: 20 }, "F.Cu", 0.2).to({ x: ${endX}, y: 20, layer: "F.Cu", width: 0.2 }).to({ x: ${endX}, y: 30, layer: "F.Cu", width: 0.2 }).via({ size: 0.6, drill: 0.3 }));\n` +
+    '\n' +
+    'typecad.create(\n  ...track_VCC\n);';
+
+  it('regenerates the routing section when a trace is rerouted, and converges', () => {
+    const file = path.join(dir, 'board.ts');
+    fs.writeFileSync(file, sourceWithTrack(20));
+    const ir = buildIr(boardWithTrack(25));
+    const first = computeRoutingChanges(ir, [file]);
+    expect(first.changes.length).toBe(1);
+    expect(first.notes).toEqual([]);
+    applySourceChanges(first.changes);
+
+    const applied = fs.readFileSync(file, 'utf-8');
+    expect(applied).toContain('x: 25, y: 20');
+    // track region re-parses and create still spreads the arrays
+    const analysis = analyzeFile(file);
+    expect(analysis).not.toBeNull();
+    expect(analysis!.trackPushes.length).toBe(1);
+    expect(analysis!.methodCalls.find((m) => m.method === 'create')?.spread).toEqual([true]);
+
+    // second compute must be clean
+    const second = computeRoutingChanges(ir, [file]);
+    expect(second.changes).toEqual([]);
+  });
+
+  it('reports no change when routing is in sync', () => {
+    const file = path.join(dir, 'board.ts');
+    fs.writeFileSync(file, sourceWithTrack(20));
+    const ir = buildIr(boardWithTrack(20));
+    const { changes, notes } = computeRoutingChanges(ir, [file]);
+    expect(changes).toEqual([]);
+    expect(notes).toEqual([]);
+  });
+
+  it('skips rewrite (with a note) when pushes use unsupported constructs', () => {
+    const file = path.join(dir, 'board.ts');
+    fs.writeFileSync(
+      file,
+      "import { PCB, TrackBuilder } from '@typecad/pcb';\n" +
+        "const typecad = new PCB('t');\n" +
+        'let track_VCC: TrackBuilder[] = [];\n' +
+        `track_VCC.push(typecad.track({ net: 'VCC' }).from({ x: 10, y: 20 }, "F.Cu", 0.2).powerInfo({ current: 0.5 }).to({ x: 20, y: 20, layer: "F.Cu", width: 0.2 }));\n` +
+        'typecad.create(\n  ...track_VCC\n);',
+    );
+    const ir = buildIr(boardWithTrack(25));
+    const { changes, notes } = computeRoutingChanges(ir, [file]);
+    expect(changes).toEqual([]);
+    expect(notes.length).toBe(1);
+    expect(notes[0]).toContain('does not rebuild');
+  });
+
+  it('skips rewrite (with a note) when routing statements are not contiguous', () => {
+    const file = path.join(dir, 'board.ts');
+    fs.writeFileSync(
+      file,
+      "import { PCB, TrackBuilder } from '@typecad/pcb';\n" +
+        "const typecad = new PCB('t');\n" +
+        'let track_VCC: TrackBuilder[] = [];\n' +
+        `track_VCC.push(typecad.track({ net: 'VCC' }).from({ x: 10, y: 20 }, "F.Cu", 0.2).to({ x: 20, y: 20, layer: "F.Cu", width: 0.2 }));\n` +
+        'const notARoute = 42;\n' +
+        `track_VCC.push(typecad.track({ net: 'VCC' }).from({ x: 30, y: 20 }, "F.Cu", 0.2).to({ x: 40, y: 20, layer: "F.Cu", width: 0.2 }));\n` +
+        'typecad.create(\n  ...track_VCC\n);',
+    );
+    const ir = buildIr(boardWithTrack(25));
+    const { changes, notes } = computeRoutingChanges(ir, [file]);
+    expect(changes).toEqual([]);
+    expect(notes.length).toBe(1);
+    expect(notes[0]).toContain('not contiguous');
+    expect(fs.readFileSync(file, 'utf-8')).toContain('const notARoute = 42;');
+  });
+
+  it('deletes the routing section when the board has no tracks left', () => {
+    const file = path.join(dir, 'board.ts');
+    fs.writeFileSync(file, sourceWithTrack(20));
+    const ir = buildIr(`(kicad_pcb (version 20260206) (generator pcbnew) (net 0 ""))`);
+    const { changes } = computeRoutingChanges(ir, [file]);
+    expect(changes.length).toBe(1);
+    expect(changes[0].changedProps).toContain('tracks');
+    applySourceChanges(changes);
+    const applied = fs.readFileSync(file, 'utf-8');
+    expect(applied).not.toContain('track_VCC.push');
+    expect(applied).not.toContain('...track_VCC');
+    expect(analyzeFile(file)).not.toBeNull();
   });
 });

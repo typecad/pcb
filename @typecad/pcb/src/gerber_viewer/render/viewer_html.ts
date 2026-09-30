@@ -10980,7 +10980,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
      (silk/fab stroke text, refdes labels) while dragging or double-clicking */
   #board, #board text { -webkit-user-select: none; user-select: none; }
   #board:focus { outline: none; }
-  html, body { height: 100%; margin: 0; font: 13px/1.4 system-ui, sans-serif; }
+  html, body { height: 100%; margin: 0; overflow: hidden; font: 13px/1.4 system-ui, sans-serif; }
   body {
     display: flex;
     --chrome-bg: #1e1e1e;
@@ -11051,7 +11051,11 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   body:not(.light):not(.layer-themed) .layer-row[data-kind="silkscreen"] .chip,
   body:not(.light):not(.layer-themed) .layer-row[data-kind="paste"] .chip { background: #d6d6d6 !important; }
   body:not(.light):not(.layer-themed) .layer-row[data-kind="drill"] .chip { background: #2fbfae !important; }
-  #sidebar { width: 260px; min-width: 260px; background: var(--chrome-bg); color: var(--chrome-fg); display: flex; flex-direction: column; border-right: 1px solid var(--chrome-border); position: relative; }
+  /* height is bounded by the body flex line; min-height:0 (and overflow
+     hidden) keeps the inner scroll areas (#layers / #layers-compact) the
+     only scrolling surfaces — without it the sidebar grows to its content
+     height and the toolbar/fit/theme row falls below the viewport */
+  #sidebar { width: 260px; min-width: 260px; height: 100%; min-height: 0; overflow: hidden; background: var(--chrome-bg); color: var(--chrome-fg); display: flex; flex-direction: column; border-right: 1px solid var(--chrome-border); position: relative; }
   /* the collapse toggle owns a slim rail that survives the collapse */
   #sidebar-toggle {
     position: absolute; top: 8px; left: 0; z-index: 5;
@@ -11061,11 +11065,11 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     font-size: 10px; line-height: 1; cursor: pointer;
   }
   #sidebar-toggle:hover { background: var(--btn-bg); }
-  #sidebar-body { display: flex; flex-direction: column; flex: 1; min-width: 0; padding-left: 18px; }
+  #sidebar-body { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; padding-left: 18px; }
   #sidebar.collapsed { width: 18px; min-width: 18px; }
   #sidebar.collapsed #sidebar-body { display: none; }
   /* the compact rail: swatch + checkbox per layer, no names, no sliders */
-  #layers-compact { flex: 1; overflow-y: auto; padding: 10px 1px 6px; display: flex; flex-wrap: wrap; align-content: flex-start; gap: 6px 4px; justify-content: center; }
+  #layers-compact { flex: 1; min-height: 0; overflow-y: auto; padding: 10px 1px 6px; display: flex; flex-wrap: wrap; align-content: flex-start; gap: 6px 4px; justify-content: center; }
   #sidebar.collapsed #layers-compact { display: flex; }
   .layer-row.layer-compact { display: inline-flex; align-items: center; gap: 2px; padding: 1px; margin: 0; border: none; flex-direction: column; }
   .layer-row.layer-compact .chip { width: 12px; height: 12px; margin: 0; }

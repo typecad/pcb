@@ -453,12 +453,15 @@ export function computeOutlineChanges(ir: KicadIR, sourceFiles: string[]): Sourc
 // === Routing section (tracks + standalone vias + create spreads) ===
 
 function buildCreateArgsSource(create: MethodCallInfo, source: string, variables: string[]): string | null {
-  if (variables.length === 0) return null;
   const kept: string[] = [];
   create.argRanges.forEach((r, i) => {
     if (!create.spread[i]) kept.push(source.slice(r.start, r.end).trim());
   });
   const spreads = variables.map((v) => `...${v}`);
+  const hasSpreadArgs = create.spread.some(Boolean);
+  // Nothing to do when the board has no track variables and the call has no
+  // spreads to remove; otherwise (deletion case) spreads must be dropped.
+  if (variables.length === 0 && !hasSpreadArgs) return null;
   const all = [...kept, ...spreads];
 
   if (create.argRanges.length === 0) {
@@ -597,7 +600,7 @@ export function computeRoutingChanges(ir: KicadIR, sourceFiles: string[]): Sourc
       }
 
       const reps: Replacement[] = [{ range: region, newValue: desiredBlock }];
-      if (creates.length === 1 && variables.length > 0) {
+      if (creates.length === 1) {
         const create = creates[0];
         const argsSource = buildCreateArgsSource(create, source, variables);
         if (argsSource !== null) {

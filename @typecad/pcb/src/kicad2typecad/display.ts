@@ -209,7 +209,13 @@ export function trackBlockSource(ir: KicadIR, ch: ChalkHelpers = PLAIN_CH): { bl
     lines.push('');
   });
 
-  standaloneVias(ir, groups).forEach((via) => lines.push(standaloneViaSource(via, ch)));
+  // No trailing blank after the last group — the region compare in --apply
+  // must converge even when no standalone vias follow.
+  while (lines.length > 0 && lines[lines.length - 1] === '') lines.pop();
+
+  const vias = standaloneVias(ir, groups);
+  if (vias.length > 0 && lines.length > 0) lines.push('');
+  vias.forEach((via) => lines.push(standaloneViaSource(via, ch)));
 
   return { block: lines.join('\n'), variables };
 }

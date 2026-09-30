@@ -49,12 +49,34 @@ interface ChainPoint {
  */
 export function collectChainPoints(files: SourceFileText[]): ChainPoint[] {
   const out: ChainPoint[] = [];
+  const netOf = (opts: string): string | null => {
+    const nm = /net\s*:\s*['"]([^'"]*)['"]/.exec(opts);
+    return nm ? nm[1]! : null;
+  };
+  const pushPoints = (uri: string, lineNo: number, net: string | null, line: string): void => {
+    const re = /\.(?:from|to)\(\{\s*x\s*:\s*(-?[\d.]+)\s*,\s*y\s*:\s*(-?[\d.]+)/g;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(line)) !== null) {
+      out.push({ uri, line: lineNo, net, x: parseFloat(m[1]!), y: parseFloat(m[2]!) });
+    }
+  };
   for (const f of files) {
     const lines = f.text.split(/\r?\n/);
     let net: string | null = null;
     let inChain = false;
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i]!;
+      // single-line form: the whole chain on one line — `typecad.track(
+      // { net: '…' }).from(…).to(…)` (the apply bridge's emitted form)
+      const trackHead = /typecad\.track\s*\(/.exec(line);
+      if (trackHead) {
+        const tail = line.slice(trackHead.index);
+        const close = tail.indexOf(')');
+        const oneNet = netOf(tail.slice(0, close > 0 ? close + 1 : tail.length));
+        pushPoints(f.uri, i + 1, oneNet, line);
+        continue;
+      }
+      // multi-line form
       if (/new\s+TrackBuilder\s*\(/.test(line)) {
         inChain = true;
         // the net may sit on the header line or a following line inside the
@@ -62,15 +84,13 @@ export function collectChainPoints(files: SourceFileText[]): ChainPoint[] {
         // small window regardless of a bare `net:` already on the header
         let opts = line;
         for (let w = 1; w <= 3 && i + w < lines.length; w++) opts += '\n' + lines[i + w]!;
-        const nm = /net\s*:\s*'([^']*)'/.exec(opts);
-        net = nm ? nm[1] : null;
+        net = netOf(opts);
       }
       if (!inChain) continue;
-      const m = /\.(?:from|to)\(\{\s*x\s*:\s*(-?[\d.]+)\s*,\s*y\s*:\s*(-?[\d.]+)/.exec(line);
-      if (m) out.push({ uri: f.uri, line: i + 1, net, x: parseFloat(m[1]!), y: parseFloat(m[2]!) });
+      pushPoints(f.uri, i + 1, net, line);
       // a `.to({ … });` (semicolon right after the closing paren) ends the
       // chain; bare comment or blank lines ride along inside it
-      if (inChain && /\)\s*;\s*(\/\/.*)?$/.test(line.trim()) && !/new\s+TrackBuilder/.test(line)) inChain = false;
+      if (/\)\s*;\s*(\/\/.*)?$/.test(line.trim())) inChain = false;
     }
   }
   return out;

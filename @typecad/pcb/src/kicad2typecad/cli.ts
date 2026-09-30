@@ -46,19 +46,11 @@ import {
   applySourceChanges,
 } from './apply_source.js';
 import { startBoardWatch } from './watch.js';
-import type {
-  KicadIR,
-  MatchResult,
-  PendingChange,
-  PendingSourceChange,
-  PendingTextChange,
-  PendingLayoutChange,
-} from './types.js';
+import type { KicadIR, PendingChange, PendingSourceChange, PendingTextChange, PendingLayoutChange } from './types.js';
 
 /** Options shared by the CLI entry, the watch loop and the apply helpers. */
 export interface ImportOptions {
   apply?: boolean;
-  captureLayouts?: boolean;
   /** Apply every detected change without prompting. */
   auto?: boolean;
   /** Watch the board file and re-run on every save. */
@@ -205,7 +197,7 @@ async function applyMode(
   const textChanges = rewriter.computeTextChanges(ir, sourceFiles);
 
   // 4. Compute layout changes (referenceLayout, valueLayout, fabLayout)
-  const layoutChanges = rewriter.computeLayoutChanges(matchResults, options?.captureLayouts ?? false);
+  const layoutChanges = rewriter.computeLayoutChanges(matchResults);
 
   // 5. Apply footprint changes
   if (footprintChanges.length > 0) {
@@ -251,18 +243,6 @@ async function applyMode(
     if (layoutResult.applied > 0) {
       logger.log(
         chalk.green(`\n✓ Applied ${layoutResult.applied} layout change(s) to ${layoutResult.filesModified} file(s).`),
-      );
-    }
-  } else if (!options?.captureLayouts) {
-    const hasLayoutsInIR = matchResults.some(
-      (mr) => mr.irFootprint.referenceLayout || mr.irFootprint.valueLayout || mr.irFootprint.fabLayout,
-    );
-    if (hasLayoutsInIR) {
-      logger.log(
-        chalk.gray(
-          '\nLayout positions use footprint template defaults. ' +
-            'Use --capture-layouts to import all text positions into source.',
-        ),
       );
     }
   }

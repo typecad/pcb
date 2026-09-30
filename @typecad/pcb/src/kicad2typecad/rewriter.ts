@@ -113,7 +113,7 @@ export class SourceRewriter {
     return changes;
   }
 
-  computeLayoutChanges(matchResults: MatchResult[], captureLayouts = false): PendingLayoutChange[] {
+  computeLayoutChanges(matchResults: MatchResult[]): PendingLayoutChange[] {
     const changes: PendingLayoutChange[] = [];
     const layoutTypes = ['referenceLayout', 'valueLayout', 'fabLayout'] as const;
 
@@ -151,8 +151,6 @@ export class SourceRewriter {
             loc.isThis,
             layoutType,
           );
-
-          if (sourceLayout === null && !captureLayouts) continue;
 
           const diff = this.computeLayoutDiff(sourceLayout, irLayout);
           if (diff.length === 0) continue;

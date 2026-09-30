@@ -250,3 +250,9 @@ endpoints and the host matches them against chain geometry in src/**/*.ts
 (either orientation, 0.05 mm tolerance, net-aware) — falling back through
 the net's `typecad.named('…')` declaration (for highlighted-but-unselected
 nets) and then the recorded route/net source as before.
+
+Segment-to-source matching now reads BOTH authoring forms: multi-line
+`const x = new TrackBuilder(…)` chains AND the one-line
+`typecad.track({ net: '…' }).from(…).to(…)` chains the apply bridge emits
+(seen in mod-ec.ts — 292 chain points, previously zero matches, so Enter
+always fell through to the net line).

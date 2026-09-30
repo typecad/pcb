@@ -47,6 +47,8 @@ const j1 = new Connector({
   footprint: 'uFire:CastellatedHeader-2.54x6',
   pcb: { x: 130.9, y: 85.52, rotation: 0 },
 });
+j1.valueLayout = { x: -0.05, y: 9.5, rotation: 0, layer: 'F.Fab', width: 0.75, height: 0.75, thickness: 0.1, show: true };
+j1.referenceLayout = { x: 0.1, y: -2.5, rotation: 0, layer: 'F.SilkS', width: 0.75, height: 0.75, thickness: 0.1, show: false };
 j1.pcb = { x: 130.9, y: 85.52 };
 // I2C / UART power connector (castellated edge, right side)
 const j2 = new Connector({
@@ -55,6 +57,8 @@ const j2 = new Connector({
   footprint: 'uFire:CastellatedHeader-2.54x6',
   pcb: { x: 154.34, y: 85.52, rotation: 180 },
 });
+j2.valueLayout = { x: -0.05, y: 9.5, rotation: 180, layer: 'F.Fab', width: 0.75, height: 0.75, thickness: 0.1, show: true };
+j2.referenceLayout = { x: 0.1, y: -2.5, rotation: 180, layer: 'F.SilkS', width: 0.75, height: 0.75, thickness: 0.1, show: false };
 
 // STM32G431KB — Cortex-M4F 170MHz, 4Msps ADC, dual DAC, 3 on-chip op-amps.
 // Runs the lock-in demodulation entirely in firmware.
@@ -65,6 +69,9 @@ const u1 = new Component({
   footprint: 'Package_DFN_QFN:QFN-32-1EP_5x5mm_P0.5mm_EP3.45x3.45mm',
   pcb: { x: 143.2, y: 85.4, rotation: 0 },
 });
+u1.fabLayout = { x: 0, y: 0, rotation: 0, layer: 'F.Fab', width: 0.75, height: 0.75, thickness: 0.1, bold: false, italic: false, show: true };
+u1.valueLayout = { x: 0, y: 3.83, rotation: 0, layer: 'F.Fab', width: 0.75, height: 0.75, thickness: 0.1, show: true };
+u1.referenceLayout = { x: 0, y: -3.83, rotation: 0, layer: 'F.SilkS', width: 0.75, height: 0.75, thickness: 0.1, show: true };
 u1.pcb = { x: 148.2, y: 82.2 };
 
 // excitation + sense network
@@ -78,8 +85,14 @@ u1.pcb = { x: 148.2, y: 82.2 };
 // Keep DAC_OUT/DRIVE and PROBE_1
 // traces separated (coupling between them bypasses the cell).
 const r1 = new Resistor({ reference: 'R1', value: '1k 0.1%', pcb: { x: 134.0, y: 79.5, rotation: 0 } });
+r1.fabLayout = { x: 0, y: 0, rotation: 180, layer: 'F.Fab', width: 0.75, height: 0.75, thickness: 0.1, bold: false, italic: false, show: true };
+r1.valueLayout = { x: 0, y: 1.43, rotation: 180, layer: 'F.Fab', width: 0.75, height: 0.75, thickness: 0.1, show: true };
+r1.referenceLayout = { x: 0, y: -1.43, rotation: 180, layer: 'F.SilkS', width: 0.75, height: 0.75, thickness: 0.1, show: true };
 r1.pcb = { x: 138, y: 88.6, rotation: 180 };
 const c2 = new Capacitor({ reference: 'C2', value: '1nF C0G', pcb: { x: 140.6, y: 89.4, rotation: 0 } });
+c2.fabLayout = { x: 0, y: 0, rotation: 0, layer: 'F.Fab', width: 0.75, height: 0.75, thickness: 0.1, bold: false, italic: false, show: true };
+c2.valueLayout = { x: 0, y: 1.43, rotation: 0, layer: 'F.Fab', width: 0.75, height: 0.75, thickness: 0.1, show: true };
+c2.referenceLayout = { x: 0, y: 1.65, rotation: 0, layer: 'F.SilkS', width: 0.75, height: 0.75, thickness: 0.1, show: true };
 c2.pcb = { x: 141.2, y: 88.6, rotation: 0 };
 const d1 = new Component({
   reference: 'D1',
@@ -88,10 +101,16 @@ const d1 = new Component({
   footprint: 'Package_TO_SOT_SMD:SOT-323_SC-70',
   pcb: { x: 137.3, y: 80.7, rotation: 0 },
 });
+d1.fabLayout = { x: 0, y: 0, rotation: 90, layer: 'F.Fab', width: 0.75, height: 0.75, thickness: 0.1, bold: false, italic: false, show: true };
+d1.valueLayout = { x: 0, y: 1.8, rotation: 0, layer: 'F.Fab', width: 0.75, height: 0.75, thickness: 0.1, show: true };
+d1.referenceLayout = { x: 0, y: -1.8, rotation: 0, layer: 'F.SilkS', width: 0.75, height: 0.75, thickness: 0.1, show: true };
 d1.pcb = { x: 137.8, y: 79.6, rotation: 180 };
 
 // reference injection across the cell
 const r3 = new Resistor({ reference: 'R3', value: '10k 0.1%', pcb: { x: 139.0, y: 79.0, rotation: 90 } });
+r3.fabLayout = { x: 0, y: 0, rotation: 0, layer: 'F.Fab', width: 0.75, height: 0.75, thickness: 0.1, bold: false, italic: false, show: true };
+r3.valueLayout = { x: 0, y: 1.43, rotation: 0, layer: 'F.Fab', width: 0.75, height: 0.75, thickness: 0.1, show: true };
+r3.referenceLayout = { x: 2.4, y: -0.2, rotation: 0, layer: 'F.SilkS', width: 0.75, height: 0.75, thickness: 0.1, show: true };
 r3.pcb = { x: 133.6, y: 79.2, rotation: 0 };
 // U3: TS3A24159 dual SPDT (0.3R Ron — 3x better than the single TS5A3160s
 // it replaces, and the selector's Ron sits in series with the 1k sense leg).
@@ -108,20 +127,35 @@ const u3 = new Component({
   footprint: 'Package_SON:Texas_S-PVSON-N10',
   pcb: { x: 137.5, y: 84.0, rotation: 0 },
 });
+u3.fabLayout = { x: 0, y: 0, rotation: 90, layer: 'F.Fab', width: 0.75, height: 0.75, thickness: 0.1, bold: false, italic: false, show: true };
+u3.valueLayout = { x: 0, y: 2.9, rotation: 90, layer: 'F.Fab', width: 0.75, height: 0.75, thickness: 0.1, show: true };
+u3.referenceLayout = { x: 0, y: 2.9, rotation: 180, layer: 'F.SilkS', width: 0.75, height: 0.75, thickness: 0.1, show: true };
 u3.pcb = { x: 137.6, y: 84.8, rotation: 90 };
 
 // sense-leg selector (SPDT): COM on PROBE_1, NC -> R1 1k (default, optimal
 // for the mid range), NO -> R4 100k (low-conductivity leg — divider SNR
 // optimum wants Rsense ~ R5+Rcell, so weak signals get the LARGE leg)
 const r4 = new Resistor({ reference: 'R4', value: '100k 0.1%', pcb: { x: 137.5, y: 86.4, rotation: 0 } });
+r4.fabLayout = { x: 0, y: 0, rotation: 0, layer: 'F.Fab', width: 0.75, height: 0.75, thickness: 0.1, bold: false, italic: false, show: true };
+r4.valueLayout = { x: 0, y: 1.43, rotation: 0, layer: 'F.Fab', width: 0.75, height: 0.75, thickness: 0.1, show: true };
+r4.referenceLayout = { x: 0.2, y: 1.65, rotation: 0, layer: 'F.SilkS', width: 0.75, height: 0.75, thickness: 0.1, show: true };
 r4.pcb = { x: 134.8, y: 88.6 };
 
 // decoupling
 const c1 = new Capacitor({ reference: 'C1', value: '100nF', pcb: { x: 143.3, y: 89.2, rotation: 0 } });
+c1.fabLayout = { x: 0, y: 0, rotation: 180, layer: 'F.Fab', width: 0.75, height: 0.75, thickness: 0.1, bold: false, italic: false, show: true };
+c1.valueLayout = { x: 0, y: 1.43, rotation: 180, layer: 'F.Fab', width: 0.75, height: 0.75, thickness: 0.1, show: true };
+c1.referenceLayout = { x: 0.75, y: 1.25, rotation: 180, layer: 'F.SilkS', width: 0.75, height: 0.75, thickness: 0.1, show: true };
 c1.pcb = { x: 133.75, y: 86.75, rotation: 180 }; // VDDA (pin 15 @ 144.45,87.84)
 const c3 = new Capacitor({ reference: 'C3', value: '100nF', pcb: { x: 147.4, y: 87.9, rotation: 0 } });
+c3.fabLayout = { x: 0, y: 0, rotation: 0, layer: 'F.Fab', width: 0.75, height: 0.75, thickness: 0.1, bold: false, italic: false, show: true };
+c3.valueLayout = { x: 0, y: 1.43, rotation: 0, layer: 'F.Fab', width: 0.75, height: 0.75, thickness: 0.1, show: true };
+c3.referenceLayout = { x: 0, y: 1.1, rotation: 0, layer: 'F.SilkS', width: 0.75, height: 0.75, thickness: 0.1, show: true };
 c3.pcb = { x: 143.4, y: 80.35, rotation: 180 }; // VDD (pin 17 @ 145.64,87.15) (pin 17 @ 145.64,87.15)
 const c6 = new Capacitor({ reference: 'C6', value: '100nF', pcb: { x: 140.8, y: 81.4, rotation: 0 } });
+c6.fabLayout = { x: 0, y: 0, rotation: 0, layer: 'F.Fab', width: 0.75, height: 0.75, thickness: 0.1, bold: false, italic: false, show: true };
+c6.valueLayout = { x: 0, y: 1.43, rotation: 0, layer: 'F.Fab', width: 0.75, height: 0.75, thickness: 0.1, show: true };
+c6.referenceLayout = { x: 0, y: -1.43, rotation: 0, layer: 'F.SilkS', width: 0.75, height: 0.75, thickness: 0.1, show: true };
 c6.pcb = { x: 143.425, y: 81.95, rotation: 180 }; // NRST (pin 4 @ 140.76,85.15)
 
 // excitation series resistor: PA4 (DAC1_OUT1) -> R5 -> DRIVE. Keeps the
@@ -130,10 +164,16 @@ c6.pcb = { x: 143.425, y: 81.95, rotation: 180 }; // NRST (pin 4 @ 140.76,85.15)
 // the firmware measures the ACTUAL drive on PA4 = ADC1_IN5 and uses the
 // measured magnitude in the solve).
 const r5 = new Resistor({ reference: 'R5', value: '1k 0.1%', pcb: { x: 146.0, y: 89.5, rotation: 0 } });
+r5.fabLayout = { x: 0, y: 0, rotation: 0, layer: 'F.Fab', width: 0.75, height: 0.75, thickness: 0.1, bold: false, italic: false, show: true };
+r5.valueLayout = { x: 0, y: 1.43, rotation: 0, layer: 'F.Fab', width: 0.75, height: 0.75, thickness: 0.1, show: true };
+r5.referenceLayout = { x: 0, y: -1.43, rotation: 0, layer: 'F.SilkS', width: 0.75, height: 0.75, thickness: 0.1, show: true };
 r5.pcb = { x: 133.6, y: 81.6, rotation: 180 };
 
 // SWDIO series resistor
 const r2 = new Resistor({ reference: 'R2', value: '470', pcb: { x: 133.9, y: 91.9, rotation: 0 } });
+r2.fabLayout = { x: 0, y: 0, rotation: 0, layer: 'F.Fab', width: 0.75, height: 0.75, thickness: 0.1, bold: false, italic: false, show: true };
+r2.valueLayout = { x: 0, y: 1.43, rotation: 0, layer: 'F.Fab', width: 0.75, height: 0.75, thickness: 0.1, show: true };
+r2.referenceLayout = { x: 2.6, y: 0.1, rotation: 0, layer: 'F.SilkS', width: 0.75, height: 0.75, thickness: 0.1, show: true };
 
 // ---------------------------------------------------------------------------
 // Nets
@@ -189,7 +229,7 @@ typecad.named('UART_TX').net(u1.pin(19), j2.pin(1)); // PA9 / USART1_TX
 typecad.named('UART_RX').net(u1.pin(20), j2.pin(2)); // PA10 / USART1_RX
 
 // one-wire temperature probe pad (host-provided temp source)
-typecad.named('1_WIRE').net(u1.pin(25), j1.pin(4)); // PA15 (moved off PA7 = opamp output)
+// typecad.named('1_WIRE').net(u1.pin(25), j1.pin(4)); // PA15 (moved off PA7 = opamp output)
 
 // SWD programming: SWDIO through R2 to the edge, SWCLK direct
 typecad.named('SWDIO').net(u1.pin(23), r2.pin(1)); // PA13
@@ -219,10 +259,10 @@ typecad.named('SWCLK').net(u1.pin(24), j1.pin(5)); // PA14
 // Ground pours — all four copper layers
 // ---------------------------------------------------------------------------
 
-typecad.zone({ net: 'GND', layers: ['F.Cu'], x: 130, y: 78, width: 25, height: 15, minThickness: 0.254, clearance: 0.254, fill: { thermalGap: 0.254, thermalBridgeWidth: 0.4064, islandRemovalMode: 2, islandAreaMin: 10, arcSegments: 16 } });
-typecad.zone({ net: 'GND', layers: ['B.Cu'], x: 130, y: 78, width: 25, height: 15, minThickness: 0.254, clearance: 0.254, fill: { thermalGap: 0.254, thermalBridgeWidth: 0.4064, islandRemovalMode: 2, islandAreaMin: 10, arcSegments: 16 } });
-typecad.zone({ net: 'GND', layers: ['In1.Cu'], x: 130, y: 78, width: 25, height: 15, minThickness: 0.254, clearance: 0.254, fill: { thermalGap: 0.254, thermalBridgeWidth: 0.4064, islandRemovalMode: 2, islandAreaMin: 10, arcSegments: 16 } });
-typecad.zone({ net: 'GND', layers: ['In2.Cu'], x: 130, y: 78, width: 25, height: 15, minThickness: 0.254, clearance: 0.254, fill: { thermalGap: 0.254, thermalBridgeWidth: 0.4064, islandRemovalMode: 2, islandAreaMin: 10, arcSegments: 16 } });
+typecad.zone({ net: 'GND', layers: ['F.Cu'], x: 130, y: 78, width: 25, height: 15, minThickness: 0.254, clearance: 0.254, fill: { thermalGap: 0.254, thermalBridgeWidth: 0.4064, islandRemovalMode: 2, islandAreaMin: 10 } });
+typecad.zone({ net: 'GND', layers: ['B.Cu'], x: 130, y: 78, width: 25, height: 15, minThickness: 0.254, clearance: 0.254, fill: { thermalGap: 0.254, thermalBridgeWidth: 0.4064, islandRemovalMode: 2, islandAreaMin: 10 } });
+typecad.zone({ net: 'GND', layers: ['In1.Cu'], x: 130, y: 78, width: 25, height: 15, minThickness: 0.254, clearance: 0.254, fill: { thermalGap: 0.254, thermalBridgeWidth: 0.4064, islandRemovalMode: 2, islandAreaMin: 10 } });
+typecad.zone({ net: 'GND', layers: ['In2.Cu'], x: 130, y: 78, width: 25, height: 15, minThickness: 0.254, clearance: 0.254, fill: { thermalGap: 0.254, thermalBridgeWidth: 0.4064, islandRemovalMode: 2, islandAreaMin: 10 } });
 
 // ---------------------------------------------------------------------------
 // PLACEMENT — grounded in the built pads manifest (real pad coordinates).
@@ -304,12 +344,15 @@ track_SWDIO_E.push(typecad.track({ net: 'SWDIO_E' }).from({ x: 131.24, y: 91.86 
 let track_VCC: TrackBuilder[] = [];
 track_VCC.push(typecad.track({ net: 'VCC' }).from({ x: 149.45, y: 84.6375 }, "F.Cu", 0.127).to({ x: 149.45, y: 85.2, layer: "F.Cu", width: 0.127 }));
 track_VCC.push(typecad.track({ net: 'VCC' }).from({ x: 134.5, y: 85.75 }, "F.Cu", 0.25).to({ x: 134.5, y: 86.725, layer: "F.Cu", width: 0.25 }));
-track_VCC.push(typecad.track({ net: 'VCC' }).from({ x: 135.25, y: 86.75 }, "F.Cu", 0.127).to({ x: 135.75, y: 86.25, layer: "F.Cu", width: 0.127 }).to({ x: 135.775, y: 86.275, layer: "F.Cu", width: 0.127 }));
+track_VCC.push(typecad.track({ net: 'VCC' }).from({ x: 135.25, y: 86.75 }, "F.Cu", 0.127).to({ x: 135.75, y: 86.25, layer: "F.Cu", width: 0.127 }));
+track_VCC.push(typecad.track({ net: 'VCC' }).from({ x: 144.275, y: 80.45 }, "F.Cu", 0.127).to({ x: 144.175, y: 80.35, layer: "F.Cu", width: 0.127 }));
+track_VCC.push(typecad.track({ net: 'VCC' }).from({ x: 135.75, y: 86.25 }, "F.Cu", 0.127).to({ x: 135.775, y: 86.275, layer: "F.Cu", width: 0.127 }));
 track_VCC.push(typecad.track({ net: 'VCC' }).from({ x: 138.6875, y: 78.95 }, "F.Cu", 0.127).to({ x: 141.7595, y: 78.95, layer: "F.Cu", width: 0.127 }));
 track_VCC.push(typecad.track({ net: 'VCC' }).from({ x: 135.775, y: 86.275 }, "F.Cu", 0.127).to({ x: 136.6, y: 86.275, layer: "F.Cu", width: 0.127 }));
 track_VCC.push(typecad.track({ net: 'VCC' }).from({ x: 142, y: 78.7095 }, "F.Cu", 0.25).to({ x: 142.5345, y: 78.7095, layer: "F.Cu", width: 0.25 }));
 track_VCC.push(typecad.track({ net: 'VCC' }).from({ x: 134.525, y: 86.75 }, "F.Cu", 0.127).to({ x: 135.25, y: 86.75, layer: "F.Cu", width: 0.127 }));
 track_VCC.push(typecad.track({ net: 'VCC' }).from({ x: 134.5, y: 86.725 }, "F.Cu", 0.25).to({ x: 134.525, y: 86.75, layer: "F.Cu", width: 0.25 }));
+track_VCC.push(typecad.track({ net: 'VCC' }).from({ x: 145.7625, y: 80.45 }, "F.Cu", 0.127).to({ x: 144.275, y: 80.45, layer: "F.Cu", width: 0.127 }));
 track_VCC.push(typecad.track({ net: 'VCC' }).from({ x: 150.6375, y: 83.95 }, "F.Cu", 0.127).to({ x: 150.6375, y: 84.8645, layer: "F.Cu", width: 0.127 }));
 track_VCC.push(typecad.track({ net: 'VCC' }).from({ x: 150, y: 85.75 }, "F.Cu", 0.127).to({ x: 150.502, y: 85.248, layer: "F.Cu", width: 0.127 }));
 track_VCC.push(typecad.track({ net: 'VCC' }).from({ x: 149.45, y: 85.2 }, "F.Cu", 0.127).to({ x: 150, y: 85.75, layer: "F.Cu", width: 0.127 }));
@@ -354,12 +397,12 @@ track_DAC1_OUT1.push(typecad.track({ net: 'DAC1_OUT1' }).from({ x: 148.434814, y
 
 // Net: MID
 let track_MID: TrackBuilder[] = [];
-track_MID.push(typecad.track({ net: 'MID' }).from({ x: 141.3095, y: 89.2655 }, "F.Cu", 0.127).to({ x: 141.975, y: 88.6, layer: "F.Cu", width: 0.127 }));
 track_MID.push(typecad.track({ net: 'MID' }).from({ x: 135.625, y: 88.6 }, "F.Cu", 0.127).to({ x: 137.175, y: 88.6, layer: "F.Cu", width: 0.127 }));
 track_MID.push(typecad.track({ net: 'MID' }).from({ x: 143.924999, y: 88.6 }, "F.Cu", 0.127).to({ x: 141.975, y: 88.6, layer: "F.Cu", width: 0.127 }));
-track_MID.push(typecad.track({ net: 'MID' }).from({ x: 137.8405, y: 89.2655 }, "F.Cu", 0.127).to({ x: 141.3095, y: 89.2655, layer: "F.Cu", width: 0.127 }));
+track_MID.push(typecad.track({ net: 'MID' }).from({ x: 137.175, y: 88.6 }, "F.Cu", 0.127).to({ x: 138.075, y: 89.5, layer: "F.Cu", width: 0.127 }));
+track_MID.push(typecad.track({ net: 'MID' }).from({ x: 141.075, y: 89.5 }, "F.Cu", 0.127).to({ x: 141.975, y: 88.6, layer: "F.Cu", width: 0.127 }));
+track_MID.push(typecad.track({ net: 'MID' }).from({ x: 138.075, y: 89.5 }, "F.Cu", 0.127).to({ x: 141.075, y: 89.5, layer: "F.Cu", width: 0.127 }));
 track_MID.push(typecad.track({ net: 'MID' }).from({ x: 147.45, y: 85.074999 }, "F.Cu", 0.127).to({ x: 143.924999, y: 88.6, layer: "F.Cu", width: 0.127 }));
-track_MID.push(typecad.track({ net: 'MID' }).from({ x: 137.175, y: 88.6 }, "F.Cu", 0.127).to({ x: 137.8405, y: 89.2655, layer: "F.Cu", width: 0.127 }));
 track_MID.push(typecad.track({ net: 'MID' }).from({ x: 147.45, y: 84.6375 }, "F.Cu", 0.127).to({ x: 147.45, y: 85.074999, layer: "F.Cu", width: 0.127 }));
 
 // Net: AMP_OUT

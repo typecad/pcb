@@ -8,6 +8,28 @@ move a via, drag a zone corner, grow the board outline, or reroute a trace in
 KiCad, run `npm run import`, select the changes, and the source is patched —
 rebuild and the board matches.
 
+Two new flags on `import`:
+
+- **`--auto`** — applies every detected change without the interactive
+  checkboxes (implies `--apply`). What would be applied is still listed in
+  the output; the safety rails (unsupported constructs, non-contiguous
+  routing regions) behave exactly as in interactive mode and fall back to
+  notes instead of guessing.
+- **`--watch`** — watches the .kicad_pcb file and re-runs the import on
+  every save (500 ms debounce; touch-without-write cycles are skipped;
+  a partially written or locked file logs a warning and the next save
+  retries instead of killing the session). Combined with `--auto`
+  (`import build/board.kicad_pcb --watch --auto`) the typeCAD source is
+  live-synced while the board is edited in KiCad; Ctrl+C stops. Without
+  `--auto`, watch re-runs display mode on each save.
+
+The `--capture-layouts` flag is gone: text layout positions
+(referenceLayout, valueLayout, fabLayout) are now imported and updated by
+default on every `--apply`/`--auto` run, and the import is not in sync
+until they match the board. Existing layout assignments in source are
+updated as before; new ones are inserted for components without them
+(a layout identical to the unset default produces no change).
+
 - **Outline** — positional args of `typecad.outline(...)`/`outlineCircle(...)`
   update in place; fillet radii appear/disappear; polygon outlines and
   cutouts rewrite their point arrays; removed or added Edge.Cuts shapes

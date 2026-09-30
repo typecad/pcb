@@ -874,10 +874,8 @@ describe('import --watch --auto (live sync)', () => {
       ].join('\n'),
     );
 
-    const session = startBoardWatch(
-      boardPath,
-      { apply: true, auto: true },
-      (file, cycleOptions) => kicadDataToTypeCAD(file, cycleOptions),
+    const session = startBoardWatch(boardPath, { apply: true, auto: true }, (file, cycleOptions) =>
+      kicadDataToTypeCAD(file, cycleOptions),
     );
     try {
       await session.ready;
@@ -910,10 +908,8 @@ describe('import --watch --auto (live sync)', () => {
       ].join('\n'),
     );
 
-    const session = startBoardWatch(
-      boardPath,
-      { apply: true, auto: true },
-      (file, cycleOptions) => kicadDataToTypeCAD(file, cycleOptions),
+    const session = startBoardWatch(boardPath, { apply: true, auto: true }, (file, cycleOptions) =>
+      kicadDataToTypeCAD(file, cycleOptions),
     );
     try {
       await session.ready;

@@ -85,3 +85,35 @@ describe('resolveNetDeclaration', () => {
     expect(resolveNetDeclaration('nope', filesLF)).toBeNull();
   });
 });
+
+describe('typecad.track single-line chains (the apply-bridge emitted form)', () => {
+  // mod-ec.ts's real shape: `track_X.push(typecad.track({ net: 'N' }).from(A).to(B));`
+  const trackSrc =
+    "import { PCB } from '@typecad/pcb';\n" +
+    "const typecad = new PCB('demo', {});\n" +
+    "let track_PROBE_1: TrackBuilder[] = [];\n" +
+    "track_PROBE_1.push(typecad.track({ net: 'PROBE_1' }).from({ x: 140.1125, y: 82.8 }, \"F.Cu\", 0.127).to({ x: 139.875, y: 82.5625, layer: \"F.Cu\", width: 0.127 }));\n" +
+    "track_PROBE_1.push(typecad.track({ net: 'PROBE_1' }).from({ x: 139.875, y: 82.5625 }, \"F.Cu\", 0.127).to({ x: 139.875, y: 86.275, layer: \"F.Cu\", width: 0.127 }));\n";
+  const tf = () => [{ uri: 'C:/p/hw/src/mod-ec.ts', text: trackSrc }];
+
+  it('collects points from single-line typecad.track chains', () => {
+    const pts = collectChainPoints(tf());
+    expect(pts).toHaveLength(4);
+    expect(pts[0]).toMatchObject({ net: 'PROBE_1', x: 140.1125, y: 82.8, line: 4 });
+    expect(pts[1]).toMatchObject({ net: 'PROBE_1', x: 139.875, y: 82.5625, line: 4 });
+  });
+
+  it('resolves a selected segment to its one-line chain (line of the .to)', () => {
+    const hit = resolveSegmentSource({ x1: 139.875, y1: 82.5625, x2: 139.875, y2: 86.275, net: 'PROBE_1' }, tf());
+    expect(hit).not.toBeNull();
+    expect(hit!.line).toBe(5); // the second push line
+    expect(hit!.uri).toContain('mod-ec.ts');
+  });
+
+  it('the shared endpoint between two one-line chains resolves to the LATER .to', () => {
+    // the first chain's .to sits at the same point as the second chain's
+    // .from — the segment belongs to the second chain, whose .to defines it
+    const hit = resolveSegmentSource({ x1: 140.1125, y1: 82.8, x2: 139.875, y2: 82.5625, net: 'PROBE_1' }, tf());
+    expect(hit!.line).toBe(4);
+  });
+});

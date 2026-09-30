@@ -140,16 +140,15 @@ typecad-pcb search "op amp" --format=json`,
 npx kicad2typecad build/board.kicad_pcb --apply`,
       },
       {
-        title: 'Capture all text layout positions',
-        code: `# Import reference/value/fab text positions from KiCad:
-npx kicad2typecad build/board.kicad_pcb --apply --capture-layouts`,
+        title: 'Import positions and text layouts',
+        code: `# Import positions and reference/value/fab text layouts from KiCad:
+npx kicad2typecad build/board.kicad_pcb --apply`,
       },
     ],
     notes: [
       '--apply interactively syncs KiCad changes back to your TypeScript source files',
       'Component positions (x, y, rotation, side) are always synced',
-      'Text layouts (referenceLayout, valueLayout, fabLayout) are only updated if already present in source',
-      'Use --capture-layouts to import all text layout positions, even for components without layout assignments',
+      'Text layouts (referenceLayout, valueLayout, fabLayout) are imported and updated by default',
       'Display mode (without --apply) shows all layout code for reference',
     ],
     related: ['pcb-placement', 'component', 'kicad-integration'],

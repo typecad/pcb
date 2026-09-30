@@ -161,9 +161,7 @@ export function showImportHelp(): void {
   console.log('  --watch                   Watch the board file and re-run on every save.');
   console.log('                            With --auto the source .ts is live-synced');
   console.log('                            while you edit in KiCad. Ctrl+C to stop.');
-  console.log('  --capture-layouts         Also import text layout positions');
-  console.log('                            (referenceLayout, valueLayout, fabLayout)\n');
-  console.log('                            to the typeCAD source files\n');
+  console.log('  (text layout positions are always imported)\n');
   console.log("Variable names are sourced from each footprint's 'Code' property.");
   console.log('If missing, the KiCad reference is used (e.g., U1, R3).');
 }
@@ -258,8 +256,10 @@ export function showErcHelp(): void {
   console.log('Usage:');
   console.log('  typecad-pcb erc [path] [typecad-options] [--kicad --] [kicad-cli flags]\n');
   console.log('Arguments:');
-  console.log('  <path>             Path to .kicad_sch file (default: auto-detected from ./build/);\n' +
-    '                     the native report <name>_erc.json must sit beside it\n');
+  console.log(
+    '  <path>             Path to .kicad_sch file (default: auto-detected from ./build/);\n' +
+      '                     the native report <name>_erc.json must sit beside it\n',
+  );
   console.log('typecad Options:');
   console.log('  --json             Output typecad results as JSON');
   console.log('  --kicad            Run kicad-cli sch erc instead of the native engine');
@@ -411,7 +411,7 @@ export function showExportHelp(): void {
 export function showExportGerbersHelp(): void {
   console.log(chalk.white.bold('typecad-pcb export gerbers') + ' - Export the full fabrication set from a PCB\n');
   console.log(
-    "Plots copper, graphics, drill and job files from a .kicad_pcb with\n" +
+    'Plots copper, graphics, drill and job files from a .kicad_pcb with\n' +
       "typeCAD's own gerber writer — no kicad-cli required.\n",
   );
   console.log('Usage:');
@@ -489,7 +489,7 @@ export function showCheckHelp(): void {
   console.log('  --skip-erc          Skip the ERC step');
   console.log('  --skip-drc          Skip the DRC step');
   console.log('  --kicad-erc         ERC through kicad-cli (native engine is the default)');
-  console.log("  --kicad-drc         DRC through kicad-cli (native engine is the default)\n");
+  console.log('  --kicad-drc         DRC through kicad-cli (native engine is the default)\n');
   console.log('Examples:');
   console.log('  typecad-pcb check');
   console.log('  typecad-pcb check --json');

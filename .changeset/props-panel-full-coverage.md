@@ -215,3 +215,11 @@ where it was placed. The move payload now carries the part's final
 absolute board position (ax/ay), and the insert path writes it (older pages
 fall back to the delta); the six mis-written literals in the user's project
 were reconstructed as constructor placement + recorded drag delta.
+
+Layout polish: parts no longer wear the yellow warning border in any case
+(overlap, off-outline — the amber text list in the layout panel is the
+whole warning surface), the collapsed sidebar actually shows its compact
+layer rail (it sat inside the hidden sidebar body, leaving only the toggle
+button), and the layout grid controls — step (0.1/0.25/0.5/1), snap,
+visible grid, mil units — persist across the page reload every rebuild
+triggers.

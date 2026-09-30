@@ -912,3 +912,70 @@ describe('collapsible sidebar with a compact layer rail', () => {
     expect(w.localStorage.getItem('gerber-viewer:sidebar:v1')).toBe('open');
   });
 });
+
+describe('viewer prefs: no warn borders, collapsible rail, grid persistence', () => {
+  it('overlapping parts get NO yellow border — the text list is the only warning', async () => {
+    const page = await boot();
+    const w = page.window;
+    page.pressPart('R1');
+    // drag R1 onto U1 (30,-40) to force an overlap
+    const g = w.document.querySelector('#layout-overlay [data-ref="R1"]')!;
+    w.dispatchEvent(new w.MouseEvent('pointermove', { bubbles: true, clientX: 30, clientY: 40 }));
+    w.dispatchEvent(new w.MouseEvent('pointerup', { bubbles: true, clientX: 30, clientY: 40 }));
+    // the warn class must never land on a part
+    expect(w.document.querySelectorAll('.layout-comp.layout-warn').length).toBe(0);
+    expect(w.document.querySelectorAll('.layout-comp > title').length).toBe(0);
+  });
+
+  it('the compact rail stays visible when collapsed (it sat inside the hidden body)', async () => {
+    const page = await boot();
+    const w = page.window;
+    w.document.getElementById('sidebar-toggle')!.click();
+    const rail = w.document.getElementById('layers-compact')!;
+    expect(w.document.getElementById('sidebar')!.classList.contains('collapsed')).toBe(true);
+    expect(rail.querySelectorAll('.layer-vis').length).toBeGreaterThan(0);
+    expect(rail.style.display).toBe('');
+    // the body is hidden but must not swallow the rail
+    expect(rail.parentElement!.id).toBe('sidebar');
+  });
+
+  it('the chosen grid step and snap survive a page reload (the rebuild)', async () => {
+    const page = await boot();
+    const w = page.window;
+    const g = w.document.getElementById('layout-grid') as HTMLSelectElement;
+    g.value = '0.25';
+    g.dispatchEvent(new w.Event('change', { bubbles: true }));
+    const snap = w.document.getElementById('layout-snap') as HTMLInputElement;
+    snap.checked = false;
+    snap.dispatchEvent(new w.Event('change', { bubbles: true }));
+    const store = w.localStorage.getItem('gerber-viewer:v1:demo board')!;
+    expect(store).toContain('"size":0.25');
+    // simulate the rebuild: a fresh page whose localStorage holds the store
+    // BEFORE scripts run (the restore executes during page init)
+    const errors2: string[] = [];
+    const dom2 = new JSDOM(buildViewerHtml(svg, [info, fabInfo], {
+      title: 'demo board', pcbaSvg: '<svg/>', layoutComponents, padLabels, rules,
+    }), {
+      runScripts: 'dangerously',
+      url: 'https://localhost/viewer.html',
+      pretendToBeVisual: true,
+      beforeParse(w2) {
+        w2.console.error = (...a: unknown[]) => errors2.push(a.join(' '));
+        w2.localStorage.setItem('gerber-viewer:v1:demo board', store);
+        const idCtm = { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0, inverse() { return this; } };
+        type FakePoint = { x: number; y: number; matrixTransform(): { x: number; y: number } };
+        w2.SVGSVGElement.prototype.getScreenCTM = () => idCtm;
+        w2.SVGSVGElement.prototype.createSVGPoint = (): FakePoint => {
+          const p = { x: 0, y: 0 };
+          return { get x() { return p.x; }, set x(v: number) { p.x = v; }, get y() { return p.y; }, set y(v: number) { p.y = v; }, matrixTransform: () => ({ x: p.x, y: p.y }) };
+        };
+        w2.SVGElement.prototype.getBBox = function (this: SVGElement) { return { x: 0, y: 0, width: 0, height: 0 }; };
+      },
+    });
+    await new Promise((r) => setTimeout(r, 150));
+    expect(errors2).toEqual([]);
+    const g2 = dom2.window.document.getElementById('layout-grid') as HTMLSelectElement;
+    expect(g2.value).toBe('0.25');
+    expect((dom2.window.document.getElementById('layout-snap') as HTMLInputElement).checked).toBe(false);
+  });
+});

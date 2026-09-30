@@ -1674,6 +1674,10 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   var layoutSel = []; // refs — shift-click extends, click replaces
   var layoutRot = {}; // ref -> accumulated 90-degree presses (R key)
   var layoutSnapBox = document.getElementById('layout-snap');
+  if (layoutSnapBox)
+    layoutSnapBox.addEventListener('change', function () {
+      persist();
+    });
   var layoutApplyBtn = document.getElementById('layout-apply');
   // grid / units controls: the snap ladder, visible grid, and mil readouts
   var layoutGridSel = document.getElementById('layout-grid');
@@ -1681,17 +1685,20 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     layoutGridSel.addEventListener('change', function () {
       layoutGridSize = parseFloat(layoutGridSel.value) || 0.5;
       rebuildLayoutGrid();
+      persist();
     });
   var layoutGridShowBox = document.getElementById('layout-grid-show');
   if (layoutGridShowBox)
     layoutGridShowBox.addEventListener('change', function () {
       layoutGridShow = layoutGridShowBox.checked;
       rebuildLayoutGrid();
+      persist();
     });
   var layoutMilBox = document.getElementById('layout-mil');
   if (layoutMilBox)
     layoutMilBox.addEventListener('change', function () {
       layoutMil = layoutMilBox.checked;
+      persist();
     });
   var SVGNSL = 'http://www.w3.org/2000/svg';
   var cssEsc = function (v) {
@@ -3807,38 +3814,11 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     box.textContent = warns.join(' \u00b7 ');
     box.style.display = warns.length ? '' : 'none';
     if (layoutOverlay) {
-      // per-ref reasons: the yellow outline is opaque without them — a part
-      // moved clear of every other part still glows when it sits off the
-      // board outline, and the toolbar text is easy to miss. The reason
-      // rides as a <title> tooltip on the part itself.
-      var reasonByRef = {};
-      for (var wi = 0; wi < warns.length; wi++) {
-        var m = /^(\S+) (leaves the board (?:outline|area \(no outline authored\))|overlaps \S+)$/.exec(warns[wi]);
-        if (!m) continue;
-        reasonByRef[m[1]] = (reasonByRef[m[1]] ? reasonByRef[m[1]] + ' · ' : '') + warns[wi];
-        if (m[2].indexOf('overlaps') === 0) {
-          var other = m[2].slice('overlaps '.length);
-          reasonByRef[other] = (reasonByRef[other] ? reasonByRef[other] + ' · ' : '') + warns[wi];
-        }
-      }
-      var boxes = layoutOverlay.querySelectorAll('.layout-comp');
-      for (var wb = 0; wb < boxes.length; wb++) {
-        var bref = boxes[wb].getAttribute('data-ref');
-        var existingTitle = boxes[wb].querySelector('title');
-        if (warnRefs[bref]) {
-          boxes[wb].classList.add('layout-warn');
-          var reason = reasonByRef[bref] || 'layout warning';
-          if (existingTitle) existingTitle.textContent = reason;
-          else {
-            existingTitle = document.createElementNS(SVGNSL, 'title');
-            existingTitle.textContent = reason;
-            boxes[wb].insertBefore(existingTitle, boxes[wb].firstChild);
-          }
-        } else {
-          boxes[wb].classList.remove('layout-warn');
-          if (existingTitle) existingTitle.remove();
-        }
-      }
+      // no yellow border on parts anymore (it read as a sticky error state
+      // on every drag near a neighbor) — the toolbar text list is the whole
+      // warning surface. Stale titles from older renders go.
+      var oldTitles = layoutOverlay.querySelectorAll('.layout-comp > title');
+      for (var wt = 0; wt < oldTitles.length; wt++) oldTitles[wt].remove();
     }
   }
   // a ratsnest wire: a gentle bezier — perpendicular bulge, alternating side
@@ -9707,6 +9687,17 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
           state = {};
         }
         state.__view = { k: k, tx: tx, ty: ty };
+    // the layout grid controls: the page reloads on every rebuild — the
+    // chosen grid step (0.1/0.25/0.5/1), snap on/off, visible grid, and
+    // mil units ride the same store so a rebuild doesn't reset them
+    if (typeof layoutGridSize === 'number' && isFinite(layoutGridSize)) {
+      state.__grid = {
+        size: layoutGridSize,
+        snap: !!(layoutSnapBox && layoutSnapBox.checked),
+        show: !!layoutGridShow,
+        mil: !!layoutMil,
+      };
+    }
         localStorage.setItem(storeKey, JSON.stringify(state));
       } catch (e) {
         /* private mode etc. — the view just won't persist */
@@ -10495,6 +10486,17 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       };
     });
     state.__view = { k: k, tx: tx, ty: ty };
+    // the layout grid controls: the page reloads on every rebuild — the
+    // chosen grid step (0.1/0.25/0.5/1), snap on/off, visible grid, and
+    // mil units ride the same store so a rebuild doesn't reset them
+    if (typeof layoutGridSize === 'number' && isFinite(layoutGridSize)) {
+      state.__grid = {
+        size: layoutGridSize,
+        snap: !!(layoutSnapBox && layoutSnapBox.checked),
+        show: !!layoutGridShow,
+        mil: !!layoutMil,
+      };
+    }
     try {
       localStorage.setItem(storeKey, JSON.stringify(state));
     } catch (e) {
@@ -10526,6 +10528,26 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   document.querySelectorAll('.layer-opacity').forEach(function (slider) {
     slider.addEventListener('input', function () { syncOpacity(slider); persist(); });
   });
+  // restore the grid controls (saved by persist(); absent = defaults)
+  if (saved.__grid) {
+    var g = saved.__grid;
+    if (isFinite(g.size) && g.size > 0) {
+      layoutGridSize = g.size;
+      // the options carry no value attrs — their text IS the value
+      if (layoutGridSel) layoutGridSel.value = String(g.size);
+    }
+    if (layoutSnapBox) layoutSnapBox.checked = g.snap !== false;
+    layoutGridShow = !!g.show;
+    var gsBox = document.getElementById('layout-grid-show');
+    if (gsBox) gsBox.checked = layoutGridShow;
+    layoutMil = !!g.mil;
+    if (layoutMilBox) layoutMilBox.checked = layoutMil;
+    if (layoutMil) {
+      var lb = document.body.classList;
+      // nothing else to update — fmtPos reads layoutMil live
+    }
+    rebuildLayoutGrid();
+  }
 
   // restore the saved viewport (k/tx/ty) after the layer settings — apply()
   // then puts the reload back exactly where the last session was zoomed
@@ -10959,8 +10981,6 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   #layout-buttons button:disabled, #layout-tools button:disabled { opacity: 0.5; cursor: default; }
   #layout-tools { display: flex; gap: 6px; margin-bottom: 6px; }
   #layout-warn { color: #d29922; font-size: 11px; line-height: 1.5; margin-bottom: 6px; word-break: break-word; }
-  #layout-overlay .layout-comp.layout-warn rect,
-  #layout-overlay .layout-comp.layout-warn polygon { stroke: #d29922; }
   #ratsnest path { stroke: #d29922; stroke-width: 0.05; fill: none; opacity: 0.85; }
   #ratsnest path.rat-hi { stroke: var(--sel); stroke-width: 0.12; opacity: 1; }
   /* autorouter tracks: a WHITE dashed overlay over the solid ink stroke —
@@ -11213,9 +11233,6 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   <div id="layers">
 ${rows}
   </div>
-  <div id="layers-compact" style="display:none">
-${compactRows}
-  </div>
   <div id="toolbar">
     <button id="btn-fit" title="fit to board (0)">Fit</button>
     <button id="btn-all-on" title="show all layers">All</button>
@@ -11236,6 +11253,9 @@ ${compactRows}
     <button id="btn-width" title="trace [ ] / via Shift+[ ] sizing (Alt ±0.01, may cross the board min) · P sizes for the net’s current · Z sizes for 50 Ω · \ and Shift+\ reset · W opens the picker" hidden>auto</button>
     <button id="btn-drc" class="has-drc-hidden" title="toggle DRC violation markers" hidden>DRC</button>
   </div>
+  </div>
+  <div id="layers-compact" style="display:none">
+${compactRows}
   </div>
 </div>
 <div id="board-area">

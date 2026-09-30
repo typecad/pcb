@@ -80,6 +80,49 @@ export interface TextCallInfo {
   line: number;
 }
 
+/** A statement-level `obj.method(...)` call, e.g. `typecad.zone({...});`. */
+export interface MethodCallInfo {
+  /** Enclosing ExpressionStatement range (includes the trailing `;`). */
+  statementRange: Range;
+  callRange: Range;
+  /** Range of each top-level argument expression. */
+  argRanges: Range[];
+  objectName: string;
+  method: string;
+  /** Object-literal props of the first argument, when it is one. */
+  props: Record<string, PropertyValue>;
+  /** Best-effort literal value per argument. */
+  args: unknown[];
+  /** Whether each argument is a spread element. */
+  spread: boolean[];
+  line: number;
+}
+
+/** One link of a `X.push(typecad.track(...).from(...).to(...));` chain. */
+export interface TrackChainStep {
+  kind: 'from' | 'to' | 'via' | 'powerInfo' | 'unknown';
+  value: unknown;
+}
+
+/** A statement-level track push with its decoded builder chain. */
+export interface TrackPushInfo {
+  variableName: string;
+  /** Name of the object `.track()` was called on (e.g. `typecad`). */
+  trackObjectName: string;
+  statementRange: Range;
+  steps: TrackChainStep[];
+  /** True when the chain contains constructs this importer does not rewrite. */
+  unsupported: boolean;
+  line: number;
+}
+
+/** A `let X: TrackBuilder[] = [];` style declaration collecting track pushes. */
+export interface ArrayDeclInfo {
+  name: string;
+  statementRange: Range;
+  line: number;
+}
+
 export interface LayoutAssignmentInfo {
   variableName: string;
   isThis: boolean;
@@ -285,6 +328,20 @@ function getMemberVarName(node: AcornNode): { name: string; isThis: boolean } | 
   return null;
 }
 
+/** Convert PropertyValue-record trees from extractValue into plain JS values. */
+export function toPlainValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(toPlainValue);
+  if (value && typeof value === 'object' && 'range' in (value as object) && 'value' in (value as object)) {
+    return toPlainValue((value as PropertyValue).value);
+  }
+  if (value && typeof value === 'object') {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) out[k] = toPlainValue(v);
+    return out;
+  }
+  return value;
+}
+
 function analyzeAst(
   ast: AcornNode,
   source: string,
@@ -293,11 +350,17 @@ function analyzeAst(
   pcbAssignments: PcbAssignmentInfo[];
   layoutAssignments: LayoutAssignmentInfo[];
   textCalls: TextCallInfo[];
+  methodCalls: MethodCallInfo[];
+  trackPushes: TrackPushInfo[];
+  arrayDeclarations: ArrayDeclInfo[];
 } {
   const components: ComponentInfo[] = [];
   const pcbAssignments: PcbAssignmentInfo[] = [];
   const layoutAssignments: LayoutAssignmentInfo[] = [];
   const textCalls: TextCallInfo[] = [];
+  const methodCalls: MethodCallInfo[] = [];
+  const trackPushes: TrackPushInfo[] = [];
+  const arrayDeclarations: ArrayDeclInfo[] = [];
 
   const root = ast as WalkableNode;
 
@@ -310,6 +373,8 @@ function analyzeAst(
       handleVariableDeclaration(n);
     } else if (n.type === 'CallExpression') {
       handleCallExpression(n);
+    } else if (n.type === 'ExpressionStatement') {
+      handleStatementCall(n);
     }
 
     for (const key of Object.keys(n as unknown as Record<string, unknown>)) {
@@ -327,6 +392,92 @@ function analyzeAst(
         }
       }
     }
+  }
+
+  /** Record statement-level `obj.method(...)` calls plus track push chains. */
+  function handleStatementCall(stmt: WalkableNode): void {
+    const expr = (stmt as unknown as { expression?: AcornNode }).expression as WalkableNode | undefined;
+    if (!expr || expr.type !== 'CallExpression') return;
+    const callee = expr.callee as unknown as MemberExpression;
+    if (!callee || callee.type !== 'MemberExpression') return;
+    const obj = callee.object as WalkableNode;
+    const prop = callee.property as Identifier;
+    if (!obj || obj.type !== 'Identifier' || !prop || prop.type !== 'Identifier') return;
+
+    const args = (expr.arguments ?? []) as WalkableNode[];
+    const info: MethodCallInfo = {
+      statementRange: { start: stmt.start, end: stmt.end },
+      callRange: { start: expr.start, end: expr.end },
+      argRanges: args.map((a) => ({ start: a.start, end: a.end })),
+      objectName: (obj as Identifier).name,
+      method: prop.name,
+      props: args[0]?.type === 'ObjectExpression' ? extractObjectProperties(args[0] as ObjectExpression) : {},
+      args: args.map((a) => toPlainValue(extractValue(a))),
+      spread: args.map((a) => a.type === 'SpreadElement'),
+      line: stmt.loc?.start?.line ?? 0,
+    };
+    methodCalls.push(info);
+
+    if (prop.name === 'text' && typeof info.props['text']?.value === 'string') {
+      textCalls.push({
+        callRange: info.callRange,
+        text: info.props['text'].value as string,
+        props: info.props,
+        line: info.line,
+      });
+    }
+
+    if (prop.name === 'push' && args.length === 1 && args[0].type === 'CallExpression') {
+      handleTrackPush(stmt, info, args[0]);
+    }
+  }
+
+  /** Walk a `typecad.track(...).from(...).to(...).via(...)` chain. */
+  function handleTrackPush(stmt: WalkableNode, info: MethodCallInfo, chainCall: WalkableNode): void {
+    const push: TrackPushInfo = {
+      variableName: info.objectName,
+      trackObjectName: '',
+      statementRange: info.statementRange,
+      steps: [],
+      unsupported: false,
+      line: info.line,
+    };
+
+    let node: WalkableNode | undefined = chainCall;
+    while (node?.type === 'CallExpression') {
+      const callee = node.callee as WalkableNode;
+      if (!callee || callee.type !== 'MemberExpression') {
+        push.unsupported = true;
+        break;
+      }
+      const prop = (callee as unknown as MemberExpression).property as Identifier;
+      if (!prop || prop.type !== 'Identifier') {
+        push.unsupported = true;
+        break;
+      }
+      const kind = prop.name;
+      if (kind === 'track') {
+        const trackObj = (callee as unknown as MemberExpression).object as WalkableNode;
+        if (!trackObj || trackObj.type !== 'Identifier') push.unsupported = true;
+        else push.trackObjectName = (trackObj as Identifier).name;
+        break;
+      }
+      const arg = (node.arguments ?? [])[0] as WalkableNode | undefined;
+      const value = arg ? toPlainValue(extractValue(arg)) : undefined;
+      if (kind === 'from' || kind === 'to' || kind === 'via' || kind === 'powerInfo') {
+        push.steps.push({ kind, value });
+      } else {
+        push.steps.push({ kind: 'unknown', value });
+        push.unsupported = true;
+      }
+      node = callee.object as WalkableNode;
+    }
+
+    if (!push.trackObjectName) push.unsupported = true;
+    // powerInfo encodes design intent the routing generator cannot rebuild
+    if (push.steps.some((s) => s.kind === 'powerInfo')) push.unsupported = true;
+    push.steps.reverse();
+    trackPushes.push(push);
   }
 
   function handleAssignment(n: WalkableNode): void {
@@ -463,6 +614,15 @@ function analyzeAst(
       const init = d.init as WalkableNode;
 
       if (!id || id.type !== 'Identifier') continue;
+
+      if (init?.type === 'ArrayExpression') {
+        arrayDeclarations.push({
+          name: (id as Identifier).name,
+          statementRange: { start: n.start, end: n.end },
+          line: n.loc?.start?.line ?? 0,
+        });
+      }
+
       if (!init || init.type !== 'NewExpression') continue;
 
       const newExpr = init as unknown as NewExpression;
@@ -550,26 +710,26 @@ function analyzeAst(
 
   visitNode(ast);
 
-  return { components, pcbAssignments, layoutAssignments, textCalls };
+  return { components, pcbAssignments, layoutAssignments, textCalls, methodCalls, trackPushes, arrayDeclarations };
 }
 
-export function analyzeFile(filePath: string): {
+export interface SourceAnalysis {
   components: ComponentInfo[];
   pcbAssignments: PcbAssignmentInfo[];
   layoutAssignments: LayoutAssignmentInfo[];
   textCalls: TextCallInfo[];
-} | null {
+  methodCalls: MethodCallInfo[];
+  trackPushes: TrackPushInfo[];
+  arrayDeclarations: ArrayDeclInfo[];
+}
+
+export function analyzeFile(filePath: string): SourceAnalysis | null {
   const result = parseSource(filePath);
   if (!result) return null;
   return analyzeAst(result.ast, result.source);
 }
 
-export function analyzeFileSync(filePath: string): {
-  components: ComponentInfo[];
-  pcbAssignments: PcbAssignmentInfo[];
-  layoutAssignments: LayoutAssignmentInfo[];
-  textCalls: TextCallInfo[];
-} | null {
+export function analyzeFileSync(filePath: string): SourceAnalysis | null {
   const result = parseSource(filePath);
   if (!result) return null;
   return analyzeAst(result.ast, result.source);
@@ -621,6 +781,13 @@ export function findTextCalls(filePath: string): TextCallInfo[] {
   const analysis = analyzeFile(filePath);
   if (!analysis) return [];
   return analysis.textCalls;
+}
+
+/** Statement-level `obj.method(...)` calls for the given method names. */
+export function findMethodCalls(filePath: string, methods: string[]): MethodCallInfo[] {
+  const analysis = analyzeFile(filePath);
+  if (!analysis) return [];
+  return analysis.methodCalls.filter((mc) => methods.includes(mc.method));
 }
 
 export function applyReplacements(filePath: string, replacements: Replacement[]): boolean {

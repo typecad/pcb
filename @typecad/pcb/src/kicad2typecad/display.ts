@@ -41,6 +41,201 @@ function round3(n: number): number {
   return Math.round(n * 1000) / 1000;
 }
 
+/** Identity helpers — renders generator output as plain source text. */
+export const PLAIN_CH: ChalkHelpers = {
+  chKey: (s: string) => s,
+  chProp: (s: string) => s,
+  chStr: (s: string) => s,
+  chNum: (n: number) => String(n),
+  chPunc: (s: string) => s,
+  chVar: (s: string) => s,
+};
+
+/** One contiguous routed run: a from() point, to() vertices, optional end via. */
+export interface TrackChain {
+  start: { x: number; y: number };
+  layer: string;
+  width: number;
+  steps: Array<{ x: number; y: number; layer: string; width: number }>;
+  via?: { size: number; drill: number };
+}
+
+/** A net's routed chains plus the variable the generated code collects them in. */
+export interface TrackNetGroup {
+  netKey: string;
+  netName: string;
+  netNumber?: number;
+  isUnnamed: boolean;
+  variableName: string;
+  chains: TrackChain[];
+}
+
+/**
+ * Group segments into per-net TrackBuilder chains — the single source of
+ * truth shared by the console generator and the --apply rewriter.
+ */
+export function buildTrackChains(ir: KicadIR): TrackNetGroup[] {
+  const netMap = new Map<number, string>();
+  ir.nets.forEach((net) => {
+    netMap.set(net.number, net.name);
+  });
+
+  // Net identity per segment: inline `(net "NAME")` (kicad-cli resave
+  // strips the net table) or a net-table number. Segments with no
+  // resolvable name stay unnamed and group per net code.
+  const netNameOf = (segment: KicadSegmentIR): string => {
+    if (segment.netName) return segment.netName;
+    if (segment.net !== undefined) return netMap.get(segment.net) || '';
+    return '';
+  };
+  const isUnnamedName = (name: string): boolean => !name || name.startsWith(DEFAULT_NET_PREFIX);
+
+  const segmentsByNet = new Map<string, KicadSegmentIR[]>();
+  ir.segments.forEach((segment) => {
+    const name = netNameOf(segment);
+    const key = isUnnamedName(name) ? `unnamed:${segment.net ?? 0}` : name;
+    if (!segmentsByNet.has(key)) segmentsByNet.set(key, []);
+    segmentsByNet.get(key)!.push(segment);
+  });
+
+  const groups: TrackNetGroup[] = [];
+  segmentsByNet.forEach((netSegments, netKey) => {
+    const netName = netKey.startsWith('unnamed:') ? '' : netKey;
+    const netNumber = netKey.startsWith('unnamed:') ? Number(netKey.slice('unnamed:'.length)) : undefined;
+    const isUnnamed = isUnnamedName(netName);
+    const variableName = isUnnamed ? 'unnamed_Track' : `track_${sanitizeNetNameForVariable(netName)}`;
+
+    const chains: TrackChain[] = [];
+    let current: TrackChain | null = null;
+    let lastEndPoint: { x: number; y: number } | null = null;
+
+    netSegments.forEach((segment) => {
+      if (!current || !lastEndPoint || lastEndPoint.x !== segment.start.x || lastEndPoint.y !== segment.start.y) {
+        current = {
+          start: { x: segment.start.x, y: segment.start.y },
+          layer: segment.layer,
+          width: segment.width,
+          steps: [],
+        };
+        chains.push(current);
+      }
+      current.steps.push({ x: segment.end.x, y: segment.end.y, layer: segment.layer, width: segment.width });
+      lastEndPoint = segment.end;
+    });
+
+    groups.push({ netKey, netName, netNumber, isUnnamed, variableName, chains });
+  });
+
+  return groups;
+}
+
+/**
+ * Attach chain-ending vias to their chains (greedy, in file order, matching
+ * position and net identity) and mutate `chain.via`. Returns the indexes of
+ * the consumed vias; every other via is standalone.
+ */
+export function attachChainVias(ir: KicadIR, groups: TrackNetGroup[]): Set<number> {
+  const used = new Set<number>();
+  const viaKey = (v: KicadViaIR): string =>
+    v.netName && !v.netName.startsWith(DEFAULT_NET_PREFIX) ? v.netName : `unnamed:${v.net ?? 0}`;
+
+  for (const group of groups) {
+    for (const chain of group.chains) {
+      const end = chain.steps[chain.steps.length - 1];
+      if (!end) continue;
+      for (let i = 0; i < ir.vias.length; i++) {
+        if (used.has(i)) continue;
+        const via = ir.vias[i];
+        if (Math.abs(via.at.x - end.x) >= 0.001 || Math.abs(via.at.y - end.y) >= 0.001) continue;
+        if (viaKey(via) !== group.netKey) continue;
+        used.add(i);
+        chain.via = { size: via.size, drill: via.drill };
+        break;
+      }
+    }
+  }
+  return used;
+}
+
+/** Vias not consumed by any chain end (stitching, via-in-pad) — these emit as standalone typecad.via() calls. */
+export function standaloneVias(ir: KicadIR, groups?: TrackNetGroup[]): KicadViaIR[] {
+  const used = attachChainVias(ir, groups ?? buildTrackChains(ir));
+  return ir.vias.filter((_, i) => !used.has(i));
+}
+
+/** Render one `X.push(typecad.track(...).from(...)...);` statement. */
+export function pushStatementSource(
+  variableName: string,
+  netName: string | undefined,
+  chain: TrackChain,
+  ch: ChalkHelpers,
+): string {
+  const { chKey, chProp, chStr, chNum, chPunc, chVar } = ch;
+  const optionsLog = netName === undefined ? '' : `{ ${chProp('net')}${chPunc(':')} ${chStr(`'${netName}'`)} }`;
+  let log = `${chVar(variableName)}${chPunc('.')}${chKey('push')}${chPunc('(')}${chVar('typecad')}${chPunc('.')}${chKey('track')}${chPunc('(')}${optionsLog}${chPunc(')')}${chKey('.from')}${chPunc('(')}{ ${chProp('x')}${chPunc(':')} ${chNum(chain.start.x)}${chPunc(',')} ${chProp('y')}${chPunc(':')} ${chNum(chain.start.y)} }${chPunc(',')} ${chStr('"' + chain.layer + '"')}${chPunc(',')} ${chNum(chain.width)}${chPunc(')')}`;
+  for (const step of chain.steps) {
+    log += `${chKey('.to')}${chPunc('(')}{ ${chProp('x')}${chPunc(':')} ${chNum(step.x)}${chPunc(',')} ${chProp('y')}${chPunc(':')} ${chNum(step.y)}${chPunc(',')} ${chProp('layer')}${chPunc(':')} ${chStr('"' + step.layer + '"')}${chPunc(',')} ${chProp('width')}${chPunc(':')} ${chNum(step.width)} }${chPunc(')')}`;
+  }
+  if (chain.via) {
+    log += `${chKey('.via')}${chPunc('(')}{ ${chProp('size')}${chPunc(':')} ${chNum(chain.via.size)}${chPunc(',')} ${chProp('drill')}${chPunc(':')} ${chNum(chain.via.drill)} }${chPunc(')')}`;
+  }
+  return log + `${chPunc(')')}${chPunc(';')}`;
+}
+
+/**
+ * The full routing block as plain source text: per-net declarations and
+ * pushes, then standalone via calls. Shared by display and --apply.
+ */
+export function trackBlockSource(ir: KicadIR, ch: ChalkHelpers = PLAIN_CH): { block: string; variables: string[] } {
+  const groups = buildTrackChains(ir);
+  attachChainVias(ir, groups);
+  const lines: string[] = [];
+  const variables: string[] = [];
+
+  groups.forEach((group) => {
+    if (!variables.includes(group.variableName)) variables.push(group.variableName);
+    if (group.isUnnamed) {
+      lines.push(`// Unnamed nets (net${group.netNumber ?? ''})`);
+    } else {
+      lines.push(`// Net: ${group.netName}`);
+    }
+    const { chVar, chPunc, chKey } = ch;
+    lines.push(
+      `${chVar('let ' + group.variableName)}${chPunc(':')} ${chKey('TrackBuilder')}${chPunc('[]')} ${chPunc('=')} ${chPunc('[')}${chPunc(']')}${chPunc(';')}`,
+    );
+    group.chains.forEach((chain) => {
+      lines.push(pushStatementSource(group.variableName, group.isUnnamed ? undefined : group.netName, chain, ch));
+    });
+    lines.push('');
+  });
+
+  standaloneVias(ir, groups).forEach((via) => lines.push(standaloneViaSource(via, ch)));
+
+  return { block: lines.join('\n'), variables };
+}
+
+/** The object-literal argument of a standalone via call (no `typecad.via(` wrapper). */
+export function viaArgSource(via: KicadViaIR, ch: ChalkHelpers = PLAIN_CH): string {
+  const { chProp, chNum, chPunc, chStr } = ch;
+  // Keep the electrical identity of a via that sits outside any track
+  // chain (stitching vias, via-in-pad): the net rides on the via itself.
+  const netName = via.netName ?? '';
+  const namedNet = netName !== '' && !netName.startsWith(DEFAULT_NET_PREFIX);
+  let arg = ` ${chProp('at')}${chPunc(': {')} ${chProp('x')}${chPunc(':')} ${chNum(via.at.x)}${chPunc(',')} ${chProp('y')}${chPunc(':')} ${chNum(via.at.y)} ${chPunc('}')}${chPunc(',')}`;
+  if (namedNet) {
+    arg += ` ${chProp('net')}${chPunc(':')} ${chStr(`'${netName}'`)}${chPunc(',')}`;
+  }
+  arg += ` ${chProp('size')}${chPunc(':')} ${chNum(via.size)}${chPunc(',')}`;
+  arg += ` ${chProp('drill')}${chPunc(':')} ${chNum(via.drill)}`;
+  return arg;
+}
+
+/** Render one standalone `typecad.via({ ... });` statement. */
+export function standaloneViaSource(via: KicadViaIR, ch: ChalkHelpers = PLAIN_CH): string {
+  const { chKey, chPunc, chVar } = ch;
+  return `${chVar('typecad')}${chPunc('.')}${chKey('via')}${chPunc('(')}${chPunc('{')}${viaArgSource(via, ch)}${chPunc(' }')}${chPunc(')')}${chPunc(';')}`;
+}
+
 /**
  * Generate TrackBuilder code display from IR segments and nets.
  * Returns the generated track variable names for use in create() statements.
@@ -51,92 +246,46 @@ export function generateTrackCode(
   sourceDescription: string,
   ch: ChalkHelpers = DEFAULT_CH,
 ): string[] {
-  const { chKey, chProp, chStr, chNum, chPunc, chVar } = ch;
-  const segments = ir.segments;
-  const nets = ir.nets;
-  const vias = ir.vias;
+  const groups = buildTrackChains(ir);
+  const usedViaIndexes = attachChainVias(ir, groups);
   const trackVariableNames: string[] = [];
 
-  if (segments.length > 0) {
+  if (ir.segments.length > 0) {
     logger.log(
-      `Found ${segments.length} segments. Generating TrackBuilder chains organized by nets from ${sourceDescription}.`,
+      `Found ${ir.segments.length} segments. Generating TrackBuilder chains organized by nets from ${sourceDescription}.`,
     );
 
-    const netMap = new Map<number, string>();
-    nets.forEach((net) => {
-      netMap.set(net.number, net.name);
-    });
-
-    const segmentsByNet = new Map<number, KicadSegmentIR[]>();
-    segments.forEach((segment) => {
-      const netNum = segment.net ?? 0;
-      if (!segmentsByNet.has(netNum)) segmentsByNet.set(netNum, []);
-      segmentsByNet.get(netNum)!.push(segment);
-    });
-
     const allNetTrackLogs: string[] = [];
-    const usedViaIndexes = new Set<number>();
 
-    segmentsByNet.forEach((netSegments, netNum) => {
-      const netName = netMap.get(netNum) || '';
-      const isUnnamedNet = !netName || netName.startsWith(DEFAULT_NET_PREFIX) || netName === '';
+    groups.forEach((group) => {
+      if (!trackVariableNames.includes(group.variableName)) trackVariableNames.push(group.variableName);
 
-      let variableName: string;
-      if (isUnnamedNet) {
-        variableName = 'unnamed_Track';
+      if (group.isUnnamed) {
+        allNetTrackLogs.push(chalk.gray(`// Unnamed nets (net${group.netNumber ?? ''})`));
       } else {
-        variableName = `track_${sanitizeNetNameForVariable(netName)}`;
+        allNetTrackLogs.push(chalk.gray(`// Net: ${group.netName}`));
       }
-
-      if (!trackVariableNames.includes(variableName)) trackVariableNames.push(variableName);
-
-      if (isUnnamedNet) {
-        allNetTrackLogs.push(chalk.gray(`// Unnamed nets (net${netNum})`));
-      } else {
-        allNetTrackLogs.push(chalk.gray(`// Net: ${netName}`));
-      }
+      const { chVar, chPunc, chKey } = ch;
       allNetTrackLogs.push(
-        `${chVar('let ' + variableName)}${chPunc(':')} ${chKey('TrackBuilder')}${chPunc('[]')} ${chPunc('=')} ${chPunc('[')}${chPunc(']')}${chPunc(';')}`,
+        `${chVar('let ' + group.variableName)}${chPunc(':')} ${chKey('TrackBuilder')}${chPunc('[]')} ${chPunc('=')} ${chPunc('[')}${chPunc(']')}${chPunc(';')}`,
       );
 
-      let currentTrackBuilder: TrackBuilder | null = null;
-      let lastEndPoint: { x: number; y: number } | null = null;
-      let currentChainLog = '';
+      group.chains.forEach((chain) => {
+        // Named nets keep their electrical identity through import: the
+        // net rides on the TrackBuilder itself (vias inherit it), not
+        // just in the comment above the chain.
+        const builder = pcb
+          .track(group.isUnnamed ? undefined : { net: group.netName })
+          .from({ x: chain.start.x, y: chain.start.y }, chain.layer, chain.width);
+        chain.steps.forEach((step) => {
+          builder.to({ x: step.x, y: step.y, layer: step.layer, width: step.width });
+        });
+        if (chain.via) builder.via({ size: chain.via.size, drill: chain.via.drill });
 
-      netSegments.forEach((segment) => {
-        if (
-          !currentTrackBuilder ||
-          !lastEndPoint ||
-          lastEndPoint.x !== segment.start.x ||
-          lastEndPoint.y !== segment.start.y
-        ) {
-          if (currentTrackBuilder && currentChainLog) {
-            allNetTrackLogs.push(currentChainLog + chPunc(')') + chPunc(';'));
-          }
-          // Named nets keep their electrical identity through import: the
-          // net rides on the TrackBuilder itself (vias inherit it), not
-          // just in the comment above the chain.
-          const trackOptions = isUnnamedNet ? undefined : { net: netName };
-          const optionsLog = isUnnamedNet ? '' : `{ ${chProp('net')}${chPunc(':')} ${chStr(`'${netName}'`)} }`;
-          currentTrackBuilder = pcb.track(trackOptions).from(segment.start, segment.layer, segment.width);
-          currentChainLog = `${chVar(variableName)}${chPunc('.')}${chKey('push')}${chPunc('(')}${chVar('typecad')}${chPunc('.')}${chKey('track')}${chPunc('(')}${optionsLog}${chPunc(')')}${chKey('.from')}${chPunc('(')}{ ${chProp('x')}${chPunc(':')} ${chNum(segment.start.x)}${chPunc(',')} ${chProp('y')}${chPunc(':')} ${chNum(segment.start.y)} }${chPunc(',')} ${chStr('"' + segment.layer + '"')}${chPunc(',')} ${chNum(segment.width)}${chPunc(')')}`;
-          currentTrackBuilder.to({ x: segment.end.x, y: segment.end.y, layer: segment.layer, width: segment.width });
-          currentChainLog += `${chKey('.to')}${chPunc('(')}{ ${chProp('x')}${chPunc(':')} ${chNum(segment.end.x)}${chPunc(',')} ${chProp('y')}${chPunc(':')} ${chNum(segment.end.y)}${chPunc(',')} ${chProp('layer')}${chPunc(':')} ${chStr('"' + segment.layer + '"')}${chPunc(',')} ${chProp('width')}${chPunc(':')} ${chNum(segment.width)} }${chPunc(')')}`;
-        } else {
-          currentTrackBuilder!.to({ x: segment.end.x, y: segment.end.y, layer: segment.layer, width: segment.width });
-          currentChainLog += `${chKey('.to')}${chPunc('(')}{ ${chProp('x')}${chPunc(':')} ${chNum(segment.end.x)}${chPunc(',')} ${chProp('y')}${chPunc(':')} ${chNum(segment.end.y)}${chPunc(',')} ${chProp('layer')}${chPunc(':')} ${chStr('"' + segment.layer + '"')}${chPunc(',')} ${chProp('width')}${chPunc(':')} ${chNum(segment.width)} }${chPunc(')')}`;
-        }
-        lastEndPoint = segment.end;
-
-        const viaIdx = findViaAtPosition(vias, segment.end.x, segment.end.y, netNum, usedViaIndexes);
-        if (viaIdx !== -1) {
-          const via = vias[viaIdx];
-          usedViaIndexes.add(viaIdx);
-          currentChainLog += `${chKey('.via')}${chPunc('(')}{ ${chProp('size')}${chPunc(':')} ${chNum(via.size)}${chPunc(',')} ${chProp('drill')}${chPunc(':')} ${chNum(via.drill)} }${chPunc(')')}`;
-        }
+        allNetTrackLogs.push(
+          pushStatementSource(group.variableName, group.isUnnamed ? undefined : group.netName, chain, ch),
+        );
       });
-
-      if (currentChainLog) allNetTrackLogs.push(currentChainLog + chPunc(')') + chPunc(';'));
       allNetTrackLogs.push('');
     });
 
@@ -146,9 +295,9 @@ export function generateTrackCode(
       logger.log(chalk.bold('---------------------------------------------------------'));
     }
 
-    showStandaloneVias(vias, usedViaIndexes, sourceDescription, ch);
-  } else if (vias.length > 0) {
-    showStandaloneVias(vias, new Set(), sourceDescription, ch);
+    showStandaloneVias(ir, usedViaIndexes, sourceDescription, ch);
+  } else if (ir.vias.length > 0) {
+    showStandaloneVias(ir, usedViaIndexes, sourceDescription, ch);
   } else {
     logger.log(`No segments found in ${sourceDescription} content.`);
   }
@@ -259,6 +408,7 @@ export function generateTextCode(ir: KicadIR, sourceDescription: string, ch: Cha
         textLog += ` ${chProp('thickness')}${chPunc(':')} ${chNum(t.thickness)}${chPunc(',')}`;
       if (t.bold) textLog += ` ${chProp('bold')}${chPunc(':')} ${chVar('true')}${chPunc(',')}`;
       if (t.italic) textLog += ` ${chProp('italic')}${chPunc(':')} ${chVar('true')}${chPunc(',')}`;
+      if (t.hide) textLog += ` ${chProp('hide')}${chPunc(':')} ${chVar('true')}${chPunc(',')}`;
       if (t.justify) {
         const parts: string[] = [];
         if (t.justify.horizontal)
@@ -279,47 +429,225 @@ export function generateTextCode(ir: KicadIR, sourceDescription: string, ch: Cha
   }
 }
 
-function findViaAtPosition(vias: KicadViaIR[], x: number, y: number, net: number, used: Set<number>): number {
-  for (let i = 0; i < vias.length; i++) {
-    if (used.has(i)) continue;
-    const v = vias[i];
-    if (Math.abs(v.at.x - x) < 0.001 && Math.abs(v.at.y - y) < 0.001) {
-      if (v.net !== undefined && v.net !== net) continue;
-      return i;
-    }
-  }
-  return -1;
-}
-
 function showStandaloneVias(
-  vias: KicadViaIR[],
+  ir: KicadIR,
   usedViaIndexes: Set<number>,
   sourceDescription: string,
   ch: ChalkHelpers,
 ): void {
-  const standalone = vias.filter((_, i) => !usedViaIndexes.has(i));
+  const standalone = ir.vias.filter((_, i) => !usedViaIndexes.has(i));
   if (standalone.length === 0) return;
 
-  const { chKey, chProp, chNum, chPunc, chVar } = ch;
   logger.log(`Found ${standalone.length} standalone via(es). Generating typeCAD code from ${sourceDescription}.`);
-  logger.log(chalk.bold(`\n--- Generated typeCAD Via Code from ${sourceDescription} ---`));
-  standalone.forEach((via) => {
-    let viaLog = `${chVar('typecad')}${chPunc('.')}${chKey('via')}${chPunc('({')}`;
-    viaLog += ` ${chProp('at')}${chPunc(': {')} ${chProp('x')}${chPunc(':')} ${chNum(via.at.x)}${chPunc(',')} ${chProp('y')}${chPunc(':')} ${chNum(via.at.y)} ${chPunc('}')}${chPunc(',')}`;
-    viaLog += ` ${chProp('size')}${chPunc(':')} ${chNum(via.size)}${chPunc(',')}`;
-    viaLog += ` ${chProp('drill')}${chPunc(':')} ${chNum(via.drill)}`;
-    viaLog += ` ${chPunc('})')}${chPunc(';')}`;
-    logger.log(viaLog);
-  });
+  logger.log(chalk.bold(`
+--- Generated typeCAD Via Code from ${sourceDescription} ---`));
+  standalone.forEach((via) => logger.log(standaloneViaSource(via, ch)));
   logger.log(chalk.bold('-----------------------------------------------------'));
 }
 
 /**
  * Generate board outline code display from IR outlines.
  */
-export function generateOutlineCode(ir: KicadIR, sourceDescription: string, ch: ChalkHelpers = DEFAULT_CH): void {
-  const { chKey, chStr, chProp, chNum, chPunc, chVar } = ch;
+/** One board-outline call the import derives: method plus literal args. */
+export interface DerivedOutlineCall {
+  method: 'outline' | 'outlineCircle' | 'outlinePolygon' | 'cutout' | 'cutoutCircle';
+  /** numbers for outline/outlineCircle, point arrays for polygon/cutout */
+  args: Array<number | Array<{ x: number; y: number }>>;
+}
+
+function outlineArgsSource(args: DerivedOutlineCall['args'], ch: ChalkHelpers): string {
+  const { chProp, chNum, chPunc } = ch;
+  return args
+    .map((arg) => {
+      if (typeof arg === 'number') return chNum(arg);
+      const pts = arg
+        .map(
+          (p) =>
+            `${chPunc('{')} ${chProp('x')}${chPunc(':')} ${chNum(p.x)}${chPunc(',')} ${chProp('y')}${chPunc(':')} ${chNum(p.y)} ${chPunc('}')}`,
+        )
+        .join(`${chPunc(',')} `);
+      return `${chPunc('[')}${pts}${chPunc(']')}`;
+    })
+    .join(`${chPunc(',')} `);
+}
+
+/** A full outline-family call statement, e.g. `typecad.outline(0, 0, 10, 20);`. */
+export function outlineCallSource(
+  call: DerivedOutlineCall,
+  ch: ChalkHelpers = PLAIN_CH,
+  objectName = 'typecad',
+): string {
+  const { chVar, chPunc, chKey } = ch;
+  return (
+    `${chVar(objectName)}${chPunc('.')}${chKey(call.method)}${chPunc('(')}` +
+    `${outlineArgsSource(call.args, ch)}${chPunc(')')}${chPunc(';')}`
+  );
+}
+
+/**
+ * Derive the outline-family calls the import would emit for the board's
+ * Edge.Cuts geometry — shared by the console generator and --apply so both
+ * always reason about the same canonical form. `skipped` counts elements
+ * whose shape did not map to a call.
+ */
+export function deriveOutlineCalls(ir: KicadIR): { calls: DerivedOutlineCall[]; skipped: number } {
   const outlines = ir.outlines;
+  const calls: DerivedOutlineCall[] = [];
+  let skipped = 0;
+  if (outlines.length === 0) return { calls, skipped };
+
+  const rectOutlines = outlines.filter((o) => o.type === 'rect');
+  const lineOutlines = outlines.filter((o) => o.type === 'line');
+  const polyOutlines = outlines.filter((o) => o.type === 'poly');
+  const circleOutlines = outlines.filter((o) => o.type === 'circle');
+  const arcOutlines = outlines.filter((o) => o.type === 'arc');
+  const hasRectOutline =
+    rectOutlines.length === 1 || lineOutlines.length === 4 || lineOutlines.length + arcOutlines.length >= 4;
+
+  if (rectOutlines.length === 1 && polyOutlines.length === 0 && circleOutlines.length === 0) {
+    const rect = rectOutlines[0];
+    if (rect.start && rect.end && rect.width && rect.height) {
+      const x = Math.min(rect.start.x, rect.end.x);
+      const y = Math.min(rect.start.y, rect.end.y);
+      calls.push({ method: 'outline', args: [x, y, rect.width, rect.height] });
+    }
+    return { calls, skipped };
+  }
+
+  if (hasRectOutline && polyOutlines.length === 0 && circleOutlines.length === 0) {
+    let minX = Infinity,
+      minY = Infinity,
+      maxX = -Infinity,
+      maxY = -Infinity;
+
+    lineOutlines.forEach((line) => {
+      if (line.start && line.end) {
+        minX = Math.min(minX, line.start.x, line.end.x);
+        minY = Math.min(minY, line.start.y, line.end.y);
+        maxX = Math.max(maxX, line.start.x, line.end.x);
+        maxY = Math.max(maxY, line.start.y, line.end.y);
+      }
+    });
+    arcOutlines.forEach((arc) => {
+      if (arc.start && arc.end) {
+        minX = Math.min(minX, arc.start.x, arc.end.x);
+        minY = Math.min(minY, arc.start.y, arc.end.y);
+        maxX = Math.max(maxX, arc.start.x, arc.end.x);
+        maxY = Math.max(maxY, arc.start.y, arc.end.y);
+      }
+      if (arc.mid) {
+        minX = Math.min(minX, arc.mid.x);
+        minY = Math.min(minY, arc.mid.y);
+        maxX = Math.max(maxX, arc.mid.x);
+        maxY = Math.max(maxY, arc.mid.y);
+      }
+    });
+
+    if (isFinite(minX) && isFinite(minY) && isFinite(maxX) && isFinite(maxY)) {
+      const width = Math.round((maxX - minX) * 1000) / 1000;
+      const height = Math.round((maxY - minY) * 1000) / 1000;
+      const args: Array<number | Array<{ x: number; y: number }>> = [minX, minY, width, height];
+      if (arcOutlines.length === 4) {
+        const radii = arcOutlines
+          .map((arc) => {
+            if (arc.start && arc.end && arc.mid) {
+              const ax = arc.start.x,
+                ay = arc.start.y;
+              const bx = arc.mid.x,
+                by = arc.mid.y;
+              const cx = arc.end.x,
+                cy = arc.end.y;
+              const a = Math.sqrt((bx - cx) ** 2 + (by - cy) ** 2);
+              const b = Math.sqrt((ax - cx) ** 2 + (ay - cy) ** 2);
+              const c = Math.sqrt((ax - bx) ** 2 + (ay - by) ** 2);
+              const area = Math.abs((bx - ax) * (cy - ay) - (cx - ax) * (by - ay)) / 2;
+              if (area > 0) return (a * b * c) / (4 * area);
+            }
+            return 0;
+          })
+          .filter((r) => r > 0);
+        if (radii.length > 0) {
+          args.push(Math.round((radii.reduce((a, b) => a + b, 0) / radii.length) * 1000) / 1000);
+        }
+      }
+      calls.push({ method: 'outline', args });
+    }
+    return { calls, skipped };
+  }
+
+  // Non-rectangular outlines: a circle/poly that appears alongside a
+  // rectangular outer contour is treated as a cutout; otherwise it's the
+  // board outline itself.
+  const hasOuterRect = rectOutlines.length === 1;
+  const hasOuter4Line = lineOutlines.length === 4 || lineOutlines.length + arcOutlines.length >= 4;
+  const hasOuter = hasOuterRect || hasOuter4Line;
+
+  if (hasOuterRect) {
+    const rect = rectOutlines[0];
+    if (rect.start && rect.end && rect.width && rect.height) {
+      const x = Math.min(rect.start.x, rect.end.x);
+      const y = Math.min(rect.start.y, rect.end.y);
+      calls.push({ method: 'outline', args: [x, y, rect.width, rect.height] });
+    }
+  } else if (hasOuter4Line) {
+    let minX = Infinity,
+      minY = Infinity,
+      maxX = -Infinity,
+      maxY = -Infinity;
+    lineOutlines.forEach((line) => {
+      if (line.start && line.end) {
+        minX = Math.min(minX, line.start.x, line.end.x);
+        minY = Math.min(minY, line.start.y, line.end.y);
+        maxX = Math.max(maxX, line.start.x, line.end.x);
+        maxY = Math.max(maxY, line.start.y, line.end.y);
+      }
+    });
+    arcOutlines.forEach((arc) => {
+      if (arc.start) {
+        minX = Math.min(minX, arc.start.x);
+        minY = Math.min(minY, arc.start.y);
+        maxX = Math.max(maxX, arc.start.x);
+        maxY = Math.max(maxY, arc.start.y);
+      }
+      if (arc.end) {
+        minX = Math.min(minX, arc.end.x);
+        minY = Math.min(minY, arc.end.y);
+        maxX = Math.max(maxX, arc.end.x);
+        maxY = Math.max(maxY, arc.end.y);
+      }
+    });
+    if (isFinite(minX) && isFinite(maxX)) {
+      const width = Math.round((maxX - minX) * 1000) / 1000;
+      const height = Math.round((maxY - minY) * 1000) / 1000;
+      calls.push({ method: 'outline', args: [minX, minY, width, height] });
+    }
+  }
+
+  for (const circle of circleOutlines) {
+    if (!circle.center || !circle.end) continue;
+    const radius = Math.sqrt((circle.end.x - circle.center.x) ** 2 + (circle.end.y - circle.center.y) ** 2);
+    calls.push({
+      method: hasOuter ? 'cutoutCircle' : 'outlineCircle',
+      args: [circle.center.x, circle.center.y, round3(radius)],
+    });
+  }
+
+  for (const poly of polyOutlines) {
+    if (!poly.points || poly.points.length < 3) continue;
+    calls.push({ method: hasOuter ? 'cutout' : 'outlinePolygon', args: [poly.points] });
+  }
+
+  const handled = new Set<string>(['rect', 'line', 'arc', 'circle', 'poly']);
+  skipped = outlines.filter((o) => !handled.has(o.type)).length;
+  return { calls, skipped };
+}
+
+/**
+ * Generate board outline code display from IR outlines.
+ */
+export function generateOutlineCode(ir: KicadIR, sourceDescription: string, ch: ChalkHelpers = DEFAULT_CH): void {
+  const outlines = ir.outlines;
+  const { calls, skipped } = deriveOutlineCalls(ir);
 
   if (outlines.length > 0) {
     logger.log(
@@ -327,183 +655,11 @@ export function generateOutlineCode(ir: KicadIR, sourceDescription: string, ch: 
     );
     const allOutlineLogs: string[] = [];
 
-    const rectOutlines = outlines.filter((o) => o.type === 'rect');
-    const lineOutlines = outlines.filter((o) => o.type === 'line');
-    const polyOutlines = outlines.filter((o) => o.type === 'poly');
-    const circleOutlines = outlines.filter((o) => o.type === 'circle');
-    const hasRectOutline =
-      rectOutlines.length === 1 ||
-      lineOutlines.length === 4 ||
-      lineOutlines.length + outlines.filter((o) => o.type === 'arc').length >= 4;
-
-    if (rectOutlines.length === 1 && polyOutlines.length === 0 && circleOutlines.length === 0) {
-      const rect = rectOutlines[0];
-      if (rect.start && rect.end && rect.width && rect.height) {
-        const x = Math.min(rect.start.x, rect.end.x);
-        const y = Math.min(rect.start.y, rect.end.y);
-        let outlineLog = `${chVar('typecad')}${chPunc('.')}${chKey('outline')}${chPunc('(')}`;
-        outlineLog += `${chNum(x)}${chPunc(',')} ${chNum(y)}${chPunc(',')} ${chNum(rect.width)}${chPunc(',')} ${chNum(rect.height)}`;
-        outlineLog += `${chPunc(')')}${chPunc(';')}`;
-        allOutlineLogs.push(outlineLog);
-      }
-    } else if (hasRectOutline && polyOutlines.length === 0 && circleOutlines.length === 0) {
-      const arcOutlines = outlines.filter((o) => o.type === 'arc');
-      let minX = Infinity,
-        minY = Infinity,
-        maxX = -Infinity,
-        maxY = -Infinity;
-
-      lineOutlines.forEach((line) => {
-        if (line.start && line.end) {
-          minX = Math.min(minX, line.start.x, line.end.x);
-          minY = Math.min(minY, line.start.y, line.end.y);
-          maxX = Math.max(maxX, line.start.x, line.end.x);
-          maxY = Math.max(maxY, line.start.y, line.end.y);
-        }
-      });
-      arcOutlines.forEach((arc) => {
-        if (arc.start && arc.end) {
-          minX = Math.min(minX, arc.start.x, arc.end.x);
-          minY = Math.min(minY, arc.start.y, arc.end.y);
-          maxX = Math.max(maxX, arc.start.x, arc.end.x);
-          maxY = Math.max(maxY, arc.start.y, arc.end.y);
-        }
-        if (arc.mid) {
-          minX = Math.min(minX, arc.mid.x);
-          minY = Math.min(minY, arc.mid.y);
-          maxX = Math.max(maxX, arc.mid.x);
-          maxY = Math.max(maxY, arc.mid.y);
-        }
-      });
-
-      if (isFinite(minX) && isFinite(minY) && isFinite(maxX) && isFinite(maxY)) {
-        const width = Math.round((maxX - minX) * 1000) / 1000;
-        const height = Math.round((maxY - minY) * 1000) / 1000;
-        let filletRadius: number | null = null;
-        if (arcOutlines.length === 4) {
-          const radii = arcOutlines
-            .map((arc) => {
-              if (arc.start && arc.end && arc.mid) {
-                const ax = arc.start.x,
-                  ay = arc.start.y;
-                const bx = arc.mid.x,
-                  by = arc.mid.y;
-                const cx = arc.end.x,
-                  cy = arc.end.y;
-                const a = Math.sqrt((bx - cx) ** 2 + (by - cy) ** 2);
-                const b = Math.sqrt((ax - cx) ** 2 + (ay - cy) ** 2);
-                const c = Math.sqrt((ax - bx) ** 2 + (ay - by) ** 2);
-                const area = Math.abs((bx - ax) * (cy - ay) - (cx - ax) * (by - ay)) / 2;
-                if (area > 0) return (a * b * c) / (4 * area);
-              }
-              return 0;
-            })
-            .filter((r) => r > 0);
-          if (radii.length > 0) {
-            filletRadius = Math.round((radii.reduce((a, b) => a + b, 0) / radii.length) * 1000) / 1000;
-          }
-        }
-
-        let outlineLog = `${chVar('typecad')}${chPunc('.')}${chKey('outline')}${chPunc('(')}`;
-        outlineLog += `${chNum(minX)}${chPunc(',')} ${chNum(minY)}${chPunc(',')} ${chNum(width)}${chPunc(',')} ${chNum(height)}`;
-        if (filletRadius !== null && filletRadius > 0) outlineLog += `${chPunc(',')} ${chNum(filletRadius)}`;
-        outlineLog += `${chPunc(')')}${chPunc(';')}`;
-        allOutlineLogs.push(outlineLog);
-      }
-    } else {
-      // Non-rectangular outlines: emit executable typeCAD builder calls.
-      // A circle/poly that appears alongside a rectangular outer contour
-      // is treated as a cutout; otherwise it's the board outline itself.
-      const hasOuterRect = rectOutlines.length === 1;
-      const arcOutlines = outlines.filter((o) => o.type === 'arc');
-      const hasOuter4Line = lineOutlines.length === 4 || lineOutlines.length + arcOutlines.length >= 4;
-      const hasOuter = hasOuterRect || hasOuter4Line;
-
-      // Emit the outer rectangular contour first (if present alongside
-      // cutouts), so the generated code reads outline → cutout.
-      if (hasOuterRect) {
-        const rect = rectOutlines[0];
-        if (rect.start && rect.end && rect.width && rect.height) {
-          const x = Math.min(rect.start.x, rect.end.x);
-          const y = Math.min(rect.start.y, rect.end.y);
-          let log = `${chVar('typecad')}${chPunc('.')}${chKey('outline')}${chPunc('(')}`;
-          log += `${chNum(x)}${chPunc(',')} ${chNum(y)}${chPunc(',')} ${chNum(rect.width)}${chPunc(',')} ${chNum(rect.height)}`;
-          log += `${chPunc(')')}${chPunc(';')}`;
-          allOutlineLogs.push(log);
-        }
-      } else if (hasOuter4Line) {
-        // Emit the 4-line rectilinear rectangle as an outline too.
-        let minX = Infinity,
-          minY = Infinity,
-          maxX = -Infinity,
-          maxY = -Infinity;
-        lineOutlines.forEach((line) => {
-          if (line.start && line.end) {
-            minX = Math.min(minX, line.start.x, line.end.x);
-            minY = Math.min(minY, line.start.y, line.end.y);
-            maxX = Math.max(maxX, line.start.x, line.end.x);
-            maxY = Math.max(maxY, line.start.y, line.end.y);
-          }
-        });
-        arcOutlines.forEach((arc) => {
-          if (arc.start) {
-            minX = Math.min(minX, arc.start.x);
-            minY = Math.min(minY, arc.start.y);
-            maxX = Math.max(maxX, arc.start.x);
-            maxY = Math.max(maxY, arc.start.y);
-          }
-          if (arc.end) {
-            minX = Math.min(minX, arc.end.x);
-            minY = Math.min(minY, arc.end.y);
-            maxX = Math.max(maxX, arc.end.x);
-            maxY = Math.max(maxY, arc.end.y);
-          }
-        });
-        if (isFinite(minX) && isFinite(maxX)) {
-          const width = Math.round((maxX - minX) * 1000) / 1000;
-          const height = Math.round((maxY - minY) * 1000) / 1000;
-          let log = `${chVar('typecad')}${chPunc('.')}${chKey('outline')}${chPunc('(')}`;
-          log += `${chNum(minX)}${chPunc(',')} ${chNum(minY)}${chPunc(',')} ${chNum(width)}${chPunc(',')} ${chNum(height)}`;
-          log += `${chPunc(')')}${chPunc(';')}`;
-          allOutlineLogs.push(log);
-        }
-      }
-
-      for (const circle of circleOutlines) {
-        if (!circle.center || !circle.end) continue;
-        const radius = Math.sqrt((circle.end.x - circle.center.x) ** 2 + (circle.end.y - circle.center.y) ** 2);
-        const method = hasOuter ? 'cutoutCircle' : 'outlineCircle';
-        let log = `${chVar('typecad')}${chPunc('.')}${chKey(method)}${chPunc('(')}`;
-        log += `${chNum(circle.center.x)}${chPunc(',')} ${chNum(circle.center.y)}${chPunc(',')} ${chNum(round3(radius))}`;
-        log += `${chPunc(')')}${chPunc(';')}`;
-        allOutlineLogs.push(log);
-      }
-
-      for (const poly of polyOutlines) {
-        if (!poly.points || poly.points.length < 3) continue;
-        const method = hasOuter ? 'cutout' : 'outlinePolygon';
-        const ptsStr = poly.points
-          .map(
-            (p) =>
-              `${chPunc('{')} ${chProp('x')}${chPunc(':')} ${chNum(p.x)}${chPunc(',')} ${chProp('y')}${chPunc(':')} ${chNum(p.y)} ${chPunc('}')}`,
-          )
-          .join(`${chPunc(',')} `);
-        let log = `${chVar('typecad')}${chPunc('.')}${chKey(method)}${chPunc('(')}`;
-        log += `${chPunc('[')}${ptsStr}${chPunc(']')}`;
-        log += `${chPunc(')')}${chPunc(';')}`;
-        allOutlineLogs.push(log);
-      }
-
-      // Emit a comment for any remaining unsupported element types so the
-      // user knows something was skipped (e.g. standalone arcs/lines not
-      // forming a recognized rectangle).
-      const handled = new Set<string>(['rect', 'line', 'arc', 'circle', 'poly']);
-      const leftovers = outlines.filter((o) => !handled.has(o.type));
-      if (leftovers.length > 0) {
-        allOutlineLogs.push(
-          chalk.yellow(`// Note: ${leftovers.length} outline element(s) of an unrecognized type were skipped.`),
-        );
-      }
+    for (const call of calls) {
+      allOutlineLogs.push(outlineCallSource(call, ch));
+    }
+    if (skipped > 0) {
+      allOutlineLogs.push(chalk.yellow(`// Note: ${skipped} outline element(s) of an unrecognized type were skipped.`));
     }
 
     if (allOutlineLogs.length > 0) {
@@ -559,76 +715,83 @@ export function generateStackupCode(ir: KicadIR, sourceDescription: string, ch: 
  * zones: filled pours use the grouped `fill` object; rule areas map their
  * keepout restrictions. Emits nothing when the board has no zones.
  */
-export function generateZoneCode(ir: KicadIR, sourceDescription: string, ch: ChalkHelpers = DEFAULT_CH): void {
+/** Inner options of a zone/keepout call (no braces) — shared by display and --apply. */
+export function zonePropsSource(zone: KicadZoneIR, ch: ChalkHelpers): string {
   const { chKey, chStr, chProp, chNum, chPunc, chVar } = ch;
+  const props: string[] = [];
+
+  if (zone.keepout) {
+    // Rule area
+    props.push(
+      `${chProp('layers')}${chPunc(':')} ${chPunc('[')}${zone.layers.map((l) => chStr(`'${l}'`)).join(`${chPunc(',')} `)}${chPunc(']')}`,
+    );
+    props.push(geometryProps(zone, ch));
+    const r = zone.keepout;
+    if (r.tracks || r.vias || r.pads || r.copperpour || r.footprints) {
+      const restrictions: string[] = [];
+      if (r.tracks) restrictions.push(`${chProp('tracks')}${chPunc(':')} ${chVar('true')}`);
+      if (r.vias) restrictions.push(`${chProp('vias')}${chPunc(':')} ${chVar('true')}`);
+      if (r.pads) restrictions.push(`${chProp('pads')}${chPunc(':')} ${chVar('true')}`);
+      if (r.copperpour) restrictions.push(`${chProp('copperpour')}${chPunc(':')} ${chVar('true')}`);
+      if (r.footprints) restrictions.push(`${chProp('footprints')}${chPunc(':')} ${chVar('true')}`);
+      props.push(
+        `${chProp('restrictions')}${chPunc(':')} ${chPunc('{')} ${restrictions.join(`${chPunc(',')} `)} ${chPunc('}')}`,
+      );
+    }
+    if (zone.placement === true) props.push(`${chProp('placement')}${chPunc(':')} ${chVar('true')}`);
+    if (zone.priority) props.push(`${chProp('priority')}${chPunc(':')} ${chNum(zone.priority)}`);
+    if (zone.name) props.push(`${chProp('name')}${chPunc(':')} ${chStr(`'${zone.name}'`)}`);
+    if (zone.locked) props.push(`${chProp('locked')}${chPunc(':')} ${chVar('true')}`);
+    if (zone.hatchStyle && zone.hatchStyle !== 'edge') {
+      props.push(`${chProp('hatchStyle')}${chPunc(':')} ${chStr(`'${zone.hatchStyle}'`)}`);
+    }
+    if (zone.hatchPitch !== undefined && zone.hatchPitch !== 0.508) {
+      props.push(`${chProp('hatchPitch')}${chPunc(':')} ${chNum(zone.hatchPitch)}`);
+    }
+    // Note: rule areas carry min_thickness / fill blocks in KiCad files,
+    // but pcb.keepout() has no such options — nothing else is emitted.
+    return props.filter(Boolean).join(`${chPunc(',')} `);
+  }
+
+  // Filled pour
+  if (zone.netName) props.push(`${chProp('net')}${chPunc(':')} ${chStr(`'${zone.netName}'`)}`);
+  props.push(
+    `${chProp('layers')}${chPunc(':')} ${chPunc('[')}${zone.layers.map((l) => chStr(`'${l}'`)).join(`${chPunc(',')} `)}${chPunc(']')}`,
+  );
+  props.push(geometryProps(zone, ch));
+  if (zone.name) props.push(`${chProp('name')}${chPunc(':')} ${chStr(`'${zone.name}'`)}`);
+  if (zone.priority) props.push(`${chProp('priority')}${chPunc(':')} ${chNum(zone.priority)}`);
+  if (zone.locked) props.push(`${chProp('locked')}${chPunc(':')} ${chVar('true')}`);
+  if (zone.filledAreasThickness !== undefined) {
+    props.push(`${chProp('filledAreasThickness')}${chPunc(':')} ${chVar(zone.filledAreasThickness ? 'true' : 'false')}`);
+  }
+  if (zone.hatchStyle && zone.hatchStyle !== 'edge') {
+    props.push(`${chProp('hatchStyle')}${chPunc(':')} ${chStr(`'${zone.hatchStyle}'`)}`);
+  }
+  if (zone.hatchPitch !== undefined && zone.hatchPitch !== 0.508) {
+    props.push(`${chProp('hatchPitch')}${chPunc(':')} ${chNum(zone.hatchPitch)}`);
+  }
+  props.push(sharedZoneProps(zone, ch));
+  return props.filter(Boolean).join(`${chPunc(',')} `);
+}
+
+/** A full `typecad.zone({...});` / `typecad.keepout({...});` statement. */
+export function zoneCallSource(zone: KicadZoneIR, ch: ChalkHelpers = PLAIN_CH, objectName = 'typecad'): string {
+  const { chVar, chPunc, chKey } = ch;
+  const method = zone.keepout ? 'keepout' : 'zone';
+  return `${chVar(objectName)}${chPunc('.')}${chKey(method)}${chPunc('(')}{ ${zonePropsSource(zone, ch)} ${chPunc('}')}${chPunc(')')}${chPunc(';')}`;
+}
+
+export function generateZoneCode(ir: KicadIR, sourceDescription: string, ch: ChalkHelpers = DEFAULT_CH): void {
   if (ir.zones.length === 0) return;
 
   logger.log(`Found ${ir.zones.length} zone(s) in ${sourceDescription}. Generating typeCAD code.`);
 
-  logger.log(chalk.bold(`\n--- Generated typeCAD Zone Code from ${sourceDescription} ---`));
+  logger.log(chalk.bold(`
+--- Generated typeCAD Zone Code from ${sourceDescription} ---`));
 
   for (const zone of ir.zones) {
-    const props: string[] = [];
-
-    if (zone.keepout) {
-      // Rule area
-      props.push(
-        `${chProp('layers')}${chPunc(':')} ${chPunc('[')}${zone.layers.map((l) => chStr(`'${l}'`)).join(`${chPunc(',')} `)}${chPunc(']')}`,
-      );
-      props.push(geometryProps(zone, ch));
-      const r = zone.keepout;
-      if (r.tracks || r.vias || r.pads || r.copperpour || r.footprints) {
-        const restrictions: string[] = [];
-        if (r.tracks) restrictions.push(`${chProp('tracks')}${chPunc(':')} ${chVar('true')}`);
-        if (r.vias) restrictions.push(`${chProp('vias')}${chPunc(':')} ${chVar('true')}`);
-        if (r.pads) restrictions.push(`${chProp('pads')}${chPunc(':')} ${chVar('true')}`);
-        if (r.copperpour) restrictions.push(`${chProp('copperpour')}${chPunc(':')} ${chVar('true')}`);
-        if (r.footprints) restrictions.push(`${chProp('footprints')}${chPunc(':')} ${chVar('true')}`);
-        props.push(
-          `${chProp('restrictions')}${chPunc(':')} ${chPunc('{')} ${restrictions.join(`${chPunc(',')} `)} ${chPunc('}')}`,
-        );
-      }
-      if (zone.placement === true) props.push(`${chProp('placement')}${chPunc(':')} ${chVar('true')}`);
-      if (zone.priority) props.push(`${chProp('priority')}${chPunc(':')} ${chNum(zone.priority)}`);
-      if (zone.name) props.push(`${chProp('name')}${chPunc(':')} ${chStr(`'${zone.name}'`)}`);
-      if (zone.locked) props.push(`${chProp('locked')}${chPunc(':')} ${chVar('true')}`);
-      if (zone.hatchStyle && zone.hatchStyle !== 'edge') {
-        props.push(`${chProp('hatchStyle')}${chPunc(':')} ${chStr(`'${zone.hatchStyle}'`)}`);
-      }
-      if (zone.hatchPitch !== undefined && zone.hatchPitch !== 0.508) {
-        props.push(`${chProp('hatchPitch')}${chPunc(':')} ${chNum(zone.hatchPitch)}`);
-      }
-      // Note: rule areas carry min_thickness / fill blocks in KiCad files,
-      // but pcb.keepout() has no such options — nothing else is emitted.
-      logger.log(
-        `${chVar('typecad')}${chPunc('.')}${chKey('keepout')}${chPunc('(')}{ ${props.filter(Boolean).join(`${chPunc(',')} `)} ${chPunc('}')}${chPunc(')')}${chPunc(';')}`,
-      );
-    } else {
-      // Filled pour
-      if (zone.netName) props.push(`${chProp('net')}${chPunc(':')} ${chStr(`'${zone.netName}'`)}`);
-      props.push(
-        `${chProp('layers')}${chPunc(':')} ${chPunc('[')}${zone.layers.map((l) => chStr(`'${l}'`)).join(`${chPunc(',')} `)}${chPunc(']')}`,
-      );
-      props.push(geometryProps(zone, ch));
-      if (zone.name) props.push(`${chProp('name')}${chPunc(':')} ${chStr(`'${zone.name}'`)}`);
-      if (zone.priority) props.push(`${chProp('priority')}${chPunc(':')} ${chNum(zone.priority)}`);
-      if (zone.locked) props.push(`${chProp('locked')}${chPunc(':')} ${chVar('true')}`);
-      if (zone.filledAreasThickness !== undefined) {
-        props.push(
-          `${chProp('filledAreasThickness')}${chPunc(':')} ${chVar(zone.filledAreasThickness ? 'true' : 'false')}`,
-        );
-      }
-      if (zone.hatchStyle && zone.hatchStyle !== 'edge') {
-        props.push(`${chProp('hatchStyle')}${chPunc(':')} ${chStr(`'${zone.hatchStyle}'`)}`);
-      }
-      if (zone.hatchPitch !== undefined && zone.hatchPitch !== 0.508) {
-        props.push(`${chProp('hatchPitch')}${chPunc(':')} ${chNum(zone.hatchPitch)}`);
-      }
-      props.push(sharedZoneProps(zone, ch));
-      logger.log(
-        `${chVar('typecad')}${chPunc('.')}${chKey('zone')}${chPunc('(')}{ ${props.filter(Boolean).join(`${chPunc(',')} `)} ${chPunc('}')}${chPunc(')')}${chPunc(';')}`,
-      );
-    }
+    logger.log(zoneCallSource(zone, ch));
   }
 
   logger.log(chalk.bold('-----------------------------------------------------------'));
@@ -666,7 +829,7 @@ function geometryProps(zone: KicadZoneIR, ch: ChalkHelpers): string {
 }
 
 /** Rect equivalent of an axis-aligned (closed or open) quadrilateral, else null. */
-function rectFromPolygon(
+export function rectFromPolygon(
   points: Array<{ x: number; y: number }>,
 ): { x: number; y: number; width: number; height: number } | null {
   const pts =
@@ -718,6 +881,8 @@ function sharedZoneProps(zone: KicadZoneIR, ch: ChalkHelpers): string {
     if (zone.fill.hatchGap !== undefined) f.push(`${chProp('hatchGap')}${chPunc(':')} ${chNum(zone.fill.hatchGap)}`);
     if (zone.fill.hatchOrientation !== undefined)
       f.push(`${chProp('hatchOrientation')}${chPunc(':')} ${chNum(zone.fill.hatchOrientation)}`);
+    if (zone.fill.arcSegments !== undefined)
+      f.push(`${chProp('arcSegments')}${chPunc(':')} ${chNum(zone.fill.arcSegments)}`);
     if (f.length > 0)
       props.push(`${chProp('fill')}${chPunc(':')} ${chPunc('{')} ${f.join(`${chPunc(',')} `)} ${chPunc('}')}`);
   }

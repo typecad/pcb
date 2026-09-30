@@ -160,7 +160,7 @@ describe('injected client executes', () => {
     expect(w.document.getElementById('status')!.textContent).toContain('net2');
   });
 
-  it('resolves trace hovers and double-clicks to the declaring net source', async () => {
+  it('resolves trace navigation to the declaring net source (Enter on the probed trace)', async () => {
     const sent: unknown[] = [];
     const { html } = injectProbeClient(viewerPage, components, [
       { name: 'net2', source: 'src/board.ts:82', routeSource: 'src/board.ts:83' },
@@ -184,15 +184,15 @@ describe('injected client executes', () => {
     expect(w.typecadNetSource('net2')).toBe('src/board.ts:83');
     expect(w.typecadNetSource('unknown')).toBe('');
 
-    // double-click on a trace (no component under the cursor) carries the
-    // resolved location — the host only has to reveal it
+    // hovering the trace records it; Enter navigates to the declaring line
     const trace = w.document.querySelector('[data-net="net2"]')!;
-    trace.dispatchEvent(new w.MouseEvent('dblclick', { bubbles: true }));
+    trace.dispatchEvent(new w.MouseEvent('mousemove', { bubbles: true }));
+    w.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Enter' }));
     await new Promise((r) => setTimeout(r, 20));
     expect(sent).toContainEqual({ type: 'typecad/probe-net', net: 'net2', source: 'src/board.ts:83' });
   });
 
-  it('probes to source on double click only — single clicks stay in the viewer', async () => {
+  it('probes to source on Enter only — single clicks stay in the viewer', async () => {
     const sent: unknown[] = [];
     const { html } = injectProbeClient(viewerPage, components);
     const dom = new JSDOM(html, {
@@ -212,23 +212,17 @@ describe('injected client executes', () => {
     const fire = (type: string) => pad.dispatchEvent(new w.MouseEvent(type, { bubbles: true }));
     const probes = () => sent.filter((m) => (m as { type: string }).type === 'typecad/probe');
 
-    // single clicks NEVER probe — not on components, not with the measure
-    // tool armed: every single click (ruler points included) stays in the
-    // viewer and cannot steal editor focus
+    // single clicks NEVER probe — they only record the reference
     fire('click');
+    expect(probes()).toHaveLength(0);
     w.document.getElementById('btn-measure')!.classList.add('armed');
     fire('click');
     expect(probes()).toHaveLength(0);
 
-    // an armed ruler owns the double-click too: two click-points dropped on
-    // one spot are board work, and the source jump must not steal editor
-    // focus over the just-stuck ruler
-    fire('dblclick');
-    expect(probes()).toHaveLength(0);
-
-    // disarmed, a double click on a component = probe → source jump
+    // Enter navigates: the recorded component jumps to its source line
     w.document.getElementById('btn-measure')!.classList.remove('armed');
-    fire('dblclick');
+    w.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Enter' }));
+    await new Promise((r) => setTimeout(r, 20));
     expect(probes()).toEqual([{ type: 'typecad/probe', ref: 'R1', pin: '1' }]);
   });
 });

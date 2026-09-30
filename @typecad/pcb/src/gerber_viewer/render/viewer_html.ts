@@ -1672,6 +1672,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     return comp && pm ? manifestPadPos(comp, pm) : null;
   }
   var layoutSel = []; // refs — shift-click extends, click replaces
+  var grabArmed = false; // M pressed: the next press-drag moves the selection
   var layoutRot = {}; // ref -> accumulated 90-degree presses (R key)
   var layoutSnapBox = document.getElementById('layout-snap');
   if (layoutSnapBox)
@@ -2573,6 +2574,125 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   }
   // one drag handler, two entry points: the invisible handle polygon and
   // any of the part's own attributed ink (refdes/value strokes, courtyard)
+  // ---- KiCad's M: grab the selected part(s) and move with the cursor.
+  // Shares the drag plumbing via compDragMoveFor: the same per-frame moves,
+  // ratsnest throttle, snap, and commit/undo as a pointer drag ----
+  var compGrab = null; // { groups, origs, refs, startG, moved, mvBefore, ripBefore, lastRats }
+  function compGrabStart() {
+    if (routeState) return;
+    if (!layoutSel.length) {
+      if (statusEl && !statusLocked()) statusEl.textContent = 'click a component first — M moves it';
+      return;
+    }
+    var groups = [];
+    var origs = {};
+    for (var ms = 0; ms < layoutSel.length; ms++) {
+      var dg = layoutOverlay.querySelector('[data-ref="' + cssEsc(layoutSel[ms]) + '"]');
+      if (!dg) continue;
+      origs[layoutSel[ms]] = { x: dg.__lx, y: dg.__ly };
+      groups.push(dg);
+    }
+    if (!groups.length) return;
+    compGrab = {
+      groups: groups,
+      origs: origs,
+      refs: groups.map(function (g2) { return g2.__lc.ref; }),
+      startG: { x: lastMouseG.x, y: lastMouseG.y },
+      moved: false,
+      mvBefore: snapMoves(groups.map(function (g2) { return g2.__lc.ref; })),
+      ripBefore: layoutRipped.length,
+      lastRats: 0,
+    };
+    clearPadHighlight();
+    if (statusEl && !statusLocked())
+      statusEl.textContent = 'moving ' + compGrab.refs.join(', ') + ' — click to drop, Esc to cancel';
+  }
+  function compGrabMove() {
+    if (!compGrab) return;
+    var cg = compGrab;
+    // the FIRST move event picks the part up: the grab point (group
+    // centers) snaps to the cursor — M may be pressed with no prior
+    // mousemove, so the cursor position is only known here
+    if (!cg.moved) {
+      cg.startG = { x: lastMouseG.x, y: lastMouseG.y };
+      cg.moved = true;
+      clearPadHighlight();
+    }
+    var dx = lastMouseG.x - cg.startG.x;
+    var dy = lastMouseG.y - cg.startG.y;
+    var pick = !cg.picked;
+    if (pick) cg.picked = true;
+    for (var mi = 0; mi < cg.groups.length; mi++) {
+      var mg = cg.groups[mi];
+      var mr = mg.__lc.ref;
+      // the PICK: on the first move the group centers snap to the cursor
+      // (each part keeps its offset from the primary part); afterwards
+      // cursor DELTAS move them — a stale lastMouseG from before M can
+      // never lurch the part
+      var nx, ny;
+      if (pick) {
+        // lastMouseG is gerber y-up; island coords (__lx/__ly) are the
+        // comp-authored frame — negate y to land on the cursor
+        nx = lastMouseG.x + (cg.origs[mr].x - cg.origs[cg.refs[0]].x);
+        ny = -lastMouseG.y + (cg.origs[mr].y - cg.origs[cg.refs[0]].y);
+      } else {
+        nx = cg.origs[mr].x + dx;
+        ny = cg.origs[mr].y + dy;
+      }
+      if (!layoutSnapBox || layoutSnapBox.checked) {
+        nx = Math.round(nx / layoutGridSize) * layoutGridSize;
+        ny = Math.round(ny / layoutGridSize) * layoutGridSize;
+      }
+      setCompPos(mg, nx, ny);
+      applyCompGhost(mg);
+      layoutMoves[mr] = { x: mg.__lx, y: mg.__ly, x0: mg.__lc.x, y0: mg.__lc.y, rot: layoutRot[mr] || 0 };
+      for (var lr = 0; lr < layoutTexts.length; lr++) {
+        if (layoutTexts[lr].ref === mr) syncTextVisual(lr);
+      }
+    }
+    var now = Date.now();
+    if (now - cg.lastRats > 50) {
+      cg.lastRats = now;
+      refreshRatsnest();
+    }
+    if (statusEl && !statusLocked())
+      statusEl.textContent = cg.refs.join(', ') + ' → ' + fmtPos(cg.groups[0].__lx) + ', ' + fmtPos(-cg.groups[0].__ly);
+  }
+  function compGrabDrop(commit) {
+    if (!compGrab) return;
+    var cg = compGrab;
+    compGrab = null;
+    if (!commit || !cg.moved) {
+      for (var gi = 0; gi < cg.groups.length; gi++) {
+        var g2 = cg.groups[gi];
+        setCompPos(g2, cg.origs[g2.__lc.ref].x, cg.origs[g2.__lc.ref].y);
+        applyCompGhost(g2);
+        delete layoutMoves[g2.__lc.ref];
+      }
+      for (var lr2 = 0; lr2 < layoutTexts.length; lr2++) {
+        if (cg.refs.indexOf(layoutTexts[lr2].ref) >= 0) syncTextVisual(lr2);
+      }
+      refreshRatsnest();
+      renderLayoutMoves();
+      if (statusEl && !statusLocked()) statusEl.textContent = 'move cancelled';
+      return;
+    }
+    for (var ci = 0; ci < cg.groups.length; ci++) commitLayoutMove(cg.groups[ci]);
+    var mvAfter = snapMoves(cg.refs);
+    var rippedNow = layoutRipped.slice(cg.ripBefore);
+    pushUndo(
+      'move ' + cg.refs.join(', '),
+      function () {
+        restoreMoves(cg.mvBefore);
+        restoreRippedTo(cg.ripBefore);
+      },
+      function () {
+        restoreMoves(mvAfter);
+        for (var ri = 0; ri < rippedNow.length; ri++) ripUpEl(rippedNow[ri]);
+      },
+    );
+    if (statusEl && !statusLocked()) statusEl.textContent = 'moved — apply & rebuild writes source';
+  }
   function startCompDrag(g, ev) {
     {
       // left only: right/middle are board panning and fall through to the
@@ -2633,16 +2753,16 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         layoutSel.push(g.__lc.ref);
         markLayoutSel();
         if (statusEl && !statusLocked())
-          statusEl.textContent = g.__lc.ref + ' selected — drag to move, R to rotate';
+          statusEl.textContent = g.__lc.ref + ' selected — M to move, R to rotate';
         return;
       }
       if (!ev.shiftKey && !alreadySel) {
-        // selection-first: this press selects; the part moves on the NEXT
-        // press-drag of the now-selected part — never a grab-by-surprise
+        // KiCad flow: this press SELECTS only. Movement happens through the
+        // M key (grab) — a stray drag never grabs a part by surprise
         layoutSel = [g.__lc.ref];
         markLayoutSel();
         if (statusEl && !statusLocked())
-          statusEl.textContent = g.__lc.ref + ' selected — drag to move, R to rotate';
+          statusEl.textContent = g.__lc.ref + ' selected — M to move, R to rotate';
         return;
       }
       if (!ev.shiftKey && alreadySel && layoutSel.length > 1 && false) {
@@ -2650,9 +2770,13 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         // drag moves all of it; a plain click still narrows via onUp's
         // !moved branch below)
       }
-      // a press on an already-selected part (drag or plain re-click) also
-      // re-asserts it as the properties target — an open E panel follows
+      // a press on an already-selected part re-asserts it as the properties
+      // target — an open E panel follows
       markLayoutSel();
+      // KiCad M-to-move: a press-drag moves NOTHING unless a grab is armed
+      // (M pressed). The M handler starts the same drag from the cursor
+      if (!grabArmed) return;
+      grabArmed = false;
       var startG = gerberAt(ev.clientX, ev.clientY);
       var moved = false;
       var origs = {};
@@ -3295,6 +3419,13 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       if (ev.key === 'D') {
         ev.preventDefault();
         disperseFootprints();
+        return;
+      }
+      if (ev.key === 'm' || ev.key === 'M') {
+        ev.preventDefault();
+        // KiCad's M: grab the selection and move it with the cursor — the
+        // part follows every mousemove, click drops, Esc reverts
+        compGrabStart();
         return;
       }
       if (ev.key === 'r' || ev.key === 'R') {
@@ -5815,7 +5946,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     ['?', 'toggle this help'],
     ['select & place', null, null],
     ['click', 'select a part, trace, via, or text (an open E panel follows it)'],
-    ['drag', 'move the selected part(s)'],
+    ['M', 'grab the selected part(s) — follows the cursor; click drops, Esc cancels'],
     ['\u2190 \u2192 \u2191 \u2193', 'nudge the selected part, trace segments, or vias one grid step'],
     ['Alt + arrows', 'nudge by 0.1 mm (fine, crosses the grid)'],
     ['R', 'rotate the selection 90\u00b0'],
@@ -5826,7 +5957,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     ['E', 'properties: part ref/value/placement + pin nets \u00b7 trace width/layer \u00b7 via \u2300/drill \u00b7 text content/style'],
     ['Ctrl+Z', 'undo (Ctrl+Shift+Z or Ctrl+Y redo)'],
     ['Esc', 'clear the selection / cancel what is running'],
-    ['double-click', 'jump to the declaring source line'],
+    ['Enter', 'jump to the source of the probed component or trace'],
     ['routing', null, null],
     ['X', 'start a route from the highlighted pad or trace'],
     ['click', 'anchor the next segment'],
@@ -8390,8 +8521,22 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     return true;
   }
   window.addEventListener('pointermove', function (ev) {
+    if (compGrab) compGrabMove();
     if (segDrag) segDragMove(ev);
   });
+  // tests and some environments synthesize mousemove, not pointermove —
+  // compGrabMove is idempotent per position, tracking both is harmless
+  window.addEventListener('mousemove', function (ev) {
+    if (compGrab) compGrabMove();
+  });
+  window.addEventListener('pointerdown', function (ev) {
+    // the drop click: left button anywhere while a grab is live commits
+    if (compGrab && ev.button === 0 && viewMode === 'layout') {
+      ev.stopPropagation();
+      ev.preventDefault();
+      compGrabDrop(true);
+    }
+  }, true);
   window.addEventListener('pointerup', function () {
     if (segDrag) segDragEnd(true);
   });
@@ -9969,7 +10114,12 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         renderMeasure();
       }
       if (netDimmed.length) clearNetHighlight();
-      // routing first: Escape cancels an in-progress track and any pad
+      // a live M-grab cancels first (reverts the move), then routing
+      if (compGrab) {
+        compGrabDrop(false);
+        return;
+      }
+      // routing: Escape cancels an in-progress track and any pad
       // highlight before touching the selection
       if (routeState) {
         routeCancel();

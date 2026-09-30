@@ -214,70 +214,83 @@ const PROBE_CLIENT = `<script>
       var el = ev.target.closest ? ev.target.closest('[data-ref]') : null;
       if (!el) remember(null); // empty-space click cleared the highlight
     }, true);
+    // source probing moved to ENTER on the probed component: a click or
+    // hover records the reference, Enter jumps — a double-click on a part
+    // body is a layout gesture (drag, select), not a navigation command
+    var probedRef = null;
+    svg.addEventListener('click', function (ev) {
+      var el = ev.target.closest ? ev.target.closest('[data-ref]') : null;
+      probedRef = el ? el.getAttribute('data-ref') : null;
+    }, true);
+    // source probing moved to ENTER on the probed component: clicking (or
+    // the host's cross-probe selection) records the reference, Enter jumps.
+    // A double-click on a part body is a layout gesture (drag, select,
+    // value edit), not navigation — and an ACTIVE route still owns the
+    // double-click (it finishes the track)
     svg.addEventListener('dblclick', function (ev) {
       if (measureArmed()) return;
-      // an ACTIVE route owns the double-click (it finishes the track);
-      // otherwise the layout view probes like every other view — components
-      // jump to their source line, traces to the net's declaring line
       if (
         document.body.classList.contains('typecad-layout') &&
         window.typecadRoutingActive &&
         window.typecadRoutingActive()
       )
         return;
-      // a pad wins over the part: overlays shadow body-hidden pads (every
-      // BGA ball) from DOM hit testing, so the viewer resolves the point
-      // through the pad manifest itself — exposed or hidden alike
-      if (window.typecadPadProbe) {
-        var padHit = window.typecadPadProbe(ev.clientX, ev.clientY);
-        if (padHit) {
-          send({ type: 'typecad/probe', ref: padHit.ref, pin: padHit.pin });
-          return;
-        }
-      }
-      // an outline rect swallows every hit inside a component body — peek
-      // underneath it so exposed pad ink reads as the pad, not the part.
-      // display:none (not pointer-events:none) unhooks the whole subtree
-      // from hit testing; no frame renders between the toggles
-      var tgt = ev.target;
-      if (tgt && tgt.closest && tgt.closest('#typecad-probe')) {
-        var pg = document.getElementById('typecad-probe');
-        if (pg) {
-          pg.style.display = 'none';
-          try { tgt = document.elementFromPoint(ev.clientX, ev.clientY) || tgt; } catch (e) {}
-          pg.style.display = '';
-        }
-      }
-      var el = tgt && tgt.closest ? tgt.closest('[data-ref]') : null;
-      // peek may surface bare geometry (fill raster, background): the
-      // outline that received the click still names the component
-      if (!el && ev.target && ev.target.closest) el = ev.target.closest('[data-ref]');
-      if (el) {
-        send({ type: 'typecad/probe', ref: el.getAttribute('data-ref'), pin: el.getAttribute('data-pin') });
+    }, true);
+    // remember what is under the cursor (hover) and on click — component
+    // (ref+pin via the pad manifest) or trace (net) — Enter navigates to
+    // whichever was probed last, exactly like KiCad's probe-then-Enter
+    var probedPin = null;
+    var probedNet;
+    var probeRecord = function (ev) {
+      var t = ev.target;
+      if (!t || !t.closest) return;
+      var padHit = window.typecadPadProbe ? window.typecadPadProbe(ev.clientX, ev.clientY) : null;
+      if (padHit) {
+        probedRef = padHit.ref;
+        probedPin = String(padHit.pin);
+        probedNet = undefined;
         return;
       }
-      // no component under the cursor: a double-click on a trace reveals the
-      // line that declared its net/route — the location resolves HERE (the
-      // client owns the net->source map), the host only reveals it. N/C is
-      // the plotter's no-connect label, not a net: netless routes carry it
-      // in their gerber attributes, and honoring it here would shadow the
-      // unnamed-route source fallback below
-      var netEl = tgt && tgt.closest ? tgt.closest('[data-net]') : null;
+      var el = t.closest('[data-ref]');
+      if (el) {
+        probedRef = el.getAttribute('data-ref');
+        probedPin = el.getAttribute('data-pin') || undefined;
+        probedNet = undefined;
+        return;
+      }
+      var netEl = t.closest('[data-net]');
       if (netEl) {
         var net = netEl.getAttribute('data-net');
         if (net && net !== 'N/C') {
-          send({ type: 'typecad/probe-net', net: net, source: window.typecadNetSource(net) || undefined });
-          return;
+          probedRef = null;
+          probedPin = undefined;
+          probedNet = net;
         }
       }
-      // netless hand route: no data-net to resolve — the viewer maps the
-      // clicked point onto the unnamed-route polylines and returns the
-      // declaring source line directly
-      if (window.typecadTraceSource) {
-        var rsrc = window.typecadTraceSource(ev.clientX, ev.clientY);
-        if (rsrc) send({ type: 'typecad/probe-net', net: '(route)', source: rsrc });
-      }
+    };
+    svg.addEventListener('mousemove', function (ev) {
+      if (measureArmed()) return;
+      probeRecord(ev);
     }, true);
+    svg.addEventListener('click', function (ev) {
+      probeRecord(ev);
+    }, true);
+    window.addEventListener('keydown', function (ev) {
+      if (ev.key !== 'Enter') return;
+      if (!probedRef && !probedNet) return;
+      // typing belongs to an open editor, never to the canvas
+      var t = ev.target;
+      if (t && ((t.tagName === 'INPUT' && t.type !== 'checkbox' && t.type !== 'radio') || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+      // an ACTIVE route owns Enter (it finishes the track)
+      if (
+        document.body.classList.contains('typecad-layout') &&
+        window.typecadRoutingActive &&
+        window.typecadRoutingActive()
+      )
+        return;
+      if (probedRef) send({ type: 'typecad/probe', ref: probedRef, pin: probedPin });
+      else send({ type: 'typecad/probe-net', net: probedNet, source: window.typecadNetSource(probedNet) || undefined });
+    });
   }
   window.addEventListener('keydown', function (ev) {
     if (ev.key === 'Escape') remember(null);

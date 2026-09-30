@@ -25,6 +25,7 @@ import { SExprNode } from './sexpr_tree.js';
 import { KicadIRBuilder } from './ir_builder.js';
 import { SourceMatcher } from './matcher.js';
 import { SourceRewriter } from './rewriter.js';
+import { collectTypeScriptFiles, findTextCalls } from './source_analyzer.js';
 import {
   generateTrackCode,
   generatePlacementCode,
@@ -36,7 +37,8 @@ import {
   DEFAULT_CH,
 } from './display.js';
 import type { ChalkHelpers } from './display.js';
-import type { KicadIR, MatchResult, PendingChange, PendingTextChange, PendingLayoutChange } from './types.js';
+import { computeOutlineChanges, computeRoutingChanges, computeZoneChanges, applySourceChanges } from './apply_source.js';
+import type { KicadIR, MatchResult, PendingChange, PendingSourceChange, PendingTextChange, PendingLayoutChange } from './types.js';
 
 // === Main entry point ===
 
@@ -76,6 +78,11 @@ export async function kicadDataToTypeCAD(
         `${ir.textElements.length} text elements, ${ir.vias.length} vias, ` +
         `${ir.outlines.length} outlines, ${ir.zones.length} zones, ${ir.nets.length} nets`,
     );
+
+    if (ir.unsupported.length > 0) {
+      const summary = ir.unsupported.map((u) => `${u.count} ${u.type}(s)`).join(', ');
+      logger.warn(`Not imported: ${summary} — ${ir.unsupported.map((u) => u.reason).join('; ')}`);
+    }
 
     const ch: ChalkHelpers = DEFAULT_CH;
 
@@ -140,10 +147,9 @@ async function applyMode(
   const rewriter = new SourceRewriter();
   const footprintChanges = rewriter.computeFootprintChanges(matchResults);
 
-  // 3. Compute text changes (scan source files for .text() calls)
-  const sourceFiles = [
-    ...new Set(matchResults.filter((mr) => mr.sourceLocation).map((mr) => mr.sourceLocation!.filePath)),
-  ];
+  // 3. Compute text changes (scan all project source files for .text() calls —
+  // silkscreen text usually lives where no footprint is declared)
+  const sourceFiles = collectTypeScriptFiles(sourceRoot);
   const textChanges = rewriter.computeTextChanges(ir, sourceFiles);
 
   // 4. Compute layout changes (referenceLayout, valueLayout, fabLayout)
@@ -172,7 +178,17 @@ async function applyMode(
       );
     }
   } else if (ir.textElements.length > 0) {
-    logger.log(chalk.green('\nAll text positions are up to date.'));
+    const hasSourceTextCalls = sourceFiles.some((f) => findTextCalls(f).length > 0);
+    if (hasSourceTextCalls) {
+      logger.log(chalk.green('\nAll text positions are up to date.'));
+    } else {
+      logger.log(
+        chalk.yellow(
+          `\n${ir.textElements.length} board text element(s) have no matching typecad.text() call in the source. ` +
+            'Run without --apply to see the generated text code for manual insertion.',
+        ),
+      );
+    }
   }
 
   // 7. Apply layout changes interactively
@@ -197,14 +213,49 @@ async function applyMode(
     }
   }
 
-  // 8. Display track/via code for manual insertion
-  if (ir.segments.length > 0 || ir.vias.length > 0) {
+  // 8. Compute outline / zone / routing write-back changes
+  const zoneResult = computeZoneChanges(ir, sourceFiles);
+  const outlineResult = computeOutlineChanges(ir, sourceFiles);
+  const routingResult = computeRoutingChanges(ir, sourceFiles);
+  for (const note of [...zoneResult.notes, ...outlineResult.notes, ...routingResult.notes]) {
+    logger.log(chalk.gray(`\nnote: ${note}`));
+  }
+
+  // 9. Apply the new categories interactively — all selected changes go
+  // through ONE replacement pass per file so ranges stay valid.
+  const selectedSource: PendingSourceChange[] = [];
+  const declined: PendingSourceChange[] = [];
+
+  if (outlineResult.changes.length > 0) {
+    selectedSource.push(...(await interactiveApplySourceChanges('board outline', outlineResult.changes, declined)));
+  }
+  if (zoneResult.changes.length > 0) {
+    selectedSource.push(...(await interactiveApplySourceChanges('zone', zoneResult.changes, declined)));
+  }
+  if (routingResult.changes.length > 0) {
+    selectedSource.push(...(await interactiveApplySourceChanges('routing', routingResult.changes, declined)));
+  }
+
+  let sourceFilesModified = 0;
+  if (selectedSource.length > 0) {
+    const result = applySourceChanges(selectedSource);
+    sourceFilesModified = result.filesModified;
+    if (result.changesApplied > 0) {
+      logger.log(
+        chalk.green(
+          `\n✓ Applied ${result.changesApplied} outline/zone/routing change(s) to ${result.filesModified} file(s).`,
+        ),
+      );
+    }
+  }
+
+  // 10. Manual-insertion fallback: show generated code for categories the
+  // user declined (or that could not be written automatically).
+  if (declined.some((c) => c.kind === 'tracks' || c.kind === 'via')) {
     const pcb = new PCB('KicadImportFromFile');
     generateTrackCode(ir, pcb, sourceDescription);
   }
-
-  // 9. Display zone/keepout code for manual insertion
-  if (ir.zones.length > 0) {
+  if (declined.some((c) => c.kind === 'zone' || c.kind === 'keepout')) {
     generateZoneCode(ir, sourceDescription);
   }
 
@@ -212,14 +263,40 @@ async function applyMode(
     footprintChanges.length === 0 &&
     textChanges.length === 0 &&
     layoutChanges.length === 0 &&
-    ir.segments.length === 0 &&
-    ir.vias.length === 0 &&
-    ir.zones.length === 0
+    zoneResult.changes.length === 0 &&
+    outlineResult.changes.length === 0 &&
+    routingResult.changes.length === 0
   ) {
     logger.log(chalk.green('\nNo changes detected. Everything is in sync.'));
   }
 
   logger.log(chalk.gray('\nRebuild with: npm run build'));
+}
+
+/** Checkbox selection for pre-computed source changes; unselected ones land in `declined`. */
+async function interactiveApplySourceChanges(
+  category: string,
+  changes: PendingSourceChange[],
+  declined: PendingSourceChange[],
+): Promise<PendingSourceChange[]> {
+  logger.log(chalk.bold(`\n${changes.length} ${category} change(s) detected:\n`));
+  for (const c of changes) {
+    logger.log(`    ${chalk.blueBright(c.label)}`);
+  }
+
+  const selected: PendingSourceChange[] = await checkbox({
+    message: `Select ${category} changes to apply:`,
+    choices: changes.map((c) => ({
+      name: c.label,
+      value: c,
+    })),
+  });
+
+  if (selected.length === 0) {
+    logger.log(chalk.gray(`\nNo ${category} changes selected.`));
+  }
+  declined.push(...changes.filter((c) => !selected.includes(c)));
+  return selected;
 }
 
 async function interactiveApplyFootprints(

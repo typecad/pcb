@@ -17,6 +17,7 @@ import type {
   LegacyCodeMetadata,
   TextLayoutIR,
   FabLayoutIR,
+  UnsupportedElementIR,
 } from './types.js';
 
 function getSymName(item: unknown): string {
@@ -34,6 +35,112 @@ function hasBareAtom(node: SExprNode, name: string): boolean {
 }
 
 /**
+ * Whether a text node is hidden. KiCad writes both a bare `hide` atom
+ * (older boards) and a `(hide yes)` list child (KiCad 7+).
+ */
+function isHidden(node: SExprNode): boolean {
+  if (hasBareAtom(node, 'hide')) return true;
+  return node.child('hide')?.stringValue === 'yes';
+}
+
+/** A parsed `(net ...)` reference: number, name, or both. */
+interface NetRef {
+  number?: number;
+  name?: string;
+}
+
+/**
+ * Parse the `(net ...)` child forms a segment/via/zone can carry:
+ * `(net 5 "GND")` (net table era), `(net "GND")` (kicad-cli resave),
+ * `(net 5)` (bare code), `(net 0 "")` (unconnected).
+ */
+function parseNetRef(node: SExprNode | null): NetRef | null {
+  if (!node) return null;
+  if (node.rawAt(2) !== undefined) {
+    const number = node.getNumber(1, NaN);
+    if (!Number.isFinite(number)) return null;
+    return { number, name: node.getString(2) || undefined };
+  }
+  const firstRaw = node.rawAt(1);
+  if (typeof firstRaw === 'number') return { number: firstRaw };
+  const first = node.getString(1) ?? '';
+  if (/^-?\d+$/.test(first)) return { number: parseInt(first, 10) };
+  if (first !== '') return { name: first };
+  return null;
+}
+
+/**
+ * Tessellate a KiCad `(arc (start x y) (mid x y) (end x y))` into a polyline
+ * through the circumcircle of the three points, so arc-backed zone outlines
+ * survive import as polygon points.
+ */
+function tessellateArc(
+  start: { x: number; y: number },
+  mid: { x: number; y: number },
+  end: { x: number; y: number },
+  stepDeg = 12,
+): Array<{ x: number; y: number }> {
+  const d = 2 * (start.x * (mid.y - end.y) + mid.x * (end.y - start.y) + end.x * (start.y - mid.y));
+  // Collinear points: fall back to a straight segment.
+  if (Math.abs(d) < 1e-12) return [start, end];
+  const ux =
+    ((start.x ** 2 + start.y ** 2) * (mid.y - end.y) +
+      (mid.x ** 2 + mid.y ** 2) * (end.y - start.y) +
+      (end.x ** 2 + end.y ** 2) * (start.y - mid.y)) /
+    d;
+  const uy =
+    ((start.x ** 2 + start.y ** 2) * (end.x - mid.x) +
+      (mid.x ** 2 + mid.y ** 2) * (start.x - end.x) +
+      (end.x ** 2 + end.y ** 2) * (mid.x - start.x)) /
+    d;
+  const r = Math.hypot(start.x - ux, start.y - uy);
+  const a0 = Math.atan2(start.y - uy, start.x - ux);
+  const am = Math.atan2(mid.y - uy, mid.x - ux);
+  const a1 = Math.atan2(end.y - uy, end.x - ux);
+
+  // Sweep from start to end passing through mid (clockwise or not).
+  const ccwFromStart = (am - a0 + Math.PI * 2) % (Math.PI * 2) < Math.PI;
+  const ccwToEnd = (a1 - a0 + Math.PI * 2) % (Math.PI * 2) < Math.PI;
+  let sweep = a1 - a0;
+  if (ccwFromStart !== ccwToEnd) sweep += sweep > 0 ? -Math.PI * 2 : Math.PI * 2;
+
+  const steps = Math.max(2, Math.ceil(Math.abs(sweep) / ((stepDeg * Math.PI) / 180)));
+  const points: Array<{ x: number; y: number }> = [];
+  for (let i = 1; i <= steps; i++) {
+    const a = a0 + (sweep * i) / steps;
+    points.push({ x: ux + r * Math.cos(a), y: uy + r * Math.sin(a) });
+  }
+  return points;
+}
+
+/** Round to the KiCad file precision (nm) so tessellated points stay clean. */
+function round6(n: number): number {
+  return Math.round(n * 1e6) / 1e6;
+}
+
+/**
+ * Expand KiCad zone-layer wildcards to explicit layer names:
+ * `*.Cu` → every copper layer (count from the stackup, default 2),
+ * `F&B.Cu` → `['F.Cu', 'B.Cu']`. Plain tokens pass through untouched.
+ */
+function expandLayerTokens(layers: string[], copperCount: number): string[] {
+  const expanded: string[] = [];
+  for (const token of layers) {
+    if (token === '*.Cu') {
+      const names = ['F.Cu'];
+      for (let i = 1; i <= Math.max(0, copperCount - 2); i++) names.push(`In${i}.Cu`);
+      if (copperCount >= 2) names.push('B.Cu');
+      for (const name of names) if (!expanded.includes(name)) expanded.push(name);
+    } else if (/^[FB]&B?\.Cu$/.test(token)) {
+      for (const name of token.split('&')) if (!expanded.includes(name)) expanded.push(name);
+    } else if (!expanded.includes(token)) {
+      expanded.push(token);
+    }
+  }
+  return expanded;
+}
+
+/**
  * Builds a typed KicadIR from a parsed S-expression tree.
  * Replaces the monolithic parsing functions in cli.ts with
  * SExprNode-based key access instead of raw array indexing.
@@ -41,6 +148,14 @@ function hasBareAtom(node: SExprNode, name: string): boolean {
 export class KicadIRBuilder {
   build(tree: SExprNode): KicadIR {
     const nets = this.parseNets(tree);
+    const stackup = this.parseStackup(tree);
+    const zones = this.parseZones(tree, nets);
+
+    // Wildcard layer tokens (`*.Cu`, `F&B.Cu`) only make sense against the
+    // board's actual copper count; expand them once the stackup is known.
+    const copperCount = stackup?.copperLayerCount ?? 2;
+    for (const zone of zones) zone.layers = expandLayerTokens(zone.layers, copperCount);
+
     return {
       version: tree.child('version')?.stringValue || '0',
       generator: tree.child('generator')?.stringValue || '',
@@ -50,9 +165,35 @@ export class KicadIRBuilder {
       vias: this.parseVias(tree),
       outlines: this.parseOutlines(tree),
       nets,
-      stackup: this.parseStackup(tree),
-      zones: this.parseZones(tree, nets),
+      stackup,
+      zones,
+      unsupported: this.countUnsupported(tree),
     };
+  }
+
+  /**
+   * Count top-level board elements the importer does not consume, plus
+   * zones embedded inside footprints (only direct board children are read).
+   * Groups are intentional: their members are top-level siblings and are
+   * imported individually, so a group is a flatten, not a loss.
+   */
+  private countUnsupported(tree: SExprNode): UnsupportedElementIR[] {
+    const unsupported: UnsupportedElementIR[] = [];
+    const push = (type: string, count: number, reason: string) => {
+      if (count > 0) unsupported.push({ type, count, reason });
+    };
+
+    let footprintZoneCount = 0;
+    for (const fp of tree.children('footprint')) footprintZoneCount += fp.children('zone').length;
+
+    push('dimension', tree.children('dimension').length, 'dimensions are not imported');
+    push(
+      'gr_curve',
+      tree.children('gr_curve').length,
+      'bezier curves are not imported (Edge.Cuts beziers are dropped)',
+    );
+    push('footprint-embedded zone', footprintZoneCount, 'zones inside footprints are not imported');
+    return unsupported;
   }
 
   // === Footprints ===
@@ -295,20 +436,10 @@ export class KicadIRBuilder {
         }
       }
 
-      const effectsRaw = effectsNode.toArray();
-      for (let i = 1; i < effectsRaw.length; i++) {
-        const item = effectsRaw[i];
-        const name = getSymName(item);
-        if (name === 'hide') show = false;
-      }
+      if (isHidden(effectsNode)) show = false;
     }
 
-    const nodeRaw = node.toArray();
-    for (let i = 1; i < nodeRaw.length; i++) {
-      const item = nodeRaw[i];
-      const name = getSymName(item);
-      if (name === 'hide') show = false;
-    }
+    if (isHidden(node)) show = false;
 
     return {
       x,
@@ -348,15 +479,15 @@ export class KicadIRBuilder {
 
     const width = node.child('width')?.getNumber(1, 0.2) ?? 0.2;
     const layer = node.child('layer')?.stringValue || 'F.Cu';
-    const netNode = node.child('net');
-    const net = netNode ? netNode.getNumber(1) : undefined;
+    const netRef = parseNetRef(node.child('net'));
 
     return {
       start: { x: startX, y: startY },
       end: { x: endX, y: endY },
       width,
       layer,
-      net: isNaN(net as number) ? undefined : net,
+      net: netRef?.number,
+      netName: netRef?.name || undefined,
     };
   }
 
@@ -413,14 +544,14 @@ export class KicadIRBuilder {
 
     if (isNaN(size as number) || isNaN(drill as number)) return null;
 
-    const netNode = node.child('net');
-    const net = netNode ? netNode.getNumber(1) : undefined;
+    const netRef = parseNetRef(node.child('net'));
 
     return {
       at: { x, y },
       size: size as number,
       drill: drill as number,
-      net: isNaN(net as number) ? undefined : net,
+      net: netRef?.number,
+      netName: netRef?.name || undefined,
     };
   }
 
@@ -442,14 +573,39 @@ export class KicadIRBuilder {
 
   private parseZone(node: SExprNode, nets: KicadNetIR[]): KicadZoneIR | null {
     const polygonNode = node.child('polygon');
-    const pts = polygonNode?.child('pts')?.children('xy') ?? [];
-    const polygon = pts
-      .map((xy) => ({ x: xy.getNumber(1), y: xy.getNumber(2) }))
-      .filter((p) => Number.isFinite(p.x) && Number.isFinite(p.y));
+    const ptsNode = polygonNode?.child('pts');
+    const polygon: Array<{ x: number; y: number }> = [];
+    if (ptsNode) {
+      // Zone outlines can interleave `xy` vertices with arc segments; arcs
+      // are tessellated so the imported polygon follows the drawn outline.
+      for (const item of ptsNode.children()) {
+        if (item.name === 'xy') {
+          const x = item.getNumber(1);
+          const y = item.getNumber(2);
+          if (Number.isFinite(x) && Number.isFinite(y)) polygon.push({ x, y });
+        } else if (item.name === 'arc') {
+          const start = item.child('start');
+          const mid = item.child('mid');
+          const end = item.child('end');
+          if (start && mid && end) {
+            for (const p of tessellateArc(
+              { x: start.getNumber(1), y: start.getNumber(2) },
+              { x: mid.getNumber(1), y: mid.getNumber(2) },
+              { x: end.getNumber(1), y: end.getNumber(2) },
+            )) {
+              polygon.push({ x: round6(p.x), y: round6(p.y) });
+            }
+          }
+        }
+      }
+    }
     if (polygon.length < 3) return null;
 
-    const layersNode = node.child('layers');
+    // KiCad writes `(layers ...)` on multi-layer zones and collapses a
+    // single-layer zone to `(layer "...")`; typeCAD's own writer always
+    // emits the plural form. Accept both.
     const layers: string[] = [];
+    const layersNode = node.child('layers') ?? node.child('layer');
     if (layersNode) {
       for (let i = 1; i < layersNode.length; i++) {
         const l = layersNode.getString(i);
@@ -517,6 +673,7 @@ export class KicadIRBuilder {
         hatchThickness: finite(fillNode.child('hatch_thickness')?.getNumber(1, NaN) ?? NaN),
         hatchGap: finite(fillNode.child('hatch_gap')?.getNumber(1, NaN) ?? NaN),
         hatchOrientation: finite(fillNode.child('hatch_orientation')?.getNumber(1, NaN) ?? NaN),
+        arcSegments: finite(fillNode.child('arc_segments')?.getNumber(1, NaN) ?? NaN),
       };
     }
 
@@ -731,20 +888,12 @@ export class KicadIRBuilder {
         }
       }
 
-      // Check for hide - as a string child of effects
-      for (let i = 1; i < effectsNode.toArray().length; i++) {
-        const item = effectsNode.toArray()[i];
-        const name = getSymName(item);
-        if (name === 'hide') hide = true;
-      }
+      // Check for hide - both as a bare atom and a (hide yes) list child
+      if (isHidden(effectsNode)) hide = true;
     }
 
     // Also check for hide at the top level of the node (outside effects)
-    for (let i = 1; i < node.toArray().length; i++) {
-      const item = node.toArray()[i];
-      const name = getSymName(item);
-      if (name === 'hide') hide = true;
-    }
+    if (isHidden(node)) hide = true;
 
     return {
       text,

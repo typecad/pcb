@@ -223,3 +223,11 @@ layer rail (it sat inside the hidden sidebar body, leaving only the toggle
 button), and the layout grid controls — step (0.1/0.25/0.5/1), snap,
 visible grid, mil units — persist across the page reload every rebuild
 triggers.
+
+KiCad interaction model: source navigation moved from double-click to
+Enter — hovering or clicking a component (pin-aware via the pad manifest)
+or trace records the probe, Enter jumps to its source line, and an active
+route keeps owning both keys. Parts no longer move by drag: a press only
+selects, M grabs the selection (centers snap to the cursor on the first
+move, multi-select offsets preserved), the cursor moves it, click drops,
+Esc reverts — with full undo.

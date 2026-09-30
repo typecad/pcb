@@ -9,10 +9,10 @@
     "add_component": "typecad-pcb add component",
     "add_package": "typecad-pcb add package",
     "kicad-search": "typecad-pcb search",
-    "import": "typecad-pcb import build\\rd_skeleton.kicad_pcb --apply",
-    "open_board": "npx open-cli ./build/rd_skeleton.kicad_pcb",
-    "diff": "typecad-pcb diff HEAD ./build/rd_skeleton.kicad_pcb",
-    "docs": "typecad-pcb doc docs\\rd_skeleton.md build\\rd_skeleton.kicad_pcb"
+    "import": "typecad-pcb import build\\mod-ec.kicad_pcb --apply",
+    "open_board": "npx open-cli ./build/mod-ec.kicad_pcb",
+    "diff": "typecad-pcb diff HEAD ./build/mod-ec.kicad_pcb",
+    "docs": "typecad-pcb doc docs\\mod-ec.md build\\mod-ec.kicad_pcb"
   },
   "keywords": [],
   "author": "",

@@ -979,3 +979,48 @@ describe('viewer prefs: no warn borders, collapsible rail, grid persistence', ()
     expect((dom2.window.document.getElementById('layout-snap') as HTMLInputElement).checked).toBe(false);
   });
 });
+
+describe('KiCad M-to-move (no drag-by-surprise, no dblclick source jump)', () => {
+  const grabBoot = async () => {
+    const page = await boot();
+    const w = page.window;
+    const board = w.document.getElementById('board')!;
+    const part = () => w.document.querySelector('#layout-overlay [data-ref="R1"]')!;
+    // events dispatch from the board/part (real targets), y-flipped
+    const select = () => part()!.dispatchEvent(new w.MouseEvent('pointerdown', { bubbles: true, button: 0, clientX: 10, clientY: -20 }));
+    const d = w.document;
+    const mouse = (el: Element, type: string, x: number, y: number) =>
+      el.dispatchEvent(new w.MouseEvent(type, { bubbles: true, clientX: x, clientY: y }));
+    return { ...page, board, select, part, d, mouse };
+  };
+
+  it('a press-drag without M moves nothing; M grabs, the cursor moves it, click drops', async () => {
+    const t = await grabBoot();
+    t.select();
+    // bare press-drag: the part must NOT move (events from the board node)
+    t.board.dispatchEvent(new t.window.MouseEvent('pointermove', { bubbles: true, clientX: 16, clientY: -26 }));
+    t.board.dispatchEvent(new t.window.MouseEvent('pointerup', { bubbles: true, clientX: 16, clientY: -26 }));
+    expect(t.part().getAttribute('transform')).toBe('translate(10,-20) rotate(0)');
+    // M grabs
+    t.key('m');
+    expect(t.d.getElementById('status')!.textContent).toContain('moving R1');
+    // the cursor moves it
+    t.mouse(t.board, 'mousemove', 16, -26);
+    expect(t.part().getAttribute('transform')).toBe('translate(16,-26) rotate(0)');
+    // click drops and commits
+    t.board.dispatchEvent(new t.window.MouseEvent('pointerdown', { bubbles: true, button: 0, clientX: 16, clientY: -26 }));
+    expect(t.part().getAttribute('transform')).toBe('translate(16,-26) rotate(0)');
+    // undo returns the pre-move position
+    t.key('z', { ctrlKey: true });
+    expect(t.part().getAttribute('transform')).toBe('translate(10,-20) rotate(0)');
+  });
+
+  it('Esc during a grab reverts the move', async () => {
+    const t = await grabBoot();
+    t.select();
+    t.key('m');
+    t.mouse(t.board, 'mousemove', 16, -26);
+    t.key('Escape');
+    expect(t.part().getAttribute('transform')).toBe('translate(10,-20) rotate(0)');
+  });
+});

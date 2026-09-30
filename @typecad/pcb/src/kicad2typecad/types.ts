@@ -1,4 +1,20 @@
+import type { Replacement } from './source_analyzer.js';
+
 // === Code Metadata (embedded in KiCad "Code" property) ===
+
+/**
+ * One selectable --apply edit outside component placement (outline, zone,
+ * via, track section): pre-computed source text replacements for one file.
+ * Replacements are ranges in the ORIGINAL file text; the applier sorts
+ * them descending so they can all go through one pass.
+ */
+export interface PendingSourceChange {
+  kind: 'outline' | 'zone' | 'keepout' | 'via' | 'tracks';
+  filePath: string;
+  label: string;
+  changedProps: string[];
+  replacements: Replacement[];
+}
 
 /**
  * Schema version 1 metadata encoded in the KiCad Code property.
@@ -86,6 +102,8 @@ export interface KicadSegmentIR {
   width: number;
   layer: string;
   net?: number;
+  /** Resolved net name, either inline `(net "NAME")` or via the net table. */
+  netName?: string;
 }
 
 export interface KicadTextIR {
@@ -112,6 +130,8 @@ export interface KicadViaIR {
   size: number;
   drill: number;
   net?: number;
+  /** Resolved net name, either inline `(net "NAME")` or via the net table. */
+  netName?: string;
 }
 
 export interface KicadNetIR {
@@ -186,6 +206,7 @@ export interface KicadZoneIR {
     hatchThickness?: number;
     hatchGap?: number;
     hatchOrientation?: number;
+    arcSegments?: number;
   };
   minThickness?: number;
   filledAreasThickness?: boolean;
@@ -210,6 +231,21 @@ export interface KicadIR {
   stackup: KicadStackupIR | null;
   /** Zones: filled pours and rule areas, in file order. */
   zones: KicadZoneIR[];
+  /**
+   * Board elements the importer does not consume, counted by S-expression
+   * type (e.g. `dimension`, `gr_curve`, footprint-embedded zones). Surfaced
+   * so a silent skip becomes a visible decision.
+   */
+  unsupported: UnsupportedElementIR[];
+}
+
+/** Count of board elements of one type that the import does not handle. */
+export interface UnsupportedElementIR {
+  /** KiCad S-expression type, e.g. "dimension", "gr_curve". */
+  type: string;
+  count: number;
+  /** Why it was not imported. */
+  reason: string;
 }
 
 // === Change Tracking Types ===

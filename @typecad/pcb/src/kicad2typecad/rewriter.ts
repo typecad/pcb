@@ -71,14 +71,19 @@ export class SourceRewriter {
         const newSide = fp.side || 'front';
         const effectiveOldSide = oldSide || 'front';
         const hasSourceCoords = oldX !== null || oldY !== null;
+        // An unset rotation prop means 0, and KiCad normalizes angles into
+        // [0, 360) while sources can say -90 — compare modulo 360.
         const positionDiffers =
-          oldX !== fp.position.x ||
-          oldY !== fp.position.y ||
-          oldRotation !== fp.position.rotation ||
+          !approxEqual(oldX ?? 0, fp.position.x) ||
+          !approxEqual(oldY ?? 0, fp.position.y) ||
+          mod360(oldRotation ?? 0) !== mod360(fp.position.rotation) ||
           effectiveOldSide !== newSide;
-        const coordsChanged = hasSourceCoords
-          ? positionDiffers
-          : fp.position.x !== 0 || fp.position.y !== 0 || fp.position.rotation !== 0 || newSide !== 'front';
+        const positionActuallySet =
+          !approxEqual(fp.position.x, 0) ||
+          !approxEqual(fp.position.y, 0) ||
+          mod360(fp.position.rotation) !== 0 ||
+          newSide !== 'front';
+        const coordsChanged = hasSourceCoords ? positionDiffers : positionActuallySet;
 
         if (!coordsChanged) continue;
 
@@ -514,6 +519,13 @@ export class SourceRewriter {
       const analysis = analyzeFile(filePath);
       if (!analysis) continue;
 
+      let source: string;
+      try {
+        source = fs.readFileSync(filePath, 'utf-8');
+      } catch {
+        continue;
+      }
+
       const replacements: Replacement[] = [];
 
       for (const change of fileChanges) {
@@ -527,61 +539,10 @@ export class SourceRewriter {
         );
 
         if (pcbAssignment) {
-          const props = pcbAssignment.props;
-          if (props['x'] && change.newX !== undefined) {
-            replacements.push({ range: props['x'].range, newValue: String(change.newX) });
-          }
-          if (props['y'] && change.newY !== undefined) {
-            replacements.push({ range: props['y'].range, newValue: String(change.newY) });
-          }
-          if (props['rotation'] && change.newRotation !== undefined) {
-            replacements.push({ range: props['rotation'].range, newValue: String(change.newRotation) });
-          }
-          if (change.newSide === 'back') {
-            if (props['side']) {
-              replacements.push({ range: props['side'].range, newValue: "'back'" });
-            } else {
-              const insertPos = pcbAssignment.objectRange.end - 1;
-              replacements.push({
-                range: { start: insertPos, end: insertPos },
-                newValue: `, side: 'back'`,
-              });
-            }
-          } else if (change.newSide === 'front' && props['side']) {
-            replacements.push({ range: props['side'].range, newValue: "'front'" });
-          }
+          planPcbPropReplacements(replacements, source, pcbAssignment.objectRange, pcbAssignment.props, change);
         } else if (component.inlinePcb) {
-          const props = component.inlinePcb.props;
-          if (props['x'] && change.newX !== undefined) {
-            replacements.push({ range: props['x'].range, newValue: String(change.newX) });
-          }
-          if (props['y'] && change.newY !== undefined) {
-            replacements.push({ range: props['y'].range, newValue: String(change.newY) });
-          }
-          if (props['rotation'] && change.newRotation !== undefined) {
-            replacements.push({ range: props['rotation'].range, newValue: String(change.newRotation) });
-          }
-          if (change.newSide === 'back') {
-            if (props['side']) {
-              replacements.push({ range: props['side'].range, newValue: "'back'" });
-            } else {
-              const insertPos = component.inlinePcb.range.end - 1;
-              replacements.push({
-                range: { start: insertPos, end: insertPos },
-                newValue: `, side: 'back'`,
-              });
-            }
-          } else if (change.newSide === 'front' && props['side']) {
-            replacements.push({ range: props['side'].range, newValue: "'front'" });
-          }
+          planPcbPropReplacements(replacements, source, component.inlinePcb.range, component.inlinePcb.props, change);
         } else {
-          let source: string;
-          try {
-            source = fs.readFileSync(filePath, 'utf-8');
-          } catch {
-            continue;
-          }
-
           const insertPos = component.creationRange.end;
           const lineStart = source.lastIndexOf('\n', component.creationRange.start - 1);
           const indent = lineStart >= 0 ? source.slice(lineStart + 1).match(/^(\s*)/)?.[1] || '' : '';
@@ -698,6 +659,73 @@ function justifyEquals(
     (a.vertical ?? undefined) === (b.vertical ?? undefined) &&
     (a.mirror ?? false) === (b.mirror ?? false)
   );
+}
+
+/** Normalize an angle to [0, 360) so -90 and 270 compare equal. */
+function mod360(deg: number): number {
+  return ((deg % 360) + 360) % 360;
+}
+
+/** Positions agree within half a micrometre. */
+function approxEqual(a: number, b: number): boolean {
+  return Math.abs(a - b) < 0.0005;
+}
+
+/**
+ * Plan the edits for one component's pcb object (a `x.pcb = {...}`
+ * assignment or the inline `pcb:` constructor prop). Props present in the
+ * source are replaced in place; props the object lacks are inserted before
+ * the closing brace — rotation only when it actually differs from the
+ * default 0, side only when the component moves to the back.
+ */
+function planPcbPropReplacements(
+  replacements: Replacement[],
+  source: string,
+  objectRange: { start: number; end: number },
+  props: Record<string, import('./source_analyzer.js').PropertyValue>,
+  change: PendingChange,
+): void {
+  if (props['x'] && change.newX !== undefined) {
+    replacements.push({ range: props['x'].range, newValue: String(change.newX) });
+  }
+  if (props['y'] && change.newY !== undefined) {
+    replacements.push({ range: props['y'].range, newValue: String(change.newY) });
+  }
+  if (
+    props['rotation'] &&
+    change.newRotation !== undefined &&
+    mod360(change.oldRotation ?? 0) !== mod360(change.newRotation)
+  ) {
+    replacements.push({ range: props['rotation'].range, newValue: String(change.newRotation) });
+  }
+  if (props['side'] && change.newSide !== 'front') {
+    replacements.push({ range: props['side'].range, newValue: `'${change.newSide}'` });
+  } else if (props['side'] && change.newSide === 'front') {
+    replacements.push({ range: props['side'].range, newValue: "'front'" });
+  }
+
+  const missing: string[] = [];
+  if (!props['x'] && change.newX !== undefined) missing.push(`x: ${change.newX}`);
+  if (!props['y'] && change.newY !== undefined) missing.push(`y: ${change.newY}`);
+  if (
+    !props['rotation'] &&
+    change.newRotation !== undefined &&
+    mod360(change.newRotation) !== mod360(change.oldRotation ?? 0)
+  ) {
+    missing.push(`rotation: ${change.newRotation}`);
+  }
+  if (!props['side'] && change.newSide === 'back') missing.push(`side: 'back'`);
+  if (missing.length === 0) return;
+
+  // Insert before the closing brace, skipping any whitespace that trails
+  // the last prop so `{ x: 1 }` becomes `{ x: 1, rotation: 90 }`.
+  let insertPos = objectRange.end - 1;
+  while (insertPos > objectRange.start + 1 && /\s/.test(source[insertPos - 1])) insertPos--;
+  const inner = source.slice(objectRange.start + 1, insertPos).trim();
+  replacements.push({
+    range: { start: insertPos, end: insertPos },
+    newValue: (inner.length > 0 ? ', ' : '') + missing.join(', '),
+  });
 }
 
 function textFuzzyMatch(sourceText: string, pcbText: string): boolean {

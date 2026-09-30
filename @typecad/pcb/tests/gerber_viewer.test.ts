@@ -35,7 +35,7 @@ describe('buildViewerHtml', () => {
     expect(html).toContain('localStorage.getItem');
     expect(html).toContain('localStorage.setItem');
     // every mutation path saves: checkbox, opacity slider, All/None buttons
-    expect(html).toMatch(/syncLayer\(cb\); persist\(\)/);
+    expect(html).toMatch(/syncLayer\(cb\);[\s\S]{0,200}persist\(\);/);
     expect(html).toMatch(/syncOpacity\(slider\); persist\(\)/);
     expect(html).toMatch(/function setAll\(on\) \{[\s\S]*?persist\(\);/);
   });

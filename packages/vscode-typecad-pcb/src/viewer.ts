@@ -638,7 +638,7 @@ export class BoardViewerPanel {
    * are skipped and reported, never silently mangled.
    */
   private async onLayoutRebuild(
-    moves: Array<{ ref: string; dx: number; dy: number; rot?: number; pads?: Array<{ x: number; y: number }> }>,
+    moves: Array<{ ref: string; dx: number; dy: number; rot?: number; pads?: Array<{ x: number; y: number }>; ax?: number; ay?: number }>,
     texts?: LayoutTextEdit[],
     values?: Array<{ ref: string; value: string }>,
     labels?: LabelEdit[],
@@ -685,7 +685,7 @@ export class BoardViewerPanel {
   private async onLayoutRebuildInner(
     folder: string,
     fail: (error: string) => void,
-    moves: Array<{ ref: string; dx: number; dy: number; rot?: number; pads?: Array<{ x: number; y: number }> }>,
+    moves: Array<{ ref: string; dx: number; dy: number; rot?: number; pads?: Array<{ x: number; y: number }>; ax?: number; ay?: number }>,
     texts?: LayoutTextEdit[],
     values?: Array<{ ref: string; value: string }>,
     labels?: LabelEdit[],

@@ -17,6 +17,16 @@ export interface LayoutMove {
   rot?: number;
   /** the component's ORIGINAL pad centers, board frame — sticky endpoints */
   pads?: Array<{ x: number; y: number }>;
+  /**
+   * the component's FINAL position, board frame. A part whose placement
+   * lives in the constructor's inline `pcb:` option has no `var.pcb = {…}`
+   * literal — the first apply INSERTS one, and it must carry the absolute
+   * position (the delta would override the constructor placement with a
+   * near-(0,0) jump). Optional for older pages; the delta fallback only
+   * suits parts truly placed at the origin.
+   */
+  ax?: number;
+  ay?: number;
 }
 
 export interface PlacementEdit {
@@ -109,7 +119,7 @@ export function planPlacementEdits(
         skipped.push({ ref: move.ref, reason: `no \`${variable}.pcb = {…}\` literal found` });
         continue;
       }
-      newInner = ` x: ${fmt(move.dx)}, y: ${fmt(move.dy)}`;
+      newInner = ` x: ${fmt(Number.isFinite(move.ax) ? move.ax! : move.dx)}, y: ${fmt(Number.isFinite(move.ay) ? move.ay! : move.dy)}`;
       start = ins.at;
       end = ins.at;
       lead = `\n${ins.indent}`;

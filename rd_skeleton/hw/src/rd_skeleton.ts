@@ -79,7 +79,7 @@ const u1 = new Component({
 const r1 = new Resistor({ reference: 'R1', value: '1k 0.1%', pcb: { x: 134.0, y: 79.5, rotation: 0 } });
 r1.pcb = { x: 138.25, y: 79 };
 const c2 = new Capacitor({ reference: 'C2', value: '1nF C0G', pcb: { x: 140.6, y: 89.4, rotation: 0 } });
-c2.pcb = { x: -1.35, y: -2.65, rotation: 90 };
+c2.pcb = { x: 139.25, y: 86.75, rotation: 90 };
 const d1 = new Component({
   reference: 'D1',
   value: 'BAT54S',
@@ -113,15 +113,15 @@ u3.pcb = { x: 135, y: 83.5 };
 // for the mid range), NO -> R4 100k (low-conductivity leg — divider SNR
 // optimum wants Rsense ~ R5+Rcell, so weak signals get the LARGE leg)
 const r4 = new Resistor({ reference: 'R4', value: '100k 0.1%', pcb: { x: 137.5, y: 86.4, rotation: 0 } });
-r4.pcb = { x: -3, y: 0.1 };
+r4.pcb = { x: 134.5, y: 86.5 };
 
 // decoupling
 const c1 = new Capacitor({ reference: 'C1', value: '100nF', pcb: { x: 143.3, y: 89.2, rotation: 0 } });
-c1.pcb = { x: -0.05, y: 0.05, rotation: 180 }; // VDDA (pin 15 @ 144.45,87.84)
+c1.pcb = { x: 143.25, y: 89.25, rotation: 180 }; // VDDA (pin 15 @ 144.45,87.84)
 const c3 = new Capacitor({ reference: 'C3', value: '100nF', pcb: { x: 147.4, y: 87.9, rotation: 0 } });
-c3.pcb = { x: -5.15, y: -6.9 }; // VDD (pin 17 @ 145.64,87.15) (pin 17 @ 145.64,87.15)
+c3.pcb = { x: 142.25, y: 81 }; // VDD (pin 17 @ 145.64,87.15) (pin 17 @ 145.64,87.15)
 const c6 = new Capacitor({ reference: 'C6', value: '100nF', pcb: { x: 140.8, y: 81.4, rotation: 0 } });
-c6.pcb = { x: -2.3, y: 0.35, rotation: 90 }; // NRST (pin 4 @ 140.76,85.15)
+c6.pcb = { x: 138.5, y: 81.75, rotation: 90 }; // NRST (pin 4 @ 140.76,85.15)
 
 // excitation series resistor: PA4 (DAC1_OUT1) -> R5 -> DRIVE. Keeps the
 // DAC buffer's load >= ~1.1k even at the top of the range (the buffer is
@@ -129,7 +129,7 @@ c6.pcb = { x: -2.3, y: 0.35, rotation: 90 }; // NRST (pin 4 @ 140.76,85.15)
 // the firmware measures the ACTUAL drive on PA4 = ADC1_IN5 and uses the
 // measured magnitude in the solve).
 const r5 = new Resistor({ reference: 'R5', value: '1k 0.1%', pcb: { x: 146.0, y: 89.5, rotation: 0 } });
-r5.pcb = { x: -2.75, y: 1.25 };
+r5.pcb = { x: 143.25, y: 90.75 };
 
 // SWDIO series resistor
 const r2 = new Resistor({ reference: 'R2', value: '470', pcb: { x: 133.9, y: 91.9, rotation: 0 } });

@@ -85,7 +85,7 @@ function planPlacementEdits(text, moves, variableOf) {
                 skipped.push({ ref: move.ref, reason: `no \`${variable}.pcb = {…}\` literal found` });
                 continue;
             }
-            newInner = ` x: ${fmt(move.dx)}, y: ${fmt(move.dy)}`;
+            newInner = ` x: ${fmt(Number.isFinite(move.ax) ? move.ax : move.dx)}, y: ${fmt(Number.isFinite(move.ay) ? move.ay : move.dy)}`;
             start = ins.at;
             end = ins.at;
             lead = `\n${ins.indent}`;

@@ -487,3 +487,41 @@ describe('planComponentEdits regression guards', () => {
     expect(out).toContain('value: "2\\" x 1/4 W"');
   });
 });
+
+describe('constructor-inline placements (the jump-to-(0,0) incident)', () => {
+  // a part placed via the constructor's inline pcb option has no
+  // `var.pcb = {…}` literal — the first apply INSERTS one, and it must
+  // carry the FINAL ABSOLUTE position. The old insert wrote the drag
+  // delta, which then overrode the constructor placement and jumped the
+  // part to near (0,0) — every constructor-placed part "moved" ended up
+  // far up-left of where it was placed
+  it('inserts the final absolute position, not the drag delta', () => {
+    const src = `import { PCB, Capacitor } from '@typecad/pcb';
+const typecad = new PCB('demo', {});
+const c1 = new Capacitor({ reference: 'C1', value: '100nF', pcb: { x: 143.3, y: 89.2, rotation: 0 } });
+typecad.create(c1);
+`;
+    // the user dragged C1 by (+0.6, -1.1) board — final absolute
+    // (143.9, 88.1); the delta alone would insert { x: 0.6, y: -1.1 }
+    const { edits, skipped } = planPlacementEdits(
+      src,
+      [{ ref: 'C1', dx: 0.6, dy: -1.1, ax: 143.9, ay: 88.1 }],
+      (ref) => ({ C1: 'c1' })[ref],
+    );
+    expect(skipped).toHaveLength(0);
+    const out = applyPlacementEdits(src, edits);
+    expect(out).toContain('c1.pcb = { x: 143.9, y: 88.1');
+    expect(out).not.toContain('x: 0.6');
+  });
+
+  it('older pages without ax/ay keep the delta fallback', () => {
+    const src = `import { PCB, Component } from '@typecad/pcb';
+const typecad = new PCB('demo', {});
+const battery = new Component({ footprint: 'Battery:Keystone_3008_1x2450', prefix: 'BT' });
+typecad.create(battery);
+`;
+    const { edits } = planPlacementEdits(src, [{ ref: 'BT1', dx: 12.5, dy: -5 }], (ref) => ({ BT1: 'battery' })[ref]);
+    const out = applyPlacementEdits(src, edits);
+    expect(out).toContain('battery.pcb = { x: 12.5, y: -5 }');
+  });
+});

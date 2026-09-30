@@ -205,3 +205,13 @@ tests assert the three-pin layout lands where KiCad actually draws it (pin
 drives both the pad labels and trace snapping, and a mismatch mirrors them
 about the part center (seen once after a mid-edit build; verified 111/111
 pads matching ink after a clean rebuild).
+
+A first placement insert can no longer jump a part to ~(0,0): a component
+placed via the constructor's inline pcb option has no `var.pcb = {…}`
+literal, and the apply bridge's insert path wrote the drag DELTA as the
+absolute position — the inserted reassignment then overrode the constructor
+placement, so every constructor-placed part "moved" landed far up-left of
+where it was placed. The move payload now carries the part's final
+absolute board position (ax/ay), and the insert path writes it (older pages
+fall back to the delta); the six mis-written literals in the user's project
+were reconstructed as constructor placement + recorded drag delta.

@@ -108,7 +108,7 @@ export type ProbeWebviewMessage =
       type: 'typecad/layout-rebuild';
       /** the board mtime this page was generated from — null on old pages */
       board?: string | null;
-      moves: Array<{ ref: string; dx: number; dy: number; rot?: number; pads?: Array<{ x: number; y: number }> }>;
+      moves: Array<{ ref: string; dx: number; dy: number; rot?: number; pads?: Array<{ x: number; y: number }>; ax?: number; ay?: number }>;
       texts?: LayoutTextEdit[];
       values?: Array<{ ref: string; value: string }>;
       labels?: LabelEdit[];

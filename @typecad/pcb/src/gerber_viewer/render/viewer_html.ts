@@ -2913,6 +2913,13 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
           ref: mr2,
           dx: m2.x - m2.x0,
           dy: -(m2.y - m2.y0),
+          // final ABSOLUTE board position: a part placed only via the
+          // constructor inline pcb option has no var.pcb literal — the
+          // host INSERTS one on first apply, and it must carry the
+          // position, not the drag delta (the delta overrode the
+          // constructor placement and jumped the part to ~(0,0))
+          ax: +(+m2.x).toFixed(4),
+          ay: +((-m2.y)).toFixed(4),
           rot: (m2.rot || 0) * 90,
           pads: padsByRef[mr2] || [],
         });

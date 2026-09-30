@@ -300,6 +300,36 @@ track_SWDIO_E.push(typecad.track({ net: 'SWDIO_E' }).from({ x: 134.0595, y: 92.5
 track_SWDIO_E.push(typecad.track({ net: 'SWDIO_E' }).from({ x: 131.9455, y: 92.5655 }, "F.Cu", 0.127).to({ x: 134.0595, y: 92.5655, layer: "F.Cu", width: 0.127 }));
 track_SWDIO_E.push(typecad.track({ net: 'SWDIO_E' }).from({ x: 131.24, y: 91.86 }, "F.Cu", 0.127).to({ x: 131.9455, y: 92.5655, layer: "F.Cu", width: 0.127 }));
 
+// Net: VCC
+let track_VCC: TrackBuilder[] = [];
+track_VCC.push(typecad.track({ net: 'VCC' }).from({ x: 149.45, y: 84.6375 }, "F.Cu", 0.127).to({ x: 149.45, y: 85.2, layer: "F.Cu", width: 0.127 }));
+track_VCC.push(typecad.track({ net: 'VCC' }).from({ x: 134.5, y: 85.75 }, "F.Cu", 0.25).to({ x: 134.5, y: 86.725, layer: "F.Cu", width: 0.25 }));
+track_VCC.push(typecad.track({ net: 'VCC' }).from({ x: 135.25, y: 86.75 }, "F.Cu", 0.127).to({ x: 135.75, y: 86.25, layer: "F.Cu", width: 0.127 }).to({ x: 135.775, y: 86.275, layer: "F.Cu", width: 0.127 }));
+track_VCC.push(typecad.track({ net: 'VCC' }).from({ x: 138.6875, y: 78.95 }, "F.Cu", 0.127).to({ x: 141.7595, y: 78.95, layer: "F.Cu", width: 0.127 }));
+track_VCC.push(typecad.track({ net: 'VCC' }).from({ x: 135.775, y: 86.275 }, "F.Cu", 0.127).to({ x: 136.6, y: 86.275, layer: "F.Cu", width: 0.127 }));
+track_VCC.push(typecad.track({ net: 'VCC' }).from({ x: 142, y: 78.7095 }, "F.Cu", 0.25).to({ x: 142.5345, y: 78.7095, layer: "F.Cu", width: 0.25 }));
+track_VCC.push(typecad.track({ net: 'VCC' }).from({ x: 134.525, y: 86.75 }, "F.Cu", 0.127).to({ x: 135.25, y: 86.75, layer: "F.Cu", width: 0.127 }));
+track_VCC.push(typecad.track({ net: 'VCC' }).from({ x: 134.5, y: 86.725 }, "F.Cu", 0.25).to({ x: 134.525, y: 86.75, layer: "F.Cu", width: 0.25 }));
+track_VCC.push(typecad.track({ net: 'VCC' }).from({ x: 150.6375, y: 83.95 }, "F.Cu", 0.127).to({ x: 150.6375, y: 84.8645, layer: "F.Cu", width: 0.127 }));
+track_VCC.push(typecad.track({ net: 'VCC' }).from({ x: 150, y: 85.75 }, "F.Cu", 0.127).to({ x: 150.502, y: 85.248, layer: "F.Cu", width: 0.127 }));
+track_VCC.push(typecad.track({ net: 'VCC' }).from({ x: 149.45, y: 85.2 }, "F.Cu", 0.127).to({ x: 150, y: 85.75, layer: "F.Cu", width: 0.127 }));
+track_VCC.push(typecad.track({ net: 'VCC' }).from({ x: 150.502, y: 85.248 }, "F.Cu", 0.127).to({ x: 150.502, y: 85, layer: "F.Cu", width: 0.127 }).via({ size: 0.6, drill: 0.3 }));
+track_VCC.push(typecad.track({ net: 'VCC' }).from({ x: 141.7595, y: 78.95 }, "F.Cu", 0.127).to({ x: 142, y: 78.7095, layer: "F.Cu", width: 0.127 }).via({ size: 0.6, drill: 0.3 }));
+track_VCC.push(typecad.track({ net: 'VCC' }).from({ x: 150.6375, y: 84.8645 }, "F.Cu", 0.127).to({ x: 150.502, y: 85, layer: "F.Cu", width: 0.127 }));
+track_VCC.push(typecad.track({ net: 'VCC' }).from({ x: 142.5345, y: 78.7095 }, "F.Cu", 0.25).to({ x: 144.175, y: 80.35, layer: "F.Cu", width: 0.25 }));
+track_VCC.push(typecad.track({ net: 'VCC' }).from({ x: 143.52975, y: 81.47025 }, "In1.Cu", 0.25).to({ x: 144.5595, y: 82.5, layer: "In1.Cu", width: 0.25 }));
+track_VCC.push(typecad.track({ net: 'VCC' }).from({ x: 141.77975, y: 81.47025 }, "In1.Cu", 0.25).to({ x: 138.5, y: 84.75, layer: "In1.Cu", width: 0.25 }));
+track_VCC.push(typecad.track({ net: 'VCC' }).from({ x: 152.5, y: 82.5 }, "In1.Cu", 0.25).to({ x: 153.28, y: 81.72, layer: "In1.Cu", width: 0.25 }));
+track_VCC.push(typecad.track({ net: 'VCC' }).from({ x: 144.5595, y: 82.5 }, "In1.Cu", 0.25).to({ x: 152.5, y: 82.5, layer: "In1.Cu", width: 0.25 }));
+track_VCC.push(typecad.track({ net: 'VCC' }).from({ x: 142, y: 78.7095 }, "In1.Cu", 0.25).to({ x: 142, y: 79.9405, layer: "In1.Cu", width: 0.25 }));
+track_VCC.push(typecad.track({ net: 'VCC' }).from({ x: 135.5, y: 84.75 }, "In1.Cu", 0.25).to({ x: 134.5, y: 85.75, layer: "In1.Cu", width: 0.25 }).via({ size: 0.6, drill: 0.3 }));
+track_VCC.push(typecad.track({ net: 'VCC' }).from({ x: 153.28, y: 81.72 }, "In1.Cu", 0.25).to({ x: 154, y: 81.72, layer: "In1.Cu", width: 0.25 }));
+track_VCC.push(typecad.track({ net: 'VCC' }).from({ x: 150.502, y: 84.498 }, "In1.Cu", 0.25).to({ x: 150.502, y: 85, layer: "In1.Cu", width: 0.25 }));
+track_VCC.push(typecad.track({ net: 'VCC' }).from({ x: 143.52975, y: 81.47025 }, "In1.Cu", 0.25).to({ x: 141.77975, y: 81.47025, layer: "In1.Cu", width: 0.25 }));
+track_VCC.push(typecad.track({ net: 'VCC' }).from({ x: 142, y: 79.9405 }, "In1.Cu", 0.25).to({ x: 143.52975, y: 81.47025, layer: "In1.Cu", width: 0.25 }));
+track_VCC.push(typecad.track({ net: 'VCC' }).from({ x: 138.5, y: 84.75 }, "In1.Cu", 0.25).to({ x: 135.5, y: 84.75, layer: "In1.Cu", width: 0.25 }));
+track_VCC.push(typecad.track({ net: 'VCC' }).from({ x: 152.5, y: 82.5 }, "In1.Cu", 0.25).to({ x: 150.502, y: 84.498, layer: "In1.Cu", width: 0.25 }));
+
 // Net: NRST
 let track_NRST: TrackBuilder[] = [];
 track_NRST.push(typecad.track({ net: 'NRST' }).from({ x: 145.7625, y: 81.95 }, "F.Cu", 0.127).to({ x: 144.2, y: 81.95, layer: "F.Cu", width: 0.127 }));
@@ -367,7 +397,10 @@ track_REF_SW.push(typecad.track({ net: 'REF_SW' }).from({ x: 149.45, y: 79.15 },
 track_REF_SW.push(typecad.track({ net: 'REF_SW' }).from({ x: 149.45, y: 79.7625 }, "F.Cu", 0.127).to({ x: 149.45, y: 79.15, layer: "F.Cu", width: 0.127 }));
 track_REF_SW.push(typecad.track({ net: 'REF_SW' }).from({ x: 137.6, y: 82.4 }, "F.Cu", 0.127).to({ x: 137, y: 81.8, layer: "F.Cu", width: 0.127 }).via({ size: 0.6, drill: 0.3 }));
 track_REF_SW.push(typecad.track({ net: 'REF_SW' }).from({ x: 137.6, y: 83.325 }, "F.Cu", 0.127).to({ x: 137.6, y: 82.4, layer: "F.Cu", width: 0.127 }));
-track_REF_SW.push(typecad.track({ net: 'REF_SW' }).from({ x: 150, y: 78.6 }, "In2.Cu", 0.127).to({ x: 149.4, y: 79.2, layer: "In2.Cu", width: 0.127 }).to({ x: 139.6, y: 79.2, layer: "In2.Cu", width: 0.127 }).to({ x: 137, y: 81.8, layer: "In2.Cu", width: 0.127 }));
+track_REF_SW.push(typecad.track({ net: 'REF_SW' }).from({ x: 150, y: 78.6 }, "In2.Cu", 0.127).to({ x: 149.4, y: 79.2, layer: "In2.Cu", width: 0.127 }));
+track_REF_SW.push(typecad.track({ net: 'REF_SW' }).from({ x: 144.75, y: 79.2 }, "In2.Cu", 0.127).to({ x: 139.6, y: 79.2, layer: "In2.Cu", width: 0.127 }));
+track_REF_SW.push(typecad.track({ net: 'REF_SW' }).from({ x: 149.4, y: 79.2 }, "In2.Cu", 0.127).to({ x: 144.75, y: 79.2, layer: "In2.Cu", width: 0.127 }).via({ size: 0.6, drill: 0.3 }));
+track_REF_SW.push(typecad.track({ net: 'REF_SW' }).from({ x: 139.6, y: 79.2 }, "In2.Cu", 0.127).to({ x: 137, y: 81.8, layer: "In2.Cu", width: 0.127 }));
 
 // Net: RANGE_SW
 let track_RANGE_SW: TrackBuilder[] = [];
@@ -411,6 +444,7 @@ unnamed_Track.push(typecad.track().from({ x: 137.6, y: 86.275 }, "F.Cu", 0.127).
 
 typecad.via({ at: { x: 139, y: 82.4 }, net: 'GND', size: 0.6, drill: 0.3 });
 typecad.via({ at: { x: 137.25, y: 87.5 }, net: 'GND', size: 0.6, drill: 0.3 });
+typecad.via({ at: { x: 143.75, y: 78.5 }, net: 'GND', size: 0.6, drill: 0.3 });
 typecad.via({ at: { x: 135.8, y: 80.4 }, net: 'GND', size: 0.6, drill: 0.3 });
 typecad.via({ at: { x: 139.8, y: 80.4 }, net: 'GND', size: 0.6, drill: 0.3 });
 typecad.via({ at: { x: 132.75, y: 80.25 }, net: 'GND', size: 0.6, drill: 0.3 });
@@ -439,6 +473,7 @@ typecad.create(
   ...track_GND,
   ...track_SWCLK,
   ...track_SWDIO_E,
+  ...track_VCC,
   ...track_NRST,
   ...track_DAC1_OUT2,
   ...track_DAC1_OUT1,

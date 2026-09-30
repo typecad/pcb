@@ -243,3 +243,10 @@ The collapsed rail is wide enough to actually show its swatches: 18px
 clipped the stacked checkbox+chip column to slivers — the rail is now 34px
 with padding clearing the toggle button, so every layer reads as a full
 checkbox over a full color chip.
+
+Enter on a SELECTED trace now lands on the TrackBuilder `.to()` that drew
+that exact segment — the viewer sends the selected segments' board-frame
+endpoints and the host matches them against chain geometry in src/**/*.ts
+(either orientation, 0.05 mm tolerance, net-aware) — falling back through
+the net's `typecad.named('…')` declaration (for highlighted-but-unselected
+nets) and then the recorded route/net source as before.

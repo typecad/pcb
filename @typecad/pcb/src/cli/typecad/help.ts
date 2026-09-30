@@ -156,6 +156,11 @@ export function showImportHelp(): void {
   console.log('Options:');
   console.log('  --apply                   Interactively apply coordinate changes back');
   console.log('                            to the typeCAD source files');
+  console.log('  --auto                    Apply every detected change without prompting');
+  console.log('                            (implies --apply)');
+  console.log('  --watch                   Watch the board file and re-run on every save.');
+  console.log('                            With --auto the source .ts is live-synced');
+  console.log('                            while you edit in KiCad. Ctrl+C to stop.');
   console.log('  --capture-layouts         Also import text layout positions');
   console.log('                            (referenceLayout, valueLayout, fabLayout)\n');
   console.log('                            to the typeCAD source files\n');

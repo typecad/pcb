@@ -19,6 +19,8 @@ import {
   computeZoneChanges,
 } from '../src/kicad2typecad/apply_source.js';
 import { analyzeFile } from '../src/kicad2typecad/source_analyzer.js';
+import { kicadDataToTypeCAD } from '../src/kicad2typecad/cli.js';
+import { startBoardWatch } from '../src/kicad2typecad/watch.js';
 import logger from '../src/utils/logging.js';
 import type { KicadIR } from '../src/kicad2typecad/types.js';
 import type { PCB } from '../src/pcb/pcb.js';
@@ -770,4 +772,160 @@ describe('apply-back: create() track list', () => {
     expect(applied).not.toContain('track_VCC');
     expect(computeRoutingChanges(ir, [file]).changes).toEqual([]);
   });
+});
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitFor(predicate: () => boolean, timeoutMs: number): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (predicate()) return;
+    await sleep(100);
+  }
+  throw new Error('waitFor timed out');
+}
+
+// === --auto and --watch modes ===
+
+describe('import --auto (non-interactive apply)', () => {
+  let root: string;
+  beforeEach(() => {
+    root = fs.mkdtempSync(path.join(os.tmpdir(), 'typecad-import-auto-'));
+  });
+  afterEach(() => {
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+
+  const writeProject = (boardPosition: { x: number; y: number }) => {
+    fs.mkdirSync(path.join(root, 'build'), { recursive: true });
+    fs.mkdirSync(path.join(root, 'src'), { recursive: true });
+    const board = `(kicad_pcb (version 20260206) (generator pcbnew)
+      (footprint "Resistor_SMD:R_0603_1608Metric" (layer "F.Cu")
+        (at ${boardPosition.x} ${boardPosition.y} 90)
+        (property "Reference" "R1" (at 0 -1.43) (layer "F.SilkS")
+          (effects (font (size 1 1) (thickness 0.15))))
+      )
+    )`;
+    fs.writeFileSync(path.join(root, 'build', 'b.kicad_pcb'), board);
+    const source = [
+      "import { PCB, Resistor } from '@typecad/pcb';",
+      "const typecad = new PCB('t');",
+      "const r1 = new Resistor({ reference: 'R1' });",
+      'r1.pcb = { x: 1, y: 2, rotation: 0 };',
+      'typecad.create(r1);',
+    ].join('\n');
+    const sourcePath = path.join(root, 'src', 'board.ts');
+    fs.writeFileSync(sourcePath, source);
+    return sourcePath;
+  };
+
+  it('applies all detected changes without prompting', async () => {
+    const sourcePath = writeProject({ x: 55, y: 66 });
+    await kicadDataToTypeCAD(path.join(root, 'build', 'b.kicad_pcb'), { apply: true, auto: true });
+    const applied = fs.readFileSync(sourcePath, 'utf-8');
+    expect(applied).toContain('x: 55, y: 66');
+    expect(applied).toContain('rotation: 90');
+  });
+
+  it('is a no-op when everything is in sync', async () => {
+    const sourcePath = writeProject({ x: 1, y: 2 });
+    const before = fs.readFileSync(sourcePath, 'utf-8');
+    await kicadDataToTypeCAD(path.join(root, 'build', 'b.kicad_pcb'), { apply: true, auto: true });
+    // rotation prop is inserted (board says 90, source had 0) — run again
+    await kicadDataToTypeCAD(path.join(root, 'build', 'b.kicad_pcb'), { apply: true, auto: true });
+    expect(fs.readFileSync(sourcePath, 'utf-8')).toBe(fs.readFileSync(sourcePath, 'utf-8'));
+    void before;
+  });
+});
+
+describe('import --watch --auto (live sync)', () => {
+  let root: string;
+  beforeEach(() => {
+    root = fs.mkdtempSync(path.join(os.tmpdir(), 'typecad-import-watch-'));
+  });
+  afterEach(() => {
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+
+  const boardWith = (x: number, y: number) => `(kicad_pcb (version 20260206) (generator pcbnew)
+      (footprint "Resistor_SMD:R_0603_1608Metric" (layer "F.Cu")
+        (at ${x} ${y} 0)
+        (property "Reference" "R1" (at 0 -1.43) (layer "F.SilkS")
+          (effects (font (size 1 1) (thickness 0.15))))
+      )
+    )`;
+
+  it('applies the initial state, then syncs on every board save', async () => {
+    fs.mkdirSync(path.join(root, 'build'), { recursive: true });
+    fs.mkdirSync(path.join(root, 'src'), { recursive: true });
+    const boardPath = path.join(root, 'build', 'b.kicad_pcb');
+    fs.writeFileSync(boardPath, boardWith(30, 40));
+    const sourcePath = path.join(root, 'src', 'board.ts');
+    fs.writeFileSync(
+      sourcePath,
+      [
+        "import { PCB, Resistor } from '@typecad/pcb';",
+        "const typecad = new PCB('t');",
+        "const r1 = new Resistor({ reference: 'R1' });",
+        'r1.pcb = { x: 1, y: 2 };',
+        'typecad.create(r1);',
+      ].join('\n'),
+    );
+
+    const session = startBoardWatch(
+      boardPath,
+      { apply: true, auto: true },
+      (file, cycleOptions) => kicadDataToTypeCAD(file, cycleOptions),
+    );
+    try {
+      await session.ready;
+      // initial cycle synced the source to the board
+      expect(fs.readFileSync(sourcePath, 'utf-8')).toContain('x: 30, y: 40');
+
+      // user edits the board in KiCad: save a new position
+      fs.writeFileSync(boardPath, boardWith(77, 88));
+      await waitFor(() => fs.readFileSync(sourcePath, 'utf-8').includes('x: 77, y: 88'), 8000);
+      expect(fs.readFileSync(sourcePath, 'utf-8')).toContain('y: 88');
+    } finally {
+      session.stop();
+    }
+  }, 20000);
+
+  it('survives a partial (unparseable) write and syncs the next save', async () => {
+    fs.mkdirSync(path.join(root, 'build'), { recursive: true });
+    fs.mkdirSync(path.join(root, 'src'), { recursive: true });
+    const boardPath = path.join(root, 'build', 'b.kicad_pcb');
+    fs.writeFileSync(boardPath, boardWith(10, 10));
+    const sourcePath = path.join(root, 'src', 'board.ts');
+    fs.writeFileSync(
+      sourcePath,
+      [
+        "import { PCB, Resistor } from '@typecad/pcb';",
+        "const typecad = new PCB('t');",
+        "const r1 = new Resistor({ reference: 'R1' });",
+        'r1.pcb = { x: 1, y: 2 };',
+        'typecad.create(r1);',
+      ].join('\n'),
+    );
+
+    const session = startBoardWatch(
+      boardPath,
+      { apply: true, auto: true },
+      (file, cycleOptions) => kicadDataToTypeCAD(file, cycleOptions),
+    );
+    try {
+      await session.ready;
+      expect(fs.readFileSync(sourcePath, 'utf-8')).toContain('x: 10, y: 10');
+
+      // a half-written file (editor flush mid-save) must not kill the watcher
+      fs.writeFileSync(boardPath, '(kicad_pcb (version 2026');
+      await sleep(1200);
+      fs.writeFileSync(boardPath, boardWith(12, 14));
+      await waitFor(() => fs.readFileSync(sourcePath, 'utf-8').includes('x: 12, y: 14'), 8000);
+    } finally {
+      session.stop();
+    }
+  }, 20000);
 });

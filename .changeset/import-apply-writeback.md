@@ -28,6 +28,15 @@ rebuild and the board matches.
   non-contiguous routing regions, are left alone with an explanatory note;
   routing is only ever inserted into the single file that owns `create()` —
   other project files with their own `create()` are never touched.
+- **create() track list hygiene** — older generated code passed track arrays
+  as bare identifiers (`create(j1, track_VCC)`); when the board's net set
+  changes, such a name can lose its declaration and crash the build
+  (`ReferenceError: track_VCC is not defined`). The create list is now
+  rewritten independently of the routing region diff: bare track-array
+  identifiers are recognized and dropped, only component arguments are
+  preserved, spreads are emitted for the board's current nets, and the
+  generated text matches the replaced range exactly so repeated applies
+  converge instead of growing whitespace.
 
 Verified end-to-end on the rd_skeleton demo: KiCad-side edits (via move,
 zone corner drag, outline resize, trace reroute) → `--apply` → rebuild

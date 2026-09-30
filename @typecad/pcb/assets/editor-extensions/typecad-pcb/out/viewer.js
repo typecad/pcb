@@ -64,6 +64,7 @@ const sourceBackup_js_1 = require("./sourceBackup.js");
 const layoutApply_js_1 = require("./layoutApply.js");
 const layoutEdits_js_1 = require("./layoutEdits.js");
 const semanticVerify_js_1 = require("./semanticVerify.js");
+const netSegmentSource_js_1 = require("./netSegmentSource.js");
 const syncState_js_1 = require("./syncState.js");
 const boardRules_js_1 = require("./boardRules.js");
 const sourceRef_js_1 = require("./sourceRef.js");
@@ -937,12 +938,36 @@ class BoardViewerPanel {
             return;
         }
         if (message.type === 'typecad/probe-net') {
-            // double-clicked a trace: the client resolved the net's declaring
-            // file:line (route call preferred) — reveal it, or say why not
+            // trace navigation, most specific first:
+            //   1. selected segment → the TrackBuilder `.to()` that DREW it
+            //   2. the net's `typecad.named('…')` declaration
+            //   3. the recorded route/net source (routes island)
             this.output.appendLine(`probe: net ${message.net} → source`);
             const folder = this.hwFolder();
             if (!folder)
                 return;
+            const srcUris = await vscode.workspace.findFiles(new vscode.RelativePattern(folder, 'src/**/*.ts'));
+            const files = [];
+            for (const uri of srcUris) {
+                files.push({ uri: uri.fsPath, text: (await vscode.workspace.openTextDocument(uri)).getText() });
+            }
+            // 1. segment geometry → chain edge
+            for (const seg of message.segs ?? []) {
+                const hit = (0, netSegmentSource_js_1.resolveSegmentSource)(seg, files);
+                if (!hit)
+                    continue;
+                this.output.appendLine(`probe: net ${message.net} segment → ${hit.detail} @ ${hit.line}`);
+                await this.revealLocation({ fsPath: hit.uri, line: hit.line });
+                return;
+            }
+            // 2. net declaration
+            const decl = (0, netSegmentSource_js_1.resolveNetDeclaration)(message.net, files);
+            if (decl) {
+                this.output.appendLine(`probe: net ${message.net} → ${decl.detail} @ ${decl.line}`);
+                await this.revealLocation({ fsPath: decl.uri, line: decl.line });
+                return;
+            }
+            // 3. recorded source (route call preferred over the net's own)
             if (!message.source) {
                 vscode.window.setStatusBarMessage(`net ${message.net}: no recorded source — rebuild with a current typeCAD`, 5000);
                 return;

@@ -10910,6 +10910,21 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     var rt = JSON.parse(document.getElementById('routes').textContent);
     unnamedRoutes = (rt && rt.unnamed) || [];
   } catch (e) {}
+  // the currently SELECTED trace segment(s), board frame — Enter probes
+  // the source line of the specific TrackBuilder chain that drew them
+  window.typecadSelectedSegments = function () {
+    var out = [];
+    segSel.forEach(function (h) {
+      out.push({
+        x1: +parseFloat(h.getAttribute('x1')).toFixed(3),
+        y1: +(-parseFloat(h.getAttribute('y1'))).toFixed(3),
+        x2: +parseFloat(h.getAttribute('x2')).toFixed(3),
+        y2: +(-parseFloat(h.getAttribute('y2'))).toFixed(3),
+        net: h.getAttribute('data-net') || null,
+      });
+    });
+    return out;
+  };
   window.typecadTraceSource = function (clientX, clientY) {
     if (!unnamedRoutes.length) return '';
     var g = gerberAt(clientX, clientY);

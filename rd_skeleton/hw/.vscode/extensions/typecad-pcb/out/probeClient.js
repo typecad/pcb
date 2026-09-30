@@ -288,8 +288,20 @@ const PROBE_CLIENT = `<script>
         window.typecadRoutingActive()
       )
         return;
-      if (probedRef) send({ type: 'typecad/probe', ref: probedRef, pin: probedPin });
-      else send({ type: 'typecad/probe-net', net: probedNet, source: window.typecadNetSource(probedNet) || undefined });
+      if (probedRef) {
+        send({ type: 'typecad/probe', ref: probedRef, pin: probedPin });
+        return;
+      }
+      // a SELECTED segment probes the TrackBuilder chain that drew it (the
+      // host matches the geometry to a source .to line); a bare highlighted
+      // net probes the net's declaration
+      var segs = window.typecadSelectedSegments ? window.typecadSelectedSegments() : [];
+      send({
+        type: 'typecad/probe-net',
+        net: probedNet,
+        source: window.typecadNetSource(probedNet) || undefined,
+        segs: segs && segs.length ? segs : undefined,
+      });
     });
   }
   window.addEventListener('keydown', function (ev) {

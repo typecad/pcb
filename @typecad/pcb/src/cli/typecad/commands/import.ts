@@ -6,12 +6,17 @@ export async function run(parsed: ParsedArgs): Promise<void> {
 
   if (!filePath) {
     throw new Error(
-      'No KiCad file path provided.\n' + 'Usage: typecad-pcb import <path_to_kicad_pcb_file> [--apply] [--capture-layouts]',
+      'No KiCad file path provided.\n' +
+        'Usage: typecad-pcb import <path_to_kicad_pcb_file> [--apply] [--auto] [--watch] [--capture-layouts]',
     );
   }
 
-  const apply = parsed.args['apply'] === true;
+  const auto = parsed.args['auto'] === true;
+  const watch = parsed.args['watch'] === true;
   const captureLayouts = parsed.args['capture-layouts'] === true;
+  // --auto implies apply (it is apply, minus the prompts); --watch alone
+  // re-runs display mode on every save, --watch --auto live-syncs the source.
+  const apply = parsed.args['apply'] === true || auto;
 
-  await kicadDataToTypeCAD(filePath, { apply, captureLayouts });
+  await kicadDataToTypeCAD(filePath, { apply, auto, watch, captureLayouts });
 }

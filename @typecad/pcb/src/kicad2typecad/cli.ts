@@ -14,6 +14,8 @@
  * ## Usage
  *   kicadDataToTypeCAD("board.kicad_pcb")            // display mode
  *   kicadDataToTypeCAD("board.kicad_pcb", { apply: true })  // apply mode
+ *   kicadDataToTypeCAD("board.kicad_pcb", { apply: true, auto: true })  // non-interactive
+ *   kicadDataToTypeCAD("board.kicad_pcb", { watch: true })  // re-run on board saves
  */
 
 import fs from 'node:fs';
@@ -43,6 +45,7 @@ import {
   computeZoneChanges,
   applySourceChanges,
 } from './apply_source.js';
+import { startBoardWatch } from './watch.js';
 import type {
   KicadIR,
   MatchResult,
@@ -52,12 +55,32 @@ import type {
   PendingLayoutChange,
 } from './types.js';
 
+/** Options shared by the CLI entry, the watch loop and the apply helpers. */
+export interface ImportOptions {
+  apply?: boolean;
+  captureLayouts?: boolean;
+  /** Apply every detected change without prompting. */
+  auto?: boolean;
+  /** Watch the board file and re-run on every save. */
+  watch?: boolean;
+}
+
 // === Main entry point ===
 
-export async function kicadDataToTypeCAD(
-  filePath: string,
-  options?: { apply?: boolean; captureLayouts?: boolean },
-): Promise<void> {
+export async function kicadDataToTypeCAD(filePath: string, options?: ImportOptions): Promise<void> {
+  if (options?.watch) {
+    // Watch mode runs the first cycle immediately, then re-runs on saves.
+    // `watch` is stripped from the per-cycle options by startBoardWatch.
+    const session = startBoardWatch(filePath, options, (file, cycleOptions) => kicadDataToTypeCAD(file, cycleOptions));
+    await session.forever;
+    return;
+  }
+
+  await runOnce(filePath, options);
+}
+
+/** One full import pass: apply (interactive or --auto) or display. */
+export async function runOnce(filePath: string, options?: ImportOptions): Promise<void> {
   const sourceDescription = `File: ${filePath}`;
 
   try {
@@ -68,14 +91,30 @@ export async function kicadDataToTypeCAD(
       logger.error(`Error: File not found at ${filePath}`);
       return;
     }
-    const sExpressionText = fs.readFileSync(filePath, 'utf-8');
+    let sExpressionText: string;
+    try {
+      sExpressionText = fs.readFileSync(filePath, 'utf-8');
+    } catch (error) {
+      // Watch cycles can race KiCad's write (EBUSY/EPERM on Windows) — the
+      // next save event re-reads, so this is not fatal.
+      logger.warn(`Could not read ${sourceDescription} (${(error as Error).message}); waiting for the next save.`);
+      return;
+    }
     if (!sExpressionText.trim()) {
       logger.info(`${sourceDescription} is empty.`);
       return;
     }
 
     // 2. Parse S-expression → typed tree
-    const tree = SExprNode.parse(sExpressionText);
+    let tree: ReturnType<typeof SExprNode.parse>;
+    try {
+      tree = SExprNode.parse(sExpressionText);
+    } catch (error) {
+      // A partially written file fails to parse; watch mode picks up the
+      // completed write on the next event.
+      logger.warn(`Could not parse ${sourceDescription} (${(error as Error).message}); waiting for the next save.`);
+      return;
+    }
     if (!tree) {
       logger.error(`Parsed data from ${sourceDescription} is empty or invalid.`);
       return;
@@ -138,8 +177,9 @@ async function applyMode(
   ir: KicadIR,
   kicadFilePath: string,
   sourceDescription: string,
-  options?: { apply?: boolean; captureLayouts?: boolean },
+  options?: ImportOptions,
 ): Promise<void> {
+  const auto = options?.auto ?? false;
   // Determine source root from the KiCad file location
   // The KiCad file is typically in a build/ directory; source is usually in src/
   const kicadDir = kicadFilePath.replace(/\\/g, '/').split('/').slice(0, -1).join('/') || '.';
@@ -167,9 +207,11 @@ async function applyMode(
   // 4. Compute layout changes (referenceLayout, valueLayout, fabLayout)
   const layoutChanges = rewriter.computeLayoutChanges(matchResults, options?.captureLayouts ?? false);
 
-  // 5. Apply footprint changes interactively
+  // 5. Apply footprint changes
   if (footprintChanges.length > 0) {
-    const footprintResult = await interactiveApplyFootprints(footprintChanges);
+    const footprintResult = auto
+      ? applyAllFootprints(footprintChanges)
+      : await interactiveApplyFootprints(footprintChanges);
     if (footprintResult.applied > 0) {
       logger.log(
         chalk.green(
@@ -181,9 +223,9 @@ async function applyMode(
     logger.log(chalk.green('\nAll component positions are up to date. No changes needed.'));
   }
 
-  // 6. Apply text changes interactively
+  // 6. Apply text changes
   if (textChanges.length > 0) {
-    const textResult = await interactiveApplyTexts(textChanges);
+    const textResult = auto ? applyAllTexts(textChanges) : await interactiveApplyTexts(textChanges);
     if (textResult.applied > 0) {
       logger.log(
         chalk.green(`\n✓ Applied ${textResult.applied} text change(s) to ${textResult.filesModified} file(s).`),
@@ -203,9 +245,9 @@ async function applyMode(
     }
   }
 
-  // 7. Apply layout changes interactively
+  // 7. Apply layout changes
   if (layoutChanges.length > 0) {
-    const layoutResult = await interactiveApplyLayouts(layoutChanges);
+    const layoutResult = auto ? applyAllLayouts(layoutChanges) : await interactiveApplyLayouts(layoutChanges);
     if (layoutResult.applied > 0) {
       logger.log(
         chalk.green(`\n✓ Applied ${layoutResult.applied} layout change(s) to ${layoutResult.filesModified} file(s).`),
@@ -233,19 +275,23 @@ async function applyMode(
     logger.log(chalk.gray(`\nnote: ${note}`));
   }
 
-  // 9. Apply the new categories interactively — all selected changes go
-  // through ONE replacement pass per file so ranges stay valid.
+  // 9. Apply the new categories — all selected changes go through ONE
+  // replacement pass per file so ranges stay valid.
   const selectedSource: PendingSourceChange[] = [];
   const declined: PendingSourceChange[] = [];
 
-  if (outlineResult.changes.length > 0) {
-    selectedSource.push(...(await interactiveApplySourceChanges('board outline', outlineResult.changes, declined)));
-  }
-  if (zoneResult.changes.length > 0) {
-    selectedSource.push(...(await interactiveApplySourceChanges('zone', zoneResult.changes, declined)));
-  }
-  if (routingResult.changes.length > 0) {
-    selectedSource.push(...(await interactiveApplySourceChanges('routing', routingResult.changes, declined)));
+  if (auto) {
+    selectedSource.push(...outlineResult.changes, ...zoneResult.changes, ...routingResult.changes);
+  } else {
+    if (outlineResult.changes.length > 0) {
+      selectedSource.push(...(await interactiveApplySourceChanges('board outline', outlineResult.changes, declined)));
+    }
+    if (zoneResult.changes.length > 0) {
+      selectedSource.push(...(await interactiveApplySourceChanges('zone', zoneResult.changes, declined)));
+    }
+    if (routingResult.changes.length > 0) {
+      selectedSource.push(...(await interactiveApplySourceChanges('routing', routingResult.changes, declined)));
+    }
   }
 
   if (selectedSource.length > 0) {
@@ -307,6 +353,43 @@ async function interactiveApplySourceChanges(
   }
   declined.push(...changes.filter((c) => !selected.includes(c)));
   return selected;
+}
+
+// === --auto variants: apply everything, no prompts ===
+
+function applyAllFootprints(changes: PendingChange[]): { filesModified: number; applied: number } {
+  logger.log(chalk.bold(`\n${changes.length} component(s) have new positions (auto-apply):\n`));
+  for (const c of changes) {
+    const oldStr = c.oldX !== null ? `(${c.oldX}, ${c.oldY})` : '(not set)';
+    logger.log(`    ${chalk.blueBright(c.prefix + c.variableName.padEnd(14))} ${oldStr} → (${c.newX}, ${c.newY})`);
+  }
+  const rewriter = new SourceRewriter();
+  const result = rewriter.applyFootprintChanges(changes);
+  return { filesModified: result.filesModified, applied: changes.length };
+}
+
+function applyAllTexts(changes: PendingTextChange[]): { filesModified: number; applied: number } {
+  logger.log(chalk.bold(`\n${changes.length} text element(s) have changes (auto-apply):\n`));
+  for (const c of changes) {
+    const propsStr = c.changedProps.length > 0 ? ` ${chalk.magenta(`[${c.changedProps.join(', ')}]`)}` : '';
+    logger.log(
+      `    ${chalk.blueBright(`"${c.sourceTextContent}"`)}  (${c.oldX}, ${c.oldY}) → (${c.newX}, ${c.newY})${propsStr}`,
+    );
+  }
+  const rewriter = new SourceRewriter();
+  const result = rewriter.applyTextChanges(changes);
+  return { filesModified: result.filesModified, applied: changes.length };
+}
+
+function applyAllLayouts(changes: PendingLayoutChange[]): { filesModified: number; applied: number } {
+  logger.log(chalk.bold(`\n${changes.length} text layout(s) have changes (auto-apply):\n`));
+  for (const c of changes) {
+    const propsStr = c.changedProps.length > 0 ? ` ${chalk.magenta(`[${c.changedProps.join(', ')}]`)}` : '';
+    logger.log(`    ${chalk.blueBright(`${c.prefix}${c.variableName}.${c.layoutType}`)}${propsStr}`);
+  }
+  const rewriter = new SourceRewriter();
+  const result = rewriter.applyLayoutChanges(changes);
+  return { filesModified: result.filesModified, applied: changes.length };
 }
 
 async function interactiveApplyFootprints(

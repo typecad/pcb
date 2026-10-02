@@ -231,7 +231,7 @@ describe('SymbolLibraryManager', () => {
       ]);
 
       const result = manager.getPinLocation('Device:R', '1');
-      expect(result).toEqual({ x: 5.08, y: 0, angle: 0 });
+      expect(result).toEqual({ x: 5.08, y: 0, angle: 0, unit: 1 });
     });
 
     it('should find pin location in nested symbol unit', () => {
@@ -249,7 +249,7 @@ describe('SymbolLibraryManager', () => {
       ]);
 
       const result = manager.getPinLocation('Device:R', '1');
-      expect(result).toEqual({ x: 0, y: 0, angle: 0 });
+      expect(result).toEqual({ x: 0, y: 0, angle: 0, unit: 1 });
     });
 
     it('should log error when pin not found', () => {

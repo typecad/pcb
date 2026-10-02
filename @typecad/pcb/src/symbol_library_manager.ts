@@ -4,7 +4,7 @@ import { serialize, Sym } from './sexpr/index.js';
 import { libraryRoots } from './kicad.js';
 import { LIBRARY_SEPARATOR, getBuildDir } from './utils/constants.js';
 import type { SExprNode } from './types/sexpr_types.js';
-import { extractPins, findSymbolNode, parseSymbolLibrary, resolveExtends } from './symbol_core.js';
+import { extractPins, findSymbolNode, parseSymbolLibrary, resolveExtends, unitSubSymbols } from './symbol_core.js';
 import {
   type SymbolDefinition,
   type PinLocation,
@@ -30,6 +30,8 @@ export class SymbolLibraryManager {
   private pinLocationCache: Map<string, PinLocation> = new Map();
   private pinInfoCache: Map<string, Map<string, PinInfo>> = new Map();
   private boundingBoxCache: Map<string, BoundingBox | null> = new Map();
+  private unitLayoutCache: Map<string, { count: number; unitsWithPins: number[] }> = new Map();
+  private unitBoundingBoxCache: Map<string, BoundingBox | null> = new Map();
   private kicadSymbolPath: string;
 
   constructor() {
@@ -182,7 +184,7 @@ export class SymbolLibraryManager {
     try {
       const match = extractPins(symbolDef.rawSexpr).find((pin) => pin.number === String(pinNumber) && pin.at);
       if (match?.at) {
-        const location: PinLocation = { x: match.at.x, y: match.at.y, angle: match.at.angle };
+        const location: PinLocation = { x: match.at.x, y: match.at.y, angle: match.at.angle, unit: match.unit };
         this.pinLocationCache.set(cacheKey, location);
         return location;
       }
@@ -193,6 +195,65 @@ export class SymbolLibraryManager {
 
     logError(`Pin ${pinNumber} not found in symbol ${symbolFqn}`);
     return null;
+  }
+
+  /**
+   * Unit layout of a symbol: total unit count and the subset of units that
+   * actually carry pins. Single-unit symbols report `{1, [1]}` — including
+   * symbols whose pins sit directly on the root node with no unit
+   * sub-symbols.
+   */
+  public getUnitLayout(symbolFqn: string): { count: number; unitsWithPins: number[] } {
+    const cached = this.unitLayoutCache.get(symbolFqn);
+    if (cached) return cached;
+
+    const layout = { count: 1, unitsWithPins: [1] };
+    const symbolDef = this.getSymbolDefinition(symbolFqn);
+    if (symbolDef) {
+      const subUnits = [...unitSubSymbols(symbolDef.rawSexpr).keys()].filter((unit) => unit > 0);
+      if (subUnits.length > 0) {
+        layout.count = Math.max(...subUnits);
+        const withPins = new Set<number>();
+        for (const pin of extractPins(symbolDef.rawSexpr)) {
+          withPins.add(pin.unit);
+        }
+        layout.unitsWithPins = [...withPins].sort((a, b) => a - b);
+      }
+    }
+    this.unitLayoutCache.set(symbolFqn, layout);
+    return layout;
+  }
+
+  /**
+   * Bounding box of one unit's graphics and pins, including any unit-0
+   * ("common to all units") sub-symbol. Null when nothing measurable is
+   * found — callers fall back to a default unit stride.
+   */
+  public getUnitBoundingBox(symbolFqn: string, unit: number): BoundingBox | null {
+    const cacheKey = `${symbolFqn}_${unit}`;
+    if (this.unitBoundingBoxCache.has(cacheKey)) {
+      return this.unitBoundingBoxCache.get(cacheKey)!;
+    }
+
+    const symbolDef = this.getSymbolDefinition(symbolFqn);
+    if (!symbolDef) {
+      this.unitBoundingBoxCache.set(cacheKey, null);
+      return null;
+    }
+
+    const subUnits = unitSubSymbols(symbolDef.rawSexpr);
+    const relevantUnits = unit === 1 ? [0, 1] : [0, unit];
+    const nodes = relevantUnits.flatMap((unitIndex) => subUnits.get(unitIndex) ?? []);
+
+    const boundingBox: BoundingBox = { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity };
+    for (const node of nodes) {
+      this.calculateSymbolBoundingBoxRecursive(node, boundingBox);
+    }
+
+    const measured =
+      boundingBox.minX === Infinity || boundingBox.maxX === -Infinity ? null : boundingBox;
+    this.unitBoundingBoxCache.set(cacheKey, measured);
+    return measured;
   }
 
   private calculateSymbolBoundingBoxRecursive(element: unknown, currentBox: BoundingBox): void {

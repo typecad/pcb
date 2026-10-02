@@ -16,6 +16,38 @@ export interface SymbolPin {
   hidden: boolean;
   /** `(at x y angle)` of the pin within its unit, when present. */
   at: { x: number; y: number; angle: number } | null;
+  /**
+   * 1-based unit the pin belongs to, from the enclosing unit sub-symbol's
+   * `Name_<unit>_<style>` naming. Pins in unit-0 ("common to all units")
+   * sub-symbols report unit 1 — every unit draws them, and one label
+   * location suffices for connectivity.
+   */
+  unit: number;
+}
+
+/** Unit index encoded in a unit sub-symbol name (`Name_<unit>_<style>`), if any. */
+export function unitIndexOf(subSymbolName: string): number | undefined {
+  const match = /_(\d+)_(\d+)$/.exec(subSymbolName);
+  return match ? parseInt(match[1], 10) : undefined;
+}
+
+/**
+ * Unit sub-symbols of a resolved symbol keyed by their RAW unit index —
+ * unit 0 means "common to all units" and stays keyed 0 so consumers can
+ * merge it into whichever unit they're measuring. Empty when the symbol
+ * has no unit sub-symbols (single-unit shape).
+ */
+export function unitSubSymbols(symbol: SList): Map<number, SList[]> {
+  const units = new Map<number, SList[]>();
+  for (const el of symbol) {
+    if (!isSymbolNode(el)) continue;
+    const unit = unitIndexOf(String(el[1]));
+    if (unit === undefined) continue;
+    const list = units.get(unit) ?? [];
+    list.push(el);
+    units.set(unit, list);
+  }
+  return units;
 }
 
 /** Returns a library's parsed top-level nodes, or null/undefined when unavailable. */
@@ -99,7 +131,7 @@ export function normalizeFootprintRef(footprint: string): string {
   return parts[1] !== undefined ? `lib:${parts[1]}` : `lib:${footprint}`;
 }
 
-function parsePinNode(pin: SList): SymbolPin | null {
+function parsePinNode(pin: SList): Omit<SymbolPin, 'unit'> | null {
   const type = String(pin[1] ?? '');
   let name = '';
   let number = '';
@@ -131,23 +163,28 @@ function parsePinNode(pin: SList): SymbolPin | null {
  * All pins of a symbol, recursively — direct children and pins inside unit
  * sub-symbols (`(symbol "X_1_1" (pin ...))`) at any nesting depth, in document
  * order. Pins without a number are skipped, matching KiCad's format rules.
+ * Each pin carries the unit it belongs to so multi-unit symbols can place
+ * labels against the correct unit instance.
  */
 export function extractPins(symbol: SList): SymbolPin[] {
   const pins: SymbolPin[] = [];
 
-  function walk(node: SList): void {
+  function walk(node: SList, unit: number): void {
     for (const el of node) {
       if (!Array.isArray(el)) continue;
       if (Sym.isSym(el[0]) && el[0].name === 'pin') {
         const pin = parsePinNode(el);
-        if (pin) pins.push(pin);
+        if (pin) pins.push({ ...pin, unit });
+      } else if (Sym.isSym(el[0]) && el[0].name === 'symbol' && typeof el[1] === 'string') {
+        const nestedUnit = unitIndexOf(el[1]);
+        walk(el, nestedUnit === undefined || nestedUnit === 0 ? unit : nestedUnit);
       } else {
-        walk(el);
+        walk(el, unit);
       }
     }
   }
 
-  walk(symbol);
+  walk(symbol, 1);
   return pins;
 }
 

@@ -36,6 +36,14 @@ export class KiCADSchematic {
   #pwrCounter = 0;
   #flgCounter = 0;
   #powerNetEntries: Map<string, { firstPinX: number; firstPinY: number }> = new Map();
+  /**
+   * Placement origin of each unit instance, keyed by component reference —
+   * multi-unit symbols place one instance per unit and net labels must
+   * resolve against the owning unit's origin, not the component's base
+   * position. Written by {@link update}, read by
+   * {@link getAbsolutePinCoordinates}.
+   */
+  #unitOrigins: Map<string, Map<number, { x: number; y: number }>> = new Map();
 
   constructor(symbolManager: SymbolLibraryManager) {
     this.symbolManager = symbolManager;
@@ -53,7 +61,15 @@ export class KiCADSchematic {
     return this.#uuid;
   }
 
-  update(component: RenderableSymbol): string | null {
+  /**
+   * Place a component on the sheet. Multi-unit symbols (KiCad's split
+   * representation of dual/quad parts, e.g. a dual switch as switch A +
+   * switch B + power) get one `(symbol ...)` instance per unit, sharing the
+   * component's reference — the same shape KiCad itself writes. Returns the
+   * instance strings (one per unit) or null when the component can't be
+   * placed.
+   */
+  update(component: RenderableSymbol): string[] | null {
     if (!component.symbol) {
       reportError('Component has no symbol defined.', component);
       return null;
@@ -101,42 +117,90 @@ export class KiCADSchematic {
     component.sch.x = x;
     component.sch.y = y;
 
-    const parts: unknown[] = [];
-    parts.push(s('lib_id', component.symbol));
-    parts.push(s('at', x, y, component.sch.rotation ?? 0));
+    // Units march rightward from the component position; the component
+    // rotation swings that direction the same way it swings pin offsets, so
+    // rotated multi-unit parts stay readable.
+    const symbolFqn = component.symbol;
+    const units = this.symbolManager.getUnitLayout(symbolFqn).unitsWithPins;
+    const stride = this.#unitStride(component.symbol, units);
+    const angleRad = ((component.sch.rotation ?? 0) * Math.PI) / 180;
 
-    const propertiesToAdd = ['Reference', 'Value', 'Footprint'];
-    const textOffsetY = 5.08;
-    propertiesToAdd.forEach((propName) => {
-      const key = propName.toLowerCase() as keyof RenderableSymbol;
-      const propVal = component[key];
-      if (propVal !== undefined && (typeof propVal === 'string' || typeof propVal === 'number')) {
-        const propX = x;
-        const propY = y + textOffsetY;
+    const unitOrigins = new Map<number, { x: number; y: number }>();
+    const instances: string[] = [];
+
+    units.forEach((unit, index) => {
+      const along = index * stride;
+      const originX = x + along * Math.cos(angleRad);
+      const originY = y - along * Math.sin(angleRad);
+      unitOrigins.set(unit, { x: originX, y: originY });
+
+      const parts: unknown[] = [];
+      parts.push(s('lib_id', symbolFqn));
+      parts.push(s('at', originX, originY, component.sch.rotation ?? 0));
+      // KiCad's own writer records the unit on the instance only for units
+      // past the first — unit 1 is the format's default.
+      if (unit > 1) {
+        parts.push(s('unit', unit));
+      }
+
+      const propertiesToAdd = ['Reference', 'Value', 'Footprint'];
+      const textOffsetY = 5.08;
+      propertiesToAdd.forEach((propName) => {
+        const key = propName.toLowerCase() as keyof RenderableSymbol;
+        const propVal = component[key];
+        if (propVal !== undefined && (typeof propVal === 'string' || typeof propVal === 'number')) {
+          const propX = originX;
+          const propY = originY + textOffsetY;
+          parts.push(
+            s(
+              'property',
+              propName,
+              String(propVal),
+              s('at', propX, propY, component.sch?.rotation ?? 0),
+              s('effects', s('font', s('size', 1.27, 1.27)), s('hide', propName === 'Reference' ? no() : yes())),
+            ),
+          );
+        }
+      });
+
+      if (component.reference) {
         parts.push(
           s(
-            'property',
-            propName,
-            String(propVal),
-            s('at', propX, propY, component.sch?.rotation ?? 0),
-            s('effects', s('font', s('size', 1.27, 1.27)), s('hide', propName === 'Reference' ? no() : yes())),
+            'instances',
+            s('project', this.sheetname, s('path', `/${this.uuid}`, s('reference', component.reference), s('unit', unit))),
           ),
         );
+      } else {
+        logWarning(`Component ${displayName(component)} is missing a reference designator. Skipping instances entry.`);
       }
+
+      instances.push(`(symbol ${parts.map((p) => serialize(p as Parameters<typeof serialize>[0])).join(' ')})`);
     });
 
     if (component.reference) {
-      parts.push(
-        s(
-          'instances',
-          s('project', this.sheetname, s('path', `/${this.uuid}`, s('reference', component.reference), s('unit', 1))),
-        ),
-      );
-    } else {
-      logWarning(`Component ${displayName(component)} is missing a reference designator. Skipping instances entry.`);
+      this.#unitOrigins.set(component.reference, unitOrigins);
     }
 
-    return `(symbol ${parts.map((p) => serialize(p as Parameters<typeof serialize>[0])).join(' ')})`;
+    return instances;
+  }
+
+  /**
+   * Grid-snapped horizontal distance between adjacent unit instances:
+   * the widest unit's bounding box plus one grid of breathing room per
+   * side. Falls back to a sane default when unit extents can't be measured.
+   */
+  #unitStride(symbolFqn: string, units: number[]): number {
+    if (units.length <= 1) return 0;
+
+    let width = 0;
+    for (const unit of units) {
+      const box = this.symbolManager.getUnitBoundingBox(symbolFqn, unit);
+      if (box) {
+        width = Math.max(width, box.maxX - box.minX);
+      }
+    }
+    const stride = width + 2 * GRID_UNIT_MM;
+    return Math.max(GRID_UNIT_MM, GRID_UNIT_MM * Math.ceil(stride / GRID_UNIT_MM));
   }
 
   getAbsolutePinCoordinates(component: RenderableSymbol, pin: Pin): [number, number] | null {
@@ -158,10 +222,16 @@ export class KiCADSchematic {
       return null;
     }
 
+    // Pins of a multi-unit symbol resolve against the owning unit's placed
+    // instance; anything unknown falls back to the component position
+    // (single-unit symbols, or nets seen before the component was placed).
+    const unit = pinLocation.unit ?? 1;
+    const unitOrigin = this.#unitOrigins.get(component.reference ?? '')?.get(unit);
+
     const { x: relX, y: relY } = pinLocation;
     const rotation = component.sch.rotation ?? 0;
-    const compX = component.sch.x;
-    const compY = component.sch.y;
+    const compX = unitOrigin?.x ?? component.sch.x;
+    const compY = unitOrigin?.y ?? component.sch.y;
 
     const angleRad = (rotation * Math.PI) / 180;
     const cosA = Math.cos(angleRad);
@@ -343,9 +413,9 @@ export class KiCADSchematic {
           sch: { x: firstPinX, y: firstPinY, rotation: 0 },
         };
 
-        const symbolStr = this.update(pwrComp);
-        if (symbolStr) {
-          this.symbols.push(symbolStr);
+        const symbolStrs = this.update(pwrComp);
+        if (symbolStrs) {
+          this.symbols.push(...symbolStrs);
         }
       }
 
@@ -363,9 +433,9 @@ export class KiCADSchematic {
         sch: { x: flgX, y: flgY, rotation: flgRotation },
       };
 
-      const flagStr = this.update(flgComp);
-      if (flagStr) {
-        this.symbols.push(flagStr);
+      const flagStrs = this.update(flgComp);
+      if (flagStrs) {
+        this.symbols.push(...flagStrs);
       }
 
       const flgPin = new Pin(flgRef, '1');

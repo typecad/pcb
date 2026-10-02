@@ -20,6 +20,8 @@ export interface PinLocation {
   x: number;
   y: number;
   angle: number;
+  /** 1-based unit the pin belongs to (multi-unit symbols); defaults to 1. */
+  unit?: number;
 }
 
 export interface BoundingBox {

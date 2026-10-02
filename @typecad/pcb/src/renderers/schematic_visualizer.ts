@@ -48,7 +48,7 @@ export function schematic(schematicData: Schematic): boolean {
     if (component.symbol) {
       const symbolInstanceData = kicad.update(component);
       if (symbolInstanceData) {
-        kicad.symbols.push(symbolInstanceData);
+        kicad.symbols.push(...symbolInstanceData);
       } else {
         logWarning(`Skipping symbol instance for ${displayName(component)} due to previous errors.`);
       }

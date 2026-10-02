@@ -16,17 +16,22 @@ vi.mock('../../src/sexpr/index.js', () => ({
   Sym: { isSym: mockIsSym },
 }));
 
-const { mockGetSymbolDefinition, mockGetPinLocation, mockHasSymbol } = vi.hoisted(() => ({
-  mockGetSymbolDefinition: vi.fn(),
-  mockGetPinLocation: vi.fn(),
-  mockHasSymbol: vi.fn(),
-}));
+const { mockGetSymbolDefinition, mockGetPinLocation, mockHasSymbol, mockGetUnitLayout, mockGetUnitBoundingBox } =
+  vi.hoisted(() => ({
+    mockGetSymbolDefinition: vi.fn(),
+    mockGetPinLocation: vi.fn(),
+    mockHasSymbol: vi.fn(),
+    mockGetUnitLayout: vi.fn(),
+    mockGetUnitBoundingBox: vi.fn(),
+  }));
 
 vi.mock('../../src/symbol_library_manager.js', () => ({
   SymbolLibraryManager: vi.fn(() => ({
     getSymbolDefinition: mockGetSymbolDefinition,
     getPinLocation: mockGetPinLocation,
     hasSymbol: mockHasSymbol,
+    getUnitLayout: mockGetUnitLayout,
+    getUnitBoundingBox: mockGetUnitBoundingBox,
   })),
 }));
 
@@ -96,10 +101,15 @@ describe('KiCADSchematic', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    // Single-unit shape by default — individual tests override for multi-unit.
+    mockGetUnitLayout.mockReturnValue({ count: 1, unitsWithPins: [1] });
+    mockGetUnitBoundingBox.mockReturnValue(null);
     const mockManager = {
       getSymbolDefinition: mockGetSymbolDefinition,
       getPinLocation: mockGetPinLocation,
       hasSymbol: mockHasSymbol,
+      getUnitLayout: mockGetUnitLayout,
+      getUnitBoundingBox: mockGetUnitBoundingBox,
     };
     schematic = new KiCADSchematic(mockManager as any);
   });
@@ -208,6 +218,66 @@ describe('KiCADSchematic', () => {
       });
       schematic.update(makeComp({ reference: '' }));
       expect(mockLogWarning).toHaveBeenCalledWith(expect.stringContaining('missing a reference'));
+    });
+  });
+
+  describe('multi-unit symbols', () => {
+    it('should place one instance per unit, sharing the reference', () => {
+      mockGetSymbolDefinition.mockReturnValue({ serializedLibEntry: '(lib_symbols ...)', rawSexpr: [] });
+      mockGetUnitLayout.mockReturnValue({ count: 3, unitsWithPins: [1, 2, 3] });
+      mockGetUnitBoundingBox.mockReturnValue({ minX: -7.62, minY: -5.08, maxX: 7.62, maxY: 5.08 });
+
+      const result = schematic.update(makeComp({ symbol: 'Analog_Switch:TS3A24159DRC', reference: 'U3' }));
+      expect(result).toHaveLength(3);
+      for (const instance of result!) {
+        expect(instance).toContain('(lib_id Analog_Switch:TS3A24159DRC)');
+        expect(instance).toContain('U3');
+      }
+      // Unit 1 carries no top-level (unit ...) field — KiCad's own writer
+      // records it only past the first unit. (The mocked serializer flattens
+      // nested nodes, so only top-level tokens are countable here.)
+      const unitTokens = (str: string) => (str.match(/\(unit/g) ?? []).length;
+      expect(unitTokens(result![0])).toBe(0);
+      expect(unitTokens(result![1])).toBe(1);
+      expect(unitTokens(result![2])).toBe(1);
+    });
+
+    it('should place only units that carry pins', () => {
+      mockGetSymbolDefinition.mockReturnValue({ serializedLibEntry: '(lib_symbols ...)', rawSexpr: [] });
+      mockGetUnitLayout.mockReturnValue({ count: 3, unitsWithPins: [1, 2] });
+
+      const result = schematic.update(makeComp({ reference: 'U1' }));
+      expect(result).toHaveLength(2);
+    });
+
+    it('should resolve identical pin offsets on different units to different points', () => {
+      // The reported bug: unit 2's pin 7 shared local coordinates with unit
+      // 1's pin 5, so both nets' labels stacked on the one drawn switch and
+      // merged in ERC. With per-unit instances the pins must separate.
+      mockGetSymbolDefinition.mockReturnValue({ serializedLibEntry: '(lib_symbols ...)', rawSexpr: [] });
+      mockGetUnitLayout.mockReturnValue({ count: 2, unitsWithPins: [1, 2] });
+      mockGetUnitBoundingBox.mockReturnValue({ minX: -7.62, minY: -5.08, maxX: 7.62, maxY: 5.08 });
+
+      const comp = makeComp({ reference: 'U3', sch: { x: 10.16, y: 20.32, rotation: 0 } });
+      schematic.update(comp);
+
+      const local = { x: 7.62, y: -2.54, angle: 0 };
+      mockGetPinLocation.mockReturnValue({ ...local, unit: 1 });
+      const unit1Pin = schematic.getAbsolutePinCoordinates(comp, { number: 2 } as any);
+      mockGetPinLocation.mockReturnValue({ ...local, unit: 2 });
+      const unit2Pin = schematic.getAbsolutePinCoordinates(comp, { number: 7 } as any);
+
+      // stride = 15.24 width + 2 grids margin = 20.32; unit 2 sits that far right.
+      expect(unit1Pin).toEqual([17.78, 22.86]);
+      expect(unit2Pin).toEqual([38.1, 22.86]);
+      expect(unit1Pin).not.toEqual(unit2Pin);
+    });
+
+    it('should fall back to the component position for unknown units or unplaced components', () => {
+      mockGetPinLocation.mockReturnValue({ x: 5.08, y: 0, angle: 0, unit: 3 });
+      const comp = makeComp({ sch: { x: 10, y: 20, rotation: 0 } });
+      // Component never ran through update() — no unit origins recorded.
+      expect(schematic.getAbsolutePinCoordinates(comp, { number: 1 } as any)).toEqual([15.24, 20.32]);
     });
   });
 

@@ -8,6 +8,8 @@ import {
   normalizeFootprintRef,
   extractPins,
   resolveExtends,
+  unitIndexOf,
+  unitSubSymbols,
 } from '../src/symbol_core.js';
 
 const LIB = `(kicad_symbol_lib
@@ -88,24 +90,24 @@ describe('extractPins', () => {
   it('extracts unit pins in document order', () => {
     const r = findSymbolNode(nodes, 'R')!;
     expect(extractPins(r)).toEqual([
-      { type: 'passive', name: '~', number: '1', hidden: false, at: { x: -3.81, y: 0, angle: 0 } },
-      { type: 'passive', name: '~', number: '2', hidden: false, at: { x: 3.81, y: 0, angle: 180 } },
+      { type: 'passive', name: '~', number: '1', hidden: false, at: { x: -3.81, y: 0, angle: 0 }, unit: 1 },
+      { type: 'passive', name: '~', number: '2', hidden: false, at: { x: 3.81, y: 0, angle: 180 }, unit: 1 },
     ]);
   });
 
   it('extracts pins from every unit and marks hidden pins', () => {
     const u = findSymbolNode(nodes, 'U')!;
     expect(extractPins(u)).toEqual([
-      { type: 'power_in', name: 'VCC', number: '1', hidden: false, at: { x: 0, y: 0, angle: 0 } },
-      { type: 'power_in', name: 'GND', number: '8', hidden: false, at: { x: 0, y: 5.08, angle: 0 } },
-      { type: 'input', name: 'GND', number: '9', hidden: true, at: { x: 5.08, y: 0, angle: 0 } },
+      { type: 'power_in', name: 'VCC', number: '1', hidden: false, at: { x: 0, y: 0, angle: 0 }, unit: 1 },
+      { type: 'power_in', name: 'GND', number: '8', hidden: false, at: { x: 0, y: 5.08, angle: 0 }, unit: 1 },
+      { type: 'input', name: 'GND', number: '9', hidden: true, at: { x: 5.08, y: 0, angle: 0 }, unit: 2 },
     ]);
   });
 
   it('recurses into arbitrary unit nesting depth', () => {
     const nested = findSymbolNode(nodes, 'Nested')!;
     expect(extractPins(nested)).toEqual([
-      { type: 'output', name: 'Q', number: '3', hidden: false, at: { x: 0, y: 0, angle: 0 } },
+      { type: 'output', name: 'Q', number: '3', hidden: false, at: { x: 0, y: 0, angle: 0 }, unit: 1 },
     ]);
   });
 
@@ -118,7 +120,44 @@ describe('extractPins', () => {
   it('finds pins hanging directly on the symbol node', () => {
     const sym = parseSymbolLibrary(`(kicad_symbol_lib (symbol "D" (pin passive line (name "X") (number "1"))))`);
     const d = findSymbolNode(sym, 'D')!;
-    expect(extractPins(d)).toEqual([{ type: 'passive', name: 'X', number: '1', hidden: false, at: null }]);
+    expect(extractPins(d)).toEqual([{ type: 'passive', name: 'X', number: '1', hidden: false, at: null, unit: 1 }]);
+  });
+
+  it('reports unit 0 (common-to-all-units) pins as unit 1', () => {
+    const sym = parseSymbolLibrary(`(kicad_symbol_lib
+      (symbol "C"
+        (symbol "C_0_1" (pin passive line (at 0 -5.08 90) (length 2.54) (name "~") (number "99")))
+        (symbol "C_1_1" (pin passive line (at -5.08 0 0) (length 2.54) (name "~") (number "1")))
+      )
+    )`);
+    const c = findSymbolNode(sym, 'C')!;
+    expect(extractPins(c).map((pin) => [pin.number, pin.unit])).toEqual([
+      ['99', 1],
+      ['1', 1],
+    ]);
+  });
+});
+
+describe('unitIndexOf / unitSubSymbols', () => {
+  it('parses the unit index from Name_unit_style sub-symbol names', () => {
+    expect(unitIndexOf('TS3A24159DRC_2_1')).toBe(2);
+    expect(unitIndexOf('U_10_2')).toBe(10);
+    expect(unitIndexOf('R')).toBeUndefined();
+    expect(unitIndexOf('Opamp_1')).toBeUndefined();
+  });
+
+  it('groups unit sub-symbols by raw unit index, keeping unit 0 separate', () => {
+    const u = findSymbolNode(nodes, 'U')!;
+    const units = unitSubSymbols(u);
+    expect([...units.keys()]).toEqual([1, 2]);
+    expect(String(units.get(1)![0][1])).toBe('U_1_1');
+
+    const single = findSymbolNode(nodes, 'R')!;
+    expect([...unitSubSymbols(single).keys()]).toEqual([1]);
+
+    // No unit sub-symbols at all — direct-pin symbols stay empty.
+    const sym = parseSymbolLibrary(`(kicad_symbol_lib (symbol "D" (pin passive line (name "X") (number "1"))))`);
+    expect(unitSubSymbols(findSymbolNode(sym, 'D')!).size).toBe(0);
   });
 });
 

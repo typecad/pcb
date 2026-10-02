@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 import chalk from 'chalk';
 import { findExecutable, KiCAD, libraryRoots } from '../../../kicad.js';
+import { parserSelfTest } from '../../../kicad2typecad/safety.js';
 import type { ParsedArgs } from '../parser.js';
 import logger from '../../../utils/logging.js';
 import { getBuildDir } from '../../../utils/constants.js';
@@ -541,11 +542,24 @@ function printResults(results: CheckResult[]): void {
   }
 }
 
+/** The import round-trip depends on the TS-capable source parser. */
+function checkSourceParser(): CheckResult {
+  const selfTest = parserSelfTest();
+  return {
+    name: 'source parser (acorn-typescript)',
+    passed: selfTest.ok,
+    message: selfTest.detail,
+    fixHint: selfTest.ok ? undefined : 'The import --apply round-trip cannot analyze TypeScript without it.',
+    fixCommand: selfTest.ok ? undefined : 'npm install acorn-typescript',
+  };
+}
+
 export async function run(parsed: ParsedArgs): Promise<void> {
   const fix = parsed.args['fix'] === true;
   const json = parsed.json;
 
   const results: CheckResult[] = [
+    checkSourceParser(),
     checkNodeVersion(),
     checkNpm(),
     checkPackageJson(),

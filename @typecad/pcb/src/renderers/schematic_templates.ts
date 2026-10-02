@@ -1,4 +1,5 @@
 import { escapeSexprString } from '../sexpr/escape.js';
+import { GENERATOR_NAME, generatorVersion } from '../utils/generator_identity.js';
 
 export function renderSchematic(data: {
   uuid: string;
@@ -9,8 +10,8 @@ export function renderSchematic(data: {
 }): string {
   return `(kicad_sch
 	(version 20250114)
-	(generator "typecad")
-	(generator_version "0.1.0")
+	(generator "${GENERATOR_NAME}")
+	(generator_version "${generatorVersion()}")
 	(paper "A4")
     (uuid "${data.uuid}")
 

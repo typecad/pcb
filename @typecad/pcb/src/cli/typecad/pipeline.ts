@@ -81,6 +81,23 @@ export function findBuildFile(extension: string): string | null {
 }
 
 /**
+ * The project's schematic. The build manifest names the project's board and
+ * the schematic shares its stem, so stray schematics left in build/ by other
+ * projects can't hide it — a bare directory scan finds several and picks
+ * nothing. Without a manifest-anchored board, the lone .kicad_sch wins;
+ * ambiguity stays null.
+ */
+export function findSchematicFile(): string | null {
+  const board = findBoardFile();
+  if (board) {
+    const sch = board.slice(0, -'.kicad_pcb'.length) + '.kicad_sch';
+    if (fs.existsSync(sch)) return sch;
+  }
+  const files = findBuildFiles('.kicad_sch');
+  return files.length === 1 ? files[0]! : null;
+}
+
+/**
  * The project's compiled board. The build's own manifest (.typecad-board.json,
  * written beside the board) is the truth — a renamed board is found at once
  * and a leftover under the previous name can never shadow it. Without a
@@ -91,9 +108,9 @@ export function findBuildFile(extension: string): string | null {
  */
 export function findBoardFile(): string | null {
   try {
-    const manifest = JSON.parse(
-      fs.readFileSync(path.join(buildDirPath(), '.typecad-board.json'), 'utf8'),
-    ) as { board?: unknown };
+    const manifest = JSON.parse(fs.readFileSync(path.join(buildDirPath(), '.typecad-board.json'), 'utf8')) as {
+      board?: unknown;
+    };
     if (typeof manifest.board === 'string' && manifest.board.endsWith('.kicad_pcb')) {
       const manifestBoard = path.join(buildDirPath(), manifest.board);
       if (fs.existsSync(manifestBoard)) return manifestBoard;
@@ -106,7 +123,10 @@ export function findBoardFile(): string | null {
   const byNewest = files.map((f) => ({ f, m: fs.statSync(f).mtimeMs })).sort((a, b) => b.m - a.m);
   try {
     const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8')) as { name?: string };
-    const stem = String(pkg.name ?? '').replace(/-hw$/, '').replace(/[.-]/g, '_').toLowerCase();
+    const stem = String(pkg.name ?? '')
+      .replace(/-hw$/, '')
+      .replace(/[.-]/g, '_')
+      .toLowerCase();
     const own = byNewest.find((e) => path.basename(e.f, '.kicad_pcb').toLowerCase() === stem);
     if (own) return own.f;
   } catch {

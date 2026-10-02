@@ -71,6 +71,11 @@ export class SourceRewriter {
         const newSide = fp.side || 'front';
         const effectiveOldSide = oldSide || 'front';
         const hasSourceCoords = oldX !== null || oldY !== null;
+        // A class-field component with no pcb assignment and no inline prop
+        // has no legal insertion point for `this.x.pcb = ...` (inside the
+        // class body) — skip so the pending list converges; existing
+        // assignments and inline props still update.
+        if (!pcbAssignment && !component.inlinePcb && component.isClassField) continue;
         // An unset rotation prop means 0, and KiCad normalizes angles into
         // [0, 360) while sources can say -90 — compare modulo 360.
         const positionDiffers =
@@ -151,6 +156,11 @@ export class SourceRewriter {
             loc.isThis,
             layoutType,
           );
+
+          // A class-field component without an existing layout assignment has
+          // no legal insertion point (the statement would land inside the
+          // class body) — skip so the pending list converges.
+          if (sourceLayout === null && component.isClassField) continue;
 
           const diff = this.computeLayoutDiff(sourceLayout, irLayout);
           if (diff.length === 0) continue;
@@ -266,6 +276,11 @@ export class SourceRewriter {
             const inlineProps = inlineProp.value as Record<string, import('./source_analyzer.js').PropertyValue>;
             applyLayoutPropsToReplacements(replacements, inlineProp.range, inlineProps, change.newLayout);
           } else {
+            // A class-field component has no legal spot for an inserted
+            // `this.x.layout = ...` statement (it would land inside the class
+            // body); only existing assignments and inline props update.
+            if (component.isClassField) continue;
+
             let source: string;
             try {
               source = fs.readFileSync(filePath, 'utf-8');
@@ -346,7 +361,17 @@ export class SourceRewriter {
         const justifyVal = props['justify']?.value;
         let justify: { horizontal?: string; vertical?: string; mirror?: boolean } | undefined;
         if (justifyVal && typeof justifyVal === 'object') {
-          justify = justifyVal as { horizontal?: string; vertical?: string; mirror?: boolean };
+          // extractValue returns PropertyValue records for nested object
+          // literals — unwrap so the comparison sees the plain values the
+          // parsed board justify carries.
+          const rec = justifyVal as Record<string, { value?: unknown } | unknown>;
+          const unwrap = (v: unknown) =>
+            v && typeof v === 'object' && 'value' in (v as object) ? (v as { value: unknown }).value : v;
+          justify = {
+            horizontal: unwrap(rec['horizontal']) as string | undefined,
+            vertical: unwrap(rec['vertical']) as string | undefined,
+            mirror: unwrap(rec['mirror']) === true,
+          };
         }
 
         sourceCalls.push({
@@ -373,24 +398,36 @@ export class SourceRewriter {
     if (sourceCalls.length === 0) return [];
 
     const matchedSourceIdxs = new Set<number>();
-    const matchedPcbTexts = new Set<string>();
+    const matchedPcbIdxs = new Set<number>();
     const pairs: { source: SourceTextCall; pcb: KicadTextIR }[] = [];
 
+    // Pair source calls to board texts. Boards routinely carry duplicate
+    // labels (two GNDs, two X marks), so among textually-matching candidates
+    // the positionally closest unpaired one wins — otherwise the second
+    // "GND" would pair against the wrong instance and its position update
+    // would teleport the text across the board.
     for (let si = 0; si < sourceCalls.length; si++) {
       const src = sourceCalls[si];
-      for (const t of ir.textElements) {
-        if (matchedPcbTexts.has(t.text)) continue;
-        if (textFuzzyMatch(src.sourceText, t.text)) {
-          pairs.push({ source: src, pcb: t });
-          matchedSourceIdxs.add(si);
-          matchedPcbTexts.add(t.text);
-          break;
+      let bestDist = Infinity;
+      let bestBi = -1;
+      for (let bi = 0; bi < ir.textElements.length; bi++) {
+        if (matchedPcbIdxs.has(bi)) continue;
+        if (!textFuzzyMatch(src.sourceText, ir.textElements[bi].text)) continue;
+        const dist = Math.hypot(src.x - ir.textElements[bi].x, src.y - ir.textElements[bi].y);
+        if (dist < bestDist) {
+          bestDist = dist;
+          bestBi = bi;
         }
+      }
+      if (bestBi !== -1) {
+        pairs.push({ source: src, pcb: ir.textElements[bestBi] });
+        matchedSourceIdxs.add(si);
+        matchedPcbIdxs.add(bestBi);
       }
     }
 
     const unmatchedSource = sourceCalls.filter((_, i) => !matchedSourceIdxs.has(i));
-    const unmatchedPcb = ir.textElements.filter((t) => !matchedPcbTexts.has(t.text));
+    const unmatchedPcb = ir.textElements.filter((_, i) => !matchedPcbIdxs.has(i));
 
     if (unmatchedSource.length > 0 && unmatchedPcb.length > 0) {
       const usedPcb = new Set<number>();
@@ -541,6 +578,11 @@ export class SourceRewriter {
         } else if (component.inlinePcb) {
           planPcbPropReplacements(replacements, source, component.inlinePcb.range, component.inlinePcb.props, change);
         } else {
+          // Class-field components have no legal spot for an inserted
+          // `this.x.pcb = ...` statement (inside the class body); skip rather
+          // than corrupt — existing assignments and inline props still update.
+          if (component.isClassField) continue;
+
           const insertPos = component.creationRange.end;
           const lineStart = source.lastIndexOf('\n', component.creationRange.start - 1);
           const indent = lineStart >= 0 ? source.slice(lineStart + 1).match(/^(\s*)/)?.[1] || '' : '';
@@ -579,7 +621,10 @@ export class SourceRewriter {
       const replacements: Replacement[] = [];
 
       for (const change of fileChanges) {
-        const tc = textCallInfos.find((t) => t.text === change.sourceTextContent);
+        // Match on text AND source line: boards routinely carry duplicate
+        // labels (two GNDs), and a text-only match would rewrite the first
+        // call for every change.
+        const tc = textCallInfos.find((t) => t.text === change.sourceTextContent && t.line - 1 === change.lineIdx);
         if (!tc) continue;
 
         const props = tc.props;
@@ -726,7 +771,7 @@ function planPcbPropReplacements(
   });
 }
 
-function textFuzzyMatch(sourceText: string, pcbText: string): boolean {
+export function textFuzzyMatch(sourceText: string, pcbText: string): boolean {
   if (sourceText === pcbText) return true;
   if (pcbText.startsWith(sourceText) || sourceText.startsWith(pcbText)) return true;
   if (pcbText.includes(sourceText) || sourceText.includes(pcbText)) return true;

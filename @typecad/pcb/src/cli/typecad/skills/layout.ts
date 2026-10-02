@@ -11,7 +11,7 @@ export const layoutSkills: Skill[] = [
     examples: [
       {
         title: 'Basic track',
-        code: `let track: TrackBuilder = pcb
+        code: `const track: TrackBuilder = pcb
   .track()
   .from({ x: 10, y: 10 }, 'F.Cu', 0.25)
   .to({ x: 20, y: 10 })
@@ -19,7 +19,7 @@ export const layoutSkills: Skill[] = [
       },
       {
         title: 'Track with via and layer change',
-        code: `let power_track = pcb
+        code: `const power_track = pcb
   .track()
   .powerInfo({ current: 1.0, maxTempRise: 10, thickness: 35 })
   .from({ x: 100, y: 100 }, 'F.Cu', 0.5)
@@ -29,8 +29,8 @@ export const layoutSkills: Skill[] = [
       },
       {
         title: 'Track in a group',
-        code: `let t1 = pcb.track().from({ x: 0, y: 0 }, 'F.Cu', 0.2).to({ x: 10, y: 10 });
-let t2 = pcb.track().from({ x: 10, y: 10 }, 'F.Cu', 0.2).to({ x: 20, y: 10 });
+        code: `const t1 = pcb.track().from({ x: 0, y: 0 }, 'F.Cu', 0.2).to({ x: 10, y: 10 });
+const t2 = pcb.track().from({ x: 10, y: 10 }, 'F.Cu', 0.2).to({ x: 20, y: 10 });
 
 pcb.group('routing_group', t1, t2);
 pcb.create();`,

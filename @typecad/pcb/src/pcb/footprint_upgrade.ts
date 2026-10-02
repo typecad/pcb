@@ -29,6 +29,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { parse, serialize, Sym } from '../sexpr/index.js';
+import { GENERATOR_NAME, generatorVersion } from '../utils/generator_identity.js';
 import type { SExpr } from '../sexpr/index.js';
 
 /** The format version this writer emits — matches the board writer's stamp. */
@@ -103,12 +104,7 @@ function quoteFirstValue(node: List): List {
 function migrateText(node: List, kind: string): { property?: List; userText?: List } {
   // easyeda2kicad-era files write the text (and layer) as bare symbols
   const rawText = node[2];
-  const raw =
-    typeof rawText === 'string'
-      ? rawText
-      : Sym.isSym(rawText)
-        ? rawText.name
-        : String(rawText ?? '');
+  const raw = typeof rawText === 'string' ? rawText : Sym.isSym(rawText) ? rawText.name : String(rawText ?? '');
   // KiCad migrated the legacy %R/%V variables to ${REFERENCE}/${VALUE}
   const text = raw.replaceAll('%R', '${REFERENCE}').replaceAll('%V', '${VALUE}');
   const at = child(node, 'at');
@@ -119,9 +115,7 @@ function migrateText(node: List, kind: string): { property?: List; userText?: Li
 
   const body: List = [];
   if (at) {
-    body.push(
-      at.length >= 4 ? at : list('at', at[1], at[2] ?? num(0), at[3] ?? num(0)),
-    );
+    body.push(at.length >= 4 ? at : list('at', at[1], at[2] ?? num(0), at[3] ?? num(0)));
   }
   if (layer) body.push(quoteFirstValue(layer));
   if (hideList ?? bareHide) body.push(list('hide', Sym.for('yes')));
@@ -196,33 +190,18 @@ function canonicalPadLayers(tokens: string[]): string[] | null {
     }
   }
 
-  const coppers = [...set]
-    .filter(isCopper)
-    .sort((a, b) => {
-      const rank = (l: string): number =>
-        l === 'F.Cu' ? -1 : l === 'B.Cu' ? 999 : Number.parseInt(/^In(\d+)/.exec(l)![1], 10);
-      return rank(a) - rank(b);
-    });
+  const coppers = [...set].filter(isCopper).sort((a, b) => {
+    const rank = (l: string): number =>
+      l === 'F.Cu' ? -1 : l === 'B.Cu' ? 999 : Number.parseInt(/^In(\d+)/.exec(l)![1], 10);
+    return rank(a) - rank(b);
+  });
   if (coppers.length === 0) return null;
 
   const maskBoth = set.has('F.Mask') && set.has('B.Mask');
   const pasteBoth = set.has('F.Paste') && set.has('B.Paste');
-  const cuPart =
-    coppers.length === 2 && coppers[0] === 'F.Cu' && coppers[1] === 'B.Cu' ? ['*.Cu'] : coppers;
-  const maskPart = maskBoth
-    ? ['*.Mask']
-    : set.has('F.Mask')
-      ? ['F.Mask']
-      : set.has('B.Mask')
-        ? ['B.Mask']
-        : [];
-  const pastePart = pasteBoth
-    ? ['*.Paste']
-    : set.has('F.Paste')
-      ? ['F.Paste']
-      : set.has('B.Paste')
-        ? ['B.Paste']
-        : [];
+  const cuPart = coppers.length === 2 && coppers[0] === 'F.Cu' && coppers[1] === 'B.Cu' ? ['*.Cu'] : coppers;
+  const maskPart = maskBoth ? ['*.Mask'] : set.has('F.Mask') ? ['F.Mask'] : set.has('B.Mask') ? ['B.Mask'] : [];
+  const pastePart = pasteBoth ? ['*.Paste'] : set.has('F.Paste') ? ['F.Paste'] : set.has('B.Paste') ? ['B.Paste'] : [];
 
   // adhes/silk/… pad layers keep file order after the Cu/Mask/Paste trio
   const rest = [...new Set(tokens.filter((t) => !WILD.has(t) && !isCopper(t) && !isMask(t) && !isPaste(t)))];
@@ -345,9 +324,7 @@ export function migrateFootprintSource(source: string, fileStem: string): string
   const byName = new Map(properties.map((p) => [String(p[1] ?? ''), p]));
   const ordered: List[] = [];
   for (const name of STANDARD_PROPERTIES) {
-    ordered.push(
-      byName.get(name) ?? synthesizedProperty(name, name !== 'Value'),
-    );
+    ordered.push(byName.get(name) ?? synthesizedProperty(name, name !== 'Value'));
   }
   for (const p of properties) {
     if (!(STANDARD_PROPERTIES as readonly string[]).includes(String(p[1] ?? ''))) ordered.push(p);
@@ -355,7 +332,8 @@ export function migrateFootprintSource(source: string, fileStem: string): string
 
   const out: List = [Sym.for('footprint'), fileStem];
   out.push(list('version', num(FOOTPRINT_FORMAT_VERSION)));
-  out.push(list('generator', 'typecad'));
+  out.push(list('generator', GENERATOR_NAME));
+  out.push(list('generator_version', generatorVersion()));
   if (layerNode) out.push(layerNode);
   if (descrNode) out.push(descrNode);
   if (tagsNode) out.push(tagsNode);
@@ -433,10 +411,25 @@ export function upgradeFootprintLibrary(input: string, options: FootprintUpgrade
     try {
       const source = fs.readFileSync(file, 'utf8');
       const version = fileFormatVersion(source);
-      if (version !== null && version >= FOOTPRINT_FORMAT_VERSION && !options.force) {
+      // A current-format file that still carries one of OUR legacy identity
+      // stamps ('typecad', or an old un-versioned marker) is re-stamped —
+      // it was written by an older typeCAD build. Upstream KiCad footprints
+      // (kicad-footprint-generator etc.) are left untouched: they are not
+      // ours to claim.
+      const legacyOurs = /\(generator( |")("typecad"|typecad)\)/.test(source) && !source.includes(GENERATOR_NAME);
+      if (version !== null && version >= FOOTPRINT_FORMAT_VERSION && !options.force && !legacyOurs) {
         if (outDir) fs.copyFileSync(file, path.join(outDir, path.basename(file)));
         result.files.push({ file: path.basename(file), status: 'skipped-current' });
         result.skipped++;
+        continue;
+      }
+      if (legacyOurs && version !== null && version >= FOOTPRINT_FORMAT_VERSION && !options.force) {
+        // re-stamp only: keep content, rewrite identity
+        const target = outDir ? path.join(outDir, path.basename(file)) : file;
+        const restamped = migrateFootprintSource(source, stem);
+        fs.writeFileSync(target, restamped, 'utf8');
+        result.files.push({ file: path.basename(file), status: 'upgraded' });
+        result.upgraded++;
         continue;
       }
       const migrated = migrateFootprintSource(source, stem);

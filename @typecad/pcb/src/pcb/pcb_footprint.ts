@@ -342,6 +342,17 @@ export function processFootprintItem(
           padAtRaw[3] = componentRotation - padRotation;
         }
       }
+    } else {
+      // A pad without (at x y) is a malformed footprint file — KiCad places
+      // it at the footprint origin, which once silently collapsed every pad
+      // of a corrupted library footprint into one stacked square blob.
+      // Fail the build naming the file instead of shipping wrong copper.
+      throw new BoardCreationError(
+        `[${component.reference || component.constructor?.name || 'component'}] ` +
+          `pad ${padNumber || '(unnamed)'} of footprint ${component.footprint || '(unknown)'} ` +
+          `has no position ((at x y ...)); the footprint file is malformed — re-add it with: ` +
+          `typecad-pcb lib add --footprint ${component.footprint ?? ''}`,
+      );
     }
 
     const layersChild = sn.child('layers');
@@ -472,8 +483,7 @@ export function updateFootprintNode(
       if (child.name !== 'fp_text' && child.name !== 'property') continue;
       const atChild = child.child('at');
       if (!atChild) continue;
-      const base =
-        (typeof atChild.raw[3] === 'number' ? atChild.raw[3] : 0) - storedRot;
+      const base = (typeof atChild.raw[3] === 'number' ? atChild.raw[3] : 0) - storedRot;
       const composed = (base + component.pcb.rotation) % 360;
       if (atChild.raw.length > 3) atChild.raw[3] = composed;
       else atChild.raw.push(composed);

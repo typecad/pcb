@@ -19,14 +19,7 @@ import { projectGuid, TYPECAD_SOFTWARE } from './writer_utils.js';
 import { parse, SNode } from '../sexpr/index.js';
 import type { SExpr } from '../sexpr/index.js';
 import { GerberWriter, type Point } from './gerber_writer.js';
-import {
-  arcCenter,
-  atPoint,
-  g,
-  padShapeApertures,
-  scalar,
-  strings,
-} from './copper.js';
+import { arcCenter, atPoint, g, padShapeApertures, scalar, strings } from './copper.js';
 import { parseEffects, renderStrokeText } from './text.js';
 
 export interface LayerSpec {
@@ -123,11 +116,7 @@ function ptsOf(item: SNode): Point[] {
   return pts.children('xy').map((xy) => ({ x: scalar(xy, 1), y: scalar(xy, 2) }));
 }
 
-export function plotGraphicsLayersFromSource(
-  source: string,
-  boardPath: string,
-  opts: GraphicsPlotOptions,
-): string[] {
+export function plotGraphicsLayersFromSource(source: string, boardPath: string, opts: GraphicsPlotOptions): string[] {
   const root = SNode.from(parse(source) as SExpr[]);
   const stem = path.basename(boardPath).replace(/\.kicad_pcb$/, '');
   const guid = opts.projectGuid ?? projectGuid(stem);
@@ -191,13 +180,18 @@ function plotGraphicsLayer(w: GerberWriter, root: SNode, layer: LayerSpec): void
       // KiCad substitutes ${REFERENCE}/${VALUE} tokens at plot time (shown
       // text) — both in legacy fp_text items and properties
       const raw = item.name === 'property' ? String(item.raw[2] ?? '') : String(item.raw[2] ?? '');
-      const shown = raw
-        .replace(/\$\{REFERENCE\}/gi, refValue)
-        .replace(/\$\{VALUE\}/gi, valValue);
-      drawTextItem(w, item, layer.short.startsWith('B.'), (p) => ({
-        x: fpPos.x + p.x * c + p.y * s,
-        y: fpPos.y - p.x * s + p.y * c,
-      }), shown !== raw ? shown : undefined, true);
+      const shown = raw.replace(/\$\{REFERENCE\}/gi, refValue).replace(/\$\{VALUE\}/gi, valValue);
+      drawTextItem(
+        w,
+        item,
+        layer.short.startsWith('B.'),
+        (p) => ({
+          x: fpPos.x + p.x * c + p.y * s,
+          y: fpPos.y - p.x * s + p.y * c,
+        }),
+        shown !== raw ? shown : undefined,
+        true,
+      );
     }
   }
   for (const fp of root.children('footprint')) {
@@ -238,10 +232,13 @@ function plotGraphicsLayer(w: GerberWriter, root: SNode, layer: LayerSpec): void
       const s = Math.sin((fpRot * Math.PI) / 180);
       let flashed = false;
       for (const pad of fp.children('pad')) {
-        const padLayers = strings(pad.child('layers') ?? fp.child('layers')!);
+        const padLayersNode = pad.child('layers') ?? fp.child('layers');
+        if (!padLayersNode) continue;
+        const padLayers = strings(padLayersNode);
         const matches = padLayers.some((l) => l === padToken || l === `*.${kind}` || l === '*');
         if (!matches) continue;
-        const padAt = pad.child('at')!;
+        const padAt = pad.child('at');
+        if (!padAt) continue;
         const local = atPoint(padAt);
         const angle = scalar(padAt, 3, 0);
         const world = {
@@ -261,7 +258,6 @@ function plotGraphicsLayer(w: GerberWriter, root: SNode, layer: LayerSpec): void
   }
 }
 
-
 /**
  * KiCad's filled-poly rings (stroke AND region) start at the highest
  * board-frame vertex, tie-broken by max x (observed on both fixtures;
@@ -271,8 +267,7 @@ function ringFromTop(pts: Point[]): Point[] {
   if (pts.length < 2) return pts;
   // KiCad's SHAPE_LINE_CHAIN drops a repeated closing vertex
   let p = pts;
-  if (p.length > 1 && p[0]!.x === p[p.length - 1]!.x && p[0]!.y === p[p.length - 1]!.y)
-    p = p.slice(0, -1);
+  if (p.length > 1 && p[0]!.x === p[p.length - 1]!.x && p[0]!.y === p[p.length - 1]!.y) p = p.slice(0, -1);
   pts = p;
   let best = 0;
   for (let i = 1; i < pts.length; i++) {
@@ -403,8 +398,6 @@ function drawGraphicItem(w: GerberWriter, item: SNode, opts: DrawOpts): void {
   }
 }
 
-
-
 /**
  * Render a text item (gr_text / fp_text / footprint property). TTF texts
  * (effects font face) are skipped — outline-font rendering isn't implemented
@@ -448,9 +441,7 @@ function drawTextItem(
   }
   // raw layouts differ: gr_text [token, TEXT, at…], property [token, key,
   // VALUE, at…], fp_text [token, type, TEXT, at…]
-  const text =
-    textOverride ??
-    (item.name === 'gr_text' ? String(item.raw[1] ?? '') : String(item.raw[2] ?? ''));
+  const text = textOverride ?? (item.name === 'gr_text' ? String(item.raw[1] ?? '') : String(item.raw[2] ?? ''));
   const at = item.child('at');
   if (!at || !text) return;
   const world = map({ x: scalar(at, 1, 0), y: scalar(at, 2, 0) });

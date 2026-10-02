@@ -48,19 +48,25 @@ describe('DFM tier 1', () => {
     expect(ok.filter((v) => v.type === 'track_dangling')).toHaveLength(0);
   });
 
-  it('flags holes too close to the board edge', () => {
-    // NPTH centered 0.4mm from the edge line (min 0.5)
-    const vs = dfm(`
+  it('flags holes too close to the board edge (KiCad semantics: edge rule, copper_edge type)', () => {
+    // NPTH centered 0.4mm from the edge line (edge min 0.5)
+    const vs = dfm(
+      `
       ${EDGES}
       (footprint "T:X" (layer "F.Cu") (at 0.4 10)
-        (pad "" np_thru_hole circle (at 0 0) (size 1.2 1.2) (drill 1.2) (layers "*.Cu") (uuid "h1")))`);
-    expect(types(vs)).toContain('hole_edge_clearance');
+        (pad "" np_thru_hole circle (at 0 0) (size 1.2 1.2) (drill 1.2) (layers "*.Cu") (uuid "h1")))`,
+      { min_copper_edge_clearance: 0.5 },
+    );
+    expect(types(vs)).toContain('copper_edge_clearance');
     // centered 2mm from the edge: clean
-    const ok = dfm(`
+    const ok = dfm(
+      `
       ${EDGES}
       (footprint "T:X" (layer "F.Cu") (at 2 10)
-        (pad "" np_thru_hole circle (at 0 0) (size 1.2 1.2) (drill 1.2) (layers "*.Cu") (uuid "h1")))`);
-    expect(ok.filter((v) => v.type === 'hole_edge_clearance')).toHaveLength(0);
+        (pad "" np_thru_hole circle (at 0 0) (size 1.2 1.2) (drill 1.2) (layers "*.Cu") (uuid "h1")))`,
+      { min_copper_edge_clearance: 0.5 },
+    );
+    expect(ok.filter((v) => v.type === 'copper_edge_clearance')).toHaveLength(0);
   });
 
   it('flags drill aspect ratio above the plating limit', () => {
@@ -157,14 +163,14 @@ describe('DFM tier 1', () => {
       (footprint "T:X" (layer "F.Cu") (at 15 10)
         (pad "1" smd rect (at 0 0) (size 2 2) (layers "F.Cu" "F.Mask") (net 1) (uuid "p1")))
       (gr_line (start 10 10) (end 20 10) (layer "F.SilkS") (stroke (width 0.15) (type solid)) (uuid "s1"))`);
-    expect(types(vs)).toContain('silk_over_mask');
+    expect(types(vs)).toContain('silk_over_copper');
     // silk well clear of the pad: clean
     const ok = dfm(`
       ${EDGES}
       (footprint "T:X" (layer "F.Cu") (at 15 10)
         (pad "1" smd rect (at 0 0) (size 2 2) (layers "F.Cu" "F.Mask") (net 1) (uuid "p1")))
       (gr_line (start 10 16) (end 20 16) (layer "F.SilkS") (stroke (width 0.15) (type solid)) (uuid "s1"))`);
-    expect(ok.filter((v) => v.type === 'silk_over_mask')).toHaveLength(0);
+    expect(ok.filter((v) => v.type === 'silk_over_copper')).toHaveLength(0);
   });
 
   it('flags via-in-pad (same-net via centered inside an SMD pad)', () => {
@@ -201,11 +207,14 @@ describe('DFM tier 1', () => {
     const ar = vs.find((v) => v.type === 'drill_aspect_ratio')!;
     expect(ar.severity).toBe('warning');
     // conf severity overrides apply per check id
-    const promoted = dfm(`
+    const promoted = dfm(
+      `
       ${EDGES}
-      (via (at 15 10) (size 0.35) (drill 0.15) (layers "F.Cu" "B.Cu") (net 1) (uuid "v1"))`, {
-      severities: { drill_aspect_ratio: 'error' },
-    });
+      (via (at 15 10) (size 0.35) (drill 0.15) (layers "F.Cu" "B.Cu") (net 1) (uuid "v1"))`,
+      {
+        severities: { drill_aspect_ratio: 'error' },
+      },
+    );
     expect(promoted.find((v) => v.type === 'drill_aspect_ratio')!.severity).toBe('error');
   });
 });
@@ -213,24 +222,30 @@ describe('DFM tier 1', () => {
 describe('DFM tier 2', () => {
   it('flags copper slivers narrower than the fab minimum', () => {
     // a 0.08mm-wide custom-pad sliver between two healthy pads
-    const vs = dfm(`
+    const vs = dfm(
+      `
       ${EDGES}
       (footprint "T:A" (layer "F.Cu") (at 15 10)
         (pad "1" smd custom (at 0 0 0) (size 0.5 0.5) (layers "F.Cu") (net 1) (uuid "p1")
-          (primitives (gr_poly (pts (xy 0 -0.04) (xy 4 -0.04) (xy 4 0.04) (xy 0 0.04)) (width 0)))))`, {
-      copper_sliver_quiet: true,
-    });
+          (primitives (gr_poly (pts (xy 0 -0.04) (xy 4 -0.04) (xy 4 0.04) (xy 0 0.04)) (width 0)))))`,
+      {
+        copper_sliver_quiet: true,
+      },
+    );
     const sliver = vs.filter((v) => v.type === 'copper_sliver');
     expect(sliver.length).toBeGreaterThanOrEqual(1);
     expect(sliver[0]!.severity).toBe('warning');
     // healthy 0.3mm track is not a sliver
-    const ok = dfm(`
+    const ok = dfm(
+      `
       ${EDGES}
       (footprint "T:A" (layer "F.Cu") (at 15 10)
         (pad "1" smd rect (at 0 0) (size 1 1) (layers "F.Cu") (net 1) (uuid "p1")))
-      (segment (start 15 10) (end 20 10) (width 0.3) (layer "F.Cu") (net 1) (uuid "t1"))`, {
-      copper_sliver_quiet: true,
-    });
+      (segment (start 15 10) (end 20 10) (width 0.3) (layer "F.Cu") (net 1) (uuid "t1"))`,
+      {
+        copper_sliver_quiet: true,
+      },
+    );
     expect(ok.filter((v) => v.type === 'copper_sliver')).toHaveLength(0);
   });
 
@@ -261,20 +276,26 @@ describe('DFM tier 2', () => {
 
   it('flags solder mask web below the fab minimum between nearby pads', () => {
     // two SMD pads 0.05mm apart: web < 0.1
-    const vs = dfm(`
+    const vs = dfm(
+      `
       ${EDGES}
       (footprint "T:A" (layer "F.Cu") (at 10 10)
         (pad "1" smd rect (at 0 0) (size 1 1) (layers "F.Cu" "F.Mask") (net 1) (uuid "p1")))
       (footprint "T:B" (layer "F.Cu") (at 11.05 10)
-        (pad "1" smd rect (at 0 0) (size 1 1) (layers "F.Cu" "F.Mask") (net 2) (uuid "p2")))`);
+        (pad "1" smd rect (at 0 0) (size 1 1) (layers "F.Cu" "F.Mask") (net 2) (uuid "p2")))`,
+      { min_mask_web: 0.1 },
+    );
     expect(types(vs)).toContain('mask_web');
     // 0.5mm apart: healthy web
-    const ok = dfm(`
+    const ok = dfm(
+      `
       ${EDGES}
       (footprint "T:A" (layer "F.Cu") (at 10 10)
         (pad "1" smd rect (at 0 0) (size 1 1) (layers "F.Cu" "F.Mask") (net 1) (uuid "p1")))
       (footprint "T:B" (layer "F.Cu") (at 11.5 10)
-        (pad "1" smd rect (at 0 0) (size 1 1) (layers "F.Cu" "F.Mask") (net 2) (uuid "p2")))`);
+        (pad "1" smd rect (at 0 0) (size 1 1) (layers "F.Cu" "F.Mask") (net 2) (uuid "p2")))`,
+      { min_mask_web: 0.1 },
+    );
     expect(ok.filter((v) => v.type === 'mask_web')).toHaveLength(0);
   });
 

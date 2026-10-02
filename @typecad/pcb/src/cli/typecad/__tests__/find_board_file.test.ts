@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { findBoardFile } from '../pipeline.js';
+import { findBoardFile, findSchematicFile } from '../pipeline.js';
 
 let tmp: string;
 let previousBuildDir: string | undefined;
@@ -41,5 +41,34 @@ describe('findBoardFile', () => {
 
   it('returns null when the build dir has no boards', () => {
     expect(findBoardFile()).toBeNull();
+  });
+});
+
+describe('findSchematicFile', () => {
+  it('anchors on the manifest board stem when strays share build/', () => {
+    fs.writeFileSync(path.join(tmp, '.typecad-board.json'), '{"board":"mod-ec.kicad_pcb"}');
+    fs.writeFileSync(path.join(tmp, 'mod-ec.kicad_pcb'), '(kicad_pcb)');
+    fs.writeFileSync(path.join(tmp, 'mod-ec.kicad_sch'), '(kicad_sch)');
+    fs.writeFileSync(path.join(tmp, 'simple_board.kicad_sch'), '(kicad_sch)');
+    fs.writeFileSync(path.join(tmp, 'typecad_project.kicad_sch'), '(kicad_sch)');
+    expect(findSchematicFile()).toBe(path.join(tmp, 'mod-ec.kicad_sch'));
+  });
+
+  it('returns the lone schematic without a manifest', () => {
+    fs.writeFileSync(path.join(tmp, 'board.kicad_pcb'), '(kicad_pcb)');
+    fs.writeFileSync(path.join(tmp, 'board.kicad_sch'), '(kicad_sch)');
+    expect(findSchematicFile()).toBe(path.join(tmp, 'board.kicad_sch'));
+  });
+
+  it('falls back to the lone schematic when the board has none matching its stem', () => {
+    fs.writeFileSync(path.join(tmp, 'board.kicad_pcb'), '(kicad_pcb)');
+    fs.writeFileSync(path.join(tmp, 'other.kicad_sch'), '(kicad_sch)');
+    expect(findSchematicFile()).toBe(path.join(tmp, 'other.kicad_sch'));
+  });
+
+  it('returns null when several schematics exist and no board anchors the pick', () => {
+    fs.writeFileSync(path.join(tmp, 'a.kicad_sch'), '(kicad_sch)');
+    fs.writeFileSync(path.join(tmp, 'b.kicad_sch'), '(kicad_sch)');
+    expect(findSchematicFile()).toBeNull();
   });
 });

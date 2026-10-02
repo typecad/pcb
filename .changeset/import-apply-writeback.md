@@ -30,6 +30,74 @@ until they match the board. Existing layout assignments in source are
 updated as before; new ones are inserted for components without them
 (a layout identical to the unset default produces no change).
 
+- **Text section** — board text now round-trips instead of only updating
+  calls that already exist: `gr_text` elements with no matching
+  `typecad.text()` call are inserted (position, layer, size, thickness,
+  font, mirror/justify, `hide: true` all included), and source calls whose
+  text is no longer on the board are removed. Duplicate labels (two GNDs,
+  two X marks) pair position-aware, so an update never teleports the wrong
+  instance.
+- **Arc tracks** — KiCad's arc-shaped `(arc (start) (mid) (end))` tracks are
+  imported: they are tessellated into straight segments on the same
+  net/width/layer, so the copper follows the drawn path instead of
+  silently vanishing. Zone outline arcs already tessellated; zone-internal
+  arcs are not mistaken for tracks.
+- **Stackup depth** — the per-layer stackup detail (thickness, material,
+  epsilon_r, loss_tangent, color for copper/dielectric/mask/silk layers,
+  plus copper finish) is imported into the `typecad.stackup(N, { layers: … })`
+  options. Apply mode regenerates the call — including inserting it when
+  the source has none — so a rebuilt board's dielectric geometry matches
+  what KiCad had instead of the library preset.
+- **Board graphics on silk/user layers** — `gr_line`/`gr_rect`/
+  `gr_circle`/`gr_arc`/`gr_poly` outside Edge.Cuts import as
+  `pcb.line()/rect()/circle()/arc()/poly()` calls (v6 `width` and v7+
+  `stroke` forms both read; `fill` mapped). Apply mode pairs them
+  position-aware, regenerates moved/resized shapes, deletes ones removed
+  from the board, and appends new ones. Edge.Cuts items continue to feed
+  the outline and stay out of the graphics sync.
+- **Unsupported elements are reported against the file-format spec** — the
+  import now declares everything it leaves behind, with counts, instead of
+  dropping it quietly: dimensions; `bezier`/`gr_curve` curves (both the
+  v7+ and legacy tokens); images, `gr_bbox` and text boxes; the title
+  block; board-level properties; embedded font declarations;
+  footprint-embedded zones; per-footprint graphic edits (silk drawn in the
+  board editor); footprint user text annotations; and blind/buried vias
+  (imported as through vias — the standalone via API cannot express layer
+  spans yet).
+- **Stability fixes found by burn-in** — three ways the apply cycle could
+  fight itself or the project are gone: a bare `(justify)` element (KiCad's
+  default-alignment marker) parsed as an empty object and flagged phantom
+  justify changes forever; the source justify was compared as a raw
+  PropertyValue record against the board's plain object, flagging every
+  mirrored text on every run while writing back identical text; and a
+  source file that fails to parse (transient read race, editor mid-save
+  under `--watch`) was silently treated as absent, so components matched
+  into whichever file still parsed and positions/routing/text were written
+  there — the cycle now reports the unparseable files and skips entirely.
+- **Duplicate-label text sync (audit follow-up)** — the source analyzer
+  recorded every `typecad.text()` call twice (the statement handler and a
+  generic call visitor both fired), so on boards with duplicate labels
+  (two GNDs, two X marks) the surplus entries paired against the wrong
+  board text and the updater rewrote a call to its sibling's position —
+  silently collapsing distinct labels onto one spot over repeated
+  import/build cycles. Calls are now recorded once, updates match on text
+  AND source line, and regression tests pin both labels keeping their own
+  positions through a move. A missing-terminator bug in freshly inserted
+  `typecad.stackup(...)` statements was also fixed (the no-semicolon
+  compare text leaked into the insert path).
+- **Hand-written source patterns (audit follow-up)** — apply-mode write-back
+  now recognizes code the way users actually write it, not just the
+  generator's canonical shapes: zone geometry given as
+  `bounds: { left, top, width, height }`; fill settings written flat on the
+  options object (`thermalGap: …`) instead of grouped under `fill:`; outline
+  calls using the bounds-object argument (previously corrupted into
+  `outline(0, 0)`); class-field components (`private r1 = new Component(…)`),
+  which now match and update their inline props in place — and never get
+  `this.r1.pcb = …` statements inserted into the class body, which produced
+  unparseable source. Zone calls in any of these styles compare semantically
+  and are left untouched when they already match the board, so the importer
+  no longer rewrites hand-written style into canonical form just to
+  converge.
 - **Outline** — positional args of `typecad.outline(...)`/`outlineCircle(...)`
   update in place; fillet radii appear/disappear; polygon outlines and
   cutouts rewrite their point arrays; removed or added Edge.Cuts shapes
@@ -49,7 +117,8 @@ updated as before; new ones are inserted for components without them
   rails: statements with `powerInfo`/spreads/unknown builder calls, or
   non-contiguous routing regions, are left alone with an explanatory note;
   routing is only ever inserted into the single file that owns `create()` —
-  other project files with their own `create()` are never touched.
+  other project files with their own `create()` are never touched. Track
+  arrays are declared with `const` (they are only ever pushed to).
 - **create() track list hygiene** — older generated code passed track arrays
   as bare identifiers (`create(j1, track_VCC)`); when the board's net set
   changes, such a name can lose its declaration and crash the build

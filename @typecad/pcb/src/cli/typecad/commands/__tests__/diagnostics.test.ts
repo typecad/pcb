@@ -7,6 +7,7 @@ import type { ParsedArgs } from '../../parser.js';
 const runBuildStepMock = vi.fn();
 const findBuildFilesMock = vi.fn();
 const findBuildFileMock = vi.fn();
+const findSchematicFileMock = vi.fn();
 const detectEntryFileMock = vi.fn();
 const runErcStepMock = vi.fn();
 const runDrcStepMock = vi.fn();
@@ -15,6 +16,7 @@ vi.mock('../../pipeline.js', () => ({
   runBuildStep: (...args: unknown[]) => runBuildStepMock(...args),
   findBuildFiles: (...args: unknown[]) => findBuildFilesMock(...args),
   findBuildFile: (...args: unknown[]) => findBuildFileMock(...args),
+  findSchematicFile: () => findSchematicFileMock(),
   findBoardFile: () => null,
   detectEntryFile: (...args: unknown[]) => detectEntryFileMock(...args),
   runErcStep: (...args: unknown[]) => runErcStepMock(...args),
@@ -69,9 +71,8 @@ afterAll(() => {
 beforeEach(() => {
   runBuildStepMock.mockReset();
   findBuildFilesMock.mockReset().mockReturnValue([]);
-  findBuildFileMock
-    .mockReset()
-    .mockImplementation((ext: string) => (ext === '.net' || ext === '.kicad_sch' ? (ext === '.net' ? netPath : schPath) : null));
+  findBuildFileMock.mockReset().mockImplementation((ext: string) => (ext === '.net' ? netPath : null));
+  findSchematicFileMock.mockReset().mockReturnValue(schPath);
   detectEntryFileMock.mockReset().mockReturnValue(entryPath);
   runErcStepMock.mockReset();
   runDrcStepMock.mockReset();

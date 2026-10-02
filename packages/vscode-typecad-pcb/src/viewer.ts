@@ -19,7 +19,13 @@
 import * as vscode from 'vscode';
 import fs from 'node:fs';
 import path from 'node:path';
-import { injectProbeClient, type LabelEdit, type LayoutTextEdit, type ProbeHostMessage, type ProbeWebviewMessage } from './probeClient.js';
+import {
+  injectProbeClient,
+  type LabelEdit,
+  type LayoutTextEdit,
+  type ProbeHostMessage,
+  type ProbeWebviewMessage,
+} from './probeClient.js';
 import { backupRootLabel, writeBackup } from './sourceBackup.js';
 import { planLayoutApply } from './layoutApply.js';
 import { parsePlacementLiteral } from './layoutEdits.js';
@@ -106,6 +112,10 @@ export class BoardViewerPanel {
   /** Re-check after a skipped/failed refresh — the board's final write can
    *  coalesce into an in-flight generate and never fire the watcher again. */
   private retryTimer: NodeJS.Timeout | undefined;
+  /** Consecutive generate() failures — drives exponential retry backoff. */
+  private consecutiveFailures = 0;
+  /** Board mtime at the last failed generate: unchanged board must not retry. */
+  private lastFailedBoardMtime: number | undefined;
   /** One delayed re-run of show() while the board settles (first open only). */
   private showRetryTimer: NodeJS.Timeout | undefined;
   private generating: Promise<boolean> | null = null;
@@ -168,18 +178,23 @@ export class BoardViewerPanel {
     }
 
     if (!this.panel) {
-      const webviewPanels = vscode.window.createWebviewPanel('typecadBoardViewer', 'Board', {
-        viewColumn: vscode.ViewColumn.Beside,
-        preserveFocus: true,
-      }, {
-        enableScripts: true,
-        // The viewer page is heavy (every gerber layer inlined as SVG); a
-        // default webview is torn down when its tab hides, and re-showing
-        // reloads and re-renders the whole document — a multi-second blank
-        // tab on every switch back. Retaining the context makes the tab
-        // switch instant at the cost of keeping the DOM alive while hidden.
-        retainContextWhenHidden: true,
-      });
+      const webviewPanels = vscode.window.createWebviewPanel(
+        'typecadBoardViewer',
+        'Board',
+        {
+          viewColumn: vscode.ViewColumn.Beside,
+          preserveFocus: true,
+        },
+        {
+          enableScripts: true,
+          // The viewer page is heavy (every gerber layer inlined as SVG); a
+          // default webview is torn down when its tab hides, and re-showing
+          // reloads and re-renders the whole document — a multi-second blank
+          // tab on every switch back. Retaining the context makes the tab
+          // switch instant at the cost of keeping the DOM alive while hidden.
+          retainContextWhenHidden: true,
+        },
+      );
       this.bindPanel(webviewPanels);
       this.loadToken++;
       this.assignHtml();
@@ -258,9 +273,7 @@ export class BoardViewerPanel {
       const { html } = injectProbeClient(raw, components, nets, stamp);
       return { html, diskMtimeMs: mtimeOf(htmlPath) };
     } catch (err) {
-      this.output.appendLine(
-        `viewer page read failed: ${err instanceof Error ? err.message : String(err)}`,
-      );
+      this.output.appendLine(`viewer page read failed: ${err instanceof Error ? err.message : String(err)}`);
       return null;
     }
   }
@@ -372,7 +385,10 @@ export class BoardViewerPanel {
         this.output.appendLine(`select ${ref}: no ack — the viewer page may be missing the probe client`);
         // a click that does nothing is indistinguishable from a broken
         // command — say so in the window, not just the channel
-        vscode.window.setStatusBarMessage('typeCAD/pcb: the Board viewer page did not respond — try reopening it', 5000);
+        vscode.window.setStatusBarMessage(
+          'typeCAD/pcb: the Board viewer page did not respond — try reopening it',
+          5000,
+        );
       }
     };
     attempt();
@@ -411,12 +427,36 @@ export class BoardViewerPanel {
   }
 
   /** Re-check after a skipped/failed/stale refresh; default 10s, overridable. */
-  private armRetry(delayMs = 10_000): void {
+  private armRetry(delayMs = 10_000, force = false): void {
     if (this.retryTimer) clearTimeout(this.retryTimer);
     this.retryTimer = setTimeout(() => {
       this.retryTimer = undefined;
-      void this.doRefresh();
+      void this.doRefresh(force);
     }, delayMs);
+  }
+
+  /**
+   * Retry after a FAILED generate, with exponential backoff: a persistent
+   * error (a board state our exporter chokes on) retried every 4s would
+   * spin forever — each round re-runs the ~30s export pipeline and its
+   * kicad-cli board resave, which fires every watcher in the workspace
+   * (including a running `import --watch`), amplifying into a storm.
+   * 30s → 60s → 5min cap; a successful generate resets the ladder.
+   */
+  private armFailureRetry(boardMtimeMs: number | undefined): void {
+    this.consecutiveFailures++;
+    this.lastFailedBoardMtime = boardMtimeMs;
+    const delay = this.consecutiveFailures <= 1 ? 30_000 : this.consecutiveFailures === 2 ? 60_000 : 300_000;
+    this.output.appendLine(
+      `render failed (${this.consecutiveFailures} in a row) — retrying in ${delay / 1000}s; ` +
+        `a real board change retries immediately`,
+    );
+    this.armRetry(delay, true);
+  }
+
+  private clearFailureLadder(): void {
+    this.consecutiveFailures = 0;
+    this.lastFailedBoardMtime = undefined;
   }
 
   /** Show a notice in the viewer's lower-left status text (no-op w/o panel). */
@@ -425,7 +465,7 @@ export class BoardViewerPanel {
     void this.panel.webview.postMessage({ type: 'typecad/status', text } satisfies ProbeHostMessage);
   }
 
-  private async doRefresh(): Promise<void> {
+  private async doRefresh(force = false): Promise<void> {
     if (!this.panel) return;
     const folder = this.hwFolder();
     if (!folder) return;
@@ -433,6 +473,13 @@ export class BoardViewerPanel {
     // onChange loosely); the board's mtime against the last render decides
     // whether any work is warranted at all
     const board = newestBoardFile(folder);
+    // A previous generate failed against THIS exact board revision: a
+    // watcher event alone (the export pipeline touching build/) must not
+    // re-run the failing export — only a genuinely new board does, or the
+    // ladder's own scheduled retry.
+    if (!force && board && this.lastFailedBoardMtime === mtimeOf(board)) {
+      return;
+    }
     if (board && this.generated && mtimeOf(board) === this.generated.boardMtimeMs) {
       // board unchanged — still pick up a newer on-disk viewer page (a
       // viewer-tooling update regenerated it without touching the board);
@@ -450,11 +497,22 @@ export class BoardViewerPanel {
     // text — the reload when the new HTML lands resets the element
     this.postStatus('board changed — generating new render…');
     let generated = false;
+    let failed = false;
     try {
       generated = await this.generate(folder);
     } catch (err) {
+      failed = true;
       this.output.appendLine(`viewer refresh failed: ${err instanceof Error ? err.message : String(err)}`);
       this.postStatus('render failed — see the typeCAD/pcb output channel');
+    }
+    if (failed) {
+      // A THROWN generate is a real error, not a settle race: back off
+      // exponentially so a persistent failure cannot storm the workspace
+      // (each retry re-runs the export pipeline, whose kicad-cli board
+      // resave re-fires every watcher, including `import --watch`).
+      const boardNow = newestBoardFile(folder);
+      this.armFailureRetry(boardNow ? mtimeOf(boardNow) : undefined);
+      return;
     }
     if (!generated) {
       this.postStatus('board is mid-build — waiting for it to settle…');
@@ -464,6 +522,7 @@ export class BoardViewerPanel {
       this.armRetry(4_000);
       return;
     }
+    this.clearFailureLadder();
     // the export takes ~25-30s; the board may have been written again while
     // it ran. BUT kicad-cli itself creates/removes a project .lck file and
     // touches the build directory during the export — the resulting watcher
@@ -578,7 +637,9 @@ export class BoardViewerPanel {
       if (fs.existsSync(path.join(folder, drcRel))) {
         flags.push('--drc', shellQuote(drcRel));
         if (mtimeOf(path.join(folder, drcRel)) < mtimeOf(board)) {
-          this.output.appendLine('drc report predates the board — its markers describe the previous revision (run typeCAD: DRC to refresh)');
+          this.output.appendLine(
+            'drc report predates the board — its markers describe the previous revision (run typeCAD: DRC to refresh)',
+          );
         }
       }
       overlay('--stackup', `${boardName}_stackup.json`);
@@ -639,7 +700,15 @@ export class BoardViewerPanel {
    * are skipped and reported, never silently mangled.
    */
   private async onLayoutRebuild(
-    moves: Array<{ ref: string; dx: number; dy: number; rot?: number; pads?: Array<{ x: number; y: number }>; ax?: number; ay?: number }>,
+    moves: Array<{
+      ref: string;
+      dx: number;
+      dy: number;
+      rot?: number;
+      pads?: Array<{ x: number; y: number }>;
+      ax?: number;
+      ay?: number;
+    }>,
     texts?: LayoutTextEdit[],
     values?: Array<{ ref: string; value: string }>,
     labels?: LabelEdit[],
@@ -686,7 +755,15 @@ export class BoardViewerPanel {
   private async onLayoutRebuildInner(
     folder: string,
     fail: (error: string) => void,
-    moves: Array<{ ref: string; dx: number; dy: number; rot?: number; pads?: Array<{ x: number; y: number }>; ax?: number; ay?: number }>,
+    moves: Array<{
+      ref: string;
+      dx: number;
+      dy: number;
+      rot?: number;
+      pads?: Array<{ x: number; y: number }>;
+      ax?: number;
+      ay?: number;
+    }>,
     texts?: LayoutTextEdit[],
     values?: Array<{ ref: string; value: string }>,
     labels?: LabelEdit[],
@@ -750,14 +827,17 @@ export class BoardViewerPanel {
       for (const stage of plan.stages) {
         for (const batch of stage) {
           let out = dry.get(batch.uri)!;
-          for (const e of [...batch.edits].sort((a, b) => b.start - a.start)) out = out.slice(0, e.start) + e.line + out.slice(e.end);
+          for (const e of [...batch.edits].sort((a, b) => b.start - a.start))
+            out = out.slice(0, e.start) + e.line + out.slice(e.end);
           dry.set(batch.uri, out);
         }
       }
       for (const [uri, text] of dry) {
         const err = plannedTextSyntaxError(text);
         if (err) {
-          fail(`planned edits would leave ${vscode.workspace.asRelativePath(vscode.Uri.parse(uri))} unparsable (${err}) — nothing was written`);
+          fail(
+            `planned edits would leave ${vscode.workspace.asRelativePath(vscode.Uri.parse(uri))} unparsable (${err}) — nothing was written`,
+          );
           return;
         }
       }
@@ -841,11 +921,7 @@ export class BoardViewerPanel {
       for (const [uri, text] of dry) {
         if (!touchedSet.has(uri)) continue;
         const doc = applyDocs.get(uri)!;
-        finalEdits.replace(
-          doc.uri,
-          new vscode.Range(doc.positionAt(0), doc.positionAt(doc.getText().length)),
-          text,
-        );
+        finalEdits.replace(doc.uri, new vscode.Range(doc.positionAt(0), doc.positionAt(doc.getText().length)), text);
       }
       if (finalEdits.size > 0) await vscode.workspace.applyEdit(finalEdits);
       for (const key of plan.touched) {
@@ -875,13 +951,23 @@ export class BoardViewerPanel {
         vscode.window.showErrorMessage(
           `typeCAD layout apply wrote unparsable source and restored ${vscode.workspace.asRelativePath(vscode.Uri.parse(key))} from its pre-apply snapshot — please report this (the typeCAD/pcb output has the plan)`,
         );
-        void this.panel?.webview.postMessage({ type: 'typecad/layout-status', error: 'apply wrote invalid source — rolled back to the pre-apply snapshot' });
+        void this.panel?.webview.postMessage({
+          type: 'typecad/layout-status',
+          error: 'apply wrote invalid source — rolled back to the pre-apply snapshot',
+        });
         return;
       }
 
       const c = plan.counts;
       const anyApplied =
-        c.moves > 0 || c.endpoints > 0 || c.texts > 0 || c.values > 0 || c.labels > 0 || c.renames > 0 || c.routes > 0 || c.deletes > 0;
+        c.moves > 0 ||
+        c.endpoints > 0 ||
+        c.texts > 0 ||
+        c.values > 0 ||
+        c.labels > 0 ||
+        c.renames > 0 ||
+        c.routes > 0 ||
+        c.deletes > 0;
       this.output.appendLine(
         `layout apply: ${c.moves} placement(s) moved${c.endpoints ? `, ${c.endpoints} route endpoint(s) translated` : ''}${c.routes ? `, ${c.routes} track route(s) added to source` : ''}${c.deletes ? `, ${c.deletes} segment(s) deleted from source` : ''}${c.texts ? `, ${c.texts} text(s) edited` : ''}${c.values ? `, ${c.values} value(s) edited` : ''}${c.labels ? `, ${c.labels} label(s) repositioned` : ''}${c.renames ? `, ${c.renames} reference(s) renamed` : ''}${plan.skipped.length ? `, skipped ${plan.skipped.join('; ')}` : ''}`,
       );
@@ -912,7 +998,14 @@ export class BoardViewerPanel {
               pieces: r.pieces.map((p) => ({ layer: p.layer, pts: p.pts })),
               vias: (r.vias ?? []).map((v) => ({ x: v.x, y: v.y })),
             })),
-            deletes: (deletes ?? []).map((d) => ({ net: d.net, x1: d.x1, y1: d.y1, x2: d.x2, y2: d.y2, layer: d.layer })),
+            deletes: (deletes ?? []).map((d) => ({
+              net: d.net,
+              x1: d.x1,
+              y1: d.y1,
+              x2: d.x2,
+              y2: d.y2,
+              layer: d.layer,
+            })),
             placements: finalPlacements,
             texts: (texts ?? []).filter((t) => t.text).map((t) => ({ text: t.text, x: t.x, y: t.y })),
           });
@@ -924,7 +1017,10 @@ export class BoardViewerPanel {
             );
           }
           if (!report.ok) {
-            vscode.window.setStatusBarMessage(`typeCAD layout apply: ${report.misses.length} edit(s) missing from the rebuilt board — see the typeCAD/pcb output`, 10_000);
+            vscode.window.setStatusBarMessage(
+              `typeCAD layout apply: ${report.misses.length} edit(s) missing from the rebuilt board — see the typeCAD/pcb output`,
+              10_000,
+            );
             this.postStatus('semantic check failed — edits missing from the rebuilt board (see output)');
           }
         } catch (err) {
@@ -960,7 +1056,16 @@ export class BoardViewerPanel {
 
   private async onMessage(message: ProbeWebviewMessage): Promise<void> {
     if (message.type === 'typecad/layout-rebuild') {
-      await this.onLayoutRebuild(message.moves, message.texts, message.values, message.labels, message.renames, message.routes, message.deletes, message.board);
+      await this.onLayoutRebuild(
+        message.moves,
+        message.texts,
+        message.values,
+        message.labels,
+        message.renames,
+        message.routes,
+        message.deletes,
+        message.board,
+      );
       return;
     }
     if (message.type === 'typecad/ready') {
@@ -970,9 +1075,7 @@ export class BoardViewerPanel {
       // saved viewport puts the view back too) — only an explicit pending
       // selection needs delivering.
       if (this.pendingRef && this.panel) {
-        await this.panel.webview.postMessage(
-          selectionMessage(this.pendingRef, this.pendingToken ?? this.loadToken),
-        );
+        await this.panel.webview.postMessage(selectionMessage(this.pendingRef, this.pendingToken ?? this.loadToken));
       }
       return;
     }
@@ -1031,7 +1134,10 @@ export class BoardViewerPanel {
       }
       const loc = parseSourceLocation(folder, message.source);
       if (!loc) {
-        vscode.window.setStatusBarMessage(`net ${message.net}: source location "${message.source}" did not resolve`, 5000);
+        vscode.window.setStatusBarMessage(
+          `net ${message.net}: source location "${message.source}" did not resolve`,
+          5000,
+        );
         return;
       }
       await this.revealLocation(loc);
@@ -1074,7 +1180,10 @@ export class BoardViewerPanel {
       await this.revealLocation(loc);
     } catch (err) {
       this.output.appendLine(`reveal ${ref} failed: ${err instanceof Error ? err.message : String(err)}`);
-      vscode.window.setStatusBarMessage(`typeCAD/pcb: could not resolve ${ref} — see the typeCAD/pcb output channel`, 4000);
+      vscode.window.setStatusBarMessage(
+        `typeCAD/pcb: could not resolve ${ref} — see the typeCAD/pcb output channel`,
+        4000,
+      );
     }
   }
 

@@ -7,6 +7,7 @@ import type { ProjectAnswers } from '../types.js';
 import logger from '../../utils/logging.js';
 import { getCategories, getSkillsByCategory } from '../typecad/skills/registry.js';
 import { CORE_DEPENDENCIES } from './core-deps.js';
+import { GENERATOR_NAME, generatorVersion } from '../../utils/generator_identity.js';
 import { writeEditorIntegration } from './editor_integration.js';
 
 function sanitizeProjectName(name: string): string {
@@ -132,7 +133,7 @@ export async function create_project(answers: ProjectAnswers) {
     try {
       fs.writeFileSync(
         `./${answers.name}/hw/build/${answers.name}.kicad_pcb`,
-        '(kicad_pcb(version 20240108)(generator "pcbnew")(generator_version "8.0"))',
+        `(kicad_pcb(version 20240108)(generator "${GENERATOR_NAME}")(generator_version "${generatorVersion()}"))`,
       );
     } catch (error) {
       throw new Error(`ERROR creating ./hw/build/${answers.name}/${answers.name}.kicad_pcb. ${error}`);
@@ -328,7 +329,8 @@ ${skillSections}
     package_json.scripts['add_component'] = `typecad-pcb add component`;
     package_json.scripts['add_package'] = `typecad-pcb add package`;
     package_json.scripts['kicad-search'] = `typecad-pcb search`;
-    package_json.scripts['import'] = `typecad-pcb import ${path.join('.', 'build', `${answers.name}.kicad_pcb`)} --apply`;
+    package_json.scripts['import'] =
+      `typecad-pcb import ${path.join('.', 'build', `${answers.name}.kicad_pcb`)} --apply`;
     package_json.scripts['open_board'] = `npx open-cli ./build/${answers.name}.kicad_pcb`;
     package_json.scripts['diff'] = `typecad-pcb diff HEAD ./build/${answers.name}.kicad_pcb`;
 

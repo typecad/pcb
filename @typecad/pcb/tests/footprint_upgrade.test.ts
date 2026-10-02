@@ -41,13 +41,14 @@ const KICAD7 = `(footprint "Capacitor_SMD:C_0603_1608Metric" (version 20221018) 
   (pad "1" smd roundrect (at -0.775 0) (size 0.9 0.95) (layers "B.Cu" "*.Mask" "F.Paste" "F.Cu" "B.Paste"))
 )`;
 
-const CURRENT = `(footprint "L1" (version ${FOOTPRINT_FORMAT_VERSION}) (generator "typecad")
+const CURRENT = `(footprint "L1" (version ${FOOTPRINT_FORMAT_VERSION}) (generator "${GENERATOR_NAME}") (generator_version "${generatorVersion()}")
   (layer "F.Cu")
   (property "Reference" "REF**" (at 0 -1.43 0) (layer "F.SilkS") (uuid "11111111-2222-3333-4444-555555555555"))
 )`;
 
 /** whitespace-insensitive view, so assertions don't depend on layout style */
 const flat = (s: string): string => s.replace(/\s+/g, '');
+import { GENERATOR_NAME, generatorVersion } from '../src/utils/generator_identity.js';
 
 function tmpDir(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'fpupgrade-'));
@@ -58,7 +59,8 @@ describe('migrateFootprintSource', () => {
     const out = flat(migrateFootprintSource(LEGACY_MODULE, 'R1'));
     expect(out).toContain('(footprint"R1"');
     expect(out).toContain(`(version${FOOTPRINT_FORMAT_VERSION})`);
-    expect(out).toContain('(generator"typecad")');
+    expect(out).toContain(`(generator"${GENERATOR_NAME}")`);
+    expect(out).toContain(`(generator_version"${generatorVersion()}")`);
     // fp_text → property, angle appended
     expect(out).toContain('(property"Reference""REF**"(at0-1.430)');
     expect(out).toContain('(property"Value""R"(at0-1.430)'.replace('0-1.430)', '01.430)'));

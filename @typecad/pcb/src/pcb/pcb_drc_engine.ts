@@ -88,7 +88,6 @@ export interface DrcConstraints {
   min_silk_edge_clearance: number;
   /** ---- DFM (advisory; warnings by default) ---- */
   /** hole edge to board edge minimum (mm) */
-  min_hole_edge_clearance: number;
   /** max board-thickness ÷ drill-diameter ratio (plating limit) */
   max_drill_aspect_ratio: number;
   /** interior copper angle below this (deg) is an acid trap */
@@ -123,14 +122,14 @@ export const DEFAULT_DRC_CONSTRAINTS: DrcConstraints = {
   min_hole_to_hole: 0.25,
   min_hole_to_copper: 0.25,
   min_silk_edge_clearance: 0.1,
-  min_hole_edge_clearance: 0.5,
   max_drill_aspect_ratio: 10,
   min_copper_angle_deg: 30,
   min_silk_text_height: 0.8,
   min_silk_text_thickness: 0.08,
   via_in_pad_exempt_radius: 0.25,
   min_copper_sliver_width: 0.1,
-  min_mask_web: 0.1,
+  // 0 = disabled: KiCad does not enforce a web minimum unless the board sets one
+  min_mask_web: 0,
   min_resolved_spokes: 2,
   severities: {},
   netClassClearance: {},
@@ -141,6 +140,13 @@ export const DEFAULT_DRC_CONSTRAINTS: DrcConstraints = {
 interface CopperItem {
   kind: 'track' | 'arc' | 'via' | 'pad' | 'zone';
   net: string | null;
+  /**
+   * `ref:padNumber` for pads — KiCad treats duplicated pad numbers (the
+   * PVSON rect+oval lead style, castellated dual pads) as ONE connected
+   * pad, so per-violation dedup and mask-bridge identity key on this,
+   * never on the individual pad node's uuid.
+   */
+  padKey?: string;
   /**
    * Clipper polygons in nm, board frame: [outer, ...holes] with holes
    * negatively oriented — nonzero fill gives the true copper region. Zone
@@ -164,7 +170,10 @@ interface CopperItem {
 }
 
 function bboxOfPaths(paths: Path[]): CopperItem['bbox'] {
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  let minX = Infinity,
+    minY = Infinity,
+    maxX = -Infinity,
+    maxY = -Infinity;
   for (const path of paths) {
     for (const v of path) {
       if (v.X < minX) minX = v.X;
@@ -201,7 +210,12 @@ function unionedCopperByNet(items: CopperItem[]): Map<string, Path[]> {
     const cpr = new ClipperLib.Clipper();
     paths.forEach((p) => cpr.AddPath(p, ClipperLib.PolyType.ptSubject, true));
     const unioned: Path[] = [];
-    cpr.Execute(ClipperLib.ClipType.ctUnion, unioned, ClipperLib.PolyFillType.pftNonZero, ClipperLib.PolyFillType.pftNonZero);
+    cpr.Execute(
+      ClipperLib.ClipType.ctUnion,
+      unioned,
+      ClipperLib.PolyFillType.pftNonZero,
+      ClipperLib.PolyFillType.pftNonZero,
+    );
     if (unioned.length > 0) out.set(net, unioned);
   }
   return out;
@@ -243,13 +257,28 @@ interface SilkText {
   bboxNm: { minX: number; minY: number; maxX: number; maxY: number };
 }
 
-const SILK_GRAPHICS = new Set(['gr_line', 'gr_arc', 'gr_rect', 'gr_circle', 'fp_line', 'fp_arc', 'fp_rect', 'fp_circle']);
+const SILK_GRAPHICS = new Set([
+  'gr_line',
+  'gr_arc',
+  'gr_rect',
+  'gr_circle',
+  'gr_poly',
+  'gr_bbox',
+  'fp_line',
+  'fp_arc',
+  'fp_rect',
+  'fp_circle',
+  'fp_poly',
+]);
 
 function graphicPolyline(node: SNode): Array<[number, number]> {
   if (node.name === 'gr_line' || node.name === 'fp_line') {
     const s = atPoint(node.child('start'));
     const e = atPoint(node.child('end'));
-    return [[s.x, s.y], [e.x, e.y]];
+    return [
+      [s.x, s.y],
+      [e.x, e.y],
+    ];
   }
   if (node.name === 'gr_arc' || node.name === 'fp_arc') {
     const s = atPoint(node.child('start'));
@@ -274,10 +303,27 @@ function graphicPolyline(node: SNode): Array<[number, number]> {
     }
     return pts;
   }
+  if (node.name === 'gr_poly' || node.name === 'fp_poly') {
+    const pts =
+      node
+        .child('pts')
+        ?.children('xy')
+        .map((p) => [scalar(p, 1, 0), scalar(p, 2, 0)] as [number, number]) ?? [];
+    if (pts.length < 2) return [];
+    return pts.length > 2 && pts[0]![0] === pts[pts.length - 1]![0] && pts[0]![1] === pts[pts.length - 1]![1]
+      ? pts.slice(0, -1) // closed ring: walk edges without repeating
+      : pts;
+  }
   if (node.name === 'gr_rect' || node.name === 'fp_rect') {
     const s = atPoint(node.child('start'));
     const e = atPoint(node.child('end'));
-    return [[s.x, s.y], [e.x, s.y], [e.x, e.y], [s.x, e.y], [s.x, s.y]];
+    return [
+      [s.x, s.y],
+      [e.x, s.y],
+      [e.x, e.y],
+      [s.x, e.y],
+      [s.x, s.y],
+    ];
   }
   if (node.name === 'gr_circle' || node.name === 'fp_circle') {
     const c = atPoint(node.child('center'));
@@ -293,7 +339,11 @@ function graphicPolyline(node: SNode): Array<[number, number]> {
   return [];
 }
 
-export function collectSilkItems(root: SNode, silkLayer: string, netCodeToName: Map<number, string>): {
+export function collectSilkItems(
+  root: SNode,
+  silkLayer: string,
+  netCodeToName: Map<number, string>,
+): {
   segments: SilkSeg[];
   texts: SilkText[];
 } {
@@ -342,10 +392,10 @@ export function collectSilkItems(root: SNode, silkLayer: string, netCodeToName: 
     const hw = w / 2;
     const hh = sizeY / 2;
     const corners = [
-      [x + (-hw) * Math.cos(rad) - (-hh) * Math.sin(rad), y + (-hw) * Math.sin(rad) + (-hh) * Math.cos(rad)],
-      [x + hw * Math.cos(rad) - (-hh) * Math.sin(rad), y + hw * Math.sin(rad) + (-hh) * Math.cos(rad)],
+      [x + -hw * Math.cos(rad) - -hh * Math.sin(rad), y + -hw * Math.sin(rad) + -hh * Math.cos(rad)],
+      [x + hw * Math.cos(rad) - -hh * Math.sin(rad), y + hw * Math.sin(rad) + -hh * Math.cos(rad)],
       [x + hw * Math.cos(rad) - hh * Math.sin(rad), y + hw * Math.sin(rad) + hh * Math.cos(rad)],
-      [x + (-hw) * Math.cos(rad) - hh * Math.sin(rad), y + (-hw) * Math.sin(rad) + hh * Math.cos(rad)],
+      [x + -hw * Math.cos(rad) - hh * Math.sin(rad), y + -hw * Math.sin(rad) + hh * Math.cos(rad)],
     ];
     texts.push({
       ref,
@@ -396,9 +446,7 @@ export function collectSilkItems(root: SNode, silkLayer: string, netCodeToName: 
         // property (reading the sibling property, as layers.ts does)
         const valProp = fp.children('property').find((pr) => String(pr.raw[1]) === 'Value');
         const valValue = String(valProp?.raw[2] ?? '');
-        const shown = text
-          .replace(/\$\{REFERENCE\}/gi, ref)
-          .replace(/\$\{VALUE\}/gi, valValue);
+        const shown = text.replace(/\$\{REFERENCE\}/gi, ref).replace(/\$\{VALUE\}/gi, valValue);
         textItem(item, ref, shown, xf);
       }
     }
@@ -433,7 +481,12 @@ function collectCourtyards(
     const cpr = new ClipperLib.Clipper();
     segs.forEach((p) => cpr.AddPath(p, ClipperLib.PolyType.ptSubject, true));
     const unioned: Path[] = [];
-    cpr.Execute(ClipperLib.ClipType.ctUnion, unioned, ClipperLib.PolyFillType.pftNonZero, ClipperLib.PolyFillType.pftNonZero);
+    cpr.Execute(
+      ClipperLib.ClipType.ctUnion,
+      unioned,
+      ClipperLib.PolyFillType.pftNonZero,
+      ClipperLib.PolyFillType.pftNonZero,
+    );
     if (unioned.length > 0) out.push({ ref, paths: unioned, bbox: bboxOfPaths(unioned) });
   }
   return out;
@@ -457,13 +510,19 @@ export function collectEdgeSegments(root: SNode): SilkSeg[] {
 export function segSegMinDistNm(a: SilkSeg, b: SilkSeg): number {
   let best = Infinity;
   for (let i = 0; i + 1 < a.pts.length; i++) {
-    const ax = a.pts[i]![0] * NM, ay = a.pts[i]![1] * NM;
-    const bx = a.pts[i + 1]![0] * NM, by = a.pts[i + 1]![1] * NM;
+    const ax = a.pts[i]![0] * NM,
+      ay = a.pts[i]![1] * NM;
+    const bx = a.pts[i + 1]![0] * NM,
+      by = a.pts[i + 1]![1] * NM;
     for (let j = 0; j + 1 < b.pts.length; j++) {
-      const cx = b.pts[j]![0] * NM, cy = b.pts[j]![1] * NM;
-      const dx = b.pts[j + 1]![0] * NM, dy = b.pts[j + 1]![1] * NM;
-      const ex = dx - cx, ey = dy - cy;
-      const fx = bx - ax, fy = by - ay;
+      const cx = b.pts[j]![0] * NM,
+        cy = b.pts[j]![1] * NM;
+      const dx = b.pts[j + 1]![0] * NM,
+        dy = b.pts[j + 1]![1] * NM;
+      const ex = dx - cx,
+        ey = dy - cy;
+      const fx = bx - ax,
+        fy = by - ay;
       const denom = fx * ey - fy * ex;
       if (Math.abs(denom) < 1e-9) {
         // parallel: endpoint-to-other-segment distances (collinear → 0 via overlap)
@@ -505,7 +564,12 @@ function segIntersectsBboxNm(seg: SilkSeg, bbox: { minX: number; minY: number; m
     minY: Math.round(Math.min(...seg.pts.map((p) => p[1])) * NM),
     maxY: Math.round(Math.max(...seg.pts.map((p) => p[1])) * NM),
   };
-  return !(segBbox.maxX < bbox.minX || segBbox.minX > bbox.maxX || segBbox.maxY < bbox.minY || segBbox.minY > bbox.maxY);
+  return !(
+    segBbox.maxX < bbox.minX ||
+    segBbox.minX > bbox.maxX ||
+    segBbox.maxY < bbox.minY ||
+    segBbox.minY > bbox.maxY
+  );
 }
 
 /** min distance (nm) from a silk polyline (mm pts, with half-width applied
@@ -513,8 +577,10 @@ function segIntersectsBboxNm(seg: SilkSeg, bbox: { minX: number; minY: number; m
 function polylineToPathGapNm(seg: SilkSeg, paths: Path[]): number {
   let best = Infinity;
   for (let i = 0; i + 1 < seg.pts.length; i++) {
-    const ax = seg.pts[i]![0] * NM, ay = seg.pts[i]![1] * NM;
-    const bx = seg.pts[i + 1]![0] * NM, by = seg.pts[i + 1]![1] * NM;
+    const ax = seg.pts[i]![0] * NM,
+      ay = seg.pts[i]![1] * NM;
+    const bx = seg.pts[i + 1]![0] * NM,
+      by = seg.pts[i + 1]![1] * NM;
     for (const poly of paths) {
       for (let k = 0, m = poly.length - 1; k < poly.length; m = k++) {
         // a silk segment passing THROUGH a region crosses its edges with no
@@ -530,10 +596,19 @@ function polylineToPathGapNm(seg: SilkSeg, paths: Path[]): number {
 
 /** open-segment crossing test (nm coords) */
 function segmentsCrossNm(
-  ax: number, ay: number, bx: number, by: number,
-  cx: number, cy: number, dx: number, dy: number,
+  ax: number,
+  ay: number,
+  bx: number,
+  by: number,
+  cx: number,
+  cy: number,
+  dx: number,
+  dy: number,
 ): boolean {
-  const d1x = bx - ax, d1y = by - ay, d2x = dx - cx, d2y = dy - cy;
+  const d1x = bx - ax,
+    d1y = by - ay,
+    d2x = dx - cx,
+    d2y = dy - cy;
   const denom = d1x * d2y - d1y * d2x;
   if (Math.abs(denom) < 1e-12) return false;
   const t = ((cx - ax) * d2y - (cy - ay) * d2x) / denom;
@@ -612,7 +687,12 @@ function narrowRegions(paths: Path[], widthNm: number, minAreaNm2 = 2e9): Array<
   paths.forEach((p) => cpr.AddPath(p, ClipperLib.PolyType.ptSubject, true));
   opened.forEach((p) => cpr.AddPath(p, ClipperLib.PolyType.ptClip, true));
   const tree = new ClipperLib.PolyTree();
-  cpr.Execute(ClipperLib.ClipType.ctDifference, tree, ClipperLib.PolyFillType.pftNonZero, ClipperLib.PolyFillType.pftNonZero);
+  cpr.Execute(
+    ClipperLib.ClipType.ctDifference,
+    tree,
+    ClipperLib.PolyFillType.pftNonZero,
+    ClipperLib.PolyFillType.pftNonZero,
+  );
 
   // flatten PolyTree outers (their holes ride along in the contour set)
   const out: Array<{ path: Path; areaNm2: number }> = [];
@@ -659,7 +739,10 @@ function collectLayerItems(root: SNode, layer: string, netCodeToName: Map<number
         net,
         paths: [capsuleToPoly(s.x, s.y, e.x, e.y, width / 2, 0)],
         layers: [layer],
-        centerline: [[s.x, s.y], [e.x, e.y]],
+        centerline: [
+          [s.x, s.y],
+          [e.x, e.y],
+        ],
         description: `Track [${fmtNet(net)}] on ${layer}, length ${len.toFixed(4)} mm`,
         pos: { x: s.x, y: s.y },
         uuid: String(item.child('uuid')?.raw[1] ?? ''),
@@ -682,8 +765,16 @@ function collectLayerItems(root: SNode, layer: string, netCodeToName: Map<number
       const cpr = new ClipperLib.Clipper();
       segs.forEach((p) => cpr.AddPath(p, ClipperLib.PolyType.ptSubject, true));
       const unioned: Path[] = [];
-      cpr.Execute(ClipperLib.ClipType.ctUnion, unioned, ClipperLib.PolyFillType.pftNonZero, ClipperLib.PolyFillType.pftNonZero);
-      const len = cl.reduce((acc, p, i) => (i === 0 ? 0 : acc + Math.hypot(p[0] - cl[i - 1]![0], p[1] - cl[i - 1]![1])), 0);
+      cpr.Execute(
+        ClipperLib.ClipType.ctUnion,
+        unioned,
+        ClipperLib.PolyFillType.pftNonZero,
+        ClipperLib.PolyFillType.pftNonZero,
+      );
+      const len = cl.reduce(
+        (acc, p, i) => (i === 0 ? 0 : acc + Math.hypot(p[0] - cl[i - 1]![0], p[1] - cl[i - 1]![1])),
+        0,
+      );
       const arcUuid = String(item.child('uuid')?.raw[1] ?? '');
       let arcPart = 0;
       for (const path of unioned.length ? unioned : segs) {
@@ -716,7 +807,11 @@ function collectLayerItems(root: SNode, layer: string, netCodeToName: Map<number
       kind: 'via',
       net,
       paths: [circleToPoly(at.x, at.y, size / 2, 0)],
-      layers: through ? ['F.Cu', 'B.Cu'] : layers.slice(),
+      // a through via spans EVERY copper layer of the stack — on a 4-layer
+      // board the literal F.Cu/B.Cu tokens made In1/In2 tracks never share
+      // a layer with the via, splitting via-joined nets into phantom
+      // unconnected_items (kicad-cli reported them connected)
+      layers: through ? copperLayersOf(root).map((cl) => cl.name) : layers.slice(),
       hole: { x: at.x, y: at.y, r: drill / 2 },
       description: `Via [${fmtNet(net)}] on ${layers.length ? `${layers[0]} - ${layers[layers.length - 1]}` : layer}`,
       pos: at,
@@ -757,9 +852,7 @@ function collectLayerItems(root: SNode, layer: string, netCodeToName: Map<number
         // stays inside the slot, where a major-axis circle would poke past
         // the pad copper and phantom-violate hole_clearance.
         const isOval = typeof drillNode.raw[1] !== 'number';
-        const drill = isOval
-          ? Math.min(scalar(drillNode, 2, 0), scalar(drillNode, 3, 0))
-          : scalar(drillNode, 1, 0);
+        const drill = isOval ? Math.min(scalar(drillNode, 2, 0), scalar(drillNode, 3, 0)) : scalar(drillNode, 1, 0);
         const off = pad.child('drill')?.child('offset');
         const ox = off ? scalar(off, 1, 0) : 0;
         const oy = off ? scalar(off, 2, 0) : 0;
@@ -776,11 +869,13 @@ function collectLayerItems(root: SNode, layer: string, netCodeToName: Map<number
         ? `PTH pad ${padNum} [${fmtNet(net)}] of ${ref}`
         : `Pad ${padNum} [${fmtNet(net)}] of ${ref} on ${layer}`;
       const padUuid = String(pad.child('uuid')?.raw[1] ?? '');
+      const padKey = `${ref}:${padNum}`;
       let padPart = 0;
       for (const part of obstacles) {
         for (const path of obstaclePaths(part)) {
           push({
             kind: 'pad',
+            padKey,
             net,
             paths: [path],
             layers: [layer],
@@ -823,9 +918,7 @@ function collectZoneItems(
   const items: CopperItem[] = [];
   for (const zone of root.children('zone')) {
     const layersNode = zone.child('layers') ?? zone.child('layer');
-    const zLayers = layersNode
-      ? layersNode.raw.slice(1).filter((v): v is string => typeof v === 'string')
-      : [];
+    const zLayers = layersNode ? layersNode.raw.slice(1).filter((v): v is string => typeof v === 'string') : [];
     if (!zLayers.includes(layer)) continue;
     const net = netNameOf(zone, netCodeToName);
     const res = fillZone(root, zone, layer, fillCache ? { cache: fillCache } : {});
@@ -872,7 +965,12 @@ function intersectAreaNm2(a: Path[], b: Path[]): number {
   a.forEach((p) => cpr.AddPath(p, ClipperLib.PolyType.ptSubject, true));
   b.forEach((p) => cpr.AddPath(p, ClipperLib.PolyType.ptClip, true));
   const sol: ClipperLib.Paths = [];
-  cpr.Execute(ClipperLib.ClipType.ctIntersection, sol, ClipperLib.PolyFillType.pftNonZero, ClipperLib.PolyFillType.pftNonZero);
+  cpr.Execute(
+    ClipperLib.ClipType.ctIntersection,
+    sol,
+    ClipperLib.PolyFillType.pftNonZero,
+    ClipperLib.PolyFillType.pftNonZero,
+  );
   let area = 0;
   for (const p of sol) area += ClipperLib.Clipper.Area(p);
   return area;
@@ -901,6 +999,11 @@ function pointSegDistNm(px: number, py: number, ax: number, ay: number, bx: numb
  * error and misjudges exact-min distances.
  */
 function gapNm(a: Path[], b: Path[]): number {
+  // Crossing/overlapping shapes have zero gap by definition — the
+  // vertex-to-edge scan below can read a positive distance for an X
+  // crossing, which let copper straddling the board edge (castellated
+  // pads) pass the edge-clearance rule kicad-cli fails on.
+  if (pathsIntersect(a, b)) return 0;
   let best = Infinity;
   const consider = (from: Path[], to: Path[]): void => {
     for (const poly of from) {
@@ -935,12 +1038,11 @@ function circleGapNm(cx: number, cy: number, r: number, polys: Path[]): number {
 /** centerline segments cross at a point (endpoints count — different nets
  *  never legitimately connect); collinear parallel overlap returns false */
 function centerlinesCross(a: Array<[number, number]>, b: Array<[number, number]>): boolean {
-  const segInt = (
-    p1: [number, number], p2: [number, number],
-    p3: [number, number], p4: [number, number],
-  ): boolean => {
-    const d1 = p2[0] - p1[0], d2 = p2[1] - p1[1];
-    const d3 = p4[0] - p3[0], d4 = p4[1] - p3[1];
+  const segInt = (p1: [number, number], p2: [number, number], p3: [number, number], p4: [number, number]): boolean => {
+    const d1 = p2[0] - p1[0],
+      d2 = p2[1] - p1[1];
+    const d3 = p4[0] - p3[0],
+      d4 = p4[1] - p3[1];
     const denom = d1 * d4 - d2 * d3;
     if (Math.abs(denom) < 1e-12) return false; // parallel/collinear: not a crossing
     const t = ((p3[0] - p1[0]) * d4 - (p3[1] - p1[1]) * d3) / denom;
@@ -989,12 +1091,11 @@ export function runDrc(source: string, constraints: Partial<DrcConstraints> = {}
     // DFM checks are advisory by design — the conf constraints file can
     // promote any of them to error or silence them per check id
     track_dangling: 'warning',
-    hole_edge_clearance: 'warning',
     drill_aspect_ratio: 'warning',
     acid_trap: 'warning',
     text_height: 'warning',
     text_thickness: 'warning',
-    silk_over_mask: 'warning',
+    silk_over_copper: 'warning',
     via_in_pad: 'warning',
     copper_sliver: 'warning',
     mask_web: 'warning',
@@ -1042,9 +1143,7 @@ export function runDrc(source: string, constraints: Partial<DrcConstraints> = {}
     }
     return eff;
   };
-  const maxClassClearanceNm = Math.round(
-    Math.max(0, ...Object.values(c.netClassClearance).map((v) => v * NM)),
-  );
+  const maxClassClearanceNm = Math.round(Math.max(0, ...Object.values(c.netClassClearance).map((v) => v * NM)));
   const holeClearanceNm = Math.round(c.min_hole_to_copper * NM);
   const holeHoleNm = Math.round(c.min_hole_to_hole * NM);
   const thickness = (() => {
@@ -1075,6 +1174,9 @@ export function runDrc(source: string, constraints: Partial<DrcConstraints> = {}
   // zone items for the same layers — without the cache each re-fills
   const fillCache = new Map<string, ZoneFillResult | null>();
 
+  // board-wide edge-violation dedup: a PTH pad is collected on every copper
+  // layer, and kicad-cli reports the pad once for the whole board
+  const edgeReportedPadBoardWide = new Set<string>();
   for (const layer of copperLayers) {
     const items = [
       ...collectLayerItems(root, layer, netCodeToName),
@@ -1083,8 +1185,7 @@ export function runDrc(source: string, constraints: Partial<DrcConstraints> = {}
     // one shorting report per net pair per layer (KiCad reports the cluster
     // once); crossings report per pair
     const shortedPairs = new Set<string>();
-    const netPairKey = (a: string | null, b: string | null): string =>
-      [a ?? '<none>', b ?? '<none>'].sort().join('|');
+    const netPairKey = (a: string | null, b: string | null): string => [a ?? '<none>', b ?? '<none>'].sort().join('|');
 
     for (let i = 0; i < items.length; i++) {
       for (let j = i + 1; j < items.length; j++) {
@@ -1102,11 +1203,10 @@ export function runDrc(source: string, constraints: Partial<DrcConstraints> = {}
             const key = netPairKey(A.net, B.net);
             if (!shortedPairs.has(key)) {
               shortedPairs.add(key);
-              report(
-                'shorting_items',
-                `Items shorting two nets (nets ${fmtNet(A.net)} and ${fmtNet(B.net)})`,
-                [item(A), item(B)],
-              );
+              report('shorting_items', `Items shorting two nets (nets ${fmtNet(A.net)} and ${fmtNet(B.net)})`, [
+                item(A),
+                item(B),
+              ]);
             }
           }
           continue; // a short swallows any clearance concern
@@ -1155,11 +1255,10 @@ export function runDrc(source: string, constraints: Partial<DrcConstraints> = {}
         if (!near(A, B, holeClearanceNm + hr)) continue;
         if (pathsIntersect(A.paths, B.paths)) continue; // a short swallows the hole concern
         if (circleGapNm(hx, hy, hr, B.paths) < holeClearanceNm - GEOM_TOL_NM) {
-          report(
-            'hole_clearance',
-            `Hole clearance (hole of ${A.description} too close to ${B.description})`,
-            [item(A), item(B)],
-          );
+          report('hole_clearance', `Hole clearance (hole of ${A.description} too close to ${B.description})`, [
+            item(A),
+            item(B),
+          ]);
         }
       }
     }
@@ -1195,11 +1294,9 @@ export function runDrc(source: string, constraints: Partial<DrcConstraints> = {}
         for (const v of poly) diaNm = Math.max(diaNm, Math.hypot(v.X - it.pos.x * NM, v.Y - it.pos.y * NM));
       const dia = (2 * diaNm) / NM;
       if (dia < c.min_via_diameter - 0.0002) {
-        report(
-          'via_diameter',
-          `Via diameter (${dia.toFixed(4)} mm; min is ${c.min_via_diameter.toFixed(4)} mm)`,
-          [item(it)],
-        );
+        report('via_diameter', `Via diameter (${dia.toFixed(4)} mm; min is ${c.min_via_diameter.toFixed(4)} mm)`, [
+          item(it),
+        ]);
       }
     }
 
@@ -1227,8 +1324,22 @@ export function runDrc(source: string, constraints: Partial<DrcConstraints> = {}
     if (edgePaths.length > 0 && c.min_copper_edge_clearance > 0) {
       for (const it of items) {
         if (it.kind === 'zone') continue;
+        // one report per physical pad: duplicated pad numbers (rect+oval
+        // leads, castellated duals) are one pad to KiCad, on any layer
+        const padKey = it.padKey ?? '';
+        if (padKey && edgeReportedPadBoardWide.has(padKey)) continue;
         if (!nearPaths(it.bbox, edgeBbox, Math.ceil(c.min_copper_edge_clearance * NM))) continue;
-        if (gapNm(it.paths, edgePaths) < c.min_copper_edge_clearance * NM - GEOM_TOL_NM) {
+        // KiCad semantics: holes are checked against the board edge with the
+        // SAME edge-clearance constraint and reported as copper_edge_clearance
+        // (one report per item, never a separate phantom hole rule with its
+        // own stricter default).
+        const copperGap = gapNm(it.paths, edgePaths);
+        const holeGap =
+          it.hole !== undefined
+            ? circleGapNm(Math.round(it.hole.x * NM), Math.round(it.hole.y * NM), Math.round(it.hole.r * NM), edgePaths)
+            : Infinity;
+        if (Math.min(copperGap, holeGap) < c.min_copper_edge_clearance * NM - GEOM_TOL_NM) {
+          if (padKey) edgeReportedPadBoardWide.add(padKey);
           report(
             'copper_edge_clearance',
             `Copper to board edge clearance (min is ${c.min_copper_edge_clearance.toFixed(4)} mm)`,
@@ -1248,15 +1359,13 @@ export function runDrc(source: string, constraints: Partial<DrcConstraints> = {}
       const net = netNameOf(seg, netCodeToName);
       const layer = String(seg.child('layer')?.raw[1] ?? '');
       const len = Math.hypot(e.x - s.x, e.y - s.y);
-      report(
-        'track_width',
-        `Track width (${width.toFixed(4)} mm; min is ${c.min_track_width.toFixed(4)} mm)`,
-        [{
+      report('track_width', `Track width (${width.toFixed(4)} mm; min is ${c.min_track_width.toFixed(4)} mm)`, [
+        {
           description: `Track [${fmtNet(net)}] on ${layer}, length ${len.toFixed(4)} mm`,
           pos: s,
           uuid: String(seg.child('uuid')?.raw[1] ?? ''),
-        }],
-      );
+        },
+      ]);
     }
   }
 
@@ -1372,14 +1481,13 @@ export function runDrc(source: string, constraints: Partial<DrcConstraints> = {}
       for (const e of edgeSegs) {
         const d = segSegMinDistNm(seg, e) - (seg.width / 2) * NM;
         if (d < c.min_silk_edge_clearance * NM - GEOM_TOL_NM) {
-          report(
-            'silk_edge_clearance',
-            'Silkscreen clipped by board edge',
-            [
-              { description: 'Segment on Edge.Cuts', pos: e.pos },
-              { description: `Segment of ${seg.ref ?? 'silkscreen'} on ${side === "F" ? "F.SilkS" : "B.SilkS"}`, pos: seg.pos },
-            ],
-          );
+          report('silk_edge_clearance', 'Silkscreen clipped by board edge', [
+            { description: 'Segment on Edge.Cuts', pos: e.pos },
+            {
+              description: `Segment of ${seg.ref ?? 'silkscreen'} on ${side === 'F' ? 'F.SilkS' : 'B.SilkS'}`,
+              pos: seg.pos,
+            },
+          ]);
         }
       }
     }
@@ -1389,14 +1497,16 @@ export function runDrc(source: string, constraints: Partial<DrcConstraints> = {}
       const A = silk.segments[i]!;
       for (const t of silk.texts) {
         if (segIntersectsBboxNm(A, t.bboxNm)) {
-          report(
-            'silk_overlap',
-            'Silkscreen clearance',
-            [
-              { description: `${A.ref ? `Segment of ${A.ref}` : 'Segment'} on ${side === "F" ? "F.SilkS" : "B.SilkS"}`, pos: A.pos },
-              { description: `${t.ref ? `Reference field of ${t.ref}` : `Text "${t.text}"`} on ${side === "F" ? "F.SilkS" : "B.SilkS"}`, pos: t.pos },
-            ],
-          );
+          report('silk_overlap', 'Silkscreen clearance', [
+            {
+              description: `${A.ref ? `Segment of ${A.ref}` : 'Segment'} on ${side === 'F' ? 'F.SilkS' : 'B.SilkS'}`,
+              pos: A.pos,
+            },
+            {
+              description: `${t.ref ? `Reference field of ${t.ref}` : `Text "${t.text}"`} on ${side === 'F' ? 'F.SilkS' : 'B.SilkS'}`,
+              pos: t.pos,
+            },
+          ]);
         }
       }
       for (let j = i + 1; j < silk.segments.length; j++) {
@@ -1404,14 +1514,16 @@ export function runDrc(source: string, constraints: Partial<DrcConstraints> = {}
         if (A.ref && A.ref === B.ref) continue; // same footprint: allowed
         const inkGap = segSegMinDistNm(A, B) - ((A.width + B.width) / 2) * NM;
         if (inkGap < 0.1 * NM) {
-          report(
-            'silk_overlap',
-            'Silkscreen clearance',
-            [
-              { description: `${A.ref ? `Segment of ${A.ref}` : 'Segment'} on ${side === "F" ? "F.SilkS" : "B.SilkS"}`, pos: A.pos },
-              { description: `${B.ref ? `Segment of ${B.ref}` : 'Segment'} on ${side === "F" ? "F.SilkS" : "B.SilkS"}`, pos: B.pos },
-            ],
-          );
+          report('silk_overlap', 'Silkscreen clearance', [
+            {
+              description: `${A.ref ? `Segment of ${A.ref}` : 'Segment'} on ${side === 'F' ? 'F.SilkS' : 'B.SilkS'}`,
+              pos: A.pos,
+            },
+            {
+              description: `${B.ref ? `Segment of ${B.ref}` : 'Segment'} on ${side === 'F' ? 'F.SilkS' : 'B.SilkS'}`,
+              pos: B.pos,
+            },
+          ]);
         }
       }
     }
@@ -1424,7 +1536,13 @@ export function runDrc(source: string, constraints: Partial<DrcConstraints> = {}
       ...collectLayerItems(root, `${side}.Cu`, netCodeToName),
       ...collectZoneItems(root, `${side}.Cu`, netCodeToName, fillCache),
     ];
-    const apertures: Array<{ paths: Path[]; net: string | null; desc: string; pos: { x: number; y: number } }> = [];
+    const apertures: Array<{
+      paths: Path[];
+      net: string | null;
+      desc: string;
+      pos: { x: number; y: number };
+      padKey: string;
+    }> = [];
     for (const fp of root.children('footprint')) {
       const fpAt = fp.child('at');
       const fx = scalar(fpAt!, 1, 0);
@@ -1452,6 +1570,7 @@ export function runDrc(source: string, constraints: Partial<DrcConstraints> = {}
         const desc = thru
           ? `PTH pad ${padNum} [${fmtNet(net)}] of ${ref}`
           : `Pad ${padNum} [${fmtNet(net)}] of ${ref} on ${side}.Cu`;
+        const padKey = `${ref}:${padNum}`;
         for (const part of padShapeObstacles(pad, wx, wy, angle)) {
           for (const p of obstaclePaths(part)) {
             apertures.push({
@@ -1459,6 +1578,7 @@ export function runDrc(source: string, constraints: Partial<DrcConstraints> = {}
               net,
               desc,
               pos: { x: wx, y: wy },
+              padKey,
             });
           }
         }
@@ -1466,14 +1586,16 @@ export function runDrc(source: string, constraints: Partial<DrcConstraints> = {}
     }
     for (const ap of apertures) {
       for (const cop of copperItems) {
-        if (netsEqual(ap.net, cop.net)) continue; // an item never bridges itself
+        // an item never bridges itself: the same physical pad (duplicated
+        // pad numbers are one connected pad to KiCad) or the same named net
+        if (ap.net !== null && netsEqual(ap.net, cop.net)) continue;
+        if (ap.padKey && ap.padKey === cop.padKey) continue;
         if (!nearBboxes(bboxOfPaths(ap.paths), cop.bbox, 0)) continue;
         if (pathsIntersect(ap.paths, cop.paths)) {
-          report(
-            'solder_mask_bridge',
-            `${sideWord} solder mask aperture bridges items with different nets`,
-            [item(cop), { description: ap.desc, pos: ap.pos }],
-          );
+          report('solder_mask_bridge', `${sideWord} solder mask aperture bridges items with different nets`, [
+            item(cop),
+            { description: ap.desc, pos: ap.pos },
+          ]);
         }
       }
     }
@@ -1513,14 +1635,10 @@ export function runDrc(source: string, constraints: Partial<DrcConstraints> = {}
         const B = courtyards[j]!;
         if (!nearBboxes(A.bbox, B.bbox, 0)) continue;
         if (pathsIntersect(A.paths, B.paths)) {
-          report(
-            'courtyard_overlap',
-            `Courtyard overlap (${A.ref} and ${B.ref})`,
-            [
-              { description: `Footprint ${A.ref}`, pos: { x: A.bbox.minX / NM, y: A.bbox.minY / NM } },
-              { description: `Footprint ${B.ref}`, pos: { x: B.bbox.minX / NM, y: B.bbox.minY / NM } },
-            ],
-          );
+          report('courtyard_overlap', `Courtyard overlap (${A.ref} and ${B.ref})`, [
+            { description: `Footprint ${A.ref}`, pos: { x: A.bbox.minX / NM, y: A.bbox.minY / NM } },
+            { description: `Footprint ${B.ref}`, pos: { x: B.bbox.minX / NM, y: B.bbox.minY / NM } },
+          ]);
         }
       }
     }
@@ -1546,20 +1664,24 @@ export function runDrc(source: string, constraints: Partial<DrcConstraints> = {}
     }
     for (const seg of silk.segments) {
       for (const ap of apertures) {
-        if (!nearBboxes(
-          { minX: Math.round(Math.min(...seg.pts.map((p) => p[0])) * NM), maxX: Math.round(Math.max(...seg.pts.map((p) => p[0])) * NM), minY: Math.round(Math.min(...seg.pts.map((p) => p[1])) * NM), maxY: Math.round(Math.max(...seg.pts.map((p) => p[1])) * NM) },
-          bboxOfPaths(ap.paths),
-          Math.ceil((seg.width / 2) * NM),
-        )) continue;
+        if (
+          !nearBboxes(
+            {
+              minX: Math.round(Math.min(...seg.pts.map((p) => p[0])) * NM),
+              maxX: Math.round(Math.max(...seg.pts.map((p) => p[0])) * NM),
+              minY: Math.round(Math.min(...seg.pts.map((p) => p[1])) * NM),
+              maxY: Math.round(Math.max(...seg.pts.map((p) => p[1])) * NM),
+            },
+            bboxOfPaths(ap.paths),
+            Math.ceil((seg.width / 2) * NM),
+          )
+        )
+          continue;
         if (polylineToPathGapNm(seg, ap.paths) < (seg.width / 2) * NM - GEOM_TOL_NM) {
-          report(
-            'silk_over_mask',
-            'Silkscreen overlaps a solder mask opening (will be clipped)',
-            [
-              { description: `Segment of ${seg.ref ?? 'silkscreen'} on ${silkName}`, pos: seg.pos },
-              { description: ap.desc, pos: ap.pos },
-            ],
-          );
+          report('silk_over_copper', 'Silkscreen overlaps a solder mask opening (will be clipped)', [
+            { description: `Segment of ${seg.ref ?? 'silkscreen'} on ${silkName}`, pos: seg.pos },
+            { description: ap.desc, pos: ap.pos },
+          ]);
         }
       }
     }
@@ -1576,11 +1698,9 @@ export function runDrc(source: string, constraints: Partial<DrcConstraints> = {}
       const refProp = fp.children('property').find((pr) => String(pr.raw[1]) === 'Reference');
       const ref = String(refProp?.raw[2] ?? '?');
       if (withCourtyard.has(ref)) continue;
-      report(
-        'missing_courtyard',
-        `Footprint ${ref} has no courtyard defined`,
-        [{ description: `Footprint ${ref}`, pos: atPoint(fp.child('at')) }],
-      );
+      report('missing_courtyard', `Footprint ${ref} has no courtyard defined`, [
+        { description: `Footprint ${ref}`, pos: atPoint(fp.child('at')) },
+      ]);
     }
   }
 
@@ -1589,23 +1709,19 @@ export function runDrc(source: string, constraints: Partial<DrcConstraints> = {}
   // engine silently skips edge pullback when the chain fails, so surface it
   // ------------------------------------------------------------------
   {
-    const hasEdgeItems = root.children().some(
-      (n) => n.name.startsWith('gr_') && String(n.child('layer')?.raw[1] ?? '') === 'Edge.Cuts',
-    );
+    const hasEdgeItems = root
+      .children()
+      .some((n) => n.name.startsWith('gr_') && String(n.child('layer')?.raw[1] ?? '') === 'Edge.Cuts');
     if (hasEdgeItems) {
       const outline = chainEdgeOutline(root);
       if (outline.length < 3) {
-        report(
-          'edge_not_closed',
-          'Board outline (Edge.Cuts) does not form a closed loop',
-          [{ description: 'Edge.Cuts outline', pos: { x: 0, y: 0 } }],
-        );
+        report('edge_not_closed', 'Board outline (Edge.Cuts) does not form a closed loop', [
+          { description: 'Edge.Cuts outline', pos: { x: 0, y: 0 } },
+        ]);
       } else if (pathSelfIntersectsNm(outline)) {
-        report(
-          'edge_self_intersection',
-          'Board outline (Edge.Cuts) self-intersects',
-          [{ description: 'Edge.Cuts outline', pos: { x: outline[0]!.X / NM, y: outline[0]!.Y / NM } }],
-        );
+        report('edge_self_intersection', 'Board outline (Edge.Cuts) self-intersects', [
+          { description: 'Edge.Cuts outline', pos: { x: outline[0]!.X / NM, y: outline[0]!.Y / NM } },
+        ]);
       }
     }
   }
@@ -1635,11 +1751,19 @@ export function runDrc(source: string, constraints: Partial<DrcConstraints> = {}
           if (other === it) continue;
           if (other.net !== it.net) continue;
           if (!other.layers.includes(layer) && other.kind !== 'via' && other.kind !== 'pad') continue;
-          if (!nearBboxes(
-            { minX: Math.round((end[0] * NM) - 2000), maxX: Math.round(end[0] * NM + 2000), minY: Math.round(end[1] * NM - 2000), maxY: Math.round(end[1] * NM + 2000) },
-            other.bbox,
-            0,
-          )) continue;
+          if (
+            !nearBboxes(
+              {
+                minX: Math.round(end[0] * NM - 2000),
+                maxX: Math.round(end[0] * NM + 2000),
+                minY: Math.round(end[1] * NM - 2000),
+                maxY: Math.round(end[1] * NM + 2000),
+              },
+              other.bbox,
+              0,
+            )
+          )
+            continue;
           const ex = end[0] * NM;
           const ey = end[1] * NM;
           if (
@@ -1651,11 +1775,9 @@ export function runDrc(source: string, constraints: Partial<DrcConstraints> = {}
           }
         }
         if (!connected) {
-          report(
-            'track_dangling',
-            'Track has an unconnected end',
-            [{ description: it.description, pos: { x: end[0], y: end[1] } }],
-          );
+          report('track_dangling', 'Track has an unconnected end', [
+            { description: it.description, pos: { x: end[0], y: end[1] } },
+          ]);
           break; // one report per track (KiCad reports per segment)
         }
       }
@@ -1667,15 +1789,6 @@ export function runDrc(source: string, constraints: Partial<DrcConstraints> = {}
       const key = `hedge:${it.hole.x.toFixed(4)}:${it.hole.y.toFixed(4)}`;
       if (reportedOnce.has(key)) continue;
       reportedOnce.add(key);
-      if (edgePaths.length > 0 && c.min_hole_edge_clearance > 0) {
-        if (circleGapNm(Math.round(it.hole.x * NM), Math.round(it.hole.y * NM), Math.round(it.hole.r * NM), edgePaths) < c.min_hole_edge_clearance * NM - GEOM_TOL_NM) {
-          report(
-            'hole_edge_clearance',
-            `Hole to board edge clearance (min is ${c.min_hole_edge_clearance.toFixed(4)} mm)`,
-            [item(it)],
-          );
-        }
-      }
       if (thickness > 0 && c.max_drill_aspect_ratio > 0) {
         const dia = it.hole.r * 2;
         if (dia > 0 && thickness / dia > c.max_drill_aspect_ratio + 1e-9) {
@@ -1707,8 +1820,10 @@ export function runDrc(source: string, constraints: Partial<DrcConstraints> = {}
             const e2 = Math.hypot(next.X - v.X, next.Y - v.Y);
             // skip degenerate/tessellation vertices
             if (e1 < 50000 || e2 < 50000) continue;
-            const ux = (v.X - prev.X) / e1, uy = (v.Y - prev.Y) / e1;
-            const wx = (next.X - v.X) / e2, wy = (next.Y - v.Y) / e2;
+            const ux = (v.X - prev.X) / e1,
+              uy = (v.Y - prev.Y) / e1;
+            const wx = (next.X - v.X) / e2,
+              wy = (next.Y - v.Y) / e2;
             const dot = ux * wx + uy * wy;
             // interior(v) = 180° − angle(u, w): straight run dot=+1 → 180°,
             // acute wedge dot→−1 → ~0°. Skip the wide side (interior ≥ 90°).
@@ -1717,7 +1832,7 @@ export function runDrc(source: string, constraints: Partial<DrcConstraints> = {}
             if (cosInt > minCos) {
               report(
                 'acid_trap',
-                `Acid trap (copper angle ≈ ${(Math.acos(Math.min(1, Math.max(-1, cosInt))) * 180 / Math.PI).toFixed(0)}° < ${c.min_copper_angle_deg}°)`,
+                `Acid trap (copper angle ≈ ${((Math.acos(Math.min(1, Math.max(-1, cosInt))) * 180) / Math.PI).toFixed(0)}° < ${c.min_copper_angle_deg}°)`,
                 [{ description: `Copper of net ${net} on ${layer}`, pos: { x: v.X / NM, y: v.Y / NM } }],
               );
               break; // one report per polygon
@@ -1741,11 +1856,10 @@ export function runDrc(source: string, constraints: Partial<DrcConstraints> = {}
           const outer = pad.paths[0];
           if (!outer) continue;
           if (pointInPathNm(outer, vx, vy)) {
-            report(
-              'via_in_pad',
-              'Via placed inside an SMD pad (wicking risk; tent or relocate)',
-              [item(via), item(pad)],
-            );
+            report('via_in_pad', 'Via placed inside an SMD pad (wicking risk; tent or relocate)', [
+              item(via),
+              item(pad),
+            ]);
             break;
           }
         }
@@ -1775,9 +1889,7 @@ export function runDrc(source: string, constraints: Partial<DrcConstraints> = {}
           }
           cx /= frag.path.length;
           cy /= frag.path.length;
-          const nearSpokeRoot = padCenters.some(
-            (pc) => pc.net === net && Math.hypot(pc.x - cx, pc.y - cy) < 1.2 * NM,
-          );
+          const nearSpokeRoot = padCenters.some((pc) => pc.net === net && Math.hypot(pc.x - cx, pc.y - cy) < 1.2 * NM);
           if (nearSpokeRoot) continue;
           report(
             'copper_sliver',

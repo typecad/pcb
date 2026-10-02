@@ -68,9 +68,7 @@ function diaKey(d: number): number {
   return Math.round(d * 1e6); // group tools at nm granularity
 }
 
-function padDrill(
-  pad: SNode,
-): { dia: number; major: number | null; majorIsX: boolean } | null {
+function padDrill(pad: SNode): { dia: number; major: number | null; majorIsX: boolean } | null {
   const dr = pad.child('drill');
   if (!dr) return null;
   // forms: (drill 1.6), (drill 0.6 1.8), (drill oval 0.6 1.8)
@@ -103,11 +101,7 @@ function byHitOrder(a: Hit, b: Hit): number {
   return a.x - b.x || b.y - a.y;
 }
 
-export function plotDrillFromSource(
-  source: string,
-  boardPath: string,
-  opts: DrillOptions,
-): string {
+export function plotDrillFromSource(source: string, boardPath: string, opts: DrillOptions): string {
   const root = SNode.from(parse(source) as SExpr[]);
   const stem = boardStem(boardPath);
   const tools = new Map<string, Tool>();
@@ -126,8 +120,10 @@ export function plotDrillFromSource(
 
   // --- vias ----------------------------------------------------------------
   for (const via of root.children('via')) {
-    const drill = scalar(via.child('drill')!, 1);
-    const at = via.child('at')!;
+    const drillNode = via.child('drill');
+    const at = via.child('at');
+    if (!drillNode || !at) continue;
+    const drill = scalar(drillNode, 1);
     toolFor(drill, 'ViaDrill').hits.push({
       x: scalar(at, 1),
       y: gerberY(scalar(at, 2)),
@@ -147,7 +143,8 @@ export function plotDrillFromSource(
       const d = padDrill(pad);
       if (!d) continue;
       const klass: Tool['klass'] = kind === 'np_thru_hole' ? 'NPTH' : 'ComponentDrill';
-      const at = pad.child('at')!;
+      const at = pad.child('at');
+      if (!at) continue;
       const lx = scalar(at, 1);
       const ly = scalar(at, 2);
       // pad position rotates with the footprint (position matrix)
@@ -170,8 +167,7 @@ export function plotDrillFromSource(
         const p2 = { x: wx - dx, y: gerberY(wy - dy) };
         // KiCad normalizes endpoints: ascending x, then ascending board y
         // (board y = -gerber y, so descending gerber y)
-        const [a, b] =
-          p1.x < p2.x || (p1.x === p2.x && p1.y > p2.y) ? [p1, p2] : [p2, p1];
+        const [a, b] = p1.x < p2.x || (p1.x === p2.x && p1.y > p2.y) ? [p1, p2] : [p2, p1];
         t.slots.push({ start: a, end: b });
       } else {
         t.hits.push({ x: wx, y: gerberY(wy) });
@@ -179,9 +175,7 @@ export function plotDrillFromSource(
     }
   }
 
-  const ordered = [...tools.values()].sort(
-    (a, b) => CLASS_ORDER[a.klass] - CLASS_ORDER[b.klass] || a.dia - b.dia,
-  );
+  const ordered = [...tools.values()].sort((a, b) => CLASS_ORDER[a.klass] - CLASS_ORDER[b.klass] || a.dia - b.dia);
 
   const gen = opts.generationSoftware ?? TYPECAD_SOFTWARE;
   const now = opts.creationDate ?? new Date();
@@ -202,7 +196,12 @@ export function plotDrillFromSource(
   ordered.forEach((t, i) => dcodes.set(t, i + 1));
 
   for (const t of ordered) {
-    const fn = t.klass === 'ViaDrill' ? 'Plated,PTH,ViaDrill' : t.klass === 'ComponentDrill' ? 'Plated,PTH,ComponentDrill' : 'NonPlated,NPTH,ComponentDrill';
+    const fn =
+      t.klass === 'ViaDrill'
+        ? 'Plated,PTH,ViaDrill'
+        : t.klass === 'ComponentDrill'
+          ? 'Plated,PTH,ComponentDrill'
+          : 'NonPlated,NPTH,ComponentDrill';
     lines.push(`; #@! TA.AperFunction,${fn}`);
     lines.push(`T${dcodes.get(t)}C${t.dia.toFixed(3)}`);
   }
@@ -221,9 +220,7 @@ export function plotDrillFromSource(
   for (const t of withSlots) {
     lines.push(`T${dcodes.get(t)}`);
     for (const sl of [...t.slots].sort((a, b) => byHitOrder(a.start, b.start))) {
-      lines.push(
-        `X${fmtCoord(sl.start.x)}Y${fmtCoord(sl.start.y)}G85X${fmtCoord(sl.end.x)}Y${fmtCoord(sl.end.y)}`,
-      );
+      lines.push(`X${fmtCoord(sl.start.x)}Y${fmtCoord(sl.start.y)}G85X${fmtCoord(sl.end.x)}Y${fmtCoord(sl.end.y)}`);
       lines.push('G05');
     }
   }

@@ -9,6 +9,7 @@ import {
   findComponent,
   findNet,
   isPowerNet,
+  padCarriesCopper,
   singlePinNets,
   unconnectedPads,
   type BoardComponent,
@@ -71,7 +72,9 @@ function componentJson(comp: BoardComponent) {
     at: comp.at,
     dimensions: comp.dimensions,
     padCount: comp.pads.length,
-    unconnectedPads: comp.pads.filter((p) => p.net === null && p.type !== 'np_thru_hole').map((p) => p.pad),
+    unconnectedPads: comp.pads
+      .filter((p) => p.net === null && p.type !== 'np_thru_hole' && padCarriesCopper(p))
+      .map((p) => p.pad),
     pads: comp.pads,
   };
 }

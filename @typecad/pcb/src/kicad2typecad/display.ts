@@ -1,11 +1,12 @@
 import chalk from 'chalk';
 import type { PCB } from '../pcb/pcb.js';
-import { DEFAULT_NET_PREFIX } from '../utils/constants.js';
 import logger from '../utils/logging.js';
 import type {
   KicadIR,
+  KicadBoardGraphicIR,
   KicadFootprintIR,
   KicadSegmentIR,
+  KicadTextIR,
   KicadViaIR,
   KicadStackupIR,
   KicadZoneIR,
@@ -84,7 +85,12 @@ export function buildTrackChains(ir: KicadIR): TrackNetGroup[] {
     if (segment.net !== undefined) return netMap.get(segment.net) || '';
     return '';
   };
-  const isUnnamedName = (name: string): boolean => !name || name.startsWith(DEFAULT_NET_PREFIX);
+  // Only a truly empty net name is "unnamed". Auto-generated names
+  // ("net14") carry real electrical identity: a track stripped of its net
+  // lands as no-net copper against netted pads, which DRC reports as a
+  // short. Verified empirically: pcb.track({ net: 'net1' }) joins the
+  // existing auto-named net, so the name round-trips.
+  const isUnnamedName = (name: string): boolean => !name;
 
   const segmentsByNet = new Map<string, KicadSegmentIR[]>();
   ir.segments.forEach((segment) => {
@@ -137,7 +143,7 @@ export function attachChainVias(ir: KicadIR, groups: TrackNetGroup[]): Set<numbe
   ir.nets.forEach((net) => netMap.set(net.number, net.name));
   const viaKey = (v: KicadViaIR): string => {
     const name = v.netName ?? (v.net !== undefined ? netMap.get(v.net) || '' : '');
-    return !name || name.startsWith(DEFAULT_NET_PREFIX) ? `unnamed:${v.net ?? 0}` : name;
+    return !name ? `unnamed:${v.net ?? 0}` : name;
   };
 
   for (const group of groups) {
@@ -202,7 +208,7 @@ export function trackBlockSource(ir: KicadIR, ch: ChalkHelpers = PLAIN_CH): { bl
     }
     const { chVar, chPunc, chKey } = ch;
     lines.push(
-      `${chVar('let ' + group.variableName)}${chPunc(':')} ${chKey('TrackBuilder')}${chPunc('[]')} ${chPunc('=')} ${chPunc('[')}${chPunc(']')}${chPunc(';')}`,
+      `${chVar('const ' + group.variableName)}${chPunc(':')} ${chKey('TrackBuilder')}${chPunc('[]')} ${chPunc('=')} ${chPunc('[')}${chPunc(']')}${chPunc(';')}`,
     );
     group.chains.forEach((chain) => {
       lines.push(pushStatementSource(group.variableName, group.isUnnamed ? undefined : group.netName, chain, ch));
@@ -236,7 +242,7 @@ export function viaArgSource(via: KicadViaIR, ch: ChalkHelpers = PLAIN_CH, netMa
   // Keep the electrical identity of a via that sits outside any track
   // chain (stitching vias, via-in-pad): the net rides on the via itself.
   const netName = viaNetName(via, netMap);
-  const namedNet = netName !== '' && !netName.startsWith(DEFAULT_NET_PREFIX);
+  const namedNet = netName !== '';
   let arg = ` ${chProp('at')}${chPunc(': {')} ${chProp('x')}${chPunc(':')} ${chNum(via.at.x)}${chPunc(',')} ${chProp('y')}${chPunc(':')} ${chNum(via.at.y)} ${chPunc('}')}${chPunc(',')}`;
   if (namedNet) {
     arg += ` ${chProp('net')}${chPunc(':')} ${chStr(`'${netName}'`)}${chPunc(',')}`;
@@ -287,7 +293,7 @@ export function generateTrackCode(
       }
       const { chVar, chPunc, chKey } = ch;
       allNetTrackLogs.push(
-        `${chVar('let ' + group.variableName)}${chPunc(':')} ${chKey('TrackBuilder')}${chPunc('[]')} ${chPunc('=')} ${chPunc('[')}${chPunc(']')}${chPunc(';')}`,
+        `${chVar('const ' + group.variableName)}${chPunc(':')} ${chKey('TrackBuilder')}${chPunc('[]')} ${chPunc('=')} ${chPunc('[')}${chPunc(']')}${chPunc(';')}`,
       );
 
       group.chains.forEach((chain) => {
@@ -403,45 +409,51 @@ export function generatePlacementCode(
 /**
  * Generate text element code display from IR text elements.
  */
-export function generateTextCode(ir: KicadIR, sourceDescription: string, ch: ChalkHelpers = DEFAULT_CH): void {
+/** One full `typecad.text({ ... });` statement — shared by display and --apply insertion. */
+export function textCallSource(t: KicadTextIR, ch: ChalkHelpers = PLAIN_CH, objectName = 'typecad'): string {
   const { chKey, chProp, chStr, chNum, chPunc, chVar } = ch;
+  let textLog = `${chVar(objectName)}${chPunc('.')}${chKey('text')}${chPunc('({ ')}`;
+  textLog += `${chProp('text')}${chPunc(':')} ${chStr(JSON.stringify(t.text))}${chPunc(',')}`;
+  textLog += ` ${chProp('x')}${chPunc(':')} ${chNum(t.x)}${chPunc(',')}`;
+  textLog += ` ${chProp('y')}${chPunc(':')} ${chNum(t.y)}${chPunc(',')}`;
+  if (t.rotation !== 0) textLog += ` ${chProp('rotation')}${chPunc(':')} ${chNum(t.rotation)}${chPunc(',')}`;
+  if (t.layer !== 'F.SilkS')
+    textLog += ` ${chProp('layer')}${chPunc(':')} ${chStr(JSON.stringify(t.layer))}${chPunc(',')}`;
+  if (t.fontFace) textLog += ` ${chProp('font')}${chPunc(':')} ${chStr(JSON.stringify(t.fontFace))}${chPunc(',')}`;
+  if (t.fontSize) {
+    textLog += ` ${chProp('height')}${chPunc(':')} ${chNum(t.fontSize[0])}${chPunc(',')}`;
+    textLog += ` ${chProp('width')}${chPunc(':')} ${chNum(t.fontSize[1])}${chPunc(',')}`;
+  }
+  if (t.thickness !== undefined) textLog += ` ${chProp('thickness')}${chPunc(':')} ${chNum(t.thickness)}${chPunc(',')}`;
+  if (t.bold) textLog += ` ${chProp('bold')}${chPunc(':')} ${chVar('true')}${chPunc(',')}`;
+  if (t.italic) textLog += ` ${chProp('italic')}${chPunc(':')} ${chVar('true')}${chPunc(',')}`;
+  if (t.hide) textLog += ` ${chProp('hide')}${chPunc(':')} ${chVar('true')}${chPunc(',')}`;
+  if (t.justify) {
+    const parts: string[] = [];
+    if (t.justify.horizontal)
+      parts.push(`${chProp('horizontal')}${chPunc(':')} ${chStr("'" + t.justify.horizontal + "'")}`);
+    if (t.justify.vertical) parts.push(`${chProp('vertical')}${chPunc(':')} ${chStr("'" + t.justify.vertical + "'")}`);
+    if (t.justify.mirror) parts.push(`${chProp('mirror')}${chPunc(':')} ${chVar('true')}`);
+    if (parts.length > 0)
+      textLog += ` ${chProp('justify')}${chPunc(':')} { ${parts.join(`${chPunc(',')}`)} }${chPunc(',')}`;
+  }
+  textLog = textLog.replace(/,$/, '');
+  textLog += ` ${chPunc('})')}${chPunc(';')}`;
+  return textLog;
+}
+
+export function generateTextCode(ir: KicadIR, sourceDescription: string, ch: ChalkHelpers = DEFAULT_CH): void {
   const textElements = ir.textElements;
 
   if (textElements.length > 0) {
     logger.log(`Found ${textElements.length} text element(s). Generating typeCAD code from ${sourceDescription}.`);
-    logger.log(chalk.bold(`\n--- Generated Text Element Code from ${sourceDescription} ---`));
+    logger.log(
+      chalk.bold(`
+--- Generated Text Element Code from ${sourceDescription} ---`),
+    );
     textElements.forEach((t) => {
-      logger.log(chalk.gray(`// Text: "${t.text}"`));
-      let textLog = `${chVar('typecad')}${chPunc('.')}${chKey('text')}${chPunc('({ ')}`;
-      textLog += `${chProp('text')}${chPunc(':')} ${chStr('"' + t.text + '"')}${chPunc(',')}`;
-      textLog += ` ${chProp('x')}${chPunc(':')} ${chNum(t.x)}${chPunc(',')}`;
-      textLog += ` ${chProp('y')}${chPunc(':')} ${chNum(t.y)}${chPunc(',')}`;
-      if (t.rotation !== 0) textLog += ` ${chProp('rotation')}${chPunc(':')} ${chNum(t.rotation)}${chPunc(',')}`;
-      if (t.layer !== 'F.SilkS')
-        textLog += ` ${chProp('layer')}${chPunc(':')} ${chStr('"' + t.layer + '"')}${chPunc(',')}`;
-      if (t.fontFace) textLog += ` ${chProp('font')}${chPunc(':')} ${chStr('"' + t.fontFace + '"')}${chPunc(',')}`;
-      if (t.fontSize) {
-        textLog += ` ${chProp('height')}${chPunc(':')} ${chNum(t.fontSize[0])}${chPunc(',')}`;
-        textLog += ` ${chProp('width')}${chPunc(':')} ${chNum(t.fontSize[1])}${chPunc(',')}`;
-      }
-      if (t.thickness !== undefined)
-        textLog += ` ${chProp('thickness')}${chPunc(':')} ${chNum(t.thickness)}${chPunc(',')}`;
-      if (t.bold) textLog += ` ${chProp('bold')}${chPunc(':')} ${chVar('true')}${chPunc(',')}`;
-      if (t.italic) textLog += ` ${chProp('italic')}${chPunc(':')} ${chVar('true')}${chPunc(',')}`;
-      if (t.hide) textLog += ` ${chProp('hide')}${chPunc(':')} ${chVar('true')}${chPunc(',')}`;
-      if (t.justify) {
-        const parts: string[] = [];
-        if (t.justify.horizontal)
-          parts.push(`${chProp('horizontal')}${chPunc(':')} ${chStr("'" + t.justify.horizontal + "'")}`);
-        if (t.justify.vertical)
-          parts.push(`${chProp('vertical')}${chPunc(':')} ${chStr("'" + t.justify.vertical + "'")}`);
-        if (t.justify.mirror) parts.push(`${chProp('mirror')}${chPunc(':')} ${chVar('true')}`);
-        if (parts.length > 0)
-          textLog += ` ${chProp('justify')}${chPunc(':')} { ${parts.join(`${chPunc(',')}`)} }${chPunc(',')}`;
-      }
-      textLog = textLog.replace(/,$/, '');
-      textLog += ` ${chPunc('})')}${chPunc(';')}`;
-      logger.log(textLog);
+      logger.log(chalk.gray(`// Text: ${JSON.stringify(t.text)}`));
+      logger.log(textCallSource(t, ch));
     });
     logger.log(chalk.bold('----------------------------------------------------------'));
   } else {
@@ -700,8 +712,125 @@ export function generateOutlineCode(ir: KicadIR, sourceDescription: string, ch: 
  * Generate `typecad.stackup(...)` code from the parsed stackup IR.
  * Emits nothing if no stackup was found in the board.
  */
+/** One `typecad.line()/circle()/rect()/arc()/poly()` call for a board graphic. */
+export function graphicCallSource(g: KicadBoardGraphicIR, ch: ChalkHelpers = PLAIN_CH, objectName = 'typecad'): string {
+  const { chKey, chProp, chStr, chNum, chPunc, chVar } = ch;
+  const pt = (label: string, p: { x: number; y: number }) =>
+    `${chProp(label)}${chPunc(':')} ${chPunc('{')} ${chProp('x')}${chPunc(':')} ${chNum(p.x)}${chPunc(',')} ${chProp('y')}${chPunc(':')} ${chNum(p.y)} ${chPunc('}')}`;
+  const common = (extra: string[]) => {
+    const fields = [
+      chProp('layer') + chPunc(':') + ' ' + chStr(`'${g.layer}'`),
+      ...(g.width !== undefined ? [chProp('width') + chPunc(':') + ' ' + chNum(g.width)] : []),
+      ...(g.fill ? [chProp('fill') + chPunc(':') + ' ' + chVar('true')] : []),
+      ...extra,
+    ];
+    return `${chVar(objectName)}${chPunc('.')}${chKey(g.kind)}${chPunc('(')}${chPunc('{')} ${fields.join(`${chPunc(',')} `)} ${chPunc('}')}${chPunc(')')}${chPunc(';')}`;
+  };
+
+  switch (g.kind) {
+    case 'line':
+      return common([pt('start', g.start!), pt('end', g.end!)]);
+    case 'rect':
+      return common([
+        `${chProp('start')}${chPunc(':')} ${chPunc('{')} ${chProp('x')}${chPunc(':')} ${chNum(g.start!.x)}${chPunc(',')} ${chProp('y')}${chPunc(':')} ${chNum(g.start!.y)} ${chPunc('}')}`,
+        `${chProp('end')}${chPunc(':')} ${chPunc('{')} ${chProp('x')}${chPunc(':')} ${chNum(g.end!.x)}${chPunc(',')} ${chProp('y')}${chPunc(':')} ${chNum(g.end!.y)} ${chPunc('}')}`,
+      ]);
+    case 'circle': {
+      const radius = g.center && g.end ? Math.hypot(g.end.x - g.center.x, g.end.y - g.center.y) : 0;
+      return common([
+        pt('center', g.center!),
+        `${chProp('radius')}${chPunc(':')} ${chNum(Math.round(radius * 1000) / 1000)}`,
+      ]);
+    }
+    case 'arc':
+      return common([pt('start', g.start!), pt('mid', g.mid!), pt('end', g.end!)]);
+    case 'poly': {
+      const pts = (g.points ?? [])
+        .map(
+          (p) =>
+            `${chPunc('{')} ${chProp('x')}${chPunc(':')} ${chNum(p.x)}${chPunc(',')} ${chProp('y')}${chPunc(':')} ${chNum(p.y)} ${chPunc('}')}`,
+        )
+        .join(`${chPunc(',')} `);
+      return common([`${chProp('points')}${chPunc(':')} ${chPunc('[')}${pts}${chPunc(']')}`]);
+    }
+  }
+}
+
+export function generateGraphicsCode(ir: KicadIR, sourceDescription: string, ch: ChalkHelpers = DEFAULT_CH): void {
+  if (ir.boardGraphics.length === 0) return;
+
+  logger.log(
+    `Found ${ir.boardGraphics.length} board graphic item(s) on silk/user layers. Generating typeCAD code from ${sourceDescription}.`,
+  );
+  logger.log(
+    chalk.bold(`
+--- Generated typeCAD Board Graphic Code from ${sourceDescription} ---`),
+  );
+  let lastLayer = '';
+  for (const g of ir.boardGraphics) {
+    if (g.layer !== lastLayer) {
+      logger.log(chalk.gray(`// Layer: ${g.layer}`));
+      lastLayer = g.layer;
+    }
+    logger.log(graphicCallSource(g, ch));
+  }
+  logger.log(chalk.bold('-------------------------------------------------------------'));
+}
+
+/** Per-layer override object for `pcb.stackup({ layers })` — plain or chalked. */
+function stackupLayersSource(stackup: KicadStackupIR, ch: ChalkHelpers): string {
+  const { chProp, chNum, chStr, chPunc } = ch;
+  const overrides = stackup.layers.filter(
+    (l) =>
+      l.thickness !== undefined ||
+      l.material !== undefined ||
+      l.epsilon_r !== undefined ||
+      l.loss_tangent !== undefined ||
+      l.color !== undefined,
+  );
+  const entries = overrides.map((l) => {
+    const fields: string[] = [];
+    if (l.thickness !== undefined) fields.push(`${chProp('thickness')}${chPunc(':')} ${chNum(l.thickness)}`);
+    if (l.material !== undefined) fields.push(`${chProp('material')}${chPunc(':')} ${chStr(`'${l.material}'`)}`);
+    if (l.epsilon_r !== undefined) fields.push(`${chProp('epsilon_r')}${chPunc(':')} ${chNum(l.epsilon_r)}`);
+    if (l.loss_tangent !== undefined) fields.push(`${chProp('loss_tangent')}${chPunc(':')} ${chNum(l.loss_tangent)}`);
+    if (l.color !== undefined) fields.push(`${chProp('color')}${chPunc(':')} ${chStr(`'${l.color}'`)}`);
+    return `${chStr(`'${l.name}'`)}${chPunc(':')} ${chPunc('{')} ${fields.join(`${chPunc(',')} `)} ${chPunc('}')}`;
+  });
+  return entries.join(`${chPunc(',')} `);
+}
+
+/** Options object of `pcb.stackup(N, { ... })` (without braces). */
+export function stackupOptionsSource(stackup: KicadStackupIR, ch: ChalkHelpers = PLAIN_CH): string {
+  const { chProp, chStr, chPunc } = ch;
+  const opts: string[] = [];
+  if (stackup.copperFinish && stackup.copperFinish !== 'None') {
+    opts.push(`${chProp('copper_finish')}${chPunc(':')} ${chStr(`'${stackup.copperFinish}'`)}`);
+  }
+  if (stackup.dielectricConstraints === true) {
+    opts.push(`${chProp('dielectric_constraints')}${chPunc(':')} ${chStr('true')}`);
+  }
+  const layers = stackupLayersSource(stackup, ch);
+  if (layers !== '') {
+    opts.push(`${chProp('layers')}${chPunc(':')} ${chPunc('{')} ${layers} ${chPunc('}')}`);
+  }
+  return opts.join(`${chPunc(',')} `);
+}
+
+/** Full `typecad.stackup(...)` statement. */
+export function stackupCallSource(
+  stackup: KicadStackupIR,
+  ch: ChalkHelpers = PLAIN_CH,
+  objectName = 'typecad',
+): string {
+  const { chVar, chPunc, chKey, chNum } = ch;
+  const options = stackupOptionsSource(stackup, ch);
+  let log = `${chVar(objectName)}${chPunc('.')}${chKey('stackup')}${chPunc('(')}${chNum(stackup.copperLayerCount)}`;
+  if (options !== '') log += `${chPunc(',')} ${chPunc('{')} ${options} ${chPunc('}')}`;
+  return log + `${chPunc(')')}${chPunc(';')}`;
+}
+
 export function generateStackupCode(ir: KicadIR, sourceDescription: string, ch: ChalkHelpers = DEFAULT_CH): void {
-  const { chKey, chStr, chProp, chNum, chPunc, chVar } = ch;
   const stackup = ir.stackup;
   if (!stackup || stackup.copperLayerCount < 2) {
     return;
@@ -711,26 +840,11 @@ export function generateStackupCode(ir: KicadIR, sourceDescription: string, ch: 
     `Found layer stackup (${stackup.copperLayerCount} copper layers) in ${sourceDescription}. Generating typeCAD code.`,
   );
 
-  const parts: string[] = [`${chNum(stackup.copperLayerCount)}`];
-
-  // Emit options only when non-default.
-  const opts: string[] = [];
-  if (stackup.copperFinish && stackup.copperFinish !== 'None') {
-    opts.push(`${chProp('copper_finish')}${chPunc(':')} ${chStr(`'${stackup.copperFinish}'`)}`);
-  }
-  if (stackup.dielectricConstraints === true) {
-    opts.push(`${chProp('dielectric_constraints')}${chPunc(':')} ${chStr('true')}`);
-  }
-  if (opts.length > 0) {
-    parts.push(`${chPunc('{')} ${opts.join(`${chPunc(',')} `)} ${chPunc('}')}`);
-  }
-
-  let log = `${chVar('typecad')}${chPunc('.')}${chKey('stackup')}${chPunc('(')}`;
-  log += parts.join(`${chPunc(',')} `);
-  log += `${chPunc(')')}${chPunc(';')}`;
-
-  logger.log(chalk.bold(`\n--- Generated typeCAD Stackup Code from ${sourceDescription} ---`));
-  logger.log(log);
+  logger.log(
+    chalk.bold(`
+--- Generated typeCAD Stackup Code from ${sourceDescription} ---`),
+  );
+  logger.log(stackupCallSource(stackup, ch));
   logger.log(chalk.bold('-----------------------------------------------------------'));
 }
 
@@ -909,7 +1023,9 @@ function sharedZoneProps(zone: KicadZoneIR, ch: ChalkHelpers): string {
     if (zone.fill.hatchGap !== undefined) f.push(`${chProp('hatchGap')}${chPunc(':')} ${chNum(zone.fill.hatchGap)}`);
     if (zone.fill.hatchOrientation !== undefined)
       f.push(`${chProp('hatchOrientation')}${chPunc(':')} ${chNum(zone.fill.hatchOrientation)}`);
-    if (zone.fill.arcSegments !== undefined)
+    // 16 is KiCad's default (and kicad-cli resaves drop the token) — emit
+    // only non-defaults or every resave churns the source.
+    if (zone.fill.arcSegments !== undefined && zone.fill.arcSegments !== 16)
       f.push(`${chProp('arcSegments')}${chPunc(':')} ${chNum(zone.fill.arcSegments)}`);
     if (f.length > 0)
       props.push(`${chProp('fill')}${chPunc(':')} ${chPunc('{')} ${f.join(`${chPunc(',')} `)} ${chPunc('}')}`);

@@ -7,11 +7,13 @@ const args = process.argv.slice(2);
 const filePathArg = args.find((a) => !a.startsWith('--'));
 const auto = args.includes('--auto');
 const watch = args.includes('--watch');
-// --auto implies apply (it is apply, minus the prompts)
-const apply = args.includes('--apply') || auto;
+const dryRun = args.includes('--dry-run');
+const restore = args.includes('--restore');
+// --auto implies apply (it is apply, minus the prompts); --dry-run previews
+const apply = args.includes('--apply') || auto || dryRun;
 
 if (filePathArg && filePathArg.trim() !== '') {
-  kicadDataToTypeCAD(filePathArg, { apply, auto, watch }).catch((err: unknown) => {
+  kicadDataToTypeCAD(filePathArg, { apply, auto, watch, dryRun, restore }).catch((err: unknown) => {
     logger.error(err);
     process.exit(1);
   });
@@ -24,6 +26,8 @@ if (filePathArg && filePathArg.trim() !== '') {
   logger.log('  --auto              Apply every detected change without prompting (implies --apply)');
   logger.log('  --watch             Re-run on every save of the board file; with --auto the');
   logger.log('                      source .ts is live-synced while you edit in KiCad');
+  logger.log('  --dry-run           Preview every change (with edits) without writing');
+  logger.log('  --restore           Undo the last apply cycle from its snapshot');
   logger.log('  (text layout positions are always imported)');
   logger.log('');
   logger.log('Notes:');

@@ -73,6 +73,17 @@ function buildBoardContentsFromExisting(existingElements: SExpr[], headerItems: 
     }
   }
 
+  // The generator identity is always re-stamped on rebuild: kicad-cli
+  // resaves (zone fills, DRC) rewrite it to pcbnew, but the file being
+  // regenerated here is OUR output — preserving a stale pcbnew marker
+  // misattributes every subsequent rebuild to KiCad.
+  const IDENTITY_SYMBOLS = new Set(['generator', 'generator_version']);
+  for (let i = contents.length - 1; i >= 0; i--) {
+    const item = contents[i];
+    const symbol = Array.isArray(item) ? nameOf(item[0]) : '';
+    if (IDENTITY_SYMBOLS.has(symbol)) contents.splice(i, 1);
+  }
+
   for (const header of headerItems) {
     const headerSymbol = Array.isArray(header) ? nameOf(header[0]) : '';
     const alreadyPresent = contents.some(

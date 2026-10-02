@@ -4,19 +4,35 @@ import type { MethodCallInfo, Replacement } from './source_analyzer.js';
 import {
   PLAIN_CH,
   deriveOutlineCalls,
+  graphicCallSource,
   outlineCallSource,
   rectFromPolygon,
+  stackupCallSource,
+  textCallSource,
   trackBlockSource,
   zoneCallSource,
   zonePropsSource,
 } from './display.js';
 import type { DerivedOutlineCall } from './display.js';
-import type { KicadIR, KicadZoneIR, PendingSourceChange } from './types.js';
+import { textFuzzyMatch } from './rewriter.js';
+import type { KicadBoardGraphicIR, KicadIR, KicadZoneIR, PendingSourceChange } from './types.js';
 
 /**
  * --apply write-back for the elements that used to be display-only: board
  * outline calls, zone/keepout calls, and the whole routing section (track
  * declarations/pushes, standalone vias, and the create() spreads).
+ *
+ * ## Equality discipline (invariant)
+ *
+ * Deciding "is the source in sync with the board" must never compare two
+ * different representations of the same thing — that is where every phantom
+ * diff in this module's history came from (a raw PropertyValue record vs a
+ * plain object, `{}` vs `undefined`, a trailing `;` inside vs outside the
+ * compared text). The rule: build a normalized view of BOTH sides through
+ * the same renderer (zonePropsSource, stackupCallSource, graphicCallSource,
+ * trackBlockSource / plainToGraphic) and diff those; render to source text
+ * only at the moment of writing. Text and outline use in-place property
+ * updates, which the convergence oracle and fuzz tests pin instead.
  *
  * Every compute function returns pre-computed {@link PendingSourceChange}s —
  * literal replacement ranges against the file as analyzed — so all selected
@@ -77,10 +93,24 @@ interface ZoneCallInfo {
  * whatever the emitter produces equal is semantically in sync.
  */
 function pseudoZoneFromProps(method: string, props: Record<string, unknown>): KicadZoneIR | null {
-  const x = num(props['x']);
-  const y = num(props['y']);
-  const width = num(props['width']);
-  const height = num(props['height']);
+  let x = num(props['x']);
+  let y = num(props['y']);
+  let width = num(props['width']);
+  let height = num(props['height']);
+  // `bounds: { left, top, width, height }` is an accepted zone geometry form
+  const bounds = props['bounds'] as Record<string, unknown> | undefined;
+  if ((x === undefined || y === undefined || width === undefined || height === undefined) && bounds) {
+    const left = num(bounds['left'] ?? bounds['x']);
+    const top = num(bounds['top'] ?? bounds['y']);
+    const bWidth = num(bounds['width']);
+    const bHeight = num(bounds['height']);
+    if (left !== undefined && top !== undefined && bWidth !== undefined && bHeight !== undefined) {
+      x = x ?? left;
+      y = y ?? top;
+      width = width ?? bWidth;
+      height = height ?? bHeight;
+    }
+  }
   let polygon: Array<{ x: number; y: number }> | null = null;
   if (x !== undefined && y !== undefined && width !== undefined && height !== undefined) {
     polygon = [
@@ -101,9 +131,29 @@ function pseudoZoneFromProps(method: string, props: Record<string, unknown>): Ki
 
   const layers = props['layers'];
   const restrictions = props['restrictions'];
-  const fill = props['fill'];
   const connectPads = props['connectPads'];
   const filledAreasThickness = props['filledAreasThickness'];
+  // Fill settings may be grouped under `fill:` (the emitted form) or flat on
+  // the options object (a documented API form) — merge both views so either
+  // writing style compares equal to the board's parsed fill.
+  const groupedFill = (props['fill'] ?? null) as Record<string, unknown> | null;
+  const FLAT_FILL_KEYS = [
+    'thermalGap',
+    'thermalBridgeWidth',
+    'islandRemovalMode',
+    'islandAreaMin',
+    'smoothing',
+    'smoothingRadius',
+    'hatchThickness',
+    'hatchGap',
+    'hatchOrientation',
+    'arcSegments',
+  ] as const;
+  const flatFill: Record<string, unknown> = {};
+  for (const key of FLAT_FILL_KEYS) {
+    if (props[key] !== undefined) flatFill[key] = props[key];
+  }
+  const fill = groupedFill || Object.keys(flatFill).length > 0 ? { ...flatFill, ...(groupedFill ?? {}) } : undefined;
 
   const zone: KicadZoneIR = {
     layers: Array.isArray(layers) ? (layers as string[]) : [],
@@ -321,10 +371,15 @@ export function computeZoneChanges(ir: KicadIR, sourceFiles: string[]): SourceCh
 }
 
 function srcCenter(props: Record<string, unknown>): { x: number; y: number } {
-  const x = num(props['x']);
-  const y = num(props['y']);
-  const w = num(props['width']);
-  const h = num(props['height']);
+  let x = num(props['x']);
+  let y = num(props['y']);
+  const w = num(props['width'] ?? (props['bounds'] as Record<string, unknown> | undefined)?.['width']);
+  const h = num(props['height'] ?? (props['bounds'] as Record<string, unknown> | undefined)?.['height']);
+  const bounds = props['bounds'] as Record<string, unknown> | undefined;
+  if ((x === undefined || y === undefined) && bounds) {
+    x = x ?? num(bounds['left'] ?? bounds['x']);
+    y = y ?? num(bounds['top'] ?? bounds['y']);
+  }
   if (x !== undefined && y !== undefined && w !== undefined && h !== undefined) {
     return { x: x + w / 2, y: y + h / 2 };
   }
@@ -345,6 +400,14 @@ function outlineArgDiffs(derived: DerivedOutlineCall, call: MethodCallInfo, sour
   const reps: Replacement[] = [];
   const derivedNums = derived.args.filter((a): a is number => typeof a === 'number');
   const srcArgs = call.args;
+
+  // `outline({ left, top, width, height })` — the bounds object form. Replace
+  // the whole argument with the numeric list instead of corrupting the
+  // object slot with a bare number.
+  if (srcArgs.length > 0 && typeof srcArgs[0] === 'object' && srcArgs[0] !== null) {
+    reps.push({ range: call.argRanges[0], newValue: derivedNums.join(', ') });
+    return reps;
+  }
 
   if (call.method === 'outlinePolygon' || call.method === 'cutout') {
     const derivedPoints = derived.args[0] as Array<{ x: number; y: number }>;
@@ -704,6 +767,447 @@ export function computeRoutingChanges(ir: KicadIR, sourceFiles: string[]): Sourc
   }
 
   return { changes, notes };
+}
+
+// === Text section (insert board text missing from source, drop stale calls) ===
+
+interface SourceTextRef {
+  filePath: string;
+  call: MethodCallInfo;
+  text: string;
+}
+
+/**
+ * Pair source `typecad.text()` calls with board text elements (exact match
+ * first, then the same fuzzy rule the position updater uses — each pair
+ * consumes one board text so duplicates pair up in order). Board texts left
+ * unpaired are inserted into the source; source calls left unpaired are
+ * deleted — together this makes board text round-trip instead of only
+ * updating calls that already exist.
+ */
+export function computeTextSectionChanges(ir: KicadIR, sourceFiles: string[]): SourceChangeResult {
+  const changes: PendingSourceChange[] = [];
+  const notes: string[] = [];
+  if (ir.textElements.length === 0 && sourceFiles.length === 0) return { changes, notes };
+
+  const sourceCalls: SourceTextRef[] = [];
+  for (const filePath of sourceFiles) {
+    for (const call of findMethodCalls(filePath, ['text'])) {
+      const text = call.props['text']?.value;
+      if (typeof text === 'string') sourceCalls.push({ filePath, call, text });
+    }
+  }
+  if (sourceCalls.length === 0 && ir.textElements.length === 0) return { changes, notes };
+
+  const boardTexts = [...ir.textElements];
+  const boardPaired = new Set<number>();
+  const srcPaired = new Set<number>();
+  const pair = (match: (a: string, b: string) => boolean) => {
+    for (let si = 0; si < sourceCalls.length; si++) {
+      if (srcPaired.has(si)) continue;
+      for (let bi = 0; bi < boardTexts.length; bi++) {
+        if (boardPaired.has(bi)) continue;
+        if (match(sourceCalls[si].text, boardTexts[bi].text)) {
+          srcPaired.add(si);
+          boardPaired.add(bi);
+          break;
+        }
+      }
+    }
+  };
+  pair((a, b) => a === b);
+  pair(textFuzzyMatch);
+
+  // Insert unpaired board texts.
+  const inserts = boardTexts.filter((_, bi) => !boardPaired.has(bi));
+  if (inserts.length > 0) {
+    const target = chooseTextInsertTarget(sourceFiles, sourceCalls);
+    if (!target) {
+      notes.push(
+        `${inserts.length} board text element(s) have no typecad.text() call and no suitable insertion point in the source — code printed for manual insertion.`,
+      );
+    } else {
+      const { filePath, anchor, position } = target;
+      const source = readSource(filePath);
+      if (!source) {
+        notes.push(`Cannot read ${filePath} to insert board text — code printed for manual insertion.`);
+      } else {
+        const indent = lineIndentAt(source, position);
+        let value = '';
+        for (const t of inserts) {
+          value += `${textCallSource(t, PLAIN_CH, anchor.objectName)}
+${indent}`;
+        }
+        changes.push({
+          kind: 'text',
+          filePath,
+          label:
+            inserts.length === 1
+              ? `text ${JSON.stringify(inserts[0].text)} inserted from board`
+              : `${inserts.length} board text element(s) inserted from board`,
+          changedProps: ['new'],
+          replacements: [{ range: { start: position, end: position }, newValue: value }],
+        });
+      }
+    }
+  }
+
+  // Delete source calls whose text is not on the board at all.
+  for (let si = 0; si < sourceCalls.length; si++) {
+    if (srcPaired.has(si)) continue;
+    const ref = sourceCalls[si];
+    changes.push({
+      kind: 'text',
+      filePath: ref.filePath,
+      label: `text ${JSON.stringify(ref.text)} removed (not on board)`,
+      changedProps: ['removed'],
+      replacements: [{ range: statementLineRange(readSource(ref.filePath), ref.call.statementRange), newValue: '' }],
+    });
+  }
+
+  return { changes, notes };
+}
+
+/** Where new text calls go: after the last existing call, else before zone/outline, else before create(). */
+function chooseTextInsertTarget(
+  sourceFiles: string[],
+  sourceCalls: SourceTextRef[],
+): { filePath: string; anchor: MethodCallInfo; position: number } | null {
+  const candidates: Array<{ filePath: string; anchor: MethodCallInfo; position: number }> = [];
+
+  // After the last text() call of the file that has the most of them.
+  const byFileTexts = new Map<string, SourceTextRef[]>();
+  for (const ref of sourceCalls) {
+    if (!byFileTexts.has(ref.filePath)) byFileTexts.set(ref.filePath, []);
+    byFileTexts.get(ref.filePath)!.push(ref);
+  }
+  const textFile = [...byFileTexts.entries()].sort((a, b) => b[1].length - a[1].length)[0];
+  if (textFile) {
+    const last = textFile[1][textFile[1].length - 1];
+    candidates.push({ filePath: last.filePath, anchor: last.call, position: last.call.statementRange.end });
+  }
+
+  // Before the first zone/outline-family call of the file with the most of them.
+  const ZONE_FAM = ['zone', 'keepout', 'outline', 'outlineCircle', 'outlinePolygon', 'cutout', 'cutoutCircle'];
+  let bestGeo: { filePath: string; call: MethodCallInfo } | null = null;
+  for (const filePath of sourceFiles) {
+    const calls = findMethodCalls(filePath, ZONE_FAM);
+    if (calls.length > (bestGeo ? findMethodCalls(bestGeo.filePath, ZONE_FAM).length : 0)) {
+      bestGeo = { filePath, call: calls[0] };
+    }
+  }
+  if (bestGeo) {
+    const lineStart = readSource(bestGeo.filePath)!.lastIndexOf('\n', bestGeo.call.statementRange.start - 1) + 1;
+    candidates.push({ filePath: bestGeo.filePath, anchor: bestGeo.call, position: lineStart });
+  }
+
+  // Before the create() call.
+  for (const filePath of sourceFiles) {
+    const create = findMethodCalls(filePath, ['create'])[0];
+    if (create) {
+      candidates.push({ filePath, anchor: create, position: create.statementRange.start });
+      break;
+    }
+  }
+
+  return candidates[0] ?? null;
+}
+
+function lineIndentAt(source: string, position: number): string {
+  const lineStart = source.lastIndexOf('\n', position - 1) + 1;
+  return source.slice(lineStart, position).match(/^\s*/)?.[0] ?? '';
+}
+
+/** Extend a statement range over its trailing newline (and leading indent) so deletion leaves no blank line. */
+function statementLineRange(
+  source: string | null,
+  range: { start: number; end: number },
+): { start: number; end: number } {
+  if (!source) return range;
+  let start = range.start;
+  let end = range.end;
+  const lineStart = source.lastIndexOf('\n', start - 1) + 1;
+  if (source.slice(lineStart, start).trim() === '') start = lineStart;
+  if (source[end] === '\n') end += 1;
+  else if (source.slice(end).startsWith('\r\n')) end += 2;
+  return { start, end };
+}
+
+// === Stackup (layer count + per-layer detail) ===
+
+/**
+ * Sync the `typecad.stackup(...)` call with the board's stackup: layer
+ * count and the per-layer detail object (thickness/material/epsilon_r/
+ * loss_tangent/color) are regenerated from the parsed stackup whenever the
+ * call is missing them or they differ. Inserted before the first
+ * zone/outline call when the source has none.
+ */
+export function computeStackupChanges(ir: KicadIR, sourceFiles: string[]): SourceChangeResult {
+  const changes: PendingSourceChange[] = [];
+  const notes: string[] = [];
+  const stackup = ir.stackup;
+  if (!stackup || stackup.copperLayerCount < 2) return { changes, notes };
+
+  // The call range excludes the statement's trailing semicolon; the compare
+  // text must too, or the update never converges. Fresh inserts use the full
+  // statement (with terminator).
+  const desiredStatement = stackupCallSource(stackup, PLAIN_CH);
+  const desired = desiredStatement.replace(/;$/, '');
+
+  let best: { filePath: string; call: MethodCallInfo } | null = null;
+  for (const filePath of sourceFiles) {
+    for (const call of findMethodCalls(filePath, ['stackup'])) {
+      if (!best) best = { filePath, call };
+    }
+  }
+
+  if (!best) {
+    // Insert before the first zone/outline-family call, else before create().
+    const anchor = findInsertAnchor(sourceFiles);
+    if (!anchor) {
+      notes.push(
+        `Board stackup (${stackup.copperLayerCount} copper layers) found but the source has no typecad.stackup() call — code printed for manual insertion.`,
+      );
+      return { changes, notes };
+    }
+    const source = readSource(anchor.filePath);
+    if (!source) return { changes, notes };
+    const lineStart = source.lastIndexOf('\n', anchor.call.statementRange.start - 1) + 1;
+    changes.push({
+      kind: 'stackup',
+      filePath: anchor.filePath,
+      label: `stackup(${stackup.copperLayerCount} layers) inserted from board`,
+      changedProps: ['new'],
+      replacements: [{ range: { start: lineStart, end: lineStart }, newValue: `${desiredStatement}\n` }],
+    });
+    return { changes, notes };
+  }
+
+  const source = readSource(best.filePath);
+  if (!source) return { changes, notes };
+  const currentText = source.slice(best.call.callRange.start, best.call.callRange.end);
+  if (currentText === desired) return { changes, notes };
+
+  changes.push({
+    kind: 'stackup',
+    filePath: best.filePath,
+    label: `stackup call updated from board (${stackup.copperLayerCount} layers, layer detail)`,
+    changedProps: ['stackup'],
+    replacements: [{ range: best.call.callRange, newValue: desired }],
+  });
+  return { changes, notes };
+}
+
+// === Board graphics (silk/user layer shapes) ===
+
+const GRAPHIC_METHODS = ['line', 'circle', 'rect', 'arc', 'poly'];
+
+function graphicCenter(g: KicadBoardGraphicIR): { x: number; y: number } {
+  if (g.kind === 'circle' && g.center) return g.center;
+  if (g.start && g.end) return { x: (g.start.x + g.end.x) / 2, y: (g.start.y + g.end.y) / 2 };
+  if (g.points && g.points.length > 0) {
+    return {
+      x: g.points.reduce((s, p) => s + p.x, 0) / g.points.length,
+      y: g.points.reduce((s, p) => s + p.y, 0) / g.points.length,
+    };
+  }
+  return { x: NaN, y: NaN };
+}
+
+/** Same shape, byte-for-byte call text — the emit/diff contract for graphics. */
+function graphicsEqual(a: KicadBoardGraphicIR, b: KicadBoardGraphicIR): boolean {
+  return graphicCallSource(a) === graphicCallSource(b);
+}
+
+/**
+ * Sync `typecad.line()/circle()/rect()/arc()/poly()` calls with board
+ * graphics on silk/user layers: geometry diffs regenerate the call,
+ * graphics removed on the board delete their call, new ones are appended
+ * after the last graphic (or before the first zone-family call).
+ */
+export function computeGraphicsChanges(ir: KicadIR, sourceFiles: string[]): SourceChangeResult {
+  const changes: PendingSourceChange[] = [];
+  const notes: string[] = [];
+
+  interface GraphicCall {
+    filePath: string;
+    call: MethodCallInfo;
+  }
+  const srcCalls: GraphicCall[] = [];
+  for (const filePath of sourceFiles) {
+    for (const call of findMethodCalls(filePath, GRAPHIC_METHODS)) srcCalls.push({ filePath, call });
+  }
+  if (ir.boardGraphics.length === 0 && srcCalls.length === 0) return { changes, notes };
+
+  const boardGraphics = ir.boardGraphics.filter((g) => Number.isFinite(graphicCenter(g).x));
+
+  // Greedy pairing: same layer, nearest center.
+  interface Pair {
+    src: number;
+    ir: number;
+    dist: number;
+  }
+  const candidates: Pair[] = [];
+  srcCalls.forEach((sc, si) => {
+    const layer = sc.call.props['layer']?.value;
+    boardGraphics.forEach((g, gi) => {
+      if (layer !== g.layer) return;
+      const c = graphicCenter(g);
+      const center = plainToGraphic(sc.call, sc.call.method as KicadBoardGraphicIR['kind']);
+      const sc2 = graphicCenter(center);
+      if (!Number.isFinite(sc2.x)) return;
+      const dist = Math.hypot(sc2.x - c.x, sc2.y - c.y);
+      if (dist <= 20) candidates.push({ src: si, ir: gi, dist });
+    });
+  });
+  candidates.sort((a, b) => a.dist - b.dist);
+  const srcMatched = new Set<number>();
+  const irMatched = new Set<number>();
+  for (const pair of candidates) {
+    if (srcMatched.has(pair.src) || irMatched.has(pair.ir)) continue;
+    srcMatched.add(pair.src);
+    irMatched.add(pair.ir);
+    const sc = srcCalls[pair.src];
+    const g = boardGraphics[pair.ir];
+    if (!graphicsEqual(plainToGraphic(sc.call, g.kind), g)) {
+      changes.push({
+        kind: 'graphics',
+        filePath: sc.filePath,
+        label: `${g.kind} on ${g.layer} updated from board`,
+        changedProps: ['geometry'],
+        replacements: [{ range: sc.call.argRanges[0], newValue: graphicArgsSource(g) }],
+      });
+    }
+  }
+
+  // Source calls whose graphic is gone from the board → delete.
+  srcCalls.forEach((sc, si) => {
+    if (srcMatched.has(si)) return;
+    changes.push({
+      kind: 'graphics',
+      filePath: sc.filePath,
+      label: `${sc.call.method} on ${String(sc.call.props['layer']?.value ?? '?')} removed (not on board)`,
+      changedProps: ['removed'],
+      replacements: [{ range: statementLineRange(readSource(sc.filePath), sc.call.statementRange), newValue: '' }],
+    });
+  });
+
+  // New board graphics → append after the last graphic call, else before the
+  // first zone-family call.
+  const inserts = boardGraphics.filter((_, gi) => !irMatched.has(gi));
+  if (inserts.length > 0) {
+    const lastGraphic = srcCalls[srcCalls.length - 1];
+    const anchor = lastGraphic ?? findInsertAnchor(sourceFiles);
+    if (!anchor) {
+      notes.push(
+        `${inserts.length} board graphic(s) have no typecad line/rect/circle/arc/poly call and no suitable insertion point — code printed for manual insertion.`,
+      );
+    } else {
+      const source = readSource(anchor.filePath);
+      if (source) {
+        const nl = '\n';
+        const position = lastGraphic ? anchor.call.statementRange.end : anchor.call.statementRange.start;
+        const indent = lineIndentAt(source, position);
+        let value = '';
+        for (const g of inserts) {
+          if (lastGraphic) {
+            value += `${nl}${indent}${graphicCallSource(g, PLAIN_CH, anchor.call.objectName)}`;
+          } else {
+            value += `${graphicCallSource(g, PLAIN_CH, anchor.call.objectName)}${nl}${indent}`;
+          }
+        }
+        changes.push({
+          kind: 'graphics',
+          filePath: anchor.filePath,
+          label: `${inserts.length} board graphic(s) inserted from board`,
+          changedProps: ['new'],
+          replacements: [{ range: { start: position, end: position }, newValue: value }],
+        });
+      }
+    }
+  }
+
+  return { changes, notes };
+}
+
+/** Rebuild a KicadBoardGraphicIR view of an existing graphic call for byte comparison. */
+function plainToGraphic(call: MethodCallInfo, kind: KicadBoardGraphicIR['kind']): KicadBoardGraphicIR {
+  const plain = plainProps(call);
+  const point = (v: unknown) => {
+    const p = v as { x?: unknown; y?: unknown } | undefined;
+    return p && typeof p.x === 'number' && typeof p.y === 'number' ? { x: p.x, y: p.y } : undefined;
+  };
+  const layer = typeof plain['layer'] === 'string' ? plain['layer'] : '';
+  const width = num(plain['width']);
+  const fill = plain['fill'] === true ? true : undefined;
+  switch (kind) {
+    case 'line':
+      return { kind, layer, width, start: point(plain['start']), end: point(plain['end']) };
+    case 'rect':
+      return { kind, layer, width, fill, start: point(plain['start']), end: point(plain['end']) };
+    case 'circle': {
+      const center = point(plain['center']);
+      // typeCAD stores circles as center+radius; KiCad as center+end. The
+      // emit path derives radius from center→end, so the parsed view must
+      // reconstruct an end point from the radius for the byte comparison.
+      const radius = num(plain['radius']) ?? 0;
+      const end = center ? { x: center.x + radius, y: center.y } : undefined;
+      return { kind, layer, width, fill, center, end };
+    }
+    case 'arc':
+      return { kind, layer, width, start: point(plain['start']), mid: point(plain['mid']), end: point(plain['end']) };
+    case 'poly':
+      return {
+        kind,
+        layer,
+        width,
+        fill,
+        points: Array.isArray(plain['points']) ? (plain['points'] as { x: number; y: number }[]) : [],
+      };
+  }
+}
+
+/** Argument object literal of a graphic call (no `typecad.line(` wrapper). */
+function graphicArgsSource(g: KicadBoardGraphicIR): string {
+  const source = graphicCallSource(g);
+  const open = source.indexOf('(');
+  const close = source.lastIndexOf(');');
+  return source.slice(open + 1, close);
+}
+
+/** First zone/outline-family statement across the files — the insertion anchor for board-level calls. */
+function findInsertAnchor(sourceFiles: string[]): { filePath: string; call: MethodCallInfo } | null {
+  const ZONE_FAM = ['zone', 'keepout', 'outline', 'outlineCircle', 'outlinePolygon', 'cutout', 'cutoutCircle'];
+  let best: { filePath: string; call: MethodCallInfo } | null = null;
+  for (const filePath of sourceFiles) {
+    for (const call of findMethodCalls(filePath, ZONE_FAM)) {
+      if (!best || call.statementRange.start < best.call.statementRange.start) {
+        best = { filePath, call };
+      }
+    }
+  }
+  return best;
+}
+
+/** All write-back categories, for the convergence oracle and dry-run output. */
+export interface AllSourceChanges {
+  zone: SourceChangeResult;
+  outline: SourceChangeResult;
+  routing: SourceChangeResult;
+  textSection: SourceChangeResult;
+  stackup: SourceChangeResult;
+  graphics: SourceChangeResult;
+}
+
+export function computeAllSourceChanges(ir: KicadIR, sourceFiles: string[]): AllSourceChanges {
+  return {
+    zone: computeZoneChanges(ir, sourceFiles),
+    outline: computeOutlineChanges(ir, sourceFiles),
+    routing: computeRoutingChanges(ir, sourceFiles),
+    textSection: computeTextSectionChanges(ir, sourceFiles),
+    stackup: computeStackupChanges(ir, sourceFiles),
+    graphics: computeGraphicsChanges(ir, sourceFiles),
+  };
 }
 
 // === Apply ===

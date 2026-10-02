@@ -70,7 +70,8 @@ function edgeSize(root: SNode): { X: number; Y: number } {
         ? arcPolyline(s, atPoint(midNode), e, 0)
         : (() => {
             // legacy angle form: sweep from start around (at)
-            const at = item.child('at')!;
+            const at = item.child('at');
+            if (!at) return [];
             const cx = scalar(at, 1, 0);
             const cy = scalar(at, 2, 0);
             const r = Math.hypot(s.x - cx, s.y - cy);
@@ -111,7 +112,9 @@ function designRules(root: SNode, hasInner: boolean, boardPath: string): unknown
       const layer = String(item.child('layer')?.raw[1] ?? '');
       const isInner = layer.startsWith('In');
       if (isInner !== inner) continue;
-      const w = scalar(item.child('width')!, 1);
+      const wNode = item.child('width');
+      if (!wNode) continue;
+      const w = scalar(wNode, 1);
       if (w > 0) min = Math.min(min, w);
     }
     return Number.isFinite(min) ? min : null;
@@ -218,7 +221,10 @@ function materialStackup(root: SNode, thickness: number): unknown[] {
     const thickness = layer.child('thickness');
     // KiCad keeps a decimal point on whole-number thicknesses ("1.0");
     // emit as a string sentinel, converted back after JSON.stringify
-    if (thickness) row['Thickness'] = Number.isInteger(scalar(thickness, 1, 0)) ? `@@${scalar(thickness, 1, 0)}.0@@` : scalar(thickness, 1, 0);
+    if (thickness)
+      row['Thickness'] = Number.isInteger(scalar(thickness, 1, 0))
+        ? `@@${scalar(thickness, 1, 0)}.0@@`
+        : scalar(thickness, 1, 0);
     const material = layer.child('material');
     if (material) row['Material'] = String(material.raw[1]);
     row['_type'] = typeStr;
@@ -227,9 +233,7 @@ function materialStackup(root: SNode, thickness: number): unknown[] {
   }
   // second pass: dielectric names are the surrounding copper layers joined
   // by '/', with a "Notes" line numbering the dielectric
-  const copperNames = rows
-    .filter((r) => r['Type'] === 'Copper')
-    .map((r) => String(r['_name']));
+  const copperNames = rows.filter((r) => r['Type'] === 'Copper').map((r) => String(r['_name']));
   let dieCount = 0;
   let copperIdx = 0;
   const out: unknown[] = [];
@@ -342,12 +346,7 @@ export function plotJobFromSource(
   const coppers = copperLayers(root);
   const copperCount = coppers.length;
   const innerNames = coppers.filter((l) => l.role === 'Inr').map((l) => l.name);
-  const finish =
-    root
-      .child('setup')
-      ?.child('stackup')
-      ?.child('copper_finish')
-      ?.raw[1] ?? undefined;
+  const finish = root.child('setup')?.child('stackup')?.child('copper_finish')?.raw[1] ?? undefined;
 
   const job = {
     Header: {

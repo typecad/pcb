@@ -9,7 +9,7 @@ import type { Replacement } from './source_analyzer.js';
  * them descending so they can all go through one pass.
  */
 export interface PendingSourceChange {
-  kind: 'outline' | 'zone' | 'keepout' | 'via' | 'tracks';
+  kind: 'outline' | 'zone' | 'keepout' | 'via' | 'tracks' | 'text' | 'graphics' | 'stackup';
   filePath: string;
   label: string;
   changedProps: string[];
@@ -158,6 +158,25 @@ export interface KicadStackupLayerIR {
   type?: string;
   thickness?: number;
   material?: string;
+  /** Relative permittivity (dielectric layers). */
+  epsilon_r?: number;
+  /** Dielectric loss tangent. */
+  loss_tangent?: number;
+  /** Layer color (masks, silkscreen, dielectrics). */
+  color?: string;
+}
+
+/** A board graphic item on any layer (silk art, user drawings, fab notes). */
+export interface KicadBoardGraphicIR {
+  kind: 'line' | 'rect' | 'circle' | 'arc' | 'poly';
+  layer: string;
+  width?: number;
+  fill?: boolean;
+  start?: { x: number; y: number };
+  end?: { x: number; y: number };
+  center?: { x: number; y: number };
+  mid?: { x: number; y: number };
+  points?: { x: number; y: number }[];
 }
 
 /** Parsed stackup from `(setup (stackup ...))`. */
@@ -237,6 +256,8 @@ export interface KicadIR {
    * so a silent skip becomes a visible decision.
    */
   unsupported: UnsupportedElementIR[];
+  /** Graphic items on layers other than Edge.Cuts (Edge.Cuts feed outlines). */
+  boardGraphics: KicadBoardGraphicIR[];
 }
 
 /** Count of board elements of one type that the import does not handle. */

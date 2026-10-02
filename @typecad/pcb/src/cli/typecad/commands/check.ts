@@ -7,7 +7,8 @@ import {
   buildDirPath,
   detectEntryFile,
   findBoardFile,
-  findBuildFile,
+  findBuildFiles,
+  findSchematicFile,
   runBuildStep,
   runDrcStep,
   runErcStep,
@@ -95,7 +96,7 @@ export async function run(parsed: ParsedArgs): Promise<void> {
 
   // ── Step 2: unconnected analysis (needs built pcb) ───────────────────────
   const pcbPath = findBoardFile();
-  const schPath = findBuildFile('.kicad_sch');
+  const schPath = findSchematicFile();
 
   if (report.build.passed && pcbPath) {
     const model = buildBoardModel(pcbPath);
@@ -115,7 +116,15 @@ export async function run(parsed: ParsedArgs): Promise<void> {
       report.erc = nativeErcStep(schPath);
     }
   } else if (!skipErc && report.build.passed) {
-    report.erc = { ran: false, passed: false, reason: `No .kicad_sch found in ${buildDirPath()}` };
+    const strays = findBuildFiles('.kicad_sch').length;
+    report.erc = {
+      ran: false,
+      passed: false,
+      reason:
+        strays > 1
+          ? `Multiple .kicad_sch files in ${buildDirPath()} — can't tell which one to check`
+          : `No .kicad_sch found in ${buildDirPath()}`,
+    };
   } else if (skipErc) {
     report.erc = { ran: false, passed: true, reason: 'skipped' };
   }

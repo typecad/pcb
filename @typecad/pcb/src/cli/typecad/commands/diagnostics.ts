@@ -5,7 +5,16 @@ import chalk from 'chalk';
 import type { ParsedArgs } from '../parser.js';
 import logger from '../../../utils/logging.js';
 import { buildBoardModel } from '../board_model.js';
-import { buildDirPath, detectEntryFile, findBuildFile, findBuildFiles, runBuildStep, runDrcStep, runErcStep } from '../pipeline.js';
+import {
+  buildDirPath,
+  detectEntryFile,
+  findBuildFile,
+  findBuildFiles,
+  findSchematicFile,
+  runBuildStep,
+  runDrcStep,
+  runErcStep,
+} from '../pipeline.js';
 import { nativeDrcStep, nativeErcStep } from '../native_checks.js';
 import { buildNetlistModel } from '../../diagnostics/netlist_model.js';
 import { buildDiagnosticsReport, type CheckStep, type DiagnosticsReport } from '../../diagnostics/report.js';
@@ -65,10 +74,12 @@ export async function generateDiagnosticsReport(opts: DiagnosticsGenerateOptions
     pcbPath = candidates[0] ?? null;
   }
   const netPath = explicit('.net') ?? findBuildFile('.net');
-  const schPath = explicit('.kicad_sch') ?? findBuildFile('.kicad_sch');
+  const schPath = explicit('.kicad_sch') ?? findSchematicFile();
 
   if (!pcbPath && !netPath) {
-    throw new Error(`No build artifacts found in ${buildDirPath()}. Build first, or pass a .kicad_pcb/.net path explicitly.`);
+    throw new Error(
+      `No build artifacts found in ${buildDirPath()}. Build first, or pass a .kicad_pcb/.net path explicitly.`,
+    );
   }
 
   // ── Analyze logical + physical views, run ERC/DRC ────────────────────────
@@ -133,7 +144,8 @@ export async function run(parsed: ParsedArgs): Promise<void> {
   let entry: string | undefined;
   if (!skipBuild) {
     entry = parsed.positional.find((p) => p.endsWith('.ts')) || detectEntryFile() || undefined;
-    if (!entry) throw new Error('No entry file found. Pass one (typecad-pcb diagnostics src/main.ts) or configure typecad.conf.');
+    if (!entry)
+      throw new Error('No entry file found. Pass one (typecad-pcb diagnostics src/main.ts) or configure typecad.conf.');
     if (!fs.existsSync(entry)) throw new Error(`Entry file not found: ${entry}`);
     if (!json) logger.log(chalk.white.bold('typecad-pcb diagnostics') + '\n');
     const built = await runBuildStep(entry, { json, verbose: parsed.args['verbose'] === true });

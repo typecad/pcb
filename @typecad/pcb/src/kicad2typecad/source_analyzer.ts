@@ -52,6 +52,13 @@ export interface PropertyValue {
 export interface ComponentInfo {
   variableName: string;
   isThis: boolean;
+  /**
+   * True for class-field components (`private r1 = new Component(...)`).
+   * In-place prop updates are safe, but inserting `this.r1.pcb = ...` after
+   * the field would land inside the class body — inserts are skipped for
+   * these and only existing assignments/inline props are updated.
+   */
+  isClassField?: boolean;
   creationRange: Range;
   constructorArgType: 'string' | 'object' | 'none';
   footprint?: string;
@@ -371,8 +378,8 @@ function analyzeAst(
       handleAssignment(n);
     } else if (n.type === 'VariableDeclaration') {
       handleVariableDeclaration(n);
-    } else if (n.type === 'CallExpression') {
-      handleCallExpression(n);
+    } else if (n.type === 'PropertyDefinition' || n.type === 'ClassProperty') {
+      handlePropertyDefinition(n);
     } else if (n.type === 'ExpressionStatement') {
       handleStatementCall(n);
     }
@@ -391,6 +398,68 @@ function analyzeAst(
           visitNode(val as AcornNode);
         }
       }
+    }
+  }
+
+  /**
+   * Class-field components (`private r1 = new Resistor({...})`). These are
+   * members: the footprint Code property and rewrites address them as
+   * `this.r1`, so they register with isThis=true — the mirror of
+   * handleVariableDeclaration for class bodies.
+   */
+  function handlePropertyDefinition(n: WalkableNode): void {
+    const id = (n as unknown as { key?: AcornNode }).key as WalkableNode | undefined;
+    const init = (n as unknown as { value?: AcornNode }).value as WalkableNode | undefined;
+    if (!id || id.type !== 'Identifier') return;
+    if (!init || init.type !== 'NewExpression') return;
+
+    const newExpr = init as unknown as NewExpression;
+    const arg = newExpr.arguments?.[0] as WalkableNode | undefined;
+    const varName = (id as Identifier).name;
+
+    if (!arg) {
+      components.push({
+        variableName: varName,
+        isThis: true,
+        isClassField: true,
+        creationRange: { start: n.start, end: n.end },
+        constructorArgType: 'none',
+        properties: {},
+        line: n.loc?.start?.line ?? 0,
+      });
+      return;
+    }
+    if (arg.type === 'Literal' && typeof (arg as Literal).value === 'string') {
+      components.push({
+        variableName: varName,
+        isThis: true,
+        isClassField: true,
+        creationRange: { start: n.start, end: n.end },
+        constructorArgType: 'string',
+        footprint: (arg as Literal).value as string,
+        properties: {},
+        line: n.loc?.start?.line ?? 0,
+      });
+    } else if (arg.type === 'ObjectExpression') {
+      const props = extractObjectProperties(arg as ObjectExpression);
+      const info: ComponentInfo = {
+        variableName: varName,
+        isThis: true,
+        isClassField: true,
+        creationRange: { start: n.start, end: n.end },
+        constructorArgType: 'object',
+        footprint: props['footprint']?.value as string | undefined,
+        reference: props['reference']?.value as string | undefined,
+        properties: props,
+        line: n.loc?.start?.line ?? 0,
+      };
+      if (props['pcb']) {
+        info.inlinePcb = {
+          range: props['pcb'].range,
+          props: (props['pcb'].value instanceof Object ? props['pcb'].value : {}) as Record<string, PropertyValue>,
+        };
+      }
+      components.push(info);
     }
   }
 
@@ -680,33 +749,12 @@ function analyzeAst(
     }
   }
 
-  function handleCallExpression(n: WalkableNode): void {
-    if (!n.callee) return;
-    const callee = n.callee as WalkableNode;
-
-    if (callee.type !== 'MemberExpression') return;
-    const memExpr = callee as unknown as MemberExpression;
-    const prop = memExpr.property as Identifier;
-    if (!prop || prop.type !== 'Identifier' || prop.name !== 'text') return;
-
-    const args = n.arguments as AcornNode[];
-    if (!args || args.length === 0) return;
-
-    const firstArg = args[0];
-    if (firstArg.type !== 'ObjectExpression') return;
-
-    const objExpr = firstArg as ObjectExpression;
-    const props = extractObjectProperties(objExpr);
-    const text = props['text']?.value as string | undefined;
-    if (!text) return;
-
-    textCalls.push({
-      callRange: { start: n.start, end: n.end },
-      text,
-      props,
-      line: n.loc?.start?.line ?? 0,
-    });
-  }
+  // Statement-level `typecad.text({...});` calls are recorded once, by
+  // handleStatementCall. A former generic CallExpression visitor recorded
+  // them a second time (the statement walk recurses into the call), which
+  // doubled the text-call list — with duplicate labels on the board, the
+  // extra entries paired against the wrong board text and the updater then
+  // rewrote a call to its sibling's position.
 
   visitNode(ast);
 

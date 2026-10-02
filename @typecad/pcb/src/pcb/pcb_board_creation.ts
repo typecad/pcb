@@ -6,6 +6,7 @@ import { parse, parseAsList, nameOf, s, no } from '../sexpr/index.js';
 import type { SExpr } from '../sexpr/types.js';
 import logger from '../utils/logging.js';
 import { BoardCreationError } from '../utils/errors.js';
+import { GENERATOR_NAME, generatorVersion } from '../utils/generator_identity.js';
 import { IVia, IGrLine, IOutline, OutlineElement } from './pcb_interfaces.js';
 import { maybeWriteOpSolve } from './pcb_op_solve.js';
 import { writeStackup } from './pcb_stackup_writer.js';
@@ -227,8 +228,8 @@ export function createBoard(pcb: PCB, ...items: Array<Component | TrackBuilder>)
   const { componentMap, viaMap } = buildComponentMaps(pcb);
 
   const version = parse('(version 20241229)');
-  const generator = parse('(generator "typecad")');
-  const generator_version = parse('(generator_version "0.1.0")');
+  const generator = parse(`(generator "${GENERATOR_NAME}")`);
+  const generator_version = parse(`(generator_version "${generatorVersion()}")`);
   const general = s('general', s('thickness', pcb.thickness), s('legacy_teardrops', no()));
   const paper = parse('(paper "A4")');
   const headerItems = [version, generator, generator_version, general, paper];

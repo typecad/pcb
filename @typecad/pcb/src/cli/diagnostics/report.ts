@@ -1,5 +1,5 @@
 import type { BoardComponent, BoardModel, BoardNet } from '../typecad/board_model.js';
-import { isPowerNetName } from '../typecad/board_model.js';
+import { isPowerNetName, padCarriesCopper } from '../typecad/board_model.js';
 import type { NetlistModel } from './netlist_model.js';
 import type { KiCadCheckResult } from '../typecad/pipeline.js';
 
@@ -296,7 +296,8 @@ export function buildDiagnosticsReport(input: DiagnosticsInput): DiagnosticsRepo
   if (board) {
     for (const comp of board.components) {
       for (const pad of comp.pads) {
-        if (pad.net === null && pad.type !== 'np_thru_hole') pads.push({ reference: comp.reference, pad: pad.pad, type: pad.type });
+        if (pad.net === null && pad.type !== 'np_thru_hole' && padCarriesCopper(pad))
+          pads.push({ reference: comp.reference, pad: pad.pad, type: pad.type });
       }
     }
   }
@@ -509,7 +510,8 @@ function buildClusters(nets: NetEntry[], nonViaRefs: Set<string>): ClusterEntry[
 function copperLayersOf(board: BoardModel): string[] {
   const layers = new Set<string>();
   for (const zone of board.zones) for (const l of zone.layers) if (/^[FB]\.Cu$|^In\d+\.Cu$/.test(l)) layers.add(l);
-  for (const net of board.nets) for (const s of net.segments) if (/^[FB]\.Cu$|^In\d+\.Cu$/.test(s.layer)) layers.add(s.layer);
+  for (const net of board.nets)
+    for (const s of net.segments) if (/^[FB]\.Cu$|^In\d+\.Cu$/.test(s.layer)) layers.add(s.layer);
   return [...layers].sort();
 }
 

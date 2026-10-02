@@ -156,7 +156,10 @@ describe('generateStackupCode round-trip', () => {
   )
 )`);
     const out = captureLogs(() => generateStackupCode(ir, 'test', PLAIN_CH));
-    expect(out).toContain('typecad.stackup(2);');
+    // per-layer detail from the board file is part of the emitted options
+    expect(out).toContain(
+      "typecad.stackup(2, { layers: { 'F.Cu': { thickness: 0.035 }, 'dielectric 1': { thickness: 1.51, material: 'FR4' }, 'B.Cu': { thickness: 0.035 } } });",
+    );
   });
 
   it('emits options for non-default copper finish', () => {
@@ -172,7 +175,9 @@ describe('generateStackupCode round-trip', () => {
   )
 )`);
     const out = captureLogs(() => generateStackupCode(ir, 'test', PLAIN_CH));
-    expect(out).toContain("typecad.stackup(2, { copper_finish: 'ENIG', dielectric_constraints: true });");
+    expect(out).toContain("copper_finish: 'ENIG'");
+    expect(out).toContain('dielectric_constraints: true');
+    expect(out).toContain("'dielectric 1': { thickness: 1.51 }");
   });
 
   it('emits nothing when no stackup present', () => {

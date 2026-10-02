@@ -161,6 +161,10 @@ export function showImportHelp(): void {
   console.log('  --watch                   Watch the board file and re-run on every save.');
   console.log('                            With --auto the source .ts is live-synced');
   console.log('                            while you edit in KiCad. Ctrl+C to stop.');
+  console.log('  --dry-run                 Preview every pending change (with edit');
+  console.log('                            diffs) without writing anything');
+  console.log('  --restore                 Undo the last apply cycle: restores the');
+  console.log('                            pre-apply snapshot of your sources');
   console.log('  (text layout positions are always imported)\n');
   console.log("Variable names are sourced from each footprint's 'Code' property.");
   console.log('If missing, the KiCad reference is used (e.g., U1, R3).');

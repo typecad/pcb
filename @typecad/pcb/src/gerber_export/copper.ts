@@ -230,16 +230,18 @@ function primitiveAperture(prim: SNode, angle: number): ApertureShape[] {
       return [{ kind: 'FreePoly', verts, rot: angle }];
     }
     case 'gr_circle': {
-      const c = prim.child('center')!;
-      const e = prim.child('end')!;
+      const c = prim.child('center');
+      const e = prim.child('end');
+      if (!c || !e) return [];
       const center = { x: scalar(c, 1), y: scalar(c, 2) };
       const end = { x: scalar(e, 1), y: scalar(e, 2) };
       const r = Math.hypot(end.x - center.x, end.y - center.y);
       return [{ kind: 'FreePoly', verts: polygonizeCircle(center, r), rot: angle }];
     }
     case 'gr_rect': {
-      const s = prim.child('start')!;
-      const e = prim.child('end')!;
+      const s = prim.child('start');
+      const e = prim.child('end');
+      if (!s || !e) return [];
       const x1 = Math.min(scalar(s, 1), scalar(e, 1));
       const x2 = Math.max(scalar(s, 1), scalar(e, 1));
       const y1 = Math.min(scalar(s, 2), scalar(e, 2));
@@ -258,9 +260,10 @@ function primitiveAperture(prim: SNode, angle: number): ApertureShape[] {
       ];
     }
     case 'gr_arc': {
-      const s = prim.child('start')!;
-      const m = prim.child('mid')!;
-      const e = prim.child('end')!;
+      const s = prim.child('start');
+      const m = prim.child('mid');
+      const e = prim.child('end');
+      if (!s || !m || !e) return [];
       const a = { x: scalar(s, 1), y: scalar(s, 2) };
       const mid = { x: scalar(m, 1), y: scalar(m, 2) };
       const b = { x: scalar(e, 1), y: scalar(e, 2) };
@@ -281,8 +284,9 @@ function primitiveAperture(prim: SNode, angle: number): ApertureShape[] {
       return [{ kind: 'FreePoly', verts, rot: angle }];
     }
     case 'gr_line': {
-      const s = prim.child('start')!;
-      const e = prim.child('end')!;
+      const s = prim.child('start');
+      const e = prim.child('end');
+      if (!s || !e) return [];
       const wNode = prim.child('width');
       const width = wNode ? scalar(wNode, 1, 0) : 0;
       const a = { x: scalar(s, 1), y: scalar(s, 2) };
@@ -358,11 +362,7 @@ export function plotCopperLayers(boardPath: string, opts: CopperPlotOptions): st
 }
 
 /** Parse + plot; split out so tests can pass source text directly. */
-export function plotCopperLayersFromSource(
-  source: string,
-  boardPath: string,
-  opts: CopperPlotOptions,
-): string[] {
+export function plotCopperLayersFromSource(source: string, boardPath: string, opts: CopperPlotOptions): string[] {
   const root = SNode.from(parse(source) as SExpr[]);
   const layers = copperLayers(root);
   const nets = netNames(root);
@@ -423,15 +423,12 @@ function plotOneCopperLayer(
           const dh = drOval && typeof dr.raw[2] === 'number' ? scalar(dr, 2, dw) : dw;
           const sw = scalar(sz, 1, Number.NaN);
           const sh = scalar(sz, 2, Number.NaN);
-          if (
-            Number.isFinite(sw) && Number.isFinite(sh) &&
-            Math.abs(sw - dw) < 1e-9 &&
-            Math.abs(sh - dh) < 1e-9
-          )
+          if (Number.isFinite(sw) && Number.isFinite(sh) && Math.abs(sw - dw) < 1e-9 && Math.abs(sh - dh) < 1e-9)
             continue;
         }
       }
-      const padAt = pad.child('at')!;
+      const padAt = pad.child('at');
+      if (!padAt) continue;
       const local = atPoint(padAt);
       const angle = scalar(padAt, 3, 0);
       const world = {
@@ -447,7 +444,8 @@ function plotOneCopperLayer(
       // giant → HeatsinkPad); smd → SMDPad,CuDef (tiny → BGAPad, CuDef)
       let aperFn: AperFunction = 'ComponentPad';
       if (kind === 'smd') {
-        const sz = pad.child('size')!;
+        const sz = pad.child('size');
+        if (!sz) continue;
         const w1 = scalar(sz, 1);
         const h1 = scalar(sz, 2);
         if (w1 < 0.254 && h1 < 0.254) aperFn = 'BGAPad,CuDef';
@@ -478,13 +476,17 @@ function plotOneCopperLayer(
     const vtype = via.child('type') ? String(via.child('type')!.raw[1]) : 'through';
     if (vtype !== 'through') {
       // blind/buried/micro flash only within their declared layer span
-      const span = strings(via.child('layers')!);
+      const layersNode = via.child('layers');
+      if (!layersNode) continue;
+      const span = strings(layersNode);
       const spanIdx = layers.filter((l) => span.includes(l.name)).map((l) => l.index);
       if (spanIdx.length === 0 || curIdx < 0) continue;
       const li = layers[curIdx]!.index;
       if (li < Math.min(...spanIdx) || li > Math.max(...spanIdx)) continue;
     }
-    const size = scalar(via.child('size')!, 1);
+    const sizeNode = via.child('size');
+    if (!sizeNode) continue;
+    const size = scalar(sizeNode, 1);
     const at = atPoint(via.child('at'));
     const net = netOf(via, nets);
     w.selectAperture(w.aperture({ kind: 'C', dia: size }, 'ViaPad'));
@@ -498,7 +500,9 @@ function plotOneCopperLayer(
   for (const item of root.children()) {
     if (item.name !== 'segment') continue;
     if (String(item.child('layer')?.raw[1] ?? '') !== layer.name) continue;
-    const width = scalar(item.child('width')!, 1);
+    const wNode = item.child('width');
+    if (!wNode) continue;
+    const width = scalar(wNode, 1);
     w.netAttr(netOf(item, nets));
     const d = w.aperture({ kind: 'C', dia: width }, 'Conductor');
     const s = atPoint(item.child('start'));
@@ -510,7 +514,9 @@ function plotOneCopperLayer(
   for (const item of root.children()) {
     if (item.name !== 'arc') continue;
     if (String(item.child('layer')?.raw[1] ?? '') !== layer.name) continue;
-    const width = scalar(item.child('width')!, 1);
+    const wNode = item.child('width');
+    if (!wNode) continue;
+    const width = scalar(wNode, 1);
     w.netAttr(netOf(item, nets));
     const d = w.aperture({ kind: 'C', dia: width }, 'Conductor');
     {
@@ -537,9 +543,10 @@ function plotOneCopperLayer(
     if (!layersNode) continue;
     const zoneLayers = strings(layersNode);
     if (!zoneLayers.includes(layer.name)) continue;
-    const fills = zone
-      .children('filled_polygon')
-      .filter((f) => !f.child('layer') || strings(f.child('layer')!).includes(layer.name));
+    const fills = zone.children('filled_polygon').filter((f) => {
+      const ln = f.child('layer');
+      return !ln || strings(ln).includes(layer.name);
+    });
     if (fills.length === 0) continue;
     w.objectAperFunction('Conductor');
     const nn = zone.child('net_name');

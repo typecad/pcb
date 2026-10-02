@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import { GENERATOR_NAME, generatorVersion } from '../../../utils/generator_identity.js';
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -114,7 +115,7 @@ function mergeSymbolPayloads(payloads: string[]): string {
       }
     }
   }
-  return `(kicad_symbol_lib\n  (version 20251024)\n  (generator "typecad lib merge")\n${[...byName.values()].map((s) => `  ${s}`).join('\n')}\n)`;
+  return `(kicad_symbol_lib\n  (version 20251024)\n  (generator "${GENERATOR_NAME}")(generator_version "${generatorVersion()}")\n${[...byName.values()].map((s) => `  ${s}`).join('\n')}\n)`;
 }
 
 /** whole-library file list from the tree API (`Lib.kicad_symdir/` blobs) */
@@ -195,7 +196,9 @@ async function addSymbolLibrary(raw: string): Promise<void> {
     logger.log(chalk.green(`  ✓ ${raw} → ${destPath}`));
   } catch (e) {
     logger.log(
-      chalk.red(`  ✖ ${raw}: ${e instanceof Error ? e.message : String(e)} — check the name at https://gitlab.com/kicad/libraries/kicad-symbols`),
+      chalk.red(
+        `  ✖ ${raw}: ${e instanceof Error ? e.message : String(e)} — check the name at https://gitlab.com/kicad/libraries/kicad-symbols`,
+      ),
     );
     process.exitCode = 1;
   }
@@ -250,7 +253,11 @@ async function addFootprint(spec: string): Promise<void> {
         text = text.replaceAll(ref, `\${KIPRJMOD}/lib/3dshapes/${rel}`);
         models++;
       } catch (e) {
-        logger.log(chalk.yellow(`  ⚠ 3D model ${rel}: ${e instanceof Error ? e.message : String(e)} — footprint added without it`));
+        logger.log(
+          chalk.yellow(
+            `  ⚠ 3D model ${rel}: ${e instanceof Error ? e.message : String(e)} — footprint added without it`,
+          ),
+        );
       }
     }
 
@@ -260,7 +267,9 @@ async function addFootprint(spec: string): Promise<void> {
     logger.log(chalk.green(`  ✓ ${spec} → ${destPath}`) + suffix);
   } catch (e) {
     logger.log(
-      chalk.red(`  ✖ ${spec}: ${e instanceof Error ? e.message : String(e)} — check the name at https://gitlab.com/kicad/libraries/kicad-footprints`),
+      chalk.red(
+        `  ✖ ${spec}: ${e instanceof Error ? e.message : String(e)} — check the name at https://gitlab.com/kicad/libraries/kicad-footprints`,
+      ),
     );
     process.exitCode = 1;
   }
@@ -290,7 +299,9 @@ function listLibraries(): void {
   }
   logger.log('  build/lib (project-owned, committable):');
   logger.log(symbols.length ? symbols.map((s) => `    ${s}`).join('\n') : chalk.gray('    (no symbol libraries)'));
-  logger.log(footprints.length ? footprints.map((f) => `    footprints/${f}`).join('\n') : chalk.gray('    (no footprints)'));
+  logger.log(
+    footprints.length ? footprints.map((f) => `    footprints/${f}`).join('\n') : chalk.gray('    (no footprints)'),
+  );
   logger.log(models.length ? models.map((m) => `    3dshapes/${m}`).join('\n') : chalk.gray('    (no 3D models)'));
   logger.log('');
 }
@@ -313,7 +324,9 @@ export async function run(parsed: ParsedArgs): Promise<void> {
       await addSymbolLibrary(name);
     }
     if (typeof footprintArg !== 'string' && parsed.positional.length === 0) {
-      logger.log(chalk.yellow('  nothing to add — pass library names (Device, Device:R_Small) and/or --footprint Lib:Name'));
+      logger.log(
+        chalk.yellow('  nothing to add — pass library names (Device, Device:R_Small) and/or --footprint Lib:Name'),
+      );
       process.exitCode = 1;
     }
     logger.log(chalk.gray('\nFetched libraries are project-owned (committable); builds never touch the network.'));

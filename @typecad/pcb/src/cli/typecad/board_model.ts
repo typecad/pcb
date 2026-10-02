@@ -27,6 +27,21 @@ interface BoardPad {
   layers: string[];
 }
 
+/** Explicit copper layer names plus KiCad's `*.Cu` and `F&B.Cu` wildcards. */
+const PAD_COPPER_LAYER = /^([FB]\.Cu|In\d+\.Cu|\*\.Cu|F&B\.Cu)$/;
+
+/**
+ * Electrical pads carry copper somewhere. Pads listing only paste/mask
+ * layers — the unnamed `*.Paste` squares QFN footprints place over the
+ * exposed pad to split its stencil opening — have `(net 0 "")` and no pad
+ * name by design: they are board geometry, not connections. A pad with no
+ * layers at all is malformed; treat it as electrical so it still surfaces.
+ */
+export function padCarriesCopper(pad: BoardPad): boolean {
+  if (pad.layers.length === 0) return true;
+  return pad.layers.some((l) => PAD_COPPER_LAYER.test(l));
+}
+
 export interface BoardComponent {
   reference: string;
   value: string;
@@ -531,7 +546,7 @@ export function buildBoardModel(pcbPath: string): BoardModel {
   // pseudo-net but still belong in the board totals.
   const viaTotal = root.findAll('via').length;
   const unconnectedPads = components.reduce(
-    (acc, c) => acc + c.pads.filter((p) => p.net === null && p.type !== 'np_thru_hole').length,
+    (acc, c) => acc + c.pads.filter((p) => p.net === null && p.type !== 'np_thru_hole' && padCarriesCopper(p)).length,
     0,
   );
 
@@ -749,12 +764,13 @@ export function findComponent(model: BoardModel, ref: string): BoardComponent | 
   return model.components.find((c) => c.reference.toUpperCase() === upper);
 }
 
-/** Electrical pads with no net, excluding intentionally unconnected mounting holes. */
+/** Electrical pads with no net — mounting holes and paste/mask-only apertures excluded. */
 export function unconnectedPads(model: BoardModel): { reference: string; pad: string; type: string }[] {
   const out: { reference: string; pad: string; type: string }[] = [];
   for (const c of model.components) {
     for (const p of c.pads) {
-      if (p.net === null && p.type !== 'np_thru_hole') out.push({ reference: c.reference, pad: p.pad, type: p.type });
+      if (p.net === null && p.type !== 'np_thru_hole' && padCarriesCopper(p))
+        out.push({ reference: c.reference, pad: p.pad, type: p.type });
     }
   }
   return out;

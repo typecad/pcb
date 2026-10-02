@@ -18,12 +18,21 @@ import type {
   TextLayoutIR,
   FabLayoutIR,
   UnsupportedElementIR,
+  KicadBoardGraphicIR,
 } from './types.js';
 
 function getSymName(item: unknown): string {
   if (Sym.isSym(item)) return item.name;
   if (typeof item === 'string') return item.replace(/[`"]/g, '');
   return '';
+}
+
+/** `(fill yes)` on a graphic item, else undefined. */
+function parseFillFlag(node: SExprNode | null): boolean | undefined {
+  if (!node) return undefined;
+  if (node.getString(1) === 'yes' || node.stringValue === 'yes') return true;
+  if (node.getString(1) === 'no' || node.stringValue === 'no') return false;
+  return undefined;
 }
 
 /** Whether the node carries a bare atom child like zone-level `locked`. */
@@ -167,6 +176,7 @@ export class KicadIRBuilder {
       nets,
       stackup,
       zones,
+      boardGraphics: this.parseBoardGraphics(tree),
       unsupported: this.countUnsupported(tree),
     };
   }
@@ -184,15 +194,81 @@ export class KicadIRBuilder {
     };
 
     let footprintZoneCount = 0;
-    for (const fp of tree.children('footprint')) footprintZoneCount += fp.children('zone').length;
+    let footprintGraphicCount = 0;
+    let footprintUserTextCount = 0;
+    const FP_GRAPHIC = ['fp_line', 'fp_rect', 'fp_circle', 'fp_arc', 'fp_poly', 'fp_curve', 'fp_text_box'];
+    for (const fp of tree.children('footprint')) {
+      footprintZoneCount += fp.children('zone').length;
+      for (const child of fp.children()) {
+        if (FP_GRAPHIC.includes(child.name)) footprintGraphicCount++;
+      }
+      // fp_text user annotations beyond reference/value (those two plus the
+      // ${REFERENCE} fab text become the layout properties)
+      for (const ft of fp.children('fp_text')) {
+        const kind = ft.getString(1)?.toLowerCase();
+        if (kind !== 'reference' && kind !== 'value') footprintUserTextCount++;
+      }
+    }
 
+    // Blind/buried vias: an explicit type token, or a layer span that is not
+    // the full F.Cu–B.Cu through span.
+    // Footprints dropped for non-finite coordinates (nan/1e400) — corrupt or
+    // hand-edited boards. parseFootprint returns null for them.
+    let invalidFootprints = 0;
+    for (const fp of tree.children('footprint')) {
+      const atNode = fp.child('at');
+      if (atNode && ![1, 2].every((i) => Number.isFinite(atNode.getNumber(i, NaN)))) invalidFootprints++;
+    }
+
+    let blindBuriedVias = 0;
+    for (const via of tree.children('via')) {
+      const typeToken = via.getString(1);
+      const isTyped = typeToken === 'blind' || typeToken === 'micro';
+      const layersNode = via.child('layers');
+      let span = '';
+      if (layersNode) {
+        const names: string[] = [];
+        for (let i = 1; i < layersNode.length; i++) names.push(layersNode.getString(i) ?? '');
+        span = names.sort().join('|');
+      }
+      if (isTyped || (layersNode && span !== '' && span !== 'B.Cu|F.Cu')) blindBuriedVias++;
+    }
+
+    push(
+      'invalid footprint',
+      invalidFootprints,
+      'footprints with non-finite coordinates (nan/Infinity) were dropped rather than applied',
+    );
     push('dimension', tree.children('dimension').length, 'dimensions are not imported');
     push(
-      'gr_curve',
-      tree.children('gr_curve').length,
+      'bezier',
+      tree.children('bezier').length + tree.children('gr_curve').length,
       'bezier curves are not imported (Edge.Cuts beziers are dropped)',
     );
+    push(
+      'board graphic',
+      tree.children('image').length + tree.children('gr_bbox').length + tree.children('gr_text_box').length,
+      'images, bounding boxes and text boxes are not imported',
+    );
+    push('title block', tree.children('title_block').length, 'title block metadata is not imported');
+    push('board property', tree.children('property').length, 'board-level properties are not imported');
+    push('embedded fonts', tree.children('embedded_fonts').length, 'embedded font declarations are not imported');
     push('footprint-embedded zone', footprintZoneCount, 'zones inside footprints are not imported');
+    push(
+      'footprint graphic',
+      footprintGraphicCount,
+      'per-footprint graphic edits (custom silk drawn in the board editor) are not imported',
+    );
+    push(
+      'footprint user text',
+      footprintUserTextCount,
+      'footprint user text annotations are not imported (reference/value layouts are)',
+    );
+    push(
+      'blind/buried via',
+      blindBuriedVias,
+      'vias with a limited layer span are imported as through vias (the standalone via API cannot express spans)',
+    );
     return unsupported;
   }
 
@@ -208,8 +284,16 @@ export class KicadIRBuilder {
     const footprintName = node.getString(1);
     if (!footprintName) return null;
 
-    // Position
+    // Position. Validate the RAW x/y tokens: getNumber's fallback silently
+    // maps `nan` to 0 (which would move a real part to the board origin on
+    // apply) and `1e400` parses to Infinity (a valid JS number that poisons
+    // the round-trip). Non-finite coordinates mean a corrupt or hand-edited
+    // board — drop the footprint instead of guessing.
     const atNode = node.child('at');
+    // getNumber(i, NaN) funnels every hostile form into a non-finite: a bare
+    // `nan` token (parsed as a symbol), an unparseable string, NaN, or
+    // Infinity from `1e400`.
+    if (atNode && ![1, 2].every((i) => Number.isFinite(atNode.getNumber(i, NaN)))) return null;
     const x = atNode?.getNumber(1) ?? 0;
     const y = atNode?.getNumber(2) ?? 0;
     const rotation = atNode?.getNumber(3, 0) ?? 0;
@@ -434,6 +518,7 @@ export class KicadIRBuilder {
             justify.mirror = true;
           }
         }
+        if (!justify.horizontal && !justify.vertical && !justify.mirror) justify = undefined;
       }
 
       if (isHidden(effectsNode)) show = false;
@@ -459,10 +544,45 @@ export class KicadIRBuilder {
   // === Segments ===
 
   private parseSegments(tree: SExprNode): KicadSegmentIR[] {
-    return tree
+    const segments = tree
       .findAll('segment')
       .map((node) => this.parseSegment(node))
       .filter((s): s is KicadSegmentIR => s !== null);
+
+    // Arc-shaped tracks: copper the segment parser cannot express. They are
+    // tessellated into straight segments on the same net/width/layer so the
+    // imported copper follows the drawn path. Only direct board children —
+    // zone outlines embed their own (arc ...) vertices.
+    for (const arcNode of tree.children('arc')) {
+      const start = arcNode.child('start');
+      const mid = arcNode.child('mid');
+      const end = arcNode.child('end');
+      if (!start || !mid || !end) continue;
+      const width = arcNode.child('width')?.getNumber(1, 0.2) ?? 0.2;
+      const layer = arcNode.child('layer')?.stringValue || 'F.Cu';
+      const netRef = parseNetRef(arcNode.child('net'));
+
+      const points = [
+        { x: start.getNumber(1), y: start.getNumber(2) },
+        ...tessellateArc(
+          { x: start.getNumber(1), y: start.getNumber(2) },
+          { x: mid.getNumber(1), y: mid.getNumber(2) },
+          { x: end.getNumber(1), y: end.getNumber(2) },
+        ).map((p) => ({ x: round6(p.x), y: round6(p.y) })),
+      ];
+      for (let i = 0; i < points.length - 1; i++) {
+        segments.push({
+          start: points[i],
+          end: points[i + 1],
+          width,
+          layer,
+          net: netRef?.number,
+          netName: netRef?.name || undefined,
+        });
+      }
+    }
+
+    return segments;
   }
 
   private parseSegment(node: SExprNode): KicadSegmentIR | null {
@@ -475,7 +595,7 @@ export class KicadIRBuilder {
     const endX = endNode.getNumber(1);
     const endY = endNode.getNumber(2);
 
-    if (isNaN(startX) || isNaN(startY) || isNaN(endX) || isNaN(endY)) return null;
+    if (![startX, startY, endX, endY].every(Number.isFinite)) return null;
 
     const width = node.child('width')?.getNumber(1, 0.2) ?? 0.2;
     const layer = node.child('layer')?.stringValue || 'F.Cu';
@@ -535,14 +655,14 @@ export class KicadIRBuilder {
 
     const x = atNode.getNumber(1);
     const y = atNode.getNumber(2);
-    if (isNaN(x) || isNaN(y)) return null;
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
 
     const sizeNode = node.child('size');
     const drillNode = node.child('drill');
     const size = sizeNode?.getNumber(1, NaN);
     const drill = drillNode?.getNumber(1, NaN);
 
-    if (isNaN(size as number) || isNaN(drill as number)) return null;
+    if (!Number.isFinite(size as number) || !Number.isFinite(drill as number)) return null;
 
     const netRef = parseNetRef(node.child('net'));
 
@@ -673,7 +793,10 @@ export class KicadIRBuilder {
         hatchThickness: finite(fillNode.child('hatch_thickness')?.getNumber(1, NaN) ?? NaN),
         hatchGap: finite(fillNode.child('hatch_gap')?.getNumber(1, NaN) ?? NaN),
         hatchOrientation: finite(fillNode.child('hatch_orientation')?.getNumber(1, NaN) ?? NaN),
-        arcSegments: finite(fillNode.child('arc_segments')?.getNumber(1, NaN) ?? NaN),
+        // kicad-cli resaves drop (arc_segments 16) — it is KiCad's default,
+        // so an absent token means 16; otherwise every resave ping-pongs the
+        // source between with/without the property.
+        arcSegments: finite(fillNode.child('arc_segments')?.getNumber(1, NaN) ?? 16) ?? 16,
       };
     }
 
@@ -774,6 +897,69 @@ export class KicadIRBuilder {
     }
   }
 
+  // === Board graphics (any layer except Edge.Cuts, which feeds outlines) ===
+
+  private parseBoardGraphics(tree: SExprNode): KicadBoardGraphicIR[] {
+    const KINDS = ['gr_line', 'gr_rect', 'gr_circle', 'gr_arc', 'gr_poly'];
+    const graphics: KicadBoardGraphicIR[] = [];
+    for (const node of tree.children()) {
+      if (!KINDS.includes(node.name)) continue;
+      const layer = node.child('layer')?.stringValue || '';
+      if (layer === 'Edge.Cuts' || layer === '') continue;
+
+      // v6 writes (width W); v7+ writes (stroke (width W) (type …))
+      const strokeNode = node.child('stroke');
+      const width = node.child('width')?.getNumber(1) ?? strokeNode?.child('width')?.getNumber(1) ?? undefined;
+      const fillNode = node.child('fill');
+
+      const start = node.child('start');
+      const end = node.child('end');
+      const center = node.child('center');
+      const mid = node.child('mid');
+      const point = (n: SExprNode | null) => (n ? { x: n.getNumber(1), y: n.getNumber(2) } : undefined);
+
+      switch (node.name) {
+        case 'gr_line':
+          graphics.push({ kind: 'line', layer, width, start: point(start), end: point(end) });
+          break;
+        case 'gr_rect':
+          graphics.push({
+            kind: 'rect',
+            layer,
+            width,
+            fill: parseFillFlag(fillNode),
+            start: point(start),
+            end: point(end),
+          });
+          break;
+        case 'gr_circle':
+          graphics.push({
+            kind: 'circle',
+            layer,
+            width,
+            fill: parseFillFlag(fillNode),
+            center: point(center),
+            end: point(end),
+          });
+          break;
+        case 'gr_arc':
+          graphics.push({ kind: 'arc', layer, width, start: point(start), mid: point(mid), end: point(end) });
+          break;
+        case 'gr_poly': {
+          const pts = node
+            .child('pts')
+            ?.children('xy')
+            .map((xy) => ({ x: xy.getNumber(1), y: xy.getNumber(2) }))
+            .filter((p) => Number.isFinite(p.x) && Number.isFinite(p.y));
+          if (!pts || pts.length < 3) break;
+          graphics.push({ kind: 'poly', layer, width, fill: parseFillFlag(fillNode), points: pts });
+          break;
+        }
+      }
+    }
+    return graphics;
+  }
+
   // === Stackup ===
 
   /**
@@ -790,11 +976,17 @@ export class KicadIRBuilder {
       const typeNode = ln.child('type');
       const thicknessNode = ln.child('thickness');
       const materialNode = ln.child('material');
+      const epsilonNode = ln.child('epsilon_r');
+      const lossNode = ln.child('loss_tangent');
+      const colorNode = ln.child('color');
       return {
         name,
         type: typeNode?.stringValue ?? undefined,
         thickness: thicknessNode ? thicknessNode.getNumber(1) : undefined,
         material: materialNode?.stringValue ?? undefined,
+        epsilon_r: epsilonNode ? epsilonNode.getNumber(1) : undefined,
+        loss_tangent: lossNode ? lossNode.getNumber(1) : undefined,
+        color: colorNode?.stringValue ?? undefined,
       };
     });
 
@@ -829,7 +1021,7 @@ export class KicadIRBuilder {
 
     const x = atNode.getNumber(1);
     const y = atNode.getNumber(2);
-    if (isNaN(x) || isNaN(y)) return null;
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
 
     const rotation = atNode.getNumber(3, 0);
     const layer = node.child('layer')?.stringValue || 'F.SilkS';
@@ -886,6 +1078,9 @@ export class KicadIRBuilder {
             justify.mirror = true;
           }
         }
+        // KiCad writes a bare (justify) for default alignment — that is no
+        // justify at all, and keeping {} here would fight the source forever.
+        if (!justify.horizontal && !justify.vertical && !justify.mirror) justify = undefined;
       }
 
       // Check for hide - both as a bare atom and a (hide yes) list child

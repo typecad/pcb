@@ -192,6 +192,36 @@ describe('buildBoardModel', () => {
   });
 });
 
+// QFN footprints split the exposed pad's stencil opening into a grid of
+// unnamed paste-only squares alongside the copper EP. The apertures carry
+// `(net 0 "")` and no pad name by design and must not surface as
+// unconnected pads; the copper EP itself still should.
+const QFN_EP_PCB = `(kicad_pcb
+  (version 20260206)
+  (net 0 "")
+  (net 1 "GND")
+  (footprint "Package_DFN_QFN:QFN-32-1EP_5x5mm_P0.5mm_EP3.45x3.45mm" (layer "F.Cu")
+    (at 30 30)
+    (property "Reference" "U1" (at 0 0 0))
+    (property "Value" "STM32" (at 0 0 0))
+    (pad "1" smd roundrect (at -2.4375 -1.75 0) (size 0.875 0.25) (layers "F.Cu" "F.Mask" "F.Paste") (net 1 "GND"))
+    (pad "33" smd rect (at 0 0 0) (size 3.45 3.45) (property pad_prop_heatsink) (layers "F.Cu" "F.Mask") (net 0 ""))
+    (pad "" smd roundrect (at -1.15 -1.15 0) (size 0.93 0.93) (layers "F.Paste") (net 0 ""))
+    (pad "" smd roundrect (at 0 0 0) (size 0.93 0.93) (layers "F.Paste") (net 0 ""))
+    (pad "" smd roundrect (at 1.15 1.15 0) (size 0.93 0.93) (layers "F.Paste") (net 0 ""))
+  )
+)`;
+
+describe('buildBoardModel on QFN exposed-pad paste splits', () => {
+  const model = buildBoardModel(writeTempPcb(QFN_EP_PCB));
+
+  it('reports the net-less copper EP but never the paste-only apertures', () => {
+    const pads = unconnectedPads(model);
+    expect(pads.map((p) => `${p.reference}.${p.pad}`)).toEqual(['U1.33']);
+    expect(model.summary.unconnectedPads).toBe(1);
+  });
+});
+
 // A board as kicad-cli --save-board reserializes it: zones carry
 // `(net "GND")` instead of `(net 1) (net_name "GND")`, and the fill
 // geometry exists as (filled_polygon) nodes alongside the declared outline.

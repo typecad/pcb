@@ -36,6 +36,7 @@ export function startBoardWatch(
   const DEBOUNCE_MS = 500;
   let timer: ReturnType<typeof setTimeout> | null = null;
   let watcher: fs.FSWatcher | null = null;
+  const watchers: fs.FSWatcher[] = [];
   let running = false;
   let queued = false;
   let lastStamp = '';
@@ -75,6 +76,24 @@ export function startBoardWatch(
     }
   };
 
+  // Source-side watch: an editor saving a .ts file while a cycle runs would
+  // interleave with the importer's writes. Watching src/ re-triggers a cycle
+  // (the in-cycle stamp guard in apply mode aborts any interleaved write).
+  const kicadDirOnly = path.dirname(absolute);
+  const projectRootGuess = kicadDirOnly.replace(/[/\\]build$/, '') || '.';
+  const srcDir = path.join(projectRootGuess, 'src');
+  if (fs.existsSync(srcDir)) {
+    try {
+      const srcWatcher = fs.watch(srcDir, { recursive: true }, (_event, filename) => {
+        const name = String(filename ?? '');
+        if (/\.ts$/.test(name)) schedule();
+      });
+      watchers.push(srcWatcher);
+    } catch {
+      // recursive watch is platform-dependent; the stamp guard still protects
+    }
+  }
+
   if (!fs.existsSync(absolute)) {
     logger.warn(`Warning: ${filePath} does not exist yet — waiting for it to appear.`);
   }
@@ -111,6 +130,8 @@ export function startBoardWatch(
       }
       watcher?.close();
       watcher = null;
+      for (const w of watchers) w.close();
+      watchers.length = 0;
     },
   };
 }

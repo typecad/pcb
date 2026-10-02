@@ -27,7 +27,7 @@ import { SExprNode } from './sexpr_tree.js';
 import { KicadIRBuilder } from './ir_builder.js';
 import { SourceMatcher } from './matcher.js';
 import { SourceRewriter } from './rewriter.js';
-import { collectTypeScriptFiles, findTextCalls } from './source_analyzer.js';
+import { analyzeFile, collectTypeScriptFiles, findTextCalls } from './source_analyzer.js';
 import {
   generateTrackCode,
   generatePlacementCode,
@@ -36,17 +36,42 @@ import {
   generateStackupCode,
   generateZoneCode,
   generateCreateStatement,
+  generateGraphicsCode,
   DEFAULT_CH,
 } from './display.js';
 import type { ChalkHelpers } from './display.js';
 import {
+  computeGraphicsChanges,
   computeOutlineChanges,
   computeRoutingChanges,
+  computeStackupChanges,
+  computeTextSectionChanges,
   computeZoneChanges,
   applySourceChanges,
 } from './apply_source.js';
 import { startBoardWatch } from './watch.js';
-import type { KicadIR, PendingChange, PendingSourceChange, PendingTextChange, PendingLayoutChange } from './types.js';
+import {
+  acquireProjectLock,
+  changedSince,
+  fingerprintIR,
+  latestSnapshotInfo,
+  ownershipViolations,
+  parseGate,
+  parserSelfTest,
+  restoreSnapshot,
+  stampFiles,
+  takeSnapshot,
+} from './safety.js';
+import type { SourceStamps } from './safety.js';
+import { computeAllSourceChanges } from './apply_source.js';
+import type {
+  KicadIR,
+  MatchResult,
+  PendingChange,
+  PendingSourceChange,
+  PendingTextChange,
+  PendingLayoutChange,
+} from './types.js';
 
 /** Options shared by the CLI entry, the watch loop and the apply helpers. */
 export interface ImportOptions {
@@ -55,20 +80,72 @@ export interface ImportOptions {
   auto?: boolean;
   /** Watch the board file and re-run on every save. */
   watch?: boolean;
+  /** Compute and print every change (with edits) but write nothing. */
+  dryRun?: boolean;
+  /** Restore the most recent pre-apply snapshot and exit. */
+  restore?: boolean;
 }
 
 // === Main entry point ===
 
 export async function kicadDataToTypeCAD(filePath: string, options?: ImportOptions): Promise<void> {
-  if (options?.watch) {
-    // Watch mode runs the first cycle immediately, then re-runs on saves.
-    // `watch` is stripped from the per-cycle options by startBoardWatch.
-    const session = startBoardWatch(filePath, options, (file, cycleOptions) => kicadDataToTypeCAD(file, cycleOptions));
-    await session.forever;
+  // Parser self-test: a broken TS parser once made apply silently match
+  // nothing. Fail loudly before any work happens.
+  const selfTest = parserSelfTest();
+  if (!selfTest.ok) {
+    logger.error(
+      `Source parser self-test failed: ${selfTest.detail}. ` +
+        'Reinstall dependencies (npm install acorn-typescript) — refusing to touch source files.',
+    );
     return;
   }
 
-  await runOnce(filePath, options);
+  const kicadDir = filePath.replace(/\\/g, '/').split('/').slice(0, -1).join('/') || '.';
+  const projectRoot = kicadDir.replace(/(^|\/)build$/, '') || '.';
+
+  if (options?.restore) {
+    const info = latestSnapshotInfo(projectRoot);
+    if (!info) {
+      logger.error(`No snapshot found for ${projectRoot} — nothing to restore.`);
+      return;
+    }
+    const result = restoreSnapshot(projectRoot);
+    logger.log(
+      chalk.green(
+        `
+✓ Restored ${result.restored} file(s) from snapshot ${info.id} ` +
+          `(taken ${new Date(info.createdAt).toLocaleString()}).`,
+      ),
+    );
+    return;
+  }
+
+  // One import process per project: `npm run sync` plus a manual `import`
+  // must not interleave their writes.
+  const lock = acquireProjectLock(projectRoot);
+  if (!lock.ok) {
+    logger.error(`Another import process (${lock.holder}) is running on this project — exiting.`);
+    return;
+  }
+
+  try {
+    if (options?.watch) {
+      // Watch mode runs the first cycle immediately, then re-runs on saves.
+      // `watch` is stripped from the per-cycle options by startBoardWatch.
+      const session = startBoardWatch(filePath, options, (file, cycleOptions) => runOnce(file, cycleOptions));
+      const innerStop = session.stop.bind(session);
+      session.stop = () => {
+        innerStop();
+        lock.release();
+      };
+      await session.forever;
+      return;
+    }
+
+    await runOnce(filePath, options);
+  } finally {
+    lock.release();
+  }
 }
 
 /** One full import pass: apply (interactive or --auto) or display. */
@@ -109,6 +186,16 @@ export async function runOnce(filePath: string, options?: ImportOptions): Promis
     }
     if (!tree) {
       logger.error(`Parsed data from ${sourceDescription} is empty or invalid.`);
+      return;
+    }
+
+    // A parseable file that is not a board (a .kicad_sch handed over by
+    // mistake, a project file, anything else s-expression shaped) would
+    // otherwise import as an empty board and apply destructive deletions.
+    if (!tree.is('kicad_pcb')) {
+      logger.error(
+        `${sourceDescription} does not look like a .kicad_pcb file (root element is ${JSON.stringify(tree.name)}). Refusing to import.`,
+      );
       return;
     }
 
@@ -156,6 +243,9 @@ export async function runOnce(filePath: string, options?: ImportOptions): Promis
     // Zones and rule areas
     generateZoneCode(ir, sourceDescription, ch);
 
+    // Board graphics on silk/user layers
+    generateGraphicsCode(ir, sourceDescription, ch);
+
     // Create statement
     generateCreateStatement(ir.footprints, trackVariableNames, sourceDescription, ch);
   } catch (error: unknown) {
@@ -191,20 +281,73 @@ async function applyMode(
   const rewriter = new SourceRewriter();
   const footprintChanges = rewriter.computeFootprintChanges(matchResults);
 
-  // 3. Compute text changes (scan all project source files for .text() calls —
-  // silkscreen text usually lives where no footprint is declared)
+  // 3. Scan all project source files for .text() calls — silkscreen text
+  // usually lives where no footprint is declared
   const sourceFiles = collectTypeScriptFiles(sourceRoot);
+
+  // A source file that fails to parse (a transient read race, an editor
+  // mid-save under --watch) must abort the whole cycle: acting on a
+  // half-visible project would match components in the wrong file and
+  // write positions, routing, and text into whatever file still parses.
+  const unparsable = sourceFiles.filter((f) => analyzeFile(f) === null);
+  if (unparsable.length > 0) {
+    logger.warn(
+      chalk.yellow(
+        `\nSource file(s) failed to parse: ${unparsable.map((f) => f.replace(/\\/g, '/').split('/').slice(-2).join('/')).join(', ')}. ` +
+          'Skipping this cycle so nothing is written against a partial view of the project.',
+      ),
+    );
+    return;
+  }
+
+  // Concurrent-edit guard: remember what the analyzed files looked like; if
+  // anything changes on disk before we write, the cycle aborts rather than
+  // interleaving our ranges with someone else's edits. Our OWN write passes
+  // refresh the stamps — the guard exists for external edits, which in
+  // interactive mode land during the checkbox pauses.
+  const sourceStamps: SourceStamps = stampFiles(sourceFiles);
+  const restamp = (): void => {
+    const fresh = stampFiles(sourceFiles);
+    sourceStamps.clear();
+    for (const [k, v] of fresh) sourceStamps.set(k, v);
+  };
+  const analyzedFiles = new Set(sourceFiles);
+
   const textChanges = rewriter.computeTextChanges(ir, sourceFiles);
 
   // 4. Compute layout changes (referenceLayout, valueLayout, fabLayout)
   const layoutChanges = rewriter.computeLayoutChanges(matchResults);
 
-  // 5. Apply footprint changes
+  // 5. Dry-run: print every pending change with its edit preview and stop.
+  // No snapshot, no writes, no interactive prompts.
+  if (options?.dryRun) {
+    await dryRunReport(ir, matchResults, footprintChanges, textChanges, layoutChanges, sourceFiles);
+    return;
+  }
+
+  // 6. Snapshot the analyzed source set BEFORE the first write — a bad cycle
+  // must be fully recoverable (per-pass .backup files only capture the state
+  // before the LAST pass).
+  const snapshot = takeSnapshot(projectRoot, sourceFiles, kicadFilePath);
+  const rollback = (reason: string): void => {
+    if (!snapshot) return;
+    const result = restoreSnapshot(projectRoot);
+    logger.error(
+      chalk.red(
+        `
+✗ ${reason} — rolled back the cycle (restored ${result.restored} file(s) from snapshot ${snapshot.id}). ` +
+          'Your sources are unchanged; please report the pending change labels above.',
+      ),
+    );
+  };
+
+  // Apply footprint changes
   if (footprintChanges.length > 0) {
     const footprintResult = auto
       ? applyAllFootprints(footprintChanges)
       : await interactiveApplyFootprints(footprintChanges);
     if (footprintResult.applied > 0) {
+      restamp();
       logger.log(
         chalk.green(
           `\n✓ Applied ${footprintResult.applied} component change(s) to ${footprintResult.filesModified} file(s).`,
@@ -215,10 +358,11 @@ async function applyMode(
     logger.log(chalk.green('\nAll component positions are up to date. No changes needed.'));
   }
 
-  // 6. Apply text changes
+  // 6. Apply text changes (position/style updates to existing calls)
   if (textChanges.length > 0) {
     const textResult = auto ? applyAllTexts(textChanges) : await interactiveApplyTexts(textChanges);
     if (textResult.applied > 0) {
+      restamp();
       logger.log(
         chalk.green(`\n✓ Applied ${textResult.applied} text change(s) to ${textResult.filesModified} file(s).`),
       );
@@ -227,31 +371,38 @@ async function applyMode(
     const hasSourceTextCalls = sourceFiles.some((f) => findTextCalls(f).length > 0);
     if (hasSourceTextCalls) {
       logger.log(chalk.green('\nAll text positions are up to date.'));
-    } else {
-      logger.log(
-        chalk.yellow(
-          `\n${ir.textElements.length} board text element(s) have no matching typecad.text() call in the source. ` +
-            'Run without --apply to see the generated text code for manual insertion.',
-        ),
-      );
     }
+    // Board text with no source call is handled by the text-section pass below.
   }
 
   // 7. Apply layout changes
   if (layoutChanges.length > 0) {
     const layoutResult = auto ? applyAllLayouts(layoutChanges) : await interactiveApplyLayouts(layoutChanges);
     if (layoutResult.applied > 0) {
+      restamp();
       logger.log(
         chalk.green(`\n✓ Applied ${layoutResult.applied} layout change(s) to ${layoutResult.filesModified} file(s).`),
       );
     }
   }
 
-  // 8. Compute outline / zone / routing write-back changes
+  // 8. Compute outline / zone / routing / text-section write-back changes.
+  // Text-section runs AFTER the footprint/layout passes above so its
+  // insertion offsets reflect the file as it will be written.
   const zoneResult = computeZoneChanges(ir, sourceFiles);
   const outlineResult = computeOutlineChanges(ir, sourceFiles);
   const routingResult = computeRoutingChanges(ir, sourceFiles);
-  for (const note of [...zoneResult.notes, ...outlineResult.notes, ...routingResult.notes]) {
+  const textSectionResult = computeTextSectionChanges(ir, sourceFiles);
+  const stackupResult = computeStackupChanges(ir, sourceFiles);
+  const graphicsResult = computeGraphicsChanges(ir, sourceFiles);
+  for (const note of [
+    ...zoneResult.notes,
+    ...outlineResult.notes,
+    ...routingResult.notes,
+    ...textSectionResult.notes,
+    ...stackupResult.notes,
+    ...graphicsResult.notes,
+  ]) {
     logger.log(chalk.gray(`\nnote: ${note}`));
   }
 
@@ -261,13 +412,29 @@ async function applyMode(
   const declined: PendingSourceChange[] = [];
 
   if (auto) {
-    selectedSource.push(...outlineResult.changes, ...zoneResult.changes, ...routingResult.changes);
+    selectedSource.push(
+      ...stackupResult.changes,
+      ...outlineResult.changes,
+      ...zoneResult.changes,
+      ...graphicsResult.changes,
+      ...textSectionResult.changes,
+      ...routingResult.changes,
+    );
   } else {
+    if (stackupResult.changes.length > 0) {
+      selectedSource.push(...(await interactiveApplySourceChanges('stackup', stackupResult.changes, declined)));
+    }
     if (outlineResult.changes.length > 0) {
       selectedSource.push(...(await interactiveApplySourceChanges('board outline', outlineResult.changes, declined)));
     }
     if (zoneResult.changes.length > 0) {
       selectedSource.push(...(await interactiveApplySourceChanges('zone', zoneResult.changes, declined)));
+    }
+    if (graphicsResult.changes.length > 0) {
+      selectedSource.push(...(await interactiveApplySourceChanges('board graphics', graphicsResult.changes, declined)));
+    }
+    if (textSectionResult.changes.length > 0) {
+      selectedSource.push(...(await interactiveApplySourceChanges('text', textSectionResult.changes, declined)));
     }
     if (routingResult.changes.length > 0) {
       selectedSource.push(...(await interactiveApplySourceChanges('routing', routingResult.changes, declined)));
@@ -275,13 +442,59 @@ async function applyMode(
   }
 
   if (selectedSource.length > 0) {
+    const violations = ownershipViolations(selectedSource, analyzedFiles);
+    if (violations.length > 0) {
+      rollback(`write targeted file(s) outside the analyzed set: ${violations.join(', ')}`);
+      return;
+    }
+    const drifted = changedSince(sourceStamps);
+    if (drifted.length > 0) {
+      logger.warn(
+        chalk.yellow(
+          `\nSource file(s) changed on disk during this cycle: ${drifted
+            .map((f) => f.replace(/\\/g, '/').split('/').slice(-2).join('/'))
+            .join(', ')} — skipping the write; re-run the import.`,
+        ),
+      );
+      return;
+    }
     const result = applySourceChanges(selectedSource);
     if (result.changesApplied > 0) {
       logger.log(
         chalk.green(
-          `\n✓ Applied ${result.changesApplied} outline/zone/routing change(s) to ${result.filesModified} file(s).`,
+          `\n✓ Applied ${result.changesApplied} stackup/outline/zone/graphics/text/routing change(s) to ${result.filesModified} file(s).`,
         ),
       );
+    }
+  }
+
+  // 11. Parse gate + convergence oracle over every written file.
+  const writtenFiles = [...new Set(selectedSource.map((c) => c.filePath))];
+  if (writtenFiles.length > 0) {
+    const gate = parseGate(writtenFiles);
+    if (!gate.ok) {
+      rollback(`written file(s) no longer parse: ${gate.failures.join(', ')}`);
+      return;
+    }
+
+    // Oracle: recomputing every category against the just-written tree must
+    // find nothing left to do. Categories the user declined (or that were
+    // never applied) legitimately remain pending and are exempt.
+    const appliedSignatures = new Set(selectedSource.map((c) => `${c.kind}::${c.label}`));
+    const after = computeAllSourceChanges(ir, sourceFiles);
+    const nonConverged: string[] = [];
+    for (const result of Object.values(after)) {
+      for (const change of result.changes) {
+        if (appliedSignatures.has(`${change.kind}::${change.label}`)) {
+          nonConverged.push(change.label);
+        }
+      }
+    }
+    if (nonConverged.length > 0) {
+      rollback(
+        `applied change(s) did not converge (still pending after write): ${nonConverged.slice(0, 5).join('; ')}`,
+      );
+      return;
     }
   }
 
@@ -294,6 +507,12 @@ async function applyMode(
   if (declined.some((c) => c.kind === 'zone' || c.kind === 'keepout')) {
     generateZoneCode(ir, sourceDescription);
   }
+  if (declined.some((c) => c.kind === 'text')) {
+    generateTextCode(ir, sourceDescription);
+  }
+  if (declined.some((c) => c.kind === 'graphics')) {
+    generateGraphicsCode(ir, sourceDescription);
+  }
 
   if (
     footprintChanges.length === 0 &&
@@ -301,12 +520,79 @@ async function applyMode(
     layoutChanges.length === 0 &&
     zoneResult.changes.length === 0 &&
     outlineResult.changes.length === 0 &&
+    textSectionResult.changes.length === 0 &&
+    stackupResult.changes.length === 0 &&
+    graphicsResult.changes.length === 0 &&
     routingResult.changes.length === 0
   ) {
     logger.log(chalk.green('\nNo changes detected. Everything is in sync.'));
   }
 
   logger.log(chalk.gray('\nRebuild with: npm run build'));
+  logger.log(
+    chalk.gray(
+      `Board fingerprint: ${fingerprintIR(ir)}${snapshot ? ` (pre-apply snapshot ${snapshot.id}; undo with --restore)` : ''}`,
+    ),
+  );
+}
+
+/** Full preview of a cycle without writing anything: labels plus edits. */
+async function dryRunReport(
+  ir: KicadIR,
+  matchResults: MatchResult[],
+  footprintChanges: PendingChange[],
+  textChanges: PendingTextChange[],
+  layoutChanges: PendingLayoutChange[],
+  sourceFiles: string[],
+): Promise<void> {
+  const all = computeAllSourceChanges(ir, sourceFiles);
+
+  logger.log(chalk.bold('\n== dry run: nothing will be written ==\n'));
+
+  if (footprintChanges.length === 0 && textChanges.length === 0 && layoutChanges.length === 0) {
+    logger.log(chalk.green('component positions / text / layouts: in sync'));
+  } else {
+    logger.log(chalk.bold(`component positions (${footprintChanges.length}):`));
+    for (const c of footprintChanges) logger.log(`    ${c.label}`);
+    logger.log(chalk.bold(`text updates (${textChanges.length}):`));
+    for (const c of textChanges) logger.log(`    ${c.label}`);
+    logger.log(chalk.bold(`layouts (${layoutChanges.length}):`));
+    for (const c of layoutChanges) logger.log(`    ${c.label}`);
+  }
+  void matchResults;
+
+  for (const [name, result] of Object.entries(all)) {
+    if (result.changes.length === 0) {
+      logger.log(chalk.green(`${name}: in sync`));
+      continue;
+    }
+    logger.log(chalk.bold(`\n${name} (${result.changes.length}):`));
+    for (const change of result.changes) {
+      const short = change.filePath.replace(/\\/g, '/').split('/').slice(-2).join('/');
+      logger.log(`    ${chalk.blueBright(change.label)}  [${short}]`);
+      let source: string | null = null;
+      for (const rep of change.replacements) {
+        if (source === null) {
+          try {
+            source = fs.readFileSync(change.filePath, 'utf-8');
+          } catch {
+            source = null;
+          }
+        }
+        if (source === null) continue;
+        const before = source.slice(rep.range.start, rep.range.end);
+        if (before === '') {
+          logger.log(chalk.gray(`      + ${rep.newValue.split('\n')[0].slice(0, 100)}`));
+        } else {
+          logger.log(chalk.gray(`      - ${before.split('\n')[0].slice(0, 100)}`));
+          logger.log(chalk.gray(`      + ${rep.newValue.split('\n')[0].slice(0, 100)}`));
+        }
+      }
+    }
+    for (const note of result.notes) logger.log(chalk.gray(`    note: ${note}`));
+  }
+
+  logger.log(chalk.gray('\n(dry run - no files were modified)'));
 }
 
 /** Checkbox selection for pre-computed source changes; unselected ones land in `declined`. */

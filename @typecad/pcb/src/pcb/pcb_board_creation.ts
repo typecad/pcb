@@ -348,7 +348,7 @@ export function createBoard(pcb: PCB, ...items: Array<Component | TrackBuilder>)
 
   // Pin numbers + net names per pad, straight from the board the PCB object
   // just produced — the viewer renders pad labels from it.
-  writePadsManifest(finalBoardContents, pcb);
+  writePadsManifest(finalBoardContents, pcb.boardName);
 
   // The Layout view distinguishes TrackBuilder-built nets from autorouted
   // ones — the builders collected above are the manual side of that split.

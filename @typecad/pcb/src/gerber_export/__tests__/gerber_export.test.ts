@@ -99,6 +99,74 @@ describe('pad rotation conventions (golden-anchored)', () => {
   });
 });
 
+// chamfered roundrect pads: goldens captured from kicad-cli 10.0.0 plotting
+// the probe board in rd_skeleton/hw/build/probe — KiCad switches these pads
+// from the RoundRect macro to a plain FreePoly polygon whose macro rotation
+// parameter carries the pad angle; chamfer legs measure from the corner,
+// independent of the corner radius
+describe('chamfered roundrect pads (golden-anchored)', () => {
+  const BOARD = `
+(kicad_pcb (version 20241229)
+  (layers (0 "F.Cu" signal) (31 "B.Cu" signal))
+  (net 1 "SIG1")
+  (footprint "T:CH" (layer "F.Cu")
+    (property "Reference" "XP1" (at 0 0 0) (layer "F.SilkS"))
+    (at 0 0 0)
+    (pad "1" smd roundrect (at 0 0 0) (size 2 2) (layers "F.Cu") (roundrect_rratio 0.125) (chamfer_ratio 0.2) (chamfer top_right) (net 1 "SIG1"))
+    (pad "2" smd roundrect (at 4 0 0) (size 2 2) (layers "F.Cu") (roundrect_rratio 0.125) (chamfer_ratio 0.2) (chamfer bottom_left) (net 1 "SIG1"))
+    (pad "3" smd roundrect (at 8 0 90) (size 2 2) (layers "F.Cu") (roundrect_rratio 0.125) (chamfer_ratio 0.2) (chamfer top_right) (net 1 "SIG1"))
+    (pad "4" smd roundrect (at 0 4 0) (size 2 1) (layers "F.Cu") (roundrect_rratio 0.25) (chamfer_ratio 0.3) (chamfer top_left top_right bottom_right) (net 1 "SIG1"))
+    (pad "5" thru_hole roundrect (at 0.34 -6.36 0) (size 1.2 1.2) (drill 0.9) (layers "F.Cu" "B.Cu" "*.Mask") (roundrect_rratio 0) (chamfer_ratio 0.2) (chamfer top_right bottom_right) (net 1 "SIG1"))
+  )
+)`;
+
+  function plotF(): string {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gerber-chamfer-'));
+    plotCopperLayersFromSource(BOARD, path.join(dir, 'b.kicad_pcb'), { outDir: dir });
+    return fs.readFileSync(path.join(dir, 'b-F_Cu.gtl'), 'utf8');
+  }
+
+  it('emits KiCad FreePoly0 for a top_right chamfer with rounded corners', () => {
+    const text = plotF();
+    expect(text).toContain(
+      '4,1,18,-1.000000,0.750000,-0.980970,0.845671,-0.926777,0.926777,-0.845671,0.980970,-0.750000,1.000000,0.600000,1.000000,1.000000,0.600000,1.000000,-0.750000,0.980970,-0.845671,0.926777,-0.926777,0.845671,-0.980970,0.750000,-1.000000,-0.750000,-1.000000,-0.845671,-0.980970,-0.926777,-0.926777,-0.980970,-0.845671,-1.000000,-0.750000,-1.000000,0.750000,-1.000000,0.750000,$1*%',
+    );
+  });
+
+  it('emits KiCad FreePoly1 for a bottom_left chamfer', () => {
+    const text = plotF();
+    expect(text).toContain(
+      '4,1,18,-1.000000,0.750000,-0.980970,0.845671,-0.926777,0.926777,-0.845671,0.980970,-0.750000,1.000000,0.750000,1.000000,0.845671,0.980970,0.926777,0.926777,0.980970,0.845671,1.000000,0.750000,1.000000,-0.750000,0.980970,-0.845671,0.926777,-0.926777,0.845671,-0.980970,0.750000,-1.000000,-0.600000,-1.000000,-1.000000,-0.600000,-1.000000,0.750000,-1.000000,0.750000,$1*%',
+    );
+  });
+
+  it('carries the pad angle in the macro rotation parameter', () => {
+    const text = plotF();
+    expect(text).toContain('FreePoly0,90.000000*%');
+  });
+
+  it('mixed chamfers with r>0 land on KiCad 12-point outline', () => {
+    const text = plotF();
+    expect(text).toContain(
+      '4,1,12,-1.000000,0.200000,-0.700000,0.500000,0.700000,0.500000,1.000000,0.200000,1.000000,-0.200000,0.700000,-0.500000,-0.750000,-0.500000,-0.845671,-0.480970,-0.926777,-0.426777,-0.980970,-0.345671,-1.000000,-0.250000,-1.000000,0.200000,-1.000000,0.200000,$1*%',
+    );
+  });
+
+  it('castellated r=0 double chamfer is the exact 6-point KiCad outline', () => {
+    const text = plotF();
+    expect(text).toContain(
+      '4,1,7,-0.600000,0.600000,0.360000,0.600000,0.600000,0.360000,0.600000,-0.360000,0.360000,-0.600000,-0.600000,-0.600000,-0.600000,0.600000,-0.600000,0.600000,$1*%',
+    );
+  });
+
+  it('no longer emits a zero-radius RoundRect square for chamfered pads', () => {
+    const text = plotF();
+    // the castellated pad is the only r=0 pad in the board; before the fix
+    // it plotted as RoundRect,0.000000… — a plain square
+    expect(text).not.toContain('RoundRect,0.000000');
+  });
+});
+
 describe('net reference forms', () => {
   it('resolves legacy coded and kicad-cli name-only nets', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gerber-export-'));

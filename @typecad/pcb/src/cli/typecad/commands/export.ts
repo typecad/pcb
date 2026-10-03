@@ -5,7 +5,14 @@ import chalk from 'chalk';
 import { executeKiCADCommand } from '../../../kicad_commands.js';
 import type { ParsedArgs } from '../parser.js';
 import logger from '../../../utils/logging.js';
-import { buildDirPath, findBoardFile } from '../pipeline.js';
+import {
+  boardStemFromArgs,
+  buildDirPath,
+  findBoardFile,
+  knownBoardsHint,
+  listBoardFiles,
+} from '../pipeline.js';
+import { refreshPadsManifestFromBoard } from '../../../pcb/pcb_pads_writer.js';
 import {
   plotCopperLayers,
   plotGraphicsLayersFromSource,
@@ -18,14 +25,35 @@ import { refillZoneFills } from '../../../pcb/pcb_zone_fill.js';
 import { parse, SNode } from '../../../sexpr/index.js';
 import type { SExpr } from '../../../sexpr/index.js';
 
-function findPcbFile(argPath?: string): string | null {
+function findPcbFile(argPath?: string, stem?: string): string | null {
   if (argPath) {
     const resolved = path.resolve(argPath);
     if (fs.existsSync(resolved)) return resolved;
     return null;
   }
 
-  return findBoardFile();
+  const board = findBoardFile(stem);
+  if (!board && stem) {
+    logger.warn(chalk.yellow(`No board '${stem}' in build/ — ${knownBoardsHint()}`));
+  }
+  return board;
+}
+
+/**
+ * The gerbers output dir for this board: `build/gerbers` for single-board
+ * projects (unchanged), `build/gerbers/<stem>` once the manifest lists more
+ * than one — mother/daughter boards must not share a fab dir (each board's
+ * export prunes foreign stems, which would otherwise delete its sibling's
+ * inner layers). An explicit --output wins either way.
+ */
+export function gerbersDirFor(parsed: ParsedArgs, buildDir: string, pcbPath: string): string {
+  if (parsed.args['output'] || parsed.args['o'] || parsed.args['out']) {
+    return getOutputDir(parsed, path.join(buildDir, 'gerbers'));
+  }
+  if (listBoardFiles(buildDir).length > 1) {
+    return path.join(buildDir, 'gerbers', path.basename(pcbPath, '.kicad_pcb'));
+  }
+  return path.join(buildDir, 'gerbers');
 }
 
 function getOutputDir(parsed: ParsedArgs, defaultDir: string): string {
@@ -36,8 +64,9 @@ function getOutputDir(parsed: ParsedArgs, defaultDir: string): string {
   return defaultDir;
 }
 
-/** Fabric-artifact extensions this command family owns in the output dir. */
-const FAB_ARTIFACT_RE = /\.(gbr|gtl|gbl|gts|gbs|gto|gbo|gtp|gbp|gta|gba|gm1|gko|gbrjob|drl|xln)$/i;
+/** Fabric-artifact extensions this command family owns in the output dir
+ *  (inner copper plots as .g1–.g30 — those ride along too). */
+const FAB_ARTIFACT_RE = /\.(gbr|gtl|gbl|gts|gbs|gto|gbo|gtp|gbp|gta|gba|gm1|gko|gbrjob|drl|xln|g\d{1,2})$/i;
 
 /**
  * The fab dir is single-board: a leftover export under a DIFFERENT board stem
@@ -92,7 +121,7 @@ export async function kicadMajorVersion(): Promise<number> {
 async function runGerbers(parsed: ParsedArgs): Promise<void> {
   const json = parsed.json;
   const pcbArg = parsed.positional[0];
-  const pcbPath = findPcbFile(pcbArg);
+  const pcbPath = findPcbFile(pcbArg, boardStemFromArgs(parsed));
 
   if (!pcbPath) {
     if (pcbArg) {
@@ -105,7 +134,7 @@ async function runGerbers(parsed: ParsedArgs): Promise<void> {
   }
 
   const buildDir = buildDirPath();
-  const outputDir = getOutputDir(parsed, path.join(buildDir, 'gerbers'));
+  const outputDir = gerbersDirFor(parsed, buildDir, pcbPath);
   fs.mkdirSync(outputDir, { recursive: true });
 
   if (!json) {
@@ -172,7 +201,7 @@ async function runGerbers(parsed: ParsedArgs): Promise<void> {
 async function runDrill(parsed: ParsedArgs): Promise<void> {
   const json = parsed.json;
   const pcbArg = parsed.positional[0];
-  const pcbPath = findPcbFile(pcbArg);
+  const pcbPath = findPcbFile(pcbArg, boardStemFromArgs(parsed));
 
   if (!pcbPath) {
     if (pcbArg) {
@@ -185,7 +214,7 @@ async function runDrill(parsed: ParsedArgs): Promise<void> {
   }
 
   const buildDir = buildDirPath();
-  const outputDir = getOutputDir(parsed, path.join(buildDir, 'gerbers'));
+  const outputDir = gerbersDirFor(parsed, buildDir, pcbPath);
   fs.mkdirSync(outputDir, { recursive: true });
 
   if (!json) {
@@ -326,7 +355,7 @@ function findUnfilledZones(source: string): UnfilledZone[] {
 async function runNativeGerbers(parsed: ParsedArgs): Promise<void> {
   const json = parsed.json;
   const pcbArg = parsed.positional[0];
-  const pcbPath = findPcbFile(pcbArg);
+  const pcbPath = findPcbFile(pcbArg, boardStemFromArgs(parsed));
 
   if (!pcbPath) {
     if (pcbArg) throw new Error(`PCB file not found: ${pcbArg}`);
@@ -338,7 +367,7 @@ async function runNativeGerbers(parsed: ParsedArgs): Promise<void> {
   }
 
   const buildDir = buildDirPath();
-  const outputDir = getOutputDir(parsed, path.join(buildDir, 'gerbers'));
+  const outputDir = gerbersDirFor(parsed, buildDir, pcbPath);
   fs.mkdirSync(outputDir, { recursive: true });
 
   let source = fs.readFileSync(pcbPath, 'utf8');
@@ -379,6 +408,15 @@ async function runNativeGerbers(parsed: ParsedArgs): Promise<void> {
     ...plotCopperLayers(boardPathForPlot, { outDir: outputDir }),
     ...plotGraphicsLayersFromSource(source, boardPathForPlot, { outDir: outputDir }),
   ];
+  // the filled temp board was only the plot source — never leak a copy per
+  // export into the system temp dir
+  if (boardPathForPlot !== pcbPath) {
+    try {
+      fs.unlinkSync(boardPathForPlot);
+    } catch {
+      // best-effort — a stale temp is harmless beside the plots
+    }
+  }
   const copperCount = written.filter((f) => /\.(gtl|gbl|g\d)$/.test(path.basename(f))).length;
   written.push(
     plotDrillFromSource(source, boardPathForPlot, { outDir: outputDir, copperLayerCount: copperCount }),
@@ -398,6 +436,13 @@ async function runNativeGerbers(parsed: ParsedArgs): Promise<void> {
   written.push(plotJobFromSource(source, pcbPath, fileFor, { outDir: outputDir }));
 
   pruneAndReport(outputDir, pcbPath, json);
+
+  // The pads manifest is derived data (build/<stem>_pads.json, written with
+  // the board). Exporting gerbers is the step that runs whenever the viewer
+  // regenerates — a KiCad-side edit that flowed through sync without a full
+  // rebuild reaches this point with a manifest one revision behind, and the
+  // viewer would bake stale pad labels over fresh copper. Heal it here.
+  refreshPadsManifestFromBoard(pcbPath);
 
   const files = written.map((f) => path.basename(f)).sort();
     if (json) {

@@ -19,6 +19,7 @@
  */
 
 import fs from 'node:fs';
+import path from 'node:path';
 import chalk from 'chalk';
 import { checkbox } from '@inquirer/prompts';
 import logger from '../utils/logging.js';
@@ -48,8 +49,29 @@ import {
   computeTextSectionChanges,
   computeZoneChanges,
   applySourceChanges,
+  computeComponentDeletions,
+  componentDeletionChanges,
 } from './apply_source.js';
+import type { ComponentDeletionCandidate } from './apply_source.js';
 import { startBoardWatch } from './watch.js';
+import { collectLocalDependencies } from '../cli/typecad/watch.js';
+
+/** The board stems the project's build manifest lists (multi-board
+ *  detection). Empty without a manifest — every project is then
+ *  single-board as far as the sync is concerned. */
+function readBoardsManifestStems(projectRoot: string): string[] {
+  try {
+    const manifest = JSON.parse(
+      fs.readFileSync(path.join(projectRoot, 'build', '.typecad-board.json'), 'utf-8'),
+    ) as { boards?: unknown };
+    if (!Array.isArray(manifest.boards)) return [];
+    return manifest.boards
+      .filter((b): b is string => typeof b === 'string' && b.endsWith('.kicad_pcb'))
+      .map((b) => b.replace('\.kicad_pcb$', ''));
+  } catch {
+    return [];
+  }
+}
 import {
   acquireProjectLock,
   changedSince,
@@ -255,6 +277,47 @@ export async function runOnce(filePath: string, options?: ImportOptions): Promis
 
 // === Apply mode implementation ===
 
+/**
+ * Multi-board scoping for a sync cycle: when the project's build manifest
+ * lists more than one board, the cycle is scoped to THIS board's sources —
+ * the entry is the file constructing `new PCB('<stem>')`, and the scope is
+ * its local import graph (the per-board sidecar rides in it). Every
+ * name-based guard — variable ambiguity, the sidecar-first assignment
+ * search, routing ownership — then sees only files that can legally hold
+ * this board's components, so the same variable name on two boards is no
+ * longer "ambiguous". Single-board projects keep the whole-src scan
+ * (orphans like scratch files stay visible exactly as before).
+ */
+export function scopeSourceFilesToBoard(
+  sourceFiles: string[],
+  projectRoot: string,
+  stem: string,
+): string[] {
+  if (readBoardsManifestStems(projectRoot).length <= 1) return sourceFiles;
+  const escaped = stem.replace(/[.*+?^${}()|[\\]]/g, '\\$&');
+  const entry = sourceFiles.find((f) => {
+    try {
+      return new RegExp(`new\\s+PCB\\s*\\(\\s*['"]${escaped}['"]`).test(fs.readFileSync(f, 'utf-8'));
+    } catch {
+      return false;
+    }
+  });
+  if (!entry) {
+    logger.warn(
+      chalk.yellow(
+        `
+No source file constructs new PCB('${stem}') — cannot scope to the board's entry; scanning all of src/`,
+      ),
+    );
+    return sourceFiles;
+  }
+  const scope = new Set(collectLocalDependencies(entry).map((f) => path.resolve(f)));
+  const sidecar = new RegExp(`^_sync(\\.${escaped})?\\.ts$`);
+  const scoped = sourceFiles.filter((f) => scope.has(path.resolve(f)) || sidecar.test(path.basename(f)));
+  logger.info(`Board '${stem}': scoped to its entry's import graph (${scoped.length} file(s))`);
+  return scoped;
+}
+
 async function applyMode(
   ir: KicadIR,
   kicadFilePath: string,
@@ -277,13 +340,17 @@ async function applyMode(
   const matchedCount = matchResults.filter((mr) => mr.sourceLocation !== null).length;
   logger.info(`Matched ${matchedCount}/${ir.footprints.length} footprints to source locations`);
 
-  // 2. Compute footprint changes
-  const rewriter = new SourceRewriter();
-  const footprintChanges = rewriter.computeFootprintChanges(matchResults);
-
   // 3. Scan all project source files for .text() calls — silkscreen text
   // usually lives where no footprint is declared
-  const sourceFiles = collectTypeScriptFiles(sourceRoot);
+  let sourceFiles = collectTypeScriptFiles(sourceRoot);
+
+  // Multi-board projects (mother/daughter, board/jig) scope the cycle to
+  // THIS board's sources — see scopeSourceFilesToBoard.
+  sourceFiles = scopeSourceFilesToBoard(
+    sourceFiles,
+    projectRoot,
+    path.basename(kicadFilePath, '.kicad_pcb'),
+  );
 
   // A source file that fails to parse (a transient read race, an editor
   // mid-save under --watch) must abort the whole cycle: acting on a
@@ -313,22 +380,10 @@ async function applyMode(
   };
   const analyzedFiles = new Set(sourceFiles);
 
-  const textChanges = rewriter.computeTextChanges(ir, sourceFiles);
-
-  // 4. Compute layout changes (referenceLayout, valueLayout, fabLayout)
-  const layoutChanges = rewriter.computeLayoutChanges(matchResults);
-
-  // 5. Dry-run: print every pending change with its edit preview and stop.
-  // No snapshot, no writes, no interactive prompts.
-  if (options?.dryRun) {
-    await dryRunReport(ir, matchResults, footprintChanges, textChanges, layoutChanges, sourceFiles);
-    return;
-  }
-
-  // 6. Snapshot the analyzed source set BEFORE the first write — a bad cycle
+  // Snapshot the analyzed source set BEFORE the first write — a bad cycle
   // must be fully recoverable (per-pass .backup files only capture the state
-  // before the LAST pass).
-  const snapshot = takeSnapshot(projectRoot, sourceFiles, kicadFilePath);
+  // before the LAST pass). A dry run writes nothing and takes nothing.
+  const snapshot = options?.dryRun ? null : takeSnapshot(projectRoot, sourceFiles, kicadFilePath);
   const rollback = (reason: string): void => {
     if (!snapshot) return;
     const result = restoreSnapshot(projectRoot);
@@ -340,6 +395,86 @@ async function applyMode(
       ),
     );
   };
+
+  // 4. Component deletions FIRST: a part deleted in KiCad leaves an orphan
+  // declaration that would dangle under every later pass, so it is removed
+  // (and the stamps refreshed) before positions/text/routing are computed —
+  // their ranges are planned against the post-deletion files.
+  const rewriter = new SourceRewriter();
+  const deletion = computeComponentDeletions(matchResults, sourceFiles, ir.footprints.length);
+  for (const n of deletion.notes) logger.log(chalk.gray(`\nnote: ${n}`));
+  if (deletion.candidates.length > 0) {
+    if (options?.dryRun) {
+      logger.log(chalk.bold(`\n${deletion.candidates.length} component(s) deleted on the board (dry run — nothing written):\n`));
+      for (const c of deletion.candidates) logger.log(`    ${chalk.blueBright(c.label)}`);
+    } else {
+      const selectedDeletions = auto
+        ? deletion.candidates
+        : await interactiveApplyComponentDeletions(deletion.candidates);
+      if (selectedDeletions.length > 0) {
+        const drifted = changedSince(sourceStamps);
+        if (drifted.length > 0) {
+          logger.warn(
+            chalk.yellow(
+              `\nSource file(s) changed on disk before the deletion pass: ${drifted
+                .map((f) => f.replace(/\\/g, '/').split('/').slice(-2).join('/'))
+                .join(', ')} — skipping this cycle; re-run the import.`,
+            ),
+          );
+          return;
+        }
+        const deletionChanges = componentDeletionChanges(selectedDeletions);
+        applySourceChanges(deletionChanges);
+        const deletionGate = parseGate([...new Set(deletionChanges.map((c) => c.filePath))]);
+        if (!deletionGate.ok) {
+          rollback(`component deletion left file(s) unparsable: ${deletionGate.failures.join(', ')}`);
+          return;
+        }
+        // convergence: an applied deletion must not reappear as a candidate
+        const afterDeletion = computeComponentDeletions(matchResults, sourceFiles, ir.footprints.length);
+        const stillPending = selectedDeletions.filter((c) =>
+          afterDeletion.candidates.some((a) => a.variable === c.variable && a.filePath === c.filePath),
+        );
+        if (stillPending.length > 0) {
+          rollback(
+            `component deletion(s) did not converge (still pending after write): ${stillPending
+              .map((c) => c.label)
+              .slice(0, 5)
+              .join('; ')}`,
+          );
+          return;
+        }
+        restamp();
+        logger.log(
+          chalk.green(
+            `\n✓ Removed ${selectedDeletions.length} deleted component(s) from ${new Set(deletionChanges.map((c) => c.filePath)).size} file(s).`,
+          ),
+        );
+      } else {
+        logger.log(
+          chalk.gray(`\n${deletion.candidates.length} component(s) deleted on the board were left in source (declined).`),
+        );
+      }
+    }
+  }
+
+  // 5. Compute the remaining categories against the post-deletion tree.
+  // Footprint changes come after the file scan so assignments are searched
+  // project-wide (the _sync.ts sidecar carries `parts.x.pcb` overrides in
+  // files far from their constructors).
+  const footprintChanges = rewriter.computeFootprintChanges(matchResults, sourceFiles);
+  const textChanges = rewriter.computeTextChanges(ir, sourceFiles);
+
+  // 6. Compute layout changes (referenceLayout, valueLayout, fabLayout) —
+  // project-wide assignment search, sidecar-first, same as footprints
+  const layoutChanges = rewriter.computeLayoutChanges(matchResults, sourceFiles);
+
+  // 7. Dry-run: print every pending change with its edit preview and stop.
+  // No snapshot, no writes, no interactive prompts.
+  if (options?.dryRun) {
+    await dryRunReport(ir, matchResults, footprintChanges, textChanges, layoutChanges, sourceFiles);
+    return;
+  }
 
   // Apply footprint changes
   if (footprintChanges.length > 0) {
@@ -623,6 +758,18 @@ async function interactiveApplySourceChanges(
 
 // === --auto variants: apply everything, no prompts ===
 
+/** Surface an apply pass's drops: a change that matched no statement at
+ *  write time is reported (the source drifted since it was computed),
+ *  never silently counted as applied. */
+function reportApplyResult(result: {
+  filesModified: number;
+  changesApplied: number;
+  dropped: string[];
+}): { filesModified: number; applied: number } {
+  for (const note of result.dropped) logger.warn(chalk.yellow(`\nnote: ${note}`));
+  return { filesModified: result.filesModified, applied: result.changesApplied };
+}
+
 function applyAllFootprints(changes: PendingChange[]): { filesModified: number; applied: number } {
   logger.log(chalk.bold(`\n${changes.length} component(s) have new positions (auto-apply):\n`));
   for (const c of changes) {
@@ -630,8 +777,7 @@ function applyAllFootprints(changes: PendingChange[]): { filesModified: number; 
     logger.log(`    ${chalk.blueBright(c.prefix + c.variableName.padEnd(14))} ${oldStr} → (${c.newX}, ${c.newY})`);
   }
   const rewriter = new SourceRewriter();
-  const result = rewriter.applyFootprintChanges(changes);
-  return { filesModified: result.filesModified, applied: changes.length };
+  return reportApplyResult(rewriter.applyFootprintChanges(changes));
 }
 
 function applyAllTexts(changes: PendingTextChange[]): { filesModified: number; applied: number } {
@@ -654,8 +800,24 @@ function applyAllLayouts(changes: PendingLayoutChange[]): { filesModified: numbe
     logger.log(`    ${chalk.blueBright(`${c.prefix}${c.variableName}.${c.layoutType}`)}${propsStr}`);
   }
   const rewriter = new SourceRewriter();
-  const result = rewriter.applyLayoutChanges(changes);
-  return { filesModified: result.filesModified, applied: changes.length };
+  return reportApplyResult(rewriter.applyLayoutChanges(changes));
+}
+
+/** Deletions are opt-in per component: the board no longer carries the
+ *  part, and the checkbox makes "remove it from source" an explicit yes. */
+async function interactiveApplyComponentDeletions(
+  candidates: ComponentDeletionCandidate[],
+): Promise<ComponentDeletionCandidate[]> {
+  logger.log(chalk.bold(`
+${candidates.length} component(s) deleted on the board:
+`));
+  for (const c of candidates) logger.log(`    ${chalk.blueBright(c.label)}`);
+  const selected: ComponentDeletionCandidate[] = await checkbox({
+    message: 'Remove which deleted component(s) from source?',
+    choices: candidates.map((c) => ({ name: c.label, value: c })),
+  });
+  if (selected.length === 0) logger.log(chalk.gray('\nNo deletions selected.'));
+  return selected;
 }
 
 async function interactiveApplyFootprints(
@@ -698,8 +860,7 @@ async function interactiveApplyFootprints(
 
   // Apply
   const rewriter = new SourceRewriter();
-  const result = rewriter.applyFootprintChanges(selected);
-  return { filesModified: result.filesModified, applied: selected.length };
+  return reportApplyResult(rewriter.applyFootprintChanges(selected));
 }
 
 async function interactiveApplyTexts(
@@ -757,6 +918,5 @@ async function interactiveApplyLayouts(
   }
 
   const rewriter = new SourceRewriter();
-  const result = rewriter.applyLayoutChanges(selected);
-  return { filesModified: result.filesModified, applied: selected.length };
+  return reportApplyResult(rewriter.applyLayoutChanges(selected));
 }

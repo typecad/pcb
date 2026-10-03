@@ -377,6 +377,37 @@ describe('layout view properties panel (E) follows the selection', () => {
     expect(sent.style!.w).toBeUndefined();
   });
 
+  it('Delete on a selected part rips its ink and rides the apply as a part deletion', async () => {
+    const page = await boot();
+    let capturedParts: string[] | null = null;
+    (page.window as unknown as Record<string, unknown>).typecadLayoutApply = (
+      _moves: unknown,
+      _texts: unknown,
+      _values: unknown,
+      _labels: unknown,
+      _renames: unknown,
+      _routes: unknown,
+      _deletes: unknown,
+      partDeletes: string[],
+      cb: (err: string | null, fast: boolean) => void,
+    ) => {
+      capturedParts = partDeletes;
+      cb(null, false);
+    };
+    const handle = page.window.document.querySelector('#layout-overlay [data-ref="R1"]')!;
+    page.pressPart('R1');
+    page.key('Delete');
+    // the ink is gone now (ripped, reversible) and the apply carries it
+    expect(handle.getAttribute('display')).toBe('none');
+    page.window.document.getElementById('layout-apply')!.click();
+    expect(capturedParts).toEqual(['R1']);
+    // undo brings the part back and drops it from the pending deletions —
+    // with nothing else pending, the apply button gates off entirely
+    page.key('z', { ctrlKey: true });
+    expect(handle.getAttribute('display')).not.toBe('none');
+    expect((page.window.document.getElementById('layout-apply') as HTMLButtonElement).disabled).toBe(true);
+  });
+
   it('edits a part label: content renames the part, style rides the label apply', async () => {
     const page = await boot();
     page.pressLabel();
@@ -1052,5 +1083,122 @@ describe('sidebar geometry: inner scrolling, toolbar always visible', () => {
     // a direct child of #sidebar so it can scroll on its own
     w.document.getElementById('sidebar-toggle')!.click();
     expect(w.document.getElementById('layers-compact')!.parentElement!.id).toBe('sidebar');
+  });
+});
+
+describe('Flip Board toggle', () => {
+  it('mirrors stack+viewBox, corrects the pan window, mirrors outside overlays, restores on second click', async () => {
+    const page = await boot();
+    const w = page.window;
+    const d = w.document;
+    const btn = d.getElementById('btn-flip')!;
+    expect(btn.textContent).toBe('Flip Board');
+    const flip = d.querySelector('#view-gerber #yflip') as SVGGraphicsElement;
+    const svg = d.getElementById('board') as unknown as SVGSVGElement;
+    const pz = d.getElementById('panzoom')!;
+    const drcGroup = d.getElementById('drc')!;
+    const baseT = flip.getAttribute('transform');
+    const baseVb = svg.getAttribute('viewBox')!;
+    const baseTz = pz.getAttribute('transform')!;
+    expect(baseT).toBe('scale(1,-1)');
+
+    btn.click(); // flip
+    expect(flip.getAttribute('transform')).toBe('scale(-1,-1)');
+    const flippedVb = svg.getAttribute('viewBox')!;
+    const [bx, by, bw, bh] = baseVb.split(/\s+/).map(Number);
+    const [fx, fy, fw, fh] = flippedVb.split(/\s+/).map(Number);
+    expect(fw).toBe(bw);
+    expect(fh).toBe(bh);
+    expect(fy).toBe(by);
+    expect(fx).toBeCloseTo(-(bx + bw), 6);
+    expect(btn.classList.contains('armed')).toBe(true);
+    // overlays outside the y-flip track the mirror (pure geometry)
+    expect(drcGroup.getAttribute('transform')).toBe('scale(-1,1)');
+    // the flipped converter at the fit viewport: the same screen point reads
+    // x-negated, y unchanged (the mirror is x-only — the y-flip is present
+    // in both states)
+    const move = (x: number, y: number) =>
+      d.getElementById('board')!.dispatchEvent(new w.MouseEvent('mousemove', { bubbles: true, clientX: x, clientY: y }));
+    move(5, 6);
+    expect(d.getElementById('status')!.textContent).toContain('-5.000, 6.000');
+    // the flip persists for the next session
+    const saved = JSON.parse(w.localStorage.getItem('gerber-viewer:v1:demo board') || '{}');
+    expect(saved.__flipped).toBe(true);
+
+    btn.click(); // unflip — back to front, readout positive again
+    move(5, 6);
+    expect(d.getElementById('status')!.textContent).toContain('5.000, 6.000');
+
+    // the pan window corrects: tx' = -tx keeps the same content region
+    // visible — zoom at an off-center point, then flip/unflip must negate tx
+    svg.dispatchEvent(
+      new w.WheelEvent('wheel', { bubbles: true, cancelable: true, clientX: 20, clientY: 6, deltaY: -240 }),
+    );
+    const zoomedTz = pz.getAttribute('transform')!;
+    btn.click(); // flip
+    const flippedTz = pz.getAttribute('transform')!;
+    const [tzF] = /translate\((-?[\d.]+) /.exec(zoomedTz)!.slice(1).map(Number);
+    const [txF] = /translate\((-?[\d.]+) /.exec(flippedTz)!.slice(1).map(Number);
+    expect(txF).toBeCloseTo(-tzF, 3);
+    btn.click(); // unflip — flip∘flip = identity on the whole viewport
+    expect(flip.getAttribute('transform')).toBe(baseT);
+    expect(svg.getAttribute('viewBox')).toBe(baseVb);
+    expect(pz.getAttribute('transform')).toBe(zoomedTz);
+    expect(drcGroup.getAttribute('transform')).toBe('scale(1,1)');
+    expect(btn.classList.contains('armed')).toBe(false);
+    const saved2 = JSON.parse(w.localStorage.getItem('gerber-viewer:v1:demo board') || '{}');
+    expect(saved2.__flipped).toBe(false);
+  });
+});
+
+describe('pending route restore prunes off-board ghosts', () => {
+  it('drops pending routes whose geometry lies outside the board, keeps on-board ones', async () => {
+    const html = buildViewerHtml(svg, [info, fabInfo], {
+      title: 'demo board',
+      pcbaSvg: '<svg/>',
+      layoutComponents,
+      layoutTexts,
+      padLabels,
+      rules,
+    });
+    const errors: string[] = [];
+    const pendingKey = 'typecadPending:demo board:viewer.html';
+    // a ghost route far off-board (committed in a broken session) beside a
+    // legitimate on-board pending route
+    const ghost = {
+      net: 'led_a',
+      w: 0.3,
+      power: null,
+      impedance: null,
+      pieces: [{ layer: 'F.Cu', w: 0.3, pts: [{ x: 400, y: -300 }, { x: 402, y: -302 }] }],
+      vias: [{ x: 402, y: -302, size: 0.6, drill: 0.3 }],
+    };
+    const legit = {
+      net: 'led_a',
+      w: 0.3,
+      power: null,
+      impedance: null,
+      pieces: [{ layer: 'F.Cu', w: 0.3, pts: [{ x: 5, y: -3 }, { x: 6, y: -4 }] }],
+      vias: [],
+    };
+    const dom = new JSDOM(html, {
+      runScripts: 'dangerously',
+      url: 'https://localhost/viewer.html',
+      pretendToBeVisual: true,
+      beforeParse(w) {
+        w.console.error = (...a: unknown[]) => errors.push(a.join(' '));
+        w.localStorage.setItem(pendingKey, JSON.stringify({ routes: [ghost, legit], deletes: [], partDeletes: [] }));
+      },
+    });
+    const w = dom.window;
+    const d = w.document;
+    await new Promise((r) => setTimeout(r, 100));
+    expect(errors).toEqual([]);
+    const stored = JSON.parse(w.localStorage.getItem(pendingKey) || '{}');
+    const kept = stored.routes ?? [];
+    expect(kept).toHaveLength(1);
+    expect(kept[0].pieces[0].pts[0].x).toBe(5);
+    // nothing else pending: the status line reports one surviving edit
+    expect(d.getElementById('status')!.textContent).toContain('1 pending edit restored');
   });
 });

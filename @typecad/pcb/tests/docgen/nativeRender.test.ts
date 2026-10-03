@@ -70,8 +70,9 @@ describe('docgen native layer images', () => {
     const svg = renderNativeDrillSvg(board, 'img-drill');
     expect(svg).toContain('data-kind="drill"');
     expect(svg).toContain('data-kind="edge"');
-    // the one_hz board has via + component drills
-    expect(svg).toMatch(/<circle cx="[^"]+" cy="[^"]+" r="[^"]+"\/>/);
+    // the one_hz board has via + component drills; holes never intercept
+    // pointer events (they render above silk/fab and would block text ink)
+    expect(svg).toMatch(/<circle cx="[^"]+" cy="[^"]+" r="[^"]+" pointer-events="none"\/>/);
   });
 
   it('keys plotted output per board so repeated renders reuse one plot', () => {

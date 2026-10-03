@@ -3,7 +3,7 @@ import path from 'node:path';
 import chalk from 'chalk';
 import type { ParsedArgs } from '../parser.js';
 import logger from '../../../utils/logging.js';
-import { buildDirPath, findBoardFile } from '../pipeline.js';
+import { boardStemFromArgs, buildDirPath, findBoardFile, knownBoardsHint } from '../pipeline.js';
 import {
   buildBoardModel,
   findComponent,
@@ -17,12 +17,16 @@ import {
   type BoardNet,
 } from '../board_model.js';
 
-function findPcbFile(argPath?: string): string | null {
+function findPcbFile(argPath?: string, stem?: string): string | null {
   if (argPath) {
     const resolved = path.resolve(argPath);
     return fs.existsSync(resolved) ? resolved : null;
   }
-  return findBoardFile();
+  const board = findBoardFile(stem);
+  if (!board && stem) {
+    logger.warn(chalk.yellow(`No board '${stem}' in build/ — ${knownBoardsHint()}`));
+  }
+  return board;
 }
 
 function netSummaryJson(net: BoardNet) {
@@ -152,7 +156,7 @@ export async function run(parsed: ParsedArgs): Promise<void> {
 
   // The path argument comes after the subject (e.g. `query net GND` → positional[0] is GND)
   const explicitPath = parsed.positional.find((p) => p.endsWith('.kicad_pcb'));
-  const pcbPath = findPcbFile(explicitPath ?? undefined);
+  const pcbPath = findPcbFile(explicitPath ?? undefined, boardStemFromArgs(parsed));
   if (!pcbPath) {
     throw new Error(
       explicitPath

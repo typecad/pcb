@@ -230,6 +230,9 @@ export function activate(context: vscode.ExtensionContext) {
   // -- "▶ Build Board" lens on hw TypeScript sources (HAL's Flash & Monitor
   //    pattern): runs npm run build in a reused terminal; the board watcher
   //    picks the new board up and refreshes an open viewer on its own --
+  // the live KiCad -> source sync terminal (Start KiCAD Sync command)
+  let syncTerminal: vscode.Terminal | undefined;
+  let syncTerminalFolder: string | undefined;
   let buildTerminal: vscode.Terminal | undefined;
   let buildTerminalFolder: string | undefined;
   context.subscriptions.push(
@@ -267,6 +270,30 @@ export function activate(context: vscode.ExtensionContext) {
 
   context.subscriptions.push(
     vscode.commands.registerCommand('typecad-pcb.viewBoard', () => viewer.show()),
+    // multi-board projects (mother/daughter, board/jig): pick which of the
+    // manifest's boards the viewer shows — pages, gerbers dirs, and session
+    // state are per board
+    vscode.commands.registerCommand('typecad-pcb.switchBoard', async () => {
+      const choices = viewer.boardChoices();
+      if (choices.length === 0) {
+        vscode.window.showInformationMessage('typeCAD/pcb: no boards in build/ — run npm run build first.');
+        return;
+      }
+      const active = viewer.boardStem;
+      const picked = await vscode.window.showQuickPick(
+        [
+          { label: '$(layers) Active board (last built)', stem: undefined as string | undefined },
+          ...choices.map((c) => ({
+            label: `$(circuit-board) ${c.stem}${c.stem === active ? '  (shown)' : ''}`,
+            stem: c.stem,
+            detail: c.file,
+          })),
+        ],
+        { placeHolder: 'Which board should the viewer show?', matchOnDetail: true },
+      );
+      if (!picked) return;
+      await viewer.switchBoard(picked.stem);
+    }),
     vscode.commands.registerCommand('typecad-pcb.viewComponent', async (ref?: unknown) => {
       // Command-link args arrive spread as JSON (the hover's "view on
       // board" link): go straight to that component, no prompt.
@@ -734,6 +761,24 @@ export function activate(context: vscode.ExtensionContext) {
       }
       await runBoardDiff(folder, board);
     }),
+    // live KiCad -> source sync: the kicad_sync npm script (import
+    // --watch --auto) in a dedicated terminal — every KiCad save lands in
+    // the .ts sources, debounced and snapshot-guarded. One terminal per hw
+    // folder so re-invoking focuses the running sync instead of stacking
+    // watchers (the import's project lock would refuse a second anyway).
+    vscode.commands.registerCommand('typecad-pcb.startKiCadSync', () => {
+      const folder = resolveHwFolder();
+      if (!folder) {
+        vscode.window.showInformationMessage('typeCAD/pcb: no typeCAD project (typecad.conf.ts) in this workspace.');
+        return;
+      }
+      if (!syncTerminal || syncTerminal.exitStatus !== undefined || syncTerminalFolder !== folder) {
+        syncTerminal = vscode.window.createTerminal({ name: 'typeCAD/pcb: KiCad sync', cwd: folder });
+        syncTerminalFolder = folder;
+      }
+      syncTerminal.show(true);
+      syncTerminal.sendText('npm run kicad_sync', true);
+    }),
     // the safety net under the layout apply bridge: list the pre-apply
     // source snapshots and restore one — a user should never have to
     // unscramble a corrupted .ts by hand
@@ -763,6 +808,18 @@ export function activate(context: vscode.ExtensionContext) {
         const entries = readBackup(folder, pick.id);
         for (const entry of entries) {
           const docUri = vscode.Uri.file(entry.source);
+          // a file the apply CREATED restores by disappearing — an empty
+          // _sync.ts beside an entry that no longer imports it is litter
+          if (entry.created) {
+            try {
+              await vscode.workspace.fs.delete(docUri, { useTrash: false });
+              restored++;
+            } catch {
+              // already gone — that IS the restored state
+              restored++;
+            }
+            continue;
+          }
           const doc = await vscode.workspace.openTextDocument(docUri);
           const edit = new vscode.WorkspaceEdit();
           edit.replace(

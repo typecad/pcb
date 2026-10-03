@@ -61,6 +61,7 @@ const node_fs_1 = __importDefault(require("node:fs"));
 const node_path_1 = __importDefault(require("node:path"));
 const probeClient_js_1 = require("./probeClient.js");
 const sourceBackup_js_1 = require("./sourceBackup.js");
+const syncFile_js_1 = require("./syncFile.js");
 const layoutApply_js_1 = require("./layoutApply.js");
 const layoutEdits_js_1 = require("./layoutEdits.js");
 const semanticVerify_js_1 = require("./semanticVerify.js");
@@ -126,6 +127,8 @@ class BoardViewerPanel {
         /** Bumped on every html assignment; acks carry it so stale acks are ignored. */
         this.loadToken = 0;
         this.readySeen = false;
+        /** Consecutive generate() failures — drives exponential retry backoff. */
+        this.consecutiveFailures = 0;
         this.generating = null;
     }
     /** Open/reveal the viewer, regenerating the HTML when the board changed. */
@@ -416,13 +419,33 @@ class BoardViewerPanel {
         }, delayMs);
     }
     /** Re-check after a skipped/failed/stale refresh; default 10s, overridable. */
-    armRetry(delayMs = 10_000) {
+    armRetry(delayMs = 10_000, force = false) {
         if (this.retryTimer)
             clearTimeout(this.retryTimer);
         this.retryTimer = setTimeout(() => {
             this.retryTimer = undefined;
-            void this.doRefresh();
+            void this.doRefresh(force);
         }, delayMs);
+    }
+    /**
+     * Retry after a FAILED generate, with exponential backoff: a persistent
+     * error (a board state our exporter chokes on) retried every 4s would
+     * spin forever — each round re-runs the ~30s export pipeline and its
+     * kicad-cli board resave, which fires every watcher in the workspace
+     * (including a running `import --watch`), amplifying into a storm.
+     * 30s → 60s → 5min cap; a successful generate resets the ladder.
+     */
+    armFailureRetry(boardMtimeMs) {
+        this.consecutiveFailures++;
+        this.lastFailedBoardMtime = boardMtimeMs;
+        const delay = this.consecutiveFailures <= 1 ? 30_000 : this.consecutiveFailures === 2 ? 60_000 : 300_000;
+        this.output.appendLine(`render failed (${this.consecutiveFailures} in a row) — retrying in ${delay / 1000}s; ` +
+            `a real board change retries immediately`);
+        this.armRetry(delay, true);
+    }
+    clearFailureLadder() {
+        this.consecutiveFailures = 0;
+        this.lastFailedBoardMtime = undefined;
     }
     /** Show a notice in the viewer's lower-left status text (no-op w/o panel). */
     postStatus(text) {
@@ -430,7 +453,7 @@ class BoardViewerPanel {
             return;
         void this.panel.webview.postMessage({ type: 'typecad/status', text });
     }
-    async doRefresh() {
+    async doRefresh(force = false) {
         if (!this.panel)
             return;
         const folder = this.hwFolder();
@@ -440,6 +463,13 @@ class BoardViewerPanel {
         // onChange loosely); the board's mtime against the last render decides
         // whether any work is warranted at all
         const board = (0, boardFile_js_2.newestBoardFile)(folder);
+        // A previous generate failed against THIS exact board revision: a
+        // watcher event alone (the export pipeline touching build/) must not
+        // re-run the failing export — only a genuinely new board does, or the
+        // ladder's own scheduled retry.
+        if (!force && board && this.lastFailedBoardMtime === (0, boardFile_js_2.mtimeOf)(board)) {
+            return;
+        }
         if (board && this.generated && (0, boardFile_js_2.mtimeOf)(board) === this.generated.boardMtimeMs) {
             // board unchanged — still pick up a newer on-disk viewer page (a
             // viewer-tooling update regenerated it without touching the board);
@@ -458,12 +488,23 @@ class BoardViewerPanel {
         // text — the reload when the new HTML lands resets the element
         this.postStatus('board changed — generating new render…');
         let generated = false;
+        let failed = false;
         try {
             generated = await this.generate(folder);
         }
         catch (err) {
+            failed = true;
             this.output.appendLine(`viewer refresh failed: ${err instanceof Error ? err.message : String(err)}`);
             this.postStatus('render failed — see the typeCAD/pcb output channel');
+        }
+        if (failed) {
+            // A THROWN generate is a real error, not a settle race: back off
+            // exponentially so a persistent failure cannot storm the workspace
+            // (each retry re-runs the export pipeline, whose kicad-cli board
+            // resave re-fires every watcher, including `import --watch`).
+            const boardNow = (0, boardFile_js_2.newestBoardFile)(folder);
+            this.armFailureRetry(boardNow ? (0, boardFile_js_2.mtimeOf)(boardNow) : undefined);
+            return;
         }
         if (!generated) {
             this.postStatus('board is mid-build — waiting for it to settle…');
@@ -473,6 +514,7 @@ class BoardViewerPanel {
             this.armRetry(4_000);
             return;
         }
+        this.clearFailureLadder();
         // the export takes ~25-30s; the board may have been written again while
         // it ran. BUT kicad-cli itself creates/removes a project .lck file and
         // touches the build directory during the export — the resulting watcher
@@ -519,13 +561,36 @@ class BoardViewerPanel {
         return (0, boardFile_js_2.mtimeOf)(board);
     }
     /** Generate viewer HTML; resolves false when skipped (board mid-build). */
+    /** The board the panel currently shows (undefined = the active board). */
+    get boardStem() {
+        return this.selectedBoardStem;
+    }
+    /** The boards the project's manifest lists, as picker entries (stem +
+     *  file). Empty when the build has produced nothing yet. */
+    boardChoices() {
+        const folder = this.hwFolder();
+        if (!folder)
+            return [];
+        return (0, boardFile_js_2.listBoardFiles)(folder).map((f) => ({ stem: node_path_1.default.basename(f, '.kicad_pcb'), file: f }));
+    }
+    /** Switch the panel to a board stem (undefined = the manifest's active
+     *  board) and regenerate. */
+    async switchBoard(stem) {
+        if (this.selectedBoardStem === stem)
+            return;
+        this.selectedBoardStem = stem;
+        this.output.appendLine(stem ? `viewer switched to board '${stem}'` : 'viewer switched to the active board');
+        await this.doRefresh(true);
+    }
     async generate(folder) {
         if (this.generating)
             return this.generating;
         this.generating = (async () => {
-            const board = (0, boardFile_js_2.newestBoardFile)(folder);
+            const board = (0, boardFile_js_2.newestBoardFile)(folder, this.selectedBoardStem);
             if (!board)
-                throw new Error('no .kicad_pcb in build/ — run npm run build first');
+                throw new Error(this.selectedBoardStem
+                    ? `no board '${this.selectedBoardStem}' in build/ — run npm run build first`
+                    : 'no .kicad_pcb in build/ — run npm run build first');
             // The build writes zone declarations without fill geometry; fills are
             // materialized by `export gerbers` (--check-zones) and `check`. The
             // board is "settled" when its mtime has been stable for 3s — before
@@ -560,8 +625,15 @@ class BoardViewerPanel {
             // upgrade tests, imports) and the CLI refuses an ambiguous export
             await this.run(folder, `npx typecad-pcb export gerbers "${board}"`, GENERATE_TIMEOUT_MS);
             await this.run(folder, `npx typecad-pcb export drill "${board}"`, GENERATE_TIMEOUT_MS);
-            const gerbersDir = node_path_1.default.join('build', 'gerbers');
-            const outPath = node_path_1.default.join('build', 'serve', 'viewer.html');
+            // per-board fab dirs once the project is multi-board — the same rule
+            // `export gerbers` uses, so the viewer reads exactly what the export
+            // wrote (a shared dir would have each board's prune deleting its
+            // sibling's inner layers)
+            const multiBoard = (0, boardFile_js_2.listBoardFiles)(folder).length > 1;
+            const gerbersDir = multiBoard ? node_path_1.default.join('build', 'gerbers', boardName) : node_path_1.default.join('build', 'gerbers');
+            // one page per board: the pending-edit and settings keys derive from
+            // the page path/title, so each board keeps its own session state
+            const outPath = multiBoard ? node_path_1.default.join('build', 'serve', `${boardName}.html`) : node_path_1.default.join('build', 'serve', 'viewer.html');
             // Optional data overlays, each shipped only when the build actually
             // produced it: the netlist fills pad→net (click a pad, its whole net
             // highlights); DRC markers exist after a `typecad-pcb drc` run; the
@@ -607,7 +679,7 @@ class BoardViewerPanel {
             }
             this.output.appendLine('building viewer HTML…');
             await this.run(folder, `npx gerber-viewer ${shellQuote(gerbersDir)} -o ${shellQuote(outPath)} ${flags.join(' ')}`, GENERATE_TIMEOUT_MS);
-            let raw = node_fs_1.default.readFileSync(node_path_1.default.join(folder, outPath), 'utf8');
+            const raw = node_fs_1.default.readFileSync(node_path_1.default.join(folder, outPath), 'utf8');
             const [components, nets] = await Promise.all([
                 this.service.components(),
                 // net sources are decorative metadata — a failed query must not
@@ -635,7 +707,7 @@ class BoardViewerPanel {
      * rebuilds and the viewer regenerates. Computed (non-literal) placements
      * are skipped and reported, never silently mangled.
      */
-    async onLayoutRebuild(moves, texts, values, labels, renames, routes, deletes, boardStamp) {
+    async onLayoutRebuild(moves, texts, values, labels, renames, routes, deletes, partDeletes, boardStamp) {
         const folder = this.hwFolder();
         const fail = (error) => {
             this.output.appendLine(`layout apply failed: ${error}`);
@@ -663,13 +735,13 @@ class BoardViewerPanel {
                 await this.doRefresh();
                 return;
             }
-            await this.onLayoutRebuildInner(folder, fail, moves, texts, values, labels, renames, routes, deletes);
+            await this.onLayoutRebuildInner(folder, fail, moves, texts, values, labels, renames, routes, deletes, partDeletes);
         }
         finally {
             syncState_js_1.sync.applyBusy = false;
         }
     }
-    async onLayoutRebuildInner(folder, fail, moves, texts, values, labels, renames, routes, deletes) {
+    async onLayoutRebuildInner(folder, fail, moves, texts, values, labels, renames, routes, deletes, partDeletes) {
         try {
             const comps = await this.service.components();
             const variableOf = new Map(comps.map((c) => [c.reference, c.variable ?? '']));
@@ -689,6 +761,28 @@ class BoardViewerPanel {
             for (const uri of ordered) {
                 files.push({ uri: uri.toString(), text: (await vscode.workspace.openTextDocument(uri)).getText() });
             }
+            // the sidecar rides beside the entry file (same dir, so its import is
+            // './_sync[.<stem>].js' — per-board on multi-board projects); an
+            // absent file joins the set EMPTY — the apply creates it only when a
+            // stage actually writes it, and the backup/restore path knows to
+            // delete rather than empty it
+            const multi = (0, boardFile_js_2.listBoardFiles)(folder).length > 1;
+            const boardStem = multi ? node_path_1.default.basename((0, boardFile_js_2.newestBoardFile)(folder) ?? '', '.kicad_pcb') : undefined;
+            const syncName = (0, syncFile_js_1.syncFileNameFor)(boardStem || undefined);
+            const syncPath = node_path_1.default.join(entry ? node_path_1.default.dirname(entry) : node_path_1.default.join(folder, 'src'), syncName);
+            const syncUri = vscode.Uri.file(syncPath);
+            let syncCreated = false;
+            if (!files.some((f) => f.uri.toLowerCase() === syncUri.toString().toLowerCase())) {
+                let syncText = '';
+                try {
+                    syncText = node_fs_1.default.readFileSync(syncPath, 'utf8');
+                }
+                catch {
+                    syncCreated = true;
+                }
+                files.push({ uri: syncUri.toString(), text: syncText, ...(syncCreated ? { created: true } : {}) });
+            }
+            const createdUris = new Set(syncCreated ? [syncUri.toString()] : []);
             // final placements for the semantic check: the move deltas land on the
             // placement literals, so the finals are computable from the PRE-apply
             // text (a moved part's footprint should sit exactly there after the
@@ -714,8 +808,11 @@ class BoardViewerPanel {
                 renames,
                 routes,
                 deletes,
+                partDeletes,
                 variableOf: (ref) => variableOf.get(ref),
                 allRefs: new Set(comps.map((c) => c.reference).filter(Boolean)),
+                syncUri: syncUri.toString(),
+                entryUri: entry ? vscode.Uri.file(entry).toString() : undefined,
             });
             // dry-run the whole plan and parse every touched file's final text —
             // a planner bug (overlapping ranges, a spliced token) must surface as
@@ -763,7 +860,7 @@ class BoardViewerPanel {
             // from Backup command restores from disk; a user must never unscramble
             // a corrupted .ts by hand
             const boardNameForApply = node_path_1.default.basename((0, boardFile_js_2.newestBoardFile)(folder) ?? '');
-            const backup = (0, sourceBackup_js_1.writeBackup)(folder, files.map((f) => ({ uri: f.uri, text: f.text })), 'layout apply', boardNameForApply || undefined);
+            const backup = (0, sourceBackup_js_1.writeBackup)(folder, files.map((f) => ({ uri: f.uri, text: f.text, ...(f.created ? { created: true } : {}) })), 'layout apply', boardNameForApply || undefined);
             if (backup) {
                 this.output.appendLine(`source snapshot before apply: ${(0, sourceBackup_js_1.backupRootLabel)()}/${backup.id} (${backup.manifest.files.length} file(s))`);
             }
@@ -789,6 +886,20 @@ class BoardViewerPanel {
             // the plan was built against (the user typed while the apply was
             // planning), every offset is stale — refuse and let them re-apply.
             const touchedSet = new Set(plan.touched);
+            // a file this apply CREATES must exist before it can be opened,
+            // verified, and replaced — an empty placeholder is byte-identical to
+            // the planned base text (''), so every downstream guard holds
+            for (const uri of createdUris) {
+                if (!touchedSet.has(uri))
+                    continue;
+                try {
+                    await vscode.workspace.fs.writeFile(vscode.Uri.parse(uri), new Uint8Array(0));
+                }
+                catch (err) {
+                    fail(`cannot create ${vscode.workspace.asRelativePath(vscode.Uri.parse(uri))} — ${err instanceof Error ? err.message : String(err)}`);
+                    return;
+                }
+            }
             const applyDocs = new Map();
             for (const f of files) {
                 if (!touchedSet.has(f.uri))
@@ -815,27 +926,54 @@ class BoardViewerPanel {
             }
             // post-write verification: if anything slipped past the gate (or the
             // write itself diverged), restore the snapshot IMMEDIATELY — the user
-            // must never be left with an unparsable file, even for a moment
+            // must never be left with an unparsable file, even for a moment. A
+            // file this apply created restores by deletion, not by emptying.
             for (const key of plan.touched) {
                 const savedDoc = await vscode.workspace.openTextDocument(vscode.Uri.parse(key));
                 const err = plannedTextSyntaxError(savedDoc.getText());
                 if (!err)
                     continue;
                 this.output.appendLine(`POST-WRITE CHECK FAILED for ${key} (${err}) — restoring the pre-apply snapshot`);
-                const restore = new vscode.WorkspaceEdit();
                 const pre = files.find((f) => f.uri === key);
                 if (pre) {
-                    restore.replace(savedDoc.uri, new vscode.Range(savedDoc.positionAt(0), savedDoc.positionAt(savedDoc.getText().length)), pre.text);
-                    await vscode.workspace.applyEdit(restore);
-                    await savedDoc.save();
+                    if (createdUris.has(key)) {
+                        try {
+                            await savedDoc.save();
+                            await vscode.workspace.fs.delete(vscode.Uri.parse(key), { useTrash: false });
+                        }
+                        catch {
+                            // best-effort — the restore command can finish the job
+                        }
+                    }
+                    else {
+                        const restore = new vscode.WorkspaceEdit();
+                        restore.replace(savedDoc.uri, new vscode.Range(savedDoc.positionAt(0), savedDoc.positionAt(savedDoc.getText().length)), pre.text);
+                        await vscode.workspace.applyEdit(restore);
+                        await savedDoc.save();
+                    }
                 }
                 vscode.window.showErrorMessage(`typeCAD layout apply wrote unparsable source and restored ${vscode.workspace.asRelativePath(vscode.Uri.parse(key))} from its pre-apply snapshot — please report this (the typeCAD/pcb output has the plan)`);
-                void this.panel?.webview.postMessage({ type: 'typecad/layout-status', error: 'apply wrote invalid source — rolled back to the pre-apply snapshot' });
+                void this.panel?.webview.postMessage({
+                    type: 'typecad/layout-status',
+                    error: 'apply wrote invalid source — rolled back to the pre-apply snapshot',
+                });
                 return;
             }
             const c = plan.counts;
-            const anyApplied = c.moves > 0 || c.endpoints > 0 || c.texts > 0 || c.values > 0 || c.labels > 0 || c.renames > 0 || c.routes > 0 || c.deletes > 0;
-            this.output.appendLine(`layout apply: ${c.moves} placement(s) moved${c.endpoints ? `, ${c.endpoints} route endpoint(s) translated` : ''}${c.routes ? `, ${c.routes} track route(s) added to source` : ''}${c.deletes ? `, ${c.deletes} segment(s) deleted from source` : ''}${c.texts ? `, ${c.texts} text(s) edited` : ''}${c.values ? `, ${c.values} value(s) edited` : ''}${c.labels ? `, ${c.labels} label(s) repositioned` : ''}${c.renames ? `, ${c.renames} reference(s) renamed` : ''}${plan.skipped.length ? `, skipped ${plan.skipped.join('; ')}` : ''}`);
+            const anyApplied = c.moves > 0 ||
+                c.endpoints > 0 ||
+                c.texts > 0 ||
+                c.values > 0 ||
+                c.labels > 0 ||
+                c.renames > 0 ||
+                c.routes > 0 ||
+                c.deletes > 0 ||
+                c.partDeletes > 0;
+            this.output.appendLine(`layout apply: ${c.moves} placement(s) moved${c.endpoints ? `, ${c.endpoints} route endpoint(s) translated` : ''}${c.routes ? `, ${c.routes} track route(s) added to source` : ''}${c.deletes ? `, ${c.deletes} segment(s) deleted from source` : ''}${c.texts ? `, ${c.texts} text(s) edited` : ''}${c.values ? `, ${c.values} value(s) edited` : ''}${c.labels ? `, ${c.labels} label(s) repositioned` : ''}${c.partDeletes ? `, ${c.partDeletes} part(s) deleted from source` : ''}${c.renames ? `, ${c.renames} reference(s) renamed` : ''}${plan.skipped.length ? `, skipped ${plan.skipped.join('; ')}` : ''}`);
+            if (plan.syncFile) {
+                const s = plan.syncFile;
+                this.output.appendLine(`sync sidecar${s.created ? ' created' : ''}: ${s.placements} placement(s), ${s.labels} label(s), ${s.routes} route(s) now live in ${syncName} — they win the code-order battle (syncBoard() runs right before create())`);
+            }
             if (plan.skipped.length) {
                 vscode.window.setStatusBarMessage(`layout: skipped ${plan.skipped.join('; ')}`, 8000);
             }
@@ -863,7 +1001,14 @@ class BoardViewerPanel {
                             pieces: r.pieces.map((p) => ({ layer: p.layer, pts: p.pts })),
                             vias: (r.vias ?? []).map((v) => ({ x: v.x, y: v.y })),
                         })),
-                        deletes: (deletes ?? []).map((d) => ({ net: d.net, x1: d.x1, y1: d.y1, x2: d.x2, y2: d.y2, layer: d.layer })),
+                        deletes: (deletes ?? []).map((d) => ({
+                            net: d.net,
+                            x1: d.x1,
+                            y1: d.y1,
+                            x2: d.x2,
+                            y2: d.y2,
+                            layer: d.layer,
+                        })),
                         placements: finalPlacements,
                         texts: (texts ?? []).filter((t) => t.text).map((t) => ({ text: t.text, x: t.x, y: t.y })),
                     });
@@ -911,7 +1056,7 @@ class BoardViewerPanel {
     }
     async onMessage(message) {
         if (message.type === 'typecad/layout-rebuild') {
-            await this.onLayoutRebuild(message.moves, message.texts, message.values, message.labels, message.renames, message.routes, message.deletes, message.board);
+            await this.onLayoutRebuild(message.moves, message.texts, message.values, message.labels, message.renames, message.routes, message.deletes, message.partDeletes, message.board);
             return;
         }
         if (message.type === 'typecad/ready') {

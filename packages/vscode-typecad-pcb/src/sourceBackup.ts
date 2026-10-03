@@ -23,8 +23,10 @@ export interface BackupManifest {
   reason: string;
   /** the board name, for context in the picker */
   board?: string;
-  /** snapshot file basenames (as stored in the snapshot dir) */
-  files: Array<{ source: string; snapshot: string }>;
+  /** snapshot file basenames (as stored in the snapshot dir). `created`
+   *  marks a file the apply brought into existence (_sync.ts on its first
+   *  write) — restoring means DELETING it, not writing empty text over it. */
+  files: Array<{ source: string; snapshot: string; created?: boolean }>;
 }
 
 export interface BackupListing {
@@ -90,7 +92,7 @@ export function listBackups(folder: string): BackupListing[] {
  */
 export function writeBackup(
   folder: string,
-  files: Array<{ uri: string; text: string }>,
+  files: Array<{ uri: string; text: string; created?: boolean }>,
   reason: string,
   board?: string,
 ): BackupListing | null {
@@ -114,7 +116,7 @@ export function writeBackup(
     used.add(snapshot);
     try {
       fs.writeFileSync(path.join(dir, snapshot), f.text, 'utf8');
-      manifest.files.push({ source: parsedUri, snapshot });
+      manifest.files.push({ source: parsedUri, snapshot, ...(f.created ? { created: true } : {}) });
     } catch {
       // a file that fails to snapshot still applies — it just won't restore
     }
@@ -144,15 +146,21 @@ function prune(folder: string): void {
 /**
  * Read a snapshot's file contents (snapshot name -> pre-apply text). Throws
  * only on an unknown id; missing snapshot files are skipped in the result.
+ * Entries carry `created` for files the apply created — restoring deletes
+ * those instead of writing empty text.
  */
-export function readBackup(folder: string, id: string): Array<{ source: string; text: string }> {
+export function readBackup(folder: string, id: string): Array<{ source: string; text: string; created?: boolean }> {
   const dir = path.join(folder, BACKUP_ROOT, id);
   const manifest = readManifest(dir);
   if (!manifest) throw new Error(`no backup "${id}" — its manifest is missing or unreadable`);
-  const out: Array<{ source: string; text: string }> = [];
+  const out: Array<{ source: string; text: string; created?: boolean }> = [];
   for (const f of manifest.files) {
     try {
-      out.push({ source: f.source, text: fs.readFileSync(path.join(dir, f.snapshot), 'utf8') });
+      out.push({
+        source: f.source,
+        text: fs.readFileSync(path.join(dir, f.snapshot), 'utf8'),
+        ...(f.created ? { created: true } : {}),
+      });
     } catch {
       // skipped — a partial restore still beats a corrupted file
     }

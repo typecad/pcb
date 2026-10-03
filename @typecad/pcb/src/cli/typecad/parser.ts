@@ -15,6 +15,7 @@ export interface ParsedArgs {
  * with `=`.
  */
 const VALUE_FLAGS = new Set([
+  'board',
   'out',
   'outDir',
   'out-dir',

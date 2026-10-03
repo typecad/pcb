@@ -50,6 +50,10 @@ gerber_spec/analysis/
 gerber_spec/tools/text_probe_native/
 gerber_spec/tools/rd_solid_tmp.kicad_pcb
 
+# Dev-scratch probe boards and their plotted gerbers (never commit)
+.tmp_*
+*.tmp
+
 # Active typeCAD user project workspace (own git init, out-of-tree like the
 # retired nested repos) — kept out of the umbrella repo
 typecad_project/

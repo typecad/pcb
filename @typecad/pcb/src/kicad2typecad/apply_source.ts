@@ -1,6 +1,7 @@
 import fs from 'node:fs';
+import path from 'node:path';
 import { analyzeFile, applyReplacements, findMethodCalls, toPlainValue } from './source_analyzer.js';
-import type { MethodCallInfo, Replacement } from './source_analyzer.js';
+import type { ComponentInfo, MethodCallInfo, Replacement } from './source_analyzer.js';
 import {
   PLAIN_CH,
   deriveOutlineCalls,
@@ -8,6 +9,7 @@ import {
   outlineCallSource,
   rectFromPolygon,
   stackupCallSource,
+  syncRouteBlockSource,
   textCallSource,
   trackBlockSource,
   zoneCallSource,
@@ -15,7 +17,9 @@ import {
 } from './display.js';
 import type { DerivedOutlineCall } from './display.js';
 import { textFuzzyMatch } from './rewriter.js';
-import type { KicadBoardGraphicIR, KicadIR, KicadZoneIR, PendingSourceChange } from './types.js';
+import type { KicadBoardGraphicIR, KicadIR, KicadZoneIR, MatchResult, PendingSourceChange } from './types.js';
+import { applyDeleteEdits, componentInCreateArgs, identifierInCode, isCreateReceiver, planComponentRemoval } from './component_delete.js';
+import { SYNC_FILE_NAME, SYNC_TRACKS_NAME, isSyncFileName } from './sync_file.js';
 
 /**
  * --apply write-back for the elements that used to be display-only: board
@@ -567,6 +571,9 @@ export function computeRoutingChanges(ir: KicadIR, sourceFiles: string[]): Sourc
   const notes: string[] = [];
   const hasSegments = ir.segments.length > 0;
   const { block: desiredBlock, variables } = trackBlockSource(ir);
+  // the sidecar speaks the loose routeN dialect; its regen replaces the
+  // per-net arrays with builder chains collected onto syncTracks
+  const syncBlock = syncRouteBlockSource(ir);
 
   // Routing ownership: whichever file already holds track/via statements owns
   // the routing section. Only when NO file does may a fresh section be
@@ -574,13 +581,26 @@ export function computeRoutingChanges(ir: KicadIR, sourceFiles: string[]): Sourc
   // so other project files with their own create() are never polluted.
   const fileAnalyses = sourceFiles.map((filePath) => ({
     filePath,
+    isSync: isSyncFileName(path.basename(filePath)),
     analysis: analyzeFile(filePath),
   }));
+  // create() legitimately lives OUTSIDE the sidecar: a _sync.ts routing
+  // section reaches the board through the entry file's `...syncTracks`
+  // spread, so "no create() in this file" only blocks a sync regen when no
+  // file in the project has exactly one
+  const createCounts = new Map(
+    fileAnalyses.map(({ filePath, analysis }) => [
+      filePath,
+      analysis ? analysis.methodCalls.filter((mc) => mc.method === 'create').length : 0,
+    ]),
+  );
   const filesWithRouting = fileAnalyses.filter(
     ({ filePath, analysis }) =>
       analysis !== null &&
       (analysis.trackPushes.length > 0 ||
         analysis.arrayDeclarations.some((d) => analysis.trackPushes.some((p) => p.variableName === d.name)) ||
+        analysis.routeBuilders.length > 0 ||
+        analysis.identifierPushes.some((p) => p.objectName === SYNC_TRACKS_NAME) ||
         findMethodCalls(filePath, ['via']).length > 0),
   );
   const insertCandidates =
@@ -589,8 +609,31 @@ export function computeRoutingChanges(ir: KicadIR, sourceFiles: string[]): Sourc
           ({ filePath, analysis }) => analysis !== null && findMethodCalls(filePath, ['create']).length === 1,
         )
       : [];
+  const projectHasOneCreate = [...createCounts.values()].filter((n) => n === 1).length === 1;
+  // Routing ownership: when SEVERAL files hold routing statements (the
+  // entry's per-net arrays AND the _sync.ts sidecar's loose builders, say),
+  // the board's copper must land in exactly ONE of them — regenerating each
+  // from the full board IR duplicates every trace (seen live as the same
+  // segment at two widths, the wider painting over the narrower in the
+  // gerbers). The create()-owning routing file wins and is regenerated from
+  // the board; every other routing file's section is EMPTIED, its copper
+  // absorbed into the owner.
+  const routingFileNames = filesWithRouting.map((f) => f.filePath);
+  const ownerFile =
+    routingFileNames.length <= 1
+      ? (routingFileNames[0] ?? null)
+      : (routingFileNames.find((f) => (createCounts.get(f) ?? 0) === 1) ?? routingFileNames[0]!);
+  // Absorption (emptying a non-owner routing file) is DEFERRED until the
+  // loop settles the owner's outcome: emptying a loser file while the
+  // owner's regeneration was refused would delete copper nothing replaces —
+  // the old behavior safely refused both. Collected here, resolved after.
+  const absorptions: PendingSourceChange[] = [];
+  let ownerRefused = false;
+  const markOwnerRefused = (filePath: string): void => {
+    if (ownerFile !== null && filePath === ownerFile) ownerRefused = true;
+  };
 
-  for (const { filePath, analysis } of fileAnalyses) {
+  for (const { filePath, isSync, analysis } of fileAnalyses) {
     if (!analysis) continue;
     const source = readSource(filePath);
     if (!source) continue;
@@ -603,6 +646,11 @@ export function computeRoutingChanges(ir: KicadIR, sourceFiles: string[]): Sourc
     const members: Array<{ start: number; end: number; kind: string }> = [
       ...decls.map((d) => ({ start: d.statementRange.start, end: d.statementRange.end, kind: 'decl' })),
       ...analysis.trackPushes.map((p) => ({ start: p.statementRange.start, end: p.statementRange.end, kind: 'push' })),
+      ...analysis.routeBuilders.map((r) => ({ start: r.statementRange.start, end: r.statementRange.end, kind: 'route' })),
+      // the sidecar's collect lines die with the routes they reference
+      ...analysis.identifierPushes
+        .filter((p) => p.objectName === SYNC_TRACKS_NAME)
+        .map((p) => ({ start: p.statementRange.start, end: p.statementRange.end, kind: 'collect' })),
       ...viaCalls.map((v) => ({ start: v.statementRange.start, end: v.statementRange.end, kind: 'via' })),
     ].sort((a, b) => a.start - b.start);
 
@@ -655,6 +703,7 @@ export function computeRoutingChanges(ir: KicadIR, sourceFiles: string[]): Sourc
     // Safety checks before rewriting the region.
     const unsupported = analysis.trackPushes.filter((p) => p.unsupported);
     if (unsupported.length > 0) {
+      markOwnerRefused(filePath);
       notes.push(
         `${unsupported.length} track push(es) use constructs the rewriter does not rebuild (powerInfo, spreads, unknown builder calls) — routing code printed for manual update.`,
       );
@@ -672,6 +721,7 @@ export function computeRoutingChanges(ir: KicadIR, sourceFiles: string[]): Sourc
       }
     }
     if (!contiguous) {
+      markOwnerRefused(filePath);
       notes.push(
         'Track statements, declarations or via calls are not contiguous (comments or other statements between them) — routing code printed for manual update.',
       );
@@ -679,9 +729,20 @@ export function computeRoutingChanges(ir: KicadIR, sourceFiles: string[]): Sourc
     }
 
     const region = { start: members[0].start, end: members[members.length - 1].end };
+    // Consume the first member's leading indentation: the regenerated block
+    // carries its own (the sidecar's statements are indented inside
+    // syncBoard()) — a half-consumed indent line would re-accumulate on
+    // every apply and never converge.
+    {
+      const lineStart = source.lastIndexOf('\n', region.start - 1) + 1;
+      if (lineStart !== region.start && source.slice(lineStart, region.start).trim() === '') {
+        region.start = lineStart;
+      }
+    }
     // Swallow the generated "// Net: X" / "// Unnamed nets" header that sits
     // directly above the first statement, so replacing the region does not
-    // leave (and then duplicate) the old leading header.
+    // leave (and then duplicate) the old leading header. Indent-tolerant:
+    // sidecar headers live at the body's indent level.
     for (;;) {
       const lineStart = source.lastIndexOf('\n', region.start - 1) + 1;
       if (source.slice(lineStart, region.start).trim() !== '' || lineStart === 0) break;
@@ -695,15 +756,27 @@ export function computeRoutingChanges(ir: KicadIR, sourceFiles: string[]): Sourc
       }
     }
     const currentBlock = source.slice(region.start, region.end);
-    const regionDiffers = currentBlock !== desiredBlock;
+    const isOwner = filePath === ownerFile;
+    const wantedBlock = !isOwner ? '' : isSync ? syncBlock : desiredBlock;
+    const regionDiffers = currentBlock !== wantedBlock;
 
     // Create-args planning is independent of the region diff: stale track
     // references (bare identifiers from older generated code, or spreads of
     // variables the board no longer declares) must be fixed even when the
     // routing statements themselves are already in sync.
-    const trackArrayNames = new Set<string>([...variables, ...analysis.arrayDeclarations.map((d) => d.name)]);
+    // Loose route builders are regenerated away with the region, so their
+    // identifiers must leave create() in the same change — otherwise the
+    // written source references variables the regen just deleted.
+    // Non-owners and the sidecar are exempt: their copper rides the owner
+    // file's create() (or the entry's `...syncTracks` spread), not arguments
+    // in a file being emptied.
+    const trackArrayNames = new Set<string>([
+      ...variables,
+      ...analysis.arrayDeclarations.map((d) => d.name),
+      ...analysis.routeBuilders.map((r) => r.name),
+    ]);
     let argsRep: Replacement | null = null;
-    if (creates.length === 1) {
+    if (creates.length === 1 && !isSync && isOwner) {
       const create = creates[0];
       const argsSource = buildCreateArgsSource(create, source, variables, trackArrayNames);
       if (argsSource !== null) {
@@ -722,27 +795,40 @@ export function computeRoutingChanges(ir: KicadIR, sourceFiles: string[]): Sourc
     }
 
     if (regionDiffers) {
-      if (analysis.trackPushes.length > 0 && creates.length !== 1) {
-        notes.push(
-          creates.length === 0
-            ? 'No typecad.create() call found in the routing file — routing code printed for manual update.'
-            : 'Multiple typecad.create() calls found — routing code printed for manual update.',
-        );
-        continue;
+      if (isOwner && analysis.trackPushes.length > 0 && creates.length !== 1) {
+        // a sidecar regen needs no local create() as long as exactly one
+        // file in the project owns it (the spread delivers the routes)
+        if (!(isSync && creates.length === 0 && projectHasOneCreate)) {
+          markOwnerRefused(filePath);
+          notes.push(
+            creates.length === 0
+              ? 'No typecad.create() call found in the routing file — routing code printed for manual update.'
+              : 'Multiple typecad.create() calls found — routing code printed for manual update.',
+          );
+          continue;
+        }
       }
 
-      const reps: Replacement[] = [{ range: region, newValue: desiredBlock }];
+      const reps: Replacement[] = [{ range: region, newValue: wantedBlock }];
       if (argsRep) reps.push(argsRep);
-      changes.push({
+      const planned: PendingSourceChange = {
         kind: 'tracks',
         filePath,
         label:
-          desiredBlock === ''
-            ? 'routing section removed (board has no tracks or vias)'
-            : 'routing section regenerated from board tracks and vias',
+          wantedBlock === ''
+            ? isOwner
+              ? 'routing section removed (board has no tracks or vias)'
+              : `routing section removed (absorbed into ${path.basename(ownerFile!)})`
+            : isSync
+              ? `${SYNC_FILE_NAME} routing section regenerated from board tracks and vias`
+              : 'routing section regenerated from board tracks and vias',
         changedProps: ['tracks', 'vias'],
         replacements: reps,
-      });
+      };
+      // a non-owner's emptying only rides along when the owner's regen is
+      // real (resolved after the loop) — never on its own
+      if (isOwner) changes.push(planned);
+      else absorptions.push(planned);
     } else if (argsRep) {
       changes.push({
         kind: 'tracks',
@@ -751,6 +837,21 @@ export function computeRoutingChanges(ir: KicadIR, sourceFiles: string[]): Sourc
         changedProps: ['create'],
         replacements: [argsRep],
       });
+    }
+  }
+
+  // Resolve the deferred absorptions now that the owner's fate is known: an
+  // emptied loser file is only correct when the owner really carries the
+  // board's copper afterwards (regenerated this cycle, or already in sync).
+  if (absorptions.length > 0) {
+    if (ownerRefused) {
+      notes.push(
+        `Routing consolidation skipped — ${path.basename(ownerFile!)} could not be regenerated safely (see the routing notes above); copper left in place in ${absorptions
+          .map((a) => path.basename(a.filePath))
+          .join(', ')}.`,
+      );
+    } else {
+      changes.push(...absorptions);
     }
   }
 
@@ -1226,4 +1327,167 @@ export function applySourceChanges(changes: PendingSourceChange[]): { filesModif
     if (applyReplacements(filePath, reps)) filesModified++;
   }
   return { filesModified, changesApplied: changes.length };
+}
+
+// === Component deletions (removed on the KiCad side) ===
+
+/** One source component the board no longer carries, with the per-file
+ *  edits that remove it everywhere it is referenced. */
+export interface ComponentDeletionCandidate {
+  variable: string;
+  /** the declaring file (the one holding the constructor statement) */
+  filePath: string;
+  label: string;
+  perFile: Array<{ filePath: string; replacements: Replacement[] }>;
+}
+
+/** Convert selected candidates into write-back changes (one per file). */
+export function componentDeletionChanges(candidates: ComponentDeletionCandidate[]): PendingSourceChange[] {
+  const byFile: Record<string, Replacement[]> = {};
+  for (const c of candidates) {
+    for (const pf of c.perFile) {
+      if (!byFile[pf.filePath]) byFile[pf.filePath] = [];
+      byFile[pf.filePath].push(...pf.replacements);
+    }
+  }
+  const changes: PendingSourceChange[] = [];
+  for (const [filePath, replacements] of Object.entries(byFile)) {
+    if (replacements.length === 0) continue;
+    changes.push({
+      kind: 'component',
+      filePath,
+      label: candidates.some((c) => c.perFile.some((pf) => pf.filePath === filePath))
+        ? `component(s) removed from ${path.basename(filePath)} (deleted on the board)`
+        : `component references cleaned from ${path.basename(filePath)}`,
+      changedProps: ['removed'],
+      replacements,
+    });
+  }
+  return changes;
+}
+
+/**
+ * Find source components the board no longer carries and plan their full
+ * removal (declaration, sidecar overrides, create() arguments, syncBoard
+ * map). Matching runs board -> source, so a deleted footprint simply
+ * produces no match — this is the reverse set. Safety rails:
+ *
+ * - a board with ZERO footprints never deletes anything (that is a wrong
+ *   or empty board, not a project to empty);
+ * - a component never passed to any create() is work-in-progress, not
+ *   deleted — it was never board-backed;
+ * - a variable name declared in more than one file is ambiguous (name
+ *   alone cannot tell the copies apart) and is left for manual deletion;
+ * - after simulating the removal, the identifier must be gone from CODE
+ *   in every file — a residual reference would dangle and break the build,
+ *   so the candidate is refused with a note instead.
+ */
+export function computeComponentDeletions(
+  matchResults: MatchResult[],
+  sourceFiles: string[],
+  footprintsOnBoard: number,
+): { candidates: ComponentDeletionCandidate[]; notes: string[] } {
+  const notes: string[] = [];
+  const candidates: ComponentDeletionCandidate[] = [];
+
+  const texts = new Map<string, string>();
+  const analyses = new Map<string, ReturnType<typeof analyzeFile>>();
+  for (const f of sourceFiles) {
+    try {
+      texts.set(f, fs.readFileSync(f, 'utf-8'));
+    } catch {
+      texts.set(f, '');
+    }
+    analyses.set(f, texts.get(f) === '' ? null : analyzeFile(f));
+  }
+
+  if (footprintsOnBoard === 0) {
+    notes.push(
+      'Board carries no footprints — component removal skipped (refusing to empty the project from an empty board).',
+    );
+    return { candidates, notes };
+  }
+
+  // components that survive anywhere on the board (any unit of a
+  // multi-unit part) key by their full source identity
+  const matched = new Set(
+    matchResults
+      .filter((mr) => mr.sourceLocation?.variableName)
+      .map((mr) => {
+        const loc = mr.sourceLocation!;
+        return `${loc.filePath}|${loc.variableName}|${loc.isThis}`;
+      }),
+  );
+  // components per file, PCB receivers excluded (the create() receiver is
+  // the board object, never a footprint) — feeds the ambiguity counts and
+  // the orphan scan
+  const fileComponents = new Map<string, ComponentInfo[]>();
+  for (const [file, analysis] of analyses) {
+    if (!analysis) continue;
+    fileComponents.set(
+      file,
+      analysis.components.filter((c) => !sourceFiles.some((f) => isCreateReceiver(texts.get(f)!, c.variableName))),
+    );
+  }
+  // variable-name ambiguity across files: name-based removal cannot tell
+  // same-named components apart, so those are manual deletions
+  const nameCounts = new Map<string, number>();
+  for (const comps of fileComponents.values()) {
+    for (const c of comps) nameCounts.set(c.variableName, (nameCounts.get(c.variableName) ?? 0) + 1);
+  }
+
+  let wip = 0;
+  let ambiguous = 0;
+  for (const [file, comps] of fileComponents) {
+    for (const comp of comps) {
+      if (matched.has(`${file}|${comp.variableName}|${comp.isThis}`)) continue;
+      if ((nameCounts.get(comp.variableName) ?? 0) > 1) {
+        ambiguous++;
+        continue;
+      }
+      // only components the project actually places are board-backed; a
+      // WIP part (declared, never passed to create()) is left alone
+      const placed = sourceFiles.some((f) => componentInCreateArgs(texts.get(f)!, comp.variableName));
+      if (!placed) {
+        wip++;
+        continue;
+      }
+      const perFile: Array<{ filePath: string; replacements: Replacement[] }> = [];
+      const sim = new Map(texts);
+      for (const f of sourceFiles) {
+        const edits = planComponentRemoval(texts.get(f)!, comp.variableName);
+        if (edits.length === 0) continue;
+        perFile.push({
+          filePath: f,
+          replacements: edits.map((e) => ({ range: { start: e.start, end: e.end }, newValue: e.line })),
+        });
+        sim.set(f, applyDeleteEdits(sim.get(f)!, edits));
+      }
+      if (perFile.length === 0) {
+        notes.push(`${comp.variableName} is not on the board but no removable statement was found — left in source.`);
+        continue;
+      }
+      const residual = sourceFiles.some((f) => identifierInCode(sim.get(f)!, comp.variableName));
+      if (residual) {
+        notes.push(
+          `${comp.variableName} is not on the board but is still referenced after removal — left in source for manual deletion.`,
+        );
+        continue;
+      }
+      const shortFile = file.replace(/\\/g, '/').split('/').slice(-2).join('/');
+      candidates.push({
+        variable: comp.variableName,
+        filePath: file,
+        label: `${comp.isThis ? 'this.' : ''}${comp.variableName}${comp.reference ? ` (${comp.reference})` : ''} — ${shortFile}:${comp.line}`,
+        perFile,
+      });
+    }
+  }
+  if (wip > 0) {
+    notes.push(`${wip} source component(s) not on the board and not passed to create() were left alone (work in progress).`);
+  }
+  if (ambiguous > 0) {
+    notes.push(`${ambiguous} component declaration(s) with ambiguous variable names (same name in several files) were left for manual deletion.`);
+  }
+  return { candidates, notes };
 }

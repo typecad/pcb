@@ -313,6 +313,43 @@ describe('planComponentEdits (combined constructor pass)', () => {
     expect(edits).toHaveLength(0);
     expect(skipped).toHaveLength(1);
   });
+
+  it('matches type-annotated and non-declaring constructor shapes', () => {
+    const annotated =
+      "import type { Component } from '@typecad/pcb';\n" +
+      "const u1: Component = new Component({ reference: 'U1', value: 'old' });\n" +
+      'u1.pcb = { x: 10, y: 10, rotation: 0 };\n';
+    const annotatedOut = applyPlacementEdits(
+      annotated,
+      planComponentEdits(
+        annotated,
+        [{ ref: 'U1', value: 'new' }],
+        (ref) => (ref === 'U1' ? parsePlacementLiteral(annotated, 'u1') : null),
+        new Set(['U1']),
+      ).edits,
+    );
+    expectValidTs(annotatedOut);
+    expect(annotatedOut).toContain("value: 'new'");
+
+    // export + annotation, and a bare non-declaring usage, both match too
+    const exported = "export const u2: Component = new Component({ reference: 'U2', value: 'old' });\n";
+    const exportedOut = applyPlacementEdits(
+      exported,
+      planComponentEdits(
+        exported,
+        [{ ref: 'U2', value: 'new' }],
+        () => ({ x: 0, y: 0, rot: 0 }),
+        new Set(['U2']),
+      ).edits,
+    );
+    expect(exportedOut).toContain("value: 'new'");
+    const bare = 'parts.push(new Component({ reference: \'U3\', value: \'old\' }));\n';
+    const bareOut = applyPlacementEdits(
+      bare,
+      planComponentEdits(bare, [{ ref: 'U3', value: 'new' }], () => ({ x: 0, y: 0, rot: 0 }), new Set(['U3'])).edits,
+    );
+    expect(bareOut).toContain("value: 'new'");
+  });
 });
 
 describe('planComponentEdits fab label', () => {
@@ -406,6 +443,54 @@ describe('planComponentEdits regression guards', () => {
     "const r1 = new Component({ symbol: 'Device:R_Small', reference: 'R1', value: '1k' });\n" +
     "r1.pcb = { x: 16, y: 15, rotation: 180 };\n";
   const placementOf = (text: string) => (ref: string) => (ref === 'R1' ? parsePlacementLiteral(text, 'r1') : null);
+
+  it('a standalone `<var>.referenceLayout = {…}` statement wins over the constructor option', () => {
+    // the mod-EC shape: the layout lives in a post-construction assignment
+    // (imported from KiCad), so it OVERRIDES any constructor option at
+    // runtime — writing the constructor there made the rebuild revert
+    // every label drag
+    const withStmt =
+      "const u1 = new Component({ reference: 'U1', value: 'MCU' });\n" +
+      "u1.pcb = { x: 147.25, y: 85.25, rotation: 0 };\n" +
+      "u1.referenceLayout = { x: 0, y: -3.83, rotation: 0, layer: 'F.SilkS', width: 0.75, height: 0.75, thickness: 0.1, show: true };\n";
+    const place = (ref: string) => (ref === 'U1' ? parsePlacementLiteral(withStmt, 'u1') : null);
+    const { edits, skipped } = planComponentEdits(
+      withStmt,
+      [{ ref: 'U1', label: { kind: 'reference', x: 148.5, y: 82, rot: 0 } }],
+      place,
+      new Set(['U1']),
+    );
+    expect(skipped).toHaveLength(0);
+    const out = applyPlacementEdits(withStmt, edits);
+    expectValidTs(out);
+    // the STATEMENT carries the new offset (kept style keys lead, position
+    // lands after — key order follows the merge, only presence matters)
+    expect(out).toMatch(/u1\.referenceLayout = \{[^\n]*x: 1\.25, y: -3\.25, rotation: 0/);
+    // …its unmanaged style keys survive…
+    expect(out).toContain("layer: 'F.SilkS'");
+    expect(out).toContain('show: true');
+    // …and no dead constructor option was appended (it would lose anyway)
+    expect(out).not.toMatch(/referenceLayout\s*:/);
+  });
+
+  it('a standalone `<var>.fabLayout = {…}` statement wins for fab labels too', () => {
+    const withStmt =
+      "const u1 = new Component({ reference: 'U1' });\n" +
+      "u1.pcb = { x: 100, y: 100 };\n" +
+      "u1.fabLayout = { x: 0, y: 0, rotation: 0 };\n";
+    const place = (ref: string) => (ref === 'U1' ? parsePlacementLiteral(withStmt, 'u1') : null);
+    const { edits, skipped } = planComponentEdits(
+      withStmt,
+      [{ ref: 'U1', label: { kind: 'fab', x: 101, y: 100, rot: 0 } }],
+      place,
+      new Set(['U1']),
+    );
+    expect(skipped).toHaveLength(0);
+    const out = applyPlacementEdits(withStmt, edits);
+    expectValidTs(out);
+    expect(out).toContain('u1.fabLayout = { x: 1, y: 0, rotation: 0 }');
+    expect(out).not.toMatch(/\bfab\s*:/);
+  });
 
   it('REPLACES an existing layout option on a second label move (no duplicate keys)', () => {
     const moved = applyPlacementEdits(src, planComponentEdits(

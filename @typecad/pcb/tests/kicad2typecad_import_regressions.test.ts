@@ -744,6 +744,62 @@ describe('apply-back: routing section', () => {
     expect(fs.readFileSync(boardFile, 'utf-8')).toContain('x: 25, y: 20');
   });
 
+  it('absorbs loose route-builder statements into the regenerated arrays without duplicating tracks', () => {
+    // The viewer's apply bridge writes `const routeN = new TrackBuilder(...)`
+    // chains beside create(); their segments reach the board, so the routing
+    // regen must remove the statements and their create() arguments — left
+    // in place next to the regenerated arrays every carried track would
+    // exist twice after the next build.
+    const file = path.join(dir, 'board.ts');
+    fs.writeFileSync(
+      file,
+      "import { PCB, TrackBuilder } from '@typecad/pcb';\n" +
+        "const typecad = new PCB('t');\n" +
+        '// Net: VCC\n' +
+        'const track_VCC: TrackBuilder[] = [];\n' +
+        'track_VCC.push(typecad.track({ net: \'VCC\' }).from({ x: 10, y: 20 }, "F.Cu", 0.2).to({ x: 20, y: 20, layer: "F.Cu", width: 0.2 }));\n' +
+        '\n' +
+        "const route1 = new TrackBuilder(typecad, { net: 'DRIVE',  })\n" +
+        "  .from({ x: 30, y: 40 }, 'F.Cu', 0.2)\n" +
+        "  .to({ x: 40, y: 40, layer: 'F.Cu', width: 0.2 });\n" +
+        '\n' +
+        "const route2 = new TrackBuilder(typecad, {  })\n" +
+        "  .from({ x: 50, y: 60 }, 'F.Cu', 0.2)\n" +
+        "  .to({ x: 60, y: 60, layer: 'F.Cu', width: 0.2 });\n" +
+        '\n' +
+        'typecad.create(\n  ...track_VCC,\n  route1,\n  route2\n);',
+    );
+    const ir = buildIr(`(kicad_pcb (version 20260206) (generator pcbnew)
+      (net 0 "")
+      (net 1 "VCC")
+      (net 2 "DRIVE")
+      (segment (start 10 20) (end 20 20) (width 0.2) (layer "F.Cu") (net "VCC"))
+      (segment (start 30 40) (end 40 40) (width 0.2) (layer "F.Cu") (net "DRIVE"))
+      (segment (start 50 60) (end 60 60) (width 0.2) (layer "F.Cu"))
+    )`);
+    const first = computeRoutingChanges(ir, [file]);
+    expect(first.changes.length).toBe(1);
+    applySourceChanges(first.changes);
+
+    const applied = fs.readFileSync(file, 'utf-8');
+    // the loose statements are gone, their segments live in the arrays
+    expect(applied).not.toContain('const route1');
+    expect(applied).not.toContain('const route2');
+    expect(applied).not.toContain('route1,');
+    expect(applied).toContain('x: 30, y: 40');
+    expect(applied).toContain('x: 50, y: 60');
+    // exactly one copy of each absorbed segment in the file
+    expect(applied.split('x: 40, y: 40').length - 1).toBe(1);
+    expect(applied.split('x: 60, y: 60').length - 1).toBe(1);
+    // the written source still parses and create() spreads only arrays
+    const analysis = analyzeFile(file);
+    expect(analysis).not.toBeNull();
+    expect(analysis!.routeBuilders).toEqual([]);
+    // converges: a second compute finds nothing pending
+    const second = computeRoutingChanges(ir, [file]);
+    expect(second.changes).toEqual([]);
+  });
+
   it('deletes the routing section when the board has no tracks left', () => {
     const file = path.join(dir, 'board.ts');
     fs.writeFileSync(file, sourceWithTrack(20));

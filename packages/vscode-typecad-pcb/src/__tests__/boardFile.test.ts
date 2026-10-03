@@ -4,7 +4,7 @@ import { describe, expect, it, beforeEach, afterEach } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { mtimeOf, newestBoardFile, entrySourceFile } from '../boardFile.js';
+import { listBoardFiles, mtimeOf, newestBoardFile, entrySourceFile } from '../boardFile.js';
 
 let folder: string;
 
@@ -107,5 +107,33 @@ export default defineConfig({
     expect(entrySourceFile(folder)).toBeNull();
     fs.writeFileSync(path.join(folder, 'typecad.conf.ts'), `export default defineConfig({});`);
     expect(entrySourceFile(folder)).toBeNull();
+  });
+});
+
+describe('multi-board discovery', () => {
+  it('lists manifest boards and selects one by stem, falling back to the active board', () => {
+    const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'typecad-mb-'));
+    try {
+      fs.mkdirSync(path.join(folder, 'build'));
+      for (const b of ['mother.kicad_pcb', 'daughter.kicad_pcb']) {
+        fs.writeFileSync(path.join(folder, 'build', b), '(kicad_pcb)');
+      }
+      fs.writeFileSync(
+        path.join(folder, 'build', '.typecad-board.json'),
+        JSON.stringify({ board: 'daughter.kicad_pcb', boards: ['mother.kicad_pcb', 'daughter.kicad_pcb'] }),
+      );
+      expect(listBoardFiles(folder).map((f) => path.basename(f))).toEqual([
+        'mother.kicad_pcb',
+        'daughter.kicad_pcb',
+      ]);
+      // stem selection is case/underscore-insensitive
+      expect(path.basename(newestBoardFile(folder, 'MOTHER') ?? '', '.kicad_pcb')).toBe('mother');
+      // unknown stems fall back to the manifest's active board
+      expect(path.basename(newestBoardFile(folder, 'jig') ?? '', '.kicad_pcb')).toBe('daughter');
+      // no stem = the active board
+      expect(path.basename(newestBoardFile(folder) ?? '', '.kicad_pcb')).toBe('daughter');
+    } finally {
+      fs.rmSync(folder, { recursive: true, force: true });
+    }
   });
 });

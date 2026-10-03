@@ -130,6 +130,30 @@ export interface ArrayDeclInfo {
   line: number;
 }
 
+/**
+ * A loose `const routeN = new TrackBuilder(...).from(...).to(...);` chain —
+ * the route statements the viewer's apply bridge writes beside create().
+ * Their segments reach the board through create(), so the routing regen
+ * owns them: left in place next to regenerated arrays they would duplicate
+ * every track they carry.
+ */
+export interface RouteBuilderInfo {
+  name: string;
+  statementRange: Range;
+  line: number;
+}
+
+/** A statement-level `array.push(identifier)` — the _sync.ts sidecar's
+ *  `syncTracks.push(routeN)` collect lines. They belong to the routing
+ *  region (a regen that absorbs the route must take its collect line, or
+ *  the reference dangles). */
+export interface IdentifierPushInfo {
+  objectName: string;
+  argName: string;
+  statementRange: Range;
+  line: number;
+}
+
 export interface LayoutAssignmentInfo {
   variableName: string;
   isThis: boolean;
@@ -360,6 +384,8 @@ function analyzeAst(
   methodCalls: MethodCallInfo[];
   trackPushes: TrackPushInfo[];
   arrayDeclarations: ArrayDeclInfo[];
+  routeBuilders: RouteBuilderInfo[];
+  identifierPushes: IdentifierPushInfo[];
 } {
   const components: ComponentInfo[] = [];
   const pcbAssignments: PcbAssignmentInfo[] = [];
@@ -368,6 +394,8 @@ function analyzeAst(
   const methodCalls: MethodCallInfo[] = [];
   const trackPushes: TrackPushInfo[] = [];
   const arrayDeclarations: ArrayDeclInfo[] = [];
+  const routeBuilders: RouteBuilderInfo[] = [];
+  const identifierPushes: IdentifierPushInfo[] = [];
 
   const root = ast as WalkableNode;
 
@@ -486,6 +514,15 @@ function analyzeAst(
       line: stmt.loc?.start?.line ?? 0,
     };
     methodCalls.push(info);
+
+    if (prop.name === 'push' && args.length === 1 && args[0].type === 'Identifier') {
+      identifierPushes.push({
+        objectName: (obj as Identifier).name,
+        argName: (args[0] as Identifier).name,
+        statementRange: info.statementRange,
+        line: info.line,
+      });
+    }
 
     if (prop.name === 'text' && typeof info.props['text']?.value === 'string') {
       textCalls.push({
@@ -692,6 +729,43 @@ function analyzeAst(
         });
       }
 
+      // `const routeN = new TrackBuilder(...).from(...).to(...)` — a call
+      // chain rooted at a TrackBuilder constructor. Loose route statements
+      // belong to the routing section: the regen absorbs their segments
+      // (they reach the board through create()) and must remove the
+      // statements, or every track they carry would exist twice.
+      if (init?.type === 'CallExpression') {
+        // walk down the member-call chain (.to(...).from(...)) to its root:
+        // each CallExpression's callee is the member access, whose object is
+        // the next link — the root of `new TrackBuilder(...).from(...).to(...)`
+        let root: AcornNode | undefined = init as AcornNode;
+        for (;;) {
+          const w = root as WalkableNode | undefined;
+          if (!w) break;
+          if (
+            w.type === 'CallExpression' ||
+            w.type === 'MemberExpression' ||
+            w.type === 'OptionalMemberExpression' ||
+            w.type === 'ChainExpression'
+          ) {
+            const link = w as unknown as { callee?: AcornNode; object?: AcornNode };
+            root = link.callee ?? link.object;
+          } else break;
+        }
+        const rootN = root as WalkableNode | undefined;
+        if (
+          rootN?.type === 'NewExpression' &&
+          (rootN as unknown as { callee?: WalkableNode }).callee?.type === 'Identifier' &&
+          ((rootN as unknown as { callee: Identifier }).callee as Identifier).name === 'TrackBuilder'
+        ) {
+          routeBuilders.push({
+            name: (id as Identifier).name,
+            statementRange: { start: n.start, end: n.end },
+            line: n.loc?.start?.line ?? 0,
+          });
+        }
+      }
+
       if (!init || init.type !== 'NewExpression') continue;
 
       const newExpr = init as unknown as NewExpression;
@@ -758,7 +832,7 @@ function analyzeAst(
 
   visitNode(ast);
 
-  return { components, pcbAssignments, layoutAssignments, textCalls, methodCalls, trackPushes, arrayDeclarations };
+  return { components, pcbAssignments, layoutAssignments, textCalls, methodCalls, trackPushes, arrayDeclarations, routeBuilders, identifierPushes };
 }
 
 export interface SourceAnalysis {
@@ -769,6 +843,8 @@ export interface SourceAnalysis {
   methodCalls: MethodCallInfo[];
   trackPushes: TrackPushInfo[];
   arrayDeclarations: ArrayDeclInfo[];
+  routeBuilders: RouteBuilderInfo[];
+  identifierPushes: IdentifierPushInfo[];
 }
 
 export function analyzeFile(filePath: string): SourceAnalysis | null {

@@ -191,17 +191,30 @@ export function evaluateMacro(
         });
         break;
       case 4: {
-        // outline: exposure, #vertices, x1..xn, y1..yn, rot
-        const count = Math.max(0, Math.round(m[1] ?? 0));
+        // outline: exposure, #vertices, x1..xn, y1..yn, rot. The rotation is
+        // always the LAST parameter — the declared vertex count cannot be
+        // trusted to locate it: KiCad counts closing-vertex repeats into the
+        // count and appends extra literal repeats (4,1,N+1,walk…,first,first,
+        // rot), so the pair list can run past the count.
+        const rotation = m.length > 0 ? m[m.length - 1]! : 0;
+        const pairCount = Math.max(0, Math.floor((m.length - 3) / 2));
         const points: Point[] = [];
-        for (let i = 0; i < count; i++) {
+        for (let i = 0; i < pairCount; i++) {
           points.push({ x: m[2 + 2 * i] ?? 0, y: m[3 + 2 * i] ?? 0 });
+        }
+        // drop explicit closing repeats of the first vertex (the polygon
+        // closes on its own; the duplicates only pad the count)
+        while (points.length > 1) {
+          const a = points[0]!;
+          const b = points[points.length - 1]!;
+          if (Math.abs(a.x - b.x) < 1e-9 && Math.abs(a.y - b.y) < 1e-9) points.pop();
+          else break;
         }
         primitives.push({
           kind: 'outline',
           exposure: on,
           points,
-          rotation: m[2 + 2 * count] ?? 0,
+          rotation,
         });
         break;
       }

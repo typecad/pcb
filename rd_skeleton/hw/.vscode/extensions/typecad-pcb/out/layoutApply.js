@@ -12,10 +12,16 @@
 // `typecad/layout-rebuild` runs; the viewer applies stage by stage with
 // one WorkspaceEdit each and re-reads the document in between.
 // ---------------------------------------------------------------------------
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.planLayoutApply = planLayoutApply;
 const layoutEdits_js_1 = require("./layoutEdits.js");
 const routeEdits_js_1 = require("./routeEdits.js");
+const node_path_1 = __importDefault(require("node:path"));
+const syncFile_js_1 = require("./syncFile.js");
+const componentDelete_js_1 = require("./componentDelete.js");
 /**
  * Coalesce touching/overlapping edits into single range replacements so a
  * stage never hands its applier ambiguous ranges (a zero-width insert at
@@ -88,7 +94,92 @@ function planLayoutApply(files, input) {
     const stages = [];
     const skipped = [];
     const touched = new Set();
-    const counts = { moves: 0, endpoints: 0, texts: 0, values: 0, labels: 0, renames: 0, routes: 0, deletes: 0 };
+    const counts = { moves: 0, endpoints: 0, texts: 0, values: 0, labels: 0, renames: 0, routes: 0, deletes: 0, partDeletes: 0 };
+    // -- the sync sidecar: one machine-owned home for auto-inserts ----------
+    // placements/labels with no literal to rewrite and fresh routes land in
+    // src/_sync.ts, whose syncBoard() call sits right before create() and so
+    // always wins the code-order battle. Hand-written code keeps the edits it
+    // already supports (literal rewrites, deletes, renames).
+    const syncUri = input.syncUri && files.some((f) => f.uri === input.syncUri) ? input.syncUri : undefined;
+    const entryUri = input.entryUri && files.some((f) => f.uri === input.entryUri) ? input.entryUri : undefined;
+    // usability is decided UP FRONT: an absent/empty sidecar can be created,
+    // an existing one must already speak the grammar — anything else at
+    // src/_sync.ts belongs to the user and never gets hijacked, so its edits
+    // take the legacy in-place paths instead
+    const syncFileUsable = (() => {
+        if (!syncUri)
+            return false;
+        const cur = textOf.get(syncUri);
+        return cur.trim() === '' || (0, syncFile_js_1.isSyncFileText)(cur);
+    })();
+    if (syncUri && !syncFileUsable) {
+        skipped.push('_sync.ts exists but is not a typeCAD sync file — its edits fell back to in-place');
+    }
+    const syncPartsVars = new Set();
+    const syncSummary = { created: false, placements: 0, labels: 0, routes: 0 };
+    let syncUsed = false;
+    const entryText = () => (entryUri ? textOf.get(entryUri) ?? '' : '');
+    /** a variable is nameable at the syncBoard() call only when the entry file
+     *  mentions it — components reach create() from there */
+    const inScope = (variable) => {
+        if (!entryUri)
+            return false;
+        return new RegExp(`\\b${variable.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`).test(entryText());
+    };
+    const canSyncRef = (ref) => {
+        if (!syncUri || !entryUri || !syncFileUsable)
+            return false;
+        const variable = input.variableOf(ref);
+        return !!variable && inScope(variable);
+    };
+    /** Create the sidecar scaffold when absent; refuse when something else
+     *  already lives at src/_sync.ts (never overwrite a user's file). */
+    const ensureSyncScaffold = () => {
+        if (!syncUri)
+            return false;
+        const cur = textOf.get(syncUri);
+        if ((0, syncFile_js_1.isSyncFileText)(cur))
+            return true;
+        if (cur.trim() !== '') {
+            skipped.push('_sync.ts exists but is not a typeCAD sync file — its edits fell back to in-place');
+            return false;
+        }
+        commit([{ uri: syncUri, edits: [{ start: 0, end: cur.length, line: (0, syncFile_js_1.renderSyncFile)({}) }] }]);
+        syncSummary.created = true;
+        syncUsed = true;
+        return true;
+    };
+    /** entry-file wiring (import/call/spread) for the given parts vars */
+    const planEntryIntegration = (needTracks) => {
+        if (!syncUri || !entryUri)
+            return { ok: false, edits: [] };
+        // the sidecar's module name follows the board on multi-board projects
+        // (_sync.<stem>.ts) — the import line written into the entry must match
+        const stemMatch = syncUri ? /^_sync\.(.+)\.ts$/.exec(node_path_1.default.basename(syncUri.split(/[\/]/).pop() ?? '')) : null;
+        const plan = (0, syncFile_js_1.planSyncEntryEdits)(entryText(), [...syncPartsVars], needTracks, stemMatch?.[1]);
+        if (!plan.receiver) {
+            skipped.push('_sync.ts wiring needs a typecad.create() call in the entry file — nothing was written there');
+            return { ok: false, edits: [] };
+        }
+        syncUsed = true;
+        return { ok: true, edits: plan.edits };
+    };
+    // placement lookup over the live texts (shared by label frames) — cached
+    // per ref and CLEARED whenever a stage writes new placements, so a part
+    // whose placement just landed in the sidecar resolves for its label
+    const placementCache = new Map();
+    const placementOf = (ref) => {
+        if (placementCache.has(ref))
+            return placementCache.get(ref);
+        let found = null;
+        for (const file of files) {
+            found = (0, layoutEdits_js_1.parsePlacementLiteral)(textOf.get(file.uri), input.variableOf(ref) ?? '');
+            if (found)
+                break;
+        }
+        placementCache.set(ref, found);
+        return found;
+    };
     // the page keys moves by ref — normalize, first wins
     const moves = [];
     const seenRefs = new Set();
@@ -111,19 +202,79 @@ function planLayoutApply(files, input) {
             touched.add(b.uri);
         }
     };
+    // -- stage 0: part deletions — a part deleted in the view leaves source
+    // FIRST, so every later stage plans against the post-deletion texts. The
+    // removal is the shared component-delete grammar (declaration, overrides,
+    // create() arguments, syncBoard map, net pin references). Same safety
+    // rails as the import's deletion pass: a variable name declared in more
+    // than one file is ambiguous (name alone cannot tell the copies apart),
+    // and a removal whose identifier would survive anywhere is refused
+    // loudly — a dangling reference breaks the build. --
+    const deletedRefs = new Set((input.partDeletes ?? []).map((r) => r.trim()).filter((r) => r !== ''));
+    if (deletedRefs.size > 0) {
+        const batch = [];
+        for (const ref of deletedRefs) {
+            const variable = input.variableOf(ref);
+            if (!variable) {
+                skipped.push(`${ref} (no source variable — cannot delete from source)`);
+                continue;
+            }
+            const declaringUris = files.filter((f) => (0, componentDelete_js_1.declaresComponent)(textOf.get(f.uri), variable)).map((f) => f.uri);
+            if (declaringUris.length > 1) {
+                skipped.push(`${ref} (${variable} is declared in ${declaringUris.length} files — ambiguous, delete it by hand)`);
+                continue;
+            }
+            const perFile = files.map((f) => ({
+                uri: f.uri,
+                text: textOf.get(f.uri),
+                edits: (0, componentDelete_js_1.planComponentRemoval)(textOf.get(f.uri), variable),
+            }));
+            if (!perFile.some((p) => p.edits.length > 0)) {
+                skipped.push(`${ref} (no removable statement found for ${variable})`);
+                continue;
+            }
+            // after simulation the identifier must be gone from CODE in every file
+            const sim = new Map(perFile.map((p) => [p.uri, (0, componentDelete_js_1.applyDeleteEdits)(p.text, p.edits)]));
+            const residual = files.some((f) => (0, componentDelete_js_1.identifierInCode)(sim.get(f.uri), variable));
+            if (residual) {
+                skipped.push(`${ref} (${variable} is still referenced after removal — nothing deleted)`);
+                continue;
+            }
+            for (const p of perFile) {
+                if (p.edits.length > 0)
+                    batch.push({ uri: p.uri, edits: p.edits });
+            }
+            counts.partDeletes++;
+        }
+        commit(batch);
+        // a deleted part has no final placement to carry
+        for (let i = moves.length - 1; i >= 0; i--) {
+            if (deletedRefs.has(moves[i].ref))
+                moves.splice(i, 1);
+        }
+    }
     // -- stage 1: placement literals (`<var>.pcb = { x, y, … }`) by delta --
     const appliedRefs = new Set();
+    const syncPlacements = [];
+    const syncLabels = [];
     {
         const batch = [];
         // 'no literal found' only becomes final once every file has been tried;
         // concrete reasons (computed placement, no variable) are final at once
         const reasonByRef = new Map();
         const finalRefs = new Set();
+        const deferredByRef = new Map();
         for (const file of files) {
+            // deferrals do NOT retire a move: a later file (the sidecar's
+            // parts.<var>.pcb, the declaring module) can still match and rewrite
             const pending = moves.filter((m) => !appliedRefs.has(m.ref) && !finalRefs.has(m.ref));
             if (pending.length === 0)
                 continue;
-            const plan = (0, layoutEdits_js_1.planPlacementEdits)(textOf.get(file.uri), pending, input.variableOf);
+            const plan = (0, layoutEdits_js_1.planPlacementEdits)(textOf.get(file.uri), pending, input.variableOf, {
+                deferInsert: (move) => canSyncRef(move.ref),
+            });
+            for (const d of plan.deferred ?? [])
+                deferredByRef.set(d.ref, d);
             for (const sk of plan.skipped) {
                 const deferred = sk.reason.startsWith('no `');
                 if (deferred) {
@@ -140,6 +291,15 @@ function planLayoutApply(files, input) {
             if (plan.edits.length > 0)
                 batch.push({ uri: file.uri, edits: plan.edits });
         }
+        // refs with no literal anywhere that CAN ride the sidecar do so; the
+        // rest keep the legacy verdict below (an in-place insert already
+        // happened in planPlacementEdits, or no constructor exists at all)
+        for (const [ref, d] of deferredByRef) {
+            if (appliedRefs.has(ref) || reasonByRef.has(ref))
+                continue;
+            syncPlacements.push(d);
+            reasonByRef.set(ref, `__sync__`);
+        }
         for (const m of moves) {
             if (appliedRefs.has(m.ref) || reasonByRef.has(m.ref))
                 continue;
@@ -148,11 +308,53 @@ function planLayoutApply(files, input) {
         // a ref that applied in a later file must not also carry the deferred
         // "no literal" verdict an earlier file recorded for it
         for (const [ref, reason] of reasonByRef) {
+            if (reason === `__sync__`)
+                continue;
             if (!appliedRefs.has(ref))
                 skipped.push(`${ref} (${reason})`);
         }
         counts.moves = appliedRefs.size;
         commit(batch);
+    }
+    // -- stage 1b: sidecar placements — a part with no literal anywhere gets
+    // its whole placement written into _sync.ts (the machine-owned home), and
+    // the entry file learns to call syncBoard() with its variable --
+    if (syncPlacements.length > 0) {
+        if (ensureSyncScaffold()) {
+            const syncText = textOf.get(syncUri);
+            const at = (0, syncFile_js_1.syncPlacementInsertAt)(syncText);
+            if (at === null) {
+                for (const p of syncPlacements)
+                    skipped.push(`${p.ref} (_sync.ts has no usable syncBoard() body)`);
+            }
+            else {
+                const edits = syncPlacements.map((p) => ({
+                    start: at,
+                    end: at,
+                    line: `  parts.${p.variable}.pcb = { x: ${(0, layoutEdits_js_1.fmt)(p.x)}, y: ${(0, layoutEdits_js_1.fmt)(p.y)}${p.rot ? `, rotation: ${(0, layoutEdits_js_1.fmt)(p.rot)}` : ''} };\n`,
+                }));
+                for (const p of syncPlacements)
+                    syncPartsVars.add(p.variable);
+                const wiring = planEntryIntegration(false);
+                if (wiring.ok) {
+                    commit([
+                        { uri: syncUri, edits },
+                        { uri: entryUri, edits: wiring.edits },
+                    ]);
+                    counts.moves += syncPlacements.length;
+                    syncSummary.placements += syncPlacements.length;
+                    placementCache.clear(); // parts that just gained a literal resolve now
+                }
+                else {
+                    for (const p of syncPlacements)
+                        skipped.push(`${p.ref} (${input.variableOf(p.ref) ?? p.ref} cannot be wired into _sync.ts)`);
+                }
+            }
+        }
+        else {
+            for (const p of syncPlacements)
+                skipped.push(`${p.ref} (_sync.ts is not a typeCAD sync file)`);
+        }
     }
     // -- stage 2: component constructor edits (value / rename / label) --
     // placements already applied above: labels convert against the FINAL
@@ -172,19 +374,6 @@ function planLayoutApply(files, input) {
     }
     const specs = [...specByRef.values()];
     if (specs.length > 0) {
-        const placementCache = new Map();
-        const placementOf = (ref) => {
-            if (placementCache.has(ref))
-                return placementCache.get(ref);
-            let found = null;
-            for (const file of files) {
-                found = (0, layoutEdits_js_1.parsePlacementLiteral)(textOf.get(file.uri), input.variableOf(ref) ?? '');
-                if (found)
-                    break;
-            }
-            placementCache.set(ref, found);
-            return found;
-        };
         // edits accumulate PER FILE and commit as ONE batch: every edit in a
         // stage is planned against the same pre-stage text, so a second batch
         // for the same file would apply at offsets the first batch already
@@ -212,7 +401,10 @@ function planLayoutApply(files, input) {
                 doneRefs.add(sk.ref);
             }
             for (const edit of plan.edits) {
-                const spec = pending.find((sp) => edit.ref === sp.ref);
+                // label edits can land on the standalone `<var>.<kind>Layout = {…}`
+                // statement (it overrides the constructor option at runtime) —
+                // those carry the `ref prop` key
+                const spec = pending.find((sp) => edit.ref === sp.ref || (!!sp.label && edit.ref === `${sp.ref} ${sp.label.kind}Layout`));
                 if (!spec)
                     continue;
                 doneRefs.add(spec.ref);
@@ -228,14 +420,17 @@ function planLayoutApply(files, input) {
         // fallback for label-only specs with no constructor literal to rewrite:
         // subclass factories (`new LED({…})`) and prefix-derived references
         // never carry `reference: 'D1'` — their layout lands as a public-field
-        // assignment after the constructor, the same door `var.pcb = {…}` uses
+        // assignment after the constructor, the same door `var.pcb = {…}` uses…
+        // or in the sidecar, when the part can be wired into syncBoard()
         const labelPending = specs.filter((sp) => !!sp.label && !doneRefs.has(sp.ref));
         if (labelPending.length > 0) {
             for (const file of files) {
-                const pending = labelPending.filter((sp) => !doneRefs.has(sp.ref));
+                const pending = labelPending.filter((sp) => !doneRefs.has(sp.ref) && !syncLabels.some((l) => l.ref === sp.ref));
                 if (pending.length === 0)
                     break;
-                const plan = (0, layoutEdits_js_1.planLabelAssignments)(textOf.get(file.uri), pending, input.variableOf, placementOf);
+                const plan = (0, layoutEdits_js_1.planLabelAssignments)(textOf.get(file.uri), pending, input.variableOf, placementOf, {
+                    deferInsert: (ref) => canSyncRef(ref),
+                });
                 for (const edit of plan.edits) {
                     const spec = pending.find((sp) => edit.ref === `${sp.ref} ${sp.label.kind === 'fab' ? 'fab' : `${sp.label.kind}Layout`}`);
                     if (!spec)
@@ -244,23 +439,71 @@ function planLayoutApply(files, input) {
                     counts.labels++;
                     pushEdits(file.uri, [edit]);
                 }
+                for (const d of plan.deferred ?? []) {
+                    if (!syncLabels.some((l) => l.ref === d.ref))
+                        syncLabels.push(d);
+                }
                 // skips defer to later files — the file owning the constructor
                 // statement has the final say, collected after the loop
             }
             for (const sp of labelPending) {
-                if (!doneRefs.has(sp.ref)) {
+                if (!doneRefs.has(sp.ref) && !syncLabels.some((l) => l.ref === sp.ref)) {
                     const variable = input.variableOf(sp.ref);
                     skipped.push(`${sp.ref} (${variable ? `no \`${variable}\` constructor statement found` : 'no source variable'})`);
                 }
             }
         }
         for (const sp of specs) {
-            if (!doneRefs.has(sp.ref) && !skipped.some((s) => s.startsWith(`${sp.ref} (`)))
+            if (!doneRefs.has(sp.ref) &&
+                !skipped.some((s) => s.startsWith(`${sp.ref} (`)) &&
+                !syncLabels.some((l) => l.ref === sp.ref))
                 skipped.push(`${sp.ref} (no Component constructor literal found)`);
         }
         for (const [uri, edits] of editsByUri)
             batch.push({ uri, edits });
         commit(batch);
+    }
+    // -- stage 2b: sidecar labels — same door as stage 1b, for parts whose
+    // label has no standalone statement and whose constructor cannot be
+    // rewritten (or whose override already lives in the sidecar) --
+    if (syncLabels.length > 0) {
+        if (ensureSyncScaffold()) {
+            const syncText = textOf.get(syncUri);
+            const at = (0, syncFile_js_1.syncPlacementInsertAt)(syncText);
+            if (at === null) {
+                for (const l of syncLabels)
+                    skipped.push(`${l.ref} (_sync.ts has no usable syncBoard() body)`);
+            }
+            else {
+                const edits = [];
+                for (const l of syncLabels) {
+                    const part = placementOf(l.ref);
+                    if (!part) {
+                        skipped.push(`${l.ref} (no .pcb placement literal found)`);
+                        continue;
+                    }
+                    edits.push({ start: at, end: at, line: `  ${(0, layoutEdits_js_1.syncLabelStatement)(l, part)}\n` });
+                    syncPartsVars.add(l.variable);
+                }
+                const wiring = planEntryIntegration(false);
+                if (wiring.ok && edits.length > 0) {
+                    commit([
+                        { uri: syncUri, edits },
+                        { uri: entryUri, edits: wiring.edits },
+                    ]);
+                    counts.labels += edits.length;
+                    syncSummary.labels += edits.length;
+                }
+                else if (edits.length > 0) {
+                    for (const l of syncLabels)
+                        skipped.push(`${l.ref} (${input.variableOf(l.ref) ?? l.ref} cannot be wired into _sync.ts)`);
+                }
+            }
+        }
+        else {
+            for (const l of syncLabels)
+                skipped.push(`${l.ref} (_sync.ts is not a typeCAD sync file)`);
+        }
     }
     // -- stage 3: silk/fab .text({ … }) literals, matched per file --
     if (input.texts && input.texts.length > 0) {
@@ -311,7 +554,9 @@ function planLayoutApply(files, input) {
         let unmatchedSkips = null;
         let deferredUnmatched = [];
         for (const file of files) {
-            const plan = (0, routeEdits_js_1.planRouteDeletes)(textOf.get(file.uri), input.deletes);
+            const plan = (0, routeEdits_js_1.planRouteDeletes)(textOf.get(file.uri), input.deletes, 
+            // sidecar routes ride collect lines, not create() arguments
+            file.uri === syncUri ? { collectVar: syncFile_js_1.SYNC_TRACKS_NAME } : undefined);
             if (plan.edits.length > 0) {
                 counts.deletes = plan.applied;
                 for (const sk of plan.skipped)
@@ -337,8 +582,36 @@ function planLayoutApply(files, input) {
         commit(batch);
     }
     // -- stage 5: new routes — planned against the post-delete text, so the
-    // create() rewrite above and the paren insertion here never overlap --
-    if (input.routes && input.routes.length > 0) {
+    // create() rewrite above and the paren insertion here never overlap.
+    // Sidecar-first: when _sync.ts is available, declarations land inside
+    // syncBoard() and reach the board through the `...syncTracks` spread --
+    // hand-written files are not touched at all. The plan runs against the
+    // scaffold the sidecar WOULD have, and the file is only created when a
+    // route actually lands in it (an all-duplicates apply must not orphan an
+    // empty _sync.ts beside an entry that never wires it) --
+    if (input.routes && input.routes.length > 0 && syncUri && entryUri && syncFileUsable) {
+        const current = textOf.get(syncUri);
+        const plan = (0, routeEdits_js_1.planSyncRouteEdits)(current.trim() === '' ? (0, syncFile_js_1.renderSyncFile)({}) : current, input.routes, textOf.get(entryUri));
+        counts.routes = plan.applied;
+        for (const sk of plan.skipped)
+            skipped.push(`route ${sk}`);
+        if (plan.edits.length > 0 && ensureSyncScaffold()) {
+            const wiring = planEntryIntegration(true);
+            if (wiring.ok) {
+                commit([
+                    { uri: syncUri, edits: plan.edits },
+                    { uri: entryUri, edits: wiring.edits },
+                ]);
+                syncSummary.routes += plan.applied;
+            }
+            else {
+                for (const r of input.routes)
+                    skipped.push(`route ${r.from.ref}.${r.from.pin} (_sync.ts wiring failed — no create() call in the entry file)`);
+                counts.routes = 0;
+            }
+        }
+    }
+    else if (input.routes && input.routes.length > 0) {
         const batch = [];
         let noCreateSkips = null;
         for (const file of files) {
@@ -428,6 +701,6 @@ function planLayoutApply(files, input) {
         }
         commit(batch);
     }
-    return { stages, skipped, counts, touched: [...touched], unmatchedDeletes };
+    return { stages, skipped, counts, touched: [...touched], unmatchedDeletes, syncFile: syncUsed ? syncSummary : null };
 }
 //# sourceMappingURL=layoutApply.js.map

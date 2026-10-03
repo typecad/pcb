@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { isList, nameOf, parse } from '../sexpr/index.js';
 import type { SExpr } from '../sexpr/types.js';
+import { refreshPadsManifestFromBoard } from '../pcb/pcb_pads_writer.js';
 import { detectLayer, finalizeAndSortLayers, type LayerInfo } from './detect_layer.js';
 import { rotatePoint } from './gerber/geometry.js';
 import { parseExcellon } from './gerber/parse_excellon.js';
@@ -100,31 +101,48 @@ export function collectGerberFiles(inputPaths: string[]): { files: string[]; war
 }
 
 /**
- * Shorten display names by dropping a shared board-name prefix
- * ("board-F_Cu.gtl" -> "F_Cu.gtl"). Returns the prefix that was stripped
- * ("" when there is none).
+ * The board-name prefix shared by the file names ("" when there is none) —
+ * the viewer page's title. Accepts the raw prefix only when every name
+ * continues with a separator ("board-F_Cu.gtl" / "board.drl" share
+ * "board" cleanly).
  */
-function stripCommonPrefix(names: string[]): { stripped: string[]; prefix: string } {
-  if (names.length < 2) return { stripped: names, prefix: '' };
+function commonBoardPrefix(names: string[]): string {
+  if (names.length < 2) return '';
   let prefix = names[0]!;
   for (const name of names) {
     while (prefix && !name.startsWith(prefix)) prefix = prefix.slice(0, -1);
     if (!prefix) break;
   }
-  // accept the raw prefix when every name continues with a separator
-  // ("board-F_Cu.gtl" / "board.drl" share "board" cleanly)
   const boundaryAfterPrefix = names.every((n) => n.length === prefix.length || /[-_. ]/.test(n[prefix.length]!));
   if (!boundaryAfterPrefix) {
     const cut = Math.max(prefix.lastIndexOf('-'), prefix.lastIndexOf('_'), prefix.lastIndexOf(' '));
     prefix = cut > 0 ? prefix.slice(0, cut + 1) : '';
   }
-  if (prefix.length < 3) return { stripped: names, prefix: '' };
-  return {
-    stripped: names.map((n) =>
-      n.startsWith(prefix) && n.length > prefix.length ? n.slice(prefix.length).replace(/^[-_. ]+/, '') : n,
-    ),
-    prefix,
-  };
+  return prefix.length < 3 ? '' : prefix;
+}
+
+/**
+ * The sidebar lists LAYERS, not files: drop the board-name prefix and the
+ * extension from the display name ("mod-ec-F_Cu.gtl" -> "F_Cu",
+ * "typecad_project-Edge_Cuts.gm1" -> "Edge_Cuts"). The layer token after
+ * the last board separator wins; a stem carrying no recognizable token
+ * (a drill file named for the board) falls back to its detected kind. The
+ * full file name stays available as the row's tooltip.
+ */
+function layerDisplayName(info: LayerInfo): string {
+  const stem = info.name.replace(/\.[^.]+$/, '');
+  const token = /(?:(?<=^)|(?<=[-_. ]))((?:F|B|In\d+)[-_ ].*|Edge[_ -]?Cuts|Margin|Adhesive|Courtyard|User[_ ]?\d+.*)$/i.exec(
+    stem,
+  );
+  if (token) return token[1]!;
+  switch (info.kind) {
+    case 'drill':
+      return info.drillPlated === false ? 'NPTH Drill' : 'Drill';
+    case 'edge':
+      return 'Edge.Cuts';
+    default:
+      return stem;
+  }
 }
 
 export interface ViewerBuildOptions {
@@ -225,13 +243,15 @@ export function buildViewerFromFiles(paths: string[], options: ViewerBuildOption
         return a.info.name.localeCompare(b.info.name);
       });
   })();
-  const names = ordered.map((l) => l.info.name);
-  const { stripped, prefix } = stripCommonPrefix(names);
-  const layers: LayerInfo[] = ordered.map((l, i) => ({
-    ...l.info,
-    name: stripped[i]!,
-    fullName: stripped[i] === l.info.name ? undefined : l.info.name,
-  }));
+  const boardPrefix = commonBoardPrefix(ordered.map((l) => l.info.name));
+  const layers: LayerInfo[] = ordered.map((l) => {
+    const display = layerDisplayName(l.info);
+    return {
+      ...l.info,
+      name: display,
+      fullName: display === l.info.name ? undefined : l.info.name,
+    };
+  });
 
   // netlist: pads carry %TO.P ref/pin but no net in gerbers;
   // the netlist fills that in so clicking a pad highlights its net
@@ -339,9 +359,17 @@ export function buildViewerFromFiles(paths: string[], options: ViewerBuildOption
   }
   // pad labels ride the same way (build/<board>_pads.json): pin numbers +
   // net names per pad, computed from the PCB object at board-write time.
+  // The manifest is derived data and CAN lag the board (a KiCad-side edit
+  // that flowed through sync without a full rebuild; a locked write on
+  // Windows) — copper would move while the labels stayed put. Heal it from
+  // the board file beside the netlist before reading.
   let padLabels: ViewerOptions['padLabels'] = null;
   if (pcbaNetlistSource) {
     const padsPath = pcbaNetlistSource.replace(/\.net$/i, '_pads.json');
+    const boardBesideNetlist = pcbaNetlistSource.replace(/\.net$/i, '.kicad_pcb');
+    if (fs.existsSync(boardBesideNetlist)) {
+      refreshPadsManifestFromBoard(boardBesideNetlist);
+    }
     if (fs.existsSync(padsPath)) {
       try {
         const manifest = JSON.parse(fs.readFileSync(padsPath, 'utf8')) as { pads?: NonNullable<ViewerOptions['padLabels']> };
@@ -566,7 +594,7 @@ export function buildViewerFromFiles(paths: string[], options: ViewerBuildOption
     .filter((id) => PCBA_THEMES[id])
     .map((id) => ({ id, label: PCBA_THEME_LABELS[id] ?? id, colors: surface(PCBA_THEMES[id]!) }));
   const html = buildViewerHtml(svg, layers, {
-    title: options.title ?? (prefix.replace(/[-_. ]+$/, '') || path.basename(paths[0]!)),
+    title: options.title ?? (boardPrefix.replace(/[-_. ]+$/, '') || path.basename(paths[0]!)),
     report,
     drcMarkers,
     pcbaSvg,

@@ -27,6 +27,7 @@ import {
   type ProbeWebviewMessage,
 } from './probeClient.js';
 import { backupRootLabel, writeBackup } from './sourceBackup.js';
+import { syncFileNameFor } from './syncFile.js';
 import { planLayoutApply } from './layoutApply.js';
 import { parsePlacementLiteral } from './layoutEdits.js';
 import { verifyBoardSemantics } from './semanticVerify.js';
@@ -39,7 +40,7 @@ import type { BoardDataService } from './boardData.js';
 // discovery helpers live vscode-free in boardFile.ts for unit testing;
 // re-exported here for the existing import sites
 export { mtimeOf, newestBoardFile, entrySourceFile } from './boardFile.js';
-import { mtimeOf, newestBoardFile, entrySourceFile } from './boardFile.js';
+import { listBoardFiles, mtimeOf, newestBoardFile, entrySourceFile } from './boardFile.js';
 
 export type CommandRunner = (cwd: string, command: string, timeoutMs: number) => Promise<string>;
 
@@ -99,6 +100,11 @@ function selectionMessage(ref: string, token: number | undefined): ProbeHostMess
 }
 
 export class BoardViewerPanel {
+  /** the board stem this panel shows — undefined = the manifest's active
+   *  board. A multi-board project (mother/daughter, board/jig) switches via
+   *  the "View Board" picker; every per-board artifact (page, gerbers dir,
+   *  store/pending keys — which derive from the page title/path) follows. */
+  private selectedBoardStem: string | undefined;
   private panel: vscode.WebviewPanel | undefined;
   private generated: GeneratedViewer | null = null;
   private pendingRef: string | null = null;
@@ -570,11 +576,38 @@ export class BoardViewerPanel {
   }
 
   /** Generate viewer HTML; resolves false when skipped (board mid-build). */
-  private async generate(folder: string): Promise<boolean> {
+  /** The board the panel currently shows (undefined = the active board). */
+  get boardStem(): string | undefined {
+    return this.selectedBoardStem;
+  }
+
+  /** The boards the project's manifest lists, as picker entries (stem +
+   *  file). Empty when the build has produced nothing yet. */
+  boardChoices(): Array<{ stem: string; file: string }> {
+    const folder = this.hwFolder();
+    if (!folder) return [];
+    return listBoardFiles(folder).map((f) => ({ stem: path.basename(f, '.kicad_pcb'), file: f }));
+  }
+
+  /** Switch the panel to a board stem (undefined = the manifest's active
+   *  board) and regenerate. */
+  async switchBoard(stem?: string): Promise<void> {
+    if (this.selectedBoardStem === stem) return;
+    this.selectedBoardStem = stem;
+    this.output.appendLine(stem ? `viewer switched to board '${stem}'` : 'viewer switched to the active board');
+    await this.doRefresh(true);
+  }
+
+  async generate(folder: string): Promise<boolean> {
     if (this.generating) return this.generating;
     this.generating = (async () => {
-      const board = newestBoardFile(folder);
-      if (!board) throw new Error('no .kicad_pcb in build/ — run npm run build first');
+      const board = newestBoardFile(folder, this.selectedBoardStem);
+      if (!board)
+        throw new Error(
+          this.selectedBoardStem
+            ? `no board '${this.selectedBoardStem}' in build/ — run npm run build first`
+            : 'no .kicad_pcb in build/ — run npm run build first',
+        );
 
       // The build writes zone declarations without fill geometry; fills are
       // materialized by `export gerbers` (--check-zones) and `check`. The
@@ -613,8 +646,15 @@ export class BoardViewerPanel {
       await this.run(folder, `npx typecad-pcb export gerbers "${board}"`, GENERATE_TIMEOUT_MS);
       await this.run(folder, `npx typecad-pcb export drill "${board}"`, GENERATE_TIMEOUT_MS);
 
-      const gerbersDir = path.join('build', 'gerbers');
-      const outPath = path.join('build', 'serve', 'viewer.html');
+      // per-board fab dirs once the project is multi-board — the same rule
+      // `export gerbers` uses, so the viewer reads exactly what the export
+      // wrote (a shared dir would have each board's prune deleting its
+      // sibling's inner layers)
+      const multiBoard = listBoardFiles(folder).length > 1;
+      const gerbersDir = multiBoard ? path.join('build', 'gerbers', boardName) : path.join('build', 'gerbers');
+      // one page per board: the pending-edit and settings keys derive from
+      // the page path/title, so each board keeps its own session state
+      const outPath = multiBoard ? path.join('build', 'serve', `${boardName}.html`) : path.join('build', 'serve', 'viewer.html');
       // Optional data overlays, each shipped only when the build actually
       // produced it: the netlist fills pad→net (click a pad, its whole net
       // highlights); DRC markers exist after a `typecad-pcb drc` run; the
@@ -668,7 +708,7 @@ export class BoardViewerPanel {
         GENERATE_TIMEOUT_MS,
       );
 
-      let raw = fs.readFileSync(path.join(folder, outPath), 'utf8');
+      const raw = fs.readFileSync(path.join(folder, outPath), 'utf8');
       const [components, nets] = await Promise.all([
         this.service.components(),
         // net sources are decorative metadata — a failed query must not
@@ -715,6 +755,7 @@ export class BoardViewerPanel {
     renames?: Array<{ ref: string; newRef: string }>,
     routes?: RouteInput[],
     deletes?: RouteDeleteInput[],
+    partDeletes?: string[],
     boardStamp?: string | null,
   ): Promise<void> {
     const folder = this.hwFolder();
@@ -746,7 +787,7 @@ export class BoardViewerPanel {
         await this.doRefresh();
         return;
       }
-      await this.onLayoutRebuildInner(folder, fail, moves, texts, values, labels, renames, routes, deletes);
+      await this.onLayoutRebuildInner(folder, fail, moves, texts, values, labels, renames, routes, deletes, partDeletes);
     } finally {
       sync.applyBusy = false;
     }
@@ -770,6 +811,7 @@ export class BoardViewerPanel {
     renames?: Array<{ ref: string; newRef: string }>,
     routes?: RouteInput[],
     deletes?: RouteDeleteInput[],
+    partDeletes?: string[],
   ): Promise<void> {
     try {
       const comps = await this.service.components();
@@ -785,10 +827,34 @@ export class BoardViewerPanel {
         const hit = srcUris.find((u) => u.fsPath.toLowerCase() === entry.toLowerCase());
         if (hit) ordered = [hit, ...srcUris.filter((u) => u !== hit)];
       }
-      const files = [];
+      const files: Array<{ uri: string; text: string; created?: boolean }> = [];
       for (const uri of ordered) {
         files.push({ uri: uri.toString(), text: (await vscode.workspace.openTextDocument(uri)).getText() });
       }
+      // the sidecar rides beside the entry file (same dir, so its import is
+      // './_sync[.<stem>].js' — per-board on multi-board projects); an
+      // absent file joins the set EMPTY — the apply creates it only when a
+      // stage actually writes it, and the backup/restore path knows to
+      // delete rather than empty it
+      const multi = listBoardFiles(folder).length > 1;
+      const boardStem = multi ? path.basename(newestBoardFile(folder) ?? '', '.kicad_pcb') : undefined;
+      const syncName = syncFileNameFor(boardStem || undefined);
+      const syncPath = path.join(
+        entry ? path.dirname(entry) : path.join(folder, 'src'),
+        syncName,
+      );
+      const syncUri = vscode.Uri.file(syncPath);
+      let syncCreated = false;
+      if (!files.some((f) => f.uri.toLowerCase() === syncUri.toString().toLowerCase())) {
+        let syncText = '';
+        try {
+          syncText = fs.readFileSync(syncPath, 'utf8');
+        } catch {
+          syncCreated = true;
+        }
+        files.push({ uri: syncUri.toString(), text: syncText, ...(syncCreated ? { created: true } : {}) });
+      }
+      const createdUris = new Set(syncCreated ? [syncUri.toString()] : []);
       // final placements for the semantic check: the move deltas land on the
       // placement literals, so the finals are computable from the PRE-apply
       // text (a moved part's footprint should sit exactly there after the
@@ -813,8 +879,11 @@ export class BoardViewerPanel {
         renames,
         routes,
         deletes,
+        partDeletes,
         variableOf: (ref) => variableOf.get(ref),
         allRefs: new Set(comps.map((c) => c.reference).filter(Boolean)),
+        syncUri: syncUri.toString(),
+        entryUri: entry ? vscode.Uri.file(entry).toString() : undefined,
       });
 
       // dry-run the whole plan and parse every touched file's final text —
@@ -873,7 +942,7 @@ export class BoardViewerPanel {
       const boardNameForApply = path.basename(newestBoardFile(folder) ?? '');
       const backup = writeBackup(
         folder,
-        files.map((f) => ({ uri: f.uri, text: f.text })),
+        files.map((f) => ({ uri: f.uri, text: f.text, ...(f.created ? { created: true } : {}) })),
         'layout apply',
         boardNameForApply || undefined,
       );
@@ -905,6 +974,18 @@ export class BoardViewerPanel {
       // the plan was built against (the user typed while the apply was
       // planning), every offset is stale — refuse and let them re-apply.
       const touchedSet = new Set(plan.touched);
+      // a file this apply CREATES must exist before it can be opened,
+      // verified, and replaced — an empty placeholder is byte-identical to
+      // the planned base text (''), so every downstream guard holds
+      for (const uri of createdUris) {
+        if (!touchedSet.has(uri)) continue;
+        try {
+          await vscode.workspace.fs.writeFile(vscode.Uri.parse(uri), new Uint8Array(0));
+        } catch (err) {
+          fail(`cannot create ${vscode.workspace.asRelativePath(vscode.Uri.parse(uri))} — ${err instanceof Error ? err.message : String(err)}`);
+          return;
+        }
+      }
       const applyDocs = new Map<string, vscode.TextDocument>();
       for (const f of files) {
         if (!touchedSet.has(f.uri)) continue;
@@ -931,22 +1012,32 @@ export class BoardViewerPanel {
 
       // post-write verification: if anything slipped past the gate (or the
       // write itself diverged), restore the snapshot IMMEDIATELY — the user
-      // must never be left with an unparsable file, even for a moment
+      // must never be left with an unparsable file, even for a moment. A
+      // file this apply created restores by deletion, not by emptying.
       for (const key of plan.touched) {
         const savedDoc = await vscode.workspace.openTextDocument(vscode.Uri.parse(key));
         const err = plannedTextSyntaxError(savedDoc.getText());
         if (!err) continue;
         this.output.appendLine(`POST-WRITE CHECK FAILED for ${key} (${err}) — restoring the pre-apply snapshot`);
-        const restore = new vscode.WorkspaceEdit();
         const pre = files.find((f) => f.uri === key);
         if (pre) {
-          restore.replace(
-            savedDoc.uri,
-            new vscode.Range(savedDoc.positionAt(0), savedDoc.positionAt(savedDoc.getText().length)),
-            pre.text,
-          );
-          await vscode.workspace.applyEdit(restore);
-          await savedDoc.save();
+          if (createdUris.has(key)) {
+            try {
+              await savedDoc.save();
+              await vscode.workspace.fs.delete(vscode.Uri.parse(key), { useTrash: false });
+            } catch {
+              // best-effort — the restore command can finish the job
+            }
+          } else {
+            const restore = new vscode.WorkspaceEdit();
+            restore.replace(
+              savedDoc.uri,
+              new vscode.Range(savedDoc.positionAt(0), savedDoc.positionAt(savedDoc.getText().length)),
+              pre.text,
+            );
+            await vscode.workspace.applyEdit(restore);
+            await savedDoc.save();
+          }
         }
         vscode.window.showErrorMessage(
           `typeCAD layout apply wrote unparsable source and restored ${vscode.workspace.asRelativePath(vscode.Uri.parse(key))} from its pre-apply snapshot — please report this (the typeCAD/pcb output has the plan)`,
@@ -967,10 +1058,17 @@ export class BoardViewerPanel {
         c.labels > 0 ||
         c.renames > 0 ||
         c.routes > 0 ||
-        c.deletes > 0;
+        c.deletes > 0 ||
+        c.partDeletes > 0;
       this.output.appendLine(
-        `layout apply: ${c.moves} placement(s) moved${c.endpoints ? `, ${c.endpoints} route endpoint(s) translated` : ''}${c.routes ? `, ${c.routes} track route(s) added to source` : ''}${c.deletes ? `, ${c.deletes} segment(s) deleted from source` : ''}${c.texts ? `, ${c.texts} text(s) edited` : ''}${c.values ? `, ${c.values} value(s) edited` : ''}${c.labels ? `, ${c.labels} label(s) repositioned` : ''}${c.renames ? `, ${c.renames} reference(s) renamed` : ''}${plan.skipped.length ? `, skipped ${plan.skipped.join('; ')}` : ''}`,
+        `layout apply: ${c.moves} placement(s) moved${c.endpoints ? `, ${c.endpoints} route endpoint(s) translated` : ''}${c.routes ? `, ${c.routes} track route(s) added to source` : ''}${c.deletes ? `, ${c.deletes} segment(s) deleted from source` : ''}${c.texts ? `, ${c.texts} text(s) edited` : ''}${c.values ? `, ${c.values} value(s) edited` : ''}${c.labels ? `, ${c.labels} label(s) repositioned` : ''}${c.partDeletes ? `, ${c.partDeletes} part(s) deleted from source` : ''}${c.renames ? `, ${c.renames} reference(s) renamed` : ''}${plan.skipped.length ? `, skipped ${plan.skipped.join('; ')}` : ''}`,
       );
+      if (plan.syncFile) {
+        const s = plan.syncFile;
+        this.output.appendLine(
+          `sync sidecar${s.created ? ' created' : ''}: ${s.placements} placement(s), ${s.labels} label(s), ${s.routes} route(s) now live in ${syncName} — they win the code-order battle (syncBoard() runs right before create())`,
+        );
+      }
       if (plan.skipped.length) {
         vscode.window.setStatusBarMessage(`layout: skipped ${plan.skipped.join('; ')}`, 8000);
       }
@@ -1064,6 +1162,7 @@ export class BoardViewerPanel {
         message.renames,
         message.routes,
         message.deletes,
+        message.partDeletes,
         message.board,
       );
       return;

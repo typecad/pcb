@@ -15,6 +15,10 @@ import type {
 
 export interface TypeCADConfig {
   entry?: string;
+  /** Multi-board projects (mother/daughter, board/jig): board stem ->
+   *  entry file. `typecad-pcb build` runs EVERY entry (or one with
+   *  --board <stem>), each writing its own build/<stem>.kicad_pcb. */
+  boards?: Record<string, string>;
   kicad_cli?: string;
   kicad_path?: string;
   use_flatpak?: boolean;

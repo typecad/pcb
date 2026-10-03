@@ -11,15 +11,46 @@ export function mtimeOf(file: string): number {
 }
 
 /**
+ * The project's compiled boards, from the build manifest
+ * (.typecad-board.json): `boards` lists every board the project's create()
+ * calls produce (multi-board projects — mother/daughter, board/jig), `board`
+ * names the most recent one. Empty when there is no manifest.
+ */
+export function listBoardFiles(folder: string): string[] {
+  const buildDir = path.join(folder, 'build');
+  try {
+    const manifest = JSON.parse(fs.readFileSync(path.join(buildDir, '.typecad-board.json'), 'utf8')) as {
+      boards?: unknown;
+    };
+    if (!Array.isArray(manifest.boards)) return [];
+    return manifest.boards
+      .filter((b): b is string => typeof b === 'string' && b.endsWith('.kicad_pcb'))
+      .map((b) => path.join(buildDir, b))
+      .filter((b) => fs.existsSync(b));
+  } catch {
+    return [];
+  }
+}
+
+/**
  * The project's compiled board. The build's own manifest
  * (.typecad-board.json, written beside the board) is the truth — a renamed
  * board is found at once and a leftover under the previous name can never
  * shadow it (seen live: the project was renamed and the stale old-named
  * board kept being rendered). Without a manifest, the package-name match
  * prefers the project's own board over strays; newest is the fallback.
+ * `stem` selects one board of a multi-board project; unknown stems fall
+ * back to the active-board resolution so the viewer always shows something.
  */
-export function newestBoardFile(folder: string): string | null {
+export function newestBoardFile(folder: string, stem?: string): string | null {
   const buildDir = path.join(folder, 'build');
+  if (stem) {
+    const norm = stem.replace(/[.-]/g, '_').toLowerCase();
+    const hit = listBoardFiles(folder).find(
+      (f) => path.basename(f, '.kicad_pcb').replace(/[.-]/g, '_').toLowerCase() === norm,
+    );
+    if (hit) return hit;
+  }
   if (!fs.existsSync(buildDir)) return null;
   try {
     const manifest = JSON.parse(fs.readFileSync(path.join(buildDir, '.typecad-board.json'), 'utf8')) as {

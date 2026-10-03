@@ -123,6 +123,9 @@ export type ProbeWebviewMessage =
       routes?: RouteInput[];
       /** deleted trace segments to remove from source TrackBuilder chains */
       deletes?: RouteDeleteInput[];
+      /** board references of parts deleted in the layout view — the apply
+       *  removes them from source */
+      partDeletes?: string[];
     };
 
 export type ProbeHostMessage =
@@ -225,8 +228,16 @@ const PROBE_CLIENT = `<script>
   // board has since been rebuilt (auto-build, external edit) is a stale
   // view, and its edits must not splice into a source that moved on
   var layoutCb = null;
-  window.typecadLayoutApply = function (moves, texts, values, labels, renames, routes, deletes, cb) {
-    layoutCb = cb || (typeof deletes === 'function' ? deletes : typeof routes === 'function' ? routes : null);
+  window.typecadLayoutApply = function (moves, texts, values, labels, renames, routes, deletes, partDeletes, cb) {
+    layoutCb =
+      cb ||
+      (typeof partDeletes === 'function'
+        ? partDeletes
+        : typeof deletes === 'function'
+          ? deletes
+          : typeof routes === 'function'
+            ? routes
+            : null);
     var stamp = document.querySelector('meta[name="tc-viewer-board"]');
     send({
       type: 'typecad/layout-rebuild',
@@ -238,6 +249,7 @@ const PROBE_CLIENT = `<script>
       renames: renames || [],
       routes: Array.isArray(routes) ? routes : [],
       deletes: Array.isArray(deletes) ? deletes : [],
+      partDeletes: Array.isArray(partDeletes) ? partDeletes : [],
     });
   };
 

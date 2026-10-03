@@ -5,18 +5,22 @@ import { executeKiCADCommand } from '../../../kicad_commands.js';
 import type { ParsedArgs } from '../parser.js';
 import type { ErcViolation } from '../../types.js';
 import logger from '../../../utils/logging.js';
-import { buildDirPath, findBoardFile } from '../pipeline.js';
+import { boardStemFromArgs, buildDirPath, findBoardFile, knownBoardsHint } from '../pipeline.js';
 import { kicadMajorVersion } from './export.js';
 import { runDrc } from '../../../pcb/pcb_drc_engine.js';
 
-function findPcbFile(argPath?: string): string | null {
+function findPcbFile(argPath?: string, stem?: string): string | null {
   if (argPath) {
     const resolved = path.resolve(argPath);
     if (fs.existsSync(resolved)) return resolved;
     return null;
   }
 
-  return findBoardFile();
+  const board = findBoardFile(stem);
+  if (!board && stem) {
+    logger.warn(chalk.yellow(`No board '${stem}' in build/ — ${knownBoardsHint()}`));
+  }
+  return board;
 }
 
 function formatViolation(v: ErcViolation): string {
@@ -36,7 +40,7 @@ function formatViolation(v: ErcViolation): string {
 export async function run(parsed: ParsedArgs): Promise<void> {
   const json = parsed.json;
   const pcbArg = parsed.positional[0];
-  const pcbPath = findPcbFile(pcbArg);
+  const pcbPath = findPcbFile(pcbArg, boardStemFromArgs(parsed));
 
   if (!pcbPath) {
     if (pcbArg) {

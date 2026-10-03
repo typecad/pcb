@@ -29,6 +29,9 @@ describe('pruneForeignStemArtifacts', () => {
       'rd_filled-F_Cu.gtl',
       'rd_filled-F_Paste.gtp',
       'rd_filled.drl',
+      'typecad_project-In1_Cu.g1',
+      'typecad_project-In2_Cu.g2',
+      'rd_skeleton-In1_Cu.g1',
       'upgrade_test-F_Cu.gtl',
       'notes.txt',
       'fab-review.md',
@@ -36,9 +39,20 @@ describe('pruneForeignStemArtifacts', () => {
       fs.writeFileSync(path.join(dir, f), 'x');
     }
     const removed = pruneForeignStemArtifacts(dir, 'C:/proj/hw/build/rd_skeleton.kicad_pcb');
-    expect(removed.sort()).toEqual(['rd_filled-F_Cu.gtl', 'rd_filled-F_Paste.gtp', 'rd_filled.drl', 'upgrade_test-F_Cu.gtl'].sort());
+    expect(removed.sort()).toEqual(
+      [
+        'rd_filled-F_Cu.gtl',
+        'rd_filled-F_Paste.gtp',
+        'rd_filled.drl',
+        'upgrade_test-F_Cu.gtl',
+        'typecad_project-In1_Cu.g1',
+        'typecad_project-In2_Cu.g2',
+      ].sort(),
+    );
     const left = fs.readdirSync(dir).sort();
     expect(left).toContain('rd_skeleton-F_Cu.gtl');
+    // the board's OWN inner-layer plots keep their numeric extensions
+    expect(left).toContain('rd_skeleton-In1_Cu.g1');
     expect(left).toContain('rd_skeleton.drl');
     expect(left).toContain('notes.txt');
     expect(left).toContain('fab-review.md');

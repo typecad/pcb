@@ -92,7 +92,20 @@ export interface WatchHandle {
  * coalesced) with the changed file. Watchers re-arm after every callback —
  * editors that save atomically replace files and orphan their watchers.
  */
-export function startWatchLoop(entry: string, onChange: (changed: string) => void, debounceMs = 200): WatchHandle {
+/** The union of every entry's local import graph — multi-board watches
+ *  cover all boards' sources. */
+function watchDeps(entries: string | string[]): string[] {
+  const list = Array.isArray(entries) ? entries : [entries];
+  const seen = new Set<string>();
+  for (const e of list) for (const f of collectLocalDependencies(e)) seen.add(f);
+  return [...seen];
+}
+
+export function startWatchLoop(
+  entry: string | string[],
+  onChange: (changed: string) => void,
+  debounceMs = 200,
+): WatchHandle {
   let watchers: fs.FSWatcher[] = [];
   let timer: NodeJS.Timeout | undefined;
   let closed = false;
@@ -100,7 +113,7 @@ export function startWatchLoop(entry: string, onChange: (changed: string) => voi
   const arm = () => {
     for (const watcher of watchers) watcher.close();
     watchers = [];
-    for (const file of collectLocalDependencies(entry)) {
+    for (const file of watchDeps(entry)) {
       try {
         watchers.push(fs.watch(file, (event) => handle(file, event)));
       } catch {

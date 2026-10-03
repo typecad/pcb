@@ -6,14 +6,21 @@
 // per route (`.from(...).to(...)` chain, `.via(...)` at every layer switch)
 // inserted before the `typecad.create(` call, and the variable appended to
 // that call's argument list — the same authoring style as the project's own
-// hand-written routes.
+// hand-written routes. When the project has a _sync.ts sidecar, new routes
+// land INSIDE its syncBoard() instead (planSyncRouteEdits) with a
+// `syncTracks.push(name)` collect line — the sidecar is the machine-owned
+// home for auto-inserts.
 //
 // Deletes plan the reverse: matched `.to()` runs drop from existing chains,
 // a middle break SPLITS the route so a real gap replaces the copper, and
 // emptied routes vanish with their create() argument. Regenerated chains
 // preserve the route's options (net), every surviving via (with its own
-// args), each point's layer — and the comments riding the kept lines.
+// args), each point's layer — and the comments riding the kept lines. In a
+// sync file, splits gain their own collect line and emptied routes take
+// theirs along.
 // ---------------------------------------------------------------------------
+
+import { isSyncFileText, syncFunctionBodyRange, syncPushStatement, syncRouteInsertAt } from './syncFile.js';
 
 export interface RouteInput {
   net: string | null;
@@ -61,9 +68,59 @@ export function escapeSingleQuoted(value: string): string {
 const ptEq = (a: { x: number; y: number }, b: { x: number; y: number }, tol = 0.02): boolean =>
   Math.abs(a.x - b.x) < tol && Math.abs(a.y - b.y) < tol;
 
-/** Locate `typecad.create(` and its balanced closing paren (null when absent/unbalanced). */
+/** A length-preserving comment shadow of the text: comment bodies become
+ *  spaces so structural scans (create() lookup) never match prose that
+ *  merely mentions an API call. String literals survive intact (a `//` in a
+ *  URL is not a comment). */
+function stripComments(text: string): string {
+  let out = '';
+  let i = 0;
+  let quote: string | null = null;
+  while (i < text.length) {
+    const ch = text[i]!;
+    if (quote) {
+      out += ch;
+      if (ch === '\\') {
+        if (i + 1 < text.length) out += text[i + 1]!;
+        i += 2;
+        continue;
+      }
+      if (ch === quote) quote = null;
+      i++;
+    } else if (ch === "'" || ch === '"' || ch === '`') {
+      quote = ch;
+      out += ch;
+      i++;
+    } else if (ch === '/' && text[i + 1] === '/') {
+      while (i < text.length && text[i] !== '\n') {
+        out += ' ';
+        i++;
+      }
+    } else if (ch === '/' && text[i + 1] === '*') {
+      out += '  ';
+      i += 2;
+      while (i < text.length && !(text[i] === '*' && text[i + 1] === '/')) {
+        out += text[i] === '\n' ? '\n' : ' ';
+        i++;
+      }
+      if (i < text.length) {
+        out += '  ';
+        i += 2;
+      }
+    } else {
+      out += ch;
+      i++;
+    }
+  }
+  return out;
+}
+
+/** Locate `typecad.create(` and its balanced closing paren (null when
+ *  absent/unbalanced). Comment-aware: a banner or doc comment that mentions
+ *  the call is not the call. */
 function findCreateCall(text: string): { createIdx: number; closeIdx: number } | null {
-  const createIdx = text.indexOf('typecad.create(');
+  const shadow = stripComments(text);
+  const createIdx = shadow.indexOf('typecad.create(');
   if (createIdx === -1) return null;
   let depth = 0;
   for (let i = createIdx + 'typecad.create('.length - 1; i < text.length; i++) {
@@ -239,38 +296,51 @@ function planTrackBuilderImport(text: string): PlannedEdit {
   return { start: at, end: at, line: `import { TrackBuilder } from '@typecad/pcb';\n` };
 }
 
+/** One validated route declaration, ready to place. */
+interface CollectedRoute {
+  name: string;
+  src: string;
+  /** the impedance note line, when the route carried one */
+  note?: string;
+}
+
 /**
- * Plan the insertion of `routes` into one source document: declarations
- * before `typecad.create(` and variable names appended to its argument list.
+ * The shared insert collection: unique routeN numbering continuing past the
+ * text's own, generation, and the two idempotency guards (byte-identical
+ * re-apply and same-endpoint corridor duplicates). Both targets — before
+ * create() in hand-written files, inside syncBoard() in the sidecar — draw
+ * from this so a route can never be judged duplicate by one path and fresh
+ * by the other. `dupContexts` are additional texts the guards also inspect
+ * (the entry file, when inserting into the sidecar — a re-sent gesture whose
+ * previous copy lives in hand-written code is still a duplicate).
  */
-export function planRouteEdits(text: string, routes: RouteInput[]): RoutePlan {
-  const edits: PlannedEdit[] = [];
+function collectRouteDecls(
+  text: string,
+  routes: RouteInput[],
+  ...dupContexts: string[]
+): { items: CollectedRoute[]; skipped: string[] } {
+  const contexts = [text, ...dupContexts];
+  const items: CollectedRoute[] = [];
   const skipped: string[] = [];
-  if (routes.length === 0) return { edits, applied: 0, skipped };
-
-  const createIdx = text.indexOf('typecad.create(');
-  if (createIdx === -1) {
-    return { edits, applied: 0, skipped: routes.map((r) => `${r.from.ref}.${r.from.pin}${r.to ? `→${r.to.ref}.${r.to.pin}` : ''} (no typecad.create( call found)`) };
-  }
-  // unique variable names: route1, route2... continuing past existing ones
   let maxExisting = 0;
-  for (const m of text.matchAll(/\broute(\d+)\b/g)) {
-    maxExisting = Math.max(maxExisting, Number(m[1]));
+  for (const ctx of contexts) {
+    for (const m of ctx.matchAll(/\broute(\d+)\b/g)) {
+      maxExisting = Math.max(maxExisting, Number(m[1]));
+    }
   }
-  const lineStart = text.lastIndexOf('\n', createIdx) + 1;
-  const indentMatch = /^[ \t]*/.exec(text.slice(lineStart, createIdx));
-  const indent = indentMatch ? indentMatch[0]! : '';
+  // for corridor idempotency: same-net chains already in the file(s), by net
+  // — loose builders AND the import's push chains (a re-sent gesture whose
+  // previous copy is import-written copper is still a duplicate)
+  const parsedRoutes = contexts.flatMap((ctx) => {
+    const loose = parseRoutes(ctx);
+    const pushes = parsePushChains(ctx).map((pc) => ({
+      points: pc.points,
+      opts: pc.opts,
+    }));
+    return [...loose, ...pushes];
+  });
+  const routeNetOf = (pr: { opts: string }): string | null => /net:\s*'([^']*)'/.exec(pr.opts)?.[1] ?? null;
 
-  const call = findCreateCall(text);
-  if (!call) {
-    return { edits: [], applied: 0, skipped: routes.map((r) => `${r.from.ref}.${r.from.pin} (unbalanced typecad.create()`) };
-  }
-  // for corridor idempotency: same-net chains already in the file, by net
-  const parsedRoutes = parseRoutes(text);
-  const routeNetOf = (pr: ParsedRoute): string | null => /net:\s*'([^']*)'/.exec(pr.opts)?.[1] ?? null;
-
-  const decls: string[] = [];
-  const names: string[] = [];
   for (const r of routes) {
     const name = `route${++maxExisting}`;
     const src = routeSource(name, r);
@@ -286,7 +356,7 @@ export function planRouteEdits(text: string, routes: RouteInput[]): RoutePlan {
     // as \r\n — both byte orders must count as present, or every retry
     // re-inserts the route as a duplicate
     const chain = src.slice(src.indexOf('.from('));
-    if (text.includes(chain) || text.includes(chain.replace(/\n/g, '\r\n'))) {
+    if (contexts.some((ctx) => ctx.includes(chain) || ctx.includes(chain.replace(/\n/g, '\r\n')))) {
       skipped.push(`${r.from.ref}.${r.from.pin} (identical route already in source)`);
       maxExisting--;
       continue;
@@ -317,15 +387,46 @@ export function planRouteEdits(text: string, routes: RouteInput[]): RoutePlan {
         }
       }
     }
-    decls.push(
-      indent +
-        (r.impedance && r.impedance.z0 > 0
-          ? `// \u2248${fmt(r.impedance.z0)} \u03a9 controlled impedance (stackup solve)\n${indent}`
-          : '') +
-        src,
-    );
-    names.push(name);
+    items.push({
+      name,
+      src,
+      note:
+        r.impedance && r.impedance.z0 > 0
+          ? `// \u2248${fmt(r.impedance.z0)} \u03a9 controlled impedance (stackup solve)`
+          : undefined,
+    });
   }
+  return { items, skipped };
+}
+
+/**
+ * Plan the insertion of `routes` into one source document: declarations
+ * before `typecad.create(` and variable names appended to its argument list.
+ */
+export function planRouteEdits(text: string, routes: RouteInput[]): RoutePlan {
+  const edits: PlannedEdit[] = [];
+  const skipped: string[] = [];
+  if (routes.length === 0) return { edits, applied: 0, skipped };
+
+  const createIdx = text.indexOf('typecad.create(');
+  if (createIdx === -1) {
+    return { edits, applied: 0, skipped: routes.map((r) => `${r.from.ref}.${r.from.pin}${r.to ? `→${r.to.ref}.${r.to.pin}` : ''} (no typecad.create( call found)`) };
+  }
+  const lineStart = text.lastIndexOf('\n', createIdx) + 1;
+  const indentMatch = /^[ \t]*/.exec(text.slice(lineStart, createIdx));
+  const indent = indentMatch ? indentMatch[0]! : '';
+
+  const call = findCreateCall(text);
+  if (!call) {
+    return { edits: [], applied: 0, skipped: routes.map((r) => `${r.from.ref}.${r.from.pin} (unbalanced typecad.create()`) };
+  }
+
+  const { items, skipped: skips } = collectRouteDecls(text, routes);
+  skipped.push(...skips);
+  const decls = items.map((it) =>
+    indent + (it.note ? `${it.note}\n${indent}` : '') + it.src,
+  );
+  const names = items.map((it) => it.name);
   if (names.length === 0) return { edits, applied: 0, skipped };
 
   // declarations need TrackBuilder in scope where create() lives. A file
@@ -348,6 +449,45 @@ export function planRouteEdits(text: string, routes: RouteInput[]): RoutePlan {
     edits.push(argsEdit);
   }
   return { edits, applied: names.length, skipped };
+}
+
+/**
+ * Plan the insertion of `routes` into the _sync.ts sidecar: declarations
+ * inside syncBoard() (after the last route), each with its collect push onto
+ * syncTracks. The entry file's `...syncTracks` spread and import are planned
+ * separately (planSyncEntryEdits) — this touches only the sidecar.
+ * `entryText` (the create()-owning file) feeds the idempotency guards so a
+ * re-sent gesture whose old copy lives in hand-written code still reads as
+ * a duplicate.
+ */
+export function planSyncRouteEdits(text: string, routes: RouteInput[], entryText?: string): RoutePlan {
+  const edits: PlannedEdit[] = [];
+  const skipped: string[] = [];
+  if (routes.length === 0) return { edits, applied: 0, skipped };
+  if (!isSyncFileText(text) || syncFunctionBodyRange(text) === null) {
+    return {
+      edits,
+      applied: 0,
+      skipped: routes.map((r) => `${r.from.ref}.${r.from.pin} (_sync.ts is not a typeCAD sync file)`),
+    };
+  }
+  const at = syncRouteInsertAt(text);
+  if (at === null) {
+    return { edits, applied: 0, skipped: routes.map((r) => `${r.from.ref}.${r.from.pin} (no syncBoard() body found)`) };
+  }
+  const { items, skipped: skips } = collectRouteDecls(text, routes, ...(entryText ? [entryText] : []));
+  skipped.push(...skips);
+  if (items.length === 0) return { edits, applied: 0, skipped };
+  for (const it of items) {
+    // every insert lands at the same anchor; the applier's edit merger
+    // concatenates same-offset inserts in planning order
+    edits.push({
+      start: at,
+      end: at,
+      line: `  ${it.note ? `${it.note}\n  ` : ''}${it.src}\n${syncPushStatement(it.name)}\n`,
+    });
+  }
+  return { edits, applied: items.length, skipped };
 }
 
 export interface RouteDeleteInput {
@@ -534,6 +674,124 @@ function parseRoutes(text: string): ParsedRoute[] {
   return out;
 }
 
+// --- push-dialect chains (the import's form) --------------------------------
+//
+// `track_VCC.push(typecad.track({ net: 'VCC' }).from({ x, y }, "F.Cu", w).to({ … }).to({ … }));`
+//
+// The board import writes routed copper as one-line pushes onto per-net
+// arrays; the layout view writes loose `const routeN = new TrackBuilder()`
+// chains (in hand-written files) or the sidecar dialect. Deletes must work
+// on both — a project whose copper is entirely import-written (rd_skeleton)
+// otherwise reports "no TrackBuilder routes in source" and strands every
+// deleted trace.
+
+/** One `array.push(typecad.track(…).from(…).to(…)…);` statement. */
+interface PushChain {
+  arrayName: string;
+  /** verbatim `typecad.track(...)` options argument, e.g. `{ net: 'VCC' }` */
+  opts: string;
+  points: ParsedPoint[];
+  /** verbatim trailing `.via({ … })` argument, when the chain ended in one */
+  viaArgs: string | null;
+  indent: string;
+  /** char range of the whole statement, [line start, through `;`] */
+  start: number;
+  end: number;
+}
+
+/** `.from({ x, y }, "layer", width)` mid-line (the loose FROM_RE is line-anchored). */
+const PUSH_FROM_RE = new RegExp(
+  String.raw`\.from\(\{\s*x\s*:\s*(-?[\d.]+)\s*,\s*y\s*:\s*(-?[\d.]+)\s*\}(?:\s*,\s*(['"])([^'"]*)\3)?(?:\s*,\s*(${WIDTH_TOK}))?\s*\)`,
+  'g',
+);
+/** `.to({ x, y, layer, width })` mid-line, object form (optionally positional tail). */
+const PUSH_TO_RE = new RegExp(
+  String.raw`\.to\(\{\s*x\s*:\s*(-?[\d.]+)\s*,\s*y\s*:\s*(-?[\d.]+)\s*(?:,\s*layer\s*:\s*(['"])([^'"]*)\3)?(?:,\s*width\s*:\s*(${WIDTH_TOK}))?\s*\}(?:\s*,\s*(['"])([^'"]*)\6)?(?:\s*,\s*(${WIDTH_TOK}))?\s*\)`,
+  'g',
+);
+
+function parsePushChains(text: string): PushChain[] {
+  const out: PushChain[] = [];
+  // unnamed-nets copper carries no options object at all (`typecad.track()`)
+  const HEAD = /([A-Za-z_$][\w$]*)\.push\(\s*typecad\.track\(\s*(\{[^}]*\})?/g;
+  let m: RegExpExecArray | null;
+  while ((m = HEAD.exec(text)) !== null) {
+    const arrayName = m[1]!;
+    const opts = m[2] ?? '';
+    const start = text.lastIndexOf('\n', m.index) + 1;
+    const indent = /^[ \t]*/.exec(text.slice(start, m.index))?.[0] ?? '';
+    // scan to the statement's terminating `;`, paren-balanced and
+    // quote-aware (net names may carry parens)
+    let depth = 2; // inside push( and track(
+    let quote: string | null = null;
+    let i = m.index + m[0].length;
+    for (; i < text.length; i++) {
+      const ch = text[i]!;
+      if (quote) {
+        if (ch === '\\') i++;
+        else if (ch === quote) quote = null;
+      } else if (ch === "'" || ch === '"') quote = ch;
+      else if (ch === '(') depth++;
+      else if (ch === ')') depth--;
+      else if (ch === ';' && depth <= 0) break;
+    }
+    const end = Math.min(i + 1, text.length);
+    const body = text.slice(m.index + m[0].length, end);
+
+    const points: ParsedPoint[] = [];
+    const links: Array<{ at: number; match: RegExpExecArray; from: boolean }> = [];
+    for (const [re, from] of [
+      [PUSH_FROM_RE, true],
+      [PUSH_TO_RE, false],
+    ] as Array<[RegExp, boolean]>) {
+      re.lastIndex = 0;
+      let lm: RegExpExecArray | null;
+      while ((lm = re.exec(body)) !== null) links.push({ at: lm.index, match: lm, from });
+    }
+    links.sort((a, b) => a.at - b.at);
+    for (const { match, from } of links) {
+      const p: ParsedPoint = { x: +match[1]!, y: +match[2]! };
+      if (from) {
+        if (match[4]) p.layer = match[4];
+        if (match[5]) p.width = match[5];
+      } else {
+        const layer = match[4] ?? match[7];
+        const width = match[5] ?? match[8];
+        if (layer) p.layer = layer;
+        if (width !== undefined && width !== '') p.width = width;
+      }
+      points.push(p);
+    }
+    // a trailing .via() rides the chain's last point
+    let viaArgs: string | null = null;
+    const afterLast = links.length > 0 ? body.slice(links[links.length - 1]!.at + links[links.length - 1]!.match[0].length) : body;
+    const via = /\.via\(\s*(\{[^}]*\})\s*\)/.exec(afterLast);
+    if (via) viaArgs = via[1]!;
+
+    out.push({ arrayName, opts, points, viaArgs, indent, start, end });
+  }
+  return out;
+}
+
+/** Re-emit one push statement covering the given point indexes (a surviving run). */
+function emitPushStatement(pc: PushChain, idxs: number[], viaArgs: string | null): string {
+  const pts = idxs.map((i) => pc.points[i]!);
+  const p0 = pts[0]!;
+  let s =
+    p0.layer !== undefined
+      ? `${pc.arrayName}.push(typecad.track(${pc.opts}).from({ x: ${fmt(p0.x)}, y: ${fmt(p0.y)} }, "${p0.layer}"${p0.width !== undefined ? `, ${p0.width}` : ''})`
+      : `${pc.arrayName}.push(typecad.track(${pc.opts}).from({ x: ${fmt(p0.x)}, y: ${fmt(p0.y)} })`;
+  for (let k = 1; k < pts.length; k++) {
+    const p = pts[k]!;
+    const fields = [`x: ${fmt(p.x)}`, `y: ${fmt(p.y)}`];
+    if (p.layer) fields.push(`layer: "${p.layer}"`);
+    if (p.width !== undefined) fields.push(`width: ${p.width}`);
+    s += `.to({ ${fields.join(', ')} })`;
+  }
+  if (viaArgs) s += `.via(${viaArgs})`;
+  return `${pc.indent}${s});`;
+}
+
 export interface RouteDeletePlan {
   edits: PlannedEdit[];
   applied: number;
@@ -560,8 +818,18 @@ export interface RouteDeletePlan {
  * deleted copper instead of a bridge. Fully emptied routes disappear along
  * with their create() argument. Surviving runs keep the route's options,
  * every via not adjacent to a cut, and each point's own layer.
+ *
+ * `opts.collectVar` switches to sidecar semantics: routes in a _sync.ts
+ * body reach the board through `<collect>.push(name)` lines, not create()
+ * arguments — split halves gain their own collect line, emptied routes take
+ * theirs along, and create() is left alone.
  */
-export function planRouteDeletes(text: string, deletes: RouteDeleteInput[]): RouteDeletePlan {
+export function planRouteDeletes(
+  text: string,
+  deletes: RouteDeleteInput[],
+  opts?: { collectVar?: string },
+): RouteDeletePlan {
+  const collectVar = opts?.collectVar;
   const edits: PlannedEdit[] = [];
   const skipped: string[] = [];
   const unhandledAdditions: Array<{ name: string; sibling: string }> = [];
@@ -569,6 +837,7 @@ export function planRouteDeletes(text: string, deletes: RouteDeleteInput[]): Rou
   if (deletes.length === 0) return { edits, applied: 0, skipped, unhandledAdditions, unhandledRemovals, unmatched: [] };
 
   const routes = parseRoutes(text);
+  const pushes = parsePushChains(text);
   // line-index -> char-offset mapping for block edits (create() edits are
   // computed in char offsets directly and stay untouched by this)
   const lineStarts: number[] = [];
@@ -579,7 +848,7 @@ export function planRouteDeletes(text: string, deletes: RouteDeleteInput[]): Rou
       acc += ln.length + 1;
     }
   }
-  if (routes.length === 0) {
+  if (routes.length === 0 && pushes.length === 0) {
     return {
       edits,
       applied: 0,
@@ -686,11 +955,19 @@ export function planRouteDeletes(text: string, deletes: RouteDeleteInput[]): Rou
     if (runs.length === 0) {
       // emptied: remove the declaration AND the blank line that follows
       // it — repeated rewrites would otherwise pile up empty lines where
-      // route blocks used to be
+      // route blocks used to be. In a sidecar the route's collect line sits
+      // between the chain and that blank — take it too, or it references a
+      // declaration that no longer exists
       let emptyEnd = blockEnd;
+      if (collectVar) {
+        const collectLine = new RegExp(`^[ \\t]*${collectVar}\\.push\\(\\s*${r.name}\\s*\\)\\s*;?[ \\t]*\\r?\\n?`).exec(
+          text.slice(emptyEnd),
+        );
+        if (collectLine) emptyEnd += collectLine[0].length;
+      }
       const after = text.slice(emptyEnd);
       const blankLine = /^\r?\n/.exec(after);
-      if (blankLine) emptyEnd += blankLine[0]!.length;
+      if (blankLine) emptyEnd += blankLine[0].length;
       edits.push({ start: blockStart, end: emptyEnd, line: '' });
       namesToRemove.push(r.name);
       continue;
@@ -704,17 +981,76 @@ export function planRouteDeletes(text: string, deletes: RouteDeleteInput[]): Rou
       while (text.includes(`const ${candidate} =`) || built.some((b) => b.includes(`const ${candidate} =`))) {
         candidate = `${base}${++bump}`;
       }
-      built.push(emitRun(candidate, runs[ri]!));
+      built.push(
+        emitRun(candidate, runs[ri]!) + (collectVar ? `\n${r.indent}${collectVar}.push(${candidate});` : ''),
+      );
       namesToAdd.push({ name: candidate, sibling: r.name });
     }
     edits.push({ start: blockStart, end: blockEnd, line: built.join('\n\n') + '\n' });
   }
 
+  // push-dialect chains (the import's one-line `arr.push(typecad.track(…))`
+  // statements): the same keep/run/split logic, re-emitted in their own
+  // dialect. The array stays in create() either way — a spread of an emptied
+  // array contributes nothing — so there is no create-args maintenance here.
+  const pushChainInfos: Array<{ points: ParsedPoint[]; net: string | null; keep: boolean[] }> = [];
+  for (const pc of pushes) {
+    const net = /net:\s*'([^']*)'/.exec(pc.opts)?.[1] ?? null;
+    const keep: boolean[] = [];
+    for (let i = 0; i + 1 < pc.points.length; i++) {
+      const hit = deletes.findIndex((d) => {
+        if (d.kind === 'via') {
+          // same semantics as loose chains: a via-delete truncates the chain
+          // at the via point; a tail via takes the segment leading into it
+          const via = { x: d.x1, y: d.y1 };
+          if (ptEq(via, pc.points[i]!)) return true;
+          if (i + 1 === pc.points.length - 1 && ptEq(via, pc.points[i + 1]!)) return true;
+          return false;
+        }
+        return segMatch(d, pc.points[i]!, pc.points[i + 1]!);
+      });
+      keep.push(hit === -1);
+      if (hit !== -1) matched.add(hit);
+    }
+    pushChainInfos.push({ points: pc.points, net, keep });
+    if (keep.every((k) => k)) continue; // untouched
+
+    const runs: number[][] = [];
+    let cur: number[] = [];
+    for (let i = 0; i < keep.length; i++) {
+      if (keep[i]) {
+        if (cur.length === 0) cur.push(i);
+        cur.push(i + 1);
+      } else if (cur.length) {
+        runs.push(cur);
+        cur = [];
+      }
+    }
+    if (cur.length) runs.push(cur);
+
+    if (runs.length === 0) {
+      // emptied: the statement goes, and the line break with it
+      let rmEnd = pc.end;
+      const nl = /^\r?\n/.exec(text.slice(rmEnd));
+      if (nl) rmEnd += nl[0].length;
+      edits.push({ start: pc.start, end: rmEnd, line: '' });
+      continue;
+    }
+    // the chain's trailing via survives only on the statement that still
+    // ends at the chain's final point
+    const lastRun = runs[runs.length - 1]!;
+    const viaArgs = lastRun[lastRun.length - 1] === pc.points.length - 1 ? pc.viaArgs : null;
+    const stmts = runs.map((r, ri) => emitPushStatement(pc, r, ri === runs.length - 1 ? viaArgs : null));
+    edits.push({ start: pc.start, end: pc.end, line: stmts.join('\n') });
+  }
+
   // ONE combined create() rewrite: additions splice in with a comment-aware
   // separator, then removals drop their names — never two edits over the
-  // same range. Without a create() call in THIS text (route blocks live in
-  // a dedicated module), the names surface as unhandled for the caller.
-  if (namesToAdd.length > 0 || namesToRemove.length > 0) {
+  // same range. Without a create() call in THIS text (route blocks live in a
+  // dedicated module), the names surface as unhandled for the caller. A
+  // sidecar needs none of this: its splits carry their own collect line and
+  // its emptied routes died with theirs.
+  if ((namesToAdd.length > 0 || namesToRemove.length > 0) && !collectVar) {
     const argsEdit = call
       ? planCreateArgsEdit(
           text,
@@ -733,15 +1069,18 @@ export function planRouteDeletes(text: string, deletes: RouteDeleteInput[]): Rou
   // duplicate absorption: a delete whose geometry matches copper another
   // delete already removed describes the same removal twice — the page's
   // via-delete at a segment endpoint claims the source segment, leaving
-  // the segment delete itself apparently unmatched
+  // the segment delete itself apparently unmatched. Both dialects feed it.
+  const chainsForGuards: Array<{ points: ParsedPoint[]; net: string | null; keep: boolean[] }> = [
+    ...keptByRoute.map(({ route, keep }) => ({ points: route.points, net: routeNet(route), keep })),
+    ...pushChainInfos,
+  ];
   deletes.forEach((d, i) => {
     if (matched.has(i) || d.kind === 'via') return;
-    for (const { route, keep } of keptByRoute) {
-      const rn = routeNet(route);
-      if (rn && d.net && rn !== d.net) continue;
-      for (let s = 0; s + 1 < route.points.length; s++) {
+    for (const { points, net, keep } of chainsForGuards) {
+      if (net && d.net && net !== d.net) continue;
+      for (let s = 0; s + 1 < points.length; s++) {
         if (keep[s]) continue;
-        if (segMatch(d, route.points[s]!, route.points[s + 1]!)) {
+        if (segMatch(d, points[s]!, points[s + 1]!)) {
           matched.add(i);
           return;
         }
@@ -763,13 +1102,16 @@ export function planRouteDeletes(text: string, deletes: RouteDeleteInput[]): Rou
     const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / len2));
     return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
   };
-  const allRoutePts = routes.flatMap((r) =>
-    r.points.map((p) => ({ x: p.x, y: p.y, net: routeNet(r) })),
+  const nearChains: Array<{ points: ParsedPoint[]; net: string | null }> = [
+    ...routes.map((r) => ({ points: r.points, net: routeNet(r) })),
+    ...pushChainInfos.map(({ points, net }) => ({ points, net })),
+  ];
+  const allRoutePts = nearChains.flatMap((r) =>
+    r.points.map((p) => ({ x: p.x, y: p.y, net: r.net })),
   );
   const nearSource = (d: RouteDeleteInput): boolean => {
-    for (const r of routes) {
-      const rn = routeNet(r);
-      if (rn && d.net && rn !== d.net) continue;
+    for (const r of nearChains) {
+      if (r.net && d.net && r.net !== d.net) continue;
       for (let s = 1; s < r.points.length; s++) {
         const a = r.points[s - 1]!;
         const b = r.points[s]!;

@@ -148,6 +148,7 @@ npx kicad2typecad build/board.kicad_pcb --apply`,
     notes: [
       '--apply interactively syncs KiCad changes back to your TypeScript source files',
       'Component positions (x, y, rotation, side) are always synced',
+      'Components deleted in KiCad are removed from source (declaration, create() args, net pins) — interactive imports ask per part',
       'Text layouts (referenceLayout, valueLayout, fabLayout) are imported and updated by default',
       'Display mode (without --apply) shows all layout code for reference',
     ],

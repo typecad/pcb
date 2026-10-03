@@ -7,8 +7,10 @@ import {
   buildDirPath,
   detectEntryFile,
   findBoardFile,
+  boardStemFromArgs,
   findBuildFiles,
   findSchematicFile,
+  knownBoardsHint,
   runBuildStep,
   runDrcStep,
   runErcStep,
@@ -95,8 +97,12 @@ export async function run(parsed: ParsedArgs): Promise<void> {
   }
 
   // ── Step 2: unconnected analysis (needs built pcb) ───────────────────────
-  const pcbPath = findBoardFile();
-  const schPath = findSchematicFile();
+  const stem = boardStemFromArgs(parsed);
+  const pcbPath = findBoardFile(stem);
+  if (!pcbPath && stem) {
+    logger.warn(chalk.yellow(`No board '${stem}' in build/ — ${knownBoardsHint()}`));
+  }
+  const schPath = pcbPath ? pcbPath.slice(0, -'.kicad_pcb'.length) + '.kicad_sch' : findSchematicFile();
 
   if (report.build.passed && pcbPath) {
     const model = buildBoardModel(pcbPath);

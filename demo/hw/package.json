@@ -11,7 +11,7 @@
     "open_board": "npx open-cli ./build/autoroute_test.kicad_pcb",
     "docs": "typecad-pcb doc ./docs/dev.md ./build/pro_mini.kicad_pcb",
     "search": "typecad-pcb search",
-    "import": "typecad-pcb import ./build/pro_mini.kicad_pcb --apply",
+    "kicad_sync": "typecad-pcb import ./build/pro_mini.kicad_pcb --watch --auto",
     "git_diff": "git difftool -y --extcmd \"typecad-gitdiff\" ./build/pro_mini.kicad_pcb",
     "build:plugin": "cd typescript-plugin && npm install && npm run build && npm link && cd .. && npm link typecad-language-plugin",
     "watch:plugin": "cd typescript-plugin && npm run watch"

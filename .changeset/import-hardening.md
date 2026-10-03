@@ -91,3 +91,10 @@ failed verification rolls your sources back untouched.
   `silk_over_mask` renamed to KiCad's `silk_over_copper`; and mask-bridge
   identity keys on `ref:padNumber` so a pad never bridges its own
   duplicated parts while genuinely no-net items still bridge.
+
+- **`kicad_sync` is the round-trip's front door** — new projects get
+  `npm run kicad_sync` (import `--watch --auto`) instead of the old
+  one-shot `import --apply` script, and the VS Code extension gains
+  **typeCAD/pcb: Start KiCAD Sync**, which runs it in a dedicated
+  reused terminal. A news article on the typecad.dev site covers the
+  import overhaul end to end.

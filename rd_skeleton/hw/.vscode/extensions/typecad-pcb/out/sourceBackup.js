@@ -131,7 +131,7 @@ function writeBackup(folder, files, reason, board) {
         used.add(snapshot);
         try {
             fs.writeFileSync(path.join(dir, snapshot), f.text, 'utf8');
-            manifest.files.push({ source: parsedUri, snapshot });
+            manifest.files.push({ source: parsedUri, snapshot, ...(f.created ? { created: true } : {}) });
         }
         catch {
             // a file that fails to snapshot still applies — it just won't restore
@@ -163,6 +163,8 @@ function prune(folder) {
 /**
  * Read a snapshot's file contents (snapshot name -> pre-apply text). Throws
  * only on an unknown id; missing snapshot files are skipped in the result.
+ * Entries carry `created` for files the apply created — restoring deletes
+ * those instead of writing empty text.
  */
 function readBackup(folder, id) {
     const dir = path.join(folder, BACKUP_ROOT, id);
@@ -172,7 +174,11 @@ function readBackup(folder, id) {
     const out = [];
     for (const f of manifest.files) {
         try {
-            out.push({ source: f.source, text: fs.readFileSync(path.join(dir, f.snapshot), 'utf8') });
+            out.push({
+                source: f.source,
+                text: fs.readFileSync(path.join(dir, f.snapshot), 'utf8'),
+                ...(f.created ? { created: true } : {}),
+            });
         }
         catch {
             // skipped — a partial restore still beats a corrupted file

@@ -548,11 +548,22 @@ export function serializeAndWriteBoard(pcb: PCB, boardContents: SExpr[], default
     // viewer, `query`) reads it instead of guessing by package-name/mtime —
     // a renamed board is found immediately and a same-named leftover from
     // the previous name can never shadow it. Informational only.
+    // Multi-board projects (mother/daughter, board/jig) call create() once
+    // per PCB: the manifest MERGES, so `boards` accumulates every board this
+    // project produces and `board` stays the most recent one (the active
+    // default). A single-board project reads exactly as before.
     try {
-      fs.writeFileSync(
-        `${getBuildDir()}/.typecad-board.json`,
-        JSON.stringify({ board: `${pcb.boardName}.kicad_pcb` }),
-      );
+      const manifestPath = `${getBuildDir()}/.typecad-board.json`;
+      let boards: string[] = [];
+      try {
+        const prev = JSON.parse(fs.readFileSync(manifestPath, 'utf8')) as { boards?: unknown };
+        if (Array.isArray(prev.boards)) boards = prev.boards.filter((b): b is string => typeof b === 'string');
+      } catch {
+        /* fresh or unreadable manifest */
+      }
+      const mine = `${pcb.boardName}.kicad_pcb`;
+      boards = [...boards.filter((b) => b !== mine), mine];
+      fs.writeFileSync(manifestPath, JSON.stringify({ board: mine, boards }));
     } catch {
       /* the manifest is an optimization — its absence just falls back to heuristics */
     }

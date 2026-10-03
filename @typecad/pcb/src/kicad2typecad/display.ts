@@ -12,6 +12,7 @@ import type {
   KicadZoneIR,
   TextLayoutIR,
 } from './types.js';
+import { SYNC_TRACKS_NAME, syncFmt } from './sync_file.js';
 
 /** Helper for colored console output */
 export interface ChalkHelpers {
@@ -93,7 +94,23 @@ export function buildTrackChains(ir: KicadIR): TrackNetGroup[] {
   const isUnnamedName = (name: string): boolean => !name;
 
   const segmentsByNet = new Map<string, KicadSegmentIR[]>();
-  ir.segments.forEach((segment) => {
+  // Collapse exact duplicates first: a board that carried the same copper at
+  // two widths (two source files each contributing a copy — the two-truths
+  // drift the routing-owner consolidation fixes at the source) must not
+  // regenerate BOTH into the surviving file. Keep-first is deterministic.
+  const seenExact = new Set<string>();
+  // coordinates are quantized to 1 nm in the key: float noise (0.2 vs
+  // 0.20000000000000004 from a reserialized board) must not defeat the
+  // collapse
+  const q = (n: number): string => n.toFixed(6);
+  const dedupedSegments = ir.segments.filter((segment) => {
+    const name = netNameOf(segment);
+    const exactKey = `${isUnnamedName(name) ? `unnamed:${segment.net ?? 0}` : name}|${segment.layer}|${q(segment.start.x)},${q(segment.start.y)}|${q(segment.end.x)},${q(segment.end.y)}`;
+    if (seenExact.has(exactKey)) return false;
+    seenExact.add(exactKey);
+    return true;
+  });
+  dedupedSegments.forEach((segment) => {
     const name = netNameOf(segment);
     const key = isUnnamedName(name) ? `unnamed:${segment.net ?? 0}` : name;
     if (!segmentsByNet.has(key)) segmentsByNet.set(key, []);
@@ -170,6 +187,12 @@ export function standaloneVias(ir: KicadIR, groups?: TrackNetGroup[]): KicadViaI
   return ir.vias.filter((_, i) => !used.has(i));
 }
 
+/** Escape a value for a single-quoted TypeScript string literal (net names
+ *  may carry quotes/backslashes — the emitted source must still parse). */
+function escapeSingleQuoted(value: string): string {
+  return value.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+}
+
 /** Render one `X.push(typecad.track(...).from(...)...);` statement. */
 export function pushStatementSource(
   variableName: string,
@@ -178,7 +201,7 @@ export function pushStatementSource(
   ch: ChalkHelpers,
 ): string {
   const { chKey, chProp, chStr, chNum, chPunc, chVar } = ch;
-  const optionsLog = netName === undefined ? '' : `{ ${chProp('net')}${chPunc(':')} ${chStr(`'${netName}'`)} }`;
+  const optionsLog = netName === undefined ? '' : `{ ${chProp('net')}${chPunc(':')} ${chStr(`'${escapeSingleQuoted(netName)}'`)} }`;
   let log = `${chVar(variableName)}${chPunc('.')}${chKey('push')}${chPunc('(')}${chVar('typecad')}${chPunc('.')}${chKey('track')}${chPunc('(')}${optionsLog}${chPunc(')')}${chKey('.from')}${chPunc('(')}{ ${chProp('x')}${chPunc(':')} ${chNum(chain.start.x)}${chPunc(',')} ${chProp('y')}${chPunc(':')} ${chNum(chain.start.y)} }${chPunc(',')} ${chStr('"' + chain.layer + '"')}${chPunc(',')} ${chNum(chain.width)}${chPunc(')')}`;
   for (const step of chain.steps) {
     log += `${chKey('.to')}${chPunc('(')}{ ${chProp('x')}${chPunc(':')} ${chNum(step.x)}${chPunc(',')} ${chProp('y')}${chPunc(':')} ${chNum(step.y)}${chPunc(',')} ${chProp('layer')}${chPunc(':')} ${chStr('"' + step.layer + '"')}${chPunc(',')} ${chProp('width')}${chPunc(':')} ${chNum(step.width)} }${chPunc(')')}`;
@@ -227,6 +250,50 @@ export function trackBlockSource(ir: KicadIR, ch: ChalkHelpers = PLAIN_CH): { bl
   vias.forEach((via) => lines.push(standaloneViaSource(via, ch, netMap)));
 
   return { block: lines.join('\n'), variables };
+}
+
+/**
+ * The routing section for the _sync.ts sidecar (${SYNC_FILE_NAME}): the same
+ * per-net grouping as trackBlockSource, but in the loose `const routeN = new
+ * TrackBuilder(typecad, {…}).from(…).to(…)` dialect the sidecar — and the
+ * layout view's own planners — speak. Each route ends with a
+ * `syncTracks.push(routeN);` collect line so it reaches the board through
+ * the entry file's `...${SYNC_TRACKS_NAME}` spread; standalone vias keep the
+ * plain `typecad.via()` form, which runs verbatim inside syncBoard().
+ */
+export function syncRouteBlockSource(ir: KicadIR): string {
+  const groups = buildTrackChains(ir);
+  attachChainVias(ir, groups);
+  const lines: string[] = [];
+  let n = 0;
+  groups.forEach((group) => {
+    lines.push(
+      group.isUnnamed ? `  // Unnamed nets (net${group.netNumber ?? ''})` : `  // Net: ${group.netName}`,
+    );
+    group.chains.forEach((chain) => {
+      const name = `route${++n}`;
+      const opts = group.isUnnamed ? '{  }' : `{ net: '${escapeSingleQuoted(group.netName)}',  }`;
+      lines.push(`  const ${name} = new TrackBuilder(typecad, ${opts})`);
+      lines.push(`  .from({ x: ${syncFmt(chain.start.x)}, y: ${syncFmt(chain.start.y)} }, '${chain.layer}', ${syncFmt(chain.width)})`);
+      for (const step of chain.steps) {
+        lines.push(`  .to({ x: ${syncFmt(step.x)}, y: ${syncFmt(step.y)}, layer: '${step.layer}', width: ${syncFmt(step.width)} })`);
+      }
+      if (chain.via) {
+        lines.push(`  .via({ size: ${syncFmt(chain.via.size)}, drill: ${syncFmt(chain.via.drill)} });`);
+      } else {
+        lines[lines.length - 1] += ';';
+      }
+      lines.push(`  ${SYNC_TRACKS_NAME}.push(${name});`);
+      lines.push('');
+    });
+  });
+  const vias = standaloneVias(ir, groups);
+  if (vias.length > 0 && lines.length > 0) lines.push('');
+  const netMap = new Map<number, string>();
+  ir.nets.forEach((net) => netMap.set(net.number, net.name));
+  vias.forEach((via) => lines.push(`  ${standaloneViaSource(via, PLAIN_CH, netMap)}`));
+  while (lines.length > 0 && lines[lines.length - 1] === '') lines.pop();
+  return lines.join('\n');
 }
 
 /** Net name of a via, resolving a net-table code through the board's net list. */
@@ -855,7 +922,7 @@ export function generateStackupCode(ir: KicadIR, sourceDescription: string, ch: 
  */
 /** Inner options of a zone/keepout call (no braces) — shared by display and --apply. */
 export function zonePropsSource(zone: KicadZoneIR, ch: ChalkHelpers): string {
-  const { chKey, chStr, chProp, chNum, chPunc, chVar } = ch;
+  const { chStr, chProp, chNum, chPunc, chVar } = ch;
   const props: string[] = [];
 
   if (zone.keepout) {

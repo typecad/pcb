@@ -5,7 +5,7 @@ import { loadConfig } from '../../../config.js';
 import type { ParsedArgs } from '../parser.js';
 import logger from '../../../utils/logging.js';
 import { npxExec } from '../../../utils/process_exec.js';
-import { buildDirPath } from '../pipeline.js';
+import { boardStemFromArgs, buildDirPath } from '../pipeline.js';
 import { collectLocalDependencies, startWatchLoop } from '../watch.js';
 
 function detectEntryFile(): string | null {
@@ -85,6 +85,57 @@ export async function run(parsed: ParsedArgs): Promise<void> {
 
   if (!fs.existsSync(entry)) {
     throw new Error(`Entry file not found: ${entry}`);
+  }
+
+  // Multi-board projects: typecad.conf.ts declares `boards: { stem: entry }`
+  // and one build runs EVERY entry (or just --board <stem>), each writing
+  // its own build/<stem>.kicad_pcb. An explicit positional entry keeps the
+  // single-board behavior.
+  const configBoards = loadConfig().boards;
+  const stem = boardStemFromArgs(parsed);
+  if (!parsed.positional[0] && configBoards && Object.keys(configBoards).length > 0) {
+    const selected = stem
+      ? Object.entries(configBoards).filter(([name]) => name === stem)
+      : Object.entries(configBoards);
+    if (selected.length === 0) {
+      throw new Error(`No board '${stem}' in typecad.conf.ts boards — known boards: ${Object.keys(configBoards).join(', ')}`);
+    }
+    const entries = selected.map(([, e]) => e);
+    for (const e of entries) {
+      if (!fs.existsSync(e)) throw new Error(`Entry file not found: ${e}`);
+    }
+    const buildAll = async (): Promise<void> => {
+      for (const [name, e] of selected) {
+        if (selected.length > 1) logger.log(chalk.cyan(`  board: ${name} (${e})`));
+        await buildOnce(e, parsed);
+      }
+    };
+    if (watch) {
+      try {
+        await buildAll();
+      } catch (error) {
+        logger.log(chalk.red(`  ${error instanceof Error ? error.message : String(error)}`));
+      }
+      const deps = [...new Set(entries.flatMap((e) => collectLocalDependencies(e)))];
+      const outDir = buildDirPath();
+      logger.log('');
+      logger.log(
+        chalk.cyan(
+          `  watching ${deps.length} file${deps.length === 1 ? '' : 's'} for changes (output: ${outDir}) — Ctrl+C to exit`,
+        ),
+      );
+      startWatchLoop(entries, (changed) => {
+        const rel = path.relative(process.cwd(), changed) || path.basename(changed);
+        logger.log('');
+        logger.log(chalk.cyan(`  change: ${rel} — rebuilding`));
+        void buildAll().catch((error) => {
+          logger.log(chalk.red(`  ${error instanceof Error ? error.message : String(error)}`));
+        });
+      });
+    } else {
+      await buildAll();
+    }
+    return;
   }
 
   if (watch) {

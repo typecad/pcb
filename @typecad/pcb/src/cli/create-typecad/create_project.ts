@@ -329,8 +329,8 @@ ${skillSections}
     package_json.scripts['add_component'] = `typecad-pcb add component`;
     package_json.scripts['add_package'] = `typecad-pcb add package`;
     package_json.scripts['kicad-search'] = `typecad-pcb search`;
-    package_json.scripts['import'] =
-      `typecad-pcb import ${path.join('.', 'build', `${answers.name}.kicad_pcb`)} --apply`;
+    package_json.scripts['kicad_sync'] =
+      `typecad-pcb import ./build/${answers.name}.kicad_pcb --watch --auto`;
     package_json.scripts['open_board'] = `npx open-cli ./build/${answers.name}.kicad_pcb`;
     package_json.scripts['diff'] = `typecad-pcb diff HEAD ./build/${answers.name}.kicad_pcb`;
 

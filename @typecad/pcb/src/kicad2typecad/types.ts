@@ -9,7 +9,7 @@ import type { Replacement } from './source_analyzer.js';
  * them descending so they can all go through one pass.
  */
 export interface PendingSourceChange {
-  kind: 'outline' | 'zone' | 'keepout' | 'via' | 'tracks' | 'text' | 'graphics' | 'stackup';
+  kind: 'outline' | 'zone' | 'keepout' | 'via' | 'tracks' | 'text' | 'graphics' | 'stackup' | 'component';
   filePath: string;
   label: string;
   changedProps: string[];
@@ -284,6 +284,10 @@ export interface PendingChange {
   newRotation: number;
   newSide: 'front' | 'back';
   label: string;
+  /** file holding the `x.pcb = {…}` assignment this change updates — the
+   *  CONSTRUCTOR file when unset (inline prop / insert), the _sync.ts
+   *  sidecar (`parts.x.pcb`) when the layout view put the override there */
+  assignmentFilePath?: string;
 }
 
 export interface PendingTextChange {
@@ -328,6 +332,9 @@ export interface PendingLayoutChange {
   newLayout: TextLayoutIR;
   label: string;
   changedProps: string[];
+  /** file holding the standalone layout assignment this change updates
+   *  (the sidecar's `parts.x.<layoutType>`) — the constructor file when unset */
+  assignmentFilePath?: string;
 }
 
 // === Matching Types ===

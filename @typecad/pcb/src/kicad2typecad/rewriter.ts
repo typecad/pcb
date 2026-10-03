@@ -1,13 +1,8 @@
 import fs from 'node:fs';
-import {
-  analyzeFile,
-  applyReplacements,
-  findPcbAssignmentByVariable,
-  findTextCalls,
-  findLayoutAssignments,
-  getMemberPrefix,
-} from './source_analyzer.js';
-import type { Replacement, LayoutAssignmentInfo } from './source_analyzer.js';
+import path from 'node:path';
+import { analyzeFile, applyReplacements, findTextCalls, getMemberPrefix } from './source_analyzer.js';
+import type { Replacement, LayoutAssignmentInfo, PcbAssignmentInfo, SourceAnalysis } from './source_analyzer.js';
+import { isSyncFileName } from './sync_file.js';
 import type {
   KicadIR,
   KicadTextIR,
@@ -18,9 +13,54 @@ import type {
   TextLayoutIR,
 } from './types.js';
 
+/** The note for a pending change that produced no replacement — surfaced
+ *  instead of silently counting it as applied. */
+function dropNote(label: string, filePath: string): string {
+  const shortFile = filePath.replace(/\\/g, '/').split('/').slice(-2).join('/');
+  return `${label} — no matching statement found in ${shortFile}; the source may have drifted since the change was computed`;
+}
+
+/** The files whose assignments may override a constructor's own options, in
+ *  search order: the _sync.ts sidecar(s) first (they also win at runtime —
+ *  `parts.x.pcb` parses as a plain pcb assignment of x, so updating a stale
+ *  constructor literal beside it would fight the sidecar), then the
+ *  constructor's own file. NOTHING else: variables are file-scoped, and a
+ *  same-named variable in another module is a different component, not an
+ *  override — matching it rewrote that file's component by mistake. */
+function overrideAssignmentScope(sourceFiles: string[]) {
+  const syncs = sourceFiles.filter((f) => isSyncFileName(path.basename(f)));
+  const analyses = new Map<string, SourceAnalysis | null>();
+  return {
+    analysisOf(f: string): SourceAnalysis | null {
+      if (!analyses.has(f)) analyses.set(f, analyzeFile(f));
+      return analyses.get(f)!;
+    },
+    searchOrder(constructorFile: string): string[] {
+      return syncs.includes(constructorFile) ? [...syncs] : [...syncs, constructorFile];
+    },
+  };
+}
+
 export class SourceRewriter {
-  computeFootprintChanges(matchResults: MatchResult[]): PendingChange[] {
+  computeFootprintChanges(matchResults: MatchResult[], sourceFiles: string[] = []): PendingChange[] {
     const changes: PendingChange[] = [];
+
+    // Assignments are searched sidecar-first over the constructor's own file
+    // (see overrideAssignmentScope for why nothing wider is searched).
+    const scope = overrideAssignmentScope(sourceFiles);
+    const findPcbAssignment = (
+      variable: string,
+      isThis: boolean,
+      constructorFile: string,
+    ): { filePath: string; assignment: PcbAssignmentInfo } | null => {
+      for (const f of scope.searchOrder(constructorFile)) {
+        const a = scope.analysisOf(f);
+        if (!a) continue;
+        const hit = a.pcbAssignments.find((p) => p.variableName === variable && p.isThis === isThis);
+        if (hit) return { filePath: f, assignment: hit };
+      }
+      return null;
+    };
 
     const byFile: Record<string, MatchResult[]> = {};
     for (const mr of matchResults) {
@@ -49,12 +89,13 @@ export class SourceRewriter {
         let oldY: number | null = null;
         let oldRotation: number | null = null;
         let oldSide: 'front' | 'back' | null = null;
+        let assignmentFilePath: string | undefined;
 
-        const pcbAssignment = analysis.pcbAssignments.find(
-          (p) => p.variableName === variable && p.isThis === loc.isThis,
-        );
+        const cross = findPcbAssignment(variable, loc.isThis, filePath);
+        const pcbAssignment = cross?.assignment;
 
         if (pcbAssignment) {
+          assignmentFilePath = cross!.filePath;
           oldX = (pcbAssignment.props['x']?.value as number) ?? null;
           oldY = (pcbAssignment.props['y']?.value as number) ?? null;
           oldRotation = (pcbAssignment.props['rotation']?.value as number) ?? null;
@@ -72,9 +113,9 @@ export class SourceRewriter {
         const effectiveOldSide = oldSide || 'front';
         const hasSourceCoords = oldX !== null || oldY !== null;
         // A class-field component with no pcb assignment and no inline prop
-        // has no legal insertion point for `this.x.pcb = ...` (inside the
-        // class body) — skip so the pending list converges; existing
-        // assignments and inline props still update.
+        // has no legal insertion point for an inserted `this.x.pcb = ...`
+        // statement (inside the class body); skip so the pending list
+        // converges; existing assignments and inline props still update.
         if (!pcbAssignment && !component.inlinePcb && component.isClassField) continue;
         // An unset rotation prop means 0, and KiCad normalizes angles into
         // [0, 360) while sources can say -90 — compare modulo 360.
@@ -92,7 +133,7 @@ export class SourceRewriter {
 
         if (!coordsChanged) continue;
 
-        const shortFile = filePath.replace(/\\/g, '/').split('/').slice(-2).join('/');
+        const shortFile = (assignmentFilePath ?? filePath).replace(/\\/g, '/').split('/').slice(-2).join('/');
         const labelParts: string[] = [`${prefix}${variable}`, `${shortFile}:${component.line}`];
         const oldStr = hasSourceCoords ? `(${oldX}, ${oldY})` : '(not set)';
         const sideInfo = effectiveOldSide !== newSide ? ` [${effectiveOldSide} → ${newSide}]` : '';
@@ -111,6 +152,7 @@ export class SourceRewriter {
           newRotation: fp.position.rotation,
           newSide,
           label: labelParts.join('  '),
+          ...(assignmentFilePath && assignmentFilePath !== filePath ? { assignmentFilePath } : {}),
         });
       }
     }
@@ -118,9 +160,31 @@ export class SourceRewriter {
     return changes;
   }
 
-  computeLayoutChanges(matchResults: MatchResult[]): PendingLayoutChange[] {
+  computeLayoutChanges(matchResults: MatchResult[], sourceFiles: string[] = []): PendingLayoutChange[] {
     const changes: PendingLayoutChange[] = [];
     const layoutTypes = ['referenceLayout', 'valueLayout', 'fabLayout'] as const;
+
+    // layout assignments are searched sidecar-first over the constructor's
+    // own file (see overrideAssignmentScope) — the sidecar's
+    // `parts.x.referenceLayout` overrides the constructor option at runtime,
+    // so that is the literal the import must converge
+    const scope = overrideAssignmentScope(sourceFiles);
+    const findLayoutAssignment = (
+      variable: string,
+      isThis: boolean,
+      layoutType: string,
+      constructorFile: string,
+    ): { filePath: string; assignment: LayoutAssignmentInfo } | null => {
+      for (const f of scope.searchOrder(constructorFile)) {
+        const a = scope.analysisOf(f);
+        if (!a) continue;
+        const hit = a.layoutAssignments.find(
+          (la) => la.variableName === variable && la.isThis === isThis && la.propertyName === layoutType,
+        );
+        if (hit) return { filePath: f, assignment: hit };
+      }
+      return null;
+    };
 
     const byFile: Record<string, MatchResult[]> = {};
     for (const mr of matchResults) {
@@ -149,13 +213,19 @@ export class SourceRewriter {
           const irLayout: TextLayoutIR | undefined = fp[layoutType];
           if (!irLayout) continue;
 
-          const sourceLayout = this.getSourceLayout(
-            analysis.layoutAssignments,
-            component,
-            variable,
-            loc.isThis,
-            layoutType,
-          );
+          const cross = findLayoutAssignment(variable, loc.isThis, layoutType, filePath);
+          let sourceLayout: TextLayoutIR | null = null;
+          if (cross) {
+            sourceLayout = propsToLayoutIR(cross.assignment.props);
+          } else {
+            sourceLayout = this.getSourceLayout(
+              analysis.layoutAssignments,
+              component,
+              variable,
+              loc.isThis,
+              layoutType,
+            );
+          }
 
           // A class-field component without an existing layout assignment has
           // no legal insertion point (the statement would land inside the
@@ -181,34 +251,13 @@ export class SourceRewriter {
             newLayout: irLayout,
             label: labelParts.join('  '),
             changedProps: diff,
+            ...(cross && cross.filePath !== filePath ? { assignmentFilePath: cross.filePath } : {}),
           });
         }
       }
     }
 
     return changes;
-  }
-
-  private getSourceLayout(
-    layoutAssignments: LayoutAssignmentInfo[],
-    component: { properties: Record<string, import('./source_analyzer.js').PropertyValue>; inlinePcb?: unknown },
-    variableName: string,
-    isThis: boolean,
-    layoutType: string,
-  ): TextLayoutIR | null {
-    const assignment = layoutAssignments.find(
-      (la) => la.variableName === variableName && la.isThis === isThis && la.propertyName === layoutType,
-    );
-    if (assignment) {
-      return propsToLayoutIR(assignment.props);
-    }
-
-    const inlineProp = component.properties[layoutType];
-    if (inlineProp && inlineProp.value && typeof inlineProp.value === 'object') {
-      return propsToLayoutIR(inlineProp.value as Record<string, import('./source_analyzer.js').PropertyValue>);
-    }
-
-    return null;
   }
 
   private computeLayoutDiff(oldLayout: TextLayoutIR | null, newLayout: TextLayoutIR): string[] {
@@ -240,27 +289,55 @@ export class SourceRewriter {
     return changed;
   }
 
-  applyLayoutChanges(changes: PendingLayoutChange[]): { filesModified: number; changesApplied: number } {
-    const selectedByFile: Record<string, PendingLayoutChange[]> = {};
+  private getSourceLayout(
+    layoutAssignments: LayoutAssignmentInfo[],
+    component: { properties: Record<string, import('./source_analyzer.js').PropertyValue>; inlinePcb?: unknown },
+    variableName: string,
+    isThis: boolean,
+    layoutType: string,
+  ): TextLayoutIR | null {
+    const assignment = layoutAssignments.find(
+      (la) => la.variableName === variableName && la.isThis === isThis && la.propertyName === layoutType,
+    );
+    if (assignment) {
+      return propsToLayoutIR(assignment.props);
+    }
+
+    const inlineProp = component.properties[layoutType];
+    if (inlineProp && inlineProp.value && typeof inlineProp.value === 'object') {
+      return propsToLayoutIR(inlineProp.value as Record<string, import('./source_analyzer.js').PropertyValue>);
+    }
+
+    return null;
+  }
+
+  applyLayoutChanges(changes: PendingLayoutChange[]): { filesModified: number; changesApplied: number; dropped: string[] } {
+    // like footprint updates: a cross-file assignment (the sidecar's
+    // `parts.x.<layoutType>`) is patched where it lives
+    const byTarget: Record<string, PendingLayoutChange[]> = {};
     for (const c of changes) {
-      if (!selectedByFile[c.filePath]) selectedByFile[c.filePath] = [];
-      selectedByFile[c.filePath].push(c);
+      const target = c.assignmentFilePath ?? c.filePath;
+      if (!byTarget[target]) byTarget[target] = [];
+      byTarget[target].push(c);
     }
 
     let filesModified = 0;
+    let applied = 0;
+    const dropped: string[] = [];
+    const layoutDropNote = (change: PendingLayoutChange): string =>
+      dropNote(`${change.prefix}${change.variableName}.${change.layoutType}`, change.assignmentFilePath ?? change.filePath);
 
-    for (const [filePath, fileChanges] of Object.entries(selectedByFile)) {
+    for (const [filePath, fileChanges] of Object.entries(byTarget)) {
       const analysis = analyzeFile(filePath);
-      if (!analysis) continue;
+      if (!analysis) {
+        for (const change of fileChanges) dropped.push(layoutDropNote(change));
+        continue;
+      }
 
       const replacements: Replacement[] = [];
 
       for (const change of fileChanges) {
-        const component = analysis.components.find(
-          (c) => c.variableName === change.variableName && c.isThis === change.prefix.startsWith('this.'),
-        );
-        if (!component) continue;
-
+        const before = replacements.length;
         const assignment = analysis.layoutAssignments.find(
           (la) =>
             la.variableName === change.variableName &&
@@ -268,39 +345,50 @@ export class SourceRewriter {
             la.propertyName === change.layoutType,
         );
 
-        if (assignment) {
-          applyLayoutPropsToReplacements(replacements, assignment.objectRange, assignment.props, change.newLayout);
+        if (change.assignmentFilePath) {
+          if (assignment) {
+            applyLayoutPropsToReplacements(replacements, assignment.objectRange, assignment.props, change.newLayout);
+          }
         } else {
-          const inlineProp = component.properties[change.layoutType];
-          if (inlineProp && inlineProp.value && typeof inlineProp.value === 'object') {
-            const inlineProps = inlineProp.value as Record<string, import('./source_analyzer.js').PropertyValue>;
-            applyLayoutPropsToReplacements(replacements, inlineProp.range, inlineProps, change.newLayout);
+          const component = analysis.components.find(
+            (c) => c.variableName === change.variableName && c.isThis === change.prefix.startsWith('this.'),
+          );
+
+          if (assignment) {
+            applyLayoutPropsToReplacements(replacements, assignment.objectRange, assignment.props, change.newLayout);
           } else {
-            // A class-field component has no legal spot for an inserted
-            // `this.x.layout = ...` statement (it would land inside the class
-            // body); only existing assignments and inline props update.
-            if (component.isClassField) continue;
+            const inlineProp = component?.properties[change.layoutType];
+            if (inlineProp && inlineProp.value && typeof inlineProp.value === 'object') {
+              const inlineProps = inlineProp.value as Record<string, import('./source_analyzer.js').PropertyValue>;
+              applyLayoutPropsToReplacements(replacements, inlineProp.range, inlineProps, change.newLayout);
+            } else if (component && !component.isClassField) {
+              // A class-field component has no legal spot for an inserted
+              // `this.x.layout = ...` statement (it would land inside the class
+              // body); only existing assignments and inline props update.
+              let source: string;
+              try {
+                source = fs.readFileSync(filePath, 'utf-8');
+              } catch {
+                source = '';
+              }
+              if (source) {
+                const insertPos = component.creationRange.end;
+                const lineStart = source.lastIndexOf('\n', component.creationRange.start - 1);
+                const indent = lineStart >= 0 ? source.slice(lineStart + 1).match(/^(\s*)/)?.[1] || '' : '';
 
-            let source: string;
-            try {
-              source = fs.readFileSync(filePath, 'utf-8');
-            } catch {
-              continue;
+                const layoutObj = layoutIRToString(change.newLayout);
+                const newLine = `\n${indent}${change.prefix}${change.variableName}.${change.layoutType} = ${layoutObj};`;
+
+                replacements.push({
+                  range: { start: insertPos, end: insertPos },
+                  newValue: newLine,
+                });
+              }
             }
-
-            const insertPos = component.creationRange.end;
-            const lineStart = source.lastIndexOf('\n', component.creationRange.start - 1);
-            const indent = lineStart >= 0 ? source.slice(lineStart + 1).match(/^(\s*)/)?.[1] || '' : '';
-
-            const layoutObj = layoutIRToString(change.newLayout, change.layoutType);
-            const newLine = `\n${indent}${change.prefix}${change.variableName}.${change.layoutType} = ${layoutObj};`;
-
-            replacements.push({
-              range: { start: insertPos, end: insertPos },
-              newValue: newLine,
-            });
           }
         }
+        if (replacements.length > before) applied++;
+        else dropped.push(layoutDropNote(change));
       }
 
       if (replacements.length > 0) {
@@ -309,7 +397,7 @@ export class SourceRewriter {
       }
     }
 
-    return { filesModified, changesApplied: changes.length };
+    return { filesModified, changesApplied: applied, dropped };
   }
 
   computeTextChanges(ir: KicadIR, sourceFiles: string[]): PendingTextChange[] {
@@ -541,61 +629,79 @@ export class SourceRewriter {
     return changes;
   }
 
-  applyFootprintChanges(changes: PendingChange[]): { filesModified: number; changesApplied: number } {
-    const selectedByFile: Record<string, PendingChange[]> = {};
+  applyFootprintChanges(changes: PendingChange[]): { filesModified: number; changesApplied: number; dropped: string[] } {
+    // Updates target the file holding the assignment (the sidecar's
+    // `parts.x.pcb`); inserts target the constructor's file. Grouped per
+    // TARGET so each file gets one descending-order pass.
+    const byTarget: Record<string, PendingChange[]> = {};
     for (const c of changes) {
-      if (!selectedByFile[c.filePath]) selectedByFile[c.filePath] = [];
-      selectedByFile[c.filePath].push(c);
+      const target = c.assignmentFilePath ?? c.filePath;
+      if (!byTarget[target]) byTarget[target] = [];
+      byTarget[target].push(c);
     }
 
     let filesModified = 0;
+    let applied = 0;
+    const dropped: string[] = [];
 
-    for (const [filePath, fileChanges] of Object.entries(selectedByFile)) {
+    for (const [filePath, fileChanges] of Object.entries(byTarget)) {
       const analysis = analyzeFile(filePath);
-      if (!analysis) continue;
+      if (!analysis) {
+        for (const change of fileChanges) dropped.push(dropNote(`${change.prefix}${change.variableName}`, filePath));
+        continue;
+      }
 
       let source: string;
       try {
         source = fs.readFileSync(filePath, 'utf-8');
       } catch {
+        for (const change of fileChanges) dropped.push(dropNote(`${change.prefix}${change.variableName}`, filePath));
         continue;
       }
 
       const replacements: Replacement[] = [];
 
       for (const change of fileChanges) {
-        const component = analysis.components.find(
-          (c) => c.variableName === change.variableName && c.isThis === change.prefix.startsWith('this.'),
-        );
-        if (!component) continue;
-
+        const before = replacements.length;
         const pcbAssignment = analysis.pcbAssignments.find(
           (p) => p.variableName === change.variableName && p.isThis === change.prefix.startsWith('this.'),
         );
 
-        if (pcbAssignment) {
-          planPcbPropReplacements(replacements, source, pcbAssignment.objectRange, pcbAssignment.props, change);
-        } else if (component.inlinePcb) {
-          planPcbPropReplacements(replacements, source, component.inlinePcb.range, component.inlinePcb.props, change);
+        if (change.assignmentFilePath) {
+          // the update belongs to a cross-file assignment (sidecar): patch
+          // THAT object literal; the constructor file is not touched
+          if (pcbAssignment) {
+            planPcbPropReplacements(replacements, source, pcbAssignment.objectRange, pcbAssignment.props, change);
+          }
         } else {
-          // Class-field components have no legal spot for an inserted
-          // `this.x.pcb = ...` statement (inside the class body); skip rather
-          // than corrupt — existing assignments and inline props still update.
-          if (component.isClassField) continue;
+          const component = analysis.components.find(
+            (c) => c.variableName === change.variableName && c.isThis === change.prefix.startsWith('this.'),
+          );
 
-          const insertPos = component.creationRange.end;
-          const lineStart = source.lastIndexOf('\n', component.creationRange.start - 1);
-          const indent = lineStart >= 0 ? source.slice(lineStart + 1).match(/^(\s*)/)?.[1] || '' : '';
+          if (pcbAssignment) {
+            planPcbPropReplacements(replacements, source, pcbAssignment.objectRange, pcbAssignment.props, change);
+          } else if (component?.inlinePcb) {
+            planPcbPropReplacements(replacements, source, component.inlinePcb.range, component.inlinePcb.props, change);
+          } else if (component && !component.isClassField) {
+            // Class-field components have no legal spot for an inserted
+            // `this.x.pcb = ...` statement (inside the class body); skip
+            // rather than corrupt — existing assignments and inline props
+            // still update.
+            const insertPos = component.creationRange.end;
+            const lineStart = source.lastIndexOf('\n', component.creationRange.start - 1);
+            const indent = lineStart >= 0 ? source.slice(lineStart + 1).match(/^(\s*)/)?.[1] || '' : '';
 
-          const sidePart = change.newSide === 'back' ? `, side: 'back'` : '';
-          const newLine = `\n${indent}${change.prefix}${change.variableName}.pcb = { x: ${change.newX}, y: ${change.newY}, rotation: ${change.newRotation}${sidePart} };`;
+            const sidePart = change.newSide === 'back' ? `, side: 'back'` : '';
+            const newLine = `\n${indent}${change.prefix}${change.variableName}.pcb = { x: ${change.newX}, y: ${change.newY}, rotation: ${change.newRotation}${sidePart} };`;
 
-          replacements.push({
-            range: { start: insertPos, end: insertPos },
-            newValue: newLine,
-          });
-          continue;
+            replacements.push({
+              range: { start: insertPos, end: insertPos },
+              newValue: newLine,
+            });
+          }
         }
+        if (replacements.length > before) applied++;
+        else dropped.push(dropNote(`${change.prefix}${change.variableName}`, filePath));
       }
 
       if (replacements.length > 0) {
@@ -604,7 +710,7 @@ export class SourceRewriter {
       }
     }
 
-    return { filesModified, changesApplied: changes.length };
+    return { filesModified, changesApplied: applied, dropped };
   }
 
   applyTextChanges(changes: PendingTextChange[]): { filesModified: number; changesApplied: number } {
@@ -810,7 +916,7 @@ function applyLayoutPropsToReplacements(
   if (hasMissing) {
     replacements.push({
       range: objectRange,
-      newValue: layoutIRToString(newLayout, ''),
+      newValue: layoutIRToString(newLayout),
     });
     return;
   }
@@ -847,7 +953,7 @@ function applyLayoutPropsToReplacements(
   }
 }
 
-function layoutIRToString(layout: TextLayoutIR, layoutType: string): string {
+function layoutIRToString(layout: TextLayoutIR): string {
   const parts: string[] = [`x: ${layout.x}`, `y: ${layout.y}`];
   if (layout.rotation !== undefined) parts.push(`rotation: ${layout.rotation}`);
   if (layout.layer !== undefined) parts.push(`layer: '${layout.layer}'`);

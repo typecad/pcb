@@ -88,13 +88,13 @@ describe('buildViewerHtml', () => {
       const result = buildViewerFromFiles([dir], { title: 'inner demo' });
       const inners = result.layers.filter((l) => l.side === 'inner');
       // display names drop the shared board prefix; ids keep the full basename
-      expect(inners.map((l) => l.name).sort()).toEqual(['In1_Cu.g1', 'In2_Cu.g2']);
+      expect(inners.map((l) => l.name).sort()).toEqual(['In1_Cu', 'In2_Cu']);
       expect(inners.every((l) => l.kind === 'copper')).toBe(true);
       expect(result.html).toContain('data-layer-id="demo-in1_cu-g1"');
       expect(result.html).toContain('data-layer-id="demo-in2_cu-g2"');
       // painter's order keeps the stack readable: B_Cu, In1, In2, F_Cu
       const copperOrder = result.layers.filter((l) => l.kind === 'copper').map((l) => l.name);
-      expect(copperOrder).toEqual(['B_Cu.gbl', 'In1_Cu.g1', 'In2_Cu.g2', 'F_Cu.gtl']);
+      expect(copperOrder).toEqual(['B_Cu', 'In1_Cu', 'In2_Cu', 'F_Cu']);
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }
@@ -399,7 +399,7 @@ describe('buildViewerFromFiles', () => {
 
     const result = buildViewerFromFiles([dir], { title: 'demo' });
     // the shared "demo-" board prefix is stripped for display, kept as fullName
-    expect(result.layers.map((l) => l.name)).toEqual(['Edge_Cuts.gbr', 'F_Cu.gbr', 'drl']);
+    expect(result.layers.map((l) => l.name)).toEqual(['Edge_Cuts', 'F_Cu', 'Drill']);
     expect(result.layers.every((l) => l.fullName!.startsWith('demo'))).toBe(true);
     expect(result.html).toContain('3 layers');
     expect(result.html).toContain('M 0 0 L 8 0 L 8 6 L 0 6 Z');
@@ -474,7 +474,7 @@ describe('view switcher (gerber / pcba)', () => {
     expect(html).toContain('var ufFind = function (parent, i)');
     expect(html).toContain("var wSubs = (wel.getAttribute('d') || '').split(/(?=M)/);");
     expect(html).toContain("if (net) p.setAttribute('data-net', net);");
-    expect(html).toContain('window.typecadLayoutApply(moves, texts, values, labels, renames, routedTracks, routedDeletes, function (err, fast)');
+    expect(html).toContain('window.typecadLayoutApply(moves, texts, values, labels, renames, routedTracks, routedDeletes, partDeletes, function (err, fast)');
     expect(html).toContain('moves.push({');
     expect(html).toContain('rot: (m2.rot || 0) * 90,');
     expect(html).toContain('pads: padsByRef[mr2] || [],');
@@ -851,7 +851,7 @@ describe('layout view (component overlay from the gerbers)', () => {
     expect(html).toContain("addEventListener('dblclick'");
     expect(html).toContain('layout-text-edit');
     // apply carries text edits alongside component moves
-    expect(html).toContain('window.typecadLayoutApply(moves, texts, values, labels, renames, routedTracks, routedDeletes, function (err, fast)');
+    expect(html).toContain('window.typecadLayoutApply(moves, texts, values, labels, renames, routedTracks, routedDeletes, partDeletes, function (err, fast)');
   });
 
   it('derives handles from the fab contour (chamfers kept) and the pad-land hull', () => {

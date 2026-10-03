@@ -163,6 +163,8 @@ export class GerberWriter {
   private lines: string[] = [];
   private apertures: Aperture[] = [];
   private byKey = new Map<string, Aperture>();
+  /** FreePoly macro reuse: polygon vertex list → macro name (rotation varies per ADD) */
+  private freePolyMacroByVerts = new Map<string, string>();
   private nextDcode = 10;
   private freePolyCounter = 0;
   private lastDcode: number | null = null;
@@ -196,9 +198,20 @@ export class GerberWriter {
       let macroBody: string | undefined;
       let name: string | undefined;
       if (shape.kind === 'FreePoly') {
-        name = `FreePoly${this.freePolyCounter}`;
-        this.freePolyCounter++;
-        macroBody = this.freePolyBody(name, shape.verts);
+        // KiCad defines one macro per unique polygon and reuses it across
+        // rotations (the pad angle lives in the ADD's rotation parameter):
+        // a chamfered pad and the same pad at 90° share FreePoly0 (observed
+        // D10 FreePoly0,0 / D12 FreePoly0,90 on its chamfer probe plot)
+        const vertsKey = shape.verts.map((v) => `${v.x.toFixed(6)},${v.y.toFixed(6)}`).join(';');
+        const existing = this.freePolyMacroByVerts.get(vertsKey);
+        if (existing) {
+          name = existing;
+        } else {
+          name = `FreePoly${this.freePolyCounter}`;
+          this.freePolyCounter++;
+          this.freePolyMacroByVerts.set(vertsKey, name);
+          macroBody = this.freePolyBody(name, shape.verts);
+        }
       } else {
         name = macroName(shape);
         if (name) macroBody = MACRO_BODIES[name];
@@ -216,7 +229,13 @@ export class GerberWriter {
     const coords = verts.map((v) => `${v.x.toFixed(6)},${v.y.toFixed(6)}`).join(',');
     const first = verts[0];
     if (!first) throw new Error('FreePoly needs at least one vertex');
-    return `%AM${name}*\n4,1,${verts.length},${coords},${first.x.toFixed(6)},${first.y.toFixed(6)},$1*%`;
+    // KiCad's FreePoly macro body repeats the first vertex TWICE at the end
+    // and counts one of them in the vertex count (observed on its chamfered
+    // pad plots: 4,1,N+1,walk…,first,first,rotation) — redundant, but byte
+    // parity with KiCad's own writer
+    const fx = first.x.toFixed(6);
+    const fy = first.y.toFixed(6);
+    return `%AM${name}*\n4,1,${verts.length + 1},${coords},${fx},${fy},${fx},${fy},$1*%`;
   }
 
   // ---- object attributes -------------------------------------------------

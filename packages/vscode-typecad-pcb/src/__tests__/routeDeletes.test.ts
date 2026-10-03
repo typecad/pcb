@@ -2,7 +2,7 @@
 // breaks split the route, emptied routes vanish with their create() arg —
 // and the source that comes out still parses (see expectValidTs).
 import { describe, expect, it } from 'vitest';
-import { planRouteDeletes } from '../routeEdits.js';
+import { planRouteDeletes, planRouteEdits } from '../routeEdits.js';
 import { expectValidTs } from './helpers/valid_source.js';
 
 const src = () => `
@@ -316,5 +316,154 @@ typecad.create(trunk);`;
     expect(out).not.toContain('this run goes away');
     expect(out).not.toContain('x: 3');
     expect(out).not.toContain('x: 4');
+  });
+});
+
+describe('planRouteDeletes: push dialect (import-written copper)', () => {
+  // the board import's form — one line per chain, per-net arrays, spread
+  // into create(); this is what rd_skeleton's mod-ec.ts carries
+  const pushSrc = (via = false) => `
+import { PCB, TrackBuilder } from '@typecad/pcb';
+const typecad = new PCB('demo', {});
+const track_VCC: TrackBuilder[] = [];
+track_VCC.push(typecad.track({ net: 'VCC' }).from({ x: 1, y: 1 }, "F.Cu", 0.3).to({ x: 2, y: 1, layer: "F.Cu", width: 0.3 }).to({ x: 3, y: 1, layer: "F.Cu", width: 0.3 }).to({ x: 4, y: 1, layer: "F.Cu", width: 0.3 })${via ? '.via({ size: 0.6, drill: 0.3 })' : ''});
+typecad.create(
+  ...track_VCC
+);`;
+
+  it('shortens a push chain when an END segment is deleted', () => {
+    const { edits, applied, unmatched } = planRouteDeletes(pushSrc(), [
+      { net: 'VCC', x1: 3, y1: 1, x2: 4, y2: 1, layer: 'F.Cu' },
+    ]);
+    expect(applied).toBe(1);
+    expect(unmatched).toEqual([]);
+    const out = apply(pushSrc(), edits);
+    expectValidTs(out);
+    expect(out).toContain('.to({ x: 3, y: 1, layer: "F.Cu", width: 0.3 }));');
+    expect(out).not.toContain('{ x: 4, y: 1');
+    // the array and its spread stay — an emptied array contributes nothing
+    expect(out).toContain('const track_VCC: TrackBuilder[] = [];');
+    expect(out).toContain('...track_VCC');
+  });
+
+  it('splits a push chain when a MIDDLE segment is deleted', () => {
+    const { edits, applied } = planRouteDeletes(pushSrc(), [
+      { net: 'VCC', x1: 2, y1: 1, x2: 3, y2: 1, layer: 'F.Cu' },
+    ]);
+    expect(applied).toBe(1);
+    const out = apply(pushSrc(), edits);
+    expectValidTs(out);
+    expect(out.match(/track_VCC\.push/g)).toHaveLength(2);
+    expect(out).toContain('.to({ x: 2, y: 1, layer: "F.Cu", width: 0.3 }));');
+    expect(out).toContain('track_VCC.push(typecad.track({ net: \'VCC\' }).from({ x: 3, y: 1 }, "F.Cu", 0.3).to({ x: 4, y: 1, layer: "F.Cu", width: 0.3 }));');
+  });
+
+  it('removes the whole statement when every segment is deleted', () => {
+    const { edits, applied } = planRouteDeletes(pushSrc(), [
+      { net: 'VCC', x1: 1, y1: 1, x2: 2, y2: 1, layer: 'F.Cu' },
+      { net: 'VCC', x1: 2, y1: 1, x2: 3, y2: 1, layer: 'F.Cu' },
+      { net: 'VCC', x1: 3, y1: 1, x2: 4, y2: 1, layer: 'F.Cu' },
+    ]);
+    expect(applied).toBe(3);
+    const out = apply(pushSrc(), edits);
+    expectValidTs(out);
+    expect(out).not.toContain('track_VCC.push');
+    expect(out).toContain('const track_VCC: TrackBuilder[] = [];');
+  });
+
+  it('drops the trailing via when the tail segment dies, keeps it otherwise', () => {
+    const tailGone = planRouteDeletes(pushSrc(true), [
+      { net: 'VCC', x1: 3, y1: 1, x2: 4, y2: 1, layer: 'F.Cu' },
+    ]);
+    const out1 = apply(pushSrc(true), tailGone.edits);
+    expectValidTs(out1);
+    expect(out1).not.toContain('.via(');
+    const middleGone = planRouteDeletes(pushSrc(true), [
+      { net: 'VCC', x1: 2, y1: 1, x2: 3, y2: 1, layer: 'F.Cu' },
+    ]);
+    const out2 = apply(pushSrc(true), middleGone.edits);
+    expectValidTs(out2);
+    expect(out2.match(/\.via\(/g)).toHaveLength(1);
+    // the via rides only the statement that still ends at the chain's end
+    expect(out2).toContain('.to({ x: 4, y: 1, layer: "F.Cu", width: 0.3 }).via({ size: 0.6, drill: 0.3 }));');
+  });
+
+  it('a via-kind delete at the chain tail drops the segment leading into it', () => {
+    const { edits } = planRouteDeletes(pushSrc(), [
+      { kind: 'via', net: 'VCC', x1: 4, y1: 1, x2: 4, y2: 1, layer: 'F.Cu' },
+    ]);
+    const out = apply(pushSrc(), edits);
+    expectValidTs(out);
+    expect(out).toContain('.to({ x: 3, y: 1, layer: "F.Cu", width: 0.3 }));');
+    expect(out).not.toContain('{ x: 4, y: 1');
+  });
+
+  it('tags an unmatched delete near push copper as near-source (stale-view drift)', () => {
+    const { unmatched } = planRouteDeletes(pushSrc(), [
+      { net: 'VCC', x1: 10, y1: 10, x2: 20, y2: 10, layer: 'F.Cu' },
+      // an endpoint ON the push chain's copper — near, though no segment matches
+      { net: 'VCC', x1: 2.05, y1: 1, x2: 20, y2: 10, layer: 'F.Cu' },
+    ]);
+    expect(unmatched).toHaveLength(2);
+    expect((unmatched[0] as { nearSource?: boolean }).nearSource).toBe(false);
+    expect((unmatched[1] as { nearSource?: boolean }).nearSource).toBe(true);
+  });
+
+  it('an unmatched delete far from any push copper is not near-source', () => {
+    const { unmatched } = planRouteDeletes(pushSrc(), [
+      { net: 'GND', x1: 50, y1: 50, x2: 60, y2: 50, layer: 'F.Cu' },
+    ]);
+    expect((unmatched[0] as { nearSource?: boolean }).nearSource).toBe(false);
+  });
+});
+
+describe('corridor idempotency across dialects', () => {
+  it('treats an import-written push chain as an existing corridor on its net', () => {
+    const src = `
+import { PCB, TrackBuilder } from '@typecad/pcb';
+const typecad = new PCB('demo', {});
+const track_VCC: TrackBuilder[] = [];
+track_VCC.push(typecad.track({ net: 'VCC' }).from({ x: 1, y: 1 }, "F.Cu", 0.3).to({ x: 4, y: 1, layer: "F.Cu", width: 0.3 }));
+typecad.create(
+  ...track_VCC
+);`;
+    const { edits, applied, skipped } = planRouteEdits(src, [
+      {
+        net: 'VCC',
+        w: 0.3,
+        pieces: [{ layer: 'F.Cu', pts: [{ x: 1, y: 1 }, { x: 4, y: 1 }] }],
+        vias: [],
+        from: { ref: 'U1', pin: '1' },
+        to: null,
+      },
+    ]);
+    expect(applied).toBe(0);
+    expect(edits).toEqual([]);
+    expect(skipped.some((s) => s.includes('already connects those endpoints'))).toBe(true);
+  });
+});
+
+describe('push dialect: unnamed chains', () => {
+  it('matches and deletes copper on a no-options typecad.track() chain', () => {
+    // the import writes unnamed-nets copper with an empty options list —
+    // exactly the form rd_skeleton's mod-ec.ts carries
+    const src = `
+import { PCB, TrackBuilder } from '@typecad/pcb';
+const typecad = new PCB('demo', {});
+const unnamed_Track: TrackBuilder[] = [];
+unnamed_Track.push(typecad.track().from({ x: 133.6, y: 80.025 }, "F.Cu", 0.15).to({ x: 134.425, y: 79.2, layer: "F.Cu", width: 0.15 }));
+typecad.create(
+  ...unnamed_Track
+);`;
+    const { edits, applied, unmatched } = planRouteDeletes(src, [
+      { net: null, x1: 133.6, y1: 80.025, x2: 134.425, y2: 79.2, layer: 'F.Cu' },
+    ]);
+    expect(applied).toBe(1);
+    expect(unmatched).toEqual([]);
+    const out = apply(src, edits);
+    expectValidTs(out);
+    expect(out).not.toContain('unnamed_Track.push');
+    expect(out).toContain('const unnamed_Track: TrackBuilder[] = [];');
+    expect(out).toContain('...unnamed_Track');
   });
 });

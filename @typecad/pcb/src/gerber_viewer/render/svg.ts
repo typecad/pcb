@@ -469,14 +469,18 @@ export function renderDrillInk(layer: RenderLayer, options: { color: string }): 
   const img = layer.image;
   if (!('holes' in img)) return { defs: [], body: [], warnings: new Set() };
   const body: string[] = [];
+  // holes are the ABSENCE of material and never an interaction target —
+  // they render above silk/fab, so a clickable-through attr is the
+  // difference between a text label under a drill being pressable or not
+  const passThrough = ' pointer-events="none"';
   for (const hole of img.holes) {
     const dia = img.tools.get(hole.tool)?.diameter ?? 0;
-    body.push(`<circle cx="${fmt(hole.at.x)}" cy="${fmt(hole.at.y)}" r="${fmt(dia / 2)}"/>`);
+    body.push(`<circle cx="${fmt(hole.at.x)}" cy="${fmt(hole.at.y)}" r="${fmt(dia / 2)}"${passThrough}/>`);
   }
   for (const slot of img.slots) {
     const dia = img.tools.get(slot.tool)?.diameter ?? 0;
     body.push(
-      `<path d="M ${fmt(slot.from.x)} ${fmt(slot.from.y)} L ${fmt(slot.to.x)} ${fmt(slot.to.y)}" fill="none" stroke="${options.color}" stroke-width="${fmt(dia)}" stroke-linecap="round"/>`,
+      `<path d="M ${fmt(slot.from.x)} ${fmt(slot.from.y)} L ${fmt(slot.to.x)} ${fmt(slot.to.y)}" fill="none" stroke="${options.color}" stroke-width="${fmt(dia)}" stroke-linecap="round"${passThrough}/>`,
     );
   }
   return { defs: [], body, warnings: new Set() };

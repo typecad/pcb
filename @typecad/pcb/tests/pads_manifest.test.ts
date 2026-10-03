@@ -50,6 +50,28 @@ describe('pads manifest', () => {
     const { pads } = computePadsManifest(contents, { boardName: 't' } as never);
     expect(pads).toHaveLength(0);
   });
+
+  it('resolves every net reference form — inline, name-only resave, legacy coded', () => {
+    // Who last saved the board decides the pad's `(net …)` form; the name
+    // must survive all three or the viewer's pad labels drop to pin numbers
+    // only (labels render from this manifest, not from the gerbers).
+    const contents = board(`
+      (net 1 "VCC")
+      (net 2 "GND")
+      (net 3 "SIG")
+      (footprint "T:N" (layer "F.Cu") (at 5 5)
+        (property "Reference" "N1" (at 0 0 0) (layer "F.SilkS"))
+        (pad "1" smd rect (at 0 0) (size 1 1) (layers "F.Cu") (net 1 "VCC"))
+        (pad "2" smd rect (at 2 0) (size 1 1) (layers "F.Cu") (net "GND"))
+        (pad "3" smd rect (at 4 0) (size 1 1) (layers "F.Cu") (net 3))
+        (pad "4" smd rect (at 6 0) (size 1 1) (layers "F.Cu") (net 0 "")))`);
+    const { pads } = computePadsManifest(contents, { boardName: 't' } as never);
+    const netOf = (pin: string) => pads.find((p) => p.pin === pin)!.net;
+    expect(netOf('1')).toBe('VCC'); // inline name (KiCad's own writer)
+    expect(netOf('2')).toBe('GND'); // kicad-cli resave: name-only reference
+    expect(netOf('3')).toBe('SIG'); // legacy coded: name only in the table
+    expect(netOf('4')).toBeNull(); // (net 0 "") stays unconnected
+  });
 });
 
 describe('pads manifest vs KiCad rotation (the 90°/270° label-and-snap incident)', () => {

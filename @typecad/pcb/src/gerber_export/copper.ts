@@ -14,7 +14,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { parse, SNode } from '../sexpr/index.js';
+import { parse, SNode, Sym } from '../sexpr/index.js';
 import { projectGuid, TYPECAD_SOFTWARE } from './writer_utils.js';
 import type { SExpr } from '../sexpr/index.js';
 import { GerberWriter, type AperFunction, type ApertureShape, type Point } from './gerber_writer.js';
@@ -46,6 +46,51 @@ function rotateShape(p: Point, deg: number): Point {
   const c = Math.cos(t);
   const s = Math.sin(t);
   return { x: p.x * c - p.y * s, y: p.x * s + p.y * c };
+}
+
+/**
+ * Chamfered roundrect outline, gerber frame (y-up), matching KiCad's
+ * TransformRoundChamferedRectToPolygon plot: chamfered corners get a 45° cut
+ * with legs of `c` measured from the corner; plain corners get `r` arcs
+ * discretized 4 segments per 90°; r=0 plain corners emit the vertex itself.
+ * Winding and start point follow KiCad's plot (starts on the left edge below
+ * the top-left corner, clockwise in the y-up frame).
+ */
+export function chamferedRoundRectVerts(
+  w: number,
+  h: number,
+  r: number,
+  c: number,
+  chamfered: Set<string>,
+): Point[] {
+  const hw = w / 2;
+  const hh = h / 2;
+  const SEGS = 4;
+  const verts: Point[] = [];
+  // corner walk: top-left → top-right → bottom-right → bottom-left, each
+  // with the incoming/outgoing edge unit vectors of that clockwise walk
+  const corners = [
+    { flag: 'top_left', x: -hw, y: hh, in: { x: 0, y: 1 }, out: { x: 1, y: 0 }, a0: 180, a1: 90 },
+    { flag: 'top_right', x: hw, y: hh, in: { x: 1, y: 0 }, out: { x: 0, y: -1 }, a0: 90, a1: 0 },
+    { flag: 'bottom_right', x: hw, y: -hh, in: { x: 0, y: -1 }, out: { x: -1, y: 0 }, a0: 0, a1: -90 },
+    { flag: 'bottom_left', x: -hw, y: -hh, in: { x: -1, y: 0 }, out: { x: 0, y: 1 }, a0: -90, a1: -180 },
+  ];
+  for (const k of corners) {
+    if (chamfered.has(k.flag)) {
+      verts.push({ x: k.x - c * k.in.x, y: k.y - c * k.in.y });
+      verts.push({ x: k.x + c * k.out.x, y: k.y + c * k.out.y });
+    } else if (r > 0) {
+      // arc center: inset from the corner along both edges
+      const center = { x: k.x - r * k.in.x + r * k.out.x, y: k.y - r * k.in.y + r * k.out.y };
+      for (let i = 0; i <= SEGS; i++) {
+        const a = (k.a0 + ((k.a1 - k.a0) * i) / SEGS) * DEG;
+        verts.push({ x: center.x + r * Math.cos(a), y: center.y + r * Math.sin(a) });
+      }
+    } else {
+      verts.push({ x: k.x, y: k.y });
+    }
+  }
+  return verts;
 }
 
 /** Circle through three points (arc tracks store start/mid/end). Uses
@@ -164,6 +209,34 @@ export function padShapeApertures(pad: SNode, angle: number): PadShapeResult {
     case 'roundrect': {
       const rratio = pad.child('roundrect_rratio');
       const r = (rratio ? scalar(rratio, 1, 0.25) : 0.25) * Math.min(w, h);
+      const chamferNode = pad.child('chamfer');
+      const chamferRatio = chamferNode ? pad.child('chamfer_ratio') : null;
+      // corner flags are unquoted symbols in the file (Sym), though
+      // hand-authored boards may quote them
+      const chamfered = new Set(
+        chamferNode
+          ? chamferNode.raw
+              .slice(1)
+              .map((v) => (typeof v === 'string' ? v : Sym.isSym(v) ? v.name : null))
+              .filter((v): v is string => v !== null)
+          : [],
+      );
+      if (chamferNode && chamfered.size > 0) {
+        // KiCad switches to a plain polygon aperture for chamfered pads and
+        // carries the pad angle in the macro's rotation parameter (observed:
+        // probe board pad at 90° → FreePolyN,90.000000). Chamfer legs are
+        // measured from the corner itself, independent of the corner radius.
+        const c = (chamferRatio ? scalar(chamferRatio, 1, 0.5) : 0.5) * Math.min(w, h);
+        return {
+          flashes: [
+            {
+              kind: 'FreePoly',
+              verts: chamferedRoundRectVerts(w, h, r, c, chamfered),
+              rot: ((angle % 360) + 360) % 360,
+            },
+          ],
+        };
+      }
       const cx = w / 2 - r;
       const cy = h / 2 - r;
       const local: [Point, Point, Point, Point] = [

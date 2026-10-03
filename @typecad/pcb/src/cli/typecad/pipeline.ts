@@ -98,15 +98,68 @@ export function findSchematicFile(): string | null {
 }
 
 /**
+ * The `--board <stem>` selector's value from parsed CLI args — the stem of
+ * one of a multi-board project's boards ("daughter" → build/daughter.kicad_pcb).
+ * Undefined when the flag is absent (commands then use the active board).
+ */
+export function boardStemFromArgs(parsed: { args: Record<string, unknown> }): string | undefined {
+  const v = parsed.args['board'];
+  return typeof v === 'string' && v.trim() !== '' ? v.trim() : undefined;
+}
+
+/** The `--board` hint for a failed resolution: what the project does offer. */
+export function knownBoardsHint(): string {
+  const boards = listBoardFiles().map((f) => path.basename(f, '.kicad_pcb'));
+  return boards.length > 0 ? `known boards: ${boards.join(', ')}` : 'the build manifest lists no boards — run npm run build first';
+}
+
+/**
+ * The project's compiled boards, from the build manifest (.typecad-board.json):
+ * `boards` lists every board the project's create() calls produce (multi-board
+ * projects — mother/daughter, board/jig — write one each), `board` names the
+ * most recent one (the active default). Empty when there is no manifest or it
+ * predates multi-board support.
+ */
+export function listBoardFiles(dir: string = buildDirPath()): string[] {
+  try {
+    const manifest = JSON.parse(fs.readFileSync(path.join(dir, '.typecad-board.json'), 'utf8')) as {
+      boards?: unknown;
+    };
+    if (!Array.isArray(manifest.boards)) return [];
+    return manifest.boards
+      .filter((b): b is string => typeof b === 'string' && b.endsWith('.kicad_pcb'))
+      .map((b) => path.join(dir, b))
+      .filter((b) => fs.existsSync(b));
+  } catch {
+    return [];
+  }
+}
+
+/**
  * The project's compiled board. The build's own manifest (.typecad-board.json,
  * written beside the board) is the truth — a renamed board is found at once
- * and a leftover under the previous name can never shadow it. Without a
+ * and a leftover under the previous name can never shadow it. `stem` selects
+ * one board of a multi-board project ("--board daughter"); the manifest's
+ * `boards` list is matched case/underscore-insensitively, and an unknown stem
+ * resolves to null (callers report it). Without a
  * manifest, build/ picks up stray boards (fp upgrade tests, imports, scratch
  * files); the project's own board matches the hw package name
  * (rd-skeleton-hw → rd_skeleton) and wins over whatever stray was touched
  * last — newest is the fallback when no name matches.
  */
-export function findBoardFile(): string | null {
+export function findBoardFile(stem?: string): string | null {
+  if (stem) {
+    const norm = stem.replace(/[.-]/g, '_').toLowerCase();
+    const hit = listBoardFiles().find(
+      (f) => path.basename(f, '.kicad_pcb').replace(/[.-]/g, '_').toLowerCase() === norm,
+    );
+    if (hit) return hit;
+    // no manifest hit: a stray board named for the stem still wins over null
+    const stray = findBuildFiles('.kicad_pcb').find(
+      (f) => path.basename(f, '.kicad_pcb').replace(/[.-]/g, '_').toLowerCase() === norm,
+    );
+    return stray ?? null;
+  }
   try {
     const manifest = JSON.parse(fs.readFileSync(path.join(buildDirPath(), '.typecad-board.json'), 'utf8')) as {
       board?: unknown;

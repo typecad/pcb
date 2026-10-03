@@ -10,17 +10,22 @@
 // skipped, never mangled.
 // ---------------------------------------------------------------------------
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.fmt = fmt;
 exports.planPlacementEdits = planPlacementEdits;
 exports.planEndpointEdits = planEndpointEdits;
 exports.applyPlacementEdits = applyPlacementEdits;
 exports.textEditRef = textEditRef;
 exports.planLabelAssignments = planLabelAssignments;
+exports.syncLabelStatement = syncLabelStatement;
 exports.planTextEdits = planTextEdits;
 exports.parsePlacementLiteral = parsePlacementLiteral;
 exports.planComponentEdits = planComponentEdits;
-/** Matches `  var.pcb = { … }` (leading indent captured, literal body only). */
+/**
+ * Matches `  var.pcb = { … }` and the sync sidecar's `  parts.var.pcb = { … }`
+ * (leading indent and optional `parts.` captured, literal body only).
+ */
 function placementMatcher(variable) {
-    return new RegExp(`^([ \\t]*)${escapeRegExp(variable)}\\.pcb\\s*=\\s*\\{([^}]*)\\}`, 'm');
+    return new RegExp(`^([ \\t]*)(parts\\.)?${escapeRegExp(variable)}\\.pcb\\s*=\\s*\\{([^}]*)\\}`, 'm');
 }
 function escapeRegExp(text) {
     return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -39,19 +44,22 @@ function fmt(n) {
 }
 /**
  * Compute the literal rewrites for `moves` against one source document.
- * A move whose `<var>.pcb = {…}` literal already exists is rewritten in
- * place; one with NO literal yet gets the assignment INSERTED after the
- * variable's constructor statement — an unplaced component (stacked at the
- * origin) is the layout view's whole reason to exist, and silently skipping
- * its move strands every trace drawn between the moved pads. Computed
- * (non-literal) placements stay skipped, never mangled. `variableOf` maps a
- * board reference to its source variable (empty/absent when unknown). Only
- * the first matching document wins per ref — pass each src file in turn and
- * stop when a ref resolves.
+ * A move whose `<var>.pcb = {…}` literal already exists (including the sync
+ * sidecar's `parts.<var>.pcb = {…}`) is rewritten in place; one with NO
+ * literal yet defers to the _sync.ts stage when `deferInsert` allows it —
+ * the machine-owned sidecar is where auto-inserts live — and otherwise falls
+ * back to an assignment INSERTED after the variable's constructor statement.
+ * An unplaced component (stacked at the origin) is the layout view's whole
+ * reason to exist, and silently skipping its move strands every trace drawn
+ * between the moved pads. Computed (non-literal) placements stay skipped,
+ * never mangled. `variableOf` maps a board reference to its source variable
+ * (empty/absent when unknown). Only the first matching document wins per
+ * ref — pass each src file in turn and stop when a ref resolves.
  */
-function planPlacementEdits(text, moves, variableOf) {
+function planPlacementEdits(text, moves, variableOf, opts) {
     const edits = [];
     const skipped = [];
+    const deferred = [];
     for (const move of moves) {
         const variable = variableOf(move.ref);
         if (!variable) {
@@ -64,8 +72,9 @@ function planPlacementEdits(text, moves, variableOf) {
         let end;
         let lead;
         let inserted = false;
+        let partsPrefix = '';
         if (match) {
-            const inner = match[2];
+            const inner = match[3];
             const xNum = /\bx\s*:\s*(-?[\d.]+)/.exec(inner);
             const yNum = /\by\s*:\s*(-?[\d.]+)/.exec(inner);
             if (!xNum || !yNum) {
@@ -78,6 +87,17 @@ function planPlacementEdits(text, moves, variableOf) {
             start = match.index;
             end = match.index + match[0].length;
             lead = match[1] ?? '';
+            partsPrefix = match[2] ?? '';
+        }
+        else if (opts?.deferInsert?.(move)) {
+            deferred.push({
+                ref: move.ref,
+                variable,
+                x: Number.isFinite(move.ax) ? move.ax : move.dx,
+                y: Number.isFinite(move.ay) ? move.ay : move.dy,
+                rot: move.rot ?? 0,
+            });
+            continue;
         }
         else {
             const ins = insertionAfterConstructor(text, variable);
@@ -105,12 +125,12 @@ function planPlacementEdits(text, moves, variableOf) {
             // an inserted assignment is a whole new statement: it carries its own
             // terminating semicolon; a rewrite swaps only the literal (the
             // existing `;` sits outside the matched range and survives)
-            line: `${lead}${variable}.pcb = { ${newInner.trim()} }${inserted ? ';' : ''}`,
+            line: `${lead}${partsPrefix}${variable}.pcb = { ${newInner.trim()} }${inserted ? ';' : ''}`,
             start,
             end,
         });
     }
-    return { edits, skipped };
+    return { edits, skipped, ...(deferred.length > 0 ? { deferred } : {}) };
 }
 /** Find the end of `<var> = …;` (the constructor statement) — insertion goes right after it. */
 function insertionAfterConstructor(text, variable) {
@@ -341,31 +361,36 @@ function labelLayoutBody(label, part, existingBody) {
  * references never carry `reference: 'D1'`, so planComponentEdits cannot
  * match them. The layout lands as a post-construction assignment on the
  * component's public field (`led.referenceLayout = { … }`), inserted after
- * the constructor statement or replacing an existing assignment.
+ * the constructor statement or replacing an existing assignment — including
+ * the sync sidecar's `parts.<var>.<prop>` form, which is what wins at
+ * runtime once it exists. Fresh inserts defer to the sync stage when
+ * `deferInsert` allows.
  */
-function planLabelAssignments(text, specs, variableOf, placementOf) {
+function planLabelAssignments(text, specs, variableOf, placementOf, opts) {
     const edits = [];
     const skipped = [];
+    const deferred = [];
     for (const spec of specs) {
         const variable = variableOf(spec.ref);
         if (!variable) {
             skipped.push({ ref: spec.ref, reason: 'no source variable' });
             continue;
         }
-        const part = placementOf(spec.ref);
-        if (!part) {
-            skipped.push({ ref: spec.ref, reason: 'no .pcb placement literal found' });
-            continue;
-        }
         const prop = spec.label.kind === 'fab' ? 'fab' : `${spec.label.kind}Layout`;
-        const assignRe = new RegExp(`^([ \\t]*)${escapeRegExp(variable)}\\.${prop}\\s*=`, 'm');
+        const assignRe = new RegExp(`^([ \\t]*)(parts\\.)?${escapeRegExp(variable)}\\.${prop}\\s*=`, 'm');
         const match = assignRe.exec(text);
         let bodyStr;
         let start;
         let end;
         let lead;
+        let partsPrefix = '';
         let inserted = false;
         if (match) {
+            const part = placementOf(spec.ref);
+            if (!part) {
+                skipped.push({ ref: spec.ref, reason: 'no .pcb placement literal found' });
+                continue;
+            }
             const r = objectLiteralRange(text, match.index + match[0].length - 1);
             if (!r) {
                 skipped.push({ ref: spec.ref, reason: `${variable}.${prop} assignment is not an object literal` });
@@ -375,8 +400,18 @@ function planLabelAssignments(text, specs, variableOf, placementOf) {
             start = match.index;
             end = r.close + 1;
             lead = match[1] ?? '';
+            partsPrefix = match[2] ?? '';
+        }
+        else if (opts?.deferInsert?.(spec.ref)) {
+            deferred.push({ ref: spec.ref, variable, prop, label: spec.label });
+            continue;
         }
         else {
+            const part = placementOf(spec.ref);
+            if (!part) {
+                skipped.push({ ref: spec.ref, reason: 'no .pcb placement literal found' });
+                continue;
+            }
             const ins = insertionAfterConstructor(text, variable);
             if (!ins) {
                 skipped.push({ ref: spec.ref, reason: `no \`${variable}\` constructor statement found` });
@@ -392,12 +427,20 @@ function planLabelAssignments(text, specs, variableOf, placementOf) {
             ref: `${spec.ref} ${prop}`,
             // an inserted assignment is a whole new statement (own semicolon); a
             // rewrite swaps only the object literal — the existing `;` survives
-            line: `${lead}${variable}.${prop} = { ${bodyStr} }${inserted ? ';' : ''}`,
+            line: `${lead}${partsPrefix}${variable}.${prop} = { ${bodyStr} }${inserted ? ';' : ''}`,
             start,
             end,
         });
     }
-    return { edits, skipped };
+    return { edits, skipped, ...(deferred.length > 0 ? { deferred } : {}) };
+}
+/**
+ * The sync sidecar's label statement for one deferred spec — the full
+ * `parts.<var>.<prop> = { … };` line, rendered against the part's final
+ * placement. (No leading indent: the sync stage adds it.)
+ */
+function syncLabelStatement(spec, part) {
+    return `parts.${spec.variable}.${spec.prop} = { ${labelLayoutBody(spec.label, part, '')} };`;
 }
 /**
  * Compute the `.text({ … })` literal rewrites for `edits` against one source
@@ -504,26 +547,36 @@ function planTextEdits(text, edits) {
 // Component constructor's referenceLayout / valueLayout options — exactly
 // what the board writer's applyLayoutToFpText consumes on rebuild.
 // ---------------------------------------------------------------------------
-/** Parse a `<var>.pcb = { x, y, rotation? }` literal (null when computed). */
+/** Parse a `<var>.pcb = { x, y, rotation? }` literal — standalone or the
+ *  sync sidecar's `parts.<var>.pcb` form (null when computed). */
 function parsePlacementLiteral(text, variable) {
-    const match = new RegExp(`^([ \\t]*)${escapeRegExp(variable)}\\.pcb\\s*=\\s*\\{([^}]*)\\}`, 'm').exec(text);
+    const match = new RegExp(`^([ \\t]*)(parts\\.)?${escapeRegExp(variable)}\\.pcb\\s*=\\s*\\{([^}]*)\\}`, 'm').exec(text);
     if (!match)
         return null;
-    const xNum = /\bx\s*:\s*(-?[\d.]+)/.exec(match[2]);
-    const yNum = /\by\s*:\s*(-?[\d.]+)/.exec(match[2]);
+    const xNum = /\bx\s*:\s*(-?[\d.]+)/.exec(match[3]);
+    const yNum = /\by\s*:\s*(-?[\d.]+)/.exec(match[3]);
     if (!xNum || !yNum)
         return null;
-    const rNum = /\brotation\s*:\s*(-?[\d.]+)/.exec(match[2]);
+    const rNum = /\brotation\s*:\s*(-?[\d.]+)/.exec(match[3]);
     return { x: parseFloat(xNum[1]), y: parseFloat(yNum[1]), rot: rNum ? parseFloat(rNum[1]) : 0 };
 }
 function planComponentEdits(text, specs, placementOf, allRefs) {
     const planned = [];
     const skipped = [];
     const used = new Set();
-    const callRe = /new\s+Component\s*\(/g;
+    // the declaring variable rides along: a standalone `<var>.referenceLayout
+    // = {…}` statement OVERRIDES the constructor option at runtime, and the
+    // label edit must land where it actually wins. The declaration prefix is
+    // optional (non-declaring `new Component(…)` usages still match, they just
+    // carry no variable) and tolerates a type annotation — but the options
+    // literal is anchored at the `new`, never at the statement start, so an
+    // annotation's own braces cannot capture it.
+    const callRe = /(?:(?:export\s+)?(?:const|let|var)\s+([A-Za-z_$][\w$]*)(?:\s*:\s*[^=;]+?)?\s*=\s*)?(new\s+Component\s*\()/g;
     let match;
     while ((match = callRe.exec(text)) !== null) {
-        const range = objectLiteralRange(text, match.index);
+        const variable = match[1];
+        const newAt = match.index + match[0].length - match[2].length;
+        const range = objectLiteralRange(text, newAt);
         if (!range)
             continue;
         const inner = text.slice(range.open + 1, range.close);
@@ -560,29 +613,52 @@ function planComponentEdits(text, specs, placementOf, allRefs) {
                 skip = 'no .pcb placement literal found';
             }
             else {
-                // reference/value carry their own Layout option names; the small
-                // fab refdes text is positioned by the plain 'fab' option
-                const prop = spec.label.kind === 'fab' ? 'fab' : `${spec.label.kind}Layout`;
-                // the layout literal may already carry keys this edit does not
-                // manage (layer, show, styled by hand…) — keep them. Balanced-brace
-                // parsing: a nested justify object must not truncate the literal
-                const keyRe = new RegExp(`\\b${prop}\\s*:`);
-                const km = keyRe.exec(inner);
-                let bodyStr = '';
-                let span = null;
-                if (km) {
-                    const r = objectLiteralRange(inner, km.index + km[0].length - 1);
-                    if (r) {
-                        bodyStr = labelLayoutBody(spec.label, part, inner.slice(r.open + 1, r.close));
-                        span = { start: km.index, end: r.close + 1 };
-                    }
-                }
-                if (span) {
-                    const literal = `${prop}: { ${bodyStr} }`;
-                    newInner = newInner.slice(0, span.start) + literal + newInner.slice(span.end);
+                // a post-construction `<var>.<kind>Layout = {…}` statement beats the
+                // constructor option when the code runs — rewrite THAT and leave the
+                // constructor untouched (an appended option there is dead weight the
+                // statement overrides, so the rebuild would revert the drag). The
+                // sync sidecar's `parts.<var>.<kind>Layout` is the same override,
+                // one indirection deeper.
+                const stmtProp = `${spec.label.kind}Layout`;
+                // no declaring variable → no standalone statement to prefer
+                const am = variable
+                    ? new RegExp(`^([ \\t]*)(parts\\.)?${escapeRegExp(variable)}\\.${stmtProp}\\s*=\\s*\\{`, 'm').exec(text)
+                    : null;
+                const ar = am ? objectLiteralRange(text, am.index + am[0].length - 1) : null;
+                if (am && ar) {
+                    const bodyStr = labelLayoutBody(spec.label, part, text.slice(ar.open + 1, ar.close));
+                    planned.push({
+                        ref: `${ref} ${stmtProp}`,
+                        line: `${am[1] ?? ''}${am[2] ?? ''}${variable}.${stmtProp} = { ${bodyStr} }`,
+                        start: am.index,
+                        end: ar.close + 1,
+                    });
                 }
                 else {
-                    after.push(`${prop}: { ${labelLayoutBody(spec.label, part, '')} }`);
+                    // reference/value carry their own Layout option names; the small
+                    // fab refdes text is positioned by the plain 'fab' option
+                    const prop = spec.label.kind === 'fab' ? 'fab' : `${spec.label.kind}Layout`;
+                    // the layout literal may already carry keys this edit does not
+                    // manage (layer, show, styled by hand…) — keep them. Balanced-brace
+                    // parsing: a nested justify object must not truncate the literal
+                    const keyRe = new RegExp(`\\b${prop}\\s*:`);
+                    const km = keyRe.exec(inner);
+                    let bodyStr = '';
+                    let span = null;
+                    if (km) {
+                        const r = objectLiteralRange(inner, km.index + km[0].length - 1);
+                        if (r) {
+                            bodyStr = labelLayoutBody(spec.label, part, inner.slice(r.open + 1, r.close));
+                            span = { start: km.index, end: r.close + 1 };
+                        }
+                    }
+                    if (span) {
+                        const literal = `${prop}: { ${bodyStr} }`;
+                        newInner = newInner.slice(0, span.start) + literal + newInner.slice(span.end);
+                    }
+                    else {
+                        after.push(`${prop}: { ${labelLayoutBody(spec.label, part, '')} }`);
+                    }
                 }
             }
         }

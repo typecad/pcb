@@ -1,6 +1,6 @@
 import type { LayerInfo } from '../detect_layer.js';
 import type { DrcMarker, FabReport } from '../report.js';
-import { LAYER_THEME_LIST, type LayerTheme } from '../themes.js';
+import { LAYER_THEME_LIST } from '../themes.js';
 
 export interface ViewerOptions {
   /**
@@ -1621,6 +1621,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   var layoutOverlay = null;
   var layoutBuilt = false;
   var layoutMoves = {}; // ref -> { x, y, x0, y0 } in the gerber (y-up) frame
+  var partDeletes = []; // refs deleted in the view, pending apply: the host removes them from source
   var layoutRipped = []; // autorouter copper ripped (hidden) until rebuild
   // unnamed routes ripped by a part move: {idx, a, b} where each endpoint
   // is either {ref,pin} (bound to a pad, follows the part live) or {fixed}
@@ -1706,9 +1707,14 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     return window.CSS && CSS.escape ? CSS.escape(v) : String(v).replace(/[^a-zA-Z0-9_-]/g, '\\$&');
   };
   function gerberAt(cx2, cy2) {
-    // screen -> gerber frame: the gerber group carries the y-flip
+    // screen -> gerber frame: the gerber group carries the y-flip (in BOTH
+    // states — the Flip Board mirror only adds an x negation on top), so the
+    // y conversion never changes and only x mirrors while flipped
     var v = clientToView({ x: cx2, y: cy2 });
-    return { x: (v.x - tx) / k, y: -(v.y - ty) / k };
+    return {
+      x: (boardFlipped ? -1 : 1) * ((v.x - tx) / k),
+      y: -((v.y - ty) / k),
+    };
   }
   function setCompPos(g, x, y) {
     var rot = (g.__lc.rot + (layoutRot[g.__lc.ref] || 0) * 90) % 360;
@@ -2120,66 +2126,96 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     var paths = textPaths(i);
     for (var pd = 0; pd < paths.length; pd++) {
       paths[pd].addEventListener('pointerdown', function (ev) {
-        if (viewMode !== 'layout') return;
-        if (ev.button !== 0) return; // right/middle → board pan (fall through)
-        ev.stopPropagation();
-        ev.preventDefault();
-        var wasSel = layoutTextSel === i;
-        layoutTextSel = i;
-        layoutSel = [];
-        markLayoutSel();
-        markTextSel();
-        if (!wasSel) {
-          // selection-first like components: this press selects only
-          if (statusEl && !statusLocked())
-            statusEl.textContent = 'text "' + layoutTexts[i].text.slice(0, 18) + '" selected — drag to move';
-          return;
-        }
-        var t = layoutTexts[i];
-        var st = textState(i);
-        var startG = gerberAt(ev.clientX, ev.clientY);
-        var orig = { x: st.x, y: st.y };
-        function onMove(e2) {
-          var pg = gerberAt(e2.clientX, e2.clientY);
-          var nx = orig.x + (pg.x - startG.x);
-          var ny = orig.y + (pg.y - startG.y);
-          if (!layoutSnapBox || layoutSnapBox.checked) {
-            nx = Math.round(nx / layoutGridSize) * layoutGridSize;
-            ny = Math.round(ny / layoutGridSize) * layoutGridSize;
-          }
-          commitTextMove(i, nx, ny);
-          if (statusEl && !statusLocked())
-            statusEl.textContent = t.text.slice(0, 18) + ' \u2192 ' + fmtPos(nx) + ', ' + fmtPos(-ny);
-          e2.preventDefault();
-        }
-        function onUp() {
-          window.removeEventListener('pointermove', onMove);
-          window.removeEventListener('pointerup', onUp);
-        }
-        window.addEventListener('pointermove', onMove);
-        window.addEventListener('pointerup', onUp);
+        textPointerDown(i, ev);
       });
       paths[pd].addEventListener('dblclick', function (ev) {
-        if (viewMode !== 'layout') return;
-        ev.stopPropagation();
-        ev.preventDefault();
-        var t3 = layoutTexts[i];
-        if (t3.kind === 'value') {
-          beginCompValueEdit(t3.ref, ev);
-          return;
-        }
-        if (t3.kind === 'reference') {
-          beginCompTextEdit(t3.ref, 'reference', ev);
-          return;
-        }
-        if (t3.kind === 'fab') {
-          if (statusEl && !statusLocked())
-            statusEl.textContent = 'fab refdes text: drag to reposition, R to rotate';
-          return;
-        }
-        beginTextEdit(i);
+        textDblClick(i, ev);
       });
     }
+  }
+  function textPointerDown(i, ev) {
+    if (viewMode !== 'layout') return;
+    if (ev.button !== 0) return; // right/middle → board pan (fall through)
+    ev.stopPropagation();
+    ev.preventDefault();
+    var wasSel = layoutTextSel === i;
+    layoutTextSel = i;
+    layoutSel = [];
+    markLayoutSel();
+    markTextSel();
+    if (!wasSel) {
+      // selection-first like components: this press selects only
+      if (statusEl && !statusLocked())
+        statusEl.textContent = 'text "' + layoutTexts[i].text.slice(0, 18) + '" selected — drag to move';
+      return;
+    }
+    var t = layoutTexts[i];
+    var st = textState(i);
+    var startG = gerberAt(ev.clientX, ev.clientY);
+    var orig = { x: st.x, y: st.y };
+    function onMove(e2) {
+      var pg = gerberAt(e2.clientX, e2.clientY);
+      var nx = orig.x + (pg.x - startG.x);
+      var ny = orig.y + (pg.y - startG.y);
+      if (!layoutSnapBox || layoutSnapBox.checked) {
+        nx = Math.round(nx / layoutGridSize) * layoutGridSize;
+        ny = Math.round(ny / layoutGridSize) * layoutGridSize;
+      }
+      commitTextMove(i, nx, ny);
+      if (statusEl && !statusLocked())
+        statusEl.textContent = t.text.slice(0, 18) + ' \u2192 ' + fmtPos(nx) + ', ' + fmtPos(-ny);
+      e2.preventDefault();
+    }
+    function onUp() {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+    }
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  }
+  function textDblClick(i, ev) {
+    if (viewMode !== 'layout') return;
+    ev.stopPropagation();
+    ev.preventDefault();
+    var t3 = layoutTexts[i];
+    if (t3.kind === 'value') {
+      beginCompValueEdit(t3.ref, ev);
+      return;
+    }
+    if (t3.kind === 'reference') {
+      beginCompTextEdit(t3.ref, 'reference', ev);
+      return;
+    }
+    if (t3.kind === 'fab') {
+      if (statusEl && !statusLocked())
+        statusEl.textContent = 'fab refdes text: drag to reposition, R to rotate';
+      return;
+    }
+    beginTextEdit(i);
+  }
+  /** a claimed text stroke (data-text) under a pointer position, ignoring the
+   *  layout overlay itself — the overlay's invisible part handles sit above
+   *  every layer, so silk/fab text inside a component body can only be
+   *  reached by walking the hit-test stack beneath them */
+  function textUnderPointer(ev) {
+    if (typeof document.elementsFromPoint !== 'function') return -1;
+    var stack;
+    try {
+      stack = document.elementsFromPoint(ev.clientX, ev.clientY);
+    } catch (e) {
+      return -1;
+    }
+    if (!stack) return -1;
+    for (var si = 0; si < stack.length; si++) {
+      var se = stack[si];
+      if (!se.getAttribute) continue;
+      if (se.closest && se.closest('#layout-overlay')) continue;
+      var dt = se.getAttribute('data-text');
+      if (dt === null || dt === '') continue;
+      var ti = parseInt(dt, 10);
+      if (layoutTexts[ti]) return ti;
+    }
+    return -1;
   }
   // geometry of a stroke even when its layer group is toggled off —
   // getBBox() zeroes for non-rendered elements, so un-hide for the measure
@@ -2207,6 +2243,13 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     });
     el.addEventListener('dblclick', function (ev) {
       if (viewMode !== 'layout' || !layoutOverlay) return;
+      // text ink under the part press edits the TEXT (value/content), not
+      // the component value — same delegation the drag entry uses
+      var ti = textUnderPointer(ev);
+      if (ti >= 0) {
+        textDblClick(ti, ev);
+        return;
+      }
       ev.stopPropagation();
       ev.preventDefault();
       beginCompValueEdit(ref, ev);
@@ -2698,6 +2741,18 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       // left only: right/middle are board panning and fall through to the
       // svg handler untouched (no stopPropagation on this path)
       if (ev.button !== 0) return;
+      // a claimed text stroke under the press wins over the part: the
+      // overlay's invisible handles (and the courtyard ink above silk/fab)
+      // sit over text inside a component body — without this delegation
+      // such text can never be clicked, selected, or moved. Shift still
+      // forces the part grab (multi-select uses it).
+      if (!ev.shiftKey) {
+        var ti = textUnderPointer(ev);
+        if (ti >= 0) {
+          textPointerDown(ti, ev);
+          return;
+        }
+      }
       ev.stopPropagation();
       ev.preventDefault();
       // a fresh part press replaces the ink selection too — a trace left
@@ -2946,7 +3001,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     for (var rk in layoutRefEdits) if (rk !== '__editing') nVal++;
     if (layoutApplyBtn)
       layoutApplyBtn.disabled =
-        !Object.keys(layoutMoves).length && !Object.keys(layoutTextMoves).length && !nVal && !routedTracks.length && !routedDeletes.length;
+        !Object.keys(layoutMoves).length && !Object.keys(layoutTextMoves).length && !nVal && !routedTracks.length && !routedDeletes.length && !partDeletes.length;
     // every state-changing op funnels through here — the pending-apply
     // snapshot rides along (undo/redo included, via historyResync)
     persistPending();
@@ -2964,7 +3019,8 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       !Object.keys(layoutValueEdits).length &&
       !Object.keys(layoutRefEdits).length &&
       !routedTracks.length &&
-      !routedDeletes.length
+      !routedDeletes.length &&
+      !partDeletes.length
     ) {
       if (statusEl && !statusLocked()) statusEl.textContent = 'nothing to revert \u2014 no pending edits (the last apply already wrote source)';
       return;
@@ -2983,6 +3039,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     rippedUnnamed = [];
     rippedUnnamedIdx = {};
     layoutRipped = [];
+    partDeletes = [];
     layoutMoves = {};
     layoutRot = {};
     layoutTextMoves = {};
@@ -3116,7 +3173,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       // door would drop every real deletion and the source would keep the
       // copper (the both-traces-after-delete bug). Stale-state pruning
       // belongs to restorePending only, against a freshly rendered board
-      window.typecadLayoutApply(moves, texts, values, labels, renames, routedTracks, routedDeletes, function (err, fast) {
+      window.typecadLayoutApply(moves, texts, values, labels, renames, routedTracks, routedDeletes, partDeletes, function (err, fast) {
         layoutApplyBtn.disabled = false;
         layoutApplyBtn.textContent = 'apply & rebuild';
         if (err && statusEl) statusEl.textContent = 'layout apply failed: ' + err;
@@ -3128,6 +3185,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         } else {
           routedTracks = []; // now source-owned: the rebuild re-renders them
           routedDeletes = [];
+          partDeletes = [];
           persistPending();
         }
       });
@@ -3599,6 +3657,76 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
           renderLayoutMoves();
           if (statusEl && !statusLocked())
             statusEl.textContent = nVia + ' via' + (nVia === 1 ? '' : 's') + ' deleted';
+        } else if (layoutSel.length) {
+          // parts selected: Delete removes them — the ink rips up now and
+          // the apply removes the component from source (declaration,
+          // create() arguments, sidecar overrides, net pins)
+          ev.preventDefault();
+          var delRefs = layoutSel.slice();
+          var delEls = [];
+          var delNets = {};
+          for (var di = 0; di < delRefs.length; di++) {
+            var dref = delRefs[di];
+            if (partDeletes.indexOf(dref) < 0) partDeletes.push(dref);
+            delete layoutMoves[dref];
+            delete layoutRot[dref];
+            if (layoutValueEdits[dref]) delete layoutValueEdits[dref];
+            if (layoutRefEdits[dref]) delete layoutRefEdits[dref];
+            var gDel = layoutOverlay.querySelector('[data-ref="' + cssEsc(dref) + '"]');
+            if (gDel) {
+              ripUpEl(gDel);
+              delEls.push(gDel);
+            }
+            var dcomp = null;
+            for (var dc2 = 0; dc2 < layoutComps.length && !dcomp; dc2++)
+              if (layoutComps[dc2].ref === dref) dcomp = layoutComps[dc2];
+            if (dcomp) for (var dn = 0; dn < (dcomp.nets || []).length; dn++) delNets[dcomp.nets[dn]] = 1;
+            var cels = compEls(dref);
+            for (var ci = 0; ci < cels.length; ci++) {
+              ripUpEl(cels[ci]);
+              delEls.push(cels[ci]);
+            }
+          }
+          // the deleted part's autorouter copper rips too — the ratsnest
+          // re-wires its nets until the rebuild regenerates them without it
+          for (var rnet in delNets) {
+            if (routeProvenance[rnet] === 'manual' || routeProvenance[rnet] === 'mixed') continue;
+            var dnetEls = viewGroups.gerber.querySelectorAll('[data-net="' + cssEsc(rnet) + '"]');
+            for (var dre = 0; dre < dnetEls.length; dre++) {
+              if (dnetEls[dre].getAttribute('data-ref')) continue;
+              ripUpEl(dnetEls[dre]);
+            }
+          }
+          layoutSel = [];
+          renderLayoutMoves();
+          refreshRatsnest();
+          pushUndo(
+            'delete ' + delRefs.join(', '),
+            function () {
+              for (var ui = 0; ui < delRefs.length; ui++) {
+                var ux = partDeletes.indexOf(delRefs[ui]);
+                if (ux >= 0) partDeletes.splice(ux, 1);
+              }
+              for (var ue = 0; ue < delEls.length; ue++) {
+                var uel = delEls[ue];
+                if (uel.__layoutOp === '') uel.removeAttribute('display');
+                else if (uel.__layoutOp !== undefined) uel.setAttribute('display', uel.__layoutOp);
+                uel.__layoutOp = undefined;
+                uel.__ripped = 0;
+                var uli = layoutRipped.indexOf(uel);
+                if (uli >= 0) layoutRipped.splice(uli, 1);
+              }
+            },
+            function () {
+              for (var ri = 0; ri < delRefs.length; ri++) {
+                if (partDeletes.indexOf(delRefs[ri]) < 0) partDeletes.push(delRefs[ri]);
+              }
+              for (var re2 = 0; re2 < delEls.length; re2++) ripUpEl(delEls[re2]);
+            }
+          );
+          if (statusEl && !statusLocked())
+            statusEl.textContent =
+              delRefs.length + ' part' + (delRefs.length > 1 ? 's' : '') + ' deleted \u2014 Apply removes ' + (delRefs.length > 1 ? 'them' : 'it') + ' from source';
         }
         return;
       }
@@ -3715,6 +3843,16 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         }
       }
       return;
+    }
+    // last-chance text delegation: unattributed ink above silk/fab (a drill
+    // circle, an unowned stroke) swallows presses with no handler of its
+    // own — if a claimed text lies beneath the pointer, it takes the press
+    if (ev.button === 0 && !ev.shiftKey) {
+      var tt = textUnderPointer(ev);
+      if (tt >= 0) {
+        textPointerDown(tt, ev);
+        return;
+      }
     }
     // a press NEAR a dangling trace end arms the route start there — the
     // same magnetic snap finishing uses (this is where non-selection,
@@ -4072,6 +4210,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     var wiredPad = {};
     for (var uc = 0; uc < layoutComps.length; uc++) {
       var ucomp = layoutComps[uc];
+      if (partDeletes.indexOf(ucomp.ref) >= 0) continue; // deleted in the view
       for (var up = 0; up < (ucomp.pads || []).length; up++) {
         var unet = ucomp.pads[up].net;
         if (!unet) continue;
@@ -4483,7 +4622,14 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   }
   function addPadText(host, text, px, py, fs, weight) {
     var t = document.createElementNS(SVGNSL, 'text');
-    t.setAttribute('transform', 'translate(' + px.toFixed(3) + ' ' + py.toFixed(3) + ') scale(1,-1)');
+    // counter-flip against the y-flip group so glyphs read upright — and
+    // against the Flip Board mirror too when it is on (group scale(-1,-1) ·
+    // label scale(-1,-1) = upright); applyFlip re-swaps labels built before
+    // a toggle
+    t.setAttribute(
+      'transform',
+      'translate(' + px.toFixed(3) + ' ' + py.toFixed(3) + ') scale(' + (boardFlipped ? '-1,-1' : '1,-1') + ')',
+    );
     t.setAttribute('font-size', fs.toFixed(3));
     t.setAttribute('text-anchor', 'middle');
     t.setAttribute('dominant-baseline', 'central');
@@ -4521,8 +4667,8 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     'typecadPending:' + (document.title || '') + ':' + (location.pathname.split('/').pop() || '');
   function persistPending() {
     try {
-      if (!routedTracks.length && !routedDeletes.length) localStorage.removeItem(PENDING_KEY);
-      else localStorage.setItem(PENDING_KEY, JSON.stringify({ routes: routedTracks, deletes: routedDeletes }));
+      if (!routedTracks.length && !routedDeletes.length && !partDeletes.length) localStorage.removeItem(PENDING_KEY);
+      else localStorage.setItem(PENDING_KEY, JSON.stringify({ routes: routedTracks, deletes: routedDeletes, partDeletes: partDeletes }));
     } catch (e) {}
   }
   // drop pending DELETES whose ink no longer exists on this board — a
@@ -4575,22 +4721,62 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       var raw = localStorage.getItem(PENDING_KEY);
       if (!raw) return 0;
       var st = JSON.parse(raw);
-      var n = (st.routes ? st.routes.length : 0) + (st.deletes ? st.deletes.length : 0);
+      var n =
+        (st.routes ? st.routes.length : 0) + (st.deletes ? st.deletes.length : 0) + (st.partDeletes ? st.partDeletes.length : 0);
       if (!n) {
         localStorage.removeItem(PENDING_KEY);
         return 0;
       }
-      for (var i = 0; i < (st.routes || []).length; i++) routedTracks.push(st.routes[i]);
+      // drop pending ROUTES whose geometry lies outside this board — an
+      // unapplied route from a broken session (the flip's converters once
+      // committed anchors at y-mirrored coordinates) is dead state: it
+      // renders as a ghost via/trace far off-board that no source delete can
+      // ever match. The viewBox is the board's own extent and a legit
+      // pending route starts from a pad on it, so anything with a point
+      // beyond it (plus a small slack) cannot land on this board.
+      var vb = svg.viewBox.baseVal;
+      var onBoard = function (rt) {
+        if (!rt) return false;
+        var pi, pt;
+        for (pi = 0; pi < (rt.pieces || []).length; pi++) {
+          for (var sj = 0; sj < (rt.pieces[pi].pts || []).length; sj++) {
+            pt = rt.pieces[pi].pts[sj];
+            if (pt.x < vb.x - 5 || pt.x > vb.x + vb.width + 5 || pt.y < vb.y - 5 || pt.y > vb.y + vb.height + 5)
+              return false;
+          }
+        }
+        for (pi = 0; pi < (rt.vias || []).length; pi++) {
+          pt = rt.vias[pi];
+          if (pt.x < vb.x - 5 || pt.x > vb.x + vb.width + 5 || pt.y < vb.y - 5 || pt.y > vb.y + vb.height + 5)
+            return false;
+        }
+        return (rt.pieces || []).length > 0;
+      };
+      for (var i = 0; i < (st.routes || []).length; i++) {
+        if (onBoard(st.routes[i])) routedTracks.push(st.routes[i]);
+      }
       for (var d = 0; d < (st.deletes || []).length; d++) routedDeletes.push(st.deletes[d]);
+      for (var p = 0; p < (st.partDeletes || []).length; p++) {
+        // only refs this board still carries — an applied deletion's part is
+        // gone from the rebuilt board and must not resurrect as pending
+        var pref = st.partDeletes[p];
+        for (var pc = 0; pc < layoutComps.length; pc++) {
+          if (layoutComps[pc].ref === pref) {
+            partDeletes.push(pref);
+            break;
+          }
+        }
+      }
       // the persisted deletes described the board the LAST session saw —
       // this board may have moved on (a failed apply + rebuild); keep only
       // what still exists here
       pruneStaleDeletes();
-      if (!routedTracks.length && !routedDeletes.length) {
-        persistPending();
-        return 0;
-      }
-      return n;
+      // re-persist the pruned state: dead routes/deletes leave storage
+      // instead of re-arriving on every load
+      var n2 = routedTracks.length + routedDeletes.length + partDeletes.length;
+      persistPending();
+      if (!n2) return 0;
+      return n2;
     } catch (e) {
       return 0;
     }
@@ -5953,7 +6139,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     ['Shift+D', 'disperse stacked footprints below the board'],
     ['Tab', 'cycle pad / trace / part under the cursor'],
     ['U', 'grow the segment selection along the net'],
-    ['Del', 'delete the selected segments (their vias ride along)'],
+    ['Del', 'delete the selected segments and vias, or the selected part(s) — Apply removes them from source'],
     ['E', 'properties: part ref/value/placement + pin nets \u00b7 trace width/layer \u00b7 via \u2300/drill \u00b7 text content/style'],
     ['Ctrl+Z', 'undo (Ctrl+Shift+Z or Ctrl+Y redo)'],
     ['Esc', 'clear the selection / cancel what is running'],
@@ -7110,11 +7296,28 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       startPad = padHi;
       startLbl = padHi.ref + '.' + padHi.pin;
     } else {
-      lg = traceHi.layerGroup || copperGroups()[0];
-      if (!lg) return;
-      c = { x: traceHi.gx, y: traceHi.gy };
-      startNet = traceHi.net && traceHi.net !== 'N/C' ? traceHi.net : null;
-      startLbl = traceHi.kind === 'via' ? 'via' : 'trace' + (startNet ? ' [' + startNet + ']' : '');
+      // a pad under the press point owns the start: net-less trace ink sits
+      // ON the pads it bridges (or lands there from a bad start), and
+      // seeding routes from it breeds more net-less copper — the shorts the
+      // DRC then marks on those same pads, hiding them from routing entirely
+      var bp = padAtBoard(lastMouseG.x, -lastMouseG.y);
+      if (bp && bp.net && bp.net !== 'N/C') {
+        lg = layerGroupForPad(bp);
+        if (lg) {
+          var bpc = padCenter(bp);
+          c = { x: bpc.x, y: bpc.y };
+          startNet = bp.net;
+          startPad = bp;
+          startLbl = bp.ref + '.' + bp.pin;
+        }
+      }
+      if (!startPad) {
+        lg = traceHi.layerGroup || copperGroups()[0];
+        if (!lg) return;
+        c = { x: traceHi.gx, y: traceHi.gy };
+        startNet = traceHi.net && traceHi.net !== 'N/C' ? traceHi.net : null;
+        startLbl = traceHi.kind === 'via' ? 'via' : 'trace' + (startNet ? ' [' + startNet + ']' : '');
+      }
       segSel.clear();
       segHiSync();
       viaSel.clear();
@@ -9920,11 +10123,12 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         renderMeasure();
       }
       var v = clientToView({ x: ev.clientX, y: ev.clientY });
-      var bx = (v.x - tx) / k;
       // Board (KiCad/typeCAD) coordinates, y-down — the same numbers a
       // component's pcb placement uses. Gerber space is y-up, so the viewBox
       // y (post-yflip) reads directly; negating here would report the
-      // pre-flip gerber value and show every position mirrored.
+      // pre-flip gerber value and show every position mirrored. The Flip
+      // Board mirror negates x only — the y-flip is present in both states.
+      var bx = (boardFlipped ? -1 : 1) * ((v.x - tx) / k);
       var by = (v.y - ty) / k;
       if (!statusLocked()) {
         statusEl.textContent =
@@ -9997,8 +10201,14 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   var mouseBoard = null;
 
   function boardCoords(ev) {
+    // gerber frame (y-up), like gerberAt — the ruler math and pad lookup
+    // negate y themselves where they want the board frame. The Flip Board
+    // mirror negates x only; y is the y-flip's job in both states.
     var v = clientToView({ x: ev.clientX, y: ev.clientY });
-    return { x: (v.x - tx) / k, y: -((v.y - ty) / k) };
+    return {
+      x: (boardFlipped ? -1 : 1) * ((v.x - tx) / k),
+      y: -((v.y - ty) / k),
+    };
   }
   // the vscode webview's probe client fills #typecad-probe with component
   // outline rects that sit ABOVE the stack and swallow every hit inside a
@@ -10044,8 +10254,11 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   }
   function drawRuler(ax, ay, bx, by) {
     // the overlay group sits inside panzoom but outside the y-flip, so
-    // board->svg is just y negation; s converts screen px to local units
-    var x1 = ax, y1 = -ay, x2 = bx, y2 = -by;
+    // board->svg is just y negation; the Flip Board mirror negates viewBox
+    // x, so the ruler negates x in its own math (a group transform would
+    // mirror the text label's glyphs); s converts screen px to local units
+    var mx = boardFlipped ? -1 : 1;
+    var x1 = mx * ax, y1 = -ay, x2 = mx * bx, y2 = -by;
     var dx = x2 - x1, dy = y2 - y1;
     var len = Math.hypot(dx, dy);
     var px = len ? -dy / len : 0, py = len ? dx / len : 0; // unit perpendicular
@@ -10570,6 +10783,81 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   }
 
   document.getElementById('btn-fit').addEventListener('click', fit);
+
+  // ---- Flip Board: view the board from the back ---------------------------
+  // #yflip gains a horizontal mirror (scale(1,-1) -> scale(-1,-1): a 180°
+  // turn in gerber space) so back-side copper and silk — plotted mirrored,
+  // read from the top — read the right way round, and the front side reads
+  // mirrored instead, exactly like looking at the physical board's back.
+  // The viewBox mirrors with it (framing lives entirely in the viewBox —
+  // fit() is the identity), and gerberAt/boardCoords invert the same
+  // mirror, so every gesture (grabs, routes, deletes, probes, rulers)
+  // keeps editing the board geometry it points at.
+  var boardFlipped = false;
+  var flipGroup = viewGroups.gerber ? viewGroups.gerber.querySelector('#yflip') : null;
+  var baseViewBox = (svg.getAttribute('viewBox') || '')
+    .split(/\s+/)
+    .map(Number)
+    .filter(function (n) {
+      return isFinite(n);
+    });
+  function applyFlip() {
+    if (flipGroup) flipGroup.setAttribute('transform', boardFlipped ? 'scale(-1,-1)' : 'scale(1,-1)');
+    if (baseViewBox.length >= 4) {
+      svg.setAttribute(
+        'viewBox',
+        (boardFlipped
+          ? [-(baseViewBox[0] + baseViewBox[2]), baseViewBox[1], baseViewBox[2], baseViewBox[3]]
+          : baseViewBox
+        ).join(' '),
+      );
+    }
+    // the pan/zoom window is stale the moment the viewBox swaps: the saved
+    // (or current) k/tx/ty describe a window over the OLD x range, so the
+    // flipped board sits mostly outside it (reads as "no layers visible").
+    // With X0' = -(X0+W), tx' = -tx shows exactly the same content region,
+    // mirrored — algebra, not guesswork: visible content x was
+    // [(X0-tx)/k, (X0+W-tx)/k]; requiring it to become the negated range
+    // solves to tx' = -tx.
+    tx = -tx;
+    // overlays that live OUTSIDE the y-flip draw in viewBox coords, whose x
+    // the mirror negates: the DRC markers and the cross-probe outlines are
+    // pure geometry, so a group transform tracks them; the ruler carries a
+    // text label (mirrored glyphs read wrong) and negates x in its own math
+    var drc = document.getElementById('drc');
+    if (drc) drc.setAttribute('transform', boardFlipped ? 'scale(-1,1)' : 'scale(1,1)');
+    var probe = document.getElementById('typecad-probe');
+    if (probe) probe.setAttribute('transform', boardFlipped ? 'scale(-1,1)' : 'scale(1,1)');
+    // pad labels counter-flip against the group to read upright — the added
+    // x mirror turns that counter-flip into a double negative, so the
+    // already-built labels re-swap (new labels consult boardFlipped at
+    // creation)
+    if (flipGroup) {
+      var labels = flipGroup.querySelectorAll('text');
+      for (var li = 0; li < labels.length; li++) {
+        var lt = labels[li].getAttribute('transform') || '';
+        if (lt.indexOf('scale(1,-1)') !== -1)
+          labels[li].setAttribute('transform', lt.replace('scale(1,-1)', boardFlipped ? 'scale(-1,-1)' : 'scale(1,-1)'));
+        else if (lt.indexOf('scale(-1,-1)') !== -1 && !boardFlipped)
+          labels[li].setAttribute('transform', lt.replace('scale(-1,-1)', 'scale(1,-1)'));
+      }
+    }
+    apply();
+    var btn = document.getElementById('btn-flip');
+    if (btn) btn.classList.toggle('armed', boardFlipped);
+  }
+  var flipBtn = document.getElementById('btn-flip');
+  if (flipBtn)
+    flipBtn.addEventListener('click', function () {
+      boardFlipped = !boardFlipped;
+      applyFlip();
+      try {
+        var state = JSON.parse(localStorage.getItem(storeKey) || '{}') || {};
+        state.__flipped = boardFlipped;
+        localStorage.setItem(storeKey, JSON.stringify(state));
+      } catch (e) {}
+    });
+
   function setAll(on) {
     document.querySelectorAll('.layer-vis').forEach(function (cb) { cb.checked = on; syncLayer(cb); });
     persist();
@@ -10697,6 +10985,14 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       // nothing else to update — fmtPos reads layoutMil live
     }
     rebuildLayoutGrid();
+  }
+
+  // restore the flipped view BEFORE the saved viewport — the stored k/tx/ty
+  // were framed against the flipped viewBox when the session flipped, and
+  // the mirror must be in place for them to land where they left off
+  if (saved.__flipped) {
+    boardFlipped = true;
+    applyFlip();
   }
 
   // restore the saved viewport (k/tx/ty) after the layer settings — apply()
@@ -11298,9 +11594,12 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   #dt-controls { display: flex; flex-wrap: wrap; gap: 6px 10px; margin-top: 6px; color: var(--chrome-fg); font-size: 11px; }
   #dt-controls label { display: flex; align-items: center; gap: 4px; cursor: pointer; }
   #dt-controls input[type="number"] { width: 46px; background: var(--btn-bg); color: var(--chrome-fg); border: 1px solid var(--btn-border); border-radius: 4px; padding: 2px 4px; font: inherit; }
-  /* DRC markers: pinned above geometry, theme-independent red */
-  #drc .drc-mark circle.outer { fill: rgba(229, 72, 77, 0.22); stroke: #e5484d; cursor: pointer; }
-  #drc .drc-mark circle.inner { fill: #e5484d; }
+  /* DRC markers: pinned above geometry, theme-independent red. The halo is
+     TRANSPARENT TO PRESSES — it is 11 px across and sits exactly on the
+     violating copper, so an interactive one made every flagged pad
+     unclickable (unroutable): the small inner pip keeps the hover tooltip */
+  #drc .drc-mark circle.outer { fill: rgba(229, 72, 77, 0.22); stroke: #e5484d; pointer-events: none; }
+  #drc .drc-mark circle.inner { fill: #e5484d; cursor: pointer; }
   #drc.hidden { display: none; }
   /* search hit pulse */
   .search-flash { animation: searchpulse 0.9s ease-out 3; }
@@ -11407,6 +11706,7 @@ ${rows}
   </div>
   <div id="toolbar">
     <button id="btn-fit" title="fit to board (0)">Fit</button>
+    <button id="btn-flip" title="view the board from the back — mirrored, so back-side text reads the right way round">Flip Board</button>
     <button id="btn-all-on" title="show all layers">All</button>
     <button id="btn-all-off" title="hide all layers">None</button>${
       /* layer colors for the gerber & layout views; KiCad color themes */
@@ -11495,11 +11795,11 @@ ${compactRows}
     options.rules ? JSON.stringify(options.rules).replace(/</g, '\\u003c') : ''
   }</script>
   <script id="routes" type="application/json">${
-    options.routes ? JSON.stringify(options.routes).replace(/</g, '<') : ''
+    options.routes ? JSON.stringify(options.routes).replace(/</g, '\\u003c') : ''
   }</script>
   <script id="layout-comps" type="application/json">${
     options.layoutComponents && options.layoutComponents.length
-      ? JSON.stringify(options.layoutComponents).replace(/</g, '<')
+      ? JSON.stringify(options.layoutComponents).replace(/</g, '\\u003c')
       : ''
   }</script>
   <script id="layout-texts" type="application/json">${

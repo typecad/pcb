@@ -79,6 +79,12 @@ This:
 - Generates `CHANGELOG.md` entries
 - Deletes the consumed changeset files
 
+Then refresh the lockfile so the bumped workspace versions are recorded — CI's `npm ci` fails on a stale lock (`npm run release` does this automatically):
+
+```
+npm install --package-lock-only
+```
+
 **Commit the version bumps.**
 
 ### 5. Publish (manual)

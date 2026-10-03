@@ -2,7 +2,7 @@
 
 🤖 programmatically 💥 create 🛰️ hardware
 
-**typeCAD** is a way to programmatically create hardware designs — KiCAD + TypeScript + npm. `@typecad/pcb` is the core package: schematics, PCB layout, placement, autorouting, zones, stitching, simulation, and a built-in gerber board viewer, with passives built in.
+**typeCAD** is a way to programmatically create hardware designs — KiCAD + TypeScript + npm. `@typecad/pcb` is the core package: schematics, PCB layout, placement, autorouting, zones, stitching, simulation, KiCad project import, native ERC/DRC checks, multi-board projects, and a built-in gerber board viewer, with passives built in.
 
 It's done with TypeScript and all the awesomeness of the npm/Node.js ecosystem.
 
@@ -58,6 +58,46 @@ Read through the [documentation](https://typecad.net/getting-started) for a full
 ```bash
 npx @typecad/pcb create
 ```
+
+## Command line
+
+Everything is driven by the `typecad-pcb` CLI — the package also installs `pcb`, `gerber-viewer`, `kicad-symbols`, and `kicad2typecad` bins. `npx @typecad/pcb create` scaffolds a project with npm scripts wired up (`npm run build` → `typecad-pcb build`, `npm run kicad_sync` → watch-mode import, ...):
+
+| Command | What it does |
+| --- | --- |
+| `create` | create a new typeCAD project |
+| `add component` / `add package` | add a component to the project / create a reusable component package |
+| `build` | build KiCAD output from typeCAD source |
+| `clean` | remove the generated build directory |
+| `check` | build + ERC + DRC in one pass, one report |
+| `erc` / `drc` | electrical rules / design rule checks on their own |
+| `diagnostics` | full design report — BOM, nets, graphs, ERC/DRC (markdown) |
+| `query` | inspect the compiled board (nets, pins, placement) |
+| `edit` | checked semantic edits (connect, move) |
+| `search` | search KiCad symbols and footprints |
+| `import` | convert a KiCad PCB file to typeCAD code |
+| `diff` | compare two KiCad PCB files visually |
+| `doc` | generate PCB documentation from markdown |
+| `lib add` / `lib list` | fetch/list KiCad libraries into `build/lib` |
+| `export gerbers` / `export drill` | export fabrication outputs |
+| `validate` | validate project source without a full build |
+| `doctor` | check your environment for common issues |
+| `package` | browse and install typeCAD packages from npm |
+| `skills` | list and query typeCAD skills and API patterns |
+
+Every command takes `--json` for machine-readable output and `--help` for details.
+
+### Checks without a KiCad install
+
+ERC and DRC run on a native engine — the build computes them from the design itself, and `check` rolls build + ERC + DRC into one report. The legacy kicad-cli checks remain available with `--kicad`. `lib add` fetches symbol/footprint libraries into `build/lib`, so `search` and `build` work on machines without KiCad installed.
+
+### KiCad import
+
+Existing boards come across with `typecad-pcb import <board>.kicad_pcb` — placement, nets, tracks and zones become typeCAD code. With `--watch --auto` (the scaffold wires this up as `npm run kicad_sync`) the KiCad file and the typeCAD source stay in sync while you work in either.
+
+### Multi-board projects
+
+A project can carry more than one board — mother/daughter, board/jig. Every `new PCB('<name>')` the build produces gets its own `build/<name>.kicad_pcb`, recorded in a build manifest; `--board <name>` targets one board of the set, and commands default to the active (most recent) board.
 
 ## Board viewer
 

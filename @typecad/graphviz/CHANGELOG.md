@@ -1,5 +1,12 @@
 # @typecad/graphviz
 
+## 1.0.4-alpha.1
+
+### Patch Changes
+
+- 081813f: Drop the unused `string-comparison` dependency — it was imported but never
+  called, so published installs no longer pull it (and its transitive tree).
+
 ## 1.0.4-alpha.0
 
 ### Patch Changes

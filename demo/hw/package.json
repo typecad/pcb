@@ -1,6 +1,6 @@
 {
   "name": "hw",
-  "version": "1.0.1-alpha.2",
+  "version": "1.0.1-alpha.3",
   "private": true,
   "description": "",
   "main": "index.js",
@@ -21,7 +21,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@typecad/pcb": "1.0.0-alpha.8",
+    "@typecad/pcb": "1.0.0-alpha.9",
     "tsx": "^4.20.3"
   },
   "devDependencies": {

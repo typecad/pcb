@@ -18,6 +18,7 @@ import { parse, SNode, Sym } from '../sexpr/index.js';
 import { projectGuid, TYPECAD_SOFTWARE } from './writer_utils.js';
 import type { SExpr } from '../sexpr/index.js';
 import { GerberWriter, type AperFunction, type ApertureShape, type Point } from './gerber_writer.js';
+import { drawGraphicItem, drawTextItem } from './layers.js';
 
 const DEG = Math.PI / 180;
 
@@ -608,6 +609,17 @@ function plotOneCopperLayer(
     }
   }
   w.clearAttrs();
+
+  // --- board-level graphics on copper (artwork, logos, copper text) --------
+  // The graphics plotter (layers.ts) covers every non-copper layer; copper
+  // board graphics were silently dropped here, which mattered once images
+  // and pcb.text/line could target F.Cu/B.Cu directly.
+  for (const item of root.children()) {
+    if (!item.name.startsWith('gr_')) continue;
+    if (String(item.child('layer')?.raw[1] ?? '') !== layer.name) continue;
+    if (item.name === 'gr_text') drawTextItem(w, item, layer.name.startsWith('B.'), (p) => p);
+    else drawGraphicItem(w, item, { isProfile: false, map: (p) => p });
+  }
 
   // --- zone pours (saved fills only — refill is the consumer's job) -------
   for (const zone of root.children('zone')) {

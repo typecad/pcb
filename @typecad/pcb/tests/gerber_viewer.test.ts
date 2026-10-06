@@ -26,8 +26,71 @@ describe('buildViewerHtml', () => {
     expect(html).toContain('#board');
   });
 
+  it('stamps the generator identity when given (the restore fast path keys on it)', () => {
+    const stamped = buildViewerHtml(svg, [info], { title: 'demo board', generatorVersion: '9.9.9' });
+    expect(stamped).toContain('<meta name="tc-viewer-generator" content="9.9.9">');
+    // unstamped pages carry an empty content — the extension treats a
+    // missing stamp as stale and regenerates
+    expect(html).toContain('<meta name="tc-viewer-generator" content="">');
+  });
+
   it('makes board text unselectable (silk/fab/refdes labels never highlight)', () => {
     expect(html).toContain('#board, #board text { -webkit-user-select: none; user-select: none; }');
+  });
+
+  it('excludes the fat route-hit click twins from the live routing obstacle scan', () => {
+    // every trace path gets an invisible stroke:max(w,0.5) twin for segment
+    // selection; counting those as copper inflated each track to ~4x its
+    // width and flagged phantom clearance violations all over dense boards
+    // (U3 pin 2's corridor sat 0.25mm from a 0.5mm phantom of a 0.127mm VCC
+    // trace — permanently red until the twin was skipped)
+    expect(html).toContain("el.classList.contains('route-hit')");
+  });
+
+  it('keeps the pad-snap magnet pad-scaled, not corridor-scaled', () => {
+    // at fit-to-board zoom the zoom-adaptive term is enormous and only the
+    // world clamp governs; at 1.2mm every pad around a fine-pitch part won
+    // the snap (composite pad pairs sit 0.285mm apart) and the walk refused
+    // to enter open space until deeply zoomed in
+    expect(html).toContain('return Math.min(0.5, Math.max(0.15, 14 / k));');
+    expect(html).toContain('return Math.min(0.4, Math.max(0.1, 10 / k));');
+  });
+
+  it('gates ink nudges on clearance and measures tracks by their true centerline', () => {
+    // arrow-key nudges used to tunnel segments straight through obstacles;
+    // the gate reuses the drag's rule (refuse + red flash). The distance
+    // measure itself uses the track's polyline — a diagonal's bbox is far
+    // fatter than its copper and refused nudges that were ~0.5mm clear
+    expect(html).toContain("'nudge refused \\u2014 clearance violation'");
+    expect(html).toContain('function ptSegDist(');
+    expect(html).toContain('dist -= o.hw;');
+  });
+
+  it('hosts the zone tool in the E properties panel, not the sidebar', () => {
+    // the sidebar's draw-zone row (button + kind/layer/net selects, which
+    // read as empty until armed) moved into the nothing-selected properties
+    // panel — populated on open, prefs surviving panel rebuilds
+    expect(html).not.toContain('<div id="zone-tools">');
+    expect(html).toContain('function zoneToolsBind()');
+    expect(html).toContain('var zonePrefs = { kind: ');
+  });
+
+  it('hosts artwork placement in the E properties panel with I as its key', () => {
+    // the place-image row left the sidebar the same way; plain I arms it
+    // when the eyedropper has nothing to grab (no selection, no route, no
+    // trace under the cursor) — over copper the eyedropper keeps the key
+    expect(html).not.toContain('<div id="image-tools">');
+    expect(html).toContain('function imageToolsBind()');
+    expect(html).toContain('!eyedropTrack()) {');
+  });
+
+  it('does not persist un-applied board edits across sessions', () => {
+    // invisible state returning after a reload is impossible to track —
+    // the pending store is gone, and a load-time scrub removes any store a
+    // previous version left behind
+    expect(html).not.toContain('function persistPending()');
+    expect(html).not.toContain('function restorePending()');
+    expect(html).toContain("lkey.indexOf('typecadPending:')");
   });
 
   it('persists layer settings to localStorage keyed per board', () => {
@@ -474,7 +537,7 @@ describe('view switcher (gerber / pcba)', () => {
     expect(html).toContain('var ufFind = function (parent, i)');
     expect(html).toContain("var wSubs = (wel.getAttribute('d') || '').split(/(?=M)/);");
     expect(html).toContain("if (net) p.setAttribute('data-net', net);");
-    expect(html).toContain('window.typecadLayoutApply(moves, texts, values, labels, renames, routedTracks, routedDeletes, partDeletes, function (err, fast)');
+    expect(html).toContain('window.typecadLayoutApply(moves, texts, values, labels, renames, routedTracks, routedDeletes, partDeletes, zones, outlinePayload, zoneEditsPayload, zoneDeletesPayload, images, imageEditsPayload, imageDeletesPayload, function (err, fast)');
     expect(html).toContain('moves.push({');
     expect(html).toContain('rot: (m2.rot || 0) * 90,');
     expect(html).toContain('pads: padsByRef[mr2] || [],');
@@ -851,7 +914,7 @@ describe('layout view (component overlay from the gerbers)', () => {
     expect(html).toContain("addEventListener('dblclick'");
     expect(html).toContain('layout-text-edit');
     // apply carries text edits alongside component moves
-    expect(html).toContain('window.typecadLayoutApply(moves, texts, values, labels, renames, routedTracks, routedDeletes, partDeletes, function (err, fast)');
+    expect(html).toContain('window.typecadLayoutApply(moves, texts, values, labels, renames, routedTracks, routedDeletes, partDeletes, zones, outlinePayload, zoneEditsPayload, zoneDeletesPayload, images, imageEditsPayload, imageDeletesPayload, function (err, fast)');
   });
 
   it('derives handles from the fab contour (chamfers kept) and the pad-land hull', () => {

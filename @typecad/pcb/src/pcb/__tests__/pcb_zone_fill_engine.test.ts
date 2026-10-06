@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { parse, SNode } from '../../sexpr/index.js';
 import type { SExpr } from '../../sexpr/index.js';
-import { fillZone } from '../pcb_zone_fill_engine.js';
+import { fillZone, padShapeObstacles } from '../pcb_zone_fill_engine.js';
 
 function board(body: string): SNode {
   return SNode.from(
@@ -316,5 +316,52 @@ describe('zone fill engine', () => {
     const res = fillZone(root, z, 'B.Cu')!;
     // blind via on F/In1 does not affect a B.Cu zone
     expect(filled(res.islands[0]!.ring, 15, 15)).toBe(true);
+  });
+
+  it('models chamfered roundrect pads with their corner cuts', () => {
+    // the castellated-header pad shape: rratio 0 (square plain corners),
+    // 0.2 chamfer on both right corners — file frame has top = -y
+    const root = board(`
+      (footprint "x" (at 0 0)
+        (pad "1" thru_hole roundrect (at 20 20) (size 1.2 1.2) (drill 0.9)
+          (layers "*.Cu" "*.Mask") (roundrect_rratio 0)
+          (chamfer_ratio 0.2) (chamfer top_right bottom_right) (net 2)))`);
+    const pad = root.children('footprint')[0]!.children('pad')[0]!;
+    const obst = padShapeObstacles(pad, 20, 20, 0);
+    expect(obst).toHaveLength(1);
+    const pts = obst[0]!.poly!.pts;
+    // 4 plain corners + 2 verts per chamfer = 6 vertices
+    expect(pts).toHaveLength(6);
+    const near = (p: [number, number], x: number, y: number): boolean =>
+      Math.abs(p[0]! - x) < 1e-6 && Math.abs(p[1]! - y) < 1e-6;
+    // clockwise from top-left: plain corners keep the square vertex, the
+    // right corners step back along both edges by c = 0.2 × 1.2 = 0.24
+    expect(near(pts[0]!, 19.4, 19.4)).toBe(true);
+    expect(near(pts[1]!, 20.36, 19.4)).toBe(true);
+    expect(near(pts[2]!, 20.6, 19.64)).toBe(true);
+    expect(near(pts[3]!, 20.6, 20.36)).toBe(true);
+    expect(near(pts[4]!, 20.36, 20.6)).toBe(true);
+    expect(near(pts[5]!, 19.4, 20.6)).toBe(true);
+  });
+
+  it('zone clearance hugs chamfered pad corners instead of the bounding rect', () => {
+    const root = board(`
+      (footprint "x" (at 0 0)
+        (pad "1" thru_hole roundrect (at 20 20) (size 1.2 1.2) (drill 0.9)
+          (layers "*.Cu" "*.Mask") (roundrect_rratio 0)
+          (chamfer_ratio 0.2) (chamfer top_right bottom_right) (net 2)))
+      (zone (net 1) (net_name "GND") (layer "In1.Cu") (hatch edge 0.508)
+        (connect_pads (clearance 0.5))
+        (polygon (pts (xy 10 10) (xy 30 10) (xy 30 30) (xy 10 30))))`);
+    const z = root.children('zone')[0]!;
+    const res = fillZone(root, z, 'In1.Cu')!;
+    const rings = res.islands.map((i) => i.ring);
+    // diagonally out from a chamfered corner, 0.42 from the old square
+    // corner: > clearance from the chamfer edge, so the pour reaches it
+    expect(anyFilled(rings, 20.897, 19.103)).toBe(true);
+    // the same offset from an unchamfered corner stays cleared
+    expect(anyFilled(rings, 19.103, 19.103)).toBe(false);
+    // straight off the right edge within clearance stays cleared
+    expect(anyFilled(rings, 21, 20)).toBe(false);
   });
 });

@@ -28,7 +28,7 @@
 // Layout + routing: manual.
 // ---------------------------------------------------------------------------
 
-import { PCB, Component, Connector, Resistor, Capacitor, TrackBuilder } from '@typecad/pcb';
+import { PCB, Component, Connector, Resistor, Capacitor, TrackBuilder, Image } from '@typecad/pcb';
 import { syncBoard, syncTracks } from './_sync.js';
 
 const typecad = new PCB('mod-ec', {
@@ -316,10 +316,10 @@ typecad.named('SWCLK').net(u1.pin(24), j1.pin(5)); // PA14
 // Ground pours — all four copper layers
 // ---------------------------------------------------------------------------
 
-typecad.zone({ net: 'GND', layers: ['F.Cu'], x: 130, y: 78, width: 25, height: 15, minThickness: 0.254, clearance: 0.254, fill: { thermalGap: 0.254, thermalBridgeWidth: 0.4064, islandRemovalMode: 2, islandAreaMin: 10} });
-typecad.zone({ net: 'GND', layers: ['B.Cu'], x: 130, y: 78, width: 25, height: 15, minThickness: 0.254, clearance: 0.254, fill: { thermalGap: 0.254, thermalBridgeWidth: 0.4064, islandRemovalMode: 2, islandAreaMin: 10} });
-typecad.zone({ net: 'GND', layers: ['In1.Cu'], x: 130, y: 78, width: 25, height: 15, minThickness: 0.254, clearance: 0.254, fill: { thermalGap: 0.254, thermalBridgeWidth: 0.4064, islandRemovalMode: 2, islandAreaMin: 10} });
-typecad.zone({ net: 'GND', layers: ['In2.Cu'], x: 130, y: 78, width: 25, height: 15, minThickness: 0.254, clearance: 0.254, fill: { thermalGap: 0.254, thermalBridgeWidth: 0.4064, islandRemovalMode: 2, islandAreaMin: 10} });
+
+
+
+
 
 // ---------------------------------------------------------------------------
 // PLACEMENT - grounded in the built pads manifest (real pad coordinates).
@@ -373,12 +373,10 @@ track_DRIVE.push(typecad.track({ net: 'DRIVE' }).from({ x: 136.6, y: 83.325 }, "
 
 // Net: PROBE_1
 const track_PROBE_1: TrackBuilder[] = [];
-track_PROBE_1.push(typecad.track({ net: 'PROBE_1' }).from({ x: 141.805, y: 85.646 }, "F.Cu", 0.15).to({ x: 143.071, y: 86.146, layer: "F.Cu", width: 0.15 }));
 track_PROBE_1.push(typecad.track({ net: 'PROBE_1' }).from({ x: 138.905, y: 81.531 }, "F.Cu", 0.15).to({ x: 139.562, y: 82.188, layer: "F.Cu", width: 0.15 }));
 track_PROBE_1.push(typecad.track({ net: 'PROBE_1' }).from({ x: 143.071, y: 86.146 }, "F.Cu", 0.2).to({ x: 143.075, y: 86.15, layer: "F.Cu", width: 0.2 }));
 track_PROBE_1.push(typecad.track({ net: 'PROBE_1' }).from({ x: 139.562, y: 82.188 }, "F.Cu", 0.15).to({ x: 141.073, y: 83.7, layer: "F.Cu", width: 0.15 }));
 track_PROBE_1.push(typecad.track({ net: 'PROBE_1' }).from({ x: 136.912, y: 79.907 }, "F.Cu", 0.15).to({ x: 138.537, y: 81.531, layer: "F.Cu", width: 0.15 }));
-track_PROBE_1.push(typecad.track({ net: 'PROBE_1' }).from({ x: 141.073, y: 84.914 }, "F.Cu", 0.15).to({ x: 141.805, y: 85.646, layer: "F.Cu", width: 0.15 }));
 track_PROBE_1.push(typecad.track({ net: 'PROBE_1' }).from({ x: 133.388, y: 78.359 }, "F.Cu", 0.15).to({ x: 135.672, y: 78.359, layer: "F.Cu", width: 0.15 }));
 track_PROBE_1.push(typecad.track({ net: 'PROBE_1' }).from({ x: 138.537, y: 81.531 }, "F.Cu", 0.15).to({ x: 138.905, y: 81.531, layer: "F.Cu", width: 0.15 }));
 track_PROBE_1.push(typecad.track({ net: 'PROBE_1' }).from({ x: 132.775, y: 78.972 }, "F.Cu", 0.15).to({ x: 133.388, y: 78.359, layer: "F.Cu", width: 0.15 }));
@@ -386,7 +384,6 @@ track_PROBE_1.push(typecad.track({ net: 'PROBE_1' }).from({ x: 136.912, y: 79.6 
 track_PROBE_1.push(typecad.track({ net: 'PROBE_1' }).from({ x: 132.735, y: 79.16 }, "F.Cu", 0.3).to({ x: 132.775, y: 79.2, layer: "F.Cu", width: 0.3 }));
 track_PROBE_1.push(typecad.track({ net: 'PROBE_1' }).from({ x: 130.04, y: 79.16 }, "F.Cu", 0.3).to({ x: 131.24, y: 79.16, layer: "F.Cu", width: 0.3 }).to({ x: 132.735, y: 79.16, layer: "F.Cu", width: 0.3 }));
 track_PROBE_1.push(typecad.track({ net: 'PROBE_1' }).from({ x: 135.672, y: 78.359 }, "F.Cu", 0.15).to({ x: 136.912, y: 79.6, layer: "F.Cu", width: 0.15 }));
-track_PROBE_1.push(typecad.track({ net: 'PROBE_1' }).from({ x: 141.073, y: 83.7 }, "F.Cu", 0.15).to({ x: 141.073, y: 84.914, layer: "F.Cu", width: 0.15 }));
 track_PROBE_1.push(typecad.track({ net: 'PROBE_1' }).from({ x: 132.775, y: 79.2 }, "F.Cu", 0.2).to({ x: 132.775, y: 78.972, layer: "F.Cu", width: 0.2 }));
 
 // Net: MID
@@ -411,8 +408,15 @@ track_SWDIO_E.push(typecad.track({ net: 'SWDIO_E' }).from({ x: 130.04, y: 91.86 
 const track_SWCLK: TrackBuilder[] = [];
 track_SWCLK.push(typecad.track({ net: 'SWCLK' }).from({ x: 130.04, y: 89.32 }, "F.Cu", 0.127).to({ x: 131.24, y: 89.32, layer: "F.Cu", width: 0.127 }));
 
+// ink-swatch.png demos every artwork ink on the back of the board:
+//   red    -> exposed copper (gold through its mask opening)
+//   white  -> silkscreen
+//   blue   -> mask opening (bare substrate)
+//   purple -> maskPaint: closes the blue opening (two-tone mask art)
+//   black  -> hidden copper (real metal, invisible under intact mask)
 syncBoard(typecad, {});
 typecad.create(
+  
   j1,
   j2,
   u1,
@@ -433,5 +437,5 @@ typecad.create(
   ...track_MID,
   ...track_CH2_COM,
   ...track_SWDIO_E,
-  ...track_SWCLK
+  ...track_SWCLK, ...syncTracks
 );

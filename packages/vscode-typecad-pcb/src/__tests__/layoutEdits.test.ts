@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyPlacementEdits, planComponentEdits, planEndpointEdits, parsePlacementLiteral, planPlacementEdits, planTextEdits } from '../layoutEdits.js';
+import { applyPlacementEdits, planComponentEdits, planEndpointEdits, parsePlacementLiteral, planOutlineEdits, planPlacementEdits, planTextEdits, planZoneDeletions, planZoneGeometryEdits } from '../layoutEdits.js';
 import { expectValidTs } from './helpers/valid_source.js';
 
 const source = `import { PCB } from '@typecad/pcb';
@@ -119,6 +119,38 @@ describe('planPlacementEdits rotation', () => {
   });
 });
 
+describe('planPlacementEdits flip (side)', () => {
+  it('appends side when the literal has none — rotation untouched', () => {
+    const src = 'r3.pcb = { x: 59, y: 26 };\n';
+    const { edits, skipped } = planPlacementEdits(src, [{ ref: 'R3', dx: 0, dy: 0, side: 'back' }], () => 'r3');
+    expect(skipped).toEqual([]);
+    expect(applyPlacementEdits(src, edits)).toContain("r3.pcb = { x: 59, y: 26, side: 'back' }");
+  });
+
+  it('rewrites an existing side (back flips back to front)', () => {
+    const src = "c4.pcb = { x: 10, y: 10, side: 'back' };\n";
+    const { edits } = planPlacementEdits(src, [{ ref: 'C4', dx: 1, dy: 0, side: 'front' }], () => 'c4');
+    expect(applyPlacementEdits(src, edits)).toContain("c4.pcb = { x: 11, y: 10, side: 'front' }");
+  });
+
+  it('writes side into an INSERTED literal for constructor-placed parts', () => {
+    const src = `const led = new LED({ value: 'red' });
+typecad.create(led);
+`;
+    const { edits, skipped } = planPlacementEdits(src, [{ ref: 'D1', dx: 0, dy: 0, ax: 20, ay: 30, side: 'back' }], () => 'led');
+    expect(skipped).toEqual([]);
+    const updated = applyPlacementEdits(src, edits);
+    expectValidTs(updated);
+    expect(updated).toContain("led.pcb = { x: 20, y: 30, side: 'back' };");
+  });
+
+  it('a move without side never touches an existing side field', () => {
+    const src = "c4.pcb = { x: 10, y: 10, side: 'back' };\n";
+    const { edits } = planPlacementEdits(src, [{ ref: 'C4', dx: 1, dy: 1 }], () => 'c4');
+    expect(applyPlacementEdits(src, edits)).toContain("c4.pcb = { x: 11, y: 11, side: 'back' }");
+  });
+});
+
 describe('planEndpointEdits (sticky TrackBuilder endpoints)', () => {
   const src = `const vcc = new TrackBuilder(typecad, { net: 'VCC' })
   .from({ x: 57.5375, y: 26 })
@@ -151,6 +183,31 @@ const other = new TrackBuilder(typecad, { net: 'GND' })
     const none = planEndpointEdits(src, { ref: 'R3', dx: 1, dy: 1, pads: [{ x: 10, y: 10 }] });
     expect(none).toHaveLength(0);
   });
+
+  it('a flip translates each endpoint by ITS pad delta (padsTo), not the part delta', () => {
+    // the part moves +2 in x; its flip mirrors pad offsets about the local X
+    // axis, so the two pads end at different deltas — endpoint 1 follows
+    // pad 1's final position, not the center's
+    const pads = [
+      { x: 57.5375, y: 26 },
+      { x: 60.5375, y: 26 },
+    ];
+    // pad1 final: offset (-1.5,0) mirrored -> (+1.5,0) then +2 center move
+    const padsTo = [
+      { x: 61.0375, y: 26 }, // 57.5375 + 3.5
+      { x: 59.0375, y: 26 }, // 60.5375 - 1.5
+    ];
+    const edits = planEndpointEdits(src, { ref: 'R3', dx: 2, dy: 0, pads, padsTo });
+    const updated = applyPlacementEdits(src, edits);
+    expect(updated).toContain('.from({ x: 61.0375, y: 26 })');
+    expect(edits).toHaveLength(1);
+  });
+
+  it('padsTo absent falls back to the uniform delta (pure move unchanged)', () => {
+    const pads = [{ x: 57.5375, y: 26 }];
+    const edits = planEndpointEdits(src, { ref: 'R3', dx: 2, dy: 1, pads });
+    expect(applyPlacementEdits(src, edits)).toContain('.from({ x: 59.5375, y: 27 })');
+  });
 });
 
 describe('planEndpointEdits replacement bounds', () => {
@@ -161,6 +218,39 @@ describe('planEndpointEdits replacement bounds', () => {
     expect((out.match(/const after/g) ?? []).length).toBe(1);
     expect(out).toContain(".to({ x: 58.5375, y: 27 }, 'F.Cu', W);");
     expect(out.endsWith('const after = 1;\n')).toBe(true);
+  });
+});
+
+describe('planOutlineEdits (board outline rewrite)', () => {
+  const src = `typecad.outline(10, 20, 50, 40);
+typecad.outline(0, 0, 30, 30, 2);
+`;
+
+  it('rewrites the matching outline call, keeping the fillet argument', () => {
+    const { edits, reason } = planOutlineEdits(src, { x: 10, y: 20, w: 50, h: 40 }, { x: 8, y: 18, w: 54, h: 44 });
+    expect(reason).toBeUndefined();
+    const out = applyPlacementEdits(src, edits);
+    expect(out).toContain('typecad.outline(8, 18, 54, 44);');
+    expect(out).toContain('typecad.outline(0, 0, 30, 30, 2);'); // untouched
+  });
+
+  it('rewrites the filleted call when the original matches', () => {
+    const { edits } = planOutlineEdits(src, { x: 0, y: 0, w: 30, h: 30 }, { x: 0, y: 0, w: 32, h: 30 });
+    const out = applyPlacementEdits(src, edits);
+    expect(out).toContain('typecad.outline(0, 0, 32, 30, 2);');
+  });
+
+  it('reports when no literal matches the authored outline', () => {
+    const { edits, reason } = planOutlineEdits(src, { x: 100, y: 100, w: 5, h: 5 }, { x: 90, y: 90, w: 6, h: 6 });
+    expect(edits).toEqual([]);
+    expect(reason).toContain('no `.outline(');
+  });
+
+  it('polygon outlines never match (reported, not mangled)', () => {
+    const poly = 'typecad.outlinePolygon([{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 5, y: 8 }]);\n';
+    const { edits, reason } = planOutlineEdits(poly, { x: 0, y: 0, w: 10, h: 8 }, { x: 1, y: 1, w: 10, h: 8 });
+    expect(edits).toEqual([]);
+    expect(reason).toContain('no `.outline(');
   });
 });
 
@@ -608,5 +698,91 @@ typecad.create(battery);
     const { edits } = planPlacementEdits(src, [{ ref: 'BT1', dx: 12.5, dy: -5 }], (ref) => ({ BT1: 'battery' })[ref]);
     const out = applyPlacementEdits(src, edits);
     expect(out).toContain('battery.pcb = { x: 12.5, y: -5 }');
+  });
+});
+
+describe('planZoneGeometryEdits / planZoneDeletions', () => {
+  const src = [
+    "import { PCB } from '@typecad/pcb';",
+    "const typecad = new PCB('demo');",
+    "  typecad.zone({ net: 'VCC', layers: ['F.Cu'], x: 144.6, y: 78.5, width: 5.6, height: 1.7 });",
+    "  typecad.zone({ net: 'AMP', layers: ['B.Cu'], x: 10, y: 10, width: 4, height: 4 });",
+    "  typecad.keepout({ layers: ['F.Cu'], x: 20, y: 20, width: 3, height: 3 });",
+    'typecad.create();',
+  ].join('\n');
+
+  it('rewrites the matching zone literal geometry in place', () => {
+    const { edits, skipped } = planZoneGeometryEdits(src, [
+      { original: { x: 144.6, y: 78.5, w: 5.6, h: 1.7, layer: 'F.Cu' }, rect: { x: 140, y: 75, w: 10, h: 6 } },
+    ]);
+    expect(skipped).toEqual([]);
+    const out = applyPlacementEdits(src, edits);
+    expect(out).toContain("typecad.zone({ net: 'VCC', layers: ['F.Cu'], x: 140, y: 75, width: 10, height: 6 })");
+    expect(out).toContain("typecad.zone({ net: 'AMP', layers: ['B.Cu'], x: 10, y: 10, width: 4, height: 4 })"); // untouched
+    expectValidTs(out);
+  });
+
+  it('a net on the edit reassigns the pour (rewritten in place, or inserted when absent)', () => {
+    const { edits, skipped } = planZoneGeometryEdits(src, [
+      { original: { x: 144.6, y: 78.5, w: 5.6, h: 1.7, layer: 'F.Cu' }, rect: { x: 144.6, y: 78.5, w: 5.6, h: 1.7 }, net: 'GND' },
+    ]);
+    expect(skipped).toEqual([]);
+    const out = applyPlacementEdits(src, edits);
+    expect(out).toContain("net: 'GND', layers: ['F.Cu'], x: 144.6");
+    expect(out).not.toContain("net: 'VCC'");
+    expect(out).toContain("net: 'AMP', layers: ['B.Cu'], x: 10, y: 10, width: 4, height: 4 })"); // untouched
+    expectValidTs(out);
+    // a literal with no net key (a keepout being converted) gains one
+    const noNet = src.replace("typecad.zone({ net: 'VCC', layers: ['F.Cu'], x: 144.6, y: 78.5, width: 5.6, height: 1.7 })", "typecad.zone({ layers: ['F.Cu'], x: 144.6, y: 78.5, width: 5.6, height: 1.7 })");
+    const r2 = planZoneGeometryEdits(noNet, [
+      { original: { x: 144.6, y: 78.5, w: 5.6, h: 1.7, layer: 'F.Cu' }, rect: { x: 144.6, y: 78.5, w: 5.6, h: 1.7 }, net: 'MID' },
+    ]);
+    const out2 = applyPlacementEdits(noNet, r2.edits);
+    expect(out2).toContain("{ net: 'MID', layers: ['F.Cu']");
+    expectValidTs(out2);
+  });
+
+  it('layer disambiguates identical rects', () => {
+    const dup = src.replace(
+      "typecad.zone({ net: 'AMP', layers: ['B.Cu'], x: 10, y: 10, width: 4, height: 4 })",
+      "typecad.zone({ net: 'TWIN', layers: ['B.Cu'], x: 144.6, y: 78.5, width: 5.6, height: 1.7 })",
+    );
+    const { edits, skipped } = planZoneGeometryEdits(dup, [
+      { original: { x: 144.6, y: 78.5, w: 5.6, h: 1.7, layer: 'F.Cu' }, rect: { x: 140, y: 75, w: 10, h: 6 } },
+    ]);
+    expect(skipped).toEqual([]);
+    const out = applyPlacementEdits(dup, edits);
+    expect(out.match(/x: 140, y: 75/g)).toHaveLength(1); // only the F.Cu one moved
+    expect(out).toContain("net: 'TWIN', layers: ['B.Cu'], x: 144.6"); // twin untouched
+  });
+
+  it('deletes the whole zone statement', () => {
+    const { edits, skipped } = planZoneDeletions(src, [{ x: 10, y: 10, w: 4, h: 4, layer: 'B.Cu' }]);
+    expect(skipped).toEqual([]);
+    const out = applyPlacementEdits(src, edits);
+    expect(out).not.toContain("net: 'AMP'");
+    expect(out).toContain("net: 'VCC'"); // neighbors survive
+    expectValidTs(out);
+  });
+
+  it('reports plane-materialized / unmatched zones instead of guessing', () => {
+    const { edits, skipped } = planZoneGeometryEdits(src, [
+      { original: { x: 100, y: 100, w: 5, h: 5, layer: 'F.Cu' }, rect: { x: 90, y: 90, w: 5, h: 5 } },
+    ]);
+    expect(edits).toEqual([]);
+    expect(skipped.join(' ')).toContain('no editable literal');
+
+    const { edits: de, skipped: dsk } = planZoneDeletions(src, [{ x: 100, y: 100, w: 5, h: 5, layer: 'F.Cu' }]);
+    expect(de).toEqual([]);
+    expect(dsk.join(' ')).toContain('no removable literal');
+  });
+
+  it('keepouts edit and delete the same way', () => {
+    const { edits } = planZoneGeometryEdits(src, [
+      { original: { x: 20, y: 20, w: 3, h: 3, layer: 'F.Cu' }, rect: { x: 21, y: 21, w: 4, h: 4 } },
+    ]);
+    expect(applyPlacementEdits(src, edits)).toContain("typecad.keepout({ layers: ['F.Cu'], x: 21, y: 21, width: 4, height: 4 })");
+    const { edits: de } = planZoneDeletions(src, [{ x: 20, y: 20, w: 3, h: 3, layer: 'F.Cu' }]);
+    expect(applyPlacementEdits(src, de)).not.toContain('typecad.keepout');
   });
 });

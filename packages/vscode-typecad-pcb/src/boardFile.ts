@@ -138,3 +138,60 @@ export function boardStale(folder: string): boolean | null {
   if (!board) return null;
   return newestSourceMtime(folder) > mtimeOf(board);
 }
+
+/**
+ * The version of @typecad/pcb the project's `npx typecad-pcb` resolves to —
+ * found the same way npx walks up parent node_modules directories
+ * (`hw/node_modules` → `hw/../node_modules` → …). Null when nothing
+ * resolves; callers then keep their legacy behavior instead of gating on a
+ * version they cannot know.
+ */
+export function projectToolchainVersion(folder: string): string | null {
+  let dir = path.resolve(folder);
+  for (;;) {
+    const pkgPath = path.join(dir, 'node_modules', '@typecad', 'pcb', 'package.json');
+    try {
+      const version = String((JSON.parse(fs.readFileSync(pkgPath, 'utf8')) as { version?: string }).version ?? '');
+      if (version) return version;
+    } catch {
+      // no manifest here — keep walking up
+    }
+    const parent = path.dirname(dir);
+    if (parent === dir) return null;
+    dir = parent;
+  }
+}
+
+/**
+ * The mtime of @typecad/pcb's compiled page generator (dist), resolved the
+ * same walk-up way as projectToolchainVersion — null when nothing resolves.
+ * The restore fast path compares it against the page's mtime: a page older
+ * than the generator BITS that should have written it predates a toolchain
+ * edit (this repo links the toolchain as a workspace — features land
+ * WITHOUT a version bump, so the version-string staleness check alone
+ * serves such pages forever).
+ */
+export function projectToolchainGeneratorMtime(folder: string): number | null {
+  let dir = path.resolve(folder);
+  for (;;) {
+    const gen = path.join(dir, 'node_modules', '@typecad', 'pcb', 'dist', 'gerber_viewer', 'render', 'viewer_html.js');
+    try {
+      return fs.statSync(gen).mtimeMs;
+    } catch {
+      // not here — keep walking up
+    }
+    const parent = path.dirname(dir);
+    if (parent === dir) return null;
+    dir = parent;
+  }
+}
+
+/**
+ * The generator stamp embedded in a viewer page
+ * (<meta name="tc-viewer-generator">, written by gerber-viewer build) —
+ * null on pre-stamp pages.
+ */
+export function pageGeneratorVersion(html: string): string | null {
+  const m = /<meta name="tc-viewer-generator" content="([^"]*)"/.exec(html);
+  return m ? m[1]! : null;
+}

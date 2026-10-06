@@ -4,10 +4,14 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.mtimeOf = mtimeOf;
+exports.listBoardFiles = listBoardFiles;
 exports.newestBoardFile = newestBoardFile;
 exports.entrySourceFile = entrySourceFile;
 exports.newestSourceMtime = newestSourceMtime;
 exports.boardStale = boardStale;
+exports.projectToolchainVersion = projectToolchainVersion;
+exports.projectToolchainGeneratorMtime = projectToolchainGeneratorMtime;
+exports.pageGeneratorVersion = pageGeneratorVersion;
 // Board-file discovery, kept free of vscode imports so it stays unit-testable.
 const node_fs_1 = __importDefault(require("node:fs"));
 const node_path_1 = __importDefault(require("node:path"));
@@ -20,15 +24,44 @@ function mtimeOf(file) {
     }
 }
 /**
+ * The project's compiled boards, from the build manifest
+ * (.typecad-board.json): `boards` lists every board the project's create()
+ * calls produce (multi-board projects — mother/daughter, board/jig), `board`
+ * names the most recent one. Empty when there is no manifest.
+ */
+function listBoardFiles(folder) {
+    const buildDir = node_path_1.default.join(folder, 'build');
+    try {
+        const manifest = JSON.parse(node_fs_1.default.readFileSync(node_path_1.default.join(buildDir, '.typecad-board.json'), 'utf8'));
+        if (!Array.isArray(manifest.boards))
+            return [];
+        return manifest.boards
+            .filter((b) => typeof b === 'string' && b.endsWith('.kicad_pcb'))
+            .map((b) => node_path_1.default.join(buildDir, b))
+            .filter((b) => node_fs_1.default.existsSync(b));
+    }
+    catch {
+        return [];
+    }
+}
+/**
  * The project's compiled board. The build's own manifest
  * (.typecad-board.json, written beside the board) is the truth — a renamed
  * board is found at once and a leftover under the previous name can never
  * shadow it (seen live: the project was renamed and the stale old-named
  * board kept being rendered). Without a manifest, the package-name match
  * prefers the project's own board over strays; newest is the fallback.
+ * `stem` selects one board of a multi-board project; unknown stems fall
+ * back to the active-board resolution so the viewer always shows something.
  */
-function newestBoardFile(folder) {
+function newestBoardFile(folder, stem) {
     const buildDir = node_path_1.default.join(folder, 'build');
+    if (stem) {
+        const norm = stem.replace(/[.-]/g, '_').toLowerCase();
+        const hit = listBoardFiles(folder).find((f) => node_path_1.default.basename(f, '.kicad_pcb').replace(/[.-]/g, '_').toLowerCase() === norm);
+        if (hit)
+            return hit;
+    }
     if (!node_fs_1.default.existsSync(buildDir))
         return null;
     try {
@@ -123,5 +156,64 @@ function boardStale(folder) {
     if (!board)
         return null;
     return newestSourceMtime(folder) > mtimeOf(board);
+}
+/**
+ * The version of @typecad/pcb the project's `npx typecad-pcb` resolves to —
+ * found the same way npx walks up parent node_modules directories
+ * (`hw/node_modules` → `hw/../node_modules` → …). Null when nothing
+ * resolves; callers then keep their legacy behavior instead of gating on a
+ * version they cannot know.
+ */
+function projectToolchainVersion(folder) {
+    let dir = node_path_1.default.resolve(folder);
+    for (;;) {
+        const pkgPath = node_path_1.default.join(dir, 'node_modules', '@typecad', 'pcb', 'package.json');
+        try {
+            const version = String(JSON.parse(node_fs_1.default.readFileSync(pkgPath, 'utf8')).version ?? '');
+            if (version)
+                return version;
+        }
+        catch {
+            // no manifest here — keep walking up
+        }
+        const parent = node_path_1.default.dirname(dir);
+        if (parent === dir)
+            return null;
+        dir = parent;
+    }
+}
+/**
+ * The mtime of @typecad/pcb's compiled page generator (dist), resolved the
+ * same walk-up way as projectToolchainVersion — null when nothing resolves.
+ * The restore fast path compares it against the page's mtime: a page older
+ * than the generator BITS that should have written it predates a toolchain
+ * edit (this repo links the toolchain as a workspace — features land
+ * WITHOUT a version bump, so the version-string staleness check alone
+ * serves such pages forever).
+ */
+function projectToolchainGeneratorMtime(folder) {
+    let dir = node_path_1.default.resolve(folder);
+    for (;;) {
+        const gen = node_path_1.default.join(dir, 'node_modules', '@typecad', 'pcb', 'dist', 'gerber_viewer', 'render', 'viewer_html.js');
+        try {
+            return node_fs_1.default.statSync(gen).mtimeMs;
+        }
+        catch {
+            // not here — keep walking up
+        }
+        const parent = node_path_1.default.dirname(dir);
+        if (parent === dir)
+            return null;
+        dir = parent;
+    }
+}
+/**
+ * The generator stamp embedded in a viewer page
+ * (<meta name="tc-viewer-generator">, written by gerber-viewer build) —
+ * null on pre-stamp pages.
+ */
+function pageGeneratorVersion(html) {
+    const m = /<meta name="tc-viewer-generator" content="([^"]*)"/.exec(html);
+    return m ? m[1] : null;
 }
 //# sourceMappingURL=boardFile.js.map

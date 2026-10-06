@@ -19,6 +19,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.planLayoutApply = planLayoutApply;
 const layoutEdits_js_1 = require("./layoutEdits.js");
 const routeEdits_js_1 = require("./routeEdits.js");
+const imageEdits_js_1 = require("./imageEdits.js");
 const node_path_1 = __importDefault(require("node:path"));
 const syncFile_js_1 = require("./syncFile.js");
 const componentDelete_js_1 = require("./componentDelete.js");
@@ -94,7 +95,7 @@ function planLayoutApply(files, input) {
     const stages = [];
     const skipped = [];
     const touched = new Set();
-    const counts = { moves: 0, endpoints: 0, texts: 0, values: 0, labels: 0, renames: 0, routes: 0, deletes: 0, partDeletes: 0 };
+    const counts = { moves: 0, endpoints: 0, texts: 0, values: 0, labels: 0, renames: 0, routes: 0, deletes: 0, partDeletes: 0, zones: 0, images: 0, outline: 0, zoneEdits: 0, zoneDeletes: 0, imageEdits: 0, imageDeletes: 0 };
     // -- the sync sidecar: one machine-owned home for auto-inserts ----------
     // placements/labels with no literal to rewrite and fresh routes land in
     // src/_sync.ts, whose syncBoard() call sits right before create() and so
@@ -116,7 +117,7 @@ function planLayoutApply(files, input) {
         skipped.push('_sync.ts exists but is not a typeCAD sync file — its edits fell back to in-place');
     }
     const syncPartsVars = new Set();
-    const syncSummary = { created: false, placements: 0, labels: 0, routes: 0 };
+    const syncSummary = { created: false, placements: 0, labels: 0, routes: 0, zones: 0, images: 0 };
     let syncUsed = false;
     const entryText = () => (entryUri ? textOf.get(entryUri) ?? '' : '');
     /** a variable is nameable at the syncBoard() call only when the entry file
@@ -150,13 +151,13 @@ function planLayoutApply(files, input) {
         return true;
     };
     /** entry-file wiring (import/call/spread) for the given parts vars */
-    const planEntryIntegration = (needTracks) => {
+    const planEntryIntegration = (needTracks, needArt = false) => {
         if (!syncUri || !entryUri)
             return { ok: false, edits: [] };
         // the sidecar's module name follows the board on multi-board projects
         // (_sync.<stem>.ts) — the import line written into the entry must match
         const stemMatch = syncUri ? /^_sync\.(.+)\.ts$/.exec(node_path_1.default.basename(syncUri.split(/[\/]/).pop() ?? '')) : null;
-        const plan = (0, syncFile_js_1.planSyncEntryEdits)(entryText(), [...syncPartsVars], needTracks, stemMatch?.[1]);
+        const plan = (0, syncFile_js_1.planSyncEntryEdits)(entryText(), [...syncPartsVars], needTracks, stemMatch?.[1], needArt);
         if (!plan.receiver) {
             skipped.push('_sync.ts wiring needs a typecad.create() call in the entry file — nothing was written there');
             return { ok: false, edits: [] };
@@ -331,7 +332,7 @@ function planLayoutApply(files, input) {
                 const edits = syncPlacements.map((p) => ({
                     start: at,
                     end: at,
-                    line: `  parts.${p.variable}.pcb = { x: ${(0, layoutEdits_js_1.fmt)(p.x)}, y: ${(0, layoutEdits_js_1.fmt)(p.y)}${p.rot ? `, rotation: ${(0, layoutEdits_js_1.fmt)(p.rot)}` : ''} };\n`,
+                    line: `  parts.${p.variable}.pcb = { x: ${(0, layoutEdits_js_1.fmt)(p.x)}, y: ${(0, layoutEdits_js_1.fmt)(p.y)}${p.rot ? `, rotation: ${(0, layoutEdits_js_1.fmt)(p.rot)}` : ''}${p.side ? `, side: '${p.side}'` : ''} };\n`,
                 }));
                 for (const p of syncPlacements)
                     syncPartsVars.add(p.variable);
@@ -676,6 +677,203 @@ function planLayoutApply(files, input) {
             commit([{ uri: file.uri, edits: [argsEdit] }]);
             break;
         }
+    }
+    // -- stage 5c2: zone geometry edits + deletions from the layout view —
+    // rewrites / removes the matching typecad.zone() literals in the files
+    // that hold them (the sidecar included), planned BEFORE new inserts so
+    // both stages' offsets see stable texts --
+    if ((input.zoneEdits && input.zoneEdits.length > 0) || (input.zoneDeletes && input.zoneDeletes.length > 0)) {
+        const batch = [];
+        const pendingEdits = [...(input.zoneEdits ?? [])];
+        const pendingDeletes = [...(input.zoneDeletes ?? [])];
+        for (const file of files) {
+            if (pendingEdits.length === 0 && pendingDeletes.length === 0)
+                break;
+            const text = textOf.get(file.uri);
+            const editPlan = pendingEdits.length > 0 ? (0, layoutEdits_js_1.planZoneGeometryEdits)(text, pendingEdits) : { edits: [], skipped: [] };
+            const delPlan = pendingDeletes.length > 0 ? (0, layoutEdits_js_1.planZoneDeletions)(text, pendingDeletes) : { edits: [], skipped: [] };
+            const all = [...editPlan.edits, ...delPlan.edits];
+            if (all.length > 0) {
+                batch.push({ uri: file.uri, edits: all });
+                counts.zoneEdits += editPlan.edits.length;
+                counts.zoneDeletes += delPlan.edits.length;
+                // matched inputs retire (each edit's ref names its rect); unmatched
+                // ones carry to the next file and turn final skips after the loop
+                const matched = new Set(all.map((e) => e.ref));
+                const retire = (list, rectOf) => {
+                    for (let i = list.length - 1; i >= 0; i--) {
+                        const r = rectOf(list[i]);
+                        if (matched.has(`zone (${r.layer} @ ${r.x},${r.y})`))
+                            list.splice(i, 1);
+                    }
+                };
+                retire(pendingEdits, (e) => e.original);
+                retire(pendingDeletes, (d) => d);
+            }
+            for (const sk of editPlan.skipped)
+                skipped.push(`zone edit: ${sk}`);
+            for (const sk of delPlan.skipped)
+                skipped.push(`zone delete: ${sk}`);
+        }
+        for (const e of pendingEdits)
+            skipped.push(`zone edit: no literal matches (${e.original.layer} @ ${e.original.x},${e.original.y})`);
+        for (const d of pendingDeletes)
+            skipped.push(`zone delete: no literal matches (${d.layer} @ ${d.x},${d.y})`);
+        commit(batch);
+    }
+    // -- stage 5c3: applied artwork edits + deletions — rewrites / removes
+    // the matching syncArt statements in the files that hold them (the
+    // sidecar included), planned BEFORE new image inserts so both stages'
+    // offsets see stable texts --
+    if ((input.imageEdits && input.imageEdits.length > 0) || (input.imageDeletes && input.imageDeletes.length > 0)) {
+        const batch = [];
+        let pendingEdits = [...(input.imageEdits ?? [])];
+        let pendingDeletes = [...(input.imageDeletes ?? [])];
+        for (const file of files) {
+            if (pendingEdits.length === 0 && pendingDeletes.length === 0)
+                break;
+            const text = textOf.get(file.uri);
+            const plan = (0, imageEdits_js_1.planImageSourceEdits)(text, pendingEdits.filter((e) => !!e), pendingDeletes.filter((d) => !!d));
+            const all = [...plan.edits, ...plan.deletes];
+            if (all.length > 0) {
+                batch.push({ uri: file.uri, edits: all });
+                // spans overcount (one edit = several surgical spans) — count the
+                // consumed INPUTS by their match-key refs
+                counts.imageEdits += new Set(plan.edits.map((e) => e.ref)).size;
+                counts.imageDeletes += new Set(plan.deletes.map((d) => d.ref)).size;
+                // retire consumed inputs by their match-key refs (stable across
+                // the per-file filtering, unlike array indices)
+                const usedEditKeys = new Set(plan.edits.map((e) => e.ref));
+                const usedDeleteKeys = new Set(plan.deletes.map((d) => d.ref));
+                pendingEdits = pendingEdits.filter((e) => !e || !usedEditKeys.has(`edit:${e.match.file}@${e.match.x},${e.match.y}`));
+                pendingDeletes = pendingDeletes.filter((d) => !d || !usedDeleteKeys.has(`delete:${d.file}@${d.x},${d.y}`));
+                pendingEdits = pendingEdits.filter((e) => !!e);
+                pendingDeletes = pendingDeletes.filter((d) => !!d);
+            }
+            for (const sk of plan.skipped)
+                skipped.push(`artwork ${sk}`);
+        }
+        for (const e of pendingEdits)
+            if (e)
+                skipped.push(`artwork edit: no statement matches ${e.match.file} @ ${e.match.x},${e.match.y}`);
+        for (const d of pendingDeletes)
+            if (d)
+                skipped.push(`artwork delete: no statement matches ${d.file} @ ${d.x},${d.y}`);
+        commit(batch);
+    }
+    // -- stage 5d: zones drawn in the layout view — pours and keepouts land
+    // as typecad.zone()/typecad.keepout() calls in the sidecar (they have no
+    // source literal to rewrite; syncBoard() runs right before create(), so
+    // the calls always reach the board). Fill settings are the API defaults;
+    // the build's zone-fill materialization refills them at export. --
+    if (input.zones && input.zones.length > 0) {
+        // Each new pour out-ranks every zone already in source: KiCad fills by
+        // DECREASING priority and a lower-priority zone keeps its clearance
+        // from higher-priority copper — a pour inside a GND plane at equal
+        // priority 0 loses the fill to the plane entirely (seen live: the pour
+        // rendered nothing, reading as a pour touching ground with no gap).
+        // Ascending across multiple inserts keeps the newest pour topmost.
+        let nextPriority = 0;
+        for (const file of files)
+            nextPriority = Math.max(nextPriority, (0, layoutEdits_js_1.maxZonePriority)(textOf.get(file.uri)));
+        const zoneStmt = (z, priority) => {
+            const esc = z.net ? z.net.replace(/\\/g, '\\\\').replace(/'/g, "\\'") : '';
+            const geo = `layers: ['${z.layer}'], x: ${(0, layoutEdits_js_1.fmt)(z.x)}, y: ${(0, layoutEdits_js_1.fmt)(z.y)}, width: ${(0, layoutEdits_js_1.fmt)(z.w)}, height: ${(0, layoutEdits_js_1.fmt)(z.h)}`;
+            const prio = priority && priority > 0 ? `, priority: ${priority}` : '';
+            if (z.kind === 'keepout')
+                return `  typecad.keepout({ ${geo} });`;
+            return `  typecad.zone({ ${z.net ? `net: '${esc}', ` : ''}${geo}${prio} });`;
+        };
+        if (!syncUri || !entryUri || !syncFileUsable || !ensureSyncScaffold()) {
+            for (const z of input.zones)
+                skipped.push(`zone (${z.kind} on ${z.layer} needs the _sync.ts sidecar — no create() call found to wire it)`);
+        }
+        else {
+            const at = (0, syncFile_js_1.syncZoneInsertAt)(textOf.get(syncUri));
+            if (at === null) {
+                for (const z of input.zones)
+                    skipped.push(`zone (${z.kind} on ${z.layer} — _sync.ts has no usable syncBoard() body)`);
+            }
+            else {
+                const edits = input.zones.map((z) => {
+                    const priority = z.kind === 'pour' ? ++nextPriority : undefined;
+                    return { start: at, end: at, line: zoneStmt(z, priority) + '\n' };
+                });
+                const wiring = planEntryIntegration(false);
+                if (wiring.ok) {
+                    commit([{ uri: syncUri, edits }, { uri: entryUri, edits: wiring.edits }]);
+                    counts.zones = input.zones.length;
+                    syncSummary.zones += input.zones.length;
+                }
+                else {
+                    for (const z of input.zones)
+                        skipped.push(`zone (${z.kind} on ${z.layer} cannot be wired into _sync.ts — no create() call in the entry file)`);
+                }
+            }
+        }
+    }
+    // -- stage 5d2: artwork images placed in the layout view — land as
+    // `syncArt.push(new Image({ … }))` statements in the sidecar, which the
+    // entry's `...syncArt` create() spread picks up (create() evaluates the
+    // spread after syncBoard() ran, so every push is visible). The sidecar's
+    // syncArt declaration and Image import are ensured first — older sidecars
+    // predate the artwork grammar. `file` is already project-relative (the
+    // caller copied the picked PNG into art/ before planning). --
+    if (input.images && input.images.length > 0) {
+        if (!syncUri || !entryUri || !syncFileUsable || !ensureSyncScaffold()) {
+            for (const img of input.images)
+                skipped.push(`image ${img.name} (needs the _sync.ts sidecar — no create() call found to wire it)`);
+        }
+        else {
+            // ensure the declaration/import first (its own commit: the statement
+            // anchor is computed against the text WITH the declaration present)
+            const decl = (0, syncFile_js_1.planSyncArtDeclarationEdits)(textOf.get(syncUri));
+            if (decl.length > 0)
+                commit([{ uri: syncUri, edits: decl }]);
+            const at = (0, syncFile_js_1.syncImageInsertAt)(textOf.get(syncUri));
+            if (at === null) {
+                for (const img of input.images)
+                    skipped.push(`image ${img.name} (_sync.ts has no usable syncBoard() body)`);
+            }
+            else {
+                const edits = input.images.map((img) => {
+                    const esc = img.file.replace(/\\/g, '/').replace(/'/g, "\\'");
+                    const geo = `file: '${esc}', at: { x: ${(0, layoutEdits_js_1.fmt)(img.x)}, y: ${(0, layoutEdits_js_1.fmt)(img.y)} }, size: [${(0, layoutEdits_js_1.fmt)(img.w)}, ${(0, layoutEdits_js_1.fmt)(img.h)}]`;
+                    const side = img.side === 'back' ? `, side: 'back'` : '';
+                    return { start: at, end: at, line: `  ${syncFile_js_1.SYNC_ART_NAME}.push(new Image({ ${geo}${side} }));\n` };
+                });
+                const wiring = planEntryIntegration(false, true);
+                if (wiring.ok) {
+                    commit([{ uri: syncUri, edits }, { uri: entryUri, edits: wiring.edits }]);
+                    counts.images = input.images.length;
+                    syncSummary.images += input.images.length;
+                }
+                else {
+                    for (const img of input.images)
+                        skipped.push(`image ${img.name} cannot be wired into _sync.ts — no create() call in the entry file`);
+                }
+            }
+        }
+    }
+    // -- stage 5e: the board outline edit — rewrites the pcb.outline() call
+    // in the file that owns it (a second outline in the sidecar would read as
+    // a KiCad cutout, so there is no sidecar fallback: no match reports) --
+    if (input.outline) {
+        let planned = false;
+        let reason = null;
+        for (const file of files) {
+            const plan = (0, layoutEdits_js_1.planOutlineEdits)(textOf.get(file.uri), input.outline.original, input.outline.rect);
+            if (plan.edits.length > 0) {
+                commit([{ uri: file.uri, edits: plan.edits }]);
+                counts.outline = 1;
+                planned = true;
+                break;
+            }
+            if (plan.reason)
+                reason = plan.reason;
+        }
+        if (!planned)
+            skipped.push(`outline (${reason ?? 'no .outline( literal found'})`);
     }
     // -- stage 6: sticky TrackBuilder endpoints — LAST, against the final
     // route blocks (regenerated or freshly added alike): literals sitting on

@@ -2,7 +2,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { isList, nameOf, parse } from '../sexpr/index.js';
 import type { SExpr } from '../sexpr/types.js';
+import { PKG_VERSION } from '../gerber_export/writer_utils.js';
 import { refreshPadsManifestFromBoard } from '../pcb/pcb_pads_writer.js';
+import { fillZone } from '../pcb/pcb_zone_fill_engine.js';
+import { SNode } from '../sexpr/index.js';
 import { detectLayer, finalizeAndSortLayers, type LayerInfo } from './detect_layer.js';
 import { rotatePoint } from './gerber/geometry.js';
 import { parseExcellon } from './gerber/parse_excellon.js';
@@ -158,9 +161,117 @@ export interface ViewerBuildOptions {
   rulesPath?: string;
 }
 
+/** A declared board zone, mapped into the gerber (y-up) frame. The layout
+ *  view renders its boundary like KiCad's canvas overlay: gerbers carry
+ *  only the FILLED copper, so a zone that fills to nothing (a keepout, a
+ *  pour outside Edge.Cuts) would otherwise be invisible in the viewer. */
+export interface BoardZoneOutline {
+  net: string | null;
+  layer: string;
+  keepout: boolean;
+  pts: Array<{ x: number; y: number }>;
+}
+
+/** Zone outlines from a .kicad_pcb — handles both the inline and the
+ *  pretty-printed (token-per-line, grouped sub-lists) writer forms. */
+export function parseBoardZones(content: string): BoardZoneOutline[] {
+  let tree: SExpr;
+  try {
+    tree = parse(content);
+  } catch {
+    return [];
+  }
+  const out: BoardZoneOutline[] = [];
+  // pcbnew ≥10 dropped (net_name …) from zones — the numeric (net N) code
+  // resolves through the board's top-level net table instead
+  const netNames = new Map<number, string>();
+  for (const expr of Array.isArray(tree) ? tree : []) {
+    if (isList(expr) && nameOf(expr[0]) === 'net' && typeof expr[1] === 'number' && typeof expr[2] === 'string')
+      netNames.set(expr[1], expr[2]);
+  }
+  const walk = (expr: SExpr): void => {
+    if (!isList(expr)) return;
+    if (nameOf(expr[0]) === 'zone') {
+      let net: string | null = null;
+      let netCode: number | null = null;
+      let layer: string | null = null;
+      let keepout = false;
+      let pts: Array<{ x: number; y: number }> = [];
+      const walkZone = (node: SExpr): void => {
+        if (!isList(node)) return;
+        const key = nameOf(node[0]);
+        if (key === 'net_name' && typeof node[1] === 'string') net = node[1];
+        else if (key === 'net' && typeof node[1] === 'string') net = node[1]; // pcbnew ≥10: name-based
+        else if (key === 'net' && typeof node[1] === 'number') netCode = node[1];
+        else if (key === 'layers' || key === 'layer') {
+          // pcbnew ≥10 writes single-layer zones as (layer "F.Cu"); older
+          // boards (and typeCAD's writer) use (layers …) — take them both
+          for (const child of node) {
+            if (typeof child === 'string') {
+              layer = child;
+              break;
+            }
+          }
+        } else if (key === 'keepout') keepout = true;
+        else if (key === 'polygon' && pts.length === 0) {
+          for (const child of node) {
+            if (isList(child) && nameOf(child[0]) === 'pts') {
+              for (const pt of child) {
+                if (isList(pt) && nameOf(pt[0]) === 'xy') {
+                  const x = parseFloat(String(pt[1]));
+                  const y = parseFloat(String(pt[2]));
+                  if (Number.isFinite(x) && Number.isFinite(y)) pts.push({ x, y: -y }); // gerber y-up
+                }
+              }
+            }
+          }
+        }
+        for (const child of node) walkZone(child);
+      };
+      walkZone(expr);
+      if (!net && netCode !== null) net = netNames.get(netCode) ?? null;
+      if (layer && pts.length >= 3) out.push({ net, layer, keepout, pts });
+    }
+    for (const child of expr) walk(child);
+  };
+  walk(tree);
+  return out;
+}
+
+/**
+ * Per-zone filled copper area (mm², board ordinal order) — the same native
+ * engine the export refills with. A zone whose every island is unconnected
+ * (no same-net copper inside its outline) fills to NOTHING, and the viewer
+ * label that says so turns "why is my pour empty" into a read.
+ */
+export function boardZoneFillAreas(content: string): number[] {
+  let root: SNode;
+  try {
+    root = SNode.from(parse(content) as SExpr[]);
+  } catch {
+    return [];
+  }
+  const zones = root.children('zone');
+  return zones.map((z) => {
+    const layerNode = z.child('layer') ?? z.child('layers');
+    const layers = layerNode
+      ? layerNode.raw.slice(1).filter((v): v is string => typeof v === 'string')
+      : [];
+    let area = 0;
+    for (const layer of layers.length ? layers : ['F.Cu']) {
+      try {
+        const res = fillZone(root, z, layer);
+        if (res) area += res.totalAreaMm2;
+      } catch {
+        // an unfillable zone measures as zero — the viewer says so
+      }
+    }
+    return +area.toFixed(2);
+  });
+}
+
 /** Parse a KiCad netlist into a "REF.pin" -> net map (N/C pads excluded). */
-function parseNetlist(content: string): Record<string, string> {
-  const map: Record<string, string> = {};
+function parseNetlist(content: string): Record<string, string> {  const map: Record<string, string> = {};
   let tree: SExpr;
   try {
     tree = parse(content);
@@ -428,6 +539,54 @@ export function buildViewerFromFiles(paths: string[], options: ViewerBuildOption
       }
     }
   }
+  // Placed board artwork rides the same way (build/<board>_images.json,
+  // written when the board is): the layout view draws selectable outlines
+  // from it so applied images can be edited like any other object.
+  let boardImages: NonNullable<ViewerOptions['boardImages']> = [];
+  if (pcbaNetlistSource) {
+    const imagesPath = pcbaNetlistSource.replace(/\.net$/i, '_images.json');
+    if (fs.existsSync(imagesPath)) {
+      try {
+        const manifest = JSON.parse(fs.readFileSync(imagesPath, 'utf8')) as {
+          images?: NonNullable<ViewerOptions['boardImages']>;
+        };
+        boardImages = (manifest.images ?? []).filter(
+          (im) => im && typeof im.file === 'string' && im.w > 0 && im.h > 0,
+        );
+      } catch {
+        warnings.push(`could not parse ${path.basename(imagesPath)} — applied artwork is not editable in the layout view`);
+      }
+    }
+  }
+  // Declared zone outlines: gerbers carry only the FILLED copper, so a zone
+  // that fills to nothing (a keepout, a pour outside Edge.Cuts — KiCad
+  // clips pours to the outline) is invisible in the viewer while KiCad's
+  // canvas shows its boundary. The layout view renders these outlines.
+  let layoutBoardZones: ViewerOptions['layoutBoardZones'] = [];
+  if (pcbaNetlistSource) {
+    const pcbPath = pcbaNetlistSource.replace(/\.net$/i, '.kicad_pcb');
+    if (fs.existsSync(pcbPath)) {
+      try {
+        const boardText = fs.readFileSync(pcbPath, 'utf8');
+        const outlines = parseBoardZones(boardText);
+        let fillAreas: number[] = [];
+        try {
+          fillAreas = boardZoneFillAreas(boardText);
+        } catch {
+          fillAreas = [];
+        }
+        layoutBoardZones = outlines.map((z, i) => ({
+          net: z.net,
+          layer: z.layer,
+          keepout: z.keepout,
+          pts: z.pts.map((p) => ({ x: +p.x.toFixed(3), y: +p.y.toFixed(3) })),
+          filledMm2: fillAreas[i],
+        }));
+      } catch {
+        warnings.push(`could not parse ${path.basename(pcbPath)} zones — the layout view shows no zone boundaries`);
+      }
+    }
+  }
   // Layout-view component overlay: the pcba glyph extractor derives each
   // component's position (pad centroid), orientation (PCA of the pads) and
   // body size (footprint name via the netlist) from the gerbers themselves —
@@ -595,6 +754,7 @@ export function buildViewerFromFiles(paths: string[], options: ViewerBuildOption
     .map((id) => ({ id, label: PCBA_THEME_LABELS[id] ?? id, colors: surface(PCBA_THEMES[id]!) }));
   const html = buildViewerHtml(svg, layers, {
     title: options.title ?? (boardPrefix.replace(/[-_. ]+$/, '') || path.basename(paths[0]!)),
+    generatorVersion: PKG_VERSION,
     report,
     drcMarkers,
     pcbaSvg,
@@ -607,6 +767,8 @@ export function buildViewerFromFiles(paths: string[], options: ViewerBuildOption
     padLabels,
     layoutComponents,
     layoutTexts,
+    layoutBoardZones,
+    boardImages,
     pcbaThemes,
   });
   return { svg, html, layers, warnings, report };

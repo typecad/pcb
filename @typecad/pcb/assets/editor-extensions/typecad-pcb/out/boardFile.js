@@ -9,6 +9,9 @@ exports.newestBoardFile = newestBoardFile;
 exports.entrySourceFile = entrySourceFile;
 exports.newestSourceMtime = newestSourceMtime;
 exports.boardStale = boardStale;
+exports.projectToolchainVersion = projectToolchainVersion;
+exports.projectToolchainGeneratorMtime = projectToolchainGeneratorMtime;
+exports.pageGeneratorVersion = pageGeneratorVersion;
 // Board-file discovery, kept free of vscode imports so it stays unit-testable.
 const node_fs_1 = __importDefault(require("node:fs"));
 const node_path_1 = __importDefault(require("node:path"));
@@ -153,5 +156,64 @@ function boardStale(folder) {
     if (!board)
         return null;
     return newestSourceMtime(folder) > mtimeOf(board);
+}
+/**
+ * The version of @typecad/pcb the project's `npx typecad-pcb` resolves to —
+ * found the same way npx walks up parent node_modules directories
+ * (`hw/node_modules` → `hw/../node_modules` → …). Null when nothing
+ * resolves; callers then keep their legacy behavior instead of gating on a
+ * version they cannot know.
+ */
+function projectToolchainVersion(folder) {
+    let dir = node_path_1.default.resolve(folder);
+    for (;;) {
+        const pkgPath = node_path_1.default.join(dir, 'node_modules', '@typecad', 'pcb', 'package.json');
+        try {
+            const version = String(JSON.parse(node_fs_1.default.readFileSync(pkgPath, 'utf8')).version ?? '');
+            if (version)
+                return version;
+        }
+        catch {
+            // no manifest here — keep walking up
+        }
+        const parent = node_path_1.default.dirname(dir);
+        if (parent === dir)
+            return null;
+        dir = parent;
+    }
+}
+/**
+ * The mtime of @typecad/pcb's compiled page generator (dist), resolved the
+ * same walk-up way as projectToolchainVersion — null when nothing resolves.
+ * The restore fast path compares it against the page's mtime: a page older
+ * than the generator BITS that should have written it predates a toolchain
+ * edit (this repo links the toolchain as a workspace — features land
+ * WITHOUT a version bump, so the version-string staleness check alone
+ * serves such pages forever).
+ */
+function projectToolchainGeneratorMtime(folder) {
+    let dir = node_path_1.default.resolve(folder);
+    for (;;) {
+        const gen = node_path_1.default.join(dir, 'node_modules', '@typecad', 'pcb', 'dist', 'gerber_viewer', 'render', 'viewer_html.js');
+        try {
+            return node_fs_1.default.statSync(gen).mtimeMs;
+        }
+        catch {
+            // not here — keep walking up
+        }
+        const parent = node_path_1.default.dirname(dir);
+        if (parent === dir)
+            return null;
+        dir = parent;
+    }
+}
+/**
+ * The generator stamp embedded in a viewer page
+ * (<meta name="tc-viewer-generator">, written by gerber-viewer build) —
+ * null on pre-stamp pages.
+ */
+function pageGeneratorVersion(html) {
+    const m = /<meta name="tc-viewer-generator" content="([^"]*)"/.exec(html);
+    return m ? m[1] : null;
 }
 //# sourceMappingURL=boardFile.js.map

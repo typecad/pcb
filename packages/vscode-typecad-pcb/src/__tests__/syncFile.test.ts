@@ -138,3 +138,73 @@ describe('sync entry integration', () => {
     expect(SYNC_FILE_NAME).toBe('_sync.ts');
   });
 });
+
+// --- board artwork grammar: syncArt declaration + image statements ---------
+
+import {
+  SYNC_ART_NAME,
+  hasSyncArtDeclaration,
+  planSyncArtDeclarationEdits,
+  syncImageInsertAt,
+} from '../syncFile.js';
+
+describe('sync artwork grammar', () => {
+  it('adds the Image import and the syncArt declaration to a scaffold missing them', () => {
+    const scaffold = renderSyncFile({});
+    expect(hasSyncArtDeclaration(scaffold)).toBe(false);
+    const edits = planSyncArtDeclarationEdits(scaffold);
+    const out = applyEdits(scaffold, edits);
+    expect(out).toContain(`import { Image, TrackBuilder } from '@typecad/pcb';`);
+    expect(out).toContain(`export const ${SYNC_ART_NAME}: Image[] = [];`);
+    expect(hasSyncArtDeclaration(out)).toBe(true);
+    // idempotent: the second plan is empty
+    expect(planSyncArtDeclarationEdits(out)).toHaveLength(0);
+  });
+
+  it('leaves a sidecar that already carries the grammar untouched', () => {
+    const text = renderSyncFile({}) + `export const ${SYNC_ART_NAME}: Image[] = [];\n`;
+    // simulate the import already rewritten
+    const withImport = text.replace(
+      `import { TrackBuilder } from '@typecad/pcb';`,
+      `import { Image, TrackBuilder } from '@typecad/pcb';`,
+    );
+    expect(planSyncArtDeclarationEdits(withImport)).toHaveLength(0);
+  });
+
+  it('anchors image statements after the last syncArt.push, below zones', () => {
+    let text = applyEdits(renderSyncFile({}), planSyncArtDeclarationEdits(renderSyncFile({})));
+    // zones already present
+    const zoneAt = syncImageInsertAt(text)!;
+    text = `${text.slice(0, zoneAt)}  typecad.zone({ layers: ['F.Cu'], x: 0, y: 0, width: 5, height: 5 });\n${text.slice(zoneAt)}`;
+    const first = syncImageInsertAt(text)!;
+    text = `${text.slice(0, first)}  ${SYNC_ART_NAME}.push(new Image({ file: 'art/a.png', at: { x: 1, y: 2 }, size: [10, 10] }));\n${text.slice(first)}`;
+    const second = syncImageInsertAt(text)!;
+    text = `${text.slice(0, second)}  ${SYNC_ART_NAME}.push(new Image({ file: 'art/b.png', at: { x: 3, y: 4 }, size: [5, 5] }));\n${text.slice(second)}`;
+    // both images sit after the zone line, in insert order
+    expect(text.indexOf('art/a.png')).toBeGreaterThan(text.indexOf('typecad.zone('));
+    expect(text.indexOf('art/b.png')).toBeGreaterThan(text.indexOf('art/a.png'));
+  });
+
+  it('wires the entry with ...syncArt only when artwork needs it, composing with ...syncTracks', () => {
+    const entry = `import { PCB } from '@typecad/pcb';\nconst typecad = new PCB('demo');\ntypecad.create(r1);\n`;
+    const artOnly = applyEdits(entry, planSyncEntryEdits(entry, [], false, undefined, true).edits);
+    expect(artOnly).toContain(`import { syncBoard, syncArt } from './_sync.js';`);
+    expect(artOnly).toContain('...syncArt');
+    expect(artOnly).not.toContain('...syncTracks');
+
+    // both needs: one canonical import naming all three, one spread pair
+    const both = applyEdits(entry, planSyncEntryEdits(entry, [], true, undefined, true).edits);
+    expect(both).toContain(`import { syncBoard, syncTracks, syncArt } from './_sync.js';`);
+    expect(both).toContain('...syncTracks, ...syncArt');
+
+    // idempotent: re-planning the applied text is a no-op
+    expect(planSyncEntryEdits(both, [], true, undefined, true).edits).toHaveLength(0);
+
+    // a tracks-only entry gains art as a second spread, not a duplicate
+    const tracksOnly = applyEdits(entry, planSyncEntryEdits(entry, [], true).edits);
+    expect(tracksOnly).toContain('...syncTracks');
+    const grown = applyEdits(tracksOnly, planSyncEntryEdits(tracksOnly, [], true, undefined, true).edits);
+    expect(grown).toContain('...syncTracks, ...syncArt');
+    expect(grown.match(/\.\.\.syncTracks/g)).toHaveLength(1);
+  });
+});

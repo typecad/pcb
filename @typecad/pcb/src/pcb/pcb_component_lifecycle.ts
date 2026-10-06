@@ -2,6 +2,10 @@ import { Component } from '../component.js';
 import { TrackBuilder } from './pcb_track_builder.js';
 import type { PcbInternalState } from './pcb_state.js';
 
+/** Anything a group can carry: components, track builders, and board artwork
+ *  (images carry no reference and join no member list — they pass through). */
+type GroupItem = Component | TrackBuilder | import('./pcb_image.js').Image;
+
 export function placeComponent(state: PcbInternalState, component: Component): void {
   unstageComponent(state, component);
   if (component.dnp === true) return;
@@ -37,7 +41,7 @@ export function groupComponents(
   state: PcbInternalState,
   placeFn: (...components: Component[]) => void,
   group_name: string,
-  ...items: Array<Component | TrackBuilder>
+  ...items: GroupItem[]
 ): void {
   let uuid_list = '';
   const componentsToPlaceAndProcess: Component[] = [];

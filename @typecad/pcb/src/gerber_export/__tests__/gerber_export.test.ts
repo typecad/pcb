@@ -449,3 +449,41 @@ describe('stroke text (Phase 4)', () => {
     expect(silk.match(/D03\*/g) ?? []).toHaveLength(0);
   });
 });
+
+describe('copper-layer board graphics', () => {
+  const ART_BOARD = `
+(kicad_pcb (version 20241229)
+  (layers (0 "F.Cu" signal) (31 "B.Cu" signal))
+  (gr_poly
+    (pts (xy 10 10) (xy 20 10) (xy 20 15) (xy 10 15))
+    (stroke (width 0) (type default))
+    (fill solid)
+    (layer "F.Cu") (uuid "22222222-2222-2222-2222-222222222222"))
+  (gr_text "hi" (at 30 30 0) (layer "F.Cu") (uuid "33333333-3333-3333-3333-333333333333")
+    (effects (font (size 1.27 1.27)))));`
+
+  function plotArtF(): string {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gerber-art-'));
+    plotCopperLayersFromSource(ART_BOARD, path.join(dir, 'art.kicad_pcb'), { outDir: dir });
+    return fs.readFileSync(path.join(dir, 'art-F_Cu.gtl'), 'utf8');
+  }
+
+  it('plots a filled board gr_poly on copper as a region', () => {
+    const text = plotArtF();
+    expect(text).toContain('G36');
+    // region outline spans the poly's four corners, in KiCad's canonical
+    // top-first winding (drawn as a region, so D-code closes it)
+    expect(text).toMatch(/X20000000Y-10000000D0[12]/);
+    expect(text).toMatch(/X10000000Y-15000000D0[12]/);
+    expect(text).toContain('G37');
+  });
+
+  it('strokes an unfilled board gr_poly on copper with its stroke width', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gerber-art2-'));
+    const src = ART_BOARD.replace('(fill solid)', '').replace('(width 0)', '(width 0.3)');
+    plotCopperLayersFromSource(src, path.join(dir, 'art.kicad_pcb'), { outDir: dir });
+    const text = fs.readFileSync(path.join(dir, 'art-F_Cu.gtl'), 'utf8');
+    expect(text).toContain('%ADD10C,0.300000*%');
+    expect(text).not.toContain('G36');
+  });
+});

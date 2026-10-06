@@ -52,6 +52,60 @@ let j1 = new Connector({ number: 4, series: 'JST-SH' });      // footprint templ
 
 Sizes: `'0201' | '0402' | '0603' | '0805' | '1206' | '1210'` (fuses from `'0603'` up). Inside a `Package`, `this.passives.Capacitor(...)` works out of the box; shift a whole package with `{ passiveSize: '0805' }`.
 
+## Board artwork
+
+`Image` places an image on the board as artwork, mapped onto the three inks a fabricated board actually has: **exposed copper**, **silkscreen**, and **solder-mask openings**. The fab's mask color (black, red, matte green...) is the background — you don't paint it, you order it.
+
+```ts
+import { PCB, Image } from '@typecad/pcb';
+
+let pcb = new PCB('badge');
+let art = new Image({
+  file: 'logo.png',       // PNG (8/16-bit gray, RGB, palette, or RGBA; not interlaced) or SVG
+  at: [50, 30],           // artwork center in mm — [x, y] or { x, y }
+  size: 40,               // mm width (height follows the aspect), or [w, h]
+                          // for a bounding box the art FITS INSIDE, aspect
+                          // preserved and centered (a square logo in [40, 30]
+                          // places at 30×30)
+  side: 'front',          // 'back' mirrors the artwork and uses B.* layers
+  resolution: 0.1,        // mm per raster cell (default 0.1)
+});
+pcb.create(art);            // mixes freely with components and TrackBuilders
+```
+
+Each pixel takes the nearest ink color; anything else is background:
+
+| Pixel color | Ink | Emits onto |
+| --- | --- | --- |
+| red `#FF0000` | copper | `F.Cu`, plus an `F.Mask` opening so it's visible (grown by `maskExpansion`, default 0.05mm) |
+| white `#FFFFFF` | silkscreen | `F.SilkS` |
+| blue `#0000FF` | mask opening | `F.Mask` — bare substrate, or gold where copper sits under it |
+
+Colors are remappable per ink (`inks: { copper: '#00FF00', silk: null, mask: '#FF00FF' }`), and `tolerance` (default 100, Euclidean RGB distance) sets how far a pixel may sit from an ink color and still match — export flat colors / antialiasing off for crisp results.
+
+**Custom inks — layer stacks.** A fabbed board is three binary layers: copper, mask opening, silk. The three presets are fixed points in that cube; `inks.custom` maps any additional pixel color to any other combination:
+
+```ts
+let art = new Image({
+  file: 'logo.png', at: [50, 30], size: 30,
+  inks: {
+    custom: [
+      { color: '#000000', stack: { copper: true } },              // hidden copper — electrically real, visually absent
+      { color: '#800080', stack: { maskPaint: true } },           // paints mask BACK (two-tone mask art)
+      { color: '#FFC107', stack: { copper: true, mask: true, silk: true }, },  // silk on gold — see the caveat
+    ],
+  },
+});
+```
+
+Valid combinations: copper, silk, and mask openings in any mix — plus `maskPaint`, the subtractive channel that closes openings (painting mask over exposed copper keeps the metal but hides it again; that's the precedence). One combination is rejected at construction — silk stacked over a mask opening — because most fabs strip silkscreen over openings. Set `allowExposedSilk: true` on the Image if your fab will print it.
+
+**Geometry.** Raster art is classified per cell (`resolution`) and traced into **contour rings by default** — each ink becomes a handful of polygons with holes bridged in as hairline keyhole slits (the same trick KiCad's own image converter uses), so a 20mm logo is a few hundred bytes of gerber, not megabytes. `mode: 'rects'` gives the v1 merged-rectangle shape instead, and `smooth` (default half the resolution, `0` off) straightens grid staircases with Douglas-Peucker. Letter counters and logo holes stay holes. SVG input (`file: 'logo.svg'`) is vector end to end: `path`/`rect`/`circle`/`ellipse`/`polygon` with presentation attributes and transforms flatten to rings (curves sampled deterministically), subpaths nest even-odd so a donut is one path, and `mode` doesn't apply (there is no grid). An SVG shape with **no** `fill` attribute anywhere on its chain is the artwork itself — it lands on the copper ink; `fill="none"` and off-palette colors are background. Strokes, text, `use`/`symbol` refs, clips, and CSS `<style>` blocks are not read.
+
+**Packages.** Artwork ships inside reusable `Package` modules like any component: assign an `Image` to a `this.` property (or `this.add(...)` it) inside `build()`, authored in package-local coordinates — the package's x/y offset shifts it along with the parts, and `pcb.create(myPackage.components)` puts it on the board.
+
+Two things to know: copper artwork is non-net copper — keep it clear of real nets yourself (DRC flags collisions), and dense artwork triggers `silk_overlap` DRC warnings against itself; art-heavy boards usually set `silk_overlap: ignore` in the conf severities.
+
 ## Get started
 Read through the [documentation](https://typecad.net/getting-started) for a full walkthrough:
 
@@ -200,3 +254,5 @@ view. The PCBA view hides the layer controls — there is only one layer stack t
 per board.
 
 Inside VS Code, the bundled typeCAD/pcb extension renders this viewer (gerbers + netlist + DRC) in a Board panel that refreshes on every `npm run build` and cross-probes both ways with the source — see the package docs. Layer visibility and opacity settings persist across rebuilds — they're stored in your browser (localStorage, keyed per board) and re-applied when the page reloads. A dark/light theme toggle sits in the sidebar header; the theme (including the board canvas) is saved per browser and follows your OS preference on first visit. On the dark canvas, near-black layer colors (silkscreen, paste, drill) are automatically recolored so they stay visible, and clear-polarity cutouts follow the canvas color.
+
+The viewer's **Layout view** is interactive: drag parts (KiCad's M), nudge, rotate (R), flip to the other side (Shift+F), route TrackBuilder-faithful chains, slide segments, draw rectangle **zones** (copper pours on a net, or keepouts) and edit the **board outline** (x/y/width/height) — one **apply & rebuild** gesture writes everything back to the TypeScript source (placement literals, `_sync.ts` sidecar inserts, `.outline()` rewrites) and rebuilds the board. The `?` keys overlay lists every binding.

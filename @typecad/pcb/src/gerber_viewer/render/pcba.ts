@@ -328,11 +328,13 @@ export function renderPcbaSvg(layers: RenderLayer[], options: PcbaRenderOptions 
     schPourHatch = pour.hatch;
   }
 
-  // raw copper ink is only painted in the bare-board (no mask gerber) look —
-  // the mask-film branch never paints it, so don't build it (or ship its
-  // aperture symbols in <defs>) there
+  // raw copper ink paints in BOTH assembled looks: bare-board (directly on
+  // the substrate) and mask-film — where it draws in the FINISH color at
+  // the openings, so exposed copper artwork reads as metal instead of
+  // substrate (pads flash the same way; board-level copper art is not a
+  // pad flash and used to fall through to the substrate color)
   const copperInk =
-    copper && !mask && !blueprint && !schematic
+    copper && !blueprint && !schematic
       ? renderLayerInk(copper, { color: theme.copper, idPrefix: 'pcba-cu', clearColor: theme.board })
       : null;
   const padsInk =
@@ -379,6 +381,24 @@ export function renderPcbaSvg(layers: RenderLayer[], options: PcbaRenderOptions 
       `</mask>`,
     );
     defs.push(...maskInk.defs);
+    // the complement: white where the openings are — painting the copper
+    // ink THROUGH it puts finish-colored metal exactly at the openings
+    const maskInvInk = renderLayerInk(mask!, {
+      color: '#ffffff',
+      idPrefix: 'pcba-mask-inv',
+      clearColor: '#000000',
+    });
+    defs.push(
+      `<mask id="pcba-open-inv" maskUnits="userSpaceOnUse" x="${fmt(all.minX - margin)}" y="${fmt(
+        all.minY - margin,
+      )}" width="${fmt(all.maxX - all.minX + 2 * margin)}" height="${fmt(all.maxY - all.minY + 2 * margin)}">`,
+      `<rect x="${fmt(all.minX - margin)}" y="${fmt(all.minY - margin)}" width="${fmt(
+        all.maxX - all.minX + 2 * margin,
+      )}" height="${fmt(all.maxY - all.minY + 2 * margin)}" fill="#000000"/>`,
+      `<g fill="#ffffff" stroke="#ffffff">${maskInvInk.body.join('')}</g>`,
+      `</mask>`,
+    );
+    defs.push(...maskInvInk.defs);
   } else if (!blueprint && !schematic) {
     warnings.push(`no ${side} soldermask layer — copper renders bare (no mask film)`);
   }
@@ -423,6 +443,12 @@ export function renderPcbaSvg(layers: RenderLayer[], options: PcbaRenderOptions 
     // openings reveal pads (finish color) on substrate — painting copper
     // here would leak the pour through the opening rings around every pad
     if (padsInk) board.push(`<g fill="${theme.pads}">${padsInk.body.join('')}</g>`);
+    if (copperInk) {
+      // copper AT the openings is exposed metal — the finish color, like
+      // the pad flashes. This is where board artwork's copper ink shows:
+      // everything else about it ghosts through the film below
+      board.push(`<g mask="url(#pcba-open-inv)" fill="${theme.pads}">${copperInk.body.join('')}</g>`);
+    }
     board.push(
       `<g mask="url(#pcba-open)"><rect x="${fmt(all.minX - margin)}" y="${fmt(all.minY - margin)}" width="${fmt(
         all.maxX - all.minX + 2 * margin,

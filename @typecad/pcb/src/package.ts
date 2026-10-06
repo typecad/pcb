@@ -4,6 +4,7 @@ import { Pin } from './pin.js';
 import { PCB_CONSTANTS } from './pcb/pcb_routing_calculations.js';
 import { validateFinite } from './utils/numeric_validation.js';
 import { isComponentLike, isTrackBuilderLike } from './pcb/pcb_board_creation.js';
+import { isImageLike } from './pcb/pcb_image.js';
 import { resolvePackageSourceDir, syncPackageBuildLib } from './package_files.js';
 import { passiveFactory, type PassiveFactory, type PassiveSize } from './passives/index.js';
 import logger from './utils/logging.js';
@@ -73,11 +74,12 @@ export abstract class Package<TOptions extends object = object> {
   protected readonly reference: string | undefined;
 
   /**
-   * All PCB elements belonging to this package (components + track builders).
-   * Populated automatically after `build()` via property reflection.
-   * Use `this.add()` for tracks or any element not stored as a named property.
+   * All PCB elements belonging to this package (components, track builders,
+   * and board artwork). Populated automatically after `build()` via property
+   * reflection. Use `this.add()` for tracks or any element not stored as a
+   * named property.
    */
-  readonly components: (Component | TrackBuilder)[] = [];
+  readonly components: (Component | TrackBuilder | import('./pcb/pcb_image.js').Image)[] = [];
 
   constructor(options: PackageOptions & TOptions) {
     this.pcb = options.pcb;
@@ -100,23 +102,23 @@ export abstract class Package<TOptions extends object = object> {
       logger.debug('Package build-lib sync failed:', e instanceof Error ? e.message : String(e));
     }
 
-    try {
-      pcbPushOffset(this.pcb, options.x, options.y);
       try {
-        this.build(options);
-      } finally {
-        this._autoCollect();
-        for (const item of this.components) {
-          if (isComponentLike(item)) {
-            item.registerReference(this.pcb.schematic.referenceCounter);
+        pcbPushOffset(this.pcb, options.x, options.y);
+        try {
+          this.build(options);
+        } finally {
+          this._autoCollect();
+          for (const item of this.components) {
+            if (isComponentLike(item)) {
+              item.registerReference(this.pcb.schematic.referenceCounter);
+            }
           }
+          this._applyOffset();
+          this.pcb.group(options.name ?? this.constructor.name, ...this.components);
         }
-        this._applyOffset();
-        this.pcb.group(options.name ?? this.constructor.name, ...this.components);
+      } finally {
+        pcbPopOffset(this.pcb);
       }
-    } finally {
-      pcbPopOffset(this.pcb);
-    }
   }
 
   /**
@@ -159,21 +161,22 @@ export abstract class Package<TOptions extends object = object> {
   }
 
   /**
-   * Manually register one or more components or track builders.
-   * Use this for tracks (which are not stored as named properties)
-   * or for components inside arrays.
+   * Manually register one or more components, track builders, or artwork.
+   * Use this for tracks (which are not stored as named properties),
+   * components inside arrays, or board images.
    */
-  protected add(...items: (Component | TrackBuilder)[]): void {
+  protected add(...items: (Component | TrackBuilder | import('./pcb/pcb_image.js').Image)[]): void {
     this.components.push(...items);
   }
 
   /**
    * After `build()` runs, walk all own enumerable properties of the subclass
-   * instance. Any value that is a `Component` or `TrackBuilder` and has not
-   * already been manually pushed to `this.components` is collected automatically.
+   * instance. Any value that is a `Component`, `TrackBuilder`, or `Image` and
+   * has not already been manually pushed to `this.components` is collected
+   * automatically.
    */
   private _autoCollect(): void {
-    const alreadyRegistered = new Set<Component | TrackBuilder>(this.components);
+    const alreadyRegistered = new Set<Component | TrackBuilder | import('./pcb/pcb_image.js').Image>(this.components);
     const skip = new Set(['pcb', 'components', 'passives', 'reference']);
 
     for (const key of Object.keys(this)) {
@@ -181,7 +184,7 @@ export abstract class Package<TOptions extends object = object> {
       const value = (this as Record<string, unknown>)[key];
       if (!value || typeof value !== 'object') continue;
 
-      if ((isComponentLike(value) || isTrackBuilderLike(value)) && !alreadyRegistered.has(value)) {
+      if ((isComponentLike(value) || isTrackBuilderLike(value) || isImageLike(value)) && !alreadyRegistered.has(value)) {
         this.components.push(value);
         alreadyRegistered.add(value);
       }
@@ -191,7 +194,8 @@ export abstract class Package<TOptions extends object = object> {
   /**
    * Apply the current PCB offset to all collected components' `.pcb` positions.
    * Tracks and vias already had offsets applied at creation time via PCB methods,
-   * so only regular Components need adjustment.
+   * so only regular Components need adjustment — and artwork, whose `at` is
+   * authored in package-local coordinates exactly like a component's `.pcb`.
    */
   private _applyOffset(): void {
     const offset = pcbGetCurrentOffset(this.pcb);
@@ -201,6 +205,9 @@ export abstract class Package<TOptions extends object = object> {
       if (isComponentLike(item) && !item.via) {
         item.pcb.x += offset.x;
         item.pcb.y += offset.y;
+      } else if (isImageLike(item)) {
+        item.at.x += offset.x;
+        item.at.y += offset.y;
       }
     }
   }

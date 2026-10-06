@@ -18,6 +18,18 @@ export interface LayoutMove {
   /** the component's ORIGINAL pad centers, board frame — sticky endpoints */
   pads?: Array<{ x: number; y: number }>;
   /**
+   * flip gesture (Shift+F): the component's TARGET side. The literal gains
+   * / rewrites `side: 'back'|'front'` — the writer mirrors the footprint's
+   * pad-local Y for back-side parts, so `rotation` stays untouched.
+   */
+  side?: 'front' | 'back';
+  /**
+   * FINAL pad centers (board frame) matching `pads` 1:1. A flip mirrors
+   * each pad's offset, so sticky route endpoints translate PER PAD — a
+   * uniform delta would only fit pure moves. Absent = translate by dx/dy.
+   */
+  padsTo?: Array<{ x: number; y: number }>;
+  /**
    * the component's FINAL position, board frame. A part whose placement
    * lives in the constructor's inline `pcb:` option has no `var.pcb = {…}`
    * literal — the first apply INSERTS one, and it must carry the absolute
@@ -47,6 +59,8 @@ export interface DeferredPlacement {
   x: number;
   y: number;
   rot: number;
+  /** flip gesture target side (Shift+F) — written into the sync placement */
+  side?: 'front' | 'back';
 }
 
 export interface LayoutEditResult<T = DeferredPlacement> {
@@ -146,6 +160,7 @@ export function planPlacementEdits(
         x: Number.isFinite(move.ax) ? move.ax! : move.dx,
         y: Number.isFinite(move.ay) ? move.ay! : move.dy,
         rot: move.rot ?? 0,
+        ...(move.side ? { side: move.side } : {}),
       });
       continue;
     } else {
@@ -166,6 +181,14 @@ export function planPlacementEdits(
       const newRot = (rotNum ? parseFloat(rotNum[1]) : 0) + move.rot;
       if (rotNum) newInner = newInner.replace(/\brotation\s*:\s*-?[\d.]+/, `rotation: ${fmt(newRot)}`);
       else newInner = `${newInner.trimEnd()}, rotation: ${fmt(newRot)} `;
+    }
+    // flip rides as an ABSOLUTE side (the viewer sends the target — an even
+    // number of Shift+F presses applies as no flip). Rewritten when present,
+    // appended when the literal omitted it.
+    if (move.side) {
+      const sideRe = /\bside\s*:\s*(['"])(front|back)\1/;
+      if (sideRe.test(newInner)) newInner = newInner.replace(sideRe, `side: '${move.side}'`);
+      else newInner = `${newInner.trimEnd().replace(/,\s*$/, '')}, side: '${move.side}' `;
     }
     edits.push({
       ref: move.ref,
@@ -199,23 +222,32 @@ function insertionAfterConstructor(text: string, variable: string): { at: number
 /**
  * Sticky TrackBuilder endpoints: any `.from({ x: …, y: … })` / `.to({ … })`
  * literal whose coordinates sit on one of the moved component's ORIGINAL
- * pads (within 0.05 mm) translates by the same delta — hand-built routes
- * follow the part instead of dangling. Pure numeric literals only.
+ * pads (within 0.05 mm) translates with it — hand-built routes follow the
+ * part instead of dangling. Pure numeric literals only. A pure move
+ * translates every endpoint by the part's delta; when the payload carries
+ * `padsTo` (a flip mirrors each pad's offset) the endpoint follows ITS
+ * pad's own final position instead.
  */
 export function planEndpointEdits(
   text: string,
   move: LayoutMove,
 ): PlacementEdit[] {
   const pads = move.pads ?? [];
-  if (pads.length === 0 || (!move.dx && !move.dy)) return [];
+  if (pads.length === 0 || (!move.dx && !move.dy && !move.padsTo)) return [];
   const edits: PlacementEdit[] = [];
   // translate a numeric literal by delta, keeping ITS decimal precision
   // (source coordinates can carry 4+ decimals; rounding to 3 would erode
   // them every apply)
-  const shift = (axis: 'x' | 'y') => (whole: string, lead: string, num: string): string => {
+  const shift = (axis: 'x' | 'y', delta: number) => (whole: string, lead: string, num: string): string => {
     const decimals = Math.max((num.split('.')[1] ?? '').length, 3);
-    const value = (parseFloat(num) + (axis === 'x' ? move.dx : move.dy)).toFixed(decimals);
+    const value = (parseFloat(num) + delta).toFixed(decimals);
     return `${lead}${parseFloat(value)}`;
+  };
+  /** the delta this move gives the endpoint that sits on pad `i` */
+  const deltaFor = (i: number): { dx: number; dy: number } => {
+    const to = move.padsTo?.[i];
+    if (to && pads[i]) return { dx: to.x - pads[i]!.x, dy: to.y - pads[i]!.y };
+    return { dx: move.dx, dy: move.dy };
   };
   for (const kind of ['from', 'to'] as const) {
     const re = new RegExp(`\\.${kind}\\(\\{\\s*x\\s*:\\s*(-?[\\d.]+)\\s*,\\s*y\\s*:\\s*(-?[\\d.]+)`, 'g');
@@ -223,15 +255,23 @@ export function planEndpointEdits(
     while ((match = re.exec(text)) !== null) {
       const ex = parseFloat(match[1]);
       const ey = parseFloat(match[2]);
-      if (!pads.some((p) => Math.abs(p.x - ex) < 0.05 && Math.abs(p.y - ey) < 0.05)) continue;
+      let padIdx = -1;
+      for (let p = 0; p < pads.length; p++) {
+        if (Math.abs(pads[p]!.x - ex) < 0.05 && Math.abs(pads[p]!.y - ey) < 0.05) {
+          padIdx = p;
+          break;
+        }
+      }
+      if (padIdx === -1) continue;
+      const { dx, dy } = deltaFor(padIdx);
       // only the x/y numbers inside this literal move — layer/width stay
       const head = text.indexOf('{', match.index);
       const tail = text.indexOf('}', head);
       if (head === -1 || tail === -1) continue;
       const inner = text.slice(head + 1, tail);
       const newInner = inner
-        .replace(/(\bx\s*:\s*)(-?[\d.]+)/, shift('x'))
-        .replace(/(\by\s*:\s*)(-?[\d.]+)/, shift('y'));
+        .replace(/(\bx\s*:\s*)(-?[\d.]+)/, shift('x', dx))
+        .replace(/(\by\s*:\s*)(-?[\d.]+)/, shift('y', dy));
       edits.push({
         ref: `${move.ref} route endpoint`,
         // the replacement covers exactly [match.index, tail+1] — the literal
@@ -251,6 +291,249 @@ export function applyPlacementEdits(text: string, edits: Array<{ start: number; 
   let out = text;
   for (const edit of sorted) out = out.slice(0, edit.start) + edit.line + out.slice(edit.end);
   return out;
+}
+
+export interface OutlineRect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+/** A zone rectangle identified for an edit or a deletion: geometry plus the
+ *  copper layer (identical rects on different layers are distinct zones —
+ *  the imported planes share one rect across four layers). */
+export interface ZoneRectMatch extends OutlineRect {
+  layer: string;
+}
+
+interface ZoneLiteralMatch {
+  /** the literal's `{ … }` open/close offsets */
+  open: number;
+  close: number;
+  /** the full statement: line start through the terminating `;` */
+  stmtStart: number;
+  stmtEnd: number;
+  rect: { x: number; y: number; w: number; h: number };
+  layers: string[];
+  method: string;
+  priority?: number;
+}
+
+/** Every `.zone({ … })` / `.keepout({ … })` literal in a document, with
+ *  geometry, layers, and statement bounds. Tolerates the CRLF and multi-line
+ *  literal forms; numeric x/y/width/height literals only. */
+function findZoneLiterals(text: string): ZoneLiteralMatch[] {
+  const out: ZoneLiteralMatch[] = [];
+  const callRe = /\.(zone|keepout)\s*\(\s*\{/g;
+  let match: RegExpExecArray | null;
+  while ((match = callRe.exec(text)) !== null) {
+    const open = text.indexOf('{', match.index);
+    let depth = 0;
+    let close = -1;
+    for (let i = open; i < text.length; i++) {
+      const ch = text[i];
+      if (ch === '{') depth++;
+      else if (ch === '}') {
+        depth--;
+        if (depth === 0) {
+          close = i;
+          break;
+        }
+      }
+    }
+    if (close === -1) continue;
+    const inner = text.slice(open + 1, close);
+    const xNum = /\bx\s*:\s*(-?[\d.]+)/.exec(inner);
+    const yNum = /\by\s*:\s*(-?[\d.]+)/.exec(inner);
+    const wNum = /\bwidth\s*:\s*(-?[\d.]+)/.exec(inner);
+    const hNum = /\bheight\s*:\s*(-?[\d.]+)/.exec(inner);
+    if (!xNum || !yNum || !wNum || !hNum) continue;
+    const layers: string[] = [];
+    const layersRe = /\blayers\s*:\s*\[([^\]]*)\]/.exec(inner);
+    if (layersRe) {
+      for (const l of layersRe[1].matchAll(/['"]([^'"]+)['"]/g)) layers.push(l[1]!);
+    }
+    const priorityNum = /\bpriority\s*:\s*(-?[\d.]+)/.exec(inner);
+    const lineStart = text.lastIndexOf('\n', match.index) + 1;
+    let stmtEnd = close;
+    const semi = text.indexOf(';', close);
+    if (semi !== -1 && !/[^;\s)]/.test(text.slice(close + 1, semi))) stmtEnd = semi;
+    out.push({
+      open,
+      close,
+      stmtStart: lineStart,
+      stmtEnd: stmtEnd + 1,
+      rect: { x: parseFloat(xNum[1]), y: parseFloat(yNum[1]), w: parseFloat(wNum[1]), h: parseFloat(hNum[1]) },
+      layers,
+      method: match[1]!,
+      priority: priorityNum ? parseFloat(priorityNum[1]) : undefined,
+    });
+  }
+  return out;
+}
+
+/**
+ * The highest zone priority declared in a document (0 when none — the API
+ * default). The layout view's insert stage starts new pours ABOVE it: in
+ * KiCad's fill order a lower-priority zone keeps its clearance from
+ * higher-priority copper, so a pour dropped inside a GND plane must
+ * out-rank the plane or the plane's fill subordinates it to nothing.
+ */
+export function maxZonePriority(text: string): number {
+  let max = 0;
+  for (const m of findZoneLiterals(text)) {
+    if (m.priority !== undefined && m.priority > max) max = m.priority;
+  }
+  return max;
+}
+
+function rectMatches(m: ZoneLiteralMatch, r: ZoneRectMatch): boolean {
+  return (
+    m.layers.includes(r.layer) &&
+    Math.abs(m.rect.x - r.x) < 0.05 &&
+    Math.abs(m.rect.y - r.y) < 0.05 &&
+    Math.abs(m.rect.w - r.w) < 0.05 &&
+    Math.abs(m.rect.h - r.h) < 0.05
+  );
+}
+
+/**
+ * Zone geometry edits from the layout view: each carries the zone's
+ * AUTHORED rect (matched against the source literal, layer included) and
+ * the NEW rect. The matching `typecad.zone()`/`.keepout()` literal's
+ * x/y/width/height are rewritten in place — every other key (fill, the
+ * comment text around it) stays. A `net` on the edit reassigns the pour:
+ * an existing `net: '…'` key is rewritten, and a literal without one
+ * gains it right after the opening brace. Numeric literals only; a zone
+ * with no matching literal (a `pcb.plane()` materialization, an
+ * import-authored polygon) is reported, never mangled.
+ */
+export function planZoneGeometryEdits(text: string, edits: Array<{ original: ZoneRectMatch; rect: OutlineRect; net?: string }>): {
+  edits: PlacementEdit[];
+  skipped: string[];
+} {
+  const literals = findZoneLiterals(text);
+  const planned: PlacementEdit[] = [];
+  const skipped: string[] = [];
+  const used = new Set<number>();
+  for (const edit of edits) {
+    const hit = literals.findIndex((m, i) => !used.has(i) && rectMatches(m, edit.original));
+    if (hit === -1) {
+      skipped.push(
+        `zone (${edit.original.layer} at ${edit.original.x},${edit.original.y}) has no editable literal — plane-materialized or import-authored zones are not editable`,
+      );
+      continue;
+    }
+    used.add(hit);
+    const m = literals[hit]!;
+    const inner = text.slice(m.open + 1, m.close);
+    let newInner = inner
+      .replace(/\bx\s*:\s*-?[\d.]+/, `x: ${fmt(edit.rect.x)}`)
+      .replace(/\by\s*:\s*-?[\d.]+/, `y: ${fmt(edit.rect.y)}`)
+      .replace(/\bwidth\s*:\s*-?[\d.]+/, `width: ${fmt(edit.rect.w)}`)
+      .replace(/\bheight\s*:\s*-?[\d.]+/, `height: ${fmt(edit.rect.h)}`);
+    if (edit.net !== undefined) {
+      const netKey = /\bnet\s*:\s*(['"])(?:\\.|(?!\1)[^\\])*\1/.exec(newInner);
+      if (netKey) newInner = newInner.replace(netKey[0], `net: '${escapeQuoted(edit.net, "'")}'`);
+      else newInner = ` net: '${escapeQuoted(edit.net, "'")}',${newInner}`;
+    }
+    planned.push({
+      ref: `zone (${edit.original.layer} @ ${edit.original.x},${edit.original.y})`,
+      line: `${text.slice(m.open, m.open + 1)}${newInner}}`,
+      start: m.open,
+      end: m.close + 1,
+    });
+  }
+  return { edits: planned, skipped };
+}
+
+/**
+ * Zone deletions from the layout view: the matching literal's WHOLE
+ * statement (its line through the terminating `;`) is removed — the same
+ * guard rails as the edit planner, one zone per match.
+ */
+export function planZoneDeletions(text: string, deletes: ZoneRectMatch[]): {
+  edits: PlacementEdit[];
+  skipped: string[];
+} {
+  const literals = findZoneLiterals(text);
+  const planned: PlacementEdit[] = [];
+  const skipped: string[] = [];
+  const used = new Set<number>();
+  for (const del of deletes) {
+    const hit = literals.findIndex((m, i) => !used.has(i) && rectMatches(m, del));
+    if (hit === -1) {
+      skipped.push(
+        `zone (${del.layer} at ${del.x},${del.y}) has no removable literal — plane-materialized or import-authored zones are not deletable`,
+      );
+      continue;
+    }
+    used.add(hit);
+    const m = literals[hit]!;
+    planned.push({
+      ref: `zone (${del.layer} @ ${del.x},${del.y})`,
+      line: '',
+      start: m.stmtStart,
+      end: m.stmtEnd,
+    });
+  }
+  return { edits: planned, skipped };
+}
+
+/**
+ * Board outline rewrite: the layout view's outline edit arrives as the
+ * AUTHORED rect (matched against the source literal) and the NEW rect, both
+ * board-frame min-corner rectangles. The planner finds the
+ * `.outline(x, y, width, height[, fillet])` call whose numeric geometry
+ * matches the original (within 0.05 mm) and rewrites the first four
+ * arguments — the fillet argument, when present, stays. Numeric literals
+ * only; an outline built by `outlinePolygon`/`outlinePath` (or computed)
+ * cannot match and is reported, never mangled.
+ */
+export function planOutlineEdits(
+  text: string,
+  original: OutlineRect,
+  rect: OutlineRect,
+): { edits: PlacementEdit[]; reason?: string } {
+  const callRe = /\.outline\s*\(/g;
+  let match: RegExpExecArray | null;
+  while ((match = callRe.exec(text)) !== null) {
+    const open = match.index + match[0].length;
+    const close = text.indexOf(')', open);
+    if (close === -1) continue;
+    const inner = text.slice(open, close);
+    const nums = inner.match(/-?\d+(?:\.\d+)?/g);
+    if (!nums || nums.length < 4) continue;
+    const [ox, oy, ow, oh] = nums.slice(0, 4).map((n) => parseFloat(n));
+    if (![ox, oy, ow, oh].every(Number.isFinite)) continue;
+    if (
+      Math.abs(ox - original.x) > 0.05 ||
+      Math.abs(oy - original.y) > 0.05 ||
+      Math.abs(ow - original.w) > 0.05 ||
+      Math.abs(oh - original.h) > 0.05
+    )
+      continue;
+    // rewrite only the first four numbers, in place, preserving the rest
+    // (a fillet radius rides untouched)
+    let idx = 0;
+    const newInner = inner.replace(/-?\d+(?:\.\d+)?/g, (num) => {
+      if (idx >= 4) return num;
+      const out = fmt([rect.x, rect.y, rect.w, rect.h][idx++]!);
+      return out;
+    });
+    return {
+      edits: [
+        {
+          ref: 'board outline',
+          line: `${text.slice(match.index, open)}${newInner})`,
+          start: match.index,
+          end: close + 1,
+        },
+      ],
+    };
+  }
+  return { edits: [], reason: 'no `.outline(x, y, width, height)` literal matches the board outline' };
 }
 
 /** A text style diff: only keys the user actually changed (w/h map to the API's width/height). */

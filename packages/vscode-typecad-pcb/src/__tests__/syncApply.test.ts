@@ -61,7 +61,7 @@ describe('layout apply → _sync.ts sidecar', () => {
     const files = [{ uri: ENTRY_URI, text: entryFile() }, { uri: SYNC_URI, text: '' }];
     const plan = planOf(files, { moves: [{ ref: 'J1', dx: 10, dy: 5, ax: 130, ay: 85 }] });
     expect(plan.skipped).toEqual([]);
-    expect(plan.syncFile).toEqual({ created: true, placements: 1, labels: 0, routes: 0 });
+    expect(plan.syncFile).toEqual({ created: true, placements: 1, labels: 0, routes: 0, zones: 0, images: 0 });
     expect(plan.counts.moves).toBe(1);
     const out = applyPlan(files, plan);
     const sync = out.get(SYNC_URI)!;
@@ -70,6 +70,107 @@ describe('layout apply → _sync.ts sidecar', () => {
     const entry = out.get(ENTRY_URI)!;
     expect(entry).toContain("import { syncBoard } from './_sync.js';");
     expect(entry).toContain('syncBoard(typecad, { j1 });\ntypecad.create(j1);');
+  });
+
+  it('a flip with no literal writes side into the sidecar placement', () => {
+    const files = [{ uri: ENTRY_URI, text: entryFile() }, { uri: SYNC_URI, text: '' }];
+    const plan = planOf(files, { moves: [{ ref: 'J1', dx: 0, dy: 0, ax: 130, ay: 85, side: 'back' }] });
+    expect(plan.skipped).toEqual([]);
+    expect(plan.counts.moves).toBe(1);
+    const out = applyPlan(files, plan);
+    expect(out.get(SYNC_URI)!).toContain("parts.j1.pcb = { x: 130, y: 85, side: 'back' };");
+  });
+
+  it('a flip rewrites an existing sidecar placement in place', () => {
+    const files = [
+      { uri: ENTRY_URI, text: entryFile().replace('typecad.create(j1);', 'syncBoard(typecad, { j1 });\ntypecad.create(j1);') },
+      {
+        uri: SYNC_URI,
+        text: [
+          '// banner',
+          "import { TrackBuilder } from '@typecad/pcb';",
+          'export const syncTracks: TrackBuilder[] = [];',
+          'export function syncBoard(typecad: PCB, parts: Record<string, Component>): void {',
+          '  syncTracks.length = 0;',
+          '  parts.j1.pcb = { x: 130, y: 85 };',
+          '}',
+        ].join('\n'),
+      },
+    ];
+    const plan = planOf(files, { moves: [{ ref: 'J1', dx: 0, dy: 0, side: 'back' }] });
+    expect(plan.skipped).toEqual([]);
+    const out = applyPlan(files, plan);
+    const sync = out.get(SYNC_URI)!;
+    expect(sync.match(/parts\.j1\.pcb\s*=/g)).toHaveLength(1);
+    expect(sync).toContain("parts.j1.pcb = { x: 130, y: 85, side: 'back' };");
+  });
+
+  it('zones land as typecad.zone() / typecad.keepout() calls in the sidecar', () => {
+    const files = [{ uri: ENTRY_URI, text: entryFile() }, { uri: SYNC_URI, text: '' }];
+    const plan = planOf(files, {
+      zones: [
+        { kind: 'pour', layer: 'F.Cu', net: 'GND', x: 1, y: 2, w: 10, h: 5 },
+        { kind: 'pour', layer: 'B.Cu', x: 0, y: 0, w: 20, h: 15 },
+        { kind: 'keepout', layer: 'F.Cu', x: 3, y: 3, w: 2, h: 2 },
+      ],
+    });
+    expect(plan.skipped).toEqual([]);
+    expect(plan.counts.zones).toBe(3);
+    const out = applyPlan(files, plan);
+    const sync = out.get(SYNC_URI)!;
+    // pours out-rank existing zones: ascending priorities (the fill-clearance ordering)
+    expect(sync).toContain("typecad.zone({ net: 'GND', layers: ['F.Cu'], x: 1, y: 2, width: 10, height: 5, priority: 1 });");
+    expect(sync).toContain("typecad.zone({ layers: ['B.Cu'], x: 0, y: 0, width: 20, height: 15, priority: 2 });");
+    expect(sync).toContain("typecad.keepout({ layers: ['F.Cu'], x: 3, y: 3, width: 2, height: 2 });");
+    // the entry file learned the syncBoard() call even with no placements
+    expect(out.get(ENTRY_URI)!).toContain('syncBoard(typecad, {});');
+  });
+
+  it('new pours out-rank existing zones (KiCad fill clearance ordering)', () => {
+    // a GND plane literal at priority 3 already in source; two new pours
+    // must land at priorities 4 and 5 — a pour inside a plane at equal
+    // priority 0 loses the fill to the plane entirely
+    const files = [
+      {
+        uri: ENTRY_URI,
+        text: entryFile().replace(
+          'typecad.create(j1);',
+          "typecad.zone({ net: 'GND', layers: ['F.Cu'], x: 0, y: 0, width: 50, height: 40, priority: 3 });\ntypecad.create(j1);",
+        ),
+      },
+      { uri: SYNC_URI, text: '' },
+    ];
+    const plan = planLayoutApply(files, {
+      moves: [],
+      variableOf: (ref) => (ref === 'J1' ? 'j1' : undefined),
+      allRefs: new Set(['J1']),
+      syncUri: SYNC_URI,
+      entryUri: ENTRY_URI,
+      zones: [
+        { kind: 'pour', layer: 'F.Cu', net: 'VCC', x: 10, y: 10, w: 5, h: 5 },
+        { kind: 'pour', layer: 'F.Cu', net: 'VCC', x: 20, y: 10, w: 5, h: 5 },
+        { kind: 'keepout', layer: 'F.Cu', x: 30, y: 10, w: 5, h: 5 },
+      ],
+    });
+    expect(plan.skipped).toEqual([]);
+    const out = applyPlan(files, plan);
+    const sync = out.get(SYNC_URI)!;
+    expect(sync).toContain('priority: 4');
+    expect(sync).toContain('priority: 5');
+    expect(sync).not.toContain('priority: 6'); // keepouts carry none
+  });
+
+  it('zones skip with a reason when the sidecar cannot be wired', () => {
+    // no syncUri in the plan input → zones have nowhere to go
+    const files = [{ uri: ENTRY_URI, text: entryFile() }];
+    const plan = planLayoutApply(files, {
+      moves: [],
+      variableOf: () => undefined,
+      allRefs: new Set(['J1']),
+      zones: [{ kind: 'pour', layer: 'F.Cu', net: 'GND', x: 1, y: 2, w: 3, h: 4 }],
+    });
+    expect(plan.counts.zones).toBe(0);
+    expect(plan.skipped.join(' ')).toContain('needs the _sync.ts sidecar');
   });
 
   it('updates an existing sidecar placement in place — no duplicate statements', () => {
@@ -104,7 +205,7 @@ describe('layout apply → _sync.ts sidecar', () => {
     const plan = planOf(files, { routes: [routeVcc] });
     expect(plan.skipped).toEqual([]);
     expect(plan.counts.routes).toBe(1);
-    expect(plan.syncFile).toEqual({ created: true, placements: 0, labels: 0, routes: 1 });
+    expect(plan.syncFile).toEqual({ created: true, placements: 0, labels: 0, routes: 1, zones: 0, images: 0 });
     const out = applyPlan(files, plan);
     const sync = out.get(SYNC_URI)!;
     expect(sync).toContain("const route1 = new TrackBuilder(typecad, { net: 'VCC',  })");

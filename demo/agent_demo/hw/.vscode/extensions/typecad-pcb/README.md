@@ -93,6 +93,53 @@ In either view:
 - **SVG / PNG export** of the current view (theme, visibility, and highlight
   included; PNG rasterizes at ~1600 px).
 
+### Layout view: edit the board, apply writes the source
+
+The **Layout** view (same combo box) is the editing surface. Everything is
+pending until **apply & rebuild** — one gesture that rewrites the TypeScript
+source, runs the build, and re-renders the viewer (semantically verifying the
+rebuilt board, re-running DRC, and snapshotting the touched files first):
+
+- **Parts**: `M` grabs the selection, arrows nudge (Alt for 0.1 mm), `R`
+  rotates 90°, **`Shift+F` flips to the other side** (the ink mirrors about
+  the part's local X axis exactly like the writer's back-side transform;
+  apply writes `side:` into the placement literal — `rotation` stays). `E`
+  edits ref/value/x/y/rotation/side; stacked parts disperse with `Shift+D`.
+- **Routing**: `X` starts a route, `V` places vias, `D` slides segments;
+  widths from the ladder, the net class, IPC-2221 current, or the 50 Ω
+  stackup solve. Hand-built chains follow a moved/flipped part via their
+  `.from`/`.to` literals (per-pad after a flip).
+- **Zones**: the **draw zone** button arms a two-click rectangle tool — a
+  copper **pour** (layer + net picked beside the button) or a **keepout**.
+  Apply inserts `typecad.zone({ net, layers, x, y, width, height })` /
+  `typecad.keepout({ layers, … })` calls into the machine-owned `_sync.ts`
+  sidecar, where they run right before `create()`; the rebuild refills the
+  pour. `Del` removes the selected pending zone.
+- **Artwork**: the **place image** button picks a PNG (red pixels → copper,
+  white → silkscreen, blue → mask openings — the three-ink palette the
+  [core package](../../@typecad/pcb/README.md#board-artwork) documents), and a
+  click drops its center. The pending ghost previews the image — mirrored
+  when **back** is selected, since back-side art lands mirrored on the board.
+  Apply copies the file into the project's `art/` folder (deduped by
+  content), writes `syncArt.push(new Image({ … }))` into the `_sync.ts`
+  sidecar, wires the `...syncArt` spread into `create()`, and rebuilds. `E`
+  resizes/repositions/side-flips the pending artwork; `Del` removes it.
+- **Placed artwork is an object too**: after the rebuild, every applied
+  image draws a dashed outline + file label (from the build's
+  `<board>_images.json` manifest) — click it, `E` edits x/y/width/height/side
+  or **replace file…** with a fresh pick (copied into `art/` the same way),
+  `Del` removes it from source. Both ride apply & rebuild as rewrites of the
+  matching `new Image({ … })` statement, verified after the rebuild against
+  the fresh manifest.
+- **Board outline**: click the Edge.Cuts ink to select the outline, then set
+  x/y/width/height in the `E` panel or nudge with the arrows. Apply rewrites
+  the matching `typecad.outline(x, y, width, height)` literal (fillet
+  preserved). Polygon/circle outlines select but report that no literal
+  matches rather than guessing.
+
+`?` shows the keys cheat-sheet; the apply button arms only when something is
+pending, and `revert` backs the whole session out.
+
 ### Cross-probing, both directions
 
 - **Editor → board:** the hover's *view on board* link, or

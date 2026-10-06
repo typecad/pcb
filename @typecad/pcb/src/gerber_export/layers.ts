@@ -284,7 +284,7 @@ interface DrawOpts {
   map: (p: Point) => Point;
 }
 
-function drawGraphicItem(w: GerberWriter, item: SNode, opts: DrawOpts): void {
+export function drawGraphicItem(w: GerberWriter, item: SNode, opts: DrawOpts): void {
   const width = widthOf(item);
   const aper = () => w.aperture({ kind: 'C', dia: width }, opts.isProfile ? 'Profile' : undefined);
   const B = (n: string): Point => opts.map(atPoint(item.child(n)));
@@ -403,7 +403,7 @@ function drawGraphicItem(w: GerberWriter, item: SNode, opts: DrawOpts): void {
  * (effects font face) are skipped — outline-font rendering isn't implemented
  * (rendered as filled regions by KiCad; Phase 4+ scope).
  */
-function drawTextItem(
+export function drawTextItem(
   w: GerberWriter,
   item: SNode,
   isBack: boolean,

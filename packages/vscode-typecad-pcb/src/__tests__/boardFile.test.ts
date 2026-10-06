@@ -4,7 +4,7 @@ import { describe, expect, it, beforeEach, afterEach } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { listBoardFiles, mtimeOf, newestBoardFile, entrySourceFile } from '../boardFile.js';
+import { listBoardFiles, mtimeOf, newestBoardFile, entrySourceFile, pageGeneratorVersion, projectToolchainVersion } from '../boardFile.js';
 
 let folder: string;
 
@@ -135,5 +135,53 @@ describe('multi-board discovery', () => {
     } finally {
       fs.rmSync(folder, { recursive: true, force: true });
     }
+  });
+});
+
+describe('projectToolchainVersion (npx-style upward resolution)', () => {
+  it('resolves node_modules/@typecad/pcb walking up from the hw folder', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tc-tool-'));
+    try {
+      const hw = path.join(root, 'hw');
+      fs.mkdirSync(path.join(root, 'node_modules', '@typecad', 'pcb'), { recursive: true });
+      fs.mkdirSync(hw, { recursive: true });
+      fs.writeFileSync(path.join(root, 'node_modules', '@typecad', 'pcb', 'package.json'), JSON.stringify({ version: '1.2.3' }));
+      expect(projectToolchainVersion(hw)).toBe('1.2.3');
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('prefers the NEAREST node_modules (nested installs shadow the workspace)', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tc-tool-'));
+    try {
+      const hw = path.join(root, 'hw');
+      fs.mkdirSync(path.join(root, 'node_modules', '@typecad', 'pcb'), { recursive: true });
+      fs.mkdirSync(path.join(hw, 'node_modules', '@typecad', 'pcb'), { recursive: true });
+      fs.writeFileSync(path.join(root, 'node_modules', '@typecad', 'pcb', 'package.json'), JSON.stringify({ version: '1.0.0' }));
+      fs.writeFileSync(path.join(hw, 'node_modules', '@typecad', 'pcb', 'package.json'), JSON.stringify({ version: '2.0.0' }));
+      expect(projectToolchainVersion(hw)).toBe('2.0.0');
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('returns null when nothing resolves', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tc-tool-'));
+    try {
+      expect(projectToolchainVersion(root)).toBeNull();
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('pageGeneratorVersion', () => {
+  it('extracts the tc-viewer-generator meta', () => {
+    expect(pageGeneratorVersion('<html><meta name="tc-viewer-generator" content="1.2.3"><body>')).toBe('1.2.3');
+  });
+
+  it('returns null on pre-stamp pages', () => {
+    expect(pageGeneratorVersion('<html><meta name="tc-viewer-build" content="x"></html>')).toBeNull();
   });
 });

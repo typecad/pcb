@@ -84,6 +84,27 @@ function readSource(filePath: string): string | null {
   }
 }
 
+/** Both compare sides see the API defaults a fresh board carries for fields
+ *  the source call (or an imported board) omitted — see computeZoneChanges. */
+function withZoneDefaults(z: KicadZoneIR): KicadZoneIR {
+  if (z.keepout) return z;
+  const out = { ...z };
+  if (out.minThickness === undefined) out.minThickness = 0.1778;
+  if (out.clearance === undefined) out.clearance = 0.2;
+  if (!out.fill) out.fill = { mode: 'solid', thermalGap: 0.254, thermalBridgeWidth: 0.4064, islandRemovalMode: 2 };
+  return out;
+}
+
+/** The file's dominant line ending — CRLF checkouts stay CRLF when a
+ *  generated block is written into them (the generated text is LF). */
+function sourceEol(source: string): '\r\n' | '\n' {
+  return source.includes('\r\n') ? '\r\n' : '\n';
+}
+
+function renderWithEol(text: string, eol: '\r\n' | '\n'): string {
+  return eol === '\n' ? text : text.replace(/\n/g, eol);
+}
+
 // === Zones ===
 
 interface ZoneCallInfo {
@@ -187,6 +208,19 @@ function pseudoZoneFromProps(method: string, props: Record<string, unknown>): Ki
   zone.clearance = num(props['clearance']);
   zone.hatchStyle = typeof props['hatchStyle'] === 'string' ? (props['hatchStyle'] as string) : undefined;
   zone.hatchPitch = num(props['hatchPitch']);
+  // Omitted fields mean the API DEFAULT, and the writer bakes those into
+  // every board zone (min_thickness 0.1778, clearance 0.2, the fill block's
+  // thermal/island values) — a minimal `typecad.zone({ net, layers, x, y,
+  // width, height })` (the layout view's sidecar form) must compare EQUAL
+  // to its board zone, not propose an update with its own defaults. A real
+  // board deviation still proposes the update. Keepouts carry none of these.
+  if (!zone.keepout && method !== 'keepout') {
+    if (zone.minThickness === undefined) zone.minThickness = 0.1778;
+    if (zone.clearance === undefined) zone.clearance = 0.2;
+    if (!zone.fill && props['fill'] !== false) {
+      zone.fill = { mode: 'solid', thermalGap: 0.254, thermalBridgeWidth: 0.4064, islandRemovalMode: 2 };
+    }
+  }
   return zone;
 }
 
@@ -257,8 +291,30 @@ export function computeZoneChanges(ir: KicadIR, sourceFiles: string[]): SourceCh
   const changes: PendingSourceChange[] = [];
   const notes: string[] = [];
 
+  // The _sync.ts sidecar is a zone home the layout apply writes into — a
+  // caller that didn't list it (hand-built file lists, per-feature scans)
+  // would read its zone calls as missing and propose DUPLICATING the board's
+  // zones into hand-written code. Always scan every _sync*.ts beside the
+  // given sources (the per-board _sync.<stem>.ts forms included).
+  const scanned = new Set(sourceFiles);
+  const scanFiles = [...sourceFiles];
+  for (const dir of new Set(sourceFiles.map((f) => path.dirname(f)))) {
+    try {
+      for (const entry of fs.readdirSync(dir)) {
+        if (!/^_sync(\.[A-Za-z0-9_$.-]+)?\.ts$/.test(entry)) continue;
+        const full = path.join(dir, entry);
+        if (!scanned.has(full)) {
+          scanned.add(full);
+          scanFiles.push(full);
+        }
+      }
+    } catch {
+      // unreadable directory — the given files still scan
+    }
+  }
+
   const srcCalls: ZoneCallInfo[] = [];
-  for (const filePath of sourceFiles) {
+  for (const filePath of scanFiles) {
     for (const call of findMethodCalls(filePath, ZONE_METHODS)) srcCalls.push({ filePath, call });
   }
 
@@ -316,14 +372,21 @@ export function computeZoneChanges(ir: KicadIR, sourceFiles: string[]): SourceCh
         filePath: sc.filePath,
         label: `zone (net ${zone.netName ?? '—'}) rewritten from board geometry`,
         changedProps: ['geometry'],
-        replacements: [{ range: sc.call.argRanges[0], newValue: `{ ${zonePropsSource(zone, PLAIN_CH)} }` }],
+        replacements: [{ range: sc.call.argRanges[0], newValue: `{ ${zonePropsSource(withZoneDefaults(zone), PLAIN_CH)} }` }],
       });
       continue;
     }
+    // Both sides normalize omitted fields to the API defaults a fresh board
+    // carries (min_thickness 0.1778, clearance 0.2, the fill block's
+    // thermal/island values): an omitted clearance is the DEFAULT clearance,
+    // not drift — but a board that genuinely deviates still proposes its
+    // update, and the replacement renders the NORMALIZED board so the
+    // applied source converges on the next compare.
+    const boardZone = withZoneDefaults(zone);
     const before = zonePropsSource(pseudo, PLAIN_CH);
-    const after = zonePropsSource(zone, PLAIN_CH);
+    const after = zonePropsSource(boardZone, PLAIN_CH);
     if (before === after) continue;
-    const diffs = zoneFieldDiffs(pseudo, zone);
+    const diffs = zoneFieldDiffs(pseudo, boardZone);
     changes.push({
       kind: sc.call.method === 'keepout' ? 'keepout' : 'zone',
       filePath: sc.filePath,
@@ -523,6 +586,15 @@ function isTrackArrayIdentifier(text: string, trackArrayNames: Set<string>): boo
   return trackArrayNames.has(text) || /^track_[A-Za-z0-9_]+$/.test(text) || /^[A-Za-z0-9_]*_Track$/.test(text);
 }
 
+/** Equality form of a create() argument list: line/block comments gone,
+ *  whitespace collapsed — "j1, // u2, u3" equals "j1, u3". */
+function stripArgsNoise(args: string): string {
+  return args
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')
+    .replace(/\/\/[^\n]*/g, ' ')
+    .replace(/\s+/g, '');
+}
+
 function buildCreateArgsSource(
   create: MethodCallInfo,
   source: string,
@@ -664,7 +736,7 @@ export function computeRoutingChanges(ir: KicadIR, sourceFiles: string[]): Sourc
         const changesForFile: Replacement[] = [
           {
             range: { start: create.statementRange.start, end: create.statementRange.start },
-            newValue: `${desiredBlock}\n\n`,
+            newValue: `${renderWithEol(desiredBlock, sourceEol(source))}\n\n`,
           },
         ];
         const argsSource = buildCreateArgsSource(
@@ -757,7 +829,12 @@ export function computeRoutingChanges(ir: KicadIR, sourceFiles: string[]): Sourc
     }
     const currentBlock = source.slice(region.start, region.end);
     const isOwner = filePath === ownerFile;
-    const wantedBlock = !isOwner ? '' : isSync ? syncBlock : desiredBlock;
+    // The generated block is LF; a CRLF checkout (git autocrlf) or a
+    // Windows editor save must not read as a routing drift — render the
+    // wanted block with the file's own line endings so the compare (and
+    // the applied replacement) converge without churning EOLs.
+    const wantedRaw = !isOwner ? '' : isSync ? syncBlock : desiredBlock;
+    const wantedBlock = wantedRaw === '' ? '' : renderWithEol(wantedRaw, sourceEol(source));
     const regionDiffers = currentBlock !== wantedBlock;
 
     // Create-args planning is independent of the region diff: stale track
@@ -778,7 +855,8 @@ export function computeRoutingChanges(ir: KicadIR, sourceFiles: string[]): Sourc
     let argsRep: Replacement | null = null;
     if (creates.length === 1 && !isSync && isOwner) {
       const create = creates[0];
-      const argsSource = buildCreateArgsSource(create, source, variables, trackArrayNames);
+      const argsSourceRaw = buildCreateArgsSource(create, source, variables, trackArrayNames);
+      const argsSource = argsSourceRaw === null ? null : renderWithEol(argsSourceRaw, sourceEol(source));
       if (argsSource !== null) {
         const argsRange =
           create.argRanges.length === 0
@@ -788,7 +866,11 @@ export function computeRoutingChanges(ir: KicadIR, sourceFiles: string[]): Sourc
                 end: create.argRanges[create.argRanges.length - 1].end,
               };
         const currentArgs = source.slice(argsRange.start, argsRange.end);
-        if (currentArgs !== argsSource) {
+        // a comment inside the argument list (a part commented out of
+        // create(), a note) must not read as drift when the arguments
+        // themselves match — compare with comments and whitespace noise
+        // stripped; a real difference still rewrites to the clean form
+        if (currentArgs !== argsSource && stripArgsNoise(currentArgs) !== stripArgsNoise(argsSource)) {
           argsRep = { range: argsRange, newValue: argsSource };
         }
       }
@@ -1120,6 +1202,72 @@ function graphicsEqual(a: KicadBoardGraphicIR, b: KicadBoardGraphicIR): boolean 
   return graphicCallSource(a) === graphicCallSource(b);
 }
 
+/** A `new Image({...})` placement found in source: artwork generates the
+ *  board's gr_polys, so those graphics are IMAGE-owned — the graphics sync
+ *  must not propose re-inserting them as typecad.poly() literals. Both the
+ *  canonical syncArt statement and hand-written tuple forms are read. */
+interface ImagePlacement {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  side: 'front' | 'back';
+}
+
+const IMAGE_STMT_RE =
+  /new Image\(\{[\s\S]*?at:\s*\{\s*x:\s*(-?[\d.]+),\s*y:\s*(-?[\d.]+)\s*\}[\s\S]*?size:\s*\[\s*(-?[\d.]+),\s*(-?[\d.]+)\s*\][\s\S]*?(side:\s*'(back|front)')?[\s\S]*?\}\)/g;
+const IMAGE_STMT_TUPLE_RE =
+  /new Image\(\{[\s\S]*?at:\s*\[\s*(-?[\d.]+),\s*(-?[\d.]+)\s*\][\s\S]*?size:\s*\[\s*(-?[\d.]+),\s*(-?[\d.]+)\s*\][\s\S]*?(side:\s*'(back|front)')?[\s\S]*?\}\)/g;
+
+function findImagePlacements(sourceFiles: string[]): ImagePlacement[] {
+  const out: ImagePlacement[] = [];
+  for (const filePath of sourceFiles) {
+    let text = '';
+    try {
+      text = fs.readFileSync(filePath, 'utf8');
+    } catch {
+      continue;
+    }
+    for (const re of [IMAGE_STMT_RE, IMAGE_STMT_TUPLE_RE]) {
+      re.lastIndex = 0;
+      let m: RegExpExecArray | null;
+      while ((m = re.exec(text)) !== null) {
+        const x = parseFloat(m[1]!);
+        const y = parseFloat(m[2]!);
+        const bw = parseFloat(m[3]!);
+        const bh = parseFloat(m[4]!);
+        // side is matched SEPARATELY over the whole statement: the optional
+        // group inside the main (lazy) pattern reliably skips itself, so a
+        // `side: 'back'` statement used to read as front and its B.* polys
+        // fell out of ownership
+        const sideM = /side:\s*'(back|front)'/.exec(m[0]);
+        // size is a bounding box the art fits inside: the placed box is at
+        // most the box, centered — ownership only needs a containment test
+        out.push({ x, y, w: bw, h: bh, side: sideM?.[1] === 'back' ? 'back' : 'front' });
+      }
+    }
+  }
+  return out;
+}
+
+/** is this board graphic artwork an Image statement owns? (its bbox sits
+ *  inside a placement's box, on that side's silk/copper/mask layers) */
+function graphicIsArtwork(g: KicadBoardGraphicIR, placements: ImagePlacement[]): boolean {
+  if (!g.points || g.points.length === 0) return false;
+  const xs = g.points.map((p) => p.x);
+  const ys = g.points.map((p) => p.y);
+  const x0 = Math.min(...xs);
+  const x1 = Math.max(...xs);
+  const y0 = Math.min(...ys);
+  const y1 = Math.max(...ys);
+  const pad = 0.15; // mask openings grow past the art by design
+  return placements.some((p) => {
+    const prefix = p.side === 'back' ? 'B.' : 'F.';
+    if (!g.layer.startsWith(prefix)) return false;
+    return x0 >= p.x - p.w / 2 - pad && x1 <= p.x + p.w / 2 + pad && y0 >= p.y - p.h / 2 - pad && y1 <= p.y + p.h / 2 + pad;
+  });
+}
+
 /**
  * Sync `typecad.line()/circle()/rect()/arc()/poly()` calls with board
  * graphics on silk/user layers: geometry diffs regenerate the call,
@@ -1141,6 +1289,12 @@ export function computeGraphicsChanges(ir: KicadIR, sourceFiles: string[]): Sour
   if (ir.boardGraphics.length === 0 && srcCalls.length === 0) return { changes, notes };
 
   const boardGraphics = ir.boardGraphics.filter((g) => Number.isFinite(graphicCenter(g).x));
+  // artwork polys are owned by `new Image({ ... })` statements — skip them
+  // (an insert here would duplicate the art as a literal on every sync)
+  const imagePlacements = findImagePlacements(sourceFiles);
+  const ownedByArtwork = new Set(
+    boardGraphics.map((g, gi) => (graphicIsArtwork(g, imagePlacements) ? gi : -1)).filter((i) => i >= 0),
+  );
 
   // Greedy pairing: same layer, nearest center.
   interface Pair {
@@ -1153,6 +1307,7 @@ export function computeGraphicsChanges(ir: KicadIR, sourceFiles: string[]): Sour
     const layer = sc.call.props['layer']?.value;
     boardGraphics.forEach((g, gi) => {
       if (layer !== g.layer) return;
+      if (ownedByArtwork.has(gi)) return;
       const c = graphicCenter(g);
       const center = plainToGraphic(sc.call, sc.call.method as KicadBoardGraphicIR['kind']);
       const sc2 = graphicCenter(center);
@@ -1195,7 +1350,7 @@ export function computeGraphicsChanges(ir: KicadIR, sourceFiles: string[]): Sour
 
   // New board graphics → append after the last graphic call, else before the
   // first zone-family call.
-  const inserts = boardGraphics.filter((_, gi) => !irMatched.has(gi));
+  const inserts = boardGraphics.filter((_, gi) => !irMatched.has(gi) && !ownedByArtwork.has(gi));
   if (inserts.length > 0) {
     const lastGraphic = srcCalls[srcCalls.length - 1];
     const anchor = lastGraphic ?? findInsertAnchor(sourceFiles);

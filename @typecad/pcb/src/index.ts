@@ -5,6 +5,8 @@ export { Pin } from './pin.js';
 export { I2C, UART, USB, Power } from './buses.js';
 export type { IPower } from './buses.js';
 export { PCB, TrackBuilder, pcbRegisterRouter } from './pcb/pcb.js';
+export { Image } from './pcb/pcb_image.js';
+export type { ImageInit, ImageInks } from './pcb/pcb_image.js';
 export { copperLayerNames, validateLayerCount, MAX_COPPER_LAYERS, MIN_COPPER_LAYERS } from './pcb/pcb_stackup.js';
 export type { IStackupLayerOverride } from './pcb/pcb_stackup.js';
 export {

@@ -3,6 +3,7 @@ import { Schematic } from '../schematic.js';
 import type { ISchematicNetDefinition } from '../net_manager.js';
 import { Pin } from '../pin.js';
 import type { Power } from '../buses.js';
+import { Image } from './pcb_image.js';
 import { SimulationContext } from '../simulation/ngspice.js';
 import { TrackBuilder } from './pcb_track_builder.js';
 import { getCallSite } from '../utils/stack_trace.js';
@@ -245,9 +246,10 @@ export class PCB {
   /**
    * Groups components and/or elements from a TrackBuilder together on the board.
    * @param group_name - Name of the group.
-   * @param items - A list of Component instances or TrackBuilder instances.
+   * @param items - A list of Component, Image, or TrackBuilder instances
+   *   (images ride along unstaged — packages stage their own artwork).
    */
-  group(group_name: string, ...items: Array<Component | TrackBuilder>) {
+  group(group_name: string, ...items: Array<Component | TrackBuilder | Image>) {
     groupComponents(this._state, (...comps) => this.place(...comps), group_name, ...items);
   }
 
@@ -259,10 +261,11 @@ export class PCB {
    * Generates all KiCad project files: schematic (.net), PCB (.kicad_pcb),
    * and BOM. Writes outputs to the build directory.
    *
-   * @param items - Components, TrackBuilders, or arrays thereof to include.
+   * @param items - Components, Images (board artwork), TrackBuilders, or
+   *   arrays thereof to include.
    */
-  create(...items: Array<Component | TrackBuilder | Array<Component | TrackBuilder>>) {
-    const flattened: Array<Component | TrackBuilder> = [];
+  create(...items: Array<Component | TrackBuilder | Image | Array<Component | TrackBuilder | Image>>) {
+    const flattened: Array<Component | TrackBuilder | Image> = [];
     for (const item of items) {
       if (Array.isArray(item)) {
         flattened.push(...item);

@@ -20,7 +20,7 @@
 // together.
 // ---------------------------------------------------------------------------
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.SYNC_TYPECAD_PARAM = exports.SYNC_PARTS_PARAM = exports.SYNC_TRACKS_NAME = exports.SYNC_FUNCTION_NAME = exports.SYNC_FILE_NAME = void 0;
+exports.SYNC_TYPECAD_PARAM = exports.SYNC_PARTS_PARAM = exports.SYNC_ART_NAME = exports.SYNC_TRACKS_NAME = exports.SYNC_FUNCTION_NAME = exports.SYNC_FILE_NAME = void 0;
 exports.syncFileNameFor = syncFileNameFor;
 exports.isSyncFileName = isSyncFileName;
 exports.syncFmt = syncFmt;
@@ -30,11 +30,16 @@ exports.isSyncFileText = isSyncFileText;
 exports.syncFunctionBodyRange = syncFunctionBodyRange;
 exports.syncPlacementInsertAt = syncPlacementInsertAt;
 exports.syncRouteInsertAt = syncRouteInsertAt;
+exports.syncZoneInsertAt = syncZoneInsertAt;
 exports.syncPushStatement = syncPushStatement;
+exports.hasSyncArtDeclaration = hasSyncArtDeclaration;
+exports.planSyncArtDeclarationEdits = planSyncArtDeclarationEdits;
+exports.syncImageInsertAt = syncImageInsertAt;
 exports.planSyncEntryEdits = planSyncEntryEdits;
 exports.SYNC_FILE_NAME = '_sync.ts';
 exports.SYNC_FUNCTION_NAME = 'syncBoard';
 exports.SYNC_TRACKS_NAME = 'syncTracks';
+exports.SYNC_ART_NAME = 'syncArt';
 exports.SYNC_PARTS_PARAM = 'parts';
 exports.SYNC_TYPECAD_PARAM = 'typecad';
 /**
@@ -61,13 +66,14 @@ function syncFileBanner() {
         '// Machine-owned: every statement here is placed by a tool, in the one',
         '// canonical shape this file is parsed back with. syncBoard() runs right',
         '// before the create() call in the entry file, so placements and',
-        '// label layouts assigned on `parts` override the constructor options, and',
+        '// label layouts assigned on `parts` override the constructor options,',
         '// routes pushed onto syncTracks reach the board through the',
-        '// `...syncTracks` spread in create().',
+        '// `...syncTracks` spread in create(), and artwork pushed onto syncArt',
+        '// through `...syncArt`.',
         '//',
         '// Regenerate instead of editing — apply any layout edit or re-run the',
         '// import. Deleting the file is safe once the entry file\'s syncBoard()',
-        '// call and `...syncTracks` spread are removed too.',
+        '// call and the create() spreads are removed too.',
         '// ---------------------------------------------------------------------------',
         '',
     ].join('\n');
@@ -75,11 +81,17 @@ function syncFileBanner() {
 /** The full canonical file. Statements arrive pre-indented (two spaces). */
 function renderSyncFile(sections) {
     const placements = sections.placements ?? [];
+    const zones = sections.zones ?? [];
     const routes = sections.routes ?? [];
     const body = [`  ${exports.SYNC_TRACKS_NAME}.length = 0;`, ''];
     if (placements.length > 0) {
         body.push('  // --- auto placements (override constructor `pcb:` options) ---');
         body.push(...placements);
+        body.push('');
+    }
+    if (zones.length > 0) {
+        body.push('  // --- auto zones (pours and keepouts drawn in the layout view) ---');
+        body.push(...zones);
         body.push('');
     }
     if (routes.length > 0) {
@@ -242,9 +254,113 @@ function syncRouteInsertAt(text) {
         return anchor;
     return syncPlacementInsertAt(text);
 }
+/** Start offset of the freshest line for zone statements inside the body —
+ *  after the last zone call, else after the placements, else the body top.
+ *  Zones sit BEFORE the route block (routes' collect pushes are the anchor
+ *  for the next route, never a zone). */
+function syncZoneInsertAt(text) {
+    const body = syncFunctionBodyRange(text);
+    if (!body)
+        return null;
+    const slice = structuralShadow(text).slice(body.start, body.end);
+    let anchor = -1;
+    const zoneCall = /^[ \t]*typecad\.(?:zone|keepout)\(/gm;
+    let m;
+    while ((m = zoneCall.exec(slice)) !== null) {
+        const lineEnd = slice.indexOf('\n', m.index + m[0].length);
+        anchor = lineEnd === -1 ? body.end : body.start + lineEnd + 1;
+    }
+    if (anchor !== -1)
+        return anchor;
+    return syncPlacementInsertAt(text);
+}
 /** The collect statement emitted after a route declaration inside syncBoard(). */
 function syncPushStatement(name) {
     return `  ${exports.SYNC_TRACKS_NAME}.push(${name});`;
+}
+// --- board artwork (syncArt) -------------------------------------------------
+//
+// A third statement class beside placements and zones: images placed in the
+// layout view land as `syncArt.push(new Image({ … }));` inside syncBoard()
+// and reach create() through the `...syncArt` spread. The array declaration
+// and the Image import are NOT part of the original scaffold (older sidecars
+// lack them), so the artwork stages ensure both before inserting statements.
+/** Does this sidecar already carry the syncArt declaration? */
+function hasSyncArtDeclaration(text) {
+    return new RegExp(`export\\s+const\\s+${exports.SYNC_ART_NAME}\\s*:\\s*Image\\[\\]\\s*=\\s*\\[\\]\\s*;`).test(structuralShadow(text));
+}
+/**
+ * Edits adding what an image insert needs from the sidecar it is missing:
+ * the `Image` specifier on the pcb import (rewriting the canonical
+ * `import { TrackBuilder } from '@typecad/pcb';` when present), and the
+ * `export const syncArt: Image[] = [];` declaration beside syncTracks.
+ * Empty when everything is already there; idempotent by construction.
+ */
+function planSyncArtDeclarationEdits(text) {
+    if (hasSyncArtDeclaration(text))
+        return [];
+    const edits = [];
+    const shadow = structuralShadow(text);
+    if (!/\bImage\b/.test(shadow.match(/import\s*\{[^}]*\}\s*from\s*'@typecad\/pcb'/)?.[0] ?? '')) {
+        const canonicalTracksImport = `import { TrackBuilder } from '@typecad/pcb';`;
+        const at = text.indexOf(canonicalTracksImport);
+        if (at !== -1) {
+            edits.push({
+                start: at,
+                end: at + canonicalTracksImport.length,
+                line: `import { Image, TrackBuilder } from '@typecad/pcb';`,
+            });
+        }
+        else if (!/import\s*\{[^}]*\bImage\b[^}]*\}\s*from\s*'@typecad\/pcb'/.test(shadow)) {
+            // a hand-edited import block: a second pcb import is legal and keeps
+            // this planner from parsing import grammars it does not own
+            const firstImport = /^\s*import\b/m.exec(shadow);
+            const insertAt = firstImport ? firstImport.index : 0;
+            edits.push({
+                start: insertAt,
+                end: insertAt,
+                line: `import { Image } from '@typecad/pcb';\n`,
+            });
+        }
+    }
+    // declaration beside syncTracks — after its line, else just above syncBoard
+    const tracksDecl = new RegExp(`^[ \\t]*export\\s+const\\s+${exports.SYNC_TRACKS_NAME}\\s*:\\s*TrackBuilder\\[\\]\\s*=\\s*\\[\\]\\s*;[ \\t]*$`, 'm').exec(shadow);
+    if (tracksDecl) {
+        const lineEnd = text.indexOf('\n', tracksDecl.index + tracksDecl[0].length);
+        const at = lineEnd === -1 ? text.length : lineEnd + 1;
+        edits.push({ start: at, end: at, line: `export const ${exports.SYNC_ART_NAME}: Image[] = [];\n` });
+    }
+    else {
+        const fn = new RegExp(`export\\s+function\\s+${exports.SYNC_FUNCTION_NAME}\\s*\\(`).exec(shadow);
+        if (fn) {
+            const lineStart = text.lastIndexOf('\n', fn.index) + 1;
+            edits.push({
+                start: lineStart,
+                end: lineStart,
+                line: `export const ${exports.SYNC_ART_NAME}: Image[] = [];\n\n`,
+            });
+        }
+    }
+    return edits;
+}
+/** Start offset of the freshest line for image statements inside the body —
+ *  after the last syncArt.push, else the zone anchor (images sit below
+ *  zones, above routes' collect pushes). */
+function syncImageInsertAt(text) {
+    const body = syncFunctionBodyRange(text);
+    if (!body)
+        return null;
+    const slice = structuralShadow(text).slice(body.start, body.end);
+    let anchor = -1;
+    const push = new RegExp(`^[ \\t]*${exports.SYNC_ART_NAME}\\.push\\(`, 'gm');
+    let m;
+    while ((m = push.exec(slice)) !== null) {
+        const lineEnd = slice.indexOf('\n', m.index + m[0].length);
+        anchor = lineEnd === -1 ? body.end : body.start + lineEnd + 1;
+    }
+    if (anchor !== -1)
+        return anchor;
+    return syncZoneInsertAt(text);
 }
 /**
  * Locate `typecad.create(` and its balanced closing paren (null when
@@ -295,11 +411,11 @@ function createArgInsertion(text, open, close) {
 /**
  * Plan the entry file's sync integration: the sidecar import (named for the
  * board on multi-board projects), the `syncBoard(typecad, { …parts })` call
- * immediately before create(), and the `...syncTracks` spread inside create()
- * when routes need it. Every edit is a canonical rewrite — re-planning is
- * idempotent.
+ * immediately before create(), and the `...syncTracks` / `...syncArt`
+ * spreads inside create() when routes/artwork need them. Every edit is a
+ * canonical rewrite — re-planning is idempotent.
  */
-function planSyncEntryEdits(entryText, partsVars, needTracks, stem) {
+function planSyncEntryEdits(entryText, partsVars, needTracks, stem, needArt = false) {
     const edits = [];
     const create = findCreateCallAt(entryText);
     const receiver = create?.receiver ?? exports.SYNC_TYPECAD_PARAM;
@@ -311,7 +427,11 @@ function planSyncEntryEdits(entryText, partsVars, needTracks, stem) {
     // located structurally on the shadow (specifiers' quotes survive, their
     // contents do not) and identified as OURS on the real text: a
     // commented-out import is not an import.
-    const importNames = [exports.SYNC_FUNCTION_NAME, ...(needTracks ? [exports.SYNC_TRACKS_NAME] : [])];
+    const importNames = [
+        exports.SYNC_FUNCTION_NAME,
+        ...(needTracks ? [exports.SYNC_TRACKS_NAME] : []),
+        ...(needArt ? [exports.SYNC_ART_NAME] : []),
+    ];
     const canonicalImport = `import { ${importNames.join(', ')} } from '${sidecarModule}';`;
     const IMPORT_ANY = /import\s*\{[^}]*\}\s*from\s*['"][^'"]*['"]\s*;?/g;
     const oursRe = new RegExp(`['"][^'"]*_sync(?:\\.[A-Za-z0-9_$.-]+)?(?:\\.js)?['"]`);
@@ -348,11 +468,18 @@ function planSyncEntryEdits(entryText, partsVars, needTracks, stem) {
         const indent = /^[ \t]*/.exec(entryText.slice(lineStart, create.index))?.[0] ?? '';
         edits.push({ start: lineStart, end: lineStart, line: `${callLine(indent)}\n` });
     }
-    // create() spread — `...syncTracks`, once, comment/string-aware
+    // create() spreads — `...syncTracks` and/or `...syncArt`, once each, in
+    // one rewrite (both replace the whole call, so they must compose)
     let spreadEdit = null;
-    if (create && needTracks) {
-        const args = entryText.slice(create.index, create.closeIndex + 1);
-        if (!new RegExp(`\\.\\.\\.${exports.SYNC_TRACKS_NAME}\\b`).test(shadow.slice(create.index, create.closeIndex + 1))) {
+    if (create && (needTracks || needArt)) {
+        const argsRange = shadow.slice(create.index, create.closeIndex + 1);
+        const spreads = [];
+        if (needTracks && !new RegExp(`\\.\\.\\.${exports.SYNC_TRACKS_NAME}\\b`).test(argsRange))
+            spreads.push(exports.SYNC_TRACKS_NAME);
+        if (needArt && !new RegExp(`\\.\\.\\.${exports.SYNC_ART_NAME}\\b`).test(argsRange))
+            spreads.push(exports.SYNC_ART_NAME);
+        if (spreads.length > 0) {
+            const args = entryText.slice(create.index, create.closeIndex + 1);
             const { at, sep } = createArgInsertion(entryText, entryText.indexOf('(', create.index), create.closeIndex);
             const gap = entryText.slice(at, create.closeIndex);
             const spacer = gap === '' || /^\s/.test(gap) ? '' : ' ';
@@ -360,7 +487,7 @@ function planSyncEntryEdits(entryText, partsVars, needTracks, stem) {
             spreadEdit = {
                 start: create.index,
                 end: create.closeIndex + 1,
-                line: args.slice(0, rel) + `${sep}...${exports.SYNC_TRACKS_NAME}${spacer}${gap})`,
+                line: args.slice(0, rel) + `${sep}${spreads.map((n) => `...${n}`).join(', ')}${spacer}${gap})`,
             };
         }
     }

@@ -349,6 +349,8 @@ describe('layout view properties panel (E) follows the selection', () => {
       _renames: unknown,
       _routes: unknown,
       _deletes: unknown,
+      _zones: unknown,
+      _outline: unknown,
       cb: (err: string | null, fast: boolean) => void,
     ) => {
       captured = texts;
@@ -389,6 +391,8 @@ describe('layout view properties panel (E) follows the selection', () => {
       _routes: unknown,
       _deletes: unknown,
       partDeletes: string[],
+      _zones: unknown,
+      _outline: unknown,
       cb: (err: string | null, fast: boolean) => void,
     ) => {
       capturedParts = partDeletes;
@@ -438,6 +442,8 @@ describe('layout view properties panel (E) follows the selection', () => {
       _renames: unknown,
       _routes: unknown,
       _deletes: unknown,
+      _zones: unknown,
+      _outline: unknown,
       cb: (err: string | null, fast: boolean) => void,
     ) => {
       capturedLabels = labels;
@@ -588,7 +594,7 @@ describe('editing session ink never re-materializes phantom traces', () => {
     const sent: unknown[] = [];
     (page.window as unknown as Record<string, unknown>).typecadLayoutApply = (
       _m: unknown, _t: unknown, _v: unknown, _l: unknown, _r: unknown,
-      routes: unknown[], _d: unknown, cb: (e: string | null, f: boolean) => void,
+      routes: unknown[], _d: unknown, _z: unknown, _o: unknown, cb: (e: string | null, f: boolean) => void,
     ) => {
       sent.push(...routes);
       cb(null, false);
@@ -806,13 +812,11 @@ describe('ratsnest connectivity — broken routes wire, complete routes do not',
   });
 });
 
-describe('pending deletes prune against the live board', () => {
-  // the user's loop: failed applies leave gesture deletes pending; the
-  // board rebuilds anyway (npm run build); the restored deletes describe
-  // geometry only the OLD board had and every later apply refuses as
-  // "stale". Dead deletes must drop at restore (and again at the apply
-  // door); deletes matching live ink must ride.
-  const bootWithPending = async (deletes: unknown[]) => {
+describe('un-applied board edits do not survive a reload', () => {
+  // board changes live only in the current page: nothing restores after a
+  // reload, and a legacy pending store from an older version is scrubbed so
+  // no ghost edits ever come back
+  const bootWithLegacyStore = async (payload: Record<string, unknown>) => {
     const html = buildViewerHtml(svg, [info, fabInfo], {
       title: 'demo board',
       pcbaSvg: '<svg/>',
@@ -827,12 +831,7 @@ describe('pending deletes prune against the live board', () => {
       pretendToBeVisual: true,
       beforeParse(w) {
         w.console.error = (...a: unknown[]) => errors.push(a.join(' '));
-        // document.title is empty before parse — the page computes this
-        // key from its real title once parsed
-        w.localStorage.setItem(
-          'typecadPending:demo board:viewer.html',
-          JSON.stringify({ routes: [], deletes }),
-        );
+        w.localStorage.setItem('typecadPending:demo board:viewer.html', JSON.stringify(payload));
         const idCtm = { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0, inverse() { return this; } };
         type FakePoint = { x: number; y: number; matrixTransform(): { x: number; y: number } };
         w.SVGSVGElement.prototype.getScreenCTM = () => idCtm;
@@ -854,32 +853,14 @@ describe('pending deletes prune against the live board', () => {
     return { w, d };
   };
 
-  it('restores only deletes whose ink still exists', async () => {
-    // read a live segment from a plain boot, then feed it (plus stale
-    // geometry) through a fresh restore
-    const probe = await boot();
-    const hit = probe.window.document.querySelector('line[data-seg="1"]')!;
-    const live = {
-      net: null,
-      x1: parseFloat(hit.getAttribute('x1')!),
-      y1: -parseFloat(hit.getAttribute('y1')!),
-      x2: parseFloat(hit.getAttribute('x2')!),
-      y2: -parseFloat(hit.getAttribute('y2')!),
-      layer: 'F.Cu',
-    };
+  it('a stored payload neither restores nor lingers', async () => {
     const stale = { net: 'led_a', x1: 8.991, y1: 0.188, x2: 9.014, y2: 0.21, layer: 'F.Cu' };
-    const { w, d } = await bootWithPending([live, stale]);
-    const sent: unknown[] = [];
-    (w as unknown as Record<string, unknown>).typecadLayoutApply = (
-      _m: unknown, _t: unknown, _v: unknown, _l: unknown, _r: unknown,
-      _rt: unknown, deletes: unknown[], cb: (e: string | null, f: boolean) => void,
-    ) => {
-      sent.push(...deletes);
-      cb(null, false);
-    };
-    d.getElementById('layout-apply')!.click();
-    expect(sent).toHaveLength(1);
-    expect((sent[0] as { x1: number }).x1).toBeCloseTo(live.x1, 3);
+    const { w, d } = await bootWithLegacyStore({ routes: [], deletes: [stale], partDeletes: [] });
+    // the legacy key is scrubbed on load
+    expect(w.localStorage.getItem('typecadPending:demo board:viewer.html')).toBeNull();
+    // nothing restored: the apply button stays disarmed and no edit count appears
+    expect((d.getElementById('layout-apply') as HTMLButtonElement).disabled).toBe(true);
+    expect((d.getElementById('status') as HTMLElement).textContent || '').not.toContain('restored');
   });
 });
 
@@ -902,7 +883,7 @@ describe('a gesture\'s own deletes ride the apply (no door prune)', () => {
     let deletes = 0;
     (w as unknown as Record<string, unknown>).typecadLayoutApply = (
       _m: unknown, _t: unknown, _v: unknown, _l: unknown, _r: unknown,
-      rt: unknown[], de: unknown[], cb: (e: string | null, f: boolean) => void,
+      rt: unknown[], de: unknown[], _z: unknown, _o: unknown, cb: (e: string | null, f: boolean) => void,
     ) => {
       routes = rt.length;
       deletes = de.length;
@@ -1151,8 +1132,8 @@ describe('Flip Board toggle', () => {
   });
 });
 
-describe('pending route restore prunes off-board ghosts', () => {
-  it('drops pending routes whose geometry lies outside the board, keeps on-board ones', async () => {
+describe('stored routes never come back after a reload', () => {
+  it('a legacy pending store is scrubbed and nothing restores', async () => {
     const html = buildViewerHtml(svg, [info, fabInfo], {
       title: 'demo board',
       pcbaSvg: '<svg/>',
@@ -1163,8 +1144,6 @@ describe('pending route restore prunes off-board ghosts', () => {
     });
     const errors: string[] = [];
     const pendingKey = 'typecadPending:demo board:viewer.html';
-    // a ghost route far off-board (committed in a broken session) beside a
-    // legitimate on-board pending route
     const ghost = {
       net: 'led_a',
       w: 0.3,
@@ -1194,11 +1173,9 @@ describe('pending route restore prunes off-board ghosts', () => {
     const d = w.document;
     await new Promise((r) => setTimeout(r, 100));
     expect(errors).toEqual([]);
-    const stored = JSON.parse(w.localStorage.getItem(pendingKey) || '{}');
-    const kept = stored.routes ?? [];
-    expect(kept).toHaveLength(1);
-    expect(kept[0].pieces[0].pts[0].x).toBe(5);
-    // nothing else pending: the status line reports one surviving edit
-    expect(d.getElementById('status')!.textContent).toContain('1 pending edit restored');
+    // neither the ghost nor the legit route returns, and the store is gone
+    expect(w.localStorage.getItem(pendingKey)).toBeNull();
+    expect(d.querySelectorAll('path[data-route="1"]')).toHaveLength(0);
+    expect((d.getElementById('status') as HTMLElement).textContent || '').not.toContain('restored');
   });
 });

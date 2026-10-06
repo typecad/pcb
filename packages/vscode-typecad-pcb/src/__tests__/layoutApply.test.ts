@@ -529,3 +529,100 @@ typecad.create(led, route18);
     expect(plan.unmatchedDeletes.some((u) => u.near > 0)).toBe(true);
   });
 });
+
+describe('planLayoutApply artwork images', () => {
+  // the sidecar rides the file set EMPTY (the viewer adds it when absent);
+  // an image apply is what creates it
+  const entry = `import { PCB, Component } from '@typecad/pcb';
+import { syncBoard } from './_sync.js';
+const typecad = new PCB('demo', {});
+const r1 = new Component({ reference: 'R1', value: '1k' });
+r1.pcb = { x: 10, y: 10 };
+syncBoard(typecad, {});
+typecad.create(
+  r1,
+);
+`;
+
+  const entryNoWiring = `import { PCB, Component } from '@typecad/pcb';
+const typecad = new PCB('demo', {});
+const r1 = new Component({ reference: 'R1', value: '1k' });
+r1.pcb = { x: 10, y: 10 };
+typecad.create(r1);
+`;
+
+  it('writes the sidecar scaffold, the syncArt grammar, the statements, and the entry spread', () => {
+    const syncUri = 'file:///src/_sync.ts';
+    const { plan, texts } = run(
+      [
+        { uri: 'file:///src/board.ts', text: entryNoWiring },
+        { uri: syncUri, text: '' },
+      ],
+      baseInput({
+        images: [{ file: 'art/logo.png', name: 'logo.png', x: 20, y: 15, w: 16, h: 12 }],
+        syncUri,
+        entryUri: 'file:///src/board.ts',
+      }),
+    );
+    const sync = texts.get(syncUri)!;
+    expect(plan.counts.images).toBe(1);
+    expect(plan.syncFile?.created).toBe(true);
+    expect(plan.syncFile?.images).toBe(1);
+    expect(sync).toContain(`export const syncArt: Image[] = [];`);
+    expect(sync).toContain(`import { Image, TrackBuilder } from '@typecad/pcb';`);
+    expect(sync).toContain(`syncArt.push(new Image({ file: 'art/logo.png', at: { x: 20, y: 15 }, size: [16, 12] }));`);
+    const board = texts.get('file:///src/board.ts')!;
+    expectValidTs(board);
+    expectValidTs(sync);
+    // entry wiring: the spread joined create(), the import names syncArt
+    expect(board).toContain('...syncArt');
+    expect(board).toContain(`import { syncBoard, syncArt } from './_sync.js';`);
+  });
+
+  it('carries side: back and appends below an existing image', () => {
+    const syncUri = 'file:///src/_sync.ts';
+    const seeded = `import { Image, TrackBuilder } from '@typecad/pcb';
+import type { Component, PCB } from '@typecad/pcb';
+
+export const syncTracks: TrackBuilder[] = [];
+export const syncArt: Image[] = [];
+
+export function syncBoard(typecad: PCB, parts: Record<string, Component>): void {
+  syncTracks.length = 0;
+
+  syncArt.push(new Image({ file: 'art/a.png', at: { x: 1, y: 2 }, size: [10, 10] }));
+}
+`;
+    const { texts } = run(
+      [
+        { uri: 'file:///src/board.ts', text: entry },
+        { uri: syncUri, text: seeded },
+      ],
+      baseInput({
+        images: [{ file: 'art\\b.png', name: 'b.png', x: 4, y: 5, w: 6, h: 7, side: 'back' }],
+        syncUri,
+        entryUri: 'file:///src/board.ts',
+      }),
+    );
+    const sync = texts.get(syncUri)!;
+    expect(sync).toContain(`syncArt.push(new Image({ file: 'art/b.png', at: { x: 4, y: 5 }, size: [6, 7], side: 'back' }));`);
+    expect(sync.indexOf('art/b.png')).toBeGreaterThan(sync.indexOf('art/a.png'));
+    // no duplicate declaration, no second Image import
+    expect(sync.match(/export const syncArt/g)).toHaveLength(1);
+    expect(sync.match(/import \{ Image, TrackBuilder \}/g)).toHaveLength(1);
+    expectValidTs(sync);
+    // the fixture entry lacked the spread — the apply wired it (import
+    // names syncArt, create() spreads the array)
+    const wiredEntry = texts.get('file:///src/board.ts')!;
+    expect(wiredEntry).toContain("import { syncBoard, syncArt } from './_sync.js';");
+    expect(wiredEntry).toContain('...syncArt');
+  });
+
+  it('reports an honest skip when no sidecar can be wired', () => {
+    const { plan } = run([{ uri: 'file:///src/board.ts', text: entryNoWiring }], baseInput({
+      images: [{ file: 'art/logo.png', name: 'logo.png', x: 1, y: 2, w: 3, h: 4 }],
+    }));
+    expect(plan.counts.images).toBe(0);
+    expect(plan.skipped.some((s) => s.includes('image logo.png'))).toBe(true);
+  });
+});

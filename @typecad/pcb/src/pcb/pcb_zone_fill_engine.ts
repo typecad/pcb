@@ -10,8 +10,8 @@
 // ---------------------------------------------------------------------------
 
 import ClipperLib from 'clipper-lib';
-import { SNode } from '../sexpr/index.js';
-import { atPoint, scalar } from '../gerber_export/copper.js';
+import { SNode, Sym } from '../sexpr/index.js';
+import { atPoint, chamferedRoundRectVerts, scalar } from '../gerber_export/copper.js';
 
 const NM = 1e6; // integer-nm grid for Clipper
 type Path = ClipperLib.Path;
@@ -307,6 +307,26 @@ export function padShapeObstacles(pad: SNode, worldX: number, worldY: number, an
       const rrNode = pad.child('roundrect_rratio');
       const rratio = rrNode ? scalar(rrNode, 1, 0.25) : 0.25;
       const r = Math.min(rratio * Math.min(w, h), Math.min(hw, hh));
+      const chamferNode = pad.child('chamfer');
+      if (chamferNode) {
+        // corner flags are unquoted symbols in the file (Sym), though
+        // hand-authored boards may quote them; 0.5 matches KiCad's default
+        const flags = new Set(
+          chamferNode.raw
+            .slice(1)
+            .map((v) => (typeof v === 'string' ? v : Sym.isSym(v) ? v.name : null))
+            .filter((v): v is string => v !== null),
+        );
+        if (flags.size > 0) {
+          // reuse the plotter's outline so clearance hugs the same copper
+          // the gerber exports — verts come back in the y-up gerber frame,
+          // flip y for this file-frame rot()
+          const ratioNode = pad.child('chamfer_ratio');
+          const c = (ratioNode ? scalar(ratioNode, 1, 0.5) : 0.5) * Math.min(w, h);
+          const pts = chamferedRoundRectVerts(w, h, r, c, flags).map((v) => rot(v.x, -v.y));
+          return [{ kind: 'poly', poly: { pts } }];
+        }
+      }
       const pts: Array<[number, number]> = [];
       const seg = 6;
       const corners: Array<[number, number, number, number]> = [

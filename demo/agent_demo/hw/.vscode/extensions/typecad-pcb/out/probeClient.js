@@ -136,8 +136,25 @@ const PROBE_CLIENT = `<script>
   // board has since been rebuilt (auto-build, external edit) is a stale
   // view, and its edits must not splice into a source that moved on
   var layoutCb = null;
-  window.typecadLayoutApply = function (moves, texts, values, labels, renames, routes, deletes, cb) {
-    layoutCb = cb || (typeof deletes === 'function' ? deletes : typeof routes === 'function' ? routes : null);
+  window.typecadLayoutApply = function (moves, texts, values, labels, renames, routes, deletes, partDeletes, zones, outline, cb) {
+    // the callback is always the last argument the CALLER passed — older
+    // pages send fewer zones-less payloads, so probe the tail, not a slot
+    var cbArg = null;
+    for (var i = arguments.length - 1; i >= 1; i--) {
+      if (typeof arguments[i] === 'function') {
+        cbArg = arguments[i];
+        break;
+      }
+    }
+    layoutCb =
+      cbArg ||
+      (typeof partDeletes === 'function'
+        ? partDeletes
+        : typeof deletes === 'function'
+          ? deletes
+          : typeof routes === 'function'
+            ? routes
+            : null);
     var stamp = document.querySelector('meta[name="tc-viewer-board"]');
     send({
       type: 'typecad/layout-rebuild',
@@ -149,7 +166,23 @@ const PROBE_CLIENT = `<script>
       renames: renames || [],
       routes: Array.isArray(routes) ? routes : [],
       deletes: Array.isArray(deletes) ? deletes : [],
+      partDeletes: Array.isArray(partDeletes) ? partDeletes : [],
+      zones: Array.isArray(zones) ? zones : [],
+      outline: outline && typeof outline === 'object' ? outline : null,
+      zoneEdits: Array.isArray(arguments[10]) ? arguments[10] : [],
+      zoneDeletes: Array.isArray(arguments[11]) ? arguments[11] : [],
+      images: Array.isArray(arguments[12]) ? arguments[12] : [],
+      imageEdits: Array.isArray(arguments[13]) ? arguments[13] : [],
+      imageDeletes: Array.isArray(arguments[14]) ? arguments[14] : [],
     });
+  };
+
+  // artwork placement: the page asks the host to open the PNG picker (a
+  // webview cannot), and the host answers with the picked file — its bytes
+  // as a data URL for the on-canvas ghost, plus the absolute path the apply
+  // copies into the project's art/ folder
+  window.typecadPickImage = function () {
+    send({ type: 'typecad/pick-image' });
   };
 
   window.addEventListener('message', function (ev) {
@@ -158,6 +191,12 @@ const PROBE_CLIENT = `<script>
     if (m.type === 'typecad/layout-status') {
       if (layoutCb) layoutCb(m.error);
       layoutCb = null;
+      return;
+    }
+    // the host's answer to a place-image arm: hand the picked PNG to the
+    // page's ghost-preview hook (absent on old pages — nothing to do)
+    if (m.type === 'typecad/image-picked') {
+      if (typeof window.typecadImagePicked === 'function') window.typecadImagePicked(m);
       return;
     }
     // host-side status notices: the extension posts these while it re-renders

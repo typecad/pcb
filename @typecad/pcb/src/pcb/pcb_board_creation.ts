@@ -11,8 +11,10 @@ import { IVia, IGrLine, IOutline, OutlineElement } from './pcb_interfaces.js';
 import { maybeWriteOpSolve } from './pcb_op_solve.js';
 import { writeStackup } from './pcb_stackup_writer.js';
 import { writePadsManifest } from './pcb_pads_writer.js';
+import { writeImagesManifest } from './pcb_images_manifest.js';
 import { writeRoutes } from './pcb_routes_writer.js';
 import { createFootprintNode } from './pcb_footprint.js';
+import { Image, isImageLike } from './pcb_image.js';
 import { mergeNets } from './pcb_net_merger.js';
 import { materializePlanes } from './pcb_zones.js';
 import { materializeStitches } from './pcb_stitching.js';
@@ -84,7 +86,7 @@ function buildComponentMaps(pcb: PCB): {
   return { componentMap, viaMap };
 }
 
-function collectBoardComponents(pcb: PCB, items: Array<Component | TrackBuilder>, components: Component[]): void {
+function collectBoardComponents(pcb: PCB, components: Component[]): void {
   const state = getPcbState(pcb);
   const viaComponents: Component[] = [];
   state.components.forEach((comp: Component) => {
@@ -181,14 +183,17 @@ function writeErcReport(pcb: PCB): void {
   }
 }
 
-export function createBoard(pcb: PCB, ...items: Array<Component | TrackBuilder>) {
+export function createBoard(pcb: PCB, ...items: Array<Component | TrackBuilder | Image>) {
   const state = getPcbState(pcb);
   const components: Component[] = [];
   const trackBuilders: TrackBuilder[] = [];
+  const images: Image[] = [];
 
   items.forEach((item: unknown) => {
     if (isComponentLike(item)) {
       components.push(item);
+    } else if (isImageLike(item)) {
+      images.push(item);
     } else if (isTrackBuilderLike(item)) {
       trackBuilders.push(item);
     } else {
@@ -198,7 +203,7 @@ export function createBoard(pcb: PCB, ...items: Array<Component | TrackBuilder>)
           : typeof item;
       const site = getCallSite();
       logger.warn(
-        `[BoardCreation] Unrecognized item passed to create(): ${name}. Items must be Component or TrackBuilder instances.${site ? ` (called from ${site.file}:${site.line})` : ''}`,
+        `[BoardCreation] Unrecognized item passed to create(): ${name}. Items must be Component, Image, or TrackBuilder instances.${site ? ` (called from ${site.file}:${site.line})` : ''}`,
       );
     }
   });
@@ -206,7 +211,7 @@ export function createBoard(pcb: PCB, ...items: Array<Component | TrackBuilder>)
   pcb.schematic.create(...components);
   schematic(pcb.schematic);
   writeErcReport(pcb);
-  collectBoardComponents(pcb, items, components);
+  collectBoardComponents(pcb, components);
   separateOutlinesAndTracks(pcb);
 
   // Re-resolve deferred placement expressions (`below(r1).by(3)`,
@@ -224,6 +229,24 @@ export function createBoard(pcb: PCB, ...items: Array<Component | TrackBuilder>)
 
   materializePlanes(state);
   materializeStitches(pcb);
+
+  // Board artwork (pcb_image) renders into the same gr_poly graphics pool the
+  // user-facing pcb.rect()/poly() calls use, so renderGraphics picks it up.
+  // Package-collected images arrive through create(pkg.components) — the
+  // package offset is already baked into their `at`.
+  for (const image of images) {
+    try {
+      image.render(state, state.currentOffset);
+    } catch (e: unknown) {
+      const detail = e instanceof Error ? e.message : String(e);
+      const site = getCallSite();
+      reportError(`Failed to render board image ${image.file}.`, {
+        reference: 'Image',
+        sourceInfo: site ? { file: site.file, line: site.line } : undefined,
+      });
+      throw new BoardCreationError(`Failed to render board image ${image.file}: ${detail}`);
+    }
+  }
 
   const { componentMap, viaMap } = buildComponentMaps(pcb);
 
@@ -349,6 +372,10 @@ export function createBoard(pcb: PCB, ...items: Array<Component | TrackBuilder>)
   // Pin numbers + net names per pad, straight from the board the PCB object
   // just produced — the viewer renders pad labels from it.
   writePadsManifest(finalBoardContents, pcb.boardName);
+
+  // every placed Image, for the layout view's selectable artwork overlays
+  // (the pads manifest's shape — derived data beside the board).
+  writeImagesManifest(images, pcb.boardName);
 
   // The Layout view distinguishes TrackBuilder-built nets from autorouted
   // ones — the builders collected above are the manual side of that split.

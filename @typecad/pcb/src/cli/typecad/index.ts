@@ -197,6 +197,10 @@ async function main(): Promise<void> {
         await (await import('./commands/validate.js')).run(parsed);
         break;
 
+      case 'check-sync':
+        await (await import('./commands/check_sync.js')).run(parsed);
+        break;
+
       case 'drc':
         await (await import('./commands/drc.js')).run(parsed);
         break;

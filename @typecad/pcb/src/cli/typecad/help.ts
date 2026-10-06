@@ -20,6 +20,7 @@ export function showTopLevelHelp(): void {
   console.log('  doc                 Generate PCB documentation from Markdown');
   console.log('  doctor              Check your environment for common issues');
   console.log('  validate            Validate project source without full build');
+  console.log('  check-sync          Report board vs source drift (the import oracle)');
   console.log('  drc                 Run Design Rule Check on a KiCad PCB file');
   console.log('  erc                 Run Electrical Rules Check on a KiCad schematic');
   console.log('  lib add/list        Fetch/list KiCad libraries into build/lib (no install needed)');

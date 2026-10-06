@@ -742,10 +742,26 @@ export class BoardViewerPanel {
         this.service.netSources().catch(() => []),
       ]);
       const { html, injected } = injectProbeClient(raw, components, nets, mtimeOf(board));
+      // board vs source drift: the check-sync oracle, surfaced as a page
+      // banner (the same drift the hardening suite fails on). Best-effort —
+      // a failed check never blocks the viewer
+      let withDrift = html;
+      try {
+        const syncOut = await this.run(folder, 'npx typecad-pcb check-sync --json', GENERATE_TIMEOUT_MS);
+        const info = JSON.parse(syncOut.slice(syncOut.indexOf("{"))) as { count: number; changes?: Array<{ kind: string; label: string; props: string[] }> };
+        if (info && info.count > 0) {
+          const payload = JSON.stringify({ count: info.count, items: (info.changes ?? []).slice(0, 12) }).replace(/</g, '\u003c');
+          withDrift = html.replace('<head>', `<head><script>window.__typecadDrift = ${payload};</script>`);
+          this.output.appendLine(`sync: ${info.count} pending board/source difference(s) — banner shown`);
+        }
+      } catch {
+        this.output.appendLine('sync: check-sync unavailable — no drift banner');
+      }
+      
       if (!injected) {
         this.output.appendLine('warning: viewer HTML had no <head>/</body> anchors — cross-probe disabled');
       }
-      this.generated = { html, boardMtimeMs: mtimeOf(board), diskMtimeMs: mtimeOf(path.join(folder, outPath)) };
+      this.generated = { html: withDrift, boardMtimeMs: mtimeOf(board), diskMtimeMs: mtimeOf(path.join(folder, outPath)) };
       this.output.appendLine(
         `viewer ready: ${components.length} component outline(s), board mtime ${this.generated.boardMtimeMs}, cross-probe ${injected ? 'on' : 'off'}`,
       );
@@ -845,6 +861,7 @@ export class BoardViewerPanel {
     images?: Array<{ path: string; name: string; x: number; y: number; w: number; h: number; side: 'front' | 'back' }>,
     imageEdits?: Array<{ match: { file: string; x: number; y: number }; x: number; y: number; w: number; h: number; side: 'front' | 'back'; newFile?: string | null }>,
     imageDeletes?: Array<{ file: string; x: number; y: number }>,
+    classEdits?: Array<{ name: string; values: Record<string, number> }>,
   ): Promise<void> {
     const folder = this.hwFolder();
     const fail = (error: string): void => {
@@ -875,7 +892,7 @@ export class BoardViewerPanel {
         await this.doRefresh();
         return;
       }
-      await this.onLayoutRebuildInner(folder, fail, moves, texts, values, labels, renames, routes, deletes, partDeletes, zones, outline, zoneEdits, zoneDeletes, images, imageEdits, imageDeletes);
+      await this.onLayoutRebuildInner(folder, fail, moves, texts, values, labels, renames, routes, deletes, partDeletes, zones, outline, zoneEdits, zoneDeletes, images, imageEdits, imageDeletes, classEdits);
     } finally {
       sync.applyBusy = false;
     }
@@ -911,6 +928,7 @@ export class BoardViewerPanel {
     images?: Array<{ path: string; name: string; x: number; y: number; w: number; h: number; side: 'front' | 'back' }>,
     imageEdits?: Array<{ match: { file: string; x: number; y: number }; x: number; y: number; w: number; h: number; side: 'front' | 'back'; newFile?: string | null }>,
     imageDeletes?: Array<{ file: string; x: number; y: number }>,
+    classEdits?: Array<{ name: string; values: Record<string, number> }>,
   ): Promise<void> {
     try {
       const comps = await this.service.components();
@@ -1048,6 +1066,7 @@ export class BoardViewerPanel {
         zoneDeletes,
         imageEdits: layoutImageEdits,
         imageDeletes: layoutImageDeletes,
+        classEdits: classEdits ?? [],
         variableOf: (ref) => variableOf.get(ref),
         allRefs: new Set(comps.map((c) => c.reference).filter(Boolean)),
         syncUri: syncUri.toString(),
@@ -1386,6 +1405,7 @@ export class BoardViewerPanel {
         message.images,
         message.imageEdits,
         message.imageDeletes,
+        message.classEdits,
       );
       return;
     }

@@ -95,7 +95,7 @@ function planLayoutApply(files, input) {
     const stages = [];
     const skipped = [];
     const touched = new Set();
-    const counts = { moves: 0, endpoints: 0, texts: 0, values: 0, labels: 0, renames: 0, routes: 0, deletes: 0, partDeletes: 0, zones: 0, images: 0, outline: 0, zoneEdits: 0, zoneDeletes: 0, imageEdits: 0, imageDeletes: 0 };
+    const counts = { moves: 0, endpoints: 0, texts: 0, values: 0, labels: 0, renames: 0, routes: 0, deletes: 0, partDeletes: 0, zones: 0, images: 0, outline: 0, zoneEdits: 0, zoneDeletes: 0, imageEdits: 0, imageDeletes: 0, classEdits: 0 };
     // -- the sync sidecar: one machine-owned home for auto-inserts ----------
     // placements/labels with no literal to rewrite and fresh routes land in
     // src/_sync.ts, whose syncBoard() call sits right before create() and so
@@ -778,7 +778,9 @@ function planLayoutApply(files, input) {
             nextPriority = Math.max(nextPriority, (0, layoutEdits_js_1.maxZonePriority)(textOf.get(file.uri)));
         const zoneStmt = (z, priority) => {
             const esc = z.net ? z.net.replace(/\\/g, '\\\\').replace(/'/g, "\\'") : '';
-            const geo = `layers: ['${z.layer}'], x: ${(0, layoutEdits_js_1.fmt)(z.x)}, y: ${(0, layoutEdits_js_1.fmt)(z.y)}, width: ${(0, layoutEdits_js_1.fmt)(z.w)}, height: ${(0, layoutEdits_js_1.fmt)(z.h)}`;
+            const geo = z.points && z.points.length >= 3
+                ? `layers: ['${z.layer}'], points: [${z.points.map((pt) => `{ x: ${(0, layoutEdits_js_1.fmt)(pt.x)}, y: ${(0, layoutEdits_js_1.fmt)(pt.y)} }`).join(', ')}]`
+                : `layers: ['${z.layer}'], x: ${(0, layoutEdits_js_1.fmt)(z.x)}, y: ${(0, layoutEdits_js_1.fmt)(z.y)}, width: ${(0, layoutEdits_js_1.fmt)(z.w)}, height: ${(0, layoutEdits_js_1.fmt)(z.h)}`;
             const prio = priority && priority > 0 ? `, priority: ${priority}` : '';
             if (z.kind === 'keepout')
                 return `  typecad.keepout({ ${geo} });`;
@@ -811,6 +813,33 @@ function planLayoutApply(files, input) {
                 }
             }
         }
+    }
+    // -- stage 5c2: net-class dimension edits from the layout view’s rules
+    // panel — the matching netClass(’name’, { … }) literal is rewritten in
+    // place; a class with no literal is reported (new classes are authored
+    // in source, where their net-pattern assignment lives) --
+    if (input.classEdits && input.classEdits.length > 0) {
+        const pendingClassEdits = [...input.classEdits];
+        for (const file of files) {
+            if (pendingClassEdits.length === 0)
+                break;
+            const text = textOf.get(file.uri);
+            const plan = (0, layoutEdits_js_1.planNetClassEdits)(text, pendingClassEdits);
+            if (plan.edits.length > 0) {
+                commit([{ uri: file.uri, edits: plan.edits }]);
+                counts.classEdits += plan.edits.length;
+                for (const done of plan.edits) {
+                    const idx = pendingClassEdits.findIndex((e) => `net class ${e.name}` === done.ref);
+                    if (idx >= 0)
+                        pendingClassEdits.splice(idx, 1);
+                }
+            }
+            skipped.push(...plan.skipped);
+            if (pendingClassEdits.length === 0)
+                break;
+        }
+        for (const e of pendingClassEdits)
+            skipped.push(`net class ${e.name} not found in any source file`);
     }
     // -- stage 5d2: artwork images placed in the layout view — land as
     // `syncArt.push(new Image({ … }))` statements in the sidecar, which the

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyPlacementEdits, planComponentEdits, planEndpointEdits, parsePlacementLiteral, planOutlineEdits, planPlacementEdits, planTextEdits, planZoneDeletions, planZoneGeometryEdits } from '../layoutEdits.js';
+import { applyPlacementEdits, planComponentEdits, planEndpointEdits, parsePlacementLiteral, planNetClassEdits, planOutlineEdits, planPlacementEdits, planTextEdits, planZoneDeletions, planZoneGeometryEdits } from '../layoutEdits.js';
 import { expectValidTs } from './helpers/valid_source.js';
 
 const source = `import { PCB } from '@typecad/pcb';
@@ -698,6 +698,35 @@ typecad.create(battery);
     const { edits } = planPlacementEdits(src, [{ ref: 'BT1', dx: 12.5, dy: -5 }], (ref) => ({ BT1: 'battery' })[ref]);
     const out = applyPlacementEdits(src, edits);
     expect(out).toContain('battery.pcb = { x: 12.5, y: -5 }');
+  });
+});
+
+describe('planNetClassEdits (layout-view rules panel)', () => {
+  const src = [
+    "import { PCB } from '@typecad/pcb';",
+    "const typecad = new PCB('demo');",
+    "  typecad.netClass('PWR', { track_width: 0.5, clearance: 0.3 });",
+    "  typecad.netClass('SIG', { track_width: 0.2 });",
+    "typecad.create();",
+  ].join('\n');
+
+  it('rewrites known keys in place and appends missing ones', () => {
+    const { edits, skipped } = planNetClassEdits(src, [
+      { name: 'PWR', values: { track_width: 0.8, via_diameter: 0.9 } },
+    ]);
+    expect(skipped).toEqual([]);
+    const out = applyPlacementEdits(src, edits);
+    expect(out).toContain("netClass('PWR', { track_width: 0.8, clearance: 0.3, via_diameter: 0.9 })");
+    expect(out).toContain("netClass('SIG', { track_width: 0.2 })"); // untouched
+    expectValidTs(out);
+  });
+
+  it('reports classes with no literal instead of inventing one', () => {
+    const { edits, skipped } = planNetClassEdits(src, [
+      { name: 'NOPE', values: { track_width: 0.3 } },
+    ]);
+    expect(edits).toEqual([]);
+    expect(skipped[0]).toContain('NOPE has no netClass() literal');
   });
 });
 

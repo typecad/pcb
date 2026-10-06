@@ -449,6 +449,68 @@ export function planZoneGeometryEdits(text: string, edits: Array<{ original: Zon
 }
 
 /**
+ * Net-class edits from the layout view: each carries the class NAME and
+ * the numeric dimensions to write. The matching `netClass('name', { … })`
+ * literal is rewritten in place — known keys are replaced, missing keys
+ * are appended inside the braces. A class with no literal is reported,
+ * never invented (creating a class also needs net-pattern assignment).
+ */
+export function planNetClassEdits(
+  text: string,
+  edits: Array<{ name: string; values: Record<string, number> }>,
+): {
+  edits: PlacementEdit[];
+  skipped: string[];
+} {
+  const planned: PlacementEdit[] = [];
+  const skipped: string[] = [];
+  for (const edit of edits) {
+    const callRe = new RegExp(`\\.netClass\\(\\s*['"]${escapeRegExp(edit.name)}['"]\\s*,\\s*\\{`);
+    const m = callRe.exec(text);
+    if (!m) {
+      skipped.push(`net class ${edit.name} has no netClass() literal to edit — new classes are created in source`);
+      continue;
+    }
+    const open = text.indexOf('{', m.index);
+    let depth = 0;
+    let close = -1;
+    for (let i = open; i < text.length; i++) {
+      const ch = text[i];
+      if (ch === '{') depth++;
+      else if (ch === '}') {
+        depth--;
+        if (depth === 0) {
+          close = i;
+          break;
+        }
+      }
+    }
+    if (close === -1) {
+      skipped.push(`net class ${edit.name} literal is malformed (unclosed braces)`);
+      continue;
+    }
+    let inner = text.slice(open + 1, close);
+    for (const [key, value] of Object.entries(edit.values)) {
+      const keyRe = new RegExp(`\\b${escapeRegExp(key)}\\s*:\\s*-?[\\d.]+`);
+      if (keyRe.test(inner)) inner = inner.replace(keyRe, `${key}: ${fmt(value)}`);
+      else {
+        const trimmed = inner.replace(/\s+$/, '');
+        const sep = trimmed.trim() === '' ? '' : ', ';
+        inner = `${trimmed}${sep}${key}: ${fmt(value)} `;
+      }
+    }
+    planned.push({
+      ref: `net class ${edit.name}`,
+      line: `{${inner}}`,
+      start: open,
+      end: close + 1,
+    });
+  }
+  return { edits: planned, skipped };
+}
+
+
+/**
  * Zone deletions from the layout view: the matching literal's WHOLE
  * statement (its line through the terminating `;`) is removed — the same
  * guard rails as the edit planner, one zone per match.

@@ -173,6 +173,7 @@ export type ProbeWebviewMessage =
       }>;
       /** applied artwork deleted in the view — its statement goes */
       imageDeletes?: Array<{ file: string; x: number; y: number; w?: number; h?: number }>;
+      classEdits?: Array<{ name: string; values: Record<string, number> }>;
     };
 
 export type ProbeHostMessage =
@@ -314,6 +315,7 @@ const PROBE_CLIENT = `<script>
       images: Array.isArray(arguments[12]) ? arguments[12] : [],
       imageEdits: Array.isArray(arguments[13]) ? arguments[13] : [],
       imageDeletes: Array.isArray(arguments[14]) ? arguments[14] : [],
+      classEdits: Array.isArray(arguments[15]) ? arguments[15] : [],
     });
   };
 

@@ -34,6 +34,7 @@ import {
   type TextEditInput,
   type TextStyleInput,
   type ZoneRectMatch,
+  planNetClassEdits,
 } from './layoutEdits.js';
 import { planCreateArgsEdit, planRouteDeletes, planRouteEdits, planSyncRouteEdits, uncreatedRouteNames, type PlannedEdit, type RouteDeleteInput, type RouteInput } from './routeEdits.js';
 import { planImageSourceEdits, type ImageSourceDelete, type ImageSourceEdit } from './imageEdits.js';
@@ -66,6 +67,9 @@ export interface LayoutZoneInput {
   y: number;
   w: number;
   h: number;
+  /** polygon geometry (>= 3 vertices, board frame) - the multi-corner
+   *  draw; alternative to the rect, written as zone({ ..., points }) */
+  points?: Array<{ x: number; y: number }>;
 }
 
 /** An image placed in the layout view: `file` is the project-relative POSIX
@@ -118,6 +122,8 @@ export interface LayoutApplyInput {
   imageEdits?: ImageSourceEdit[];
   /** applied artwork deletions — the statement goes */
   imageDeletes?: ImageSourceDelete[];
+  /** net-class dimension edits (name -> numeric fields) — the layout view's rules panel */
+  classEdits?: Array<{ name: string; values: Record<string, number> }>;
   /** board reference -> the source variable that created it */
   variableOf: (ref: string) => string | undefined;
   /** every component reference on the board (rename collision guard) */
@@ -154,6 +160,7 @@ export interface LayoutApplyCounts {
   zoneDeletes: number;
   imageEdits: number;
   imageDeletes: number;
+  classEdits: number;
 }
 
 /** What the apply did with the _sync.ts sidecar, for logging. */
@@ -260,7 +267,7 @@ export function planLayoutApply(files: LayoutApplyFile[], input: LayoutApplyInpu
   const stages: LayoutApplyResult['stages'] = [];
   const skipped: string[] = [];
   const touched = new Set<string>();
-  const counts: LayoutApplyCounts = { moves: 0, endpoints: 0, texts: 0, values: 0, labels: 0, renames: 0, routes: 0, deletes: 0, partDeletes: 0, zones: 0, images: 0, outline: 0, zoneEdits: 0, zoneDeletes: 0, imageEdits: 0, imageDeletes: 0 };
+  const counts: LayoutApplyCounts = { moves: 0, endpoints: 0, texts: 0, values: 0, labels: 0, renames: 0, routes: 0, deletes: 0, partDeletes: 0, zones: 0, images: 0, outline: 0, zoneEdits: 0, zoneDeletes: 0, imageEdits: 0, imageDeletes: 0, classEdits: 0 };
 
   // -- the sync sidecar: one machine-owned home for auto-inserts ----------
   // placements/labels with no literal to rewrite and fresh routes land in
@@ -902,7 +909,10 @@ export function planLayoutApply(files: LayoutApplyFile[], input: LayoutApplyInpu
     for (const file of files) nextPriority = Math.max(nextPriority, maxZonePriority(textOf.get(file.uri)!));
     const zoneStmt = (z: LayoutZoneInput, priority?: number): string => {
       const esc = z.net ? z.net.replace(/\\/g, '\\\\').replace(/'/g, "\\'") : '';
-      const geo = `layers: ['${z.layer}'], x: ${fmt(z.x)}, y: ${fmt(z.y)}, width: ${fmt(z.w)}, height: ${fmt(z.h)}`;
+      const geo =
+        z.points && z.points.length >= 3
+          ? `layers: ['${z.layer}'], points: [${z.points.map((pt) => `{ x: ${fmt(pt.x)}, y: ${fmt(pt.y)} }`).join(', ')}]`
+          : `layers: ['${z.layer}'], x: ${fmt(z.x)}, y: ${fmt(z.y)}, width: ${fmt(z.w)}, height: ${fmt(z.h)}`;
       const prio = priority && priority > 0 ? `, priority: ${priority}` : '';
       if (z.kind === 'keepout') return `  typecad.keepout({ ${geo} });`;
       return `  typecad.zone({ ${z.net ? `net: '${esc}', ` : ''}${geo}${prio} });`;
@@ -930,6 +940,31 @@ export function planLayoutApply(files: LayoutApplyFile[], input: LayoutApplyInpu
     }
   }
 
+  // -- stage 5c2: net-class dimension edits from the layout view’s rules
+  // panel — the matching netClass(’name’, { … }) literal is rewritten in
+  // place; a class with no literal is reported (new classes are authored
+  // in source, where their net-pattern assignment lives) --
+  if (input.classEdits && input.classEdits.length > 0) {
+    const pendingClassEdits = [...input.classEdits];
+    for (const file of files) {
+      if (pendingClassEdits.length === 0) break;
+      const text = textOf.get(file.uri)!;
+      const plan = planNetClassEdits(text, pendingClassEdits);
+      if (plan.edits.length > 0) {
+        commit([{ uri: file.uri, edits: plan.edits }]);
+        counts.classEdits += plan.edits.length;
+        for (const done of plan.edits) {
+          const idx = pendingClassEdits.findIndex((e) => `net class ${e.name}` === done.ref);
+          if (idx >= 0) pendingClassEdits.splice(idx, 1);
+        }
+      }
+      skipped.push(...plan.skipped);
+      if (pendingClassEdits.length === 0) break;
+    }
+    for (const e of pendingClassEdits) skipped.push(`net class ${e.name} not found in any source file`);
+  }
+
+  
   // -- stage 5d2: artwork images placed in the layout view — land as
   // `syncArt.push(new Image({ … }))` statements in the sidecar, which the
   // entry's `...syncArt` create() spread picks up (create() evaluates the

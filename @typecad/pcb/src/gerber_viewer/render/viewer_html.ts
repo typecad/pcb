@@ -3243,6 +3243,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     for (var rk in layoutRefEdits) if (rk !== '__editing') nVal++;
     if (layoutApplyBtn)
       layoutApplyBtn.disabled =
+        !Object.keys(classEdits).length &&
         !Object.keys(layoutMoves).length && !Object.keys(layoutTextMoves).length && !nVal && !routedTracks.length && !routedDeletes.length && !partDeletes.length && !Object.keys(layoutFlip).length && !pendingZones.length && !pendingImages.length && !outlineEdit && !Object.keys(boardZoneEdits).length && !Object.keys(boardZoneDeletes).length && !Object.keys(boardImageEdits).length && !Object.keys(boardImageDeletes).length;
     // every state-changing op funnels through here — the pending-apply
     // snapshot rides along (undo/redo included, via historyResync)
@@ -3487,12 +3488,17 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         if (lm.style) le.style = lm.style;
         labels.push(le);
       }
-      // zones drawn in the view: geometry is already the board frame's
-      // min-corner rectangle the host writes as a typecad.zone() call
+      // zones drawn in the view: rectangle records carry the board frame's
+      // min corner; polygon records (the multi-corner draw) carry their
+      // vertices — the host writes the matching typecad.zone() form
       var zones = [];
       for (var zg = 0; zg < pendingZones.length; zg++) {
         var zq = pendingZones[zg];
-        zones.push({ kind: zq.kind, layer: zq.layer, net: zq.net, x: +zq.x.toFixed(4), y: +zq.y.toFixed(4), w: +zq.w.toFixed(4), h: +zq.h.toFixed(4) });
+        if (zq.points && zq.points.length >= 3) {
+          zones.push({ kind: zq.kind, layer: zq.layer, net: zq.net, points: zq.points.map(function (zp2) { return { x: +zp2.x.toFixed(4), y: +zp2.y.toFixed(4) }; }) });
+        } else {
+          zones.push({ kind: zq.kind, layer: zq.layer, net: zq.net, x: +zq.x.toFixed(4), y: +zq.y.toFixed(4), w: +zq.w.toFixed(4), h: +zq.h.toFixed(4) });
+        }
       }
       // artwork placed in the view: the CENTER (board frame) + size + side;
       // the host copies the picked file into <project>/art/ and writes the
@@ -3547,7 +3553,8 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       // ink from this page — pruning "deletes whose ink is gone" at the
       // door would drop every real deletion and the source would keep the
       // copper (the both-traces-after-delete bug)
-      window.typecadLayoutApply(moves, texts, values, labels, renames, routedTracks, routedDeletes, partDeletes, zones, outlinePayload, zoneEditsPayload, zoneDeletesPayload, images, imageEditsPayload, imageDeletesPayload, function (err, fast) {
+      var classEditsPayload = Object.keys(classEdits).map(function (cn) { return { name: cn, values: classEdits[cn] }; });
+      window.typecadLayoutApply(moves, texts, values, labels, renames, routedTracks, routedDeletes, partDeletes, zones, outlinePayload, zoneEditsPayload, zoneDeletesPayload, images, imageEditsPayload, imageDeletesPayload, classEditsPayload, function (err, fast) {
         layoutApplyBtn.disabled = false;
         layoutApplyBtn.textContent = 'apply & rebuild';
         if (err && statusEl) statusEl.textContent = 'layout apply failed: ' + err;
@@ -3684,9 +3691,9 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   // ruler's interaction model). Pending zones render in #layout-zones on
   // top of the copper; apply inserts typecad.zone()/typecad.keepout() calls
   // into the _sync.ts sidecar and the rebuild refills the pour. ----
-  var pendingZones = []; // { kind, layer, net, x, y, w, h } — board frame, min corner
+  var pendingZones = []; // { kind, layer, net, x, y, w, h } or { kind, layer, net, points } — board frame
   var zoneArmed = false;
-  var zoneStart = null; // gerber-frame first corner, waiting for the second
+  var zonePts = []; // gerber-frame corners collected so far (polygon draw)
   var zonePreviewEl = null;
   var zoneSelIdx = -1;
   var zoneBtn = null;
@@ -3697,6 +3704,10 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   // selected) — the panel rebuilds on every selection change, so the
   // standing choices persist here and every rebuild re-binds fresh elements
   var zonePrefs = { kind: 'pour', layer: '', net: '' };
+  // net-class dimension edits pending apply: class name -> the numeric
+  // fields the rules panel changed (source keys: track_width, clearance,
+  // via_diameter, via_drill)
+  var classEdits = {};
   function zoneNetChoices() {
     var nets = [];
     var seen = {};
@@ -3754,11 +3765,11 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     }
     if (statusEl && !statusLocked())
       statusEl.textContent =
-        'drawing ' + (zoneKindSel ? zoneKindSel.value : 'pour') + ' zone \u2014 click the first corner (Esc cancels)';
+        'drawing ' + (zoneKindSel ? zoneKindSel.value : 'pour') + ' zone \u2014 click each corner; click the first corner again (or press Enter) to close, Esc cancels';
   }
   function zoneDisarm() {
     zoneArmed = false;
-    zoneStart = null;
+    zonePts = [];
     if (zonePreviewEl) {
       zonePreviewEl.remove();
       zonePreviewEl = null;
@@ -3766,18 +3777,24 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     if (zoneBtn) zoneBtn.classList.remove('armed');
     if (statusEl && !statusLocked()) statusEl.textContent = 'zone drawing cancelled';
   }
-  function zonePreviewMove(gp) {
-    // live second-corner preview, grid-snapped like the commit will be
-    if (!zoneArmed || !zoneStart) return;
+  function zoneSnapPt(gp) {
     var snap = !layoutSnapBox || layoutSnapBox.checked;
-    var gx = snap ? Math.round(gp.x / layoutGridSize) * layoutGridSize : gp.x;
-    var gy = snap ? Math.round(gp.y / layoutGridSize) * layoutGridSize : gp.y;
-    var rx = Math.min(zoneStart.x, gx);
-    var ry = Math.min(zoneStart.y, gy);
-    var rw = Math.abs(gx - zoneStart.x);
-    var rh = Math.abs(gy - zoneStart.y);
+    return {
+      x: snap ? Math.round(gp.x / layoutGridSize) * layoutGridSize : gp.x,
+      y: snap ? Math.round(gp.y / layoutGridSize) * layoutGridSize : gp.y,
+    };
+  }
+  function zonePreviewMove(gp) {
+    // live rubber-band preview: the polygon so far plus the cursor, grid-
+    // snapped like the commit will be
+    if (!zoneArmed) return;
+    var p = zoneSnapPt(gp);
+    var dAttr = '';
+    for (var vp = 0; vp < zonePts.length; vp++)
+      dAttr += (vp ? ' L ' : 'M ') + zonePts[vp].x.toFixed(3) + ' ' + zonePts[vp].y.toFixed(3);
+    if (zonePts.length) dAttr += ' L ' + p.x.toFixed(3) + ' ' + p.y.toFixed(3);
     if (!zonePreviewEl) {
-      zonePreviewEl = document.createElementNS(SVGNSL, 'rect');
+      zonePreviewEl = document.createElementNS(SVGNSL, 'path');
       zonePreviewEl.setAttribute('fill', 'none');
       zonePreviewEl.setAttribute('stroke-dasharray', '0.8 0.5');
       zonePreviewEl.setAttribute('pointer-events', 'none');
@@ -3785,45 +3802,33 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       if (host) host.appendChild(zonePreviewEl);
     }
     var keep = zoneKindSel && zoneKindSel.value === 'keepout' ? '#ff7744' : '#33cc88';
-    zonePreviewEl.setAttribute('x', String(rx));
-    zonePreviewEl.setAttribute('y', String(ry));
-    zonePreviewEl.setAttribute('width', String(rw));
-    zonePreviewEl.setAttribute('height', String(rh));
+    zonePreviewEl.setAttribute('d', dAttr || 'M 0 0');
     zonePreviewEl.setAttribute('stroke', keep);
     zonePreviewEl.setAttribute('stroke-width', '0.08');
   }
-  function zoneClickCorner(gp) {
-    var snap = !layoutSnapBox || layoutSnapBox.checked;
-    var p = {
-      x: snap ? Math.round(gp.x / layoutGridSize) * layoutGridSize : gp.x,
-      y: snap ? Math.round(gp.y / layoutGridSize) * layoutGridSize : gp.y,
-    };
-    if (!zoneStart) {
-      zoneStart = p;
-      if (statusEl && !statusLocked()) statusEl.textContent = 'first corner at ' + fmtPos(p.x) + ', ' + fmtPos(-p.y) + ' \u2014 click the opposite corner';
-      return;
-    }
-    if (Math.abs(p.x - zoneStart.x) < 0.05 || Math.abs(p.y - zoneStart.y) < 0.05) {
-      if (statusEl && !statusLocked()) statusEl.textContent = 'zone needs an area \u2014 the corners cannot share an axis';
+  /** commit the collected corners as a pending zone (polygon record; the
+   *  apply writes typecad.zone({ …, points }) — the API's polygon form) */
+  function zoneCommitPolygon() {
+    if (zonePts.length < 3) {
+      if (statusEl && !statusLocked())
+        statusEl.textContent = 'a zone needs at least 3 distinct corners \u2014 ' + zonePts.length + ' so far';
       return;
     }
     var kind = zoneKindSel ? zoneKindSel.value : 'pour';
     var layer = zoneLayerSel && zoneLayerSel.value ? zoneLayerSel.value : 'F.Cu';
     var net = kind === 'keepout' ? undefined : zoneNetSel && zoneNetSel.value ? zoneNetSel.value : undefined;
+    // gerber (y-up) -> board (y-down): typecad source coordinates
     var zrec = {
       kind: kind,
       layer: layer,
       net: net,
-      // gerber (y-up) -> board (y-down): the min board corner mirrors the
-      // max gerber y
-      x: Math.min(zoneStart.x, p.x),
-      y: -Math.max(zoneStart.y, p.y),
-      w: Math.abs(p.x - zoneStart.x),
-      h: Math.abs(p.y - zoneStart.y),
+      points: zonePts.map(function (pt) {
+        return { x: +pt.x.toFixed(4), y: +(-pt.y).toFixed(4) };
+      }),
     };
     var idxAt = pendingZones.length;
     pendingZones.push(zrec);
-    zoneStart = null;
+    zonePts = [];
     if (zonePreviewEl) {
       zonePreviewEl.remove();
       zonePreviewEl = null;
@@ -3850,7 +3855,32 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     if (statusEl && !statusLocked())
       statusEl.textContent =
         (kind === 'keepout' ? 'keepout' : 'pour' + (net ? ' ' + net : '')) +
-        ' zone on ' + layer + ' drawn \u2014 Del removes the selected zone, apply & rebuild writes it';
+        ' zone (' + zrec.points.length + ' corners) on ' + layer + ' drawn \u2014 Del removes the selected zone, apply & rebuild writes it';
+  }
+  function zoneClickCorner(gp) {
+    var p = zoneSnapPt(gp);
+    // closing click: on the first corner (with enough sides), or on the
+    // last corner (a double-click finishing the loop) — both commit
+    if (zonePts.length >= 3) {
+      var first = zonePts[0];
+      var last = zonePts[zonePts.length - 1];
+      var nearFirst = Math.hypot(p.x - first.x, p.y - first.y) < Math.max(layoutGridSize, 0.25);
+      var nearLast = Math.hypot(p.x - last.x, p.y - last.y) < Math.max(layoutGridSize, 0.25);
+      if (nearFirst || nearLast) {
+        zoneCommitPolygon();
+        return;
+      }
+    }
+    // a repeat of the previous corner is an accidental double-fire
+    if (zonePts.length) {
+      var prev = zonePts[zonePts.length - 1];
+      if (Math.abs(p.x - prev.x) < 0.01 && Math.abs(p.y - prev.y) < 0.01) return;
+    }
+    zonePts.push(p);
+    if (statusEl && !statusLocked())
+      statusEl.textContent =
+        'corner ' + zonePts.length + ' at ' + fmtPos(p.x) + ', ' + fmtPos(-p.y) +
+        (zonePts.length >= 3 ? ' \u2014 click the first corner again or press Enter to close' : ' \u2014 click the next corner');
   }
   function zoneLabelFor(z) {
     return (z.kind === 'keepout' ? 'keepout' : 'pour' + (z.net ? ' ' + z.net : '')) + ' \u00b7 ' + z.layer;
@@ -3878,11 +3908,33 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       var z = pendingZones[zi];
       var g = document.createElementNS(SVGNSL, 'g');
       var keep = z.kind === 'keepout' ? '#ff7744' : '#33cc88';
-      var rect = document.createElementNS(SVGNSL, 'rect');
-      rect.setAttribute('x', String(z.x));
-      rect.setAttribute('y', String(-z.y - z.h));
-      rect.setAttribute('width', String(z.w));
-      rect.setAttribute('height', String(z.h));
+      // polygon records (multi-corner draws) render as their path; rect
+      // records keep the min-corner rectangle. The bbox drives the label.
+      var poly = z.points && z.points.length >= 3;
+      var shape;
+      var bb = poly
+        ? z.points.reduce(
+            function (acc, pt) {
+              return { minX: Math.min(acc.minX, pt.x), maxX: Math.max(acc.maxX, pt.x), minY: Math.min(acc.minY, pt.y) };
+            },
+            { minX: Infinity, maxX: -Infinity, minY: Infinity },
+          )
+        : { minX: z.x, maxX: z.x + z.w, minY: z.y };
+      if (poly) {
+        var dAttr = '';
+        for (var pp = 0; pp < z.points.length; pp++)
+          dAttr += (pp ? ' L ' : 'M ') + z.points[pp].x.toFixed(3) + ' ' + (-z.points[pp].y).toFixed(3);
+        dAttr += ' Z';
+        shape = document.createElementNS(SVGNSL, 'path');
+        shape.setAttribute('d', dAttr);
+      } else {
+        shape = document.createElementNS(SVGNSL, 'rect');
+        shape.setAttribute('x', String(z.x));
+        shape.setAttribute('y', String(-z.y - z.h));
+        shape.setAttribute('width', String(z.w));
+        shape.setAttribute('height', String(z.h));
+      }
+      var rect = shape;
       rect.setAttribute('fill', z.kind === 'keepout' ? 'rgba(255,119,68,0.10)' : 'rgba(51,204,136,0.12)');
       rect.setAttribute('stroke', keep);
       rect.setAttribute('stroke-width', zi === zoneSelIdx ? '0.12' : '0.08');
@@ -3905,11 +3957,11 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         // selected zone only — stacked pending zones would smear their
         // labels the same way coincident board pours do
         var label = document.createElementNS(SVGNSL, 'text');
-        label.setAttribute('x', String(mxL * (z.x + 0.3)));
+        label.setAttribute('x', String(mxL * (bb.minX + 0.3)));
         // outside the y-flip the visual y is the negated gerber y: the
-        // rect's top edge sits at board y = z.y, so 0.35 below it reads
+        // zone's top edge sits at board y = minY, so 0.35 below it reads
         // INSIDE the zone (the frame is screen-like y-down here)
-        label.setAttribute('y', String(z.y + 0.35));
+        label.setAttribute('y', String(bb.minY + 0.35));
         label.setAttribute('font-size', '0.9');
         label.setAttribute('fill', keep);
         label.setAttribute('pointer-events', 'none');
@@ -5076,6 +5128,12 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         }
         return;
       }
+      if (ev.key === 'Enter' && zoneArmed) {
+        // close the polygon draw: corners collected, Enter commits them
+        ev.preventDefault();
+        zoneCommitPolygon();
+        return;
+      }
       if (ev.key === 'u' || ev.key === 'U') {
         if (segSel.size) {
           ev.preventDefault();
@@ -5286,6 +5344,14 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       }
       if (layoutSel.length) {
         var nudgeRefs = layoutSel.slice();
+        // parts get the same DRC gate the ink nudges obey: a step that puts
+        // a pad into clearance violation is refused with a red flash
+        if (partNudgeViolation(nudgeRefs, d[0], d[1])) {
+          for (var rf = 0; rf < nudgeRefs.length; rf++) flashPartGhost(nudgeRefs[rf]);
+          if (statusEl && !statusLocked())
+            statusEl.textContent = 'nudge refused \u2014 clearance violation';
+          return;
+        }
         var nudgeBefore = snapMoves(nudgeRefs);
         var nudgeRipBefore = layoutRipped.length;
         for (var ns = 0; ns < nudgeRefs.length; ns++) {
@@ -5661,10 +5727,23 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     if (boardR && !boardR.derived) {
       for (var zw = 0; zw < pendingZones.length; zw++) {
         var zwn = pendingZones[zw];
-        var zgX0 = zwn.x;
-        var zgX1 = zwn.x + zwn.w;
-        var zgY0 = -(zwn.y + zwn.h);
-        var zgY1 = -zwn.y;
+        // polygon records use their bbox for the outline test
+        var zgX0, zgX1, zgY0, zgY1;
+        if (zwn.points && zwn.points.length >= 3) {
+          var zbx0 = Infinity, zbx1 = -Infinity, zby0 = Infinity, zby1 = -Infinity;
+          for (var zp3 = 0; zp3 < zwn.points.length; zp3++) {
+            zbx0 = Math.min(zbx0, zwn.points[zp3].x);
+            zbx1 = Math.max(zbx1, zwn.points[zp3].x);
+            zby0 = Math.min(zby0, zwn.points[zp3].y);
+            zby1 = Math.max(zby1, zwn.points[zp3].y);
+          }
+          zgX0 = zbx0; zgX1 = zbx1; zgY0 = -zby1; zgY1 = -zby0;
+        } else {
+          zgX0 = zwn.x;
+          zgX1 = zwn.x + zwn.w;
+          zgY0 = -(zwn.y + zwn.h);
+          zgY1 = -zwn.y;
+        }
         if (zgX0 > boardR.x1 - 0.01 || zgX1 < boardR.x0 + 0.01 || zgY0 > boardR.y1 - 0.01 || zgY1 < boardR.y0 + 0.01) {
           var wmsgZ =
             (zwn.kind === 'keepout' ? 'keepout' : 'pour' + (zwn.net ? ' ' + zwn.net : '')) +
@@ -7682,7 +7761,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     ['R', 'rotate the selection 90\u00b0'],
     ['Shift+F', 'flip the selected part(s) to the other side \u2014 apply writes side into source'],
     ['zones & artwork', null, null],
-    ['draw zone', 'Z arms it \u2014 kind, layer and net in the E panel, then click two corners on the board'],
+    ['draw zone', 'Z arms it \u2014 kind, layer and net in the E panel; click each corner, then click the first again (or press Enter) to close \u2014 rectangles are four-corner polygons'],
     ['click a zone', 'selects it — anywhere inside its area or on its boundary; a press on an already-selected zone advances to the next in the stack (Tab cycles the stack too); zones on hidden layers leave the stack'],
     ['place image', 'I arms it \u2014 side in the E panel, pick a PNG, click drops its center; E resizes, Del removes'],
     ['click artwork', 'select placed artwork — E moves/resizes/flips/replaces the file, Del removes it'],
@@ -8055,7 +8134,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     // the primary's live placement (drags/rotations refresh in place), each
     // selected segment (endpoints, net, width) and barrel (position, net,
     // size) — a change in any of them is a stale panel
-    var s = propsKind + '/' + layoutSel.join(',');
+    var s = propsKind + '/' + layoutSel.join(',') + '/c' + JSON.stringify(classEdits);
     if (layoutSel.length) {
       var st0 = compStateAt(layoutSel[0]);
       if (st0) s += '@' + st0.x.toFixed(3) + ',' + st0.y.toFixed(3) + ',' + st0.rot;
@@ -8454,6 +8533,80 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   function curTextShorthand(t) {
     return '"' + String(t.text === undefined ? '' : t.text).slice(0, 18) + '"';
   }
+/** the nothing-selected panel's net-class section: one class at a time,
+ *  its four dimensions editable — changed fields become pending class
+ *  edits the apply rewrites into the netClass() literal */
+  function classSectionHtml() {
+    if (!rules || !rules.netClasses) return '';
+    var names = Object.keys(rules.netClasses);
+    if (!names.length) return '';
+    var n0 = names[0];
+    var def0 = rules.netClasses[n0] || {};
+    var cur = classEdits[n0] || {};
+    return '<div class="wrow"><b>net classes</b></div>' +
+      '<div class="wrow"><label>class <select id="nc-name">' +
+        names
+          .map(function (nm) { return '<option value="' + propsEsc(nm) + '">' + propsEsc(nm) + '</option>'; })
+          .join('') +
+        '</select></label></div>' +
+      '<div class="wrow"><label>width <input id="nc-width" type="number" step="0.05" value="' + (cur.track_width ?? def0.width ?? 0) + '"></label>' +
+      '<label>clearance <input id="nc-clear" type="number" step="0.05" value="' + (cur.clearance ?? def0.clearance ?? 0) + '"></label></div>' +
+      '<div class="wrow"><label>via \u2300 <input id="nc-via" type="number" step="0.05" value="' + (cur.via_diameter ?? def0.viaSize ?? 0) + '"></label>' +
+      '<label>via drill <input id="nc-drill" type="number" step="0.05" value="' + (cur.via_drill ?? def0.viaDrill ?? 0) + '"></label></div>' +
+      '<div class="wrow"><button id="nc-apply">apply</button></div>';
+  }
+  function classToolsBind() {
+    var nameSel = document.getElementById('nc-name');
+    if (!nameSel) return;
+    nameSel.addEventListener('change', function () {
+      // switching class re-renders the fields with its dimensions
+      var nm = nameSel.value;
+      var def = (rules && rules.netClasses && rules.netClasses[nm]) || {};
+      var cur = classEdits[nm] || {};
+      var set = function (id, v) { var el = document.getElementById(id); if (el) el.value = v; };
+      set('nc-width', cur.track_width ?? def.width ?? 0);
+      set('nc-clear', cur.clearance ?? def.clearance ?? 0);
+      set('nc-via', cur.via_diameter ?? def.viaSize ?? 0);
+      set('nc-drill', cur.via_drill ?? def.viaDrill ?? 0);
+    });
+    var applyBtn = document.getElementById('nc-apply');
+    if (!applyBtn) return;
+    applyBtn.addEventListener('click', function () {
+      var nm = nameSel.value;
+      var def = (rules && rules.netClasses && rules.netClasses[nm]) || {};
+      var num = function (id) { var el = document.getElementById(id); return el ? parseFloat(el.value) : NaN; };
+      var vals = {};
+      var w = num('nc-width'), cl = num('nc-clear'), vd = num('nc-via'), dr = num('nc-drill');
+      if (isFinite(w) && w > 0.05 && Math.abs(w - (def.width ?? -1)) > 1e-9) vals.track_width = w;
+      if (isFinite(cl) && cl > 0.05 && Math.abs(cl - (def.clearance ?? -1)) > 1e-9) vals.clearance = cl;
+      if (isFinite(vd) && vd > 0.2 && Math.abs(vd - (def.viaSize ?? -1)) > 1e-9) vals.via_diameter = vd;
+      if (isFinite(dr) && dr > 0.1 && Math.abs(dr - (def.viaDrill ?? -1)) > 1e-9) vals.via_drill = dr;
+      if (!Object.keys(vals).length) {
+        if (statusEl && !statusLocked()) statusEl.textContent = 'net class ' + nm + ' unchanged \u2014 nothing pending';
+        return;
+      }
+      var before = classEdits[nm] ? Object.assign({}, classEdits[nm]) : null;
+      var next = Object.assign({}, before || {}, vals);
+      pushUndo(
+        'edit net class ' + nm,
+        function () {
+          if (before) classEdits[nm] = before;
+          else delete classEdits[nm];
+          renderLayoutMoves();
+        },
+        function () {
+          classEdits[nm] = next;
+          renderLayoutMoves();
+        },
+      );
+      classEdits[nm] = next;
+      renderLayoutMoves();
+      if (statusEl && !statusLocked())
+        statusEl.textContent = 'net class ' + nm + ' edited (' + Object.keys(vals).join(', ') + ') \u2014 apply & rebuild writes it';
+    });
+  }
+
+
   function propsBuild() {
     // selection decides what E edits — the most recent gesture (part press,
     // trace press, via press, text grab) owns the panel, so an open one
@@ -8508,9 +8661,11 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         '<div class="wrow"><label>net <select id="zone-net" title="net the pour connects to (keepouts ignore it)"></select></label></div>' +
         '<div class="wrow"><b>place image</b></div>' +
         '<div class="wrow"><button id="image-place" type="button" title="place PNG artwork \u2014 pick a file, click the board to drop its center; E resizes, Del removes; apply &amp; rebuild writes it">place image</button>' +
-        '<select id="image-side" title="board side for placed artwork \u2014 back-side art lands mirrored, reading correctly from the bottom"><option value="front">front</option><option value="back">back</option></select></div>';
+        '<select id="image-side" title="board side for placed artwork \u2014 back-side art lands mirrored, reading correctly from the bottom"><option value="front">front</option><option value="back">back</option></select></div>' +
+        classSectionHtml();
       zoneToolsBind();
       imageToolsBind();
+      classToolsBind();
       return;
     }
     var c = null;
@@ -9077,6 +9232,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     layoutRefEdits = {};
     routedTracks = [];
     routedDeletes = [];
+    classEdits = {};
     syncCompTextVisuals(false);
     renderLayoutMoves();
     refreshRatsnest();
@@ -10498,6 +10654,80 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   // barrel is the junction — all layers), the parent polylines redraw, and
   // old → new serializes as delete + session-route pairs — the same apply
   // contract a segment drag rides ----
+  /** would nudging these parts by (dx, dy) (island/gerber frame) put any of
+   *  their pads into clearance violation? Each pad is checked at its
+   *  prospective position against the authored foreign copper on the pad's
+   *  layers: the part's OWN pad ink moves with it (skipped via the DOM
+   *  skip-set — the ghost overlay is not the obstacle source), same-net
+   *  copper connects rather than conflicts, and manual traces that stay
+   *  behind are legitimately checked. Box-vs-box distance with the pad's
+   *  rotated w/h — the same conservative shape the live router uses. */
+  function partNudgeViolation(refs, dx, dy) {
+    var skip = new Set();
+    for (var r0 = 0; r0 < refs.length; r0++) {
+      var groups0 = copperGroups();
+      for (var g0 = 0; g0 < groups0.length; g0++) {
+        var own = groups0[g0].querySelectorAll('[data-ref="' + cssEsc(refs[r0]) + '"]');
+        for (var o0 = 0; o0 < own.length; o0++) skip.add(own[o0]);
+      }
+    }
+    var obsByLayer = {};
+    var clr = clearanceRule();
+    for (var r1 = 0; r1 < refs.length; r1++) {
+      var ref = refs[r1];
+      var rotOdd = ((layoutRot[ref] || 0) % 2) === 1;
+      for (var pi3 = 0; pi3 < padManifest.length; pi3++) {
+        var p = padManifest[pi3];
+        if (p.ref !== ref) continue;
+        var eff = padEffBoard(p);
+        // padEffBoard is board frame (y-down); obstacles are gerber (y-up);
+        // the nudge delta is island frame — x matches board, y negates
+        var pgx = eff.x + dx;
+        var pgy = -eff.y + dy;
+        var pw = (rotOdd ? p.h : p.w) / 2;
+        var ph = (rotOdd ? p.w : p.h) / 2;
+        var layers = p.layers && p.layers.indexOf('*.Cu') !== -1 ? ['F.Cu', 'B.Cu'] : p.layers || [];
+        for (var li = 0; li < layers.length; li++) {
+          var lg = layerGroupByCanon(layers[li]);
+          if (!lg) continue;
+          var key = lg.getAttribute('data-layer-id');
+          if (!obsByLayer[key]) obsByLayer[key] = buildObstacles(lg, null, skip);
+          var obs = obsByLayer[key];
+          for (var oi2 = 0; oi2 < obs.length; oi2++) {
+            var o = obs[oi2];
+            if (p.net && o.net && o.net === p.net) continue;
+            var ddx = Math.max(o.x0 - (pgx + pw), 0, (pgx - pw) - o.x1);
+            var ddy = Math.max(o.y0 - (pgy + ph), 0, (pgy - ph) - o.y1);
+            if (ddx === 0 && ddy === 0) return true; // overlaps foreign copper
+            if (Math.hypot(ddx, ddy) < clr) return true;
+          }
+        }
+      }
+    }
+    return false;
+  }
+  /** flash a part's ghost ink red — the ink nudge refusal's look, applied
+   *  to the whole moving footprint */
+  function flashPartGhost(ref) {
+    var g = layoutOverlay ? layoutOverlay.querySelector('[data-ref="' + cssEsc(ref) + '"]') : null;
+    if (!g) return;
+    var snap2 = [];
+    for (var ci2 = 0; ci2 < g.children.length; ci2++) {
+      var el = g.children[ci2];
+      snap2.push({ el: el, stroke: el.getAttribute('stroke'), fill: el.getAttribute('fill') });
+      el.setAttribute('stroke', '#f14c4c');
+      el.setAttribute('fill', '#f14c4c');
+    }
+    setTimeout(function () {
+      for (var si3 = 0; si3 < snap2.length; si3++) {
+        var s3 = snap2[si3];
+        if (s3.stroke === null || s3.stroke === undefined) s3.el.removeAttribute('stroke');
+        else s3.el.setAttribute('stroke', s3.stroke);
+        if (s3.fill === null || s3.fill === undefined) s3.el.removeAttribute('fill');
+        else s3.el.setAttribute('fill', s3.fill);
+      }
+    }, 700);
+  }
   function nudgeInkSelection(dx, dy) {
     var movedSegs = [];
     segSel.forEach(function (h) {
@@ -11721,6 +11951,42 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       }
       for (var dk = 0; dk < drop.length; dk++) localStorage.removeItem(drop[dk]);
     } catch (e) {}
+  })();
+
+  // board ≠ source drift banner: the host ran check-sync and injected
+  // window.__typecadDrift when the two disagree. Standalone pages (no
+  // host, or in sync) show nothing.
+  (function () {
+    var drift = window.__typecadDrift;
+    if (!drift || !drift.count) return;
+    var bar = document.createElement('div');
+    bar.id = 'drift-banner';
+    bar.innerHTML =
+      '<b>board \u2260 source</b> \u2014 ' + drift.count + ' pending difference' + (drift.count > 1 ? 's' : '') +
+      ' <button type="button" id="drift-details">details</button>' +
+      '<span class="drift-hint">apply &amp; rebuild writes the board into source \u00b7 rebuilding takes the source side</span>' +
+      '<button type="button" id="drift-close" title="dismiss">\u2715</button>';
+    var list = document.createElement('div');
+    list.id = 'drift-list';
+    list.style.display = 'none';
+    var rows = '';
+    for (var di = 0; di < (drift.items || []).length; di++) {
+      var it = drift.items[di];
+      rows += '<div class="drift-row"><b>' + it.kind + '</b> ' + it.label + ' <span>(' + (it.props || []).join(', ') + ')</span></div>';
+    }
+    list.innerHTML = rows;
+    bar.appendChild(list);
+    document.body.appendChild(bar);
+    var closeBtn = document.getElementById('drift-close');
+    if (closeBtn)
+      closeBtn.addEventListener('click', function () {
+        bar.remove();
+      });
+    var detBtn = document.getElementById('drift-details');
+    if (detBtn)
+      detBtn.addEventListener('click', function () {
+        list.style.display = list.style.display === 'none' ? 'block' : 'none';
+      });
   })();
 
   ['dt-margin', 'dt-allowed'].forEach(function (id) {
@@ -13698,6 +13964,23 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     cursor: pointer; max-height: min(560px, calc(100vh - 120px)); overflow-y: auto;
     overscroll-behavior: contain;
   }
+  /* board-source drift banner: fixed top-center, dismissible, expandable */
+  #drift-banner {
+    position: fixed; top: 10px; left: 50%; transform: translateX(-50%); z-index: 60;
+    max-width: min(680px, 90vw); background: var(--chrome-bg); color: var(--chrome-fg);
+    border: 1px solid #d29922; border-radius: 6px; padding: 8px 14px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4); font: 12px/1.5 system-ui, sans-serif;
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  }
+  #drift-banner b { color: #d29922; }
+  #drift-banner .drift-hint { color: var(--muted); }
+  #drift-banner button {
+    background: var(--btn-bg); color: var(--chrome-fg); border: 1px solid var(--btn-border);
+    border-radius: 4px; padding: 3px 10px; cursor: pointer; font: inherit;
+  }
+  #drift-list { display: none; flex-basis: 100%; border-top: 1px solid var(--chrome-border); margin-top: 6px; padding-top: 6px; }
+  #drift-list .drift-row { color: var(--chrome-fg); }
+  #drift-list .drift-row span { color: var(--muted); }
   #keys-help::-webkit-scrollbar { width: 8px; }
   #keys-help::-webkit-scrollbar-thumb { background: var(--btn-border, #8886); border-radius: 4px; }
   /* one binding per row: bold key column, dash, explanation — the grid keeps

@@ -537,7 +537,7 @@ describe('view switcher (gerber / pcba)', () => {
     expect(html).toContain('var ufFind = function (parent, i)');
     expect(html).toContain("var wSubs = (wel.getAttribute('d') || '').split(/(?=M)/);");
     expect(html).toContain("if (net) p.setAttribute('data-net', net);");
-    expect(html).toContain('window.typecadLayoutApply(moves, texts, values, labels, renames, routedTracks, routedDeletes, partDeletes, zones, outlinePayload, zoneEditsPayload, zoneDeletesPayload, images, imageEditsPayload, imageDeletesPayload, function (err, fast)');
+    expect(html).toContain('window.typecadLayoutApply(moves, texts, values, labels, renames, routedTracks, routedDeletes, partDeletes, zones, outlinePayload, zoneEditsPayload, zoneDeletesPayload, images, imageEditsPayload, imageDeletesPayload, classEditsPayload, function (err, fast)');
     expect(html).toContain('moves.push({');
     expect(html).toContain('rot: (m2.rot || 0) * 90,');
     expect(html).toContain('pads: padsByRef[mr2] || [],');
@@ -914,7 +914,7 @@ describe('layout view (component overlay from the gerbers)', () => {
     expect(html).toContain("addEventListener('dblclick'");
     expect(html).toContain('layout-text-edit');
     // apply carries text edits alongside component moves
-    expect(html).toContain('window.typecadLayoutApply(moves, texts, values, labels, renames, routedTracks, routedDeletes, partDeletes, zones, outlinePayload, zoneEditsPayload, zoneDeletesPayload, images, imageEditsPayload, imageDeletesPayload, function (err, fast)');
+    expect(html).toContain('window.typecadLayoutApply(moves, texts, values, labels, renames, routedTracks, routedDeletes, partDeletes, zones, outlinePayload, zoneEditsPayload, zoneDeletesPayload, images, imageEditsPayload, imageDeletesPayload, classEditsPayload, function (err, fast)');
   });
 
   it('derives handles from the fab contour (chamfers kept) and the pad-land hull', () => {

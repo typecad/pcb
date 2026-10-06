@@ -711,10 +711,26 @@ class BoardViewerPanel {
                 this.service.netSources().catch(() => []),
             ]);
             const { html, injected } = (0, probeClient_js_1.injectProbeClient)(raw, components, nets, (0, boardFile_js_2.mtimeOf)(board));
+            // board vs source drift: the check-sync oracle, surfaced as a page
+            // banner (the same drift the hardening suite fails on). Best-effort —
+            // a failed check never blocks the viewer
+            let withDrift = html;
+            try {
+                const syncOut = await this.run(folder, 'npx typecad-pcb check-sync --json', GENERATE_TIMEOUT_MS);
+                const info = JSON.parse(syncOut.slice(syncOut.indexOf("{")));
+                if (info && info.count > 0) {
+                    const payload = JSON.stringify({ count: info.count, items: (info.changes ?? []).slice(0, 12) }).replace(/</g, '\u003c');
+                    withDrift = html.replace('<head>', `<head><script>window.__typecadDrift = ${payload};</script>`);
+                    this.output.appendLine(`sync: ${info.count} pending board/source difference(s) — banner shown`);
+                }
+            }
+            catch {
+                this.output.appendLine('sync: check-sync unavailable — no drift banner');
+            }
             if (!injected) {
                 this.output.appendLine('warning: viewer HTML had no <head>/</body> anchors — cross-probe disabled');
             }
-            this.generated = { html, boardMtimeMs: (0, boardFile_js_2.mtimeOf)(board), diskMtimeMs: (0, boardFile_js_2.mtimeOf)(node_path_1.default.join(folder, outPath)) };
+            this.generated = { html: withDrift, boardMtimeMs: (0, boardFile_js_2.mtimeOf)(board), diskMtimeMs: (0, boardFile_js_2.mtimeOf)(node_path_1.default.join(folder, outPath)) };
             this.output.appendLine(`viewer ready: ${components.length} component outline(s), board mtime ${this.generated.boardMtimeMs}, cross-probe ${injected ? 'on' : 'off'}`);
             return true;
         })().finally(() => {
@@ -764,7 +780,7 @@ class BoardViewerPanel {
             void this.panel.webview.postMessage({ type: 'typecad/image-picked', path: '', name: '', dataUrl: '' });
         }
     }
-    async onLayoutRebuild(moves, texts, values, labels, renames, routes, deletes, partDeletes, zones, outline, zoneEdits, zoneDeletes, boardStamp, images, imageEdits, imageDeletes) {
+    async onLayoutRebuild(moves, texts, values, labels, renames, routes, deletes, partDeletes, zones, outline, zoneEdits, zoneDeletes, boardStamp, images, imageEdits, imageDeletes, classEdits) {
         const folder = this.hwFolder();
         const fail = (error) => {
             this.output.appendLine(`layout apply failed: ${error}`);
@@ -792,13 +808,13 @@ class BoardViewerPanel {
                 await this.doRefresh();
                 return;
             }
-            await this.onLayoutRebuildInner(folder, fail, moves, texts, values, labels, renames, routes, deletes, partDeletes, zones, outline, zoneEdits, zoneDeletes, images, imageEdits, imageDeletes);
+            await this.onLayoutRebuildInner(folder, fail, moves, texts, values, labels, renames, routes, deletes, partDeletes, zones, outline, zoneEdits, zoneDeletes, images, imageEdits, imageDeletes, classEdits);
         }
         finally {
             syncState_js_1.sync.applyBusy = false;
         }
     }
-    async onLayoutRebuildInner(folder, fail, moves, texts, values, labels, renames, routes, deletes, partDeletes, zones, outline, zoneEdits, zoneDeletes, images, imageEdits, imageDeletes) {
+    async onLayoutRebuildInner(folder, fail, moves, texts, values, labels, renames, routes, deletes, partDeletes, zones, outline, zoneEdits, zoneDeletes, images, imageEdits, imageDeletes, classEdits) {
         try {
             const comps = await this.service.components();
             const variableOf = new Map(comps.map((c) => [c.reference, c.variable ?? '']));
@@ -939,6 +955,7 @@ class BoardViewerPanel {
                 zoneDeletes,
                 imageEdits: layoutImageEdits,
                 imageDeletes: layoutImageDeletes,
+                classEdits: classEdits ?? [],
                 variableOf: (ref) => variableOf.get(ref),
                 allRefs: new Set(comps.map((c) => c.reference).filter(Boolean)),
                 syncUri: syncUri.toString(),
@@ -1232,7 +1249,7 @@ class BoardViewerPanel {
     }
     async onMessage(message) {
         if (message.type === 'typecad/layout-rebuild') {
-            await this.onLayoutRebuild(message.moves, message.texts, message.values, message.labels, message.renames, message.routes, message.deletes, message.partDeletes, message.zones, message.outline, message.zoneEdits, message.zoneDeletes, message.board, message.images, message.imageEdits, message.imageDeletes);
+            await this.onLayoutRebuild(message.moves, message.texts, message.values, message.labels, message.renames, message.routes, message.deletes, message.partDeletes, message.zones, message.outline, message.zoneEdits, message.zoneDeletes, message.board, message.images, message.imageEdits, message.imageDeletes, message.classEdits);
             return;
         }
         if (message.type === 'typecad/pick-image') {

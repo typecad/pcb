@@ -76,11 +76,13 @@ async function boot() {
   expect(errors).toEqual([]);
   /** two clicks commit a zone rectangle between the client points — both
    *  events target the board so the svg.contains guards hold */
+  /** the polygon draw: click the rectangle's four corners, then Enter */
   const clickTwoCorners = (x1: number, y1: number, x2: number, y2: number) => {
-    for (const [x, y] of [[x1, y1], [x2, y2]] as const) {
+    for (const [x, y] of [[x1, y1], [x2, y1], [x2, y2], [x1, y2]] as const) {
       d.getElementById('board')!.dispatchEvent(new w.MouseEvent('mousedown', { bubbles: true, button: 0, clientX: x, clientY: y }));
       d.getElementById('board')!.dispatchEvent(new w.MouseEvent('mouseup', { bubbles: true, button: 0, clientX: x, clientY: y }));
     }
+    d.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
   };
     /** E with nothing selected: the props panel hosts the zone tool */
   const openZoneTools = () => {
@@ -254,16 +256,15 @@ describe('the zone tool draws pours and keepouts', () => {
     expect((d.getElementById('layout-apply') as HTMLButtonElement).disabled).toBe(true);
     clickTwoCorners(40, 40, 70, 80);
     // the pending zone renders with a positive rectangle and arms apply
-    const rect = d.querySelector('#layout-zones rect') as SVGRectElement | null;
-    expect(rect).toBeTruthy();
-    expect(parseFloat(rect!.getAttribute('width')!)).toBeGreaterThan(0);
-    expect(parseFloat(rect!.getAttribute('height')!)).toBeGreaterThan(0);
+    const poly = d.querySelector('#layout-zones path') as SVGPathElement | null;
+    expect(poly).toBeTruthy();
+    expect((poly!.getAttribute('d')!.match(/L /g) || []).length).toBeGreaterThanOrEqual(3);
     expect((d.getElementById('layout-apply') as HTMLButtonElement).disabled).toBe(false);
     // undo removes it, redo brings it back
     d.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'z', ctrlKey: true, bubbles: true }));
-    expect(d.querySelector('#layout-zones rect')).toBeNull();
+    expect(d.querySelector('#layout-zones path')).toBeNull();
     d.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Z', ctrlKey: true, shiftKey: true, bubbles: true }));
-    expect(d.querySelector('#layout-zones rect')).toBeTruthy();
+    expect(d.querySelector('#layout-zones path')).toBeTruthy();
     // apply hands the zone to the host bridge in the board frame
     let got: { zones?: Array<Record<string, unknown>> } | null = null;
     (w as unknown as { typecadLayoutApply: unknown }).typecadLayoutApply = function (...args: unknown[]) {
@@ -277,10 +278,40 @@ describe('the zone tool draws pours and keepouts', () => {
     expect(zones[0]!.kind).toBe('pour');
     expect(zones[0]!.net).toBe('VCC');
     expect(zones[0]!.layer).toBe(layer.value);
-    expect(zones[0]!.w).toBeGreaterThan(0);
-    expect(zones[0]!.h).toBeGreaterThan(0);
+    expect((zones[0] as { points?: unknown[] }).points).toHaveLength(4);
+    expect(zones[0]!.kind).toBe('pour');
     // the applied zone retires (the rebuild's page will render the real pour)
-    expect(d.querySelector('#layout-zones rect')).toBeNull();
+    expect(d.querySelector('#layout-zones path')).toBeNull();
+  });
+
+  it('an L-shaped polygon zone draws, previews, and applies with its points', async () => {
+    const { w, d } = await boot();
+    const status = d.getElementById('status') as HTMLElement;
+    const key = (k: string) => d.dispatchEvent(new w.KeyboardEvent('keydown', { key: k, bubbles: true }));
+    const click = (x: number, y: number) => {
+      d.getElementById('board')!.dispatchEvent(new w.MouseEvent('mousedown', { bubbles: true, button: 0, clientX: x, clientY: y }));
+      d.getElementById('board')!.dispatchEvent(new w.MouseEvent('mouseup', { bubbles: true, button: 0, clientX: x, clientY: y }));
+    };
+    key('z');
+    // L-shape: 5 corners in gerber coords (client y = -gerber y)
+    for (const [x, y] of [[40, 60], [50, 60], [50, 75], [45, 75], [45, 70], [40, 70]] as const) click(x, y);
+    key('Enter');
+    expect(status.textContent).toContain('corners) on F.Cu drawn');
+    const poly = d.querySelector('#layout-zones path') as SVGPathElement;
+    expect(poly).toBeTruthy();
+    expect(poly.getAttribute('d')!.startsWith('M 40')).toBe(true);
+    // apply carries the polygon points (board frame, y negated)
+    let got: Array<Record<string, unknown>> = [];
+    (w as unknown as Record<string, unknown>).typecadLayoutApply = function (...args: unknown[]) {
+      got = args[8] as Array<Record<string, unknown>>;
+      (args[args.length - 1] as (e: string | null) => void)(null);
+    };
+    (d.getElementById('layout-apply') as HTMLButtonElement).click();
+    expect(got).toHaveLength(1);
+    const pts = got[0]!.points as Array<{ x: number; y: number }>;
+    expect(pts).toHaveLength(6);
+    expect(pts[0]).toEqual({ x: 40, y: 60 }); // client y 60 -> gerber -60 -> board +60
+    expect(got[0]!.w).toBeUndefined();
   });
 
   it('keepout kind drops the net, and Esc cancels an in-progress draw', async () => {
@@ -311,7 +342,7 @@ describe('the zone tool draws pours and keepouts', () => {
     openZoneTools(), (d.getElementById('zone-draw') as HTMLButtonElement).click();
     clickTwoCorners(40, 40, 70, 80);
     // label shows once the pending zone is selected
-    (d.querySelector('#layout-zones rect') as SVGRectElement).dispatchEvent(
+    (d.querySelector('#layout-zones path') as SVGRectElement).dispatchEvent(
       new w.MouseEvent('pointerdown', { bubbles: true, button: 0 }),
     );
     const labels = d.getElementById('layout-zone-labels')!;
@@ -324,7 +355,7 @@ describe('the zone tool draws pours and keepouts', () => {
     // y-down coordinates, no mirroring)
     expect(parseFloat(label.getAttribute('y')!)).toBeCloseTo(40.35, 2);
     // strokes match the outline indicator's SELECTED weight (the zone is selected for its label)
-    const rect = d.querySelector('#layout-zones rect') as SVGRectElement;
+    const rect = d.querySelector('#layout-zones path') as SVGPathElement;
     expect(rect.getAttribute('stroke-width')).toBe('0.12');
   });
 
@@ -332,13 +363,13 @@ describe('the zone tool draws pours and keepouts', () => {
     const { w, d, clickTwoCorners, openZoneTools } = await boot()
     openZoneTools(), (d.getElementById('zone-draw') as HTMLButtonElement).click();
     clickTwoCorners(40, 40, 70, 80);
-    expect(d.querySelector('#layout-zones rect')).toBeTruthy();
+    expect(d.querySelector('#layout-zones path')).toBeTruthy();
     // select the pending zone and remove it
-    (d.querySelector('#layout-zones rect') as SVGRectElement).dispatchEvent(
+    (d.querySelector('#layout-zones path') as SVGRectElement).dispatchEvent(
       new w.MouseEvent('pointerdown', { bubbles: true, button: 0 }),
     );
     d.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Delete', bubbles: true }));
-    expect(d.querySelector('#layout-zones rect')).toBeNull();
+    expect(d.querySelector('#layout-zones path')).toBeNull();
     expect((d.getElementById('layout-apply') as HTMLButtonElement).disabled).toBe(true);
   });
 
@@ -357,10 +388,10 @@ describe('the zone tool draws pours and keepouts', () => {
     d.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'z', bubbles: true }));
     expect(status.textContent).toContain('cancelled');
     d.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'z', bubbles: true }));
-    expect(status.textContent).toContain('first corner');
+    expect(status.textContent).toContain('click each corner');
     // and the draw itself works straight from the key
     clickTwoCorners(40, 40, 70, 80);
-    expect(d.querySelector('#layout-zones rect')).toBeTruthy();
+    expect(d.querySelector('#layout-zones path')).toBeTruthy();
   });
 });
 

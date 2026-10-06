@@ -812,6 +812,38 @@ describe('ratsnest connectivity — broken routes wire, complete routes do not',
   });
 });
 
+describe('net-class editing in the E panel', () => {
+  it('changed dimensions become pending class edits and ride the apply payload', async () => {
+    const page = await boot();
+    const w = page.window;
+    const d = w.document;
+    page.key('e'); // nothing selected: the creation panel hosts the classes
+    const nameSel = d.getElementById('nc-name') as HTMLSelectElement;
+    expect(nameSel).toBeTruthy();
+    expect(nameSel.value).toBe('PWR');
+    const width = d.getElementById('nc-width') as HTMLInputElement;
+    expect(parseFloat(width.value)).toBeCloseTo(0.5, 3); // the class's authored width
+    width.value = '0.8';
+    (d.getElementById('nc-apply') as HTMLButtonElement).click();
+    const status = d.getElementById('status') as HTMLElement;
+    expect(status.textContent).toContain('net class PWR edited (track_width)');
+    expect((d.getElementById('layout-apply') as HTMLButtonElement).disabled).toBe(false);
+    // the apply payload's classEdits argument (index 15) carries the edit
+    let got: Array<Record<string, unknown>> = [];
+    (w as unknown as Record<string, unknown>).typecadLayoutApply = function (...args: unknown[]) {
+      got = args[15] as Array<Record<string, unknown>>;
+      (args[args.length - 1] as (e: string | null) => void)(null);
+    };
+    (d.getElementById('layout-apply') as HTMLButtonElement).click();
+    expect(got).toHaveLength(1);
+    expect(got[0]!.name).toBe('PWR');
+    expect((got[0] as { values: Record<string, number> }).values.track_width).toBeCloseTo(0.8, 5);
+    // undo retires the pending edit
+    d.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'z', ctrlKey: true, bubbles: true }));
+    expect((d.getElementById('layout-apply') as HTMLButtonElement).disabled).toBe(true);
+  });
+});
+
 describe('un-applied board edits do not survive a reload', () => {
   // board changes live only in the current page: nothing restores after a
   // reload, and a legacy pending store from an older version is scrubbed so

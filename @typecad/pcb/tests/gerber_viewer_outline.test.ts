@@ -185,15 +185,16 @@ describe('board outline editing', () => {
     // draw below the authored outline (board y 10..50): the identity CTM
     // maps clientY straight to gerber -y, so corners land at board y 60..90
     const board = d.getElementById('board')!;
-    for (const [x, y] of [[40, 60], [70, 90]] as const) {
+    for (const [x, y] of [[40, 60], [70, 60], [70, 90], [40, 90]] as const) {
       board.dispatchEvent(new w.MouseEvent('mousedown', { bubbles: true, button: 0, clientX: x, clientY: y }));
       board.dispatchEvent(new w.MouseEvent('mouseup', { bubbles: true, button: 0, clientX: x, clientY: y }));
     }
+    d.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
     const warn = d.getElementById('layout-warn') as HTMLElement;
     expect(warn.style.display).not.toBe('none');
     expect(warn.textContent).toContain('OUTSIDE the board outline');
     // deleting the zone clears the warning
-    (d.querySelector('#layout-zones rect') as SVGRectElement).dispatchEvent(
+    (d.querySelector('#layout-zones path') as SVGPathElement).dispatchEvent(
       new w.MouseEvent('pointerdown', { bubbles: true, button: 0 }),
     );
     d.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Delete', bubbles: true }));

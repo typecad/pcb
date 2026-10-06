@@ -174,6 +174,7 @@ const PROBE_CLIENT = `<script>
       images: Array.isArray(arguments[12]) ? arguments[12] : [],
       imageEdits: Array.isArray(arguments[13]) ? arguments[13] : [],
       imageDeletes: Array.isArray(arguments[14]) ? arguments[14] : [],
+      classEdits: Array.isArray(arguments[15]) ? arguments[15] : [],
     });
   };
 

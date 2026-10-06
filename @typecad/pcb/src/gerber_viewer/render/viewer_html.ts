@@ -13685,9 +13685,9 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   /* the ? keys cheat-sheet */
   #keys-help {
     position: fixed; right: 16px; bottom: 96px; z-index: 45; display: none;
-    max-width: 440px; background: var(--chrome-bg); color: var(--chrome-fg);
-    border: 1px solid var(--chrome-border); border-radius: 6px; padding: 10px 14px;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4); font: 12px/1.5 system-ui, sans-serif;
+    max-width: 460px; background: var(--chrome-bg); color: var(--chrome-fg);
+    border: 1px solid var(--chrome-border); border-radius: 6px; padding: 12px 16px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4); font: 12px/1.55 system-ui, sans-serif;
     cursor: pointer; max-height: min(560px, calc(100vh - 120px)); overflow-y: auto;
     overscroll-behavior: contain;
   }
@@ -13695,12 +13695,12 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   #keys-help::-webkit-scrollbar-thumb { background: var(--btn-border, #8886); border-radius: 4px; }
   /* one binding per row: bold key column, dash, explanation — the grid keeps
      every key aligned and no row wraps under its key */
-  #keys-help .hrow { display: grid; grid-template-columns: 128px 1fr; column-gap: 8px; align-items: baseline; }
+  #keys-help .hrow { display: grid; grid-template-columns: 136px 1fr; column-gap: 10px; align-items: baseline; padding: 2.5px 0; }
   #keys-help .hk { font-weight: 700; white-space: nowrap; }
   #keys-help .hd { color: var(--chrome-fg); }
-  #keys-help .hsec { color: #4fc1ff; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; margin: 8px 0 2px; }
+  #keys-help .hsec { color: #4fc1ff; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; margin: 14px 0 5px; }
   #keys-help .hsec:first-child { margin-top: 0; }
-  #keys-help .hnote { color: var(--muted); font-size: 11px; margin-top: 6px; }
+  #keys-help .hnote { color: var(--muted); font-size: 11px; margin-top: 10px; line-height: 1.5; }
   #route-ui .route-via { fill: #4fc1ff; fill-opacity: 0.35; stroke: #4fc1ff; stroke-width: 0.1; }
   /* committed vias (session circles + gerber flashes): selectable like any
      element — the transparent stroke widens the hit area without changing
@@ -13732,43 +13732,54 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   #route-width-chip.below-min { color: #d29922; border-color: #d29922; }
   #width-pop {
     position: fixed; right: 12px; bottom: 96px; z-index: 40; display: none;
-    flex-direction: column; gap: 6px; background: var(--chrome-bg);
-    border: 1px solid var(--chrome-border); border-radius: 6px; padding: 8px;
+    flex-direction: column; gap: 8px; background: var(--chrome-bg);
+    border: 1px solid var(--chrome-border); border-radius: 6px; padding: 10px 12px;
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4); font: 12px system-ui, sans-serif;
   }
   #width-pop.open { display: flex; }
-  #width-pop .wladder { display: flex; flex-wrap: wrap; gap: 4px; max-width: 250px; }
+  #width-pop .wladder { display: flex; flex-wrap: wrap; gap: 5px; max-width: 260px; }
   #width-pop .wladder button, #width-pop .wrow input {
     background: var(--btn-bg); color: var(--chrome-fg); border: 1px solid var(--btn-border);
-    border-radius: 4px; padding: 3px 7px; cursor: pointer; font: inherit;
+    border-radius: 4px; padding: 4px 9px; cursor: pointer; font: inherit;
   }
   #width-pop .wladder button.cur { box-shadow: inset 0 0 0 1px var(--chrome-fg); }
-  #width-pop .wrow { display: flex; align-items: center; gap: 8px; color: var(--muted); }
-  #width-pop .wrow input { width: 76px; cursor: text; }
-  #width-pop .whint { color: var(--muted); font-size: 11px; }
-  /* properties panel (E) — same chrome as the width picker */
+  #width-pop .wrow { display: flex; align-items: center; gap: 10px; color: var(--muted); }
+  #width-pop .wrow input { width: 80px; cursor: text; }
+  #width-pop .whint { color: var(--muted); font-size: 11px; line-height: 1.5; }
+  /* properties panel (E) — same chrome as the width picker. Rows share one
+     alignment: every label takes the same min-width so the FIELDS line up
+     vertically across rows (x/y beside width/height beside net), and
+     selects size to their content instead of clipping layer/net names */
   #props-pop {
     position: fixed; right: 12px; bottom: 96px; z-index: 42; display: none;
-    flex-direction: column; gap: 6px; background: var(--chrome-bg);
-    border: 1px solid var(--chrome-border); border-radius: 6px; padding: 10px;
+    flex-direction: column; gap: 7px; background: var(--chrome-bg);
+    border: 1px solid var(--chrome-border); border-radius: 6px; padding: 12px 14px;
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4); font: 12px system-ui, sans-serif;
-    min-width: 240px;
+    min-width: 270px; max-width: 360px;
   }
-  #props-pop b { color: #4fc1ff; }
-  #props-pop .wrow { display: flex; align-items: center; gap: 8px; color: var(--muted); }
-  #props-pop .wrow label { display: flex; align-items: center; gap: 4px; }
+  #props-pop b {
+    color: #4fc1ff; margin: 3px 0 1px; padding-bottom: 4px;
+    border-bottom: 1px solid var(--chrome-border); font-size: 12px;
+    letter-spacing: 0.02em;
+  }
+  #props-pop b:first-child { margin-top: 0; }
+  #props-pop .wrow {
+    display: flex; align-items: center; flex-wrap: wrap;
+    column-gap: 10px; row-gap: 6px; color: var(--muted);
+  }
+  #props-pop .wrow label { display: inline-flex; align-items: center; gap: 7px; min-width: 88px; }
   #props-pop input, #props-pop select {
     background: var(--btn-bg); color: var(--chrome-fg); border: 1px solid var(--btn-border);
-    border-radius: 4px; padding: 3px 6px; font: inherit; width: 76px; cursor: text;
+    border-radius: 4px; padding: 4px 7px; font: inherit; width: 80px; cursor: text;
   }
-  #props-pop select { cursor: pointer; width: 56px; }
+  #props-pop select { cursor: pointer; width: auto; min-width: 104px; }
   #props-pop input[type='checkbox'] { width: auto; margin: 0; }
   #props-pop button {
     background: var(--btn-bg); color: var(--chrome-fg); border: 1px solid var(--btn-border);
-    border-radius: 4px; padding: 3px 12px; cursor: pointer; font: inherit;
+    border-radius: 4px; padding: 5px 14px; cursor: pointer; font: inherit;
   }
   #props-pop button.armed { box-shadow: inset 0 0 0 1px var(--chrome-fg); background: var(--btn-hover); }
-  #props-pop .whint { color: var(--muted); font-size: 11px; }
+  #props-pop .whint { color: var(--muted); font-size: 11px; margin: 1px 0 0; line-height: 1.5; }
   #btn-width { min-width: 56px; }
   /* the picked pad's white clones: aperture symbols carry no fill of
      their own, so the clone's inherited fill paints the exact pad shape;

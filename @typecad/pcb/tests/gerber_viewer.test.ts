@@ -887,7 +887,7 @@ describe('layout view (component overlay from the gerbers)', () => {
     // explanation — generated from the HELP_ROWS table
     expect(html).toContain('HELP_ROWS');
     expect(html).toContain('#keys-help .hrow');
-    expect(html).toContain('grid-template-columns: 128px 1fr');
+    expect(html).toContain('grid-template-columns: 136px 1fr');
     // Esc closes it before anything else claims the key
     expect(html).toContain("ev.key === 'Escape' && helpEl.style.display !== 'none'");
     // full property coverage: text/label editing rides the same panel, and

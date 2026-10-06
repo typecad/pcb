@@ -3901,7 +3901,9 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       })(zi);
       g.appendChild(rect);
       grp.appendChild(g);
-      if (labels) {
+      if (labels && zi === zoneSelIdx) {
+        // selected zone only — stacked pending zones would smear their
+        // labels the same way coincident board pours do
         var label = document.createElementNS(SVGNSL, 'text');
         label.setAttribute('x', String(mxL * (z.x + 0.3)));
         // outside the y-flip the visual y is the negated gerber y: the
@@ -4024,7 +4026,10 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         pv.setAttribute('pointer-events', 'none');
         grp.appendChild(pv);
       }
-      if (labels) {
+      if (labels && bi === boardZoneSel) {
+        // labels render for the SELECTED zone only — coincident pours (one
+        // per copper layer over the same area) stack their labels into an
+        // unreadable smear; the click/Tab cycle names each zone as it goes
         var minX = Infinity, minY = -Infinity;
         for (var bl = 0; bl < bz.pts.length; bl++) {
           minX = Math.min(minX, bz.pts[bl].x);

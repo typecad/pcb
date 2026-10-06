@@ -222,6 +222,11 @@ describe('declared zone boundaries render in the layout view', () => {
     expect(path.getAttribute('d')).toContain('M 40.000 -80.200');
     expect(path.getAttribute('stroke-width')).toBe('0.08');
     // upright label outside the y-flip, at the board-frame top edge
+    expect(d2.getElementById('layout-board-zone-labels')!.querySelector('text')).toBeNull(); // unselected: no label
+    // labels render for the SELECTED zone only — press its boundary first
+    d2.querySelector('#layout-board-zones-g path')!.dispatchEvent(
+      new w2.MouseEvent('pointerdown', { bubbles: true, button: 0, clientX: 55, clientY: 80.2 }),
+    );
     const label = d2.getElementById('layout-board-zone-labels')!.querySelector('text')!;
     expect(label.textContent).toBe('VCC · F.Cu · no fill (no VCC copper inside)');
     expect(label.closest('#yflip')).toBeNull();
@@ -305,6 +310,10 @@ describe('the zone tool draws pours and keepouts', () => {
     const { w, d, clickTwoCorners, openZoneTools } = await boot()
     openZoneTools(), (d.getElementById('zone-draw') as HTMLButtonElement).click();
     clickTwoCorners(40, 40, 70, 80);
+    // label shows once the pending zone is selected
+    (d.querySelector('#layout-zones rect') as SVGRectElement).dispatchEvent(
+      new w.MouseEvent('pointerdown', { bubbles: true, button: 0 }),
+    );
     const labels = d.getElementById('layout-zone-labels')!;
     expect(labels).toBeTruthy();
     // sibling of #yflip, never inside it — the flip's scale(1,-1) would
@@ -314,9 +323,9 @@ describe('the zone tool draws pours and keepouts', () => {
     // the label sits just below the zone's board-frame top edge (screen-like
     // y-down coordinates, no mirroring)
     expect(parseFloat(label.getAttribute('y')!)).toBeCloseTo(40.35, 2);
-    // strokes match the outline indicator's weight
+    // strokes match the outline indicator's SELECTED weight (the zone is selected for its label)
     const rect = d.querySelector('#layout-zones rect') as SVGRectElement;
-    expect(rect.getAttribute('stroke-width')).toBe('0.08');
+    expect(rect.getAttribute('stroke-width')).toBe('0.12');
   });
 
   it('a selected pending zone is removed by Del', async () => {
@@ -438,11 +447,19 @@ describe('stacked board zones are selectable', () => {
     // reassign to GND and apply the panel
     net.value = 'GND';
     (d.getElementById('pp-apply') as HTMLButtonElement).click();
-    // the pending edit carries the net and the boundary label follows it
+    // the pending edit carries the net and the selected zone's label follows it
     const label = d.querySelector('#layout-board-zone-labels text')!.textContent!;
     expect(label).toContain('GND · F.Cu');
     expect(label).not.toContain('VCC');
-    // apply & rebuild hands the net through the zone-edits payload
+    // undo restores the authored net, redo re-applies it
+    d.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'z', ctrlKey: true, bubbles: true }));
+    const label2 = d.querySelector('#layout-board-zone-labels text')!.textContent!;
+    expect(label2).toContain('VCC · F.Cu');
+    d.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Z', ctrlKey: true, shiftKey: true, bubbles: true }));
+    const labelR = d.querySelector('#layout-board-zone-labels text')!.textContent!;
+    expect(labelR).toContain('GND · F.Cu');
+    // apply & rebuild hands the net through the zone-edits payload (the
+    // apply consumes the session state — undo checks come before it)
     let got: Array<Record<string, unknown>> = [];
     (w as unknown as Record<string, unknown>).typecadLayoutApply = function (...args: unknown[]) {
       got = args[10] as Array<Record<string, unknown>>;
@@ -451,10 +468,6 @@ describe('stacked board zones are selectable', () => {
     (d.getElementById('layout-apply') as HTMLButtonElement).click();
     expect(got).toHaveLength(1);
     expect(got[0]!.net).toBe('GND');
-    // undo restores the authored net
-    d.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'z', ctrlKey: true, bubbles: true }));
-    const label2 = d.querySelector('#layout-board-zone-labels text')!.textContent!;
-    expect(label2).toContain('VCC · F.Cu');
   });
 
   it('a press or Tab inside the zone AREA finds the stack too', async () => {

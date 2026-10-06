@@ -81,7 +81,7 @@ describe('buildViewerHtml', () => {
     // trace under the cursor) — over copper the eyedropper keeps the key
     expect(html).not.toContain('<div id="image-tools">');
     expect(html).toContain('function imageToolsBind()');
-    expect(html).toContain('!eyedropTrack()) {');
+    expect(html).toContain('imageArm();');
   });
 
   it('does not persist un-applied board edits across sessions', () => {

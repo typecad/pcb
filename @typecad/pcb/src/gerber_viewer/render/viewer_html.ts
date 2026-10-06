@@ -5013,6 +5013,14 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       }
       if (ev.key === 'p' || ev.key === 'P') {
         ev.preventDefault();
+        // P picks: the eyedropper adopts the width of the trace under the
+        // cursor (or the live route continues from it)
+        eyedropWidth();
+        return;
+      }
+      if (ev.key === 'a' || ev.key === 'A') {
+        ev.preventDefault();
+        // A = amps: width for the net's solved current (IPC-2221)
         if (!routeState && (segSel.size || viaSel.size) && selectionPower()) return;
         powerWidth();
         return;
@@ -5031,31 +5039,28 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       }
       if (ev.key === 'i' || ev.key === 'I') {
         ev.preventDefault();
-        // I owns artwork placement when the eyedropper has nothing to grab —
-        // no selection, no live route, no trace under the cursor. The
-        // eyedropper keeps the key exactly when a width is there to adopt
-        if (!routeState && !segSel.size && !viaSel.size && !layoutSel.length && !eyedropTrack()) {
-          var ip = document.getElementById('props-pop');
-          if (!ip || ip.style.display === 'none') propsToggle(); // opens on the placement section
-          else propsBuild(); // already open — rebuild it onto the placement section
-          imageArm();
-          return;
-        }
-        eyedropWidth();
+        // I places artwork — sole owner of the key now that the eyedropper
+        // lives on P
+        var ip = document.getElementById('props-pop');
+        if (!ip || ip.style.display === 'none') propsToggle(); // opens on the placement section
+        else propsBuild(); // already open — rebuild it onto the placement section
+        imageArm();
         return;
       }
       if (ev.key === 'z' || ev.key === 'Z') {
         ev.preventDefault();
+        // Z draws zones — sole owner of the key now that impedance sizing
+        // lives on Y
+        var zp = document.getElementById('props-pop');
+        if (!zp || zp.style.display === 'none') propsToggle(); // opens on the zone section
+        else propsBuild(); // already open — rebuild it onto the zone section
+        zoneArm();
+        return;
+      }
+      if (ev.key === 'y' || ev.key === 'Y') {
+        ev.preventDefault();
+        // Y sizes for 50 Ω on that layer (stackup solve)
         if (!routeState && (segSel.size || viaSel.size) && selectionImpedance()) return;
-        // nothing selected and no live route: Z owns the zone tool — the
-        // impedance sizing keeps the key whenever ink owns it
-        if (!routeState && !segSel.size && !viaSel.size && !layoutSel.length) {
-          var zp = document.getElementById('props-pop');
-          if (!zp || zp.style.display === 'none') propsToggle(); // opens on the zone section
-          else propsBuild(); // already open — rebuild it onto the zone section
-          zoneArm();
-          return;
-        }
         impedanceWidth();
         return;
       }
@@ -6634,7 +6639,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   function impedanceWidth() {
     if (!routeState) {
       if (statusEl && !statusLocked())
-        statusEl.textContent = 'press X on a pad first \u2014 Z sizes for ' + Z0_TARGET + ' \u03a9 on that layer';
+        statusEl.textContent = 'press X on a pad first \u2014 Y sizes for ' + Z0_TARGET + ' \u03a9 on that layer';
       return;
     }
     var piece = curPiece();
@@ -6703,7 +6708,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   function powerWidth() {
     if (!routeState) {
       if (statusEl && !statusLocked())
-        statusEl.textContent = 'press X on a pad first \u2014 P sizes for that net\u2019s current';
+        statusEl.textContent = 'press X on a pad first \u2014 A sizes for that net\u2019s current';
       return;
     }
     var cur = netCurrent(routeState.net);
@@ -7648,7 +7653,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   function eyedropWidth() {
     var bestTrack = eyedropTrack();
     if (!bestTrack) {
-      if (statusEl && !statusLocked()) statusEl.textContent = 'hover a trace first \u2014 I adopts its width';
+      if (statusEl && !statusLocked()) statusEl.textContent = 'hover a trace first \u2014 P adopts its width';
       return;
     }
     var w = parseFloat(bestTrack.getAttribute('data-w') || '0');
@@ -7677,9 +7682,9 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     ['R', 'rotate the selection 90\u00b0'],
     ['Shift+F', 'flip the selected part(s) to the other side \u2014 apply writes side into source'],
     ['zones & artwork', null, null],
-    ['draw zone', 'Z arms it (nothing selected) \u2014 kind, layer and net in the E panel, then click two corners on the board'],
+    ['draw zone', 'Z arms it \u2014 kind, layer and net in the E panel, then click two corners on the board'],
     ['click a zone', 'selects it — anywhere inside its area or on its boundary; a press on an already-selected zone advances to the next in the stack (Tab cycles the stack too); zones on hidden layers leave the stack'],
-    ['place image', 'I arms it (nothing under the cursor) \u2014 side in the E panel, pick a PNG, click drops its center; E resizes, Del removes'],
+    ['place image', 'I arms it \u2014 side in the E panel, pick a PNG, click drops its center; E resizes, Del removes'],
     ['click artwork', 'select placed artwork — E moves/resizes/flips/replaces the file, Del removes it'],
     ['Del', 'remove the selected pending zone or artwork'],
     ['outline', null, null],
@@ -7708,9 +7713,11 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     ['\\', 'back to the net\u2019s default width'],
     ['Shift+\\', 're-couple the via size to the trace width'],
     ['W', 'open the width picker'],
-    ['P', 'width for the net\u2019s solved current (IPC-2221)'],
-    ['I', 'arms artwork placement when nothing is under the cursor (options in the E panel); over a trace, adopts its width'],
-    ['Z', 'arms the zone tool when nothing is selected (options in the E panel); with a trace/via selected or a route live, width for 50 \u03a9 on that layer'],
+    ['P', 'pick \u2014 adopt the width of the trace under the cursor'],
+    ['Y', 'width for 50 \u03a9 on that layer (stackup solve)'],
+    ['A', 'width for the net\u2019s solved current (IPC-2221)'],
+    ['I', 'arms artwork placement (options in the E panel)'],
+    ['Z', 'arms the zone tool (kind, layer and net in the E panel)'],
   ];
   var helpEl = document.createElement('div');
   helpEl.id = 'keys-help';
@@ -13932,7 +13939,7 @@ ${rows}
         : ''
     }
     <button id="btn-measure" title="measure: click start, click end — rulers stick; Esc clears all">&#x1F4CF;</button>
-    <button id="btn-width" title="trace [ ] / via Shift+[ ] sizing (Alt ±0.01, may cross the board min) · P sizes for the net’s current · Z sizes for 50 Ω · \ and Shift+\ reset · W opens the picker" hidden>auto</button>
+    <button id="btn-width" title="trace [ ] / via Shift+[ ] sizing (Alt ±0.01, may cross the board min) · A sizes for the net’s current · Y sizes for 50 Ω · P picks a width off copper · \ and Shift+\ reset · W opens the picker" hidden>auto</button>
     <button id="btn-drc" class="has-drc-hidden" title="toggle DRC violation markers" hidden>DRC</button>
   </div>
   </div>

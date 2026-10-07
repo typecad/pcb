@@ -57,7 +57,7 @@ describe('gitdiff native layer renders', () => {
     const front = await renderLayerSvgCached('F.Cu', board);
     expect(front).toContain('rgb(48, 222, 102)');
     const back = await renderLayerSvgCached('B.Cu', board);
-    expect(back).toContain('rgb(29, 167, 88)'); // back copper
+    expect(back).toContain('rgb(72, 148, 235)'); // back copper
     // explicit theme overrides the default
     const kicad = await renderLayerSvgCached('F.Cu', board, 'KiCad Default');
     expect(kicad).toContain('rgb(200, 52, 52)'); // kicad-2020 front copper

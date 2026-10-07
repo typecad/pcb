@@ -625,4 +625,103 @@ export function syncBoard(typecad: PCB, parts: Record<string, Component>): void 
     expect(plan.counts.images).toBe(0);
     expect(plan.skipped.some((s) => s.includes('image logo.png'))).toBe(true);
   });
+
+  it('a literal-less zone delete skips exactly once, not once per file', () => {
+    // live session: one zone delete on a four-file project logged five
+    // near-identical skip lines (a per-file planner skip plus the final
+    // aggregate). The never-matched input must report ONE line total, and
+    // it must carry the plane-materialized explanation.
+    const zoneDelete = { x: 144.236, y: 78.875, w: 3, h: 2.242, layer: 'F.Cu' };
+    const { plan, texts } = run(
+      [
+        { uri: 'file:///src/board.ts', text: project() },
+        { uri: 'file:///src/other.ts', text: project() },
+        { uri: 'file:///src/third.ts', text: project() },
+        { uri: 'file:///src/_sync.ts', text: '' },
+      ],
+      baseInput({ zoneDeletes: [zoneDelete], syncUri: 'file:///src/_sync.ts' }),
+    );
+    expect(plan.counts.zoneDeletes).toBe(0);
+    const zoneSkips = plan.skipped.filter((s) => s.includes('zone delete'));
+    expect(zoneSkips).toHaveLength(1);
+    expect(zoneSkips[0]).toContain('no removable literal');
+    expect(zoneSkips[0]).toContain('plane-materialized or import-authored');
+    expect(zoneSkips[0]).toContain('144.236,78.875');
+    // nothing was planned anywhere — every file's text is untouched
+    for (const f of ['file:///src/board.ts', 'file:///src/other.ts', 'file:///src/third.ts']) {
+      expect(texts.get(f)).toBe(project());
+    }
+  });
+
+  it('deletes a polygon (points) zone the import absorbed into source', () => {
+    // the live session's zone, post-auto-reconcile: _sync.ts carries an
+    // L-shaped pour as points; the page's delete reports its bounding box.
+    // The delete must remove the statement — source is the source of
+    // truth, and this zone IS source-owned.
+    const syncUri = 'file:///src/_sync.ts';
+    const poly =
+      "import { zone } from '@typecad/pcb';\nexport function syncBoard(typecad) {\n" +
+      "  typecad.zone({ layers: ['F.Cu'], points: [{ x: 144.236, y: 78.875 }, { x: 147.207, y: 78.875 }, { x: 147.187, y: 79.929 }, { x: 145.386, y: 79.948 }, { x: 145.386, y: 81.155 }, { x: 144.236, y: 81.117 }], priority: 1 });\n" +
+      '}\n';
+    const { plan, texts } = run(
+      [
+        { uri: 'file:///src/board.ts', text: project() },
+        { uri: syncUri, text: poly },
+      ],
+      baseInput({
+        zoneDeletes: [{ x: 144.236, y: 78.875, w: 2.971, h: 2.28, layer: 'F.Cu' }],
+        syncUri,
+      }),
+    );
+    expect(plan.counts.zoneDeletes).toBe(1);
+    expect(plan.skipped).toEqual([]);
+    expect(texts.get(syncUri)!).not.toContain('typecad.zone');
+    expectValidTs(texts.get(syncUri)!);
+  });
+
+  it('routes land in the entry track section when one exists — byte-canonically', () => {
+    // the source-of-truth model: when routing already lives in the
+    // write-back's per-net section grammar, new routes join IT exactly as
+    // the oracle would render them, so the apply leaves nothing to
+    // reconcile (verified live: build then check-sync reports in sync).
+    // The sidecar is NOT touched.
+    const syncUri = 'file:///src/_sync.ts';
+    const entryWithSection = [
+      "import { PCB, Component, TrackBuilder } from '@typecad/pcb';",
+      "const typecad = new PCB('demo', {});",
+      "const r1 = new Component({ reference: 'R1' });",
+      'r1.pcb = { x: 10, y: 10 };',
+      '',
+      '// Net: VCC',
+      'const track_VCC: TrackBuilder[] = [];',
+      'track_VCC.push(typecad.track({ net: \'VCC\' }).from({ x: 1, y: 2 }, "F.Cu", 0.3).to({ x: 3, y: 2, layer: "F.Cu", width: 0.3 }));',
+      '',
+      'typecad.create(',
+      '  r1,',
+      '  ...track_VCC',
+      ');',
+      '',
+    ].join('\n');
+    const { plan, texts } = run(
+      [
+        { uri: 'file:///src/board.ts', text: entryWithSection },
+        { uri: syncUri, text: '' },
+      ],
+      baseInput({
+        routes: [{ net: 'VCC', w: 0.2, pieces: [{ layer: 'F.Cu', pts: [{ x: 10.5, y: 10 }, { x: 12, y: 10 }] }], vias: [], from: { ref: 'R1', pin: '1' }, to: null }],
+        syncUri,
+        entryUri: 'file:///src/board.ts',
+      }),
+    );
+    expect(plan.counts.routes).toBe(1);
+    expect(plan.skipped).toEqual([]);
+    const entry = texts.get('file:///src/board.ts')!;
+    expect(entry).toContain(
+      'track_VCC.push(typecad.track({ net: \'VCC\' }).from({ x: 10.5, y: 10 }, "F.Cu", 0.2).to({ x: 12, y: 10, layer: "F.Cu", width: 0.2 }));',
+    );
+    expectValidTs(entry);
+    // the sidecar stays untouched — no sidecar hop, nothing to consolidate
+    expect(texts.get(syncUri)).toBe('');
+    expect(plan.syncFile).toBeNull();
+  });
 });

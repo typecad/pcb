@@ -781,6 +781,21 @@ export function computeRoutingChanges(ir: KicadIR, sourceFiles: string[]): Sourc
       );
       continue;
     }
+    // Name-collision guard: the regenerated block re-declares the `track_<NET>`
+    // arrays, so any declaration in THIS file carrying one of those names must
+    // die with the section. The push-pairing above skips an orphan — a net
+    // whose pushes a layout-view segment delete removed, leaving `const
+    // track_X: TrackBuilder[] = [];` — and the surviving orphan beside the
+    // regenerated block is a duplicate identifier the parse gate refuses the
+    // whole cycle for (seen live on mod-ec). Same name = the same net's array;
+    // unrelated declarations (the sidecar's syncTracks collector, a user's own
+    // arrays) never share the track_<NET> names and stay untouched.
+    for (const d of analysis.arrayDeclarations) {
+      if (!variables.includes(d.name)) continue;
+      if (members.some((m) => m.start === d.statementRange.start && m.end === d.statementRange.end)) continue;
+      members.push({ start: d.statementRange.start, end: d.statementRange.end, kind: 'decl' });
+    }
+    members.sort((a, b) => a.start - b.start);
     let contiguous = true;
     for (let i = 1; i < members.length; i++) {
       const gap = source.slice(members[i - 1].end, members[i].start);

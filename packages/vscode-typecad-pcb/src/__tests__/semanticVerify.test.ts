@@ -283,3 +283,87 @@ describe('board artwork (image ink)', () => {
     expect(elsewhere.ok).toBe(false);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Live-report regressions from rd_skeleton: the board mixes serializations
+// (split-style footprints, single-line segments) and rip-up-and-redraw
+// gestures delete a leg and re-add the same path at a new width in one
+// apply.
+// ---------------------------------------------------------------------------
+describe('verifyBoardSemantics serialization + redraw regressions', () => {
+  it('parses split-style (pcbnew-10) footprint blocks for placements', () => {
+    const board = [
+      '(kicad_pcb (version 20260206)',
+      '  (',
+      '    footprint',
+      '    (layer "F.Cu")',
+      '    (at 133.614 80.708 180)',
+      '    (property "Reference" "R5" (at 0 0 0))',
+      '  )',
+      ')',
+    ].join('\n');
+    const report = verifyBoardSemantics(board, {
+      routes: [], deletes: [],
+      placements: [{ ref: 'R5', x: 133.614, y: 80.708 }],
+      texts: [],
+    });
+    expect(report.misses).toEqual([]);
+  });
+
+  it('a rip-up-and-redraw over the same path is not a failed delete', () => {
+    // the deleted leg (width 0.2) and the gesture's own new route leg
+    // (width 0.15) share the path — the "still present" copper IS the
+    // redraw, not the old trace surviving
+    const board = '(kicad_pcb (segment (start 131.24 81.7) (end 131.797 81.7) (width 0.15) (layer "F.Cu") (net 3 "DRIVE")))';
+    const report = verifyBoardSemantics(board, {
+      routes: [{ net: 'DRIVE', pieces: [{ layer: 'F.Cu', pts: [{ x: 131.24, y: 81.7 }, { x: 131.797, y: 81.7 }] }], vias: [] }],
+      deletes: [{ net: 'DRIVE', x1: 131.24, y1: 81.7, x2: 131.8, y2: 81.7, layer: 'F.Cu' }],
+      placements: [], texts: [],
+    });
+    expect(report.misses).toEqual([]);
+  });
+
+  it('a genuinely surviving delete still flags', () => {
+    const board = '(kicad_pcb (segment (start 1 2) (end 3 4) (width 0.2) (layer "F.Cu") (net 1 "VCC")))';
+    const report = verifyBoardSemantics(board, {
+      routes: [],
+      deletes: [{ net: 'VCC', x1: 1, y1: 2, x2: 3, y2: 4, layer: 'F.Cu' }],
+      placements: [], texts: [],
+    });
+    expect(report.misses.join(' ')).toContain('STILL on the rebuilt board');
+  });
+});
+
+describe('verifyBoardSemantics placement parsing with provenance properties', () => {
+  it('the placement (at) is not the Code property\'s (at 0 0)', () => {
+    // live defect: typeCAD\'s provenance property — (property "Code"
+    // "typecad:v1:…" (at 0 0 0) …) — precedes the footprint\'s own
+    // placement, so the first-(at) heuristic read 0,0 and every move
+    // verified as "sits at 0.00,0.00" while the move had landed perfectly
+    const board = [
+      '(kicad_pcb (version 20260206)',
+      '  (',
+      '    footprint',
+      '    "Resistor_SMD:R_0603_1608Metric"',
+      '    (property "Code" "typecad:v1:eyJ2Ijox" (at 0 0 0) (layer "F.Fab") (hide yes))',
+      '    (at 133.614 81.72 180)',
+      '    (layer "F.Cu")',
+      '    (property "Reference" "R5" (at 0 -1.43 0) (layer "F.SilkS"))',
+      '  )',
+      ')',
+    ].join('\n');
+    const report = verifyBoardSemantics(board, {
+      routes: [], deletes: [],
+      placements: [{ ref: 'R5', x: 133.614, y: 81.72 }],
+      texts: [],
+    });
+    expect(report.misses).toEqual([]);
+    // and a genuinely wrong expected position still flags with the REAL position named
+    const wrong = verifyBoardSemantics(board, {
+      routes: [], deletes: [],
+      placements: [{ ref: 'R5', x: 130, y: 80 }],
+      texts: [],
+    });
+    expect(wrong.misses.join(' ')).toContain('sits at 133.61,81.72');
+  });
+});

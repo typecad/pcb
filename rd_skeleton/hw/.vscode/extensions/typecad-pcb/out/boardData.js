@@ -7,12 +7,12 @@
 // when build/*.kicad_pcb changes.
 // ---------------------------------------------------------------------------
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.BoardDataService = exports.DEFAULT_TIMEOUT_MS = void 0;
+exports.BoardDataService = void 0;
 const query_js_1 = require("./query.js");
 const match_js_1 = require("./match.js");
-exports.DEFAULT_TIMEOUT_MS = 15_000;
+const DEFAULT_TIMEOUT_MS = 15_000;
 class BoardDataService {
-    constructor(run, timeoutMs = exports.DEFAULT_TIMEOUT_MS) {
+    constructor(run, timeoutMs = DEFAULT_TIMEOUT_MS) {
         this.run = run;
         this.timeoutMs = timeoutMs;
         this.cwd = null;

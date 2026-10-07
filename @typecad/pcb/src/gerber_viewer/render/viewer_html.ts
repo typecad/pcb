@@ -296,9 +296,17 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   // A host render notice (the vscode extension's "generating new render…")
   // sets data-locked and owns the line until it is cleared or the page
   // reloads; the viewer's own readouts stand down so a moved mouse cannot
-  // overwrite it.
+  // overwrite it. The lock is not forever: the notice promises the render
+  // that will reload this page, and if that render never comes (the host's
+  // rebuild chain stalled), a stale lock would freeze the readout — the
+  // page reclaims the line once the notice has gone stale. The timestamp
+  // comes from the injected probe client; a client without it (older host)
+  // locks the old way and is never treated as stale.
   function statusLocked() {
-    return !!statusEl && statusEl.hasAttribute('data-locked');
+    if (!statusEl || !statusEl.hasAttribute('data-locked')) return false;
+    var at = Number(statusEl.getAttribute('data-locked-at'));
+    if (at && Date.now() - at > 120000) return false;
+    return true;
   }
   var units = svg.getAttribute('data-units') || 'mm';
 
@@ -1797,6 +1805,14 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     var s2 = Math.sin(t);
     return { x: ox * c2 + oy * s2, y: ox * s2 - oy * c2 };
   }
+  /** the plotter's keep-upright for footprint texts (layers.ts
+   *  drawTextItem): an angle in the upside-down half (90, 270] plots
+   *  pre-flipped, so AUTHORED strokes already read upright in the gerber —
+   *  ghosts must compare against this baseline, not flip absolutely */
+  function kupFlipDeg(deg) {
+    var d = ((deg % 360) + 360) % 360;
+    return d > 90 && d <= 270 ? 180 : 0;
+  }
   // the moved component's whole footprint ink — pads, mask/paste openings,
   // fab/courtyard/silkscreen outlines (all carry data-ref from the X2
   // attributes) plus its drill hits, which carry no attributes of their own
@@ -2011,17 +2027,19 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       ownTr = 'rotate(' + m.rot * 90 + ',' + ex + ',' + ey + ') translate(' + m.ox + ',' + m.oy + ')';
     }
     var tr = ownTr && compTr ? ownTr + ' ' + compTr : ownTr || compTr;
-    // keep-upright (KiCad's default for fp_texts): a total angle in the
-    // upside-down half flips 180° about the label's transported anchor, so
-    // a part's labels always read left→right when horizontal and
-    // bottom→top when vertical — same rule the gerber plotter applies, so
-    // the preview and the rebuilt board agree
+    // keep-upright (KiCad's default for fp_texts): the PLOTTER bakes the
+    // rule into the authored strokes — an angle in the upside-down half
+    // plots pre-flipped, so the glyphs already read upright in the gerber.
+    // The ghost flips 180° about the label's transported anchor only when
+    // the pending presses move the label ACROSS the boundary; a plain move
+    // must leave the orientation alone (seen live: C6/C3/D1 — labels
+    // authored at rot 180 — turned upside-down, glyph-identical to a
+    // mirror, the moment their part moved)
     var flipTr = '';
     if (t.ref) {
       var compRot = layoutRot[t.ref] || (layoutMoves[t.ref] ? layoutMoves[t.ref].rot || 0 : 0);
       var total = (t.rot || 0) + compRot * 90 + (m && m.rot ? m.rot * 90 : 0);
-      var tn = ((total % 360) + 360) % 360;
-      if (tn > 90 && tn <= 270) {
+      if (kupFlipDeg(total) !== kupFlipDeg(t.rot || 0)) {
         var fa = labelBase(i);
         var fx = fa.x + (m ? m.ox || 0 : 0);
         var fy = fa.y + (m ? m.oy || 0 : 0);
@@ -2123,15 +2141,23 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     var y = eff.y;
     var flip = t.side === 'back' ? -1 : 1;
     var tr = 'translate(' + x + ',' + y + ') scale(' + flip + ',' + -flip + ')';
-    if (m && m.rot) tr += ' rotate(' + m.rot * 90 * flip + ')';
-    // keep-upright, same rule as the stroke ghost and the plotter: the
-    // composed angle's upside-down half flips 180°, so an edited label
-    // previews readable on rotated parts too
+    // the preview <text> stands in upright and rotates to the direction the
+    // rebuild will PLOT — the part's presses and the label's own fold into
+    // one angle, then the plotter's keep-upright normalizes it (upside-down
+    // half flips 180), the same baseline-relative rule the stroke ghost
+    // uses, so an edited label on a moved/rotated part previews like the
+    // final board instead of flipping glyphs that were authored upright
     if (t.ref) {
       var cpr = layoutRot[t.ref] || (layoutMoves[t.ref] ? layoutMoves[t.ref].rot || 0 : 0);
       var tt = ((t.rot || 0) + cpr * 90 + (m && m.rot ? m.rot * 90 : 0)) % 360;
       if (tt < 0) tt += 360;
-      if (tt > 90 && tt <= 270) tr += ' rotate(180)';
+      if (tt > 90 && tt <= 270) tt -= 180; // plot direction after keep-upright
+      if (tt) tr += ' rotate(' + tt * flip + ')';
+    } else if (m && m.rot) {
+      // board-level gr_text keeps its authored angle (the plotter applies
+      // keep-upright to footprint texts only) — the preview rotates only by
+      // the label's own pending presses
+      tr += ' rotate(' + m.rot * 90 * flip + ')';
     }
     st.preview.setAttribute('transform', tr);
   }
@@ -2296,6 +2322,32 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
    *  layout overlay itself — the overlay's invisible part handles sit above
    *  every layer, so silk/fab text inside a component body can only be
    *  reached by walking the hit-test stack beneath them */
+  /** Is a screen point within a few pixels of a stroke path's actual ink?
+    *  Sampled along the path in SCREEN space (getScreenCTM), so transforms
+    *  never matter. This is the AIM test that elementsFromPoint cannot
+    *  provide: that API ignores pointer-events and paint order, listing a
+    *  silk glyph stacked anywhere beneath the part handle — and every
+    *  press on a small part (its refdes sits under the whole body)
+    *  delegated to the text handler, grabbing the label instead of the
+    *  part (seen live: C6/C3/D1 "mirrored" as their text ghost engaged,
+    *  U3 unselectable). */
+  function pointNearPathInk(el, clientX, clientY, tolPx) {
+    var len, ctm;
+    try {
+      len = el.getTotalLength();
+      ctm = el.getScreenCTM();
+    } catch (e) {
+      return false;
+    }
+    if (!ctm || !len || !isFinite(len)) return false;
+    var steps = Math.max(8, Math.ceil(len / 0.15));
+    for (var s = 0; s <= steps; s++) {
+      var pt = el.getPointAtLength((len * s) / steps);
+      var sp = pt.matrixTransform(ctm);
+      if (Math.hypot(sp.x - clientX, sp.y - clientY) <= tolPx) return true;
+    }
+    return false;
+  }
   function textUnderPointer(ev) {
     if (typeof document.elementsFromPoint !== 'function') return -1;
     var stack;
@@ -2312,7 +2364,12 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       var dt = se.getAttribute('data-text');
       if (dt === null || dt === '') continue;
       var ti = parseInt(dt, 10);
-      if (layoutTexts[ti]) return ti;
+      if (!layoutTexts[ti]) continue;
+      // stacked under the pointer is not the same as AIMED at: only a
+      // press on the glyph's own ink claims the text — anything else on
+      // the part body belongs to the part
+      if (se.tagName === 'path' && !pointNearPathInk(se, ev.clientX, ev.clientY, 6)) continue;
+      return ti;
     }
     return -1;
   }
@@ -3195,6 +3252,16 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     // courtyard, silkscreen and drills land at the new position, bright,
     // exactly like KiCad; nothing of the part lingers at the old spot
     applyCompGhost(g);
+    // a live route's obstacle caches were built against the PRE-move ink —
+    // rebuild them so the halo and the armed via's keep-out see this part
+    // where it now sits (and stop seeing it where it was)
+    if (routeState) {
+      routeState.viaObsCache = null;
+      for (var rp = 0; rp < routeState.pieces.length; rp++) {
+        var rpiece = routeState.pieces[rp];
+        if (rpiece && rpiece.layerGroup) rpiece.obstacles = buildObstacles(rpiece.layerGroup, routeState.net);
+      }
+    }
     // rip up: the net's ROUTING leaves until a rebuild regenerates it —
     // traces and vias only, and only AUTOROUTER nets: a manual or mixed
     // net's copper is a TrackBuilder polyline authored in source, it stays
@@ -4871,6 +4938,11 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       }
     }
     if (bestSeg) cands.push({ kind: 'seg', el: bestSeg });
+    // a via under the cursor joins the cycle — including one beneath a
+    // component body, which DOM picking can never reach (the part's own
+    // graphics swallow the hit); the barrel test sees through it
+    var cycleVia = viaUnderCursor(lastMouseG);
+    if (cycleVia) cands.push({ kind: 'via', el: cycleVia });
     var compEl = document.elementFromPoint ? document.elementFromPoint(lastMouseC.x, lastMouseC.y) : null;
     var compG = compEl && compEl.closest ? compEl.closest('.layout-comp') : null;
     if (compG) cands.push({ kind: 'comp', g: compG });
@@ -4903,6 +4975,24 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       if (n && n !== 'N/C') highlightNet('data-net', n);
       if (statusEl && !statusLocked())
         statusEl.textContent = 'segment' + (n && n !== 'N/C' ? ' [' + n + ']' : '') + ' \u2014 Del removes, Tab cycles';
+    } else if (c.kind === 'via') {
+      // selection semantics mirror the click path: sole via, its net lit,
+      // the route start armed at the barrel center
+      clearPadHighlight();
+      viaSel.add(c.el);
+      viaHiSync();
+      var vstart = viaInkPos(c.el);
+      setTraceHighlight({
+        gx: vstart.x,
+        gy: vstart.y,
+        net: c.el.getAttribute('data-net'),
+        kind: 'via',
+        layerGroup: c.el.closest("g[data-kind='copper']"),
+      });
+      var vn = c.el.getAttribute('data-net');
+      if (vn && vn !== 'N/C') highlightNet('data-net', vn);
+      if (statusEl && !statusLocked())
+        statusEl.textContent = 'via' + (vn && vn !== 'N/C' ? ' [' + vn + ']' : '') + ' \u2014 Del removes, Tab cycles';
     } else if (c.kind === 'zone') {
       clearPadHighlight();
       layoutSel = [];
@@ -4951,9 +5041,12 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         return;
       }
       // Tab cycles the hover target under the cursor (pad / segment / part)
+      // — while a route is live it cycles the COPPER LAYER the next segment
+      // draws on instead (start of a route, or the continuation after a via)
       if (ev.key === 'Tab') {
         ev.preventDefault();
-        cycleHits();
+        if (routeState) cycleRouteLayer();
+        else cycleHits();
         return;
       }
       // Shift+D disperses stacked footprints below the board
@@ -5344,21 +5437,34 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       }
       if (layoutSel.length) {
         var nudgeRefs = layoutSel.slice();
-        // parts get the same DRC gate the ink nudges obey: a step that puts
-        // a pad into clearance violation is refused with a red flash
-        if (partNudgeViolation(nudgeRefs, d[0], d[1])) {
-          for (var rf = 0; rf < nudgeRefs.length; rf++) flashPartGhost(nudgeRefs[rf]);
-          if (statusEl && !statusLocked())
-            statusEl.textContent = 'nudge refused \u2014 clearance violation';
-          return;
-        }
+        // the nudge LANDS like the M-drag does — no hard DRC gate: a
+        // densely routed board boxed parts in completely (seen live:
+        // C6/U3 refused all four directions while the drag walked the
+        // same corridor). The verdict is advisory: the ghost flashes red
+        // and the status says DRC when a pad lands in clearance violation
+        var nudgeBad = partNudgeWarning(nudgeRefs, d[0], d[1]);
         var nudgeBefore = snapMoves(nudgeRefs);
         var nudgeRipBefore = layoutRipped.length;
+        var nudgeLast = null;
         for (var ns = 0; ns < nudgeRefs.length; ns++) {
           var gNudge = layoutOverlay.querySelector('[data-ref="' + cssEsc(nudgeRefs[ns]) + '"]');
           if (!gNudge) continue;
           setCompPos(gNudge, gNudge.__lx + d[0], gNudge.__ly + d[1]);
+          nudgeLast = gNudge;
           commitLayoutMove(gNudge);
+        }
+        // a landed nudge answers in the status bar like the M-drag does —
+        // the cursor readout alone made a successful nudge read as a no-op
+        if (nudgeLast && statusEl && !statusLocked())
+          statusEl.textContent =
+            nudgeRefs.join(', ') +
+            ' \u2192 ' +
+            fmtPos(nudgeLast.__lx) +
+            ', ' +
+            fmtPos(-nudgeLast.__ly) +
+            (nudgeBad ? ' \u2014 clearance violation, DRC will flag it' : '');
+        if (nudgeBad) {
+          for (var rf = 0; rf < nudgeRefs.length; rf++) flashPartGhost(nudgeRefs[rf]);
         }
         var nudgeAfter = snapMoves(nudgeRefs);
         var nudgeRipped = layoutRipped.slice(nudgeRipBefore);
@@ -6419,9 +6525,12 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     if (routeState.halo) routeState.halo.setAttribute('class', cls);
     for (var i = 0; i < routeState.pieces.length; i++)
       if (routeState.pieces[i].haloEl) routeState.pieces[i].haloEl.setAttribute('class', cls);
-    var vcls = 'route-via-halo' + (state === 'bad' ? ' bad' : '');
-    routeUiGroup().querySelectorAll('.route-via-halo').forEach(function (v) {
-      v.setAttribute('class', vcls);
+      routeUiGroup().querySelectorAll('.route-via-halo').forEach(function (v) {
+      // TOGGLE, never replace: the armed-via preview's halo carries
+      // route-via-preview beside this class — a wholesale class swap
+      // stripped it, freezing the ring where V was pressed (it left the
+      // follow/update/cleanup selectors) and stranding it on disarm
+      v.classList.toggle('bad', state === 'bad');
     });
   }
   /** resize every pending via keep-out ring to the route's current via */
@@ -6500,9 +6609,18 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       // engine's job, and same-net pours blanket the whole board area —
       // blocking them here would make every corridor unreachable
       if (el.getAttribute('fill-rule')) continue;
+      // ripped ink (a moved part's nets' copper pending rebuild) is
+      // display:none — invisible copper is not copper until the rebuild
+      // re-routes it
+      if (el.getAttribute('display') === 'none') continue;
+      // a moved part's ink carries its ghost as the element's OWN
+      // transform, which getBBox ignores — fold it in (boxInParent) so the
+      // obstacle travels with the part: a halo must redden where the part
+      // WENT and stop reddening where it was (seen live: traces through a
+      // part's old spot stayed red while its new spot welcomed them)
       var bb;
       try {
-        bb = el.getBBox();
+        bb = boxInParent(el);
       } catch (e) {
         continue;
       }
@@ -6518,6 +6636,12 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       var eroute = el.getAttribute('data-route');
       if (!enet && !eref && !eroute) continue;
       var sw = parseFloat(el.getAttribute('stroke-width') || '0') || 0;
+      // the same ghost transform, for the centerline read below
+      var tm = null;
+      try {
+        var tb = el.transform && el.transform.baseVal ? el.transform.baseVal.consolidate() : null;
+        if (tb) tm = tb.matrix;
+      } catch (e2) {}
       // TRACKS carry their true centerline: a diagonal polyline's bbox is
       // far fatter than its copper, and every clearance verdict (route
       // halo, segment drag, nudge gate) measured against the box refused
@@ -6526,7 +6650,17 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       var poly = null;
       if (el.tagName === 'path') {
         var verts = parsePathVerts(el.getAttribute('d'));
-        if (verts && verts.length >= 2) poly = verts;
+        if (verts && verts.length >= 2) {
+          poly = verts;
+          if (tm) {
+            poly = [];
+            for (var vi = 0; vi < verts.length; vi++) {
+              var vx = verts[vi][0];
+              var vy = verts[vi][1];
+              poly.push([tm.a * vx + tm.c * vy + tm.e, tm.b * vx + tm.d * vy + tm.f]);
+            }
+          }
+        }
       }
       var ocls = netClassFor(enet);
       obs.push({
@@ -6556,7 +6690,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   // The ROUTE ORIGIN sits inside the start pad's own copper — samples within
   // the start pad's extent are the pad we are leaving, not a violation, so
   // they are measured only past the pad's edge.
-  function clearanceMargin(obs, pts, w) {
+  function clearanceMargin(obs, pts, w, skipEdge) {
     var need = w / 2 + clearanceRule();
     var worst = Infinity;
     var skipR = routeState && routeState.startPad ? Math.max(routeState.startPad.w, routeState.startPad.h) / 2 : 0;
@@ -6573,8 +6707,12 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
           if (Math.hypot(px - sc.x, py - sc.y) < skipR) continue;
         }
         // the board edge keeps its own clearance (off the board = instant red)
-        var em = edgeMarginAt(px, py);
-        if (em < worst) worst = em;
+        // — unless the caller opted out (the part nudge gate: edge connectors
+        // overhang the outline by design, so the edge is no part obstacle)
+        if (!skipEdge) {
+          var em = edgeMarginAt(px, py);
+          if (em < worst) worst = em;
+        }
         for (var oi = 0; oi < obs.length; oi++) {
           var o = obs[oi];
           // quick reject: >3mm clear of the box on ANY axis is already past
@@ -6966,6 +7104,31 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       if (bb.width > 0.2 && bb.width <= 3) return bb.width;
     } catch (er) {}
     return 0;
+  }
+  /** a barrel's keep-out is violated by another BARREL whatever the nets
+   *  say — holes and annuli this close are a DRC defect even same-net
+   *  (KiCad's hole-to-hole rule is net-agnostic), and the netted-copper
+   *  tests rightly exempt the route's own net (via-in-pad, via-on-trace
+   *  are connections), which is how an armed via once sailed onto a
+   *  same-net barrel. The threshold matches the visible affordance: the
+   *  arm preview's OUTER ring (barrel + clearance) touching the other
+   *  barrel — red and refusal begin where the rings meet, not where the
+   *  copper does */
+  function viaOverlapsVia(x, y, size) {
+    // committed/plotted barrels, plus this route's own already-placed ones
+    // (their data-route stamp only lands at commit — viaInk misses them
+    // mid-route, exactly when a second via might land on the first)
+    var ink = viaInk();
+    var live = routeUi ? routeUi.querySelectorAll('circle.route-via') : [];
+    var clr = clearanceRule();
+    for (var i = 0; i < ink.length + live.length; i++) {
+      var el = i < ink.length ? ink[i] : live[i - ink.length];
+      var p = viaInkPos(el);
+      var other = viaInkSize(el);
+      if (!other) continue;
+      if (Math.hypot(p.x - x, p.y - y) < (size + other) / 2 + clr) return true;
+    }
+    return false;
   }
   function viaInkLayers(el) {
     // the copper layers carrying this barrel's ink, stackup-ordered
@@ -7770,7 +7933,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     ['click an edge', 'select the board outline — E sets x/y/w/h, arrows nudge it'],
     ['apply', 'rewrites the pcb.outline(…) literal with the new rect'],
     ['Shift+D', 'disperse stacked footprints below the board'],
-    ['Tab', 'cycle pad / trace / part / zone under the cursor'],
+    ['Tab', 'cycle the copper layer while routing (the via\u2019s target follows) \u00b7 otherwise cycle pad / trace / part / zone under the cursor'],
     ['U', 'grow the segment selection along the net'],
     ['Del', 'delete the selected segments and vias, or the selected part(s) — Apply removes them from source'],
     ['E', 'properties: part ref/value/placement/side + pin nets \u00b7 trace width/layer \u00b7 via \u2300/drill \u00b7 text content/style \u00b7 zone/outline/artwork panels \u00b7 nothing selected: the draw-zone and place-image tools'],
@@ -7781,14 +7944,14 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     ['X', 'start a route from the highlighted pad or trace'],
     ['click', 'anchor the next segment'],
     ['double-click / pad', 'finish the route — a foreign-net pad is refused (the status names the mismatch)'],
-    ['V', 'place a via there (switch layer)'],
+    ['V', 'arm a via \u2014 the next click anchors the segment and places it there (continues on the far layer)'],
     ['Shift+V', 'cycle the via\u2019s far layer (blind / buried)'],
     ['D', 'slide (drag) the hovered segment — clearance-checked live, release on red reverts'],
     ['Backspace', 'undo the last anchored segment'],
     ['width & via', null, null],
-    ['[ / ]', 'trace width down / up the ladder'],
-    ['Alt + [ / ]', 'fine trim \u00b10.01 mm'],
-    ['Shift+[ / ]', 'via size down / up the ladder'],
+    ['[ ]', 'trace width down / up the ladder'],
+    ['Alt + [ ]', 'fine trim \u00b10.01 mm'],
+    ['Shift+[ ]', 'via size down / up the ladder (the { } keys)'],
     ['\\', 'back to the net\u2019s default width'],
     ['Shift+\\', 're-couple the via size to the trace width'],
     ['W', 'open the width picker'],
@@ -8074,8 +8237,16 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   viaRow.appendChild(viaDrillLbl);
   var widthHint = document.createElement('span');
   widthHint.className = 'whint';
+  // section titles, the E panel's header look — the two ladders otherwise
+  // read as one anonymous run of numbers
+  var traceTitle = document.createElement('b');
+  traceTitle.textContent = 'trace width';
+  var viaTitle = document.createElement('b');
+  viaTitle.textContent = 'via size';
+  widthPop.appendChild(traceTitle);
   widthPop.appendChild(widthLadder);
   widthPop.appendChild(widthRow);
+  widthPop.appendChild(viaTitle);
   widthPop.appendChild(viaLadder);
   widthPop.appendChild(viaRow);
   widthPop.appendChild(widthHint);
@@ -9263,8 +9434,8 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     var vrungs = viaLadder.querySelectorAll('button');
     for (var r = 0; r < vrungs.length; r++)
       vrungs[r].classList.toggle('cur', Math.abs(parseFloat(vrungs[r].textContent) - curV) < 0.005);
-    widthVia.textContent = 'trace mm';
-    viaDrillLbl.textContent = 'via \u2300 \u00b7 drill ' + fmtW(viaDrillFor(curV));
+    widthVia.textContent = 'mm';
+    viaDrillLbl.textContent = 'mm \u00b7 drill ' + fmtW(viaDrillFor(curV));
     widthHint.textContent = routeState
       ? (routeState.net || 'no net') + ' \u00b7 [ ] trace \u00b7 Shift+[ ] via \u00b7 P power \u00b7 Alt\u00b10.01 \u00b7 \\ net default'
       : 'next route \u00b7 [ ] trace \u00b7 Shift+[ ] via \u00b7 P power sizes for the net\u2019s current \u00b7 Alt\u00b10.01 \u00b7 \\ net default';
@@ -9540,6 +9711,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     routeUiGroup().querySelectorAll('.route-via-halo').forEach(function (v) {
       v.remove();
     });
+    viaArmPreviewClear();
     routeState = null;
     refreshRatsnest();
     ratsHighlight(null);
@@ -9776,6 +9948,24 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       }
     }
     routeState.lastEnd = end;
+    // the armed-via preview tracks the walk's end — the ring shows where
+    // the barrel clears before the click commits it. The tint is the
+    // BARREL's own clearance (a degenerate segment of the via's width —
+    // exactly the geometry a placed barrel occupies), not the trace's:
+    // a trace may legally thread where a fat barrel would not
+    if (routeState.viaArmed) {
+      var wend = pts[pts.length - 1];
+      if (wend) {
+        viaArmPreviewSync(wend.x, wend.y);
+        routeState.viaMargin = viaArmMarginAt(wend.x, wend.y);
+        // the barrel sitting on another barrel is red whatever the nets
+        // say — viaOverlapsVia carries no net exemption
+        if (viaOverlapsVia(wend.x, wend.y, routeState.via.size)) routeState.viaMargin = -1;
+        routeUiGroup().querySelectorAll('.route-via-preview').forEach(function (el) {
+          el.classList.toggle('bad', routeState.viaMargin < 0);
+        });
+      }
+    }
     routeState.lastPts = pts;
     setRouteD(routeState.path, previewPathD(pts));
     // live length readout: the walk so far (anchor chain + pending walk)
@@ -9869,8 +10059,8 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     if (routeState.net && end.pad && end.pad.net && end.pad.net !== 'N/C' && end.pad.net !== routeState.net) {
       if (statusEl && !statusLocked())
         statusEl.textContent =
-          'cannot anchor on ' + end.pad.ref + '.' + end.pad.pin + ' [' + end.pad.net + '] — different net from ' + routeState.net;
-      return;
+          'cannot anchor on ' + end.pad.ref + '.' + end.pad.pin + ' [' + end.pad.net + '] \u2014 different net from ' + routeState.net;
+      return false;
     }
     if (routeState.clearState === 'bad' && !end.pad) {
       // hard refusal only when the walk touches NETTED foreign copper (a
@@ -9878,10 +10068,10 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       // adjudicates) — previously ANY red tint blocked the anchor, which
       // made plain clicks read as dead on netless routes
       if (routeHitsNettedCopper(pts)) {
-        if (statusEl && !statusLocked()) statusEl.textContent = 'clearance violation — move the trace before anchoring';
-        return;
+        if (statusEl && !statusLocked()) statusEl.textContent = 'clearance violation \u2014 move the trace before anchoring';
+        return false;
       }
-      if (statusEl && !statusLocked()) statusEl.textContent = 'anchored (crosses unconnected copper — DRC will report)';
+      if (statusEl && !statusLocked()) statusEl.textContent = 'anchored (crosses unconnected copper \u2014 DRC will report)';
     }
     var piece = curPiece();
     for (var pa = 0; pa < pts.length; pa++) {
@@ -9900,12 +10090,60 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     routeState.lastPts = []; // consumed — a stale trail must not re-fold at commit
     if (statusEl && !statusLocked())
       statusEl.textContent = 'anchored \u2014 ' + (routeState.net ? routeState.net : 'no net') + ' continues; V via, Backspace undo, snap a pad or double-click to finish';
+    return true;
   }
   // ---- via layer cycling: Shift+V advances the far layer through the
   // stack (blind/buried spans), V places to it. Default stays the classic
   // F<->B flip until the first Shift+V ----
-  function copperCanonList() {
-    // ordered top→bottom; the stackup island's copperLayers is the truth,
+  /** Tab during a live route: cycle the copper layer the next segment
+   *  draws on — at the start of a route (before anything is anchored) and
+   *  on the continuation piece after a via (the via's target layer follows
+   *  the choice). Committed geometry on the current piece can't switch:
+   *  those segments already belong to their layer; the hint says so. */
+  function cycleRouteLayer() {
+    if (!routeState) return;
+    var piece = curPiece();
+    if (piece.points.length > 1) {
+      if (statusEl && !statusLocked())
+        statusEl.textContent =
+          'this segment is committed on ' + piece.canon + ' \u2014 place a via (V) to switch layers, Tab picks the layer after it';
+      return;
+    }
+    var layers = copperCanonList();
+    if (layers.length < 2) {
+      if (statusEl && !statusLocked()) statusEl.textContent = 'only one copper layer \u2014 nothing to cycle';
+      return;
+    }
+    var idx = Math.max(0, layers.indexOf(piece.canon));
+    var next = layers[(idx + 1) % layers.length];
+    if (next === piece.canon) return;
+    var lg = layerGroupByCanon(next);
+    if (!lg) {
+      if (statusEl && !statusLocked()) statusEl.textContent = 'no copper layer group for ' + next + ' \u2014 staying on ' + piece.canon;
+      return;
+    }
+    piece.canon = next;
+    piece.layerGroup = lg;
+    piece.inkVar = '--ink-' + lg.getAttribute('data-layer-id');
+    piece.inkColor = getComputedStyle(lg).fill || '#c87533';
+    piece.anchoredEl.setAttribute('stroke', piece.inkColor);
+    routeState.path.setAttribute('stroke', piece.inkColor);
+    // a via this piece starts on (placed a moment ago) must LAND on the
+    // chosen layer — its target follows the continuation
+    var start = piece.points[0];
+    if (start) {
+      for (var i = routeState.vias.length - 1; i >= 0; i--) {
+        var v = routeState.vias[i];
+        if (Math.hypot(v.x - start.x, v.y - start.y) < 0.005) {
+          v.to = next;
+          break;
+        }
+      }
+    }
+    if (statusEl && !statusLocked())
+      statusEl.textContent = 'routing on ' + next + ' \u2014 Tab cycles the copper layer, V arms a via at the next click';
+  }
+  function copperCanonList() {    // ordered top→bottom; the stackup island's copperLayers is the truth,
     // the rendered copper groups the fallback
     if (stackup && stackup.copperLayers && stackup.copperLayers.length) return stackup.copperLayers;
     var out = [];
@@ -9943,23 +10181,128 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       statusEl.textContent = 'next via \u2192 ' + next + (next === otherLayerCanon(cur) ? ' (through)' : ' (blind/buried from ' + cur + ')') + ' \u2014 Shift+V cycles, V places';
   }
   function routeVia() {
+    // ARMED placement (KiCad's V): the press records intent, the next
+    // click anchors the walk AND drops the via at the clicked point —
+    // placing instantly at the hover point fired the via wherever the
+    // cursor happened to rest, which read as unsupported
     if (!routeState) return;
-    // freeze the current walk at its endpoint, drop a via, continue on the
-    // far layer (cycled target or the classic F<->B flip) from the same point
-    var end = routeState.lastEnd || routeEndpoint(routeState.sx, routeState.sy);
-    var pts = routeState.lastPts || [{ x: end.x, y: end.y }];
-    var piece = curPiece();
-    for (var pa = 0; pa < pts.length; pa++) {
-      var tailV = piece.points[piece.points.length - 1];
-      if (tailV && Math.hypot(pts[pa].x - tailV.x, pts[pa].y - tailV.y) < 0.005) continue;
-      piece.points.push(pts[pa]);
+    routeState.viaArmed = !routeState.viaArmed;
+    if (routeState.viaArmed) {
+      viaArmPreviewMake();
+      var at = routeState.lastEnd || { x: routeState.sx, y: routeState.sy };
+      viaArmPreviewSync(at.tie ? at.tie.x : at.x, at.tie ? at.tie.y : at.y);
+    } else {
+      viaArmPreviewClear();
     }
-    var d = 'M ' + piece.points[0].x.toFixed(3) + ' ' + piece.points[0].y.toFixed(3);
-    for (var ai = 1; ai < piece.points.length; ai++)
-      d += ' L ' + piece.points[ai].x.toFixed(3) + ' ' + piece.points[ai].y.toFixed(3);
-    setRouteD(piece.anchoredEl, d);
-    var vx = pts[pts.length - 1].x;
-    var vy = pts[pts.length - 1].y;
+    if (statusEl && !statusLocked())
+      statusEl.textContent = routeState.viaArmed
+        ? 'via armed \u2014 the keep-out ring at the cursor shows where the barrel clears \u2014 the next click anchors the segment and places the via there (Shift+V cycles its far layer, V disarms)'
+        : 'via disarmed \u2014 V arms it again';
+  }
+
+  /** The armed-via preview at the walk's end: the barrel's DRC keep-out
+   *  ring (the same ring a placed via shows) plus a dashed ghost of the
+   *  barrel itself, both tracking the cursor so the click point is chosen
+   *  with clearance VISIBLE. The halo carries the placed-via class so the
+   *  live tint (clear gray / violation red) and via-size resizes apply to
+   *  it exactly as they do to placed vias. */
+  function viaArmPreviewMake() {
+    viaArmPreviewClear();
+    var r = (routeState.via.size / 2 + clearanceRule()).toFixed(3);
+    var halo = document.createElementNS(SVGNSL, 'circle');
+    halo.setAttribute('class', 'route-via-halo route-via-preview');
+    halo.setAttribute('r', r);
+    var ghost = document.createElementNS(SVGNSL, 'circle');
+    ghost.setAttribute('class', 'route-via-arm-ghost route-via-preview');
+    ghost.setAttribute('r', (routeState.via.size / 2).toFixed(3));
+    var ui = routeUiGroup();
+    ui.appendChild(halo);
+    ui.appendChild(ghost);
+  }
+  function viaArmPreviewSync(x, y) {
+    if (!routeState || !routeState.viaArmed) return;
+    routeUiGroup().querySelectorAll('.route-via-preview').forEach(function (el) {
+      el.setAttribute('cx', x.toFixed(3));
+      el.setAttribute('cy', y.toFixed(3));
+    });
+  }
+  function viaArmPreviewClear() {
+    if (!routeUi) return;
+    routeUi.querySelectorAll('.route-via-preview').forEach(function (el) {
+      el.remove();
+    });
+  }
+  /** The armed barrel's obstacle world: a via SPANS the stack, so its
+   *  keep-out sees copper on EVERY layer — all copper groups' foreign ink
+   *  (traces, flashes, pours) plus the pad manifest's exact rects. Pads
+   *  are included even when N/C: unconnected pad copper is real copper a
+   *  barrel must clear (DRC adjudicates copper-to-copper regardless of
+   *  net); only the route's OWN net is exempt (via-in-pad is legal on
+   *  your own net). Cached per route — it dies with the routeState. */
+  function viaObstacles() {
+    if (routeState.viaObsCache) return routeState.viaObsCache;
+    var obs = [];
+    var gs = copperGroups();
+    for (var gi = 0; gi < gs.length; gi++) obs = obs.concat(buildObstacles(gs[gi], routeState.net));
+    for (var pi = 0; pi < padManifest.length; pi++) {
+      var p = padManifest[pi];
+      if (p.net && routeState.net && p.net === routeState.net) continue;
+      var e = padEffBoard(p); // board frame (y-down) → gerber (y-up)
+      obs.push({
+        x0: e.x - p.w / 2,
+        x1: e.x + p.w / 2,
+        y0: -(e.y + p.h / 2),
+        y1: -(e.y - p.h / 2),
+        net: p.net || 'N/C',
+        pad: true,
+      });
+    }
+    routeState.viaObsCache = obs;
+    return obs;
+  }
+  /** The armed barrel's own clearance margin at a point — the same rule a
+   *  trace uses (clearanceRule), but with the VIA's diameter as the width
+   *  and the STACKED obstacle world (all layers' traces and pads). */
+  function viaArmMarginAt(x, y) {
+    if (!routeState) return Infinity;
+    return clearanceMargin(viaObstacles(), [{ x: x, y: y }, { x: x, y: y }], routeState.via.size);
+  }
+  /** Does the armed barrel at a point sit on NETTED foreign copper (inside
+   *  its keep-out)? The hard-refusal test — N/C copper (unconnected pads,
+   *  netless ink) only tints red and places with a warning, matching trace
+   *  behavior. */
+  function viaHitsNettedCopper(x, y) {
+    if (!routeState) return false;
+    var need = routeState.via.size / 2 + clearanceRule();
+    var skipR = routeState.startPad ? Math.max(routeState.startPad.w, routeState.startPad.h) / 2 : 0;
+    var sc = routeState.startPad ? padCenter(routeState.startPad) : null;
+    if (sc && Math.hypot(x - sc.x, y - sc.y) < skipR) return false; // leaving the start pad
+    var obs = viaObstacles();
+    for (var oi = 0; oi < obs.length; oi++) {
+      var o = obs[oi];
+      if (!o.net || o.net === 'N/C') continue;
+      var hit;
+      if (o.poly) {
+        hit = false;
+        for (var pi3 = 0; pi3 + 1 < o.poly.length; pi3++) {
+          if (ptSegDist(x, y, o.poly[pi3][0], o.poly[pi3][1], o.poly[pi3 + 1][0], o.poly[pi3 + 1][1]) < need) {
+            hit = true;
+            break;
+          }
+        }
+      } else {
+        var dx = Math.max(o.x0 - x, 0, x - o.x1);
+        var dy = Math.max(o.y0 - y, 0, y - o.y1);
+        hit = Math.hypot(dx, dy) < need;
+      }
+      if (hit) return true;
+    }
+    return false;
+  }
+  /** Place a via at a committed point and continue on the target layer.
+   *  The walk must already be folded into the piece (routeAnchor did). */
+  function placeViaCore(vx, vy, piece) {
+    viaArmPreviewClear(); // the placed barrel's own halo/via elements take over
     var nextCanon = routeState.viaTarget && routeState.viaTarget !== piece.canon ? routeState.viaTarget : otherLayerCanon(piece.canon);
     routeState.vias.push({ x: vx, y: vy, from: piece.canon, to: nextCanon });
     // the barrel's own keep-out ring: via radius + clearance, tinted with
@@ -10068,9 +10411,11 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     if (foreign) {
       if (statusEl && !statusLocked())
         statusEl.textContent =
-          'cannot finish on ' + foreign.name + ' [' + foreign.net + '] — different net from ' + routeState.net;
+          'cannot finish on ' + foreign.name + ' [' + foreign.net + '] \u2014 different net from ' + routeState.net;
       return; // route stays live: move to a same-net pad, or Esc cancels
     }
+    routeState.viaArmed = false;
+    viaArmPreviewClear();
     domCaptureStart();
     var rtIdxBefore = routedTracks.length;
     var end = routeState.lastEnd || routeEndpoint(routeState.sx, routeState.sy);
@@ -10252,13 +10597,39 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       ev.preventDefault();
       var g = gerberAt(ev.clientX, ev.clientY);
       routeFollow(g.x, g.y);
+      // an armed barrel never shares copper with another barrel, whatever
+      // the nets say — checked BEFORE the finish-tie branch, because the
+      // walk snapping onto the via reads as a finish tie and would commit
+      // straight through the placement checks below (seen live: an armed
+      // via on a same-net via finalized the track instead of refusing)
+      if (routeState.viaArmed && viaOverlapsVia(g.x, g.y, routeState.via.size)) {
+        if (statusEl && !statusLocked())
+          statusEl.textContent = 'via keep-out violation \u2014 another barrel is inside the ring; move it before clicking';
+        return;
+      }
       // a click while snapped to a pad finalizes the displayed trail
-      if (routeState.targetPad || routeState.targetTie) routeCommit();
-      else {
+      if (routeState.targetPad || routeState.targetTie) {
+        routeState.viaArmed = false; // a finish pad is no via site
+        routeCommit();
+      } else {
         var end2 = routeEndpoint(g.x, g.y);
         end2.mx = g.x;
         end2.my = g.y;
-        routeAnchor(end2, routeState.lastPts);
+        if (routeState.viaArmed && viaHitsNettedCopper(g.x, g.y)) {
+          // the barrel itself lands on foreign copper — refuse the whole
+          // click (neither anchor nor via), the way a trace anchor refuses
+          // a netted walk; the red ring showed exactly this
+          if (statusEl && !statusLocked())
+            statusEl.textContent = 'via clearance violation \u2014 foreign copper inside the keep-out ring; move it before clicking';
+          return;
+        }
+        if (routeAnchor(end2, routeState.lastPts) !== false && routeState.viaArmed) {
+          // the armed via lands exactly where this click anchored — KiCad's
+          // V-then-click rhythm; the walk is folded, place and continue on
+          // the target layer
+          routeState.viaArmed = false;
+          placeViaCore(routeState.sx, routeState.sy, curPiece());
+        }
       }
     },
     true,
@@ -10662,7 +11033,22 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
    *  copper connects rather than conflicts, and manual traces that stay
    *  behind are legitimately checked. Box-vs-box distance with the pad's
    *  rotated w/h — the same conservative shape the live router uses. */
-  function partNudgeViolation(refs, dx, dy) {
+  /** a pad's worst obstacle margin at its perimeter — the shared poly-aware
+   *  walk (true centerlines for tracks, net-class clearances), obstacle-only:
+   *  the board edge is deliberately NOT tested for parts, since an edge
+   *  connector's pads overhang the outline by design and the M-drag the
+   *  nudges mirror has no edge gate either */
+  function padObstacleMargin(obs, pgx, pgy, hw, hh) {
+    var per = [
+      { x: pgx - hw, y: pgy - hh },
+      { x: pgx + hw, y: pgy - hh },
+      { x: pgx + hw, y: pgy + hh },
+      { x: pgx - hw, y: pgy + hh },
+      { x: pgx - hw, y: pgy - hh },
+    ];
+    return clearanceMargin(obs, per, 0, true);
+  }
+  function partNudgeWarning(refs, dx, dy) {
     var skip = new Set();
     for (var r0 = 0; r0 < refs.length; r0++) {
       var groups0 = copperGroups();
@@ -10671,8 +11057,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         for (var o0 = 0; o0 < own.length; o0++) skip.add(own[o0]);
       }
     }
-    var obsByLayer = {};
-    var clr = clearanceRule();
+    var obsCache = {};
     for (var r1 = 0; r1 < refs.length; r1++) {
       var ref = refs[r1];
       var rotOdd = ((layoutRot[ref] || 0) % 2) === 1;
@@ -10682,25 +11067,26 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         var eff = padEffBoard(p);
         // padEffBoard is board frame (y-down); obstacles are gerber (y-up);
         // the nudge delta is island frame — x matches board, y negates
-        var pgx = eff.x + dx;
-        var pgy = -eff.y + dy;
-        var pw = (rotOdd ? p.h : p.w) / 2;
-        var ph = (rotOdd ? p.w : p.h) / 2;
+        var hw = (rotOdd ? p.h : p.w) / 2;
+        var hh = (rotOdd ? p.w : p.h) / 2;
         var layers = p.layers && p.layers.indexOf('*.Cu') !== -1 ? ['F.Cu', 'B.Cu'] : p.layers || [];
         for (var li = 0; li < layers.length; li++) {
           var lg = layerGroupByCanon(layers[li]);
           if (!lg) continue;
-          var key = lg.getAttribute('data-layer-id');
-          if (!obsByLayer[key]) obsByLayer[key] = buildObstacles(lg, null, skip);
-          var obs = obsByLayer[key];
-          for (var oi2 = 0; oi2 < obs.length; oi2++) {
-            var o = obs[oi2];
-            if (p.net && o.net && o.net === p.net) continue;
-            var ddx = Math.max(o.x0 - (pgx + pw), 0, (pgx - pw) - o.x1);
-            var ddy = Math.max(o.y0 - (pgy + ph), 0, (pgy - ph) - o.y1);
-            if (ddx === 0 && ddy === 0) return true; // overlaps foreign copper
-            if (Math.hypot(ddx, ddy) < clr) return true;
-          }
+          // same-net copper connects — buildObstacles skips it — so the
+          // obstacle cache rides the net beside the layer id
+          var key = lg.getAttribute('data-layer-id') + '|' + (p.net || '');
+          if (!obsCache[key]) obsCache[key] = buildObstacles(lg, p.net, skip);
+          // ADVISORY, not a gate: the M-drag the nudges mirror has no DRC
+          // refusal, and a hard gate on a densely routed board boxed parts
+          // in completely (seen live: C6/U3 — traces genuinely routed
+          // between their pads — refused all four directions while the
+          // drag walked the same corridor). The part lands; the ghost
+          // flashes red and the status says DRC when a pad would sit in
+          // violation. Measurement is the shared poly-aware walk — true
+          // centerlines for tracks, never the fat bbox that started this
+          var next = padObstacleMargin(obsCache[key], eff.x + dx, -eff.y + dy, hw, hh);
+          if (next < 0) return true;
         }
       }
     }
@@ -11122,6 +11508,24 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   }
   // viaSel visual sync: selected vias get a selection ring (works for both
   // committed session circles and gerber aperture flashes)
+  // The always-on-top mirror for selected vias. The in-element selection
+  // ring (.route-via-sel) paints in the copper group — UNDER component
+  // bodies, so a via beneath a part selected fine but its ring was
+  // invisible (the part's graphics covered it). This group re-appends
+  // itself as the last child of the flip host on every sync, so its
+  // mirror rings stay above every layer and overlay.
+  function viaSelTopGroup() {
+    var flipHost = viewGroups.gerber.querySelector('#yflip') || viewGroups.gerber;
+    var g = document.getElementById('via-sel-top');
+    if (!g) {
+      g = document.createElementNS(SVGNSL, 'g');
+      g.setAttribute('id', 'via-sel-top');
+      g.setAttribute('pointer-events', 'none');
+    }
+    flipHost.appendChild(g); // moves to the end — top of the paint order
+    return g;
+  }
+
   function viaHiSync() {
     propsSync('via');
     viewGroups.gerber.querySelectorAll('.route-via-sel').forEach(function (c) {
@@ -11133,17 +11537,30 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         c.__swPrev = undefined;
       }
     });
+    var top = viaSelTopGroup();
+    top.textContent = '';
     viaSel.forEach(function (c) {
-      if (!c.parentNode) viaSel.delete(c);
-      else {
-        c.classList.add('route-via-sel');
-        // the ring hugs the barrel: BOARD units scaled to the via's own
-        // size (a fixed 2px screen stroke blew up to several barrel-widths
-        // through aperture-scaled use symbols)
-        c.__swPrev = c.getAttribute('stroke-width');
-        var vs = viaInkSize(c) || 0.6;
-        c.setAttribute('stroke-width', Math.max(+(vs * 0.18).toFixed(3), 0.05));
+      if (!c.parentNode) {
+        viaSel.delete(c);
+        return;
       }
+      c.classList.add('route-via-sel');
+      // the ring hugs the barrel: BOARD units scaled to the via's own
+      // size (a fixed 2px screen stroke blew up to several barrel-widths
+      // through aperture-scaled use symbols)
+      c.__swPrev = c.getAttribute('stroke-width');
+      var vs = viaInkSize(c) || 0.6;
+      var sw = Math.max(+(vs * 0.18).toFixed(3), 0.05);
+      c.setAttribute('stroke-width', sw);
+      // the on-top mirror: same geometry, same ring, painted above parts
+      var p = viaInkPos(c);
+      var ring = document.createElementNS(SVGNSL, 'circle');
+      ring.setAttribute('class', 'route-via-sel-top');
+      ring.setAttribute('cx', String(p.x));
+      ring.setAttribute('cy', String(p.y));
+      ring.setAttribute('r', String(+(vs / 2).toFixed(4)));
+      ring.setAttribute('stroke-width', sw);
+      top.appendChild(ring);
     });
     if (statusEl && !statusLocked()) {
       if (viaSel.size)
@@ -11161,6 +11578,26 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     return el.tagName === 'circle'
       ? { x: parseFloat(el.getAttribute('cx')), y: parseFloat(el.getAttribute('cy')) }
       : { x: parseFloat(el.getAttribute('x')), y: parseFloat(el.getAttribute('y')) };
+  }
+  // the via whose barrel a gerber-frame point sits on — pad-scaled reach:
+  // half the via's own size plus a little aim forgiveness, capped so a
+  // fat via doesn't own the whole corridor. A via under a component body
+  // is reachable through THIS (the part's own graphics swallow DOM hits,
+  // so element-based picking never sees it).
+  function viaUnderCursor(gp) {
+    var cand = viaInk();
+    var best = null;
+    var bestD = 1e9;
+    for (var i = 0; i < cand.length; i++) {
+      var p = viaInkPos(cand[i]);
+      var d = Math.hypot(p.x - gp.x, p.y - gp.y);
+      var reach = viaInkSize(cand[i]) / 2 + 0.15;
+      if (d <= Math.min(reach, 0.5) && d < bestD) {
+        bestD = d;
+        best = cand[i];
+      }
+    }
+    return best;
   }
   // remove every via at a board-frame point: its committed circles on all
   // copper layers, the owning routedTrack's via entry (so a subsequent
@@ -11236,6 +11673,21 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
           var dc = drills[di];
           if (Math.hypot(parseFloat(dc.getAttribute('cx')) - bx, parseFloat(dc.getAttribute('cy')) + by) > 0.02) continue;
           dc.remove();
+        }
+      }
+      // the solder-mask OPENINGS outlive the barrel the same way — a via
+      // carries one per mask layer, and leaving them paints a white ring
+      // where the via was until the rebuild regenerates the page (seen
+      // live). Same pad guard: a pad's own mask opening is the pad's.
+      if (!padNear) {
+        var opens = viewGroups.gerber.querySelectorAll('g[data-kind="mask"] circle, g[data-kind="mask"] use');
+        for (var oi2 = 0; oi2 < opens.length; oi2++) {
+          var oc = opens[oi2];
+          var ox = oc.tagName === 'circle' ? parseFloat(oc.getAttribute('cx')) : parseFloat(oc.getAttribute('x'));
+          var oy = oc.tagName === 'circle' ? parseFloat(oc.getAttribute('cy')) : parseFloat(oc.getAttribute('y'));
+          if (!isFinite(ox) || !isFinite(oy)) continue;
+          if (Math.hypot(ox - bx, oy + by) > 0.02) continue;
+          oc.remove();
         }
       }
     }
@@ -11517,12 +11969,20 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       // a press on a part still reaches a trace RUNNING UNDER the point —
       // through pad land or under the body, the trace's hit line is where
       // copper runs and the segment wins so it stays selectable/deletable.
-      // The part and its pads keep every press off the line
+      // The part and its pads keep every press — the part OWNS its body:
+      // pressing the footprint selects the PART (KiCad parity; traces
+      // beneath stay reachable through the Tab cycle). The one exception
+      // is a via BARREL under the body: nothing else can reach it (the
+      // part's graphics swallow DOM hits), so the precise barrel test
+      // still claims the press.
       var via = null;
       var hitLine = null;
       if (t && t.closest && t.closest('.layout-comp')) {
-        hitLine = segAt(gerberAt(ev.clientX, ev.clientY));
-        if (!hitLine) return;
+        via = viaUnderCursor(gerberAt(ev.clientX, ev.clientY));
+        if (via) {
+          ev.stopPropagation();
+          ev.preventDefault();
+        } else return; // the part's own click handler selects it
       }
       var pk = probeHitTarget(ev, false);
       var scan = pk || t;
@@ -11953,9 +12413,13 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     } catch (e) {}
   })();
 
-  // board ≠ source drift banner: the host ran check-sync and injected
-  // window.__typecadDrift when the two disagree. Standalone pages (no
-  // host, or in sync) show nothing.
+  // board ≠ source drift banner: the ts source is the single source of
+  // truth and the .kicad_pcb a build artifact; the host runs check-sync on
+  // every render as a DIAGNOSTIC and never reconciles automatically. This
+  // banner means one of two things — the board changed out-of-band (a
+  // KiCad edit without the sync watcher running; the next build overwrites
+  // it) or the build does not reproduce source (a bug to report).
+  // Standalone pages (no host, or in sync) show nothing.
   (function () {
     var drift = window.__typecadDrift;
     if (!drift || !drift.count) return;
@@ -11964,7 +12428,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     bar.innerHTML =
       '<b>board \u2260 source</b> \u2014 ' + drift.count + ' pending difference' + (drift.count > 1 ? 's' : '') +
       ' <button type="button" id="drift-details">details</button>' +
-      '<span class="drift-hint">apply &amp; rebuild writes the board into source \u00b7 rebuilding takes the source side</span>' +
+      '<span class="drift-hint">board edited outside the build? start typeCAD: KiCad Sync to import \u00b7 otherwise the build does not reproduce source \u2014 please report</span>' +
       '<button type="button" id="drift-close" title="dismiss">\u2715</button>';
     var list = document.createElement('div');
     list.id = 'drift-list';
@@ -13936,9 +14400,11 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   #layout-overlay .layout-comp polygon { fill: transparent; stroke: none; stroke-linejoin: round; }
   #layout-overlay .layout-comp.layout-back rect,
   #layout-overlay .layout-comp.layout-back polygon { stroke: none; fill: transparent; }
-  /* a part is only movable once selected — the cursor says exactly that:
-     the board crosshair stays over an unselected part (nothing grabbable),
-     move arrows over a selected one */
+  /* a part's body reads as movable ON HOVER (KiCad parity — the cursor
+     says "you can grab this part" before it is selected; before, the move
+     cursor appeared only on the selected part, so unselected bodies kept
+     the board crosshair and parts read as unmovable) */
+  #layout-overlay .layout-comp { cursor: move; }
   #layout-overlay .layout-comp.layout-sel { cursor: move; }
   #layout-overlay .layout-comp.layout-sel rect,
   #layout-overlay .layout-comp.layout-sel polygon {
@@ -13953,8 +14419,16 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   .route-halo { fill: none; stroke: rgba(148, 148, 148, 0.34); stroke-linecap: round; stroke-linejoin: round; }
   .route-halo.bad { stroke: rgba(205, 92, 92, 0.5); }
   /* via keep-out rings: the barrel's own clearance envelope */
-  .route-via-halo { fill: none; stroke: rgba(148, 148, 148, 0.34); }
+  /* stroke-width in BOARD units, thin: an unsized SVG stroke defaults to
+     1 user unit = 1mm of board — the ring band then reads ~1.8mm across
+     for a 0.85mm keep-out and looks grossly oversized */
+  .route-via-halo { fill: none; stroke: rgba(148, 148, 148, 0.34); stroke-width: 0.05; }
   .route-via-halo.bad { stroke: rgba(205, 92, 92, 0.5); }
+  /* the armed-via ghost barrel — a quiet SOLID outline of the barrel about
+     to land (dashes in board units rendered as chunky hazard-like arcs at
+     low zoom); red while the barrel's own clearance is violated */
+  .route-via-arm-ghost { fill: none; stroke: rgba(148, 148, 148, 0.45); stroke-width: 0.05; }
+  .route-via-arm-ghost.bad { stroke: rgba(205, 92, 92, 0.6); }
   /* the ? keys cheat-sheet */
   #keys-help {
     position: fixed; right: 16px; bottom: 96px; z-index: 45; display: none;
@@ -14007,6 +14481,11 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     /* no fixed stroke-width here — viaHiSync sets a per-barrel width in
        board units so the ring hugs the via at every zoom */
   }
+  /* the on-top mirror ring for selected vias — same geometry as the
+     element ring, painted above component bodies so a via under a part
+     shows its selection (fill stays none: the barrel itself belongs to
+     the copper painting order) */
+  .route-via-sel-top { fill: none; stroke: var(--sel); }
   /* selected trace segments: a white overlay at the segment's OWN width
      (set per line by segHiSync from the track's data-w) — the highlight
      covers the whole trace shape, not a thin centerline */
@@ -14025,8 +14504,18 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     flex-direction: column; gap: 8px; background: var(--chrome-bg);
     border: 1px solid var(--chrome-border); border-radius: 6px; padding: 10px 12px;
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4); font: 12px system-ui, sans-serif;
+    /* the hint line is the widest child — cap the panel at the ladders'
+       width so the hint WRAPS instead of stretching empty space past the
+       buttons (the hint span gets its own bound below) */
+    max-width: 300px;
   }
   #width-pop.open { display: flex; }
+  #width-pop b {
+    color: #4fc1ff; margin: 2px 0 -3px; padding-bottom: 3px;
+    border-bottom: 1px solid var(--chrome-border); font-size: 12px;
+    letter-spacing: 0.02em;
+  }
+  #width-pop b:first-child { margin-top: 0; }
   #width-pop .wladder { display: flex; flex-wrap: wrap; gap: 5px; max-width: 260px; }
   #width-pop .wladder button, #width-pop .wrow input {
     background: var(--btn-bg); color: var(--chrome-fg); border: 1px solid var(--btn-border);
@@ -14035,7 +14524,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   #width-pop .wladder button.cur { box-shadow: inset 0 0 0 1px var(--chrome-fg); }
   #width-pop .wrow { display: flex; align-items: center; gap: 10px; color: var(--muted); }
   #width-pop .wrow input { width: 80px; cursor: text; }
-  #width-pop .whint { color: var(--muted); font-size: 11px; line-height: 1.5; }
+  #width-pop .whint { display: block; max-width: 276px; color: var(--muted); font-size: 11px; line-height: 1.5; }
   /* properties panel (E) — same chrome as the width picker. Rows share one
      alignment: every label takes the same min-width so the FIELDS line up
      vertically across rows (x/y beside width/height beside net), and

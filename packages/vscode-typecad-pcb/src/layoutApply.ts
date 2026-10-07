@@ -36,7 +36,7 @@ import {
   type ZoneRectMatch,
   planNetClassEdits,
 } from './layoutEdits.js';
-import { planCreateArgsEdit, planRouteDeletes, planRouteEdits, planSyncRouteEdits, uncreatedRouteNames, type PlannedEdit, type RouteDeleteInput, type RouteInput } from './routeEdits.js';
+import { planCreateArgsEdit, planRouteDeletes, planRouteEdits, planSectionRouteEdits, hasTrackSection, planSyncRouteEdits, uncreatedRouteNames, type PlannedEdit, type RouteDeleteInput, type RouteInput } from './routeEdits.js';
 import { planImageSourceEdits, type ImageSourceDelete, type ImageSourceEdit } from './imageEdits.js';
 import path from 'node:path';
 import {
@@ -724,48 +724,61 @@ export function planLayoutApply(files: LayoutApplyFile[], input: LayoutApplyInpu
 
   // -- stage 5: new routes — planned against the post-delete text, so the
   // create() rewrite above and the paren insertion here never overlap.
-  // Sidecar-first: when _sync.ts is available, declarations land inside
-  // syncBoard() and reach the board through the `...syncTracks` spread --
-  // hand-written files are not touched at all. The plan runs against the
-  // scaffold the sidecar WOULD have, and the file is only created when a
-  // route actually lands in it (an all-duplicates apply must not orphan an
-  // empty _sync.ts beside an entry that never wires it) --
-  if (input.routes && input.routes.length > 0 && syncUri && entryUri && syncFileUsable) {
-    const current = textOf.get(syncUri)!;
-    const plan = planSyncRouteEdits(current.trim() === '' ? renderSyncFile({}) : current, input.routes, textOf.get(entryUri)!);
-    counts.routes = plan.applied;
-    for (const sk of plan.skipped) skipped.push(`route ${sk}`);
-    if (plan.edits.length > 0 && ensureSyncScaffold()) {
-      const wiring = planEntryIntegration(true);
-      if (wiring.ok) {
-        commit([
-          { uri: syncUri, edits: plan.edits },
-          { uri: entryUri, edits: wiring.edits },
-        ]);
-        syncSummary.routes += plan.applied;
-      } else {
-        for (const r of input.routes)
-          skipped.push(`route ${r.from.ref}.${r.from.pin} (_sync.ts wiring failed — no create() call in the entry file)`);
-        counts.routes = 0;
+  // Section-first: when a file already owns routing in the write-back's
+  // per-net section grammar, new routes land THERE byte-canonically — the
+  // ts source is the single source of truth and the section is the form
+  // the oracle accepts as exactly-regenerating, so an apply leaves nothing
+  // to reconcile. Otherwise sidecar-first: when _sync.ts is available,
+  // declarations land inside syncBoard() and reach the board through the
+  // `...syncTracks` spread -- hand-written files are not touched at all.
+  // The plan runs against the scaffold the sidecar WOULD have, and the file
+  // is only created when a route actually lands in it (an all-duplicates
+  // apply must not orphan an empty _sync.ts beside an entry that never
+  // wires it) --
+  if (input.routes && input.routes.length > 0) {
+    const sectionOwner = files.find((f) => f.uri !== syncUri && hasTrackSection(textOf.get(f.uri)!));
+    if (sectionOwner) {
+      const plan = planSectionRouteEdits(textOf.get(sectionOwner.uri)!, input.routes);
+      counts.routes = plan.applied;
+      for (const sk of plan.skipped) skipped.push(`route ${sk}`);
+      if (plan.edits.length > 0) commit([{ uri: sectionOwner.uri, edits: plan.edits }]);
+    } else if (syncUri && entryUri && syncFileUsable) {
+      const current = textOf.get(syncUri)!;
+      const plan = planSyncRouteEdits(current.trim() === '' ? renderSyncFile({}) : current, input.routes, textOf.get(entryUri)!);
+      counts.routes = plan.applied;
+      for (const sk of plan.skipped) skipped.push(`route ${sk}`);
+      if (plan.edits.length > 0 && ensureSyncScaffold()) {
+        const wiring = planEntryIntegration(true);
+        if (wiring.ok) {
+          commit([
+            { uri: syncUri, edits: plan.edits },
+            { uri: entryUri, edits: wiring.edits },
+          ]);
+          syncSummary.routes += plan.applied;
+        } else {
+          for (const r of input.routes)
+            skipped.push(`route ${r.from.ref}.${r.from.pin} (_sync.ts wiring failed — no create() call in the entry file)`);
+          counts.routes = 0;
+        }
       }
-    }
-  } else if (input.routes && input.routes.length > 0) {
-    const batch: Array<{ uri: string; edits: PlannedEdit[] }> = [];
-    let noCreateSkips: string[] | null = null;
-    for (const file of files) {
-      const plan = planRouteEdits(textOf.get(file.uri)!, input.routes);
-      if (plan.edits.length > 0) {
-        counts.routes = plan.applied;
-        for (const sk of plan.skipped) skipped.push(`route ${sk}`);
-        batch.push({ uri: file.uri, edits: plan.edits });
-        break; // one declaration site: the entry that owns create()
+    } else {
+      const batch: Array<{ uri: string; edits: PlannedEdit[] }> = [];
+      let noCreateSkips: string[] | null = null;
+      for (const file of files) {
+        const plan = planRouteEdits(textOf.get(file.uri)!, input.routes);
+        if (plan.edits.length > 0) {
+          counts.routes = plan.applied;
+          for (const sk of plan.skipped) skipped.push(`route ${sk}`);
+          batch.push({ uri: file.uri, edits: plan.edits });
+          break; // one declaration site: the entry that owns create()
+        }
+        if (noCreateSkips === null) noCreateSkips = plan.skipped;
       }
-      if (noCreateSkips === null) noCreateSkips = plan.skipped;
+      if (batch.length === 0 && noCreateSkips) {
+        for (const sk of noCreateSkips) skipped.push(`route ${sk}`);
+      }
+      commit(batch);
     }
-    if (batch.length === 0 && noCreateSkips) {
-      for (const sk of noCreateSkips) skipped.push(`route ${sk}`);
-    }
-    commit(batch);
   }
 
   // -- stage 5b: cross-file create() maintenance — deletes that rewrote
@@ -846,11 +859,20 @@ export function planLayoutApply(files: LayoutApplyFile[], input: LayoutApplyInpu
         retire(pendingEdits, (e) => e.original);
         retire(pendingDeletes, (d) => d);
       }
-      for (const sk of editPlan.skipped) skipped.push(`zone edit: ${sk}`);
-      for (const sk of delPlan.skipped) skipped.push(`zone delete: ${sk}`);
+      // per-file planner skips stay UNSURFACED: an input matching nothing in
+      // one file is retried against the next, so per-file lines repeat the
+      // same rect once per file (a one-zone delete on a four-file project
+      // logged five near-identical lines) — the aggregates below report
+      // each never-matched input exactly once
     }
-    for (const e of pendingEdits) skipped.push(`zone edit: no literal matches (${e.original.layer} @ ${e.original.x},${e.original.y})`);
-    for (const d of pendingDeletes) skipped.push(`zone delete: no literal matches (${d.layer} @ ${d.x},${d.y})`);
+    for (const e of pendingEdits)
+      skipped.push(
+        `zone edit: no editable literal (${e.original.layer} @ ${e.original.x},${e.original.y}) — plane-materialized or import-authored zones are not editable`,
+      );
+    for (const d of pendingDeletes)
+      skipped.push(
+        `zone delete: no removable literal (${d.layer} @ ${d.x},${d.y}) — plane-materialized or import-authored zones are not deletable`,
+      );
     commit(batch);
   }
 

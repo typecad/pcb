@@ -1,6 +1,6 @@
 // Route apply: committed interactive routes plan TrackBuilder source edits.
 import { describe, expect, it } from 'vitest';
-import { planRouteEdits, type RouteInput } from '../routeEdits.js';
+import { planRouteEdits, planSectionRouteEdits, hasTrackSection, type RouteInput } from '../routeEdits.js';
 import { expectValidTs } from './helpers/valid_source.js';
 
 const src = (tail = '') => `
@@ -392,5 +392,215 @@ typecad.create(led, route18);
       [{ net: 'led_a', w: 0.3, from: { ref: 'R1', pin: '1' }, to: null, vias: [], pieces: [{ layer: 'F.Cu', w: 0.3, pts: [{ x: 1.325, y: 0 }, { x: 5, y: 5 }] }] }],
     );
     expect(plan.applied).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The per-net track section dialect — byte-canonical with the kicad2typecad
+// write-back (its oracle compares section text exactly, so anything less
+// canonical reads as drift). The golden statements below are the ones the
+// live rd_skeleton board round-tripped through build → check-sync clean.
+// ---------------------------------------------------------------------------
+const sectionSrc = `import { PCB, Component, TrackBuilder } from '@typecad/pcb';
+const typecad = new PCB('demo', {});
+const r1 = new Component({ reference: 'R1' });
+r1.pcb = { x: 10, y: 10 };
+
+// Net: VCC
+const track_VCC: TrackBuilder[] = [];
+track_VCC.push(typecad.track({ net: 'VCC' }).from({ x: 1, y: 2 }, "F.Cu", 0.3).to({ x: 3, y: 2, layer: "F.Cu", width: 0.3 }));
+
+// Net: MID
+const track_MID: TrackBuilder[] = [];
+track_MID.push(typecad.track({ net: 'MID' }).from({ x: 5, y: 5 }, "F.Cu", 0.2).to({ x: 6, y: 5, layer: "F.Cu", width: 0.2 }));
+
+typecad.create(
+  r1,
+  ...track_VCC,
+  ...track_MID
+);
+`;
+
+const applyEdits = (text: string, edits: Array<{ start: number; end: number; line: string }>): string => {
+  let out = text;
+  for (const e of [...edits].sort((a, b) => b.start - a.start)) out = out.slice(0, e.start) + e.line + out.slice(e.end);
+  return out;
+};
+
+describe('planSectionRouteEdits (the canonical section dialect)', () => {
+  it('detects the section grammar', () => {
+    expect(hasTrackSection(sectionSrc)).toBe(true);
+    expect(hasTrackSection(src())).toBe(false);
+  });
+
+  it('appends to an existing net as its last statement, byte-canonical', () => {
+    const route: RouteInput = {
+      net: 'MID', w: 0.2,
+      pieces: [{ layer: 'F.Cu', pts: [{ x: 137.175, y: 88.5 }, { x: 136, y: 88.5 }] }],
+      vias: [], from: { ref: 'R4', pin: '2' }, to: null,
+    };
+    const plan = planSectionRouteEdits(sectionSrc, [route]);
+    expect(plan.applied).toBe(1);
+    expect(plan.skipped).toEqual([]);
+    const out = applyEdits(sectionSrc, plan.edits);
+    // the exact statement the oracle accepts (verified live: build →
+    // check-sync "in sync — the source regenerates this board exactly")
+    expect(out).toContain(
+      'track_MID.push(typecad.track({ net: \'MID\' }).from({ x: 137.175, y: 88.5 }, "F.Cu", 0.2).to({ x: 136, y: 88.5, layer: "F.Cu", width: 0.2 }));',
+    );
+    // appended AFTER the existing MID statement, before the blank line
+    const mid = out.indexOf('track_MID.push');
+    const added = out.indexOf('track_MID.push(typecad.track({ net: \'MID\' }).from({ x: 137.175');
+    expect(added).toBeGreaterThan(mid);
+    expectValidTs(out);
+  });
+
+  it('a new net gains a whole block plus the create() spread', () => {
+    const route: RouteInput = {
+      net: 'SWD', w: 0.127,
+      pieces: [{ layer: 'F.Cu', pts: [{ x: 1, y: 1 }, { x: 2, y: 2 }, { x: 3, y: 3 }] }],
+      vias: [], from: { ref: 'U1', pin: '5' }, to: null,
+    };
+    const plan = planSectionRouteEdits(sectionSrc, [route]);
+    expect(plan.applied).toBe(1);
+    const out = applyEdits(sectionSrc, plan.edits);
+    expect(out).toContain('// Net: SWD\nconst track_SWD: TrackBuilder[] = [];');
+    // per-leg widths and the spread in create()
+    expect(out).toContain('.to({ x: 3, y: 3, layer: "F.Cu", width: 0.127 })');
+    expect(out).toContain('...track_MID,\n  ...track_SWD');
+    expectValidTs(out);
+  });
+
+  it('an identical statement already in the section is skipped, not duplicated', () => {
+    const route: RouteInput = {
+      net: 'VCC', w: 0.3,
+      pieces: [{ layer: 'F.Cu', pts: [{ x: 1, y: 2 }, { x: 3, y: 2 }] }],
+      vias: [], from: { ref: 'R1', pin: '1' }, to: null,
+    };
+    const plan = planSectionRouteEdits(sectionSrc, [route]);
+    expect(plan.applied).toBe(0);
+    expect(plan.skipped.join(' ')).toContain('identical statement');
+  });
+
+  it('net-less routes cannot land in the section and are skipped honestly', () => {
+    const route = {
+      net: null, w: 0.2,
+      pieces: [{ layer: 'F.Cu', pts: [{ x: 1, y: 1 }, { x: 2, y: 2 }] }],
+      vias: [], from: { ref: 'R1', pin: '1' }, to: null,
+    } as unknown as RouteInput;
+    const plan = planSectionRouteEdits(sectionSrc, [route]);
+    expect(plan.applied).toBe(0);
+    expect(plan.skipped.join(' ')).toContain('net-less');
+  });
+});
+
+describe('planSectionRouteEdits orphaned declarations', () => {
+  it('a net whose pushes were all deleted gets its push back — no re-declaration, no re-spread', () => {
+    // live defect: a segment delete emptied track_DRIVE's last push; the
+    // orphaned `const track_DRIVE: TrackBuilder[] = [];` was invisible to
+    // the push-only detection, so the new-net path re-DECLARED it beside
+    // the survivor (duplicate symbol, build failure) and re-SPREAD it into
+    // create() (which would double the copper).
+    const orphanSrc = [
+      '// Net: VCC',
+      'const track_VCC: TrackBuilder[] = [];',
+      'track_VCC.push(typecad.track({ net: \'VCC\' }).from({ x: 1, y: 2 }, "F.Cu", 0.3).to({ x: 3, y: 2, layer: "F.Cu", width: 0.3 }));',
+      '',
+      '// Net: DRIVE',
+      'const track_DRIVE: TrackBuilder[] = [];',
+      '',
+      'typecad.create(',
+      '  ...track_VCC,',
+      '  ...track_DRIVE',
+      ');',
+      '',
+    ].join('\n');
+    const route: RouteInput = {
+      net: 'DRIVE', w: 0.2,
+      pieces: [{ layer: 'F.Cu', pts: [{ x: 130.04, y: 81.7 }, { x: 132.675, y: 81.7 }] }],
+      vias: [], from: { ref: 'J1', pin: '2' }, to: null,
+    };
+    const plan = planSectionRouteEdits(orphanSrc, [route]);
+    expect(plan.applied).toBe(1);
+    expect(plan.skipped).toEqual([]);
+    const out = applyEdits(orphanSrc, plan.edits);
+    expect((out.match(/const track_DRIVE/g) ?? []).length).toBe(1);
+    expect((out.match(/\.\.\.track_DRIVE/g) ?? []).length).toBe(1);
+    // the push lands directly after the surviving declaration
+    expect(out).toContain('const track_DRIVE: TrackBuilder[] = [];\ntrack_DRIVE.push(');
+    expectValidTs(out);
+  });
+});
+
+describe('planSectionRouteEdits vias + contiguous continuation', () => {
+  it('mid-chain layer-transition vias land as canonical standalone statements', () => {
+    // live defect: a drawn route jumping F.Cu → B.Cu → F.Cu needs vias at
+    // the transitions; the writer only attached CHAIN-END vias inline, so
+    // both AMP_OUT transition vias vanished from the rebuilt board
+    const viaSectionSrc = [
+      '// Net: PROBE_1',
+      'const track_PROBE_1: TrackBuilder[] = [];',
+      'track_PROBE_1.push(typecad.track({ net: \'PROBE_1\' }).from({ x: 1, y: 2 }, "F.Cu", 0.15).to({ x: 3, y: 4, layer: "F.Cu", width: 0.15 }));',
+      '',
+      'typecad.via({ at: { x: 5, y: 6 }, net: \'PROBE_1\', size: 0.6, drill: 0.3 });',
+      '',
+      'typecad.create(',
+      '  ...track_PROBE_1',
+      ');',
+      '',
+    ].join('\n');
+    const route: RouteInput = {
+      net: 'AMP_OUT', w: 0.3,
+      pieces: [
+        { layer: 'F.Cu', pts: [{ x: 134.422, y: 81.72 }, { x: 135.708, y: 81.814 }] },
+        { layer: 'B.Cu', pts: [{ x: 135.708, y: 81.814 }, { x: 139.538, y: 81.814 }, { x: 145.579, y: 87.855 }] },
+        { layer: 'F.Cu', pts: [{ x: 145.579, y: 87.855 }, { x: 145.579, y: 89.512 }] },
+      ],
+      vias: [
+        { x: 135.708, y: 81.814 },
+        { x: 145.579, y: 87.855 },
+      ],
+      from: { ref: 'U1', pin: '11' }, to: null,
+    };
+    const plan = planSectionRouteEdits(viaSectionSrc, [route]);
+    expect(plan.applied).toBe(1);
+    expect(plan.skipped).toEqual([]);
+    const out = applyEdits(viaSectionSrc, plan.edits);
+    // the two transition vias, canonical standalone form, appended after
+    // the existing standalone via (the write-back's column-0 layout)
+    expect(out).toContain("typecad.via({ at: { x: 5, y: 6 }, net: 'PROBE_1', size: 0.6, drill: 0.3 });");
+    expect(out).toContain("typecad.via({ at: { x: 135.708, y: 81.814 }, net: 'AMP_OUT', size: 0.6, drill: 0.3 });");
+    expect(out).toContain("typecad.via({ at: { x: 145.579, y: 87.855 }, net: 'AMP_OUT', size: 0.6, drill: 0.3 });");
+    expectValidTs(out);
+  });
+
+  it('a route continuing the last statement extends it — one statement per contiguous run', () => {
+    // the oracle chains positionally-contiguous segments into ONE
+    // statement; two strokes drawn end-to-start of each other must not
+    // become sibling statements (seen live: CH2_COM and DRIVE redraws
+    // read as drift until the write-back re-chained them)
+    const contSrc = [
+      '// Net: CH2_COM',
+      'const track_CH2_COM: TrackBuilder[] = [];',
+      'track_CH2_COM.push(typecad.track({ net: \'CH2_COM\' }).from({ x: 134.425, y: 79.2 }, "F.Cu", 0.127).to({ x: 137.1, y: 81.875, layer: "F.Cu", width: 0.127 }));',
+      '',
+      'typecad.create(',
+      '  ...track_CH2_COM',
+      ');',
+      '',
+    ].join('\n');
+    const route: RouteInput = {
+      net: 'CH2_COM', w: 0.127,
+      pieces: [{ layer: 'F.Cu', pts: [{ x: 137.1, y: 81.875 }, { x: 137.1, y: 83.04 }] }],
+      vias: [], from: { ref: 'J1', pin: '3' }, to: null,
+    };
+    const plan = planSectionRouteEdits(contSrc, [route]);
+    expect(plan.applied).toBe(1);
+    const out = applyEdits(contSrc, plan.edits);
+    expect((out.match(/track_CH2_COM\.push/g) ?? []).length).toBe(1);
+    expect(out).toContain(
+      'track_CH2_COM.push(typecad.track({ net: \'CH2_COM\' }).from({ x: 134.425, y: 79.2 }, "F.Cu", 0.127).to({ x: 137.1, y: 81.875, layer: "F.Cu", width: 0.127 }).to({ x: 137.1, y: 83.04, layer: "F.Cu", width: 0.127 }));',
+    );
+    expectValidTs(out);
   });
 });

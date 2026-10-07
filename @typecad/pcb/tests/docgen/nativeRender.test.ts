@@ -106,7 +106,7 @@ describe('layer theme resolution', () => {
       return detectLayer(name, img);
     };
     expect(layerThemeColor(theme, mk('board-f_cu.gtl'))).toBe('rgb(48, 222, 102)');
-    expect(layerThemeColor(theme, mk('board-b_cu.gbl'))).toBe('rgb(29, 167, 88)');
+    expect(layerThemeColor(theme, mk('board-b_cu.gbl'))).toBe('rgb(72, 148, 235)');
     expect(layerThemeColor(theme, mk('board-in1_cu.g1'))).toBe('rgb(228, 183, 80)');
     expect(layerThemeColor(theme, mk('board-f_silkscreen.gto'))).toBe('rgb(240, 240, 240)');
     expect(layerThemeColor(theme, mk('board-b_silkscreen.gbo'))).toBe('rgb(182, 182, 182)');

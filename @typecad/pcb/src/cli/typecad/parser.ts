@@ -31,6 +31,11 @@ const VALUE_FLAGS = new Set([
   'right-of',
   'above',
   'below',
+  // viewer overlays (typecad-pcb viewer) — value flags like gerber-viewer's
+  'netlist',
+  'drc',
+  'stackup',
+  'rules',
 ]);
 
 export function parseArgv(argv: string[]): ParsedArgs {

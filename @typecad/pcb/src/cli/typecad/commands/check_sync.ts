@@ -12,12 +12,11 @@ import type { ParsedArgs } from '../parser.js';
  * check-sync: is the built board in sync with the committed source?
  *
  * The same write-back oracle the hardening suite uses: parse the board,
- * compute every source change an import would make, and report them. Any
- * pending change means the two have drifted (a board saved by KiCad, a
- * source edit that hasn't been rebuilt, an apply that didn't land) — the
- * reconciliation paths are the two the layout view already offers: apply
- * & rebuild writes the board's state into source, a rebuild takes the
- * source's side.
+ * compute every source change an import would make, and report them. The
+ * ts source is the single source of truth and the .kicad_pcb a build
+ * artifact: drift means the board was edited out-of-band (KiCad — import
+ * it with the sync watcher) or the build does not reproduce source (a
+ * bug). Nothing reconciles automatically.
  */
 export async function run(parsed: ParsedArgs): Promise<void> {
   const json = parsed.json;
@@ -68,8 +67,8 @@ export async function run(parsed: ParsedArgs): Promise<void> {
         logger.log(chalk.gray(`              ${r.file}`));
       }
       logger.log('');
-      logger.log(chalk.gray('  reconcile: apply & rebuild writes the board state into source;'));
-      logger.log(chalk.gray('  rebuilding (npm run build) takes the source side'));
+      logger.log(chalk.gray('  reconcile: edit in KiCad with the sync watcher running'));
+      logger.log(chalk.gray('  (`typecad-pcb import <board> --watch --auto`), or rebuild from source'));
     }
   }
   if (rows.length && !json) process.exitCode = 1;

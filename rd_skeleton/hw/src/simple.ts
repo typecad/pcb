@@ -6,11 +6,9 @@ const typecad = new PCB('simple_board', { layers: 2 });
 
 const r1 = new Resistor({ value: '150' });
 r1.pcb = { x: 0, y: 0 };
-const led = new LED({ value: 'red' });
-led.pcb = { x: 15, y: 0 };
 
-typecad.named('led_a').net(r1.pin(2), led.pin(2));
-typecad.named('GND').net(led.pin(1), r1.pin(1));
+typecad.named('led_a').net(r1.pin(2));
+typecad.named('GND').net(r1.pin(1));
 
 new TrackBuilder(typecad, { net: 'led_a' })
   .from({ x: 1.325, y: 0 }, 'F.Cu', 0.55)
@@ -22,4 +20,4 @@ new TrackBuilder(typecad, { net: 'GND' })
   .to({ x: 14.17, y: -8, layer: 'B.Cu', width: 0.55 })
   .to({ x: 14.17, y: 0, layer: 'B.Cu', width: 0.55 });
 
-typecad.create(r1, led);
+typecad.create(r1);

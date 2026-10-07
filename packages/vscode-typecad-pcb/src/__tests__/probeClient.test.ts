@@ -101,7 +101,11 @@ describe('injectProbeClient', () => {
 
   it('announces readiness at parse and on load (delivery retry backstop)', () => {
     const { html } = injectProbeClient(viewerHtml, components);
-    expect(html).toContain("send({ type: 'typecad/ready' })");
+    // the announcement carries the protocol stamp and the page's boot
+    // capabilities — the host's boot diagnostics key on both
+    expect(html).toContain("type: 'typecad/ready'");
+    expect(html).toContain('proto:');
+    expect(html).toContain('page: { viewer: !!window.typecadViewer }');
     expect(html).toContain("window.addEventListener('load', announce)");
   });
 

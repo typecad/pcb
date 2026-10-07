@@ -23,10 +23,19 @@
 // an element's own transform.
 // ---------------------------------------------------------------------------
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.PROBE_PROTO = void 0;
 exports.outlineData = outlineData;
 exports.applyNoncePolicy = applyNoncePolicy;
 exports.injectProbeClient = injectProbeClient;
 const node_crypto_1 = require("node:crypto");
+/**
+ * Protocol version of the injected probe client. The client is injected
+ * fresh into every page by the host, so it normally matches — a ready
+ * message carrying a different proto means the page's client came from
+ * somewhere else (an out-of-band page, a stale asset) and its interactions
+ * cannot be assumed. Bump when a host↔client message changes shape.
+ */
+exports.PROBE_PROTO = 1;
 /** Components with a measurable footprint; the rest have no outline to draw. */
 function outlineData(components) {
     return components
@@ -58,13 +67,20 @@ const PROBE_CLIENT = `<script>
   // Host render notices own the status line: they set data-locked (the
   // viewer's mouse-move readout and these selection messages stand down) and
   // hold it until cleared — normally by the page reload that lands the new
-  // render, which starts with a fresh, unlocked element.
+  // render, which starts with a fresh, unlocked element. The lock carries a
+  // timestamp: if the promised render never comes (the rebuild chain
+  // stalled), the page reclaims the line once the notice goes stale.
   function notice(text) {
     var el = document.getElementById('status');
     if (!el) return;
     el.textContent = text;
-    if (text) el.setAttribute('data-locked', '');
-    else el.removeAttribute('data-locked');
+    if (text) {
+      el.setAttribute('data-locked', '');
+      el.setAttribute('data-locked-at', String(Date.now()));
+    } else {
+      el.removeAttribute('data-locked');
+      el.removeAttribute('data-locked-at');
+    }
   }
 
   var style = document.createElement('style');
@@ -119,12 +135,19 @@ const PROBE_CLIENT = `<script>
   window.typecadNetSource = function (net) { return netSource[net] || ''; };
 
   // Announce readiness at parse time AND on load — the host retries any
-  // selection dropped before this until the matching ack comes back.
+  // selection dropped before this until the matching ack comes back. The
+  // announcement carries the client's protocol version and what the PAGE
+  // provided at boot, so the host can diagnose an old page instead of
+  // serving dead clicks.
   var announced = false;
   function announce() {
     if (announced) return;
     announced = true;
-    send({ type: 'typecad/ready' });
+    send({
+      type: 'typecad/ready',
+      proto: ${exports.PROBE_PROTO},
+      page: { viewer: !!window.typecadViewer },
+    });
   }
   announce();
   window.addEventListener('load', announce);

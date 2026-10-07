@@ -38,6 +38,118 @@ describe('buildViewerHtml', () => {
     expect(html).toContain('#board, #board text { -webkit-user-select: none; user-select: none; }');
   });
 
+  it('a host status lock goes stale instead of freezing the readout forever', () => {
+    // the extension's render notices lock the status line with a timestamp
+    // (data-locked-at, set by the injected probe client); the page must
+    // reclaim the line once the promised render is 2 minutes late — a
+    // stalled rebuild chain must not freeze the readout permanently
+    expect(html).toContain("getAttribute('data-locked-at')");
+    expect(html).toContain('120000');
+  });
+
+  it('a via under a component body is clickable and Tab-cyclable', () => {
+    // the part's own graphics swallow DOM hits, so element-based picking
+    // never reaches copper beneath the body: the click path under
+    // .layout-comp checks the via BARREL before falling through to
+    // segments, and the Tab cycle carries a via candidate
+    expect(html).toContain('function viaUnderCursor(');
+    expect(html).toContain('via = viaUnderCursor(gerberAt(ev.clientX, ev.clientY))');
+    expect(html).toContain("cands.push({ kind: 'via', el: cycleVia })");
+  });
+
+  it('a selected via shows its ring even under a component body', () => {
+    // the in-element selection ring paints in the copper group — beneath
+    // part graphics — so viaHiSync mirrors every selected via into an
+    // on-top group that re-appends itself as the flip host's last child
+    // (last child = top of the SVG paint order) on every sync
+    expect(html).toContain('function viaSelTopGroup(');
+    expect(html).toContain("id', 'via-sel-top'");
+    expect(html).toContain('flipHost.appendChild(g)');
+    expect(html).toContain('route-via-sel-top');
+  });
+
+  it('routing keys: V arms a via for the next click, Tab cycles the copper layer', () => {
+    // KiCad's rhythm: V records intent, the next CLICK anchors the segment
+    // and places the via at that point (the old V fired instantly at the
+    // hover position); Tab during a live route cycles the layer the next
+    // segment draws on — at the route start and on the continuation piece
+    // after a via, whose target layer follows the choice
+    expect(html).toContain('routeState.viaArmed = !routeState.viaArmed');
+    expect(html).toContain('placeViaCore(routeState.sx, routeState.sy, curPiece())');
+    expect(html).toContain('if (routeState) cycleRouteLayer();');
+    expect(html).toContain('function cycleRouteLayer()');
+    expect(html).toContain('v.to = next;');
+  });
+
+  it('the armed via shows its keep-out ring before the click', () => {
+    // the preview rides the placed-via halo class (so the live clear/red
+    // tint and via-size resizes apply to it) plus a dashed barrel ghost,
+    // tracks the walk end on every follow, and is cleared on disarm,
+    // placement, commit, and cancel
+    expect(html).toContain('function viaArmPreviewMake()');
+    expect(html).toContain("'route-via-halo route-via-preview'");
+    expect(html).toContain('route-via-arm-ghost');
+    expect(html).toContain('viaArmPreviewSync(wend.x, wend.y)');
+    expect(html).toContain('function viaArmPreviewClear()');
+    // the tint must TOGGLE the bad class, never replace the class list —
+    // a swap stripped route-via-preview from the halo, freezing the ring
+    // where V was pressed and stranding it beyond cleanup
+    expect(html).toContain("classList.toggle('bad', state === 'bad')");
+  });
+
+  it('the armed via checks its OWN barrel clearance — tint and refusal', () => {
+    // the preview's red is the barrel's margin (a degenerate segment of
+    // the via's width over the same obstacles and rule a trace uses), not
+    // the trace walk's — and a click that would land the barrel on netted
+    // foreign copper is refused whole, matching trace-anchor behavior
+    expect(html).toContain('function viaArmMarginAt(');
+    expect(html).toContain('routeState.viaMargin = viaArmMarginAt(wend.x, wend.y)');
+    expect(html).toContain('function viaHitsNettedCopper(');
+    expect(html).toContain('if (routeState.viaArmed && viaHitsNettedCopper(g.x, g.y))');
+    expect(html).toContain('.route-via-arm-ghost.bad');
+  });
+
+  it('a press on a part body claims the PART, not the silk label under it', () => {
+    // elementsFromPoint ignores pointer-events and paint order, so a refdes
+    // glyph stacked beneath a part handle made every body press delegate
+    // to the text handler — small parts (refdes under the whole body) were
+    // always hijacked (their text ghost engaged, reading mirrored) and
+    // U3 was unselectable. Delegation now requires the press to be ON the
+    // glyph's ink (screen-space stroke sampling)
+    expect(html).toContain('function pointNearPathInk(');
+    expect(html).toContain('stacked under the pointer is not the same as AIMED at');
+    expect(html).toContain("if (se.tagName === 'path' && !pointNearPathInk(se, ev.clientX, ev.clientY, 6)) continue;");
+  });
+
+  it('a part body always reads movable and owns its press', () => {
+    // KiCad parity: the move cursor shows on HOVER over any part body, not
+    // only on the selected one (unselected bodies kept the board crosshair
+    // and read as unmovable). And pressing a part selects the PART — the
+    // capture listener no longer claims an underlying segment for the
+    // trace selector (in dense corridors that made U3 unselectable); a via
+    // barrel under the body still claims its press, and traces under parts
+    // stay reachable through the Tab cycle
+    expect(html).toContain('#layout-overlay .layout-comp { cursor: move; }');
+    expect(html).toContain('the part OWNS its body');
+    expect(html).not.toContain('hitLine = segAt(gpPart)');
+  });
+
+  it('the via keep-out sees copper on EVERY layer — traces and pads', () => {
+    // a via spans the stack: its obstacle world is every copper group's
+    // foreign ink PLUS the pad manifest's exact rects (N/C pads included —
+    // unconnected pad copper is real copper), so the ring reddens over
+    // parts whose pads are mostly unconnected (seen live: nothing red over
+    // U1 while U3's trace reddened). And the halo rings carry a thin
+    // BOARD-UNIT stroke — an unsized SVG stroke is 1 user unit = 1mm of
+    // board, which read as a ~1.8mm band for a 0.85mm keep-out
+    expect(html).toContain('function viaObstacles()');
+    expect(html).toContain('buildObstacles(gs[gi], routeState.net)');
+    expect(html).toContain('padEffBoard(p)');
+    expect(html).toContain('routeState.viaObsCache');
+    expect(html).toMatch(/\.route-via-halo \{[^}]*stroke-width: 0\.05/);
+    expect(html).toMatch(/\.route-via-arm-ghost \{[^}]*stroke-width: 0\.05/);
+  });
+
   it('excludes the fat route-hit click twins from the live routing obstacle scan', () => {
     // every trace path gets an invisible stroke:max(w,0.5) twin for segment
     // selection; counting those as copper inflated each track to ~4x its
@@ -64,6 +176,70 @@ describe('buildViewerHtml', () => {
     expect(html).toContain("'nudge refused \\u2014 clearance violation'");
     expect(html).toContain('function ptSegDist(');
     expect(html).toContain('dist -= o.hw;');
+  });
+
+  it('gates PART nudges with the same poly-aware measure — pads walk their perimeter', () => {
+    // the part nudge gate measured every obstacle by its bounding box, so
+    // diagonal tracks read as their fat boxes and whole corridors refused
+    // all four directions (seen live: C6/U3 between VCC diagonals). Pads
+    // now measure through the shared margin walk — perimeter samples,
+    // true centerlines for tracks, same-net copper connects — and the
+    // verdict is ADVISORY, not a gate: the M-drag lands ungated, and a
+    // hard nudge gate boxed densely routed parts in completely (traces
+    // genuinely between C6's pads). The part lands; the ghost flashes red
+    // and the status says DRC when a pad sits in violation. The board
+    // edge is no part obstacle either (edge connectors overhang the
+    // outline by design)
+    expect(html).toContain('function padObstacleMargin(');
+    expect(html).toContain('return clearanceMargin(obs, per, 0, true);');
+    expect(html).toContain('function partNudgeWarning(');
+    expect(html).toContain('if (next < 0) return true;');
+    expect(html).toContain("var nudgeBad = partNudgeWarning(nudgeRefs, d[0], d[1]);");
+    expect(html).toContain("' \\u2014 clearance violation, DRC will flag it'");
+    expect(html).toContain('function clearanceMargin(obs, pts, w, skipEdge)');
+    expect(html).toContain('if (!skipEdge) {');
+    // the perimeter closes (5 points = 4 walked edges around the pad)
+    expect((html.match(/hw, y: pgy - hh/g) || []).length).toBeGreaterThanOrEqual(2);
+    // the old absolute bbox test and the hard part refusal are gone (the
+    // INK nudge keeps its own — it is the trace's, asserted above)
+    expect(html).not.toContain('if (Math.hypot(ddx, ddy) < clr) return true;');
+    expect((html.match(/nudge refused/g) || []).length).toBe(1);
+    // a landed nudge answers in the status bar like the M-drag
+    expect(html).toContain('fmtPos(nudgeLast.__lx)');
+  });
+
+  it('obstacles track moved parts — ghost transforms fold in, ripped ink skips', () => {
+    // a moved part's ink carries its ghost as the element's OWN transform,
+    // which getBBox ignores: every clearance verdict kept testing the part
+    // at its authored spot — traces through the OLD position stayed red,
+    // the NEW position welcomed them (seen live after a part move). The
+    // obstacle build folds the transform into both the bbox (boxInParent)
+    // and the track centerline verts, skips display:none ink (a moved
+    // part's ripped routing is not copper until the rebuild), and a live
+    // route's cached obstacle lists rebuild when a move commits
+    expect(html).toContain('bb = boxInParent(el);');
+    expect(html).toContain('poly.push([tm.a * vx + tm.c * vy + tm.e, tm.b * vx + tm.d * vy + tm.f]);');
+    expect(html).toContain('ripped ink (a moved part');
+    expect(html).toContain("if (el.getAttribute('display') === 'none') continue;");
+    expect(html).toContain('routeState.viaObsCache = null;');
+    expect(html).toContain('rpiece.obstacles = buildObstacles(rpiece.layerGroup, routeState.net);');
+  });
+
+  it('never lets a barrel overlap another barrel, same net or not', () => {
+    // the armed via's refusal tested NETTED copper only — the route's own
+    // net is exempt there (via-in-pad, via-on-trace are connections), so a
+    // via sailed straight onto a same-net via (seen live). The overlap test
+    // has NO net exemption, tints the arm preview red, refuses the click
+    // with its own message, and includes this route's already-placed
+    // barrels (their data-route stamp only lands at commit)
+    expect(html).toContain('function viaOverlapsVia(');
+    expect(html).toContain("routeUi.querySelectorAll('circle.route-via')");
+    // red and refusal begin where the OUTER keep-out ring meets the other
+    // barrel — barrel radii PLUS clearance, not copper-to-copper contact
+    expect(html).toContain('if (Math.hypot(p.x - x, p.y - y) < (size + other) / 2 + clr) return true;');
+    expect(html).toContain('if (viaOverlapsVia(wend.x, wend.y, routeState.via.size)) routeState.viaMargin = -1;');
+    expect(html).toContain('routeState.viaArmed && viaOverlapsVia(g.x, g.y, routeState.via.size)');
+    expect(html).toContain("'via keep-out violation \\u2014 another barrel is inside the ring; move it before clicking'");
   });
 
   it('hosts the zone tool in the E properties panel, not the sidebar', () => {
@@ -864,6 +1040,30 @@ describe('layout view (component overlay from the gerbers)', () => {
     expect(html).toContain("if (netEls[re].getAttribute('data-ref')) continue;");
   });
 
+  it('keep-upright flips labels only when presses cross the boundary — a plain move never flips', () => {
+    const html = buildViewerHtml(svg, [info], { title: 'demo board', pcbaSvg: '<svg/>', layoutComponents });
+    // the plotter's boundary, evaluated from the page: (90, 270] flips
+    const kup = new Function(`return (${extractFunction(html, 'kupFlipDeg')});`)() as (d: number) => number;
+    expect(kup(0)).toBe(0);
+    expect(kup(90)).toBe(0);
+    expect(kup(180)).toBe(180);
+    expect(kup(270)).toBe(180);
+    expect(kup(360)).toBe(0);
+    expect(kup(-90)).toBe(180); // -90 ≡ 270
+    // the ghost compares the pending total against the AUTHORED baseline —
+    // rot-180 labels (C6/C3/D1-class passives) plot pre-flipped/upright and
+    // must not flip again just because their part moved (seen live as a
+    // glyph-identical-to-mirror "6C")
+    expect(html).toContain('if (kupFlipDeg(total) !== kupFlipDeg(t.rot || 0))');
+    expect(html).not.toContain('var tn = ((total % 360) + 360) % 360;');
+    // the edited-value preview rotates to the plot direction (keep-upright
+    // folded in, part presses included) instead of flipping authored-upright
+    // glyphs; board-level texts keep their own-presses rotation
+    expect(html).toContain('if (tt > 90 && tt <= 270) tt -= 180;');
+    expect(html).toContain("tr += ' rotate(' + tt * flip + ')';");
+    expect(html).toContain("tr += ' rotate(' + m.rot * 90 * flip + ')';");
+  });
+
   it('keeps an open E properties panel following the clicked element', () => {
     const html = buildViewerHtml(svg, [info], { title: 'demo board', pcbaSvg: '<svg/>', layoutComponents });
     // an open panel refreshes on every selection change: the three selection
@@ -1129,5 +1329,21 @@ M02*
       // view renders the fabricated board without them
       expect(result.html, first.label).toContain("rats.style.display = viewMode === 'layout' ? '' : 'none';");
     }
+  });
+});
+
+describe('removeViasAt mask openings', () => {
+  const image = parseGerber(read('traces.gbr'));
+  const info = detectLayer('demo-F_Cu.gbr', image);
+  const svg = renderSvg([{ info, image }]);
+  const html = buildViewerHtml(svg, [info], { title: 'demo board' });
+
+  it('deleting a via takes its solder-mask openings too', () => {
+    // a rebuilt via renders one mask opening per mask layer beside its
+    // copper flashes; removeViasAt cleared the flashes and the drill hole
+    // but left the openings — a white ring where the via was until the
+    // next rebuild regenerated the page (seen live)
+    expect(html).toContain('g[data-kind=\"mask\"] circle, g[data-kind=\"mask\"] use');
+    expect(html).toContain('the solder-mask OPENINGS outlive the barrel');
   });
 });

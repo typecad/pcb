@@ -24,11 +24,23 @@
 
 import { randomUUID } from 'node:crypto';
 import type { RouteDeleteInput, RouteInput } from './routeEdits.js';
+import type { LayoutMove } from './layoutEdits.js';
+import type { LayoutZoneInput } from './layoutApply.js';
+import type { ImageSourceDelete, ImageSourceEdit } from './imageEdits.js';
 import type { ComponentSummary, NetSourceSummary } from './types.js';
 
 // route/delete payloads share their shapes with the edit planners — one
 // definition, no drift between what the page sends and what they plan
 export type { RouteDeleteInput, RouteInput };
+
+/**
+ * Protocol version of the injected probe client. The client is injected
+ * fresh into every page by the host, so it normally matches — a ready
+ * message carrying a different proto means the page's client came from
+ * somewhere else (an out-of-band page, a stale asset) and its interactions
+ * cannot be assumed. Bump when a host↔client message changes shape.
+ */
+export const PROBE_PROTO = 1;
 
 interface OutlineComponent {
   ref: string;
@@ -99,8 +111,65 @@ export interface LayoutTextEdit {
   style?: LayoutTextStyle;
 }
 
+/**
+ * The layout view's whole "apply & rebuild" gesture, as the page sends it.
+ * Field shapes share the edit planners' definitions (moves/zones/routes —
+ * one definition, no drift between what the page sends and what they plan);
+ * the host's apply bridge consumes this payload as one object.
+ */
+export interface LayoutRebuildPayload {
+  /** the board mtime this page was generated from — null on old pages */
+  board?: string | null;
+  moves: LayoutMove[];
+  texts?: LayoutTextEdit[];
+  values?: Array<{ ref: string; value: string }>;
+  labels?: LabelEdit[];
+  renames?: Array<{ ref: string; newRef: string }>;
+  /** interactive routes to append as TrackBuilder source */
+  routes?: RouteInput[];
+  /** deleted trace segments to remove from source TrackBuilder chains */
+  deletes?: RouteDeleteInput[];
+  /** board references of parts deleted in the layout view — the apply
+   *  removes them from source */
+  partDeletes?: string[];
+  /** zones drawn in the layout view — pours and keepouts that land as
+   *  typecad.zone()/typecad.keepout() calls in the _sync.ts sidecar */
+  zones?: LayoutZoneInput[];
+  /** artwork images placed in the layout view — the host copies the
+   *  picked file into the project's art/ folder, then the apply writes
+   *  `syncArt.push(new Image({ … }))` into the _sync.ts sidecar. x/y is
+   *  the artwork CENTER in board-frame mm. */
+  images?: Array<{ path: string; name: string; x: number; y: number; w: number; h: number; side: 'front' | 'back' }>;
+  /** the board outline edit: authored rect + new rect, board frame */
+  outline?: {
+    original: { x: number; y: number; w: number; h: number };
+    rect: { x: number; y: number; w: number; h: number };
+  };
+  /** applied-zone geometry edits: authored rect (layer included) + new rect */
+  zoneEdits?: Array<{
+    original: { x: number; y: number; w: number; h: number; layer: string };
+    rect: { x: number; y: number; w: number; h: number };
+  }>;
+  /** applied zones deleted in the view — their source statements go */
+  zoneDeletes?: Array<{ x: number; y: number; w: number; h: number; layer: string }>;
+  /** applied artwork edits: original placement (match key) + new rect/
+   *  side + optionally a replacement file's absolute path (the host
+   *  copies it into art/ before planning) */
+  imageEdits?: ImageSourceEdit[];
+  /** applied artwork deleted in the view — its statement goes */
+  imageDeletes?: ImageSourceDelete[];
+  classEdits?: Array<{ name: string; values: Record<string, number> }>;
+}
+
 export type ProbeWebviewMessage =
-  | { type: 'typecad/ready' }
+  | {
+      type: 'typecad/ready';
+      /** probe-client protocol version (absent on pre-proto clients) */
+      proto?: number;
+      /** what the page itself provided at boot — a page without the viewer
+       *  API predates the installed toolchain and its gestures are dead */
+      page?: { viewer: boolean };
+    }
   | { type: 'typecad/ack'; ref: string; token?: number; found?: boolean }
   | { type: 'typecad/probe'; ref: string; pin?: string }
   | { type: 'typecad/pick-image' }
@@ -111,76 +180,14 @@ export type ProbeWebviewMessage =
       /** selected segment endpoints (board frame) when traces are selected */
       segs?: Array<{ x1: number; y1: number; x2: number; y2: number; net: string | null }>;
     }
-  | {
-      type: 'typecad/layout-rebuild';
-      /** the board mtime this page was generated from — null on old pages */
-      board?: string | null;
-      moves: Array<{
-        ref: string;
-        dx: number;
-        dy: number;
-        rot?: number;
-        pads?: Array<{ x: number; y: number }>;
-        ax?: number;
-        ay?: number;
-        /** flip gesture (Shift+F): the component's TARGET side */
-        side?: 'front' | 'back';
-        /** final pad centers matching pads 1:1 — a flip's per-pad deltas */
-        padsTo?: Array<{ x: number; y: number }>;
-      }>;
-      texts?: LayoutTextEdit[];
-      values?: Array<{ ref: string; value: string }>;
-      labels?: LabelEdit[];
-      renames?: Array<{ ref: string; newRef: string }>;
-      /** interactive routes to append as TrackBuilder source */
-      routes?: RouteInput[];
-      /** deleted trace segments to remove from source TrackBuilder chains */
-      deletes?: RouteDeleteInput[];
-      /** board references of parts deleted in the layout view — the apply
-       *  removes them from source */
-      partDeletes?: string[];
-      /** zones drawn in the layout view — pours and keepouts that land as
-       *  typecad.zone()/typecad.keepout() calls in the _sync.ts sidecar */
-      zones?: Array<{ kind: 'pour' | 'keepout'; layer: string; net?: string; x: number; y: number; w: number; h: number }>;
-      /** artwork images placed in the layout view — the host copies the
-       *  picked file into the project's art/ folder, then the apply writes
-       *  `syncArt.push(new Image({ … }))` into the _sync.ts sidecar. x/y is
-       *  the artwork CENTER in board-frame mm. */
-      images?: Array<{ path: string; name: string; x: number; y: number; w: number; h: number; side: 'front' | 'back' }>;
-      /** the board outline edit: authored rect + new rect, board frame */
-      outline?: {
-        original: { x: number; y: number; w: number; h: number };
-        rect: { x: number; y: number; w: number; h: number };
-      };
-      /** applied-zone geometry edits: authored rect (layer included) + new rect */
-      zoneEdits?: Array<{
-        original: { x: number; y: number; w: number; h: number; layer: string };
-        rect: { x: number; y: number; w: number; h: number };
-      }>;
-      /** applied zones deleted in the view — their source statements go */
-      zoneDeletes?: Array<{ x: number; y: number; w: number; h: number; layer: string }>;
-      /** applied artwork edits: original placement (match key) + new rect/
-       *  side + optionally a replacement file's absolute path (the host
-       *  copies it into art/ before planning) */
-      imageEdits?: Array<{
-        match: { file: string; x: number; y: number; w?: number; h?: number };
-        x: number;
-        y: number;
-        w: number;
-        h: number;
-        side: 'front' | 'back';
-        newFile?: string | null;
-      }>;
-      /** applied artwork deleted in the view — its statement goes */
-      imageDeletes?: Array<{ file: string; x: number; y: number; w?: number; h?: number }>;
-      classEdits?: Array<{ name: string; values: Record<string, number> }>;
-    };
+  | ({ type: 'typecad/layout-rebuild' } & LayoutRebuildPayload);
 
 export type ProbeHostMessage =
   | { type: 'typecad/select'; ref: string; token?: number }
   | { type: 'typecad/select-net'; net: string; token?: number }
   | { type: 'typecad/status'; text: string }
-  | { type: 'typecad/image-picked'; path: string; name: string; dataUrl: string };
+  | { type: 'typecad/image-picked'; path: string; name: string; dataUrl: string }
+  | { type: 'typecad/layout-status'; error: string | undefined };
 
 const PROBE_CLIENT = `<script>
 (function () {
@@ -199,13 +206,20 @@ const PROBE_CLIENT = `<script>
   // Host render notices own the status line: they set data-locked (the
   // viewer's mouse-move readout and these selection messages stand down) and
   // hold it until cleared — normally by the page reload that lands the new
-  // render, which starts with a fresh, unlocked element.
+  // render, which starts with a fresh, unlocked element. The lock carries a
+  // timestamp: if the promised render never comes (the rebuild chain
+  // stalled), the page reclaims the line once the notice goes stale.
   function notice(text) {
     var el = document.getElementById('status');
     if (!el) return;
     el.textContent = text;
-    if (text) el.setAttribute('data-locked', '');
-    else el.removeAttribute('data-locked');
+    if (text) {
+      el.setAttribute('data-locked', '');
+      el.setAttribute('data-locked-at', String(Date.now()));
+    } else {
+      el.removeAttribute('data-locked');
+      el.removeAttribute('data-locked-at');
+    }
   }
 
   var style = document.createElement('style');
@@ -260,12 +274,19 @@ const PROBE_CLIENT = `<script>
   window.typecadNetSource = function (net) { return netSource[net] || ''; };
 
   // Announce readiness at parse time AND on load — the host retries any
-  // selection dropped before this until the matching ack comes back.
+  // selection dropped before this until the matching ack comes back. The
+  // announcement carries the client's protocol version and what the PAGE
+  // provided at boot, so the host can diagnose an old page instead of
+  // serving dead clicks.
   var announced = false;
   function announce() {
     if (announced) return;
     announced = true;
-    send({ type: 'typecad/ready' });
+    send({
+      type: 'typecad/ready',
+      proto: ${PROBE_PROTO},
+      page: { viewer: !!window.typecadViewer },
+    });
   }
   announce();
   window.addEventListener('load', announce);

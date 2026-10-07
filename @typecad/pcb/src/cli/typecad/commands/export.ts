@@ -39,6 +39,8 @@ function findPcbFile(argPath?: string, stem?: string): string | null {
   return board;
 }
 
+export { findPcbFile };
+
 /**
  * The gerbers output dir for this board: `build/gerbers` for single-board
  * projects (unchanged), `build/gerbers/<stem>` once the manifest lists more
@@ -50,6 +52,11 @@ export function gerbersDirFor(parsed: ParsedArgs, buildDir: string, pcbPath: str
   if (parsed.args['output'] || parsed.args['o'] || parsed.args['out']) {
     return getOutputDir(parsed, path.join(buildDir, 'gerbers'));
   }
+  return defaultGerbersDir(buildDir, pcbPath);
+}
+
+/** The manifest-aware gerbers dir with no explicit override. */
+export function defaultGerbersDir(buildDir: string, pcbPath: string): string {
   if (listBoardFiles(buildDir).length > 1) {
     return path.join(buildDir, 'gerbers', path.basename(pcbPath, '.kicad_pcb'));
   }
@@ -352,22 +359,27 @@ function findUnfilledZones(source: string): UnfilledZone[] {
   }
   return out;
 }
-async function runNativeGerbers(parsed: ParsedArgs): Promise<void> {
-  const json = parsed.json;
-  const pcbArg = parsed.positional[0];
-  const pcbPath = findPcbFile(pcbArg, boardStemFromArgs(parsed));
+export interface NativeGerbersResult {
+  outputDir: string;
+  files: string[];
+  /** zones that had no saved fills before the in-memory refill */
+  unfilledZones: number;
+}
 
-  if (!pcbPath) {
-    if (pcbArg) throw new Error(`PCB file not found: ${pcbArg}`);
-    throw new Error(
-      `No .kicad_pcb file found in ${buildDirPath()}.
-` +
-        'Run `typecad-pcb build` first, or specify a path: typecad-pcb export gerbers <path/to/board.kicad_pcb>',
-    );
-  }
-
-  const buildDir = buildDirPath();
-  const outputDir = gerbersDirFor(parsed, buildDir, pcbPath);
+/**
+ * The native gerbers/drill/job export as one programmatic call (the
+ * `export gerbers` core, minus arg parsing) — the `viewer` command composes
+ * it with the page build so one process does the whole render pipeline.
+ * Writes copper + graphics + drill + job files into `outputDir` (or the
+ * manifest-aware default), refills zones in memory, prunes foreign-stem
+ * artifacts, and heals the pads manifest. `json` silences the human logs.
+ */
+export function exportNativeGerbers(
+  pcbPath: string,
+  opts: { outputDir?: string; savedFills?: boolean; json?: boolean } = {},
+): NativeGerbersResult {
+  const json = opts.json ?? false;
+  const outputDir = opts.outputDir ?? defaultGerbersDir(buildDirPath(), pcbPath);
   fs.mkdirSync(outputDir, { recursive: true });
 
   let source = fs.readFileSync(pcbPath, 'utf8');
@@ -379,7 +391,7 @@ async function runNativeGerbers(parsed: ParsedArgs): Promise<void> {
   // opts out to plot exactly what the board carries.
   const unfilledZones = findUnfilledZones(source);
   const zoneCount = countZones(source);
-  if (zoneCount > 0 && parsed.args['saved-fills'] !== true) {
+  if (zoneCount > 0 && opts.savedFills !== true) {
     const filledSource = refillZoneFills(source);
     if (filledSource !== null) {
       source = filledSource;
@@ -444,26 +456,59 @@ async function runNativeGerbers(parsed: ParsedArgs): Promise<void> {
   // viewer would bake stale pad labels over fresh copper. Heal it here.
   refreshPadsManifestFromBoard(pcbPath);
 
-  const files = written.map((f) => path.basename(f)).sort();
-    if (json) {
-      logger.log(
-        JSON.stringify(
-          {
-            pcb: pcbPath,
-            outputDir,
-            native: true,
-            unfilledZones: unfilledZones.length,
-            files,
-          },
-          null,
-          2,
-        ),
-      );
-  } else {
+  return {
+    outputDir,
+    files: written.map((f) => path.basename(f)).sort(),
+    unfilledZones: unfilledZones.length,
+  };
+}
+
+async function runNativeGerbers(parsed: ParsedArgs): Promise<void> {
+  const json = parsed.json;
+  const pcbArg = parsed.positional[0];
+  const pcbPath = findPcbFile(pcbArg, boardStemFromArgs(parsed));
+
+  if (!pcbPath) {
+    if (pcbArg) throw new Error(`PCB file not found: ${pcbArg}`);
+    throw new Error(
+      `No .kicad_pcb file found in ${buildDirPath()}.
+` +
+        'Run `typecad-pcb build` first, or specify a path: typecad-pcb export gerbers <path/to/board.kicad_pcb>',
+    );
+  }
+
+  if (!json) {
     logger.log(chalk.white.bold('typecad-pcb export gerbers') + ' - Native gerber export (no kicad-cli; --kicad for legacy)\n');
     logger.log(`  PCB:    ${pcbPath}`);
-    logger.log(`  Output: ${outputDir}`);
+  }
+
+  const result = exportNativeGerbers(pcbPath, {
+    outputDir: typeof (parsed.args['output'] ?? parsed.args['o'] ?? parsed.args['out']) === 'string'
+      ? getOutputDir(parsed, path.join(buildDirPath(), 'gerbers'))
+      : undefined,
+    savedFills: parsed.args['saved-fills'] === true,
+    json,
+  });
+
+  if (!json) {
+    logger.log(`  Output: ${result.outputDir}`);
     logger.log(chalk.gray('  Text:   public-domain Hershey stroke font (gerber_spec/SPEC.md)\n'));
-    logger.log(chalk.green(`Exported ${files.length} fabrication file(s) to ${outputDir}`));
+  }
+  if (json) {
+    logger.log(
+      JSON.stringify(
+        {
+          pcb: pcbPath,
+          outputDir: result.outputDir,
+          native: true,
+          unfilledZones: result.unfilledZones,
+          files: result.files,
+        },
+        null,
+        2,
+      ),
+    );
+  } else {
+    logger.log(chalk.green(`Exported ${result.files.length} fabrication file(s) to ${result.outputDir}`));
   }
 }

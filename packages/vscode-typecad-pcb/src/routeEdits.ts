@@ -64,6 +64,290 @@ export function escapeSingleQuoted(value: string): string {
   return value.replace(/\\/g, '\\\\').replace(/\r/g, '\\r').replace(/\n/g, '\\n').replace(/'/g, "\\'");
 }
 
+// ---------------------------------------------------------------------------
+// The per-net track section dialect — the grammar the kicad2typecad write-back
+// owns (`// Net: X` + `const track_X: TrackBuilder[] = [];` +
+// `track_X.push(typecad.track({ net: 'X' }).from(...).to(...));`). When a
+// project's routing already lives in this form, new routes MUST land in it
+// too, byte-identical to how the write-back would render them: its oracle
+// compares the section textually, and anything less than canonical reads as
+// drift. The renderers below mirror display.ts's pushStatementSource with
+// PLAIN chalk (identity) — net single-escaped, layer double-quoted, numbers
+// via String(n), per-leg widths, an end via inline, one blank line between
+// net blocks, spreads appended in board order.
+// ---------------------------------------------------------------------------
+
+/** The section's array name for a net — display.ts's sanitize rule. */
+export function trackVarForNet(net: string): string {
+  return (
+    'track_' +
+    net
+      .replace(/[`'"]/g, '')
+      .replace(/[^a-zA-Z0-9_]/g, '_')
+      .replace(/^_+|_+$/g, '')
+  );
+}
+
+/** The oracle's number rendering (PLAIN_CH.chNum). */
+const canonNum = (n: number): string => String(n);
+
+/** One route as ONE canonical push statement — the oracle chains every
+ *  positionally-contiguous run into a single statement (it never severs on
+ *  width or layer changes; each leg carries its own), so the pieces of a
+ *  route merge here exactly the way a rebuild → re-chain round-trips. */
+/** One route leg in the canonical `.to({ x, y, layer, width })` form. */
+function toClause(leg: { x: number; y: number; layer: string; width: number }): string {
+  return `.to({ x: ${canonNum(leg.x)}, y: ${canonNum(leg.y)}, layer: "${leg.layer}", width: ${canonNum(leg.width)} })`;
+}
+
+/** A route's legs (per-piece width runs, one per point pair). */
+function routeLegs(route: RouteInput): Array<{ x: number; y: number; layer: string; width: number }> {
+  const legs: Array<{ x: number; y: number; layer: string; width: number }> = [];
+  for (const piece of route.pieces) {
+    for (let i = 1; i < piece.pts.length; i++) {
+      legs.push({ x: piece.pts[i]!.x, y: piece.pts[i]!.y, layer: piece.layer, width: piece.w ?? route.w });
+    }
+  }
+  return legs;
+}
+
+function sectionPushStatement(net: string, route: RouteInput): string | null {
+  const legs = routeLegs(route);
+  if (legs.length === 0 || route.pieces.length === 0) return null;
+  const first = route.pieces[0]!;
+  const firstWidth = first.w ?? route.w;
+  const variable = trackVarForNet(net);
+  let out =
+    `${variable}.push(typecad.track({ net: '${escapeSingleQuoted(net)}' })` +
+    `.from({ x: ${canonNum(first.pts[0]!.x)}, y: ${canonNum(first.pts[0]!.y)} }, "${first.layer}", ${canonNum(firstWidth)})`;
+  for (const leg of legs) {
+    out += toClause(leg);
+  }
+  // a via at the chain's end rides the statement (attachChainVias); the
+  // default barrel matches what the build writes for an unspecified via
+  const end = legs[legs.length - 1]!;
+  const endVia = (route.vias ?? []).find((v) => ptEq(v, end, 0.001));
+  if (endVia) {
+    out += `.via({ size: ${canonNum(endVia.size ?? 0.6)}, drill: ${canonNum(endVia.drill ?? 0.3)} })`;
+  }
+  return out + ');';
+}
+
+/**
+ * A route's mid-chain vias as standalone statements — the write-back's
+ * canonical form for them (trackBlockSource renders standalone vias at
+ * column 0, after a blank line, at the section end). A layer-transition
+ * via (the via where a drawn route changes copper layer) sits at a
+ * MIDDLE vertex of the chain, so attachChainVias leaves it standalone:
+ * without these statements the route compiles to segments the build
+ * cannot join across layers, and the vias the user drew vanish from the
+ * board (seen live: both AMP_OUT transition vias missing).
+ */
+function standaloneViaStatements(net: string, route: RouteInput): string[] {
+  const legs = route.pieces.flatMap((piece) => piece.pts.slice(1));
+  const end = legs[legs.length - 1];
+  return (route.vias ?? [])
+    .filter((v) => !end || !ptEq(v, end, 0.001))
+    .map(
+      (v) =>
+        `typecad.via({ at: { x: ${canonNum(v.x)}, y: ${canonNum(v.y)} }, net: '${escapeSingleQuoted(net)}', size: ${canonNum(v.size ?? 0.6)}, drill: ${canonNum(v.drill ?? 0.3)} });`,
+    );
+}
+
+/** Does this text hold a per-net track section (the write-back's grammar)? */
+export function hasTrackSection(text: string): boolean {
+  return /(?:^|\n)track_[A-Za-z0-9_]+\.push\(typecad\.track\(/.test(text);
+}
+
+export interface SectionRoutePlan {
+  edits: PlannedEdit[];
+  applied: number;
+  skipped: string[];
+}
+
+/**
+ * Append routes to a file's per-net track section in the write-back's
+ * canonical dialect: a route whose net already has a block lands as its
+ * last push statement (board order — the build emits statement order); a
+ * new net gains a whole block at the end of the section and a `...track_X`
+ * spread appended to create()'s arguments (the oracle's args order). Skips
+ * (not duplicates — those the caller handles) come back with reasons;
+ * net-less routes are not writable in this dialect (the section is named).
+ */
+export function planSectionRouteEdits(text: string, routes: RouteInput[]): SectionRoutePlan {
+  const edits: PlannedEdit[] = [];
+  const skipped: string[] = [];
+  let applied = 0;
+  for (const route of routes) {
+    const label = `${route.from.ref}.${route.from.pin}`;
+    if (route.net === null || route.net === '') {
+      skipped.push(`${label} (net-less routes cannot land in the track section)`);
+      continue;
+    }
+    // duplicate guard: a statement with identical geometry already exists
+    const statement = sectionPushStatement(route.net, route);
+    if (statement === null) {
+      skipped.push(`${label} (no geometry)`);
+      continue;
+    }
+    if (text.includes(statement)) {
+      skipped.push(`${label} (identical statement already in the section)`);
+      continue;
+    }
+
+    const variable = trackVarForNet(route.net);
+    const pushRe = new RegExp(`^${variable}\\.push\\([^;]*\\);`, 'gm');
+    let lastPush: RegExpExecArray | null = null;
+    let m: RegExpExecArray | null;
+    while ((m = pushRe.exec(text)) !== null) lastPush = m;
+
+    // mid-chain vias (layer transitions) are standalone statements at the
+    // section end, in the write-back's canonical form — one edit placing
+    // all of this route's, after the last existing standalone via or
+    // after the section's last statement (blank-line separated)
+    const standalone = standaloneViaStatements(route.net, route);
+    if (standalone.length > 0) {
+      const viaRe = /^typecad\.via\([^;]*\);$/gm;
+      let lastVia: RegExpExecArray | null = null;
+      while ((m = viaRe.exec(text)) !== null) lastVia = m;
+      if (lastVia) {
+        const at = lastVia.index + lastVia[0].length;
+        edits.push({ start: at, end: at, line: '\n' + standalone.join('\n') });
+      } else {
+        const lastStmt = lastAnyStatement(text);
+        if (lastStmt) {
+          edits.push({ start: lastStmt.end, end: lastStmt.end, line: '\n\n' + standalone.join('\n') });
+        } else {
+          skipped.push(`${label} (no section anchor for the route's vias)`);
+        }
+      }
+    }
+
+    if (lastPush) {
+      const stmt = lastPush[0];
+      // CONTIGUOUS CONTINUATION: the oracle chains positionally-contiguous
+      // segments into ONE statement (buildTrackChains breaks chains only on
+      // position gaps) — a route that starts where the net's last statement
+      // ends must EXTEND that statement, not add a sibling. Two statements
+      // for one contiguous run read as drift and get re-chained on the next
+      // write-back (seen live: CH2_COM and DRIVE redraws).
+      const lastEnd = finalPointOf(stmt);
+      const legs = routeLegs(route);
+      const startPt = route.pieces[0]!.pts[0]!;
+      if (lastEnd && ptEq(lastEnd, startPt, 0.001) && legs.length > 0) {
+        const viaM = /\.via\(\{[^}]*\}\)/.exec(stmt);
+        const head = viaM ? stmt.slice(0, viaM.index) : stmt.slice(0, stmt.lastIndexOf(');'));
+        const extended = head + legs.map(toClause).join('') + ');';
+        edits.push({ start: lastPush.index, end: lastPush.index + stmt.length, line: extended });
+        applied++;
+        continue;
+      }
+      // existing net: append as its last statement (the canonical board
+      // order puts newly built copper after the existing chains)
+      const at = lastPush.index + stmt.length;
+      edits.push({ start: at, end: at, line: `\n${statement}` });
+      applied++;
+      continue;
+    }
+
+    // An ORPHANED declaration (a net whose pushes were all deleted — the
+    // array survives empty) is an existing net too: append the push right
+    // after the declaration. Re-declaring beside it is a duplicate-symbol
+    // build failure (seen live: track_DRIVE declared twice), and the
+    // create() spread already names it — a second spread would double the
+    // copper into create().
+    const declRe = new RegExp(`^const ${variable}: TrackBuilder\\[\\] = \\[\\];`, 'gm');
+    const decl = declRe.exec(text);
+    if (decl) {
+      const at = decl.index + decl[0].length;
+      edits.push({ start: at, end: at, line: `\n${statement}` });
+      applied++;
+      continue;
+    }
+
+    // new net: a whole block at the END of the section (after the last
+    // push of the last group), separated by one blank line — and the
+    // create() args gain the spread, after the last argument (only when
+    // they do not already carry it)
+    const lastAny = lastAnyStatement(text);
+    if (!lastAny) {
+      skipped.push(`${label} (no section to append to — not the section owner)`);
+      continue;
+    }
+    const block =
+      `\n\n// Net: ${route.net}\nconst ${variable}: TrackBuilder[] = [];\n${statement}`;
+    edits.push({ start: lastAny.end, end: lastAny.end, line: block });
+
+    const create = findCreateCall(text);
+    if (create && !text.slice(create.createIdx, create.closeIdx).includes(`...${variable}`)) {
+      const insert = createArgsSpreadInsert(text, create, `...${variable}`);
+      if (insert) edits.push(insert);
+    }
+    applied++;
+  }
+  return { edits, applied, skipped };
+}
+
+/** End offset of the section's last statement — a standalone via line, or
+ *  the last `track_X.push(...)` of the last group. */
+function lastAnyStatement(text: string): { end: number } | null {
+  let last: { end: number } | null = null;
+  for (const m of text.matchAll(/^(?:typecad\.via\([^;]*\);|track_[A-Za-z0-9_]+\.push\([^;]*\);)$/gm)) {
+    last = { end: m.index + m[0].length };
+  }
+  return last;
+}
+
+/** The final point of a canonical push statement — its last `.to({ x, y …})`
+ *  vertex, or the `.from({ x, y …})` point when it has no legs. */
+function finalPointOf(stmt: string): { x: number; y: number } | null {
+  const tos = [...stmt.matchAll(/\.to\(\{ x: (-?[\d.]+), y: (-?[\d.]+),/g)];
+  const last = tos[tos.length - 1];
+  if (last) return { x: parseFloat(last[1]!), y: parseFloat(last[2]!) };
+  const from = /\.from\(\{ x: (-?[\d.]+), y: (-?[\d.]+)/.exec(stmt);
+  return from ? { x: parseFloat(from[1]!), y: parseFloat(from[2]!) } : null;
+}
+
+/** The `...spread` append into create()'s arguments, after the last
+ *  argument — matching buildCreateArgsSource's kept-then-spreads order and
+ *  the call's own single/multi-line style. Null when the insertion point
+ *  cannot be found safely. */
+function createArgsSpreadInsert(
+  text: string,
+  create: { createIdx: number; closeIdx: number },
+  spread: string,
+): PlannedEdit | null {
+  const open = text.indexOf('(', create.createIdx);
+  if (open === -1 || open > create.closeIdx) return null;
+  let depth = 0;
+  let lastComma = -1;
+  for (let i = open; i < create.closeIdx; i++) {
+    const ch = text[i]!;
+    if (ch === "'" || ch === '"') {
+      i++;
+      while (i < create.closeIdx && text[i] !== ch) {
+        if (text[i] === '\\') i++;
+        i++;
+      }
+      continue;
+    }
+    if (ch === '(') depth++;
+    else if (ch === ')') depth--;
+    else if (ch === ',' && depth === 1) lastComma = i;
+  }
+  // the last argument runs from the final top-level comma (or the open
+  // paren) to the close paren, trailing whitespace excluded
+  let end = create.closeIdx;
+  const argStart = lastComma === -1 ? open + 1 : lastComma + 1;
+  while (end > argStart && /\s/.test(text[end - 1]!)) end--;
+  if (end <= argStart) return null;
+  const multiline = text.slice(open, create.closeIdx).includes('\n');
+  const argLineStart = text.lastIndexOf('\n', end - 1) + 1;
+  const indent = multiline ? (/^[ \t]*/.exec(text.slice(argLineStart, end))?.[0] ?? '  ') : '';
+  const at = end;
+  return { start: at, end: at, line: `,${multiline ? '\n' + indent : ' '}${spread}` };
+}
+
 /** Do two points match within tolerance (board frame, mm)? */
 const ptEq = (a: { x: number; y: number }, b: { x: number; y: number }, tol = 0.02): boolean =>
   Math.abs(a.x - b.x) < tol && Math.abs(a.y - b.y) < tol;
@@ -838,6 +1122,21 @@ export function planRouteDeletes(
 
   const routes = parseRoutes(text);
   const pushes = parsePushChains(text);
+
+  // Standalone via statements — the canonical home of mid-chain (layer
+  // transition) vias. Two delete paths own them: a VIA-kind delete names
+  // one directly (the user selected the via), and a leg deletion that
+  // removes the geometry a via joins orphans it (deleting the route must
+  // take its transition vias — seen live: the track went, both vias
+  // stayed on the rebuilt board).
+  const standaloneViaRe = /^typecad\.via\(\{ at: \{ x: (-?[\d.]+), y: (-?[\d.]+) \}, net: '([^']*)'[^)]*\}\);$/gm;
+  const standaloneVias: Array<{ start: number; end: number; x: number; y: number; net: string; removed: boolean }> = [];
+  for (const m of text.matchAll(standaloneViaRe)) {
+    let end = m.index + m[0].length;
+    const nl = /^\r?\n/.exec(text.slice(end));
+    if (nl) end += nl[0].length;
+    standaloneVias.push({ start: m.index, end, x: parseFloat(m[1]!), y: parseFloat(m[2]!), net: m[3]!, removed: false });
+  }
   // line-index -> char-offset mapping for block edits (create() edits are
   // computed in char offsets directly and stay untouched by this)
   const lineStarts: number[] = [];
@@ -864,6 +1163,20 @@ export function planRouteDeletes(
   const namesToRemove: string[] = [];
   /** indexes into `deletes` that matched a source segment somewhere */
   const matched = new Set<number>();
+  /** via-kind deletes that named a standalone via statement directly —
+   *  applied as statement removals, matched so they never read as
+   *  unmatched noise (unmatched via-deletes stay bookkeeping: the page
+   *  fires one at every deleted-segment endpoint; most carry no via) */
+  const viaPtsEq = (a: { x: number; y: number }, b: { x: number; y: number }): boolean =>
+    Math.abs(a.x - b.x) < 0.002 && Math.abs(a.y - b.y) < 0.002;
+  deletes.forEach((d, i) => {
+    if (d.kind !== 'via') return;
+    const at = { x: d.x1, y: d.y1 };
+    const hit = standaloneVias.find((v) => !v.removed && viaPtsEq(v, at) && (!d.net || !v.net || v.net === d.net));
+    if (!hit) return;
+    hit.removed = true;
+    matched.add(i);
+  });
   /** per-route keep flags — a duplicate delete matching already-dying
    *  copper is absorbed, not unmatched (the page sends a via-delete at
    *  every deleted-segment endpoint; the via claims the source segment
@@ -1088,6 +1401,30 @@ export function planRouteDeletes(
     }
   });
 
+  // Orphan sweep: a standalone via belongs to the geometry it joins —
+  // when the deletions removed every leg touching its vertex, the via
+  // statement must go with them (a via floating over deleted copper
+  // re-materializes on every rebuild). Only fires when something was
+  // actually deleted; a via still touching a SURVIVING vertex stays.
+  const anyDeleted = chainsForGuards.some(({ keep }) => keep.some((k) => !k));
+  if (anyDeleted && standaloneVias.length > 0) {
+    const keptVertices: Array<{ x: number; y: number }> = [];
+    for (const { points, keep } of chainsForGuards) {
+      for (let s = 0; s + 1 < points.length; s++) {
+        if (!keep[s]) continue;
+        keptVertices.push(points[s]!, points[s + 1]!);
+      }
+    }
+    for (const v of standaloneVias) {
+      if (v.removed) continue;
+      const stillJoined = keptVertices.some((p) => viaPtsEq(p, v));
+      if (!stillJoined) v.removed = true;
+    }
+  }
+  for (const v of standaloneVias) {
+    if (v.removed) edits.push({ start: v.start, end: v.end, line: '' });
+  }
+
   const unmatchedList = deletes.filter((_, i) => !matched.has(i));
   if (unmatchedList.length > 0) skipped.push(`${unmatchedList.length} deleted segment(s) matched no source route`);
   // proximity tagging: an unmatched delete NEAR source copper of its net is
@@ -1139,8 +1476,7 @@ export function planRouteDeletes(
   }
   return {
     edits,
-    applied: matched.size,
-    skipped,
+    applied: matched.size,    skipped,
     unhandledAdditions,
     unhandledRemovals,
     /** deletes that matched nothing — the source does not carry the

@@ -4,13 +4,19 @@
 // cross-probing in both directions.
 //
 // Generation pipeline (one shot per board change):
-//   typecad-pcb simulate (best-effort: ngspice op data, stale-only) →
-//   typecad-pcb export gerbers → typecad-pcb export drill →
-//   gerber-viewer build/gerbers -o build/serve/viewer.html
+//   typecad-pcb viewer (ONE process: gerbers + drill + page) — or, on a
+//   toolchain without that command, export gerbers → export drill →
+//   gerber-viewer build/serve/viewer.html
 //       [--netlist build/<board>.net] [--drc build/<board>_drc.json]
-//       [--stackup build/<board>_stackup.json]
-// The generated HTML is then post-processed: CSP for the webview, embedded
-// component outlines, and the probe client script.
+//       [--stackup build/<board>_stackup.json] [--rules build/<board>_rules.json]
+// The ngspice op solve (best-effort, stale-only) and the check-sync drift
+// oracle run concurrently with the render; drift never reaches the user as
+// a task — the ts source is the source of truth, so the pipeline either
+// lets the pending build take the source's side or absorbs a board-side
+// edit into source (one-shot import --auto), and only a drift the system
+// cannot fix surfaces as a page banner. The generated HTML is then
+// post-processed: CSP for the webview, embedded component outlines, and
+// the probe client script.
 //
 // Reverse probing rides on the board model's "Code" property: the viewer
 // reports a clicked reference, the cached query detail carries its source
@@ -60,15 +66,10 @@ const vscode = __importStar(require("vscode"));
 const node_fs_1 = __importDefault(require("node:fs"));
 const node_path_1 = __importDefault(require("node:path"));
 const probeClient_js_1 = require("./probeClient.js");
-const sourceBackup_js_1 = require("./sourceBackup.js");
-const syncFile_js_1 = require("./syncFile.js");
-const layoutApply_js_1 = require("./layoutApply.js");
-const layoutEdits_js_1 = require("./layoutEdits.js");
-const semanticVerify_js_1 = require("./semanticVerify.js");
 const netSegmentSource_js_1 = require("./netSegmentSource.js");
-const syncState_js_1 = require("./syncState.js");
 const boardRules_js_1 = require("./boardRules.js");
 const sourceRef_js_1 = require("./sourceRef.js");
+const viewerApply_js_1 = require("./viewerApply.js");
 // discovery helpers live vscode-free in boardFile.ts for unit testing;
 // re-exported here for the existing import sites
 var boardFile_js_1 = require("./boardFile.js");
@@ -76,39 +77,13 @@ Object.defineProperty(exports, "mtimeOf", { enumerable: true, get: function () {
 Object.defineProperty(exports, "newestBoardFile", { enumerable: true, get: function () { return boardFile_js_1.newestBoardFile; } });
 Object.defineProperty(exports, "entrySourceFile", { enumerable: true, get: function () { return boardFile_js_1.entrySourceFile; } });
 const boardFile_js_2 = require("./boardFile.js");
-const GENERATE_TIMEOUT_MS = 120_000;
+const syncState_js_1 = require("./syncState.js");
 /** A selection is re-posted until the viewer page acks it (or this times out). */
 const DELIVERY_TIMEOUT_MS = 5_000;
 const DELIVERY_INTERVAL_MS = 200;
 /** Double-quote a path for an `exec` shell line; embedded quotes are escaped. */
 function shellQuote(value) {
     return `"${value.replace(/"/g, '\\"')}"`;
-}
-/**
- * First syntax error in planned source text, or null. Best-effort: the
- * TypeScript compiler resolves in workspace installs; a bundled extension
- * copy without it returns null (no gate) instead of breaking the apply.
- */
-function plannedTextSyntaxError(text) {
-    let tsModule = null;
-    try {
-        // eslint-disable-next-line @typescript-eslint/no-require-imports
-        tsModule = require('typescript');
-    }
-    catch {
-        return null;
-    }
-    try {
-        const { diagnostics } = tsModule.transpileModule(text, {
-            reportDiagnostics: true,
-            compilerOptions: { target: tsModule.ScriptTarget.ES2022 },
-        });
-        const first = (diagnostics ?? []).find((d) => d.category === tsModule.DiagnosticCategory.Error);
-        return first ? tsModule.flattenDiagnosticMessageText(first.messageText, ' ') : null;
-    }
-    catch {
-        return null;
-    }
 }
 /** The host message for a pending selection id — "net:<name>" selects a net. */
 function selectionMessage(ref, token) {
@@ -130,6 +105,16 @@ class BoardViewerPanel {
         /** Consecutive generate() failures — drives exponential retry backoff. */
         this.consecutiveFailures = 0;
         this.generating = null;
+        /** A refresh doRefresh deferred because the panel was hidden — runs when
+         *  the tab becomes visible again. */
+        this.refreshOwed = false;
+        /** The deferred refresh came from a forced path (failure ladder, board
+         *  switch) and must stay forced when it finally runs. */
+        this.refreshOwedForce = false;
+        /** Set when `typecad-pcb viewer` proved absent (older toolchain) — the
+         *  render pipeline then uses the step-by-step chain for this session. */
+        this.viewerCommandUnavailable = false;
+        this.applyBridge = new viewerApply_js_1.LayoutApplyBridge(this);
     }
     /** Open/reveal the viewer, regenerating the HTML when the board changed. */
     async show() {
@@ -207,6 +192,30 @@ class BoardViewerPanel {
         panel.onDidDispose(() => {
             this.panel = undefined;
             this.pendingRef = null;
+            this.refreshOwed = false;
+        });
+        panel.onDidChangeViewState((e) => {
+            // a hidden panel's owed refresh (doRefresh deferred it) runs the
+            // moment the tab is shown again
+            if (e.webviewPanel.visible && this.refreshOwed) {
+                this.refreshOwed = false;
+                const force = this.refreshOwedForce;
+                this.refreshOwedForce = false;
+                void this.doRefresh(force);
+            }
+            // A toolchain update while this panel was live: the served page
+            // predates the generator bits (page-side fixes land in dist with no
+            // board change to key a re-render on), so a tab re-focus would keep
+            // showing the old page — the user sees "no change" though the disk
+            // page is new. Regenerate when the generator moved past the page.
+            if (e.webviewPanel.visible && this.generated && !this.refreshOwed) {
+                const folder = this.hwFolder();
+                const gen = folder ? (0, boardFile_js_2.projectToolchainGeneratorMtime)(folder) : null;
+                if (gen !== null && this.generated.diskMtimeMs < gen && !(0, syncState_js_1.pipelineBusy)()) {
+                    this.output.appendLine('viewer page predates the installed generator — re-rendering on focus');
+                    void this.doRefresh();
+                }
+            }
         });
         this.panel = panel;
     }
@@ -477,9 +486,32 @@ class BoardViewerPanel {
             return;
         void this.panel.webview.postMessage({ type: 'typecad/status', text });
     }
+    /** Answer the page's apply callback — error undefined means success. */
+    postLayoutStatus(error) {
+        if (!this.panel)
+            return;
+        void this.panel.webview.postMessage({ type: 'typecad/layout-status', error });
+    }
+    /** Hand a picked (or canceled) PNG back to the page's ghost-preview hook. */
+    postImagePicked(message) {
+        if (!this.panel)
+            return;
+        void this.panel.webview.postMessage(message);
+    }
     async doRefresh(force = false) {
         if (!this.panel)
             return;
+        if (!this.panel.visible || (0, syncState_js_1.pipelineBusy)()) {
+            // hidden, or an apply owns the pipeline: retainContextWhenHidden keeps
+            // the panel (and this refresh path) alive while unseen, and an apply
+            // runs its own build → render lifecycle — a watcher render racing it
+            // paints a page the apply's own pipeline replaces seconds later (seen
+            // live as one click running the pipeline three times). Defer to the
+            // apply's completion (replayOwedRefresh) or the tab being shown.
+            this.refreshOwed = true;
+            this.refreshOwedForce = this.refreshOwedForce || force;
+            return;
+        }
         const folder = this.hwFolder();
         if (!folder)
             return;
@@ -496,12 +528,17 @@ class BoardViewerPanel {
         }
         if (board && this.generated && (0, boardFile_js_2.mtimeOf)(board) === this.generated.boardMtimeMs) {
             // board unchanged — still pick up a newer on-disk viewer page (a
-            // viewer-tooling update regenerated it without touching the board);
-            // otherwise this watcher path has nothing to do
-            if (!(await this.adoptNewerDiskViewer(folder)))
-                return;
+            // viewer-tooling update regenerated it without touching the board)…
+            const adopted = await this.adoptNewerDiskViewer(folder);
+            // …and land any render the panel has not been shown yet. The apply
+            // pipeline defers watcher refreshes while it owns the pipeline and
+            // replays them here; its own generate() produces HTML without
+            // assigning (assignment is this panel's job, not generate's), so
+            // without this the panel keeps the PRE-apply page and the next
+            // apply is refused against a stale board stamp (seen live: a
+            // trace-delete rendered "viewer ready" but never assigned).
             if (this.panel && this.assignedHtml !== this.generated.html) {
-                this.output.appendLine('viewer page updated — reloading');
+                this.output.appendLine(adopted ? 'viewer page updated — reloading' : 'viewer page was rendered but never shown — loading it');
                 this.loadToken++;
                 this.assignHtml();
             }
@@ -584,10 +621,67 @@ class BoardViewerPanel {
             return 0;
         return (0, boardFile_js_2.mtimeOf)(board);
     }
-    /** Generate viewer HTML; resolves false when skipped (board mid-build). */
+    /** The check-sync oracle's answer for the page banner, or null when the
+     *  check is unavailable (best-effort — a failed check never blocks the
+     *  viewer, it only costs the banner). */
+    async runCheckSync(folder) {
+        try {
+            const out = await this.run(folder, 'npx typecad-pcb check-sync --json', viewerApply_js_1.GENERATE_TIMEOUT_MS);
+            const info = JSON.parse(out.slice(out.indexOf('{')));
+            return info && typeof info.count === 'number' ? { count: info.count, changes: info.changes ?? [] } : null;
+        }
+        catch {
+            this.output.appendLine('sync: check-sync unavailable — no drift banner');
+            return null;
+        }
+    }
+    /**
+     * Classify a detected drift — never fix it. The ts source is the single
+     * source of truth and the .kicad_pcb is a build artifact: nothing in the
+     * render pipeline writes source from the board. KiCad-side edits reach
+     * source exclusively through the sync watcher (`typeCAD: Start KiCad
+     * Sync`); drift after a build from current sources is a build or toolchain
+     * bug to report. The banner is the diagnostic surface for both.
+     */
+    classifyDrift(folder, board, drift) {
+        const boardMtime = (0, boardFile_js_2.mtimeOf)(board);
+        if ((0, boardFile_js_2.newestSourceMtime)(folder) > boardMtime) {
+            // sources moved on — the pending build regenerates the board from
+            // them; transient by construction
+            this.output.appendLine(`sync: ${drift.count} difference(s) with newer sources — the pending build resolves them`);
+            return 'transient';
+        }
+        if (boardMtime > (0, boardFile_js_2.newestSourceMtime)(folder)) {
+            // the board was written after every source and does not follow from
+            // them — someone edited the artifact out-of-band (KiCad without the
+            // sync watcher). The watcher is THE import path; the next build
+            // overwrites the edit.
+            this.output.appendLine(`sync: ${drift.count} difference(s) — the board changed outside the build (KiCad?); start typeCAD: KiCad Sync to import them, or the next build overwrites`);
+            return 'external';
+        }
+        this.output.appendLine(`sync: ${drift.count} difference(s) with no source or board newer than the other — the build does not reproduce this board from source (please report)`);
+        return 'bug';
+    }
     /** The board the panel currently shows (undefined = the active board). */
     get boardStem() {
         return this.selectedBoardStem;
+    }
+    /**
+     * Replay a refresh the apply pipeline deferred (a watcher render that
+     * arrived while the apply owned the pipeline). Debounced through
+     * refreshIfVisible so a concurrent board event's own refresh coalesces
+     * with it. Called from the apply bridge's completion.
+     */
+    async replayOwedRefresh() {
+        if (!this.refreshOwed)
+            return;
+        this.refreshOwed = false;
+        const force = this.refreshOwedForce;
+        this.refreshOwedForce = false;
+        if (force)
+            await this.doRefresh(true);
+        else
+            await this.refreshIfVisible();
     }
     /** The boards the project's manifest lists, as picker entries (stem +
      *  file). Empty when the build has produced nothing yet. */
@@ -626,6 +720,12 @@ class BoardViewerPanel {
                 return false;
             }
             const boardName = node_path_1.default.basename(board, '.kicad_pcb');
+            // The drift oracle is independent of the export: it reads the settled
+            // board + sources, and the native export never rewrites the board file
+            // (zone fills are plotted from a temp copy), so there is nothing to
+            // race — run it THROUGH the whole render and splice its banner in at
+            // the end instead of paying its runtime after the page exists.
+            const driftPromise = this.runCheckSync(folder);
             // The ngspice view's electrical data (build/<board>_op.json) is only
             // written by `typecad-pcb simulate` — nothing in the plain build or
             // the export pipeline produces it, so without this a fresh project
@@ -638,17 +738,12 @@ class BoardViewerPanel {
             if (node_fs_1.default.existsSync(netlistFile) && (!node_fs_1.default.existsSync(opFile) || (0, boardFile_js_2.mtimeOf)(opFile) < (0, boardFile_js_2.mtimeOf)(netlistFile))) {
                 this.output.appendLine('solving ngspice operating point…');
                 try {
-                    await this.run(folder, 'npx typecad-pcb simulate', GENERATE_TIMEOUT_MS);
+                    await this.run(folder, 'npx typecad-pcb simulate', viewerApply_js_1.GENERATE_TIMEOUT_MS);
                 }
                 catch (error) {
                     this.output.appendLine(`op solve skipped: ${error instanceof Error ? error.message : String(error)}`);
                 }
             }
-            this.output.appendLine('exporting gerbers…');
-            // explicit board path: build/ can hold stray .kicad_pcb files (fp
-            // upgrade tests, imports) and the CLI refuses an ambiguous export
-            await this.run(folder, `npx typecad-pcb export gerbers "${board}"`, GENERATE_TIMEOUT_MS);
-            await this.run(folder, `npx typecad-pcb export drill "${board}"`, GENERATE_TIMEOUT_MS);
             // per-board fab dirs once the project is multi-board — the same rule
             // `export gerbers` uses, so the viewer reads exactly what the export
             // wrote (a shared dir would have each board's prune deleting its
@@ -701,8 +796,40 @@ class BoardViewerPanel {
                     this.output.appendLine('warning: could not write the rules island — the width control runs without a floor');
                 }
             }
-            this.output.appendLine('building viewer HTML…');
-            await this.run(folder, `npx gerber-viewer ${shellQuote(gerbersDir)} -o ${shellQuote(outPath)} ${flags.join(' ')}`, GENERATE_TIMEOUT_MS);
+            // The render pipeline: `typecad-pcb viewer` does gerbers + drill +
+            // page in ONE process when the toolchain has the command (no npx
+            // startup between steps — and its native gerbers export already
+            // writes the drill). Toolchains without it fall back to the
+            // step-by-step chain for the rest of this session.
+            if (this.viewerCommandUnavailable) {
+                this.output.appendLine('exporting gerbers…');
+                // explicit board path: build/ can hold stray .kicad_pcb files (fp
+                // upgrade tests, imports) and the CLI refuses an ambiguous export
+                await this.run(folder, `npx typecad-pcb export gerbers "${board}"`, viewerApply_js_1.GENERATE_TIMEOUT_MS);
+                await this.run(folder, `npx typecad-pcb export drill "${board}"`, viewerApply_js_1.GENERATE_TIMEOUT_MS);
+                this.output.appendLine('building viewer HTML…');
+                await this.run(folder, `npx gerber-viewer ${shellQuote(gerbersDir)} -o ${shellQuote(outPath)} ${flags.join(' ')}`, viewerApply_js_1.GENERATE_TIMEOUT_MS);
+            }
+            else {
+                this.output.appendLine('rendering viewer (one-pass pipeline)…');
+                try {
+                    await this.run(folder, `npx typecad-pcb viewer ${shellQuote(board)} -o ${shellQuote(outPath)} ${flags.join(' ')}`, viewerApply_js_1.GENERATE_TIMEOUT_MS);
+                }
+                catch (err) {
+                    if (err instanceof Error && /Unknown command ['"]viewer/.test(err.message)) {
+                        this.viewerCommandUnavailable = true;
+                        this.output.appendLine("the installed typecad-pcb has no 'viewer' command — falling back to the step-by-step pipeline for this session");
+                        this.output.appendLine('exporting gerbers…');
+                        await this.run(folder, `npx typecad-pcb export gerbers "${board}"`, viewerApply_js_1.GENERATE_TIMEOUT_MS);
+                        await this.run(folder, `npx typecad-pcb export drill "${board}"`, viewerApply_js_1.GENERATE_TIMEOUT_MS);
+                        this.output.appendLine('building viewer HTML…');
+                        await this.run(folder, `npx gerber-viewer ${shellQuote(gerbersDir)} -o ${shellQuote(outPath)} ${flags.join(' ')}`, viewerApply_js_1.GENERATE_TIMEOUT_MS);
+                    }
+                    else {
+                        throw err;
+                    }
+                }
+            }
             const raw = node_fs_1.default.readFileSync(node_path_1.default.join(folder, outPath), 'utf8');
             const [components, nets] = await Promise.all([
                 this.service.components(),
@@ -711,21 +838,28 @@ class BoardViewerPanel {
                 this.service.netSources().catch(() => []),
             ]);
             const { html, injected } = (0, probeClient_js_1.injectProbeClient)(raw, components, nets, (0, boardFile_js_2.mtimeOf)(board));
-            // board vs source drift: the check-sync oracle, surfaced as a page
-            // banner (the same drift the hardening suite fails on). Best-effort —
-            // a failed check never blocks the viewer
+            // Board vs source drift is DIAGNOSTIC, never work: the ts source is
+            // the single source of truth, the .kicad_pcb a build artifact, and
+            // nothing here writes source from the board. Applies land in the
+            // canonical source grammar (an in-sync build follows), so drift means
+            // one of two things — the artifact changed out-of-band (KiCad without
+            // the sync watcher; the watcher is THE import path) or the build is
+            // not reproducing source (a bug). classifyDrift says which; only the
+            // non-transient classes banner.
             let withDrift = html;
-            try {
-                const syncOut = await this.run(folder, 'npx typecad-pcb check-sync --json', GENERATE_TIMEOUT_MS);
-                const info = JSON.parse(syncOut.slice(syncOut.indexOf("{")));
-                if (info && info.count > 0) {
-                    const payload = JSON.stringify({ count: info.count, items: (info.changes ?? []).slice(0, 12) }).replace(/</g, '\u003c');
-                    withDrift = html.replace('<head>', `<head><script>window.__typecadDrift = ${payload};</script>`);
-                    this.output.appendLine(`sync: ${info.count} pending board/source difference(s) — banner shown`);
+            const drift = await driftPromise;
+            if (drift && drift.count > 0) {
+                if ((0, syncState_js_1.pipelineBusy)()) {
+                    // an apply owns the pipeline right now — its own build is in
+                    // flight or just landed; this render's snapshot of mtimes says
+                    // nothing yet. Log and move on: the apply's final render
+                    // classifies against the settled state.
+                    this.output.appendLine(`sync: ${drift.count} difference(s) while an apply runs — deferring to the settled state`);
                 }
-            }
-            catch {
-                this.output.appendLine('sync: check-sync unavailable — no drift banner');
+                else if (this.classifyDrift(folder, board, drift) !== 'transient') {
+                    const payload = JSON.stringify({ count: drift.count, items: drift.changes.slice(0, 12) }).replace(/</g, '\u003c');
+                    withDrift = html.replace('<head>', `<head><script>window.__typecadDrift = ${payload};</script>`);
+                }
             }
             if (!injected) {
                 this.output.appendLine('warning: viewer HTML had no <head>/</body> anchors — cross-probe disabled');
@@ -738,527 +872,28 @@ class BoardViewerPanel {
         });
         return this.generating;
     }
-    /** Answer a place-image arm: file-picker, PNG check, bytes as a data URL
-     *  for the page's ghost preview plus the absolute path the apply copies
-     *  into the project's art/ folder. */
-    async onPickImage() {
-        if (!this.panel)
-            return;
-        const pick = await vscode.window.showOpenDialog({
-            canSelectMany: false,
-            openLabel: 'Place as board artwork',
-            filters: { 'PNG image': ['png'] },
-            title: 'typeCAD: place board artwork',
-        });
-        if (!pick || pick.length === 0) {
-            // canceled — tell the page so it disarms instead of waiting forever
-            void this.panel.webview.postMessage({ type: 'typecad/image-picked', path: '', name: '', dataUrl: '' });
-            return;
-        }
-        const filePath = pick[0].fsPath;
-        try {
-            const data = node_fs_1.default.readFileSync(filePath);
-            if (!data.subarray(0, 8).equals(BoardViewerPanel.PNG_SIGNATURE)) {
-                vscode.window.showErrorMessage(`typeCAD: ${node_path_1.default.basename(filePath)} is not a PNG file.`);
-                void this.panel.webview.postMessage({ type: 'typecad/image-picked', path: '', name: '', dataUrl: '' });
-                return;
-            }
-            if (data.length > BoardViewerPanel.MAX_IMAGE_BYTES) {
-                vscode.window.showErrorMessage(`typeCAD: ${node_path_1.default.basename(filePath)} is ${(data.length / 1024 / 1024).toFixed(1)} MB — artwork PNGs up to 8 MB are supported (downscale the image for finer placement).`);
-                void this.panel.webview.postMessage({ type: 'typecad/image-picked', path: '', name: '', dataUrl: '' });
-                return;
-            }
-            void this.panel.webview.postMessage({
-                type: 'typecad/image-picked',
-                path: filePath,
-                name: node_path_1.default.basename(filePath),
-                dataUrl: 'data:image/png;base64,' + data.toString('base64'),
-            });
-        }
-        catch (err) {
-            vscode.window.showErrorMessage(`typeCAD: could not read ${node_path_1.default.basename(filePath)} — ${err instanceof Error ? err.message : String(err)}`);
-            void this.panel.webview.postMessage({ type: 'typecad/image-picked', path: '', name: '', dataUrl: '' });
-        }
-    }
-    async onLayoutRebuild(moves, texts, values, labels, renames, routes, deletes, partDeletes, zones, outline, zoneEdits, zoneDeletes, boardStamp, images, imageEdits, imageDeletes, classEdits) {
-        const folder = this.hwFolder();
-        const fail = (error) => {
-            this.output.appendLine(`layout apply failed: ${error}`);
-            void this.panel?.webview.postMessage({ type: 'typecad/layout-status', error });
-        };
-        if (!folder) {
-            fail('no typeCAD project found');
-            return;
-        }
-        // the apply owns the whole build pipeline: its own source writes must
-        // not trigger the auto-build watcher (double build), and the status
-        // indicator should read "building" for its whole run
-        syncState_js_1.sync.applyBusy = true;
-        try {
-            // board identity: the page carries the mtime of the board it was
-            // generated from. A different board on disk now means a build ran
-            // since the page rendered (auto-build, external edit) — the page's
-            // ink describes a superseded revision and its edits must not splice
-            // into a source that moved on. Unstamped = an old page (pre-stamp
-            // viewer) — allow, the near-source drift guard still backs this up.
-            const boardNow = (0, boardFile_js_2.newestBoardFile)(folder);
-            if (boardStamp && boardNow && String((0, boardFile_js_2.mtimeOf)(boardNow)) !== String(boardStamp)) {
-                fail('the board was rebuilt since this view rendered (a build ran) — reopening the viewer; redo the edit on the fresh view');
-                this.postStatus('view out of date — regenerating…');
-                await this.doRefresh();
-                return;
-            }
-            await this.onLayoutRebuildInner(folder, fail, moves, texts, values, labels, renames, routes, deletes, partDeletes, zones, outline, zoneEdits, zoneDeletes, images, imageEdits, imageDeletes, classEdits);
-        }
-        finally {
-            syncState_js_1.sync.applyBusy = false;
-        }
-    }
-    async onLayoutRebuildInner(folder, fail, moves, texts, values, labels, renames, routes, deletes, partDeletes, zones, outline, zoneEdits, zoneDeletes, images, imageEdits, imageDeletes, classEdits) {
-        try {
-            const comps = await this.service.components();
-            const variableOf = new Map(comps.map((c) => [c.reference, c.variable ?? '']));
-            const srcUris = await vscode.workspace.findFiles(new vscode.RelativePattern(folder, 'src/**/*.ts'));
-            // the build's ENTRY file plans first: the route stages take the first
-            // file that carries typecad.create(), and a stray copy in src/ (with
-            // its own create()) otherwise captures every rewrite — edits land in
-            // a file nothing builds, and drawn traces silently miss the board
-            const entry = (0, boardFile_js_2.entrySourceFile)(folder);
-            let ordered = srcUris;
-            if (entry) {
-                const hit = srcUris.find((u) => u.fsPath.toLowerCase() === entry.toLowerCase());
-                if (hit)
-                    ordered = [hit, ...srcUris.filter((u) => u !== hit)];
-            }
-            const files = [];
-            for (const uri of ordered) {
-                files.push({ uri: uri.toString(), text: (await vscode.workspace.openTextDocument(uri)).getText() });
-            }
-            // the sidecar rides beside the entry file (same dir, so its import is
-            // './_sync[.<stem>].js' — per-board on multi-board projects); an
-            // absent file joins the set EMPTY — the apply creates it only when a
-            // stage actually writes it, and the backup/restore path knows to
-            // delete rather than empty it
-            const multi = (0, boardFile_js_2.listBoardFiles)(folder).length > 1;
-            const boardStem = multi ? node_path_1.default.basename((0, boardFile_js_2.newestBoardFile)(folder) ?? '', '.kicad_pcb') : undefined;
-            const syncName = (0, syncFile_js_1.syncFileNameFor)(boardStem || undefined);
-            const syncPath = node_path_1.default.join(entry ? node_path_1.default.dirname(entry) : node_path_1.default.join(folder, 'src'), syncName);
-            const syncUri = vscode.Uri.file(syncPath);
-            let syncCreated = false;
-            if (!files.some((f) => f.uri.toLowerCase() === syncUri.toString().toLowerCase())) {
-                let syncText = '';
-                try {
-                    syncText = node_fs_1.default.readFileSync(syncPath, 'utf8');
-                }
-                catch {
-                    syncCreated = true;
-                }
-                files.push({ uri: syncUri.toString(), text: syncText, ...(syncCreated ? { created: true } : {}) });
-            }
-            const createdUris = new Set(syncCreated ? [syncUri.toString()] : []);
-            // final placements for the semantic check: the move deltas land on the
-            // placement literals, so the finals are computable from the PRE-apply
-            // text (a moved part's footprint should sit exactly there after the
-            // rebuild)
-            const finalPlacements = [];
-            for (const mv of moves ?? []) {
-                const variable = variableOf.get(mv.ref);
-                if (!variable)
-                    continue;
-                for (const f of files) {
-                    const lit = (0, layoutEdits_js_1.parsePlacementLiteral)(f.text, variable);
-                    if (lit) {
-                        finalPlacements.push({
-                            ref: mv.ref,
-                            x: +(lit.x + mv.dx).toFixed(3),
-                            y: +(lit.y + mv.dy).toFixed(3),
-                            ...(mv.side ? { side: mv.side } : {}),
-                        });
-                        break;
-                    }
-                }
-            }
-            // artwork: the picked PNGs are copied into <folder>/art/ BEFORE the
-            // plan, so the generated statements carry project-relative paths —
-            // the build (and any later `npm run build`) resolves them from the
-            // project root, keeping the project self-contained. Same bytes
-            // already present under a name? reuse it (dedupe by content, not by
-            // picking time). Replacement files for applied artwork ride the same
-            // copy so the rewritten statement stays project-relative.
-            const copyIntoArt = (pickedPath, pickedName) => {
-                const data = node_fs_1.default.readFileSync(pickedPath);
-                const artDir = node_path_1.default.join(folder, 'art');
-                node_fs_1.default.mkdirSync(artDir, { recursive: true });
-                const safeName = pickedName.replace(/[^A-Za-z0-9._-]/g, '_');
-                const stem = safeName.replace(/\.png$/i, '');
-                let finalName = `${stem}.png`;
-                let n = 1;
-                while (node_fs_1.default.existsSync(node_path_1.default.join(artDir, finalName))) {
-                    if (data.equals(node_fs_1.default.readFileSync(node_path_1.default.join(artDir, finalName))))
-                        break;
-                    finalName = `${stem}-${n}.png`;
-                    n++;
-                }
-                const dest = node_path_1.default.join(artDir, finalName);
-                if (!node_fs_1.default.existsSync(dest))
-                    node_fs_1.default.writeFileSync(dest, data);
-                return `art/${finalName}`;
-            };
-            const layoutImages = [];
-            for (const img of images ?? []) {
-                try {
-                    const file = copyIntoArt(img.path, img.name);
-                    layoutImages.push({
-                        file,
-                        name: node_path_1.default.basename(file),
-                        x: img.x,
-                        y: img.y,
-                        w: img.w,
-                        h: img.h,
-                        ...(img.side === 'back' ? { side: 'back' } : {}),
-                    });
-                }
-                catch (err) {
-                    fail(`image ${img.name} could not be copied into the project — ${err instanceof Error ? err.message : String(err)}`);
-                    return;
-                }
-            }
-            // applied-artwork edits: copy any replacement file, then hand the
-            // planner the project-relative path
-            const layoutImageEdits = [];
-            for (const edit of imageEdits ?? []) {
-                try {
-                    layoutImageEdits.push({
-                        ...edit,
-                        newFile: edit.newFile ? copyIntoArt(edit.newFile, node_path_1.default.basename(edit.newFile)) : null,
-                    });
-                }
-                catch (err) {
-                    fail(`replacement artwork could not be copied into the project — ${err instanceof Error ? err.message : String(err)}`);
-                    return;
-                }
-            }
-            const layoutImageDeletes = imageDeletes ?? [];
-            const plan = (0, layoutApply_js_1.planLayoutApply)(files, {
-                moves,
-                texts,
-                values,
-                labels,
-                renames,
-                routes,
-                deletes,
-                partDeletes,
-                zones,
-                images: layoutImages,
-                outline,
-                zoneEdits,
-                zoneDeletes,
-                imageEdits: layoutImageEdits,
-                imageDeletes: layoutImageDeletes,
-                classEdits: classEdits ?? [],
-                variableOf: (ref) => variableOf.get(ref),
-                allRefs: new Set(comps.map((c) => c.reference).filter(Boolean)),
-                syncUri: syncUri.toString(),
-                entryUri: entry ? vscode.Uri.file(entry).toString() : undefined,
-            });
-            // dry-run the whole plan and parse every touched file's final text —
-            // a planner bug (overlapping ranges, a spliced token) must surface as
-            // a REFUSED apply with a message, never as broken source the build
-            // chokes on. Best-effort: `typescript` resolves in workspace installs;
-            // a standalone bundled copy without it skips the gate rather than
-            // failing the apply.
-            const dry = new Map(files.map((f) => [f.uri, f.text]));
-            for (const stage of plan.stages) {
-                for (const batch of stage) {
-                    let out = dry.get(batch.uri);
-                    for (const e of [...batch.edits].sort((a, b) => b.start - a.start))
-                        out = out.slice(0, e.start) + e.line + out.slice(e.end);
-                    dry.set(batch.uri, out);
-                }
-            }
-            for (const [uri, text] of dry) {
-                const err = plannedTextSyntaxError(text);
-                if (err) {
-                    fail(`planned edits would leave ${vscode.workspace.asRelativePath(vscode.Uri.parse(uri))} unparsable (${err}) — nothing was written`);
-                    return;
-                }
-            }
-            // a replacement gesture whose OLD geometry matched nothing NEAR source
-            // copper is the phantom recipe: the deletes were computed against a
-            // view that predates the source, so the old chain survives beside the
-            // new route — refuse and have the user redo the edit on a fresh view.
-            // Unmatched deletes NOWHERE NEAR source copper are noise (the page
-            // pushes a via-delete at every deleted-segment endpoint; most carry
-            // no via) — they drop and the apply proceeds
-            if (plan.unmatchedDeletes.length > 0 && (routes ?? []).length > 0) {
-                const replaced = plan.unmatchedDeletes.filter((u) => u.near > 0 && (routes ?? []).some((r) => r.net === u.net));
-                const dropped = plan.unmatchedDeletes.filter((u) => u.near === 0);
-                if (dropped.length > 0) {
-                    this.output.appendLine(`dropped ${dropped.map((d) => `${d.count} delete(s) on ${d.net ?? 'N/C'}`).join(', ')} matching no source copper (no via / autorouter ink) — nothing in source to remove`);
-                }
-                if (replaced.length > 0) {
-                    const detail = replaced.map((u) => `${u.near} segment(s) on net ${u.net}`).join(', ');
-                    fail(`the view was stale — deleted ${detail} no longer exist in source, so applying would leave the old trace beside the new route. Nothing was written — close and reopen the Board tab, then redo the edit`);
-                    return;
-                }
-            }
-            // snapshot every touched file before anything is written — the
-            // post-write check auto-restores from memory, and the Restore Source
-            // from Backup command restores from disk; a user must never unscramble
-            // a corrupted .ts by hand
-            const boardNameForApply = node_path_1.default.basename((0, boardFile_js_2.newestBoardFile)(folder) ?? '');
-            const backup = (0, sourceBackup_js_1.writeBackup)(folder, files.map((f) => ({ uri: f.uri, text: f.text, ...(f.created ? { created: true } : {}) })), 'layout apply', boardNameForApply || undefined);
-            if (backup) {
-                this.output.appendLine(`source snapshot before apply: ${(0, sourceBackup_js_1.backupRootLabel)()}/${backup.id} (${backup.manifest.files.length} file(s))`);
-            }
-            // stage by stage, one whole-document replacement per file: the stage's
-            // edits compose into the final text exactly like the dry run above
-            // (descending offsets, string splices), then swap the document in one
-            // applyEdit. Multi-range WorkspaceEdits resolve sequentially and
-            // silently drop overlapping entries — a dropped delete left the live
-            // document longer than the plan's text and every later stage's ranges
-            // landed early, splicing tokens (seen as `width: 0.3const route15`).
-            // Whole-document replacement makes application byte-identical to what
-            // the parse gate validated.
-            // Application writes each touched file's FINAL composed text (the dry
-            // map — exactly what the gate validated) as one whole-document
-            // replacement, all files in ONE applyEdit. Two hazards this kills:
-            // multi-range WorkspaceEdits resolve sequentially and silently drop
-            // overlapping entries (a dropped delete desynced the live document and
-            // later ranges spliced mid-token), and per-stage application left
-            // awaits between stages — a keystroke landing mid-apply changed the
-            // document under every remaining offset. Writing the final text
-            // atomically leaves no inter-stage window at all.
-            // One guard first: if the live document no longer matches the text
-            // the plan was built against (the user typed while the apply was
-            // planning), every offset is stale — refuse and let them re-apply.
-            const touchedSet = new Set(plan.touched);
-            // a file this apply CREATES must exist before it can be opened,
-            // verified, and replaced — an empty placeholder is byte-identical to
-            // the planned base text (''), so every downstream guard holds
-            for (const uri of createdUris) {
-                if (!touchedSet.has(uri))
-                    continue;
-                try {
-                    await vscode.workspace.fs.writeFile(vscode.Uri.parse(uri), new Uint8Array(0));
-                }
-                catch (err) {
-                    fail(`cannot create ${vscode.workspace.asRelativePath(vscode.Uri.parse(uri))} — ${err instanceof Error ? err.message : String(err)}`);
-                    return;
-                }
-            }
-            const applyDocs = new Map();
-            for (const f of files) {
-                if (!touchedSet.has(f.uri))
-                    continue;
-                const doc = await vscode.workspace.openTextDocument(vscode.Uri.parse(f.uri));
-                if (doc.getText() !== f.text) {
-                    fail(`${vscode.workspace.asRelativePath(vscode.Uri.parse(f.uri))} changed while the apply was planning — nothing was written, press apply again`);
-                    return;
-                }
-                applyDocs.set(f.uri, doc);
-            }
-            const finalEdits = new vscode.WorkspaceEdit();
-            for (const [uri, text] of dry) {
-                if (!touchedSet.has(uri))
-                    continue;
-                const doc = applyDocs.get(uri);
-                finalEdits.replace(doc.uri, new vscode.Range(doc.positionAt(0), doc.positionAt(doc.getText().length)), text);
-            }
-            if (finalEdits.size > 0)
-                await vscode.workspace.applyEdit(finalEdits);
-            for (const key of plan.touched) {
-                const doc = await vscode.workspace.openTextDocument(vscode.Uri.parse(key));
-                await doc.save();
-            }
-            // post-write verification: if anything slipped past the gate (or the
-            // write itself diverged), restore the snapshot IMMEDIATELY — the user
-            // must never be left with an unparsable file, even for a moment. A
-            // file this apply created restores by deletion, not by emptying.
-            for (const key of plan.touched) {
-                const savedDoc = await vscode.workspace.openTextDocument(vscode.Uri.parse(key));
-                const err = plannedTextSyntaxError(savedDoc.getText());
-                if (!err)
-                    continue;
-                this.output.appendLine(`POST-WRITE CHECK FAILED for ${key} (${err}) — restoring the pre-apply snapshot`);
-                const pre = files.find((f) => f.uri === key);
-                if (pre) {
-                    if (createdUris.has(key)) {
-                        try {
-                            await savedDoc.save();
-                            await vscode.workspace.fs.delete(vscode.Uri.parse(key), { useTrash: false });
-                        }
-                        catch {
-                            // best-effort — the restore command can finish the job
-                        }
-                    }
-                    else {
-                        const restore = new vscode.WorkspaceEdit();
-                        restore.replace(savedDoc.uri, new vscode.Range(savedDoc.positionAt(0), savedDoc.positionAt(savedDoc.getText().length)), pre.text);
-                        await vscode.workspace.applyEdit(restore);
-                        await savedDoc.save();
-                    }
-                }
-                vscode.window.showErrorMessage(`typeCAD layout apply wrote unparsable source and restored ${vscode.workspace.asRelativePath(vscode.Uri.parse(key))} from its pre-apply snapshot — please report this (the typeCAD/pcb output has the plan)`);
-                void this.panel?.webview.postMessage({
-                    type: 'typecad/layout-status',
-                    error: 'apply wrote invalid source — rolled back to the pre-apply snapshot',
-                });
-                return;
-            }
-            const c = plan.counts;
-            const anyApplied = c.moves > 0 ||
-                c.endpoints > 0 ||
-                c.texts > 0 ||
-                c.values > 0 ||
-                c.labels > 0 ||
-                c.renames > 0 ||
-                c.routes > 0 ||
-                c.deletes > 0 ||
-                c.partDeletes > 0 ||
-                c.zones > 0 ||
-                c.images > 0 ||
-                c.imageEdits > 0 ||
-                c.imageDeletes > 0 ||
-                c.outline > 0 ||
-                c.zoneEdits > 0 ||
-                c.zoneDeletes > 0;
-            this.output.appendLine(`layout apply: ${c.moves} placement(s) moved${c.endpoints ? `, ${c.endpoints} route endpoint(s) translated` : ''}${c.routes ? `, ${c.routes} track route(s) added to source` : ''}${c.deletes ? `, ${c.deletes} segment(s) deleted from source` : ''}${c.texts ? `, ${c.texts} text(s) edited` : ''}${c.values ? `, ${c.values} value(s) edited` : ''}${c.labels ? `, ${c.labels} label(s) repositioned` : ''}${c.partDeletes ? `, ${c.partDeletes} part(s) deleted from source` : ''}${c.renames ? `, ${c.renames} reference(s) renamed` : ''}${c.zones ? `, ${c.zones} zone(s) added to source` : ''}${c.images ? `, ${c.images} artwork image(s) added to source` : ''}${c.imageEdits ? `, ${c.imageEdits} artwork edit(s) written to source` : ''}${c.imageDeletes ? `, ${c.imageDeletes} artwork image(s) deleted from source` : ''}${c.outline ? ', the board outline edited in source' : ''}${c.zoneEdits ? `, ${c.zoneEdits} zone(s) edited in source` : ''}${c.zoneDeletes ? `, ${c.zoneDeletes} zone(s) deleted from source` : ''}${plan.skipped.length ? `, skipped ${plan.skipped.join('; ')}` : ''}`);
-            if (plan.syncFile) {
-                const s = plan.syncFile;
-                this.output.appendLine(`sync sidecar${s.created ? ' created' : ''}: ${s.placements} placement(s), ${s.labels} label(s), ${s.routes} route(s)${s.zones ? `, ${s.zones} zone(s)` : ''}${s.images ? `, ${s.images} artwork image(s)` : ''} now live in ${syncName} — they win the code-order battle (syncBoard() runs right before create())`);
-            }
-            if (plan.skipped.length) {
-                vscode.window.setStatusBarMessage(`layout: skipped ${plan.skipped.join('; ')}`, 8000);
-            }
-            if (!anyApplied) {
-                void this.panel?.webview.postMessage({ type: 'typecad/layout-status', error: undefined });
-                return;
-            }
-            // the button says "apply & rebuild" — every apply rebuilds. (A former
-            // fast path deferred moves-only applies to the next manual build; the
-            // page's ghosts already showed the answer, but a button that names the
-            // rebuild must run it.)
-            this.postStatus('rebuilding board…');
-            await this.run(folder, 'npx typecad-pcb build', GENERATE_TIMEOUT_MS);
-            // semantic verification: the parse gate guaranteed the SOURCE parses;
-            // this checks the BOARD actually carries the geometry the apply
-            // intended (a route the model dropped, a delete that missed, a move
-            // that didn't land all parse fine — this is the layer that sees them)
-            const boardForCheck = (0, boardFile_js_2.newestBoardFile)(folder);
-            if (boardForCheck) {
-                try {
-                    const rebuilt = node_fs_1.default.readFileSync(boardForCheck, 'utf8');
-                    const report = (0, semanticVerify_js_1.verifyBoardSemantics)(rebuilt, {
-                        routes: (routes ?? []).map((r) => ({
-                            net: r.net,
-                            pieces: r.pieces.map((p) => ({ layer: p.layer, pts: p.pts })),
-                            vias: (r.vias ?? []).map((v) => ({ x: v.x, y: v.y })),
-                        })),
-                        deletes: (deletes ?? []).map((d) => ({
-                            net: d.net,
-                            x1: d.x1,
-                            y1: d.y1,
-                            x2: d.x2,
-                            y2: d.y2,
-                            layer: d.layer,
-                        })),
-                        placements: finalPlacements,
-                        texts: (texts ?? []).filter((t) => t.text).map((t) => ({ text: t.text, x: t.x, y: t.y })),
-                        zones: (zones ?? []).map((z) => ({ kind: z.kind, layer: z.layer, net: z.net, x: z.x, y: z.y, w: z.w, h: z.h })),
-                        outline: outline
-                            ? { rect: { x: outline.rect.x, y: outline.rect.y, w: outline.rect.w, h: outline.rect.h } }
-                            : undefined,
-                        zoneDeletes: (zoneDeletes ?? []).map((z) => ({ layer: z.layer, x: z.x, y: z.y, w: z.w, h: z.h })),
-                        images: layoutImages.map((im) => ({ side: im.side ?? 'front', x: im.x, y: im.y, w: im.w, h: im.h })),
-                    });
-                    if (report.checked > 0) {
-                        this.output.appendLine(report.ok
-                            ? `semantic check: ${report.checked} committed edit(s) verified on the rebuilt board`
-                            : `semantic check: ${report.misses.length} of ${report.checked} committed edit(s) MISSING from the rebuilt board —\n    ${report.misses.join('\n    ')}`);
-                    }
-                    if (!report.ok) {
-                        vscode.window.setStatusBarMessage(`typeCAD layout apply: ${report.misses.length} edit(s) missing from the rebuilt board — see the typeCAD/pcb output`, 10_000);
-                        this.postStatus('semantic check failed — edits missing from the rebuilt board (see output)');
-                    }
-                }
-                catch (err) {
-                    this.output.appendLine(`semantic check skipped: ${err instanceof Error ? err.message : String(err)}`);
-                }
-            }
-            // artwork verification: the rebuilt board's images manifest is the
-            // ground truth (the semantic poly scan cannot tell one artwork from
-            // another). Every edit must land at its new placement under its
-            // (possibly replaced) file; every delete must be gone.
-            if (layoutImageEdits.length > 0 || layoutImageDeletes.length > 0) {
-                try {
-                    const manifestPath = node_path_1.default.join(folder, 'build', `${node_path_1.default.basename((0, boardFile_js_2.newestBoardFile)(folder) ?? 'x').replace(/\.kicad_pcb$/, '')}_images.json`);
-                    const manifest = JSON.parse(node_fs_1.default.readFileSync(manifestPath, 'utf8'));
-                    const entries = manifest.images ?? [];
-                    const misses = [];
-                    for (const e of layoutImageEdits) {
-                        const wantFile = e.newFile ?? e.match.file;
-                        const hit = entries.some((im) => im.file === wantFile && Math.abs(im.x - e.x) < 0.05 && Math.abs(im.y - e.y) < 0.05);
-                        if (!hit)
-                            misses.push(`${wantFile} at ${e.x.toFixed(1)},${e.y.toFixed(1)}`);
-                    }
-                    for (const d of layoutImageDeletes) {
-                        const hit = entries.some((im) => im.file === d.file && Math.abs(im.x - d.x) < 0.05 && Math.abs(im.y - d.y) < 0.05);
-                        if (hit)
-                            misses.push(`deleted ${d.file} at ${d.x.toFixed(1)},${d.y.toFixed(1)} is STILL placed`);
-                    }
-                    if (misses.length > 0) {
-                        this.output.appendLine(`artwork check: ${misses.length} edit(s) missing from the rebuilt board —\n    ${misses.join('\n    ')}`);
-                        vscode.window.setStatusBarMessage(`typeCAD layout apply: ${misses.length} artwork edit(s) missing — see the typeCAD/pcb output`, 10_000);
-                    }
-                    else {
-                        this.output.appendLine(`artwork check: ${layoutImageEdits.length + layoutImageDeletes.length} committed artwork edit(s) verified via the images manifest`);
-                    }
-                }
-                catch (err) {
-                    this.output.appendLine(`artwork check skipped: ${err instanceof Error ? err.message : String(err)}`);
-                }
-            }
-            // A move invalidates every DRC marker — re-run DRC so the regenerated
-            // view carries fresh ones instead of none (the report predates the
-            // new board, and markers are the move's feedback loop). Non-zero
-            // exit just means violations exist; the report is still written.
-            this.postStatus('checking rules…');
-            try {
-                await this.run(folder, 'npx typecad-pcb drc', GENERATE_TIMEOUT_MS);
-            }
-            catch {
-                // violations exit non-zero — only a real failure (missing board,
-                // engine crash) skips the markers, same as before
-            }
-            // generate() refuses a board written <3s ago (the build may still be
-            // writing); wait for it to settle so the viewer regenerates NOW, not
-            // only whenever the file watcher next fires
-            const boardFile = (0, boardFile_js_2.newestBoardFile)(folder);
-            if (boardFile) {
-                for (let i = 0; i < 10 && Date.now() - (0, boardFile_js_2.mtimeOf)(boardFile) < 3_500; i++) {
-                    await new Promise((resolve) => setTimeout(resolve, 1_000));
-                }
-            }
-            await this.generate(folder);
-            void this.panel?.webview.postMessage({ type: 'typecad/layout-status', error: undefined });
-        }
-        catch (error) {
-            fail(error instanceof Error ? error.message : String(error));
-        }
-    }
     async onMessage(message) {
         if (message.type === 'typecad/layout-rebuild') {
-            await this.onLayoutRebuild(message.moves, message.texts, message.values, message.labels, message.renames, message.routes, message.deletes, message.partDeletes, message.zones, message.outline, message.zoneEdits, message.zoneDeletes, message.board, message.images, message.imageEdits, message.imageDeletes, message.classEdits);
+            await this.applyBridge.onLayoutRebuild(message);
             return;
         }
         if (message.type === 'typecad/pick-image') {
-            await this.onPickImage();
+            if (this.panel)
+                await this.applyBridge.onPickImage();
             return;
         }
         if (message.type === 'typecad/ready') {
             this.readySeen = true;
             this.output.appendLine('viewer page ready');
+            // boot diagnostics: a proto mismatch means the page's client is not
+            // the one this host injects; a missing viewer API means the page was
+            // generated by an OLDER toolchain — its gestures are dead clicks
+            if (message.proto !== undefined && message.proto !== probeClient_js_1.PROBE_PROTO) {
+                this.output.appendLine(`viewer page's probe client is protocol ${message.proto}, host expects ${probeClient_js_1.PROBE_PROTO} — regenerate the page (typeCAD: View Board)`);
+            }
+            if (message.page && !message.page.viewer) {
+                this.output.appendLine('viewer page has no typecadViewer API — the page predates the installed toolchain; regenerate it (typeCAD: View Board) to pick up its interactions');
+            }
             // The page re-applies its own saved highlight after a reload (the
             // saved viewport puts the view back too) — only an explicit pending
             // selection needs delivering.
@@ -1373,20 +1008,6 @@ class BoardViewerPanel {
     }
 }
 exports.BoardViewerPanel = BoardViewerPanel;
-/**
- * Layout view "apply & rebuild": move deltas arrive in the board (y-down)
- * frame. planLayoutApply turns the whole gesture (moves, text/value/label/
- * rename edits, new routes, segment deletes) into sequential edit stages
- * over the project's sources — each stage planned against the text the
- * previous stage produced, so no two edits ever overlap — then the project
- * rebuilds and the viewer regenerates. Computed (non-literal) placements
- * are skipped and reported, never silently mangled.
- */
-/** The largest PNG handed to the page as a preview data URL — past this,
- *  the webview message and the localStorage pending-state snapshot get
- *  heavy and the artwork itself is almost certainly mis-scaled anyway. */
-BoardViewerPanel.MAX_IMAGE_BYTES = 8 * 1024 * 1024;
-BoardViewerPanel.PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 /** The hovered/selected identifier in the active editor, or null. */
 function wordUnderCursor(editor) {
     if (!editor)

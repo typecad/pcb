@@ -467,3 +467,65 @@ typecad.create(
     expect(out).toContain('...unnamed_Track');
   });
 });
+
+// ---------------------------------------------------------------------------
+// Standalone via statements (the canonical home of layer-transition vias):
+// deleting the route takes its transition vias; deleting a via directly
+// removes its statement. Live regressions from rd_skeleton's AMP_OUT.
+// ---------------------------------------------------------------------------
+const viaSectionSrc = () => `
+import { PCB, TrackBuilder } from '@typecad/pcb';
+const typecad = new PCB('demo', {});
+// Net: AMP_OUT
+const track_AMP_OUT: TrackBuilder[] = [];
+track_AMP_OUT.push(typecad.track({ net: 'AMP_OUT' }).from({ x: 134.422, y: 81.72 }, "F.Cu", 0.3).to({ x: 135.708, y: 81.814, layer: "F.Cu", width: 0.3 }).to({ x: 139.538, y: 81.814, layer: "B.Cu", width: 0.3 }).to({ x: 145.579, y: 87.855, layer: "B.Cu", width: 0.3 }).to({ x: 145.579, y: 89.512, layer: "F.Cu", width: 0.3 }));
+
+// Net: PROBE_1
+const track_PROBE_1: TrackBuilder[] = [];
+track_PROBE_1.push(typecad.track({ net: 'PROBE_1' }).from({ x: 1, y: 2 }, "F.Cu", 0.15).to({ x: 3, y: 4, layer: "F.Cu", width: 0.15 }));
+
+typecad.via({ at: { x: 135.708, y: 81.814 }, net: 'AMP_OUT', size: 0.6, drill: 0.3 });
+typecad.via({ at: { x: 145.579, y: 87.855 }, net: 'AMP_OUT', size: 0.6, drill: 0.3 });
+typecad.via({ at: { x: 3, y: 4 }, net: 'PROBE_1', size: 0.6, drill: 0.3 });
+
+typecad.create(
+  ...track_AMP_OUT,
+  ...track_PROBE_1
+);`;
+
+describe('planRouteDeletes standalone vias', () => {
+  it('deleting the whole route orphans its transition vias — they go with it', () => {
+    const plan = planRouteDeletes(viaSectionSrc(), [
+      { net: 'AMP_OUT', x1: 134.422, y1: 81.72, x2: 135.708, y2: 81.814, layer: 'F.Cu' },
+      { net: 'AMP_OUT', x1: 135.708, y1: 81.814, x2: 139.538, y2: 81.814, layer: 'B.Cu' },
+      { net: 'AMP_OUT', x1: 139.538, y1: 81.814, x2: 145.579, y2: 87.855, layer: 'B.Cu' },
+      { net: 'AMP_OUT', x1: 145.579, y1: 87.855, x2: 145.579, y2: 89.512, layer: 'F.Cu' },
+    ]);
+    const out = apply(viaSectionSrc(), plan.edits);
+    expect(out).not.toContain('track_AMP_OUT.push');
+    expect((out.match(/net: 'AMP_OUT'/g) ?? []).length).toBe(0); // both vias gone
+    // the untouched net's via survives (its legs remain)
+    expect(out).toContain("typecad.via({ at: { x: 3, y: 4 }, net: 'PROBE_1', size: 0.6, drill: 0.3 });");
+    expectValidTs(out);
+  });
+
+  it('a direct via-delete removes exactly its statement', () => {
+    const plan = planRouteDeletes(viaSectionSrc(), [
+      { net: 'AMP_OUT', kind: 'via', x1: 145.579, y1: 87.855, x2: 145.579, y2: 87.855, layer: null },
+    ]);
+    const out = apply(viaSectionSrc(), plan.edits);
+    expect(plan.unmatched).toEqual([]);
+    expect(out).not.toContain('{ x: 145.579, y: 87.855 }');
+    expect(out).toContain('{ x: 135.708, y: 81.814 }'); // the sibling stays
+    expectValidTs(out);
+  });
+
+  it('via-deletes at plain endpoints stay bookkeeping — no statement, no refuse', () => {
+    const plan = planRouteDeletes(viaSectionSrc(), [
+      { net: 'PROBE_1', kind: 'via', x1: 999, y1: 999, x2: 999, y2: 999, layer: null },
+    ]);
+    expect(plan.unmatched.length).toBe(1);
+    expect(plan.unmatched[0]!.nearSource).toBe(false); // never refuses an apply
+    expect(plan.edits).toEqual([]);
+  });
+});

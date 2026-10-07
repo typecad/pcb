@@ -69,6 +69,10 @@ async function showCommandHelp(command: string, subcommand: string): Promise<boo
     help.showDrcHelp();
     return true;
   }
+  if (command === 'viewer') {
+    help.showViewerHelp();
+    return true;
+  }
   if (command === 'erc') {
     help.showErcHelp();
     return true;
@@ -247,6 +251,10 @@ async function main(): Promise<void> {
 
       case 'export':
         await (await import('./commands/export.js')).run(parsed);
+        break;
+
+      case 'viewer':
+        await (await import('./commands/viewer.js')).run(parsed);
         break;
 
       default:

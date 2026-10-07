@@ -2,8 +2,11 @@
 // board. The palette is lifted from the site's .theme-pcb tokens (oklch
 // converted to sRGB): near-black canvas (oklch 0.145), typeCAD green front
 // copper (oklch 0.792 0.212 148.5), white silk and edge (the site foreground),
-// zinc grays for everything secondary. Hand-written — no upstream to vendor;
-// licensed with the package (Apache-2.0). Registered first in
+// zinc grays for everything secondary. Back copper is the one deliberate
+// divergence: the site tokens carry a single green, which read as a dimmer
+// front layer — B.Cu takes a blue (a sibling of the in-layer accent blues)
+// so the two outer layers tell apart at a glance. Hand-written — no upstream
+// to vendor; licensed with the package (Apache-2.0). Registered first in
 // LAYER_THEME_LIST, so it is the viewer's default look. See README.md.
 export const TYPECAD = {
   "id": "typecad",
@@ -23,7 +26,7 @@ export const TYPECAD = {
     "background": "rgb(10, 10, 10)",
     "cmts_user": "rgb(68, 208, 193)",
     "copper": {
-      "b": "rgb(29, 167, 88)",
+      "b": "rgb(72, 148, 235)",
       "f": "rgb(48, 222, 102)",
       "in1": "rgb(228, 183, 80)",
       "in10": "rgb(247, 124, 137)",
@@ -77,7 +80,7 @@ export const TYPECAD = {
     "grid_axes": "rgb(64, 64, 64)",
     "margin": "rgb(184, 151, 240)",
     "no_connect": "rgb(245, 71, 72)",
-    "pad_back": "rgb(29, 167, 88)",
+    "pad_back": "rgb(72, 148, 235)",
     "pad_front": "rgb(48, 222, 102)",
     "pad_plated_hole": "rgb(182, 182, 182)",
     "pad_through_hole": "rgb(228, 183, 80)",

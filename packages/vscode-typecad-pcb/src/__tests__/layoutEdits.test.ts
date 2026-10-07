@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyPlacementEdits, planComponentEdits, planEndpointEdits, parsePlacementLiteral, planNetClassEdits, planOutlineEdits, planPlacementEdits, planTextEdits, planZoneDeletions, planZoneGeometryEdits } from '../layoutEdits.js';
+import { applyPlacementEdits, maxZonePriority, planComponentEdits, planEndpointEdits, parsePlacementLiteral, planNetClassEdits, planOutlineEdits, planPlacementEdits, planTextEdits, planZoneDeletions, planZoneGeometryEdits } from '../layoutEdits.js';
 import { expectValidTs } from './helpers/valid_source.js';
 
 const source = `import { PCB } from '@typecad/pcb';
@@ -813,5 +813,40 @@ describe('planZoneGeometryEdits / planZoneDeletions', () => {
     expect(applyPlacementEdits(src, edits)).toContain("typecad.keepout({ layers: ['F.Cu'], x: 21, y: 21, width: 4, height: 4 })");
     const { edits: de } = planZoneDeletions(src, [{ x: 20, y: 20, w: 3, h: 3, layer: 'F.Cu' }]);
     expect(applyPlacementEdits(src, de)).not.toContain('typecad.keepout');
+  });
+
+  it('polygon (points) zones delete by bounding box and reassign nets', () => {
+    // the exact absorbed zone from the live session: an L-shaped pour the
+    // import wrote as points. bbox: x 144.236, y 78.875, w 2.971, h 2.28
+    const poly = `  typecad.zone({ layers: ['F.Cu'], points: [{ x: 144.236, y: 78.875 }, { x: 147.207, y: 78.875 }, { x: 147.187, y: 79.929 }, { x: 145.386, y: 79.948 }, { x: 145.386, y: 81.155 }, { x: 144.236, y: 81.117 }], priority: 1 });\n`;
+    const withPoly = src + poly;
+    const bbox = { x: 144.236, y: 78.875, w: 2.971, h: 2.28, layer: 'F.Cu' };
+
+    // delete removes the whole statement
+    const { edits: de, skipped: dsk } = planZoneDeletions(withPoly, [bbox]);
+    expect(dsk).toEqual([]);
+    expect(applyPlacementEdits(withPoly, de)).not.toContain('points');
+
+    // a pure net reassignment (geometry unchanged) inserts the net key and
+    // leaves the points untouched
+    const { edits: ne, skipped: nsk } = planZoneGeometryEdits(withPoly, [
+      { original: bbox, rect: { x: bbox.x, y: bbox.y, w: bbox.w, h: bbox.h }, net: 'GND' },
+    ]);
+    expect(nsk).toEqual([]);
+    const rewritten = applyPlacementEdits(withPoly, ne);
+    expect(rewritten).toContain("net: 'GND'");
+    expect(rewritten).toContain('points: [{ x: 144.236, y: 78.875 }');
+
+    // a geometry change on a polygon is refused with the redraw hint — a
+    // rect rewrite would replace the L with its bounding box
+    const { edits: ge, skipped: gsk } = planZoneGeometryEdits(withPoly, [
+      { original: bbox, rect: { x: 144, y: 78, w: 4, h: 3 } },
+    ]);
+    expect(ge).toEqual([]);
+    expect(gsk.join(' ')).toContain('polygon (points) zone');
+    expect(gsk.join(' ')).toContain('delete and redraw');
+
+    // the priority floor sees polygon zones too
+    expect(maxZonePriority(withPoly)).toBe(1);
   });
 });

@@ -75,6 +75,24 @@ const boardFile_js_1 = require("./boardFile.js");
 const syncState_js_1 = require("./syncState.js");
 /** Identifiers only — skips numbers, operators, and property dots. */
 const WORD_LIKE = /^[A-Za-z_][A-Za-z0-9_]*$/;
+/**
+ * One terminal per purpose, reused across invocations — recreated when it
+ * was closed or the project moved, because cwd is only settable at creation.
+ */
+class PerFolderTerminal {
+    constructor(name, command) {
+        this.name = name;
+        this.command = command;
+    }
+    runIn(folder) {
+        if (!this.terminal || this.terminal.exitStatus !== undefined || this.folder !== folder) {
+            this.terminal = vscode.window.createTerminal({ name: this.name, cwd: folder });
+            this.folder = folder;
+        }
+        this.terminal.show(true);
+        this.terminal.sendText(this.command, true);
+    }
+}
 function activate(context) {
     const output = vscode.window.createOutputChannel('typeCAD/pcb');
     const service = new boardData_js_1.BoardDataService(runQuery);
@@ -149,22 +167,30 @@ function activate(context) {
             });
         }, delayMs);
     };
-    // source watcher: every .ts under the hw folder (src/ plus the conf) —
-    // one teardown hook owns whatever watcher is current
-    let watcher;
-    context.subscriptions.push(new vscode.Disposable(() => watcher?.dispose()));
+    // TWO independent watchers, two directions of the sync loop — they must
+    // never share a variable: installBoard used to dispose the source watcher
+    // through a shared handle, leaving source edits with no auto-build from
+    // activation on (seen live as an absorbed-reconcile whose "rebuilding…"
+    // status never cleared — the source rewrite triggered nothing).
+    let sourceWatcher;
+    let boardWatcher;
+    context.subscriptions.push(new vscode.Disposable(() => {
+        sourceWatcher?.dispose();
+        boardWatcher?.dispose();
+    }));
     const rewatchSources = () => {
-        watcher?.dispose();
+        sourceWatcher?.dispose();
+        sourceWatcher = undefined;
         const folder = resolveHwFolder();
         if (!folder) {
             syncBar.hide();
             return;
         }
         const pattern = new vscode.RelativePattern(folder, '{src/**/*.ts,typecad.conf.ts}');
-        watcher = vscode.workspace.createFileSystemWatcher(pattern);
-        watcher.onDidChange(() => scheduleAutoBuild());
-        watcher.onDidCreate(() => scheduleAutoBuild());
-        watcher.onDidDelete(() => scheduleAutoBuild());
+        sourceWatcher = vscode.workspace.createFileSystemWatcher(pattern);
+        sourceWatcher.onDidChange(() => scheduleAutoBuild());
+        sourceWatcher.onDidCreate(() => scheduleAutoBuild());
+        sourceWatcher.onDidDelete(() => scheduleAutoBuild());
         syncLabel();
         // opening the workspace with sources newer than the board (the failed
         // apply + manual edit case): build once now, not on the next save
@@ -223,8 +249,8 @@ function activate(context) {
         }, 10_000);
     };
     const watchBuild = (folder) => {
-        watcher?.dispose();
-        watcher = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(folder, 'build/**/*.kicad_pcb'));
+        boardWatcher?.dispose();
+        boardWatcher = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(folder, 'build/**/*.kicad_pcb'));
         const boardChanged = (uri) => {
             output.appendLine(`board file event: ${node_path_1.default.basename(uri.fsPath)}`);
             service.invalidate();
@@ -234,9 +260,9 @@ function activate(context) {
             void viewer.refreshIfVisible();
             autoDrcIfWanted(uri.fsPath);
         };
-        watcher.onDidChange(boardChanged);
-        watcher.onDidCreate(boardChanged);
-        watcher.onDidDelete(boardChanged);
+        boardWatcher.onDidChange(boardChanged);
+        boardWatcher.onDidCreate(boardChanged);
+        boardWatcher.onDidDelete(boardChanged);
     };
     const initial = resolveHwFolder();
     if (initial) {
@@ -259,24 +285,15 @@ function activate(context) {
     //    pattern): runs npm run build in a reused terminal; the board watcher
     //    picks the new board up and refreshes an open viewer on its own --
     // the live KiCad -> source sync terminal (Start KiCAD Sync command)
-    let syncTerminal;
-    let syncTerminalFolder;
-    let buildTerminal;
-    let buildTerminalFolder;
+    const buildTerminal = new PerFolderTerminal('typeCAD/pcb', 'npm run build');
+    const syncTerminal = new PerFolderTerminal('typeCAD/pcb: KiCad sync', 'npm run kicad_sync');
     context.subscriptions.push(vscode.commands.registerCommand('typecad-pcb.buildBoard', () => {
         const folder = resolveHwFolder();
         if (!folder) {
             vscode.window.showInformationMessage('typeCAD/pcb: no typeCAD project (typecad.conf.ts) in this workspace.');
             return;
         }
-        // one terminal per hw folder, recreated when it closed or the project
-        // moved — the cwd is only settable at creation
-        if (!buildTerminal || buildTerminal.exitStatus !== undefined || buildTerminalFolder !== folder) {
-            buildTerminal = vscode.window.createTerminal({ name: 'typeCAD/pcb', cwd: folder });
-            buildTerminalFolder = folder;
-        }
-        buildTerminal.show(true);
-        buildTerminal.sendText('npm run build', true);
+        buildTerminal.runIn(folder);
     }), vscode.languages.registerCodeLensProvider({ language: 'typescript', scheme: 'file' }, {
         provideCodeLenses(document) {
             if (!(0, boardSource_js_1.isBoardSourceFile)(document.uri.fsPath, resolveHwFolder()))
@@ -468,39 +485,13 @@ function activate(context) {
             editor.setDecorations(warnChip, options);
         }
     }
-    /** True when a hw .ts source is newer than the built board. */
+    /** True when a build input (any TypeScript under src/, or the conf) is
+     *  newer than the built board — the same rule the auto-build gate uses, so
+     *  the chip can never disagree with the builder about a build being owed. */
     function boardIsStale(folder, boardMtime) {
         if (!boardMtime)
             return false;
-        const check = (dir) => {
-            let entries;
-            try {
-                entries = node_fs_1.default.readdirSync(dir, { withFileTypes: true });
-            }
-            catch {
-                return false;
-            }
-            for (const entry of entries) {
-                const full = node_path_1.default.join(dir, entry.name);
-                if (entry.isDirectory()) {
-                    if (entry.name === 'node_modules' || entry.name === 'build' || entry.name.startsWith('.'))
-                        continue;
-                    if (check(full))
-                        return true;
-                }
-                else if (entry.name.endsWith('.ts')) {
-                    try {
-                        if (node_fs_1.default.statSync(full).mtimeMs > boardMtime)
-                            return true;
-                    }
-                    catch {
-                        /* raced a delete */
-                    }
-                }
-            }
-            return false;
-        };
-        return check(folder);
+        return (0, boardFile_js_1.newestSourceMtime)(folder) > boardMtime;
     }
     /** Drop every board-derived surface — the board (or project) is gone. */
     function clearBoardSurfaces() {
@@ -758,12 +749,7 @@ function activate(context) {
             vscode.window.showInformationMessage('typeCAD/pcb: no typeCAD project (typecad.conf.ts) in this workspace.');
             return;
         }
-        if (!syncTerminal || syncTerminal.exitStatus !== undefined || syncTerminalFolder !== folder) {
-            syncTerminal = vscode.window.createTerminal({ name: 'typeCAD/pcb: KiCad sync', cwd: folder });
-            syncTerminalFolder = folder;
-        }
-        syncTerminal.show(true);
-        syncTerminal.sendText('npm run kicad_sync', true);
+        syncTerminal.runIn(folder);
     }), 
     // the safety net under the layout apply bridge: list the pre-apply
     // source snapshots and restore one — a user should never have to
@@ -862,7 +848,7 @@ function activate(context) {
             if (!(0, boardSource_js_1.isBoardSourceFile)(document.uri.fsPath, folder))
                 return;
             service.setFolder(folder);
-            if (!watcher)
+            if (!boardWatcher)
                 watchBuild(folder);
             try {
                 const detail = await service.resolve(word);

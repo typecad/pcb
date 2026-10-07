@@ -23,7 +23,7 @@ import type { ComponentDetail, ComponentSummary, NetSourceSummary, UnconnectedRe
 /** Resolves with stdout; rejects with an Error carrying stderr/output tails. */
 export type QueryRunner = (cwd: string, command: string, timeoutMs: number) => Promise<string>;
 
-export const DEFAULT_TIMEOUT_MS = 15_000;
+const DEFAULT_TIMEOUT_MS = 15_000;
 
 export class BoardDataService {
   private cwd: string | null = null;

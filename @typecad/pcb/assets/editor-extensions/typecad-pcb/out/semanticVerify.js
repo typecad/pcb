@@ -9,13 +9,6 @@
 // ---------------------------------------------------------------------------
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.verifyBoardSemantics = verifyBoardSemantics;
-/** net code -> name from the board's `(net 12 "GND")` declarations */
-function netNames(board) {
-    const out = new Map();
-    for (const m of board.matchAll(/\(net (\d+) "((?:[^"\\]|\\.)*)"\)/g))
-        out.set(Number(m[1]), m[2]);
-    return out;
-}
 function boardSegments(board) {
     const out = [];
     for (const m of board.matchAll(/\(segment \(start (-?[\d.]+) (-?[\d.]+)\) \(end (-?[\d.]+) (-?[\d.]+)\)[^\n]*?\(layer "([^"]+)"\)(?:[^\n]*?\(net (\d+)\))?/g)) {
@@ -39,11 +32,18 @@ function boardVias(board) {
 function boardPlacements(board) {
     // each footprint block: first (at x y [rot]) is the placement, the
     // footprint's own (layer …) names the side, and the Reference property
-    // names it
+    // names it. Blocks come in BOTH serializations — classic single-line
+    // `(footprint …` and pcbnew-10 split style `(\n  footprint\n` (resaved
+    // boards); splitting on the literal `(footprint ` went blind on the
+    // split form and reported every moved component as having no footprint.
     const out = new Map();
-    const blocks = board.split(/\(footprint /).slice(1);
+    const blocks = board.split(/\(\s*footprint\b/).slice(1);
     for (const block of blocks) {
-        const at = /\(at (-?[\d.]+) (-?[\d.]+)/.exec(block);
+        // The PLACEMENT (at) is the first one OUTSIDE any (property …) form:
+        // typeCAD's provenance `(property "Code" "typecad:v1:…" (at 0 0 0) …)`
+        // precedes the footprint's own placement, so the naive first-(at) read
+        // the property's 0,0 and every move verified as "sits at 0.00,0.00".
+        const at = /\(at (-?[\d.]+) (-?[\d.]+)/.exec(stripPropertyForms(block));
         const ref = /\(property "Reference" "([^"]+)"/.exec(block);
         if (!at || !ref)
             continue;
@@ -54,6 +54,39 @@ function boardPlacements(board) {
         out.set(ref[1], { x: parseFloat(at[1]), y: parseFloat(at[2]), side });
     }
     return out;
+}
+/** Blank out every balanced `(property …)` sub-expression, keeping length
+ *  and everything outside them (a cheap scanner — properties never nest
+ *  properties, so one pass per opening works). */
+function stripPropertyForms(block) {
+    const chars = block.split('');
+    let i = 0;
+    while (i < block.length) {
+        const open = block.indexOf('(property', i);
+        if (open === -1)
+            break;
+        let depth = 0;
+        let end = -1;
+        for (let j = open; j < block.length; j++) {
+            if (block[j] === '(')
+                depth++;
+            else if (block[j] === ')') {
+                depth--;
+                if (depth === 0) {
+                    end = j;
+                    break;
+                }
+            }
+        }
+        if (end === -1)
+            break;
+        for (let j = open; j <= end; j++) {
+            if (chars[j] !== '\n')
+                chars[j] = ' ';
+        }
+        i = end + 1;
+    }
+    return chars.join('');
 }
 function boardTexts(board) {
     const out = [];
@@ -217,7 +250,6 @@ function verifyBoardSemantics(board, check) {
     let checked = 0;
     const segs = boardSegments(board);
     const vias = boardVias(board);
-    const names = netNames(board);
     for (const route of check.routes) {
         for (const piece of route.pieces) {
             for (let i = 1; i < piece.pts.length; i++) {
@@ -236,7 +268,22 @@ function verifyBoardSemantics(board, check) {
     }
     for (const d of check.deletes) {
         checked++;
-        if (segMatches(segs, d.x1, d.y1, d.x2, d.y2, d.layer))
+        if (!segMatches(segs, d.x1, d.y1, d.x2, d.y2, d.layer))
+            continue;
+        // Width is not part of the match (the delete payload carries none), so
+        // a rip-up-and-REDRAW over the same path at a different width reads as
+        // the deleted leg surviving. The apply knows its own new routes: when
+        // the "still present" copper coincides with a leg this same gesture
+        // added, it is the redraw, not a failed delete.
+        const redrawn = check.routes.some((route) => route.pieces.some((piece) => piece.pts.some((pt, i) => {
+            if (i === 0)
+                return false;
+            const a = piece.pts[i - 1];
+            const b = pt;
+            return ((near(a.x, d.x1) && near(a.y, d.y1) && near(b.x, d.x2) && near(b.y, d.y2)) ||
+                (near(a.x, d.x2) && near(a.y, d.y2) && near(b.x, d.x1) && near(b.y, d.y1)));
+        })));
+        if (!redrawn)
             misses.push(`deleted segment ${fmt(d.x1)},${fmt(d.y1)} → ${fmt(d.x2)},${fmt(d.y2)}${d.layer ? ` on ${d.layer}` : ''}${d.net ? ` (net ${d.net})` : ''} is STILL on the rebuilt board`);
     }
     if (check.placements.length > 0) {

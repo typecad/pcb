@@ -19,80 +19,16 @@ export const syncTracks: TrackBuilder[] = [];
 
 export function syncBoard(typecad: PCB, parts: Record<string, Component>): void {
   syncTracks.length = 0;
-  const route1 = new TrackBuilder(typecad, { net: 'PROBE_1',  })
-  .from({ x: 143.075, y: 86.15 }, 'F.Cu', 0.15)
-  .to({ x: 141.635, y: 86.15, layer: 'F.Cu', width: 0.15 })
-  .to({ x: 141.054, y: 85.569, layer: 'F.Cu', width: 0.15 })
-  .to({ x: 141.054, y: 83.719, layer: 'F.Cu', width: 0.15 })
-  .to({ x: 141.073, y: 83.7, layer: 'F.Cu', width: 0.15 });
-  syncTracks.push(route1);
-  const route2 = new TrackBuilder(typecad, { net: 'CH1_NC',  })
-  .from({ x: 138.6, y: 86.275 }, 'F.Cu', 0.15)
-  .to({ x: 138.6, y: 88.275, layer: 'F.Cu', width: 0.15 })
-  .to({ x: 138.825, y: 88.5, layer: 'F.Cu', width: 0.15 });
-  syncTracks.push(route2);
-  const route3 = new TrackBuilder(typecad, { net: 'CH1_NO',  })
-  .from({ x: 137.1, y: 86.275 }, 'F.Cu', 0.15)
-  .to({ x: 137.1, y: 86.56, layer: 'F.Cu', width: 0.15 });
-  syncTracks.push(route3);
-  const route4 = new TrackBuilder(typecad, { net: 'CH1_NO',  })
-  .from({ x: 137.1, y: 86.56 }, 'F.Cu', 0.15)
-  .to({ x: 137.1, y: 87.022, layer: 'F.Cu', width: 0.15 })
-  .to({ x: 137.025, y: 87.098, layer: 'F.Cu', width: 0.15 })
-  .to({ x: 136.611, y: 87.511, layer: 'F.Cu', width: 0.15 })
-  .to({ x: 134.618, y: 87.511, layer: 'F.Cu', width: 0.15 })
-  .to({ x: 134.541, y: 87.511, layer: 'F.Cu', width: 0.15 })
-  .to({ x: 134.177, y: 87.875, layer: 'F.Cu', width: 0.15 })
-  .to({ x: 134.177, y: 88.498, layer: 'F.Cu', width: 0.15 });
-  syncTracks.push(route4);
-  const route5 = new TrackBuilder(typecad, { net: 'CH1_NO',  })
-  .from({ x: 137.1, y: 86.275 }, 'F.Cu', 0.3)
-  .to({ x: 137.1, y: 86.56, layer: 'F.Cu', width: 0.3 });
-  syncTracks.push(route5);
-  const route6 = new TrackBuilder(typecad, { net: 'CH1_NO',  })
-  .from({ x: 136.611, y: 87.211 }, 'F.Cu', 0.15)
-  .to({ x: 134.618, y: 87.211, layer: 'F.Cu', width: 0.15 });
-  syncTracks.push(route6);
-  const route7 = new TrackBuilder(typecad, { net: 'CH1_NO',  })
-  .from({ x: 137.025, y: 87.098 }, 'F.Cu', 0.15)
-  .to({ x: 136.611, y: 87.211, layer: 'F.Cu', width: 0.15 });
-  syncTracks.push(route7);
-  const route8 = new TrackBuilder(typecad, { net: 'CH1_NO',  })
-  .from({ x: 134.618, y: 87.211 }, 'F.Cu', 0.15)
-  .to({ x: 134.541, y: 87.211, layer: 'F.Cu', width: 0.15 });
-  syncTracks.push(route8);
-  const route9 = new TrackBuilder(typecad, { net: 'CH1_NO',  })
-  .from({ x: 134.541, y: 87.211 }, 'F.Cu', 0.15)
-  .to({ x: 134.177, y: 87.575, layer: 'F.Cu', width: 0.15 });
-  syncTracks.push(route9);
-  const route10 = new TrackBuilder(typecad, { net: 'CH1_NO',  })
-  .from({ x: 134.177, y: 87.575 }, 'F.Cu', 0.15)
-  .to({ x: 134.177, y: 88.498, layer: 'F.Cu', width: 0.15 });
-  syncTracks.push(route10);
-  const route11 = new TrackBuilder(typecad, { net: 'CH1_NO',  })
-  .from({ x: 136.611, y: 87.411 }, 'F.Cu', 0.15)
-  .to({ x: 134.618, y: 87.411, layer: 'F.Cu', width: 0.15 });
-  syncTracks.push(route11);
-  const route12 = new TrackBuilder(typecad, { net: 'CH1_NO',  })
-  .from({ x: 137.025, y: 87.098 }, 'F.Cu', 0.15)
-  .to({ x: 136.611, y: 87.411, layer: 'F.Cu', width: 0.15 });
-  syncTracks.push(route12);
-  const route13 = new TrackBuilder(typecad, { net: 'CH1_NO',  })
-  .from({ x: 136.611, y: 87.411 }, 'F.Cu', 0.15)
-  .to({ x: 134.618, y: 87.411, layer: 'F.Cu', width: 0.15 });
-  syncTracks.push(route13);
-  const route14 = new TrackBuilder(typecad, { net: 'CH1_NO',  })
-  .from({ x: 134.618, y: 87.411 }, 'F.Cu', 0.15)
-  .to({ x: 134.541, y: 87.411, layer: 'F.Cu', width: 0.15 });
-  syncTracks.push(route14);
-  const route15 = new TrackBuilder(typecad, { net: 'CH1_NO',  })
-  .from({ x: 134.541, y: 87.411 }, 'F.Cu', 0.15)
-  .to({ x: 134.177, y: 87.775, layer: 'F.Cu', width: 0.15 });
-  syncTracks.push(route15);
-  const route16 = new TrackBuilder(typecad, { net: 'CH1_NO',  })
-  .from({ x: 134.177, y: 87.775 }, 'F.Cu', 0.15)
-  .to({ x: 134.177, y: 88.498, layer: 'F.Cu', width: 0.15 });
-  syncTracks.push(route16);
+
+
+
+
+
+
+
+
+  typecad.zone({ net: 'GND', layers: ['F.Cu'], points: [{ x: 130.002, y: 78.001 }, { x: 130.003, y: 93.005 }, { x: 154.991, y: 93.005 }, { x: 154.991, y: 77.984 }], priority: 1 });
+
 
 
 

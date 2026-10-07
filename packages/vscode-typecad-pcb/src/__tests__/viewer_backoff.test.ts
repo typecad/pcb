@@ -57,8 +57,10 @@ describe('viewer failure backoff', () => {
     logs = [];
     runCalls = 0;
     const output = { appendLine: (line: string) => logs.push(line) };
-    // run() would spawn npx; count invocations, never succeed
-    const run = async () => {
+    // run() would spawn npx; count RENDER attempts (the drift check also
+    // rides run() but never throws or retries), never succeed
+    const run = async (_folder: string, command: string) => {
+      if (command.includes('check-sync')) return JSON.stringify({ count: 0 });
       runCalls++;
       throw new Error("Cannot read properties of null (reading 'raw')");
     };

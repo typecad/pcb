@@ -61,7 +61,9 @@ describe('injected client executes', () => {
     const w = dom.window;
     await new Promise((r) => setTimeout(r, 50));
 
-    expect(sent).toContainEqual({ type: 'typecad/ready' });
+    // ready carries the probe-client protocol stamp and the page's boot
+    // capabilities (the fixture page provides typecadViewer)
+    expect(sent).toContainEqual({ type: 'typecad/ready', proto: 1, page: { viewer: true } });
     expect(w.document.querySelectorAll('#typecad-probe .typecad-outline').length).toBe(1);
 
     // the hover readout's ref -> source-variable lookup is installed
@@ -107,6 +109,9 @@ describe('injected client executes', () => {
     );
     expect(text()).toBe('board changed — generating new render…');
     expect(el().hasAttribute('data-locked')).toBe(true);
+    // the lock carries a timestamp — the page reclaims the line if the
+    // promised render never comes (stalled rebuild chain)
+    expect(Number(el().getAttribute('data-locked-at'))).toBeGreaterThan(0);
 
     // while locked, a selection's status write stands down (the highlight
     // itself still applies — only the text is suppressed)
@@ -116,10 +121,11 @@ describe('injected client executes', () => {
     expect(sent).toContainEqual({ type: 'typecad/ack', ref: 'R1', token: 2, found: true });
 
     // normally the page reload clears this; the no-reload outcome clears it
-    // by hand — unlocked, normal operation resumes
+    // by hand — unlocked, timestamp gone, normal operation resumes
     w.dispatchEvent(new w.MessageEvent('message', { data: { type: 'typecad/status', text: '' } }));
     expect(text()).toBe('');
     expect(el().hasAttribute('data-locked')).toBe(false);
+    expect(el().hasAttribute('data-locked-at')).toBe(false);
 
     w.dispatchEvent(new w.MessageEvent('message', { data: { type: 'typecad/select', ref: 'R1', token: 3 } }));
     await new Promise((r) => setTimeout(r, 20));

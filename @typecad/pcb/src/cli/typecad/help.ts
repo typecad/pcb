@@ -26,6 +26,7 @@ export function showTopLevelHelp(): void {
   console.log('  lib add/list        Fetch/list KiCad libraries into build/lib (no install needed)');
   console.log('  export gerbers      Export Gerber files from a KiCad PCB');
   console.log('  export drill        Export drill files from a KiCad PCB');
+  console.log('  viewer              Build the interactive board viewer page (gerbers + drill + page in one pass)');
   console.log('  skills              List and query typeCAD skills and API patterns');
   console.log('  package             Browse and install typeCAD packages from npm\n');
   console.log('Global Options:');
@@ -548,4 +549,29 @@ export function showEditHelp(): void {
   console.log('  typecad-pcb edit connect GND C1.2 C2.2 --json');
   console.log('  typecad-pcb edit move U1 --right-of C3 --gap 2.54');
   console.log('  typecad-pcb edit route U1.3 R1.1 --width 0.25');
+}
+
+export function showViewerHelp(): void {
+  console.log(chalk.white.bold('typecad-pcb viewer') + ' - Build the interactive board viewer page\n');
+  console.log(
+    'Exports the full fab set (gerbers + drill + job, zones refilled) and\n' +
+      'builds the self-contained viewer HTML in one pass — the same pipeline\n' +
+      'the vscode extension runs on every board change, without the per-step\n' +
+      'startup cost of separate commands.\n',
+  );
+  console.log('Usage:');
+  console.log('  typecad-pcb viewer [board|path] [options]\n');
+  console.log('Options:');
+  console.log('  -o, --out=<file>    Output page (default: ./build/serve/viewer.html;');
+  console.log('                      ./build/serve/<board>.html on multi-board projects)');
+  console.log('  --netlist=<file>    KiCad .net netlist — pad→net (auto: build/<board>.net)');
+  console.log('  --drc=<file>        typeCAD DRC report JSON — violation markers');
+  console.log('  --stackup=<file>    stackup JSON — copper weights for the thermal view');
+  console.log('  --rules=<file>      board rules JSON — layout-view width floors');
+  console.log('  --saved-fills       Plot saved zone fills as-is (skip the in-memory refill)');
+  console.log('  --json              Output summary as JSON');
+  console.log('  --help              Show this help\n');
+  console.log('Examples:');
+  console.log('  typecad-pcb viewer');
+  console.log('  typecad-pcb viewer build/main.kicad_pcb --drc build/main_drc.json');
 }

@@ -683,6 +683,47 @@ describe('apply-back: routing section', () => {
     expect(second.changes).toEqual([]);
   });
 
+  it('an orphaned empty TrackBuilder[] declaration dies with the regenerated section', () => {
+    // live defect (mod-ec): a layout-view segment delete emptied a net's
+    // last push, leaving `const track_X: TrackBuilder[] = [];` with nothing
+    // pushed. The member scan only counted declarations WITH pushes, so the
+    // orphan sat outside the replacement span while the regenerated section
+    // re-declared the same name beside it — duplicate identifier, parse
+    // gate refused the whole import cycle. The orphan must be a member.
+    const file = path.join(dir, 'board.ts');
+    fs.writeFileSync(
+      file,
+      "import { PCB, TrackBuilder } from '@typecad/pcb';\n" +
+        "const typecad = new PCB('t');\n" +
+        'typecad.outline(5, 10, 100, 50);\n' +
+        '// Net: VCC\n' +
+        'const track_VCC: TrackBuilder[] = [];\n' +
+        `track_VCC.push(typecad.track({ net: 'VCC' }).from({ x: 10, y: 20 }, "F.Cu", 0.2).to({ x: 20, y: 20, layer: "F.Cu", width: 0.2 }));\n` +
+        '// Net: GND\n' +
+        'const track_GND: TrackBuilder[] = [];\n' + // orphan: emptied by a segment delete
+        '\n' +
+        'typecad.create(\n  ...track_VCC,\n  ...track_GND\n);',
+    );
+    // the board carries copper on BOTH nets — the regen re-declares both
+    const ir = buildIr(
+      boardWithTrack(20).replace(
+        '(net 1 "VCC")',
+        '(net 1 "VCC")\n    (net 2 "GND")\n    (segment (start 30 40) (end 35 40) (width 0.2) (layer "F.Cu") (net "GND"))',
+      ),
+    );
+    const { changes } = computeRoutingChanges(ir, [file]);
+    expect(changes.length).toBe(1);
+    applySourceChanges(changes);
+
+    const applied = fs.readFileSync(file, 'utf-8');
+    // ONE track_GND declaration, carrying the board's copper
+    expect(applied.match(/const track_GND/g)).toHaveLength(1);
+    const analysis = analyzeFile(file);
+    expect(analysis).not.toBeNull();
+    // and the cycle converges
+    expect(computeRoutingChanges(ir, [file]).changes).toEqual([]);
+  });
+
   it('reports no change when routing is in sync', () => {
     const file = path.join(dir, 'board.ts');
     fs.writeFileSync(file, sourceWithTrack(20));

@@ -271,7 +271,33 @@ function findZoneLiterals(text) {
         const yNum = /\by\s*:\s*(-?[\d.]+)/.exec(inner);
         const wNum = /\bwidth\s*:\s*(-?[\d.]+)/.exec(inner);
         const hNum = /\bheight\s*:\s*(-?[\d.]+)/.exec(inner);
-        if (!xNum || !yNum || !wNum || !hNum)
+        let rect = null;
+        let isPoints = false;
+        if (xNum && yNum && wNum && hNum) {
+            rect = { x: parseFloat(xNum[1]), y: parseFloat(yNum[1]), w: parseFloat(wNum[1]), h: parseFloat(hNum[1]) };
+        }
+        else {
+            // polygon zone (`points: [{ x, y }, …]`, what the import writes for
+            // non-rect pours and the layout view's polygon draw) — matched by
+            // its bounding box, exactly the rect the page reports for it
+            const pointsMatch = /\bpoints\s*:\s*\[([^\]]*)\]/.exec(inner);
+            if (pointsMatch) {
+                const pts = [...pointsMatch[1].matchAll(/x\s*:\s*(-?[\d.]+)\s*,\s*y\s*:\s*(-?[\d.]+)/g)].map((p) => ({
+                    x: parseFloat(p[1]),
+                    y: parseFloat(p[2]),
+                }));
+                if (pts.length >= 3) {
+                    rect = {
+                        x: Math.min(...pts.map((p) => p.x)),
+                        y: Math.min(...pts.map((p) => p.y)),
+                        w: Math.max(...pts.map((p) => p.x)) - Math.min(...pts.map((p) => p.x)),
+                        h: Math.max(...pts.map((p) => p.y)) - Math.min(...pts.map((p) => p.y)),
+                    };
+                    isPoints = true;
+                }
+            }
+        }
+        if (!rect)
             continue;
         const layers = [];
         const layersRe = /\blayers\s*:\s*\[([^\]]*)\]/.exec(inner);
@@ -290,10 +316,11 @@ function findZoneLiterals(text) {
             close,
             stmtStart: lineStart,
             stmtEnd: stmtEnd + 1,
-            rect: { x: parseFloat(xNum[1]), y: parseFloat(yNum[1]), w: parseFloat(wNum[1]), h: parseFloat(hNum[1]) },
+            rect,
             layers,
             method: match[1],
             priority: priorityNum ? parseFloat(priorityNum[1]) : undefined,
+            ...(isPoints ? { points: true } : {}),
         });
     }
     return out;
@@ -327,9 +354,12 @@ function rectMatches(m, r) {
  * x/y/width/height are rewritten in place — every other key (fill, the
  * comment text around it) stays. A `net` on the edit reassigns the pour:
  * an existing `net: '…'` key is rewritten, and a literal without one
- * gains it right after the opening brace. Numeric literals only; a zone
- * with no matching literal (a `pcb.plane()` materialization, an
- * import-authored polygon) is reported, never mangled.
+ * gains it right after the opening brace. Polygon zones (`points: […]`,
+ * what the import writes for non-rect pours) match by bounding box and
+ * reassign nets like any other, but a geometry change on one is reported
+ * (a rect rewrite would replace its shape with the box) — delete and
+ * redraw instead. Zones with no matching literal at all (a `pcb.plane()`
+ * materialization) are reported, never mangled.
  */
 function planZoneGeometryEdits(text, edits) {
     const literals = findZoneLiterals(text);
@@ -344,6 +374,17 @@ function planZoneGeometryEdits(text, edits) {
         }
         used.add(hit);
         const m = literals[hit];
+        // a polygon zone matched by bbox: its shape is the points list, and a
+        // rect rewrite would silently replace it with the bounding box — only
+        // a pure net reassignment (geometry unchanged) may touch it
+        const geometryChanged = Math.abs(edit.rect.x - edit.original.x) >= 0.05 ||
+            Math.abs(edit.rect.y - edit.original.y) >= 0.05 ||
+            Math.abs(edit.rect.w - edit.original.w) >= 0.05 ||
+            Math.abs(edit.rect.h - edit.original.h) >= 0.05;
+        if (m.points && geometryChanged) {
+            skipped.push(`zone (${edit.original.layer} at ${edit.original.x},${edit.original.y}) is a polygon (points) zone — delete and redraw it to change its shape`);
+            continue;
+        }
         const inner = text.slice(m.open + 1, m.close);
         let newInner = inner
             .replace(/\bx\s*:\s*-?[\d.]+/, `x: ${fmt(edit.rect.x)}`)

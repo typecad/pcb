@@ -368,7 +368,10 @@ typecad.create(
     const out = apply(pushSrc(), edits);
     expectValidTs(out);
     expect(out).not.toContain('track_VCC.push');
-    expect(out).toContain('const track_VCC: TrackBuilder[] = [];');
+    // the emptied array's whole block goes with the oracle's canonical
+    // section (no empty declarations, no orphaned create() spread)
+    expect(out).not.toContain('const track_VCC: TrackBuilder[] = [];');
+    expect(out).not.toContain('...track_VCC');
   });
 
   it('drops the trailing via when the tail segment dies, keeps it otherwise', () => {
@@ -463,8 +466,8 @@ typecad.create(
     const out = apply(src, edits);
     expectValidTs(out);
     expect(out).not.toContain('unnamed_Track.push');
-    expect(out).toContain('const unnamed_Track: TrackBuilder[] = [];');
-    expect(out).toContain('...unnamed_Track');
+    expect(out).not.toContain('const unnamed_Track: TrackBuilder[] = [];');
+    expect(out).not.toContain('...unnamed_Track');
   });
 });
 
@@ -509,6 +512,24 @@ describe('planRouteDeletes standalone vias', () => {
     expectValidTs(out);
   });
 
+  it('an EMPTIED array takes its whole block and create() spread — the oracle carries no empty block', () => {
+    // seen live on track_AMP_OUT: the delete removed the last push but the
+    // declaration and the `...track_AMP_OUT` create argument survived, and
+    // the oracle's regenerated args dropped the spread → permanent drift
+    const plan = planRouteDeletes(viaSectionSrc(), [
+      { net: 'AMP_OUT', x1: 134.422, y1: 81.72, x2: 135.708, y2: 81.814, layer: 'F.Cu' },
+      { net: 'AMP_OUT', x1: 135.708, y1: 81.814, x2: 139.538, y2: 81.814, layer: 'B.Cu' },
+      { net: 'AMP_OUT', x1: 139.538, y1: 81.814, x2: 145.579, y2: 87.855, layer: 'B.Cu' },
+      { net: 'AMP_OUT', x1: 145.579, y1: 87.855, x2: 145.579, y2: 89.512, layer: 'F.Cu' },
+    ]);
+    const out = apply(viaSectionSrc(), plan.edits);
+    expect(out).not.toContain('const track_AMP_OUT');
+    expect(out).not.toContain('// Net: AMP_OUT');
+    expect(out).not.toContain('...track_AMP_OUT');
+    expect(out).toContain('...track_PROBE_1'); // the surviving net's spread stays
+    expectValidTs(out);
+  });
+
   it('a direct via-delete removes exactly its statement', () => {
     const plan = planRouteDeletes(viaSectionSrc(), [
       { net: 'AMP_OUT', kind: 'via', x1: 145.579, y1: 87.855, x2: 145.579, y2: 87.855, layer: null },
@@ -517,6 +538,35 @@ describe('planRouteDeletes standalone vias', () => {
     expect(plan.unmatched).toEqual([]);
     expect(out).not.toContain('{ x: 145.579, y: 87.855 }');
     expect(out).toContain('{ x: 135.708, y: 81.814 }'); // the sibling stays
+    expectValidTs(out);
+  });
+
+  it("a FLOATING via's delete matches its net-less statement (delete-only applies must not refuse)", () => {
+    // the standalone-via registry required the net clause literally — a
+    // floating via's canonical statement carries none, its delete matched
+    // nothing, fell to segment matching, and the whole apply refused with
+    // "nothing was applied — 1 deleted segment(s) matched no source route"
+    const src = `
+import { PCB, TrackBuilder } from '@typecad/pcb';
+const typecad = new PCB('demo', {});
+// Net: PROBE_1
+const track_PROBE_1: TrackBuilder[] = [];
+track_PROBE_1.push(typecad.track({ net: 'PROBE_1' }).from({ x: 1, y: 2 }, "F.Cu", 0.15).to({ x: 3, y: 4, layer: "F.Cu", width: 0.15 }));
+
+typecad.via({ at: { x: 140, y: 88 }, size: 0.6, drill: 0.3 });
+typecad.via({ at: { x: 10, y: 10 }, net: 'GND', size: 0.6, drill: 0.3 });
+
+typecad.create(
+  ...track_PROBE_1
+);`;
+    const plan = planRouteDeletes(src, [
+      { net: null, kind: 'via', x1: 140, y1: 88, x2: 140, y2: 88, layer: null },
+    ]);
+    expect(plan.unmatched).toEqual([]);
+    expect(plan.applied).toBeGreaterThanOrEqual(1);
+    const out = apply(src, plan.edits);
+    expect(out).not.toContain('at: { x: 140, y: 88 }'); // the floating via is gone
+    expect(out).toContain("net: 'GND'"); // the netted sibling stays
     expectValidTs(out);
   });
 

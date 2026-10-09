@@ -68,17 +68,7 @@
         "title": "Restore Source from Backup",
         "category": "typeCAD/pcb"
       }
-    ],
-    "configuration": {
-      "title": "typeCAD/pcb",
-      "properties": {
-        "typecad-pcb.drcOnBuild": {
-          "type": "boolean",
-          "default": false,
-          "description": "Run the design rule check automatically after every board build — violations land in Problems and the status chip counts."
-        }
-      }
-    }
+    ]
   },
   "scripts": {
     "compile": "tsc -p ./",

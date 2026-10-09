@@ -231,6 +231,46 @@ describe('injected client executes', () => {
     await new Promise((r) => setTimeout(r, 20));
     expect(probes()).toEqual([{ type: 'typecad/probe', ref: 'R1', pin: '1' }]);
   });
+
+  it('Enter on a selected zone probes the zone definition, out-ranking the hover probe', async () => {
+    const sent: unknown[] = [];
+    const { html } = injectProbeClient(viewerPage, components);
+    const dom = new JSDOM(html, {
+      runScripts: 'dangerously',
+      url: 'https://webview.local/viewer.html',
+      beforeParse(window) {
+        window.acquireVsCodeApi = () => ({
+          postMessage: (m: unknown) => sent.push(m),
+          getState: () => ({}),
+          setState: () => {},
+        });
+      },
+    });
+    const w = dom.window;
+    await new Promise((r) => setTimeout(r, 50));
+    // the real page exposes the selected zone from its boardZoneSel; install
+    // it AFTER hovering a component so the zone must out-rank the hover
+    const pad = w.document.querySelector('[data-ref="R1"]')!;
+    pad.dispatchEvent(new w.MouseEvent('mousemove', { bubbles: true }));
+    (w as unknown as { typecadSelectedZone: unknown }).typecadSelectedZone = () => ({
+      net: 'GND',
+      layer: 'F.Cu',
+      keepout: false,
+      pts: [{ x: 0, y: 0 }, { x: 8, y: 0 }, { x: 8, y: 6 }, { x: 0, y: 6 }],
+    });
+    w.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Enter' }));
+    await new Promise((r) => setTimeout(r, 20));
+    const zoneProbes = sent.filter((m) => (m as { type: string }).type === 'typecad/probe-zone');
+    expect(zoneProbes).toHaveLength(1);
+    expect((zoneProbes[0] as { zone: { net: string } }).zone.net).toBe('GND');
+    // the hovered component did NOT win the Enter
+    expect(sent.filter((m) => (m as { type: string }).type === 'typecad/probe')).toHaveLength(0);
+    // a cleared selection (null) lets the hover probe take over again
+    (w as unknown as { typecadSelectedZone: unknown }).typecadSelectedZone = () => null;
+    w.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Enter' }));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(sent.filter((m) => (m as { type: string }).type === 'typecad/probe')).toHaveLength(1);
+  });
 });
 
 describe('injectProbeClient with a board stamp', () => {
@@ -248,5 +288,50 @@ describe('injectProbeClient with a board stamp', () => {
     const scripts = [...html.matchAll(/<script(?![^>]*type=)[^>]*>([\s\S]*?)<\/script>/g)].map((m) => m[1]!);
     expect(scripts.length).toBeGreaterThan(0);
     for (const script of scripts) expect(() => new Function(script)).not.toThrow();
+  });
+});
+
+describe('view-part bridge (deferred views)', () => {
+  it('typecadViewPart asks the host and delivers the reply to the page callback', async () => {
+    const sent: unknown[] = [];
+    const { html } = injectProbeClient(viewerPage, components);
+    const dom = new JSDOM(html, {
+      runScripts: 'dangerously',
+      url: 'https://webview.local/viewer.html',
+      beforeParse(window) {
+        window.acquireVsCodeApi = () => ({
+          postMessage: (m: unknown) => sent.push(m),
+          getState: () => ({}),
+          setState: () => {},
+        });
+      },
+    });
+    const w = dom.window;
+    await new Promise((r) => setTimeout(r, 50));
+    expect(typeof w.typecadViewPart).toBe('function');
+
+    const got = new Promise<unknown[]>((resolve) => {
+      (w as unknown as { typecadViewPart: (p: string, cb: (...a: unknown[]) => void) => void }).typecadViewPart(
+        'pcba',
+        (...args: unknown[]) => resolve(args),
+      );
+    });
+    expect(sent).toContainEqual({ type: 'typecad/view-part', part: 'pcba' });
+    // the host answers with the mountable fragment
+    w.dispatchEvent(new w.MessageEvent('message', { data: { type: 'typecad/view-part', part: 'pcba', html: '<g id="view-pcba"></g>' } }));
+    const [err, frag, op] = (await got) as [null, string, null];
+    expect(err).toBeNull();
+    expect(frag).toBe('<g id="view-pcba"></g>');
+    expect(op).toBeNull();
+
+    // an erroring host reply reaches the callback as an Error
+    const gotErr = new Promise<unknown>((resolve) => {
+      (w as unknown as { typecadViewPart: (p: string, cb: (...a: unknown[]) => void) => void }).typecadViewPart(
+        'net-op',
+        (...args: unknown[]) => resolve(args[0]),
+      );
+    });
+    w.dispatchEvent(new w.MessageEvent('message', { data: { type: 'typecad/view-part', part: 'net-op', error: 'ngspice missing' } }));
+    expect(((await gotErr) as Error).message).toBe('ngspice missing');
   });
 });

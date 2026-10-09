@@ -18,7 +18,7 @@ import { computeLayerBounds, renderSvg, type RenderLayer } from './render/svg.js
 import { renderPcbaSvg } from './render/pcba.js';
 import { extractComponents } from './render/components.js';
 import type { NetlistComponent } from './render/components.js';
-import { buildViewerHtml, type ViewerOptions } from './render/viewer_html.js';
+import { buildViewerHtml, splitSvg, type ViewerOptions } from './render/viewer_html.js';
 
 export interface ViewerBuildResult {
   svg: string;
@@ -159,7 +159,15 @@ export interface ViewerBuildOptions {
   stackupPath?: string;
   /** board rules (<board>_rules.json) path — the layout view's trace-width floor. */
   rulesPath?: string;
+  /** Views whose SVG renders are NOT computed at page build: the page ships
+   *  empty groups that fill on first switch (host bridge or fetch — see the
+   *  page's deferred-view loader). The layout/gerber stack — the default
+   *  view — always renders eagerly. */
+  deferViews?: ViewerViewPart[];
 }
+
+/** A pcba-family view that can render on demand instead of at page build. */
+export type ViewerViewPart = 'pcba' | 'blueprint' | 'schematic';
 
 /** A declared board zone, mapped into the gerber (y-up) frame. The layout
  *  view renders its boundary like KiCad's canvas overlay: gerbers carry
@@ -170,6 +178,12 @@ export interface BoardZoneOutline {
   layer: string;
   keepout: boolean;
   pts: Array<{ x: number; y: number }>;
+  /** zone clearance (mm) — the gap the fill engine keeps around foreign
+   *  copper; drives the layout view's LIVE fill recompute. */
+  clearance?: number;
+  /** thermal relief gap/bridge (mm) around same-net pads (fill sub-list). */
+  thermalGap?: number;
+  thermalBridgeWidth?: number;
 }
 
 /** Zone outlines from a .kicad_pcb — handles both the inline and the
@@ -197,13 +211,30 @@ export function parseBoardZones(content: string): BoardZoneOutline[] {
       let layer: string | null = null;
       let keepout = false;
       let pts: Array<{ x: number; y: number }> = [];
+      let clearance: number | undefined;
+      let thermalGap: number | undefined;
+      let thermalBridgeWidth: number | undefined;
       const walkZone = (node: SExpr): void => {
         if (!isList(node)) return;
         const key = nameOf(node[0]);
         if (key === 'net_name' && typeof node[1] === 'string') net = node[1];
         else if (key === 'net' && typeof node[1] === 'string') net = node[1]; // pcbnew ≥10: name-based
         else if (key === 'net' && typeof node[1] === 'number') netCode = node[1];
-        else if (key === 'layers' || key === 'layer') {
+        else if (key === 'clearance' && Number.isFinite(parseFloat(String(node[1])))) clearance = parseFloat(String(node[1]));
+        else if (key === 'thermal_gap' && Number.isFinite(parseFloat(String(node[1])))) thermalGap = parseFloat(String(node[1]));
+        else if (key === 'thermal_bridge_width' && Number.isFinite(parseFloat(String(node[1])))) thermalBridgeWidth = parseFloat(String(node[1]));
+        else if (key === 'fill') {
+          // pcbnew nests the thermal fields under (fill …); typeCAD's writer
+          // emits camelCase json-ish keys in the same sub-list
+          for (const child of node) {
+            if (!isList(child)) continue;
+            const fk = nameOf(child[0]);
+            const fv = parseFloat(String(child[1]));
+            if (!Number.isFinite(fv)) continue;
+            if (fk === 'thermalGap' || fk === 'thermal_gap') thermalGap = fv;
+            else if (fk === 'thermalBridgeWidth' || fk === 'thermal_bridge_width') thermalBridgeWidth = fv;
+          }
+        } else if (key === 'layers' || key === 'layer') {
           // pcbnew ≥10 writes single-layer zones as (layer "F.Cu"); older
           // boards (and typeCAD's writer) use (layers …) — take them both
           for (const child of node) {
@@ -230,7 +261,16 @@ export function parseBoardZones(content: string): BoardZoneOutline[] {
       };
       walkZone(expr);
       if (!net && netCode !== null) net = netNames.get(netCode) ?? null;
-      if (layer && pts.length >= 3) out.push({ net, layer, keepout, pts });
+      if (layer && pts.length >= 3)
+        out.push({
+          net,
+          layer,
+          keepout,
+          pts,
+          ...(clearance !== undefined ? { clearance } : {}),
+          ...(thermalGap !== undefined ? { thermalGap } : {}),
+          ...(thermalBridgeWidth !== undefined ? { thermalBridgeWidth } : {}),
+        });
     }
     for (const child of expr) walk(child);
   };
@@ -310,11 +350,29 @@ function parseNetlist(content: string): Record<string, string> {  const map: Rec
 }
 
 /**
- * Full pipeline: read files, parse gerbers/drills, detect + order layers,
- * render the SVG and wrap it in the interactive HTML viewer.
+ * The pipeline's front half — collect, parse, detect/order layers, fill
+ * pad→net from the netlist, compute the fab report and DRC markers, and
+ * load the pcba netlist. Shared by the full page build (which renders every
+ * view) and the on-demand single-part render (`--view-part`, which parses
+ * only to render one deferred view).
  */
-export function buildViewerFromFiles(paths: string[], options: ViewerBuildOptions = {}): ViewerBuildResult {
-  const { files, warnings } = collectGerberFiles(paths);
+function parseViewerLayers(
+  paths: string[],
+  options: ViewerBuildOptions,
+): {
+  warnings: string[];
+  ordered: RenderLayer[];
+  layers: LayerInfo[];
+  boardPrefix: string;
+  padNets: Record<string, string>;
+  report: ReturnType<typeof computeFabReport>;
+  drcMarkers: DrcMarker[];
+  pcbaNetlistSource?: string;
+  pcbaNetlist: Record<string, NetlistComponent>;
+} {
+  const collected = collectGerberFiles(paths);
+  const warnings: string[] = collected.warnings;
+  const files = collected.files;
   if (files.length === 0) {
     throw new Error(`no gerber or drill files found in: ${paths.join(', ')} (expected .gbr/.drl and friends)`);
   }
@@ -407,12 +465,9 @@ export function buildViewerFromFiles(paths: string[], options: ViewerBuildOption
     }
   }
 
-  const svg = renderSvg(ordered, { background: options.background });
   // the pcba view shares the pipeline's netlist (explicit or auto-discovered
   // sibling *.net) so footprint names drive package classification there.
-  // Designators come from the silkscreen gerber, positioned by KiCad — the
-  // knockout in the renderer is sized to keep that text whole.
-  const pcbaNetlistSource = options.netlistPath ?? discoverNetlist(paths);
+  const pcbaNetlistSource = options.netlistPath ?? discoverNetlist(paths) ?? undefined;
   let pcbaNetlist: Record<string, NetlistComponent> = {};
   if (pcbaNetlistSource) {
     try {
@@ -423,14 +478,70 @@ export function buildViewerFromFiles(paths: string[], options: ViewerBuildOption
       warnings.push(`could not parse netlist: ${(error as Error).message}`);
     }
   }
-  const pcbaSvg = renderPcbaSvg(ordered, { theme: DEFAULT_PCBA_THEME, netlist: pcbaNetlist }).svg;
+  return { warnings, ordered, layers, boardPrefix, padNets, report, drcMarkers, pcbaNetlistSource, pcbaNetlist };
+}
+
+/** The ids each deferred view's inner renames (mirrors the eager injection:
+ *  the root svg stays the only #board, labels stay unique). */
+const PART_IDS: Record<ViewerViewPart, { board: string; labels: string }> = {
+  pcba: { board: 'pcba-board', labels: 'pcba-labels' },
+  blueprint: { board: 'bp-board', labels: 'bp-labels' },
+  schematic: { board: 'sch-board', labels: 'sch-labels' },
+};
+
+/** Render ONE pcba-family view as a mountable `<g id="view-<part>">`
+ *  fragment — what `typecad-pcb viewer --view-part <name>` serves and the
+ *  page injects into its empty placeholder group on first switch. The
+ *  data-viewbox attribute carries the part's own viewBox so the page can
+ *  union it into the root svg live (the eager build unions at build time). */
+export function renderViewPart(
+  paths: string[],
+  part: ViewerViewPart,
+  options: ViewerBuildOptions = {},
+): { fragment: string; viewBox: string; warnings: string[] } {
+  const { warnings, ordered, pcbaNetlist } = parseViewerLayers(paths, options);
+  const svg = renderPcbaSvg(ordered, {
+    theme: DEFAULT_PCBA_THEME,
+    netlist: pcbaNetlist,
+    style: part === 'pcba' ? undefined : part,
+  }).svg;
+  const { inner, viewBox } = splitSvg(svg);
+  const ids = PART_IDS[part];
+  const renamed = inner
+    .replace('<g id="board"', `<g id="${ids.board}"`)
+    .replace('<g id="labels"', `<g id="${ids.labels}"`);
+  return {
+    fragment: `<g id="view-${part}" data-viewbox="${viewBox}" style="display:none">${renamed}</g>`,
+    viewBox,
+    warnings,
+  };
+}
+
+/**
+ * Full pipeline: read files, parse gerbers/drills, detect + order layers,
+ * render the SVG and wrap it in the interactive HTML viewer.
+ */
+export function buildViewerFromFiles(paths: string[], options: ViewerBuildOptions = {}): ViewerBuildResult {
+  const defer = new Set(options.deferViews ?? []);
+  const { warnings, ordered, layers, boardPrefix, padNets, report, drcMarkers, pcbaNetlistSource, pcbaNetlist } =
+    parseViewerLayers(paths, options);
+
+  const svg = renderSvg(ordered, { background: options.background });
+  // the pcba-family renders: eager unless deferred (the page ships empty
+  // groups that fill on first switch — the layout/gerber default view is
+  // what every board change pays for, and these three are not it)
+  const pcbaSvg = defer.has('pcba') ? undefined : renderPcbaSvg(ordered, { theme: DEFAULT_PCBA_THEME, netlist: pcbaNetlist }).svg;
   // the blueprint view: same layers, drawing style — a third entry in the
   // switcher riding the same coordinate frame
-  const blueprintSvg = renderPcbaSvg(ordered, { theme: DEFAULT_PCBA_THEME, netlist: pcbaNetlist, style: 'blueprint' }).svg;
+  const blueprintSvg = defer.has('blueprint')
+    ? undefined
+    : renderPcbaSvg(ordered, { theme: DEFAULT_PCBA_THEME, netlist: pcbaNetlist, style: 'blueprint' }).svg;
   // the schematic view: white paper, near-black traces, semi-transparent
   // components — the routing-focused fourth view, whose trace hover shows
   // the ngspice operating point
-  const schematicSvg = renderPcbaSvg(ordered, { theme: DEFAULT_PCBA_THEME, netlist: pcbaNetlist, style: 'schematic' }).svg;
+  const schematicSvg = defer.has('schematic')
+    ? undefined
+    : renderPcbaSvg(ordered, { theme: DEFAULT_PCBA_THEME, netlist: pcbaNetlist, style: 'schematic' }).svg;
   // `typecad-pcb simulate` leaves build/<board>_op.json beside the netlist
   // (like the DRC report); absent file = no electrical readout on hover
   let netOp: ViewerOptions['netOp'] = null;
@@ -581,6 +692,9 @@ export function buildViewerFromFiles(paths: string[], options: ViewerBuildOption
           keepout: z.keepout,
           pts: z.pts.map((p) => ({ x: +p.x.toFixed(3), y: +p.y.toFixed(3) })),
           filledMm2: fillAreas[i],
+          ...(z.clearance !== undefined ? { clearance: z.clearance } : {}),
+          ...(z.thermalGap !== undefined ? { thermalGap: z.thermalGap } : {}),
+          ...(z.thermalBridgeWidth !== undefined ? { thermalBridgeWidth: z.thermalBridgeWidth } : {}),
         }));
       } catch {
         warnings.push(`could not parse ${path.basename(pcbPath)} zones — the layout view shows no zone boundaries`);
@@ -760,6 +874,7 @@ export function buildViewerFromFiles(paths: string[], options: ViewerBuildOption
     pcbaSvg,
     blueprintSvg,
     schematicSvg,
+    deferredViews: [...defer],
     netOp,
     stackup,
     rules,
@@ -991,14 +1106,22 @@ export function parseBoardLabels(content: string): Record<string, BoardLabel[]> 
         }
         if (hidden || !text || !side) continue;
         const kind: 'reference' | 'value' | 'fab' = name === 'Reference' ? 'reference' : 'value';
-        const wx = px + lx * c - ly * s;
-        const wy = py + lx * s + ly * c;
+        // child positions rotate by the footprint angle with the OPPOSITE
+        // sign of naive matrix math (pad-verified: U3 at (137.6, 84.8, 90)
+        // stores pad 3 at local (-1.76, 0) and plots at board (137.6, 86.56)
+        // = origin + R(-90)·local), while the text's own angle is ABSOLUTE —
+        // the footprint rotation never adds to it. The old R(+θ) + (lrot +
+        // prot) mirrored every label of a rotated part across its origin
+        // (U3's reference anchored at 134.7 instead of 140.5, 5.7mm from
+        // its plotted ink — unclaimable, uncyclable, unselectable)
+        const wx = px + lx * c + ly * s;
+        const wy = py - lx * s + ly * c;
         const entry: BoardLabel = {
           kind,
           text,
           x: +wx.toFixed(3),
           y: -wy,
-          rot: +(((lrot + prot) % 360 + 360) % 360).toFixed(1),
+          rot: +(((lrot % 360) + 360) % 360).toFixed(1),
           side,
           h,
           layerKind: layerKindOf(rawLayer),
@@ -1037,14 +1160,16 @@ export function parseBoardLabels(content: string): Record<string, BoardLabel[]> 
           }
         }
         if (!uside || !refText) continue;
-        const uwx = px + ulx * c - uly * s;
-        const uwy = py + ulx * s + uly * c;
+        // same frame as the properties above: R(-θ) for the position, the
+        // text angle absolute
+        const uwx = px + ulx * c + uly * s;
+        const uwy = py - ulx * s + uly * c;
         const uentry: BoardLabel = {
           kind: 'fab',
           text: refText,
           x: +uwx.toFixed(3),
           y: -uwy,
-          rot: +(((ulrot + prot) % 360 + 360) % 360).toFixed(1),
+          rot: +(((ulrot % 360) + 360) % 360).toFixed(1),
           side: uside,
           h: uh,
           layerKind: 'fab',

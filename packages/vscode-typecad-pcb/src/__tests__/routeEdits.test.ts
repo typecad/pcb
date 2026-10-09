@@ -471,6 +471,29 @@ describe('planSectionRouteEdits (the canonical section dialect)', () => {
     expectValidTs(out);
   });
 
+  it('the create() spread lands even when the args end in a trailing comma', () => {
+    // live defect: canonical rewrites and hand edits leave
+    // `...track_X,\n);` — the last-comma scan found nothing but whitespace
+    // past that comma, the insert returned null, and the spread silently
+    // vanished while the net's block landed (SDA/SCL/UART_RX/UART_TX all
+    // declared, none ever reaching the board)
+    const trailingSrc = sectionSrc.replace(/\.\.\.track_MID(\s*)\);/, '...track_MID,\n);');
+    expect(trailingSrc).not.toBe(sectionSrc); // the fixture really changed
+    const route: RouteInput = {
+      net: 'SWD', w: 0.127,
+      pieces: [{ layer: 'F.Cu', pts: [{ x: 1, y: 1 }, { x: 2, y: 2 }] }],
+      vias: [], from: { ref: 'U1', pin: '5' }, to: null,
+    };
+    const plan = planSectionRouteEdits(trailingSrc, [route]);
+    expect(plan.applied).toBe(1);
+    const out = applyEdits(trailingSrc, plan.edits);
+    expect(out.match(/\.\.\.track_SWD/g)).toHaveLength(1);
+    // the new spread slots between the last real argument and the
+    // surviving trailing comma
+    expect(out).toContain('...track_MID,\n  ...track_SWD,\n);');
+    expectValidTs(out);
+  });
+
   it('an identical statement already in the section is skipped, not duplicated', () => {
     const route: RouteInput = {
       net: 'VCC', w: 0.3,
@@ -480,6 +503,43 @@ describe('planSectionRouteEdits (the canonical section dialect)', () => {
     const plan = planSectionRouteEdits(sectionSrc, [route]);
     expect(plan.applied).toBe(0);
     expect(plan.skipped.join(' ')).toContain('identical statement');
+  });
+
+  it('a redraw pair — two same-net routes in one payload — shares one block, never a second declaration', () => {
+    // live defect: the payload carried the OLD route and its replacement
+    // (a re-send after a failed build, or the stale session route riding
+    // beside the redraw). Both start at the same pad, so the contiguous
+    // pending-extension never fired, and every existing-net scan reads the
+    // ORIGINAL text — the second route found no track_SDA.push there, took
+    // the new-net path, and re-DECLARED the symbol beside the block the
+    // first route had just written (esbuild: "track_SDA has already been
+    // declared", the whole build dead). The second route must land as a
+    // sibling push inside the pending block, and the create() spread must
+    // be added exactly once.
+    const oldRoute: RouteInput = {
+      net: 'SDA', w: 0.127,
+      pieces: [{ layer: 'F.Cu', pts: [{ x: 145.509, y: 81.232 }, { x: 148.969, y: 84.122 }] }],
+      vias: [], from: { ref: 'U1', pin: '1' }, to: null,
+    };
+    const redraw: RouteInput = {
+      net: 'SDA', w: 0.2,
+      pieces: [{ layer: 'F.Cu', pts: [{ x: 145.509, y: 81.232 }, { x: 147.953, y: 84.269 }] }],
+      vias: [], from: { ref: 'U1', pin: '1' }, to: null,
+    };
+    const plan = planSectionRouteEdits(sectionSrc, [oldRoute, redraw]);
+    expect(plan.applied).toBe(2);
+    expect(plan.skipped).toEqual([]);
+    const out = applyEdits(sectionSrc, plan.edits);
+    expect(out.match(/const track_SDA: TrackBuilder\[\] = \[\];/g)).toHaveLength(1);
+    expect(out.match(/\/\/ Net: SDA/g)).toHaveLength(1);
+    expect(out.match(/\.\.\.track_SDA/g)).toHaveLength(1);
+    // both statements live inside the one block
+    const block = out.indexOf('// Net: SDA');
+    const pushA = out.indexOf('track_SDA.push(typecad.track({ net: \'SDA\' }).from({ x: 145.509, y: 81.232 }, "F.Cu", 0.127)');
+    const pushB = out.indexOf('track_SDA.push(typecad.track({ net: \'SDA\' }).from({ x: 145.509, y: 81.232 }, "F.Cu", 0.2)');
+    expect(pushA).toBeGreaterThan(block);
+    expect(pushB).toBeGreaterThan(pushA);
+    expectValidTs(out);
   });
 
   it('net-less routes cannot land in the section and are skipped honestly', () => {
@@ -600,6 +660,111 @@ describe('planSectionRouteEdits vias + contiguous continuation', () => {
     expect((out.match(/track_CH2_COM\.push/g) ?? []).length).toBe(1);
     expect(out).toContain(
       'track_CH2_COM.push(typecad.track({ net: \'CH2_COM\' }).from({ x: 134.425, y: 79.2 }, "F.Cu", 0.127).to({ x: 137.1, y: 81.875, layer: "F.Cu", width: 0.127 }).to({ x: 137.1, y: 83.04, layer: "F.Cu", width: 0.127 }));',
+    );
+    expectValidTs(out);
+  });
+
+  it('a VIA-ONLY entry (the free via) writes its standalone statement and nothing else', () => {
+    // V outside a route arms a free via; its apply entry carries no pieces,
+    // only a via — the writer must not crash on pieces[0] and must land the
+    // canonical standalone statement after the last one, without touching
+    // the net's track statements
+    const src = [
+      '// Net: PROBE_1',
+      'const track_PROBE_1: TrackBuilder[] = [];',
+      'track_PROBE_1.push(typecad.track({ net: \'PROBE_1\' }).from({ x: 137.6, y: 86.275 }, "F.Cu", 0.15).to({ x: 137.6, y: 86.56, layer: "F.Cu", width: 0.15 }));',
+      '',
+      'typecad.via({ at: { x: 137.702, y: 87.29 }, net: \'PROBE_1\', size: 0.6, drill: 0.3 });',
+      '',
+      'typecad.create(',
+      '  ...track_PROBE_1',
+      ');',
+      '',
+    ].join('\n');
+    const plan = planSectionRouteEdits(src, [
+      {
+        net: 'PROBE_1', w: 0.3,
+        pieces: [],
+        vias: [{ x: 135.865, y: 90.144, size: 0.6, drill: 0.3 }],
+        from: { ref: '(trace)', pin: '' }, to: null,
+      },
+    ]);
+    expect(plan.applied).toBe(1);
+    expect(plan.skipped).toEqual([]);
+    const out = applyEdits(src, plan.edits);
+    expect((out.match(/track_PROBE_1\.push/g) ?? []).length).toBe(1); // untouched
+    expect(out).toContain("typecad.via({ at: { x: 135.865, y: 90.144 }, net: 'PROBE_1', size: 0.6, drill: 0.3 });");
+    expectValidTs(out);
+  });
+
+  it('a FLOATING via (placed off copper, no net) writes the net-less canonical statement', () => {
+    // vias place ANYWHERE now; one placed off copper carries no net and the
+    // canonical grammar omits the property (viaArgSource: net optional) —
+    // never `net: 'null'`, never a refusal
+    const src = [
+      '// Net: PROBE_1',
+      'const track_PROBE_1: TrackBuilder[] = [];',
+      'track_PROBE_1.push(typecad.track({ net: \'PROBE_1\' }).from({ x: 137.6, y: 86.275 }, "F.Cu", 0.15).to({ x: 137.6, y: 86.56, layer: "F.Cu", width: 0.15 }));',
+      '',
+      'typecad.create(',
+      '  ...track_PROBE_1',
+      ');',
+      '',
+    ].join('\n');
+    const plan = planSectionRouteEdits(src, [
+      {
+        net: null, w: 0.3,
+        pieces: [],
+        vias: [{ x: 140, y: 88, size: 0.6, drill: 0.3 }],
+        from: { ref: '(trace)', pin: '' }, to: null,
+      },
+    ]);
+    expect(plan.applied).toBe(1);
+    expect(plan.skipped).toEqual([]);
+    const out = applyEdits(src, plan.edits);
+    expect(out).toContain('typecad.via({ at: { x: 140, y: 88 }, size: 0.6, drill: 0.3 });');
+    expect(out).not.toContain("net: 'null'");
+    expectValidTs(out);
+  });
+
+  it('routes chained WITHIN one apply extend the just-appended statement, not a sibling', () => {
+    // earlier routes of the same apply are pending EDITS — invisible to the
+    // text reads — so a route starting where a just-appended statement ends
+    // used to add a sibling the oracle re-chains as drift (seen live: one
+    // J1 route committed in three steps landed as three statements split
+    // at 132.775 and 136.912)
+    const src = [
+      '// Net: PROBE_1',
+      'const track_PROBE_1: TrackBuilder[] = [];',
+      'track_PROBE_1.push(typecad.track({ net: \'PROBE_1\' }).from({ x: 137.6, y: 86.275 }, "F.Cu", 0.15).to({ x: 137.6, y: 86.56, layer: "F.Cu", width: 0.15 }));',
+      '',
+      'typecad.create(',
+      '  ...track_PROBE_1',
+      ');',
+      '',
+    ].join('\n');
+    const r1: RouteInput = {
+      net: 'PROBE_1', w: 0.15,
+      pieces: [{ layer: 'F.Cu', pts: [{ x: 130.04, y: 79.16 }, { x: 132.775, y: 79.2 }] }],
+      vias: [], from: { ref: 'J1', pin: '1' }, to: null,
+    };
+    const r2: RouteInput = {
+      net: 'PROBE_1', w: 0.15,
+      pieces: [{ layer: 'F.Cu', pts: [{ x: 132.775, y: 79.2 }, { x: 136.912, y: 79.6 }] }],
+      vias: [], from: { ref: 'J1', pin: '1' }, to: null,
+    };
+    const r3: RouteInput = {
+      net: 'PROBE_1', w: 0.15,
+      pieces: [{ layer: 'F.Cu', pts: [{ x: 136.912, y: 79.6 }, { x: 142.534, y: 85.807 }] }],
+      vias: [], from: { ref: 'J1', pin: '1' }, to: null,
+    };
+    const plan = planSectionRouteEdits(src, [r1, r2, r3]);
+    expect(plan.applied).toBe(3);
+    const out = applyEdits(src, plan.edits);
+    // ONE new statement carrying the whole contiguous run
+    expect((out.match(/track_PROBE_1\.push/g) ?? []).length).toBe(2);
+    expect(out).toContain(
+      'track_PROBE_1.push(typecad.track({ net: \'PROBE_1\' }).from({ x: 130.04, y: 79.16 }, "F.Cu", 0.15).to({ x: 132.775, y: 79.2, layer: "F.Cu", width: 0.15 }).to({ x: 136.912, y: 79.6, layer: "F.Cu", width: 0.15 }).to({ x: 142.534, y: 85.807, layer: "F.Cu", width: 0.15 }));',
     );
     expectValidTs(out);
   });

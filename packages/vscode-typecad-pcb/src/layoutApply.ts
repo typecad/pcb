@@ -21,6 +21,7 @@ import {
   planLabelAssignments,
   planOutlineEdits,
   planPlacementEdits,
+  planTextDeletions,
   planTextEdits,
   planZoneDeletions,
   planZoneGeometryEdits,
@@ -122,6 +123,9 @@ export interface LayoutApplyInput {
   imageEdits?: ImageSourceEdit[];
   /** applied artwork deletions — the statement goes */
   imageDeletes?: ImageSourceDelete[];
+  /** free board texts deleted in the layout view — the matching
+   * typecad.text({...}) statement leaves the source */
+  textDeletes?: Array<{ text0: string; x0: number; y0: number }>;
   /** net-class dimension edits (name -> numeric fields) — the layout view's rules panel */
   classEdits?: Array<{ name: string; values: Record<string, number> }>;
   /** board reference -> the source variable that created it */
@@ -160,6 +164,7 @@ export interface LayoutApplyCounts {
   zoneDeletes: number;
   imageEdits: number;
   imageDeletes: number;
+  textDeletes: number;
   classEdits: number;
 }
 
@@ -267,7 +272,7 @@ export function planLayoutApply(files: LayoutApplyFile[], input: LayoutApplyInpu
   const stages: LayoutApplyResult['stages'] = [];
   const skipped: string[] = [];
   const touched = new Set<string>();
-  const counts: LayoutApplyCounts = { moves: 0, endpoints: 0, texts: 0, values: 0, labels: 0, renames: 0, routes: 0, deletes: 0, partDeletes: 0, zones: 0, images: 0, outline: 0, zoneEdits: 0, zoneDeletes: 0, imageEdits: 0, imageDeletes: 0, classEdits: 0 };
+  const counts: LayoutApplyCounts = { moves: 0, endpoints: 0, texts: 0, values: 0, labels: 0, renames: 0, routes: 0, deletes: 0, partDeletes: 0, zones: 0, images: 0, outline: 0, zoneEdits: 0, zoneDeletes: 0, imageEdits: 0, imageDeletes: 0, textDeletes: 0, classEdits: 0 };
 
   // -- the sync sidecar: one machine-owned home for auto-inserts ----------
   // placements/labels with no literal to rewrite and fresh routes land in
@@ -648,6 +653,30 @@ export function planLayoutApply(files: LayoutApplyFile[], input: LayoutApplyInpu
   }
 
   // -- stage 3: silk/fab .text({ … }) literals, matched per file --
+  // deletions FIRST: a deleted text's statement leaves the source before
+  // any edit stage could plan against it (the page drops a deleted text's
+  // own pending move, so the stages cannot collide — this is ordering
+  // defense for a payload that carries both)
+  if (input.textDeletes && input.textDeletes.length > 0) {
+    const batch: Array<{ uri: string; edits: PlannedEdit[] }> = [];
+    const gone = new Set<string>();
+    for (const file of files) {
+      const pending = input.textDeletes.filter((t) => !gone.has(`text "${t.text0}"@${t.x0},${t.y0}`));
+      if (pending.length === 0) continue;
+      const plan = planTextDeletions(textOf.get(file.uri)!, pending);
+      for (const edit of plan.edits) {
+        counts.textDeletes++;
+        gone.add(edit.ref);
+      }
+      if (plan.edits.length > 0) batch.push({ uri: file.uri, edits: plan.edits });
+      for (const s of plan.skipped) skipped.push(`${s.ref} (${s.reason})`);
+    }
+    for (const t of input.textDeletes) {
+      if (!gone.has(`text "${t.text0}"@${t.x0},${t.y0}`))
+        skipped.push(`text "${t.text0}" (no .text({…}) literal matches its authored value/anchor)`);
+    }
+    commit(batch);
+  }
   if (input.texts && input.texts.length > 0) {
     const batch: Array<{ uri: string; edits: PlannedEdit[] }> = [];
     const done = new Set<string>();

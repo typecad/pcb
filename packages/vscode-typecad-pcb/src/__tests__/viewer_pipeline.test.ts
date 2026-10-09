@@ -90,12 +90,36 @@ describe('viewer generate pipeline', () => {
     expect(commands.some((c) => c.includes('export drill'))).toBe(false);
     expect(commands.some((c) => c.includes('gerber-viewer'))).toBe(false);
     // the drift oracle ran (overlapped) as a diagnostic; board-side drift
-    // with no newer sources reads as an out-of-band board edit → banner,
-    // and NOTHING writes source from the board (no import, ever)
+    // with no newer sources reads as an out-of-band board edit → silent
+    // absorption first (canonical regeneration), and the banner only when
+    // absorption cannot converge (this stub's check-sync never clears)
     expect(commands.some((c) => c.includes('check-sync'))).toBe(true);
-    expect(commands.some((c) => c.includes('import'))).toBe(false);
+    expect(commands.filter((c) => c.includes('typecad-pcb import') && c.includes('--apply'))).toHaveLength(1);
     expect(panel.generated.html).toContain('window.__typecadDrift');
     expect(logs.some((l) => l.includes('changed outside the build'))).toBe(true);
+    expect(logs.some((l) => l.includes('absorbing'))).toBe(true);
+    expect(logs.some((l) => l.includes('remain after regeneration'))).toBe(true);
+  });
+
+  it('a stale DRC report is withheld — markers only for the revision asked about', async () => {
+    // DRC runs on request now (the palette command); nothing refreshes the
+    // report automatically, so a report older than the board describes the
+    // PREVIOUS revision and its markers would sit at pre-move positions
+    const old = new Date(Date.now() - 300_000);
+    fs.writeFileSync(path.join(root, 'build', 'b_drc.json'), '{"violations":[]}');
+    fs.utimesSync(path.join(root, 'build', 'b_drc.json'), old, old);
+    await expect(panel.generate(root)).resolves.toBe(true);
+    const staleCmd = commands.find((c) => c.includes('typecad-pcb viewer') && !c.includes('--view-part'));
+    expect(staleCmd).toBeTruthy();
+    expect(staleCmd).not.toContain('--drc');
+    expect(logs.some((l) => l.includes('markers withheld'))).toBe(true);
+
+    // a FRESH report — the one the user just requested — embeds as before
+    commands = [];
+    fs.utimesSync(path.join(root, 'build', 'b_drc.json'), new Date(), new Date());
+    await expect(panel.generate(root)).resolves.toBe(true);
+    const freshCmd = commands.find((c) => c.includes('typecad-pcb viewer') && !c.includes('--view-part'));
+    expect(freshCmd).toContain('--drc');
   });
 
   it('drift with newer sources stands down for the pending build', async () => {
@@ -137,17 +161,35 @@ describe('viewer generate pipeline', () => {
     expect(logs.some((l) => l.includes('does not reproduce this board'))).toBe(true);
   });
 
-  it('persisting drift never writes source — the banner is the only answer', async () => {
-    // under the source-of-truth model there is no absorb to fail or loop:
-    // drift persists → the banner persists → nothing ever imports
+  it('persisting drift absorbs ONCE per board revision, then the banner is the fallback', async () => {
+    // absorption is attempted exactly once per board mtime (win or lose) —
+    // an unabsorbable drift can never loop the render pipeline
     await expect(panel.generate(root)).resolves.toBe(true);
-    expect(commands.some((c) => c.includes('import'))).toBe(false);
+    expect(commands.filter((c) => c.includes('--apply'))).toHaveLength(1);
     expect(panel.generated.html).toContain('window.__typecadDrift');
 
     commands = [];
     await expect(panel.generate(root)).resolves.toBe(true);
-    expect(commands.some((c) => c.includes('import'))).toBe(false);
+    expect(commands.some((c) => c.includes('--apply'))).toBe(false);
     expect(panel.generated.html).toContain('window.__typecadDrift');
+  });
+
+  it('external drift absorbs silently when regeneration converges — no banner', async () => {
+    // the converging case: check-sync clears after the importer ran, so
+    // the tree maintains itself and the user never sees a banner
+    let imported = false;
+    const run = panel.run as (cwd: string, command: string, t: number) => Promise<string>;
+    (panel as PanelHandle).run = async (cwd: string, command: string, t: number) => {
+      if (command.includes('--apply') && command.includes('import')) imported = true;
+      if (command.includes('check-sync')) {
+        if (imported) return JSON.stringify({ count: 0, changes: [] });
+      }
+      return run(cwd, command, t);
+    };
+    await expect(panel.generate(root)).resolves.toBe(true);
+    expect(commands.some((c) => c.includes('--apply'))).toBe(true);
+    expect(panel.generated.html).not.toContain('window.__typecadDrift');
+    expect(logs.some((l) => l.includes('in sync'))).toBe(true);
   });
 
   it('falls back to the step-by-step chain on a toolchain without viewer', async () => {
@@ -225,5 +267,73 @@ describe('viewer generate pipeline', () => {
     expect(assigned).toEqual(['<html>POST-APPLY</html>']);
     expect(panel.assignedHtml).toBe('<html>POST-APPLY</html>');
     expect(logs.some((l) => l.includes('never shown'))).toBe(true);
+  });
+
+
+  it('the render carries --lazy-views and never eagerly solves ngspice', async () => {
+    // a netlist NEWER than the board once forced `simulate` into every
+    // render — the solve now waits for the first view switch
+    fs.writeFileSync(path.join(root, 'build', 'b.net'), '(export)\n');
+    await expect(panel.generate(root)).resolves.toBe(true);
+    const viewerCmd = commands.find((c) => c.includes('typecad-pcb viewer') && !c.includes('--view-part'));
+    expect(viewerCmd).toBeTruthy();
+    expect(viewerCmd).toContain('--lazy-views');
+    expect(commands.some((c) => c.includes('simulate'))).toBe(false);
+  });
+
+  it('serves a deferred view part through the --view-part fragment', async () => {
+    const posted: Array<Record<string, unknown>> = [];
+    (panel as PanelHandle).panel = {
+      webview: { postMessage: (m: Record<string, unknown>) => { posted.push(m); return Promise.resolve(true); } },
+    };
+    const origRun = panel.run as (cwd: string, command: string, t: number) => Promise<string>;
+    (panel as PanelHandle).run = async (cwd: string, command: string, t: number) => {
+      if (command.includes('--view-part pcba')) {
+        fs.mkdirSync(path.join(root, 'build', 'serve'), { recursive: true });
+        fs.writeFileSync(path.join(root, 'build', 'serve', 'view-pcba.html'), '<g id="view-pcba" data-viewbox="0 0 25 15"></g>');
+      }
+      return origRun(cwd, command, t);
+    };
+    await (panel as PanelHandle).serveViewPart('pcba');
+    expect(commands.some((c) => c.includes('--view-part pcba'))).toBe(true);
+    expect(posted.at(-1)).toMatchObject({
+      type: 'typecad/view-part',
+      part: 'pcba',
+      html: expect.stringContaining('id="view-pcba"'),
+    });
+  });
+
+  it('solves the ngspice op on the first net-op ask and caches while fresh', async () => {
+    fs.writeFileSync(path.join(root, 'build', 'b.net'), '(export)\n');
+    const posted: Array<Record<string, unknown>> = [];
+    (panel as PanelHandle).panel = {
+      webview: { postMessage: (m: Record<string, unknown>) => { posted.push(m); return Promise.resolve(true); } },
+    };
+    const origRun = panel.run as (cwd: string, command: string, t: number) => Promise<string>;
+    (panel as PanelHandle).run = async (cwd: string, command: string, t: number) => {
+      if (command.includes('simulate')) {
+        fs.writeFileSync(path.join(root, 'build', 'b_op.json'), JSON.stringify({ solved: true, nets: { vcc: 3.3 } }));
+      }
+      return origRun(cwd, command, t);
+    };
+    await (panel as PanelHandle).serveViewPart('net-op');
+    expect(commands.some((c) => c.includes('simulate'))).toBe(true);
+    expect(posted.at(-1)).toMatchObject({ type: 'typecad/view-part', part: 'net-op', op: { solved: true, nets: { vcc: 3.3 } } });
+    // op fresh now — the second ask reads the file, no second solve
+    commands = [];
+    await (panel as PanelHandle).serveViewPart('net-op');
+    expect(commands.some((c) => c.includes('simulate'))).toBe(false);
+    expect(posted.at(-1)).toMatchObject({ part: 'net-op', op: { solved: true } });
+  });
+
+  it('a failing part answers as an error the page surfaces', async () => {
+    const posted: Array<Record<string, unknown>> = [];
+    (panel as PanelHandle).panel = {
+      webview: { postMessage: (m: Record<string, unknown>) => { posted.push(m); return Promise.resolve(true); } },
+    };
+    // the stock run stub writes no view-blueprint.html → fragment missing
+    await (panel as PanelHandle).serveViewPart('blueprint');
+    expect(posted.at(-1)).toMatchObject({ type: 'typecad/view-part', part: 'blueprint' });
+    expect(typeof posted.at(-1)!.error).toBe('string');
   });
 });

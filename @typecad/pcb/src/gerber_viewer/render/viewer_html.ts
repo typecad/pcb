@@ -34,6 +34,12 @@ export interface ViewerOptions {
      *  0 = nothing filled — typically no same-net copper inside the outline
      *  (unconnected islands are removed, KiCad's rule too). */
     filledMm2?: number;
+    /** zone clearance (mm): the gap the fill engine keeps around foreign
+     *  copper — the live fill recompute builds its holes from this. */
+    clearance?: number;
+    /** thermal relief geometry around same-net pads (mm). */
+    thermalGap?: number;
+    thermalBridgeWidth?: number;
   }>;
   /** placed board artwork, from build/<board>_images.json (board frame,
    *  y-down, center + size). The layout view draws selectable outlines so
@@ -49,6 +55,13 @@ export interface ViewerOptions {
   blueprintSvg?: string;
   /** optional fourth view: the routing-focused render (white paper, black traces) */
   schematicSvg?: string;
+  /** views whose renders were NOT computed at page build: the page ships
+   *  empty placeholder groups and fills them on first switch — the host
+   *  bridge (`window.typecadViewPart`, the vscode extension) renders the
+   *  part on demand; an http-served page falls back to fetching the
+   *  fragment the `--view-part` CLI run left beside it. The ngspice data
+   *  rides the same channel as the part named 'net-op'. */
+  deferredViews?: string[];
   /**
    * ngspice operating point (build/<board>_op.json, written by
    * `typecad-pcb simulate`): per-net voltages and per-device current/power,
@@ -208,7 +221,7 @@ function escapeHtml(value: string): string {
 }
 
 /** Strip a rendered `<svg …>…</svg>` down to its inner content + viewBox. */
-function splitSvg(svg: string): { inner: string; viewBox: string } {
+export function splitSvg(svg: string): { inner: string; viewBox: string } {
   const open = svg.indexOf('>');
   const close = svg.lastIndexOf('</svg>');
   const viewBox = /viewBox="([^"]+)"/.exec(svg)?.[1] ?? '0 0 1 1';
@@ -315,25 +328,31 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   // when a trace is hovered. Empty island = no simulation ran. ngspice
   // lowercases every name while the gerber X2 attributes keep the
   // schematic's case — normalize the island keys at parse so VCC finds vcc.
+  // applyNetOp is a FUNCTION so the lazy path (the host solving the
+  // operating point on first switch to the ngspice/thermal view) feeds the
+  // same normalization.
   var netOp = null;
-  try {
-    var rawOp = JSON.parse(document.getElementById('net-op').textContent);
-    if (rawOp && rawOp.nets) {
+  function applyNetOp(rawOp) {
+    if (!rawOp) return null;
+    if (rawOp.nets) {
       var lcNets = {};
       for (var nk in rawOp.nets) lcNets[nk.toLowerCase()] = rawOp.nets[nk];
       rawOp.nets = lcNets;
     }
-    if (rawOp && rawOp.devices) {
+    if (rawOp.devices) {
       var lcDev = {};
       for (var dk in rawOp.devices) lcDev[dk.toLowerCase()] = rawOp.devices[dk];
       rawOp.devices = lcDev;
     }
-    if (rawOp && rawOp.branches) {
+    if (rawOp.branches) {
       var lcBr = {};
       for (var bk in rawOp.branches) lcBr[bk.toLowerCase()] = rawOp.branches[bk];
       rawOp.branches = lcBr;
     }
-    netOp = rawOp;
+    return rawOp;
+  }
+  try {
+    netOp = applyNetOp(JSON.parse(document.getElementById('net-op').textContent));
   } catch (e) {}
   // resolved board stackup island (build/<board>_stackup.json): per-layer
   // copper weight + dielectric thicknesses. Absent = legacy 2-layer / 35 µm /
@@ -451,12 +470,154 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   var layersBox = document.getElementById('layers');
   var btnAllOn = document.getElementById('btn-all-on');
   var btnAllOff = document.getElementById('btn-all-off');
+
+  // ---- deferred views: the page built without these renders; each fills
+  // its empty placeholder group on FIRST switch. Primary channel is the
+  // host bridge (window.typecadViewPart — the vscode extension renders the
+  // part on demand); an http-served page falls back to fetching the
+  // fragment a --view-part CLI run left beside the page. The spinner
+  // names what is being calculated the whole time.
+  var deferredParts = [];
+  try {
+    var dvEl = document.getElementById('deferred-views');
+    if (dvEl && dvEl.textContent.trim()) deferredParts = JSON.parse(dvEl.textContent);
+  } catch (e) {}
+  var viewBusyEl = document.getElementById('view-busy');
+  var viewBusyText = document.getElementById('view-busy-text');
+  function viewBusyShow(text) {
+    if (!viewBusyEl) return;
+    if (viewBusyText) viewBusyText.textContent = text;
+    viewBusyEl.style.display = '';
+  }
+  function viewBusyHide() {
+    if (viewBusyEl) viewBusyEl.style.display = 'none';
+  }
+  // union a "x y w h" box into the root svg's viewBox (the eager build
+  // unions every view at page-build time; a mounted part carries its own)
+  function unionRootViewBox(box) {
+    var nums = String(box).split(/\s+/).map(Number);
+    if (nums.length < 4 || nums.some(function (n) { return !isFinite(n); })) return;
+    var cur = (svg.getAttribute('viewBox') || '0 0 1 1').split(/\s+/).map(Number);
+    var x = Math.min(cur[0], nums[0]);
+    var y = Math.min(cur[1], nums[1]);
+    var x2 = Math.max(cur[0] + cur[2], nums[0] + nums[2]);
+    var y2 = Math.max(cur[1] + cur[3], nums[1] + nums[3]);
+    svg.setAttribute('viewBox', x.toFixed(6) + ' ' + y.toFixed(6) + ' ' + (x2 - x).toFixed(6) + ' ' + (y2 - y).toFixed(6));
+  }
+  function mountViewPart(part, fragment) {
+    // DOMParser keeps SVG semantics (an HTML-context template would flatten
+    // every element into an unknown one and the render would vanish)
+    var doc = new DOMParser().parseFromString(
+      '<svg xmlns="http://www.w3.org/2000/svg">' + fragment + '</svg>',
+      'image/svg+xml',
+    );
+    var node = doc.documentElement && doc.documentElement.firstElementChild;
+    if (!node || String(node.id) !== 'view-' + part) throw new Error('fragment is not a view-' + part + ' part');
+    var mounted = document.importNode(node, true);
+    var placeholder = viewGroups[part];
+    if (placeholder && placeholder.parentNode) placeholder.parentNode.replaceChild(mounted, placeholder);
+    else svg.querySelector('#panzoom').appendChild(mounted);
+    viewGroups[part] = mounted;
+    mounted.__loaded = true;
+    var vb = mounted.getAttribute('data-viewbox');
+    if (vb) unionRootViewBox(vb);
+  }
+  var deferredBusy = {};
+  var deferredFailed = {};
+  function requestViewPart(part, cb) {
+    if (typeof window.typecadViewPart === 'function') {
+      window.typecadViewPart(part, function (err, html, op) {
+        cb(err, html, op);
+      });
+      return;
+    }
+    // no host bridge (a page served over http): the --view-part CLI run
+    // leaves its fragment beside the page — fetch it
+    fetch('view-' + part + '.html')
+      .then(function (r) {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.text();
+      })
+      .then(function (text) {
+        cb(null, part === 'net-op' ? null : text, part === 'net-op' ? JSON.parse(text) : null);
+      })
+      .catch(function (err2) {
+        cb(err2);
+      });
+  }
+  function loadDeferredView(mode) {
+    var part = mode === 'thermal' ? 'schematic' : mode;
+    deferredBusy[part] = true;
+    var labels = {
+      pcba: 'rendering the pcba view',
+      blueprint: 'rendering the blueprint view',
+      schematic: 'rendering the ngspice view',
+      'net-op': 'solving the ngspice operating point',
+    };
+    var needOp = (mode === 'schematic' || mode === 'thermal') && !netOp;
+    var partNeeded = deferredParts.indexOf(part) >= 0 && !(viewGroups[part] && viewGroups[part].__loaded);
+    viewBusyShow((needOp ? labels['net-op'] : labels[part]) + '\u2026');
+    var done = function (err) {
+      deferredBusy[part] = false;
+      viewBusyHide();
+      if (err) {
+        deferredFailed[part] = true;
+        if (statusEl && !statusLocked())
+          statusEl.textContent = 'could not load the ' + part + ' view \u2014 ' + err.message;
+        return;
+      }
+      // the voltage/power maps ran once at init against an empty group and
+      // a null op — both meet their data only now
+      applyVoltageColors();
+      applyPowerLegend();
+      setView(mode);
+    };
+    // 2. mount the part. A failed op solve does NOT fail the view — it
+    //    costs the hover readout exactly like an eager page built with no
+    //    op island; only the render itself can fail the switch
+    var afterOp = function () {
+      if (!partNeeded) return done(null);
+      viewBusyShow(labels[part] + '\u2026');
+      requestViewPart(part, function (err, html) {
+        if (err) return done(err);
+        try {
+          mountViewPart(part, html);
+        } catch (e) {
+          return done(e);
+        }
+        done(null);
+      });
+    };
+    // 1. the operating point, when the view wants it and none is loaded
+    if (needOp) {
+      requestViewPart('net-op', function (opErr, _h, op) {
+        if (!opErr && op) netOp = applyNetOp(op);
+        afterOp();
+      });
+    } else {
+      afterOp();
+    }
+  }
   function setView(mode) {
     if (!viewGroups.gerber) return;
     // only modes whose group exists (thermal shares the schematic group);
     // anything unknown is the gerber stack
     viewMode =
       mode === 'thermal' || mode === 'layout' || (viewGroups[mode] && mode !== 'gerber') ? mode : 'gerber';
+    // a DEFERRED view's first switch loads it under the spinner and stays
+    // on the current view until the part is in (this function re-runs then)
+    var wantPart = viewMode === 'thermal' ? 'schematic' : viewMode;
+    if (
+      deferredParts.indexOf(wantPart) >= 0 &&
+      viewGroups[wantPart] &&
+      !viewGroups[wantPart].__loaded &&
+      !deferredBusy[wantPart] &&
+      !deferredFailed[wantPart]
+    ) {
+      loadDeferredView(viewMode);
+      viewMode = lastViewMode;
+      return;
+    }
     for (var name in viewGroups) {
       if (!viewGroups[name]) continue;
       // the layout view arranges the gerber stack itself
@@ -493,11 +654,20 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     // particles linger over the thermal board
     var flowLayer = document.getElementById('sch-flow');
     if (flowLayer) flowLayer.style.display = viewMode === 'schematic' ? '' : 'none';
-    // thermal builds on the flow graph's per-wire currents
+    // thermal builds on the flow graph's per-wire currents — the solve is
+    // synchronous and heavy enough to blank the frame it starts in, so the
+    // spinner paints first and the math runs on the next tick
     if (viewMode === 'thermal') {
       buildFlow();
-      buildThermal();
-      enterThermal();
+      viewBusyShow('calculating copper \u0394T\u2026');
+      setTimeout(function () {
+        try {
+          buildThermal();
+        } finally {
+          viewBusyHide();
+        }
+        enterThermal();
+      }, 30);
     } else if (lastViewMode === 'thermal') {
       exitThermal();
     }
@@ -1739,28 +1909,27 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     layoutSnapBox.addEventListener('change', function () {
       persist();
     });
+  // the snap ladder: every snapping interaction (routes, drags, nudges,
+  // drops, disperse rows) reads the step live
+  var layoutSnapSel = document.getElementById('layout-snap-step');
+  if (layoutSnapSel)
+    layoutSnapSel.addEventListener('change', function () {
+      var v = parseFloat(layoutSnapSel.value);
+      if (isFinite(v) && v > 0) layoutSnapStep = v;
+      persist();
+    });
   var layoutApplyBtn = document.getElementById('layout-apply');
-  // grid / units controls: the snap ladder, visible grid, and mil readouts
-  var layoutGridSel = document.getElementById('layout-grid');
-  if (layoutGridSel)
-    layoutGridSel.addEventListener('change', function () {
-      layoutGridSize = parseFloat(layoutGridSel.value) || 0.5;
-      rebuildLayoutGrid();
-      persist();
-    });
-  var layoutGridShowBox = document.getElementById('layout-grid-show');
-  if (layoutGridShowBox)
-    layoutGridShowBox.addEventListener('change', function () {
-      layoutGridShow = layoutGridShowBox.checked;
-      rebuildLayoutGrid();
-      persist();
-    });
-  var layoutMilBox = document.getElementById('layout-mil');
-  if (layoutMilBox)
-    layoutMilBox.addEventListener('change', function () {
-      layoutMil = layoutMilBox.checked;
-      persist();
-    });
+  // an apply owns the pipeline: from the click until the rebuild lands, the
+  // page is INPUT-DEAD — the disabled cursor everywhere, clicks swallowed at
+  // the window capture, keybinds returned at the handler tops. A click that
+  // lands mid-build (a part grab, a route anchor) edits state the rebuild is
+  // about to replace, and its undo entry outlives a page it no longer
+  // describes
+  var applyBusy = false;
+  function applyLockSet(on) {
+    applyBusy = on;
+    document.body.classList.toggle('applying', on);
+  }
   var SVGNSL = 'http://www.w3.org/2000/svg';
   var cssEsc = function (v) {
     return window.CSS && CSS.escape ? CSS.escape(v) : String(v).replace(/[^a-zA-Z0-9_-]/g, '\\$&');
@@ -1910,6 +2079,10 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   var layoutTextMoves = {}; // idx -> { x, y, x0, y0, rot, text, text0 }
   var layoutTextEls = []; // idx -> { paths, hidden, preview }
   var layoutTextSel = -1;
+  // idx -> { text0, x0, y0 }: board texts deleted in the view — the ink
+  // hides now, apply removes the .text({...}) statement from source (the
+  // authored anchor, not any pending move, is the literal's match key)
+  var boardTextDeletes = {};
   function textPaths(i) {
     if (layoutTextEls[i]) return layoutTextEls[i].paths;
     var t = layoutTexts[i];
@@ -1957,6 +2130,94 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     }
     layoutTextEls[i] = { paths, hidden: false, preview: null };
     return paths;
+  }
+  // a text's layer must be ON to cycle: the sidebar toggles write
+  // display="none" on the layer group — hidden-layer texts cycling (fab
+  // labels with the fab layers off) read as ghosts
+  function textLayerVisible(t) {
+    var kinds = t.layerKind ? [t.layerKind] : ['fab', 'silkscreen'];
+    var pfx = t.side === 'back' ? '-B_' : '-F_';
+    for (var k = 0; k < kinds.length; k++) {
+      var g = svg.querySelector('g[data-kind="' + kinds[k] + '"][data-layer-name*="' + pfx + '"]');
+      if (g && g.getAttribute('display') !== 'none') return true;
+    }
+    return false;
+  }
+  // the texts at a gerber-frame point — the Tab cycle's text candidates.
+  // Reference labels and board texts render as strokes that overlays (part
+  // ghosts, probe outlines, denser neighbors) sit ABOVE, so DOM picking
+  // never reaches them (U3's reference behind its corridor); cycling is the
+  // escape hatch for anything under the cursor. A GLYPH hit (claimed
+  // plotted strokes, or the render's own data-text paths) ranks first; but
+  // a label whose strokes were CLAIMED AWAY by a neighbor (the reference
+  // and value sharing one anchor — the longer text's reach swallows the
+  // strokes) still cycles by its own anchor disc. Stacked texts (both
+  // labels at the shared anchor) ALL join the cycle, like the zone stack
+  function textStackNear(gp) {
+    var rendered = {};
+    var rPaths = viewGroups.gerber ? viewGroups.gerber.querySelectorAll('path[data-text]') : [];
+    for (var r = 0; r < rPaths.length; r++) {
+      var rIdx = rPaths[r].getAttribute('data-text');
+      (rendered[rIdx] = rendered[rIdx] || []).push(rPaths[r]);
+    }
+    var scored = [];
+    for (var i = 0; i < layoutTexts.length; i++) {
+      var t = layoutTexts[i];
+      if (!t || t.text === undefined) continue;
+      if (layoutTextEls[i] && layoutTextEls[i].hidden) continue;
+      // a REFERENCE label is the layout overlay's own ink — it renders
+      // while editing regardless of the gerber rail (with F.SilkS toggled
+      // off the plotted strokes vanish but the overlay still draws the
+      // designator), so it is always selectable. Value/fab labels and board
+      // texts are plotted ink and follow their layer
+      if (t.kind !== 'reference' && !textLayerVisible(t)) continue;
+      // the LIVE anchor (comp-transported + own offset): a pending move
+      // drags the disc with the label, so the cycle follows visible ink
+      // instead of stranding at the authored position
+      var live = textState(i);
+      var ax = live.x || 0, ay = live.y || 0;
+      var anchorD = Math.hypot(gp.x - ax, gp.y - ay);
+      var hit = false;
+      var paths = textPaths(i);
+      for (var pp = 0; pp < paths.length && !hit; pp++) {
+        if (paths[pp].style.display === 'none') continue;
+        hit = pointInPathBox(paths[pp], gp);
+      }
+      var own = rendered[String(i)];
+      for (var op = 0; own && op < own.length && !hit; op++) {
+        if (own[op].style.display === 'none') continue;
+        hit = pointInPathBox(own[op], gp);
+      }
+      if (hit) {
+        scored.push({ i: i, s: anchorD * 0.1 });
+        continue;
+      }
+      // the disc is a LAST RESORT for a text with no claimable ink anywhere
+      // (strokes claimed by a neighbor, an off-plot label) — and a TIGHT
+      // one, scaled by the glyph height alone. The old length-scaled radius
+      // reached 7+ mm for long values, cycling labels that were nowhere
+      // near the cursor; the cycle's candidates come from directly under
+      // the mouse or not at all
+      if (!paths.length && !own) {
+        var reach = Math.min(0.65 * (t.h || 1) * (String(t.text).length + 2), (t.h || 1) * 0.9 + 0.25);
+        if (anchorD <= reach) scored.push({ i: i, s: anchorD });
+      }
+    }
+    scored.sort(function (a, b) {
+      return a.s - b.s || a.i - b.i;
+    });
+    var out = [];
+    for (var sc = 0; sc < scored.length; sc++) out.push(scored[sc].i);
+    return out;
+  }
+  function pointInPathBox(p, gp) {
+    // both hiding mechanisms count: the layer rail writes the display
+    // ATTRIBUTE, edits write the style — either means no glyph hit
+    if (p.getAttribute('display') === 'none' || p.style.display === 'none') return false;
+    var bb = pathBBox(p);
+    if (!bb) return false;
+    var m = 0.15;
+    return gp.x >= bb.x - m && gp.x <= bb.x + bb.width + m && gp.y >= bb.y - m && gp.y <= bb.y + bb.height + m;
   }
   function textState(i) {
     // live position of text i: comp-transported base plus its own offset
@@ -2084,6 +2345,8 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     var st = layoutTextEls[i];
     if (!st) st = layoutTextEls[i] = { paths: textPaths(i), hidden: false, preview: null };
     applyTextGhost(i);
+    // the selection box rides every pending move/rotate of its text
+    if (i === layoutTextSel) layoutTextSelBoxSync();
     var tm3 = layoutTextMoves[i];
     var edited = !!tm3 && (tm3.text !== undefined ? tm3.text !== t.text : false) || textStyleChanged(t, tm3 && tm3.style);
     if (edited) {
@@ -2236,6 +2499,59 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     inp.focus();
     inp.select();
   }
+  // the selected text's own marker: an overlay-owned box at the text's live
+  // anchor. Recoloring claimed glyphs alone goes invisible exactly where a
+  // label needs feedback most — the dark theme's selection ink is WHITE, the
+  // same white silk/fab glyphs already paint (a selected designator reads as
+  // untouched), and an off-anchor label (U3's reference in C1's corridor)
+  // has NO claimed strokes to recolor at all. The box is what selection
+  // reads from, the way a part's tinted body is.
+  function layoutTextSelBoxSync() {
+    var old = document.getElementById('layout-text-sel-box');
+    if (old) old.remove();
+    if (layoutTextSel < 0 || !layoutTexts[layoutTextSel] || !layoutOverlay) return;
+    var t = layoutTexts[layoutTextSel];
+    var st = textState(layoutTextSel);
+    // ink extent: glyph advance along the run, glyph height across it; a
+    // quarter-turn rotation swaps the axes (rot fields are 90° multiples —
+    // authored rot plus the part's and the label's own pending presses)
+    var run = Math.max(t.h * 0.7, String(t.text).length * (t.w !== undefined ? t.w : t.h) * 0.62) + 0.3;
+    var cross = t.h * 1.15 + 0.3;
+    var compRotQ = t.ref
+      ? layoutRot[t.ref] || (layoutMoves[t.ref] ? layoutMoves[t.ref].rot || 0 : 0)
+      : 0;
+    var own = layoutTextMoves[layoutTextSel];
+    var totalQ = Math.round(((t.rot || 0) + compRotQ * 90 + (own && own.rot ? own.rot * 90 : 0)) / 90);
+    var vertical = (((totalQ % 2) + 2) % 2) === 1;
+    var w = vertical ? cross : run;
+    var h = vertical ? run : cross;
+    var r = document.createElementNS(SVGNSL, 'rect');
+    r.setAttribute('id', 'layout-text-sel-box');
+    r.setAttribute('x', (st.x - w / 2).toFixed(3));
+    r.setAttribute('y', (st.y - h / 2).toFixed(3));
+    r.setAttribute('width', w.toFixed(3));
+    r.setAttribute('height', h.toFixed(3));
+    // grabbable like the ink is: a text selected through the Tab cycle (its
+    // claimed strokes absent or buried under the part handle) still needs a
+    // drag target for the "drag to move" the status line promises
+    r.setAttribute('pointer-events', 'all');
+    var idx2 = layoutTextSel;
+    r.addEventListener('pointerdown', function (ev) {
+      textPointerDown(idx2, ev);
+    });
+    r.addEventListener('dblclick', function (ev) {
+      textDblClick(idx2, ev);
+    });
+    layoutOverlay.appendChild(r);
+  }
+  // any non-text selection takes the text's feedback with it — a stale box
+  // (or glyph recolor) surviving onto the zone/part/pad the cursor moved to
+  // reads as two things selected at once
+  function textSelClear() {
+    if (layoutTextSel < 0) return;
+    layoutTextSel = -1;
+    markTextSel();
+  }
   function markTextSel() {
     for (var ts = 0; ts < layoutTexts.length; ts++) {
       var st = layoutTextEls[ts];
@@ -2245,6 +2561,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         else st.paths[sp].classList.remove('layout-text-sel');
       }
     }
+    layoutTextSelBoxSync();
     propsSync('text');
   }
   function attachTextDrag(i) {
@@ -2264,9 +2581,11 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     ev.stopPropagation();
     ev.preventDefault();
     var wasSel = layoutTextSel === i;
-    layoutTextSel = i;
+    // markLayoutSel clears the text selection (a part selection replaces
+    // it) — assign this press's text AFTER it, not before
     layoutSel = [];
     markLayoutSel();
+    layoutTextSel = i;
     markTextSel();
     if (!wasSel) {
       // selection-first like components: this press selects only
@@ -2283,8 +2602,8 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       var nx = orig.x + (pg.x - startG.x);
       var ny = orig.y + (pg.y - startG.y);
       if (!layoutSnapBox || layoutSnapBox.checked) {
-        nx = Math.round(nx / layoutGridSize) * layoutGridSize;
-        ny = Math.round(ny / layoutGridSize) * layoutGridSize;
+        nx = Math.round(nx / layoutSnapStep) * layoutSnapStep;
+        ny = Math.round(ny / layoutSnapStep) * layoutSnapStep;
       }
       commitTextMove(i, nx, ny);
       if (statusEl && !statusLocked())
@@ -2571,6 +2890,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   }
   function markLayoutSel() {
     if (!layoutOverlay) return;
+    textSelClear(); // a part selection replaces any text selection
     var all = layoutOverlay.querySelectorAll('.layout-comp');
     for (var ms = 0; ms < all.length; ms++) {
       var ref = all[ms].getAttribute('data-ref');
@@ -2837,8 +3157,8 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       ny = g.origY + (-lastMouseG.y - -g.startG.y);
     }
     if (!layoutSnapBox || layoutSnapBox.checked) {
-      nx = Math.round(nx / layoutGridSize) * layoutGridSize;
-      ny = Math.round(ny / layoutGridSize) * layoutGridSize;
+      nx = Math.round(nx / layoutSnapStep) * layoutSnapStep;
+      ny = Math.round(ny / layoutSnapStep) * layoutSnapStep;
     }
     if (g.kind === 'board') {
       var src = boardImages[g.idx];
@@ -2981,8 +3301,8 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         ny = cg.origs[mr].y + dy;
       }
       if (!layoutSnapBox || layoutSnapBox.checked) {
-        nx = Math.round(nx / layoutGridSize) * layoutGridSize;
-        ny = Math.round(ny / layoutGridSize) * layoutGridSize;
+        nx = Math.round(nx / layoutSnapStep) * layoutSnapStep;
+        ny = Math.round(ny / layoutSnapStep) * layoutSnapStep;
       }
       setCompPos(mg, nx, ny);
       applyCompGhost(mg);
@@ -3165,8 +3485,8 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
           var nx = origs[mr].x + dx;
           var ny = origs[mr].y + dy;
           if (!layoutSnapBox || layoutSnapBox.checked) {
-            nx = Math.round(nx / layoutGridSize) * layoutGridSize;
-            ny = Math.round(ny / layoutGridSize) * layoutGridSize;
+            nx = Math.round(nx / layoutSnapStep) * layoutSnapStep;
+            ny = Math.round(ny / layoutSnapStep) * layoutSnapStep;
           }
           setCompPos(mg, nx, ny);
           applyCompGhost(mg); // the whole footprint drags along, like KiCad
@@ -3311,12 +3631,14 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     if (layoutApplyBtn)
       layoutApplyBtn.disabled =
         !Object.keys(classEdits).length &&
-        !Object.keys(layoutMoves).length && !Object.keys(layoutTextMoves).length && !nVal && !routedTracks.length && !routedDeletes.length && !partDeletes.length && !Object.keys(layoutFlip).length && !pendingZones.length && !pendingImages.length && !outlineEdit && !Object.keys(boardZoneEdits).length && !Object.keys(boardZoneDeletes).length && !Object.keys(boardImageEdits).length && !Object.keys(boardImageDeletes).length;
+        !Object.keys(layoutMoves).length && !Object.keys(layoutTextMoves).length && !Object.keys(boardTextDeletes).length && !nVal && !routedTracks.length && !routedDeletes.length && !partDeletes.length && !Object.keys(layoutFlip).length && !pendingZones.length && !pendingImages.length && !outlineEdit && !Object.keys(boardZoneEdits).length && !Object.keys(boardZoneDeletes).length && !Object.keys(boardImageEdits).length && !Object.keys(boardImageDeletes).length;
     // every state-changing op funnels through here — the pending-apply
     // snapshot rides along (undo/redo included, via historyResync)
     // an open properties panel tracks the move/rotate/resize that just
     // landed — no gesture kind, this refreshes whatever it is showing
     propsSync();
+    // a part drag transports its labels — the selected text's box follows
+    layoutTextSelBoxSync();
   }
   function layoutRevert() {
     // nothing pending (e.g. right after a fast apply wrote source) —
@@ -3616,12 +3938,26 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       }
       layoutApplyBtn.disabled = true;
       layoutApplyBtn.textContent = 'rebuilding\u2026';
+      applyLockSet(true);
+      // a host that never answers must not wedge the page — the same
+      // patience the status-lock reclaim gives (two minutes), plus slack
+      var applyGuard = setTimeout(function () {
+        applyLockSet(false);
+        layoutApplyBtn.disabled = false;
+        layoutApplyBtn.textContent = 'apply & rebuild';
+      }, 180000);
       // NO prune here: a gesture's own deletes have already removed their
       // ink from this page — pruning "deletes whose ink is gone" at the
       // door would drop every real deletion and the source would keep the
       // copper (the both-traces-after-delete bug)
       var classEditsPayload = Object.keys(classEdits).map(function (cn) { return { name: cn, values: classEdits[cn] }; });
-      window.typecadLayoutApply(moves, texts, values, labels, renames, routedTracks, routedDeletes, partDeletes, zones, outlinePayload, zoneEditsPayload, zoneDeletesPayload, images, imageEditsPayload, imageDeletesPayload, classEditsPayload, function (err, fast) {
+      // deleted free texts: authored value + anchor — the host removes the
+      // matching .text({...}) statement
+      var textDeletesPayload = [];
+      for (var tdn in boardTextDeletes) textDeletesPayload.push(boardTextDeletes[tdn]);
+      window.typecadLayoutApply(moves, texts, values, labels, renames, routedTracks, routedDeletes, partDeletes, zones, outlinePayload, zoneEditsPayload, zoneDeletesPayload, images, imageEditsPayload, imageDeletesPayload, classEditsPayload, textDeletesPayload, function (err, fast) {
+        clearTimeout(applyGuard);
+        applyLockSet(false);
         layoutApplyBtn.disabled = false;
         layoutApplyBtn.textContent = 'apply & rebuild';
         if (err && statusEl) statusEl.textContent = 'layout apply failed: ' + err;
@@ -3847,8 +4183,8 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   function zoneSnapPt(gp) {
     var snap = !layoutSnapBox || layoutSnapBox.checked;
     return {
-      x: snap ? Math.round(gp.x / layoutGridSize) * layoutGridSize : gp.x,
-      y: snap ? Math.round(gp.y / layoutGridSize) * layoutGridSize : gp.y,
+      x: snap ? Math.round(gp.x / layoutSnapStep) * layoutSnapStep : gp.x,
+      y: snap ? Math.round(gp.y / layoutSnapStep) * layoutSnapStep : gp.y,
     };
   }
   function zonePreviewMove(gp) {
@@ -3931,8 +4267,8 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     if (zonePts.length >= 3) {
       var first = zonePts[0];
       var last = zonePts[zonePts.length - 1];
-      var nearFirst = Math.hypot(p.x - first.x, p.y - first.y) < Math.max(layoutGridSize, 0.25);
-      var nearLast = Math.hypot(p.x - last.x, p.y - last.y) < Math.max(layoutGridSize, 0.25);
+      var nearFirst = Math.hypot(p.x - first.x, p.y - first.y) < Math.max(layoutSnapStep, 0.25);
+      var nearLast = Math.hypot(p.x - last.x, p.y - last.y) < Math.max(layoutSnapStep, 0.25);
       if (nearFirst || nearLast) {
         zoneCommitPolygon();
         return;
@@ -4407,8 +4743,8 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   function imagePreviewMove(gp) {
     if (!imageArmed || !imageHave || !imageHave.w) return;
     var snap = !layoutSnapBox || layoutSnapBox.checked;
-    var px = snap ? Math.round(gp.x / layoutGridSize) * layoutGridSize : gp.x;
-    var py = snap ? Math.round(gp.y / layoutGridSize) * layoutGridSize : gp.y;
+    var px = snap ? Math.round(gp.x / layoutSnapStep) * layoutSnapStep : gp.x;
+    var py = snap ? Math.round(gp.y / layoutSnapStep) * layoutSnapStep : gp.y;
     if (!imageGhost) {
       imageGhost = document.createElementNS(SVGNSL, 'image');
       imageGhost.setAttribute('pointer-events', 'none');
@@ -4431,7 +4767,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       return;
     }
     var snap = !layoutSnapBox || layoutSnapBox.checked;
-    var cx = snap ? Math.round(gp.x / layoutGridSize) * layoutGridSize : gp.x;
+    var cx = snap ? Math.round(gp.x / layoutSnapStep) * layoutSnapStep : gp.x;
     var cy = -gp.y; // board frame (y-down), like every placement
     var rec = {
       path: imageHave.path,
@@ -4777,57 +5113,11 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     propsSync();
     return true;
   }
-  // ---- grid, units, disperse, hit cycling (KiCad parity pack) ----
-  var layoutGridSize = 0.5; // mm; the snap ladder and the visible grid share it
-  var layoutGridShow = false;
-  var layoutMil = false;
-  /** layout status positions: mm, or mil when the toggle is on */
+  // ---- units, disperse, hit cycling (KiCad parity pack) ----
+  var layoutSnapStep = 0.5; // mm; the fixed snap step (the grid feature is gone)
+  /** layout status positions: mm (the mil toggle is gone) */
   function fmtPos(n) {
-    if (layoutMil) return (n / 0.0254).toFixed(1) + ' mil';
     return n.toFixed(2) + ' mm';
-  }
-  function rebuildLayoutGrid() {
-    var old = document.getElementById('layout-grid-g');
-    if (old) old.remove();
-    if (!layoutGridShow || !viewGroups.gerber) return;
-    var flip = viewGroups.gerber.querySelector('#yflip');
-    if (!flip) return;
-    var boardR = layoutBoardRect();
-    if (!boardR) return;
-    var g = layoutGridSize;
-    var pad = 10;
-    var x0 = Math.floor((boardR.x0 - pad) / g) * g;
-    var y0 = Math.floor((boardR.y0 - pad) / g) * g;
-    var x1 = Math.ceil((boardR.x1 + pad) / g) * g;
-    var y1 = Math.ceil((boardR.y1 + pad) / g) * g;
-    var NS = 'http://www.w3.org/2000/svg';
-    var host = document.createElementNS(NS, 'g');
-    host.setAttribute('id', 'layout-grid-g');
-    host.setAttribute('pointer-events', 'none');
-    var d = '';
-    // minor divisions as one path (skipped when they'd be dust: 0.1mm over
-    // a 100mm board is 1000 lines — the major grid still shows)
-    if ((x1 - x0) / g < 400) {
-      for (var x = x0; x <= x1 + 0.001; x += g) d += 'M ' + x.toFixed(3) + ' ' + y0.toFixed(3) + ' L ' + x.toFixed(3) + ' ' + y1.toFixed(3) + ' ';
-      for (var y = y0; y <= y1 + 0.001; y += g) d += 'M ' + x0.toFixed(3) + ' ' + y.toFixed(3) + ' L ' + x1.toFixed(3) + ' ' + y.toFixed(3) + ' ';
-      var minor = document.createElementNS(NS, 'path');
-      minor.setAttribute('d', d);
-      minor.setAttribute('stroke', 'rgba(255,255,255,0.05)');
-      minor.setAttribute('stroke-width', '0.04');
-      minor.setAttribute('fill', 'none');
-      host.appendChild(minor);
-    }
-    var dm = '';
-    var g5 = g * 5;
-    for (var xm = Math.ceil(x0 / g5) * g5; xm <= x1 + 0.001; xm += g5) dm += 'M ' + xm.toFixed(3) + ' ' + y0.toFixed(3) + ' L ' + xm.toFixed(3) + ' ' + y1.toFixed(3) + ' ';
-    for (var ym = Math.ceil(y0 / g5) * g5; ym <= y1 + 0.001; ym += g5) dm += 'M ' + x0.toFixed(3) + ' ' + ym.toFixed(3) + ' L ' + x1.toFixed(3) + ' ' + ym.toFixed(3) + ' ';
-    var major = document.createElementNS(NS, 'path');
-    major.setAttribute('d', dm);
-    major.setAttribute('stroke', 'rgba(255,255,255,0.12)');
-    major.setAttribute('stroke-width', '0.06');
-    major.setAttribute('fill', 'none');
-    host.appendChild(major);
-    flip.insertBefore(host, flip.firstChild); // behind every layer
   }
   // disperse (KiCad's Tools > Disperse Footprints): parts still stacked on
   // others grid-spread into rows below the board, as pending moves
@@ -4854,7 +5144,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       return;
     }
     var boardR = layoutBoardRect() || { x0: 0, y0: -40, x1: 60, y1: 0 };
-    var g = layoutGridSize;
+    var g = layoutSnapStep;
     var before = snapMoves(refs);
     var ripBefore = layoutRipped.length;
     // placement stays ON-SCREEN: rows sweep the board interior top-down
@@ -4920,6 +5210,12 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   var cycleIdx = -1;
   var cycleAt = null;
   function cycleHits() {
+    // every step owns its own dim: the net branches re-light theirs below
+    // (highlightNet clears first), and the zone/part branches light NOTHING —
+    // without this clear a dim set one Tab ago survives onto them and the
+    // whole board (the pour included) stays near-invisible (seen live: the
+    // "zone turned black" report was a GND pour dimmed to 0.06 nobody cleared)
+    if (netDimmed.length) clearNetHighlight();
     var cands = [];
     var bp = { x: lastMouseG.x, y: -lastMouseG.y };
     var pad = padAtBoard(bp.x, bp.y);
@@ -4945,7 +5241,42 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     if (cycleVia) cands.push({ kind: 'via', el: cycleVia });
     var compEl = document.elementFromPoint ? document.elementFromPoint(lastMouseC.x, lastMouseC.y) : null;
     var compG = compEl && compEl.closest ? compEl.closest('.layout-comp') : null;
+    // the body under the cursor is the body even when something above the
+    // handle swallows the DOM hit (a pad label, the fab designator ink) — a
+    // geometric box test on the live placement backs elementFromPoint up
+    if (!compG && layoutOverlay) {
+      for (var gi = 0; gi < layoutComps.length; gi++) {
+        var gs = compStateAt(layoutComps[gi].ref);
+        if (!gs) continue;
+        var gb = compAABB(gs.c, gs.x, gs.y, gs.rot);
+        if (lastMouseG.x >= gb.x0 && lastMouseG.x <= gb.x1 && lastMouseG.y >= gb.y0 && lastMouseG.y <= gb.y1) {
+          compG = layoutOverlay.querySelector('[data-ref="' + cssEsc(layoutComps[gi].ref) + '"]');
+          break;
+        }
+      }
+    }
     if (compG) cands.push({ kind: 'comp', g: compG });
+    // texts under the cursor join the cycle — their strokes sit under the
+    // overlays DOM picking serves, so this is the only road to them; a
+    // shared anchor stacks (reference AND value both cycle)
+    var cycleTexts = textStackNear(lastMouseG);
+    // the hovered part's OWN labels join the cycle (KiCad's Tab steps through
+    // a footprint's fields): a reference's plotted ink may sit under the
+    // body's handle or be missing from the plot entirely, and the disc
+    // around its anchor cannot reach mid-body — over the part is where the
+    // user aims at the designator
+    if (compG && compG.__lc) {
+      var seenLbl = {};
+      for (var sl = 0; sl < cycleTexts.length; sl++) seenLbl[cycleTexts[sl]] = true;
+      for (var li2 = 0; li2 < layoutTexts.length; li2++) {
+        var tl2 = layoutTexts[li2];
+        if (!tl2 || tl2.ref !== compG.__lc.ref || seenLbl[li2]) continue;
+        if (tl2.kind !== 'reference' && !textLayerVisible(tl2)) continue;
+        seenLbl[li2] = true;
+        cycleTexts.push(li2);
+      }
+    }
+    for (var ct = 0; ct < cycleTexts.length; ct++) cands.push({ kind: 'text', idx: cycleTexts[ct] });
     // every zone boundary under the cursor joins the cycle — stacked pours
     // (a pour per copper layer over the same area) are only reachable by
     // walking the stack, never by the topmost outline alone
@@ -4961,6 +5292,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     var c = cands[cycleIdx];
     segSel.clear();
     viaSel.clear();
+    textSelClear(); // the cycled-to kind owns the board alone
     segHiSync();
     viaHiSync();
     if (c.kind === 'pad') {
@@ -5002,7 +5334,16 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       propsKind = 'boardzone';
       propsSync('boardzone');
       if (statusEl && !statusLocked())
-        statusEl.textContent = zoneLabelForBoard(boardZoneOutlines[c.idx], c.idx) + ' \u2014 Tab cycles the stack, E edits, Del removes';
+        statusEl.textContent = zoneLabelForBoard(boardZoneOutlines[c.idx], c.idx) + ' \u2014 Tab cycles the stack, E edits, Enter opens its source, Del removes';
+    } else if (c.kind === 'text') {
+      // selection mirrors the press path: sole text, E panel owns the edit
+      clearPadHighlight();
+      layoutSel = [];
+      markLayoutSel();
+      layoutTextSel = c.idx;
+      markTextSel();
+      if (statusEl && !statusLocked())
+        statusEl.textContent = 'text "' + layoutTexts[c.idx].text.slice(0, 18) + '" \u2014 drag to move, E edits, Tab cycles';
     } else {
       clearPadHighlight();
       layoutSel = [c.g.__lc.ref];
@@ -5013,6 +5354,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   document.addEventListener(
     'keydown',
     function (ev) {
+      if (applyBusy) return; // an apply owns the pipeline — keybinds are dead until it lands
       if (viewMode !== 'layout' || !layoutOverlay) return;
       // typing belongs to an open editor, never to the canvas
       if (ev.target && (ev.target.tagName === 'INPUT' || ev.target.tagName === 'TEXTAREA' || ev.target.isContentEditable))
@@ -5079,11 +5421,22 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         routeKey();
         return;
       }
+      if (ev.key === 'b' || ev.key === 'B') {
+        ev.preventDefault();
+        // the button owns the whole gesture (pending-state gate, input
+        // lock, host bridge) — clicking it IS pressing apply & rebuild,
+        // and a disabled button's click is a no-op, exactly like the UI
+        var applyBtn2 = document.getElementById('layout-apply');
+        if (applyBtn2 && !applyBtn2.disabled) applyBtn2.click();
+        return;
+      }
       if (ev.key === 'v' || ev.key === 'V') {
         ev.preventDefault();
-        // Shift (the shifted key cap) cycles the via's far layer; plain V places
+        // Shift (the shifted key cap) cycles the via's far layer; plain V
+        // arms one — mid-route at the next anchor, free-floating otherwise
         if (ev.shiftKey) cycleViaTarget();
         else if (routeState) routeVia();
+        else freeViaArm();
         return;
       }
       if (ev.key === '[' || ev.key === ']' || ev.key === '{' || ev.key === '}') {
@@ -5330,6 +5683,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
             if (extraV && statusEl && !statusLocked())
               statusEl.textContent = statusEl.textContent.replace(/$/, ' + ' + extraV + ' via' + (extraV === 1 ? '' : 's'));
           }
+          if (netDimmed.length) clearNetHighlight(); // the dim dies with the selection
         } else if (viaSel.size) {
           ev.preventDefault();
           var nVia = 0;
@@ -5339,10 +5693,45 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
           });
           viaSel.clear();
           viaHiSync();
+          if (netDimmed.length) clearNetHighlight(); // the dim dies with the selection
           refreshRatsnest();
           renderLayoutMoves();
           if (statusEl && !statusLocked())
             statusEl.textContent = nVia + ' via' + (nVia === 1 ? '' : 's') + ' deleted';
+        } else if (layoutTextSel >= 0 && layoutTexts[layoutTextSel] && (!layoutTexts[layoutTextSel].kind || layoutTexts[layoutTextSel].kind === 'board')) {
+          // free board text (a gr_text, authored as a .text({...}) statement):
+          // Del removes it — the ink hides now, apply deletes the statement
+          ev.preventDefault();
+          var tdIdx = layoutTextSel;
+          var tdT = layoutTexts[tdIdx];
+          var tdEl = layoutTextEls[tdIdx];
+          var tdPaths = tdEl ? tdEl.paths : textPaths(tdIdx);
+          // the AUTHORED anchor (not the moved one) is the literal's match key
+          var tdRec = { text0: tdT.text, x0: tdT.x, y0: -tdT.y };
+          var tdHide = function (on) {
+            for (var hp = 0; hp < tdPaths.length; hp++) tdPaths[hp].style.display = on ? 'none' : '';
+          };
+          boardTextDeletes[tdIdx] = tdRec;
+          delete layoutTextMoves[tdIdx]; // the delete supersedes any pending edit
+          layoutTextSel = -1;
+          markTextSel();
+          tdHide(true);
+          pushUndo(
+            'delete text',
+            function () {
+              delete boardTextDeletes[tdIdx];
+              tdHide(false);
+              renderLayoutMoves();
+            },
+            function () {
+              boardTextDeletes[tdIdx] = tdRec;
+              tdHide(true);
+              renderLayoutMoves();
+            },
+          );
+          renderLayoutMoves();
+          if (statusEl && !statusLocked())
+            statusEl.textContent = 'text "' + tdT.text.slice(0, 18) + '" removed \u2014 apply & rebuild deletes it from source (Ctrl+Z brings it back)';
         } else if (layoutSel.length) {
           // parts selected: Delete removes them — the ink rips up now and
           // the apply removes the component from source (declaration,
@@ -5410,13 +5799,14 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
               for (var re2 = 0; re2 < delEls.length; re2++) ripUpEl(delEls[re2]);
             }
           );
+          if (netDimmed.length) clearNetHighlight(); // the dim dies with the selection
           if (statusEl && !statusLocked())
             statusEl.textContent =
               delRefs.length + ' part' + (delRefs.length > 1 ? 's' : '') + ' deleted \u2014 Apply removes ' + (delRefs.length > 1 ? 'them' : 'it') + ' from source';
         }
         return;
       }
-      var step = ev.altKey ? Math.min(0.1, layoutGridSize / 5) : layoutGridSize;
+      var step = ev.altKey ? Math.min(0.1, layoutSnapStep / 5) : layoutSnapStep;
       var nudges = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, step], ArrowDown: [0, -step] };
       var d = nudges[ev.key];
       if (!d) return;
@@ -5601,11 +5991,12 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         var zcur = zstack.indexOf(boardZoneSel);
         if (zcur >= 0) zpick = zstack[(zcur + 1) % zstack.length];
         boardZoneSel = zpick;
+        textSelClear(); // the zone owns the selection
         renderBoardZones();
         propsKind = 'boardzone';
         propsSync('boardzone');
         if (statusEl && !statusLocked())
-          statusEl.textContent = zoneLabelForBoard(boardZoneOutlines[zpick], zpick) + ' selected — press again for the next zone in the stack, E moves/resizes, Del removes it';
+          statusEl.textContent = zoneLabelForBoard(boardZoneOutlines[zpick], zpick) + ' selected — press again for the next zone in the stack, E moves/resizes, Enter opens its source, Del removes it';
       }
     }
     boxSel = { g0: gerberAt(ev.clientX, ev.clientY), x0: ev.clientX, y0: ev.clientY, active: false };
@@ -5963,9 +6354,14 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         var wHalf = parseFloat(wel.getAttribute('data-w') || '0') / 2;
         var wPts = [];
         if (wel.tagName === 'circle') {
-          wPts.push({ x: parseFloat(wel.getAttribute('cx')), y: parseFloat(wel.getAttribute('cy')), w: wHalf * 2 });
-          (netInk[wnet] = netInk[wnet] || []).push.apply(netInk[wnet], wPts);
-          (netEls[wnet] = netEls[wnet] || []).push({ pts: wPts });
+          // a barrel is a CONNECTION POINT like a pad — a netted via not
+          // touching its net's copper is a stranded node owing a wire, not
+          // a dead stub (seen live: assigning a net to a free via drew
+          // nothing, and the via had no way to ask for its connection)
+          var wVia = { x: parseFloat(wel.getAttribute('cx')), y: parseFloat(wel.getAttribute('cy')), w: wHalf * 2, via: true };
+          wPts.push(wVia);
+          (netInk[wnet] = netInk[wnet] || []).push(wVia);
+          (netEls[wnet] = netEls[wnet] || []).push({ pts: wPts, via: true });
         } else {
           // each M-subpath is its own conductor — a d with a GAP (M…M) is
           // two elements, never one bridged run (bridging it called broken
@@ -6009,11 +6405,30 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         }
         var uIslandPad = ucomp.pads[up];
         var uPos = padPos(ucomp, uIslandPad);
+        // the pin behind an island pad: island pads carry no pin field —
+        // resolve it from the pad manifest by authored position (board y
+        // negates), so pads sharing a pin number can union into one node
+        var uPin = uIslandPad.pin !== undefined ? String(uIslandPad.pin) : null;
+        if (uPin === null) {
+          // padManifest is declared LATE in the script — an init-time
+          // refreshRatsnest (before the manifest island loads) must skip
+          // the resolution, not throw on its undefined
+          for (var um = 0; padManifest && um < padManifest.length; um++) {
+            var ump = padManifest[um];
+            if (ump.ref !== ucomp.ref) continue;
+            if (Math.hypot(ump.x - uIslandPad.x, ump.y + uIslandPad.y) < 0.12) {
+              uPin = String(ump.pin);
+              break;
+            }
+          }
+        }
         (padsByNet[unet] = padsByNet[unet] || []).push({
           x: uPos.x,
           y: uPos.y,
           r: Math.max(uIslandPad.w || 0.3, uIslandPad.h || 0.3) / 2,
           key: ucomp.ref + '#' + up,
+          ref: ucomp.ref,
+          pin: uPin,
         });
       }
     }
@@ -6036,6 +6451,16 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       var els = netEls[un] || [];
       var parent = [];
       for (var pn0 = 0; pn0 < pads.length + els.length; pn0++) parent.push(pn0);
+      // a pin numbered on more than one pad is ONE node — dual-row
+      // connectors (J1/J2 here) plot every pin twice, and the pads of a
+      // pin are joined inside the footprint: never a wire between them,
+      // and a route reaching EITHER pad satisfies the whole pin (seen
+      // live: the duplicate pads owed each other a ratsnest wire that
+      // only a perfectly-snapped finish would clear)
+      for (var pj = 1; pj < pads.length; pj++)
+        for (var pk2 = 0; pk2 < pj; pk2++)
+          if (pads[pj].ref && pads[pj].pin && pads[pj].ref === pads[pk2].ref && pads[pj].pin === pads[pk2].pin)
+            parent[ufFind(parent, pj)] = ufFind(parent, pk2);
       if (pourNets[un]) {
         for (var pk0 = 1; pk0 < pads.length; pk0++) parent[ufFind(parent, pk0)] = ufFind(parent, 0);
         for (var pk1 = 0; pk1 < pads.length; pk1++) wiredPad[pads[pk1].key] = true;
@@ -6054,6 +6479,19 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
             }
           }
           wiredPad[pads[pa].key] = touched;
+        }
+        // same-pin propagation: a pad whose twin (the OTHER physical pad
+        // of its pin) carries copper is wired through the footprint — the
+        // stranded-pass below must not re-draw a rip-up wire for it
+        for (var pw = 0; pw < pads.length; pw++) {
+          if (wiredPad[pads[pw].key]) continue;
+          for (var pw2 = 0; pw2 < pads.length; pw2++) {
+            if (!wiredPad[pads[pw2].key]) continue;
+            if (ufFind(parent, pw) === ufFind(parent, pw2)) {
+              wiredPad[pads[pw].key] = true;
+              break;
+            }
+          }
         }
         // element <-> element (endpoints coinciding)
         for (var e1 = 0; e1 < els.length; e1++)
@@ -6084,7 +6522,9 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         for (var cq0 = 0; cq0 < ePts0.length; cq0++)
           (compPts[cidE] = compPts[cidE] || []).push({ x: ePts0[cq0].x, y: ePts0[cq0].y });
       }
-      // wire-nodes: components that carry a pad (dead stubs owe nothing)
+      // wire-nodes: components that carry a pad OR A VIA (dead stubs owe
+      // nothing; a barrel is an intentional connection point — its
+      // component owes a wire to the rest of the net)
       var nodes = [];
       var seenNode = {};
       for (var rp = 0; rp < pads.length; rp++) {
@@ -6092,6 +6532,13 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         if (seenNode[rc]) continue;
         seenNode[rc] = 1;
         nodes.push(compPts[rc] || []);
+      }
+      for (var rv = 0; rv < els.length; rv++) {
+        if (!els[rv].via) continue;
+        var rcV = ufFind(parent, pads.length + rv);
+        if (seenNode[rcV]) continue;
+        seenNode[rcV] = 1;
+        nodes.push(compPts[rcV] || []);
       }
       repsByNet[un] = nodes;
       // the closest point pair across two components
@@ -6300,7 +6747,6 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     renderOutlineEdit();
     document.body.classList.add('typecad-layout');
     if (layoutOverlay) layoutOverlay.style.display = '';
-    rebuildLayoutGrid();
     // the injected probe outlines stand DOWN in the layout view: they sit
     // ABOVE the layout overlay with pointer-events:all, so they steal body
     // presses from small parts (R1 unselectable while its pads work) and,
@@ -6393,8 +6839,6 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     // the probe outlines come back with the gerber view (see enterLayout)
     var probeG2 = document.getElementById('typecad-probe');
     if (probeG2 && probeG2.__disp !== undefined) probeG2.style.display = probeG2.__disp;
-    var gridG = document.getElementById('layout-grid-g');
-    if (gridG) gridG.remove();
     // the gerber view shows the authored board alone: rebuild the ratsnest
     // without the pending moves' stranded wires — the group hides outside
     // the layout view, but a later re-entry must start from the authored
@@ -7919,8 +8363,8 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     ['select & place', null, null],
     ['click', 'select a part, trace, via, or text (an open E panel follows it)'],
     ['M', 'grab the selected part(s) — follows the cursor; click drops, Esc cancels'],
-    ['\u2190 \u2192 \u2191 \u2193', 'nudge the selected part, trace segments, or vias one grid step — DRC-checked, a violating step flashes red and refuses'],
-    ['Alt + arrows', 'nudge by 0.1 mm (fine, crosses the grid)'],
+    ['\u2190 \u2192 \u2191 \u2193', 'nudge the selected part, trace segments, or vias one snap step (the sidebar ladder) — DRC-checked, a violating step flashes red and refuses'],
+    ['Alt + arrows', 'nudge by 0.1 mm (fine, crosses the snap step)'],
     ['R', 'rotate the selection 90\u00b0'],
     ['Shift+F', 'flip the selected part(s) to the other side \u2014 apply writes side into source'],
     ['zones & artwork', null, null],
@@ -7933,9 +8377,10 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     ['click an edge', 'select the board outline — E sets x/y/w/h, arrows nudge it'],
     ['apply', 'rewrites the pcb.outline(…) literal with the new rect'],
     ['Shift+D', 'disperse stacked footprints below the board'],
-    ['Tab', 'cycle the copper layer while routing (the via\u2019s target follows) \u00b7 otherwise cycle pad / trace / part / zone under the cursor'],
+    ['Tab', 'cycle the copper layer while routing (the via\u2019s target follows) \u00b7 otherwise cycle pad / trace / via / part / text / zone under the cursor'],
     ['U', 'grow the segment selection along the net'],
     ['Del', 'delete the selected segments and vias, or the selected part(s) — Apply removes them from source'],
+    ['B', 'apply & rebuild — the same gesture as the sidebar button; the page locks while it runs'],
     ['E', 'properties: part ref/value/placement/side + pin nets \u00b7 trace width/layer \u00b7 via \u2300/drill \u00b7 text content/style \u00b7 zone/outline/artwork panels \u00b7 nothing selected: the draw-zone and place-image tools'],
     ['Ctrl+Z', 'undo (Ctrl+Shift+Z or Ctrl+Y redo)'],
     ['Esc', 'clear the selection / cancel what is running'],
@@ -7944,7 +8389,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     ['X', 'start a route from the highlighted pad or trace'],
     ['click', 'anchor the next segment'],
     ['double-click / pad', 'finish the route — a foreign-net pad is refused (the status names the mismatch)'],
-    ['V', 'arm a via \u2014 the next click anchors the segment and places it there (continues on the far layer)'],
+    ['V', 'arm a via — mid-route the next click anchors and places it; with no route live the ring follows the cursor, adopts the copper\u2019s net, and the click places a through-via'],
     ['Shift+V', 'cycle the via\u2019s far layer (blind / buried)'],
     ['D', 'slide (drag) the hovered segment — clearance-checked live, release on red reverts'],
     ['Backspace', 'undo the last anchored segment'],
@@ -8461,10 +8906,18 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         }
       }
     var clsV = net ? netClassInfo(net) : null;
+    // the net selector: the board's nets plus floating. A change rewrites
+    // the via's electrical identity (delete + re-place netted) — works for
+    // session barrels and board-built ones alike
+    var nets3 = zoneNetChoices();
+    var netOpts = '<option value=""' + (net ? '' : ' selected') + '>\u2205 none (floating)</option>';
+    for (var no2 = 0; no2 < nets3.length; no2++)
+      netOpts += '<option value="' + propsEsc(nets3[no2]) + '"' + (nets3[no2] === net ? ' selected' : '') + '>' + propsEsc(nets3[no2]) + '</option>';
     propsEl.innerHTML =
       '<b>via' + (net ? ' [' + propsEsc(net) + ']' : ' (no net)') + (viaSel.size > 1 ? ' \u00b7 ' + viaSel.size + ' barrels' : '') + '</b>' +
       '<div class="wrow"><label>\u2300 <input id="vp-size" type="number" step="0.05" value="' + size + '"></label>' +
       '<label>drill <input id="vp-drill" type="number" step="0.05" value="' + drill + '"></label></div>' +
+      '<div class="wrow"><label>net <select id="vp-net" title="the via\u2019s electrical identity \u2014 apply rewrites it in source (a board-built barrel is deleted and re-placed netted)">' + netOpts + '</select></label></div>' +
       '<div class="whint">' + (ly.length >= 2 ? propsEsc(ly.join(' \u2192 ')) : 'through') + ' \u00b7 ' + fmtPos(vp.x) + ', ' + fmtPos(-vp.y) + '</div>' +
       '<div class="whint">annular ring ' + ((size - drill) / 2).toFixed(3) + ' mm' + (rules && rules.minViaDiameterMm ? ' \u00b7 board min \u2300' + fmtW(rules.minViaDiameterMm) : '') + '</div>' +
       (clsV ? '<div class="whint">' + propsEsc(netClassLine(clsV)) + '</div>' : '') +
@@ -8487,6 +8940,21 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     if (!(sv > 0)) return;
     sv = Math.min(3, Math.max(0.3, +sv.toFixed(3)));
     var dv = parseFloat(document.getElementById('vp-drill').value);
+    var netSel = document.getElementById('vp-net');
+    var chosenNet = netSel ? netSel.value || null : undefined;
+    var v = viaSel.values().next().value;
+    var curNet = v ? v.getAttribute('data-net') : null;
+    if (curNet === 'N/C') curNet = null;
+    // a NET change rewrites the barrel's electrical identity wholesale —
+    // size and drill ride along into the re-placed ink
+    if (v && chosenNet !== undefined && chosenNet !== curNet) {
+      var nd = dv > 0 ? Math.min(sv, +dv.toFixed(3)) : viaDrillFor(sv);
+      setViaNet(v, chosenNet, sv, nd);
+      viaSel.clear();
+      viaHiSync();
+      propsToggle();
+      return;
+    }
     var res = { size: sv };
     if (dv > 0) res.drill = dv;
     selectionResize(null, function () {
@@ -8599,8 +9067,8 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     var nx = parseFloat(document.getElementById('tx-x').value);
     var nyG = -parseFloat(document.getElementById('tx-y').value);
     var nrot = ((parseInt(document.getElementById('tx-rot').value, 10) / 90 || 0) % 4 + 4) % 4;
-    if (isFinite(nx)) nx = Math.round(nx / layoutGridSize) * layoutGridSize;
-    if (isFinite(nyG)) nyG = Math.round(nyG / layoutGridSize) * layoutGridSize;
+    if (isFinite(nx)) nx = Math.round(nx / layoutSnapStep) * layoutSnapStep;
+    if (isFinite(nyG)) nyG = Math.round(nyG / layoutSnapStep) * layoutSnapStep;
     // the style block: finals for every style option, clamped to sane
     // ranges (garbage falls back to the authored value)
     var hv = parseFloat(document.getElementById('tx-h').value);
@@ -9290,7 +9758,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       layoutRot[refs[i]] = ((nrot % 4) + 4) % 4;
       var tx = refs[i] === ref ? nx : g.__lx;
       var ty = refs[i] === ref ? nyG : g.__ly;
-      setCompPos(g, Math.round(tx / layoutGridSize) * layoutGridSize, Math.round(ty / layoutGridSize) * layoutGridSize);
+      setCompPos(g, Math.round(tx / layoutSnapStep) * layoutSnapStep, Math.round(ty / layoutSnapStep) * layoutSnapStep);
       if (nside) {
         // side follows the flip machinery: the pending flag makes the
         // effective side match the select (toggle only when it differs)
@@ -9579,6 +10047,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       if (statusEl && !statusLocked()) statusEl.textContent = 'click a pad or trace first \u2014 X routes a track from it';
       return;
     }
+    freeViaClear(); // a route starting disarms any free via — one barrel preview at a time
     // start FROM a pad, or from a pressed point ON a trace/via (the route
     // inherits the copper's net and layer — a branch leaves it centered)
     var lg, c, startNet, startPad = null, startLbl;
@@ -9804,8 +10273,17 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     // vias and traces are tie-in targets like pads: the barrel center, or
     // the nearest point ON a trace segment (same-net preferred, exactly how
     // pads snap) — a branch leaves the host copper perfectly centered
+    // ties are LAYER-LOCAL: a trace on another copper layer is not copper
+    // here — no via, no connection — so the walk may only tie to copper in
+    // its OWN layer group, and a barrel qualifies through its flash on
+    // this layer (a barrel spans layers; the flash here is the tie point).
+    // Without this, a walk on one layer snapped its anchors onto traces
+    // buried on another (seen live: an anchor just north of U1.9 kept
+    // capturing to an In2 trace under it)
+    var pieceLg = curPiece() ? curPiece().layerGroup : null;
     var vink = viaInk();
     for (var vi2 = 0; vi2 < vink.length; vi2++) {
+      if (pieceLg && vink[vi2].closest && vink[vi2].closest("g[data-kind='copper']") !== pieceLg) continue;
       var vpos = viaInkPos(vink[vi2]);
       var vd = Math.hypot(vpos.x - mx, vpos.y - my);
       if (vd > tieReach) continue;
@@ -9819,6 +10297,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     }
     var segs = allSegHits();
     for (var si2 = 0; si2 < segs.length; si2++) {
+      if (pieceLg && segs[si2].closest && segs[si2].closest("g[data-kind='copper']") !== pieceLg) continue;
       var x1 = parseFloat(segs[si2].getAttribute('x1')), y1 = parseFloat(segs[si2].getAttribute('y1'));
       var x2 = parseFloat(segs[si2].getAttribute('x2')), y2 = parseFloat(segs[si2].getAttribute('y2'));
       var qp = snapOnSegment(mx, my, x1, y1, x2, y2);
@@ -10124,6 +10603,11 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     }
     piece.canon = next;
     piece.layerGroup = lg;
+    // the obstacle list was built for the layer the piece STARTED on —
+    // without this rebuild, a Tab to another layer kept measuring against
+    // the old layer's copper and reddened over obstacles the new layer
+    // doesn't carry (seen live: an In1 route flagged every F.Cu crossing)
+    piece.obstacles = buildObstacles(lg, routeState.net);
     piece.inkVar = '--ink-' + lg.getAttribute('data-layer-id');
     piece.inkColor = getComputedStyle(lg).fill || '#c87533';
     piece.anchoredEl.setAttribute('stroke', piece.inkColor);
@@ -10142,6 +10626,267 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     }
     if (statusEl && !statusLocked())
       statusEl.textContent = 'routing on ' + next + ' \u2014 Tab cycles the copper layer, V arms a via at the next click';
+  }
+  // ---- FREE VIA (V with no route live): the same armed barrel, net-less
+  //  until it finds copper. The keep-out ring follows the cursor, adopts
+  //  the net of whatever copper sits under it (a pad, a barrel, any layer's
+  //  trace — a via connects vertically), reddens on the same violations the
+  //  armed route via tests, and the click places a through-via onto that
+  //  net. No copper under it: the ring stays armed with a hint — a via with
+  //  no net has no statement in the canonical grammar ----
+  var freeVia = null; // { size, drill, net, x, y, bad, obsCache }
+  function freeViaSize() {
+    if (pendingViaOverride) return { size: pendingViaOverride, drill: viaDrillFor(pendingViaOverride) };
+    var s = widthMemory.viaLast > 0.2 ? widthMemory.viaLast : viaForWidth(pendingWidthOverride || routeWidth(null, null)).size;
+    return { size: s, drill: viaDrillFor(s) };
+  }
+  function freeViaArm() {
+    if (routeState) return;
+    if (freeVia) {
+      freeViaClear('via disarmed');
+      return;
+    }
+    var s = freeViaSize();
+    freeVia = { size: s.size, drill: s.drill, net: null, x: null, y: null, bad: false, obsCache: {} };
+    var halo = document.createElementNS(SVGNSL, 'circle');
+    halo.setAttribute('class', 'route-via-halo free-via');
+    halo.setAttribute('r', (s.size / 2 + clearanceRule()).toFixed(3));
+    var ghost = document.createElementNS(SVGNSL, 'circle');
+    ghost.setAttribute('class', 'route-via-arm-ghost free-via');
+    ghost.setAttribute('r', (s.size / 2).toFixed(3));
+    routeUiGroup().appendChild(halo);
+    routeUiGroup().appendChild(ghost);
+    if (statusEl && !statusLocked())
+      statusEl.textContent =
+        'via armed \u2300' + fmtW(s.size) + ' \u2014 the ring follows the cursor and adopts any copper under it (pours included); click places anywhere, Esc cancels';
+  }
+  function freeViaClear(msg) {
+    if (!freeVia) return;
+    freeVia = null;
+    routeUiGroup().querySelectorAll('.free-via').forEach(function (el) {
+      el.remove();
+    });
+    if (msg && statusEl && !statusLocked()) statusEl.textContent = msg;
+  }
+  /** the copper under a point, most specific first — a pad, a barrel, a
+   *  trace on any layer, then a POUR REGION (a stitching via adopts the
+   *  pour's net; the layer never gates it — a via connects vertically).
+   *  Empty board space returns null: a FLOATING via, legal to place */
+  function freeViaNetAt(gx, gy) {
+    var pad = padAtBoard(gx, -gy);
+    if (pad && pad.net) return pad.net;
+    var ink = viaInk();
+    for (var i = 0; i < ink.length; i++) {
+      var vp3 = viaInkPos(ink[i]);
+      var vn3 = ink[i].getAttribute('data-net');
+      if (vn3 && Math.hypot(vp3.x - gx, vp3.y - gy) <= viaInkSize(ink[i]) / 2 + 0.05) return vn3;
+    }
+    var segs = allSegHits();
+    for (var s2 = 0; s2 < segs.length; s2++) {
+      var x1 = parseFloat(segs[s2].getAttribute('x1'));
+      var y1 = parseFloat(segs[s2].getAttribute('y1'));
+      var x2 = parseFloat(segs[s2].getAttribute('x2'));
+      var y2 = parseFloat(segs[s2].getAttribute('y2'));
+      var q = snapOnSegment(gx, gy, x1, y1, x2, y2);
+      if (Math.hypot(q.x - gx, q.y - gy) <= 0.1) {
+        var tn3 = segs[s2].getAttribute('data-net');
+        if (tn3) return tn3;
+      }
+    }
+    if (viewGroups.gerber) {
+      var pourPt = svg.createSVGPoint();
+      pourPt.x = gx;
+      pourPt.y = gy;
+      var pours3 = viewGroups.gerber.querySelectorAll('path[fill-rule]');
+      for (var po = 0; po < pours3.length; po++) {
+        var pnet = pours3[po].getAttribute('data-net');
+        if (!pnet) continue;
+        try {
+          if (pours3[po].isPointInFill(pourPt)) return pnet;
+        } catch (e5) {}
+      }
+    }
+    return null;
+  }
+  function freeViaMove(gx, gy) {
+    if (!freeVia) return;
+    freeVia.x = gx;
+    freeVia.y = gy;
+    freeVia.net = freeViaNetAt(gx, gy);
+    // the stacked obstacle world for the ADOPTED net — the same rule the
+    // armed route via measures: every copper layer's foreign ink + pads
+    var key = freeVia.net || '';
+    if (!freeVia.obsCache[key]) {
+      var obs = [];
+      var gs2 = copperGroups();
+      for (var gi2 = 0; gi2 < gs2.length; gi2++) obs = obs.concat(buildObstacles(gs2[gi2], freeVia.net));
+      for (var pi4 = 0; pi4 < padManifest.length; pi4++) {
+        var p4 = padManifest[pi4];
+        if (freeVia.net && p4.net === freeVia.net) continue;
+        obs.push({ x0: p4.x - p4.w / 2, x1: p4.x + p4.w / 2, y0: -(p4.y + p4.h / 2), y1: -(p4.y - p4.h / 2), net: p4.net || 'N/C', pad: true });
+      }
+      freeVia.obsCache[key] = obs;
+    }
+    var margin = clearanceMargin(freeVia.obsCache[key], [{ x: gx, y: gy }, { x: gx, y: gy }], freeVia.size);
+    freeVia.bad = margin < 0 || viaOverlapsVia(gx, gy, freeVia.size);
+    routeUiGroup().querySelectorAll('.free-via').forEach(function (el) {
+      el.setAttribute('cx', gx.toFixed(3));
+      el.setAttribute('cy', gy.toFixed(3));
+      el.classList.toggle('bad', freeVia.bad);
+    });
+  }
+  function freeViaPlace() {
+    if (!freeVia || freeVia.x === null) return;
+    if (freeVia.bad) {
+      if (statusEl && !statusLocked())
+        statusEl.textContent = 'via clearance violation \u2014 foreign copper inside the keep-out ring; move it before clicking';
+      return;
+    }
+    // no copper under it: a FLOATING via — legal anywhere (the library's
+    // net is optional and the canonical grammar emits the net-less
+    // statement); copper found under it adopts that net (pads, barrels,
+    // traces, pour regions — a stitching via takes the pour's net)
+    var net = freeVia.net;
+    var size = freeVia.size;
+    var drill = freeVia.drill;
+    var vx = freeVia.x;
+    var vy = freeVia.y;
+    freeViaClear();
+    var made = viaInkAndEntry(vx, vy, net, size, drill);
+    renderLayoutMoves(); // arms Apply
+    refreshRatsnest();
+    pushUndo(
+      'via ' + net,
+      function () {
+        routedTracks.splice(routedTracks.indexOf(made.entry), 1);
+        for (var u2 = 0; u2 < made.hosted.length; u2++) {
+          if (made.hosted[u2].hole) made.hosted[u2].hole.remove();
+          made.hosted[u2].el.remove();
+        }
+        renderLayoutMoves();
+        refreshRatsnest();
+      },
+      function () {
+        routedTracks.push(made.entry);
+        for (var r3 = 0; r3 < made.hosted.length; r3++) {
+          made.hosted[r3].parent.appendChild(made.hosted[r3].el);
+          if (made.hosted[r3].hole && made.hosted[r3].holeParent) made.hosted[r3].holeParent.appendChild(made.hosted[r3].hole);
+        }
+        renderLayoutMoves();
+        refreshRatsnest();
+      },
+    );
+    if (statusEl && !statusLocked())
+      statusEl.textContent = net
+        ? 'via placed on ' + net + ' \u2300' + fmtW(size) + '/' + fmtW(drill) + ' \u2014 apply & rebuild writes it into source'
+        : 'via placed \u2300' + fmtW(size) + '/' + fmtW(drill) + ' (floating \u2014 no net) \u2014 apply & rebuild writes it into source';
+  }
+  /** a placed via's ink + apply entry, without undo or status — shared by
+   *  the free placement and the E panel's net change (a net change IS a
+   *  delete + re-place netted, riding the same payloads) */
+  function viaInkAndEntry(vx, vy, net, size, drill) {
+    // the barrel flashes on EVERY copper layer (a through via rings on all
+    // of them — the board's own standalone vias plot four flashes here)
+    var els = [];
+    var gs3 = copperGroups();
+    for (var gi3 = 0; gi3 < gs3.length; gi3++) {
+      var vc2 = document.createElementNS(SVGNSL, 'circle');
+      vc2.setAttribute('cx', vx.toFixed(3));
+      vc2.setAttribute('cy', vy.toFixed(3));
+      vc2.setAttribute('r', (size / 2).toFixed(3));
+      vc2.setAttribute('fill', 'var(' + '--ink-' + gs3[gi3].getAttribute('data-layer-id') + ')');
+      vc2.setAttribute('data-route', '1');
+      if (net) vc2.setAttribute('data-net', net);
+      gs3[gi3].appendChild(vc2);
+      vc2.__hole = viaHoleFor(vc2, drill);
+      els.push(vc2);
+    }
+    // the apply bridge entry: a via-only track — the writer emits its
+    // standalone via statement into the net's section (net-less when
+    // floating, exactly the oracle's canonical form)
+    var entry = {
+      net: net,
+      w: 0.3,
+      power: null,
+      impedance: null,
+      pieces: [],
+      vias: [{ x: +vx.toFixed(3), y: +(-vy).toFixed(3), size: size, drill: drill }],
+      from: { ref: '(trace)', pin: '' },
+      to: null,
+    };
+    routedTracks.push(entry);
+    // the hosts captured NOW — parentNode reads null on detached elements
+    // and a naive undo/redo re-append would throw
+    var hosted = [];
+    for (var hi2 = 0; hi2 < els.length; hi2++) {
+      hosted.push({
+        el: els[hi2],
+        parent: els[hi2].parentNode,
+        hole: els[hi2].__hole,
+        holeParent: els[hi2].__hole ? els[hi2].__hole.parentNode : null,
+      });
+    }
+    return { entry: entry, els: els, hosted: hosted };
+  }
+  /** the E panel's NET change: a via's net is its electrical identity —
+   *  rewriting it in place is a delete + re-place netted, which rides the
+   *  existing apply payloads (routedDeletes takes the old statement,
+   *  routedTracks writes the new one) and works for session AND board-built
+   *  barrels alike */
+  function setViaNet(v, newNet, size, drill) {
+    var vp = viaInkPos(v);
+    var x = +vp.x.toFixed(3);
+    var y = +vp.y.toFixed(3);
+    // snapshot the old state for undo: the owning entry, the ink with its
+    // hosts, and the delete-record watermark
+    var oldEntry = null;
+    for (var ri = 0; ri < routedTracks.length && !oldEntry; ri++)
+      for (var vi = 0; vi < routedTracks[ri].vias.length; vi++)
+        if (Math.hypot(routedTracks[ri].vias[vi].x - x, routedTracks[ri].vias[vi].y + y) < 0.02) {
+          oldEntry = routedTracks[ri];
+          break;
+        }
+    var oldInk = [];
+    var gsN = copperGroups();
+    for (var giN = 0; giN < gsN.length; giN++)
+      for (var ciN = gsN[giN].children.length - 1; ciN >= 0; ciN--) {
+        var elN = gsN[giN].children[ciN];
+        if (elN.tagName !== 'circle' || !elN.getAttribute('data-route')) continue;
+        if (Math.hypot(parseFloat(elN.getAttribute('cx')) - x, parseFloat(elN.getAttribute('cy')) - y) > 0.02) continue;
+        oldInk.push({ el: elN, parent: gsN[giN], hole: elN.__hole, holeParent: elN.__hole ? elN.__hole.parentNode : null });
+      }
+    var delsBefore = routedDeletes.length;
+    removeViasAt(x, -y, true);
+    var current = { made: viaInkAndEntry(x, y, newNet, size, drill) };
+    renderLayoutMoves();
+    refreshRatsnest();
+    pushUndo(
+      'via net ' + (newNet || '(none)'),
+      function () {
+        routedTracks.splice(routedTracks.indexOf(current.made.entry), 1);
+        for (var u3 = 0; u3 < current.made.hosted.length; u3++) {
+          if (current.made.hosted[u3].hole) current.made.hosted[u3].hole.remove();
+          current.made.hosted[u3].el.remove();
+        }
+        routedDeletes.length = delsBefore;
+        if (oldEntry && routedTracks.indexOf(oldEntry) < 0) routedTracks.push(oldEntry);
+        for (var r4 = 0; r4 < oldInk.length; r4++) {
+          oldInk[r4].parent.appendChild(oldInk[r4].el);
+          if (oldInk[r4].hole && oldInk[r4].holeParent) oldInk[r4].holeParent.appendChild(oldInk[r4].hole);
+        }
+        renderLayoutMoves();
+        refreshRatsnest();
+        viaHiSync();
+      },
+      function () {
+        removeViasAt(x, -y, true);
+        current.made = viaInkAndEntry(x, y, newNet, size, drill);
+        renderLayoutMoves();
+        refreshRatsnest();
+      },
+    );
+    if (statusEl && !statusLocked())
+      statusEl.textContent = 'via net \u2192 ' + (newNet || '(floating \u2014 no net)') + ' \u2014 apply & rebuild writes it into source';
   }
   function copperCanonList() {    // ordered top→bottom; the stackup island's copperLayers is the truth,
     // the rendered copper groups the fallback
@@ -10643,6 +11388,11 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     routeCommit();
   });
   window.addEventListener('mousemove', function (ev) {
+    if (freeVia) {
+      var fg = gerberAt(ev.clientX, ev.clientY);
+      freeViaMove(fg.x, fg.y);
+      return;
+    }
     if (!routeState) return;
     var g = gerberAt(ev.clientX, ev.clientY);
     routeFollow(g.x, g.y);
@@ -10766,7 +11516,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     else if (segDrag.axis === 'x') d = pg.x - segDrag.startG.x;
     else d = ((pg.x - segDrag.startG.x) - (pg.y - segDrag.startG.y)) / 2; // pos diag
     if (segDrag.axis === 'neg') d = ((pg.x - segDrag.startG.x) + (pg.y - segDrag.startG.y)) / 2;
-    if (!layoutSnapBox || layoutSnapBox.checked) d = Math.round(d / layoutGridSize) * layoutGridSize;
+    if (!layoutSnapBox || layoutSnapBox.checked) d = Math.round(d / layoutSnapStep) * layoutSnapStep;
     var apply = d !== segDrag.lastD;
     segDrag.lastD = d;
     if (!apply) return;
@@ -11455,11 +12205,27 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     if (compGrab) compGrabMove();
   });
   window.addEventListener('pointerdown', function (ev) {
+    // an apply owns the pipeline: every click dies here, at the FIRST
+    // capture on the chain — nothing downstream (svg handlers, part grabs,
+    // route anchors, panel clicks) sees a press mid-build
+    if (applyBusy) {
+      ev.stopPropagation();
+      ev.preventDefault();
+      return;
+    }
     // the drop click: left button anywhere while a grab is live commits
     if (imageGrab && ev.button === 0 && viewMode === 'layout') {
       ev.stopPropagation();
       ev.preventDefault();
       imageGrabDrop(true);
+      return;
+    }
+    // an armed FREE VIA owns the click anywhere: place it (a refusal keeps
+    // the arm live, exactly like the armed route via's click)
+    if (freeVia && ev.button === 0 && viewMode === 'layout') {
+      ev.stopPropagation();
+      ev.preventDefault();
+      freeViaPlace();
       return;
     }
     if (compGrab && ev.button === 0 && viewMode === 'layout') {
@@ -11605,6 +12371,208 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   // flashes go too; "record" pushes a bridge delete so the source chain
   // truncates at the via on apply (session vias need no record — their own
   // route entry regenerates)
+  // ---- live pour recompute -------------------------------------------------
+  // A zone's rendered fill (path[fill-rule] fragments) is SERVER geometry:
+  // deleting a via or trace leaves its clearance hole as the absence of
+  // fill. The recompute rebuilds the WHOLE zone from live page state — the
+  // zone polygon painted in the pour's own style, masked by the same
+  // clearance discipline the fill engine keeps: foreign traces as fat
+  // black strokes (width + 2x clearance), foreign pads as grown rects,
+  // foreign barrels as discs, and same-net pads as thermal reliefs (a
+  // black grown rect with white bridge spokes painted over it). The
+  // zone's clearance/thermal numbers ride the zones island. Pure paint:
+  // unattributed, never an obstacle, replaced wholesale by the rebuild's
+  // true fill.
+  function zoneContainsPt(zone, x, y) {
+    var pts = zone.pts;
+    var inside = false;
+    for (var i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+      var xi = pts[i].x, yi = pts[i].y, xj = pts[j].x, yj = pts[j].y;
+      if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
+    }
+    return inside;
+  }
+  function zonePourFragments(lg) {
+    var out = [];
+    var all = lg.querySelectorAll('path[data-live-fill], path[fill-rule]');
+    for (var i = 0; i < all.length; i++) if (all[i].parentNode) out.push(all[i]);
+    return out;
+  }
+  function recomputeZoneFill(lg, zone) {
+    var frags = zonePourFragments(lg);
+    // pours render with their net stamped; when any fragment carries it,
+    // ONLY those belong to this zone (a layer group can host other nets'
+    // fill-rule geometry)
+    var netted = frags.filter(function (f) { return f.getAttribute('data-net') === (zone.net || ''); });
+    if (netted.length) frags = netted;
+    if (!frags.length) return false;
+    var clr = isFinite(zone.clearance) && zone.clearance >= 0 ? zone.clearance : 0.2;
+    var tGap = isFinite(zone.thermalGap) && zone.thermalGap > 0 ? zone.thermalGap : 0.254;
+    var tBridge = isFinite(zone.thermalBridgeWidth) && zone.thermalBridgeWidth > 0 ? zone.thermalBridgeWidth : 0.4;
+    var net = zone.net || '';
+    var maskId = 'zone-live-' + Math.random().toString(36).slice(2, 8);
+    var mask = document.createElementNS(SVGNSL, 'mask');
+    mask.setAttribute('id', maskId);
+    mask.setAttribute('maskUnits', 'userSpaceOnUse');
+    var xs = [], ys = [];
+    for (var pi = 0; pi < zone.pts.length; pi++) { xs.push(zone.pts[pi].x); ys.push(zone.pts[pi].y); }
+    var bx0 = Math.min.apply(null, xs) - 3, by0 = Math.min.apply(null, ys) - 3;
+    var bw = Math.max.apply(null, xs) - bx0 + 6, bh = Math.max.apply(null, ys) - by0 + 6;
+    // the mask REGION must be explicit: the default (-10%..120% of the
+    // viewport) resolves against the board-mm viewBox in a space the y-flip
+    // has already inverted, and the zone's negative-y extent lands entirely
+    // OUTSIDE it — the mask evaluates empty and the whole pour paints as
+    // nothing (the live "zone turned black": attributes all sane, zero
+    // pixels; seen live after via deletes, fixed by an explicit region)
+    mask.setAttribute('x', bx0.toFixed(3));
+    mask.setAttribute('y', by0.toFixed(3));
+    mask.setAttribute('width', bw.toFixed(3));
+    mask.setAttribute('height', bh.toFixed(3));
+    var base = document.createElementNS(SVGNSL, 'rect');
+    base.setAttribute('x', bx0.toFixed(3));
+    base.setAttribute('y', by0.toFixed(3));
+    base.setAttribute('width', bw.toFixed(3));
+    base.setAttribute('height', bh.toFixed(3));
+    base.setAttribute('fill', '#fff');
+    mask.appendChild(base);
+    var mRect = function (x0, y0, x1, y1, fill) {
+      var r = document.createElementNS(SVGNSL, 'rect');
+      r.setAttribute('x', x0.toFixed(3));
+      r.setAttribute('y', y0.toFixed(3));
+      r.setAttribute('width', (x1 - x0).toFixed(3));
+      r.setAttribute('height', (y1 - y0).toFixed(3));
+      r.setAttribute('fill', fill);
+      mask.appendChild(r);
+      return r;
+    };
+    // foreign trace ink: clone the geometry with a fat black stroke — the
+    // channel is the trace swept by width/2 + clearance
+    var ink = lg.querySelectorAll('path[data-net], line[data-net], path[data-seg], line[data-seg]');
+    for (var ik = 0; ik < ink.length; ik++) {
+      var el = ink[ik];
+      if (el.classList && (el.classList.contains('route-hit') || el.classList.contains('pad-labels') || el.classList.contains('route-auto-stripe'))) continue;
+      var elNet = el.getAttribute('data-net');
+      if (elNet === net) continue; // same-net copper connects
+      var tw = parseFloat(el.getAttribute('data-w') || el.getAttribute('stroke-width') || '0.3') || 0.3;
+      var bl = el.cloneNode(false);
+      bl.removeAttribute('id');
+      bl.removeAttribute('class');
+      bl.removeAttribute('data-net');
+      bl.removeAttribute('data-seg');
+      bl.removeAttribute('data-w');
+      // the source trace may carry the net-dimmer's opacity — in the mask a
+      // half-transparent stroke is a half-open channel; knockouts are binary
+      bl.removeAttribute('opacity');
+      bl.setAttribute('stroke', '#000');
+      bl.setAttribute('stroke-width', (tw + 2 * clr).toFixed(3));
+      bl.setAttribute('fill', 'none');
+      bl.setAttribute('stroke-linecap', 'round');
+      mask.appendChild(bl);
+    }
+    // foreign barrels in this layer group: plotted flashes + session vias
+    var barrels = lg.querySelectorAll('use[data-net]:not([data-ref]), circle[data-route]');
+    for (var bk = 0; bk < barrels.length; bk++) {
+      var be = barrels[bk];
+      if (be.getAttribute('data-net') === net) continue;
+      var vsz = viaInkSize(be);
+      if (!vsz) continue;
+      var bp = viaInkPos(be);
+      mRect(bp.x - vsz / 2 - clr, bp.y - vsz / 2 - clr, bp.x + vsz / 2 + clr, bp.y + vsz / 2 + clr, '#000');
+    }
+    // pads on this layer: same-net get thermal reliefs, everything else
+    // (foreign or unconnected) gets a plain grown rect — unconnected pad
+    // copper is real copper
+    var layerName = lg.getAttribute('data-layer-name') || '';
+    var zoneCanon = copperCanon(zone.layer) || zone.layer; // board files already speak canon
+    var spokes = [];
+    for (var pk = 0; pk < padManifest.length; pk++) {
+      var pd = padManifest[pk];
+      // pad layers speak canon ('F.Cu', '*.Cu'); the group's name is a file
+      // stem — canon both sides
+      if (
+        pd.layers &&
+        pd.layers.length &&
+        !pd.layers.some(function (l) {
+          if (l === '*.Cu') return true;
+          return (copperCanon(l || '') || l) === zoneCanon;
+        })
+      )
+        continue;
+      var px = pd.x, py = -pd.y; // board y-down -> gerber y-up
+      var hw = (pd.w || 1) / 2, hh = (pd.h || 1) / 2;
+      if (pd.net === net) {
+        // thermal: the relief ring is the gap; the spokes bridge it. The
+        // pad's own copper paints above the pour either way
+        mRect(px - hw - tGap, py - hh - tGap, px + hw + tGap, py + hh + tGap, '#000');
+        var tb = tBridge / 2;
+        spokes.push([px - hw - tGap - 0.01, py - tb, px + hw + tGap + 0.01, py + tb]);
+        spokes.push([px - tb, py - hh - tGap - 0.01, px + tb, py + hh + tGap + 0.01]);
+      } else {
+        mRect(px - hw - clr, py - hh - clr, px + hw + clr, py + hh + clr, '#000');
+      }
+    }
+    // spokes paint LAST: over the black relief rings, reconnecting pad to pour
+    for (var sk = 0; sk < spokes.length; sk++) mRect(spokes[sk][0], spokes[sk][1], spokes[sk][2], spokes[sk][3], '#fff');
+    // the pour's paint: attribute first (the fragments carry their style in
+    // the wild), computed style as the fallback, and a sane default so the
+    // fill is never invisible
+    var fillStyle = frags[0].getAttribute('fill') || getComputedStyle(frags[0]).fill || 'rgb(48, 222, 102)';
+    // the net-highlight dimmer may have stamped 0.06 over the fragments
+    // (stashing their true opacity in __netOp0) — the pour's own paint is
+    // the stashed value when present
+    var opStyle = frags[0].__netOp0 || frags[0].getAttribute('opacity') || '';
+    if (opStyle === null || opStyle === '') {
+      var fcs = getComputedStyle(frags[0]);
+      if (fcs.opacity && fcs.opacity !== '1') opStyle = fcs.opacity;
+    }
+    var d = 'M ' + zone.pts.map(function (q) { return q.x.toFixed(3) + ' ' + q.y.toFixed(3); }).join(' L ') + ' Z';
+    for (var fk = 0; fk < frags.length; fk++) frags[fk].remove();
+    var live = document.createElementNS(SVGNSL, 'path');
+    live.setAttribute('d', d);
+    live.setAttribute('fill', fillStyle);
+    if (opStyle !== null && opStyle !== undefined && opStyle !== '') live.setAttribute('opacity', opStyle);
+    live.setAttribute('data-live-fill', '1');
+    // the pour carries its net: the highlight dimmer's un-attributed sweep
+    // would otherwise blanket it to 0.06 (an unlit pour on the dark canvas
+    // reads as the zone "turning black"), and pass 1 now dims/undims it with
+    // the fragments' own semantics. fill-rule marks it pour paint for the
+    // obstacle scans (fills are the fill engine's clearance, never a routing
+    // obstacle) and keeps zonePourFragments finding it on re-recompute
+    if (net) live.setAttribute('data-net', net);
+    live.setAttribute('fill-rule', 'nonzero');
+    live.setAttribute('pointer-events', 'none');
+    live.setAttribute('mask', 'url(#' + maskId + ')');
+    lg.insertBefore(live, lg.firstChild);
+    svg.appendChild(mask);
+    return true;
+  }
+  /** Rebuild every poured zone containing a board-frame point, on the given
+   *  layer groups (a via flashes on every copper layer). */
+  function recomputeZonesAt(x, y, groups) {
+    for (var z = 0; z < boardZoneOutlines.length; z++) {
+      var zone = boardZoneOutlines[z];
+      if (zone.keepout || !zoneContainsPt(zone, x, y)) continue;
+      for (var g = 0; g < groups.length; g++) {
+        var zoneCanon = copperCanon(zone.layer) || zone.layer; // board files already speak canon
+        if (copperCanon(groups[g].getAttribute('data-layer-name') || '') !== zoneCanon) continue;
+        recomputeZoneFill(groups[g], zone);
+      }
+    }
+  }
+  /** Rebuild every poured zone on the given layer groups (a trace delete
+   *  may close channels anywhere along its run). */
+  function recomputeZonesOnLayers(groups) {
+    for (var z = 0; z < boardZoneOutlines.length; z++) {
+      var zone = boardZoneOutlines[z];
+      if (zone.keepout) continue;
+      for (var g = 0; g < groups.length; g++) {
+        var zoneCanon = copperCanon(zone.layer) || zone.layer; // board files already speak canon
+        if (copperCanon(groups[g].getAttribute('data-layer-name') || '') !== zoneCanon) continue;
+        recomputeZoneFill(groups[g], zone);
+      }
+    }
+  }
+
   function removeViasAt(bx, by, record) {
     var removed = 0;
     var sessionHit = false;
@@ -11649,6 +12617,8 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     var flashed = viaInk();
     var vnet = null;
     var flashRemoved = false;
+    var flashSize = 0;
+    var flashGroups = [];
     for (var fi = 0; fi < flashed.length; fi++) {
       var fe = flashed[fi];
       if (fe.tagName !== 'use') continue;
@@ -11656,9 +12626,24 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       if (Math.hypot(fp.x - bx, fp.y + by) > 0.02) continue;
       viaSel.delete(fe);
       vnet = vnet || fe.getAttribute('data-net') || null;
+      if (!flashSize) flashSize = viaInkSize(fe);
+      var fgrp = fe.closest ? fe.closest('g[data-kind="copper"]') : null;
+      if (fgrp && flashGroups.indexOf(fgrp) === -1) flashGroups.push(fgrp);
       fe.remove();
       flashRemoved = true;
       removed++;
+    }
+    // selection mirrors outlive their barrel: the on-top rings are plain
+    // circles in #via-sel-top, wiped only by the next viaHiSync — sweep
+    // them here so no caller's missed sync paints a ring where the via was
+    var topRings = viaSelTopGroup().querySelectorAll('circle');
+    for (var tr2 = 0; tr2 < topRings.length; tr2++) {
+      var tc = topRings[tr2];
+      var tx = parseFloat(tc.getAttribute('cx'));
+      var ty = parseFloat(tc.getAttribute('cy'));
+      if (!isFinite(tx) || !isFinite(ty)) continue;
+      if (Math.hypot(tx - bx, ty + by) > 0.02) continue;
+      tc.remove();
     }
     // the board-rendered DRILL hole outlives the flash that owned it —
     // take it too, unless a pad sits on the same spot (that hole is the
@@ -11690,6 +12675,11 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
           oc.remove();
         }
       }
+      // the pour around the deleted via: the authored fragments are server
+      // geometry with the barrel's clearance hole baked in — instead of
+      // painting a patch over the hole, REBUILD the zone's fill from live
+      // page state (recomputeZoneFill below) so the pour is whole again
+      if (flashGroups.length) recomputeZonesAt(bx, -by, flashGroups);
     }
     if (record && !sessionHit && removed)
       routedDeletes.push({ kind: 'via', net: vnet, x1: +bx.toFixed(3), y1: +by.toFixed(3), x2: +bx.toFixed(3), y2: +by.toFixed(3), layer: null });
@@ -11851,6 +12841,21 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       if (tr.__stripe) tr.__stripe.setAttribute('d', d);
     });
     segHiSync();
+    // the endpoint vias this delete swept are gone from viaSel (set
+    // bookkeeping inside removeViasAt) but their on-top mirror rings only
+    // die at a viaHiSync — without this, deleting a segment whose endpoint
+    // carried the ONLY selected via skipped the caller's conditional sync
+    // and left a white selection ring where the barrel was (seen live)
+    viaHiSync();
+    // the deleted segments' clearance channels close: rebuild every poured
+    // zone on the layers they ran through (the recompute reads the ink that
+    // SURVIVED the delete)
+    var zoneGroups = [];
+    segSel.forEach(function (h2) {
+      var lg2 = h2.closest ? h2.closest('g[data-kind=copper]') : null;
+      if (lg2 && zoneGroups.indexOf(lg2) < 0) zoneGroups.push(lg2);
+    });
+    if (zoneGroups.length) recomputeZonesOnLayers(zoneGroups);
     // interactive routes recorded this session: drop deleted segments from
     // their pieces so a subsequent apply doesn't re-add them; emptied
     // routes leave the bridge entirely. A delete that only described a
@@ -11929,27 +12934,6 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     );
     if (statusEl && !statusLocked()) statusEl.textContent = removedSegs + ' segment' + (removedSegs > 1 ? 's' : '') + ' deleted';
   }
-  // the nearest segment hit line under a press point, within its own stroke
-  // — a trace running under a part (through pad land or the body) stays
-  // clickable: its invisible hit line is the truth of where copper runs,
-  // and the part/pad keeps presses everywhere off the line
-  function segAt(g) {
-    var segs = allSegHits();
-    var best = null;
-    var bd = Infinity;
-    for (var i = 0; i < segs.length; i++) {
-      var x1 = +segs[i].getAttribute('x1'), y1 = +segs[i].getAttribute('y1');
-      var x2 = +segs[i].getAttribute('x2'), y2 = +segs[i].getAttribute('y2');
-      var q = snapOnSegment(g.x, g.y, x1, y1, x2, y2);
-      var d = Math.hypot(q.x - g.x, q.y - g.y);
-      var sw = Math.max(+segs[i].getAttribute('stroke-width') || 0.5, 0.5) / 2 + 0.1;
-      if (d < sw && d < bd) {
-        bd = d;
-        best = segs[i];
-      }
-    }
-    return best;
-  }
   // click a segment hit line: select exactly that segment (shift adds);
   // click a committed via: select it the same way — the via owns its own
   // point even where a hit line crosses it
@@ -12026,6 +13010,29 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
           return;
         var fgp = gerberAt(ev.clientX, ev.clientY);
         if (nearestTraceEnd(fgp)) return;
+        // a press ON a claimed glyph's own INK aims at its text: the layer
+        // groups carry pointer-events:none, so the claimed paths never
+        // receive the press themselves and copper's generous capture would
+        // eat it for the trace running through the label (U3's designator
+        // over the PROBE_1 corridor). The screen-space ink sampler sees
+        // through pointer-events, transforms included. Layout view only —
+        // the gerber view keeps copper's press
+        if (viewMode === 'layout') {
+          var tstack = textStackNear(fgp);
+          for (var ts3 = 0; ts3 < tstack.length; ts3++) {
+            var tpaths =
+              layoutTextEls[tstack[ts3]] && layoutTextEls[tstack[ts3]].paths
+                ? layoutTextEls[tstack[ts3]].paths
+                : textPaths(tstack[ts3]);
+            for (var tp3 = 0; tp3 < tpaths.length; tp3++) {
+              if (tpaths[tp3].getAttribute('display') === 'none' || tpaths[tp3].style.display === 'none') continue;
+              if (pointNearPathInk(tpaths[tp3], ev.clientX, ev.clientY, 6)) {
+                textPointerDown(tstack[ts3], ev);
+                return;
+              }
+            }
+          }
+        }
         // screen px -> gerber mm, measured live (viewBox units, not css px)
         var g10 = gerberAt(ev.clientX + 10, ev.clientY);
         var pxMm = Math.abs(g10.x - fgp.x) > 1e-9 ? 10 / Math.abs(g10.x - fgp.x) : 1;
@@ -12048,6 +13055,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       }
       ev.stopPropagation();
       ev.preventDefault();
+      textSelClear(); // copper owns this press — a lingering text box dies here
       if (hitLine) t = hitLine; // the fallthrough segment logic reads t
       // KiCad parity: pressing copper lights its net (dims everything
       // else); Escape or an empty-space press clears
@@ -12887,17 +13895,12 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
           state = {};
         }
         state.__view = { k: k, tx: tx, ty: ty };
-    // the layout grid controls: the page reloads on every rebuild — the
-    // chosen grid step (0.1/0.25/0.5/1), snap on/off, visible grid, and
-    // mil units ride the same store so a rebuild doesn't reset them
-    if (typeof layoutGridSize === 'number' && isFinite(layoutGridSize)) {
-      state.__grid = {
-        size: layoutGridSize,
-        snap: !!(layoutSnapBox && layoutSnapBox.checked),
-        show: !!layoutGridShow,
-        mil: !!layoutMil,
+    // snap on/off rides the store so a rebuild doesn't reset it (the grid
+    // feature and the mil toggle are gone; snap is fixed at 0.5 mm)
+    state.__snap = {
+      snap: !!(layoutSnapBox && layoutSnapBox.checked),
+      step: layoutSnapStep,
       };
-    }
         localStorage.setItem(storeKey, JSON.stringify(state));
       } catch (e) {
         /* private mode etc. — the view just won't persist */
@@ -13208,6 +14211,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   // the px->unit conversion changes when the window resizes
   window.addEventListener('resize', renderMeasure);
   window.addEventListener('keydown', function (ev) {
+    if (applyBusy) return; // an apply owns the pipeline — even Escape waits
     if (ev.key === 'Escape') {
       if (segDrag) segDragEnd(false);
       if (helpEl.style.display !== 'none') helpEl.style.display = 'none';
@@ -13250,6 +14254,12 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       // a live M-grab cancels first (reverts the move), then routing
       if (imageGrab) {
         imageGrabDrop(false);
+        return;
+      }
+      // an armed FREE VIA cancels first — the route machinery below may
+      // also be mid-flight, but the arm never survives an Escape
+      if (freeVia) {
+        freeViaClear('via cancelled');
         return;
       }
       if (compGrab) {
@@ -13295,6 +14305,16 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   // ---- net highlighting + hover probing (X2 object attributes) ----
   var netDimmed = []; // elements dimmed by an active highlight, restored on clear
   var netWhitened = []; // matched elements painted pure white, restored on clear
+  // the dim floor: 0.06 (an early value) put dimmed copper below the dark
+  // theme's readability floor — the pour vanished outright and users read the
+  // board as "turned black" (reported live twice). Elements dim TO this
+  // ceiling but never ABOVE their authored opacity — a pour authored at 0.18
+  // stays its own wash, traces at 1.0 dim to 0.35: visible, but clearly
+  // recessed behind the lit net
+  function netDimOpacity(el) {
+    var o = parseFloat(el.getAttribute('opacity'));
+    return String(Math.min(isFinite(o) ? o : 1, 0.35));
+  }
   function clearNetHighlight() {
     // restore the PRIOR opacity, not removeAttribute: layout-view pours
     // carry a legitimate 0.18 (zone subduing) that a dim/whiten must not
@@ -13325,7 +14345,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     for (var i = 0; i < hits.length; i++) {
       if (hits[i].getAttribute(attr) !== value) {
         hits[i].__netOp0 = hits[i].getAttribute('opacity') || '';
-        hits[i].setAttribute('opacity', '0.06');
+        hits[i].setAttribute('opacity', netDimOpacity(hits[i]));
         netDimmed.push(hits[i]);
       } else {
         any = true;
@@ -13345,7 +14365,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         for (var ki = 0; ki < kids.length; ki++) {
           if (!kids[ki].hasAttribute(attr)) {
             kids[ki].__netOp0 = kids[ki].getAttribute('opacity') || '';
-            kids[ki].setAttribute('opacity', '0.06');
+            kids[ki].setAttribute('opacity', netDimOpacity(kids[ki]));
             netDimmed.push(kids[ki]);
           }
         }
@@ -13647,65 +14667,6 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     });
   }
 
-  // ---- export the current view as SVG / PNG ----
-  // pixelScale (png export) stamps explicit pixel dimensions at the target
-  // raster size — a unit-less viewBox-sized svg would decode at that tiny
-  // intrinsic resolution and the canvas would just upscale the blur
-  function exportSvgString(pixelScale) {
-    var clone = svg.cloneNode(true);
-    clone.removeAttribute('id');
-    var vb = svg.viewBox.baseVal;
-    clone.setAttribute('width', vb.width * (pixelScale || 1));
-    clone.setAttribute('height', vb.height * (pixelScale || 1));
-    // theme: resolve the canvas/cut color and copy dark-mode recolors
-    var canvas = getComputedStyle(document.getElementById('board-area')).backgroundColor;
-    clone.setAttribute('style', '--bg:' + canvas);
-    var extra = '';
-    // a layer theme carries its own silk/paste/drill colors on the group
-    // style vars (they ride along in the clone) — only the default palette
-    // needs the dark-canvas recolors baked into the export
-    if (!document.body.classList.contains('light') && !document.body.classList.contains('layer-themed')) {
-      extra +=
-        '[data-kind="silkscreen"],[data-kind="paste"]{fill:#d6d6d6;}' +
-        '[data-kind="silkscreen"] [stroke]:not([stroke="none"]),[data-kind="paste"] [stroke]:not([stroke="none"]){stroke:#d6d6d6 !important;}' +
-        '[data-kind="silkscreen"] [fill]:not([fill="none"]),[data-kind="paste"] [fill]:not([fill="none"]){fill:#d6d6d6 !important;}' +
-        '[data-kind="drill"]{fill:#2fbfae;}' +
-        '[data-kind="drill"] [stroke]:not([stroke="none"]){stroke:#2fbfae !important;}' +
-        '[data-kind="drill"] [fill]:not([fill="none"]){fill:#2fbfae !important;}';
-    }
-    // bake current element opacities (layer sliders + net highlight) into the clone
-    var live = svg.querySelectorAll('[opacity]');
-    var copy = clone.querySelectorAll('[opacity]');
-    for (var i = 0; i < live.length && i < copy.length; i++) copy[i].setAttribute('opacity', live[i].getAttribute('opacity'));
-    // bake the page-CSS-styled elements into explicit attributes: the
-    // exported file has no page stylesheet, so class-only styling would
-    // fall back to SVG defaults (black fills) — clear-polarity shapes must
-    // keep showing the canvas color and DRC markers must keep their red
-    var cuts = clone.querySelectorAll('.cut');
-    for (var ci = 0; ci < cuts.length; ci++) {
-      cuts[ci].setAttribute('fill', canvas);
-      cuts[ci].setAttribute('stroke', canvas);
-    }
-    var outers = clone.querySelectorAll('.drc-mark circle.outer');
-    for (var oi = 0; oi < outers.length; oi++) {
-      outers[oi].setAttribute('fill', 'rgba(229, 72, 77, 0.22)');
-      outers[oi].setAttribute('stroke', '#e5484d');
-    }
-    var inners = clone.querySelectorAll('.drc-mark circle.inner');
-    for (var ii = 0; ii < inners.length; ii++) inners[ii].setAttribute('fill', '#e5484d');
-    var bg = document.createElementNS('http://www.w3.org/2000/svg', 'style');
-    bg.textContent = 'svg{background:' + canvas + ';}' + extra;
-    clone.insertBefore(bg, clone.firstChild);
-    return new XMLSerializer().serializeToString(clone);
-  }
-  function download(name, blob) {
-    var a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = name;
-    a.click();
-    setTimeout(function () { URL.revokeObjectURL(a.href); }, 5000);
-  }
-
   document.getElementById('btn-fit').addEventListener('click', fit);
 
   // ---- Flip Board: view the board from the back ---------------------------
@@ -13855,17 +14816,12 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       };
     });
     state.__view = { k: k, tx: tx, ty: ty };
-    // the layout grid controls: the page reloads on every rebuild — the
-    // chosen grid step (0.1/0.25/0.5/1), snap on/off, visible grid, and
-    // mil units ride the same store so a rebuild doesn't reset them
-    if (typeof layoutGridSize === 'number' && isFinite(layoutGridSize)) {
-      state.__grid = {
-        size: layoutGridSize,
-        snap: !!(layoutSnapBox && layoutSnapBox.checked),
-        show: !!layoutGridShow,
-        mil: !!layoutMil,
+    // snap on/off rides the store so a rebuild doesn't reset it (the grid
+    // feature and the mil toggle are gone; snap is fixed at 0.5 mm)
+    state.__snap = {
+      snap: !!(layoutSnapBox && layoutSnapBox.checked),
+      step: layoutSnapStep,
       };
-    }
     try {
       localStorage.setItem(storeKey, JSON.stringify(state));
     } catch (e) {
@@ -13897,25 +14853,14 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   document.querySelectorAll('.layer-opacity').forEach(function (slider) {
     slider.addEventListener('input', function () { syncOpacity(slider); persist(); });
   });
-  // restore the grid controls (saved by persist(); absent = defaults)
-  if (saved.__grid) {
-    var g = saved.__grid;
-    if (isFinite(g.size) && g.size > 0) {
-      layoutGridSize = g.size;
+  // restore snap on/off (saved by persist(); absent = default on)
+  if (saved.__snap) {
+    if (layoutSnapBox) layoutSnapBox.checked = saved.__snap.snap !== false;
+    if (isFinite(saved.__snap.step) && saved.__snap.step > 0) {
+      layoutSnapStep = saved.__snap.step;
       // the options carry no value attrs — their text IS the value
-      if (layoutGridSel) layoutGridSel.value = String(g.size);
+      if (layoutSnapSel) layoutSnapSel.value = String(saved.__snap.step);
     }
-    if (layoutSnapBox) layoutSnapBox.checked = g.snap !== false;
-    layoutGridShow = !!g.show;
-    var gsBox = document.getElementById('layout-grid-show');
-    if (gsBox) gsBox.checked = layoutGridShow;
-    layoutMil = !!g.mil;
-    if (layoutMilBox) layoutMilBox.checked = layoutMil;
-    if (layoutMil) {
-      var lb = document.body.classList;
-      // nothing else to update — fmtPos reads layoutMil live
-    }
-    rebuildLayoutGrid();
   }
 
   // restore the flipped view BEFORE the saved viewport — the stored k/tx/ty
@@ -13952,6 +14897,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   if (saved.__pcbaTheme && saved.__pcbaTheme !== 'green-enig') applyPcbaTheme(saved.__pcbaTheme);
 
   window.addEventListener('keydown', function (ev) {
+    if (applyBusy) return; // view keys too — the page is mid-rebuild
     if (ev.key === '0' || ev.key === 'f') fit();
     if (ev.key === '+') zoomAt(viewCenter(), 1.3);
     if (ev.key === '-') zoomAt(viewCenter(), 1 / 1.3);
@@ -14152,6 +15098,22 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     });
     return out;
   };
+  // the currently SELECTED board zone, board frame — Enter probes the source
+  // line of the zone({...}) literal that authored it (the host bbox-matches
+  // the points). A zone selection is explicit (click or Tab cycle) and
+  // outlasts the gesture, exactly like the E and Del affordances it joins
+  window.typecadSelectedZone = function () {
+    if (boardZoneSel < 0 || !boardZoneOutlines[boardZoneSel]) return null;
+    var z = boardZoneOutlines[boardZoneSel];
+    return {
+      net: z.net || null,
+      layer: z.layer || null,
+      keepout: !!z.keepout,
+      pts: z.pts.map(function (p) {
+        return { x: +p.x.toFixed(3), y: +(-p.y).toFixed(3) };
+      }),
+    };
+  };
   window.typecadTraceSource = function (clientX, clientY) {
     if (!unnamedRoutes.length) return '';
     var g = gerberAt(clientX, clientY);
@@ -14341,6 +15303,10 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   #comp-search::placeholder { color: var(--muted); }
   #view-switch { padding: 8px 14px 0; }
   #view-mode { width: 100%; background: var(--btn-bg); color: var(--chrome-fg); border: 1px solid var(--btn-border); border-radius: 4px; padding: 5px 8px; font: inherit; cursor: pointer; }
+  /* deferred-view / heavy-solve spinner: names what is being calculated */
+  #view-busy { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 60; display: flex; align-items: center; gap: 10px; background: rgba(18, 22, 27, 0.94); color: var(--chrome-fg, #d8dee4); border: 1px solid var(--btn-border, #3a4149); border-radius: 8px; padding: 12px 18px; font: 13px/1.4 system-ui, sans-serif; box-shadow: 0 6px 24px rgba(0,0,0,.45); pointer-events: none; }
+  .busy-ring { width: 16px; height: 16px; border-radius: 50%; border: 2px solid rgba(255,255,255,.25); border-top-color: rgb(48, 222, 102); animation: busy-spin .8s linear infinite; flex: none; }
+  @keyframes busy-spin { to { transform: rotate(360deg); } }
   #pcba-theme-box { padding: 8px 14px 0; }
   #pcba-theme-label { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; margin: 0 0 4px; }
   #pcba-theme { width: 100%; background: var(--btn-bg); color: var(--chrome-fg); border: 1px solid var(--btn-border); border-radius: 4px; padding: 5px 8px; font: inherit; cursor: pointer; }
@@ -14392,12 +15358,32 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   /* movable texts read as grabbable, and a grabbed one is highlighted */
   body.typecad-layout #yflip path[data-text] { cursor: move; }
   #yflip path.layout-text-sel { stroke: var(--sel) !important; }
+  /* the selected text's marker — same ink family as the part selection, so
+     it reads as "selected" everywhere the glyph recolor cannot (white
+     silk/fab on the dark theme's white selection ink, or a text whose
+     strokes another label claimed). non-scaling stroke keeps the box a
+     hairline at every zoom */
+  #layout-text-sel-box {
+    fill: var(--sel-box);
+    stroke: var(--sel);
+    stroke-width: 1.5px;
+    vector-effect: non-scaling-stroke;
+    cursor: move;
+  }
   /* the handle itself paints nothing — the footprint's own ink (pads, silk,
      fab outline) already shows the part, KiCad-style. It stays the pointer
      target via inherited pointer-events:all, with NO hover ghost: hovering
-     draws nothing (selection and warnings are the only part feedback) */
+     draws nothing (selection and warnings are the only part feedback).
+     stroke-width 0 keeps pointer-events:all from counting the DEFAULT 1px
+     (=1mm board units) stroke band as a hit — that halo selected parts
+     from outside their body */
   #layout-overlay .layout-comp rect,
-  #layout-overlay .layout-comp polygon { fill: transparent; stroke: none; stroke-linejoin: round; }
+  #layout-overlay .layout-comp polygon {
+    fill: transparent;
+    stroke: none;
+    stroke-width: 0;
+    stroke-linejoin: round;
+  }
   #layout-overlay .layout-comp.layout-back rect,
   #layout-overlay .layout-comp.layout-back polygon { stroke: none; fill: transparent; }
   /* a part's body reads as movable ON HOVER (KiCad parity — the cursor
@@ -14509,6 +15495,9 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
        buttons (the hint span gets its own bound below) */
     max-width: 300px;
   }
+  /* an apply in flight owns the pipeline: the disabled cursor everywhere,
+     the clicks and keybinds already swallowed at their handlers' tops */
+  body.applying, body.applying * { cursor: not-allowed !important; }
   #width-pop.open { display: flex; }
   #width-pop b {
     color: #4fc1ff; margin: 2px 0 -3px; padding-bottom: 3px;
@@ -14611,11 +15600,11 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     <button id="btn-theme" class="icon-btn" title="toggle dark/light theme"></button>
   </header>
   ${
-    options.pcbaSvg || options.blueprintSvg
+    options.pcbaSvg || options.blueprintSvg || (options.deferredViews && options.deferredViews.length)
       ? `<div id="view-switch">
   <select id="view-mode" title="board view">
     <option value="gerber">Gerber view</option>
-    <option value="pcba">PCBA view</option>${options.blueprintSvg ? '\n    <option value="blueprint">Blueprint view</option>' : ''}${options.schematicSvg ? `\n    <option value="schematic">ngspice view</option>\n    <option value="thermal">Copper ΔT</option>` : ''}${
+    <option value="pcba">PCBA view</option>${options.blueprintSvg || (options.deferredViews ?? []).includes('blueprint') ? '\n    <option value="blueprint">Blueprint view</option>' : ''}${options.schematicSvg || (options.deferredViews ?? []).includes('schematic') ? `\n    <option value="schematic">ngspice view</option>\n    <option value="thermal">Copper ΔT</option>` : ''}${
     options.layoutComponents && options.layoutComponents.length
       ? `
     <option value="layout">Layout</option>`
@@ -14626,7 +15615,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       : ''
   }
   ${
-    options.pcbaSvg && options.pcbaThemes && options.pcbaThemes.length > 0
+    (options.pcbaSvg || (options.deferredViews ?? []).includes('pcba')) && options.pcbaThemes && options.pcbaThemes.length > 0
       ? `<div id="pcba-theme-box" style="display:none">
   <div id="pcba-theme-label">Theme</div>
   <select id="pcba-theme" title="pcba theme">${options.pcbaThemes
@@ -14636,7 +15625,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       : ''
   }
   ${
-    options.schematicSvg && options.netOp
+    options.schematicSvg || (options.deferredViews ?? []).includes('schematic')
       ? `<div id="volt-legend-box" style="display:none">
   <div id="volt-legend-label">Trace voltage</div>
   <div id="volt-legend-bar"></div>
@@ -14671,9 +15660,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
 <div id="layout-box" style="display:none">
   <div class="side-label">Layout</div>
   <div id="layout-keys"><span class="chip chip-striped">autorouted</span><span class="chip chip-solid">TrackBuilder</span><span class="chip chip-grey">ripped up</span></div>
-  <label><input type="checkbox" id="layout-snap" checked> snap <select id="layout-grid"><option>0.1</option><option>0.25</option><option selected>0.5</option><option>1</option></select> mm</label>
-  <label><input type="checkbox" id="layout-grid-show"> grid</label>
-  <label><input type="checkbox" id="layout-mil"> mil</label>
+  <label><input type="checkbox" id="layout-snap" checked> snap <select id="layout-snap-step" title="snap step (mm)"><option>0.1</option><option>0.25</option><option selected>0.5</option><option>1</option></select></label>
 
   <div id="layout-tools">
     <button id="layout-align" type="button" disabled>align row</button>
@@ -14731,40 +15718,35 @@ ${compactRows}
           '<g id="panzoom"><g id="view-gerber"><g id="yflip" transform="scale(1,-1)">',
         );
       const overlays = '<g id="measure"></g><g id="drc"></g><g id="typecad-probe"></g>';
-      if (!options.pcbaSvg && !options.blueprintSvg && !options.schematicSvg) {
+      const deferred = options.deferredViews ?? [];
+      if (!options.pcbaSvg && !options.blueprintSvg && !options.schematicSvg && deferred.length === 0) {
         // gerber only: close yflip + view-gerber, overlays in panzoom
         return withGerber.replace('</g></g></svg>', `</g></g>${overlays}</g></svg>`);
       }
       // each extra view's inner carries its own id="board" group — rename
       // them so the root svg stays the only #board, and its labels group so
-      // ids stay unique too
+      // ids stay unique too. A DEFERRED view ships an empty placeholder
+      // instead: the page fills it on first switch (host bridge renders the
+      // part on demand — the default view never pays for views unused)
       const views: string[] = [];
       let union = splitSvg(svg).viewBox;
-      if (options.pcbaSvg) {
-        const pcba = splitSvg(options.pcbaSvg);
-        union = unionViewBox(union, pcba.viewBox);
+      const partDefs: Array<{ key: 'pcba' | 'blueprint' | 'schematic'; svg?: string; boardId: string; labelsId: string }> = [
+        { key: 'pcba', svg: options.pcbaSvg, boardId: 'pcba-board', labelsId: 'pcba-labels' },
+        { key: 'blueprint', svg: options.blueprintSvg, boardId: 'bp-board', labelsId: 'bp-labels' },
+        { key: 'schematic', svg: options.schematicSvg, boardId: 'sch-board', labelsId: 'sch-labels' },
+      ];
+      for (const def of partDefs) {
+        if (!def.svg && !deferred.includes(def.key)) continue;
+        if (!def.svg) {
+          views.push(`<g id="view-${def.key}" class="view-deferred" style="display:none"></g>`);
+          continue;
+        }
+        const part = splitSvg(def.svg);
+        union = unionViewBox(union, part.viewBox);
         views.push(
-          `<g id="view-pcba" style="display:none">${pcba.inner
-            .replace('<g id="board"', '<g id="pcba-board"')
-            .replace('<g id="labels"', '<g id="pcba-labels"')}</g>`,
-        );
-      }
-      if (options.blueprintSvg) {
-        const bp = splitSvg(options.blueprintSvg);
-        union = unionViewBox(union, bp.viewBox);
-        views.push(
-          `<g id="view-blueprint" style="display:none">${bp.inner
-            .replace('<g id="board"', '<g id="bp-board"')
-            .replace('<g id="labels"', '<g id="bp-labels"')}</g>`,
-        );
-      }
-      if (options.schematicSvg) {
-        const sch = splitSvg(options.schematicSvg);
-        union = unionViewBox(union, sch.viewBox);
-        views.push(
-          `<g id="view-schematic" style="display:none">${sch.inner
-            .replace('<g id="board"', '<g id="sch-board"')
-            .replace('<g id="labels"', '<g id="sch-labels"')}</g>`,
+          `<g id="view-${def.key}" style="display:none">${part.inner
+            .replace('<g id="board"', `<g id="${def.boardId}"`)
+            .replace('<g id="labels"', `<g id="${def.labelsId}"`)}</g>`,
         );
       }
       return withGerber
@@ -14773,6 +15755,8 @@ ${compactRows}
     })()
   }
   <div id="status"></div>
+  <div id="view-busy" style="display:none"><div class="busy-ring"></div><span id="view-busy-text">working\u2026</span></div>
+  <script id="deferred-views" type="application/json">${JSON.stringify(options.deferredViews ?? []).replace(/</g, '\\u003c')}</script>
   <script id="drc-data" type="application/json">${JSON.stringify(options.drcMarkers ?? []).replace(/</g, '\\u003c')}</script>
   <script id="net-op" type="application/json">${
     options.netOp ? JSON.stringify(options.netOp).replace(/</g, '\\u003c') : ''

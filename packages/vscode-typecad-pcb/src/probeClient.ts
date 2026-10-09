@@ -159,6 +159,9 @@ export interface LayoutRebuildPayload {
   /** applied artwork deleted in the view — its statement goes */
   imageDeletes?: ImageSourceDelete[];
   classEdits?: Array<{ name: string; values: Record<string, number> }>;
+  /** free board texts deleted in the view — the matching typecad.text({…})
+   *  statement goes; the identity is the authored value + anchor */
+  textDeletes?: Array<{ text0: string; x0: number; y0: number }>;
 }
 
 export type ProbeWebviewMessage =
@@ -173,12 +176,19 @@ export type ProbeWebviewMessage =
   | { type: 'typecad/ack'; ref: string; token?: number; found?: boolean }
   | { type: 'typecad/probe'; ref: string; pin?: string }
   | { type: 'typecad/pick-image' }
+  | { type: 'typecad/view-part'; part: string }
   | {
       type: 'typecad/probe-net';
       net: string;
       source?: string;
       /** selected segment endpoints (board frame) when traces are selected */
       segs?: Array<{ x1: number; y1: number; x2: number; y2: number; net: string | null }>;
+    }
+  | {
+      type: 'typecad/probe-zone';
+      /** the selected board zone, board frame — the host bbox-matches the
+       *  zone({...}) literal's points to find the declaring line */
+      zone: { net: string | null; layer: string | null; keepout: boolean; pts: Array<{ x: number; y: number }> };
     }
   | ({ type: 'typecad/layout-rebuild' } & LayoutRebuildPayload);
 
@@ -187,7 +197,8 @@ export type ProbeHostMessage =
   | { type: 'typecad/select-net'; net: string; token?: number }
   | { type: 'typecad/status'; text: string }
   | { type: 'typecad/image-picked'; path: string; name: string; dataUrl: string }
-  | { type: 'typecad/layout-status'; error: string | undefined };
+  | { type: 'typecad/layout-status'; error: string | undefined }
+  | { type: 'typecad/view-part'; part: string; html?: string; op?: unknown; error?: string };
 
 const PROBE_CLIENT = `<script>
 (function () {
@@ -337,6 +348,7 @@ const PROBE_CLIENT = `<script>
       imageEdits: Array.isArray(arguments[13]) ? arguments[13] : [],
       imageDeletes: Array.isArray(arguments[14]) ? arguments[14] : [],
       classEdits: Array.isArray(arguments[15]) ? arguments[15] : [],
+      textDeletes: Array.isArray(arguments[16]) ? arguments[16] : [],
     });
   };
 
@@ -348,12 +360,30 @@ const PROBE_CLIENT = `<script>
     send({ type: 'typecad/pick-image' });
   };
 
+  // deferred views: the page asks the host to render one lazy view part
+  // (pcba/blueprint/schematic) or solve the ngspice operating point (the
+  // part named 'net-op'); the host answers with the mountable fragment or
+  // the op object. The page shows its "calculating X…" spinner the whole
+  // time — this is what keeps those renders off every board change.
+  var viewPartCbs = {};
+  window.typecadViewPart = function (part, cb) {
+    viewPartCbs[part] = cb;
+    send({ type: 'typecad/view-part', part: part });
+  };
+
   window.addEventListener('message', function (ev) {
     var m = ev.data;
     if (!m) return;
     if (m.type === 'typecad/layout-status') {
       if (layoutCb) layoutCb(m.error);
       layoutCb = null;
+      return;
+    }
+    if (m.type === 'typecad/view-part') {
+      var vcb = viewPartCbs[m.part];
+      delete viewPartCbs[m.part];
+      if (typeof vcb === 'function')
+        vcb(m.error ? new Error(m.error) : null, m.html || null, m.op || null);
       return;
     }
     // the host's answer to a place-image arm: hand the picked PNG to the
@@ -490,6 +520,15 @@ const PROBE_CLIENT = `<script>
         window.typecadRoutingActive()
       )
         return;
+      // a SELECTED zone outranks the hover probe — clicking it (or Tab
+      // cycling to it) was an explicit act, and its selection outlasts the
+      // gesture like the E and Del affordances; Enter goes to its zone()
+      // definition, not whatever copper the cursor last crossed
+      var selZone = window.typecadSelectedZone ? window.typecadSelectedZone() : null;
+      if (selZone) {
+        send({ type: 'typecad/probe-zone', zone: selZone });
+        return;
+      }
       if (probedRef) {
         send({ type: 'typecad/probe', ref: probedRef, pin: probedPin });
         return;

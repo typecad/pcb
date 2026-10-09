@@ -569,6 +569,10 @@ export function showViewerHelp(): void {
   console.log('  --stackup=<file>    stackup JSON — copper weights for the thermal view');
   console.log('  --rules=<file>      board rules JSON — layout-view width floors');
   console.log('  --saved-fills       Plot saved zone fills as-is (skip the in-memory refill)');
+  console.log('  --lazy-views        Skip the pcba/blueprint/schematic renders — each loads');
+  console.log('                      on first switch (host bridge or --view-part fragment)');
+  console.log('  --view-part=<name>  Render ONE view (pcba|blueprint|schematic) as a mountable');
+  console.log('                      fragment at <out-dir>/view-<name>.html');
   console.log('  --json              Output summary as JSON');
   console.log('  --help              Show this help\n');
   console.log('Examples:');

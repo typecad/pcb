@@ -27,6 +27,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { injectProbeClient, PROBE_PROTO, type ProbeHostMessage, type ProbeWebviewMessage } from './probeClient.js';
 import { resolveNetDeclaration, resolveSegmentSource } from './netSegmentSource.js';
+import { resolveZoneSource } from './zoneSource.js';
 import { resolveBoardRules, userRulesFromFolder } from './boardRules.js';
 import { parseSourceLocation } from './sourceRef.js';
 import type { BoardDataService } from './boardData.js';
@@ -655,12 +656,16 @@ export class BoardViewerPanel implements ViewerHost {
   }
 
   /**
-   * Classify a detected drift — never fix it. The ts source is the single
-   * source of truth and the .kicad_pcb is a build artifact: nothing in the
-   * render pipeline writes source from the board. KiCad-side edits reach
-   * source exclusively through the sync watcher (`typeCAD: Start KiCad
-   * Sync`); drift after a build from current sources is a build or toolchain
-   * bug to report. The banner is the diagnostic surface for both.
+   * Classify a detected drift. The ts source is the single source of truth
+   * and the .kicad_pcb is a build artifact — but maintenance is SILENT now:
+   * the render path absorbs out-of-band board edits into source
+   * automatically (absorbBoardSide — the canonical regeneration, exactly
+   * the "apply & rebuild takes the board side" reconcile), so the
+   * classifications mean: 'transient' resolves itself via the pending
+   * build; 'external' is absorbed (the banner only appears when
+   * absorption fails); 'bug' (equally-aged drift — the build does not
+   * reproduce source) still banners, because nothing can auto-fix a
+   * build bug.
    */
   private classifyDrift(
     folder: string,
@@ -688,6 +693,51 @@ export class BoardViewerPanel implements ViewerHost {
       `sync: ${drift.count} difference(s) with no source or board newer than the other — the build does not reproduce this board from source (please report)`,
     );
     return 'bug';
+  }
+
+  /** Board revisions already auto-absorbed this session — one attempt per
+   *  mtime, win or lose, so a persistently unabsorbable drift can never
+   *  loop the render pipeline. */
+  private absorbedBoardRevisions = new Set<number>();
+
+  /**
+   * Silent maintenance for out-of-band board drift: regenerate source from
+   * the board through the importer's canonical write (byte-identical to
+   * what kicad2typecad emits — zero drift by construction), then re-check.
+   * True when the tree ended up in sync (no banner); false leaves the
+   * banner as the fallback. Never runs while an apply owns the pipeline —
+   * the caller checks — which is the race that killed the old render-path
+   * reconcile (it absorbed mid-apply and reverted the apply's own work).
+   */
+  private async absorbBoardSide(
+    folder: string,
+    board: string,
+    drift: { count: number },
+  ): Promise<boolean> {
+    const revision = mtimeOf(board);
+    if (this.absorbedBoardRevisions.has(revision)) return false;
+    this.absorbedBoardRevisions.add(revision);
+    this.output.appendLine(
+      `sync: absorbing ${drift.count} out-of-band board difference(s) into source (canonical regeneration)…`,
+    );
+    try {
+      await this.run(folder, `npx typecad-pcb import ${shellQuote(board)} --apply --auto`, GENERATE_TIMEOUT_MS);
+    } catch (err) {
+      this.output.appendLine(
+        `sync: absorption failed: ${err instanceof Error ? err.message : String(err)} — the banner stays`,
+      );
+      return false;
+    }
+    const after = await this.runCheckSync(folder);
+    if (after && after.count > 0) {
+      this.output.appendLine(`sync: ${after.count} difference(s) remain after regeneration — the banner stays`);
+      return false;
+    }
+    this.output.appendLine('sync: source regenerated from the board — in sync');
+    // the source watcher's auto-build refreshes the board from the absorbed
+    // source (identical content by construction) — no loop: the next
+    // check-sync reads clean
+    return true;
   }
 
   /** The board the panel currently shows (undefined = the active board). */
@@ -758,23 +808,12 @@ export class BoardViewerPanel implements ViewerHost {
       // the end instead of paying its runtime after the page exists.
       const driftPromise = this.runCheckSync(folder);
 
-      // The ngspice view's electrical data (build/<board>_op.json) is only
-      // written by `typecad-pcb simulate` — nothing in the plain build or
-      // the export pipeline produces it, so without this a fresh project
-      // opens with an ngspice view that has nothing to hover. Best-effort:
-      // run it when the op file is missing or older than the netlist, and a
-      // failure (no ngspice installed, entry error) only costs the hover
-      // data — the viewer still generates.
-      const netlistFile = path.join(folder, 'build', `${boardName}.net`);
-      const opFile = path.join(folder, 'build', `${boardName}_op.json`);
-      if (fs.existsSync(netlistFile) && (!fs.existsSync(opFile) || mtimeOf(opFile) < mtimeOf(netlistFile))) {
-        this.output.appendLine('solving ngspice operating point…');
-        try {
-          await this.run(folder, 'npx typecad-pcb simulate', GENERATE_TIMEOUT_MS);
-        } catch (error) {
-          this.output.appendLine(`op solve skipped: ${error instanceof Error ? error.message : String(error)}`);
-        }
-      }
+      // The ngspice solve and the pcba/blueprint/schematic renders are NOT
+      // paid here anymore: the page ships with lazy placeholders and solves
+      // each on FIRST SWITCH through the typecad/view-part bridge (the
+      // spinner names what is being calculated). The layout/gerber default
+      // view — what every board change actually renders for — is the whole
+      // eager cost now.
 
       // per-board fab dirs once the project is multi-board — the same rule
       // `export gerbers` uses, so the viewer reads exactly what the export
@@ -798,18 +837,19 @@ export class BoardViewerPanel implements ViewerHost {
       };
       overlay('--netlist', `${boardName}.net`);
       // A DRC report OLDER than the board describes the previous revision —
-      // embedding it paints stale violation markers on the new board (seen
-      // as ghost "unconnected/shorting" dots on a route the move fixed).
-      // Still embed it (a muted/absent DRC affordance reads as breakage);
-      // the provenance call goes to the output channel only — a page status
-      // banner would lock the status line forever.
+      // embedding it paints stale violation markers at the PRE-move
+      // positions. DRC runs on request now (the palette's typeCAD: DRC),
+      // so nothing refreshes the report automatically: WITHHOLD a stale
+      // one (no markers) and say so in the output channel; a fresh report
+      // — the one the user just asked for — embeds as before.
       const drcRel = path.join('build', `${boardName}_drc.json`);
       if (fs.existsSync(path.join(folder, drcRel))) {
-        flags.push('--drc', shellQuote(drcRel));
         if (mtimeOf(path.join(folder, drcRel)) < mtimeOf(board)) {
           this.output.appendLine(
-            'drc report predates the board — its markers describe the previous revision (run typeCAD: DRC to refresh)',
+            'drc report predates the board — markers withheld (run typeCAD: DRC against this revision)',
           );
+        } else {
+          flags.push('--drc', shellQuote(drcRel));
         }
       }
       overlay('--stackup', `${boardName}_stackup.json`);
@@ -853,7 +893,10 @@ export class BoardViewerPanel implements ViewerHost {
         try {
           await this.run(
             folder,
-            `npx typecad-pcb viewer ${shellQuote(board)} -o ${shellQuote(outPath)} ${flags.join(' ')}`,
+            // --lazy-views: the pcba/blueprint/schematic renders (and the
+            // ngspice solve) happen on first switch, not on every board
+            // change — the typecad/view-part bridge serves them
+            `npx typecad-pcb viewer ${shellQuote(board)} -o ${shellQuote(outPath)} ${flags.join(' ')} --lazy-views`,
             GENERATE_TIMEOUT_MS,
           );
         } catch (err) {
@@ -902,9 +945,15 @@ export class BoardViewerPanel implements ViewerHost {
           // nothing yet. Log and move on: the apply's final render
           // classifies against the settled state.
           this.output.appendLine(`sync: ${drift.count} difference(s) while an apply runs — deferring to the settled state`);
-        } else if (this.classifyDrift(folder, board, drift) !== 'transient') {
-          const payload = JSON.stringify({ count: drift.count, items: drift.changes.slice(0, 12) }).replace(/</g, '\u003c');
-          withDrift = html.replace('<head>', `<head><script>window.__typecadDrift = ${payload};</script>`);
+        } else {
+          const cls = this.classifyDrift(folder, board, drift);
+          // external drift maintains itself: absorb into source silently;
+          // the banner is only the fallback when absorption fails
+          const bannerWorthy = cls !== 'transient' && !(cls === 'external' && (await this.absorbBoardSide(folder, board, drift)));
+          if (bannerWorthy) {
+            const payload = JSON.stringify({ count: drift.count, items: drift.changes.slice(0, 12) }).replace(/</g, '\u003c');
+            withDrift = html.replace('<head>', `<head><script>window.__typecadDrift = ${payload};</script>`);
+          }
         }
       }
 
@@ -922,6 +971,78 @@ export class BoardViewerPanel implements ViewerHost {
     return this.generating;
   }
 
+  /**
+   * The lazy views' on-demand channel: the page's first switch to a
+   * deferred view (or the ngspice/thermal view's first need for solved
+   * data) asks for a part here. 'net-op' runs the ngspice solve (the old
+   * eager chain did this on EVERY render; now only when the data is
+   * actually looked at) and answers with the op JSON; a view part runs the
+   * viewer CLI's --view-part mode and answers with the mountable fragment
+   * it left in build/serve/. The page shows its spinner naming the work
+   * the whole time. Errors answer as errors — the page surfaces them and
+   * keeps the default view.
+   */
+  private async serveViewPart(part: string): Promise<void> {
+    if (!this.panel) return;
+    const folder = this.hwFolder();
+    if (!folder) {
+      void this.panel.webview.postMessage({ type: 'typecad/view-part', part, error: 'no hardware folder' });
+      return;
+    }
+    const board = newestBoardFile(folder);
+    if (!board) {
+      void this.panel.webview.postMessage({ type: 'typecad/view-part', part, error: 'no board file' });
+      return;
+    }
+    const boardName = path.basename(board, '.kicad_pcb');
+    try {
+      if (part === 'net-op') {
+        const netlistFile = path.join(folder, 'build', `${boardName}.net`);
+        const opFile = path.join(folder, 'build', `${boardName}_op.json`);
+        // solve only when stale (op missing or older than the netlist) —
+        // the page caches after the first switch, so this runs once per
+        // real netlist change, not once per render
+        if (fs.existsSync(netlistFile) && (!fs.existsSync(opFile) || mtimeOf(opFile) < mtimeOf(netlistFile))) {
+          this.output.appendLine('solving ngspice operating point (first view switch)…');
+          try {
+            await this.run(folder, 'npx typecad-pcb simulate', GENERATE_TIMEOUT_MS);
+          } catch (error) {
+            if (!fs.existsSync(opFile)) {
+              this.output.appendLine(
+                `op solve failed: ${error instanceof Error ? error.message : String(error)}`,
+              );
+              throw new Error('ngspice solve failed — is ngspice installed?');
+            }
+          }
+        }
+        if (!fs.existsSync(opFile)) throw new Error('no solved operating point (run typeCAD: Simulate)');
+        const op = JSON.parse(fs.readFileSync(opFile, 'utf8'));
+        void this.panel.webview.postMessage({ type: 'typecad/view-part', part, op });
+        return;
+      }
+      const multiBoard = listBoardFiles(folder).length > 1;
+      const outPath = multiBoard ? path.join('build', 'serve', `${boardName}.html`) : path.join('build', 'serve', 'viewer.html');
+      await this.run(
+        folder,
+        `npx typecad-pcb viewer ${shellQuote(board)} -o ${shellQuote(outPath)} --view-part ${part} --json`,
+        GENERATE_TIMEOUT_MS,
+      );
+      const fragPath = path.join(folder, 'build', 'serve', `view-${part}.html`);
+      if (!fs.existsSync(fragPath)) throw new Error('the view-part run wrote no fragment');
+      const html = fs.readFileSync(fragPath, 'utf8');
+      void this.panel.webview.postMessage({ type: 'typecad/view-part', part, html });
+    } catch (error) {
+      this.output.appendLine(
+        `view part ${part} failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      void this.panel.webview.postMessage({
+        type: 'typecad/view-part',
+        part,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
   private async onMessage(message: ProbeWebviewMessage): Promise<void> {
     if (message.type === 'typecad/layout-rebuild') {
       await this.applyBridge.onLayoutRebuild(message);
@@ -929,6 +1050,10 @@ export class BoardViewerPanel implements ViewerHost {
     }
     if (message.type === 'typecad/pick-image') {
       if (this.panel) await this.applyBridge.onPickImage();
+      return;
+    }
+    if (message.type === 'typecad/view-part') {
+      await this.serveViewPart(message.part);
       return;
     }
     if (message.type === 'typecad/ready') {
@@ -970,6 +1095,29 @@ export class BoardViewerPanel implements ViewerHost {
           );
         }
       }
+      return;
+    }
+    if (message.type === 'typecad/probe-zone') {
+      // zone navigation: the selected pour's points bbox-match the
+      // zone({...}) literal that authored it (net breaks coincident ties)
+      this.output.appendLine(`probe: zone ${message.zone.net ?? '?'} → source`);
+      const folder = this.hwFolder();
+      if (!folder) return;
+      const srcUris = await vscode.workspace.findFiles(new vscode.RelativePattern(folder, 'src/**/*.ts'));
+      const files: Array<{ uri: string; text: string }> = [];
+      for (const uri of srcUris) {
+        files.push({ uri: uri.fsPath, text: (await vscode.workspace.openTextDocument(uri)).getText() });
+      }
+      const hit = resolveZoneSource(message.zone, files);
+      if (!hit) {
+        vscode.window.setStatusBarMessage(
+          `zone ${message.zone.net ?? '(no net)'}: no zone({...}) literal matches its outline — is the build current?`,
+          5000,
+        );
+        return;
+      }
+      this.output.appendLine(`probe: zone ${message.zone.net ?? '?'} → ${hit.detail} @ ${hit.line}`);
+      await this.revealLocation({ fsPath: hit.uri, line: hit.line });
       return;
     }
     if (message.type === 'typecad/probe-net') {

@@ -99,7 +99,9 @@ interface BootedPage {
   header(): string;
 }
 
-async function boot(): Promise<BootedPage> {
+type BootOverrides = Partial<Parameters<typeof buildViewerHtml>[2]>;
+
+async function boot(overrides: BootOverrides = {}): Promise<BootedPage> {
   const html = buildViewerHtml(svg, [info, fabInfo], {
     title: 'demo board',
     pcbaSvg: '<svg/>',
@@ -107,6 +109,7 @@ async function boot(): Promise<BootedPage> {
     layoutTexts,
     padLabels,
     rules,
+    ...overrides,
   });
   const errors: string[] = [];
   const dom = new JSDOM(html, {
@@ -239,6 +242,56 @@ describe('layout view properties panel (E) follows the selection', () => {
     expect(page.panel().textContent).toContain('select a part, trace, via, or text first');
   });
 
+  it('a Tab-selected text draws the overlay selection box — and yields it to the next selection', async () => {
+    const page = await boot();
+    const w = page.window;
+    const d = w.document;
+    // hover R1's reference label (anchor gerber (10.5, -23); identity CTM +
+    // the y-flip put it at client (10.5, 23)). A reference cycles regardless
+    // of its layer rail state — that is the buried-designator road in
+    w.dispatchEvent(new w.MouseEvent('mousemove', { bubbles: true, clientX: 10.5, clientY: 23 }));
+    page.key('Tab');
+    // the selection owns a box at the text's live anchor, sized by the ink
+    // estimate (rot 0: run = 2 chars * w 1 * 0.62 + 0.3 margin, cross = h
+    // 1 * 1.15 + 0.3)
+    const box = d.getElementById('layout-text-sel-box');
+    expect(box).not.toBeNull();
+    expect(+box!.getAttribute('x')!).toBeCloseTo(10.5 - 1.54 / 2, 2);
+    expect(+box!.getAttribute('y')!).toBeCloseTo(-23 - 1.45 / 2, 2);
+    expect(+box!.getAttribute('width')!).toBeCloseTo(1.54, 2);
+    expect(+box!.getAttribute('height')!).toBeCloseTo(1.45, 2);
+    // the claimed glyphs carry the recolor too (the box augments, not replaces)
+    expect(d.querySelectorAll('#yflip path.layout-text-sel').length).toBeGreaterThan(0);
+    // a part press replaces the selection — the text's box and recolor die
+    page.pressPart('R1');
+    expect(d.getElementById('layout-text-sel-box')).toBeNull();
+    expect(d.querySelectorAll('#yflip path.layout-text-sel').length).toBe(0);
+    // and Tab brings the text (box and all) back
+    w.dispatchEvent(new w.MouseEvent('mousemove', { bubbles: true, clientX: 10.5, clientY: 23 }));
+    page.key('Tab');
+    expect(d.getElementById('layout-text-sel-box')).not.toBeNull();
+  });
+
+  it("cycles a part's reference designator from over the BODY — no ink, no layer, no anchor reach needed", async () => {
+    const page = await boot();
+    const w = page.window;
+    const d = w.document;
+    // hover mid-body of R1 (gerber (10, -20)): the label anchor (10.5, -23)
+    // is outside the anchor disc's reach and the fab layer is off, so the
+    // STACK finds nothing — the part candidate is what carries its label in
+    w.dispatchEvent(new w.MouseEvent('mousemove', { bubbles: true, clientX: 10, clientY: 20 }));
+    page.key('Tab');
+    // jsdom has no elementFromPoint: the geometric fallback finds the part
+    expect((d.getElementById('status')?.textContent ?? '')).toBe('R1 — Tab cycles');
+    page.key('Tab');
+    expect(d.getElementById('status')?.textContent ?? '').toBe('text "R1" — drag to move, E edits, Tab cycles');
+    const box = d.getElementById('layout-text-sel-box');
+    expect(box).not.toBeNull();
+    // the box centers on the label's anchor with the ink-estimate extents
+    expect(+box!.getAttribute('x')! + +box!.getAttribute('width')! / 2).toBeCloseTo(10.5, 2);
+    expect(+box!.getAttribute('y')! + +box!.getAttribute('height')! / 2).toBeCloseTo(-23, 2);
+  });
+
   it('refreshes placement in place after an R rotation', async () => {
     const page = await boot();
     page.pressPart('U1');
@@ -341,20 +394,9 @@ describe('layout view properties panel (E) follows the selection', () => {
   it('posts the style diff over the apply bridge — only what changed', async () => {
     const page = await boot();
     let captured: unknown[] = [];
-    (page.window as unknown as Record<string, unknown>).typecadLayoutApply = (
-      _moves: unknown,
-      texts: unknown[],
-      _values: unknown,
-      _labels: unknown,
-      _renames: unknown,
-      _routes: unknown,
-      _deletes: unknown,
-      _zones: unknown,
-      _outline: unknown,
-      cb: (err: string | null, fast: boolean) => void,
-    ) => {
-      captured = texts;
-      cb(null, false);
+    (page.window as unknown as Record<string, unknown>).typecadLayoutApply = (...args: unknown[]) => {
+      captured = args[1] as unknown[];
+      (args[args.length - 1] as (err: string | null, fast: boolean) => void)(null, false);
     };
     page.pressText();
     page.key('e');
@@ -382,21 +424,9 @@ describe('layout view properties panel (E) follows the selection', () => {
   it('Delete on a selected part rips its ink and rides the apply as a part deletion', async () => {
     const page = await boot();
     let capturedParts: string[] | null = null;
-    (page.window as unknown as Record<string, unknown>).typecadLayoutApply = (
-      _moves: unknown,
-      _texts: unknown,
-      _values: unknown,
-      _labels: unknown,
-      _renames: unknown,
-      _routes: unknown,
-      _deletes: unknown,
-      partDeletes: string[],
-      _zones: unknown,
-      _outline: unknown,
-      cb: (err: string | null, fast: boolean) => void,
-    ) => {
-      capturedParts = partDeletes;
-      cb(null, false);
+    (page.window as unknown as Record<string, unknown>).typecadLayoutApply = (...args: unknown[]) => {
+      capturedParts = args[7] as string[];
+      (args[args.length - 1] as (err: string | null, fast: boolean) => void)(null, false);
     };
     const handle = page.window.document.querySelector('#layout-overlay [data-ref="R1"]')!;
     page.pressPart('R1');
@@ -434,20 +464,9 @@ describe('layout view properties panel (E) follows the selection', () => {
     page.key('e');
     // the label panel shows the applied state, and the style diff posts
     let capturedLabels: unknown[] = [];
-    (page.window as unknown as Record<string, unknown>).typecadLayoutApply = (
-      _moves: unknown,
-      _texts: unknown,
-      _values: unknown,
-      labels: unknown[],
-      _renames: unknown,
-      _routes: unknown,
-      _deletes: unknown,
-      _zones: unknown,
-      _outline: unknown,
-      cb: (err: string | null, fast: boolean) => void,
-    ) => {
-      capturedLabels = labels;
-      cb(null, false);
+    (page.window as unknown as Record<string, unknown>).typecadLayoutApply = (...args: unknown[]) => {
+      capturedLabels = args[3] as unknown[];
+      (args[args.length - 1] as (err: string | null, fast: boolean) => void)(null, false);
     };
     page.pressLabel();
     page.key('e');
@@ -577,6 +596,46 @@ describe('via selection ring and drill hole', () => {
   });
 });
 
+describe('a segment delete that sweeps an endpoint via leaves no white ring', () => {
+  it('the selected via\u2019s on-top mirror dies with the barrel', async () => {
+    const page = await boot();
+    const w = page.window;
+    const d = w.document;
+    // select the fixture's trace segment first — the via will sit on its
+    // endpoint, and a press there would otherwise pick the via instead
+    page.pressBoard(1, 1);
+    const seg = d.querySelector("g[data-kind='copper'] line")!;
+    const ex = parseFloat(seg.getAttribute('x1')!);
+    const ey = parseFloat(seg.getAttribute('y1')!);
+    // a genuine session via ON that endpoint: V arms (the arm starts
+    // position-less — a move pins it), the click places (floating here —
+    // the fixture segment carries no net — which is legal), and
+    // viaInkAndEntry gives it a routedTrack entry exactly like a live one
+    // session via ink renders y-flipped (cy = -click y): aim the arm and
+    // click at the endpoint's MIRROR so the barrel's ink lands on it
+    d.getElementById('board')!.dispatchEvent(new w.MouseEvent('mousemove', { bubbles: true, clientX: ex, clientY: -ey }));
+    page.key('v');
+    d.getElementById('board')!.dispatchEvent(new w.MouseEvent('mousemove', { bubbles: true, clientX: ex, clientY: -ey }));
+    page.pressBoard(ex, -ey);
+    page.releaseBoard(ex, -ey);
+    const barrel = d.querySelector("g[data-kind='copper'] circle[data-route]");
+    expect(barrel).not.toBeNull();
+    // grow the selection once (U — E owns the props panel): the endpoint
+    // via rides it and its on-top mirror ring (#via-sel-top, the ring that
+    // paints above part graphics) appears — the ring that used to orphan
+    page.key('u');
+    const rings = () => d.querySelectorAll('#via-sel-top circle');
+    expect(rings().length).toBe(1);
+    // delete the segment: its endpoint via goes with it — the mirror ring
+    // must not linger as a white circle where the barrel was. The Delete
+    // handler's own viaHiSync is conditional on viaSel SURVIVING segDelete,
+    // which the endpoint sweep empties — the orphan case exactly
+    page.key('Delete');
+    expect(rings().length).toBe(0);
+    expect(d.querySelectorAll('circle[data-route]').length).toBe(0);
+  });
+});
+
 describe('editing session ink never re-materializes phantom traces', () => {
   // route a trace from the fixture ink, commit it, then rewrite it and
   // capture the apply bridge payload — the session entry must carry the
@@ -592,12 +651,9 @@ describe('editing session ink never re-materializes phantom traces', () => {
   };
   const captureRoutes = (page: BootedPage) => {
     const sent: unknown[] = [];
-    (page.window as unknown as Record<string, unknown>).typecadLayoutApply = (
-      _m: unknown, _t: unknown, _v: unknown, _l: unknown, _r: unknown,
-      routes: unknown[], _d: unknown, _z: unknown, _o: unknown, cb: (e: string | null, f: boolean) => void,
-    ) => {
-      sent.push(...routes);
-      cb(null, false);
+    (page.window as unknown as Record<string, unknown>).typecadLayoutApply = (...args: unknown[]) => {
+      sent.push(...(args[5] as unknown[]));
+      (args[args.length - 1] as (e: string | null, f: boolean) => void)(null, false);
     };
     page.window.document.getElementById('layout-apply')!.click();
     return sent as Array<{ pieces: Array<{ pts: Array<{ x: number; y: number }> }> }>;
@@ -963,7 +1019,7 @@ describe('collapsible sidebar with a compact layer rail', () => {
   });
 });
 
-describe('viewer prefs: no warn borders, collapsible rail, grid persistence', () => {
+describe('viewer prefs: no warn borders, collapsible rail, snap persistence', () => {
   it('overlapping parts get NO yellow border — the text list is the only warning', async () => {
     const page = await boot();
     const w = page.window;
@@ -989,17 +1045,26 @@ describe('viewer prefs: no warn borders, collapsible rail, grid persistence', ()
     expect(rail.parentElement!.id).toBe('sidebar');
   });
 
-  it('the chosen grid step and snap survive a page reload (the rebuild)', async () => {
+  it('the grid feature is gone — snap stays, at one fixed step', async () => {
     const page = await boot();
     const w = page.window;
-    const g = w.document.getElementById('layout-grid') as HTMLSelectElement;
-    g.value = '0.25';
-    g.dispatchEvent(new w.Event('change', { bubbles: true }));
+    // no sidebar items, no visible-grid element ever, no ladder select
+    expect(w.document.getElementById('layout-grid')).toBeNull();
+    expect(w.document.getElementById('layout-grid-show')).toBeNull();
+    expect(w.document.querySelector('#layout-grid-g')).toBeNull();
+    // snap on/off survives a reload (the store carries it without the grid)
     const snap = w.document.getElementById('layout-snap') as HTMLInputElement;
+    expect(snap.checked).toBe(true);
     snap.checked = false;
     snap.dispatchEvent(new w.Event('change', { bubbles: true }));
+    const step = w.document.getElementById('layout-snap-step') as HTMLSelectElement;
+    expect(step.value).toBe('0.5');
+    step.value = '0.25';
+    step.dispatchEvent(new w.Event('change', { bubbles: true }));
     const store = w.localStorage.getItem('gerber-viewer:v1:demo board')!;
-    expect(store).toContain('"size":0.25');
+    expect(store).toContain('"snap":false');
+    expect(store).toContain('"step":0.25');
+    expect(store).not.toContain('__grid');
     // simulate the rebuild: a fresh page whose localStorage holds the store
     // BEFORE scripts run (the restore executes during page init)
     const errors2: string[] = [];
@@ -1024,10 +1089,11 @@ describe('viewer prefs: no warn borders, collapsible rail, grid persistence', ()
     });
     await new Promise((r) => setTimeout(r, 150));
     expect(errors2).toEqual([]);
-    const g2 = dom2.window.document.getElementById('layout-grid') as HTMLSelectElement;
-    expect(g2.value).toBe('0.25');
+    const step2 = dom2.window.document.getElementById('layout-snap-step') as HTMLSelectElement;
+    expect(step2.value).toBe('0.25');
     expect((dom2.window.document.getElementById('layout-snap') as HTMLInputElement).checked).toBe(false);
   });
+
 });
 
 describe('KiCad M-to-move (no drag-by-surprise, no dblclick source jump)', () => {
@@ -1209,5 +1275,498 @@ describe('stored routes never come back after a reload', () => {
     expect(w.localStorage.getItem(pendingKey)).toBeNull();
     expect(d.querySelectorAll('path[data-route="1"]')).toHaveLength(0);
     expect((d.getElementById('status') as HTMLElement).textContent || '').not.toContain('restored');
+  });
+});
+
+
+
+
+describe('deferred views load on first switch', () => {
+  const bootLazy = () =>
+    boot({
+      pcbaSvg: undefined,
+      blueprintSvg: undefined,
+      schematicSvg: undefined,
+      deferredViews: ['pcba', 'blueprint', 'schematic'],
+    });
+
+  it('the placeholders fill through the host bridge under a spinner that names the work', async () => {
+    const page = await bootLazy();
+    const w = page.window;
+    const d = w.document;
+    // the page shipped EMPTY placeholders — no renders anywhere in it
+    const pcbaGroup = () => d.getElementById('view-pcba')!;
+    expect(pcbaGroup().children.length).toBe(0);
+    expect(d.querySelectorAll('#pcba-board, #bp-board, #sch-board').length).toBe(0);
+    // the spinner exists and starts hidden
+    const busy = d.getElementById('view-busy')!;
+    expect(busy.style.display).toBe('none');
+
+    // the host bridge: capture asks, answer on demand
+    const asks: string[] = [];
+    (w as unknown as Record<string, unknown>).typecadViewPart = function (part: string, cb: (e: Error | null, h?: string, o?: unknown) => void) {
+      asks.push(part);
+      setTimeout(() => {
+        if (part === 'pcba') cb(null, '<g id="view-pcba" data-viewbox="0 0 20 10"><g id="pcba-board"><rect width="20" height="10"/></g></g>');
+        else cb(new Error('nope'));
+      }, 0);
+    };
+
+    // switch to pcba: the spinner shows naming the render, the view group
+    // is still the empty placeholder while the part renders
+    const sel = d.querySelector('select')! as HTMLSelectElement & { value: string };
+    sel.value = 'pcba';
+    sel.dispatchEvent(new w.Event('change', { bubbles: true }));
+    expect(asks).toEqual(['pcba']);
+    expect(busy.style.display).toBe('');
+    expect(d.getElementById('view-busy-text')!.textContent).toContain('pcba view');
+    expect(pcbaGroup().children.length).toBe(0); // nothing mounted yet
+
+    await new Promise((r) => setTimeout(r, 30));
+    // the fragment mounted: renamed ids, the busy overlay gone, the view
+    // actually switched (pcba visible, gerber hidden)
+    expect(pcbaGroup().children.length).toBeGreaterThan(0);
+    expect(pcbaGroup().querySelector('#pcba-board')).not.toBeNull();
+    expect(pcbaGroup().getAttribute('data-viewbox')).toBe('0 0 20 10');
+    expect(busy.style.display).toBe('none');
+    expect(pcbaGroup().style.display).toBe('');
+    expect(d.getElementById('view-gerber')!.style.display).toBe('none');
+    // the root viewBox unioned the part's box
+    expect(d.getElementById('board')!.getAttribute('viewBox')).toContain('20');
+    // a second switch asks nothing — the part is cached
+    sel.value = 'gerber';
+    sel.dispatchEvent(new w.Event('change', { bubbles: true }));
+    sel.value = 'pcba';
+    sel.dispatchEvent(new w.Event('change', { bubbles: true }));
+    expect(asks).toEqual(['pcba']);
+  });
+
+  it('a failed part keeps the current view and says why', async () => {
+    const page = await bootLazy();
+    const w = page.window;
+    const d = w.document;
+    (w as unknown as Record<string, unknown>).typecadViewPart = function (_part: string, cb: (e: Error) => void) {
+      setTimeout(() => cb(new Error('render died')), 0);
+    };
+    const sel = d.querySelector('select')! as HTMLSelectElement & { value: string };
+    sel.value = 'blueprint';
+    sel.dispatchEvent(new w.Event('change', { bubbles: true }));
+    await new Promise((r) => setTimeout(r, 30));
+    // still on the gerber view, spinner gone, the failure named
+    expect(d.getElementById('view-gerber')!.style.display).not.toBe('none');
+    expect(d.getElementById('view-busy')!.style.display).toBe('none');
+    expect(d.getElementById('status')!.textContent).toContain('could not load the blueprint view');
+    expect(d.getElementById('status')!.textContent).toContain('render died');
+  });
+});
+
+describe('B applies & rebuilds (the button, on a key)', () => {
+  it('pressing b runs the same apply pipeline as the sidebar button', async () => {
+    const page = await boot();
+    const w = page.window;
+    const d = w.document;
+    // nothing pending: the button is gated off and b does nothing
+    const captured: unknown[][] = [];
+    (w as unknown as Record<string, unknown>).typecadLayoutApply = (...args: unknown[]) => {
+      captured.push(args);
+      (args[args.length - 1] as (e: string | null, f: boolean) => void)(null, false);
+    };
+    const btn = d.getElementById('layout-apply') as HTMLButtonElement;
+    expect(btn.disabled).toBe(true);
+    page.key('b');
+    expect(captured).toHaveLength(0);
+    // a pending edit arms the button — b carries it exactly like a click
+    const seg = d.querySelector("g[data-kind='copper'] line")!;
+    const ex = parseFloat(seg.getAttribute('x1')!);
+    const ey = parseFloat(seg.getAttribute('y1')!);
+    d.getElementById('board')!.dispatchEvent(new w.MouseEvent('mousemove', { bubbles: true, clientX: ex, clientY: -ey }));
+    page.key('v');
+    d.getElementById('board')!.dispatchEvent(new w.MouseEvent('mousemove', { bubbles: true, clientX: ex, clientY: -ey }));
+    page.pressBoard(ex, -ey);
+    page.releaseBoard(ex, -ey);
+    expect(btn.disabled).toBe(false);
+    page.key('b');
+    expect(captured).toHaveLength(1);
+    const routes = captured[0]![5] as Array<{ net: string | null; vias: unknown[] }>;
+    expect(routes.some((r) => r.vias && r.vias.length)).toBe(true);
+  });
+});
+
+describe('unit readouts (the mil toggle is gone)', () => {
+  it('no mil control exists and every position readout stays mm', async () => {
+    const page = await boot();
+    const w = page.window;
+    const d = w.document;
+    expect(d.getElementById('layout-mil')).toBeNull();
+    // a committed layout-text drag writes a position readout — it must say
+    // mm and NOT throw (the formatter once vanished with a neighboring
+    // surgery and no readout survived to say so)
+    page.pressText(); // selects
+    page.pressText(); // a second press on the selected text arms the drag
+    w.dispatchEvent(new w.MouseEvent('pointermove', { bubbles: true, clientX: 7, clientY: 7 }));
+    w.dispatchEvent(new w.MouseEvent('pointerup', { bubbles: true, clientX: 7, clientY: 7 }));
+    const st = d.getElementById('status')!.textContent;
+    expect(st).toMatch(/\d+\.\d\d mm/);
+    expect(st).not.toContain('mil');
+  });
+});
+
+describe('live pour recompute on via delete', () => {
+  it('the zone rebuilds whole: polygon paint, foreign holes, thermal reliefs', async () => {
+    const page = await boot({
+      layoutBoardZones: [{
+        net: 'GND', layer: 'F.Cu', keepout: false,
+        pts: [{ x: 0, y: 0 }, { x: 8, y: 0 }, { x: 8, y: 6 }, { x: 0, y: 6 }],
+        clearance: 0.3, thermalGap: 0.25, thermalBridgeWidth: 0.4,
+      }],
+      padLabels: [
+        { ref: 'R1', pin: '1', net: 'GND', x: 2, y: -2, w: 1, h: 1, layers: ['F.Cu'] },
+        { ref: 'R1', pin: '2', net: 'VCC', x: 5, y: -5, w: 1, h: 1, layers: ['F.Cu'] },
+      ],
+    });
+    const w = page.window;
+    const d = w.document;
+    const cu = d.querySelector("g[data-kind='copper']");
+    // the server's pour fragments (style attrs, gerber frame) + a PLOTTED
+    // via flash inside the zone at gerber (4,4) on a foreign net
+    const SVG = 'http://www.w3.org/2000/svg';
+    const frag = d.createElementNS(SVG, 'path');
+    frag.setAttribute('d', 'M 1 1 L 2 1 L 2 2 L 1 2 Z');
+    frag.setAttribute('fill-rule', 'evenodd');
+    frag.setAttribute('fill', '#123456');
+    frag.setAttribute('opacity', '0.5');
+    frag.setAttribute('data-net', 'GND');
+    cu.appendChild(frag);
+    const flash = d.createElementNS(SVG, 'use');
+    flash.setAttribute('x', '4');
+    flash.setAttribute('y', '4');
+    flash.setAttribute('data-net', 'PROBE');
+    flash.getBBox = () => ({ x: 3.7, y: 3.7, width: 0.6, height: 0.6 });
+    cu.appendChild(flash);
+    // select + delete the plotted via: hover it first (client y negates
+    // into the gerber frame), then Tab until the via candidate comes up
+    d.getElementById('board')!.dispatchEvent(new w.MouseEvent('mousemove', { bubbles: true, clientX: 4, clientY: -4 }));
+    await new Promise((r) => setTimeout(r, 60));
+    let viaSelected = false;
+    for (let i = 0; i < 10 && !viaSelected; i++) {
+      page.key('Tab');
+      await new Promise((r) => setTimeout(r, 60));
+      if (/^via \[/.test(d.getElementById('status')!.textContent)) viaSelected = true;
+    }
+    expect(viaSelected).toBe(true);
+    page.key('Delete');
+    await new Promise((r) => setTimeout(r, 120));
+    // the fragments are GONE, replaced by ONE live fill carrying the zone
+    // polygon in the pour's own paint, masked
+    expect(frag.parentNode).toBeNull();
+    const live = cu.querySelector('path[data-live-fill="1"]');
+    expect(live).not.toBeNull();
+    expect(live.getAttribute('d')).toContain('M 0.000 0.000 L 8.000 0.000');
+    expect(live.getAttribute('fill')).toBe('#123456');
+    expect(live.getAttribute('opacity')).toBe('0.5');
+    expect(live.getAttribute('mask')).toMatch(/^url\(#zone-live-/);
+    const maskId = live.getAttribute('mask')!.slice(5, -1);
+    const mask = d.getElementById(maskId)!;
+    // the mask REGION is explicit: the default percentage region resolves
+    // against the board-mm viewBox in the y-flipped space and lands empty —
+    // the pour then paints NOTHING in a real browser (the live "zone turned
+    // black"; jsdom cannot render, so the attribute is the regression guard)
+    expect(mask.getAttribute('maskUnits')).toBe('userSpaceOnUse');
+    expect(+mask.getAttribute('x')!).toBeCloseTo(-3, 3);
+    expect(+mask.getAttribute('y')!).toBeCloseTo(-3, 3);
+    expect(+mask.getAttribute('width')!).toBeCloseTo(17, 3);
+    expect(+mask.getAttribute('height')!).toBeCloseTo(15, 3);
+    // cloned knockouts never carry the dimmer's opacity — channels are binary
+    expect(mask.querySelector('[stroke="#000"][opacity]')).toBeNull();
+    const blacks = [...mask.querySelectorAll('[fill="#000"]')];
+    const whites = [...mask.querySelectorAll('[fill="#fff"]')];
+    // white base + the thermal spokes (2 per same-net pad); black: the
+    // deleted via is GONE from ink so its hole is not re-cut, but the VCC
+    // pad rect and the fixture's led_a trace strokes are
+    expect(whites.length).toBe(3);
+    expect(blacks.length).toBeGreaterThan(0);
+    expect(flash.parentNode).toBeNull();
+  });
+});
+
+describe('the net-highlight dim never outlives its selection', () => {
+  // the pour fragment: authored server paint the dimmer can sweep to 0.06 —
+  // at 0.06 on the dark canvas the pour is invisible, which reads as "the
+  // zone turned black" (reported live after a via delete)
+  function seedFrag(d: Document, cu: Element) {
+    const SVG = 'http://www.w3.org/2000/svg';
+    const frag = d.createElementNS(SVG, 'path');
+    frag.setAttribute('d', 'M 1 1 L 2 1 L 2 2 L 1 2 Z');
+    frag.setAttribute('fill-rule', 'evenodd');
+    frag.setAttribute('fill', '#123456');
+    frag.setAttribute('opacity', '0.5');
+    frag.setAttribute('data-net', 'GND');
+    cu.appendChild(frag);
+    return frag;
+  }
+  const zone = [{
+    net: 'GND', layer: 'F.Cu', keepout: false,
+    pts: [{ x: 0, y: 0 }, { x: 8, y: 0 }, { x: 8, y: 6 }, { x: 0, y: 6 }],
+  }];
+
+  it('Tab cycling onto the zone clears the dim the via step set', async () => {
+    const page = await boot({ layoutBoardZones: zone, padLabels: [] });
+    const w = page.window;
+    const d = w.document;
+    const cu = d.querySelector("g[data-kind='copper']")!;
+    const frag = seedFrag(d, cu);
+    // a second fragment at the REAL board's pour opacity — the dim must
+    // never take copper below its authored visibility (0.06 blacked the
+    // pour out; the floor dims TO 0.35 but never above what was authored)
+    const pour = seedFrag(d, cu);
+    pour.setAttribute('opacity', '0.18');
+    const SVG = 'http://www.w3.org/2000/svg';
+    const flash = d.createElementNS(SVG, 'use');
+    flash.setAttribute('x', '4');
+    flash.setAttribute('y', '4');
+    flash.setAttribute('data-net', 'PROBE');
+    flash.getBBox = () => ({ x: 3.7, y: 3.7, width: 0.6, height: 0.6 });
+    cu.appendChild(flash);
+    d.getElementById('board')!.dispatchEvent(new w.MouseEvent('mousemove', { bubbles: true, clientX: 4, clientY: -4 }));
+    await new Promise((r) => setTimeout(r, 60));
+    page.key('Tab'); // the via first: PROBE lights, the board dims
+    await new Promise((r) => setTimeout(r, 60));
+    expect(/^(via|segment) \[/.test(d.getElementById('status')!.textContent)).toBe(true);
+    expect(frag.getAttribute('opacity')).toBe('0.35'); // dimmed TO the floor
+    expect(pour.getAttribute('opacity')).toBe('0.18'); // authored below the floor: untouched
+    page.key('Tab'); // the zone: lights nothing — the via's dim must not survive
+    await new Promise((r) => setTimeout(r, 60));
+    expect(d.getElementById('status')!.textContent).toContain('Tab cycles the stack');
+    expect(frag.getAttribute('opacity')).toBe('0.5');
+    expect(cu.querySelectorAll('[opacity="0.35"]').length).toBe(0);
+  });
+
+  it('deleting the selected via clears the dim with it, and the live pour is net-attributed pour paint', async () => {    const page = await boot({ layoutBoardZones: zone, padLabels: [] });
+    const w = page.window;
+    const d = w.document;
+    const cu = d.querySelector("g[data-kind='copper']")!;
+    const frag = seedFrag(d, cu);
+    const SVG = 'http://www.w3.org/2000/svg';
+    const flash = d.createElementNS(SVG, 'use');
+    flash.setAttribute('x', '4');
+    flash.setAttribute('y', '4');
+    flash.setAttribute('data-net', 'PROBE');
+    flash.getBBox = () => ({ x: 3.7, y: 3.7, width: 0.6, height: 0.6 });
+    cu.appendChild(flash);
+    d.getElementById('board')!.dispatchEvent(new w.MouseEvent('mousemove', { bubbles: true, clientX: 4, clientY: -4 }));
+    await new Promise((r) => setTimeout(r, 60));
+    let viaSelected = false;
+    for (let i = 0; i < 10 && !viaSelected; i++) {
+      page.key('Tab');
+      await new Promise((r) => setTimeout(r, 60));
+      if (/^via \[/.test(d.getElementById('status')!.textContent)) viaSelected = true;
+    }
+    expect(viaSelected).toBe(true);
+    expect(frag.getAttribute('opacity')).toBe('0.35'); // the via's net dimmed the board (to the floor)
+    page.key('Delete');
+    await new Promise((r) => setTimeout(r, 150));
+    // the dim died with the selection — no floor-dimmed elements left
+    expect(cu.querySelectorAll('[opacity="0.35"]').length).toBe(0);
+    const live = cu.querySelector('path[data-live-fill="1"]');
+    expect(live).not.toBeNull();
+    // the rebuild carries its net (the dimmer's un-attributed sweep can never
+    // blanket it) and the pour marker the obstacle scans skip on
+    expect(live.getAttribute('data-net')).toBe('GND');
+    expect(live.getAttribute('fill-rule')).toBe('nonzero');
+    // painted with the pre-dim opacity, not the dim's 0.06
+    expect(live.getAttribute('opacity')).toBe('0.5');
+  });
+});
+
+
+
+describe('Enter probes the selected zone\'s source definition', () => {
+  it('typecadSelectedZone reports the selected zone in board frame', async () => {
+    const page = await boot({
+      layoutBoardZones: [{
+        net: 'GND', layer: 'F.Cu', keepout: false,
+        pts: [{ x: 0, y: 0 }, { x: 8, y: 0 }, { x: 8, y: 6 }, { x: 0, y: 6 }],
+      }],
+      padLabels: [],
+    });
+    const w = page.window;
+    const d = w.document;
+    const SVG = 'http://www.w3.org/2000/svg';
+    const cu = d.querySelector("g[data-kind='copper']")!;
+    const flash = d.createElementNS(SVG, 'use');
+    flash.setAttribute('x', '4');
+    flash.setAttribute('y', '4');
+    flash.setAttribute('data-net', 'PROBE');
+    flash.getBBox = () => ({ x: 3.7, y: 3.7, width: 0.6, height: 0.6 });
+    cu.appendChild(flash);
+    expect(typeof (w as unknown as { typecadSelectedZone: unknown }).typecadSelectedZone).toBe('function');
+    expect((w as unknown as { typecadSelectedZone: () => unknown }).typecadSelectedZone()).toBeNull();
+    // hover + Tab until the zone owns the selection (pad/seg/via precede it)
+    d.getElementById('board')!.dispatchEvent(new w.MouseEvent('mousemove', { bubbles: true, clientX: 4, clientY: -4 }));
+    await new Promise((r) => setTimeout(r, 60));
+    let zoned = false;
+    for (let i = 0; i < 10 && !zoned; i++) {
+      page.key('Tab');
+      await new Promise((r) => setTimeout(r, 60));
+      if (/Tab cycles the stack/.test(d.getElementById('status')!.textContent)) zoned = true;
+    }
+    expect(zoned).toBe(true);
+    const zone = (w as unknown as { typecadSelectedZone: () => unknown }).typecadSelectedZone() as {
+      net: string; layer: string; pts: Array<{ x: number; y: number }>;
+    };
+    // board frame: the island's gerber y-up pts negated, ready to bbox-match
+    // the zone({...}) literal's own points
+    expect(zone.net).toBe('GND');
+    expect(zone.layer).toBe('F.Cu');
+    expect(zone.pts).toEqual([{ x: 0, y: 0 }, { x: 8, y: 0 }, { x: 8, y: -6 }, { x: 0, y: -6 }]);
+  });
+});
+
+describe('free text is Del-deletable', () => {
+  it('Delete hides the selected board text and rides the apply as a statement deletion', async () => {
+    const page = await boot();
+    let capturedTexts: unknown[] | null = null;
+    (page.window as unknown as Record<string, unknown>).typecadLayoutApply = (...args: unknown[]) => {
+      capturedTexts = args[16] as unknown[];
+      (args[args.length - 1] as (err: string | null, fast: boolean) => void)(null, false);
+    };
+    const textEl = page.window.document.querySelector("g[data-kind='fab'] path[data-text]")!;
+    page.window.document.querySelector('#yflip g[data-kind="fab"]')!.removeAttribute('display');
+    page.pressText();
+    page.key('Delete');
+    // the ink is gone now (hidden, reversible) and the apply button armed
+    expect(textEl.style.display).toBe('none');
+    expect(page.window.document.getElementById('layout-apply')!.disabled).toBe(false);
+    page.window.document.getElementById('layout-apply')!.click();
+    // the payload carries the AUTHORED identity the host matches the
+    // .text({...}) literal by (value + anchor, board frame)
+    expect(capturedTexts).toEqual([{ text0: 'hello silk', x0: 6.5, y0: 7.5 }]);
+    // undo brings the strokes back and gates the apply off again
+    page.key('z', { ctrlKey: true });
+    expect(textEl.style.display).toBe('');
+    expect(page.window.document.getElementById('layout-apply')!.disabled).toBe(true);
+  });
+});
+
+describe('Tab cycles to a text under overlays', () => {
+  it('a buried text joins the cycle and selects like a press', async () => {
+    const page = await boot();
+    const w = page.window;
+    const d = w.document;
+    // the fixture's first board text: rendered glyphs at gerber (6.5, -7.5)
+    // (client y negates into the gerber frame); cover it with an overlay so
+    // DOM picking cannot reach it — Tab is the only road in
+    const SVG = 'http://www.w3.org/2000/svg';
+    d.querySelector('#yflip g[data-kind="fab"]')!.removeAttribute('display');
+    const cover = d.createElementNS(SVG, 'rect');
+    cover.setAttribute('x', '4');
+    cover.setAttribute('y', '-9');
+    cover.setAttribute('width', '6');
+    cover.setAttribute('height', '4');
+    cover.setAttribute('fill', '#ffffff');
+    d.getElementById('layout-overlay')!.appendChild(cover);
+    d.getElementById('board')!.dispatchEvent(new w.MouseEvent('mousemove', { bubbles: true, clientX: 6.5, clientY: 7.5 }));
+    await new Promise((r) => setTimeout(r, 60));
+    let textPicked = false;
+    for (let i = 0; i < 8 && !textPicked; i++) {
+      page.key('Tab');
+      await new Promise((r) => setTimeout(r, 60));
+      if (/^text "/.test(d.getElementById('status')!.textContent)) textPicked = true;
+    }
+    expect(textPicked).toBe(true);
+    expect(d.getElementById('status')!.textContent).toContain('hello silk');
+    // the selection owns the same affordances a press grants: the E panel
+    page.key('e');
+    await new Promise((r) => setTimeout(r, 60));
+    expect(page.panel().style.display).not.toBe('none');
+  });
+});
+
+describe('a label whose strokes were claimed away still cycles', () => {
+  it('reference and value share one anchor — the longer text swallows the strokes, the shorter still Tabs', async () => {
+    const page = await boot({
+      layoutComponents: [
+        {
+          reference: 'U9', value: 'TS3A24159DRC', footprint: 'R', variable: 'u9', side: 'front',
+          at: { x: 20, y: 20, rotation: 0 }, dimensions: { width: 1, height: 0.5 }, padCount: 2,
+          labels: [
+            { kind: 'reference', text: 'U9', x: 20, y: 20, side: 'front', h: 1, w: 1, rot: 0 },
+            { kind: 'value', text: 'TS3A24159DRC', x: 20, y: 20, side: 'front', h: 1, w: 1, rot: 0 },
+          ],
+        },
+      ],
+      layoutTexts: [],
+    });
+    const w = page.window;
+    const d = w.document;
+    // no plotted glyphs are seeded: with both labels sharing one anchor the
+    // claim competition leaves whichever shorter without strokes, and the
+    // ANCHOR DISC fallback is the only road to the reference
+    d.querySelector('#yflip g[data-kind="fab"]')!.removeAttribute('display');
+    d.getElementById('board')!.dispatchEvent(new w.MouseEvent('mousemove', { bubbles: true, clientX: 20, clientY: -20 }));
+    await new Promise((r) => setTimeout(r, 60));
+    // BOTH stacked labels cycle — the value first (glyph/anchor score),
+    // then the reference at the same anchor
+    const seen: string[] = [];
+    for (let i = 0; i < 8; i++) {
+      page.key('Tab');
+      await new Promise((r) => setTimeout(r, 60));
+      const st = d.getElementById('status')!.textContent;
+      const m = /^text "([^"]+)"/.exec(st);
+      if (m) seen.push(m[1]!);
+    }
+    expect(seen).toContain('TS3A24159DRC');
+    expect(seen).toContain('U9');
+  });
+});
+
+describe('hidden-layer texts never cycle', () => {
+  it('a fab label leaves the Tab stack when the fab layer is off — and returns when it is back on', async () => {
+    const page = await boot({
+      layoutComponents: [
+        {
+          ref: 'U7', x: 20, y: 20, rot: 0, w: 1, h: 0.5, side: 'front' as const, nets: [],
+          labels: [
+            { kind: 'fab' as const, text: 'U7', x: 20, y: 20, side: 'front' as const, h: 1, w: 1, rot: 0, layerKind: 'fab' as const },
+            { kind: 'reference' as const, text: 'REF9', x: 21, y: 22, side: 'front' as const, h: 1, w: 1, rot: 0, layerKind: 'silkscreen' as const },
+          ],
+        },
+      ],
+      layoutTexts: [],
+    });
+    const w = page.window;
+    const d = w.document;
+    const fabGroup = d.querySelector('#yflip g[data-kind="fab"][data-layer-name*="-F_"]');
+    expect(fabGroup).not.toBeNull();
+    fabGroup!.removeAttribute('display'); // the fixture renders fab hidden by default
+    const hover = () => {
+      d.getElementById('board')!.dispatchEvent(new w.MouseEvent('mousemove', { bubbles: true, clientX: 20, clientY: -20 }));
+      return new Promise((r) => setTimeout(r, 60));
+    };
+    const cycleTexts = async () => {
+      const seen: string[] = [];
+      for (let i = 0; i < 6; i++) {
+        page.key('Tab');
+        await new Promise((r) => setTimeout(r, 60));
+        const m = /^text "([^"]+)"/.exec(d.getElementById('status')!.textContent);
+        if (m) seen.push(m[1]!);
+      }
+      return seen;
+    };
+    // fab layer ON: the label cycles (over the part, whose fields ride the
+    // Tab cycle — and at its own anchor through the tight ink-less disc)
+    await hover();
+    expect(await cycleTexts()).toContain('U7');
+    // fab layer OFF: the fab label is gone from the stack, but the
+    // REFERENCE stays — it rides with the hovered part, its ink or no ink
+    fabGroup!.setAttribute('display', 'none');
+    await hover();
+    const fabOff = await cycleTexts();
+    expect(fabOff).not.toContain('U7');
+    expect(fabOff).toContain('REF9');
+    // back ON: it returns
+    fabGroup!.removeAttribute('display');
+    await hover();
+    expect(await cycleTexts()).toContain('U7');
   });
 });

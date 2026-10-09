@@ -10,7 +10,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import chalk from 'chalk';
-import { buildViewerFromFiles } from '../../../gerber_viewer/build.js';
+import { buildViewerFromFiles, renderViewPart, type ViewerViewPart } from '../../../gerber_viewer/build.js';
 import type { ParsedArgs } from '../parser.js';
 import logger from '../../../utils/logging.js';
 import { boardStemFromArgs, buildDirPath, listBoardFiles } from '../pipeline.js';
@@ -18,9 +18,13 @@ import { defaultGerbersDir, exportNativeGerbers, findPcbFile } from './export.js
 
 /** An explicitly-passed value flag, resolved against cwd. */
 function flagPath(parsed: ParsedArgs, name: string): string | undefined {
-  const v = parsed.args[name];
+  // short flags park under their letter (`-o` → args['o']) — the help has
+  // advertised `-o, --out` forever, but only the long form ever bound
+  const v = parsed.args[name] ?? (name === 'out' ? parsed.args['o'] : undefined);
   return typeof v === 'string' && v.trim() !== '' ? path.resolve(v.trim()) : undefined;
 }
+
+const VIEW_PARTS: ViewerViewPart[] = ['pcba', 'blueprint', 'schematic'];
 
 export async function run(parsed: ParsedArgs): Promise<void> {
   const json = parsed.json;
@@ -57,11 +61,48 @@ export async function run(parsed: ParsedArgs): Promise<void> {
   const drcReportPath = overlay('drc', `${stem}_drc.json`);
   const stackupPath = overlay('stackup', `${stem}_stackup.json`);
   const rulesPath = overlay('rules', `${stem}_rules.json`);
+  const overlayPaths = { netlistPath, drcReportPath, stackupPath, rulesPath };
+
+  // --view-part <name>: render ONE deferred view as a mountable fragment
+  // (what the extension's on-demand channel serves, and what an http-served
+  // lazy page fetches on first switch). The gerbers re-export from the same
+  // board the main page rendered — identical plots, one part, no page.
+  const viewPartArg = typeof parsed.args['view-part'] === 'string' ? (parsed.args['view-part'] as string).trim() : '';
+  if (viewPartArg) {
+    if (!VIEW_PARTS.includes(viewPartArg as ViewerViewPart)) {
+      throw new Error(`unknown view part "${viewPartArg}" — expected one of: ${VIEW_PARTS.join(', ')}`);
+    }
+    const part = viewPartArg as ViewerViewPart;
+    const exported = exportNativeGerbers(pcbPath, {
+      outputDir: defaultGerbersDir(buildDir, pcbPath),
+      savedFills: parsed.args['saved-fills'] === true,
+      json,
+    });
+    const { fragment, viewBox, warnings } = renderViewPart([exported.outputDir], part, overlayPaths);
+    const partPath = path.join(path.dirname(outPath), `view-${part}.html`);
+    fs.mkdirSync(path.dirname(partPath), { recursive: true });
+    fs.writeFileSync(partPath, fragment);
+    if (json) {
+      logger.log(JSON.stringify({ pcb: pcbPath, part, out: partPath, viewBox, warnings }, null, 2));
+    } else {
+      logger.log(chalk.green(`View part ${part} written to ${partPath}`));
+      for (const w of warnings.slice(0, 10)) logger.log(chalk.gray(`  warning: ${w}`));
+    }
+    return;
+  }
+
+  // --lazy-views: the page ships without the pcba/blueprint/schematic
+  // renders (the layout/gerber default still builds eagerly) — each fills
+  // its placeholder on first switch through the host bridge or a
+  // --view-part fragment fetch. The render every board change pays for
+  // shrinks to the default view alone.
+  const lazyViews = parsed.args['lazy-views'] === true;
+  const deferViews: ViewerViewPart[] | undefined = lazyViews ? ['pcba', 'blueprint', 'schematic'] : undefined;
 
   if (!json) {
     logger.log(chalk.white.bold('typecad-pcb viewer') + ' - gerbers + drill + page in one pass\n');
     logger.log(`  PCB:    ${pcbPath}`);
-    logger.log(`  Page:   ${outPath}\n`);
+    logger.log(`  Page:   ${outPath}${lazyViews ? ' (lazy views: pcba, blueprint, schematic)' : ''}\n`);
   }
 
   const exported = exportNativeGerbers(pcbPath, {
@@ -71,10 +112,8 @@ export async function run(parsed: ParsedArgs): Promise<void> {
   });
 
   const result = buildViewerFromFiles([exported.outputDir], {
-    netlistPath,
-    drcReportPath,
-    stackupPath,
-    rulesPath,
+    ...overlayPaths,
+    deferViews,
   });
 
   fs.mkdirSync(path.dirname(outPath), { recursive: true });
@@ -95,6 +134,7 @@ export async function run(parsed: ParsedArgs): Promise<void> {
           out: outPath,
           layers: result.layers.length,
           overlays,
+          deferredViews: deferViews ?? [],
           unfilledZones: exported.unfilledZones,
           warnings: result.warnings,
         },
@@ -105,6 +145,7 @@ export async function run(parsed: ParsedArgs): Promise<void> {
   } else {
     logger.log(chalk.green(`Viewer written to ${outPath} (${result.layers.length} layers, ${exported.files.length} fab files)`));
     if (overlays.length) logger.log(chalk.gray(`  Overlays: ${overlays.join(', ')}`));
+    if (deferViews?.length) logger.log(chalk.gray(`  Lazy views: ${deferViews.join(', ')} (rendered on first switch)`));
     for (const w of result.warnings.slice(0, 10)) logger.log(chalk.gray(`  warning: ${w}`));
     if (result.warnings.length > 10) logger.log(chalk.gray(`  ... and ${result.warnings.length - 10} more`));
   }

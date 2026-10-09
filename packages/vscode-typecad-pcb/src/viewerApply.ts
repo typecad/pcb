@@ -142,6 +142,43 @@ export class LayoutApplyBridge {
    * rebuilds and the viewer regenerates. Computed (non-literal) placements
    * are skipped and reported, never silently mangled.
    */
+  /** Roll every touched file back to its pre-apply text (a file the apply
+   *  created is deleted instead of emptied). Best-effort per file — the
+   *  disk snapshot (build/layout-backups) remains for the Restore Source
+   *  from Backup command when even this cannot run. */
+  private async restorePreApply(
+    files: Array<{ uri: string; text: string; created?: boolean }>,
+    touched: string[],
+    createdUris: Set<string>,
+  ): Promise<void> {
+    for (const key of touched) {
+      const pre = files.find((f) => f.uri === key);
+      if (!pre) continue;
+      try {
+        const doc = await vscode.workspace.openTextDocument(vscode.Uri.parse(key));
+        if (createdUris.has(key)) {
+          try {
+            await doc.save();
+            await vscode.workspace.fs.delete(vscode.Uri.parse(key), { useTrash: false });
+          } catch {
+            // best-effort — the restore command can finish the job
+          }
+          continue;
+        }
+        const restore = new vscode.WorkspaceEdit();
+        restore.replace(
+          doc.uri,
+          new vscode.Range(doc.positionAt(0), doc.positionAt(doc.getText().length)),
+          pre.text,
+        );
+        await vscode.workspace.applyEdit(restore);
+        await doc.save();
+      } catch {
+        // best-effort — the disk snapshot stays authoritative
+      }
+    }
+  }
+
   async onLayoutRebuild(payload: LayoutRebuildPayload): Promise<void> {
     const fail = (error: string): void => {
       this.host.output.appendLine(`layout apply failed: ${error}`);
@@ -211,6 +248,7 @@ export class LayoutApplyBridge {
       imageEdits,
       imageDeletes,
       classEdits,
+      textDeletes,
     }: LayoutRebuildPayload,
   ): Promise<void> {
     try {
@@ -349,6 +387,7 @@ export class LayoutApplyBridge {
         zoneDeletes,
         imageEdits: layoutImageEdits,
         imageDeletes: layoutImageDeletes,
+        textDeletes: textDeletes ?? [],
         classEdits: classEdits ?? [],
         variableOf: (ref) => variableOf.get(ref),
         allRefs: new Set(comps.map((c) => c.reference).filter(Boolean)),
@@ -521,6 +560,7 @@ export class LayoutApplyBridge {
         c.moves > 0 ||
         c.endpoints > 0 ||
         c.texts > 0 ||
+        c.textDeletes > 0 ||
         c.values > 0 ||
         c.labels > 0 ||
         c.renames > 0 ||
@@ -535,7 +575,7 @@ export class LayoutApplyBridge {
         c.zoneEdits > 0 ||
         c.zoneDeletes > 0;
       this.host.output.appendLine(
-        `layout apply: ${c.moves} placement(s) moved${c.endpoints ? `, ${c.endpoints} route endpoint(s) translated` : ''}${c.routes ? `, ${c.routes} track route(s) added to source` : ''}${c.deletes ? `, ${c.deletes} segment(s) deleted from source` : ''}${c.texts ? `, ${c.texts} text(s) edited` : ''}${c.values ? `, ${c.values} value(s) edited` : ''}${c.labels ? `, ${c.labels} label(s) repositioned` : ''}${c.partDeletes ? `, ${c.partDeletes} part(s) deleted from source` : ''}${c.renames ? `, ${c.renames} reference(s) renamed` : ''}${c.zones ? `, ${c.zones} zone(s) added to source` : ''}${c.images ? `, ${c.images} artwork image(s) added to source` : ''}${c.imageEdits ? `, ${c.imageEdits} artwork edit(s) written to source` : ''}${c.imageDeletes ? `, ${c.imageDeletes} artwork image(s) deleted from source` : ''}${c.outline ? ', the board outline edited in source' : ''}${c.zoneEdits ? `, ${c.zoneEdits} zone(s) edited in source` : ''}${c.zoneDeletes ? `, ${c.zoneDeletes} zone(s) deleted from source` : ''}${plan.skipped.length ? `, skipped ${plan.skipped.join('; ')}` : ''}`,
+        `layout apply: ${c.moves} placement(s) moved${c.endpoints ? `, ${c.endpoints} route endpoint(s) translated` : ''}${c.routes ? `, ${c.routes} track route(s) added to source` : ''}${c.deletes ? `, ${c.deletes} segment(s) deleted from source` : ''}${c.texts ? `, ${c.texts} text(s) edited` : ''}${c.textDeletes ? `, ${c.textDeletes} text(s) deleted from source` : ''}${c.values ? `, ${c.values} value(s) edited` : ''}${c.labels ? `, ${c.labels} label(s) repositioned` : ''}${c.partDeletes ? `, ${c.partDeletes} part(s) deleted from source` : ''}${c.renames ? `, ${c.renames} reference(s) renamed` : ''}${c.zones ? `, ${c.zones} zone(s) added to source` : ''}${c.images ? `, ${c.images} artwork image(s) added to source` : ''}${c.imageEdits ? `, ${c.imageEdits} artwork edit(s) written to source` : ''}${c.imageDeletes ? `, ${c.imageDeletes} artwork image(s) deleted from source` : ''}${c.outline ? ', the board outline edited in source' : ''}${c.zoneEdits ? `, ${c.zoneEdits} zone(s) edited in source` : ''}${c.zoneDeletes ? `, ${c.zoneDeletes} zone(s) deleted from source` : ''}${plan.skipped.length ? `, skipped ${plan.skipped.join('; ')}` : ''}`,
       );
       if (plan.syncFile) {
         const s = plan.syncFile;
@@ -560,7 +600,24 @@ export class LayoutApplyBridge {
       // page's ghosts already showed the answer, but a button that names the
       // rebuild must run it.)
       this.host.postStatus('rebuilding board…');
-      await this.host.run(folder, 'npx typecad-pcb build', GENERATE_TIMEOUT_MS);
+      try {
+        await this.host.run(folder, 'npx typecad-pcb build', GENERATE_TIMEOUT_MS);
+      } catch (err) {
+        // the written source PARSED (the post-write check guards that) but
+        // does not BUILD — the writer-bug class (a duplicate symbol only
+        // esbuild sees). Restore the pre-apply snapshot so the tree stays
+        // green; the page keeps its pending gesture on a failure answer, so
+        // the edit is not lost — the next attempt re-applies against clean
+        // source. Silent maintenance: output channel + the failure line,
+        // never a corrupted tree to unscramble by hand.
+        const why = err instanceof Error ? err.message : String(err);
+        await this.restorePreApply(files, plan.touched, createdUris);
+        this.host.output.appendLine(
+          `layout apply: the rebuild failed after the write (${why}) — source restored to its pre-apply state; the edit stays pending in the view`,
+        );
+        fail(`build failed — source restored, the edit is still pending: ${why}`);
+        return;
+      }
       // semantic verification: the parse gate guaranteed the SOURCE parses;
       // this checks the BOARD actually carries the geometry the apply
       // intended (a route the model dropped, a delete that missed, a move
@@ -644,17 +701,10 @@ export class LayoutApplyBridge {
         }
       }
 
-      // A move invalidates every DRC marker — re-run DRC so the regenerated
-      // view carries fresh ones instead of none (the report predates the
-      // new board, and markers are the move's feedback loop). Non-zero
-      // exit just means violations exist; the report is still written.
-      this.host.postStatus('checking rules…');
-      try {
-        await this.host.run(folder, 'npx typecad-pcb drc', GENERATE_TIMEOUT_MS);
-      } catch {
-        // violations exit non-zero — only a real failure (missing board,
-        // engine crash) skips the markers, same as before
-      }
+      // DRC no longer rides the apply: it runs on request (the palette's
+      // typeCAD: DRC, or the status chip's link) against the settled board.
+      // A report left from an older revision is withheld from the page by
+      // the render (stale markers would sit at the PRE-move positions).
       // generate() refuses a board written <3s ago (the build may still be
       // writing); wait for it to settle so the viewer regenerates NOW, not
       // only whenever the file watcher next fires

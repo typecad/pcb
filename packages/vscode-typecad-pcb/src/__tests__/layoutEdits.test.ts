@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyPlacementEdits, maxZonePriority, planComponentEdits, planEndpointEdits, parsePlacementLiteral, planNetClassEdits, planOutlineEdits, planPlacementEdits, planTextEdits, planZoneDeletions, planZoneGeometryEdits } from '../layoutEdits.js';
+import { applyPlacementEdits, maxZonePriority, planComponentEdits, planEndpointEdits, parsePlacementLiteral, planNetClassEdits, planOutlineEdits, planPlacementEdits, planTextDeletions, planTextEdits, planZoneDeletions, planZoneGeometryEdits } from '../layoutEdits.js';
 import { expectValidTs } from './helpers/valid_source.js';
 
 const source = `import { PCB } from '@typecad/pcb';
@@ -291,6 +291,28 @@ describe('planTextEdits', () => {
     ]);
     expect(edits).toHaveLength(0);
     expect(skipped).toHaveLength(1);
+  });
+
+  it('deletes the whole statement — receiver, semicolon, and newline included', () => {
+    const { edits, skipped } = planTextDeletions(src, [{ text0: 'rd-skeleton', x0: 62, y0: 80 }]);
+    expect(skipped).toHaveLength(0);
+    expect(edits).toHaveLength(1);
+    const out = applyPlacementEdits(src, edits);
+    expect(out).not.toContain('rd-skeleton');
+    expect(out).toBe("typecad.text({ text: 'vcc', x: 10, y: 4, layer: 'F.Fab' });\n");
+  });
+
+  it('delete matches anchors within 0.05 and reports misses as skipped', () => {
+    const { edits, skipped } = planTextDeletions(src, [
+      { text0: 'vcc', x0: 10.03, y0: 3.99 },
+      { text0: 'nope', x0: 0, y0: 0 },
+    ]);
+    expect(edits).toHaveLength(1);
+    expect(skipped).toHaveLength(1);
+    expect(skipped[0]!.ref).toContain('nope');
+    const out = applyPlacementEdits(src, edits);
+    expect(out).not.toContain("'vcc'");
+    expect(out).toContain('rd-skeleton');
   });
 
   it('matches anchors within 0.05 mm and skips nested justify objects', () => {

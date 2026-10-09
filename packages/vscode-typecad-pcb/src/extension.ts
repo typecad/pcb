@@ -200,26 +200,10 @@ export function activate(context: vscode.ExtensionContext) {
     }),
   );
 
-  /** Opt-in (typecad-pcb.drcOnBuild): run the check once the board settles. */
-  let autoDrcTimer: NodeJS.Timeout | undefined;
-  const autoDrcIfWanted = (boardFile: string): void => {
-    if (!vscode.workspace.getConfiguration('typecad-pcb').get<boolean>('drcOnBuild')) return;
-    if (autoDrcTimer) clearTimeout(autoDrcTimer);
-    const boardAtEvent = mtimeOf(boardFile);
-    // builds (and kicad-cli's churn) touch the board several times — wait
-    // for quiet, then only act when this exact revision settled and no
-    // source is already newer than it
-    autoDrcTimer = setTimeout(() => {
-      autoDrcTimer = undefined;
-      const folder = resolveHwFolder();
-      const board = folder ? newestBoardFile(folder) : null;
-      if (!folder || !board) return;
-      if (mtimeOf(board) !== boardAtEvent) return;
-      if (boardIsStale(folder, boardAtEvent)) return;
-      output.appendLine('drcOnBuild: board settled — running DRC');
-      void vscode.commands.executeCommand('typecad-pcb.runDrc');
-    }, 10_000);
-  };
+  // DRC runs ONLY on request — the palette command (typeCAD: DRC, or the
+  // status chip's Run DRC link) is the single trigger. The old opt-in
+  // drcOnBuild watcher and the apply's automatic re-run are gone: a check
+  // nobody asked for is seconds of build time on every board change.
   const watchBuild = (folder: string) => {
     boardWatcher?.dispose();
     boardWatcher = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(folder, 'build/**/*.kicad_pcb'));
@@ -230,7 +214,6 @@ export function activate(context: vscode.ExtensionContext) {
       drcCounts = null; // the DRC report describes the previous board revision
       refreshAmbient();
       void viewer.refreshIfVisible();
-      autoDrcIfWanted(uri.fsPath);
     };
     boardWatcher.onDidChange(boardChanged);
     boardWatcher.onDidCreate(boardChanged);

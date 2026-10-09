@@ -23,6 +23,7 @@ exports.textEditRef = textEditRef;
 exports.planLabelAssignments = planLabelAssignments;
 exports.syncLabelStatement = syncLabelStatement;
 exports.planTextEdits = planTextEdits;
+exports.planTextDeletions = planTextDeletions;
 exports.parsePlacementLiteral = parsePlacementLiteral;
 exports.planComponentEdits = planComponentEdits;
 /**
@@ -871,6 +872,64 @@ function planTextEdits(text, edits) {
     for (let i = 0; i < edits.length; i++) {
         if (!used.has(i))
             skipped.push({ ref: textEditRef(edits[i]), reason: 'no .text({…}) literal matches its authored value/anchor' });
+    }
+    return { edits: planned, skipped };
+}
+/**
+ * Free-text deletion: a selected board text's authored identity (value +
+ * anchor) matched to its `.text({…});` statement — the whole statement,
+ * semicolon and trailing newline included, leaves the source. Label texts
+ * (a component's reference/value) never arrive here; they belong to their
+ * footprint's options, not to a standalone statement.
+ */
+function planTextDeletions(text, deletes) {
+    const planned = [];
+    const skipped = [];
+    const used = new Set();
+    const callRe = /\.text\s*\(/g;
+    let match;
+    while ((match = callRe.exec(text)) !== null) {
+        const range = objectLiteralRange(text, match.index);
+        if (!range)
+            continue;
+        const inner = text.slice(range.open + 1, range.close);
+        const xNum = /\bx\s*:\s*(-?[\d.]+)/.exec(inner);
+        const yNum = /\by\s*:\s*(-?[\d.]+)/.exec(inner);
+        const tNum = /\btext\s*:\s*(['"])((?:\\.|(?!\1).)*)\1/.exec(inner);
+        if (!xNum || !yNum || !tNum)
+            continue;
+        const cx = parseFloat(xNum[1]);
+        const cy = parseFloat(yNum[1]);
+        const di = deletes.findIndex((d, i) => !used.has(i) && d.text0 === tNum[2] && Math.abs(d.x0 - cx) < 0.05 && Math.abs(d.y0 - cy) < 0.05);
+        if (di === -1)
+            continue;
+        used.add(di);
+        // the statement span: line start (the `typecad.` receiver rides the
+        // same line) through the closing brace, the call paren, the semicolon,
+        // and the newline — unless another statement shares the line
+        let stmtStart = text.lastIndexOf('\n', match.index) + 1;
+        if (text.slice(stmtStart, match.index).includes(';'))
+            stmtStart = match.index;
+        let stmtEnd = range.close + 1;
+        // `})` then `;` then the newline — whitespace tolerated between them
+        while (stmtEnd < text.length && /[)\s]/.test(text[stmtEnd]) && text[stmtEnd] !== '\n')
+            stmtEnd++;
+        if (text[stmtEnd] === ';')
+            stmtEnd++;
+        if (text[stmtEnd] === '\r')
+            stmtEnd++;
+        if (text[stmtEnd] === '\n')
+            stmtEnd++;
+        planned.push({
+            ref: `text "${tNum[2]}"@${cx},${cy}`,
+            line: '',
+            start: stmtStart,
+            end: stmtEnd,
+        });
+    }
+    for (let i = 0; i < deletes.length; i++) {
+        if (!used.has(i))
+            skipped.push({ ref: `text "${deletes[i].text0}"@${deletes[i].x0},${deletes[i].y0}`, reason: 'no .text({…}) literal matches its authored value/anchor' });
     }
     return { edits: planned, skipped };
 }

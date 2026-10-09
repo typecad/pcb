@@ -8,6 +8,7 @@ import os from 'node:os';
 // read as empty text (the only file the bridge opens here is the _sync.ts
 // sidecar it is about to create), so no disk state has to exist.
 vi.mock('vscode', () => {
+  const applyEdits: unknown[] = [];
   class WorkspaceEdit {
     readonly edits: unknown[] = [];
     replace(): void {
@@ -36,7 +37,12 @@ vi.mock('vscode', () => {
         positionAt: () => ({ line: 0, character: 0 }),
       }),
       asRelativePath: (uri: { fsPath: string }) => uri.fsPath,
-      applyEdit: async () => true,
+      // every WorkspaceEdit is recorded so a test can assert WHAT the
+      // pipeline wrote (and rolled back) without touching disk
+      applyEdit: async (edit: unknown) => {
+        applyEdits.push(edit);
+        return true;
+      },
       fs: { writeFile: async () => undefined, delete: async () => undefined },
     },
     Uri: {
@@ -46,9 +52,11 @@ vi.mock('vscode', () => {
     RelativePattern: class RelativePattern {},
     Range: class Range {},
     WorkspaceEdit,
+    __applyEdits: applyEdits,
   };
 });
 
+import * as vscode from 'vscode';
 import { LayoutApplyBridge, type ViewerHost } from '../viewerApply.js';
 
 /**
@@ -62,6 +70,7 @@ import { LayoutApplyBridge, type ViewerHost } from '../viewerApply.js';
 describe('LayoutApplyBridge', () => {
   let root: string;
   let logs: string[];
+  let commands: string[];
   let layoutStatus: Array<string | undefined>;
   let statuses: string[];
   let refreshes: number;
@@ -80,6 +89,7 @@ describe('LayoutApplyBridge', () => {
     fs.utimesSync(board, past, past);
 
     logs = [];
+    commands = [];
     layoutStatus = [];
     statuses = [];
     refreshes = 0;
@@ -93,6 +103,7 @@ describe('LayoutApplyBridge', () => {
         netSources: async () => [],
       } as never,
       run: async (_cwd: string, command: string) => {
+        commands.push(command);
         if (command.includes('build')) builds++;
         return '';
       },
@@ -229,5 +240,51 @@ describe('LayoutApplyBridge', () => {
     expect(builds).toBe(1);
     expect(generates).toBe(1);
     expect(replays).toBe(1);
+  });
+
+
+  it('a successful apply builds and re-renders but never spawns the DRC check', async () => {
+    // the apply used to re-run `typecad-pcb drc` after every rebuild so the
+    // page carried fresh markers; DRC is a palette request now — the apply
+    // pipeline builds, verifies, and re-renders, nothing more
+    seedSidecarPlacement();
+    const stamp = String(fs.statSync(path.join(root, 'build', 'b.kicad_pcb')).mtimeMs);
+    await bridge.onLayoutRebuild({ board: stamp, ...routePayload });
+    expect(builds).toBe(1);
+    expect(commands.some((c) => c.includes('typecad-pcb drc'))).toBe(false);
+    expect(statuses.some((t) => t === 'checking rules…')).toBe(false);
+  });
+
+
+  it('the tree stays green and the gesture stays pending', async () => {
+    const sidecar = path.join(root, 'src', '_sync.ts');
+    fs.mkdirSync(path.join(root, 'src'), { recursive: true });
+    fs.writeFileSync(sidecar, 'export function syncBoard(typecad, parts) {\n  parts.r1.pcb = { x: 10, y: 10 };\n}\n');
+    (bridge as unknown as { host: ViewerHost }).host.service.components = async () => [
+      { reference: 'R1', variable: 'r1' },
+    ] as never;
+    const origRun = (bridge as unknown as { host: ViewerHost }).host.run;
+    (bridge as unknown as { host: ViewerHost }).host.run = async (_cwd: string, command: string) => {
+      if (command.includes('typecad-pcb build')) throw new Error('esbuild: duplicate symbol');
+      return origRun(_cwd, command);
+    };
+    const stamp = String(fs.statSync(path.join(root, 'build', 'b.kicad_pcb')).mtimeMs);
+    await bridge.onLayoutRebuild({ board: stamp, ...routePayload });
+    // the failure is answered (the page keeps its gesture), the rebuild
+    // never generated a page, and the last write to the touched file put
+    // the PRE-APPLY text back
+    expect(layoutStatus[0]).toMatch(/build failed — source restored/);
+    expect(generates).toBe(0);
+    // the recorded WorkspaceEdits prove the rollback: an earlier edit wrote
+    // the sidecar WITH the new route, and the LAST edit for that file put
+    // the pre-apply text back
+    const edits = ((vscode as unknown as { __applyEdits: Array<{ edits: unknown[][] }> }).__applyEdits)
+      .flatMap((e) => e.edits)
+      .map((args) => ({ fsPath: String(args[0]?.fsPath ?? ''), text: String(args[2] ?? '') }));
+    const sidecarEdits = edits.filter((e) => e.fsPath.endsWith('_sync.ts'));
+    expect(sidecarEdits.length).toBeGreaterThanOrEqual(2);
+    expect(sidecarEdits.at(-1)!.text).toBe(fs.readFileSync(sidecar, 'utf8')); // the pre-apply text
+    expect(sidecarEdits[0]!.text).not.toBe(sidecarEdits.at(-1)!.text); // a real write preceded the rollback
+    expect(logs.some((l) => l.includes('restored to its pre-apply state'))).toBe(true);
   });
 });

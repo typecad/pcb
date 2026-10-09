@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { buildViewerFromFiles, collectGerberFiles } from '../src/gerber_viewer/build.js';
+import { buildViewerFromFiles, collectGerberFiles, parseBoardLabels, parseBoardZones, renderViewPart } from '../src/gerber_viewer/build.js';
 import { buildViewerHtml } from '../src/gerber_viewer/render/viewer_html.js';
 import { renderSvg } from '../src/gerber_viewer/render/svg.js';
 import { detectLayer } from '../src/gerber_viewer/detect_layer.js';
@@ -18,6 +18,44 @@ describe('buildViewerHtml', () => {
   const info = detectLayer('demo-F_Cu.gbr', image);
   const svg = renderSvg([{ info, image }]);
   const html = buildViewerHtml(svg, [info], { title: 'demo board' });
+
+  it('parseBoardLabels anchors a rotated footprint\u2019s labels where KiCad plots them', () => {
+    // U3 from mod-ec verbatim: footprint at (137.6, 84.8, 90), reference at
+    // local (0, 2.9, 180) on F.SilkS. The plotted ink lands at board
+    // (139.86..141.0, 84.39..85.14) — centered on origin + R(-90)·(0, 2.9)
+    // = (140.5, 84.8), with the text angle ABSOLUTE (180, horizontal after
+    // keep-upright). The pads prove the frame: pad 3 at local (-1.76, 0)
+    // plots at board (137.6, 86.56). The old R(+90) + (lrot+prot) math
+    // anchored the label at (134.7, 84.8) — 5.7mm from its own ink, its
+    // claim radius unable to reach it, the designator unselectable
+    const board = [
+      '(footprint "P" (at 137.6 84.8 90) (layer "F.Cu")',
+      '  (property "Reference" "U3" (at 0 2.9 180) (layer "F.SilkS") (effects (font (size 0.75 0.75) (thickness 0.1))))',
+      '  (property "Value" "TS3A24159DRC" (at 0 2.9 90) (layer "F.Fab") (effects (font (size 0.75 0.75))))',
+      '  (fp_text user "${REFERENCE}" (at 0 0 90) (layer "F.Fab") (effects (font (size 0.75 0.75))))',
+      '  (pad "3" smd rect (at -1.76 0 90) (size 0.28 0.28) (layers "F.Cu"))',
+      ')',
+    ].join('\n');
+    const labels = parseBoardLabels(board)['U3']!;
+    const ref = labels.find((l) => l.kind === 'reference')!;
+    expect(ref.x).toBeCloseTo(140.5, 3);
+    expect(ref.y).toBeCloseTo(-84.8, 3);
+    expect(ref.rot).toBe(180); // absolute — the footprint angle never adds
+    const val = labels.find((l) => l.kind === 'value')!;
+    expect(val.x).toBeCloseTo(140.5, 3);
+    expect(val.rot).toBe(90);
+    const fab = labels.find((l) => l.kind === 'fab')!;
+    expect(fab.x).toBeCloseTo(137.6, 3);
+    expect(fab.y).toBeCloseTo(-84.8, 3);
+    expect(fab.rot).toBe(90);
+    // a rot-180 part is its own mirror — anchors unchanged by the sign fix
+    const r5 = parseBoardLabels(
+      '(footprint "P" (at 133.597 81.72 180) (layer "F.Cu")' +
+        '  (property "Reference" "R5" (at 0 -1.43 -90) (layer "F.SilkS") (effects (font (size 0.75 0.75)))))',
+    )['R5']![0]!;
+    expect(r5.x).toBeCloseTo(133.597, 3);
+    expect(r5.y).toBeCloseTo(-83.15, 3);
+  });
 
   it('is fully self-contained (no external references)', () => {
     expect(html).not.toMatch(/src="http/i);
@@ -55,6 +93,80 @@ describe('buildViewerHtml', () => {
     expect(html).toContain('function viaUnderCursor(');
     expect(html).toContain('via = viaUnderCursor(gerberAt(ev.clientX, ev.clientY))');
     expect(html).toContain("cands.push({ kind: 'via', el: cycleVia })");
+  });
+
+  it('a Tab-selected text shows an overlay selection box, not just a glyph recolor', () => {
+    // texts under a pour/trace/part body are only reachable through the Tab
+    // cycle — and the cycle's selection must READ. Recoloring claimed
+    // strokes alone is invisible where the ink is already the selection
+    // color (white silk/fab on the dark theme's white --sel) or where the
+    // label's strokes were claimed away (an off-anchor reference in a dense
+    // corridor), so selection owns an overlay box at the text's live anchor
+    expect(html).toContain('function layoutTextSelBoxSync()');
+    expect(html).toContain("getElementById('layout-text-sel-box')");
+    expect(html).toContain('#layout-text-sel-box {');
+    expect(html).toContain('vector-effect: non-scaling-stroke');
+    // the box draws and clears through markTextSel — every selection path
+    // (Tab cycle, glyph press, E-panel retarget) funnels through it
+    expect(html).toContain('layoutTextSelBoxSync();');
+    // the box rides pending moves: its own drag (syncTextVisual) and the
+    // part drag transporting it (renderLayoutMoves)
+    expect(html).toContain('if (i === layoutTextSel) layoutTextSelBoxSync();');
+    // cycling to another kind (pad/segment/via/zone/part) takes the text
+    // selection with it — a stale box surviving onto the pour reads as two
+    // selections at once
+    expect(html).toContain('function textSelClear()');
+    expect(html).toContain('textSelClear(); // the cycled-to kind owns the board alone');
+    expect(html).toContain("textSelClear(); // the zone owns the selection");
+    expect(html).toContain('textSelClear(); // a part selection replaces any text selection');
+    expect(html).toContain('textSelClear(); // copper owns this press');
+  });
+
+  it("the hovered part's own labels join the Tab cycle (a buried designator is selectable over its part)", () => {
+    // a reference's plotted ink may sit under the part handle or be missing
+    // from the plot entirely, and the anchor disc cannot reach mid-body —
+    // over the BODY is where the user aims at the designator (U3 in mod-ec's
+    // corridor: silk layer off, no plotted strokes, pour and trace through
+    // the area, the cycle showing only zone/segment). KiCad's Tab steps
+    // through a footprint's fields the same way
+    expect(html).toContain("tl2.ref !== compG.__lc.ref || seenLbl[li2]) continue;");
+    expect(html).toContain("if (tl2.kind !== 'reference' && !textLayerVisible(tl2)) continue;");
+    // the hovered comp itself is found geometrically too — pad labels and
+    // fab ink above the handle swallow the DOM hit, which starved the cycle
+    // of the part (and with it, its labels)
+    expect(html).toContain('var gb = compAABB(gs.c, gs.x, gs.y, gs.rot);');
+    // the anchor disc tracks the LIVE label position (comp-transported +
+    // own offset), not the authored one
+    expect(html).toContain('var live = textState(i);');
+    // the selection box is a drag target in its own right — a Tab-selected
+    // text with no claimed strokes still honors "drag to move"
+    expect(html).toContain("r.addEventListener('pointerdown', function (ev) {");
+    expect(html).toContain('cursor: move;');
+  });
+
+  it('a press on claimed glyph ink selects its text over the copper beneath', () => {
+    // layer groups carry pointer-events:none, so claimed text paths never
+    // receive real presses — copper's generous capture ate them for the
+    // trace running through the label. The layout-view capture path now
+    // aim-tests the claimed ink (screen-space sampling sees through
+    // pointer-events and transforms) before the near-segment search
+    expect(html).toContain('if (viewMode === \'layout\') {');
+    expect(html).toContain('var tstack = textStackNear(fgp);');
+    expect(html).toContain('pointNearPathInk(tpaths[tp3], ev.clientX, ev.clientY, 6)');
+    expect(html).toContain('textPointerDown(tstack[ts3], ev);');
+  });
+
+  it('cycle candidates come from directly under the cursor — no halos, no long-reach discs', () => {
+    // pointer-events:all counts the STROKE band even when stroke is none —
+    // the inherited default stroke-width of 1px (=1mm board units) made
+    // every part handle hittable ~0.5mm outside its body
+    expect(html).toContain('#layout-overlay .layout-comp rect,');
+    expect(html).toContain('stroke-width: 0;');
+    // a text with no claimable ink cycles only within a glyph-height-scaled
+    // disc around its anchor — the old length-scaled radius reached 7+ mm
+    // for long values, cycling labels nowhere near the cursor
+    expect(html).toContain('if (!paths.length && !own) {');
+    expect(html).toContain('var reach = Math.min(0.65 * (t.h || 1) * (String(t.text).length + 2), (t.h || 1) * 0.9 + 0.25);');
   });
 
   it('a selected via shows its ring even under a component body', () => {
@@ -225,8 +337,67 @@ describe('buildViewerHtml', () => {
     expect(html).toContain('rpiece.obstacles = buildObstacles(rpiece.layerGroup, routeState.net);');
   });
 
-  it('never lets a barrel overlap another barrel, same net or not', () => {
-    // the armed via's refusal tested NETTED copper only — the route's own
+  it('walk ties are layer-local — no snapping onto other layers\' copper', () => {
+    // routeEndpoint gathered tie candidates from ALL copper groups, so a
+    // walk on one layer snapped its anchors onto traces buried on another
+    // (seen live: an anchor just north of U1.9 kept capturing to an In2
+    // trace under it — no via, no connection, not copper on this layer).
+    // Trace ties and barrel ties now require their ink in the CURRENT
+    // piece's layer group (a barrel qualifies through its flash there)
+    expect(html).toContain('ties are LAYER-LOCAL');
+    expect(html).toContain("vink[vi2].closest(\"g[data-kind='copper']\") !== pieceLg") ;
+    expect(html).toContain("segs[si2].closest(\"g[data-kind='copper']\") !== pieceLg");
+  });
+
+  it('V outside a route arms a FREE VIA — keep-out ring, net adopted from copper, click places', () => {
+    // V with no route live now does what it does mid-route: the barrel's
+    // DRC keep-out ring follows the cursor, reddening on the same
+    // violations (stacked foreign copper, via-on-via), and the click
+    // places a through-via ANYWHERE — the net comes from the copper under
+    // the ring (pad, barrel, any layer's trace, POUR REGION — a stitching
+    // via takes the pour's net), and off copper the via places FLOATING
+    // (the library's net is optional; the canonical statement omits it)
+    expect(html).toContain('function freeViaArm()');
+    expect(html).toContain('function freeViaNetAt(gx, gy)');
+    expect(html).toContain('function freeViaPlace()');
+    expect(html).toContain('else freeViaArm();');
+    expect(html).toContain('if (freeVia) {\n      var fg = gerberAt(ev.clientX, ev.clientY);');
+    expect(html).toContain('freeViaPlace();\n      return;');
+    expect(html).toContain("freeViaClear('via cancelled');");
+    expect(html).toContain('freeViaClear(); // a route starting disarms any free via');
+    // pour adoption: a pour region is copper too (isPointInFill)
+    expect(html).toContain('pours3[po].isPointInFill(pourPt)) return pnet;');
+    // floating placement: no copper under the ring still places
+    expect(html).toContain('no copper under it: a FLOATING via');
+    expect(html).toContain("' (floating \\u2014 no net)");
+    // the E panel edits the via's NET: a select over the board's nets plus
+    // floating, applied as delete + re-place netted (works for session
+    // and board-built barrels — both ride the existing payloads)
+    expect(html).toContain('function setViaNet(v, newNet, size, drill)');
+    expect(html).toContain('<select id="vp-net"');
+    expect(html).toContain('\\u2205 none (floating)');
+    expect(html).toContain("'via net \\u2192 '");
+    // a netted via is a ratsnest NODE: a barrel stranded from its net's
+    // copper owes a wire like a pad does (assigning a net to a free via
+    // drew nothing — the via's component held no pad and was read as a
+    // dead stub)
+    expect(html).toContain('a barrel is a CONNECTION POINT like a pad');
+    expect(html).toContain('if (!els[rv].via) continue;');
+    // the preview elements must NOT carry route-via-preview — the armed
+    // route via's sweeps (viaArmPreviewClear) must not eat the free ring
+    expect(html).not.toContain("'route-via-halo route-via-preview free-via'");
+  });
+
+  it('Tab to another copper layer rebuilds the walk\'s obstacle world', () => {    // cycleRouteLayer switched the piece's canon/layerGroup/ink but left
+    // the obstacle list built for the ORIGINAL layer — a route Tabbed to
+    // In1 kept measuring against F.Cu copper and reddened over crossings
+    // the new layer doesn't carry (seen live: every F.Cu obstacle tripped
+    // an In1 walk)
+    expect(html).toContain('piece.obstacles = buildObstacles(lg, routeState.net);');
+    expect(html).toContain('the obstacle list was built for the layer the piece STARTED on');
+  });
+
+  it('never lets a barrel overlap another barrel, same net or not', () => {    // the armed via's refusal tested NETTED copper only — the route's own
     // net is exempt there (via-in-pad, via-on-trace are connections), so a
     // via sailed straight onto a same-net via (seen live). The overlap test
     // has NO net exemption, tints the arm preview red, refuses the click
@@ -240,6 +411,39 @@ describe('buildViewerHtml', () => {
     expect(html).toContain('if (viaOverlapsVia(wend.x, wend.y, routeState.via.size)) routeState.viaMargin = -1;');
     expect(html).toContain('routeState.viaArmed && viaOverlapsVia(g.x, g.y, routeState.via.size)');
     expect(html).toContain("'via keep-out violation \\u2014 another barrel is inside the ring; move it before clicking'");
+  });
+
+  it('rats nest: a pin numbered on two pads is one node — no wire between them', () => {
+    // dual-row connectors (J1/J2 on the live board) plot every pin twice;
+    // the duplicate pads are joined inside the footprint, but the ratsnest
+    // treated them as separate nodes — they owed each other a wire at rest,
+    // and only a perfectly-snapped finish cleared it when routed. Same-pin
+    // pads now union into one node (pin resolved from the pad manifest by
+    // authored position when the island pad carries none), wired-ness
+    // propagates to twins, and a route reaching EITHER pad satisfies the pin
+    expect(html).toContain('var uPin = uIslandPad.pin !== undefined ? String(uIslandPad.pin) : null;');
+    expect(html).toContain('a pin numbered on more than one pad is ONE node');
+    expect(html).toContain('pads[pj].ref === pads[pk2].ref && pads[pj].pin === pads[pk2].pin');
+    expect(html).toContain('same-pin propagation');
+  });
+
+  it('an apply in flight owns the pipeline — disabled cursor, dead clicks and keybinds', () => {
+    // a click landing mid-build (a part grab, a route anchor) edits state
+    // the rebuild is about to replace, and its undo entry outlives a page
+    // it no longer describes. The apply click locks input until the host's
+    // callback lands: body.applying paints the not-allowed cursor on
+    // everything, the window pointerdown CAPTURE swallows every press
+    // before any downstream handler, and the keydown handlers (layout
+    // keybinds, Escape cascade, view keys) return at their tops. A
+    // three-minute failsafe unlocks a host that never answers.
+    expect(html).toContain('function applyLockSet(on)');
+    expect(html).toContain("document.body.classList.toggle('applying', on);");
+    expect(html).toContain('body.applying, body.applying * { cursor: not-allowed !important; }');
+    expect(html).toContain('if (applyBusy) return; // an apply owns the pipeline — keybinds are dead until it lands');
+    expect(html).toContain('if (applyBusy) return; // an apply owns the pipeline — even Escape waits');
+    expect(html).toContain('if (applyBusy) return; // view keys too — the page is mid-rebuild');
+    expect(html).toContain('if (applyBusy) {');
+    expect(html).toContain('}, 180000);');
   });
 
   it('hosts the zone tool in the E properties panel, not the sidebar', () => {
@@ -408,13 +612,6 @@ describe('buildViewerHtml', () => {
     expect(html).toContain("' { source ' + vn + ' }'");
   });
 
-  it('bakes page-CSS styling into exports (cut polarity, DRC markers)', () => {
-    // the exported file carries no page stylesheet: class-only styling
-    // would fall back to SVG-default black fills
-    expect(html).toContain("clone.querySelectorAll('.cut')");
-    expect(html).toContain("clone.querySelectorAll('.drc-mark circle.outer')");
-    expect(html).toContain("'rgba(229, 72, 77, 0.22)'");
-  });
 
   it('brightens the matched net at zero transparency, zone fills excepted', () => {
     // the highlight color is per-view: pure white on the blueprint paper,
@@ -429,10 +626,15 @@ describe('buildViewerHtml', () => {
     expect(html).toContain("me.setAttribute('fill', hlColor)");
     expect(html).toContain("me.setAttribute('stroke', hlColor)");
     expect(html).toContain("me.setAttribute('opacity', '1')");
-    // unmatched copper dims harder (0.06), and the composite views dim per
-    // element — never a group containing the match (group opacity would
-    // composite over the forced opacity 1 and FADE the clicked net)
-    expect(html).toContain("'0.06'");
+    // unmatched copper dims to the floor — never below authored visibility
+    // (0.06 blacked the pour out on the dark theme; the floor dims TO 0.35
+    // but leaves sub-floor authored opacities like a 0.18 pour untouched) —
+    // and the composite views dim per element — never a group containing the
+    // match (group opacity would composite over the forced opacity 1 and
+    // FADE the clicked net)
+    expect(html).toContain('function netDimOpacity(el)');
+    expect(html).toContain('Math.min(isFinite(o) ? o : 1, 0.35)');
+    expect(html).toContain('netDimOpacity(hits[i])');
     expect(html).toContain('var dimBelow = function (el)');
     expect(html).toContain("el.getAttribute(attr) === value) return");
     // restore path: original fill/stroke remembered, opacity removed
@@ -713,7 +915,7 @@ describe('view switcher (gerber / pcba)', () => {
     expect(html).toContain('var ufFind = function (parent, i)');
     expect(html).toContain("var wSubs = (wel.getAttribute('d') || '').split(/(?=M)/);");
     expect(html).toContain("if (net) p.setAttribute('data-net', net);");
-    expect(html).toContain('window.typecadLayoutApply(moves, texts, values, labels, renames, routedTracks, routedDeletes, partDeletes, zones, outlinePayload, zoneEditsPayload, zoneDeletesPayload, images, imageEditsPayload, imageDeletesPayload, classEditsPayload, function (err, fast)');
+    expect(html).toContain('window.typecadLayoutApply(moves, texts, values, labels, renames, routedTracks, routedDeletes, partDeletes, zones, outlinePayload, zoneEditsPayload, zoneDeletesPayload, images, imageEditsPayload, imageDeletesPayload, classEditsPayload, textDeletesPayload, function (err, fast)');
     expect(html).toContain('moves.push({');
     expect(html).toContain('rot: (m2.rot || 0) * 90,');
     expect(html).toContain('pads: padsByRef[mr2] || [],');
@@ -1114,7 +1316,7 @@ describe('layout view (component overlay from the gerbers)', () => {
     expect(html).toContain("addEventListener('dblclick'");
     expect(html).toContain('layout-text-edit');
     // apply carries text edits alongside component moves
-    expect(html).toContain('window.typecadLayoutApply(moves, texts, values, labels, renames, routedTracks, routedDeletes, partDeletes, zones, outlinePayload, zoneEditsPayload, zoneDeletesPayload, images, imageEditsPayload, imageDeletesPayload, classEditsPayload, function (err, fast)');
+    expect(html).toContain('window.typecadLayoutApply(moves, texts, values, labels, renames, routedTracks, routedDeletes, partDeletes, zones, outlinePayload, zoneEditsPayload, zoneDeletesPayload, images, imageEditsPayload, imageDeletesPayload, classEditsPayload, textDeletesPayload, function (err, fast)');
   });
 
   it('derives handles from the fab contour (chamfers kept) and the pad-land hull', () => {
@@ -1345,5 +1547,125 @@ describe('removeViasAt mask openings', () => {
     // next rebuild regenerated the page (seen live)
     expect(html).toContain('g[data-kind=\"mask\"] circle, g[data-kind=\"mask\"] use');
     expect(html).toContain('the solder-mask OPENINGS outlive the barrel');
+  });
+
+  it('deleting a via recomputes the pour live — whole zone, real clearances', () => {
+    // the old patch painted a measured disc over the barrel's hole
+    // (ray-marched radius, masked rim, fragment clones — three rounds of
+    // "the circle is still visible"). The recompute replaces the zone's
+    // SERVER fragments wholesale: the zone polygon from the zones island,
+    // masked by the fill engine's own discipline rebuilt from live ink.
+    // The zone's clearance and thermal numbers ride the island too.
+    expect(html).toContain('function recomputeZoneFill(lg, zone)');
+    expect(html).toContain('path[data-live-fill], path[fill-rule]');
+    expect(html).toContain("live.setAttribute('data-live-fill', '1')");
+    // the mask discipline: foreign traces as fat strokes, foreign barrels
+    // as grown rects, same-net pads as thermal reliefs with white spokes
+    expect(html).toContain("bl.setAttribute('stroke-width', (tw + 2 * clr).toFixed(3));");
+    expect(html).toContain('// spokes paint LAST: over the black relief rings');
+    // the delete path fires the recompute instead of painting
+    expect(html).toContain('recomputeZonesAt(bx, -by, flashGroups)');
+    expect(html).toContain('recomputeZonesOnLayers(zoneGroups)');
+    // the old machinery is gone — no ray-march, no measured disc, no
+    // fragment clones
+    expect(html).not.toContain('pour-patch-');
+    expect(html).not.toContain('var discR =');
+    expect(html).not.toContain('fcEl.setAttribute');
+    expect(html).not.toContain('pourCovers');
+  });
+
+  it("zone outlines carry the fill engine's clearance and thermal numbers", () => {
+    // parseBoardZones captures (clearance …) and the (fill (thermalGap …)
+    // thermalBridgeWidth …)) sub-list — what the live recompute builds its
+    // holes and reliefs from
+    const board = `(kicad_pcb (version 20260206)
+      (footprint "Resistor:R" (layer "F.Cu") (at 10 10)
+        (pad "1" smd rect (at 0 0) (size 1 1) (layers "F.Cu") (net "GND")))
+      (zone
+        (net "GND")
+        (layer "F.Cu")
+        (polygon (pts (xy 0 0) (xy 10 0) (xy 10 10) (xy 0 10)))
+        (clearance 0.35)
+        (fill (thermalGap 0.3) (thermalBridgeWidth 0.5)))
+    )`;
+    const zones = parseBoardZones(board);
+    expect(zones).toHaveLength(1);
+    expect(zones[0]!.clearance).toBeCloseTo(0.35, 5);
+    expect(zones[0]!.thermalGap).toBeCloseTo(0.3, 5);
+    expect(zones[0]!.thermalBridgeWidth).toBeCloseTo(0.5, 5);
+    expect(zones[0]!.pts.map((q) => q.y)).toEqual([-0, -0, -10, -10].map(Number)); // gerber y-up
+  });
+
+  it('deleting a via never leaves its selection mirror ring behind', () => {
+    // a selected via's ring is MIRRORED into an on-top group (above part
+    // graphics); the mirrors are plain circles that die only at the next
+    // viaHiSync. Deleting a segment whose endpoint carried the ONLY
+    // selected via emptied viaSel inside removeViasAt, so the Delete
+    // handler's conditional sync never ran and the white ring stayed
+    // painted where the barrel was (seen live, intermittently — it took
+    // a segment delete with an endpoint via selected to trigger)
+    expect(html).toContain('selection mirrors outlive their barrel');
+    expect(html).toContain("var topRings = viaSelTopGroup().querySelectorAll('circle');");
+    expect(html).toContain('tc.remove();');
+    // and the segment delete itself refreshes the mirrors: its endpoint
+    // sweep is the one path that empties the selection set without its
+    // own sync
+    expect(html).toContain('left a white selection ring where the barrel was');
+  });
+});
+
+describe('deferred views (lazy renders)', () => {
+  const image = parseGerber(read('traces.gbr'));
+  const info = detectLayer('demo-F_Cu.gbr', image);
+  const svg = renderSvg([{ info, image }]);
+
+  it('deferViews ships empty placeholders, the switcher, and the spinner bootstrap', () => {
+    const result = buildViewerFromFiles([fixtures], { deferViews: ['pcba', 'blueprint', 'schematic'] });
+    // the default (gerber/layout) render is still fully there
+    expect(result.html).toContain('<g id="view-gerber"><g id="yflip"');
+    // the three deferred views are EMPTY placeholder groups, not renders
+    expect(result.html).toContain('<g id="view-pcba" class="view-deferred" style="display:none"></g>');
+    expect(result.html).toContain('<g id="view-blueprint" class="view-deferred" style="display:none"></g>');
+    expect(result.html).toContain('<g id="view-schematic" class="view-deferred" style="display:none"></g>');
+    expect(result.html).not.toContain('id="pcba-board"');
+    expect(result.html).not.toContain('id="bp-board"');
+    expect(result.html).not.toContain('id="sch-board"');
+    // the switcher still offers every view (the ngspice/thermal pair rides
+    // the schematic part) and the boot island names what is deferred
+    expect(result.html).toContain('<option value="pcba">PCBA view</option>');
+    expect(result.html).toContain('<option value="blueprint">Blueprint view</option>');
+    expect(result.html).toContain('<option value="schematic">ngspice view</option>');
+    expect(result.html).toContain('<option value="thermal">Copper ΔT</option>');
+    expect(result.html).toContain('<script id="deferred-views" type="application/json">["pcba","blueprint","schematic"]</script>');
+    // the spinner overlay and its CSS ship with the page
+    expect(result.html).toContain('id="view-busy"');
+    expect(result.html).toContain('.busy-ring');
+    expect(result.html).toContain("@keyframes busy-spin");
+  });
+
+  it('renderViewPart produces the mountable fragment with renamed ids', () => {
+    const { fragment, viewBox } = renderViewPart([fixtures], 'pcba', {});
+    expect(fragment.startsWith('<g id="view-pcba" data-viewbox="')).toBe(true);
+    expect(fragment).toContain('style="display:none"');
+    // the inner board/labels groups carry the renamed ids the eager
+    // injection uses — the root svg stays the only #board
+    expect(fragment).toContain('<g id="pcba-board"');
+    expect(fragment).not.toContain('<g id="board"');
+    expect(viewBox).toMatch(/^-?[\d.]+ -?[\d.]+ [\d.]+ [\d.]+$/);
+    const bp = renderViewPart([fixtures], 'blueprint', {});
+    expect(bp.fragment).toContain('<g id="bp-board"');
+    const sch = renderViewPart([fixtures], 'schematic', {});
+    expect(sch.fragment).toContain('<g id="sch-board"');
+  });
+
+  it('the page carries the loader: host bridge first, fetch fallback, spinner text', () => {
+    const result = buildViewerFromFiles([fixtures], { deferViews: ['pcba'] });
+    expect(result.html).toContain('window.typecadViewPart');
+    expect(result.html).toContain("fetch('view-' + part + '.html')");
+    expect(result.html).toContain('solving the ngspice operating point');
+    expect(result.html).toContain('rendering the pcba view');
+    expect(result.html).toContain("viewBusyShow('calculating copper");
+    // thermal solve yields a frame so the spinner paints first
+    expect(result.html).toContain('viewBusyShow(\'calculating copper');
   });
 });

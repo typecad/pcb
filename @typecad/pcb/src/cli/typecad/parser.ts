@@ -36,6 +36,8 @@ const VALUE_FLAGS = new Set([
   'drc',
   'stackup',
   'rules',
+  // one deferred view rendered as a mountable fragment (typecad-pcb viewer)
+  'view-part',
 ]);
 
 export function parseArgv(argv: string[]): ParsedArgs {

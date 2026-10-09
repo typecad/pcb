@@ -112,9 +112,12 @@ function sectionPushStatement(net, route) {
 function standaloneViaStatements(net, route) {
     const legs = route.pieces.flatMap((piece) => piece.pts.slice(1));
     const end = legs[legs.length - 1];
+    // a FLOATING via (placed anywhere off copper) has no net — the canonical
+    // grammar omits the property (viaArgSource), never writes net: 'null'
+    const netProp = net ? ` net: '${escapeSingleQuoted(net)}',` : '';
     return (route.vias ?? [])
         .filter((v) => !end || !ptEq(v, end, 0.001))
-        .map((v) => `typecad.via({ at: { x: ${canonNum(v.x)}, y: ${canonNum(v.y)} }, net: '${escapeSingleQuoted(net)}', size: ${canonNum(v.size ?? 0.6)}, drill: ${canonNum(v.drill ?? 0.3)} });`);
+        .map((v) => `typecad.via({ at: { x: ${canonNum(v.x)}, y: ${canonNum(v.y)} },${netProp} size: ${canonNum(v.size ?? 0.6)}, drill: ${canonNum(v.drill ?? 0.3)} });`);
 }
 /** Does this text hold a per-net track section (the write-back's grammar)? */
 function hasTrackSection(text) {
@@ -133,23 +136,47 @@ function planSectionRouteEdits(text, routes) {
     const edits = [];
     const skipped = [];
     let applied = 0;
+    // tails this APPLY created: {net -> the statement bytes just appended (an
+    // edit's line ends with it) and its final point}. Earlier routes are
+    // pending EDITS — invisible to the text reads below — so without this, a
+    // route starting where a just-appended statement ends added a sibling the
+    // oracle re-chains as drift (seen live: one J1 route committed in three
+    // steps landed as three statements split at 132.775 and 136.912)
+    const pendingTails = new Map();
+    const extendTail = (net, stmt, edit) => {
+        const end = finalPointOf(stmt);
+        if (end)
+            pendingTails.set(net, { stmt, edit, end });
+    };
     for (const route of routes) {
         const label = `${route.from.ref}.${route.from.pin}`;
-        if (route.net === null || route.net === '') {
+        // a net-less TRACK cannot land in the named section — but a net-less
+        // VIA (placed anywhere off copper, floating) can: its standalone
+        // statement carries no net, exactly the canonical form
+        if ((route.net === null || route.net === '') && route.pieces.length > 0) {
             skipped.push(`${label} (net-less routes cannot land in the track section)`);
             continue;
         }
-        // duplicate guard: a statement with identical geometry already exists
-        const statement = sectionPushStatement(route.net, route);
-        if (statement === null) {
+        if (route.net === null || route.net === '') {
+            if ((route.vias ?? []).length === 0) {
+                skipped.push(`${label} (net-less and via-less — nothing to write)`);
+                continue;
+            }
+        }
+        // a VIA-ONLY entry (the free via — no pieces) carries no track statement;
+        // its standalone via statements below are the whole write. The statement
+        // builder reads pieces[0], so guard it rather than crash.
+        const standalone = standaloneViaStatements(route.net, route);
+        const statement = route.pieces.length > 0 && route.net ? sectionPushStatement(route.net, route) : null;
+        if (statement === null && standalone.length === 0) {
             skipped.push(`${label} (no geometry)`);
             continue;
         }
-        if (text.includes(statement)) {
+        if (statement !== null && text.includes(statement)) {
             skipped.push(`${label} (identical statement already in the section)`);
             continue;
         }
-        const variable = trackVarForNet(route.net);
+        const variable = trackVarForNet(route.net ?? '');
         const pushRe = new RegExp(`^${variable}\\.push\\([^;]*\\);`, 'gm');
         let lastPush = null;
         let m;
@@ -159,7 +186,7 @@ function planSectionRouteEdits(text, routes) {
         // section end, in the write-back's canonical form — one edit placing
         // all of this route's, after the last existing standalone via or
         // after the section's last statement (blank-line separated)
-        const standalone = standaloneViaStatements(route.net, route);
+        let standaloneLanded = false;
         if (standalone.length > 0) {
             const viaRe = /^typecad\.via\([^;]*\);$/gm;
             let lastVia = null;
@@ -168,16 +195,35 @@ function planSectionRouteEdits(text, routes) {
             if (lastVia) {
                 const at = lastVia.index + lastVia[0].length;
                 edits.push({ start: at, end: at, line: '\n' + standalone.join('\n') });
+                standaloneLanded = true;
             }
             else {
                 const lastStmt = lastAnyStatement(text);
                 if (lastStmt) {
                     edits.push({ start: lastStmt.end, end: lastStmt.end, line: '\n\n' + standalone.join('\n') });
+                    standaloneLanded = true;
                 }
                 else {
                     skipped.push(`${label} (no section anchor for the route's vias)`);
                 }
             }
+        }
+        // via-only: the standalone statements above were the whole write
+        if (statement === null) {
+            if (standaloneLanded)
+                applied++;
+            continue;
+        }
+        const legs = routeLegs(route);
+        const startPt = route.pieces[0].pts[0];
+        // WITHIN-APPLY CHAINING: extend the statement this apply just wrote
+        const pending = pendingTails.get(route.net);
+        if (pending && ptEq(pending.end, startPt, 0.001) && legs.length > 0) {
+            const grown = pending.stmt.slice(0, -2) + legs.map(toClause).join('') + ');';
+            pending.edit.line = pending.edit.line.slice(0, pending.edit.line.length - pending.stmt.length) + grown;
+            extendTail(route.net, grown, pending.edit);
+            applied++;
+            continue;
         }
         if (lastPush) {
             const stmt = lastPush[0];
@@ -188,13 +234,12 @@ function planSectionRouteEdits(text, routes) {
             // for one contiguous run read as drift and get re-chained on the next
             // write-back (seen live: CH2_COM and DRIVE redraws).
             const lastEnd = finalPointOf(stmt);
-            const legs = routeLegs(route);
-            const startPt = route.pieces[0].pts[0];
             if (lastEnd && ptEq(lastEnd, startPt, 0.001) && legs.length > 0) {
                 const viaM = /\.via\(\{[^}]*\}\)/.exec(stmt);
                 const head = viaM ? stmt.slice(0, viaM.index) : stmt.slice(0, stmt.lastIndexOf(');'));
                 const extended = head + legs.map(toClause).join('') + ');';
                 edits.push({ start: lastPush.index, end: lastPush.index + stmt.length, line: extended });
+                extendTail(route.net, extended, edits[edits.length - 1]);
                 applied++;
                 continue;
             }
@@ -202,6 +247,7 @@ function planSectionRouteEdits(text, routes) {
             // order puts newly built copper after the existing chains)
             const at = lastPush.index + stmt.length;
             edits.push({ start: at, end: at, line: `\n${statement}` });
+            extendTail(route.net, statement, edits[edits.length - 1]);
             applied++;
             continue;
         }
@@ -216,6 +262,23 @@ function planSectionRouteEdits(text, routes) {
         if (decl) {
             const at = decl.index + decl[0].length;
             edits.push({ start: at, end: at, line: `\n${statement}` });
+            extendTail(route.net, statement, edits[edits.length - 1]);
+            applied++;
+            continue;
+        }
+        // The net may exist only in THIS apply's pending edits: a redraw pair —
+        // two routes for one net in one payload (a re-send after a failed
+        // build, or the old route riding beside its replacement) — starts both
+        // at the same pad, so the contiguous-pending extension never fires,
+        // and the scans above read the ORIGINAL text and saw nothing. Taking
+        // the new-block path here re-DECLARES the symbol beside the block this
+        // apply just wrote (seen live: track_SDA declared twice, esbuild dead)
+        // and re-spreads it into create(). Append as a sibling push into the
+        // pending block instead.
+        const pendingBlock = pendingTails.get(route.net);
+        if (pendingBlock) {
+            pendingBlock.edit.line += `\n${statement}`;
+            extendTail(route.net, statement, pendingBlock.edit);
             applied++;
             continue;
         }
@@ -230,6 +293,7 @@ function planSectionRouteEdits(text, routes) {
         }
         const block = `\n\n// Net: ${route.net}\nconst ${variable}: TrackBuilder[] = [];\n${statement}`;
         edits.push({ start: lastAny.end, end: lastAny.end, line: block });
+        extendTail(route.net, statement, edits[edits.length - 1]);
         const create = findCreateCall(text);
         if (create && !text.slice(create.createIdx, create.closeIdx).includes(`...${variable}`)) {
             const insert = createArgsSpreadInsert(text, create, `...${variable}`);
@@ -268,7 +332,7 @@ function createArgsSpreadInsert(text, create, spread) {
     if (open === -1 || open > create.closeIdx)
         return null;
     let depth = 0;
-    let lastComma = -1;
+    const commas = [];
     for (let i = open; i < create.closeIdx; i++) {
         const ch = text[i];
         if (ch === "'" || ch === '"') {
@@ -285,20 +349,42 @@ function createArgsSpreadInsert(text, create, spread) {
         else if (ch === ')')
             depth--;
         else if (ch === ',' && depth === 1)
-            lastComma = i;
+            commas.push(i);
     }
+    const lastArgAfter = (commaIdx) => {
+        const argStart = commaIdx === -1 ? open + 1 : commaIdx + 1;
+        let end = create.closeIdx;
+        while (end > argStart && /\s/.test(text[end - 1]))
+            end--;
+        return end > argStart ? { end, argStart } : null;
+    };
     // the last argument runs from the final top-level comma (or the open
-    // paren) to the close paren, trailing whitespace excluded
-    let end = create.closeIdx;
-    const argStart = lastComma === -1 ? open + 1 : lastComma + 1;
-    while (end > argStart && /\s/.test(text[end - 1]))
-        end--;
-    if (end <= argStart)
+    // paren) to the close paren, trailing whitespace excluded. A TRAILING
+    // comma after the last real argument (`...track_X,\n);` — what canonical
+    // rewrites and hand edits leave) means the final comma is followed by
+    // nothing: without backing up, the insert silently failed and every
+    // new net's spread vanished while its block landed (seen live: SDA,
+    // SCL, UART_RX, UART_TX blocks with no create() spreads, their copper
+    // never reaching the board)
+    let real = lastArgAfter(commas.length ? commas[commas.length - 1] : -1);
+    if (!real && commas.length) {
+        // the final comma is TRAILING: the real last argument is the token
+        // run BEFORE it — cap at the comma and trim back to its end, so the
+        // insert lands between the real argument and the surviving comma
+        const cap = commas.pop();
+        const argStart = commas.length ? commas[commas.length - 1] + 1 : open + 1;
+        let end = cap;
+        while (end > argStart && /\s/.test(text[end - 1]))
+            end--;
+        if (end > argStart)
+            real = { end, argStart };
+    }
+    if (!real)
         return null;
     const multiline = text.slice(open, create.closeIdx).includes('\n');
-    const argLineStart = text.lastIndexOf('\n', end - 1) + 1;
-    const indent = multiline ? (/^[ \t]*/.exec(text.slice(argLineStart, end))?.[0] ?? '  ') : '';
-    const at = end;
+    const argLineStart = text.lastIndexOf('\n', real.end - 1) + 1;
+    const indent = multiline ? (/^[ \t]*/.exec(text.slice(argLineStart, real.end))?.[0] ?? '  ') : '';
+    const at = real.end;
     return { start: at, end: at, line: `,${multiline ? '\n' + indent : ' '}${spread}` };
 }
 /** Do two points match within tolerance (board frame, mm)? */
@@ -449,8 +535,15 @@ function planCreateArgsEdit(text, add, remove) {
         args = args.slice(0, rel) + `${sep}${add.join(', ')}${spacer}${gap})`;
     }
     for (const nm of remove) {
-        // NOTE: these build RegExp SOURCE strings — every backslash is doubled
+        // NOTE: these build RegExp SOURCE strings — every backslash is doubled.
+        // Section-dialect arguments are SPREADS (`...track_X`): strip the dots
+        // with the name or they outlive the removal and abut the survivor
+        // ("......track_PROBE_1", seen live). Bare names (the loose dialect)
+        // keep their own patterns below.
         args = args
+            .replace(new RegExp(`,\\s*\\.\\.\\.${nm}\\b`), '')
+            .replace(new RegExp(`\\.\\.\\.${nm}\\s*,\\s*`), '')
+            .replace(new RegExp(`\\.\\.\\.${nm}\\b`), '')
             .replace(new RegExp(`,\\s*${nm}\\b`), '')
             .replace(new RegExp(`\\b${nm}\\s*,\\s*`), '')
             .replace(new RegExp(`\\(\\s*${nm}\\s*\\)`), '()');
@@ -975,14 +1068,18 @@ function planRouteDeletes(text, deletes, opts) {
     // removes the geometry a via joins orphans it (deleting the route must
     // take its transition vias — seen live: the track went, both vias
     // stayed on the rebuilt board).
-    const standaloneViaRe = /^typecad\.via\(\{ at: \{ x: (-?[\d.]+), y: (-?[\d.]+) \}, net: '([^']*)'[^)]*\}\);$/gm;
+    // the net clause is OPTIONAL — a floating via (placed anywhere off copper)
+    // writes the net-less canonical statement, and its delete must match that
+    // too (seen live: a floating via's delete matched no statement, fell to
+    // segment matching, and refused the whole apply)
+    const standaloneViaRe = /^typecad\.via\(\{ at: \{ x: (-?[\d.]+), y: (-?[\d.]+) \}(?:, net: '([^']*)')?[^)]*\}\);$/gm;
     const standaloneVias = [];
     for (const m of text.matchAll(standaloneViaRe)) {
         let end = m.index + m[0].length;
         const nl = /^\r?\n/.exec(text.slice(end));
         if (nl)
             end += nl[0].length;
-        standaloneVias.push({ start: m.index, end, x: parseFloat(m[1]), y: parseFloat(m[2]), net: m[3], removed: false });
+        standaloneVias.push({ start: m.index, end, x: parseFloat(m[1]), y: parseFloat(m[2]), net: m[3] ?? '', removed: false });
     }
     // line-index -> char-offset mapping for block edits (create() edits are
     // computed in char offsets directly and stay untouched by this)
@@ -1153,10 +1250,16 @@ function planRouteDeletes(text, deletes, opts) {
     }
     // push-dialect chains (the import's one-line `arr.push(typecad.track(…))`
     // statements): the same keep/run/split logic, re-emitted in their own
-    // dialect. The array stays in create() either way — a spread of an emptied
-    // array contributes nothing — so there is no create-args maintenance here.
+    // dialect. An array whose statements ALL die empties, and the oracle's
+    // canonical section drops the whole block (comment + declaration) and its
+    // create() spread — leaving either read as drift on the next write-back
+    // (seen live: track_AMP_OUT's spread survived its last push).
     const pushChainInfos = [];
+    const arrayStats = new Map();
     for (const pc of pushes) {
+        const stats = arrayStats.get(pc.arrayName) ?? { total: 0, dead: 0 };
+        stats.total++;
+        arrayStats.set(pc.arrayName, stats);
         const net = /net:\s*'([^']*)'/.exec(pc.opts)?.[1] ?? null;
         const keep = [];
         for (let i = 0; i + 1 < pc.points.length; i++) {
@@ -1202,6 +1305,7 @@ function planRouteDeletes(text, deletes, opts) {
             if (nl)
                 rmEnd += nl[0].length;
             edits.push({ start: pc.start, end: rmEnd, line: '' });
+            arrayStats.get(pc.arrayName).dead++;
             continue;
         }
         // the chain's trailing via survives only on the statement that still
@@ -1210,6 +1314,25 @@ function planRouteDeletes(text, deletes, opts) {
         const viaArgs = lastRun[lastRun.length - 1] === pc.points.length - 1 ? pc.viaArgs : null;
         const stmts = runs.map((r, ri) => emitPushStatement(pc, r, ri === runs.length - 1 ? viaArgs : null));
         edits.push({ start: pc.start, end: pc.end, line: stmts.join('\n') });
+    }
+    // arrays whose every statement died: the canonical section carries no
+    // empty block — the declaration and its `// Net:` comment go, and the
+    // create() spread joins namesToRemove for the combined rewrite below
+    for (const [name, stats] of arrayStats) {
+        if (stats.dead === 0 || stats.dead < stats.total)
+            continue;
+        const blockRe = new RegExp(`(\/\/ Net: [^\\r\\n]*\\r?\\n)const ${name}: TrackBuilder\\[\\] = \\[\\];\\r?\\n\\r?\\n?`);
+        const blockM = blockRe.exec(text);
+        if (blockM) {
+            edits.push({ start: blockM.index, end: blockM.index + blockM[0].length, line: '' });
+        }
+        else {
+            const declRe = new RegExp(`const ${name}: TrackBuilder\\[\\] = \\[\\];\\r?\\n\\r?\\n?`);
+            const declM = declRe.exec(text);
+            if (declM)
+                edits.push({ start: declM.index, end: declM.index + declM[0].length, line: '' });
+        }
+        namesToRemove.push(name);
     }
     // ONE combined create() rewrite: additions splice in with a comment-aware
     // separator, then removals drop their names — never two edits over the

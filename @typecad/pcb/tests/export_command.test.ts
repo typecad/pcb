@@ -82,7 +82,7 @@ describe('export command', () => {
         throw new Error('EXIT');
       }) as never);
 
-      await expect(run(makeParsed({ subcommand: 'bom' }))).rejects.toThrow('EXIT');
+      await expect(run(makeParsed({ subcommand: 'bananas' }))).rejects.toThrow('EXIT');
       expect(mockExit).toHaveBeenCalledWith(1);
       mockExit.mockRestore();
     });
@@ -94,7 +94,7 @@ describe('export command', () => {
         throw new Error('EXIT');
       }) as never);
 
-      await expect(run(makeParsed({ subcommand: 'bom', json: true }))).rejects.toThrow('EXIT');
+      await expect(run(makeParsed({ subcommand: 'bananas', json: true }))).rejects.toThrow('EXIT');
       expect(logger.log).toHaveBeenCalledWith(expect.stringContaining('"UNKNOWN_SUBCOMMAND"'));
       mockExit.mockRestore();
     });
@@ -110,6 +110,31 @@ describe('export command', () => {
 
       expect(showExportHelpSpy).toHaveBeenCalled();
       showExportHelpSpy.mockRestore();
+    });
+
+    it('should show export help for the bare word `help` as the subcommand', async () => {
+      const { run } = await import('../src/cli/typecad/commands/export.js');
+      const helpModule = await import('../src/cli/typecad/help.js');
+      const showExportHelpSpy = vi.spyOn(helpModule, 'showExportHelp').mockImplementation(() => {});
+
+      await run(makeParsed({ subcommand: 'help' }));
+
+      expect(showExportHelpSpy).toHaveBeenCalled();
+      showExportHelpSpy.mockRestore();
+    });
+
+    it('should show the subcommand help for `export <sub> help`', async () => {
+      const { run } = await import('../src/cli/typecad/commands/export.js');
+      const helpModule = await import('../src/cli/typecad/help.js');
+      const posSpy = vi.spyOn(helpModule, 'showExportPosHelp').mockImplementation(() => {});
+      const overviewSpy = vi.spyOn(helpModule, 'showExportHelp').mockImplementation(() => {});
+
+      await run(makeParsed({ subcommand: 'pos', positional: ['help'] }));
+
+      expect(posSpy).toHaveBeenCalled();
+      expect(overviewSpy).not.toHaveBeenCalled();
+      posSpy.mockRestore();
+      overviewSpy.mockRestore();
     });
   });
 

@@ -23,6 +23,14 @@ interface BoardPad {
   pinType?: string;
   /** Pad center in the footprint's local (unrotated) frame, mm. */
   at: { x: number; y: number };
+  /** Pad's own rotation vs the footprint frame, degrees — KiCad stores the
+   *  absolute angle (footprint rotation included); it is subtracted here. */
+  rotation?: number;
+  /** Corner roundness in percent of the lesser side (0 square, 100 round) —
+   *  from roundrect_rratio, or 100 for circular pads. */
+  roundness?: number;
+  /** Pad size in the footprint frame, mm. */
+  size: { width: number; height: number };
   /** Copper layers the pad exists on ('*.Cu' expands during analysis). */
   layers: string[];
 }
@@ -55,6 +63,19 @@ export interface BoardComponent {
    * has no measurable geometry at all.
    */
   dimensions: { width: number; height: number } | null;
+  /**
+   * Center of that same measured bbox in the footprint's local frame,
+   * relative to the anchor (the `at` origin) — the physical body center
+   * placement files want when the anchor sits elsewhere. Null whenever
+   * dimensions is null.
+   */
+  bodyCenter: { x: number; y: number } | null;
+  /** Do-not-populate (KiCad attr or top-level token) — assembly outputs skip it. */
+  dnp: boolean;
+  /** KiCad's "exclude from position files" attribute. */
+  excludeFromPos: boolean;
+  /** KiCad's "exclude from BOM" attribute. */
+  excludeFromBom: boolean;
   /** Source variable name recovered from the "Code" property, when present. */
   variable?: string;
   /** Source file:line recovered from the "Code" property, when present. */
@@ -138,6 +159,11 @@ export interface BoardModel {
   nets: BoardNet[];
   zones: BoardZone[];
   summary: BoardSummary;
+  /** The board's aux (drill/place) origin when set — placement exports can rebase onto it. */
+  auxOrigin: { x: number; y: number } | null;
+  /** Edge.Cuts outline as line segments (arcs flattened, rects expanded),
+   *  mm board coordinates. Empty when the board has no outline graphics. */
+  outline: { x1: number; y1: number; x2: number; y2: number }[];
 }
 
 /**
@@ -179,12 +205,27 @@ function nodeLayer(node: SNode): string | null {
   return node.child('layer')?.getString(1) ?? null;
 }
 
-function bboxSize(points: Pt[]): { width: number; height: number } | null {
+/** Size plus the bbox center (both rounded to µm) — the center is what
+ *  placement exports transport through the footprint rotation to get the
+ *  body centroid when the anchor is off-center. */
+function bboxMeasure(points: Pt[]): {
+  width: number;
+  height: number;
+  centerX: number;
+  centerY: number;
+} | null {
   if (points.length === 0) return null;
   const xs = points.map((p) => p.x);
   const ys = points.map((p) => p.y);
   const round = (v: number) => Math.round(v * 1000) / 1000;
-  return { width: round(Math.max(...xs) - Math.min(...xs)), height: round(Math.max(...ys) - Math.min(...ys)) };
+  const minX = Math.min(...xs);
+  const minY = Math.min(...ys);
+  return {
+    width: round(Math.max(...xs) - minX),
+    height: round(Math.max(...ys) - minY),
+    centerX: round((Math.max(...xs) + minX) / 2),
+    centerY: round((Math.max(...ys) + minY) / 2),
+  };
 }
 
 /**
@@ -192,7 +233,10 @@ function bboxSize(points: Pt[]): { width: number; height: number } | null {
  * (unrotated) frame. Preference: fabrication outline (the physical body),
  * then silkscreen, then any fp_* graphics, then pad extents.
  */
-function footprintDimensions(fp: SNode, padNodes: SNode[]): { width: number; height: number } | null {
+function footprintDimensions(
+  fp: SNode,
+  padNodes: SNode[],
+): { width: number; height: number; centerX: number; centerY: number } | null {
   const byLayer = new Map<string, Pt[]>();
   const add = (layer: string | null, ...pts: (Pt | null)[]) => {
     if (!layer) return;
@@ -225,11 +269,11 @@ function footprintDimensions(fp: SNode, padNodes: SNode[]): { width: number; hei
   }
 
   for (const layer of ['F.Fab', 'B.Fab', 'F.SilkS', 'B.SilkS']) {
-    const size = bboxSize(byLayer.get(layer) ?? []);
+    const size = bboxMeasure(byLayer.get(layer) ?? []);
     if (size) return size;
   }
   const allGraphics = [...byLayer.values()].flat();
-  const graphicsSize = bboxSize(allGraphics);
+  const graphicsSize = bboxMeasure(allGraphics);
   if (graphicsSize) return graphicsSize;
 
   // Last resort: pad extents (pad centers ± half sizes)
@@ -244,7 +288,48 @@ function footprintDimensions(fp: SNode, padNodes: SNode[]): { width: number; hei
     const h = size ? size.getNumber(2, 0) : 0;
     padPts.push({ x: cx - w / 2, y: cy - h / 2 }, { x: cx + w / 2, y: cy + h / 2 });
   }
-  return bboxSize(padPts);
+  return bboxMeasure(padPts);
+}
+
+/**
+ * Footprint assembly flags (dnp, exclude-from-pos/bom) across every shape
+ * KiCad has written: modern boards carry `(dnp yes)` as a footprint-level
+ * token or `(attr (dnp yes))`; older ones used bare symbols inside
+ * `(attr dnp)` / `(attr exclude_from_pos_files)`.
+ */
+function footprintAssemblyFlags(fp: SNode): { dnp: boolean; excludeFromPos: boolean; excludeFromBom: boolean } {
+  const flags = { dnp: false, excludeFromPos: false, excludeFromBom: false };
+  const flagValue = (name: string): boolean | null => {
+    // atomString covers both quoted ("yes") and bare-symbol (yes) atoms
+    // footprint-level token: (dnp yes)
+    const own = fp.child(name);
+    if (own) {
+      const v = atomString(own, 1);
+      return v === 'yes' || v === 'true';
+    }
+    // nested inside (attr ...): (attr (dnp yes)) or legacy (attr dnp)
+    const attr = fp.child('attr');
+    if (attr) {
+      const nested = attr.child(name);
+      if (nested) {
+        const v = atomString(nested, 1);
+        return v === 'yes' || v === 'true';
+      }
+      for (let i = 1; i < attr.length; i++) {
+        if (atomString(attr, i) === name) return true;
+      }
+    }
+    return null;
+  };
+  for (const [name, key] of [
+    ['dnp', 'dnp'],
+    ['exclude_from_pos_files', 'excludeFromPos'],
+    ['exclude_from_bom', 'excludeFromBom'],
+  ] as const) {
+    const v = flagValue(name);
+    if (v !== null) flags[key] = v;
+  }
+  return flags;
 }
 
 export function isPowerNet(net: BoardNet): boolean {
@@ -358,6 +443,7 @@ export function buildBoardModel(pcbPath: string): BoardModel {
     }
 
     const padNodes = fp.children('pad');
+    const flags = footprintAssemblyFlags(fp);
     const pads: BoardPad[] = [];
     for (const pad of padNodes) {
       const net = netNameOf(pad, netCodesByName);
@@ -371,16 +457,29 @@ export function buildBoardModel(pcbPath: string): BoardModel {
           if (l) padLayers.push(l);
         }
       }
+      // pad rotation is stored absolute (footprint rotation included);
+      // package footprints want the pad's own angle
+      const absRot = padAt?.getNumber(3, NaN) ?? NaN;
+      const padType = atomString(pad, 2);
+      const padShape = atomString(pad, 3);
+      const rratio = pad.child('roundrect_rratio')?.getNumber(1, NaN) ?? NaN;
       pads.push({
         pad: atomString(pad, 1),
-        type: atomString(pad, 2),
+        type: padType,
         net: net ? nameFor(net.code, net.name) : null,
         pinType: pintypeNode ? (pintypeNode.getString(1) ?? undefined) : undefined,
         at: { x: padAt?.getNumber(1, 0) ?? 0, y: padAt?.getNumber(2, 0) ?? 0 },
+        rotation: Number.isFinite(absRot) ? absRot - (atNode?.getNumber(3, 0) ?? 0) : undefined,
+        roundness: padShape === 'circle' ? 100 : Number.isFinite(rratio) ? rratio * 100 : undefined,
+        size: {
+          width: pad.child('size')?.getNumber(1, 0) ?? 0,
+          height: pad.child('size')?.getNumber(2, 0) ?? 0,
+        },
         layers: padLayers,
       });
     }
 
+    const bbox = footprintDimensions(fp, padNodes);
     components.push({
       reference,
       value,
@@ -391,7 +490,11 @@ export function buildBoardModel(pcbPath: string): BoardModel {
         y: atNode?.getNumber(2, 0) ?? 0,
         rotation: atNode?.getNumber(3, 0) ?? 0,
       },
-      dimensions: footprintDimensions(fp, padNodes),
+      dimensions: bbox ? { width: bbox.width, height: bbox.height } : null,
+      bodyCenter: bbox ? { x: bbox.centerX, y: bbox.centerY } : null,
+      dnp: flags.dnp,
+      excludeFromPos: flags.excludeFromPos,
+      excludeFromBom: flags.excludeFromBom,
       variable,
       source,
       pads,
@@ -519,16 +622,110 @@ export function buildBoardModel(pcbPath: string): BoardModel {
     if (!keepout && (code >= 0 || name !== null)) netByCode(code >= 0 ? code : -1, name).zones.push({ layers });
   }
 
-  // Board bounds from Edge.Cuts graphics
+  // Board bounds + outline segments from Edge.Cuts graphics. Arcs flatten to
+  // ~5° chords so the outline is a plain polyline (what consumers like the
+  // OpenPnP profile want); rects contribute their four edges.
+  const roundP = (v: number) => Math.round(v * 1000) / 1000;
+  const outline: { x1: number; y1: number; x2: number; y2: number }[] = [];
+  const addSegment = (a: Pt, b: Pt) =>
+    outline.push({ x1: roundP(a.x), y1: roundP(a.y), x2: roundP(b.x), y2: roundP(b.y) });
+  const addArc = (start: Pt, mid: Pt | null, end: Pt, angle: number | null): void => {
+    let cx: number;
+    let cy: number;
+    let sweep: number;
+    if (mid) {
+      const d = 2 * (start.x * (mid.y - end.y) + mid.x * (end.y - start.y) + end.x * (start.y - mid.y));
+      if (Math.abs(d) < 1e-9) return; // collinear
+      const sq = (p: Pt) => p.x * p.x + p.y * p.y;
+      cx = (sq(start) * (mid.y - end.y) + sq(mid) * (end.y - start.y) + sq(end) * (start.y - mid.y)) / d;
+      cy = (sq(start) * (end.x - mid.x) + sq(mid) * (start.x - end.x) + sq(end) * (mid.x - start.x)) / d;
+      const norm = (x: number) => {
+        let v = x;
+        while (v < 0) v += 2 * Math.PI;
+        while (v >= 2 * Math.PI) v -= 2 * Math.PI;
+        return v;
+      };
+      const a1 = Math.atan2(start.y - cy, start.x - cx);
+      const a2 = Math.atan2(end.y - cy, end.x - cx);
+      const throughMid = norm(Math.atan2(mid.y - cy, mid.x - cx) - a1);
+      const ccw = norm(a2 - a1);
+      sweep = throughMid <= ccw ? ccw : ccw - 2 * Math.PI;
+    } else if (angle !== null && Math.abs(angle % 360) > 1e-9) {
+      const dx = end.x - start.x;
+      const dy = end.y - start.y;
+      const chord = Math.hypot(dx, dy);
+      const absRad = (Math.abs(angle) * Math.PI) / 180;
+      const r = chord / (2 * Math.sin(Math.min(absRad, 2 * Math.PI - 1e-9) / 2));
+      const h = Math.sqrt(Math.max(0, r * r - (chord / 2) ** 2));
+      const mx = (start.x + end.x) / 2;
+      const my = (start.y + end.y) / 2;
+      const px = -dy / chord;
+      const py = dx / chord;
+      // KiCad's positive file angle is CCW on screen — negative in the
+      // Y-down math frame; pick the center whose sweep matches
+      const want = angle > 0 ? -absRad : absRad;
+      const sweepOf = (c: Pt) => {
+        let dA = Math.atan2(end.y - c.y, end.x - c.x) - Math.atan2(start.y - c.y, start.x - c.x);
+        while (dA > Math.PI) dA -= 2 * Math.PI;
+        while (dA < -Math.PI) dA += 2 * Math.PI;
+        return dA;
+      };
+      const c1 = { x: mx + px * h, y: my + py * h };
+      const c2 = { x: mx - px * h, y: my - py * h };
+      const c = Math.abs(sweepOf(c1) - want) <= Math.abs(sweepOf(c2) - want) ? c1 : c2;
+      cx = c.x;
+      cy = c.y;
+      sweep = want;
+    } else {
+      addSegment(start, end);
+      return;
+    }
+    const r = Math.hypot(start.x - cx, start.y - cy);
+    const a1 = Math.atan2(start.y - cy, start.x - cx);
+    const steps = Math.max(2, Math.ceil((Math.abs(sweep) * 180) / Math.PI / 5));
+    for (let i = 0; i < steps; i++) {
+      const b1 = a1 + (sweep * i) / steps;
+      const b2 = a1 + (sweep * (i + 1)) / steps;
+      addSegment(
+        { x: cx + r * Math.cos(b1), y: cy + r * Math.sin(b1) },
+        { x: cx + r * Math.cos(b2), y: cy + r * Math.sin(b2) },
+      );
+    }
+  };
+
   let board: BoardSummary['board'] = null;
   const edgePts: { x: number; y: number }[] = [];
-  for (const line of [...root.findAll('gr_line'), ...root.findAll('fp_line')]) {
-    const layerRaw = line.child('layer')?.rawAt(1);
+  for (const node of [
+    ...root.findAll('gr_line'),
+    ...root.findAll('fp_line'),
+    ...root.findAll('gr_rect'),
+    ...root.findAll('fp_rect'),
+    ...root.findAll('gr_arc'),
+    ...root.findAll('fp_arc'),
+  ]) {
+    const layerRaw = node.child('layer')?.rawAt(1);
     if (layerRaw !== 'Edge.Cuts') continue;
-    const start = line.child('start');
-    const end = line.child('end');
-    if (start) edgePts.push({ x: start.getNumber(1, 0), y: start.getNumber(2, 0) });
-    if (end) edgePts.push({ x: end.getNumber(1, 0), y: end.getNumber(2, 0) });
+    const tag = atomString(node, 0);
+    const start = nodeChildPoint(node, 'start');
+    const end = nodeChildPoint(node, 'end');
+    if (start) edgePts.push(start);
+    if (end) edgePts.push(end);
+    if (!start || !end) continue;
+    if (tag === 'gr_line' || tag === 'fp_line') {
+      addSegment(start, end);
+    } else if (tag === 'gr_rect' || tag === 'fp_rect') {
+      const c2 = { x: end.x, y: start.y };
+      const c4 = { x: start.x, y: end.y };
+      addSegment(start, c2);
+      addSegment(c2, end);
+      addSegment(end, c4);
+      addSegment(c4, start);
+      edgePts.push(c2, c4);
+    } else if (tag === 'gr_arc' || tag === 'fp_arc') {
+      const mid = nodeChildPoint(node, 'mid');
+      const angleRaw = node.child('angle')?.getNumber(1, NaN) ?? NaN;
+      addArc(start, mid, end, Number.isFinite(angleRaw) ? angleRaw : null);
+    }
   }
   if (edgePts.length > 0) {
     board = {
@@ -564,11 +761,20 @@ export function buildBoardModel(pcbPath: string): BoardModel {
 
   attachNetSources(allNets, pcbPath);
 
+  // Aux (drill/place) origin — modern boards put it at the root, older
+  // ones inside (setup ...). Placement exports can rebase onto it.
+  const auxNode = root.child('aux_origin') ?? root.child('setup')?.child('aux_origin');
+  const auxOrigin = auxNode
+    ? { x: auxNode.getNumber(1, 0), y: auxNode.getNumber(2, 0) }
+    : null;
+
   return {
     file: pcbPath,
     components,
     nets: allNets,
     zones,
+    auxOrigin,
+    outline,
     summary: {
       file: pcbPath,
       components: components.length,

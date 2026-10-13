@@ -38,6 +38,20 @@ const VALUE_FLAGS = new Set([
   'rules',
   // one deferred view rendered as a mountable fragment (typecad-pcb viewer)
   'view-part',
+  // assembly exports (typecad-pcb export pos/bom/assembly); 'output' joins
+  // so `--output dir` parses like `--output=dir` always did
+  'output',
+  'profile',
+  'bom-profile',
+  'side',
+  'centroid',
+  'origin',
+  'units',
+  'exclude',
+  'decimals',
+  'rotation-decimals',
+  'rotation-offset',
+  'bottom-rotation',
 ]);
 
 export function parseArgv(argv: string[]): ParsedArgs {

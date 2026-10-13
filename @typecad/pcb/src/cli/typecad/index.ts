@@ -114,6 +114,12 @@ async function showCommandHelp(command: string, subcommand: string): Promise<boo
       help.showExportGerbersHelp();
     } else if (subcommand === 'drill') {
       help.showExportDrillHelp();
+    } else if (subcommand === 'pos') {
+      help.showExportPosHelp();
+    } else if (subcommand === 'bom') {
+      help.showExportBomHelp();
+    } else if (subcommand === 'assembly') {
+      help.showExportAssemblyHelp();
     } else {
       help.showExportHelp();
     }
@@ -137,8 +143,9 @@ async function main(): Promise<void> {
     return;
   }
 
-  if (!parsed.command || parsed.help) {
-    if (parsed.command && (await showCommandHelp(parsed.command, parsed.subcommand))) {
+  // bare `help` (the word, not --help) shows the top-level screen too
+  if (!parsed.command || parsed.command === 'help' || parsed.help) {
+    if (parsed.command && parsed.command !== 'help' && (await showCommandHelp(parsed.command, parsed.subcommand))) {
       return;
     }
     const help = await import('./help.js');

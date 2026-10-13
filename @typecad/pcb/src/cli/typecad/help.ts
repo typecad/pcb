@@ -400,14 +400,17 @@ export function showPackageHelp(): void {
 }
 
 export function showExportHelp(): void {
-  console.log(chalk.white.bold('typecad-pcb export') + ' - Export PCB fabrication files\n');
+  console.log(chalk.white.bold('typecad-pcb export') + ' - Export PCB fabrication + assembly files\n');
   console.log('Usage:');
   console.log('  typecad-pcb export <subcommand> [path] [options]\n');
   console.log('Subcommands:');
   console.log('  gerbers             Export the full fab set (gerbers + drill + job) natively');
-  console.log('  drill               Export drill files\n');
+  console.log('  drill               Export drill files');
+  console.log('  pos                 Export placement/centroid file (CPL, pick & place)');
+  console.log('  bom                 Export bill of materials (CSV)');
+  console.log('  assembly            One-shot provider package: gerbers + pos + bom, zipped\n');
   console.log('Options:');
-  console.log('  -o, --out=<dir>     Output directory (default: ./build/gerbers/)');
+  console.log('  -o, --out=<dir>     Output directory (gerbers: ./build/gerbers/, assembly: ./build/assembly/)');
   console.log('  --json              Output results as JSON');
   console.log('  --kicad             gerbers: use the legacy kicad-cli plotter');
   console.log('  --help              Show help for a subcommand\n');
@@ -455,6 +458,97 @@ export function showExportDrillHelp(): void {
   console.log('  typecad-pcb export drill');
   console.log('  typecad-pcb export drill --out ./fab');
   console.log('  typecad-pcb export drill ./build/board.kicad_pcb');
+}
+
+export function showExportPosHelp(): void {
+  console.log(chalk.white.bold('typecad-pcb export pos') + ' - Export the placement (centroid) file\n');
+  console.log("One CSV per provider profile — CPL for JLCPCB/PCBWay/Seeed,");
+  console.log('placements for OpenPnP, kicad-cli-pos semantics, or generic.');
+  console.log('Coordinates stay in the KiCad board frame (mm, Y-down) — the');
+  console.log(' shops ingest that natively and prefer unmodified CAD data.');
+  console.log('The openpnp profile also writes a native <board>.board.xml');
+  console.log(" you can open straight from OpenPnP's Boards tab (bottom parts");
+  console.log('already carry its KiCad transform: x negated, rotation mirrored),');
+  console.log('plus packages.xml/parts.xml definitions for its parts library —');
+  console.log(' pad footprints for bottom vision. FID* refs ship as fiducial');
+  console.log(' placements the machine aligns on, and an Edge.Cuts outline');
+  console.log(' rides along as the board profile.\n');
+  console.log('Usage:');
+  console.log('  typecad-pcb export pos [path] [options]\n');
+  console.log('Arguments:');
+  console.log('  <path>             Path to .kicad_pcb file (default: auto-detected from ./build/)\n');
+  console.log('Options:');
+  console.log('  --profile=<id>     kicad | jlcpcb | pcbway | seeed | openpnp | generic (default: generic)');
+  console.log('  --side=<s>         front | back | both (default: both)');
+  console.log('  --centroid=<m>     anchor | pads | body — which datum a row reports');
+  console.log('                       (default: per profile — kicad uses the footprint anchor,');
+  console.log('                       shops want the body center)');
+  console.log('  --origin=<o>       board | aux — rebase onto the aux (drill/place) origin');
+  console.log('  --units=<u>        mm | in | mils (default: mm)');
+  console.log('  --exclude=<globs>  Comma-separated ref globs to drop (e.g. "FID*,MH*")');
+  console.log('  --rotation-offset=<deg>   Rotation added to every part');
+  console.log('  --bottom-rotation=<deg>   EXTRA rotation for bottom-side parts');
+  console.log('  --include-dnp      Emit DNP footprints too (kicad profile always does)');
+  console.log('  --fresh-board      openpnp: regenerate the .board.xml from scratch, discarding');
+  console.log('                       edits made in OpenPnP (associations survive re-export otherwise)');
+  console.log('  -o, --out=<dir>    Output directory (default: ./build/assembly/)');
+  console.log('  --json             Output results as JSON');
+  console.log('  --help             Show this help\n');
+  console.log('Examples:');
+  console.log('  typecad-pcb export pos --profile jlcpcb');
+  console.log('  typecad-pcb export pos --profile kicad --centroid anchor');
+  console.log('  typecad-pcb export pos --profile openpnp --side front');
+}
+
+export function showExportBomHelp(): void {
+  console.log(chalk.white.bold('typecad-pcb export bom') + ' - Export the bill of materials\n');
+  console.log('Board truth joined with the netlist beside it (MPN, datasheet)');
+  console.log('— grouped rows by default; DNP parts and KiCad');
+  console.log('exclude_from_bom footprints stay out.\n');
+  console.log('Usage:');
+  console.log('  typecad-pcb export bom [path] [options]\n');
+  console.log('Arguments:');
+  console.log('  <path>                 Path to .kicad_pcb file (default: auto-detected from ./build/)\n');
+  console.log('Options:');
+  console.log('  --bom-profile=<id>     jlcpcb (Comment,Designator,Footprint,LCSC Part #),');
+  console.log('                           kicad (one row per ref), generic (full audit table)');
+  console.log('  --profile=<id>         Placement profile whose BOM family to use (jlcpcb');
+  console.log('                           --profile implies the jlcpcb BOM)');
+  console.log('  --grouped              Collapse refs per unique value+footprint+mpn');
+  console.log('  --ungrouped            One row per reference');
+  console.log('  --exclude=<globs>      Comma-separated ref globs to drop');
+  console.log('  -o, --out=<dir>        Output directory (default: ./build/assembly/)');
+  console.log('  --json                 Output results as JSON');
+  console.log('  --help                 Show this help\n');
+  console.log('Examples:');
+  console.log('  typecad-pcb export bom --profile jlcpcb');
+  console.log('  typecad-pcb export bom --ungrouped');
+}
+
+export function showExportAssemblyHelp(): void {
+  console.log(chalk.white.bold('typecad-pcb export assembly') + ' - Export the full provider package\n');
+  console.log('Native gerbers + drill + job + placement + BOM in one staging');
+  console.log('directory, zipped into the shop upload file. Everything the');
+  console.log('pos/bom subcommands accept applies here too (same flags).\n');
+  console.log('Usage:');
+  console.log('  typecad-pcb export assembly [path] [options]\n');
+  console.log('Arguments:');
+  console.log('  <path>             Path to .kicad_pcb file (default: auto-detected from ./build/)\n');
+  console.log('Options:');
+  console.log('  --profile=<id>     Provider profile (default: generic)');
+  console.log('  --bom-profile=<id> BOM shape (defaults to the profile family)');
+  console.log('  --no-zip           Keep the staging directory only, skip the .zip');
+  console.log('  --fresh-board      openpnp: regenerate the .board.xml from scratch, discarding');
+  console.log('                       edits made in OpenPnP (associations survive re-export otherwise)');
+  console.log('  ...                --side, --centroid, --origin, --units, --exclude,');
+  console.log('                       --rotation-offset, --bottom-rotation, --include-dnp');
+  console.log('  -o, --out=<dir>    Package root (default: ./build/assembly/ — zip at');
+  console.log('                       <root>/<board>-<profile>.zip, files beside it)');
+  console.log('  --json             Output results as JSON');
+  console.log('  --help             Show this help\n');
+  console.log('Examples:');
+  console.log('  typecad-pcb export assembly --profile jlcpcb');
+  console.log('  typecad-pcb export assembly --profile openpnp --side front --no-zip');
 }
 
 export function showQueryHelp(): void {

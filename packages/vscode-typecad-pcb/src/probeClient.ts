@@ -177,6 +177,10 @@ export type ProbeWebviewMessage =
   | { type: 'typecad/probe'; ref: string; pin?: string }
   | { type: 'typecad/pick-image' }
   | { type: 'typecad/view-part'; part: string }
+  | { type: 'typecad/report'; data?: unknown }
+  /** the revert dialog's OK: re-serve the page so the webview reloads to
+   *  the board as the source renders it (the page reset its own session) */
+  | { type: 'typecad/layout-refresh' }
   | {
       type: 'typecad/probe-net';
       net: string;
@@ -283,6 +287,10 @@ const PROBE_CLIENT = `<script>
   window.typecadVarFor = function (ref) { return varByRef[ref] || ''; };
   // net -> "file:line" that declared it, same purpose for trace hovers
   window.typecadNetSource = function (net) { return netSource[net] || ''; };
+  // generic page->host diagnostics channel: the page self-reports render
+  // health where the eye can't reach (a webview that paints nothing while
+  // every DOM probe says "visible" needs eyes inside the renderer)
+  window.typecadReport = function (data) { send({ type: 'typecad/report', data: data }); };
 
   // Announce readiness at parse time AND on load — the host retries any
   // selection dropped before this until the matching ack comes back. The
@@ -358,6 +366,13 @@ const PROBE_CLIENT = `<script>
   // copies into the project's art/ folder
   window.typecadPickImage = function () {
     send({ type: 'typecad/pick-image' });
+  };
+
+  // the revert dialog's OK: the page has already reset its own session;
+  // the host re-serves the page so the webview reloads to the board as the
+  // source renders it — a true refresh, not just an in-page reset
+  window.typecadRefresh = function () {
+    send({ type: 'typecad/layout-refresh' });
   };
 
   // deferred views: the page asks the host to render one lazy view part

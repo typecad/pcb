@@ -167,7 +167,7 @@ export interface ViewerBuildOptions {
 }
 
 /** A pcba-family view that can render on demand instead of at page build. */
-export type ViewerViewPart = 'pcba' | 'blueprint' | 'schematic';
+export type ViewerViewPart = 'pcba' | 'blueprint' | 'schematic' | 'assembly';
 
 /** A declared board zone, mapped into the gerber (y-up) frame. The layout
  *  view renders its boundary like KiCad's canvas overlay: gerbers carry
@@ -481,13 +481,73 @@ function parseViewerLayers(
   return { warnings, ordered, layers, boardPrefix, padNets, report, drcMarkers, pcbaNetlistSource, pcbaNetlist };
 }
 
+/** Per-part render options: the id namespace each fragment renders with.
+ *  Every fragment mounts into the SAME document — without distinct
+ *  prefixes, url(#pcba-clip) resolves to whichever view mounted first and
+ *  blanks the board on engines that treat a clipPath inside a hidden
+ *  (display:none) view subtree as empty. */
+const PART_PREFIX: Record<ViewerViewPart, string> = {
+  pcba: 'pcba',
+  assembly: 'as',
+  blueprint: 'bp',
+  schematic: 'sch',
+};
+
 /** The ids each deferred view's inner renames (mirrors the eager injection:
  *  the root svg stays the only #board, labels stay unique). */
-const PART_IDS: Record<ViewerViewPart, { board: string; labels: string }> = {
-  pcba: { board: 'pcba-board', labels: 'pcba-labels' },
-  blueprint: { board: 'bp-board', labels: 'bp-labels' },
-  schematic: { board: 'sch-board', labels: 'sch-labels' },
+const PART_IDS: Record<ViewerViewPart, { board: string; labels: string; backWrap: string; backBoard: string; backLabels: string; backPrefix: string }> = {
+  pcba: { board: 'pcba-board', labels: 'pcba-labels', backWrap: 'pcba-back', backBoard: 'pcba-board-b', backLabels: 'pcba-labels-b', backPrefix: 'pbb-' },
+  blueprint: { board: 'bp-board', labels: 'bp-labels', backWrap: 'bp-back', backBoard: 'bp-board-b', backLabels: 'bp-labels-b', backPrefix: 'bbb-' },
+  schematic: { board: 'sch-board', labels: 'sch-labels', backWrap: 'sch-back', backBoard: 'sch-board-b', backLabels: 'sch-labels-b', backPrefix: 'sbb-' },
+  assembly: { board: 'asm-board', labels: 'asm-labels', backWrap: 'asm-back', backBoard: 'asm-board-b', backLabels: 'asm-labels-b', backPrefix: 'abb-' },
 };
+
+/**
+ * The back-side twin of a pcba-family view as one display:none group, ready
+ * to embed beside the front board inside the same view part. Its ids are
+ * prefixed so the two composites (masks, clips, aperture symbols) never
+ * collide; the page shows it in place of the front board on Flip Board —
+ * the back is authored pre-mirrored to land exactly in the flipped
+ * (x-negated) viewBox. Null when the board has no back-side layers (nothing
+ * to flip to — the page mirrors the front render instead).
+ */
+function renderBackTwin(
+  layers: RenderLayer[],
+  part: ViewerViewPart,
+  options: { netlist?: Record<string, NetlistComponent> },
+): string | null {
+  const hasBack = layers.some(
+    (l) => l.info.side === 'back' && ['copper', 'mask', 'silkscreen'].includes(l.info.kind),
+  );
+  if (!hasBack) return null;
+  const ids = PART_IDS[part];
+  const back = renderPcbaSvg(layers, {
+    theme: DEFAULT_PCBA_THEME,
+    netlist: options.netlist,
+    side: 'back',
+    style: part === 'blueprint' ? 'blueprint' : part === 'schematic' ? 'schematic' : undefined,
+    assembly: part === 'assembly',
+    idPrefix: PART_PREFIX[part],
+  });
+  const inner = splitSvg(back.svg).inner
+    .replace('<g id="board"', `<g id="${ids.backBoard}"`)
+    .replace('<g id="labels"', `<g id="${ids.backLabels}"`)
+    // every remaining id (masks, clip, aperture symbols, the components
+    // group) and each reference to one gets the side prefix — one namespace
+    // per side; the two board/labels ids above keep their new names
+    .replace(new RegExp(`id="(?!${ids.backBoard}|${ids.backLabels})`, 'g'), `id="${ids.backPrefix}`)
+    .replace(new RegExp(`url\\(#(?!${ids.backPrefix})`, 'g'), `url(#${ids.backPrefix}`)
+    .replace(new RegExp(`href="#(?!${ids.backPrefix})`, 'g'), `href="#${ids.backPrefix}`);
+  return `<g id="${ids.backWrap}" style="display:none">${inner}</g>`;
+}
+
+/** Backward-compatible name for the pcba twin (its original callers/tests). */
+export function renderPcbaBackGroup(
+  layers: RenderLayer[],
+  options: { netlist?: Record<string, NetlistComponent> } = {},
+): string | null {
+  return renderBackTwin(layers, 'pcba', options);
+}
 
 /** Render ONE pcba-family view as a mountable `<g id="view-<part>">`
  *  fragment — what `typecad-pcb viewer --view-part <name>` serves and the
@@ -503,15 +563,22 @@ export function renderViewPart(
   const svg = renderPcbaSvg(ordered, {
     theme: DEFAULT_PCBA_THEME,
     netlist: pcbaNetlist,
-    style: part === 'pcba' ? undefined : part,
+    style: part === 'pcba' || part === 'assembly' ? undefined : part,
+    assembly: part === 'assembly',
+    idPrefix: PART_PREFIX[part],
   }).svg;
   const { inner, viewBox } = splitSvg(svg);
   const ids = PART_IDS[part];
   const renamed = inner
     .replace('<g id="board"', `<g id="${ids.board}"`)
     .replace('<g id="labels"', `<g id="${ids.labels}"`);
+  // the assembled looks carry a back-side twin: same fragment, one flip
+  // away (the page swaps the boards; nothing to union — the back occupies
+  // exactly the x-negated window). The drawing styles (blueprint/schematic)
+  // have no second side — the page mirrors their front render instead.
+  const back = part === 'pcba' || part === 'assembly' ? renderBackTwin(ordered, part, { netlist: pcbaNetlist }) : null;
   return {
-    fragment: `<g id="view-${part}" data-viewbox="${viewBox}" style="display:none">${renamed}</g>`,
+    fragment: `<g id="view-${part}" data-viewbox="${viewBox}" style="display:none">${renamed}${back ?? ''}</g>`,
     viewBox,
     warnings,
   };
@@ -529,19 +596,28 @@ export function buildViewerFromFiles(paths: string[], options: ViewerBuildOption
   const svg = renderSvg(ordered, { background: options.background });
   // the pcba-family renders: eager unless deferred (the page ships empty
   // groups that fill on first switch — the layout/gerber default view is
-  // what every board change pays for, and these three are not it)
+  // what every board change pays for, and these four are not it)
   const pcbaSvg = defer.has('pcba') ? undefined : renderPcbaSvg(ordered, { theme: DEFAULT_PCBA_THEME, netlist: pcbaNetlist }).svg;
+  // the assembled pcba's back side (Flip Board swaps the two boards); the
+  // deferred path builds it inside its view-part fragment instead
+  const pcbaBackSvg = defer.has('pcba') ? undefined : renderBackTwin(ordered, 'pcba', { netlist: pcbaNetlist });
+  // the assembly view: the same bare board, glyphs hidden per part — the
+  // page's BOM panel reveals each part's glyph as it is checked off
+  const assemblySvg = defer.has('assembly')
+    ? undefined
+    : renderPcbaSvg(ordered, { theme: DEFAULT_PCBA_THEME, netlist: pcbaNetlist, assembly: true, idPrefix: PART_PREFIX.assembly }).svg;
+  const assemblyBackSvg = defer.has('assembly') ? undefined : renderBackTwin(ordered, 'assembly', { netlist: pcbaNetlist });
   // the blueprint view: same layers, drawing style — a third entry in the
   // switcher riding the same coordinate frame
   const blueprintSvg = defer.has('blueprint')
     ? undefined
-    : renderPcbaSvg(ordered, { theme: DEFAULT_PCBA_THEME, netlist: pcbaNetlist, style: 'blueprint' }).svg;
+    : renderPcbaSvg(ordered, { theme: DEFAULT_PCBA_THEME, netlist: pcbaNetlist, style: 'blueprint', idPrefix: PART_PREFIX.blueprint }).svg;
   // the schematic view: white paper, near-black traces, semi-transparent
   // components — the routing-focused fourth view, whose trace hover shows
   // the ngspice operating point
   const schematicSvg = defer.has('schematic')
     ? undefined
-    : renderPcbaSvg(ordered, { theme: DEFAULT_PCBA_THEME, netlist: pcbaNetlist, style: 'schematic' }).svg;
+    : renderPcbaSvg(ordered, { theme: DEFAULT_PCBA_THEME, netlist: pcbaNetlist, style: 'schematic', idPrefix: PART_PREFIX.schematic }).svg;
   // `typecad-pcb simulate` leaves build/<board>_op.json beside the netlist
   // (like the DRC report); absent file = no electrical readout on hover
   let netOp: ViewerOptions['netOp'] = null;
@@ -788,6 +864,13 @@ export function buildViewerFromFiles(paths: string[], options: ViewerBuildOption
         rot: +c.angle.toFixed(1),
         // netlist value ("1k") — the layout view's in-place value editor
         value: pcbaNetlist[c.ref]?.value,
+        // netlist footprint name — the assembly view's BOM grouping key
+        // (with value)
+        footprint: pcbaNetlist[c.ref]?.footprint,
+        // the assembly view's BOM lists only parts with a drawn glyph
+        // (kind 'skip' — mounting holes, fiducials, logo footprints —
+        // renders nothing to reveal)
+        glyph: c.kind !== 'skip' ? 1 : 0,
         // floor per axis so the box is never degenerate (a zero-height
         // handle makes rotation invisible)
         w: +Math.max(ow, 0.6).toFixed(2),
@@ -872,6 +955,9 @@ export function buildViewerFromFiles(paths: string[], options: ViewerBuildOption
     report,
     drcMarkers,
     pcbaSvg,
+    pcbaBackSvg: pcbaBackSvg ?? undefined,
+    assemblySvg,
+    assemblyBackSvg: assemblyBackSvg ?? undefined,
     blueprintSvg,
     schematicSvg,
     deferredViews: [...defer],

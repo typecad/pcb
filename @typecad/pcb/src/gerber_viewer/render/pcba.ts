@@ -15,6 +15,7 @@
  * perspective, one flat image.
  */
 import { fmt } from '../gerber/geometry.js';
+import { evaluateAperture } from '../gerber/apertures.js';
 import { extractComponents, renderComponentGlyphs, type NetlistComponent } from './components.js';
 import { contourPoints, stitchBoardOutline } from './outline.js';
 import {
@@ -55,6 +56,23 @@ export interface PcbaRenderOptions {
    * Neither style uses the theme's palette; each carries its own ink.
    */
   style?: 'assembled' | 'blueprint' | 'schematic';
+  /**
+   * the assembly look: the same bare-board composite (substrate, film with
+   * openings, finish-metal pads, silk, annuli, drills) with every component
+   * glyph shipped HIDDEN (class="asm-part", display:none) — the viewer's
+   * assembly view reveals each part's glyph as the builder checks it off.
+   * Synthetic refdes labels stay off (the silkscreen carries them).
+   */
+  assembly?: boolean;
+  /**
+   * id namespace for every generated id (masks, the outline clip, aperture
+   * symbols, pour clips): default 'pcba'. The combined viewer mounts
+   * SEVERAL of these renders in one document — each part passes its own
+   * prefix so url(#...) references never go ambiguous across fragments (a
+   * clipPath resolved into another (hidden) view subtree clips to nothing
+   * on engines that honor display:none there, blanking the whole board)
+   */
+  idPrefix?: string;
   /**
    * draw an engineering title block in the bottom margin: board title,
    * date + dimensions + "made with typeCAD" wordmark. The branding on every
@@ -127,10 +145,16 @@ export function renderPcbaSvg(layers: RenderLayer[], options: PcbaRenderOptions 
 
   const blueprint = options.style === 'blueprint';
   const schematic = options.style === 'schematic';
+  // assembly rides the assembled composite (never blueprint/schematic ink)
+  const assembly = options.assembly === true && !blueprint && !schematic;
+  const P = options.idPrefix ?? 'pcba';
   const fab = layerOf(layers, 'fab', side);
   const { components, warnings: compWarnings } = extractComponents(layers, side, options.netlist);
   warnings.push(...compWarnings);
-  const { glyphs, labels: compLabels, count } = renderComponentGlyphs(components, theme, { units });
+  const { glyphs, labels: compLabels, count } = renderComponentGlyphs(components, theme, {
+    units,
+    hiddenPerPart: assembly,
+  });
   for (const comp of components) {
     if (comp.kind === 'skip') continue;
     consider(comp.bbox, 2 * S);
@@ -261,14 +285,14 @@ export function renderPcbaSvg(layers: RenderLayer[], options: PcbaRenderOptions 
     const bpCopper = copper
       ? renderLayerInk(copper, {
           color: BP_INK,
-          idPrefix: 'pcba-bp-cu',
+          idPrefix: `${P}-bp-cu`,
           clearColor: BP_BOARD,
           regionFill: 'none',
           regionStroke: { color: BP_INK_FAINT, width: 0.12 * S },
           regionUnderlay: { color: BP_INK, opacity: 0.12 },
         })
       : null;
-    const bpFab = fab ? renderLayerInk(fab, { color: BP_INK_FAINT, idPrefix: 'pcba-bp-fab', clearColor: BP_BOARD }) : null;
+    const bpFab = fab ? renderLayerInk(fab, { color: BP_INK_FAINT, idPrefix: `${P}-bp-fab`, clearColor: BP_BOARD }) : null;
     for (const [name, ink] of [
       ['copper', bpCopper],
       ['fab', bpFab],
@@ -279,7 +303,7 @@ export function renderPcbaSvg(layers: RenderLayer[], options: PcbaRenderOptions 
     }
     bpCopperBody = bpCopper?.body.join('') ?? '';
     bpFabBody = bpFab?.body.join('') ?? '';
-    const pour = buildPourHatch(copper, 'pcba-bp-pourclip', BP_INK, 0.35);
+    const pour = buildPourHatch(copper, `${P}-bp-pourclip`, BP_INK, 0.35);
     defs.push(pour.clip);
     bpPourHatch = pour.hatch;
   }
@@ -309,7 +333,7 @@ export function renderPcbaSvg(layers: RenderLayer[], options: PcbaRenderOptions 
       const cu = stack[i];
       const ink = renderLayerInk(cu, {
         color: i === 0 ? SCH_TRACE : SCH_INK_FAINT,
-        idPrefix: 'pcba-sch-cu' + (i === 0 ? '' : i),
+        idPrefix: `${P}-sch-cu` + (i === 0 ? '' : i),
         clearColor: SCH_PAPER,
         regionFill: 'none',
         regionStroke: i === 0 ? { color: SCH_INK_FAINT, width: 0.1 * S } : undefined,
@@ -323,7 +347,7 @@ export function renderPcbaSvg(layers: RenderLayer[], options: PcbaRenderOptions 
       inks.push(i === 0 ? ink.body.join('') : ink.body.join('').replace(/<path[^>]*fill-rule="evenodd"[^>]*\/>/g, ''));
     }
     schCopperBody = inks.join('');
-    const pour = buildPourHatch(copper, 'pcba-sch-pourclip', SCH_INK_FAINT, 0.4);
+    const pour = buildPourHatch(copper, `${P}-sch-pourclip`, SCH_INK_FAINT, 0.4);
     defs.push(pour.clip);
     schPourHatch = pour.hatch;
   }
@@ -335,24 +359,24 @@ export function renderPcbaSvg(layers: RenderLayer[], options: PcbaRenderOptions 
   // pad flash and used to fall through to the substrate color)
   const copperInk =
     copper && !blueprint && !schematic
-      ? renderLayerInk(copper, { color: theme.copper, idPrefix: 'pcba-cu', clearColor: theme.board })
+      ? renderLayerInk(copper, { color: theme.copper, idPrefix: `${P}-cu`, clearColor: theme.board })
       : null;
   const padsInk =
     copper && !blueprint && !schematic
-      ? renderLayerInk(copper, { color: theme.pads, idPrefix: 'pcba-pads', flashesOnly: true, clearColor: theme.board })
+      ? renderLayerInk(copper, { color: theme.pads, idPrefix: `${P}-pads`, flashesOnly: true, clearColor: theme.board })
       : null;
   // inside the openings <mask>, luminance decides: openings render black
   // (hide the mask film), clear-polarity shapes render white (keep the film)
   const maskInk =
-    mask && !blueprint && !schematic ? renderLayerInk(mask, { color: '#000000', idPrefix: 'pcba-mask', clearColor: '#ffffff' }) : null;
+    mask && !blueprint && !schematic ? renderLayerInk(mask, { color: '#000000', idPrefix: `${P}-mask`, clearColor: '#ffffff' }) : null;
   const silkInk =
-    silk && !blueprint && !schematic ? renderLayerInk(silk, { color: theme.silk, idPrefix: 'pcba-silk', clearColor: theme.clad }) : null;
+    silk && !blueprint && !schematic ? renderLayerInk(silk, { color: theme.silk, idPrefix: `${P}-silk`, clearColor: theme.clad }) : null;
   // copper ghosting through the mask film: the film is translucent in
   // reality, so traces/pours under it show as a darker mask tone, painted
   // over the film (still masked off at the openings)
   const maskCopperInk =
     mask && copper && !blueprint && !schematic
-      ? renderLayerInk(copper, { color: theme.maskCopper, idPrefix: 'pcba-cum', clearColor: theme.clad })
+      ? renderLayerInk(copper, { color: theme.maskCopper, idPrefix: `${P}-cum`, clearColor: theme.clad })
       : null;
   if (!silk && !blueprint && !schematic) warnings.push(`no ${side} silkscreen layer — rendering without silkscreen`);
   for (const [name, ink] of [
@@ -366,18 +390,58 @@ export function renderPcbaSvg(layers: RenderLayer[], options: PcbaRenderOptions 
     for (const w of ink.warnings) warnings.push(`${name}: ${w}`);
   }
 
+  // plated-hole annuli: a drill with a concentric round copper flash is a
+  // plated via/pad — the flash IS its annulus. Where the mask opens the hole
+  // that copper already shows; where the film TENTS it (vias — the writer
+  // leaves them unopened, like KiCad's default) the annulus only ghosts
+  // through the film in a tone too close to the clad to read, and the via
+  // collapses into a bare drill dot. Painting the true ring (finish metal,
+  // between drill edge and flash edge) puts visible annular rings on every
+  // plated hole without touching what the openings already reveal.
+  const annuli: string[] = [];
+  if (copper && !blueprint && !schematic && 'ops' in copper.image) {
+    const roundFlashes = new Map<string, number>();
+    for (const op of copper.image.ops) {
+      if (op.type !== 'flash' || op.polarity === 'clear') continue;
+      const ap = copper.image.apertures.get(op.aperture);
+      if (!ap) continue;
+      const ev = evaluateAperture(ap, copper.image.macros);
+      if (ev.template?.kind !== 'circle') continue;
+      const key = `${op.at.x.toFixed(2)},${op.at.y.toFixed(2)}`;
+      roundFlashes.set(key, Math.max(roundFlashes.get(key) ?? 0, ev.template.diameter));
+    }
+    for (const dl of drills) {
+      if (!('holes' in dl.image)) continue;
+      for (const hole of dl.image.holes) {
+        const dia = dl.image.tools.get(hole.tool)?.diameter ?? 0;
+        const flashDia = roundFlashes.get(`${hole.at.x.toFixed(2)},${hole.at.y.toFixed(2)}`);
+        if (!dia || !flashDia) continue; // no concentric round copper = not plated
+        const ring = flashDia / 2 - dia / 2;
+        if (ring < 0.05 * S) continue; // flash barely exceeds the hole — nothing to draw
+        annuli.push(
+          `<circle cx="${fmt(hole.at.x)}" cy="${fmt(hole.at.y)}" r="${fmt(dia / 2 + ring / 2)}" fill="none" stroke="${theme.pads}" stroke-width="${fmt(ring)}" pointer-events="none"/>`,
+        );
+      }
+    }
+  }
+
   const margin = Math.max(all.maxX - all.minX, all.maxY - all.minY) * 0.02 + 0.5 * S;
 
   // mask def: white everywhere, black where the mask gerber has openings
   if (maskInk) {
     defs.push(
-      `<mask id="pcba-open" maskUnits="userSpaceOnUse" x="${fmt(all.minX - margin)}" y="${fmt(
+      `<mask id="${P}-open" maskUnits="userSpaceOnUse" x="${fmt(all.minX - margin)}" y="${fmt(
         all.minY - margin,
       )}" width="${fmt(all.maxX - all.minX + 2 * margin)}" height="${fmt(all.maxY - all.minY + 2 * margin)}">`,
       `<rect x="${fmt(all.minX - margin)}" y="${fmt(all.minY - margin)}" width="${fmt(
         all.maxX - all.minX + 2 * margin,
       )}" height="${fmt(all.maxY - all.minY + 2 * margin)}" fill="#ffffff"/>`,
-      `<g fill="#000000" stroke="#000000">${maskInk.body.join('')}</g>`,
+      // stroke-width 0: flashes inherit the wrapper's stroke, and an
+      // unsized stroke is 1 file unit — a 1mm halo dilating every opening
+      // until neighboring pads merge into corridors the pour paints through
+      // (the "copper ring around every component"). Trace draws carry their
+      // own explicit widths and never see this.
+      `<g fill="#000000" stroke="#000000" stroke-width="0">${maskInk.body.join('')}</g>`,
       `</mask>`,
     );
     defs.push(...maskInk.defs);
@@ -385,17 +449,18 @@ export function renderPcbaSvg(layers: RenderLayer[], options: PcbaRenderOptions 
     // ink THROUGH it puts finish-colored metal exactly at the openings
     const maskInvInk = renderLayerInk(mask!, {
       color: '#ffffff',
-      idPrefix: 'pcba-mask-inv',
+      idPrefix: `${P}-mask-inv`,
       clearColor: '#000000',
     });
     defs.push(
-      `<mask id="pcba-open-inv" maskUnits="userSpaceOnUse" x="${fmt(all.minX - margin)}" y="${fmt(
+      `<mask id="${P}-open-inv" maskUnits="userSpaceOnUse" x="${fmt(all.minX - margin)}" y="${fmt(
         all.minY - margin,
       )}" width="${fmt(all.maxX - all.minX + 2 * margin)}" height="${fmt(all.maxY - all.minY + 2 * margin)}">`,
       `<rect x="${fmt(all.minX - margin)}" y="${fmt(all.minY - margin)}" width="${fmt(
         all.maxX - all.minX + 2 * margin,
       )}" height="${fmt(all.maxY - all.minY + 2 * margin)}" fill="#000000"/>`,
-      `<g fill="#ffffff" stroke="#ffffff">${maskInvInk.body.join('')}</g>`,
+      // same halo guard as pcba-open — the white openings must stay pad-sized
+      `<g fill="#ffffff" stroke="#ffffff" stroke-width="0">${maskInvInk.body.join('')}</g>`,
       `</mask>`,
     );
     defs.push(...maskInvInk.defs);
@@ -403,7 +468,7 @@ export function renderPcbaSvg(layers: RenderLayer[], options: PcbaRenderOptions 
     warnings.push(`no ${side} soldermask layer — copper renders bare (no mask film)`);
   }
   if (outlinePath) {
-    defs.push(`<clipPath id="pcba-clip"><path d="${outlinePath}" clip-rule="evenodd"/></clipPath>`);
+    defs.push(`<clipPath id="${P}-clip"><path d="${outlinePath}" clip-rule="evenodd"/></clipPath>`);
   }
   for (const ink of [copperInk, padsInk, silkInk, maskCopperInk]) defs.push(...(ink?.defs ?? []));
 
@@ -447,15 +512,15 @@ export function renderPcbaSvg(layers: RenderLayer[], options: PcbaRenderOptions 
       // copper AT the openings is exposed metal — the finish color, like
       // the pad flashes. This is where board artwork's copper ink shows:
       // everything else about it ghosts through the film below
-      board.push(`<g mask="url(#pcba-open-inv)" fill="${theme.pads}">${copperInk.body.join('')}</g>`);
+      board.push(`<g mask="url(#${P}-open-inv)" fill="${theme.pads}">${copperInk.body.join('')}</g>`);
     }
     board.push(
-      `<g mask="url(#pcba-open)"><rect x="${fmt(all.minX - margin)}" y="${fmt(all.minY - margin)}" width="${fmt(
+      `<g mask="url(#${P}-open)"><rect x="${fmt(all.minX - margin)}" y="${fmt(all.minY - margin)}" width="${fmt(
         all.maxX - all.minX + 2 * margin,
       )}" height="${fmt(all.maxY - all.minY + 2 * margin)}" fill="${theme.clad}"/></g>`,
     );
     if (maskCopperInk) {
-      board.push(`<g mask="url(#pcba-open)" fill="${theme.maskCopper}">${maskCopperInk.body.join('')}</g>`);
+      board.push(`<g mask="url(#${P}-open)" fill="${theme.maskCopper}">${maskCopperInk.body.join('')}</g>`);
     }
   } else {
     // no mask gerber: bare-board look — copper and pads sit directly on the
@@ -470,15 +535,17 @@ export function renderPcbaSvg(layers: RenderLayer[], options: PcbaRenderOptions 
     // on exposed copper, so it rides the same openings mask as the mask
     // film; ink under component bodies is occluded by the drawn glyphs,
     // which paint after the silk.
-    const keepAttr = maskInk ? ' mask="url(#pcba-open)"' : '';
+    const keepAttr = maskInk ? ` mask="url(#${P}-open)"` : '';
     board.push(`<g fill="${theme.silk}"${keepAttr}>${silkInk.body.join('')}</g>`);
   }
   if (!blueprint && !schematic) {
+    // annuli paint under the drill dots (the dot covers the ring's middle)
+    if (annuli.length) board.push(`<g>${annuli.join('')}</g>`);
     const drillBody = drills.map((d) => renderDrillInk(d, { color: theme.hole }).body.join('')).join('');
     if (drillBody) board.push(`<g fill="${theme.hole}">${drillBody}</g>`);
   }
 
-  const clipped = outlinePath && !blueprint ? `<g clip-path="url(#pcba-clip)">${board.join('')}</g>` : board.join('');
+  const clipped = outlinePath && !blueprint ? `<g clip-path="url(#${P}-clip)">${board.join('')}</g>` : board.join('');
 
   const outlineStroke = outlinePath
     ? `<path d="${outlinePath}" fill="none" stroke="${blueprint ? BP_INK : schematic ? SCH_INK_FAINT : theme.outline}" stroke-width="${fmt(
@@ -494,7 +561,9 @@ export function renderPcbaSvg(layers: RenderLayer[], options: PcbaRenderOptions 
     ? (options.labels ?? !fab)
     : schematic
       ? (options.labels ?? true)
-      : (options.labels ?? theme.labels ?? !silk);
+      : assembly
+        ? false // the silkscreen carries the refdes — nothing to double
+        : (options.labels ?? theme.labels ?? !silk);
   const labelFill = blueprint ? BP_INK : schematic ? SCH_TRACE : theme.silk;
   const labelEls = showLabels
     ? compLabels
@@ -654,7 +723,7 @@ export function renderPcbaSvg(layers: RenderLayer[], options: PcbaRenderOptions 
         ? // distinct id: the schematic view's glyph group is the power
           // heat-map overlay's target in the combined viewer document
           `<g id="sch-components" opacity="0.55">${glyphs}</g>`
-        : `<g id="components">${glyphs}</g>`,
+        : `<g id="${P}-components">${glyphs}</g>`,
     `</g>`,
     labelEls ? `<g id="labels">${labelEls}</g>` : '',
     drawingDims,

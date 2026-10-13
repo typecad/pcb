@@ -580,7 +580,7 @@ function bodyColorFor(semantic: SemanticKind, theme: PcbaTheme): string {
 export function renderComponentGlyphs(
   components: BoardComponent[],
   theme: PcbaTheme,
-  options: { units: 'mm' | 'in' },
+  options: { units: 'mm' | 'in'; hiddenPerPart?: boolean },
 ): ComponentRender {
   const S = mmFactor(options.units); // file units per mm-constant
   const glyphs: string[] = [];
@@ -1267,7 +1267,9 @@ export function renderComponentGlyphs(
     }
 
     glyphs.push(
-      `<g data-ref="${escapeXml(comp.ref)}" transform="translate(${fmt(centroid.x)} ${fmt(centroid.y)}) rotate(${fmt(comp.angle)})">${parts.join('')}</g>`,
+      `<g data-ref="${escapeXml(comp.ref)}"${
+        options.hiddenPerPart ? ' class="asm-part" style="display:none"' : ''
+      } transform="translate(${fmt(centroid.x)} ${fmt(centroid.y)}) rotate(${fmt(comp.angle)})">${parts.join('')}</g>`,
     );
 
     // below the part: silkscreen refdes text (when present) is drawn by KiCad

@@ -1,6 +1,5 @@
 import type { LayerInfo } from '../detect_layer.js';
 import type { DrcMarker, FabReport } from '../report.js';
-import { LAYER_THEME_LIST } from '../themes.js';
 
 export interface ViewerOptions {
   /**
@@ -51,6 +50,15 @@ export interface ViewerOptions {
   drcMarkers?: DrcMarker[];
   /** optional second view: the flat PCBA render of the same layers */
   pcbaSvg?: string;
+  /** the pcba view's back-side twin (a display:none group) — Flip Board
+   *  swaps it in place of the front board; absent when the board has no
+   *  back-side layers (the page mirrors the front render instead) */
+  pcbaBackSvg?: string;
+  /** the assembly view: the bare board with per-part glyphs hidden —
+   *  revealed client-side as the builder checks parts off in the BOM */
+  assemblySvg?: string;
+  /** the assembly view's back-side twin, same swap semantics as pcba's */
+  assemblyBackSvg?: string;
   /** optional third view: the engineering-drawing render of the same layers */
   blueprintSvg?: string;
   /** optional fourth view: the routing-focused render (white paper, black traces) */
@@ -129,6 +137,10 @@ export interface ViewerOptions {
     pads?: Array<{ x: number; y: number; net?: string }>;
     /** netlist value ("1k") — drives the layout view's in-place value editor */
     value?: string;
+    /** netlist footprint name — the assembly view's BOM grouping key */
+    footprint?: string;
+    /** 1 when the pcba renderer draws a glyph for this part (assembly BOM) */
+    glyph?: number;
     /**
      * the part's Reference/Value label anchors (world gerber frame) —
      * independently draggable/rotatable texts; apply writes the final
@@ -187,7 +199,6 @@ export interface ViewerOptions {
    * a CSS variable so the switch is a client-side restyle. Pass [] to omit
    * the picker entirely.
    */
-  layerThemes?: import('../themes.js').LayerTheme[];
   /**
    * pad labels from the PCB model (build/<board>_pads.json): pin number +
    * net name per pad with world position/extent. The page renders them on
@@ -466,6 +477,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     pcba: document.getElementById('view-pcba'),
     blueprint: document.getElementById('view-blueprint'),
     schematic: document.getElementById('view-schematic'),
+    assembly: document.getElementById('view-assembly'),
   };
   var layersBox = document.getElementById('layers');
   var btnAllOn = document.getElementById('btn-all-on');
@@ -497,6 +509,9 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   function unionRootViewBox(box) {
     var nums = String(box).split(/\s+/).map(Number);
     if (nums.length < 4 || nums.some(function (n) { return !isFinite(n); })) return;
+    // while flipped the live viewBox is x-negated — mirror the incoming
+    // box to match, or a deferred part's union widens only the front frame
+    if (typeof boardFlipped !== 'undefined' && boardFlipped) nums = [-(nums[0] + nums[2]), nums[1], nums[2], nums[3]];
     var cur = (svg.getAttribute('viewBox') || '0 0 1 1').split(/\s+/).map(Number);
     var x = Math.min(cur[0], nums[0]);
     var y = Math.min(cur[1], nums[1]);
@@ -521,9 +536,30 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     mounted.__loaded = true;
     var vb = mounted.getAttribute('data-viewbox');
     if (vb) unionRootViewBox(vb);
+    // a two-sided part mounted while the board is already flipped must come
+    // up showing its back board (the fragment ships front-visible defaults)
+    if (part === 'pcba' || part === 'assembly') applyPcbaFlip();
+    // the assembly fragment mounts with every glyph hidden — placed parts
+    // come back immediately
+    if (part === 'assembly') asmAllGlyphsApply();
+    // a fragment mounts in the DEFAULT palette — bring it to the picked
+    // theme. The remap is a DIFF from the tracked palette, and the tracked
+    // palette may already say "picked" from an earlier switch that ran
+    // against an unmounted placeholder: re-base from default so
+    // default->picked maps over the fresh fragment (a fragment already at
+    // the picked palette sits on the map's target colors and remaps
+    // nothing — idempotent for the other, already-themed view)
+    if (part === 'pcba' || part === 'assembly') {
+      var selNow = document.getElementById('pcba-theme');
+      if (selNow && selNow.value && pcbaThemeData && pcbaThemeData.themes[selNow.value]) {
+        pcbaColorsNow = pcbaThemeData.default;
+        applyPcbaTheme(selNow.value);
+      }
+    }
   }
   var deferredBusy = {};
   var deferredFailed = {};
+  var deferredRetried = {};
   function requestViewPart(part, cb) {
     if (typeof window.typecadViewPart === 'function') {
       window.typecadViewPart(part, function (err, html, op) {
@@ -531,25 +567,48 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       });
       return;
     }
-    // no host bridge (a page served over http): the --view-part CLI run
-    // leaves its fragment beside the page — fetch it
-    fetch('view-' + part + '.html')
-      .then(function (r) {
-        if (!r.ok) throw new Error('HTTP ' + r.status);
-        return r.text();
-      })
-      .then(function (text) {
-        cb(null, part === 'net-op' ? null : text, part === 'net-op' ? JSON.parse(text) : null);
-      })
-      .catch(function (err2) {
-        cb(err2);
-      });
+    // no host bridge — YET: in the vscode webview the injected client
+    // arrives AFTER this page script, and a RESTORED view mode can request
+    // its part before the bridge exists. The http fetch fallback is
+    // CSP-blocked there (connect-src falls back to default-src 'none'), so
+    // failing fast would permanently break the restored view for the whole
+    // session — wait briefly for the bridge first, and only fall back to
+    // the fetch (an http-served page) after it never came
+    var waited = 0;
+    var poll = setInterval(function () {
+      if (typeof window.typecadViewPart === 'function') {
+        clearInterval(poll);
+        window.typecadViewPart(part, cb);
+        return;
+      }
+      if (waited >= 3000) {
+        clearInterval(poll);
+        if (typeof fetch !== 'function') {
+          cb(new Error('no host bridge and no http fallback'));
+          return;
+        }
+        fetch('view-' + part + '.html')
+          .then(function (r) {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.text();
+          })
+          .then(function (text) {
+            cb(null, part === 'net-op' ? null : text, part === 'net-op' ? JSON.parse(text) : null);
+          })
+          .catch(function (err2) {
+            cb(err2);
+          });
+        return;
+      }
+      waited += 100;
+    }, 100);
   }
   function loadDeferredView(mode) {
     var part = mode === 'thermal' ? 'schematic' : mode;
     deferredBusy[part] = true;
     var labels = {
       pcba: 'rendering the pcba view',
+      assembly: 'rendering the assembly view',
       blueprint: 'rendering the blueprint view',
       schematic: 'rendering the ngspice view',
       'net-op': 'solving the ngspice operating point',
@@ -607,6 +666,15 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     // a DEFERRED view's first switch loads it under the spinner and stays
     // on the current view until the part is in (this function re-runs then)
     var wantPart = viewMode === 'thermal' ? 'schematic' : viewMode;
+    // a part that failed once gets ONE retry on the next switch into it —
+    // the failure may have been the boot-time bridge race (the injected
+    // client arrives after this script; a restored view mode can ask for
+    // its part before the bridge exists), and a permanent failure would
+    // switch the user into an empty placeholder on every later click
+    if (deferredParts.indexOf(wantPart) >= 0 && deferredFailed[wantPart] && !deferredRetried[wantPart]) {
+      deferredRetried[wantPart] = true;
+      deferredFailed[wantPart] = false;
+    }
     if (
       deferredParts.indexOf(wantPart) >= 0 &&
       viewGroups[wantPart] &&
@@ -624,6 +692,19 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       viewGroups[name].style.display =
         name === viewMode || (viewMode === 'layout' && name === 'gerber') ? '' : 'none';
     }
+    // never show an EMPTY deferred placeholder: a part that never loaded
+    // keeps the gerber stack visible under the switch instead of a black
+    // canvas (the failure is on the status line, not painted over)
+    if (
+      viewMode !== 'gerber' &&
+      viewMode !== 'layout' &&
+      viewGroups[viewMode] &&
+      !viewGroups[viewMode].__loaded &&
+      viewGroups[viewMode].children.length === 0
+    ) {
+      viewGroups[viewMode].style.display = 'none';
+      if (viewGroups.gerber) viewGroups.gerber.style.display = '';
+    }
     // thermal reuses the schematic render with its own copper coloring
     if (viewGroups.schematic)
       viewGroups.schematic.style.display = viewMode === 'schematic' || viewMode === 'thermal' ? '' : 'none';
@@ -632,9 +713,23 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     if (layersBox) layersBox.style.display = viewMode === 'gerber' || viewMode === 'layout' ? '' : 'none';
     if (btnAllOn) btnAllOn.style.display = viewMode === 'gerber' ? '' : 'none';
     if (btnAllOff) btnAllOff.style.display = viewMode === 'gerber' ? '' : 'none';
-    // the theme picker belongs to the pcba view alone
-    var themeBox = document.getElementById('pcba-theme-box');
-    if (themeBox) themeBox.style.display = viewMode === 'pcba' ? '' : 'none';
+    // the theme picker now lives in the toolbar for every view — nothing
+    // to gate here
+    // the assembly checklist (and its hover outlines) belong to assembly
+    var asmBox = document.getElementById('asm-box');
+    if (asmBox) asmBox.style.display = viewMode === 'assembly' ? '' : 'none';
+    var asmHaloEl = document.getElementById('asm-halo');
+    if (asmHaloEl) asmHaloEl.style.display = viewMode === 'assembly' ? '' : 'none';
+    // the hint only speaks for a view that actually renders — a failed
+    // load keeps the loader's error on the status line instead
+    if (
+      viewMode === 'assembly' &&
+      viewGroups.assembly &&
+      (viewGroups.assembly.__loaded || viewGroups.assembly.children.length > 0) &&
+      statusEl &&
+      !statusLocked()
+    )
+      statusEl.textContent = 'assembly \u2014 check parts off in the list (or click them on the board); the board fills in as you build';
     // the voltage/power legends belong to the schematic view alone, and only
     // once the heat maps actually have solved data
     var voltLegend = document.getElementById('volt-legend-box');
@@ -2552,6 +2647,76 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     layoutTextSel = -1;
     markTextSel();
   }
+  // leader lines tie a selected part to its attached labels: on a busy board
+  // a designator's anchor sits millimeters from the body it names and a fab
+  // value reads as orphaned ink — one thin dashed line per label (and one
+  // from the part when a label is the selection) closes the gap visually,
+  // both ends tracking pending moves
+  function layoutLeaderSync() {
+    var old = document.getElementById('layout-leaders');
+    if (old) old.remove();
+    if (!layoutOverlay) return;
+    var segs = [];
+    var center = function (ref) {
+      var g = layoutOverlay.querySelector('[data-ref="' + cssEsc(ref) + '"]');
+      if (!g || g.__lx === undefined) return null;
+      return { x: g.__lx, y: g.__ly };
+    };
+    // stacked labels (the reference and value sharing one anchor) draw ONE
+    // line, not a pile of coincident ones
+    var push = function (x1, y1, x2, y2) {
+      for (var ps = 0; ps < segs.length; ps++)
+        if (Math.hypot(segs[ps][2] - x2, segs[ps][3] - y2) < 0.05) return;
+      segs.push([x1, y1, x2, y2]);
+    };
+    // a leader aims the eye at INK — pointing at a label whose layer rail is
+    // off points at nothing (fab values with F.Fab toggled away). A layer
+    // the board never plotted has no rail to hide behind, so it counts as
+    // visible
+    var lblVisible = function (t) {
+      var kinds = t.layerKind ? [t.layerKind] : ['fab', 'silkscreen'];
+      var pfx = t.side === 'back' ? '-B_' : '-F_';
+      for (var k = 0; k < kinds.length; k++) {
+        var g = svg.querySelector('g[data-kind="' + kinds[k] + '"][data-layer-name*="' + pfx + '"]');
+        if (!g || g.getAttribute('display') !== 'none') return true;
+      }
+      return false;
+    };
+    if (layoutSel.length) {
+      for (var lr = 0; lr < layoutSel.length; lr++) {
+        var c0 = center(layoutSel[lr]);
+        if (!c0) continue;
+        for (var lt = 0; lt < layoutTexts.length; lt++) {
+          var t3 = layoutTexts[lt];
+          if (!t3 || t3.ref !== layoutSel[lr]) continue;
+          if (!lblVisible(t3)) continue;
+          var st3 = textState(lt);
+          // a centered label (the fab reference mirror on the body) needs no line
+          if (Math.hypot(st3.x - c0.x, st3.y - c0.y) < 0.3) continue;
+          push(c0.x, c0.y, st3.x, st3.y);
+        }
+      }
+    } else if (layoutTextSel >= 0 && layoutTexts[layoutTextSel] && layoutTexts[layoutTextSel].ref) {
+      var c1 = center(layoutTexts[layoutTextSel].ref);
+      if (c1) {
+        var st4 = textState(layoutTextSel);
+        if (Math.hypot(st4.x - c1.x, st4.y - c1.y) >= 0.3) push(c1.x, c1.y, st4.x, st4.y);
+      }
+    }
+    if (!segs.length) return;
+    var grp = document.createElementNS(SVGNSL, 'g');
+    grp.setAttribute('id', 'layout-leaders');
+    grp.setAttribute('pointer-events', 'none');
+    for (var ls = 0; ls < segs.length; ls++) {
+      var ln = document.createElementNS(SVGNSL, 'line');
+      ln.setAttribute('x1', segs[ls][0].toFixed(3));
+      ln.setAttribute('y1', segs[ls][1].toFixed(3));
+      ln.setAttribute('x2', segs[ls][2].toFixed(3));
+      ln.setAttribute('y2', segs[ls][3].toFixed(3));
+      grp.appendChild(ln);
+    }
+    layoutOverlay.appendChild(grp);
+  }
   function markTextSel() {
     for (var ts = 0; ts < layoutTexts.length; ts++) {
       var st = layoutTextEls[ts];
@@ -2562,6 +2727,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       }
     }
     layoutTextSelBoxSync();
+    layoutLeaderSync();
     propsSync('text');
   }
   function attachTextDrag(i) {
@@ -2891,16 +3057,13 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   function markLayoutSel() {
     if (!layoutOverlay) return;
     textSelClear(); // a part selection replaces any text selection
+    layoutLeaderSync(); // leaders from the selected body(ies) to their labels
     var all = layoutOverlay.querySelectorAll('.layout-comp');
     for (var ms = 0; ms < all.length; ms++) {
       var ref = all[ms].getAttribute('data-ref');
       if (layoutSel.indexOf(ref) !== -1) all[ms].classList.add('layout-sel');
       else all[ms].classList.remove('layout-sel');
     }
-    var ab = document.getElementById('layout-align');
-    var db = document.getElementById('layout-dist');
-    if (ab) ab.disabled = layoutSel.length < 2;
-    if (db) db.disabled = layoutSel.length < 3;
     propsSync('part');
   }
   function buildLayoutOverlay() {
@@ -3637,29 +3800,36 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     // an open properties panel tracks the move/rotate/resize that just
     // landed — no gesture kind, this refreshes whatever it is showing
     propsSync();
-    // a part drag transports its labels — the selected text's box follows
+    // a part drag transports its labels — the selected text's box follows,
+    // and the leaders (part center to label) re-anchor to the live positions
     layoutTextSelBoxSync();
+    layoutLeaderSync();
+  }
+  // any pending edit at all — the revert dialog only asks when there is
+  // something to lose
+  function layoutPendingEdits() {
+    return !!(
+      Object.keys(layoutMoves).length ||
+      Object.keys(layoutTextMoves).length ||
+      Object.keys(layoutValueEdits).length ||
+      Object.keys(layoutRefEdits).length ||
+      routedTracks.length ||
+      routedDeletes.length ||
+      partDeletes.length ||
+      pendingZones.length ||
+      pendingImages.length ||
+      outlineEdit ||
+      Object.keys(boardZoneEdits).length ||
+      Object.keys(boardZoneDeletes).length ||
+      Object.keys(boardImageEdits).length ||
+      Object.keys(boardImageDeletes).length
+    );
   }
   function layoutRevert() {
     // nothing pending (e.g. right after a fast apply wrote source) —
     // reverting would show authored visuals while the source holds the
     // moved positions
-    if (
-      !Object.keys(layoutMoves).length &&
-      !Object.keys(layoutTextMoves).length &&
-      !Object.keys(layoutValueEdits).length &&
-      !Object.keys(layoutRefEdits).length &&
-      !routedTracks.length &&
-      !routedDeletes.length &&
-      !partDeletes.length &&
-      !pendingZones.length &&
-      !pendingImages.length &&
-      !outlineEdit &&
-      !Object.keys(boardZoneEdits).length &&
-      !Object.keys(boardZoneDeletes).length &&
-      !Object.keys(boardImageEdits).length &&
-      !Object.keys(boardImageDeletes).length
-    ) {
+    if (!layoutPendingEdits()) {
       if (statusEl && !statusLocked()) statusEl.textContent = 'nothing to revert \u2014 no pending edits (the last apply already wrote source)';
       return;
     }
@@ -3724,8 +3894,71 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     }
     renderLayoutMoves();
   }
+  // the revert confirmation: webviews suppress window.confirm, so the
+  // dialog is the page's own. OK reverts the session AND asks the host to
+  // re-serve the page — a true refresh to the source's own render; without
+  // a host (plain http) the in-page reset is the whole revert
+  var revertAskEl = null;
+  var revertAskOk = null;
+  function revertAskOpen() {
+    return !!(revertAskEl && revertAskEl.style.display !== 'none');
+  }
+  function revertAskShow() {
+    if (!revertAskEl) {
+      revertAskEl = document.createElement('div');
+      revertAskEl.id = 'revert-confirm';
+      var card = document.createElement('div');
+      card.className = 'rc-card';
+      var title = document.createElement('b');
+      title.textContent = 'revert layout edits?';
+      var text = document.createElement('div');
+      text.className = 'rc-text';
+      text.textContent =
+        'this throws away every edit made in the layout editor and returns the board to the source file as it renders';
+      var row = document.createElement('div');
+      row.className = 'rc-row';
+      var cancel = document.createElement('button');
+      cancel.type = 'button';
+      cancel.textContent = 'cancel';
+      revertAskOk = document.createElement('button');
+      revertAskOk.type = 'button';
+      revertAskOk.className = 'rc-ok';
+      revertAskOk.textContent = 'revert';
+      row.appendChild(cancel);
+      row.appendChild(revertAskOk);
+      card.appendChild(title);
+      card.appendChild(text);
+      card.appendChild(row);
+      revertAskEl.appendChild(card);
+      document.body.appendChild(revertAskEl);
+      cancel.addEventListener('click', function () {
+        revertAskEl.style.display = 'none';
+      });
+      // a press on the dimmed backdrop reads as a cancel
+      revertAskEl.addEventListener('pointerdown', function (ev) {
+        if (ev.target === revertAskEl) revertAskEl.style.display = 'none';
+      });
+      revertAskOk.addEventListener('click', function () {
+        revertAskEl.style.display = 'none';
+        layoutRevert();
+        if (statusEl && !statusLocked())
+          statusEl.textContent = 'reverted \u2014 back to the source as it renders';
+        if (typeof window.typecadRefresh === 'function') window.typecadRefresh();
+      });
+    }
+    revertAskEl.style.display = 'flex';
+    revertAskOk.focus();
+  }
   var layoutRevertBtn = document.getElementById('layout-revert');
-  if (layoutRevertBtn) layoutRevertBtn.addEventListener('click', layoutRevert);
+  if (layoutRevertBtn)
+    layoutRevertBtn.addEventListener('click', function () {
+      // nothing to lose — the plain revert's own guard says so in the status
+      if (!layoutPendingEdits()) {
+        layoutRevert();
+        return;
+      }
+      revertAskShow();
+    });
   if (layoutApplyBtn) {
     layoutApplyBtn.addEventListener('click', function () {
       // the viewer runs inside VS Code; without its host bridge (a stale tab
@@ -5359,6 +5592,14 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       // typing belongs to an open editor, never to the canvas
       if (ev.target && (ev.target.tagName === 'INPUT' || ev.target.tagName === 'TEXTAREA' || ev.target.isContentEditable))
         return;
+      // the revert dialog is modal: Esc cancels, Enter confirms, and every
+      // other key dies here instead of driving the board behind the dim
+      if (revertAskOpen()) {
+        ev.preventDefault();
+        if (ev.key === 'Escape') revertAskEl.style.display = 'none';
+        else if (ev.key === 'Enter') revertAskOk.click();
+        return;
+      }
       if (ev.key === 'Escape' && helpEl.style.display !== 'none') {
         ev.preventDefault();
         helpEl.style.display = 'none';
@@ -5873,44 +6114,6 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     },
     true,
   );
-
-  // alignment tools: same row (shared Y, the selection's mean) and even X
-  // spacing (first and last pinned, the middle distributed)
-  function layoutSelGroups() {
-    var out = [];
-    for (var ls = 0; ls < layoutSel.length; ls++) {
-      var g = layoutOverlay.querySelector('[data-ref="' + cssEsc(layoutSel[ls]) + '"]');
-      if (g) out.push(g);
-    }
-    return out;
-  }
-  function layoutAlignRow() {
-    var gs = layoutSelGroups();
-    if (gs.length < 2) return;
-    var mean = 0;
-    for (var a = 0; a < gs.length; a++) mean += gs[a].__ly;
-    mean = Math.round((mean / gs.length) * 2) / 2; // snapped to the grid
-    for (var a2 = 0; a2 < gs.length; a2++) {
-      setCompPos(gs[a2], gs[a2].__lx, mean);
-      commitLayoutMove(gs[a2]);
-    }
-  }
-  function layoutDistributeX() {
-    var gs = layoutSelGroups().sort(function (p, q) { return p.__lx - q.__lx; });
-    if (gs.length < 3) return;
-    var x0 = gs[0].__lx;
-    var x1 = gs[gs.length - 1].__lx;
-    var gap = (x1 - x0) / (gs.length - 1);
-    for (var d3 = 1; d3 < gs.length - 1; d3++) {
-      var nx = Math.round((x0 + gap * d3) * 2) / 2;
-      setCompPos(gs[d3], nx, gs[d3].__ly);
-      commitLayoutMove(gs[d3]);
-    }
-  }
-  var layoutAlignBtn = document.getElementById('layout-align');
-  if (layoutAlignBtn) layoutAlignBtn.addEventListener('click', layoutAlignRow);
-  var layoutDistBtn = document.getElementById('layout-dist');
-  if (layoutDistBtn) layoutDistBtn.addEventListener('click', layoutDistributeX);
 
   // ---- box (marquee) selection: left-drag on EMPTY board space ----
   // The CAD convention: dragging left→right ENCLOSES (only parts fully
@@ -9886,15 +10089,9 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   }
   function widthControlSync() {
     // the width the NEXT route would start at (per-net memory, else the
-    // last width used anywhere, else the heuristic) — the toolbar button
-    // shows it, the popover marks its rung
+    // last width used anywhere, else the heuristic) — the popover marks its
+    // rung (W opens it; the toolbar button that mirrored it is gone)
     var curW = routeState ? routeState.w : pendingWidthOverride || routeWidth(null, null);
-    var btn = document.getElementById('btn-width');
-    if (btn) {
-      btn.hidden = !document.body.classList.contains('typecad-layout');
-      btn.textContent = fmtW(curW) + ' mm';
-      btn.classList.toggle('armed', !!routeState);
-    }
     var rungs = widthLadder.querySelectorAll('button');
     for (var i = 0; i < rungs.length; i++)
       rungs[i].classList.toggle('cur', Math.abs(parseFloat(rungs[i].textContent) - curW) < 0.005);
@@ -13855,7 +14052,16 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       if (pcbaColorsNow[key] && to[key] && pcbaColorsNow[key] !== to[key]) map[pcbaColorsNow[key]] = to[key];
     }
     clearNetHighlight();
-    var els = viewGroups.pcba.querySelectorAll('[fill],[stroke]');
+    // the remap covers BOTH themed renders — the pcba view and the assembly
+    // view's bare board (same palette values in both fragments); a deferred
+    // fragment that mounts later is re-themed at mount
+    var els = [];
+    var themedViews = [viewGroups.pcba, viewGroups.assembly];
+    for (var tv = 0; tv < themedViews.length; tv++) {
+      if (!themedViews[tv]) continue;
+      var list = themedViews[tv].querySelectorAll('[fill],[stroke]');
+      for (var li2 = 0; li2 < list.length; li2++) els.push(list[li2]);
+    }
     for (var i = 0; i < els.length; i++) {
       if (els[i].closest && els[i].closest('mask')) continue;
       var f = els[i].getAttribute('fill');
@@ -14089,7 +14295,6 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   // live dimension, click end to stick the ruler. Rulers accumulate; Escape
   // cancels the in-progress one, clears them all and disarms the tool.
   var measureGroup = document.getElementById('measure');
-  var measureBtn = document.getElementById('btn-measure');
   var measuring = false;
   var rulers = [];
   var measureStart = null;
@@ -14181,12 +14386,6 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     }
     measureGroup.innerHTML = out;
   }
-  measureBtn.addEventListener('click', function () {
-    measuring = !measuring;
-    measureBtn.classList.toggle('armed', measuring);
-    measureStart = null;
-    renderMeasure();
-  });
   // an armed ruler owns every left press on the board, wherever it lands.
   // The part/pad/text grabs, the segment/via selector and the marquee all
   // preventDefault() their pointerdown — which suppresses the mousedown
@@ -14219,7 +14418,6 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         measuring = false;
         measureStart = null;
         rulers = [];
-        measureBtn.classList.remove('armed');
         renderMeasure();
       }
       // the zone tool cancels like the ruler: an in-progress corner draw
@@ -14622,10 +14820,6 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
 
   // ---- DRC markers (injected by the build pipeline) ----
   var drcGroup = document.getElementById('drc');
-  var drcBtn = document.getElementById('btn-drc');
-  // the width button mirrors the popover (same toggle, mouse-reachable)
-  var widthBtn = document.getElementById('btn-width');
-  if (widthBtn) widthBtn.addEventListener('click', widthPopToggle);
   var drcData = [];
   try {
     drcData = JSON.parse(document.getElementById('drc-data').textContent) || [];
@@ -14646,26 +14840,9 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     }
     drcGroup.innerHTML = out;
   }
-  if (drcData.length) {
-    drcBtn.hidden = false;
-    drcBtn.title = 'toggle ' + drcData.length + ' DRC marker(s)';
-    renderDrc();
-    drcBtn.addEventListener('click', function () {
-      drcGroup.classList.toggle('hidden');
-      drcBtn.classList.toggle('armed');
-    });
-  } else {
-    // Keep the affordance stable: with no report the button stays visible in
-    // a muted state and explains itself on click — a button that blinks out
-    // of existence reads as breakage, not as "nothing to show"
-    drcBtn.hidden = false;
-    drcBtn.disabled = true;
-    drcBtn.style.opacity = '0.4';
-    drcBtn.title = 'no DRC report — run typeCAD: DRC (typecad-pcb drc)';
-    drcBtn.addEventListener('click', function () {
-      if (!statusLocked()) statusEl.textContent = 'no DRC report — run typeCAD: DRC';
-    });
-  }
+  // markers render whenever a fresh report is embedded — the toggle button
+  // is gone from the toolbar (requested), so the markers simply show
+  if (drcData.length) renderDrc();
 
   document.getElementById('btn-fit').addEventListener('click', fit);
 
@@ -14680,25 +14857,61 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   // keeps editing the board geometry it points at.
   var boardFlipped = false;
   var flipGroup = viewGroups.gerber ? viewGroups.gerber.querySelector('#yflip') : null;
-  var baseViewBox = (svg.getAttribute('viewBox') || '')
-    .split(/\s+/)
-    .map(Number)
-    .filter(function (n) {
-      return isFinite(n);
-    });
+  // the pcba-family boards live OUTSIDE the gerber y-flip — each carries its
+  // own mirror. The two-sided views (assembled pcba, assembly) each ship a
+  // front board + back twin: flipping swaps them, because the back render is
+  // authored pre-mirrored to land in the x-negated viewBox. Without a back
+  // twin (no back layers, and for the blueprint/schematic drawings of the
+  // front) the board itself mirrors like the gerber stack so the flip never
+  // leaves an empty frame.
+  function applyPcbaFlip() {
+    var swapPairs = [
+      ['pcba-board', 'pcba-back', 'pcba-labels'],
+      ['asm-board', 'asm-back', 'asm-labels'],
+    ];
+    for (var si = 0; si < swapPairs.length; si++) {
+      var f = document.getElementById(swapPairs[si][0]);
+      var b = document.getElementById(swapPairs[si][1]);
+      if (b) {
+        if (f) f.style.display = boardFlipped ? 'none' : '';
+        b.style.display = boardFlipped ? '' : 'none';
+        // synthetic refdes labels sit outside their board group (upright
+        // text): the front's leave with the front board (the twin carries
+        // its own)
+        var l = document.getElementById(swapPairs[si][2]);
+        if (l) l.style.display = boardFlipped ? 'none' : '';
+      } else if (f) {
+        f.setAttribute('transform', boardFlipped ? 'scale(-1,-1)' : 'scale(1,-1)');
+      }
+    }
+    var mirrorBoards = ['bp-board', 'sch-board'];
+    for (var mi = 0; mi < mirrorBoards.length; mi++) {
+      var mb = document.getElementById(mirrorBoards[mi]);
+      if (mb) mb.setAttribute('transform', boardFlipped ? 'scale(-1,-1)' : 'scale(1,-1)');
+      var ml = document.getElementById(mi ? 'sch-labels' : 'bp-labels');
+      if (ml) ml.style.display = boardFlipped ? 'none' : '';
+    }
+  }
   function applyFlip() {
     if (flipGroup) flipGroup.setAttribute('transform', boardFlipped ? 'scale(-1,-1)' : 'scale(1,-1)');
+    applyPcbaFlip();
     // pending-zone + board-zone labels live OUTSIDE the y-flip (upright
     // glyphs) — their x follows boardFlipped, so a flip re-renders them
     renderPendingZones();
     renderBoardZones();
-    if (baseViewBox.length >= 4) {
+    var vbNow = (svg.getAttribute('viewBox') || '').split(/\s+/).map(Number);
+    if (vbNow.length === 4 && vbNow.every(function (n) { return isFinite(n); })) {
+      // negate the CURRENT x on every toggle: two flips compose back to the
+      // original window, and a viewBox a deferred part widened mid-session
+      // still mirrors correctly (a base captured at init would be stale).
+      // parseFloat(toFixed(6)) keeps the string canonical — no float tails
+      // ('0 -5.5612', never '0.000000 -5.561199999')
+      var vbN = function (n) {
+        return String(parseFloat(n.toFixed(6)));
+      };
       svg.setAttribute(
         'viewBox',
-        (boardFlipped
-          ? [-(baseViewBox[0] + baseViewBox[2]), baseViewBox[1], baseViewBox[2], baseViewBox[3]]
-          : baseViewBox
-        ).join(' '),
+        vbN(-(vbNow[0] + vbNow[2])) + ' ' + vbN(vbNow[1]) + ' ' + vbN(vbNow[2]) + ' ' + vbN(vbNow[3]),
       );
     }
     // the pan/zoom window is stale the moment the viewBox swaps: the saved
@@ -14717,6 +14930,10 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     if (drc) drc.setAttribute('transform', boardFlipped ? 'scale(-1,1)' : 'scale(1,1)');
     var probe = document.getElementById('typecad-probe');
     if (probe) probe.setAttribute('transform', boardFlipped ? 'scale(-1,1)' : 'scale(1,1)');
+    // the assembly hover outlines share the DRC convention (viewBox coords,
+    // x mirrored on flip)
+    var asmHaloFlip = document.getElementById('asm-halo');
+    if (asmHaloFlip) asmHaloFlip.setAttribute('transform', boardFlipped ? 'scale(-1,1)' : 'scale(1,1)');
     // pad labels counter-flip against the group to read upright — the added
     // x mirror turns that counter-flip into a double negative, so the
     // already-built labels re-swap (new labels consult boardFlipped at
@@ -14882,6 +15099,285 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     apply();
   })();
 
+  // ---- assembly view: the BOM checklist that fills the board up --------
+  // The assembly render ships every component glyph hidden (class
+  // asm-part); checking a part off — its chip in the sidebar list, or a
+  // click on the part's land pattern in the view — reveals that part's
+  // glyph exactly as the pcba view draws it, so the board visibly fills in
+  // as the build progresses. Check-offs persist per board (the same store
+  // as the layer settings and viewport), so a reload mid-build loses
+  // nothing; reset clears the lot.
+  var asmPlaced = {};
+  try {
+    if (saved.__asmPlaced && typeof saved.__asmPlaced === 'object') asmPlaced = saved.__asmPlaced;
+  } catch (e) {}
+  var asmChipByRef = {};
+  var asmComps = [];
+  var asmGroups = [];
+  (function () {
+    var by = {};
+    for (var i = 0; i < layoutComps.length; i++) {
+      var c = layoutComps[i];
+      if (!c.glyph) continue; // nothing drawn — nothing to reveal
+      asmComps.push(c);
+      var key = (c.value || '?') + '\u0001' + (c.footprint || '?');
+      if (!by[key]) by[key] = { value: c.value || '?', footprint: c.footprint || '', refs: [] };
+      by[key].refs.push(c.ref);
+    }
+    asmGroups = Object.keys(by).map(function (k) {
+      return by[k];
+    });
+    // biggest groups first (the many-of-a-kind passives a build starts with)
+    asmGroups.sort(function (a, b) {
+      return b.refs.length - a.refs.length || (a.value + a.footprint < b.value + b.footprint ? -1 : 1);
+    });
+  })();
+  function asmPersist() {
+    try {
+      var state = JSON.parse(localStorage.getItem(storeKey) || '{}') || {};
+      state.__asmPlaced = asmPlaced;
+      localStorage.setItem(storeKey, JSON.stringify(state));
+    } catch (e) {}
+  }
+  /** reveal/hide one part's glyph in the assembly view (front fragment and
+   *  back twin both carry it; only the visible side paints). Works for the
+   *  eager page (mounted at build) and the deferred fragment alike — an
+   *  empty placeholder simply matches nothing */
+  function asmGlyphApply(ref, on) {
+    var g = viewGroups.assembly;
+    if (!g) return;
+    var parts = g.querySelectorAll('g.asm-part[data-ref="' + String(ref).replace(/"/g, '\\"') + '"]');
+    for (var pi = 0; pi < parts.length; pi++) parts[pi].style.display = on ? '' : 'none';
+  }
+  /** re-apply every check-off (a deferred fragment mounts with all glyphs
+   *  hidden — placed parts must come back) */
+  function asmAllGlyphsApply() {
+    for (var ref in asmPlaced) if (asmPlaced[ref]) asmGlyphApply(ref, true);
+  }
+  function asmSyncChip(ref) {
+    var chip = asmChipByRef[ref];
+    if (chip) chip.classList.toggle('placed', !!asmPlaced[ref]);
+  }
+  function asmSyncCounters() {
+    var el = document.getElementById('asm-count');
+    if (!el) return;
+    var n = 0;
+    for (var i = 0; i < asmComps.length; i++) if (asmPlaced[asmComps[i].ref]) n++;
+    el.textContent = n + ' of ' + asmComps.length + ' placed';
+    var rows = document.querySelectorAll('#asm-list .asm-row');
+    for (var r = 0; r < rows.length; r++) {
+      var chips = rows[r].querySelectorAll('.asm-chip');
+      var m = 0;
+      for (var c2 = 0; c2 < chips.length; c2++) if (chips[c2].classList.contains('placed')) m++;
+      var gc = rows[r].querySelector('.asm-gcount');
+      if (gc) gc.textContent = m + '/' + chips.length;
+    }
+  }
+  function asmToggle(ref) {
+    if (asmPlaced[ref]) delete asmPlaced[ref];
+    else asmPlaced[ref] = 1;
+    asmGlyphApply(ref, !!asmPlaced[ref]);
+    asmSyncChip(ref);
+    asmSyncCounters();
+    asmPersist();
+    if (statusEl && !statusLocked())
+      statusEl.textContent = ref + (asmPlaced[ref] ? ' placed' : ' cleared');
+  }
+  (function () {
+    var list = document.getElementById('asm-list');
+    if (!list || !asmGroups.length) return;
+    var html = '';
+    for (var i = 0; i < asmGroups.length; i++) {
+      var g = asmGroups[i];
+      html +=
+        '<div class="asm-row" data-group="' + i + '"><div class="asm-row-head"><span class="asm-value">' +
+        propsEsc(g.value) +
+        (g.footprint ? ' <span class="asm-fp">' + propsEsc(g.footprint) + '</span>' : '') +
+        '</span><span class="asm-gcount">' + g.refs.length + '</span></div><div class="asm-chips">';
+      for (var r = 0; r < g.refs.length; r++)
+        html += '<span class="asm-chip" data-ref="' + propsEsc(g.refs[r]) + '">' + propsEsc(g.refs[r]) + '</span>';
+      html += '</div></div>';
+    }
+    list.innerHTML = html;
+    list.addEventListener('click', function (ev) {
+      var chip = ev.target && ev.target.closest ? ev.target.closest('.asm-chip') : null;
+      if (chip) asmToggle(chip.getAttribute('data-ref'));
+    });
+    var chips = list.querySelectorAll('.asm-chip');
+    for (var c3 = 0; c3 < chips.length; c3++) asmChipByRef[chips[c3].getAttribute('data-ref')] = chips[c3];
+    for (var ref2 in asmPlaced) asmSyncChip(ref2);
+    asmSyncCounters();
+    var rst = document.getElementById('asm-reset');
+    if (rst)
+      rst.addEventListener('click', function () {
+        asmPlaced = {};
+        var g2 = viewGroups.assembly;
+        if (g2) {
+          var ps = g2.querySelectorAll('g.asm-part');
+          for (var q = 0; q < ps.length; q++) ps[q].style.display = 'none';
+        }
+        for (var cr in asmChipByRef) asmSyncChip(cr);
+        asmSyncCounters();
+        asmPersist();
+      });
+    // hovering a row outlines every instance of that group on the board —
+    // "where do the six 100nF go" answered at a glance
+    list.addEventListener('mouseover', function (ev) {
+      var row = ev.target && ev.target.closest ? ev.target.closest('.asm-row') : null;
+      asmHaloDraw(row ? +row.getAttribute('data-group') : -1);
+    });
+    list.addEventListener('mouseleave', function () {
+      asmHaloDraw(-1);
+    });
+  })();
+  /** board-frame extents of a part: the island's w/h ride in the part's
+   *  LOCAL frame (the layout ghost rotates the box by rot), so an odd
+   *  quarter-turn transposes them and every other angle takes the rotated
+   *  rectangle's true AABB — a vertically-placed connector's outline must
+   *  read vertical */
+  function asmExtents(c) {
+    var t = ((((c.rot % 360) + 360) % 360) * Math.PI) / 180;
+    var ct = Math.abs(Math.cos(t));
+    var st = Math.abs(Math.sin(t));
+    return { w: c.w * ct + c.h * st, h: c.w * st + c.h * ct };
+  }
+  /** the part under a gerber-frame point — smallest containing box wins
+   *  (nested/courtyard overlap resolves to the real part) */
+  function asmCompAt(gp) {
+    var hit = null;
+    var hitA = 0;
+    for (var i = 0; i < asmComps.length; i++) {
+      var c = asmComps[i];
+      var e = asmExtents(c);
+      if (Math.abs(gp.x - c.x) <= e.w / 2 + 0.3 && Math.abs(gp.y - c.y) <= e.h / 2 + 0.3) {
+        var a = e.w * e.h;
+        if (!hit || a < hitA) {
+          hit = c;
+          hitA = a;
+        }
+      }
+    }
+    return hit;
+  }
+  var asmGroupOfRef = {};
+  for (var agi = 0; agi < asmGroups.length; agi++)
+    for (var agr = 0; agr < asmGroups[agi].refs.length; agr++) asmGroupOfRef[asmGroups[agi].refs[agr]] = agi;
+  /** outlines in viewBox coords (gerber y negated) — the same convention
+   *  the DRC markers use; applyFlip's x mirror rides the group transform.
+   *  DOM-built (createElementNS) on an rAF throttle: string innerHTML on
+   *  every mouse move is the one construct here that differs between
+   *  renderer builds, and it buys nothing over three typed nodes */
+  var asmHaloPending = -2;
+  function asmHaloDraw(gi) {
+    if (asmHaloPending === gi) return;
+    asmHaloPending = gi;
+    if (typeof requestAnimationFrame === 'function') {
+      requestAnimationFrame(function () { asmHaloPaint(asmHaloPending); });
+    } else {
+      asmHaloPaint(asmHaloPending);
+    }
+  }
+  function asmHaloPaint(gi) {
+    var halo = document.getElementById('asm-halo');
+    if (!halo) return;
+    while (halo.firstChild) halo.removeChild(halo.firstChild);
+    var g = asmGroups[gi];
+    if (!g) return;
+    var byRef = {};
+    for (var i = 0; i < asmComps.length; i++) byRef[asmComps[i].ref] = asmComps[i];
+    var s = 0.25; // clearance between part and outline (mm)
+    for (var r = 0; r < g.refs.length; r++) {
+      var c = byRef[g.refs[r]];
+      if (!c || !isFinite(c.x) || !isFinite(c.y) || !isFinite(c.w) || !isFinite(c.h)) continue;
+      var e = asmExtents(c);
+      var rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      rect.setAttribute('x', (c.x - e.w / 2 - s).toFixed(3));
+      rect.setAttribute('y', (-c.y - e.h / 2 - s).toFixed(3));
+      rect.setAttribute('width', (e.w + 2 * s).toFixed(3));
+      rect.setAttribute('height', (e.h + 2 * s).toFixed(3));
+      rect.setAttribute('rx', '0.2');
+      halo.appendChild(rect);
+    }
+  }
+  /** highlight the chip (and its row) for a ref — the board-hover answer to
+   *  "where is this in the list" */
+  function asmListHighlight(ref) {
+    var chips = document.querySelectorAll('#asm-list .asm-chip.hl, #asm-list .asm-row.hl');
+    for (var i = 0; i < chips.length; i++) chips[i].classList.remove('hl');
+    if (!ref) return;
+    var chip = asmChipByRef[ref];
+    if (!chip) return;
+    chip.classList.add('hl');
+    var row = chip.closest('.asm-row');
+    if (row) row.classList.add('hl');
+  }
+  // hovering a part on the board highlights where it sits in the list —
+  // chip + row — and outlines the whole value group (hovering J1 lights J2
+  // too, exactly like hovering the row does)
+  var asmHoverRef = null;
+  svg.addEventListener('pointermove', function (ev) {
+    if (viewMode !== 'assembly') return;
+    asmReport();
+    var hit = asmCompAt(gerberAt(ev.clientX, ev.clientY));
+    var ref = hit ? hit.ref : null;
+    if (ref === asmHoverRef) return;
+    asmHoverRef = ref;
+    asmListHighlight(ref);
+    var gi = ref !== null ? asmGroupOfRef[ref] : undefined;
+    asmHaloDraw(gi !== undefined ? gi : -1);
+  });
+  /** render-health self-report for the host log: with one symptom (a
+   *  webview painting nothing while every DOM probe says visible) only the
+   *  renderer itself can testify — sent once on the first assembly
+   *  interaction, where the eye has definitely been on the view */
+  var asmReported = false;
+  function asmReport() {
+    if (asmReported) return;
+    asmReported = true;
+    if (typeof window.typecadReport !== 'function') return;
+    var doc = document;
+    var board = doc.getElementById('asm-board');
+    var rect = board ? board.getBoundingClientRect() : null;
+    var svgR = svg.getBoundingClientRect();
+    var center = rect
+      ? doc.elementsFromPoint(svgR.x + svgR.width / 2, svgR.y + svgR.height / 2)[0]
+      : null;
+    var vb = (svg.getAttribute('viewBox') || '').split(/\s+/);
+    window.typecadReport({
+      kind: 'assembly',
+      build: (doc.querySelector('meta[name="tc-viewer-build"]') || {}).content || null,
+      mounted: !!(viewGroups.assembly && viewGroups.assembly.__loaded),
+      fragKids: viewGroups.assembly ? viewGroups.assembly.children.length : 0,
+      boardRect: rect ? [+rect.width.toFixed(1), +rect.height.toFixed(1)] : null,
+      boardDisplay: board ? board.style.display || '(attr)' : 'MISSING',
+      backDisplay: (doc.getElementById('asm-back') || {}).style ? doc.getElementById('asm-back').style.display : 'MISSING',
+      viewBoxX: vb[0],
+      panzoom: (doc.getElementById('panzoom') || {}).getAttribute ? doc.getElementById('panzoom').getAttribute('transform') : null,
+      clipResolves: !!doc.getElementById('as-clip'),
+      maskResolves: !!doc.getElementById('as-open'),
+      centerHit: center ? center.tagName : 'none',
+      glyphCount: viewGroups.assembly ? viewGroups.assembly.querySelectorAll('g.asm-part').length : 0,
+    });
+  }
+  svg.addEventListener('pointerleave', function () {
+    if (asmHoverRef !== null) {
+      asmHoverRef = null;
+      asmListHighlight(null);
+      asmHaloDraw(-1);
+    }
+  });
+  // a click on a part's land pattern in the assembly view toggles it.
+  // Capture phase: the view's own press paths stay idle
+  svg.addEventListener('pointerdown', function (ev) {
+    if (ev.button !== 0 || viewMode !== 'assembly') return;
+    asmReport();
+    var hit = asmCompAt(gerberAt(ev.clientX, ev.clientY));
+    if (!hit) return;
+    ev.stopPropagation();
+    ev.preventDefault();
+    asmToggle(hit.ref);
+  }, true);
+
   // restore the flow animation settings first — the view restore below runs
   // setView/flowStart, and a paused or re-scaled animation should load that
   // way from the first frame
@@ -14976,94 +15472,6 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   // per-group CSS variable (--ink-<layerId>), so switching is a restyle of
   // group + chip + canvas — no path is touched. Saved per browser like the
   // dark/light preference, shared across boards and sessions.
-  var LAYER_THEME_KEY = 'gerber-viewer:layer-theme:v1';
-  var layerThemesIsland = [];
-  try {
-    layerThemesIsland = JSON.parse(document.getElementById('layer-themes').textContent) || [];
-  } catch (e) {}
-  var layerThemeSel = document.getElementById('layer-theme');
-  // copper side from the filename stem: f_cu / b_cu / in<N>_cu
-  function themeColorFor(theme, g) {
-    var name = (g.getAttribute('data-layer-name') || '').toLowerCase();
-    var kind = g.getAttribute('data-kind');
-    var key = null;
-    if (kind === 'copper') {
-      if (/(^|[-_.])f_cu(?=$|[-_.])/.test(name)) key = 'f';
-      else if (/(^|[-_.])b_cu(?=$|[-_.])/.test(name)) key = 'b';
-      else {
-        var inm = /(^|[-_.])in(\d+)_cu(?=$|[-_.])/.exec(name);
-        key = inm ? 'in' + inm[2] : 'f';
-      }
-      var cop = theme.board.copper;
-      return cop ? cop[key] || null : null;
-    }
-    var side = /(^|[-_.])b_(mask|paste|silks|adhes|fab|crtyd)/.exec(name);
-    var suffix = kind === 'silkscreen' ? 'silks' : kind === 'courtyard' ? 'crtyd' : kind;
-    var tokens = { mask: 1, paste: 1, silks: 1, adhes: 1, fab: 1, crtyd: 1 };
-    if (tokens[suffix]) key = (side ? 'b_' : 'f_') + suffix;
-    else if (kind === 'edge') key = 'edge_cuts';
-    else if (kind === 'drill') key = 'via_through';
-    return key ? theme.board[key] || null : null;
-  }
-  function applyLayerTheme(id) {
-    var theme = null;
-    for (var lt = 0; lt < layerThemesIsland.length; lt++)
-      if (layerThemesIsland[lt].id === id) theme = layerThemesIsland[lt];
-    document.body.classList.toggle('layer-themed', !!theme);
-    // GERBER stack only: the pcba/blueprint views embed their own #yflip
-    // copies carrying the same data-layer-ids; their pass had no theme
-    // mapping and reset the shared sidebar chips to the default palette
-    var lgs = (viewGroups.gerber || document).querySelectorAll('#yflip > g[data-layer-id]');
-    for (var lg = 0; lg < lgs.length; lg++) {
-      var g2 = lgs[lg];
-      var lid = g2.getAttribute('data-layer-id');
-      // only GERBER layer groups: the pcba/blueprint views inject their own
-      // copper copies into the same #yflip WITHOUT data-kind/data-layer-name
-      // — theme-mapped to nothing, their pass reset the shared chips
-      if (!g2.getAttribute('data-kind') || !g2.getAttribute('data-layer-name')) continue;
-      if (g2.__inkDefault === undefined) g2.__inkDefault = g2.style.getPropertyValue('--ink-' + lid);
-      var color = theme ? themeColorFor(theme, g2) : null;
-      if (color) g2.style.setProperty('--ink-' + lid, color);
-      else g2.style.setProperty('--ink-' + lid, g2.__inkDefault);
-      // every chip for this layer recolors — the full list AND the compact
-      // rail each render one
-      document.querySelectorAll('.layer-row[data-layer-id="' + lid + '"] .chip').forEach(function (chip) {
-        if (chip.__bgDefault === undefined) chip.__bgDefault = chip.style.background;
-        chip.style.background = color || chip.__bgDefault;
-      });
-    }
-    if (theme && theme.background) boardArea.style.backgroundColor = theme.background;
-    else boardArea.style.removeProperty('background-color');
-    // cutouts key off the canvas color — keep the var synced either way
-    svg.style.setProperty('--bg', getComputedStyle(boardArea).backgroundColor);
-    svg.style.setProperty('--pad-label', padLabelColor());
-    // '' = the Default option (raw palette, no restyle)
-    try { localStorage.setItem(LAYER_THEME_KEY, theme ? id : ''); } catch (e) {}
-  }
-  if (layerThemeSel) {
-    layerThemeSel.addEventListener('change', function () {
-      applyLayerTheme(layerThemeSel.value);
-    });
-    var savedLayerTheme = null;
-    try { savedLayerTheme = localStorage.getItem(LAYER_THEME_KEY); } catch (e) {}
-    var known = false;
-    for (var st = 0; st < layerThemesIsland.length; st++)
-      if (layerThemesIsland[st].id === savedLayerTheme) known = true;
-    if (savedLayerTheme === '') {
-      // the raw palette — no restyle, the fallback recolors own dark mode
-      layerThemeSel.value = '';
-    } else if (known) {
-      layerThemeSel.value = savedLayerTheme;
-      applyLayerTheme(savedLayerTheme);
-    } else {
-      // first visit, or a theme that is no longer registered: the house look.
-      // ('typecad' USED to be the no-theme sentinel — those saved picks
-      // migrate to the real house theme, which is what picking it always
-      // meant.)
-      layerThemeSel.value = 'typecad';
-      applyLayerTheme('typecad');
-    }
-  }
 
   // Embedding surface (the vscode extension's webview client calls these to
   // cross-probe: select a component from the editor, click a pad to jump
@@ -15307,9 +15715,26 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   #view-busy { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 60; display: flex; align-items: center; gap: 10px; background: rgba(18, 22, 27, 0.94); color: var(--chrome-fg, #d8dee4); border: 1px solid var(--btn-border, #3a4149); border-radius: 8px; padding: 12px 18px; font: 13px/1.4 system-ui, sans-serif; box-shadow: 0 6px 24px rgba(0,0,0,.45); pointer-events: none; }
   .busy-ring { width: 16px; height: 16px; border-radius: 50%; border: 2px solid rgba(255,255,255,.25); border-top-color: rgb(48, 222, 102); animation: busy-spin .8s linear infinite; flex: none; }
   @keyframes busy-spin { to { transform: rotate(360deg); } }
-  #pcba-theme-box { padding: 8px 14px 0; }
-  #pcba-theme-label { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; margin: 0 0 4px; }
-  #pcba-theme { width: 100%; background: var(--btn-bg); color: var(--chrome-fg); border: 1px solid var(--btn-border); border-radius: 4px; padding: 5px 8px; font: inherit; cursor: pointer; }
+  /* grows to fill the sidebar's leftover height (the layers panel owns
+     that space in gerber/layout modes; here it is the checklist's) */
+  #asm-box { padding: 8px 14px 0; flex: 1 1 auto; display: flex; flex-direction: column; min-height: 0; }
+  #asm-head { display: flex; align-items: baseline; gap: 8px; margin: 0 0 4px; }
+  #asm-head .label { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; }
+  #asm-count { font-size: 11px; color: var(--muted); flex: 1; }
+  #asm-reset { background: var(--btn-bg); color: var(--chrome-fg); border: 1px solid var(--btn-border); border-radius: 4px; padding: 2px 8px; font: 11px/1.4 inherit; cursor: pointer; }
+  #asm-reset:hover { border-color: var(--accent, #d29922); }
+  #asm-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+  .asm-row { border-top: 1px solid var(--btn-border); padding: 5px 0 6px; }
+  .asm-row-head { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; }
+  .asm-value { font-weight: 600; font-size: 12px; }
+  .asm-fp { color: var(--muted); font-weight: 400; font-size: 11px; }
+  .asm-gcount { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+  .asm-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+  .asm-chip { border: 1px solid var(--btn-border); border-radius: 9px; padding: 1px 7px; font-size: 11px; cursor: pointer; user-select: none; }
+  .asm-chip:hover { border-color: var(--accent, #d29922); }
+  .asm-chip.placed { color: var(--muted); text-decoration: line-through; border-style: dashed; }
+  .asm-chip.hl { border-color: #ffd24a; background: rgba(255, 210, 74, 0.16); }
+  .asm-row.hl { background: linear-gradient(90deg, rgba(255, 210, 74, 0.09), transparent); }
   #volt-legend-box, #power-legend-box { padding: 8px 14px 0; }
   #volt-legend-label, #power-legend-label { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; margin: 0 0 4px; }
   #volt-legend-bar, #power-legend-bar { height: 8px; border-radius: 4px; border: 1px solid var(--btn-border); }
@@ -15343,9 +15768,8 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   .layout-text-edit:focus { outline: none; border-color: #6db3f2; }
   .layout-text-preview { fill: #d6d6d6; font-family: ui-monospace, monospace; }
   #layout-buttons { display: flex; gap: 6px; }
-  #layout-buttons button, #layout-tools button { flex: 1; background: var(--btn-bg); color: var(--chrome-fg); border: 1px solid var(--btn-border); border-radius: 4px; padding: 4px 6px; cursor: pointer; font: inherit; }
-  #layout-buttons button:disabled, #layout-tools button:disabled { opacity: 0.5; cursor: default; }
-  #layout-tools { display: flex; gap: 6px; margin-bottom: 6px; }
+  #layout-buttons button { flex: 1; background: var(--btn-bg); color: var(--chrome-fg); border: 1px solid var(--btn-border); border-radius: 4px; padding: 4px 6px; cursor: pointer; font: inherit; }
+  #layout-buttons button:disabled { opacity: 0.5; cursor: default; }
   #layout-warn { color: #d29922; font-size: 11px; line-height: 1.5; margin-bottom: 6px; word-break: break-word; }
   #ratsnest path { stroke: #d29922; stroke-width: 0.05; fill: none; opacity: 0.85; }
   #ratsnest path.rat-hi { stroke: var(--sel); stroke-width: 0.12; opacity: 1; }
@@ -15369,6 +15793,16 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     stroke-width: 1.5px;
     vector-effect: non-scaling-stroke;
     cursor: move;
+  }
+  /* part-to-label leader lines: dashed so they read as annotation, never as
+     copper — the hairline stays constant at any zoom */
+  #layout-leaders line {
+    stroke: var(--sel);
+    stroke-width: 1px;
+    vector-effect: non-scaling-stroke;
+    stroke-dasharray: 0.9 0.6;
+    stroke-linecap: round;
+    opacity: 0.85;
   }
   /* the handle itself paints nothing — the footprint's own ink (pads, silk,
      fab outline) already shows the part, KiCad-style. It stays the pointer
@@ -15443,6 +15877,28 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   #drift-list .drift-row span { color: var(--muted); }
   #keys-help::-webkit-scrollbar { width: 8px; }
   #keys-help::-webkit-scrollbar-thumb { background: var(--btn-border, #8886); border-radius: 4px; }
+  /* the revert confirmation (webviews suppress window.confirm) */
+  #revert-confirm {
+    position: fixed; inset: 0; z-index: 70; display: none;
+    align-items: center; justify-content: center;
+    background: rgba(0, 0, 0, 0.45);
+  }
+  #revert-confirm .rc-card {
+    background: var(--chrome-bg); color: var(--chrome-fg);
+    border: 1px solid var(--chrome-border); border-radius: 6px;
+    padding: 14px 16px; max-width: 400px;
+    font: 12px/1.55 system-ui, sans-serif;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  }
+  #revert-confirm b { display: block; margin-bottom: 6px; }
+  #revert-confirm .rc-text { color: var(--muted); margin-bottom: 12px; }
+  #revert-confirm .rc-row { display: flex; gap: 8px; justify-content: flex-end; }
+  #revert-confirm button {
+    background: var(--btn-bg); color: var(--chrome-fg);
+    border: 1px solid var(--btn-border); border-radius: 4px;
+    padding: 4px 12px; cursor: pointer; font: inherit;
+  }
+  #revert-confirm .rc-ok { border-color: #d29922; color: #d29922; }
   /* one binding per row: bold key column, dash, explanation — the grid keeps
      every key aligned and no row wraps under its key */
   #keys-help .hrow { display: grid; grid-template-columns: 136px 1fr; column-gap: 10px; align-items: baseline; padding: 2.5px 0; }
@@ -15548,7 +16004,6 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   }
   #props-pop button.armed { box-shadow: inset 0 0 0 1px var(--chrome-fg); background: var(--btn-hover); }
   #props-pop .whint { color: var(--muted); font-size: 11px; margin: 1px 0 0; line-height: 1.5; }
-  #btn-width { min-width: 56px; }
   /* the picked pad's white clones: aperture symbols carry no fill of
      their own, so the clone's inherited fill paints the exact pad shape;
      .cut holes keep var(--bg) (their own !important rule) so a drilled
@@ -15600,11 +16055,11 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     <button id="btn-theme" class="icon-btn" title="toggle dark/light theme"></button>
   </header>
   ${
-    options.pcbaSvg || options.blueprintSvg || (options.deferredViews && options.deferredViews.length)
+    options.pcbaSvg || options.assemblySvg || options.blueprintSvg || (options.deferredViews && options.deferredViews.length)
       ? `<div id="view-switch">
   <select id="view-mode" title="board view">
     <option value="gerber">Gerber view</option>
-    <option value="pcba">PCBA view</option>${options.blueprintSvg || (options.deferredViews ?? []).includes('blueprint') ? '\n    <option value="blueprint">Blueprint view</option>' : ''}${options.schematicSvg || (options.deferredViews ?? []).includes('schematic') ? `\n    <option value="schematic">ngspice view</option>\n    <option value="thermal">Copper ΔT</option>` : ''}${
+    <option value="pcba">PCBA view</option>${options.assemblySvg || (options.deferredViews ?? []).includes('assembly') ? '\n    <option value="assembly">Assembly view</option>' : ''}${options.blueprintSvg || (options.deferredViews ?? []).includes('blueprint') ? '\n    <option value="blueprint">Blueprint view</option>' : ''}${options.schematicSvg || (options.deferredViews ?? []).includes('schematic') ? `\n    <option value="schematic">ngspice view</option>\n    <option value="thermal">Copper ΔT</option>` : ''}${
     options.layoutComponents && options.layoutComponents.length
       ? `
     <option value="layout">Layout</option>`
@@ -15615,12 +16070,10 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
       : ''
   }
   ${
-    (options.pcbaSvg || (options.deferredViews ?? []).includes('pcba')) && options.pcbaThemes && options.pcbaThemes.length > 0
-      ? `<div id="pcba-theme-box" style="display:none">
-  <div id="pcba-theme-label">Theme</div>
-  <select id="pcba-theme" title="pcba theme">${options.pcbaThemes
-        .map((t) => `<option value="${escapeHtml(t.id)}">${escapeHtml(t.label)}</option>`)
-        .join('')}</select>
+    options.layoutComponents && options.layoutComponents.length
+      ? `<div id="asm-box" style="display:none">
+  <div id="asm-head"><span class="label">Assembly</span><span id="asm-count"></span><button id="asm-reset" title="clear every check-off and start the build over">reset</button></div>
+  <div id="asm-list"></div>
 </div>`
       : ''
   }
@@ -15662,10 +16115,6 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   <div id="layout-keys"><span class="chip chip-striped">autorouted</span><span class="chip chip-solid">TrackBuilder</span><span class="chip chip-grey">ripped up</span></div>
   <label><input type="checkbox" id="layout-snap" checked> snap <select id="layout-snap-step" title="snap step (mm)"><option>0.1</option><option>0.25</option><option selected>0.5</option><option>1</option></select></label>
 
-  <div id="layout-tools">
-    <button id="layout-align" type="button" disabled>align row</button>
-    <button id="layout-dist" type="button" disabled>distribute X</button>
-  </div>
   <div id="layout-warn" style="display:none"></div>
   <div id="layout-buttons">
     <button id="layout-revert" type="button">revert</button>
@@ -15685,21 +16134,15 @@ ${rows}
     <button id="btn-flip" title="view the board from the back — mirrored, so back-side text reads the right way round">Flip Board</button>
     <button id="btn-all-on" title="show all layers">All</button>
     <button id="btn-all-off" title="hide all layers">None</button>${
-      /* layer colors for the gerber & layout views; KiCad color themes */
-      (options.layerThemes ?? LAYER_THEME_LIST).length
-        ? `
-    <select id="layer-theme" title="layer colors (KiCad color themes)">${[
-        ...(options.layerThemes ?? LAYER_THEME_LIST).map(
-          (t) =>
-            `<option value="${escapeHtml(t.id)}" title="${escapeHtml(t.credit + ' — ' + t.license)}">${escapeHtml(t.label)}</option>`,
-        ),
-        `<option value="" title="the built-in viewer palette">Default</option>`,
-      ].join('')}</select>`
+      /* the pcba theme options (the same picker the pcba view carries),
+       * living in the toolbar: one theme control, applying to every
+       * themed render (pcba + assembly) */
+      (options.pcbaSvg || (options.deferredViews ?? []).includes('pcba')) && options.pcbaThemes && options.pcbaThemes.length > 0
+        ? `\n    <select id="pcba-theme" title="pcba theme">${options.pcbaThemes
+            .map((t) => `<option value="${escapeHtml(t.id)}">${escapeHtml(t.label)}</option>`)
+            .join('')}</select>`
         : ''
     }
-    <button id="btn-measure" title="measure: click start, click end — rulers stick; Esc clears all">&#x1F4CF;</button>
-    <button id="btn-width" title="trace [ ] / via Shift+[ ] sizing (Alt ±0.01, may cross the board min) · A sizes for the net’s current · Y sizes for 50 Ω · P picks a width off copper · \ and Shift+\ reset · W opens the picker" hidden>auto</button>
-    <button id="btn-drc" class="has-drc-hidden" title="toggle DRC violation markers" hidden>DRC</button>
   </div>
   </div>
   <div id="layers-compact" style="display:none">
@@ -15717,9 +16160,9 @@ ${compactRows}
           '<g id="panzoom"><g id="yflip" transform="scale(1,-1)">',
           '<g id="panzoom"><g id="view-gerber"><g id="yflip" transform="scale(1,-1)">',
         );
-      const overlays = '<g id="measure"></g><g id="drc"></g><g id="typecad-probe"></g>';
+      const overlays = '<g id="measure"></g><g id="drc"></g><g id="typecad-probe"></g><g id="asm-halo" fill="none" stroke="#ffd24a" stroke-width="0.2" style="display:none"></g>';
       const deferred = options.deferredViews ?? [];
-      if (!options.pcbaSvg && !options.blueprintSvg && !options.schematicSvg && deferred.length === 0) {
+      if (!options.pcbaSvg && !options.assemblySvg && !options.blueprintSvg && !options.schematicSvg && deferred.length === 0) {
         // gerber only: close yflip + view-gerber, overlays in panzoom
         return withGerber.replace('</g></g></svg>', `</g></g>${overlays}</g></svg>`);
       }
@@ -15730,8 +16173,15 @@ ${compactRows}
       // part on demand — the default view never pays for views unused)
       const views: string[] = [];
       let union = splitSvg(svg).viewBox;
-      const partDefs: Array<{ key: 'pcba' | 'blueprint' | 'schematic'; svg?: string; boardId: string; labelsId: string }> = [
-        { key: 'pcba', svg: options.pcbaSvg, boardId: 'pcba-board', labelsId: 'pcba-labels' },
+      const partDefs: Array<{
+        key: 'pcba' | 'blueprint' | 'schematic' | 'assembly';
+        svg?: string;
+        back?: string;
+        boardId: string;
+        labelsId: string;
+      }> = [
+        { key: 'pcba', svg: options.pcbaSvg, back: options.pcbaBackSvg, boardId: 'pcba-board', labelsId: 'pcba-labels' },
+        { key: 'assembly', svg: options.assemblySvg, back: options.assemblyBackSvg, boardId: 'asm-board', labelsId: 'asm-labels' },
         { key: 'blueprint', svg: options.blueprintSvg, boardId: 'bp-board', labelsId: 'bp-labels' },
         { key: 'schematic', svg: options.schematicSvg, boardId: 'sch-board', labelsId: 'sch-labels' },
       ];
@@ -15746,7 +16196,7 @@ ${compactRows}
         views.push(
           `<g id="view-${def.key}" style="display:none">${part.inner
             .replace('<g id="board"', `<g id="${def.boardId}"`)
-            .replace('<g id="labels"', `<g id="${def.labelsId}"`)}</g>`,
+            .replace('<g id="labels"', `<g id="${def.labelsId}"`)}${def.back ?? ''}</g>`,
         );
       }
       return withGerber
@@ -15795,11 +16245,6 @@ ${compactRows}
           default: options.pcbaThemes[0]!.colors,
           themes: Object.fromEntries(options.pcbaThemes.map((t) => [t.id, t.colors])),
         }).replace(/</g, '\\u003c')
-      : ''
-  }</script>
-  <script id="layer-themes" type="application/json">${
-    (options.layerThemes ?? LAYER_THEME_LIST).length
-      ? JSON.stringify(options.layerThemes ?? LAYER_THEME_LIST).replace(/</g, '\\u003c')
       : ''
   }</script>
   <script id="pad-data" type="application/json">${

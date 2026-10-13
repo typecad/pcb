@@ -292,6 +292,102 @@ describe('layout view properties panel (E) follows the selection', () => {
     expect(+box!.getAttribute('y')! + +box!.getAttribute('height')! / 2).toBeCloseTo(-23, 2);
   });
 
+  it('draws leader lines from a selected part to its attached labels', async () => {
+    const page = await boot();
+    const d = page.window.document;
+    page.pressPart('R1');
+    const grp = d.getElementById('layout-leaders');
+    expect(grp).not.toBeNull();
+    // R1 (10, -20) has one attached label, its reference at (10.5, -23)
+    const lines = grp!.querySelectorAll('line');
+    expect(lines.length).toBe(1);
+    const l = lines[0]!;
+    expect(+l.getAttribute('x1')!).toBeCloseTo(10);
+    expect(+l.getAttribute('y1')!).toBeCloseTo(-20);
+    expect(+l.getAttribute('x2')!).toBeCloseTo(10.5);
+    expect(+l.getAttribute('y2')!).toBeCloseTo(-23);
+    // a label-only selection draws the same leader from its part
+    page.pressLabel();
+    const grp2 = d.getElementById('layout-leaders');
+    expect(grp2).not.toBeNull();
+    expect(grp2!.querySelectorAll('line').length).toBe(1);
+    expect(+grp2!.querySelector('line')!.getAttribute('x1')!).toBeCloseTo(10);
+    // a part with no attached labels draws nothing
+    page.pressPart('U1');
+    expect(d.getElementById('layout-leaders')).toBeNull();
+  });
+
+  it('leaders point only at labels on visible layers', async () => {
+    const page = await boot({
+      layoutComponents: [
+        {
+          ...layoutComponents[0]!,
+          labels: [
+            ...layoutComponents[0]!.labels!,
+            { kind: 'value' as const, text: '10k', x: 10.5, y: -17, rot: 0, side: 'front' as const, h: 1, w: 1, layerKind: 'fab' as const },
+          ],
+        },
+        layoutComponents[1]!,
+      ],
+    });
+    const w = page.window;
+    const d = w.document;
+    const fabGroup = d.querySelector('#yflip g[data-kind="fab"][data-layer-name*="-F_"]');
+    fabGroup!.removeAttribute('display'); // the fixture renders fab hidden by default
+    const count = () => d.querySelectorAll('#layout-leaders line').length;
+    page.pressPart('R1');
+    // the silk reference (its layer never plotted — no rail to hide) and the
+    // fab value, both tied to the body
+    expect(count()).toBe(2);
+    // fab rail off: the value's leader dies with its layer, the reference's stays
+    fabGroup!.setAttribute('display', 'none');
+    page.pressPart('R1');
+    expect(count()).toBe(1);
+    const line = d.querySelector('#layout-leaders line')!;
+    expect(+line.getAttribute('y2')!).toBeCloseTo(-23, 1);
+    // layer back: the leader returns
+    fabGroup!.removeAttribute('display');
+    page.pressPart('R1');
+    expect(count()).toBe(2);
+  });
+
+  it('the revert button asks for confirmation before discarding layout edits', async () => {
+    const page = await boot();
+    const w = page.window;
+    const d = w.document;
+    // a pending edit: rotate U1
+    page.pressPart('U1');
+    page.key('r');
+    expect(d.getElementById('layout-apply')!.disabled).toBe(false);
+    // the button opens the dialog, not the revert
+    d.getElementById('layout-revert')!.click();
+    const dlg = d.getElementById('revert-confirm')!;
+    expect(dlg.style.display).toBe('flex');
+    expect(dlg.querySelector('.rc-text')!.textContent).toContain('returns the board to the source file');
+    // Esc keeps the edits
+    page.key('Escape');
+    expect(dlg.style.display).toBe('none');
+    expect(d.getElementById('layout-apply')!.disabled).toBe(false);
+    // Enter confirms: dialog closes, the edits are gone, apply disarms
+    d.getElementById('layout-revert')!.click();
+    page.key('Enter');
+    expect(dlg.style.display).toBe('none');
+    expect(d.getElementById('layout-apply')!.disabled).toBe(true);
+    // cancel leaves them alone too
+    page.pressPart('U1');
+    page.key('r');
+    d.getElementById('layout-revert')!.click();
+    (dlg.querySelector('button') as HTMLButtonElement).click(); // cancel
+    expect(dlg.style.display).toBe('none');
+    expect(d.getElementById('layout-apply')!.disabled).toBe(false);
+    // with nothing pending the button never asks — the status says so
+    d.getElementById('layout-revert')!.click();
+    d.querySelector('#revert-confirm .rc-ok')!.dispatchEvent(new w.Event('click', { bubbles: true }));
+    d.getElementById('layout-revert')!.click();
+    expect(d.getElementById('revert-confirm')!.style.display).toBe('none');
+    expect(d.getElementById('status')!.textContent).toContain('nothing to revert');
+  });
+
   it('refreshes placement in place after an R rotation', async () => {
     const page = await boot();
     page.pressPart('U1');
@@ -1341,6 +1437,87 @@ describe('deferred views load on first switch', () => {
     expect(asks).toEqual(['pcba']);
   });
 
+  it('a switch with NO bridge yet waits for it — the vscode webview injects its client after this page script, and a restored view mode asks at boot', async () => {
+    const page = await bootLazy();
+    const w = page.window;
+    const d = w.document;
+    // NO typecadViewPart installed — the page must wait, not fail
+    const sel = d.querySelector('select')! as HTMLSelectElement & { value: string };
+    sel.value = 'pcba';
+    sel.dispatchEvent(new w.Event('change', { bubbles: true }));
+    // the empty placeholder must not be shown while it waits
+    expect(d.getElementById('view-pcba')!.style.display).toBe('none');
+    await new Promise((r) => setTimeout(r, 250));
+    // the client arrives late — the waiting request routes through it
+    (w as unknown as Record<string, unknown>).typecadViewPart = function (
+      part: string,
+      cb: (e: Error | null, h?: string) => void,
+    ) {
+      cb(null, '<g id="view-' + part + '" data-viewbox="0 0 20 10"><g id="pcba-board"><rect width="20" height="10"/></g></g>');
+    };
+    await new Promise((r) => setTimeout(r, 400));
+    const group = d.getElementById('view-pcba')!;
+    expect(group.children.length).toBeGreaterThan(0);
+    expect(group.style.display).toBe('');
+    expect(d.getElementById('view-gerber')!.style.display).toBe('none');
+  });
+
+  it('a theme picked before the deferred view mounts applies when it mounts', async () => {
+    const page = await boot({ pcbaSvg: undefined, blueprintSvg: undefined, schematicSvg: undefined, deferredViews: ['pcba'], pcbaThemes: [
+      { id: 'green-enig', label: 'Green ENIG', colors: { clad: '#1a7a44' } },
+      { id: 'black-hasl', label: 'Black HASL', colors: { clad: '#26262b' } },
+    ] });
+    const w = page.window;
+    const d = w.document;
+    // pick the theme while the view is still an unmounted placeholder
+    const sel = d.getElementById('pcba-theme') as HTMLSelectElement;
+    sel.value = 'black-hasl';
+    sel.dispatchEvent(new w.Event('change', { bubbles: true }));
+    // mount through the bridge
+    (w as unknown as Record<string, unknown>).typecadViewPart = function (
+      part: string,
+      cb: (e: Error | null, h?: string) => void,
+    ) {
+      cb(null, '<g id="view-' + part + '" data-viewbox="0 0 20 10"><g id="pcba-board"><rect width="20" height="10" fill="#1a7a44"/></g></g>');
+    };
+    const s2 = d.querySelector('select') as HTMLSelectElement;
+    s2.value = 'pcba';
+    s2.dispatchEvent(new w.Event('change', { bubbles: true }));
+    await new Promise((r) => setTimeout(r, 80));
+    // the fresh fragment (default clad #1a7a44) is remapped to the pick
+    expect(d.querySelector('#pcba-board [fill="#26262b"]')).not.toBeNull();
+  });
+
+  it('a part that failed once retries on the next switch — a permanent failure would trap the view on an empty placeholder', async () => {
+    const page = await bootLazy();
+    const w = page.window;
+    const d = w.document;
+    let fail = true;
+    (w as unknown as Record<string, unknown>).typecadViewPart = function (
+      part: string,
+      cb: (e: Error | null, h?: string) => void,
+    ) {
+      if (fail) cb(new Error('boom'));
+      else cb(null, '<g id="view-' + part + '" data-viewbox="0 0 20 10"><g id="pcba-board"><rect width="20" height="10"/></g></g>');
+    };
+    const sel = d.querySelector('select')! as HTMLSelectElement & { value: string };
+    sel.value = 'pcba';
+    sel.dispatchEvent(new w.Event('change', { bubbles: true }));
+    await new Promise((r) => setTimeout(r, 60));
+    // failed: still on gerber, the error on the status line, and the
+    // placeholder is NOT shown even after switching into it again
+    expect(d.getElementById('view-gerber')!.style.display).toBe('');
+    sel.value = 'gerber';
+    sel.dispatchEvent(new w.Event('change', { bubbles: true }));
+    fail = false;
+    sel.value = 'pcba';
+    sel.dispatchEvent(new w.Event('change', { bubbles: true }));
+    await new Promise((r) => setTimeout(r, 80));
+    const group = d.getElementById('view-pcba')!;
+    expect(group.children.length).toBeGreaterThan(0); // the retry loaded it
+    expect(group.style.display).toBe('');
+  });
+
   it('a failed part keeps the current view and says why', async () => {
     const page = await bootLazy();
     const w = page.window;
@@ -1768,5 +1945,111 @@ describe('hidden-layer texts never cycle', () => {
     fabGroup!.removeAttribute('display');
     await hover();
     expect(await cycleTexts()).toContain('U7');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The assembly view's checklist, driven end-to-end: switch to assembly,
+// click BOM chips (and a part on the board), watch glyphs appear exactly as
+// the pcba view draws them — and survive a reload through the store.
+// ---------------------------------------------------------------------------
+describe('assembly view (checklist fills the board)', () => {
+  const asmSvg =
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -50 40 60"><g id="board" transform="scale(1,-1)"><g id="components">' +
+    '<g data-ref="R1" class="asm-part" style="display:none" transform="translate(10 -20)"><rect width="1.6" height="0.8" fill="#2b2f33"/></g>' +
+    '<g data-ref="U1" class="asm-part" style="display:none" transform="translate(30 -40)"><rect width="4" height="4" fill="#2b2f33"/></g>' +
+    '</g></g></svg>';
+  const asmComps = [
+    { ref: 'R1', x: 10, y: -20, rot: 0, w: 1.6, h: 0.8, side: 'front' as const, nets: [], value: '10k', footprint: 'R0603', glyph: 1 },
+    // w/h ride in the part's LOCAL frame: this one is 4 wide, 1.6 tall,
+    // placed at 90 — its board footprint is the transpose (1.6 x 4)
+    { ref: 'U1', x: 30, y: -40, rot: 90, w: 4, h: 1.6, side: 'front' as const, nets: [], value: 'MCU', footprint: 'SOIC-8', glyph: 1 },
+  ];
+
+  async function bootAsm() {
+    const page = await boot({ assemblySvg: asmSvg, layoutComponents: asmComps });
+    const sel = page.window.document.getElementById('view-mode') as HTMLSelectElement;
+    sel.value = 'assembly';
+    sel.dispatchEvent(new page.window.Event('change', { bubbles: true }));
+    return page;
+  }
+
+  it('ships the panel, the option, and every glyph hidden', async () => {
+    const page = await bootAsm();
+    const doc = page.window.document;
+    expect(doc.getElementById('asm-box')!.style.display).toBe('');
+    expect(doc.querySelector('#asm-list .asm-chip[data-ref="R1"]')).toBeTruthy();
+    expect(doc.getElementById('asm-count')!.textContent).toBe('0 of 2 placed');
+    // groups: one row per value+footprint, biggest first
+    expect(doc.querySelectorAll('.asm-row').length).toBe(2);
+    const glyphs = doc.querySelectorAll('#view-assembly g.asm-part');
+    expect(glyphs.length).toBe(2);
+    for (const g of glyphs) expect(g.style.display).toBe('none');
+  });
+
+  it('a chip click reveals the glyph, strike-throughs the chip, and persists', async () => {
+    const page = await bootAsm();
+    const doc = page.window.document;
+    (doc.querySelector('.asm-chip[data-ref="R1"]') as HTMLElement).click();
+    const glyph = doc.querySelector('#view-assembly g.asm-part[data-ref="R1"]') as SVGElement;
+    expect(glyph.style.display).toBe('');
+    expect(doc.querySelector('.asm-chip[data-ref="R1"]')!.classList.contains('placed')).toBe(true);
+    expect(doc.getElementById('asm-count')!.textContent).toBe('1 of 2 placed');
+    // the check-off rides the per-board store
+    const raw = page.window.localStorage.getItem(Object.keys(page.window.localStorage).find((k) => k.startsWith('gerber-viewer:v1:'))!);
+    expect(JSON.parse(raw!).__asmPlaced).toEqual({ R1: 1 });
+    // a second click unplaces it
+    (doc.querySelector('.asm-chip[data-ref="R1"]') as HTMLElement).click();
+    expect((doc.querySelector('#view-assembly g.asm-part[data-ref="R1"]') as SVGElement).style.display).toBe('none');
+    expect(doc.getElementById('asm-count')!.textContent).toBe('0 of 2 placed');
+  });
+
+  it('a rotated part halo reads vertical — the outline follows the board-frame extents, not the local w/h', async () => {
+    const page = await bootAsm();
+    const doc = page.window.document;
+    // hover U1's row (second row: R1 sorts first at equal counts)
+    const rows = doc.querySelectorAll('.asm-row');
+    (rows[1] as HTMLElement).dispatchEvent(new page.window.MouseEvent('mouseover', { bubbles: true }));
+    await new Promise((r) => setTimeout(r, 60)); // halo paints on the next frame
+    const rect = doc.querySelector('#asm-halo rect') as SVGRectElement;
+    expect(rect).toBeTruthy();
+    const w = +rect.getAttribute('width')!;
+    const h = +rect.getAttribute('height')!;
+    // local 4 x 1.6 at rot 90 -> board 1.6 x 4, plus 0.25 clearance a side
+    expect(w).toBeCloseTo(1.6 + 0.5, 3);
+    expect(h).toBeCloseTo(4 + 0.5, 3);
+  });
+
+  it('hovering a part on the board highlights its chip and row in the list', async () => {
+    const page = await bootAsm();
+    const doc = page.window.document;
+    // invert the page's own pan transform: identity CTM means
+    // client = (tx + k*gx, ty - k*gy) for gerber (gx, gy)
+    const t = /translate\(([-\d.e]+) ([-\d.e]+)\) scale\(([-\d.e]+)\)/.exec(
+      doc.getElementById('panzoom')!.getAttribute('transform') ?? '',
+    );
+    // absent transform (jsdom may never run apply()) = identity pan/zoom
+    const k = t ? +t[3]! : 1, tx = t ? +t[1]! : 0, ty = t ? +t[2]! : 0;
+    const board = doc.getElementById('board')!;
+    // over U1 (30, -40): chip + row light, halo draws U1's group
+    board.dispatchEvent(new page.window.MouseEvent('pointermove', { bubbles: true, clientX: tx + k * 30, clientY: ty - k * -40 }));
+    await new Promise((r) => setTimeout(r, 60)); // halo paints on the next frame
+    expect(doc.querySelector('.asm-chip[data-ref="U1"]')!.classList.contains('hl')).toBe(true);
+    expect(doc.querySelector('.asm-chip[data-ref="U1"]')!.closest('.asm-row')!.classList.contains('hl')).toBe(true);
+    expect(doc.querySelectorAll('#asm-halo rect').length).toBe(1);
+    // off every part: cleared
+    board.dispatchEvent(new page.window.MouseEvent('pointermove', { bubbles: true, clientX: tx + k * 0, clientY: ty - k * 0 }));
+    await new Promise((r) => setTimeout(r, 60));
+    expect(doc.querySelector('.asm-chip.hl')).toBeNull();
+    expect(doc.querySelectorAll('#asm-halo rect').length).toBe(0);
+  });
+
+  it('reset clears every check-off', async () => {
+    const page = await bootAsm();
+    const doc = page.window.document;
+    (doc.querySelector('.asm-chip[data-ref="U1"]') as HTMLElement).click();
+    (doc.getElementById('asm-reset') as HTMLElement).click();
+    expect(doc.getElementById('asm-count')!.textContent).toBe('0 of 2 placed');
+    expect((doc.querySelector('#view-assembly g.asm-part[data-ref="U1"]') as SVGElement).style.display).toBe('none');
   });
 });

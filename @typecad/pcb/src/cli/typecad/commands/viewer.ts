@@ -24,7 +24,42 @@ function flagPath(parsed: ParsedArgs, name: string): string | undefined {
   return typeof v === 'string' && v.trim() !== '' ? path.resolve(v.trim()) : undefined;
 }
 
-const VIEW_PARTS: ViewerViewPart[] = ['pcba', 'blueprint', 'schematic'];
+/**
+ * The DRC report to embed, or none. An explicit `--drc` always wins (the
+ * caller asked for that report by name). AUTO-discovery only picks the
+ * build's own report up when it is NEWER than the board — a report older
+ * than the board describes the previous revision and would paint its
+ * violation markers at stale positions on the freshly rebuilt board,
+ * reading as "the rebuild ran DRC". Same freshness rule the vscode
+ * extension's page generation applies.
+ */
+export function drcOverlayPath(
+  pcbPath: string,
+  buildDir: string,
+  stem: string,
+  explicit?: string,
+): string | undefined {
+  if (explicit) return explicit;
+  const auto = path.join(buildDir, `${stem}_drc.json`);
+  if (!fs.existsSync(auto)) return undefined;
+  return fs.statSync(auto).mtimeMs >= fs.statSync(pcbPath).mtimeMs ? auto : undefined;
+}
+
+const VIEW_PARTS: ViewerViewPart[] = ['pcba', 'blueprint', 'schematic', 'assembly'];
+
+/**
+ * Write a served file so a reader never sees it half-written: the viewer
+ * page (and its view-part fragments) are re-served to an OPEN browser tab
+ * on every rebuild, and a plain writeFileSync hands a concurrent fetch a
+ * truncated document — the DOM error-corrects enough for the page script
+ * to run (the board reads black), which reads as breakage. Temp file +
+ * rename is atomic on the same directory.
+ */
+function writeAtomically(target: string, contents: string): void {
+  const tmp = target + '.tmp-' + process.pid;
+  fs.writeFileSync(tmp, contents);
+  fs.renameSync(tmp, target);
+}
 
 export async function run(parsed: ParsedArgs): Promise<void> {
   const json = parsed.json;
@@ -58,7 +93,7 @@ export async function run(parsed: ParsedArgs): Promise<void> {
     return fs.existsSync(auto) ? auto : undefined;
   };
   const netlistPath = overlay('netlist', `${stem}.net`);
-  const drcReportPath = overlay('drc', `${stem}_drc.json`);
+  const drcReportPath = drcOverlayPath(pcbPath, buildDir, stem, flagPath(parsed, 'drc'));
   const stackupPath = overlay('stackup', `${stem}_stackup.json`);
   const rulesPath = overlay('rules', `${stem}_rules.json`);
   const overlayPaths = { netlistPath, drcReportPath, stackupPath, rulesPath };
@@ -81,7 +116,7 @@ export async function run(parsed: ParsedArgs): Promise<void> {
     const { fragment, viewBox, warnings } = renderViewPart([exported.outputDir], part, overlayPaths);
     const partPath = path.join(path.dirname(outPath), `view-${part}.html`);
     fs.mkdirSync(path.dirname(partPath), { recursive: true });
-    fs.writeFileSync(partPath, fragment);
+    writeAtomically(partPath, fragment);
     if (json) {
       logger.log(JSON.stringify({ pcb: pcbPath, part, out: partPath, viewBox, warnings }, null, 2));
     } else {
@@ -97,12 +132,12 @@ export async function run(parsed: ParsedArgs): Promise<void> {
   // --view-part fragment fetch. The render every board change pays for
   // shrinks to the default view alone.
   const lazyViews = parsed.args['lazy-views'] === true;
-  const deferViews: ViewerViewPart[] | undefined = lazyViews ? ['pcba', 'blueprint', 'schematic'] : undefined;
+  const deferViews: ViewerViewPart[] | undefined = lazyViews ? ['pcba', 'blueprint', 'schematic', 'assembly'] : undefined;
 
   if (!json) {
     logger.log(chalk.white.bold('typecad-pcb viewer') + ' - gerbers + drill + page in one pass\n');
     logger.log(`  PCB:    ${pcbPath}`);
-    logger.log(`  Page:   ${outPath}${lazyViews ? ' (lazy views: pcba, blueprint, schematic)' : ''}\n`);
+    logger.log(`  Page:   ${outPath}${lazyViews ? ' (lazy views: pcba, blueprint, schematic, assembly)' : ''}\n`);
   }
 
   const exported = exportNativeGerbers(pcbPath, {
@@ -117,7 +152,7 @@ export async function run(parsed: ParsedArgs): Promise<void> {
   });
 
   fs.mkdirSync(path.dirname(outPath), { recursive: true });
-  fs.writeFileSync(outPath, result.html);
+  writeAtomically(outPath, result.html);
 
   const overlays = [
     netlistPath && 'netlist',

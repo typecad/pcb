@@ -335,3 +335,27 @@ describe('view-part bridge (deferred views)', () => {
     expect(((await gotErr) as Error).message).toBe('ngspice missing');
   });
 });
+
+describe('refresh bridge (revert)', () => {
+  it('typecadRefresh asks the host to re-serve the page', async () => {
+    const sent: unknown[] = [];
+    const { html } = injectProbeClient(viewerPage, components);
+    const dom = new JSDOM(html, {
+      runScripts: 'dangerously',
+      url: 'https://webview.local/viewer.html',
+      beforeParse(window) {
+        window.acquireVsCodeApi = () => ({
+          postMessage: (m: unknown) => sent.push(m),
+          getState: () => ({}),
+          setState: () => {},
+        });
+      },
+    });
+    const w = dom.window;
+    await new Promise((r) => setTimeout(r, 50));
+    const refresh = (w as unknown as { typecadRefresh?: () => void }).typecadRefresh;
+    expect(typeof refresh).toBe('function');
+    refresh!();
+    expect(sent).toContainEqual({ type: 'typecad/layout-refresh' });
+  });
+});

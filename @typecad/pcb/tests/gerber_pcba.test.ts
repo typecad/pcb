@@ -11,6 +11,8 @@ import { classifyPackageFromName, resistorBands, semanticFromRef, TOLERANCE_BAND
 import { stitchBoardOutline } from '../src/gerber_viewer/render/outline.js';
 import { renderPcbaSvg } from '../src/gerber_viewer/render/pcba.js';
 import { DEFAULT_PCBA_THEME, mergeTheme } from '../src/gerber_viewer/render/theme.js';
+import { renderPcbaBackGroup, renderViewPart } from '../src/gerber_viewer/build.js';
+import { buildViewerHtml } from '../src/gerber_viewer/render/viewer_html.js';
 import { loadPcbaTheme, parseNetlistComponents, renderPcbaFromFiles } from '../src/gerber_viewer/pcba.js';
 import type { RenderLayer } from '../src/gerber_viewer/render/svg.js';
 
@@ -1011,7 +1013,7 @@ describe('renderPcbaSvg', () => {
 
   it('draws stylized component glyphs with pin-1 markers and labels', () => {
     expect(svg).toContain('data-ref="R1"');
-    const glyphs = svg.split('<g id="components">')[1]!.split('</g></g>')[0]!;
+    const glyphs = svg.split('<g id="pcba-components">')[1]!.split('</g></g>')[0]!;
     expect(glyphs).toContain('data-ref="U1"');
     expect(glyphs).not.toContain('TP1'); // single pad = test point, no glyph
     const u1 = glyphs.split('data-ref="U1"')[1]!.split('<g data-ref=')[0]!;
@@ -1332,12 +1334,12 @@ describe('renderPcbaFromFiles', () => {
 
     // no netlistPath passed — the sibling build/demo.net is discovered
     const result = renderPcbaFromFiles([gerbers]);
-    const u1 = result.svg.split('<g id="components">')[1]!.split('</g></g>')[0].split('data-ref="U1"')[1]!;
+    const u1 = result.svg.split('<g id="pcba-components">')[1]!.split('</g></g>')[0].split('data-ref="U1"')[1]!;
     expect(u1).toContain('width="4"'); // named dims applied
 
     // discovery can be disabled
     const bare = renderPcbaFromFiles([gerbers], { discoverNetlist: false });
-    const u1bare = bare.svg.split('<g id="components">')[1]!.split('</g></g>')[0].split('data-ref="U1"')[1]!;
+    const u1bare = bare.svg.split('<g id="pcba-components">')[1]!.split('</g></g>')[0].split('data-ref="U1"')[1]!;
     expect(u1bare).not.toContain('width="4"'); // heuristic body only
   });
 
@@ -1354,7 +1356,7 @@ describe('renderPcbaFromFiles', () => {
     for (const [name, content] of files) fs.writeFileSync(path.join(dir, name), content);
 
     const result = renderPcbaFromFiles([dir], { netlistPath: path.join(dir, 'demo.net') });
-    const glyphs = result.svg.split('<g id="components">')[1]!.split('</g></g>')[0]!;
+    const glyphs = result.svg.split('<g id="pcba-components">')[1]!.split('</g></g>')[0]!;
     const r1 = glyphs.split('data-ref="R1"')[1]!.split('<g data-ref=')[0]!;
     expect(r1).toContain('width="1.6"'); // the real 0603 body
     expect(r1).toContain('height="0.8"');
@@ -1396,5 +1398,212 @@ M02*
     expect(qfp.components[0]!.kind).toBe('qfp');
     const qfn = extractComponents([layer('demo-F_Cu.gbr', ring(0.5, 0.6, 'U6'))], 'front');
     expect(qfn.components[0]!.kind).toBe('qfn');
+  });
+});
+
+// ---- assembled-view fixes: mask-opening halos, tented-via annuli, the
+// back-side twin that Flip Board swaps in -------------------------------
+describe('pcba mask openings (no stroke halo)', () => {
+  it('masks the openings ink with stroke-width 0 — an unsized wrapper stroke is 1mm in file units and dilates every opening until neighboring pads merge', () => {
+    const svg = renderPcbaSvg(FRONT_LAYERS).svg;
+    // the film-punch mask (openings black) and its complement (openings
+    // white) both carry the guard; trace draws bring their own widths
+    expect(svg).toContain('<g fill="#000000" stroke="#000000" stroke-width="0">');
+    expect(svg).toContain('<g fill="#ffffff" stroke="#ffffff" stroke-width="0">');
+  });
+});
+
+describe('pcba plated-hole annuli', () => {
+  // a tented via: round copper annulus C,0.9 at (5,11), 0.45 drill at the
+  // same spot, NO mask opening there (the film covers it); an unplated
+  // hole: 0.5 drill at (15,3) with no copper anywhere near
+  const VIA_CU = `%FSLAX36Y36*%
+%MOMM*%
+%ADD10C,0.9*%
+%ADD11R,1.2X0.8*%
+D10*
+X5000000Y11000000D03*
+D11*
+%TO.P,R9,1*%
+X3000000Y3000000D03*
+%TD*%
+M02*
+`;
+  const VIA_MASK = `%FSLAX36Y36*%
+%MOMM*%
+%ADD20R,1.4X1.0*%
+D20*
+X3000000Y3000000D03*
+M02*
+`;
+  const VIA_DRILL = `M48
+METRIC,TZ
+T1C0.450
+T2C0.500
+%
+G90
+G05
+T1
+X5.0Y11.0
+T2
+X15.0Y3.0
+M30
+`;
+  const VIA_LAYERS = [
+    layer('demo-Edge_Cuts.gbr', EDGE),
+    layer('demo-F_Cu.gbr', VIA_CU),
+    layer('demo-F_Mask.gbr', VIA_MASK),
+    drillLayer('demo.drl', VIA_DRILL),
+  ];
+
+  it('draws the true annulus (drill edge to flash edge, finish metal) on the tented via', () => {
+    const svg = renderPcbaSvg(VIA_LAYERS).svg;
+    // flash r 0.45, drill r 0.225: ring 0.225 wide centered at r 0.3375
+    expect(svg).toMatch(
+      /<circle cx="5" cy="11" r="0\.3375" fill="none" stroke="#cf8a4d" stroke-width="0\.225" pointer-events="none"\/>/,
+    );
+  });
+
+  it('leaves unplated holes bare — no concentric round copper flash, no ring', () => {
+    const svg = renderPcbaSvg(VIA_LAYERS).svg;
+    // the drill dot itself (no stroke attr) stays; nothing stroked rings it
+    expect(svg).not.toMatch(/<circle cx="15" cy="3"[^>]*stroke=/);
+  });
+});
+
+describe('pcba back-side twin (Flip Board)', () => {
+  const BACK_LAYERS = [
+    layer('demo-Edge_Cuts.gbr', EDGE),
+    layer('demo-B_Cu.gbr', F_CU),
+    layer('demo-B_Mask.gbr', F_MASK),
+    layer('demo-B_Silkscreen.gbr', F_SILK),
+    drillLayer('demo.drl', DRILL),
+  ];
+
+  it('returns null when the board has no back-side layers', () => {
+    expect(renderPcbaBackGroup(FRONT_LAYERS)).toBeNull();
+  });
+
+  it('builds the display:none twin with its own id namespace', () => {
+    const back = renderPcbaBackGroup(BACK_LAYERS)!;
+    expect(back.startsWith('<g id="pcba-back" style="display:none">')).toBe(true);
+    expect(back).toContain('<g id="pcba-board-b"');
+    // every id and every reference to one is pbb-prefixed — the two
+    // composites' masks/clips/aperture symbols never collide
+    expect(back).toMatch(/id="pbb-pcba-open"/);
+    expect(back).not.toMatch(/id="(?!pbb-|pcba-back|pcba-board-b|pcba-labels-b)/);
+    expect(back).not.toMatch(/url\(#(?!pbb-)/);
+    expect(back).not.toMatch(/href="#(?!pbb-)/);
+  });
+
+  it('rides inside the deferred view-part fragment and the eager page', () => {
+    // deferred: the fragment carries the twin beside the front board
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pcba-back-'));
+    try {
+      fs.writeFileSync(path.join(dir, 'demo-Edge_Cuts.gbr'), EDGE);
+      fs.writeFileSync(path.join(dir, 'demo-F_Cu.gbr'), F_CU);
+      fs.writeFileSync(path.join(dir, 'demo-F_Mask.gbr'), F_MASK);
+      fs.writeFileSync(path.join(dir, 'demo-F_Silkscreen.gbr'), F_SILK);
+      fs.writeFileSync(path.join(dir, 'demo-B_Cu.gbr'), F_CU);
+      fs.writeFileSync(path.join(dir, 'demo-B_Mask.gbr'), F_MASK);
+      fs.writeFileSync(path.join(dir, 'demo-B_Silkscreen.gbr'), F_SILK);
+      fs.writeFileSync(path.join(dir, 'demo.drl'), DRILL);
+      const { fragment } = renderViewPart([dir], 'pcba', {});
+      expect(fragment).toContain('id="pcba-back"');
+      expect(fragment).toContain('<g id="pcba-board-b"');
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+    // eager: the page embeds the twin inside view-pcba and ships the
+    // swap logic (Flip Board exchanges the boards; a deferred mount syncs)
+    const front = renderPcbaSvg(FRONT_LAYERS).svg;
+    const info = detectLayer('demo-F_Cu.gbr', parseGerber(F_CU, { name: 'demo-F_Cu.gbr' }));
+    const html = buildViewerHtml(front, [info], {
+      title: 'demo board',
+      pcbaSvg: front,
+      pcbaBackSvg: renderPcbaBackGroup(BACK_LAYERS) ?? undefined,
+    });
+    expect(html).toContain('id="pcba-back"');
+    expect(html).toContain('function applyPcbaFlip()');
+    // the generic swap-pair loop (pcba + assembly twins)
+    expect(html).toContain("b.style.display = boardFlipped ? '' : 'none'");
+    expect(html).toContain("f.style.display = boardFlipped ? 'none' : ''");
+    // no twin: the front render mirrors itself instead of vanishing
+    expect(html).toContain("f.setAttribute('transform', boardFlipped ? 'scale(-1,-1)' : 'scale(1,-1)')");
+    expect(html).toContain("if (part === 'pcba' || part === 'assembly') applyPcbaFlip();");
+    // the viewBox mirror follows the CURRENT box (a base captured at init
+    // goes stale when a deferred part unions a wider one mid-session)
+    expect(html).toContain('-(vbNow[0] + vbNow[2])');
+  });
+});
+
+// ---- the assembly view's render: bare board, glyphs shipped hidden -------
+describe('assembly render (the checklist view)', () => {
+  it('ships every glyph hidden (class asm-part) and skips synthetic labels', () => {
+    const svg = renderPcbaSvg(FRONT_LAYERS, { assembly: true }).svg;
+    expect(svg).toContain('<g data-ref="R1" class="asm-part" style="display:none"');
+    expect(svg).toContain('<g data-ref="U1" class="asm-part" style="display:none"');
+    // the silkscreen carries the refdes — nothing synthetic to double it
+    expect(svg).not.toContain('<text');
+    // the bare-board composite is intact: openings masks, finish-metal pads
+    expect(svg).toContain('url(#pcba-open-inv)');
+    expect(svg).toContain('fill="#cf8a4d"');
+  });
+
+  it('leaves the assembled look untouched when assembly is not asked', () => {
+    const svg = renderPcbaSvg(FRONT_LAYERS).svg;
+    expect(svg).not.toContain('asm-part');
+  });
+
+  it('the assembly view part carries its own back twin (abb- namespace)', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'asm-part-'));
+    try {
+      fs.writeFileSync(path.join(dir, 'demo-Edge_Cuts.gbr'), EDGE);
+      fs.writeFileSync(path.join(dir, 'demo-F_Cu.gbr'), F_CU);
+      fs.writeFileSync(path.join(dir, 'demo-F_Mask.gbr'), F_MASK);
+      fs.writeFileSync(path.join(dir, 'demo-F_Silkscreen.gbr'), F_SILK);
+      fs.writeFileSync(path.join(dir, 'demo-B_Cu.gbr'), F_CU);
+      fs.writeFileSync(path.join(dir, 'demo-B_Mask.gbr'), F_MASK);
+      fs.writeFileSync(path.join(dir, 'demo-B_Silkscreen.gbr'), F_SILK);
+      fs.writeFileSync(path.join(dir, 'demo.drl'), DRILL);
+      const { fragment } = renderViewPart([dir], 'assembly', {});
+      expect(fragment.startsWith('<g id="view-assembly" data-viewbox="')).toBe(true);
+      expect(fragment).toContain('<g id="asm-board"');
+      // the twin: hidden wrapper, renamed board, its own id namespace —
+      // both sides ship hidden glyphs for the checklist to reveal
+      expect(fragment).toContain('<g id="asm-back" style="display:none">');
+      expect(fragment).toContain('<g id="asm-board-b"');
+      expect(fragment).toContain('url(#abb-as-open-inv)');
+      expect(fragment).toContain('class="asm-part" style="display:none"');
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('no id collides across view fragments — a clip resolved into a hidden view subtree blanks the board on some engines', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ns-'));
+    try {
+      fs.writeFileSync(path.join(dir, 'demo-Edge_Cuts.gbr'), EDGE);
+      fs.writeFileSync(path.join(dir, 'demo-F_Cu.gbr'), F_CU);
+      fs.writeFileSync(path.join(dir, 'demo-F_Mask.gbr'), F_MASK);
+      fs.writeFileSync(path.join(dir, 'demo-F_Silkscreen.gbr'), F_SILK);
+      fs.writeFileSync(path.join(dir, 'demo-B_Cu.gbr'), F_CU);
+      fs.writeFileSync(path.join(dir, 'demo-B_Mask.gbr'), F_MASK);
+      fs.writeFileSync(path.join(dir, 'demo.drl'), DRILL);
+      const idsOf = (frag: string) => new Set([...frag.matchAll(/id="([^"]+)"/g)].map((m) => m[1]!));
+      const pcbaIds = idsOf(renderViewPart([dir], 'pcba', {}).fragment);
+      const asmIds = idsOf(renderViewPart([dir], 'assembly', {}).fragment);
+      const shared = [...pcbaIds].filter((id) => asmIds.has(id));
+      expect(shared).toEqual([]);
+      // and every url()/href reference inside each fragment resolves to an
+      // id INSIDE that same fragment
+      for (const [name, frag] of [['pcba', renderViewPart([dir], 'pcba', {}).fragment], ['assembly', renderViewPart([dir], 'assembly', {}).fragment]] as const) {
+        const own = idsOf(frag);
+        const refs = [...frag.matchAll(/(?:url|href)="#([^"]+)"/g)].map((m) => m[1]!);
+        for (const r of refs) expect(own.has(r), name + ' references ' + r).toBe(true);
+      }
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

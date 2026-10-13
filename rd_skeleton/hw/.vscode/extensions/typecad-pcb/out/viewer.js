@@ -987,6 +987,17 @@ class BoardViewerPanel {
             await this.applyBridge.onLayoutRebuild(message);
             return;
         }
+        if (message.type === 'typecad/layout-refresh') {
+            // the revert dialog's OK: adopt any newer on-disk page, then
+            // re-assign — the webview reloads to the board as the source renders
+            // it, and every session edit dies with the old page
+            const folder = this.hwFolder();
+            if (folder)
+                await this.adoptNewerDiskViewer(folder);
+            if (this.generated && this.panel)
+                this.assignHtml();
+            return;
+        }
         if (message.type === 'typecad/pick-image') {
             if (this.panel)
                 await this.applyBridge.onPickImage();
@@ -994,6 +1005,13 @@ class BoardViewerPanel {
         }
         if (message.type === 'typecad/view-part') {
             await this.serveViewPart(message.part);
+            return;
+        }
+        if (message.type === 'typecad/report') {
+            // page-side self-diagnostics (render health where DOM probes can't
+            // reach) — logged verbatim so a support session can read what the
+            // renderer actually did from the output channel
+            this.output.appendLine(`page report: ${JSON.stringify(message.data ?? message)}`);
             return;
         }
         if (message.type === 'typecad/ready') {

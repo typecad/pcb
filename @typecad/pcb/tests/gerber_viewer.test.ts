@@ -169,6 +169,42 @@ describe('buildViewerHtml', () => {
     expect(html).toContain('var reach = Math.min(0.65 * (t.h || 1) * (String(t.text).length + 2), (t.h || 1) * 0.9 + 0.25);');
   });
 
+  it('leader lines tie a selected part to its attached labels', () => {
+    // on a busy board a designator sits millimeters from the body it names
+    // and a fab value reads as orphaned ink — selecting a part (or one of
+    // its labels) draws one dashed hairline per label, part center to the
+    // label's live anchor, both ends tracking pending moves
+    expect(html).toContain('function layoutLeaderSync()');
+    expect(html).toContain("getElementById('layout-leaders')");
+    expect(html).toContain('#layout-leaders line {');
+    expect(html).toContain('stroke-dasharray: 0.9 0.6;');
+    expect(html).toContain('layoutLeaderSync(); // leaders from the selected body(ies) to their labels');
+    // a centered label (the fab reference mirror on the body) needs no line
+    expect(html).toContain('if (Math.hypot(st3.x - c0.x, st3.y - c0.y) < 0.3) continue;');
+    // and only labels on visible layers get one — a leader aims the eye at
+    // ink, and a hidden rail leaves none to aim at
+    expect(html).toContain('if (!lblVisible(t3)) continue;');
+    expect(html).toContain('no rail to hide behind');
+    // and the leaders re-anchor on every move commit and selection sync
+    expect(html).toContain('layoutTextSelBoxSync();\n    layoutLeaderSync();');
+  });
+
+  it('revert asks for confirmation, then refreshes to the source render', () => {
+    // webviews suppress window.confirm, so the dialog is the page's own:
+    // OK reverts the session and asks the host to re-serve the page (a
+    // true refresh — the webview reloads to the source's own render);
+    // without a host the in-page reset is the whole revert. The dialog is
+    // modal — every key but Esc/Enter dies behind the dim
+    expect(html).toContain('function revertAskShow()');
+    expect(html).toContain("revertAskEl.id = 'revert-confirm'");
+    expect(html).toContain('if (revertAskOpen()) {');
+    expect(html).toContain('typeof window.typecadRefresh');
+    expect(html).toContain('#revert-confirm .rc-ok');
+    // and the button only asks when there is something to lose
+    expect(html).toContain('function layoutPendingEdits()');
+    expect(html).toContain('if (!layoutPendingEdits()) {');
+  });
+
   it('a selected via shows its ring even under a component body', () => {
     // the in-element selection ring paints in the copper group — beneath
     // part graphics — so viaHiSync mirrors every selected via into an
@@ -557,10 +593,11 @@ describe('buildViewerHtml', () => {
   });
 
   it('has a measurement tool that sticks rulers, clears on Escape, and follows the theme', () => {
-    expect(html).toContain('id="btn-measure"');
+    // the toolbar button is retired — the overlay machinery remains
+    expect(html).not.toContain('id="btn-measure"');
     // overlay group rides inside panzoom (injected after the y-flip group)
     expect(html).toContain('id="yflip"');
-    expect(html).toMatch(/<\/g><g id="measure"><\/g><g id="drc"><\/g><g id="typecad-probe"><\/g><\/g><\/svg>/);
+    expect(html).toMatch(/<\/g><g id="measure"><\/g><g id="drc"><\/g><g id="typecad-probe"><\/g><g id="asm-halo"[^>]*><\/g><\/g><\/svg>/);
     // click-to-start / click-to-stick state machine + Escape clears all
     expect(html).toContain('measureStart = p;');
     expect(html).toContain('rulers.push(');
@@ -798,13 +835,19 @@ describe('buildViewerHtml', () => {
         { id: 'oshpark-after-dark', label: 'OSH Park After Dark', colors: { clad: '#0b0b0e', pads: '#d4af5a' } },
       ],
     });
-    // the combo ships hidden — the pcba view owns it
-    expect(withThemes).toContain('<div id="pcba-theme-box" style="display:none">');
+    // the combo lives in the toolbar — one theme control for every view
+    expect(withThemes).toContain('<select id="pcba-theme" title="pcba theme">');
     expect(withThemes).toContain('<option value="oshpark-after-dark">OSH Park After Dark</option>');
     // the color table rides as a JSON island (default = first theme)
     expect(withThemes).toContain('id="pcba-themes"');
-    // setView shows the box only in pcba mode
-    expect(withThemes).toContain("themeBox.style.display = viewMode === 'pcba'");
+    // the remap covers the assembly view's bare board too
+    expect(withThemes).toContain('viewGroups.pcba, viewGroups.assembly');
+    // the retired chrome is really gone: the KiCad layer-theme select, its
+    // island, and the measure/DRC toolbar buttons
+    expect(withThemes).not.toContain('id="layer-theme"');
+    expect(withThemes).not.toContain('id="layer-themes"');
+    expect(withThemes).not.toContain('id="btn-measure"');
+    expect(withThemes).not.toContain('id="btn-drc"');
     // the remap skips mask-luminance ink and persists the pick
     expect(withThemes).toContain('function applyPcbaTheme(id)');
     expect(withThemes).toContain("els[i].closest('mask')) continue");
@@ -812,7 +855,7 @@ describe('buildViewerHtml', () => {
     expect(withThemes).toContain("saved.__pcbaTheme && saved.__pcbaTheme !== 'green-enig'");
     // no picker without themes
     const plain = buildViewerHtml(svg, [info], { title: 'demo board', pcbaSvg: tinyPcba });
-    expect(plain).not.toContain('id="pcba-theme-box"');
+    expect(plain).not.toContain('id="pcba-theme"');
   });
 
   it('gates its own status readouts behind a host-notice lock', () => {
@@ -967,11 +1010,11 @@ describe('viewer tooling (probing, search, report, DRC, export)', () => {
   });
 
   
-  it('embeds DRC markers as JSON and renders them client-side with a toggle', () => {
+  it('embeds DRC markers as JSON and renders them client-side (the toggle button is retired)', () => {
     expect(html).toContain('id="drc-data"');
     expect(html).toContain('clearance — pad of J1');
-    expect(html).toContain('id="btn-drc"');
-    expect(html).toMatch(/drcGroup\.classList\.toggle\('hidden'\)/);
+    expect(html).not.toContain('id="btn-drc"');
+    expect(html).toContain('function renderDrc');
   });
 
   it('has component search, net highlighting, hover probing, and exports', () => {
@@ -1611,6 +1654,57 @@ describe('removeViasAt mask openings', () => {
     // sweep is the one path that empties the selection set without its
     // own sync
     expect(html).toContain('left a white selection ring where the barrel was');
+  });
+});
+
+describe('assembly view (the BOM checklist)', () => {
+  const image = parseGerber(read('traces.gbr'));
+  const info = detectLayer('demo-F_Cu.gbr', image);
+  const svg = renderSvg([{ info, image }]);
+  const asmSvg =
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -7 10 8"><defs><mask id="pcba-open"/></defs><g id="board"><g id="components"><g data-ref="R1" class="asm-part" style="display:none" transform="translate(3 3)"><rect width="1" height="1" fill="#2b2f33"/></g></g></g></svg>';
+  const asmBack =
+    '<g id="asm-back" style="display:none"><g id="asm-board-b" transform="scale(-1,-1)"><g id="components"><g data-ref="D1" class="asm-part" style="display:none" transform="translate(2 2)"><rect width="1" height="1" fill="#2b2f33"/></g></g></g></g>';
+  const comps = [
+    { ref: 'R1', x: 3, y: -3, rot: 0, w: 1.6, h: 0.8, side: 'front' as const, nets: [], value: '10k', footprint: 'R0603', glyph: 1 },
+    { ref: 'C1', x: 5, y: -4, rot: 0, w: 1.2, h: 0.7, side: 'front' as const, nets: [], value: '100nF', footprint: 'C0402', glyph: 1 },
+    { ref: 'C2', x: 6, y: -4, rot: 0, w: 1.2, h: 0.7, side: 'front' as const, nets: [], value: '100nF', footprint: 'C0402', glyph: 1 },
+    // a mounting hole draws no glyph — it never joins the checklist
+    { ref: 'H1', x: 1, y: -1, rot: 0, w: 2, h: 2, side: 'front' as const, nets: [] },
+  ];
+
+  it('eager: option, panel, halo overlay, both flip pairs, twin embedded', () => {
+    const html = buildViewerHtml(svg, [info], {
+      title: 'demo board',
+      assemblySvg: asmSvg,
+      assemblyBackSvg: asmBack,
+      layoutComponents: comps,
+    });
+    expect(html).toContain('<option value="assembly">Assembly view</option>');
+    expect(html).toContain('id="asm-box"');
+    expect(html).toContain('id="asm-list"');
+    expect(html).toContain('id="asm-reset"');
+    // the eager view group carries the front board and the twin
+    expect(html).toContain('<g id="asm-board"');
+    expect(html).toContain('id="asm-back"');
+    // both two-sided views join the flip swap
+    expect(html).toContain("['pcba-board', 'pcba-back', 'pcba-labels']");
+    expect(html).toContain("['asm-board', 'asm-back', 'asm-labels']");
+    // the hover-outline overlay group ships in every page
+    expect(html).toContain('<g id="asm-halo"');
+  });
+
+  it('deferred: placeholder + option, and the checklist gates on glyph parts', () => {
+    const lazy = buildViewerHtml(svg, [info], {
+      title: 'demo board',
+      deferredViews: ['pcba', 'blueprint', 'schematic', 'assembly'],
+      layoutComponents: comps,
+    });
+    expect(lazy).toContain('<g id="view-assembly" class="view-deferred" style="display:none"></g>');
+    expect(lazy).toContain('<option value="assembly">Assembly view</option>');
+    expect(lazy).toContain("assembly: 'rendering the assembly view'");
+    // the page builds the checklist only from glyph-bearing comps
+    expect(lazy).toContain('if (!c.glyph) continue;');
   });
 });
 

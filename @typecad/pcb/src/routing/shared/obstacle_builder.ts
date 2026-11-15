@@ -312,7 +312,7 @@ export class ObstacleBuilder {
       }
 
       // Always create obstacles for pads, even without nets (unconnected pads still block routing)
-      const obstacle = this.buildFromPad(pad, clearance, netName);
+      const obstacle = this.buildFromPad(pad, clearance, netName, `${component.reference}.${String(pad.number)}`);
       if (obstacle) {
         obstacles.push(obstacle);
       }
@@ -325,7 +325,7 @@ export class ObstacleBuilder {
    * Build an obstacle from a pad geometry.
    * @private
    */
-  private static buildFromPad(pad: IPadGeometry, clearance: number, net?: string): IRoutingObstacle | null {
+  private static buildFromPad(pad: IPadGeometry, clearance: number, net?: string, label?: string): IRoutingObstacle | null {
     // Calculate bounding box based on pad shape
     let halfWidth = pad.size.width / 2;
     let halfHeight = pad.size.height / 2;
@@ -380,6 +380,7 @@ export class ObstacleBuilder {
       clearance,
       net, // Net-aware: obstacles on same net don't block
       priority: 2, // Higher priority than component body
+      label: label ?? (pad.componentRef ? `${pad.componentRef}.${pad.number}` : `pad ${pad.number}`),
       padShape: {
         shape: pad.shape === 'custom' ? 'rect' : pad.shape,
         center: { x: pad.center.x, y: pad.center.y },

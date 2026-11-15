@@ -713,6 +713,12 @@ export interface IRouteMetadata {
   /** Error message if route failed */
   error?: string;
 
+  /** Source pin label ("U1.8") when the routed pair is known */
+  fromLabel?: string;
+
+  /** Destination pin label ("J2.1") when the routed pair is known */
+  toLabel?: string;
+
   /** The actual routing path (nodes and segments) */
   path?: IRoutePath;
 }

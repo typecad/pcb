@@ -15,6 +15,7 @@ describe('ProgressIndicator', () => {
   // Mock Date.now
   const originalDateNow = Date.now;
   const mockDateNow = vi.fn().mockReturnValue(1000); // Fixed timestamp for testing
+  const originalIsTTY = process.stdout.isTTY;
 
   beforeEach(() => {
     // Setup mocks before each test
@@ -25,11 +26,16 @@ describe('ProgressIndicator', () => {
 
     // Clear mock calls
     vi.clearAllMocks();
+
+    // The spinner only runs on a real terminal — simulate one (individual
+    // tests may switch it off to exercise the pipe behavior).
+    (process.stdout as { isTTY?: boolean }).isTTY = true;
   });
 
   afterEach(() => {
     // Restore original functions after each test
     process.stdout.write = originalStdoutWrite;
+    (process.stdout as { isTTY?: boolean }).isTTY = originalIsTTY;
     global.setInterval = originalSetInterval;
     global.clearInterval = originalClearInterval;
     Date.now = originalDateNow;
@@ -78,6 +84,17 @@ describe('ProgressIndicator', () => {
 
       // Assert
       expect(mockSetInterval).not.toHaveBeenCalled(); // Should not call setInterval again
+    });
+  });
+
+  describe('non-TTY output', () => {
+    it('writes nothing when stdout is a pipe (no ANSI frame flood)', () => {
+      (process.stdout as { isTTY?: boolean }).isTTY = false;
+      const progress = new ProgressIndicator();
+      progress.start('piped');
+      progress.stop();
+      expect(mockStdoutWrite).not.toHaveBeenCalled();
+      expect(mockSetInterval).not.toHaveBeenCalled();
     });
   });
 

@@ -38,6 +38,22 @@ async function buildOnce(entry: string, parsed: ParsedArgs): Promise<void> {
     env.TYPECAD_DEBUG = '1';
   }
 
+  // --typecheck: run tsc --noEmit before executing the entry. The default
+  // build path runs tsx, which strips types without checking them — opting
+  // in catches API mistakes (calling a method that doesn't exist) at the
+  // compiler instead of as a runtime TypeError mid-build.
+  if (parsed.args['typecheck'] === true) {
+    if (fs.existsSync('tsconfig.json')) {
+      try {
+        npxExec(['tsc', '--noEmit'], { stdio: 'inherit', timeout: 120000 });
+      } catch {
+        throw new Error('Typecheck failed: fix the type errors above (or build without --typecheck).');
+      }
+    } else {
+      logger.log(chalk.yellow('  ⚠ --typecheck requested but no tsconfig.json found — skipped'));
+    }
+  }
+
   try {
     npxExec(['tsx', entry], {
       stdio: 'inherit',

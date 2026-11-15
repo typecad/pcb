@@ -111,6 +111,9 @@ export interface IRoutingObstacle {
   /** If true, this obstacle blocks routing even on the same net (for manual routes) */
   isManualRoute?: boolean;
 
+  /** Human label ("U2.2") for diagnostics — pads carry their component ref and pad number. */
+  label?: string;
+
   /** Optional geometric description for precise rasterization (used for tracks) */
   segment?: { x1: number; y1: number; x2: number; y2: number; width: number };
 

@@ -32,6 +32,14 @@ export class ProgressIndicator {
       return;
     }
 
+    // Piped/redirected output has no line to redraw: every spinner tick
+    // would append another frame of ANSI noise to the log. A terminal
+    // reports itself via isTTY — anything else gets silence.
+    if (!process.stdout.isTTY) {
+      this.isActive = true; // so stop() stays balanced
+      return;
+    }
+
     this.isActive = true;
     this.startTime = Date.now();
 
@@ -64,15 +72,19 @@ export class ProgressIndicator {
       this.interval = null;
     }
 
-    // Show the cursor again
-    process.stdout.write('\x1B[?25h');
+    // On a pipe nothing was ever drawn — the cursor/line control sequences
+    // would land in the log as noise too.
+    if (process.stdout.isTTY) {
+      // Show the cursor again
+      process.stdout.write('\x1B[?25h');
 
-    if (clearLine) {
-      // Clear the line
-      process.stdout.write('\r\x1B[K');
-    } else {
-      // Just move to the next line
-      process.stdout.write('\n');
+      if (clearLine) {
+        // Clear the line
+        process.stdout.write('\r\x1B[K');
+      } else {
+        // Just move to the next line
+        process.stdout.write('\n');
+      }
     }
 
     this.isActive = false;

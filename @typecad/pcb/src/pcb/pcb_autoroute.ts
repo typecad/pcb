@@ -29,6 +29,7 @@ import type { ISchematicNode } from '../types/schematic_types.js';
 import { IRoutingObstacle, RoutingGrid } from '../routing/shared/routing_grid.js';
 import { PadResolver, type IPadGeometry } from '../routing/shared/pad_resolver.js';
 import { ObstacleBuilder } from '../routing/shared/obstacle_builder.js';
+import { segmentOrientedRectDist } from './copper_geometry.js';
 import { DebugVisualizer } from '../routing/utils/debug_visualizer.js';
 import logger from '../utils/logging.js';
 import { LengthMatcher } from '../routing/length_matching/length_matcher.js';
@@ -54,6 +55,8 @@ import {
   AutorouteContext,
   RoutingOutput,
   createEmptyRoutingOutput,
+  validatePathGeometrically,
+  formatRejection,
 } from './pcb_autoroute_helpers.js';
 import { processManualRoutes } from './pcb_autoroute_manual_routes.js';
 import { routeMstNet } from './pcb_autoroute_mst.js';
@@ -73,66 +76,86 @@ function padWorldHalfExtents(pad: IPadGeometry): { ex: number; ey: number } {
 }
 
 /**
- * Warn when a routed pin sits in a pad row whose escape channel cannot
- * physically fit the requested trace. A pad flanked by other pads on BOTH
- * sides (a QFP/SOIC/SOT row) must escape through the corridor between the
- * flanking pads: a trace of width W needs W + 2×clearance there, whatever
- * the router does. Pads with a neighbour on one side only (chip passives,
- * row-end pins) can escape the other way and are not flagged. The route is
- * still attempted — this turns a later wall of DRC clearance violations
- * into one actionable line with the numbers.
+ * Warn when a routed pin cannot physically escape its neighbourhood with the
+ * requested trace. Escape runs out along the pad's longer world axis; a
+ * straight fat ray (trace width + clearance halo) is tested in BOTH escape
+ * directions against every nearby foreign pad. That one test covers both
+ * corridor shapes a pad can sit in: lateral flanks beside the ray (a
+ * QFP/SOIC row middle pin squeezed between neighbours) and occluders ahead
+ * on the ray (a USB shell tab squarely in front of the pad's only way out).
+ * When neither direction fits, the route is doomed whatever the router
+ * does — this turns a silent failure (or a wall of DRC violations) into one
+ * actionable line with the numbers. The route is still attempted.
  */
 function warnNarrowEscapeChannels(pins: Pin[], width: number, clearance: number, pinNetMap: Map<string, string>): void {
-  const need = width + 2 * clearance;
+  const ESCAPE_REACH_MM = 3;
   const warned = new Set<string>();
   for (const pin of pins) {
-    if (!pin.owner) continue;
-    const pad = PadResolver.getPadGeometry(pin.owner, pin.number);
+    const owner = pin.owner;
+    if (!owner) continue;
+    const pad = PadResolver.getPadGeometry(owner, pin.number);
     if (!pad || pad.type !== 'smd') continue;
-    const key = `${pin.owner.reference}:${pin.number}`;
+    const key = `${owner.reference}:${pin.number}`;
     if (warned.has(key)) continue;
 
     const { ex, ey } = padWorldHalfExtents(pad);
-    // Escape runs along the pad's longer world axis; flanks sit beside it.
-    const escapeAxisX = ex >= ey;
-    const longAxis = escapeAxisX ? { x: 1, y: 0 } : { x: 0, y: 1 };
-    const flankAxis = escapeAxisX ? { x: 0, y: 1 } : { x: 1, y: 0 };
+    // Escape runs along the pad's longer world axis.
+    const escapeX = ex >= ey;
 
     const myNet = pinNetMap.get(key);
-    let plus: { dist: number; extent: number } | null = null;
-    let minus: { dist: number; extent: number } | null = null;
-    for (const sib of PadResolver.getAllPadGeometries(pin.owner)) {
-      if (String(sib.number) === String(pad.number)) continue;
+    const siblings = PadResolver.getAllPadGeometries(owner).filter((sib) => {
+      if (String(sib.number) === String(pad.number)) return false;
+      const sibNet = pinNetMap.get(`${owner.reference}:${String(sib.number)}`);
+      if (myNet && sibNet && myNet === sibNet) return false; // own net: route-over is fine
       const dx = sib.center.x - pad.center.x;
       const dy = sib.center.y - pad.center.y;
-      const dist = Math.hypot(dx, dy);
-      if (dist === 0 || dist > 3) continue;
-      const ux = dx / dist;
-      const uy = dy / dist;
-      // Flank = displaced mostly along the row (perpendicular to escape).
-      if (Math.abs(ux * longAxis.x + uy * longAxis.y) > 0.5) continue;
-      const sibNet = pinNetMap.get(`${pin.owner.reference}:${String(sib.number)}`);
-      if (myNet && sibNet && myNet === sibNet) continue; // own net: route-over is fine
-      const sibExtents = padWorldHalfExtents(sib);
-      const sibExtentAlongRow = Math.abs(flankAxis.x) > 0 ? sibExtents.ex : sibExtents.ey;
-      const side = ux * flankAxis.x + uy * flankAxis.y >= 0 ? 'plus' : 'minus';
-      const entry = { dist, extent: sibExtentAlongRow };
-      if (side === 'plus' ? !plus || dist < plus.dist : !minus || dist < minus.dist) {
-        if (side === 'plus') plus = entry;
-        else minus = entry;
-      }
-    }
-    if (!plus || !minus) continue; // open on at least one side: escape exists
+      return Math.hypot(dx, dy) <= ESCAPE_REACH_MM + Math.max(ex, ey) + Math.max(sib.size.width, sib.size.height);
+    });
 
-    const gap = plus.dist + minus.dist - plus.extent - minus.extent;
-    if (gap >= need) continue;
+    /** The fat escape ray for one direction: from the pad's end face,
+     *  straight out along the escape axis, carrying the trace half-width. */
+    const escapeRay = (sign: 1 | -1) => {
+      const start = {
+        x: pad.center.x + (escapeX ? sign * ex : 0),
+        y: pad.center.y + (escapeX ? 0 : sign * ey),
+      };
+      const end = {
+        x: escapeX ? start.x + sign * ESCAPE_REACH_MM : start.x,
+        y: escapeX ? start.y : start.y + sign * ESCAPE_REACH_MM,
+      };
+      return { start, end };
+    };
+
+    /** Fat-ray clearance in one escape direction: min edge-to-edge gap to
+     *  every foreign sibling pad (and the pad that sets it), or +Infinity
+     *  when the direction is free. */
+    const directionGap = (sign: 1 | -1): { gap: number; pad: string } => {
+      const { start, end } = escapeRay(sign);
+      let worst = Infinity;
+      let worstPad = '';
+      for (const sib of siblings) {
+        const gap =
+          segmentOrientedRectDist(start, end, sib.center, sib.size.width, sib.size.height, sib.rotation) - width / 2;
+        if (gap < worst) {
+          worst = gap;
+          worstPad = `${owner.reference}.${String(sib.number)}`;
+        }
+      }
+      return { gap: worst, pad: worstPad };
+    };
+
+    const plus = directionGap(1);
+    const minus = directionGap(-1);
+    const best = plus.gap >= minus.gap ? plus : minus;
+    if (best.gap >= clearance) continue;
     warned.add(key);
+
     logger.warn(
-      `[PCB] Escape channel warning: ${pin.owner.reference}.${pin.number} must escape through a ` +
-        `${gap.toFixed(2)}mm corridor between its neighbouring pads, but a ${width}mm trace at ` +
-        `${clearance}mm clearance needs ${need.toFixed(2)}mm — routes escaping this pad will violate ` +
-        `clearance. Use a narrower net class for this net (netClass track_width/clearance) or neck the ` +
-        `trace down near the part.`,
+      `[PCB] Escape channel warning: ${owner.reference}.${pin.number} has no escape direction that fits a ` +
+        `${width}mm trace at ${clearance}mm clearance — the best direction offers ${Math.max(0, best.gap).toFixed(2)}mm ` +
+        `free but ${clearance.toFixed(2)}mm is required${best.pad ? ` (tightest at ${best.pad})` : ''}. Routes from ` +
+        `this pad will violate clearance or fail. Use a narrower net class for this net ` +
+        `(netClass track_width/clearance) or neck the trace down near the part.`,
     );
   }
 }
@@ -879,13 +902,19 @@ export function autoroute(pcb: PCB, callerOptions: IAutorouteOptions): IAutorout
   );
 
   if (failureCount > 0) {
-    debugLog(options.debug, chalk.red(`[PCB] Failed routes:`));
-    routeDetails.forEach((detail, idx) => {
-      if (!detail.success) {
-        const errorMsg = detail.error || 'Unknown error';
-        debugLog(options.debug, chalk.red(`[PCB]   Route ${idx + 1}: ${errorMsg}`));
-      }
-    });
+    // Every failed route is named at the default log level: which pin pair,
+    // why it failed, and which nets' copper was in the way (when known).
+    // "Some routes failed" alone leaves the user bisecting widths blind.
+    for (const detail of routeDetails) {
+      if (detail.success) continue;
+      const pair =
+        detail.fromLabel && detail.toLabel
+          ? `Route ${detail.fromLabel} -> ${detail.toLabel}`
+          : `Route on net '${netName ?? 'unknown'}'`;
+      const errorMsg = detail.error || 'no path found';
+      const blockedBy = detail.path?.blockedBy?.length ? ` (blocked by: ${[...new Set(detail.path.blockedBy)].join(', ')})` : '';
+      logger.warn(chalk.red(`[PCB] ${pair} failed: ${errorMsg}${blockedBy}`));
+    }
 
     logger.warn(
       `[PCB] WARNING: Some routes failed. Check routing constraints and available space${formatCallSite(getCallSite())}`,
@@ -951,7 +980,22 @@ export function autoroute(pcb: PCB, callerOptions: IAutorouteOptions): IAutorout
             chalk.blue(`[PCB] Reused ${routeItem.length} existing TrackBuilder(s) from provided route`),
           );
         } else {
-          const track = pathToTrackBuilder(pcb, path, traceWidth, options, netName, freeViaLocations);
+          // Provided routes pass the same geometric gate — user-supplied or
+          // not, copper that shorts two nets never reaches the board.
+          if (path.success) {
+            const violations = validatePathGeometrically(
+              path,
+              { allObstacles, options, traceWidth, clearance },
+              netName,
+            );
+            if (violations.length > 0) {
+              logger.warn(`[PCB] Provided route: ${formatRejection(violations)}`);
+              path = { ...path, success: false, error: formatRejection(violations) };
+            }
+          }
+          const track = path.success
+            ? pathToTrackBuilder(pcb, path, traceWidth, options, netName, freeViaLocations)
+            : undefined;
           if (track) {
             result.push(track);
           }

@@ -10,11 +10,12 @@ import { Pin } from '../pin.js';
 import { TrackBuilder } from './pcb_track_builder.js';
 import { AStarRouter } from '../routing/router/astar_router.js';
 import { PadResolver } from '../routing/shared/pad_resolver.js';
+import { RoutingGrid } from '../routing/shared/routing_grid.js';
 import { pinToIdentifier } from './pcb_routing_helpers.js';
 import { pathToTrackBuilder } from './pcb_routing_core.js';
 import { IAutorouteOptions, IRoutePath, IRouteMetadata } from './pcb_interfaces.js';
 import logger from '../utils/logging.js';
-import { debugLog, AutorouteContext, RoutingOutput } from './pcb_autoroute_helpers.js';
+import { debugLog, AutorouteContext, RoutingOutput, validatePathGeometrically, formatRejection } from './pcb_autoroute_helpers.js';
 import { ManualRouteData } from './pcb_autoroute_manual_routes.js';
 import { pcbTrackSegment, getPcbState } from './pcb.js';
 
@@ -224,15 +225,51 @@ export function routeMstNet(
 
       // Second pass: create tracks for remaining segments (trimming will see staged manual routes)
       for (const segment of otherSegments) {
-        const track = pathToTrackBuilder(
-          pcb,
-          segment,
-          traceWidth,
-          options,
-          netName,
-          freeViaLocations,
-          options.deferStaging,
-        );
+        // Geometric gate before the track is built: an MST segment whose
+        // swept copper clips foreign pads/tracks gets one retry on a finer
+        // grid; copper that still cannot keep clearance is rejected, never
+        // written.
+        if (segment.success) {
+          let violations = validatePathGeometrically(segment, ctx, netName);
+          if (violations.length > 0) {
+            debugLog(
+              options.debug,
+              chalk.yellow(`[PCB] MST segment on net '${netName ?? 'unknown'}': ${formatRejection(violations)} — retrying at finer grid`),
+            );
+            try {
+              const fineGrid = new RoutingGrid(
+                ctx.bounds,
+                Math.max(0.05, ctx.grid.gridResolution / 2),
+                ctx.routingLayers,
+                options.debug,
+              );
+              for (const obs of ctx.allObstacles) fineGrid.addObstacle(obs);
+              const fineRouter = new AStarRouter(fineGrid, { ...ctx.baseRouterOptions, net: netName });
+              const first = segment.nodes[0]!;
+              const last = segment.nodes[segment.nodes.length - 1]!;
+              const retried = fineRouter.route(
+                { x: first.x, y: first.y, layer: first.layer },
+                { x: last.x, y: last.y, layer: last.layer },
+              );
+              if (retried && retried.success && validatePathGeometrically(retried, ctx, netName).length === 0) {
+                violations = [];
+                segment.nodes = retried.nodes;
+                segment.length = retried.length;
+                segment.viaCount = retried.viaCount;
+              }
+            } catch {
+              // finer-grid retry is best effort; fall through to rejection
+            }
+          }
+          if (violations.length > 0) {
+            logger.warn(`[PCB] MST segment on net '${netName ?? 'unknown'}': ${formatRejection(violations)}`);
+            segment.success = false;
+            segment.error = formatRejection(violations);
+          }
+        }
+        const track = segment.success
+          ? pathToTrackBuilder(pcb, segment, traceWidth, options, netName, freeViaLocations, options.deferStaging)
+          : undefined;
         if (track) {
           out.result.push(track);
         }
@@ -267,7 +304,17 @@ export function routeMstNet(
         options.debug,
         chalk.yellow(`[PCB] WARNING: No segments array, using merged path (may create incorrect tracks)`),
       );
-      const track = pathToTrackBuilder(pcb, path, traceWidth, options, netName, freeViaLocations, options.deferStaging);
+      if (path.success) {
+        const violations = validatePathGeometrically(path, ctx, netName);
+        if (violations.length > 0) {
+          logger.warn(`[PCB] MST merged path on net '${netName ?? 'unknown'}': ${formatRejection(violations)}`);
+          path.success = false;
+          path.error = formatRejection(violations);
+        }
+      }
+      const track = path.success
+        ? pathToTrackBuilder(pcb, path, traceWidth, options, netName, freeViaLocations, options.deferStaging)
+        : undefined;
       if (track) {
         out.result.push(track);
       }

@@ -145,6 +145,8 @@ Every command takes `--json` for machine-readable output and `--help` for detail
 
 ERC and DRC run on a native engine — the build computes them from the design itself, and `check` rolls build + ERC + DRC into one report. The legacy kicad-cli checks remain available with `--kicad`. `lib add` fetches symbol/footprint libraries into `build/lib`, so `search` and `build` work on machines without KiCad installed.
 
+Pins you intentionally leave unconnected (unused GPIOs, a power-only USB connector's data pins) should be marked with `pcb.dnc(pin, ...)` — the no-connect (X) flag — so ERC doesn't report them; `MountingHole`s are marked automatically.
+
 ### KiCad import
 
 Existing boards come across with `typecad-pcb import <board>.kicad_pcb` — placement, nets, tracks and zones become typeCAD code. With `--watch --auto` (the scaffold wires this up as `npm run kicad_sync`) the KiCad file and the typeCAD source stay in sync while you work in either.

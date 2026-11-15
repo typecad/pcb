@@ -345,3 +345,68 @@ describe('buildBoardModel on boards without a global net table', () => {
     expect(model.summary.vias).toBe(1);
   });
 });
+
+// Geometric connectivity: copper joins wherever it physically touches —
+// a track endpoint anywhere on a pad (not just its center), a pad the track
+// runs across mid-span, a via dropped inside a pad. The exact-coordinate
+// union-find this replaced read almost every routed pad as disconnected.
+const GEO_PCB = `(kicad_pcb
+  (version 20260206)
+  (net 0 "")
+  (net 1 "EDGE")
+  (net 2 "TEE")
+  (net 3 "VIPAD")
+  (footprint "Resistor_SMD:R_0603" (layer "F.Cu")
+    (at 10 10)
+    (property "Reference" "R1" (at 0 0 0))
+    (property "Value" "1k" (at 0 0 0))
+    (pad "1" smd rect (at 0 0) (size 1 1) (layers "F.Cu") (net 1 "EDGE") (pintype passive))
+    (pad "2" smd rect (at 3 0) (size 1 1) (layers "F.Cu") (net 1 "EDGE") (pintype passive))
+  )
+  (footprint "Resistor_SMD:R_0603" (layer "F.Cu")
+    (at 10 20)
+    (property "Reference" "R2" (at 0 0 0))
+    (property "Value" "1k" (at 0 0 0))
+    (pad "1" smd rect (at 0 0) (size 1 1) (layers "F.Cu") (net 2 "TEE") (pintype passive))
+    (pad "2" smd rect (at 3 0) (size 1 1) (layers "F.Cu") (net 2 "TEE") (pintype passive))
+  )
+  (footprint "Connector_PinHeader_2.54mm:PinHeader_1x02" (layer "F.Cu")
+    (at 10 30)
+    (property "Reference" "J1" (at 0 0 0))
+    (property "Value" "CONN" (at 0 0 0))
+    (pad "1" thru_hole circle (at 0 0) (size 1.7 1.7) (drill 1) (layers "*.Cu") (net 3 "VIPAD") (pintype passive))
+    (pad "2" thru_hole circle (at 2.54 0) (size 1.7 1.7) (drill 1) (layers "*.Cu") (net 3 "VIPAD") (pintype passive))
+  )
+  (segment (start 10 10) (end 12.6 10) (width 0.25) (layer "F.Cu") (net 1 "EDGE"))
+  (segment (start 10 20) (end 13 20) (width 0.25) (layer "F.Cu") (net 2 "TEE"))
+  (via (at 10 30) (size 0.6) (drill 0.3) (layers "F.Cu" "B.Cu") (net 3 "VIPAD"))
+  (segment (start 10 30) (end 12.54 30) (width 0.25) (layer "B.Cu") (net 3 "VIPAD"))
+  (gr_line (start 0 0) (end 50 0) (layer "Edge.Cuts") (width 0.05))
+  (gr_line (start 0 0) (end 0 40) (layer "Edge.Cuts") (width 0.05))
+)`;
+
+describe('geometric copper connectivity', () => {
+  const model = buildBoardModel(writeTempPcb(GEO_PCB));
+
+  it('connects a track endpoint landing on the pad edge, not its center', () => {
+    // R1.2 pad spans x 12..13 centered (13,10); the track ends at 12.6 —
+    // inside the pad, 0.4mm from its center.
+    const edge = findNet(model, 'EDGE')!;
+    expect(edge.route).toMatchObject({ routed: true, pinsTotal: 2, pinsConnected: 2 });
+  });
+
+  it('connects a pad the track runs across mid-span', () => {
+    // R2.2 pad spans x 12..13 centered (13,20); the track runs 10→13 straight
+    // through it (endpoint at the far edge is fine either way — the pad center
+    // lies ON the segment).
+    const tee = findNet(model, 'TEE')!;
+    expect(tee.route).toMatchObject({ routed: true, pinsTotal: 2, pinsConnected: 2 });
+  });
+
+  it('connects a via dropped inside a through-hole pad', () => {
+    // J1.1 (thru) at (10,30) with the via exactly inside; J1.2 joins through
+    // the B.Cu segment out of the via.
+    const vipad = findNet(model, 'VIPAD')!;
+    expect(vipad.route).toMatchObject({ routed: true, pinsTotal: 2, pinsConnected: 2 });
+  });
+});

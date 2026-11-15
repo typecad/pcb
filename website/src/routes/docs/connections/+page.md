@@ -86,6 +86,27 @@ typecad.named('SCL').net(microcontroller.PB1, sensor.SCL);
 ```
 </ScrollArea>
 
+## Do-Not-Connect Pins (No-Connect)
+
+Real designs leave pins intentionally unconnected — unused MCU GPIOs, a USB
+connector's D+/D−/ID on a power-only board, a connector's mounting (MP) pads.
+ERC reports every unconnected pin as an error, so mark the intentional ones
+with `dnc()` — the equivalent of placing a no-connect (X) flag in KiCad's
+schematic editor:
+
+<ScrollArea orientation="both">
+
+```ts
+// power-only USB: data pins and shell stay unconnected on purpose
+typecad.dnc(j1.D, j1.D_3, j1.ID, j1.Shield); // [!code highlight]
+typecad.dnc(u1.XTAL1_PB3, u1.XTAL2_PB4);     // running on the internal oscillator // [!code highlight]
+```
+</ScrollArea>
+
+`dnc()` accepts any number of `Pin` objects. Mounting holes are marked
+automatically — `new MountingHole(...)` joins the board pre-flagged and never
+fails ERC.
+
 <br />
 
 > [!WARNING]

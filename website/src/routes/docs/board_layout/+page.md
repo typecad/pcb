@@ -239,6 +239,11 @@ r1.referenceLayout = { x: 0, y: -1.5, font: 'Arial', bold: true, height: 1.2 };
 
 In KiCAD, you can group components together. They will move around together when you click and drag anywhere in the group. There is also a labeled box around the components.
 
+Reference designators (R1, C2, U3...) are assigned in the order components
+are passed to `create()` — however your `net()` calls happen to order their
+pins — so the BOM matches your source. Components given an explicit
+`reference` keep it (collisions rename with a warning).
+
 To accomplish this for a group of related components:
 <ScrollArea orientation="both">
 

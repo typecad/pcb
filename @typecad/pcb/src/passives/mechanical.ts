@@ -35,5 +35,10 @@ export class MountingHole extends Component {
       symbol: opts.symbol || 'Mechanical:MountingHole_Pad',
       prefix: 'MH',
     });
+    // A mounting hole is mechanical, not electrical: its pad is
+    // intentionally unconnected, so it joins the board pre-marked
+    // do-not-connect instead of failing ERC on every board.
+    this.autoDnc = true;
+    this.pin(1, { type: 'no_connect' });
   }
 }

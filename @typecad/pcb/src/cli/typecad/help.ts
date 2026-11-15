@@ -63,7 +63,9 @@ export function showAddComponentHelp(): void {
   console.log('  --local=<value>           Use local files');
   console.log('  --jlcpcb=<value>          Use EasyEDA/JLCPCB\n');
   console.log('Other Options:');
-  console.log('  --folder=<path>           Output folder (default: current directory)\n');
+  console.log('  --folder=<path>           Output folder (default: current directory)');
+  console.log("  --value=<text>            Set the generated component's value (part number;");
+  console.log('                            inferred from part-number-like symbol names)\n');
   console.log('Without options, runs interactively with prompts.');
 }
 
@@ -99,6 +101,8 @@ export function showBuildHelp(): void {
   console.log('  --watch, -w             Watch the entry and its imports; rebuild on change');
   console.log('  --outDir, --out-dir <dir>');
   console.log('                          Output directory for generated files (default: ./build/)');
+  console.log('  --typecheck             Run tsc --noEmit before building (the default build');
+  console.log('                          executes via tsx, which does not check types)');
   console.log('  --diagnostics           Generate diagnostics.md and diagnostics.json reports');
   console.log('                          BOM, nets, pin map, mermaid graphs, ERC/DRC, routing');
   console.log('  --skip-erc              With --diagnostics: skip the ERC step');
@@ -578,14 +582,17 @@ export function showCheckHelp(): void {
   console.log(chalk.white.bold('typecad-pcb check') + ' - Build, then verify, in one pass\n');
   console.log('Runs the full gauntlet and emits a single report:');
   console.log('  1. build   - compile typeCAD source to KiCad files');
-  console.log('  2. unconnected - pads with no net, single-pin nets');
-  console.log('  3. erc     - electrical rules check (native engine report from the build)');
-  console.log('  4. drc     - design rules check (native engine by default)\n');
+  console.log('  2. typecheck - tsc --noEmit (the tsx build executes without');
+  console.log('                  checking types; this is where type errors surface)');
+  console.log('  3. unconnected - pads with no net, single-pin nets');
+  console.log('  4. erc     - electrical rules check (native engine report from the build)');
+  console.log('  5. drc     - design rules check (native engine by default)\n');
   console.log('Every violation maps back to designators and nets so an agent');
   console.log('can act on it directly. Exits non-zero when anything fails.\n');
   console.log('Usage: typecad-pcb check [entry.ts] [options]\n');
   console.log('Options:');
   console.log('  --json              Output the full report as JSON');
+  console.log('  --skip-typecheck    Skip the typecheck step');
   console.log('  --skip-erc          Skip the ERC step');
   console.log('  --skip-drc          Skip the DRC step');
   console.log('  --kicad-erc         ERC through kicad-cli (native engine is the default)');

@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import { parse } from '../../sexpr/index.js';
 import { SNode, isSym } from '../../sexpr/query.js';
 import { decodeCodeMetadata } from '../../kicad2typecad/codec.js';
+import { pointSegDist as pointSegDistance } from '../../pcb/copper_geometry.js';
 
 /**
  * An atom in string position: quoted strings parse as strings, unquoted
@@ -178,6 +179,11 @@ function netNameOf(parent: SNode, netCodesByName: Map<string, number>): { code: 
   if (net.rawAt(2) !== undefined) {
     return { code: net.getNumber(1, -1), name: net.getString(2) };
   }
+  // `(net 3)` — a bare number atom. getString() reads only strings/symbols,
+  // so without this the token reads as nameless code -1 and the whole
+  // segment/via (every router-written one) is dropped from its net.
+  const raw = net.rawAt(1);
+  if (typeof raw === 'number') return { code: raw, name: null };
   const first = net.getString(1) ?? '';
   if (/^-?\d+$/.test(first)) return { code: parseInt(first, 10), name: null };
   if (first !== '') return { code: netCodesByName.get(first) ?? -1, name: first };
@@ -856,6 +862,12 @@ function padCopperLayers(pad: BoardPad, boardCopper: Set<string>): string[] {
  * Builds the copper connectivity graph for one net — pads, vias, track
  * segments, and zone pours — and reports which pins are joined and which
  * still have no copper path between them.
+ *
+ * Connectivity is geometric, not coordinate-exact: a track endpoint that
+ * lands anywhere on a pad (not just its center), a segment crossing another
+ * mid-span, and a via sitting inside a pad's annulus all join their items.
+ * This matches what the DRC's copper analysis concludes — the two must
+ * never disagree about whether a board is connected.
  */
 function analyzeNetRouting(
   net: BoardNet,
@@ -868,24 +880,69 @@ function analyzeNetRouting(
     point: Pt;
     layers: string[];
     key0: string;
+    halfW: number;
+    halfH: number;
+    rotation: number;
+    circle: boolean;
   }
+  const CONNECT_TOL_MM = 0.001; // touching counts as connected (matches DRC's 1µm)
+
   const netPads: NetPad[] = [];
   for (const comp of components) {
     for (const pad of comp.pads) {
       if (pad.net !== net.name) continue;
       const point = padAbsolutePosition(comp, pad);
       const layers = padCopperLayers(pad, boardCopper);
-      netPads.push({ pin: `${comp.reference}.${pad.pad}`, point, layers, key0: pointKey(point, layers[0] ?? 'F.Cu') });
+      netPads.push({
+        pin: `${comp.reference}.${pad.pad}`,
+        point,
+        layers,
+        key0: pointKey(point, layers[0] ?? 'F.Cu'),
+        halfW: pad.size.width / 2,
+        halfH: pad.size.height / 2,
+        rotation: (pad.rotation ?? 0) + (comp.at.rotation ?? 0),
+        circle: (pad.roundness ?? 0) >= 100,
+      });
     }
   }
 
   const uf = new UnionFind();
   let pourAssisted = false;
 
-  // Pads: a through pad bridges all its layers at its position
-  for (const pad of netPads) {
-    for (let i = 1; i < pad.layers.length; i++) {
-      uf.union(pointKey(pad.point, pad.layers[0]), pointKey(pad.point, pad.layers[i]));
+  /** True when point p lies on the pad's copper (its rectangle or circle, +tol). */
+  const pointOnPad = (p: Pt, pad: NetPad): boolean => {
+    if (pad.circle) {
+      return Math.hypot(p.x - pad.point.x, p.y - pad.point.y) <= Math.max(pad.halfW, pad.halfH) + CONNECT_TOL_MM;
+    }
+    const rad = (-pad.rotation * Math.PI) / 180;
+    const dx = p.x - pad.point.x;
+    const dy = p.y - pad.point.y;
+    const lx = dx * Math.cos(rad) - dy * Math.sin(rad);
+    const ly = dx * Math.sin(rad) + dy * Math.cos(rad);
+    return Math.abs(lx) <= pad.halfW + CONNECT_TOL_MM && Math.abs(ly) <= pad.halfH + CONNECT_TOL_MM;
+  };
+
+  /** True when the pad's center lies on the segment's swept copper (+tol). */
+  const padOnSegment = (pad: NetPad, seg: BoardSegment): boolean => {
+    return (
+      pointSegDistance(pad.point, seg.start, seg.end) <= Math.max(pad.halfW, pad.halfH) + seg.width / 2 + CONNECT_TOL_MM
+    );
+  };
+
+  // Pads: a through pad bridges all its layers at its position; two pads of
+  // the same net whose copper overlaps (a via-in-pad stack, a THT pad under
+  // an SMD) connect directly.
+  for (let i = 0; i < netPads.length; i++) {
+    const pad = netPads[i]!;
+    for (let l = 1; l < pad.layers.length; l++) {
+      uf.union(pointKey(pad.point, pad.layers[0]!), pointKey(pad.point, pad.layers[l]!));
+    }
+    for (let j = i + 1; j < netPads.length; j++) {
+      const other = netPads[j]!;
+      if (!pad.layers.some((l) => other.layers.includes(l))) continue;
+      if (pointOnPad(other.point, pad) || pointOnPad(pad.point, other)) {
+        uf.union(pad.key0, other.key0);
+      }
     }
   }
 
@@ -893,11 +950,55 @@ function analyzeNetRouting(
   for (const via of net.vias) {
     const p = { x: via.x, y: via.y };
     uf.union(pointKey(p, 'F.Cu'), pointKey(p, 'B.Cu'));
+    // A via lands on a pad (via-in-pad) or on a segment's copper → joins it.
+    for (const pad of netPads) {
+      if (pad.layers.some((l) => l === 'F.Cu' || l === 'B.Cu') && pointOnPad(p, pad)) {
+        uf.union(pointKey(p, 'F.Cu'), pad.key0);
+      }
+    }
+    for (const seg of net.segments) {
+      if (seg.layer !== 'F.Cu' && seg.layer !== 'B.Cu') continue;
+      if (pointSegDistance(p, seg.start, seg.end) <= seg.width / 2 + CONNECT_TOL_MM) {
+        uf.union(pointKey(p, 'F.Cu'), pointKey(p, seg.layer));
+      }
+    }
   }
 
-  // Segments connect their endpoints on their layer
+  // Segments: each segment is itself a copper bridge between its endpoints.
   for (const seg of net.segments) {
     uf.union(pointKey(seg.start, seg.layer), pointKey(seg.end, seg.layer));
+  }
+
+  // Segments: endpoints join whatever copper they touch — another segment's
+  // endpoint, another segment's span (mid-span tee), or a pad's area.
+  for (let i = 0; i < net.segments.length; i++) {
+    const a = net.segments[i]!;
+    for (const end of [a.start, a.end]) {
+      const endKey = pointKey(end, a.layer);
+      for (const pad of netPads) {
+        if (pad.layers.includes(a.layer) && pointOnPad(end, pad)) {
+          uf.union(endKey, pad.key0);
+        }
+      }
+    }
+    for (let j = i + 1; j < net.segments.length; j++) {
+      const b = net.segments[j]!;
+      if (a.layer !== b.layer) continue;
+      const keyA = pointKey(a.start, a.layer);
+      const keyB = pointKey(b.start, b.layer);
+      const touch =
+        pointSegDistance(a.start, b.start, b.end) <= b.width / 2 + CONNECT_TOL_MM ||
+        pointSegDistance(a.end, b.start, b.end) <= b.width / 2 + CONNECT_TOL_MM ||
+        pointSegDistance(b.start, a.start, a.end) <= a.width / 2 + CONNECT_TOL_MM ||
+        pointSegDistance(b.end, a.start, a.end) <= a.width / 2 + CONNECT_TOL_MM;
+      if (touch) uf.union(keyA, keyB);
+    }
+    // A pad the segment runs across (not just ends on) also connects.
+    for (const pad of netPads) {
+      if (pad.layers.includes(a.layer) && padOnSegment(pad, a)) {
+        uf.union(pointKey(a.start, a.layer), pad.key0);
+      }
+    }
   }
 
   // Pours: same-net pads, vias, and segment endpoints inside the polygon

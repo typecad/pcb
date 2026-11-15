@@ -11,11 +11,18 @@ import logger from '../utils/logging.js';
 import { TrackBuilder } from './pcb_track_builder.js';
 import { AStarRouter } from '../routing/router/astar_router.js';
 import { ObstacleBuilder } from '../routing/shared/obstacle_builder.js';
+import { RoutingGrid } from '../routing/shared/routing_grid.js';
 import { connectionMatches, pinToIdentifier } from './pcb_routing_helpers.js';
 import { pathToTrackBuilder } from './pcb_routing_core.js';
 import { IAutorouteOptions, IRoutePath, IAutorouteWaypoint } from './pcb_interfaces.js';
 import { IRouteDirectives } from '../routing/router/types.js';
-import { debugLog, AutorouteContext, RoutingOutput } from './pcb_autoroute_helpers.js';
+import {
+  debugLog,
+  AutorouteContext,
+  RoutingOutput,
+  validatePathGeometrically,
+  formatRejection,
+} from './pcb_autoroute_helpers.js';
 import { ManualRouteData } from './pcb_autoroute_manual_routes.js';
 import { pcbTrackSegment, getPcbState } from './pcb.js';
 
@@ -159,6 +166,41 @@ export function routePairwise(
 
     out.allPaths.push(path); // Store for visualization
 
+    // Geometric gate: the grid samples cell centers, so a found path can
+    // still sweep a segment across foreign copper. Validate router-produced
+    // paths (manual routes carry the user's intent verbatim) and retry once
+    // on a finer grid before failing the route — shorting copper never
+    // reaches the board.
+    if (path.success && !manualTrackBuilders) {
+      const routeNet = typeof pairNetName === 'string' ? pairNetName : netName;
+      let violations = validatePathGeometrically(path, ctx, routeNet);
+      if (violations.length > 0) {
+        debugLog(
+          options.debug,
+          chalk.yellow(`[PCB] ${fromId} <-> ${toId}: ${formatRejection(violations)} — retrying at finer grid`),
+        );
+        try {
+          const fineGrid = new RoutingGrid(ctx.bounds, Math.max(0.05, ctx.grid.gridResolution / 2), ctx.routingLayers, options.debug);
+          for (const obs of ctx.allObstacles) fineGrid.addObstacle(obs);
+          const fineRouter = new AStarRouter(fineGrid, { ...baseRouterOptions, net: routeNet });
+          const retried = fineRouter.route(startPos, endPos);
+          if (retried && retried.success) {
+            const retryViolations = validatePathGeometrically(retried, ctx, routeNet);
+            if (retryViolations.length === 0) {
+              path = retried;
+              violations = [];
+            }
+          }
+        } catch {
+          // finer-grid retry is best effort; fall through to rejection
+        }
+      }
+      if (violations.length > 0) {
+        logger.warn(`[PCB] Route ${fromId} <-> ${toId}: ${formatRejection(violations)}`);
+        path = { ...path, success: false, error: formatRejection(violations) };
+      }
+    }
+
     if (path.success) {
       // If we have manual TrackBuilders, reuse them to avoid creating duplicates.
       // They are registered ONLY in routeTrackBuilders — autoroute()'s merge
@@ -262,6 +304,8 @@ export function routePairwise(
       layers: [...new Set(path.nodes.map((n) => n.layer))],
       success: path.success,
       error: path.error,
+      fromLabel: fromId,
+      toLabel: toId,
       path: path, // Store the actual path for reuse
     };
     out.routeDetails.push(metadata);

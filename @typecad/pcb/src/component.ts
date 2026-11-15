@@ -276,8 +276,19 @@ export class Component {
       this.fab = undefined;
     }
   }
+  /** True while #ref holds the module counter's placeholder (first-read
+   *  assignment) rather than a user-specified or schematic-registered number. */
+  #refAuto: boolean = false;
+
   /** @internal */
   valueFootprint?: import('./pcb/pcb_interfaces.js').ITextPositioning;
+  /**
+   * @internal
+   * Set by mechanical factories (e.g. {@link MountingHole}): when the
+   * component joins a schematic, its pins are automatically marked
+   * do-not-connect so intentionally-unconnected pads don't fail ERC.
+   */
+  autoDnc: boolean = false;
   /** @internal */
   pins: Pin[] = [];
   #pinMap: Map<string, Pin> = new Map();
@@ -421,6 +432,11 @@ export class Component {
     if (!this.#ref && this.#isInitialized) {
       this.#ref = defaultCounter.getNextReference(this.#prefix || this.#inferPrefix());
       this.#refLocked = true;
+      // A placeholder from the module counter, handed out on first read so
+      // display code has SOMETHING to show — the authoritative number comes
+      // from the owning schematic's counter, in create() order, when the
+      // component registers (see registerReference).
+      this.#refAuto = true;
     }
     return this.#ref;
   }
@@ -428,6 +444,7 @@ export class Component {
   set reference(value: string) {
     this.#ref = value;
     this.#refLocked = true;
+    this.#refAuto = false;
     if (value && this.#isInitialized) {
       if (!/\d/.test(value)) {
         logger.warn(
@@ -582,12 +599,29 @@ export class Component {
     // Distinct components with colliding references still rename below.
     if (this.#committed) return true;
 
-    const ref = this.reference;
-    if (!counter.setReference(ref)) {
+    if (this.#refAuto && !this.#ref) {
+      // Never lazily assigned (nothing read .reference yet): take the
+      // schematic counter's number — create() order.
+      this.#ref = counter.getNextReference(this.#prefix || this.#inferPrefix());
+    } else if (this.#refAuto) {
+      // Placeholder from the module counter (assigned on first read — net()
+      // stamping pins, routing, logging). It does NOT own the number: the
+      // authoritative assignment is this schematic's counter, in create()
+      // order, so a component whose pins were touched early doesn't steal
+      // a low number from a component the user listed first.
       const newRef = counter.getNextReference(this.#prefix || this.#inferPrefix());
-      logger.warn(chalk.whiteBright.bgYellow(`\u{1F6A9}  renaming ${displayName(this)} to ${newRef}`));
-      this.#ref = newRef;
+      if (newRef !== this.#ref) {
+        this.#ref = newRef;
+      }
+    } else {
+      const ref = this.reference;
+      if (!counter.setReference(ref)) {
+        const newRef = counter.getNextReference(this.#prefix || this.#inferPrefix());
+        logger.warn(chalk.whiteBright.bgYellow(`\u{1F6A9}  renaming ${displayName(this)} to ${newRef}`));
+        this.#ref = newRef;
+      }
     }
+    this.#refAuto = false;
     if (!this.#footprint && !this.via) {
       logger.warn(
         chalk.whiteBright.bgYellow(

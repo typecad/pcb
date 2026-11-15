@@ -53,14 +53,22 @@ export async function run(parsed: ParsedArgs): Promise<void> {
     );
   }
 
+  // The engine line names the check that actually runs — a "native" header
+  // over a kicad-cli run makes the working --kicad flag look ignored.
+  if (parsed.args['kicad'] === true) {
+    if (!json) {
+      logger.log(chalk.white.bold('typecad-pcb erc') + ' - Electrical Rules Check\n');
+      logger.log(`  Schematic: ${schPath}`);
+      logger.log(chalk.gray('  Engine: kicad-cli (legacy full check set)\n'));
+    }
+    return runKicadErc(parsed, schPath, json);
+  }
   if (!json) {
     logger.log(chalk.white.bold('typecad-pcb erc') + ' - Electrical Rules Check\n');
     logger.log(`  Schematic: ${schPath}`);
-    logger.log(chalk.gray('  Engine: native (netlist: unconnected pins + pin-type conflicts; --kicad for the legacy kicad-cli check)\n'));
-  }
-
-  if (parsed.args['kicad'] === true) {
-    return runKicadErc(parsed, schPath, json);
+    logger.log(
+      chalk.gray('  Engine: native (netlist: unconnected pins + pin-type conflicts; --kicad for the legacy kicad-cli check)\n'),
+    );
   }
   return runNativeErc(schPath, json);
 }

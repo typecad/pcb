@@ -52,14 +52,21 @@ export async function run(parsed: ParsedArgs): Promise<void> {
     );
   }
 
+  // The engine line says which check actually ran — printing "native" while
+  // kicad-cli executes (or vice versa) makes a working --kicad flag look
+  // ignored.
+  if (parsed.args['kicad'] === true) {
+    if (!json) {
+      logger.log(chalk.white.bold('typecad-pcb drc') + ' - Design Rule Check\n');
+      logger.log(`  PCB:    ${pcbPath}`);
+      logger.log(chalk.gray('  Engine: kicad-cli (legacy full check set)\n'));
+    }
+    return runKicadDrc(parsed, pcbPath, json);
+  }
   if (!json) {
     logger.log(chalk.white.bold('typecad-pcb drc') + ' - Design Rule Check\n');
     logger.log(`  PCB:    ${pcbPath}`);
     logger.log(chalk.gray('  Engine: native (copper core; --kicad for the legacy kicad-cli check)\n'));
-  }
-
-  if (parsed.args['kicad'] === true) {
-    return runKicadDrc(parsed, pcbPath, json);
   }
   return runNativeDrc(pcbPath, json);
 }

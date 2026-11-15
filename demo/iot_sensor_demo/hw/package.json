@@ -1,0 +1,28 @@
+{
+  "name": "hw",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "build": "typecad-pcb build",
+    "simulate": "typecad-pcb simulate",
+    "add_component": "typecad-pcb add component",
+    "add_package": "typecad-pcb add package",
+    "kicad-search": "typecad-pcb search",
+    "kicad_sync": "typecad-pcb import ./build/iot_sensor_demo.kicad_pcb --watch --auto",
+    "open_board": "npx open-cli ./build/iot_sensor_demo.kicad_pcb",
+    "diff": "typecad-pcb diff HEAD ./build/iot_sensor_demo.kicad_pcb",
+    "docs": "typecad-pcb doc docs\\iot_sensor_demo.md build\\iot_sensor_demo.kicad_pcb"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "dependencies": {
+    "@typecad/pcb": "file:../../../@typecad/pcb",
+    "tsx": "^4.23.15"
+  },
+  "devDependencies": {
+    "typescript": "^7.0.2"
+  }
+}

@@ -299,6 +299,7 @@ async function handleMixedSources(
     footprint: footprintData.footprint,
     pins,
     prefix: symbolData.prefix,
+    value: (cmdArgs.value as string) || symbolData.value,
     symbol_path: symbolData.symbol_path,
     footprint_path: footprintData.footprint_path,
     folder: (cmdArgs.folder || '.') as string,
@@ -426,7 +427,19 @@ async function handleKicadSymbol(cmdArgs: CliArgs, isNonInteractive: boolean) {
     pins: symbolLookup.pins,
     footprint_recommendation: symbolLookup.footprint,
     prefix: symbolLookup.prefix,
+    value: partNumberOf(entered_symbol),
   };
+}
+
+/**
+ * A symbol whose own name is a part number (contains a digit —
+ * "ATtiny85-20S", "DS18B20") carries it into the generated component as
+ * `value` so BOMs aren't blank for ICs; generic names ("R", "LED",
+ * "USB_B_Micro") stay valueless for the user to set.
+ */
+function partNumberOf(librarySymbol: string): string | undefined {
+  const name = librarySymbol.split(':')[1] ?? '';
+  return /\d/.test(name) ? name : undefined;
 }
 
 async function handleLocalSymbol(cmdArgs: CliArgs, isNonInteractive: boolean) {

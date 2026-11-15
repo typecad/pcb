@@ -219,3 +219,23 @@ describe('native ERC (object model)', () => {
     expect(downgraded[0]!.severity).toBe('warning');
   });
 });
+
+describe('MountingHole auto-dnc (mechanical parts never fail ERC)', () => {
+  it('marks MountingHole pins no-connect when the part joins the schematic', async () => {
+    const { MountingHole } = await import('../../passives/mechanical.js');
+    const sch = new Schematic('erc_mh');
+    const mh = new MountingHole({ size: 'M2.5' });
+    sch.add(mh);
+
+    const mhRoster = roster([[1, '1', 'input']]);
+    const violations = runErc(sch, { pinInfoFor: () => mhRoster }).violations;
+    expect(types(violations)).not.toContain('pin_not_connected');
+  });
+
+  it('a plain component pin with no net still reports pin_not_connected', () => {
+    const sch = new Schematic('erc_plain');
+    const u1 = part('U1');
+    sch.add(u1);
+    expect(types(erc(sch))).toContain('pin_not_connected');
+  });
+});

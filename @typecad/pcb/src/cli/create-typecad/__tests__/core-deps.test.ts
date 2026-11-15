@@ -1,11 +1,18 @@
 import { describe, it, expect } from 'vitest';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const here = path.dirname(fileURLToPath(import.meta.url));
+const pkgVersion = (JSON.parse(fs.readFileSync(path.join(here, '..', '..', '..', '..', 'package.json'), 'utf8')) as { version: string }).version;
+const pin = '@typecad/pcb@~' + pkgVersion;
 import { CORE_DEPENDENCIES, coreDepsFix } from '../core-deps.js';
 
 const MISSING = ['@typecad/pcb', 'tsx'] as const;
 
 describe('CORE_DEPENDENCIES (create ↔ doctor single source)', () => {
   it('carries a spec, not a bare name (bare resolves to whatever `latest` is)', () => {
-    expect(CORE_DEPENDENCIES).toContain('@typecad/pcb@~1.0.0-alpha.4');
+    expect(CORE_DEPENDENCIES).toContain(pin);
     // `~`, not `^` — cmd.exe (the npm spawn shell on Windows) eats carets.
     expect(CORE_DEPENDENCIES.every((d) => !d.includes('^'))).toBe(true);
   });
@@ -14,9 +21,9 @@ describe('CORE_DEPENDENCIES (create ↔ doctor single source)', () => {
 describe('coreDepsFix (doctor repair line, computed from package.json)', () => {
   it("missing deps get create's pinned line", () => {
     const fix = coreDepsFix(MISSING, null);
-    expect(fix.args).toEqual(['@typecad/pcb@~1.0.0-alpha.4', 'tsx']);
+    expect(fix.args).toEqual([pin, 'tsx']);
     expect(fix.legacy).toEqual([]);
-    expect(coreDepsFix(MISSING, 'not-an-object').args[0]).toBe('@typecad/pcb@~1.0.0-alpha.4');
+    expect(coreDepsFix(MISSING, 'not-an-object').args[0]).toBe(pin);
   });
 
   it('reports legacy pre-rename dependencies so doctor can point at @typecad/pcb', () => {

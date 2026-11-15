@@ -18,6 +18,7 @@ import {
   type KiCadViolation,
 } from '../pipeline.js';
 import { nativeDrcStep, nativeErcStep } from '../native_checks.js';
+import { npxExec } from '../../../utils/process_exec.js';
 
 interface StepResult {
   ran: boolean;
@@ -31,6 +32,7 @@ interface StepResult {
 interface CheckReport {
   ok: boolean;
   build: { ran: boolean; passed: boolean; entry?: string; outputs: string[]; reason?: string };
+  typecheck: StepResult & { firstErrors?: string[] };
   unconnected: {
     ran: boolean;
     passed: boolean;
@@ -40,6 +42,27 @@ interface CheckReport {
   };
   erc: StepResult;
   drc: StepResult & { unconnectedItems?: number };
+}
+
+/**
+ * Typecheck step — `tsc --noEmit` when the project has a tsconfig (every
+ * scaffold does). The build itself executes via tsx, which strips types
+ * without checking them, so a type-level mistake (calling a method that
+ * doesn't exist) otherwise surfaces as a raw runtime TypeError instead of
+ * a compiler diagnostic with a file:line.
+ */
+function typecheckStep(): StepResult & { firstErrors?: string[] } {
+  if (!fs.existsSync('tsconfig.json')) {
+    return { ran: false, passed: true, reason: 'skipped (no tsconfig.json)' };
+  }
+  try {
+    npxExec(['tsc', '--noEmit'], { stdio: 'pipe', timeout: 120000 });
+    return { ran: true, passed: true };
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    const firstErrors = message.split('\n').filter((l) => l.trim().startsWith('src/') || l.includes('error TS')).slice(0, 8);
+    return { ran: true, passed: false, reason: message || 'type errors found', firstErrors };
+  }
 }
 
 function stepFromKiCadResult(result: KiCadCheckResult): StepResult & { unconnectedItems?: number } {
@@ -71,12 +94,14 @@ export async function run(parsed: ParsedArgs): Promise<void> {
   const json = parsed.json;
   const skipErc = parsed.args['skip-erc'] === true;
   const skipDrc = parsed.args['skip-drc'] === true;
+  const skipTypecheck = parsed.args['skip-typecheck'] === true;
 
   // ── Step 1: build ────────────────────────────────────────────────────────
   const entry = parsed.positional.find((p) => p.endsWith('.ts')) || detectEntryFile();
   const report: CheckReport = {
     ok: false,
     build: { ran: false, passed: false, outputs: [] },
+    typecheck: { ran: false, passed: false },
     unconnected: { ran: false, passed: false, pads: [], singlePinNets: [] },
     erc: { ran: false, passed: false },
     drc: { ran: false, passed: false },
@@ -96,7 +121,15 @@ export async function run(parsed: ParsedArgs): Promise<void> {
     if (!built.passed) report.build.reason = built.reason;
   }
 
-  // ── Step 2: unconnected analysis (needs built pcb) ───────────────────────
+  // ── Step 2: typecheck (tsc --noEmit; the tsx build executes without
+  // checking types, so the check run is where type errors get caught) ──────
+  if (!skipTypecheck) {
+    report.typecheck = typecheckStep();
+  } else {
+    report.typecheck = { ran: false, passed: true, reason: 'skipped' };
+  }
+
+  // ── Step 3: unconnected analysis (needs built pcb) ───────────────────────
   const stem = boardStemFromArgs(parsed);
   const pcbPath = findBoardFile(stem);
   if (!pcbPath && stem) {
@@ -150,27 +183,67 @@ export async function run(parsed: ParsedArgs): Promise<void> {
 
   report.ok =
     report.build.passed &&
+    (report.typecheck.passed || !report.typecheck.ran) &&
     (report.unconnected.passed || !report.unconnected.ran) &&
     (report.erc.passed || !report.erc.ran) &&
     (report.drc.passed || !report.drc.ran);
 
   // ── Output ────────────────────────────────────────────────────────────────
+  // Pins ERC already reports as `pin_not_connected` are the same physical
+  // fact as the board-side "pad has no net" — list each pin once by letting
+  // the ERC step own them when it ran.
+  const ercReportedPins = new Set<string>();
+  if (report.erc.ran) {
+    for (const v of report.erc.violations ?? []) {
+      if (v.type !== 'pin_not_connected') continue;
+      for (const item of v.items ?? []) {
+        const m = /Symbol (\S+) Pin (\S+) /.exec(item.description ?? '');
+        if (m) ercReportedPins.add(`${m[1]!.toUpperCase()}.${m[2]}`);
+      }
+    }
+  }
+
   if (json) {
     logger.log(JSON.stringify(report, null, 2));
   } else {
     const stepIcon = (ok: boolean, ran: boolean) => (ran ? (ok ? chalk.green('✓') : chalk.red('✖')) : chalk.gray('–'));
     logger.log(`  ${stepIcon(report.build.passed, report.build.ran)} build`);
     if (!report.build.passed && report.build.reason) logger.log(chalk.red(`      ${report.build.reason}`));
+    logger.log(`  ${stepIcon(report.typecheck.passed, report.typecheck.ran)} typecheck`);
+    if (report.typecheck.ran && !report.typecheck.passed) {
+      for (const line of report.typecheck.firstErrors ?? []) logger.log(chalk.red(`      ${line}`));
+      if ((report.typecheck.firstErrors ?? []).length === 0 && report.typecheck.reason) {
+        logger.log(chalk.red(`      ${report.typecheck.reason.split('\n')[0]}`));
+      }
+    } else if (report.typecheck.reason) {
+      logger.log(chalk.gray(`      ${report.typecheck.reason}`));
+    }
     logger.log(`  ${stepIcon(report.unconnected.passed, report.unconnected.ran)} unconnected`);
     if (report.unconnected.ran && !report.unconnected.passed) {
-      for (const p of report.unconnected.pads) logger.log(chalk.yellow(`      ${p.reference}.${p.pad} has no net`));
+      let suppressed = 0;
+      for (const p of report.unconnected.pads) {
+        if (ercReportedPins.has(`${p.reference.toUpperCase()}.${p.pad}`)) {
+          suppressed++;
+          continue;
+        }
+        logger.log(chalk.yellow(`      ${p.reference}.${p.pad} has no net`));
+      }
+      if (suppressed > 0) {
+        logger.log(chalk.gray(`      (${suppressed} no-net pin${suppressed === 1 ? '' : 's'} already listed under erc)`));
+      }
       for (const n of report.unconnected.singlePinNets) logger.log(chalk.yellow(`      net ${n} has a single pin`));
     } else if (report.unconnected.reason) {
       logger.log(chalk.gray(`      ${report.unconnected.reason}`));
     }
     logger.log(`  ${stepIcon(report.erc.passed, report.erc.ran)} erc`);
-    if (report.erc.ran && !report.erc.passed) printViolations(report.erc.violations ?? []);
-    else if (report.erc.reason) logger.log(chalk.gray(`      ${report.erc.reason}`));
+    if (report.erc.ran && !report.erc.passed) {
+      printViolations(report.erc.violations ?? []);
+      if ((report.erc.violations ?? []).some((v) => v.type === 'pin_not_connected')) {
+        logger.log(
+          chalk.gray('      hint: mark intentionally unused pins with pcb.dnc(...) — see the Connections docs'),
+        );
+      }
+    } else if (report.erc.reason) logger.log(chalk.gray(`      ${report.erc.reason}`));
     logger.log(`  ${stepIcon(report.drc.passed, report.drc.ran)} drc`);
     if (report.drc.ran && !report.drc.passed) {
       printViolations(report.drc.violations ?? []);

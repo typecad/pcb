@@ -24,6 +24,9 @@ export interface SymbolData {
   symbol_path?: string;
   footprint_recommendation?: string;
   prefix?: string;
+  /** Part number (the symbol's own name when it is one) — becomes the
+   *  generated component's `value`. */
+  value?: string;
   convertedComponent?: unknown;
   c_component?: unknown;
   prettyFolder?: string;
@@ -42,6 +45,8 @@ export interface ComponentRenderData {
   footprint: string;
   symbol: string;
   prefix?: string;
+  /** Part number emitted as the component's `value` so BOMs carry it. */
+  value?: string;
   symbol_path?: string;
   footprint_path?: string;
   folder?: string;

@@ -8,9 +8,31 @@
 //
 // `~`, not `^` — cmd.exe (the shell used to spawn npm on Windows) eats carets.
 //
-// The pin must match the first (or any later) @typecad/pcb release; `~` lets
-// patch-level and new prerelease versions of the same line satisfy it.
+// The pin is DERIVED from the version of the CLI the user ran (this
+// package's own package.json), so a scaffold always pins the release it was
+// created with — a hardcoded literal here drifts the moment a new alpha
+// ships. `~` lets patch-level and new prerelease versions of the same line
+// satisfy it.
 // ---------------------------------------------------------------------------
+
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+/** This package's own version — the release the user is running. */
+function packageVersion(): string {
+  try {
+    // src/cli/create-typecad/ and dist/cli/create-typecad/ sit at the same
+    // depth, so ../../../package.json is the package root either way.
+    const here = path.dirname(fileURLToPath(import.meta.url));
+    const pkg = JSON.parse(fs.readFileSync(path.join(here, '..', '..', '..', 'package.json'), 'utf8')) as {
+      version?: string;
+    };
+    return pkg.version ?? '0.0.0';
+  } catch {
+    return '0.0.0';
+  }
+}
 
 /** 'tsx' → 'tsx'; '@typecad/pcb@~1.0.0-alpha.4' → '@typecad/pcb'. */
 function nameOf(spec: string): string {
@@ -21,7 +43,7 @@ function nameOf(spec: string): string {
 
 /** The install line `typecad-pcb create` uses. Single source: doctor's fix must
  *  install exactly what create would. */
-export const CORE_DEPENDENCIES: readonly string[] = ['tsx', '@typecad/pcb@~1.0.0-alpha.4'];
+export const CORE_DEPENDENCIES: readonly string[] = ['tsx', `@typecad/pcb@~${packageVersion()}`];
 
 const SPEC_FOR: Readonly<Record<string, string>> = Object.fromEntries(
   CORE_DEPENDENCIES.map((spec) => [nameOf(spec), spec]),

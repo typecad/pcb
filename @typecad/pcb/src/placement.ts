@@ -29,7 +29,9 @@ export class PlacementValue {
 
   /**
    * A new deferred value that resolves to this value plus `n` — the nudge
-   * stays live: `x: pcb.board.sameAs(r1).plus(2)` follows r1 at create().
+   * stays live: `x: pcb.board.sameAs(r1).x.plus(2)` follows r1 at create()
+   * (the arithmetic lives on the axis values `.x`/`.y`, not on the
+   * `sameAs()` result itself).
    */
   plus(n: number): PlacementValue {
     return new PlacementValue((box, rot) => this._resolve(box, rot) + n);

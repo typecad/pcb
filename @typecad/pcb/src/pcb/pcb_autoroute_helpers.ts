@@ -20,6 +20,7 @@ import logger from '../utils/logging.js';
 import type { BoardBounds } from './pcb_routing_calculations.js';
 import { TrackBuilder } from './pcb_track_builder.js';
 import { RoutingGrid } from '../routing/shared/routing_grid.js';
+import { validateRoutePath, type RouteValidationViolation } from '../routing/shared/route_validation.js';
 import type { IRoutingOptions } from '../routing/router/types.js';
 import { PcbInternalState } from './pcb_state.js';
 import { PCB, getPcbState } from './pcb.js';
@@ -104,6 +105,37 @@ export function debugLog(debug: boolean | undefined, message: string): void {
 /** Type-guard: distinguishes IAutorouteResult from a plain IRoutePath. */
 export function isAutorouteResultRouteItem(routeItem: IRoutePath | IAutorouteResult): routeItem is IAutorouteResult {
   return Array.isArray(routeItem) && 'routeDetails' in routeItem && Array.isArray(routeItem.routeDetails);
+}
+
+/**
+ * Geometric gate for router-produced paths: exact-geometry validation of the
+ * path's segments and vias against every different-net pad/track obstacle.
+ * The A* grid samples cell centers, so a "successful" search can still have
+ * swept a segment across foreign copper — this is the last check before the
+ * path becomes a TrackBuilder, and it never lets shorting copper through.
+ *
+ * Returns the violations (empty = clean); never mutates the path.
+ */
+export function validatePathGeometrically(
+  path: IRoutePath,
+  ctx: Pick<AutorouteContext, 'allObstacles' | 'options' | 'traceWidth' | 'clearance'>,
+  net: string | undefined,
+): RouteValidationViolation[] {
+  if (!path.success) return [];
+  return validateRoutePath(path, {
+    obstacles: ctx.allObstacles,
+    width: ctx.traceWidth,
+    clearance: ctx.clearance,
+    viaDiameter: ctx.options.viaSize ?? 0.6,
+    net,
+  });
+}
+
+/** Render a rejection one-liner for logs and route errors. */
+export function formatRejection(violations: RouteValidationViolation[]): string {
+  const v = violations[0]!;
+  const extra = violations.length > 1 ? ` (+${violations.length - 1} more)` : '';
+  return `route rejected (clearance): ${v.message}${extra}`;
 }
 
 export function collectComponentsForBounds(

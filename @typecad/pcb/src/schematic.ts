@@ -100,6 +100,11 @@ export class Schematic {
           return;
         }
         comp.registerReference(this.referenceCounter);
+        // Mechanical parts (mounting holes) join pre-marked do-not-connect:
+        // their pads are intentionally unconnected and must not fail ERC.
+        if (comp.autoDnc === true) {
+          for (const pin of comp.pins) this.dnc(pin);
+        }
         const comp_data: ComponentInit = { reference: comp.reference, value: comp.value, footprint: comp.footprint };
         if (comp.wattage) {
           comp_data.wattage = comp.wattage;

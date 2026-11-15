@@ -171,11 +171,9 @@ export class CommandLineInterface implements CLI {
           );
         }
 
-        // Display top match summary at the end (only if not in JSON mode)
-        if (results.length > 0 && parsedArgs.format !== 'json') {
-          const topMatch = results[0];
-          logger.log(chalk.bold.blue(`Top match: ${chalk.italic(topMatch.lcsc)} - ${topMatch.description}`));
-        }
+        // No "Top match" trailer: results are score-sorted, so #1 in the
+        // list above IS the top match — repeating it below the fold reads
+        // like it was ranked elsewhere.
 
         const actionableResults = limitedResults.filter((r) => r.footprint && r.footprint.length > 0);
 

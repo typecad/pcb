@@ -1,5 +1,1467 @@
 # @typecad/pcb
 
+## 1.0.0-alpha.10
+
+### Minor Changes
+
+- 91db638: `typecad-pcb export` learns assembly outputs: `export pos`, `export bom`,
+  and `export assembly` — placement (centroid/CPL/pick-and-place), bill of
+  materials, and the one-shot zipped provider package, all written by
+  typeCAD's own writers with no kicad-cli involved.
+
+  The placement exporter is profile-driven — a provider is a data object in
+  `src/assembly_export/profiles.ts`, not a code path. Six ship: `kicad`
+  (column semantics of `kicad-cli pcb export pos --format csv`: always-quoted
+  text fields, 6-decimal mm, lowercase `top`/`bottom`), `jlcpcb`
+  (`Designator,Mid X,Mid Y,Layer,Rotation` with T/B sides), `pcbway` (the
+  same CPL family spelling Top/Bottom), `seeed`, `openpnp` (the Reference CSV
+  importer's `id,x,y,rotation,side`), and `generic` (every knob exposed,
+  including inch/mils units). Coordinates stay in the KiCad board frame —
+  JLCPCB, PCBWay and Seeed all ingest KiCad-native data and adapt it on their
+  side (PCBWay explicitly asks customers not to pre-mirror bottom-side data),
+  so profiles emit what the board stores and leave `--rotation-offset` /
+  `--bottom-rotation` as explicit overrides for shops that want a shift.
+
+  Which datum a row reports is a first-class choice: `--centroid
+anchor|pads|body`. Anchor is what KiCad's pos export reports (the
+  footprint's `at` origin); body transports the measured fab-outline bbox
+  center through the footprint rotation — the physical body center shops ask
+  for, which matters more than it sounds: rd_skeleton's D2 (a DO-41 laid
+  horizontal, pads 7.62mm apart) anchors on pad 1 while its body center sits
+  3.81mm away, and a machine placing at the anchor would drop the part half
+  a pitch off. The local→board transport is the pad-verified one the gerber
+  plotter and label anchoring already share.
+
+  Filtering matches KiCad's own semantics: `exclude_from_pos_files` /
+  `exclude_from_bom` footprint attributes and DNP are honored across every
+  shape KiCad writes (`(dnp yes)`, `(attr (dnp yes))`, legacy `(attr dnp)`),
+  DNP parts ride along in the kicad profile (as kicad-cli does) and stay out
+  of shop profiles, and ref globs (`--exclude "FID*,MH*"`, plus per-profile
+  defaults) drop fiducials and mounting holes.
+
+  `export bom` joins board truth with the netlist beside it — MPN lands in
+  JLC's `LCSC Part #` column (the typeCAD serializer's capitalized fields,
+  plus LCSC/manufacturer-part-number aliases), rows group by
+  value+footprint+mpn with refs collapsed (`--ungrouped` for one row per
+  reference), and a missing netlist degrades to board-only columns rather
+  than erroring.
+
+  The `openpnp` profile also writes a native `<board>.board.xml` you open
+  straight from OpenPnP's Boards tab — no empty board to create, no import
+  step. Schema and conventions come from OpenPnP's own source and its
+  checked-in sample (root `openpnp-board`, placements with
+  `part-id`/`side`/mm locations), and bottom-side parts carry the transform
+  its KiCad .pos importer applies: x negated, rotation mirrored
+  (rot → 180 − rot). The board size rides along when Edge.Cuts geometry
+  exists. The shop profiles (JLC/PCBWay/Seeed) deliberately do none of this
+  — their uploaders take the unmodified KiCad frame.
+
+  Re-exporting that board.xml doesn't destroy work done inside OpenPnP:
+  part associations, Ignore/Fiducial types, enabled flags, and comments are
+  copied from the previous file per placement while geometry (and a flipped
+  side) always follow the board — placements for refs that left the board
+  are dropped and named in the log, and hand-added placements for refs still
+  on the board (a fiducial) ride over untouched. `export assembly`'s
+  staging-wipe captures the old file before deleting the directory, so the
+  merge works there too. `--fresh-board` opts out and regenerates clean.
+
+  The openpnp profile now also carries what the machine needs to run, not
+  just what to place: `FID*` references ship as `type="Fiducial"`
+  placements instead of being excluded (mounting holes stay out), a closing
+  Edge.Cuts outline rides as the board `<profile>` path, and every pad on a
+  paste layer lands in `solderPastePads` for dispensing setups — the pad
+  shape as a `Pad$RoundRectangle`/`Pad$Circle` subclass picked by simple-xml's
+  `class=` attribute (the `BoardPad.pad` field is the abstract
+  `org.openpnp.model.Pad`, not the Footprint pad used in packages.xml). The profile
+  encoding matches OpenPnP's actual reader, quirks included: the required
+  `winding-rule` attribute, and the first vertex repeated after the loop —
+  their commit switch falls through from MOVETO into LINETO, consuming four
+  points for the first entry, and a plain vertex list dies with an
+  IndexOutOfBounds wrapped in an InvocationTargetException (the empty
+  "board load failed" dialog). Beside the board file, `<board>-packages.xml` and
+  `<board>-parts.xml` define each unique package — pad layout (with
+  roundness from roundrect ratios, 100 for circles) and body size from the
+  fab outline, the geometry bottom vision checks against — plus one part
+  per unique footprint+value, named identically to the board's part-ids.
+  OpenPnP has no import menu for those; they're drop-in documents for its
+  configuration directory. The formats are pinned by a round-trip harness
+  (openpnp_spec/) that deserializes our output with OpenPnP's own serializer
+  settings and a verbatim copy of its profile-rebuild commit code — the
+  three reader quirks above were each caught by loading, not by reading.
+
+  `export assembly` composes the native gerber/drill/job export (zones
+  refilled in memory, as `export gerbers` does) with both files into
+  `build/assembly/<board>-<profile>/` and zips it — a store-only ZIP from a
+  new dependency-free writer (fab packages are text; compression buys
+  nothing) — to `<board>-<profile>.zip`, the file the shop's uploader wants.
+  `--no-zip` keeps just the staging directory.
+
+  `board_model` grew the fields these writers consume: footprint
+  body-center (the bbox measure now reports the center alongside the size,
+  µm-rounded), the dnp/exclude flags, the board's aux (drill/place) origin
+  (`--origin aux` rebases placement rows onto it), per-pad rotation /
+  roundness / size, and the Edge.Cuts outline as line segments (arcs
+  flattened, rects expanded).
+
+- 99a818f: Board artwork from an image file: `new Image({ file, at, size, ... })` +
+  `pcb.create(art)` rasterizes a PNG onto the board's three real inks — exposed
+  copper, silkscreen, and solder-mask openings — as filled board graphics.
+
+  The format is an ink palette, not grayscale, because a fabricated board's
+  "colors" are exactly three on a substrate: red `#FF0000` pixels become copper
+  on `F.Cu`/`B.Cu` with an automatic mask opening beside them (copper under
+  intact mask is invisible; the opening grows by `maskExpansion`, default
+  0.05mm, for fab registration), white `#FFFFFF` becomes silkscreen, blue
+  `#0000FF` becomes a mask opening (bare substrate, or gold where copper sits
+  under it), and every other pixel is background — the fab's mask color IS the
+  background, you order it rather than paint it. `inks: { copper: '#00FF00',
+silk: null }` remaps or disables per ink; `tolerance` (default 100, Euclidean
+  RGB) sets how far off-palette a pixel may drift and still match.
+
+  Each ink is classified per raster cell (`resolution`, default 0.1mm — cells
+  sample the source image center, so pixel art upscales crisply) and greedily
+  merged into rectangles, emitted as filled `gr_poly` graphics. Polygons, not
+  rects: the gerber exporter strokes `gr_rect` but regions filled `gr_poly`, so
+  art plots correctly on every layer; holes (letter counters, logo counters)
+  need no special handling — an unclaimed cell is simply never painted. Rebuilds
+  are byte-identical; `side: 'back'` mirrors the artwork horizontally and emits
+  onto the B.* layers so it reads correctly when the board is flipped.
+
+  The image pipeline is dependency-free: a hand-rolled PNG decoder (node:zlib)
+  reads 8/16-bit gray, RGB, palette+tRNS, and RGBA at 1/2/4/8-bit depth, checks
+  chunk CRCs, and rejects interlaced files with a re-export hint. The Image
+  itself validates options in the constructor (`file`, finite `at`, positive
+  `size`, `side`, `resolution` bounds) and decodes lazily at create() time,
+  where a bad file fails the build with the call site attached.
+
+  Two engine gaps the copper ink exposed, both fixed: the native copper gerber
+  plotter silently dropped ALL board-level graphics (`gr_line`/`gr_poly`/`gr_text`
+  … on F.Cu/B.Cu) — pads, vias, tracks, and zone pours plotted, hand-drawn copper
+  ink never did — so the copper pass now routes board graphics through the same
+  drawers the graphics layers use (a filled poly lands as a G36 region, an
+  unfilled one strokes at its width, copper text renders). And `pcb.create()`
+  now accepts `Image` items alongside Components and TrackBuilders.
+
+  Documented caveats: copper artwork is non-net copper — keep it clear of real
+  nets yourself (DRC flags collisions, which is the feature working), and dense
+  silk artwork trips `silk_overlap` warnings against its own rectangles; the
+  rule is calibrated against kicad-cli goldens so it was left alone, and
+  art-heavy boards set `silk_overlap: ignore` in the conf severities. 22 new
+  tests cover the decoder (all color types, filters, corruption), the ink
+  classifier and rect merger, the Image class (options, ink overrides, front/
+  back geometry, mask pairing, determinism), the full-board integration, and
+  the copper-graphics gerber fix.
+
+  The VS Code layout view gained the matching gesture: a **place image** button
+  beside the zone tools. Arming it asks the extension host to open the PNG
+  picker (a webview cannot), and the host answers with the picked file — bytes
+  as a data URL for the on-canvas ghost, plus the absolute path. A click drops
+  the artwork's CENTER (grid-snapped, like every placement); the ghost previews
+  the image and MIRRORS it when `back` is selected beside the button, since
+  back-side art lands mirrored on the board. `E` opens a properties panel for
+  the pending artwork (x/y center, width/height, side), `Del` removes it, both
+  undo-able; pending artwork persists across reloads — geometry and path only,
+  without the base64 bytes, which would blow the localStorage quota that every
+  other pending kind shares (a restored image renders an outlined placeholder;
+  the apply needs the path, not the bytes).
+
+  Apply copies each picked file into the project's `art/` folder BEFORE the
+  plan (deduped by content — the same PNG placed twice reuses its first copy),
+  so the generated statements carry project-relative paths and the project
+  stays self-contained. The stage then ensures the sidecar speaks the artwork
+  grammar — older sidecars predate it: the `Image` specifier joins the pcb
+  import, and `export const syncArt: Image[] = [];` lands beside syncTracks —
+  and inserts `syncArt.push(new Image({ file: 'art/x.png', at: { x, y }, size:
+[w, h] }));` after the last image statement (below zones). The entry file's
+  canonical integration gains the `...syncArt` spread beside `...syncTracks`
+  (one rewrite — both replace the whole create() call, so composing them as
+  two edits would corrupt the call), and `create()` evaluates the spread after
+  syncBoard() ran, so every push is visible. The rebuild's semantic check now
+  also verifies artwork: some filled gr_poly on the placed side's layers must
+  intersect the placed rect (a mask-only PNG paints only openings; that counts).
+
+  The `_sync.ts` grammar extension is contract-pinned across the two copies
+  (vscode extension + kicad2typecad importer) as before, and the extension's
+  bundled asset plus the demo and rd_skeleton projects' installed copies are
+  rebuilt with it.
+
+  Tier 2, as promised: contours are now the DEFAULT geometry — each ink's cell
+  grid is traced into rectilinear boundary loops (interior-on-left directed
+  edges, pinch-point ties hugging the current component), holes are classified
+  by even-odd containment depth, and every shape bridges its holes into ONE
+  ring with hairline keyhole slits — the exact shape KiCad's own image
+  converter emits, so kicad_pcb's single-ring gr_poly carries donuts and letter
+  counters without hundreds of rectangles. `mode: 'rects'` keeps the v1 merged
+  rectangles; `smooth` (default half the resolution, `0` off) Douglas-Peucker
+  straightens grid staircases before bridging (never after — simplification
+  could collapse the slits). Copper's mask opening for traced shapes is a true
+  clipper offset (join round, nm integers like the DRC engine), not a radial
+  guess. A 20mm donut logo lands as ~5 polys / 148 points / ~1.7KB of gerber;
+  the same art in rect mode is 10+ regions with many times the points.
+
+  SVG input: `file: 'logo.svg'` reads a dependency-free subset of SVG —
+  path (full command grammar: M/L/H/V/C/S/Q/T/A/Z with implicit repeats),
+  rect (rounded corners included), circle, ellipse, polygon, polyline — with
+  `transform` chains (matrix/translate/scale/rotate/skew, composed) and
+  presentation attributes (a `style` attr's `fill:` wins over the attribute,
+  opacity < 0.5 skips the shape). Curves flatten deterministically (fixed
+  subdivision counts), arcs go through the W3C endpoint→center conversion,
+  rings store viewBox-relative units and scale through `size`/`resolution`
+  exactly like pixels. Subpaths of one shape nest even-odd, so a donut is one
+  path and its inner circle is a bridged hole; a shape with NO fill attribute
+  on its chain IS the artwork (implicit fill → copper ink), `fill="none"` and
+  off-palette colors are background, and strokes/text/use/clip/CSS are skipped
+  silently. Sniffing is content-based (PNG signature vs `<svg`), so the
+  extension doesn't matter. `mode` has no meaning for SVG — there is no grid.
+
+  Packages: artwork ships inside reusable modules — assign an `Image` to a
+  `this.` property (or `this.add()` it) in `build()`, authored in
+  package-local coordinates; `_autoCollect` picks it up beside components and
+  track builders, `_applyOffset` shifts its `at` by the package's x/y exactly
+  like a component's `.pcb`, and `pcb.create(myPackage.components)` delivers
+  it. `pcb.group()` tolerates images in the member list (they carry no
+  reference and join no group).
+
+  21 new tests pin the tracer (plus → one 12-corner loop, ring → outer+hole,
+  bridged donut stays a hole under even-odd, seam-collinear merging,
+  determinism), the Image contour path (plus → 1 ring vs rect mode's 3 rects,
+  counters as holes, staircase smoothing strictly reducing vertices,
+  byte-identical artwork across rebuilds), the SVG reader (viewBox/size
+  mapping, implicit fills → copper, white → silk, subpath holes, transforms,
+  resolution default scaling, curve flattening, rounded-rect corners, fill
+  inheritance from ancestor groups), and the package flow (auto-collect,
+  offset shift, board content at the shifted position).
+
+  A double-check pass over the whole feature found and fixed three more: the
+  SVG reader dropped `fill` inheritance (`<g fill="white"><rect/></g>` landed
+  its rect on copper instead of silk — fills now inherit down the chain, so
+  "no fill anywhere" is the only implicit-copper case, and an explicit
+  `fill="none"` on a child still overrides); the rounded-rect corner sequence
+  arced the LEFT EDGE instead of the bottom-left corner and ran the top-left
+  corner's arc backwards (both bowing through the shape's interior) — corners
+  now emit as four short clockwise arcs between exact edge chords; and
+  `maskExpansion` stopped rejecting negative values in the Tier 2 rewrite
+  (inert at render, but the constructor's contract says [0, 5) — restored,
+  with constructor-validation regressions for it, `smooth`, and `mode`).
+  Rebuild determinism was re-verified on a mixed board (contour PNG + back-
+  side SVG + rect PNG): zero artwork-line differences across rebuilds; the
+  only diffs are per-instance component UUIDs and the process reference
+  counter, pre-existing core behavior.
+
+  Follow-up from live use (rd_skeleton placed its favicon): the `Image` options
+  now accept the API exactly as originally proposed — `at` takes `[x, y]` as
+  well as `{ x, y }`, and `size: [w, h]` is a bounding box the artwork FITS
+  INSIDE with its aspect preserved and centered (a square source in `[40, 30]`
+  places at 30×30), not a stretch. Malformed tuples are rejected with the same
+  constructor-error shape as every other option, and a regression pins both
+  forms against the object/single-number spellings.
+
+  That report also exposed a real geometry bug: `render()` mapped CELL
+  coordinates through the PIXEL scale, so any raster whose grid differed from
+  its pixel count — every down- or upsampled image, i.e. nearly every real
+  logo at the default 0.1mm resolution — scaled by gridW/widthPx (a 32px
+  favicon at 30mm placed spanning ~281mm). Each pipeline's unit space now maps
+  independently: grid cells divide the placed box by gridW/gridH, SVG user
+  units scale by size/units. The mask expansion rides the same per-space
+  scale. rd_skeleton's favicon now places at exactly its fitted box on the
+  mod-ec board (verified in the built .kicad_pcb), typechecks clean, and DRC
+  drops to zero errors with the art inside the outline; the commit also
+  documents the ink mapping its teal logo needed (`inks: { copper: '#02B388' }`
+  — artwork must be drawn in ink colors, and real assets usually aren't).
+
+  The layout view now treats PLACED artwork as a first-class object, not just
+  ink: the build writes build/<board>_images.json (every Image's file, center,
+  placed box, side — the pads manifest's shape), the viewer page carries it as
+  a data island, and each applied image draws a dashed outline + file label
+  beside its ink. Click selects; E edits x/y/width/height/side or arms
+  "replace file…" (the host picker re-arms against the selected image, and the
+  picked PNG lands in art/ through the same content-deduped copy); Del removes.
+  Apply rewrites/deletes the matching `new Image({ … })` statement in place
+  (matched by file + center — the placed box is a fit, so its w/h can differ
+  from the statement's bounding box and never enter the key), replacement
+  files rewrite the statement's path, and the post-rebuild check reads the
+  FRESH images manifest to verify every edit landed and every delete is gone.
+  Pending artwork's committed ghost now renders fully opaque (it is the ink;
+  0.85 read as translucent silkscreen against the board's real silk).
+
+  Two importer sync repairs the placed art exposed on the rd_skeleton corpus:
+  a comment inside create()'s argument list (`// u1,`) no longer reads as
+  drift — the args compare strips comments/whitespace noise while a real
+  difference still rewrites to the clean form — and artwork polys are now
+  recognized as IMAGE-owned: `new Image({ … })` statements in source (object
+  and tuple `at` spellings, whitespace-flexible, nested-option tolerant) claim
+  the gr_polys inside their placement box on that side's layers, so the
+  graphics sync stops proposing to duplicate the art as a typecad.poly()
+  literal on every KiCad-side touch. 5 new tests cover the statement
+  rewrites/deletes (position, size, side, replacement file, tolerance, whole-
+  line removal, honest skips) through the apply stage.
+
+  Two restart bugs the first live session surfaced: the applied-image overlays
+  rendered only when something else triggered them — `enterLayout()` drew the
+  pending zones, board zones, and outline on every entry into the Layout view
+  but not the images, so after a full VS Code restart (fresh webview
+  localStorage → restorePending early-returns before its render call) the ink
+  showed with nothing to click; enterLayout now renders pending AND applied
+  artwork, and exitLayout removes their overlay groups like the zones'.
+  Second, the restore fast path's staleness check keyed on the toolchain
+  VERSION alone — a workspace-linked toolchain gains features without a
+  version bump, so a page written before a generator change but after the last
+  board edit served forever (the code already documented this exact hole from
+  an earlier incident). The fast path (and the disk-page adopter) now also
+  refuse any page older than the installed generator module itself
+  (dist/gerber_viewer/render/viewer_html.js mtime, resolved with the same
+  walk-up as the version).
+
+  Follow-ups from the first applied-image edits: the statement matcher only
+  recognized the canonical sidecar shape, so an edit to a HAND-WRITTEN image
+  (`let art = new Image({ at: [x, y], ... })` — tuple `at`, bare declaration,
+  nested `inks`, comments) matched nothing, the apply skipped it silently, and
+  the rebuild restored the old position. The planner is now a real scanner:
+  quote/comment-aware brace matching finds every `new Image({...})` expression
+  (canonical `syncArt.push(...)` wrapper and hand-written declarations alike),
+  extracts the at/size/side/file spans (object or tuple `at`, tuple or
+  single-number `size`), and rewrites them surgically so all surrounding
+  formatting survives — rewriting `at: [142.5, 85.5]` to the object form in
+  place. Deletes remove the whole declaration line AND the identifier's
+  argument in `.create(...)` (the parse gate remains the backstop for
+  references in other files), and side flips insert `side: 'back'` in the
+  canonical spacing when the statement carried none. Apply counts now count
+  consumed inputs, not surgical spans.
+
+  And M now grabs selected artwork: the component grab's interaction (cursor
+  pick, deltas, grid snap, click drops, Esc reverts, undo) drives the image's
+  edit record instead of a layout move — for applied images (arming an edit
+  that apply & rebuild writes) and pending ones alike; the drop click and Esc
+  cancel are wired beside the component grab's, and the grab takes precedence
+  over the component grab only when an image is actually selected.
+
+  Custom inks — the layer-stack cube: a fabbed board is three binary layers
+  (copper, mask opening, silk), and the three presets are fixed points in that
+  space. `inks.custom` now maps any additional pixel color to any combination
+  via `{ copper, mask, silk }` — hidden copper (electrically real, visually
+  absent), silk over hidden copper, and `maskPaint`, the SUBTRACTIVE channel
+  that closes mask openings (two-tone mask art; painting mask over exposed
+  copper keeps the metal but re-hides it, the documented precedence, enforced
+  with a clipper difference over the collected openings). Silk stacked over a
+  mask opening is rejected at construction — most fabs strip that silkscreen —
+  with the error naming the `allowExposedSilk` opt-in for fab lines that print
+  it. Backward compatible: the presets emit exactly what they did before.
+
+  The PCBA render learned the same physics: with a mask film, board-level
+  copper at an opening used to fall through to the substrate color (only pad
+  flashes got the finish treatment), so exposed-copper artwork rendered as
+  bare board. The copper ink now also paints in the finish color through an
+  inverted copy of the openings mask — artwork gold matches the pads, and
+  two-tone mask art shows mask vs substrate correctly (openings reveal the
+  substrate either way). Blueprint and schematic styles are unchanged.
+
+  The clipper difference's solution carries holes as separate oppositely-
+  oriented paths — emitted independently, an opening's hole filled as its own
+  opening (a painted-back square came out as an extra opening instead of shut
+  mask). The mask emission now re-nests the solution and keyhole-bridges each
+  shape back into one ring, the same shape every other emitted poly has; a
+  contour-mode regression pins the painted square staying shut.
+
+  rd_skeleton's artwork is now an ink-swatch demo (assets/ink-swatch.png, a
+  40x40 two-tone grid): red exposed copper, white silkscreen, a blue mask
+  opening with a purple maskPaint square inside it (two-tone), and black
+  hidden copper — one Image statement on the back of the mod-ec board showing
+  every ink the feature ships. Probed on the built board: each cell lands on
+  exactly its layers, the painted square stays shut, the hidden copper emits
+  B.Cu with no opening, and DRC reports nothing against the graphics.
+
+- 99a818f: The Layout view edits three more things, and one gesture applies them all:
+  flip a part to the other side, draw a copper pour or keepout, and resize the
+  board outline.
+
+  - **Shift+F flips the selection** (KiCad's F; plain `f` stays fit-to-view,
+    and the E panel gains a side select). The pending ink mirrors about the
+    part's LOCAL X axis — the exact transform the writer's back-side path
+    applies (pad-local Y negated, rotations mirrored, chamfers flipped), so
+    the preview and the rebuilt board agree — pad probes, rip-up binding and
+    the ratsnest follow the mirrored pads, and undo/redo rides the standard
+    move snapshots. Apply writes an absolute `side: 'back'|'front'` into the
+    `<var>.pcb = { … }` literal (rewritten, appended, or inserted with the
+    position into `_sync.ts` for constructor-placed parts) — `rotation`
+    stays, matching the writer. The payload carries each flipped part's FINAL
+    pad centers, and sticky TrackBuilder endpoints now translate PER PAD (a
+    mirror moves every pad differently; a pure move still translates by the
+    uniform delta). The semantic check reads the rebuilt footprint's layer:
+    a flip that didn't land is a miss.
+  - **Zones**: a two-click rectangle tool (the ruler's interaction model,
+    grid-snapped) with pour/keepout, copper layer, and net picked beside the
+    button — nets collected from the board's own pads and traces. Pending
+    zones render as dashed overlays, Del removes the selected one, undo/redo
+    and the pending-state snapshot carry them. They have no source literal to
+    rewrite, so apply inserts `typecad.zone({ net, layers, x, y, width,
+height })` / `typecad.keepout({ layers, x, y, width, height })` calls
+    into the `_sync.ts` sidecar (new grammar section, anchored after
+    placements and before routes), which runs right before `create()`; the
+    export's zone-fill materialization refills the pour and the semantic
+    check verifies the rebuilt zone by corners, layer, and net name.
+  - **Board outline**: clicking Edge.Cuts ink selects the outline (the
+    segment/via capture selector stands down for it), the E panel edits
+    x/y/width/height in board mm, arrows nudge, and the new rect previews as
+    a dashed overlay while the authored ink dims. Apply rewrites the matching
+    `typecad.outline(x, y, width, height)` literal in place — the fillet
+    argument survives, numeric literals only — with no sidecar fallback (a
+    second Edge.Cuts contour would read as a KiCad cutout); a polygon or
+    circle outline reports that no literal matches instead of guessing. The
+    semantic check measures the rebuilt board's Edge.Cuts `gr_line`/`gr_arc`
+    extent against the requested rect.
+
+  The apply bridge gained `zones` and `outline` payload slots (the webview
+  bridge callback stays tail-detected, so older pages keep working), the
+  counts/log lines cover both, and the keys cheat-sheet documents the new
+  bindings. The bundled extension asset is rebuilt.
+
+  Viewer pages now carry their generator's identity
+  (`<meta name="tc-viewer-generator" content="<@typecad/pcb version>">`), and
+  the extension's restore fast path refuses a cached page whose stamp differs
+  from the project's installed toolchain (resolved npx-style, walking up
+  `node_modules/@typecad/pcb` from the hw folder) — previously a toolchain
+  update with an unchanged board served the stale page forever, new layout
+  gestures dead under the old page's handlers (regeneration only ever keyed
+  on the board file changing). An unresolvable toolchain keeps the legacy
+  behavior; a pre-stamp page counts as stale and regenerates once.
+
+  The board importer's routing-section and create()-args comparisons are
+  line-ending aware: the generated block is LF, so a CRLF checkout or a
+  Windows editor save read as a full routing drift and every apply proposed
+  rewriting the whole section (converting the file). The wanted block now
+  renders with the file's own EOLs — CRLF files compare equal, converge, and
+  stay CRLF; a golden-corpus regression pins it.
+
+  Zone follow-ups from live use: pending-zone labels render upright (they
+  live in a group OUTSIDE the y-flip now — inside it the scale mirrored the
+  glyphs — and follow the Flip Board mirror), the dashed zone strokes thin to
+  match the outline indicator (0.08, selected 0.12), and a pour drawn fully
+  outside the authored board outline warns in the layout warnings box before
+  any apply — KiCad clips pours to Edge.Cuts, so an off-outline pour filled
+  to nothing silently. The importer's zone sync scans every `_sync*.ts`
+  beside the given sources (a layout-applied pour living only in the sidecar
+  no longer proposes duplicating itself into hand-written code) and compares
+  both sides through the zone API's defaults — a minimal
+  `typecad.zone({ net, layers, x, y, width, height })` is IN SYNC with its
+  board zone, while a genuine deviation still proposes its update and the
+  applied form converges on the next compare.
+
+  The viewer now draws every DECLARED zone's boundary in the layout view
+  (thin dashed outline + a small net/layer label, upright and flip-aware,
+  pointer-transparent) — gerbers carry only the FILLED copper, so a keepout
+  or a pour outside Edge.Cuts (KiCad clips pours to the outline, so it fills
+  to nothing) was invisible in the viewer while KiCad's canvas showed its
+  boundary. With this, "none of my zones appear" becomes answerable at a
+  glance: the boundary is the zone, the copper under it is its fill.
+
+  Declared zones are now EDITABLE from the layout view: clicking a boundary
+  selects it, E moves/resizes the rect (rewriting the matching
+  `typecad.zone()`/`.keepout()` literal's x/y/width/height in place — layer
+  included in the match, so identical rects on different layers stay
+  distinct), and Del removes the zone's whole statement from source. Both
+  ride the apply bridge as `zoneEdits`/`zoneDeletes`, persist across
+  reloads, and verify on the rebuilt board (a deletion that is still there
+  is a miss). Plane-materialized and import-authored zones have no literal
+  to rewrite and report that instead of being mangled.
+
+  And the fill-order fix the zones surfaced: a pour drawn inside an
+  existing plane at equal priority 0 LOST the fill to the plane entirely —
+  KiCad fills by decreasing priority and an equal-priority zone is
+  subordinate, so the pour rendered nothing and read as a pour touching
+  ground with no gap. New pours from the layout view now land ABOVE every
+  zone priority already in source (ascending across multiple inserts), so
+  the plane keeps its clearance around them; a regression pins the
+  ordering.
+
+  And the follow-up the fills surfaced: the zone boundaries now carry their
+  FILL STATE — the build measures each declared zone's filled copper with
+  the native fill engine and the layout view's label reads
+  "AMP_OUT · F.Cu · no fill (no AMP_OUT copper inside)" when it filled to
+  nothing. The rule that produced it (KiCad's too): a zone keeps only
+  islands that connect to same-net copper — a pour drawn over nothing but
+  foreign planes is removed whole, however carefully it was drawn. New pours
+  also land above every existing zone priority so planes keep their
+  clearance around them once they do connect.
+
+  And the semantic check stopped lying about zones: typeCAD's writer
+  pretty-prints zone blocks (every token on its own line, sub-lists wrapped
+  in their own parens), and the rebuilt-board zone parser only matched the
+  inline `(zone …` form — every zone apply reported "MISSING from the
+  rebuilt board" while the pour rendered fine. The parser collapses the
+  block's whitespace and tolerates the grouping parens; a regression test
+  pins the verbatim pretty-printed shape.
+
+- b085cf2: `typecad-pcb viewer` — the board-viewer render pipeline as ONE command, and
+  a source-of-truth rework of the sync model around it.
+
+  The vscode extension used to spawn five-plus npx children per board change
+  (`export gerbers`, `export drill`, `gerber-viewer`, plus `simulate` and
+  `check-sync`), each paying node/npx startup before any plotting happened.
+  The new command composes the native gerbers/drill/job export and the
+  interactive page build back-to-back in one process — same plots, same page,
+  no per-step startup (the in-process composition renders the one_hz fixture
+  in ~0.5s; the real rd_skeleton board in 2.0s vs 5.0s for the old chain).
+  Overlays ride the same flags gerber-viewer knows (`--netlist`, `--drc`,
+  `--stackup`, `--rules`) and auto-discover the build's own artifacts; `-o`
+  places the page, `--saved-fills` opts out of the in-memory zone refill,
+  `--json` summarizes. The export core behind it is now a programmatic call
+  (`exportNativeGerbers(pcbPath, { outputDir, savedFills, json })`) with the
+  `export gerbers` CLI as a thin, behavior-identical wrapper.
+
+  **The sync model is reworked around one rule: the ts source is the single
+  source of truth, the .kicad_pcb a build artifact.** The viewer layout is
+  the editor (its applies rewrite source and rebuild); KiCad-side edits reach
+  source exclusively through the sync watcher (`typeCAD: Start KiCad Sync`,
+  `typecad-pcb import <board> --watch --auto`). Nothing in the render
+  pipeline ever writes source from the board — the auto-reconcile that
+  earlier iterations shipped (`import --auto` from the render path) is gone:
+  it could silently revert an apply's own work when a semantic-check miss
+  left the board holding stale copper, and every route apply churned through
+  a full consolidation cycle. check-sync remains, as a DIAGNOSTIC: drift with
+  a board newer than every source means the artifact changed out-of-band
+  (the banner says "start typeCAD: KiCad Sync or the next build overwrites
+  it"); drift with nothing newer means the build does not reproduce source
+  ("please report").
+
+  **Applies now write routing in the write-back's canonical grammar, so they
+  create no drift at all.** When a project's routing already lives in the
+  per-net track section (`// Net: X` + `const track_X: TrackBuilder[] = []` +
+  `track_X.push(typecad.track({ net }).from(...).to(...))`), new routes land
+  THERE — byte-identical to how kicad2typecad would render them (naming,
+  number formatting, per-leg widths, end vias, block order, the create()
+  spread) — appended to the existing net's block or as a new block plus
+  spread. Verified live against rd_skeleton: a route planned and inserted by
+  the extension, one build, and the oracle reports "in sync — the source
+  regenerates this board exactly". The sidecar path remains for projects
+  without a section. One apply click = one build = one render: the apply
+  releases the pipeline lock at its tail, the board watcher's racing refresh
+  is deferred while an apply owns the pipeline and replayed at its
+  completion, and an all-skipped apply answers failure so the page keeps its
+  pending gesture.
+
+  Toolchain fixes the rework surfaced: a layout-view segment delete can empty
+  a net's last push, leaving an orphaned `const track_<NET>: TrackBuilder[] =
+[];` that the section regenerator's push-paired member scan skipped — the
+  regenerated section re-declared the name beside the survivor and the parse
+  gate refused the whole import cycle. Declarations carrying a regenerated
+  name now die with the section. Polygon zone literals (`points: […]`, what
+  the import writes for non-rect pours) match by bounding box — deletable
+  from the layout view, net-reassignable through the E panel, counted by the
+  new-pour priority floor; a geometry resize on one is refused with a
+  delete-and-redraw hint. And the extension's source/board watchers were one
+  shared handle — installing the board watcher at activation disposed the
+  source watcher, so source edits never auto-built; they are independent
+  now, with an activation regression test pinning both alive. Host status
+  locks carry a timestamp and the page reclaims a notice gone two minutes
+  stale, so a stalled chain can no longer freeze the readout.
+
+  One more live-report fix: an apply's render could complete without its
+  page ever being shown — the watcher refresh that assigns pages was
+  deferred while the apply owned the pipeline, and its replay hit the
+  board-unchanged branch, which returned without assigning the pending
+  HTML. The panel kept the PRE-apply page and the next apply was refused
+  against a stale board stamp ("the board was rebuilt since this view
+  rendered"). That branch now lands any render the panel has not been
+  shown, with a regression test pinning it.
+
+  And the canonical writer learned the orphaned-declaration shape: a net
+  whose pushes were all segment-deleted leaves `const track_<NET>:
+TrackBuilder[] = [];` with nothing in it, which the push-only
+  existing-net check could not see — the new-net path then re-DECLARED the
+  symbol beside the survivor (a duplicate-symbol build failure, seen live
+  on track_DRIVE) and re-SPREAD it into create() (which would double the
+  copper). A push now lands directly after the surviving declaration, and
+  the create()-args spread is only appended when the args do not already
+  carry it. The live project was repaired through the import's canonical
+  regeneration (one `track_DRIVE`, one spread, oracle reporting exact
+  agreement).
+
+  The apply's semantic check learned two truths the live board exposed:
+  footprint blocks come in pcbnew-10 split style too (`(` and `footprint`
+  on separate lines — the placement parser split on the literal
+  `(footprint ` and reported every moved component as having no footprint
+  at all), and a rip-up-and-REDRAW deletes a leg and re-adds the same path
+  at a new width in one gesture — geometry-only matching read the redraw
+  as the deleted trace surviving. Split-style footprints parse now, and a
+  "still present" delete whose copper coincides with a leg the same
+  gesture added is the redraw, not a miss; a genuinely surviving delete
+  still flags. One more parser truth: typeCAD's own provenance property —
+  `(property "Code" "typecad:v1:…" (at 0 0 0) …)` — precedes the
+  footprint's placement, so the first-(at) heuristic read 0,0 and every
+  move verified as "sits at 0.00,0.00" while the move had landed
+  perfectly; the placement is now the first (at) outside any property
+  form.
+
+  The canonical writer learned the two remaining routing truths the live
+  board taught. Mid-chain vias: a drawn route that changes copper layer
+  needs vias AT the transitions, and the canonical form for those is a
+  standalone `typecad.via({ at, net, size, drill });` line after the last
+  net block — the writer had only attached chain-END vias inline, so both
+  transition vias of a layer-jumping route silently vanished from the
+  board (seen live on AMP_OUT). Contiguous continuation: the oracle chains
+  positionally-contiguous segments into ONE statement regardless of how
+  many strokes drew them, so a route that starts where the net's last
+  statement ends now EXTENDS that statement instead of adding a sibling
+  (seen live as CH2_COM/DRIVE redraw drift until the write-back re-chained
+  them).
+
+  And the delete direction learned the same truth: deleting a route takes
+  its standalone transition vias with it (a via belongs to the geometry it
+  joins — when every leg touching its vertex is deleted, the statement
+  goes; seen live: the track went, both vias stayed on the rebuilt
+  board), and selecting a via and deleting it removes exactly its
+  statement — via-kind deletes had been pure bookkeeping. A via-delete at
+  a plain segment endpoint (the page fires one at every endpoint, most
+  carry no via) still drops silently and never refuses an apply.
+
+  The layout view can now REACH a via under a component body: the part's
+  own graphics swallow DOM hits, so element-based picking never saw copper
+  beneath the footprint — a press under the part fell through to segment
+  logic only, and the Tab cycle carried pad/segment/part/zone candidates
+  with no via kind. A `viaUnderCursor` barrel test (half the via's size
+  plus aim forgiveness) now claims the press before the segment fallthrough,
+  and the Tab cycle gained a via candidate with the click path's selection
+  semantics (sole via, net lit, Del removes). And the selection is VISIBLE
+  there: the via's selection ring paints on the element itself in the
+  copper group — beneath part graphics — so `viaHiSync` now also mirrors
+  every selected via's ring into an on-top group that re-appends itself as
+  the flip host's last child on every sync (last child = top of the SVG
+  paint order), keeping the ring above every layer and overlay.
+
+  Routing gained KiCad's layer rhythm: V no longer fires a via instantly
+  at wherever the cursor rests — it ARMS one, and the next click anchors
+  the segment and places the via exactly there (V again disarms; Shift+V
+  still cycles the far layer for blind/buried spans; finishing on a pad
+  discards the arm). While armed, the cursor carries the via's DRC
+  keep-out ring and a quiet solid ghost of the barrel itself — the same ring a
+  placed via shows, tracking the walk end with the live clear/red tint and
+  resizing with the via ladder — so the click point is chosen with
+  clearance VISIBLE. (The via-halo tint now TOGGLES its bad class instead
+  of replacing the class list — a swap stripped the preview marker,
+  freezing the ring where V was pressed and stranding it beyond cleanup.)
+  The preview's red and the placement refusal are the BARREL's own
+  clearance — a degenerate segment of the via's diameter over the same
+  obstacle set and rule any trace uses — not the trace walk's: a trace can
+  legally thread where a fat barrel would not, and a click that would land
+  the barrel on netted foreign copper is refused whole (neither anchor nor
+  via), with N/C crossings tinting red but placing with a warning, exactly
+  as trace anchors behave. Tab during a live route now cycles the copper layer
+  the next segment draws on — at the start of a route, and on the
+  continuation piece after a via, where the via's target layer follows the
+  choice (a piece with committed geometry refuses with a hint to place a
+  via first, since those segments already belong to their layer). Outside
+  a route, Tab still cycles the pad/trace/part/zone stack.
+
+  And page-side fixes now reach a LIVE session: the panel re-renders on
+  focus when the served page predates the installed generator bits —
+  previously a toolchain update with no board change left the open Board
+  tab serving the old in-memory page indefinitely (seen live as "no change
+  in any behavior" after a page-side fix), because nothing keyed a
+  re-render and re-focusing the tab changed nothing.
+
+  The via keep-out now sees the whole STACK: a barrel spans layers, so its
+  obstacle world is every copper group's foreign ink plus the pad
+  manifest's exact rects — pads included even when N/C (unconnected pad
+  copper is real copper; only the route's own net is exempt, keeping
+  via-in-pad legal) — which is why the ring now reddens over parts whose
+  pads are mostly unconnected, not just over foreign traces. And the halo
+  rings carry a thin board-unit stroke: an unsized SVG stroke defaults to
+  1 user unit = 1mm of board, so the keep-out band read ~1.8mm across for
+  a 0.85mm envelope.
+
+  Deleting a via now takes its solder-mask openings too: the delete path
+  cleared the copper flashes, the drill hole, and the session ink, but a
+  rebuilt via also renders one mask opening per mask layer — leaving them
+  painted a white ring where the via was until the next rebuild
+  regenerated the page.
+
+  Part bodies read as movable and own their press: the move cursor shows
+  on HOVER over any part (before, only the selected part carried it, so
+  unselected bodies kept the board crosshair and read as unmovable), and
+  pressing a footprint selects the PART — the capture listener no longer
+  claims an underlying segment for the trace selector, which had made
+  parts in dense corridors (U3 among its traces) effectively
+  unselectable. A via barrel under a body still claims its press (nothing
+  else can reach it), and traces beneath parts stay reachable through the
+  Tab cycle.
+
+  Text delegation now requires AIM: elementsFromPoint ignores pointer-events
+  and paint order, so a silk refdes glyph stacked anywhere beneath a part
+  handle made every body press on small parts delegate to the text handler
+  — their label ghost engaged instead of the part (C6/C3/D1 reads
+  mirrored; U3 unselectable under its own label). The press claims the
+  text only when it lands on the glyph's own ink (screen-space stroke
+  sampling); body presses belong to the part.
+
+  The mirror itself is fixed, and it lived in the label ghost's
+  keep-upright: the plotter bakes KiCad's fp-text rule into the gerber (an
+  angle in the upside-down half (90, 270] plots pre-flipped, so authored
+  rot-180 labels already read upright in the file), but the ghost re-flipped
+  whenever the TOTAL angle sat in that half — true for a rot-180 label even
+  with nothing pressed, so the first move turned already-upright glyphs
+  upside-down (for C6/6C-class glyph pairs, pixel-identical to a mirror;
+  seen live on C6, C3, D1 — exactly the parts whose labels author at
+  180/270, while U1's 0° labels never flipped). The flip now engages only
+  when pending presses move the label ACROSS the boundary relative to its
+  authored angle. The edited-value preview's stand-in <text> had the same
+  absolute test and also ignored the part's pending presses — it now
+  rotates to the direction the rebuild will plot (keep-upright folded in,
+  part presses included), with board-level gr_texts keeping their own
+  presses alone.
+
+  Arrow-key part nudges work again, and their DRC gate became an advisory.
+  The gate measured every obstacle by its bounding box while the rest of
+  the clearance machinery measures a track by its true centerline — a
+  diagonal run's fat box blankets the corridor beside its copper, and on
+  the live board that refused all four directions for every part in the
+  routed area (C6, U3 — and J2 additionally failed the board-edge check
+  its pads trip by overhanging the outline, as an edge connector's do).
+  Pads now walk their perimeter through the shared poly-aware margin walk
+  (same-net copper connects, net-class clearances honored, edge explicitly
+  not a part obstacle), and the verdict no longer blocks the move: the
+  M-drag lands ungated, so the nudge landing ungated matches it — a pad
+  that would sit in violation flashes the ghost red and appends
+  "clearance violation, DRC will flag it" to the readout instead of
+  refusing. A landed nudge also writes the position readout to the status
+  bar like the M-drag does (it used to leave the cursor coordinates
+  standing, which read as a no-op). The INK nudges keep their hard
+  refusal — the segment drag they mirror is itself gated.
+
+  And the DRC hints now follow moved parts. A moved part's ink carries
+  its ghost as the element's OWN transform, which getBBox ignores — every
+  clearance verdict kept testing the part at its authored spot, so a
+  trace drawn through the part's OLD position still reddened as if
+  something were there while the NEW position welcomed it blindly. The
+  obstacle build now folds the ghost transform into both the pad boxes
+  (boxInParent) and the track centerline vertices, skips display:none ink
+  (a moved part's ripped routing is not copper until the rebuild
+  re-routes it), and a live route's cached obstacle lists rebuild when a
+  move commits. Verified live on D1: routed from its VCC pad after an
+  arrow-move, the halo reddens over the GND pad's NEW position (naming
+  "D1.1 is GND") and stays clear over the vacated one.
+
+  The ? sheet's width & via rows no longer read as if "/" sized anything:
+  the key column's slash SEPARATOR between bracket pairs ("[ / ]",
+  "Shift+[ / ]") was indistinguishable from a key, so the rows now say
+  "[ ]", "Alt + [ ]" and "Shift+[ ] (the { } keys)" — matching the
+  mid-route status and the width-button tooltip.
+
+  The W width picker found its shape: the hint line at the bottom was the
+  widest child and never wrapped, stretching the panel past twice the
+  button ladders' width with everything else left-aligned in the corner.
+  The panel caps at the ladders' width now (the hint wraps beneath), and
+  the two ladders carry section titles in the E panel's header style —
+  "trace width" and "via size" — where before neither section said what
+  it sized; the exact-entry rows tighten to "mm" / "mm · drill 0.3" under
+  those titles.
+
+  The typeCAD theme's back copper is blue: the house palette carries one
+  green, and B.Cu's token read as a dimmer F.Cu — the two outer layers
+  were hard to tell apart. B.Cu (and pad_back with it) takes a blue
+  sibling of the theme's inner-layer accents, so front green and back
+  blue tell apart at a glance in the gerber and layout views.
+
+  A barrel never shares copper with another barrel, whatever the nets
+  say. The armed via's tests exempted the route's own net (rightly, for
+  copper — via-in-pad and via-on-trace are connections), so an armed via
+  placed dead-on a SAME-NET via sailed through and landed overlapping
+  (seen live on a PROBE_1 barrel). The new test has no net exemption at
+  all, and its threshold matches the visible affordance — the arm
+  preview's OUTER ring (barrel + clearance) touching the other barrel:
+  red and the click refusal ("via keep-out violation — another barrel is
+  inside the ring") begin where the rings meet, not where the copper
+  does (KiCad's hole-to-hole discipline is net-agnostic for the same
+  reason). The check hoists ABOVE the finish-tie branch (the walk
+  snapping onto the via read as a finish and committed straight
+  through), and includes the route's own already-placed barrels, whose
+  data-route stamp only lands at commit.
+
+  And the via-delete leftover found its true source: not the mask
+  openings (those were fixed, and this board plots none for vias) but
+  the POUR KNOCKOUT — zone fills render as fragmented regions whose
+  clearance gap around a barrel is the ABSENCE of fill, so deleting the
+  via's ink leaves a hole in the copper pour where the barrel was, with
+  no element to sweep. The delete MEASURES the hole: an isPointInFill
+  march outward through the fragments takes the nearest pour edge as the
+  knockout radius (rays that never hit run down a trace's clearance
+  channel and are ignored — an earlier unmasked march fanned the patch
+  out along it; a guessed-radius disc before that read as a green circle
+  inside the larger hole). The patch is that measured disc MASKED by the
+  fill engine's own discipline — black strokes of trace width plus the
+  measured pour clearance along every nearby trace, black discs for
+  neighbor barrels and pads — so channels and neighboring knockouts stay
+  dark. The patch also inherits the fragments' computed OPACITY (pours
+  render de-emphasized — an element-level opacity the fill color alone
+  doesn't carry; a full-brightness patch read as a green circle):
+  unattributed layer-ink paint that never registers as copper or
+  an obstacle and dies at the rebuild, whose fill engine recomputes the
+  true pour.
+
+  The ratsnest learned what a pin is: a pin numbered on more than one
+  pad is ONE netlist node, joined inside the footprint — dual-row
+  connectors (J1/J2) plot every pin twice, and the duplicate pads were
+  owing each other wires at rest that only a perfectly-snapped finish
+  cleared when routed. Same-pin pads now union into one connectivity
+  node (the pin resolved from the pad manifest by authored position when
+  the island pad carries none — guarded for the init-time refresh that
+  runs before the manifest island loads), wired-ness propagates to
+  twins, and a route reaching EITHER pad satisfies the whole pin.
+
+  And a live apply exposed two writers' gaps that broke the no-drift
+  guarantee on the canonical grammar: routes chained WITHIN one apply
+  read only the original text, so a route starting where a
+  just-appended statement ends added a sibling the oracle re-chains
+  (one J1 route committed in three steps landed as three statements
+  split mid-run) — earlier routes' statements now extend as pending
+  edits; and an emptied array kept its `...track_X` create() spread (the
+  oracle's args drop it — track_AMP_OUT drifted the moment its last push
+  died) — the emptied block (comment, declaration, spread) now goes
+  whole, with spread-aware name stripping in the create-args rewrite.
+  The live project was re-canonicalized through the oracle and reports
+  "in sync — the source regenerates this board exactly".
+
+  Tab to another copper layer now rebuilds the walk's obstacle world:
+  cycleRouteLayer switched the piece's canon, layerGroup and ink but left
+  the obstacle list built for the layer the piece STARTED on, so a route
+  Tabbed onto an inner layer kept measuring against the front layer's
+  copper and reddened over crossings the new layer doesn't carry (seen
+  live: every F.Cu obstacle tripped an In1 walk).
+
+  V now arms a via ANYWHERE, not just mid-route: with no route live, the
+  same DRC keep-out ring follows the cursor (stacked foreign copper,
+  via-on-via — the identical tests), and the click places a through-via
+  with barrels on every copper layer. The net comes from whatever copper
+  sits under the ring — a pad, a barrel, any layer's trace, or a POUR
+  REGION (isPointInFill on the fill fragments: a stitching via in the
+  ground pour adopts GND, which was the whole point). Placed off copper
+  the via is FLOATING and perfectly legal — the library's net is
+  optional and the canonical grammar omits the property, so the write
+  lands `typecad.via({ at, size, drill })` net-less and round-trips
+  through the oracle exactly. The apply entry is via-only (no pieces)
+  and the route writer carries it: standalone statements append without
+  a track statement, net-less when floating. And the via's E panel
+  gained a NET selector — the board's nets plus floating; a change
+  rewrites the barrel's electrical identity as a delete + re-place
+  netted, riding the existing apply payloads so session and board-built
+  barrels both edit (size and drill ride along; undo/redo restores the
+  original ink and entry).
+
+  And an apply in flight owns the pipeline: from the click until the
+  host's callback lands, the page is INPUT-DEAD — the not-allowed cursor
+  on everything (body.applying), every pointerdown swallowed at the
+  window capture before any downstream handler (part grabs, route
+  anchors, panel clicks), and the keydown handlers (layout keybinds, the
+  Escape cascade, view keys) return at their tops. A click landing
+  mid-build edits state the rebuild is about to replace and leaves undo
+  entries describing a page that no longer exists. A three-minute
+  failsafe unlocks a host that never answers. The jsdom props tests'
+  host stubs predate the 16-argument payload — their callback parameter
+  bound mid-list and never fired (harmless before the lock); they now
+  take the callback from the last argument.
+
+  Free-via follow-ups, all seen live: a FLOATING via's delete now
+  matches its net-less statement — the delete registry required the
+  `net:` clause literally, so deleting an applied floating via matched
+  nothing and refused the whole apply ("nothing was applied — 1 deleted
+  segment(s) matched no source route"). A netted via is a ratsnest NODE:
+  a barrel stranded from its net's copper owes a wire exactly like a
+  stranded pad (assigning a net to a free via drew nothing — the via's
+  component carried no pad and read as a dead stub); the wire appears on
+  assignment and leaves on delete or connection.
+
+  Walk TIES are layer-local now too: routeEndpoint gathered its snap
+  candidates from every copper group, so an anchor on one layer kept
+  capturing onto traces buried on another — copper there is not copper
+  here without a via (seen live: an anchor just north of U1.9 always
+  snapped to the In2 trace under it). Trace ties and barrel ties require
+  their ink in the current piece's layer group; a barrel qualifies
+  through its flash on that layer. Same-layer ties snap exactly as
+  before (verified: the walk on In2 still lands dead-on the SWCLK trace
+  and names the foreign net, while the same hover on F.Cu stays free).
+
+  The render every board change pays for shrank to the default view alone:
+  the pcba/blueprint/schematic renders and the ngspice solve are LAZY now.
+  The extension renders with `--lazy-views` — the page ships empty
+  placeholder groups (42% smaller on the live board: 1.31 MB vs 2.26 MB)
+  and each view fills on FIRST SWITCH: the page asks its host through the
+  new typecad/view-part bridge (`window.typecadViewPart`), the extension
+  runs `typecad-pcb viewer --view-part <name>` (one view re-rendered from
+  the same board, ~0.45 s) and answers with the mountable fragment; an
+  http-served page falls back to fetching the fragment the CLI left
+  beside it. A spinner names the work the whole time — "solving the
+  ngspice operating point…", "rendering the pcba view…", "calculating
+  copper ΔT…" — and the thermal solve yields a frame first so the ring
+  actually paints before the synchronous math. The ngspice solve itself
+  moved wholesale off the render chain: it used to run (npx + ngspice,
+  seconds) whenever the op file was older than the netlist — after every
+  apply — and now runs once at the first ngspice/thermal view switch,
+  cached by the same freshness rule. A failed solve costs the hover
+  readout, not the view (exactly an eager page built with no op island);
+  a failed render keeps the current view and names the error. The lazy
+  switch, the cache (second switch asks nothing), and the failure path
+  are pinned by jsdom tests; the bridge ask/reply and the extension's
+  part-serving (including the solve-once-cache-while-fresh rule) by
+  client and pipeline tests. The standalone CLI keeps its eager default,
+  so a plain `typecad-pcb viewer` page is unchanged; and `-o` finally
+  binds (short flags parked under their letter, so `-o` was silently
+  ignored forever — the multi-board per-board path masked it
+  server-side).
+
+  The pour is now RECOMPUTED live on delete, not patched. Deleting a
+  via (or trace segments) used to leave the barrel's clearance hole in
+  the rendered pour — painted over by a measured disc masked against its
+  neighbors (three rounds of "the circle is still visible": ring, green
+  disc, tone-shifted cutout). That machinery is gone. The delete path now
+  rebuilds the zone's fill WHOLE from live page state: the zone polygon
+  painted in the pour's own style, masked by the fill engine's own
+  discipline rebuilt from the ink that survived the delete — foreign
+  traces as fat strokes (width + 2x zone clearance), foreign barrels as
+  grown rects, foreign pads as clearance rects, and same-net pads as
+  thermal reliefs (a black gap ring with white bridge spokes). The
+  zone's clearance and thermal gap/bridge numbers ride the zones island
+  now (parseBoardZones captures (clearance …) and the (fill …)
+  sub-list); layer matching canon-normalizes so 'demo-F_Cu.gbr' groups
+  and 'F.Cu' zones agree; the pour's paint prefers the fragments'
+  attributes and restores the pre-dim opacity when the net-highlight
+  dimmer had stamped 0.06 over them. Pinned by a jsdom test that seeds a
+  zone, fragments, a foreign pad and a same-net pad, deletes a plotted
+  via, and asserts the whole replacement: one live fill with the zone
+  polygon, the pour's own paint, a mask with thermal spokes and foreign
+  holes — and the old ray-march/measured-disc/fragment-clone strings
+  absent from the page for good. Trace-segment deletes recompute their
+  layers' zones too (a closed channel anywhere along the run).
+
+  Drift maintenance went SILENT. Out-of-band board drift (the board newer
+  than every source — a KiCad edit without the sync watcher, or a stale
+  writer's apply) is now absorbed automatically at the render: the
+  extension runs the importer's canonical regeneration (`import --apply
+--auto` — byte-identical to kicad2typecad, zero drift by construction),
+  re-checks, and only leaves the banner when absorption cannot converge.
+  One attempt per board revision (win or lose — an unabsorbable drift can
+  never loop the pipeline), never while an apply owns it (the race that
+  killed the old render-path reconcile), and the equally-aged build-bug
+  class still banners because nothing can auto-fix a build bug. And the
+  writer-bug failure mode self-heals too: when an apply's source parses
+  but the REBUILD fails (the duplicate-symbol class that broke this
+  project for a morning), the apply now restores the pre-apply snapshot
+  immediately — the tree stays green, the page keeps the pending gesture,
+  and the next attempt re-applies against clean source. The standing
+  13:31 drift on the live project was reconciled through the exact
+  import command the absorber runs, and the corpus reports exact sync.
+
+  DRC runs only on request now, through the palette's typeCAD: DRC (or the
+  status chip's Run DRC link — the single affordance left). The opt-in
+  `typecad-pcb.drcOnBuild` watcher is gone (setting deleted with it), and
+  the apply pipeline no longer re-runs the check after every rebuild — it
+  builds, verifies, and re-renders, nothing more. With nothing refreshing
+  the report automatically, a report older than the board is WITHHELD from
+  the page instead of embedded: its markers describe the previous revision
+  and would sit at pre-move positions (the output channel says so and
+  points at the command); the fresh report a user just requested embeds
+  exactly as before. Both invariants are pinned: an apply never spawns the
+  drc child, and the render embeds --drc only when the report is at least
+  as new as the board.
+
+  A dead-code pass over the session's removals found the page clean of
+  grid/mil remnants but three true fossils: `segAt` (a nearest-segment
+  helper whose last caller died in the click-twin work), `exportSvgString`
+  - `download` (an SVG/PNG export path whose button left an earlier
+    iteration), and a source-level test asserting the dead exporter's own
+    body — the assertion had become the feature's only remains. All gone;
+    the page script now has no declared-but-never-called functions, and the
+    files touched today pass a `noUnusedLocals` build (the repo's older
+    unused locals in docgen/component.ts predate this work and stay).
+
+  The **mil** checkbox left the sidebar with its functionality: position
+  readouts are mm, full stop (the formatter collapsed to one line), and
+  the store's `__snap` no longer carries a units field. The removal also
+  surfaced a latent break from the grid surgery — the mm/mil formatter sat
+  between the deleted vars and the grid builder and went with them,
+  silently (the page script is a string to the typechecker, and no test
+  read a position status). It's back, mm-only, with a regression test
+  that drags a text and asserts the readout says `mm` — a status path
+  now guarded.
+
+  The layout view's GRID feature is gone entirely — the snap-ladder select
+  and the grid-show checkbox left the sidebar, the visible-grid builder
+  and its persistence with them. What remains is the snap checkbox at one
+  fixed step (0.5 mm — every interaction that snapped before snaps the
+  same way; there is just no ladder to climb anymore), and the store keeps
+  snap on/off + mil units under `__snap` (old `__grid` entries are simply
+  unread). And **B** now applies & rebuilds — the keydown clicks the same
+  sidebar button, so the whole gesture is identical: the pending-state
+  gate (a disabled button's click is a no-op), the input lock while the
+  build runs, the host bridge. The help sheet says so, and its two
+  grid-worded rows now say "snap step". Pinned by tests: the sidebar
+  items and grid element never exist, snap persists across a reload
+  without `__grid`, and b fires the apply payload exactly when the button
+  is armed (a free via arms it; a quiet page does nothing).
+
+  The via-delete pour patch finally disappears: the measured disc painted
+  UNDER the pour fragments at the fragments' own fill and opacity, but
+  its rim reached past the knockout and holes beside pads/channels are
+  not circles — outside the hole the disc stacked beneath live pour and
+  inside it stood alone, so the spot read as a tone-shifted cutout
+  circle (half-bright within, doubly-bright along the rim; seen live as
+  "a cutout circular pattern left in its place"). The patch's mask now
+  blacks out the pour's OWN fragments (cloned with their fill-rule), so
+  the disc paints only where the pour is absent and composites exactly
+  like the single-layer fill beside it — and the disc sizes to the
+  WIDEST measured ray when the hole is fully enclosed (the fragment
+  clipping makes the overshoot safe: the pour takes the hole's true
+  outline, notches included), falling back to the nearest edge when a
+  ray runs out into open board so the disc never paints background.
+  Verified live at two spots — a bare-corridor via and a via surrounded
+  by the SWD connector's pads — with the pour and patch both forced to
+  high opacity, the disc blends seamlessly: no tone shift, no rim, no
+  empty cutouts.
+
+  And the intermittent WHITE RING after a via delete found its chain of
+  events: a selected via's ring is MIRRORED into an on-top group (above
+  part graphics), and those mirror circles die only at the next
+  viaHiSync. Deleting a segment whose endpoint carried a via — the
+  selection's U-growth pulls endpoint barrels in, painting their mirrors
+  — swept the via inside segDelete, whose set bookkeeping emptied viaSel
+  BEFORE the Delete handler's conditional sync could run: the one case
+  where the only selected via rode a segment delete left its mirror
+  painted exactly where the barrel was (why it felt random — it took a
+  segment delete with the endpoint via selected). Fixed at both layers:
+  segDelete refreshes the mirrors at its tail beside its segment sync,
+  and removeViasAt itself sweeps any mirror rings at the deleted point,
+  so no caller's missed sync can orphan one. A jsdom regression test
+  places a real session via on a selected segment's endpoint, grows the
+  selection (ring appears), deletes the segment, and pins the ring gone
+  — with either fix layer disabled, the test leaves exactly one ring
+  behind.
+
+  Two more canonical-writer defects the SCL/SDA/UART apply exposed,
+  both silent until esbuild refused the build. A REDRAW PAIR — two
+  routes for one net in one payload (a re-send after a failed build, or
+  the stale session route riding beside its replacement) — starts both
+  at the same pad, so the contiguous within-apply extension never fires,
+  and every existing-net scan reads the ORIGINAL text: the second route
+  found no track_SDA.push there, took the new-net path, and re-DECLARED
+  the symbol beside the block the first route had just written
+  ("track_SDA has already been declared", the whole build dead). A net
+  that exists in this apply's pending edits now takes its second route
+  as a sibling push inside the pending block — one declaration, one
+  spread, both statements. And the create()-spread insert died silently
+  on TRAILING-COMMA args (`...track_X,\n);` — what canonical rewrites
+  and hand edits leave): the last-comma scan found nothing but
+  whitespace past that comma and returned null, so SDA/SCL/UART_RX/
+  UART_TX all gained blocks and NONE gained spreads — their copper never
+  reaching the board. The insert backs up over the trailing comma now,
+  slotting the spread between the last real argument and the surviving
+  comma. The live project was repaired by hand (superseded SDA block
+  removed, four spreads restored, the routing section re-canonicalized
+  through the oracle, the syncBoard call my own repair had swallowed
+  restored) and the corpus reports the source regenerating the board
+  exactly — pour included.
+
+  The live "the entire top copper zone turned black" after a via delete
+  was the net-highlight DIM outliving its selection, not the pour
+  recompute (whose geometry renders perfectly — verified by building the
+  engine's exact output by hand in the live page and screenshotting it
+  green). Selecting a via/segment/pad lights its net by dimming
+  everything else to opacity 0.06 — on the dark canvas a 0.06 pour is
+  invisible, and three lifecycle holes let that state strand: the Tab
+  cycle's zone/part branches light no net and cleared no dim (a pad or
+  via step's dim survived onto them), the Delete handler tore down the
+  selection without clearing its dim, and the recomputed live fill
+  carried no net so the dimmer's un-attributed sweep could blanket it
+  like any anonymous ink. All three closed: cycleHits clears any dim
+  before its branches re-light their own, every selection-consuming
+  Delete path (segments, vias, parts) clears the dim with the selection,
+  and the live fill is stamped with its zone's net and fill-rule — the
+  dimmer treats it with the fragments' own semantics (dims on foreign
+  nets, lights on its own, restores on clear) while the obstacle scans
+  rightly ignore it as pour paint and zonePourFragments still finds it
+  on re-recompute. Pinned by two jsdom regressions that fail with any of
+  the clears disabled, and verified live end-to-end: selecting a
+  PROBE_1 segment dims 360 elements with the pour at 0.06 (the exact
+  "black zone"), one Tab onto the zone restores the pour to 0.18 with
+  zero dimmed elements left, and the delete leaves the board fully lit.
+
+  And the dimmer itself was the deeper half of the same report: 0.06 — its
+  old floor — sits below the dark theme's readability floor, so ANY dim
+  (read: every via/segment/pad selection, however brief) read as "the
+  board turned black", the pour chief among the wreckage (a second live
+  report, "exactly as it did before", arrived with the page in a perfectly
+  healthy post-fix state — the black was the selection dim of the gesture
+  itself). The dim now floors at 0.35 and never above an element's
+  authored opacity: traces and pads recess visibly but stay readable, and
+  a pour authored at 0.18 keeps its exact normal wash through any
+  foreign-net highlight — what you see highlighted is a bright net on a
+  dimmed-but-intact board, not a black void. Pinned by the same
+  regressions (dim-to-floor asserted, 0.18-authored pour asserted
+  untouched) and verified live: 357 elements at 0.35, zero at 0.06, pour
+  at 0.18 throughout, clean restore on Esc.
+
+  And the live "unbuilt changes turn the pour black" report found the true
+  root of all three sightings: the recompute's MASK REGION. The engine built
+  its mask with `maskUnits="userSpaceOnUse"` but no x/y/width/height — the
+  default region is -10%..120% of the viewport, resolved against the board-mm
+  viewBox in a space the y-flip has already inverted, and the zone's
+  negative-y extent lands entirely OUTSIDE it. The mask evaluates empty, the
+  whole live fill paints nothing, and the pour vanishes into the dark canvas
+  — every attribute on the element perfectly sane (fill green, opacity 0.18,
+  sane polygon, sane mask children), which is exactly why three rounds of
+  DOM inspection read the page as healthy while the user watched it black.
+  Isolated by pixel-decoding screenshots of the live page: unmasking the
+  path painted the exact healthy wash; a hand-built control mask failed
+  identically; adding an explicit region to the same mask turned the pour
+  green on the spot. The engine now writes the mask region explicitly (the
+  zone bbox ±3, the same rect as the white base) — verified live end-to-end:
+  delete a plotted via through the real selection path, and the pour renders
+  51% green wash at the sample clip with its clearance holes, byte-identical
+  in style to the server pour. The knockout clones also drop any opacity
+  the net dimmer had stamped on their source traces — a half-transparent
+  stroke in a mask is a half-open channel; knockouts are binary now. jsdom
+  cannot render masks, so the regression pins the region attributes and the
+  clone-opacity strip directly.
+
+  Enter now reaches a ZONE's source definition. Clicking a pour (or Tab
+  cycling to it) selects it — a selection the E and Del affordances already
+  act on — but the Enter probe chain knew only components and nets, so a
+  zone click either probed whatever copper the cursor last crossed or
+  nothing. The page exposes the selected zone (net, layer, board-frame
+  points) through `typecadSelectedZone`; the injected client's Enter sends
+  it as a zone probe that OUT-RANKS the hover record (selecting the zone was
+  the explicit act); and the host bbox-matches the points against every
+  `zone({ … points: […] })` literal in src/**/*.ts (net breaking ties
+  between coincident per-layer pours) and reveals the declaring line — the
+  canonical writer and the zones island both round to 0.001 mm, so the
+  match is exact. The zone's selection status names Enter beside E and Del.
+  Pinned at all three layers: the page API's board-frame points (props),
+  the client's zone-wins-Enter message (client exec), and the resolver's
+  bbox/net/multi-line matching (unit) — and verified live: selecting the
+  GND pour reports the exact points of the `typecad.zone({...})` literal in
+  `_sync.ts`, line-for-line.
+
+  Free board text is now Del-deletable. A gr_text (authored as a
+  `typecad.text({...})` statement) selected in the layout view — click its
+  strokes, same as dragging it — used to have no Delete affordance at all;
+  now Del hides its ink immediately (undo restores it), records the
+  AUTHORED value+anchor as a pending deletion that rides the apply payload,
+  and the apply removes the whole statement from source — receiver,
+  semicolon, and newline included, matched by the same 0.05 mm anchor
+  discipline text edits use, with the deletion stage running before the
+  edit stage so a delete supersedes any pending move of the same text.
+  Component labels (a part's reference/value) are deliberately not
+  deletable this way — they belong to their footprint's options, not to a
+  standalone statement. Pinned by planner tests (whole-statement removal,
+  anchor tolerance, miss reporting) and a jsdom props test that deletes
+  the fixture text, asserts the hidden ink, the armed apply, the payload's
+  authored identity, and the undo round-trip; verified live on the board's
+  back silk — `microfire.co` selected, deleted, all 79 glyph strokes gone,
+  apply armed.
+
+  The Tab cycle carries a TEXT candidate now. Reference labels and board
+  texts render as glyph strokes that overlays sit ABOVE — part ghosts,
+  probe outlines, denser neighbors — so DOM picking never reaches them
+  (U3's own reference designator, buried behind its corridor, could not be
+  selected at all). `textUnderCursor` finds the text whose glyphs sit under
+  the cursor (rendered `data-text` paths and claimed plotted strokes both,
+  nearest anchor winning) and cycleHits offers it between the part and the
+  zone candidates; selecting mirrors the press path's semantics (sole text,
+  E panel owns the edit, drag to move). The ? sheet's Tab row names the
+  full ladder: pad / trace / via / part / text / zone. Pinned by a jsdom
+  regression that buries the fixture text under an overlay and reaches it
+  only through the cycle (it fails with the candidate disabled), and
+  verified live: hovering U3, Tab walks pad → segment → part →
+  `text "U3"` and selects it.
+
+  The text cycle learned its first live lesson: a single text candidate was
+  not enough. A part's reference and value labels share one anchor, and the
+  stroke-claiming competition (nearest-anchor-normalized-by-reach) hands
+  ALL the glyphs to the longer text — U3's reference had zero claimed
+  strokes, so hovering the drawn 'U3' offered pads, segments, the part, the
+  zone… everything except the text. The lookup is now a STACK, like the
+  zone stack: glyph hits (claimed strokes or the render's own data-text
+  paths) rank first, and every text whose own anchor disc contains the
+  cursor joins — so both labels at a shared anchor cycle (value then
+  reference), and neighbors in reach follow. Verified live at U3's label
+  anchor: the cycle reads `TS3A24159DRC` → `U3` → the adjacent labels, each
+  selectable. Pinned by a jsdom regression with reference and value
+  sharing one anchor and no seeded glyphs — the anchor disc is the only
+  road to the reference, and both labels must appear in one cycle.
+
+  And the text cycle respects the layer rail: a text whose layer is toggled
+  off (the sidebar checkbox writes display="none" on the layer group) never
+  cycles — fab labels cycling "even with the fab layers invisible" read as
+  ghosts. The visibility check maps each text to its nominal layer group
+  (layerKind + side; board texts without a layerKind pass if EITHER fab or
+  silk is on, matching the claim's own both-kinds search). Verified live
+  with every layer on — hovering U3's silk glyphs cycles `U3` FIRST, then
+  the value and neighbors — and with fab off: every fab label leaves the
+  cycle while the silk reference stays reachable. The jsdom fixtures
+  render their fab layer hidden by default, which the new hidden-layer
+  regression turned into its own lesson: the fixture-based text tests now
+  enable the layer explicitly, and the regression toggles it off and back
+  on to pin the filter both ways.
+
+  And the visibility rule found its true boundary: a REFERENCE label is
+  the layout overlay's own ink. With F.SilkS toggled off the plotted
+  strokes vanish, but the overlay still draws the designator above the
+  part — a visible, unselectable text (U3, reported live: "selecting the
+  U3 silkscreen text still won't select" with the front silk rail off).
+  References are exempt from the layer filter now — the overlay renders
+  them while editing regardless of the gerber rail, so they are always
+  selectable; value/fab labels and board texts remain plotted ink and
+  follow their layer (the fab-ghost fix stands). Pinned by the hidden-layer
+  regression extended with a reference label that must STAY cyclable
+  while its layer is off, beside the fab label that must not; verified
+  live in the user's own rail state (front silk and fabs off): the cycle
+  at the drawn U3 reads `text "R5"` → `text "U3"` and selects it.
+
+  One more hardening from the same report: the glyph-hit test read only
+  the inline style for hidden ink, but the layer rail hides groups with
+  the display ATTRIBUTE — rail-hidden strokes still produced glyph hits
+  (hidden-layer texts ranking first by a hit their layer said was
+  invisible). pointInPathBox checks both now. And the selectability was
+  re-verified end-to-end through the real affordances — the front-silk
+  rail checkbox clicked on, the cursor over the drawn silk glyphs, Tab
+  presses — the cycle reads `text "C1"` → `text "U3"` and selects it;
+  the same page with the rail off selects it through the reference
+  exemption. The page is proven in both states; a surface that still
+  fails is serving a pre-fix page (the ? sheet's Tab row naming
+  "pad / trace / via / part / text / zone" is the one-keypress version
+  marker).
+
+- badda73: Router safety: the autorouter can no longer emit shorting copper. Every
+  router-produced path passes an exact-geometry gate (segments and vias vs
+  every different-net pad and track, edge-to-edge with the stricter
+  clearance) before it becomes a track — a path whose swept copper clips
+  foreign copper is retried once on a finer grid and otherwise failed with a
+  message naming the pin pair, the violated obstacle, and the numbers
+  (`Route U2.3 → J2.1 failed: route rejected (clearance): segment 4 (34.19,13.79)->(34.9,14.5) on F.Cu clears U2.2 [DQ] by 0.05mm < 0.20mm`). Obstacles that already overlap the route's own terminal pads are placement errors DRC owns, not routing rejections. The escape-channel
+  warning now models the real escape path (a fat ray in both escape
+  directions, catching shell tabs squarely in front of a pad, not just
+  lateral flanks), and failed routes always print per-pair at the default
+  log level instead of a bare "some routes failed".
+
+### Patch Changes
+
+- badda73: Reference designators follow `create()` argument order. They were assigned
+  from a module-global counter on the first read of `.reference` — so the
+  order nets happened to mention pins decided the numbering and a BOM could
+  contradict the user's source (a 10µF labeled C1 over a 100nF). The
+  schematic's counter now assigns in registration order; the global counter
+  only hands out display placeholders before registration. `add component`
+  emits the part number as the generated component's `value` for
+  part-number-like symbol names (`ATtiny85-20S`, `DS18B20`), overridable
+  with `--value`; `typecad-pcb create` derives its `@typecad/pcb@~<version>`
+  pin from the CLI release the user ran instead of a hardcoded alpha; the
+  placement JSDoc no longer shows the crashing `sameAs(r1).plus(2)` form;
+  and `search` stays silent on pipes (no ANSI spinner frames in piped logs)
+  with the redundant "Top match" trailer removed.
+- c6ecd95: Layout view: a rotated footprint's labels anchor where KiCad actually plots
+  them — and a selected text finally reads as selected.
+
+  `parseBoardLabels` placed footprint properties with the rotation applied in
+  the wrong direction (R(+θ) instead of R(−θ)) and added the footprint's
+  angle to the label's own (absolute) angle. Every label of a rotated part was
+  mirrored across its origin — U3 in mod-ec (footprint rot 90) had its
+  reference anchored 5.7mm from the plotted "U3" ink, so the claim radius,
+  the anchor disc, and the press path could never reach it: the designator
+  was unclickable and never appeared in the Tab cycle (only the pour and the
+  trace through it did). The frame is pad-verified (pad 3 at local (−1.76, 0)
+  plots at origin + R(−90)·local) and now matches the gerber plotter, which
+  had it right all along. A rot-180 part is its own mirror, which is why
+  only rotated parts (U3, J1, J2) suffered.
+
+  On top of the corrected anchors: the hovered part's own labels join the
+  Tab cycle (KiCad's Tab steps through a footprint's fields), the part
+  candidate falls back to a geometric box test when ink or pad labels above
+  its handle swallow the DOM hit, the anchor disc tracks the live
+  (comp-transported) label position, and a press on a claimed glyph's own ink
+  selects its text over the copper beneath (the layer groups carry
+  pointer-events:none, so the claimed paths never receive real presses — the
+  layout-view capture path now aim-tests the ink in screen space before the
+  near-segment search).
+
+  Selecting a text — by click or Tab — draws an overlay-owned selection box
+  at the text's live anchor: recoloring claimed glyphs alone is invisible
+  where the ink is already the selection color (white silk/fab under the dark
+  theme's white selection ink) or where the label has no claimed strokes.
+  The box rides pending moves and rotations, doubles as the drag target a
+  stroke-less label never had, and every non-text selection (pad, segment,
+  via, zone, part, copper) clears it.
+
+  Cycle candidates now come from directly under the cursor and nowhere else.
+  Two reach bugs were retired: the part handles inherited the default
+  stroke-width of 1px (=1mm board units), and pointer-events:all counts the
+  stroke band even when stroke is none — every part was hittable ~0.5mm
+  outside its body (J2 joined the cycle from 2.2mm away). And a text with no
+  claimable ink cycled within a length-scaled disc of its anchor — 7+ mm for
+  long values — so labels nowhere near the cursor appeared in the stack; the
+  disc is now a last-resort scaled by the glyph height alone (a text with
+  claimed ink cycles only over that ink, and a part's labels only over the
+  part itself).
+
+  Selecting a part — or any of its attached labels — draws dashed leader
+  lines from the part's center to each label's live anchor, both ends
+  tracking pending moves: on a busy board a designator sits millimeters from
+  the body it names and a fab value reads as orphaned ink; the leader closes
+  that gap at a glance. A leader aims the eye at ink, so labels on hidden
+  layer rails get none (a fab value with F.Fab toggled away); stacked labels
+  (reference and value sharing one anchor) draw a single line, a label
+  centered on its own body (the fab reference mirror) draws none, and
+  clearing the selection clears the lines.
+
+  The layout sidebar slims down: the align-row and distribute-X buttons are
+  gone (their handlers went with them), and the toolbar's width-mirror
+  button (reading e.g. "0.3 mm") — the width/via picker it opened stays
+  reachable through its W key, and the [ ] / { } sizing keys are untouched.
+
+  Revert asks first. The revert button opens a confirmation dialog (webviews
+  suppress window.confirm, so the page owns the modal — Esc or the dimmed
+  backdrop cancels, Enter or the amber-accented button confirms) asking
+  whether to throw away the layout edits and return to the source file as it
+  renders. OK resets the session and asks the host to re-serve the page, so
+  the webview reloads to the source's own render; without a host (plain
+  http) the in-page reset is the whole revert. With nothing pending the
+  button never asks — the status line says there is nothing to revert.
+
+  A rebuilt board no longer carries a stale DRC report: `typecad-pcb
+viewer`'s auto-discovery embedded whatever <board>_drc.json existed, so
+  every page regenerated after a rebuild painted the previous revision's
+  violation markers at pre-move positions (and named "drc" among its
+  overlays) — reading as "the rebuild ran DRC". Auto-discovery now embeds
+  the report only when it is newer than the board (the same freshness rule
+  the vscode extension's page generation applies); an explicit --drc still
+  wins, and a fresh report — the one a DRC run just wrote — embeds as
+  before.
+
+  The regenerated viewer page is also never served half-written. The page
+  (and its view-part fragments) are re-served to an open browser tab on
+  every rebuild, and the plain in-place write handed a concurrent fetch a
+  truncated document: the DOM error-corrected enough for the page script
+  to run — halos moved, the checklist worked — but the SVG painted
+  nothing, reading as "the board went black". The CLI now writes those
+  files atomically (temp file + rename), so a rebuild landing while the
+  viewer is open can only ever serve the complete old or complete new
+  page.
+
+  And the mounted view fragments no longer share id namespaces. Every
+  pcba-family render emitted the same internal ids (pcba-clip, the
+  openings masks, aperture symbols, the components group), so with two
+  views mounted — pcba visited, then assembly — the document carried
+  duplicate ids and assembly's clip-path/mask references resolved into
+  the FIRST fragment's defs, inside a display:none view subtree. Engines
+  that treat a clipPath resolved through a hidden subtree as empty clip
+  the whole board away — black viewing area with only the (unclipped)
+  hover outlines alive. Each view now renders under its own prefix
+  (pcba/as/bp/sch, threaded through every generated id), references
+  resolve inside their own fragment, and a cross-fragment id-uniqueness
+  test keeps it that way.
+
+  For the renderer itself, the assembly view's hover outlines are now
+  DOM-built (createElementNS) on a requestAnimationFrame throttle instead
+  of per-move innerHTML string injection — same pixels, none of the
+  string-parsing churn — and the page carries a render-health self-report:
+  on the first assembly interaction it sends what the renderer actually
+  did (fragment mount state, board group size and display, clip/mask
+  resolution, viewport center hit) through the probe client into the
+  extension's output channel, so "the DOM says visible but the screen says
+  black" has an in-renderer witness the next time it happens.
+
+  That witness named the real black-board cause: a RESTORED view mode
+  asked for its deferred part at page boot, before the webview's injected
+  client had installed the host bridge — and the http fetch fallback is
+  CSP-blocked in the webview (connect-src falls back to default-src
+  'none'). The part was marked failed for the whole session, and every
+  later switch showed its EMPTY placeholder: black canvas with only the
+  page chrome (the BOM panel, the hover outlines) alive. The page now
+  waits briefly for the bridge before falling back to the fetch, a failed
+  part gets one retry on the next switch into it, and an unloaded
+  placeholder is never displayed — the previous view stays up and the
+  error stays on the status line instead of a black rectangle.
+
+  The toolbar slims to Fit / Flip / All / None + the pcba theme picker:
+  the KiCad layer-color theme select is retired (its recolor machinery
+  and island went with it — the dark-canvas silkscreen/paste/drill
+  recolor rules it gated now simply apply), the measure and DRC toggle
+  buttons are gone (rulers' Escape-clear and the embedded DRC markers'
+  rendering remain), and the theme options the pcba view carried now live
+  in the toolbar for every view — recoloring the pcba render AND the
+  assembly view's bare board, with a mount-time re-base so a theme picked
+  before a deferred view loads applies when it lands. The assembly
+  checklist grows to fill the sidebar's leftover height instead of a
+  46vh cap.
+
+  The pcba view composites like the physical board again. Its two openings
+  masks wrapped the mask gerber's ink in groups carrying a stroke color but
+  no stroke-width — and an unsized SVG stroke is 1 unit, 1mm in board
+  coordinates. Every pad opening dilated by half a millimeter on every side
+  until neighboring openings merged into corridors, and the copper pour
+  painted through them as a continuous ring of exposed copper around every
+  component's pad cluster (a 1.2mm opening read as 2.2mm). Both wrappers
+  now pin stroke-width to 0 (trace draws carry their own explicit widths
+  and never see the wrapper's); the openings are pad-sized again, so
+  exposed metal appears only where the soldermask actually opens — verified
+  against the gerber's own opening geometry, with zero copper rendered
+  outside it across a full-board sample grid.
+
+  Tented vias read as metal rings. The board's vias carry no mask openings
+  (covered, like KiCad's default), so their annuli only ghosted through the
+  film in a tone nearly identical to the clad — each via collapsed into a
+  bare drill dot. The assembled render now draws the true annulus (drill
+  edge to copper-flash edge, in the finish metal) under the drill dot for
+  every plated hole — a drill with a concentric round copper flash; an
+  unplated hole (no flash) stays bare.
+
+  Flipping the pcba view shows the back of the board instead of an empty
+  frame. The flip mirrored the gerber stack and negated the viewBox's x,
+  but the pcba render lived outside the gerber group — after the flip its
+  content sat entirely outside the visible window: black. The pcba now
+  ships with a back-side twin (its own id namespace, rendered from the
+  back layers pre-mirrored to land in the flipped viewBox), and Flip Board
+  swaps the two boards — same fragment, so the eager page, the deferred
+  host bridge, and the http fragment fetch all carry it. A board with no
+  back layers mirrors its front render instead of vanishing, and the
+  blueprint/schematic drawings of the front mirror the same way. The
+  viewBox mirror is computed from the live viewBox on every toggle, so a
+  deferred part mounted mid-session (whose union may have widened the
+  window) still flips correctly; a deferred pcba mounted while already
+  flipped comes up showing its back board.
+
+  A fifth view joins the switcher: Assembly — the build checklist. The
+  board renders bare (substrate, soldermask film with its openings,
+  finish-metal pads, silk, annuli, drills — no component bodies), every
+  component glyph shipped hidden, and the sidebar carries the BOM: parts
+  grouped by value + footprint, biggest groups first, each instance a
+  clickable chip. Checking a part off — its chip, or a click on the part's
+  land pattern in the view — reveals its glyph exactly as the pcba view
+  draws it, so the board visibly fills in as the build progresses; a
+  second click un-places, reset clears the lot, and check-offs persist
+  per board (the same store as layer settings and viewport, so a reload
+  mid-build loses nothing). Hovering a BOM row outlines every instance of
+  that group on the board — "where do the three 100nF go" answered at a
+  glance — and Flip Board swaps to the bare back side (with its own
+  checkable parts) like the pcba view does. Parts without drawn glyphs
+  (mounting holes, fiducials) stay out of the checklist. The view rides
+  the same deferred machinery as its siblings: `--lazy-views` ships an
+  empty placeholder, `--view-part assembly` serves the fragment, and the
+  vscode host bridge renders it on first switch. Hovering works both
+  ways: over the board, a part highlights its chip and row in the list
+  (scrolled into view) and outlines its whole value group; and the
+  outlines follow each part's BOARD-frame extents — the checklist data
+  carries w/h in the part's local frame, so a vertically-placed connector
+  (outlined horizontally at first) now reads vertical, at any rotation.
+
+- badda73: Diagnostics tell the truth: `query net`'s copper analysis is now geometric
+  (a track endpoint anywhere on a pad, a mid-span tee, and a via inside a
+  pad annulus all connect — the previous exact-coordinate unions read almost
+  every routed net as "1/N pins connected"), which also fixes `query
+summary`'s bogus "unrouted nets" count on fully routed boards. `check`
+  lists each intentionally-open pin once (ERC owns no-net pins when it ran)
+  and gains a typecheck step (`tsc --noEmit`; `--skip-typecheck` to skip)
+  plus a `pcb.dnc(...)` hint on `pin_not_connected` — catching type errors
+  the tsx build would have run anyway. `drc --kicad` / `erc --kicad` now
+  print the engine that actually ran. MountingHole pads are auto-marked
+  do-not-connect so they stop failing ERC on every board.
+
 ## 1.0.0-alpha.9
 
 ### Minor Changes

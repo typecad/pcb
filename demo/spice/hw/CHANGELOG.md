@@ -1,5 +1,19 @@
 # spice-demo-hw
 
+## 1.0.1-alpha.4
+
+### Patch Changes
+
+- Updated dependencies [91db638]
+- Updated dependencies [99a818f]
+- Updated dependencies [badda73]
+- Updated dependencies [99a818f]
+- Updated dependencies [b085cf2]
+- Updated dependencies [badda73]
+- Updated dependencies [c6ecd95]
+- Updated dependencies [badda73]
+  - @typecad/pcb@1.0.0-alpha.10
+
 ## 1.0.1-alpha.3
 
 ### Patch Changes

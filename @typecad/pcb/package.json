@@ -1,6 +1,6 @@
 {
   "name": "@typecad/pcb",
-  "version": "1.0.0-alpha.12",
+  "version": "1.0.0-alpha.13",
   "description": "🤖programmatically 💥create 🛰️hardware",
   "keywords": [
     "kicad",
@@ -113,10 +113,10 @@
   "devDependencies": {
     "@types/clipper-lib": "^6.4.0",
     "@types/node": "^22.13.0",
-    "@vitest/coverage-v8": "^4.1.11",
+    "@vitest/coverage-v8": "^4.1.12",
     "jsdom": "^30.0.1",
     "typescript": "^5.9.3",
-    "vitest": "^4.1.11"
+    "vitest": "^4.1.12"
   },
   "repository": {
     "type": "git",

@@ -1,5 +1,7 @@
 // Board-file discovery, kept free of vscode imports so it stays unit-testable.
 import fs from 'node:fs';
+import { createHash } from 'node:crypto';
+import os from 'node:os';
 import path from 'node:path';
 
 export function mtimeOf(file: string): number {
@@ -7,6 +9,105 @@ export function mtimeOf(file: string): number {
     return fs.statSync(file).mtimeMs;
   } catch {
     return 0;
+  }
+}
+
+/**
+ * Is this board file byte-for-byte the output of the last build? The build
+ * records a sha256 of every board it writes in .typecad-board.json
+ * (`hashes`); a KiCad save (or any other out-of-band write) changes the
+ * bytes and breaks the match.
+ *
+ * true  — the build wrote exactly this file (drift against source is a
+ *         build bug, never something to absorb back into source)
+ * false — the file differs from what the build wrote (a real external edit)
+ * null  — unknown: no manifest / pre-hash toolchain / unreadable board.
+ *         Callers keep their legacy (mtime) behavior.
+ */
+export function boardIsBuildOutput(board: string): boolean | null {
+  const hash = boardContentHash(board);
+  if (!hash) return null;
+  try {
+    const manifest = JSON.parse(fs.readFileSync(path.join(path.dirname(board), '.typecad-board.json'), 'utf8')) as {
+      hashes?: Record<string, unknown>;
+    };
+    const recorded = manifest.hashes?.[path.basename(board)];
+    if (typeof recorded !== 'string') return null;
+    return recorded === hash;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Is another process (the KiCad sync terminal, a manual `import`) holding
+ * the project's import lock? Mirrors @typecad/pcb's kicad2typecad/safety.ts
+ * (sha1 of the resolved project root → a pid file in the temp dir; a dead
+ * pid is a stale lock). While one is held it OWNS board→source import: the
+ * viewer must not start a competing absorb (the importer would refuse it,
+ * and the viewer would burn its once-per-revision attempt on a no-op).
+ * Drive-letter case is tried both ways — the terminal's cwd and the
+ * workspace folder do not always agree on it on Windows.
+ */
+export function importLockHeld(folder: string): boolean {
+  const roots = new Set<string>([path.resolve(folder)]);
+  const abs = path.resolve(folder);
+  if (/^[A-Za-z]:/.test(abs)) {
+    roots.add(abs[0]!.toLowerCase() + abs.slice(1));
+    roots.add(abs[0]!.toUpperCase() + abs.slice(1));
+  }
+  for (const root of roots) {
+    const key = createHash('sha1').update(root).digest('hex').slice(0, 12);
+    const lock = path.join(os.tmpdir(), `typecad-import-${key}.lock`);
+    try {
+      const pid = parseInt(fs.readFileSync(lock, 'utf8'), 10);
+      if (!Number.isFinite(pid) || pid === process.pid) continue;
+      try {
+        process.kill(pid, 0);
+        return true;
+      } catch {
+        /* stale lock */
+      }
+    } catch {
+      /* no lock file */
+    }
+  }
+  return false;
+}
+
+const identityCache = new Map<string, { mtimeMs: number; size: number; id: string }>();
+
+/**
+ * A board's IDENTITY: a short digest of its bytes. Whether "the board
+ * changed" is a question about content — a touched/re-saved file with the
+ * same bytes is the same board (no re-render, no refused apply), and a
+ * rewrite that lands inside one coarse mtime tick is still a different one.
+ * (AGE questions — is the page newer than the board, is the DRC report
+ * older — stay on mtimes: they are about order, not identity.)
+ *
+ * Hashing a multi-MB board on every watcher event would be wasteful, so a
+ * result is reused while the file's mtime AND size are unchanged. Empty
+ * string when the file is unreadable (callers treat it as "unknown").
+ */
+export function boardIdentity(board: string): string {
+  try {
+    const st = fs.statSync(board);
+    const hit = identityCache.get(board);
+    if (hit && hit.mtimeMs === st.mtimeMs && hit.size === st.size) return hit.id;
+    const id = createHash('sha256').update(fs.readFileSync(board)).digest('hex').slice(0, 16);
+    identityCache.set(board, { mtimeMs: st.mtimeMs, size: st.size, id });
+    return id;
+  } catch {
+    return '';
+  }
+}
+
+/** sha256 of a file's bytes, or null when unreadable. */
+export function boardContentHash(board: string): string | null {
+  try {
+    return createHash('sha256').update(fs.readFileSync(board)).digest('hex');
+  } catch {
+    return null;
   }
 }
 
@@ -128,15 +229,56 @@ export function newestSourceMtime(folder: string): number {
 }
 
 /**
- * Is the compiled board older than any source? True means a build is owed —
+ * The mtime of the OLDEST board the project's build produced — the one that
+ * decides whether a build is owed. A multi-board project (mother/daughter,
+ * board/jig) is built by one run that rewrites every board; judging
+ * staleness by the active board alone misses a build that died after
+ * writing it but before writing a sibling (the sibling is stale, the active
+ * board looks fine). Falls back to the single resolved board without a
+ * manifest; null when nothing is built.
+ */
+export function oldestBoardMtime(folder: string): number | null {
+  const boards = listBoardFiles(folder);
+  if (boards.length > 0) return Math.min(...boards.map(mtimeOf));
+  const board = newestBoardFile(folder);
+  return board ? mtimeOf(board) : null;
+}
+
+let sourceMtimeCache: { folder: string; value: number; at: number } | null = null;
+
+/**
+ * newestSourceMtime for callers that ask often (the status bar on every
+ * save/watch tick): a directory walk stat()s every source file, which is
+ * wasted work when nothing changed. Reused for `ttlMs` unless
+ * invalidateSourceMtime() ran (the source watcher and save hook call it, so
+ * a real edit is never hidden). Decisions that START A BUILD must use the
+ * uncached newestSourceMtime.
+ */
+export function newestSourceMtimeCached(folder: string, ttlMs = 2_000): number {
+  const now = Date.now();
+  if (sourceMtimeCache && sourceMtimeCache.folder === folder && now - sourceMtimeCache.at < ttlMs) {
+    return sourceMtimeCache.value;
+  }
+  const value = newestSourceMtime(folder);
+  sourceMtimeCache = { folder, value, at: now };
+  return value;
+}
+
+export function invalidateSourceMtime(): void {
+  sourceMtimeCache = null;
+}
+
+/**
+ * Is any compiled board older than a source? True means a build is owed —
  * the board on disk (and therefore the Board viewer) describes a previous
  * revision of the sources. Null when there is no board yet (always owed,
  * but the caller decides whether that is a build or a "run create first").
+ * `cached` uses the memoized source scan (status display only).
  */
-export function boardStale(folder: string): boolean | null {
-  const board = newestBoardFile(folder);
-  if (!board) return null;
-  return newestSourceMtime(folder) > mtimeOf(board);
+export function boardStale(folder: string, opts: { cached?: boolean } = {}): boolean | null {
+  const oldest = oldestBoardMtime(folder);
+  if (oldest === null) return null;
+  return (opts.cached ? newestSourceMtimeCached(folder) : newestSourceMtime(folder)) > oldest;
 }
 
 /**

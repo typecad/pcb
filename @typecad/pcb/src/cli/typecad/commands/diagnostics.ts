@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import chalk from 'chalk';
 import type { ParsedArgs } from '../parser.js';
 import logger from '../../../utils/logging.js';
+import { sym } from '../ui.js';
 import { buildBoardModel } from '../board_model.js';
 import {
   buildDirPath,
@@ -166,11 +167,11 @@ export async function run(parsed: ParsedArgs): Promise<void> {
 
   // ── Summary ───────────────────────────────────────────────────────────────
   if (json) {
-    logger.log(JSON.stringify(report, null, 2));
+    logger.out(JSON.stringify(report, null, 2));
     return;
   }
   const s = report.summary;
-  logger.log(`  ${chalk.green('✓')} report written`);
+  logger.log(`  ${chalk.green(sym.ok)} report written`);
   logger.log(`  markdown   ${mdPath}`);
   logger.log(`  data       ${jsonPath}`);
   logger.log('');

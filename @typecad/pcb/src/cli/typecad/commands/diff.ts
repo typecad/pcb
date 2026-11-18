@@ -65,7 +65,7 @@ export async function run(parsed: ParsedArgs): Promise<void> {
   const positional = parsed.positional;
   const fullMode = parsed.args['full'] === true;
   // embedded callers (the vscode extension) render the report themselves
-  const noOpen = parsed.args['no-open'] === true;
+  const noOpen = parsed.args['open'] === false;
   let theme: string | undefined;
   let outputHtmlPath: string | undefined;
 

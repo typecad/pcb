@@ -1,0 +1,31 @@
+{
+  "permissions": {
+    "deny": [
+      "Read(./node_modules/**)",
+      "Read(./**/node_modules/**)",
+      "Read(./**/build/**)",
+      "Read(./**/dist/**)",
+      "Read(./package-lock.json)",
+      "Read(./**/package-lock.json)",
+      "Read(./**/CHANGELOG.md)",
+      "Read(./.git/**)",
+      "Read(./.changeset-shelved/**)",
+      "Read(./gerber_spec/golden/**)",
+      "Read(./gerber_spec/analysis/**)",
+      "Read(./website/static/**)",
+      "Read(./website/llms/**)",
+      "Read(./website/node_modules/**)",
+      "Read(./demo/**/docs/**)",
+      "Read(./demo/**/gerber-viewer.html)",
+      "Read(./@typecad/pcb/tests/docgen/fixtures/**)",
+      "Read(./**/*.html)",
+      "Read(./**/*.pdf)",
+      "Read(./**/*.png)",
+      "Read(./**/*.gtl)",
+      "Read(./**/*.gbl)",
+      "Read(./**/*.gbr)",
+      "Read(./**/*.vsix)",
+      "Read(./**/*.map)"
+    ]
+  }
+}

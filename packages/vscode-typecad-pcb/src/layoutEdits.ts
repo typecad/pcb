@@ -1175,13 +1175,13 @@ export function planComponentEdits(
           // manage (layer, show, styled by hand…) — keep them. Balanced-brace
           // parsing: a nested justify object must not truncate the literal
           const keyRe = new RegExp(`\\b${prop}\\s*:`);
-          const km = keyRe.exec(inner);
+          const km = keyRe.exec(newInner);
           let bodyStr = '';
           let span: { start: number; end: number } | null = null;
           if (km) {
-            const r = objectLiteralRange(inner, km.index + km[0].length - 1);
+            const r = objectLiteralRange(newInner, km.index + km[0].length - 1);
             if (r) {
-              bodyStr = labelLayoutBody(spec.label, part, inner.slice(r.open + 1, r.close));
+              bodyStr = labelLayoutBody(spec.label, part, newInner.slice(r.open + 1, r.close));
               span = { start: km.index, end: r.close + 1 };
             }
           }

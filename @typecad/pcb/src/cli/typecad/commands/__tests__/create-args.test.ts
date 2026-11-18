@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { ParsedArgs } from '../../parser.js';
+import { parseArgv } from '../../parser.js';
 
 const mainMock = vi.fn();
 
@@ -23,6 +24,12 @@ function parsedWith(args: ParsedArgs['args']): ParsedArgs {
 }
 
 describe('create command arg shaping', () => {
+  it('parses a space-separated project name', () => {
+    expect(parseArgv(['node', 'typecad-pcb', 'create', '--name', 'sensor', '--yes']).args).toEqual({
+      name: 'sensor',
+      yes: true,
+    });
+  });
   beforeEach(() => {
     mainMock.mockReset();
   });

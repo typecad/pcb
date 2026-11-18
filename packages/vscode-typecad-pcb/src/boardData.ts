@@ -27,6 +27,7 @@ const DEFAULT_TIMEOUT_MS = 15_000;
 
 export class BoardDataService {
   private cwd: string | null = null;
+  private boardStem: string | undefined;
   private indexCache: ComponentSummary[] | null = null;
   private indexInFlight: Promise<ComponentSummary[]> | null = null;
   private netsCache: NetSourceSummary[] | null = null;
@@ -40,6 +41,12 @@ export class BoardDataService {
     private readonly run: QueryRunner,
     private readonly timeoutMs: number = DEFAULT_TIMEOUT_MS,
   ) {}
+
+  setBoard(stem: string | undefined): void {
+    if (this.boardStem === stem) return;
+    this.boardStem = stem;
+    this.invalidate();
+  }
 
   /** Point the service at a hw folder; switching folders drops the cache. */
   setFolder(cwd: string): void {
@@ -169,7 +176,9 @@ export class BoardDataService {
   private async query(command: string): Promise<string> {
     if (!this.cwd) throw new QueryError('No typeCAD project folder (typecad.conf.ts) found in this workspace');
     try {
-      return await this.run(this.cwd, command, this.timeoutMs);
+      const board = this.boardStem;
+      if (board && !/^[A-Za-z0-9_.-]+$/.test(board)) throw new Error('Unsupported board name for query');
+      return await this.run(this.cwd, board ? `${command} --board ${board}` : command, this.timeoutMs);
     } catch (err) {
       const text = err instanceof Error ? err.message : String(err);
       throw new QueryError(text, /no \.kicad_pcb/i.test(text));

@@ -99,7 +99,17 @@ describe('create_project scaffolds the complete project', () => {
       return '';
     });
     const { create_project } = await import('../create_project.js');
-    await create_project({ name: 'doomed', hal: false, git: false });
+    await expect(create_project({ name: 'doomed', hal: false, git: false })).rejects.toThrow('Project creation failed');
     expect(fs.existsSync(path.join(tmp, 'doomed'))).toBe(false);
+  });
+
+  it('preserves an existing project directory', async () => {
+    const root = path.join(tmp, 'existing');
+    fs.mkdirSync(root);
+    fs.writeFileSync(path.join(root, 'board.txt'), 'existing work');
+    const { create_project } = await import('../create_project.js');
+    await expect(create_project({ name: 'existing', hal: false, git: false })).rejects.toThrow('already exists');
+    expect(fs.readFileSync(path.join(root, 'board.txt'), 'utf8')).toBe('existing work');
+    expect(execFileSync).not.toHaveBeenCalled();
   });
 });

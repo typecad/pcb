@@ -1,5 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
+vi.mock('../src/library_asset.js', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../src/library_asset.js')>(),
+  resolveLibraryAsset: vi.fn(() => null),
+}));
+
 const { mockExistsSync, mockReadFileSync, mockPlatform } = vi.hoisted(() => ({
   mockExistsSync: vi.fn(),
   mockReadFileSync: vi.fn(),
@@ -206,6 +211,7 @@ describe('SymbolLibraryManager', () => {
       const result = manager.getSymbolDefinition('Device:Nonexistent');
       expect(result).toBeNull();
       expect(mockLogError).toHaveBeenCalledWith(expect.stringContaining('not found'));
+      expect(mockLogError).toHaveBeenCalledWith(expect.stringContaining('typecad-pcb lib add Device:Nonexistent'));
     });
   });
 
@@ -395,20 +401,19 @@ describe('SymbolLibraryManager', () => {
 
   describe('library content loading', () => {
     it('should use cached library content if available', () => {
-      const cached = [[makeSym('cached')]];
-      (manager as any).libraryCache.set('Device', cached);
+      const cached = [[makeSym('symbol'), 'R']];
+      (manager as any).libraryCache.set('/usr/share/kicad/symbols/Device.kicad_sym', cached);
       mockExistsSync.mockImplementation(() => {
         throw new Error('should not be called');
       });
-      const result = (manager as any).getLibraryContent('Device');
+      const result = (manager as any).getLibraryContent('Device', 'R', true);
       expect(result).toBe(cached);
     });
 
     it('should return null when library file does not exist', () => {
       mockExistsSync.mockReturnValue(false);
-      const result = (manager as any).getLibraryContent('Device');
+      const result = (manager as any).getLibraryContent('Device', 'R', true);
       expect(result).toBeNull();
-      expect(mockLogError).toHaveBeenCalledWith(expect.stringContaining('not found'));
     });
 
     it('should return null when library file parse fails', () => {
@@ -418,7 +423,7 @@ describe('SymbolLibraryManager', () => {
         throw new Error('parse error');
       });
 
-      const result = (manager as any).getLibraryContent('Device');
+      const result = (manager as any).getLibraryContent('Device', 'R', true);
       expect(result).toBeNull();
       expect(mockLogError).toHaveBeenCalledWith(expect.stringContaining('Error reading'), expect.any(Error));
     });

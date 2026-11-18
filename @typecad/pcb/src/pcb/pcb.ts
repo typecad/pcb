@@ -283,8 +283,8 @@ export class PCB {
    * @param via - The via details.
    * @returns The component representing the via.
    */
-  via({ at, size, drill, net, powerInfo }: Omit<IVia, 'uuid' | 'netCode' | 'layers'> = {}): Component {
-    return createVia(this._state.currentOffset, (c) => this.stage(c), { at, size, drill, net, powerInfo });
+  via({ at, size, drill, net, powerInfo, layers }: Omit<IVia, 'uuid' | 'netCode'> = {}): Component {
+    return createVia(this._state.currentOffset, (c) => this.stage(c), { at, size, drill, net, powerInfo, layers });
   }
 
   zone(options: IPcbZoneOptions): void {

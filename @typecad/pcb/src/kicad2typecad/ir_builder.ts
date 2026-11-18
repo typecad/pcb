@@ -670,6 +670,7 @@ export class KicadIRBuilder {
       at: { x, y },
       size: size as number,
       drill: drill as number,
+      layers: node.child('layers') ? [node.child('layers')!.getString(1) ?? '', node.child('layers')!.getString(2) ?? ''] : undefined,
       net: netRef?.number,
       netName: netRef?.name || undefined,
     };

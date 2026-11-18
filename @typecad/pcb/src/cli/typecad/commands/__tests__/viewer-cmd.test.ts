@@ -8,7 +8,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 vi.mock('../../../../utils/logging.js', () => ({
-  default: { log: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn(), info: vi.fn() },
+  default: { log: vi.fn(), out: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn(), info: vi.fn() },
 }));
 
 import logger from '../../../../utils/logging.js';
@@ -80,7 +80,7 @@ describe('typecad-pcb viewer', () => {
     );
     expect(fs.existsSync(out)).toBe(true);
 
-    const logged = (logger.log as ReturnType<typeof vi.fn>).mock.calls.map((c) => String(c[0]));
+    const logged = (logger.out as ReturnType<typeof vi.fn>).mock.calls.map((c) => String(c[0]));
     const summary = JSON.parse(logged.find((s) => s.trimStart().startsWith('{'))!) as { overlays: string[]; layers: number };
     expect(summary.overlays).toContain('rules');
     expect(summary.layers).toBeGreaterThan(0);
@@ -89,7 +89,7 @@ describe('typecad-pcb viewer', () => {
   it('auto-discovers the build artifacts the page knows how to consume', async () => {
     fs.writeFileSync(path.join(buildDir, 'one_hz_rules.json'), JSON.stringify({ minTraceWidth: 0.2 }));
     await run(makeParsed({ json: true }));
-    const logged = (logger.log as ReturnType<typeof vi.fn>).mock.calls.map((c) => String(c[0]));
+    const logged = (logger.out as ReturnType<typeof vi.fn>).mock.calls.map((c) => String(c[0]));
     const summary = JSON.parse(logged.find((s) => s.trimStart().startsWith('{'))!) as { overlays: string[] };
     expect(summary.overlays).toContain('rules');
   });

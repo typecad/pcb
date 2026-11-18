@@ -1,5 +1,6 @@
 import type { LayerInfo } from '../detect_layer.js';
 import type { DrcMarker, FabReport } from '../report.js';
+import { LAYER_THEME_LIST } from '../themes.js';
 
 export interface ViewerOptions {
   /**
@@ -199,6 +200,7 @@ export interface ViewerOptions {
    * a CSS variable so the switch is a client-side restyle. Pass [] to omit
    * the picker entirely.
    */
+  layerThemes?: import('../themes.js').LayerTheme[];
   /**
    * pad labels from the PCB model (build/<board>_pads.json): pin number +
    * net name per pad with world position/extent. The page renders them on
@@ -713,8 +715,15 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
     if (layersBox) layersBox.style.display = viewMode === 'gerber' || viewMode === 'layout' ? '' : 'none';
     if (btnAllOn) btnAllOn.style.display = viewMode === 'gerber' ? '' : 'none';
     if (btnAllOff) btnAllOff.style.display = viewMode === 'gerber' ? '' : 'none';
-    // the theme picker now lives in the toolbar for every view — nothing
-    // to gate here
+    // theme pickers are per view: the KiCad color themes drive the gerber &
+    // layout stacks, the pcba (green/red enig) picker drives pcba +
+    // assembly, and blueprint / ngspice / copper \u0394T have no theme at all
+    var layerThemeEl = document.getElementById('layer-theme');
+    if (layerThemeEl)
+      layerThemeEl.style.display = viewMode === 'gerber' || viewMode === 'layout' ? '' : 'none';
+    var pcbaThemeEl = document.getElementById('pcba-theme');
+    if (pcbaThemeEl)
+      pcbaThemeEl.style.display = viewMode === 'pcba' || viewMode === 'assembly' ? '' : 'none';
     // the assembly checklist (and its hover outlines) belong to assembly
     var asmBox = document.getElementById('asm-box');
     if (asmBox) asmBox.style.display = viewMode === 'assembly' ? '' : 'none';
@@ -4033,8 +4042,8 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
           // an even number of presses must apply as no flip. A pending
           // flip means the target is the OPPOSITE of the authored side.
           mvEntry.side = cMv && cMv.side === 'back' ? 'front' : 'back';
-          mvEntry.padsTo = finalPadBoard(mr2);
         }
+        if (layoutFlip[mr2] || m2.rot) mvEntry.padsTo = finalPadBoard(mr2);
         moves.push(mvEntry);
       }
       // flips with no move of their own ride as zero-delta entries so the
@@ -15472,6 +15481,94 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
   // per-group CSS variable (--ink-<layerId>), so switching is a restyle of
   // group + chip + canvas — no path is touched. Saved per browser like the
   // dark/light preference, shared across boards and sessions.
+  var LAYER_THEME_KEY = 'gerber-viewer:layer-theme:v1';
+  var layerThemesIsland = [];
+  try {
+    layerThemesIsland = JSON.parse(document.getElementById('layer-themes').textContent) || [];
+  } catch (e) {}
+  var layerThemeSel = document.getElementById('layer-theme');
+  // copper side from the filename stem: f_cu / b_cu / in<N>_cu
+  function themeColorFor(theme, g) {
+    var name = (g.getAttribute('data-layer-name') || '').toLowerCase();
+    var kind = g.getAttribute('data-kind');
+    var key = null;
+    if (kind === 'copper') {
+      if (/(^|[-_.])f_cu(?=$|[-_.])/.test(name)) key = 'f';
+      else if (/(^|[-_.])b_cu(?=$|[-_.])/.test(name)) key = 'b';
+      else {
+        var inm = /(^|[-_.])in(\d+)_cu(?=$|[-_.])/.exec(name);
+        key = inm ? 'in' + inm[2] : 'f';
+      }
+      var cop = theme.board.copper;
+      return cop ? cop[key] || null : null;
+    }
+    var side = /(^|[-_.])b_(mask|paste|silks|adhes|fab|crtyd)/.exec(name);
+    var suffix = kind === 'silkscreen' ? 'silks' : kind === 'courtyard' ? 'crtyd' : kind;
+    var tokens = { mask: 1, paste: 1, silks: 1, adhes: 1, fab: 1, crtyd: 1 };
+    if (tokens[suffix]) key = (side ? 'b_' : 'f_') + suffix;
+    else if (kind === 'edge') key = 'edge_cuts';
+    else if (kind === 'drill') key = 'via_through';
+    return key ? theme.board[key] || null : null;
+  }
+  function applyLayerTheme(id) {
+    var theme = null;
+    for (var lt = 0; lt < layerThemesIsland.length; lt++)
+      if (layerThemesIsland[lt].id === id) theme = layerThemesIsland[lt];
+    document.body.classList.toggle('layer-themed', !!theme);
+    // GERBER stack only: the pcba/blueprint views embed their own #yflip
+    // copies carrying the same data-layer-ids; their pass had no theme
+    // mapping and reset the shared sidebar chips to the default palette
+    var lgs = (viewGroups.gerber || document).querySelectorAll('#yflip > g[data-layer-id]');
+    for (var lg = 0; lg < lgs.length; lg++) {
+      var g2 = lgs[lg];
+      var lid = g2.getAttribute('data-layer-id');
+      // only GERBER layer groups: the pcba/blueprint views inject their own
+      // copper copies into the same #yflip WITHOUT data-kind/data-layer-name
+      // — theme-mapped to nothing, their pass reset the shared chips
+      if (!g2.getAttribute('data-kind') || !g2.getAttribute('data-layer-name')) continue;
+      if (g2.__inkDefault === undefined) g2.__inkDefault = g2.style.getPropertyValue('--ink-' + lid);
+      var color = theme ? themeColorFor(theme, g2) : null;
+      if (color) g2.style.setProperty('--ink-' + lid, color);
+      else g2.style.setProperty('--ink-' + lid, g2.__inkDefault);
+      // every chip for this layer recolors — the full list AND the compact
+      // rail each render one
+      document.querySelectorAll('.layer-row[data-layer-id="' + lid + '"] .chip').forEach(function (chip) {
+        if (chip.__bgDefault === undefined) chip.__bgDefault = chip.style.background;
+        chip.style.background = color || chip.__bgDefault;
+      });
+    }
+    if (theme && theme.background) boardArea.style.backgroundColor = theme.background;
+    else boardArea.style.removeProperty('background-color');
+    // cutouts key off the canvas color — keep the var synced either way
+    svg.style.setProperty('--bg', getComputedStyle(boardArea).backgroundColor);
+    svg.style.setProperty('--pad-label', padLabelColor());
+    // '' = the Default option (raw palette, no restyle)
+    try { localStorage.setItem(LAYER_THEME_KEY, theme ? id : ''); } catch (e) {}
+  }
+  if (layerThemeSel) {
+    layerThemeSel.addEventListener('change', function () {
+      applyLayerTheme(layerThemeSel.value);
+    });
+    var savedLayerTheme = null;
+    try { savedLayerTheme = localStorage.getItem(LAYER_THEME_KEY); } catch (e) {}
+    var known = false;
+    for (var st = 0; st < layerThemesIsland.length; st++)
+      if (layerThemesIsland[st].id === savedLayerTheme) known = true;
+    if (savedLayerTheme === '') {
+      // the raw palette — no restyle, the fallback recolors own dark mode
+      layerThemeSel.value = '';
+    } else if (known) {
+      layerThemeSel.value = savedLayerTheme;
+      applyLayerTheme(savedLayerTheme);
+    } else {
+      // first visit, or a theme that is no longer registered: the house look.
+      // ('typecad' USED to be the no-theme sentinel — those saved picks
+      // migrate to the real house theme, which is what picking it always
+      // meant.)
+      layerThemeSel.value = 'typecad';
+      applyLayerTheme('typecad');
+    }
+  }
 
   // Embedding surface (the vscode extension's webview client calls these to
   // cross-probe: select a component from the editor, click a pad to jump
@@ -16134,10 +16231,20 @@ ${rows}
     <button id="btn-flip" title="view the board from the back — mirrored, so back-side text reads the right way round">Flip Board</button>
     <button id="btn-all-on" title="show all layers">All</button>
     <button id="btn-all-off" title="hide all layers">None</button>${
-      /* the pcba theme options (the same picker the pcba view carries),
+      /* layer colors for the gerber & layout views; KiCad color themes */
+      (options.layerThemes ?? LAYER_THEME_LIST).length
+        ? `
+    <select id="layer-theme" title="layer colors (KiCad color themes)">${[
+        ...(options.layerThemes ?? LAYER_THEME_LIST).map(
+          (t) =>
+            `<option value="${escapeHtml(t.id)}" title="${escapeHtml(t.credit + ' — ' + t.license)}">${escapeHtml(t.label)}</option>`,
+        ),
+        `<option value="" title="the built-in viewer palette">Default</option>`,
+      ].join('')}</select>`
+        : ''
+    }${/* the pcba theme options (the same picker the pcba view carries),
        * living in the toolbar: one theme control, applying to every
-       * themed render (pcba + assembly) */
-      (options.pcbaSvg || (options.deferredViews ?? []).includes('pcba')) && options.pcbaThemes && options.pcbaThemes.length > 0
+       * themed render (pcba + assembly) */ (options.pcbaSvg || (options.deferredViews ?? []).includes('pcba')) && options.pcbaThemes && options.pcbaThemes.length > 0
         ? `\n    <select id="pcba-theme" title="pcba theme">${options.pcbaThemes
             .map((t) => `<option value="${escapeHtml(t.id)}">${escapeHtml(t.label)}</option>`)
             .join('')}</select>`
@@ -16245,6 +16352,11 @@ ${compactRows}
           default: options.pcbaThemes[0]!.colors,
           themes: Object.fromEntries(options.pcbaThemes.map((t) => [t.id, t.colors])),
         }).replace(/</g, '\\u003c')
+      : ''
+  }</script>
+  <script id="layer-themes" type="application/json">${
+    (options.layerThemes ?? LAYER_THEME_LIST).length
+      ? JSON.stringify(options.layerThemes ?? LAYER_THEME_LIST).replace(/</g, '\\u003c')
       : ''
   }</script>
   <script id="pad-data" type="application/json">${

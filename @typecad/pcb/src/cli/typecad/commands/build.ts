@@ -4,9 +4,11 @@ import chalk from 'chalk';
 import { loadConfig } from '../../../config.js';
 import type { ParsedArgs } from '../parser.js';
 import logger from '../../../utils/logging.js';
+import { noEntryMessage } from '../../../utils/command_hint.js';
 import { npxExec } from '../../../utils/process_exec.js';
 import { boardStemFromArgs, buildDirPath } from '../pipeline.js';
-import { collectLocalDependencies, startWatchLoop } from '../watch.js';
+import { createRebuildQueue, startWatchLoop, watchDeps } from '../watch.js';
+import { formatDuration, sym, timestamp } from '../ui.js';
 
 function detectEntryFile(): string | null {
   const config = loadConfig();
@@ -50,7 +52,7 @@ async function buildOnce(entry: string, parsed: ParsedArgs): Promise<void> {
         throw new Error('Typecheck failed: fix the type errors above (or build without --typecheck).');
       }
     } else {
-      logger.log(chalk.yellow('  ⚠ --typecheck requested but no tsconfig.json found — skipped'));
+      logger.log(chalk.yellow(`  ${sym.warn} --typecheck requested but no tsconfig.json found — skipped`));
     }
   }
 
@@ -80,33 +82,36 @@ async function buildOnce(entry: string, parsed: ParsedArgs): Promise<void> {
       logger.log(`  Diagnostics report: ${result.mdPath}`);
       logger.log(`  Diagnostics data:   ${result.jsonPath}`);
     } catch (error) {
-      logger.log(chalk.yellow(`  ⚠ Diagnostics report generation failed: ${error instanceof Error ? error.message : String(error)}`));
+      logger.log(
+        chalk.yellow(
+          `  ${sym.warn} Diagnostics report generation failed: ${error instanceof Error ? error.message : String(error)}`,
+        ),
+      );
     }
   }
 }
 
-export async function run(parsed: ParsedArgs): Promise<void> {
-  const watch = parsed.args['watch'] === true || (parsed.args['w'] !== undefined && parsed.args['w'] !== false);
-  let entry = parsed.positional[0] || detectEntryFile();
-  // The parser consumes the token after `-w` as its value; recover it as the entry
-  if (!parsed.positional[0] && typeof parsed.args['w'] === 'string') entry = parsed.args['w'];
+interface BuildTarget {
+  /** Board name for multi-board projects (`boards: { stem: entry }`). */
+  name?: string;
+  entry: string;
+}
 
-  if (!entry) {
-    throw new Error(
-      'No entry file specified and none could be auto-detected.\n' +
-        'Provide a file path: typecad-pcb build <entry.ts>\n' +
-        'Or configure one in typecad.conf.ts: { entry: "./src/main.ts" }',
-    );
-  }
+/** The closing line of a build: `✔ built src/main.ts → build/ (1.4s)`. */
+function builtLine(target: BuildTarget, ms: number, stamp: boolean): string {
+  const label = target.name ?? (path.relative(process.cwd(), target.entry) || target.entry);
+  const outDir = path.relative(process.cwd(), buildDirPath()) || '.';
+  const prefix = stamp ? chalk.gray(`[${timestamp()}] `) : '';
+  return `${prefix}${chalk.green(sym.ok)} built ${label} ${sym.arrow} ${outDir}/ ${chalk.gray(`(${formatDuration(ms)})`)}`;
+}
 
-  if (!fs.existsSync(entry)) {
-    throw new Error(`Entry file not found: ${entry}`);
-  }
-
-  // Multi-board projects: typecad.conf.ts declares `boards: { stem: entry }`
-  // and one build runs EVERY entry (or just --board <stem>), each writing
-  // its own build/<stem>.kicad_pcb. An explicit positional entry keeps the
-  // single-board behavior.
+/**
+ * Multi-board projects: typecad.conf.ts declares `boards: { stem: entry }`
+ * and one build runs EVERY entry (or just --board <stem>), each writing
+ * its own build/<stem>.kicad_pcb. An explicit positional entry keeps the
+ * single-board behavior.
+ */
+function resolveTargets(parsed: ParsedArgs, entry: string): BuildTarget[] {
   const configBoards = loadConfig().boards;
   const stem = boardStemFromArgs(parsed);
   if (!parsed.positional[0] && configBoards && Object.keys(configBoards).length > 0) {
@@ -116,70 +121,102 @@ export async function run(parsed: ParsedArgs): Promise<void> {
     if (selected.length === 0) {
       throw new Error(`No board '${stem}' in typecad.conf.ts boards — known boards: ${Object.keys(configBoards).join(', ')}`);
     }
-    const entries = selected.map(([, e]) => e);
-    for (const e of entries) {
+    for (const [, e] of selected) {
       if (!fs.existsSync(e)) throw new Error(`Entry file not found: ${e}`);
     }
-    const buildAll = async (): Promise<void> => {
-      for (const [name, e] of selected) {
-        if (selected.length > 1) logger.log(chalk.cyan(`  board: ${name} (${e})`));
-        await buildOnce(e, parsed);
-      }
-    };
-    if (watch) {
-      try {
-        await buildAll();
-      } catch (error) {
-        logger.log(chalk.red(`  ${error instanceof Error ? error.message : String(error)}`));
-      }
-      const deps = [...new Set(entries.flatMap((e) => collectLocalDependencies(e)))];
-      const outDir = buildDirPath();
-      logger.log('');
-      logger.log(
-        chalk.cyan(
-          `  watching ${deps.length} file${deps.length === 1 ? '' : 's'} for changes (output: ${outDir}) — Ctrl+C to exit`,
-        ),
-      );
-      startWatchLoop(entries, (changed) => {
-        const rel = path.relative(process.cwd(), changed) || path.basename(changed);
-        logger.log('');
-        logger.log(chalk.cyan(`  change: ${rel} — rebuilding`));
-        void buildAll().catch((error) => {
-          logger.log(chalk.red(`  ${error instanceof Error ? error.message : String(error)}`));
-        });
-      });
-    } else {
-      await buildAll();
+    return selected.map(([name, e]) => ({ name, entry: e }));
+  }
+  return [{ entry }];
+}
+
+function clearScreen(): void {
+  if (process.stdout.isTTY) process.stdout.write('\x1B[2J\x1B[3J\x1B[H');
+}
+
+export async function run(parsed: ParsedArgs): Promise<void> {
+  const watch = parsed.args['watch'] === true || (parsed.args['w'] !== undefined && parsed.args['w'] !== false);
+  let entry = parsed.positional[0] || detectEntryFile();
+  // The parser consumes the token after `-w` as its value; recover it as the entry
+  if (!parsed.positional[0] && typeof parsed.args['w'] === 'string') entry = parsed.args['w'];
+
+  if (!entry) {
+    throw new Error(noEntryMessage('build'));
+  }
+
+  if (!fs.existsSync(entry)) {
+    throw new Error(`Entry file not found: ${entry}`);
+  }
+
+  const targets = resolveTargets(parsed, entry);
+
+  /** Build every target in order; the first failure throws. */
+  const buildAll = async (stamp: boolean): Promise<void> => {
+    for (const target of targets) {
+      if (targets.length > 1) logger.log(chalk.cyan(`  board: ${target.name} (${target.entry})`));
+      const startedAt = Date.now();
+      await buildOnce(target.entry, parsed);
+      logger.log(builtLine(target, Date.now() - startedAt, stamp));
     }
+  };
+
+  if (!watch) {
+    await buildAll(false);
     return;
   }
 
-  if (watch) {
-    // The keep-watching contract covers the first build too: a broken
-    // initial build prints the error and watches for the fix instead of
-    // exiting — the next save retries.
+  // Watch mode. The keep-watching contract covers the first build too: a
+  // broken initial build prints the error and watches for the fix instead
+  // of exiting — the next save retries. Rebuilds run one at a time (the
+  // queue), each stamped, so overlapping saves never interleave output.
+  const entries = targets.map((t) => t.entry);
+  const clear = parsed.args['clear'] === true;
+  let runs = 0;
+  let watchedCount = -1;
+  let lastChange: string | undefined;
+
+  const queue = createRebuildQueue(async () => {
+    runs++;
+    const n = runs;
+    const reason = lastChange;
+    lastChange = undefined;
+    if (clear) clearScreen();
+    else if (n > 1) logger.log('');
+    logger.log(
+      chalk.gray(`[${timestamp()}] `) +
+        chalk.cyan(reason ? `change: ${reason} — rebuilding (#${n})` : `building (#${n})`),
+    );
+
+    const startedAt = Date.now();
     try {
-      await buildOnce(entry, parsed);
+      await buildAll(true);
     } catch (error) {
       logger.log(chalk.red(`  ${error instanceof Error ? error.message : String(error)}`));
+      logger.log(
+        chalk.gray(`[${timestamp()}] `) + chalk.red(`${sym.fail} build #${n} failed `) +
+          chalk.gray(`(${formatDuration(Date.now() - startedAt)})`),
+      );
     }
-    const deps = collectLocalDependencies(entry);
-    const outDir = buildDirPath();
-    logger.log('');
-    logger.log(
-      chalk.cyan(`  watching ${deps.length} file${deps.length === 1 ? '' : 's'} for changes (output: ${outDir}) — Ctrl+C to exit`),
-    );
-    startWatchLoop(entry, (changed) => {
-      const rel = path.relative(process.cwd(), changed) || path.basename(changed);
+
+    // The import graph can change with an edit; keep the count honest.
+    const count = watchDeps(entries).length;
+    if (count !== watchedCount) {
+      const files = `${count} file${count === 1 ? '' : 's'}`;
       logger.log('');
-      logger.log(chalk.cyan(`  change: ${rel} — rebuilding`));
-      // Fire-and-forget: a failed rebuild (or slow ERC/DRC report) must not
-      // kill the watcher — the next save tries again.
-      void buildOnce(entry, parsed).catch((error) => {
-        logger.log(chalk.red(`  ${error instanceof Error ? error.message : String(error)}`));
-      });
-    });
-  } else {
-    await buildOnce(entry, parsed);
-  }
+      logger.log(
+        chalk.cyan(
+          watchedCount === -1
+            ? `  watching ${files} for changes (output: ${buildDirPath()}) — Ctrl+C to exit`
+            : `  now watching ${files}`,
+        ),
+      );
+      watchedCount = count;
+    }
+  });
+
+  await queue.request();
+
+  startWatchLoop(entries.length === 1 ? entries[0]! : entries, (changed) => {
+    lastChange = path.relative(process.cwd(), changed) || path.basename(changed);
+    void queue.request();
+  });
 }

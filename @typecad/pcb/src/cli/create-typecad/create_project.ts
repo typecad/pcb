@@ -5,6 +5,7 @@ import { execFileSync, spawn } from 'node:child_process';
 import { findExecutable } from '../../kicad.js';
 import type { ProjectAnswers } from '../types.js';
 import logger from '../../utils/logging.js';
+import { withCommands } from '../../utils/command_hint.js';
 import { getCategories, getSkillsByCategory } from '../typecad/skills/registry.js';
 import { CORE_DEPENDENCIES } from './core-deps.js';
 import { GENERATOR_NAME, generatorVersion } from '../../utils/generator_identity.js';
@@ -106,11 +107,19 @@ export async function create_project(answers: ProjectAnswers) {
   let createdDirs = false;
 
   try {
+    try {
+      fs.mkdirSync(projectRoot);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'EEXIST') {
+        throw new Error(`Project directory already exists: ${projectRoot}. Choose a different name.`);
+      }
+      throw error;
+    }
+    createdDirs = true;
     let dir = `./${answers.name}/hw/build/lib/footprints`;
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
     }
-    createdDirs = true;
 
     dir = `./${answers.name}/hw/src`;
     if (!fs.existsSync(dir)) {
@@ -261,7 +270,10 @@ export default defineConfig({
     const installedTS = runCommandQuiet('npm', ['i', '-D', 'typescript'], path.join(process.cwd(), answers.name, 'hw'));
     if (!installedTS) {
       logger.error(
-        `Failed to install typescript — run 'npm i -D typescript' in hw/ for 'typecad-pcb validate' type-checking`,
+        withCommands(
+          'Failed to install typescript, which `typecad-pcb validate` needs for type-checking. From the hw/ folder, run:',
+          'npm i -D typescript',
+        ),
       );
     }
 
@@ -364,7 +376,10 @@ ${skillSections}
       );
       if (!createdHAL) {
         logger.error(
-          `Error creating the HAL project — run 'npx @typecad/hal create ${answers.name} --outDir fw' inside the project to retry`,
+          withCommands(
+            'Error creating the HAL project. From inside the project folder, retry with:',
+            `npx @typecad/hal create ${answers.name} --outDir fw`,
+          ),
         );
       }
 
@@ -377,7 +392,10 @@ ${skillSections}
         logger.log(chalk.green('+'), 'Installing firmware dependencies in ./fw');
         const installedFw = await runAsync('npm', ['install'], fwDir, { stdio: 'inherit', timeout: 600_000 });
         if (!installedFw) {
-          logger.error(`Error installing ./fw dependencies — run 'npm install' inside fw/ and reopen the workspace`);
+          logger.error(
+            withCommands('Error installing ./fw dependencies. From the fw/ folder, run:', 'npm install') +
+              '\n\nThen reopen the workspace.',
+          );
         }
       }
     }
@@ -473,7 +491,8 @@ _flipped_
     }
 
     logger.log(chalk.green('+'), 'Finished');
-    logger.log(chalk.green('+'), `Open ${answers.name}.code-workspace in VS Code to get started`);
+    logger.log(chalk.green('+'), `Open ${answers.name}/${answers.name}.code-workspace in VS Code to get started`);
+    logger.log(withCommands('To build the board from a terminal, run:', `cd ${answers.name}/hw`, 'npm run build'));
   } catch (err) {
     if (createdDirs && fs.existsSync(projectRoot)) {
       try {
@@ -483,6 +502,6 @@ _flipped_
         logger.error(`Failed to clean up ${projectRoot}. Remove it manually.`);
       }
     }
-    logger.error(chalk.red(`Project creation failed: ${(err as Error).message}`));
+    throw new Error(`Project creation failed: ${err instanceof Error ? err.message : String(err)}`);
   }
 }

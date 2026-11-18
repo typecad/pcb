@@ -13,6 +13,7 @@ import type {
   TextLayoutIR,
 } from './types.js';
 import { SYNC_TRACKS_NAME, syncFmt } from './sync_file.js';
+import { toAuthoredLayout } from './label_frame.js';
 
 /** Helper for colored console output */
 export interface ChalkHelpers {
@@ -55,7 +56,7 @@ export interface TrackChain {
   layer: string;
   width: number;
   steps: Array<{ x: number; y: number; layer: string; width: number }>;
-  via?: { size: number; drill: number };
+  via?: { size: number; drill: number; layers?: string[] };
 }
 
 /** A net's routed chains plus the variable the generated code collects them in. */
@@ -173,7 +174,7 @@ export function attachChainVias(ir: KicadIR, groups: TrackNetGroup[]): Set<numbe
         if (Math.abs(via.at.x - end.x) >= 0.001 || Math.abs(via.at.y - end.y) >= 0.001) continue;
         if (viaKey(via) !== group.netKey) continue;
         used.add(i);
-        chain.via = { size: via.size, drill: via.drill };
+        chain.via = { size: via.size, drill: via.drill, layers: via.layers };
         break;
       }
     }
@@ -207,7 +208,8 @@ export function pushStatementSource(
     log += `${chKey('.to')}${chPunc('(')}{ ${chProp('x')}${chPunc(':')} ${chNum(step.x)}${chPunc(',')} ${chProp('y')}${chPunc(':')} ${chNum(step.y)}${chPunc(',')} ${chProp('layer')}${chPunc(':')} ${chStr('"' + step.layer + '"')}${chPunc(',')} ${chProp('width')}${chPunc(':')} ${chNum(step.width)} }${chPunc(')')}`;
   }
   if (chain.via) {
-    log += `${chKey('.via')}${chPunc('(')}{ ${chProp('size')}${chPunc(':')} ${chNum(chain.via.size)}${chPunc(',')} ${chProp('drill')}${chPunc(':')} ${chNum(chain.via.drill)} }${chPunc(')')}`;
+    const layers = chain.via.layers && !['F.Cu,B.Cu', 'B.Cu,F.Cu'].includes(chain.via.layers.join(',')) ? `, layers: ['${chain.via.layers.join("', '")}']` : '';
+    log += `${chKey('.via')}${chPunc('(')}{ ${chProp('size')}${chPunc(':')} ${chNum(chain.via.size)}${chPunc(',')} ${chProp('drill')}${chPunc(':')} ${chNum(chain.via.drill)}${layers} }${chPunc(')')}`;
   }
   return log + `${chPunc(')')}${chPunc(';')}`;
 }
@@ -279,7 +281,8 @@ export function syncRouteBlockSource(ir: KicadIR): string {
         lines.push(`  .to({ x: ${syncFmt(step.x)}, y: ${syncFmt(step.y)}, layer: '${step.layer}', width: ${syncFmt(step.width)} })`);
       }
       if (chain.via) {
-        lines.push(`  .via({ size: ${syncFmt(chain.via.size)}, drill: ${syncFmt(chain.via.drill)} });`);
+        const layers = chain.via.layers && !['F.Cu,B.Cu', 'B.Cu,F.Cu'].includes(chain.via.layers.join(',')) ? `, layers: ['${chain.via.layers.join("', '")}']` : '';
+        lines.push(`  .via({ size: ${syncFmt(chain.via.size)}, drill: ${syncFmt(chain.via.drill)}${layers} });`);
       } else {
         lines[lines.length - 1] += ';';
       }
@@ -316,6 +319,7 @@ export function viaArgSource(via: KicadViaIR, ch: ChalkHelpers = PLAIN_CH, netMa
   }
   arg += ` ${chProp('size')}${chPunc(':')} ${chNum(via.size)}${chPunc(',')}`;
   arg += ` ${chProp('drill')}${chPunc(':')} ${chNum(via.drill)}`;
+  if (via.layers && !['F.Cu,B.Cu', 'B.Cu,F.Cu'].includes(via.layers.join(','))) arg += `, layers: ['${via.layers.join("', '")}']`;
   return arg;
 }
 
@@ -435,13 +439,13 @@ export function generatePlacementCode(
         logger.log(placementLog);
 
         if (fp.referenceLayout) {
-          logLayoutAssignment(ch, prefix + variableName, 'referenceLayout', fp.referenceLayout);
+          logLayoutAssignment(ch, prefix + variableName, 'referenceLayout', toAuthoredLayout(fp.referenceLayout, fp.side)!);
         }
         if (fp.valueLayout) {
-          logLayoutAssignment(ch, prefix + variableName, 'valueLayout', fp.valueLayout);
+          logLayoutAssignment(ch, prefix + variableName, 'valueLayout', toAuthoredLayout(fp.valueLayout, fp.side)!);
         }
         if (fp.fabLayout) {
-          logLayoutAssignment(ch, prefix + variableName, 'fabLayout', fp.fabLayout);
+          logLayoutAssignment(ch, prefix + variableName, 'fabLayout', toAuthoredLayout(fp.fabLayout, fp.side)!);
         }
       });
     }

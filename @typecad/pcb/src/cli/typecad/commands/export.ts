@@ -5,6 +5,7 @@ import chalk from 'chalk';
 import { executeKiCADCommand } from '../../../kicad_commands.js';
 import type { ParsedArgs } from '../parser.js';
 import logger from '../../../utils/logging.js';
+import { missingBoardMessage } from '../../../utils/command_hint.js';
 import {
   boardStemFromArgs,
   buildDirPath,
@@ -145,10 +146,7 @@ async function runGerbers(parsed: ParsedArgs): Promise<void> {
     if (pcbArg) {
       throw new Error(`PCB file not found: ${pcbArg}`);
     }
-    throw new Error(
-      `No .kicad_pcb file found in ${buildDirPath()}.\n` +
-        'Run `typecad-pcb build` first, or specify a path: typecad-pcb export gerbers <path/to/board.kicad_pcb>',
-    );
+    throw new Error(missingBoardMessage(buildDirPath(), 'export gerbers'));
   }
 
   const buildDir = buildDirPath();
@@ -199,7 +197,7 @@ async function runGerbers(parsed: ParsedArgs): Promise<void> {
     );
 
   if (json) {
-    logger.log(
+    logger.out(
       JSON.stringify(
         {
           pcb: pcbPath,
@@ -225,10 +223,7 @@ async function runDrill(parsed: ParsedArgs): Promise<void> {
     if (pcbArg) {
       throw new Error(`PCB file not found: ${pcbArg}`);
     }
-    throw new Error(
-      `No .kicad_pcb file found in ${buildDirPath()}.\n` +
-        'Run `typecad-pcb build` first, or specify a path: typecad-pcb export drill <path/to/board.kicad_pcb>',
-    );
+    throw new Error(missingBoardMessage(buildDirPath(), 'export drill'));
   }
 
   const buildDir = buildDirPath();
@@ -263,7 +258,7 @@ async function runDrill(parsed: ParsedArgs): Promise<void> {
   const drillFiles = fs.readdirSync(outputDir).filter((f) => f.endsWith('.drl') || f.endsWith('.xln'));
 
   if (json) {
-    logger.log(
+    logger.out(
       JSON.stringify(
         {
           pcb: pcbPath,
@@ -308,7 +303,7 @@ export async function run(parsed: ParsedArgs): Promise<void> {
 
   if (!VALID_SUBCOMMANDS.includes(sub)) {
     if (parsed.json) {
-      logger.log(
+      logger.out(
         JSON.stringify({
           error: true,
           message: `Unknown subcommand 'export ${sub}'. Use '${VALID_SUBCOMMANDS.join("' or '")}' or 'help'.`,
@@ -361,7 +356,7 @@ function reportDrill(
   native: boolean,
 ): void {
   if (parsed.json) {
-    logger.log(JSON.stringify({ pcb: pcbPath, outputDir, native, files }, null, 2));
+    logger.out(JSON.stringify({ pcb: pcbPath, outputDir, native, files }, null, 2));
   } else {
     logger.log(chalk.green(`Exported ${files.length} drill file(s) to ${outputDir}`));
   }
@@ -506,11 +501,7 @@ async function runNativeGerbers(parsed: ParsedArgs): Promise<void> {
 
   if (!pcbPath) {
     if (pcbArg) throw new Error(`PCB file not found: ${pcbArg}`);
-    throw new Error(
-      `No .kicad_pcb file found in ${buildDirPath()}.
-` +
-        'Run `typecad-pcb build` first, or specify a path: typecad-pcb export gerbers <path/to/board.kicad_pcb>',
-    );
+    throw new Error(missingBoardMessage(buildDirPath(), 'export gerbers'));
   }
 
   if (!json) {
@@ -531,7 +522,7 @@ async function runNativeGerbers(parsed: ParsedArgs): Promise<void> {
     logger.log(chalk.gray('  Text:   public-domain Hershey stroke font (gerber_spec/SPEC.md)\n'));
   }
   if (json) {
-    logger.log(
+    logger.out(
       JSON.stringify(
         {
           pcb: pcbPath,
@@ -671,7 +662,7 @@ async function runPos(parsed: ParsedArgs): Promise<void> {
     );
     logger.log(chalk.green(`Exported ${result.rows.length} placement row(s) to ${result.file}`));
   } else {
-    logger.log(
+    logger.out(
       JSON.stringify(
         {
           pcb: pcbPath,
@@ -733,7 +724,7 @@ async function runBom(parsed: ParsedArgs): Promise<void> {
     );
     logger.log(chalk.green(`Exported BOM to ${result.file}`));
   } else {
-    logger.log(
+    logger.out(
       JSON.stringify(
         {
           pcb: pcbPath,
@@ -914,7 +905,7 @@ async function runAssembly(parsed: ParsedArgs): Promise<void> {
   });
 
   if (json) {
-    logger.log(
+    logger.out(
       JSON.stringify(
         {
           pcb: pcbPath,

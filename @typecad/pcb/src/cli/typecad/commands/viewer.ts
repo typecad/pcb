@@ -13,8 +13,10 @@ import chalk from 'chalk';
 import { buildViewerFromFiles, renderViewPart, type ViewerViewPart } from '../../../gerber_viewer/build.js';
 import type { ParsedArgs } from '../parser.js';
 import logger from '../../../utils/logging.js';
+import { missingBoardMessage } from '../../../utils/command_hint.js';
 import { boardStemFromArgs, buildDirPath, listBoardFiles } from '../pipeline.js';
 import { defaultGerbersDir, exportNativeGerbers, findPcbFile } from './export.js';
+import { writeFileAtomic } from '../../../utils/atomic_write.js';
 
 /** An explicitly-passed value flag, resolved against cwd. */
 function flagPath(parsed: ParsedArgs, name: string): string | undefined {
@@ -56,9 +58,7 @@ const VIEW_PARTS: ViewerViewPart[] = ['pcba', 'blueprint', 'schematic', 'assembl
  * rename is atomic on the same directory.
  */
 function writeAtomically(target: string, contents: string): void {
-  const tmp = target + '.tmp-' + process.pid;
-  fs.writeFileSync(tmp, contents);
-  fs.renameSync(tmp, target);
+  writeFileAtomic(target, contents);
 }
 
 export async function run(parsed: ParsedArgs): Promise<void> {
@@ -68,10 +68,7 @@ export async function run(parsed: ParsedArgs): Promise<void> {
 
   if (!pcbPath) {
     if (pcbArg) throw new Error(`PCB file not found: ${pcbArg}`);
-    throw new Error(
-      `No .kicad_pcb file found in ${buildDirPath()}.\n` +
-        'Run `typecad-pcb build` first, or specify a path: typecad-pcb viewer <path/to/board.kicad_pcb>',
-    );
+    throw new Error(missingBoardMessage(buildDirPath(), 'viewer'));
   }
 
   const buildDir = buildDirPath();
@@ -118,7 +115,7 @@ export async function run(parsed: ParsedArgs): Promise<void> {
     fs.mkdirSync(path.dirname(partPath), { recursive: true });
     writeAtomically(partPath, fragment);
     if (json) {
-      logger.log(JSON.stringify({ pcb: pcbPath, part, out: partPath, viewBox, warnings }, null, 2));
+      logger.out(JSON.stringify({ pcb: pcbPath, part, out: partPath, viewBox, warnings }, null, 2));
     } else {
       logger.log(chalk.green(`View part ${part} written to ${partPath}`));
       for (const w of warnings.slice(0, 10)) logger.log(chalk.gray(`  warning: ${w}`));
@@ -161,7 +158,7 @@ export async function run(parsed: ParsedArgs): Promise<void> {
     rulesPath && 'rules',
   ].filter(Boolean);
   if (json) {
-    logger.log(
+    logger.out(
       JSON.stringify(
         {
           pcb: pcbPath,

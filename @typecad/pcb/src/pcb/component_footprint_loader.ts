@@ -1,8 +1,10 @@
 import fs from 'node:fs';
+import { resolveLibraryAsset } from '../library_asset.js';
 import { fileURLToPath } from 'node:url';
 import { parseAsList, prettyPrint, Sym } from '../sexpr/index.js';
 import { libraryRoots } from '../kicad.js';
 import { ComponentError } from '../utils/errors.js';
+import { withCommands } from '../utils/command_hint.js';
 import logger from '../utils/logging.js';
 import { upgradeFootprintLibrary } from './footprint_upgrade.js';
 import { LIBRARY_SEPARATOR } from '../utils/constants.js';
@@ -15,14 +17,18 @@ import { getBuildDir } from '../utils/constants.js';
  * package root) — the chip passives the size tables default to, resolved
  * as the last resort after install/conf and the project's build/lib.
  */
-function bundledFootprintPath(footprintName: string): string {
+export function bundledFootprintPath(footprintName: string): string {
   return fileURLToPath(new URL(`../../bundled/footprints/${footprintName}.kicad_mod`, import.meta.url));
 }
 
 /** read + normalize a .kicad_mod (legacy `(module` heads become `(footprint`) */
 function readFootprintFile(filePath: string): string {
   const footprint_file_contents = fs.readFileSync(filePath, 'utf8');
-  const l = parseAsList(footprint_file_contents);
+  return normalizeFootprint(footprint_file_contents);
+}
+
+function normalizeFootprint(content: string): string {
+  const l = parseAsList(content);
   if (Sym.isSym(l[0]) && l[0].name === 'module') {
     l[0] = Sym.for('footprint');
   }
@@ -133,6 +139,16 @@ export function loadFootprintLib(
     }
   }
 
+  let downloadError = '';
+  if (footprint_file_name.length === 2) {
+    try {
+      const text = resolveLibraryAsset('footprints', footprint_file_name[0], footprint_file_name[1], true);
+      if (text) return normalizeFootprint(text);
+    } catch (err) {
+      downloadError = ` Automatic download failed: ${err instanceof Error ? err.message : String(err)}.`;
+    }
+  }
+
   const searched = [
     kicadFootprintPath || '(no install/conf footprint dir)',
     buildFootprintPath,
@@ -144,8 +160,10 @@ export function loadFootprintLib(
   const site = getCallSite();
   const error = new ComponentError(
     formatSourceError(
-      `[${reference || 'Unknown'}, ${value || 'Unknown'}, ${footprint}] Footprint file not found. Searched: ${searched}. ` +
-        `Add it to the project with: typecad-pcb lib add --footprint ${footprint}`,
+      withCommands(
+        `[${reference || 'Unknown'}, ${value || 'Unknown'}, ${footprint}] Footprint file not found. Searched: ${searched}.${downloadError}\nAdd it to the project with:`,
+        `typecad-pcb lib add --footprint ${footprint}`,
+      ),
       site,
     ),
   );

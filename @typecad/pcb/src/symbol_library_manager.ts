@@ -1,10 +1,9 @@
-import fs from 'node:fs';
-import { fileURLToPath } from 'node:url';
 import { serialize, Sym } from './sexpr/index.js';
 import { libraryRoots } from './kicad.js';
-import { LIBRARY_SEPARATOR, getBuildDir } from './utils/constants.js';
+import { LIBRARY_SEPARATOR } from './utils/constants.js';
+import { withCommands } from './utils/command_hint.js';
 import type { SExprNode } from './types/sexpr_types.js';
-import { extractPins, findSymbolNode, parseSymbolLibrary, resolveExtends, unitSubSymbols } from './symbol_core.js';
+import { extractPins, findSymbolNode, resolveExtends, unitSubSymbols } from './symbol_core.js';
 import {
   type SymbolDefinition,
   type PinLocation,
@@ -13,16 +12,7 @@ import {
   logError,
   logWarning,
 } from './renderers/schematic_visualizer_types.js';
-
-/**
- * Libraries shipped inside @typecad/pcb itself (`bundled/` at the package
- * root, mirrored for dist/ use). Carries the `power` library — the renderer
- * needs power:PWR_FLAG for rail generation, so it must resolve on machines
- * with no KiCad install at all.
- */
-function bundledLibraryPath(libraryName: string): string {
-  return fileURLToPath(new URL(`../bundled/${libraryName}.kicad_sym`, import.meta.url));
-}
+import { symbolLibraryFor } from './symbol_library_source.js';
 
 export class SymbolLibraryManager {
   private libraryCache: Map<string, SExprNode> = new Map();
@@ -40,40 +30,11 @@ export class SymbolLibraryManager {
     this.kicadSymbolPath = libraryRoots().symbols ?? '';
   }
 
-  private getLibraryContent(libraryName: string): SExprNode | null {
-    if (this.libraryCache.has(libraryName)) {
-      return this.libraryCache.get(libraryName)!;
-    }
-
-    let symbolFilePath = `${this.kicadSymbolPath}/${libraryName}.kicad_sym`;
-    let symbolFileContents = '';
-
+  private getLibraryContent(library: string, name: string, allowFetch: boolean): SExprNode | null {
     try {
-      if (fs.existsSync(symbolFilePath)) {
-        symbolFileContents = fs.readFileSync(symbolFilePath, 'utf8');
-      } else {
-        symbolFilePath = `${getBuildDir()}/lib/${libraryName}.kicad_sym`;
-        if (fs.existsSync(symbolFilePath)) {
-          symbolFileContents = fs.readFileSync(symbolFilePath, 'utf8');
-        } else {
-          symbolFilePath = bundledLibraryPath(libraryName);
-          if (fs.existsSync(symbolFilePath)) {
-            symbolFileContents = fs.readFileSync(symbolFilePath, 'utf8');
-          } else {
-            logError(
-              `Library file ${libraryName}.kicad_sym not found (searched install/conf, build/lib, bundled). ` +
-                `Add it to the project with: typecad-pcb lib add ${libraryName}`,
-            );
-            return null;
-          }
-        }
-      }
-
-      const parsedLibrary = parseSymbolLibrary(symbolFileContents);
-      this.libraryCache.set(libraryName, parsedLibrary);
-      return parsedLibrary;
+      return symbolLibraryFor(this.kicadSymbolPath, library, name, allowFetch, this.libraryCache);
     } catch (err) {
-      logError(`Error reading or parsing library ${libraryName}:`, err);
+      if (allowFetch) logError(`Error reading or fetching symbol ${library}:${name}:`, err);
       return null;
     }
   }
@@ -82,6 +43,7 @@ export class SymbolLibraryManager {
     libraryContent: SExprNode,
     libraryName: string,
     symbolName: string,
+    allowFetch: boolean,
     visited?: Set<string>,
   ): SymbolDefinition | null {
     const symbolFqn = `${libraryName}:${symbolName}`;
@@ -104,7 +66,10 @@ export class SymbolLibraryManager {
     const resolved = resolveExtends(
       libraryName,
       symbolName,
-      (lib) => (lib === libraryName ? libraryContent : this.getLibraryContent(lib)),
+      (lib, name) =>
+        lib === libraryName && findSymbolNode(libraryContent, name)
+          ? libraryContent
+          : this.getLibraryContent(lib, name, allowFetch),
       new Set(visited),
     );
     if (!resolved) {
@@ -142,14 +107,16 @@ export class SymbolLibraryManager {
     }
     const [libraryName, symbolName] = parts;
 
-    const libraryContent = this.getLibraryContent(libraryName);
-    if (!libraryContent) {
-      return null;
-    }
-
-    const definition = this.findSymbolInLibrary(libraryContent, libraryName, symbolName, visited);
+    const libraryContent = this.getLibraryContent(libraryName, symbolName, true);
+    const definition =
+      libraryContent && this.findSymbolInLibrary(libraryContent, libraryName, symbolName, true, visited);
     if (!definition) {
-      logError(`Symbol definition ${symbolFqn} not found in library ${libraryName}.`);
+      logError(
+        withCommands(
+          `Symbol definition ${symbolFqn} not found in library ${libraryName}.\nAdd it to the project with:`,
+          `typecad-pcb lib add ${symbolFqn}`,
+        ),
+      );
     }
     return definition;
   }
@@ -165,9 +132,9 @@ export class SymbolLibraryManager {
     const parts = symbolFqn.split(LIBRARY_SEPARATOR);
     if (parts.length !== 2) return false;
     const [libraryName, symbolName] = parts;
-    const libraryContent = this.getLibraryContent(libraryName);
+    const libraryContent = this.getLibraryContent(libraryName, symbolName, false);
     if (!libraryContent) return false;
-    return this.findSymbolInLibrary(libraryContent, libraryName, symbolName) !== null;
+    return this.findSymbolInLibrary(libraryContent, libraryName, symbolName, false) !== null;
   }
 
   public getPinLocation(symbolFqn: string, pinNumber: string | number): PinLocation | null {
@@ -250,8 +217,7 @@ export class SymbolLibraryManager {
       this.calculateSymbolBoundingBoxRecursive(node, boundingBox);
     }
 
-    const measured =
-      boundingBox.minX === Infinity || boundingBox.maxX === -Infinity ? null : boundingBox;
+    const measured = boundingBox.minX === Infinity || boundingBox.maxX === -Infinity ? null : boundingBox;
     this.unitBoundingBoxCache.set(cacheKey, measured);
     return measured;
   }

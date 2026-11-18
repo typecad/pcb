@@ -2,6 +2,8 @@ import fs from 'node:fs';
 import chalk from 'chalk';
 import type { ParsedArgs } from '../parser.js';
 import logger from '../../../utils/logging.js';
+import { noEntryMessage } from '../../../utils/command_hint.js';
+import { sym, resultLine } from '../ui.js';
 import { buildBoardModel, singlePinNets, unconnectedPads } from '../board_model.js';
 import {
   buildDirPath,
@@ -80,7 +82,7 @@ function stepFromKiCadResult(result: KiCadCheckResult): StepResult & { unconnect
 
 function printViolations(violations: KiCadViolation[]): void {
   for (const v of violations.slice(0, 25)) {
-    const icon = (v.severity ?? 'error') === 'warning' ? chalk.yellow('⚠') : chalk.red('✖');
+    const icon = (v.severity ?? 'error') === 'warning' ? chalk.yellow(sym.warn) : chalk.red(sym.fail);
     logger.log(`  ${icon} [${v.type ?? 'unknown'}] ${v.description ?? ''}`);
     for (const item of (v.items ?? []).slice(0, 3)) {
       const pos = item.pos ? ` @(${item.pos.x}, ${item.pos.y})` : '';
@@ -91,6 +93,7 @@ function printViolations(violations: KiCadViolation[]): void {
 }
 
 export async function run(parsed: ParsedArgs): Promise<void> {
+  const startedAt = Date.now();
   const json = parsed.json;
   const skipErc = parsed.args['skip-erc'] === true;
   const skipDrc = parsed.args['skip-drc'] === true;
@@ -109,6 +112,14 @@ export async function run(parsed: ParsedArgs): Promise<void> {
 
   if (!entry) {
     report.build.reason = 'No entry file found';
+    if (!json) {
+      logger.error(
+        chalk.red(
+          noEntryMessage('build'),
+        ),
+      );
+      process.exit(1);
+    }
   } else if (!fs.existsSync(entry)) {
     report.build.reason = `Entry file not found: ${entry}`;
   } else {
@@ -204,9 +215,9 @@ export async function run(parsed: ParsedArgs): Promise<void> {
   }
 
   if (json) {
-    logger.log(JSON.stringify(report, null, 2));
+    logger.out(JSON.stringify(report, null, 2));
   } else {
-    const stepIcon = (ok: boolean, ran: boolean) => (ran ? (ok ? chalk.green('✓') : chalk.red('✖')) : chalk.gray('–'));
+    const stepIcon = (ok: boolean, ran: boolean) => (ran ? (ok ? chalk.green(sym.ok) : chalk.red(sym.fail)) : chalk.gray(sym.skip));
     logger.log(`  ${stepIcon(report.build.passed, report.build.ran)} build`);
     if (!report.build.passed && report.build.reason) logger.log(chalk.red(`      ${report.build.reason}`));
     logger.log(`  ${stepIcon(report.typecheck.passed, report.typecheck.ran)} typecheck`);
@@ -253,10 +264,15 @@ export async function run(parsed: ParsedArgs): Promise<void> {
       logger.log(chalk.gray(`      ${report.drc.reason}`));
     }
     logger.log('');
+    const elapsedMs = Date.now() - startedAt;
     if (report.ok) {
-      logger.log(chalk.green('Check passed.'));
+      logger.log(resultLine('ok', 'check', 'all steps passed', elapsedMs));
     } else {
-      logger.log(chalk.red('Check failed.'));
+      const failedSteps = (['build', 'typecheck', 'unconnected', 'erc', 'drc'] as const).filter(
+        (step) => report[step].ran && !report[step].passed,
+      );
+      if (failedSteps.length === 0) failedSteps.push('build');
+      logger.log(resultLine('fail', 'check', `failed — ${failedSteps.join(', ')}`, elapsedMs));
     }
   }
 

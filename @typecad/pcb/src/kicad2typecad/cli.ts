@@ -123,7 +123,7 @@ export async function kicadDataToTypeCAD(filePath: string, options?: ImportOptio
   }
 
   const kicadDir = filePath.replace(/\\/g, '/').split('/').slice(0, -1).join('/') || '.';
-  const projectRoot = kicadDir.replace(/(^|\/)build$/, '') || '.';
+  const projectRoot = kicadDir.replace(/(^|[\\/])build$/, '') || '.';
 
   if (options?.restore) {
     const info = latestSnapshotInfo(projectRoot);
@@ -330,7 +330,7 @@ async function applyMode(
   const kicadDir = kicadFilePath.replace(/\\/g, '/').split('/').slice(0, -1).join('/') || '.';
 
   // Try src/ as sibling of build/, or fall back to the project root
-  const projectRoot = kicadDir.replace(/(^|\/)build$/, '') || '.';
+  const projectRoot = kicadDir.replace(/(^|[\\/])build$/, '') || '.';
   const sourceRoot = fs.existsSync(projectRoot + '/src') ? projectRoot + '/src' : projectRoot;
 
   // 1. Match IR footprints to source locations

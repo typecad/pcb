@@ -15,10 +15,15 @@ vi.mock('../../../../utils/process_exec.js', () => ({
 vi.mock('../diagnostics.js', () => ({
   generateDiagnosticsReport: (...args: unknown[]) => generateMock(...args),
 }));
-vi.mock('../../watch.js', () => ({
-  startWatchLoop: (...args: unknown[]) => startWatchLoopMock(...args),
-  collectLocalDependencies: (...args: unknown[]) => collectDepsMock(...args),
-}));
+vi.mock('../../watch.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../watch.js')>();
+  return {
+    ...actual,
+    startWatchLoop: (...args: unknown[]) => startWatchLoopMock(...args),
+    collectLocalDependencies: (...args: unknown[]) => collectDepsMock(...args),
+    watchDeps: (...args: unknown[]) => collectDepsMock(...args),
+  };
+});
 
 const { run } = await import('../build.js');
 
@@ -103,7 +108,7 @@ describe('build --watch', () => {
   it('builds once, then starts the watch loop over the dependency graph', async () => {
     await run(parsedWith({ watch: true }, [entryPath]));
     expect(npxExecMock).toHaveBeenCalledTimes(1);
-    expect(collectDepsMock).toHaveBeenCalledWith(entryPath);
+    expect(collectDepsMock).toHaveBeenCalledWith([entryPath]);
     expect(startWatchLoopMock).toHaveBeenCalledTimes(1);
     const [watchedEntry, onChange] = startWatchLoopMock.mock.calls[0]!;
     expect(watchedEntry).toBe(entryPath);

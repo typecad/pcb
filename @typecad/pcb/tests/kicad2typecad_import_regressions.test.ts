@@ -24,6 +24,7 @@ import {
 import { analyzeFile } from '../src/kicad2typecad/source_analyzer.js';
 import { kicadDataToTypeCAD } from '../src/kicad2typecad/cli.js';
 import { startBoardWatch } from '../src/kicad2typecad/watch.js';
+import { boardSignature } from '../src/utils/build_signature.js';
 import logger from '../src/utils/logging.js';
 import type { KicadIR } from '../src/kicad2typecad/types.js';
 import type { PCB } from '../src/pcb/pcb.js';
@@ -733,6 +734,54 @@ describe('apply-back: routing section', () => {
     expect(notes).toEqual([]);
   });
 
+  it('keeps an existing standalone endpoint via and detects changes to its copper', () => {
+    const file = path.join(dir, 'board.ts');
+    const via = "typecad.via({ drill: 0.3, layers: ['In1.Cu', 'F.Cu'], at: { y: 30, x: 20 }, size: 0.6, net: 'VCC' });";
+    const source = sourceWithTrack(20).replace('.via({ size: 0.6, drill: 0.3 }));', `);\n${via}`);
+    fs.writeFileSync(file, source);
+    const board = boardWithTrack(20)
+      .replace('(via (at 20 30) (size 0.6) (drill 0.3) (net "VCC"))',
+        '(via (at 20 30) (size 0.6) (drill 0.3) (layers "F.Cu" "In1.Cu") (net "VCC"))');
+
+    expect(computeRoutingChanges(buildIr(board), [file]).changes).toEqual([]);
+    const differentVias = [
+      board.replace('(via (at 20 30)', '(via (at 20 31)'),
+      board.replace('(size 0.6)', '(size 0.7)'),
+      board.replace('(drill 0.3)', '(drill 0.35)'),
+      board.replace('(layers "F.Cu" "In1.Cu")', '(layers "F.Cu" "B.Cu")'),
+      board.replace(/\(net "VCC"\)\)\s*\)$/, '(net "GND")))'),
+    ];
+    for (const changed of differentVias) {
+      expect(changed).not.toBe(board);
+      expect(computeRoutingChanges(buildIr(changed), [file]).changes).toHaveLength(1);
+    }
+
+    fs.writeFileSync(file, source.replace(via, `${via}\n${via}`));
+    expect(computeRoutingChanges(buildIr(board), [file]).changes).toHaveLength(1);
+  });
+
+  it('ignores routing formatting and an overridden initial width', () => {
+    const file = path.join(dir, 'board.ts');
+    fs.writeFileSync(file, sourceWithTrack(20).replace(
+      '.from({ x: 10, y: 20 }, "F.Cu", 0.2)',
+      ".from({x:10,y:20}, 'F.Cu', 0.65)",
+    ));
+    expect(computeRoutingChanges(buildIr(boardWithTrack(20)), [file]).changes).toEqual([]);
+    expect(computeRoutingChanges(buildIr(boardWithTrack(25)), [file]).changes).toHaveLength(1);
+  });
+
+  it('ignores an initial layer overridden by the first segment, while detecting a changed segment layer', () => {
+    const file = path.join(dir, 'board.ts');
+    fs.writeFileSync(file, sourceWithTrack(20).replace(
+      '.from({ x: 10, y: 20 }, "F.Cu", 0.2)',
+      '.from({ x: 10, y: 20 }, "B.Cu", 0.2)',
+    ));
+    expect(computeRoutingChanges(buildIr(boardWithTrack(20)), [file]).changes).toEqual([]);
+
+    const changedBoard = boardWithTrack(20).replace('(layer "F.Cu")', '(layer "B.Cu")');
+    expect(computeRoutingChanges(buildIr(changedBoard), [file]).changes).toHaveLength(1);
+  });
+
   it('skips rewrite (with a note) when pushes use unsupported constructs', () => {
     const file = path.join(dir, 'board.ts');
     fs.writeFileSync(
@@ -1096,6 +1145,46 @@ describe('import --watch --auto (live sync)', () => {
       await sleep(1200);
       fs.writeFileSync(boardPath, boardWith(12, 14));
       await waitFor(() => fs.readFileSync(sourcePath, 'utf-8').includes('x: 12, y: 14'), 8000);
+    } finally {
+      session.stop();
+    }
+  }, 20000);
+
+  it("skips a board the build signed (its own output) — no build→import loop", async () => {
+    fs.mkdirSync(path.join(root, 'build'), { recursive: true });
+    fs.mkdirSync(path.join(root, 'src'), { recursive: true });
+    const boardPath = path.join(root, 'build', 'b.kicad_pcb');
+    const built = boardWith(50, 60);
+    fs.writeFileSync(boardPath, built);
+    // the build's manifest signs exactly these bytes
+    fs.writeFileSync(
+      path.join(root, 'build', '.typecad-board.json'),
+      JSON.stringify({ board: 'b.kicad_pcb', boards: ['b.kicad_pcb'], hashes: { 'b.kicad_pcb': boardSignature(built) } }),
+    );
+    const sourcePath = path.join(root, 'src', 'board.ts');
+    const source = [
+      "import { PCB, Resistor } from '@typecad/pcb';",
+      "const typecad = new PCB('t');",
+      "const r1 = new Resistor({ reference: 'R1' });",
+      'r1.pcb = { x: 1, y: 2 };',
+      'typecad.create(r1);',
+    ].join('\n');
+    fs.writeFileSync(sourcePath, source);
+
+    const session = startBoardWatch(boardPath, { apply: true, auto: true }, (file, cycleOptions) =>
+      kicadDataToTypeCAD(file, cycleOptions),
+    );
+    try {
+      await session.ready;
+      // the build's own output is never imported back
+      expect(fs.readFileSync(sourcePath, 'utf-8')).toBe(source);
+
+      // a KiCad save (bytes differ from the signature) still syncs — wait
+      // out coarse mtime granularity first: same-size rewrites inside one
+      // tick share the watcher's mtime+size stamp
+      await sleep(1200);
+      fs.writeFileSync(boardPath, boardWith(77, 88));
+      await waitFor(() => fs.readFileSync(sourcePath, 'utf-8').includes('x: 77, y: 88'), 8000);
     } finally {
       session.stop();
     }

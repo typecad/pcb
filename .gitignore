@@ -10,14 +10,13 @@ coverage/
 *.js.map
 *.d.ts.map
 
-# Compiled output emitted beside sources (passives compiles in place)
 
 # Nested workspace lockfiles (root package-lock.json is authoritative)
-rd_skeleton/hw/package-lock.json
+demo/rd_skeleton/hw/package-lock.json
 
-# Generated renders (rd_isl9120_impl)
-rd_isl9120_impl/hw/svg/
-rd_isl9120_impl/hw/circuit_visualization.svg
+# Generated renders (demo/rd_isl9120_impl)
+demo/rd_isl9120_impl/hw/svg/
+demo/rd_isl9120_impl/hw/circuit_visualization.svg
 
 # AI tool directories
 .opencode/
@@ -38,9 +37,7 @@ sym-lib-table
 svg-cache.json
 component_registry.json
 .jlcpcb-cache-timestamp
-# Nested workspace lockfiles (root package-lock.json is authoritative)
 @typecad/*/package-lock.json
-rd_skeleton/hw/package-lock.json
 packages/*/package-lock.json
 
 *.vsix
@@ -58,3 +55,5 @@ gerber_spec/tools/rd_solid_tmp.kicad_pcb
 # retired nested repos) — kept out of the umbrella repo
 typecad_project/
 .typecad-import/
+vite.config.ts.timestamp-*
+_to_delete/

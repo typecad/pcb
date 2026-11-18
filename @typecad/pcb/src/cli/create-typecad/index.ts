@@ -79,6 +79,10 @@ async function main(preparsedArgs?: Record<string, any>) {
     return;
   }
 
+  if (cmdArgs.yes === true && (typeof cmdArgs.name !== 'string' || !cmdArgs.name.trim())) {
+    throw new Error('Provide a project name with --name when using --yes.');
+  }
+
   // Normalize a project name into a valid TypeScript identifier (the name
   // becomes the entry file and is imported by users): hyphens/spaces/
   // punctuation fold to underscores rather than failing — "agent-demo" and
@@ -142,15 +146,27 @@ async function main(preparsedArgs?: Record<string, any>) {
     // while no question is pending (piped stdin delivers the whole answer
     // sheet in one chunk) would otherwise be dropped by readline.
     const pendingLines: string[] = [];
-    const lineWaiters: Array<(line: string) => void> = [];
+    const lineWaiters: Array<{ resolve: (line: string) => void; reject: (error: Error) => void }> = [];
+    let inputClosed = false;
+    const inputEndedError = () =>
+      new Error(
+        'create needs answers for its prompts, but input ended. Run it in a terminal, or pass --name=<name> --yes to skip the prompts.',
+      );
     rl.on('line', (l: string) => {
-      if (lineWaiters.length > 0) lineWaiters.shift()!(l);
+      if (lineWaiters.length > 0) lineWaiters.shift()!.resolve(l);
       else pendingLines.push(l);
     });
+    // EOF with a prompt still waiting (</dev/null, CI, a closed pipe) would
+    // otherwise leave the promise pending and exit 0 having created nothing.
+    rl.on('close', () => {
+      inputClosed = true;
+      while (lineWaiters.length > 0) lineWaiters.shift()!.reject(inputEndedError());
+    });
     const nextLine = (): Promise<string> =>
-      new Promise((resolve) => {
+      new Promise((resolve, reject) => {
         if (pendingLines.length > 0) resolve(pendingLines.shift()!);
-        else lineWaiters.push(resolve);
+        else if (inputClosed) reject(inputEndedError());
+        else lineWaiters.push({ resolve, reject });
       });
     const ask = async (q: string, def?: string): Promise<string> => {
       const suffix = def ? ` (${def})` : '';
@@ -196,5 +212,8 @@ async function main(preparsedArgs?: Record<string, any>) {
 export { main };
 
 if (process.argv[1]?.endsWith('create-typecad/index.js') || process.argv[1]?.endsWith('create-typecad\\index.js')) {
-  main();
+  main().catch((error: unknown) => {
+    logger.error(error instanceof Error ? error.message : String(error));
+    process.exitCode = 1;
+  });
 }

@@ -2,6 +2,9 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import { createHash } from 'node:crypto';
+import { spawn } from 'node:child_process';
+import { boardIdentity } from '../boardFile.js';
 
 // viewer.ts imports 'vscode', which only exists inside the extension host —
 // mock the surface it touches at test time.
@@ -19,7 +22,7 @@ vi.mock('vscode', () => ({
 
 // @ts-expect-error — accessing private members through a typed-any handle
 import { BoardViewerPanel } from '../viewer.js';
-import { sync } from '../syncState.js';
+import { onSyncChange, setSyncPaused, sync } from '../syncState.js';
 
 type PanelHandle = any;
 
@@ -174,6 +177,186 @@ describe('viewer generate pipeline', () => {
     expect(panel.generated.html).toContain('window.__typecadDrift');
   });
 
+  // The rebuild loop: a fresh build always leaves the board newer than every
+  // source, so the mtime test classed the build's OWN output as an external
+  // edit → absorb → source write → auto-build → new board (new mtime, so the
+  // per-revision guard never repeated) → absorb … forever. The build now signs
+  // its output in .typecad-board.json; a matching board is never absorbed.
+  const signBoard = (contents?: string): void => {
+    const board = path.join(root, 'build', 'b.kicad_pcb');
+    const bytes = contents ?? fs.readFileSync(board, 'utf8');
+    const hash = createHash('sha256').update(bytes, 'utf8').digest('hex');
+    fs.writeFileSync(
+      path.join(root, 'build', '.typecad-board.json'),
+      JSON.stringify({ board: 'b.kicad_pcb', boards: ['b.kicad_pcb'], hashes: { 'b.kicad_pcb': hash } }),
+    );
+  };
+
+  it("drift on the build's own (signed) output is a build bug — never absorbed", async () => {
+    signBoard();
+    await expect(panel.generate(root)).resolves.toBe(true);
+    expect(commands.some((c) => c.includes('typecad-pcb import'))).toBe(false);
+    expect(panel.generated.html).toContain('window.__typecadDrift');
+    expect(logs.some((l) => l.includes("build's own output"))).toBe(true);
+  });
+
+  it('a board edited after the build signed it is still absorbed (real KiCad edit)', async () => {
+    signBoard('(kicad_pcb (version 1))'); // the build wrote something else
+    await expect(panel.generate(root)).resolves.toBe(true);
+    expect(commands.filter((c) => c.includes('typecad-pcb import') && c.includes('--apply'))).toHaveLength(1);
+  });
+
+  it('the absorb owns the pipeline while it imports, then releases it', async () => {
+    let busyDuringImport: boolean | undefined;
+    const run = panel.run as (cwd: string, command: string, t: number) => Promise<string>;
+    (panel as PanelHandle).run = async (cwd: string, command: string, t: number) => {
+      if (command.includes('typecad-pcb import')) busyDuringImport = sync.absorbing;
+      return run(cwd, command, t);
+    };
+    await expect(panel.generate(root)).resolves.toBe(true);
+    expect(busyDuringImport).toBe(true);
+    expect(sync.absorbing).toBe(false);
+  });
+
+  it('a running KiCad sync owns import — the viewer neither absorbs nor banners', async () => {
+    // the project lock a running `import --watch` holds (sha1 of the project
+    // root → pid file in the temp dir); our own pid is ignored, so spawn a
+    // live child to stand in for the sync terminal's process
+    const child = spawn(process.execPath, ['-e', 'setTimeout(()=>{},30000)'], { stdio: 'ignore' });
+    const key = createHash('sha1').update(path.resolve(root)).digest('hex').slice(0, 12);
+    const lock = path.join(os.tmpdir(), `typecad-import-${key}.lock`);
+    fs.writeFileSync(lock, String(child.pid));
+    try {
+      await expect(panel.generate(root)).resolves.toBe(true);
+      expect(commands.some((c) => c.includes('typecad-pcb import'))).toBe(false);
+      expect(panel.generated.html).not.toContain('window.__typecadDrift');
+      expect(logs.some((l) => l.includes('owns board→source import'))).toBe(true);
+    } finally {
+      child.kill();
+      fs.rmSync(lock, { force: true });
+    }
+  });
+
+  describe('rebaseCheck', () => {
+    const part = (reference: string, x: number, y: number, rotation = 0, side: 'front' | 'back' = 'front') =>
+      ({ reference, value: '', footprint: '', side, at: { x, y, rotation }, dimensions: null, padCount: 0 }) as never;
+
+    const renderWith = async (components: unknown[]): Promise<string> => {
+      (panel as PanelHandle).service = { components: async () => components, netSources: async () => [], invalidate: () => undefined };
+      // no drift here — this is about the render record, not the oracle
+      const run = panel.run as (cwd: string, command: string, t: number) => Promise<string>;
+      (panel as PanelHandle).run = async (cwd: string, command: string, t: number) =>
+        command.includes('check-sync') ? JSON.stringify({ count: 0 }) : run(cwd, command, t);
+      await expect(panel.generate(root)).resolves.toBe(true);
+      return panel.generated.boardId as string;
+    };
+
+    it('ok when every touched part sits where the stamped render showed it', async () => {
+      const id = await renderWith([part('R1', 10, 20, 90), part('C1', 5, 5)]);
+      // the rebuild changed C1 (not touched) but not R1
+      (panel as PanelHandle).service.components = async () => [part('R1', 10, 20, 90), part('C1', 99, 5)];
+      await expect(panel.rebaseCheck(id, ['R1'])).resolves.toEqual({ ok: true });
+    });
+
+    it('refuses when a touched part moved, rotated, flipped or vanished', async () => {
+      const id = await renderWith([part('R1', 10, 20, 90)]);
+      const svc = (panel as PanelHandle).service;
+      svc.components = async () => [part('R1', 10.5, 20, 90)];
+      expect((await panel.rebaseCheck(id, ['R1'])).ok).toBe(false);
+      svc.components = async () => [part('R1', 10, 20, 180)];
+      expect((await panel.rebaseCheck(id, ['R1'])).ok).toBe(false);
+      svc.components = async () => [part('R1', 10, 20, 90, 'back')];
+      expect((await panel.rebaseCheck(id, ['R1'])).ok).toBe(false);
+      svc.components = async () => [];
+      expect(await panel.rebaseCheck(id, ['R1'])).toMatchObject({ ok: false, reason: expect.stringContaining('gone') });
+    });
+
+    it('treats 360° as the same rotation', async () => {
+      const id = await renderWith([part('R1', 1, 1, 0)]);
+      (panel as PanelHandle).service.components = async () => [part('R1', 1, 1, 360)];
+      await expect(panel.rebaseCheck(id, ['R1'])).resolves.toEqual({ ok: true });
+    });
+
+    it('refuses a stamp it never rendered', async () => {
+      await renderWith([part('R1', 1, 1)]);
+      expect(await panel.rebaseCheck('never-seen', ['R1'])).toMatchObject({ ok: false });
+    });
+  });
+
+  describe('paused state', () => {
+    let notified: number;
+    beforeEach(() => {
+      notified = 0;
+      setSyncPaused(null);
+      onSyncChange(() => {
+        notified++;
+      });
+    });
+    afterEach(() => {
+      onSyncChange(null);
+      setSyncPaused(null);
+    });
+
+    it('the circuit breaker pauses sync visibly, and an in-sync render clears it', async () => {
+      const board = path.join(root, 'build', 'b.kicad_pcb');
+      for (let round = 0; round < 4; round++) {
+        fs.writeFileSync(board, `(kicad_pcb (round ${round}))`);
+        const past = new Date(Date.now() - 120_000 + round * 1_000);
+        fs.utimesSync(board, past, past);
+        await expect(panel.generate(root)).resolves.toBe(true);
+      }
+      expect(sync.paused).toMatch(/not converging/);
+      expect(notified).toBeGreaterThan(0);
+
+      // the drift finally resolves: a render whose oracle reports no drift ends the pause
+      (panel as PanelHandle).run = async (_cwd: string, command: string) => {
+        if (command.includes('typecad-pcb viewer')) {
+          writePage();
+          return '';
+        }
+        if (command.includes('check-sync')) return JSON.stringify({ count: 0 });
+        return '';
+      };
+      fs.writeFileSync(board, '(kicad_pcb (settled))');
+      const past = new Date(Date.now() - 100_000);
+      fs.utimesSync(board, past, past);
+      await expect(panel.generate(root)).resolves.toBe(true);
+      expect(sync.paused).toBeNull();
+    });
+
+    it('the build not reproducing source (own signed output drifts) pauses sync', async () => {
+      signBoard();
+      await expect(panel.generate(root)).resolves.toBe(true);
+      expect(sync.paused).toMatch(/does not reproduce this board/);
+    });
+
+    it('notifies only on an actual change', () => {
+      setSyncPaused('x');
+      setSyncPaused('x');
+      setSyncPaused(null);
+      setSyncPaused(null);
+      expect(notified).toBe(2);
+    });
+  });
+
+  it('a non-converging absorb loop trips the circuit breaker', async () => {
+    // simulate build→absorb→build: each round the board has new bytes AND a
+    // new mtime (the old mtime-keyed guard never repeated), unsigned
+    const board = path.join(root, 'build', 'b.kicad_pcb');
+    let applies = 0;
+    for (let round = 0; round < 5; round++) {
+      fs.writeFileSync(board, `(kicad_pcb (round ${round}))`);
+      const past = new Date(Date.now() - 120_000 + round * 1_000);
+      fs.utimesSync(board, past, past);
+      commands = [];
+      await expect(panel.generate(root)).resolves.toBe(true);
+      applies += commands.filter((c) => c.includes('--apply')).length;
+    }
+    expect(applies).toBe(2);
+    expect(logs.some((l) => l.includes('not converging'))).toBe(true);
+    expect(panel.generated.html).toContain('window.__typecadDrift');
+  });
+
   it('external drift absorbs silently when regeneration converges — no banner', async () => {
     // the converging case: check-sync clears after the importer ran, so
     // the tree maintains itself and the user never sees a banner
@@ -245,7 +428,7 @@ describe('viewer generate pipeline', () => {
     // a stale board stamp. The branch must land any render the panel has
     // not been shown.
     writePage();
-    const boardMtime = fs.statSync(path.join(root, 'build', 'b.kicad_pcb')).mtimeMs;
+    const boardId = boardIdentity(path.join(root, 'build', 'b.kicad_pcb'));
     const pageMtime = fs.statSync(path.join(root, 'build', 'serve', 'viewer.html')).mtimeMs;
     const assigned: string[] = [];
     panel.panel = {
@@ -260,7 +443,7 @@ describe('viewer generate pipeline', () => {
       onDidDispose: () => undefined,
       onDidChangeViewState: () => undefined,
     };
-    panel.generated = { html: '<html>POST-APPLY</html>', boardMtimeMs: boardMtime, diskMtimeMs: pageMtime };
+    panel.generated = { html: '<html>POST-APPLY</html>', boardId, diskMtimeMs: pageMtime };
     panel.assignedHtml = '<html>PRE-APPLY</html>';
 
     await panel.doRefresh();

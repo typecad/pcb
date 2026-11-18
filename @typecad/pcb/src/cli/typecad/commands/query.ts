@@ -3,6 +3,7 @@ import path from 'node:path';
 import chalk from 'chalk';
 import type { ParsedArgs } from '../parser.js';
 import logger from '../../../utils/logging.js';
+import { missingBoardMessage, withCommands } from '../../../utils/command_hint.js';
 import { boardStemFromArgs, buildDirPath, findBoardFile, knownBoardsHint } from '../pipeline.js';
 import {
   buildBoardModel,
@@ -93,7 +94,7 @@ export async function run(parsed: ParsedArgs): Promise<void> {
 
   if (!subject || subject === 'help') {
     if (json) {
-      logger.log(
+      logger.out(
         JSON.stringify({
           subjects: [
             'summary',
@@ -141,7 +142,7 @@ export async function run(parsed: ParsedArgs): Promise<void> {
   ];
   if (!validSubjects.includes(subject)) {
     if (json) {
-      logger.log(
+      logger.out(
         JSON.stringify({
           error: true,
           message: `Unknown subject '${subject}'. Valid: ${validSubjects.join(', ')}.`,
@@ -149,7 +150,7 @@ export async function run(parsed: ParsedArgs): Promise<void> {
         }),
       );
     } else {
-      logger.error(chalk.red(`Unknown subject '${subject}'. Run 'typecad-pcb query' for available subjects.`));
+      logger.error(chalk.red(withCommands(`Unknown subject '${subject}'. See the available subjects with:`, 'typecad-pcb query')));
     }
     process.exit(1);
   }
@@ -161,7 +162,7 @@ export async function run(parsed: ParsedArgs): Promise<void> {
     throw new Error(
       explicitPath
         ? `PCB file not found: ${explicitPath}`
-        : `No .kicad_pcb found in ${buildDirPath()}. Run 'typecad-pcb build' first or pass a path.`,
+        : missingBoardMessage(buildDirPath(), 'query summary', '--board <board-name>'),
     );
   }
 
@@ -178,7 +179,7 @@ export async function run(parsed: ParsedArgs): Promise<void> {
     case 'summary': {
       const s = model.summary;
       if (json) {
-        logger.log(JSON.stringify(s, null, 2));
+        logger.out(JSON.stringify(s, null, 2));
         return;
       }
       printHeader('Board summary', pcbPath);
@@ -205,7 +206,7 @@ export async function run(parsed: ParsedArgs): Promise<void> {
     case 'nets': {
       const sorted = [...model.nets].sort((a, b) => a.name.localeCompare(b.name));
       if (json) {
-        logger.log(JSON.stringify(sorted.map(netSummaryJson), null, 2));
+        logger.out(JSON.stringify(sorted.map(netSummaryJson), null, 2));
         return;
       }
       printHeader(`Nets (${model.nets.length})`, pcbPath);
@@ -229,7 +230,7 @@ export async function run(parsed: ParsedArgs): Promise<void> {
       const net = findNet(model, name);
       if (!net) {
         if (json) {
-          logger.log(
+          logger.out(
             JSON.stringify(
               {
                 error: true,
@@ -242,12 +243,12 @@ export async function run(parsed: ParsedArgs): Promise<void> {
             ),
           );
         } else {
-          logger.error(chalk.red(`Net '${name}' not found. Run 'typecad-pcb query nets' to list them.`));
+          logger.error(chalk.red(withCommands(`Net '${name}' not found. List them with:`, 'typecad-pcb query nets')));
         }
         process.exit(1);
       }
       if (json) {
-        logger.log(JSON.stringify(netSummaryJson(net), null, 2));
+        logger.out(JSON.stringify(netSummaryJson(net), null, 2));
         return;
       }
       printHeader(`Net ${net.name}`, pcbPath);
@@ -278,7 +279,7 @@ export async function run(parsed: ParsedArgs): Promise<void> {
 
     case 'components': {
       if (json) {
-        logger.log(
+        logger.out(
           JSON.stringify(
             model.components.map((c) => ({
               reference: c.reference,
@@ -317,7 +318,7 @@ export async function run(parsed: ParsedArgs): Promise<void> {
       const comp = findComponent(model, ref);
       if (!comp) {
         if (json) {
-          logger.log(
+          logger.out(
             JSON.stringify(
               {
                 error: true,
@@ -330,12 +331,12 @@ export async function run(parsed: ParsedArgs): Promise<void> {
             ),
           );
         } else {
-          logger.error(chalk.red(`Component '${ref}' not found. Run 'typecad-pcb query components' to list them.`));
+          logger.error(chalk.red(withCommands(`Component '${ref}' not found. List them with:`, 'typecad-pcb query components')));
         }
         process.exit(1);
       }
       if (json) {
-        logger.log(JSON.stringify(componentJson(comp), null, 2));
+        logger.out(JSON.stringify(componentJson(comp), null, 2));
         return;
       }
       printHeader(`${comp.reference} — ${comp.value}`, pcbPath);
@@ -358,7 +359,7 @@ export async function run(parsed: ParsedArgs): Promise<void> {
       const pads = unconnectedPads(model);
       const single = singlePinNets(model);
       if (json) {
-        logger.log(JSON.stringify({ unconnectedPads: pads, singlePinNets: single.map((n) => n.name) }, null, 2));
+        logger.out(JSON.stringify({ unconnectedPads: pads, singlePinNets: single.map((n) => n.name) }, null, 2));
         return;
       }
       printHeader('Unconnected', pcbPath);
@@ -380,7 +381,7 @@ export async function run(parsed: ParsedArgs): Promise<void> {
     case 'power': {
       const powerNets = model.nets.filter(isPowerNet);
       if (json) {
-        logger.log(JSON.stringify(powerNets.map(netSummaryJson), null, 2));
+        logger.out(JSON.stringify(powerNets.map(netSummaryJson), null, 2));
         return;
       }
       printHeader('Power', pcbPath);
@@ -404,7 +405,7 @@ export async function run(parsed: ParsedArgs): Promise<void> {
         const net = findNet(model, name);
         if (!net) {
           if (json) {
-            logger.log(
+            logger.out(
               JSON.stringify(
                 {
                   error: true,
@@ -417,14 +418,14 @@ export async function run(parsed: ParsedArgs): Promise<void> {
               ),
             );
           } else {
-            logger.error(chalk.red(`Net '${name}' not found. Run 'typecad-pcb query nets' to list them.`));
+            logger.error(chalk.red(withCommands(`Net '${name}' not found. List them with:`, 'typecad-pcb query nets')));
           }
           process.exit(1);
         }
         nets = [net];
       }
       if (json) {
-        logger.log(JSON.stringify(nets.map(routeJson), null, 2));
+        logger.out(JSON.stringify(nets.map(routeJson), null, 2));
         return;
       }
       printHeader(name ? `Routing — ${name}` : 'Routing', pcbPath);
@@ -450,7 +451,7 @@ export async function run(parsed: ParsedArgs): Promise<void> {
 
     case 'zones': {
       if (json) {
-        logger.log(
+        logger.out(
           JSON.stringify(
             model.zones.map((z) => ({
               net: z.netName,

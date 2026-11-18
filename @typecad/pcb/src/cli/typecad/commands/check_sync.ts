@@ -2,7 +2,8 @@ import path from 'node:path';
 import fs from 'node:fs';
 import chalk from 'chalk';
 import logger from '../../../utils/logging.js';
-import { boardStemFromArgs, findBoardFile } from '../pipeline.js';
+import { missingBoardMessage } from '../../../utils/command_hint.js';
+import { boardStemFromArgs, buildDirPath, findBoardFile } from '../pipeline.js';
 import { SExprNode } from '../../../kicad2typecad/sexpr_tree.js';
 import { KicadIRBuilder } from '../../../kicad2typecad/ir_builder.js';
 import { computeAllSourceChanges } from '../../../kicad2typecad/apply_source.js';
@@ -24,9 +25,7 @@ export async function run(parsed: ParsedArgs): Promise<void> {
   const stem = boardStemFromArgs(parsed);
   const pcbPath = pcbArg ?? findBoardFile(stem ?? undefined);
   if (!pcbPath || !fs.existsSync(pcbPath)) {
-    throw new Error(
-      'No .kicad_pcb file found — run `typecad-pcb build` first, or pass one: typecad-pcb check-sync <board.kicad_pcb>',
-    );
+    throw new Error(missingBoardMessage(buildDirPath(), 'check-sync', '<board.kicad_pcb>'));
   }
   const srcDir = path.resolve(path.dirname(pcbPath), '..', 'src');
   if (!fs.existsSync(srcDir)) {
@@ -53,7 +52,7 @@ export async function run(parsed: ParsedArgs): Promise<void> {
   }
 
   if (json) {
-    logger.log(JSON.stringify({ inSync: rows.length === 0, board: pcbPath, count: rows.length, changes: rows }, null, 2));
+    logger.out(JSON.stringify({ inSync: rows.length === 0, board: pcbPath, count: rows.length, changes: rows }, null, 2));
   } else {
     logger.log(chalk.white.bold('typecad-pcb check-sync') + ' - board vs source drift check\n');
     logger.log(`  PCB:    ${pcbPath}`);

@@ -1,5 +1,42 @@
 # @typecad/pcb
 
+## 1.0.0-alpha.12
+
+### Patch Changes
+
+- `typecad-pcb doc` (and native board plotting) no longer crash on machines
+  without KiCad. The temp-directory helper consulted the discovered KiCad
+  install to detect Flatpak, which throws when none is found — and docgen's
+  temp manager runs that at import time, so the command died before rendering
+  anything. It now falls back to the OS temp dir when KiCad isn't available.
+  Only `{Render/…}` 3D images still need kicad-cli, and those continue to be
+  skipped with a warning.
+- Errors that tell you to run something now put each command on its own
+  indented, colored line (no quotes or backticks) so it copies cleanly, and
+  `typecad-pcb` commands are always shown as `npx typecad-pcb ...`. Covers the
+  missing-library/footprint errors, the "no board in build/" errors
+  (`drc`, `erc`, `export`, `viewer`, `check-sync`, `query`, `edit`), unknown
+  command/subject/skill/net/component hints, `doctor` fixes, project creation
+  and docgen dependency errors. Color is dropped when output isn't a terminal
+  or `NO_COLOR` is set; `--json` messages stay plain text.
+
+## 1.0.0-alpha.11
+
+### Patch Changes
+
+- Missing-library errors now carry their own fix. When a symbol is not in the
+  resolved library — e.g. a bundled partial `Device.kicad_sym` on a machine
+  with no KiCad install — the schematic errors end with the exact command,
+  `Add it to the project with: typecad-pcb lib add Device:Battery_Cell`,
+  from both the library manager and the component-level "Cannot update
+  component" error (previously only the rarer missing-library-file error
+  suggested anything). The missing-footprint error keeps its
+  `lib add --footprint` hint but no longer buries it under stacked wrapper
+  prefixes: the loader's already-complete message is rethrown verbatim
+  through the footprint-node and board-creation catch blocks instead of
+  gaining another `[ref, value, footprint] Failed to create footprint node`
+  prefix on every hop, so the actionable line reads first, not last.
+
 ## 1.0.0-alpha.10
 
 ### Minor Changes

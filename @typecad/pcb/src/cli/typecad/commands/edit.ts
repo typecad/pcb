@@ -3,6 +3,7 @@ import path from 'node:path';
 import chalk from 'chalk';
 import type { ParsedArgs } from '../parser.js';
 import logger from '../../../utils/logging.js';
+import { withCommands } from '../../../utils/command_hint.js';
 import { buildBoardModel, findComponent, findNet, type BoardComponent, type BoardModel } from '../board_model.js';
 import { loadConfig } from '../../../config.js';
 import { buildDirPath } from '../pipeline.js';
@@ -11,13 +12,15 @@ interface EditError {
   code: string;
   message: string;
   didYouMean?: string[];
+  /** Terminal commands that fix it; printed on their own lines in text mode only. */
+  fixCommands?: string[];
 }
 
 function fail(error: EditError, json: boolean): never {
   if (json) {
-    logger.log(JSON.stringify({ ok: false, error }, null, 2));
+    logger.out(JSON.stringify({ ok: false, error }, null, 2));
   } else {
-    logger.error(chalk.red(error.message));
+    logger.error(chalk.red(error.fixCommands?.length ? withCommands(error.message, ...error.fixCommands) : error.message));
     if (error.didYouMean && error.didYouMean.length > 0) {
       logger.log(chalk.gray(`  Did you mean: ${error.didYouMean.slice(0, 5).join(', ')}?`));
     }
@@ -173,7 +176,7 @@ export async function run(parsed: ParsedArgs): Promise<void> {
 
   if (!op) {
     if (json) {
-      logger.log(
+      logger.out(
         JSON.stringify({ operations: ['connect <endpoints...>', 'move <ref> (--to=x,y | --right-of=ref ...)'] }),
       );
     } else {
@@ -190,7 +193,8 @@ export async function run(parsed: ParsedArgs): Promise<void> {
       {
         code: 'NO_BUILD',
         message:
-          `No .kicad_pcb found in ${buildDirPath()}. Run 'typecad-pcb build' or 'typecad-pcb check' first so edits can be validated.`,
+          `No .kicad_pcb found in ${buildDirPath()}. Build first so edits can be validated.`,
+        fixCommands: ['typecad-pcb build', 'typecad-pcb check'],
       },
       json,
     );
@@ -254,7 +258,7 @@ export async function run(parsed: ParsedArgs): Promise<void> {
 
     if (dryRun) {
       if (json)
-        logger.log(JSON.stringify({ ok: true, dryRun: true, file: sourcePath, line: lineNumber, code }, null, 2));
+        logger.out(JSON.stringify({ ok: true, dryRun: true, file: sourcePath, line: lineNumber, code }, null, 2));
       else {
         logger.log(chalk.white.bold('Dry run — would insert at ') + `${sourcePath}:${lineNumber}`);
         logger.log(chalk.green(`+ ${code}`));
@@ -262,7 +266,7 @@ export async function run(parsed: ParsedArgs): Promise<void> {
       return;
     }
     fs.writeFileSync(sourcePath, lines.join('\n'), 'utf8');
-    if (json) logger.log(JSON.stringify({ ok: true, file: sourcePath, line: lineNumber, code }, null, 2));
+    if (json) logger.out(JSON.stringify({ ok: true, file: sourcePath, line: lineNumber, code }, null, 2));
     else {
       logger.log(
         chalk.green(
@@ -382,7 +386,7 @@ export async function run(parsed: ParsedArgs): Promise<void> {
 
     if (dryRun) {
       if (json)
-        logger.log(
+        logger.out(
           JSON.stringify({ ok: true, dryRun: true, file: sourcePath, line: lineNumber, action, code }, null, 2),
         );
       else {
@@ -392,7 +396,7 @@ export async function run(parsed: ParsedArgs): Promise<void> {
       return;
     }
     fs.writeFileSync(sourcePath, lines.join('\n'), 'utf8');
-    if (json) logger.log(JSON.stringify({ ok: true, file: sourcePath, line: lineNumber, action, code }, null, 2));
+    if (json) logger.out(JSON.stringify({ ok: true, file: sourcePath, line: lineNumber, action, code }, null, 2));
     else {
       logger.log(chalk.green(`✓ moved ${comp!.reference}${relLabel}`));
       logger.log(chalk.gray(`  ${sourcePath}:${lineNumber}  ${code}`));
@@ -449,7 +453,7 @@ export async function run(parsed: ParsedArgs): Promise<void> {
 
     if (dryRun) {
       if (json)
-        logger.log(JSON.stringify({ ok: true, dryRun: true, file: sourcePath, line: lineNumber, code }, null, 2));
+        logger.out(JSON.stringify({ ok: true, dryRun: true, file: sourcePath, line: lineNumber, code }, null, 2));
       else {
         logger.log(chalk.white.bold('Dry run — would insert at ') + `${sourcePath}:${lineNumber}`);
         logger.log(chalk.green(`+ ${code}`));
@@ -457,7 +461,7 @@ export async function run(parsed: ParsedArgs): Promise<void> {
       return;
     }
     fs.writeFileSync(sourcePath, lines.join('\n'), 'utf8');
-    if (json) logger.log(JSON.stringify({ ok: true, file: sourcePath, line: lineNumber, code }, null, 2));
+    if (json) logger.out(JSON.stringify({ ok: true, file: sourcePath, line: lineNumber, code }, null, 2));
     else {
       logger.log(chalk.green(`✓ routed ${from.comp.reference}.${from.pad} ↔ ${to.comp.reference}.${to.pad}`));
       logger.log(chalk.gray(`  ${sourcePath}:${lineNumber}  ${code}`));

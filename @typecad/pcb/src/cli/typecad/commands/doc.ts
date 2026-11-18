@@ -20,8 +20,8 @@ export async function run(parsed: ParsedArgs): Promise<void> {
   const pcbFilePath = path.resolve(pcbFile);
   const output = parsed.args['output'] || parsed.args['o'];
   const outputFile = output ? path.resolve(String(output)) : inputFile.replace(/\.md$/, '.html');
-  const verbose = parsed.args['verbose'] === true || parsed.args['v'] === true;
-  const quiet = parsed.args['quiet'] === true || parsed.args['q'] === true;
+  const verbose = parsed.args['verbose'] === true;
+  const quiet = parsed.args['quiet'] === true;
   const openFile = parsed.args['open'] !== false;
 
   try {

@@ -126,6 +126,7 @@ describe('KiCADSchematic', () => {
       const result = schematic.update(makeComp());
       expect(result).toBeNull();
       expect(mockLogError).toHaveBeenCalledWith(expect.stringContaining('not found'));
+      expect(mockLogError).toHaveBeenCalledWith(expect.stringContaining('typecad-pcb lib add'));
     });
 
     it('should add serializedLibEntry to lib_symbols on first use', () => {

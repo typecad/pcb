@@ -5,6 +5,8 @@ import { executeKiCADCommand } from '../../../kicad_commands.js';
 import type { ParsedArgs } from '../parser.js';
 import type { ErcViolation } from '../../types.js';
 import logger from '../../../utils/logging.js';
+import { sym, summaryLine, withSpinner } from '../ui.js';
+import { missingBoardMessage } from '../../../utils/command_hint.js';
 import { boardStemFromArgs, buildDirPath, findBoardFile, knownBoardsHint } from '../pipeline.js';
 import { kicadMajorVersion } from './export.js';
 import { runDrc } from '../../../pcb/pcb_drc_engine.js';
@@ -25,7 +27,7 @@ function findPcbFile(argPath?: string, stem?: string): string | null {
 
 function formatViolation(v: ErcViolation): string {
   const severity = v.severity ?? 'error';
-  const icon = severity === 'error' ? '✖' : '⚠';
+  const icon = severity === 'error' ? sym.fail : sym.warn;
   const desc = v.description ?? '';
   const type = v.type ?? '';
   let line = `  ${icon} [${type}] ${desc}`;
@@ -46,10 +48,7 @@ export async function run(parsed: ParsedArgs): Promise<void> {
     if (pcbArg) {
       throw new Error(`PCB file not found: ${pcbArg}`);
     }
-    throw new Error(
-      `No .kicad_pcb file found in ${buildDirPath()}.\n` +
-        'Run `typecad-pcb build` first, or specify a path: typecad-pcb drc <path/to/board.kicad_pcb>',
-    );
+    throw new Error(missingBoardMessage(buildDirPath(), 'drc'));
   }
 
   // The engine line says which check actually ran — printing "native" while
@@ -189,7 +188,7 @@ function reportViolations(
     if (severity === 'error') errors++;
     else if (severity === 'warning') warnings++;
     else unconnected++;
-    violationLines.push(`  ✖ [unconnected${severity === 'warning' ? ' (hatch-phase caveat)' : ''}] ${u.description ?? ''}`);
+    violationLines.push(`  ${sym.fail} [unconnected${severity === 'warning' ? ' (hatch-phase caveat)' : ''}] ${u.description ?? ''}`);
     for (const item of u.items ?? []) {
       violationLines.push(`     ${item.description ?? ''} @(${item.pos?.x}, ${item.pos?.y})`);
     }
@@ -198,23 +197,20 @@ function reportViolations(
   const passed = errors === 0 && warnings === 0 && unconnected === 0;
 
   if (json) {
-    logger.log(
+    logger.out(
       JSON.stringify({ passed, errors, warnings, unconnected, output: JSON.stringify(report) }, null, 2),
     );
   } else {
     if (!passed) {
       for (const line of violationLines) {
-        const isWarn = line.includes('⚠');
+        const isWarn = line.includes(sym.warn);
         logger.log(isWarn ? chalk.yellow(line) : chalk.red(line));
       }
       if (violationLines.length > 0) logger.log('');
-      if (errors > 0) logger.log(chalk.red(`DRC found ${errors} error(s).`));
-      if (warnings > 0) logger.log(chalk.yellow(`DRC found ${warnings} warning(s).`));
-      if (unconnected > 0) logger.log(chalk.yellow(`DRC found ${unconnected} unconnected item(s).`));
-      logger.log(chalk.gray(`\nFull report saved to ${reportPath}`));
+      logger.log(summaryLine({ label: 'DRC', errors, warnings, unconnected, ms: elapsedMs }));
+      logger.log(chalk.gray(`Full report saved to ${reportPath}`));
     } else {
-      const time = elapsedMs !== undefined ? chalk.gray(` (${(elapsedMs / 1000).toFixed(1)}s)`) : '';
-      logger.log(chalk.green(`DRC passed. No violations or unconnected items.${time}`));
+      logger.log(summaryLine({ label: 'DRC', ms: elapsedMs }));
     }
   }
 
@@ -247,11 +243,13 @@ async function runKicadDrc(parsed: ParsedArgs, pcbPath: string, json: boolean): 
     pcbPath,
   ];
 
+  const startedAt = Date.now();
   try {
-    await executeKiCADCommand('pcb', args, { stdio: 'pipe' });
+    await withSpinner('Running KiCad DRC…', () => executeKiCADCommand('pcb', args, { stdio: 'pipe' }));
   } catch {
     logger.debug('DRC: kicad-cli exited non-zero (expected when violations found)');
   }
+  const elapsedMs = Date.now() - startedAt;
 
   let errors = 0;
   let warnings = 0;
@@ -282,7 +280,7 @@ async function runKicadDrc(parsed: ParsedArgs, pcbPath: string, json: boolean): 
       const unconnectedItems = report.unconnected_items ?? [];
       unconnected += unconnectedItems.length;
       for (const item of unconnectedItems) {
-        violationLines.push(`  ✖ [unconnected] ${item.description ?? ''}`);
+        violationLines.push(`  ${sym.fail} [unconnected] ${item.description ?? ''}`);
       }
     } catch {
       const textMatch = rawReport.match(/Found\s+(\d+)\s+violation/i);
@@ -295,7 +293,7 @@ async function runKicadDrc(parsed: ParsedArgs, pcbPath: string, json: boolean): 
   const passed = errors === 0 && warnings === 0 && unconnected === 0;
 
   if (json) {
-    logger.log(
+    logger.out(
       JSON.stringify(
         {
           pcb: pcbPath,
@@ -312,22 +310,14 @@ async function runKicadDrc(parsed: ParsedArgs, pcbPath: string, json: boolean): 
   } else {
     if (!passed) {
       for (const line of violationLines) {
-        const isWarn = line.includes('⚠');
+        const isWarn = line.includes(sym.warn);
         logger.log(isWarn ? chalk.yellow(line) : chalk.red(line));
       }
       if (violationLines.length > 0) logger.log('');
-      if (errors > 0) {
-        logger.log(chalk.red(`DRC found ${errors} error(s).`));
-      }
-      if (warnings > 0) {
-        logger.log(chalk.yellow(`DRC found ${warnings} warning(s).`));
-      }
-      if (unconnected > 0) {
-        logger.log(chalk.yellow(`DRC found ${unconnected} unconnected item(s).`));
-      }
-      logger.log(chalk.gray(`\nFull report saved to ${reportPath}`));
+      logger.log(summaryLine({ label: 'DRC', errors, warnings, unconnected, ms: elapsedMs }));
+      logger.log(chalk.gray(`Full report saved to ${reportPath}`));
     } else {
-      logger.log(chalk.green('DRC passed. No violations or unconnected items.'));
+      logger.log(summaryLine({ label: 'DRC', ms: elapsedMs }));
     }
   }
 

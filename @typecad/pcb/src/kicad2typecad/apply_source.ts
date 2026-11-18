@@ -1,5 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { parseExpressionAt, tokenizer } from 'acorn';
+import type { Node } from 'acorn';
 import { analyzeFile, applyReplacements, findMethodCalls, toPlainValue } from './source_analyzer.js';
 import type { ComponentInfo, MethodCallInfo, Replacement } from './source_analyzer.js';
 import {
@@ -12,6 +14,7 @@ import {
   syncRouteBlockSource,
   textCallSource,
   trackBlockSource,
+  viaNetName,
   zoneCallSource,
   zonePropsSource,
 } from './display.js';
@@ -638,6 +641,114 @@ function buildCreateArgsSource(
   return all.join(', ');
 }
 
+// A first to() with an explicit layer sets the layer of the first segment.
+// The layer passed to from() is then unused, so the board cannot preserve it.
+function normalizeInitialTrackLayer(block: string): string {
+  return block.replace(
+    /(\.from\(\s*\{[^{}]*\}\s*,\s*)(["'])([^"']+)\2(\s*,\s*[^()]+\)\s*\.to\(\s*\{[^{}]*?\blayer\s*:\s*)(["'])([^"']+)\5/g,
+    (_match, prefix: string, quote: string, _initial: string, between: string, layerQuote: string, layer: string) =>
+      `${prefix}${quote}${layer}${quote}${between}${layerQuote}${layer}${layerQuote}`,
+  );
+}
+
+function routingTokens(block: string): string {
+  const normalized = normalizeInitialTrackLayer(block).replace(
+    /(\.from\(\s*\{[^{}]*\}\s*,\s*["'][^"']+["']\s*,\s*)(-?[\d.]+)(\s*\)\s*\.to\(\s*\{[^{}]*?\bwidth\s*:\s*)(-?[\d.]+)/g,
+    '$1$4$3$4',
+  );
+  try {
+    const tokens = tokenizer(normalized, { ecmaVersion: 'latest' });
+    const result: string[] = [];
+    for (const token of tokens) result.push(JSON.stringify([token.type.label, (token as unknown as { value?: unknown }).value]));
+    return result.join('|');
+  } catch {
+    return normalized;
+  }
+}
+
+// Resolve only literals. In particular, spreads, computed values and a net
+// identifier must not be accepted as proof that two vias are equivalent.
+function viaLiteral(node: Node): unknown {
+  const value = node as ReturnType<typeof parseExpressionAt>;
+  switch (value.type) {
+    case 'Literal':
+      return value.value;
+    case 'UnaryExpression':
+      return value.operator === '-' && value.argument.type === 'Literal' && typeof value.argument.value === 'number'
+        ? -value.argument.value
+        : undefined;
+    case 'ArrayExpression': {
+      const items = value.elements.map((item) => item ? viaLiteral(item) : undefined);
+      return items.every((item) => typeof item === 'string') ? items : undefined;
+    }
+    case 'ObjectExpression': {
+      const props: Record<string, unknown> = Object.create(null);
+      for (const prop of value.properties) {
+        if (prop.type !== 'Property' || prop.computed || prop.shorthand || prop.kind !== 'init') return undefined;
+        const key = prop.key.type === 'Identifier' ? prop.key.name : viaLiteral(prop.key);
+        if (typeof key !== 'string') return undefined;
+        const item = viaLiteral(prop.value);
+        if (item === undefined) return undefined;
+        props[key] = item;
+      }
+      return props;
+    }
+    default:
+      return undefined;
+  }
+}
+
+function viaComparisonKey(x: number, y: number, size: number, drill: number, net: string, layers?: string[]): string {
+  return JSON.stringify([x, y, size, drill, net, [...(layers ?? ['F.Cu', 'B.Cu'])].sort()]);
+}
+
+function matchesWithStandaloneVias(
+  ir: KicadIR, block: string, blockStart: number, viaCalls: MethodCallInfo[], isSync: boolean,
+): boolean {
+  if (!viaCalls.length || !ir.vias.length) return false;
+  const nets = new Map(ir.nets.map((net) => [net.number, net.name]));
+  const boardKeys = ir.vias.map((via) => {
+    const net = viaNetName(via, nets);
+    if (!net && via.net) return undefined;
+    return viaComparisonKey(via.at.x, via.at.y, via.size, via.drill, net, via.layers);
+  });
+  const matched = new Set<number>();
+  const removals: Array<{ start: number; end: number; line: string }> = [];
+  for (const call of viaCalls) {
+    if (call.objectName !== 'typecad' || call.argRanges.length !== 1) continue;
+    const range = call.argRanges[0];
+    const argument = block.slice(range.start - blockStart, range.end - blockStart);
+    let value: unknown;
+    try {
+      const expression = parseExpressionAt(argument, 0, { ecmaVersion: 'latest' });
+      if (expression.end !== argument.length) continue;
+      value = viaLiteral(expression);
+    } catch {
+      continue;
+    }
+    if (!value || typeof value !== 'object' || Array.isArray(value)) continue;
+    if (Object.keys(value).some((key) => !['at', 'size', 'drill', 'net', 'layers'].includes(key))) continue;
+    const { at, size = 0.8, drill = 0.4, net = '', layers } = value as Record<string, unknown>;
+    if (!at || typeof at !== 'object' || Array.isArray(at)) continue;
+    const { x, y } = at as Record<string, unknown>;
+    if (typeof x !== 'number' || typeof y !== 'number' || typeof size !== 'number' ||
+        typeof drill !== 'number' || typeof net !== 'string') continue;
+    if (layers !== undefined && (!Array.isArray(layers) || layers.length !== 2)) continue;
+    const key = viaComparisonKey(x, y, size, drill, net, layers as string[] | undefined);
+    const index = boardKeys.findIndex((candidate, i) => candidate === key && !matched.has(i));
+    if (index < 0) continue;
+    matched.add(index);
+    removals.push({ start: call.statementRange.start - blockStart, end: call.statementRange.end - blockStart, line: '' });
+  }
+  if (!matched.size) return false;
+
+  // Set aside the same vias on both sides before chaining the remaining
+  // copper. This also preserves the count when multiple vias coincide.
+  const remaining = { ...ir, vias: ir.vias.filter((_, i) => !matched.has(i)) };
+  const wanted = isSync ? syncRouteBlockSource(remaining) : trackBlockSource(remaining).block;
+  return routingTokens(applyDeleteEdits(block, removals)) === routingTokens(wanted);
+}
+
 export function computeRoutingChanges(ir: KicadIR, sourceFiles: string[]): SourceChangeResult {
   const changes: PendingSourceChange[] = [];
   const notes: string[] = [];
@@ -850,7 +961,8 @@ export function computeRoutingChanges(ir: KicadIR, sourceFiles: string[]): Sourc
     // the applied replacement) converge without churning EOLs.
     const wantedRaw = !isOwner ? '' : isSync ? syncBlock : desiredBlock;
     const wantedBlock = wantedRaw === '' ? '' : renderWithEol(wantedRaw, sourceEol(source));
-    const regionDiffers = currentBlock !== wantedBlock;
+    const regionDiffers = routingTokens(currentBlock) !== routingTokens(wantedBlock) &&
+      !(isOwner && matchesWithStandaloneVias(ir, currentBlock, region.start, viaCalls, isSync));
 
     // Create-args planning is independent of the region diff: stale track
     // references (bare identifiers from older generated code, or spreads of

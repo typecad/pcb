@@ -212,7 +212,8 @@ export interface ProjectLock {
   release(): void;
 }
 
-function lockPathFor(projectRoot: string): string {
+/** The lock file guarding one import process per project (also read by the vscode extension — see boardFile.ts importLockHeld). */
+export function lockPathFor(projectRoot: string): string {
   const key = crypto.createHash('sha1').update(path.resolve(projectRoot)).digest('hex').slice(0, 12);
   return path.join(os.tmpdir(), `typecad-import-${key}.lock`);
 }

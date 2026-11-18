@@ -13,6 +13,7 @@ import {
 import type { ISchematicNode } from '../types/schematic_types.js';
 import { renderLabel } from './schematic_templates.js';
 import { reportError } from '../utils/error_reporter.js';
+import { withCommands } from '../utils/command_hint.js';
 import { DEFAULT_NET_PREFIX } from '../utils/constants.js';
 import { deterministicUUID, stableIndex } from '../utils/deterministic_id.js';
 
@@ -105,7 +106,12 @@ export class KiCADSchematic {
 
     const symbolDef = this.symbolManager.getSymbolDefinition(component.symbol);
     if (!symbolDef) {
-      logError(`Cannot update component ${displayName(component)}: Symbol ${component.symbol} definition not found.`);
+      logError(
+        withCommands(
+          `Cannot update component ${displayName(component)}: Symbol ${component.symbol} definition not found.\nAdd it to the project with:`,
+          `typecad-pcb lib add ${component.symbol}`,
+        ),
+      );
       return null;
     }
     if (!this.lib_symbols.includes(symbolDef.serializedLibEntry)) {

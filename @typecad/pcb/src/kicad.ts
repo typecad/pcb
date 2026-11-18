@@ -334,7 +334,10 @@ export class KiCAD {
 let _flatpakTempDir: string | undefined;
 
 export function getFlatpakSafeTempDir(): string {
-  if (!KiCAD.isFlatpak) return tmpdir();
+  // KiCAD.isFlatpak reads the discovered install and throws when KiCad is
+  // absent — but this runs at module load for docgen's temp manager and in
+  // native plotting, which must work on machines without KiCad.
+  if (!KiCAD.isAvailable() || !KiCAD.isFlatpak) return tmpdir();
   if (_flatpakTempDir) return _flatpakTempDir;
   const cacheDir = join(process.env.XDG_CACHE_HOME || join(process.env.HOME || tmpdir(), '.cache'), 'typecad', 'tmp');
   try {

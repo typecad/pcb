@@ -9,6 +9,11 @@ import { PCB } from '../src/pcb/pcb.js';
 import { clearFootprintBoundsCache, getFootprintBounds } from '../src/pcb/footprint_bounds.js';
 import logger from '../src/utils/logging.js';
 
+vi.mock('../src/library_asset.js', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../src/library_asset.js')>(),
+  resolveLibraryAsset: vi.fn(() => null),
+}));
+
 const buildDir = './build';
 
 class Resistor extends Component {

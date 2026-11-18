@@ -3,6 +3,7 @@ import path from 'node:path';
 import { analyzeFile, applyReplacements, findTextCalls, getMemberPrefix } from './source_analyzer.js';
 import type { Replacement, LayoutAssignmentInfo, PcbAssignmentInfo, SourceAnalysis } from './source_analyzer.js';
 import { isSyncFileName } from './sync_file.js';
+import { toAuthoredLayout } from './label_frame.js';
 import type {
   KicadIR,
   KicadTextIR,
@@ -210,7 +211,9 @@ export class SourceRewriter {
         const prefix = getMemberPrefix(loc.isThis);
 
         for (const layoutType of layoutTypes) {
-          const irLayout: TextLayoutIR | undefined = fp[layoutType];
+          // the board's values, in the frame the SOURCE stores (a back-side
+          // part's labels carry the build's own flip — see label_frame.ts)
+          const irLayout: TextLayoutIR | undefined = toAuthoredLayout(fp[layoutType], fp.side);
           if (!irLayout) continue;
 
           const cross = findLayoutAssignment(variable, loc.isThis, layoutType, filePath);

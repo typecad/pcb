@@ -144,7 +144,7 @@ describe('viewer failure backoff', () => {
     fs.utimesSync(board, newest, newest);
     await panel.doRefresh();
     expect(panel.consecutiveFailures).toBe(0);
-    expect(panel.lastFailedBoardMtime).toBeUndefined();
+    expect(panel.lastFailedBoardId).toBeUndefined();
     expect(panel.generated).not.toBeNull();
   });
 });

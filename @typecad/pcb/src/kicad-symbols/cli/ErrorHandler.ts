@@ -1,5 +1,7 @@
 import chalk from 'chalk';
 import { FileSystemError, NetworkError, ParsingError } from '../types/index.js';
+import { KiCadNotFoundError } from '../../utils/errors.js';
+import { withCommands } from '../../utils/command_hint.js';
 
 interface NodeSystemError extends Error {
   code?: string;
@@ -18,6 +20,10 @@ export class ErrorHandler {
    */
   public static handleError(error: unknown): string {
     if (error instanceof Error) {
+      // A missing KiCad install is a setup problem, not a bug to report.
+      if (error instanceof KiCadNotFoundError) {
+        return withCommands(`${error.message}\n\nCheck your environment with:`, 'typecad-pcb doctor');
+      }
       // Handle specific error types
       if (this.isNetworkError(error)) {
         return this.handleNetworkError(error);

@@ -29,7 +29,6 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "package_publish": "npm publish --access public",
-    "publish:private": "npm publish --tag private --registry http://192.168.2.207:4873/"
+    "package_publish": "npm publish --access public"
   }
 }

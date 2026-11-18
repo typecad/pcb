@@ -3,6 +3,7 @@ import path from 'node:path';
 import chalk from 'chalk';
 import logger from '../utils/logging.js';
 import type { ImportOptions } from './cli.js';
+import { boardIsBuildOutput } from '../utils/build_signature.js';
 
 export interface BoardWatchSession {
   /** Resolves after the initial cycle completes (success or handled failure). */
@@ -60,8 +61,16 @@ export function startBoardWatch(
       const stamp = fileStamp(absolute);
       if (stamp !== null && stamp !== lastStamp) {
         lastStamp = stamp;
-        logger.log(chalk.gray(`\n── ${base} changed @ ${new Date().toLocaleTimeString()} ──`));
-        await runOnce(absolute, cycleOptions);
+        if (boardIsBuildOutput(absolute) === true) {
+          // the build just wrote this exact file from source — there is
+          // nothing to import, and importing it anyway fed a
+          // build→import→build loop whenever the round trip was not an
+          // exact fixed point
+          logger.log(chalk.gray(`\n── ${base} rewritten by the build — nothing to import ──`));
+        } else {
+          logger.log(chalk.gray(`\n── ${base} changed @ ${new Date().toLocaleTimeString()} ──`));
+          await runOnce(absolute, cycleOptions);
+        }
       }
     } catch (error) {
       // A transient failure (file locked mid-save, parse of a partial write)

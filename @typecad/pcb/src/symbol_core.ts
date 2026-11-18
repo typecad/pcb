@@ -51,7 +51,7 @@ export function unitSubSymbols(symbol: SList): Map<number, SList[]> {
 }
 
 /** Returns a library's parsed top-level nodes, or null/undefined when unavailable. */
-export type LibraryLoader = (libraryName: string) => SList | null | undefined;
+export type LibraryLoader = (libraryName: string, symbolName: string) => SList | null | undefined;
 
 /** A symbol resolved against its library, with `extends` ancestry flattened. */
 export interface ResolvedSymbol {
@@ -283,7 +283,7 @@ export function resolveExtends(
   const fqn = `${libraryName}:${symbolName}`;
   if (visited.has(fqn)) return null;
 
-  const nodes = loadLibrary(libraryName);
+  const nodes = loadLibrary(libraryName, symbolName);
   if (!nodes) return null;
 
   const node = findSymbolNode(nodes, symbolName);

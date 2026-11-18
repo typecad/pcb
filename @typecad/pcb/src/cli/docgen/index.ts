@@ -18,6 +18,7 @@ import githubAlertsPlugin from './plugins/githubAlerts.js';
 import namedCodeBlocks from './plugins/namedCodeBlocks.js';
 import * as url from 'url';
 import logger from '../../utils/logging.js';
+import { withCommands } from '../../utils/command_hint.js';
 
 function cleanSvgForInlining(svgContent: string): string {
   let svg = svgContent.replace(/<\?xml[^?]*\?>\s*/g, '');
@@ -303,9 +304,10 @@ export async function generateDocumentation(
   } catch (err: unknown) {
     const missingPkg = err instanceof Error && err.message ? err.message : String(err);
     throw new Error(
-      `Documentation generation requires optional dependencies that are not installed.\n` +
-        `Install them with: npm install markdown-it @shikijs/markdown-it markdown-it-multimd-table-ext markdown-it-attrs markdown-it-textual-uml markdown-it-math mathup temml @hackmd/markdown-it-task-lists\n` +
-        `Original error: ${missingPkg}`,
+      withCommands(
+        'Documentation generation requires optional dependencies that are not installed.\nInstall them with:',
+        'npm install markdown-it @shikijs/markdown-it markdown-it-multimd-table-ext markdown-it-attrs markdown-it-textual-uml markdown-it-math mathup temml @hackmd/markdown-it-task-lists',
+      ) + `\n\nOriginal error: ${missingPkg}`,
     );
   }
 

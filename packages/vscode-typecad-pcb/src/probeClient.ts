@@ -639,14 +639,14 @@ export function injectProbeClient(
   html: string,
   components: ComponentSummary[],
   nets: NetSourceSummary[] = [],
-  boardMtimeMs?: number,
+  boardId?: string,
 ): { html: string; injected: boolean } {
   if (html.indexOf('<head>') === -1 || html.lastIndexOf('</body>') === -1) return { html, injected: false };
 
   // the board identity this page renders — the apply bridge reports it
   // back so the host can refuse edits made against a superseded board
   const boardTag =
-    boardMtimeMs !== undefined ? `<meta name="tc-viewer-board" content="${boardMtimeMs}">` : '';
+    boardId ? `<meta name="tc-viewer-board" content="${boardId}">` : '';
   const headClose = html.indexOf('</head>');
   const stamped =
     boardTag && headClose !== -1 ? html.slice(0, headClose) + boardTag + html.slice(headClose) : html;

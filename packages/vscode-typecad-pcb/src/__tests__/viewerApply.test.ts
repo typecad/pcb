@@ -9,10 +9,12 @@ import os from 'node:os';
 // sidecar it is about to create), so no disk state has to exist.
 vi.mock('vscode', () => {
   const applyEdits: unknown[] = [];
+  const documents = new Map<string, string>();
   class WorkspaceEdit {
     readonly edits: unknown[] = [];
-    replace(): void {
+    replace(uri: { fsPath: string }, _range: unknown, text: string): void {
       this.edits.push(arguments);
+      documents.set(uri.fsPath, text);
     }
     get size(): number {
       return this.edits.length;
@@ -32,8 +34,8 @@ vi.mock('vscode', () => {
         // the real file on disk (the sidecar the apply plans against) —
         // documents that exist must read their actual text or the
         // changed-while-planning guard refuses everything
-        getText: () => (fs.existsSync(uri.fsPath) ? fs.readFileSync(uri.fsPath, 'utf8') : ''),
-        save: async () => undefined,
+        getText: () => documents.get(uri.fsPath) ?? (fs.existsSync(uri.fsPath) ? fs.readFileSync(uri.fsPath, 'utf8') : ''),
+        save: async () => true,
         positionAt: () => ({ line: 0, character: 0 }),
       }),
       asRelativePath: (uri: { fsPath: string }) => uri.fsPath,
@@ -57,7 +59,9 @@ vi.mock('vscode', () => {
 });
 
 import * as vscode from 'vscode';
-import { LayoutApplyBridge, type ViewerHost } from '../viewerApply.js';
+import { BUILD_COMMAND, LayoutApplyBridge, type ViewerHost } from '../viewerApply.js';
+import { sync } from '../syncState.js';
+import { boardIdentity } from '../boardFile.js';
 
 /**
  * The apply bridge's contract at the refactor seam: the page's whole gesture
@@ -75,6 +79,8 @@ describe('LayoutApplyBridge', () => {
   let statuses: string[];
   let refreshes: number;
   let builds: number;
+  let busyAtRefresh: boolean | undefined;
+  let busyAtGenerate: boolean | undefined;
   let replays: number;
   let generates: number;
   let bridge: LayoutApplyBridge;
@@ -94,6 +100,8 @@ describe('LayoutApplyBridge', () => {
     statuses = [];
     refreshes = 0;
     builds = 0;
+    busyAtRefresh = undefined;
+    busyAtGenerate = undefined;
     replays = 0;
     generates = 0;
     const host: ViewerHost = {
@@ -113,9 +121,11 @@ describe('LayoutApplyBridge', () => {
       postImagePicked: () => undefined,
       doRefresh: async () => {
         refreshes++;
+        busyAtRefresh = sync.applyBusy;
       },
       generate: async () => {
         generates++;
+        busyAtGenerate = sync.applyBusy;
         return true;
       },
       replayOwedRefresh: async () => {
@@ -138,7 +148,7 @@ describe('LayoutApplyBridge', () => {
   });
 
   it('answers success for a current stamp and an empty gesture', async () => {
-    const stamp = String(fs.statSync(path.join(root, 'build', 'b.kicad_pcb')).mtimeMs);
+    const stamp = boardIdentity(path.join(root, 'build', 'b.kicad_pcb'));
     await bridge.onLayoutRebuild({ board: stamp, moves: [] });
     expect(layoutStatus).toEqual([undefined]);
     // nothing applied → the rebuild never runs
@@ -152,7 +162,7 @@ describe('LayoutApplyBridge', () => {
     // nothing, yet the success answer made the page drop the pending
     // gesture against a board that never rebuilt — the delete silently
     // un-did itself on the next render
-    const stamp = String(fs.statSync(path.join(root, 'build', 'b.kicad_pcb')).mtimeMs);
+    const stamp = boardIdentity(path.join(root, 'build', 'b.kicad_pcb'));
     await bridge.onLayoutRebuild({
       board: stamp,
       moves: [],
@@ -221,9 +231,77 @@ describe('LayoutApplyBridge', () => {
     ] as never;
   };
 
+  // Rebase: a build ran since the view rendered, but the edits are
+  // part-relative and every part they touch is where the view showed it.
+  const setRebase = (fn: (stamp: string, refs: string[]) => Promise<{ ok: boolean; reason?: string }>): string[][] => {
+    const calls: string[][] = [];
+    (bridge as unknown as { host: ViewerHost }).host.rebaseCheck = async (stamp, refs) => {
+      calls.push([stamp, ...refs]);
+      return fn(stamp, refs);
+    };
+    return calls;
+  };
+
+  it('rebases a moves-only edit onto a rebuilt board when its parts are unchanged', async () => {
+    seedSidecarPlacement();
+    const calls = setRebase(async () => ({ ok: true }));
+    await bridge.onLayoutRebuild({ board: 'older-render', moves: [{ ref: 'R1', dx: 1, dy: 0 }] });
+    expect(calls).toEqual([['older-render', 'R1']]);
+    expect(refreshes).toBe(0); // not refused → no regeneration detour
+    expect(builds).toBe(1); // the edit was applied and rebuilt
+    expect(logs.some((l) => l.includes('rebasing the edit onto the new board'))).toBe(true);
+  });
+
+  it('still refuses when a touched part changed in the rebuild', async () => {
+    seedSidecarPlacement();
+    setRebase(async () => ({ ok: false, reason: 'R1 moved in the rebuild' }));
+    await bridge.onLayoutRebuild({ board: 'older-render', moves: [{ ref: 'R1', dx: 1, dy: 0 }] });
+    expect(layoutStatus[0]).toMatch(/board was rebuilt since this view rendered/);
+    expect(builds).toBe(0);
+    expect(refreshes).toBe(1);
+    expect(logs.some((l) => l.includes('not rebasing — R1 moved in the rebuild'))).toBe(true);
+  });
+
+  it('never rebases edits that carry absolute geometry — a drawn route must be redone', async () => {
+    seedSidecarPlacement();
+    const calls = setRebase(async () => ({ ok: true }));
+    await bridge.onLayoutRebuild({ board: 'older-render', ...routePayload });
+    expect(calls).toEqual([]); // not even asked
+    expect(layoutStatus[0]).toMatch(/board was rebuilt since this view rendered/);
+    expect(builds).toBe(0);
+  });
+
+  it('the final render runs after the pipeline is released — its drift check is not deferred', async () => {
+    // rendered while the apply still held the pipeline, the render's drift
+    // check saw pipelineBusy() and deferred to a "settled state" nothing
+    // ever checked
+    seedSidecarPlacement();
+    const stamp = boardIdentity(path.join(root, 'build', 'b.kicad_pcb'));
+    await bridge.onLayoutRebuild({ board: stamp, ...routePayload });
+    expect(generates).toBe(1);
+    expect(busyAtGenerate).toBe(false);
+    expect(sync.applyBusy).toBe(false);
+  });
+
+  it('a refused stale view regenerates after the release, not while the apply holds the pipeline', async () => {
+    await bridge.onLayoutRebuild({ board: 'superseded', moves: [] });
+    expect(refreshes).toBe(1);
+    // while held, doRefresh would only have queued itself as "owed"
+    expect(busyAtRefresh).toBe(false);
+    // the refresh replaces the replay — not both
+    expect(replays).toBe(0);
+  });
+
+  it('an apply builds with the same command auto-build uses', async () => {
+    seedSidecarPlacement();
+    const stamp = boardIdentity(path.join(root, 'build', 'b.kicad_pcb'));
+    await bridge.onLayoutRebuild({ board: stamp, ...routePayload });
+    expect(commands).toContain(BUILD_COMMAND);
+  });
+
   it('a route-adding apply builds and renders once — nothing reconciles', async () => {
     seedSidecarPlacement();
-    const stamp = String(fs.statSync(path.join(root, 'build', 'b.kicad_pcb')).mtimeMs);
+    const stamp = boardIdentity(path.join(root, 'build', 'b.kicad_pcb'));
     await bridge.onLayoutRebuild({ board: stamp, ...routePayload });
 
     expect(builds).toBe(1); // the apply's own rebuild
@@ -234,7 +312,7 @@ describe('LayoutApplyBridge', () => {
 
   it('a non-route apply renders the same way', async () => {
     seedSidecarPlacement();
-    const stamp = String(fs.statSync(path.join(root, 'build', 'b.kicad_pcb')).mtimeMs);
+    const stamp = boardIdentity(path.join(root, 'build', 'b.kicad_pcb'));
     await bridge.onLayoutRebuild({ board: stamp, moves: [{ ref: 'R1', dx: 1, dy: 0 }] });
 
     expect(builds).toBe(1);
@@ -248,7 +326,7 @@ describe('LayoutApplyBridge', () => {
     // page carried fresh markers; DRC is a palette request now — the apply
     // pipeline builds, verifies, and re-renders, nothing more
     seedSidecarPlacement();
-    const stamp = String(fs.statSync(path.join(root, 'build', 'b.kicad_pcb')).mtimeMs);
+    const stamp = boardIdentity(path.join(root, 'build', 'b.kicad_pcb'));
     await bridge.onLayoutRebuild({ board: stamp, ...routePayload });
     expect(builds).toBe(1);
     expect(commands.some((c) => c.includes('typecad-pcb drc'))).toBe(false);
@@ -265,10 +343,10 @@ describe('LayoutApplyBridge', () => {
     ] as never;
     const origRun = (bridge as unknown as { host: ViewerHost }).host.run;
     (bridge as unknown as { host: ViewerHost }).host.run = async (_cwd: string, command: string) => {
-      if (command.includes('typecad-pcb build')) throw new Error('esbuild: duplicate symbol');
+      if (command === 'npm run build') throw new Error('esbuild: duplicate symbol');
       return origRun(_cwd, command);
     };
-    const stamp = String(fs.statSync(path.join(root, 'build', 'b.kicad_pcb')).mtimeMs);
+    const stamp = boardIdentity(path.join(root, 'build', 'b.kicad_pcb'));
     await bridge.onLayoutRebuild({ board: stamp, ...routePayload });
     // the failure is answered (the page keeps its gesture), the rebuild
     // never generated a page, and the last write to the touched file put

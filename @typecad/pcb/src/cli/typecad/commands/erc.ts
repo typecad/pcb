@@ -5,6 +5,8 @@ import { executeKiCADCommand } from '../../../kicad_commands.js';
 import type { ParsedArgs } from '../parser.js';
 import type { ErcViolation } from '../../types.js';
 import logger from '../../../utils/logging.js';
+import { sym, summaryLine, withSpinner } from '../ui.js';
+import { commandLine, withCommands } from '../../../utils/command_hint.js';
 import { buildDirPath } from '../pipeline.js';
 
 function findSchFile(argPath?: string): string | null {
@@ -26,7 +28,7 @@ function findSchFile(argPath?: string): string | null {
 
 function formatViolation(v: ErcViolation): string {
   const severity = v.severity ?? 'error';
-  const icon = severity === 'error' ? '✖' : '⚠';
+  const icon = severity === 'error' ? sym.fail : sym.warn;
   const desc = v.description ?? '';
   const type = v.type ?? '';
   let line = `  ${icon} [${type}] ${desc}`;
@@ -49,7 +51,8 @@ export async function run(parsed: ParsedArgs): Promise<void> {
     }
     throw new Error(
       `No .kicad_sch file found in ${buildDirPath()}.\n` +
-        'Run `typecad-pcb build` first, or specify a path: typecad-pcb erc <path/to/schematic.kicad_sch>',
+        `Build the board first:\n\n${commandLine('typecad-pcb build')}\n\n` +
+        `Or point at a schematic file directly:\n\n${commandLine('typecad-pcb erc <path/to/schematic.kicad_sch>')}`,
     );
   }
 
@@ -88,8 +91,9 @@ async function runNativeErc(schPath: string, json: boolean): Promise<void> {
 
   if (!fs.existsSync(reportPath) || fs.statSync(reportPath).mtimeMs < fs.statSync(schPath).mtimeMs) {
     throw new Error(
-      `No ERC report from a current build for ${schPath}.\n` +
-        'Run `typecad-pcb build` first (the build computes the native ERC), or use --kicad.',
+      withCommands(`No ERC report from a current build for ${schPath}.\nBuild first (the build computes the native ERC):`, 'typecad-pcb build') +
+        '\n\nOr run the full KiCad check instead:\n\n' +
+        commandLine('typecad-pcb erc --kicad'),
     );
   }
 
@@ -126,11 +130,12 @@ function reportViolations(v: {
   rawReport: string;
   json: boolean;
   reportPath: string;
+  elapsedMs?: number;
 }): void {
   const passed = v.errors === 0 && v.warnings === 0;
 
   if (v.json) {
-    logger.log(
+    logger.out(
       JSON.stringify(
         {
           schematic: v.schPath,
@@ -146,19 +151,14 @@ function reportViolations(v: {
   } else {
     if (!passed) {
       for (const line of v.violationLines) {
-        const isWarn = line.includes('⚠');
+        const isWarn = line.includes(sym.warn);
         logger.log(isWarn ? chalk.yellow(line) : chalk.red(line));
       }
       if (v.violationLines.length > 0) logger.log('');
-      if (v.errors > 0) {
-        logger.log(chalk.red(`ERC found ${v.errors} error(s).`));
-      }
-      if (v.warnings > 0) {
-        logger.log(chalk.yellow(`ERC found ${v.warnings} warning(s).`));
-      }
-      logger.log(chalk.gray(`\nFull report saved to ${v.reportPath}`));
+      logger.log(summaryLine({ label: 'ERC', errors: v.errors, warnings: v.warnings, ms: v.elapsedMs }));
+      logger.log(chalk.gray(`Full report saved to ${v.reportPath}`));
     } else {
-      logger.log(chalk.green('ERC passed. No errors or warnings.'));
+      logger.log(summaryLine({ label: 'ERC', ms: v.elapsedMs }));
     }
   }
 
@@ -175,8 +175,9 @@ async function runKicadErc(parsed: ParsedArgs, schPath: string, json: boolean): 
 
   const args = ['erc', '--format', 'json', '--output', reportPath, ...parsed.passthrough, schPath];
 
+  const startedAt = Date.now();
   try {
-    await executeKiCADCommand('sch', args, { stdio: 'pipe' });
+    await withSpinner('Running KiCad ERC…', () => executeKiCADCommand('sch', args, { stdio: 'pipe' }));
   } catch {
     logger.debug('ERC: kicad-cli exited non-zero (expected when violations found)');
   }
@@ -206,5 +207,14 @@ async function runKicadErc(parsed: ParsedArgs, schPath: string, json: boolean): 
     }
   }
 
-  reportViolations({ schPath, errors, warnings, violationLines, rawReport, json, reportPath });
+  reportViolations({
+    schPath,
+    errors,
+    warnings,
+    violationLines,
+    rawReport,
+    json,
+    reportPath,
+    elapsedMs: Date.now() - startedAt,
+  });
 }

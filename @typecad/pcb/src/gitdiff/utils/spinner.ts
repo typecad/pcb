@@ -12,6 +12,8 @@ function restoreCursorOnExit() {
 
 export interface Spinner {
   start(): Spinner;
+  /** Stop and clear the line without printing a result. */
+  stop(): void;
   success(text?: string): void;
   error(text?: string): void;
 }
@@ -58,6 +60,10 @@ export default function createSpinner(options?: { text?: string; color?: string 
         process.on('exit', restoreCursorOnExit);
       }
       return this;
+    },
+    stop() {
+      stopTimer();
+      clearLine();
     },
     success(finalText?: string) {
       stopTimer();

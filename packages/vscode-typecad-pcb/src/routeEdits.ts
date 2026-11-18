@@ -128,7 +128,10 @@ function sectionPushStatement(net: string, route: RouteInput): string | null {
   const end = legs[legs.length - 1]!;
   const endVia = (route.vias ?? []).find((v) => ptEq(v, end, 0.001));
   if (endVia) {
-    out += `.via({ size: ${canonNum(endVia.size ?? 0.6)}, drill: ${canonNum(endVia.drill ?? 0.3)} })`;
+    const span = endVia.layers && !['F.Cu,B.Cu', 'B.Cu,F.Cu'].includes(endVia.layers.join(','))
+      ? `, layers: ['${endVia.layers[0]}', '${endVia.layers[1]}']`
+      : '';
+    out += `.via({ size: ${canonNum(endVia.size ?? 0.6)}, drill: ${canonNum(endVia.drill ?? 0.3)}${span} })`;
   }
   return out + ');';
 }
@@ -153,7 +156,7 @@ function standaloneViaStatements(net: string | null, route: RouteInput): string[
     .filter((v) => !end || !ptEq(v, end, 0.001))
     .map(
       (v) =>
-        `typecad.via({ at: { x: ${canonNum(v.x)}, y: ${canonNum(v.y)} },${netProp} size: ${canonNum(v.size ?? 0.6)}, drill: ${canonNum(v.drill ?? 0.3)} });`,
+        `typecad.via({ at: { x: ${canonNum(v.x)}, y: ${canonNum(v.y)} },${netProp} size: ${canonNum(v.size ?? 0.6)}, drill: ${canonNum(v.drill ?? 0.3)}${v.layers ? `, layers: ['${v.layers[0]}', '${v.layers[1]}']` : ''} });`,
     );
 }
 
@@ -210,7 +213,7 @@ export function planSectionRouteEdits(text: string, routes: RouteInput[]): Secti
     // a VIA-ONLY entry (the free via — no pieces) carries no track statement;
     // its standalone via statements below are the whole write. The statement
     // builder reads pieces[0], so guard it rather than crash.
-    const standalone = standaloneViaStatements(route.net, route);
+    let standalone = standaloneViaStatements(route.net, route);
     const statement = route.pieces.length > 0 && route.net ? sectionPushStatement(route.net, route) : null;
     if (statement === null && standalone.length === 0) {
       skipped.push(`${label} (no geometry)`);
@@ -226,6 +229,26 @@ export function planSectionRouteEdits(text: string, routes: RouteInput[]): Secti
     let lastPush: RegExpExecArray | null = null;
     let m: RegExpExecArray | null;
     while ((m = pushRe.exec(text)) !== null) lastPush = m;
+
+    // The importer attaches an endpoint via to its existing chain. Emit
+    // that same form when a via is placed directly on a chain endpoint.
+    if (!statement && route.net && route.vias.length === 1) {
+      pushRe.lastIndex = 0;
+      while ((m = pushRe.exec(text)) !== null) {
+        const end = finalPointOf(m[0]);
+        const via = route.vias[0]!;
+        if (!end || !ptEq(end, via, 0.001) || /\.via\(/.test(m[0])) continue;
+        const span = via.layers && !['F.Cu,B.Cu', 'B.Cu,F.Cu'].includes(via.layers.join(','))
+          ? `, layers: ['${via.layers[0]}', '${via.layers[1]}']`
+          : '';
+        const call = `.via({ size: ${canonNum(via.size ?? 0.6)}, drill: ${canonNum(via.drill ?? 0.3)}${span} })`;
+        edits.push({ start: m.index, end: m.index + m[0].length, line: m[0].slice(0, -2) + call + ');' });
+        standalone = [];
+        applied++;
+        break;
+      }
+      if (standalone.length === 0) continue;
+    }
 
     // mid-chain vias (layer transitions) are standalone statements at the
     // section end, in the write-back's canonical form — one edit placing

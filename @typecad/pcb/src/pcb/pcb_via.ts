@@ -5,7 +5,7 @@ import { generateUuid } from './pcb_utils.js';
 export function createVia(
   offset: { x: number; y: number },
   stageFn: (component: Component) => void,
-  options: Omit<IVia, 'uuid' | 'netCode' | 'layers'> = {},
+  options: Omit<IVia, 'uuid' | 'netCode'> = {},
 ): Component {
   const viaPosition = {
     x: (options.at?.x ?? 0) + offset.x,
@@ -33,7 +33,7 @@ export function createVia(
       at: viaPosition,
       size: options.size || 0.8,
       drill: options.drill || 0.4,
-      layers: ['F.Cu', 'B.Cu'],
+      layers: options.layers ?? ['F.Cu', 'B.Cu'],
       net: options.net,
       powerInfo: options.powerInfo,
     },

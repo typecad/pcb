@@ -129,6 +129,7 @@ export interface KicadViaIR {
   at: { x: number; y: number };
   size: number;
   drill: number;
+  layers?: string[];
   net?: number;
   /** Resolved net name, either inline `(net "NAME")` or via the net table. */
   netName?: string;

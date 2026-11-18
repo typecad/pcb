@@ -21,6 +21,7 @@ vi.mock('../src/kicad_commands.js', () => ({
 vi.mock('../src/utils/logging.js', () => ({
   default: {
     log: vi.fn(),
+    out: vi.fn(),
     error: vi.fn(),
     debug: vi.fn(),
     info: vi.fn(),
@@ -95,7 +96,7 @@ describe('export command', () => {
       }) as never);
 
       await expect(run(makeParsed({ subcommand: 'bananas', json: true }))).rejects.toThrow('EXIT');
-      expect(logger.log).toHaveBeenCalledWith(expect.stringContaining('"UNKNOWN_SUBCOMMAND"'));
+      expect(logger.out).toHaveBeenCalledWith(expect.stringContaining('"UNKNOWN_SUBCOMMAND"'));
       mockExit.mockRestore();
     });
   });
@@ -269,7 +270,7 @@ describe('export command', () => {
       );
 
       const loggedCall = vi
-        .mocked(logger.log)
+        .mocked(logger.out)
         .mock.calls.find((c) => typeof c[0] === 'string' && c[0].includes('"files"'));
       expect(loggedCall).toBeDefined();
       if (loggedCall) {
@@ -297,7 +298,7 @@ describe('export command', () => {
 
       expect(executeKiCADCommand).not.toHaveBeenCalled();
       const logger = (await import('../src/utils/logging.js')).default;
-      const jsonCall = (logger.log as vi.Mock).mock.calls.find(
+      const jsonCall = (logger.out as vi.Mock).mock.calls.find(
         (c) => typeof c[0] === 'string' && c[0].includes('"native": true'),
       );
       expect(jsonCall).toBeDefined();
@@ -372,7 +373,7 @@ describe('export drill', () => {
       );
 
       const loggedCall = vi
-        .mocked(logger.log)
+        .mocked(logger.out)
         .mock.calls.find((c) => typeof c[0] === 'string' && c[0].includes('"files"'));
       expect(loggedCall).toBeDefined();
       if (loggedCall) {

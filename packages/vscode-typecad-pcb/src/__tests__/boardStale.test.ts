@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { boardStale, newestSourceMtime } from '../boardFile.js';
+import { boardStale, invalidateSourceMtime, newestSourceMtime, newestSourceMtimeCached, oldestBoardMtime } from '../boardFile.js';
 
 const dirs: string[] = [];
 const folder = () => {
@@ -46,5 +46,52 @@ describe('boardStale', () => {
     expect(boardStale(f)).toBe(false);
     touch(path.join(f, 'src', 'a.ts'), 3000);
     expect(boardStale(f)).toBe(true);
+  });
+});
+
+describe('multi-board staleness', () => {
+  const manifest = (f: string, boards: string[]) =>
+    fs.writeFileSync(path.join(f, 'build', '.typecad-board.json'), JSON.stringify({ board: boards[boards.length - 1], boards }));
+
+  it('a sibling the build never reached keeps the project stale', () => {
+    const f = folder();
+    touch(path.join(f, 'src', 'a.ts'), 3000);
+    // the build died after writing mother, before daughter
+    touch(path.join(f, 'build', 'mother.kicad_pcb'), 4000);
+    touch(path.join(f, 'build', 'daughter.kicad_pcb'), 1000);
+    manifest(f, ['daughter.kicad_pcb', 'mother.kicad_pcb']); // active = mother (newest, current)
+    expect(oldestBoardMtime(f)).toBe(1000);
+    expect(boardStale(f)).toBe(true);
+  });
+
+  it('all boards current → not stale', () => {
+    const f = folder();
+    touch(path.join(f, 'src', 'a.ts'), 1000);
+    touch(path.join(f, 'build', 'mother.kicad_pcb'), 4000);
+    touch(path.join(f, 'build', 'daughter.kicad_pcb'), 3000);
+    manifest(f, ['daughter.kicad_pcb', 'mother.kicad_pcb']);
+    expect(boardStale(f)).toBe(false);
+  });
+});
+
+describe('newestSourceMtimeCached', () => {
+  it('reuses the scan until invalidated, then sees the edit', () => {
+    const f = folder();
+    touch(path.join(f, 'src', 'a.ts'), 1000);
+    invalidateSourceMtime();
+    expect(newestSourceMtimeCached(f)).toBe(1000);
+    touch(path.join(f, 'src', 'a.ts'), 5000);
+    expect(newestSourceMtimeCached(f)).toBe(1000); // memoized — no re-walk
+    invalidateSourceMtime();
+    expect(newestSourceMtimeCached(f)).toBe(5000);
+  });
+  it('is keyed on the folder', () => {
+    const a = folder();
+    const b = folder();
+    touch(path.join(a, 'src', 'a.ts'), 1000);
+    touch(path.join(b, 'src', 'b.ts'), 2000);
+    invalidateSourceMtime();
+    expect(newestSourceMtimeCached(a)).toBe(1000);
+    expect(newestSourceMtimeCached(b)).toBe(2000);
   });
 });

@@ -1617,6 +1617,26 @@ typecad-pcb skills get resistor
 typecad-pcb skills get power --json
 ```
 
+### `typecad-pcb export gerbers` / `export drill`
+
+Export the native fabrication outputs (Gerber and drill files) for the board.
+
+### `typecad-pcb export pos`
+
+Export the placement (centroid) CSV, one per provider profile: CPL for JLCPCB/PCBWay/Seeed, placements for OpenPnP, or generic.
+
+### `typecad-pcb export bom`
+
+Export the bill of materials CSV, joined with the netlist for MPN and datasheet. The row shape is set by `--bom-profile` (`jlcpcb`, `kicad`, or `generic`).
+
+### `typecad-pcb export assembly`
+
+One-shot provider package: gerbers + pos + bom zipped into `build/assembly/<board>-<profile>.zip`. Profiles: `jlcpcb`, `pcbway`, `seeed`, `openpnp`, `kicad`, `generic`.
+
+```bash
+typecad-pcb export assembly --profile jlcpcb
+```
+
 ---
 
 ## Components
@@ -5794,6 +5814,10 @@ A new unified CLI replaces the previous collection of separate commands. Running
 | `typecad-pcb validate` | Validate project source without a full build |
 | `typecad-pcb drc` | Run Design Rule Check on a KiCad PCB file |
 | `typecad-pcb erc` | Run Electrical Rules Check on a KiCad schematic |
+| `typecad-pcb export gerbers` / `export drill` | Export native fabrication outputs |
+| `typecad-pcb export pos` | Export the placement (centroid) CSV |
+| `typecad-pcb export bom` | Export the bill of materials CSV |
+| `typecad-pcb export assembly` | One-shot zipped provider package: gerbers + pos + bom |
 
 The `diff` and `doc` commands are the same tools that were previously separate packages, now accessible without an additional install.
 

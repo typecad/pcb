@@ -5,10 +5,12 @@ import { platform } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 import chalk from 'chalk';
+import { commandLine } from '../../../utils/command_hint.js';
 import { findExecutable, KiCAD, libraryRoots } from '../../../kicad.js';
 import { parserSelfTest } from '../../../kicad2typecad/safety.js';
 import type { ParsedArgs } from '../parser.js';
 import logger from '../../../utils/logging.js';
+import { sym } from '../ui.js';
 import { getBuildDir } from '../../../utils/constants.js';
 import { coreDepsFix } from '../../create-typecad/core-deps.js';
 import { buildDirPath } from '../pipeline.js';
@@ -16,6 +18,8 @@ import { buildDirPath } from '../pipeline.js';
 interface CheckResult {
   name: string;
   passed: boolean;
+  /** Neutral warning: shown with ⚠ and never counted as a failure. */
+  warn?: boolean;
   message: string;
   fixHint?: string;
   fixCommand?: string;
@@ -143,7 +147,7 @@ function checkPackageJson(): CheckResult {
       name: 'package.json',
       passed: false,
       message: 'not found in current directory',
-      fixHint: 'Run this command from a typeCAD project directory, or create one with: typecad-pcb create',
+      fixHint: 'Run this command from a typeCAD project directory, or create one with:\ntypecad-pcb create',
     };
   }
   try {
@@ -373,8 +377,9 @@ function checkKiCadCli(): CheckResult {
   } catch {
     return {
       name: 'kicad-cli',
-      passed: false,
-      message: 'not found',
+      passed: true,
+      warn: true,
+      message: 'not found (optional — native ERC/DRC and lib fetch work without it)',
       fixHint:
         'Optional for the native flow (build/check/erc/drc/export run without it —\n' +
         '  only --kicad legacy paths need the CLI). To use it:\n' +
@@ -399,7 +404,7 @@ function checkKiCadSymbols(): CheckResult {
   }
   const buildLib = path.join(getBuildDir(), 'lib');
   if (fs.existsSync(buildLib)) {
-    const files = fs.readdirSync(buildLib).filter((f) => f.endsWith('.kicad_sym'));
+    const files = fs.readdirSync(buildLib, { recursive: true, encoding: 'utf8' }).filter((f) => f.endsWith('.kicad_sym'));
     if (files.length > 0) parts.push(`${files.length} in build/lib (project)`);
   }
   parts.push('power + passives bundled');
@@ -416,7 +421,7 @@ function checkKiCadFootprints(): CheckResult {
   }
   const buildFp = path.join(getBuildDir(), 'lib', 'footprints');
   if (fs.existsSync(buildFp)) {
-    const files = fs.readdirSync(buildFp).filter((f) => f.endsWith('.kicad_mod'));
+    const files = fs.readdirSync(buildFp, { recursive: true, encoding: 'utf8' }).filter((f) => f.endsWith('.kicad_mod'));
     if (files.length > 0) parts.push(`${files.length} in build/lib/footprints (project)`);
   }
   parts.push('chip-passive footprints bundled');
@@ -515,7 +520,7 @@ function printResults(results: CheckResult[]): void {
   const failures: CheckResult[] = [];
 
   for (const r of results) {
-    const icon = r.passed ? chalk.green('✔') : chalk.red('✖');
+    const icon = r.warn ? chalk.yellow(sym.warn) : r.passed ? chalk.green(sym.ok) : chalk.red(sym.fail);
     logger.log(`  ${icon} ${chalk.bold(r.name)}: ${r.message}`);
     if (!r.passed && r.fixHint) {
       failures.push(r);
@@ -529,14 +534,17 @@ function printResults(results: CheckResult[]): void {
     for (const f of failures) {
       logger.log(chalk.bold(`  ${f.name}:`));
       for (const line of f.fixHint!.split('\n')) {
-        logger.log(chalk.gray(`    ${line}`));
+        // Lines that are themselves a command get the copy-paste treatment.
+        logger.log(/^\s*(typecad-pcb|npm|npx) /.test(line) ? commandLine(line.trim()) : chalk.gray(`    ${line}`));
       }
       if (f.fixCommand) {
-        logger.log(chalk.cyan(`    Fix: ${f.fixCommand}`));
+        logger.log(chalk.cyan('    Fix:'));
+        logger.log(commandLine(f.fixCommand));
       }
       logger.log('');
     }
-    logger.log(chalk.gray("Run 'typecad-pcb doctor --fix' to attempt automatic fixes.\n"));
+    logger.log(chalk.gray('To attempt automatic fixes, run:\n'));
+    logger.log(commandLine('typecad-pcb doctor --fix') + '\n');
   } else {
     logger.log(chalk.green('All checks passed. Your environment looks good.\n'));
   }
@@ -578,7 +586,7 @@ export async function run(parsed: ParsedArgs): Promise<void> {
   ];
 
   if (json) {
-    logger.log(
+    logger.out(
       JSON.stringify(
         {
           checks: results,

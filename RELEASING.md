@@ -108,7 +108,7 @@ npm run changeset
 # Message: "Fixed pin numbering for reversed connectors"
 ```
 
-Running `npm run version` will also bump `@typecad/pcb` in the `dependencies` of workspaces that depend on it (e.g. `demo/hw`, `rd_skeleton/hw`), because `updateInternalDependencies` is set to `"patch"` in `.changeset/config.json`.
+Running `npm run version` will also bump `@typecad/pcb` in the `dependencies` of workspaces that depend on it (e.g. `demo/hw`, `demo/rd_skeleton/hw`), because `updateInternalDependencies` is set to `"patch"` in `.changeset/config.json`.
 
 ### Multiple packages changed
 
@@ -157,3 +157,13 @@ npm run publish
 ```
 
 (Re-enter anytime with `npx changeset pre enter alpha`.) Don't leave pre mode open unintentionally — pending changesets accumulate silently while it is on.
+
+## The extension version must change when its content changes
+
+Installed copies of the extension self-update only when the bundled asset's
+version is **newer** than their own (`bundledUpdate.ts`). The extension is a
+private workspace package, so changesets bumps it only if a changeset names it.
+`release.mjs` therefore compares the freshly bundled content against the hash
+recorded in `packages/vscode-typecad-pcb/.shipped.json` (written after each
+publish — commit it with the release) and auto-bumps the extension version when
+the content changed but the version did not. Don't hand-edit `.shipped.json`.

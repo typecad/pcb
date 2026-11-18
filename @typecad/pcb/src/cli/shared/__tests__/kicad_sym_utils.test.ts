@@ -10,7 +10,12 @@ vi.mock('../../../utils/logging.js', () => ({
 }));
 
 vi.mock('../../../kicad.js', () => ({
-  KiCAD: { instance: { getSymbolsPath: () => mockState.symbolsPath } },
+  libraryRoots: () => ({ symbols: mockState.symbolsPath }),
+}));
+
+vi.mock('../../../library_asset.js', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../../../library_asset.js')>(),
+  resolveLibraryAsset: vi.fn(() => null),
 }));
 
 import {

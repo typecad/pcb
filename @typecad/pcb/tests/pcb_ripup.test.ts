@@ -135,11 +135,16 @@ describe('pcb rip-up-and-reroute', () => {
     expect(state.stagedOutlines.length).toBe(tracksBefore);
   });
 
-  it('rescues a congested-but-successful route end to end (quality trigger)', () => {
+  it('rescues a congested-but-successful route end to end (quality trigger)', { timeout: 120_000 }, () => {
     // net_a routes first as a near-full-width wall on F.Cu. net_b must cross
     // it vertically: without rip-up it detours around the wall (~36mm for a
     // 10mm span); with rip-up the router tears out the wall, routes net_b
     // straight through, and re-routes net_a around it.
+    // The congested no-via detour is this suite's most expensive search
+    // (~6s free, 16s+ under full-suite CPU contention), so the wall-clock
+    // budgets are disabled here — a load-dependent `time budget exhausted`
+    // failure is the one failure mode this geometry test must never see.
+    const budgetOff = { timeBudgetMs: 0, netTimeBudgetMs: 0 };
     const build = () => {
       const board = new PCB('test_ripup_quality', { layers: 2 });
       const aL = new Header4();
@@ -167,18 +172,25 @@ describe('pcb rip-up-and-reroute', () => {
 
     // Without rip-up: a long detour around the wall.
     const detoured = build();
-    expect(detoured.board.route(detoured.netA, { layers: ['F.Cu'], allowVias: false, ripup: false }).success).toBe(
-      true,
-    );
-    const resDetour = detoured.board.route(detoured.netB, { layers: ['F.Cu'], allowVias: false, ripup: false });
+    expect(
+      detoured.board.route(detoured.netA, { layers: ['F.Cu'], allowVias: false, ripup: false, ...budgetOff }).success,
+    ).toBe(true);
+    const resDetour = detoured.board.route(detoured.netB, {
+      layers: ['F.Cu'],
+      allowVias: false,
+      ripup: false,
+      ...budgetOff,
+    });
     expect(resDetour.success).toBe(true);
     const detourLength = resDetour.routeDetails[0]?.length ?? 0;
     expect(detourLength).toBeGreaterThan(25); // it really went around
 
     // With rip-up (default): straight through, wall re-routed around it.
     const rescued = build();
-    expect(rescued.board.route(rescued.netA, { layers: ['F.Cu'], allowVias: false, ripup: false }).success).toBe(true);
-    const resRescue = rescued.board.route(rescued.netB, { layers: ['F.Cu'], allowVias: false });
+    expect(
+      rescued.board.route(rescued.netA, { layers: ['F.Cu'], allowVias: false, ripup: false, ...budgetOff }).success,
+    ).toBe(true);
+    const resRescue = rescued.board.route(rescued.netB, { layers: ['F.Cu'], allowVias: false, ...budgetOff });
     expect(resRescue.success).toBe(true);
     const rescueLength = resRescue.routeDetails[0]?.length ?? 0;
     expect(rescueLength).toBeLessThan(detourLength / 2);

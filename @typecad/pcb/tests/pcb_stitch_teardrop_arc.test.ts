@@ -159,7 +159,7 @@ describe('pcb.teardrops()', () => {
       const net = pcb.net(r1.pin(1), r2.pin(1));
       if (withTeardrops) pcb.teardrops();
       // SMD-to-SMD across layers forces two vias
-      const result = pcb.route(net, { layers: ['In1.Cu'], gridResolution: 0.1, heuristicWeight: 2 });
+      const result = pcb.route(net, { layers: ['In1.Cu'], gridResolution: 0.1, heuristicWeight: 2, timeBudgetMs: 0, netTimeBudgetMs: 0 });
       pcb.waitForPendingAutoroutes();
       pcb.create(r1, r2);
       const board = fs.readFileSync(`${buildDir}/${boardName}${withTeardrops ? '_td' : '_n'}.kicad_pcb`, 'utf8');
@@ -218,7 +218,7 @@ describe('pcb.stitch()', () => {
     pcb.add(c1, c2);
     const gnd = pcb.named('GND').net(c1.pin(2), c2.pin(2));
     const signal = pcb.net(c1.pin(1), c2.pin(1));
-    pcb.route(signal, { gridResolution: 0.1, heuristicWeight: 2 });
+    pcb.route(signal, { gridResolution: 0.1, heuristicWeight: 2, timeBudgetMs: 0, netTimeBudgetMs: 0 });
     pcb.waitForPendingAutoroutes();
 
     pcb.stitch('GND', { pitch: 2.0 });

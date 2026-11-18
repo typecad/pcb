@@ -3,6 +3,7 @@ import path from 'node:path';
 import chalk from 'chalk';
 import type { ParsedArgs } from '../parser.js';
 import logger from '../../../utils/logging.js';
+import { sym } from '../ui.js';
 import { buildDirPath } from '../pipeline.js';
 
 const KICAD_ARTIFACT = /\.(kicad_pcb|kicad_sch|net)$/;
@@ -45,7 +46,7 @@ export async function run(parsed: ParsedArgs): Promise<void> {
 
   if (!fs.existsSync(dir)) {
     if (parsed.json) {
-      logger.log(JSON.stringify({ cleaned: false, dir, files: 0, reason: 'not present' }, null, 2));
+      logger.out(JSON.stringify({ cleaned: false, dir, files: 0, reason: 'not present' }, null, 2));
     } else {
       logger.log(chalk.gray(`  nothing to clean — ${dir} does not exist`));
     }
@@ -64,8 +65,8 @@ export async function run(parsed: ParsedArgs): Promise<void> {
   fs.rmSync(dir, { recursive: true, force: true });
 
   if (parsed.json) {
-    logger.log(JSON.stringify({ cleaned: true, dir, files }, null, 2));
+    logger.out(JSON.stringify({ cleaned: true, dir, files }, null, 2));
   } else {
-    logger.log(chalk.green(`  ✓ removed ${dir} (${files} file${files === 1 ? '' : 's'})`));
+    logger.log(chalk.green(`  ${sym.ok} removed ${dir} (${files} file${files === 1 ? '' : 's'})`));
   }
 }

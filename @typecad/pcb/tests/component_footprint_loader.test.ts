@@ -1,6 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import * as fs from 'node:fs';
 
+vi.mock('../src/library_asset.js', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../src/library_asset.js')>(),
+  resolveLibraryAsset: vi.fn(() => null),
+}));
+
 const { mockExistsSync, mockReadFileSync } = vi.hoisted(() => ({
   mockExistsSync: vi.fn(),
   mockReadFileSync: vi.fn(),

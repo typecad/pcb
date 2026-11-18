@@ -7,6 +7,8 @@ import { fillZone } from './pcb_zone_fill_engine.js';
 import type { PCB } from './pcb.js';
 import type { PcbInternalState } from './pcb_state.js';
 import { getBuildDir } from '../utils/constants.js';
+import { recordBoardSignature } from '../utils/build_signature.js';
+import { writeFileAtomic } from '../utils/atomic_write.js';
 
 /**
  * Zone-fill materialization, native: the same fill engine the native DRC
@@ -62,7 +64,10 @@ export function materializeZoneFills(pcb: PCB, state: PcbInternalState): void {
       );
       return;
     }
-    fs.writeFileSync(boardPath, filled, 'utf8');
+    writeFileAtomic(boardPath, filled);
+    // the fill rewrote the board the serializer just signed — re-sign the
+    // final bytes, or every filled board reads as an external edit
+    recordBoardSignature(boardPath, filled);
     logger.info('⏦ Zone fills materialized (native fill engine, no kicad-cli).');
   } catch (error) {
     logger.warn(

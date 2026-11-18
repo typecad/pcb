@@ -9,7 +9,8 @@
 
 export interface SemanticRoute {
   net: string | null;
-  pieces: Array<{ layer: string; pts: Array<{ x: number; y: number }> }>;
+  w?: number;
+  pieces: Array<{ layer: string; w?: number; pts: Array<{ x: number; y: number }> }>;
   vias: Array<{ x: number; y: number }>;
 }
 
@@ -45,11 +46,12 @@ interface BoardSeg {
   y2: number;
   layer: string;
   net: number | null;
+  width: number | null;
 }
 
 function boardSegments(board: string): BoardSeg[] {
   const out: BoardSeg[] = [];
-  for (const m of board.matchAll(/\(segment \(start (-?[\d.]+) (-?[\d.]+)\) \(end (-?[\d.]+) (-?[\d.]+)\)[^\n]*?\(layer "([^"]+)"\)(?:[^\n]*?\(net (\d+)\))?/g)) {
+  for (const m of board.matchAll(/\(segment \(start (-?[\d.]+) (-?[\d.]+)\) \(end (-?[\d.]+) (-?[\d.]+)\)[^\n]*?\(layer "([^"]+)"\)(?:[^\n]*?\(net (\d+)(?: "[^"]*")?\))?/g)) {
     out.push({
       x1: parseFloat(m[1]!),
       y1: parseFloat(m[2]!),
@@ -57,6 +59,7 @@ function boardSegments(board: string): BoardSeg[] {
       y2: parseFloat(m[4]!),
       layer: m[5]!,
       net: m[6] !== undefined ? Number(m[6]) : null,
+      width: Number(/\(width (-?[\d.]+)\)/.exec(m[0])?.[1] ?? NaN),
     });
   }
   return out;
@@ -307,6 +310,8 @@ export function verifyBoardSemantics(board: string, check: SemanticCheckInput): 
   let checked = 0;
   const segs = boardSegments(board);
   const vias = boardVias(board);
+  const netIds = new Map<string, number>();
+  for (const m of board.matchAll(/\(net (\d+) "([^"]+)"\)/g)) netIds.set(m[2]!, Number(m[1]));
 
   for (const route of check.routes) {
     for (const piece of route.pieces) {
@@ -314,7 +319,12 @@ export function verifyBoardSemantics(board: string, check: SemanticCheckInput): 
         const a = piece.pts[i - 1]!;
         const b = piece.pts[i]!;
         checked++;
-        if (!segMatches(segs, a.x, a.y, b.x, b.y, piece.layer))
+        const netId = route.net ? netIds.get(route.net) : undefined;
+        const matching = segs.filter((s) =>
+          (netId === undefined || s.net === netId) &&
+          ((piece.w ?? route.w) === undefined || (s.width !== null && near(s.width, (piece.w ?? route.w)!))),
+        );
+        if (!segMatches(matching, a.x, a.y, b.x, b.y, piece.layer))
           misses.push(`route segment ${fmt(a.x)},${fmt(a.y)} → ${fmt(b.x)},${fmt(b.y)} on ${piece.layer}${route.net ? ` (net ${route.net})` : ''} is missing from the rebuilt board`);
       }
     }

@@ -16,11 +16,13 @@ This repository contains the published `@typecad/` packages, example hardware pr
 
 ## Example projects
 
-- [`rd_skeleton/`](./rd_skeleton) — reference skeleton board (multilayer, zones, stitching)
-- [`rd_isl9120_demo/`](./rd_isl9120_demo) — ISL9120 boost converter demo (the clean example layout)
-- [`demo/`](./demo) — assorted demos and benchmarks
+- [`demo/rd_skeleton/`](./demo/rd_skeleton) — reference skeleton board (multilayer, zones, stitching)
+- [`demo/rd_isl9120_demo/`](./demo/rd_isl9120_demo) — ISL9120 boost converter demo (the clean example layout)
+- [`demo/`](./demo) — everything else: `hw` (one_hz), `spice`, `agent_demo`, `iot_sensor_demo`, `gerber-demo`, `rd_isl9120_impl` (the ISL9120 component package the demo consumes)
 
 ## Getting started
+
+Node.js 22 is recommended (see `.nvmrc`); the published packages support Node 18+.
 
 ```bash
 npm install          # installs all workspaces

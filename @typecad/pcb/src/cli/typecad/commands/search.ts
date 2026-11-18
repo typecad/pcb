@@ -22,7 +22,7 @@ export async function run(parsed: ParsedArgs): Promise<void> {
     const results = searchFootprints(query, { limit });
 
     if (parsed.json) {
-      logger.log(JSON.stringify(results, null, 2));
+      logger.out(JSON.stringify(results, null, 2));
       return;
     }
     if (results.length === 0) {

@@ -20,6 +20,8 @@ import {
 import { normalizeNetName, formatCallSite, getErrorMessage } from './pcb_utils.js';
 import { setPendingBoardFilePath } from '../cli/pending_summary.js';
 import { getBuildDir } from '../utils/constants.js';
+import { boardSignature } from '../utils/build_signature.js';
+import { writeFileAtomic } from '../utils/atomic_write.js';
 import logger from '../utils/logging.js';
 import { getCallSite } from '../utils/stack_trace.js';
 
@@ -543,7 +545,7 @@ export function serializeAndWriteBoard(pcb: PCB, boardContents: SExpr[], default
   const state = getPcbState(pcb);
 
   try {
-    fs.writeFileSync(boardFilePath, state.pcb);
+    writeFileAtomic(boardFilePath, state.pcb);
     // record the board THIS build produced: downstream discovery (the vscode
     // viewer, `query`) reads it instead of guessing by package-name/mtime —
     // a renamed board is found immediately and a same-named leftover from
@@ -555,15 +557,28 @@ export function serializeAndWriteBoard(pcb: PCB, boardContents: SExpr[], default
     try {
       const manifestPath = `${getBuildDir()}/.typecad-board.json`;
       let boards: string[] = [];
+      let hashes: Record<string, string> = {};
       try {
-        const prev = JSON.parse(fs.readFileSync(manifestPath, 'utf8')) as { boards?: unknown };
+        const prev = JSON.parse(fs.readFileSync(manifestPath, 'utf8')) as { boards?: unknown; hashes?: unknown };
         if (Array.isArray(prev.boards)) boards = prev.boards.filter((b): b is string => typeof b === 'string');
+        if (prev.hashes && typeof prev.hashes === 'object') {
+          for (const [k, v] of Object.entries(prev.hashes as Record<string, unknown>)) {
+            if (typeof v === 'string') hashes[k] = v;
+          }
+        }
       } catch {
         /* fresh or unreadable manifest */
       }
       const mine = `${pcb.boardName}.kicad_pcb`;
       boards = [...boards.filter((b) => b !== mine), mine];
-      fs.writeFileSync(manifestPath, JSON.stringify({ board: mine, boards }));
+      // the build's signature on its own output: sha256 of the exact bytes
+      // written. A board on disk that still hashes to this IS this build's
+      // output — drift against source is then a build bug, never an
+      // out-of-band (KiCad) edit to absorb back into source. Without this,
+      // board-to-source sync paths (the viewer's absorb, import --watch) took
+      // every fresh build for an external edit and rebuild-looped.
+      hashes = { ...hashes, [mine]: boardSignature(state.pcb) };
+      writeFileAtomic(manifestPath, JSON.stringify({ board: mine, boards, hashes }));
     } catch {
       /* the manifest is an optimization — its absence just falls back to heuristics */
     }

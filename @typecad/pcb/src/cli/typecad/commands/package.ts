@@ -155,7 +155,7 @@ export async function run(parsed: ParsedArgs): Promise<void> {
       installed: installed.has(pkg.name),
       installedVersion: installed.get(pkg.name) ?? null,
     }));
-    logger.log(JSON.stringify(result, null, 2));
+    logger.out(JSON.stringify(result, null, 2));
     return;
   }
 

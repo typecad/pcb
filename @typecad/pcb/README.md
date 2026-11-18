@@ -37,6 +37,15 @@ _...is the same as this schematic._
 
 >The difference is that code can be copied, turned into reusable packages, version controlled, and used within the npm/Node.js system.
 
+## Get started
+Read through the [documentation](https://typecad.net/getting-started) for a full walkthrough:
+
+```bash
+npx @typecad/pcb create
+```
+
+Requires Node.js 18+; Node 22 is what the toolchain is developed and tested on.
+
 ## Passives
 
 Resistors, capacitors, inductors, diodes, LEDs, and fuses are built in — no second package. The SMD package size is a constructor option (default `0603`), and an explicit `footprint` always wins:
@@ -106,13 +115,6 @@ Valid combinations: copper, silk, and mask openings in any mix — plus `maskPai
 
 Two things to know: copper artwork is non-net copper — keep it clear of real nets yourself (DRC flags collisions), and dense artwork triggers `silk_overlap` DRC warnings against itself; art-heavy boards usually set `silk_overlap: ignore` in the conf severities.
 
-## Get started
-Read through the [documentation](https://typecad.net/getting-started) for a full walkthrough:
-
-```bash
-npx @typecad/pcb create
-```
-
 ## Command line
 
 Everything is driven by the `typecad-pcb` CLI — the package also installs `pcb`, `gerber-viewer`, `kicad-symbols`, and `kicad2typecad` bins. `npx @typecad/pcb create` scaffolds a project with npm scripts wired up (`npm run build` → `typecad-pcb build`, `npm run kicad_sync` → watch-mode import, ...):
@@ -133,7 +135,12 @@ Everything is driven by the `typecad-pcb` CLI — the package also installs `pcb
 | `diff` | compare two KiCad PCB files visually |
 | `doc` | generate PCB documentation from markdown |
 | `lib add` / `lib list` | fetch/list KiCad libraries into `build/lib` |
-| `export gerbers` / `export drill` | export fabrication outputs |
+| `export gerbers` / `export drill` | export fabrication outputs (native) |
+| `export pos` | placement (centroid) CPL file |
+| `export bom` | bill of materials CSV |
+| `export assembly` | one-shot zipped provider package for JLCPCB, PCBWay, Seeed, OpenPnP, kicad, generic: gerbers + pos + bom |
+| `viewer` | build the interactive board viewer page |
+| `check-sync` | report board-vs-source drift |
 | `validate` | validate project source without a full build |
 | `doctor` | check your environment for common issues |
 | `package` | browse and install typeCAD packages from npm |
@@ -143,7 +150,7 @@ Every command takes `--json` for machine-readable output and `--help` for detail
 
 ### Checks without a KiCad install
 
-ERC and DRC run on a native engine — the build computes them from the design itself, and `check` rolls build + ERC + DRC into one report. The legacy kicad-cli checks remain available with `--kicad`. `lib add` fetches symbol/footprint libraries into `build/lib`, so `search` and `build` work on machines without KiCad installed.
+ERC and DRC run on a native engine — the build computes them from the design itself, and `check` rolls build + ERC + DRC into one report. The legacy kicad-cli checks remain available with `--kicad`. Builds automatically download missing symbols and footprints from the official KiCad libraries into `build/lib`. Commit those files to build offline on another machine. Use `lib add` to prefetch a library or include a footprint’s 3D models.
 
 Pins you intentionally leave unconnected (unused GPIOs, a power-only USB connector's data pins) should be marked with `pcb.dnc(pin, ...)` — the no-connect (X) flag — so ERC doesn't report them; `MountingHole`s are marked automatically.
 

@@ -100,7 +100,7 @@ describe('pad rotation conventions (golden-anchored)', () => {
 });
 
 // chamfered roundrect pads: goldens captured from kicad-cli 10.0.0 plotting
-// the probe board in rd_skeleton/hw/build/probe — KiCad switches these pads
+// the probe board in demo/rd_skeleton/hw/build/probe — KiCad switches these pads
 // from the RoundRect macro to a plain FreePoly polygon whose macro rotation
 // parameter carries the pad angle; chamfer legs measure from the corner,
 // independent of the corner radius

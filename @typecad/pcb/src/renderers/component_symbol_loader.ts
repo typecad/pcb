@@ -4,9 +4,10 @@ import { ComponentError } from '../utils/errors.js';
 import { LIBRARY_SEPARATOR } from '../utils/constants.js';
 import { getCallSite } from '../utils/stack_trace.js';
 import { formatSourceError } from '../utils/error_reporter.js';
-import { parseSymbolLibrary, referencePrefixOf, resolveExtends } from '../symbol_core.js';
+import { referencePrefixOf, resolveExtends } from '../symbol_core.js';
 import { getBuildDir } from '../utils/constants.js';
-import type { SList } from '../sexpr/types.js';
+import { symbolLibraryFor } from '../symbol_library_source.js';
+import { validLibraryPart } from '../library_asset.js';
 
 const referencePrefixCache = new Map<string, string | undefined>();
 
@@ -29,21 +30,9 @@ export function getSymbolReferencePrefix(symbol: string): string | undefined {
       const symbolName = symbol.slice(separatorIndex + 1);
       const kicadSymbols = libraryRoots().symbols;
 
-      const loadLibrary = (lib: string): SList | null => {
-        const candidates = [
-          kicadSymbols ? `${kicadSymbols}/${lib}.kicad_sym` : '',
-          `${getBuildDir()}/lib/${lib}.kicad_sym`,
-          `${getBuildDir()}/lib/symbols/${symbolName}.kicad_sym`,
-        ].filter((candidate) => candidate !== '');
-        for (const libPath of candidates) {
-          if (fs.existsSync(libPath)) {
-            return parseSymbolLibrary(fs.readFileSync(libPath, 'utf8'));
-          }
-        }
-        return null;
-      };
-
-      const resolved = resolveExtends(libraryName, symbolName, loadLibrary);
+      const resolved = resolveExtends(libraryName, symbolName, (lib, name) =>
+        symbolLibraryFor(kicadSymbols, lib, name, true),
+      );
       if (resolved) {
         prefix = referencePrefixOf(resolved.node);
       }
@@ -52,7 +41,7 @@ export function getSymbolReferencePrefix(symbol: string): string | undefined {
     prefix = undefined;
   }
 
-  referencePrefixCache.set(symbol, prefix);
+  if (prefix !== undefined) referencePrefixCache.set(symbol, prefix);
   return prefix;
 }
 
@@ -83,24 +72,16 @@ export function loadSymbolLib(
   const kicad_symbols = libraryRoots().symbols;
 
   try {
-    if (kicad_symbols && fs.existsSync(`${kicad_symbols}/${library}.kicad_sym`)) {
-      const loadLibrary = (lib: string) => {
-        const libPath = `${kicad_symbols}/${lib}.kicad_sym`;
-        if (!fs.existsSync(libPath)) return null;
-        return parseSymbolLibrary(fs.readFileSync(libPath, 'utf8'));
-      };
-
-      const resolved = resolveExtends(library, symbol_name, loadLibrary);
-      if (resolved) {
-        symbol_file_contents = resolved.serialized;
-      }
-    }
-
-    if (symbol_file_contents === '') {
-      const buildSymbolPath = `${getBuildDir()}/lib/symbols/${symbol_name}.kicad_sym`;
-      if (fs.existsSync(buildSymbolPath)) {
-        symbol_file_contents = fs.readFileSync(buildSymbolPath, 'utf8');
-      }
+    // Project-generated symbols may already be serialized embedding entries.
+    const legacyFile = `${getBuildDir()}/lib/symbols/${symbol_name}.kicad_sym`;
+    const resolve = (allowFetch: boolean) =>
+      resolveExtends(library, symbol_name, (lib, name) => symbolLibraryFor(kicad_symbols, lib, name, allowFetch));
+    const legacy =
+      validLibraryPart(symbol_name) && fs.existsSync(legacyFile) ? fs.readFileSync(legacyFile, 'utf8') : '';
+    if (/^\s*\(symbol\b/.test(legacy)) {
+      symbol_file_contents = resolve(false)?.serialized || legacy;
+    } else {
+      symbol_file_contents = resolve(true)?.serialized || '';
     }
   } catch (err: unknown) {
     if (err instanceof ComponentError) throw err;

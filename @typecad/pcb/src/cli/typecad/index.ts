@@ -2,13 +2,41 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import chalk from 'chalk';
-import { normalizeBareFileInvocation, parseArgv } from './parser.js';
+import { withCommands } from '../../utils/command_hint.js';
+import { findUnknownFlags, normalizeBareFileInvocation, parseArgv } from './parser.js';
+import { COMMAND_NAMES, findCommand, helpFunctionFor } from './registry.js';
+import { suggestClosest } from './suggest.js';
 import logger from '../../utils/logging.js';
 import { applyOutDirFlag } from './pipeline.js';
 
 function outputJson(data: unknown): void {
-  logger.log(JSON.stringify(data));
+  logger.out(JSON.stringify(data));
+}
+
+/** Usage errors (unknown command or option) exit 2, distinct from failed checks (1). */
+function usageError(parsedJson: boolean, code: string, message: string, hint?: string): never {
+  if (parsedJson) {
+    outputJson({ error: true, message, code });
+  } else {
+    logger.error(hint ? withCommands(message, hint) : message);
+  }
+  process.exit(2);
+}
+
+/** Run a help printer and return its text with colors stripped (for --help --json). */
+async function captureHelp(print: () => Promise<void> | void): Promise<string> {
+  const original = console.log;
+  const lines: string[] = [];
+  console.log = (...args: unknown[]) => {
+    lines.push(args.map(String).join(' '));
+  };
+  try {
+    await print();
+  } finally {
+    console.log = original;
+  }
+  // eslint-disable-next-line no-control-regex
+  return lines.join('\n').replace(/\u001b\[[0-9;]*m/g, '');
 }
 
 function getVersion(): string {
@@ -24,108 +52,13 @@ function getVersion(): string {
 }
 
 async function showCommandHelp(command: string, subcommand: string): Promise<boolean> {
-  const help = await import('./help.js');
-  if (command === 'create') {
-    help.showCreateHelp();
-    return true;
-  }
-  if (command === 'add' && subcommand === 'component') {
-    help.showAddComponentHelp();
-    return true;
-  }
-  if (command === 'add' && subcommand === 'package') {
-    help.showAddPackageHelp();
-    return true;
-  }
-  if (command === 'build') {
-    help.showBuildHelp();
-    return true;
-  }
-  if (command === 'search') {
-    help.showSearchHelp();
-    return true;
-  }
-  if (command === 'import') {
-    help.showImportHelp();
-    return true;
-  }
-  if (command === 'diff') {
-    help.showDiffHelp();
-    return true;
-  }
-  if (command === 'doc') {
-    help.showDocHelp();
-    return true;
-  }
-  if (command === 'doctor') {
-    help.showDoctorHelp();
-    return true;
-  }
-  if (command === 'validate') {
-    help.showValidateHelp();
-    return true;
-  }
-  if (command === 'drc') {
-    help.showDrcHelp();
-    return true;
-  }
-  if (command === 'viewer') {
-    help.showViewerHelp();
-    return true;
-  }
-  if (command === 'erc') {
-    help.showErcHelp();
-    return true;
-  }
-  if (command === 'lib') {
-    help.showLibHelp();
-    return true;
-  }
-  if (command === 'skills') {
-    help.showSkillsHelp();
-    return true;
-  }
-  if (command === 'query') {
-    help.showQueryHelp();
-    return true;
-  }
-  if (command === 'edit') {
-    help.showEditHelp();
-    return true;
-  }
-  if (command === 'check') {
-    help.showCheckHelp();
-    return true;
-  }
-  if (command === 'diagnostics') {
-    help.showDiagnosticsHelp();
-    return true;
-  }
-  if (command === 'clean') {
-    help.showCleanHelp();
-    return true;
-  }
-  if (command === 'package') {
-    help.showPackageHelp();
-    return true;
-  }
-  if (command === 'export') {
-    if (subcommand === 'gerbers') {
-      help.showExportGerbersHelp();
-    } else if (subcommand === 'drill') {
-      help.showExportDrillHelp();
-    } else if (subcommand === 'pos') {
-      help.showExportPosHelp();
-    } else if (subcommand === 'bom') {
-      help.showExportBomHelp();
-    } else if (subcommand === 'assembly') {
-      help.showExportAssemblyHelp();
-    } else {
-      help.showExportHelp();
-    }
-    return true;
-  }
-  return false;
+  const fnName = helpFunctionFor(command, subcommand);
+  if (!fnName) return false;
+  const help = (await import('./help.js')) as unknown as Record<string, unknown>;
+  const print = help[fnName];
+  if (typeof print !== 'function') return false;
+  (print as () => void)();
+  return true;
 }
 
 async function main(): Promise<void> {
@@ -133,24 +66,73 @@ async function main(): Promise<void> {
   // --outDir applies to every command: it redirects both the CLI's artifact
   // discovery and the library's writes (via TYPECAD_BUILD_DIR).
   applyOutDirFlag(parsed.args);
+  // --quiet / --verbose steer the logger (and any child build) for every command.
+  logger.configureFromFlags({ quiet: parsed.args['quiet'] === true, verbose: parsed.args['verbose'] === true });
 
   if (parsed.version) {
     if (parsed.json) {
       outputJson({ version: getVersion() });
     } else {
-      logger.log(`typeCAD v${getVersion()}`);
+      logger.log(`typecad-pcb v${getVersion()}`);
     }
     return;
   }
 
+  // A mistyped subcommand (`export gerber`) gets the nearest real one.
+  const spec = findCommand(parsed.command);
+  if (spec?.subcommands && parsed.subcommand && !spec.subcommands.some((sub) => sub.name === parsed.subcommand)) {
+    const names = spec.subcommands.map((sub) => sub.name).filter((name) => name !== 'help');
+    const near = suggestClosest(parsed.subcommand, names);
+    usageError(
+      parsed.json,
+      'UNKNOWN_SUBCOMMAND',
+      `Unknown subcommand '${parsed.command} ${parsed.subcommand}'.${near ? ` Did you mean '${near}'?` : ''} ` +
+        `Available: ${names.join(', ')}. See the options with:`,
+      `typecad-pcb ${parsed.command} --help`,
+    );
+  }
+
   // bare `help` (the word, not --help) shows the top-level screen too
   if (!parsed.command || parsed.command === 'help' || parsed.help) {
-    if (parsed.command && parsed.command !== 'help' && (await showCommandHelp(parsed.command, parsed.subcommand))) {
-      return;
+    const printHelp = async (): Promise<void> => {
+      if (parsed.command && parsed.command !== 'help' && (await showCommandHelp(parsed.command, parsed.subcommand))) {
+        return;
+      }
+      const help = await import('./help.js');
+      help.showTopLevelHelp();
+    };
+    if (parsed.json) {
+      const text = await captureHelp(printHelp);
+      outputJson({ command: parsed.command || null, subcommand: parsed.subcommand || null, help: text });
+    } else {
+      await printHelp();
     }
-    const help = await import('./help.js');
-    help.showTopLevelHelp();
     return;
+  }
+
+  // A mistyped option used to be ignored silently (--outdir quietly wrote to
+  // the default folder), and so was an option another command reads
+  // (`build --fix`). Both are rejected, pointing at the closest real one
+  // for THIS command.
+  if (parsed.command === 'help' || COMMAND_NAMES.includes(parsed.command)) {
+    const unknown = findUnknownFlags(parsed);
+    if (unknown.length > 0) {
+      const parts = unknown.map(({ flag, scope, candidates }) => {
+        const bare = flag.replace(/^-+(no-)?/, '');
+        const near = suggestClosest(bare, candidates);
+        const hint = near ? `did you mean --${near}?` : '';
+        if (scope === 'command') {
+          return `${flag} (not an option of '${parsed.command}'${hint ? `; ${hint}` : ''})`;
+        }
+        return hint ? `${flag} (${hint})` : flag;
+      });
+      usageError(
+        parsed.json,
+        'UNKNOWN_OPTION',
+        `Unknown option${unknown.length > 1 ? 's' : ''}: ${parts.join(', ')}. See the options for this command with:`,
+        `typecad-pcb ${parsed.command}${parsed.subcommand ? ' ' + parsed.subcommand : ''} --help`,
+      );
+    }
   }
 
   try {
@@ -167,16 +149,11 @@ async function main(): Promise<void> {
         } else if (!parsed.subcommand) {
           await showCommandHelp('add', '');
         } else {
-          if (parsed.json) {
-            outputJson({
-              error: true,
-              message: `Unknown subcommand 'add ${parsed.subcommand}'. Use 'component' or 'package'.`,
-              code: 'UNKNOWN_SUBCOMMAND',
-            });
-          } else {
-            logger.error(chalk.red(`Unknown subcommand 'add ${parsed.subcommand}'. Use 'component' or 'package'.`));
-          }
-          process.exit(1);
+          usageError(
+            parsed.json,
+            'UNKNOWN_SUBCOMMAND',
+            `Unknown subcommand 'add ${parsed.subcommand}'. Use 'component' or 'package'.`,
+          );
         }
         break;
 
@@ -264,17 +241,19 @@ async function main(): Promise<void> {
         await (await import('./commands/viewer.js')).run(parsed);
         break;
 
-      default:
-        if (parsed.json) {
-          outputJson({
-            error: true,
-            message: `Unknown command '${parsed.command}'`,
-            code: 'UNKNOWN_COMMAND',
-          });
-        } else {
-          logger.error(chalk.red(`Unknown command '${parsed.command}'. Run 'typecad --help' for available commands.`));
-        }
-        process.exit(1);
+      case 'completion':
+        await (await import('./commands/completion.js')).run(parsed);
+        break;
+
+      default: {
+        const near = suggestClosest(parsed.command, COMMAND_NAMES);
+        usageError(
+          parsed.json,
+          'UNKNOWN_COMMAND',
+          `Unknown command '${parsed.command}'.${near ? ` Did you mean '${near}'?` : ''} See the available commands with:`,
+          'typecad-pcb --help',
+        );
+      }
     }
   } catch (error) {
     if (parsed.json) {
@@ -284,7 +263,7 @@ async function main(): Promise<void> {
         code: 'COMMAND_ERROR',
       });
     } else {
-      logger.error(chalk.red(error instanceof Error ? error.message : String(error)));
+      logger.error(error instanceof Error ? error.message : String(error));
     }
     process.exit(1);
   }

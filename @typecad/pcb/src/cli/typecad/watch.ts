@@ -94,7 +94,7 @@ export interface WatchHandle {
  */
 /** The union of every entry's local import graph — multi-board watches
  *  cover all boards' sources. */
-function watchDeps(entries: string | string[]): string[] {
+export function watchDeps(entries: string | string[]): string[] {
   const list = Array.isArray(entries) ? entries : [entries];
   const seen = new Set<string>();
   for (const e of list) for (const f of collectLocalDependencies(e)) seen.add(f);
@@ -142,6 +142,53 @@ export function startWatchLoop(
       if (timer) clearTimeout(timer);
       for (const watcher of watchers) watcher.close();
       watchers = [];
+    },
+  };
+}
+
+export interface RebuildQueue {
+  /**
+   * Ask for a rebuild. If one is running, exactly one more run is queued
+   * (any number of requests during a run coalesce into it). The promise
+   * resolves when the queue is idle again.
+   */
+  request(): Promise<void>;
+}
+
+/**
+ * Serializes watch-mode rebuilds: two quick saves never run two builds at
+ * once (their output would interleave); the second waits for the first and
+ * then runs once more, so the final state always reflects the last save.
+ * `task` should handle its own errors — a throw is swallowed so the queue
+ * keeps working.
+ */
+export function createRebuildQueue(task: () => Promise<void>): RebuildQueue {
+  let running: Promise<void> | undefined;
+  let pending = false;
+
+  const drain = async (): Promise<void> => {
+    try {
+      do {
+        pending = false;
+        try {
+          await task();
+        } catch {
+          /* the task reports its own failures */
+        }
+      } while (pending);
+    } finally {
+      running = undefined;
+    }
+  };
+
+  return {
+    request() {
+      if (running) {
+        pending = true;
+        return running;
+      }
+      running = drain();
+      return running;
     },
   };
 }

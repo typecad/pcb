@@ -36,7 +36,7 @@ const loggerMock = vi.hoisted(() => {
 });
 vi.mock('../src/logging.js', () => loggerMock);
 
-import { findExecutable, discoverKiCAD, KiCAD, getKicadCliPath } from '../src/kicad.js';
+import { findExecutable, discoverKiCAD, KiCAD, getKicadCliPath, getFlatpakSafeTempDir } from '../src/kicad.js';
 import { KiCadNotFoundError } from '../src/utils/errors.js';
 
 describe('kicad.ts', () => {
@@ -232,6 +232,24 @@ describe('kicad.ts', () => {
         throw new Error('err');
       });
       expect(k.hasLocalSymbols()).toBe(false);
+    });
+  });
+
+  describe('getFlatpakSafeTempDir without a KiCad install', () => {
+    it('falls back to the OS temp dir instead of throwing KiCadNotFoundError', () => {
+      // nothing discoverable: no config, no flatpak, no native install, no kicad-cli
+      mockConfigGet.mockReturnValue(undefined);
+      mockExistsSync.mockReturnValue(false);
+      mockExecSync.mockImplementation(() => {
+        throw new Error('not found');
+      });
+      (os.tmpdir as ReturnType<typeof vi.fn>).mockReturnValue('/tmp');
+      KiCAD.resetInstance();
+
+      expect(KiCAD.isAvailable()).toBe(false);
+      // docgen's tempManager calls this at module load; it must not need KiCad
+      expect(() => getFlatpakSafeTempDir()).not.toThrow();
+      expect(getFlatpakSafeTempDir()).toBe('/tmp');
     });
   });
 

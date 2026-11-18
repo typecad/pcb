@@ -1,4 +1,6 @@
 import fs from 'node:fs';
+import { resolveLibraryAsset } from '../library_asset.js';
+import { bundledFootprintPath } from './component_footprint_loader.js';
 import { libraryRoots } from '../kicad.js';
 import { parse } from '../sexpr/index.js';
 import { SNode } from '../sexpr/query.js';
@@ -51,7 +53,7 @@ export function getFootprintBounds(footprintName: string): FootprintBox | null {
   if (cached !== undefined) return cached;
 
   const result = computeFootprintBounds(footprintName);
-  boundsCache.set(footprintName, result);
+  if (result) boundsCache.set(footprintName, result);
   if (result === null && !unresolvedFootprintWarnings.has(footprintName)) {
     unresolvedFootprintWarnings.add(footprintName);
     logger.warn(
@@ -74,18 +76,19 @@ function resolveFootprintPath(footprintName: string): string | null {
   const buildPath = `${getBuildDir()}/lib/footprints/${parts[1]}.kicad_mod`;
   if (fs.existsSync(buildPath)) return buildPath;
 
-  return null;
+  const bundled = bundledFootprintPath(parts[1]);
+  return fs.existsSync(bundled) ? bundled : null;
 }
 
 function computeFootprintBounds(footprintName: string): FootprintBox | null {
-  const filePath = resolveFootprintPath(footprintName);
-  if (!filePath) {
-    logger.debug(`[footprint_bounds] Footprint file not found for: ${footprintName}`);
-    return null;
-  }
-
   try {
-    const contents = fs.readFileSync(filePath, 'utf8');
+    const [library, name, extra] = footprintName.split(LIBRARY_SEPARATOR);
+    if (!library || !name || extra !== undefined) return null;
+    const filePath = resolveFootprintPath(footprintName);
+    const contents = filePath
+      ? fs.readFileSync(filePath, 'utf8')
+      : resolveLibraryAsset('footprints', library, name, true);
+    if (!contents) return null;
     const parsed = parse(contents);
     if (!Array.isArray(parsed)) return null;
 

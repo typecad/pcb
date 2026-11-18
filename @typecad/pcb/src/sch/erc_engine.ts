@@ -101,12 +101,10 @@ function conflicts(a: string, b: string): boolean {
 }
 
 /** Default roster resolver: the shared symbol-library singleton, degrading
- *  silently when the symbol (or the library itself) is unavailable. */
+ *  when the symbol (or the library itself) is unavailable. */
 function libraryRoster(component: Component): Map<string, PinInfo> | null {
   try {
-    const manager = getSymbolLibraryManager();
-    if (!manager.hasSymbol(component.symbol)) return null;
-    return manager.getPinInfoMap(component.symbol);
+    return getSymbolLibraryManager().getPinInfoMap(component.symbol);
   } catch {
     return null;
   }

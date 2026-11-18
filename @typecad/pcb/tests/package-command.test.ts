@@ -22,6 +22,7 @@ vi.mock('../src/utils/logging.js', () => ({
   __esModule: true,
   default: {
     log: vi.fn(),
+    out: vi.fn(),
     error: vi.fn(),
     info: vi.fn(),
     debug: vi.fn(),

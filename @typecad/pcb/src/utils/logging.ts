@@ -1,5 +1,6 @@
 /* eslint-disable no-console */
 import chalk from 'chalk';
+import { sym } from './symbols.js';
 
 /**
  * Unified logging for typeCAD.
@@ -8,6 +9,9 @@ import chalk from 'chalk';
  *   TYPECAD_DEBUG=1  - Enables debug output
  *   TYPECAD_QUIET=1  - Suppresses debug and info output
  *   TYPECAD_SILENT=1 - Suppresses all output (warn/error still shown unless set)
+ *
+ * The CLI's --quiet / --verbose flags set TYPECAD_QUIET / TYPECAD_DEBUG
+ * (see configureFromFlags), so the library and child builds follow them too.
  */
 
 function isDebug(): boolean {
@@ -53,8 +57,22 @@ export function log(...args: unknown[]) {
 
 export function success(...args: unknown[]) {
   if (!isSilent() && !isQuiet()) {
-    console.log(chalk.green('✔'), ...args);
+    console.log(chalk.green(sym.ok), ...args);
   }
 }
 
-export default { debug, info, warn, error, log, success };
+/**
+ * Machine-readable output (--json). Always printed: quiet/silent suppress
+ * human chatter, never the result a script is waiting for.
+ */
+export function out(...args: unknown[]) {
+  console.log(...args);
+}
+
+/** Apply --quiet / --verbose to this process and any child it spawns. */
+export function configureFromFlags(flags: { quiet?: boolean; verbose?: boolean }) {
+  if (flags.quiet) process.env.TYPECAD_QUIET = '1';
+  if (flags.verbose) process.env.TYPECAD_DEBUG = '1';
+}
+
+export default { debug, info, warn, error, log, success, out, configureFromFlags };

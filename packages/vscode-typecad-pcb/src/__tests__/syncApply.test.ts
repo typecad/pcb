@@ -384,3 +384,33 @@ describe('layout apply → _sync.ts sidecar', () => {
     expect(plan.skipped.some((s) => s.includes('no source variable'))).toBe(true);
   });
 });
+
+describe('layout apply regressions', () => {
+  it('deletes multiple components without shifting later source edits', () => {
+    const text = [
+      "const r1 = new Component({ reference: 'R1' });",
+      "const r2 = new Component({ reference: 'R2' });",
+      "const r3 = new Component({ reference: 'R3' });",
+      'typecad.create(r1, r2, r3);',
+    ].join('\n');
+    const files = [{ uri: ENTRY_URI, text }];
+    const plan = planOf(files, {
+      partDeletes: ['R1', 'R2'],
+      variableOf: (ref) => ref.toLowerCase(),
+    });
+    const result = applyPlan(files, plan).get(ENTRY_URI)!;
+    expect(result).not.toContain('const r1');
+    expect(result).not.toContain('const r2');
+    expect(result).toContain('const r3');
+    expect(result).toContain('typecad.create(r3)');
+  });
+
+  it('updates a route endpoint on the first sidecar placement', () => {
+    const text = entryFile(
+      "const route = new TrackBuilder(typecad, { net: 'A' }).from({ x: 3, y: 2 }, 'F.Cu', 0.3).to({ x: 5, y: 4, layer: 'F.Cu', width: 0.3 });",
+    );
+    const files = [{ uri: ENTRY_URI, text }, { uri: SYNC_URI, text: '' }];
+    const plan = planOf(files, { moves: [{ ref: 'J1', dx: 2, dy: 0, ax: 4, ay: 2, pads: [{ x: 3, y: 2 }] }] });
+    expect(applyPlan(files, plan).get(ENTRY_URI)).toContain('.from({ x: 5, y: 2 }');
+  });
+});

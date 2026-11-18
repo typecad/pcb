@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import chalk from 'chalk';
+import { withCommands } from '../../../utils/command_hint.js';
 import { listSkills, getSkill, getCategories, getSkillsByCategory } from '../skills/registry.js';
 import type { ParsedArgs } from '../parser.js';
 import type { Skill } from '../skills/types.js';
@@ -165,7 +166,7 @@ export async function run(parsed: ParsedArgs): Promise<void> {
 
   if (!subcommand || subcommand === 'list') {
     if (parsed.json) {
-      logger.log(JSON.stringify(listSkills(), null, 2));
+      logger.out(JSON.stringify(listSkills(), null, 2));
     } else {
       formatListHuman();
     }
@@ -176,7 +177,7 @@ export async function run(parsed: ParsedArgs): Promise<void> {
     const query = parsed.positional.join(' ');
     if (!query) {
       if (parsed.json) {
-        logger.log(
+        logger.out(
           JSON.stringify({
             error: true,
             message: 'Query required. Usage: typecad-pcb skills search <query>',
@@ -191,7 +192,7 @@ export async function run(parsed: ParsedArgs): Promise<void> {
     }
     const results = searchSkills(query, 10);
     if (parsed.json) {
-      logger.log(
+      logger.out(
         JSON.stringify(
           results.map(({ name, category, description, score }) => ({ name, category, description, score })),
           null,
@@ -216,7 +217,7 @@ export async function run(parsed: ParsedArgs): Promise<void> {
   if (subcommand === 'export') {
     if (parsed.args['out'] === true) {
       if (parsed.json) {
-        logger.log(
+        logger.out(
           JSON.stringify({
             error: true,
             message: '--out needs a value: typecad-pcb skills export --out <dir>',
@@ -243,7 +244,7 @@ export async function run(parsed: ParsedArgs): Promise<void> {
       }
     }
     if (parsed.json) {
-      logger.log(JSON.stringify({ ok: true, out: outDir, skills: written }));
+      logger.out(JSON.stringify({ ok: true, out: outDir, skills: written }));
     } else {
       logger.log(chalk.green(`✓ exported ${written} skills to ${outDir}/typecad-<name>/SKILL.md`));
     }
@@ -254,7 +255,7 @@ export async function run(parsed: ParsedArgs): Promise<void> {
     const skillName = parsed.positional[0];
     if (!skillName) {
       if (parsed.json) {
-        logger.log(
+        logger.out(
           JSON.stringify({
             error: true,
             message: 'Skill name required. Usage: typecad-pcb skills get <name>',
@@ -271,7 +272,7 @@ export async function run(parsed: ParsedArgs): Promise<void> {
     const skill = getSkill(skillName);
     if (!skill) {
       if (parsed.json) {
-        logger.log(
+        logger.out(
           JSON.stringify({
             error: true,
             message: `Unknown skill '${skillName}'. Run 'typecad-pcb skills list' for available skills.`,
@@ -280,13 +281,13 @@ export async function run(parsed: ParsedArgs): Promise<void> {
         );
       } else {
         logger.error(chalk.red(`Unknown skill '${skillName}'.`));
-        logger.log("Run 'typecad-pcb skills list' for available skills.");
+        logger.log(withCommands('See the available skills with:', 'typecad-pcb skills list'));
       }
       process.exit(1);
     }
 
     if (parsed.json) {
-      logger.log(JSON.stringify(skill, null, 2));
+      logger.out(JSON.stringify(skill, null, 2));
     } else {
       formatSkillHuman(skill);
     }
@@ -294,7 +295,7 @@ export async function run(parsed: ParsedArgs): Promise<void> {
   }
 
   if (parsed.json) {
-    logger.log(
+    logger.out(
       JSON.stringify({
         error: true,
         message: `Unknown subcommand 'skills ${subcommand}'. Use 'list', 'get', 'search', or 'export'.`,

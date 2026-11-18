@@ -1,11 +1,12 @@
 import fs from 'node:fs';
 import { GENERATOR_NAME, generatorVersion } from '../../../utils/generator_identity.js';
 import path from 'node:path';
-import os from 'node:os';
+import { libraryCacheDir, SYMBOLS_RAW, FOOTPRINTS_RAW } from '../../../library_asset.js';
 import { fileURLToPath } from 'node:url';
 import chalk from 'chalk';
 import type { ParsedArgs } from '../parser.js';
 import logger from '../../../utils/logging.js';
+import { writeFileAtomic } from '../../../utils/atomic_write.js';
 import { getBuildDir } from '../../../utils/constants.js';
 import { libraryRoots } from '../../../kicad.js';
 import { parse, serialize, Sym } from '../../../sexpr/index.js';
@@ -19,9 +20,7 @@ import type { SExpr, SList } from '../../../sexpr/types.js';
  * command fills `build/lib/` from the official KiCad library repos
  * (gitlab.com/kicad/libraries) on demand. Downloads go through a
  * user-level cache and land INSIDE the project (committable, and the
- * board builds offline from then on). Fetching never happens during a
- * build itself — it is an explicit act, so builds stay deterministic
- * and network-free.
+ * board builds offline from then on).
  *
  *   typecad-pcb lib add Device                  (whole symbol library)
  *   typecad-pcb lib add Device:R_Small          (one symbol — the repo's
@@ -31,13 +30,7 @@ import type { SExpr, SList } from '../../../sexpr/types.js';
  *   typecad-pcb lib list
  */
 
-const SYMBOLS_RAW = 'https://gitlab.com/kicad/libraries/kicad-symbols/-/raw/master';
 const SYMBOLS_TREE = 'https://gitlab.com/api/v4/projects/kicad%2Flibraries%2Fkicad-symbols/repository/tree';
-const FOOTPRINTS_RAW = 'https://gitlab.com/kicad/libraries/kicad-footprints/-/raw/master';
-
-function cacheDir(): string {
-  return process.env.TYPECAD_LIB_CACHE || path.join(os.homedir(), '.typecad', 'cache', 'kicad-libs');
-}
 
 /** Libraries shipped inside @typecad/pcb (`bundled/` at the package root);
  *  works identically from src/ via tsx and from dist/. */
@@ -70,21 +63,21 @@ async function fetchText(url: string, timeoutMs?: number): Promise<string> {
  *  project — or a refetch after deleting a project copy — doesn't
  *  re-download. Listing calls bypass the cache. */
 async function fetchCached(url: string, cacheRel: string): Promise<string> {
-  const cached = path.join(cacheDir(), cacheRel);
+  const cached = path.join(libraryCacheDir(), cacheRel);
   if (fs.existsSync(cached)) {
     logger.debug(`lib: cache hit ${cached}`);
     return fs.readFileSync(cached, 'utf8');
   }
   const text = await fetchText(url);
   fs.mkdirSync(path.dirname(cached), { recursive: true });
-  fs.writeFileSync(cached, text, 'utf8');
+  writeFileAtomic(cached, text);
   return text;
 }
 
 /** binary cache variant — 3D models (.step/.wrl) are large and must not
  *  round-trip through UTF-8 text. */
 async function fetchCachedBuffer(url: string, cacheRel: string): Promise<Buffer> {
-  const cached = path.join(cacheDir(), cacheRel);
+  const cached = path.join(libraryCacheDir(), cacheRel);
   if (fs.existsSync(cached)) {
     logger.debug(`lib: cache hit ${cached}`);
     return fs.readFileSync(cached);
@@ -284,10 +277,14 @@ function listLibraries(): void {
 
   const libDir = path.join(getBuildDir(), 'lib');
   const symbols = fs.existsSync(libDir) ? fs.readdirSync(libDir).filter((f) => f.endsWith('.kicad_sym')) : [];
-  const footprintsDir = path.join(libDir, 'footprints');
-  const footprints = fs.existsSync(footprintsDir)
-    ? fs.readdirSync(footprintsDir).filter((f) => f.endsWith('.kicad_mod'))
-    : [];
+  const projectFiles = (folder: string, extension: string): string[] => {
+    const dir = path.join(libDir, folder);
+    return fs.existsSync(dir)
+      ? fs.readdirSync(dir, { recursive: true, encoding: 'utf8' }).filter((f) => f.endsWith(extension))
+      : [];
+  };
+  symbols.push(...projectFiles('symbols', '.kicad_sym').map((f) => path.join('symbols', f)));
+  const footprints = projectFiles('footprints', '.kicad_mod');
   const modelsDir = path.join(libDir, '3dshapes');
   const models: string[] = [];
   if (fs.existsSync(modelsDir)) {

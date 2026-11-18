@@ -323,8 +323,11 @@ export function createBoard(pcb: PCB, ...items: Array<Component | TrackBuilder |
       );
       finalBoardContents.push(newNode);
     } catch (e: unknown) {
-      const detail = e instanceof Error ? e.message : String(e);
       reportError(`Failed to create footprint node for ${displayName(component)}.`, component);
+      // a BoardCreationError from createFootprintNode already names the
+      // component and carries the fix hint — rethrow as-is, no re-wrapping
+      if (e instanceof BoardCreationError) throw e;
+      const detail = e instanceof Error ? e.message : String(e);
       throw new BoardCreationError(
         `[${component.footprint} ${component.reference} ${component.description}] Failed to create footprint node: ${detail}`,
       );

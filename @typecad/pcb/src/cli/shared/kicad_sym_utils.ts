@@ -1,7 +1,9 @@
 import fs from 'node:fs';
-import { join } from 'node:path';
+import { resolve } from 'node:path';
 import { parse, nameOf } from '../../sexpr/index.js';
-import { KiCAD } from '../../kicad.js';
+import { libraryRoots } from '../../kicad.js';
+import { getBuildDir } from '../../utils/constants.js';
+import { symbolLibraryFor } from '../../symbol_library_source.js';
 import type { CliPinInfo } from '../types.js';
 import logger from '../../utils/logging.js';
 import { sanitize_name as sharedSanitizeName, sanitize_number as sharedSanitizeNumber } from './cli_utils.js';
@@ -49,22 +51,6 @@ function toCliPins(symbolNode: SList): CliPinInfo[] {
   return pins;
 }
 
-/** Library loader for "lib:symbol" lookups: global KiCAD symbols dir first, then <folder>/build/lib. */
-function libraryLoader(folder: string) {
-  const kicadSymbolsPath = KiCAD.instance.getSymbolsPath();
-  return (libraryName: string): SList | null => {
-    try {
-      const globalPath = `${kicadSymbolsPath}/${libraryName}.kicad_sym`;
-      if (fs.existsSync(globalPath)) {
-        return parseSymbolLibrary(fs.readFileSync(globalPath, 'utf8'));
-      }
-      return parseSymbolLibrary(fs.readFileSync(join(folder, 'build', 'lib', `${libraryName}.kicad_sym`), 'utf8'));
-    } catch {
-      return null;
-    }
-  };
-}
-
 /**
  * Resolve a "library:symbol" reference. Returns null when the symbol (or its
  * extends chain) cannot be resolved in the global KiCAD libraries or under
@@ -76,7 +62,11 @@ export function readSymbol(symbol: string, folder = './'): SymbolLookup | null {
   if (parts.length !== 2) return null;
 
   try {
-    const resolved = resolveExtends(parts[0], parts[1], libraryLoader(folder));
+    const root = libraryRoots().symbols;
+    const buildDir = resolve(folder, getBuildDir());
+    const resolved = resolveExtends(parts[0], parts[1], (lib, name) =>
+      symbolLibraryFor(root, lib, name, true, undefined, buildDir),
+    );
     if (!resolved) return null;
     const footprintProperty = footprintOf(resolved.node);
     return {

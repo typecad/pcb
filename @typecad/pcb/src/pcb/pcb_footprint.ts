@@ -5,7 +5,7 @@ import type { SexprNode } from '../types/sexpr_types.js';
 import { generateUuid, formatSourceInfoForProperty, getErrorMessage } from './pcb_utils.js';
 import { deterministicUUID } from '../utils/deterministic_id.js';
 import { mapLayerToSide, transformSexprLayers, mirrorChamferDirection } from './pcb_layer_utils.js';
-import { BoardCreationError } from '../utils/errors.js';
+import { BoardCreationError, ComponentError } from '../utils/errors.js';
 import { reportError } from '../utils/error_reporter.js';
 import logger from '../utils/logging.js';
 import chalk from 'chalk';
@@ -620,6 +620,12 @@ export function createFootprintNode(
     }
   } catch (e: unknown) {
     reportError('Failed to create footprint node.', component);
+    // loadFootprintLib's ComponentError already carries the component prefix
+    // and the exact `lib add` fix — rethrow it verbatim instead of stacking
+    // another wrapper prefix in front of the actionable line.
+    if (e instanceof ComponentError) {
+      throw new BoardCreationError(e.message, { cause: e });
+    }
     throw new BoardCreationError(
       `[${component.reference || 'Unknown'}, ${component.value || 'Unknown'}, ${component.footprint}] Failed to create footprint node. ${getErrorMessage(e)}`,
     );

@@ -1067,10 +1067,11 @@ describe('a gesture\'s own deletes ride the apply (no door prune)', () => {
     let deletes = 0;
     (w as unknown as Record<string, unknown>).typecadLayoutApply = (
       _m: unknown, _t: unknown, _v: unknown, _l: unknown, _r: unknown,
-      rt: unknown[], de: unknown[], _z: unknown, _o: unknown, cb: (e: string | null, f: boolean) => void,
+      rt: unknown[], de: unknown[], ...rest: unknown[]
     ) => {
       routes = rt.length;
       deletes = de.length;
+      const cb = rest[rest.length - 1] as (e: string | null, f: boolean) => void;
       cb(null, false);
     };
     w.document.getElementById('layout-apply')!.click();
@@ -1486,6 +1487,39 @@ describe('deferred views load on first switch', () => {
     await new Promise((r) => setTimeout(r, 80));
     // the fresh fragment (default clad #1a7a44) is remapped to the pick
     expect(d.querySelector('#pcba-board [fill="#26262b"]')).not.toBeNull();
+  });
+
+  it('theme pickers are per view: KiCad themes on gerber/layout, pcba themes on pcba/assembly, none on blueprint/ngspice/copper', async () => {
+    const page = await boot({
+      assemblySvg: '<svg/>',
+      blueprintSvg: '<svg/>',
+      schematicSvg: '<svg/>',
+      pcbaThemes: [
+        { id: 'green-enig', label: 'Green ENIG', colors: { clad: '#1a7a44' } },
+        { id: 'red-enig', label: 'Red ENIG', colors: { clad: '#8a1a1a' } },
+      ],
+    });
+    const w = page.window;
+    const d = w.document;
+    const modeSel = d.getElementById('view-mode') as HTMLSelectElement;
+    const shown = () => ({
+      layer: d.getElementById('layer-theme')!.style.display !== 'none',
+      pcba: d.getElementById('pcba-theme')!.style.display !== 'none',
+    });
+    const expected: Record<string, { layer: boolean; pcba: boolean }> = {
+      gerber: { layer: true, pcba: false },
+      layout: { layer: true, pcba: false },
+      pcba: { layer: false, pcba: true },
+      assembly: { layer: false, pcba: true },
+      blueprint: { layer: false, pcba: false },
+      schematic: { layer: false, pcba: false },
+      thermal: { layer: false, pcba: false },
+    };
+    for (const [mode, want] of Object.entries(expected)) {
+      modeSel.value = mode;
+      modeSel.dispatchEvent(new w.Event('change', { bubbles: true }));
+      expect(shown(), mode).toEqual(want);
+    }
   });
 
   it('a part that failed once retries on the next switch — a permanent failure would trap the view on an empty placeholder', async () => {

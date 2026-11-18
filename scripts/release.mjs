@@ -25,6 +25,7 @@
 // ---------------------------------------------------------------------------
 
 import { spawnSync } from 'node:child_process';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -141,9 +142,60 @@ if (publishOnly) {
 // publish (the @typecad/pcb tarball packs assets/). The cross-check turns
 // "forgot to bundle" from a silent stale-asset ship into a hard abort.
 
+// The installed extension self-updates ONLY when the bundled asset's version
+// is newer than its own (bundledUpdate.ts). The extension is a private
+// workspace package that changesets bumps only if a changeset names it — so
+// its code changed for weeks (v0.12.0-alpha.4 shipped with ~30 files of new
+// source) and no installed copy ever updated. Gate: the shipped content hash
+// is recorded in packages/vscode-typecad-pcb/.shipped.json after each
+// publish; if the freshly bundled content differs but the version is
+// unchanged, bump the extension's version and re-bundle.
+
 step('bundle the vscode extension into @typecad/pcb assets');
+const EXT_PKG = path.join(EXTENSION_DIR, 'package.json');
+const SHIPPED = path.join(EXTENSION_DIR, '.shipped.json');
+const ASSET_DIR = path.dirname(ASSET_MANIFEST);
+
+/** sha256 over the asset tree, manifest excluded (it carries the version). */
+function assetHash() {
+  const h = crypto.createHash('sha256');
+  const walk = (dir) => {
+    const entries = fs.readdirSync(dir, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name));
+    for (const e of entries) {
+      const full = path.join(dir, e.name);
+      if (e.isDirectory()) walk(full);
+      else if (!(dir === ASSET_DIR && e.name === 'package.json')) {
+        h.update(path.relative(ASSET_DIR, full).replace(/\\/g, '/')).update(fs.readFileSync(full));
+      }
+    }
+  };
+  walk(ASSET_DIR);
+  return h.digest('hex');
+}
+/** 0.12.0-alpha.4 -> 0.12.0-alpha.5; 1.2.3 -> 1.2.4 */
+function bumpExtensionVersion(v) {
+  const pre = /^(.*-[A-Za-z]+\.)(\d+)$/.exec(v);
+  if (pre) return `${pre[1]}${Number(pre[2]) + 1}`;
+  const rel = /^(\d+\.\d+\.)(\d+)(.*)$/.exec(v);
+  if (!rel) die(`cannot bump extension version '${v}'`);
+  return `${rel[1]}${Number(rel[2]) + 1}${rel[3]}`;
+}
+
 run('npm run bundle', EXTENSION_DIR);
-const extVersion = readJson(path.join(EXTENSION_DIR, 'package.json')).version;
+const shipped = fs.existsSync(SHIPPED) ? readJson(SHIPPED) : null;
+let bundledHash = assetHash();
+if (shipped && shipped.hash !== bundledHash && shipped.version === readJson(EXT_PKG).version) {
+  const next = bumpExtensionVersion(shipped.version);
+  log(`  extension content changed since v${shipped.version} shipped — bumping to v${next} (installed copies only update on a newer version)`);
+  fs.writeFileSync(
+    EXT_PKG,
+    fs.readFileSync(EXT_PKG, 'utf8').replace(/("version"\s*:\s*")[^"]+(")/, `$1${next}$2`),
+  );
+  run('npm install --package-lock-only');
+  run('npm run bundle', EXTENSION_DIR);
+  bundledHash = assetHash();
+}
+const extVersion = readJson(EXT_PKG).version;
 const assetVersion = readJson(ASSET_MANIFEST).version;
 if (extVersion !== assetVersion) {
   die(
@@ -157,6 +209,9 @@ log(`  asset manifest matches extension version ${extVersion}`);
 
 step('changeset publish (npm, dependency order — needs `npm login`)');
 run('npx changeset publish');
+// record what just shipped so the next release can tell if the extension changed
+fs.writeFileSync(SHIPPED, JSON.stringify({ version: extVersion, hash: bundledHash }, null, 2) + '\n');
+log(`  recorded shipped extension v${extVersion} in ${path.relative(root, SHIPPED)}`);
 
 // -- 6. commit report ----------------------------------------------------------
 // changesets is configured with commit:false — the bumps are committed by

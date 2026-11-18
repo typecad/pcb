@@ -384,7 +384,6 @@ export function planLayoutApply(files: LayoutApplyFile[], input: LayoutApplyInpu
   // loudly — a dangling reference breaks the build. --
   const deletedRefs = new Set((input.partDeletes ?? []).map((r) => r.trim()).filter((r) => r !== ''));
   if (deletedRefs.size > 0) {
-    const batch: Array<{ uri: string; edits: PlannedEdit[] }> = [];
     for (const ref of deletedRefs) {
       const variable = input.variableOf(ref);
       if (!variable) {
@@ -412,12 +411,9 @@ export function planLayoutApply(files: LayoutApplyFile[], input: LayoutApplyInpu
         skipped.push(`${ref} (${variable} is still referenced after removal — nothing deleted)`);
         continue;
       }
-      for (const p of perFile) {
-        if (p.edits.length > 0) batch.push({ uri: p.uri, edits: p.edits });
-      }
+      commit(perFile.map((p) => ({ uri: p.uri, edits: p.edits })));
       counts.partDeletes++;
     }
-    commit(batch);
     // a deleted part has no final placement to carry
     for (let i = moves.length - 1; i >= 0; i--) {
       if (deletedRefs.has(moves[i]!.ref)) moves.splice(i, 1);
@@ -501,6 +497,7 @@ export function planLayoutApply(files: LayoutApplyFile[], input: LayoutApplyInpu
             { uri: entryUri!, edits: wiring.edits },
           ]);
           counts.moves += syncPlacements.length;
+          for (const p of syncPlacements) appliedRefs.add(p.ref);
           syncSummary.placements += syncPlacements.length;
           placementCache.clear(); // parts that just gained a literal resolve now
         } else {
@@ -650,6 +647,20 @@ export function planLayoutApply(files: LayoutApplyFile[], input: LayoutApplyInpu
     } else {
       for (const l of syncLabels) skipped.push(`${l.ref} (_sync.ts is not a typeCAD sync file)`);
     }
+  }
+
+  // Apply additional labels in separate passes so each pass plans against
+  // the text produced by the previous label on the same component.
+  const lastLabelByRef = new Map((input.labels ?? []).map((label) => [label.ref, label]));
+  const additionalLabels = (input.labels ?? []).filter((label) => lastLabelByRef.get(label.ref) !== label);
+  for (const label of additionalLabels) {
+    const extra = planLayoutApply(
+      files.map((file) => ({ ...file, text: textOf.get(file.uri)! })),
+      { ...input, moves: [], values: [], renames: [], labels: [label], routes: [], deletes: [], partDeletes: [], zones: [], images: [], outline: undefined, zoneEdits: [], zoneDeletes: [], imageEdits: [], imageDeletes: [], texts: [], textDeletes: [], classEdits: [] },
+    );
+    for (const stage of extra.stages) commit(stage);
+    counts.labels += extra.counts.labels;
+    skipped.push(...extra.skipped);
   }
 
   // -- stage 3: silk/fab .text({ … }) literals, matched per file --

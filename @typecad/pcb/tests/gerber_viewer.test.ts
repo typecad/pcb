@@ -842,12 +842,16 @@ describe('buildViewerHtml', () => {
     expect(withThemes).toContain('id="pcba-themes"');
     // the remap covers the assembly view's bare board too
     expect(withThemes).toContain('viewGroups.pcba, viewGroups.assembly');
-    // the retired chrome is really gone: the KiCad layer-theme select, its
-    // island, and the measure/DRC toolbar buttons
-    expect(withThemes).not.toContain('id="layer-theme"');
-    expect(withThemes).not.toContain('id="layer-themes"');
+    // the measure/DRC toolbar buttons stay retired
     expect(withThemes).not.toContain('id="btn-measure"');
     expect(withThemes).not.toContain('id="btn-drc"');
+    // the KiCad layer-theme select rides beside it, fed by the vendored set
+    expect(withThemes).toContain('<select id="layer-theme" title="layer colors (KiCad color themes)">');
+    expect(withThemes).toContain('<option value="nord" title="');
+    expect(withThemes).toContain('<option value="" title="the built-in viewer palette">Default</option>');
+    expect(withThemes).toContain('id="layer-themes"');
+    expect(withThemes).toContain('function applyLayerTheme(id)');
+    expect(withThemes).toContain('gerber-viewer:layer-theme:v1');
     // the remap skips mask-luminance ink and persists the pick
     expect(withThemes).toContain('function applyPcbaTheme(id)');
     expect(withThemes).toContain("els[i].closest('mask')) continue");

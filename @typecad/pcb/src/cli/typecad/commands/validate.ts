@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import { loadConfig } from '../../../config.js';
 import type { ParsedArgs } from '../parser.js';
 import logger from '../../../utils/logging.js';
+import { noEntryMessage } from '../../../utils/command_hint.js';
 import chalk from 'chalk';
 import { npxExec } from '../../../utils/process_exec.js';
 
@@ -38,9 +39,7 @@ export async function run(parsed: ParsedArgs): Promise<void> {
 
   if (!entry) {
     throw new Error(
-      'No entry file specified and none could be auto-detected.\n' +
-        'Provide a file path: typecad-pcb validate <entry.ts>\n' +
-        'Or configure one in typecad.conf.ts: { entry: "./src/main.ts" }',
+      noEntryMessage('validate'),
     );
   }
 
@@ -88,7 +87,7 @@ export async function run(parsed: ParsedArgs): Promise<void> {
   }
 
   if (json) {
-    logger.log(JSON.stringify({ valid: !hasErrors, results }, null, 2));
+    logger.out(JSON.stringify({ valid: !hasErrors, results }, null, 2));
   } else {
     for (const r of results) {
       const icon = r.passed ? chalk.green('  \u2714') : chalk.red('  \u2716');

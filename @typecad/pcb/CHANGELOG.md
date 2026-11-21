@@ -1,5 +1,38 @@
 # @typecad/pcb
 
+## 1.0.0-alpha.14
+
+### Patch Changes
+
+- 423dde3: fix: autorouter board-edge, pad and isolation bugs found by the PCBWorld bench.
+
+  - The autorouter keeps copper on the board and clear of every edge. Outlines are only staged until `create()`, so routing never saw the edge: tracks and vias could leave the board, run closer than `min_copper_edge_clearance`, or cross a `pcb.cutout()`. Edge.Cuts now becomes the routable region (largest closed contour = board, the rest = cutouts; rects, polygons, circles and line/arc chains). Copper keeps the rule plus its own half-width or via radius, and the routing grid is sized to the outline.
+  - Pads sharing a number in one footprint (connector shields, split thermal pads) are each routed. Before, only the first was connected and KiCad reported the rest unconnected.
+  - An SMD pad on B.Cu (or any B.* item) inside a front-side footprint stays on B.Cu. Placing a footprint now flips layers the way KiCad does — front as authored, back swaps F↔B. Before, every layer was forced to the placement side, so card-edge fingers landed on the wrong copper and disagreed with the router.
+  - Footprint geometry caches are keyed by content (pads) and resolved file (bounds), not by name. Two footprints sharing a name no longer get each other's pads.
+  - Placed parts of one board no longer act as obstacles in another board's routes in the same process.
+  - Native DRC: `gr_rect`, `gr_poly` and `gr_circle` outlines and line/arc chains drawn in either direction count as closed (no false `edge_not_closed`), and copper-to-edge is measured against the edge line, not the area it encloses (no false `copper_edge_clearance` on everything inside a rect outline; a track crossing a cutout is still flagged).
+  - On the PCBWorld fixture boards, clean passes go from 14/22 to 18/23 (one board was previously unscoreable).
+
+- 119fa34: fix: autorouter correctness and completion — exact clearance, honest success, faster searches.
+
+  - Clearance is measured against exact pad and track geometry, per search move (a step can pass closer to a corner than either end point), instead of padding every obstacle by up to 1.5 grid cells plus a hidden 0.05 mm buffer. Designs laid out exactly at the rule limit now route; the buffer is gone.
+  - The board edge is an exact keepout (edge rule + copper radius) on a separate mask, so pads that sit right at the edge rule stay reachable; concave outlines and cutouts keep half a cell of margin.
+  - Tracks no longer cut corners after validation: when a run already lay on same-net copper the track builder skipped it without moving, and the next segment became a chord across clearance that every check had passed. Segment merging also requires true collinearity (it compared only the signs of dx/dy).
+  - One large pad no longer inflates every occupancy probe's scan radius (a 37 mm pad turned each probe into a ~270-cell scan and timed out trivially routable boards).
+  - A multi-pin net is reported routed only when all its pins end up in one connected copper tree; when an MST edge fails, other pin pairs between the disconnected pieces are tried before giving up.
+  - Vias are no longer held to double clearance; within one bus route later pairs see earlier pairs' vias, and each pair's tracks carry their own net.
+  - Rip-up re-routes blocker nets with their own width/clearance/layers (not the victim's) and tries the other re-route order before giving up.
+  - Coarse geometry (wide traces and clearances, no fine-pitch pads) gets a coarser grid; search windows grow geometrically.
+  - Route success is recomputed after provided routes are appended, and a net with unresolvable pins is not reported routed.
+  - Placing a footprint on the back flips each pad's layers once (a double flip put back-side SMD pads on F.Cu).
+  - The board-edge keepout uses the track half-width; via centres get their own wider band. Sizing it by the via radius walled off pads near the edge whenever the via was wider than the trace.
+  - Rip-up now removes a ripped net's vias as well as its tracks (TrackBuilder places vias rather than staging them), and rollback restores them. Before, ripped vias stayed on the board as orphans and kept blocking later routes.
+  - The router no longer treats vias left in the placement registry as obstacles; live vias come from the board state.
+  - The grid origin is shifted so a cell centre sits exactly on the start pad.
+
+- 119fa34: Layout routing measures round and obround pads by their true shape instead of their bounding box, so a trace clear of a round pad no longer turns red or gets refused at anchor.
+
 ## 1.0.0-alpha.13
 
 ### Minor Changes

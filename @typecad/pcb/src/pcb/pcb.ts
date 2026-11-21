@@ -1,4 +1,4 @@
-import { Component } from '../component.js';
+import { Component, claimComponent } from '../component.js';
 import { Schematic } from '../schematic.js';
 import type { ISchematicNetDefinition } from '../net_manager.js';
 import { Pin } from '../pin.js';
@@ -233,12 +233,14 @@ export class PCB {
    */
   place(...components: Component[]) {
     components.forEach((component) => {
+      claimComponent(component, this);
       placeComponent(this._state, component);
     });
   }
 
   stage(...components: Component[]) {
     components.forEach((component) => {
+      claimComponent(component, this);
       stageComponent(this._state, component);
     });
   }
@@ -273,6 +275,7 @@ export class PCB {
         flattened.push(item);
       }
     }
+    for (const item of flattened) if (item instanceof Component) claimComponent(item, this);
     const result = createBoard(this, ...flattened);
     this.bom();
     return result;
@@ -696,11 +699,23 @@ export class PCB {
   }
 
   net(...pins: Pin[]): ISchematicNetDefinition {
+    this.claimPinOwners(pins);
     return pcbNet(this._schematic, ...pins);
   }
 
   named(name: string) {
-    return pcbNamed(this._schematic, name);
+    const chained = pcbNamed(this._schematic, name);
+    return {
+      net: (...pins: Pin[]): ISchematicNetDefinition => {
+        this.claimPinOwners(pins);
+        return chained.net(...pins);
+      },
+      dnc: (...pins: Pin[]): void => chained.dnc(...pins),
+    };
+  }
+
+  private claimPinOwners(pins: Pin[]): void {
+    for (const pin of pins) if (pin?.owner) claimComponent(pin.owner, this);
   }
 
   bom(output_folder?: string): void {
@@ -712,6 +727,7 @@ export class PCB {
   }
 
   add(...components: Component[]): void {
+    components.forEach((c) => claimComponent(c, this));
     pcbAdd(this._schematic, ...components);
   }
 

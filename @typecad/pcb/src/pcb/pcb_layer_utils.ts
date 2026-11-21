@@ -6,9 +6,18 @@ import { Sym } from '../sexpr/index.js';
  */
 
 /**
- * Maps layer names to the appropriate side (front/back) of the PCB
+ * Maps a library footprint's layer to the side the component is placed on.
+ *
+ * Library footprints are authored front-side, and placing one on the back
+ * flips it the way KiCad does: every F.* layer becomes B.* AND every B.*
+ * layer becomes F.*. On the front the footprint is used as authored. Items a
+ * footprint deliberately puts on the opposite side — card-edge fingers on
+ * B.Cu, back silkscreen — therefore stay opposite. (This used to force every
+ * layer TO the target side, moving such pads onto the wrong copper and
+ * disagreeing with the router's PadResolver, which already swapped.)
+ *
  * @param layerName - The layer name to map (e.g., "F.Cu", "B.SilkS")
- * @param targetSide - Target side: 'front', 'back', or undefined (defaults to front)
+ * @param targetSide - Target side: 'front', 'back', or undefined (= front)
  * @returns Mapped layer name
  */
 export function mapLayerToSide(layerName: string, targetSide: 'front' | 'back' | undefined): string {
@@ -48,21 +57,12 @@ export function mapLayerToSide(layerName: string, targetSide: 'front' | 'back' |
     return layerName; // Extension not in paired list, return original
   }
 
-  // Transform base based on target side
-  if (targetSide === 'back') {
-    if (base === 'F') {
-      base = 'B';
-    } else if (base === 'Front') {
-      base = 'Back';
-    }
-  } else {
-    // targetSide === 'front'
-    if (base === 'B') {
-      base = 'F';
-    } else if (base === 'Back') {
-      base = 'Front';
-    }
-  }
+  // Front: as authored. Back: flip (swap both directions).
+  if (targetSide !== 'back') return layerName;
+  if (base === 'F') base = 'B';
+  else if (base === 'B') base = 'F';
+  else if (base === 'Front') base = 'Back';
+  else if (base === 'Back') base = 'Front';
 
   return `${base}.${extension}`;
 }

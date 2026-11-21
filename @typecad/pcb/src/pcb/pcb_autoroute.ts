@@ -397,7 +397,7 @@ export function autoroute(pcb: PCB, callerOptions: IAutorouteOptions): IAutorout
   // stages the board, and a mid-corridor part the router cannot see gets
   // routed straight through (shorting its pads). The .pcb placement registry
   // covers every assigned component regardless of net membership.
-  for (const comp of getPlacedComponents()) {
+  for (const comp of getPlacedComponents(pcb)) {
     if (!componentsFromPins.includes(comp) && !comp.dnp) {
       componentsFromPins.push(comp);
     }
@@ -561,6 +561,22 @@ export function autoroute(pcb: PCB, callerOptions: IAutorouteOptions): IAutorout
   let bounds = calculateBoardBounds(componentsForBounds, pcb.outlines as IOutline[], stagedComponentsForBounds);
 
   const stagedOutlines = state.stagedOutlines;
+
+  // The board edge. Outlines are staged until create(), so read Edge.Cuts
+  // from both lists. When it closes, it bounds the grid (component-padded
+  // bounds can stop short of the board or run far past it) and becomes an
+  // absolute keepout below.
+  const edgeElements = [...state.outlines, ...stagedOutlines].flatMap((o) => o.elements ?? []);
+  const boardEdgeProbe = ObstacleBuilder.buildBoardEdge(edgeElements, 0, boardCopperLayers);
+  if (boardEdgeProbe) {
+    const pad = Math.max(1, (options.gridResolution ?? 0.1) * 4);
+    bounds = {
+      minX: boardEdgeProbe.bounds.minX - pad,
+      maxX: boardEdgeProbe.bounds.maxX + pad,
+      minY: boardEdgeProbe.bounds.minY - pad,
+      maxY: boardEdgeProbe.bounds.maxY + pad,
+    };
+  }
   const requestedGridResolution = options.gridResolution ?? 0.1;
   const boundsExpansionMargin = Math.max(5, traceWidth * 8, clearance * 4, requestedGridResolution * 80);
 
@@ -643,6 +659,13 @@ export function autoroute(pcb: PCB, callerOptions: IAutorouteOptions): IAutorout
   };
 
   obstacles.forEach(addObstacleToState);
+
+  // Copper-to-edge rule: grid clearance is centre-to-copper, so the keepout
+  // is the rule plus the widest copper radius this route can place.
+  if (boardEdgeProbe) {
+    const copperRadius = Math.max(traceWidth / 2, options.allowVias === false ? 0 : (options.viaSize ?? 0) / 2);
+    addObstacleToState({ ...boardEdgeProbe, clearance: pcb.rules.min_copper_edge_clearance + copperRadius });
+  }
 
   const stats = grid.getStats();
   debugLog(

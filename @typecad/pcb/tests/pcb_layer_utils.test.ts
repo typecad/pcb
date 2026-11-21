@@ -37,17 +37,21 @@ describe('mapLayerToSide', () => {
     });
   });
 
-  describe('Back to Front', () => {
-    it('should map B.Cu to F.Cu', () => {
-      expect(mapLayerToSide('B.Cu', 'front')).toBe('F.Cu');
+  describe('Back-side items of a front-authored footprint', () => {
+    it('keeps B.* as authored when placed on the front (card-edge fingers, back silk)', () => {
+      expect(mapLayerToSide('B.Cu', 'front')).toBe('B.Cu');
+      expect(mapLayerToSide('B.SilkS', 'front')).toBe('B.SilkS');
+      expect(mapLayerToSide('Back.Cu', 'front')).toBe('Back.Cu');
     });
 
-    it('should map B.SilkS to F.SilkS', () => {
-      expect(mapLayerToSide('B.SilkS', 'front')).toBe('F.SilkS');
+    it('flips B.* to F.* when the footprint is placed on the back', () => {
+      expect(mapLayerToSide('B.Cu', 'back')).toBe('F.Cu');
+      expect(mapLayerToSide('B.SilkS', 'back')).toBe('F.SilkS');
+      expect(mapLayerToSide('Back.Cu', 'back')).toBe('Front.Cu');
     });
 
-    it('should map Back.Cu to Front.Cu', () => {
-      expect(mapLayerToSide('Back.Cu', 'front')).toBe('Front.Cu');
+    it('leaves front layers alone on the front', () => {
+      expect(mapLayerToSide('F.Cu', 'front')).toBe('F.Cu');
     });
   });
 
@@ -66,8 +70,8 @@ describe('mapLayerToSide', () => {
   });
 
   describe('Edge cases', () => {
-    it('should default to front when targetSide is undefined', () => {
-      expect(mapLayerToSide('B.Cu', undefined)).toBe('F.Cu');
+    it('should treat an undefined side as front (as authored)', () => {
+      expect(mapLayerToSide('B.Cu', undefined)).toBe('B.Cu');
     });
 
     it('should return non-X.Y format unchanged', () => {

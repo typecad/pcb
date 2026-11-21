@@ -15,6 +15,7 @@ import { TrackBuilder } from './pcb_track_builder.js';
 import { autoroute } from './pcb_autoroute.js';
 import { validatePin } from './pcb_routing_helpers.js';
 import { Pin } from '../pin.js';
+import { PadResolver } from '../routing/shared/pad_resolver.js';
 import chalk from 'chalk';
 import logger from '../utils/logging.js';
 import { ISchematicNetDefinition } from '../net_manager.js';
@@ -673,7 +674,13 @@ export function routeNet(
     throw err;
   }
 
-  if (schematicNode.nodes.length < 2) {
+  // one declared pin still needs routing when its number repeats on several
+  // pads (a shield net joining its own pads)
+  const soloRepeats =
+    schematicNode.nodes.length === 1 && schematicNode.nodes[0]?.owner
+      ? PadResolver.padCount(schematicNode.nodes[0].owner, schematicNode.nodes[0].number)
+      : 0;
+  if (schematicNode.nodes.length < 2 && soloRepeats < 2) {
     logger.warn(
       `[PCB] WARN: Net '${netName}' has only ${schematicNode.nodes.length} pin(s). At least 2 pins are needed for routing.${formatCallSite(getCallSite())}`,
     );
@@ -717,6 +724,18 @@ export function routeNet(
     logger.warn(
       `[PCB] WARNING: Could not resolve ${unresolvedPins.length}/${schematicNode.nodes.length} pin(s) for net '${netName}': ${unresolvedPins.join(', ')}${formatCallSite(getCallSite())}`,
     );
+  }
+
+  // A pin whose number appears on several pads (connector shields, split
+  // thermal pads) is several connection points: KiCad requires copper to
+  // reach each one. Add a terminal per repeat so the router joins them all.
+  for (const pin of [...pinsToRoute]) {
+    const repeats = PadResolver.padCount(pin.owner!, pin.number);
+    for (let k = 1; k < repeats; k++) {
+      const twin = new Pin(pin.owner!.reference, PadResolver.padOccurrencePin(pin.number, k), pin.type);
+      twin.owner = pin.owner;
+      pinsToRoute.push(twin);
+    }
   }
 
   if (pinsToRoute.length < 2) {

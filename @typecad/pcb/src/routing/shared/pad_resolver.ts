@@ -55,15 +55,21 @@ export interface IPadGeometry {
 export class PadResolver {
   private static _parseCache: Map<string, SExpr[] | null> = new Map();
 
-  private static getCachedParse(footprintName: string, footprintSExpr: string): SExpr[] | null {
-    let cached = this._parseCache.get(footprintName);
+  /**
+   * Parses are cached by footprint TEXT, not name: two footprints may share a
+   * name (`Lib:Pad` from different libraries, generated or mocked footprints,
+   * successive boards in one process) and keying by name handed the second
+   * one the first one's pad geometry.
+   */
+  private static getCachedParse(_footprintName: string, footprintSExpr: string): SExpr[] | null {
+    let cached = this._parseCache.get(footprintSExpr);
     if (cached !== undefined) return cached;
     try {
       cached = parseAsList(footprintSExpr);
     } catch {
       cached = null;
     }
-    this._parseCache.set(footprintName, cached);
+    this._parseCache.set(footprintSExpr, cached);
     return cached;
   }
 
@@ -205,29 +211,48 @@ export class PadResolver {
    * @private
    */
   private static findPadNode(sexpr: SExpr[], pinNumber: string | number): SExpr[] | null {
-    const targetNumber = String(pinNumber);
+    const target = String(pinNumber);
+    const exact = this.padNodesNumbered(sexpr, target);
+    if (exact.length > 0) return exact[0]!;
+    // `N~k` addresses the k-th repeat of pad number N (see padOccurrencePin)
+    const m = /^(.*)~(\d+)$/.exec(target);
+    return m ? (this.padNodesNumbered(sexpr, m[1]!)[Number(m[2])] ?? null) : null;
+  }
 
-    const search = (node: SExpr[]): SExpr[] | null => {
-      if (!Array.isArray(node)) return null;
-
-      if (Sym.isSym(node[0]) && node[0].name === 'pad' && node.length > 1) {
-        const padNumber = String(node[1]);
-        if (padNumber === targetNumber) {
-          return node;
-        }
+  /** Every pad node carrying `number`, in footprint order. */
+  private static padNodesNumbered(sexpr: SExpr[], number: string): SExpr[][] {
+    const found: SExpr[][] = [];
+    const search = (node: SExpr[]): void => {
+      if (Sym.isSym(node[0]) && node[0].name === 'pad' && node.length > 1 && String(node[1]) === number) {
+        found.push(node);
       }
-
-      for (const child of node) {
-        if (Array.isArray(child)) {
-          const result = search(child);
-          if (result) return result;
-        }
-      }
-
-      return null;
+      for (const child of node) if (Array.isArray(child)) search(child);
     };
+    search(sexpr);
+    return found;
+  }
 
-    return search(sexpr);
+  /**
+   * How many pads of `component`'s footprint carry `pinNumber`. Connector
+   * shields and split thermal pads repeat a number; KiCad treats every such
+   * pad as its own connection point that copper must reach.
+   */
+  static padCount(component: Component, pinNumber: string | number): number {
+    try {
+      const parsed = this.getCachedParse(component.footprint, component.footprint_lib(component.footprint));
+      return parsed ? this.padNodesNumbered(parsed, String(pinNumber)).length : 0;
+    } catch {
+      return 0;
+    }
+  }
+
+  /**
+   * The pin number that addresses the `occurrence`-th pad (0-based) among the
+   * pads sharing `pinNumber` — `"2~1"` is the second pad numbered "2".
+   * Occurrence 0 is the plain number.
+   */
+  static padOccurrencePin(pinNumber: string | number, occurrence: number): string {
+    return occurrence === 0 ? String(pinNumber) : `${pinNumber}~${occurrence}`;
   }
 
   private static collectAvailablePadNumbers(sexpr: SExpr[]): (string | number)[] {

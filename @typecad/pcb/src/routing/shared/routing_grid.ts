@@ -1,5 +1,6 @@
 import chalk from 'chalk';
 import logger from '../../utils/logging.js';
+import type { IBoardRegion } from './board_region.js';
 const loggerDebug = logger.debug;
 
 /**
@@ -128,6 +129,14 @@ export interface IRoutingObstacle {
 
   /** Optional polygon geometry (zones, keepouts) for precise rasterization */
   polygon?: { points: { x: number; y: number }[] };
+
+  /**
+   * Board region (type 'outline'): every cell whose centre lies OFF the
+   * board — outside the outer contour or inside a cutout — is an absolute
+   * block. `clearance` then keeps copper that far from the nearest
+   * off-board cell centre, which is how the copper-to-edge rule is applied.
+   */
+  boardRegion?: IBoardRegion;
 }
 
 /**
@@ -270,11 +279,18 @@ export class RoutingGrid {
    */
   private static _obstacleIdCounter = 0;
 
-  addObstacle(obstacle: IRoutingObstacle): void {
+  addObstacle(obstacleIn: IRoutingObstacle): void {
     // Zone obstacles represent copper fills that can be routed through —
     // the EDA tool creates clearance when the zone is poured.  Adding them
     // as occupied cells would block all routing on dense boards.
-    if (obstacle.type === 'zone') return;
+    if (obstacleIn.type === 'zone') return;
+
+    // A board region blocks off-board cell CENTRES, which sit up to half a
+    // cell diagonal beyond the true edge — widen its clearance by that much
+    // on this grid so the edge rule holds at any resolution.
+    const obstacle = obstacleIn.boardRegion
+      ? { ...obstacleIn, clearance: obstacleIn.clearance + this.gridResolution * Math.SQRT1_2 }
+      : obstacleIn;
 
     const obstacleId = `${obstacle.type}_${++RoutingGrid._obstacleIdCounter}`;
     this.obstacles.set(obstacleId, { ...obstacle });
@@ -371,7 +387,31 @@ export class RoutingGrid {
       // using a robust segment–rectangle intersection where the rectangle is expanded
       // by the track half-width. This avoids "holes" at coarse grid resolutions.
       const seg = obstacle.segment;
-      if (obstacle.type === 'track' && seg) {
+      if (obstacle.boardRegion) {
+        // Inverse rasterization: block what is NOT board, across the whole
+        // grid. Scanline per row with even-odd parity over all contours
+        // (outer + cutouts): a cell centre is on the board iff an odd number
+        // of contour edges cross the row to its left.
+        const contours = [obstacle.boardRegion.outer, ...obstacle.boardRegion.holes];
+        for (let gy = 0; gy < this.gridHeight; gy++) {
+          const y = this.gridToWorldY(gy);
+          const xs: number[] = [];
+          for (const poly of contours) {
+            for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+              const a = poly[i]!;
+              const b = poly[j]!;
+              if (a.y > y !== b.y > y) xs.push(((b.x - a.x) * (y - a.y)) / (b.y - a.y) + a.x);
+            }
+          }
+          xs.sort((p, q) => p - q);
+          let k = 0;
+          for (let gx = 0; gx < this.gridWidth; gx++) {
+            const cx = this.gridToWorldX(gx);
+            while (k < xs.length && xs[k]! < cx) k++;
+            if (k % 2 === 0) occupyCell(gx, gy); // even crossings to the left: off-board
+          }
+        }
+      } else if (obstacle.type === 'track' && seg) {
         const halfWidth = seg.width / 2;
 
         const x1 = seg.x1,

@@ -1,7 +1,8 @@
 import { Component } from '../../component.js';
 import { PCB, getPcbState } from '../../pcb/pcb.js';
-import { IFilledZone, IKeepoutZone, IGrLine, IOutline } from '../../pcb/pcb_interfaces.js';
+import { IFilledZone, IKeepoutZone, IGrLine, IOutline, OutlineElement } from '../../pcb/pcb_interfaces.js';
 import { IRoutingObstacle } from './routing_grid.js';
+import { boardRegionFromElements, boardRegionBounds } from './board_region.js';
 import { PadResolver, IPadGeometry } from './pad_resolver.js';
 import { displayName } from '../../utils/error_reporter.js';
 import chalk from 'chalk';
@@ -531,14 +532,39 @@ export class ObstacleBuilder {
   }
 
   /**
-   * Build an obstacle from a board outline.
+   * Build the board-edge obstacle from Edge.Cuts geometry: everything off the
+   * board (outside the outer contour, inside cutouts) is blocked, and copper
+   * must stay `edgeClearance` from it — pass the copper-to-edge rule plus the
+   * widest copper radius the route can place (trace half-width or via radius),
+   * since grid clearance is measured from the copper's centre.
    *
-   * @param outline - The board outline
-   * @param clearance - Clearance from outline in mm
-   * @returns Outline obstacle (everything outside the outline is blocked)
+   * @param elements - Edge.Cuts outline elements (staged or committed)
+   * @param edgeClearance - Required centre-to-edge distance, mm
+   * @param boardCopperLayers - Copper layers to block (default F.Cu/B.Cu)
+   * @returns The obstacle, or null when the elements form no closed contour
    */
+  static buildBoardEdge(
+    elements: readonly OutlineElement[],
+    edgeClearance: number,
+    boardCopperLayers?: readonly string[],
+  ): IRoutingObstacle | null {
+    const region = boardRegionFromElements(elements);
+    if (!region) return null;
+    return {
+      type: 'outline',
+      bounds: boardRegionBounds(region),
+      layers: boardCopperLayers && boardCopperLayers.length > 0 ? [...boardCopperLayers] : ['F.Cu', 'B.Cu'],
+      clearance: edgeClearance,
+      priority: 10,
+      label: 'board edge',
+      boardRegion: region,
+    };
+  }
+
   /**
-   * Build an obstacle from a board outline (board edge keepout).
+   * Build an obstacle from a board outline's nominal rectangle (board edge keepout).
+   * @deprecated The rectangle fields are zero for polygon/circle outlines and the
+   *   box blocks its interior — the router uses {@link buildBoardEdge}.
    * @param outline - The outline element
    * @param clearance - Clearance around the outline in mm
    * @param boardCopperLayers - The board's copper layers; the outline

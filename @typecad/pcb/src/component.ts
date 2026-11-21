@@ -41,9 +41,30 @@ function registerPlacedComponent(component: Component): void {
   placedComponents.add(component);
 }
 
-/** Every component whose `.pcb` was assigned and not yet consumed by a build. */
-export function getPlacedComponents(): Component[] {
-  return [...placedComponents];
+/**
+ * The board each component has been handed to (add/stage/place/net/create).
+ * The registry above is process-wide, so without this a script that builds
+ * several boards — or a board that routes but never builds — leaked its
+ * placed parts into every other board's routes as phantom obstacles.
+ */
+const componentBoard = new WeakMap<Component, object>();
+
+/** Record that `component` belongs to `board` (the first board to claim it keeps it). */
+export function claimComponent(component: Component, board: object): void {
+  if (!componentBoard.has(component)) componentBoard.set(component, board);
+}
+
+/**
+ * Every component whose `.pcb` was assigned and not yet consumed by a build.
+ * With `board`, only components that board owns or that no board has
+ * claimed yet (placed, but not added anywhere).
+ */
+export function getPlacedComponents(board?: object): Component[] {
+  if (!board) return [...placedComponents];
+  return [...placedComponents].filter((c) => {
+    const owner = componentBoard.get(c);
+    return owner === undefined || owner === board;
+  });
 }
 
 /** The board build owns the components now — drop the pre-build registry. */

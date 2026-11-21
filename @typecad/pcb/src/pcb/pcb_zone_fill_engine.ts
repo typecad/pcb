@@ -466,17 +466,16 @@ export function obstacleToPaths(o: Obstacle, inflate: number): Path[] {
 
 
 /**
- * Chain Edge.Cuts lines and arcs into one closed outline (each segment's
- * end connects to the next start). Returns [] when the pieces don't form
- * a closed loop — edge pullback is then skipped rather than guessed.
+ * Every closed contour on Edge.Cuts, largest first, plus whether any
+ * line/arc chain fails to close. gr_rect, gr_poly and gr_circle are closed
+ * by themselves; gr_line/gr_arc pieces are chained end-to-end in EITHER
+ * direction (KiCad does not orient them) into as many loops as they form —
+ * the board plus any cutouts.
  */
-export function chainEdgeOutline(root: SNode): Path {
-  interface Seg {
-    a: [number, number];
-    b: [number, number];
-  }
-  const segs: Seg[] = [];
-  const key = (p: [number, number]): string => `${p[0].toFixed(4)},${p[1].toFixed(4)}`;
+export function edgeContours(root: SNode): { loops: Path[]; open: boolean } {
+  type P = [number, number];
+  const loops: Array<P[]> = [];
+  const pieces: Array<P[]> = [];
   for (const item of root.children()) {
     if (!item.name.startsWith('gr_')) continue;
     const l = item.child('layer');
@@ -484,15 +483,20 @@ export function chainEdgeOutline(root: SNode): Path {
     if (item.name === 'gr_line') {
       const s = atPoint(item.child('start'));
       const e = atPoint(item.child('end'));
-      segs.push({ a: [s.x, s.y], b: [e.x, e.y] });
+      pieces.push([
+        [s.x, s.y],
+        [e.x, e.y],
+      ]);
     } else if (item.name === 'gr_arc') {
       const s = atPoint(item.child('start'));
       const m = atPoint(item.child('mid'));
       const e = atPoint(item.child('end'));
-      // flatten and append as polyline segments
       const d = 2 * (s.x * (m.y - e.y) + m.x * (e.y - s.y) + e.x * (s.y - m.y));
       if (Math.abs(d) < 1e-12) {
-        segs.push({ a: [s.x, s.y], b: [e.x, e.y] });
+        pieces.push([
+          [s.x, s.y],
+          [e.x, e.y],
+        ]);
         continue;
       }
       const a2v = s.x * s.x + s.y * s.y;
@@ -500,28 +504,75 @@ export function chainEdgeOutline(root: SNode): Path {
       const c2v = e.x * e.x + e.y * e.y;
       const cx = (a2v * (m.y - e.y) + b2v * (e.y - s.y) + c2v * (s.y - m.y)) / d;
       const cy = (a2v * (e.x - m.x) + b2v * (s.x - e.x) + c2v * (m.x - s.x)) / d;
-      const r = Math.hypot(s.x - cx, s.y - cy);
-      const pts = arcPolyline(s, m, e, r);
-      for (let i = 0; i + 1 < pts.length; i++)
-        segs.push({ a: pts[i]!, b: pts[i + 1]! });
+      const pts = arcPolyline(s, m, e, Math.hypot(s.x - cx, s.y - cy));
+      // snap the ends to the exact endpoints so they key-match their neighbours
+      pts[0] = [s.x, s.y];
+      pts[pts.length - 1] = [e.x, e.y];
+      pieces.push(pts);
+    } else if (item.name === 'gr_rect') {
+      const s = atPoint(item.child('start'));
+      const e = atPoint(item.child('end'));
+      loops.push([
+        [s.x, s.y],
+        [e.x, s.y],
+        [e.x, e.y],
+        [s.x, e.y],
+      ]);
+    } else if (item.name === 'gr_poly') {
+      const pts = (item.child('pts')?.children('xy') ?? []).map((p) => [scalar(p, 1, 0), scalar(p, 2, 0)] as P);
+      if (pts.length >= 3) loops.push(pts);
+    } else if (item.name === 'gr_circle') {
+      const c = atPoint(item.child('center'));
+      const e = atPoint(item.child('end'));
+      const r = Math.hypot(e.x - c.x, e.y - c.y);
+      if (r > 0) loops.push(Array.from({ length: 64 }, (_, i) => [c.x + r * Math.cos((i / 64) * 2 * Math.PI), c.y + r * Math.sin((i / 64) * 2 * Math.PI)] as P));
     }
   }
-  if (segs.length < 3) return [];
-  const byStart = new Map<string, Seg[]>();
-  for (const s of segs) byStart.set(key(s.a), [...(byStart.get(key(s.a)) ?? []), s]);
-  const outline: Path = [];
-  let cur = segs[0]!;
-  const used = new Set<Seg>();
-  const startKey = key(cur.a);
-  outline.push({ X: Math.round(cur.a[0] * NM), Y: Math.round(cur.a[1] * NM) });
-  for (let guard = 0; guard < segs.length * 2; guard++) {
-    used.add(cur);
-    outline.push({ X: Math.round(cur.b[0] * NM), Y: Math.round(cur.b[1] * NM) });
-    const next = (byStart.get(key(cur.b)) ?? []).find((s) => !used.has(s));
-    if (!next) return key(cur.b) === startKey ? dedupe(outline) : [];
-    cur = next;
+
+  // chain pieces into loops, matching endpoints to 0.1µm in either direction
+  const key = (p: P): string => `${p[0].toFixed(4)},${p[1].toFixed(4)}`;
+  const byEnd = new Map<string, number[]>();
+  pieces.forEach((pc, i) => {
+    for (const k of [key(pc[0]!), key(pc[pc.length - 1]!)]) byEnd.set(k, [...(byEnd.get(k) ?? []), i]);
+  });
+  const used = new Set<number>();
+  let open = false;
+  for (let s = 0; s < pieces.length; s++) {
+    if (used.has(s)) continue;
+    used.add(s);
+    const loop: P[] = [...pieces[s]!];
+    const startKey = key(loop[0]!);
+    let closed = false;
+    for (let guard = 0; guard <= pieces.length; guard++) {
+      const tail = key(loop[loop.length - 1]!);
+      if (tail === startKey && loop.length > 2) {
+        closed = true;
+        break;
+      }
+      const next = (byEnd.get(tail) ?? []).find((i) => !used.has(i));
+      if (next === undefined) break;
+      used.add(next);
+      const pc = pieces[next]!;
+      loop.push(...(key(pc[0]!) === tail ? pc : [...pc].reverse()).slice(1));
+    }
+    if (closed) loops.push(loop.slice(0, -1));
+    else open = true;
   }
-  return [];
+
+  const paths = loops
+    .map((lp) => dedupe(lp.map(([x, y]) => ({ X: Math.round(x * NM), Y: Math.round(y * NM) }))))
+    .filter((p) => p.length >= 3);
+  paths.sort((a, b) => Math.abs(ClipperLib.Clipper.Area(b)) - Math.abs(ClipperLib.Clipper.Area(a)));
+  return { loops: paths, open };
+}
+
+/**
+ * The board outline: the largest closed Edge.Cuts contour (cutouts are the
+ * smaller ones). Returns [] when Edge.Cuts forms no closed loop — edge
+ * pullback is then skipped rather than guessed.
+ */
+export function chainEdgeOutline(root: SNode): Path {
+  return edgeContours(root).loops[0] ?? [];
 }
 
 function dedupe(path: Path): Path {

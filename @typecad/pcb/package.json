@@ -86,6 +86,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
+    "bench:pcbworld": "vitest run --config bench/pcbworld/vitest.config.ts",
+    "bench:pcbworld:typecheck": "tsc -p bench/pcbworld/tsconfig.json",
     "sync:extension": "node scripts/sync-editor-extension.mjs"
   },
   "author": "typeCAD",

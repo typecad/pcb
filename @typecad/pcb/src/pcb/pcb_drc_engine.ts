@@ -34,7 +34,7 @@ import {
   arcPolyline,
   buildNetCodeMap,
   capsuleToPoly,
-  chainEdgeOutline,
+  edgeContours,
   circleToPoly,
   fillZone,
   netNameOf,
@@ -492,7 +492,12 @@ function collectCourtyards(
   return out;
 }
 
-/** Edge.Cuts graphics flattened to polylines (board outline). */
+/**
+ * Edge.Cuts graphics flattened to polylines (board outline). Closed shapes
+ * repeat their first point at the end (graphicPolyline already does that
+ * for rects and circles; polys are closed here), so walking the polyline
+ * covers the closing edge too.
+ */
 export function collectEdgeSegments(root: SNode): SilkSeg[] {
   const segs: SilkSeg[] = [];
   for (const item of root.children()) {
@@ -500,6 +505,7 @@ export function collectEdgeSegments(root: SNode): SilkSeg[] {
     if (String(item.child('layer')?.raw[1] ?? '') !== 'Edge.Cuts') continue;
     const pts = graphicPolyline(item);
     if (pts.length < 2) continue;
+    if (item.name === 'gr_poly' && pts.length > 2) pts.push(pts[0]!);
     segs.push({ pts, width: 0, ref: null, pos: { x: pts[0]![0], y: pts[0]![1] } });
   }
   return segs;
@@ -1023,6 +1029,49 @@ function gapNm(a: Path[], b: Path[]): number {
   return best;
 }
 
+/**
+ * Gap between copper regions and board-edge LINE segments (nm): 0 when an
+ * edge segment crosses a copper outline or lies inside copper (copper
+ * straddling the edge — castellations, a track over a cutout), else the
+ * minimum vertex-to-segment distance either way.
+ */
+function edgeGapNm(copper: Path[], edgeSegs: Path[]): number {
+  const cross = (ax: number, ay: number, bx: number, by: number, cx: number, cy: number, dx: number, dy: number) => {
+    const o = (px: number, py: number, qx: number, qy: number, rx: number, ry: number) =>
+      Math.sign((qx - px) * (ry - py) - (qy - py) * (rx - px));
+    return o(ax, ay, bx, by, cx, cy) !== o(ax, ay, bx, by, dx, dy) && o(cx, cy, dx, dy, ax, ay) !== o(cx, cy, dx, dy, bx, by);
+  };
+  const inside = (x: number, y: number, poly: Path) => {
+    let c = false;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      const a = poly[i]!;
+      const b = poly[j]!;
+      if (a.Y > y !== b.Y > y && x < ((b.X - a.X) * (y - a.Y)) / (b.Y - a.Y) + a.X) c = !c;
+    }
+    return c;
+  };
+  let best = Infinity;
+  for (const e of edgeSegs) {
+    const p = e[0]!;
+    const q = e[1]!;
+    for (const poly of copper) {
+      if (inside(p.X, p.Y, poly) || inside(q.X, q.Y, poly)) return 0;
+      for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+        const a = poly[j]!;
+        const b = poly[i]!;
+        if (cross(a.X, a.Y, b.X, b.Y, p.X, p.Y, q.X, q.Y)) return 0;
+        best = Math.min(best, pointSegDistNm(a.X, a.Y, p.X, p.Y, q.X, q.Y));
+      }
+      for (const v of [p, q]) {
+        for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+          best = Math.min(best, pointSegDistNm(v.X, v.Y, poly[j]!.X, poly[j]!.Y, poly[i]!.X, poly[i]!.Y));
+        }
+      }
+    }
+  }
+  return best;
+}
+
 /** Minimum distance from a circle (center, r) to a region's edges (nm). */
 function circleGapNm(cx: number, cy: number, r: number, polys: Path[]): number {
   let best = Infinity;
@@ -1151,13 +1200,21 @@ export function runDrc(source: string, constraints: Partial<DrcConstraints> = {}
     return g ? scalar(g, 1, 1.6) : 1.6;
   })();
 
-  // Edge.Cuts as clipper paths (open segments) + their bbox, for the
-  // copper-to-edge check; gapNm's closed-edge traversal double-counts open
-  // segments harmlessly (same min distance)
+  // Edge.Cuts as two-point segments + their bbox, for the copper-to-edge
+  // check. The edge is a LINE, not a region: handing whole closed shapes
+  // (gr_rect, gr_poly, gr_circle) to polygon-area tests made every copper
+  // item inside the board "overlap the edge", and walking a multi-point arc
+  // polyline as a closed ring invented a chord between its ends.
   const edgePaths: Path[] = [];
   for (const seg of collectEdgeSegments(root)) {
-    const path: Path = seg.pts.map(([x, y]) => ({ X: Math.round(x * NM), Y: Math.round(y * NM) }));
-    if (path.length >= 2) edgePaths.push(path);
+    for (let i = 0; i + 1 < seg.pts.length; i++) {
+      const [x1, y1] = seg.pts[i]!;
+      const [x2, y2] = seg.pts[i + 1]!;
+      edgePaths.push([
+        { X: Math.round(x1 * NM), Y: Math.round(y1 * NM) },
+        { X: Math.round(x2 * NM), Y: Math.round(y2 * NM) },
+      ]);
+    }
   }
   const edgeBbox = edgePaths.length
     ? bboxOfPaths(edgePaths)
@@ -1333,7 +1390,7 @@ export function runDrc(source: string, constraints: Partial<DrcConstraints> = {}
         // SAME edge-clearance constraint and reported as copper_edge_clearance
         // (one report per item, never a separate phantom hole rule with its
         // own stricter default).
-        const copperGap = gapNm(it.paths, edgePaths);
+        const copperGap = edgeGapNm(it.paths, edgePaths);
         const holeGap =
           it.hole !== undefined
             ? circleGapNm(Math.round(it.hole.x * NM), Math.round(it.hole.y * NM), Math.round(it.hole.r * NM), edgePaths)
@@ -1713,8 +1770,9 @@ export function runDrc(source: string, constraints: Partial<DrcConstraints> = {}
       .children()
       .some((n) => n.name.startsWith('gr_') && String(n.child('layer')?.raw[1] ?? '') === 'Edge.Cuts');
     if (hasEdgeItems) {
-      const outline = chainEdgeOutline(root);
-      if (outline.length < 3) {
+      const contours = edgeContours(root);
+      const outline = contours.loops[0] ?? [];
+      if (outline.length < 3 || contours.open) {
         report('edge_not_closed', 'Board outline (Edge.Cuts) does not form a closed loop', [
           { description: 'Edge.Cuts outline', pos: { x: 0, y: 0 } },
         ]);

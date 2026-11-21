@@ -35,7 +35,7 @@ export function clearFootprintBoundsCache(): void {
 /**
  * Computes and caches the occupied box of a KiCad footprint (relative to its
  * origin) by parsing its `.kicad_mod` file. Results are cached per footprint
- * name. The box is origin-relative: many footprints' origin is pin 1 or a
+ * name and resolved file. The box is origin-relative: many footprints' origin is pin 1 or a
  * corner, not the body center — `minX/minY/maxX/maxY` carry that offset.
  * `width`/`height` are kept for compatibility.
  *
@@ -49,11 +49,16 @@ export function clearFootprintBoundsCache(): void {
 export function getFootprintBounds(footprintName: string): FootprintBox | null {
   if (!footprintName || !footprintName.includes(LIBRARY_SEPARATOR)) return null;
 
-  const cached = boundsCache.get(footprintName);
+  // Keyed by the file the name resolves to, not the name alone: the build
+  // dir (and so `build/lib/footprints/`) can change between boards in one
+  // process, and the same name may then mean a different footprint.
+  const filePath = resolveFootprintPath(footprintName);
+  const key = `${footprintName}\0${filePath ?? ''}`;
+  const cached = boundsCache.get(key);
   if (cached !== undefined) return cached;
 
-  const result = computeFootprintBounds(footprintName);
-  if (result) boundsCache.set(footprintName, result);
+  const result = computeFootprintBounds(footprintName, filePath);
+  if (result) boundsCache.set(key, result);
   if (result === null && !unresolvedFootprintWarnings.has(footprintName)) {
     unresolvedFootprintWarnings.add(footprintName);
     logger.warn(
@@ -80,11 +85,10 @@ function resolveFootprintPath(footprintName: string): string | null {
   return fs.existsSync(bundled) ? bundled : null;
 }
 
-function computeFootprintBounds(footprintName: string): FootprintBox | null {
+function computeFootprintBounds(footprintName: string, filePath: string | null): FootprintBox | null {
   try {
     const [library, name, extra] = footprintName.split(LIBRARY_SEPARATOR);
     if (!library || !name || extra !== undefined) return null;
-    const filePath = resolveFootprintPath(footprintName);
     const contents = filePath
       ? fs.readFileSync(filePath, 'utf8')
       : resolveLibraryAsset('footprints', library, name, true);

@@ -200,6 +200,40 @@ describe('DFM tier 1', () => {
     expect(types(dfm(EDGES))).not.toContain('edge_not_closed');
   });
 
+  it('accepts gr_rect / gr_poly / gr_circle outlines and reversed line/arc chains as closed', () => {
+    const rect = '(gr_rect (start 0 0) (end 30 20) (layer "Edge.Cuts") (stroke (width 0.05) (type solid)) (uuid "r"))';
+    const poly =
+      '(gr_poly (pts (xy 0 0) (xy 30 0) (xy 30 20) (xy 0 20)) (layer "Edge.Cuts") (stroke (width 0.05) (type solid)) (uuid "p"))';
+    const circle = '(gr_circle (center 15 10) (end 25 10) (layer "Edge.Cuts") (stroke (width 0.05) (type solid)) (uuid "c"))';
+    // filleted corner, lines drawn in mixed directions (KiCad does not orient them)
+    const chain = `
+      (gr_arc (start 0 2) (mid 0.586 0.586) (end 2 0) (layer "Edge.Cuts") (stroke (width 0.05) (type solid)) (uuid "a"))
+      (gr_line (start 30 0) (end 2 0) (layer "Edge.Cuts") (stroke (width 0.05) (type solid)) (uuid "l1"))
+      (gr_line (start 30 0) (end 30 20) (layer "Edge.Cuts") (stroke (width 0.05) (type solid)) (uuid "l2"))
+      (gr_line (start 0 20) (end 30 20) (layer "Edge.Cuts") (stroke (width 0.05) (type solid)) (uuid "l3"))
+      (gr_line (start 0 20) (end 0 2) (layer "Edge.Cuts") (stroke (width 0.05) (type solid)) (uuid "l4"))`;
+    for (const outline of [rect, poly, circle, chain]) expect(types(dfm(outline))).not.toContain('edge_not_closed');
+  });
+
+  it('measures copper to a closed outline as a line, not a filled region', () => {
+    // a pad well inside a gr_rect board: no edge violation (the rect is the edge, not an area)
+    const inside = dfm(
+      `(gr_rect (start 0 0) (end 30 20) (layer "Edge.Cuts") (stroke (width 0.05) (type solid)) (uuid "r"))
+       (footprint "T:X" (layer "F.Cu") (at 15 10)
+         (pad "1" smd rect (at 0 0) (size 1 1) (layers "F.Cu") (net 1) (uuid "p1")))`,
+      { min_copper_edge_clearance: 0.5 },
+    );
+    expect(types(inside)).not.toContain('copper_edge_clearance');
+    // a track crossing a milled cutout is flagged
+    const across = dfm(
+      `${EDGES}
+       (gr_rect (start 10 8) (end 20 12) (layer "Edge.Cuts") (stroke (width 0.05) (type solid)) (uuid "cut"))
+       (segment (start 15 2) (end 15 18) (width 0.2) (layer "F.Cu") (net 1) (uuid "t1"))`,
+      { min_copper_edge_clearance: 0.5 },
+    );
+    expect(types(across)).toContain('copper_edge_clearance');
+  });
+
   it('defaults every DFM check to warning severity (advisory)', () => {
     const vs = dfm(`
       ${EDGES}

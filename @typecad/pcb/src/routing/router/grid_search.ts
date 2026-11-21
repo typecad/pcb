@@ -1223,6 +1223,10 @@ export class GridSearch {
           targetLayer,
         );
 
+        if (spanLayers.some((l) => this.grid.isEdgeKeepout(nx, ny, l, true))) {
+          continue;
+        }
+
         if (this.isPadWithinClearance(nx, ny, spanLayers, padKeepout)) {
           continue;
         }

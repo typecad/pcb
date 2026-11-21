@@ -135,6 +135,45 @@ describe('pcb rip-up-and-reroute', () => {
     expect(state.stagedOutlines.length).toBe(tracksBefore);
   });
 
+  it("takes a ripped net's placed vias off the board and restores them on rollback", () => {
+    const j1 = new Header4();
+    const j2 = new Header4();
+    j1.pcb.x = 20;
+    j1.pcb.y = 20;
+    j2.pcb.x = 40;
+    j2.pcb.y = 20;
+    pcb.add(j1, j2);
+    pcb.outline(10, 10, 40, 20);
+    const netA = pcb.named('net_a').net(j1.pin(1), j2.pin(1));
+    const pinsB = [j1.pin(4), j2.pin(4)];
+    expect(pcb.route(netA, { ripup: false }).success).toBe(true);
+
+    // TrackBuilder.via() places (not stages) its via at a track end
+    type St = { stagedOutlines: { elements: { type: string; net?: string; start?: { x: number; y: number } }[] }[]; components: Component[] };
+    const state = (pcb as unknown as { _state: St })._state;
+    const end = state.stagedOutlines.flatMap((o) => o.elements).find((e) => e.type === 'line' && e.net === 'net_a')!.start!;
+    const via = pcb.via({ at: end, size: 0.6, drill: 0.3 });
+    via.viaData!.net = 'net_a';
+    pcb.place(via);
+    const netAVias = () => state.components.filter((c) => c.via && c.viaData?.net === 'net_a').length;
+    expect(netAVias()).toBe(1);
+
+    let call = 0;
+    withRipup(
+      pcb,
+      () => {
+        call++;
+        if (call > 1) expect(netAVias()).toBe(0); // ripped with its tracks, no orphan
+        return failedResult(['net_a']);
+      },
+      {},
+      pinsB,
+      "'net_b'",
+    );
+    expect(call).toBeGreaterThan(1);
+    expect(netAVias()).toBe(1); // rolled back
+  });
+
   it('rescues a congested-but-successful route end to end (quality trigger)', { timeout: 120_000 }, () => {
     // net_a routes first as a near-full-width wall on F.Cu. net_b must cross
     // it vertically: without rip-up it detours around the wall (~36mm for a

@@ -14,3 +14,7 @@ fix: autorouter correctness and completion — exact clearance, honest success, 
 - Coarse geometry (wide traces and clearances, no fine-pitch pads) gets a coarser grid; search windows grow geometrically.
 - Route success is recomputed after provided routes are appended, and a net with unresolvable pins is not reported routed.
 - Placing a footprint on the back flips each pad's layers once (a double flip put back-side SMD pads on F.Cu).
+- The board-edge keepout uses the track half-width; via centres get their own wider band. Sizing it by the via radius walled off pads near the edge whenever the via was wider than the trace.
+- Rip-up now removes a ripped net's vias as well as its tracks (TrackBuilder places vias rather than staging them), and rollback restores them. Before, ripped vias stayed on the board as orphans and kept blocking later routes.
+- The router no longer treats vias left in the placement registry as obstacles; live vias come from the board state.
+- The grid origin is shifted so a cell centre sits exactly on the start pad.

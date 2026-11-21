@@ -128,7 +128,7 @@ slightly from the paper.
   fixture outlines (rect/poly/circle and line+arc chains) and cutouts; disagreements still
   show up per board as `checkerDisagree`.
 
-**Router status:** 23/24 fixtures clean. 100% clean on 128 random PCBWorld-shaped boards (`synth.mjs`: D2-A, D1 grid 10/50/100) under kicad-cli. The one fixture failure, `zero_anchor_board`, is the bench gap above (a net-tied `gr_circle` the router is never given). Fixes behind that, each covered by tests (`routing_exact_clearance`, `board_edge_routing`, `routing_pad_regressions`, the smoke tier):
+**Router status** (kicad-cli, real PCBWorld sets from `fetch.mjs`): D2-A 128/128, D1 grid-100 128/128, grid-500 128/128, grid-10 127/128 (`board_00119` needs both crossing nets to via; rip-up can't find that order). Fixtures 23/24. All with 0 DRV. The one fixture failure, `zero_anchor_board`, is the bench gap above (a net-tied `gr_circle` the router is never given). Fixes behind that, each covered by tests (`routing_exact_clearance`, `board_edge_routing`, `routing_pad_regressions`, the smoke tier):
 - Exact clearance against pad and track geometry, checked per search move. No hidden buffer, so designs at the rule limit route.
 - An exact board-edge keepout mask. Cutouts block, and pads right at the edge rule stay reachable.
 - The track builder no longer draws a corner-cutting chord after skipping a run that lies on same-net copper. Merging requires true collinearity.

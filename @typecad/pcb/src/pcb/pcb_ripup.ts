@@ -41,11 +41,45 @@ interface RipupSnapshot {
   victimComponents: Component[];
   rippedOutlines: IOutline[];
   rippedComponents: Component[];
+  /** state.components length after the rip: vias the attempt places land after it. */
+  attemptStartPlaced: number;
+  /** Placed (not staged) vias taken off the board with the victim's or a blocker's tracks. */
+  takenVias: Component[];
 }
 
 interface RippedNet {
   outlines: IOutline[];
   components: Component[];
+  /** Vias TrackBuilder.via() placed directly into state.components. */
+  placedVias: Component[];
+}
+
+/**
+ * TrackBuilder.via() places vias (state.components), not stages them, so
+ * dropping a route's track outlines alone leaves its vias as orphan copper.
+ * A router via always sits on an end of one of the route's track segments;
+ * take the net's placed vias found at those ends.
+ */
+function takePlacedVias(state: ReturnType<typeof getPcbState> & object, outlines: IOutline[], net?: string): Component[] {
+  const ends = new Set<string>();
+  const key = (x: number, y: number) => `${x.toFixed(4)},${y.toFixed(4)}`;
+  for (const outline of outlines) {
+    for (const el of outline.elements ?? []) {
+      const line = el as IGrLine;
+      if (line.type !== 'line' || (net !== undefined && line.net !== net)) continue;
+      ends.add(key(line.start.x, line.start.y));
+      ends.add(key(line.end.x, line.end.y));
+    }
+  }
+  if (ends.size === 0) return [];
+  const taken: Component[] = [];
+  state.components = state.components.filter((comp) => {
+    const v = comp.viaData;
+    if (comp.via !== true || !v?.at || (net !== undefined && v.net !== net) || !ends.has(key(v.at.x, v.at.y))) return true;
+    taken.push(comp);
+    return false;
+  });
+  return taken;
 }
 
 /** Remove a net's router-staged tracks and vias; returns them for rollback. */
@@ -67,7 +101,7 @@ function ripupNetTracks(pcb: PCB, net: string): RippedNet {
   state.stagedOutlines = keptOutlines;
   state.stagedComponents = keptComponents;
   state.routerRoutedNets.delete(net);
-  return { outlines, components };
+  return { outlines, components, placedVias: takePlacedVias(state, outlines, net) };
 }
 
 /** Collect rip-up candidates from every attempt's recorded blockers. */
@@ -143,6 +177,9 @@ function needsRipup(result: IAutorouteResult, victimPins: Pin[]): boolean {
 /** Restore the board to the pre-attempt state (dropping the attempt's staging). */
 function rollback(pcb: PCB, snap: RipupSnapshot): void {
   const state = getPcbState(pcb);
+  // vias the failed attempt placed, then the ones the rip took off the board
+  state.components.length = Math.min(state.components.length, snap.attemptStartPlaced);
+  state.components.push(...snap.takenVias);
   state.stagedOutlines.length = snap.attemptStartOutlines;
   state.stagedComponents.length = snap.attemptStartComponents;
   for (const outline of snap.rippedOutlines) state.stagedOutlines.push(outline);
@@ -156,7 +193,7 @@ function rollback(pcb: PCB, snap: RipupSnapshot): void {
       if (line.type === 'line' && line.net) restoredNets.add(line.net);
     }
   }
-  for (const comp of snap.rippedComponents) {
+  for (const comp of [...snap.rippedComponents, ...snap.takenVias]) {
     if (comp.viaData?.net) restoredNets.add(comp.viaData.net);
   }
   for (const outline of snap.victimOutlines) {
@@ -223,6 +260,7 @@ export function withRipup(
   const entry = {
     outlines: getPcbState(pcb)!.stagedOutlines.length,
     components: getPcbState(pcb)!.stagedComponents.length,
+    placed: getPcbState(pcb)!.components.length,
   };
 
   let best = run();
@@ -268,6 +306,8 @@ export function withRipup(
       victimComponents: [],
       rippedOutlines: [],
       rippedComponents: [],
+      attemptStartPlaced: 0,
+      takenVias: [],
     };
 
     // Drop the victim's own previous (failed/poor) staging first, while the
@@ -275,17 +315,21 @@ export function withRipup(
     const state = getPcbState(pcb);
     snap.victimOutlines = state.stagedOutlines.splice(entry.outlines);
     snap.victimComponents = state.stagedComponents.splice(entry.components);
+    // the victim's previous attempt placed its vias after this mark
+    snap.takenVias.push(...state.components.splice(entry.placed));
 
     // Then rip the blocking nets (they are re-routed after the victim).
     for (const net of blockers) {
       const ripped = ripupNetTracks(pcb, net);
       snap.rippedOutlines.push(...ripped.outlines);
       snap.rippedComponents.push(...ripped.components);
+      snap.takenVias.push(...ripped.placedVias);
     }
     // The retry stages anything new after this mark; rollback truncates
     // here and re-stacks the ripped items.
     snap.attemptStartOutlines = state.stagedOutlines.length;
     snap.attemptStartComponents = state.stagedComponents.length;
+    snap.attemptStartPlaced = state.components.length;
 
     const retry = run();
     recordBlockers(retry);

@@ -56,4 +56,18 @@ describe('exact clearance in the routing grid', () => {
     expect(at(6.5, 50.5)).toBe(true);
     expect(at(-0.5, 50.5)).toBe(true); // off board
   });
+
+  it('keeps vias farther from the edge than tracks without walling off edge pads', () => {
+    const els: OutlineElement[] = [
+      { type: 'rect', uuid: 'r', layer: 'Edge.Cuts', strokeWidth: 0.05, start: { x: 0, y: 0 }, end: { x: 100, y: 100 } },
+    ];
+    const grid = new RoutingGrid({ minX: 0, maxX: 100, minY: 0, maxY: 100 }, 0.1, ['F.Cu', 'B.Cu']);
+    const edge = ObstacleBuilder.buildBoardEdge(els, 0.15, ['*.Cu'])!; // 0.1 rule + 0.05 track half-width
+    grid.addObstacle({ ...edge, viaClearance: 0.4 }); // 0.1 rule + 0.3 via radius
+    const g = grid.worldToGrid(50.05, 0.25); // 0.25 from the edge
+    expect(grid.isEdgeKeepout(g.x, g.y, 'F.Cu')).toBe(false); // a track may run here
+    expect(grid.isEdgeKeepout(g.x, g.y, 'F.Cu', true)).toBe(true); // a via may not
+    const v = grid.worldToGrid(50.05, 0.45);
+    expect(grid.isEdgeKeepout(v.x, v.y, 'B.Cu', true)).toBe(false);
+  });
 });

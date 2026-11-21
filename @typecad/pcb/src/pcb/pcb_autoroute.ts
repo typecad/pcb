@@ -397,7 +397,11 @@ export function autoroute(pcb: PCB, callerOptions: IAutorouteOptions): IAutorout
   // stages the board, and a mid-corridor part the router cannot see gets
   // routed straight through (shorting its pads). The .pcb placement registry
   // covers every assigned component regardless of net membership.
+  // Vias are excluded: the board's live vias come in through state.components,
+  // and a via that rip-up removed stays in this registry — it must not keep
+  // blocking as a phantom obstacle.
   for (const comp of getPlacedComponents(pcb)) {
+    if (comp.via === true) continue;
     if (!componentsFromPins.includes(comp) && !comp.dnp) {
       componentsFromPins.push(comp);
     }
@@ -647,6 +651,24 @@ export function autoroute(pcb: PCB, callerOptions: IAutorouteOptions): IAutorout
     debugLog(options.debug, chalk.yellow(`[PCB] Grid configurator threw: ${getErrorMessage(error)}`));
   }
 
+  // Put a cell centre exactly on the start pad. Cell centres sit at
+  // min + (i + 0.5) * res, so otherwise they land wherever the bounds happen
+  // to start, and a pad whose only escape lies exactly at the clearance
+  // limit (pads on a pitch of trace + clearance + pad) has no legal
+  // first cell: every centre is off by a fraction of a cell.
+  const anchor = validStartPositions[0];
+  if (anchor) {
+    const shift = (v: number, min: number) => {
+      const r = (((v - min - gridResolution / 2) % gridResolution) + gridResolution) % gridResolution;
+      return r < 1e-9 || gridResolution - r < 1e-9 ? 0 : r;
+    };
+    bounds = {
+      ...bounds,
+      minX: bounds.minX - (gridResolution - shift(anchor.x, bounds.minX)) % gridResolution,
+      minY: bounds.minY - (gridResolution - shift(anchor.y, bounds.minY)) % gridResolution,
+    };
+  }
+
   const grid = new RoutingGrid(bounds, gridResolution, routingLayers, options.debug);
 
   // ── 12. Add obstacles ────────────────────────────────────────────────
@@ -666,10 +688,15 @@ export function autoroute(pcb: PCB, callerOptions: IAutorouteOptions): IAutorout
   obstacles.forEach(addObstacleToState);
 
   // Copper-to-edge rule: grid clearance is centre-to-copper, so the keepout
-  // is the rule plus the widest copper radius this route can place.
+  // is the rule plus the track half-width; via centres get their own, wider
+  // band (rule + via radius) so a big via doesn't wall off pads near the edge.
   if (boardEdgeProbe) {
-    const copperRadius = Math.max(traceWidth / 2, options.allowVias === false ? 0 : (options.viaSize ?? 0) / 2);
-    addObstacleToState({ ...boardEdgeProbe, clearance: pcb.rules.min_copper_edge_clearance + copperRadius });
+    const edgeRule = pcb.rules.min_copper_edge_clearance;
+    addObstacleToState({
+      ...boardEdgeProbe,
+      clearance: edgeRule + traceWidth / 2,
+      viaClearance: options.allowVias === false ? undefined : edgeRule + (options.viaSize ?? 0) / 2,
+    });
   }
 
   const stats = grid.getStats();

@@ -226,6 +226,12 @@ export interface IRoutingObstacle {
    * off-board cell centre, which is how the copper-to-edge rule is applied.
    */
   boardRegion?: IBoardRegion;
+  /**
+   * Board edge only: the keepout for a via centre (edge rule + via radius).
+   * `clearance` then covers track centrelines only, so a thin track can still
+   * leave a pad near the edge where a via could not be placed.
+   */
+  viaClearance?: number;
 }
 
 /**
@@ -387,13 +393,16 @@ export class RoutingGrid {
     // cutout); there, keep half a cell diagonal of margin. A convex board
     // keeps the exact distance, so designs laid out at the rule limit route.
     const convex = region.holes.length === 0 && isConvex(region.outer);
-    const band = obstacle.clearance + (convex ? 0 : this.gridResolution * Math.SQRT1_2) - 1e-6;
+    const slack = (convex ? 0 : this.gridResolution * Math.SQRT1_2) - 1e-6;
+    const band = obstacle.clearance + slack;
+    // vias need the wider band; cells only vias must avoid are marked 1, track keepout 2
+    const viaBand = Math.max(band, (obstacle.viaClearance ?? 0) + slack);
     const mask = (this.edgeMask ??= new Uint8Array(this.cellsTotalSize));
     const layers = obstacle.layers.some((l) => l === '*.Cu') ? this.layers : obstacle.layers;
-    const mark = (gx: number, gy: number) => {
+    const mark = (gx: number, gy: number, level = 2) => {
       for (const layer of layers) {
         const idx = this.getCellIndex(layer, gx, gy);
-        if (idx >= 0) mask[idx] = 1;
+        if (idx >= 0 && mask[idx]! < level) mask[idx] = level;
       }
     };
 
@@ -419,17 +428,19 @@ export class RoutingGrid {
 
     // on-board but within `band` of an edge segment: walk each segment's
     // band-expanded box only (cheap even for finely tessellated outlines)
-    if (band > 0) {
+    if (viaBand > 0) {
       for (const poly of contours) {
         for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
           const a = poly[j]!;
           const b = poly[i]!;
-          const g0 = this.worldToGrid(Math.min(a.x, b.x) - band, Math.min(a.y, b.y) - band);
-          const g1 = this.worldToGrid(Math.max(a.x, b.x) + band, Math.max(a.y, b.y) + band);
+          const g0 = this.worldToGrid(Math.min(a.x, b.x) - viaBand, Math.min(a.y, b.y) - viaBand);
+          const g1 = this.worldToGrid(Math.max(a.x, b.x) + viaBand, Math.max(a.y, b.y) + viaBand);
           for (let gx = Math.max(0, g0.x); gx <= Math.min(this.gridWidth - 1, g1.x); gx++) {
             const cx = this.gridToWorldX(gx);
             for (let gy = Math.max(0, g0.y); gy <= Math.min(this.gridHeight - 1, g1.y); gy++) {
-              if (pointToSegmentDistance(cx, this.gridToWorldY(gy), a.x, a.y, b.x, b.y) < band) mark(gx, gy);
+              const d = pointToSegmentDistance(cx, this.gridToWorldY(gy), a.x, a.y, b.x, b.y);
+              if (d < band) mark(gx, gy);
+              else if (d < viaBand) mark(gx, gy, 1);
             }
           }
         }
@@ -469,11 +480,11 @@ export class RoutingGrid {
     return best;
   }
 
-  /** True when the cell centre is inside the board-edge keepout. */
-  isEdgeKeepout(x: number, y: number, layer: string): boolean {
+  /** True when the cell centre is inside the board-edge keepout (the wider via keepout when `via`). */
+  isEdgeKeepout(x: number, y: number, layer: string, via = false): boolean {
     if (!this.edgeMask) return false;
     const idx = this.getCellIndex(layer, x, y);
-    return idx >= 0 && this.edgeMask[idx] === 1;
+    return idx >= 0 && this.edgeMask[idx]! >= (via ? 1 : 2);
   }
 
   addObstacle(obstacleIn: IRoutingObstacle): void {
@@ -1149,7 +1160,7 @@ export class RoutingGrid {
   private isCellOccupied(x: number, y: number, layer: string, net?: string): boolean {
     const idx = this.getCellIndex(layer, x, y);
     if (idx < 0) return false;
-    if (this.edgeMask && this.edgeMask[idx] === 1) return true;
+    if (this.edgeMask && this.edgeMask[idx] === 2) return true;
     const cell = this.cells[idx];
 
     if (!cell) {

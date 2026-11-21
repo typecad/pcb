@@ -412,7 +412,9 @@ describe('planComponentEdits (combined constructor pass)', () => {
     const line = out.split('\n').find((l) => l.includes('reference:'));
     expect(line).toContain("reference: 'R9'");
     expect(line).toContain("value: '2d'");
-    expect(line).toContain('referenceLayout: { x: -4, y: 0.5, rotation: 90 }');
+    // the rotation is the label's ABSOLUTE angle — the build writes it verbatim
+    // as the KiCad text angle (it once wrote 90: label 270 minus the part's 180)
+    expect(line).toContain('referenceLayout: { x: -4, y: 0.5, rotation: 270 }');
   });
 
   it('guards rename collisions while still applying the value edit', () => {
@@ -468,7 +470,7 @@ describe('planComponentEdits fab label', () => {
   const src =
     "const r1 = new Component({ symbol: 'Device:R_Small', reference: 'R1', value: '1k' });\n" +
     "r1.pcb = { x: 16, y: 15, rotation: 180 };\n";
-  it("writes the plain 'fab' option for the small fab refdes text", () => {
+  it('writes the fabLayout option for the small fab refdes text (the field the importer reads)', () => {
     const { edits, skipped } = planComponentEdits(
       src,
       [{ ref: 'R1', label: { kind: 'fab', x: 18, y: 15, rot: 180 } }],
@@ -478,8 +480,8 @@ describe('planComponentEdits fab label', () => {
     expect(skipped).toHaveLength(0);
     const out = applyPlacementEdits(src, edits);
     expectValidTs(out);
-    expect(out).toContain('fab: { x: -2, y: 0, rotation: 0 }');
-    expect(out).not.toContain('fabLayout');
+    expect(out).toContain('fabLayout: { x: -2, y: 0, rotation: 180 }');
+    expect(out).not.toMatch(/fab:/);
   });
 });
 
@@ -622,7 +624,7 @@ describe('planComponentEdits regression guards', () => {
     const out = applyPlacementEdits(moved, second.edits);
     expectValidTs(out);
     expect(out.match(/referenceLayout:/g)).toHaveLength(1);
-    expect(out).toContain('referenceLayout: { x: -5, y: 0, rotation: -180 }');
+    expect(out).toContain('referenceLayout: { x: -5, y: 0, rotation: 0 }');
   });
 
   it('keeps the literal intact when a length-changing rename precedes an insert', () => {

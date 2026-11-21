@@ -102,6 +102,19 @@ export function fmt(n: number): string {
  *  the fallback). */
 export type PlacementDeferPredicate = (move: LayoutMove) => boolean;
 
+/** A part's placement frame: position, footprint angle, and board side. */
+export interface PartFrame {
+  x: number;
+  y: number;
+  rot: number;
+  side?: 'front' | 'back';
+}
+
+/** Normalize an angle to [0, 360). */
+function normAngle(r: number): number {
+  return ((r % 360) + 360) % 360;
+}
+
 /**
  * Compute the literal rewrites for `moves` against one source document.
  * A move whose `<var>.pcb = {…}` literal already exists (including the sync
@@ -120,11 +133,18 @@ export function planPlacementEdits(
   text: string,
   moves: LayoutMove[],
   variableOf: (ref: string) => string | undefined,
-  opts?: { deferInsert?: PlacementDeferPredicate },
+  opts?: {
+    deferInsert?: PlacementDeferPredicate;
+    /** the part's CURRENT board frame — the base a no-literal move builds
+     *  on. `<var>.pcb = {…}` replaces the whole placement, so without it a
+     *  part whose rotation/side came from a constructor `pcb:` option (or a
+     *  default) silently lost them on its first move. */
+    baseOf?: (ref: string) => PartFrame | undefined | null;
+  },
 ): LayoutEditResult {
   const edits: PlacementEdit[] = [];
   const skipped: Array<{ ref: string; reason: string }> = [];
-  const deferred: Array<{ ref: string; variable: string; x: number; y: number; rot: number }> = [];
+  const deferred: Array<{ ref: string; variable: string; x: number; y: number; rot: number; side?: 'front' | 'back' }> = [];
   for (const move of moves) {
     const variable = variableOf(move.ref);
     if (!variable) {
@@ -154,13 +174,15 @@ export function planPlacementEdits(
       lead = match[1] ?? '';
       partsPrefix = match[2] ?? '';
     } else if (opts?.deferInsert?.(move)) {
+      const base = opts.baseOf?.(move.ref) ?? null;
+      const side = move.side ?? (base?.side === 'back' ? 'back' : undefined);
       deferred.push({
         ref: move.ref,
         variable,
         x: Number.isFinite(move.ax) ? move.ax! : move.dx,
         y: Number.isFinite(move.ay) ? move.ay! : move.dy,
-        rot: move.rot ?? 0,
-        ...(move.side ? { side: move.side } : {}),
+        rot: normAngle((base?.rot ?? 0) + (move.rot ?? 0)),
+        ...(side ? { side } : {}),
       });
       continue;
     } else {
@@ -170,6 +192,11 @@ export function planPlacementEdits(
         continue;
       }
       newInner = ` x: ${fmt(Number.isFinite(move.ax) ? move.ax! : move.dx)}, y: ${fmt(Number.isFinite(move.ay) ? move.ay! : move.dy)}`;
+      // the inserted literal replaces the whole placement: carry the part's
+      // current angle/side over (the rotation/flip steps below build on them)
+      const base = opts?.baseOf?.(move.ref) ?? null;
+      if (base && normAngle(base.rot) !== 0) newInner += `, rotation: ${fmt(normAngle(base.rot))}`;
+      if (base?.side === 'back' && !move.side) newInner += `, side: 'back'`;
       start = ins.at;
       end = ins.at;
       lead = `\n${ins.indent}`;
@@ -178,7 +205,7 @@ export function planPlacementEdits(
     // rotation rides as a delta onto the literal's field (0 or absent = 0)
     if (move.rot) {
       const rotNum = /\brotation\s*:\s*(-?[\d.]+)/.exec(newInner);
-      const newRot = (rotNum ? parseFloat(rotNum[1]) : 0) + move.rot;
+      const newRot = normAngle((rotNum ? parseFloat(rotNum[1]) : 0) + move.rot);
       if (rotNum) newInner = newInner.replace(/\brotation\s*:\s*-?[\d.]+/, `rotation: ${fmt(newRot)}`);
       else newInner = `${newInner.trimEnd()}, rotation: ${fmt(newRot)} `;
     }
@@ -692,6 +719,96 @@ function setStrKey(inner: string, key: string, val: string): string {
   return `${inner.trimEnd().replace(/,\s*$/, '')}, ${key}: '${esc}' `;
 }
 
+/**
+ * Set a string-valued key at the TOP LEVEL of an object-literal body
+ * (string/brace aware — a nested `value:` is never touched), or append it.
+ * A multi-line literal gets the new key on its own line.
+ */
+function setTopLevelStrKey(inner: string, key: string, val: string): string {
+  let depth = 0;
+  let str: string | null = null;
+  const keyRe = new RegExp(`^${key}\\s*:\\s*(['"])((?:\\\\.|(?!\\1).)*)\\1`);
+  for (let i = 0; i < inner.length; i++) {
+    const ch = inner[i]!;
+    if (str) {
+      if (ch === '\\') i++;
+      else if (ch === str) str = null;
+      continue;
+    }
+    if (ch === "'" || ch === '"' || ch === '`') {
+      str = ch;
+      continue;
+    }
+    if (ch === '{' || ch === '[' || ch === '(') depth++;
+    else if (ch === '}' || ch === ']' || ch === ')') depth--;
+    else if (depth === 0 && (i === 0 || /[\s,{]/.test(inner[i - 1]!))) {
+      const m = keyRe.exec(inner.slice(i));
+      if (m) {
+        const q = m[1]!;
+        return `${inner.slice(0, i)}${key}: ${q}${escapeQuoted(val, q)}${q}${inner.slice(i + m[0].length)}`;
+      }
+    }
+  }
+  const esc = escapeQuoted(val, "'");
+  if (inner.includes('\n')) {
+    const indent = /\n([ \t]*)\S[^\n]*\s*$/.exec(inner)?.[1] ?? '  ';
+    const closing = /\n[ \t]*$/.exec(inner)?.[0] ?? '\n';
+    return `${inner.replace(/,?\s*$/, '')},\n${indent}${key}: '${esc}',${closing}`;
+  }
+  const body = inner.trim().replace(/,\s*$/, '');
+  return body ? ` ${body}, ${key}: '${esc}' ` : ` ${key}: '${esc}' `;
+}
+
+/**
+ * Value and reference edits for parts whose constructor carries no
+ * `reference: '…'` literal — subclass factories (`new Resistor({ value:
+ * '150' })`, `new LED(…)`) and prefix-derived references, i.e. every part the
+ * create scaffold writes. planComponentEdits matches constructors by that
+ * literal, so these edits were skipped ("no Component constructor literal
+ * found"). Here the constructor is found by its declaring VARIABLE: the
+ * `value:` key is rewritten or appended, and a rename writes an explicit
+ * `reference:` (a derived one has nothing to rewrite). Specs whose variable
+ * is not declared in `text` are left out of both lists — the caller tries
+ * the next file.
+ */
+export function planConstructorFieldEdits(
+  text: string,
+  specs: Array<{ ref: string; variable: string; value?: string; newRef?: string }>,
+  allRefs: Set<string>,
+): LayoutEditResult {
+  const edits: PlacementEdit[] = [];
+  const skipped: Array<{ ref: string; reason: string }> = [];
+  for (const spec of specs) {
+    const decl = new RegExp(
+      `(?:const|let|var)\\s+${escapeRegExp(spec.variable)}\\s*(?::[^=;]+?)?=\\s*new\\s+[A-Za-z_$][\\w$.]*\\s*\\(`,
+    ).exec(text);
+    if (!decl) continue;
+    const paren = decl.index + decl[0].length - 1;
+    const firstArg = /\S/.exec(text.slice(paren + 1));
+    if (spec.newRef && spec.newRef !== spec.ref && allRefs.has(spec.newRef)) {
+      skipped.push({ ref: spec.ref, reason: `\`${spec.newRef}\` is already a component reference` });
+      continue;
+    }
+    const apply = (inner: string): string => {
+      let out = inner;
+      if (spec.newRef) out = setTopLevelStrKey(out, 'reference', spec.newRef);
+      if (spec.value !== undefined) out = setTopLevelStrKey(out, 'value', spec.value);
+      return out;
+    };
+    if (firstArg && firstArg[0] === '{') {
+      const r = objectLiteralRange(text, paren + 1 + firstArg.index);
+      if (!r) continue;
+      edits.push({ ref: spec.ref, line: apply(text.slice(r.open + 1, r.close)), start: r.open + 1, end: r.close });
+    } else if (firstArg && firstArg[0] === ')') {
+      // `new Resistor()` — no options yet: write the literal
+      edits.push({ ref: spec.ref, line: `{${apply('')}}`, start: paren + 1, end: paren + 1 + firstArg.index });
+    } else {
+      skipped.push({ ref: spec.ref, reason: `${spec.variable}'s constructor options are not an object literal` });
+    }
+  }
+  return { edits, skipped };
+}
+
 /** Find the balanced `{ … }` object literal starting at/after the call head. */
 function objectLiteralRange(text: string, head: number): { head: number; open: number; close: number } | null {
   const open = text.indexOf('{', head);
@@ -746,14 +863,35 @@ function splitTopLevel(body: string): string[] {
  */
 function labelLayoutBody(
   label: { x: number; y: number; rot: number; style?: TextStyleInput },
-  part: { x: number; y: number; rot: number },
+  part: PartFrame,
   existingBody: string,
 ): string {
-  const rad = (-part.rot * Math.PI) / 180;
+  // The exact inverse of where the board puts the label (gerber_viewer
+  // parseBoardLabels, the frame the page drags in): world = part +
+  // R(-θ)·stored, the stored angle ABSOLUTE. So stored = R(+θ)·(world -
+  // part) and the angle passes through unchanged — the build writes a
+  // layout's rotation verbatim as the KiCad text angle (applyLayoutToFpText).
+  // A back-side part's stored values are the build's flip of the authored
+  // ones (y negated, +180°, see kicad2typecad/label_frame.ts), so undo it.
+  // The old math applied R(-θ) and subtracted the part angle: right only
+  // for 0°/180° parts on the front — every label dragged on a 90°/270° part
+  // landed mirrored through the part, and on a back-side part y and the
+  // angle came back flipped.
+  const rad = (part.rot * Math.PI) / 180;
   const c = Math.cos(rad);
-  const s2 = Math.sin(rad);
+  const s = Math.sin(rad);
   const dx = label.x - part.x;
   const dy = label.y - part.y;
+  let lx = dx * c - dy * s;
+  let ly = dx * s + dy * c;
+  let lrot = label.rot;
+  if (part.side === 'back') {
+    ly = -ly;
+    lrot -= 180;
+  }
+  lx = Math.abs(lx) < 5e-4 ? 0 : lx;
+  ly = Math.abs(ly) < 5e-4 ? 0 : ly;
+  lrot = normAngle(lrot);
   // only the keys this edit manages are stripped from the existing body:
   // the position, plus the style keys the diff actually carries
   const sty = label.style;
@@ -776,7 +914,7 @@ function labelLayoutBody(
     .filter(Boolean)
     .join(', ');
   let bodyStr = kept ? kept + ', ' : '';
-  bodyStr += `x: ${fmt(dx * c - dy * s2)}, y: ${fmt(dx * s2 + dy * c)}, rotation: ${fmt(label.rot - part.rot)}`;
+  bodyStr += `x: ${fmt(lx)}, y: ${fmt(ly)}, rotation: ${fmt(lrot)}`;
   if (sty) {
     if (sty.w !== undefined) bodyStr = setNumKey(bodyStr, 'width', sty.w);
     if (sty.h !== undefined) bodyStr = setNumKey(bodyStr, 'height', sty.h);
@@ -825,7 +963,7 @@ export function planLabelAssignments(
   text: string,
   specs: Array<{ ref: string; label: { kind: 'reference' | 'value' | 'fab'; x: number; y: number; rot: number; style?: TextStyleInput } }>,
   variableOf: (ref: string) => string | undefined,
-  placementOf: (ref: string) => { x: number; y: number; rot: number } | null,
+  placementOf: (ref: string) => PartFrame | null,
   opts?: { deferInsert?: (ref: string) => boolean },
 ): LayoutEditResult<DeferredLabel> {
   const edits: PlacementEdit[] = [];
@@ -837,8 +975,16 @@ export function planLabelAssignments(
       skipped.push({ ref: spec.ref, reason: 'no source variable' });
       continue;
     }
-    const prop = spec.label.kind === 'fab' ? 'fab' : `${spec.label.kind}Layout`;
-    const assignRe = new RegExp(`^([ \\t]*)(parts\\.)?${escapeRegExp(variable)}\\.${prop}\\s*=`, 'm');
+    // fab too lands on its Layout field (`fabLayout`, whose setter positions
+    // the fab text): the importer and the silk-clearance boxes read only
+    // the Layout fields, so a bare `<var>.fab = {…}` built fine but read
+    // back as "no layout" on every import. A legacy `.fab =` statement is
+    // rewritten INTO `.fabLayout =` so older projects converge.
+    const prop = `${spec.label.kind}Layout`;
+    const assignRe = new RegExp(
+      `^([ \\t]*)(parts\\.)?${escapeRegExp(variable)}\\.(?:${prop}${spec.label.kind === 'fab' ? '|fab' : ''})\\s*=`,
+      'm',
+    );
     const match = assignRe.exec(text);
     let bodyStr: string;
     let start: number;
@@ -901,7 +1047,7 @@ export function planLabelAssignments(
  */
 export function syncLabelStatement(
   spec: DeferredLabel,
-  part: { x: number; y: number; rot: number },
+  part: PartFrame,
 ): string {
   return `parts.${spec.variable}.${spec.prop} = { ${labelLayoutBody(spec.label, part, '')} };`;
 }
@@ -1059,17 +1205,16 @@ export function planTextDeletions(
 
 /** Parse a `<var>.pcb = { x, y, rotation? }` literal — standalone or the
  *  sync sidecar's `parts.<var>.pcb` form (null when computed). */
-export function parsePlacementLiteral(
-  text: string,
-  variable: string,
-): { x: number; y: number; rot: number } | null {
+export function parsePlacementLiteral(text: string, variable: string): PartFrame | null {
   const match = new RegExp(`^([ \\t]*)(parts\\.)?${escapeRegExp(variable)}\\.pcb\\s*=\\s*\\{([^}]*)\\}`, 'm').exec(text);
   if (!match) return null;
   const xNum = /\bx\s*:\s*(-?[\d.]+)/.exec(match[3]);
   const yNum = /\by\s*:\s*(-?[\d.]+)/.exec(match[3]);
   if (!xNum || !yNum) return null;
   const rNum = /\brotation\s*:\s*(-?[\d.]+)/.exec(match[3]);
-  return { x: parseFloat(xNum[1]), y: parseFloat(yNum[1]), rot: rNum ? parseFloat(rNum[1]) : 0 };
+  // the assignment replaces the whole placement: no `side` key = front
+  const side = /\bside\s*:\s*(['"])back\1/.test(match[3]) ? 'back' : 'front';
+  return { x: parseFloat(xNum[1]), y: parseFloat(yNum[1]), rot: rNum ? parseFloat(rNum[1]) : 0, side };
 }
 
 
@@ -1097,7 +1242,7 @@ export interface ComponentEditSpec {
 export function planComponentEdits(
   text: string,
   specs: ComponentEditSpec[],
-  placementOf: (ref: string) => { x: number; y: number; rot: number } | null,
+  placementOf: (ref: string) => PartFrame | null,
   allRefs: Set<string>,
 ): LayoutEditResult {
   const planned: PlacementEdit[] = [];
@@ -1168,13 +1313,14 @@ export function planComponentEdits(
             end: ar.close + 1,
           });
         } else {
-          // reference/value carry their own Layout option names; the small
-          // fab refdes text is positioned by the plain 'fab' option
-          const prop = spec.label.kind === 'fab' ? 'fab' : `${spec.label.kind}Layout`;
+          // every label kind writes its Layout option (`fabLayout` for the
+          // small fab refdes) — the one the importer reads back; a legacy
+          // plain `fab:` option is rewritten into it
+          const prop = `${spec.label.kind}Layout`;
           // the layout literal may already carry keys this edit does not
           // manage (layer, show, styled by hand…) — keep them. Balanced-brace
           // parsing: a nested justify object must not truncate the literal
-          const keyRe = new RegExp(`\\b${prop}\\s*:`);
+          const keyRe = new RegExp(`\\b${prop}\\s*:${spec.label.kind === 'fab' ? '|\\bfab\\s*:' : ''}`);
           const km = keyRe.exec(newInner);
           let bodyStr = '';
           let span: { start: number; end: number } | null = null;

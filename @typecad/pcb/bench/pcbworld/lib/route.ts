@@ -110,7 +110,9 @@ export function routeBoard(board: BenchBoard, workDir: string, opts: RouteOption
     // KiCad uses 0 for "no constraint"; typecad requires positive values
     const pos = (v: number) => Math.max(v, 0.001);
     const pcb = new PCB(board.id, {
-      layers: board.copperLayers.length,
+      // typecad boards have >= 2 copper layers; routing is still restricted
+      // to the input's own layers below (a 1-layer board gets no vias)
+      layers: Math.max(2, board.copperLayers.length),
       rules: {
         min_clearance: pos(r.clearance),
         min_track_width: pos(r.trackWidth),
@@ -198,6 +200,7 @@ export function routeBoard(board: BenchBoard, workDir: string, opts: RouteOption
           attempted: res.routeCount,
           error: res.success ? undefined : res.routeDetails.find((d) => !d.success)?.error,
           ms: performance.now() - ts,
+          ...(process.env.BENCH_DEBUG_PATHS ? { paths: res.routeDetails.map((d) => d.path?.nodes.map((n) => `${n.x.toFixed(3)},${n.y.toFixed(3)},${n.layer[0]}`).join(' ')) } : {}),
         });
       } catch (e) {
         nets.push({ net, pads, success: false, completed: 0, attempted: pads - 1, error: errMsg(e), ms: performance.now() - ts });

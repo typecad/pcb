@@ -23,6 +23,7 @@ import { textFuzzyMatch } from './rewriter.js';
 import type { KicadBoardGraphicIR, KicadIR, KicadZoneIR, MatchResult, PendingSourceChange } from './types.js';
 import { applyDeleteEdits, componentInCreateArgs, identifierInCode, isCreateReceiver, planComponentRemoval } from './component_delete.js';
 import { SYNC_FILE_NAME, SYNC_TRACKS_NAME, isSyncFileName } from './sync_file.js';
+import { sameSyncRouteGeometry } from './route_geometry.js';
 
 /**
  * --apply write-back for the elements that used to be display-only: board
@@ -191,17 +192,23 @@ function pseudoZoneFromProps(method: string, props: Record<string, unknown>): Ki
     locked: props['locked'] === true,
     polygon,
   };
+  // An omitted restriction is NOT ALLOWED — the build's own default
+  // (pcb_zones keepout(): `restrictions.tracks !== false`, …). Reading an
+  // omitted key as false made every minimal `typecad.keepout({ layers, x, y,
+  // width, height })` (the layout view's sidecar form) drift against its own
+  // board, and a partial `restrictions: { tracks: false }` read the other
+  // four as allowed.
   if (restrictions && typeof restrictions === 'object') {
     const r = restrictions as Record<string, unknown>;
     zone.keepout = {
-      tracks: r['tracks'] === true,
-      vias: r['vias'] === true,
-      pads: r['pads'] === true,
-      copperpour: r['copperpour'] === true,
-      footprints: r['footprints'] === true,
+      tracks: r['tracks'] !== false,
+      vias: r['vias'] !== false,
+      pads: r['pads'] !== false,
+      copperpour: r['copperpour'] !== false,
+      footprints: r['footprints'] !== false,
     };
   } else if (method === 'keepout') {
-    zone.keepout = { tracks: false, vias: false, pads: false, copperpour: false, footprints: false };
+    zone.keepout = { tracks: true, vias: true, pads: true, copperpour: true, footprints: true };
   }
   if (props['placement'] === true) zone.placement = true;
   if (fill && typeof fill === 'object') zone.fill = fill as KicadZoneIR['fill'];
@@ -961,8 +968,13 @@ export function computeRoutingChanges(ir: KicadIR, sourceFiles: string[]): Sourc
     // the applied replacement) converge without churning EOLs.
     const wantedRaw = !isOwner ? '' : isSync ? syncBlock : desiredBlock;
     const wantedBlock = wantedRaw === '' ? '' : renderWithEol(wantedRaw, sourceEol(source));
+    // Sidecar routes the layout view wrote are equal copper in a different
+    // chaining/order than the regenerator's canonical text (two legs drawn in
+    // separate gestures stay two routes). Equal copper is not drift — and
+    // leaving the region alone avoids churning the user's sidecar.
     const regionDiffers = routingTokens(currentBlock) !== routingTokens(wantedBlock) &&
-      !(isOwner && matchesWithStandaloneVias(ir, currentBlock, region.start, viaCalls, isSync));
+      !(isOwner && matchesWithStandaloneVias(ir, currentBlock, region.start, viaCalls, isSync)) &&
+      !(isOwner && isSync && sameSyncRouteGeometry(currentBlock, wantedBlock));
 
     // Create-args planning is independent of the region diff: stale track
     // references (bare identifiers from older generated code, or spreads of

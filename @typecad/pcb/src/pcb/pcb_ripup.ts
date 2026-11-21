@@ -24,7 +24,7 @@ const VIA_COST_MM = 3.0;
 /** A route longer than this multiple of its pin-to-pin span is "congested". */
 const POOR_QUALITY_RATIO = 3.0;
 /** Maximum rip-up-and-reroute attempts for one route() call. */
-const MAX_RIPUP_ROUNDS = 2;
+const MAX_RIPUP_ROUNDS = 3;
 /** Corridor margin (mm) around the victim's pins when filtering blockers. */
 const CORRIDOR_MARGIN_MM = 2.0;
 /** How many blocking nets may be ripped per round (bounded blast radius). */
@@ -179,13 +179,33 @@ function rollback(pcb: PCB, snap: RipupSnapshot): void {
  * re-routed, and the ripped nets are re-routed — keeping the new board only
  * when every net routes and the victim strictly improves.
  */
+/**
+ * The options each net was routed with, per board. A ripped blocker must
+ * come back with ITS OWN width/clearance/layers/via settings — re-routing it
+ * with the victim's options could widen it, move it to the wrong layer, or
+ * fail to place it at all.
+ */
+const netRouteOptions = new WeakMap<PCB, Map<string, IAutorouteRouteOptions | undefined>>();
+
+function rememberNetOptions(pcb: PCB, net: string | undefined, options: IAutorouteRouteOptions | undefined): void {
+  if (!net) return;
+  let m = netRouteOptions.get(pcb);
+  if (!m) netRouteOptions.set(pcb, (m = new Map()));
+  // route options only — a pin-to-pin call carries from/to, which must never
+  // ride into another net's re-route
+  const { from: _from, to: _to, ...routeOnly } = (options ?? {}) as IAutorouteRouteOptions & { from?: unknown; to?: unknown };
+  m.set(net, options ? routeOnly : undefined);
+}
+
 export function withRipup(
   pcb: PCB,
   run: () => IAutorouteResult,
   options: IAutorouteRouteOptions | undefined,
   victimPins: Pin[],
   netLabel: string,
+  netName?: string,
 ): IAutorouteResult {
+  rememberNetOptions(pcb, netName, options);
   if (options?.ripup === false) {
     return run();
   }
@@ -222,14 +242,19 @@ export function withRipup(
     return best;
   }
 
-  const rerouteOptions: IAutorouteRouteOptions = {
+  // fallback for blockers routed outside route() (no recorded options)
+  const victimDerived: IAutorouteRouteOptions = {
     gridResolution: options?.gridResolution,
     width: options?.width,
     clearance: options?.clearance,
     heuristicWeight: options?.heuristicWeight,
     debug: options?.debug,
-    ripup: false,
   };
+  const known = netRouteOptions.get(pcb);
+  const rerouteOptionsFor = (net: string): IAutorouteRouteOptions => ({
+    ...(known?.has(net) ? known.get(net) : victimDerived),
+    ripup: false,
+  });
 
   for (let round = 0; round < MAX_RIPUP_ROUNDS; round++) {
     const blockers = collectBlockers(pcb, recordedBlockers, victimPins);
@@ -273,11 +298,13 @@ export function withRipup(
     }
 
     // Re-route the ripped blocker nets. If any fails to come back, roll
-    // everything back — never trade one connected net for another.
+    // everything back — never trade one connected net for another. Odd
+    // rounds re-route them in reverse order: two blockers that crowd each
+    // other often both fit the other way round.
     let allRecovered = true;
-    for (const net of blockers) {
+    for (const net of round % 2 === 0 ? blockers : [...blockers].reverse()) {
       try {
-        const again = routeNetCore(pcb, net, rerouteOptions);
+        const again = routeNetCore(pcb, net, rerouteOptionsFor(net));
         if (!again.success) {
           allRecovered = false;
           break;
@@ -291,7 +318,7 @@ export function withRipup(
     if (!allRecovered) {
       logger.warn(`♻ rip-up round ${round + 1} could not re-route '${netLabel}'s blockers — rolled back`);
       rollback(pcb, snap);
-      break;
+      continue; // the next round tries the other re-route order
     }
 
     // A successful retry always beats a failed baseline (which has no

@@ -545,7 +545,10 @@ export function autoroute(pcb: PCB, callerOptions: IAutorouteOptions): IAutorout
 
   // ── 9. Determine clearance ───────────────────────────────────────────
   const baseClearance = options.clearance ?? netClass?.clearance ?? pcb.rules.min_clearance;
-  const clearanceBuffer = Math.min(0.05, baseClearance * 0.25);
+  // Pad and track clearance is measured exactly (RoutingGrid.isOccupied) and
+  // a gap equal to the rule is legal (KiCad and the route gate both accept
+  // it), so no buffer: one shut out designs laid out at the rule limit.
+  const clearanceBuffer = 0;
   const clearance = baseClearance + clearanceBuffer;
 
   // Via dimensions default to the net class (or board rules) so the same
@@ -628,6 +631,8 @@ export function autoroute(pcb: PCB, callerOptions: IAutorouteOptions): IAutorout
       requestedResolution: requestedGridResolution,
       defaultResolution: 0.1,
       pads: padSummaries,
+      traceWidth,
+      clearance: baseClearance,
     });
 
     if (gridConfig && typeof gridConfig.gridResolution === 'number' && gridConfig.gridResolution > 0) {
@@ -1043,12 +1048,7 @@ export function autoroute(pcb: PCB, callerOptions: IAutorouteOptions): IAutorout
   if (options.lengthMatch && routeDetails.length >= 2) {
     if (!LengthMatcher) {
       logger.warn(`[PCB] Length matching requested but @typecad/pcb-astar is not installed. Skipping length matching.`);
-      const autorouteResult = result as IAutorouteResult;
-      autorouteResult.success = overallSuccess;
-      autorouteResult.routeCount = routeDetails.length;
-      autorouteResult.completedCount = successCount;
-      autorouteResult.routeDetails = routeDetails;
-      return autorouteResult;
+      return finalizeResult(result, routeDetails);
     }
 
     debugLog(options.debug, chalk.blue(`[PCB] Applying length matching to ${routeDetails.length} routes`));
@@ -1095,11 +1095,24 @@ export function autoroute(pcb: PCB, callerOptions: IAutorouteOptions): IAutorout
   }
 
   // ── 24. Return result ────────────────────────────────────────────────
-  const autorouteResult = result as IAutorouteResult;
-  autorouteResult.success = overallSuccess;
-  autorouteResult.routeCount = routeDetails.length;
-  autorouteResult.completedCount = successCount;
-  autorouteResult.routeDetails = routeDetails;
   PadResolver.clearParseCache();
+  return finalizeResult(result, routeDetails);
+}
+
+/**
+ * Success and counts from the FINAL route list: provided routes are appended
+ * after the main loop (§22) and may themselves be failures, so a flag
+ * computed before them reported success for an incomplete net.
+ */
+function finalizeResult(
+  result: TrackBuilder[],
+  routeDetails: import('./pcb_interfaces.js').IRouteMetadata[],
+): IAutorouteResult {
+  const autorouteResult = result as IAutorouteResult;
+  const completed = routeDetails.filter((d) => d.success).length;
+  autorouteResult.success = routeDetails.length > 0 && completed === routeDetails.length;
+  autorouteResult.routeCount = routeDetails.length;
+  autorouteResult.completedCount = completed;
+  autorouteResult.routeDetails = routeDetails;
   return autorouteResult;
 }

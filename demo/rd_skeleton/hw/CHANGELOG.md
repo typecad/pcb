@@ -1,5 +1,14 @@
 # rd-skeleton-hw
 
+## 1.0.1-alpha.6
+
+### Patch Changes
+
+- Updated dependencies [eea53a8]
+- Updated dependencies [eea53a8]
+- Updated dependencies [eea53a8]
+  - @typecad/pcb@1.0.0-alpha.13
+
 ## 1.0.1-alpha.5
 
 ### Patch Changes

@@ -476,12 +476,12 @@ function applyNoncePolicy(html) {
  * untouched (injected: false) — the viewer still works, it just cross-probes
  * nothing.
  */
-function injectProbeClient(html, components, nets = [], boardMtimeMs) {
+function injectProbeClient(html, components, nets = [], boardId) {
     if (html.indexOf('<head>') === -1 || html.lastIndexOf('</body>') === -1)
         return { html, injected: false };
     // the board identity this page renders — the apply bridge reports it
     // back so the host can refuse edits made against a superseded board
-    const boardTag = boardMtimeMs !== undefined ? `<meta name="tc-viewer-board" content="${boardMtimeMs}">` : '';
+    const boardTag = boardId ? `<meta name="tc-viewer-board" content="${boardId}">` : '';
     const headClose = html.indexOf('</head>');
     const stamped = boardTag && headClose !== -1 ? html.slice(0, headClose) + boardTag + html.slice(headClose) : html;
     // offsets MUST be recomputed on `stamped` — the meta insertion shifts

@@ -1,0 +1,24 @@
+Title: * ngspice netlist for default_demo
+Date: Fri Nov 20 19:58:24  2026
+Command: ngspice-44.2, Build Jan 11 2025   14:28:27
+Plotname: Operating Point
+Flags: real
+No. Variables: 7
+No. Points: 1
+Variables:
+	0	r1:power	power
+	1	v(+batt)	voltage
+	2	i(d1)	current
+	3	d1:power	power
+	4	v(led_a)	voltage
+	5	i(r1)	current
+	6	i(v1)	current
+Values:
+ 0	1.066629492894990e-02
+	3.000000000000000e+00
+	8.432594091211831e-03
+	1.463148734468552e-02
+	1.735110886318227e+00
+	8.432594091211804e-03
+	-8.432594091211804e-03
+

@@ -73,6 +73,7 @@ const sourceRef_js_1 = require("./sourceRef.js");
 const viewer_js_1 = require("./viewer.js");
 const boardFile_js_1 = require("./boardFile.js");
 const syncState_js_1 = require("./syncState.js");
+const viewerApply_js_1 = require("./viewerApply.js");
 /** Identifiers only — skips numbers, operators, and property dots. */
 const WORD_LIKE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 /**
@@ -117,19 +118,31 @@ function activate(context) {
             return;
         }
         syncBar.show();
-        if (syncState_js_1.sync.building) {
-            syncBar.text = '$(circuit-board) typeCAD: building…';
+        if (syncState_js_1.sync.building || syncState_js_1.sync.absorbing) {
+            syncBar.text = syncState_js_1.sync.absorbing ? '$(circuit-board) typeCAD: importing board edits…' : '$(circuit-board) typeCAD: building…';
             return;
         }
+        if (syncState_js_1.sync.paused) {
+            syncBar.text = '$(warning) typeCAD: sync paused';
+            syncBar.tooltip = `typeCAD/pcb automatic board↔source sync is paused — ${syncState_js_1.sync.paused}. Click for the details in the typeCAD/pcb output.`;
+            syncBar.command = 'typecad-pcb.showSyncLog';
+            return;
+        }
+        syncBar.command = 'typecad-pcb.viewBoard';
         if (syncState_js_1.sync.lastError) {
             syncBar.text = '$(error) typeCAD: build failed';
             syncBar.tooltip = `typeCAD/pcb build failed — ${syncState_js_1.sync.lastError} (see the typeCAD/pcb output)`;
             return;
         }
-        const stale = (0, boardFile_js_1.boardStale)(folder);
+        // status display only — the memoized scan (invalidated by the source
+        // watcher and the save hook), not a directory walk per call
+        const stale = (0, boardFile_js_1.boardStale)(folder, { cached: true });
         syncBar.text = stale ? '$(circuit-board) typeCAD: syncing…' : '$(check) typeCAD';
         syncBar.tooltip = 'typeCAD/pcb source ↔ board sync — click to open the Board view';
     };
+    // the pipeline (viewer.ts) flips the paused state; the label follows
+    (0, syncState_js_1.onSyncChange)(syncLabel);
+    context.subscriptions.push(new vscode.Disposable(() => (0, syncState_js_1.onSyncChange)(null)));
     let autoBuildTimer;
     const scheduleAutoBuild = (delayMs = 2_000) => {
         if (autoBuildTimer)
@@ -140,24 +153,37 @@ function activate(context) {
             if (!folder)
                 return;
             // the apply pipeline builds itself; its own source writes land here
-            // too and must not double-build
+            // too and must not double-build. But a save made WHILE a build/apply
+            // runs must not be dropped either: re-check once the pipeline frees
+            // up. buildOwed() then decides — the apply's own writes predate its
+            // build start (no extra build); a mid-build save postdates it (build).
             if ((0, syncState_js_1.pipelineBusy)()) {
                 syncLabel();
+                scheduleAutoBuild(3_000);
                 return;
             }
-            if (!(0, boardFile_js_1.boardStale)(folder)) {
+            // uncached, and against the OLDEST board: this decides whether to
+            // build, so it must see the disk as it is now and every board of a
+            // multi-board project
+            const owed = (0, syncState_js_1.buildOwed)((0, boardFile_js_1.newestSourceMtime)(folder), (0, boardFile_js_1.oldestBoardMtime)(folder), syncState_js_1.sync.lastBuildStartedAt);
+            if (!owed) {
                 syncLabel();
                 return;
             }
             syncState_js_1.sync.building = true;
+            syncState_js_1.sync.lastBuildStartedAt = Date.now();
             syncLabel();
-            runQuery(folder, 'npm run build', 180_000)
+            runQuery(folder, viewerApply_js_1.BUILD_COMMAND, 180_000)
                 .then(() => {
                 syncState_js_1.sync.building = false;
                 syncState_js_1.sync.lastError = null;
                 // the board watcher refreshes the viewer; the label follows the
                 // board catching up on its next event — nudge it once here too
                 setTimeout(syncLabel, 3_000);
+                // a save that landed mid-build is newer than the build's start:
+                // build again (debounced) instead of leaving the board behind
+                if ((0, boardFile_js_1.newestSourceMtime)(folder) > syncState_js_1.sync.lastBuildStartedAt)
+                    scheduleAutoBuild();
             })
                 .catch((err) => {
                 syncState_js_1.sync.building = false;
@@ -188,9 +214,13 @@ function activate(context) {
         }
         const pattern = new vscode.RelativePattern(folder, '{src/**/*.ts,typecad.conf.ts}');
         sourceWatcher = vscode.workspace.createFileSystemWatcher(pattern);
-        sourceWatcher.onDidChange(() => scheduleAutoBuild());
-        sourceWatcher.onDidCreate(() => scheduleAutoBuild());
-        sourceWatcher.onDidDelete(() => scheduleAutoBuild());
+        const sourceEvent = () => {
+            (0, boardFile_js_1.invalidateSourceMtime)();
+            scheduleAutoBuild();
+        };
+        sourceWatcher.onDidChange(sourceEvent);
+        sourceWatcher.onDidCreate(sourceEvent);
+        sourceWatcher.onDidDelete(sourceEvent);
         syncLabel();
         // opening the workspace with sources newer than the board (the failed
         // apply + manual edit case): build once now, not on the next save
@@ -200,21 +230,15 @@ function activate(context) {
     context.subscriptions.push(new vscode.Disposable(rewatchSources));
     rewatchSources();
     vscode.workspace.onDidChangeWorkspaceFolders(() => rewatchSources(), undefined, context.subscriptions);
-    // an apply finishing (its source writes settled) leaves the board built
-    // by the apply itself — refresh the label when it clears
-    vscode.workspace.onDidChangeTextDocument((e) => {
-        const folder = resolveHwFolder();
-        if (folder && (e.document.uri.fsPath.startsWith(node_path_1.default.join(folder, 'src') + node_path_1.default.sep) || e.document.uri.fsPath === node_path_1.default.join(folder, 'typecad.conf.ts'))) {
-            // typing: the label flips to "syncing" only after the debounce
-            // fires a build; meanwhile just reflect the pending state quietly
-            if (!(0, syncState_js_1.pipelineBusy)())
-                syncLabel();
-        }
-    }, undefined, context.subscriptions);
+    // NOTE: no per-keystroke handler. Staleness is a disk question (source
+    // mtime vs board mtime) and typing does not change the disk; the label used
+    // to re-scan every source file on EVERY keystroke to learn nothing. It now
+    // updates from the source watcher / save hook below and from the pipeline.
     vscode.workspace.onDidSaveTextDocument(() => {
         const folder = resolveHwFolder();
         if (!folder)
             return;
+        (0, boardFile_js_1.invalidateSourceMtime)();
         syncLabel();
     }, undefined, context.subscriptions);
     // Reload/window-reopen restores a previously open Board panel instead of
@@ -285,7 +309,7 @@ function activate(context) {
             ];
         },
     }));
-    context.subscriptions.push(vscode.commands.registerCommand('typecad-pcb.viewBoard', () => viewer.show()), 
+    context.subscriptions.push(vscode.commands.registerCommand('typecad-pcb.viewBoard', () => viewer.show()), vscode.commands.registerCommand('typecad-pcb.showSyncLog', () => output.show()), 
     // multi-board projects (mother/daughter, board/jig): pick which of the
     // manifest's boards the viewer shows — pages, gerbers dirs, and session
     // state are per board

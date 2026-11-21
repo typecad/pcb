@@ -50,7 +50,7 @@ export function pcbRoute(
     // Rip-up reroutes use the same pins; disable inside the thunk to avoid
     // recursion (the orchestrator re-invokes this exact route).
     const run = () => extractRouteNet(pcb, arg1, { ...options, ripup: false });
-    return logOutcome(arg1.name, withRipup(pcb, run, options, pins, `'${arg1.name}'`));
+    return logOutcome(arg1.name, withRipup(pcb, run, options, pins, `'${arg1.name}'`, arg1.name));
   }
   const opts = arg1 as IAutorouteOptions;
   const netLabel =
@@ -62,7 +62,7 @@ export function pcbRoute(
   ];
   logger.info(`⏳ Routing '${netLabel}'...`);
   const run = () => pcbAutoroute(pcb, state, { ...opts, ripup: false });
-  const result = withRipup(pcb, run, opts, pins, `'${netLabel}'`);
+  const result = withRipup(pcb, run, opts, pins, `'${netLabel}'`, opts.net);
   return logOutcome(netLabel, result);
 }
 

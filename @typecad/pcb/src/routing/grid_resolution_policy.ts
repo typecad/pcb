@@ -12,6 +12,10 @@ export interface GridConfigurationContext {
     /** Layers this pad appears on. Example: ['F.Cu', 'F.Mask'] */
     layers: string[];
   }[];
+  /** Trace width (mm) of the route being planned, when known. */
+  traceWidth?: number;
+  /** Clearance (mm) of the route being planned, when known. */
+  clearance?: number;
 }
 
 export interface GridConfigurationResult {
@@ -47,6 +51,23 @@ export function configureGridResolution(context: GridConfigurationContext): Grid
       gridResolution: 0.1,
       reason: `Fine-pitch pads detected (min ${minPadSize.toFixed(3)}mm); clamping grid to 0.1mm`,
     };
+  }
+
+  // Coarse geometry: when every feature is large (wide traces, wide
+  // clearance, big pads), a 0.1mm grid just multiplies the search space —
+  // 5mm traces on a 100mm board meant a 1000x1000 grid and minute-long
+  // searches that timed out. Use a quarter of the smallest feature, capped
+  // at 1mm. The caller widens the clearance buffer to cover the coarser
+  // rasterization (see autoroute §11).
+  if (!userSpecifiedGrid && !hasFinePitch && context.traceWidth && context.clearance) {
+    const smallest = Math.min(context.traceWidth, context.clearance, minPadSize);
+    const coarse = Math.min(1, Math.floor((smallest / 4) * 100) / 100);
+    if (coarse > context.requestedResolution + 1e-9) {
+      return {
+        gridResolution: coarse,
+        reason: `Coarse geometry (smallest feature ${smallest.toFixed(2)}mm); grid ${coarse}mm`,
+      };
+    }
   }
 
   return;

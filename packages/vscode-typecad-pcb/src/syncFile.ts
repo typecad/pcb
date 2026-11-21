@@ -455,7 +455,10 @@ export function planSyncEntryEdits(
     ...(needArt ? [SYNC_ART_NAME] : []),
   ];
   const canonicalImport = `import { ${importNames.join(', ')} } from '${sidecarModule}';`;
-  const IMPORT_ANY = /import\s*\{[^}]*\}\s*from\s*['"][^'"]*['"]\s*;?/g;
+  // [ \t]* not \s* before the optional `;`: a semicolon-less import must not
+  // swallow the newlines after it, or the sidecar import is inserted after
+  // the blank line and glued onto the next statement
+  const IMPORT_ANY = /import\s*\{[^}]*\}\s*from\s*['"][^'"]*['"][ \t]*;?/g;
   const oursRe = new RegExp(`['"][^'"]*_sync(?:\\.[A-Za-z0-9_$.-]+)?(?:\\.js)?['"]`);
   let ours: RegExpExecArray | null = null;
   let last: RegExpExecArray | null = null;
@@ -525,4 +528,26 @@ export function planSyncEntryEdits(
   }
 
   return { edits, receiver: create ? receiver : null };
+}
+
+/**
+ * Whether the entry file references the sidecar at all: an uncommented
+ * import from the _sync module OR a syncBoard(...) call. With neither, the
+ * sidecar is dead text: its placements never reached the board, so it must
+ * not be treated as the parts' current positions. Half-wired entries (one
+ * without the other) count as wired — the wiring planner repairs those.
+ */
+export function entryWiresSync(entryText: string): boolean {
+  const shadow = structuralShadow(entryText);
+  // [ \t]* not \s* before the optional `;`: a semicolon-less import must not
+  // swallow the newlines after it, or the sidecar import is inserted after
+  // the blank line and glued onto the next statement
+  const IMPORT_ANY = /import\s*\{[^}]*\}\s*from\s*['"][^'"]*['"][ \t]*;?/g;
+  const oursRe = /['"][^'"]*_sync(?:\.[A-Za-z0-9_$.-]+)?(?:\.js)?['"]/;
+  let imported = false;
+  for (let m: RegExpExecArray | null; (m = IMPORT_ANY.exec(shadow)) !== null; ) {
+    const real = entryText.slice(m.index, m.index + m[0].length);
+    if (oursRe.test(real) && new RegExp(`\\b${SYNC_FUNCTION_NAME}\\b`).test(real)) imported = true;
+  }
+  return imported || new RegExp(`\\b${SYNC_FUNCTION_NAME}\\s*\\(`).test(shadow.replace(IMPORT_ANY, ''));
 }

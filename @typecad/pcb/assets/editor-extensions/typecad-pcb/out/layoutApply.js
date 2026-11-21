@@ -16,6 +16,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.sidecarPartsVars = sidecarPartsVars;
 exports.planLayoutApply = planLayoutApply;
 const layoutEdits_js_1 = require("./layoutEdits.js");
 const routeEdits_js_1 = require("./routeEdits.js");
@@ -83,6 +84,17 @@ function planImportNamesEdit(text, add, remove) {
     for (const a of pendingAdd)
         unresolved.push(a.name);
     return { edits, unresolved };
+}
+/** Every `parts.<var>` the sidecar's code references (comment lines skipped). */
+function sidecarPartsVars(syncText) {
+    const code = syncText
+        .split(/\r?\n/)
+        .filter((line) => !/^\s*\/\//.test(line))
+        .join('\n');
+    const vars = new Set();
+    for (const m of code.matchAll(/(?<![\w$.])parts\.([A-Za-z_$][\w$]*)/g))
+        vars.add(m[1]);
+    return [...vars];
 }
 /**
  * Plan the whole apply across the project's source files. `files` order is
@@ -157,7 +169,20 @@ function planLayoutApply(files, input) {
         // the sidecar's module name follows the board on multi-board projects
         // (_sync.<stem>.ts) — the import line written into the entry must match
         const stemMatch = syncUri ? /^_sync\.(.+)\.ts$/.exec(node_path_1.default.basename(syncUri.split(/[\/]/).pop() ?? '')) : null;
-        const plan = (0, syncFile_js_1.planSyncEntryEdits)(entryText(), [...syncPartsVars], needTracks, stemMatch?.[1], needArt);
+        // the call's parts map is rewritten WHOLESALE, so it must name every
+        // part the sidecar references — not just the ones this apply touched.
+        // A route-only apply once rewrote `{ battery, r1 }` to `{}` and the
+        // build died on `parts.battery.pcb` (undefined). Read from the CURRENT
+        // planned sidecar text, so parts a stage-0 delete removed drop out.
+        const syncText = textOf.get(syncUri) ?? '';
+        const vars = new Set([...syncPartsVars, ...sidecarPartsVars(syncText)]);
+        // the import line is rewritten wholesale too: keep syncTracks/syncArt
+        // whenever the sidecar still collects into them or the entry's create()
+        // already spreads them. A label-only apply once rewrote the import to
+        // `{ syncBoard }` while create() kept `...syncTracks` — ReferenceError.
+        const keepTracks = /\bsyncTracks\.push\(/.test(syncText) || /\.\.\.\s*syncTracks\b/.test(entryText());
+        const keepArt = /\bsyncArt\.push\(/.test(syncText) || /\.\.\.\s*syncArt\b/.test(entryText());
+        const plan = (0, syncFile_js_1.planSyncEntryEdits)(entryText(), [...vars], needTracks || keepTracks, stemMatch?.[1], needArt || keepArt);
         if (!plan.receiver) {
             skipped.push('_sync.ts wiring needs a typecad.create() call in the entry file — nothing was written there');
             return { ok: false, edits: [] };
@@ -178,6 +203,10 @@ function planLayoutApply(files, input) {
             if (found)
                 break;
         }
+        // no literal: the part has not moved in source, so the board's position
+        // is exactly where the rebuilt part will sit
+        if (!found)
+            found = input.boardPlacementOf?.(ref) ?? null;
         placementCache.set(ref, found);
         return found;
     };
@@ -203,6 +232,25 @@ function planLayoutApply(files, input) {
             touched.add(b.uri);
         }
     };
+    // -- orphaned sidecar: a _sync.ts the entry file never imports/calls is
+    // dead text (an earlier apply that failed mid-way can leave one behind).
+    // Its parts.<var>.pcb lines never reached the board, so rewriting them by
+    // the move delta lands on stale positions AND never wires the entry —
+    // the moves silently go missing from the rebuilt board. Reset it to the
+    // empty scaffold so every edit takes the create-and-wire path. --
+    if (syncUri &&
+        entryUri &&
+        syncFileUsable &&
+        (0, syncFile_js_1.isSyncFileText)(textOf.get(syncUri)) &&
+        !(0, syncFile_js_1.entryWiresSync)(entryText()) &&
+        (0, syncFile_js_1.planSyncEntryEdits)(entryText(), [], false).receiver !== null) {
+        const cur = textOf.get(syncUri);
+        const fresh = (0, syncFile_js_1.renderSyncFile)({});
+        if (cur.replace(/\r\n/g, '\n') !== fresh) {
+            commit([{ uri: syncUri, edits: [{ start: 0, end: cur.length, line: fresh }] }]);
+            syncSummary.created = true;
+        }
+    }
     // -- stage 0: part deletions — a part deleted in the view leaves source
     // FIRST, so every later stage plans against the post-deletion texts. The
     // removal is the shared component-delete grammar (declaration, overrides,
@@ -213,7 +261,6 @@ function planLayoutApply(files, input) {
     // loudly — a dangling reference breaks the build. --
     const deletedRefs = new Set((input.partDeletes ?? []).map((r) => r.trim()).filter((r) => r !== ''));
     if (deletedRefs.size > 0) {
-        const batch = [];
         for (const ref of deletedRefs) {
             const variable = input.variableOf(ref);
             if (!variable) {
@@ -241,13 +288,9 @@ function planLayoutApply(files, input) {
                 skipped.push(`${ref} (${variable} is still referenced after removal — nothing deleted)`);
                 continue;
             }
-            for (const p of perFile) {
-                if (p.edits.length > 0)
-                    batch.push({ uri: p.uri, edits: p.edits });
-            }
+            commit(perFile.map((p) => ({ uri: p.uri, edits: p.edits })));
             counts.partDeletes++;
         }
-        commit(batch);
         // a deleted part has no final placement to carry
         for (let i = moves.length - 1; i >= 0; i--) {
             if (deletedRefs.has(moves[i].ref))
@@ -273,6 +316,8 @@ function planLayoutApply(files, input) {
                 continue;
             const plan = (0, layoutEdits_js_1.planPlacementEdits)(textOf.get(file.uri), pending, input.variableOf, {
                 deferInsert: (move) => canSyncRef(move.ref),
+                // a no-literal move builds on the part's current angle/side
+                baseOf: (ref) => input.boardPlacementOf?.(ref),
             });
             for (const d of plan.deferred ?? [])
                 deferredByRef.set(d.ref, d);
@@ -343,6 +388,8 @@ function planLayoutApply(files, input) {
                         { uri: entryUri, edits: wiring.edits },
                     ]);
                     counts.moves += syncPlacements.length;
+                    for (const p of syncPlacements)
+                        appliedRefs.add(p.ref);
                     syncSummary.placements += syncPlacements.length;
                     placementCache.clear(); // parts that just gained a literal resolve now
                 }
@@ -418,6 +465,40 @@ function planLayoutApply(files, input) {
             }
             pushEdits(file.uri, plan.edits);
         }
+        // fallback for value/rename edits on parts with no `reference:` literal
+        // (subclass factories, prefix-derived references — every part the
+        // create scaffold writes): the constructor is found by its declaring
+        // variable instead. Labels for the same parts take the door below.
+        const fieldApplied = new Set();
+        {
+            const fieldPending = specs.filter((sp) => (sp.value !== undefined || !!sp.newRef) &&
+                !doneRefs.has(sp.ref) &&
+                !skipped.some((s) => s.startsWith(`${sp.ref} (`)));
+            for (const file of files) {
+                const pending = fieldPending
+                    .filter((sp) => !fieldApplied.has(sp.ref))
+                    .map((sp) => ({ ref: sp.ref, variable: input.variableOf(sp.ref) ?? '', value: sp.value, newRef: sp.newRef }))
+                    .filter((sp) => sp.variable !== '');
+                if (pending.length === 0)
+                    break;
+                const plan = (0, layoutEdits_js_1.planConstructorFieldEdits)(textOf.get(file.uri), pending, input.allRefs);
+                for (const sk of plan.skipped) {
+                    skipped.push(`${sk.ref} (${sk.reason})`);
+                    fieldApplied.add(sk.ref);
+                }
+                for (const edit of plan.edits) {
+                    const spec = specByRef.get(edit.ref);
+                    if (!spec)
+                        continue;
+                    fieldApplied.add(spec.ref);
+                    if (spec.value !== undefined)
+                        counts.values++;
+                    if (spec.newRef)
+                        counts.renames++;
+                }
+                pushEdits(file.uri, plan.edits);
+            }
+        }
         // fallback for label-only specs with no constructor literal to rewrite:
         // subclass factories (`new LED({…})`) and prefix-derived references
         // never carry `reference: 'D1'` — their layout lands as a public-field
@@ -433,7 +514,7 @@ function planLayoutApply(files, input) {
                     deferInsert: (ref) => canSyncRef(ref),
                 });
                 for (const edit of plan.edits) {
-                    const spec = pending.find((sp) => edit.ref === `${sp.ref} ${sp.label.kind === 'fab' ? 'fab' : `${sp.label.kind}Layout`}`);
+                    const spec = pending.find((sp) => edit.ref === `${sp.ref} ${sp.label.kind}Layout`);
                     if (!spec)
                         continue;
                     doneRefs.add(spec.ref);
@@ -456,6 +537,7 @@ function planLayoutApply(files, input) {
         }
         for (const sp of specs) {
             if (!doneRefs.has(sp.ref) &&
+                !(fieldApplied.has(sp.ref) && !sp.label) &&
                 !skipped.some((s) => s.startsWith(`${sp.ref} (`)) &&
                 !syncLabels.some((l) => l.ref === sp.ref))
                 skipped.push(`${sp.ref} (no Component constructor literal found)`);
@@ -505,6 +587,17 @@ function planLayoutApply(files, input) {
             for (const l of syncLabels)
                 skipped.push(`${l.ref} (_sync.ts is not a typeCAD sync file)`);
         }
+    }
+    // Apply additional labels in separate passes so each pass plans against
+    // the text produced by the previous label on the same component.
+    const lastLabelByRef = new Map((input.labels ?? []).map((label) => [label.ref, label]));
+    const additionalLabels = (input.labels ?? []).filter((label) => lastLabelByRef.get(label.ref) !== label);
+    for (const label of additionalLabels) {
+        const extra = planLayoutApply(files.map((file) => ({ ...file, text: textOf.get(file.uri) })), { ...input, moves: [], values: [], renames: [], labels: [label], routes: [], deletes: [], partDeletes: [], zones: [], images: [], outline: undefined, zoneEdits: [], zoneDeletes: [], imageEdits: [], imageDeletes: [], texts: [], textDeletes: [], classEdits: [] });
+        for (const stage of extra.stages)
+            commit(stage);
+        counts.labels += extra.counts.labels;
+        skipped.push(...extra.skipped);
     }
     // -- stage 3: silk/fab .text({ … }) literals, matched per file --
     // deletions FIRST: a deleted text's statement leaves the source before

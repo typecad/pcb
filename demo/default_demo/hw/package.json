@@ -1,0 +1,29 @@
+{
+  "name": "default-demo-hw",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "build": "typecad-pcb build",
+    "simulate": "typecad-pcb simulate",
+    "add_component": "typecad-pcb add component",
+    "add_package": "typecad-pcb add package",
+    "kicad-search": "typecad-pcb search",
+    "kicad_sync": "typecad-pcb import ./build/default_demo.kicad_pcb --watch --auto",
+    "open_board": "npx open-cli ./build/default_demo.kicad_pcb",
+    "diff": "typecad-pcb diff HEAD ./build/default_demo.kicad_pcb",
+    "docs": "typecad-pcb doc docs\\default_demo.md build\\default_demo.kicad_pcb"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "dependencies": {
+    "@typecad/pcb": "1.0.0-alpha.13",
+    "tsx": "^4.23.15"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3"
+  },
+  "private": true
+}

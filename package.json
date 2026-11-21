@@ -20,7 +20,8 @@
     "packages/*",
     "demo/hw",
     "demo/spice/hw",
-    "demo/rd_skeleton/hw"
+    "demo/rd_skeleton/hw",
+    "demo/default_demo/hw"
   ],
   "devDependencies": {
     "@changesets/changelog-github": "^1.0.0",

@@ -239,7 +239,11 @@ export function routePairwise(
       } else {
         // Convert path to TrackBuilder with net info
         const shouldDeferStaging = options.deferStaging;
-        const track = pathToTrackBuilder(pcb, path, traceWidth, options, netName, freeViaLocations, shouldDeferStaging);
+        // stage under THIS pair's net — bus pairs each carry their own net,
+        // and tracks labelled with pair 0's net read as a short in KiCad and
+        // let pair 0 route straight over them later
+        const pairNet = typeof pairNetName === 'string' ? pairNetName : netName;
+        const track = pathToTrackBuilder(pcb, path, traceWidth, options, pairNet, freeViaLocations, shouldDeferStaging);
         // Map the created builder to this route index
         out.routeTrackBuilders[i] = track ? [track] : [];
       }
@@ -257,8 +261,25 @@ export function routePairwise(
           const prevNode = path.nodes[j - 1];
           const currNode = path.nodes[j];
 
-          // Skip if this is a via (same position, different layer)
+          // A via (same position, different layer) must block later pairs
+          // too: the grid was built before this call, so without this a
+          // later pair could run a track straight through it
           if (prevNode.x === currNode.x && prevNode.y === currNode.y) {
+            const viaSize = options.viaSize ?? 0.6;
+            addObstacleToState({
+              type: 'pad',
+              bounds: {
+                minX: currNode.x - viaSize / 2,
+                maxX: currNode.x + viaSize / 2,
+                minY: currNode.y - viaSize / 2,
+                maxY: currNode.y + viaSize / 2,
+              },
+              layers: ['*.Cu'], // a through via's barrel occupies every copper layer
+              net: typeof pairNetName === 'string' ? pairNetName : netName,
+              clearance,
+              label: 'via',
+              padShape: { shape: 'circle', center: { x: currNode.x, y: currNode.y }, width: viaSize, height: viaSize, rotation: 0 },
+            });
             continue;
           }
 

@@ -25,6 +25,12 @@ class BoardDataService {
         this.detailCache = new Map();
         this.detailInFlight = new Map();
     }
+    setBoard(stem) {
+        if (this.boardStem === stem)
+            return;
+        this.boardStem = stem;
+        this.invalidate();
+    }
     /** Point the service at a hw folder; switching folders drops the cache. */
     setFolder(cwd) {
         // Windows resolves the same folder under different casings (drive letter,
@@ -141,7 +147,10 @@ class BoardDataService {
         if (!this.cwd)
             throw new query_js_1.QueryError('No typeCAD project folder (typecad.conf.ts) found in this workspace');
         try {
-            return await this.run(this.cwd, command, this.timeoutMs);
+            const board = this.boardStem;
+            if (board && !/^[A-Za-z0-9_.-]+$/.test(board))
+                throw new Error('Unsupported board name for query');
+            return await this.run(this.cwd, board ? `${command} --board ${board}` : command, this.timeoutMs);
         }
         catch (err) {
             const text = err instanceof Error ? err.message : String(err);

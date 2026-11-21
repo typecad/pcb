@@ -11,22 +11,28 @@ itself.
 |---|---|---|---|
 | **smoke** | 9 bundled PCBWorld fixtures | `npm test` (`smoke.test.ts`, ~45 s) | native DRC, plus kicad-cli when installed |
 | **fixtures** | all 24 bundled fixtures, including known router gaps | `PCBWORLD_SET=fixtures npm run bench:pcbworld` | both |
-| **d2a** | D2-A test split, 128 synthetic 2-layer boards | after `fetch.sh` | both |
-| **d1-g\<N\>** | D1-shaped 1-layer grid boards, 128 per grid | after `fetch.sh --d1 "…"` | both |
+| **d2a** | D2-A test split, 128 synthetic 2-layer boards | after `bench:pcbworld:fetch` | both |
+| **d1-g\<N\>** | D1-shaped 1-layer grid boards, 128 per grid | after `bench:pcbworld:fetch -- --d1 …` | both |
 | **d3a/b/c** | real PCBench boards, 99 / 10 / 10 test | after PCBWorld's own D3 prep | both |
 
 All commands run from `@typecad/pcb/` (or add `-w @typecad/pcb` at the repo root).
 
 ```bash
-# 1. generate the synthetic sets (clones PCBWorld at a pinned commit, runs its generator)
-bash bench/pcbworld/fetch.sh --d1 "10 100 500"
+# 1. generate the synthetic sets: clones PCBWorld at a pinned commit and runs its
+#    generator. Plain Node, so it works in PowerShell, cmd and bash alike. Needs
+#    git and Python 3.9+ (set PYTHON to choose one); --dry-run prints the commands.
+npm run bench:pcbworld:fetch -- --d1 10,100,500
 
-# 2. route + score
+# 2. route + score (bash syntax; PowerShell below)
 PCBWORLD_SET=d2a npm run bench:pcbworld
 PCBWORLD_SET=d1-g100 PCBWORLD_LIMIT=20 npm run bench:pcbworld
 ```
 
-On PowerShell, set variables first: `$env:PCBWORLD_SET='d2a'; npm run bench:pcbworld`.
+On PowerShell, set variables first:
+
+```powershell
+$env:PCBWORLD_SET='d2a'; npm run bench:pcbworld
+```
 
 Each run writes `results/<set>/<timestamp>/`:
 - `boards/*.kicad_pcb` + `.kicad_pro`: the routed boards. Open them in KiCad.
@@ -122,24 +128,23 @@ slightly from the paper.
   fixture outlines (rect/poly/circle and line+arc chains) and cutouts; disagreements still
   show up per board as `checkerDisagree`.
 
-**Router findings (fixtures set)**
-- Fixed in this round, each with a regression test:
-  - The router did not know the board edge: outlines were only staged at route time, so
-    copper ignored the copper-to-edge rule and milled cutouts (14/22 clean before; all 11
-    DRC errors were edge clearance).
-  - Pads sharing a number in one footprint (connector shields) were one pin; only the first
-    was routed. Every repeat is now a terminal.
-  - An SMD pad on B.Cu inside a front-side footprint was written to F.Cu
-    (`layer_sentinels_board`). Placement now flips layers like KiCad: front as authored,
-    back swaps F/B.
-  - `PadResolver` cached footprints by name, so same-named footprints shared pad geometry.
-  - A placed part from one `PCB` acted as an obstacle in another board's routes in the same
-    process.
-- Open:
-  - `diagonal_cross_board`'s 4 errors are its *own* pads touching the edge. The bench doesn't
-    yet subtract violations already present on the bare board.
-  - Long searches on coarse grids: `jumanji_grid10_*` (5 mm traces) routes 1-2 of 5 nets in
-    3-5 min, and `corner_obstacle_board` (3 pads) fails after ~20 s, both on time budget.
+**Router status:** 23/24 fixtures clean. 100% clean on 128 random PCBWorld-shaped boards (`synth.mjs`: D2-A, D1 grid 10/50/100) under kicad-cli. The one fixture failure, `zero_anchor_board`, is the bench gap above (a net-tied `gr_circle` the router is never given). Fixes behind that, each covered by tests (`routing_exact_clearance`, `board_edge_routing`, `routing_pad_regressions`, the smoke tier):
+- Exact clearance against pad and track geometry, checked per search move. No hidden buffer, so designs at the rule limit route.
+- An exact board-edge keepout mask. Cutouts block, and pads right at the edge rule stay reachable.
+- The track builder no longer draws a corner-cutting chord after skipping a run that lies on same-net copper. Merging requires true collinearity.
+- A large pad no longer inflates every probe's scan radius (this was causing time-outs).
+- MST success requires one connected tree, with a repair pass when an edge fails.
+- Via clearance is no longer doubled. Rip-up re-routes blockers with their own options and tries the other order.
+- Coarse grids for coarse geometry; geometric search-window growth.
+- Pads with duplicate numbers each get routed; back-side pads are flipped once.
+- Footprint caches keyed by content; parts no longer leak between boards.
+
+Open: the fine-pitch terminal skip in the route gate (`route_validation.ts`) is still broad. Zones are routable by design (typecad pours them around routed copper); imported pre-filled zones are not re-poured by the DRC step.
+
+### Random boards
+
+`node bench/pcbworld/synth.mjs --family d2a|d1-g<N> --n 40 --seed 7` writes boards drawn from PCBWorld's documented distributions to `data/synth/<family>/`. They are this repo's own generator, not the paper's instances. Route them with `PCBWORLD_SET=synth-<family>`.
+
 ## Data and licensing
 
 - `fixtures/` holds PCBWorld test fixtures, redistributed under PCBWorld's BSD-3-Clause license
@@ -147,4 +152,4 @@ slightly from the paper.
 - `jumanji_grid*` are renamed copies of `tests/fixtures/jumanji/synth_1L_grid*_5net_v15/test/`.
 - Generated data goes to `data/` and results to `results/`. Both are gitignored.
 - D3 boards keep their upstream PCBench licenses and are never copied into this repo.
-- PCBWorld commit pinned in `fetch.sh`: `57738250415db0d409f44aca36dd43af25432971`.
+- PCBWorld commit pinned in `fetch.mjs`: `57738250415db0d409f44aca36dd43af25432971`.

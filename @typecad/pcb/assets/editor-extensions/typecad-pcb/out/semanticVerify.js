@@ -11,7 +11,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.verifyBoardSemantics = verifyBoardSemantics;
 function boardSegments(board) {
     const out = [];
-    for (const m of board.matchAll(/\(segment \(start (-?[\d.]+) (-?[\d.]+)\) \(end (-?[\d.]+) (-?[\d.]+)\)[^\n]*?\(layer "([^"]+)"\)(?:[^\n]*?\(net (\d+)\))?/g)) {
+    for (const m of board.matchAll(/\(segment \(start (-?[\d.]+) (-?[\d.]+)\) \(end (-?[\d.]+) (-?[\d.]+)\)[^\n]*?\(layer "([^"]+)"\)(?:[^\n]*?\(net (\d+)(?: "[^"]*")?\))?/g)) {
         out.push({
             x1: parseFloat(m[1]),
             y1: parseFloat(m[2]),
@@ -19,6 +19,7 @@ function boardSegments(board) {
             y2: parseFloat(m[4]),
             layer: m[5],
             net: m[6] !== undefined ? Number(m[6]) : null,
+            width: Number(/\(width (-?[\d.]+)\)/.exec(m[0])?.[1] ?? NaN),
         });
     }
     return out;
@@ -43,13 +44,16 @@ function boardPlacements(board) {
         // typeCAD's provenance `(property "Code" "typecad:v1:…" (at 0 0 0) …)`
         // precedes the footprint's own placement, so the naive first-(at) read
         // the property's 0,0 and every move verified as "sits at 0.00,0.00".
-        const at = /\(at (-?[\d.]+) (-?[\d.]+)/.exec(stripPropertyForms(block));
+        const own = stripPropertyForms(block);
+        const at = /\(at (-?[\d.]+) (-?[\d.]+)/.exec(own);
         const ref = /\(property "Reference" "([^"]+)"/.exec(block);
         if (!at || !ref)
             continue;
-        // the footprint's own layer: the first (layer "…") in the block — a
-        // bare "B.Cu"/"F.Cu" (the fp_ prefixes appear on child items only)
-        const layer = /\(layer "([^"]+)"/.exec(block);
+        // the footprint's own layer: the first (layer "…") OUTSIDE the property
+        // forms — the same trap as the placement above: the Code property's
+        // `(layer "F.Fab")` precedes it, so every part flipped to the back
+        // verified as "sits on the front side"
+        const layer = /\(layer "([^"]+)"/.exec(own);
         const side = layer && /B\.Cu$/.test(layer[1]) ? 'back' : 'front';
         out.set(ref[1], { x: parseFloat(at[1]), y: parseFloat(at[2]), side });
     }
@@ -239,6 +243,48 @@ function boardOutlineRect(board) {
         return null;
     return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
 }
+/**
+ * Is the intended segment a→b fully covered by board segments on its layer?
+ * A board segment counts when it runs along a→b's line (both ends within the
+ * builder's own collinearity tolerance: half the wider width + 0.01mm) — the
+ * same test subtractOverlapsFromSegment uses to drop the covered portion.
+ */
+function segCovered(segs, a, b, layer, w) {
+    const vx = b.x - a.x;
+    const vy = b.y - a.y;
+    const len2 = vx * vx + vy * vy;
+    if (len2 < 1e-12)
+        return false;
+    const len = Math.sqrt(len2);
+    const covers = [];
+    for (const s of segs) {
+        if (layer && s.layer !== layer)
+            continue;
+        const tol = Math.max(s.width ?? 0, w ?? 0) / 2 + 0.01 + TOL;
+        const off = (x, y) => Math.abs((x - a.x) * vy - (y - a.y) * vx) / len;
+        if (off(s.x1, s.y1) > tol || off(s.x2, s.y2) > tol)
+            continue;
+        const proj = (x, y) => ((x - a.x) * vx + (y - a.y) * vy) / len2;
+        let t1 = proj(s.x1, s.y1);
+        let t2 = proj(s.x2, s.y2);
+        if (t1 > t2)
+            [t1, t2] = [t2, t1];
+        if (t2 <= 0 || t1 >= 1)
+            continue;
+        covers.push([t1, t2]);
+    }
+    covers.sort((p, q) => p[0] - q[0]);
+    const gap = TOL / len; // endpoint rounding slack, in t units
+    let reach = 0;
+    for (const [t1, t2] of covers) {
+        if (t1 > reach + gap)
+            return false;
+        reach = Math.max(reach, t2);
+        if (reach >= 1 - gap)
+            return true;
+    }
+    return reach >= 1 - gap;
+}
 const fmt = (n) => n.toFixed(2);
 /**
  * Verify the rebuilt board against what an apply intended. Every check is
@@ -250,14 +296,30 @@ function verifyBoardSemantics(board, check) {
     let checked = 0;
     const segs = boardSegments(board);
     const vias = boardVias(board);
+    const netIds = new Map();
+    for (const m of board.matchAll(/\(net (\d+) "([^"]+)"\)/g))
+        netIds.set(m[2], Number(m[1]));
     for (const route of check.routes) {
         for (const piece of route.pieces) {
             for (let i = 1; i < piece.pts.length; i++) {
                 const a = piece.pts[i - 1];
                 const b = piece.pts[i];
                 checked++;
-                if (!segMatches(segs, a.x, a.y, b.x, b.y, piece.layer))
-                    misses.push(`route segment ${fmt(a.x)},${fmt(a.y)} → ${fmt(b.x)},${fmt(b.y)} on ${piece.layer}${route.net ? ` (net ${route.net})` : ''} is missing from the rebuilt board`);
+                const netId = route.net ? netIds.get(route.net) : undefined;
+                const matching = segs.filter((s) => (netId === undefined || s.net === netId) &&
+                    ((piece.w ?? route.w) === undefined || (s.width !== null && near(s.width, (piece.w ?? route.w)))));
+                if (segMatches(matching, a.x, a.y, b.x, b.y, piece.layer))
+                    continue;
+                // The board model trims a new segment wherever same-net copper on the
+                // layer already covers it (subtractOverlapsFromSegment) and drops it
+                // entirely when it lies on an existing track — a route that runs
+                // along or ties onto a trace builds correctly but leaves no exact
+                // segment behind. Accept full coverage by same-net copper, unless
+                // the exact segment IS there at another width (the width didn't land).
+                const sameNet = segs.filter((s) => netId === undefined || s.net === netId);
+                if (!segMatches(sameNet, a.x, a.y, b.x, b.y, piece.layer) && segCovered(sameNet, a, b, piece.layer, piece.w ?? route.w))
+                    continue;
+                misses.push(`route segment ${fmt(a.x)},${fmt(a.y)} → ${fmt(b.x)},${fmt(b.y)} on ${piece.layer}${route.net ? ` (net ${route.net})` : ''} is missing from the rebuilt board`);
             }
         }
         for (const v of route.vias) {

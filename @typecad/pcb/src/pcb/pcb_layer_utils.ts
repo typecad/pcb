@@ -80,19 +80,26 @@ export function transformSexprLayers(sexpr: SExpr, targetSide: 'front' | 'back' 
 
   const nodeType = sexpr[0];
 
+  // Pads are flipped by processFootprintItem, which maps every pad layer.
+  // Mapping them here too flipped them TWICE on back-side parts (F→B→F),
+  // which the old force-to-side mapping happened to hide.
+  if (Sym.isSym(nodeType) && nodeType.name === 'pad') return sexpr;
+
   // Handle (layer "LAYER_NAME")
   if (Sym.isSym(nodeType) && nodeType.name === 'layer' && sexpr.length > 1 && typeof sexpr[1] === 'string') {
     sexpr[1] = mapLayerToSide(sexpr[1], targetSide);
   }
-  // Handle (layers "L1 L2 L3")
-  else if (Sym.isSym(nodeType) && nodeType.name === 'layers' && sexpr.length > 1 && typeof sexpr[1] === 'string') {
-    const layersString = String(sexpr[1]);
-
-    const individualLayers = layersString.split(/\s+/).filter((layer) => layer.length > 0);
-
-    const mappedLayers = individualLayers.map((layer) => mapLayerToSide(layer, targetSide));
-
-    sexpr[1] = mappedLayers.join(' ');
+  // Handle (layers "L1" "L2" ...) — and the legacy single-string "L1 L2" form
+  else if (Sym.isSym(nodeType) && nodeType.name === 'layers') {
+    for (let i = 1; i < sexpr.length; i++) {
+      const v = sexpr[i];
+      if (typeof v !== 'string') continue;
+      sexpr[i] = v
+        .split(/\s+/)
+        .filter((layer) => layer.length > 0)
+        .map((layer) => mapLayerToSide(layer, targetSide))
+        .join(' ');
+    }
   }
 
   // Recursively process child nodes

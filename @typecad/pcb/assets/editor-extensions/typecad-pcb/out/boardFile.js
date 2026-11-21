@@ -4,16 +4,25 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.mtimeOf = mtimeOf;
+exports.boardIsBuildOutput = boardIsBuildOutput;
+exports.importLockHeld = importLockHeld;
+exports.boardIdentity = boardIdentity;
+exports.boardContentHash = boardContentHash;
 exports.listBoardFiles = listBoardFiles;
 exports.newestBoardFile = newestBoardFile;
 exports.entrySourceFile = entrySourceFile;
 exports.newestSourceMtime = newestSourceMtime;
+exports.oldestBoardMtime = oldestBoardMtime;
+exports.newestSourceMtimeCached = newestSourceMtimeCached;
+exports.invalidateSourceMtime = invalidateSourceMtime;
 exports.boardStale = boardStale;
 exports.projectToolchainVersion = projectToolchainVersion;
 exports.projectToolchainGeneratorMtime = projectToolchainGeneratorMtime;
 exports.pageGeneratorVersion = pageGeneratorVersion;
 // Board-file discovery, kept free of vscode imports so it stays unit-testable.
 const node_fs_1 = __importDefault(require("node:fs"));
+const node_crypto_1 = require("node:crypto");
+const node_os_1 = __importDefault(require("node:os"));
 const node_path_1 = __importDefault(require("node:path"));
 function mtimeOf(file) {
     try {
@@ -21,6 +30,107 @@ function mtimeOf(file) {
     }
     catch {
         return 0;
+    }
+}
+/**
+ * Is this board file byte-for-byte the output of the last build? The build
+ * records a sha256 of every board it writes in .typecad-board.json
+ * (`hashes`); a KiCad save (or any other out-of-band write) changes the
+ * bytes and breaks the match.
+ *
+ * true  — the build wrote exactly this file (drift against source is a
+ *         build bug, never something to absorb back into source)
+ * false — the file differs from what the build wrote (a real external edit)
+ * null  — unknown: no manifest / pre-hash toolchain / unreadable board.
+ *         Callers keep their legacy (mtime) behavior.
+ */
+function boardIsBuildOutput(board) {
+    const hash = boardContentHash(board);
+    if (!hash)
+        return null;
+    try {
+        const manifest = JSON.parse(node_fs_1.default.readFileSync(node_path_1.default.join(node_path_1.default.dirname(board), '.typecad-board.json'), 'utf8'));
+        const recorded = manifest.hashes?.[node_path_1.default.basename(board)];
+        if (typeof recorded !== 'string')
+            return null;
+        return recorded === hash;
+    }
+    catch {
+        return null;
+    }
+}
+/**
+ * Is another process (the KiCad sync terminal, a manual `import`) holding
+ * the project's import lock? Mirrors @typecad/pcb's kicad2typecad/safety.ts
+ * (sha1 of the resolved project root → a pid file in the temp dir; a dead
+ * pid is a stale lock). While one is held it OWNS board→source import: the
+ * viewer must not start a competing absorb (the importer would refuse it,
+ * and the viewer would burn its once-per-revision attempt on a no-op).
+ * Drive-letter case is tried both ways — the terminal's cwd and the
+ * workspace folder do not always agree on it on Windows.
+ */
+function importLockHeld(folder) {
+    const roots = new Set([node_path_1.default.resolve(folder)]);
+    const abs = node_path_1.default.resolve(folder);
+    if (/^[A-Za-z]:/.test(abs)) {
+        roots.add(abs[0].toLowerCase() + abs.slice(1));
+        roots.add(abs[0].toUpperCase() + abs.slice(1));
+    }
+    for (const root of roots) {
+        const key = (0, node_crypto_1.createHash)('sha1').update(root).digest('hex').slice(0, 12);
+        const lock = node_path_1.default.join(node_os_1.default.tmpdir(), `typecad-import-${key}.lock`);
+        try {
+            const pid = parseInt(node_fs_1.default.readFileSync(lock, 'utf8'), 10);
+            if (!Number.isFinite(pid) || pid === process.pid)
+                continue;
+            try {
+                process.kill(pid, 0);
+                return true;
+            }
+            catch {
+                /* stale lock */
+            }
+        }
+        catch {
+            /* no lock file */
+        }
+    }
+    return false;
+}
+const identityCache = new Map();
+/**
+ * A board's IDENTITY: a short digest of its bytes. Whether "the board
+ * changed" is a question about content — a touched/re-saved file with the
+ * same bytes is the same board (no re-render, no refused apply), and a
+ * rewrite that lands inside one coarse mtime tick is still a different one.
+ * (AGE questions — is the page newer than the board, is the DRC report
+ * older — stay on mtimes: they are about order, not identity.)
+ *
+ * Hashing a multi-MB board on every watcher event would be wasteful, so a
+ * result is reused while the file's mtime AND size are unchanged. Empty
+ * string when the file is unreadable (callers treat it as "unknown").
+ */
+function boardIdentity(board) {
+    try {
+        const st = node_fs_1.default.statSync(board);
+        const hit = identityCache.get(board);
+        if (hit && hit.mtimeMs === st.mtimeMs && hit.size === st.size)
+            return hit.id;
+        const id = (0, node_crypto_1.createHash)('sha256').update(node_fs_1.default.readFileSync(board)).digest('hex').slice(0, 16);
+        identityCache.set(board, { mtimeMs: st.mtimeMs, size: st.size, id });
+        return id;
+    }
+    catch {
+        return '';
+    }
+}
+/** sha256 of a file's bytes, or null when unreadable. */
+function boardContentHash(board) {
+    try {
+        return (0, node_crypto_1.createHash)('sha256').update(node_fs_1.default.readFileSync(board)).digest('hex');
+    }
+    catch {
+        return null;
     }
 }
 /**
@@ -146,16 +256,54 @@ function newestSourceMtime(folder) {
     return newest;
 }
 /**
- * Is the compiled board older than any source? True means a build is owed —
+ * The mtime of the OLDEST board the project's build produced — the one that
+ * decides whether a build is owed. A multi-board project (mother/daughter,
+ * board/jig) is built by one run that rewrites every board; judging
+ * staleness by the active board alone misses a build that died after
+ * writing it but before writing a sibling (the sibling is stale, the active
+ * board looks fine). Falls back to the single resolved board without a
+ * manifest; null when nothing is built.
+ */
+function oldestBoardMtime(folder) {
+    const boards = listBoardFiles(folder);
+    if (boards.length > 0)
+        return Math.min(...boards.map(mtimeOf));
+    const board = newestBoardFile(folder);
+    return board ? mtimeOf(board) : null;
+}
+let sourceMtimeCache = null;
+/**
+ * newestSourceMtime for callers that ask often (the status bar on every
+ * save/watch tick): a directory walk stat()s every source file, which is
+ * wasted work when nothing changed. Reused for `ttlMs` unless
+ * invalidateSourceMtime() ran (the source watcher and save hook call it, so
+ * a real edit is never hidden). Decisions that START A BUILD must use the
+ * uncached newestSourceMtime.
+ */
+function newestSourceMtimeCached(folder, ttlMs = 2_000) {
+    const now = Date.now();
+    if (sourceMtimeCache && sourceMtimeCache.folder === folder && now - sourceMtimeCache.at < ttlMs) {
+        return sourceMtimeCache.value;
+    }
+    const value = newestSourceMtime(folder);
+    sourceMtimeCache = { folder, value, at: now };
+    return value;
+}
+function invalidateSourceMtime() {
+    sourceMtimeCache = null;
+}
+/**
+ * Is any compiled board older than a source? True means a build is owed —
  * the board on disk (and therefore the Board viewer) describes a previous
  * revision of the sources. Null when there is no board yet (always owed,
  * but the caller decides whether that is a build or a "run create first").
+ * `cached` uses the memoized source scan (status display only).
  */
-function boardStale(folder) {
-    const board = newestBoardFile(folder);
-    if (!board)
+function boardStale(folder, opts = {}) {
+    const oldest = oldestBoardMtime(folder);
+    if (oldest === null)
         return null;
-    return newestSourceMtime(folder) > mtimeOf(board);
+    return (opts.cached ? newestSourceMtimeCached(folder) : newestSourceMtime(folder)) > oldest;
 }
 /**
  * The version of @typecad/pcb the project's `npx typecad-pcb` resolves to —

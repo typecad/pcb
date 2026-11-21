@@ -1,0 +1,1218 @@
+"use strict";
+// ---------------------------------------------------------------------------
+// Layout-view placement edits: pure text transforms, no vscode dependency —
+// the unit tests exercise exactly what `typecad/layout-rebuild` runs.
+//
+// A move arrives as a per-ref delta in board (y-down) millimetres. The
+// component's source variable resolves elsewhere (the board's "Code"
+// property); here we rewrite `<var>.pcb = { x: …, y: …, … }` literals by the
+// delta. Literals only: a computed placement (x: b.center.x) is reported as
+// skipped, never mangled.
+// ---------------------------------------------------------------------------
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.fmt = fmt;
+exports.planPlacementEdits = planPlacementEdits;
+exports.planEndpointEdits = planEndpointEdits;
+exports.applyPlacementEdits = applyPlacementEdits;
+exports.maxZonePriority = maxZonePriority;
+exports.planZoneGeometryEdits = planZoneGeometryEdits;
+exports.planNetClassEdits = planNetClassEdits;
+exports.planZoneDeletions = planZoneDeletions;
+exports.planOutlineEdits = planOutlineEdits;
+exports.planConstructorFieldEdits = planConstructorFieldEdits;
+exports.textEditRef = textEditRef;
+exports.planLabelAssignments = planLabelAssignments;
+exports.syncLabelStatement = syncLabelStatement;
+exports.planTextEdits = planTextEdits;
+exports.planTextDeletions = planTextDeletions;
+exports.parsePlacementLiteral = parsePlacementLiteral;
+exports.planComponentEdits = planComponentEdits;
+/**
+ * Matches `  var.pcb = { … }` and the sync sidecar's `  parts.var.pcb = { … }`
+ * (leading indent and optional `parts.` captured, literal body only).
+ */
+function placementMatcher(variable) {
+    return new RegExp(`^([ \\t]*)(parts\\.)?${escapeRegExp(variable)}\\.pcb\\s*=\\s*\\{([^}]*)\\}`, 'm');
+}
+function escapeRegExp(text) {
+    return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+/** Escape a value for splicing into an existing quoted string literal. */
+function escapeQuoted(value, quote) {
+    return value
+        .replace(/\\/g, '\\\\')
+        .replace(/\r/g, '\\r')
+        .replace(/\n/g, '\\n')
+        .replace(new RegExp(escapeRegExp(quote), 'g'), `\\${quote}`);
+}
+/** mm with up to 3 decimals, trailing zeros stripped — reads like hand-written code */
+function fmt(n) {
+    return String(parseFloat(n.toFixed(3)));
+}
+/** Normalize an angle to [0, 360). */
+function normAngle(r) {
+    return ((r % 360) + 360) % 360;
+}
+/**
+ * Compute the literal rewrites for `moves` against one source document.
+ * A move whose `<var>.pcb = {…}` literal already exists (including the sync
+ * sidecar's `parts.<var>.pcb = {…}`) is rewritten in place; one with NO
+ * literal yet defers to the _sync.ts stage when `deferInsert` allows it —
+ * the machine-owned sidecar is where auto-inserts live — and otherwise falls
+ * back to an assignment INSERTED after the variable's constructor statement.
+ * An unplaced component (stacked at the origin) is the layout view's whole
+ * reason to exist, and silently skipping its move strands every trace drawn
+ * between the moved pads. Computed (non-literal) placements stay skipped,
+ * never mangled. `variableOf` maps a board reference to its source variable
+ * (empty/absent when unknown). Only the first matching document wins per
+ * ref — pass each src file in turn and stop when a ref resolves.
+ */
+function planPlacementEdits(text, moves, variableOf, opts) {
+    const edits = [];
+    const skipped = [];
+    const deferred = [];
+    for (const move of moves) {
+        const variable = variableOf(move.ref);
+        if (!variable) {
+            skipped.push({ ref: move.ref, reason: 'no source variable' });
+            continue;
+        }
+        const match = placementMatcher(variable).exec(text);
+        let newInner;
+        let start;
+        let end;
+        let lead;
+        let inserted = false;
+        let partsPrefix = '';
+        if (match) {
+            const inner = match[3];
+            const xNum = /\bx\s*:\s*(-?[\d.]+)/.exec(inner);
+            const yNum = /\by\s*:\s*(-?[\d.]+)/.exec(inner);
+            if (!xNum || !yNum) {
+                skipped.push({ ref: move.ref, reason: 'placement is computed, not a literal' });
+                continue;
+            }
+            const nx = parseFloat(xNum[1]) + move.dx;
+            const ny = parseFloat(yNum[1]) + move.dy;
+            newInner = inner.replace(/\bx\s*:\s*-?[\d.]+/, `x: ${fmt(nx)}`).replace(/\by\s*:\s*-?[\d.]+/, `y: ${fmt(ny)}`);
+            start = match.index;
+            end = match.index + match[0].length;
+            lead = match[1] ?? '';
+            partsPrefix = match[2] ?? '';
+        }
+        else if (opts?.deferInsert?.(move)) {
+            const base = opts.baseOf?.(move.ref) ?? null;
+            const side = move.side ?? (base?.side === 'back' ? 'back' : undefined);
+            deferred.push({
+                ref: move.ref,
+                variable,
+                x: Number.isFinite(move.ax) ? move.ax : move.dx,
+                y: Number.isFinite(move.ay) ? move.ay : move.dy,
+                rot: normAngle((base?.rot ?? 0) + (move.rot ?? 0)),
+                ...(side ? { side } : {}),
+            });
+            continue;
+        }
+        else {
+            const ins = insertionAfterConstructor(text, variable);
+            if (!ins) {
+                skipped.push({ ref: move.ref, reason: `no \`${variable}.pcb = {…}\` literal found` });
+                continue;
+            }
+            newInner = ` x: ${fmt(Number.isFinite(move.ax) ? move.ax : move.dx)}, y: ${fmt(Number.isFinite(move.ay) ? move.ay : move.dy)}`;
+            // the inserted literal replaces the whole placement: carry the part's
+            // current angle/side over (the rotation/flip steps below build on them)
+            const base = opts?.baseOf?.(move.ref) ?? null;
+            if (base && normAngle(base.rot) !== 0)
+                newInner += `, rotation: ${fmt(normAngle(base.rot))}`;
+            if (base?.side === 'back' && !move.side)
+                newInner += `, side: 'back'`;
+            start = ins.at;
+            end = ins.at;
+            lead = `\n${ins.indent}`;
+            inserted = true;
+        }
+        // rotation rides as a delta onto the literal's field (0 or absent = 0)
+        if (move.rot) {
+            const rotNum = /\brotation\s*:\s*(-?[\d.]+)/.exec(newInner);
+            const newRot = normAngle((rotNum ? parseFloat(rotNum[1]) : 0) + move.rot);
+            if (rotNum)
+                newInner = newInner.replace(/\brotation\s*:\s*-?[\d.]+/, `rotation: ${fmt(newRot)}`);
+            else
+                newInner = `${newInner.trimEnd()}, rotation: ${fmt(newRot)} `;
+        }
+        // flip rides as an ABSOLUTE side (the viewer sends the target — an even
+        // number of Shift+F presses applies as no flip). Rewritten when present,
+        // appended when the literal omitted it.
+        if (move.side) {
+            const sideRe = /\bside\s*:\s*(['"])(front|back)\1/;
+            if (sideRe.test(newInner))
+                newInner = newInner.replace(sideRe, `side: '${move.side}'`);
+            else
+                newInner = `${newInner.trimEnd().replace(/,\s*$/, '')}, side: '${move.side}' `;
+        }
+        edits.push({
+            ref: move.ref,
+            // an inserted assignment is a whole new statement: it carries its own
+            // terminating semicolon; a rewrite swaps only the literal (the
+            // existing `;` sits outside the matched range and survives)
+            line: `${lead}${partsPrefix}${variable}.pcb = { ${newInner.trim()} }${inserted ? ';' : ''}`,
+            start,
+            end,
+        });
+    }
+    return { edits, skipped, ...(deferred.length > 0 ? { deferred } : {}) };
+}
+/** Find the end of `<var> = …;` (the constructor statement) — insertion goes right after it. */
+function insertionAfterConstructor(text, variable) {
+    const decl = new RegExp(`^([ \\t]*)(?:const|let|var) ${escapeRegExp(variable)} =`, 'm').exec(text);
+    if (!decl)
+        return null;
+    // scan to the statement's terminating semicolon, paren/brace balanced —
+    // object literals and nested calls must not fool it
+    let depth = 0;
+    for (let i = decl.index; i < text.length; i++) {
+        const ch = text[i];
+        if (ch === '(' || ch === '{')
+            depth++;
+        else if (ch === ')' || ch === '}')
+            depth--;
+        else if (ch === ';' && depth <= 0)
+            return { at: i + 1, indent: decl[1] ?? '' };
+    }
+    return null;
+}
+/**
+ * Sticky TrackBuilder endpoints: any `.from({ x: …, y: … })` / `.to({ … })`
+ * literal whose coordinates sit on one of the moved component's ORIGINAL
+ * pads (within 0.05 mm) translates with it — hand-built routes follow the
+ * part instead of dangling. Pure numeric literals only. A pure move
+ * translates every endpoint by the part's delta; when the payload carries
+ * `padsTo` (a flip mirrors each pad's offset) the endpoint follows ITS
+ * pad's own final position instead.
+ */
+function planEndpointEdits(text, move) {
+    const pads = move.pads ?? [];
+    if (pads.length === 0 || (!move.dx && !move.dy && !move.padsTo))
+        return [];
+    const edits = [];
+    // translate a numeric literal by delta, keeping ITS decimal precision
+    // (source coordinates can carry 4+ decimals; rounding to 3 would erode
+    // them every apply)
+    const shift = (axis, delta) => (whole, lead, num) => {
+        const decimals = Math.max((num.split('.')[1] ?? '').length, 3);
+        const value = (parseFloat(num) + delta).toFixed(decimals);
+        return `${lead}${parseFloat(value)}`;
+    };
+    /** the delta this move gives the endpoint that sits on pad `i` */
+    const deltaFor = (i) => {
+        const to = move.padsTo?.[i];
+        if (to && pads[i])
+            return { dx: to.x - pads[i].x, dy: to.y - pads[i].y };
+        return { dx: move.dx, dy: move.dy };
+    };
+    for (const kind of ['from', 'to']) {
+        const re = new RegExp(`\\.${kind}\\(\\{\\s*x\\s*:\\s*(-?[\\d.]+)\\s*,\\s*y\\s*:\\s*(-?[\\d.]+)`, 'g');
+        let match;
+        while ((match = re.exec(text)) !== null) {
+            const ex = parseFloat(match[1]);
+            const ey = parseFloat(match[2]);
+            let padIdx = -1;
+            for (let p = 0; p < pads.length; p++) {
+                if (Math.abs(pads[p].x - ex) < 0.05 && Math.abs(pads[p].y - ey) < 0.05) {
+                    padIdx = p;
+                    break;
+                }
+            }
+            if (padIdx === -1)
+                continue;
+            const { dx, dy } = deltaFor(padIdx);
+            // only the x/y numbers inside this literal move — layer/width stay
+            const head = text.indexOf('{', match.index);
+            const tail = text.indexOf('}', head);
+            if (head === -1 || tail === -1)
+                continue;
+            const inner = text.slice(head + 1, tail);
+            const newInner = inner
+                .replace(/(\bx\s*:\s*)(-?[\d.]+)/, shift('x', dx))
+                .replace(/(\by\s*:\s*)(-?[\d.]+)/, shift('y', dy));
+            edits.push({
+                ref: `${move.ref} route endpoint`,
+                // the replacement covers exactly [match.index, tail+1] — the literal
+                // through its closing brace, nothing beyond
+                line: `${text.slice(match.index, head + 1)}${newInner}}`,
+                start: match.index,
+                end: tail + 1,
+            });
+        }
+    }
+    return edits;
+}
+/** Apply planned edits to a document's text (latest edit first, ranges stay valid). */
+function applyPlacementEdits(text, edits) {
+    const sorted = [...edits].sort((a, b) => b.start - a.start);
+    let out = text;
+    for (const edit of sorted)
+        out = out.slice(0, edit.start) + edit.line + out.slice(edit.end);
+    return out;
+}
+/** Every `.zone({ … })` / `.keepout({ … })` literal in a document, with
+ *  geometry, layers, and statement bounds. Tolerates the CRLF and multi-line
+ *  literal forms; numeric x/y/width/height literals only. */
+function findZoneLiterals(text) {
+    const out = [];
+    const callRe = /\.(zone|keepout)\s*\(\s*\{/g;
+    let match;
+    while ((match = callRe.exec(text)) !== null) {
+        const open = text.indexOf('{', match.index);
+        let depth = 0;
+        let close = -1;
+        for (let i = open; i < text.length; i++) {
+            const ch = text[i];
+            if (ch === '{')
+                depth++;
+            else if (ch === '}') {
+                depth--;
+                if (depth === 0) {
+                    close = i;
+                    break;
+                }
+            }
+        }
+        if (close === -1)
+            continue;
+        const inner = text.slice(open + 1, close);
+        const xNum = /\bx\s*:\s*(-?[\d.]+)/.exec(inner);
+        const yNum = /\by\s*:\s*(-?[\d.]+)/.exec(inner);
+        const wNum = /\bwidth\s*:\s*(-?[\d.]+)/.exec(inner);
+        const hNum = /\bheight\s*:\s*(-?[\d.]+)/.exec(inner);
+        let rect = null;
+        let isPoints = false;
+        if (xNum && yNum && wNum && hNum) {
+            rect = { x: parseFloat(xNum[1]), y: parseFloat(yNum[1]), w: parseFloat(wNum[1]), h: parseFloat(hNum[1]) };
+        }
+        else {
+            // polygon zone (`points: [{ x, y }, …]`, what the import writes for
+            // non-rect pours and the layout view's polygon draw) — matched by
+            // its bounding box, exactly the rect the page reports for it
+            const pointsMatch = /\bpoints\s*:\s*\[([^\]]*)\]/.exec(inner);
+            if (pointsMatch) {
+                const pts = [...pointsMatch[1].matchAll(/x\s*:\s*(-?[\d.]+)\s*,\s*y\s*:\s*(-?[\d.]+)/g)].map((p) => ({
+                    x: parseFloat(p[1]),
+                    y: parseFloat(p[2]),
+                }));
+                if (pts.length >= 3) {
+                    rect = {
+                        x: Math.min(...pts.map((p) => p.x)),
+                        y: Math.min(...pts.map((p) => p.y)),
+                        w: Math.max(...pts.map((p) => p.x)) - Math.min(...pts.map((p) => p.x)),
+                        h: Math.max(...pts.map((p) => p.y)) - Math.min(...pts.map((p) => p.y)),
+                    };
+                    isPoints = true;
+                }
+            }
+        }
+        if (!rect)
+            continue;
+        const layers = [];
+        const layersRe = /\blayers\s*:\s*\[([^\]]*)\]/.exec(inner);
+        if (layersRe) {
+            for (const l of layersRe[1].matchAll(/['"]([^'"]+)['"]/g))
+                layers.push(l[1]);
+        }
+        const priorityNum = /\bpriority\s*:\s*(-?[\d.]+)/.exec(inner);
+        const lineStart = text.lastIndexOf('\n', match.index) + 1;
+        let stmtEnd = close;
+        const semi = text.indexOf(';', close);
+        if (semi !== -1 && !/[^;\s)]/.test(text.slice(close + 1, semi)))
+            stmtEnd = semi;
+        out.push({
+            open,
+            close,
+            stmtStart: lineStart,
+            stmtEnd: stmtEnd + 1,
+            rect,
+            layers,
+            method: match[1],
+            priority: priorityNum ? parseFloat(priorityNum[1]) : undefined,
+            ...(isPoints ? { points: true } : {}),
+        });
+    }
+    return out;
+}
+/**
+ * The highest zone priority declared in a document (0 when none — the API
+ * default). The layout view's insert stage starts new pours ABOVE it: in
+ * KiCad's fill order a lower-priority zone keeps its clearance from
+ * higher-priority copper, so a pour dropped inside a GND plane must
+ * out-rank the plane or the plane's fill subordinates it to nothing.
+ */
+function maxZonePriority(text) {
+    let max = 0;
+    for (const m of findZoneLiterals(text)) {
+        if (m.priority !== undefined && m.priority > max)
+            max = m.priority;
+    }
+    return max;
+}
+function rectMatches(m, r) {
+    return (m.layers.includes(r.layer) &&
+        Math.abs(m.rect.x - r.x) < 0.05 &&
+        Math.abs(m.rect.y - r.y) < 0.05 &&
+        Math.abs(m.rect.w - r.w) < 0.05 &&
+        Math.abs(m.rect.h - r.h) < 0.05);
+}
+/**
+ * Zone geometry edits from the layout view: each carries the zone's
+ * AUTHORED rect (matched against the source literal, layer included) and
+ * the NEW rect. The matching `typecad.zone()`/`.keepout()` literal's
+ * x/y/width/height are rewritten in place — every other key (fill, the
+ * comment text around it) stays. A `net` on the edit reassigns the pour:
+ * an existing `net: '…'` key is rewritten, and a literal without one
+ * gains it right after the opening brace. Polygon zones (`points: […]`,
+ * what the import writes for non-rect pours) match by bounding box and
+ * reassign nets like any other, but a geometry change on one is reported
+ * (a rect rewrite would replace its shape with the box) — delete and
+ * redraw instead. Zones with no matching literal at all (a `pcb.plane()`
+ * materialization) are reported, never mangled.
+ */
+function planZoneGeometryEdits(text, edits) {
+    const literals = findZoneLiterals(text);
+    const planned = [];
+    const skipped = [];
+    const used = new Set();
+    for (const edit of edits) {
+        const hit = literals.findIndex((m, i) => !used.has(i) && rectMatches(m, edit.original));
+        if (hit === -1) {
+            skipped.push(`zone (${edit.original.layer} at ${edit.original.x},${edit.original.y}) has no editable literal — plane-materialized or import-authored zones are not editable`);
+            continue;
+        }
+        used.add(hit);
+        const m = literals[hit];
+        // a polygon zone matched by bbox: its shape is the points list, and a
+        // rect rewrite would silently replace it with the bounding box — only
+        // a pure net reassignment (geometry unchanged) may touch it
+        const geometryChanged = Math.abs(edit.rect.x - edit.original.x) >= 0.05 ||
+            Math.abs(edit.rect.y - edit.original.y) >= 0.05 ||
+            Math.abs(edit.rect.w - edit.original.w) >= 0.05 ||
+            Math.abs(edit.rect.h - edit.original.h) >= 0.05;
+        if (m.points && geometryChanged) {
+            skipped.push(`zone (${edit.original.layer} at ${edit.original.x},${edit.original.y}) is a polygon (points) zone — delete and redraw it to change its shape`);
+            continue;
+        }
+        const inner = text.slice(m.open + 1, m.close);
+        let newInner = inner
+            .replace(/\bx\s*:\s*-?[\d.]+/, `x: ${fmt(edit.rect.x)}`)
+            .replace(/\by\s*:\s*-?[\d.]+/, `y: ${fmt(edit.rect.y)}`)
+            .replace(/\bwidth\s*:\s*-?[\d.]+/, `width: ${fmt(edit.rect.w)}`)
+            .replace(/\bheight\s*:\s*-?[\d.]+/, `height: ${fmt(edit.rect.h)}`);
+        if (edit.net !== undefined) {
+            const netKey = /\bnet\s*:\s*(['"])(?:\\.|(?!\1)[^\\])*\1/.exec(newInner);
+            if (netKey)
+                newInner = newInner.replace(netKey[0], `net: '${escapeQuoted(edit.net, "'")}'`);
+            else
+                newInner = ` net: '${escapeQuoted(edit.net, "'")}',${newInner}`;
+        }
+        planned.push({
+            ref: `zone (${edit.original.layer} @ ${edit.original.x},${edit.original.y})`,
+            line: `${text.slice(m.open, m.open + 1)}${newInner}}`,
+            start: m.open,
+            end: m.close + 1,
+        });
+    }
+    return { edits: planned, skipped };
+}
+/**
+ * Net-class edits from the layout view: each carries the class NAME and
+ * the numeric dimensions to write. The matching `netClass('name', { … })`
+ * literal is rewritten in place — known keys are replaced, missing keys
+ * are appended inside the braces. A class with no literal is reported,
+ * never invented (creating a class also needs net-pattern assignment).
+ */
+function planNetClassEdits(text, edits) {
+    const planned = [];
+    const skipped = [];
+    for (const edit of edits) {
+        const callRe = new RegExp(`\\.netClass\\(\\s*['"]${escapeRegExp(edit.name)}['"]\\s*,\\s*\\{`);
+        const m = callRe.exec(text);
+        if (!m) {
+            skipped.push(`net class ${edit.name} has no netClass() literal to edit — new classes are created in source`);
+            continue;
+        }
+        const open = text.indexOf('{', m.index);
+        let depth = 0;
+        let close = -1;
+        for (let i = open; i < text.length; i++) {
+            const ch = text[i];
+            if (ch === '{')
+                depth++;
+            else if (ch === '}') {
+                depth--;
+                if (depth === 0) {
+                    close = i;
+                    break;
+                }
+            }
+        }
+        if (close === -1) {
+            skipped.push(`net class ${edit.name} literal is malformed (unclosed braces)`);
+            continue;
+        }
+        let inner = text.slice(open + 1, close);
+        for (const [key, value] of Object.entries(edit.values)) {
+            const keyRe = new RegExp(`\\b${escapeRegExp(key)}\\s*:\\s*-?[\\d.]+`);
+            if (keyRe.test(inner))
+                inner = inner.replace(keyRe, `${key}: ${fmt(value)}`);
+            else {
+                const trimmed = inner.replace(/\s+$/, '');
+                const sep = trimmed.trim() === '' ? '' : ', ';
+                inner = `${trimmed}${sep}${key}: ${fmt(value)} `;
+            }
+        }
+        planned.push({
+            ref: `net class ${edit.name}`,
+            line: `{${inner}}`,
+            start: open,
+            end: close + 1,
+        });
+    }
+    return { edits: planned, skipped };
+}
+/**
+ * Zone deletions from the layout view: the matching literal's WHOLE
+ * statement (its line through the terminating `;`) is removed — the same
+ * guard rails as the edit planner, one zone per match.
+ */
+function planZoneDeletions(text, deletes) {
+    const literals = findZoneLiterals(text);
+    const planned = [];
+    const skipped = [];
+    const used = new Set();
+    for (const del of deletes) {
+        const hit = literals.findIndex((m, i) => !used.has(i) && rectMatches(m, del));
+        if (hit === -1) {
+            skipped.push(`zone (${del.layer} at ${del.x},${del.y}) has no removable literal — plane-materialized or import-authored zones are not deletable`);
+            continue;
+        }
+        used.add(hit);
+        const m = literals[hit];
+        planned.push({
+            ref: `zone (${del.layer} @ ${del.x},${del.y})`,
+            line: '',
+            start: m.stmtStart,
+            end: m.stmtEnd,
+        });
+    }
+    return { edits: planned, skipped };
+}
+/**
+ * Board outline rewrite: the layout view's outline edit arrives as the
+ * AUTHORED rect (matched against the source literal) and the NEW rect, both
+ * board-frame min-corner rectangles. The planner finds the
+ * `.outline(x, y, width, height[, fillet])` call whose numeric geometry
+ * matches the original (within 0.05 mm) and rewrites the first four
+ * arguments — the fillet argument, when present, stays. Numeric literals
+ * only; an outline built by `outlinePolygon`/`outlinePath` (or computed)
+ * cannot match and is reported, never mangled.
+ */
+function planOutlineEdits(text, original, rect) {
+    const callRe = /\.outline\s*\(/g;
+    let match;
+    while ((match = callRe.exec(text)) !== null) {
+        const open = match.index + match[0].length;
+        const close = text.indexOf(')', open);
+        if (close === -1)
+            continue;
+        const inner = text.slice(open, close);
+        const nums = inner.match(/-?\d+(?:\.\d+)?/g);
+        if (!nums || nums.length < 4)
+            continue;
+        const [ox, oy, ow, oh] = nums.slice(0, 4).map((n) => parseFloat(n));
+        if (![ox, oy, ow, oh].every(Number.isFinite))
+            continue;
+        if (Math.abs(ox - original.x) > 0.05 ||
+            Math.abs(oy - original.y) > 0.05 ||
+            Math.abs(ow - original.w) > 0.05 ||
+            Math.abs(oh - original.h) > 0.05)
+            continue;
+        // rewrite only the first four numbers, in place, preserving the rest
+        // (a fillet radius rides untouched)
+        let idx = 0;
+        const newInner = inner.replace(/-?\d+(?:\.\d+)?/g, (num) => {
+            if (idx >= 4)
+                return num;
+            const out = fmt([rect.x, rect.y, rect.w, rect.h][idx++]);
+            return out;
+        });
+        return {
+            edits: [
+                {
+                    ref: 'board outline',
+                    line: `${text.slice(match.index, open)}${newInner})`,
+                    start: match.index,
+                    end: close + 1,
+                },
+            ],
+        };
+    }
+    return { edits: [], reason: 'no `.outline(x, y, width, height)` literal matches the board outline' };
+}
+/** Replace `key: <number>` in a literal, or append it when absent. */
+function setNumKey(inner, key, val) {
+    const re = new RegExp(`\\b${key}\\s*:\\s*-?[\\d.]+`);
+    if (re.test(inner))
+        return inner.replace(re, `${key}: ${fmt(val)}`);
+    return `${inner.trimEnd().replace(/,\s*$/, '')}, ${key}: ${fmt(val)} `;
+}
+/** Replace `key: <bool>` in a literal, or append it when absent. */
+function setBoolKey(inner, key, val) {
+    const re = new RegExp(`\\b${key}\\s*:\\s*(?:true|false)`);
+    if (re.test(inner))
+        return inner.replace(re, `${key}: ${val}`);
+    return `${inner.trimEnd().replace(/,\s*$/, '')}, ${key}: ${val} `;
+}
+/** Replace `key: '<string>'` in a literal, or append it when absent. */
+function setStrKey(inner, key, val) {
+    const re = new RegExp(`\\b${key}\\s*:\\s*(['"])(?:\\\\.|(?!\\1).)*\\1`);
+    const esc = val.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+    if (re.test(inner))
+        return inner.replace(re, `${key}: '${esc}'`);
+    return `${inner.trimEnd().replace(/,\s*$/, '')}, ${key}: '${esc}' `;
+}
+/**
+ * Set a string-valued key at the TOP LEVEL of an object-literal body
+ * (string/brace aware — a nested `value:` is never touched), or append it.
+ * A multi-line literal gets the new key on its own line.
+ */
+function setTopLevelStrKey(inner, key, val) {
+    let depth = 0;
+    let str = null;
+    const keyRe = new RegExp(`^${key}\\s*:\\s*(['"])((?:\\\\.|(?!\\1).)*)\\1`);
+    for (let i = 0; i < inner.length; i++) {
+        const ch = inner[i];
+        if (str) {
+            if (ch === '\\')
+                i++;
+            else if (ch === str)
+                str = null;
+            continue;
+        }
+        if (ch === "'" || ch === '"' || ch === '`') {
+            str = ch;
+            continue;
+        }
+        if (ch === '{' || ch === '[' || ch === '(')
+            depth++;
+        else if (ch === '}' || ch === ']' || ch === ')')
+            depth--;
+        else if (depth === 0 && (i === 0 || /[\s,{]/.test(inner[i - 1]))) {
+            const m = keyRe.exec(inner.slice(i));
+            if (m) {
+                const q = m[1];
+                return `${inner.slice(0, i)}${key}: ${q}${escapeQuoted(val, q)}${q}${inner.slice(i + m[0].length)}`;
+            }
+        }
+    }
+    const esc = escapeQuoted(val, "'");
+    if (inner.includes('\n')) {
+        const indent = /\n([ \t]*)\S[^\n]*\s*$/.exec(inner)?.[1] ?? '  ';
+        const closing = /\n[ \t]*$/.exec(inner)?.[0] ?? '\n';
+        return `${inner.replace(/,?\s*$/, '')},\n${indent}${key}: '${esc}',${closing}`;
+    }
+    const body = inner.trim().replace(/,\s*$/, '');
+    return body ? ` ${body}, ${key}: '${esc}' ` : ` ${key}: '${esc}' `;
+}
+/**
+ * Value and reference edits for parts whose constructor carries no
+ * `reference: '…'` literal — subclass factories (`new Resistor({ value:
+ * '150' })`, `new LED(…)`) and prefix-derived references, i.e. every part the
+ * create scaffold writes. planComponentEdits matches constructors by that
+ * literal, so these edits were skipped ("no Component constructor literal
+ * found"). Here the constructor is found by its declaring VARIABLE: the
+ * `value:` key is rewritten or appended, and a rename writes an explicit
+ * `reference:` (a derived one has nothing to rewrite). Specs whose variable
+ * is not declared in `text` are left out of both lists — the caller tries
+ * the next file.
+ */
+function planConstructorFieldEdits(text, specs, allRefs) {
+    const edits = [];
+    const skipped = [];
+    for (const spec of specs) {
+        const decl = new RegExp(`(?:const|let|var)\\s+${escapeRegExp(spec.variable)}\\s*(?::[^=;]+?)?=\\s*new\\s+[A-Za-z_$][\\w$.]*\\s*\\(`).exec(text);
+        if (!decl)
+            continue;
+        const paren = decl.index + decl[0].length - 1;
+        const firstArg = /\S/.exec(text.slice(paren + 1));
+        if (spec.newRef && spec.newRef !== spec.ref && allRefs.has(spec.newRef)) {
+            skipped.push({ ref: spec.ref, reason: `\`${spec.newRef}\` is already a component reference` });
+            continue;
+        }
+        const apply = (inner) => {
+            let out = inner;
+            if (spec.newRef)
+                out = setTopLevelStrKey(out, 'reference', spec.newRef);
+            if (spec.value !== undefined)
+                out = setTopLevelStrKey(out, 'value', spec.value);
+            return out;
+        };
+        if (firstArg && firstArg[0] === '{') {
+            const r = objectLiteralRange(text, paren + 1 + firstArg.index);
+            if (!r)
+                continue;
+            edits.push({ ref: spec.ref, line: apply(text.slice(r.open + 1, r.close)), start: r.open + 1, end: r.close });
+        }
+        else if (firstArg && firstArg[0] === ')') {
+            // `new Resistor()` — no options yet: write the literal
+            edits.push({ ref: spec.ref, line: `{${apply('')}}`, start: paren + 1, end: paren + 1 + firstArg.index });
+        }
+        else {
+            skipped.push({ ref: spec.ref, reason: `${spec.variable}'s constructor options are not an object literal` });
+        }
+    }
+    return { edits, skipped };
+}
+/** Find the balanced `{ … }` object literal starting at/after the call head. */
+function objectLiteralRange(text, head) {
+    const open = text.indexOf('{', head);
+    if (open === -1)
+        return null;
+    let depth = 0;
+    for (let i = open; i < text.length; i++) {
+        const ch = text[i];
+        if (ch === '{')
+            depth++;
+        else if (ch === '}') {
+            depth--;
+            if (depth === 0)
+                return { head, open, close: i };
+        }
+    }
+    return null;
+}
+/** The identity a planned .text edit reports — one authored value+anchor. */
+function textEditRef(t) {
+    return `text "${t.text0}"@${t.x0},${t.y0}`;
+}
+/** Split an object-literal body on top-level commas (string/brace aware). */
+function splitTopLevel(body) {
+    const out = [];
+    let depth = 0;
+    let start = 0;
+    let str = null;
+    for (let i = 0; i < body.length; i++) {
+        const ch = body[i];
+        if (str) {
+            if (ch === '\\')
+                i++;
+            else if (ch === str)
+                str = null;
+            continue;
+        }
+        if (ch === "'" || ch === '"')
+            str = ch;
+        else if (ch === '{' || ch === '[' || ch === '(')
+            depth++;
+        else if (ch === '}' || ch === ']' || ch === ')')
+            depth--;
+        else if (ch === ',' && depth === 0) {
+            out.push(body.slice(start, i));
+            start = i + 1;
+        }
+    }
+    const tail = body.slice(start);
+    if (tail.trim())
+        out.push(tail);
+    return out;
+}
+/**
+ * The layout-literal body for one label edit: the footprint-local position
+ * plus the style diff, merged into whatever the existing literal carried
+ * (unmanaged keys — layer, show, an unedited justify — stay put).
+ */
+function labelLayoutBody(label, part, existingBody) {
+    // The exact inverse of where the board puts the label (gerber_viewer
+    // parseBoardLabels, the frame the page drags in): world = part +
+    // R(-θ)·stored, the stored angle ABSOLUTE. So stored = R(+θ)·(world -
+    // part) and the angle passes through unchanged — the build writes a
+    // layout's rotation verbatim as the KiCad text angle (applyLayoutToFpText).
+    // A back-side part's stored values are the build's flip of the authored
+    // ones (y negated, +180°, see kicad2typecad/label_frame.ts), so undo it.
+    // The old math applied R(-θ) and subtracted the part angle: right only
+    // for 0°/180° parts on the front — every label dragged on a 90°/270° part
+    // landed mirrored through the part, and on a back-side part y and the
+    // angle came back flipped.
+    const rad = (part.rot * Math.PI) / 180;
+    const c = Math.cos(rad);
+    const s = Math.sin(rad);
+    const dx = label.x - part.x;
+    const dy = label.y - part.y;
+    let lx = dx * c - dy * s;
+    let ly = dx * s + dy * c;
+    let lrot = label.rot;
+    if (part.side === 'back') {
+        ly = -ly;
+        lrot -= 180;
+    }
+    lx = Math.abs(lx) < 5e-4 ? 0 : lx;
+    ly = Math.abs(ly) < 5e-4 ? 0 : ly;
+    lrot = normAngle(lrot);
+    // only the keys this edit manages are stripped from the existing body:
+    // the position, plus the style keys the diff actually carries
+    const sty = label.style;
+    const manages = new Set(['x', 'y', 'rotation']);
+    if (sty) {
+        if (sty.w !== undefined)
+            manages.add('width');
+        if (sty.h !== undefined)
+            manages.add('height');
+        if (sty.thickness !== undefined)
+            manages.add('thickness');
+        if (sty.font !== undefined)
+            manages.add('font');
+        if (sty.italic !== undefined)
+            manages.add('italic');
+        if (sty.bold !== undefined)
+            manages.add('bold');
+        if (sty.justify)
+            manages.add('justify');
+    }
+    const kept = splitTopLevel(existingBody)
+        .filter((entry) => {
+        const k = /^\s*([A-Za-z_$][\w$]*)\s*:/.exec(entry);
+        return !k || !manages.has(k[1]);
+    })
+        .map((entry) => entry.trim())
+        .filter(Boolean)
+        .join(', ');
+    let bodyStr = kept ? kept + ', ' : '';
+    bodyStr += `x: ${fmt(lx)}, y: ${fmt(ly)}, rotation: ${fmt(lrot)}`;
+    if (sty) {
+        if (sty.w !== undefined)
+            bodyStr = setNumKey(bodyStr, 'width', sty.w);
+        if (sty.h !== undefined)
+            bodyStr = setNumKey(bodyStr, 'height', sty.h);
+        if (sty.thickness !== undefined)
+            bodyStr = setNumKey(bodyStr, 'thickness', sty.thickness);
+        if (sty.font !== undefined)
+            bodyStr = setStrKey(bodyStr, 'font', sty.font);
+        if (sty.italic !== undefined)
+            bodyStr = setBoolKey(bodyStr, 'italic', sty.italic);
+        if (sty.bold !== undefined)
+            bodyStr = setBoolKey(bodyStr, 'bold', sty.bold);
+        if (sty.justify) {
+            const parts = [];
+            if (sty.justify.horizontal !== undefined)
+                parts.push(`horizontal: '${sty.justify.horizontal}'`);
+            if (sty.justify.vertical !== undefined)
+                parts.push(`vertical: '${sty.justify.vertical}'`);
+            if (sty.justify.mirror !== undefined)
+                parts.push(`mirror: ${sty.justify.mirror}`);
+            if (parts.length > 0) {
+                const obj = `{ ${parts.join(', ')} }`;
+                const jRe = /\bjustify\s*:\s*\{[^}]*\}/;
+                bodyStr = jRe.test(bodyStr) ? bodyStr.replace(jRe, `justify: ${obj}`) : `${bodyStr.trimEnd().replace(/,\s*$/, '')}, justify: ${obj}`;
+            }
+        }
+    }
+    // appended keys carry a trailing space (the setters' append format) —
+    // trim it so the assembled literal has no double spacing before `}`
+    return bodyStr.replace(/\s+$/, '');
+}
+/**
+ * Label layout edits for parts WITHOUT a Component constructor literal to
+ * rewrite — subclass factories (`new LED({ … })`) and prefix-derived
+ * references never carry `reference: 'D1'`, so planComponentEdits cannot
+ * match them. The layout lands as a post-construction assignment on the
+ * component's public field (`led.referenceLayout = { … }`), inserted after
+ * the constructor statement or replacing an existing assignment — including
+ * the sync sidecar's `parts.<var>.<prop>` form, which is what wins at
+ * runtime once it exists. Fresh inserts defer to the sync stage when
+ * `deferInsert` allows.
+ */
+function planLabelAssignments(text, specs, variableOf, placementOf, opts) {
+    const edits = [];
+    const skipped = [];
+    const deferred = [];
+    for (const spec of specs) {
+        const variable = variableOf(spec.ref);
+        if (!variable) {
+            skipped.push({ ref: spec.ref, reason: 'no source variable' });
+            continue;
+        }
+        // fab too lands on its Layout field (`fabLayout`, whose setter positions
+        // the fab text): the importer and the silk-clearance boxes read only
+        // the Layout fields, so a bare `<var>.fab = {…}` built fine but read
+        // back as "no layout" on every import. A legacy `.fab =` statement is
+        // rewritten INTO `.fabLayout =` so older projects converge.
+        const prop = `${spec.label.kind}Layout`;
+        const assignRe = new RegExp(`^([ \\t]*)(parts\\.)?${escapeRegExp(variable)}\\.(?:${prop}${spec.label.kind === 'fab' ? '|fab' : ''})\\s*=`, 'm');
+        const match = assignRe.exec(text);
+        let bodyStr;
+        let start;
+        let end;
+        let lead;
+        let partsPrefix = '';
+        let inserted = false;
+        if (match) {
+            const part = placementOf(spec.ref);
+            if (!part) {
+                skipped.push({ ref: spec.ref, reason: 'no .pcb placement literal found' });
+                continue;
+            }
+            const r = objectLiteralRange(text, match.index + match[0].length - 1);
+            if (!r) {
+                skipped.push({ ref: spec.ref, reason: `${variable}.${prop} assignment is not an object literal` });
+                continue;
+            }
+            bodyStr = labelLayoutBody(spec.label, part, text.slice(r.open + 1, r.close));
+            start = match.index;
+            end = r.close + 1;
+            lead = match[1] ?? '';
+            partsPrefix = match[2] ?? '';
+        }
+        else if (opts?.deferInsert?.(spec.ref)) {
+            deferred.push({ ref: spec.ref, variable, prop, label: spec.label });
+            continue;
+        }
+        else {
+            const part = placementOf(spec.ref);
+            if (!part) {
+                skipped.push({ ref: spec.ref, reason: 'no .pcb placement literal found' });
+                continue;
+            }
+            const ins = insertionAfterConstructor(text, variable);
+            if (!ins) {
+                skipped.push({ ref: spec.ref, reason: `no \`${variable}\` constructor statement found` });
+                continue;
+            }
+            bodyStr = labelLayoutBody(spec.label, part, '');
+            start = ins.at;
+            end = ins.at;
+            lead = `\n${ins.indent}`;
+            inserted = true;
+        }
+        edits.push({
+            ref: `${spec.ref} ${prop}`,
+            // an inserted assignment is a whole new statement (own semicolon); a
+            // rewrite swaps only the object literal — the existing `;` survives
+            line: `${lead}${partsPrefix}${variable}.${prop} = { ${bodyStr} }${inserted ? ';' : ''}`,
+            start,
+            end,
+        });
+    }
+    return { edits, skipped, ...(deferred.length > 0 ? { deferred } : {}) };
+}
+/**
+ * The sync sidecar's label statement for one deferred spec — the full
+ * `parts.<var>.<prop> = { … };` line, rendered against the part's final
+ * placement. (No leading indent: the sync stage adds it.)
+ */
+function syncLabelStatement(spec, part) {
+    return `parts.${spec.variable}.${spec.prop} = { ${labelLayoutBody(spec.label, part, '')} };`;
+}
+/**
+ * Compute the `.text({ … })` literal rewrites for `edits` against one source
+ * document. A call matches an edit when its x/y literals sit within 0.05 mm
+ * of the authored anchor and its text literal equals the authored value.
+ */
+function planTextEdits(text, edits) {
+    const planned = [];
+    const skipped = [];
+    const used = new Set();
+    const callRe = /\.text\s*\(/g;
+    let match;
+    while ((match = callRe.exec(text)) !== null) {
+        const range = objectLiteralRange(text, match.index);
+        if (!range)
+            continue;
+        const inner = text.slice(range.open + 1, range.close);
+        const xNum = /\bx\s*:\s*(-?[\d.]+)/.exec(inner);
+        const yNum = /\by\s*:\s*(-?[\d.]+)/.exec(inner);
+        const tNum = /\btext\s*:\s*(['"])((?:\\.|(?!\1).)*)\1/.exec(inner);
+        if (!xNum || !yNum || !tNum)
+            continue;
+        const cx = parseFloat(xNum[1]);
+        const cy = parseFloat(yNum[1]);
+        const ctext = tNum[2];
+        const edit = edits.find((e, i) => !used.has(i) &&
+            e.text0 === ctext &&
+            Math.abs(e.x0 - cx) < 0.05 &&
+            Math.abs(e.y0 - cy) < 0.05);
+        if (!edit)
+            continue;
+        used.add(edits.indexOf(edit));
+        let newInner = inner;
+        if (edit.text !== ctext) {
+            const esc = escapeQuoted(edit.text, tNum[1]);
+            newInner = newInner.replace(tNum[0], () => `text: ${tNum[1]}${esc}${tNum[1]}`);
+        }
+        if (edit.x !== cx)
+            newInner = newInner.replace(/\bx\s*:\s*-?[\d.]+/, `x: ${fmt(edit.x)}`);
+        if (edit.y !== cy)
+            newInner = newInner.replace(/\by\s*:\s*-?[\d.]+/, `y: ${fmt(edit.y)}`);
+        // rotation accumulates onto the literal like placements (absent = 0)
+        if (edit.rot) {
+            const rotNum = /\brotation\s*:\s*(-?[\d.]+)/.exec(inner);
+            const newRot = (rotNum ? parseFloat(rotNum[1]) : 0) + edit.rot;
+            if (rotNum)
+                newInner = newInner.replace(/\brotation\s*:\s*-?[\d.]+/, `rotation: ${fmt(newRot)}`);
+            else
+                newInner = `${newInner.trimEnd()}, rotation: ${fmt(newRot)} `;
+        }
+        // style keys arrive as a DIFF — every present key replaces its literal
+        // value (or is appended when the source literal omitted it)
+        const sty = edit.style;
+        if (sty) {
+            if (sty.w !== undefined)
+                newInner = setNumKey(newInner, 'width', sty.w);
+            if (sty.h !== undefined)
+                newInner = setNumKey(newInner, 'height', sty.h);
+            if (sty.thickness !== undefined)
+                newInner = setNumKey(newInner, 'thickness', sty.thickness);
+            if (sty.font !== undefined)
+                newInner = setStrKey(newInner, 'font', sty.font);
+            if (sty.italic !== undefined)
+                newInner = setBoolKey(newInner, 'italic', sty.italic);
+            if (sty.bold !== undefined)
+                newInner = setBoolKey(newInner, 'bold', sty.bold);
+            if (sty.justify) {
+                const parts = [];
+                if (sty.justify.horizontal !== undefined)
+                    parts.push(`horizontal: '${sty.justify.horizontal}'`);
+                if (sty.justify.vertical !== undefined)
+                    parts.push(`vertical: '${sty.justify.vertical}'`);
+                if (sty.justify.mirror !== undefined)
+                    parts.push(`mirror: ${sty.justify.mirror}`);
+                if (parts.length > 0) {
+                    const obj = `{ ${parts.join(', ')} }`;
+                    const jRe = /\bjustify\s*:\s*\{[^}]*\}/;
+                    if (jRe.test(newInner))
+                        newInner = newInner.replace(jRe, `justify: ${obj}`);
+                    else
+                        newInner = `${newInner.trimEnd().replace(/,\s*$/, '')}, justify: ${obj} `;
+                }
+            }
+        }
+        planned.push({
+            ref: textEditRef(edit),
+            // exactly the call's object literal, nothing beyond
+            line: `${text.slice(match.index, range.open + 1)}${newInner}}`,
+            start: match.index,
+            end: range.close + 1,
+        });
+    }
+    for (let i = 0; i < edits.length; i++) {
+        if (!used.has(i))
+            skipped.push({ ref: textEditRef(edits[i]), reason: 'no .text({…}) literal matches its authored value/anchor' });
+    }
+    return { edits: planned, skipped };
+}
+/**
+ * Free-text deletion: a selected board text's authored identity (value +
+ * anchor) matched to its `.text({…});` statement — the whole statement,
+ * semicolon and trailing newline included, leaves the source. Label texts
+ * (a component's reference/value) never arrive here; they belong to their
+ * footprint's options, not to a standalone statement.
+ */
+function planTextDeletions(text, deletes) {
+    const planned = [];
+    const skipped = [];
+    const used = new Set();
+    const callRe = /\.text\s*\(/g;
+    let match;
+    while ((match = callRe.exec(text)) !== null) {
+        const range = objectLiteralRange(text, match.index);
+        if (!range)
+            continue;
+        const inner = text.slice(range.open + 1, range.close);
+        const xNum = /\bx\s*:\s*(-?[\d.]+)/.exec(inner);
+        const yNum = /\by\s*:\s*(-?[\d.]+)/.exec(inner);
+        const tNum = /\btext\s*:\s*(['"])((?:\\.|(?!\1).)*)\1/.exec(inner);
+        if (!xNum || !yNum || !tNum)
+            continue;
+        const cx = parseFloat(xNum[1]);
+        const cy = parseFloat(yNum[1]);
+        const di = deletes.findIndex((d, i) => !used.has(i) && d.text0 === tNum[2] && Math.abs(d.x0 - cx) < 0.05 && Math.abs(d.y0 - cy) < 0.05);
+        if (di === -1)
+            continue;
+        used.add(di);
+        // the statement span: line start (the `typecad.` receiver rides the
+        // same line) through the closing brace, the call paren, the semicolon,
+        // and the newline — unless another statement shares the line
+        let stmtStart = text.lastIndexOf('\n', match.index) + 1;
+        if (text.slice(stmtStart, match.index).includes(';'))
+            stmtStart = match.index;
+        let stmtEnd = range.close + 1;
+        // `})` then `;` then the newline — whitespace tolerated between them
+        while (stmtEnd < text.length && /[)\s]/.test(text[stmtEnd]) && text[stmtEnd] !== '\n')
+            stmtEnd++;
+        if (text[stmtEnd] === ';')
+            stmtEnd++;
+        if (text[stmtEnd] === '\r')
+            stmtEnd++;
+        if (text[stmtEnd] === '\n')
+            stmtEnd++;
+        planned.push({
+            ref: `text "${tNum[2]}"@${cx},${cy}`,
+            line: '',
+            start: stmtStart,
+            end: stmtEnd,
+        });
+    }
+    for (let i = 0; i < deletes.length; i++) {
+        if (!used.has(i))
+            skipped.push({ ref: `text "${deletes[i].text0}"@${deletes[i].x0},${deletes[i].y0}`, reason: 'no .text({…}) literal matches its authored value/anchor' });
+    }
+    return { edits: planned, skipped };
+}
+// ---------------------------------------------------------------------------
+// Component LABEL repositioning: a Reference/Value fp_text dragged in the
+// layout view. The final world position arrives in board (y-down) mm; it is
+// converted to FOOTPRINT-LOCAL coordinates against the part's final
+// placement (literal + the same apply's move delta) and written into the
+// Component constructor's referenceLayout / valueLayout options — exactly
+// what the board writer's applyLayoutToFpText consumes on rebuild.
+// ---------------------------------------------------------------------------
+/** Parse a `<var>.pcb = { x, y, rotation? }` literal — standalone or the
+ *  sync sidecar's `parts.<var>.pcb` form (null when computed). */
+function parsePlacementLiteral(text, variable) {
+    const match = new RegExp(`^([ \\t]*)(parts\\.)?${escapeRegExp(variable)}\\.pcb\\s*=\\s*\\{([^}]*)\\}`, 'm').exec(text);
+    if (!match)
+        return null;
+    const xNum = /\bx\s*:\s*(-?[\d.]+)/.exec(match[3]);
+    const yNum = /\by\s*:\s*(-?[\d.]+)/.exec(match[3]);
+    if (!xNum || !yNum)
+        return null;
+    const rNum = /\brotation\s*:\s*(-?[\d.]+)/.exec(match[3]);
+    // the assignment replaces the whole placement: no `side` key = front
+    const side = /\bside\s*:\s*(['"])back\1/.test(match[3]) ? 'back' : 'front';
+    return { x: parseFloat(xNum[1]), y: parseFloat(yNum[1]), rot: rNum ? parseFloat(rNum[1]) : 0, side };
+}
+function planComponentEdits(text, specs, placementOf, allRefs) {
+    const planned = [];
+    const skipped = [];
+    const used = new Set();
+    // the declaring variable rides along: a standalone `<var>.referenceLayout
+    // = {…}` statement OVERRIDES the constructor option at runtime, and the
+    // label edit must land where it actually wins. The declaration prefix is
+    // optional (non-declaring `new Component(…)` usages still match, they just
+    // carry no variable) and tolerates a type annotation — but the options
+    // literal is anchored at the `new`, never at the statement start, so an
+    // annotation's own braces cannot capture it.
+    const callRe = /(?:(?:export\s+)?(?:const|let|var)\s+([A-Za-z_$][\w$]*)(?:\s*:\s*[^=;]+?)?\s*=\s*)?(new\s+Component\s*\()/g;
+    let match;
+    while ((match = callRe.exec(text)) !== null) {
+        const variable = match[1];
+        const newAt = match.index + match[0].length - match[2].length;
+        const range = objectLiteralRange(text, newAt);
+        if (!range)
+            continue;
+        const inner = text.slice(range.open + 1, range.close);
+        const rNum = /\breference\s*:\s*(['"])((?:\\.|(?!\1).)*)\1/.exec(inner);
+        if (!rNum)
+            continue;
+        const ref = rNum[2];
+        const spec = specs.find((sp, i) => !used.has(i) && sp.ref === ref);
+        if (!spec)
+            continue;
+        used.add(specs.indexOf(spec));
+        let skip = null;
+        if (spec.newRef && allRefs.has(spec.newRef) && spec.newRef !== ref)
+            skip = `\`${spec.newRef}\` is already a component reference`;
+        let newInner = inner;
+        const after = [];
+        if (!skip && spec.newRef) {
+            const esc = escapeQuoted(spec.newRef, rNum[1]);
+            newInner = newInner.replace(rNum[0], () => `reference: ${rNum[1]}${esc}${rNum[1]}`);
+        }
+        if (!skip && spec.value !== undefined) {
+            const vNum = /\bvalue\s*:\s*(['"])((?:\\.|(?!\1).)*)\1/.exec(inner);
+            // escape against the literal being written into: an existing value
+            // literal may quote differently than the reference beside it
+            const esc = escapeQuoted(spec.value, vNum ? vNum[1] : rNum[1]);
+            if (vNum)
+                newInner = newInner.replace(vNum[0], () => `value: ${vNum[1]}${esc}${vNum[1]}`);
+            else
+                after.push(`value: ${rNum[1]}${esc}${rNum[1]}`);
+        }
+        if (!skip && spec.label) {
+            const part = placementOf(ref);
+            if (!part) {
+                skip = 'no .pcb placement literal found';
+            }
+            else {
+                // a post-construction `<var>.<kind>Layout = {…}` statement beats the
+                // constructor option when the code runs — rewrite THAT and leave the
+                // constructor untouched (an appended option there is dead weight the
+                // statement overrides, so the rebuild would revert the drag). The
+                // sync sidecar's `parts.<var>.<kind>Layout` is the same override,
+                // one indirection deeper.
+                const stmtProp = `${spec.label.kind}Layout`;
+                // no declaring variable → no standalone statement to prefer
+                const am = variable
+                    ? new RegExp(`^([ \\t]*)(parts\\.)?${escapeRegExp(variable)}\\.${stmtProp}\\s*=\\s*\\{`, 'm').exec(text)
+                    : null;
+                const ar = am ? objectLiteralRange(text, am.index + am[0].length - 1) : null;
+                if (am && ar) {
+                    const bodyStr = labelLayoutBody(spec.label, part, text.slice(ar.open + 1, ar.close));
+                    planned.push({
+                        ref: `${ref} ${stmtProp}`,
+                        line: `${am[1] ?? ''}${am[2] ?? ''}${variable}.${stmtProp} = { ${bodyStr} }`,
+                        start: am.index,
+                        end: ar.close + 1,
+                    });
+                }
+                else {
+                    // every label kind writes its Layout option (`fabLayout` for the
+                    // small fab refdes) — the one the importer reads back; a legacy
+                    // plain `fab:` option is rewritten into it
+                    const prop = `${spec.label.kind}Layout`;
+                    // the layout literal may already carry keys this edit does not
+                    // manage (layer, show, styled by hand…) — keep them. Balanced-brace
+                    // parsing: a nested justify object must not truncate the literal
+                    const keyRe = new RegExp(`\\b${prop}\\s*:${spec.label.kind === 'fab' ? '|\\bfab\\s*:' : ''}`);
+                    const km = keyRe.exec(newInner);
+                    let bodyStr = '';
+                    let span = null;
+                    if (km) {
+                        const r = objectLiteralRange(newInner, km.index + km[0].length - 1);
+                        if (r) {
+                            bodyStr = labelLayoutBody(spec.label, part, newInner.slice(r.open + 1, r.close));
+                            span = { start: km.index, end: r.close + 1 };
+                        }
+                    }
+                    if (span) {
+                        const literal = `${prop}: { ${bodyStr} }`;
+                        newInner = newInner.slice(0, span.start) + literal + newInner.slice(span.end);
+                    }
+                    else {
+                        after.push(`${prop}: { ${labelLayoutBody(spec.label, part, '')} }`);
+                    }
+                }
+            }
+        }
+        if (skip) {
+            skipped.push({ ref, reason: skip });
+            continue;
+        }
+        if (after.length) {
+            // re-locate the anchor on the REPLACED text: the rename/value edits
+            // above may have shifted it, and a stale offset splices mid-token
+            const anchor = /\breference\s*:\s*(['"])((?:\\.|(?!\1).)*)\1/.exec(newInner);
+            const at = anchor ? anchor.index + anchor[0].length : newInner.trimEnd().length;
+            newInner = newInner.slice(0, at) + ', ' + after.join(', ') + newInner.slice(at);
+        }
+        planned.push({
+            ref,
+            line: `${text.slice(match.index, range.open + 1)}${newInner}}`,
+            start: match.index,
+            end: range.close + 1,
+        });
+    }
+    for (let i = 0; i < specs.length; i++) {
+        if (!used.has(i))
+            skipped.push({ ref: specs[i].ref, reason: 'no Component constructor literal found' });
+    }
+    return { edits: planned, skipped };
+}
+//# sourceMappingURL=layoutEdits.js.map

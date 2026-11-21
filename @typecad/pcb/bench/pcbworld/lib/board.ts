@@ -252,29 +252,64 @@ function contourPolygon(c: Contour): Pt[] {
   }));
 }
 
-/** The Edge.Cuts contours: the largest is the board, the rest are cutouts. */
+/**
+ * The Edge.Cuts contours: the largest is the board, the rest are cutouts.
+ * Board-level gr_* items and footprint-level fp_* items (a board-shaped
+ * footprint) both count; footprint geometry is moved into board coordinates.
+ */
 function readOutline(root: SNode): Outline | string {
-  const edge = root.children().filter((n) => n.name.startsWith('gr_') && n.child('layer')?.getString(1) === 'Edge.Cuts');
-  if (edge.length === 0) return 'no Edge.Cuts outline';
+  type Tf = (p: Pt) => Pt;
+  const identity: Tf = (p) => p;
+  const items: Array<{ kind: string; node: SNode; tf: Tf }> = [];
+  for (const n of root.children()) {
+    if (n.name.startsWith('gr_') && n.child('layer')?.getString(1) === 'Edge.Cuts') {
+      items.push({ kind: n.name.slice(3), node: n, tf: identity });
+    }
+    if (n.is('footprint')) {
+      const at = n.child('at');
+      const fx = at?.getNumber(1) ?? 0;
+      const fy = at?.getNumber(2) ?? 0;
+      const rad = ((at?.getNumber(3) ?? 0) * Math.PI) / 180;
+      const tf: Tf = (p) => ({
+        x: fx + p.x * Math.cos(rad) + p.y * Math.sin(rad),
+        y: fy - p.x * Math.sin(rad) + p.y * Math.cos(rad),
+      });
+      for (const g of n.children()) {
+        if (g.name.startsWith('fp_') && g.child('layer')?.getString(1) === 'Edge.Cuts') {
+          items.push({ kind: g.name.slice(3), node: g, tf });
+        }
+      }
+    }
+  }
+  if (items.length === 0) return 'no Edge.Cuts outline';
 
   const contours: Contour[] = [];
-  const open: Pt[][] = []; // polylines from gr_line / gr_arc, to be chained
-  for (const e of edge) {
-    if (e.is('gr_rect')) {
+  const open: Pt[][] = []; // polylines from line / arc pieces, to be chained
+  for (const { kind, node: e, tf } of items) {
+    const P = (n: SNode | null) => tf(pt(n));
+    if (kind === 'rect') {
       const a = pt(e.child('start'));
       const b = pt(e.child('end'));
-      contours.push({ kind: 'rect', x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), width: Math.abs(b.x - a.x), height: Math.abs(b.y - a.y) });
-    } else if (e.is('gr_circle')) {
-      const c = pt(e.child('center'));
-      const p = pt(e.child('end'));
-      contours.push({ kind: 'circle', cx: c.x, cy: c.y, r: Math.hypot(p.x - c.x, p.y - c.y) });
-    } else if (e.is('gr_poly')) {
-      const points = (e.child('pts')?.children('xy') ?? []).map(pt);
+      const corners = [a, { x: b.x, y: a.y }, b, { x: a.x, y: b.y }].map(tf);
+      const axis = tf === identity || corners.every((c, i) => c.x === corners[(i + 1) % 4]!.x || c.y === corners[(i + 1) % 4]!.y);
+      if (axis) {
+        const xs = corners.map((c) => c.x);
+        const ys = corners.map((c) => c.y);
+        contours.push({ kind: 'rect', x: Math.min(...xs), y: Math.min(...ys), width: Math.max(...xs) - Math.min(...xs), height: Math.max(...ys) - Math.min(...ys) });
+      } else {
+        contours.push({ kind: 'polygon', points: corners });
+      }
+    } else if (kind === 'circle') {
+      const c = P(e.child('center'));
+      const q = P(e.child('end'));
+      contours.push({ kind: 'circle', cx: c.x, cy: c.y, r: Math.hypot(q.x - c.x, q.y - c.y) });
+    } else if (kind === 'poly') {
+      const points = (e.child('pts')?.children('xy') ?? []).map((n) => tf(pt(n)));
       if (points.length >= 3) contours.push({ kind: 'polygon', points });
-    } else if (e.is('gr_line')) {
-      open.push([pt(e.child('start')), pt(e.child('end'))]);
-    } else if (e.is('gr_arc')) {
-      open.push(arcPoints(pt(e.child('start')), pt(e.child('mid')), pt(e.child('end'))));
+    } else if (kind === 'line') {
+      open.push([P(e.child('start')), P(e.child('end'))]);
+    } else if (kind === 'arc') {
+      open.push(arcPoints(P(e.child('start')), P(e.child('mid')), P(e.child('end'))));
     } else {
       return `unsupported Edge.Cuts item ${e.name}`;
     }

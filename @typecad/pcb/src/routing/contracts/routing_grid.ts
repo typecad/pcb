@@ -30,6 +30,9 @@ interface IRoutingGrid {
   gridToWorld(gridX: number, gridY: number): { x: number; y: number };
   getCell(x: number, y: number, layer: string): IRoutingCell | undefined;
   isInBounds(x: number, y: number): boolean;
+  /** True when the cell centre is inside the board-edge keepout (off board, in a cutout, or too near an edge). */
+  isEdgeKeepout(x: number, y: number, layer: string): boolean;
+
   isOccupied(
     x: number,
     y: number,
@@ -39,6 +42,8 @@ interface IRoutingGrid {
     considerObstacleClearance?: boolean,
     sumObstacleClearance?: boolean,
     blockers?: Set<string>,
+    probe?: { x: number; y: number },
+    from?: { x: number; y: number },
   ): boolean;
   getResolution(): number;
   readonly gridResolution: number;

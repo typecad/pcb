@@ -87,6 +87,7 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "bench:pcbworld": "vitest run --config bench/pcbworld/vitest.config.ts",
+    "bench:pcbworld:fetch": "node bench/pcbworld/fetch.mjs",
     "bench:pcbworld:typecheck": "tsc -p bench/pcbworld/tsconfig.json",
     "sync:extension": "node scripts/sync-editor-extension.mjs"
   },

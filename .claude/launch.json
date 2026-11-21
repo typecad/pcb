@@ -1,0 +1,14 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "default-demo-viewer",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "-e",
+        "const h=require('http'),f=require('fs'),p=require('path');const r='demo/default_demo/hw/build/serve';h.createServer((q,s)=>{let u=decodeURIComponent(q.url.split('?')[0]);if(u==='/')u='/viewer.html';const fp=p.join(r,u);f.readFile(fp,(e,d)=>{if(e){s.writeHead(404);s.end();return}s.writeHead(200,{'content-type':fp.endsWith('.html')?'text/html':'application/octet-stream'});s.end(d)})}).listen(8765)"
+      ],
+      "port": 8765
+    }
+  ]
+}

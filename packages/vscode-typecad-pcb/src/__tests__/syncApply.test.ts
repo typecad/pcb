@@ -72,6 +72,160 @@ describe('layout apply → _sync.ts sidecar', () => {
     expect(entry).toContain('syncBoard(typecad, { j1 });\ntypecad.create(j1);');
   });
 
+  it('an orphaned sidecar (entry never imports it) is reset, and the move wires the entry', () => {
+    // live session: an earlier apply's rollback restored the entry file but
+    // left _sync.ts behind with parts.j1.pcb. The next apply rewrote that
+    // dead literal by the move delta (stale base) and never wired the entry,
+    // so the rebuilt board kept every part at its constructor position.
+    const orphan = [
+      '// banner',
+      "import { TrackBuilder } from '@typecad/pcb';",
+      'export const syncTracks: TrackBuilder[] = [];',
+      'export function syncBoard(typecad: PCB, parts: Record<string, Component>): void {',
+      '  syncTracks.length = 0;',
+      '  parts.j1.pcb = { x: 0.5, y: -12 };',
+      '}',
+    ].join('\r\n');
+    const files = [{ uri: ENTRY_URI, text: entryFile() }, { uri: SYNC_URI, text: orphan }];
+    const plan = planOf(files, { moves: [{ ref: 'J1', dx: 0, dy: -13, ax: 0, ay: -13 }] });
+    expect(plan.skipped).toEqual([]);
+    expect(plan.counts.moves).toBe(1);
+    const out = applyPlan(files, plan);
+    const sync = out.get(SYNC_URI)!;
+    expect(sync.match(/parts\.j1\.pcb\s*=/g)).toHaveLength(1);
+    // the board's real position (0,0) plus the move — not the stale -12 base
+    expect(sync).toContain('parts.j1.pcb = { x: 0, y: -13 };');
+    const entry = out.get(ENTRY_URI)!;
+    expect(entry).toContain("import { syncBoard } from './_sync.js';");
+    expect(entry).toContain('syncBoard(typecad, { j1 });\ntypecad.create(j1);');
+  });
+
+  it('value edits and renames reach parts with no reference literal (the create scaffold)', () => {
+    // found by the round-trip harness: `new Resistor({ value: '150' })`
+    // carries no `reference: 'R1'`, so both edits were skipped
+    const entry = [
+      "import { PCB, Resistor, LED } from '@typecad/pcb'",
+      "let typecad = new PCB('demo');",
+      "let r1 = new Resistor({ value: '150' });",
+      'let led = new LED({',
+      "  value: 'red',",
+      "  simulation: { model: 'Dled D (IS=1a)', value: 'x' },",
+      '});',
+      'let r9 = new Resistor();',
+      'typecad.create(r1, led, r9);',
+    ].join('\n');
+    const files = [{ uri: ENTRY_URI, text: entry }, { uri: SYNC_URI, text: '' }];
+    const vars: Record<string, string> = { R1: 'r1', D1: 'led', R9: 'r9' };
+    const plan = planLayoutApply(files, {
+      moves: [],
+      values: [{ ref: 'R1', value: '220' }, { ref: 'D1', value: 'green' }, { ref: 'R9', value: '1k' }],
+      renames: [{ ref: 'R1', newRef: 'R10' }],
+      variableOf: (r) => vars[r],
+      allRefs: new Set(Object.keys(vars)),
+      syncUri: SYNC_URI,
+      entryUri: ENTRY_URI,
+    });
+    expect(plan.skipped).toEqual([]);
+    expect(plan.counts.values).toBe(3);
+    expect(plan.counts.renames).toBe(1);
+    const out = applyPlan(files, plan).get(ENTRY_URI)!;
+    expect(out).toContain("let r1 = new Resistor({ value: '220', reference: 'R10' });");
+    // the top-level value only — the nested simulation `value` stays
+    expect(out).toContain("  value: 'green',\n  simulation: { model: 'Dled D (IS=1a)', value: 'x' },\n});");
+    expect(out).toContain("let r9 = new Resistor({ value: '1k' });");
+  });
+
+  it('a rename onto an existing reference is refused for scaffold parts too', () => {
+    const files = [{ uri: ENTRY_URI, text: "let r1 = new Resistor({ value: '150' });\ntypecad.create(r1);" }, { uri: SYNC_URI, text: '' }];
+    const plan = planLayoutApply(files, {
+      moves: [],
+      renames: [{ ref: 'R1', newRef: 'R2' }],
+      variableOf: (r) => (r === 'R1' ? 'r1' : 'r2'),
+      allRefs: new Set(['R1', 'R2']),
+      syncUri: SYNC_URI,
+      entryUri: ENTRY_URI,
+    });
+    expect(plan.skipped.join(' ')).toContain('`R2` is already a component reference');
+    expect(plan.counts.renames).toBe(0);
+  });
+
+  it('a route-only apply keeps every sidecar part in the syncBoard() parts map', () => {
+    // live session: placements for battery/r1 were live in _sync.ts; the next
+    // apply added only a route, rewrote the call map wholesale from the parts
+    // IT touched (none) to `{}`, and the build died on parts.battery.pcb
+    const files = [
+      {
+        uri: ENTRY_URI,
+        text: entryFile().replace(
+          "from '@typecad/pcb';",
+          "from '@typecad/pcb';\nimport { syncBoard } from './_sync.js';",
+        ).replace('typecad.create(j1);', 'syncBoard(typecad, { j1 });\ntypecad.create(j1);'),
+      },
+      {
+        uri: SYNC_URI,
+        text: [
+          '// banner',
+          "import { TrackBuilder } from '@typecad/pcb';",
+          'export const syncTracks: TrackBuilder[] = [];',
+          'export function syncBoard(typecad: PCB, parts: Record<string, Component>): void {',
+          '  syncTracks.length = 0;',
+          '  parts.j1.pcb = { x: 130, y: 85 };',
+          '}',
+        ].join('\n'),
+      },
+    ];
+    const plan = planOf(files, { routes: [routeVcc] });
+    expect(plan.counts.routes).toBe(1);
+    const entry = applyPlan(files, plan).get(ENTRY_URI)!;
+    expect(entry).toContain('syncBoard(typecad, { j1 });');
+    expect(entry).not.toContain('syncBoard(typecad, {});');
+  });
+
+  it('a label-only apply keeps syncTracks in the import while create() spreads it', () => {
+    // found replaying the live session: routes were live in the sidecar, a
+    // label-only apply rewrote the import to `{ syncBoard }`, and the build
+    // died on `...syncTracks` (ReferenceError)
+    const files = [
+      {
+        uri: ENTRY_URI,
+        text: entryFile()
+          .replace("from '@typecad/pcb';", "from '@typecad/pcb';\nimport { syncBoard, syncTracks } from './_sync.js';")
+          .replace('typecad.create(j1);', 'syncBoard(typecad, { j1 });\ntypecad.create(j1, ...syncTracks);'),
+      },
+      {
+        uri: SYNC_URI,
+        text: [
+          '// banner',
+          "import { TrackBuilder } from '@typecad/pcb';",
+          'export const syncTracks: TrackBuilder[] = [];',
+          'export function syncBoard(typecad: PCB, parts: Record<string, Component>): void {',
+          '  syncTracks.length = 0;',
+          '  parts.j1.pcb = { x: 130, y: 85 };',
+          "  const route1 = new TrackBuilder(typecad, { net: 'VCC',  })",
+          "  .from({ x: 1, y: 2 }, 'F.Cu', 0.3)",
+          "  .to({ x: 3, y: 4, layer: 'F.Cu', width: 0.3 });",
+          '  syncTracks.push(route1);',
+          '}',
+        ].join('\n'),
+      },
+    ];
+    const plan = planOf(files, { labels: [{ ref: 'J1', kind: 'value', x: 130, y: 88.5, rot: 0 }] });
+    expect(plan.counts.labels).toBe(1);
+    const entry = applyPlan(files, plan).get(ENTRY_URI)!;
+    expect(entry).toContain("import { syncBoard, syncTracks } from './_sync.js';");
+    expect(entry).toContain('typecad.create(j1, ...syncTracks);');
+  });
+
+  it('wires the import on its own line after a semicolon-less import (the create scaffold)', () => {
+    const scaffold = entryFile().replace("from '@typecad/pcb';", "from '@typecad/pcb'");
+    const files = [{ uri: ENTRY_URI, text: scaffold }, { uri: SYNC_URI, text: '' }];
+    const plan = planOf(files, { moves: [{ ref: 'J1', dx: 1, dy: 0, ax: 1, ay: 0 }] });
+    const entry = applyPlan(files, plan).get(ENTRY_URI)!;
+    expect(entry.startsWith(
+      "import { PCB, Component, Connector } from '@typecad/pcb'\nimport { syncBoard } from './_sync.js';\n\nconst typecad",
+    )).toBe(true);
+  });
+
   it('a flip with no literal writes side into the sidecar placement', () => {
     const files = [{ uri: ENTRY_URI, text: entryFile() }, { uri: SYNC_URI, text: '' }];
     const plan = planOf(files, { moves: [{ ref: 'J1', dx: 0, dy: 0, ax: 130, ay: 85, side: 'back' }] });
@@ -324,6 +478,29 @@ describe('layout apply → _sync.ts sidecar', () => {
     expect(sync).toContain('parts.j1.pcb = { x: 130, y: 85 };');
     expect(sync).toMatch(/parts\.j1\.valueLayout = \{ x: 0, y: 3\.5, rotation: 0 \};/);
     expect(out.get(ENTRY_URI)).toContain('syncBoard(typecad, { j1 });');
+  });
+
+  it('a label on a never-moved part (no placement literal) converts against its board position', () => {
+    // live session: moving D1's silkscreen reference — D1 had never been
+    // moved, so no `.pcb` literal existed and the edit was skipped with
+    // "no .pcb placement literal found"
+    const files = [{ uri: ENTRY_URI, text: entryFile() }, { uri: SYNC_URI, text: '' }];
+    const label = { ref: 'J1', kind: 'reference' as const, x: 12, y: 18.5, rot: 0 };
+    const without = planOf(files, { labels: [label] });
+    expect(without.skipped.join(' ')).toContain('no .pcb placement literal found');
+
+    const plan = planOf(files, {
+      labels: [label],
+      boardPlacementOf: (ref) => (ref === 'J1' ? { x: 10, y: 20, rot: 0 } : undefined),
+    });
+    expect(plan.skipped).toEqual([]);
+    expect(plan.counts.labels).toBe(1);
+    const out = applyPlan(files, plan);
+    const all = [...out.values()].join('\n');
+    // world (12, 18.5) relative to the part's board position (10, 20)
+    expect(all).toMatch(/referenceLayout = \{ x: 2, y: -1\.5, rotation: 0 \}/);
+    // no placement is invented for the part — it stays where the build put it
+    expect(all).not.toMatch(/j1\.pcb\s*=/);
   });
 
   it('deletes a part from source when the layout view deletes it', () => {

@@ -608,6 +608,14 @@ export class AStarRouter {
 
       // Track which points have been routed (as part of the growing tree)
       const routedPoints = new Set<number>();
+      // Connectivity of the terminals: a net is routed only when every
+      // terminal ends up in ONE component. Counting touched terminals (as
+      // this once did) called A-B + C-D a success after B-C failed.
+      const parent = points.map((_, i) => i);
+      const find = (i: number): number => (parent[i] === i ? i : (parent[i] = find(parent[i]!)));
+      // copper of each component, keyed by its root — trunk branching may
+      // only attach to the component the edge's in-tree terminal belongs to
+      const compNodes = new Map<number, { x: number; y: number; layer: string }[]>();
       const allNodes: { x: number; y: number; layer: string }[] = [];
       const allGridNodes: { gridX: number; gridY: number; layer: string }[] = [];
       const segments: IRoutePath[] = []; // Store individual segments
@@ -625,6 +633,24 @@ export class AStarRouter {
       const netBudgetMs = this.options.netTimeBudgetMs ?? 0;
       const netDeadline = netBudgetMs > 0 ? startTime + netBudgetMs : undefined;
       let budgetExhausted = false;
+      const treeNodesFor = (from: number, to: number) => {
+        const inTree = routedPoints.has(from) ? from : routedPoints.has(to) ? to : -1;
+        return inTree < 0 ? [] : (compNodes.get(find(inTree)) ?? []);
+      };
+      /** Route one terminal pair; on success merge the two components. */
+      const tryEdge = (from: number, to: number): IRoutePath | null => {
+        if (find(from) === find(to)) return null; // already connected through other copper
+        const r = router.routeMSTEdge(points[from], points[to], points, routedPoints, treeNodesFor(from, to));
+        if (!r || !r.success) return null;
+        const ra = find(from);
+        const rb = find(to);
+        const merged = [...(compNodes.get(ra) ?? []), ...(compNodes.get(rb) ?? []), ...r.nodes];
+        compNodes.delete(ra);
+        compNodes.delete(rb);
+        parent[ra] = rb;
+        compNodes.set(rb, merged);
+        return r;
+      };
       for (let i = 0; i < mstEdges.length; i++) {
         if (netDeadline !== undefined && performance.now() > netDeadline) {
           budgetExhausted = true;
@@ -639,9 +665,9 @@ export class AStarRouter {
 
         const edge = mstEdges[i];
         const { from, to } = edge;
-        const segmentResult = router.routeMSTEdge(points[from], points[to], points, routedPoints, allNodes);
+        const segmentResult = tryEdge(from, to);
 
-        if (!segmentResult || !segmentResult.success) {
+        if (!segmentResult) {
           // Continue with remaining edges (partial routing)
           continue;
         }
@@ -681,8 +707,44 @@ export class AStarRouter {
         totalVias += segmentResult.viaCount;
       }
 
-      // Check if we successfully routed all connections
-      const allPointsRouted = routedPoints.size === points.length;
+      // Repair pass: an MST edge that failed leaves the net in pieces, but a
+      // different terminal pair between the same pieces may well route (the
+      // failed pair was blocked; its neighbours often are not). Try pairs
+      // between components nearest-first, a bounded number of attempts.
+      const components = () => new Set(points.map((_, k) => find(k))).size;
+      if (components() > 1 && !budgetExhausted) {
+        const pairs: Array<[number, number, number]> = [];
+        for (let a = 0; a < points.length; a++)
+          for (let b = a + 1; b < points.length; b++)
+            pairs.push([a, b, Math.hypot(points[a]!.x - points[b]!.x, points[a]!.y - points[b]!.y)]);
+        pairs.sort((p, q) => p[2] - q[2]);
+        const tried = new Set(mstEdges.map((e) => `${Math.min(e.from, e.to)}:${Math.max(e.from, e.to)}`));
+        let attempts = 0;
+        const maxAttempts = 3 * (points.length - 1);
+        for (const [a, b] of pairs) {
+          if (components() === 1 || attempts >= maxAttempts) break;
+          if (netDeadline !== undefined && performance.now() > netDeadline) {
+            budgetExhausted = true;
+            break;
+          }
+          if (find(a) === find(b) || tried.has(`${a}:${b}`)) continue;
+          attempts++;
+          const r = tryEdge(a, b);
+          if (!r) continue;
+          successCount++;
+          segments.push(r);
+          this.#registerEdgeVias(r);
+          allNodes.push(...r.nodes);
+          if (r.gridNodes) allGridNodes.push(...r.gridNodes);
+          routedPoints.add(a);
+          routedPoints.add(b);
+          totalLength += r.length;
+          totalVias += r.viaCount;
+        }
+      }
+
+      // Routed = every terminal in one connected component
+      const allPointsRouted = components() === 1;
 
       if (successCount === 0) {
         const endTime = performance.now();

@@ -4,6 +4,7 @@ import { executeKiCADCommand } from '../../kicad_commands.js';
 import { npxExec } from '../../utils/process_exec.js';
 import { loadConfig } from '../../config.js';
 import { getBuildDir } from '../../utils/constants.js';
+import { isSyncFileName } from '../../kicad2typecad/sync_file.js';
 
 /**
  * Shared steps for the check/diagnostics pipelines: entry detection, build
@@ -58,7 +59,12 @@ export function detectEntryFile(): string | null {
     /* no package.json */
   }
   try {
-    const srcFiles = fs.readdirSync('./src').filter((f) => f.endsWith('.ts') && !f.endsWith('.d.ts'));
+    // the machine-owned _sync.ts sidecar is never an entry: a project without
+    // typecad.conf.ts stopped building after its first layout apply, when
+    // the sidecar made src/ hold two files
+    const srcFiles = fs
+      .readdirSync('./src')
+      .filter((f) => f.endsWith('.ts') && !f.endsWith('.d.ts') && !isSyncFileName(f));
     if (srcFiles.length === 1) return `./src/${srcFiles[0]}`;
   } catch {
     /* no src dir */

@@ -23,21 +23,45 @@ import { boardIsBuildOutput } from '../src/utils/build_signature.js';
 
 let dir: string;
 let prevCwd: string;
-beforeEach(() => {
-  prevCwd = process.cwd();
+/** every project directory the test made: the first one and its rebuild copies */
+let dirs: string[] = [];
+function newProjectDir(): string {
   // INSIDE the package (not os.tmpdir): the fixture source is really
   // executed, so its imports must resolve to this workspace's toolchain —
   // and the footprints' "Code" property must point at the fixture source
   // file, exactly like a real project, or the importer matches nothing.
-  dir = fs.mkdtempSync(path.join(__dirname, '.fixedpoint-'));
-  fs.mkdirSync(path.join(dir, 'build'), { recursive: true });
-  fs.mkdirSync(path.join(dir, 'src'), { recursive: true });
+  // Copies are siblings at the same depth, so the source's relative
+  // toolchain import resolves the same from each.
+  const d = fs.mkdtempSync(path.join(__dirname, '.fixedpoint-'));
+  fs.mkdirSync(path.join(d, 'build'), { recursive: true });
+  fs.mkdirSync(path.join(d, 'src'), { recursive: true });
+  dirs.push(d);
+  return d;
+}
+beforeEach(() => {
+  prevCwd = process.cwd();
+  dirs = [];
+  dir = newProjectDir();
   process.chdir(dir);
 });
 afterEach(() => {
   process.chdir(prevCwd);
-  fs.rmSync(dir, { recursive: true, force: true });
+  for (const d of dirs) fs.rmSync(d, { recursive: true, force: true });
 });
+
+/**
+ * Copy a project's source into a fresh sibling directory. vitest serves a
+ * module by path for the whole run: vi.resetModules() runs it again but does
+ * not re-read a file rewritten on disk. A rebuild after the importer rewrote
+ * board.ts must therefore build from a NEW path, or it silently rebuilds the
+ * source as it was before the import (and an import that drifts the next
+ * build goes unseen).
+ */
+function copyProject(from: string): string {
+  const to = newProjectDir();
+  fs.copyFileSync(path.join(from, 'src', 'board.ts'), path.join(to, 'src', 'board.ts'));
+  return to;
+}
 
 const PLACEMENTS = [
   { name: 'r1', ref: 'R1', x: 12, y: 8, rotation: 0, side: 'front' as const },
@@ -63,6 +87,14 @@ function writeSource(): string {
     lines.push(`const ${p.name} = new ${cls}({ reference: '${p.ref}', value: '${p.ref.startsWith('R') ? '1k' : '100nF'}' });`);
     lines.push(`${p.name}.pcb = { x: ${p.x}, y: ${p.y}, rotation: ${p.rotation}, side: '${p.side}' };`);
   }
+  // a free text with its size left to the build's default: an omitted
+  // width/height once read as an edit to import on the build's own output
+  lines.push("typecad.text({ text: 'REV A', x: 10, y: 15, layer: 'F.SilkS' });");
+  // keepouts lean on the build's restriction defaults (omitted = not
+  // allowed): the minimal sidecar form and a partial override once read as
+  // "restrictions updated from board" on the build's own output
+  lines.push("typecad.keepout({ layers: ['F.Cu'], x: 2, y: 2, width: 3, height: 3 });");
+  lines.push("typecad.keepout({ layers: ['B.Cu'], x: 2, y: 30, width: 3, height: 3, restrictions: { tracks: false } });");
   lines.push(`typecad.create(${PLACEMENTS.map((p) => p.name).join(', ')});`);
   const file = path.join(dir, 'src', 'board.ts');
   fs.writeFileSync(file, lines.join('\n') + '\n');
@@ -70,15 +102,17 @@ function writeSource(): string {
 }
 
 /** Run the project source (what `npm run build` does) and return the board. */
-async function buildBoard(): Promise<string> {
-  const file = path.join(dir, 'src', 'board.ts');
-  if (!fs.existsSync(file)) writeSource();
+async function buildBoard(project: string = dir): Promise<string> {
+  const file = path.join(project, 'src', 'board.ts');
+  if (project === dir && !fs.existsSync(file)) writeSource();
+  process.chdir(project);
   // a fresh module graph per build, like a fresh `npm run build` process —
   // and no cache-busting query string, which would leak into the footprints'
-  // "Code" property (the source path) and make builds differ for the wrong reason
+  // "Code" property (the source path) and make builds differ for the wrong
+  // reason. Source rewritten since an earlier build needs copyProject().
   vi.resetModules();
   await import(/* @vite-ignore */ file);
-  return path.join(dir, 'build', 'fp.kicad_pcb');
+  return path.join(project, 'build', 'fp.kicad_pcb');
 }
 
 /**
@@ -90,7 +124,8 @@ async function buildBoard(): Promise<string> {
  */
 function pendingLabels(board: string): string[] {
   const ir = new KicadIRBuilder().build(SExprNode.parse(fs.readFileSync(board, 'utf8')));
-  const sourceRoot = path.join(dir, 'src');
+  // the source of the project that built this board (<project>/build/fp.kicad_pcb)
+  const sourceRoot = path.join(path.dirname(path.dirname(board)), 'src');
   const sourceFiles = collectTypeScriptFiles(sourceRoot);
   const matchResults = new SourceMatcher(sourceRoot).matchAll(ir.footprints);
   const rewriter = new SourceRewriter();
@@ -119,13 +154,17 @@ describe('build ⇄ import fixed point', () => {
     // The user-visible loop is build → import → source write → build → …
     // It is only harmless if the source stops changing. Run the real cycle:
     // import the built board into source, rebuild FROM that source, repeat.
-    const srcFile = path.join(dir, 'src', 'board.ts');
-    let board = await buildBoard();
-    const texts: string[] = [fs.readFileSync(srcFile, 'utf8')];
+    // Each rebuild runs from a fresh copy (see copyProject) — in place, it
+    // would rebuild the pre-import source and the cycle would prove nothing.
+    const srcOf = (project: string): string => fs.readFileSync(path.join(project, 'src', 'board.ts'), 'utf8');
+    let project = dir;
+    let board = await buildBoard(project);
+    const texts: string[] = [srcOf(project)];
     for (let cycle = 0; cycle < 3; cycle++) {
       await kicadDataToTypeCAD(board, { apply: true, auto: true });
-      texts.push(fs.readFileSync(srcFile, 'utf8'));
-      board = await buildBoard();
+      texts.push(srcOf(project));
+      project = copyProject(project);
+      board = await buildBoard(project);
     }
     // the first import may write (label layouts materialize); after that the
     // source is byte-stable — cycle 2 and 3 write nothing
@@ -149,6 +188,8 @@ describe('build ⇄ import fixed point', () => {
     const board = await buildBoard();
     const first = fs.readFileSync(board, 'utf8');
     const firstHash = JSON.parse(fs.readFileSync(path.join(dir, 'build', '.typecad-board.json'), 'utf8')).hashes['fp.kicad_pcb'];
+    // gone before the rebuild, so the comparison cannot read the first build's file
+    fs.rmSync(board);
     await buildBoard();
     const second = fs.readFileSync(board, 'utf8');
     // uuids/timestamps may legitimately differ between runs; what must not

@@ -36,6 +36,7 @@ exports.hasSyncArtDeclaration = hasSyncArtDeclaration;
 exports.planSyncArtDeclarationEdits = planSyncArtDeclarationEdits;
 exports.syncImageInsertAt = syncImageInsertAt;
 exports.planSyncEntryEdits = planSyncEntryEdits;
+exports.entryWiresSync = entryWiresSync;
 exports.SYNC_FILE_NAME = '_sync.ts';
 exports.SYNC_FUNCTION_NAME = 'syncBoard';
 exports.SYNC_TRACKS_NAME = 'syncTracks';
@@ -433,7 +434,10 @@ function planSyncEntryEdits(entryText, partsVars, needTracks, stem, needArt = fa
         ...(needArt ? [exports.SYNC_ART_NAME] : []),
     ];
     const canonicalImport = `import { ${importNames.join(', ')} } from '${sidecarModule}';`;
-    const IMPORT_ANY = /import\s*\{[^}]*\}\s*from\s*['"][^'"]*['"]\s*;?/g;
+    // [ \t]* not \s* before the optional `;`: a semicolon-less import must not
+    // swallow the newlines after it, or the sidecar import is inserted after
+    // the blank line and glued onto the next statement
+    const IMPORT_ANY = /import\s*\{[^}]*\}\s*from\s*['"][^'"]*['"][ \t]*;?/g;
     const oursRe = new RegExp(`['"][^'"]*_sync(?:\\.[A-Za-z0-9_$.-]+)?(?:\\.js)?['"]`);
     let ours = null;
     let last = null;
@@ -503,5 +507,27 @@ function planSyncEntryEdits(entryText, partsVars, needTracks, stem, needArt = fa
         edits.push(spreadEdit);
     }
     return { edits, receiver: create ? receiver : null };
+}
+/**
+ * Whether the entry file references the sidecar at all: an uncommented
+ * import from the _sync module OR a syncBoard(...) call. With neither, the
+ * sidecar is dead text: its placements never reached the board, so it must
+ * not be treated as the parts' current positions. Half-wired entries (one
+ * without the other) count as wired — the wiring planner repairs those.
+ */
+function entryWiresSync(entryText) {
+    const shadow = structuralShadow(entryText);
+    // [ \t]* not \s* before the optional `;`: a semicolon-less import must not
+    // swallow the newlines after it, or the sidecar import is inserted after
+    // the blank line and glued onto the next statement
+    const IMPORT_ANY = /import\s*\{[^}]*\}\s*from\s*['"][^'"]*['"][ \t]*;?/g;
+    const oursRe = /['"][^'"]*_sync(?:\.[A-Za-z0-9_$.-]+)?(?:\.js)?['"]/;
+    let imported = false;
+    for (let m; (m = IMPORT_ANY.exec(shadow)) !== null;) {
+        const real = entryText.slice(m.index, m.index + m[0].length);
+        if (oursRe.test(real) && new RegExp(`\\b${exports.SYNC_FUNCTION_NAME}\\b`).test(real))
+            imported = true;
+    }
+    return imported || new RegExp(`\\b${exports.SYNC_FUNCTION_NAME}\\s*\\(`).test(shadow.replace(IMPORT_ANY, ''));
 }
 //# sourceMappingURL=syncFile.js.map

@@ -836,6 +836,30 @@ export class GridSearch {
               if (lookupOccupancy(neighbor.layer, neighbor.gridX, neighbor.gridY, effectiveClearance, true, false)) {
                 continue;
               }
+              // The cell is clear; the MOVE into it must be too. A step can
+              // pass closer to a pad corner than either end point (up to
+              // L²/8d), which only showed once clearances stopped carrying
+              // a hidden buffer — check the segment exactly.
+              if (
+                neighbor.layer === current.layer &&
+                this.grid.isOccupied(
+                  neighbor.gridX,
+                  neighbor.gridY,
+                  neighbor.layer,
+                  effectiveClearance,
+                  this.options.net,
+                  true,
+                  false,
+                  this.currentBlockers ?? undefined,
+                  undefined,
+                  this.grid.gridToWorld(current.gridX, current.gridY),
+                )
+              ) {
+                continue;
+              }
+            } else if (this.grid.isEdgeKeepout(neighbor.gridX, neighbor.gridY, neighbor.layer)) {
+              // escaping the start pad skips clearance probes, but never the board edge
+              continue;
             }
           }
 
@@ -1203,8 +1227,12 @@ export class GridSearch {
           continue;
         }
 
+        // padKeepout already holds the via radius + via clearance; the
+        // obstacle's own clearance is the same rule seen from the other side,
+        // so take the stricter of the two (sum=false) instead of adding them —
+        // summing demanded ~2x the clearance and starved layer changes.
         const viaBlocked = spanLayers.some((spanLayer) =>
-          this.grid.isOccupied(nx, ny, spanLayer, padKeepout, this.options.net, true, true),
+          this.grid.isOccupied(nx, ny, spanLayer, padKeepout, this.options.net, true, false),
         );
 
         if (viaBlocked) {
@@ -1511,12 +1539,10 @@ export class GridSearch {
       if (current.worldX !== undefined && current.worldY !== undefined) {
         worldPos = { x: current.worldX, y: current.worldY };
       } else {
-        const gridWorldPos = this.grid.gridToWorld(current.gridX, current.gridY);
-        const gridResolution = this.grid.getResolution();
-        worldPos = {
-          x: gridWorldPos.x - gridResolution * 0.125,
-          y: gridWorldPos.y - gridResolution * 0.125,
-        };
+        // exactly the cell centre whose occupancy the search checked (an
+        // unexplained -0.125-cell diagonal shift here used to move every
+        // interior vertex ~0.18 cell off the cleared position)
+        worldPos = this.grid.gridToWorld(current.gridX, current.gridY);
       }
 
       if (current.viaUsed && current.parent) {
@@ -2397,7 +2423,10 @@ export class GridSearch {
       Math.max(this.clearanceProfile.getTraceClearance(), this.clearanceProfile.getViaKeepoutRadius()) +
       GridSearchConstants.SEARCH_WINDOW_PADDING_MM;
     const resolution = this.grid.getResolution();
-    const expansionMultiplier = 1 + expansionLevel * 0.75;
+    // Each expansion restarts the search from scratch, so grow geometrically:
+    // linear +75% steps re-ran a detouring search many times over before the
+    // window reached the detour (or the grid edge, which ends expansion).
+    const expansionMultiplier = 2 ** expansionLevel;
     const paddingCells = Math.max(4, Math.ceil((paddingMm * expansionMultiplier) / resolution));
 
     const minX = Math.min(start.gridX, end.gridX) - paddingCells;
@@ -2538,9 +2567,13 @@ export function segmentClearOfObstacles(
   const steps = Math.max(2, Math.ceil(length / (resolution * 0.5)));
   for (let i = 0; i <= steps; i++) {
     const t = i / steps;
-    const g = grid.worldToGrid(a.x + dx * t, a.y + dy * t);
+    const px = a.x + dx * t;
+    const py = a.y + dy * t;
+    const g = grid.worldToGrid(px, py);
     if (!grid.isInBounds(g.x, g.y)) return false;
-    if (grid.isOccupied(g.x, g.y, a.layer, clearance, net, true, false)) return false;
+    // probe the sample point itself, not the centre of the cell it falls in:
+    // a shortcut can pass up to half a cell closer to copper than that centre
+    if (grid.isOccupied(g.x, g.y, a.layer, clearance, net, true, false, undefined, { x: px, y: py })) return false;
   }
   return true;
 }

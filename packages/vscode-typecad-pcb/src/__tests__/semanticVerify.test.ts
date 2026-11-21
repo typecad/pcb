@@ -63,6 +63,52 @@ describe('verifyBoardSemantics — catches the silent failures', () => {
     expect(report.misses.join(' ')).toContain('missing from the rebuilt board');
   });
 
+  it('a route the builder trimmed against existing same-net copper is present', () => {
+    // the builder (subtractOverlapsFromSegment) emits only the uncovered
+    // part of 1,1 → 6,1: the 1..4 stretch is already a GND track
+    const trimmed = board()
+      .replace('  (segment (start 7 7) (end 9 9) (width 0.4) (layer "F.Cu") (net 3) (uuid "x1"))\n', '')
+      .replace('  (segment (start 4 1) (end 4 4)', '  (segment (start 4 1) (end 6 1) (width 0.25) (layer "F.Cu") (net 3) (uuid "t1"))\n  (segment (start 4 1) (end 4 4)');
+    const report = verifyBoardSemantics(trimmed, {
+      routes: [{ net: 'GND', w: 0.25, pieces: [{ layer: 'F.Cu', pts: [{ x: 1, y: 1 }, { x: 6, y: 1 }] }], vias: [] }],
+      deletes: [],
+      placements: [],
+      texts: [],
+    });
+    expect(report.misses).toEqual([]);
+    expect(report.ok).toBe(true);
+  });
+
+  it('a route lying entirely on an existing track (dropped as a duplicate) is present', () => {
+    const report = verifyBoardSemantics(board(), {
+      routes: [{ net: 'GND', w: 0.25, pieces: [{ layer: 'F.Cu', pts: [{ x: 2, y: 1 }, { x: 3, y: 1 }] }], vias: [] }],
+      deletes: [],
+      placements: [],
+      texts: [],
+    });
+    expect(report.misses).toEqual([]);
+  });
+
+  it('partial coverage still reports the uncovered route', () => {
+    const report = verifyBoardSemantics(board(), {
+      routes: [{ net: 'GND', w: 0.25, pieces: [{ layer: 'F.Cu', pts: [{ x: 1, y: 1 }, { x: 6, y: 1 }] }], vias: [] }],
+      deletes: [],
+      placements: [],
+      texts: [],
+    });
+    expect(report.misses.join(' ')).toContain('route segment 1.00,1.00');
+  });
+
+  it('the exact segment at the wrong width is still a miss', () => {
+    const report = verifyBoardSemantics(board(), {
+      routes: [{ net: 'GND', w: 0.6, pieces: [{ layer: 'F.Cu', pts: [{ x: 7, y: 7 }, { x: 9, y: 9 }] }], vias: [] }],
+      deletes: [],
+      placements: [],
+      texts: [],
+    });
+    expect(report.misses.join(' ')).toContain('route segment 7.00,7.00');
+  });
+
   it('a via that never materialized', () => {
     const report = verifyBoardSemantics(
       board()

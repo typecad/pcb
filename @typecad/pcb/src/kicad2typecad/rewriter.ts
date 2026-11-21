@@ -14,6 +14,10 @@ import type {
   TextLayoutIR,
 } from './types.js';
 
+/** pcb.text() size when the source omits width/height (pcb_graphics.pcbText
+ *  and the board serializer both default to it). */
+const DEFAULT_GR_TEXT_SIZE = 1.27;
+
 /** The note for a pending change that produced no replacement — surfaced
  *  instead of silently counting it as applied. */
 function dropNote(label: string, filePath: string): string {
@@ -272,7 +276,10 @@ export class SourceRewriter {
     }
     const oldR = oldLayout?.rotation ?? 0;
     const newR = newLayout.rotation ?? 0;
-    if (Math.abs(oldR - newR) > 0.001) changed.push(`rotation: ${oldR} → ${newR}`);
+    // angles compare on the circle: a source -180 (or 450) is the board's
+    // 180 (90) — a plain difference proposed a no-op rewrite every import
+    const dR = Math.abs((((oldR - newR) % 360) + 540) % 360 - 180);
+    if (dR > 0.001) changed.push(`rotation: ${oldR} → ${newR}`);
     if (oldLayout?.layer !== newLayout.layer && newLayout.layer !== undefined) changed.push('layer');
     if (oldLayout?.width !== newLayout.width && newLayout.width !== undefined) changed.push('width');
     if (oldLayout?.height !== newLayout.height && newLayout.height !== undefined) changed.push('height');
@@ -552,8 +559,15 @@ export class SourceRewriter {
       const textChanged = src.sourceText !== pcb.text;
       const layerChanged = src.layer !== pcb.layer;
       const fontChanged = src.font !== pcb.fontFace;
-      const widthChanged = src.width !== pcbWidth && (src.width !== undefined || pcbWidth !== undefined);
-      const heightChanged = src.height !== pcbHeight && (src.height !== undefined || pcbHeight !== undefined);
+      // an omitted size is the build's default (renderGraphics writes 1.27 ×
+      // 1.27) — comparing undefined against the board's 1.27 read every
+      // size-less pcb.text() as an edit on the build's own output
+      const sizeDiffers = (srcSize: number | undefined, boardSize: number | undefined): boolean =>
+        boardSize === undefined
+          ? srcSize !== undefined
+          : Math.abs((srcSize ?? DEFAULT_GR_TEXT_SIZE) - boardSize) > 1e-6;
+      const widthChanged = sizeDiffers(src.width, pcbWidth);
+      const heightChanged = sizeDiffers(src.height, pcbHeight);
       const thicknessChanged =
         src.thickness !== pcb.thickness && (src.thickness !== undefined || pcb.thickness !== undefined);
       const boldChanged = src.bold !== (pcb.bold || false);

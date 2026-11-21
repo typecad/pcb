@@ -79,6 +79,7 @@ Object.defineProperty(exports, "newestBoardFile", { enumerable: true, get: funct
 Object.defineProperty(exports, "entrySourceFile", { enumerable: true, get: function () { return boardFile_js_1.entrySourceFile; } });
 const boardFile_js_2 = require("./boardFile.js");
 const syncState_js_1 = require("./syncState.js");
+const timerSlots_js_1 = require("./timerSlots.js");
 /** A selection is re-posted until the viewer page acks it (or this times out). */
 const DELIVERY_TIMEOUT_MS = 5_000;
 const DELIVERY_INTERVAL_MS = 200;
@@ -103,8 +104,20 @@ class BoardViewerPanel {
         /** Bumped on every html assignment; acks carry it so stale acks are ignored. */
         this.loadToken = 0;
         this.readySeen = false;
+        /** Every pending refresh timer, by role: 'debounce' (watcher events),
+         *  'retry' (re-check after a skipped/failed/stale refresh — the board's
+         *  final write can coalesce into an in-flight generate and never fire the
+         *  watcher again; also the failure backoff ladder), 'show' (first-open
+         *  retry while the board settles). One slot per role, cleared together
+         *  when the panel goes away. */
+        this.timers = new timerSlots_js_1.TimerSlots();
         /** Consecutive generate() failures — drives exponential retry backoff. */
         this.consecutiveFailures = 0;
+        /** Placement of every part as each recent render saw it, keyed by that
+         *  render's board identity (the page's stamp) — what a refused apply
+         *  compares against to decide whether its edits still describe the board
+         *  (rebaseCheck). Newest last; capped. */
+        this.renderedParts = new Map();
         this.generating = null;
         /** A refresh doRefresh deferred because the panel was hidden — runs when
          *  the tab becomes visible again. */
@@ -116,9 +129,12 @@ class BoardViewerPanel {
          *  render pipeline then uses the step-by-step chain for this session. */
         this.viewerCommandUnavailable = false;
         /** Board revisions already auto-absorbed this session — one attempt per
-         *  mtime, win or lose, so a persistently unabsorbable drift can never
-         *  loop the render pipeline. */
+         *  revision, win or lose. Keyed on the board's CONTENT hash (mtime only
+         *  as a fallback): every rebuild has a new mtime, so an mtime key never
+         *  repeats inside a build→absorb→build cycle and never stopped it. */
         this.absorbedBoardRevisions = new Set();
+        /** When the recent absorbs ran — the circuit breaker's window. */
+        this.absorbHistory = [];
         this.applyBridge = new viewerApply_js_1.LayoutApplyBridge(this);
     }
     /** Open/reveal the viewer, regenerating the HTML when the board changed. */
@@ -128,7 +144,7 @@ class BoardViewerPanel {
             vscode.window.showInformationMessage('typeCAD/pcb: no typeCAD project (typecad.conf.ts) in this workspace.');
             return;
         }
-        if (!this.generated || this.generated.boardMtimeMs !== this.boardMtime(folder)) {
+        if (!this.generated || this.generated.boardId !== this.boardId(folder)) {
             let generated = false;
             try {
                 generated = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: 'typeCAD/pcb: rendering board viewer' }, () => this.generate(folder));
@@ -148,16 +164,13 @@ class BoardViewerPanel {
                 // kicad-cli) may still be writing. An already-open panel hears about
                 // the settled board from the watcher; a first open needs this retry,
                 // because refreshIfVisible no-ops without a panel
-                if (!this.showRetryTimer) {
+                if (!this.timers.has('show')) {
                     vscode.window.showInformationMessage('typeCAD/pcb: board is still being written — the viewer opens when it settles.');
                 }
                 this.armShowRetry(4_000);
                 return;
             }
-            if (this.showRetryTimer) {
-                clearTimeout(this.showRetryTimer);
-                this.showRetryTimer = undefined;
-            }
+            this.timers.cancel('show');
         }
         else if (this.generated) {
             // the cache matches the board, but a newer on-disk page (viewer
@@ -198,6 +211,9 @@ class BoardViewerPanel {
             this.panel = undefined;
             this.pendingRef = null;
             this.refreshOwed = false;
+            // nothing scheduled for a panel that is gone (the retry ladder would
+            // otherwise keep ticking through doRefresh's no-panel early return)
+            this.timers.clear();
         });
         panel.onDidChangeViewState((e) => {
             // a hidden panel's owed refresh (doRefresh deferred it) runs the
@@ -238,7 +254,7 @@ class BoardViewerPanel {
             panel.dispose();
             return;
         }
-        const board = (0, boardFile_js_2.newestBoardFile)(folder);
+        const board = (0, boardFile_js_2.newestBoardFile)(folder, this.selectedBoardStem);
         // fast path: the on-disk viewer was generated from this exact board
         // revision (the file is newer than the board) — reuse it as-is
         const page = board ? await this.readDiskViewer(folder) : null;
@@ -262,7 +278,7 @@ class BoardViewerPanel {
             this.output.appendLine(`viewer page predates the installed @typecad/pcb ${toolchain} — regenerating instead of restoring it`);
         }
         if (board && page && !pageStale && page.diskMtimeMs > (0, boardFile_js_2.mtimeOf)(board)) {
-            this.generated = { html: page.html, boardMtimeMs: (0, boardFile_js_2.mtimeOf)(board), diskMtimeMs: page.diskMtimeMs };
+            this.generated = { html: page.html, boardId: (0, boardFile_js_2.boardIdentity)(board), diskMtimeMs: page.diskMtimeMs };
             this.loadToken++;
             this.assignHtml();
             this.output.appendLine('viewer restored from the last generated board view');
@@ -280,21 +296,27 @@ class BoardViewerPanel {
      * Null when the file is missing or unreadable (logged, never thrown).
      */
     async readDiskViewer(folder) {
-        const htmlPath = node_path_1.default.join(folder, 'build', 'serve', 'viewer.html');
+        const selected = (0, boardFile_js_2.newestBoardFile)(folder, this.selectedBoardStem);
+        const htmlName = (0, boardFile_js_2.listBoardFiles)(folder).length > 1 && selected
+            ? `${node_path_1.default.basename(selected, '.kicad_pcb')}.html`
+            : 'viewer.html';
+        const htmlPath = node_path_1.default.join(folder, 'build', 'serve', htmlName);
         if (!node_fs_1.default.existsSync(htmlPath))
             return null;
         // the disk page renders some board revision — stamp it with the CURRENT
         // board's identity only when the page is actually newer than the board
         // (the restore fast path's own freshness rule); a stale page keeps no
         // stamp and its applies read as unstamped
-        const boardForStamp = (0, boardFile_js_2.newestBoardFile)(folder);
-        const stamp = boardForStamp && (0, boardFile_js_2.mtimeOf)(htmlPath) > (0, boardFile_js_2.mtimeOf)(boardForStamp) ? (0, boardFile_js_2.mtimeOf)(boardForStamp) : undefined;
+        const boardForStamp = (0, boardFile_js_2.newestBoardFile)(folder, this.selectedBoardStem);
+        const stamp = boardForStamp && (0, boardFile_js_2.mtimeOf)(htmlPath) > (0, boardFile_js_2.mtimeOf)(boardForStamp) ? (0, boardFile_js_2.boardIdentity)(boardForStamp) || undefined : undefined;
         try {
             const raw = node_fs_1.default.readFileSync(htmlPath, 'utf8');
             const [components, nets] = await Promise.all([
                 this.service.components(),
                 this.service.netSources().catch(() => []),
             ]);
+            if (stamp)
+                this.rememberRender(stamp, components);
             const { html } = (0, probeClient_js_1.injectProbeClient)(raw, components, nets, stamp);
             return { html, diskMtimeMs: (0, boardFile_js_2.mtimeOf)(htmlPath) };
         }
@@ -320,7 +342,7 @@ class BoardViewerPanel {
             return false;
         if (!this.generated)
             return false;
-        const board = (0, boardFile_js_2.newestBoardFile)(folder);
+        const board = (0, boardFile_js_2.newestBoardFile)(folder, this.selectedBoardStem);
         if (!board)
             return false;
         const page = await this.readDiskViewer(folder);
@@ -336,7 +358,7 @@ class BoardViewerPanel {
         const adoptGenMtime = (0, boardFile_js_2.projectToolchainGeneratorMtime)(folder);
         if (adoptGenMtime !== null && page.diskMtimeMs < adoptGenMtime)
             return false;
-        this.generated = { html: page.html, boardMtimeMs: (0, boardFile_js_2.mtimeOf)(board), diskMtimeMs: page.diskMtimeMs };
+        this.generated = { html: page.html, boardId: (0, boardFile_js_2.boardIdentity)(board), diskMtimeMs: page.diskMtimeMs };
         this.output.appendLine('viewer page on disk is newer than the served one — adopted it');
         return true;
     }
@@ -438,32 +460,24 @@ class BoardViewerPanel {
     async refreshIfVisible() {
         if (!this.panel)
             return;
-        if (this.refreshTimer)
-            clearTimeout(this.refreshTimer);
         // 1.5s debounce: kicad-cli writes the board truncate-then-write and VS
         // Code watchers fire loosely on Windows (anything touching the
         // workspace) — wait for the writes and events to settle
-        this.refreshTimer = setTimeout(() => {
+        this.timers.arm('debounce', 1_500, () => {
             void this.doRefresh();
-        }, 1_500);
+        });
     }
     /** One delayed re-run of show() — the board was too fresh to render. */
     armShowRetry(delayMs) {
-        if (this.showRetryTimer)
-            clearTimeout(this.showRetryTimer);
-        this.showRetryTimer = setTimeout(() => {
-            this.showRetryTimer = undefined;
+        this.timers.arm('show', delayMs, () => {
             void this.show();
-        }, delayMs);
+        });
     }
     /** Re-check after a skipped/failed/stale refresh; default 10s, overridable. */
     armRetry(delayMs = 10_000, force = false) {
-        if (this.retryTimer)
-            clearTimeout(this.retryTimer);
-        this.retryTimer = setTimeout(() => {
-            this.retryTimer = undefined;
+        this.timers.arm('retry', delayMs, () => {
             void this.doRefresh(force);
-        }, delayMs);
+        });
     }
     /**
      * Retry after a FAILED generate, with exponential backoff: a persistent
@@ -473,9 +487,9 @@ class BoardViewerPanel {
      * (including a running `import --watch`), amplifying into a storm.
      * 30s → 60s → 5min cap; a successful generate resets the ladder.
      */
-    armFailureRetry(boardMtimeMs) {
+    armFailureRetry(boardId) {
         this.consecutiveFailures++;
-        this.lastFailedBoardMtime = boardMtimeMs;
+        this.lastFailedBoardId = boardId;
         const delay = this.consecutiveFailures <= 1 ? 30_000 : this.consecutiveFailures === 2 ? 60_000 : 300_000;
         this.output.appendLine(`render failed (${this.consecutiveFailures} in a row) — retrying in ${delay / 1000}s; ` +
             `a real board change retries immediately`);
@@ -483,7 +497,7 @@ class BoardViewerPanel {
     }
     clearFailureLadder() {
         this.consecutiveFailures = 0;
-        this.lastFailedBoardMtime = undefined;
+        this.lastFailedBoardId = undefined;
     }
     /** Show a notice in the viewer's lower-left status text (no-op w/o panel). */
     postStatus(text) {
@@ -517,21 +531,26 @@ class BoardViewerPanel {
             this.refreshOwedForce = this.refreshOwedForce || force;
             return;
         }
+        // past the gate: this refresh supersedes any deferred one (a stale
+        // replay later would only re-check an up-to-date view)
+        force = force || this.refreshOwedForce;
+        this.refreshOwed = false;
+        this.refreshOwedForce = false;
         const folder = this.hwFolder();
         if (!folder)
             return;
         // watcher events are cheap and sometimes spurious (Windows fires
         // onChange loosely); the board's mtime against the last render decides
         // whether any work is warranted at all
-        const board = (0, boardFile_js_2.newestBoardFile)(folder);
+        const board = (0, boardFile_js_2.newestBoardFile)(folder, this.selectedBoardStem);
         // A previous generate failed against THIS exact board revision: a
         // watcher event alone (the export pipeline touching build/) must not
         // re-run the failing export — only a genuinely new board does, or the
         // ladder's own scheduled retry.
-        if (!force && board && this.lastFailedBoardMtime === (0, boardFile_js_2.mtimeOf)(board)) {
+        if (!force && board && this.lastFailedBoardId === (0, boardFile_js_2.boardIdentity)(board)) {
             return;
         }
-        if (board && this.generated && (0, boardFile_js_2.mtimeOf)(board) === this.generated.boardMtimeMs) {
+        if (board && this.generated && (0, boardFile_js_2.boardIdentity)(board) === this.generated.boardId) {
             // board unchanged — still pick up a newer on-disk viewer page (a
             // viewer-tooling update regenerated it without touching the board)…
             const adopted = await this.adoptNewerDiskViewer(folder);
@@ -568,8 +587,8 @@ class BoardViewerPanel {
             // exponentially so a persistent failure cannot storm the workspace
             // (each retry re-runs the export pipeline, whose kicad-cli board
             // resave re-fires every watcher, including `import --watch`).
-            const boardNow = (0, boardFile_js_2.newestBoardFile)(folder);
-            this.armFailureRetry(boardNow ? (0, boardFile_js_2.mtimeOf)(boardNow) : undefined);
+            const boardNow = (0, boardFile_js_2.newestBoardFile)(folder, this.selectedBoardStem);
+            this.armFailureRetry(boardNow ? (0, boardFile_js_2.boardIdentity)(boardNow) : undefined);
             return;
         }
         if (!generated) {
@@ -587,28 +606,22 @@ class BoardViewerPanel {
         // event is self-inflicted, not a real board change. Only re-render when
         // the mtime genuinely moved AND stays moved on a re-check 5s later
         // (rides out kicad-cli's cleanup churn).
-        const boardNow = (0, boardFile_js_2.newestBoardFile)(folder);
-        if (boardNow && (0, boardFile_js_2.mtimeOf)(boardNow) !== this.generated.boardMtimeMs) {
-            const staleMtime = (0, boardFile_js_2.mtimeOf)(boardNow);
-            if (this.retryTimer)
-                clearTimeout(this.retryTimer);
-            this.retryTimer = setTimeout(() => {
-                this.retryTimer = undefined;
-                const settled = (0, boardFile_js_2.newestBoardFile)(folder);
-                if (!settled || (0, boardFile_js_2.mtimeOf)(settled) === staleMtime) {
+        const boardNow = (0, boardFile_js_2.newestBoardFile)(folder, this.selectedBoardStem);
+        if (boardNow && (0, boardFile_js_2.boardIdentity)(boardNow) !== this.generated.boardId) {
+            const staleId = (0, boardFile_js_2.boardIdentity)(boardNow);
+            this.timers.arm('retry', 5_000, () => {
+                const settled = (0, boardFile_js_2.newestBoardFile)(folder, this.selectedBoardStem);
+                if (!settled || (0, boardFile_js_2.boardIdentity)(settled) === staleId) {
                     // board quiet at the new mtime — render the new revision
                     void this.doRefresh();
                 }
-                // if the mtime moved again, the new watcher event's debounce plus
+                // if the board changed again, the new watcher event's debounce plus
                 // doRefresh's own gates handle it
-            }, 5_000);
-            this.output.appendLine(`board mtime moved during export (${this.generated.boardMtimeMs} → ${(0, boardFile_js_2.mtimeOf)(boardNow)}) — re-checking in 5s`);
+            });
+            this.output.appendLine(`board changed during export (${this.generated.boardId} → ${(0, boardFile_js_2.boardIdentity)(boardNow)}) — re-checking in 5s`);
             return;
         }
-        if (this.retryTimer) {
-            clearTimeout(this.retryTimer);
-            this.retryTimer = undefined;
-        }
+        this.timers.cancel('retry');
         if (this.panel && this.generated && this.assignedHtml !== this.generated.html) {
             this.output.appendLine('board changed — refreshing viewer');
             this.loadToken++;
@@ -620,11 +633,63 @@ class BoardViewerPanel {
             this.postStatus('');
         }
     }
-    boardMtime(folder) {
-        const board = (0, boardFile_js_2.newestBoardFile)(folder);
-        if (!board)
-            return 0;
-        return (0, boardFile_js_2.mtimeOf)(board);
+    boardId(folder) {
+        const board = (0, boardFile_js_2.newestBoardFile)(folder, this.selectedBoardStem);
+        return board ? (0, boardFile_js_2.boardIdentity)(board) : '';
+    }
+    rememberRender(boardId, components) {
+        if (!boardId)
+            return;
+        this.renderedParts.delete(boardId);
+        this.renderedParts.set(boardId, new Map(components.map((c) => [c.reference, { x: c.at.x, y: c.at.y, rot: c.at.rotation, side: c.side }])));
+        while (this.renderedParts.size > 4) {
+            const oldest = this.renderedParts.keys().next().value;
+            if (oldest === undefined)
+                break;
+            this.renderedParts.delete(oldest);
+        }
+    }
+    /**
+     * May an apply stamped against a superseded render go ahead anyway? Yes —
+     * when every part its edits touch sits EXACTLY where that render showed it
+     * on the board now on disk (same position, rotation, side). The edits are
+     * deltas on those parts' source placements, so they mean the same thing
+     * they meant in the view; whatever rebuilt the board (an auto-build after
+     * an unrelated source edit, an earlier apply, an absorbed import) changed
+     * other things. If any touched part moved, vanished, or the old render is
+     * unknown, the edits describe a board that no longer exists: refuse.
+     */
+    async rebaseCheck(stamp, refs) {
+        const then = this.renderedParts.get(stamp);
+        if (!then)
+            return { ok: false, reason: 'the view this edit was made on is no longer known' };
+        if (refs.length === 0)
+            return { ok: false, reason: 'nothing part-relative to rebase' };
+        this.service.invalidate();
+        let now;
+        try {
+            now = await this.service.components();
+        }
+        catch (err) {
+            return { ok: false, reason: `could not read the rebuilt board: ${err instanceof Error ? err.message : String(err)}` };
+        }
+        const byRef = new Map(now.map((c) => [c.reference, c]));
+        for (const ref of refs) {
+            const a = then.get(ref);
+            const b = byRef.get(ref);
+            if (!a)
+                return { ok: false, reason: `${ref} was not on the view this edit was made on` };
+            if (!b)
+                return { ok: false, reason: `${ref} is gone from the rebuilt board` };
+            const rotDiff = Math.abs((((a.rot - b.at.rotation) % 360) + 540) % 360 - 180);
+            if (Math.abs(a.x - b.at.x) > 0.005 ||
+                Math.abs(a.y - b.at.y) > 0.005 ||
+                rotDiff > 0.01 ||
+                a.side !== b.side) {
+                return { ok: false, reason: `${ref} moved in the rebuild` };
+            }
+        }
+        return { ok: true };
     }
     /** The check-sync oracle's answer for the page banner, or null when the
      *  check is unavailable (best-effort — a failed check never blocks the
@@ -660,6 +725,18 @@ class BoardViewerPanel {
             this.output.appendLine(`sync: ${drift.count} difference(s) with newer sources — the pending build resolves them`);
             return 'transient';
         }
+        // The build signs its output (sha256 in .typecad-board.json). A board
+        // that still matches is the build's OWN output: the mtime test below
+        // would call it 'external' (every build leaves the board newer than
+        // every source), absorb it, rewrite source, auto-build a new board with
+        // a new mtime, and absorb again — the endless rebuild loop. Drift on
+        // our own output means the build does not reproduce source: a bug.
+        const own = (0, boardFile_js_2.boardIsBuildOutput)(board);
+        if (own === true) {
+            this.output.appendLine(`sync: ${drift.count} difference(s) on the build's own output — the build does not reproduce this board from source (please report); not absorbing`);
+            (0, syncState_js_1.setSyncPaused)(`the build does not reproduce this board from source (${drift.count} difference${drift.count === 1 ? '' : 's'})`);
+            return 'bug';
+        }
         if (boardMtime > (0, boardFile_js_2.newestSourceMtime)(folder)) {
             // the board was written after every source and does not follow from
             // them — someone edited the artifact out-of-band (KiCad without the
@@ -669,6 +746,7 @@ class BoardViewerPanel {
             return 'external';
         }
         this.output.appendLine(`sync: ${drift.count} difference(s) with no source or board newer than the other — the build does not reproduce this board from source (please report)`);
+        (0, syncState_js_1.setSyncPaused)(`the build does not reproduce this board from source (${drift.count} difference${drift.count === 1 ? '' : 's'})`);
         return 'bug';
     }
     /**
@@ -681,22 +759,52 @@ class BoardViewerPanel {
      * reconcile (it absorbed mid-apply and reverted the apply's own work).
      */
     async absorbBoardSide(folder, board, drift) {
-        const revision = (0, boardFile_js_2.mtimeOf)(board);
+        // a running KiCad sync (or any other import process) owns board→source
+        // import for this project: it will take this very edit, and a second
+        // importer would be refused by the project lock anyway — burning this
+        // revision's one attempt on a no-op and flashing a banner for drift the
+        // terminal is about to resolve. Its source write auto-builds, and that
+        // board's render re-checks.
+        if ((0, boardFile_js_2.importLockHeld)(folder)) {
+            this.output.appendLine('sync: a KiCad sync/import process is running — it owns board→source import; not absorbing from the viewer');
+            return true;
+        }
+        const revision = (0, boardFile_js_2.boardContentHash)(board) ?? `mtime:${(0, boardFile_js_2.mtimeOf)(board)}`;
         if (this.absorbedBoardRevisions.has(revision))
             return false;
+        const now = Date.now();
+        this.absorbHistory = this.absorbHistory.filter((t) => now - t < BoardViewerPanel.ABSORB_WINDOW_MS);
+        if (this.absorbHistory.length >= BoardViewerPanel.ABSORB_LIMIT) {
+            (0, syncState_js_1.setSyncPaused)(`board→source import is not converging (${this.absorbHistory.length} automatic imports in ${BoardViewerPanel.ABSORB_WINDOW_MS / 60_000} min, board still differs)`);
+            this.output.appendLine(`sync: ${this.absorbHistory.length} absorbs in the last ${BoardViewerPanel.ABSORB_WINDOW_MS / 60_000} min and the board still drifts — ` +
+                'the source↔board round trip is not converging; stopping auto-absorb (the banner stays). Please report.');
+            return false;
+        }
         this.absorbedBoardRevisions.add(revision);
+        this.absorbHistory.push(now);
         this.output.appendLine(`sync: absorbing ${drift.count} out-of-band board difference(s) into source (canonical regeneration)…`);
+        // Take the pipeline for the whole absorb: the import rewrites source, and
+        // the watcher's auto-build (and any watcher-driven render) must neither
+        // race those writes nor double-build. Held across the verifying
+        // check-sync; the source watcher's debounced auto-build re-checks as
+        // soon as it is released and builds the absorbed source once.
+        syncState_js_1.sync.absorbing = true;
         try {
-            await this.run(folder, `npx typecad-pcb import ${shellQuote(board)} --apply --auto`, viewerApply_js_1.GENERATE_TIMEOUT_MS);
+            try {
+                await this.run(folder, `npx typecad-pcb import ${shellQuote(board)} --apply --auto`, viewerApply_js_1.GENERATE_TIMEOUT_MS);
+            }
+            catch (err) {
+                this.output.appendLine(`sync: absorption failed: ${err instanceof Error ? err.message : String(err)} — the banner stays`);
+                return false;
+            }
+            const after = await this.runCheckSync(folder);
+            if (after && after.count > 0) {
+                this.output.appendLine(`sync: ${after.count} difference(s) remain after regeneration — the banner stays`);
+                return false;
+            }
         }
-        catch (err) {
-            this.output.appendLine(`sync: absorption failed: ${err instanceof Error ? err.message : String(err)} — the banner stays`);
-            return false;
-        }
-        const after = await this.runCheckSync(folder);
-        if (after && after.count > 0) {
-            this.output.appendLine(`sync: ${after.count} difference(s) remain after regeneration — the banner stays`);
-            return false;
+        finally {
+            syncState_js_1.sync.absorbing = false;
         }
         this.output.appendLine('sync: source regenerated from the board — in sync');
         // the source watcher's auto-build refreshes the board from the absorbed
@@ -739,6 +847,7 @@ class BoardViewerPanel {
         if (this.selectedBoardStem === stem)
             return;
         this.selectedBoardStem = stem;
+        this.service.setBoard(stem);
         this.output.appendLine(stem ? `viewer switched to board '${stem}'` : 'viewer switched to the active board');
         await this.doRefresh(true);
     }
@@ -762,6 +871,12 @@ class BoardViewerPanel {
                 return false;
             }
             const boardName = node_path_1.default.basename(board, '.kicad_pcb');
+            // The identity of the board THIS render describes, taken before the
+            // render starts: stamped on the page and keyed in the cache. Taken
+            // after, a board rewritten mid-render would be stamped onto a page
+            // that predates it — and the 'changed during export' check could
+            // never fire.
+            const renderedBoardId = (0, boardFile_js_2.boardIdentity)(board);
             // The drift oracle is independent of the export: it reads the settled
             // board + sources, and the native export never rewrites the board file
             // (zone fills are plotted from a temp copy), so there is nothing to
@@ -873,17 +988,21 @@ class BoardViewerPanel {
                 // take the viewer down with it
                 this.service.netSources().catch(() => []),
             ]);
-            const { html, injected } = (0, probeClient_js_1.injectProbeClient)(raw, components, nets, (0, boardFile_js_2.mtimeOf)(board));
-            // Board vs source drift is DIAGNOSTIC, never work: the ts source is
-            // the single source of truth, the .kicad_pcb a build artifact, and
-            // nothing here writes source from the board. Applies land in the
-            // canonical source grammar (an in-sync build follows), so drift means
-            // one of two things — the artifact changed out-of-band (KiCad without
-            // the sync watcher; the watcher is THE import path) or the build is
-            // not reproducing source (a bug). classifyDrift says which; only the
-            // non-transient classes banner.
+            this.rememberRender(renderedBoardId, components);
+            const { html, injected } = (0, probeClient_js_1.injectProbeClient)(raw, components, nets, renderedBoardId);
+            // Board vs source drift: the ts source is the single source of truth,
+            // the .kicad_pcb a build artifact. Drift means one of two things — the
+            // artifact changed out-of-band (KiCad without the sync watcher), which
+            // absorbBoardSide writes back into source, or the build is not
+            // reproducing source (a bug), which only banners. classifyDrift says
+            // which, using the build's content signature so the build's own output
+            // can never be mistaken for an external edit (that was a rebuild loop).
             let withDrift = html;
             const drift = await driftPromise;
+            // a render that finds board and source in sync ends any paused state
+            // (the oracle's answer is only trusted when it ran)
+            if (drift && drift.count === 0)
+                (0, syncState_js_1.setSyncPaused)(null);
             if (drift && drift.count > 0) {
                 if ((0, syncState_js_1.pipelineBusy)()) {
                     // an apply owns the pipeline right now — its own build is in
@@ -906,8 +1025,8 @@ class BoardViewerPanel {
             if (!injected) {
                 this.output.appendLine('warning: viewer HTML had no <head>/</body> anchors — cross-probe disabled');
             }
-            this.generated = { html: withDrift, boardMtimeMs: (0, boardFile_js_2.mtimeOf)(board), diskMtimeMs: (0, boardFile_js_2.mtimeOf)(node_path_1.default.join(folder, outPath)) };
-            this.output.appendLine(`viewer ready: ${components.length} component outline(s), board mtime ${this.generated.boardMtimeMs}, cross-probe ${injected ? 'on' : 'off'}`);
+            this.generated = { html: withDrift, boardId: renderedBoardId, diskMtimeMs: (0, boardFile_js_2.mtimeOf)(node_path_1.default.join(folder, outPath)) };
+            this.output.appendLine(`viewer ready: ${components.length} component outline(s), board ${this.generated.boardId}, cross-probe ${injected ? 'on' : 'off'}`);
             return true;
         })().finally(() => {
             this.generating = null;
@@ -933,7 +1052,7 @@ class BoardViewerPanel {
             void this.panel.webview.postMessage({ type: 'typecad/view-part', part, error: 'no hardware folder' });
             return;
         }
-        const board = (0, boardFile_js_2.newestBoardFile)(folder);
+        const board = (0, boardFile_js_2.newestBoardFile)(folder, this.selectedBoardStem);
         if (!board) {
             void this.panel.webview.postMessage({ type: 'typecad/view-part', part, error: 'no board file' });
             return;
@@ -1161,6 +1280,11 @@ class BoardViewerPanel {
     }
 }
 exports.BoardViewerPanel = BoardViewerPanel;
+/** At most this many absorbs inside ABSORB_WINDOW_MS; more means the
+ *  source↔board round trip is not converging (a transform that drifts a
+ *  little every pass), so stop and banner instead of rebuilding forever. */
+BoardViewerPanel.ABSORB_LIMIT = 2;
+BoardViewerPanel.ABSORB_WINDOW_MS = 5 * 60_000;
 /** The hovered/selected identifier in the active editor, or null. */
 function wordUnderCursor(editor) {
     if (!editor)

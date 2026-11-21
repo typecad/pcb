@@ -1,6 +1,6 @@
 /**
  * Board sets the bench knows by name. Generated data lives under
- * `bench/pcbworld/data/` (gitignored; written by fetch.sh), the smoke set
+ * `bench/pcbworld/data/` (gitignored; written by fetch.mjs), the smoke set
  * ships with the repo in `fixtures/`.
  */
 import fs from 'node:fs';
@@ -22,6 +22,10 @@ export const SMOKE_BOARDS = [
   'jumanji_grid1000_board_00000',
   'donut_cutout_board',
   'corner_staircase_edge',
+  'corner_obstacle_board', // one huge pad: probe scan radius
+  'jumanji_grid10_board_00000', // laid out exactly at the rule limit
+  'jumanji_grid10_board_00001',
+  'outline_in_footprint_board', // Edge.Cuts drawn inside a footprint
 ];
 
 export interface BoardSet {
@@ -40,7 +44,7 @@ function kicadPcbsIn(dir: string): string[] {
     .map((f) => path.join(dir, f));
 }
 
-const FETCH_HINT = 'run `bash bench/pcbworld/fetch.sh` first (see bench/pcbworld/README.md)';
+const FETCH_HINT = 'run `npm run bench:pcbworld:fetch` first (see bench/pcbworld/README.md)';
 
 /**
  * Resolve a set name:
@@ -57,6 +61,14 @@ export function resolveSet(name: string): BoardSet {
   }
   if (name === 'fixtures') return { name, files: kicadPcbsIn(FIXTURES_DIR) };
   if (name === 'd2a') return { name, files: kicadPcbsIn(path.join(DATA_DIR, 'd2a', 'test')), hint: FETCH_HINT };
+  const synth = /^synth-(.+)$/.exec(name);
+  if (synth) {
+    return {
+      name,
+      files: kicadPcbsIn(path.join(DATA_DIR, 'synth', synth[1]!)),
+      hint: `run \`node bench/pcbworld/synth.mjs --family ${synth[1]}\` first`,
+    };
+  }
   const d1 = /^d1-g(\d+)$/.exec(name);
   if (d1) return { name, files: kicadPcbsIn(path.join(DATA_DIR, 'd1', `grid${d1[1]}`, 'test')), hint: FETCH_HINT };
 

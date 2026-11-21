@@ -47,7 +47,10 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.LayoutApplyBridge = exports.GENERATE_TIMEOUT_MS = void 0;
+exports.LayoutApplyBridge = exports.GENERATE_TIMEOUT_MS = exports.BUILD_COMMAND = void 0;
+exports.rebasableRefs = rebasableRefs;
+exports.sameSourceText = sameSourceText;
+exports.expectedPlacements = expectedPlacements;
 const vscode = __importStar(require("vscode"));
 const node_fs_1 = __importDefault(require("node:fs"));
 const node_path_1 = __importDefault(require("node:path"));
@@ -58,8 +61,102 @@ const layoutEdits_js_1 = require("./layoutEdits.js");
 const semanticVerify_js_1 = require("./semanticVerify.js");
 const syncState_js_1 = require("./syncState.js");
 const boardFile_js_1 = require("./boardFile.js");
+/**
+ * Can this payload ride a rebase at all? Only edits that are DELTAS on named
+ * parts' source placements (moves) or ref-keyed text swaps (values, renames)
+ * mean the same thing against a rebuilt board whose touched parts did not
+ * change. Anything carrying absolute board geometry (routes, deletes, zones,
+ * the outline, artwork, label/text positions, net classes) describes ink on
+ * the superseded view and must be redone on the fresh one.
+ */
+function rebasableRefs(payload) {
+    const geometric = (payload.routes?.length ?? 0) > 0 ||
+        (payload.deletes?.length ?? 0) > 0 ||
+        (payload.partDeletes?.length ?? 0) > 0 ||
+        (payload.zones?.length ?? 0) > 0 ||
+        (payload.zoneEdits?.length ?? 0) > 0 ||
+        (payload.zoneDeletes?.length ?? 0) > 0 ||
+        (payload.images?.length ?? 0) > 0 ||
+        (payload.imageEdits?.length ?? 0) > 0 ||
+        (payload.imageDeletes?.length ?? 0) > 0 ||
+        (payload.texts?.length ?? 0) > 0 ||
+        (payload.labels?.length ?? 0) > 0 ||
+        (payload.textDeletes?.length ?? 0) > 0 ||
+        (payload.classEdits?.length ?? 0) > 0 ||
+        (payload.values?.length ?? 0) > 0 ||
+        (payload.renames?.length ?? 0) > 0 ||
+        !!payload.outline;
+    if (geometric)
+        return null;
+    const refs = new Set();
+    for (const m of payload.moves ?? [])
+        refs.add(m.ref);
+    for (const v of payload.values ?? [])
+        refs.add(v.ref);
+    for (const r of payload.renames ?? [])
+        refs.add(r.ref);
+    return refs.size > 0 ? [...refs] : null;
+}
+/**
+ * The ONE build command every pipeline path runs (apply and auto-build). It
+ * is the project's own `build` script — the same thing the Build Board lens
+ * and a hand-typed `npm run build` run — so a script that does extra work
+ * (pre-steps, a custom entry, flags) produces the same board whichever path
+ * built it. (Apply used to call `npx typecad-pcb build` directly, silently
+ * bypassing the script.)
+ */
+exports.BUILD_COMMAND = 'npm run build';
 /** Wall-clock budget for one host-run pipeline command (build, exports). */
 exports.GENERATE_TIMEOUT_MS = 120_000;
+/**
+ * Live document text equals planned text, ignoring line endings. The planner
+ * composes LF text, but VS Code normalizes every edit to the document's EOL —
+ * a file the apply creates opens empty with the platform default (CRLF on
+ * Windows under files.eol "auto"), and an existing CRLF file stays CRLF. An
+ * exact comparison read that normalization as a failed save and rolled back
+ * an apply that had written exactly what the parse gate validated.
+ */
+function sameSourceText(live, planned) {
+    if (planned === undefined)
+        return false;
+    return live === planned || live.replace(/\r\n/g, '\n') === planned.replace(/\r\n/g, '\n');
+}
+/**
+ * Where each moved part should sit after the rebuild, for the semantic check:
+ * the placement literal in the PLANNED (post-apply) texts — exactly what the
+ * build will run. The sidecar is consulted first because syncBoard() runs
+ * right before create() and so wins over any hand-written literal. A part
+ * with no literal anywhere falls back to the move's absolute target (ax/ay),
+ * else it is not checked.
+ *
+ * Computing it from the PRE-apply literal plus the delta was wrong whenever
+ * the apply did not rewrite that literal by the delta — an orphaned sidecar
+ * reset to a fresh scaffold, say — and flagged correctly-placed parts as
+ * MISSING with doubled coordinates.
+ */
+function expectedPlacements(moves, variableOf, planned, syncUri) {
+    const order = [...planned.keys()].sort((a, b) => (a === syncUri ? -1 : b === syncUri ? 1 : 0));
+    const out = [];
+    for (const mv of moves) {
+        const variable = variableOf(mv.ref);
+        let at = null;
+        if (variable) {
+            for (const uri of order) {
+                const lit = (0, layoutEdits_js_1.parsePlacementLiteral)(planned.get(uri), variable);
+                if (lit) {
+                    at = { x: lit.x, y: lit.y };
+                    break;
+                }
+            }
+        }
+        if (!at && mv.ax !== undefined && mv.ay !== undefined)
+            at = { x: mv.ax, y: mv.ay };
+        if (!at)
+            continue;
+        out.push({ ref: mv.ref, x: +at.x.toFixed(3), y: +at.y.toFixed(3), ...(mv.side ? { side: mv.side } : {}) });
+    }
+    return out;
+}
 /**
  * First syntax error in planned source text, or null. Best-effort: the
  * TypeScript compiler resolves in workspace installs; a bundled extension
@@ -147,13 +244,19 @@ class LayoutApplyBridge {
      *  created is deleted instead of emptied). Best-effort per file — the
      *  disk snapshot (build/layout-backups) remains for the Restore Source
      *  from Backup command when even this cannot run. */
-    async restorePreApply(files, touched, createdUris) {
+    async restorePreApply(files, touched, createdUris, applied) {
+        let restored = true;
         for (const key of touched) {
             const pre = files.find((f) => f.uri === key);
             if (!pre)
                 continue;
             try {
                 const doc = await vscode.workspace.openTextDocument(vscode.Uri.parse(key));
+                if (!sameSourceText(doc.getText(), applied.get(key))) {
+                    this.host.output.appendLine(`layout rollback skipped ${key}: document changed after apply`);
+                    restored = false;
+                    continue;
+                }
                 if (createdUris.has(key)) {
                     try {
                         await doc.save();
@@ -170,16 +273,18 @@ class LayoutApplyBridge {
                 await doc.save();
             }
             catch {
+                restored = false;
                 // best-effort — the disk snapshot stays authoritative
             }
         }
+        return restored;
     }
     async onLayoutRebuild(payload) {
         const fail = (error) => {
             this.host.output.appendLine(`layout apply failed: ${error}`);
             this.host.postLayoutStatus(error);
         };
-        if (this.applying) {
+        if (this.applying || (0, syncState_js_1.pipelineBusy)()) {
             // a second click while the first apply is mid-pipeline would snapshot
             // half-written sources and splice the second plan onto a moving board
             fail('an apply is already running — wait for it to finish, then apply again');
@@ -195,6 +300,7 @@ class LayoutApplyBridge {
         // indicator should read "building" for its whole run
         this.applying = true;
         syncState_js_1.sync.applyBusy = true;
+        let staleRefused = false;
         try {
             // board identity: the page carries the mtime of the board it was
             // generated from. A different board on disk now means a build ran
@@ -203,11 +309,31 @@ class LayoutApplyBridge {
             // into a source that moved on. Unstamped = an old page (pre-stamp
             // viewer) — allow, the near-source drift guard still backs this up.
             const boardStamp = payload.board;
-            const boardNow = (0, boardFile_js_1.newestBoardFile)(folder);
-            if (boardStamp && boardNow && String((0, boardFile_js_1.mtimeOf)(boardNow)) !== String(boardStamp)) {
+            const boardNow = (0, boardFile_js_1.newestBoardFile)(folder, this.host.boardStem);
+            let rebased = false;
+            if (boardStamp && boardNow && (0, boardFile_js_1.boardIdentity)(boardNow) !== String(boardStamp)) {
+                // A build ran since this view rendered. Refusing is the safe default
+                // (the view's ink describes a superseded revision), but when the
+                // edits are part-relative and every part they touch is exactly where
+                // the view showed it, they still mean what the user meant — apply
+                // them instead of making the user redo the gesture.
+                const refs = rebasableRefs(payload);
+                const verdict = refs && this.host.rebaseCheck ? await this.host.rebaseCheck(String(boardStamp), refs) : null;
+                if (verdict?.ok) {
+                    rebased = true;
+                    this.host.output.appendLine(`layout apply: board was rebuilt since this view rendered, but ${refs.join(', ')} are unchanged — rebasing the edit onto the new board`);
+                }
+                else if (verdict && verdict.reason) {
+                    this.host.output.appendLine(`layout apply: not rebasing — ${verdict.reason}`);
+                }
+            }
+            if (!rebased && boardStamp && boardNow && (0, boardFile_js_1.boardIdentity)(boardNow) !== String(boardStamp)) {
                 fail('the board was rebuilt since this view rendered (a build ran) — reopening the viewer; redo the edit on the fresh view');
                 this.host.postStatus('view out of date — regenerating…');
-                await this.host.doRefresh();
+                // NOT refreshed here: this apply still owns the pipeline, so
+                // doRefresh would only queue itself as "owed" and the regeneration
+                // would wait for the replay's debounce. Refresh once released.
+                staleRefused = true;
                 return;
             }
             await this.applyPayload(folder, fail, payload);
@@ -215,10 +341,17 @@ class LayoutApplyBridge {
         finally {
             syncState_js_1.sync.applyBusy = false;
             this.applying = false;
-            // a watcher refresh that arrived while this apply owned the pipeline
-            // was deferred (it would have raced the apply's own render); the
-            // pipeline is free — replay it so the view settles on the final state
-            await this.host.replayOwedRefresh();
+            if (staleRefused) {
+                // the pipeline is free: regenerate NOW (doRefresh also retires any
+                // refresh that was deferred while this apply ran)
+                await this.host.doRefresh();
+            }
+            else {
+                // a watcher refresh that arrived while this apply owned the pipeline
+                // was deferred (it would have raced the apply's own render); the
+                // pipeline is free — replay it so the view settles on the final state
+                await this.host.replayOwedRefresh();
+            }
         }
     }
     async applyPayload(folder, fail, { moves, texts, values, labels, renames, routes, deletes, partDeletes, zones, outline, zoneEdits, zoneDeletes, images, imageEdits, imageDeletes, classEdits, textDeletes, }) {
@@ -247,7 +380,7 @@ class LayoutApplyBridge {
             // stage actually writes it, and the backup/restore path knows to
             // delete rather than empty it
             const multi = (0, boardFile_js_1.listBoardFiles)(folder).length > 1;
-            const boardStem = multi ? node_path_1.default.basename((0, boardFile_js_1.newestBoardFile)(folder) ?? '', '.kicad_pcb') : undefined;
+            const boardStem = multi ? node_path_1.default.basename((0, boardFile_js_1.newestBoardFile)(folder, this.host.boardStem) ?? '', '.kicad_pcb') : undefined;
             const syncName = (0, syncFile_js_1.syncFileNameFor)(boardStem || undefined);
             const syncPath = node_path_1.default.join(entry ? node_path_1.default.dirname(entry) : node_path_1.default.join(folder, 'src'), syncName);
             const syncUri = vscode.Uri.file(syncPath);
@@ -263,28 +396,9 @@ class LayoutApplyBridge {
                 files.push({ uri: syncUri.toString(), text: syncText, ...(syncCreated ? { created: true } : {}) });
             }
             const createdUris = new Set(syncCreated ? [syncUri.toString()] : []);
-            // final placements for the semantic check: the move deltas land on the
-            // placement literals, so the finals are computable from the PRE-apply
-            // text (a moved part's footprint should sit exactly there after the
-            // rebuild)
+            // final placements for the semantic check — filled from the PLANNED
+            // texts once the dry run below has composed them (see there)
             const finalPlacements = [];
-            for (const mv of moves ?? []) {
-                const variable = variableOf.get(mv.ref);
-                if (!variable)
-                    continue;
-                for (const f of files) {
-                    const lit = (0, layoutEdits_js_1.parsePlacementLiteral)(f.text, variable);
-                    if (lit) {
-                        finalPlacements.push({
-                            ref: mv.ref,
-                            x: +(lit.x + mv.dx).toFixed(3),
-                            y: +(lit.y + mv.dy).toFixed(3),
-                            ...(mv.side ? { side: mv.side } : {}),
-                        });
-                        break;
-                    }
-                }
-            }
             // artwork: the picked PNGs are copied into <folder>/art/ BEFORE the
             // plan, so the generated statements carry project-relative paths —
             // the build (and any later `npm run build`) resolves them from the
@@ -366,6 +480,10 @@ class LayoutApplyBridge {
                 classEdits: classEdits ?? [],
                 variableOf: (ref) => variableOf.get(ref),
                 allRefs: new Set(comps.map((c) => c.reference).filter(Boolean)),
+                boardPlacementOf: (ref) => {
+                    const c = comps.find((k) => k.reference === ref);
+                    return c?.at ? { x: c.at.x, y: c.at.y, rot: c.at.rotation, side: c.side } : undefined;
+                },
                 syncUri: syncUri.toString(),
                 entryUri: entry ? vscode.Uri.file(entry).toString() : undefined,
             });
@@ -384,6 +502,7 @@ class LayoutApplyBridge {
                     dry.set(batch.uri, out);
                 }
             }
+            finalPlacements.push(...expectedPlacements(moves ?? [], (ref) => variableOf.get(ref), dry, syncUri?.toString()));
             for (const [uri, text] of dry) {
                 const err = plannedTextSyntaxError(text);
                 if (err) {
@@ -414,7 +533,7 @@ class LayoutApplyBridge {
             // post-write check auto-restores from memory, and the Restore Source
             // from Backup command restores from disk; a user must never unscramble
             // a corrupted .ts by hand
-            const boardNameForApply = node_path_1.default.basename((0, boardFile_js_1.newestBoardFile)(folder) ?? '');
+            const boardNameForApply = node_path_1.default.basename((0, boardFile_js_1.newestBoardFile)(folder, this.host.boardStem) ?? '');
             const backup = (0, sourceBackup_js_1.writeBackup)(folder, files.map((f) => ({ uri: f.uri, text: f.text, ...(f.created ? { created: true } : {}) })), 'layout apply', boardNameForApply || undefined);
             if (backup) {
                 this.host.output.appendLine(`source snapshot before apply: ${(0, sourceBackup_js_1.backupRootLabel)()}/${backup.id} (${backup.manifest.files.length} file(s))`);
@@ -473,11 +592,17 @@ class LayoutApplyBridge {
                 const doc = applyDocs.get(uri);
                 finalEdits.replace(doc.uri, new vscode.Range(doc.positionAt(0), doc.positionAt(doc.getText().length)), text);
             }
-            if (finalEdits.size > 0)
-                await vscode.workspace.applyEdit(finalEdits);
+            if (finalEdits.size > 0 && !(await vscode.workspace.applyEdit(finalEdits))) {
+                fail('VS Code rejected the source edits');
+                return;
+            }
             for (const key of plan.touched) {
                 const doc = await vscode.workspace.openTextDocument(vscode.Uri.parse(key));
-                await doc.save();
+                if (!(await doc.save()) || !sameSourceText(doc.getText(), dry.get(key))) {
+                    const restored = await this.restorePreApply(files, plan.touched, createdUris, dry);
+                    fail(restored ? 'Could not save the planned source edits; source restored' : 'Could not save the planned source edits; some documents changed and need review');
+                    return;
+                }
             }
             // post-write verification: if anything slipped past the gate (or the
             // write itself diverged), restore the snapshot IMMEDIATELY — the user
@@ -528,7 +653,8 @@ class LayoutApplyBridge {
                 c.imageDeletes > 0 ||
                 c.outline > 0 ||
                 c.zoneEdits > 0 ||
-                c.zoneDeletes > 0;
+                c.zoneDeletes > 0 ||
+                c.classEdits > 0;
             this.host.output.appendLine(`layout apply: ${c.moves} placement(s) moved${c.endpoints ? `, ${c.endpoints} route endpoint(s) translated` : ''}${c.routes ? `, ${c.routes} track route(s) added to source` : ''}${c.deletes ? `, ${c.deletes} segment(s) deleted from source` : ''}${c.texts ? `, ${c.texts} text(s) edited` : ''}${c.textDeletes ? `, ${c.textDeletes} text(s) deleted from source` : ''}${c.values ? `, ${c.values} value(s) edited` : ''}${c.labels ? `, ${c.labels} label(s) repositioned` : ''}${c.partDeletes ? `, ${c.partDeletes} part(s) deleted from source` : ''}${c.renames ? `, ${c.renames} reference(s) renamed` : ''}${c.zones ? `, ${c.zones} zone(s) added to source` : ''}${c.images ? `, ${c.images} artwork image(s) added to source` : ''}${c.imageEdits ? `, ${c.imageEdits} artwork edit(s) written to source` : ''}${c.imageDeletes ? `, ${c.imageDeletes} artwork image(s) deleted from source` : ''}${c.outline ? ', the board outline edited in source' : ''}${c.zoneEdits ? `, ${c.zoneEdits} zone(s) edited in source` : ''}${c.zoneDeletes ? `, ${c.zoneDeletes} zone(s) deleted from source` : ''}${plan.skipped.length ? `, skipped ${plan.skipped.join('; ')}` : ''}`);
             if (plan.syncFile) {
                 const s = plan.syncFile;
@@ -552,7 +678,8 @@ class LayoutApplyBridge {
             // rebuild must run it.)
             this.host.postStatus('rebuilding board…');
             try {
-                await this.host.run(folder, 'npx typecad-pcb build', exports.GENERATE_TIMEOUT_MS);
+                syncState_js_1.sync.lastBuildStartedAt = Date.now();
+                await this.host.run(folder, exports.BUILD_COMMAND, exports.GENERATE_TIMEOUT_MS);
             }
             catch (err) {
                 // the written source PARSED (the post-write check guards that) but
@@ -563,23 +690,26 @@ class LayoutApplyBridge {
                 // source. Silent maintenance: output channel + the failure line,
                 // never a corrupted tree to unscramble by hand.
                 const why = err instanceof Error ? err.message : String(err);
-                await this.restorePreApply(files, plan.touched, createdUris);
+                const restored = await this.restorePreApply(files, plan.touched, createdUris, dry);
                 this.host.output.appendLine(`layout apply: the rebuild failed after the write (${why}) — source restored to its pre-apply state; the edit stays pending in the view`);
-                fail(`build failed — source restored, the edit is still pending: ${why}`);
+                fail(restored
+                    ? `build failed — source restored, the edit is still pending: ${why}`
+                    : `build failed — some source changed during the build and needs review: ${why}`);
                 return;
             }
             // semantic verification: the parse gate guaranteed the SOURCE parses;
             // this checks the BOARD actually carries the geometry the apply
             // intended (a route the model dropped, a delete that missed, a move
             // that didn't land all parse fine — this is the layer that sees them)
-            const boardForCheck = (0, boardFile_js_1.newestBoardFile)(folder);
+            const boardForCheck = (0, boardFile_js_1.newestBoardFile)(folder, this.host.boardStem);
             if (boardForCheck) {
                 try {
                     const rebuilt = node_fs_1.default.readFileSync(boardForCheck, 'utf8');
                     const report = (0, semanticVerify_js_1.verifyBoardSemantics)(rebuilt, {
                         routes: (routes ?? []).map((r) => ({
                             net: r.net,
-                            pieces: r.pieces.map((p) => ({ layer: p.layer, pts: p.pts })),
+                            w: r.w,
+                            pieces: r.pieces.map((p) => ({ layer: p.layer, w: p.w, pts: p.pts })),
                             vias: (r.vias ?? []).map((v) => ({ x: v.x, y: v.y })),
                         })),
                         deletes: (deletes ?? []).map((d) => ({
@@ -619,7 +749,7 @@ class LayoutApplyBridge {
             // (possibly replaced) file; every delete must be gone.
             if (layoutImageEdits.length > 0 || layoutImageDeletes.length > 0) {
                 try {
-                    const manifestPath = node_path_1.default.join(folder, 'build', `${node_path_1.default.basename((0, boardFile_js_1.newestBoardFile)(folder) ?? 'x').replace(/\.kicad_pcb$/, '')}_images.json`);
+                    const manifestPath = node_path_1.default.join(folder, 'build', `${node_path_1.default.basename((0, boardFile_js_1.newestBoardFile)(folder, this.host.boardStem) ?? 'x').replace(/\.kicad_pcb$/, '')}_images.json`);
                     const manifest = JSON.parse(node_fs_1.default.readFileSync(manifestPath, 'utf8'));
                     const entries = manifest.images ?? [];
                     const misses = [];
@@ -653,12 +783,21 @@ class LayoutApplyBridge {
             // generate() refuses a board written <3s ago (the build may still be
             // writing); wait for it to settle so the viewer regenerates NOW, not
             // only whenever the file watcher next fires
-            const boardFile = (0, boardFile_js_1.newestBoardFile)(folder);
+            const boardFile = (0, boardFile_js_1.newestBoardFile)(folder, this.host.boardStem);
             if (boardFile) {
                 for (let i = 0; i < 10 && Date.now() - (0, boardFile_js_1.mtimeOf)(boardFile) < 3_500; i++) {
                     await new Promise((resolve) => setTimeout(resolve, 1_000));
                 }
             }
+            // Release the pipeline BEFORE the final render. Rendered while the
+            // apply still held it, the render's drift check saw pipelineBusy() and
+            // deferred "to the settled state" — which nothing ever checked, so
+            // drift introduced by the apply went unreported. The apply's source
+            // writes and its build are done (the board is freshly built and
+            // signed); a competing render coalesces into this one (generate() is
+            // single-flight), and the source watcher's auto-build sees no build
+            // owed (every write predates this apply's build start).
+            syncState_js_1.sync.applyBusy = false;
             await this.host.generate(folder);
             this.host.postLayoutStatus(undefined);
         }

@@ -323,8 +323,6 @@ export function pathToTrackBuilder(
   }
 
   // Simplify path by merging collinear segments on the same layer
-  // Use gridNodes if available for more accurate direction detection
-  const useGridNodes = path.gridNodes && path.gridNodes.length === path.nodes.length;
   const eps = 1e-6;
   let segmentStart = { ...firstNode };
   let lastDir: { dx: number; dy: number } | null = null;
@@ -402,6 +400,8 @@ export function pathToTrackBuilder(
           );
           if (!onExisting) {
             track.to({ x: prevNode.x, y: prevNode.y, layer: prevNode.layer, width });
+          } else {
+            track.from({ x: prevNode.x, y: prevNode.y }, prevNode.layer, width); // keep the builder in step
           }
         }
       }
@@ -478,28 +478,14 @@ export function pathToTrackBuilder(
       continue;
     }
 
-    // Same layer: compute direction
-    let dir: { dx: number; dy: number };
-
-    if (useGridNodes) {
-      // Use grid coordinates for precise direction detection (avoids floating point issues)
-      const prevGridNode = path.gridNodes![i - 1];
-      const gridNode = path.gridNodes![i];
-      const gdx = gridNode.gridX - prevGridNode.gridX;
-      const gdy = gridNode.gridY - prevGridNode.gridY;
-      dir = {
-        dx: gdx === 0 ? 0 : gdx > 0 ? 1 : -1,
-        dy: gdy === 0 ? 0 : gdy > 0 ? 1 : -1,
-      };
-    } else {
-      // Fall back to world coordinates if grid nodes not available
-      const dx = node.x - prevNode.x;
-      const dy = node.y - prevNode.y;
-      dir = {
-        dx: Math.abs(dx) <= eps ? 0 : dx > 0 ? 1 : -1,
-        dy: Math.abs(dy) <= eps ? 0 : dy > 0 ? 1 : -1,
-      };
-    }
+    // Same layer: direction as a unit vector. Two steps merge only when they
+    // are truly collinear — comparing only the SIGNS of dx/dy (as this once
+    // did) merged a 45° run with a 50° pad exit into one chord that cut the
+    // corner past other copper, after every clearance check had passed.
+    const vx = node.x - prevNode.x;
+    const vy = node.y - prevNode.y;
+    const vlen = Math.hypot(vx, vy);
+    const dir: { dx: number; dy: number } = vlen > eps ? { dx: vx / vlen, dy: vy / vlen } : (lastDir ?? { dx: 0, dy: 0 });
 
     if (!lastDir) {
       lastDir = dir;
@@ -507,7 +493,7 @@ export function pathToTrackBuilder(
     }
 
     // If direction changes, commit a single segment to prevNode and start a new merged segment
-    if (dir.dx !== lastDir.dx || dir.dy !== lastDir.dy) {
+    if (Math.abs(dir.dx * lastDir.dy - dir.dy * lastDir.dx) > 1e-6 || dir.dx * lastDir.dx + dir.dy * lastDir.dy <= 0) {
       // Commit merged segment up to prevNode (trim partial overlaps when manual routes exist)
       if (options.routes && options.routes.length > 0) {
         const existingLines = getExistingLines(state.grLines, state.stagedOutlines);
@@ -537,6 +523,12 @@ export function pathToTrackBuilder(
         );
         if (!onExisting) {
           track.to({ x: prevNode.x, y: prevNode.y, layer: prevNode.layer, width });
+        } else {
+          // Skipped, but the builder must still move here: the next to()
+          // draws from the builder's position, and leaving it behind turned
+          // the next run into a chord that cut the skipped corner — straight
+          // across clearance every check had already approved.
+          track.from({ x: prevNode.x, y: prevNode.y }, prevNode.layer, width);
         }
       }
       // Start new segment
@@ -758,6 +750,8 @@ export function routeNet(
     net: netName,
     ...options,
   });
+  // pins that could not be resolved were never routed — the net is not done
+  if (unresolvedPins.length > 0) result.success = false;
 
   if (result.success) {
     logger.info(`✔ Routing net '${netName}' complete (${result.completedCount}/${result.routeCount} routes)`);

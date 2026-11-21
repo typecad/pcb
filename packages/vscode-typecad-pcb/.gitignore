@@ -1,2 +1,4 @@
 node_modules/
 out/
+# scratch projects of src/__tests__/roundtrip.test.ts (removed after a run)
+src/__tests__/.roundtrip-*/

@@ -13,9 +13,13 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { parse, SNode, type SExpr } from '../../../src/sexpr/index.js';
+import { parse, prettyPrint, SNode, type SExpr } from '../../../src/sexpr/index.js';
 import { runDrc, type DrcReport } from '../../../src/pcb/pcb_drc_engine.js';
 import type { BenchBoard } from './board.js';
+import { stripCopper } from './splice.js';
+
+/** The input board with every track and via removed. */
+const bareText = (board: BenchBoard): string => `${prettyPrint(stripCopper(board))}\n`;
 
 export type Checker = 'kicad-cli' | 'native';
 
@@ -26,9 +30,12 @@ export interface Score {
   /** Ratsnest edges on the bare board (R0) and after routing (R). */
   ratsnestBefore: number;
   ratsnestAfter: number;
+  /** Error-level violations the routing introduced (not present on the bare board). */
   drv: number;
-  /** Error-level violations by type. */
+  /** Those violations by type. */
   drvByType: Record<string, number>;
+  /** Error-level violations the input board already has with no copper (not the router's). */
+  drvPreexisting: number;
   wirelength: number;
   vias: number;
 }
@@ -73,19 +80,42 @@ export function copperStats(text: string): { wirelength: number; vias: number } 
   return { wirelength: wl, vias: root.children('via').length };
 }
 
-function summarize(report: DrcReport, checker: Checker, board: BenchBoard, text: string): Score {
+const violationKey = (v: DrcReport['violations'][number]) =>
+  `${v.type}|${v.items
+    .map((i) => i.description)
+    .sort()
+    .join('||')}`;
+
+/**
+ * Score a routed board's DRC report against the same checker's report on
+ * the BARE board (input with all copper stripped):
+ * - R0 is the bare board's unconnected count, so connections to net-tied
+ *   copper graphics or zones count too (pad arithmetic alone misses them);
+ * - violations already present with no copper (pads hugging the edge, an
+ *   input that is not DRC-clean) are reported as drvPreexisting and do not
+ *   count against the router. PCBWorld's own sets are DRC-clean inputs, so
+ *   this changes nothing there.
+ */
+function summarize(report: DrcReport, bare: DrcReport, checker: Checker, board: BenchBoard, text: string): Score {
+  const pre = new Map<string, number>();
+  for (const v of bare.violations) if (v.severity === 'error') pre.set(violationKey(v), (pre.get(violationKey(v)) ?? 0) + 1);
   const drvByType: Record<string, number> = {};
   let drv = 0;
+  let drvPreexisting = 0;
   for (const v of report.violations) {
     if (v.severity !== 'error') continue;
+    const k = violationKey(v);
+    const left = pre.get(k) ?? 0;
+    if (left > 0) {
+      pre.set(k, left - 1);
+      drvPreexisting++;
+      continue;
+    }
     drv++;
     drvByType[v.type] = (drvByType[v.type] ?? 0) + 1;
   }
-  const before = bareRatsnest(board);
+  const before = Math.max(bare.unconnected_items.length, bareRatsnest(board));
   const after = report.unconnected_items.length;
-  // R0 counts pad-to-pad edges only; a board whose nets also include copper
-  // graphics or zones can report unconnected items with R0 = 0 — that is
-  // unrouted, not perfect
   const routability = before === 0 ? (after === 0 ? 1 : 0) : Math.max(0, (before - after) / before);
   return {
     checker,
@@ -95,13 +125,14 @@ function summarize(report: DrcReport, checker: Checker, board: BenchBoard, text:
     ratsnestAfter: after,
     drv,
     drvByType,
+    drvPreexisting,
     ...copperStats(text),
   };
 }
 
 export function scoreNative(board: BenchBoard, text: string): Score {
   const r = board.rules;
-  const report = runDrc(text, {
+  const drc = (t: string) => runDrc(t, {
     min_clearance: r.clearance,
     min_track_width: r.trackWidth,
     min_via_diameter: r.viaDiameter,
@@ -111,7 +142,7 @@ export function scoreNative(board: BenchBoard, text: string): Score {
     min_hole_to_hole: r.holeToHole,
     min_hole_to_copper: r.holeClearance,
   });
-  return summarize(report, 'native', board, text);
+  return summarize(drc(text), drc(bareText(board)), 'native', board, text);
 }
 
 /**
@@ -171,17 +202,19 @@ export function writeProject(board: BenchBoard, dest: string): void {
 export function scoreKicad(board: BenchBoard, text: string, cli: string, keepDir?: string): Score {
   const dir = keepDir ?? fs.mkdtempSync(path.join(os.tmpdir(), 'pcbworld-drc-'));
   fs.mkdirSync(dir, { recursive: true });
-  const pcbPath = path.join(dir, `${board.id}.kicad_pcb`);
-  const reportPath = path.join(dir, `${board.id}.drc.json`);
-  fs.writeFileSync(pcbPath, text);
-  writeProject(board, path.join(dir, `${board.id}.kicad_pro`));
-  try {
+  const drc = (stem: string, t: string): DrcReport => {
+    const pcbPath = path.join(dir, `${stem}.kicad_pcb`);
+    const reportPath = path.join(dir, `${stem}.drc.json`);
+    fs.writeFileSync(pcbPath, t);
+    writeProject(board, path.join(dir, `${stem}.kicad_pro`));
     execFileSync(cli, ['pcb', 'drc', '--format', 'json', '--severity-all', '--units', 'mm', '--output', reportPath, pcbPath], {
       stdio: 'pipe',
       timeout: 300_000,
     });
-    const report = JSON.parse(fs.readFileSync(reportPath, 'utf8')) as DrcReport;
-    return summarize(report, 'kicad-cli', board, text);
+    return JSON.parse(fs.readFileSync(reportPath, 'utf8')) as DrcReport;
+  };
+  try {
+    return summarize(drc(board.id, text), drc(`${board.id}.bare`, bareText(board)), 'kicad-cli', board, text);
   } finally {
     if (!keepDir) fs.rmSync(dir, { recursive: true, force: true });
   }

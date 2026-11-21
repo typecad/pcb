@@ -10,11 +10,14 @@ import os from 'node:os';
 vi.mock('vscode', () => {
   const applyEdits: unknown[] = [];
   const documents = new Map<string, string>();
+  // eol.crlf mimics a Windows document: VS Code normalizes every inserted
+  // line break to the document's EOL, so getText() reads back CRLF
+  const eol = { crlf: false };
   class WorkspaceEdit {
     readonly edits: unknown[] = [];
     replace(uri: { fsPath: string }, _range: unknown, text: string): void {
       this.edits.push(arguments);
-      documents.set(uri.fsPath, text);
+      documents.set(uri.fsPath, eol.crlf ? text.replace(/\r?\n/g, '\r\n') : text);
     }
     get size(): number {
       return this.edits.length;
@@ -55,11 +58,13 @@ vi.mock('vscode', () => {
     Range: class Range {},
     WorkspaceEdit,
     __applyEdits: applyEdits,
+    __eol: eol,
+    __documents: documents,
   };
 });
 
 import * as vscode from 'vscode';
-import { BUILD_COMMAND, LayoutApplyBridge, type ViewerHost } from '../viewerApply.js';
+import { BUILD_COMMAND, LayoutApplyBridge, expectedPlacements, type ViewerHost } from '../viewerApply.js';
 import { sync } from '../syncState.js';
 import { boardIdentity } from '../boardFile.js';
 
@@ -70,6 +75,38 @@ import { boardIdentity } from '../boardFile.js';
  * read; a current stamp with an empty gesture must answer success without
  * running the build.
  */
+
+describe('expectedPlacements (semantic check targets)', () => {
+  const vars: Record<string, string> = { BT1: 'battery', R1: 'r1' };
+  it('reads the PLANNED literal, not the pre-apply literal plus the delta', () => {
+    // live session: the pre-apply sidecar was a stale orphan (battery at
+    // 0.5,-25); the apply reset it and wrote 0.5,-12.5. Pre-literal + delta
+    // expected 1,-37.5 and flagged a correctly placed part as MISSING.
+    const planned = new Map([
+      ['file:///src/board.ts', 'battery.pcb = { x: 99, y: 99 };\n'],
+      ['file:///src/_sync.ts', 'export function syncBoard(typecad, parts) {\n  parts.battery.pcb = { x: 0.5, y: -12.5 };\n}\n'],
+    ]);
+    const out = expectedPlacements(
+      [{ ref: 'BT1', dx: 0.5, dy: -12.5 }],
+      (r) => vars[r],
+      planned,
+      'file:///src/_sync.ts',
+    );
+    // the sidecar wins (syncBoard runs right before create)
+    expect(out).toEqual([{ ref: 'BT1', x: 0.5, y: -12.5 }]);
+  });
+
+  it('falls back to the absolute target when no literal exists, else skips', () => {
+    const planned = new Map([['file:///src/board.ts', 'const r1 = new Resistor({});\n']]);
+    expect(
+      expectedPlacements(
+        [{ ref: 'R1', dx: 1, dy: 0, ax: 3.5, ay: 0 }, { ref: 'BT1', dx: 1, dy: 0 }],
+        (r) => vars[r],
+        planned,
+      ),
+    ).toEqual([{ ref: 'R1', x: 3.5, y: 0 }]);
+  });
+});
 
 describe('LayoutApplyBridge', () => {
   let root: string;
@@ -137,6 +174,24 @@ describe('LayoutApplyBridge', () => {
 
   afterEach(() => {
     fs.rmSync(root, { recursive: true, force: true });
+    const mock = vscode as unknown as { __eol: { crlf: boolean }; __documents: Map<string, string> };
+    mock.__eol.crlf = false;
+    mock.__documents.clear();
+  });
+
+  it('a CRLF document (Windows) saves the planned LF text without a false rollback', async () => {
+    // live session on Windows: the apply created src/_sync.ts, VS Code
+    // opened it with the platform EOL (CRLF) and normalized the planned LF
+    // text on insert — the exact post-save comparison called that a failed
+    // save, restored the entry file, then skipped the sidecar's rollback for
+    // the same mismatch and left an orphaned _sync.ts behind
+    seedSidecarPlacement();
+    (vscode as unknown as { __eol: { crlf: boolean } }).__eol.crlf = true;
+    const stamp = boardIdentity(path.join(root, 'build', 'b.kicad_pcb'));
+    await bridge.onLayoutRebuild({ board: stamp, moves: [{ ref: 'R1', dx: 1, dy: 0 }] });
+    expect(logs.some((l) => l.includes('rollback skipped'))).toBe(false);
+    expect(layoutStatus.at(-1)).toBeUndefined();
+    expect(builds).toBe(1);
   });
 
   it('refuses a payload stamped against a superseded board', async () => {    await bridge.onLayoutRebuild({ board: '12345', moves: [] });

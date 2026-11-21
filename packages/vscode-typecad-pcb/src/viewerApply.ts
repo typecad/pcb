@@ -99,6 +99,59 @@ export const BUILD_COMMAND = 'npm run build';
 export const GENERATE_TIMEOUT_MS = 120_000;
 
 /**
+ * Live document text equals planned text, ignoring line endings. The planner
+ * composes LF text, but VS Code normalizes every edit to the document's EOL —
+ * a file the apply creates opens empty with the platform default (CRLF on
+ * Windows under files.eol "auto"), and an existing CRLF file stays CRLF. An
+ * exact comparison read that normalization as a failed save and rolled back
+ * an apply that had written exactly what the parse gate validated.
+ */
+export function sameSourceText(live: string, planned: string | undefined): boolean {
+  if (planned === undefined) return false;
+  return live === planned || live.replace(/\r\n/g, '\n') === planned.replace(/\r\n/g, '\n');
+}
+
+/**
+ * Where each moved part should sit after the rebuild, for the semantic check:
+ * the placement literal in the PLANNED (post-apply) texts — exactly what the
+ * build will run. The sidecar is consulted first because syncBoard() runs
+ * right before create() and so wins over any hand-written literal. A part
+ * with no literal anywhere falls back to the move's absolute target (ax/ay),
+ * else it is not checked.
+ *
+ * Computing it from the PRE-apply literal plus the delta was wrong whenever
+ * the apply did not rewrite that literal by the delta — an orphaned sidecar
+ * reset to a fresh scaffold, say — and flagged correctly-placed parts as
+ * MISSING with doubled coordinates.
+ */
+export function expectedPlacements(
+  moves: ReadonlyArray<{ ref: string; dx: number; dy: number; ax?: number; ay?: number; side?: 'front' | 'back' }>,
+  variableOf: (ref: string) => string | undefined,
+  planned: ReadonlyMap<string, string>,
+  syncUri?: string,
+): Array<{ ref: string; x: number; y: number; side?: 'front' | 'back' }> {
+  const order = [...planned.keys()].sort((a, b) => (a === syncUri ? -1 : b === syncUri ? 1 : 0));
+  const out: Array<{ ref: string; x: number; y: number; side?: 'front' | 'back' }> = [];
+  for (const mv of moves) {
+    const variable = variableOf(mv.ref);
+    let at: { x: number; y: number } | null = null;
+    if (variable) {
+      for (const uri of order) {
+        const lit = parsePlacementLiteral(planned.get(uri)!, variable);
+        if (lit) {
+          at = { x: lit.x, y: lit.y };
+          break;
+        }
+      }
+    }
+    if (!at && mv.ax !== undefined && mv.ay !== undefined) at = { x: mv.ax, y: mv.ay };
+    if (!at) continue;
+    out.push({ ref: mv.ref, x: +at.x.toFixed(3), y: +at.y.toFixed(3), ...(mv.side ? { side: mv.side } : {}) });
+  }
+  return out;
+}
+
+/**
  * First syntax error in planned source text, or null. Best-effort: the
  * TypeScript compiler resolves in workspace installs; a bundled extension
  * copy without it returns null (no gate) instead of breaking the apply.
@@ -207,7 +260,7 @@ export class LayoutApplyBridge {
       if (!pre) continue;
       try {
         const doc = await vscode.workspace.openTextDocument(vscode.Uri.parse(key));
-        if (doc.getText() !== applied.get(key)) {
+        if (!sameSourceText(doc.getText(), applied.get(key))) {
           this.host.output.appendLine(`layout rollback skipped ${key}: document changed after apply`);
           restored = false;
           continue;
@@ -379,27 +432,9 @@ export class LayoutApplyBridge {
         files.push({ uri: syncUri.toString(), text: syncText, ...(syncCreated ? { created: true } : {}) });
       }
       const createdUris = new Set(syncCreated ? [syncUri.toString()] : []);
-      // final placements for the semantic check: the move deltas land on the
-      // placement literals, so the finals are computable from the PRE-apply
-      // text (a moved part's footprint should sit exactly there after the
-      // rebuild)
+      // final placements for the semantic check — filled from the PLANNED
+      // texts once the dry run below has composed them (see there)
       const finalPlacements: Array<{ ref: string; x: number; y: number; side?: 'front' | 'back' }> = [];
-      for (const mv of moves ?? []) {
-        const variable = variableOf.get(mv.ref);
-        if (!variable) continue;
-        for (const f of files) {
-          const lit = parsePlacementLiteral(f.text, variable);
-          if (lit) {
-            finalPlacements.push({
-              ref: mv.ref,
-              x: +(lit.x + mv.dx).toFixed(3),
-              y: +(lit.y + mv.dy).toFixed(3),
-              ...(mv.side ? { side: mv.side } : {}),
-            });
-            break;
-          }
-        }
-      }
       // artwork: the picked PNGs are copied into <folder>/art/ BEFORE the
       // plan, so the generated statements carry project-relative paths —
       // the build (and any later `npm run build`) resolves them from the
@@ -477,6 +512,10 @@ export class LayoutApplyBridge {
         classEdits: classEdits ?? [],
         variableOf: (ref) => variableOf.get(ref),
         allRefs: new Set(comps.map((c) => c.reference).filter(Boolean)),
+        boardPlacementOf: (ref) => {
+          const c = comps.find((k) => k.reference === ref);
+          return c?.at ? { x: c.at.x, y: c.at.y, rot: c.at.rotation, side: c.side } : undefined;
+        },
         syncUri: syncUri.toString(),
         entryUri: entry ? vscode.Uri.file(entry).toString() : undefined,
       });
@@ -496,6 +535,7 @@ export class LayoutApplyBridge {
           dry.set(batch.uri, out);
         }
       }
+      finalPlacements.push(...expectedPlacements(moves ?? [], (ref) => variableOf.get(ref), dry, syncUri?.toString()));
       for (const [uri, text] of dry) {
         const err = plannedTextSyntaxError(text);
         if (err) {
@@ -605,7 +645,7 @@ export class LayoutApplyBridge {
       }
       for (const key of plan.touched) {
         const doc = await vscode.workspace.openTextDocument(vscode.Uri.parse(key));
-        if (!(await doc.save()) || doc.getText() !== dry.get(key)) {
+        if (!(await doc.save()) || !sameSourceText(doc.getText(), dry.get(key))) {
           const restored = await this.restorePreApply(files, plan.touched, createdUris, dry);
           fail(restored ? 'Could not save the planned source edits; source restored' : 'Could not save the planned source edits; some documents changed and need review');
           return;

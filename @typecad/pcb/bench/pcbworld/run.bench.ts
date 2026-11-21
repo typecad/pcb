@@ -49,6 +49,7 @@ it(`pcbworld bench: ${env.PCBWORLD_SET ?? 'smoke'}`, () => {
       gridResolution: num(env.PCBWORLD_GRID),
       timeBudgetMs: num(env.PCBWORLD_TIME_MS),
       netTimeBudgetMs: num(env.PCBWORLD_NET_MS),
+      extra: env.PCBWORLD_NO_STEINER === '1' ? { useSteinerOptimization: false } : undefined,
     },
     onRow: (r) => {
       const sc = r.score;

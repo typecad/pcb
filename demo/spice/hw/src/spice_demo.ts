@@ -84,11 +84,11 @@ const led = new LED({
 const load = new Resistor({ value: '1k', simulation: { exclude: true } });
 
 ledDriver.named('p5v').net(rs.pin(1));
-ledDriver.named('anode').net(rs.pin(2), led.pin(1), load.pin(1));
-ledDriver.named('gnd').net(led.pin(2), load.pin(2));
+ledDriver.named('anode').net(rs.pin(2), led.pin(2), load.pin(1)); // KiCad diodes: pin 1 = K, pin 2 = A
+ledDriver.named('gnd').net(led.pin(1), load.pin(2));
 ledDriver.add(rs, led, load);
 
-const v5 = new Power({ power: rs.pin(1), gnd: led.pin(2), voltage: 5 });
+const v5 = new Power({ power: rs.pin(1), gnd: led.pin(1), voltage: 5 });
 const ledOp = ledDriver.simulate(v5).op();
 
 if (ledOp === null) {

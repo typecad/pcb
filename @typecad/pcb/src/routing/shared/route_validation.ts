@@ -212,6 +212,26 @@ export function validateRoutePath(path: IRoutePath, input: RouteValidationInput)
           });
         }
       }
+      // ...and against foreign tracks on the layers it spans (a via dropped
+      // onto another net's track was never checked here)
+      for (const obs of trackObstacles) {
+        if (!applicable(obs.net)) continue;
+        if (!spanned.some((l) => obs.layers!.includes(l))) continue;
+        const s = obs.segment!;
+        const needed = Math.max(input.clearance, obs.clearance);
+        const gap = Math.max(
+          0,
+          segmentSegDist(center, center, { x: s.x1, y: s.y1 }, { x: s.x2, y: s.y2 }) - input.viaDiameter / 2 - s.width / 2,
+        );
+        if (gap < needed - 1e-6) {
+          const label = `track [${obs.net ?? 'no net'}]`;
+          violations.push({
+            message: `via (${fmt(center)}) ${prev.layer}->${next.layer} clears ${label} by ${gap.toFixed(2)}mm < ${needed.toFixed(2)}mm`,
+            obstacle: label,
+            net: obs.net,
+          });
+        }
+      }
     }
   }
 

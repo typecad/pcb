@@ -7328,9 +7328,54 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         clr: ocls && ocls.clearance > 0 ? ocls.clearance : 0,
         poly: poly,
         hw: sw / 2,
+        rr: poly ? 0 : padCornerRadius(el, bb, tm),
       });
     }
     return obs;
+  }
+  // ROUND pads (circle flashes) and obround/rounded-rect pads are NOT their
+  // bbox: a big round pad's square box reaches ~0.4r past the copper at
+  // each corner, so a trace visibly clear of the pad (seen live: next to a
+  // coin-cell holder's GND pad) read red and its anchor was refused. The
+  // corner radius lets the distance measure the true rounded shape: the box
+  // inset by r, then minus r. 0 = sharp-cornered (plain bbox).
+  function padCornerRadius(el, bb, tm) {
+    var tag = el.tagName;
+    var host = el;
+    if (tag === 'use') {
+      var href = el.getAttribute('href') || el.getAttribute('xlink:href') || '';
+      host = href.charAt(0) === '#' ? document.getElementById(href.slice(1)) : null;
+      if (!host) return 0;
+    }
+    var shape = null;
+    if (host.tagName === 'circle' || host.tagName === 'rect') shape = host;
+    else {
+      var kids2 = host.children || [];
+      for (var k2 = 0; k2 < kids2.length; k2++) {
+        var ck = kids2[k2];
+        if (ck.classList && ck.classList.contains('cut')) continue; // the drill
+        if (shape) return 0; // composite aperture: keep the bbox
+        shape = ck;
+      }
+    }
+    if (!shape) return 0;
+    var r = 0;
+    if (shape.tagName === 'circle') r = parseFloat(shape.getAttribute('r') || '0') || 0;
+    else if (shape.tagName === 'rect') {
+      r = parseFloat(shape.getAttribute('rx') || '0') || 0;
+      // a rounded RECT rotated off-axis has a bbox that is not its shape
+      if (r > 0 && tm && Math.abs(tm.b) > 1e-6 && Math.abs(tm.a) > 1e-6) return 0;
+    }
+    if (!(r > 0)) return 0;
+    return Math.min(r, bb.width / 2, bb.height / 2);
+  }
+  /** distance from a point to an obstacle's box shape (rounded by o.rr);
+   *  <= 0 inside the copper */
+  function obsBoxDist(o, px, py) {
+    var r = o.rr || 0;
+    var dx = Math.max(o.x0 + r - px, 0, px - (o.x1 - r));
+    var dy = Math.max(o.y0 + r - py, 0, py - (o.y1 - r));
+    return Math.hypot(dx, dy) - r;
   }
   // point-to-segment distance — the true copper measure for track obstacles
   function ptSegDist(px, py, x1, y1, x2, y2) {
@@ -7388,7 +7433,8 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
             dist -= o.hw;
             if (dist < -0.5) dist = -0.5; // clamp like the inside-box case
           } else {
-            dist = dx || dy ? Math.hypot(dx, dy) : -0.5; // inside = violation
+            dist = obsBoxDist(o, px, py);
+            if (dist <= 0) dist = -0.5; // inside = violation
           }
           // a class clearance on the OBstacle's net widens this pair's need
           var margin = dist - (o.clr > clearanceRule() ? w / 2 + o.clr : need);
@@ -10729,9 +10775,8 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
         for (var oi = 0; oi < piece.obstacles.length; oi++) {
           var o = piece.obstacles[oi];
           if (!o.net || o.net === 'N/C') continue;
-          var dx = Math.max(o.x0 - px, 0, px - o.x1);
-          var dy = Math.max(o.y0 - py, 0, py - o.y1);
-          var dist = dx || dy ? Math.hypot(dx, dy) : -0.5;
+          var dist = obsBoxDist(o, px, py);
+          if (dist <= 0) dist = -0.5;
           if (dist - need < 0) return true;
         }
       }
@@ -11242,9 +11287,7 @@ export function buildViewerHtml(svg: string, layers: LayerInfo[], options: Viewe
           }
         }
       } else {
-        var dx = Math.max(o.x0 - x, 0, x - o.x1);
-        var dy = Math.max(o.y0 - y, 0, y - o.y1);
-        hit = Math.hypot(dx, dy) < need;
+        hit = obsBoxDist(o, x, y) < need;
       }
       if (hit) return true;
     }

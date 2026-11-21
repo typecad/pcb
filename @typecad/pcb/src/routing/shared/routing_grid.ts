@@ -1,6 +1,95 @@
 import chalk from 'chalk';
 import logger from '../../utils/logging.js';
 import type { IBoardRegion } from './board_region.js';
+
+/** Gap from (px, py) to an obstacle's copper, when its exact shape is known. */
+function segmentsCross(ax: number, ay: number, bx: number, by: number, cx: number, cy: number, dx: number, dy: number): boolean {
+  const o = (px: number, py: number, qx: number, qy: number, rx: number, ry: number) =>
+    Math.sign((qx - px) * (ry - py) - (qy - py) * (rx - px));
+  return o(ax, ay, bx, by, cx, cy) !== o(ax, ay, bx, by, dx, dy) && o(cx, cy, dx, dy, ax, ay) !== o(cx, cy, dx, dy, bx, by);
+}
+
+/** Distance between segments AB and CD (0 when they cross). */
+function segSegDistance(ax: number, ay: number, bx: number, by: number, cx: number, cy: number, dx: number, dy: number): number {
+  if (segmentsCross(ax, ay, bx, by, cx, cy, dx, dy)) return 0;
+  return Math.min(
+    pointToSegmentDistance(ax, ay, cx, cy, dx, dy),
+    pointToSegmentDistance(bx, by, cx, cy, dx, dy),
+    pointToSegmentDistance(cx, cy, ax, ay, bx, by),
+    pointToSegmentDistance(dx, dy, ax, ay, bx, by),
+  );
+}
+
+/**
+ * Gap from a point — or, with (sx, sy), from the segment (sx, sy)→(px, py) —
+ * to an obstacle's copper, when its exact shape is known. The segment form
+ * checks a whole search MOVE: a step can pass closer to a pad corner than
+ * either of its end points (by up to L²/8d), which point probes miss.
+ */
+function exactGapToObstacle(obs: IRoutingObstacle, px: number, py: number, sx?: number, sy?: number): number | undefined {
+  const ax = sx ?? px;
+  const ay = sy ?? py;
+  if (obs.type === 'track' && obs.segment) {
+    const s = obs.segment;
+    return Math.max(0, segSegDistance(ax, ay, px, py, s.x1, s.y1, s.x2, s.y2) - s.width / 2);
+  }
+  if (obs.type === 'pad' && obs.padShape) {
+    const { shape, center, width, height, rotation } = obs.padShape;
+    // into the pad's own frame (rotation is applied forward when rasterizing)
+    const r = (-rotation * Math.PI) / 180;
+    const cos = Math.cos(r);
+    const sin = Math.sin(r);
+    const local = (x: number, y: number) => {
+      const dx = x - center.x;
+      const dy = y - center.y;
+      return [dx * cos - dy * sin, dx * sin + dy * cos] as const;
+    };
+    const [l1x, l1y] = local(ax, ay);
+    const [l2x, l2y] = local(px, py);
+    const hw = width / 2;
+    const hh = height / 2;
+    if (shape === 'circle') return Math.max(0, pointToSegmentDistance(0, 0, l1x, l1y, l2x, l2y) - Math.min(hw, hh));
+    if (shape === 'oval') {
+      const rad = Math.min(hw, hh);
+      const ex = Math.max(0, hw - rad);
+      const ey = Math.max(0, hh - rad);
+      return Math.max(0, segSegDistance(l1x, l1y, l2x, l2y, -ex, -ey, ex, ey) - rad);
+    }
+    // rect, roundrect (corner radius unknown: the sharp rect is the safe side), custom
+    const inside = (x: number, y: number) => Math.abs(x) <= hw && Math.abs(y) <= hh;
+    if (inside(l1x, l1y) || inside(l2x, l2y)) return 0;
+    const corners: Array<[number, number]> = [
+      [-hw, -hh],
+      [hw, -hh],
+      [hw, hh],
+      [-hw, hh],
+    ];
+    let best = Infinity;
+    for (let i = 0; i < 4; i++) {
+      const [cx, cy] = corners[i]!;
+      const [dx, dy] = corners[(i + 1) % 4]!;
+      best = Math.min(best, segSegDistance(l1x, l1y, l2x, l2y, cx, cy, dx, dy));
+    }
+    return best;
+  }
+  return undefined;
+}
+
+/** True when every turn of the polygon goes the same way. */
+function isConvex(poly: readonly { x: number; y: number }[]): boolean {
+  let sign = 0;
+  for (let i = 0; i < poly.length; i++) {
+    const a = poly[i]!;
+    const b = poly[(i + 1) % poly.length]!;
+    const c = poly[(i + 2) % poly.length]!;
+    const cross = (b.x - a.x) * (c.y - b.y) - (b.y - a.y) * (c.x - b.x);
+    if (Math.abs(cross) < 1e-12) continue;
+    const s = Math.sign(cross);
+    if (sign === 0) sign = s;
+    else if (s !== sign) return false;
+  }
+  return true;
+}
 const loggerDebug = logger.debug;
 
 /**
@@ -279,18 +368,125 @@ export class RoutingGrid {
    */
   private static _obstacleIdCounter = 0;
 
+  /**
+   * Board-edge keepout, one byte per cell (index = getCellIndex): set where a
+   * copper CENTRELINE may not be — off the board, inside a cutout, or closer
+   * to any Edge.Cuts segment than the obstacle's clearance (edge rule + the
+   * widest copper radius the route places). Kept apart from obstacle cells on
+   * purpose: an occupancy probe adds the TRACE clearance around occupied
+   * cells, which would double the edge rule, and flagging cells would hide
+   * pads that legitimately sit inside the band.
+   */
+  private edgeMask: Uint8Array | null = null;
+
+  private addBoardEdgeMask(obstacle: IRoutingObstacle): void {
+    const region = obstacle.boardRegion!;
+    const contours = [region.outer, ...region.holes];
+    // Between two legal cell centres a straight segment can only come closer
+    // to the edge than its ends near a reflex corner (concave outline or a
+    // cutout); there, keep half a cell diagonal of margin. A convex board
+    // keeps the exact distance, so designs laid out at the rule limit route.
+    const convex = region.holes.length === 0 && isConvex(region.outer);
+    const band = obstacle.clearance + (convex ? 0 : this.gridResolution * Math.SQRT1_2) - 1e-6;
+    const mask = (this.edgeMask ??= new Uint8Array(this.cellsTotalSize));
+    const layers = obstacle.layers.some((l) => l === '*.Cu') ? this.layers : obstacle.layers;
+    const mark = (gx: number, gy: number) => {
+      for (const layer of layers) {
+        const idx = this.getCellIndex(layer, gx, gy);
+        if (idx >= 0) mask[idx] = 1;
+      }
+    };
+
+    // off-board: scanline with even-odd parity over all contours
+    for (let gy = 0; gy < this.gridHeight; gy++) {
+      const y = this.gridToWorldY(gy);
+      const xs: number[] = [];
+      for (const poly of contours) {
+        for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+          const a = poly[i]!;
+          const b = poly[j]!;
+          if (a.y > y !== b.y > y) xs.push(((b.x - a.x) * (y - a.y)) / (b.y - a.y) + a.x);
+        }
+      }
+      xs.sort((p, q) => p - q);
+      let k = 0;
+      for (let gx = 0; gx < this.gridWidth; gx++) {
+        const cx = this.gridToWorldX(gx);
+        while (k < xs.length && xs[k]! < cx) k++;
+        if (k % 2 === 0) mark(gx, gy);
+      }
+    }
+
+    // on-board but within `band` of an edge segment: walk each segment's
+    // band-expanded box only (cheap even for finely tessellated outlines)
+    if (band > 0) {
+      for (const poly of contours) {
+        for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+          const a = poly[j]!;
+          const b = poly[i]!;
+          const g0 = this.worldToGrid(Math.min(a.x, b.x) - band, Math.min(a.y, b.y) - band);
+          const g1 = this.worldToGrid(Math.max(a.x, b.x) + band, Math.max(a.y, b.y) + band);
+          for (let gx = Math.max(0, g0.x); gx <= Math.min(this.gridWidth - 1, g1.x); gx++) {
+            const cx = this.gridToWorldX(gx);
+            for (let gy = Math.max(0, g0.y); gy <= Math.min(this.gridHeight - 1, g1.y); gy++) {
+              if (pointToSegmentDistance(cx, this.gridToWorldY(gy), a.x, a.y, b.x, b.y) < band) mark(gx, gy);
+            }
+          }
+        }
+      }
+    }
+    this._version++;
+  }
+
+  /**
+   * Exact gap (mm) from a point to the copper of the obstacles occupying a
+   * cell, or undefined when any of them lacks exact geometry (component
+   * bodies, polygons, bounding-box fallbacks) — the caller then uses the
+   * conservative cell-centre rule.
+   */
+  private exactGapToCell(
+    cell: IGridCell,
+    px: number,
+    py: number,
+    memo: Map<string, number>,
+    from?: { x: number; y: number },
+  ): number | undefined {
+    const ids = cell.obstacleIds;
+    if (!ids || ids.length === 0) return undefined;
+    let best = Infinity;
+    for (const id of ids) {
+      let gap = memo.get(id);
+      if (gap === undefined) {
+        const obs = this.obstacles.get(id);
+        if (!obs) return undefined;
+        const g = exactGapToObstacle(obs, px, py, from?.x, from?.y);
+        if (g === undefined) return undefined;
+        gap = g;
+        memo.set(id, gap);
+      }
+      if (gap < best) best = gap;
+    }
+    return best;
+  }
+
+  /** True when the cell centre is inside the board-edge keepout. */
+  isEdgeKeepout(x: number, y: number, layer: string): boolean {
+    if (!this.edgeMask) return false;
+    const idx = this.getCellIndex(layer, x, y);
+    return idx >= 0 && this.edgeMask[idx] === 1;
+  }
+
   addObstacle(obstacleIn: IRoutingObstacle): void {
     // Zone obstacles represent copper fills that can be routed through —
     // the EDA tool creates clearance when the zone is poured.  Adding them
     // as occupied cells would block all routing on dense boards.
     if (obstacleIn.type === 'zone') return;
 
-    // A board region blocks off-board cell CENTRES, which sit up to half a
-    // cell diagonal beyond the true edge — widen its clearance by that much
-    // on this grid so the edge rule holds at any resolution.
-    const obstacle = obstacleIn.boardRegion
-      ? { ...obstacleIn, clearance: obstacleIn.clearance + this.gridResolution * Math.SQRT1_2 }
-      : obstacleIn;
+    if (obstacleIn.boardRegion) {
+      this.addBoardEdgeMask(obstacleIn);
+      return;
+    }
+    const obstacle = obstacleIn;
 
     const obstacleId = `${obstacle.type}_${++RoutingGrid._obstacleIdCounter}`;
     this.obstacles.set(obstacleId, { ...obstacle });
@@ -387,31 +583,7 @@ export class RoutingGrid {
       // using a robust segment–rectangle intersection where the rectangle is expanded
       // by the track half-width. This avoids "holes" at coarse grid resolutions.
       const seg = obstacle.segment;
-      if (obstacle.boardRegion) {
-        // Inverse rasterization: block what is NOT board, across the whole
-        // grid. Scanline per row with even-odd parity over all contours
-        // (outer + cutouts): a cell centre is on the board iff an odd number
-        // of contour edges cross the row to its left.
-        const contours = [obstacle.boardRegion.outer, ...obstacle.boardRegion.holes];
-        for (let gy = 0; gy < this.gridHeight; gy++) {
-          const y = this.gridToWorldY(gy);
-          const xs: number[] = [];
-          for (const poly of contours) {
-            for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
-              const a = poly[i]!;
-              const b = poly[j]!;
-              if (a.y > y !== b.y > y) xs.push(((b.x - a.x) * (y - a.y)) / (b.y - a.y) + a.x);
-            }
-          }
-          xs.sort((p, q) => p - q);
-          let k = 0;
-          for (let gx = 0; gx < this.gridWidth; gx++) {
-            const cx = this.gridToWorldX(gx);
-            while (k < xs.length && xs[k]! < cx) k++;
-            if (k % 2 === 0) occupyCell(gx, gy); // even crossings to the left: off-board
-          }
-        }
-      } else if (obstacle.type === 'track' && seg) {
+      if (obstacle.type === 'track' && seg) {
         const halfWidth = seg.width / 2;
 
         const x1 = seg.x1,
@@ -471,15 +643,11 @@ export class RoutingGrid {
         // true pad edge while keeping routing lanes open.
         const padCellHalfWidth = this.gridResolution * 1.5;
 
-        // Still track the max physical pad radius for search window sizing
-        let padPhysicalRadius: number;
-        if (shape === 'circle') {
-          padPhysicalRadius = Math.min(halfW, halfH);
-        } else if (shape === 'oval') {
-          padPhysicalRadius = Math.max(halfW, halfH);
-        } else {
-          padPhysicalRadius = Math.sqrt(halfW * halfW + halfH * halfH);
-        }
+        // The grid-wide max half-width sizes every occupancy probe's scan
+        // radius, and the only half-width a pad cell stores is
+        // padCellHalfWidth — folding in the pad's physical radius (as this
+        // once did) made one 37mm pad turn every probe into a ~270-cell-radius
+        // scan that matched nothing extra, timing out trivially routable boards.
 
         const rotRad = (rotation * Math.PI) / 180; // forward rotation to world
         const cosR = Math.cos(rotRad);
@@ -552,7 +720,7 @@ export class RoutingGrid {
               occupyCell(gx, gy, padCellHalfWidth);
             }
           }
-          this.maxObstacleHalfWidthMm = Math.max(this.maxObstacleHalfWidthMm, padPhysicalRadius);
+          this.maxObstacleHalfWidthMm = Math.max(this.maxObstacleHalfWidthMm, padCellHalfWidth);
         }
 
         if (poly.length > 0) {
@@ -607,7 +775,7 @@ export class RoutingGrid {
             }
           }
 
-          this.maxObstacleHalfWidthMm = Math.max(this.maxObstacleHalfWidthMm, padPhysicalRadius);
+          this.maxObstacleHalfWidthMm = Math.max(this.maxObstacleHalfWidthMm, padCellHalfWidth);
         }
       } else if (obstacle.polygon && obstacle.polygon.points && obstacle.polygon.points.length >= 3) {
         // Precise rasterization for polygon obstacles (zones, keepouts):
@@ -744,14 +912,20 @@ export class RoutingGrid {
     considerObstacleClearance: boolean = false,
     sumObstacleClearance: boolean = false,
     blockers?: Set<string>,
+    /** Exact world point to test instead of the cell centre (segment sampling). */
+    probe?: { x: number; y: number },
+    /** Test the whole move from this world point to the probe (exact obstacles only). */
+    from?: { x: number; y: number },
   ): boolean {
     // Check if coordinates are within bounds
     if (!this.isInBounds(x, y)) {
       return true; // Out of bounds = occupied
     }
+    // the board edge binds the copper centreline exactly — no trace clearance on top
+    if (this.isEdgeKeepout(x, y, layer)) return true;
 
     // Fast path: no clearance and not considering obstacle clearance => exact cell only
-    if (clearance <= 0 && !considerObstacleClearance) {
+    if (clearance <= 0 && !considerObstacleClearance && !probe && !from) {
       return this.isCellOccupied(x, y, layer, net);
     }
 
@@ -765,8 +939,13 @@ export class RoutingGrid {
         ? clearance + this.maxObstacleClearance + this.maxObstacleHalfWidthMm
         : Math.max(clearance, this.maxObstacleClearance) + this.maxObstacleHalfWidthMm
       : clearance;
-    const searchRadiusCells = Math.ceil(searchClearanceMm / this.gridResolution);
+    const probeX = probe ? probe.x : this.gridToWorldX(x);
+    const probeY = probe ? probe.y : this.gridToWorldY(y);
+    // a move probe must also reach obstacles beside its far end
+    const moveMm = from ? Math.hypot(probeX - from.x, probeY - from.y) : 0;
+    const searchRadiusCells = Math.ceil((searchClearanceMm + moveMm) / this.gridResolution);
     const gridResSq = this.gridResolution * this.gridResolution;
+    const exactGapMemo = new Map<string, number>();
 
     for (let dx = -searchRadiusCells; dx <= searchRadiusCells; dx++) {
       for (let dy = -searchRadiusCells; dy <= searchRadiusCells; dy++) {
@@ -800,7 +979,14 @@ export class RoutingGrid {
         //   <=> distSqGrid * gridResSq < (baseClearance + obstacleHalfWidthMm)^2
         const distSqGrid = dx * dx + dy * dy;
         const thresholdMm = baseClearance + obstacleHalfWidthMm;
-        const withinThreshold = distSqGrid * gridResSq <= thresholdMm * thresholdMm;
+        // Exact geometry when every obstacle in the cell has it (pads: their
+        // shape; tracks: their segment): the gap from this cell's centre to
+        // the obstacle copper must reach the clearance. The cell-centre rule
+        // below pads each obstacle by up to ~1.5 cells, which rejected lanes
+        // that are exactly legal (designs laid out at the rule limit).
+        const exactGap = this.exactGapToCell(cell, probeX, probeY, exactGapMemo, from);
+        const withinThreshold =
+          exactGap !== undefined ? exactGap < baseClearance - 1e-9 : distSqGrid * gridResSq <= thresholdMm * thresholdMm;
 
         // Absolute blocks always block within required clearance
         if (cell.absoluteBlock && withinThreshold) {
@@ -963,6 +1149,7 @@ export class RoutingGrid {
   private isCellOccupied(x: number, y: number, layer: string, net?: string): boolean {
     const idx = this.getCellIndex(layer, x, y);
     if (idx < 0) return false;
+    if (this.edgeMask && this.edgeMask[idx] === 1) return true;
     const cell = this.cells[idx];
 
     if (!cell) {
@@ -1165,6 +1352,7 @@ export class RoutingGrid {
    */
   clear(): void {
     this.cells = new Array(this.cellsTotalSize);
+    this.edgeMask = null;
     this.obstacles.clear();
     this.maxObstacleClearance = 0;
     this.maxObstacleHalfWidthMm = 0;
